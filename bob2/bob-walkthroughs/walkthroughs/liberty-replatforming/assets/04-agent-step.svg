@@ -1,0 +1,82 @@
+<svg width="592" height="592" viewBox="0 0 592 592" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <g>
+    <g>
+      <g>
+        <rect x="40" y="60" width="421.2" height="460" fill="var(--vscode-editorPane-background, #0d1117)" />
+        <rect x="210" y="60" width="251" height="30" fill="var(--vscode-titleBar-inactiveBackground, #010409)" />
+        <rect x="40" y="60" width="170" height="30" fill="var(--vscode-titleBar-activeBackground, #0d1117)" />
+        <rect x="60" y="70" width="130" height="10" rx="5" fill="var(--vscode-titleBar-activeForeground, #7d8590)" />
+      </g>
+      <rect x="40" y="125" width="300" height="20" fill="var(--vscode-diffEditor-removedLineBackground, #da3633)" />
+      <rect x="40" y="145" width="300" height="20" fill="var(--vscode-diffEditor-insertedLineBackground, #238636)" />
+      <rect x="40" y="205" width="300" height="20" fill="var(--vscode-diffEditor-removedLineBackground, #da3633)" />
+      <rect x="40" y="225" width="300" height="20" fill="var(--vscode-diffEditor-insertedLineBackground, #238636)" />
+      <rect x="40" y="265" width="300" height="20" fill="var(--vscode-diffEditor-insertedLineBackground, #238636)" />
+      <rect x="40" y="285" width="300" height="20" fill="var(--vscode-diffEditor-insertedLineBackground, #238636)" />
+      <rect x="40" y="305" width="300" height="20" fill="var(--vscode-diffEditor-insertedLineBackground, #238636)" />
+      <rect x="220" y="250" width="110" height="10" rx="5" fill="var(--vscode-tokens-string-comment, #8b949e)" />
+      <rect x="110" y="190" width="70" height="10" rx="5" fill="var(--vscode-tokens-string-comment, #8b949e)" />
+      <rect x="160" y="250" width="50" height="10" rx="5" fill="var(--vscode-tokens-string-comment, #8b949e)" />
+      <rect x="100" y="250" width="50" height="10" rx="5" fill="var(--vscode-tokens-string-comment, #8b949e)" />
+      <rect x="130" y="230" width="50" height="10" rx="5" fill="var(--vscode-diffEditor-insertedTextBackground, #3fb950)" />
+      <rect x="80" y="210" width="50" height="10" rx="5" fill="var(--vscode-diffEditor-removedTextBackground, #ff7b72)" />
+      <rect x="60" y="170" width="50" height="10" rx="5" fill="var(--vscode-tokens-string-comment, #8b949e)" />
+      <rect x="130" y="130" width="50" height="10" rx="5" fill="var(--vscode-diffEditor-removedTextBackground, #ff7b72)" />
+      <rect x="140" y="110" width="50" height="10" rx="5" fill="var(--vscode-tokens-string-comment, #8b949e)" />
+      <rect x="80" y="230" width="40" height="10" rx="5" fill="var(--vscode-diffEditor-insertedTextBackground, #3fb950)" />
+      <rect x="80" y="130" width="40" height="10" rx="5" fill="var(--vscode-diffEditor-removedTextBackground, #ff7b72)" />
+      <rect x="60" y="110" width="40" height="10" rx="5" fill="var(--vscode-tokens-string-comment, #8b949e)" />
+      <rect x="120" y="170" width="30" height="10" rx="5" fill="var(--vscode-tokens-string-comment, #8b949e)" />
+      <rect x="80" y="150" width="30" height="10" rx="5" fill="var(--vscode-diffEditor-insertedTextBackground, #3fb950)" />
+      <rect x="190" y="130" width="30" height="10" rx="5" fill="var(--vscode-diffEditor-removedTextBackground, #ff7b72)" />
+      <rect x="80" y="190" width="20" height="10" rx="5" fill="var(--vscode-tokens-string-comment, #8b949e)" />
+      <rect x="120" y="150" width="20" height="10" rx="5" fill="var(--vscode-diffEditor-insertedTextBackground, #3fb950)" />
+      <rect x="110" y="110" width="20" height="10" rx="5" fill="var(--vscode-tokens-string-comment, #8b949e)" />
+      <rect x="190" y="190" width="90" height="10" rx="5" fill="var(--vscode-tokens-string-comment, #8b949e)" />
+      <g>
+        <rect x="80" y="310" width="50" height="10" rx="5" fill="var(--vscode-diffEditor-insertedTextBackground, #3fb950)" />
+        <rect x="80" y="270" width="50" height="10" rx="5" fill="var(--vscode-diffEditor-insertedTextBackground, #3fb950)" />
+        <rect x="60" y="290" width="30" height="10" rx="5" fill="var(--vscode-diffEditor-insertedTextBackground, #3fb950)" />
+        <rect x="100" y="290" width="90" height="10" rx="5" fill="var(--vscode-diffEditor-insertedTextBackground, #3fb950)" />
+      </g>
+      <rect x="140" y="210" width="90" height="10" rx="5" fill="var(--vscode-diffEditor-removedTextBackground, #ff7b72)" />
+    </g>
+    <g>
+      <g filter="url(#filter0_d_8_122)">
+        <rect x="261" y="85" width="299" height="411.565" fill="var(--vscode-sideBar-background, #010409)" />
+      </g>
+      <rect x="280" y="425" width="260" height="40" rx="6" fill="var(--vscode-sideBar-dropBackground, #53595D)" fill-opacity="0.501961" />
+      <rect x="280" y="315" width="260" height="50" rx="6" fill="var(--vscode-sideBar-dropBackground, #53595D)" fill-opacity="0.501961" />
+      <rect x="280" y="195" width="260" height="50" rx="6" fill="var(--vscode-sideBar-dropBackground, #53595d)" fill-opacity="0.501961" />
+      <path d="M284.01 115.086H281.112L281.096 113.656H283.627C284.054 113.656 284.416 113.594 284.713 113.469C285.015 113.338 285.245 113.154 285.401 112.914C285.557 112.669 285.635 112.375 285.635 112.031C285.635 111.651 285.562 111.341 285.416 111.101C285.271 110.862 285.047 110.687 284.745 110.578C284.448 110.469 284.067 110.414 283.604 110.414H281.705V120.226H279.745V108.851H283.604C284.229 108.851 284.786 108.911 285.276 109.031C285.771 109.151 286.19 109.338 286.534 109.594C286.883 109.844 287.146 110.161 287.323 110.547C287.505 110.932 287.596 111.391 287.596 111.922C287.596 112.391 287.484 112.82 287.26 113.211C287.036 113.596 286.705 113.911 286.268 114.156C285.83 114.401 285.286 114.547 284.635 114.594L284.01 115.086ZM283.924 120.226H280.495L281.377 118.672H283.924C284.367 118.672 284.737 118.599 285.034 118.453C285.33 118.302 285.552 118.096 285.698 117.836C285.849 117.57 285.924 117.26 285.924 116.906C285.924 116.536 285.859 116.216 285.729 115.945C285.599 115.669 285.393 115.458 285.112 115.312C284.83 115.161 284.463 115.086 284.01 115.086H281.807L281.823 113.656H284.69L285.135 114.195C285.76 114.216 286.273 114.354 286.674 114.609C287.08 114.864 287.383 115.195 287.58 115.601C287.778 116.008 287.877 116.445 287.877 116.914C287.877 117.638 287.718 118.245 287.401 118.734C287.088 119.224 286.638 119.596 286.049 119.851C285.461 120.101 284.752 120.226 283.924 120.226ZM298.924 114.226V114.851C298.924 115.711 298.812 116.482 298.588 117.164C298.364 117.846 298.044 118.427 297.627 118.906C297.216 119.385 296.721 119.752 296.143 120.008C295.565 120.258 294.924 120.383 294.221 120.383C293.523 120.383 292.885 120.258 292.307 120.008C291.734 119.752 291.237 119.385 290.815 118.906C290.393 118.427 290.065 117.846 289.83 117.164C289.601 116.482 289.487 115.711 289.487 114.851V114.226C289.487 113.367 289.601 112.599 289.83 111.922C290.06 111.239 290.383 110.659 290.799 110.18C291.221 109.695 291.718 109.328 292.291 109.078C292.87 108.823 293.508 108.695 294.205 108.695C294.909 108.695 295.549 108.823 296.127 109.078C296.705 109.328 297.203 109.695 297.62 110.18C298.036 110.659 298.356 111.239 298.58 111.922C298.81 112.599 298.924 113.367 298.924 114.226ZM296.963 114.851V114.211C296.963 113.575 296.901 113.016 296.776 112.531C296.656 112.042 296.476 111.633 296.237 111.305C296.002 110.971 295.713 110.721 295.37 110.555C295.026 110.383 294.638 110.297 294.205 110.297C293.773 110.297 293.388 110.383 293.049 110.555C292.711 110.721 292.422 110.971 292.182 111.305C291.948 111.633 291.768 112.042 291.643 112.531C291.518 113.016 291.455 113.575 291.455 114.211V114.851C291.455 115.487 291.518 116.049 291.643 116.539C291.768 117.029 291.95 117.443 292.19 117.781C292.435 118.114 292.726 118.367 293.065 118.539C293.403 118.706 293.789 118.789 294.221 118.789C294.659 118.789 295.047 118.706 295.385 118.539C295.724 118.367 296.01 118.114 296.245 117.781C296.479 117.443 296.656 117.029 296.776 116.539C296.901 116.049 296.963 115.487 296.963 114.851ZM305.151 115.086H302.252L302.237 113.656H304.768C305.195 113.656 305.557 113.594 305.854 113.469C306.156 113.338 306.385 113.154 306.541 112.914C306.698 112.669 306.776 112.375 306.776 112.031C306.776 111.651 306.703 111.341 306.557 111.101C306.411 110.862 306.187 110.687 305.885 110.578C305.588 110.469 305.208 110.414 304.745 110.414H302.846V120.226H300.885V108.851H304.745C305.37 108.851 305.927 108.911 306.416 109.031C306.911 109.151 307.33 109.338 307.674 109.594C308.023 109.844 308.286 110.161 308.463 110.547C308.646 110.932 308.737 111.391 308.737 111.922C308.737 112.391 308.625 112.82 308.401 113.211C308.177 113.596 307.846 113.911 307.409 114.156C306.971 114.401 306.427 114.547 305.776 114.594L305.151 115.086ZM305.065 120.226H301.635L302.518 118.672H305.065C305.508 118.672 305.877 118.599 306.174 118.453C306.471 118.302 306.692 118.096 306.838 117.836C306.989 117.57 307.065 117.26 307.065 116.906C307.065 116.536 307 116.216 306.87 115.945C306.739 115.669 306.534 115.458 306.252 115.312C305.971 115.161 305.604 115.086 305.151 115.086H302.948L302.963 113.656H305.83L306.276 114.195C306.901 114.216 307.414 114.354 307.815 114.609C308.221 114.864 308.523 115.195 308.721 115.601C308.919 116.008 309.018 116.445 309.018 116.914C309.018 117.638 308.859 118.245 308.541 118.734C308.229 119.224 307.778 119.596 307.19 119.851C306.601 120.101 305.893 120.226 305.065 120.226Z" fill="var(--vscode-foreground, #e6edf3)" />
+      <rect x="280" y="470" width="70.3529" height="8.79412" rx="4.39706" fill="var(--vscode-sideBar-dropBackground, #53595D)" fill-opacity="0.501961" />
+      <rect x="361" y="470" width="70.3529" height="8.79412" rx="4.39706" fill="var(--vscode-sideBar-dropBackground, #53595D)" fill-opacity="0.501961" />
+      <rect x="280" y="175" width="108" height="10" rx="5" fill="var(--vscode-sideBar-dropBackground, #53595D)" fill-opacity="0.501961" />
+      <rect x="280" y="255" width="50" height="10" rx="5" fill="var(--vscode-sideBar-dropBackground, #53595D)" fill-opacity="0.501961" />
+      <rect x="380" y="375" width="50" height="10" rx="5" fill="var(--vscode-sideBar-dropBackground, #53595D)" fill-opacity="0.501961" />
+      <rect x="380" y="275" width="50" height="10" rx="5" fill="var(--vscode-sideBar-dropBackground, #53595D)" fill-opacity="0.501961" />
+      <rect x="340" y="255" width="70" height="10" rx="5" fill="var(--vscode-sideBar-dropBackground, #53595D)" fill-opacity="0.501961" />
+      <rect x="440" y="275" width="70" height="10" rx="5" fill="var(--vscode-sideBar-dropBackground, #53595D)" fill-opacity="0.501961" />
+      <rect x="280" y="295" width="70" height="10" rx="5" fill="var(--vscode-sideBar-dropBackground, #53595D)" fill-opacity="0.501961" />
+      <rect x="280" y="275" width="90" height="10" rx="5" fill="var(--vscode-sideBar-dropBackground, #53595D)" fill-opacity="0.501961" />
+      <rect x="280" y="375" width="90" height="10" rx="5" fill="var(--vscode-sideBar-dropBackground, #53595D)" fill-opacity="0.501961" />
+      <rect x="514" y="470.182" width="26.3824" height="8.79412" rx="4.39706" fill="var(--vscode-sideBar-dropBackground, #53595D)" fill-opacity="0.501961" />
+      <circle cx="313.765" cy="150.403" r="8.79412" fill="var(--vscode-sideBar-dropBackground, #53595d)" fill-opacity="0.501961" />
+      <circle cx="410.5" cy="150.403" r="8.79412" fill="var(--vscode-sideBar-dropBackground, #53595d)" fill-opacity="0.501961" />
+      <circle cx="507.235" cy="150.403" r="8.79412" fill="var(--vscode-sideBar-dropBackground, #53595d)" fill-opacity="0.501961" />
+    </g>
+  </g>
+  <defs>
+    <filter id="filter0_d_8_122" x="239" y="63" width="343" height="455.565" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feFlood flood-opacity="0" result="BackgroundImageFix" />
+      <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha" />
+      <feMorphology radius="2" operator="dilate" in="SourceAlpha" result="effect1_dropShadow_8_122" />
+      <feOffset />
+      <feGaussianBlur stdDeviation="10" />
+      <feComposite in2="hardAlpha" operator="out" />
+      <feColorMatrix type="matrix" values="0 0 0 0 0.121569 0 0 0 0 0.435294 0 0 0 0 0.921569 0 0 0 0.5 0" />
+      <feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow_8_122" />
+      <feBlend mode="normal" in="SourceGraphic" in2="effect1_dropShadow_8_122" result="shape" />
+    </filter>
+  </defs>
+</svg>
