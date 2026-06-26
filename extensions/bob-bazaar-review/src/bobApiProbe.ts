@@ -2,6 +2,7 @@ import * as vscode from "vscode"
 
 const BOB_EXTENSION_ID = "IBM.bob-code"
 const SOURCE_ID = "bob-bazaar-review"
+const GROUP_ID = "bob-bazaar-review.group"
 const WORKFLOW_ID = "bob-bazaar-review.bazaar-project-rule-review"
 
 interface BobWorkflowApi {
@@ -35,8 +36,8 @@ export async function inspectBobWorkflowApi(): Promise<void> {
     "Interpretation:",
     "",
     "- `registerSource` is the likely public entry point for creating a Bob source from a companion extension.",
-    "- The returned source object exposes a `register` key, but its runtime type must be checked before using it.",
-    "- This experiment reports the returned source keys and `typeof register` before trying workflow part registration."
+    "- The returned source object exposes a `register` registry object.",
+    "- This experiment registers both a workflow group and a workflow part."
   ].join("\n")
 
   const doc = await vscode.workspace.openTextDocument({ language: "markdown", content: report })
@@ -54,6 +55,7 @@ export async function registerExperimentalWorkflowCard(): Promise<void> {
   }
 
   const workflow = buildWorkflowPart()
+  const group = buildWorkflowGroupPart()
   const sourceDescriptor = buildWorkflowSource()
 
   if (api.registerSource) {
@@ -63,28 +65,34 @@ export async function registerExperimentalWorkflowCard(): Promise<void> {
     attempts.push(describeRegisteredSourceAttempt(registeredSource))
 
     const sourceRegister = asRecord(registeredSource)?.register
-    const workflowRegister = asRecord(sourceRegister)?.workflow
+    const registerObject = asRecord(sourceRegister)
+    const groupRegister = registerObject?.group
+    const workflowRegister = registerObject?.workflow
 
-    if (registeredSource && typeof workflowRegister === "function") {
-      const registerObject = sourceRegister as Record<string, unknown>
+    if (registeredSource && registerObject && typeof groupRegister === "function") {
+      attempts.push(await runRegistrationAttempt("source.register.group(group)", () => groupRegister.call(registerObject, group)))
+      attempts.push(describeSourcePartsAttempt(registeredSource, "after group registration"))
+    }
+
+    if (registeredSource && registerObject && typeof workflowRegister === "function") {
       const confirmedRegister = workflowRegister as (...args: unknown[]) => unknown
-
       const sourcePartAttempts = buildWorkflowRegisterCandidates(
         registeredSource,
         registerObject,
         confirmedRegister,
         workflow
-      )    
+      )
       for (const candidate of sourcePartAttempts) {
         attempts.push(await runRegistrationAttempt(candidate.label, candidate.run))
-        if (attempts[attempts.length - 1].ok) {
+        attempts.push(describeSourcePartsAttempt(registeredSource, `after ${candidate.label}`))
+        if (attempts[attempts.length - 2].ok) {
           await vscode.commands.executeCommand("setContext", "bob-code.hasWorkflows", true)
           await showRegistrationReport("Experimental workflow part registration returned successfully.", attempts)
           return
         }
       }
     } else if (sourceAttempt.ok) {
-      await showRegistrationReport("Bob accepted the experimental source, but returned source.register is not callable.", attempts)
+      await showRegistrationReport("Bob accepted the experimental source, but returned source.register.workflow is not callable.", attempts)
       return
     }
 
@@ -108,16 +116,51 @@ export async function registerExperimentalWorkflowCard(): Promise<void> {
   await showRegistrationReport("Experimental workflow registration did not succeed.", attempts)
 }
 
-function buildWorkflowPart(): Record<string, unknown> {
-  const id = "bob-bazaar-review.bazaar-project-rule-review"
-  const title = "Bazaar Project Rule Review"
-  const description = "Review a Bazaar revision or range against project-specific rules."
+function buildWorkflowGroupPart(): Record<string, unknown> {
+  const title = "Bob Bazaar Review"
+  const description = "Bazaar review workflows."
 
   return {
-    id,
+    id: GROUP_ID,
     sourceId: SOURCE_ID,
+    type: "group",
+    kind: "group",
+    name: title,
+    title,
+    label: title,
+    displayName: title,
+    description,
+
+    getId: () => GROUP_ID,
+    getName: () => title,
+    getTitle: () => title,
+    getLabel: () => title,
+    getDisplayName: () => title,
+    getDescription: () => description,
+    getSourceId: () => SOURCE_ID,
+    getType: () => "group",
+    getKind: () => "group",
+    isEnabled: () => true,
+    isEntitled: () => true
+  }
+}
+
+function buildWorkflowPart(): Record<string, unknown> {
+  const title = "Bazaar Project Rule Review"
+  const description = "Review a Bazaar revision or range against project-specific rules."
+  const prompt = "Open the Bazaar Review GUI and run a project-rule review."
+
+  return {
+    id: WORKFLOW_ID,
+    sourceId: SOURCE_ID,
+    source: SOURCE_ID,
+    groupId: GROUP_ID,
+    group: GROUP_ID,
+    groups: [GROUP_ID],
+    slug: "bazaar-project-rule-review",
     type: "workflow",
     kind: "workflow",
+    category: "Bob Bazaar",
     name: title,
     title,
     label: title,
@@ -125,15 +168,26 @@ function buildWorkflowPart(): Record<string, unknown> {
     description,
     command: "bobBazaar.openReviewGui",
     vscodeCommand: "bobBazaar.openReviewGui",
-    prompt: "Open the Bazaar Review GUI and run a project-rule review.",
+    startCommand: "bobBazaar.openReviewGui",
+    prompt,
+    mode: "ask",
 
-    getId: () => id,
+    getId: () => WORKFLOW_ID,
     getName: () => title,
     getTitle: () => title,
     getLabel: () => title,
     getDisplayName: () => title,
     getDescription: () => description,
     getSourceId: () => SOURCE_ID,
+    getSource: () => SOURCE_ID,
+    getGroupId: () => GROUP_ID,
+    getGroup: () => GROUP_ID,
+    getGroups: () => [GROUP_ID],
+    getType: () => "workflow",
+    getKind: () => "workflow",
+    getCategory: () => "Bob Bazaar",
+    getCommand: () => "bobBazaar.openReviewGui",
+    getPrompt: () => prompt,
     isEnabled: () => true,
     isEntitled: () => true
   }
@@ -227,10 +281,20 @@ function describeRegisteredSourceAttempt(source: RegisteredSourceLike | undefine
   const registerValue = record.register
   const registerRecord = asRecord(registerValue)
   const workflowValue = registerRecord?.workflow
+  const groupValue = registerRecord?.group
   return {
     label: "returned source diagnostics",
     ok: typeof workflowValue === "function",
-    message: `keys=${Object.keys(record).join(",")}; typeof register=${typeof registerValue}; register keys=${Object.keys(registerRecord ?? {}).join(",") || "none"}; typeof register.workflow=${typeof workflowValue}`
+    message: `keys=${Object.keys(record).join(",")}; typeof register=${typeof registerValue}; register keys=${Object.keys(registerRecord ?? {}).join(",") || "none"}; typeof register.group=${typeof groupValue}; typeof register.workflow=${typeof workflowValue}`
+  }
+}
+
+function describeSourcePartsAttempt(source: RegisteredSourceLike | undefined, label: string): RegistrationAttempt {
+  const parts = asRecord(asRecord(source)?._parts)
+  return {
+    label: `source parts diagnostics (${label})`,
+    ok: true,
+    message: parts ? `parts keys=${Object.keys(parts).join(",")}` : "parts not inspectable"
   }
 }
 
