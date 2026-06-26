@@ -2,7 +2,7 @@
   "name": "bob-bazaar-review",
   "displayName": "Bob Bazaar Review",
   "description": "Companion extension that exposes Bazaar revision review tools and project rule review helpers to IBM Bob through MCP.",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "publisher": "katamor1",
   "license": "UNLICENSED",
   "private": true,
@@ -28,7 +28,8 @@
     "onCommand:bobBazaar.reviewRange",
     "onCommand:bobBazaar.reviewRevisionWithProjectRules",
     "onCommand:bobBazaar.reviewRangeWithProjectRules",
-    "onCommand:bobBazaar.validateReviewResultJson"
+    "onCommand:bobBazaar.validateReviewResultJson",
+    "onCommand:bobBazaar.inspectBobWorkflowApi"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -71,6 +72,11 @@
       {
         "command": "bobBazaar.validateReviewResultJson",
         "title": "Validate Project Review Result JSON",
+        "category": "Bob Bazaar"
+      },
+      {
+        "command": "bobBazaar.inspectBobWorkflowApi",
+        "title": "Inspect Bob Workflow API",
         "category": "Bob Bazaar"
       }
     ],
@@ -120,7 +126,8 @@
         { "command": "bobBazaar.reviewRange" },
         { "command": "bobBazaar.reviewRevisionWithProjectRules" },
         { "command": "bobBazaar.reviewRangeWithProjectRules" },
-        { "command": "bobBazaar.validateReviewResultJson" }
+        { "command": "bobBazaar.validateReviewResultJson" },
+        { "command": "bobBazaar.inspectBobWorkflowApi" }
       ],
       "scm/title": [
         { "command": "bobBazaar.openReviewGui", "group": "navigation" }
