@@ -17,7 +17,7 @@ interface RegistrationAttempt {
 }
 
 interface RegisteredSourceLike {
-  register?: (...args: unknown[]) => unknown
+  register?: unknown
 }
 
 export async function inspectBobWorkflowApi(): Promise<void> {
@@ -35,8 +35,8 @@ export async function inspectBobWorkflowApi(): Promise<void> {
     "Interpretation:",
     "",
     "- `registerSource` is the likely public entry point for creating a Bob source from a companion extension.",
-    "- The returned source object may expose `register`, which is likely used to add workflow/tool/finding parts.",
-    "- `startWorkflow` is likely an execution entry point, not a discovery/registration entry point."
+    "- The returned source object exposes a `register` key, but its runtime type must be checked before using it.",
+    "- This experiment reports the returned source keys and `typeof register` before trying workflow part registration."
   ].join("\n")
 
   const doc = await vscode.workspace.openTextDocument({ language: "markdown", content: report })
@@ -54,14 +54,18 @@ export async function registerExperimentalWorkflowCard(): Promise<void> {
   }
 
   const workflow = buildWorkflowCard()
-  const source = buildWorkflowSource()
+  const sourceDescriptor = buildWorkflowSource()
 
   if (api.registerSource) {
-    const sourceAttempt = await runRegistrationAttempt("registerSource(source)", () => api.registerSource?.(source))
+    const sourceAttempt = await runRegistrationAttempt("registerSource(source)", () => api.registerSource?.(sourceDescriptor))
     attempts.push(sourceAttempt)
 
-    if (sourceAttempt.ok && sourceAttempt.value && typeof asRecord(sourceAttempt.value)?.register === "function") {
-      const sourcePartAttempts = buildSourcePartCandidates(sourceAttempt.value as RegisteredSourceLike, workflow)
+    const registeredSource = sourceAttempt.value as RegisteredSourceLike | undefined
+    attempts.push(describeRegisteredSourceAttempt(registeredSource))
+
+    const sourceRegister = asRecord(registeredSource)?.register
+    if (typeof sourceRegister === "function") {
+      const sourcePartAttempts = buildSourcePartCandidates(registeredSource, sourceRegister, workflow)
       for (const candidate of sourcePartAttempts) {
         attempts.push(await runRegistrationAttempt(candidate.label, candidate.run))
         if (attempts[attempts.length - 1].ok) {
@@ -70,6 +74,9 @@ export async function registerExperimentalWorkflowCard(): Promise<void> {
           return
         }
       }
+    } else if (sourceAttempt.ok) {
+      await showRegistrationReport("Bob accepted the experimental source, but returned source.register is not callable.", attempts)
+      return
     }
 
     if (sourceAttempt.ok) {
@@ -125,13 +132,20 @@ function buildWorkflowSource(): Record<string, unknown> {
   }
 }
 
-function buildSourcePartCandidates(source: RegisteredSourceLike, workflow: Record<string, unknown>): Array<{ label: string; run: () => unknown }> {
+function buildSourcePartCandidates(
+  registeredSource: RegisteredSourceLike,
+  sourceRegister: (...args: unknown[]) => unknown,
+  workflow: Record<string, unknown>
+): Array<{ label: string; run: () => unknown }> {
   return [
-    { label: "source.register(workflow)", run: () => source.register?.(workflow) },
-    { label: "source.register({ type: workflow, ...workflow })", run: () => source.register?.({ type: "workflow", ...workflow }) },
-    { label: "source.register({ kind: workflow, ...workflow })", run: () => source.register?.({ kind: "workflow", ...workflow }) },
-    { label: "source.register(workflow, workflow)", run: () => source.register?.("workflow", workflow) },
-    { label: "source.register(workflows-array)", run: () => source.register?.({ workflows: [workflow] }) }
+    { label: "source.register(workflow)", run: () => sourceRegister.call(registeredSource, workflow) },
+    { label: "source.register({ type: workflow, ...workflow })", run: () => sourceRegister.call(registeredSource, { type: "workflow", ...workflow }) },
+    { label: "source.register({ kind: workflow, ...workflow })", run: () => sourceRegister.call(registeredSource, { kind: "workflow", ...workflow }) },
+    { label: "source.register(workflow, workflow)", run: () => sourceRegister.call(registeredSource, "workflow", workflow) },
+    { label: "source.register(workflows, [workflow])", run: () => sourceRegister.call(registeredSource, "workflows", [workflow]) },
+    { label: "source.register(workflows, workflow)", run: () => sourceRegister.call(registeredSource, "workflows", workflow) },
+    { label: "source.register({ workflow })", run: () => sourceRegister.call(registeredSource, { workflow }) },
+    { label: "source.register({ workflows: [workflow] })", run: () => sourceRegister.call(registeredSource, { workflows: [workflow] }) }
   ]
 }
 
@@ -148,6 +162,20 @@ async function runRegistrationAttempt(label: string, run: () => unknown): Promis
     return { label, ok: result !== false, message: describeReturn(result), value: result }
   } catch (error) {
     return { label, ok: false, message: error instanceof Error ? error.message : String(error) }
+  }
+}
+
+function describeRegisteredSourceAttempt(source: RegisteredSourceLike | undefined): RegistrationAttempt {
+  const record = asRecord(source)
+  if (!record) {
+    return { label: "returned source diagnostics", ok: false, message: "no object returned" }
+  }
+
+  const registerValue = record.register
+  return {
+    label: "returned source diagnostics",
+    ok: typeof registerValue === "function",
+    message: `keys=${Object.keys(record).join(",")}; typeof register=${typeof registerValue}; register keys=${Object.keys(asRecord(registerValue) ?? {}).join(",") || "none"}`
   }
 }
 
