@@ -93,6 +93,12 @@
           "minimum": 32768,
           "description": "Maximum Bazaar diff size to include in the generated review packet."
         },
+        "bobBazaar.maxAddedFileContentBytes": {
+          "type": "number",
+          "default": 262144,
+          "minimum": 0,
+          "description": "Maximum total size of newly added file contents to include in the generated review packet. Set 0 to omit added file content sections."
+        },
         "bobBazaar.projectRules.checklistPath": {
           "type": "string",
           "default": ".bob/review/checklist.json",
