@@ -28,9 +28,19 @@ The GUI supports this flow:
 1. Select workspace.
 2. If `.bob` is missing required files, the GUI shows `未初期化` and lists missing files.
 3. Press `.bobを初期化` to copy missing Skill / Workflow / Mode / review templates and generate `.bob/mcp.json` with the actual MCP server path.
-4. Enter a Bazaar revision.
-5. Press `取得` to show commit message, author, committer, timestamp, changed file count, and changed files.
+4. Select a review target mode.
+5. Press `取得` to show target metadata, changed file count, and changed files.
 6. Press `レビューしてBobにADD` to build a review packet, open it as Markdown, and call `bob-code.addToContext`.
+
+GUI review target modes:
+
+| Mode | Inputs | Bazaar operation |
+| --- | --- | --- |
+| `1リビジョン` | `Revision` | `bzr log -r REV` and `bzr diff -c REV` |
+| `リビジョン範囲` | `Base revision`, `Target revision` | `bzr diff -r BASE..TARGET`; target log is loaded when available |
+| `TOPリビジョンと未コミット差分` | optional `Base revision` | if empty, uses `bzr revno`; then `bzr diff -r BASE` and `bzr status` |
+
+For single revision and revision range reviews, newly added file contents are included in the packet up to `bobBazaar.maxAddedFileContentBytes`.
 
 Required `.bob` files checked by the GUI:
 
