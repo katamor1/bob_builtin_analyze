@@ -6,6 +6,11 @@
   "publisher": "katamor1",
   "license": "UNLICENSED",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/katamor1/bob_builtin_analyze.git",
+    "directory": "extensions/bob-bazaar-review"
+  },
   "engines": {
     "vscode": "^1.106.1"
   },
