@@ -107,30 +107,17 @@
     },
     "menus": {
       "commandPalette": [
-        {
-          "command": "bobBazaar.openReviewGui"
-        },
-        {
-          "command": "bobBazaar.configureMcp"
-        },
-        {
-          "command": "bobBazaar.initProjectRules"
-        },
-        {
-          "command": "bobBazaar.reviewRevision"
-        },
-        {
-          "command": "bobBazaar.reviewRange"
-        },
-        {
-          "command": "bobBazaar.reviewRevisionWithProjectRules"
-        },
-        {
-          "command": "bobBazaar.reviewRangeWithProjectRules"
-        },
-        {
-          "command": "bobBazaar.validateReviewResultJson"
-        }
+        { "command": "bobBazaar.openReviewGui" },
+        { "command": "bobBazaar.configureMcp" },
+        { "command": "bobBazaar.initProjectRules" },
+        { "command": "bobBazaar.reviewRevision" },
+        { "command": "bobBazaar.reviewRange" },
+        { "command": "bobBazaar.reviewRevisionWithProjectRules" },
+        { "command": "bobBazaar.reviewRangeWithProjectRules" },
+        { "command": "bobBazaar.validateReviewResultJson" }
+      ],
+      "scm/title": [
+        { "command": "bobBazaar.openReviewGui", "group": "navigation" }
       ]
     }
   },
