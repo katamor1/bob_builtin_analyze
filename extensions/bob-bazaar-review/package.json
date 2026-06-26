@@ -29,7 +29,8 @@
     "onCommand:bobBazaar.reviewRevisionWithProjectRules",
     "onCommand:bobBazaar.reviewRangeWithProjectRules",
     "onCommand:bobBazaar.validateReviewResultJson",
-    "onCommand:bobBazaar.inspectBobWorkflowApi"
+    "onCommand:bobBazaar.inspectBobWorkflowApi",
+    "onCommand:bobBazaar.registerExperimentalWorkflowCard"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -77,6 +78,11 @@
       {
         "command": "bobBazaar.inspectBobWorkflowApi",
         "title": "Inspect Bob Workflow API",
+        "category": "Bob Bazaar"
+      },
+      {
+        "command": "bobBazaar.registerExperimentalWorkflowCard",
+        "title": "Register Experimental Bob Workflow Card",
         "category": "Bob Bazaar"
       }
     ],
@@ -127,7 +133,8 @@
         { "command": "bobBazaar.reviewRevisionWithProjectRules" },
         { "command": "bobBazaar.reviewRangeWithProjectRules" },
         { "command": "bobBazaar.validateReviewResultJson" },
-        { "command": "bobBazaar.inspectBobWorkflowApi" }
+        { "command": "bobBazaar.inspectBobWorkflowApi" },
+        { "command": "bobBazaar.registerExperimentalWorkflowCard" }
       ],
       "scm/title": [
         { "command": "bobBazaar.openReviewGui", "group": "navigation" }
