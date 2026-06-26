@@ -3,7 +3,7 @@ import { BazaarClient } from "./bazaar"
 import { buildReviewPacket } from "./reviewPacket"
 import { buildProjectRulesSection } from "./projectRules/packet"
 import { loadProjectChecklist, loadReviewResultSchema } from "./projectRules/io"
-import { loadBazaarRevisionPacketInput, BazaarRevisionInfo } from "./revisionInfo"
+import { buildAddedFilesContentSection, loadBazaarRevisionPacketInput, BazaarRevisionInfo } from "./revisionInfo"
 import { getBobWorkspaceStatus, initializeBobWorkspaceFromTemplates } from "./bobWorkspaceInit"
 
 export function openBazaarReviewGui(context: vscode.ExtensionContext): void {
@@ -149,9 +149,13 @@ class BazaarReviewGuiController {
     this.post({ type: "loading", message: "Building review packet and adding it to Bob context..." })
     const client = makeBazaarClient()
     const input = await loadBazaarRevisionPacketInput(client, folder.uri.fsPath, revision)
-    const projectRulesSection = withProjectRules ? await buildProjectRulesSectionForWorkspace(input.root) : undefined
+    const [addedFilesSection, projectRulesSection] = await Promise.all([
+      buildAddedFilesContentSection(client, input.root, revision, input.info, getMaxAddedFileContentBytes()),
+      withProjectRules ? buildProjectRulesSectionForWorkspace(input.root) : Promise.resolve(undefined)
+    ])
 
     const metadataSection = buildRevisionMetadataSection(input.info)
+    const extraSections = [metadataSection, addedFilesSection, projectRulesSection].filter((section): section is string => Boolean(section))
     const packet = buildReviewPacket({
       repositoryRoot: input.root,
       mode: "singleRevision",
@@ -159,7 +163,7 @@ class BazaarReviewGuiController {
       log: input.log,
       diff: input.diff,
       maxDiffBytes: getMaxDiffBytes(),
-      extraSections: [metadataSection, ...(projectRulesSection ? [projectRulesSection] : [])]
+      extraSections
     })
 
     const doc = await vscode.workspace.openTextDocument({ language: "markdown", content: packet })
@@ -199,6 +203,11 @@ function getMaxDiffBytes(): number {
   return config.get<number>("maxDiffBytes", 1024 * 1024)
 }
 
+function getMaxAddedFileContentBytes(): number {
+  const config = vscode.workspace.getConfiguration("bobBazaar")
+  return config.get<number>("maxAddedFileContentBytes", 256 * 1024)
+}
+
 async function buildProjectRulesSectionForWorkspace(workspaceRoot: string): Promise<string> {
   const config = vscode.workspace.getConfiguration("bobBazaar")
   const checklistPath = config.get<string>("projectRules.checklistPath", ".bob/review/checklist.json")
@@ -229,7 +238,7 @@ function buildRevisionMetadataSection(info: BazaarRevisionInfo): string {
     "",
     "### Changed files",
     "",
-    ...(info.changedFiles.length > 0 ? info.changedFiles.map((file) => `- ${file}`) : ["- (no changed file detected)"])
+    ...(info.changedFileEntries.length > 0 ? info.changedFileEntries.map((entry) => `- ${entry.status}: ${entry.path}`) : ["- (no changed file detected)"])
   ].filter((line): line is string => line !== undefined).join("\n")
 }
 
@@ -379,9 +388,10 @@ function renderHtml(cspSource: string): string {
       $('infoChangedCount').textContent = String(info.changedFileCount ?? 0);
       $('infoMessage').textContent = info.message || '(no message)';
       $('infoFiles').innerHTML = '';
-      for (const file of info.changedFiles || []) {
+      const entries = info.changedFileEntries || (info.changedFiles || []).map((path) => ({ path, status: 'unknown' }));
+      for (const entry of entries) {
         const li = document.createElement('li');
-        li.textContent = file;
+        li.textContent = entry.status + ': ' + entry.path;
         $('infoFiles').appendChild(li);
       }
     }
