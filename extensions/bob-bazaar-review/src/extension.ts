@@ -24,6 +24,11 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("bobBazaar.inspectBobWorkflowApi", () => inspectBobWorkflowApi()),
     vscode.commands.registerCommand("bobBazaar.registerExperimentalWorkflowCard", () => registerExperimentalWorkflowCard())
   )
+  setTimeout(() => {
+    registerExperimentalWorkflowCard().catch((error) => {
+      console.warn("Experimental Bob workflow card registration failed", error)
+    })
+  }, 3000)  
 }
 
 export function deactivate(): void {

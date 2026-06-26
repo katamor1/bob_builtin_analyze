@@ -21,6 +21,7 @@
     "IBM.bob-code"
   ],
   "activationEvents": [
+    "onStartupFinished",
     "onCommand:bobBazaar.openReviewGui",
     "onCommand:bobBazaar.configureMcp",
     "onCommand:bobBazaar.initProjectRules",
