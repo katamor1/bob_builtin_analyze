@@ -64,7 +64,7 @@ export async function buildAddedFilesContentSection(
   maxBytes = 256 * 1024
 ): Promise<string | undefined> {
   const addedFiles = info.changedFileEntries.filter((entry) => entry.status === "added")
-  if (addedFiles.length === 0) return undefined
+  if (addedFiles.length === 0 || maxBytes <= 0) return undefined
 
   const lines: string[] = [
     "## Added file contents",
@@ -99,13 +99,13 @@ export async function buildAddedFilesContentSection(
     } catch (error: any) {
       lines.push(`### ${entry.path}`)
       lines.push("")
-      lines.push(`Could not load added file content with \`bzr cat -r ${revision} ${entry.path}\`: ${error?.message ?? String(error)}`)
+      lines.push(`Could not load added file content with Bazaar cat at revision ${revision}: ${error?.message ?? String(error)}`)
       lines.push("")
     }
   }
 
   if (truncated) {
-    lines.push(`[TRUNCATED: added file contents exceeded ${maxBytes} bytes. Use targeted read/grep tools for additional context.]`)
+    lines.push(`[TRUNCATED: added file contents exceeded ${maxBytes} bytes. Use focused read/search tools for additional context.]`)
   }
 
   return lines.join("\n")
