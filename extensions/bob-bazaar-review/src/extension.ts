@@ -7,9 +7,11 @@ import { buildProjectRulesSection } from "./projectRules/packet"
 import { validateReviewResultJson } from "./projectRules/validator"
 import { renderReviewResultMarkdown } from "./projectRules/markdown"
 import { ReviewResult } from "./projectRules/types"
+import { openBazaarReviewGui } from "./reviewGui"
 
 export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
+    vscode.commands.registerCommand("bobBazaar.openReviewGui", () => openBazaarReviewGui(context)),
     vscode.commands.registerCommand("bobBazaar.configureMcp", () => configureMcp(context)),
     vscode.commands.registerCommand("bobBazaar.initProjectRules", () => initProjectRules()),
     vscode.commands.registerCommand("bobBazaar.reviewRevision", () => reviewRevision(context, false)),
