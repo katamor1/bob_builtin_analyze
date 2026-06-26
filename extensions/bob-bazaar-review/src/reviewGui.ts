@@ -4,6 +4,7 @@ import { buildReviewPacket } from "./reviewPacket"
 import { buildProjectRulesSection } from "./projectRules/packet"
 import { loadProjectChecklist, loadReviewResultSchema } from "./projectRules/io"
 import { loadBazaarRevisionPacketInput, BazaarRevisionInfo } from "./revisionInfo"
+import { getBobWorkspaceStatus, initializeBobWorkspaceFromTemplates } from "./bobWorkspaceInit"
 
 export function openBazaarReviewGui(context: vscode.ExtensionContext): void {
   const panel = vscode.window.createWebviewPanel(
@@ -44,6 +45,9 @@ class BazaarReviewGuiController {
         case "selectWorkspace":
           await this.selectWorkspace()
           return
+        case "initializeBobWorkspace":
+          await this.initializeBobWorkspace()
+          return
         case "loadRevision":
           await this.loadRevision(String(message.revision ?? ""))
           return
@@ -67,6 +71,18 @@ class BazaarReviewGuiController {
       hasWorkspace: Boolean(this.workspaceFolder),
       folders: folders.map((folder) => ({ name: folder.name, path: folder.uri.fsPath }))
     })
+    await this.postBobWorkspaceStatus()
+  }
+
+  private async postBobWorkspaceStatus(): Promise<void> {
+    if (!this.workspaceFolder) {
+      this.post({ type: "bobWorkspaceStatus", initialized: false, missing: ["workspace未選択"], present: [] })
+      return
+    }
+    const config = vscode.workspace.getConfiguration("bobBazaar")
+    const serverName = config.get<string>("mcpServerName", "bazaar")
+    const status = await getBobWorkspaceStatus(this.workspaceFolder, serverName)
+    this.post({ type: "bobWorkspaceStatus", ...status })
   }
 
   private async selectWorkspace(): Promise<void> {
@@ -86,6 +102,23 @@ class BazaarReviewGuiController {
     await this.postWorkspaceState()
   }
 
+  private async initializeBobWorkspace(): Promise<void> {
+    const folder = await this.requireWorkspaceFolder()
+    const config = vscode.workspace.getConfiguration("bobBazaar")
+    const bzrPath = config.get<string>("bzrPath", "bzr")
+    const serverName = config.get<string>("mcpServerName", "bazaar")
+
+    this.post({ type: "loading", message: ".bobテンプレートとMCP設定を初期化しています..." })
+    const status = await initializeBobWorkspaceFromTemplates({
+      context: this.context,
+      workspaceFolder: folder,
+      bzrPath,
+      serverName
+    })
+    this.post({ type: "bobWorkspaceStatus", ...status })
+    this.post({ type: "initialized", message: ".bob 初期化が完了しました。Bob MCP serverをRefresh/Restartしてください。" })
+  }
+
   private async loadRevision(revisionRaw: string): Promise<void> {
     const revision = revisionRaw.trim()
     if (!revision) throw new Error("Revision is required.")
@@ -102,6 +135,16 @@ class BazaarReviewGuiController {
     const revision = revisionRaw.trim()
     if (!revision) throw new Error("Revision is required.")
     const folder = await this.requireWorkspaceFolder()
+
+    if (withProjectRules) {
+      const config = vscode.workspace.getConfiguration("bobBazaar")
+      const serverName = config.get<string>("mcpServerName", "bazaar")
+      const status = await getBobWorkspaceStatus(folder, serverName)
+      if (!status.initialized) {
+        this.post({ type: "bobWorkspaceStatus", ...status })
+        throw new Error(".bob が未初期化です。先に『.bobを初期化』ボタンを押してください。")
+      }
+    }
 
     this.post({ type: "loading", message: "Building review packet and adding it to Bob context..." })
     const client = makeBazaarClient()
@@ -219,13 +262,15 @@ function renderHtml(cspSource: string): string {
     button.secondary { color: var(--vscode-button-secondaryForeground); background: var(--vscode-button-secondaryBackground); }
     button:disabled { opacity: 0.5; cursor: not-allowed; }
     .card { border: 1px solid var(--vscode-panel-border); padding: 14px; margin-top: 12px; border-radius: 6px; background: var(--vscode-sideBar-background); }
+    .warning { border-color: var(--vscode-editorWarning-foreground); }
     .grid { display: grid; grid-template-columns: 140px 1fr; gap: 6px 12px; }
     .label { color: var(--vscode-descriptionForeground); }
     pre { white-space: pre-wrap; background: var(--vscode-textCodeBlock-background); padding: 10px; overflow: auto; }
-    .files { max-height: 220px; overflow: auto; margin: 8px 0 0 0; padding-left: 20px; }
+    .files, .missing { max-height: 220px; overflow: auto; margin: 8px 0 0 0; padding-left: 20px; }
     .status { margin-top: 12px; color: var(--vscode-descriptionForeground); }
     .error { color: var(--vscode-errorForeground); }
     .ok { color: var(--vscode-testing-iconPassed); }
+    .badge { display:inline-block; padding:2px 6px; border-radius:4px; background:var(--vscode-badge-background); color:var(--vscode-badge-foreground); }
   </style>
 </head>
 <body>
@@ -233,6 +278,13 @@ function renderHtml(cspSource: string): string {
   <div class="row">
     <button class="secondary" id="selectWorkspace">Workspace選択</button>
     <span id="workspace">workspace未選択</span>
+  </div>
+  <div id="initCard" class="card warning" style="display:none">
+    <h2>.bob 初期化状態: <span id="initState" class="badge">未初期化</span></h2>
+    <p id="initMessage">必要なMCP設定・Skill・Workflow・Mode・テンプレートが不足しています。</p>
+    <button id="initializeBob">.bobを初期化</button>
+    <h3>不足ファイル</h3>
+    <ul id="missingFiles" class="missing"></ul>
   </div>
   <div class="row">
     <input id="revision" type="text" placeholder="Bazaar revision, e.g. 1234 or revid:..." />
@@ -260,13 +312,16 @@ function renderHtml(cspSource: string): string {
     const vscode = acquireVsCodeApi();
     const $ = (id) => document.getElementById(id);
     let loadedRevision = undefined;
+    let bobInitialized = false;
 
     $('selectWorkspace').addEventListener('click', () => vscode.postMessage({ type: 'selectWorkspace' }));
+    $('initializeBob').addEventListener('click', () => vscode.postMessage({ type: 'initializeBobWorkspace' }));
     $('load').addEventListener('click', () => loadRevision());
     $('review').addEventListener('click', () => {
       const revision = $('revision').value.trim();
       vscode.postMessage({ type: 'reviewRevision', revision, withProjectRules: $('withProjectRules').checked });
     });
+    $('withProjectRules').addEventListener('change', () => updateReviewButton());
     $('revision').addEventListener('keydown', (event) => {
       if (event.key === 'Enter') loadRevision();
     });
@@ -278,8 +333,13 @@ function renderHtml(cspSource: string): string {
         return;
       }
       loadedRevision = undefined;
-      $('review').disabled = true;
+      updateReviewButton();
       vscode.postMessage({ type: 'loadRevision', revision });
+    }
+
+    function updateReviewButton() {
+      const needProjectRules = $('withProjectRules').checked;
+      $('review').disabled = !loadedRevision || (needProjectRules && !bobInitialized);
     }
 
     function setStatus(text, error = false, ok = false) {
@@ -287,10 +347,30 @@ function renderHtml(cspSource: string): string {
       $('status').className = error ? 'status error' : ok ? 'status ok' : 'status';
     }
 
+    function renderBobStatus(status) {
+      bobInitialized = Boolean(status.initialized);
+      const initCard = $('initCard');
+      const missing = status.missing || [];
+      if (bobInitialized) {
+        initCard.style.display = 'none';
+      } else {
+        initCard.style.display = 'block';
+        $('initState').textContent = '未初期化';
+        $('initMessage').textContent = '必要なMCP設定・Skill・Workflow・Mode・テンプレートが不足しています。初期化すると不足分だけ生成します。';
+        $('missingFiles').innerHTML = '';
+        for (const file of missing) {
+          const li = document.createElement('li');
+          li.textContent = file;
+          $('missingFiles').appendChild(li);
+        }
+      }
+      updateReviewButton();
+    }
+
     function renderInfo(info) {
       loadedRevision = info.revision;
       $('info').style.display = 'block';
-      $('review').disabled = false;
+      updateReviewButton();
       $('infoRevision').textContent = info.revision || '';
       $('infoRevno').textContent = info.revno || '';
       $('infoAuthor').textContent = info.author || '';
@@ -310,6 +390,10 @@ function renderHtml(cspSource: string): string {
       const message = event.data;
       if (message.type === 'workspaceState') {
         $('workspace').textContent = message.workspace || 'workspace未選択';
+      } else if (message.type === 'bobWorkspaceStatus') {
+        renderBobStatus(message);
+      } else if (message.type === 'initialized') {
+        setStatus(message.message || '.bob初期化が完了しました', false, true);
       } else if (message.type === 'loading') {
         setStatus(message.message || 'Loading...');
       } else if (message.type === 'revisionInfo') {
