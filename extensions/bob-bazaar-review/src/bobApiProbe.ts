@@ -3,6 +3,7 @@ import * as vscode from "vscode"
 const BOB_EXTENSION_ID = "IBM.bob-code"
 const SOURCE_ID = "bob-bazaar-review"
 const GROUP_ID = "bob-bazaar-review.group"
+const WORKSPACE_ID = "bob-bazaar-review.workspace"
 const WORKFLOW_ID = "bob-bazaar-review.bazaar-project-rule-review"
 
 interface BobWorkflowApi {
@@ -37,7 +38,7 @@ export async function inspectBobWorkflowApi(): Promise<void> {
     "",
     "- `registerSource` is the likely public entry point for creating a Bob source from a companion extension.",
     "- The returned source object exposes a `register` registry object.",
-    "- This experiment registers both a workflow group and a workflow part."
+    "- This experiment registers workspace, group, and workflow parts and reports internal source shapes."
   ].join("\n")
 
   const doc = await vscode.workspace.openTextDocument({ language: "markdown", content: report })
@@ -56,6 +57,7 @@ export async function registerExperimentalWorkflowCard(): Promise<void> {
 
   const workflow = buildWorkflowPart()
   const group = buildWorkflowGroupPart()
+  const workspace = buildWorkspacePart()
   const sourceDescriptor = buildWorkflowSource()
 
   if (api.registerSource) {
@@ -63,15 +65,22 @@ export async function registerExperimentalWorkflowCard(): Promise<void> {
     attempts.push(sourceAttempt)
     const registeredSource = sourceAttempt.value as RegisteredSourceLike | undefined
     attempts.push(describeRegisteredSourceAttempt(registeredSource))
+    attempts.push(describeSourceInternalsAttempt(registeredSource, "after source registration"))
 
     const sourceRegister = asRecord(registeredSource)?.register
     const registerObject = asRecord(sourceRegister)
+    const workspaceRegister = registerObject?.workspace
     const groupRegister = registerObject?.group
     const workflowRegister = registerObject?.workflow
 
+    if (registeredSource && registerObject && typeof workspaceRegister === "function") {
+      attempts.push(await runRegistrationAttempt("source.register.workspace(workspace)", () => workspaceRegister.call(registerObject, workspace)))
+      attempts.push(describeSourceInternalsAttempt(registeredSource, "after workspace registration"))
+    }
+
     if (registeredSource && registerObject && typeof groupRegister === "function") {
       attempts.push(await runRegistrationAttempt("source.register.group(group)", () => groupRegister.call(registerObject, group)))
-      attempts.push(describeSourcePartsAttempt(registeredSource, "after group registration"))
+      attempts.push(describeSourceInternalsAttempt(registeredSource, "after group registration"))
     }
 
     if (registeredSource && registerObject && typeof workflowRegister === "function") {
@@ -84,7 +93,7 @@ export async function registerExperimentalWorkflowCard(): Promise<void> {
       )
       for (const candidate of sourcePartAttempts) {
         attempts.push(await runRegistrationAttempt(candidate.label, candidate.run))
-        attempts.push(describeSourcePartsAttempt(registeredSource, `after ${candidate.label}`))
+        attempts.push(describeSourceInternalsAttempt(registeredSource, `after ${candidate.label}`))
         if (attempts[attempts.length - 2].ok) {
           await vscode.commands.executeCommand("setContext", "bob-code.hasWorkflows", true)
           await showRegistrationReport("Experimental workflow part registration returned successfully.", attempts)
@@ -116,6 +125,34 @@ export async function registerExperimentalWorkflowCard(): Promise<void> {
   await showRegistrationReport("Experimental workflow registration did not succeed.", attempts)
 }
 
+function buildWorkspacePart(): Record<string, unknown> {
+  const title = "Bob Bazaar Workspace"
+  const description = "Workspace scope for Bazaar review workflows."
+
+  return {
+    id: WORKSPACE_ID,
+    sourceId: SOURCE_ID,
+    type: "workspace",
+    kind: "workspace",
+    name: title,
+    title,
+    label: title,
+    displayName: title,
+    description,
+    getId: () => WORKSPACE_ID,
+    getName: () => title,
+    getTitle: () => title,
+    getLabel: () => title,
+    getDisplayName: () => title,
+    getDescription: () => description,
+    getSourceId: () => SOURCE_ID,
+    getType: () => "workspace",
+    getKind: () => "workspace",
+    isEnabled: () => true,
+    isEntitled: () => true
+  }
+}
+
 function buildWorkflowGroupPart(): Record<string, unknown> {
   const title = "Bob Bazaar Review"
   const description = "Bazaar review workflows."
@@ -123,6 +160,8 @@ function buildWorkflowGroupPart(): Record<string, unknown> {
   return {
     id: GROUP_ID,
     sourceId: SOURCE_ID,
+    workspaceId: WORKSPACE_ID,
+    workspace: WORKSPACE_ID,
     type: "group",
     kind: "group",
     name: title,
@@ -130,7 +169,6 @@ function buildWorkflowGroupPart(): Record<string, unknown> {
     label: title,
     displayName: title,
     description,
-
     getId: () => GROUP_ID,
     getName: () => title,
     getTitle: () => title,
@@ -138,6 +176,8 @@ function buildWorkflowGroupPart(): Record<string, unknown> {
     getDisplayName: () => title,
     getDescription: () => description,
     getSourceId: () => SOURCE_ID,
+    getWorkspaceId: () => WORKSPACE_ID,
+    getWorkspace: () => WORKSPACE_ID,
     getType: () => "group",
     getKind: () => "group",
     isEnabled: () => true,
@@ -154,6 +194,8 @@ function buildWorkflowPart(): Record<string, unknown> {
     id: WORKFLOW_ID,
     sourceId: SOURCE_ID,
     source: SOURCE_ID,
+    workspaceId: WORKSPACE_ID,
+    workspace: WORKSPACE_ID,
     groupId: GROUP_ID,
     group: GROUP_ID,
     groups: [GROUP_ID],
@@ -171,7 +213,6 @@ function buildWorkflowPart(): Record<string, unknown> {
     startCommand: "bobBazaar.openReviewGui",
     prompt,
     mode: "ask",
-
     getId: () => WORKFLOW_ID,
     getName: () => title,
     getTitle: () => title,
@@ -180,6 +221,8 @@ function buildWorkflowPart(): Record<string, unknown> {
     getDescription: () => description,
     getSourceId: () => SOURCE_ID,
     getSource: () => SOURCE_ID,
+    getWorkspaceId: () => WORKSPACE_ID,
+    getWorkspace: () => WORKSPACE_ID,
     getGroupId: () => GROUP_ID,
     getGroup: () => GROUP_ID,
     getGroups: () => [GROUP_ID],
@@ -280,21 +323,22 @@ function describeRegisteredSourceAttempt(source: RegisteredSourceLike | undefine
 
   const registerValue = record.register
   const registerRecord = asRecord(registerValue)
-  const workflowValue = registerRecord?.workflow
+  const workspaceValue = registerRecord?.workspace
   const groupValue = registerRecord?.group
+  const workflowValue = registerRecord?.workflow
   return {
     label: "returned source diagnostics",
     ok: typeof workflowValue === "function",
-    message: `keys=${Object.keys(record).join(",")}; typeof register=${typeof registerValue}; register keys=${Object.keys(registerRecord ?? {}).join(",") || "none"}; typeof register.group=${typeof groupValue}; typeof register.workflow=${typeof workflowValue}`
+    message: `keys=${Object.keys(record).join(",")}; typeof register=${typeof registerValue}; register keys=${Object.keys(registerRecord ?? {}).join(",") || "none"}; typeof register.workspace=${typeof workspaceValue}; typeof register.group=${typeof groupValue}; typeof register.workflow=${typeof workflowValue}`
   }
 }
 
-function describeSourcePartsAttempt(source: RegisteredSourceLike | undefined, label: string): RegistrationAttempt {
-  const parts = asRecord(asRecord(source)?._parts)
+function describeSourceInternalsAttempt(source: RegisteredSourceLike | undefined, label: string): RegistrationAttempt {
+  const sourceRecord = asRecord(source)
   return {
-    label: `source parts diagnostics (${label})`,
+    label: `source internals (${label})`,
     ok: true,
-    message: parts ? `parts keys=${Object.keys(parts).join(",")}` : "parts not inspectable"
+    message: sourceRecord ? `source=${describeInspectableValue(sourceRecord)}; _parts=${describeInspectableValue(sourceRecord._parts)}; _events=${describeInspectableValue(sourceRecord._events)}; _enabled=${describeInspectableValue(sourceRecord._enabled)}` : "source not inspectable"
   }
 }
 
@@ -342,6 +386,21 @@ function describeReturn(value: unknown): string {
   if (value === null) return "null"
   if (typeof value === "object") return `object(${Object.keys(value as Record<string, unknown>).slice(0, 20).join(",")})`
   return String(value)
+}
+
+function describeInspectableValue(value: unknown): string {
+  if (value === undefined) return "undefined"
+  if (value === null) return "null"
+  if (typeof value !== "object") return `${typeof value}:${String(value)}`
+
+  const record = value as Record<string | symbol, unknown>
+  const constructorName = value.constructor?.name ?? "unknown"
+  const objectKeys = Object.keys(value as Record<string, unknown>).slice(0, 20).join(",")
+  const ownKeys = Reflect.ownKeys(record).map(String).slice(0, 20).join(",")
+  const mapInfo = value instanceof Map ? `; mapSize=${value.size}; mapKeys=${Array.from(value.keys()).map(String).slice(0, 20).join(",")}` : ""
+  const setInfo = value instanceof Set ? `; setSize=${value.size}; setValues=${Array.from(value.values()).map(String).slice(0, 20).join(",")}` : ""
+
+  return `ctor=${constructorName}; objectKeys=${objectKeys}; ownKeys=${ownKeys}${mapInfo}${setInfo}`
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
