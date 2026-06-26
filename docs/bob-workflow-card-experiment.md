@@ -21,6 +21,30 @@ startWorkflow
 
 This is useful because `registerSource` looks like the intended public entry point for companion extensions. `startWorkflow` is treated as an execution entry point, not a discovery/registration entry point.
 
+A second experiment showed that this call succeeds:
+
+```ts
+api.registerSource(source)
+```
+
+and returns an object with these keys:
+
+```text
+register
+id
+_log
+_configuration
+_humanReadableName
+_parts
+_events
+_enabled
+```
+
+That strongly suggests a two-step model:
+
+1. `registerSource(sourceDescriptor)` creates a Bob source.
+2. `returnedSource.register(part)` registers concrete parts such as workflows/tools/findings under that source.
+
 ## Current implementation
 
 The companion extension contributes two commands:
@@ -37,6 +61,8 @@ The companion extension contributes two commands:
   id: "bob-bazaar-review.bazaar-project-rule-review",
   sourceId: "bob-bazaar-review",
   slug: "bazaar-project-rule-review",
+  type: "workflow",
+  kind: "workflow",
   name: "Bazaar Project Rule Review",
   title: "Bazaar Project Rule Review",
   label: "Bazaar Project Rule Review",
@@ -47,17 +73,25 @@ The companion extension contributes two commands:
 }
 ```
 
-Then it tries these conservative registration shapes:
+The command now tries the two-step shape first:
 
 ```ts
-api.registerSource(source)
-api.registerSource("bob-bazaar-review", source)
-api.registerSource({ id: "bob-bazaar-review", workflows: [workflow] })
+const source = api.registerSource(sourceDescriptor)
+source.register(workflow)
+source.register({ type: "workflow", ...workflow })
+source.register({ kind: "workflow", ...workflow })
+source.register("workflow", workflow)
+source.register({ workflows: [workflow] })
+```
+
+If direct `registerWorkflow` exists, it is used only as a fallback:
+
+```ts
 api.registerWorkflow?.("bob-bazaar-review", workflow)
 api.registerWorkflow?.(workflow)
 ```
 
-The command reports every attempt in a Markdown result document. If an attempt returns without throwing and does not return `false`, the extension sets `bob-code.hasWorkflows` to `true` and asks the user to check Bob's `Start Workflow` UI.
+The command reports every attempt in a Markdown result document. The user should check Bob's `Start Workflow` UI after a successful part-registration attempt.
 
 ## How to test
 
@@ -75,11 +109,11 @@ The command reports every attempt in a Markdown result document. If an attempt r
 
 ### Success
 
-If Bob accepts one of the `registerSource` payloads as a workflow source, the command returns success and sets `bob-code.hasWorkflows` to true. The card may appear after opening or reloading the Start Workflow UI.
+If Bob accepts one of the returned source object's `register(...)` payloads as a workflow part, the command returns success and sets `bob-code.hasWorkflows` to true. The card may appear after opening or reloading the Start Workflow UI.
 
 ### Partial success
 
-If `registerSource` returns success but the card does not appear, the payload shape is still wrong for Bob's workflow source model. In that case, capture the attempt report and inspect the Bob output/logs.
+If `registerSource` returns success but all returned-source `register(...)` attempts fail or the card does not appear, the workflow part payload shape is still wrong for Bob's workflow source model. Capture the attempt report and inspect Bob output/logs.
 
 ### Failure
 
