@@ -9,6 +9,7 @@ import { renderReviewResultMarkdown } from "./projectRules/markdown"
 import { ReviewResult } from "./projectRules/types"
 import { openBazaarReviewGui } from "./reviewGui"
 import { buildAddedFilesContentSection, loadBazaarRevisionPacketInput } from "./revisionInfo"
+import { inspectBobWorkflowApi } from "./bobApiProbe"
 
 export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
@@ -19,7 +20,8 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("bobBazaar.reviewRange", () => reviewRange(context, false)),
     vscode.commands.registerCommand("bobBazaar.reviewRevisionWithProjectRules", () => reviewRevision(context, true)),
     vscode.commands.registerCommand("bobBazaar.reviewRangeWithProjectRules", () => reviewRange(context, true)),
-    vscode.commands.registerCommand("bobBazaar.validateReviewResultJson", () => validateActiveReviewResultJson())
+    vscode.commands.registerCommand("bobBazaar.validateReviewResultJson", () => validateActiveReviewResultJson()),
+    vscode.commands.registerCommand("bobBazaar.inspectBobWorkflowApi", () => inspectBobWorkflowApi())
   )
 }
 
