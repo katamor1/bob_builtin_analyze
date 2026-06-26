@@ -2,7 +2,7 @@
   "name": "bob-bazaar-review",
   "displayName": "Bob Bazaar Review",
   "description": "Companion extension that exposes Bazaar revision review tools and project rule review helpers to IBM Bob through MCP.",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "publisher": "katamor1",
   "license": "UNLICENSED",
   "private": true,
@@ -16,6 +16,7 @@
     "IBM.bob-code"
   ],
   "activationEvents": [
+    "onCommand:bobBazaar.openReviewGui",
     "onCommand:bobBazaar.configureMcp",
     "onCommand:bobBazaar.initProjectRules",
     "onCommand:bobBazaar.reviewRevision",
@@ -27,6 +28,11 @@
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
+      {
+        "command": "bobBazaar.openReviewGui",
+        "title": "Open Bazaar Review GUI",
+        "category": "Bob Bazaar"
+      },
       {
         "command": "bobBazaar.configureMcp",
         "title": "Configure Bazaar MCP for Bob",
@@ -96,6 +102,9 @@
     },
     "menus": {
       "commandPalette": [
+        {
+          "command": "bobBazaar.openReviewGui"
+        },
         {
           "command": "bobBazaar.configureMcp"
         },
