@@ -53,7 +53,7 @@ export async function registerExperimentalWorkflowCard(): Promise<void> {
     return
   }
 
-  const workflow = buildWorkflowCard()
+  const workflow = buildWorkflowPart()
   const sourceDescriptor = buildWorkflowSource()
 
   if (api.registerSource) {
@@ -63,11 +63,18 @@ export async function registerExperimentalWorkflowCard(): Promise<void> {
     attempts.push(describeRegisteredSourceAttempt(registeredSource))
 
     const sourceRegister = asRecord(registeredSource)?.register
-    if (registeredSource && typeof sourceRegister === "function") {
-      const confirmedSource: RegisteredSourceLike = registeredSource
-      const confirmedRegister = sourceRegister as (...args: unknown[]) => unknown
+    const workflowRegister = asRecord(sourceRegister)?.workflow
 
-      const sourcePartAttempts = buildSourcePartCandidates(confirmedSource, confirmedRegister, workflow)
+    if (registeredSource && typeof workflowRegister === "function") {
+      const registerObject = sourceRegister as Record<string, unknown>
+      const confirmedRegister = workflowRegister as (...args: unknown[]) => unknown
+
+      const sourcePartAttempts = buildWorkflowRegisterCandidates(
+        registeredSource,
+        registerObject,
+        confirmedRegister,
+        workflow
+      )    
       for (const candidate of sourcePartAttempts) {
         attempts.push(await runRegistrationAttempt(candidate.label, candidate.run))
         if (attempts[attempts.length - 1].ok) {
@@ -99,6 +106,37 @@ export async function registerExperimentalWorkflowCard(): Promise<void> {
   }
 
   await showRegistrationReport("Experimental workflow registration did not succeed.", attempts)
+}
+
+function buildWorkflowPart(): Record<string, unknown> {
+  const id = "bob-bazaar-review.bazaar-project-rule-review"
+  const title = "Bazaar Project Rule Review"
+  const description = "Review a Bazaar revision or range against project-specific rules."
+
+  return {
+    id,
+    sourceId: SOURCE_ID,
+    type: "workflow",
+    kind: "workflow",
+    name: title,
+    title,
+    label: title,
+    displayName: title,
+    description,
+    command: "bobBazaar.openReviewGui",
+    vscodeCommand: "bobBazaar.openReviewGui",
+    prompt: "Open the Bazaar Review GUI and run a project-rule review.",
+
+    getId: () => id,
+    getName: () => title,
+    getTitle: () => title,
+    getLabel: () => title,
+    getDisplayName: () => title,
+    getDescription: () => description,
+    getSourceId: () => SOURCE_ID,
+    isEnabled: () => true,
+    isEntitled: () => true
+  }
 }
 
 function buildWorkflowCard(): Record<string, unknown> {
@@ -134,20 +172,33 @@ function buildWorkflowSource(): Record<string, unknown> {
   }
 }
 
-function buildSourcePartCandidates(
+function buildWorkflowRegisterCandidates(
   registeredSource: RegisteredSourceLike,
-  sourceRegister: (...args: unknown[]) => unknown,
+  registerObject: Record<string, unknown>,
+  workflowRegister: (...args: unknown[]) => unknown,
   workflow: Record<string, unknown>
 ): Array<{ label: string; run: () => unknown }> {
   return [
-    { label: "source.register(workflow)", run: () => sourceRegister.call(registeredSource, workflow) },
-    { label: "source.register({ type: workflow, ...workflow })", run: () => sourceRegister.call(registeredSource, { type: "workflow", ...workflow }) },
-    { label: "source.register({ kind: workflow, ...workflow })", run: () => sourceRegister.call(registeredSource, { kind: "workflow", ...workflow }) },
-    { label: "source.register(workflow, workflow)", run: () => sourceRegister.call(registeredSource, "workflow", workflow) },
-    { label: "source.register(workflows, [workflow])", run: () => sourceRegister.call(registeredSource, "workflows", [workflow]) },
-    { label: "source.register(workflows, workflow)", run: () => sourceRegister.call(registeredSource, "workflows", workflow) },
-    { label: "source.register({ workflow })", run: () => sourceRegister.call(registeredSource, { workflow }) },
-    { label: "source.register({ workflows: [workflow] })", run: () => sourceRegister.call(registeredSource, { workflows: [workflow] }) }
+    {
+      label: "source.register.workflow(workflow)",
+      run: () => workflowRegister.call(registerObject, workflow)
+    },
+    {
+      label: "source.register.workflow(sourceId, workflow)",
+      run: () => workflowRegister.call(registerObject, SOURCE_ID, workflow)
+    },
+    {
+      label: "source.register.workflow.call(source, workflow)",
+      run: () => workflowRegister.call(registeredSource, workflow)
+    },
+    {
+      label: "source.register.workflow({ workflow })",
+      run: () => workflowRegister.call(registerObject, { workflow })
+    },
+    {
+      label: "source.register.workflow({ workflows: [workflow] })",
+      run: () => workflowRegister.call(registerObject, { workflows: [workflow] })
+    }
   ]
 }
 
@@ -174,10 +225,12 @@ function describeRegisteredSourceAttempt(source: RegisteredSourceLike | undefine
   }
 
   const registerValue = record.register
+  const registerRecord = asRecord(registerValue)
+  const workflowValue = registerRecord?.workflow
   return {
     label: "returned source diagnostics",
-    ok: typeof registerValue === "function",
-    message: `keys=${Object.keys(record).join(",")}; typeof register=${typeof registerValue}; register keys=${Object.keys(asRecord(registerValue) ?? {}).join(",") || "none"}`
+    ok: typeof workflowValue === "function",
+    message: `keys=${Object.keys(record).join(",")}; typeof register=${typeof registerValue}; register keys=${Object.keys(registerRecord ?? {}).join(",") || "none"}; typeof register.workflow=${typeof workflowValue}`
   }
 }
 
