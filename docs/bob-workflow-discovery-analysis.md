@@ -1,24 +1,28 @@
 # Bob 2.0.0 Workflow Discovery Analysis
 
 調査日: 2026-06-27  
-対象: `bob2/bob-code` の `Start Workflow` UI と、`ワークフローが見つかりませんでした` が出る理由
+対象: `bob2/bob-code` の `Start Workflow` UI、組み込み workflow の表示条件、任意 workflow 追加可否
 
-## 結論
+## 0. 追加調査後の修正結論
 
-画像の `Bobワークフロー` 画面は、`bob-code.task.workflow` コマンドで開かれる workflow picker と見てよい。
+前回は `.bob/workflows/*.md` を workspace に置けば任意 workflow が表示される、という仮説を置いた。今回、実機で組み込み workflow だけが表示され、任意 workflow は追加されないことを受けて再調査した結果、この仮説は弱い。
 
-`ワークフローが見つかりませんでした` は、workflow picker 自体の異常ではなく、**Bob の workflow registry / workflow source から QuickPick に渡せる workflow item が 0 件になっている** 状態を示す。
+現時点の結論は次の通り。
 
-任意 workflow を追加する最も安全な方法は、Bob 本体を改造することではなく、対象 workspace 直下に次のような Markdown workflow を置くこと。
+1. `Start Workflow` 画面は、任意 Markdown ファイルを列挙する UI ではなく、Bob 本体または公式 add-on/source が内部 registry に登録した workflow を表示する UI と見るのが妥当。
+2. `bob2/bob-code` の `package.json` や公開 docs には、`contributes.workflows` や `.bob/workflows/*.md` のような公開された workflow contribution point は確認できない。
+3. Bob 公式 docs が公開している「任意の再利用 workflow」の仕組みは **Skills** であり、ファイル形式は `.bob/skills/<skill-dir>/SKILL.md` + YAML front matter である。
+4. 任意 workflow を Bob に認識させたい場合は、まず Skill として作る。`Start Workflow` のカードとして表示させるには、Bob 内部の workflow registry に登録する必要があるが、これは公開 API として確認できない。
+
+つまり、実用上の推奨は次。
 
 ```text
-<project-root>/
-  .bob/
-    workflows/
-      my-workflow.md
-```
+任意 workflow を追加したい
+  -> .bob/workflows/*.md ではなく、.bob/skills/<name>/SKILL.md にする
 
-Bob 本体側に安定した外部 `contributes.workflows` のような VSCode contribution point は確認できないため、第三者拡張から内部 registry を直接叩くより、`.bob/workflows/*.md` を workspace に配置する方式を第一候補にする。
+Start Workflow 画面にカードとして出したい
+  -> Bob 本体 / 公式 add-on / 内部 source registry 登録が必要。第三者拡張から安定利用できる公開 API は未確認
+```
 
 ## 1. 画面を出している入口
 
@@ -40,7 +44,30 @@ bob-code.hasRequestsWaiting
 bob-code.commitGenerationInProgress
 ```
 
-## 2. Bob 内部で workflow がどう扱われているか
+## 2. 組み込み workflow が表示される理由
+
+実機では次の 2 件が表示された。
+
+- `Create Pull Request`
+- `レビューパネルを開く`
+
+これは公式 docs の機能と一致する。
+
+### 2.1 Create Pull Request
+
+IBM Bob docs の Pull requests 機能では、Bob が branch changes / commit history / branch name を解析し、PR title / description を生成し、ユーザーが確認・編集したうえで PR を作る流れが説明されている。起動方法として Source Control panel、command palette、`/create-pr` が挙げられている。
+
+このため `Create Pull Request` は、workspace の任意ファイルから検出されたものではなく、Bob 本体の PR workflow source が登録している workflow と見るのが自然。
+
+### 2.2 レビューパネルを開く
+
+IBM Bob docs の Code reviews 機能では、built-in Review workflow が Bob Review panel を開き、branch diff を分析し、Bob Findings panel に findings を出すと説明されている。起動方法は `/review` command または Review panel icon と説明されている。
+
+既存 ZIP 分析でも、review source は Code Review finding source、review tool、review workflow を登録し、`review-flow-enabled` feature flag によって enable/disable されると整理している。
+
+このため `レビューパネルを開く` も、Bob 本体の review source が registry に登録している workflow と見るのが自然。
+
+## 3. Bob 内部で workflow がどう扱われているか
 
 ZIP 実体を調査した既存メモでは、Bob は `SourceRegistry` 相当の singleton を持ち、そこに次の source を登録する構造と整理されている。
 
@@ -62,169 +89,176 @@ ZIP 実体を調査した既存メモでは、Bob は `SourceRegistry` 相当の
 ```text
 bob-code.task.workflow
   -> workflow registry / source から利用可能 workflow を取得
-  -> QuickPick に workflow items を設定
+  -> QuickPick / webview list に workflow items を設定
   -> 選択された workflow を task manager.openTask({ workflow }) に渡す
 ```
 
-## 3. `ワークフローが見つかりませんでした` が表示される主な理由
+## 4. `.bob/workflows/*.md` が表示されない理由
 
-### 3.1 workspace に `.bob/workflows/*.md` が無い
+### 4.1 公式 docs に `.bob/workflows` の公開仕様が見当たらない
 
-このケースが最も可能性が高い。
+IBM Bob docs の Skills ページには `.bob/skills` の仕様が明記されている。一方、任意 workflow を `.bob/workflows/*.md` として読み込む仕様は、公開 docs 上では確認できない。
 
-既存の `bob-bazaar-review` テンプレートは、project root に `.bob` をコピーする構成で、配置例に `.bob/workflows/bazaar-project-rule-review.md` が含まれている。
+Changelog には `Nested workflows` や Premium Package の workflows は出てくるが、これは Bob 本体または premium package が提供する workflow の説明であり、workspace file discovery の仕様とは読めない。
+
+### 4.2 companion extension の template は Bob 本体の discovery ではない
+
+`extensions/bob-bazaar-review/templates/.bob/workflows/bazaar-project-rule-review.md` は repository 内に存在する。
+
+ただしこれは `bob-bazaar-review` companion extension が project template として配るファイルであり、Bob 本体が自動探索する公開仕様とは限らない。
+
+`bobWorkspaceInit.ts` でも `.bob/workflows/bazaar-project-rule-review.md` は `REQUIRED_FILES` に含まれるが、これは Bob 本体ではなく companion extension 側の workspace 初期化チェックである。
+
+したがって `.bob/workflows/*.md` を置いても `Start Workflow` に出ない、という実機結果と矛盾しない。
+
+## 5. Skill として任意 workflow を追加する制約
+
+公式 docs で確認できる Skill の制約は次。
+
+### 5.1 配置場所
+
+project skill:
 
 ```text
-<project-root>/
-  .bob/
-    workflows/
-      bazaar-project-rule-review.md
+<project-root>/.bob/skills/<skill-dir>/SKILL.md
 ```
 
-さらに `bobWorkspaceInit.ts` の `REQUIRED_FILES` でも `.bob/workflows/bazaar-project-rule-review.md` が必須ファイルとして扱われている。
+global skill:
 
-つまり workflow は extension install だけではなく、**開いている workspace の `.bob/workflows` に実体 Markdown が配置されて初めて Bob から見える**、という設計前提で扱うのが妥当。
+```text
+~/.bob/skills/<skill-dir>/SKILL.md
+```
 
-### 3.2 template は extension にあるが、workspace へコピーされていない
+同名 skill が project と global の両方にある場合は、project-level skill が優先される。
 
-`extensions/bob-bazaar-review/templates/.bob/workflows/bazaar-project-rule-review.md` は repository 内に存在するが、Bob 本体は任意 extension の `templates/.bob` を自動探索するとは限らない。
+### 5.2 `SKILL.md` の書式
 
-`bobWorkspaceInit.ts` には template directory を workspace の `.bob` へコピーする処理があるが、このファイルは Bob 本体ではなく companion extension 側の処理である。
+`SKILL.md` は YAML front matter + instruction body で構成する。
 
-したがって、template が repository に存在しても、workspace 直下に `.bob/workflows/*.md` が無ければ picker は空になる。
+```md
+---
+name: project-rule-review
+description: Review Bazaar revisions against project-specific rules and output normalized JSON findings
+---
 
-### 3.3 workflow source / add-on が enable されていない
+When reviewing a Bazaar revision:
 
-Bob 2.0.0 では built-in review workflow や Premium Package の workflow が存在するが、これらは feature flag、entitlement、関連 extension install 状態に依存する可能性がある。
+<Steps>
+<Step>
+Load the project checklist from `.bob/review/checklist.json`.
+</Step>
+<Step>
+Inspect only files and symbols related to the requested revision or range.
+</Step>
+<Step>
+Return normalized review JSON first, then a Markdown summary.
+</Step>
+</Steps>
+```
 
-既存 ZIP 分析では、review source は `review-flow-enabled` feature flag により enable/disable されると整理されている。
+必須 field:
 
-このため、Bob 本体や premium add-on の workflow を期待している場合は、次を疑う。
+- `name`
+- `description`
 
-- Bob へのログイン状態
-- add-on entitlement
-- 関連 VSCode extension の install 状態
-- feature flag
-- workspace trust
-- Git repository / SCM API の利用可能状態
+特に `description` は重要。Bob は description を見て skill をいつ使うか判断し、description が無い skill は ignored になる。
 
-### 3.4 `bob-code.hasWorkflows` が false または stale
+### 5.3 supporting files
 
-`bob-code.hasWorkflows` は menu 表示条件に使われる context key である。
-
-通常、この値が false なら Chat view title や command palette から workflow command は見えにくくなる。直接 `bob-code.task.workflow` を実行した場合、command handler は起動できても、内部 workflow list が空なら picker に `ワークフローが見つかりませんでした` が出る。
-
-`.bob/workflows` を追加した直後に反映されない場合は、Bob / VSCode の file watcher または source registry 更新が走っていない可能性があるため、Window reload が必要になることがある。
-
-## 4. 任意 workflow の追加方法
-
-### 4.1 最小手順
-
-1. 対象 project root に `.bob/workflows` を作成する。
-2. Markdown workflow を 1 ファイル追加する。
-3. VSCode でその project root を workspace として開く。
-4. Bob Chat view を開く。
-5. 必要なら `Developer: Reload Window` を実行する。
-6. `Start Workflow` を開き、追加した workflow が出るか確認する。
+`SKILL.md` と同じ directory に、checklist、template、style guide、script、reference doc などの supporting files を置ける。
 
 例:
 
 ```text
-.my-project/
-  .bob/
-    workflows/
-      design-review.md
+.bob/skills/project-rule-review/
+  SKILL.md
+  checklist.md
+  severity-guide.md
+  templates/
+    review-output.md
 ```
 
-### 4.2 Markdown workflow 例
+Skill が activate されると、Bob は skill instructions と supporting files を参照できる。
 
-```md
-# Design Review Workflow
+### 5.4 activation
 
-設計変更を、既存仕様・外部I/F・RT/TS境界・テスト観点でレビューするワークフローです。
+Bob はユーザー request と skill description を見て、必要な skill を自動判定する。Skill は conversation ごとに一度だけ load される。
 
-## Inputs
+そのため、任意 workflow を skill として安定起動したい場合は、ユーザー指示に skill name / description と一致する言葉を含めるのがよい。
 
-- `target_files`: 変更対象ファイルまたは設計書
-- `change_summary`: 変更概要
-- `review_scope`: 確認範囲
+例:
 
-## Recommended mode
-
-Use `ask` for investigation-only review. Use a project-specific reviewer mode if `.bob/custom_modes.yaml` defines one.
-
-## Steps
-
-1. 変更概要と対象ファイルを確認する。
-2. 外部I/F、共有メモリ、RT thread、TS service に関係する箇所を抽出する。
-3. 既存仕様と矛盾する可能性を列挙する。
-4. テスト観点を `pass / fail / unknown / not_applicable` で整理する。
-5. 不明な点は推測で埋めず、追加で必要な資料を明記する。
-
-## Output
-
-1. Summary
-2. Findings
-3. Required follow-up evidence
-4. Test cases to add or update
+```text
+project-rule-review skill を使って Bazaar revision 1234 をレビューしてください。
 ```
 
-### 4.3 mode / skill / MCP と一緒に置く場合
+また docs 上では skills は Advanced mode のみ利用可能と記載されている。ただし Bob 2.0.0 changelog では既定 mode が Plan / Agent / Ask に整理され、Advanced / Orchestrator capabilities が defaults に折り込まれたとも説明されているため、実機では Settings の Skills tab で読み込まれているか確認するのが安全。
 
-workflow が専用 mode、skill、MCP tool に依存する場合は、同じ `.bob` 配下に置く。
+## 6. 任意 workflow を追加したい場合の実装方針
+
+### 方針 A: Skill として実装する
+
+最も安全で、公式 docs に沿う方式。
 
 ```text
 <project-root>/
   .bob/
-    custom_modes.yaml
-    mcp.json
     skills/
-      project-review-checklist/
+      project-rule-review/
         SKILL.md
-    workflows/
-      design-review.md
+        checklist.md
 ```
 
-既存 template も同じ構成を採用している。
+メリット:
 
-## 5. companion extension から配布する場合
+- 公開 docs に仕様がある。
+- project / global の両方に置ける。
+- Settings の Skills tab で読み込み確認できる。
+- supporting files を同梱できる。
 
-複数 project に同じ workflow を配りたい場合は、Bob 本体を patch するより、companion extension で template を持ち、初期化 command で workspace へコピーするのがよい。
+デメリット:
 
-`bobWorkspaceInit.ts` には次の設計がすでにある。
+- `Start Workflow` のカードには出ない可能性が高い。
+- 起動は chat prompt、skill auto activation、または mode instruction 経由になる。
 
-- `REQUIRED_FILES` に `.bob/workflows/...` を含める
-- extension 内の `templates/.bob` を workspace の `.bob` へコピーする
-- 既存ファイルは上書きしない
-- `.bob/mcp.json` は template ではなく command で生成する
+### 方針 B: Custom mode + Skill で workflow 起動を安定化する
 
-この方式なら、Bob 本体の minified 内部 API に依存せず、workflow / mode / skill / MCP config を project 単位で配布できる。
+`.bob/custom_modes.yaml` に reviewer mode を定義し、`customInstructions` で skill 使用を明示する。
 
-## 6. 実装・運用上の注意
+既存 template の `custom_modes.yaml` もこの考え方に近く、`Use the project-review-checklist skill.` と明示している。
 
-### 6.1 `package.json` に command を足しても workflow は増えない
+### 方針 C: companion extension の command で Bob に投入する
 
-`bob-code.task.workflow` は workflow picker を開く入口であり、workflow item そのものではない。
+`Start Workflow` に出すことにこだわらないなら、companion extension 側で VSCode command を作り、次を行う。
 
-workflow を増やすには、workflow registry / source が読み込む実体を増やす必要がある。実用上は `.bob/workflows/*.md` を増やす。
+1. Bazaar revision / range などを入力させる。
+2. review packet / prompt を生成する。
+3. `bob-code.addToContext` や clipboard 経由で Bob chat に投入する。
 
-### 6.2 内部 registry 直接登録は避ける
+既存 `bob-bazaar-review` はこの方式を採っている。
 
-ZIP 分析上は `registerWorkflow` 相当の registry があるが、これは Bob extension bundle 内部の minified 実装であり、VSCode の公開 contribution point ではない。
+### 方針 D: Start Workflow にカードとして出す
 
-Premium Package のような IBM 公式 add-on は内部 source 登録を使っている可能性があるが、第三者側で安定利用できる API としては確認できない。
+これは現時点では非推奨。
 
-### 6.3 反映されない場合のチェックリスト
+理由:
 
-- VSCode で開いている root と `.bob` を置いた root が一致しているか。
-- `.bob/workflows/*.md` が workspace root 直下にあるか。
-- ファイル拡張子が `.md` か。
-- workspace trust が許可されているか。
-- Bob にログイン済みか。
-- `Developer: Reload Window` 後も表示されないか。
-- add-on workflow を期待している場合、関連 extension / entitlement / feature flag が有効か。
+- workflow registry は Bob bundle 内部の source registry と見られる。
+- 第三者向けの `contributes.workflows` / public API は確認できない。
+- minified 内部 API に依存すると Bob 更新で壊れやすい。
 
-## 7. 参考にした repository 内ファイル
+IBM 公式 Premium Package や built-in review / PR workflow のように source registry 登録できれば実現できるが、第三者拡張から安定して使える入口は未確認。
+
+## 7. 実機での確認手順
+
+1. `.bob/skills/<skill-dir>/SKILL.md` を作る。
+2. front matter に `name` と `description` を入れる。
+3. VSCode / Bob を reload する。
+4. Bob Settings -> Skills tab で skill が見えるか確認する。
+5. Chat で `Use <skill-name> skill ...` のように明示起動する。
+6. `Start Workflow` には出ない前提で確認する。
+
+## 8. 参考にした repository 内ファイル
 
 - `bob2/bob-code/package.json`
   - `bob-code.task.workflow` command と `bob-code.hasWorkflows` 条件を確認。
@@ -233,8 +267,26 @@ Premium Package のような IBM 公式 add-on は内部 source 登録を使っ�
 - `docs/bob-code-zip-implementation-analysis.md`
   - source registry、task manager、review workflow、feature flag の既存分析。
 - `extensions/bob-bazaar-review/templates/.bob/README.md`
-  - `.bob/workflows` を project root に配置する前提の template。
+  - companion extension template に `.bob/workflows` が含まれていることを確認。
 - `extensions/bob-bazaar-review/src/bobWorkspaceInit.ts`
-  - `.bob/workflows/bazaar-project-rule-review.md` を required file として扱う workspace 初期化処理。
-- `extensions/bob-bazaar-review/templates/.bob/workflows/bazaar-project-rule-review.md`
-  - 実際の workflow Markdown 例。
+  - `.bob/workflows/bazaar-project-rule-review.md` を companion extension 側 required file として扱うことを確認。
+- `extensions/bob-bazaar-review/templates/.bob/custom_modes.yaml`
+  - custom mode から skill を使う設計を確認。
+
+## 9. 参考にした IBM Bob docs
+
+- IBM Bob Docs: Skills
+  - `.bob/skills/<folder>/SKILL.md`
+  - YAML front matter
+  - `name` / `description` required
+  - supporting files
+  - project / global skill locations
+- IBM Bob Docs: Changelog 2.0.0
+  - Review workflow
+  - Skills settings tab
+  - Premium Package workflows
+  - Nested workflows
+- IBM Bob Docs: Pull requests
+  - built-in PR generation flow
+- IBM Bob Docs: Code reviews
+  - built-in Review workflow / Review panel / Findings panel
