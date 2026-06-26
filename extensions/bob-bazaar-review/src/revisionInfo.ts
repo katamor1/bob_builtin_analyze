@@ -1,5 +1,12 @@
 import { BazaarClient, BazaarCommandResult } from "./bazaar"
 
+export type BazaarChangedFileStatus = "added" | "modified" | "removed" | "renamed" | "unknown"
+
+export interface BazaarChangedFile {
+  path: string
+  status: BazaarChangedFileStatus
+}
+
 export interface BazaarRevisionInfo {
   revision: string
   revno?: string
@@ -9,6 +16,7 @@ export interface BazaarRevisionInfo {
   message: string
   changedFileCount: number
   changedFiles: string[]
+  changedFileEntries: BazaarChangedFile[]
   logText: string
 }
 
@@ -32,7 +40,8 @@ export async function loadBazaarRevisionPacketInput(client: BazaarClient, worksp
 
 export function parseBazaarRevisionInfo(revision: string, logText: string, diffText: string): BazaarRevisionInfo {
   const metadata = parseLogMetadata(logText)
-  const changedFiles = parseChangedFiles(diffText)
+  const changedFileEntries = parseChangedFileEntries(diffText)
+  const changedFiles = changedFileEntries.map((entry) => entry.path)
   return {
     revision,
     revno: metadata.revno,
@@ -42,8 +51,64 @@ export function parseBazaarRevisionInfo(revision: string, logText: string, diffT
     message: metadata.message || "",
     changedFileCount: changedFiles.length,
     changedFiles,
+    changedFileEntries,
     logText
   }
+}
+
+export async function buildAddedFilesContentSection(
+  client: BazaarClient,
+  root: string,
+  revision: string,
+  info: BazaarRevisionInfo,
+  maxBytes = 256 * 1024
+): Promise<string | undefined> {
+  const addedFiles = info.changedFileEntries.filter((entry) => entry.status === "added")
+  if (addedFiles.length === 0) return undefined
+
+  const lines: string[] = [
+    "## Added file contents",
+    "",
+    "The following files are newly added in this Bazaar revision. Diff output may omit enough context for new files, so their revision content is included explicitly.",
+    ""
+  ]
+  let remainingBytes = maxBytes
+  let truncated = false
+
+  for (const entry of addedFiles) {
+    if (remainingBytes <= 0) {
+      truncated = true
+      break
+    }
+
+    try {
+      const result = await client.cat(root, revision, entry.path)
+      let content = result.stdout
+      const contentBytes = Buffer.byteLength(content, "utf8")
+      if (contentBytes > remainingBytes) {
+        content = truncateUtf8(content, remainingBytes)
+        truncated = true
+      }
+      remainingBytes -= Buffer.byteLength(content, "utf8")
+      lines.push(`### ${entry.path}`)
+      lines.push("")
+      lines.push("```text")
+      lines.push(content)
+      lines.push("```")
+      lines.push("")
+    } catch (error: any) {
+      lines.push(`### ${entry.path}`)
+      lines.push("")
+      lines.push(`Could not load added file content with \`bzr cat -r ${revision} ${entry.path}\`: ${error?.message ?? String(error)}`)
+      lines.push("")
+    }
+  }
+
+  if (truncated) {
+    lines.push(`[TRUNCATED: added file contents exceeded ${maxBytes} bytes. Use targeted read/grep tools for additional context.]`)
+  }
+
+  return lines.join("\n")
 }
 
 function parseLogMetadata(logText: string): { revno?: string; author?: string; committer?: string; timestamp?: string; message?: string } {
@@ -70,22 +135,50 @@ function parseLogMetadata(logText: string): { revno?: string; author?: string; c
 }
 
 export function parseChangedFiles(diffText: string): string[] {
-  const files = new Set<string>()
+  return parseChangedFileEntries(diffText).map((entry) => entry.path)
+}
+
+export function parseChangedFileEntries(diffText: string): BazaarChangedFile[] {
+  const files = new Map<string, BazaarChangedFileStatus>()
   for (const line of diffText.split(/\r?\n/)) {
-    let match = /^===\s+(?:modified|added|removed|renamed)\s+file\s+'(.+)'\s*$/.exec(line)
+    let match = /^===\s+(modified|added|removed|renamed)\s+file\s+'(.+)'\s*$/.exec(line)
     if (match) {
-      files.add(match[1])
+      files.set(match[2], normalizeStatus(match[1]))
       continue
     }
     match = /^diff\s+--git\s+a\/(.+?)\s+b\/(.+?)\s*$/.exec(line)
     if (match) {
-      files.add(match[2])
+      if (!files.has(match[2])) files.set(match[2], "unknown")
       continue
     }
     match = /^\+\+\+\s+(?:b\/)?(.+?)\s*$/.exec(line)
     if (match && match[1] !== "/dev/null") {
-      files.add(match[1])
+      if (!files.has(match[1])) files.set(match[1], "unknown")
     }
   }
-  return [...files].sort()
+  return [...files.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([path, status]) => ({ path, status }))
+}
+
+function normalizeStatus(status: string): BazaarChangedFileStatus {
+  switch (status) {
+    case "added":
+      return "added"
+    case "modified":
+      return "modified"
+    case "removed":
+      return "removed"
+    case "renamed":
+      return "renamed"
+    default:
+      return "unknown"
+  }
+}
+
+function truncateUtf8(value: string, maxBytes: number): string {
+  if (Buffer.byteLength(value, "utf8") <= maxBytes) return value
+  let result = value
+  while (Buffer.byteLength(result, "utf8") > maxBytes) {
+    result = result.slice(0, Math.floor(result.length * 0.9))
+  }
+  return `${result}\n\n[TRUNCATED]`
 }
