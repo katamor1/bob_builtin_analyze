@@ -1,0 +1,4 @@
+/extensions/bob-bazaar-review/node_modules
+/extensions/bob-bazaar-review/out
+extensions/bob-bazaar-review/package-lock.json
+*.vsix
