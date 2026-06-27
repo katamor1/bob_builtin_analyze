@@ -1,5 +1,6 @@
 import * as path from "path"
 import * as vscode from "vscode"
+import { buildWorkflowAgentPrompt, extractSubagentResult } from "./agentStep"
 
 const BOB_EXTENSION_ID = "IBM.bob-code"
 const WORKFLOW_GLOB = "**/.bob/workflows/*/WORKFLOW.md"
@@ -15,6 +16,7 @@ interface BobWorkflowApi {
 interface BobWorkflowTask {
   sendMessage?: (...args: unknown[]) => Promise<unknown> | Thenable<unknown> | unknown
   setStepComplete?: () => unknown
+  startSubagent?: (prompt: string, preset?: unknown, mask?: unknown) => Promise<unknown> | Thenable<unknown> | unknown
 }
 
 interface BobWorkflowStep {
@@ -54,6 +56,7 @@ interface WorkflowStepDefinition {
   sendResult: boolean
   required: boolean
   completeOnSuccess: boolean
+  runAgent: boolean
   resultKey?: string
   includeState: string[]
   maxResultBytes: number
@@ -118,18 +121,23 @@ interface ActiveStep {
   resolve: (value: boolean) => void
 }
 
+interface StepCompletionOptions {
+  silent?: boolean
+}
+
 export function activate(context: vscode.ExtensionContext): void {
   const service = new WorkflowRegisterService()
   context.subscriptions.push(service)
   context.subscriptions.push(
     vscode.commands.registerCommand("workflowRegister.reload", () => service.reload({ showReport: true })),
     vscode.commands.registerCommand("workflowRegister.inspect", () => service.inspect()),
-    vscode.commands.registerCommand("workflowRegister.completeCurrentStep", () => service.completeCurrentStep()),
-    vscode.commands.registerCommand("workflowRegister.completeStep", () => service.completeCurrentStep()),
+    vscode.commands.registerCommand("workflowRegister.completeCurrentStep", (options?: StepCompletionOptions) => service.completeCurrentStep(options)),
+    vscode.commands.registerCommand("workflowRegister.completeStep", (options?: StepCompletionOptions) => service.completeCurrentStep(options)),
     vscode.commands.registerCommand("workflowRegister.inspectActiveSteps", () => service.inspectActiveSteps())
   )
   service.reload({ showReport: false }).catch((error) => console.warn("Bob workflow registration failed", error))
-  for (const delayMs of [3000, 10000]) {
+  const retryDelaysMs = [3000, 10000]
+  for (const delayMs of retryDelaysMs) {
     const timer = setTimeout(() => service.reload({ showReport: false }).catch((error) => console.warn("Bob workflow registration retry failed", error)), delayMs)
     context.subscriptions.push({ dispose: () => clearTimeout(timer) })
   }
@@ -241,8 +249,10 @@ class WorkflowRegisterService implements vscode.Disposable {
     await showMarkdownReport("Active Bob Workflow Steps", `${steps.length} active step(s).`, lines)
   }
 
-  async completeCurrentStep(): Promise<void> {
-    await vscode.window.showInformationMessage(await this.stepRuntime.completeCurrentStep())
+  async completeCurrentStep(options: StepCompletionOptions = {}): Promise<string> {
+    const message = await this.stepRuntime.completeCurrentStep()
+    if (!options.silent) await vscode.window.showInformationMessage(message)
+    return message
   }
 
   async reload(options: { showReport: boolean }): Promise<void> {
@@ -368,10 +378,12 @@ async function loadWorkflowFile(sourceId: string, file: vscode.Uri): Promise<{ w
   const stepCount = workflow.todoEnabled && workflow.todoAsSteps && workflow.todos.length > 0 ? workflow.todos.length : 1
   const stepPromptCount = Object.values(workflow.stepsById).filter((step) => step.prompt.length > 0).length
   const stepCommandCount = Object.values(workflow.stepsById).filter((step) => step.command).length
+  const agentStepCount = Object.values(workflow.stepsById).filter((step) => step.runAgent).length
   const stateKeyCount = Object.values(workflow.stepsById).filter((step) => step.resultKey).length
   const includeStateCount = Object.values(workflow.stepsById).filter((step) => step.includeState.length > 0).length
-  diagnostics.push(`- ok: ${relativePath}: ${workflow.id}; todos=${workflow.todos.length}; todo=${workflow.todoEnabled}; steps=${stepCount}; stepCompletion=${workflow.stepCompletion}; stepMessage=${workflow.stepMessage}; stepPrompts=${stepPromptCount}; stepCommands=${stepCommandCount}; stateKeys=${stateKeyCount}; includeState=${includeStateCount}`)
+  diagnostics.push(`- ok: ${relativePath}: ${workflow.id}; todos=${workflow.todos.length}; todo=${workflow.todoEnabled}; steps=${stepCount}; stepCompletion=${workflow.stepCompletion}; stepMessage=${workflow.stepMessage}; stepPrompts=${stepPromptCount}; stepCommands=${stepCommandCount}; agentSteps=${agentStepCount}; stateKeys=${stateKeyCount}; includeState=${includeStateCount}`)
   for (const step of Object.values(workflow.stepsById).filter((candidate) => candidate.command)) diagnostics.push(`- step command: ${step.id} -> ${step.command}; sendResult=${step.sendResult}; required=${step.required}; completeOnSuccess=${step.completeOnSuccess}`)
+  for (const step of Object.values(workflow.stepsById).filter((candidate) => candidate.runAgent)) diagnostics.push(`- agent step: ${step.id}; resultKey=${step.resultKey ?? "none"}; maxResultBytes=${step.maxResultBytes}`)
   for (const step of Object.values(workflow.stepsById).filter((candidate) => candidate.resultKey || candidate.includeState.length > 0)) {
     const savePart = step.resultKey ? `resultKey=${step.resultKey}` : "resultKey=none"
     const includePart = step.includeState.length > 0 ? `includeState=${step.includeState.join(",")}` : "includeState=none"
@@ -426,11 +438,43 @@ async function runTodoStep(definition: WorkflowDefinition, stepRuntime: StepRunt
   const message = buildStepMessage(definition, todo, index, stepDefinition, commandResult, stateEntries)
   if (message) await task.sendMessage?.(message, "user")
   if (index === 0 && definition.command && !stepDefinition?.command) await vscode.commands.executeCommand(definition.command, ...definition.commandArgs)
+  if (stepDefinition?.runAgent) {
+    const agentResult = await runWorkflowStepAgent(definition, todo, index, stepDefinition, stateEntries, task)
+    if (!agentResult.ok) {
+      await vscode.window.showErrorMessage(`Bob workflow agent step failed: ${todo.id}: ${agentResult.error}`)
+      return stepRuntime.hold(definition, { id: todo.id, title: todo.text }, task)
+    }
+    if (stepDefinition.resultKey) stepRuntime.saveState(definition, stepDefinition.resultKey, formatCommandResult(agentResult.value, stepDefinition.maxResultBytes))
+    await task.sendMessage?.(agentResult.value, "assistant")
+    task.setStepComplete?.()
+    return true
+  }
   if (stepDefinition?.completeOnSuccess && commandResult?.ok) {
     task.setStepComplete?.()
     return true
   }
   return completeOrHoldStep(task, definition, stepRuntime, todo.id, todo.text)
+}
+
+async function runWorkflowStepAgent(definition: WorkflowDefinition, todo: WorkflowTodoItem, index: number, stepDefinition: WorkflowStepDefinition, stateEntries: WorkflowStateEntry[], task: BobWorkflowTask): Promise<{ ok: true; value: string } | { ok: false; error: string }> {
+  if (typeof task.startSubagent !== "function") return { ok: false, error: "Bob startSubagent API is not available." }
+  try {
+    const value = await task.startSubagent(buildWorkflowAgentPrompt({
+      workflowId: definition.id,
+      workflowName: definition.name,
+      stepIndex: index,
+      stepId: todo.id,
+      stepTitle: todo.text,
+      stepPrompt: stepDefinition.prompt,
+      workflowInstructions: definition.promptWithoutTodo,
+      stateEntries
+    }))
+    const result = extractSubagentResult(value)
+    if (!result) return { ok: false, error: "Bob subagent returned no result." }
+    return { ok: true, value: result }
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) }
+  }
 }
 
 async function runWorkflowStepCommand(step?: WorkflowStepDefinition): Promise<WorkflowStepCommandResult | undefined> {
@@ -590,6 +634,7 @@ function parseWorkflowStepDefinition(stepId: string, markdown: string): Workflow
     sendResult: getBoolean(config, "sendResult", false),
     required: getBoolean(config, "required", true),
     completeOnSuccess: getBoolean(config, "completeOnSuccess", false),
+    runAgent: getBoolean(config, "runAgent", false),
     resultKey: getString(config, "resultKey"),
     includeState: getList(config, "includeState"),
     maxResultBytes: getNumber(config, "maxResultBytes", DEFAULT_MAX_RESULT_BYTES),

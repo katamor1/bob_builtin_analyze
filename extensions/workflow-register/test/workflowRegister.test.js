@@ -30,8 +30,18 @@ test("Bazaar workflow template sends collect-context and load-rules command resu
   assert.match(workflow, /^stepCompletion: manual$/m)
   assert.match(workflow, /^stepMessage: step$/m)
   assert.match(workflow, /## Step: review-input[\s\S]*?```workflow-step[\s\S]*?command: bobBazaar\.openReviewGui[\s\S]*?sendResult: false[\s\S]*?completeOnSuccess: false[\s\S]*?```/)
-  assert.match(workflow, /## Step: collect-context[\s\S]*?```workflow-step[\s\S]*?command: bobBazaar\.collectReviewContext[\s\S]*?sendResult: true[\s\S]*?required: true[\s\S]*?completeOnSuccess: false[\s\S]*?```/)
-  assert.match(workflow, /## Step: load-rules[\s\S]*?```workflow-step[\s\S]*?command: bobBazaar\.loadReviewRules[\s\S]*?sendResult: true[\s\S]*?required: true[\s\S]*?completeOnSuccess: false[\s\S]*?```/)
+  assert.match(workflow, /## Step: collect-context[\s\S]*?```workflow-step[\s\S]*?command: bobBazaar\.collectReviewContext[\s\S]*?sendResult: true[\s\S]*?required: true[\s\S]*?completeOnSuccess: true[\s\S]*?```/)
+  assert.match(workflow, /## Step: load-rules[\s\S]*?```workflow-step[\s\S]*?command: bobBazaar\.loadReviewRules[\s\S]*?sendResult: true[\s\S]*?required: true[\s\S]*?completeOnSuccess: true[\s\S]*?```/)
+})
+
+test("completeStep command can be called silently by companion extensions", () => {
+  const source = fs.readFileSync(path.join(extensionRoot, "src", "extension.ts"), "utf8")
+
+  assert.match(source, /interface StepCompletionOptions \{[\s\S]*silent\?: boolean[\s\S]*\}/)
+  assert.match(source, /registerCommand\("workflowRegister\.completeStep", \(options\?: StepCompletionOptions\) => service\.completeCurrentStep\(options\)\)/)
+  assert.match(source, /async completeCurrentStep\(options: StepCompletionOptions = \{\}\): Promise<string>/)
+  assert.match(source, /if \(!options\.silent\) await vscode\.window\.showInformationMessage\(message\)/)
+  assert.match(source, /return message/)
 })
 
 test("activation schedules delayed workflow reload retries after Bob finishes startup", () => {

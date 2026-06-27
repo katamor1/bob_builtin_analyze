@@ -4,11 +4,17 @@ description: Review a Bazaar revision or range against project-specific rules.
 title: Bazaar Project Rule Review
 mode: agent
 todo: true
-todoSource: markdown
+todoSource: yaml
 todoRequired: true
 todoAsSteps: true
 stepCompletion: manual
 stepMessage: step
+todos:
+  - review-input: Confirm the target Bazaar revision or revision range.
+  - collect-context: Collect Bazaar diff and changed-file context.
+  - load-rules: Load project checklist and review result schema.
+  - analyze-changes: Analyze the changes against project-specific rules.
+  - output-result: Produce review-result JSON and a Markdown checklist.
 permissions:
   - read
   - mcp
@@ -16,7 +22,6 @@ permissions:
   - todo
 autoApproval: true
 workspaceRequired: true
-command: bobBazaar.openReviewGui
 ---
 # Bazaar Project Rule Review
 
@@ -24,17 +29,9 @@ command: bobBazaar.openReviewGui
 
 Review the selected Bazaar revision or range using project-specific review rules.
 
-## Todo
-
-- [ ] review-input: Confirm the target Bazaar revision or revision range.
-- [ ] collect-context: Collect Bazaar diff and changed-file context.
-- [ ] load-rules: Load `.bob/review/checklist.json` and the review result schema.
-- [ ] analyze-changes: Analyze the changes against project-specific rules.
-- [ ] output-result: Produce review-result JSON and a Markdown checklist.
-
 ## Instructions
 
-Create a Todo list from the `Todo` section first, then work through each item in order. Do not mark a Todo item complete until the corresponding work is actually done.
+Create a Todo list from the workflow Todo definitions first, then work through each item in order.
 
 ## Step: review-input
 
@@ -45,26 +42,97 @@ required: true
 completeOnSuccess: false
 ```
 
-Confirm the target Bazaar revision or revision range.
+Confirm the target Bazaar revision or revision range. If the target is not known, ask the user to provide it before continuing.
 
 ## Step: collect-context
 
 ```workflow-step
 command: bobBazaar.collectReviewContext
 sendResult: true
+resultKey: reviewContext
+maxResultBytes: 20000
 required: true
-completeOnSuccess: false
+completeOnSuccess: true
 ```
 
-Use the Bazaar review context returned by the command. Summarize revision metadata, changed files, and important diff areas.
+Use the Bazaar review context returned by the command. Summarize revision metadata, changed files, and important diff areas. Use the Bazaar review packet already added to Bob context for full diff details.
 
 ## Step: load-rules
 
 ```workflow-step
 command: bobBazaar.loadReviewRules
 sendResult: true
+resultKey: reviewRules
+maxResultBytes: 20000
 required: true
-completeOnSuccess: false
+completeOnSuccess: true
 ```
 
-Load and apply the project review checklist and review result schema.
+Load and apply the project review checklist and review result schema. Identify which review categories are relevant to the current change.
+
+## Step: analyze-changes
+
+```workflow-step
+includeState:
+  - reviewContext
+  - reviewRules
+stateRequired: true
+runAgent: true
+resultKey: reviewAnalysis
+maxResultBytes: 20000
+```
+
+Analyze the changes against the checklist. Focus on interface impact, error handling, regression risk, data compatibility, and missing tests.
+
+## Step: output-result
+
+```workflow-step
+includeState:
+  - reviewContext
+  - reviewRules
+  - reviewAnalysis
+stateRequired: true
+runAgent: true
+```
+
+Produce the final review-result JSON using the saved review analysis. Return exactly one fenced `json` code block and no other JSON-like object.
+
+The JSON must match this shape:
+
+```json
+{
+  "review_id": "bazaar-r2-project-rule-review",
+  "vcs": {
+    "type": "bazaar",
+    "repository": "<repository root>",
+    "revision_mode": "singleRevision",
+    "revision": "<revision>"
+  },
+  "checklist_results": [
+    {
+      "rule_id": "<checklist rule id>",
+      "title": "<checklist rule title>",
+      "status": "pass",
+      "severity": "info",
+      "confidence": "medium",
+      "evidence": [
+        {
+          "file": "<path>",
+          "summary": "<evidence summary>"
+        }
+      ],
+      "reason": "<reason>"
+    }
+  ],
+  "findings": [],
+  "summary": {
+    "pass": 0,
+    "fail": 0,
+    "unknown": 0,
+    "not_applicable": 0,
+    "blocked": 0
+  }
+}
+```
+
+After producing the JSON, ask the user to copy the JSON block and run `Bob Bazaar: Capture Review Result` or `Bob Bazaar: Save Review Result from Clipboard`. The command validates the JSON and saves `.bob/review/results/<review_id>.json` and `.bob/review/results/<review_id>.md`.

@@ -5,6 +5,7 @@ import { buildProjectRulesSection } from "./projectRules/packet"
 import { loadProjectChecklist, loadReviewResultSchema } from "./projectRules/io"
 import { buildAddedFilesContentSection, loadBazaarRevisionPacketInput, parseChangedFileEntries, BazaarRevisionInfo, BazaarChangedFile } from "./revisionInfo"
 import { getBobWorkspaceStatus, initializeBobWorkspaceFromTemplates } from "./bobWorkspaceInit"
+import { completeCurrentWorkflowStepAfterGuiAction } from "./workflowStepCompletion"
 
 type TargetMode = "singleRevision" | "revisionRange" | "workingTreeSinceRevision"
 
@@ -39,6 +40,8 @@ interface PreparedTarget {
   diff: BazaarCommandResult
   addedFilesSection?: string
 }
+
+type AddToBobContextResult = "added" | "clipboardFallback"
 
 export function openBazaarReviewGui(context: vscode.ExtensionContext): void {
   const panel = vscode.window.createWebviewPanel("bobBazaarReviewGui", "Bob Bazaar Review", vscode.ViewColumn.One, {
@@ -153,8 +156,21 @@ class BazaarReviewGuiController {
 
     const doc = await vscode.workspace.openTextDocument({ language: "markdown", content: packet })
     await vscode.window.showTextDocument(doc, { preview: false })
-    await addToBobContext(doc.uri, packet)
-    this.post({ type: "reviewAdded", info: prepared.info, packetBytes: Buffer.byteLength(packet, "utf8") })
+    const addResult = await addToBobContext(doc.uri, packet)
+    let workflowStepCompleted = false
+    if (addResult === "added") {
+      workflowStepCompleted = await completeCurrentWorkflowStepAfterGuiAction({
+        executeCommand: (command, ...args) => vscode.commands.executeCommand(command, ...args),
+        showWarningMessage: (message) => vscode.window.showWarningMessage(message)
+      })
+    }
+    this.post({
+      type: "reviewAdded",
+      info: prepared.info,
+      packetBytes: Buffer.byteLength(packet, "utf8"),
+      bobContextAdded: addResult === "added",
+      workflowStepCompleted
+    })
   }
 
   private async requireWorkspaceFolder(): Promise<vscode.WorkspaceFolder> {
@@ -355,12 +371,14 @@ function buildTargetMetadataSection(info: TargetInfo): string {
   ].filter((line): line is string => line !== undefined).join("\n")
 }
 
-async function addToBobContext(uri: vscode.Uri, packet: string): Promise<void> {
+async function addToBobContext(uri: vscode.Uri, packet: string): Promise<AddToBobContextResult> {
   try {
     await vscode.commands.executeCommand("bob-code.addToContext", uri, packet, 1, packet.split(/\r?\n/).length)
+    return "added"
   } catch (error: any) {
     await vscode.env.clipboard.writeText(packet)
     await vscode.window.showWarningMessage(`Could not call Bob add-to-context command. The review packet was copied to the clipboard instead. ${error?.message ?? ""}`)
+    return "clipboardFallback"
   }
 }
 
@@ -386,7 +404,7 @@ function clearLoaded(){loaded=false;updateReviewButton()}function updateReviewBu
 function loadTarget(){const t=collectTarget();if(t.mode==='singleRevision'&&!t.revision){setStatus('revisionを入力してください',true);return}if(t.mode==='revisionRange'&&(!t.baseRevision||!t.targetRevision)){setStatus('base revision と target revision を入力してください',true);return}clearLoaded();vscode.postMessage({type:'loadTarget',...t})}
 function renderBobStatus(s){bobInitialized=!!s.initialized;$('initCard').classList.toggle('hidden',bobInitialized);$('missingFiles').innerHTML='';(s.missing||[]).forEach(f=>{const li=document.createElement('li');li.textContent=f;$('missingFiles').appendChild(li)});updateReviewButton()}
 function renderInfo(info){loaded=true;$('info').classList.remove('hidden');updateReviewButton();$('infoMode').textContent=info.mode||'';$('infoTarget').textContent=info.targetLabel||'';$('infoRevision').textContent=info.revision||info.targetRevision||'';$('infoRevno').textContent=info.revno||'';$('infoAuthor').textContent=info.author||'';$('infoCommitter').textContent=info.committer||'';$('infoTimestamp').textContent=info.timestamp||'';$('infoChangedCount').textContent=String(info.changedFileCount??0);$('infoMessage').textContent=info.message||'(no message)';$('infoFiles').innerHTML='';(info.changedFileEntries||[]).forEach(e=>{const li=document.createElement('li');li.textContent=e.status+': '+e.path;$('infoFiles').appendChild(li)})}
-window.addEventListener('message',(event)=>{const m=event.data;if(m.type==='workspaceState')$('workspace').textContent=m.workspace||'workspace未選択';else if(m.type==='bobWorkspaceStatus')renderBobStatus(m);else if(m.type==='initialized')setStatus(m.message,false,true);else if(m.type==='loading')setStatus(m.message);else if(m.type==='targetInfo'){renderInfo(m.info);setStatus('対象情報を取得しました',false,true)}else if(m.type==='reviewAdded'){renderInfo(m.info);setStatus('レビューpacketを作成し、Bob contextへADDしました。packet bytes: '+m.packetBytes,false,true)}else if(m.type==='error')setStatus(m.message||'Error',true)});
+window.addEventListener('message',(event)=>{const m=event.data;if(m.type==='workspaceState')$('workspace').textContent=m.workspace||'workspace未選択';else if(m.type==='bobWorkspaceStatus')renderBobStatus(m);else if(m.type==='initialized')setStatus(m.message,false,true);else if(m.type==='loading')setStatus(m.message);else if(m.type==='targetInfo'){renderInfo(m.info);setStatus('対象情報を取得しました',false,true)}else if(m.type==='reviewAdded'){renderInfo(m.info);const contextText=m.bobContextAdded?'Bob contextへADDしました':'Bob context ADDに失敗したためclipboardへcopyしました';const stepText=m.workflowStepCompleted?' 現在のworkflow stepも完了しました。':'';setStatus('レビューpacketを作成し、'+contextText+'。packet bytes: '+m.packetBytes+stepText,false,true)}else if(m.type==='error')setStatus(m.message||'Error',true)});
 updateMode();vscode.postMessage({type:'ready'});
 </script></body></html>`
 }

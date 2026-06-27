@@ -52,7 +52,7 @@ sendResult: true
 resultKey: reviewContext
 maxResultBytes: 20000
 required: true
-completeOnSuccess: false
+completeOnSuccess: true
 ```
 
 Use the Bazaar review context returned by the command. Summarize revision metadata, changed files, and important diff areas. Use the Bazaar review packet already added to Bob context for full diff details.
@@ -65,7 +65,7 @@ sendResult: true
 resultKey: reviewRules
 maxResultBytes: 20000
 required: true
-completeOnSuccess: false
+completeOnSuccess: true
 ```
 
 Load and apply the project review checklist and review result schema. Identify which review categories are relevant to the current change.
@@ -77,6 +77,9 @@ includeState:
   - reviewContext
   - reviewRules
 stateRequired: true
+runAgent: true
+resultKey: reviewAnalysis
+maxResultBytes: 20000
 ```
 
 Analyze the changes against the checklist. Focus on interface impact, error handling, regression risk, data compatibility, and missing tests.
@@ -87,10 +90,12 @@ Analyze the changes against the checklist. Focus on interface impact, error hand
 includeState:
   - reviewContext
   - reviewRules
+  - reviewAnalysis
 stateRequired: true
+runAgent: true
 ```
 
-Produce the final review-result JSON. Return exactly one fenced `json` code block and no other JSON-like object.
+Produce the final review-result JSON using the saved review analysis. Return exactly one fenced `json` code block and no other JSON-like object.
 
 The JSON must match this shape:
 
