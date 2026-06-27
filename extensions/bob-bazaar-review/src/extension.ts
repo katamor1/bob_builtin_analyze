@@ -9,7 +9,6 @@ import { renderReviewResultMarkdown } from "./projectRules/markdown"
 import { ReviewResult } from "./projectRules/types"
 import { openBazaarReviewGui } from "./reviewGui"
 import { buildAddedFilesContentSection, loadBazaarRevisionPacketInput } from "./revisionInfo"
-import { ensureExperimentalWorkflowCardRegistered, inspectBobWorkflowApi, registerExperimentalWorkflowCard } from "./bobApiProbe"
 
 export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
@@ -20,30 +19,12 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("bobBazaar.reviewRange", () => reviewRange(context, false)),
     vscode.commands.registerCommand("bobBazaar.reviewRevisionWithProjectRules", () => reviewRevision(context, true)),
     vscode.commands.registerCommand("bobBazaar.reviewRangeWithProjectRules", () => reviewRange(context, true)),
-    vscode.commands.registerCommand("bobBazaar.validateReviewResultJson", () => validateActiveReviewResultJson()),
-    vscode.commands.registerCommand("bobBazaar.inspectBobWorkflowApi", () => inspectBobWorkflowApi()),
-    vscode.commands.registerCommand("bobBazaar.registerExperimentalWorkflowCard", () => registerExperimentalWorkflowCard())
+    vscode.commands.registerCommand("bobBazaar.validateReviewResultJson", () => validateActiveReviewResultJson())
   )
-  scheduleExperimentalWorkflowRegistration(context)
 }
 
 export function deactivate(): void {
   // No background process is kept by the extension host. Bob starts the MCP server on demand.
-}
-
-function scheduleExperimentalWorkflowRegistration(context: vscode.ExtensionContext): void {
-  const register = (force = false) => {
-    ensureExperimentalWorkflowCardRegistered({ force }).catch((error) => {
-      console.warn("Experimental Bob workflow card registration failed", error)
-    })
-  }
-  const timers = [
-    setTimeout(() => register(false), 3000),
-    setTimeout(() => register(true), 10000)
-  ]
-  context.subscriptions.push({
-    dispose: () => timers.forEach((timer) => clearTimeout(timer))
-  })
 }
 
 async function configureMcp(context: vscode.ExtensionContext): Promise<void> {

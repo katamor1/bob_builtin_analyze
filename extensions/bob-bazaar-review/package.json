@@ -2,7 +2,7 @@
   "name": "bob-bazaar-review",
   "displayName": "Bob Bazaar Review",
   "description": "Companion extension that exposes Bazaar revision review tools and project rule review helpers to IBM Bob through MCP.",
-  "version": "0.3.1",
+  "version": "0.3.0",
   "publisher": "local",
   "license": "UNLICENSED",
   "private": true,
@@ -20,7 +20,6 @@
     "IBM.bob-code"
   ],
   "activationEvents": [
-    "onStartupFinished",
     "onCommand:bobBazaar.openReviewGui",
     "onCommand:bobBazaar.configureMcp",
     "onCommand:bobBazaar.initProjectRules",
@@ -28,9 +27,7 @@
     "onCommand:bobBazaar.reviewRange",
     "onCommand:bobBazaar.reviewRevisionWithProjectRules",
     "onCommand:bobBazaar.reviewRangeWithProjectRules",
-    "onCommand:bobBazaar.validateReviewResultJson",
-    "onCommand:bobBazaar.inspectBobWorkflowApi",
-    "onCommand:bobBazaar.registerExperimentalWorkflowCard"
+    "onCommand:bobBazaar.validateReviewResultJson"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -73,16 +70,6 @@
       {
         "command": "bobBazaar.validateReviewResultJson",
         "title": "Validate Project Review Result JSON",
-        "category": "Bob Bazaar"
-      },
-      {
-        "command": "bobBazaar.inspectBobWorkflowApi",
-        "title": "Inspect Bob Workflow API",
-        "category": "Bob Bazaar"
-      },
-      {
-        "command": "bobBazaar.registerExperimentalWorkflowCard",
-        "title": "Register Experimental Bob Workflow Card",
         "category": "Bob Bazaar"
       }
     ],
@@ -132,9 +119,7 @@
         { "command": "bobBazaar.reviewRange" },
         { "command": "bobBazaar.reviewRevisionWithProjectRules" },
         { "command": "bobBazaar.reviewRangeWithProjectRules" },
-        { "command": "bobBazaar.validateReviewResultJson" },
-        { "command": "bobBazaar.inspectBobWorkflowApi" },
-        { "command": "bobBazaar.registerExperimentalWorkflowCard" }
+        { "command": "bobBazaar.validateReviewResultJson" }
       ],
       "scm/title": [
         { "command": "bobBazaar.openReviewGui", "group": "navigation" }
@@ -143,7 +128,6 @@
   },
   "scripts": {
     "compile": "tsc -p ./",
-    "test": "npm run compile && node --test test/*.test.js",
     "watch": "tsc -watch -p ./",
     "vscode:prepublish": "npm run compile",
     "package": "vsce package --no-dependencies"

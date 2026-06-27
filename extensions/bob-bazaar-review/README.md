@@ -14,19 +14,6 @@
 | `Bob Bazaar: Review Bazaar Revision with Project Rules` | Adds project checklist and JSON output contract to the Bob review packet. |
 | `Bob Bazaar: Review Bazaar Revision Range with Project Rules` | Adds project checklist and JSON output contract to a range review packet. |
 | `Bob Bazaar: Validate Project Review Result JSON` | Validates normalized review JSON from the active editor or selection and can render Markdown. |
-| `Bob Bazaar: Inspect Bob Workflow API` | Shows the IBM Bob extension export keys and the workflow registration shape expected by this experiment. |
-| `Bob Bazaar: Register Experimental Bob Workflow Card` | Force-registers the `Bazaar Project Rule Review` workflow through Bob's source registry API and shows a diagnostic report. |
-
-## Experimental Bob workflow card
-
-On activation, the extension silently probes `IBM.bob-code` exports and calls:
-
-```ts
-const source = api.registerSource("bob-bazaar-review", "Bob Bazaar Review")
-source.registerWorkflow(workflow)
-```
-
-The registered workflow is `Bazaar Project Rule Review`. Normal startup registration is idempotent within one extension host, and activation schedules one delayed forced reconciliation so Bob's slower internal source initialization does not leave the workflow out of the registry. The manual `Register Experimental Bob Workflow Card` command also force-registers and opens a report for inspection. Starting the workflow from Bob's `Start Workflow` UI opens the Bazaar Review GUI, where the user can select a revision/range, generate the review packet, and add it to Bob context.
 
 ## Review GUI
 
@@ -144,7 +131,6 @@ Status values:
 ```bash
 cd extensions/bob-bazaar-review
 npm install
-npm test
 npm run compile
 npm run package
 ```
@@ -152,7 +138,7 @@ npm run package
 Install the generated VSIX into Bob IDE / VSCode:
 
 ```bash
-code --install-extension bob-bazaar-review-0.3.1.vsix
+code --install-extension bob-bazaar-review-0.3.0.vsix
 ```
 
 ## Configure Bob MCP
