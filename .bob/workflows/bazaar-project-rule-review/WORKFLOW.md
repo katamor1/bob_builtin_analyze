@@ -46,9 +46,23 @@ Confirm the target Bazaar revision or revision range. If the target is not known
 
 ## Step: collect-context
 
-Use the Bazaar review packet already added to Bob context. Summarize revision metadata, changed files, and important diff areas.
+```workflow-step
+command: bobBazaar.collectReviewContext
+sendResult: true
+required: true
+completeOnSuccess: false
+```
+
+Use the Bazaar review context returned by the command. Summarize revision metadata, changed files, and important diff areas. Use the Bazaar review packet already added to Bob context for full diff details.
 
 ## Step: load-rules
+
+```workflow-step
+command: bobBazaar.loadReviewRules
+sendResult: true
+required: true
+completeOnSuccess: false
+```
 
 Load and apply the project review checklist and review result schema. Identify which review categories are relevant to the current change.
 
