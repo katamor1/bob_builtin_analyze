@@ -46,7 +46,8 @@ The folder name should normally match `name`. A mismatch is reported as a warnin
 | `todoSource` | `markdown` | Source of Todo items. Use `yaml` to read Todo items from front matter. |
 | `todoRequired` | `false` | Fails validation when no Todo items are found. |
 | `todoAsSteps` | auto | Converts Todo items into Bob workflow steps. Defaults to true when Todo items are found. |
-| `stepCompletion` | `manual` for Todo steps, otherwise `auto` | `auto` completes each step immediately. `manual` keeps the active step open until `Complete Current Bob Workflow Step` is run. |
+| `stepCompletion` | `manual` for Todo steps, otherwise `auto` | `auto` completes each step immediately. `manual` keeps the active step open until a completion command is run. |
+| `stepMessage` | `current` | Controls messages sent for Todo steps after the first one: `full`, `current`, or `silent`. |
 | `autoCompleteSteps` | compatibility | Legacy field. `true` maps to `stepCompletion: auto`; `false` maps to `stepCompletion: manual` when `stepCompletion` is omitted. |
 | `autoApproval` | `true` | Whether Bob auto-approval is enabled for the workflow. |
 | `workspaceRequired` | `true` | Whether the workflow is enabled only when Bob supplies a workspace. |
@@ -80,7 +81,13 @@ The id prefix is optional. When omitted, ids are generated as `todo-1`, `todo-2`
 
 When `todoAsSteps` is true, each Todo item is also converted into a Bob workflow step, so Bob's workflow Todo list shows one row per Todo item instead of a single workflow row.
 
-For `stepCompletion: manual`, run `Workflow Register: Complete Current Bob Workflow Step` to complete the active step and advance to the next one. `Workflow Register: Inspect Active Bob Workflow Steps` shows the active manual steps.
+For `stepCompletion: manual`, run `Workflow Step: Complete Current Step` or `Workflow Register: Complete Current Bob Workflow Step` to complete the active step and advance to the next one. `Workflow Register: Inspect Active Bob Workflow Steps` shows the active manual steps.
+
+`stepMessage` controls messages after the first Todo step:
+
+- `full`: sends workflow metadata and the current Todo item.
+- `current`: sends only the current Todo item.
+- `silent`: sends no extra message and advances the Todo list only.
 
 ## Example
 
@@ -95,6 +102,7 @@ todoSource: yaml
 todoRequired: true
 todoAsSteps: true
 stepCompletion: manual
+stepMessage: current
 todos:
   - review-input: Confirm the target Bazaar revision or revision range.
   - collect-context: Collect Bazaar diff and changed-file context.
@@ -126,6 +134,7 @@ Create a Todo list from the workflow Todo definitions first, then work through e
 - `Workflow Register: Reload Bob Workflow Files`
 - `Workflow Register: Inspect Bob Workflow Registration`
 - `Workflow Register: Complete Current Bob Workflow Step`
+- `Workflow Step: Complete Current Step`
 - `Workflow Register: Inspect Active Bob Workflow Steps`
 
 ## Build
