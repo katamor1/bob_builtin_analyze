@@ -9,6 +9,8 @@
 | `Bob Bazaar: Open Bazaar Review GUI` | Opens a GUI for revision metadata lookup and Bob review packet creation. |
 | `Bob Bazaar: Collect Bazaar Review Context` | Returns JSON-serializable revision metadata, changed files, and review packet summary for Bob workflow steps. |
 | `Bob Bazaar: Load Project Review Rules` | Returns project checklist and review schema summary for Bob workflow steps. Missing rule files are treated as errors. |
+| `Bob Bazaar: Capture Review Result` | Extracts review-result JSON from the active editor, selection, or clipboard, validates it, and saves JSON plus Markdown artifacts. |
+| `Bob Bazaar: Save Review Result from Clipboard` | Extracts review-result JSON from the clipboard only, validates it, and saves JSON plus Markdown artifacts. |
 | `Bob Bazaar: Configure Bazaar MCP for Bob` | Writes a `bazaar` MCP server entry to `.bob/mcp.json`. |
 | `Bob Bazaar: Initialize Project Review Rules` | Creates `.bob/review/checklist.json` and `.bob/review/review-result.schema.json` when missing. |
 | `Bob Bazaar: Review Bazaar Revision with Bob` | Runs `bzr log -r REV` and `bzr diff -c REV`, then opens a Bob review packet. |
@@ -86,6 +88,48 @@ completeOnSuccess: false
 ````
 
 `loadReviewRules` requires `.bob/review/checklist.json` and `.bob/review/review-result.schema.json`. If either file is missing, the required workflow step stays pending and Bob receives the command failure instead of silently using defaults.
+
+## Review result capture bridge
+
+After Bob produces the final normalized review-result JSON, copy the fenced JSON block and run one of these commands:
+
+```text
+Bob Bazaar: Capture Review Result
+Bob Bazaar: Save Review Result from Clipboard
+```
+
+`Capture Review Result` searches the active editor selection, active editor text, then clipboard. `Save Review Result from Clipboard` reads only the clipboard. Both commands accept raw JSON or a fenced JSON block:
+
+````md
+```json
+{
+  "review_id": "bazaar-r2-project-rule-review",
+  "vcs": {
+    "type": "bazaar",
+    "repository": "C:/repo/trunk",
+    "revision": "2"
+  },
+  "checklist_results": [],
+  "findings": [],
+  "summary": {
+    "pass": 0,
+    "fail": 0,
+    "unknown": 0,
+    "not_applicable": 0,
+    "blocked": 0
+  }
+}
+```
+````
+
+The command validates the JSON with the same project-rule validator used by `Bob Bazaar: Validate Project Review Result JSON`. If validation fails, it opens a Markdown report with each issue. If validation succeeds, it saves:
+
+```text
+.bob/review/results/<review_id>.json
+.bob/review/results/<review_id>.md
+```
+
+The Markdown artifact is rendered with `renderReviewResultMarkdown`, so it contains counts, checklist entries, evidence, and findings.
 
 ## MCP tools
 
