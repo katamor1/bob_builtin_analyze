@@ -1,0 +1,76 @@
+{
+  "name": "workflow-register",
+  "displayName": "Bob Workflow Register",
+  "description": "Registers IBM Bob workflows declared under .bob/workflows/*/WORKFLOW.md.",
+  "version": "0.1.0",
+  "publisher": "katamor1",
+  "license": "UNLICENSED",
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/katamor1/bob_builtin_analyze.git",
+    "directory": "extensions/workflow-register"
+  },
+  "engines": {
+    "vscode": "^1.106.1"
+  },
+  "categories": [
+    "Other"
+  ],
+  "extensionDependencies": [
+    "IBM.bob-code"
+  ],
+  "activationEvents": [
+    "onStartupFinished",
+    "onCommand:workflowRegister.reload",
+    "onCommand:workflowRegister.inspect"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "workflowRegister.reload",
+        "title": "Reload Bob Workflow Files",
+        "category": "Bob Workflow Register"
+      },
+      {
+        "command": "workflowRegister.inspect",
+        "title": "Inspect Bob Workflow Registration",
+        "category": "Bob Workflow Register"
+      }
+    ],
+    "configuration": {
+      "title": "Bob Workflow Register",
+      "properties": {
+        "workflowRegister.sourceId": {
+          "type": "string",
+          "default": "workflow-register",
+          "description": "Source id used when registering workflows with IBM Bob."
+        },
+        "workflowRegister.sourceName": {
+          "type": "string",
+          "default": "Workflow Register",
+          "description": "Source name shown to IBM Bob when registering workflows."
+        }
+      }
+    },
+    "menus": {
+      "commandPalette": [
+        { "command": "workflowRegister.reload" },
+        { "command": "workflowRegister.inspect" }
+      ]
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "vscode:prepublish": "npm run compile",
+    "package": "vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.30",
+    "@types/vscode": "^1.106.0",
+    "typescript": "^5.4.5",
+    "@vscode/vsce": "^3.2.1"
+  }
+}
