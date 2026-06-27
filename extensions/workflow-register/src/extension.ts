@@ -3,6 +3,7 @@ import * as vscode from "vscode"
 
 const BOB_EXTENSION_ID = "IBM.bob-code"
 const WORKFLOW_GLOB = "**/.bob/workflows/*/WORKFLOW.md"
+const MANUAL_STEP_HOLD_MS = 0x7fffffff
 
 interface BobWorkflowApi {
   registerSource?: (id: string, name?: string) => unknown
@@ -274,7 +275,7 @@ async function loadWorkflowFile(
   }
 
   const stepCount = workflow.todoEnabled && workflow.todoAsSteps && workflow.todos.length > 0 ? workflow.todos.length : 1
-  diagnostics.push(`- ok: ${relativePath}: ${workflow.id}; todos=${workflow.todos.length}; todo=${workflow.todoEnabled}; steps=${stepCount}`)
+  diagnostics.push(`- ok: ${relativePath}: ${workflow.id}; todos=${workflow.todos.length}; todo=${workflow.todoEnabled}; steps=${stepCount}; autoCompleteSteps=${workflow.autoCompleteSteps}`)
   return { workflow, diagnostics }
 }
 
@@ -312,8 +313,10 @@ function buildWorkflowSteps(definition: WorkflowDefinition): BobWorkflowStep[] {
         }
         if (definition.autoCompleteSteps) {
           task.setStepComplete?.()
+          return true
         }
-        return definition.autoCompleteSteps
+        await waitForManualStep()
+        return false
       }
     }))
   }
@@ -329,11 +332,17 @@ function buildWorkflowSteps(definition: WorkflowDefinition): BobWorkflowStep[] {
         }
         if (definition.autoCompleteSteps) {
           task.setStepComplete?.()
+          return true
         }
-        return definition.autoCompleteSteps
+        await waitForManualStep()
+        return false
       }
     }
   ]
+}
+
+function waitForManualStep(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, MANUAL_STEP_HOLD_MS))
 }
 
 function buildWorkflowStartMessage(definition: WorkflowDefinition): string {
