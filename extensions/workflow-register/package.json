@@ -24,6 +24,7 @@
     "onCommand:workflowRegister.reload",
     "onCommand:workflowRegister.inspect",
     "onCommand:workflowRegister.completeCurrentStep",
+    "onCommand:workflowRegister.completeStep",
     "onCommand:workflowRegister.inspectActiveSteps"
   ],
   "main": "./out/extension.js",
@@ -43,6 +44,11 @@
         "command": "workflowRegister.completeCurrentStep",
         "title": "Complete Current Bob Workflow Step",
         "category": "Bob Workflow Register"
+      },
+      {
+        "command": "workflowRegister.completeStep",
+        "title": "Complete Current Step",
+        "category": "Workflow Step"
       },
       {
         "command": "workflowRegister.inspectActiveSteps",
@@ -70,6 +76,7 @@
         { "command": "workflowRegister.reload" },
         { "command": "workflowRegister.inspect" },
         { "command": "workflowRegister.completeCurrentStep" },
+        { "command": "workflowRegister.completeStep" },
         { "command": "workflowRegister.inspectActiveSteps" }
       ]
     }
