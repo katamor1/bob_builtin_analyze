@@ -8,6 +8,7 @@ todoSource: yaml
 todoRequired: true
 todoAsSteps: true
 stepCompletion: manual
+stepMessage: current
 todos:
   - review-input: Confirm the target Bazaar revision or revision range.
   - collect-context: Collect Bazaar diff and changed-file context.
