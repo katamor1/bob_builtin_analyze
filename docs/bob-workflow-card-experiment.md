@@ -24,7 +24,7 @@ This is useful because `registerSource` looks like the intended public entry poi
 A second experiment showed that this call succeeds:
 
 ```ts
-api.registerSource(source)
+api.registerSource("bob-bazaar-review", "Bob Bazaar Review")
 ```
 
 and returns an object with these keys:
@@ -42,8 +42,17 @@ _enabled
 
 That strongly suggests a two-step model:
 
-1. `registerSource(sourceDescriptor)` creates a Bob source.
-2. `returnedSource.register(part)` registers concrete parts such as workflows/tools/findings under that source.
+1. `registerSource(sourceId, sourceName)` creates a Bob source.
+2. `returnedSource.registerWorkflow(workflow)` registers a workflow under that source.
+
+Static inspection of `bob2/bob-code/dist/extension.js` confirmed the built-in shape:
+
+```text
+Ai.Instance.registerSource("pull-request", "Pull Request").registerWorkflow(new CreatePrWorkflow)
+Ai.Instance.registerSource("review", "Code Review").registerWorkflow(new ReviewWorkflow)
+```
+
+The returned source also has an internal `register` object, but calling that internal object directly bypasses the source `_parts` ownership list. Workflows registered that way can be accepted by the global registry yet still fail `entryIsEnabled(workflow.id)`, so they do not reliably appear in `Start Workflow`.
 
 ## Current implementation
 
@@ -73,25 +82,29 @@ The companion extension contributes two commands:
 }
 ```
 
-The command now tries the two-step shape first:
+The command now uses Bob's source method directly:
 
 ```ts
-const source = api.registerSource(sourceDescriptor)
-source.register(workflow)
-source.register({ type: "workflow", ...workflow })
-source.register({ kind: "workflow", ...workflow })
-source.register("workflow", workflow)
-source.register({ workflows: [workflow] })
+const source = api.registerSource("bob-bazaar-review", "Bob Bazaar Review")
+source.registerWorkflow(workflow)
 ```
 
-If direct `registerWorkflow` exists, it is used only as a fallback:
+The companion extension keeps normal startup registration idempotent inside one extension host process. Activation now registers silently, then schedules one delayed forced reconciliation because Bob's own git-dependent sources can initialize after the companion extension. The manual command also force-registers and reports the attempt list, so it can recover a stale or partially initialized Bob workflow registry.
+
+The workflow object provides Bob's expected method shape:
 
 ```ts
-api.registerWorkflow?.("bob-bazaar-review", workflow)
-api.registerWorkflow?.(workflow)
+getId()
+getLabel()
+getMenuLabel()
+getDescription()
+isEnabled(env)
+getSteps()
+getApprovalConfig()
 ```
 
-The command reports every attempt in a Markdown result document. The user should check Bob's `Start Workflow` UI after a successful part-registration attempt.
+The single workflow step opens the companion extension GUI with `bobBazaar.openReviewGui`.
+Startup registration does not open a Markdown document. The explicit command reports every attempt in a Markdown result document. The user should check Bob's `Start Workflow` UI after a successful registration attempt or after reloading Bob when the extension install notification appears.
 
 ## How to test
 
@@ -99,21 +112,21 @@ The command reports every attempt in a Markdown result document. The user should
 2. Reload Bob IDE / VSCode.
 3. Run `Bob Bazaar: Inspect Bob Workflow API`.
 4. Confirm that `registerSource` appears in the export keys.
-5. Run `Bob Bazaar: Register Experimental Bob Workflow Card`.
-6. Read the generated attempt report.
-7. Open Bob's `Start Workflow` UI.
-8. Check whether `Bazaar Project Rule Review` appears.
-9. If it does not appear, run `Developer: Reload Window` and check again.
+5. Reload Bob if it reports that extensions changed on disk.
+6. Open Bob's `Start Workflow` UI.
+7. Check whether `Bazaar Project Rule Review` appears.
+8. If it does not appear, run `Bob Bazaar: Register Experimental Bob Workflow Card`.
+9. Read the generated attempt report and check the `IBM Bob.log` source line for `[source:bob-bazaar-review] Bazaar Project Rule Review workflow registered`.
 
 ## Expected outcomes
 
 ### Success
 
-If Bob accepts one of the returned source object's `register(...)` payloads as a workflow part, the command returns success and sets `bob-code.hasWorkflows` to true. The card may appear after opening or reloading the Start Workflow UI.
+If Bob accepts `source.registerWorkflow(workflow)`, startup registration logs success and sets `bob-code.hasWorkflows` to true. The card may appear after opening or reloading the Start Workflow UI. The explicit command should produce a report with successful `registerSource(sourceId, sourceName)`, returned source diagnostics, `source.registerWorkflow(workflow)`, and `setContext(bob-code.hasWorkflows)` attempts.
 
 ### Partial success
 
-If `registerSource` returns success but all returned-source `register(...)` attempts fail or the card does not appear, the workflow part payload shape is still wrong for Bob's workflow source model. Capture the attempt report and inspect Bob output/logs.
+If `registerSource` returns success but `source.registerWorkflow` is missing or fails, the returned source shape no longer matches Bob 2.0.0. Capture the attempt report and inspect Bob output/logs.
 
 ### Failure
 
@@ -127,5 +140,6 @@ If all attempts fail, the remaining options are:
 ## Files changed
 
 - `extensions/bob-bazaar-review/src/bobApiProbe.ts`
+- `extensions/bob-bazaar-review/src/bobWorkflowRegistration.ts`
 - `extensions/bob-bazaar-review/src/extension.ts`
 - `extensions/bob-bazaar-review/package.json`

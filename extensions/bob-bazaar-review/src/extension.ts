@@ -9,7 +9,7 @@ import { renderReviewResultMarkdown } from "./projectRules/markdown"
 import { ReviewResult } from "./projectRules/types"
 import { openBazaarReviewGui } from "./reviewGui"
 import { buildAddedFilesContentSection, loadBazaarRevisionPacketInput } from "./revisionInfo"
-import { inspectBobWorkflowApi, registerExperimentalWorkflowCard } from "./bobApiProbe"
+import { ensureExperimentalWorkflowCardRegistered, inspectBobWorkflowApi, registerExperimentalWorkflowCard } from "./bobApiProbe"
 
 export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
@@ -24,15 +24,26 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("bobBazaar.inspectBobWorkflowApi", () => inspectBobWorkflowApi()),
     vscode.commands.registerCommand("bobBazaar.registerExperimentalWorkflowCard", () => registerExperimentalWorkflowCard())
   )
-  setTimeout(() => {
-    registerExperimentalWorkflowCard().catch((error) => {
-      console.warn("Experimental Bob workflow card registration failed", error)
-    })
-  }, 3000)  
+  scheduleExperimentalWorkflowRegistration(context)
 }
 
 export function deactivate(): void {
   // No background process is kept by the extension host. Bob starts the MCP server on demand.
+}
+
+function scheduleExperimentalWorkflowRegistration(context: vscode.ExtensionContext): void {
+  const register = (force = false) => {
+    ensureExperimentalWorkflowCardRegistered({ force }).catch((error) => {
+      console.warn("Experimental Bob workflow card registration failed", error)
+    })
+  }
+  const timers = [
+    setTimeout(() => register(false), 3000),
+    setTimeout(() => register(true), 10000)
+  ]
+  context.subscriptions.push({
+    dispose: () => timers.forEach((timer) => clearTimeout(timer))
+  })
 }
 
 async function configureMcp(context: vscode.ExtensionContext): Promise<void> {

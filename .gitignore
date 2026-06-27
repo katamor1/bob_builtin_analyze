@@ -2,3 +2,4 @@
 /extensions/bob-bazaar-review/out
 extensions/bob-bazaar-review/package-lock.json
 *.vsix
+/.bob

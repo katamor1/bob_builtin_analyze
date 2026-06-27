@@ -5,6 +5,8 @@
 
 ## 0. 追加調査後の修正結論
 
+2026-06-27 追加更新: `IBM.bob-code` の extension exports には `registerSource` があり、`bob2/bob-code/dist/extension.js` の実装から、戻り source の `registerWorkflow(workflow)` を使えば Start Workflow registry へ登録できることを確認した。したがって、下記の「公開 API として未確認」という評価は、初回調査時点の保守的な結論であり、現在の実験ブランチでは `registerSource(id, name) -> source.registerWorkflow(workflow)` を使う方針に更新している。実機ログでも `[source:bob-bazaar-review] Bazaar Project Rule Review workflow registered` を確認した。ただし Bob 側の初期化順と UI の再取得タイミングに左右されるため、companion extension は startup で silent 登録し、遅延 force reconciliation と手動 force command を持つ。
+
 前回は `.bob/workflows/*.md` を workspace に置けば任意 workflow が表示される、という仮説を置いた。今回、実機で組み込み workflow だけが表示され、任意 workflow は追加されないことを受けて再調査した結果、この仮説は弱い。
 
 現時点の結論は次の通り。
@@ -239,15 +241,14 @@ project-rule-review skill を使って Bazaar revision 1234 をレビューし�
 
 ### 方針 D: Start Workflow にカードとして出す
 
-これは現時点では非推奨。
+現在の実験ブランチでは、`IBM.bob-code` の extension exports にある `registerSource(id, name)` と、戻り source の `registerWorkflow(workflow)` を使う。
 
-理由:
+注意点:
 
-- workflow registry は Bob bundle 内部の source registry と見られる。
-- 第三者向けの `contributes.workflows` / public API は確認できない。
-- minified 内部 API に依存すると Bob 更新で壊れやすい。
-
-IBM 公式 Premium Package や built-in review / PR workflow のように source registry 登録できれば実現できるが、第三者拡張から安定して使える入口は未確認。
+- workflow registry は Bob bundle 内部の source registry なので、`contributes.workflows` のような manifest-only contribution point ではない。
+- `source.registerWorkflow(workflow)` を使う必要がある。source の内部 `register.workflow` を直接呼ぶと source `_parts` ownership を通らず、`entryIsEnabled(workflow.id)` で落ちる可能性がある。
+- startup 直後は Bob 自身の git-dependent source 初期化や webview の workflow 再取得より早く companion extension が起動する場合があるため、silent 登録、遅延 force reconciliation、手動 force command を併用する。
+- Bob 更新で API shape が変わる可能性は残るため、`Bob Bazaar: Inspect Bob Workflow API` と Bob log の `[source:bob-bazaar-review]` 行で確認する。
 
 ## 7. 実機での確認手順
 
