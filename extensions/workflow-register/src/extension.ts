@@ -25,6 +25,7 @@ interface BobWorkflow {
   getLabel: () => string
   getMenuLabel: () => string
   getDescription: () => string
+  getMode?: () => string
   isEnabled: (env?: { workspace?: string }) => Promise<boolean>
   getSteps: () => BobWorkflowStep[]
   getApprovalConfig: () => { allowed_permissions: string[]; autoApprovalEnabled: boolean }
@@ -33,6 +34,12 @@ interface BobWorkflow {
 interface BobSourceLike {
   registerWorkflow?: (workflow: BobWorkflow) => unknown
   log?: (message: string) => unknown
+}
+
+interface WorkflowTodoItem {
+  id: string
+  text: string
+  raw: string
 }
 
 interface WorkflowDefinition {
@@ -44,10 +51,15 @@ interface WorkflowDefinition {
   prompt: string
   command?: string
   commandArgs: unknown[]
+  mode: string
   permissions: string[]
   autoApprovalEnabled: boolean
   workspaceRequired: boolean
   hidden: boolean
+  todoEnabled: boolean
+  todoRequired: boolean
+  todoSource: string
+  todos: WorkflowTodoItem[]
   file: vscode.Uri
 }
 
@@ -144,7 +156,7 @@ class WorkflowRegisterService implements vscode.Disposable {
         continue
       }
 
-      const bobWorkflow = createBobWorkflow(workflow, this.context)
+      const bobWorkflow = createBobWorkflow(workflow)
       const attempt = await runAttempt(`source.registerWorkflow(${workflow.id})`, () => source.registerWorkflow?.(bobWorkflow))
       lines.push(formatAttempt(attempt))
       if (attempt.ok) {
@@ -176,7 +188,7 @@ async function loadWorkspaceWorkflows(sourceId: string): Promise<LoadResult> {
     diagnostics.push(`- workspace: ${folder.name}; workflow files: ${files.length}`)
 
     for (const file of files) {
-      const result = await loadWorkflowFile(sourceId, folder, file)
+      const result = await loadWorkflowFile(sourceId, file)
       diagnostics.push(...result.diagnostics)
       if (result.workflow) workflows.push(result.workflow)
     }
@@ -187,7 +199,6 @@ async function loadWorkspaceWorkflows(sourceId: string): Promise<LoadResult> {
 
 async function loadWorkflowFile(
   sourceId: string,
-  workspaceFolder: vscode.WorkspaceFolder,
   file: vscode.Uri
 ): Promise<{ workflow?: WorkflowDefinition; diagnostics: string[] }> {
   const diagnostics: string[] = []
@@ -216,8 +227,24 @@ async function loadWorkflowFile(
   const id = getString(fields, "id") ?? `${sourceId}.${name}`
   const label = getString(fields, "label") ?? getString(fields, "title") ?? name
   const menuLabel = getString(fields, "menuLabel") ?? label
+  const mode = getString(fields, "mode") ?? "agent"
   const prompt = getString(fields, "prompt") ?? split.body.trim()
   const command = getString(fields, "command")
+  const todoSource = getString(fields, "todoSource") ?? "markdown"
+  const markdownTodos = todoSource === "markdown" ? extractMarkdownTodoItems(split.body) : []
+  const yamlTodos = getList(fields, "todos").map(parseTodoItemText)
+  const todos = markdownTodos.length > 0 ? markdownTodos : yamlTodos
+  const todoEnabled = getBoolean(fields, "todo", todos.length > 0)
+  const todoRequired = getBoolean(fields, "todoRequired", false)
+
+  if (todoRequired && todos.length === 0) {
+    return { diagnostics: [`- fail: ${relativePath}: todoRequired is true but no todo items were found.`] }
+  }
+
+  const permissions = getList(fields, "permissions", todoEnabled ? ["read", "mcp", "skill", "todo"] : ["read", "mcp", "skill"])
+  if (todoEnabled && !permissions.includes("todo")) {
+    permissions.push("todo")
+  }
 
   const workflow: WorkflowDefinition = {
     id,
@@ -228,26 +255,29 @@ async function loadWorkflowFile(
     prompt,
     command,
     commandArgs: getList(fields, "commandArgs"),
-    permissions: getList(fields, "permissions", ["read", "mcp", "skill"]),
+    mode,
+    permissions,
     autoApprovalEnabled: getBoolean(fields, "autoApproval", true),
     workspaceRequired: getBoolean(fields, "workspaceRequired", true),
     hidden: getBoolean(fields, "hidden", false),
+    todoEnabled,
+    todoRequired,
+    todoSource,
+    todos,
     file
   }
 
-  diagnostics.push(`- ok: ${relativePath}: ${workflow.id}`)
+  diagnostics.push(`- ok: ${relativePath}: ${workflow.id}; todos=${workflow.todos.length}; todo=${workflow.todoEnabled}`)
   return { workflow, diagnostics }
 }
 
-function createBobWorkflow(definition: WorkflowDefinition, context: vscode.ExtensionContext): BobWorkflow {
+function createBobWorkflow(definition: WorkflowDefinition): BobWorkflow {
   const steps: BobWorkflowStep[] = [
     {
       id: "runWorkflow",
       title: definition.label,
       execution: async (task) => {
-        if (definition.prompt.trim().length > 0) {
-          await task.sendMessage?.(definition.prompt, "user")
-        }
+        await task.sendMessage?.(buildWorkflowStartMessage(definition), "user")
         if (definition.command) {
           await vscode.commands.executeCommand(definition.command, ...definition.commandArgs)
         }
@@ -257,14 +287,13 @@ function createBobWorkflow(definition: WorkflowDefinition, context: vscode.Exten
     }
   ]
 
-  context.subscriptions.push({ dispose: () => undefined })
-
   return {
     hidden: definition.hidden,
     getId: () => definition.id,
     getLabel: () => definition.label,
     getMenuLabel: () => definition.menuLabel,
     getDescription: () => definition.description,
+    getMode: () => definition.mode,
     isEnabled: async (env) => !definition.workspaceRequired || Boolean(env?.workspace),
     getSteps: () => steps,
     getApprovalConfig: () => ({
@@ -272,6 +301,90 @@ function createBobWorkflow(definition: WorkflowDefinition, context: vscode.Exten
       autoApprovalEnabled: definition.autoApprovalEnabled
     })
   }
+}
+
+function buildWorkflowStartMessage(definition: WorkflowDefinition): string {
+  const lines = [
+    "You are starting the following Bob workflow.",
+    "",
+    "Workflow:",
+    `- id: ${definition.id}`,
+    `- name: ${definition.name}`,
+    `- title: ${definition.label}`,
+    `- mode: ${definition.mode}`,
+    ""
+  ]
+
+  if (definition.todoEnabled) {
+    lines.push(
+      "First, create or update your Todo list using exactly the items below.",
+      "Do not immediately mark them complete. Work through them one by one and only mark an item complete after the corresponding work is actually done.",
+      "",
+      "<workflow_todos>",
+      ...definition.todos.map((todo) => `- [ ] ${todo.id}: ${todo.text}`),
+      "</workflow_todos>",
+      ""
+    )
+  }
+
+  lines.push(
+    "Then follow the workflow instructions below.",
+    "",
+    "<workflow_instructions>",
+    definition.prompt,
+    "</workflow_instructions>"
+  )
+
+  return lines.join("\n")
+}
+
+function extractMarkdownTodoItems(markdown: string): WorkflowTodoItem[] {
+  const section = extractMarkdownSection(markdown, "Todo")
+  if (!section) return []
+
+  const todos: WorkflowTodoItem[] = []
+  for (const line of section.split(/\r?\n/)) {
+    const match = line.match(/^\s*[-*]\s+\[[ xX]\]\s+(.+)$/)
+    if (!match) continue
+    todos.push(parseTodoItemText(match[1], todos.length + 1))
+  }
+  return todos
+}
+
+function extractMarkdownSection(markdown: string, headingName: string): string | undefined {
+  const lines = markdown.split(/\r?\n/)
+  let start = -1
+  let level = 0
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const match = lines[index].match(/^(#{1,6})\s+(.+?)\s*$/)
+    if (!match) continue
+    if (match[2].trim().toLowerCase() === headingName.toLowerCase()) {
+      start = index + 1
+      level = match[1].length
+      break
+    }
+  }
+
+  if (start < 0) return undefined
+
+  const sectionLines: string[] = []
+  for (let index = start; index < lines.length; index += 1) {
+    const match = lines[index].match(/^(#{1,6})\s+/)
+    if (match && match[1].length <= level) break
+    sectionLines.push(lines[index])
+  }
+  return sectionLines.join("\n").trim()
+}
+
+function parseTodoItemText(value: string, index = 1): WorkflowTodoItem {
+  const raw = value.trim()
+  const withoutCheckbox = raw.replace(/^[-*]\s+\[[ xX]\]\s+/, "")
+  const idMatch = withoutCheckbox.match(/^([A-Za-z0-9_.-]+):\s+(.+)$/)
+  if (idMatch) {
+    return { id: idMatch[1], text: idMatch[2].trim(), raw }
+  }
+  return { id: `todo-${index}`, text: withoutCheckbox, raw }
 }
 
 function splitMarkdownFrontMatter(text: string): { frontMatter: string; body: string } | undefined {
