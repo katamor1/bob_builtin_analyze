@@ -45,6 +45,8 @@ The folder name should normally match `name`. A mismatch is reported as a warnin
 | `todo` | auto | Enables Todo wrapper prompt. Defaults to true when Todo items are found. |
 | `todoSource` | `markdown` | Source of Todo items. Currently `markdown` reads the `## Todo` section. |
 | `todoRequired` | `false` | Fails validation when no Todo items are found. |
+| `todoAsSteps` | auto | Converts Todo items into Bob workflow steps. Defaults to true when Todo items are found. |
+| `autoCompleteSteps` | `true` | Calls Bob's step-complete callback after each step message is sent. Set false to keep the current step open. |
 | `autoApproval` | `true` | Whether Bob auto-approval is enabled for the workflow. |
 | `workspaceRequired` | `true` | Whether the workflow is enabled only when Bob supplies a workspace. |
 | `hidden` | `false` | Whether the workflow should be hidden from Bob UI. |
@@ -66,7 +68,9 @@ The Markdown Todo section must use this shape:
 
 The id prefix is optional. When omitted, ids are generated as `todo-1`, `todo-2`, and so on.
 
-The generated message contains a `<workflow_todos>` block and explicitly tells Bob to create or update its Todo list before following the workflow instructions.
+When `todoAsSteps` is true, each Todo item is also converted into a Bob workflow step, so Bob's workflow Todo list shows one row per Todo item instead of a single workflow row.
+
+The first Todo step sends the full workflow message, including a `<workflow_todos>` block. Later Todo steps send the current Todo item only.
 
 ## Example
 
@@ -79,6 +83,7 @@ mode: agent
 todo: true
 todoSource: markdown
 todoRequired: true
+todoAsSteps: true
 permissions:
   - read
   - mcp
