@@ -21,6 +21,8 @@
   ],
   "activationEvents": [
     "onCommand:bobBazaar.openReviewGui",
+    "onCommand:bobBazaar.collectReviewContext",
+    "onCommand:bobBazaar.loadReviewRules",
     "onCommand:bobBazaar.configureMcp",
     "onCommand:bobBazaar.initProjectRules",
     "onCommand:bobBazaar.reviewRevision",
@@ -35,6 +37,16 @@
       {
         "command": "bobBazaar.openReviewGui",
         "title": "Open Bazaar Review GUI",
+        "category": "Bob Bazaar"
+      },
+      {
+        "command": "bobBazaar.collectReviewContext",
+        "title": "Collect Bazaar Review Context",
+        "category": "Bob Bazaar"
+      },
+      {
+        "command": "bobBazaar.loadReviewRules",
+        "title": "Load Project Review Rules",
         "category": "Bob Bazaar"
       },
       {
@@ -113,6 +125,8 @@
     "menus": {
       "commandPalette": [
         { "command": "bobBazaar.openReviewGui" },
+        { "command": "bobBazaar.collectReviewContext" },
+        { "command": "bobBazaar.loadReviewRules" },
         { "command": "bobBazaar.configureMcp" },
         { "command": "bobBazaar.initProjectRules" },
         { "command": "bobBazaar.reviewRevision" },
