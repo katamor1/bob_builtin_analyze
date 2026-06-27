@@ -3,7 +3,8 @@ import * as vscode from "vscode"
 
 const BOB_EXTENSION_ID = "IBM.bob-code"
 const WORKFLOW_GLOB = "**/.bob/workflows/*/WORKFLOW.md"
-const MANUAL_STEP_HOLD_MS = 0x7fffffff
+
+type StepCompletionMode = "auto" | "manual"
 
 interface BobWorkflowApi {
   registerSource?: (id: string, name?: string) => unknown
@@ -50,6 +51,7 @@ interface WorkflowDefinition {
   menuLabel: string
   description: string
   prompt: string
+  promptWithoutTodo: string
   command?: string
   commandArgs: unknown[]
   mode: string
@@ -61,7 +63,7 @@ interface WorkflowDefinition {
   todoRequired: boolean
   todoSource: string
   todoAsSteps: boolean
-  autoCompleteSteps: boolean
+  stepCompletion: StepCompletionMode
   todos: WorkflowTodoItem[]
   file: vscode.Uri
 }
@@ -76,12 +78,24 @@ interface RegistrationResult {
   lines: string[]
 }
 
+interface ActiveStep {
+  key: string
+  workflowId: string
+  workflowLabel: string
+  stepId: string
+  title: string
+  task: BobWorkflowTask
+  resolve: (value: boolean) => void
+}
+
 export function activate(context: vscode.ExtensionContext): void {
   const service = new WorkflowRegisterService(context)
   context.subscriptions.push(service)
   context.subscriptions.push(
     vscode.commands.registerCommand("workflowRegister.reload", () => service.reload({ showReport: true })),
-    vscode.commands.registerCommand("workflowRegister.inspect", () => service.inspect())
+    vscode.commands.registerCommand("workflowRegister.inspect", () => service.inspect()),
+    vscode.commands.registerCommand("workflowRegister.completeCurrentStep", () => service.completeCurrentStep()),
+    vscode.commands.registerCommand("workflowRegister.inspectActiveSteps", () => service.inspectActiveSteps())
   )
   service.reload({ showReport: false }).catch((error) => console.warn("Bob workflow registration failed", error))
 }
@@ -90,9 +104,60 @@ export function deactivate(): void {
   // Nothing to dispose beyond context subscriptions.
 }
 
+class StepRuntime {
+  private readonly activeSteps = new Map<string, ActiveStep>()
+  private sequence = 0
+
+  hold(workflow: WorkflowDefinition, step: { id: string; title: string }, task: BobWorkflowTask): Promise<boolean> {
+    const key = `${++this.sequence}:${workflow.id}:${step.id}`
+    return new Promise<boolean>((resolve) => {
+      this.activeSteps.set(key, {
+        key,
+        workflowId: workflow.id,
+        workflowLabel: workflow.label,
+        stepId: step.id,
+        title: step.title,
+        task,
+        resolve
+      })
+    })
+  }
+
+  list(): ActiveStep[] {
+    return Array.from(this.activeSteps.values())
+  }
+
+  async completeCurrentStep(): Promise<string> {
+    const active = await this.pickActiveStep()
+    if (!active) return "No active Bob workflow step."
+    active.task.setStepComplete?.()
+    active.resolve(true)
+    this.activeSteps.delete(active.key)
+    return `Completed: ${active.workflowLabel} / ${active.title}`
+  }
+
+  private async pickActiveStep(): Promise<ActiveStep | undefined> {
+    const steps = this.list()
+    if (steps.length === 0) return undefined
+    if (steps.length === 1) return steps[0]
+
+    const picked = await vscode.window.showQuickPick(
+      steps.map((step) => ({
+        label: step.title,
+        description: step.workflowLabel,
+        detail: `${step.workflowId} / ${step.stepId}`,
+        step
+      })),
+      { placeHolder: "Select the Bob workflow step to complete" }
+    )
+    return picked?.step
+  }
+}
+
 class WorkflowRegisterService implements vscode.Disposable {
   private readonly registeredIds = new Set<string>()
   private readonly watcher: vscode.FileSystemWatcher
+  private readonly stepRuntime = new StepRuntime()
   private lastResult: RegistrationResult = { summary: "No workflow registration has run yet.", lines: [] }
 
   constructor(private readonly context: vscode.ExtensionContext) {
@@ -108,6 +173,19 @@ class WorkflowRegisterService implements vscode.Disposable {
 
   async inspect(): Promise<void> {
     await showMarkdownReport("Bob Workflow Register", this.lastResult.summary, this.lastResult.lines)
+  }
+
+  async inspectActiveSteps(): Promise<void> {
+    const steps = this.stepRuntime.list()
+    const lines = steps.length === 0
+      ? ["- No active Bob workflow steps."]
+      : steps.map((step) => `- ${step.workflowLabel}: ${step.title} (${step.stepId})`)
+    await showMarkdownReport("Active Bob Workflow Steps", `${steps.length} active step(s).`, lines)
+  }
+
+  async completeCurrentStep(): Promise<void> {
+    const message = await this.stepRuntime.completeCurrentStep()
+    await vscode.window.showInformationMessage(message)
   }
 
   async reload(options: { showReport: boolean }): Promise<void> {
@@ -159,7 +237,7 @@ class WorkflowRegisterService implements vscode.Disposable {
         continue
       }
 
-      const bobWorkflow = createBobWorkflow(workflow)
+      const bobWorkflow = createBobWorkflow(workflow, this.stepRuntime)
       const attempt = await runAttempt(`source.registerWorkflow(${workflow.id})`, () => source.registerWorkflow?.(bobWorkflow))
       lines.push(formatAttempt(attempt))
       if (attempt.ok) {
@@ -231,7 +309,6 @@ async function loadWorkflowFile(
   const label = getString(fields, "label") ?? getString(fields, "title") ?? name
   const menuLabel = getString(fields, "menuLabel") ?? label
   const mode = getString(fields, "mode") ?? "agent"
-  const prompt = getString(fields, "prompt") ?? split.body.trim()
   const command = getString(fields, "command")
   const todoSource = getString(fields, "todoSource") ?? "markdown"
   const markdownTodos = todoSource === "markdown" ? extractMarkdownTodoItems(split.body) : []
@@ -240,7 +317,9 @@ async function loadWorkflowFile(
   const todoEnabled = getBoolean(fields, "todo", todos.length > 0)
   const todoRequired = getBoolean(fields, "todoRequired", false)
   const todoAsSteps = getBoolean(fields, "todoAsSteps", todoEnabled && todos.length > 0)
-  const autoCompleteSteps = getBoolean(fields, "autoCompleteSteps", true)
+  const stepCompletion = getStepCompletion(fields, todoAsSteps ? "manual" : "auto")
+  const prompt = getString(fields, "prompt") ?? split.body.trim()
+  const promptWithoutTodo = todoEnabled && todoSource === "markdown" ? removeMarkdownSection(prompt, "Todo").trim() : prompt
 
   if (todoRequired && todos.length === 0) {
     return { diagnostics: [`- fail: ${relativePath}: todoRequired is true but no todo items were found.`] }
@@ -258,6 +337,7 @@ async function loadWorkflowFile(
     menuLabel,
     description,
     prompt,
+    promptWithoutTodo,
     command,
     commandArgs: getList(fields, "commandArgs"),
     mode,
@@ -269,18 +349,18 @@ async function loadWorkflowFile(
     todoRequired,
     todoSource,
     todoAsSteps,
-    autoCompleteSteps,
+    stepCompletion,
     todos,
     file
   }
 
   const stepCount = workflow.todoEnabled && workflow.todoAsSteps && workflow.todos.length > 0 ? workflow.todos.length : 1
-  diagnostics.push(`- ok: ${relativePath}: ${workflow.id}; todos=${workflow.todos.length}; todo=${workflow.todoEnabled}; steps=${stepCount}; autoCompleteSteps=${workflow.autoCompleteSteps}`)
+  diagnostics.push(`- ok: ${relativePath}: ${workflow.id}; todos=${workflow.todos.length}; todo=${workflow.todoEnabled}; steps=${stepCount}; stepCompletion=${workflow.stepCompletion}`)
   return { workflow, diagnostics }
 }
 
-function createBobWorkflow(definition: WorkflowDefinition): BobWorkflow {
-  const steps = buildWorkflowSteps(definition)
+function createBobWorkflow(definition: WorkflowDefinition, stepRuntime: StepRuntime): BobWorkflow {
+  const steps = buildWorkflowSteps(definition, stepRuntime)
 
   return {
     hidden: definition.hidden,
@@ -298,25 +378,18 @@ function createBobWorkflow(definition: WorkflowDefinition): BobWorkflow {
   }
 }
 
-function buildWorkflowSteps(definition: WorkflowDefinition): BobWorkflowStep[] {
+function buildWorkflowSteps(definition: WorkflowDefinition, stepRuntime: StepRuntime): BobWorkflowStep[] {
   if (definition.todoEnabled && definition.todoAsSteps && definition.todos.length > 0) {
     return definition.todos.map((todo, index) => ({
       id: todo.id,
       title: todo.text,
       execution: async (task) => {
-        const message = index === 0
-          ? buildWorkflowStartMessage(definition)
-          : buildWorkflowTodoStepMessage(definition, todo, index)
+        const message = index === 0 ? buildWorkflowStartMessage(definition) : buildWorkflowTodoStepMessage(definition, todo, index)
         await task.sendMessage?.(message, "user")
         if (index === 0 && definition.command) {
           await vscode.commands.executeCommand(definition.command, ...definition.commandArgs)
         }
-        if (definition.autoCompleteSteps) {
-          task.setStepComplete?.()
-          return true
-        }
-        await waitForManualStep()
-        return false
+        return completeOrHoldStep(task, definition, stepRuntime, todo.id, todo.text)
       }
     }))
   }
@@ -330,19 +403,24 @@ function buildWorkflowSteps(definition: WorkflowDefinition): BobWorkflowStep[] {
         if (definition.command) {
           await vscode.commands.executeCommand(definition.command, ...definition.commandArgs)
         }
-        if (definition.autoCompleteSteps) {
-          task.setStepComplete?.()
-          return true
-        }
-        await waitForManualStep()
-        return false
+        return completeOrHoldStep(task, definition, stepRuntime, "runWorkflow", definition.label)
       }
     }
   ]
 }
 
-function waitForManualStep(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, MANUAL_STEP_HOLD_MS))
+async function completeOrHoldStep(
+  task: BobWorkflowTask,
+  definition: WorkflowDefinition,
+  stepRuntime: StepRuntime,
+  stepId: string,
+  stepTitle: string
+): Promise<boolean> {
+  if (definition.stepCompletion === "auto") {
+    task.setStepComplete?.()
+    return true
+  }
+  return stepRuntime.hold(definition, { id: stepId, title: stepTitle }, task)
 }
 
 function buildWorkflowStartMessage(definition: WorkflowDefinition): string {
@@ -373,7 +451,7 @@ function buildWorkflowStartMessage(definition: WorkflowDefinition): string {
     "Then follow the workflow instructions below.",
     "",
     "<workflow_instructions>",
-    definition.prompt,
+    definition.promptWithoutTodo,
     "</workflow_instructions>"
   )
 
@@ -436,6 +514,36 @@ function extractMarkdownSection(markdown: string, headingName: string): string |
     sectionLines.push(lines[index])
   }
   return sectionLines.join("\n").trim()
+}
+
+function removeMarkdownSection(markdown: string, headingName: string): string {
+  const lines = markdown.split(/\r?\n/)
+  let start = -1
+  let end = -1
+  let level = 0
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const match = lines[index].match(/^(#{1,6})\s+(.+?)\s*$/)
+    if (!match) continue
+    if (match[2].trim().toLowerCase() === headingName.toLowerCase()) {
+      start = index
+      level = match[1].length
+      break
+    }
+  }
+
+  if (start < 0) return markdown
+
+  end = lines.length
+  for (let index = start + 1; index < lines.length; index += 1) {
+    const match = lines[index].match(/^(#{1,6})\s+/)
+    if (match && match[1].length <= level) {
+      end = index
+      break
+    }
+  }
+
+  return [...lines.slice(0, start), ...lines.slice(end)].join("\n").replace(/\n{3,}/g, "\n\n")
 }
 
 function parseTodoItemText(value: string, index = 1): WorkflowTodoItem {
@@ -513,6 +621,18 @@ function validateRequiredFrontMatter(fields: Record<string, unknown>): string[] 
   if (!description) errors.push("missing required field 'description'.")
 
   return errors
+}
+
+function getStepCompletion(fields: Record<string, unknown>, fallback: StepCompletionMode): StepCompletionMode {
+  const value = getString(fields, "stepCompletion")
+  if (value === "auto" || value === "manual") return value
+
+  const autoCompleteSteps = fields.autoCompleteSteps
+  if (typeof autoCompleteSteps === "boolean") {
+    return autoCompleteSteps ? "auto" : "manual"
+  }
+
+  return fallback
 }
 
 function getString(fields: Record<string, unknown>, key: string): string | undefined {
