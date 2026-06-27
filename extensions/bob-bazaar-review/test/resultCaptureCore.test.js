@@ -1,8 +1,10 @@
 const assert = require("node:assert/strict")
 const fs = require("node:fs/promises")
+const fsSync = require("node:fs")
 const os = require("node:os")
 const path = require("node:path")
 const { test } = require("node:test")
+const extensionRoot = path.resolve(__dirname, "..")
 
 function validReviewResult(id = "BRR-TEST-001") {
   return {
@@ -64,3 +66,9 @@ test("invalid explicit review-result JSON returns validation issues without savi
   assert.match(result.issues.map((issue) => issue.path).join("\n"), /\$\.vcs/)
 })
 
+test("command argument capture path returns without awaiting presentation UI", () => {
+  const source = fsSync.readFileSync(path.join(extensionRoot, "src", "projectRules", "resultCapture.ts"), "utf8")
+
+  assert.match(source, /const explicitInput = typeof inputText === "string" && inputText\.trim\(\)\.length > 0/)
+  assert.match(source, /if \(!explicitInput\) await presentCaptureResult\(result\)/)
+})

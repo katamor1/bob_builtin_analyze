@@ -9,11 +9,12 @@ import {
 export { CaptureReviewResultResult, extractJsonFromText }
 
 export async function captureReviewResult(inputText?: string): Promise<CaptureReviewResultResult> {
-  const candidates = typeof inputText === "string" && inputText.trim().length > 0
+  const explicitInput = typeof inputText === "string" && inputText.trim().length > 0
+  const candidates = explicitInput
     ? [{ source: "command argument", text: inputText }]
     : await buildDefaultCandidates()
   const result = await captureCandidatesWithWorkspace(candidates)
-  await presentCaptureResult(result)
+  if (!explicitInput) await presentCaptureResult(result)
   return result
 }
 

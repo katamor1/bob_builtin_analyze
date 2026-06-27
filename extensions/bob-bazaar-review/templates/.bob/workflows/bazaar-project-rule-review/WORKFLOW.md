@@ -103,7 +103,7 @@ The JSON must match this shape:
 
 ```json
 {
-  "review_id": "bazaar-r2-project-rule-review",
+  "review_id": "bazaar-r<revision>-project-rule-review",
   "vcs": {
     "type": "bazaar",
     "repository": "<repository root>",

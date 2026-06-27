@@ -93,6 +93,8 @@ includeState:
   - reviewAnalysis
 stateRequired: true
 runAgent: true
+captureResult: true
+resultCommand: bobBazaar.captureReviewResult
 ```
 
 Produce the final review-result JSON using the saved review analysis. Return exactly one fenced `json` code block and no other JSON-like object.
@@ -101,7 +103,7 @@ The JSON must match this shape:
 
 ```json
 {
-  "review_id": "bazaar-r2-project-rule-review",
+  "review_id": "bazaar-r<revision>-project-rule-review",
   "vcs": {
     "type": "bazaar",
     "repository": "<repository root>",
@@ -135,4 +137,4 @@ The JSON must match this shape:
 }
 ```
 
-After producing the JSON, ask the user to copy the JSON block and run `Bob Bazaar: Capture Review Result` or `Bob Bazaar: Save Review Result from Clipboard`. The command validates the JSON and saves `.bob/review/results/<review_id>.json` and `.bob/review/results/<review_id>.md`.
+After producing the JSON, the workflow validates it and saves `.bob/review/results/<review_id>.json` and `.bob/review/results/<review_id>.md` automatically.
