@@ -38,7 +38,7 @@ The folder name should normally match `name`. A mismatch is reported as a warnin
 | `title` / `label` | `name` | Display label. `label` wins over `title`. |
 | `menuLabel` | label | Menu label shown by Bob. |
 | `mode` | `agent` | Intended Bob mode. The value is exposed through `getMode()`. |
-| `prompt` | Markdown body | Prompt sent when the workflow runs. |
+| `prompt` | Markdown body | Prompt sent when the workflow runs. Step sections are removed from the shared workflow instructions. |
 | `command` | unset | VSCode command to execute after the prompt is sent. |
 | `commandArgs` | `[]` | Simple list of command arguments. |
 | `permissions` | `[read, mcp, skill]` or `[read, mcp, skill, todo]` | Bob approval permissions. `todo` is appended when Todo support is enabled. |
@@ -47,7 +47,7 @@ The folder name should normally match `name`. A mismatch is reported as a warnin
 | `todoRequired` | `false` | Fails validation when no Todo items are found. |
 | `todoAsSteps` | auto | Converts Todo items into Bob workflow steps. Defaults to true when Todo items are found. |
 | `stepCompletion` | `manual` for Todo steps, otherwise `auto` | `auto` completes each step immediately. `manual` keeps the active step open until a completion command is run. |
-| `stepMessage` | `current` | Controls messages sent for Todo steps after the first one: `full`, `current`, or `silent`. |
+| `stepMessage` | `current` | Controls messages sent for Todo steps after the first one: `full`, `current`, `step`, or `silent`. |
 | `autoCompleteSteps` | compatibility | Legacy field. `true` maps to `stepCompletion: auto`; `false` maps to `stepCompletion: manual` when `stepCompletion` is omitted. |
 | `autoApproval` | `true` | Whether Bob auto-approval is enabled for the workflow. |
 | `workspaceRequired` | `true` | Whether the workflow is enabled only when Bob supplies a workspace. |
@@ -87,7 +87,24 @@ For `stepCompletion: manual`, run `Workflow Step: Complete Current Step` or `Wor
 
 - `full`: sends workflow metadata and the current Todo item.
 - `current`: sends only the current Todo item.
+- `step`: sends the matching `## Step: todo-id` instructions. Missing Step sections fall back to `current`.
 - `silent`: sends no extra message and advances the Todo list only.
+
+## Step sections
+
+When `stepMessage: step` is used, each Todo item can have a matching Markdown section. The following heading shapes are supported:
+
+```md
+## Step: todo-id
+
+Instructions for this Todo step.
+
+## Step todo-id
+
+Instructions for this Todo step.
+```
+
+Step section ids should match Todo ids. Missing Step sections are reported as warnings during registration, but the workflow still registers.
 
 ## Example
 
@@ -102,7 +119,7 @@ todoSource: yaml
 todoRequired: true
 todoAsSteps: true
 stepCompletion: manual
-stepMessage: current
+stepMessage: step
 todos:
   - review-input: Confirm the target Bazaar revision or revision range.
   - collect-context: Collect Bazaar diff and changed-file context.
@@ -127,6 +144,14 @@ Review the selected Bazaar revision or range using project-specific review rules
 ## Instructions
 
 Create a Todo list from the workflow Todo definitions first, then work through each item in order.
+
+## Step: review-input
+
+Confirm the target Bazaar revision or revision range. If the target is not known, ask the user to provide it before continuing.
+
+## Step: collect-context
+
+Use the Bazaar review packet already added to Bob context. Summarize revision metadata, changed files, and important diff areas.
 ```
 
 ## Commands
