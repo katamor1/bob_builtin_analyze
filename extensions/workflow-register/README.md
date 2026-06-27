@@ -43,10 +43,11 @@ The folder name should normally match `name`. A mismatch is reported as a warnin
 | `commandArgs` | `[]` | Simple list of command arguments. |
 | `permissions` | `[read, mcp, skill]` or `[read, mcp, skill, todo]` | Bob approval permissions. `todo` is appended when Todo support is enabled. |
 | `todo` | auto | Enables Todo wrapper prompt. Defaults to true when Todo items are found. |
-| `todoSource` | `markdown` | Source of Todo items. Currently `markdown` reads the `## Todo` section. |
+| `todoSource` | `markdown` | Source of Todo items. Use `yaml` to read Todo items from front matter. |
 | `todoRequired` | `false` | Fails validation when no Todo items are found. |
 | `todoAsSteps` | auto | Converts Todo items into Bob workflow steps. Defaults to true when Todo items are found. |
-| `autoCompleteSteps` | `true` | Calls Bob's step-complete callback after each step message is sent. Set false to keep the current step open. |
+| `stepCompletion` | `manual` for Todo steps, otherwise `auto` | `auto` completes each step immediately. `manual` keeps the active step open until `Complete Current Bob Workflow Step` is run. |
+| `autoCompleteSteps` | compatibility | Legacy field. `true` maps to `stepCompletion: auto`; `false` maps to `stepCompletion: manual` when `stepCompletion` is omitted. |
 | `autoApproval` | `true` | Whether Bob auto-approval is enabled for the workflow. |
 | `workspaceRequired` | `true` | Whether the workflow is enabled only when Bob supplies a workspace. |
 | `hidden` | `false` | Whether the workflow should be hidden from Bob UI. |
@@ -57,7 +58,7 @@ The initial parser supports a small YAML subset: top-level scalar fields and sim
 
 When `todo: true` or Todo items are detected, the extension wraps the workflow body with a Todo-specific instruction before sending it to Bob.
 
-The Markdown Todo section must use this shape:
+Markdown Todo items use this shape:
 
 ```md
 ## Todo
@@ -66,11 +67,20 @@ The Markdown Todo section must use this shape:
 - [ ] another-id: Another Todo item text
 ```
 
+YAML Todo items use this shape:
+
+```yaml
+todoSource: yaml
+todos:
+  - todo-id: Todo item text
+  - another-id: Another Todo item text
+```
+
 The id prefix is optional. When omitted, ids are generated as `todo-1`, `todo-2`, and so on.
 
 When `todoAsSteps` is true, each Todo item is also converted into a Bob workflow step, so Bob's workflow Todo list shows one row per Todo item instead of a single workflow row.
 
-The first Todo step sends the full workflow message, including a `<workflow_todos>` block. Later Todo steps send the current Todo item only.
+For `stepCompletion: manual`, run `Workflow Register: Complete Current Bob Workflow Step` to complete the active step and advance to the next one. `Workflow Register: Inspect Active Bob Workflow Steps` shows the active manual steps.
 
 ## Example
 
@@ -81,9 +91,16 @@ description: Review a Bazaar revision or range against project-specific rules.
 title: Bazaar Project Rule Review
 mode: agent
 todo: true
-todoSource: markdown
+todoSource: yaml
 todoRequired: true
 todoAsSteps: true
+stepCompletion: manual
+todos:
+  - review-input: Confirm the target Bazaar revision or revision range.
+  - collect-context: Collect Bazaar diff and changed-file context.
+  - load-rules: Load project checklist and review result schema.
+  - analyze-changes: Analyze the changes against project-specific rules.
+  - output-result: Produce review-result JSON and a Markdown checklist.
 permissions:
   - read
   - mcp
@@ -99,23 +116,17 @@ command: bobBazaar.openReviewGui
 
 Review the selected Bazaar revision or range using project-specific review rules.
 
-## Todo
-
-- [ ] review-input: Confirm the target Bazaar revision or revision range.
-- [ ] collect-context: Collect Bazaar diff and changed-file context.
-- [ ] load-rules: Load `.bob/review/checklist.json` and the review result schema.
-- [ ] analyze-changes: Analyze the changes against project-specific rules.
-- [ ] output-result: Produce review-result JSON and a Markdown checklist.
-
 ## Instructions
 
-Create a Todo list from the `Todo` section first, then work through each item in order.
+Create a Todo list from the workflow Todo definitions first, then work through each item in order.
 ```
 
 ## Commands
 
 - `Workflow Register: Reload Bob Workflow Files`
 - `Workflow Register: Inspect Bob Workflow Registration`
+- `Workflow Register: Complete Current Bob Workflow Step`
+- `Workflow Register: Inspect Active Bob Workflow Steps`
 
 ## Build
 
