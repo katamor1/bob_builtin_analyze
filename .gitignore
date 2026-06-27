@@ -3,3 +3,6 @@
 extensions/bob-bazaar-review/package-lock.json
 *.vsix
 /.bob
+/extensions/workflow-register/node_modules
+/extensions/workflow-register/out
+extensions/workflow-register/package-lock.json

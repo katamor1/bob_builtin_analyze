@@ -3,12 +3,11 @@
   "displayName": "Bob Bazaar Review",
   "description": "Companion extension that exposes Bazaar revision review tools and project rule review helpers to IBM Bob through MCP.",
   "version": "0.3.1",
-  "publisher": "katamor1",
+  "publisher": "local",
   "license": "UNLICENSED",
   "private": true,
   "repository": {
     "type": "git",
-    "url": "https://github.com/katamor1/bob_builtin_analyze.git",
     "directory": "extensions/bob-bazaar-review"
   },
   "engines": {
