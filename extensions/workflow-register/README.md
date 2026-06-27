@@ -37,15 +37,36 @@ The folder name should normally match `name`. A mismatch is reported as a warnin
 | `id` | `<sourceId>.<name>` | Full workflow id passed to Bob. |
 | `title` / `label` | `name` | Display label. `label` wins over `title`. |
 | `menuLabel` | label | Menu label shown by Bob. |
+| `mode` | `agent` | Intended Bob mode. The value is exposed through `getMode()`. |
 | `prompt` | Markdown body | Prompt sent when the workflow runs. |
 | `command` | unset | VSCode command to execute after the prompt is sent. |
 | `commandArgs` | `[]` | Simple list of command arguments. |
-| `permissions` | `[read, mcp, skill]` | Bob approval permissions. |
+| `permissions` | `[read, mcp, skill]` or `[read, mcp, skill, todo]` | Bob approval permissions. `todo` is appended when Todo support is enabled. |
+| `todo` | auto | Enables Todo wrapper prompt. Defaults to true when Todo items are found. |
+| `todoSource` | `markdown` | Source of Todo items. Currently `markdown` reads the `## Todo` section. |
+| `todoRequired` | `false` | Fails validation when no Todo items are found. |
 | `autoApproval` | `true` | Whether Bob auto-approval is enabled for the workflow. |
 | `workspaceRequired` | `true` | Whether the workflow is enabled only when Bob supplies a workspace. |
 | `hidden` | `false` | Whether the workflow should be hidden from Bob UI. |
 
 The initial parser supports a small YAML subset: top-level scalar fields and simple lists.
+
+## Todo section
+
+When `todo: true` or Todo items are detected, the extension wraps the workflow body with a Todo-specific instruction before sending it to Bob.
+
+The Markdown Todo section must use this shape:
+
+```md
+## Todo
+
+- [ ] todo-id: Todo item text
+- [ ] another-id: Another Todo item text
+```
+
+The id prefix is optional. When omitted, ids are generated as `todo-1`, `todo-2`, and so on.
+
+The generated message contains a `<workflow_todos>` block and explicitly tells Bob to create or update its Todo list before following the workflow instructions.
 
 ## Example
 
@@ -54,15 +75,36 @@ The initial parser supports a small YAML subset: top-level scalar fields and sim
 name: bazaar-project-rule-review
 description: Review a Bazaar revision or range against project-specific rules.
 title: Bazaar Project Rule Review
+mode: agent
+todo: true
+todoSource: markdown
+todoRequired: true
 permissions:
   - read
   - mcp
   - skill
+  - todo
 autoApproval: true
 workspaceRequired: true
 command: bobBazaar.openReviewGui
 ---
-Open the Bazaar Review GUI and run a project-rule review.
+# Bazaar Project Rule Review
+
+## Goal
+
+Review the selected Bazaar revision or range using project-specific review rules.
+
+## Todo
+
+- [ ] review-input: Confirm the target Bazaar revision or revision range.
+- [ ] collect-context: Collect Bazaar diff and changed-file context.
+- [ ] load-rules: Load `.bob/review/checklist.json` and the review result schema.
+- [ ] analyze-changes: Analyze the changes against project-specific rules.
+- [ ] output-result: Produce review-result JSON and a Markdown checklist.
+
+## Instructions
+
+Create a Todo list from the `Todo` section first, then work through each item in order.
 ```
 
 ## Commands
