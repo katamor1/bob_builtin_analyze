@@ -6,6 +6,7 @@ mode: agent
 todo: true
 todoSource: markdown
 todoRequired: true
+todoAsSteps: true
 permissions:
   - read
   - mcp
