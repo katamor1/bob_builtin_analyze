@@ -1,0 +1,4 @@
+UNLICENSED
+
+
+This extension package is intended for internal evaluation and is not licensed for public redistribution unless a separate license is provided.
