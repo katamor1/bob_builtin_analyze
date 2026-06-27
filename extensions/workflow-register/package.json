@@ -27,7 +27,7 @@
     "onCommand:workflowRegister.completeStep",
     "onCommand:workflowRegister.inspectActiveSteps"
   ],
-  "main": "./out/extension.js",
+  "main": "./out/main.js",
   "contributes": {
     "commands": [
       {
