@@ -59,6 +59,8 @@ interface WorkflowDefinition {
   todoEnabled: boolean
   todoRequired: boolean
   todoSource: string
+  todoAsSteps: boolean
+  autoCompleteSteps: boolean
   todos: WorkflowTodoItem[]
   file: vscode.Uri
 }
@@ -236,6 +238,8 @@ async function loadWorkflowFile(
   const todos = markdownTodos.length > 0 ? markdownTodos : yamlTodos
   const todoEnabled = getBoolean(fields, "todo", todos.length > 0)
   const todoRequired = getBoolean(fields, "todoRequired", false)
+  const todoAsSteps = getBoolean(fields, "todoAsSteps", todoEnabled && todos.length > 0)
+  const autoCompleteSteps = getBoolean(fields, "autoCompleteSteps", true)
 
   if (todoRequired && todos.length === 0) {
     return { diagnostics: [`- fail: ${relativePath}: todoRequired is true but no todo items were found.`] }
@@ -263,29 +267,19 @@ async function loadWorkflowFile(
     todoEnabled,
     todoRequired,
     todoSource,
+    todoAsSteps,
+    autoCompleteSteps,
     todos,
     file
   }
 
-  diagnostics.push(`- ok: ${relativePath}: ${workflow.id}; todos=${workflow.todos.length}; todo=${workflow.todoEnabled}`)
+  const stepCount = workflow.todoEnabled && workflow.todoAsSteps && workflow.todos.length > 0 ? workflow.todos.length : 1
+  diagnostics.push(`- ok: ${relativePath}: ${workflow.id}; todos=${workflow.todos.length}; todo=${workflow.todoEnabled}; steps=${stepCount}`)
   return { workflow, diagnostics }
 }
 
 function createBobWorkflow(definition: WorkflowDefinition): BobWorkflow {
-  const steps: BobWorkflowStep[] = [
-    {
-      id: "runWorkflow",
-      title: definition.label,
-      execution: async (task) => {
-        await task.sendMessage?.(buildWorkflowStartMessage(definition), "user")
-        if (definition.command) {
-          await vscode.commands.executeCommand(definition.command, ...definition.commandArgs)
-        }
-        task.setStepComplete?.()
-        return true
-      }
-    }
-  ]
+  const steps = buildWorkflowSteps(definition)
 
   return {
     hidden: definition.hidden,
@@ -301,6 +295,45 @@ function createBobWorkflow(definition: WorkflowDefinition): BobWorkflow {
       autoApprovalEnabled: definition.autoApprovalEnabled
     })
   }
+}
+
+function buildWorkflowSteps(definition: WorkflowDefinition): BobWorkflowStep[] {
+  if (definition.todoEnabled && definition.todoAsSteps && definition.todos.length > 0) {
+    return definition.todos.map((todo, index) => ({
+      id: todo.id,
+      title: todo.text,
+      execution: async (task) => {
+        const message = index === 0
+          ? buildWorkflowStartMessage(definition)
+          : buildWorkflowTodoStepMessage(definition, todo, index)
+        await task.sendMessage?.(message, "user")
+        if (index === 0 && definition.command) {
+          await vscode.commands.executeCommand(definition.command, ...definition.commandArgs)
+        }
+        if (definition.autoCompleteSteps) {
+          task.setStepComplete?.()
+        }
+        return definition.autoCompleteSteps
+      }
+    }))
+  }
+
+  return [
+    {
+      id: "runWorkflow",
+      title: definition.label,
+      execution: async (task) => {
+        await task.sendMessage?.(buildWorkflowStartMessage(definition), "user")
+        if (definition.command) {
+          await vscode.commands.executeCommand(definition.command, ...definition.commandArgs)
+        }
+        if (definition.autoCompleteSteps) {
+          task.setStepComplete?.()
+        }
+        return definition.autoCompleteSteps
+      }
+    }
+  ]
 }
 
 function buildWorkflowStartMessage(definition: WorkflowDefinition): string {
@@ -336,6 +369,25 @@ function buildWorkflowStartMessage(definition: WorkflowDefinition): string {
   )
 
   return lines.join("\n")
+}
+
+function buildWorkflowTodoStepMessage(definition: WorkflowDefinition, todo: WorkflowTodoItem, index: number): string {
+  return [
+    "Continue the Bob workflow Todo list.",
+    "",
+    "Workflow:",
+    `- id: ${definition.id}`,
+    `- name: ${definition.name}`,
+    `- title: ${definition.label}`,
+    `- mode: ${definition.mode}`,
+    "",
+    "Current Todo item:",
+    `<workflow_todo index=\"${index + 1}\" id=\"${todo.id}\">`,
+    `- [ ] ${todo.id}: ${todo.text}`,
+    "</workflow_todo>",
+    "",
+    "Work only on this Todo item now. Mark it complete only after the corresponding work is actually done."
+  ].join("\n")
 }
 
 function extractMarkdownTodoItems(markdown: string): WorkflowTodoItem[] {
