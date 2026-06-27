@@ -22,7 +22,9 @@
   "activationEvents": [
     "onStartupFinished",
     "onCommand:workflowRegister.reload",
-    "onCommand:workflowRegister.inspect"
+    "onCommand:workflowRegister.inspect",
+    "onCommand:workflowRegister.completeCurrentStep",
+    "onCommand:workflowRegister.inspectActiveSteps"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -35,6 +37,16 @@
       {
         "command": "workflowRegister.inspect",
         "title": "Inspect Bob Workflow Registration",
+        "category": "Bob Workflow Register"
+      },
+      {
+        "command": "workflowRegister.completeCurrentStep",
+        "title": "Complete Current Bob Workflow Step",
+        "category": "Bob Workflow Register"
+      },
+      {
+        "command": "workflowRegister.inspectActiveSteps",
+        "title": "Inspect Active Bob Workflow Steps",
         "category": "Bob Workflow Register"
       }
     ],
@@ -56,7 +68,9 @@
     "menus": {
       "commandPalette": [
         { "command": "workflowRegister.reload" },
-        { "command": "workflowRegister.inspect" }
+        { "command": "workflowRegister.inspect" },
+        { "command": "workflowRegister.completeCurrentStep" },
+        { "command": "workflowRegister.inspectActiveSteps" }
       ]
     }
   },
