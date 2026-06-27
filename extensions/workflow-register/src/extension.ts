@@ -1,6 +1,12 @@
 import * as path from "path"
 import * as vscode from "vscode"
 import { buildWorkflowAgentPrompt, extractSubagentResult } from "./agentStep"
+import { ActionProvider, ActionRegistry, createDefaultActionRegistry } from "./core/actionRegistry"
+import { WorkflowEngine } from "./core/engine"
+import { CoreWorkflowDefinition, WorkflowInputDefinition } from "./core/model"
+import { parseWorkflowMarkdown } from "./core/parser"
+import { createDefaultResultSinkRegistry, ResultSinkRegistry } from "./core/resultSinkRegistry"
+import { FileRunStateStore, RunStateStore } from "./core/runStateStore"
 import { executeResultHandoff, extractLastAssistantText, resultSourceForStep, ResultSource } from "./resultHandoff"
 
 const BOB_EXTENSION_ID = "IBM.bob-code"
@@ -134,7 +140,14 @@ interface StepCompletionOptions {
   silent?: boolean
 }
 
-export function activate(context: vscode.ExtensionContext): void {
+export interface WorkflowRegisterApi {
+  registerActionProvider: (provider: ActionProvider) => void
+  registerResultSink: (type: string, handler: Parameters<ResultSinkRegistry["register"]>[1]) => void
+  listWorkflows: () => CoreWorkflowDefinition[]
+  runWorkflow: (workflowId?: string, inputs?: Record<string, unknown>) => Promise<unknown>
+}
+
+export function activate(context: vscode.ExtensionContext): WorkflowRegisterApi {
   const service = new WorkflowRegisterService()
   context.subscriptions.push(service)
   context.subscriptions.push(
@@ -142,13 +155,23 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("workflowRegister.inspect", () => service.inspect()),
     vscode.commands.registerCommand("workflowRegister.completeCurrentStep", (options?: StepCompletionOptions) => service.completeCurrentStep(options)),
     vscode.commands.registerCommand("workflowRegister.completeStep", (options?: StepCompletionOptions) => service.completeCurrentStep(options)),
-    vscode.commands.registerCommand("workflowRegister.inspectActiveSteps", () => service.inspectActiveSteps())
+    vscode.commands.registerCommand("workflowRegister.inspectActiveSteps", () => service.inspectActiveSteps()),
+    vscode.commands.registerCommand("workflowRegister.runWorkflow", (workflowId?: string, inputs?: Record<string, unknown>) => service.runWorkflow(workflowId, inputs)),
+    vscode.commands.registerCommand("workflowRegister.inspectRuns", () => service.inspectRuns()),
+    vscode.commands.registerCommand("workflowRegister.resumeRun", (runId?: string) => service.resumeRun(runId)),
+    vscode.commands.registerCommand("workflowRegister.retryCurrentStep", (runId?: string) => service.retryCurrentStep(runId))
   )
   service.reload({ showReport: false }).catch((error) => console.warn("Bob workflow registration failed", error))
   const retryDelaysMs = [3000, 10000]
   for (const delayMs of retryDelaysMs) {
     const timer = setTimeout(() => service.reload({ showReport: false }).catch((error) => console.warn("Bob workflow registration retry failed", error)), delayMs)
     context.subscriptions.push({ dispose: () => clearTimeout(timer) })
+  }
+  return {
+    registerActionProvider: (provider) => service.registerActionProvider(provider),
+    registerResultSink: (type, handler) => service.registerResultSink(type, handler),
+    listWorkflows: () => service.listCoreWorkflows(),
+    runWorkflow: (workflowId, inputs) => service.runWorkflow(workflowId, inputs)
   }
 }
 
@@ -257,6 +280,11 @@ class WorkflowRegisterService implements vscode.Disposable {
   private readonly registeredIds = new Set<string>()
   private readonly watcher = vscode.workspace.createFileSystemWatcher(WORKFLOW_GLOB)
   private readonly stepRuntime = new StepRuntime()
+  private readonly coreWorkflows = new Map<string, CoreWorkflowDefinition>()
+  private readonly actionRegistry = createDefaultActionRegistry({
+    executeCommand: (command, ...args) => vscode.commands.executeCommand(command, ...args)
+  })
+  private readonly customResultSinks: Array<{ type: string; handler: Parameters<ResultSinkRegistry["register"]>[1] }> = []
   private lastResult: RegistrationResult = { summary: "No workflow registration has run yet.", lines: [] }
 
   constructor() {
@@ -287,6 +315,158 @@ class WorkflowRegisterService implements vscode.Disposable {
     return message
   }
 
+  registerActionProvider(provider: ActionProvider): void {
+    this.actionRegistry.register(provider)
+  }
+
+  registerResultSink(type: string, handler: Parameters<ResultSinkRegistry["register"]>[1]): void {
+    this.customResultSinks.push({ type, handler })
+  }
+
+  listCoreWorkflows(): CoreWorkflowDefinition[] {
+    return Array.from(this.coreWorkflows.values()).sort((a, b) => a.label.localeCompare(b.label))
+  }
+
+  async runWorkflow(workflowId?: string, inputs: Record<string, unknown> = {}): Promise<unknown> {
+    if (this.coreWorkflows.size === 0) await this.reload({ showReport: false })
+    const workflow = workflowId
+      ? this.coreWorkflows.get(workflowId)
+      : await this.pickCoreWorkflow()
+    if (!workflow) return "No workflow selected."
+    const root = this.workspaceRoot()
+    if (!root) {
+      const message = "No workspace folder is open."
+      await vscode.window.showErrorMessage(message)
+      return message
+    }
+    const resolvedInputs = await this.collectWorkflowInputs(workflow, inputs)
+    if (!resolvedInputs) return "Workflow input was cancelled."
+    const engine = this.createEngine(root)
+    const run = await engine.runWorkflow(workflow, resolvedInputs)
+    await vscode.window.showInformationMessage(`Workflow run ${run.status}: ${run.runId}`)
+    return run
+  }
+
+  async inspectRuns(): Promise<void> {
+    const root = this.workspaceRoot()
+    if (!root) {
+      await vscode.window.showErrorMessage("No workspace folder is open.")
+      return
+    }
+    const runs = await this.createRunStore(root).listRuns()
+    const lines = runs.length === 0
+      ? ["- No workflow runs were found."]
+      : runs.map((run) => `- ${run.runId}: ${run.status}; workflow=${run.workflowId}; currentStep=${run.currentStep ?? "none"}; updatedAt=${run.updatedAt}`)
+    await showMarkdownReport("Workflow Runs", `${runs.length} run(s).`, lines)
+  }
+
+  async resumeRun(runId?: string): Promise<unknown> {
+    return this.resumeOrRetryRun("resume", runId)
+  }
+
+  async retryCurrentStep(runId?: string): Promise<unknown> {
+    return this.resumeOrRetryRun("retry", runId)
+  }
+
+  private async resumeOrRetryRun(mode: "resume" | "retry", runId?: string): Promise<unknown> {
+    const root = this.workspaceRoot()
+    if (!root) {
+      const message = "No workspace folder is open."
+      await vscode.window.showErrorMessage(message)
+      return message
+    }
+    if (this.coreWorkflows.size === 0) await this.reload({ showReport: false })
+    const runStore = this.createRunStore(root)
+    const targetRunId = runId ?? await this.pickRunId(runStore)
+    if (!targetRunId) return "No workflow run selected."
+    const run = await runStore.loadRun(targetRunId)
+    if (!run) throw new Error(`Workflow run not found: ${targetRunId}`)
+    const workflow = this.coreWorkflows.get(run.workflowId)
+    if (!workflow) throw new Error(`Workflow definition is not loaded: ${run.workflowId}`)
+    const engine = this.createEngine(root)
+    const result = mode === "resume"
+      ? await engine.resumeRun(targetRunId, { workflow, completeHeldStep: true })
+      : await engine.retryCurrentStep(targetRunId, workflow)
+    await vscode.window.showInformationMessage(`Workflow run ${result.status}: ${result.runId}`)
+    return result
+  }
+
+  private createEngine(workspaceRoot: string): WorkflowEngine {
+    return new WorkflowEngine({
+      actions: this.actionRegistry,
+      resultSinks: this.createResultSinks(workspaceRoot),
+      runStore: this.createRunStore(workspaceRoot)
+    })
+  }
+
+  private createResultSinks(workspaceRoot: string): ResultSinkRegistry {
+    const registry = createDefaultResultSinkRegistry({
+      workspaceRoot,
+      executeCommand: (command, ...args) => vscode.commands.executeCommand(command, ...args)
+    })
+    for (const sink of this.customResultSinks) registry.register(sink.type, sink.handler)
+    return registry
+  }
+
+  private createRunStore(workspaceRoot: string): RunStateStore {
+    return new FileRunStateStore({ workspaceRoot })
+  }
+
+  private workspaceRoot(): string | undefined {
+    return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
+  }
+
+  private async pickCoreWorkflow(): Promise<CoreWorkflowDefinition | undefined> {
+    const workflows = this.listCoreWorkflows()
+    if (workflows.length === 0) return undefined
+    if (workflows.length === 1) return workflows[0]
+    const picked = await vscode.window.showQuickPick(workflows.map((workflow) => ({
+      label: workflow.label,
+      description: workflow.name,
+      detail: workflow.description,
+      workflow
+    })), { title: "Run Workflow" })
+    return picked?.workflow
+  }
+
+  private async pickRunId(runStore: RunStateStore): Promise<string | undefined> {
+    const runs = await runStore.listRuns()
+    if (runs.length === 0) return undefined
+    const picked = await vscode.window.showQuickPick(runs.map((run) => ({
+      label: run.runId,
+      description: run.status,
+      detail: `${run.workflowId}; currentStep=${run.currentStep ?? "none"}`,
+      runId: run.runId
+    })), { title: "Workflow Run" })
+    return picked?.runId
+  }
+
+  private async collectWorkflowInputs(workflow: CoreWorkflowDefinition, provided: Record<string, unknown>): Promise<Record<string, unknown> | undefined> {
+    const resolved: Record<string, unknown> = { ...provided }
+    for (const [key, definition] of Object.entries(workflow.inputs)) {
+      if (resolved[key] !== undefined && resolved[key] !== "") continue
+      const value = await this.promptForInput(key, definition)
+      if (value === undefined && definition.required) return undefined
+      if (value !== undefined) resolved[key] = value
+    }
+    return resolved
+  }
+
+  private async promptForInput(key: string, definition: WorkflowInputDefinition): Promise<unknown> {
+    const title = definition.title ?? key
+    if (definition.type === "boolean") {
+      const picked = await vscode.window.showQuickPick(["true", "false"], { title })
+      return picked === undefined ? undefined : picked === "true"
+    }
+    if (definition.type === "select") {
+      return vscode.window.showQuickPick(definition.options ?? [], { title })
+    }
+    const value = await vscode.window.showInputBox({ title, value: definition.default === undefined ? undefined : String(definition.default) })
+    if (value === undefined) return undefined
+    if (definition.type === "number") return Number(value)
+    return value
+  }
+
   async reload(options: { showReport: boolean }): Promise<void> {
     const result = await this.registerWorkflows()
     this.lastResult = result
@@ -300,6 +480,10 @@ class WorkflowRegisterService implements vscode.Disposable {
     const lines: string[] = []
     const loaded = await loadWorkspaceWorkflows(sourceId)
     lines.push(...loaded.diagnostics)
+    const coreLoaded = await loadCoreWorkspaceWorkflows(sourceId)
+    this.coreWorkflows.clear()
+    for (const workflow of coreLoaded.workflows) this.coreWorkflows.set(workflow.id, workflow)
+    lines.push(...coreLoaded.diagnostics)
     if (loaded.workflows.length === 0) return { summary: "No .bob workflows were found.", lines }
 
     const bob = await loadBobApi()
@@ -348,6 +532,22 @@ async function loadWorkspaceWorkflows(sourceId: string): Promise<LoadResult> {
       const result = await loadWorkflowFile(sourceId, file)
       diagnostics.push(...result.diagnostics)
       if (result.workflow) workflows.push(result.workflow)
+    }
+  }
+  return { workflows, diagnostics }
+}
+
+async function loadCoreWorkspaceWorkflows(sourceId: string): Promise<{ workflows: CoreWorkflowDefinition[]; diagnostics: string[] }> {
+  const diagnostics: string[] = []
+  const workflows: CoreWorkflowDefinition[] = []
+  for (const folder of vscode.workspace.workspaceFolders ?? []) {
+    const files = await vscode.workspace.findFiles(new vscode.RelativePattern(folder, ".bob/workflows/*/WORKFLOW.md"))
+    for (const file of files) {
+      const relativePath = vscode.workspace.asRelativePath(file, false)
+      const text = Buffer.from(await vscode.workspace.fs.readFile(file)).toString("utf8").replace(/^\uFEFF/, "")
+      const parsed = parseWorkflowMarkdown({ sourceId, filePath: relativePath, text })
+      diagnostics.push(...parsed.diagnostics.map((line) => `- core: ${line.replace(/^- /, "")}`))
+      if (parsed.ok) workflows.push(parsed.workflow)
     }
   }
   return { workflows, diagnostics }

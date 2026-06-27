@@ -16,16 +16,17 @@
   "categories": [
     "Other"
   ],
-  "extensionDependencies": [
-    "IBM.bob-code"
-  ],
   "activationEvents": [
     "onStartupFinished",
     "onCommand:workflowRegister.reload",
     "onCommand:workflowRegister.inspect",
     "onCommand:workflowRegister.completeCurrentStep",
     "onCommand:workflowRegister.completeStep",
-    "onCommand:workflowRegister.inspectActiveSteps"
+    "onCommand:workflowRegister.inspectActiveSteps",
+    "onCommand:workflowRegister.runWorkflow",
+    "onCommand:workflowRegister.inspectRuns",
+    "onCommand:workflowRegister.resumeRun",
+    "onCommand:workflowRegister.retryCurrentStep"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -54,6 +55,26 @@
         "command": "workflowRegister.inspectActiveSteps",
         "title": "Inspect Active Bob Workflow Steps",
         "category": "Bob Workflow Register"
+      },
+      {
+        "command": "workflowRegister.runWorkflow",
+        "title": "Run Workflow",
+        "category": "Bob Workflow Register"
+      },
+      {
+        "command": "workflowRegister.inspectRuns",
+        "title": "Inspect Workflow Runs",
+        "category": "Bob Workflow Register"
+      },
+      {
+        "command": "workflowRegister.resumeRun",
+        "title": "Resume Workflow Run",
+        "category": "Bob Workflow Register"
+      },
+      {
+        "command": "workflowRegister.retryCurrentStep",
+        "title": "Retry Current Workflow Step",
+        "category": "Bob Workflow Register"
       }
     ],
     "configuration": {
@@ -77,7 +98,11 @@
         { "command": "workflowRegister.inspect" },
         { "command": "workflowRegister.completeCurrentStep" },
         { "command": "workflowRegister.completeStep" },
-        { "command": "workflowRegister.inspectActiveSteps" }
+        { "command": "workflowRegister.inspectActiveSteps" },
+        { "command": "workflowRegister.runWorkflow" },
+        { "command": "workflowRegister.inspectRuns" },
+        { "command": "workflowRegister.resumeRun" },
+        { "command": "workflowRegister.retryCurrentStep" }
       ]
     }
   },
@@ -88,7 +113,12 @@
     "vscode:prepublish": "npm run compile",
     "package": "vsce package --no-dependencies"
   },
+  "dependencies": {
+    "ajv": "^8.17.1",
+    "js-yaml": "^4.1.1"
+  },
   "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
     "@types/node": "^20.11.30",
     "@types/vscode": "^1.106.0",
     "typescript": "^5.4.5",

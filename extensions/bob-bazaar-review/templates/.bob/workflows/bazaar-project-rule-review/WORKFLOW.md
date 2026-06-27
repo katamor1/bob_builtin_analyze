@@ -1,4 +1,5 @@
 ---
+schemaVersion: workflow-register/v1
 name: bazaar-project-rule-review
 description: Review a Bazaar revision or range against project-specific rules.
 title: Bazaar Project Rule Review
@@ -100,6 +101,8 @@ resultCommand: bobBazaar.captureReviewResult
 Produce the final review-result JSON using the saved review analysis. Return exactly one fenced `json` code block and no other JSON-like object.
 
 The JSON must match this shape:
+
+Replace `<revision>` with the actual Bazaar revision or range before returning the JSON. Do not copy the placeholder literally.
 
 ```json
 {

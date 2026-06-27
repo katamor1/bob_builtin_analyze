@@ -50,3 +50,18 @@ test("activation schedules delayed workflow reload retries after Bob finishes st
   assert.match(source, /const retryDelaysMs = \[3000, 10000\]/)
   assert.match(source, /setTimeout\(\(\) => service\.reload\(\{ showReport: false \}\)/)
 })
+
+test("package contributes standalone workflow launcher commands without a hard Bob dependency", () => {
+  const packageJson = JSON.parse(fs.readFileSync(path.join(extensionRoot, "package.json"), "utf8"))
+  const commandIds = packageJson.contributes.commands.map((command) => command.command)
+
+  assert.equal(packageJson.extensionDependencies, undefined)
+  assert.ok(packageJson.activationEvents.includes("onCommand:workflowRegister.runWorkflow"))
+  assert.ok(packageJson.activationEvents.includes("onCommand:workflowRegister.inspectRuns"))
+  assert.ok(packageJson.activationEvents.includes("onCommand:workflowRegister.resumeRun"))
+  assert.ok(packageJson.activationEvents.includes("onCommand:workflowRegister.retryCurrentStep"))
+  assert.ok(commandIds.includes("workflowRegister.runWorkflow"))
+  assert.ok(commandIds.includes("workflowRegister.inspectRuns"))
+  assert.ok(commandIds.includes("workflowRegister.resumeRun"))
+  assert.ok(commandIds.includes("workflowRegister.retryCurrentStep"))
+})
