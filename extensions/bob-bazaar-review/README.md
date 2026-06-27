@@ -7,6 +7,8 @@
 | Command | Description |
 | --- | --- |
 | `Bob Bazaar: Open Bazaar Review GUI` | Opens a GUI for revision metadata lookup and Bob review packet creation. |
+| `Bob Bazaar: Collect Bazaar Review Context` | Returns JSON-serializable revision metadata, changed files, and review packet summary for Bob workflow steps. |
+| `Bob Bazaar: Load Project Review Rules` | Returns project checklist and review schema summary for Bob workflow steps. Missing rule files are treated as errors. |
 | `Bob Bazaar: Configure Bazaar MCP for Bob` | Writes a `bazaar` MCP server entry to `.bob/mcp.json`. |
 | `Bob Bazaar: Initialize Project Review Rules` | Creates `.bob/review/checklist.json` and `.bob/review/review-result.schema.json` when missing. |
 | `Bob Bazaar: Review Bazaar Revision with Bob` | Runs `bzr log -r REV` and `bzr diff -c REV`, then opens a Bob review packet. |
@@ -52,8 +54,38 @@ Required `.bob` files checked by the GUI:
 .bob/review/review-prompt-template.md
 .bob/review/examples/review-result.example.json
 .bob/skills/project-review-checklist/SKILL.md
-.bob/workflows/bazaar-project-rule-review.md
+.bob/workflows/bazaar-project-rule-review/WORKFLOW.md
 ```
+
+## Bob workflow command result bridge
+
+The bundled `bazaar-project-rule-review` workflow uses step commands to pass VSCode-side review data back to Bob:
+
+````md
+## Step: collect-context
+
+```workflow-step
+command: bobBazaar.collectReviewContext
+sendResult: true
+required: true
+completeOnSuccess: false
+```
+````
+
+`collectReviewContext` reads the open Bazaar review packet and returns metadata, changed files, byte count, and a summary that the full packet has already been added to Bob context.
+
+````md
+## Step: load-rules
+
+```workflow-step
+command: bobBazaar.loadReviewRules
+sendResult: true
+required: true
+completeOnSuccess: false
+```
+````
+
+`loadReviewRules` requires `.bob/review/checklist.json` and `.bob/review/review-result.schema.json`. If either file is missing, the required workflow step stays pending and Bob receives the command failure instead of silently using defaults.
 
 ## MCP tools
 

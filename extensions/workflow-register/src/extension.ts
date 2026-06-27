@@ -48,6 +48,11 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("workflowRegister.inspectActiveSteps", () => service.inspectActiveSteps())
   )
   service.reload({ showReport: false }).catch((error) => console.warn("Bob workflow registration failed", error))
+  const retryDelaysMs = [3000, 10000]
+  for (const delayMs of retryDelaysMs) {
+    const timer = setTimeout(() => service.reload({ showReport: false }).catch((error) => console.warn("Bob workflow registration retry failed", error)), delayMs)
+    context.subscriptions.push({ dispose: () => clearTimeout(timer) })
+  }
 }
 export function deactivate(): void {}
 
@@ -318,7 +323,8 @@ function buildStepPromptMessage(definition: WorkflowDefinition, todo: WorkflowTo
   const lines = ["Continue the Bob workflow using the current Step instructions.", "", stepBlock]
   appendCommandResult(lines, stepDefinition, commandResult)
   return lines.join("\n")
-}\nfunction buildStepPromptBlock(stepDefinition: WorkflowStepDefinition | undefined, todo: WorkflowTodoItem, index: number): string | undefined {
+}
+function buildStepPromptBlock(stepDefinition: WorkflowStepDefinition | undefined, todo: WorkflowTodoItem, index: number): string | undefined {
   const prompt = stepDefinition?.prompt.trim()
   if (!prompt) return undefined
   return [`<workflow_step index=\"${index + 1}\" id=\"${todo.id}\">`, `Title: ${todo.text}`, "", "<workflow_step_instructions>", prompt, "</workflow_step_instructions>", "</workflow_step>"].join("\n")

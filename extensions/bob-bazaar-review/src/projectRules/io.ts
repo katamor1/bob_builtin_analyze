@@ -41,6 +41,21 @@ export async function loadProjectChecklist(workspaceRoot: string, explicitPath?:
   }
 }
 
+export async function loadProjectChecklistRequired(workspaceRoot: string, explicitPath?: string): Promise<ProjectChecklist> {
+  const checklistPath = explicitPath ? resolveWorkspacePath(workspaceRoot, explicitPath) : getProjectRulesPaths(workspaceRoot).checklistPath
+  try {
+    const raw = await fs.readFile(checklistPath, "utf8")
+    const parsed = JSON.parse(raw)
+    assertChecklist(parsed, checklistPath)
+    return parsed
+  } catch (error: any) {
+    if (error?.code === "ENOENT") {
+      throw new Error(`Project checklist file not found: ${checklistPath}`)
+    }
+    throw new Error(`Failed to load project checklist ${checklistPath}: ${error?.message ?? String(error)}`)
+  }
+}
+
 export async function loadReviewResultSchema(workspaceRoot: string, explicitPath?: string): Promise<unknown> {
   const schemaPath = explicitPath ? resolveWorkspacePath(workspaceRoot, explicitPath) : getProjectRulesPaths(workspaceRoot).schemaPath
   try {
@@ -49,6 +64,19 @@ export async function loadReviewResultSchema(workspaceRoot: string, explicitPath
   } catch (error: any) {
     if (error?.code === "ENOENT") {
       return REVIEW_RESULT_SCHEMA
+    }
+    throw new Error(`Failed to load review result schema ${schemaPath}: ${error?.message ?? String(error)}`)
+  }
+}
+
+export async function loadReviewResultSchemaRequired(workspaceRoot: string, explicitPath?: string): Promise<unknown> {
+  const schemaPath = explicitPath ? resolveWorkspacePath(workspaceRoot, explicitPath) : getProjectRulesPaths(workspaceRoot).schemaPath
+  try {
+    const raw = await fs.readFile(schemaPath, "utf8")
+    return JSON.parse(raw)
+  } catch (error: any) {
+    if (error?.code === "ENOENT") {
+      throw new Error(`Review result schema file not found: ${schemaPath}`)
     }
     throw new Error(`Failed to load review result schema ${schemaPath}: ${error?.message ?? String(error)}`)
   }

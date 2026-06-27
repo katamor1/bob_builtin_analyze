@@ -110,7 +110,7 @@ Step section ids should match Todo ids. Missing Step sections are reported as wa
 
 A Step section can include a `workflow-step` fenced block. The block is parsed as simple YAML and removed from the prompt sent to Bob.
 
-```md
+````md
 ## Step: review-input
 
 ```workflow-step
@@ -121,13 +121,13 @@ completeOnSuccess: false
 ```
 
 Confirm the target Bazaar revision or revision range.
-```
+````
 
 Supported fields are:
 
 | Field | Default | Description |
 | --- | --- | --- |
-| `command` | unset | VSCode command to run when the Step starts. The initial allowlist supports `bobBazaar.openReviewGui`; add more commands in `runWorkflowStepCommand` before using them. |
+| `command` | unset | VSCode command to run when the Step starts. The allowlist supports `bobBazaar.openReviewGui`, `bobBazaar.collectReviewContext`, and `bobBazaar.loadReviewRules`. Add more commands in `runWorkflowStepCommand` before using them. |
 | `commandArgs` | `[]` | Simple list of command arguments. |
 | `sendResult` | `false` | Adds the command return value to the Bob message as `<workflow_step_command_result>`. |
 | `required` | `true` | If true, command failure keeps the Step open and shows an error. If false, the failure is included in the Bob message and the Step continues. |
@@ -137,7 +137,7 @@ The registration report includes `stepCommands=N` and lists each configured Step
 
 ## Example
 
-```md
+````md
 ---
 name: bazaar-project-rule-review
 description: Review a Bazaar revision or range against project-specific rules.
@@ -186,8 +186,26 @@ Confirm the target Bazaar revision or revision range. If the target is not known
 
 ## Step: collect-context
 
-Use the Bazaar review packet already added to Bob context. Summarize revision metadata, changed files, and important diff areas.
+```workflow-step
+command: bobBazaar.collectReviewContext
+sendResult: true
+required: true
+completeOnSuccess: false
 ```
+
+Use the Bazaar review context returned by the command. Summarize revision metadata, changed files, and important diff areas.
+
+## Step: load-rules
+
+```workflow-step
+command: bobBazaar.loadReviewRules
+sendResult: true
+required: true
+completeOnSuccess: false
+```
+
+Load and apply the project review checklist and review result schema.
+````
 
 ## Commands
 
