@@ -90,4 +90,44 @@ includeState:
 stateRequired: true
 ```
 
-Produce normalized review-result JSON, a Markdown checklist summary, and any unresolved questions that need human confirmation.
+Produce the final review-result JSON. Return exactly one fenced `json` code block and no other JSON-like object.
+
+The JSON must match this shape:
+
+```json
+{
+  "review_id": "bazaar-r2-project-rule-review",
+  "vcs": {
+    "type": "bazaar",
+    "repository": "<repository root>",
+    "revision_mode": "singleRevision",
+    "revision": "<revision>"
+  },
+  "checklist_results": [
+    {
+      "rule_id": "<checklist rule id>",
+      "title": "<checklist rule title>",
+      "status": "pass",
+      "severity": "info",
+      "confidence": "medium",
+      "evidence": [
+        {
+          "file": "<path>",
+          "summary": "<evidence summary>"
+        }
+      ],
+      "reason": "<reason>"
+    }
+  ],
+  "findings": [],
+  "summary": {
+    "pass": 0,
+    "fail": 0,
+    "unknown": 0,
+    "not_applicable": 0,
+    "blocked": 0
+  }
+}
+```
+
+After producing the JSON, ask the user to copy the JSON block and run `Bob Bazaar: Capture Review Result` or `Bob Bazaar: Save Review Result from Clipboard`. The command validates the JSON and saves `.bob/review/results/<review_id>.json` and `.bob/review/results/<review_id>.md`.
