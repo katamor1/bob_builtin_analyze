@@ -23,6 +23,8 @@
     "onCommand:bobBazaar.openReviewGui",
     "onCommand:bobBazaar.collectReviewContext",
     "onCommand:bobBazaar.loadReviewRules",
+    "onCommand:bobBazaar.captureReviewResult",
+    "onCommand:bobBazaar.saveReviewResultFromClipboard",
     "onCommand:bobBazaar.configureMcp",
     "onCommand:bobBazaar.initProjectRules",
     "onCommand:bobBazaar.reviewRevision",
@@ -47,6 +49,16 @@
       {
         "command": "bobBazaar.loadReviewRules",
         "title": "Load Project Review Rules",
+        "category": "Bob Bazaar"
+      },
+      {
+        "command": "bobBazaar.captureReviewResult",
+        "title": "Capture Review Result",
+        "category": "Bob Bazaar"
+      },
+      {
+        "command": "bobBazaar.saveReviewResultFromClipboard",
+        "title": "Save Review Result from Clipboard",
         "category": "Bob Bazaar"
       },
       {
@@ -127,6 +139,8 @@
         { "command": "bobBazaar.openReviewGui" },
         { "command": "bobBazaar.collectReviewContext" },
         { "command": "bobBazaar.loadReviewRules" },
+        { "command": "bobBazaar.captureReviewResult" },
+        { "command": "bobBazaar.saveReviewResultFromClipboard" },
         { "command": "bobBazaar.configureMcp" },
         { "command": "bobBazaar.initProjectRules" },
         { "command": "bobBazaar.reviewRevision" },
