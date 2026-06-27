@@ -39,8 +39,8 @@ The folder name should normally match `name`. A mismatch is reported as a warnin
 | `menuLabel` | label | Menu label shown by Bob. |
 | `mode` | `agent` | Intended Bob mode. The value is exposed through `getMode()`. |
 | `prompt` | Markdown body | Prompt sent when the workflow runs. Step sections are removed from the shared workflow instructions. |
-| `command` | unset | VSCode command to execute after the prompt is sent. |
-| `commandArgs` | `[]` | Simple list of command arguments. |
+| `command` | unset | Legacy workflow-level VSCode command executed on the first workflow step when that step has no step command. |
+| `commandArgs` | `[]` | Simple list of command arguments for the workflow-level command. |
 | `permissions` | `[read, mcp, skill]` or `[read, mcp, skill, todo]` | Bob approval permissions. `todo` is appended when Todo support is enabled. |
 | `todo` | auto | Enables Todo wrapper prompt. Defaults to true when Todo items are found. |
 | `todoSource` | `markdown` | Source of Todo items. Use `yaml` to read Todo items from front matter. |
@@ -106,6 +106,35 @@ Instructions for this Todo step.
 
 Step section ids should match Todo ids. Missing Step sections are reported as warnings during registration, but the workflow still registers.
 
+## Step command blocks
+
+A Step section can include a `workflow-step` fenced block. The block is parsed as simple YAML and removed from the prompt sent to Bob.
+
+```md
+## Step: review-input
+
+```workflow-step
+command: bobBazaar.openReviewGui
+sendResult: false
+required: true
+completeOnSuccess: false
+```
+
+Confirm the target Bazaar revision or revision range.
+```
+
+Supported fields are:
+
+| Field | Default | Description |
+| --- | --- | --- |
+| `command` | unset | VSCode command to run when the Step starts. The initial allowlist supports `bobBazaar.openReviewGui`; add more commands in `runWorkflowStepCommand` before using them. |
+| `commandArgs` | `[]` | Simple list of command arguments. |
+| `sendResult` | `false` | Adds the command return value to the Bob message as `<workflow_step_command_result>`. |
+| `required` | `true` | If true, command failure keeps the Step open and shows an error. If false, the failure is included in the Bob message and the Step continues. |
+| `completeOnSuccess` | `false` | If true, a successful command completes the Step automatically. |
+
+The registration report includes `stepCommands=N` and lists each configured Step command.
+
 ## Example
 
 ```md
@@ -133,7 +162,6 @@ permissions:
   - todo
 autoApproval: true
 workspaceRequired: true
-command: bobBazaar.openReviewGui
 ---
 # Bazaar Project Rule Review
 
@@ -146,6 +174,13 @@ Review the selected Bazaar revision or range using project-specific review rules
 Create a Todo list from the workflow Todo definitions first, then work through each item in order.
 
 ## Step: review-input
+
+```workflow-step
+command: bobBazaar.openReviewGui
+sendResult: false
+required: true
+completeOnSuccess: false
+```
 
 Confirm the target Bazaar revision or revision range. If the target is not known, ask the user to provide it before continuing.
 
