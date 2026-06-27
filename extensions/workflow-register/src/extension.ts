@@ -1,6 +1,7 @@
 import * as path from "path"
 import * as vscode from "vscode"
 import { buildWorkflowAgentPrompt, extractSubagentResult } from "./agentStep"
+import { executeResultHandoff, extractLastAssistantText, resultSourceForStep, ResultSource } from "./resultHandoff"
 
 const BOB_EXTENSION_ID = "IBM.bob-code"
 const WORKFLOW_GLOB = "**/.bob/workflows/*/WORKFLOW.md"
@@ -17,6 +18,8 @@ interface BobWorkflowTask {
   sendMessage?: (...args: unknown[]) => Promise<unknown> | Thenable<unknown> | unknown
   setStepComplete?: () => unknown
   startSubagent?: (prompt: string, preset?: unknown, mask?: unknown) => Promise<unknown> | Thenable<unknown> | unknown
+  getMessages?: () => unknown[]
+  getAllMetadata?: () => Record<string, unknown>
 }
 
 interface BobWorkflowStep {
@@ -61,6 +64,10 @@ interface WorkflowStepDefinition {
   includeState: string[]
   maxResultBytes: number
   stateRequired: boolean
+  captureResult: boolean
+  resultSource?: ResultSource
+  resultCommand?: string
+  resultCommandArgs: unknown[]
 }
 
 interface WorkflowStepCommandResult {
@@ -118,6 +125,8 @@ interface ActiveStep {
   stepId: string
   title: string
   task: BobWorkflowTask
+  stepDefinition?: WorkflowStepDefinition
+  messageStartIndex: number
   resolve: (value: boolean) => void
 }
 
@@ -152,7 +161,7 @@ class StepRuntime {
   private readonly workflowState = new Map<string, Map<string, string>>()
   private sequence = 0
 
-  hold(workflow: WorkflowDefinition, step: { id: string; title: string }, task: BobWorkflowTask): Promise<boolean> {
+  hold(workflow: WorkflowDefinition, step: { id: string; title: string }, task: BobWorkflowTask, stepDefinition?: WorkflowStepDefinition): Promise<boolean> {
     const key = `${++this.sequence}:${workflow.id}:${step.id}`
     return new Promise<boolean>((resolve) => {
       this.activeSteps.set(key, {
@@ -162,6 +171,8 @@ class StepRuntime {
         stepId: step.id,
         title: step.title,
         task,
+        stepDefinition,
+        messageStartIndex: getTaskMessageCount(task),
         resolve
       })
     })
@@ -198,6 +209,12 @@ class StepRuntime {
   async completeCurrentStep(): Promise<string> {
     const active = await this.pickActiveStep()
     if (!active) return "No active Bob workflow step."
+    const handoff = await captureHeldStepResult(active)
+    if (!handoff.ok) {
+      const message = `Could not capture Bob workflow step result: ${handoff.error}`
+      await vscode.window.showErrorMessage(message)
+      return message
+    }
     active.task.setStepComplete?.()
     active.resolve(true)
     this.activeSteps.delete(active.key)
@@ -219,6 +236,21 @@ class StepRuntime {
     )
     return picked?.step
   }
+}
+
+async function captureHeldStepResult(active: ActiveStep): Promise<{ ok: boolean; error?: string }> {
+  const step = active.stepDefinition
+  if (!step?.captureResult) return { ok: true }
+  const messages = active.task.getMessages?.()
+  const resultText = resultSourceForStep(step) === "lastAssistant" && Array.isArray(messages)
+    ? extractLastAssistantText(messages, active.messageStartIndex)
+    : undefined
+  return executeResultHandoff(step, resultText, { executeCommand: (command, ...args) => vscode.commands.executeCommand(command, ...args) })
+}
+
+function getTaskMessageCount(task: BobWorkflowTask): number {
+  const messages = task.getMessages?.()
+  return Array.isArray(messages) ? messages.length : 0
 }
 
 class WorkflowRegisterService implements vscode.Disposable {
@@ -381,13 +413,17 @@ async function loadWorkflowFile(sourceId: string, file: vscode.Uri): Promise<{ w
   const agentStepCount = Object.values(workflow.stepsById).filter((step) => step.runAgent).length
   const stateKeyCount = Object.values(workflow.stepsById).filter((step) => step.resultKey).length
   const includeStateCount = Object.values(workflow.stepsById).filter((step) => step.includeState.length > 0).length
-  diagnostics.push(`- ok: ${relativePath}: ${workflow.id}; todos=${workflow.todos.length}; todo=${workflow.todoEnabled}; steps=${stepCount}; stepCompletion=${workflow.stepCompletion}; stepMessage=${workflow.stepMessage}; stepPrompts=${stepPromptCount}; stepCommands=${stepCommandCount}; agentSteps=${agentStepCount}; stateKeys=${stateKeyCount}; includeState=${includeStateCount}`)
+  const captureResultCount = Object.values(workflow.stepsById).filter((step) => step.captureResult).length
+  diagnostics.push(`- ok: ${relativePath}: ${workflow.id}; todos=${workflow.todos.length}; todo=${workflow.todoEnabled}; steps=${stepCount}; stepCompletion=${workflow.stepCompletion}; stepMessage=${workflow.stepMessage}; stepPrompts=${stepPromptCount}; stepCommands=${stepCommandCount}; agentSteps=${agentStepCount}; stateKeys=${stateKeyCount}; includeState=${includeStateCount}; captureResults=${captureResultCount}`)
   for (const step of Object.values(workflow.stepsById).filter((candidate) => candidate.command)) diagnostics.push(`- step command: ${step.id} -> ${step.command}; sendResult=${step.sendResult}; required=${step.required}; completeOnSuccess=${step.completeOnSuccess}`)
   for (const step of Object.values(workflow.stepsById).filter((candidate) => candidate.runAgent)) diagnostics.push(`- agent step: ${step.id}; resultKey=${step.resultKey ?? "none"}; maxResultBytes=${step.maxResultBytes}`)
   for (const step of Object.values(workflow.stepsById).filter((candidate) => candidate.resultKey || candidate.includeState.length > 0)) {
     const savePart = step.resultKey ? `resultKey=${step.resultKey}` : "resultKey=none"
     const includePart = step.includeState.length > 0 ? `includeState=${step.includeState.join(",")}` : "includeState=none"
     diagnostics.push(`- step state: ${step.id}; ${savePart}; ${includePart}; stateRequired=${step.stateRequired}; maxResultBytes=${step.maxResultBytes}`)
+  }
+  for (const step of Object.values(workflow.stepsById).filter((candidate) => candidate.captureResult)) {
+    diagnostics.push(`- step capture: ${step.id}; resultSource=${resultSourceForStep(step)}; resultCommand=${step.resultCommand ?? "none"}`)
   }
   return { workflow, diagnostics }
 }
@@ -420,11 +456,12 @@ function buildWorkflowSteps(definition: WorkflowDefinition, stepRuntime: StepRun
 
 async function runTodoStep(definition: WorkflowDefinition, stepRuntime: StepRuntime, todo: WorkflowTodoItem, index: number, task: BobWorkflowTask): Promise<boolean> {
   if (index === 0) stepRuntime.resetState(definition)
+  const messageStartIndex = getTaskMessageCount(task)
   const stepDefinition = definition.stepsById[todo.id]
   const commandResult = await runWorkflowStepCommand(stepDefinition)
   if (commandResult && !commandResult.ok && stepDefinition?.required !== false) {
     await vscode.window.showErrorMessage(`Bob workflow step command failed: ${commandResult.command}: ${commandResult.error}`)
-    return stepRuntime.hold(definition, { id: todo.id, title: todo.text }, task)
+    return stepRuntime.hold(definition, { id: todo.id, title: todo.text }, task, stepDefinition)
   }
   if (commandResult?.ok && stepDefinition?.resultKey) {
     stepRuntime.saveState(definition, stepDefinition.resultKey, formatCommandResult(commandResult.value, stepDefinition.maxResultBytes))
@@ -432,7 +469,7 @@ async function runTodoStep(definition: WorkflowDefinition, stepRuntime: StepRunt
   const missingStateKeys = stepDefinition ? stepRuntime.missingStateKeys(definition, stepDefinition.includeState) : []
   if (missingStateKeys.length > 0 && stepDefinition?.stateRequired !== false) {
     await vscode.window.showErrorMessage(`Bob workflow step state is missing: ${missingStateKeys.join(", ")}`)
-    return stepRuntime.hold(definition, { id: todo.id, title: todo.text }, task)
+    return stepRuntime.hold(definition, { id: todo.id, title: todo.text }, task, stepDefinition)
   }
   const stateEntries = stepDefinition ? stepRuntime.stateEntries(definition, stepDefinition.includeState) : []
   const message = buildStepMessage(definition, todo, index, stepDefinition, commandResult, stateEntries)
@@ -442,10 +479,15 @@ async function runTodoStep(definition: WorkflowDefinition, stepRuntime: StepRunt
     const agentResult = await runWorkflowStepAgent(definition, todo, index, stepDefinition, stateEntries, task)
     if (!agentResult.ok) {
       await vscode.window.showErrorMessage(`Bob workflow agent step failed: ${todo.id}: ${agentResult.error}`)
-      return stepRuntime.hold(definition, { id: todo.id, title: todo.text }, task)
+      return stepRuntime.hold(definition, { id: todo.id, title: todo.text }, task, stepDefinition)
     }
     if (stepDefinition.resultKey) stepRuntime.saveState(definition, stepDefinition.resultKey, formatCommandResult(agentResult.value, stepDefinition.maxResultBytes))
     await task.sendMessage?.(agentResult.value, "assistant")
+    const handoff = await captureAgentStepResult(stepDefinition, agentResult.value, task, messageStartIndex)
+    if (!handoff.ok) {
+      await vscode.window.showErrorMessage(`Bob workflow result handoff failed: ${todo.id}: ${handoff.error}`)
+      return stepRuntime.hold(definition, { id: todo.id, title: todo.text }, task, stepDefinition)
+    }
     task.setStepComplete?.()
     return true
   }
@@ -453,7 +495,7 @@ async function runTodoStep(definition: WorkflowDefinition, stepRuntime: StepRunt
     task.setStepComplete?.()
     return true
   }
-  return completeOrHoldStep(task, definition, stepRuntime, todo.id, todo.text)
+  return completeOrHoldStep(task, definition, stepRuntime, todo.id, todo.text, stepDefinition)
 }
 
 async function runWorkflowStepAgent(definition: WorkflowDefinition, todo: WorkflowTodoItem, index: number, stepDefinition: WorkflowStepDefinition, stateEntries: WorkflowStateEntry[], task: BobWorkflowTask): Promise<{ ok: true; value: string } | { ok: false; error: string }> {
@@ -475,6 +517,15 @@ async function runWorkflowStepAgent(definition: WorkflowDefinition, todo: Workfl
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) }
   }
+}
+
+async function captureAgentStepResult(stepDefinition: WorkflowStepDefinition, agentResult: string, task: BobWorkflowTask, messageStartIndex: number): Promise<{ ok: boolean; error?: string }> {
+  if (!stepDefinition.captureResult) return { ok: true }
+  const source = resultSourceForStep(stepDefinition)
+  const resultText = source === "agent"
+    ? agentResult
+    : extractLastAssistantText(task.getMessages?.() ?? [], messageStartIndex)
+  return executeResultHandoff(stepDefinition, resultText, { executeCommand: (command, ...args) => vscode.commands.executeCommand(command, ...args) })
 }
 
 async function runWorkflowStepCommand(step?: WorkflowStepDefinition): Promise<WorkflowStepCommandResult | undefined> {
@@ -499,9 +550,9 @@ function buildStepMessage(definition: WorkflowDefinition, todo: WorkflowTodoItem
   return buildCurrentTodoMessage(todo, index, stepDefinition, commandResult, stateEntries)
 }
 
-async function completeOrHoldStep(task: BobWorkflowTask, definition: WorkflowDefinition, stepRuntime: StepRuntime, stepId: string, stepTitle: string): Promise<boolean> {
+async function completeOrHoldStep(task: BobWorkflowTask, definition: WorkflowDefinition, stepRuntime: StepRuntime, stepId: string, stepTitle: string, stepDefinition?: WorkflowStepDefinition): Promise<boolean> {
   if (definition.stepCompletion === "auto") { task.setStepComplete?.(); return true }
-  return stepRuntime.hold(definition, { id: stepId, title: stepTitle }, task)
+  return stepRuntime.hold(definition, { id: stepId, title: stepTitle }, task, stepDefinition)
 }
 
 function buildWorkflowStartMessage(definition: WorkflowDefinition, currentTodo?: WorkflowTodoItem, currentIndex = 0, stepDefinition?: WorkflowStepDefinition, commandResult?: WorkflowStepCommandResult, stateEntries: WorkflowStateEntry[] = []): string {
@@ -638,7 +689,11 @@ function parseWorkflowStepDefinition(stepId: string, markdown: string): Workflow
     resultKey: getString(config, "resultKey"),
     includeState: getList(config, "includeState"),
     maxResultBytes: getNumber(config, "maxResultBytes", DEFAULT_MAX_RESULT_BYTES),
-    stateRequired: getBoolean(config, "stateRequired", true)
+    stateRequired: getBoolean(config, "stateRequired", true),
+    captureResult: getBoolean(config, "captureResult", false),
+    resultSource: getResultSource(config),
+    resultCommand: getString(config, "resultCommand"),
+    resultCommandArgs: getList(config, "resultCommandArgs")
   }
 }
 
@@ -725,6 +780,7 @@ function parseScalar(value: string): unknown {
 function validateRequiredFrontMatter(fields: Record<string, unknown>): string[] { const errors: string[] = []; const name = getString(fields, "name"); if (!name) errors.push("missing required field 'name'."); if (name && !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name)) errors.push("field 'name' must contain only letters, numbers, dot, underscore, or hyphen and must not start with punctuation."); if (!getString(fields, "description")) errors.push("missing required field 'description'."); return errors }
 function getStepCompletion(fields: Record<string, unknown>, fallback: StepCompletionMode): StepCompletionMode { const value = getString(fields, "stepCompletion"); if (value === "auto" || value === "manual") return value; return typeof fields.autoCompleteSteps === "boolean" ? (fields.autoCompleteSteps ? "auto" : "manual") : fallback }
 function getStepMessage(fields: Record<string, unknown>, fallback: StepMessageMode): StepMessageMode { const value = getString(fields, "stepMessage"); return value === "full" || value === "current" || value === "silent" || value === "step" ? value : fallback }
+function getResultSource(fields: Record<string, unknown>): ResultSource | undefined { const value = getString(fields, "resultSource"); return value === "agent" || value === "lastAssistant" ? value : undefined }
 function getString(fields: Record<string, unknown>, key: string): string | undefined { const value = fields[key]; return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined }
 function getBoolean(fields: Record<string, unknown>, key: string, fallback: boolean): boolean { return typeof fields[key] === "boolean" ? fields[key] as boolean : fallback }
 function getNumber(fields: Record<string, unknown>, key: string, fallback: number): number { const value = fields[key]; if (typeof value === "number" && Number.isFinite(value)) return value; if (typeof value === "string" && /^\d+$/.test(value.trim())) return Number(value.trim()); return fallback }

@@ -29,7 +29,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("bobBazaar.openReviewGui", () => openBazaarReviewGui(context)),
     vscode.commands.registerCommand("bobBazaar.collectReviewContext", () => collectReviewContext()),
     vscode.commands.registerCommand("bobBazaar.loadReviewRules", () => loadReviewRules()),
-    vscode.commands.registerCommand("bobBazaar.captureReviewResult", () => captureReviewResult()),
+    vscode.commands.registerCommand("bobBazaar.captureReviewResult", (inputText?: string) => captureReviewResult(inputText)),
     vscode.commands.registerCommand("bobBazaar.saveReviewResultFromClipboard", () => saveReviewResultFromClipboard()),
     vscode.commands.registerCommand("bobBazaar.configureMcp", () => configureMcp(context)),
     vscode.commands.registerCommand("bobBazaar.initProjectRules", () => initProjectRules()),

@@ -12,6 +12,10 @@ export async function completeCurrentWorkflowStepAfterGuiAction(deps: WorkflowSt
       await warn(deps, `Could not complete the current Bob workflow step automatically. ${result}`)
       return false
     }
+    if (typeof result === "string" && /^Could not capture Bob workflow step result:/.test(result)) {
+      await warn(deps, `Could not complete the current Bob workflow step automatically. ${result}`)
+      return false
+    }
     return true
   } catch (error) {
     await warn(deps, `Could not complete the current Bob workflow step automatically. ${formatError(error)}`)

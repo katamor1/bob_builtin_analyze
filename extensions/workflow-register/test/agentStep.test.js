@@ -55,4 +55,5 @@ test("Bazaar workflow template lets AI-agent steps complete themselves", () => {
 
   assert.match(workflow, /## Step: analyze-changes[\s\S]*?```workflow-step[\s\S]*?runAgent: true[\s\S]*?resultKey: reviewAnalysis[\s\S]*?```/)
   assert.match(workflow, /## Step: output-result[\s\S]*?```workflow-step[\s\S]*?includeState:[\s\S]*?- reviewAnalysis[\s\S]*?runAgent: true[\s\S]*?```/)
+  assert.match(workflow, /## Step: output-result[\s\S]*?```workflow-step[\s\S]*?captureResult: true[\s\S]*?resultCommand: bobBazaar\.captureReviewResult[\s\S]*?```/)
 })

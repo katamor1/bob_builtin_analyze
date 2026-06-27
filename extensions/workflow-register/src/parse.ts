@@ -105,7 +105,24 @@ function parseStep(id: string, md: string): StepDef {
   const match = md.match(/(^|\r?\n)```workflow-step\s*\r?\n([\s\S]*?)\r?\n```\s*(?:\r?\n)?/i)
   const config = match ? parseYaml(match[2]) : {}
   const prompt = match ? md.slice(0, match.index) + md.slice((match.index ?? 0) + match[0].length) : md
-  return { id, prompt: prompt.trim(), command: stringField(config, "command"), commandArgs: listField(config, "commandArgs"), sendResult: boolField(config, "sendResult", false), required: boolField(config, "required", true), completeOnSuccess: boolField(config, "completeOnSuccess", false) }
+  return {
+    id,
+    prompt: prompt.trim(),
+    command: stringField(config, "command"),
+    commandArgs: listField(config, "commandArgs"),
+    sendResult: boolField(config, "sendResult", false),
+    required: boolField(config, "required", true),
+    completeOnSuccess: boolField(config, "completeOnSuccess", false),
+    runAgent: boolField(config, "runAgent", false),
+    resultKey: stringField(config, "resultKey"),
+    includeState: listField(config, "includeState"),
+    maxResultBytes: numberField(config, "maxResultBytes", 20000),
+    stateRequired: boolField(config, "stateRequired", true),
+    captureResult: boolField(config, "captureResult", false),
+    resultSource: resultSourceField(config),
+    resultCommand: stringField(config, "resultCommand"),
+    resultCommandArgs: listField(config, "resultCommandArgs")
+  }
 }
 
 function sectionNamed(md: string, name: string): string | undefined {
@@ -166,6 +183,8 @@ function parseYaml(text: string): Record<string, unknown> { const out: Record<st
 function scalar(value: string): unknown { const text = value.trim(); if (text === "true") return true; if (text === "false") return false; if ((text.startsWith('"') && text.endsWith('"')) || (text.startsWith("'") && text.endsWith("'"))) return text.slice(1, -1); return text }
 function stringField(obj: Record<string, unknown>, key: string): string | undefined { const value = obj[key]; return typeof value === "string" && value.trim() ? value.trim() : undefined }
 function boolField(obj: Record<string, unknown>, key: string, fallback: boolean): boolean { return typeof obj[key] === "boolean" ? obj[key] as boolean : fallback }
+function numberField(obj: Record<string, unknown>, key: string, fallback: number): number { const value = obj[key]; if (typeof value === "number" && Number.isFinite(value)) return value; if (typeof value === "string" && /^\d+$/.test(value.trim())) return Number(value.trim()); return fallback }
 function listField(obj: Record<string, unknown>, key: string, fallback: string[] = []): string[] { const value = obj[key]; if (Array.isArray(value)) return value.map(String).filter(Boolean); if (typeof value === "string" && value.trim()) return [value.trim()]; return fallback }
 function stepCompletionField(obj: Record<string, unknown>, fallback: StepCompletion): StepCompletion { const value = stringField(obj, "stepCompletion"); if (value === "auto" || value === "manual") return value; return typeof obj.autoCompleteSteps === "boolean" ? (obj.autoCompleteSteps ? "auto" : "manual") : fallback }
 function stepMessageField(obj: Record<string, unknown>): StepMessage { const value = stringField(obj, "stepMessage"); return value === "full" || value === "current" || value === "silent" || value === "step" ? value : "current" }
+function resultSourceField(obj: Record<string, unknown>): "agent" | "lastAssistant" | undefined { const value = stringField(obj, "resultSource"); return value === "agent" || value === "lastAssistant" ? value : undefined }

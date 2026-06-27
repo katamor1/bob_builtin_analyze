@@ -34,6 +34,20 @@ test("GUI workflow completion reports no active workflow step without failing th
   assert.match(warnings[0], /No active Bob workflow step/)
 })
 
+test("GUI workflow completion reports result capture failures without treating the step as completed", async () => {
+  const { completeCurrentWorkflowStepAfterGuiAction } = require("../out/workflowStepCompletion")
+  const warnings = []
+
+  const completed = await completeCurrentWorkflowStepAfterGuiAction({
+    executeCommand: async () => "Could not capture Bob workflow step result: No result text was available to hand off.",
+    showWarningMessage: async (message) => warnings.push(message)
+  })
+
+  assert.equal(completed, false)
+  assert.equal(warnings.length, 1)
+  assert.match(warnings[0], /Could not capture Bob workflow step result/)
+})
+
 test("GUI workflow completion reports command failures without failing the GUI action", async () => {
   const { completeCurrentWorkflowStepAfterGuiAction } = require("../out/workflowStepCompletion")
   const warnings = []

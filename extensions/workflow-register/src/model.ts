@@ -10,6 +10,9 @@ export interface BobWorkflowApi {
 export interface BobTask {
   sendMessage?: (...args: unknown[]) => unknown
   setStepComplete?: () => unknown
+  startSubagent?: (prompt: string, preset?: unknown, mask?: unknown) => unknown
+  getMessages?: () => unknown[]
+  getAllMetadata?: () => Record<string, unknown>
 }
 
 export interface BobWorkflow {
@@ -43,6 +46,15 @@ export interface StepDef {
   sendResult: boolean
   required: boolean
   completeOnSuccess: boolean
+  runAgent: boolean
+  resultKey?: string
+  includeState: string[]
+  maxResultBytes: number
+  stateRequired: boolean
+  captureResult: boolean
+  resultSource?: "agent" | "lastAssistant"
+  resultCommand?: string
+  resultCommandArgs: unknown[]
 }
 
 export interface CommandResult {
