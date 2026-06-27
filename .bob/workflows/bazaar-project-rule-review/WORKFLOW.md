@@ -22,7 +22,6 @@ permissions:
   - todo
 autoApproval: true
 workspaceRequired: true
-command: bobBazaar.openReviewGui
 ---
 # Bazaar Project Rule Review
 
@@ -35,6 +34,13 @@ Review the selected Bazaar revision or range using project-specific review rules
 Create a Todo list from the workflow Todo definitions first, then work through each item in order.
 
 ## Step: review-input
+
+```workflow-step
+command: bobBazaar.openReviewGui
+sendResult: false
+required: true
+completeOnSuccess: false
+```
 
 Confirm the target Bazaar revision or revision range. If the target is not known, ask the user to provide it before continuing.
 
