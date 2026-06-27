@@ -45,6 +45,23 @@ interface WorkflowTodoItem {
   raw: string
 }
 
+interface WorkflowStepDefinition {
+  id: string
+  prompt: string
+  command?: string
+  commandArgs: unknown[]
+  sendResult: boolean
+  required: boolean
+  completeOnSuccess: boolean
+}
+
+interface WorkflowStepCommandResult {
+  command: string
+  ok: boolean
+  value?: unknown
+  error?: string
+}
+
 interface WorkflowDefinition {
   id: string
   name: string
@@ -66,7 +83,7 @@ interface WorkflowDefinition {
   todoAsSteps: boolean
   stepCompletion: StepCompletionMode
   stepMessage: StepMessageMode
-  stepPrompts: Record<string, string>
+  stepsById: Record<string, WorkflowStepDefinition>
   todos: WorkflowTodoItem[]
   file: vscode.Uri
 }
@@ -323,7 +340,7 @@ async function loadWorkflowFile(
   const todoAsSteps = getBoolean(fields, "todoAsSteps", todoEnabled && todos.length > 0)
   const stepCompletion = getStepCompletion(fields, todoAsSteps ? "manual" : "auto")
   const stepMessage = getStepMessage(fields, "current")
-  const stepPrompts = extractStepSections(split.body)
+  const stepsById = extractWorkflowStepDefinitions(split.body)
   const prompt = getString(fields, "prompt") ?? split.body.trim()
   const promptWithoutTodo = removeMarkdownStepSections(
     todoEnabled && todoSource === "markdown" ? removeMarkdownSection(prompt, "Todo") : prompt
@@ -335,7 +352,7 @@ async function loadWorkflowFile(
 
   if (stepMessage === "step") {
     for (const todo of todos) {
-      if (!stepPrompts[todo.id]) {
+      if (!stepsById[todo.id]?.prompt) {
         diagnostics.push(`- warn: ${relativePath}: missing Step section for todo id '${todo.id}'.`)
       }
     }
@@ -367,13 +384,18 @@ async function loadWorkflowFile(
     todoAsSteps,
     stepCompletion,
     stepMessage,
-    stepPrompts,
+    stepsById,
     todos,
     file
   }
 
   const stepCount = workflow.todoEnabled && workflow.todoAsSteps && workflow.todos.length > 0 ? workflow.todos.length : 1
-  diagnostics.push(`- ok: ${relativePath}: ${workflow.id}; todos=${workflow.todos.length}; todo=${workflow.todoEnabled}; steps=${stepCount}; stepCompletion=${workflow.stepCompletion}; stepMessage=${workflow.stepMessage}; stepPrompts=${Object.keys(workflow.stepPrompts).length}`)
+  const stepPromptCount = Object.values(workflow.stepsById).filter((step) => step.prompt.length > 0).length
+  const stepCommandCount = Object.values(workflow.stepsById).filter((step) => step.command).length
+  diagnostics.push(`- ok: ${relativePath}: ${workflow.id}; todos=${workflow.todos.length}; todo=${workflow.todoEnabled}; steps=${stepCount}; stepCompletion=${workflow.stepCompletion}; stepMessage=${workflow.stepMessage}; stepPrompts=${stepPromptCount}; stepCommands=${stepCommandCount}`)
+  for (const step of Object.values(workflow.stepsById).filter((candidate) => candidate.command)) {
+    diagnostics.push(`- step command: ${step.id} -> ${step.command}; sendResult=${step.sendResult}; required=${step.required}; completeOnSuccess=${step.completeOnSuccess}`)
+  }
   return { workflow, diagnostics }
 }
 
@@ -402,12 +424,23 @@ function buildWorkflowSteps(definition: WorkflowDefinition, stepRuntime: StepRun
       id: todo.id,
       title: todo.text,
       execution: async (task) => {
-        const message = buildStepMessage(definition, todo, index)
+        const stepDefinition = definition.stepsById[todo.id]
+        const commandResult = await runWorkflowStepCommand(stepDefinition)
+        if (commandResult && !commandResult.ok && stepDefinition?.required !== false) {
+          await vscode.window.showErrorMessage(`Bob workflow step command failed: ${commandResult.command}: ${commandResult.error}`)
+          return stepRuntime.hold(definition, todo, task)
+        }
+
+        const message = buildStepMessage(definition, todo, index, stepDefinition, commandResult)
         if (message) {
           await task.sendMessage?.(message, "user")
         }
-        if (index === 0 && definition.command) {
+        if (index === 0 && definition.command && !stepDefinition?.command) {
           await vscode.commands.executeCommand(definition.command, ...definition.commandArgs)
+        }
+        if (stepDefinition?.completeOnSuccess && commandResult?.ok) {
+          task.setStepComplete?.()
+          return true
         }
         return completeOrHoldStep(task, definition, stepRuntime, todo.id, todo.text)
       }
@@ -429,12 +462,38 @@ function buildWorkflowSteps(definition: WorkflowDefinition, stepRuntime: StepRun
   ]
 }
 
-function buildStepMessage(definition: WorkflowDefinition, todo: WorkflowTodoItem, index: number): string | undefined {
-  if (index === 0) return buildWorkflowStartMessage(definition, todo, index)
-  if (definition.stepMessage === "silent") return undefined
-  if (definition.stepMessage === "full") return buildWorkflowTodoStepMessage(definition, todo, index)
-  if (definition.stepMessage === "step") return buildStepPromptMessage(definition, todo, index) ?? buildCurrentTodoMessage(todo, index)
-  return buildCurrentTodoMessage(todo, index)
+async function runWorkflowStepCommand(step?: WorkflowStepDefinition): Promise<WorkflowStepCommandResult | undefined> {
+  if (!step?.command) return undefined
+  try {
+    switch (step.command) {
+      case "bobBazaar.openReviewGui": {
+        const value = await vscode.commands.executeCommand("bobBazaar.openReviewGui", ...step.commandArgs)
+        return { command: step.command, ok: true, value }
+      }
+      default:
+        return { command: step.command, ok: false, error: "Unsupported step command. Add it to the workflow-register allowlist before use." }
+    }
+  } catch (error) {
+    return { command: step.command, ok: false, error: error instanceof Error ? error.message : String(error) }
+  }
+}
+
+function buildStepMessage(
+  definition: WorkflowDefinition,
+  todo: WorkflowTodoItem,
+  index: number,
+  stepDefinition?: WorkflowStepDefinition,
+  commandResult?: WorkflowStepCommandResult
+): string | undefined {
+  if (index === 0) return buildWorkflowStartMessage(definition, todo, index, stepDefinition, commandResult)
+  if (definition.stepMessage === "silent") {
+    return shouldIncludeCommandResult(stepDefinition, commandResult) ? buildCommandResultMessage(todo, index, commandResult) : undefined
+  }
+  if (definition.stepMessage === "full") return buildWorkflowTodoStepMessage(definition, todo, index, stepDefinition, commandResult)
+  if (definition.stepMessage === "step") {
+    return buildStepPromptMessage(definition, todo, index, stepDefinition, commandResult) ?? buildCurrentTodoMessage(todo, index, stepDefinition, commandResult)
+  }
+  return buildCurrentTodoMessage(todo, index, stepDefinition, commandResult)
 }
 
 async function completeOrHoldStep(
@@ -451,7 +510,13 @@ async function completeOrHoldStep(
   return stepRuntime.hold(definition, { id: stepId, title: stepTitle }, task)
 }
 
-function buildWorkflowStartMessage(definition: WorkflowDefinition, currentTodo?: WorkflowTodoItem, currentIndex = 0): string {
+function buildWorkflowStartMessage(
+  definition: WorkflowDefinition,
+  currentTodo?: WorkflowTodoItem,
+  currentIndex = 0,
+  stepDefinition?: WorkflowStepDefinition,
+  commandResult?: WorkflowStepCommandResult
+): string {
   const lines = [
     "You are starting the following Bob workflow.",
     "",
@@ -484,36 +549,64 @@ function buildWorkflowStartMessage(definition: WorkflowDefinition, currentTodo?:
   )
 
   if (definition.stepMessage === "step" && currentTodo) {
-    const stepBlock = buildStepPromptBlock(definition, currentTodo, currentIndex)
+    const stepBlock = buildStepPromptBlock(stepDefinition, currentTodo, currentIndex)
     if (stepBlock) {
       lines.push("", "Current workflow step:", stepBlock)
     }
   }
 
+  appendCommandResult(lines, stepDefinition, commandResult)
   return lines.join("\n")
 }
 
-function buildCurrentTodoMessage(todo: WorkflowTodoItem, index: number): string {
-  return [
+function buildCurrentTodoMessage(
+  todo: WorkflowTodoItem,
+  index: number,
+  stepDefinition?: WorkflowStepDefinition,
+  commandResult?: WorkflowStepCommandResult
+): string {
+  const lines = [
     "Current workflow Todo item:",
     `<workflow_todo index=\"${index + 1}\" id=\"${todo.id}\">`,
     `- [ ] ${todo.id}: ${todo.text}`,
     "</workflow_todo>"
+  ]
+  appendCommandResult(lines, stepDefinition, commandResult)
+  return lines.join("\n")
+}
+
+function buildCommandResultMessage(todo: WorkflowTodoItem, index: number, commandResult?: WorkflowStepCommandResult): string | undefined {
+  if (!commandResult) return undefined
+  return [
+    "Workflow step command result:",
+    `<workflow_todo index=\"${index + 1}\" id=\"${todo.id}\">`,
+    `- [ ] ${todo.id}: ${todo.text}`,
+    "</workflow_todo>",
+    "",
+    buildCommandResultBlock(commandResult)
   ].join("\n")
 }
 
-function buildStepPromptMessage(definition: WorkflowDefinition, todo: WorkflowTodoItem, index: number): string | undefined {
-  const stepBlock = buildStepPromptBlock(definition, todo, index)
+function buildStepPromptMessage(
+  definition: WorkflowDefinition,
+  todo: WorkflowTodoItem,
+  index: number,
+  stepDefinition?: WorkflowStepDefinition,
+  commandResult?: WorkflowStepCommandResult
+): string | undefined {
+  const stepBlock = buildStepPromptBlock(stepDefinition, todo, index)
   if (!stepBlock) return undefined
-  return [
+  const lines = [
     "Continue the Bob workflow using the current Step instructions.",
     "",
     stepBlock
-  ].join("\n")
+  ]
+  appendCommandResult(lines, stepDefinition, commandResult)
+  return lines.join("\n")
 }
 
-function buildStepPromptBlock(definition: WorkflowDefinition, todo: WorkflowTodoItem, index: number): string | undefined {
-  const prompt = definition.stepPrompts[todo.id]?.trim()
+function buildStepPromptBlock(stepDefinition: WorkflowStepDefinition | undefined, todo: WorkflowTodoItem, index: number): string | undefined {
+  const prompt = stepDefinition?.prompt.trim()
   if (!prompt) return undefined
 
   return [
@@ -527,8 +620,14 @@ function buildStepPromptBlock(definition: WorkflowDefinition, todo: WorkflowTodo
   ].join("\n")
 }
 
-function buildWorkflowTodoStepMessage(definition: WorkflowDefinition, todo: WorkflowTodoItem, index: number): string {
-  return [
+function buildWorkflowTodoStepMessage(
+  definition: WorkflowDefinition,
+  todo: WorkflowTodoItem,
+  index: number,
+  stepDefinition?: WorkflowStepDefinition,
+  commandResult?: WorkflowStepCommandResult
+): string {
+  const lines = [
     "Continue the Bob workflow Todo list.",
     "",
     "Workflow:",
@@ -543,7 +642,40 @@ function buildWorkflowTodoStepMessage(definition: WorkflowDefinition, todo: Work
     "</workflow_todo>",
     "",
     "Work only on this Todo item now. Mark it complete only after the corresponding work is actually done."
+  ]
+  appendCommandResult(lines, stepDefinition, commandResult)
+  return lines.join("\n")
+}
+
+function appendCommandResult(lines: string[], stepDefinition?: WorkflowStepDefinition, commandResult?: WorkflowStepCommandResult): void {
+  if (!shouldIncludeCommandResult(stepDefinition, commandResult) || !commandResult) return
+  lines.push("", buildCommandResultBlock(commandResult))
+}
+
+function shouldIncludeCommandResult(stepDefinition?: WorkflowStepDefinition, commandResult?: WorkflowStepCommandResult): boolean {
+  return Boolean(commandResult && (stepDefinition?.sendResult || !commandResult.ok))
+}
+
+function buildCommandResultBlock(commandResult: WorkflowStepCommandResult): string {
+  return [
+    `<workflow_step_command_result command=\"${escapeXmlAttribute(commandResult.command)}\" ok=\"${commandResult.ok}\">`,
+    commandResult.ok ? formatCommandResult(commandResult.value) : `ERROR: ${commandResult.error}`,
+    "</workflow_step_command_result>"
   ].join("\n")
+}
+
+function formatCommandResult(value: unknown): string {
+  if (value === undefined) return "undefined"
+  if (typeof value === "string") return value
+  try {
+    return JSON.stringify(value, null, 2)
+  } catch {
+    return String(value)
+  }
+}
+
+function escapeXmlAttribute(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/\"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
 }
 
 function extractMarkdownTodoItems(markdown: string): WorkflowTodoItem[] {
@@ -559,9 +691,9 @@ function extractMarkdownTodoItems(markdown: string): WorkflowTodoItem[] {
   return todos
 }
 
-function extractStepSections(markdown: string): Record<string, string> {
+function extractWorkflowStepDefinitions(markdown: string): Record<string, WorkflowStepDefinition> {
   const lines = markdown.split(/\r?\n/)
-  const sections: Record<string, string> = {}
+  const sections: Record<string, WorkflowStepDefinition> = {}
 
   for (let index = 0; index < lines.length; index += 1) {
     const match = lines[index].match(/^(#{1,6})\s+(.+?)\s*$/)
@@ -577,10 +709,35 @@ function extractStepSections(markdown: string): Record<string, string> {
       if (nextHeading && nextHeading[1].length <= level) break
       sectionLines.push(lines[sectionIndex])
     }
-    sections[stepId] = sectionLines.join("\n").trim()
+    sections[stepId] = parseWorkflowStepDefinition(stepId, sectionLines.join("\n"))
   }
 
   return sections
+}
+
+function parseWorkflowStepDefinition(stepId: string, markdown: string): WorkflowStepDefinition {
+  const { config, prompt } = extractWorkflowStepConfig(markdown)
+  return {
+    id: stepId,
+    prompt: prompt.trim(),
+    command: getString(config, "command"),
+    commandArgs: getList(config, "commandArgs"),
+    sendResult: getBoolean(config, "sendResult", false),
+    required: getBoolean(config, "required", true),
+    completeOnSuccess: getBoolean(config, "completeOnSuccess", false)
+  }
+}
+
+function extractWorkflowStepConfig(markdown: string): { config: Record<string, unknown>; prompt: string } {
+  const fence = "`".repeat(3)
+  const pattern = new RegExp(`(^|\\r?\\n)${fence}workflow-step\\s*\\r?\\n([\\s\\S]*?)\\r?\\n${fence}\\s*(?:\\r?\\n)?`, "i")
+  const match = markdown.match(pattern)
+  if (!match) return { config: {}, prompt: markdown }
+
+  const config = parseYamlFrontMatter(match[2])
+  const before = markdown.slice(0, match.index)
+  const after = markdown.slice((match.index ?? 0) + match[0].length)
+  return { config, prompt: `${before}${after}` }
 }
 
 function extractMarkdownSection(markdown: string, headingName: string): string | undefined {
