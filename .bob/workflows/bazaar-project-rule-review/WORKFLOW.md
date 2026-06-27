@@ -49,6 +49,8 @@ Confirm the target Bazaar revision or revision range. If the target is not known
 ```workflow-step
 command: bobBazaar.collectReviewContext
 sendResult: true
+resultKey: reviewContext
+maxResultBytes: 20000
 required: true
 completeOnSuccess: false
 ```
@@ -60,6 +62,8 @@ Use the Bazaar review context returned by the command. Summarize revision metada
 ```workflow-step
 command: bobBazaar.loadReviewRules
 sendResult: true
+resultKey: reviewRules
+maxResultBytes: 20000
 required: true
 completeOnSuccess: false
 ```
@@ -68,8 +72,22 @@ Load and apply the project review checklist and review result schema. Identify w
 
 ## Step: analyze-changes
 
+```workflow-step
+includeState:
+  - reviewContext
+  - reviewRules
+stateRequired: true
+```
+
 Analyze the changes against the checklist. Focus on interface impact, error handling, regression risk, data compatibility, and missing tests.
 
 ## Step: output-result
+
+```workflow-step
+includeState:
+  - reviewContext
+  - reviewRules
+stateRequired: true
+```
 
 Produce normalized review-result JSON, a Markdown checklist summary, and any unresolved questions that need human confirmation.
