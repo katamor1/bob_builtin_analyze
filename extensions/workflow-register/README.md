@@ -53,7 +53,7 @@ The folder name should normally match `name`. A mismatch is reported as a warnin
 | `workspaceRequired` | `true` | Whether the workflow is enabled only when Bob supplies a workspace. |
 | `hidden` | `false` | Whether the workflow should be hidden from Bob UI. |
 
-The initial parser supports a small YAML subset: top-level scalar fields and simple lists.
+The parser supports a small YAML subset: top-level scalar fields and simple lists.
 
 ## Todo section
 
@@ -132,8 +132,52 @@ Supported fields are:
 | `sendResult` | `false` | Adds the command return value to the Bob message as `<workflow_step_command_result>`. |
 | `required` | `true` | If true, command failure keeps the Step open and shows an error. If false, the failure is included in the Bob message and the Step continues. |
 | `completeOnSuccess` | `false` | If true, a successful command completes the Step automatically. |
+| `resultKey` | unset | Saves a successful command result into workflow state under this key. |
+| `includeState` | `[]` | Adds saved state values to the Bob message as `<workflow_state>`. |
+| `maxResultBytes` | `20000` | Truncates saved command results and command-result messages. |
+| `stateRequired` | `true` | If true, missing `includeState` keys keep the Step open and show an error. |
 
-The registration report includes `stepCommands=N` and lists each configured Step command.
+The registration report includes `stepCommands=N`, `stateKeys=N`, `includeState=N`, and lists each configured Step command/state mapping.
+
+## Workflow state bridge
+
+A Step can save command output and later Steps can include it. This keeps important data available even when the command result was produced in an earlier Bob message.
+
+````md
+## Step: collect-context
+
+```workflow-step
+command: bobBazaar.collectReviewContext
+sendResult: true
+resultKey: reviewContext
+maxResultBytes: 20000
+required: true
+```
+
+Collect review context.
+
+## Step: analyze-changes
+
+```workflow-step
+includeState:
+  - reviewContext
+stateRequired: true
+```
+
+Analyze the current change using the saved context.
+````
+
+When `analyze-changes` starts, Bob receives a block like this:
+
+```xml
+<workflow_state>
+<state key="reviewContext">
+...
+</state>
+</workflow_state>
+```
+
+Workflow state is reset at the first Todo step of each workflow run.
 
 ## Example
 
@@ -182,29 +226,42 @@ required: true
 completeOnSuccess: false
 ```
 
-Confirm the target Bazaar revision or revision range. If the target is not known, ask the user to provide it before continuing.
+Confirm the target Bazaar revision or revision range.
 
 ## Step: collect-context
 
 ```workflow-step
 command: bobBazaar.collectReviewContext
 sendResult: true
+resultKey: reviewContext
 required: true
 completeOnSuccess: false
 ```
 
-Use the Bazaar review context returned by the command. Summarize revision metadata, changed files, and important diff areas.
+Use the Bazaar review context returned by the command.
 
 ## Step: load-rules
 
 ```workflow-step
 command: bobBazaar.loadReviewRules
 sendResult: true
+resultKey: reviewRules
 required: true
 completeOnSuccess: false
 ```
 
 Load and apply the project review checklist and review result schema.
+
+## Step: analyze-changes
+
+```workflow-step
+includeState:
+  - reviewContext
+  - reviewRules
+stateRequired: true
+```
+
+Analyze the changes against the checklist.
 ````
 
 ## Commands
