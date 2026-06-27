@@ -10,9 +10,40 @@ import { ReviewResult } from "./projectRules/types"
 import { openBazaarReviewGui } from "./reviewGui"
 import { buildAddedFilesContentSection, loadBazaarRevisionPacketInput } from "./revisionInfo"
 
+interface BazaarReviewContextBridgeResult {
+  status: "ok"
+  workspacePath?: string
+  mode?: string
+  target?: string
+  revision?: string
+  baseRevision?: string
+  targetRevision?: string
+  revno?: string
+  author?: string
+  committer?: string
+  timestamp?: string
+  changedFiles: Array<{ path: string; status: string }>
+  packetBytes: number
+  packetSummary: string
+}
+
+interface ReviewRulesBridgeResult {
+  status: "ok"
+  checklistPath: string
+  schemaPath: string
+  project?: string
+  checklistVersion?: string
+  checklistItems: number
+  categories: string[]
+  schemaTopLevelKeys: string[]
+  summary: string
+}
+
 export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.commands.registerCommand("bobBazaar.openReviewGui", () => openBazaarReviewGui(context)),
+    vscode.commands.registerCommand("bobBazaar.collectReviewContext", () => collectReviewContext()),
+    vscode.commands.registerCommand("bobBazaar.loadReviewRules", () => loadReviewRules()),
     vscode.commands.registerCommand("bobBazaar.configureMcp", () => configureMcp(context)),
     vscode.commands.registerCommand("bobBazaar.initProjectRules", () => initProjectRules()),
     vscode.commands.registerCommand("bobBazaar.reviewRevision", () => reviewRevision(context, false)),
@@ -25,6 +56,57 @@ export function activate(context: vscode.ExtensionContext): void {
 
 export function deactivate(): void {
   // No background process is kept by the extension host. Bob starts the MCP server on demand.
+}
+
+async function collectReviewContext(): Promise<BazaarReviewContextBridgeResult> {
+  const packet = findReviewPacketText()
+  if (!packet) {
+    throw new Error("No Bazaar review packet document is open. Use Bob Bazaar Review to create and add the review packet first.")
+  }
+
+  const metadata = parsePacketMetadata(packet)
+  const changedFiles = parsePacketChangedFiles(packet)
+  return {
+    status: "ok",
+    workspacePath: metadata["repository root"],
+    mode: metadata["review mode"],
+    target: metadata["revision target"] ?? metadata.target,
+    revision: metadata.revision,
+    baseRevision: metadata.base_revision,
+    targetRevision: metadata.target_revision,
+    revno: metadata.revno,
+    author: metadata.author,
+    committer: metadata.committer,
+    timestamp: metadata.timestamp,
+    changedFiles,
+    packetBytes: Buffer.byteLength(packet, "utf8"),
+    packetSummary: "Bazaar review packet has already been created and should already be added to Bob context. Use the packet in context for full diff details."
+  }
+}
+
+async function loadReviewRules(): Promise<ReviewRulesBridgeResult> {
+  const folder = await pickWorkspaceFolder()
+  if (!folder) throw new Error("Open a Bazaar workspace folder first.")
+
+  const config = vscode.workspace.getConfiguration("bobBazaar")
+  const checklistPath = config.get<string>("projectRules.checklistPath", ".bob/review/checklist.json")
+  const schemaPath = config.get<string>("projectRules.schemaPath", ".bob/review/review-result.schema.json")
+  const [checklist, schema] = await Promise.all([
+    loadProjectChecklist(folder.uri.fsPath, checklistPath),
+    loadReviewResultSchema(folder.uri.fsPath, schemaPath)
+  ])
+  const categories = Array.from(new Set(checklist.rules.map((rule) => rule.category))).sort()
+  return {
+    status: "ok",
+    checklistPath,
+    schemaPath,
+    project: checklist.project,
+    checklistVersion: checklist.version,
+    checklistItems: checklist.rules.length,
+    categories,
+    schemaTopLevelKeys: Object.keys(schema).sort(),
+    summary: `Loaded ${checklist.rules.length} project review rule(s) across ${categories.length} categor(ies). Review result schema is available.`
+  }
 }
 
 async function configureMcp(context: vscode.ExtensionContext): Promise<void> {
@@ -204,6 +286,47 @@ async function pickWorkspaceFolder(): Promise<vscode.WorkspaceFolder | undefined
     { title: "Select Bazaar workspace" }
   )
   return picked?.folder
+}
+
+function findReviewPacketText(): string | undefined {
+  const active = vscode.window.activeTextEditor?.document
+  const visible = vscode.window.visibleTextEditors.map((editor) => editor.document)
+  const documents = [active, ...visible, ...vscode.workspace.textDocuments].filter((doc): doc is vscode.TextDocument => Boolean(doc))
+  for (const document of documents) {
+    const text = document.getText()
+    if (text.includes("# Bazaar Revision Review Request") && text.includes("## Bazaar diff")) return text
+  }
+  return undefined
+}
+
+function parsePacketMetadata(packet: string): Record<string, string> {
+  const result: Record<string, string> = {}
+  for (const line of packet.split(/\r?\n/)) {
+    const header = line.match(/^(VCS|Repository root|Review mode|Revision target):\s*(.+)$/)
+    if (header) {
+      result[header[1].toLowerCase()] = header[2].trim()
+      continue
+    }
+    const item = line.match(/^-\s+([A-Za-z0-9_ -]+):\s*(.+)$/)
+    if (item) result[item[1].trim().toLowerCase().replace(/[ -]/g, "_")] = item[2].trim()
+  }
+  return result
+}
+
+function parsePacketChangedFiles(packet: string): Array<{ path: string; status: string }> {
+  const lines = packet.split(/\r?\n/)
+  const result: Array<{ path: string; status: string }> = []
+  let inChangedFiles = false
+  for (const line of lines) {
+    if (/^###\s+Changed files\s*$/i.test(line)) {
+      inChangedFiles = true
+      continue
+    }
+    if (inChangedFiles && /^#{1,3}\s+/.test(line)) break
+    const match = inChangedFiles ? line.match(/^-\s+([^:]+):\s+(.+)$/) : undefined
+    if (match) result.push({ status: match[1].trim(), path: match[2].trim() })
+  }
+  return result
 }
 
 async function showAndOfferBobContext(context: vscode.ExtensionContext, packet: string, filename: string): Promise<void> {
