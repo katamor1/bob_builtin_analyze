@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+	<PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011" xmlns:d="http://schemas.microsoft.com/developer/vsx-schema-design/2011">
+		<Metadata>
+			<Identity Language="en-US" Id="zopeneditor" Version="6.6.0" Publisher="IBM" />
+			<DisplayName>IBM Z Open Editor</DisplayName>
+			<Description xml:space="preserve">Provides COBOL, PL/I, HLASM, and REXX language servers, as well as tools for IBM Z development.</Description>
+			<Tags>COBOL,PL/I,PLI,PL1,JCL,HLASM,REXX,ASM,IDE,LSP,language-server,z/OS,zOS,IBM Z,Z Software,Zowe,Mainframe,snippet,keybindings,cobol,__ext_cbl,__ext_cpy,__ext_cob,__ext_copy,__ext_copybook,__ext_cobol,__ext_cobcopy,pl1,__ext_pli,__ext_pl1,__ext_pc,__ext_pci,__ext_plinc,__ext_pcx,__ext_inc,__ext_include,jcl,__ext_jcl,__ext_cntl,__ext_proc,jesjcl,jesmsglg,spool,hlasm,__ext_s,__ext_assemble,__ext_asm,__ext_hla,__ext_hlasm,__ext_copyasm,__ext_macasm,__ext_bms,__ext_mac,__ext_dbd,__ext_mfs,__ext_pcb,hlasmlst,HLASMLST,__ext_langx,rexx,__ext_rexx,__ext_rex,__web_extension</Tags>
+			<Categories>Programming Languages,Snippets</Categories>
+			<GalleryFlags>Public</GalleryFlags>
+			
+			<Properties>
+				<Property Id="Microsoft.VisualStudio.Code.Engine" Value="^1.102.3" />
+				<Property Id="Microsoft.VisualStudio.Code.ExtensionDependencies" Value="Zowe.vscode-extension-for-zowe" />
+				<Property Id="Microsoft.VisualStudio.Code.ExtensionPack" Value="" />
+				<Property Id="Microsoft.VisualStudio.Code.ExtensionKind" Value="workspace,web" />
+				<Property Id="Microsoft.VisualStudio.Code.LocalizedLanguages" Value="" />
+				<Property Id="Microsoft.VisualStudio.Code.EnabledApiProposals" Value="" />
+				
+				<Property Id="Microsoft.VisualStudio.Code.ExecutesCode" Value="true" />
+				
+				<Property Id="Microsoft.VisualStudio.Services.Links.Source" Value="https://github.com/IBM/zopeneditor-about.git" />
+				<Property Id="Microsoft.VisualStudio.Services.Links.Getstarted" Value="https://github.com/IBM/zopeneditor-about.git" />
+				<Property Id="Microsoft.VisualStudio.Services.Links.GitHub" Value="https://github.com/IBM/zopeneditor-about.git" />
+				<Property Id="Microsoft.VisualStudio.Services.Links.Support" Value="https://github.com/IBM/zopeneditor-about/issues" />
+				<Property Id="Microsoft.VisualStudio.Services.Links.Learn" Value="https://github.com/IBM/zopeneditor-about#readme" />
+				
+				
+				<Property Id="Microsoft.VisualStudio.Services.GitHubFlavoredMarkdown" Value="true" />
+				<Property Id="Microsoft.VisualStudio.Services.Content.Pricing" Value="Free"/>
+
+				
+				
+			</Properties>
+			<License>extension/LICENSE.txt</License>
+			<Icon>extension/images/ibmzopeneditor.png</Icon>
+		</Metadata>
+		<Installation>
+			<InstallationTarget Id="Microsoft.VisualStudio.Code"/>
+		</Installation>
+		<Dependencies/>
+		<Assets>
+			<Asset Type="Microsoft.VisualStudio.Code.Manifest" Path="extension/package.json" Addressable="true" />
+			<Asset Type="Microsoft.VisualStudio.Services.Content.Details" Path="extension/readme.md" Addressable="true" />
+<Asset Type="Microsoft.VisualStudio.Services.Content.Changelog" Path="extension/changelog.md" Addressable="true" />
+<Asset Type="Microsoft.VisualStudio.Services.Content.License" Path="extension/LICENSE.txt" Addressable="true" />
+<Asset Type="Microsoft.VisualStudio.Services.Icons.Default" Path="extension/images/ibmzopeneditor.png" Addressable="true" />
+		</Assets>
+	</PackageManifest>

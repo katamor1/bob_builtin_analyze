@@ -1,0 +1,216 @@
+{
+  "_copyright": "Licensed Materials - Property of IBM - (c) Copyright IBM Corporation 2021, 2023. All Rights Reserved. Note to U.S. Government Users Restricted Rights: Use, duplication or disclosure restricted by GSA ADP Schedule Contract with IBM Corp.",
+  "name": "REXX",
+  "scopeName": "source.rexx",
+  "fileTypes": ["rexx"],
+  "patterns": [
+    { "include": "#comment" },
+    { "include": "#include-keyword" },
+    { "include": "#hexadecimal-string" },
+    { "include": "#binary-string" },
+    { "include": "#literal-string" },
+    { "include": "#number" },
+    { "include": "#comparison" },
+    { "include": "#arithmetic" },
+    { "include": "#boolean-logic" },
+    { "include": "#keyword-instruction" },
+    { "include": "#value-subkeyword" },
+    { "include": "#on-off-subkeyword" },
+    { "include": "#on-off-subkeyword-condition" },
+    { "include": "#call-keyword-name" },
+    { "include": "#when-otherwise-end-subkeyword" },
+    { "include": "#do-keyword" },
+    { "include": "#if-then-else-subkeyword" },
+    { "include": "#numeric-digits-form-fuzz-subkeyword" },
+    { "include": "#numeric-form-subkeyword-scientific-engineering-value-option" },
+    { "include": "#parse-keyword" },
+    { "include": "#parse-value-subkeyword-with-subkeyword" },
+    { "include": "#expose-subkeyword" },
+    { "include": "#trace-subkeyword" },
+    { "include": "#function" },
+    { "include": "#label" },
+    { "include": "#constant-symbol" },
+    { "include": "#compound-symbol" },
+    { "include": "#stem" },
+    { "include": "#simple-symbol" }
+  ],
+  "repository": {
+    "comment": {
+      "name": "comment.block.rexx",
+      "begin": "\\/\\*(?!%)",
+      "end": "\\*\\/",
+      "patterns": [{ "include": "#comment" }]
+    },
+    "hexadecimal-string": {
+      "name": "constant.numeric.rexx",
+      "match": "(^|(?<=[^a-zA-Z0-9@#$¢.!?_]))(([\\'][^\\']*[\\'])|([\"][^\"]*[\"]))[xX](?=[^a-zA-Z0-9@#$¢.!?_])"
+    },
+    "binary-string": {
+      "name": "constant.numeric.rexx",
+      "match": "(^|(?<=[^a-zA-Z0-9@#$¢.!?_]))(([\\'][^\\']*[\\'])|([\"][^\"]*[\"]))[bB](?=[^a-zA-Z0-9@#$¢.!?_])"
+    },
+    "literal-string": {
+      "patterns": [{ "include": "#single-quoted-string" }, { "include": "#double-quoted-string" }]
+    },
+    "single-quoted-string": {
+      "name": "string.quoted.single.rexx",
+      "begin": "\\'",
+      "end": "\\'"
+    },
+    "double-quoted-string": {
+      "name": "string.quoted.double.rexx",
+      "begin": "\"",
+      "end": "\""
+    },
+    "number": {
+      "name": "constant.numeric.rexx",
+      "match": "(^|(?<=[^a-zA-Z0-9@#$¢.!?_]))([+-][\\s]*){0,1}(([0-9]+[.][0-9]+)|([.][0-9]+)|([0-9]+[.])|([0-9]+))(?=[^a-zA-Z0-9@#$¢.!?_])"
+    },
+    "comparison": {
+      "name": "keyword.operator.rexx",
+      "match": "\\\\[\\s]*<[\\s]*<|\\\\[\\s]*>[\\s]*>|¬[\\s]*<[\\s]*<|¬[\\s]*>[\\s]*>|\\\\[\\s]*=[\\s]*=|/[\\s]*=[\\s]*=|¬[\\s]*=[\\s]*=|>[\\s]*>[\\s]*=|<[\\s]*<[\\s]*=|\\\\[\\s]*<|\\\\[\\s]*>|¬[\\s]*<|¬[\\s]*>|\\\\[\\s]*=|/[\\s]*=|¬[\\s]*=|=[\\s]*=|>[\\s]*>|<[\\s]*<|<[\\s]*>|>[\\s]*<|>[\\s]*=|<[\\s]*=|>|<|="
+    },
+    "arithmetic": {
+      "name": "keyword.operator.rexx",
+      "match": "\\+|-|/[\\s]*/|/|\\*[\\s]*\\*|%|\\*"
+    },
+    "boolean-logic": {
+      "name": "keyword.operator.rexx",
+      "match": "&[\\s]*&|&|\\\\|\\|[\\s]*\\||\\||¬"
+    },
+    "keyword-instruction": {
+      "name": "keyword.control.rexx",
+      "match": "(?<=^|.|[:;]|ELSE[\\s]|Else[\\s]|else[\\s]|THEN[\\s]|Then[\\s]|then[\\s]|OTHERWISE[\\s]|Otherwise[\\s]|otherwise[\\s])[\\s]*((?i)(ADDRESS|ARG|CALL|DROP|EXIT|IF|INTERPRET|ITERATE|LEAVE|NOP|NUMERIC|OPTIONS|PARSE|PROCEDURE|PULL|PUSH|QUEUE|RETURN|SAY|SELECT|SIGNAL|TRACE|UPPER))(?=[^a-zA-Z0-9@#$¢.!?_])(?![\\s]*[=:])"
+    },
+    "value-subkeyword": {
+      "name": "keyword.control.rexx",
+      "match": "(?<=ADDRESS|Address|address)[\\s]+((?i)(VALUE))(?=[^a-zA-Z0-9@#$¢.!?_])"
+    },
+    "on-off-subkeyword": {
+      "name": "keyword.control.rexx",
+      "match": "(?<=CALL|Call|call|SIGNAL|Signal|signal)[\\s]+((?i)(ON|OFF))(?=[^a-zA-Z0-9@#$¢.!?_])"
+    },
+    "on-off-subkeyword-condition": {
+      "name": "keyword.control.rexx",
+      "match": "(?<=[\\s]ON|[\\s]On|[\\s]on|[\\s]OFF|[\\s]Off|[\\s]off)[\\s]+((?i)(ERROR|FAILURE|HALT|NOVALUE|SYNTAX))(?=[^a-zA-Z0-9@#$¢.!?_])"
+    },
+    "when-otherwise-end-subkeyword": {
+      "name": "keyword.control.rexx",
+      "match": "(?<=^|[^a-zA-Z0-9@#$¢.!?_])((?i)(WHEN|OTHERWISE|END))(?=[^a-zA-Z0-9@#$¢.!?_])(?![\\s]*[=:])"
+    },
+    "do-keyword": {
+      "begin": "(?<=^|[:;]|ELSE[\\s]|Else[\\s]|else[\\s]|THEN[\\s]|Then[\\s]|then[\\s]|OTHERWISE[\\s]|Otherwise[\\s]|otherwise[\\s])[\\s]*((?i)(DO))(?=[^a-zA-Z0-9@#$¢.!?_])(?![\\s]*[=:])",
+      "end": "(?=\\/\\*)|\\n",
+      "beginCaptures": { "2": { "name": "keyword.control.rexx" } },
+      "patterns": [
+        { "include": "#do-keyword-conditional" },
+        { "include": "#do-keyword-repetitor" },
+        { "include": "#literal-string" },
+        { "include": "#arithmetic" },
+        { "include": "#comparison" },
+        { "include": "#number" },
+        { "include": "#function" },
+        { "include": "#constant-symbol" },
+        { "include": "#compound-symbol" },
+        { "include": "#stem" },
+        { "include": "#simple-symbol" }
+      ]
+    },
+    "do-keyword-conditional": {
+      "name": "keyword.control.rexx",
+      "match": "(?<=[^a-zA-Z0-9@#$¢.!?_:;])((?i)(WHILE|UNTIL))(?=[^a-zA-Z0-9@#$¢.!?_])(?![\\s]*[=])"
+    },
+    "do-keyword-repetitor": {
+      "name": "keyword.control.rexx",
+      "match": "(?<=[^a-zA-Z0-9@#$¢.!?_:;])((?i)(TO|BY|FOR|FOREVER))(?=[^a-zA-Z0-9@#$¢.!?_])(?![\\s]*[=])"
+    },
+    "if-then-else-subkeyword": {
+      "name": "keyword.control.rexx",
+      "match": "(?<=^|[^a-zA-Z0-9@#$¢.!?_])((?i)(IF|THEN|ELSE))(?=[^a-zA-Z0-9@#$¢.!?_])(?![\\s]*[=:])"
+    },
+    "numeric-digits-form-fuzz-subkeyword": {
+      "name": "keyword.control.rexx",
+      "match": "(?<=NUMERIC|Numeric|numeric)[\\s]+((?i)(DIGITS|FORM|FUZZ))(?=[^a-zA-Z0-9@#$¢.!?_])(?![\\s]*[=])"
+    },
+    "numeric-form-subkeyword-scientific-engineering-value-option": {
+      "name": "keyword.control.rexx",
+      "match": "(?<=FORM|Form|form)[\\s]+((?i)(SCIENTIFIC|ENGINEERING|VALUE))(?=[^a-zA-Z0-9@#$¢.!?_])(?![\\s]*[=])"
+    },
+    "parse-keyword": {
+      "match": "(?<=PARSE|Parse|parse)[\\s]+((?i)(UPPER)[\\s]+)?((?i)(ARG|NUMERIC|PULL)|(EXTERNAL|SOURCE|VALUE|VAR|VERSION))(?=[^a-zA-Z0-9@#$¢.!?_])(?![\\s]*[=])",
+      "captures": {
+        "2": {
+          "name": "keyword.control.rexx"
+        },
+        "4": {
+          "name": "keyword.control.rexx"
+        },
+        "5": {
+          "name": "keyword.control.rexx"
+        }
+      }
+    },
+    "include-keyword": {
+      "match": "(?i)(\\/\\*%INCLUDE)(\\s.*)(\\*\\/)",
+      "captures": {
+        "1": {
+          "name": "keyword.control.rexx"
+        },
+        "2": {
+          "name": "variable.rexx"
+        },
+        "3": {
+          "name": "keyword.control.rexx"
+        }
+      }
+    },
+    "parse-value-subkeyword-with-subkeyword": {
+      "name": "keyword.control.rexx",
+      "match": "(?<=^|[^a-zA-Z0-9@#$¢.!?_])((?i)(WITH))(?=[^a-zA-Z0-9@#$¢.!?_])(?![\\s]*[=:])"
+    },
+    "expose-subkeyword": {
+      "name": "keyword.control.rexx",
+      "match": "(?<=PROCEDURE|Procedure|procedure)[\\s]+((?i)(EXPOSE))(?=[^a-zA-Z0-9@#$¢.!?_])(?![\\s]*[=:])"
+    },
+    "trace-subkeyword": {
+      "name": "keyword.control.rexx",
+      "match": "(?<=TRACE|Trace|trace)[\\s]+((?i)(NORMAL|ALL|COMMANDS|ERROR|FAILURE|INTERMEDIATES|LABELS|OFF|RESULTS|SCAN|VALUE|[?!]))(?=[^a-zA-Z0-9@#$¢.!?_])(?![\\s]*[=:])"
+    },
+    "call-keyword-name": {
+      "name": "entity.name.function.rexx",
+      "match": "(?<=CALL|Call|call)[\\s]+[a-zA-Z0-9@#$¢.!?_]+(?=[^a-zA-Z0-9@#$¢.!?_])"
+    },
+    "function": {
+      "name": "entity.name.function.rexx",
+      "match": "(?<=^|[^a-zA-Z0-9@#$¢.!?_])[a-zA-Z0-9@#$¢.!?_]+(?=[(])"
+    },
+    "label": {
+      "name": "entity.name.type.rexx",
+      "match": "(?<=^|[^a-zA-Z0-9@#$¢.!?_])[a-zA-Z0-9@#$¢.!?_]+[\\s]*[:]"
+    },
+    "constant-symbol": {
+      "name": "constant.numeric.rexx",
+      "match": "(?<=^|[^a-zA-Z0-9@#$¢.!?_])[0-9.][a-zA-Z0-9@#$¢.!?_]*"
+    },
+    "compound-symbol": {
+      "name": "variable.rexx",
+      "begin": "(?<=^|[^a-zA-Z0-9@#$¢.!?_])[a-zA-Z@#$¢!?_][a-zA-Z0-9@#$¢!?_]*[.]",
+      "end": "(?=[^a-zA-Z0-9@#$¢.!?_])",
+      "patterns": [
+        {
+          "name": "variable.rexx",
+          "match": "[a-zA-Z@#$¢!?_][a-zA-Z0-9@#$¢!?_]*"
+        },
+        { "name": "constant.numeric.rexx", "match": "[0-9][a-zA-Z0-9@#$¢!?_]*" }
+      ]
+    },
+    "stem": {
+      "name": "variable.rexx",
+      "match": "(?<=^|[^a-zA-Z0-9@#$¢.!?_])[a-zA-Z@#$¢!?_][a-zA-Z0-9@#$¢!?_]*[.]"
+    },
+    "simple-symbol": {
+      "name": "variable.rexx",
+      "match": "(?<=^|[^a-zA-Z0-9@#$¢.!?_])[a-zA-Z@#$¢!?_][a-zA-Z0-9@#$¢!?_]*"
+    }
+  }
+}

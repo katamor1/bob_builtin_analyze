@@ -1,0 +1,19 @@
+{
+  "command.collect_diagnostics.category": "IBM Z用ボブ・プレミアム・パッケージ",
+  "command.collect_diagnostics.title": "診断情報を収集する",
+  "command.transform_file.title": "Javaに変換する",
+  "command.understand_select_project.title": "IBM Z用Bobプレミアムパッケージ：Zの選択、理解、プロジェクト",
+  "command.understand_refactor_codegen.title": "サービス・コードの生成",
+  "command.understand_login.title": "IBM Z用Bobプレミアムパッケージ：Zにログインして詳細を確認",
+  "command.transform_snippet.title": "Javaに変換する",
+  "configuration.log_level.debug": "デバッグ情報を含むすべてのログメッセージを表示する",
+  "configuration.log_level.description": "IBM Bob Premium Package for Z のログレベルを設定する",
+  "configuration.log_level.error": "エラーのみを表示",
+  "configuration.log_level.fatal": "致命的なエラーのみを表示する",
+  "configuration.log_level.info": "情報メッセージなどを表示する",
+  "configuration.log_level.warn": "警告とエラーのみを表示",
+  "configuration.title": "IBM Z用ボブ・プレミアム・パッケージ",
+  "configuration.understand.url.description": "Z Understandサーバーの「Refactoring Services」エンドポイント（例： https://your-understand-server.com:9444 ）の URL",
+  "configuration.understand.certificate.description": "（任意）：Z Understandサーバー用のカスタム SSL 証明書のパス",
+  "configuration.understand.callback_port.description": "Z Understand認証中の OAuth コールバックのポート番号"
+}

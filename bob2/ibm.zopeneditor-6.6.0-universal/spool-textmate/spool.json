@@ -1,0 +1,46 @@
+{
+  "_copyright": "Licensed Materials - Property of IBM - (c) Copyright IBM Corporation 2024. All Rights Reserved. Note to U.S. Government Users Restricted Rights: Use, duplication or disclosure restricted by GSA ADP Schedule Contract with IBM Corp.",
+  "name": "spool",
+  "scopeName": "source.spool",
+  "fileTypes": ["spool"],
+  "patterns": [{ "include": "#quotedpath" }, { "include": "#resource" }, { "include": "#message" }],
+  "repository": {
+    "quotedpath": {
+      "match": "('.*')(?![a-zA-z0-9])",
+      "name": "variable.resource.singlequote.spool",
+      "comment": "resource single quoted text"
+    },
+    "resource": {
+      "patterns": [{ "include": "#dsname" }, { "include": "#unixpath" }],
+      "repository": {
+        "dsname": {
+          "match": "(?<=((^(\\s?)([A-Z0-9]{3,6}\\d[A-Z0-9]{3,5}(?:\\s+|:)))|(^\\s{5,})).*)([A-Z#@\\$]([\\w#@\\$\\-]{1,7})\\.+([\\w#@\\$\\-]{1,7})(?:\\.[\\w#@\\$\\-]+)*)(?=\\s)",
+          "name": "variable.resource.dsname.spool",
+          "comment": "resource dsname path text"
+        },
+        "unixpath": {
+          "match": "(?<=((^(\\s?)([A-Z0-9]{3,6}\\d[A-Z0-9]{3,5}(?:\\s+|:)))|(^\\s{5,})).*)(\\/.*\\/)(?![a-zA-z0-9])",
+          "name": "variable.resource.unixpath.spool",
+          "comment": "resource unix path text"
+        }
+      }
+    },
+    "message": {
+      "patterns": [{ "include": "#id" }, { "include": "#text" }],
+      "repository": {
+        "id": {
+          "match": "(^(\\s?)([A-Z0-9]{3,6}\\d[A-Z0-9]{3,5}(?:\\s|:)))",
+          "name": "keyword.control.tag.id.spool",
+          "captures": { "0": { "patterns": [{ "include": "#resource" }] } },
+          "comment": "message id"
+        },
+        "text": {
+          "match": "(?<=((^(\\s?)([A-Z0-9]{3,6}\\d[A-Z0-9]{3,5}(?:\\s+|:)).*)|(^\\s{5,})))(?!\\d\\sIEFC)([A-Z0-9\\-][^\\r\\n].*)",
+          "name": "comment.block.text.spool",
+          "captures": { "0": { "patterns": [{ "include": "#resource" }] } },
+          "comment": "message text"
+        }
+      }
+    }
+  }
+}

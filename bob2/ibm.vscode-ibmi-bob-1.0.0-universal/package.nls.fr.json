@@ -1,0 +1,10 @@
+{
+  "vscode-ibmi-bob.description": "IBM Le pack Bob Premium pour i est une extension de Bob ( IBM ) qui propose des modes, des outils, des compétences, des commandes et des flux de travail spécialisés pour le développement d' IBM i.",
+  "vscode-ibmi-bob.submenus.bob": "Benoît",
+  "vscode-ibmi-bob.commands.addToContext.title": "Ajouter à Bob",
+  "vscode-ibmi-bob.configuration.general.title": "Général",
+  "vscode-ibmi-bob.configuration.general.maxRowsToFetch": "Nombre maximal de lignes à récupérer lorsque Bob exécute une requête SQL. Lorsqu'une requête doit renvoyer un grand nombre de lignes, Bob se limitera à ce nombre maximal afin d'éviter de surcharger la fenêtre de contexte. Si nécessaire, Bob récupérera d'autres lignes par la suite",
+  "vscode-ibmi-bob.configuration.guardrails.title": "Glissières de sécurité",
+  "vscode-ibmi-bob.configuration.guardrails.enforceQualifiedCLCommands": "Lorsque cette option est activée, Bob exigera que les commandes CL soient qualifiées par la bibliothèque lors de l'utilisation de l'outil `execute_cl_command`. Si une commande n'est pas précisée par une bibliothèque, Bob interrogera `QSYS2.COMMAND_INFO` pour trouver la bibliothèque de la commande et proposer des suggestions.",
+  "vscode-ibmi-bob.configuration.guardrails.deniedSQLStatementTypes": "Liste des types d'instructions SQL (par exemple, « Create », « Alter » ou « Begin ») que Bob n'est PAS autorisé à exécuter sans confirmation supplémentaire de l'utilisateur lorsqu'il utilise l'outil `run_sql_statement`. Ce paramètre constitue un niveau de sécurité distinct des paramètres généraux d'approbation automatique de Bob."
+}

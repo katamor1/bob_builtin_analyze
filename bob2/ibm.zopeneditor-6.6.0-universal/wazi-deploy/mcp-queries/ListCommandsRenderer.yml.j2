@@ -1,0 +1,35 @@
+# Licensed Materials - Property of IBM
+# (c) Copyright IBM Corporation 2026. All Rights Reserved.
+#
+# Note to U.S. Government Users Restricted Rights:
+# Use, duplication or disclosure restricted by GSA ADP Schedule`
+# Contract with IBM Corp.
+---
+# List step commands with step name, status, deploy date, environment name, package path, application name and version
+# Command: wazideploy-evidence -q ListCommands r
+{%- if filter is defined %} filter={{filter}}{% endif %}
+{%- if step_name is defined %} step_name={{step_name}}{% endif %}
+{%- if status is defined %} status={{status}}{% endif %}
+{%- if environment_name is defined %} environment_name={{environment_name}}{% endif %}
+{%- if package_path is defined %} package_path={{package_path}}{% endif %}
+{%- if application_name is defined %} application_name={{application_name}}{% endif %}
+{%- if application_version is defined %} application_version={{application_version}}{% endif %}
+{%- if deployed_before is defined %} deployed_before={{deployed_before}}{% endif %}
+{%- if deployed_after is defined %} deployed_after={{deployed_after}}{% endif %}
+{% for deployment in results -%}
+---
+deploy_timestamp: {{deployment.deploy_timestamp}}
+environment_name: {{deployment["environment_name|first"]}}
+application_name: {{deployment["name|first"]}}
+{%- if deployment["version|last"] is defined %}
+application_version: {{deployment["version|last"]}}{% endif %}
+package_path: {{deployment["path|first"]}}
+commands:
+{%- for command_item in deployment.ymli_data %}
+- step_name: {{command_item.ymli_parent.ymli_parent.ymli_parent.name}}
+  command: {{command_item.command}}
+  status: {{command_item.ymli_parent.status}}
+  {%- if command_item.ymli_parent.status|lower == "failed" %}
+  location: {{command_item.ymli_parent.ymli_full_location}}{% endif %}
+{%- endfor %}
+{% endfor %}

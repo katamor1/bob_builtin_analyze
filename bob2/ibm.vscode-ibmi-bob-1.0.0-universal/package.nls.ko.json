@@ -1,0 +1,10 @@
+{
+  "vscode-ibmi-bob.description": "IBM ‘Bob Premium Package for i’는 IBM 의 Bob을 확장하여, IBM i 개발에 특화된 모드, 도구, 기술, 명령어 및 워크플로를 제공합니다.",
+  "vscode-ibmi-bob.submenus.bob": "Bob",
+  "vscode-ibmi-bob.commands.addToContext.title": "밥에게 추가하기",
+  "vscode-ibmi-bob.configuration.general.title": "일반",
+  "vscode-ibmi-bob.configuration.general.maxRowsToFetch": "Bob이 SQL을 실행할 때 가져올 행의 최대 개수. 쿼리에서 반환해야 할 행이 더 많은 경우, Bob은 컨텍스트 윈도우에 과부하가 걸리는 것을 방지하기 위해 이 제한을 적용합니다. 필요한 경우, Bob은 나중에 더 많은 행을 가져올 것입니다",
+  "vscode-ibmi-bob.configuration.guardrails.title": "가드레일",
+  "vscode-ibmi-bob.configuration.guardrails.enforceQualifiedCLCommands": "이 옵션이 활성화되면, Bob은 `execute_cl_command` 도구를 사용할 때 CL 명령어에 라이브러리 명칭을 명시하도록 요구합니다. 명령어에 라이브러리 접두사가 지정되지 않은 경우, Bob은 `QSYS2.COMMAND_INFO` 에 쿼리를 보내 해당 명령어의 라이브러리를 찾아 제안해 줍니다.",
+  "vscode-ibmi-bob.configuration.guardrails.deniedSQLStatementTypes": "`run_sql_statement` 도구를 사용할 때 Bob이 추가적인 사용자 확인 없이 실행할 수 없는 SQL 문 유형(예: 'Create', 'Alter' 또는 'Begin') 목록. 이 설정은 밥의 일반적인 자동 승인 설정과는 별개의 보안 단계입니다."
+}

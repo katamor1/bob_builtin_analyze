@@ -1,0 +1,102 @@
+{
+	"name": "bob-java",
+	"publisher": "IBM",
+	"displayName": "IBM Bob Premium Package for Java Modernization",
+	"description": "Java modernization for IBM Bob with guided upgrades, application server migration, Java unit test generation, and UI modernization workflows.",
+	"version": "1.0.0",
+	"license": "SEE LICENSE IN LICENSE",
+	"homepage": "https://bob.ibm.com",
+	"bugs": {
+		"url": "https://github.com/ibm/ibm-bob/issues"
+	},
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/ibm/ibm-bob-java.git",
+		"directory": "bob-java"
+	},
+	"licenseUrl": "https://github.com/ibm/ibm-bob-java/LICENSE",
+	"engines": {
+		"vscode": "^1.106.1"
+	},
+	"icon": "assets/icons/icon-bob-java.png",
+	"galleryBanner": {
+		"color": "#D0E2FF"
+	},
+	"categories": [
+		"Programming Languages",
+		"AI",
+		"Other"
+	],
+	"keywords": [
+		"Java",
+		"Modernization",
+		"Migration",
+		"IBM Liberty",
+		"IBM WebSphere",
+		"Upgrade",
+		"Automation"
+	],
+	"preview": false,
+	"qna": false,
+	"activationEvents": [
+		"onStartupFinished"
+	],
+	"main": "./dist/extension.js",
+	"l10n": "./l10n",
+	"contributes": {
+		"commands": []
+	},
+	"scripts": {
+		"clean": "rm -rf dist node_modules .vite .turbo",
+		"vscode:prepublish": "pnpm run package",
+		"compile": "pnpm run typecheck && pnpm run lint && node esbuild.js",
+		"build": "npm run build:ext",
+		"build:ext": "node esbuild.js",
+		"watch:ext": "node esbuild.js --watch",
+		"package": "pnpm run typecheck && pnpm run lint && node esbuild.js --production",
+		"vsix": "vsce package --no-dependencies",
+		"publish:ovsx": "pnpm dlx ovsx publish --no-dependencies",
+		"typecheck": "tsc --noEmit",
+		"lint": "eslint src",
+		"format": "prettier --write \"src/**/*.ts\"",
+		"format:check": "prettier --check \"src/**/*.ts\"",
+		"test": "vitest run",
+		"check": "pnpm run typecheck && pnpm run lint && pnpm run format:check && pnpm run test",
+		"gen-l10n": "pnpm exec vscode-l10n-dev export --outDir ./l10n ./src",
+		"gen-l10n-pseudo": "pnpm exec vscode-l10n-dev generate-pseudo -o ./l10n/ ./l10n/bundle.l10n.json ./package.nls.json"
+	},
+	"devDependencies": {
+		"@eslint/js": "^9.39.2",
+		"@vscode/vsce": "^3.7.1",
+		"@types/mocha": "^10.0.10",
+		"@types/node": "22.x",
+		"@types/vscode": "^1.106.1",
+		"@vscode/l10n-dev": "^0.0.35",
+		"@vscode/test-cli": "^0.0.12",
+		"@vscode/test-electron": "^2.5.2",
+		"esbuild": "^0.27.3",
+		"eslint": "^9.39.3",
+		"eslint-config-prettier": "^10.1.8",
+		"eslint-plugin-header": "^3.1.1",
+		"npm-run-all": "^4.1.5",
+		"typescript": "^5.9.3",
+		"typescript-eslint": "^8.56.1",
+		"vitest": "^4.0.18"
+	},
+	"dependencies": {
+		"@huggingface/jinja": "^0.5.1",
+		"@ibm/bobapi": "file:@types/ibm-bobapi-2.0.0.tgz",
+		"ae-cvss-calculator": "^1.0.12",
+		"extract-zip": "^2.0.1",
+		"glob": "^13.0.6",
+		"tree-sitter-wasms": "^0.1.13",
+		"web-tree-sitter": "^0.25.10",
+		"yaml": "^2.8.2",
+		"zod": "^3.25.61"
+	},
+	"__metadata": {
+		"installedTimestamp": 1782585868676,
+		"targetPlatform": "universal",
+		"size": 3911774
+	}
+}

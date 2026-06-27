@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+	<PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011" xmlns:d="http://schemas.microsoft.com/developer/vsx-schema-design/2011">
+		<Metadata>
+			<Identity Language="en-US" Id="vscode-ibmi-bob" Version="1.0.0" Publisher="IBM" />
+			<DisplayName>IBM Bob Premium Package for i</DisplayName>
+			<Description xml:space="preserve">IBM Bob Premium Package for i is an extension to IBM Bob that adds specialized modes, tools, skills, slash commands, and workflows for IBM i development.</Description>
+			<Tags>ibmi,iseries,as400,rpgle,cl,dds,sql,cobol</Tags>
+			<Categories>Programming Languages,AI,Other</Categories>
+			<GalleryFlags>Public</GalleryFlags>
+			
+			<Properties>
+				<Property Id="Microsoft.VisualStudio.Code.Engine" Value="^1.104.0" />
+				<Property Id="Microsoft.VisualStudio.Code.ExtensionDependencies" Value="halcyontechltd.code-for-ibmi,halcyontechltd.vscode-rpgle,halcyontechltd.vscode-db2i,IBM.vscode-clle,IBM.vscode-ibmi-testing,barrettotte.ibmi-languages" />
+				<Property Id="Microsoft.VisualStudio.Code.ExtensionPack" Value="" />
+				<Property Id="Microsoft.VisualStudio.Code.ExtensionKind" Value="workspace" />
+				<Property Id="Microsoft.VisualStudio.Code.LocalizedLanguages" Value="" />
+				<Property Id="Microsoft.VisualStudio.Code.EnabledApiProposals" Value="" />
+				
+				<Property Id="Microsoft.VisualStudio.Code.ExecutesCode" Value="true" />
+				
+				<Property Id="Microsoft.VisualStudio.Services.Links.Source" Value="https://github.ibm.com/bob-for-ibm-i/vscode-ibmi-bob" />
+				<Property Id="Microsoft.VisualStudio.Services.Links.Getstarted" Value="https://github.ibm.com/bob-for-ibm-i/vscode-ibmi-bob" />
+				<Property Id="Microsoft.VisualStudio.Services.Links.Repository" Value="https://github.ibm.com/bob-for-ibm-i/vscode-ibmi-bob" />
+				<Property Id="Microsoft.VisualStudio.Services.Links.Support" Value="https://github.com/ibm/ibm-bob/issues" />
+				<Property Id="Microsoft.VisualStudio.Services.Links.Learn" Value="https://bob.ibm.com/docs/ide/premium-packages/bob-for-i/bob-for-i-index" />
+				<Property Id="Microsoft.VisualStudio.Services.Branding.Color" Value="#D0E2FF" />
+				
+				<Property Id="Microsoft.VisualStudio.Services.GitHubFlavoredMarkdown" Value="true" />
+				<Property Id="Microsoft.VisualStudio.Services.Content.Pricing" Value="Free"/>
+
+				
+				
+			</Properties>
+			<License>extension/LICENSE.txt</License>
+			<Icon>extension/icon.png</Icon>
+		</Metadata>
+		<Installation>
+			<InstallationTarget Id="Microsoft.VisualStudio.Code"/>
+		</Installation>
+		<Dependencies/>
+		<Assets>
+			<Asset Type="Microsoft.VisualStudio.Code.Manifest" Path="extension/package.json" Addressable="true" />
+			<Asset Type="Microsoft.VisualStudio.Services.Content.Details" Path="extension/readme.md" Addressable="true" />
+<Asset Type="Microsoft.VisualStudio.Services.Content.Changelog" Path="extension/changelog.md" Addressable="true" />
+<Asset Type="Microsoft.VisualStudio.Services.Content.License" Path="extension/LICENSE.txt" Addressable="true" />
+<Asset Type="Microsoft.VisualStudio.Services.Icons.Default" Path="extension/icon.png" Addressable="true" />
+		</Assets>
+	</PackageManifest>

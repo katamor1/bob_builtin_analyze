@@ -1,0 +1,154 @@
+/*******************************************************************************
+ * Licensed Materials - Property of IBM
+ * (C) Copyright IBM Corporation 2019, 2024. All Rights Reserved.
+ *
+ * Note to U.S. Government Users Restricted Rights:
+ * Use, duplication or disclosure restricted by GSA ADP Schedule
+ * Contract with IBM Corp.
+ *******************************************************************************/
+{
+  "comments": {
+    "lineComment": "//*"
+  },
+  "brackets": [
+    ["{", "}"],
+    ["[", "]"],
+    ["(", ")"]
+  ],
+  "autoClosingPairs": [
+    { "open": "{", "close": "}", "notIn": ["string", "comment"] },
+    { "open": "[", "close": "]", "notIn": ["string", "comment"] },
+    { "open": "(", "close": ")", "notIn": ["string", "comment"] },
+    { "open": "\"", "close": "\"", "notIn": ["string", "comment"] },
+    { "open": "'", "close": "'", "notIn": ["string", "comment"] }
+  ],
+  "surroundingPairs": [
+    { "open": "{", "close": "}" },
+    { "open": "[", "close": "]" },
+    { "open": "(", "close": ")" },
+    { "open": "\"", "close": "\"" },
+    { "open": "'", "close": "'" }
+  ],
+  "wordPattern": "//(#?-?\\d*\\.\\d\\w*%?)|((::|[@#.!:])?[\\w-?]+%?)|::|[@#.!:]//g",
+  "onEnterRules": [
+    {
+      "beforeText": "^\\/\\/\\*.*$",
+      "action": {
+        "indent": "none",
+        "appendText": "//* "
+      }
+    },
+    {
+      "beforeText": "^\\/\\/[#@$A-Z][#@$A-Z0-9\\s]{0,7}\\sJOB\\s.*$",
+      "action": {
+        "indent": "none",
+        "appendText": "//             "
+      }
+    },
+    {
+      "beforeText": "^\\/\\/\\sJOB\\s.*$",
+      "action": {
+        "indent": "none",
+        "appendText": "//             "
+      }
+    },
+    {
+      "beforeText": "^\\/\\/[\\s]{13}[^\\s].*$",
+      "action": {
+        "indent": "none",
+        "appendText": "//             "
+      }
+    },
+    {
+      "beforeText": "^\\/\\/[\\s]{12}[^\\s].*$",
+      "action": {
+        "indent": "none",
+        "appendText": "//            "
+      }
+    },
+    {
+      "beforeText": "^\\/\\/[\\s]{11}[^\\s].*$",
+      "action": {
+        "indent": "none",
+        "appendText": "//           "
+      }
+    },
+    {
+      "beforeText": "^\\/\\/[\\s]{10}[^\\s].*$",
+      "action": {
+        "indent": "none",
+        "appendText": "//          "
+      }
+    },
+    {
+      "beforeText": "^\\/\\/[\\s]{9}[^\\s].*$",
+      "action": {
+        "indent": "none",
+        "appendText": "//         "
+      }
+    },
+    {
+      "beforeText": "^\\/\\/[\\s]{8}[^\\s].*$",
+      "action": {
+        "indent": "none",
+        "appendText": "//        "
+      }
+    },
+    {
+      "beforeText": "^\\/\\/[\\s]{7}[^\\s].*$",
+      "action": {
+        "indent": "none",
+        "appendText": "//       "
+      }
+    },
+    {
+      "beforeText": "^\\/\\/[\\s]{6}[^\\s].*$",
+      "action": {
+        "indent": "none",
+        "appendText": "//      "
+      }
+    },
+    {
+      "beforeText": "^\\/\\/[\\s]{5}[^\\s].*$",
+      "action": {
+        "indent": "none",
+        "appendText": "//     "
+      }
+    },
+    {
+      "beforeText": "^\\/\\/[\\s]{4}[^\\s].*$",
+      "action": {
+        "indent": "none",
+        "appendText": "//    "
+      }
+    },
+    {
+      "beforeText": "^\\/\\/[\\s]{3}[^\\s].*$",
+      "action": {
+        "indent": "none",
+        "appendText": "//   "
+      }
+    },
+    {
+      "beforeText": "^\\/\\/[\\s]{2}[^\\s].*$",
+      "action": {
+        "indent": "none",
+        "appendText": "//  "
+      }
+    },
+    {
+      "beforeText": "^\\/\\/[\\s](?!.*DD[\\s]{1,3}\\*|.*DD[\\s]{1,3}.*DATA)[^\\s].*$",
+      "action": {
+        "indent": "none",
+        "appendText": "// "
+      }
+    },
+    {
+      "beforeText": "^\\/\\/(?!.*DD[\\s]{1,3}\\*|.*DD[\\s]{1,3}.*DATA).*$",
+      "action": {
+        "indent": "none",
+        "appendText": "//"
+      }
+    }
+  ]
+}

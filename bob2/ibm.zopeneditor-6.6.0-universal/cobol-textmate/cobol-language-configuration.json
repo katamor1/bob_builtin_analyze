@@ -1,0 +1,43 @@
+/*******************************************************************************
+ * Licensed Materials - Property of IBM
+ * (C) Copyright IBM Corporation 2019, 2024. All Rights Reserved.
+ *
+ * Note to U.S. Government Users Restricted Rights:
+ * Use, duplication or disclosure restricted by GSA ADP Schedule
+ * Contract with IBM Corp.
+ *******************************************************************************/
+{
+  "brackets": [
+    ["{", "}"],
+    ["[", "]"],
+    ["(", ")"]
+  ],
+  "autoClosingPairs": [
+    { "open": "{", "close": "}" },
+    { "open": "[", "close": "]" },
+    { "open": "(", "close": ")" },
+    { "open": "'", "close": "'", "notIn": ["string", "comment"] },
+    { "open": "\"", "close": "\"", "notIn": ["string"] },
+    { "open": "`", "close": "`", "notIn": ["string", "comment"] },
+    { "open": "/**", "close": " */", "notIn": ["string"] },
+    { "open": "EXEC CICS", "close": " END-EXEC.", "notIn": ["string", "comment"] },
+    { "open": "Exec Cics", "close": " End-Exec.", "notIn": ["string", "comment"] },
+    { "open": "Exec CICS", "close": " End-Exec.", "notIn": ["string", "comment"] },
+    { "open": "EXECUTE CICS", "close": " END-EXEC.", "notIn": ["string", "comment"] },
+    { "open": "Execute Cics", "close": " End-Exec.", "notIn": ["string", "comment"] },
+    { "open": "Execute CICS", "close": " End-Exec.", "notIn": ["string", "comment"] },
+    { "open": "exec cics", "close": " end-exec.", "notIn": ["string", "comment"] },
+    { "open": "execute cics", "close": " end-exec.", "notIn": ["string", "comment"] }
+  ],
+  "autoCloseBefore": ";:.,=}])>` \n\t",
+  "surroundingPairs": [
+    ["{", "}"],
+    ["[", "]"],
+    ["(", ")"],
+    ["'", "'"],
+    ["\"", "\""],
+    ["`", "`"]
+  ],
+  "folding": {},
+  "wordPattern": "[a-zA-Z0-9_-]+"
+}

@@ -1,0 +1,2293 @@
+{
+	"name": "zopeneditor",
+	"displayName": "IBM Z Open Editor",
+	"description": "%description%",
+	"version": "6.6.0",
+	"publisher": "IBM",
+	"license": "SEE LICENSE IN LICENSE.txt",
+	"l10n": "./l10n",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/IBM/zopeneditor-about"
+	},
+	"bugs": {
+		"url": "https://github.com/IBM/zopeneditor-about/issues"
+	},
+	"icon": "images/ibmzopeneditor.png",
+	"categories": [
+		"Programming Languages",
+		"Snippets"
+	],
+	"keywords": [
+		"COBOL",
+		"PL/I",
+		"PLI",
+		"PL1",
+		"JCL",
+		"HLASM",
+		"REXX",
+		"ASM",
+		"IDE",
+		"LSP",
+		"language-server",
+		"z/OS",
+		"zOS",
+		"IBM Z",
+		"Z Software",
+		"Zowe",
+		"Mainframe"
+	],
+	"activationEvents": [
+		"*"
+	],
+	"main": "./dist/extension",
+	"browser": "./dist/web/extension.js",
+	"engines": {
+		"vscode": "^1.102.3"
+	},
+	"scripts": {
+		"vscode:prepublish": "rimraf dist && rimraf --glob *-server/config_*/org.eclipse.* && npm run build:productionUpdate",
+		"build": "npm run build:resources && webpack --mode development && npm run checkDeps",
+		"build:nlsExtract": "npm exec @vscode/l10n-dev export --outDir ./l10n ./src",
+		"build:nlsPseudo": "npm exec @vscode/l10n-dev generate-pseudo -o ./l10n/ ./l10n/bundle.l10n.json ./package.nls.json",
+		"build:nlsFormat": "prettier --plugin=prettier-plugin-sort-json --write  --log-level warn ./l10n package.nls*",
+		"build:nlsUpdate": "npm run build:nlsExtract && npm run build:nlsPseudo && npm run build:nlsFormat",
+		"build:nls": "npm run build:nlsUpdate && npm run build",
+		"build:nlsMessageIds": "node ../../node_modules/@ibm/extensions-kit/scripts/generate-message-ids.js CRRZG ./scripts/nextMsgId.json",
+		"build:nlsMessageIdsDocs": "node ../../node_modules/@ibm/extensions-kit/scripts/generate-message-ids-doc.js CRRZG l10n/bundle.l10n.json",
+		"build:productionUpdate": "npm run build:resources && npm run build:nlsUpdate && NODE_OPTIONS=--max-old-space-size=4096 webpack --mode production && npm run checkDeps",
+		"build:version": "sh ../../scripts/build-version.sh $npm_package_version",
+		"build:resources": "rimraf --glob ./resources/zapp-schema-* && cpy --flat ../../node_modules/@ibm/zapp-core/resources/zapp-schema-*.json ./resources",
+		"prebuild": "echo Using TypeScript && tsc --version",
+		"watch": "webpack --mode development --watch",
+		"compile-web": "webpack --config-name z-open-editor-web",
+		"lint": "eslint . && npm run pretty-check",
+		"lintErrors": "eslint . --quiet && npm run pretty-check",
+		"pretty-check": "prettier --check .",
+		"pretty": "prettier --write .",
+		"checkDeps": "madge --extensions ts --circular ./src",
+		"plotDeps": "madge --extensions ts --image ./docs/dependency-graph.svg ./src",
+		"package": "vsce --version && vsce package --allow-star-activation --no-dependencies && node ../../scripts/mv-pack.js zopeneditor vsix",
+		"test": "jest --coverage",
+		"test:watch": "jest -o --watch"
+	},
+	"devDependencies": {
+		"@babel/core": "^7.17.0",
+		"@babel/plugin-proposal-class-properties": "^7.18.6",
+		"@babel/preset-env": "^7.16.11",
+		"@babel/preset-react": "^7.16.7",
+		"@babel/preset-typescript": "^7.16.7",
+		"@types/carbon-components-react": "^7.55.5",
+		"@types/glob-parent": "5.1.2",
+		"@types/js-yaml": "4.0.9",
+		"@types/promise-queue": "^2.2.3",
+		"@types/react": "18.3.1",
+		"@types/react-dom": "18.3.1",
+		"@types/semver": "7.7.1",
+		"@types/shell-quote": "1.7.5",
+		"@types/styled-components": "^5.1.35",
+		"@types/tmp": "0.2.6",
+		"@types/vscode": "1.102.0",
+		"@types/xml2js": "^0.4.14",
+		"@types/yauzl": "^2.10.3",
+		"@vscode/l10n-dev": "^0.0.35",
+		"@vscode/vsce": "^3.9.1",
+		"async-mutex": "^0.5.0",
+		"copy-webpack-plugin": "^13.0.1",
+		"css-loader": "^6.7.3",
+		"mini-css-extract-plugin": "^2.7.6",
+		"node-gyp": "^11.4.2",
+		"prettier-plugin-sort-json": "^4.2.0",
+		"sass-loader": "13.0.0",
+		"style-loader": "^3.3.1",
+		"tmp": "^0.2.7",
+		"typescript": "^5.9.3"
+	},
+	"dependencies": {
+		"@carbon/icons-react": "^11.30.1",
+		"@carbon/react": "1.78.0",
+		"@ibm/extensions-kit": "0.7.0-202606182123-191030c",
+		"@ibm/rse-api-for-zowe-cli": "*",
+		"@ibm/zapp-core": "1.10.1",
+		"@ibm/zopeneditor-api": "*",
+		"@ibm/zvs-zopeneditor": "1.1.5",
+		"@modelcontextprotocol/sdk": "1.29.0",
+		"@vscode/l10n": "^0.0.18",
+		"@zowe/cics-for-zowe-explorer-api": "6.21.0",
+		"@zowe/core-for-zowe-sdk": "8.32.2",
+		"@zowe/secrets-for-zowe-sdk": "8.32.0",
+		"@zowe/zos-console-for-zowe-sdk": "8.32.2",
+		"@zowe/zos-files-for-zowe-sdk": "8.32.2",
+		"@zowe/zos-jobs-for-zowe-sdk": "8.32.2",
+		"@zowe/zos-tso-for-zowe-sdk": "8.32.2",
+		"@zowe/zos-uss-for-zowe-sdk": "8.32.2",
+		"@zowe/zosmf-for-zowe-sdk": "8.32.2",
+		"@zowe/zowe-explorer-api": "3.5.0",
+		"ajv": "8.20.0",
+		"ajv-formats": "3.0.1",
+		"babel-loader": "^10.0.0",
+		"crc": "^4.3.2",
+		"fast-glob": "^3.3.3",
+		"glob-parent": "5.1.2",
+		"iconv-lite": "0.6.3",
+		"ignore": "5.2.4",
+		"js-yaml": "4.1.1",
+		"jsonc-parser": "3.2.0",
+		"jszip": "^3.10.1",
+		"log4js": "6.9.1",
+		"minimatch": "^10.2.4",
+		"process": "0.11.10",
+		"promise-queue": "2.2.5",
+		"react": "18.3.1",
+		"react-dom": "18.3.1",
+		"sass": "1.63.0",
+		"semver": "7.7.2",
+		"shell-quote": "1.8.4",
+		"styled-components": "^5.2.1",
+		"use-immer": "^0.9.0",
+		"uuid": "^14.0.0",
+		"vscode-extension-telemetry": "0.4.3",
+		"vscode-languageclient": "9.0.1",
+		"xml2js": "0.5.0",
+		"yauzl": "^3.3.0"
+	},
+	"overrides": {
+		"@modelcontextprotocol/sdk": "1.29.0"
+	},
+	"extensionDependencies": [
+		"Zowe.vscode-extension-for-zowe"
+	],
+	"contributes": {
+		"semanticTokenScopes": [
+			{
+				"language": "cobol",
+				"scopes": {
+					"decorator": [
+						"source.cobol entity.name.function.seqnum"
+					],
+					"method": [
+						"constant.numeric"
+					]
+				}
+			}
+		],
+		"configuration": {
+			"type": "object",
+			"title": "IBM Z Open Editor",
+			"properties": {
+				"zopeneditor.cobol.maximumLineLength": {
+					"scope": "window",
+					"type": "number",
+					"default": 80,
+					"description": "%zopeneditor.cobol.maximumLineLength%"
+				},
+				"zopeneditor.pl1.maximumLineLength": {
+					"scope": "window",
+					"type": "number",
+					"default": 80,
+					"description": "%zopeneditor.pl1.maximumLineLength%"
+				},
+				"zopeneditor.hlasm.maximumLineLength": {
+					"scope": "window",
+					"type": "number",
+					"default": 80,
+					"description": "%zopeneditor.hlasm.maximumLineLength%"
+				},
+				"zopeneditor.rexx.maximumLineLength": {
+					"scope": "window",
+					"type": "number",
+					"default": 80,
+					"description": "%zopeneditor.rexx.maximumLineLength%"
+				},
+				"zopeneditor.jcl.maximumLineLength": {
+					"scope": "window",
+					"type": "number",
+					"default": 80,
+					"description": "%zopeneditor.jcl.maximumLineLength%"
+				},
+				"zopeneditor.server.memoryAllocation": {
+					"scope": "application",
+					"type": "integer",
+					"default": 1024,
+					"description": "%zopeneditor.server.memoryAllocation%"
+				},
+				"zopeneditor.server.startupOptions": {
+					"scope": "application",
+					"type": "string",
+					"default": "",
+					"description": "%zopeneditor.server.startupOptions%"
+				},
+				"zopeneditor.JAVA_HOME": {
+					"scope": "application",
+					"type": "string",
+					"default": "",
+					"description": "%zopeneditor.JAVA_HOME%"
+				},
+				"zopeneditor.logger": {
+					"scope": "application",
+					"enum": [
+						"DEBUG",
+						"INFO",
+						"WARNING",
+						"ERROR",
+						"OFF"
+					],
+					"default": "INFO",
+					"description": "%zopeneditor.logger%"
+				},
+				"zopeneditor.cobol.enableUnreachableCodeWarnings": {
+					"scope": "window",
+					"type": "boolean",
+					"default": true,
+					"description": "%zopeneditor.cobol.enableUnreachableCodeWarnings%"
+				},
+				"zopeneditor.cobol.disableProblems": {
+					"scope": "window",
+					"type": "boolean",
+					"default": false,
+					"description": "%zopeneditor.cobol.disableProblems%"
+				},
+				"zopeneditor.cobol.tabstops": {
+					"scope": "window",
+					"type": "array",
+					"items": {
+						"type": "integer"
+					},
+					"uniqueItems": true,
+					"default": [
+						0,
+						6,
+						7,
+						11
+					],
+					"description": "%zopeneditor.cobol.tabstops%"
+				},
+				"zopeneditor.cobol.enableCodeFolding": {
+					"scope": "window",
+					"type": "boolean",
+					"default": true,
+					"description": "%zopeneditor.enableCodeFolding%"
+				},
+				"zopeneditor.cobol.enableCICSCodeLens": {
+					"scope": "window",
+					"type": "boolean",
+					"default": true,
+					"description": "%zopeneditor.enableCICSCodeLens%"
+				},
+				"zopeneditor.pl1.enableCICSCodeLens": {
+					"scope": "window",
+					"type": "boolean",
+					"default": true,
+					"description": "%zopeneditor.enableCICSCodeLens%"
+				},
+				"zopeneditor.cobol.includeFileExtensions": {
+					"scope": "window",
+					"type": "array",
+					"items": {
+						"type": "string"
+					},
+					"uniqueItems": true,
+					"default": [
+						".cpy",
+						".copybook",
+						".copy",
+						".cobcopy"
+					],
+					"description": "%zopeneditor.cobol.includeFileExtensions%"
+				},
+				"zopeneditor.cobol.sequenceNumbers": {
+					"scope": "window",
+					"enum": [
+						"column-1",
+						"column-73",
+						"column-1-and-73"
+					],
+					"enumDescriptions": [
+						"%zopeneditor.cobol.sequenceNumbers.column1%",
+						"%zopeneditor.cobol.sequenceNumbers.column73%",
+						"%zopeneditor.cobol.sequenceNumbers.column1and73%"
+					],
+					"default": "column-1",
+					"description": "%zopeneditor.cobol.sequenceNumbers%"
+				},
+				"zopeneditor.autoPreprocessor": {
+					"scope": "window",
+					"enum": [
+						"open",
+						"save",
+						"all",
+						"focus",
+						"off"
+					],
+					"enumDescriptions": [
+						"%zopeneditor.autoPreprocessor.opendesc%",
+						"%zopeneditor.autoPreprocessor.savedesc%",
+						"%zopeneditor.autoPreprocessor.alldesc%",
+						"%zopeneditor.autoPreprocessor.focusdesc%",
+						"%zopeneditor.autoPreprocessor.offdesc%"
+					],
+					"default": "off",
+					"description": "%zopeneditor.autoPreprocessor%"
+				},
+				"zopeneditor.jcl.enableResolvingProcs": {
+					"scope": "window",
+					"type": "boolean",
+					"default": false,
+					"description": "%zopeneditor.jcl.enableResolvingProcs%"
+				},
+				"zopeneditor.hlasm.instructionsFilePath": {
+					"scope": "window",
+					"type": "string",
+					"default": "",
+					"description": "%zopeneditor.hlasm.instructionsFilePath%"
+				},
+				"zopeneditor.hlasm.macrosFilePath": {
+					"scope": "window",
+					"type": "string",
+					"default": "",
+					"description": "%zopeneditor.hlasm.macrosFilePath%"
+				},
+				"zopeneditor.hlasm.enableResolvingMacros": {
+					"scope": "window",
+					"type": "boolean",
+					"default": false,
+					"description": "%zopeneditor.hlasm.enableResolvingMacros%"
+				},
+				"zopeneditor.hlasm.zosMacrosVersion": {
+					"scope": "window",
+					"enum": [
+						"2.5",
+						"3.1",
+						"3.2"
+					],
+					"enumDescriptions": [
+						"%zopeneditor.hlasm.zosMacrosVersion.v2r5%",
+						"%zopeneditor.hlasm.zosMacrosVersion.v3r1%",
+						"%zopeneditor.hlasm.zosMacrosVersion.v3r2%"
+					],
+					"default": "3.2",
+					"description": "%zopeneditor.hlasm.zosMacrosVersion%"
+				},
+				"zopeneditor.hlasm.enableCustomMacrosWarnings": {
+					"scope": "window",
+					"type": "boolean",
+					"default": true,
+					"description": "%zopeneditor.hlasm.enableCustomMacrosWarnings%"
+				},
+				"zopeneditor.hlasm.reduceCustomMacroLogging": {
+					"scope": "window",
+					"type": "boolean",
+					"default": false,
+					"description": "%zopeneditor.hlasm.reduceCustomMacroLogging%"
+				},
+				"zopeneditor.hlasm.remoteMaclibScanTimeout": {
+					"scope": "window",
+					"type": "integer",
+					"default": 180000,
+					"description": "%zopeneditor.hlasm.remoteMaclibScanTimeout%"
+				},
+				"zopeneditor.hlasm.tabstops": {
+					"scope": "window",
+					"type": "array",
+					"items": {
+						"type": "integer"
+					},
+					"uniqueItems": true,
+					"default": [
+						0,
+						9,
+						15
+					],
+					"description": "%zopeneditor.hlasm.tabstops%"
+				},
+				"zopeneditor.hlasm.disableProblems": {
+					"scope": "window",
+					"type": "boolean",
+					"default": false,
+					"description": "%zopeneditor.disableProblems%"
+				},
+				"zopeneditor.hlasm.includeFileExtensions": {
+					"scope": "window",
+					"type": "array",
+					"items": {
+						"type": "string"
+					},
+					"uniqueItems": true,
+					"default": [
+						".s",
+						".assemble",
+						".asm",
+						".hlasm",
+						".hla",
+						".copyasm",
+						".macasm",
+						".bms",
+						".mac",
+						".dbd",
+						".mfs",
+						".pcb"
+					],
+					"description": "%zopeneditor.hlasm.includeFileExtensions%"
+				},
+				"zopeneditor.hlasm.enableCodeFolding": {
+					"scope": "window",
+					"type": "boolean",
+					"default": true,
+					"description": "%zopeneditor.enableCodeFolding%"
+				},
+				"zopeneditor.pl1.disableProblems": {
+					"scope": "window",
+					"type": "boolean",
+					"default": false,
+					"description": "%zopeneditor.disableProblems%"
+				},
+				"zopeneditor.pl1.includeFileExtensions": {
+					"scope": "window",
+					"type": "array",
+					"items": {
+						"type": "string"
+					},
+					"uniqueItems": true,
+					"default": [
+						".inc",
+						".include",
+						".plinc",
+						".pcx",
+						".pci"
+					],
+					"description": "%zopeneditor.pl1.includeFileExtensions%"
+				},
+				"zopeneditor.rexx.disableProblems": {
+					"scope": "window",
+					"type": "boolean",
+					"default": false,
+					"description": "%zopeneditor.disableProblems%"
+				},
+				"zopeneditor.rexx.includeFileExtensions": {
+					"scope": "window",
+					"type": "array",
+					"items": {
+						"type": "string"
+					},
+					"uniqueItems": true,
+					"default": [
+						".rex",
+						".rexx"
+					],
+					"description": "%zopeneditor.rexx.includeFileExtensions%"
+				},
+				"zopeneditor.jcl.disableProblems": {
+					"scope": "window",
+					"type": "boolean",
+					"default": false,
+					"description": "%zopeneditor.disableProblems%"
+				},
+				"zopeneditor.jcl.includeFileExtensions": {
+					"scope": "window",
+					"type": "array",
+					"items": {
+						"type": "string"
+					},
+					"uniqueItems": true,
+					"default": [
+						".jcl",
+						".cntl",
+						".proc"
+					],
+					"description": "%zopeneditor.jcl.includeFileExtensions%"
+				},
+				"zopeneditor.jcl.enableCodeFolding": {
+					"scope": "window",
+					"type": "boolean",
+					"default": true,
+					"description": "%zopeneditor.enableCodeFolding%"
+				},
+				"zopeneditor.jcl.tabstops": {
+					"scope": "window",
+					"type": "array",
+					"items": {
+						"type": "integer"
+					},
+					"uniqueItems": true,
+					"default": [
+						0,
+						2,
+						10,
+						15,
+						19,
+						29,
+						39,
+						49,
+						59,
+						71,
+						72
+					],
+					"description": "%zopeneditor.jcl.tabstops%"
+				},
+				"zopeneditor.datasets.cobolDatasets": {
+					"type": "array",
+					"items": {
+						"type": "string"
+					},
+					"default": [
+						".COBOL",
+						".COB",
+						".COBCOPY",
+						".COPYBOOK",
+						".COPY"
+					],
+					"description": "%zopeneditor.datasets.cobolDatasets%"
+				},
+				"zopeneditor.datasets.pl1Datasets": {
+					"type": "array",
+					"items": {
+						"type": "string"
+					},
+					"default": [
+						".PL1",
+						".PLI",
+						".INC",
+						".INCLUDE"
+					],
+					"description": "%zopeneditor.datasets.pl1Datasets%"
+				},
+				"zopeneditor.datasets.jclDatasets": {
+					"type": "array",
+					"items": {
+						"type": "string"
+					},
+					"default": [
+						".JCL",
+						".CNTL",
+						".PROC"
+					],
+					"description": "%zopeneditor.datasets.jclDatasets%"
+				},
+				"zopeneditor.datasets.hlasmDatasets": {
+					"type": "array",
+					"items": {
+						"type": "string"
+					},
+					"default": [
+						".ASM",
+						".ASSEMBLE",
+						".HLASM",
+						".HLA",
+						".MACLIB",
+						".DBD",
+						".MFS",
+						".PCB"
+					],
+					"description": "%zopeneditor.datasets.hlasmDatasets%"
+				},
+				"zopeneditor.datasets.rexxDatasets": {
+					"type": "array",
+					"items": {
+						"type": "string"
+					},
+					"default": [
+						".EXEC",
+						".REXX",
+						".REXXINC"
+					],
+					"description": "%zopeneditor.datasets.rexxDatasets%"
+				},
+				"zopeneditor.zapp.useDefaultOnlineZappSchema": {
+					"scope": "window",
+					"type": "boolean",
+					"default": false,
+					"description": "%zopeneditor.zapp.useDefaultOnlineZappSchema%"
+				},
+				"zopeneditor.zapp.customZappSchemaLocation": {
+					"scope": "window",
+					"type": "string",
+					"default": "",
+					"description": "%zopeneditor.zapp.customZappSchemaLocation%"
+				},
+				"zopeneditor.zapp.generateZappOnDemand": {
+					"scope": "window",
+					"type": "boolean",
+					"default": "true",
+					"description": "%zopeneditor.zapp.generateZappOnDemand%"
+				},
+				"zopeneditor.zcodeformat.useDefaultOnlineZCodeFormatSchema": {
+					"scope": "window",
+					"type": "boolean",
+					"default": false,
+					"description": "%zopeneditor.zcodeformat.useDefaultOnlineZCodeFormatSchema%"
+				},
+				"zopeneditor.zcodeformat.customZCodeFormatSchemaLocation": {
+					"scope": "window",
+					"type": "string",
+					"default": "",
+					"description": "%zopeneditor.zcodeformat.customZCodeFormatSchemaLocation%"
+				},
+				"zopeneditor.welcomePage.show": {
+					"scope": "window",
+					"type": "boolean",
+					"default": true,
+					"description": "%zopeneditor.welcomepage.show%"
+				},
+				"zopeneditor.zowe": {
+					"scope": "window",
+					"type": "object",
+					"additionalProperties": {
+						"type": "string"
+					},
+					"description": "%zopeneditor.zowe%",
+					"properties": {
+						"defaultCliProfile": {
+							"type": "string",
+							"description": "%zopeneditor.zowe.defaultCliProfile%"
+						},
+						"defaultSshCliProfile": {
+							"type": "string",
+							"description": "%zopeneditor.zowe.defaultSshCliProfile%"
+						},
+						"defaultTsoProfile": {
+							"type": "string",
+							"description": "%zopeneditor.zowe.defaultTsoProfile%"
+						},
+						"defaultRseConversionMappingsFile": {
+							"type": "string",
+							"description": "%zopeneditor.zowe.defaultRseConversionMappingsFile%"
+						},
+						"maximumParallelFileDownloads": {
+							"type": "integer",
+							"minimum": 1,
+							"maximum": 50,
+							"default": 5,
+							"description": "%zopeneditor.zowe.maximumParallelFileDownloads%"
+						},
+						"listBeforeDownload": {
+							"type": "boolean",
+							"default": false,
+							"description": "%zopeneditor.zowe.listBeforeDownload%"
+						},
+						"maximumParallelFileUploads": {
+							"type": "integer",
+							"minimum": 1,
+							"maximum": 50,
+							"default": 5,
+							"description": "%zopeneditor.zowe.maximumParallelFileUploads%"
+						},
+						"readonlyRemoteIncludeFiles": {
+							"type": "boolean",
+							"default": true,
+							"description": "%zopeneditor.zowe.readonlyRemoteIncludeFiles%"
+						},
+						"disableRseApiLanguageDetection": {
+							"type": "boolean",
+							"default": false,
+							"description": "%zopeneditor.zowe.disableRseApiLanguageDetection%"
+						}
+					}
+				},
+				"zopeneditor.userbuild.enabled": {
+					"scope": "window",
+					"type": "boolean",
+					"default": true,
+					"description": "%zopeneditor.userbuild.enabled%"
+				},
+				"zopeneditor.userbuild.alwaysShowCommands": {
+					"scope": "window",
+					"type": "boolean",
+					"default": false,
+					"description": "%zopeneditor.userbuild.alwaysShowCommands%"
+				},
+				"zopeneditor.userbuild.userSettings": {
+					"type": "object",
+					"title": "%userSettings.title%",
+					"description": "%userSettings.description%",
+					"scope": "window",
+					"additionalProperties": {
+						"type": "string"
+					},
+					"properties": {
+						"dbbWorkspace": {
+							"type": "string",
+							"description": "%userSettings.dbbWorkspace%"
+						},
+						"dbbHlq": {
+							"type": "string",
+							"description": "%userSettings.dbb_hlq%"
+						},
+						"dbbLogDir": {
+							"type": "string",
+							"description": "%userSettings.dbbLogDir%"
+						},
+						"dbbDefaultZappProfile": {
+							"type": "string",
+							"description": "%userSettings.dbbDefaultZappProfile%"
+						},
+						"localLogDir": {
+							"type": "string",
+							"description": "%userSettings.localLogDir%"
+						},
+						"preserveWorkspaceNames": {
+							"type": "boolean",
+							"description": "%userSettings.dbbPreserveWorkspaceNames%",
+							"default": false
+						}
+					}
+				},
+				"zopeneditor.dbb.metadataStore": {
+					"type": "object",
+					"title": "%dbb.metadataStore.title%",
+					"description": "%dbb.metadataStore.description%",
+					"scope": "window",
+					"additionalProperties": {
+						"type": "string"
+					},
+					"properties": {
+						"db2User": {
+							"type": "string",
+							"description": "%dbb.metadataStore.db2User%"
+						},
+						"db2Config": {
+							"type": "string",
+							"description": "%dbb.metadataStore.db2Config%"
+						},
+						"db2PasswordFile": {
+							"type": "string",
+							"description": "%dbb.metadataStore.db2PasswordFile%"
+						},
+						"buildGroup": {
+							"type": "string",
+							"description": "%dbb.metadataStore.buildGroup%"
+						},
+						"localAttachmentsDir": {
+							"type": "string",
+							"description": "%dbb.metadataStore.localAttachmentsDir%"
+						}
+					}
+				},
+				"zopeneditor.wazideploy.evidence": {
+					"type": "object",
+					"title": "%wazideploy.evidence.title%",
+					"description": "%wazideploy.evidence.description%",
+					"scope": "window",
+					"additionalProperties": {
+						"type": "string"
+					},
+					"properties": {
+						"dataFolder": {
+							"type": "string",
+							"description": "%wazideploy.evidence.dataFolder%"
+						},
+						"indexFolder": {
+							"type": "string",
+							"description": "%wazideploy.evidence.indexFolder%"
+						},
+						"executablePath": {
+							"type": "string",
+							"description": "%wazideploy.evidence.excecutablePath%"
+						}
+					}
+				},
+				"zopeneditor.enforceCaseSensitiveIncludeFileNames": {
+					"scope": "window",
+					"type": "boolean",
+					"default": false,
+					"description": "%zopeneditor.enforceCaseSensitiveIncludeFileNames%"
+				},
+				"zopeneditor.zapp.variables": {
+					"scope": "window",
+					"type": "object",
+					"additionalProperties": {
+						"type": "string"
+					},
+					"description": "%zopeneditor.zappVariables%"
+				},
+				"zopeneditor.advancedCapabilities.enableRseApiActivationCheck": {
+					"scope": "window",
+					"type": "boolean",
+					"default": false,
+					"order": 0,
+					"description": "%zopeneditor.advancedCapabilities.enableRseApiActivationCheck%"
+				},
+				"zopeneditor.advancedCapabilities.enableRceLaunchWebview": {
+					"scope": "window",
+					"type": "boolean",
+					"default": true,
+					"order": 0,
+					"description": "%zopeneditor.advancedCapabilities.enableRceLaunchWebview%"
+				},
+				"zopeneditor.advancedCapabilities.enableRceLaunchExternal": {
+					"scope": "window",
+					"type": "boolean",
+					"default": true,
+					"order": 0,
+					"description": "%zopeneditor.advancedCapabilities.enableRceLaunchExternal%"
+				},
+				"zopeneditor.resourceTable.jobs": {
+					"scope": "window",
+					"type": "object",
+					"additionalProperties": {
+						"type": "object"
+					},
+					"properties": {
+						"filters": {
+							"type": "array"
+						},
+						"history": {
+							"type": "array"
+						},
+						"favorites": {
+							"type": "array"
+						}
+					},
+					"default": {
+						"filters": [],
+						"history": [],
+						"favorites": []
+					}
+				},
+				"zopeneditor.resourceTable.datasets": {
+					"scope": "window",
+					"type": "object",
+					"additionalProperties": {
+						"type": "object"
+					},
+					"properties": {
+						"filters": {
+							"type": "array"
+						},
+						"history": {
+							"type": "array"
+						},
+						"favorites": {
+							"type": "array"
+						}
+					},
+					"default": {
+						"filters": [],
+						"history": [],
+						"favorites": []
+					}
+				},
+				"zopeneditor.resourceTable.uss": {
+					"scope": "window",
+					"type": "object",
+					"additionalProperties": {
+						"type": "object"
+					},
+					"properties": {
+						"filters": {
+							"type": "array"
+						},
+						"history": {
+							"type": "array"
+						},
+						"favorites": {
+							"type": "array"
+						}
+					},
+					"default": {
+						"filters": [],
+						"history": [],
+						"favorites": []
+					}
+				},
+				"zopeneditor.encodings.filePatterns": {
+					"scope": "window",
+					"title": "%zopeneditor.encodings.filePatterns.title%",
+					"markdownDescription": "%zopeneditor.encodings.filePatterns.description%",
+					"type": "object",
+					"additionalProperties": {
+						"type": "string"
+					}
+				},
+				"zopeneditor.zcodescan.enableLiveZCodeScan": {
+					"scope": "window",
+					"type": "boolean",
+					"default": false,
+					"title": "%zopeneditor.zcodescan.enableLiveZCodeScan.title%",
+					"description": "%zopeneditor.zcodescan.enableLiveZCodeScan.description%",
+					"when": "!zopeneditor.isVSCodeWeb && cobolLSReady && zopeneditor.isZCodeScanUnlocked"
+				},
+				"zopeneditor.mcp.enabled": {
+					"scope": "window",
+					"type": "boolean",
+					"default": false,
+					"description": "%zopeneditor.mcp.enabled%"
+				},
+				"zopeneditor.zapp.validateOnSave": {
+					"scope": "window",
+					"type": "boolean",
+					"default": true,
+					"description": "%zopeneditor.zapp.validateOnSave%"
+				}
+			}
+		},
+		"semanticTokenTypes": [
+			{
+				"id": "zVariable",
+				"superType": "variable",
+				"description": "Z Open Editor Variable"
+			},
+			{
+				"id": "zFunction",
+				"superType": "function",
+				"description": "Z Open Editor Function"
+			},
+			{
+				"id": "zPreprocessor",
+				"superType": "macro",
+				"description": "Z Open Editor Preprocessor Macro Line"
+			},
+			{
+				"id": "zLabel",
+				"superType": "label",
+				"description": "Z Open Editor Label"
+			}
+		],
+		"configurationDefaults": {
+			"editor.tokenColorCustomizations": {
+				"textMateRules": [
+					{
+						"scope": "source.cobol entity.name.function.seqnum",
+						"settings": {
+							"foreground": "#7e7e7e"
+						}
+					}
+				]
+			},
+			"editor.semanticTokenColorCustomizations": {
+				"[Default Dark+]": {
+					"rules": {
+						"zVariable": "#D4D4D4",
+						"zFunction": "#569CD6",
+						"zPreprocessor": "#d76bf3"
+					}
+				},
+				"[Default Dark Modern]": {
+					"rules": {
+						"zVariable": "#D4D4D4",
+						"zFunction": "#569CD6",
+						"zPreprocessor": "#d76bf3"
+					}
+				},
+				"[Experimental Dark]": {
+					"rules": {
+						"zVariable": "#BBBEBF",
+						"zFunction": "#4F8FDD",
+						"zPreprocessor": "#d76bf3"
+					}
+				},
+				"[Default Light+]": {
+					"rules": {
+						"zVariable": "#000000",
+						"zFunction": "#0000FF",
+						"zPreprocessor": "#be0dea"
+					}
+				},
+				"[Default Light Modern]": {
+					"rules": {
+						"zVariable": "#3B3B3B",
+						"zFunction": "#0000FF",
+						"zPreprocessor": "#be0dea"
+					}
+				},
+				"[Experimental Light]": {
+					"rules": {
+						"zVariable": "#202020",
+						"zFunction": "#5460C1",
+						"zPreprocessor": "#be0dea"
+					}
+				},
+				"[Light 2026]": {
+					"rules": {
+						"zVariable": "#202020",
+						"zFunction": "#CF222E",
+						"zPreprocessor": "#be0dea",
+						"zLabel": "#116329"
+					}
+				},
+				"[Complete Light]": {
+					"rules": {
+						"zVariable": "#202020",
+						"zFunction": "#CF222E",
+						"zPreprocessor": "#be0dea",
+						"zLabel": "#116329"
+					}
+				},
+				"[Visual Studio Light]": {
+					"rules": {
+						"zVariable": "#000000",
+						"zFunction": "#0000FF",
+						"zPreprocessor": "#be0dea",
+						"zLabel": "#800000"
+					}
+				},
+				"[Light Modern]": {
+					"rules": {
+						"zVariable": "#3B3B3B",
+						"zFunction": "#0000FF",
+						"zPreprocessor": "#be0dea",
+						"zLabel": "#800000"
+					}
+				},
+				"[Light+]": {
+					"rules": {
+						"zVariable": "#000000",
+						"zFunction": "#0000FF",
+						"zPreprocessor": "#be0dea",
+						"zLabel": "#800000"
+					}
+				},
+				"[Quiet Light]": {
+					"rules": {
+						"zVariable": "#333333",
+						"zFunction": {
+							"foreground": "#4b69c6",
+							"fontStyle": ""
+						},
+						"zPreprocessor": "#be0dea",
+						"zLabel": "#4B69C6"
+					}
+				},
+				"[Solarized Light]": {
+					"rules": {
+						"zVariable": "#657B83",
+						"zFunction": "#859900",
+						"zPreprocessor": "#be0dea",
+						"zLabel": "#268BD2"
+					}
+				},
+				"[Dark 2026]": {
+					"rules": {
+						"zVariable": "#BBBEBF",
+						"zFunction": "#FF7B72",
+						"zPreprocessor": "#d76bf3",
+						"zLabel": "#7EE787"
+					}
+				},
+				"[Abyss]": {
+					"rules": {
+						"zVariable": "#6688CC",
+						"zFunction": "#225588",
+						"zPreprocessor": "#d76bf3",
+						"zLabel": "#225588"
+					}
+				},
+				"[Complete Dark]": {
+					"rules": {
+						"zVariable": "#D4D4D4",
+						"zFunction": "#569CD6",
+						"zPreprocessor": "#d76bf3",
+						"zLabel": "#569CD6"
+					}
+				},
+				"[Visual Studio Dark]": {
+					"rules": {
+						"zVariable": "#D4D4D4",
+						"zFunction": "#569CD6",
+						"zPreprocessor": "#d76bf3",
+						"zLabel": "#569CD6"
+					}
+				},
+				"[Dark Modern]": {
+					"rules": {
+						"zVariable": "#D4D4D4",
+						"zFunction": "#569CD6",
+						"zPreprocessor": "#d76bf3",
+						"zLabel": "#569CD6"
+					}
+				},
+				"[Dark+]": {
+					"rules": {
+						"zVariable": "#D4D4D4",
+						"zFunction": "#569CD6",
+						"zPreprocessor": "#d76bf3",
+						"zLabel": "#569CD6"
+					}
+				},
+				"[Kimbie Dark]": {
+					"rules": {
+						"zVariable": "#D3AF86",
+						"zFunction": "#98676A",
+						"zPreprocessor": "#d76bf3",
+						"zLabel": "#DC3958"
+					}
+				},
+				"[Monokai]": {
+					"rules": {
+						"zVariable": "#F8F8F2",
+						"zFunction": "#F92672",
+						"zPreprocessor": "#d76bf3",
+						"zLabel": "#F92672"
+					}
+				},
+				"[Monokai Dimmed]": {
+					"rules": {
+						"zVariable": "#C5C8C6",
+						"zFunction": "#676867",
+						"zPreprocessor": "#d76bf3",
+						"zLabel": "#6089B4"
+					}
+				},
+				"[Red]": {
+					"rules": {
+						"zVariable": {
+							"foreground": "#F8F8F8",
+							"fontStyle": ""
+						},
+						"zFunction": "#F12727",
+						"zPreprocessor": "#d76bf3",
+						"zLabel": "#FEC758"
+					}
+				},
+				"[Solarized Dark]": {
+					"rules": {
+						"zVariable": "#839496",
+						"zFunction": "#859900",
+						"zPreprocessor": "#d76bf3",
+						"zLabel": "#268BD2"
+					}
+				},
+				"[Tomorrow Night Blue]": {
+					"rules": {
+						"zVariable": "#FFFFFF",
+						"zFunction": "#EBBBFF",
+						"zPreprocessor": "#d76bf3",
+						"zLabel": "#FF9DA4"
+					}
+				},
+				"[Default High Contrast]": {
+					"rules": {
+						"zVariable": "#FFFFFF",
+						"zFunction": "#569CD6",
+						"zPreprocessor": "#d76bf3",
+						"zLabel": "#569CD6"
+					}
+				},
+				"[Default High Contrast Light]": {
+					"rules": {
+						"zVariable": "#292929",
+						"zFunction": "#0F4A85",
+						"zPreprocessor": "#be0dea",
+						"zLabel": "#0F4A85"
+					}
+				}
+			},
+			"[cobol]": {
+				"files.autoGuessEncoding": true,
+				"editor.formatOnType": true,
+				"editor.rulers": [
+					0,
+					6,
+					7,
+					11,
+					72
+				],
+				"editor.tabSize": 3,
+				"editor.useTabStops": false,
+				"editor.snippetSuggestions": "bottom",
+				"editor.wordSeparators": "`~!@#$%^&*()=+[{]}\\|;:'\",.<>/?",
+				"editor.defaultFormatter": "IBM.zopeneditor"
+			},
+			"[pl1]": {
+				"editor.rulers": [
+					0,
+					1,
+					72
+				]
+			},
+			"[hlasm]": {
+				"editor.rulers": [
+					0,
+					9,
+					15,
+					71,
+					72,
+					80
+				],
+				"editor.renderIndentGuides": false
+			},
+			"[hlasmlst]": {
+				"editor.rulers": [
+					0,
+					26,
+					35,
+					41,
+					97,
+					98,
+					106
+				],
+				"editor.renderIndentGuides": false
+			},
+			"[rexx]": {
+				"editor.rulers": [
+					80
+				]
+			},
+			"[jcl]": {
+				"editor.rulers": [
+					2,
+					10,
+					11,
+					15,
+					16,
+					72,
+					80
+				]
+			}
+		},
+		"snippets": [
+			{
+				"language": "cobol",
+				"path": "./cobol-textmate/cobol-snippets.json"
+			},
+			{
+				"language": "pl1",
+				"path": "./pl1-textmate/pl1-snippets.json"
+			},
+			{
+				"language": "pl1",
+				"path": "./pl1-textmate/pl1-snippets.json"
+			},
+			{
+				"language": "jcl",
+				"path": "./jcl-textmate/jcl-snippets.json"
+			}
+		],
+		"languages": [
+			{
+				"id": "cobol",
+				"aliases": [
+					"COBOL"
+				],
+				"extensions": [
+					".cbl",
+					".cpy",
+					".cob",
+					".copy",
+					".copybook",
+					".cobol",
+					".cobcopy"
+				],
+				"icon": {
+					"light": "./images/cbl-light.svg",
+					"dark": "./images/cbl-dark.svg"
+				},
+				"configuration": "./cobol-textmate/cobol-language-configuration.json"
+			},
+			{
+				"id": "pl1",
+				"aliases": [
+					"PL/I"
+				],
+				"extensions": [
+					".pli",
+					".pl1",
+					".pc",
+					".pci",
+					".plinc",
+					".pcx",
+					".inc",
+					".include"
+				],
+				"icon": {
+					"light": "./images/pl1-light.svg",
+					"dark": "./images/pl1-dark.svg"
+				},
+				"configuration": "./pl1-textmate/pl1-language-configuration.json"
+			},
+			{
+				"id": "jcl",
+				"aliases": [
+					"JCL",
+					"jcl"
+				],
+				"extensions": [
+					".jcl",
+					".cntl",
+					".proc"
+				],
+				"icon": {
+					"light": "./images/jcl-light.svg",
+					"dark": "./images/jcl-dark.svg"
+				},
+				"configuration": "./jcl-textmate/jcl-language-configuration.json"
+			},
+			{
+				"id": "jesjcl",
+				"filenamePatterns": [
+					"*JESJCL*"
+				],
+				"icon": {
+					"light": "./images/jcl-light.svg",
+					"dark": "./images/jcl-dark.svg"
+				},
+				"configuration": "./jcl-textmate/jcl-language-configuration.json"
+			},
+			{
+				"id": "jesmsglg",
+				"filenamePatterns": [
+					"*JESMSGLG*"
+				],
+				"icon": {
+					"light": "./images/spool-light.svg",
+					"dark": "./images/spool-dark.svg"
+				},
+				"configuration": "./spool-textmate/spool-language-configuration.json"
+			},
+			{
+				"id": "spool",
+				"filenamePatterns": [
+					"*JESYSMSG*",
+					"*SYSPRINT*"
+				],
+				"icon": {
+					"light": "./images/spool-light.svg",
+					"dark": "./images/spool-dark.svg"
+				},
+				"configuration": "./spool-textmate/spool-language-configuration.json"
+			},
+			{
+				"id": "hlasm",
+				"aliases": [
+					"HLASM",
+					"hlasm"
+				],
+				"extensions": [
+					".s",
+					".assemble",
+					".asm",
+					".hla",
+					".hlasm",
+					".copyasm",
+					".macasm",
+					".bms",
+					".mac",
+					".dbd",
+					".mfs",
+					".pcb"
+				],
+				"icon": {
+					"light": "./images/asm-light.svg",
+					"dark": "./images/asm-dark.svg"
+				},
+				"configuration": "./hlasm-textmate/hlasm-language-configuration.json"
+			},
+			{
+				"id": "hlasmlst",
+				"aliases": [
+					"HLASMLST",
+					"hlasmlst"
+				],
+				"extensions": [
+					".langx"
+				],
+				"icon": {
+					"light": "./images/asm-light.svg",
+					"dark": "./images/asm-dark.svg"
+				},
+				"configuration": "./hlasm-textmate/hlasm-language-configuration.json"
+			},
+			{
+				"id": "rexx",
+				"aliases": [
+					"REXX",
+					"rexx"
+				],
+				"extensions": [
+					".rexx",
+					".rex"
+				],
+				"icon": {
+					"light": "./images/rexx-light.svg",
+					"dark": "./images/rexx-dark.svg"
+				},
+				"configuration": "./rexx-textmate/rexx-language-configuration.json"
+			}
+		],
+		"grammars": [
+			{
+				"language": "cobol",
+				"scopeName": "source.cobol",
+				"path": "./cobol-textmate/cobol.json"
+			},
+			{
+				"language": "pl1",
+				"scopeName": "source.pl1",
+				"path": "./pl1-textmate/pl1.json"
+			},
+			{
+				"language": "jcl",
+				"scopeName": "source.jcl",
+				"path": "./jcl-textmate/jcl.json"
+			},
+			{
+				"language": "jesjcl",
+				"scopeName": "source.jcl",
+				"path": "./jcl-textmate/jcl.json"
+			},
+			{
+				"language": "jesmsglg",
+				"scopeName": "source.spool-jesmsglg",
+				"path": "./spool-textmate/spool-jesmsglg.json"
+			},
+			{
+				"language": "spool",
+				"scopeName": "source.spool",
+				"path": "./spool-textmate/spool.json"
+			},
+			{
+				"language": "hlasm",
+				"scopeName": "source.hlasm",
+				"path": "./hlasm-textmate/hlasm.json"
+			},
+			{
+				"language": "hlasmlst",
+				"scopeName": "source.hlasmlst",
+				"path": "./hlasm-textmate/hlasmlst.json"
+			},
+			{
+				"language": "rexx",
+				"scopeName": "source.rexx",
+				"path": "./rexx-textmate/rexx.json"
+			}
+		],
+		"commands": [
+			{
+				"command": "zopeneditor.cobol.cics.inspect.resource",
+				"title": "Inspect Resource Z Open Editor",
+				"category": "IBM Z Open Editor"
+			},
+			{
+				"command": "zopeneditor.zapp.compiler.options.change",
+				"title": "Restart Z Open Editor",
+				"category": "IBM Z Open Editor"
+			},
+			{
+				"command": "zopeneditor.cobol.truncate",
+				"title": "%zopeneditor.cobol.truncate%",
+				"category": "IBM Z Open Editor"
+			},
+			{
+				"command": "zopeneditor.pl1.truncate",
+				"title": "%zopeneditor.pl1.truncate%",
+				"category": "IBM Z Open Editor"
+			},
+			{
+				"command": "zopeneditor.hlasm.truncate",
+				"title": "%zopeneditor.hlasm.truncate%",
+				"category": "IBM Z Open Editor"
+			},
+			{
+				"command": "zopeneditor.rexx.truncate",
+				"title": "%zopeneditor.rexx.truncate%",
+				"category": "IBM Z Open Editor"
+			},
+			{
+				"command": "zopeneditor.jcl.truncate",
+				"title": "%zopeneditor.jcl.truncate%",
+				"category": "IBM Z Open Editor"
+			},
+			{
+				"command": "zopeneditor.tab",
+				"title": "%zopeneditor.tab%",
+				"category": "IBM Z Open Editor"
+			},
+			{
+				"command": "cobol.unnumber",
+				"title": "%cobol.unnumber%",
+				"category": "IBM Z Open Editor"
+			},
+			{
+				"command": "cobol.renumber",
+				"title": "%cobol.renumber%",
+				"category": "IBM Z Open Editor"
+			},
+			{
+				"command": "hlasm.refreshMaclibs",
+				"title": "%hlasm.refreshMaclibs%",
+				"category": "IBM Z Open Editor"
+			},
+			{
+				"command": "zopeneditor.revtab",
+				"title": "%zopeneditor.revtab%",
+				"category": "IBM Z Open Editor"
+			},
+			{
+				"command": "snippets.importidzsnippet",
+				"title": "%snippets.importidzsnippet%",
+				"category": "IBM Z Open Editor"
+			},
+			{
+				"command": "zlang.stopCobolLsp",
+				"title": "%zlang.stopCobolLsp%",
+				"category": "IBM Z Open Editor"
+			},
+			{
+				"command": "zlang.stopPl1Lsp",
+				"title": "%zlang.stopPl1Lsp%",
+				"category": "IBM Z Open Editor"
+			},
+			{
+				"command": "zlang.stopHLASMLsp",
+				"title": "%zlang.stopHlasmLsp%",
+				"category": "IBM Z Open Editor"
+			},
+			{
+				"command": "zlang.stopRexxLsp",
+				"title": "%zlang.stopRexxLsp%",
+				"category": "IBM Z Open Editor"
+			},
+			{
+				"command": "zlang.stopJclLsp",
+				"title": "%zlang.stopJclLsp%",
+				"category": "IBM Z Open Editor"
+			},
+			{
+				"command": "zlang.refreshZoweProfiles",
+				"title": "%zlang.refreshZoweProfiles%",
+				"category": "IBM Z Open Editor"
+			},
+			{
+				"command": "zopeneditor.zowe.changeZoweProfiles",
+				"title": "%zopeneditor.zowe.changeZoweProfiles%",
+				"category": "IBM Z Open Editor"
+			},
+			{
+				"command": "zopeneditor.zowe.rsePasswordExpiryPrompt",
+				"title": "%zopeneditor.zowe.rsePasswordExpiryPrompt%",
+				"category": "IBM Z Open Editor"
+			},
+			{
+				"command": "extension.userbuild",
+				"title": "%commands.extension.userbuild%",
+				"category": "IBM User Build"
+			},
+			{
+				"command": "extension.full-userbuild",
+				"title": "%commands.extension.full-userbuild%",
+				"category": "IBM User Build"
+			},
+			{
+				"command": "zopeneditor.openWelcomeScreen",
+				"title": "%commands.extension.openWelcomeScreen%",
+				"category": "IBM Z Open Editor"
+			},
+			{
+				"command": "zopeneditor.cobol.addComment",
+				"title": "%zopeneditor.cobol.addComment%",
+				"category": "IBM Z Open Editor"
+			},
+			{
+				"command": "zopeneditor.external-survey.open",
+				"title": "%zopeneditor.external-survey.open%",
+				"category": "IBM Z Open Editor"
+			},
+			{
+				"command": "zopeneditor.zowejobs.node.showInResourceTable",
+				"title": "%zopeneditor.showInResourcesTable%",
+				"category": "IBM Z Open Editor"
+			},
+			{
+				"command": "zopeneditor.zoweds.node.showInResourceTable",
+				"title": "%zopeneditor.showInResourcesTable%",
+				"category": "IBM Z Open Editor"
+			},
+			{
+				"command": "zopeneditor.zoweuss.node.showInResourceTable",
+				"title": "%zopeneditor.showInResourcesTable%",
+				"category": "IBM Z Open Editor"
+			},
+			{
+				"command": "zopeneditor.showInResourceTable",
+				"title": "%zopeneditor.showInResourcesTable%",
+				"category": "IBM Z Open Editor"
+			},
+			{
+				"command": "zopeneditor.launch.rce",
+				"title": "%rce.launch.execute%",
+				"category": "IBM Z Open Editor"
+			},
+			{
+				"command": "zopeneditor.launch.rce.webview",
+				"title": "%rce.launch.webview.execute%",
+				"category": "IBM Z Open Editor"
+			},
+			{
+				"command": "preprocessor.local.execute.cobol",
+				"title": "%preprocessor.local.execute%",
+				"category": "IBM Z Open Editor"
+			},
+			{
+				"command": "preprocessor.local.execute.pl1",
+				"title": "%preprocessor.local.execute%",
+				"category": "IBM Z Open Editor"
+			},
+			{
+				"command": "preprocessor.local.diff.check",
+				"title": "%preprocessor.local.diff.check%",
+				"category": "IBM Z Open Editor"
+			},
+			{
+				"command": "preprocessor.mvs.execute.cobol",
+				"title": "%preprocessor.mvs.execute%",
+				"category": "IBM Z Open Editor"
+			},
+			{
+				"command": "preprocessor.mvs.execute.pl1",
+				"title": "%preprocessor.mvs.execute%",
+				"category": "IBM Z Open Editor"
+			},
+			{
+				"command": "preprocessor.local-mvs.execute.cobol",
+				"title": "%preprocessor.local-mvs.execute%",
+				"category": "IBM Z Open Editor"
+			},
+			{
+				"command": "preprocessor.local-mvs.execute.pl1",
+				"title": "%preprocessor.local-mvs.execute%",
+				"category": "IBM Z Open Editor"
+			},
+			{
+				"command": "preprocessor.mvs.diff.check",
+				"title": "%preprocessor.mvs.diff.check%",
+				"category": "IBM Z Open Editor"
+			},
+			{
+				"command": "cobol.expandSource",
+				"title": "%file.expandSource%",
+				"category": "IBM Z Open Editor"
+			},
+			{
+				"command": "jcl.expandSource",
+				"title": "%file.expandSource%",
+				"category": "IBM Z Open Editor"
+			},
+			{
+				"command": "pl1.expandSource",
+				"title": "%file.expandSource%",
+				"category": "IBM Z Open Editor"
+			},
+			{
+				"command": "cobol.zCodeScan.execute",
+				"title": "%zcodescan.execute%",
+				"category": "IBM Z Open Editor"
+			},
+			{
+				"command": "pl1.zCodeScan.execute",
+				"title": "%zcodescan.execute%",
+				"category": "IBM Z Open Editor"
+			},
+			{
+				"command": "zopeneditor.openResourceTable",
+				"title": "%zopeneditor.openResourcesTable%",
+				"category": "IBM Z Open Editor"
+			},
+			{
+				"command": "zopeneditor.clear.all.licenses",
+				"title": "%zopeneditor.clear.all.licenses%",
+				"category": "IBM Z Open Editor (Internal)"
+			},
+			{
+				"command": "zopeneditor.clear.rse.license",
+				"title": "%zopeneditor.clear.rse.license%",
+				"category": "IBM Z Open Editor (Internal)"
+			},
+			{
+				"command": "zopeneditor.clear.local.license",
+				"title": "%zopeneditor.clear.local.license%",
+				"category": "IBM Z Open Editor (Internal)"
+			},
+			{
+				"command": "zopeneditor.data.elements.open",
+				"title": "%zopeneditor.data.elements.open%",
+				"category": "IBM Z Open Editor"
+			},
+			{
+				"command": "zopeneditor.data.elements.open.command.palette",
+				"title": "%zopeneditor.data.elements.open.command.palette%",
+				"category": "IBM Z Open Editor"
+			},
+			{
+				"command": "zopeneditor.program.control.flow",
+				"title": "%zopeneditor.program.control.flow%",
+				"category": "IBM Z Open Editor"
+			},
+			{
+				"command": "zopeneditor.program.control.flow.open.command.palette",
+				"title": "%zopeneditor.program.control.flow.open.command.palette%",
+				"category": "IBM Z Open Editor"
+			},
+			{
+				"command": "zopeneditor.data.flow",
+				"title": "%zopeneditor.data.flow%",
+				"category": "IBM Z Open Editor"
+			},
+			{
+				"command": "zopeneditor.data.flow.open.command.palette",
+				"title": "%zopeneditor.data.flow.open.command.palette%",
+				"category": "IBM Z Open Editor"
+			},
+			{
+				"command": "zopeneditor.export.support.files",
+				"title": "%zopeneditor.export.support.files%",
+				"category": "IBM Z Open Editor"
+			},
+			{
+				"command": "zopeneditor.hexEditLine",
+				"title": "%zopeneditor.hexEditLine%",
+				"category": "IBM Z Open Editor"
+			},
+			{
+				"command": "zopeneditor.hexEditLine.show.in",
+				"title": "%zopeneditor.hexEditLine.show.in%",
+				"category": "IBM Z Open Editor"
+			},
+			{
+				"command": "zopeneditor.zapp.validateAndSave",
+				"title": "%zopeneditor.zapp.validateAndSave%",
+				"category": "IBM Z Open Editor"
+			}
+		],
+		"menus": {
+			"view/item/context": [
+				{
+					"command": "zopeneditor.launch.rce",
+					"when": "(view == zowe.uss.explorer || view == zowe.ds.explorer || view == zowe.jobs.explorer) && viewItem =~ /^.*type=rse/ && zopeneditor.isRemoteConnectionEmulatorUnlocked && config.zopeneditor.advancedCapabilities.enableRceLaunchExternal",
+					"group": "rcegroup@0"
+				},
+				{
+					"command": "zopeneditor.launch.rce.webview",
+					"when": "(view == zowe.uss.explorer || view == zowe.ds.explorer || view == zowe.jobs.explorer) && viewItem =~ /^.*type=rse/ && zopeneditor.isRemoteConnectionEmulatorUnlocked && config.zopeneditor.advancedCapabilities.enableRceLaunchWebview",
+					"group": "rcegroup@0"
+				},
+				{
+					"submenu": "zopeneditor.show.in.actions",
+					"when": "!zopeneditor.isVSCodeWeb && (view == zowe.ds.explorer || view == zowe.uss.explorer || view == zowe.jobs.explorer) && !listMultiSelection",
+					"group": "navigation@101"
+				}
+			],
+			"editor/context": [
+				{
+					"command": "extension.userbuild",
+					"when": "!zopeneditor.isVSCodeWeb && config.zopeneditor.userbuild.enabled && (resourceLangId == cobol || resourceLangId == pl1 || resourceLangId == hlasm || config.zopeneditor.userbuild.alwaysShowCommands) && (resourceExtname not in zopeneditor.includeFileExtensions || resourceLangId == hlasm || resourceLangId == jcl || resourceLangId == rexx)",
+					"group": "zopeneditor@2"
+				},
+				{
+					"command": "extension.full-userbuild",
+					"when": "!zopeneditor.isVSCodeWeb && config.zopeneditor.userbuild.enabled && (resourceLangId == cobol || resourceLangId == pl1 || resourceLangId == hlasm || config.zopeneditor.userbuild.alwaysShowCommands) && (resourceExtname not in zopeneditor.includeFileExtensions || resourceLangId == hlasm || resourceLangId == jcl || resourceLangId == rexx)",
+					"group": "zopeneditor@3"
+				},
+				{
+					"command": "preprocessor.local.execute.cobol",
+					"when": "!zopeneditor.isVSCodeWeb && zopeneditor.isLocalPreprocessorProfileExist && cobolLSReady && resourceLangId == cobol",
+					"group": "z_preprocessor@1"
+				},
+				{
+					"command": "preprocessor.local.execute.pl1",
+					"when": "!zopeneditor.isVSCodeWeb && zopeneditor.isLocalPreprocessorProfileExist && pl1LSReady && resourceLangId == pl1",
+					"group": "z_preprocessor@1"
+				},
+				{
+					"command": "preprocessor.local.diff.check",
+					"when": "!zopeneditor.isVSCodeWeb && (zopeneditor.isLocalPreprocessorProfileExist || zopeneditor.isLocalToMvsPreprocessorProfileExist) && ((cobolLSReady && resourceLangId == cobol) || (pl1LSReady && resourceLangId == pl1))",
+					"group": "z_preprocessor@3"
+				},
+				{
+					"command": "preprocessor.mvs.execute.cobol",
+					"when": "!zopeneditor.isVSCodeWeb && zopeneditor.isMvsPreprocessorProfileExist && cobolLSReady && resourceLangId == cobol",
+					"group": "z_preprocessor@1"
+				},
+				{
+					"command": "preprocessor.mvs.execute.pl1",
+					"when": "!zopeneditor.isVSCodeWeb && zopeneditor.isMvsPreprocessorProfileExist && pl1LSReady && resourceLangId == pl1",
+					"group": "z_preprocessor@1"
+				},
+				{
+					"command": "preprocessor.local-mvs.execute.cobol",
+					"when": "!zopeneditor.isVSCodeWeb && zopeneditor.isLocalToMvsPreprocessorProfileExist && cobolLSReady && resourceLangId == cobol",
+					"group": "z_preprocessor@2"
+				},
+				{
+					"command": "preprocessor.local-mvs.execute.pl1",
+					"when": "!zopeneditor.isVSCodeWeb && zopeneditor.isLocalToMvsPreprocessorProfileExist && pl1LSReady && resourceLangId == pl1",
+					"group": "z_preprocessor@2"
+				},
+				{
+					"command": "preprocessor.mvs.diff.check",
+					"when": "!zopeneditor.isVSCodeWeb && zopeneditor.isMvsPreprocessorProfileExist && ((cobolLSReady && resourceLangId == cobol) || (pl1LSReady && resourceLangId == pl1))",
+					"group": "z_preprocessor@3"
+				},
+				{
+					"command": "cobol.expandSource",
+					"when": "!zopeneditor.isVSCodeWeb && cobolLSReady && resourceLangId == cobol",
+					"group": "z_cobol_operations@1"
+				},
+				{
+					"command": "cobol.zCodeScan.execute",
+					"when": "!zopeneditor.isVSCodeWeb && cobolLSReady && resourceLangId == cobol && zopeneditor.isZCodeScanUnlocked",
+					"group": "z_cobol_operations@1"
+				},
+				{
+					"command": "cobol.unnumber",
+					"when": "!zopeneditor.isVSCodeWeb && cobolLSReady && resourceLangId == cobol",
+					"group": "z_cobol_operations@2"
+				},
+				{
+					"command": "cobol.renumber",
+					"when": "!zopeneditor.isVSCodeWeb && cobolLSReady && resourceLangId == cobol",
+					"group": "z_cobol_operations@3"
+				},
+				{
+					"command": "pl1.expandSource",
+					"when": "!zopeneditor.isVSCodeWeb && pl1LSReady && resourceLangId == pl1",
+					"group": "z_pl1_operations@1"
+				},
+				{
+					"command": "pl1.zCodeScan.execute",
+					"when": "!zopeneditor.isVSCodeWeb && pl1LSReady && resourceLangId == pl1 && zopeneditor.isZCodeScanUnlocked",
+					"group": "z_pl1_operations@1"
+				},
+				{
+					"command": "jcl.expandSource",
+					"when": "!zopeneditor.isVSCodeWeb && jclLSReady && resourceLangId == jcl",
+					"group": "z_jcl_operations@1"
+				},
+				{
+					"command": "hlasm.refreshMaclibs",
+					"when": "!zopeneditor.isVSCodeWeb && hlasmLSReady && resourceLangId == hlasm && zopeneditor.isAssemblerMacrosUnlocked",
+					"group": "z_hlasm_operations@1"
+				},
+				{
+					"submenu": "zopeneditor.show.in.actions",
+					"when": "!zopeneditor.isVSCodeWeb && (((resourceLangId == cobol && cobolLSReady) || (resourceLangId == pl1 && pl1LSReady) && resourceExtname not in zopeneditor.includeFileExtensions) || resourceScheme =~ /^zowe/)",
+					"group": "navigation@101"
+				},
+				{
+					"command": "zopeneditor.hexEditLine",
+					"when": "editorTextFocus && resourceScheme =~ /^zowe-ds/ && zopeneditor.isHexLineEditorUnlocked",
+					"group": "z_cobol_operations@4"
+				}
+			],
+			"commandPalette": [
+				{
+					"command": "zopeneditor.cobol.cics.inspect.resource",
+					"when": "never"
+				},
+				{
+					"command": "preprocessor.local.execute.cobol",
+					"when": "!zopeneditor.isVSCodeWeb && zopeneditor.isLocalPreprocessorProfileExist && cobolLSReady && resourceLangId == cobol"
+				},
+				{
+					"command": "preprocessor.local.execute.pl1",
+					"when": "!zopeneditor.isVSCodeWeb && zopeneditor.isLocalPreprocessorProfileExist && pl1LSReady && resourceLangId == pl1"
+				},
+				{
+					"command": "preprocessor.mvs.execute.cobol",
+					"when": "!zopeneditor.isVSCodeWeb && zopeneditor.isMvsPreprocessorProfileExist && cobolLSReady && resourceLangId == cobol"
+				},
+				{
+					"command": "preprocessor.mvs.execute.pl1",
+					"when": "!zopeneditor.isVSCodeWeb && zopeneditor.isMvsPreprocessorProfileExist && pl1LSReady && resourceLangId == pl1"
+				},
+				{
+					"command": "preprocessor.local-mvs.execute.cobol",
+					"when": "!zopeneditor.isVSCodeWeb && zopeneditor.isLocalToMvsPreprocessorProfileExist && cobolLSReady && resourceLangId == cobol"
+				},
+				{
+					"command": "preprocessor.local-mvs.execute.pl1",
+					"when": "!zopeneditor.isVSCodeWeb && zopeneditor.isLocalToMvsPreprocessorProfileExist && pl1LSReady && resourceLangId == pl1"
+				},
+				{
+					"command": "cobol.expandSource",
+					"when": "!zopeneditor.isVSCodeWeb && cobolLSReady && resourceLangId == cobol"
+				},
+				{
+					"command": "cobol.unnumber",
+					"when": "!zopeneditor.isVSCodeWeb && cobolLSReady && resourceLangId == cobol"
+				},
+				{
+					"command": "cobol.renumber",
+					"when": "!zopeneditor.isVSCodeWeb && cobolLSReady && resourceLangId == cobol"
+				},
+				{
+					"command": "jcl.expandSource",
+					"when": "!zopeneditor.isVSCodeWeb && jclLSReady && resourceLangId == jcl"
+				},
+				{
+					"command": "hlasm.refreshMaclibs",
+					"when": "!zopeneditor.isVSCodeWeb && hlasmLSReady && resourceLangId == hlasm && zopeneditor.isAssemblerMacrosUnlocked"
+				},
+				{
+					"command": "zopeneditor.tab",
+					"when": "never"
+				},
+				{
+					"command": "zopeneditor.revtab",
+					"when": "never"
+				},
+				{
+					"command": "zopeneditor.cobol.addComment",
+					"when": "never"
+				},
+				{
+					"command": "extension.userbuild",
+					"when": "!zopeneditor.isVSCodeWeb && config.zopeneditor.userbuild.enabled && (resourceLangId == cobol || resourceLangId == pl1 || resourceLangId == hlasm || config.zopeneditor.userbuild.alwaysShowCommands) && (resourceExtname not in zopeneditor.includeFileExtensions || resourceLangId == hlasm)"
+				},
+				{
+					"command": "extension.full-userbuild",
+					"when": "!zopeneditor.isVSCodeWeb && config.zopeneditor.userbuild.enabled && (resourceLangId == cobol || resourceLangId == pl1 || resourceLangId == hlasm || config.zopeneditor.userbuild.alwaysShowCommands) && (resourceExtname not in zopeneditor.includeFileExtensions || resourceLangId == hlasm)"
+				},
+				{
+					"command": "zopeneditor.external-survey.open"
+				},
+				{
+					"command": "snippets.importidzsnippet",
+					"when": "!zopeneditor.isVSCodeWeb"
+				},
+				{
+					"command": "zlang.stopCobolLsp",
+					"when": "!zopeneditor.isVSCodeWeb"
+				},
+				{
+					"command": "zlang.stopPl1Lsp",
+					"when": "!zopeneditor.isVSCodeWeb"
+				},
+				{
+					"command": "zlang.stopHLASMLsp",
+					"when": "!zopeneditor.isVSCodeWeb"
+				},
+				{
+					"command": "zlang.stopRexxLsp",
+					"when": "!zopeneditor.isVSCodeWeb"
+				},
+				{
+					"command": "zlang.stopJclLsp",
+					"when": "!zopeneditor.isVSCodeWeb"
+				},
+				{
+					"command": "zlang.refreshZoweProfiles",
+					"when": "!zopeneditor.isVSCodeWeb"
+				},
+				{
+					"command": "zopeneditor.zowe.changeZoweProfiles",
+					"when": "!zopeneditor.isVSCodeWeb"
+				},
+				{
+					"command": "zopeneditor.zowe.rsePasswordExpiryPrompt",
+					"when": "never"
+				},
+				{
+					"command": "zopeneditor.openWelcomeScreen",
+					"when": "!zopeneditor.isVSCodeWeb"
+				},
+				{
+					"command": "zopeneditor.zowejobs.node.showInResourceTable",
+					"when": "never"
+				},
+				{
+					"command": "zopeneditor.zoweds.node.showInResourceTable",
+					"when": "never"
+				},
+				{
+					"command": "zopeneditor.zoweuss.node.showInResourceTable",
+					"when": "never"
+				},
+				{
+					"command": "zopeneditor.openResourceTable",
+					"when": "zopeneditor.isResourcesTableUnlocked"
+				},
+				{
+					"command": "zopeneditor.clear.all.licenses",
+					"when": "zopeneditor.ExtensionMode.Development"
+				},
+				{
+					"command": "zopeneditor.clear.rse.license",
+					"when": "zopeneditor.ExtensionMode.Development"
+				},
+				{
+					"command": "zopeneditor.clear.local.license",
+					"when": "zopeneditor.ExtensionMode.Development"
+				},
+				{
+					"command": "zopeneditor.zapp.compiler.options.change",
+					"when": "never"
+				},
+				{
+					"command": "zopeneditor.showInResourceTable",
+					"when": "resourceScheme =~ /^zowe/ && zopeneditor.isResourcesTableUnlocked"
+				},
+				{
+					"command": "zopeneditor.data.elements.open",
+					"when": "never"
+				},
+				{
+					"command": "zopeneditor.data.elements.open.command.palette",
+					"when": "!zopeneditor.isVSCodeWeb && ((resourceLangId == cobol && cobolLSReady) || (resourceLangId == pl1 && pl1LSReady)) && resourceExtname not in zopeneditor.includeFileExtensions && zopeneditor.isDataElementsTableUnlocked"
+				},
+				{
+					"command": "zopeneditor.data.flow",
+					"when": "never"
+				},
+				{
+					"command": "zopeneditor.data.flow.open.command.palette",
+					"when": "!zopeneditor.isVSCodeWeb && ((resourceLangId == cobol && cobolLSReady) && resourceExtname not in zopeneditor.includeFileExtensions) && zopeneditor.isDataFlowGraphUnlocked"
+				},
+				{
+					"command": "zopeneditor.program.control.flow",
+					"when": "never"
+				},
+				{
+					"command": "zopeneditor.program.control.flow.open.command.palette",
+					"when": "!zopeneditor.isVSCodeWeb && (((resourceLangId == cobol && cobolLSReady) || (resourceLangId == pl1 && pl1LSReady)) && resourceExtname not in zopeneditor.includeFileExtensions) && zopeneditor.isControlFlowGraphUnlocked"
+				},
+				{
+					"command": "cobol.zCodeScan.execute",
+					"when": "!zopeneditor.isVSCodeWeb && cobolLSReady && zopeneditor.isZCodeScanUnlocked"
+				},
+				{
+					"command": "pl1.zCodeScan.execute",
+					"when": "!zopeneditor.isVSCodeWeb && pl1LSReady && zopeneditor.isZCodeScanUnlocked"
+				},
+				{
+					"command": "zopeneditor.hexEditLine",
+					"when": "!zopeneditor.isVSCodeWeb && resourceScheme =~ /^zowe-ds/ && zopeneditor.isHexLineEditorUnlocked"
+				},
+				{
+					"command": "zopeneditor.hexEditLine.show.in",
+					"when": "never"
+				}
+			],
+			"zopeneditor.show.in.actions": [
+				{
+					"command": "zopeneditor.data.elements.open",
+					"group": "z_show_in_actions",
+					"when": "editorFocus && ((resourceLangId == cobol && cobolLSReady) || (resourceLangId == pl1 && pl1LSReady)) && resourceExtname not in zopeneditor.includeFileExtensions && zopeneditor.isDataElementsTableUnlocked"
+				},
+				{
+					"command": "zopeneditor.hexEditLine.show.in",
+					"group": "z_show_in_actions",
+					"when": "editorTextFocus && resourceScheme =~ /^zowe-ds/ && zopeneditor.isHexLineEditorUnlocked"
+				},
+				{
+					"command": "zopeneditor.showInResourceTable",
+					"group": "z_show_in_actions",
+					"when": "resourceScheme =~ /^zowe/"
+				},
+				{
+					"command": "zopeneditor.program.control.flow",
+					"group": "z_show_in_actions",
+					"when": "editorFocus && ((resourceLangId == cobol && cobolLSReady) || (resourceLangId == pl1 && pl1LSReady)) && resourceExtname not in zopeneditor.includeFileExtensions && zopeneditor.isControlFlowGraphUnlocked"
+				},
+				{
+					"command": "zopeneditor.data.flow",
+					"group": "z_show_in_actions",
+					"when": "editorFocus && (resourceLangId == cobol && cobolLSReady) && resourceExtname not in zopeneditor.includeFileExtensions && zopeneditor.isDataFlowGraphUnlocked"
+				},
+				{
+					"command": "zopeneditor.zoweds.node.showInResourceTable",
+					"group": "z_show_in_actions",
+					"when": "view == zowe.ds.explorer && viewItem =~ /^(pds|ds|member|session).*/ && !listMultiSelection  && zopeneditor.isResourcesTableUnlocked"
+				},
+				{
+					"command": "zopeneditor.zowejobs.node.showInResourceTable",
+					"group": "z_show_in_actions",
+					"when": "view == zowe.jobs.explorer && viewItem =~ /^(?!.*_fav)(server|job|spool).*/ && !listMultiSelection && zopeneditor.isResourcesTableUnlocked"
+				},
+				{
+					"command": "zopeneditor.zoweuss.node.showInResourceTable",
+					"group": "z_show_in_actions",
+					"when": "view == zowe.uss.explorer &&  viewItem =~ /^(?!.*_fav.*)(textFile.*|binaryFile.*|directory.*|ussSession.*)/ && zopeneditor.isResourcesTableUnlocked"
+				}
+			]
+		},
+		"submenus": [
+			{
+				"id": "zopeneditor.show.in.actions",
+				"label": "%zopeneditor.show.menu%"
+			}
+		],
+		"viewsContainers": {
+			"panel": [
+				{
+					"id": "resource-table-view-panel",
+					"title": "%zopeneditor.showInResourcesTable%",
+					"icon": "resources/zoe.svg"
+				},
+				{
+					"id": "data-elements-view-panel",
+					"title": "%zopeneditor.data.elements%",
+					"icon": "placeholder"
+				},
+				{
+					"id": "program-control-flow-panel",
+					"title": "%zopeneditor.program.control.flow%",
+					"icon": "placeholder"
+				},
+				{
+					"id": "data-flow-panel",
+					"title": "%zopeneditor.data.flow%",
+					"icon": "placeholder"
+				},
+				{
+					"id": "hex-line-editor-panel",
+					"title": "%zopeneditor.hexEditLine.show.in%",
+					"icon": "placeholder"
+				}
+			]
+		},
+		"views": {
+			"resource-table-view-panel": [
+				{
+					"id": "resource-table-view",
+					"name": "z/OS Resources Table",
+					"visibility": "visible",
+					"when": "zopeneditor.isResourcesTableUnlocked",
+					"type": "webview"
+				}
+			],
+			"data-elements-view-panel": [
+				{
+					"id": "data-elements-view",
+					"name": "Data Elements",
+					"visibility": "hidden",
+					"when": "zopeneditor.isDataElementsTableUnlocked && zopeneditor.dataElementsViewCreated",
+					"type": "webview",
+					"icon": "placeholder"
+				}
+			],
+			"program-control-flow-panel": [
+				{
+					"id": "program-control-flow-graph",
+					"name": "Program Control Flow",
+					"visibility": "hidden",
+					"when": "zopeneditor.pcfGraphCreated",
+					"type": "webview",
+					"icon": "placeholder"
+				}
+			],
+			"data-flow-panel": [
+				{
+					"id": "data-flow-graph",
+					"name": "Data Flow",
+					"visibility": "hidden",
+					"when": "zopeneditor.dataFlowGraphCreated",
+					"type": "webview",
+					"icon": "placeholder"
+				}
+			],
+			"hex-line-editor-panel": [
+				{
+					"id": "zopeneditor.hexLineEditor",
+					"name": "%zopeneditor.hexEditLine.show.in%",
+					"type": "webview",
+					"visibility": "hidden",
+					"when": "zopeneditor.hexLineEditorActive",
+					"icon": "placeholder"
+				}
+			]
+		},
+		"keybindings": [
+			{
+				"key": "ctrl+s",
+				"mac": "cmd+s",
+				"command": "zopeneditor.cobol.truncate",
+				"when": "editorLangId == cobol"
+			},
+			{
+				"key": "ctrl+s",
+				"mac": "cmd+s",
+				"command": "zopeneditor.pl1.truncate",
+				"when": "editorLangId == pl1"
+			},
+			{
+				"key": "ctrl+s",
+				"mac": "cmd+s",
+				"command": "zopeneditor.hlasm.truncate",
+				"when": "editorLangId == hlasm"
+			},
+			{
+				"key": "ctrl+s",
+				"mac": "cmd+s",
+				"command": "zopeneditor.rexx.truncate",
+				"when": "editorLangId == rexx"
+			},
+			{
+				"key": "ctrl+s",
+				"mac": "cmd+s",
+				"command": "zopeneditor.jcl.truncate",
+				"when": "editorLangId == jcl"
+			},
+			{
+				"key": "tab",
+				"command": "zopeneditor.tab",
+				"when": "(editorLangId == cobol || editorLangId == hlasm || editorLangId == jcl) && !inSnippetMode && !inlineSuggestionVisible"
+			},
+			{
+				"key": "shift+tab",
+				"command": "zopeneditor.revtab",
+				"when": "(editorLangId == cobol || editorLangId == hlasm || editorLangId == jcl) && !inSnippetMode"
+			},
+			{
+				"key": "ctrl+/",
+				"mac": "cmd+/",
+				"command": "zopeneditor.cobol.addComment",
+				"when": "editorLangId == cobol && cobolLSReady &&  editorTextFocus && !editorReadonly"
+			},
+			{
+				"key": "ctrl+s",
+				"mac": "cmd+s",
+				"command": "zopeneditor.zapp.validateAndSave",
+				"when": "resourceFilename =~ /zapp\\.(yaml|yml|json)$/"
+			}
+		]
+	},
+	"jest": {
+		"reporters": [
+			"default"
+		],
+		"transform": {
+			".(ts)": [
+				"ts-jest",
+				{
+					"tsconfig": "__tests__/test-tsconfig.json"
+				}
+			]
+		},
+		"transformIgnorePatterns": [
+			"node_modules/(?!(ansi-regex|strip-ansi|minimatch|uuid)/)"
+		],
+		"testRegex": "(test|spec)\\.ts$",
+		"moduleFileExtensions": [
+			"ts",
+			"tsx",
+			"js"
+		],
+		"moduleNameMapper": {
+			"\\.pem$": "<rootDir>/__mocks__/publicKeys.js"
+		},
+		"testPathIgnorePatterns": [
+			"dist",
+			"__tofix__"
+		],
+		"collectCoverageFrom": [
+			"src/**/*.ts",
+			"!**/__tests__/**",
+			"!**/index.ts",
+			"!**/main.ts"
+		],
+		"coverageReporters": [
+			"lcov"
+		],
+		"coverageDirectory": "<rootDir>/__tests__/__results__/coverage",
+		"testResultsProcessor": "jest-sonar-reporter"
+	},
+	"jestSonar": {
+		"reportPath": "__tests__/__results__",
+		"reportFile": "test-reporter.xml",
+		"indent": 2
+	},
+	"__metadata": {
+		"installedTimestamp": 1782586012419,
+		"targetPlatform": "universal",
+		"size": 94928286
+	}
+}

@@ -1,0 +1,290 @@
+{
+	"name": "bob-z-extension",
+	"displayName": "IBM Bob Premium Package for Z",
+	"publisher": "IBM",
+	"description": "Explain, modernize, and accelerate your mainframe development",
+	"version": "3.0.0",
+	"license": "LICENSE.txt",
+	"icon": "images/premium-package-for-z.png",
+	"galleryBanner": {
+		"color": "#D0E2FF"
+	},
+	"private": true,
+	"engines": {
+		"vscode": "^1.105.1"
+	},
+	"categories": [
+		"AI",
+		"Machine Learning"
+	],
+	"keywords": [
+		"COBOL",
+		"PL/I",
+		"PLI",
+		"PL1",
+		"JCL",
+		"HLASM",
+		"REXX",
+		"ASM",
+		"z/OS",
+		"zOS",
+		"IBM Z",
+		"Z Software",
+		"Mainframe",
+		"Modernization"
+	],
+	"activationEvents": [
+		"*"
+	],
+	"extensionDependencies": [
+		"ibm.zopeneditor",
+		"mermaidchart.vscode-mermaid-chart"
+	],
+	"main": "./dist/extension.js",
+	"l10n": "./.l10n-transformed/l10n",
+	"contributes": {
+		"commands": [
+			{
+				"command": "bob-z.understandLogin",
+				"title": "%command.understand_login.title%",
+				"enablement": "config.bob-z.understand.URL && workspaceFolderCount != 0"
+			},
+			{
+				"command": "bob-z.selectUnderstandProject",
+				"title": "%command.understand_select_project.title%",
+				"enablement": "config.bob-z.understand.URL && workspaceFolderCount != 0"
+			},
+			{
+				"command": "bob-z.refactorCodeGeneration",
+				"title": "%command.understand_refactor_codegen.title%"
+			},
+			{
+				"command": "bob-z.collectDiagnostics",
+				"title": "%command.collect_diagnostics.title%",
+				"category": "%command.collect_diagnostics.category%"
+			},
+			{
+				"command": "bob-z.editorTransformSnippetCommand",
+				"title": "%command.transform_snippet.title%"
+			},
+			{
+				"command": "bob-z.explorerTransformFileCommand",
+				"title": "%command.transform_file.title%",
+				"category": "%configuration.title%"
+			}
+		],
+		"menus": {
+			"explorer/context": [
+				{
+					"submenu": "bob-z.explorer.submenu",
+					"group": "2_workspace"
+				}
+			],
+			"bob-z.explorer.submenu": [
+				{
+					"command": "bob-z.explorerTransformFileCommand",
+					"when": "false && (resourceLangId == cobol || resourceLangId == pl1) && !(resourcePath =~ /.expanded/)"
+				},
+				{
+					"command": "bob-z.refactorCodeGeneration",
+					"when": "resourceLangId == markdown && resourceFilename =~ /-service.md$/"
+				}
+			],
+			"editor/context": [
+				{
+					"submenu": "bob-z.editor.submenu",
+					"group": "bob",
+					"when": "editorHasSelection && (resourceLangId == cobol || resourceLangId == pl1)"
+				}
+			],
+			"bob-z.editor.submenu": [
+				{
+					"command": "bob-z.editorTransformSnippetCommand",
+					"when": "false"
+				}
+			],
+			"commandPalette": [
+				{
+					"command": "bob-z.refactorCodeGeneration",
+					"when": "false"
+				},
+				{
+					"command": "bob-z.explorerTransformFileCommand",
+					"when": "false"
+				},
+				{
+					"command": "bob-z.editorTransformSnippetCommand",
+					"when": "false"
+				}
+			]
+		},
+		"submenus": [
+			{
+				"id": "bob-z.explorer.submenu",
+				"label": "%configuration.title%"
+			},
+			{
+				"id": "bob-z.editor.submenu",
+				"label": "%configuration.title%"
+			}
+		],
+		"configuration": [
+			{
+				"title": "%configuration.title%",
+				"properties": {
+					"bob-z.logLevel": {
+						"type": "string",
+						"default": "info",
+						"enum": [
+							"debug",
+							"info",
+							"warn",
+							"error",
+							"fatal"
+						],
+						"enumDescriptions": [
+							"%configuration.log_level.debug%",
+							"%configuration.log_level.info%",
+							"%configuration.log_level.warn%",
+							"%configuration.log_level.error%",
+							"%configuration.log_level.fatal%"
+						],
+						"description": "%configuration.log_level.description%"
+					},
+					"bob-z.understand.URL": {
+						"type": "string",
+						"default": "",
+						"description": "%configuration.understand.url.description%",
+						"pattern": "^$|(^https?:\\/\\/)((?!-)[a-zA-Z0-9-]{1,63}(?:\\.[a-zA-Z0-9-]{1,63})*(?<!-))(:[1-9][0-9]{1,4})?(\\/[a-zA-Z0-9._-]+)*$"
+					},
+					"bob-z.understand.certificate": {
+						"type": "string",
+						"default": "",
+						"description": "%configuration.understand.certificate.description%"
+					},
+					"bob-z.understand.callbackPort": {
+						"type": "number",
+						"default": 3233,
+						"description": "%configuration.understand.callback_port.description%"
+					}
+				}
+			}
+		]
+	},
+	"scripts": {
+		"vscode:prepublish": "pnpm run build:prod",
+		"clean": "rm -rf node_modules/* dist packages/*/node_modules packages/*/dist packages/*/lib packages/*/tsconfig.tsbuildinfo coverage .pnpm-store",
+		"download:transform-cli": "pnpm --filter @ibm/transform-cli run download",
+		"build": "node esbuild.js",
+		"build:prod": "pnpm nls:verify && node esbuild.js --production",
+		"check-types": "tsc --noEmit",
+		"lint": "eslint \"**/src/**/*.{ts,tsx,js,jsx}\" --fix --cache",
+		"nls:pseudo": "npx @vscode/l10n-dev generate-pseudo -o ./l10n ./l10n/bundle.l10n.json ./src ./packages && npx @vscode/l10n-dev generate-pseudo -o . ./package.nls.json && pnpm exec prettier --config .prettierrc --check \"**/*.json\" --write",
+		"nls:verify": "pnpm nls:pseudo && node scripts/verify-l10n-keys.js",
+		"validate": "pnpm -r run build && pnpm run check-types && pnpm run lint",
+		"compile": "pnpm run validate && pnpm run build",
+		"package": "pnpm run validate && node -e \"require('fs').mkdirSync('./packaged-vsix', {recursive: true})\" && vsce package --allow-star-activation --no-dependencies --out ./packaged-vsix --baseImagesUrl https://github.ibm.com/code-assistant/bob-z-extension/raw/main --allow-missing-repository",
+		"watch": "pnpm-run-all -p watch:*",
+		"watch:esbuild": "node esbuild.js --watch",
+		"watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
+		"test": "node scripts/add-coverage-ignores.js && vitest run",
+		"test:watch": "node scripts/add-coverage-ignores.js && vitest watch",
+		"test:coverage": "node scripts/add-coverage-ignores.js && vitest run --coverage",
+		"test:coverage:check": "./scripts/check_coverage.sh",
+		"coverage:add-ignores": "node scripts/add-coverage-ignores.js",
+		"prChecks": "pnpm clean && ./scripts/check_copyright.sh && pnpm install --frozen-lockfile && pnpm package && pnpm test:coverage:check && ./scripts/lint_check.sh && ./scripts/check_git_status.sh && echo \"\\033[0;32mAll checks have passed. You are PR ready!\\033[0m\"",
+		"detectSecrets": "detect-secrets --no-version-check scan --update .secrets.baseline",
+		"auditSecrets": "npm run detectSecrets && detect-secrets audit .secrets.baseline"
+	},
+	"devDependencies": {
+		"@eslint/eslintrc": "^3.3.5",
+		"@eslint/js": "^10.0.1",
+		"@ibm/bobapi": "2.0.0-202606171243-263cf07",
+		"@types/adm-zip": "^0.5.8",
+		"@types/lodash": "^4.17.24",
+		"@types/markdown-it-anchor": "^7.0.0",
+		"@types/mocha": "^10.0.10",
+		"@types/node": "24.13.2",
+		"@types/sql.js": "^1.4.9",
+		"@types/triple-beam": "^1.3.5",
+		"@types/vscode": "1.102.0",
+		"@typescript-eslint/eslint-plugin": "^8.57.2",
+		"@typescript-eslint/parser": "^8.57.2",
+		"@vitest/coverage-v8": "^4.1.2",
+		"@vitest/ui": "^4.1.2",
+		"@vscode/l10n-dev": "^0.0.35",
+		"@vscode/test-cli": "^0.0.12",
+		"@vscode/test-electron": "^2.5.2",
+		"@vscode/vsce": "^3.7.1",
+		"esbuild": "^0.28.0",
+		"esbuild-plugin-copy": "^2.1.1",
+		"eslint": "^10.0.2",
+		"eslint-config-prettier": "^10.1.8",
+		"eslint-plugin-header": "^3.1.1",
+		"eslint-plugin-only-warn": "^1.2.1",
+		"eslint-plugin-prettier": "^5.5.5",
+		"eslint-plugin-turbo": "^2.8.13",
+		"eslint-plugin-unicorn": "^63.0.0",
+		"globals": "^17.4.0",
+		"markdownlint-cli": "^0.49.0",
+		"npm-run-all2": "^8.0.4",
+		"prettier": "3.8.4",
+		"ts-node": "^10.9.2",
+		"typescript": "<6.0.0",
+		"typescript-eslint": "^8.56.1",
+		"vite": "^6.4.2",
+		"vitest": "^4.1.2",
+		"vitest-sonar-reporter": "^3.0.0"
+	},
+	"dependencies": {
+		"@ibm/brd": "workspace:*",
+		"@ibm/docgen": "workspace:*",
+		"@ibm/tmi": "workspace:*",
+		"@ibm/tmi-cfg-lib": "workspace:*",
+		"@ibm/transform": "workspace:*",
+		"@ibm/transform-cli": "workspace:*",
+		"@ibm/understand": "workspace:*",
+		"@ibm/validate": "workspace:*",
+		"@ibm/wca4z-prepare-cli": "workspace:*",
+		"@ibm/wiki": "workspace:*",
+		"@ibm/zopeneditor-api": "6.4.0-202602192243-9f6487323",
+		"@types/archiver": "^6.0.3",
+		"@types/markdown-it": "^14.1.2",
+		"adm-zip": "^0.5.17",
+		"archiver": "^7.0.1",
+		"java-parser": "^3.0.1",
+		"lodash": "^4.18.0",
+		"log4js": "^6.9.1",
+		"markdown-it": "^14.1.1",
+		"markdown-it-anchor": "^9.2.0",
+		"minimatch": "^10.2.4",
+		"sql.js": "^1.14.1",
+		"triple-beam": "^1.4.1",
+		"typescript-eslint": "^8.57.2",
+		"winston": "^3.19.0",
+		"winston-daily-rotate-file": "^5.0.0",
+		"winston-transport": "^4.9.0",
+		"yaml": "^2.8.3",
+		"zod": "^4.3.6"
+	},
+	"pnpm": {
+		"overrides": {
+			"diff": ">=8.0.3",
+			"serialize-javascript": ">=7.0.5",
+			"tmp@<0.2.6": ">=0.2.6",
+			"esbuild@<0.25.0": ">=0.25.0",
+			"vite@<6.4.2": ">=6.4.2",
+			"uuid@<11.1.1": ">=11.1.1",
+			"lodash@<4.18.0": ">=4.18.0",
+			"lodash-es@<4.18.0": ">=4.18.0",
+			"lodash-amd@<4.18.0": ">=4.18.0",
+			"js-yaml@<=4.1.1": ">=4.2.0"
+		}
+	},
+	"packageManager": "pnpm@10.34.3",
+	"__metadata": {
+		"installedTimestamp": 1782585995741,
+		"targetPlatform": "universal",
+		"size": 107752565
+	}
+}

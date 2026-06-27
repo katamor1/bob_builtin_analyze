@@ -1,0 +1,320 @@
+<command name="init">
+Description: Analyze IBM Z codebase and create concise AGENTS.md files for AI assistants
+
+<task>
+Please analyze this IBM Z codebase and create an AGENTS.md file containing:
+1. Build/lint/test commands - especially for running a single test
+2. Code style guidelines including imports, formatting, types, naming conventions, error handling, etc.
+3. COBOL-specific workspace analysis including data dictionary locations
+4. Mainframe coding standards and technical documentation
+</task>
+
+<initialization>
+  <purpose>
+    Create (or update) a concise AGENTS.md file that enables immediate productivity for AI assistants.
+    Focus ONLY on project-specific, non-obvious information that you had to discover by reading files.
+    
+    CRITICAL: Only include information that is:
+    - Non-obvious (couldn't be guessed from standard practices)
+    - Project-specific (not generic to the framework/language)
+    - Discovered by reading files (config files, code patterns, custom utilities)
+    - Essential for avoiding mistakes or following project conventions
+    
+    Usage notes:
+    - The file you create will be given to agentic coding agents (such as yourself) that operate in this repository
+    - Keep the main AGENTS.md concise - aim for about 20 lines, but use more if the project complexity requires it
+    - If there's already an AGENTS.md, improve it
+    - Be sure to prefix the file with: "# AGENTS.md\n\nThis file provides guidance to agents when working with code in this repository."
+    
+    COBOL/Mainframe Specific:
+    - For IBM Z workspaces, automatically detect COBOL programs and mainframe languages
+    - Document data dictionary locations (canonical: workspace-folder/bobz/DD.json)
+    - Include coding standards for each detected language (COBOL, JCL, Assembler, PL/I, REXX)
+    - Map COBOL programs to technical documentation
+    - Apply point-in-time data prohibition: NO file counts, line numbers, or statistics
+  </purpose>
+  
+  <todo_list_creation>
+    If the BOB_TOOL_UPDATE_TODO_LIST tool is available, create a todo list using the BOB_TOOL_UPDATE_TODO_LIST tool with these focused analysis steps:
+    
+    1. Check for existing AGENTS.md file
+       CRITICAL - Check this EXACT path IN THE PROJECT ROOT:
+       - AGENTS.md (in project root directory)
+       
+       IMPORTANT: Path is relative to the project/workspace root, NOT system root!
+       
+       If ANY of these exist:
+       - Read them thoroughly
+       - CRITICALLY EVALUATE: Remove ALL obvious information
+       - DELETE entries that are standard practice or framework defaults
+       - REMOVE anything that could be guessed without reading files
+       - Only KEEP truly non-obvious, project-specific discoveries
+       - Then add any new non-obvious patterns you discover
+    
+    2. Identify stack
+       - Language, framework, build tools
+       - Package manager and dependencies
+       - For IBM Z: Detect COBOL, JCL, Assembler, PL/I, REXX files
+    
+    3. Extract commands
+       - Build, test, lint, run
+       - Critical directory-specific commands
+    
+    4. Map core architecture
+       - Main components and flow
+       - Key entry points
+    
+    5. Document critical patterns
+       - Project-specific utilities (that you discovered by reading code)
+       - Non-standard approaches (that differ from typical patterns)
+       - Custom conventions (that aren't obvious from file structure)
+    
+    6. Extract code style
+       - From config files only
+       - Key conventions
+    
+    7. Testing specifics
+       - Framework and run commands
+       - Directory requirements
+    
+    8. COBOL/Mainframe specific analysis (if applicable)
+       - Detect workspace type based on languages found
+       - Locate data dictionary at bobz/DD.json (canonical location)
+       - Find coding standards files for each language
+       - Locate technical documentation and map to COBOL programs
+       - Apply point-in-time data prohibition (no counts, line numbers, statistics)
+       - **DISPLAY CONFIGURATION OVERVIEW:** After applying default configuration, display a comprehensive overview of all detected settings
+       - **USER CONFIRMATION:** Ask user to review and confirm configuration before creating AGENTS.md
+    
+    9. Compile/Update AGENTS.md file
+       - If file exists:
+         * **MANDATORY:** Create a backup copy in bobz/backup directory with timestamp (e.g., bobz/backup/AGENTS.md.backup.2026-03-02T23-43-08)
+         * Create bobz/backup directory if it doesn't exist
+         * Use BOB_TOOL_EXECUTE_COMMAND: `mkdir -p bobz/backup && cp AGENTS.md bobz/backup/AGENTS.md.backup.[timestamp]`
+         * THEN AGGRESSIVELY clean it up:
+           - DELETE all obvious information (even if it was there before)
+           - REMOVE standard practices, framework defaults, common patterns
+           - STRIP OUT anything derivable from file structure or names
+           - ONLY KEEP truly non-obvious discoveries
+           - Then add newly discovered non-obvious patterns
+           - Result should be SHORTER and MORE FOCUSED than before
+       - If creating new: Follow the non-obvious-only principle
+       - Create ONLY the main AGENTS.md in workspace root (no mode-specific files)
+       
+    Note: If BOB_TOOL_UPDATE_TODO_LIST is not available, proceed with the analysis workflow directly without creating a todo list.
+  </todo_list_creation>
+</initialization>
+
+<analysis_workflow>
+  Follow the comprehensive analysis workflow to:
+  
+  1. **Discovery Phase**:
+     CRITICAL - First check for existing AGENTS.md file at workspace root:
+     - AGENTS.md (in project/workspace root)
+     
+     
+     If found, perform CRITICAL analysis:
+     - What information is OBVIOUS and must be DELETED?
+     - What violates the non-obvious-only principle?
+     - What would an experienced developer already know?
+     - DELETE first, then consider what to add
+     - The file should get SHORTER, not longer
+     
+     Also find other AI assistant rules and documentation
+     
+  2. **Project Identification**:
+     - Identify language, stack, and build system
+     - For IBM Z: Detect COBOL (*.cbl, *.cob, *.cobol), JCL (*.jcl), Assembler (*.asm, *.hlasm), PL/I (*.pli), REXX (*.rexx)
+     - Determine workspace type based on detected languages
+     
+  3. **Command Extraction**: Extract and verify essential commands
+  
+  4. **Architecture Mapping**: Create visual flow diagrams of core processes
+  
+  5. **Component Analysis**: Document key components and their interactions
+  
+  6. **Pattern Analysis**: Identify project-specific patterns and conventions
+  
+  7. **Code Style Extraction**: Extract formatting and naming conventions
+  
+  8. **COBOL/Mainframe Specific Analysis** (if applicable):
+     - Check if data dictionary exists at bobz/DD.json (only document if found)
+     - Search for coding standards files for each detected language
+     - Locate technical documentation directories (docs/, ARCHITECTURE.md, etc.)
+     - Map COBOL programs to their associated technical documentation
+     - Document auto-update rules for documentation synchronization
+     
+  8a. **Display Configuration Overview** (MANDATORY for COBOL/Mainframe workspaces):
+     After applying default configuration, display a comprehensive overview of all detected settings:
+     - Workspace Type: [detected type]
+     - Detected Languages: [list of languages]
+     - Data Dictionary Location: [path if exists, otherwise omit this line]
+     - Coding Standards Files: [list per language]
+     - Technical Documentation: [locations]
+     
+     Then prompt user to confirm the configuration before proceeding with AGENTS.md creation.
+     
+  9. **Security & Performance**: Document critical patterns if relevant
+  
+  10. **Testing Discovery**: Understand testing setup and practices
+  
+  11. **Example Extraction**: Find real examples from the codebase
+</analysis_workflow>
+
+<output_structure>
+  <main_file>
+    Create or deeply improve AGENTS.md with ONLY non-obvious information:
+    
+    If AGENTS.md exists:
+    - **MANDATORY BACKUP:** Before making ANY changes, create a backup copy in bobz/backup directory
+      * Backup filename format: bobz/backup/AGENTS.md.backup.[ISO-8601-timestamp]
+      * Create bobz/backup directory if it doesn't exist
+      * Use BOB_TOOL_EXECUTE_COMMAND: `mkdir -p bobz/backup && cp AGENTS.md bobz/backup/AGENTS.md.backup.$(date -u +%Y-%m-%dT%H-%M-%S)`
+    - FIRST: Delete ALL obvious information
+    - REMOVE: Standard commands, framework defaults, common patterns
+    - STRIP: Anything that doesn't require file reading to know
+    - EVALUATE: Each line - would an experienced dev be surprised?
+    - If not surprised, DELETE IT
+    - THEN: Add only truly non-obvious new discoveries
+    - Goal: File should be SHORTER and MORE VALUABLE
+    
+    Content should include:
+    - Header: "# AGENTS.md\n\nThis file provides guidance to agents when working with code in this repository."
+    - Code style - ONLY project-specific rules not covered by linter configs
+    - Custom utilities or patterns discovered by reading the code
+    - Non-standard directory structures or file organizations
+    - Project-specific conventions that violate typical practices
+    - Critical gotchas that would cause errors if not followed
+    
+    COBOL/Mainframe Specific Sections (if applicable):
+    
+    1. Workspace Type:
+       - Document detected workspace type and languages
+    
+    2. Data Dictionary Location (only if exists):
+       - Path to data dictionary file
+       - Only document if bobz/DD.json actually exists
+    
+    3. Coding Standards (per language):
+       - **DO NOT reference coding standards files directly in AGENTS.md**
+       - If a coding standard skill is available in the workspace, reference it for applying standards
+       - Note that coding standards enforcement is handled by the workspace's coding standard skill
+    
+    4. Technical Documentation Location:
+       - Document locations of technical documentation
+       - **MANDATORY:** Create a table mapping COBOL programs to their associated technical documentation files
+       - Table format must include: Program Name | Documentation File(s) | Description/Purpose
+       - Add auto-update instructions:
+         * Check documentation sync when code is updated
+         * Prompt for documentation updates when files are out of sync
+         * When analyzing a COBOL program, reference its mapped documentation for context
+         * Update the mapping table when new programs or documentation are added
+    
+    POINT-IN-TIME DATA PROHIBITION (applies to ALL sections):
+    - NEVER include file counts or statistics (e.g., "325 .cbl files")
+    - NEVER include line numbers or line counts (e.g., "609 lines")
+    - NEVER include specific program names unless critical configuration
+    - NEVER include timestamps except in skip list entries
+    - Focus on INTENT, PURPOSE, and PATTERNS, not current state
+    
+    EXCLUDE obvious information like:
+    - Standard npm/yarn commands visible in package.json
+    - Framework defaults (e.g., "React uses JSX")
+    - Common patterns (e.g., "tests go in __tests__ folders")
+    - Information derivable from file extensions or directory names
+    
+    Keep it concise (aim for ~20 lines, but expand as needed for complex projects).
+  </main_file>
+  
+</output_structure>
+
+<quality_criteria>
+  - ONLY include non-obvious information discovered by reading files
+  - Exclude anything that could be guessed from standard practices
+  - Focus on gotchas, hidden requirements, and counterintuitive patterns
+  - Include specific file paths when referencing custom utilities
+  - Be extremely concise - if it's obvious, don't include it
+  - Every line should prevent a potential mistake or confusion
+  - Test: Would an experienced developer be surprised by this information?
+  - If updating existing files: DELETE obvious info first, files should get SHORTER
+  - Measure success: Is the file more concise and valuable than before?
+  
+  COBOL/Mainframe Specific Quality Criteria:
+  - Apply point-in-time data prohibition: NO file counts, line numbers, or statistics
+  - Focus on workspace structure PURPOSE, not current contents
+  - DO NOT reference coding standards files directly - defer to coding standard skill if available
+  - Include data dictionary location (canonical: bobz/DD.json)
+  - Map COBOL programs to technical documentation for context
+  - Add auto-update rules for documentation synchronization
+</quality_criteria>
+
+<cobol_mainframe_examples>
+  <good_examples>
+    <example>
+      ## Workspace Type
+      **Type:** IBM Enterprise COBOL for z/OS
+      **Detected Languages:** IBM Enterprise COBOL for z/OS, JCL, Assembler
+    </example>
+    
+    <example>
+      ## Data Dictionary Location
+      **DATA_DICTIONARY:** bobz/DD.json
+      
+      Note: Only include this section if bobz/DD.json actually exists.
+      The data dictionary is stored at bobz/DD.json relative to the workspace folder containing COBOL files.
+      In multi-root workspaces, each workspace folder has its own bobz/DD.json file.
+    </example>
+    
+    <example>
+      ## Coding Standards
+      
+      Coding standards are available in the workspace and can be applied using the coding standard skill.
+      Do not reference coding standards files directly in AGENTS.md.
+    </example>
+    
+    <example>
+      ## Technical Documentation Location
+      **Documentation Directory:** docs/
+      **Key Documentation Files:**
+      - ARCHITECTURE.md
+      - API.md
+      
+      **COBOL Program Documentation Mapping:**
+      
+      | Program Name | Documentation File(s) | Description/Purpose |
+      |--------------|----------------------|---------------------|
+      | CUSTMGMT.cbl | docs/customer-management.md | Customer data management and CRUD operations |
+      | ORDPROC.cbl | docs/order-processing.md, docs/ARCHITECTURE.md | Order processing workflow and business logic |
+      | INVUPDT.cbl | docs/inventory-system.md | Inventory updates and stock management |
+      | RPTGEN.cbl | docs/reporting-module.md | Report generation and data aggregation |
+      | BATCHJOB.cbl | docs/batch-processing.md, docs/scheduling.md | Nightly batch processing jobs |
+      
+      **Auto-Update Rules:**
+      1. When code is modified, check if related documentation exists in the mapping table
+      2. If documentation is out of sync, prompt user to update documentation
+      3. Always verify documentation accuracy after significant code changes
+      4. When analyzing a COBOL program, reference its mapped documentation for context
+      5. Update the mapping table when new programs or documentation are added
+    </example>
+  </good_examples>
+  
+  <bad_examples>
+    <example type="file_counts">
+      ✗ BAD: **Detected Languages:** IBM Enterprise COBOL for z/OS (325 .cbl files)
+      ✓ GOOD: **Detected Languages:** IBM Enterprise COBOL for z/OS
+    </example>
+    
+    <example type="line_counts">
+      ✗ BAD: **Standards File:** `COBOL-CODING-STANDARDS.md` (609 lines)
+      ✓ GOOD: **Standards File:** `COBOL-CODING-STANDARDS.md`
+    </example>
+    
+    <example type="program_lists">
+      ✗ BAD: Contains 325 COBOL programs including LGACDB01, LGACDB02, etc.
+      ✓ GOOD: Contains COBOL programs organized by functional area
+    </example>
+  </bad_examples>
+</cobol_mainframe_examples>
+
+Remember: The goal is to create documentation that enables AI assistants to be immediately productive in this codebase, focusing on project-specific knowledge that isn't obvious from the code structure alone. For COBOL/mainframe workspaces, include workspace type, data dictionary location, coding standards, and technical documentation mappings while strictly avoiding point-in-time data.
+</command>

@@ -1,0 +1,10 @@
+{
+  "vscode-ibmi-bob.description": "IBM 「Bob Premium Package for i」は、 IBM Bobの拡張機能であり、 IBM i 開発に特化したモード、ツール、スキル、コマンド、およびワークフローを提供します。",
+  "vscode-ibmi-bob.submenus.bob": "ボブ",
+  "vscode-ibmi-bob.commands.addToContext.title": "ボブに追加",
+  "vscode-ibmi-bob.configuration.general.title": "一般",
+  "vscode-ibmi-bob.configuration.general.maxRowsToFetch": "ボブがSQLを実行する際に取得する行の最大数。 クエリで返す行数がこの制限を超えると、Bobはコンテキストウィンドウへの負荷を避けるため、この制限内に収まるように調整します。 必要であれば、ボブは後でさらにレコードを取得します",
+  "vscode-ibmi-bob.configuration.guardrails.title": "ガードレール",
+  "vscode-ibmi-bob.configuration.guardrails.enforceQualifiedCLCommands": "この設定を有効にすると、`execute_cl_command` ツールを使用する際、Bob は CL コマンドに対してライブラリ修飾を必須とするようになります。 コマンドにライブラリ修飾子が付いていない場合、Bobは `QSYS2.COMMAND_INFO` に問い合わせてコマンドのライブラリを検索し、候補を表示します。",
+  "vscode-ibmi-bob.configuration.guardrails.deniedSQLStatementTypes": "`run_sql_statement` ツールを使用する際、ボブが追加のユーザー確認なしに実行することを許可されていない SQL ステートメントの種類（例：「Create」、「Alter」、または「Begin」）の一覧。 この設定は、ボブの一般的な自動承認設定とは別のセキュリティ対策です。"
+}

@@ -1,0 +1,10 @@
+{
+  "vscode-ibmi-bob.description": "IBM Bob Premium Package for i 是 IBM Bob 的扩展，为 IBM i 开发提供了专门的模式、工具、技能、命令和工作流。",
+  "vscode-ibmi-bob.submenus.bob": "Bob",
+  "vscode-ibmi-bob.commands.addToContext.title": "添加到鲍勃的列表中",
+  "vscode-ibmi-bob.configuration.general.title": "常规",
+  "vscode-ibmi-bob.configuration.general.maxRowsToFetch": "鲍勃执行 SQL 时最多可检索的行数。 当查询需要返回更多行时，Bob 会将返回结果限制在此上限内，以避免使上下文窗口过载。 如有需要，Bob 随后会再获取更多行",
+  "vscode-ibmi-bob.configuration.guardrails.title": "护栏",
+  "vscode-ibmi-bob.configuration.guardrails.enforceQualifiedCLCommands": "启用此选项后，Bob 将要求在使用 `execute_cl_command` 工具时，CL 命令必须带上库限定符。 如果命令未指定库，Bob 将查询 `QSYS2.COMMAND_INFO` 以查找该命令的库并提供建议。",
+  "vscode-ibmi-bob.configuration.guardrails.deniedSQLStatementTypes": "列出 Bob 在使用 `run_sql_statement` 工具时，未经额外用户确认不得执行的 SQL 语句类型（例如“Create”、“Alter”或“Begin”）。 此设置是一项独立的安全措施，与鲍勃的一般自动批准设置相互独立。"
+}

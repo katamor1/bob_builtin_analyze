@@ -1,0 +1,19 @@
+{
+    "command.collect_diagnostics.category": "ĪƁḾ Ɓǿǿƀ Ƥřḗḗḿīŭŭḿ Ƥȧȧƈķȧȧɠḗḗ ƒǿǿř Ẑ",
+    "command.collect_diagnostics.title": "Ƈǿǿŀŀḗḗƈŧ ḓīȧȧɠƞǿǿşŧīƈş",
+    "command.transform_file.title": "Ŧřȧȧƞşƒǿǿřḿ ŧǿǿ Ĵȧȧṽȧȧ",
+    "command.understand_select_project.title": "ĪƁḾ Ɓǿǿƀ Ƥřḗḗḿīŭŭḿ Ƥȧȧƈķȧȧɠḗḗ ƒǿǿř Ẑ: Şḗḗŀḗḗƈŧ Ẑ ŬŬƞḓḗḗřşŧȧȧƞḓ Ƥřǿǿĵḗḗƈŧ",
+    "command.understand_refactor_codegen.title": "Ɠḗḗƞḗḗřȧȧŧḗḗ Şḗḗřṽīƈḗḗ Ƈǿǿḓḗḗ",
+    "command.understand_login.title": "ĪƁḾ Ɓǿǿƀ Ƥřḗḗḿīŭŭḿ Ƥȧȧƈķȧȧɠḗḗ ƒǿǿř Ẑ: Şīɠƞ īƞ ŧǿǿ Ẑ ŬŬƞḓḗḗřşŧȧȧƞḓ",
+    "command.transform_snippet.title": "Ŧřȧȧƞşƒǿǿřḿ ŧǿǿ Ĵȧȧṽȧȧ",
+    "configuration.log_level.debug": "Şħǿǿẇ ȧȧŀŀ ŀǿǿɠ ḿḗḗşşȧȧɠḗḗş īƞƈŀŭŭḓīƞɠ ḓḗḗƀŭŭɠ īƞƒǿǿřḿȧȧŧīǿǿƞ",
+    "configuration.log_level.description": "Şḗḗŧ ŧħḗḗ ŀǿǿɠɠīƞɠ ŀḗḗṽḗḗŀ ƒǿǿř ĪƁḾ Ɓǿǿƀ Ƥřḗḗḿīŭŭḿ Ƥȧȧƈķȧȧɠḗḗ ƒǿǿř Ẑ",
+    "configuration.log_level.error": "Şħǿǿẇ ḗḗřřǿǿřş ǿǿƞŀẏ",
+    "configuration.log_level.fatal": "Şħǿǿẇ ǿǿƞŀẏ ƒȧȧŧȧȧŀ ḗḗřřǿǿřş",
+    "configuration.log_level.info": "Şħǿǿẇ īƞƒǿǿřḿȧȧŧīǿǿƞȧȧŀ ḿḗḗşşȧȧɠḗḗş ȧȧƞḓ ȧȧƀǿǿṽḗḗ",
+    "configuration.log_level.warn": "Şħǿǿẇ ẇȧȧřƞīƞɠş ȧȧƞḓ ḗḗřřǿǿřş ǿǿƞŀẏ",
+    "configuration.title": "ĪƁḾ Ɓǿǿƀ Ƥřḗḗḿīŭŭḿ Ƥȧȧƈķȧȧɠḗḗ ƒǿǿř Ẑ",
+    "configuration.understand.url.description": "Ŧħḗḗ ŬŬŘĿ ǿǿƒ ŧħḗḗ Ẑ ŬŬƞḓḗḗřşŧȧȧƞḓ şḗḗřṽḗḗř Řḗḗƒȧȧƈŧǿǿřīƞɠ Şḗḗřṽīƈḗḗş ḗḗƞḓƥǿǿīƞŧ (ḗḗ.ɠ., ħŧŧƥş://ẏǿǿŭŭř-ŭŭƞḓḗḗřşŧȧȧƞḓ-şḗḗřṽḗḗř.ƈǿǿḿ:9444)",
+    "configuration.understand.certificate.description": "ǾǾƥŧīǿǿƞȧȧŀ: Ƥȧȧŧħ ŧǿǿ ȧȧ ƈŭŭşŧǿǿḿ ŞŞĿ ƈḗḗřŧīƒīƈȧȧŧḗḗ ƒǿǿř Ẑ ŬŬƞḓḗḗřşŧȧȧƞḓ şḗḗřṽḗḗř",
+    "configuration.understand.callback_port.description": "Ŧħḗḗ ƥǿǿřŧ ƞŭŭḿƀḗḗř ƒǿǿř ǾǾȦȦŭŭŧħ ƈȧȧŀŀƀȧȧƈķ ḓŭŭřīƞɠ Ẑ ŬŬƞḓḗḗřşŧȧȧƞḓ ȧȧŭŭŧħḗḗƞŧīƈȧȧŧīǿǿƞ"
+}

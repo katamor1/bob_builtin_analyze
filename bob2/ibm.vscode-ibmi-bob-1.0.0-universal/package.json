@@ -1,0 +1,231 @@
+{
+	"name": "vscode-ibmi-bob",
+	"displayName": "IBM Bob Premium Package for i",
+	"description": "IBM Bob Premium Package for i is an extension to IBM Bob that adds specialized modes, tools, skills, slash commands, and workflows for IBM i development.",
+	"icon": "icon.png",
+	"author": {
+		"name": "IBM",
+		"url": "https://github.com/IBM"
+	},
+	"publisher": "IBM",
+	"license": "LICENSE",
+	"version": "1.0.0",
+	"homepage": "https://bob.ibm.com/docs/ide/premium-packages/bob-for-i/bob-for-i-index",
+	"repository": {
+		"url": "https://github.ibm.com/bob-for-ibm-i/vscode-ibmi-bob"
+	},
+	"bugs": {
+		"url": "https://github.com/ibm/ibm-bob/issues"
+	},
+	"engines": {
+		"vscode": "^1.104.0"
+	},
+	"galleryBanner": {
+		"color": "#D0E2FF"
+	},
+	"categories": [
+		"Programming Languages",
+		"AI",
+		"Other"
+	],
+	"keywords": [
+		"ibmi",
+		"iseries",
+		"as400",
+		"rpgle",
+		"cl",
+		"dds",
+		"sql",
+		"cobol"
+	],
+	"activationEvents": [
+		"onStartupFinished"
+	],
+	"main": "./dist/extension.js",
+	"extensionDependencies": [
+		"halcyontechltd.code-for-ibmi",
+		"halcyontechltd.vscode-rpgle",
+		"halcyontechltd.vscode-db2i",
+		"IBM.vscode-clle",
+		"IBM.vscode-ibmi-testing",
+		"barrettotte.ibmi-languages"
+	],
+	"l10n": "./l10n",
+	"contributes": {
+		"commands": [
+			{
+				"command": "vscode-ibmi-bob.openWelcomePage",
+				"title": "%vscode-ibmi-bob.commands.openWelcomePage.title%",
+				"category": "IBM Bob Premium Package for i"
+			},
+			{
+				"command": "vscode-ibmi-bob.addToContext",
+				"title": "%vscode-ibmi-bob.commands.addToContext.title%"
+			},
+			{
+				"command": "vscode-ibmi-bob.extractBusinessRules",
+				"title": "%vscode-ibmi-bob.commands.extractBusinessRules.title%"
+			}
+		],
+		"menus": {
+			"commandPalette": [
+				{
+					"command": "vscode-ibmi-bob.addToContext",
+					"when": "never"
+				},
+				{
+					"command": "vscode-ibmi-bob.extractBusinessRules",
+					"when": "never"
+				}
+			],
+			"vscode-ibmi-bob.bob": [
+				{
+					"command": "vscode-ibmi-bob.addToContext",
+					"group": "0_bob@0"
+				},
+				{
+					"command": "vscode-ibmi-bob.extractBusinessRules",
+					"group": "0_bob@1",
+					"when": "viewItem =~ /^(member|streamfile).*/ || !explorerResourceIsFolder"
+				}
+			],
+			"explorer/context": [
+				{
+					"submenu": "vscode-ibmi-bob.bob",
+					"when": "!explorerResourceIsFolder",
+					"group": "99_bob@0"
+				}
+			],
+			"view/item/context": [
+				{
+					"submenu": "vscode-ibmi-bob.bob",
+					"when": "vscode-ibmi-bob:isActive && view =~ /^(objectBrowser|ifsBrowser|libraryListView)$/ && viewItem =~ /^(object|member|shortcut|streamfile|directory|currentLibrary|library).*/",
+					"group": "99_bob@99"
+				}
+			]
+		},
+		"submenus": [
+			{
+				"id": "vscode-ibmi-bob.bob",
+				"label": "%vscode-ibmi-bob.submenus.bob%"
+			}
+		],
+		"configuration": [
+			{
+				"id": "vscode-ibmi-bob.general",
+				"title": "%vscode-ibmi-bob.configuration.general.title%",
+				"order": 0,
+				"properties": {
+					"vscode-ibmi-bob.general.maxRowsToFetch": {
+						"order": 0,
+						"type": "number",
+						"default": 100,
+						"minimum": 1,
+						"markdownDescription": "%vscode-ibmi-bob.configuration.general.maxRowsToFetch%"
+					}
+				}
+			},
+			{
+				"id": "vscode-ibmi-bob.guardrails",
+				"title": "%vscode-ibmi-bob.configuration.guardrails.title%",
+				"order": 1,
+				"properties": {
+					"vscode-ibmi-bob.guardrails.enforceQualifiedCLCommands": {
+						"order": 0,
+						"type": "boolean",
+						"default": true,
+						"markdownDescription": "%vscode-ibmi-bob.configuration.guardrails.enforceQualifiedCLCommands%"
+					},
+					"vscode-ibmi-bob.guardrails.deniedSQLStatementTypes": {
+						"order": 1,
+						"type": "array",
+						"default": [
+							"ALLOCATE",
+							"CALL",
+							"COMMIT",
+							"CONNECT",
+							"DISCONNECT",
+							"DROP",
+							"EXECUTE",
+							"GRANT",
+							"LOCK",
+							"MERGE",
+							"PREPARE",
+							"RENAME",
+							"REVOKE",
+							"ROLLBACK",
+							"SAVEPOINT",
+							"TRUNCATE",
+							"UPDATE"
+						],
+						"items": {
+							"type": "string"
+						},
+						"markdownDescription": "%vscode-ibmi-bob.configuration.guardrails.deniedSQLStatementTypes%"
+					}
+				}
+			}
+		],
+		"views": {
+			"explorer": [
+				{
+					"id": "vscode-ibmi-bob.testing",
+					"name": "IBM i Bob Test Cases",
+					"icon": "beaker",
+					"when": "code-for-ibmi:connected && vscode-ibmi-bob:testing"
+				}
+			]
+		}
+	},
+	"scripts": {
+		"vscode:prepublish": "npm run package",
+		"compile": "webpack",
+		"watch": "webpack --watch",
+		"package": "webpack --mode production --devtool hidden-source-map",
+		"vsix": "vsce package",
+		"vsix:branch": "node scripts/vsix.js",
+		"compile-tests": "tsc -p . --outDir out",
+		"watch-tests": "tsc -p . -w --outDir out",
+		"pretest": "npm run compile-tests && npm run compile && npm run lint",
+		"lint": "eslint src",
+		"test": "vscode-test",
+		"nls": "npx @vscode/l10n-dev export --outDir ./l10n ./src",
+		"pseudo-nls": "npx @vscode/l10n-dev generate-pseudo -o ./l10n/ ./l10n/bundle.l10n.json ./package.nls.json"
+	},
+	"dependencies": {
+		"@ibm/bobapi": "file:@types/ibm-bobapi-2.0.0.tgz",
+		"@toon-format/toon": "^1.0.0",
+		"@xterm/headless": "^6.0.0",
+		"@modelcontextprotocol/sdk": "^1.29.0",
+		"compare-versions": "^6.1.1",
+		"node-html-markdown": "^2.0.0"
+	},
+	"devDependencies": {
+		"@halcyontech/vscode-ibmi-types": "^3.0.10",
+		"@ibm/vscode-ibmi-projectexplorer-types": "^2.12.5",
+		"@types/node": "22.x",
+		"@types/ssh2": "^1.15.5",
+		"@types/vscode": "^1.104.0",
+		"@typescript-eslint/eslint-plugin": "^8.39.0",
+		"@typescript-eslint/parser": "^8.39.0",
+		"@vscode/l10n-dev": "^0.0.35",
+		"@octokit/rest": "22.0.1",
+		"eslint": "^9.32.0",
+		"fork-ts-checker-webpack-plugin": "^9.1.0",
+		"ts-loader": "^9.5.2",
+		"typescript": "^5.9.2",
+		"vsce": "^2.15.0",
+		"vscode-clle": "github:IBM/vscode-clle",
+		"vscode-db2i": "github:halcyon-tech/vscode-db2i",
+		"vscode-ibmi-renderer": "github:codefori/vscode-ibmi-renderer",
+		"vscode-ibmi-testing": "github:IBM/vscode-ibmi-testing",
+		"vscode-rpgle": "github:halcyon-tech/vscode-rpgle",
+		"webpack": "^5.101.0",
+		"webpack-cli": "^6.0.1"
+	},
+	"__metadata": {
+		"installedTimestamp": 1782585940221,
+		"targetPlatform": "universal",
+		"size": 2365838
+	}
+}

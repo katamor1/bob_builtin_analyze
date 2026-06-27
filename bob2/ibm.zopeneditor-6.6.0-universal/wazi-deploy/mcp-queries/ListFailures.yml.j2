@@ -1,0 +1,39 @@
+# Licensed Materials - Property of IBM
+# (c) Copyright IBM Corporation 2026. All Rights Reserved.
+#
+# Note to U.S. Government Users Restricted Rights:
+# Use, duplication or disclosure restricted by GSA ADP Schedule`
+# Contract with IBM Corp.
+---
+# List failures during deployment with deploy timestamp, environment name, location and detailed data
+select:
+  status: Failed
+  ymli_parent:
+    ymli_level: 0
+    metadata:
+      name: '{{application_name | default("*")}}'
+      {% if application_version is defined %}version: '{{application_version}}'{% endif %}
+      annotations:
+        environment_name: '{{environment_name | default("*")}}'
+        {% if deployed_before is defined %}deploy_timestamp<: '{{deployed_before}}'{% endif %}
+        {% if deployed_after is defined %}deploy_timestamp>=: '{{deployed_after}}'{% endif %}
+        package:
+          path: '{{package_path | default("*")}}'
+output:
+  limit: '{{limit | default("10")}}'
+  unfold:
+  - 4
+  - 1
+  - 2
+  root_fields:
+    deploy_timestamp: group -1
+    environment_name: group -1
+    ymli_full_location: yes
+    ymli_data_fields: yes
+    ymli_parent: yes
+  fields:
+    deploy_timestamp: group -1
+    environment_name: group -1
+    ymli_data_fields: yes
+    ymli_parent: yes
+renderer: ListFailuresRenderer.yml.j2

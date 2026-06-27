@@ -1,0 +1,39 @@
+# Licensed Materials - Property of IBM
+# (c) Copyright IBM Corporation 2026. All Rights Reserved.
+#
+# Note to U.S. Government Users Restricted Rights:
+# Use, duplication or disclosure restricted by GSA ADP Schedule`
+# Contract with IBM Corp.
+---
+# List all the values of the field of given name 'fieldname'.
+# If a parent fieldname is given in 'parent_fieldname', returns only values of a field that is included the given parent field.
+{% set fieldname = fieldname | default("name") %}
+{% if fieldname == "artifact_name" %}
+{% set fieldname = "name" %}
+{% set parent_fieldname = "artifacts" %}
+{% elif fieldname == "artifact_type" %}
+{% set fieldname = "type" %}
+{% set parent_fieldname = "artifacts" %}
+{% elif fieldname == "application_name" %}
+{% set fieldname = "name" %}
+{% set parent_fieldname = "metadata" %}
+{% elif fieldname == "application_version" %}
+{% set fieldname = "version" %}
+{% set parent_fieldname = "metadata" %}
+{% elif fieldname == "package_path" %}
+{% set fieldname = "path" %}
+{% set parent_fieldname = "package" %}
+{% elif fieldname == "step_name" %}
+{% set fieldname = "name" %}
+{% set parent_fieldname = "steps" %}
+{% endif %}
+select:
+  {% if parent_fieldname is defined %}
+  ymli_category~: ^.*{{parent_fieldname}}(:[0-9]+)? $
+  {% endif %}
+  {{fieldname}}: '*'
+output:
+  print_query: no
+  group_only: yes
+  fields:
+    {{fieldname}}: values

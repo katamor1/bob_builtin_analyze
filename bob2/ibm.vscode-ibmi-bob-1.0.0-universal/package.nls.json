@@ -1,0 +1,11 @@
+{
+    "vscode-ibmi-bob.submenus.bob": "Bob",
+    "vscode-ibmi-bob.commands.openWelcomePage.title": "Open Welcome Page",
+    "vscode-ibmi-bob.commands.addToContext.title": "Add to Bob",
+    "vscode-ibmi-bob.commands.extractBusinessRules.title": "Extract business rules",
+    "vscode-ibmi-bob.configuration.general.title": "General",
+    "vscode-ibmi-bob.configuration.general.maxRowsToFetch": "Maximum number of rows to fetch when Bob executes SQL. When a query has more rows to return, Bob will restrict itself to this limit to avoid overloading the context window. If needed, Bob will fetch more rows afterwards if needed",
+    "vscode-ibmi-bob.configuration.guardrails.title": "Guardrails",
+    "vscode-ibmi-bob.configuration.guardrails.enforceQualifiedCLCommands": "When enabled, Bob will require CL commands to be library-qualified when using the `execute_cl_command` tool. If a command is not library-qualified, Bob will query `QSYS2.COMMAND_INFO` to find the command library and provide suggestions.",
+    "vscode-ibmi-bob.configuration.guardrails.deniedSQLStatementTypes": "List of SQL statement types (e.g., 'Create', 'Alter', or 'Begin') that Bob is NOT allowed to execute without additional user confirmation when using the `run_sql_statement` tool. This setting is a layer of security that is separate from Bob's general auto approval settings."
+}

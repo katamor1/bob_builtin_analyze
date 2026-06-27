@@ -1,0 +1,764 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+        "rpgunit": {
+            "type": "object",
+            "markdownDescription": "RPGUnit Configuration",
+            "default": {
+                "rucrtrpg": {
+                    "tgtCcsid": "*JOB",
+                    "dbgView": "*SOURCE",
+                    "rpgPpOpt": "*LVL2",
+                    "cOption": [
+                        "*EVENTF"
+                    ]
+                },
+                "rucrtcbl": {
+                    "tgtCcsid": "*JOB",
+                    "dbgView": "*SOURCE",
+                    "cOption": [
+                        "*EVENTF"
+                    ]
+                },
+                "rucalltst": {
+                    "order": "*API",
+                    "libl": "*CURRENT",
+                    "jobD": "*DFT",
+                    "detail": "*BASIC",
+                    "output": "*ALLWAYS",
+                    "rclRsc": "*NO",
+                    "onFailure": "*ABORT"
+                }
+            },
+            "properties": {
+                "rucrtrpg": {
+                    "type": "object",
+                    "markdownDescription": "The Create RPG Test Suite (`RUCRTRPG`) command compiles RPGLE and SQLRPGLE source members containing test procedures into a iRPGUnit test suite service program.",
+                    "default": {
+                        "tgtCcsid": "*JOB",
+                        "dbgView": "*SOURCE",
+                        "rpgPpOpt": "*LVL2",
+                        "cOption": [
+                            "*EVENTF"
+                        ]
+                    },
+                    "properties": {
+                        "tstPgm": {
+                            "type": "string",
+                            "default": "",
+                            "markdownDescription": "Test program\n\nSpecifies the name of the test program (`*SRVPGM`) to create. By default, this will be set to `&OPENLIB/&OPENMBR` for source members and `&CURLIB/&SHORTNAME` for local files. The following variables can be used:\n\n•`&OPENLIB`: Library name where the test source member lives\n\n•`&OPENSPF`: Source file name where the test source member lives\n\n•`&OPENMBR`: Name of the test source member\n\n•`&CURLIB`: Current library\n\n•`&NAME`: Name of the test file\n\n•`&SHORTNAME`: Shortened name of the test file\n\n•`&FULLPATH`: Full path of the file on the remote system"
+                        },
+                        "srcFile": {
+                            "type": "string",
+                            "default": "",
+                            "markdownDescription": "Source file\n\nSpecifies the name of the source file containing a member with the same name as `TSTPGM`. By default, this will be set to `&OPENLIB/&OPENSPF` for source members. The following variables can be used:\n\n•`&OPENLIB`: Library name where the test source member lives\n\n•`&OPENSPF`: Source file name where the test source member lives\n\n•`&OPENMBR`: Name of the test source member\n\n•`&CURLIB`: Current library\n\n•`&NAME`: Name of the test file\n\n•`&SHORTNAME`: Shortened name of the test file\n\n•`&FULLPATH`: Full path of the file on the remote system"
+                        },
+                        "srcMbr": {
+                            "type": "string",
+                            "default": "",
+                            "markdownDescription": "Source member\n\nSpecifies the name of the member containing the source code to be compiled. By default, this will be set to `&OPENMBR` for source members. The following variables can be used:\n\n•`&OPENLIB`: Library name where the test source member lives\n\n•`&OPENSPF`: Source file name where the test source member lives\n\n•`&OPENMBR`: Name of the test source member\n\n•`&CURLIB`: Current library\n\n•`&NAME`: Name of the test file\n\n•`&SHORTNAME`: Shortened name of the test file\n\n•`&FULLPATH`: Full path of the file on the remote system"
+                        },
+                        "srcStmf": {
+                            "type": "string",
+                            "default": "",
+                            "markdownDescription": "Source stream file\n\nSpecifies the path name of the stream file containing the source code to be compiled. By default, this will be set to `&FULLPATH` for local files. The following variables can be used:\n\n•`&OPENLIB`: Library name where the test source member lives\n\n•`&OPENSPF`: Source file name where the test source member lives\n\n•`&OPENMBR`: Name of the test source member\n\n•`&CURLIB`: Current library\n\n•`&NAME`: Name of the test file\n\n•`&SHORTNAME`: Shortened name of the test file\n\n•`&FULLPATH`: Full path of the file on the remote system"
+                        },
+                        "text": {
+                            "type": "string",
+                            "default": "",
+                            "markdownDescription": "Text description\n\nAllows you to enter text that briefly describes the RPGUnit test case and its function."
+                        },
+                        "cOption": {
+                            "type": "array",
+                            "default": [
+                                "*EVENTF"
+                            ],
+                            "items": {
+                                "type": "string",
+                                "default": "*EVENTF",
+                                "enum": [
+                                    "*XREF",
+                                    "*NOXREF",
+                                    "*SECLVL",
+                                    "*NOSECLVL",
+                                    "*SHOWCPY",
+                                    "*NOSHOWCPY",
+                                    "*EXPDDS",
+                                    "*NOEXPDDS",
+                                    "*EXT",
+                                    "*NOEXT",
+                                    "*NOSHOWSKP",
+                                    "*SHOWSKP",
+                                    "*NOSRCSTMT",
+                                    "*SRCSTMT",
+                                    "*DEBUGIO",
+                                    "*NODEBUGIO",
+                                    "*UNREF",
+                                    "*NOUNREF",
+                                    "*NOEVENTF",
+                                    "*EVENTF"
+                                ]
+                            },
+                            "markdownDescription": "Compile options\n\nRefer to the `OPTION` parameter in `CRTRPGMOD` command help."
+                        },
+                        "dbgView": {
+                            "type": "string",
+                            "default": "*SOURCE",
+                            "enum": [
+                                "*STMT",
+                                "*SOURCE",
+                                "*LIST",
+                                "*COPY",
+                                "*ALL",
+                                "*NONE"
+                            ],
+                            "markdownDescription": "Debugging views\n\nRefer to the `DBGVIEW` parameter in `CRTRPGMOD` command help."
+                        },
+                        "bndSrvPgm": {
+                            "type": "array",
+                            "default": [],
+                            "items": {
+                                "type": "string",
+                                "default": ""
+                            },
+                            "markdownDescription": "Bind service program\n\nRefer to the `BNDSRVPGM` parameter in `CRTSRVPGM` command help."
+                        },
+                        "bndDir": {
+                            "type": "array",
+                            "default": [],
+                            "items": {
+                                "type": "string",
+                                "default": ""
+                            },
+                            "markdownDescription": "Binding directory\n\nRefer to the `BNDDIR` parameter in `CRTSRVPGM` command help."
+                        },
+                        "bOption": {
+                            "type": "string",
+                            "default": "",
+                            "enum": [
+                                "*DUPPROC",
+                                "*DUPVAR"
+                            ],
+                            "markdownDescription": "Binding options\n\nRefer to the `OPTION` parameter in `CRTSRVPGM` command help."
+                        },
+                        "define": {
+                            "type": "array",
+                            "default": [],
+                            "items": {
+                                "type": "string",
+                                "default": ""
+                            },
+                            "markdownDescription": "Define condition names\n\nSpecifies condition names that are defined before the compilation begins. Using the parameter `DEFINE(condition-name)` is equivalent to coding the `/DEFINE` condition-name directive on the first line of the source file."
+                        },
+                        "dltSplf": {
+                            "type": "string",
+                            "default": "",
+                            "enum": [
+                                "*YES",
+                                "*NO"
+                            ],
+                            "markdownDescription": "Delete spooled files\n\nSpecifies if all spooled files (compile listing) created by the object creations commands are deleted on success."
+                        },
+                        "actGrp": {
+                            "type": "string",
+                            "default": "",
+                            "markdownDescription": "Activation group\n\nRefer to the `ACTGRP` parameter in `CRTSRVPGM` command help."
+                        },
+                        "module": {
+                            "type": "array",
+                            "default": [],
+                            "items": {
+                                "type": "string",
+                                "default": ""
+                            },
+                            "markdownDescription": "Module\n\nRefer to the `MODULE` parameter in `CRTSRVPGM` command help."
+                        },
+                        "rpgPpOpt": {
+                            "type": "string",
+                            "default": "*LVL2",
+                            "enum": [
+                                "*DEFAULT",
+                                "*NONE",
+                                "*LVL1",
+                                "*LVL2"
+                            ],
+                            "markdownDescription": "Pre-compiler RPGPPOPT\n\nRefer to the `RPGPPOPT` parameter in `CRTSRVPGM` command."
+                        },
+                        "pOption": {
+                            "type": "array",
+                            "default": [],
+                            "items": {
+                                "type": "string",
+                                "default": "",
+                                "enum": [
+                                    "*XREF",
+                                    "*NOXREF",
+                                    "*COMMA",
+                                    "*PERIOD",
+                                    "*JOB",
+                                    "*SYSVAL",
+                                    "*SECLVL",
+                                    "*NOSECLVL",
+                                    "*SEQSRC",
+                                    "*NOSEQSRC",
+                                    "*CVTDAT",
+                                    "*NOCVTDAT",
+                                    "*SQL",
+                                    "*SYS",
+                                    "*OPTLOB",
+                                    "*NOOPTLOB",
+                                    "*NOEXTIND",
+                                    "*EXTIND",
+                                    "*EVENTF",
+                                    "*NOEVENTF"
+                                ]
+                            },
+                            "markdownDescription": "Pre-compiler OPTIONS\n\nRefer to the `OPTION` parameter in `CRTSQLRPGI` command help."
+                        },
+                        "compileOpt": {
+                            "type": "string",
+                            "default": "",
+                            "markdownDescription": "Pre-Compiler COMPILEOPT\n\nRefer to the `COMPILEOPT` parameter in `CRTSQLRPGI` command help."
+                        },
+                        "tgtRls": {
+                            "type": "string",
+                            "default": "",
+                            "markdownDescription": "Target release\n\nRefer to the `TGTRLS` parameter in `CRTSRVPGM` command help."
+                        },
+                        "incDir": {
+                            "type": "array",
+                            "default": [],
+                            "items": {
+                                "type": "string",
+                                "default": ""
+                            },
+                            "markdownDescription": "Include Directory\n\nSpecifies one or more directories to add to the search path used by the compiler to find copy files. The compiler will search the directories specified here if the copy files in the source program can not be resolved."
+                        },
+                        "tgtCcsid": {
+                            "anyOf": [
+                                {
+                                    "type": "string",
+                                    "enum": [
+                                        "*SRC",
+                                        "*JOB"
+                                    ]
+                                },
+                                {
+                                    "type": "number"
+                                }
+                            ],
+                            "default": "*JOB",
+                            "markdownDescription": "Target CCSID\n\nSpecifies the CCSID that the compiler uses to read the source files."
+                        },
+                        "wrapperCmd": {
+                            "type": "object",
+                            "markdownDescription": "Wrapper Command\n\nSpecifies a custom command to wrap the `RUCRTRPG` command.",
+                            "default": {
+                                "cmd": "",
+                                "params": {}
+                            },
+                            "properties": {
+                                "cmd": {
+                                    "type": "string",
+                                    "default": "",
+                                    "markdownDescription": "Command\n\nSpecifies the custom command."
+                                },
+                                "params": {
+                                    "type": "object",
+                                    "default": {},
+                                    "additionalProperties": {
+                                        "type": [
+                                            "string",
+                                            "number"
+                                        ]
+                                    },
+                                    "markdownDescription": "Parameters\n\nSpecifies the parameters for the custom command."
+                                }
+                            }
+                        }
+                    }
+                },
+                "rucrtcbl": {
+                    "type": "object",
+                    "markdownDescription": "The Create COBOL Test Suite (`RUCRTCBL`) command compiles CBLLE and SQLCBLLE source members containing test procedures into a iRPGUnit test suite service program.",
+                    "default": {
+                        "tgtCcsid": "*JOB",
+                        "dbgView": "*SOURCE",
+                        "cOption": [
+                            "*EVENTF"
+                        ]
+                    },
+                    "properties": {
+                        "tstPgm": {
+                            "type": "string",
+                            "default": "",
+                            "markdownDescription": "Test program\n\nSpecifies the name of the test program (`*SRVPGM`) to create. By default, this will be set to `&OPENLIB/&OPENMBR` for source members and `&CURLIB/&SHORTNAME` for local files. The following variables can be used:\n\n•`&OPENLIB`: Library name where the test source member lives\n\n•`&OPENSPF`: Source file name where the test source member lives\n\n•`&OPENMBR`: Name of the test source member\n\n•`&CURLIB`: Current library\n\n•`&NAME`: Name of the test file\n\n•`&SHORTNAME`: Shortened name of the test file\n\n•`&FULLPATH`: Full path of the file on the remote system"
+                        },
+                        "srcFile": {
+                            "type": "string",
+                            "default": "",
+                            "markdownDescription": "Source file\n\nSpecifies the name of the source file containing a member with the same name as `TSTPGM`. By default, this will be set to `&OPENLIB/&OPENSPF` for source members. The following variables can be used:\n\n•`&OPENLIB`: Library name where the test source member lives\n\n•`&OPENSPF`: Source file name where the test source member lives\n\n•`&OPENMBR`: Name of the test source member\n\n•`&CURLIB`: Current library\n\n•`&NAME`: Name of the test file\n\n•`&SHORTNAME`: Shortened name of the test file\n\n•`&FULLPATH`: Full path of the file on the remote system"
+                        },
+                        "srcMbr": {
+                            "type": "string",
+                            "default": "",
+                            "markdownDescription": "Source member\n\nSpecifies the name of the member containing the source code to be compiled. By default, this will be set to `&OPENMBR` for source members. The following variables can be used:\n\n•`&OPENLIB`: Library name where the test source member lives\n\n•`&OPENSPF`: Source file name where the test source member lives\n\n•`&OPENMBR`: Name of the test source member\n\n•`&CURLIB`: Current library\n\n•`&NAME`: Name of the test file\n\n•`&SHORTNAME`: Shortened name of the test file\n\n•`&FULLPATH`: Full path of the file on the remote system"
+                        },
+                        "srcStmf": {
+                            "type": "string",
+                            "default": "",
+                            "markdownDescription": "Source stream file\n\nSpecifies the path name of the stream file containing the source code to be compiled. By default, this will be set to `&FULLPATH` for local files. The following variables can be used:\n\n•`&OPENLIB`: Library name where the test source member lives\n\n•`&OPENSPF`: Source file name where the test source member lives\n\n•`&OPENMBR`: Name of the test source member\n\n•`&CURLIB`: Current library\n\n•`&NAME`: Name of the test file\n\n•`&SHORTNAME`: Shortened name of the test file\n\n•`&FULLPATH`: Full path of the file on the remote system"
+                        },
+                        "text": {
+                            "type": "string",
+                            "default": "",
+                            "markdownDescription": "Text description\n\nAllows you to enter text that briefly describes the RPGUnit test case and its function."
+                        },
+                        "cOption": {
+                            "type": "array",
+                            "default": [
+                                "*EVENTF"
+                            ],
+                            "items": {
+                                "type": "string",
+                                "default": "*EVENTF",
+                                "enum": [
+                                    "*SOURCE",
+                                    "*NOSOURCE",
+                                    "*SRC",
+                                    "*NOSRC",
+                                    "*NOXREF",
+                                    "*XREF",
+                                    "*GEN",
+                                    "*NOGEN",
+                                    "*NOSEQUENCE",
+                                    "*SEQUENCE",
+                                    "*NOVBSUM",
+                                    "*VBSUM",
+                                    "*NONUMBER",
+                                    "*NUMBER",
+                                    "*LINENUMBER",
+                                    "*NOMAP",
+                                    "*MAP",
+                                    "*NOOPTIONS",
+                                    "*OPTIONS",
+                                    "*QUOTE",
+                                    "*APOST",
+                                    "*NOSECLVL",
+                                    "*SECLVL",
+                                    "*PRTCORR",
+                                    "*NOPRTCORR",
+                                    "*MONOPRC",
+                                    "*NOMONOPRC",
+                                    "*RANGE",
+                                    "*NORANGE",
+                                    "*NOUNREF",
+                                    "*UNREF",
+                                    "*NOSYNC",
+                                    "*SYNC",
+                                    "*NOCRTF",
+                                    "*CRTF",
+                                    "*NODUPKEYCHK",
+                                    "*DUPKEYCHK",
+                                    "*NOINZDLT",
+                                    "*INZDLT",
+                                    "*NOBLK",
+                                    "*BLK",
+                                    "*STDINZ",
+                                    "*NOSTDINZ",
+                                    "*STDINZHEX00",
+                                    "*NODDSFILLER",
+                                    "*DDSFILLER",
+                                    "*NOIMBEDERR",
+                                    "*IMBEDERR",
+                                    "*STDTRUNC",
+                                    "*NOSTDTRUNC",
+                                    "*NOCHGPOSSGN",
+                                    "*CHGPOSSGN",
+                                    "*NOEVENTF",
+                                    "*EVENTF",
+                                    "*MONOPIC",
+                                    "*NOMONOPIC",
+                                    "*NOCRTARKIDX",
+                                    "*CRTARKIDX"
+                                ]
+                            },
+                            "markdownDescription": "Compile options\n\nRefer to the `OPTION` parameter in `CRTCBLMOD` command help."
+                        },
+                        "dbgView": {
+                            "type": "string",
+                            "default": "*SOURCE",
+                            "enum": [
+                                "*STMT",
+                                "*SOURCE",
+                                "*LIST",
+                                "*ALL",
+                                "*NONE"
+                            ],
+                            "markdownDescription": "Debugging views\n\nRefer to the `DBGVIEW` parameter in `CRTCBLMOD` command help."
+                        },
+                        "bndSrvPgm": {
+                            "type": "array",
+                            "default": [],
+                            "items": {
+                                "type": "string",
+                                "default": ""
+                            },
+                            "markdownDescription": "Bind service program\n\nRefer to the `BNDSRVPGM` parameter in `CRTSRVPGM` command help."
+                        },
+                        "bndDir": {
+                            "type": "array",
+                            "default": [],
+                            "items": {
+                                "type": "string",
+                                "default": ""
+                            },
+                            "markdownDescription": "Binding directory\n\nRefer to the `BNDDIR` parameter in `CRTSRVPGM` command help."
+                        },
+                        "bOption": {
+                            "type": "string",
+                            "default": "",
+                            "enum": [
+                                "*DUPPROC",
+                                "*DUPVAR"
+                            ],
+                            "markdownDescription": "Binding options\n\nRefer to the `OPTION` parameter in `CRTSRVPGM` command help."
+                        },
+                        "define": {
+                            "type": "array",
+                            "default": [],
+                            "items": {
+                                "type": "string",
+                                "default": ""
+                            },
+                            "markdownDescription": "Define condition names\n\nSpecifies condition names that are defined before the compilation begins. Using the parameter `DEFINE(condition-name)` is equivalent to coding the `/DEFINE` condition-name directive on the first line of the source file."
+                        },
+                        "dltSplf": {
+                            "type": "string",
+                            "default": "",
+                            "enum": [
+                                "*YES",
+                                "*NO"
+                            ],
+                            "markdownDescription": "Delete spooled files\n\nSpecifies if all spooled files (compile listing) created by the object creations commands are deleted on success."
+                        },
+                        "actGrp": {
+                            "type": "string",
+                            "default": "",
+                            "markdownDescription": "Activation group\n\nRefer to the `ACTGRP` parameter in `CRTSRVPGM` command help."
+                        },
+                        "module": {
+                            "type": "array",
+                            "default": [],
+                            "items": {
+                                "type": "string",
+                                "default": ""
+                            },
+                            "markdownDescription": "Module\n\nRefer to the `MODULE` parameter in `CRTSRVPGM` command help."
+                        },
+                        "pOption": {
+                            "type": "array",
+                            "default": [],
+                            "items": {
+                                "type": "string",
+                                "default": "",
+                                "enum": [
+                                    "*XREF",
+                                    "*NOXREF",
+                                    "*GEN",
+                                    "*NOGEN",
+                                    "*COMMA",
+                                    "*PERIOD",
+                                    "*JOB",
+                                    "*SYSVAL",
+                                    "*QUOTESQL",
+                                    "*APOSTSQL",
+                                    "*QUOTE",
+                                    "*APOST",
+                                    "*SECLVL",
+                                    "*NOSECLVL",
+                                    "*EVENTF",
+                                    "*NOEVENTF",
+                                    "*CVTDT",
+                                    "*NOCVTDT",
+                                    "*SQL",
+                                    "*SYS",
+                                    "*OPTLOB",
+                                    "*NOOPTLOB",
+                                    "*NOEXTIND",
+                                    "*EXTIND",
+                                    "*SYSTIME",
+                                    "*NOSYSTIME"
+                                ]
+                            },
+                            "markdownDescription": "Pre-compiler OPTIONS\n\nRefer to the `OPTION` parameter in `CRTSQLCBLI` command help."
+                        },
+                        "compileOpt": {
+                            "type": "string",
+                            "default": "",
+                            "markdownDescription": "Pre-Compiler COMPILEOPT\n\nRefer to the `COMPILEOPT` parameter in `CRTSQLCBLI` command help."
+                        },
+                        "tgtRls": {
+                            "type": "string",
+                            "default": "",
+                            "markdownDescription": "Target release\n\nRefer to the `TGTRLS` parameter in `CRTSRVPGM` command help."
+                        },
+                        "incDir": {
+                            "type": "array",
+                            "default": [],
+                            "items": {
+                                "type": "string",
+                                "default": ""
+                            },
+                            "markdownDescription": "Include Directory\n\nSpecifies one or more directories to add to the search path used by the compiler to find copy files. The compiler will search the directories specified here if the copy files in the source program can not be resolved."
+                        },
+                        "tgtCcsid": {
+                            "anyOf": [
+                                {
+                                    "type": "string",
+                                    "enum": [
+                                        "*SRC",
+                                        "*JOB"
+                                    ]
+                                },
+                                {
+                                    "type": "number"
+                                }
+                            ],
+                            "default": "*JOB",
+                            "markdownDescription": "Target CCSID\n\nSpecifies the CCSID that the compiler uses to read the source files."
+                        },
+                        "wrapperCmd": {
+                            "type": "object",
+                            "markdownDescription": "Wrapper Command\n\nSpecifies a custom command to wrap the `RUCRTCBL` command.",
+                            "default": {
+                                "cmd": "",
+                                "params": {}
+                            },
+                            "properties": {
+                                "cmd": {
+                                    "type": "string",
+                                    "default": "",
+                                    "markdownDescription": "Command\n\nSpecifies the custom command."
+                                },
+                                "params": {
+                                    "type": "object",
+                                    "default": {},
+                                    "additionalProperties": {
+                                        "type": [
+                                            "string",
+                                            "number"
+                                        ]
+                                    },
+                                    "markdownDescription": "Parameters\n\nSpecifies the parameters for the custom command."
+                                }
+                            }
+                        }
+                    }
+                },
+                "rucalltst": {
+                    "type": "object",
+                    "markdownDescription": "The Call Tests (`RUCALLTST`) command runs a test suite or a test procedure.",
+                    "default": {
+                        "order": "*API",
+                        "libl": "*CURRENT",
+                        "jobD": "*DFT",
+                        "detail": "*BASIC",
+                        "output": "*ALLWAYS",
+                        "rclRsc": "*NO",
+                        "onFailure": "*ABORT"
+                    },
+                    "properties": {
+                        "tstPgm": {
+                            "type": "string",
+                            "default": "",
+                            "markdownDescription": "Test program\n\nSpecifies the name of the test program (`*SRVPGM`). By default, this will be set to `&OPENLIB/&OPENMBR` for source members and `&CURLIB/&SHORTNAME` for local files. The following variables can be used:\n\n•`&OPENLIB`: Library name where the test source member lives\n\n•`&OPENSPF`: Source file name where the test source member lives\n\n•`&OPENMBR`: Name of the test source member\n\n•`&CURLIB`: Current library\n\n•`&NAME`: Name of the test file\n\n•`&SHORTNAME`: Shortened name of the test file\n\n•`&FULLPATH`: Full path of the file on the remote system"
+                        },
+                        "order": {
+                            "type": "string",
+                            "default": "*API",
+                            "enum": [
+                                "*API",
+                                "*REVERSE"
+                            ],
+                            "enumDescriptions": [
+                                "Run test procedures in the order provided by the system API.",
+                                "Run test procedures in reverse order."
+                            ],
+                            "markdownDescription": "Run Order\n\nSpecifies the order for running the test procedures. Useful to check that there is no dependencies between test procedures."
+                        },
+                        "libl": {
+                            "type": "string",
+                            "default": "*CURRENT",
+                            "enum": [
+                                "*CURRENT",
+                                "*JOBD"
+                            ],
+                            "enumDescriptions": [
+                                "The current library list is used to execute the unit test suite.",
+                                "The initial library list part of the specified job description is used to execute the unit test suite."
+                            ],
+                            "markdownDescription": "Library List\n\nSpecifies the library list for executing the specified unit test."
+                        },
+                        "jobD": {
+                            "type": "string",
+                            "default": "*DFT",
+                            "markdownDescription": "Job Description\n\nSpecifies the name of the job description that is used to set the library list, when the `libl` parameter is set to `*JOBD`. `*DFT` can be used here to indicate the library of the unit test suite (service program) is searched for job description `RPGUNIT`."
+                        },
+                        "detail": {
+                            "type": "string",
+                            "default": "*BASIC",
+                            "enum": [
+                                "*BASIC",
+                                "*ALL"
+                            ],
+                            "enumDescriptions": [
+                                "Full detail for failures and errors, no detail for successes.",
+                                "Full detail in all cases."
+                            ],
+                            "markdownDescription": "Report Detail\n\nSpecifies how detailed the test run report should be."
+                        },
+                        "output": {
+                            "type": "string",
+                            "default": "*ALLWAYS",
+                            "enum": [
+                                "*ALLWAYS",
+                                "*ERROR",
+                                "*NONE"
+                            ],
+                            "enumDescriptions": [
+                                "Creates a report regardless of the test result.",
+                                "Creates a report in case of failures and errors, only.",
+                                "Does not create any report."
+                            ],
+                            "markdownDescription": "Create Report\n\nSpecifies whether a report is created."
+                        },
+                        "rclRsc": {
+                            "type": "string",
+                            "default": "*NO",
+                            "enum": [
+                                "*NO",
+                                "*ALWAYS",
+                                "*ONCE"
+                            ],
+                            "enumDescriptions": [
+                                "Resources are not reclaimed.",
+                                "Resources are reclaimed after each test case and at the end of the test suite.",
+                                "Resources are reclaimed at the end of the test suite."
+                            ],
+                            "markdownDescription": "Reclaim Resources\n\nSpecifies when to reclaim resources. Resources, such as open files, can be reclaimed after each test case or at the end of the test suite. This option is useful if the test suite calls OPM programs, which do not set the `*INLR` indicator."
+                        },
+                        "onFailure": {
+                            "type": "string",
+                            "default": "*ABORT",
+                            "enum": [
+                                "*ABORT",
+                                "*CONTINUE"
+                            ],
+                            "enumDescriptions": [
+                                "Test case aborts execution after a failing assertion.",
+                                "Test case continues execution after a failing assertion."
+                            ],
+                            "markdownDescription": "On Failure\n\nSpecifies test execution behavior after a failing assertion."
+                        },
+                        "wrapperCmd": {
+                            "type": "object",
+                            "markdownDescription": "Wrapper Command\n\nSpecifies a custom command to wrap the `RUCALLTST` command.",
+                            "default": {
+                                "cmd": "",
+                                "params": {}
+                            },
+                            "properties": {
+                                "cmd": {
+                                    "type": "string",
+                                    "default": "",
+                                    "markdownDescription": "Command\n\nSpecifies the custom command."
+                                },
+                                "params": {
+                                    "type": "object",
+                                    "default": {},
+                                    "additionalProperties": {
+                                        "type": [
+                                            "string",
+                                            "number"
+                                        ]
+                                    },
+                                    "markdownDescription": "Parameters\n\nSpecifies the parameters for the custom command."
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "codecov": {
+            "type": "object",
+            "markdownDescription": "Code Coverage Configuration",
+            "default": {
+                "module": []
+            },
+            "properties": {
+                "module": {
+                    "type": "array",
+                    "default": [],
+                    "items": {
+                        "type": "string",
+                        "default": ""
+                    },
+                    "markdownDescription": "Modules\n\nSpecifies programs or service programs and optionally modules to include for code coverage."
+                },
+                "testId": {
+                    "type": "string",
+                    "default": "",
+                    "markdownDescription": "Test ID"
+                },
+                "exclude": {
+                    "type": "array",
+                    "default": [],
+                    "items": {
+                        "type": "string",
+                        "default": ""
+                    },
+                    "markdownDescription": "Exclude\n\nObjects to exclude"
+                }
+            }
+        }
+    },
+    "defaultSnippets": [
+        {
+            "label": "IBM i Testing Configuration",
+            "body": {
+                "rpgunit": {
+                    "rucrtrpg": {
+                        "tgtCcsid": "*JOB",
+                        "dbgView": "*SOURCE",
+                        "rpgPpOpt": "*LVL2",
+                        "cOption": [
+                            "*EVENTF"
+                        ]
+                    },
+                    "rucrtcbl": {
+                        "tgtCcsid": "*JOB",
+                        "dbgView": "*SOURCE",
+                        "cOption": [
+                            "*EVENTF"
+                        ]
+                    },
+                    "rucalltst": {
+                        "order": "*API",
+                        "libl": "*CURRENT",
+                        "jobD": "*DFT",
+                        "detail": "*BASIC",
+                        "output": "*ALLWAYS",
+                        "rclRsc": "*NO",
+                        "onFailure": "*ABORT"
+                    }
+                },
+                "codecov": {
+                    "module": []
+                }
+            }
+        }
+    ]
+}

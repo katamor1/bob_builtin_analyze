@@ -1,0 +1,125 @@
+{
+  "Simple ZAPP Template": {
+    "prefix": ["Simple ZAPP Template"],
+    "body": [
+      "name: ${1:name}",
+      "description: ${2:application description}",
+      "version: 0.0.1",
+      "",
+      "propertyGroups:",
+      "  - name: ${3:property-group-name}",
+      "    language: ${4|cobol,pl1,hlasm,rexx|}",
+      "    compilerOptions: ${5:option}",
+      "    libraries:",
+      "      - name: syslib",
+      "        type: ${6|local,mvs|}",
+      "        locations:",
+      "          - \"${7:COPYBOOKS}\"",
+      "          - \"${8:INCLUDES}\"",
+      "$0"
+    ],
+    "description": "Insert a full ZAPP template with one property group to get started."
+  },
+  "Local Property Group Entry": {
+    "prefix": ["Local Property Group Entry"],
+    "body": [
+      "  - name: ${1:property-group-name}",
+      "    language: ${2|cobol,pl1,hlasm,rexx,jcl|}",
+      "    compilerOptions: ${3:options}",
+      "    libraries:",
+      "      - name: syslib",
+      "        type: local",
+      "        locations:",
+      "          - \"**/${4:COPYBOOK}\"",
+      "          - \"**/${5:INCLUDES}\"",
+      "  $0"
+    ],
+    "description": "Add a local property group entry."
+  },
+  "MVS Property Group Entry": {
+    "prefix": ["MVS Property Group Entry"],
+    "body": [
+      "  - name: ${1:property-group-name}",
+      "    language: ${2|cobol,pl1,hlasm,rexx,jcl|}",
+      "    compilerOptions: ${3:options}",
+      "    libraries:",
+      "      - name: syslib",
+      "        type: mvs",
+      "        locations:",
+      "          - ${4:USER1.SAMPLE.COBCOPY}",
+      "  $0"
+    ],
+    "description": "Add a remote MVS property group entry."
+  },
+  "JCL Property Group Entry": {
+    "prefix": ["JCL Property Group Entry"],
+    "body": [
+      "  - name: ${1:property-group-name}",
+      "    language: jcl",
+      "    libraries:",
+      "      - name: jcllib",
+      "        type: local",
+      "        locations:",
+      "          - ${2:my-jcl-libs}",
+      "      - name: jcllib",
+      "        type: mvs",
+      "      - name: jcllib",
+      "        type: mvs",
+      "        locations:",
+      "          - ${3:SYS1.PROCLIB}",
+      "  $0"
+    ],
+    "description": "Add property groups for a JCL development project."
+  },
+  "User Build Profile": {
+    "prefix": ["User Build Profile"],
+    "body": [
+      "  - name: ${1:dbb-build}",
+      "    type: dbb",
+      "    settings:",
+      "      application: ${2:application}",
+      "      command: ${3:\\$DBB_HOME/bin/groovyz}",
+      "      buildScriptPath: ${4:\\$HOME/zAppBuild/build.groovy}",
+      "      buildScriptArgs:",
+      "        - --userBuild",
+      "        - --workspace \\${zopeneditor.userbuild.userSettings.dbbWorkspace}",
+      "        - --application \\${application}",
+      "        - --hlq \\${zopeneditor.userbuild.userSettings.dbbHlq}",
+      "        - --outDir \\${zopeneditor.userbuild.userSettings.dbbLogDir}",
+      "        - --dependencyFile \\${dependencyFile}",
+      "      additionalDependencies:",
+      "        - application-conf",
+      "      logFilePatterns:",
+      "        - \\${buildFile.basename}.log",
+      "        - BuildReport.*",
+      "  $0"
+    ],
+    "description": "Adds a full profile template for specifying a user build"
+  },
+  "IBM ZCodeScan Profile": {
+    "prefix": ["IBM ZCodeScan Profile"],
+    "body": [
+      "  - name: ${1:zcodescan}",
+      "    type: zcodescan",
+      "    settings:",
+      "      rules:",
+      "      - type: local",
+      "        locations:",
+      "        - \"${2:zcodescan/rules.yaml}\"",
+      "      customRuleModels:",
+      "      - type: local",
+      "        locations:",
+      "        - \"${3:zcodescan/rules-domains.yaml}\"",
+      "      customRuleJars:",
+      "      - type: local",
+      "        locations:",
+      "        - \"${4:zcodescan/jar/**/*.jar}\"",
+      "      baselines:",
+      "      - type: local",
+      "        locations:",
+      "        - \"${5:zcodescan/baselines/baseline.json}\"",
+      "  $0"
+    ],
+    "description": "Adds a full profile template for specifying an IBM ZCodeScan configuration"
+  }
+}

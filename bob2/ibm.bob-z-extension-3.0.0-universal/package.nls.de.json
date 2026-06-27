@@ -1,0 +1,19 @@
+{
+  "command.collect_diagnostics.category": "IBM Bob Premium-Paket für Z",
+  "command.collect_diagnostics.title": "Diagnosedaten erfassen",
+  "command.transform_file.title": "In Java konvertieren",
+  "command.understand_select_project.title": "IBM Bob Premium-Paket für Z: Z auswählen Projekt verstehen",
+  "command.understand_refactor_codegen.title": "Servicecode generieren",
+  "command.understand_login.title": "IBM Bob Premium-Paket für Z: Bei Z anmelden – So funktioniert’s",
+  "command.transform_snippet.title": "In Java konvertieren",
+  "configuration.log_level.debug": "Alle Protokollmeldungen einschließlich Debug-Informationen anzeigen",
+  "configuration.log_level.description": "Legen Sie die Protokollierungsstufe für das „ IBM Bob Premium Package for Z“ fest",
+  "configuration.log_level.error": "Nur Fehler anzeigen",
+  "configuration.log_level.fatal": "Nur schwerwiegende Fehler anzeigen",
+  "configuration.log_level.info": "Informationsmeldungen und darüber anzeigen",
+  "configuration.log_level.warn": "Nur Warnungen und Fehler anzeigen",
+  "configuration.title": "IBM Bob Premium-Paket für Z",
+  "configuration.understand.url.description": "Die URL „ URL “ des Endpunkts „Refactoring Services“ des Z Understand-Servers (z. B. https://your-understand-server.com:9444 )",
+  "configuration.understand.certificate.description": "Optional: Pfad zu einem benutzerdefinierten „ SSL “-Zertifikat für den Z Understand-Server",
+  "configuration.understand.callback_port.description": "Die Portnummer für den Callback von „ OAuth “ während der Z-Authentifizierung"
+}

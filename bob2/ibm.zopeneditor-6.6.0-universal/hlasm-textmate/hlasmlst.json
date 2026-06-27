@@ -1,0 +1,145 @@
+{
+  "_copyright": "Licensed Materials - Property of IBM - (c) Copyright IBM Corporation 2021. All Rights Reserved. Note to U.S. Government Users Restricted Rights: Use, duplication or disclosure restricted by GSA ADP Schedule Contract with IBM Corp.",
+  "scopeName": "source.hlasmlst",
+  "name": "z/VM assembler debug listing",
+  "fileTypes": ["ASMLST", "asmlst"],
+  "patterns": [
+    { "include": "#debug-metadata" },
+    { "include": "#continuation-line-rule" },
+    { "include": "#uncontinued-comment-rule" },
+    { "include": "#uncontinued-statement-rule" },
+    { "include": "#sequence-number-rule" },
+    { "include": "#register-variable-rule" },
+    { "include": "#register-equate-rule" },
+    { "include": "#single-quoted-string-rule" },
+    { "include": "#declare-rule" }
+  ],
+  "repository": {
+    "debug-metadata": {
+      "name": "comment.line.hlasmlst",
+      "match": "^.{26}"
+    },
+    "sequence-number-rule": {
+      "match": "[0-9]{8}\\n",
+      "name": "comment.line.hlasmlst"
+    },
+    "register-variable-rule": {
+      "match": "([R|r][0-9][0-5]?)\\b",
+      "name": "keyword.operator.hlasmlst"
+    },
+    "register-equate-rule": {
+      "match": "((?i)EQU)[\\s]+([^\\s\"]*)(\".*\"|)([^\\s]*)([^\\s]*)([^@\\n]*)([^@0-9]{2})",
+      "captures": {
+        "1": {
+          "name": "storage.type.hlasmlst"
+        },
+        "2": {
+          "name": "storage.type.hlasmlst"
+        },
+        "3": {
+          "name": "string.quoted.single.hlasmlst"
+        },
+        "4": {
+          "name": "comment.line.hlasmlst"
+        },
+        "5": {
+          "name": "comment.line.hlasmlst"
+        },
+        "6": {
+          "name": "comment.line.hlasmlst"
+        },
+        "7": {
+          "name": "comment.line.hlasmlst"
+        },
+        "8": {
+          "name": "entity.name.tag.hlasmlst"
+        }
+      },
+      "name": "keyword.operator.hlasmlst"
+    },
+    "single-quoted-string-rule": {
+      "match": "(\".*\")",
+      "name": "string.quoted.single.hlasmlst"
+    },
+    "uncontinued-comment-rule": {
+      "match": "(?<=^.{26})[.]?[*].*",
+      "name": "comment.line.hlasmlst"
+    },
+    "continuation-line-rule": {
+      "match": "(?<=^.{26})[ ]{15}([A-Za-z0-9@$#_.&+\\-,=*()\"/\\']+)([ ]+.*)?",
+      "captures": {
+        "1": {
+          "name": "variable.parameter"
+        },
+        "2": {
+          "name": "comment.line.hlasmlst"
+        }
+      }
+    },
+    "uncontinued-statement-rule": {
+      "match": "(?<=^.{26})([A-Za-z@$#_.&][A-Za-z0-9@$#_.&+\\-,=*()\"/']*)?([ ]*)([A-Za-z@$#_.&][A-Za-z0-9@$#_.&*]*)?([ ]*)(('.*'[^ ]*)|(\\(.*\\)\\.[^ ]*)|[^ ]*\\([^)]*\\)[^ ]*('(?:[^']|'')*')[^ ]*|[^ ]*\\([^)]*\\)[^ ]*|[^ ]*,('(?:[^']|'')*')[^ ]*|[^ ]*('\\S(?:[^']|'')*')[^ ]*|[^ ]*('(?:[^']|'')*')[^ ]*|[^ ]+)(.*)",
+      "captures": {
+        "1": {
+          "name": "entity.name.tag.hlasmlst"
+        },
+        "3": {
+          "name": "keyword.control.hlasmlst"
+        },
+        "5": {
+          "name": "variable.parameter"
+        },
+        "6": {
+          "name": "string.quoted.single.hlasmlst"
+        },
+        "7": {
+          "name": "variable.parameter"
+        },
+        "8": {
+          "name": "string.quoted.single.hlasmlst"
+        },
+        "9": {
+          "name": "string.quoted.single.hlasmlst"
+        },
+        "10": {
+          "name": "string.quoted.single.hlasmlst"
+        },
+        "11": {
+          "name": "string.quoted.single.hlasmlst"
+        },
+        "12": {
+          "name": "comment.line.hlasmlst"
+        }
+      },
+      "declare-rule": {
+        "match": "\\b((?i)D[C|S])[\\s]*([0-9]*|\\(.*\\))([A-Z][DUBH]?)(L?[0-9]*)(\".*\"|\\s)([^\\s]*)([^@\\n]*)([^@0-9]{2})",
+        "captures": {
+          "1": {
+            "name": "storage.type.hlasmlst"
+          },
+          "2": {
+            "name": "storage.type.hlasmlst"
+          },
+          "3": {
+            "name": "storage.type.hlasmlst"
+          },
+          "4": {
+            "name": "comment.line.hlasmlst"
+          },
+          "5": {
+            "name": "string.quoted.single.hlasmlst"
+          },
+          "6": {
+            "name": "comment.line.hlasmlst"
+          },
+          "7": {
+            "name": "comment.line.hlasmlst"
+          },
+          "8": {
+            "name": "entity.name.tag.hlasmlst"
+          }
+        },
+        "name": "keyword.operator.hlasmlst"
+      }
+    }
+  }
+}

@@ -1,0 +1,1324 @@
+# Licensed Materials - Property of IBM
+# (c) Copyright IBM Corporation 2026. All Rights Reserved.
+#
+# Note to U.S. Government Users Restricted Rights:
+# Use, duplication or disclosure restricted by GSA ADP Schedule`
+# Contract with IBM Corp.
+---
+queries:
+  ListDeployments:
+    file: ListDeployments.yml.j2
+    description: List deployments with deploy timestamp, evidence file path, application name and version, environment name, package path and status
+    arguments:
+      status:
+        type: string
+        required: false
+        default: Ok
+        description: >
+          End status of the deployment to get only information about deployment ending with this status.
+          When not provided, only deployments with end status Ok will be listed.
+          Glob pattern is accepted to get information about any deployment whose end status matches the pattern.
+      environment_name:
+        type: string
+        required: false
+        description: >
+          Name of a particular environment to get only information about it.
+          Glob pattern is accepted to get information about any deployment in an environment whose name matches the pattern.
+      artifact_name:
+        type: string
+        required: false
+        description: >
+          Name of a particular artifact to get only information about deployments of this artifact.
+          Glob pattern is accepted to get only information about an artifact whose name matches the pattern.
+      artifact_type:
+        type: string
+        required: false
+        description: >
+          Type of artifact to get only information about deployments of artifacts of this type.
+          Glob pattern is accepted to get only information about artifacts of type matching the pattern.
+      application_name:
+        type: string
+        required: false
+        description: >
+          Name of a particular application to get only information about deployments of this application.
+          Glob pattern is accepted to get information about deployments of any application whose name matches the pattern.
+      application_version:
+        type: string
+        required: false
+        description: >
+          Version of application to get only information about deployments of this version of application.
+          Glob pattern is accepted to get information about deployments of any application version matching the pattern.
+      package_path:
+        type: string
+        required: false
+        description: >
+          Path of a particular package to get only information about deployments of this package.
+          Glob pattern is accepted to get only information about deployments of a package matching the pattern.
+      deployed_before:
+        type: string
+        required: false
+        description: >
+          Timestamp to get only information about deployments that occured before the given value.
+          The format is YYYYMMDD.HHmmSS.sss with digits Y: year, M: month, D: day, H: hour, m: minute, S: second, s: millisecond
+      deployed_after:
+        type: string
+        required: false
+        description: >
+          Timestamp to get only information about deployments that occured after or at the given value.
+          The format is YYYYMMDD.HHmmSS.sss with digits Y: year, M: month, D: day, H: hour, m: minute, S: second, s: millisecond
+      history:
+        type: boolean
+        required: false
+        default: false
+        description: >
+          Indicates whether the result should include a list of deployments for each environment, or only information about the last deployment
+          for each artifact in each environment.
+    output: |
+      A multi document YAML description, having a document for each deployment, in reversed chronological order.
+      Each document contains the deploy timestamp (field deploy_timestamp), the evidence file path (field evidence_file_path),
+      the environment name (field environment_name), the application name and version (fields application_name and application_version),
+      the package path (field package_path), the deployment end status (field status)
+      and a list of deployed artifact <name>.<type> (field artifacts).
+    examples:
+      - command: wazideploy-evidence -q ListDeployments.yml.j2 r
+        result: |
+          ---
+          deploy_timestamp: 20250808.053127.934
+          evidence_file_path: /cics-banking-sample-application/integration/evidence-224.yaml
+          environment_name: zos.dev.integration
+          application_name: cics-banking-sample-application
+          application_version: 20250808.013054.525
+          package_path: /var/workspace/cics-banking-sample-application/build-224/deployPkgDir/applicationArchive.tar
+          status: Ok
+          artifacts:
+          - INQACC.CICSLOAD
+          - INQACC.DBRM
+          - XFRFUN.CICSLOAD
+          - XFRFUN.DBRM
+          ---
+          deploy_timestamp: 20250807.144944.646
+          evidence_file_path: /cics-banking-sample-application/integration/evidence-223.yaml
+          environment_name: zos.dev.integration
+          application_name: cics-banking-sample-application
+          application_version: 20250807.104912.309
+          package_path: /var/workspace/cics-banking-sample-application/build-223/deployPkgDir/applicationArchive.tar
+          status: Ok
+          artifacts:
+          - INQACC.CICSLOAD
+          - INQACC.DBRM
+          - XFRFUN.CICSLOAD
+          - XFRFUN.DBRM
+          ---
+          deploy_timestamp: 20250807.093358.976
+          evidence_file_path: /cics-banking-sample-application/integration/evidence-222.yaml
+          environment_name: zos.dev.integration
+          application_name: cics-banking-sample-application
+          application_version: 20250805.061133.391
+          package_path: /var/workspace/cics-banking-sample-application/build-222/deployPkgDir/applicationArchive.tar
+          status: Ok
+          artifacts:
+          - INQACC.CICSLOAD
+          - INQACC.DBRM
+          - XFRFUN.CICSLOAD
+          - XFRFUN.DBRM
+          ---
+          deploy_timestamp: 20240904.110110.485
+          evidence_file_path: /cics-banking-sample-application/production/evidence-169.yaml
+          environment_name: zos.dev.production
+          application_name: cics-banking-sample-application
+          package_path: /var/workspace/cics-banking-sample-application/build-169/logs/cics-banking-sample-application.tar
+          status: Ok
+          artifacts:
+          - INQACC.CICSLOAD
+          - INQACC.DBRM
+          ---
+          deploy_timestamp: 20240904.105515.938
+          evidence_file_path: /cics-banking-sample-application/acceptance/evidence-169.yaml
+          environment_name: zos.dev.acceptance
+          application_name: cics-banking-sample-application
+          package_path: /var/workspace/cics-banking-sample-application/build-169/logs/cics-banking-sample-application.tar
+          status: Ok
+          artifacts:
+          - INQACC.CICSLOAD
+          - INQACC.DBRM
+          ---
+          deploy_timestamp: 20240904.105321.104
+          evidence_file_path: /cics-banking-sample-application/integration/evidence-169.yaml
+          environment_name: zos.dev.integration
+          application_name: cics-banking-sample-application
+          package_path: /var/workspace/cics-banking-sample-application/build-169/logs/cics-banking-sample-application.tar
+          status: Ok
+          artifacts:
+          - INQACC.CICSLOAD
+          - INQACC.DBRM
+          ---
+          deploy_timestamp: 20240904.105004.543
+          evidence_file_path: /cics-banking-sample-application/integration/evidence-168.yaml
+          environment_name: zos.dev.integration
+          application_name: cics-banking-sample-application
+          package_path: /var/workspace/cics-banking-sample-application/build-168/logs/cics-banking-sample-application.tar
+          status: Ok
+          artifacts:
+          - INQACC.CICSLOAD
+          - INQACC.DBRM
+      - command: wazideploy-evidence -q ListDeployments.yml.j2 r environment_name=*production
+        result: |
+          ---
+          deploy_timestamp: 20240904.110110.485
+          evidence_file_path: /cics-banking-sample-application/production/evidence-169.yaml
+          environment_name: zos.dev.production
+          application_name: cics-banking-sample-application
+          package_path: /var/workspace/cics-banking-sample-application/build-169/logs/cics-banking-sample-application.tar
+          status: Ok
+          artifacts:
+          - INQACC.CICSLOAD
+          - INQACC.DBRM
+      - command: wazideploy-evidence -q ListDeployments.yml.j2 r artifact_name=XFRFUN
+        result: |
+          ---
+          deploy_timestamp: 20250808.053127.934
+          evidence_file_path: /cics-banking-sample-application/integration/evidence-224.yaml
+          environment_name: zos.dev.integration
+          application_name: cics-banking-sample-application
+          application_version: 20250808.013054.525
+          package_path: /var/workspace/cics-banking-sample-application/build-224/deployPkgDir/applicationArchive.tar
+          status: Ok
+          artifacts:
+          - XFRFUN.CICSLOAD
+          - XFRFUN.DBRM
+          ---
+          deploy_timestamp: 20250807.144944.646
+          evidence_file_path: /cics-banking-sample-application/integration/evidence-223.yaml
+          environment_name: zos.dev.integration
+          application_name: cics-banking-sample-application
+          application_version: 20250807.104912.309
+          package_path: /var/workspace/cics-banking-sample-application/build-223/deployPkgDir/applicationArchive.tar
+          status: Ok
+          artifacts:
+          - XFRFUN.CICSLOAD
+          - XFRFUN.DBRM
+          ---
+          deploy_timestamp: 20250807.093358.976
+          evidence_file_path: /cics-banking-sample-application/integration/evidence-222.yaml
+          environment_name: zos.dev.integration
+          application_name: cics-banking-sample-application
+          application_version: 20250805.061133.391
+          package_path: /var/workspace/cics-banking-sample-application/build-222/deployPkgDir/applicationArchive.tar
+          status: Ok
+          artifacts:
+          - XFRFUN.CICSLOAD
+          - XFRFUN.DBRM
+      - command: wazideploy-evidence -q ListDeployments.yml.j2 r deployed_after=2025
+        result: |
+          ---
+          deploy_timestamp: 20250808.053127.934
+          evidence_file_path: /cics-banking-sample-application/integration/evidence-224.yaml
+          environment_name: zos.dev.integration
+          application_name: cics-banking-sample-application
+          application_version: 20250808.013054.525
+          package_path: /var/workspace/cics-banking-sample-application/build-224/deployPkgDir/applicationArchive.tar
+          status: Ok
+          artifacts:
+          - INQACC.CICSLOAD
+          - INQACC.DBRM
+          - XFRFUN.CICSLOAD
+          - XFRFUN.DBRM
+          ---
+          deploy_timestamp: 20250807.144944.646
+          evidence_file_path: /cics-banking-sample-application/integration/evidence-223.yaml
+          environment_name: zos.dev.integration
+          application_name: cics-banking-sample-application
+          application_version: 20250807.104912.309
+          package_path: /var/workspace/cics-banking-sample-application/build-223/deployPkgDir/applicationArchive.tar
+          status: Ok
+          artifacts:
+          - INQACC.CICSLOAD
+          - INQACC.DBRM
+          - XFRFUN.CICSLOAD
+          - XFRFUN.DBRM
+          ---
+          deploy_timestamp: 20250807.093358.976
+          evidence_file_path: /cics-banking-sample-application/integration/evidence-222.yaml
+          environment_name: zos.dev.integration
+          application_name: cics-banking-sample-application
+          application_version: 20250805.061133.391
+          package_path: /var/workspace/cics-banking-sample-application/build-222/deployPkgDir/applicationArchive.tar
+          status: Ok
+          artifacts:
+          - INQACC.CICSLOAD
+          - INQACC.DBRM
+          - XFRFUN.CICSLOAD
+          - XFRFUN.DBRM
+  ListEnvironments:
+    file: ListEnvironments.yml.j2
+    description: List environments with deployed artifacts, deploy date, application name (and version if any) and package path
+    arguments:
+      environment_name:
+        type: string
+        required: false
+        description: >
+          Name of a particular environment to get only information about it.
+          Glob pattern is accepted to get information about any environment whose name matches the pattern.
+      artifact_name:
+        type: string
+        required: false
+        description: >
+          Name of a particular artifact to get only information about deployments of this artifact.
+          Glob pattern is accepted to get only information about an artifact whose name matches the pattern.
+      artifact_type:
+        type: string
+        required: false
+        description: >
+          Type of artifact to get only information about deployments of artifacts of this type.
+          Glob pattern is accepted to get only information about artifacts of type matching the pattern.
+      application_name:
+        type: string
+        required: false
+        description: >
+          Name of a particular application to get only information about environments where this application has been deployed.
+          Glob pattern is accepted to get information about deployments of any application whose name matches the pattern.
+      application_version:
+        type: string
+        required: false
+        description: >
+          Version of application to get only information about deployments of this version of application.
+          Glob pattern is accepted to get information about deployments of any application version matching the pattern.
+      package_path:
+        type: string
+        required: false
+        description: >
+          Path of a particular package to get only information about environments where this package has been deployed.
+          Glob pattern is accepted to get only information about environments where a package matching the pattern has been deployed.
+      deployed_before:
+        type: string
+        required: false
+        description: >
+          Timestamp to get only information about deployments that occured before the given value.
+          The format is YYYYMMDD.HHmmSS.sss with digits Y: year, M: month, D: day, H: hour, m: minute, S: second, s: millisecond
+      deployed_after:
+        type: string
+        required: false
+        description: >
+          Timestamp to get only information about deployments that occured after or at the given value.
+          The format is YYYYMMDD.HHmmSS.sss with digits Y: year, M: month, D: day, H: hour, m: minute, S: second, s: millisecond
+      history:
+        type: boolean
+        required: false
+        default: false
+        description: >
+          Indicates whether the result should include a list of deployments for each environment, or only information about the last deployment
+          for each artifact in each environment.
+    output: |
+      A multi document YAML description, having a document for each environment, in ascending alphanumerical order.
+      Each document contains the environment name (field environment_name) and a list of deployed artifact item (field artifacts) in ascending alphanumerical order.
+      Each artifact item shows the artifact <name>.<type> (field artifact), and, depending on the value of the argument history:
+      - If history is false, information about the last deployment of the current artifact in the current environment:
+        the deploy timestamp (field deploy_timestamp), the application name (field application_name) and version (field application_version),
+        and finally the deployed package path (field package_path).
+      - If history is true, the list of deployments (field deployments) of the current artifact in the current environment in chronological order, each item including:
+        the deploy timestamp (field deploy_timestamp), application name (field application_name) and version if any (field application_version),
+        and finally the deployed package path (field package_path).
+    examples:
+      - command: wazideploy-evidence -q ListEnvironments.yml.j2 r
+        result: |
+          ---
+          environment_name: zos.dev.acceptance
+          artifacts:
+          - artifact: INQACC.CICSLOAD
+            deploy_timestamp: 20240904.105515.938
+            application_name: cics-banking-sample-application
+            package_path: /var/workspace/cics-banking-sample-application/build-169/logs/cics-banking-sample-application.tar
+          - artifact: INQACC.DBRM
+            deploy_timestamp: 20240904.105515.938
+            application_name: cics-banking-sample-application
+            package_path: /var/workspace/cics-banking-sample-application/build-169/logs/cics-banking-sample-application.tar
+          ---
+          environment_name: zos.dev.integration
+          artifacts:
+          - artifact: INQACC.CICSLOAD
+            deploy_timestamp: 20250807.093358.976
+            application_name: cics-banking-sample-application
+            application_version: 20250805.061133.391
+            package_path: /var/workspace/cics-banking-sample-application/build-222/deployPkgDir/applicationArchive.tar
+          - artifact: INQACC.DBRM
+            deploy_timestamp: 20250807.093358.976
+            application_name: cics-banking-sample-application
+            application_version: 20250805.061133.391
+            package_path: /var/workspace/cics-banking-sample-application/build-222/deployPkgDir/applicationArchive.tar
+          - artifact: XFRFUN.CICSLOAD
+            deploy_timestamp: 20250807.093358.976
+            application_name: cics-banking-sample-application
+            application_version: 20250805.061133.391
+            package_path: /var/workspace/cics-banking-sample-application/build-222/deployPkgDir/applicationArchive.tar
+          - artifact: XFRFUN.DBRM
+            deploy_timestamp: 20250807.093358.976
+            application_name: cics-banking-sample-application
+            application_version: 20250805.061133.391
+            package_path: /var/workspace/cics-banking-sample-application/build-222/deployPkgDir/applicationArchive.tar
+          ---
+          environment_name: zos.dev.production
+          artifacts:
+          - artifact: INQACC.CICSLOAD
+            deploy_timestamp: 20240904.110110.485
+            application_name: cics-banking-sample-application
+            package_path: /var/workspace/cics-banking-sample-application/build-169/logs/cics-banking-sample-application.tar
+          - artifact: INQACC.DBRM
+            deploy_timestamp: 20240904.110110.485
+            application_name: cics-banking-sample-application
+            package_path: /var/workspace/cics-banking-sample-application/build-169/logs/cics-banking-sample-application.tar
+      - command: wazideploy-evidence -q ListEnvironments.yml.j2 r history=true
+        result: |
+          ---
+          environment_name: zos.dev.acceptance
+          artifacts:
+          - artifact: INQACC.CICSLOAD
+            deployments:
+            - deploy_timestamp: 20240904.105515.938
+              application_name: cics-banking-sample-application
+              package_path: /var/workspace/cics-banking-sample-application/build-169/logs/cics-banking-sample-application.tar
+          - artifact: INQACC.DBRM
+            deployments:
+            - deploy_timestamp: 20240904.105515.938
+              application_name: cics-banking-sample-application
+              package_path: /var/workspace/cics-banking-sample-application/build-169/logs/cics-banking-sample-application.tar
+          ---
+          environment_name: zos.dev.integration
+          artifacts:
+          - artifact: INQACC.CICSLOAD
+            deployments:
+            - deploy_timestamp: 20240904.105004.543
+              application_name: cics-banking-sample-application
+              package_path: /var/workspace/cics-banking-sample-application/build-168/logs/cics-banking-sample-application.tar
+            - deploy_timestamp: 20240904.105321.104
+              application_name: cics-banking-sample-application
+              package_path: /var/workspace/cics-banking-sample-application/build-169/logs/cics-banking-sample-application.tar
+            - deploy_timestamp: 20250807.093358.976
+              application_name: cics-banking-sample-application
+              application_version: 20250805.061133.391
+              package_path: /var/workspace/cics-banking-sample-application/build-222/deployPkgDir/applicationArchive.tar
+            - deploy_timestamp: 20250807.144944.646
+              application_name: cics-banking-sample-application
+              application_version: 20250807.104912.309
+              package_path: /var/workspace/cics-banking-sample-application/build-223/deployPkgDir/applicationArchive.tar
+            - deploy_timestamp: 20250808.053127.934
+              application_name: cics-banking-sample-application
+              application_version: 20250808.013054.525
+              package_path: /var/workspace/cics-banking-sample-application/build-224/deployPkgDir/applicationArchive.tar
+          - artifact: INQACC.DBRM
+            deployments:
+            - deploy_timestamp: 20240904.105004.543
+              application_name: cics-banking-sample-application
+              package_path: /var/workspace/cics-banking-sample-application/build-168/logs/cics-banking-sample-application.tar
+            - deploy_timestamp: 20240904.105321.104
+              application_name: cics-banking-sample-application
+              package_path: /var/workspace/cics-banking-sample-application/build-169/logs/cics-banking-sample-application.tar
+            - deploy_timestamp: 20250807.093358.976
+              application_name: cics-banking-sample-application
+              application_version: 20250805.061133.391
+              package_path: /var/workspace/cics-banking-sample-application/build-222/deployPkgDir/applicationArchive.tar
+            - deploy_timestamp: 20250807.144944.646
+              application_name: cics-banking-sample-application
+              application_version: 20250807.104912.309
+              package_path: /var/workspace/cics-banking-sample-application/build-223/deployPkgDir/applicationArchive.tar
+            - deploy_timestamp: 20250808.053127.934
+              application_name: cics-banking-sample-application
+              application_version: 20250808.013054.525
+              package_path: /var/workspace/cics-banking-sample-application/build-224/deployPkgDir/applicationArchive.tar
+          - artifact: XFRFUN.CICSLOAD
+            deployments:
+            - deploy_timestamp: 20250807.093358.976
+              application_name: cics-banking-sample-application
+              application_version: 20250805.061133.391
+              package_path: /var/workspace/cics-banking-sample-application/build-222/deployPkgDir/applicationArchive.tar
+            - deploy_timestamp: 20250807.144944.646
+              application_name: cics-banking-sample-application
+              application_version: 20250807.104912.309
+              package_path: /var/workspace/cics-banking-sample-application/build-223/deployPkgDir/applicationArchive.tar
+            - deploy_timestamp: 20250808.053127.934
+              application_name: cics-banking-sample-application
+              application_version: 20250808.013054.525
+              package_path: /var/workspace/cics-banking-sample-application/build-224/deployPkgDir/applicationArchive.tar
+          - artifact: XFRFUN.DBRM
+            deployments:
+            - deploy_timestamp: 20250807.093358.976
+              application_name: cics-banking-sample-application
+              application_version: 20250805.061133.391
+              package_path: /var/workspace/cics-banking-sample-application/build-222/deployPkgDir/applicationArchive.tar
+            - deploy_timestamp: 20250807.144944.646
+              application_name: cics-banking-sample-application
+              application_version: 20250807.104912.309
+              package_path: /var/workspace/cics-banking-sample-application/build-223/deployPkgDir/applicationArchive.tar
+            - deploy_timestamp: 20250808.053127.934
+              application_name: cics-banking-sample-application
+              application_version: 20250808.013054.525
+              package_path: /var/workspace/cics-banking-sample-application/build-224/deployPkgDir/applicationArchive.tar
+          ---
+          environment_name: zos.dev.production
+          artifacts:
+          - artifact: INQACC.CICSLOAD
+            deployments:
+            - deploy_timestamp: 20240904.110110.485
+              application_name: cics-banking-sample-application
+              package_path: /var/workspace/cics-banking-sample-application/build-169/logs/cics-banking-sample-application.tar
+          - artifact: INQACC.DBRM
+            deployments:
+            - deploy_timestamp: 20240904.110110.485
+              application_name: cics-banking-sample-application
+              package_path: /var/workspace/cics-banking-sample-application/build-169/logs/cics-banking-sample-application.tar
+      - command: wazideploy-evidence -q ListEnvironments.yml.j2 r environment_name=zos.*.integration
+        result: |
+          ---
+          environment_name: zos.dev.integration
+          artifacts:
+          - artifact: INQACC.CICSLOAD
+            deploy_timestamp: 20250807.093358.976
+            application_name: cics-banking-sample-application
+            application_version: 20250805.061133.391
+            package_path: /var/workspace/cics-banking-sample-application/build-222/deployPkgDir/applicationArchive.tar
+          - artifact: INQACC.DBRM
+            deploy_timestamp: 20250807.093358.976
+            application_name: cics-banking-sample-application
+            application_version: 20250805.061133.391
+            package_path: /var/workspace/cics-banking-sample-application/build-222/deployPkgDir/applicationArchive.tar
+          - artifact: XFRFUN.CICSLOAD
+            deploy_timestamp: 20250807.093358.976
+            application_name: cics-banking-sample-application
+            application_version: 20250805.061133.391
+            package_path: /var/workspace/cics-banking-sample-application/build-222/deployPkgDir/applicationArchive.tar
+          - artifact: XFRFUN.DBRM
+            deploy_timestamp: 20250807.093358.976
+            application_name: cics-banking-sample-application
+            application_version: 20250805.061133.391
+            package_path: /var/workspace/cics-banking-sample-application/build-222/deployPkgDir/applicationArchive.tar
+      - command: wazideploy-evidence -q ListEnvironments.yml.j2 r deployed_before=2025
+        result: |
+          ---
+          environment_name: zos.dev.acceptance
+          artifacts:
+          - artifact: INQACC.CICSLOAD
+            deploy_timestamp: 20240904.105515.938
+            application_name: cics-banking-sample-application
+            package_path: /var/workspace/cics-banking-sample-application/build-169/logs/cics-banking-sample-application.tar
+          - artifact: INQACC.DBRM
+            deploy_timestamp: 20240904.105515.938
+            application_name: cics-banking-sample-application
+            package_path: /var/workspace/cics-banking-sample-application/build-169/logs/cics-banking-sample-application.tar
+          ---
+          environment_name: zos.dev.integration
+          artifacts:
+          - artifact: INQACC.CICSLOAD
+            deploy_timestamp: 20240904.105321.104
+            application_name: cics-banking-sample-application
+            package_path: /var/workspace/cics-banking-sample-application/build-169/logs/cics-banking-sample-application.tar
+          - artifact: INQACC.DBRM
+            deploy_timestamp: 20240904.105321.104
+            application_name: cics-banking-sample-application
+            package_path: /var/workspace/cics-banking-sample-application/build-169/logs/cics-banking-sample-application.tar
+          ---
+          environment_name: zos.dev.production
+          artifacts:
+          - artifact: INQACC.CICSLOAD
+            deploy_timestamp: 20240904.110110.485
+            application_name: cics-banking-sample-application
+            package_path: /var/workspace/cics-banking-sample-application/build-169/logs/cics-banking-sample-application.tar
+          - artifact: INQACC.DBRM
+            deploy_timestamp: 20240904.110110.485
+            application_name: cics-banking-sample-application
+            package_path: /var/workspace/cics-banking-sample-application/build-169/logs/cics-banking-sample-application.tar
+      - command: wazideploy-evidence -q ListEnvironments.yml.j2 r artifact_name=XFRFUN
+        result: |
+          ---
+          environment_name: zos.dev.integration
+          artifacts:
+          - artifact: XFRFUN.CICSLOAD
+            deploy_timestamp: 20250807.093358.976
+            application_name: cics-banking-sample-application
+            application_version: 20250805.061133.391
+            package_path: /var/workspace/cics-banking-sample-application/build-222/deployPkgDir/applicationArchive.tar
+          - artifact: XFRFUN.DBRM
+            deploy_timestamp: 20250807.093358.976
+            application_name: cics-banking-sample-application
+            application_version: 20250805.061133.391
+            package_path: /var/workspace/cics-banking-sample-application/build-222/deployPkgDir/applicationArchive.tar
+      - command: wazideploy-evidence -q ListEnvironments.yml.j2 r artifact_type=CICSLOAD
+        result: |
+          ---
+          environment_name: zos.dev.acceptance
+          artifacts:
+          - artifact: INQACC.CICSLOAD
+            deploy_timestamp: 20240904.105515.938
+            application_name: cics-banking-sample-application
+            package_path: /var/workspace/cics-banking-sample-application/build-169/logs/cics-banking-sample-application.tar
+          ---
+          environment_name: zos.dev.integration
+          artifacts:
+          - artifact: INQACC.CICSLOAD
+            deploy_timestamp: 20250807.093358.976
+            application_name: cics-banking-sample-application
+            application_version: 20250805.061133.391
+            package_path: /var/workspace/cics-banking-sample-application/build-222/deployPkgDir/applicationArchive.tar
+          - artifact: XFRFUN.CICSLOAD
+            deploy_timestamp: 20250807.093358.976
+            application_name: cics-banking-sample-application
+            application_version: 20250805.061133.391
+            package_path: /var/workspace/cics-banking-sample-application/build-222/deployPkgDir/applicationArchive.tar
+          ---
+          environment_name: zos.dev.production
+          artifacts:
+          - artifact: INQACC.CICSLOAD
+            deploy_timestamp: 20240904.110110.485
+            application_name: cics-banking-sample-application
+            package_path: /var/workspace/cics-banking-sample-application/build-169/logs/cics-banking-sample-application.tar
+  ListArtifacts:
+    file: ListArtifacts.yml.j2
+    description: List deployed artifacts with environment name, deploy timestamp, application name (and version if any) and deployed package
+    arguments:
+      artifact_name:
+        type: string
+        required: false
+        description: >
+          Name of a particular artifact to get only information about this artifact.
+          Glob pattern is accepted to get only information about any artifact whose name matches the pattern.
+      artifact_type:
+        type: string
+        required: false
+        description: >
+          Type of artifact to get only information about artifacts of this type.
+          Glob pattern is accepted to get only information about any artifact whose type matches the pattern.
+      environment_name:
+        type: string
+        required: false
+        description: >
+          Name of a particular environment to get only information about artifacts deployed in this environment.
+          Glob pattern is accepted to get information about artifacts deployed in any environment whose name matches the pattern.
+      application_name:
+        type: string
+        required: false
+        description: >
+          Name of a particular application to get only information about artifacts included in this application.
+          Glob pattern is accepted to get information about artifacts of any application whose name matches the pattern.
+      application_version:
+        type: string
+        required: false
+        description: >
+          Version of application to get only information about artifacts included in this version of application.
+          Glob pattern is accepted to get information about deployments of any application version matching the pattern.
+      package_path:
+        type: string
+        required: false
+        description: >
+          Path of a particular package to get only information about artifacts deployed with this package.
+          Glob pattern is accepted to get only information about artifacts deployed with a package path matching the pattern.
+      deployed_before:
+        type: string
+        required: false
+        description: >
+          Timestamp to get only information about deployments that occured before the given value.
+          The format is YYYYMMDD.HHmmSS.sss with digits Y: year, M: month, D: day, H: hour, m: minute, S: second, s: millisecond
+      deployed_after:
+        type: string
+        required: false
+        description: >
+          Timestamp to get only information about deployments that occured after or at the given value.
+          The format is YYYYMMDD.HHmmSS.sss with digits Y: year, M: month, D: day, H: hour, m: minute, S: second, s: millisecond
+      history:
+        type: boolean
+        required: false
+        default: false
+        description: >
+          Indicates whether the result should include information about all deployments or only about the last deployment of
+          each artifact in each environment.
+    output: |
+      A multi document YAML description, having a document for each artifact, in ascending alphanumerical order of artifact <name>.<type>.
+      Each root document contains the artifact <name>.<type> (field artifact) and a list of environment items (field environments)
+      in ascending alphanumerical order of environment_name.
+      Each environment item shows the environment name (field environment_name), and, depending on the value of the argument history:
+      - If history is false or absent, information about the last deployement in this environment:
+        - the deploy timestamp (field deploy_timestamp),
+        - the application name (field application_name),
+        - the application version (field application_version) if present,
+        - the package path (field package_path)
+      - If history is true, all the deployments are listed (field deployments) in chronological order, with for each deployment:
+        - the deploy timestamp (field deploy_timestamp),
+        - the application name (field application_name)
+        - the application version (field application_version) if present,
+        - the package path (field package_path)
+    examples:
+      - command: wazideploy-evidence -q ListArtifacts.yml.j2 r
+        result: |
+          ---
+          artifact: INQACC.CICSLOAD
+          environments:
+          - environment_name: zos.dev.acceptance
+            deploy_timestamp: 20240904.105515.938
+            application_name: cics-banking-sample-application
+            package_path: /var/workspace/cics-banking-sample-application/build-169/logs/cics-banking-sample-application.tar
+          - environment_name: zos.dev.integration
+            deploy_timestamp: 20250807.093358.976
+            application_name: cics-banking-sample-application
+            application_version: 20250805.061133.391
+            package_path: /var/workspace/cics-banking-sample-application/build-222/deployPkgDir/applicationArchive.tar
+          - environment_name: zos.dev.production
+            deploy_timestamp: 20240904.110110.485
+            application_name: cics-banking-sample-application
+            package_path: /var/workspace/cics-banking-sample-application/build-169/logs/cics-banking-sample-application.tar
+          ---
+          artifact: INQACC.DBRM
+          environments:
+          - environment_name: zos.dev.acceptance
+            deploy_timestamp: 20240904.105515.938
+            application_name: cics-banking-sample-application
+            package_path: /var/workspace/cics-banking-sample-application/build-169/logs/cics-banking-sample-application.tar
+          - environment_name: zos.dev.integration
+            deploy_timestamp: 20250807.093358.976
+            application_name: cics-banking-sample-application
+            application_version: 20250805.061133.391
+            package_path: /var/workspace/cics-banking-sample-application/build-222/deployPkgDir/applicationArchive.tar
+          - environment_name: zos.dev.production
+            deploy_timestamp: 20240904.110110.485
+            application_name: cics-banking-sample-application
+            package_path: /var/workspace/cics-banking-sample-application/build-169/logs/cics-banking-sample-application.tar
+          ---
+          artifact: XFRFUN.CICSLOAD
+          environments:
+          - environment_name: zos.dev.integration
+            deploy_timestamp: 20250807.093358.976
+            application_name: cics-banking-sample-application
+            application_version: 20250805.061133.391
+            package_path: /var/workspace/cics-banking-sample-application/build-222/deployPkgDir/applicationArchive.tar
+          ---
+          artifact: XFRFUN.DBRM
+          environments:
+          - environment_name: zos.dev.integration
+            deploy_timestamp: 20250807.093358.976
+            application_name: cics-banking-sample-application
+            application_version: 20250805.061133.391
+            package_path: /var/workspace/cics-banking-sample-application/build-222/deployPkgDir/applicationArchive.tar
+      - command: wazideploy-evidence -q ListArtifacts.yml.j2 r artifact_name=XFRFUN
+        result: |
+          ---
+          artifact: XFRFUN.CICSLOAD
+          environments:
+          - environment_name: zos.dev.integration
+            deploy_timestamp: 20250807.093358.976
+            application_name: cics-banking-sample-application
+            application_version: 20250805.061133.391
+            package_path: /var/workspace/cics-banking-sample-application/build-222/deployPkgDir/applicationArchive.tar
+          ---
+          artifact: XFRFUN.DBRM
+          environments:
+          - environment_name: zos.dev.integration
+            deploy_timestamp: 20250807.093358.976
+            application_name: cics-banking-sample-application
+            application_version: 20250805.061133.391
+            package_path: /var/workspace/cics-banking-sample-application/build-222/deployPkgDir/applicationArchive.tar
+      - command: wazideploy-evidence -q ListArtifacts.yml.j2 r artifact_type=DBRM
+        result: |
+          ---
+          artifact: INQACC.DBRM
+          environments:
+          - environment_name: zos.dev.acceptance
+            deploy_timestamp: 20240904.105515.938
+            application_name: cics-banking-sample-application
+            package_path: /var/workspace/cics-banking-sample-application/build-169/logs/cics-banking-sample-application.tar
+          - environment_name: zos.dev.integration
+            deploy_timestamp: 20250807.093358.976
+            application_name: cics-banking-sample-application
+            application_version: 20250805.061133.391
+            package_path: /var/workspace/cics-banking-sample-application/build-222/deployPkgDir/applicationArchive.tar
+          - environment_name: zos.dev.production
+            deploy_timestamp: 20240904.110110.485
+            application_name: cics-banking-sample-application
+            package_path: /var/workspace/cics-banking-sample-application/build-169/logs/cics-banking-sample-application.tar
+          ---
+          artifact: XFRFUN.DBRM
+          environments:
+          - environment_name: zos.dev.integration
+            deploy_timestamp: 20250807.093358.976
+            application_name: cics-banking-sample-application
+            application_version: 20250805.061133.391
+            package_path: /var/workspace/cics-banking-sample-application/build-222/deployPkgDir/applicationArchive.tar
+      - command: wazideploy-evidence -q ListArtifacts.yml.j2 r history=true
+        result: |
+          ---
+          artifact: INQACC.CICSLOAD
+          environments:
+          - environment_name: zos.dev.acceptance
+            deployments:
+            - deploy_timestamp: 20240904.105515.938
+              application_name: cics-banking-sample-application
+              package_path: /var/workspace/cics-banking-sample-application/build-169/logs/cics-banking-sample-application.tar
+          - environment_name: zos.dev.integration
+            deployments:
+            - deploy_timestamp: 20240904.105004.543
+              application_name: cics-banking-sample-application
+              package_path: /var/workspace/cics-banking-sample-application/build-168/logs/cics-banking-sample-application.tar
+            - deploy_timestamp: 20240904.105321.104
+              application_name: cics-banking-sample-application
+              package_path: /var/workspace/cics-banking-sample-application/build-169/logs/cics-banking-sample-application.tar
+            - deploy_timestamp: 20250807.093358.976
+              application_name: cics-banking-sample-application
+              application_version: 20250805.061133.391
+              package_path: /var/workspace/cics-banking-sample-application/build-222/deployPkgDir/applicationArchive.tar
+            - deploy_timestamp: 20250807.144944.646
+              application_name: cics-banking-sample-application
+              application_version: 20250807.104912.309
+              package_path: /var/workspace/cics-banking-sample-application/build-223/deployPkgDir/applicationArchive.tar
+            - deploy_timestamp: 20250808.053127.934
+              application_name: cics-banking-sample-application
+              application_version: 20250808.013054.525
+              package_path: /var/workspace/cics-banking-sample-application/build-224/deployPkgDir/applicationArchive.tar
+          - environment_name: zos.dev.production
+            deployments:
+            - deploy_timestamp: 20240904.110110.485
+              application_name: cics-banking-sample-application
+              package_path: /var/workspace/cics-banking-sample-application/build-169/logs/cics-banking-sample-application.tar
+          ---
+          artifact: INQACC.DBRM
+          environments:
+          - environment_name: zos.dev.acceptance
+            deployments:
+            - deploy_timestamp: 20240904.105515.938
+              application_name: cics-banking-sample-application
+              package_path: /var/workspace/cics-banking-sample-application/build-169/logs/cics-banking-sample-application.tar
+          - environment_name: zos.dev.integration
+            deployments:
+            - deploy_timestamp: 20240904.105004.543
+              application_name: cics-banking-sample-application
+              package_path: /var/workspace/cics-banking-sample-application/build-168/logs/cics-banking-sample-application.tar
+            - deploy_timestamp: 20240904.105321.104
+              application_name: cics-banking-sample-application
+              package_path: /var/workspace/cics-banking-sample-application/build-169/logs/cics-banking-sample-application.tar
+            - deploy_timestamp: 20250807.093358.976
+              application_name: cics-banking-sample-application
+              application_version: 20250805.061133.391
+              package_path: /var/workspace/cics-banking-sample-application/build-222/deployPkgDir/applicationArchive.tar
+            - deploy_timestamp: 20250807.144944.646
+              application_name: cics-banking-sample-application
+              application_version: 20250807.104912.309
+              package_path: /var/workspace/cics-banking-sample-application/build-223/deployPkgDir/applicationArchive.tar
+            - deploy_timestamp: 20250808.053127.934
+              application_name: cics-banking-sample-application
+              application_version: 20250808.013054.525
+              package_path: /var/workspace/cics-banking-sample-application/build-224/deployPkgDir/applicationArchive.tar
+          - environment_name: zos.dev.production
+            deployments:
+            - deploy_timestamp: 20240904.110110.485
+              application_name: cics-banking-sample-application
+              package_path: /var/workspace/cics-banking-sample-application/build-169/logs/cics-banking-sample-application.tar
+          ---
+          artifact: XFRFUN.CICSLOAD
+          environments:
+          - environment_name: zos.dev.integration
+            deployments:
+            - deploy_timestamp: 20250807.093358.976
+              application_name: cics-banking-sample-application
+              application_version: 20250805.061133.391
+              package_path: /var/workspace/cics-banking-sample-application/build-222/deployPkgDir/applicationArchive.tar
+            - deploy_timestamp: 20250807.144944.646
+              application_name: cics-banking-sample-application
+              application_version: 20250807.104912.309
+              package_path: /var/workspace/cics-banking-sample-application/build-223/deployPkgDir/applicationArchive.tar
+            - deploy_timestamp: 20250808.053127.934
+              application_name: cics-banking-sample-application
+              application_version: 20250808.013054.525
+              package_path: /var/workspace/cics-banking-sample-application/build-224/deployPkgDir/applicationArchive.tar
+          ---
+          artifact: XFRFUN.DBRM
+          environments:
+          - environment_name: zos.dev.integration
+            deployments:
+            - deploy_timestamp: 20250807.093358.976
+              application_name: cics-banking-sample-application
+              application_version: 20250805.061133.391
+              package_path: /var/workspace/cics-banking-sample-application/build-222/deployPkgDir/applicationArchive.tar
+            - deploy_timestamp: 20250807.144944.646
+              application_name: cics-banking-sample-application
+              application_version: 20250807.104912.309
+              package_path: /var/workspace/cics-banking-sample-application/build-223/deployPkgDir/applicationArchive.tar
+            - deploy_timestamp: 20250808.053127.934
+              application_name: cics-banking-sample-application
+              application_version: 20250808.013054.525
+              package_path: /var/workspace/cics-banking-sample-application/build-224/deployPkgDir/applicationArchive.tar
+      - command: wazideploy-evidence -q ListArtifacts.yml.j2 r deployed_after=20250807.144944 history=true
+        result: |
+          ---
+          artifact: INQACC.CICSLOAD
+          environments:
+          - environment_name: zos.dev.integration
+            deployments:
+            - deploy_timestamp: 20250807.144944.646
+              application_name: cics-banking-sample-application
+              application_version: 20250807.104912.309
+              package_path: /var/workspace/cics-banking-sample-application/build-223/deployPkgDir/applicationArchive.tar
+            - deploy_timestamp: 20250808.053127.934
+              application_name: cics-banking-sample-application
+              application_version: 20250808.013054.525
+              package_path: /var/workspace/cics-banking-sample-application/build-224/deployPkgDir/applicationArchive.tar
+          ---
+          artifact: INQACC.DBRM
+          environments:
+          - environment_name: zos.dev.integration
+            deployments:
+            - deploy_timestamp: 20250807.144944.646
+              application_name: cics-banking-sample-application
+              application_version: 20250807.104912.309
+              package_path: /var/workspace/cics-banking-sample-application/build-223/deployPkgDir/applicationArchive.tar
+            - deploy_timestamp: 20250808.053127.934
+              application_name: cics-banking-sample-application
+              application_version: 20250808.013054.525
+              package_path: /var/workspace/cics-banking-sample-application/build-224/deployPkgDir/applicationArchive.tar
+          ---
+          artifact: XFRFUN.CICSLOAD
+          environments:
+          - environment_name: zos.dev.integration
+            deployments:
+            - deploy_timestamp: 20250807.144944.646
+              application_name: cics-banking-sample-application
+              application_version: 20250807.104912.309
+              package_path: /var/workspace/cics-banking-sample-application/build-223/deployPkgDir/applicationArchive.tar
+            - deploy_timestamp: 20250808.053127.934
+              application_name: cics-banking-sample-application
+              application_version: 20250808.013054.525
+              package_path: /var/workspace/cics-banking-sample-application/build-224/deployPkgDir/applicationArchive.tar
+          ---
+          artifact: XFRFUN.DBRM
+          environments:
+          - environment_name: zos.dev.integration
+            deployments:
+            - deploy_timestamp: 20250807.144944.646
+              application_name: cics-banking-sample-application
+              application_version: 20250807.104912.309
+              package_path: /var/workspace/cics-banking-sample-application/build-223/deployPkgDir/applicationArchive.tar
+            - deploy_timestamp: 20250808.053127.934
+              application_name: cics-banking-sample-application
+              application_version: 20250808.013054.525
+              package_path: /var/workspace/cics-banking-sample-application/build-224/deployPkgDir/applicationArchive.tar
+  ListPackages:
+    file: ListPackages.yml.j2
+    description: List deployed package pathes with application name and version, artifact names, deploy timestamp and environment name
+    arguments:
+      artifact_name:
+        type: string
+        required: false
+        description: >
+          Name of a particular artifact to get only information about packages including this artifact.
+          Glob pattern is accepted to get only information about packages including artifacts whose name matches the pattern.
+      artifact_type:
+        type: string
+        required: false
+        description: >
+          Type of artifact to get only information about packages including artifacts of this type.
+          Glob pattern is accepted to get only information about packages including artifacts whose type matches the pattern.
+      environment_name:
+        type: string
+        required: false
+        description: >
+          Name of a particular environment to get only information about packages deployed in this environment.
+          Glob pattern is accepted to get information about packages deployed in any environment whose name matches the pattern.
+      application_name:
+        type: string
+        required: false
+        description: >
+          Name of a particular application to get only information about packages deployed for this application.
+          Glob pattern is accepted to get information about packages deployed for any application whose name matches the pattern.
+      application_version:
+        type: string
+        required: false
+        description: >
+          Version of application to get only information about packages deployed for this application version.
+          Glob pattern is accepted to get information about packages deployed for any application version matching the pattern.
+      package_path:
+        type: string
+        required: false
+        description: >
+          Path of a particular package to get only information about it.
+          Glob pattern is accepted to get only information about packages whose path matches the pattern.
+      deployed_before:
+        type: string
+        required: false
+        description: >
+          Timestamp to get only information about deployments that occured before the given timestamp.
+          The format is YYYYMMDD.HHmmSS.sss with digits Y: year, M: month, D: day, H: hour, m: minute, S: second, s: millisecond
+      deployed_after:
+        type: string
+        required: false
+        description: >
+          Timestamp to get only information about deployments that occured after the given timestamp.
+          The format is YYYYMMDD.HHmmSS.sss with digits Y: year, M: month, D: day, H: hour, m: minute, S: second, s: millisecond
+      history:
+        type: boolean
+        required: false
+        default: false
+        description: >
+          Indicates whether the result should include information about all deployments (if true) or only about the last deployment
+          of each package in each environment (if false).
+    output: |
+      A multi document YAML description, having a document for each package path, in ascending alphanumerical order of package pathes.
+      Each root document contains the package path (field package_path), a list of artifacts, and a list of environment items (field environments)
+      in ascending alphanumerical order.
+      Each environment item shows the environment name (field environment_name), and, depending on the value of the argument history:
+      - If history is false or absent, the last deploy timestamp of the package in this environment (field deploy_timestamp),
+      - If history is true, the list of deploy timestamps corresponding to all deployments of the package in this environment.
+    examples:
+      - command: wazideploy-evidence -q ListPackages.yml.j2 r
+        result: |
+          ---
+          package_path: /var/workspace/cics-banking-sample-application/build-168/logs/cics-banking-sample-application.tar
+          application_name: cics-banking-sample-application
+          application_version: None
+          artifacts:
+          - INQACC.CICSLOAD
+          - INQACC.DBRM
+          environments:
+          - environment_name: zos.dev.integration
+            deploy_timestamp: 20240904.105004.543
+          ---
+          package_path: /var/workspace/cics-banking-sample-application/build-169/logs/cics-banking-sample-application.tar
+          application_name: cics-banking-sample-application
+          application_version: None
+          artifacts:
+          - INQACC.CICSLOAD
+          - INQACC.DBRM
+          environments:
+          - environment_name: zos.dev.acceptance
+            deploy_timestamp: 20240904.105515.938
+          - environment_name: zos.dev.integration
+            deploy_timestamp: 20240904.105321.104
+          - environment_name: zos.dev.production
+            deploy_timestamp: 20240904.110110.485
+          ---
+          package_path: /var/workspace/cics-banking-sample-application/build-222/deployPkgDir/applicationArchive.tar
+          application_name: cics-banking-sample-application
+          application_version: 20250805.061133.391
+          artifacts:
+          - INQACC.CICSLOAD
+          - INQACC.DBRM
+          - XFRFUN.CICSLOAD
+          - XFRFUN.DBRM
+          environments:
+          - environment_name: zos.dev.integration
+            deploy_timestamp: 20250807.093358.976
+          ---
+          package_path: /var/workspace/cics-banking-sample-application/build-223/deployPkgDir/applicationArchive.tar
+          application_name: cics-banking-sample-application
+          application_version: 20250807.104912.309
+          artifacts:
+          - INQACC.CICSLOAD
+          - INQACC.DBRM
+          - XFRFUN.CICSLOAD
+          - XFRFUN.DBRM
+          environments:
+          - environment_name: zos.dev.integration
+            deploy_timestamp: 20250807.144944.646
+          ---
+          package_path: /var/workspace/cics-banking-sample-application/build-224/deployPkgDir/applicationArchive.tar
+          application_name: cics-banking-sample-application
+          application_version: 20250808.013054.525
+          artifacts:
+          - INQACC.CICSLOAD
+          - INQACC.DBRM
+          - XFRFUN.CICSLOAD
+          - XFRFUN.DBRM
+          environments:
+          - environment_name: zos.dev.integration
+            deploy_timestamp: 20250808.053127.934
+      - command: wazideploy-evidence -q ListPackages.yml.j2 r history=true
+        result: |
+          ---
+          package_path: /var/workspace/cics-banking-sample-application/build-168/logs/cics-banking-sample-application.tar
+          application_name: cics-banking-sample-application
+          application_version: None
+          artifacts:
+          - INQACC.CICSLOAD
+          - INQACC.DBRM
+          environments:
+          - environment_name: zos.dev.integration
+            deployments:
+            - 20240904.105004.543
+          ---
+          package_path: /var/workspace/cics-banking-sample-application/build-169/logs/cics-banking-sample-application.tar
+          application_name: cics-banking-sample-application
+          application_version: None
+          artifacts:
+          - INQACC.CICSLOAD
+          - INQACC.DBRM
+          environments:
+          - environment_name: zos.dev.acceptance
+            deployments:
+            - 20240904.105515.938
+          - environment_name: zos.dev.integration
+            deployments:
+            - 20240904.105321.104
+          - environment_name: zos.dev.production
+            deployments:
+            - 20240904.110110.485
+          ---
+          package_path: /var/workspace/cics-banking-sample-application/build-222/deployPkgDir/applicationArchive.tar
+          application_name: cics-banking-sample-application
+          application_version: 20250805.061133.391
+          artifacts:
+          - INQACC.CICSLOAD
+          - INQACC.DBRM
+          - XFRFUN.CICSLOAD
+          - XFRFUN.DBRM
+          environments:
+          - environment_name: zos.dev.integration
+            deployments:
+            - 20250807.093358.976
+          ---
+          package_path: /var/workspace/cics-banking-sample-application/build-223/deployPkgDir/applicationArchive.tar
+          application_name: cics-banking-sample-application
+          application_version: 20250807.104912.309
+          artifacts:
+          - INQACC.CICSLOAD
+          - INQACC.DBRM
+          - XFRFUN.CICSLOAD
+          - XFRFUN.DBRM
+          environments:
+          - environment_name: zos.dev.integration
+            deployments:
+            - 20250807.144944.646
+          ---
+          package_path: /var/workspace/cics-banking-sample-application/build-224/deployPkgDir/applicationArchive.tar
+          application_name: cics-banking-sample-application
+          application_version: 20250808.013054.525
+          artifacts:
+          - INQACC.CICSLOAD
+          - INQACC.DBRM
+          - XFRFUN.CICSLOAD
+          - XFRFUN.DBRM
+          environments:
+          - environment_name: zos.dev.integration
+            deployments:
+            - 20250808.053127.934
+      - command: wazideploy-evidence -q ListPackages.yml.j2 r environment_name=*production
+        result: |
+          ---
+          package_path: /var/workspace/cics-banking-sample-application/build-169/logs/cics-banking-sample-application.tar
+          application_name: cics-banking-sample-application
+          application_version: None
+          artifacts:
+          - INQACC.CICSLOAD
+          - INQACC.DBRM
+          environments:
+          - environment_name: zos.dev.production
+            deploy_timestamp: 20240904.110110.485
+  ListFailures:
+    file: ListFailures.yml.j2
+    description: List failures during deployment in reversed chronological order of deployments with deploy timestamp, environment name, location and detailed data
+    arguments:
+      limit:
+        type: string
+        required: false
+        default: "10"
+        description: >
+          Limit the number of returned commands to the given number. Absent means 10 commands, 0 means no limit.
+      environment_name:
+        type: string
+        required: false
+        description: >
+          Name of a particular environment to restrict results to deployments in this environment.
+          Glob pattern is accepted to retrieve failures in deployements targeting any environment whose name matches the pattern.
+      application_name:
+        type: string
+        required: false
+        description: >
+          Name of an application to restrict results to failures in deployment of this application.
+          Glob pattern is accepted to get only failures during deployment of applications whose name matches the pattern.
+      application_version:
+        type: string
+        required: false
+        description: >
+          Version of an application to restrict results to failures in deployment of this application version.
+          Glob pattern is accepted to get only failures in deployment of applications whose version matches the pattern.
+      package_path:
+        type: string
+        required: false
+        description: >
+          Path of a package to restrict results to failures used in deployment of this package.
+          Glob pattern is accepted to get only failures in deployment of packages whose path matches the pattern.
+      deployed_before:
+        type: string
+        required: false
+        description: >
+          Timestamp to get only failures in deployments done before the given timestamp.
+          The format is YYYYMMDD.HHmmSS.sss with digits Y: year, M: month, D: day, H: hour, m: minute, S: second, s: millisecond
+      deployed_after:
+        type: string
+        required: false
+        description: >
+          Timestamp to get only failures in deployments done after the given timestamp.
+          The format is YYYYMMDD.HHmmSS.sss with digits Y: year, M: month, D: day, H: hour, m: minute, S: second, s: millisecond
+    output: |
+      A multi document YAML description, having a root document for each deployment in reversed chronological order,
+      showing the deploy timestamp (field deploy_timestamp), the target environment name (field environment_name),
+      and a list of failures (field failures).
+      Each failure item shows the location of the failure information in the evience files (field location) and the detailed
+      information about the failure (field details).
+    examples:
+      - command: wazideploy-evidence -q ListFailures.yml.j2 r
+        result: |
+          ---
+          deploy_timestamp: 20250807.093358.976
+          environment_name: zos.dev.integration
+          failures:
+          - location: data/cics-banking-sample-application/integration/evidence-222.yaml:34..44
+            details: {'status': 'Failed', 'msg': 'Expand package completed', 'results': [{'status': 'Failed', 'msg': 'Succeeded to expand the package /var/workspace/cics-banking-sample-application/build-222/deployPkgDir/applicationArchive.tar to /var/workspace/cics-banking-sample-application/build-222 on system os OS/390', 'results': {'rc': '0'}}], 'duration': '0.9905509948730469'}
+          - location: data/cics-banking-sample-application/integration/evidence-222.yaml:37..43
+            details: {'status': 'Failed', 'msg': 'Succeeded to expand the package /var/workspace/cics-banking-sample-application/build-222/deployPkgDir/applicationArchive.tar to /var/workspace/cics-banking-sample-application/build-222 on system os OS/390', 'results': {'rc': '0'}}
+          - location: data/cics-banking-sample-application/integration/evidence-222.yaml:872..897
+            details: {'status': 'Failed', 'msg': "Succeeded to archive 'WDEPLOY.PYTHON.INT.LOADLIB(INQACC)' to 'WDEPLOY.PYTHON.INT.BACK.LOADLIB(INQACC)'", 'args': {'pattern': '.*\\.CICSLOAD$', 'dataset_source': 'WDEPLOY.PYTHON.INT.LOADLIB', 'dataset_destination': 'WDEPLOY.PYTHON.INT.BACK.LOADLIB', 'force_lock': 'true', 'aliases': 'true', 'is_load': 'true', 'is_binary': 'false', 'is_psb': 'false', 'is_dbd': 'false', 'is_asa_text': 'false', 'rename_subs': [], 'use_native_copy': 'true'}, 'results': {'command': 'PGM /bin/cp -XI  //dd:CPF0(INQACC) //dd:CPT0(INQACC)', 'result_command': {'rc': '0', 'response_format': 'UTF-8', 'stdout_response': '', 'stderr_response': '', 'command': 'mvscmd --pgm=BPXBATSL --args="PGM /bin/cp -XI  //dd:CPF0(INQACC) //dd:CPT0(INQACC)"  --CPF0="WDEPLOY.PYTHON.INT.LOADLIB" --CPT0="WDEPLOY.PYTHON.INT.BACK.LOADLIB" --STDOUT="*" --STDERR="*" --STDPARM="DUMMY"'}}}
+          ---
+          deploy_timestamp: 20240904.110110.485
+          environment_name: zos.dev.production
+          failures:
+          - location: data/cics-banking-sample-application/production/evidence-169.yaml:18..32
+            details: {'status': 'Failed', 'msg': '*? Recording SMF Failed:\nout: 2024/09/04 07:01:10.971 AFYM---F main: >>entry\n2024/09/04 07:01:10.971 AFYM007I Trace level: ULTIMATE\n2024/09/04 07:01:10.971 AFYM---V main: setTraceLevel result: TRUE\n2024/09/04 07:01:10.971 AFYM---F smfTest: >>entry\n2024/09/04 07:01:10.971 AFYM---E smfTest: __smf_record() errno=0x9D errno2=0x09210406 EMVSERR: EDC5157I An internal error has occurred.\n2024/09/04 07:01:10.971 AFYM---V smfTest: result: FALSE\n2024/09/04 07:01:10.971 AFYM---F smfTest: <<exit\n2024/09/04 07:01:10.971 AFYM---V main: smfTest result: FALSE\n2024/09/04 07:01:10.971 AFYM---F main: <<exit\n\nerror: FOMF0303I /global/opt/pyenv/gdp/lib/python3.11/site-packages/wazideploy/smf_record/smf-record: chattr() error: rv=-1, errno=8D, rsn=05E80079'}
+          ---
+          deploy_timestamp: 20240904.105515.938
+          environment_name: zos.dev.acceptance
+          failures:
+          - location: data/cics-banking-sample-application/acceptance/evidence-169.yaml:18..32
+            details: {'status': 'Failed', 'msg': '*? Recording SMF Failed:\nout: 2024/09/04 06:55:16.405 AFYM---F main: >>entry\n2024/09/04 06:55:16.406 AFYM007I Trace level: ULTIMATE\n2024/09/04 06:55:16.406 AFYM---V main: setTraceLevel result: TRUE\n2024/09/04 06:55:16.406 AFYM---F smfTest: >>entry\n2024/09/04 06:55:16.406 AFYM---E smfTest: __smf_record() errno=0x9D errno2=0x09210406 EMVSERR: EDC5157I An internal error has occurred.\n2024/09/04 06:55:16.406 AFYM---V smfTest: result: FALSE\n2024/09/04 06:55:16.406 AFYM---F smfTest: <<exit\n2024/09/04 06:55:16.406 AFYM---V main: smfTest result: FALSE\n2024/09/04 06:55:16.406 AFYM---F main: <<exit\n\nerror: FOMF0303I /global/opt/pyenv/gdp/lib/python3.11/site-packages/wazideploy/smf_record/smf-record: chattr() error: rv=-1, errno=8D, rsn=05E80079'}
+          ---
+          deploy_timestamp: 20240904.105321.104
+          environment_name: zos.dev.integration
+          failures:
+          - location: data/cics-banking-sample-application/integration/evidence-169.yaml:18..32
+            details: {'status': 'Failed', 'msg': '*? Recording SMF Failed:\nout: 2024/09/04 06:53:21.564 AFYM---F main: >>entry\n2024/09/04 06:53:21.564 AFYM007I Trace level: ULTIMATE\n2024/09/04 06:53:21.564 AFYM---V main: setTraceLevel result: TRUE\n2024/09/04 06:53:21.564 AFYM---F smfTest: >>entry\n2024/09/04 06:53:21.564 AFYM---E smfTest: __smf_record() errno=0x9D errno2=0x09210406 EMVSERR: EDC5157I An internal error has occurred.\n2024/09/04 06:53:21.564 AFYM---V smfTest: result: FALSE\n2024/09/04 06:53:21.564 AFYM---F smfTest: <<exit\n2024/09/04 06:53:21.564 AFYM---V main: smfTest result: FALSE\n2024/09/04 06:53:21.564 AFYM---F main: <<exit\n\nerror: FOMF0303I /global/opt/pyenv/gdp/lib/python3.11/site-packages/wazideploy/smf_record/smf-record: chattr() error: rv=-1, errno=8D, rsn=05E80079'}
+          ---
+          deploy_timestamp: 20240904.105004.543
+          environment_name: zos.dev.integration
+          failures:
+          - location: data/cics-banking-sample-application/integration/evidence-168.yaml:18..32
+            details: {'status': 'Failed', 'msg': '*? Recording SMF Failed:\nout: 2024/09/04 06:50:05.011 AFYM---F main: >>entry\n2024/09/04 06:50:05.011 AFYM007I Trace level: ULTIMATE\n2024/09/04 06:50:05.011 AFYM---V main: setTraceLevel result: TRUE\n2024/09/04 06:50:05.011 AFYM---F smfTest: >>entry\n2024/09/04 06:50:05.011 AFYM---E smfTest: __smf_record() errno=0x9D errno2=0x09210406 EMVSERR: EDC5157I An internal error has occurred.\n2024/09/04 06:50:05.011 AFYM---V smfTest: result: FALSE\n2024/09/04 06:50:05.011 AFYM---F smfTest: <<exit\n2024/09/04 06:50:05.011 AFYM---V main: smfTest result: FALSE\n2024/09/04 06:50:05.011 AFYM---F main: <<exit\n\nerror: FOMF0303I /global/opt/pyenv/gdp/lib/python3.11/site-packages/wazideploy/smf_record/smf-record: chattr() error: rv=-1, errno=8D, rsn=05E80079'}
+      - command: wazideploy-evidence -q ListFailures.yml.j2 r limit=3
+        result: |
+          ---
+          deploy_timestamp: 20250807.093358.976
+          environment_name: zos.dev.integration
+          failures:
+          - location: data/cics-banking-sample-application/integration/evidence-222.yaml:34..44
+            details: {'status': 'Failed', 'msg': 'Expand package completed', 'results': [{'status': 'Failed', 'msg': 'Succeeded to expand the package /var/workspace/cics-banking-sample-application/build-222/deployPkgDir/applicationArchive.tar to /var/workspace/cics-banking-sample-application/build-222 on system os OS/390', 'results': {'rc': '0'}}], 'duration': '0.9905509948730469'}
+          - location: data/cics-banking-sample-application/integration/evidence-222.yaml:37..43
+            details: {'status': 'Failed', 'msg': 'Succeeded to expand the package /var/workspace/cics-banking-sample-application/build-222/deployPkgDir/applicationArchive.tar to /var/workspace/cics-banking-sample-application/build-222 on system os OS/390', 'results': {'rc': '0'}}
+          - location: data/cics-banking-sample-application/integration/evidence-222.yaml:872..897
+            details: {'status': 'Failed', 'msg': "Succeeded to archive 'WDEPLOY.PYTHON.INT.LOADLIB(INQACC)' to 'WDEPLOY.PYTHON.INT.BACK.LOADLIB(INQACC)'", 'args': {'pattern': '.*\\.CICSLOAD$', 'dataset_source': 'WDEPLOY.PYTHON.INT.LOADLIB', 'dataset_destination': 'WDEPLOY.PYTHON.INT.BACK.LOADLIB', 'force_lock': 'true', 'aliases': 'true', 'is_load': 'true', 'is_binary': 'false', 'is_psb': 'false', 'is_dbd': 'false', 'is_asa_text': 'false', 'rename_subs': [], 'use_native_copy': 'true'}, 'results': {'command': 'PGM /bin/cp -XI  //dd:CPF0(INQACC) //dd:CPT0(INQACC)', 'result_command': {'rc': '0', 'response_format': 'UTF-8', 'stdout_response': '', 'stderr_response': '', 'command': 'mvscmd --pgm=BPXBATSL --args="PGM /bin/cp -XI  //dd:CPF0(INQACC) //dd:CPT0(INQACC)"  --CPF0="WDEPLOY.PYTHON.INT.LOADLIB" --CPT0="WDEPLOY.PYTHON.INT.BACK.LOADLIB" --STDOUT="*" --STDERR="*" --STDPARM="DUMMY"'}}}
+  ListFieldValues:
+    file: ListFieldValues.yml.j2
+    description: List all the values of the field of given name.
+    arguments:
+      fieldname:
+        type: string
+        required: true
+        default: name
+        description: >
+          The name of the targeted field, to get all its values.
+      parent_fieldname:
+        type: string
+        required: false
+        description: >
+          The name of the parent field of the targeted field.
+    output: |
+      A multi-document YAML description with for each document a field named fieldname|values
+      containing a list of all values of the field having the name fieldname.
+    examples:
+      - command: wazideploy-evidence -q ListFieldValues.yml.j2 r fieldname=status
+        result: |
+          ---
+          status|values:
+          - Failed
+          - Ok
+          - Skipped
+      - command: wazideploy-evidence -q ListFieldValues.yml.j2 r fieldname=key
+        result: |
+          ---
+          key|values:
+          - dependency_set
+          - githash
+          - giturl
+          - path
+          - template
+          - type
+          - wd_manifest_index
+      - command: wazideploy-evidence -q ListFieldValues.yml.j2 r fieldname=name
+        result: |
+          ---
+          name|values:
+          - CICS
+          - DB2
+          - DB2_BIND_PACKAGE
+          - DB2_BIND_PLAN
+          - DEPLOY_MODULES
+          - INQACC
+          - MEMBER_ARCHIVE
+          - MEMBER_COPY
+          - MEMBER_RESTORE
+          - PACKAGE
+          - PROG_UPDATE
+          - UPDATE
+          - XFRFUN
+          - cics-banking-sample-application
+      - command: wazideploy-evidence -q ListFieldValues.yml.j2 r fieldname=name parent_fieldname=steps
+        result: |
+          ---
+          name|values:
+          - DB2_BIND_PACKAGE
+          - DB2_BIND_PLAN
+          - MEMBER_ARCHIVE
+          - MEMBER_COPY
+          - MEMBER_RESTORE
+          - PACKAGE
+          - PROG_UPDATE
+      - command: wazideploy-evidence -q ListFieldValues.yml.j2 r fieldname=artifact_name
+        result: |
+          ---
+          name|values:
+          - INQACC
+          - XFRFUN
+      - command: wazideploy-evidence -q ListFieldValues.yml.j2 r fieldname=artifact_type
+        result: |
+          ---
+          type|values:
+          - CICSLOAD
+          - DBRM
+      - command: wazideploy-evidence -q ListFieldValues.yml.j2 r fieldname=environment_name
+        result: |
+          ---
+          environment_name|values:
+          - zos.dev.acceptance
+          - zos.dev.integration
+          - zos.dev.production
+      - command: wazideploy-evidence -q ListFieldValues.yml.j2 r fieldname=package_path
+        result: |
+          ---
+          path|values:
+          - /var/workspace/cics-banking-sample-application/build-168/logs/cics-banking-sample-application.tar
+          - /var/workspace/cics-banking-sample-application/build-169/logs/cics-banking-sample-application.tar
+          - /var/workspace/cics-banking-sample-application/build-222/deployPkgDir/applicationArchive.tar
+          - /var/workspace/cics-banking-sample-application/build-223/deployPkgDir/applicationArchive.tar
+          - /var/workspace/cics-banking-sample-application/build-224/deployPkgDir/applicationArchive.tar
+      - command: wazideploy-evidence -q ListFieldValues.yml.j2 r fieldname=application_name
+        result: |
+          ---
+          name|values:
+          - cics-banking-sample-application
+      - command: wazideploy-evidence -q ListFieldValues.yml.j2 r fieldname=application_version
+        result: |
+          ---
+          version|values:
+          - 20250805.061133.391
+          - 20250807.104912.309
+          - 20250808.013054.525
+      - command: wazideploy-evidence -q ListFieldValues.yml.j2 r fieldname=step_name
+        result: |
+          ---
+          name|values:
+          - DB2_BIND_PACKAGE
+          - DB2_BIND_PLAN
+          - MEMBER_ARCHIVE
+          - MEMBER_COPY
+          - MEMBER_RESTORE
+          - PACKAGE
+          - PROG_UPDATE
