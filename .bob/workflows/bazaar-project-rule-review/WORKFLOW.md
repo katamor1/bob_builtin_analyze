@@ -7,6 +7,7 @@ todo: true
 todoSource: markdown
 todoRequired: true
 todoAsSteps: true
+autoCompleteSteps: false
 permissions:
   - read
   - mcp
