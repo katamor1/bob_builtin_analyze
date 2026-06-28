@@ -25,6 +25,8 @@
 | `templates/triage/triage-result.template.yaml` | 人間 triage 結果テンプレート |
 | `scaffold/README.md` | MVP 実装スケルトンの概要 |
 | `scaffold/DEVELOPMENT.md` | scaffold のローカル確認手順 |
+| `scaffold/CI.md` | scaffold の GitHub Actions 検証方針 |
+| `scaffold/package-lock.json` | scaffold CI 用の依存関係ロックファイル |
 | `scaffold/tests/README.md` | scaffold 検証 fixture と自動テストの説明 |
 | `scaffold/tests/*.test.ts` | review-input / bob-output validator の自動テスト |
 | `scaffold/tests/fixtures/` | review-input / bob-output の正常系・異常系 fixture |
@@ -32,6 +34,7 @@
 | `scaffold/src/core/` | 入力検証、差分収集、review-package 生成、bob 出力検証の雛形 |
 | `scaffold/src/analyzers/` | 文書抽出、C/C++ 解析、traceability 生成の雛形 |
 | `scaffold/src/triage/` | human triage 生成の雛形 |
+| `.github/workflows/code-consistency-review-scaffold.yml` | scaffold の typecheck / unit / smoke CI |
 | `examples/simple-timeout-bugfix/README.md` | E2E 検証用の timeout 不整合サンプル |
 
 ## 実装順序
@@ -54,6 +57,7 @@
 15. scaffold/**
 16. scaffold/tests/**
 17. scaffold validator 自動テスト
+18. GitHub Actions による scaffold CI
 ```
 
 ## MVP のゴール
@@ -123,6 +127,15 @@ bob-review triage --package .bob-review/review-package --bob-output .bob-review/
 - `final_approval` が不正な `bob-output.yaml` 手動確認用
 
 `scaffold/package.json` には、`unit` と `smoke` の script を定義する。
+
+## scaffold CI
+
+`.github/workflows/code-consistency-review-scaffold.yml` では、scaffold 関連パス変更時に以下を実行する。
+
+- `npm install`
+- `npm run typecheck`
+- `npm run unit`
+- `npm run smoke`
 
 ## E2E サンプル
 
