@@ -5,12 +5,29 @@ const { test } = require("node:test")
 
 const extensionRoot = path.resolve(__dirname, "..")
 
-test("package entry points at the compiled workflow implementation", () => {
+test("package entry points at the compiled authoring wrapper", () => {
   const packageJson = JSON.parse(fs.readFileSync(path.join(extensionRoot, "package.json"), "utf8"))
   const tsconfig = JSON.parse(fs.readFileSync(path.join(extensionRoot, "tsconfig.json"), "utf8"))
 
-  assert.equal(packageJson.main, "./out/extension.js")
+  assert.equal(packageJson.main, "./out/extensionWithAuthoring.js")
   assert.deepEqual(tsconfig.include, ["src/**/*.ts"])
+})
+
+test("package exposes workflow authoring commands", () => {
+  const packageJson = JSON.parse(fs.readFileSync(path.join(extensionRoot, "package.json"), "utf8"))
+  const commandIds = packageJson.contributes.commands.map((command) => command.command)
+  const paletteIds = packageJson.contributes.menus.commandPalette.map((entry) => entry.command)
+  const source = fs.readFileSync(path.join(extensionRoot, "src", "extensionWithAuthoring.ts"), "utf8")
+  for (const command of [
+    "workflowRegister.validateCurrentWorkflow",
+    "workflowRegister.validateWorkspaceWorkflows",
+    "workflowRegister.createWorkflowFromTemplate"
+  ]) {
+    assert.ok(packageJson.activationEvents.includes(`onCommand:${command}`))
+    assert.ok(commandIds.includes(command))
+    assert.ok(paletteIds.includes(command))
+    assert.match(source, new RegExp(command.replace(/\./g, "\\.")))
+  }
 })
 
 test("completeStep command can be called silently by companion extensions", () => {
