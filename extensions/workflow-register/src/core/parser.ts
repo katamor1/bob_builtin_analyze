@@ -12,6 +12,8 @@ const yaml = require("js-yaml") as { load(text: string): unknown }
 
 const ajv = new Ajv({ allErrors: true, strict: false })
 
+const failurePolicySchema = { enum: ["stop", "continue", "warn"] }
+
 const v1Schema = {
   type: "object",
   required: ["name", "description"],
@@ -22,7 +24,24 @@ const v1Schema = {
     description: { type: "string", minLength: 1 },
     title: { type: "string" },
     label: { type: "string" },
+    mode: { type: "string" },
+    category: { type: "string" },
     permissions: { type: "array", items: { type: "string" } },
+    requires: {
+      type: "object",
+      properties: {
+        workspace: { type: "boolean" },
+        bob: {
+          type: "object",
+          properties: {
+            minVersion: { type: "string" }
+          },
+          additionalProperties: false
+        },
+        files: { type: "array", items: { type: "string" } }
+      },
+      additionalProperties: false
+    },
     inputs: {
       type: "object",
       additionalProperties: {
@@ -32,11 +51,93 @@ const v1Schema = {
           type: { enum: ["string", "number", "boolean", "select"] },
           title: { type: "string" },
           required: { type: "boolean" },
+          requiredWhen: { type: "string" },
           default: {},
           options: { type: "array", items: { type: "string" } }
         },
         additionalProperties: false
       }
+    },
+    preflight: {
+      type: "array",
+      items: {
+        type: "object",
+        required: ["id"],
+        properties: {
+          id: { type: "string", minLength: 1 },
+          title: { type: "string" },
+          required: { type: "boolean" },
+          checks: { type: "array", items: { type: "string" } },
+          files: { type: "array", items: { type: "string" } },
+          failurePolicy: failurePolicySchema
+        },
+        additionalProperties: false
+      }
+    },
+    tools: {
+      type: "object",
+      additionalProperties: {
+        type: "object",
+        properties: {
+          purpose: { type: "string" },
+          required: { type: "boolean" },
+          outputKey: { type: "string" },
+          inputSource: { type: "string" },
+          failurePolicy: failurePolicySchema
+        },
+        additionalProperties: false
+      }
+    },
+    guardrails: {
+      type: "object",
+      properties: {
+        allowedCommands: { type: "array", items: { type: "string" } },
+        deniedCommands: { type: "array", items: { type: "string" } },
+        requireApproval: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              id: { type: "string" },
+              when: { type: "string" },
+              message: { type: "string" }
+            },
+            additionalProperties: false
+          }
+        }
+      },
+      additionalProperties: false
+    },
+    artifacts: {
+      type: "array",
+      items: {
+        type: "object",
+        required: ["id", "path"],
+        properties: {
+          id: { type: "string", minLength: 1 },
+          producedBy: { type: "string" },
+          path: { type: "string", minLength: 1 },
+          schema: { type: "string" }
+        },
+        additionalProperties: false
+      }
+    },
+    completion: {
+      type: "object",
+      properties: {
+        summary: { type: "string" },
+        includeArtifacts: { type: "boolean" },
+        validateResult: { type: "boolean" },
+        visualization: {
+          type: "object",
+          properties: {
+            type: { type: "string" },
+            enabled: { type: "boolean" }
+          },
+          additionalProperties: false
+        }
+      },
+      additionalProperties: false
     },
     steps: {
       type: "array",
@@ -138,8 +239,16 @@ function parseV1Workflow(request: ParseWorkflowRequest, fields: Record<string, u
     label: optionalString(fields, "label") ?? optionalString(fields, "title") ?? name,
     description: requiredString(fields, "description"),
     schemaVersion: "workflow-register/v1",
+    mode: optionalString(fields, "mode"),
+    category: optionalString(fields, "category"),
     permissions: listField(fields, "permissions", ["read", "mcp", "skill"]),
     inputs: normalizeInputs(asRecord(fields.inputs)),
+    requires: normalizeRequires(asRecord(fields.requires)),
+    preflight: normalizePreflight(fields.preflight),
+    tools: normalizeTools(asRecord(fields.tools)),
+    guardrails: normalizeGuardrails(asRecord(fields.guardrails)),
+    artifacts: normalizeArtifacts(fields.artifacts),
+    completion: normalizeCompletion(asRecord(fields.completion)),
     engineSteps: steps.map((step) => normalizeEngineStep(asRecord(step)))
   }
   return { ok: true, workflow, diagnostics: [`- ok: ${request.filePath}: ${workflow.id}; schemaVersion=workflow-register/v1; steps=${workflow.engineSteps.length}`] }
@@ -159,8 +268,16 @@ function parseLegacyWorkflow(request: ParseWorkflowRequest, fields: Record<strin
     label: optionalString(fields, "label") ?? optionalString(fields, "title") ?? name,
     description: description ?? "",
     schemaVersion: "legacy",
+    mode: optionalString(fields, "mode"),
+    category: optionalString(fields, "category"),
     permissions: listField(fields, "permissions", ["read", "mcp", "skill"]),
     inputs: {},
+    requires: {},
+    preflight: [],
+    tools: {},
+    guardrails: {},
+    artifacts: [],
+    completion: {},
     engineSteps: legacyStepsFromMarkdown(body)
   }
   return { ok: true, workflow, diagnostics: [`- ok: ${request.filePath}: ${workflow.id}; schemaVersion=legacy; steps=${workflow.engineSteps.length}`] }
@@ -174,11 +291,93 @@ function normalizeInputs(inputs: Record<string, unknown>): Record<string, Workfl
       type: requiredString(record, "type") as WorkflowInputDefinition["type"],
       title: optionalString(record, "title"),
       required: optionalBoolean(record, "required"),
+      requiredWhen: optionalString(record, "requiredWhen"),
       default: record.default,
       options: listField(record, "options")
     }
   }
   return output
+}
+
+function normalizeRequires(record: Record<string, unknown>) {
+  const bob = asRecord(record.bob)
+  return {
+    workspace: optionalBoolean(record, "workspace"),
+    bob: Object.keys(bob).length > 0 ? { minVersion: optionalString(bob, "minVersion") } : undefined,
+    files: listField(record, "files")
+  }
+}
+
+function normalizePreflight(value: unknown) {
+  if (!Array.isArray(value)) return []
+  return value.map((entry) => {
+    const record = asRecord(entry)
+    return {
+      id: requiredString(record, "id"),
+      title: optionalString(record, "title"),
+      required: optionalBoolean(record, "required"),
+      checks: listField(record, "checks"),
+      files: listField(record, "files"),
+      failurePolicy: optionalString(record, "failurePolicy") as "stop" | "continue" | "warn" | undefined
+    }
+  })
+}
+
+function normalizeTools(tools: Record<string, unknown>) {
+  const output: Record<string, { purpose?: string; required?: boolean; outputKey?: string; inputSource?: string; failurePolicy?: "stop" | "continue" | "warn" }> = {}
+  for (const [key, value] of Object.entries(tools)) {
+    const record = asRecord(value)
+    output[key] = {
+      purpose: optionalString(record, "purpose"),
+      required: optionalBoolean(record, "required"),
+      outputKey: optionalString(record, "outputKey"),
+      inputSource: optionalString(record, "inputSource"),
+      failurePolicy: optionalString(record, "failurePolicy") as "stop" | "continue" | "warn" | undefined
+    }
+  }
+  return output
+}
+
+function normalizeGuardrails(record: Record<string, unknown>) {
+  const approvals = Array.isArray(record.requireApproval) ? record.requireApproval : []
+  return {
+    allowedCommands: listField(record, "allowedCommands"),
+    deniedCommands: listField(record, "deniedCommands"),
+    requireApproval: approvals.map((approval) => {
+      const approvalRecord = asRecord(approval)
+      return {
+        id: optionalString(approvalRecord, "id"),
+        when: optionalString(approvalRecord, "when"),
+        message: optionalString(approvalRecord, "message")
+      }
+    })
+  }
+}
+
+function normalizeArtifacts(value: unknown) {
+  if (!Array.isArray(value)) return []
+  return value.map((entry) => {
+    const record = asRecord(entry)
+    return {
+      id: requiredString(record, "id"),
+      producedBy: optionalString(record, "producedBy"),
+      path: requiredString(record, "path"),
+      schema: optionalString(record, "schema")
+    }
+  })
+}
+
+function normalizeCompletion(record: Record<string, unknown>) {
+  const visualization = asRecord(record.visualization)
+  return {
+    summary: optionalString(record, "summary"),
+    includeArtifacts: optionalBoolean(record, "includeArtifacts"),
+    validateResult: optionalBoolean(record, "validateResult"),
+    visualization: Object.keys(visualization).length > 0 ? {
+      type: optionalString(visualization, "type"),
+      enabled: optionalBoolean(visualization, "enabled")
+    } : undefined
+  }
 }
 
 function normalizeEngineStep(step: Record<string, unknown>): EngineStep {
