@@ -59,7 +59,14 @@ export function validateCoreWorkflow(workflow: CoreWorkflowDefinition, options: 
 }
 
 export function formatWorkflowDiagnostics(result: ValidateWorkflowResult): string[] {
-  return result.diagnostics.map((item) => `- ${item.severity}: ${item.filePath ? `${item.filePath}: ` : ""}${item.message}`)
+  if (result.diagnostics.length === 0) return ["- ok: No workflow diagnostics."]
+  const lines: string[] = []
+  for (const item of result.diagnostics) {
+    lines.push(`- ${item.severity}: ${item.filePath ? `${item.filePath}: ` : ""}${item.message}`)
+    const hint = diagnosticHint(item.message)
+    if (hint) lines.push(`  - hint: ${hint}`)
+  }
+  return lines
 }
 
 function validateCommandStep(step: Extract<EngineStep, { type: "command" }>, options: Omit<ValidateWorkflowTextOptions, "sourceId" | "text">, diagnostics: WorkflowDiagnostic[], filePath: string): void {
@@ -128,6 +135,18 @@ function diagnosticFromParserLine(line: string, filePath: string): WorkflowDiagn
   if (trimmed.startsWith("fail:")) return error(filePath, trimmed.slice(5).trim())
   if (trimmed.startsWith("warn:")) return warning(filePath, trimmed.slice(5).trim())
   return { severity: "info", filePath, message: trimmed.replace(/^ok:\s*/, "") }
+}
+
+function diagnosticHint(message: string): string | undefined {
+  if (message.includes("includeState references unknown resultKey")) return "Add resultKey to an earlier command or agent step, or remove the includeState entry."
+  if (message.includes("result references unknown stateKey")) return "Use a stateKey produced by an earlier resultKey."
+  if (message.includes("Duplicate step id")) return "Each step id must be unique within one WORKFLOW.md."
+  if (message.includes("select but has no options")) return "Add an options list to the select input."
+  if (message.includes("producedBy step")) return "Set producedBy to the id of a step that exists in steps."
+  if (message.includes("both allowed and denied")) return "Keep each command in either allowedCommands or deniedCommands, not both."
+  if (message.includes("missing YAML front matter")) return "Start the file with a YAML front matter block delimited by ---."
+  if (message.includes("invalid YAML")) return "Check indentation, list markers, and quoted strings in the front matter."
+  return undefined
 }
 
 function error(filePath: string, message: string): WorkflowDiagnostic {
