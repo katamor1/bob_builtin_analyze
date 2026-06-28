@@ -9,6 +9,13 @@ import { completeCurrentWorkflowStepAfterGuiAction } from "./workflowStepComplet
 
 type TargetMode = "singleRevision" | "revisionRange" | "workingTreeSinceRevision"
 
+export interface BazaarReviewInitialTarget {
+  revisionMode?: TargetMode
+  revision?: string
+  baseRevision?: string
+  targetRevision?: string
+}
+
 interface TargetRequest {
   mode: TargetMode
   revision?: string
@@ -43,22 +50,22 @@ interface PreparedTarget {
 
 type AddToBobContextResult = "added" | "clipboardFallback"
 
-export function openBazaarReviewGui(context: vscode.ExtensionContext): void {
+export function openBazaarReviewGui(context: vscode.ExtensionContext, initialTarget?: BazaarReviewInitialTarget): void {
   const panel = vscode.window.createWebviewPanel("bobBazaarReviewGui", "Bob Bazaar Review", vscode.ViewColumn.One, {
     enableScripts: true,
     retainContextWhenHidden: true
   })
-  const controller = new BazaarReviewGuiController(context, panel)
+  const controller = new BazaarReviewGuiController(context, panel, initialTarget)
   controller.initialize()
 }
 
 class BazaarReviewGuiController {
   private workspaceFolder?: vscode.WorkspaceFolder
 
-  constructor(private readonly context: vscode.ExtensionContext, private readonly panel: vscode.WebviewPanel) {}
+  constructor(private readonly context: vscode.ExtensionContext, private readonly panel: vscode.WebviewPanel, private readonly initialTarget?: BazaarReviewInitialTarget) {}
 
   initialize(): void {
-    this.panel.webview.html = renderHtml(this.panel.webview.cspSource)
+    this.panel.webview.html = renderHtml(this.panel.webview.cspSource, this.initialTarget)
     this.panel.webview.onDidReceiveMessage((message) => this.handleMessage(message), undefined, this.context.subscriptions)
   }
 
@@ -382,8 +389,9 @@ async function addToBobContext(uri: vscode.Uri, packet: string): Promise<AddToBo
   }
 }
 
-function renderHtml(cspSource: string): string {
+function renderHtml(cspSource: string, initialTarget?: BazaarReviewInitialTarget): string {
   const nonce = String(Date.now())
+  const initialTargetJson = JSON.stringify(initialTarget ?? {}).replace(/</g, "\\u003c")
   return `<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8" /><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>Bob Bazaar Review</title><style>
 body{font-family:var(--vscode-font-family);color:var(--vscode-foreground);background:var(--vscode-editor-background);padding:20px}.row{display:flex;gap:8px;align-items:center;margin-bottom:12px}.field{display:flex;flex-direction:column;gap:4px;flex:1}.small{color:var(--vscode-descriptionForeground);font-size:12px}input,select{padding:8px;color:var(--vscode-input-foreground);background:var(--vscode-input-background);border:1px solid var(--vscode-input-border)}button{padding:8px 12px;color:var(--vscode-button-foreground);background:var(--vscode-button-background);border:0;cursor:pointer}.secondary{color:var(--vscode-button-secondaryForeground);background:var(--vscode-button-secondaryBackground)}button:disabled{opacity:.5}.card{border:1px solid var(--vscode-panel-border);padding:14px;margin-top:12px;border-radius:6px;background:var(--vscode-sideBar-background)}.warning{border-color:var(--vscode-editorWarning-foreground)}.grid{display:grid;grid-template-columns:140px 1fr;gap:6px 12px}.label{color:var(--vscode-descriptionForeground)}pre{white-space:pre-wrap;background:var(--vscode-textCodeBlock-background);padding:10px}.files,.missing{max-height:220px;overflow:auto}.status{margin-top:12px;color:var(--vscode-descriptionForeground)}.error{color:var(--vscode-errorForeground)}.ok{color:var(--vscode-testing-iconPassed)}.hidden{display:none}</style></head><body>
 <h1>Bob Bazaar Review</h1>
@@ -396,15 +404,16 @@ body{font-family:var(--vscode-font-family);color:var(--vscode-foreground);backgr
 <div class="row"><button id="load">取得</button><button id="review" disabled>レビューしてBobにADD</button></div><label><input id="withProjectRules" type="checkbox" checked /> Project Rulesを含める</label><div id="status" class="status"></div>
 <div id="info" class="card hidden"><h2>Target Information</h2><div class="grid"><div class="label">Mode</div><div id="infoMode"></div><div class="label">Target</div><div id="infoTarget"></div><div class="label">Revision</div><div id="infoRevision"></div><div class="label">Revno</div><div id="infoRevno"></div><div class="label">作者</div><div id="infoAuthor"></div><div class="label">Committer</div><div id="infoCommitter"></div><div class="label">日時</div><div id="infoTimestamp"></div><div class="label">変更ファイル数</div><div id="infoChangedCount"></div></div><h3>Message / status</h3><pre id="infoMessage"></pre><h3>変更ファイル</h3><ul id="infoFiles" class="files"></ul></div>
 <script nonce="${nonce}">
-const vscode=acquireVsCodeApi();const $=(id)=>document.getElementById(id);let loaded=false;let bobInitialized=false;
+const vscode=acquireVsCodeApi();const $=(id)=>document.getElementById(id);const initialTarget=${initialTargetJson};let loaded=false;let bobInitialized=false;
 $('selectWorkspace').onclick=()=>vscode.postMessage({type:'selectWorkspace'});$('initializeBob').onclick=()=>vscode.postMessage({type:'initializeBobWorkspace'});$('mode').onchange=()=>{updateMode();clearLoaded()};$('load').onclick=()=>loadTarget();$('review').onclick=()=>vscode.postMessage({type:'reviewTarget',...collectTarget(),withProjectRules:$('withProjectRules').checked});$('withProjectRules').onchange=()=>updateReviewButton();['revision','baseRevision','targetRevision','workingBaseRevision'].forEach(id=>{$(id).oninput=()=>clearLoaded();$(id).onkeydown=(e)=>{if(e.key==='Enter')loadTarget()}});
 function collectTarget(){const mode=$('mode').value;return{mode,revision:$('revision').value.trim(),baseRevision:mode==='workingTreeSinceRevision'?$('workingBaseRevision').value.trim():$('baseRevision').value.trim(),targetRevision:$('targetRevision').value.trim()}}
 function updateMode(){const mode=$('mode').value;$('singleFields').classList.toggle('hidden',mode!=='singleRevision');$('rangeFields').classList.toggle('hidden',mode!=='revisionRange');$('workingTreeFields').classList.toggle('hidden',mode!=='workingTreeSinceRevision')}
+function applyInitialTarget(initialTarget){if(!initialTarget)return;const mode=initialTarget.revisionMode||'singleRevision';$('mode').value=mode;$('revision').value=initialTarget.revision||'';$('baseRevision').value=initialTarget.baseRevision||'';$('targetRevision').value=initialTarget.targetRevision||'';$('workingBaseRevision').value=mode==='workingTreeSinceRevision'?(initialTarget.baseRevision||''):'';updateMode()}
 function clearLoaded(){loaded=false;updateReviewButton()}function updateReviewButton(){$('review').disabled=!loaded||($('withProjectRules').checked&&!bobInitialized)}function setStatus(text,error=false,ok=false){$('status').textContent=text||'';$('status').className=error?'status error':ok?'status ok':'status'}
 function loadTarget(){const t=collectTarget();if(t.mode==='singleRevision'&&!t.revision){setStatus('revisionを入力してください',true);return}if(t.mode==='revisionRange'&&(!t.baseRevision||!t.targetRevision)){setStatus('base revision と target revision を入力してください',true);return}clearLoaded();vscode.postMessage({type:'loadTarget',...t})}
 function renderBobStatus(s){bobInitialized=!!s.initialized;$('initCard').classList.toggle('hidden',bobInitialized);$('missingFiles').innerHTML='';(s.missing||[]).forEach(f=>{const li=document.createElement('li');li.textContent=f;$('missingFiles').appendChild(li)});updateReviewButton()}
 function renderInfo(info){loaded=true;$('info').classList.remove('hidden');updateReviewButton();$('infoMode').textContent=info.mode||'';$('infoTarget').textContent=info.targetLabel||'';$('infoRevision').textContent=info.revision||info.targetRevision||'';$('infoRevno').textContent=info.revno||'';$('infoAuthor').textContent=info.author||'';$('infoCommitter').textContent=info.committer||'';$('infoTimestamp').textContent=info.timestamp||'';$('infoChangedCount').textContent=String(info.changedFileCount??0);$('infoMessage').textContent=info.message||'(no message)';$('infoFiles').innerHTML='';(info.changedFileEntries||[]).forEach(e=>{const li=document.createElement('li');li.textContent=e.status+': '+e.path;$('infoFiles').appendChild(li)})}
 window.addEventListener('message',(event)=>{const m=event.data;if(m.type==='workspaceState')$('workspace').textContent=m.workspace||'workspace未選択';else if(m.type==='bobWorkspaceStatus')renderBobStatus(m);else if(m.type==='initialized')setStatus(m.message,false,true);else if(m.type==='loading')setStatus(m.message);else if(m.type==='targetInfo'){renderInfo(m.info);setStatus('対象情報を取得しました',false,true)}else if(m.type==='reviewAdded'){renderInfo(m.info);const contextText=m.bobContextAdded?'Bob contextへADDしました':'Bob context ADDに失敗したためclipboardへcopyしました';const stepText=m.workflowStepCompleted?' 現在のworkflow stepも完了しました。':'';setStatus('レビューpacketを作成し、'+contextText+'。packet bytes: '+m.packetBytes+stepText,false,true)}else if(m.type==='error')setStatus(m.message||'Error',true)});
-updateMode();vscode.postMessage({type:'ready'});
+updateMode();applyInitialTarget(initialTarget);vscode.postMessage({type:'ready'});
 </script></body></html>`
 }

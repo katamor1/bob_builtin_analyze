@@ -8,7 +8,7 @@ import { validateReviewResultJson } from "./projectRules/validator"
 import { renderReviewResultMarkdown } from "./projectRules/markdown"
 import { captureReviewResult, saveReviewResultFromClipboard } from "./projectRules/resultCapture"
 import { ReviewResult } from "./projectRules/types"
-import { openBazaarReviewGui } from "./reviewGui"
+import { BazaarReviewInitialTarget, openBazaarReviewGui } from "./reviewGui"
 import { buildAddedFilesContentSection, loadBazaarRevisionPacketInput } from "./revisionInfo"
 import { BazaarReviewContextResult, buildReviewContextResult } from "./workflowBridge"
 
@@ -71,7 +71,7 @@ async function registerWorkflowProviders(context: vscode.ExtensionContext): Prom
   if (!api) return
   api.registerActionProvider({
     id: "bobBazaar.openReviewGui",
-    execute: () => openBazaarReviewGui(context)
+    execute: (input) => openBazaarReviewGui(context, initialTargetFromWorkflowInputs(input.inputs))
   })
   api.registerActionProvider({
     id: "bobBazaar.collectReviewContext",
@@ -105,6 +105,25 @@ function firstStringArg(args: unknown): string | undefined {
   const values = Array.isArray(args) ? args : args === undefined ? [] : [args]
   const first = values[0]
   return typeof first === "string" ? first : undefined
+}
+
+function initialTargetFromWorkflowInputs(inputs: Record<string, unknown>): BazaarReviewInitialTarget | undefined {
+  const target: BazaarReviewInitialTarget = {
+    revisionMode: targetMode(inputs.revisionMode),
+    revision: stringInput(inputs.revision),
+    baseRevision: stringInput(inputs.baseRevision),
+    targetRevision: stringInput(inputs.targetRevision)
+  }
+  return target.revisionMode || target.revision || target.baseRevision || target.targetRevision ? target : undefined
+}
+
+function targetMode(value: unknown): BazaarReviewInitialTarget["revisionMode"] | undefined {
+  if (value === "singleRevision" || value === "revisionRange" || value === "workingTreeSinceRevision") return value
+  return undefined
+}
+
+function stringInput(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined
 }
 
 async function collectReviewContext(): Promise<BazaarReviewContextResult> {

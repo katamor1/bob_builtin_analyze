@@ -13,10 +13,23 @@ test("Bazaar companion extension registers workflow providers with workflow-regi
   assert.ok(packageJson.activationEvents.includes("onStartupFinished"))
   assert.match(source, /const WORKFLOW_REGISTER_EXTENSION_ID = "local\.workflow-register"/)
   assert.match(source, /registerWorkflowProviders\(context\)\.catch/)
-  assert.match(source, /api\.registerActionProvider\(\{[\s\S]*id: "bobBazaar\.openReviewGui"[\s\S]*openBazaarReviewGui\(context\)[\s\S]*\}\)/)
+  assert.match(source, /api\.registerActionProvider\(\{[\s\S]*id: "bobBazaar\.openReviewGui"[\s\S]*execute: \(input\) => openBazaarReviewGui\(context, initialTargetFromWorkflowInputs\(input\.inputs\)\)[\s\S]*\}\)/)
   assert.match(source, /api\.registerActionProvider\(\{[\s\S]*id: "bobBazaar\.collectReviewContext"[\s\S]*collectReviewContext\(\)[\s\S]*\}\)/)
   assert.match(source, /api\.registerActionProvider\(\{[\s\S]*id: "bobBazaar\.loadReviewRules"[\s\S]*loadReviewRules\(\)[\s\S]*\}\)/)
   assert.match(source, /api\.registerActionProvider\(\{[\s\S]*id: "bobBazaar\.captureReviewResult"[\s\S]*captureReviewResult\(firstStringArg\(args\)\)[\s\S]*\}\)/)
+})
+
+test("Bazaar review GUI accepts workflow inputs as initial target values", () => {
+  const extensionSource = fs.readFileSync(path.join(extensionRoot, "src", "extension.ts"), "utf8")
+  const guiSource = fs.readFileSync(path.join(extensionRoot, "src", "reviewGui.ts"), "utf8")
+
+  assert.match(extensionSource, /function initialTargetFromWorkflowInputs\(inputs: Record<string, unknown>\)/)
+  assert.match(extensionSource, /revisionMode: targetMode\(inputs\.revisionMode\)/)
+  assert.match(guiSource, /export interface BazaarReviewInitialTarget/)
+  assert.match(guiSource, /openBazaarReviewGui\(context: vscode\.ExtensionContext, initialTarget\?: BazaarReviewInitialTarget\)/)
+  assert.match(guiSource, /new BazaarReviewGuiController\(context, panel, initialTarget\)/)
+  assert.match(guiSource, /const initialTargetJson = JSON\.stringify\(initialTarget \?\? \{\}\)/)
+  assert.match(guiSource, /applyInitialTarget\(initialTarget\)/)
 })
 
 test("Bazaar workflow template declares the providers owned by this extension", () => {
