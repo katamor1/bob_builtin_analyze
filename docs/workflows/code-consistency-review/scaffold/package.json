@@ -12,7 +12,10 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "preprocess": "node dist/cli/main.js preprocess",
     "validate-output": "node dist/cli/main.js validate-output",
-    "triage": "node dist/cli/main.js triage"
+    "triage": "node dist/cli/main.js triage",
+    "smoke:help": "npm run build && node dist/cli/main.js",
+    "smoke:validate-output": "npm run build && node dist/cli/main.js validate-output --package .tmp/review-package --bob-output tests/fixtures/bob-output.valid.yaml",
+    "smoke:triage": "npm run build && node dist/cli/main.js triage --package .tmp/review-package --bob-output tests/fixtures/bob-output.valid.yaml --out .tmp/human-triage"
   },
   "dependencies": {
     "ajv": "^8.17.1",
