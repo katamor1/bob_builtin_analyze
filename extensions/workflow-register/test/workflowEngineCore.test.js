@@ -298,3 +298,156 @@ test("workflow engine holds manual steps and resumes them", async () => {
   assert.equal(resumed.status, "completed")
   assert.equal(fs.readFileSync(path.join(workspaceRoot, ".bob", "workflows", "runs", held.runId, "steps", "write.txt"), "utf8"), "done")
 })
+
+test("workflow engine validates requiredWhen inputs and select options", async () => {
+  const { ActionRegistry } = require("../out/core/actionRegistry")
+  const { WorkflowEngine } = require("../out/core/engine")
+  const { createDefaultResultSinkRegistry } = require("../out/core/resultSinkRegistry")
+  const { FileRunStateStore } = require("../out/core/runStateStore")
+
+  const workspaceRoot = tempDir()
+  const engine = new WorkflowEngine({
+    actions: new ActionRegistry(),
+    resultSinks: createDefaultResultSinkRegistry({ workspaceRoot, executeCommand: async () => undefined }),
+    runStore: new FileRunStateStore({ workspaceRoot, now: () => "2026-06-28T00:00:00.000Z" })
+  })
+  const workflow = {
+    id: "workflow-register.inputs",
+    name: "inputs",
+    label: "Inputs",
+    schemaVersion: "workflow-register/v1",
+    inputs: {
+      mode: { type: "select", required: true, options: ["single", "range"] },
+      revision: { type: "string", requiredWhen: "inputs.mode == 'single'" }
+    },
+    engineSteps: []
+  }
+
+  const missing = await engine.runWorkflow(workflow, { mode: "single" })
+  const invalid = await engine.runWorkflow(workflow, { mode: "bad", revision: "1" })
+
+  assert.equal(missing.status, "failed")
+  assert.match(missing.error, /revision/)
+  assert.equal(invalid.status, "failed")
+  assert.match(invalid.error, /unsupported option/)
+})
+
+test("workflow engine enforces preflight checks, guardrails, and artifact writes", async () => {
+  const { ActionRegistry } = require("../out/core/actionRegistry")
+  const { WorkflowEngine } = require("../out/core/engine")
+  const { createDefaultResultSinkRegistry } = require("../out/core/resultSinkRegistry")
+  const { FileRunStateStore } = require("../out/core/runStateStore")
+
+  const workspaceRoot = tempDir()
+  fs.mkdirSync(path.join(workspaceRoot, ".bob", "skills", "sample"), { recursive: true })
+  fs.writeFileSync(path.join(workspaceRoot, ".bob", "skills", "sample", "SKILL.md"), "# Sample\n")
+
+  const actions = new ActionRegistry()
+  let actionCount = 0
+  actions.register({
+    id: "sample.collect",
+    execute: async ({ args }) => {
+      actionCount += 1
+      return { revision: args.revision, status: "ready" }
+    }
+  })
+  const sinks = createDefaultResultSinkRegistry({ workspaceRoot, executeCommand: async () => undefined })
+  const runStore = new FileRunStateStore({ workspaceRoot, now: () => "2026-06-28T00:00:00.000Z" })
+  const engine = new WorkflowEngine({
+    actions,
+    resultSinks: sinks,
+    runStore,
+    workspaceAvailable: () => true,
+    fileExists: (relativePath) => fs.existsSync(path.join(workspaceRoot, relativePath)),
+    preflightChecks: {
+      workspaceOpen: () => true
+    },
+    strictPreflightChecks: true
+  })
+  const workflow = {
+    id: "workflow-register.contract",
+    name: "contract",
+    label: "Contract",
+    schemaVersion: "workflow-register/v1",
+    inputs: { revision: { type: "string", required: true } },
+    requires: {
+      workspace: true,
+      files: [".bob/skills/sample/SKILL.md"]
+    },
+    preflight: [
+      {
+        id: "check-workspace",
+        checks: ["workspaceOpen"],
+        files: [".bob/skills/sample/SKILL.md"],
+        failurePolicy: "stop"
+      }
+    ],
+    guardrails: {
+      allowedCommands: ["sample.collect"],
+      deniedCommands: ["shell"]
+    },
+    artifacts: [
+      {
+        id: "reviewContext",
+        producedBy: "collect",
+        path: ".bob/workflows/runs/{{run.id}}/artifacts/review-context.json"
+      }
+    ],
+    engineSteps: [
+      {
+        id: "collect",
+        title: "Collect",
+        type: "command",
+        action: { provider: "sample.collect", args: { revision: "{{inputs.revision}}" } },
+        resultKey: "reviewContext"
+      }
+    ]
+  }
+
+  const run = await engine.runWorkflow(workflow, { revision: "88" })
+  const artifactPath = path.join(workspaceRoot, ".bob", "workflows", "runs", run.runId, "artifacts", "review-context.json")
+
+  assert.equal(run.status, "completed")
+  assert.equal(actionCount, 1)
+  assert.equal(JSON.parse(fs.readFileSync(artifactPath, "utf8")).revision, "88")
+})
+
+test("workflow engine fails denied or non-allowlisted command steps before executing them", async () => {
+  const { ActionRegistry } = require("../out/core/actionRegistry")
+  const { WorkflowEngine } = require("../out/core/engine")
+  const { createDefaultResultSinkRegistry } = require("../out/core/resultSinkRegistry")
+  const { FileRunStateStore } = require("../out/core/runStateStore")
+
+  const workspaceRoot = tempDir()
+  const actions = new ActionRegistry()
+  let executed = false
+  actions.register({
+    id: "sample.collect",
+    execute: async () => {
+      executed = true
+      return {}
+    }
+  })
+  const engine = new WorkflowEngine({
+    actions,
+    resultSinks: createDefaultResultSinkRegistry({ workspaceRoot, executeCommand: async () => undefined }),
+    runStore: new FileRunStateStore({ workspaceRoot, now: () => "2026-06-28T00:00:00.000Z" })
+  })
+  const workflow = {
+    id: "workflow-register.guardrails",
+    name: "guardrails",
+    label: "Guardrails",
+    schemaVersion: "workflow-register/v1",
+    inputs: {},
+    guardrails: { allowedCommands: ["sample.other"] },
+    engineSteps: [
+      { id: "collect", title: "Collect", type: "command", action: { provider: "sample.collect" } }
+    ]
+  }
+
+  const run = await engine.runWorkflow(workflow, {})
+
+  assert.equal(run.status, "failed")
+  assert.match(run.error, /not allowed/)
+  assert.equal(executed, false)
+})
