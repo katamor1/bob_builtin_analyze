@@ -9,6 +9,8 @@ export interface ProjectRulesPaths {
   schemaPath: string
 }
 
+const ALLOW_EXTERNAL_REVIEW_RULES_ENV = "BOB_BAZAAR_ALLOW_EXTERNAL_REVIEW_RULES"
+
 export function getProjectRulesPaths(workspaceRoot: string): ProjectRulesPaths {
   const reviewDir = path.join(workspaceRoot, ".bob", "review")
   return {
@@ -83,10 +85,19 @@ export async function loadReviewResultSchemaRequired(workspaceRoot: string, expl
 }
 
 export function resolveWorkspacePath(workspaceRoot: string, maybeRelativePath: string): string {
-  if (path.isAbsolute(maybeRelativePath)) {
-    return maybeRelativePath
+  const root = path.resolve(workspaceRoot)
+  const target = path.isAbsolute(maybeRelativePath)
+    ? path.resolve(maybeRelativePath)
+    : path.resolve(root, maybeRelativePath)
+  const relative = path.relative(root, target)
+  if (isWorkspaceEscapingPath(relative) && process.env[ALLOW_EXTERNAL_REVIEW_RULES_ENV] !== "1") {
+    throw new Error(`Project review rule path escapes the workspace: ${maybeRelativePath}. Set ${ALLOW_EXTERNAL_REVIEW_RULES_ENV}=1 to allow an explicit external path.`)
   }
-  return path.join(workspaceRoot, maybeRelativePath)
+  return target
+}
+
+function isWorkspaceEscapingPath(relativePath: string): boolean {
+  return relativePath.startsWith("..") || path.isAbsolute(relativePath)
 }
 
 async function writeJsonIfMissing(filePath: string, value: unknown): Promise<void> {
