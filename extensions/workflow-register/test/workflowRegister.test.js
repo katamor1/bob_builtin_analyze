@@ -72,6 +72,26 @@ test("package contributes standalone workflow launcher commands without a hard B
   assert.match(source, /new FileRunStateStore\(\{ workspaceRoot, engineVersion: this\.engineVersion \}\)/)
 })
 
+test("standalone workflow launcher wires an AgentProvider through API or configured command", () => {
+  const packageJson = JSON.parse(fs.readFileSync(path.join(extensionRoot, "package.json"), "utf8"))
+  const source = fs.readFileSync(path.join(extensionRoot, "src", "extension.ts"), "utf8")
+
+  assert.equal(packageJson.contributes.configuration.properties["workflowRegister.agentCommand"].type, "string")
+  assert.match(source, /import \{ createCommandAgentProvider \} from "\.\/core\/agentProvider"/)
+  assert.match(source, /registerAgentProvider: \(provider: AgentProvider\) => void/)
+  assert.match(source, /registerAgentProvider: \(provider\) => service\.registerAgentProvider\(provider\)/)
+  assert.match(source, /agentProvider: this\.agentProvider \?\? this\.createCommandAgentProvider\(\)/)
+  assert.match(source, /createCommandAgentProvider\(\{[\s\S]*command: config\.get<string>\("agentCommand", ""\),[\s\S]*vscode\.commands\.executeCommand\(command, input\)/)
+})
+
+test("standalone workflow launcher uses the shared input resolver for conditional prompts", () => {
+  const source = fs.readFileSync(path.join(extensionRoot, "src", "extension.ts"), "utf8")
+
+  assert.match(source, /import \{ collectWorkflowInputsWithResolver \} from "\.\/core\/inputCollector"/)
+  assert.match(source, /return collectWorkflowInputsWithResolver\(\{[\s\S]*inputs: workflow\.inputs,[\s\S]*provided,[\s\S]*prompt: \(key, definition, required\) => this\.promptForInput\(key, definition, required\)[\s\S]*\}\)/)
+  assert.doesNotMatch(source, /for \(const \[key, definition\] of Object\.entries\(workflow\.inputs\)\)/)
+})
+
 test("Bob registration uses CoreWorkflowDefinition as the only parsed workflow source", () => {
   const source = fs.readFileSync(path.join(extensionRoot, "src", "extension.ts"), "utf8")
 

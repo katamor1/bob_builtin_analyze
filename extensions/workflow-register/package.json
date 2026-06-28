@@ -89,6 +89,11 @@
           "type": "string",
           "default": "Workflow Register",
           "description": "Source name shown to IBM Bob when registering workflows."
+        },
+        "workflowRegister.agentCommand": {
+          "type": "string",
+          "default": "",
+          "description": "Optional VS Code command used by the standalone workflow engine to execute agent steps. The command receives the AgentExecutionInput object and must return text or an object with text, result, output, or content."
         }
       }
     },

@@ -723,6 +723,57 @@ test("workflow engine enforces preflight checks, guardrails, and artifact writes
   assert.equal(JSON.parse(fs.readFileSync(artifactPath, "utf8")).revision, "88")
 })
 
+test("workflow engine resolves artifact path placeholders from inputs and JSON state", async () => {
+  const { ActionRegistry } = require("../out/core/actionRegistry")
+  const { WorkflowEngine } = require("../out/core/engine")
+  const { createDefaultResultSinkRegistry } = require("../out/core/resultSinkRegistry")
+  const { FileRunStateStore } = require("../out/core/runStateStore")
+
+  const workspaceRoot = tempDir()
+  const actions = new ActionRegistry()
+  actions.register({
+    id: "sample.review",
+    execute: async ({ inputs }) => ({
+      review_id: `bazaar-r${inputs.revision}-project-rule-review`,
+      status: "ok"
+    })
+  })
+  const engine = new WorkflowEngine({
+    actions,
+    resultSinks: createDefaultResultSinkRegistry({ workspaceRoot, executeCommand: async () => undefined }),
+    runStore: new FileRunStateStore({ workspaceRoot, now: () => "2026-06-28T00:00:00.000Z" })
+  })
+  const workflow = {
+    id: "workflow-register.artifact-placeholders",
+    name: "artifact-placeholders",
+    label: "Artifact Placeholders",
+    schemaVersion: "workflow-register/v1",
+    inputs: { revision: { type: "string", required: true } },
+    artifacts: [
+      {
+        id: "reviewResult",
+        producedBy: "review",
+        path: ".bob/review/results/{{review_id}}-{{inputs.revision}}.json"
+      }
+    ],
+    engineSteps: [
+      {
+        id: "review",
+        title: "Review",
+        type: "command",
+        action: { provider: "sample.review" },
+        resultKey: "reviewResult"
+      }
+    ]
+  }
+
+  const run = await engine.runWorkflow(workflow, { revision: "123" })
+  const artifactPath = path.join(workspaceRoot, ".bob", "review", "results", "bazaar-r123-project-rule-review-123.json")
+
+  assert.equal(run.status, "completed")
+  assert.equal(JSON.parse(fs.readFileSync(artifactPath, "utf8")).review_id, "bazaar-r123-project-rule-review")
+})
+
 test("workflow engine fails denied or non-allowlisted command steps before executing them", async () => {
   const { ActionRegistry } = require("../out/core/actionRegistry")
   const { WorkflowEngine } = require("../out/core/engine")

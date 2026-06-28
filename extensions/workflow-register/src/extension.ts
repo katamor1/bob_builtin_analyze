@@ -2,8 +2,10 @@ import * as path from "path"
 import * as vscode from "vscode"
 import { buildWorkflowAgentPrompt, extractSubagentResult } from "./agentStep"
 import { ActionProvider, ActionRegistry, createDefaultActionRegistry } from "./core/actionRegistry"
+import { createCommandAgentProvider } from "./core/agentProvider"
 import { WorkflowEngine } from "./core/engine"
-import { CoreWorkflowDefinition, EngineStep, ResultSinkDefinition, WorkflowInputDefinition } from "./core/model"
+import { collectWorkflowInputsWithResolver } from "./core/inputCollector"
+import { AgentProvider, CoreWorkflowDefinition, EngineStep, ResultSinkDefinition, WorkflowInputDefinition } from "./core/model"
 import { parseWorkflowMarkdown } from "./core/parser"
 import { createDefaultResultSinkRegistry, ResultSinkRegistry } from "./core/resultSinkRegistry"
 import { FileRunStateStore, RunStateStore } from "./core/runStateStore"
@@ -143,6 +145,7 @@ interface StepCompletionOptions {
 
 export interface WorkflowRegisterApi {
   registerActionProvider: (provider: ActionProvider) => void
+  registerAgentProvider: (provider: AgentProvider) => void
   registerResultSink: (type: string, handler: Parameters<ResultSinkRegistry["register"]>[1]) => void
   listWorkflows: () => CoreWorkflowDefinition[]
   runWorkflow: (workflowId?: string, inputs?: Record<string, unknown>) => Promise<unknown>
@@ -170,6 +173,7 @@ export function activate(context: vscode.ExtensionContext): WorkflowRegisterApi 
   }
   return {
     registerActionProvider: (provider) => service.registerActionProvider(provider),
+    registerAgentProvider: (provider) => service.registerAgentProvider(provider),
     registerResultSink: (type, handler) => service.registerResultSink(type, handler),
     listWorkflows: () => service.listCoreWorkflows(),
     runWorkflow: (workflowId, inputs) => service.runWorkflow(workflowId, inputs)
@@ -286,6 +290,7 @@ class WorkflowRegisterService implements vscode.Disposable {
     executeCommand: (command, ...args) => vscode.commands.executeCommand(command, ...args)
   })
   private readonly customResultSinks: Array<{ type: string; handler: Parameters<ResultSinkRegistry["register"]>[1] }> = []
+  private agentProvider?: AgentProvider
   private lastResult: RegistrationResult = { summary: "No workflow registration has run yet.", lines: [] }
 
   constructor(private readonly engineVersion: string) {
@@ -318,6 +323,10 @@ class WorkflowRegisterService implements vscode.Disposable {
 
   registerActionProvider(provider: ActionProvider): void {
     this.actionRegistry.register(provider)
+  }
+
+  registerAgentProvider(provider: AgentProvider): void {
+    this.agentProvider = provider
   }
 
   registerResultSink(type: string, handler: Parameters<ResultSinkRegistry["register"]>[1]): void {
@@ -396,7 +405,16 @@ class WorkflowRegisterService implements vscode.Disposable {
     return new WorkflowEngine({
       actions: this.actionRegistry,
       resultSinks: this.createResultSinks(workspaceRoot),
-      runStore: this.createRunStore(workspaceRoot)
+      runStore: this.createRunStore(workspaceRoot),
+      agentProvider: this.agentProvider ?? this.createCommandAgentProvider()
+    })
+  }
+
+  private createCommandAgentProvider(): AgentProvider | undefined {
+    const config = vscode.workspace.getConfiguration("workflowRegister")
+    return createCommandAgentProvider({
+      command: config.get<string>("agentCommand", ""),
+      executeCommand: (command, input) => vscode.commands.executeCommand(command, input)
     })
   }
 
@@ -443,20 +461,18 @@ class WorkflowRegisterService implements vscode.Disposable {
   }
 
   private async collectWorkflowInputs(workflow: CoreWorkflowDefinition, provided: Record<string, unknown>): Promise<Record<string, unknown> | undefined> {
-    const resolved: Record<string, unknown> = { ...provided }
-    for (const [key, definition] of Object.entries(workflow.inputs)) {
-      if (resolved[key] !== undefined && resolved[key] !== "") continue
-      const value = await this.promptForInput(key, definition)
-      if (value === undefined && definition.required) return undefined
-      if (value !== undefined) resolved[key] = value
-    }
-    return resolved
+    return collectWorkflowInputsWithResolver({
+      inputs: workflow.inputs,
+      provided,
+      prompt: (key, definition, required) => this.promptForInput(key, definition, required)
+    })
   }
 
-  private async promptForInput(key: string, definition: WorkflowInputDefinition): Promise<unknown> {
+  private async promptForInput(key: string, definition: WorkflowInputDefinition, required: boolean): Promise<unknown> {
     const title = definition.title ?? key
     if (definition.type === "boolean") {
       const picked = await vscode.window.showQuickPick(["true", "false"], { title })
+      if (picked === undefined && required) return undefined
       return picked === undefined ? undefined : picked === "true"
     }
     if (definition.type === "select") {
