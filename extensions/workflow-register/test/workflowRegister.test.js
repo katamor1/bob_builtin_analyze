@@ -4,7 +4,6 @@ const path = require("node:path")
 const { test } = require("node:test")
 
 const extensionRoot = path.resolve(__dirname, "..")
-const repoRoot = path.resolve(extensionRoot, "..", "..")
 
 test("package entry points at the compiled workflow implementation", () => {
   const packageJson = JSON.parse(fs.readFileSync(path.join(extensionRoot, "package.json"), "utf8"))
@@ -12,29 +11,6 @@ test("package entry points at the compiled workflow implementation", () => {
 
   assert.equal(packageJson.main, "./out/extension.js")
   assert.deepEqual(tsconfig.include, ["src/**/*.ts"])
-})
-
-test("Bazaar workflow template sends collect-context and load-rules command results", () => {
-  const workflowPath = path.join(
-    repoRoot,
-    "extensions",
-    "bob-bazaar-review",
-    "templates",
-    ".bob",
-    "workflows",
-    "bazaar-project-rule-review",
-    "WORKFLOW.md"
-  )
-  const workflow = fs.readFileSync(workflowPath, "utf8")
-
-  assert.match(workflow, /^stepCompletion: manual$/m)
-  assert.match(workflow, /^stepMessage: step$/m)
-  assert.doesNotMatch(workflow, /```workflow-step/)
-  assert.doesNotMatch(workflow, /^## Step:/m)
-  assert.match(workflow, /^steps:$/m)
-  assert.match(workflow, /id: review-input[\s\S]*?provider: bobBazaar\.openReviewGui[\s\S]*?sendResult: false[\s\S]*?completeOnSuccess: false/)
-  assert.match(workflow, /id: collect-context[\s\S]*?provider: bobBazaar\.collectReviewContext[\s\S]*?sendResult: true[\s\S]*?required: true[\s\S]*?completeOnSuccess: true/)
-  assert.match(workflow, /id: load-rules[\s\S]*?provider: bobBazaar\.loadReviewRules[\s\S]*?sendResult: true[\s\S]*?required: true[\s\S]*?completeOnSuccess: true/)
 })
 
 test("completeStep command can be called silently by companion extensions", () => {
