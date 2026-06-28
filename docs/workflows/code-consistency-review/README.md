@@ -24,6 +24,9 @@
 | `templates/prompts/consistency-review-v1/` | bob 投入用 prompt template |
 | `templates/triage/triage-result.template.yaml` | 人間 triage 結果テンプレート |
 | `scaffold/README.md` | MVP 実装スケルトンの概要 |
+| `scaffold/DEVELOPMENT.md` | scaffold のローカル確認手順 |
+| `scaffold/tests/README.md` | scaffold 検証 fixture の説明 |
+| `scaffold/tests/fixtures/` | review-input / bob-output の正常系・異常系 fixture |
 | `scaffold/src/cli/main.ts` | CLI エントリポイントの雛形 |
 | `scaffold/src/core/` | 入力検証、差分収集、review-package 生成、bob 出力検証の雛形 |
 | `scaffold/src/analyzers/` | 文書抽出、C/C++ 解析、traceability 生成の雛形 |
@@ -48,6 +51,7 @@
 13. templates/**
 14. examples/simple-timeout-bugfix/README.md
 15. scaffold/**
+16. scaffold/tests/**
 ```
 
 ## MVP のゴール
@@ -105,6 +109,17 @@ bob-review triage --package .bob-review/review-package --bob-output .bob-review/
 - review-package 生成の雛形
 - bob-output 検証の雛形
 - human triage 出力生成の雛形
+
+## scaffold 検証
+
+`scaffold/tests/fixtures/` には、最初の smoke test に使う fixture を配置する。
+
+- 正常な `review-input.yaml`
+- 比較先未指定の不正な `review-input.yaml`
+- 正常な `bob-output.yaml`
+- `final_approval` が不正な `bob-output.yaml`
+
+`scaffold/package.json` には、help / validate-output / triage の smoke script を定義する。
 
 ## E2E サンプル
 
