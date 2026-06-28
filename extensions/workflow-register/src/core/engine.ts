@@ -1,3 +1,5 @@
+import * as fs from "fs/promises"
+import * as path from "path"
 import { ActionRegistry } from "./actionRegistry"
 import {
   CoreWorkflowDefinition,
@@ -47,9 +49,13 @@ export class WorkflowEngine {
     this.actions = options.actions
     this.resultSinks = options.resultSinks
     this.runStore = options.runStore
-    this.workspaceAvailable = options.workspaceAvailable
-    this.fileExists = options.fileExists
-    this.preflightChecks = options.preflightChecks ?? {}
+    const workspaceRoot = options.runStore.workspaceRoot
+    this.workspaceAvailable = options.workspaceAvailable ?? (workspaceRoot ? (() => true) : undefined)
+    this.fileExists = options.fileExists ?? (workspaceRoot ? ((relativePath) => exists(path.join(workspaceRoot, relativePath))) : undefined)
+    this.preflightChecks = {
+      ...createDefaultPreflightChecks(workspaceRoot),
+      ...(options.preflightChecks ?? {})
+    }
     this.strictPreflightChecks = options.strictPreflightChecks === true
   }
 
@@ -244,6 +250,24 @@ export class WorkflowEngine {
     const message = `${prefix ? `${prefix}: ` : ""}Required workflow file is missing: ${relativePath}`
     if (required) errors.push(message)
     else warnings.push(message)
+  }
+}
+
+function createDefaultPreflightChecks(workspaceRoot: string | undefined): NonNullable<WorkflowEngineOptions["preflightChecks"]> {
+  if (!workspaceRoot) return {}
+  return {
+    workspaceOpen: () => true,
+    bobWorkspaceInitialized: () => exists(path.join(workspaceRoot, ".bob")),
+    bazaarRepository: () => exists(path.join(workspaceRoot, ".bzr"))
+  }
+}
+
+async function exists(file: string): Promise<boolean> {
+  try {
+    await fs.access(file)
+    return true
+  } catch {
+    return false
   }
 }
 
