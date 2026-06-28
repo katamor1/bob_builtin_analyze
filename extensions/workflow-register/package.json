@@ -136,6 +136,11 @@
           "type": "string",
           "default": "",
           "description": "Optional VS Code command used by the standalone workflow engine to execute agent steps. The command receives the AgentExecutionInput object and must return text or an object with text, result, output, or content."
+        },
+        "workflowRegister.aiProviderCommand": {
+          "type": "string",
+          "default": "",
+          "description": "Optional VS Code command used as a WorkflowAiProvider. The command receives { kind, payload } and returns a workflow design draft, repair proposal, or diagnostic explanation."
         }
       }
     },
