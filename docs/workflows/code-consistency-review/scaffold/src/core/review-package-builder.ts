@@ -26,7 +26,7 @@ export async function buildReviewPackage(input: {
   await writeTextFile(join(outDir, "traceability-map.md"), traceability.markdown);
   await writeTextFile(join(outDir, "deterministic-checks.md"), "# 決定論的チェック結果\n\nMVP scaffold: not executed yet.\n");
 
-  const templates = await loadPromptTemplates(process.cwd());
+  const templates = await loadPromptTemplates();
   const bobInput = applyTemplate(templates.bobInputTemplate, {
     "prompt.system": templates.system,
     "prompt.task": templates.task,
