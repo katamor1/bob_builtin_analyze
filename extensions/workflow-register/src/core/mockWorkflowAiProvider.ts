@@ -57,9 +57,9 @@ export function chooseTemplateFromGoal(goal: string): WorkflowTemplateKind {
   if (value.includes("review")) return "review-workflow"
   if (value.includes("artifact") || value.includes("report") || value.includes("document")) return "artifact-output"
   if (value.includes("input") || value.includes("parameter") || value.includes("option")) return "input-driven-agent"
+  if (value.includes("safe") || value.includes("guard")) return "guarded-command"
   if (value.includes("command") || value.includes("collect")) return "command-then-agent"
   if (value.includes("checklist") || value.includes("manual")) return "manual-checklist"
-  if (value.includes("safe") || value.includes("guard")) return "guarded-command"
   return "simple-agent"
 }
 

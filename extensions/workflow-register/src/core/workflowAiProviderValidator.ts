@@ -3,7 +3,7 @@ import { WorkflowDesignDraft } from "./workflowDesignDraft"
 import { workflowTemplates, WorkflowTemplateKind } from "./workflowScaffold"
 
 const MAX_TEXT_LENGTH = 200_000
-const knownTemplates = new Set(workflowTemplates.map((template) => template.id))
+const knownTemplates: ReadonlySet<string> = new Set(workflowTemplates.map((template) => template.id))
 
 export interface ProviderValidationResult<T> {
   ok: boolean
