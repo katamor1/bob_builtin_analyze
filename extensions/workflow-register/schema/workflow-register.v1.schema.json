@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "Bob Workflow Register v1",
+  "type": "object",
+  "required": ["schemaVersion", "name", "description"],
+  "properties": {
+    "schemaVersion": { "const": "workflow-register/v1" },
+    "id": { "type": "string" },
+    "name": { "type": "string", "minLength": 1, "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$" },
+    "description": { "type": "string", "minLength": 1 },
+    "title": { "type": "string" },
+    "label": { "type": "string" },
+    "menuLabel": { "type": "string" },
+    "mode": { "type": "string" },
+    "category": { "type": "string" },
+    "permissions": { "type": "array", "items": { "type": "string" } },
+    "todo": { "type": "boolean" },
+    "todoRequired": { "type": "boolean" },
+    "todoAsSteps": { "type": "boolean" },
+    "stepCompletion": { "enum": ["auto", "manual"] },
+    "stepMessage": { "enum": ["full", "current", "silent", "step"] },
+    "autoApproval": { "type": "boolean" },
+    "workspaceRequired": { "type": "boolean" },
+    "hidden": { "type": "boolean" },
+    "prompt": { "type": "string" },
+    "command": { "type": "string" },
+    "commandArgs": { "type": "array" },
+    "inputs": { "type": "object" },
+    "requires": { "type": "object" },
+    "preflight": { "type": "array" },
+    "tools": { "type": "object" },
+    "guardrails": { "type": "object" },
+    "artifacts": { "type": "array" },
+    "completion": { "type": "object" },
+    "todos": { "type": "array" },
+    "steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "type"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "title": { "type": "string", "minLength": 1 },
+          "type": { "enum": ["command", "agent", "manual", "result"] },
+          "action": { "type": "object" },
+          "prompt": { "type": "string" },
+          "sendResult": { "type": "boolean" },
+          "completeOnSuccess": { "type": "boolean" },
+          "includeState": { "type": "array", "items": { "type": "string" } },
+          "maxResultBytes": { "type": "number" },
+          "stateRequired": { "type": "boolean" },
+          "resultKey": { "type": "string" },
+          "result": { "type": "object" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": true
+}
