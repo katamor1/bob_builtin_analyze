@@ -83,6 +83,7 @@ const v1Schema = {
           title: { type: "string" },
           required: { type: "boolean" },
           requiredWhen: { type: "string" },
+          prompt: { type: "boolean" },
           default: {},
           options: { type: "array", items: { type: "string" } }
         },
@@ -430,6 +431,7 @@ function normalizeInputs(inputs: Record<string, unknown>): Record<string, Workfl
       title: optionalString(record, "title"),
       required: optionalBoolean(record, "required"),
       requiredWhen: optionalString(record, "requiredWhen"),
+      prompt: optionalBoolean(record, "prompt"),
       default: record.default,
       options: listField(record, "options")
     }
