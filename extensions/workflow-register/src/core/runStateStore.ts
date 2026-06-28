@@ -3,6 +3,7 @@ import * as path from "path"
 import { CoreWorkflowDefinition, WorkflowRunState } from "./model"
 
 export interface RunStateStore {
+  readonly workspaceRoot?: string
   createRun: (workflow: CoreWorkflowDefinition, inputs: Record<string, unknown>) => Promise<WorkflowRunState>
   saveRun: (run: WorkflowRunState) => Promise<void>
   loadRun: (runId: string) => Promise<WorkflowRunState | undefined>
@@ -16,7 +17,7 @@ export interface FileRunStateStoreOptions {
 }
 
 export class FileRunStateStore implements RunStateStore {
-  private readonly workspaceRoot: string
+  readonly workspaceRoot: string
   private readonly now: () => string
   private readonly engineVersion?: string
 

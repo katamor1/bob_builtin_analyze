@@ -1,19 +1,36 @@
+import * as fs from "fs/promises"
+import * as path from "path"
 import { ActionRegistry } from "./actionRegistry"
+import { validateWorkflowInputs } from "./inputResolver"
 import {
   AgentProvider,
   CoreWorkflowDefinition,
   EngineStep,
   ResultSourceDefinition,
+  WorkflowArtifactDefinition,
+  WorkflowPreflightDefinition,
   WorkflowRunState
 } from "./model"
 import { ResultSinkRegistry } from "./resultSinkRegistry"
 import { RunStateStore } from "./runStateStore"
+
+export interface WorkflowPreflightCheckInput {
+  workflow: CoreWorkflowDefinition
+  run: WorkflowRunState
+  checkId: string
+}
+
+export type WorkflowPreflightCheckResult = boolean | string | { ok: boolean; error?: string }
 
 export interface WorkflowEngineOptions {
   actions: ActionRegistry
   resultSinks: ResultSinkRegistry
   runStore: RunStateStore
   agentProvider?: AgentProvider
+  workspaceAvailable?: () => Promise<boolean> | boolean
+  fileExists?: (relativePath: string) => Promise<boolean> | boolean
+  preflightChecks?: Record<string, (input: WorkflowPreflightCheckInput) => Promise<WorkflowPreflightCheckResult> | WorkflowPreflightCheckResult>
+  strictPreflightChecks?: boolean
 }
 
 export interface ResumeRunOptions {
@@ -26,23 +43,45 @@ export class WorkflowEngine {
   private readonly resultSinks: ResultSinkRegistry
   private readonly runStore: RunStateStore
   private readonly agentProvider?: AgentProvider
+  private readonly workspaceAvailable?: WorkflowEngineOptions["workspaceAvailable"]
+  private readonly fileExists?: WorkflowEngineOptions["fileExists"]
+  private readonly preflightChecks: NonNullable<WorkflowEngineOptions["preflightChecks"]>
+  private readonly strictPreflightChecks: boolean
 
   constructor(options: WorkflowEngineOptions) {
     this.actions = options.actions
     this.resultSinks = options.resultSinks
     this.runStore = options.runStore
     this.agentProvider = options.agentProvider
+    const workspaceRoot = options.runStore.workspaceRoot
+    this.workspaceAvailable = options.workspaceAvailable ?? (workspaceRoot ? (() => true) : undefined)
+    this.fileExists = options.fileExists ?? (workspaceRoot ? ((relativePath) => exists(path.join(workspaceRoot, relativePath))) : undefined)
+    this.preflightChecks = {
+      ...createDefaultPreflightChecks(workspaceRoot),
+      ...(options.preflightChecks ?? {})
+    }
+    this.strictPreflightChecks = options.strictPreflightChecks === true
   }
 
   async runWorkflow(workflow: CoreWorkflowDefinition, inputs: Record<string, unknown>): Promise<WorkflowRunState> {
-    const inputErrors = validateInputs(workflow, inputs)
     const run = await this.runStore.createRun(workflow, inputs)
-    if (inputErrors.length > 0) {
+    const inputProblems = validateWorkflowInputs(workflow.inputs ?? {}, inputs)
+    if (inputProblems.length > 0) {
       run.status = "failed"
-      run.error = `Invalid workflow input(s): ${inputErrors.join("; ")}`
+      run.error = inputProblems.join("; ")
       await this.runStore.saveRun(run)
       return run
     }
+
+    const preflight = await this.evaluatePreflight(workflow, run)
+    if (preflight.warnings.length > 0) run.state["workflow.preflightWarnings"] = JSON.stringify(preflight.warnings)
+    if (preflight.errors.length > 0) {
+      run.status = "failed"
+      run.error = `Workflow preflight failed: ${preflight.errors.join("; ")}`
+      await this.runStore.saveRun(run)
+      return run
+    }
+
     await this.runStore.saveRun(run)
     return this.continueRun(workflow, run, 0)
   }
@@ -97,6 +136,17 @@ export class WorkflowEngine {
         return run
       }
 
+      const artifactResult = await this.writeProducedArtifacts(workflow, run, step)
+      if (!artifactResult.ok) {
+        stepState.status = "failed"
+        stepState.error = artifactResult.error
+        run.status = "failed"
+        run.error = artifactResult.error
+        run.currentStep = step.id
+        await this.runStore.saveRun(run)
+        return run
+      }
+
       stepState.status = "completed"
       stepState.completedAt = new Date().toISOString()
       stepState.error = undefined
@@ -132,6 +182,8 @@ export class WorkflowEngine {
       }
     }
     if (step.type === "command") {
+      const guardrail = validateCommandGuardrails(workflow, step.action.provider)
+      if (guardrail) return { ok: false, error: guardrail }
       const args = renderValue(step.action.args, { inputs: run.inputs, state: run.state, run, workflow, step })
       const result = await this.actions.execute(step.action.provider, {
         args,
@@ -165,6 +217,84 @@ export class WorkflowEngine {
     }
     return { ok: true }
   }
+
+  private async writeProducedArtifacts(workflow: CoreWorkflowDefinition, run: WorkflowRunState, step: EngineStep): Promise<{ ok: true } | { ok: false; error: string }> {
+    const artifacts = workflow.artifacts ?? []
+    for (const artifact of artifacts.filter((item) => item.producedBy === step.id)) {
+      const value = run.state[artifact.id]
+      if (value === undefined) continue
+      const path = renderArtifactPath(artifact, { inputs: run.inputs, state: run.state, run, workflow, step })
+      if (path.includes("{{")) continue
+      const write = await this.resultSinks.write({ type: "file", path }, {
+        workflowId: workflow.id,
+        runId: run.runId,
+        stepId: step.id,
+        text: value
+      })
+      if (!write.ok) return { ok: false, error: write.error ?? `Failed to write artifact: ${artifact.id}` }
+    }
+    return { ok: true }
+  }
+
+  private async evaluatePreflight(workflow: CoreWorkflowDefinition, run: WorkflowRunState): Promise<{ errors: string[]; warnings: string[] }> {
+    const errors: string[] = []
+    const warnings: string[] = []
+    if (workflow.requires?.workspace && this.workspaceAvailable) {
+      const available = await Promise.resolve(this.workspaceAvailable())
+      if (!available) errors.push("Workspace is required but not available.")
+    }
+    for (const file of workflow.requires?.files ?? []) await this.checkFile(file, errors, warnings, true)
+    for (const preflight of workflow.preflight ?? []) await this.evaluatePreflightEntry(workflow, run, preflight, errors, warnings)
+    return { errors, warnings }
+  }
+
+  private async evaluatePreflightEntry(workflow: CoreWorkflowDefinition, run: WorkflowRunState, preflight: WorkflowPreflightDefinition, errors: string[], warnings: string[]): Promise<void> {
+    const policy = preflight.failurePolicy ?? "stop"
+    const required = preflight.required !== false
+    const fail = (message: string) => {
+      if (required && policy === "stop") errors.push(`${preflight.id}: ${message}`)
+      else warnings.push(`${preflight.id}: ${message}`)
+    }
+    for (const file of preflight.files ?? []) await this.checkFile(file, errors, warnings, required && policy === "stop", preflight.id)
+    for (const checkId of preflight.checks ?? []) {
+      const check = this.preflightChecks[checkId]
+      if (!check) {
+        if (this.strictPreflightChecks) fail(`Unsupported preflight check: ${checkId}`)
+        else warnings.push(`${preflight.id}: skipped unsupported preflight check: ${checkId}`)
+        continue
+      }
+      const result = await Promise.resolve(check({ workflow, run, checkId }))
+      const error = formatPreflightCheckFailure(result)
+      if (error) fail(`${checkId}: ${error}`)
+    }
+  }
+
+  private async checkFile(relativePath: string, errors: string[], warnings: string[], required: boolean, prefix?: string): Promise<void> {
+    if (!this.fileExists) return
+    const exists = await Promise.resolve(this.fileExists(relativePath))
+    if (exists) return
+    const message = `${prefix ? `${prefix}: ` : ""}Required workflow file is missing: ${relativePath}`
+    if (required) errors.push(message)
+    else warnings.push(message)
+  }
+}
+
+function createDefaultPreflightChecks(workspaceRoot: string | undefined): NonNullable<WorkflowEngineOptions["preflightChecks"]> {
+  if (!workspaceRoot) return {}
+  return {
+    workspaceOpen: () => true,
+    bobWorkspaceInitialized: () => exists(path.join(workspaceRoot, ".bob")),
+    bazaarRepository: () => exists(path.join(workspaceRoot, ".bzr"))
+  }
+}
+
+async function exists(file: string): Promise<boolean> {
+  try {
+    await fs.access(file)
+    return true
+  } catch {
+    return false
+  }
 }
 
 function resultText(run: WorkflowRunState, result: ResultSourceDefinition, agentText?: string): string {
@@ -182,34 +312,26 @@ function formatStateValue(value: unknown): string {
   return typeof value === "string" ? value : JSON.stringify(value)
 }
 
-function validateInputs(workflow: CoreWorkflowDefinition, inputs: Record<string, unknown>): string[] {
-  const errors: string[] = []
-  for (const [key, definition] of Object.entries(workflow.inputs)) {
-    const value = inputs[key]
-    if (definition.required && (value === undefined || value === "")) {
-      errors.push(`${key} is required`)
-      continue
-    }
-    if (value === undefined || value === "") continue
-    if (definition.type === "number" && !isFiniteNumberInput(value)) {
-      errors.push(`${key} must be a finite number`)
-    } else if (definition.type === "boolean" && typeof value !== "boolean") {
-      errors.push(`${key} must be a boolean`)
-    } else if (definition.type === "select" && definition.options && !definition.options.includes(String(value))) {
-      errors.push(`${key} must be one of: ${definition.options.join(", ")}`)
-    }
-  }
-  return errors
+function validateCommandGuardrails(workflow: CoreWorkflowDefinition, providerId: string): string | undefined {
+  const guardrails = workflow.guardrails ?? {}
+  if (guardrails.deniedCommands?.includes(providerId)) return `Command is denied by workflow guardrails: ${providerId}`
+  if (guardrails.allowedCommands && guardrails.allowedCommands.length > 0 && !guardrails.allowedCommands.includes(providerId)) return `Command is not allowed by workflow guardrails: ${providerId}`
+  return undefined
 }
 
-function isFiniteNumberInput(value: unknown): boolean {
-  if (typeof value === "number") return Number.isFinite(value)
-  if (typeof value !== "string" || !value.trim()) return false
-  return Number.isFinite(Number(value))
+function formatPreflightCheckFailure(result: WorkflowPreflightCheckResult): string | undefined {
+  if (result === true) return undefined
+  if (result === false) return "check returned false"
+  if (typeof result === "string") return result
+  return result.ok ? undefined : result.error ?? "check failed"
 }
 
 function nextPendingIndex(run: WorkflowRunState): number {
   return run.steps.findIndex((step) => step.status === "pending" || step.status === "held" || step.status === "failed")
+}
+
+function renderArtifactPath(artifact: WorkflowArtifactDefinition, context: { inputs: Record<string, unknown>; state: Record<string, string>; run: WorkflowRunState; workflow: CoreWorkflowDefinition; step: EngineStep }): string {
+  return renderTemplate(artifact.path, context)
 }
 
 function renderValue(value: unknown, context: { inputs: Record<string, unknown>; state: Record<string, string>; run: WorkflowRunState; workflow: CoreWorkflowDefinition; step: EngineStep }): unknown {
