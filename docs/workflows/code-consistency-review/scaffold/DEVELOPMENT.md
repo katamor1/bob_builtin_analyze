@@ -53,6 +53,7 @@ npm run unit
 - 比較先未指定の `review-input.yaml` を拒否する。
 - 正常な `bob-output.yaml` を受け付ける。
 - evidence が空の finding を含む `bob-output.yaml` を拒否する。
+- diff summary fixture を読み込める。
 
 ## 6. preprocess の確認
 
@@ -86,9 +87,30 @@ node docs/workflows/code-consistency-review/scaffold/dist/src/cli/main.js prepro
 
 - 現時点の scaffold では、文書抽出と C/C++ 解析は TODO を含む簡易実装である。
 - `review-input.yaml` の `base` / `head` がローカルで存在しない場合、Git diff 収集で失敗する。
-- その場合は fixture を使った手動確認、またはローカルに検証ブランチを作成して実行する。
+- その場合は `--diff-fixture` を使う。
 
-## 7. bob-output 検証
+## 7. diff fixture を使った preprocess 確認
+
+```bash
+npm run smoke:preprocess
+```
+
+上記は、以下と同等である。
+
+```bash
+node dist/src/cli/main.js preprocess \
+  --input tests/fixtures/review-input.valid.yaml \
+  --out .tmp/review-package \
+  --diff-fixture tests/fixtures/diff-summary.valid.json
+```
+
+期待:
+
+- Git の比較対象ブランチを用意しなくても review-package を生成できる。
+- `.tmp/review-package/bob-input.md` が生成される。
+- `.tmp/review-package/changed-files.json` に fixture の変更ファイルが出力される。
+
+## 8. bob-output 検証
 
 ```bash
 node docs/workflows/code-consistency-review/scaffold/dist/src/cli/main.js validate-output \
@@ -108,7 +130,7 @@ npm run smoke:validate-output
 - finding に evidence と human_check があることを確認する。
 - MVP scaffold では evidence-index との完全照合は TODO warning とする。
 
-## 8. human triage 生成
+## 9. human triage 生成
 
 ```bash
 node docs/workflows/code-consistency-review/scaffold/dist/src/cli/main.js triage \
@@ -134,7 +156,7 @@ npm run smoke:triage
   follow-up-actions.md
 ```
 
-## 9. smoke test 一括実行
+## 10. smoke test 一括実行
 
 ```bash
 npm run smoke
@@ -143,10 +165,11 @@ npm run smoke
 確認対象:
 
 - help 表示
+- diff fixture を使った preprocess
 - bob-output valid fixture の検証
 - human triage 生成
 
-## 10. CI 検証
+## 11. CI 検証
 
 GitHub Actions workflow は以下に定義する。
 
@@ -165,15 +188,15 @@ npm run smoke
 
 詳細は `CI.md` を参照する。
 
-## 11. 最初に改善すべき TODO
+## 12. 最初に改善すべき TODO
 
 1. `document-extractor.ts` で Markdown 文書の実テキストを抽出する。
 2. `c-cpp-change-analyzer.ts` で変更行の関数所属を推定する。
 3. `bob-output-validator.ts` で evidence-index との照合を実装する。
 4. `human-triage-helper.ts` で triage-result.yaml の decision に応じた Markdown 分割を行う。
-5. `preprocess` を Git 差分なし fixture でも検証できるようにする。
+5. preprocess の生成物を snapshot test で確認する。
 
-## 12. 終了コード方針
+## 13. 終了コード方針
 
 | 状態 | 終了コード |
 |---|---:|
@@ -183,11 +206,11 @@ npm run smoke
 | bob-output invalid | 1 |
 | warning のみ | 0 |
 
-## 13. このフェーズの完了条件
+## 14. このフェーズの完了条件
 
 - `npm run build` が通る構成になっている。
-- `npm run unit` で validator の自動テストを実行できる。
-- `npm run smoke` で help / validate-output / triage を確認できる。
+- `npm run unit` で validator と diff fixture の自動テストを実行できる。
+- `npm run smoke` で help / preprocess / validate-output / triage を確認できる。
 - GitHub Actions で typecheck / unit / smoke を実行できる。
-- fixture を使って validator / triage の入出力を確認できる。
+- fixture を使って review-package と triage の入出力を確認できる。
 - TODO が明示され、次の実装対象が分かる。
