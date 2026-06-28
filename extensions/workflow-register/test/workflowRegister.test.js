@@ -21,7 +21,11 @@ test("package exposes workflow authoring commands", () => {
   for (const command of [
     "workflowRegister.validateCurrentWorkflow",
     "workflowRegister.validateWorkspaceWorkflows",
-    "workflowRegister.createWorkflowFromTemplate"
+    "workflowRegister.createWorkflowFromTemplate",
+    "workflowRegister.inspectRunDiagnostics",
+    "workflowRegister.designWorkflowWithAi",
+    "workflowRegister.improveWorkflowWithAi",
+    "workflowRegister.explainWorkflowDiagnostics"
   ]) {
     assert.ok(packageJson.activationEvents.includes(`onCommand:${command}`))
     assert.ok(commandIds.includes(command))
