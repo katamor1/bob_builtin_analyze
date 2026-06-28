@@ -1,30 +1,27 @@
 # Bob Workflow Register
 
-`workflow-register` は、IBM Bob で使うワークフロー定義をワークスペースから読み込み、Bob の Workflow UI に登録するための VS Code 拡張機能です。
+`workflow-register` は、IBM Bob 用の workflow 定義をワークスペースから読み込み、Bob の Workflow UI に登録するための VS Code 拡張機能です。`.bob/workflows/*/WORKFLOW.md` を読み込み、作成、検証、実行、再開、診断、AI 補助のコマンドを提供します。
 
-主な役割は次の 4 つです。
+## できること
 
-1. `.bob/workflows/*/WORKFLOW.md` を読み込む。
-2. YAML front matter と Markdown 本文からワークフロー定義を作る。
-3. Bob の workflow source として登録し、`Start Workflow` から実行できるようにする。
-4. 作成、検証、実行、再開、診断、AI 補助のコマンドを提供する。
+- `.bob/workflows/*/WORKFLOW.md` を Bob workflow として登録する。
+- `schemaVersion: workflow-register/v1` の workflow 定義を検証する。
+- テンプレートから新しい workflow を作成する。
+- 手動 step、command step、agent step、result step を順番に実行する。
+- step の結果を workflow state に保存し、後続 step へ渡す。
+- run state を保存し、診断、再開、再試行を行う。
+- AI provider command が設定されている場合、workflow の設計、改善、診断説明を補助する。
 
-## 対象ユーザー
-
-- Bob 用ワークフローを作成する人
-- ワークフローをレビュー、検証、運用する人
-- `bob-bazaar-review` など、別拡張から workflow action / agent / result sink を提供する人
-
-## 依存関係
+## 前提
 
 - VS Code / Bob IDE: `^1.106.1`
 - IBM Bob 拡張: `IBM.bob-code`
 - Node.js / npm
 - TypeScript
 
-## ワークフローの配置
+## workflow の配置
 
-ワークフローは、ワークスペース直下の `.bob/workflows` に配置します。
+workflow は workspace 直下の `.bob/workflows` に配置します。
 
 ```text
 <workspace>/
@@ -34,19 +31,19 @@
         WORKFLOW.md
 ```
 
-読み込み対象は次の形式だけです。
+読み込み対象は次のパターンだけです。
 
 ```text
 .bob/workflows/*/WORKFLOW.md
 ```
 
-フォルダ名と `name` は一致させることを推奨します。一致しない場合は警告になりますが、重大なエラーでなければ登録は継続します。
+`workflow-name` と front matter の `name` は一致させることを推奨します。
 
-## 最短の作成手順
+## 最短手順
 
-1. Bob IDE / VS Code で対象ワークスペースを開く。
+1. Bob IDE / VS Code で対象 workspace を開く。
 2. Command Palette で `Bob Workflow Register: Create Workflow from Template` を実行する。
-3. テンプレート、ワークフロー名、表示タイトル、説明を入力する。
+3. テンプレート、workflow 名、表示タイトル、説明を入力する。
 4. 生成された `.bob/workflows/<name>/WORKFLOW.md` を編集する。
 5. `Bob Workflow Register: Validate Current Workflow` で検証する。
 6. `Bob Workflow Register: Reload Bob Workflow Files` で再読み込みする。
@@ -54,22 +51,20 @@
 
 ## テンプレート
 
-`Create Workflow from Template` では次のテンプレートを選択できます。
-
 | テンプレート | 用途 |
 | --- | --- |
-| `simple-agent` | 1 つの AI step だけで実行する基本形。 |
-| `command-then-agent` | VS Code command で情報を集め、その結果を AI step に渡す。 |
-| `manual-checklist` | 人間の確認ステップを順番に進める。 |
-| `input-driven-agent` | 実行前に入力値を受け取り、それを prompt に埋め込む。 |
-| `preflight-files` | 必須ファイルの存在を確認してから実行する。 |
+| `simple-agent` | 1 つの AI step で完結する基本形。 |
+| `command-then-agent` | VS Code command で情報を集め、AI step に渡す。 |
+| `manual-checklist` | 人間の確認 step を順番に進める。 |
+| `input-driven-agent` | 実行前に入力値を集めて prompt に使う。 |
+| `preflight-files` | 必須ファイルを確認してから実行する。 |
 | `artifact-output` | AI 結果をファイル成果物として保存する。 |
-| `guarded-command` | command 実行前のガードレールと承認を明示する。 |
+| `guarded-command` | command 実行のガードレールと承認を明示する。 |
 | `review-workflow` | レビュー対象の収集、分析、結果出力をまとめる。 |
 
-## 推奨フォーマット: `workflow-register/v1`
+## 推奨フォーマット
 
-新規作成するワークフローでは、YAML front matter に `schemaVersion: workflow-register/v1` を指定してください。
+新規 workflow では `schemaVersion: workflow-register/v1` を指定してください。
 
 ```md
 ---
@@ -93,57 +88,38 @@ steps:
 サンプル対象をレビューする。
 ```
 
-必須フィールドは `name` と `description` です。`name` は英数字、`.`、`_`、`-` を使用し、先頭は英数字にしてください。
+必須フィールドは `name` と `description` です。`name` は英数字、`.`、`_`、`-` を使い、先頭は英数字にしてください。
 
 ## 主な top-level フィールド
 
 | フィールド | 説明 |
 | --- | --- |
-| `schemaVersion` | 推奨値は `workflow-register/v1`。省略時は legacy 形式として扱われます。 |
+| `schemaVersion` | 推奨値は `workflow-register/v1`。省略時は legacy 形式。 |
 | `id` | Bob に渡す完全 ID。省略時は `<sourceId>.<name>`。 |
-| `name` | 安定したワークフロー名。フォルダ名と合わせることを推奨。 |
-| `description` | Bob UI と検証レポートに出る短い説明。 |
-| `title` / `label` / `menuLabel` | 表示名。`label` は `title` より優先されます。 |
+| `name` | 安定した workflow 名。フォルダ名と一致推奨。 |
+| `description` | Bob UI と検証レポートに出る説明。 |
+| `title` / `label` / `menuLabel` | 表示名。`label` は `title` より優先。 |
 | `mode` | Bob の実行モード。既定は `agent`。 |
-| `category` | 分類名。 |
 | `permissions` | Bob approval permissions。Todo 有効時は `todo` が追加されます。 |
-| `workspaceRequired` | workspace があるときだけ有効にするか。既定は `true`。 |
-| `hidden` | Bob UI から隠すか。既定は `false`。 |
-| `inputs` | 実行前入力。`string` / `number` / `boolean` / `select` を指定できます。 |
-| `requires` | workspace、Bob 最小バージョン、必須ファイルなどの要求。 |
+| `workspaceRequired` | workspace がある時だけ有効にするか。既定は `true`。 |
+| `inputs` | 実行前入力。`string` / `number` / `boolean` / `select` を指定可能。 |
+| `requires` | workspace、Bob 最小バージョン、必須ファイルなど。 |
 | `preflight` | 実行前チェック。 |
 | `guardrails` | 許可 command、禁止 command、承認メッセージ。 |
 | `artifacts` | 生成成果物の宣言。 |
-| `completion` | 完了時の要約、成果物表示、結果検証の設定。 |
-| `steps` | 実行ステップ本体。新規ワークフローではこの形式を推奨します。 |
+| `completion` | 完了時の要約、成果物表示、結果検証。 |
+| `steps` | 実行 step 本体。新規 workflow ではこの形式を推奨。 |
 
 ## step の種類
-
-`steps` には次の `type` を指定できます。
 
 | type | 用途 |
 | --- | --- |
 | `agent` | Bob / agent に prompt を送って処理させる。 |
-| `command` | VS Code command や別拡張が登録した action provider を実行する。 |
+| `command` | VS Code command や action provider を実行する。 |
 | `manual` | 人間が確認して完了させる。 |
 | `result` | state や literal から結果を作り、file / command sink に渡す。 |
 
-### `agent` step
-
-```yaml
-steps:
-  - id: analyze
-    title: Analyze
-    type: agent
-    includeState:
-      - reviewContext
-    prompt: |
-      保存済みの reviewContext を使って分析してください。
-```
-
-`includeState` には、前段 step の `resultKey` で保存した値だけを指定できます。存在しないキーを参照すると検証エラーになります。
-
-### `command` step
+### command step
 
 ```yaml
 steps:
@@ -159,11 +135,24 @@ steps:
     sendResult: true
 ```
 
-既定 action provider として `vscode.executeCommand` を使用できます。`args` の先頭に VS Code command ID を置き、必要な引数を続けます。
+`vscode.executeCommand` を使う場合、`args` の先頭に VS Code command ID を置きます。`resultKey` を指定すると command の戻り値を workflow state に保存できます。
 
-`resultKey` を指定すると、command の戻り値を workflow state に保存できます。後続 step では `includeState` で参照します。
+### agent step
 
-### `manual` step
+```yaml
+steps:
+  - id: analyze
+    title: Analyze
+    type: agent
+    includeState:
+      - collectedContext
+    prompt: |
+      collectedContext を使って分析してください。
+```
+
+`includeState` には、前段 step の `resultKey` で保存した値だけを指定できます。
+
+### manual step
 
 ```yaml
 stepCompletion: manual
@@ -175,12 +164,9 @@ steps:
       入力値と前提条件を確認してください。
 ```
 
-手動 step を進めるには、次のいずれかを実行します。
+手動 step を進めるには、`Workflow Step: Complete Current Step` または `Bob Workflow Register: Complete Current Bob Workflow Step` を実行します。
 
-- `Workflow Step: Complete Current Step`
-- `Bob Workflow Register: Complete Current Bob Workflow Step`
-
-### `result` step
+### result step
 
 ```yaml
 artifacts:
@@ -207,11 +193,9 @@ steps:
           path: .bob/artifacts/sample-report.md
 ```
 
-`file` sink は workspace 外への書き込みを拒否します。`command` sink は既定では許可された command だけを実行します。
+`file` sink は workspace 外への書き込みを拒否します。
 
-## 入力値
-
-`inputs` を使うと、実行前に値を集め、prompt から参照できます。
+## inputs
 
 ```yaml
 inputs:
@@ -235,13 +219,13 @@ steps:
       Output style: {{inputs.outputStyle}}
 ```
 
-`select` では `options` が必須です。空の場合は検証エラーになります。
+`select` input には `options` が必要です。
 
-## Todo / legacy 形式
+## legacy 形式
 
-既存互換のため、Markdown の `## Todo` と `## Step: <id>` による legacy 形式もサポートしています。
+既存互換のため、Markdown の `## Todo` と `## Step: <id>` による legacy 形式もサポートしています。新規 workflow では `schemaVersion: workflow-register/v1` と `steps:` の使用を推奨します。
 
-```md
+~~~~md
 ## Todo
 
 - [ ] collect-context: コンテキストを集める
@@ -255,20 +239,16 @@ sendResult: true
 resultKey: reviewContext
 required: true
 ```
-```
-
-新規作成では `schemaVersion: workflow-register/v1` と `steps:` の使用を推奨します。legacy 形式は既存ワークフローの移行や、Bob Skills 風の Markdown を維持したい場合に使ってください。
+~~~~
 
 ## 検証
-
-検証コマンドは次の 2 つです。
 
 | コマンド | 用途 |
 | --- | --- |
 | `Bob Workflow Register: Validate Current Workflow` | 開いている `WORKFLOW.md` だけを検証する。 |
-| `Bob Workflow Register: Validate Workspace Workflows` | workspace 内の `.bob/workflows/*/WORKFLOW.md` をまとめて検証する。 |
+| `Bob Workflow Register: Validate Workspace Workflows` | workspace 内の workflow をまとめて検証する。 |
 
-主な検証内容は次の通りです。
+主な検証内容:
 
 - YAML front matter があるか。
 - `name` / `description` があるか。
@@ -279,9 +259,8 @@ required: true
 - `artifact.producedBy` が存在する step を参照しているか。
 - `select` input に `options` があるか。
 - `guardrails.allowedCommands` と `guardrails.deniedCommands` が衝突していないか。
-- `todoAsSteps` の Todo と step が対応しているか。
 
-保存時とアクティブエディタ切り替え時にも、`WORKFLOW.md` は diagnostics の対象になります。
+保存時と active editor 切り替え時にも `WORKFLOW.md` は diagnostics の対象になります。
 
 ## 実行と運用
 
@@ -301,17 +280,15 @@ run state は workspace 内の `.bob/workflows/runs/<runId>/run.json` に保存�
 
 ## AI 補助
 
-次のコマンドでワークフロー作成と修正を補助できます。
-
 | コマンド | 用途 |
 | --- | --- |
 | `Bob Workflow Register: Design Workflow with AI` | 目的とテンプレート候補から新しい `WORKFLOW.md` を作る。 |
 | `Bob Workflow Register: Improve Workflow with AI` | 開いている workflow の検証結果をもとに修正案を作る。 |
 | `Bob Workflow Register: Explain Workflow Diagnostics` | 診断結果を説明する。 |
 
-AI provider は設定 `workflowRegister.aiProviderCommand` で指定します。未設定時は mock provider が使われます。
+AI provider は `workflowRegister.aiProviderCommand` で指定します。未設定時は mock provider が使われます。
 
-`Improve Workflow with AI` は置換候補をすぐ上書きしません。候補 Markdown をプレビューし、`.bob/workflows/.previews/...` に保存し、diff を表示してから、明示確認後に backup を作成して適用します。
+`Improve Workflow with AI` は候補 Markdown を preview し、`.bob/workflows/.previews/...` に保存し、diff を表示します。明示確認後に backup を作成して適用します。
 
 ## 拡張ポイント
 
@@ -324,8 +301,6 @@ AI provider は設定 `workflowRegister.aiProviderCommand` で指定します。
 | `registerResultSink(type, handler)` | `result` step の sink を追加する。 |
 | `listWorkflows()` | 読み込み済み workflow 定義を取得する。 |
 | `runWorkflow(workflowId, inputs)` | workflow をプログラムから実行する。 |
-
-`bob-bazaar-review` はこの仕組みを使い、Bazaar レビュー用 command や review result capture と連携します。
 
 ## 設定
 
@@ -368,3 +343,4 @@ workflow-register-0.1.0.vsix
 
 - `docs/workflow-authoring-guide-ja.md`
 - `extensions/bob-bazaar-review/README.md`
+- `extensions/README.md`
