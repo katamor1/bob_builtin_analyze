@@ -18,6 +18,11 @@
 | `mvp-implementation-plan.md` | MVP 実装マイルストーン、タスク、受け入れ条件 |
 | `mvp-architecture.md` | MVP の CLI、モジュール、データフロー構成 |
 | `mvp-backlog.md` | MVP 実装チケット候補と着手順 |
+| `implementation-assets.md` | 実装コードから参照するスキーマ・テンプレート一覧 |
+| `schemas/review-input.schema.json` | `review-input.yaml` 検証用 JSON Schema |
+| `schemas/bob-output.schema.json` | `bob-output.yaml` 検証用 JSON Schema |
+| `templates/prompts/consistency-review-v1/` | bob 投入用 prompt template |
+| `templates/triage/triage-result.template.yaml` | 人間 triage 結果テンプレート |
 | `examples/simple-timeout-bugfix/README.md` | E2E 検証用の timeout 不整合サンプル |
 
 ## 実装順序
@@ -33,7 +38,10 @@
 8. mvp-implementation-plan.md
 9. mvp-architecture.md
 10. mvp-backlog.md
-11. examples/simple-timeout-bugfix/README.md
+11. implementation-assets.md
+12. schemas/*.schema.json
+13. templates/**
+14. examples/simple-timeout-bugfix/README.md
 ```
 
 ## MVP のゴール
@@ -70,6 +78,15 @@ bob-review preprocess --input review-input.yaml --out .bob-review/review-package
 bob-review validate-output --package .bob-review/review-package --bob-output .bob-review/bob-output/bob-output.yaml
 bob-review triage --package .bob-review/review-package --bob-output .bob-review/bob-output/bob-output.yaml --out .bob-review/human-triage
 ```
+
+## 実装アセット
+
+`schemas/` と `templates/` は、仕様説明ではなく実装コードから読み込むアセットとして扱う。
+
+- `schemas/review-input.schema.json` で `review-input.yaml` を検証する。
+- `schemas/bob-output.schema.json` で bob 出力 YAML を検証する。
+- `templates/prompts/consistency-review-v1/` で `bob-input.md` を組み立てる。
+- `templates/triage/triage-result.template.yaml` で人間 triage の初期 YAML を生成する。
 
 ## E2E サンプル
 
