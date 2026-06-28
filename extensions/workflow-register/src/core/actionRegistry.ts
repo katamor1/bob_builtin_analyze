@@ -33,20 +33,6 @@ export interface DefaultActionRegistryOptions {
   executeCommand: (command: string, ...args: unknown[]) => Promise<unknown> | unknown
 }
 
-export function createDefaultActionRegistry(options: DefaultActionRegistryOptions): ActionRegistry {
-  const registry = new ActionRegistry()
-  for (const command of [
-    "bobBazaar.openReviewGui",
-    "bobBazaar.collectReviewContext",
-    "bobBazaar.loadReviewRules"
-  ]) {
-    registry.register({
-      id: command,
-      execute: ({ args }) => {
-        const commandArgs = Array.isArray(args) ? args : args === undefined ? [] : [args]
-        return options.executeCommand(command, ...commandArgs)
-      }
-    })
-  }
-  return registry
+export function createDefaultActionRegistry(_options?: DefaultActionRegistryOptions): ActionRegistry {
+  return new ActionRegistry()
 }
