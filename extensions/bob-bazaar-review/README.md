@@ -2,19 +2,18 @@
 
 `bob-bazaar-review` は、Bazaar リポジトリの差分レビューを IBM Bob から扱いやすくするための VS Code 拡張機能です。
 
-この拡張は `IBM.bob-code` 本体を変更しません。ワークスペースの `.bob/mcp.json` に読み取り専用 Bazaar MCP server を登録し、レビュー対象の収集、プロジェクト規約の読み込み、レビュー結果 JSON の検証と保存を支援します。
+`IBM.bob-code` 本体は変更しません。ワークスペースの `.bob/mcp.json` に読み取り専用 Bazaar MCP server を登録し、レビュー対象の収集、プロジェクト規約の読み込み、review-result JSON の検証と保存を支援します。
 
-## 役割
+## できること
 
 - Bazaar の revision / revision range / working tree 差分を取得する。
 - Bob に渡すレビュー用 Markdown パケットを作る。
-- `.bob/review/checklist.json` と `.bob/review/review-result.schema.json` によるプロジェクト規約レビューを支援する。
+- `.bob/review/checklist.json` と `.bob/review/review-result.schema.json` を使ったプロジェクト規約レビューを支援する。
 - `workflow-register` の workflow step から呼び出せる command を提供する。
 - Bob が出力した review-result JSON を検証し、JSON と Markdown 成果物として保存する。
+- 読み取り専用の Bazaar MCP tools と project rule helper tools を提供する。
 
 ## 依存関係
-
-`package.json` では次の拡張に依存しています。
 
 ```json
 "extensionDependencies": [
@@ -23,7 +22,7 @@
 ]
 ```
 
-そのため、Bob IDE / VS Code には次の順で導入してください。
+導入順は次を推奨します。
 
 1. `IBM.bob-code`
 2. `workflow-register`
@@ -32,7 +31,7 @@
 ## 代表的な利用フロー
 
 1. Bazaar workspace を Bob IDE / VS Code で開く。
-2. Command Palette で `Bob Bazaar: Open Bazaar Review GUI` を実行する。
+2. `Bob Bazaar: Open Bazaar Review GUI` を実行する。
 3. `.bob` が未初期化の場合は `.bobを初期化` を押す。
 4. レビュー対象を選ぶ。
 5. `取得` で revision 情報と変更ファイルを確認する。
@@ -60,8 +59,6 @@
 ## Review GUI
 
 `Bob Bazaar: Open Bazaar Review GUI` を実行すると、GUI でレビュー対象を選べます。
-
-### 初期化チェック
 
 GUI は次の `.bob` ファイルを確認します。
 
@@ -94,7 +91,7 @@ GUI は次の `.bob` ファイルを確認します。
 
 ### コンテキスト収集
 
-```md
+~~~~md
 ## Step: collect-context
 
 ```workflow-step
@@ -104,13 +101,13 @@ resultKey: reviewContext
 required: true
 completeOnSuccess: false
 ```
-```
+~~~~
 
 `collectReviewContext` は、GUI や command で作成された Bazaar review packet を読み、revision 情報、変更ファイル、byte count、Bob context に追加済みであることを示す summary を返します。
 
 ### 規約読み込み
 
-```md
+~~~~md
 ## Step: load-rules
 
 ```workflow-step
@@ -120,7 +117,7 @@ resultKey: reviewRules
 required: true
 completeOnSuccess: false
 ```
-```
+~~~~
 
 `loadReviewRules` は `.bob/review/checklist.json` と `.bob/review/review-result.schema.json` を必須として扱います。欠落している場合、required step は pending のままになり、Bob には command failure が渡されます。
 
@@ -185,13 +182,13 @@ Markdown は `renderReviewResultMarkdown` で生成され、件数、チェッ�
 commit, push, pull, update, revert, merge, resolve
 ```
 
-プロジェクト規約用 helper も公開します。
+project rule helper tools も公開します。
 
 | Tool | 用途 |
 | --- | --- |
 | `project_rules_init` | 既定の `.bob/review` 規約ファイルを作成する。 |
 | `project_rules_get_checklist` | project checklist JSON を返す。 |
-| `project_rules_get_schema` | review result JSON schema を返す。 |
+| `project_rules_get_schema` | review-result JSON schema を返す。 |
 | `project_rules_validate_review_result` | 正規化 review-result JSON を検証する。 |
 | `project_rules_render_markdown` | 正規化 review-result JSON を Markdown checklist に変換する。 |
 
@@ -227,7 +224,7 @@ commit, push, pull, update, revert, merge, resolve
 }
 ```
 
-Bob には JSON を先に返し、そのあと Markdown checklist を出力するよう指示します。正式な成果物は JSON で、Markdown の `[x]` 等は人間向けの表示です。
+Bob には JSON を先に返し、その後に Markdown checklist を出力するよう指示します。正式な成果物は JSON で、Markdown の `[x]` 等は人間向け表示です。
 
 ### checklist status
 
@@ -306,3 +303,4 @@ code --install-extension bob-bazaar-review-0.3.0.vsix
 
 - `docs/workflow-authoring-guide-ja.md`
 - `extensions/workflow-register/README.md`
+- `extensions/README.md`
