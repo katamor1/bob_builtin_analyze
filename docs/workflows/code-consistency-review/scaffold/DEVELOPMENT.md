@@ -24,7 +24,13 @@ npm run build
 ## 4. help 表示確認
 
 ```bash
-node dist/cli/main.js
+node dist/src/cli/main.js
+```
+
+または:
+
+```bash
+npm run smoke:help
 ```
 
 期待:
@@ -35,12 +41,25 @@ node dist/cli/main.js
 
 の 3 サブコマンドが表示される。
 
-## 5. preprocess の確認
+## 5. 自動テスト
+
+```bash
+npm run unit
+```
+
+確認対象:
+
+- 正常な `review-input.yaml` を受け付ける。
+- 比較先未指定の `review-input.yaml` を拒否する。
+- 正常な `bob-output.yaml` を受け付ける。
+- evidence が空の finding を含む `bob-output.yaml` を拒否する。
+
+## 6. preprocess の確認
 
 リポジトリルートで以下を実行する。
 
 ```bash
-node docs/workflows/code-consistency-review/scaffold/dist/cli/main.js preprocess \
+node docs/workflows/code-consistency-review/scaffold/dist/src/cli/main.js preprocess \
   --input docs/workflows/code-consistency-review/examples/simple-timeout-bugfix/review-input.yaml \
   --out .bob-review/review-package
 ```
@@ -69,12 +88,18 @@ node docs/workflows/code-consistency-review/scaffold/dist/cli/main.js preprocess
 - `review-input.yaml` の `base` / `head` がローカルで存在しない場合、Git diff 収集で失敗する。
 - その場合は fixture を使った手動確認、またはローカルに検証ブランチを作成して実行する。
 
-## 6. bob-output 検証
+## 7. bob-output 検証
 
 ```bash
-node docs/workflows/code-consistency-review/scaffold/dist/cli/main.js validate-output \
+node docs/workflows/code-consistency-review/scaffold/dist/src/cli/main.js validate-output \
   --package .bob-review/review-package \
   --bob-output docs/workflows/code-consistency-review/examples/simple-timeout-bugfix/bob-output.sample.yaml
+```
+
+または:
+
+```bash
+npm run smoke:validate-output
 ```
 
 期待:
@@ -83,13 +108,19 @@ node docs/workflows/code-consistency-review/scaffold/dist/cli/main.js validate-o
 - finding に evidence と human_check があることを確認する。
 - MVP scaffold では evidence-index との完全照合は TODO warning とする。
 
-## 7. human triage 生成
+## 8. human triage 生成
 
 ```bash
-node docs/workflows/code-consistency-review/scaffold/dist/cli/main.js triage \
+node docs/workflows/code-consistency-review/scaffold/dist/src/cli/main.js triage \
   --package .bob-review/review-package \
   --bob-output docs/workflows/code-consistency-review/examples/simple-timeout-bugfix/bob-output.sample.yaml \
   --out .bob-review/human-triage
+```
+
+または:
+
+```bash
+npm run smoke:triage
 ```
 
 期待する生成物:
@@ -103,15 +134,27 @@ node docs/workflows/code-consistency-review/scaffold/dist/cli/main.js triage \
   follow-up-actions.md
 ```
 
-## 8. 最初に改善すべき TODO
+## 9. smoke test 一括実行
 
-1. `review-input-validator.ts` で JSON Schema 検証を使う。
-2. `document-extractor.ts` で Markdown 文書の実テキストを抽出する。
-3. `c-cpp-change-analyzer.ts` で変更行の関数所属を推定する。
-4. `bob-output-validator.ts` で evidence-index との照合を実装する。
-5. `human-triage-helper.ts` で triage-result.yaml の decision に応じた Markdown 分割を行う。
+```bash
+npm run smoke
+```
 
-## 9. 終了コード方針
+確認対象:
+
+- help 表示
+- bob-output valid fixture の検証
+- human triage 生成
+
+## 10. 最初に改善すべき TODO
+
+1. `document-extractor.ts` で Markdown 文書の実テキストを抽出する。
+2. `c-cpp-change-analyzer.ts` で変更行の関数所属を推定する。
+3. `bob-output-validator.ts` で evidence-index との照合を実装する。
+4. `human-triage-helper.ts` で triage-result.yaml の decision に応じた Markdown 分割を行う。
+5. `preprocess` を Git 差分なし fixture でも検証できるようにする。
+
+## 11. 終了コード方針
 
 | 状態 | 終了コード |
 |---|---:|
@@ -121,9 +164,10 @@ node docs/workflows/code-consistency-review/scaffold/dist/cli/main.js triage \
 | bob-output invalid | 1 |
 | warning のみ | 0 |
 
-## 10. このフェーズの完了条件
+## 12. このフェーズの完了条件
 
 - `npm run build` が通る構成になっている。
-- `node dist/cli/main.js` で help が表示できる。
+- `npm run unit` で validator の自動テストを実行できる。
+- `npm run smoke` で help / validate-output / triage を確認できる。
 - fixture を使って validator / triage の入出力を確認できる。
 - TODO が明示され、次の実装対象が分かる。
