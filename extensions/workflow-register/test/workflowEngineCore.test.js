@@ -8,7 +8,7 @@ function tempDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "workflow-register-"))
 }
 
-test("v1 workflow parser accepts inputs, typed steps, and result sinks", () => {
+test("v1 workflow parser accepts inputs, execution contract metadata, typed steps, and result sinks", () => {
   const { parseWorkflowMarkdown } = require("../out/core/parser")
 
   const parsed = parseWorkflowMarkdown({
@@ -19,13 +19,63 @@ schemaVersion: workflow-register/v1
 name: sample
 description: Sample workflow.
 title: Sample Workflow
+mode: sample-reviewer
+category: code-review
 permissions:
   - read
+requires:
+  workspace: true
+  bob:
+    minVersion: "2.0.0"
+  files:
+    - .bob/skills/sample/SKILL.md
 inputs:
   revision:
     type: string
     title: Revision
     required: true
+  target:
+    type: select
+    title: Target
+    requiredWhen: "inputs.revision != ''"
+    options:
+      - trunk
+      - branch
+preflight:
+  - id: check-workspace
+    title: Check workspace
+    required: true
+    checks:
+      - workspaceOpen
+    files:
+      - .bob/skills/sample/SKILL.md
+    failurePolicy: stop
+tools:
+  sample.collect:
+    purpose: Collect context.
+    required: true
+    outputKey: reviewContext
+    failurePolicy: stop
+guardrails:
+  allowedCommands:
+    - sample.collect
+  deniedCommands:
+    - shell
+  requireApproval:
+    - id: large-review
+      when: "state.changedFiles > 100"
+      message: Large review detected.
+artifacts:
+  - id: reviewContext
+    producedBy: collect
+    path: .bob/workflows/runs/{{run.id}}/steps/collect.json
+completion:
+  summary: markdown
+  includeArtifacts: true
+  validateResult: true
+  visualization:
+    type: mermaid
+    enabled: true
 steps:
   - id: collect
     title: Collect context
@@ -51,7 +101,18 @@ steps:
 
   assert.equal(parsed.ok, true, parsed.diagnostics.join("\n"))
   assert.equal(parsed.workflow.schemaVersion, "workflow-register/v1")
+  assert.equal(parsed.workflow.mode, "sample-reviewer")
+  assert.equal(parsed.workflow.category, "code-review")
+  assert.equal(parsed.workflow.requires.workspace, true)
+  assert.equal(parsed.workflow.requires.bob.minVersion, "2.0.0")
   assert.equal(parsed.workflow.inputs.revision.type, "string")
+  assert.equal(parsed.workflow.inputs.target.requiredWhen, "inputs.revision != ''")
+  assert.equal(parsed.workflow.preflight[0].id, "check-workspace")
+  assert.equal(parsed.workflow.tools["sample.collect"].outputKey, "reviewContext")
+  assert.equal(parsed.workflow.guardrails.allowedCommands[0], "sample.collect")
+  assert.equal(parsed.workflow.guardrails.requireApproval[0].id, "large-review")
+  assert.equal(parsed.workflow.artifacts[0].id, "reviewContext")
+  assert.equal(parsed.workflow.completion.visualization.type, "mermaid")
   assert.equal(parsed.workflow.engineSteps.length, 2)
   assert.equal(parsed.workflow.engineSteps[0].type, "command")
   assert.equal(parsed.workflow.engineSteps[0].action.provider, "sample.collect")
