@@ -51,6 +51,7 @@ export const workflowV1Schema = {
           title: { type: "string" },
           required: { type: "boolean" },
           requiredWhen: { type: "string" },
+          prompt: { type: "boolean" },
           default: {},
           options: { type: "array", items: { type: "string" } }
         },

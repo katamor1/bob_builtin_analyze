@@ -1,9 +1,18 @@
 const assert = require("node:assert/strict")
 const { test } = require("node:test")
 
-test("runAgent result handoff calls the allowed result command with result text first", async () => {
+test("runAgent result handoff executes the result command through an action registry", async () => {
+  const { ActionRegistry } = require("../out/core/actionRegistry")
   const { executeResultHandoff, resultSourceForStep } = require("../out/resultHandoff")
   const calls = []
+  const actions = new ActionRegistry()
+  actions.register({
+    id: "bobBazaar.captureReviewResult",
+    execute: (input) => {
+      calls.push(input)
+      return { status: "ok" }
+    }
+  })
   const step = {
     captureResult: true,
     runAgent: true,
@@ -12,13 +21,41 @@ test("runAgent result handoff calls the allowed result command with result text 
   }
 
   const result = await executeResultHandoff(step, "agent result json", {
+    actions,
+    inputs: { revision: "1234" },
+    state: { reviewContext: "context" },
+    workflowId: "workflow",
+    runId: "run",
+    stepId: "output-result"
+  })
+
+  assert.equal(resultSourceForStep(step), "agent")
+  assert.equal(result.ok, true)
+  assert.equal(result.command, "bobBazaar.captureReviewResult")
+  assert.equal(calls.length, 1)
+  assert.deepEqual(calls[0].args, ["agent result json", "extra"])
+  assert.deepEqual(calls[0].inputs, { revision: "1234" })
+  assert.deepEqual(calls[0].state, { reviewContext: "context" })
+  assert.equal(calls[0].workflowId, "workflow")
+  assert.equal(calls[0].runId, "run")
+  assert.equal(calls[0].stepId, "output-result")
+})
+
+test("result handoff preserves a legacy executeCommand fallback through action registry", async () => {
+  const { executeResultHandoff } = require("../out/resultHandoff")
+  const calls = []
+  const result = await executeResultHandoff({
+    captureResult: true,
+    runAgent: true,
+    resultCommand: "bobBazaar.captureReviewResult",
+    resultCommandArgs: ["extra"]
+  }, "agent result json", {
     executeCommand: async (...args) => {
       calls.push(args)
       return { status: "ok" }
     }
   })
 
-  assert.equal(resultSourceForStep(step), "agent")
   assert.equal(result.ok, true)
   assert.deepEqual(calls, [["bobBazaar.captureReviewResult", "agent result json", "extra"]])
 })
@@ -36,37 +73,40 @@ test("result handoff is skipped when captureResult is not enabled", async () => 
   assert.deepEqual(calls, [])
 })
 
-test("unsupported result commands are rejected before command execution", async () => {
+test("missing result command providers are reported as action failures", async () => {
+  const { ActionRegistry } = require("../out/core/actionRegistry")
   const { executeResultHandoff } = require("../out/resultHandoff")
-  const calls = []
 
   const result = await executeResultHandoff({
     captureResult: true,
     runAgent: true,
-    resultCommand: "workbench.action.files.save"
+    resultCommand: "example.missingResultProvider"
   }, "agent result", {
-    executeCommand: async (...args) => calls.push(args)
+    actions: new ActionRegistry()
   })
 
   assert.equal(result.ok, false)
-  assert.match(result.error, /Unsupported result command/)
-  assert.deepEqual(calls, [])
+  assert.match(result.error, /Unsupported action provider/)
 })
 
-test("result handoff fails when the allowed command reports validation failure", async () => {
+test("result handoff fails when the result command reports validation failure", async () => {
+  const { ActionRegistry } = require("../out/core/actionRegistry")
   const { executeResultHandoff } = require("../out/resultHandoff")
-
-  const result = await executeResultHandoff({
-    captureResult: true,
-    runAgent: true,
-    resultCommand: "bobBazaar.captureReviewResult"
-  }, "invalid json", {
-    executeCommand: async () => ({
+  const actions = new ActionRegistry()
+  actions.register({
+    id: "bobBazaar.captureReviewResult",
+    execute: () => ({
       status: "error",
       issueCount: 1,
       issues: [{ path: "$.vcs", message: "Missing required object." }]
     })
   })
+
+  const result = await executeResultHandoff({
+    captureResult: true,
+    runAgent: true,
+    resultCommand: "bobBazaar.captureReviewResult"
+  }, "invalid json", { actions })
 
   assert.equal(result.ok, false)
   assert.match(result.error, /result command reported an error/)

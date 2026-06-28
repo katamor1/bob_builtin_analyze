@@ -29,7 +29,7 @@ inputs:
   revisionMode:
     type: select
     title: Review target
-    required: true
+    prompt: false
     options:
       - singleRevision
       - revisionRange
@@ -37,15 +37,15 @@ inputs:
   revision:
     type: string
     title: Revision
-    requiredWhen: "inputs.revisionMode == 'singleRevision'"
+    prompt: false
   baseRevision:
     type: string
     title: Base revision
-    requiredWhen: "inputs.revisionMode != 'singleRevision'"
+    prompt: false
   targetRevision:
     type: string
     title: Target revision
-    requiredWhen: "inputs.revisionMode == 'revisionRange'"
+    prompt: false
 preflight:
   - id: check-workspace
     title: Check Bob workspace and Bazaar repository
@@ -124,7 +124,7 @@ steps:
     action:
       provider: bobBazaar.openReviewGui
     prompt: |
-      Confirm the target Bazaar revision or revision range. If the target is not known, ask the user to provide it before continuing.
+      Confirm the target Bazaar revision or revision range in the GUI. The Bazaar Review extension intentionally disables Bob pre-prompts for review target inputs so this workflow starts from the GUI by default.
     sendResult: false
     required: true
     completeOnSuccess: false

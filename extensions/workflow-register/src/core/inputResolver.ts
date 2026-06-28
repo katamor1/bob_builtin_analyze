@@ -15,7 +15,9 @@ export function resolveWorkflowInputsToPrompt(inputs: Record<string, WorkflowInp
     const hasValue = !isMissing(value)
     const conditional = matchesRequiredWhen(definition, provided)
     const required = definition.required === true || conditional
+    const promptEnabled = definition.prompt !== false
     if (hasValue) resolved.push({ key, definition, required, prompt: false, reason: "provided" })
+    else if (!promptEnabled) resolved.push({ key, definition, required, prompt: false, reason: required ? "missing-required-prompt-disabled" : "prompt-disabled" })
     else if (required) resolved.push({ key, definition, required, prompt: true, reason: conditional ? "missing-conditional" : "missing-required" })
     else if (definition.requiredWhen) resolved.push({ key, definition, required, prompt: false, reason: "skipped-conditional" })
     else resolved.push({ key, definition, required, prompt: true, reason: "missing-optional" })
@@ -63,5 +65,5 @@ function fieldName(value: string): string {
 }
 
 function unquote(value: string): string {
-  return value.trim().replace(/^['"]/, "").replace(/['"]$/, "")
+  return value.trim().replace(/^["']/, "").replace(/["']$/, "")
 }

@@ -169,6 +169,7 @@ function normalizeInputs(inputs: Record<string, unknown>): Record<string, Workfl
       title: optionalString(record, "title"),
       required: optionalBoolean(record, "required"),
       requiredWhen: optionalString(record, "requiredWhen"),
+      prompt: optionalBoolean(record, "prompt"),
       default: record.default,
       options: listField(record, "options")
     }
