@@ -112,11 +112,29 @@ test("default action registry is domain agnostic", () => {
 test("Bob workflow Todo commands run through registered action providers", () => {
   const source = fs.readFileSync(path.join(extensionRoot, "src", "extension.ts"), "utf8")
 
-  assert.match(source, /createBobWorkflow\(workflow, this\.stepRuntime, this\.actionRegistry\)/)
+  assert.match(source, /createBobWorkflow\(workflow, this\.stepRuntime, this\.actionRegistry, \(definition, provided\) => this\.collectBobWorkflowInputs\(definition, provided\)\)/)
   assert.match(source, /async function runWorkflowStepCommand\([\s\S]*actionRegistry: ActionRegistry[\s\S]*\)/)
   assert.match(source, /actionRegistry\.execute\(step\.command, \{[\s\S]*args: step\.commandArgs[\s\S]*workflowId[\s\S]*stepId[\s\S]*\}\)/)
   assert.doesNotMatch(source, /step\.command === "bobBazaar\./)
   assert.doesNotMatch(source, /Unsupported step command\. Add it to the workflow-register allowlist before use\./)
+})
+
+test("Bob registration deactivates the previous source before replacing workflows", () => {
+  const source = fs.readFileSync(path.join(extensionRoot, "src", "extension.ts"), "utf8")
+
+  assert.match(source, /interface BobSourceLike \{[\s\S]*deactivate\?: \(\) => unknown[\s\S]*\}/)
+  assert.match(source, /private registeredSource\?: BobSourceLike/)
+  assert.match(source, /dispose\(\): void \{[\s\S]*void this\.deactivateRegisteredSource\(\)[\s\S]*\}/)
+  assert.match(source, /if \(loaded\.workflows\.length === 0\) \{[\s\S]*await this\.deactivateRegisteredSource\(lines\)[\s\S]*this\.registeredIds\.clear\(\)[\s\S]*"setContext", "bob-code\.hasWorkflows", false[\s\S]*\}/)
+  assert.match(source, /await this\.deactivateRegisteredSource\(lines\)[\s\S]*const sourceResult = await runAttempt\("registerSource\(sourceId, sourceName\)"/)
+  assert.match(source, /this\.registeredSource = source/)
+})
+
+test("Bob registration treats a false registerWorkflow return as failed", () => {
+  const source = fs.readFileSync(path.join(extensionRoot, "src", "extension.ts"), "utf8")
+
+  assert.match(source, /return \{ label, ok: value !== false, message: describeReturn\(value\), value \}/)
+  assert.match(source, /const attempt = await runAttempt\(`source\.registerWorkflow\(\$\{workflow\.id\}\)`[\s\S]*if \(attempt\.ok\) \{[\s\S]*registeredIds\.add\(workflow\.id\)[\s\S]*registeredCount \+= 1[\s\S]*\}/)
 })
 
 test("workflow reload re-registers current workflows and clears Bob context when none remain", () => {
@@ -127,6 +145,34 @@ test("workflow reload re-registers current workflows and clears Bob context when
   assert.match(source, /if \(loaded\.workflows\.length === 0\) \{[\s\S]*this\.registeredIds\.clear\(\)[\s\S]*"setContext", "bob-code\.hasWorkflows", false[\s\S]*\}/)
   assert.match(source, /this\.registeredIds\.clear\(\)[\s\S]*for \(const id of registeredIds\) this\.registeredIds\.add\(id\)/)
   assert.match(source, /"setContext", "bob-code\.hasWorkflows", this\.registeredIds\.size > 0/)
+})
+
+test("Bob adapter resolves workflow inputs and passes them to command providers", () => {
+  const source = fs.readFileSync(path.join(extensionRoot, "src", "extension.ts"), "utf8")
+
+  assert.match(source, /inputs: Record<string, WorkflowInputDefinition>/)
+  assert.match(source, /inputs: core\.inputs/)
+  assert.match(source, /private readonly workflowInputs = new Map<string, Record<string, unknown>>\(\)/)
+  assert.match(source, /collectBobWorkflowInputs\(workflow: WorkflowDefinition, provided: Record<string, unknown>\)/)
+  assert.match(source, /extractTaskWorkflowInputs\(definition, task\)/)
+  assert.match(source, /collectWorkflowInputsWithResolver\(\{[\s\S]*inputs: workflow\.inputs,[\s\S]*provided,[\s\S]*prompt: \(key, definition, required\) => this\.promptForInput\(key, definition, required\)[\s\S]*\}\)/)
+  assert.match(source, /actionRegistry\.execute\(step\.command, \{[\s\S]*inputs,[\s\S]*state,[\s\S]*workflowId: definition\.id,[\s\S]*stepId[\s\S]*\}\)/)
+  assert.doesNotMatch(source, /inputs: \{\}/)
+})
+
+test("Bob adapter applies guardrails to Todo, result, and legacy top-level commands", () => {
+  const source = fs.readFileSync(path.join(extensionRoot, "src", "extension.ts"), "utf8")
+  const engine = fs.readFileSync(path.join(extensionRoot, "src", "core", "engine.ts"), "utf8")
+
+  assert.match(source, /import \{ validateCommandGuardrails \} from "\.\/core\/guardrails"/)
+  assert.match(engine, /import \{ validateCommandGuardrails \} from "\.\/guardrails"/)
+  assert.match(source, /guardrails: WorkflowGuardrailsDefinition/)
+  assert.match(source, /guardrails: core\.guardrails/)
+  assert.match(source, /validateCommandGuardrails\(definition, step\.command\)/)
+  assert.match(source, /validateCommandGuardrails\(definition, stepDefinition\.resultCommand\)/)
+  assert.match(source, /validateCommandGuardrails\(definition, definition\.command\)/)
+  assert.match(source, /actionRegistry\.execute\("vscode\.executeCommand", \{[\s\S]*args: \[definition\.command, \.\.\.definition\.commandArgs\][\s\S]*\}\)/)
+  assert.doesNotMatch(source, /vscode\.commands\.executeCommand\(definition\.command/)
 })
 
 test("Bob registration uses CoreWorkflowDefinition as the only parsed workflow source", () => {

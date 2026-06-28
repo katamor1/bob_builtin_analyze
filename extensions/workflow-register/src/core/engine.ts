@@ -1,6 +1,7 @@
 import * as fs from "fs/promises"
 import * as path from "path"
 import { ActionRegistry } from "./actionRegistry"
+import { validateCommandGuardrails } from "./guardrails"
 import { validateWorkflowInputs } from "./inputResolver"
 import {
   AgentProvider,
@@ -310,13 +311,6 @@ function resultText(run: WorkflowRunState, result: ResultSourceDefinition, agent
 
 function formatStateValue(value: unknown): string {
   return typeof value === "string" ? value : JSON.stringify(value)
-}
-
-function validateCommandGuardrails(workflow: CoreWorkflowDefinition, providerId: string): string | undefined {
-  const guardrails = workflow.guardrails ?? {}
-  if (guardrails.deniedCommands?.includes(providerId)) return `Command is denied by workflow guardrails: ${providerId}`
-  if (guardrails.allowedCommands && guardrails.allowedCommands.length > 0 && !guardrails.allowedCommands.includes(providerId)) return `Command is not allowed by workflow guardrails: ${providerId}`
-  return undefined
 }
 
 function formatPreflightCheckFailure(result: WorkflowPreflightCheckResult): string | undefined {

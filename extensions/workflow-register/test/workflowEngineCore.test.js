@@ -813,3 +813,11 @@ test("workflow engine fails denied or non-allowlisted command steps before execu
   assert.match(run.error, /not allowed/)
   assert.equal(executed, false)
 })
+
+test("shared guardrails helper validates allowed and denied commands", () => {
+  const { validateCommandGuardrails } = require("../out/core/guardrails")
+
+  assert.equal(validateCommandGuardrails({ guardrails: { allowedCommands: ["sample.collect"] } }, "sample.collect"), undefined)
+  assert.match(validateCommandGuardrails({ guardrails: { allowedCommands: ["sample.other"] } }, "sample.collect"), /not allowed/)
+  assert.match(validateCommandGuardrails({ guardrails: { deniedCommands: ["sample.collect"] } }, "sample.collect"), /denied/)
+})
