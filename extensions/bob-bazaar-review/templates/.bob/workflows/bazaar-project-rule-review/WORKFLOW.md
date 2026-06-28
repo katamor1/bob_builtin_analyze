@@ -3,6 +3,7 @@ schemaVersion: workflow-register/v1
 name: bazaar-project-rule-review
 description: Review a Bazaar revision or range against project-specific rules.
 title: Bazaar Project Rule Review
+category: code-review
 mode: agent
 todo: true
 todoSource: yaml
@@ -23,6 +24,106 @@ permissions:
   - todo
 autoApproval: true
 workspaceRequired: true
+requires:
+  workspace: true
+  bob:
+    minVersion: "2.0.0"
+  files:
+    - .bob/review/checklist.json
+    - .bob/review/review-result.schema.json
+    - .bob/skills/project-review-checklist/SKILL.md
+inputs:
+  revisionMode:
+    type: select
+    title: Review target
+    required: true
+    options:
+      - singleRevision
+      - revisionRange
+      - workingTreeSinceRevision
+  revision:
+    type: string
+    title: Revision
+    requiredWhen: "inputs.revisionMode == 'singleRevision'"
+  baseRevision:
+    type: string
+    title: Base revision
+    requiredWhen: "inputs.revisionMode != 'singleRevision'"
+  targetRevision:
+    type: string
+    title: Target revision
+    requiredWhen: "inputs.revisionMode == 'revisionRange'"
+preflight:
+  - id: check-workspace
+    title: Check Bob workspace and Bazaar repository
+    required: true
+    checks:
+      - workspaceOpen
+      - bazaarRepository
+      - bobWorkspaceInitialized
+    failurePolicy: stop
+  - id: check-review-assets
+    title: Check review checklist, schema, and skill files
+    required: true
+    files:
+      - .bob/review/checklist.json
+      - .bob/review/review-result.schema.json
+      - .bob/skills/project-review-checklist/SKILL.md
+    failurePolicy: stop
+tools:
+  bobBazaar.openReviewGui:
+    purpose: Confirm the target Bazaar revision or range with the user.
+    required: true
+    failurePolicy: stop
+  bobBazaar.collectReviewContext:
+    purpose: Collect Bazaar revision metadata, changed files, and diff context.
+    required: true
+    outputKey: reviewContext
+    failurePolicy: stop
+  bobBazaar.loadReviewRules:
+    purpose: Load project review checklist and review result JSON schema.
+    required: true
+    outputKey: reviewRules
+    failurePolicy: stop
+  bobBazaar.captureReviewResult:
+    purpose: Validate and save final review-result JSON and Markdown summary.
+    required: true
+    inputSource: lastAssistant
+    failurePolicy: stop
+guardrails:
+  allowedCommands:
+    - bobBazaar.openReviewGui
+    - bobBazaar.collectReviewContext
+    - bobBazaar.loadReviewRules
+    - bobBazaar.captureReviewResult
+  deniedCommands:
+    - shell
+    - file.writeOutsideBob
+  requireApproval:
+    - id: large-review
+      when: "reviewContext.changedFiles.count > 100"
+      message: Large revision detected. Confirm whether to continue or split the review.
+artifacts:
+  - id: reviewContext
+    producedBy: collect-context
+    path: .bob/workflows/runs/{{run.id}}/review-context.json
+  - id: reviewRules
+    producedBy: load-rules
+    path: .bob/workflows/runs/{{run.id}}/review-rules.json
+  - id: reviewAnalysis
+    producedBy: analyze-changes
+    path: .bob/workflows/runs/{{run.id}}/review-analysis.md
+  - id: reviewResult
+    producedBy: output-result
+    path: .bob/review/results/{{review_id}}.json
+    schema: .bob/review/review-result.schema.json
+completion:
+  summary: markdown
+  includeArtifacts: true
+  validateResult: true
+  visualization:
+    type: mermaid
+    enabled: false
 ---
 # Bazaar Project Rule Review
 
