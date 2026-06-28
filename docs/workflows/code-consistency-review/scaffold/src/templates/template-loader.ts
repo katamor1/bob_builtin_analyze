@@ -1,4 +1,3 @@
-import { join } from "node:path";
 import { readTextFile } from "../core/file-system.js";
 
 export type PromptTemplates = {
@@ -8,13 +7,14 @@ export type PromptTemplates = {
   bobInputTemplate: string;
 };
 
-export async function loadPromptTemplates(rootDir: string): Promise<PromptTemplates> {
-  const templateDir = join(rootDir, "docs/workflows/code-consistency-review/templates/prompts/consistency-review-v1");
+const templateDir = "docs/workflows/code-consistency-review/templates/prompts/consistency-review-v1";
+
+export async function loadPromptTemplates(): Promise<PromptTemplates> {
   return {
-    system: await readTextFile(join(templateDir, "system.md")),
-    task: await readTextFile(join(templateDir, "task.md")),
-    outputFormat: await readTextFile(join(templateDir, "output-format.md")),
-    bobInputTemplate: await readTextFile(join(templateDir, "bob-input.template.md")),
+    system: await readTextFile(`${templateDir}/system.md`),
+    task: await readTextFile(`${templateDir}/task.md`),
+    outputFormat: await readTextFile(`${templateDir}/output-format.md`),
+    bobInputTemplate: await readTextFile(`${templateDir}/bob-input.template.md`),
   };
 }
 
