@@ -1,10 +1,30 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { readJsonFile } from "./file-system.js";
 import type { DiffSummary, ReviewInput } from "./result.js";
 
 const execFileAsync = promisify(execFile);
 
-export async function collectGitDiff(reviewInput: ReviewInput): Promise<DiffSummary> {
+export type GitDiffCollectorOptions = {
+  diffFixturePath?: string;
+};
+
+export async function collectGitDiff(
+  reviewInput: ReviewInput,
+  options: GitDiffCollectorOptions = {},
+): Promise<DiffSummary> {
+  if (options.diffFixturePath) {
+    const fixture = await readJsonFile<DiffSummary>(options.diffFixturePath);
+    const warnings = fixture.warnings ?? [];
+    return {
+      base: fixture.base,
+      head: fixture.head,
+      files: fixture.files,
+      unifiedDiff: fixture.unifiedDiff,
+      warnings: [...warnings, "Loaded diff summary fixture."],
+    };
+  }
+
   const { base, head } = reviewInput.review;
   const warnings: string[] = [];
 
