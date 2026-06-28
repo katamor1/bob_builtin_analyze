@@ -72,7 +72,27 @@ test("default action registry is domain agnostic", () => {
   const source = fs.readFileSync(path.join(extensionRoot, "src", "core", "actionRegistry.ts"), "utf8")
 
   assert.doesNotMatch(source, /bobBazaar\./)
-  assert.match(source, /export function createDefaultActionRegistry\(_options\?: DefaultActionRegistryOptions\): ActionRegistry \{[\s\S]*return new ActionRegistry\(\)[\s\S]*\}/)
+  assert.match(source, /registry\.register\(\{[\s\S]*id: "vscode\.executeCommand"[\s\S]*options\.executeCommand\(command, \.\.\.args\)[\s\S]*\}\)/)
+})
+
+test("Bob workflow Todo commands run through registered action providers", () => {
+  const source = fs.readFileSync(path.join(extensionRoot, "src", "extension.ts"), "utf8")
+
+  assert.match(source, /createBobWorkflow\(workflow, this\.stepRuntime, this\.actionRegistry\)/)
+  assert.match(source, /async function runWorkflowStepCommand\([\s\S]*actionRegistry: ActionRegistry[\s\S]*\)/)
+  assert.match(source, /actionRegistry\.execute\(step\.command, \{[\s\S]*args: step\.commandArgs[\s\S]*workflowId[\s\S]*stepId[\s\S]*\}\)/)
+  assert.doesNotMatch(source, /step\.command === "bobBazaar\./)
+  assert.doesNotMatch(source, /Unsupported step command\. Add it to the workflow-register allowlist before use\./)
+})
+
+test("workflow reload re-registers current workflows and clears Bob context when none remain", () => {
+  const source = fs.readFileSync(path.join(extensionRoot, "src", "extension.ts"), "utf8")
+
+  assert.doesNotMatch(source, /this\.registeredIds\.has\(workflow\.id\)/)
+  assert.doesNotMatch(source, /already registered in this extension host session/)
+  assert.match(source, /if \(loaded\.workflows\.length === 0\) \{[\s\S]*this\.registeredIds\.clear\(\)[\s\S]*"setContext", "bob-code\.hasWorkflows", false[\s\S]*\}/)
+  assert.match(source, /this\.registeredIds\.clear\(\)[\s\S]*for \(const id of registeredIds\) this\.registeredIds\.add\(id\)/)
+  assert.match(source, /"setContext", "bob-code\.hasWorkflows", this\.registeredIds\.size > 0/)
 })
 
 test("Bob registration uses CoreWorkflowDefinition as the only parsed workflow source", () => {
