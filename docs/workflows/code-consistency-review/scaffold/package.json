@@ -10,7 +10,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "unit": "npm run build && node --test dist/tests/review-input-validator.test.js dist/tests/bob-output-validator.test.js dist/tests/git-diff-collector.test.js",
+    "unit": "npm run build && node --test dist/tests/review-input-validator.test.js dist/tests/bob-output-validator.test.js dist/tests/git-diff-collector.test.js dist/tests/review-package-builder.test.js",
     "preprocess": "node dist/src/cli/main.js preprocess",
     "validate-output": "node dist/src/cli/main.js validate-output",
     "triage": "node dist/src/cli/main.js triage",
