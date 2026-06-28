@@ -29,9 +29,12 @@ test("Bazaar workflow template sends collect-context and load-rules command resu
 
   assert.match(workflow, /^stepCompletion: manual$/m)
   assert.match(workflow, /^stepMessage: step$/m)
-  assert.match(workflow, /## Step: review-input[\s\S]*?```workflow-step[\s\S]*?command: bobBazaar\.openReviewGui[\s\S]*?sendResult: false[\s\S]*?completeOnSuccess: false[\s\S]*?```/)
-  assert.match(workflow, /## Step: collect-context[\s\S]*?```workflow-step[\s\S]*?command: bobBazaar\.collectReviewContext[\s\S]*?sendResult: true[\s\S]*?required: true[\s\S]*?completeOnSuccess: true[\s\S]*?```/)
-  assert.match(workflow, /## Step: load-rules[\s\S]*?```workflow-step[\s\S]*?command: bobBazaar\.loadReviewRules[\s\S]*?sendResult: true[\s\S]*?required: true[\s\S]*?completeOnSuccess: true[\s\S]*?```/)
+  assert.doesNotMatch(workflow, /```workflow-step/)
+  assert.doesNotMatch(workflow, /^## Step:/m)
+  assert.match(workflow, /^steps:$/m)
+  assert.match(workflow, /id: review-input[\s\S]*?provider: bobBazaar\.openReviewGui[\s\S]*?sendResult: false[\s\S]*?completeOnSuccess: false/)
+  assert.match(workflow, /id: collect-context[\s\S]*?provider: bobBazaar\.collectReviewContext[\s\S]*?sendResult: true[\s\S]*?required: true[\s\S]*?completeOnSuccess: true/)
+  assert.match(workflow, /id: load-rules[\s\S]*?provider: bobBazaar\.loadReviewRules[\s\S]*?sendResult: true[\s\S]*?required: true[\s\S]*?completeOnSuccess: true/)
 })
 
 test("completeStep command can be called silently by companion extensions", () => {
@@ -54,6 +57,7 @@ test("activation schedules delayed workflow reload retries after Bob finishes st
 test("package contributes standalone workflow launcher commands without a hard Bob dependency", () => {
   const packageJson = JSON.parse(fs.readFileSync(path.join(extensionRoot, "package.json"), "utf8"))
   const commandIds = packageJson.contributes.commands.map((command) => command.command)
+  const source = fs.readFileSync(path.join(extensionRoot, "src", "extension.ts"), "utf8")
 
   assert.equal(packageJson.extensionDependencies, undefined)
   assert.ok(packageJson.activationEvents.includes("onCommand:workflowRegister.runWorkflow"))
@@ -64,4 +68,34 @@ test("package contributes standalone workflow launcher commands without a hard B
   assert.ok(commandIds.includes("workflowRegister.inspectRuns"))
   assert.ok(commandIds.includes("workflowRegister.resumeRun"))
   assert.ok(commandIds.includes("workflowRegister.retryCurrentStep"))
+  assert.match(source, /new WorkflowRegisterService\(String\(context\.extension\.packageJSON\.version \?\? "unknown"\)\)/)
+  assert.match(source, /new FileRunStateStore\(\{ workspaceRoot, engineVersion: this\.engineVersion \}\)/)
+})
+
+test("Bob registration uses CoreWorkflowDefinition as the only parsed workflow source", () => {
+  const source = fs.readFileSync(path.join(extensionRoot, "src", "extension.ts"), "utf8")
+
+  assert.match(source, /parseWorkflowMarkdown\(\{ sourceId, filePath: relativePath, text \}\)/)
+  assert.match(source, /adaptCoreWorkflowForBob\(/)
+  assert.doesNotMatch(source, /loadCoreWorkspaceWorkflows/)
+  assert.doesNotMatch(source, /parseYamlFrontMatter\(split\.frontMatter\)/)
+})
+
+test("runtime dependencies are not excluded from VSIX packaging", () => {
+  const packageJson = JSON.parse(fs.readFileSync(path.join(extensionRoot, "package.json"), "utf8"))
+  const vscodeIgnore = fs.readFileSync(path.join(extensionRoot, ".vscodeignore"), "utf8")
+
+  assert.equal(packageJson.scripts.package, "vsce package")
+  assert.match(vscodeIgnore, /^node_modules\/\*\*$/m)
+  for (const moduleName of [
+    "ajv",
+    "fast-deep-equal",
+    "fast-uri",
+    "json-schema-traverse",
+    "require-from-string",
+    "js-yaml",
+    "argparse"
+  ]) {
+    assert.match(vscodeIgnore, new RegExp(`^!node_modules/${moduleName}/\\*\\*$`, "m"))
+  }
 })

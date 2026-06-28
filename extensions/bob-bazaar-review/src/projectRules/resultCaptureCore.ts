@@ -42,7 +42,8 @@ export async function captureReviewResultFromCandidates(workspaceRoot: string, c
 }
 
 export async function handleReviewResultJson(workspaceRoot: string, jsonText: string, source: string): Promise<CaptureReviewResultResult> {
-  const validation = validateReviewResultJson(jsonText)
+  const normalizedJsonText = normalizeReviewResultJsonText(jsonText)
+  const validation = validateReviewResultJson(normalizedJsonText)
   if (!validation.valid) {
     return {
       status: "error",
@@ -53,7 +54,7 @@ export async function handleReviewResultJson(workspaceRoot: string, jsonText: st
     }
   }
 
-  const result = JSON.parse(jsonText) as ReviewResult
+  const result = JSON.parse(normalizedJsonText) as ReviewResult
   const artifacts = await saveReviewResultArtifacts(workspaceRoot, result)
   return {
     status: "ok",
@@ -65,6 +66,33 @@ export async function handleReviewResultJson(workspaceRoot: string, jsonText: st
     issueCount: 0,
     summary: result.summary
   }
+}
+
+function normalizeReviewResultJsonText(jsonText: string): string {
+  let value: unknown
+  try {
+    value = JSON.parse(jsonText)
+  } catch {
+    return jsonText
+  }
+  if (!isRecord(value) || !Array.isArray(value.checklist_results)) return jsonText
+  let changed = false
+  for (const item of value.checklist_results) {
+    if (!isRecord(item)) continue
+    const normalized = normalizeChecklistSeverity(item.severity)
+    if (normalized && normalized !== item.severity) {
+      item.severity = normalized
+      changed = true
+    }
+  }
+  return changed ? JSON.stringify(value, null, 2) : jsonText
+}
+
+function normalizeChecklistSeverity(value: unknown): "info" | undefined {
+  if (value === "error" || value === "warning" || value === "info") return undefined
+  if (typeof value !== "string") return undefined
+  const compact = value.trim().toLowerCase().replace(/[^a-z]+/g, "")
+  return ["na", "notapplicable", "none", "null", "undefined"].includes(compact) ? "info" : undefined
 }
 
 export async function saveReviewResultArtifacts(workspaceRoot: string, result: ReviewResult): Promise<{ jsonPath: string; markdownPath: string }> {
@@ -153,4 +181,8 @@ function timestampForFilename(date: Date): string {
 
 function sanitizeFilename(value: string): string {
   return value.trim().replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || `review-result-${timestampForFilename(new Date())}`
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
 }

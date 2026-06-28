@@ -17,7 +17,12 @@ test("Bazaar workflow template declares v1 schema and uses revision-derived revi
   const workflow = fs.readFileSync(workflowPath, "utf8")
 
   assert.match(workflow, /^schemaVersion: workflow-register\/v1$/m)
+  assert.match(workflow, /^steps:$/m)
   assert.match(workflow, /"review_id": "bazaar-r<revision>-project-rule-review"/)
   assert.match(workflow, /Replace `<revision>` with the actual Bazaar revision or range/)
+  assert.match(workflow, /checklist_results\[\]\.severity` must always be exactly one of `error`, `warning`, or `info`/)
+  assert.match(workflow, /Never put `N\/A`, `not_applicable`, `none`, or any status value in `severity`/)
   assert.doesNotMatch(workflow, /bazaar-r2-project-rule-review/)
+  assert.doesNotMatch(workflow, /```workflow-step/)
+  assert.doesNotMatch(workflow, /^## Step:/m)
 })

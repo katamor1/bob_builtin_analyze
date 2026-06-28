@@ -66,6 +66,36 @@ test("invalid explicit review-result JSON returns validation issues without savi
   assert.match(result.issues.map((issue) => issue.path).join("\n"), /\$\.vcs/)
 })
 
+test("placeholder checklist severities from Bob agent output are normalized to info", async () => {
+  const { captureReviewResultText } = require("../out/projectRules/resultCaptureCore")
+  const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "bob-review-capture-severity-"))
+  const payload = validReviewResult("BRR-SEVERITY-NORMALIZE")
+  payload.checklist_results = [
+    {
+      rule_id: "RULE-001",
+      title: "Rule one",
+      status: "not_applicable",
+      severity: "N/A",
+      confidence: "high",
+      evidence: [],
+      reason: "The changed files do not trigger this rule."
+    }
+  ]
+  payload.summary = {
+    pass: 0,
+    fail: 0,
+    unknown: 0,
+    not_applicable: 1,
+    blocked: 0
+  }
+
+  const result = await captureReviewResultText(workspaceRoot, `\`\`\`json\n${JSON.stringify(payload, null, 2)}\n\`\`\``, "command argument")
+
+  assert.equal(result.status, "ok")
+  const saved = JSON.parse(await fs.readFile(result.jsonPath, "utf8"))
+  assert.equal(saved.checklist_results[0].severity, "info")
+})
+
 test("command argument capture path returns without awaiting presentation UI", () => {
   const source = fsSync.readFileSync(path.join(extensionRoot, "src", "projectRules", "resultCapture.ts"), "utf8")
 

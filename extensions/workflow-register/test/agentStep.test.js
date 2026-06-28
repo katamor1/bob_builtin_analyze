@@ -41,6 +41,7 @@ test("subagent result extraction accepts Bob result objects and strings", () => 
 })
 
 test("Bazaar workflow template lets AI-agent steps complete themselves", () => {
+  const { parseWorkflowMarkdown } = require("../out/core/parser")
   const workflowPath = path.join(
     repoRoot,
     "extensions",
@@ -52,8 +53,17 @@ test("Bazaar workflow template lets AI-agent steps complete themselves", () => {
     "WORKFLOW.md"
   )
   const workflow = fs.readFileSync(workflowPath, "utf8")
+  const parsed = parseWorkflowMarkdown({ sourceId: "workflow-register", filePath: workflowPath, text: workflow })
 
-  assert.match(workflow, /## Step: analyze-changes[\s\S]*?```workflow-step[\s\S]*?runAgent: true[\s\S]*?resultKey: reviewAnalysis[\s\S]*?```/)
-  assert.match(workflow, /## Step: output-result[\s\S]*?```workflow-step[\s\S]*?includeState:[\s\S]*?- reviewAnalysis[\s\S]*?runAgent: true[\s\S]*?```/)
-  assert.match(workflow, /## Step: output-result[\s\S]*?```workflow-step[\s\S]*?captureResult: true[\s\S]*?resultCommand: bobBazaar\.captureReviewResult[\s\S]*?```/)
+  assert.equal(parsed.ok, true, parsed.diagnostics.join("\n"))
+  const analyze = parsed.workflow.engineSteps.find((step) => step.id === "analyze-changes")
+  const output = parsed.workflow.engineSteps.find((step) => step.id === "output-result")
+
+  assert.equal(analyze.type, "agent")
+  assert.equal(analyze.resultKey, "reviewAnalysis")
+  assert.deepEqual(analyze.includeState, ["reviewContext", "reviewRules"])
+  assert.equal(output.type, "agent")
+  assert.deepEqual(output.includeState, ["reviewContext", "reviewRules", "reviewAnalysis"])
+  assert.equal(output.result.source, "agent")
+  assert.equal(output.result.sinks[0].command, "bobBazaar.captureReviewResult")
 })

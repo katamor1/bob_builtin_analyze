@@ -12,15 +12,18 @@ export interface RunStateStore {
 export interface FileRunStateStoreOptions {
   workspaceRoot: string
   now?: () => string
+  engineVersion?: string
 }
 
 export class FileRunStateStore implements RunStateStore {
   private readonly workspaceRoot: string
   private readonly now: () => string
+  private readonly engineVersion?: string
 
   constructor(options: FileRunStateStoreOptions) {
     this.workspaceRoot = options.workspaceRoot
     this.now = options.now ?? (() => new Date().toISOString())
+    this.engineVersion = options.engineVersion
   }
 
   async createRun(workflow: CoreWorkflowDefinition, inputs: Record<string, unknown>): Promise<WorkflowRunState> {
@@ -30,6 +33,10 @@ export class FileRunStateStore implements RunStateStore {
       runId,
       workflowId: workflow.id,
       workflowName: workflow.name,
+      workflowSchemaVersion: workflow.schemaVersion,
+      workflowDefinitionHash: workflow.definitionHash,
+      workflowFile: workflow.filePath,
+      engineVersion: this.engineVersion,
       status: "running",
       currentStep: workflow.engineSteps[0]?.id,
       inputs,

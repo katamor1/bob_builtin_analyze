@@ -3,7 +3,7 @@ import * as vscode from "vscode"
 import { buildWorkflowAgentPrompt, extractSubagentResult } from "./agentStep"
 import { ActionProvider, ActionRegistry, createDefaultActionRegistry } from "./core/actionRegistry"
 import { WorkflowEngine } from "./core/engine"
-import { CoreWorkflowDefinition, WorkflowInputDefinition } from "./core/model"
+import { CoreWorkflowDefinition, EngineStep, ResultSinkDefinition, WorkflowInputDefinition } from "./core/model"
 import { parseWorkflowMarkdown } from "./core/parser"
 import { createDefaultResultSinkRegistry, ResultSinkRegistry } from "./core/resultSinkRegistry"
 import { FileRunStateStore, RunStateStore } from "./core/runStateStore"
@@ -116,6 +116,7 @@ interface WorkflowDefinition {
 
 interface LoadResult {
   workflows: WorkflowDefinition[]
+  coreWorkflows: CoreWorkflowDefinition[]
   diagnostics: string[]
 }
 
@@ -148,7 +149,7 @@ export interface WorkflowRegisterApi {
 }
 
 export function activate(context: vscode.ExtensionContext): WorkflowRegisterApi {
-  const service = new WorkflowRegisterService()
+  const service = new WorkflowRegisterService(String(context.extension.packageJSON.version ?? "unknown"))
   context.subscriptions.push(service)
   context.subscriptions.push(
     vscode.commands.registerCommand("workflowRegister.reload", () => service.reload({ showReport: true })),
@@ -287,7 +288,7 @@ class WorkflowRegisterService implements vscode.Disposable {
   private readonly customResultSinks: Array<{ type: string; handler: Parameters<ResultSinkRegistry["register"]>[1] }> = []
   private lastResult: RegistrationResult = { summary: "No workflow registration has run yet.", lines: [] }
 
-  constructor() {
+  constructor(private readonly engineVersion: string) {
     this.watcher.onDidCreate(() => this.reload({ showReport: false }))
     this.watcher.onDidChange(() => this.reload({ showReport: false }))
     this.watcher.onDidDelete(() => this.reload({ showReport: false }))
@@ -409,7 +410,7 @@ class WorkflowRegisterService implements vscode.Disposable {
   }
 
   private createRunStore(workspaceRoot: string): RunStateStore {
-    return new FileRunStateStore({ workspaceRoot })
+    return new FileRunStateStore({ workspaceRoot, engineVersion: this.engineVersion })
   }
 
   private workspaceRoot(): string | undefined {
@@ -480,10 +481,8 @@ class WorkflowRegisterService implements vscode.Disposable {
     const lines: string[] = []
     const loaded = await loadWorkspaceWorkflows(sourceId)
     lines.push(...loaded.diagnostics)
-    const coreLoaded = await loadCoreWorkspaceWorkflows(sourceId)
     this.coreWorkflows.clear()
-    for (const workflow of coreLoaded.workflows) this.coreWorkflows.set(workflow.id, workflow)
-    lines.push(...coreLoaded.diagnostics)
+    for (const workflow of loaded.coreWorkflows) this.coreWorkflows.set(workflow.id, workflow)
     if (loaded.workflows.length === 0) return { summary: "No .bob workflows were found.", lines }
 
     const bob = await loadBobApi()
@@ -525,6 +524,7 @@ class WorkflowRegisterService implements vscode.Disposable {
 async function loadWorkspaceWorkflows(sourceId: string): Promise<LoadResult> {
   const diagnostics: string[] = []
   const workflows: WorkflowDefinition[] = []
+  const coreWorkflows: CoreWorkflowDefinition[] = []
   for (const folder of vscode.workspace.workspaceFolders ?? []) {
     const files = await vscode.workspace.findFiles(new vscode.RelativePattern(folder, ".bob/workflows/*/WORKFLOW.md"))
     diagnostics.push(`- workspace: ${folder.name}; workflow files: ${files.length}`)
@@ -532,80 +532,24 @@ async function loadWorkspaceWorkflows(sourceId: string): Promise<LoadResult> {
       const result = await loadWorkflowFile(sourceId, file)
       diagnostics.push(...result.diagnostics)
       if (result.workflow) workflows.push(result.workflow)
+      if (result.coreWorkflow) coreWorkflows.push(result.coreWorkflow)
     }
   }
-  return { workflows, diagnostics }
+  return { workflows, coreWorkflows, diagnostics }
 }
 
-async function loadCoreWorkspaceWorkflows(sourceId: string): Promise<{ workflows: CoreWorkflowDefinition[]; diagnostics: string[] }> {
-  const diagnostics: string[] = []
-  const workflows: CoreWorkflowDefinition[] = []
-  for (const folder of vscode.workspace.workspaceFolders ?? []) {
-    const files = await vscode.workspace.findFiles(new vscode.RelativePattern(folder, ".bob/workflows/*/WORKFLOW.md"))
-    for (const file of files) {
-      const relativePath = vscode.workspace.asRelativePath(file, false)
-      const text = Buffer.from(await vscode.workspace.fs.readFile(file)).toString("utf8").replace(/^\uFEFF/, "")
-      const parsed = parseWorkflowMarkdown({ sourceId, filePath: relativePath, text })
-      diagnostics.push(...parsed.diagnostics.map((line) => `- core: ${line.replace(/^- /, "")}`))
-      if (parsed.ok) workflows.push(parsed.workflow)
-    }
-  }
-  return { workflows, diagnostics }
-}
-
-async function loadWorkflowFile(sourceId: string, file: vscode.Uri): Promise<{ workflow?: WorkflowDefinition; diagnostics: string[] }> {
+async function loadWorkflowFile(sourceId: string, file: vscode.Uri): Promise<{ workflow?: WorkflowDefinition; coreWorkflow?: CoreWorkflowDefinition; diagnostics: string[] }> {
   const relativePath = vscode.workspace.asRelativePath(file, false)
   const diagnostics: string[] = []
   const folderName = path.basename(path.dirname(file.fsPath))
   const text = Buffer.from(await vscode.workspace.fs.readFile(file)).toString("utf8").replace(/^\uFEFF/, "")
-  const split = splitMarkdownFrontMatter(text)
-  if (!split) return { diagnostics: [`- fail: ${relativePath}: missing YAML front matter.`] }
-  const fields = parseYamlFrontMatter(split.frontMatter)
-  const errors = validateRequiredFrontMatter(fields)
-  if (errors.length > 0) return { diagnostics: errors.map((error) => `- fail: ${relativePath}: ${error}`) }
-
-  const name = getString(fields, "name") ?? folderName
-  if (folderName !== name) diagnostics.push(`- warn: ${relativePath}: folder name '${folderName}' differs from workflow name '${name}'.`)
-  const todoSource = getString(fields, "todoSource") ?? "markdown"
-  const markdownTodos = todoSource === "markdown" ? extractMarkdownTodoItems(split.body) : []
-  const yamlTodos = getList(fields, "todos").map(parseTodoItemText)
-  const todos = markdownTodos.length > 0 ? markdownTodos : yamlTodos
-  const todoEnabled = getBoolean(fields, "todo", todos.length > 0)
-  const todoRequired = getBoolean(fields, "todoRequired", false)
-  const todoAsSteps = getBoolean(fields, "todoAsSteps", todoEnabled && todos.length > 0)
-  const stepMessage = getStepMessage(fields, "current")
-  const stepsById = extractWorkflowStepDefinitions(split.body)
-  const prompt = getString(fields, "prompt") ?? split.body.trim()
-  if (todoRequired && todos.length === 0) return { diagnostics: [`- fail: ${relativePath}: todoRequired is true but no todo items were found.`] }
-  if (stepMessage === "step") for (const todo of todos) if (!stepsById[todo.id]?.prompt) diagnostics.push(`- warn: ${relativePath}: missing Step section for todo id '${todo.id}'.`)
-
-  const permissions = getList(fields, "permissions", todoEnabled ? ["read", "mcp", "skill", "todo"] : ["read", "mcp", "skill"])
-  if (todoEnabled && !permissions.includes("todo")) permissions.push("todo")
-  const workflow: WorkflowDefinition = {
-    id: getString(fields, "id") ?? `${sourceId}.${name}`,
-    name,
-    label: getString(fields, "label") ?? getString(fields, "title") ?? name,
-    menuLabel: getString(fields, "menuLabel") ?? getString(fields, "label") ?? getString(fields, "title") ?? name,
-    description: getString(fields, "description") ?? "",
-    prompt,
-    promptWithoutTodo: removeMarkdownStepSections(todoEnabled && todoSource === "markdown" ? removeMarkdownSection(prompt, "Todo") : prompt).trim(),
-    command: getString(fields, "command"),
-    commandArgs: getList(fields, "commandArgs"),
-    mode: getString(fields, "mode") ?? "agent",
-    permissions,
-    autoApprovalEnabled: getBoolean(fields, "autoApproval", true),
-    workspaceRequired: getBoolean(fields, "workspaceRequired", true),
-    hidden: getBoolean(fields, "hidden", false),
-    todoEnabled,
-    todoRequired,
-    todoSource,
-    todoAsSteps,
-    stepCompletion: getStepCompletion(fields, todoAsSteps ? "manual" : "auto"),
-    stepMessage,
-    stepsById,
-    todos,
-    file
-  }
+  const parsed = parseWorkflowMarkdown({ sourceId, filePath: relativePath, text })
+  diagnostics.push(...parsed.diagnostics)
+  if (!parsed.ok) return { diagnostics }
+  const workflow = adaptCoreWorkflowForBob(parsed.workflow, file)
+  if (folderName !== parsed.workflow.name) diagnostics.push(`- warn: ${relativePath}: folder name '${folderName}' differs from workflow name '${parsed.workflow.name}'.`)
+  if (workflow.todoRequired && workflow.todos.length === 0) return { diagnostics: [`- fail: ${relativePath}: todoRequired is true but no todo items were found.`] }
+  if (workflow.stepMessage === "step") for (const todo of workflow.todos) if (!workflow.stepsById[todo.id]?.prompt) diagnostics.push(`- warn: ${relativePath}: missing prompt for workflow step '${todo.id}'.`)
 
   const stepCount = workflow.todoEnabled && workflow.todoAsSteps && workflow.todos.length > 0 ? workflow.todos.length : 1
   const stepPromptCount = Object.values(workflow.stepsById).filter((step) => step.prompt.length > 0).length
@@ -625,7 +569,72 @@ async function loadWorkflowFile(sourceId: string, file: vscode.Uri): Promise<{ w
   for (const step of Object.values(workflow.stepsById).filter((candidate) => candidate.captureResult)) {
     diagnostics.push(`- step capture: ${step.id}; resultSource=${resultSourceForStep(step)}; resultCommand=${step.resultCommand ?? "none"}`)
   }
-  return { workflow, diagnostics }
+  return { workflow, coreWorkflow: parsed.workflow, diagnostics }
+}
+
+function adaptCoreWorkflowForBob(core: CoreWorkflowDefinition, file: vscode.Uri): WorkflowDefinition {
+  const todos = core.todos.map((todo, index) => ({
+    id: todo.id,
+    text: todo.title,
+    raw: todo.raw ?? `${todo.id}: ${todo.title || `Step ${index + 1}`}`
+  }))
+  return {
+    id: core.id,
+    name: core.name,
+    label: core.label,
+    menuLabel: core.menuLabel ?? core.label,
+    description: core.description,
+    prompt: core.prompt,
+    promptWithoutTodo: core.promptWithoutTodo,
+    command: core.command,
+    commandArgs: core.commandArgs,
+    mode: core.mode,
+    permissions: [...core.permissions],
+    autoApprovalEnabled: core.autoApprovalEnabled,
+    workspaceRequired: core.workspaceRequired,
+    hidden: core.hidden,
+    todoEnabled: core.todoEnabled,
+    todoRequired: core.todoRequired,
+    todoSource: "core",
+    todoAsSteps: core.todoAsSteps,
+    stepCompletion: core.stepCompletion,
+    stepMessage: core.stepMessage,
+    stepsById: Object.fromEntries(core.engineSteps.map((step) => [step.id, workflowStepDefinitionFromEngineStep(step)])),
+    todos,
+    file
+  }
+}
+
+function workflowStepDefinitionFromEngineStep(step: EngineStep): WorkflowStepDefinition {
+  const commandSink = commandResultSink(step)
+  return {
+    id: step.id,
+    prompt: step.prompt?.trim() ?? "",
+    command: step.type === "command" ? step.action.provider : undefined,
+    commandArgs: step.type === "command" ? argumentList(step.action.args) : [],
+    sendResult: step.sendResult ?? false,
+    required: step.required !== false,
+    completeOnSuccess: step.completeOnSuccess ?? false,
+    runAgent: step.type === "agent",
+    resultKey: "resultKey" in step ? step.resultKey : undefined,
+    includeState: step.includeState ?? [],
+    maxResultBytes: step.maxResultBytes ?? DEFAULT_MAX_RESULT_BYTES,
+    stateRequired: step.stateRequired !== false,
+    captureResult: Boolean(commandSink),
+    resultSource: step.type === "agent" && step.result?.source === "agent" ? "agent" : undefined,
+    resultCommand: commandSink?.command,
+    resultCommandArgs: commandSink?.args ?? []
+  }
+}
+
+function commandResultSink(step: EngineStep): Extract<ResultSinkDefinition, { type: "command" }> | undefined {
+  const result = "result" in step ? step.result : undefined
+  return result?.sinks.find((sink): sink is Extract<ResultSinkDefinition, { type: "command" }> => sink.type === "command")
+}
+
+function argumentList(value: unknown): unknown[] {
+  if (value === undefined) return []
+  return Array.isArray(value) ? value : [value]
 }
 
 function createBobWorkflow(definition: WorkflowDefinition, stepRuntime: StepRuntime): BobWorkflow {
@@ -845,146 +854,6 @@ function truncateText(value: string, maxBytes: number): string {
 
 function escapeXmlAttribute(value: string): string { return value.replace(/&/g, "&amp;").replace(/\"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;") }
 
-function extractMarkdownTodoItems(markdown: string): WorkflowTodoItem[] {
-  const section = extractMarkdownSection(markdown, "Todo")
-  if (!section) return []
-  const todos: WorkflowTodoItem[] = []
-  for (const line of section.split(/\r?\n/)) {
-    const match = line.match(/^\s*[-*]\s+\[[ xX]\]\s+(.+)$/)
-    if (match) todos.push(parseTodoItemText(match[1], todos.length + 1))
-  }
-  return todos
-}
-
-function extractWorkflowStepDefinitions(markdown: string): Record<string, WorkflowStepDefinition> {
-  const lines = markdown.split(/\r?\n/)
-  const sections: Record<string, WorkflowStepDefinition> = {}
-  for (let index = 0; index < lines.length; index += 1) {
-    const match = lines[index].match(/^(#{1,6})\s+(.+?)\s*$/)
-    const stepId = match ? parseStepHeading(match[2]) : undefined
-    if (!match || !stepId) continue
-    const level = match[1].length
-    const sectionLines: string[] = []
-    for (let sectionIndex = index + 1; sectionIndex < lines.length; sectionIndex += 1) {
-      const nextHeading = lines[sectionIndex].match(/^(#{1,6})\s+/)
-      if (nextHeading && nextHeading[1].length <= level) break
-      sectionLines.push(lines[sectionIndex])
-    }
-    sections[stepId] = parseWorkflowStepDefinition(stepId, sectionLines.join("\n"))
-  }
-  return sections
-}
-
-function parseWorkflowStepDefinition(stepId: string, markdown: string): WorkflowStepDefinition {
-  const { config, prompt } = extractWorkflowStepConfig(markdown)
-  return {
-    id: stepId,
-    prompt: prompt.trim(),
-    command: getString(config, "command"),
-    commandArgs: getList(config, "commandArgs"),
-    sendResult: getBoolean(config, "sendResult", false),
-    required: getBoolean(config, "required", true),
-    completeOnSuccess: getBoolean(config, "completeOnSuccess", false),
-    runAgent: getBoolean(config, "runAgent", false),
-    resultKey: getString(config, "resultKey"),
-    includeState: getList(config, "includeState"),
-    maxResultBytes: getNumber(config, "maxResultBytes", DEFAULT_MAX_RESULT_BYTES),
-    stateRequired: getBoolean(config, "stateRequired", true),
-    captureResult: getBoolean(config, "captureResult", false),
-    resultSource: getResultSource(config),
-    resultCommand: getString(config, "resultCommand"),
-    resultCommandArgs: getList(config, "resultCommandArgs")
-  }
-}
-
-function extractWorkflowStepConfig(markdown: string): { config: Record<string, unknown>; prompt: string } {
-  const fence = "`".repeat(3)
-  const pattern = new RegExp(`(^|\\r?\\n)${fence}workflow-step\\s*\\r?\\n([\\s\\S]*?)\\r?\\n${fence}\\s*(?:\\r?\\n)?`, "i")
-  const match = markdown.match(pattern)
-  if (!match) return { config: {}, prompt: markdown }
-  return { config: parseYamlFrontMatter(match[2]), prompt: markdown.slice(0, match.index) + markdown.slice((match.index ?? 0) + match[0].length) }
-}
-
-function extractMarkdownSection(markdown: string, headingName: string): string | undefined {
-  const lines = markdown.split(/\r?\n/)
-  let start = -1, level = 0
-  for (let index = 0; index < lines.length; index += 1) {
-    const match = lines[index].match(/^(#{1,6})\s+(.+?)\s*$/)
-    if (match && match[2].trim().toLowerCase() === headingName.toLowerCase()) { start = index + 1; level = match[1].length; break }
-  }
-  if (start < 0) return undefined
-  const sectionLines: string[] = []
-  for (let index = start; index < lines.length; index += 1) { const match = lines[index].match(/^(#{1,6})\s+/); if (match && match[1].length <= level) break; sectionLines.push(lines[index]) }
-  return sectionLines.join("\n").trim()
-}
-
-function removeMarkdownSection(markdown: string, headingName: string): string {
-  const lines = markdown.split(/\r?\n/)
-  let start = -1, level = 0, end = lines.length
-  for (let index = 0; index < lines.length; index += 1) { const match = lines[index].match(/^(#{1,6})\s+(.+?)\s*$/); if (match && match[2].trim().toLowerCase() === headingName.toLowerCase()) { start = index; level = match[1].length; break } }
-  if (start < 0) return markdown
-  for (let index = start + 1; index < lines.length; index += 1) { const match = lines[index].match(/^(#{1,6})\s+/); if (match && match[1].length <= level) { end = index; break } }
-  return [...lines.slice(0, start), ...lines.slice(end)].join("\n").replace(/\n{3,}/g, "\n\n")
-}
-
-function removeMarkdownStepSections(markdown: string): string {
-  const lines = markdown.split(/\r?\n/)
-  const kept: string[] = []
-  for (let index = 0; index < lines.length;) {
-    const match = lines[index].match(/^(#{1,6})\s+(.+?)\s*$/)
-    if (!match || !parseStepHeading(match[2])) { kept.push(lines[index]); index += 1; continue }
-    const level = match[1].length
-    index += 1
-    while (index < lines.length) { const nextHeading = lines[index].match(/^(#{1,6})\s+/); if (nextHeading && nextHeading[1].length <= level) break; index += 1 }
-  }
-  return kept.join("\n").replace(/\n{3,}/g, "\n\n")
-}
-
-function parseStepHeading(headingText: string): string | undefined { return headingText.trim().match(/^Step(?::|\s+)\s*([A-Za-z0-9_.-]+)\s*$/i)?.[1] }
-function parseTodoItemText(value: string, index = 1): WorkflowTodoItem { const raw = value.trim(); const withoutCheckbox = raw.replace(/^[-*]\s+\[[ xX]\]\s+/, ""); const idMatch = withoutCheckbox.match(/^([A-Za-z0-9_.-]+):\s+(.+)$/); return idMatch ? { id: idMatch[1], text: idMatch[2].trim(), raw } : { id: `todo-${index}`, text: withoutCheckbox, raw } }
-function splitMarkdownFrontMatter(text: string): { frontMatter: string; body: string } | undefined { const match = text.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/); return match ? { frontMatter: match[1], body: match[2] } : undefined }
-
-function parseYamlFrontMatter(text: string): Record<string, unknown> {
-  const result: Record<string, unknown> = {}
-  let listKey: string | undefined
-  for (const rawLine of text.split(/\r?\n/)) {
-    const trimmed = rawLine.replace(/\s+#.*$/, "").trim()
-    if (!trimmed || trimmed.startsWith("#")) continue
-    if (listKey && /^-\s+/.test(trimmed)) {
-      const current = Array.isArray(result[listKey]) ? result[listKey] as unknown[] : []
-      current.push(parseScalar(trimmed.replace(/^-\s+/, "")))
-      result[listKey] = current
-      continue
-    }
-    listKey = undefined
-    const match = trimmed.match(/^([A-Za-z0-9_.-]+):(?:\s*(.*))?$/)
-    if (!match) continue
-    if ((match[2] ?? "") === "") { result[match[1]] = []; listKey = match[1] } else result[match[1]] = parseScalar(match[2])
-  }
-  return result
-}
-
-function parseScalar(value: string): unknown {
-  const trimmed = value.trim()
-  if (trimmed === "true") return true
-  if (trimmed === "false") return false
-  if (/^-?\d+$/.test(trimmed)) return Number(trimmed)
-  if (/^\[.*\]$/.test(trimmed)) {
-    const content = trimmed.slice(1, -1).trim()
-    return content.length === 0 ? [] : content.split(",").map((part) => parseScalar(part.trim()))
-  }
-  if ((trimmed.startsWith('"') && trimmed.endsWith('"')) || (trimmed.startsWith("'") && trimmed.endsWith("'"))) return trimmed.slice(1, -1)
-  return trimmed
-}
-
-function validateRequiredFrontMatter(fields: Record<string, unknown>): string[] { const errors: string[] = []; const name = getString(fields, "name"); if (!name) errors.push("missing required field 'name'."); if (name && !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name)) errors.push("field 'name' must contain only letters, numbers, dot, underscore, or hyphen and must not start with punctuation."); if (!getString(fields, "description")) errors.push("missing required field 'description'."); return errors }
-function getStepCompletion(fields: Record<string, unknown>, fallback: StepCompletionMode): StepCompletionMode { const value = getString(fields, "stepCompletion"); if (value === "auto" || value === "manual") return value; return typeof fields.autoCompleteSteps === "boolean" ? (fields.autoCompleteSteps ? "auto" : "manual") : fallback }
-function getStepMessage(fields: Record<string, unknown>, fallback: StepMessageMode): StepMessageMode { const value = getString(fields, "stepMessage"); return value === "full" || value === "current" || value === "silent" || value === "step" ? value : fallback }
-function getResultSource(fields: Record<string, unknown>): ResultSource | undefined { const value = getString(fields, "resultSource"); return value === "agent" || value === "lastAssistant" ? value : undefined }
-function getString(fields: Record<string, unknown>, key: string): string | undefined { const value = fields[key]; return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined }
-function getBoolean(fields: Record<string, unknown>, key: string, fallback: boolean): boolean { return typeof fields[key] === "boolean" ? fields[key] as boolean : fallback }
-function getNumber(fields: Record<string, unknown>, key: string, fallback: number): number { const value = fields[key]; if (typeof value === "number" && Number.isFinite(value)) return value; if (typeof value === "string" && /^\d+$/.test(value.trim())) return Number(value.trim()); return fallback }
-function getList(fields: Record<string, unknown>, key: string, fallback: string[] = []): string[] { const value = fields[key]; if (Array.isArray(value)) return value.map(String).filter(Boolean); if (typeof value === "string" && value.trim()) return [value.trim()]; return fallback }
 async function loadBobApi(): Promise<{ found: boolean; active: boolean; activationError: string; exportsValue: unknown }> { const ext = vscode.extensions.getExtension<unknown>(BOB_EXTENSION_ID); let exportsValue: unknown; let activationError = "none"; if (ext) { try { exportsValue = ext.isActive ? ext.exports : await ext.activate() } catch (error) { activationError = error instanceof Error ? error.message : String(error) } } return { found: Boolean(ext), active: Boolean(ext?.isActive), activationError, exportsValue } }
 async function runAttempt(label: string, run: () => unknown): Promise<{ label: string; ok: boolean; message: string; value?: unknown }> { try { const value = await Promise.resolve(run()); return { label, ok: value !== false, message: describeReturn(value), value } } catch (error) { return { label, ok: false, message: error instanceof Error ? error.message : String(error) } } }
 function asSource(value: unknown): BobSourceLike | undefined { return typeof value === "object" && value !== null ? value as BobSourceLike : undefined }

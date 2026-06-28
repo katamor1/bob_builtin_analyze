@@ -2,6 +2,8 @@ export type WorkflowSchemaVersion = "legacy" | "workflow-register/v1"
 export type WorkflowStepType = "command" | "agent" | "manual" | "result"
 export type RunStatus = "running" | "held" | "completed" | "failed"
 export type StepRunStatus = "pending" | "running" | "held" | "completed" | "failed"
+export type WorkflowStepCompletionMode = "auto" | "manual"
+export type WorkflowStepMessageMode = "full" | "current" | "silent" | "step"
 
 export interface WorkflowInputDefinition {
   type: "string" | "number" | "boolean" | "select"
@@ -30,6 +32,12 @@ export interface BaseEngineStep {
   title: string
   type: WorkflowStepType
   required?: boolean
+  prompt?: string
+  sendResult?: boolean
+  completeOnSuccess?: boolean
+  includeState?: string[]
+  maxResultBytes?: number
+  stateRequired?: boolean
 }
 
 export interface CommandEngineStep extends BaseEngineStep {
@@ -40,7 +48,6 @@ export interface CommandEngineStep extends BaseEngineStep {
 
 export interface AgentEngineStep extends BaseEngineStep {
   type: "agent"
-  prompt?: string
   resultKey?: string
   result?: ResultSourceDefinition
 }
@@ -56,15 +63,51 @@ export interface ResultEngineStep extends BaseEngineStep {
 
 export type EngineStep = CommandEngineStep | AgentEngineStep | ManualEngineStep | ResultEngineStep
 
+export interface WorkflowTodoDefinition {
+  id: string
+  title: string
+  raw?: string
+}
+
 export interface CoreWorkflowDefinition {
   id: string
   name: string
   label: string
+  menuLabel?: string
   description: string
   schemaVersion: WorkflowSchemaVersion
+  definitionHash?: string
+  filePath?: string
+  prompt: string
+  promptWithoutTodo: string
+  command?: string
+  commandArgs: unknown[]
+  mode: string
   permissions: string[]
+  autoApprovalEnabled: boolean
+  workspaceRequired: boolean
+  hidden: boolean
+  todoEnabled: boolean
+  todoRequired: boolean
+  todoAsSteps: boolean
+  stepCompletion: WorkflowStepCompletionMode
+  stepMessage: WorkflowStepMessageMode
+  todos: WorkflowTodoDefinition[]
   inputs: Record<string, WorkflowInputDefinition>
   engineSteps: EngineStep[]
+}
+
+export interface AgentExecutionInput {
+  workflowId: string
+  runId: string
+  stepId: string
+  prompt: string
+  inputs: Record<string, unknown>
+  state: Record<string, string>
+}
+
+export interface AgentProvider {
+  run: (input: AgentExecutionInput) => Promise<string> | string
 }
 
 export interface ParseWorkflowRequest {
@@ -120,6 +163,10 @@ export interface WorkflowRunState {
   runId: string
   workflowId: string
   workflowName: string
+  workflowSchemaVersion?: WorkflowSchemaVersion
+  workflowDefinitionHash?: string
+  workflowFile?: string
+  engineVersion?: string
   status: RunStatus
   currentStep?: string
   inputs: Record<string, unknown>

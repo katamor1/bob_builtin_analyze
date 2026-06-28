@@ -1,16 +1,21 @@
 import * as path from "path"
+import { createHash } from "crypto"
 import Ajv from "ajv"
 import {
   CoreWorkflowDefinition,
   EngineStep,
   ParseWorkflowRequest,
   ParseWorkflowResult,
-  WorkflowInputDefinition
+  WorkflowInputDefinition,
+  WorkflowStepCompletionMode,
+  WorkflowStepMessageMode,
+  WorkflowTodoDefinition
 } from "./model"
 
 const yaml = require("js-yaml") as { load(text: string): unknown }
 
 const ajv = new Ajv({ allErrors: true, strict: false })
+const DEFAULT_MAX_RESULT_BYTES = 20_000
 
 const v1Schema = {
   type: "object",
@@ -22,6 +27,33 @@ const v1Schema = {
     description: { type: "string", minLength: 1 },
     title: { type: "string" },
     label: { type: "string" },
+    menuLabel: { type: "string" },
+    mode: { type: "string" },
+    todo: { type: "boolean" },
+    todoRequired: { type: "boolean" },
+    todoAsSteps: { type: "boolean" },
+    stepCompletion: { enum: ["auto", "manual"] },
+    stepMessage: { enum: ["full", "current", "silent", "step"] },
+    autoApproval: { type: "boolean" },
+    workspaceRequired: { type: "boolean" },
+    hidden: { type: "boolean" },
+    prompt: { type: "string" },
+    command: { type: "string" },
+    commandArgs: { type: "array" },
+    todos: {
+      type: "array",
+      items: {
+        anyOf: [
+          { type: "string" },
+          {
+            type: "object",
+            minProperties: 1,
+            maxProperties: 1,
+            additionalProperties: { type: "string" }
+          }
+        ]
+      }
+    },
     permissions: { type: "array", items: { type: "string" } },
     inputs: {
       type: "object",
@@ -58,6 +90,11 @@ const v1Schema = {
             additionalProperties: false
           },
           prompt: { type: "string" },
+          sendResult: { type: "boolean" },
+          completeOnSuccess: { type: "boolean" },
+          includeState: { type: "array", items: { type: "string" } },
+          maxResultBytes: { type: "number" },
+          stateRequired: { type: "boolean" },
           resultKey: { type: "string" },
           result: {
             type: "object",
@@ -104,6 +141,33 @@ const v1Schema = {
 
 const validateV1 = ajv.compile(v1Schema)
 
+const knownV1TopLevelFields = new Set([
+  "schemaVersion",
+  "id",
+  "name",
+  "description",
+  "title",
+  "label",
+  "menuLabel",
+  "permissions",
+  "inputs",
+  "steps",
+  "mode",
+  "todo",
+  "todoSource",
+  "todoRequired",
+  "todoAsSteps",
+  "stepCompletion",
+  "stepMessage",
+  "todos",
+  "autoApproval",
+  "workspaceRequired",
+  "hidden",
+  "command",
+  "commandArgs",
+  "prompt"
+])
+
 export function parseWorkflowMarkdown(request: ParseWorkflowRequest): ParseWorkflowResult {
   const split = splitMarkdownFrontMatter(request.text)
   if (!split) return { ok: false, diagnostics: [`- fail: ${request.filePath}: missing YAML front matter.`] }
@@ -115,13 +179,15 @@ export function parseWorkflowMarkdown(request: ParseWorkflowRequest): ParseWorkf
     return { ok: false, diagnostics: [`- fail: ${request.filePath}: invalid YAML: ${formatError(error)}`] }
   }
 
-  if (fields.schemaVersion === "workflow-register/v1") return parseV1Workflow(request, fields)
+  if (fields.schemaVersion === "workflow-register/v1") return parseV1Workflow(request, fields, split.body, request.text)
   return parseLegacyWorkflow(request, fields, split.body)
 }
 
-function parseV1Workflow(request: ParseWorkflowRequest, fields: Record<string, unknown>): ParseWorkflowResult {
+function parseV1Workflow(request: ParseWorkflowRequest, fields: Record<string, unknown>, body: string, fullText: string): ParseWorkflowResult {
   const valid = validateV1(fields)
   const diagnostics = valid ? [] : formatValidationErrors(request.filePath)
+  const warnings = unknownTopLevelWarnings(request.filePath, fields)
+  const hasTypedSteps = Object.prototype.hasOwnProperty.call(fields, "steps")
   const steps = Array.isArray(fields.steps) ? fields.steps : []
   for (let index = 0; index < steps.length; index += 1) {
     const step = asRecord(steps[index])
@@ -132,17 +198,42 @@ function parseV1Workflow(request: ParseWorkflowRequest, fields: Record<string, u
   if (diagnostics.length > 0) return { ok: false, diagnostics }
 
   const name = requiredString(fields, "name")
+  const engineSteps = hasTypedSteps
+    ? steps.map((step) => normalizeEngineStep(asRecord(step)))
+    : legacyEngineStepsFromWorkflow(fields, body)
+  const todos = workflowTodos(fields, body, engineSteps, hasTypedSteps)
+  const todoEnabled = optionalBoolean(fields, "todo") ?? todos.length > 0
+  const permissions = listField(fields, "permissions", todoEnabled ? ["read", "mcp", "skill", "todo"] : ["read", "mcp", "skill"])
+  if (todoEnabled && !permissions.includes("todo")) permissions.push("todo")
+  const prompt = optionalString(fields, "prompt") ?? body.trim()
   const workflow: CoreWorkflowDefinition = {
     id: optionalString(fields, "id") ?? `${request.sourceId}.${name}`,
     name,
     label: optionalString(fields, "label") ?? optionalString(fields, "title") ?? name,
+    menuLabel: optionalString(fields, "menuLabel") ?? optionalString(fields, "label") ?? optionalString(fields, "title") ?? name,
     description: requiredString(fields, "description"),
     schemaVersion: "workflow-register/v1",
-    permissions: listField(fields, "permissions", ["read", "mcp", "skill"]),
+    definitionHash: `sha256:${createHash("sha256").update(fullText).digest("hex")}`,
+    filePath: request.filePath,
+    prompt,
+    promptWithoutTodo: removeMarkdownStepSections(removeMarkdownSection(prompt, "Todo")).trim(),
+    command: optionalString(fields, "command"),
+    commandArgs: arrayField(fields, "commandArgs"),
+    mode: optionalString(fields, "mode") ?? "agent",
+    permissions,
+    autoApprovalEnabled: optionalBoolean(fields, "autoApproval") ?? true,
+    workspaceRequired: optionalBoolean(fields, "workspaceRequired") ?? true,
+    hidden: optionalBoolean(fields, "hidden") ?? false,
+    todoEnabled,
+    todoRequired: optionalBoolean(fields, "todoRequired") ?? false,
+    todoAsSteps: optionalBoolean(fields, "todoAsSteps") ?? (todoEnabled && todos.length > 0),
+    stepCompletion: stepCompletion(fields, todoEnabled && todos.length > 0 ? "manual" : "auto"),
+    stepMessage: stepMessage(fields, "current"),
+    todos,
     inputs: normalizeInputs(asRecord(fields.inputs)),
-    engineSteps: steps.map((step) => normalizeEngineStep(asRecord(step)))
+    engineSteps
   }
-  return { ok: true, workflow, diagnostics: [`- ok: ${request.filePath}: ${workflow.id}; schemaVersion=workflow-register/v1; steps=${workflow.engineSteps.length}`] }
+  return { ok: true, workflow, diagnostics: [...warnings, `- ok: ${request.filePath}: ${workflow.id}; schemaVersion=workflow-register/v1; steps=${workflow.engineSteps.length}`] }
 }
 
 function parseLegacyWorkflow(request: ParseWorkflowRequest, fields: Record<string, unknown>, body: string): ParseWorkflowResult {
@@ -157,13 +248,56 @@ function parseLegacyWorkflow(request: ParseWorkflowRequest, fields: Record<strin
     id: optionalString(fields, "id") ?? `${request.sourceId}.${name}`,
     name,
     label: optionalString(fields, "label") ?? optionalString(fields, "title") ?? name,
+    menuLabel: optionalString(fields, "menuLabel") ?? optionalString(fields, "label") ?? optionalString(fields, "title") ?? name,
     description: description ?? "",
     schemaVersion: "legacy",
+    filePath: request.filePath,
+    prompt: optionalString(fields, "prompt") ?? body.trim(),
+    promptWithoutTodo: removeMarkdownStepSections(removeMarkdownSection(optionalString(fields, "prompt") ?? body.trim(), "Todo")).trim(),
+    command: optionalString(fields, "command"),
+    commandArgs: arrayField(fields, "commandArgs"),
+    mode: optionalString(fields, "mode") ?? "agent",
     permissions: listField(fields, "permissions", ["read", "mcp", "skill"]),
+    autoApprovalEnabled: optionalBoolean(fields, "autoApproval") ?? true,
+    workspaceRequired: optionalBoolean(fields, "workspaceRequired") ?? true,
+    hidden: optionalBoolean(fields, "hidden") ?? false,
+    todoEnabled: legacyStepsFromMarkdown(body).length > 0,
+    todoRequired: optionalBoolean(fields, "todoRequired") ?? false,
+    todoAsSteps: true,
+    stepCompletion: stepCompletion(fields, "manual"),
+    stepMessage: stepMessage(fields, "current"),
+    todos: legacyTodosFromMarkdown(body),
     inputs: {},
     engineSteps: legacyStepsFromMarkdown(body)
   }
   return { ok: true, workflow, diagnostics: [`- ok: ${request.filePath}: ${workflow.id}; schemaVersion=legacy; steps=${workflow.engineSteps.length}`] }
+}
+
+function unknownTopLevelWarnings(filePath: string, fields: Record<string, unknown>): string[] {
+  return Object.keys(fields)
+    .filter((key) => !knownV1TopLevelFields.has(key))
+    .map((key) => `- warn: ${filePath}: unknown top-level field '${key}'.`)
+}
+
+function workflowTodos(fields: Record<string, unknown>, body: string, steps: EngineStep[], hasTypedSteps: boolean): WorkflowTodoDefinition[] {
+  const yamlTodos = legacyTodosFromYamlList(fields.todos).map((todo) => ({ id: todo.id, title: todo.title, raw: `${todo.id}: ${todo.title}` }))
+  if (yamlTodos.length > 0) return yamlTodos
+  if (hasTypedSteps) return steps.map((step) => ({ id: step.id, title: step.title, raw: `${step.id}: ${step.title}` }))
+  return legacyTodosFromMarkdown(body)
+}
+
+function legacyTodosFromMarkdown(body: string): WorkflowTodoDefinition[] {
+  return extractLegacyTodos(body).map((todo) => ({ id: todo.id, title: todo.title, raw: `${todo.id}: ${todo.title}` }))
+}
+
+function stepCompletion(fields: Record<string, unknown>, fallback: WorkflowStepCompletionMode): WorkflowStepCompletionMode {
+  const value = optionalString(fields, "stepCompletion")
+  return value === "auto" || value === "manual" ? value : fallback
+}
+
+function stepMessage(fields: Record<string, unknown>, fallback: WorkflowStepMessageMode): WorkflowStepMessageMode {
+  const value = optionalString(fields, "stepMessage")
+  return value === "full" || value === "current" || value === "silent" || value === "step" ? value : fallback
 }
 
 function normalizeInputs(inputs: Record<string, unknown>): Record<string, WorkflowInputDefinition> {
@@ -185,7 +319,13 @@ function normalizeEngineStep(step: Record<string, unknown>): EngineStep {
   const base = {
     id: requiredString(step, "id"),
     title: requiredString(step, "title"),
-    required: optionalBoolean(step, "required")
+    required: optionalBoolean(step, "required"),
+    prompt: optionalString(step, "prompt"),
+    sendResult: optionalBoolean(step, "sendResult"),
+    completeOnSuccess: optionalBoolean(step, "completeOnSuccess"),
+    includeState: listField(step, "includeState"),
+    maxResultBytes: optionalNumber(step, "maxResultBytes"),
+    stateRequired: optionalBoolean(step, "stateRequired")
   }
   if (step.type === "command") {
     const action = asRecord(step.action)
@@ -212,8 +352,58 @@ function normalizeSink(record: Record<string, unknown>) {
 }
 
 function legacyStepsFromMarkdown(body: string): EngineStep[] {
-  const todos = extractLegacyTodos(body)
-  return todos.map((todo) => ({ id: todo.id, title: todo.title, type: "manual" as const }))
+  return legacyEngineStepsFromTodos(extractLegacyTodos(body), body)
+}
+
+function legacyEngineStepsFromWorkflow(fields: Record<string, unknown>, body: string): EngineStep[] {
+  const todoSource = optionalString(fields, "todoSource") ?? "markdown"
+  const yamlTodos = legacyTodosFromYamlList(fields.todos)
+  const markdownTodos = todoSource === "markdown" ? extractLegacyTodos(body) : []
+  const todos = markdownTodos.length > 0 ? markdownTodos : yamlTodos
+  return legacyEngineStepsFromTodos(todos, body)
+}
+
+function legacyEngineStepsFromTodos(todos: Array<{ id: string; title: string }>, body: string): EngineStep[] {
+  const stepConfigs = extractLegacyStepConfigs(body)
+  return todos.map((todo) => {
+    const legacyStep = stepConfigs[todo.id] ?? { config: {}, prompt: "" }
+    const config = legacyStep.config
+    const base = {
+      id: todo.id,
+      title: todo.title,
+      prompt: legacyStep.prompt.trim() || undefined,
+      required: optionalBoolean(config, "required"),
+      sendResult: optionalBoolean(config, "sendResult"),
+      completeOnSuccess: optionalBoolean(config, "completeOnSuccess"),
+      includeState: listField(config, "includeState"),
+      maxResultBytes: optionalNumber(config, "maxResultBytes"),
+      stateRequired: optionalBoolean(config, "stateRequired")
+    }
+    const command = optionalString(config, "command")
+    if (command) {
+      return {
+        ...base,
+        type: "command" as const,
+        action: {
+          provider: command,
+          args: config.commandArgs
+        },
+        resultKey: optionalString(config, "resultKey")
+      }
+    }
+    if (config.runAgent === true) {
+      const resultCommand = optionalString(config, "resultCommand")
+      return {
+        ...base,
+        type: "agent" as const,
+        resultKey: optionalString(config, "resultKey"),
+        result: config.captureResult === true && resultCommand
+          ? { source: "agent" as const, sinks: [{ type: "command" as const, command: resultCommand, args: listField(config, "resultCommandArgs") }] }
+          : undefined
+      }
+    }
+    return { ...base, type: "manual" as const }
+  })
 }
 
 function extractLegacyTodos(body: string): Array<{ id: string; title: string }> {
@@ -226,6 +416,54 @@ function extractLegacyTodos(body: string): Array<{ id: string; title: string }> 
     const idMatch = text.match(/^([A-Za-z0-9_.-]+):\s+(.+)$/)
     return idMatch ? [{ id: idMatch[1], title: idMatch[2].trim() }] : [{ id: `todo-${index + 1}`, title: text }]
   })
+}
+
+function legacyTodosFromYamlList(value: unknown): Array<{ id: string; title: string }> {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((item, index) => {
+    if (typeof item === "string") return [parseLegacyTodoText(item, index + 1)]
+    const record = asRecord(item)
+    const entries = Object.entries(record)
+    if (entries.length !== 1) return []
+    const [id, title] = entries[0]
+    return [{ id, title: String(title).trim() }]
+  })
+}
+
+function parseLegacyTodoText(text: string, index: number): { id: string; title: string } {
+  const trimmed = text.trim().replace(/^[-*]\s+\[[ xX]\]\s+/, "")
+  const idMatch = trimmed.match(/^([A-Za-z0-9_.-]+):\s+(.+)$/)
+  return idMatch ? { id: idMatch[1], title: idMatch[2].trim() } : { id: `todo-${index}`, title: trimmed }
+}
+
+function extractLegacyStepConfigs(body: string): Record<string, { config: Record<string, unknown>; prompt: string }> {
+  const lines = body.split(/\r?\n/)
+  const out: Record<string, { config: Record<string, unknown>; prompt: string }> = {}
+  for (let index = 0; index < lines.length; index += 1) {
+    const heading = lines[index].match(/^(#{1,6})\s+(.+?)\s*$/)
+    const id = heading ? parseStepHeading(heading[2]) : undefined
+    if (!heading || !id) continue
+    const level = heading[1].length
+    const section: string[] = []
+    for (let cursor = index + 1; cursor < lines.length; cursor += 1) {
+      const nextHeading = lines[cursor].match(/^(#{1,6})\s+/)
+      if (nextHeading && nextHeading[1].length <= level) break
+      section.push(lines[cursor])
+    }
+    out[id] = extractWorkflowStepConfig(section.join("\n"))
+  }
+  return out
+}
+
+function parseStepHeading(text: string): string | undefined {
+  return text.trim().match(/^Step(?::|\s+)\s*([A-Za-z0-9_.-]+)\s*$/i)?.[1]
+}
+
+function extractWorkflowStepConfig(markdown: string): { config: Record<string, unknown>; prompt: string } {
+  const match = markdown.match(/(^|\r?\n)```workflow-step\s*\r?\n([\s\S]*?)\r?\n```\s*(?:\r?\n)?/i)
+  if (!match) return { config: {}, prompt: markdown }
+  const prompt = `${markdown.slice(0, match.index)}${markdown.slice((match.index ?? 0) + match[0].length)}`.trim()
+  return { config: asRecord(yaml.load(match[2])), prompt }
 }
 
 function extractMarkdownSection(markdown: string, headingName: string): string | undefined {
@@ -248,6 +486,51 @@ function extractMarkdownSection(markdown: string, headingName: string): string |
     body.push(lines[index])
   }
   return body.join("\n").trim()
+}
+
+function removeMarkdownSection(markdown: string, headingName: string): string {
+  const lines = markdown.split(/\r?\n/)
+  let start = -1
+  let level = 0
+  let end = lines.length
+  for (let index = 0; index < lines.length; index += 1) {
+    const heading = lines[index].match(/^(#{1,6})\s+(.+?)\s*$/)
+    if (heading && heading[2].trim().toLowerCase() === headingName.toLowerCase()) {
+      start = index
+      level = heading[1].length
+      break
+    }
+  }
+  if (start < 0) return markdown
+  for (let index = start + 1; index < lines.length; index += 1) {
+    const heading = lines[index].match(/^(#{1,6})\s+/)
+    if (heading && heading[1].length <= level) {
+      end = index
+      break
+    }
+  }
+  return [...lines.slice(0, start), ...lines.slice(end)].join("\n").replace(/\n{3,}/g, "\n\n")
+}
+
+function removeMarkdownStepSections(markdown: string): string {
+  const lines = markdown.split(/\r?\n/)
+  const kept: string[] = []
+  for (let index = 0; index < lines.length;) {
+    const heading = lines[index].match(/^(#{1,6})\s+(.+?)\s*$/)
+    if (!heading || !parseStepHeading(heading[2])) {
+      kept.push(lines[index])
+      index += 1
+      continue
+    }
+    const level = heading[1].length
+    index += 1
+    while (index < lines.length) {
+      const nextHeading = lines[index].match(/^(#{1,6})\s+/)
+      if (nextHeading && nextHeading[1].length <= level) break
+      index += 1
+    }
+  }
+  return kept.join("\n").replace(/\n{3,}/g, "\n\n")
 }
 
 function formatValidationErrors(filePath: string): string[] {
@@ -279,6 +562,18 @@ function optionalString(record: Record<string, unknown>, key: string): string | 
 
 function optionalBoolean(record: Record<string, unknown>, key: string): boolean | undefined {
   return typeof record[key] === "boolean" ? record[key] as boolean : undefined
+}
+
+function optionalNumber(record: Record<string, unknown>, key: string): number | undefined {
+  const value = record[key]
+  if (typeof value === "number" && Number.isFinite(value)) return value
+  if (typeof value === "string" && value.trim() && Number.isFinite(Number(value))) return Number(value)
+  return undefined
+}
+
+function arrayField(record: Record<string, unknown>, key: string): unknown[] {
+  const value = record[key]
+  return Array.isArray(value) ? value : []
 }
 
 function listField(record: Record<string, unknown>, key: string, fallback: string[] = []): string[] {
