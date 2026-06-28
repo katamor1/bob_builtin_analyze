@@ -23,6 +23,11 @@
 | `schemas/bob-output.schema.json` | `bob-output.yaml` 検証用 JSON Schema |
 | `templates/prompts/consistency-review-v1/` | bob 投入用 prompt template |
 | `templates/triage/triage-result.template.yaml` | 人間 triage 結果テンプレート |
+| `scaffold/README.md` | MVP 実装スケルトンの概要 |
+| `scaffold/src/cli/main.ts` | CLI エントリポイントの雛形 |
+| `scaffold/src/core/` | 入力検証、差分収集、review-package 生成、bob 出力検証の雛形 |
+| `scaffold/src/analyzers/` | 文書抽出、C/C++ 解析、traceability 生成の雛形 |
+| `scaffold/src/triage/` | human triage 生成の雛形 |
 | `examples/simple-timeout-bugfix/README.md` | E2E 検証用の timeout 不整合サンプル |
 
 ## 実装順序
@@ -42,6 +47,7 @@
 12. schemas/*.schema.json
 13. templates/**
 14. examples/simple-timeout-bugfix/README.md
+15. scaffold/**
 ```
 
 ## MVP のゴール
@@ -87,6 +93,18 @@ bob-review triage --package .bob-review/review-package --bob-output .bob-review/
 - `schemas/bob-output.schema.json` で bob 出力 YAML を検証する。
 - `templates/prompts/consistency-review-v1/` で `bob-input.md` を組み立てる。
 - `templates/triage/triage-result.template.yaml` で人間 triage の初期 YAML を生成する。
+
+## 実装スケルトン
+
+`scaffold/` には、既存拡張機能に組み込む前の MVP 実装スケルトンを配置する。
+
+- CLI サブコマンドの雛形
+- review-input 読み込みと最低限の検証
+- Git diff 収集の雛形
+- document / C/C++ / traceability analyzer のスタブ
+- review-package 生成の雛形
+- bob-output 検証の雛形
+- human triage 出力生成の雛形
 
 ## E2E サンプル
 
