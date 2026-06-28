@@ -2,13 +2,69 @@ export type WorkflowSchemaVersion = "legacy" | "workflow-register/v1"
 export type WorkflowStepType = "command" | "agent" | "manual" | "result"
 export type RunStatus = "running" | "held" | "completed" | "failed"
 export type StepRunStatus = "pending" | "running" | "held" | "completed" | "failed"
+export type WorkflowFailurePolicy = "stop" | "continue" | "warn"
 
 export interface WorkflowInputDefinition {
   type: "string" | "number" | "boolean" | "select"
   title?: string
   required?: boolean
+  requiredWhen?: string
   default?: unknown
   options?: string[]
+}
+
+export interface WorkflowRequiresDefinition {
+  workspace?: boolean
+  bob?: {
+    minVersion?: string
+  }
+  files?: string[]
+}
+
+export interface WorkflowPreflightDefinition {
+  id: string
+  title?: string
+  required?: boolean
+  checks?: string[]
+  files?: string[]
+  failurePolicy?: WorkflowFailurePolicy
+}
+
+export interface WorkflowToolDefinition {
+  purpose?: string
+  required?: boolean
+  outputKey?: string
+  inputSource?: string
+  failurePolicy?: WorkflowFailurePolicy
+}
+
+export interface WorkflowApprovalRuleDefinition {
+  id?: string
+  when?: string
+  message?: string
+}
+
+export interface WorkflowGuardrailsDefinition {
+  allowedCommands?: string[]
+  deniedCommands?: string[]
+  requireApproval?: WorkflowApprovalRuleDefinition[]
+}
+
+export interface WorkflowArtifactDefinition {
+  id: string
+  producedBy?: string
+  path: string
+  schema?: string
+}
+
+export interface WorkflowCompletionDefinition {
+  summary?: string
+  includeArtifacts?: boolean
+  validateResult?: boolean
+  visualization?: {
+    type?: string
+    enabled?: boolean
+  }
 }
 
 export interface WorkflowActionDefinition {
@@ -62,8 +118,16 @@ export interface CoreWorkflowDefinition {
   label: string
   description: string
   schemaVersion: WorkflowSchemaVersion
+  mode?: string
+  category?: string
   permissions: string[]
   inputs: Record<string, WorkflowInputDefinition>
+  requires: WorkflowRequiresDefinition
+  preflight: WorkflowPreflightDefinition[]
+  tools: Record<string, WorkflowToolDefinition>
+  guardrails: WorkflowGuardrailsDefinition
+  artifacts: WorkflowArtifactDefinition[]
+  completion: WorkflowCompletionDefinition
   engineSteps: EngineStep[]
 }
 
