@@ -1,5 +1,4 @@
 import Ajv, { type ValidateFunction } from "ajv";
-import { join } from "node:path";
 import { readTextFile } from "./file-system.js";
 
 export type SchemaName = "review-input" | "bob-output";
@@ -10,8 +9,7 @@ const schemaPathByName: Record<SchemaName, string> = {
 };
 
 export async function loadSchemaValidator(schemaName: SchemaName): Promise<ValidateFunction> {
-  const schemaPath = join(process.cwd(), schemaPathByName[schemaName]);
-  const schemaText = await readTextFile(schemaPath);
+  const schemaText = await readTextFile(schemaPathByName[schemaName]);
   const schema = JSON.parse(schemaText) as Record<string, unknown>;
 
   const ajv = new Ajv({
