@@ -28,6 +28,9 @@
     "onCommand:workflowRegister.resumeRun",
     "onCommand:workflowRegister.retryCurrentStep",
     "onCommand:workflowRegister.inspectRunDiagnostics",
+    "onCommand:workflowRegister.designWorkflowWithAi",
+    "onCommand:workflowRegister.improveWorkflowWithAi",
+    "onCommand:workflowRegister.explainWorkflowDiagnostics",
     "onCommand:workflowRegister.validateCurrentWorkflow",
     "onCommand:workflowRegister.validateWorkspaceWorkflows",
     "onCommand:workflowRegister.createWorkflowFromTemplate"
@@ -86,6 +89,21 @@
         "category": "Bob Workflow Register"
       },
       {
+        "command": "workflowRegister.designWorkflowWithAi",
+        "title": "Design Workflow with AI",
+        "category": "Bob Workflow Register"
+      },
+      {
+        "command": "workflowRegister.improveWorkflowWithAi",
+        "title": "Improve Workflow with AI",
+        "category": "Bob Workflow Register"
+      },
+      {
+        "command": "workflowRegister.explainWorkflowDiagnostics",
+        "title": "Explain Workflow Diagnostics",
+        "category": "Bob Workflow Register"
+      },
+      {
         "command": "workflowRegister.validateCurrentWorkflow",
         "title": "Validate Current Workflow",
         "category": "Bob Workflow Register"
@@ -133,6 +151,9 @@
         { "command": "workflowRegister.resumeRun" },
         { "command": "workflowRegister.retryCurrentStep" },
         { "command": "workflowRegister.inspectRunDiagnostics" },
+        { "command": "workflowRegister.designWorkflowWithAi" },
+        { "command": "workflowRegister.improveWorkflowWithAi" },
+        { "command": "workflowRegister.explainWorkflowDiagnostics" },
         { "command": "workflowRegister.validateCurrentWorkflow" },
         { "command": "workflowRegister.validateWorkspaceWorkflows" },
         { "command": "workflowRegister.createWorkflowFromTemplate" }
