@@ -1,11 +1,13 @@
 import * as vscode from "vscode"
+import { createMockWorkflowAiProvider } from "../core/mockWorkflowAiProvider"
+import { WorkflowAiProvider } from "../core/workflowAiProvider"
 import { buildWorkflowFromDesignDraft } from "../core/workflowDesignBuilder"
-import { WorkflowDesignDraft } from "../core/workflowDesignDraft"
-import { workflowTemplates } from "../core/workflowScaffold"
+import { WorkflowTemplateKind, workflowTemplates } from "../core/workflowScaffold"
 
 export interface DesignWorkflowWithAiOptions {
   sourceId: string
   showMarkdownReport: (title: string, summary: string, lines: string[]) => Promise<void>
+  provider?: WorkflowAiProvider
 }
 
 export async function designWorkflowWithAi(options: DesignWorkflowWithAiOptions): Promise<void> {
@@ -14,11 +16,13 @@ export async function designWorkflowWithAi(options: DesignWorkflowWithAiOptions)
     await vscode.window.showErrorMessage("No workspace folder is open.")
     return
   }
-  const draft = await collectDesignDraft()
-  if (!draft) return
+  const input = await collectDesignInput()
+  if (!input) return
+  const provider = options.provider ?? createMockWorkflowAiProvider()
+  const draft = await Promise.resolve(provider.designWorkflow(input))
   const result = buildWorkflowFromDesignDraft(draft, { sourceId: options.sourceId })
   if (!result.ok || !result.markdown) {
-    await options.showMarkdownReport("Workflow Design Draft", "Generated workflow design is invalid and was not saved.", result.reportLines)
+    await options.showMarkdownReport("Workflow Design with AI", `Provider '${provider.id}' returned an invalid workflow design; nothing was saved.`, result.reportLines)
     return
   }
   const dir = vscode.Uri.joinPath(folder.uri, ".bob", "workflows", result.name)
@@ -26,27 +30,16 @@ export async function designWorkflowWithAi(options: DesignWorkflowWithAiOptions)
   await vscode.workspace.fs.createDirectory(dir)
   await vscode.workspace.fs.writeFile(uri, new TextEncoder().encode(result.markdown))
   await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(uri))
-  await options.showMarkdownReport("Workflow Design Draft", `Saved ${result.filePath}.`, result.reportLines)
+  await options.showMarkdownReport("Workflow Design with AI", `Provider '${provider.id}' saved ${result.filePath}.`, result.reportLines)
 }
 
-async function collectDesignDraft(): Promise<WorkflowDesignDraft | undefined> {
-  const rawName = await vscode.window.showInputBox({ title: "Workflow design name", value: "new-workflow" })
-  if (rawName === undefined) return undefined
-  const title = await vscode.window.showInputBox({ title: "Workflow design title", value: titleFromName(rawName) })
-  if (title === undefined) return undefined
-  const description = await vscode.window.showInputBox({ title: "Workflow design goal", value: `Run ${title}.` })
-  if (description === undefined) return undefined
-  const picked = await vscode.window.showQuickPick(workflowTemplates.map((template) => ({ label: template.label, description: template.id, detail: template.description, template })), { title: "Design template" })
+async function collectDesignInput(): Promise<{ goal: string; preferredTemplate?: WorkflowTemplateKind } | undefined> {
+  const goal = await vscode.window.showInputBox({ title: "Workflow goal", value: "Review the current workflow and produce a report." })
+  if (goal === undefined) return undefined
+  const picked = await vscode.window.showQuickPick([
+    { label: "Let provider choose", description: "auto", template: undefined },
+    ...workflowTemplates.map((template) => ({ label: template.label, description: template.id, detail: template.description, template: template.id }))
+  ], { title: "Preferred workflow template" })
   if (!picked) return undefined
-  return {
-    name: rawName,
-    title,
-    description,
-    template: picked.template.id,
-    notes: ["Created through the WorkflowDesignDraft builder pipeline. Replace example command ids before runtime execution."]
-  }
-}
-
-function titleFromName(name: string): string {
-  return name.split(/[._-]+/).filter(Boolean).map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`).join(" ") || "New Workflow"
+  return { goal, preferredTemplate: picked.template }
 }
