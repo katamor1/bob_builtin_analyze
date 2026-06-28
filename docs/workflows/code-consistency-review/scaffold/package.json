@@ -14,8 +14,9 @@
     "preprocess": "node dist/src/cli/main.js preprocess",
     "validate-output": "node dist/src/cli/main.js validate-output",
     "triage": "node dist/src/cli/main.js triage",
-    "smoke": "npm run smoke:help && npm run smoke:validate-output && npm run smoke:triage",
+    "smoke": "npm run smoke:help && npm run smoke:preprocess && npm run smoke:validate-output && npm run smoke:triage",
     "smoke:help": "npm run build && node dist/src/cli/main.js",
+    "smoke:preprocess": "npm run build && node dist/src/cli/main.js preprocess --input tests/fixtures/review-input.valid.yaml --out .tmp/review-package --diff-fixture tests/fixtures/diff-summary.valid.json",
     "smoke:validate-output": "npm run build && node dist/src/cli/main.js validate-output --package .tmp/review-package --bob-output tests/fixtures/bob-output.valid.yaml",
     "smoke:triage": "npm run build && node dist/src/cli/main.js triage --package .tmp/review-package --bob-output tests/fixtures/bob-output.valid.yaml --out .tmp/human-triage"
   },
