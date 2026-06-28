@@ -146,7 +146,26 @@ npm run smoke
 - bob-output valid fixture の検証
 - human triage 生成
 
-## 10. 最初に改善すべき TODO
+## 10. CI 検証
+
+GitHub Actions workflow は以下に定義する。
+
+```text
+.github/workflows/code-consistency-review-scaffold.yml
+```
+
+CI では scaffold 関連パスが変更されたときに、以下を実行する。
+
+```bash
+npm install
+npm run typecheck
+npm run unit
+npm run smoke
+```
+
+詳細は `CI.md` を参照する。
+
+## 11. 最初に改善すべき TODO
 
 1. `document-extractor.ts` で Markdown 文書の実テキストを抽出する。
 2. `c-cpp-change-analyzer.ts` で変更行の関数所属を推定する。
@@ -154,7 +173,7 @@ npm run smoke
 4. `human-triage-helper.ts` で triage-result.yaml の decision に応じた Markdown 分割を行う。
 5. `preprocess` を Git 差分なし fixture でも検証できるようにする。
 
-## 11. 終了コード方針
+## 12. 終了コード方針
 
 | 状態 | 終了コード |
 |---|---:|
@@ -164,10 +183,11 @@ npm run smoke
 | bob-output invalid | 1 |
 | warning のみ | 0 |
 
-## 12. このフェーズの完了条件
+## 13. このフェーズの完了条件
 
 - `npm run build` が通る構成になっている。
 - `npm run unit` で validator の自動テストを実行できる。
 - `npm run smoke` で help / validate-output / triage を確認できる。
+- GitHub Actions で typecheck / unit / smoke を実行できる。
 - fixture を使って validator / triage の入出力を確認できる。
 - TODO が明示され、次の実装対象が分かる。
