@@ -1,10 +1,13 @@
 import * as vscode from "vscode"
-import { validateWorkflowText } from "../core/workflowValidator"
+import { createMockWorkflowAiProvider } from "../core/mockWorkflowAiProvider"
+import { formatWorkflowRepairProposal, WorkflowAiProvider } from "../core/workflowAiProvider"
 import { buildWorkflowRepairContext, formatWorkflowRepairContext } from "../core/workflowRepairContext"
+import { formatWorkflowDiagnostics, validateWorkflowText } from "../core/workflowValidator"
 
 export interface ImproveWorkflowWithAiOptions {
   sourceId: string
   showMarkdownReport: (title: string, summary: string, lines: string[]) => Promise<void>
+  provider?: WorkflowAiProvider
 }
 
 export async function improveWorkflowWithAi(options: ImproveWorkflowWithAiOptions): Promise<void> {
@@ -14,10 +17,30 @@ export async function improveWorkflowWithAi(options: ImproveWorkflowWithAiOption
     return
   }
   const filePath = vscode.workspace.asRelativePath(editor.document.uri, false)
-  const validation = validateWorkflowText({ sourceId: options.sourceId, filePath, text: editor.document.getText() })
+  const workflowText = editor.document.getText()
+  const validation = validateWorkflowText({ sourceId: options.sourceId, filePath, text: workflowText })
   const context = buildWorkflowRepairContext(filePath, validation)
-  const summary = validation.ok
-    ? "Workflow is valid. Repair context is still shown for AI review."
-    : `${context.problems.length} problem(s) found. Use the repair context JSON as the input to an AI repair step.`
-  await options.showMarkdownReport("Improve Workflow With AI", summary, formatWorkflowRepairContext(context))
+  const provider = options.provider ?? createMockWorkflowAiProvider()
+  const proposal = await Promise.resolve(provider.improveWorkflow({ filePath, workflowText, repairContext: context }))
+  const lines = [
+    "## Current validation",
+    "",
+    ...formatWorkflowDiagnostics(validation),
+    "",
+    ...formatWorkflowRepairContext(context),
+    "",
+    ...formatWorkflowRepairProposal(proposal)
+  ]
+  if (proposal.replacementMarkdown) {
+    const replacementValidation = validateWorkflowText({ sourceId: options.sourceId, filePath, text: proposal.replacementMarkdown })
+    lines.push("", "## Replacement validation", "", ...formatWorkflowDiagnostics(replacementValidation))
+    if (replacementValidation.ok) {
+      const preview = await vscode.workspace.openTextDocument({ language: "markdown", content: proposal.replacementMarkdown })
+      await vscode.window.showTextDocument(preview, { preview: false })
+    }
+  }
+  const summary = proposal.replacementMarkdown
+    ? "AI repair proposal includes replacement Markdown; it is previewed only if validation succeeds."
+    : "AI repair proposal does not include replacement Markdown; no files were modified."
+  await options.showMarkdownReport("Improve Workflow With AI", `${summary} Provider: ${provider.id}.`, lines)
 }
