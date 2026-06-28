@@ -65,5 +65,5 @@ function fieldName(value: string): string {
 }
 
 function unquote(value: string): string {
-  return value.trim().replace(/^[']|^["]/, "").replace(/[']$|["]$/, "")
+  return value.trim().replace(/^["']/, "").replace(/["']$/, "")
 }
