@@ -1,12 +1,12 @@
 import * as fs from "fs/promises"
 import * as path from "path"
 import { ActionRegistry } from "./actionRegistry"
+import { validateWorkflowInputs } from "./inputResolver"
 import {
   CoreWorkflowDefinition,
   EngineStep,
   ResultSourceDefinition,
   WorkflowArtifactDefinition,
-  WorkflowInputDefinition,
   WorkflowPreflightDefinition,
   WorkflowRunState
 } from "./model"
@@ -61,7 +61,7 @@ export class WorkflowEngine {
 
   async runWorkflow(workflow: CoreWorkflowDefinition, inputs: Record<string, unknown>): Promise<WorkflowRunState> {
     const run = await this.runStore.createRun(workflow, inputs)
-    const inputProblems = validateInputs(workflow, inputs)
+    const inputProblems = validateWorkflowInputs(workflow.inputs ?? {}, inputs)
     if (inputProblems.length > 0) {
       run.status = "failed"
       run.error = inputProblems.join("; ")
@@ -281,42 +281,6 @@ function resultText(run: WorkflowRunState, result: ResultSourceDefinition): stri
 
 function formatStateValue(value: unknown): string {
   return typeof value === "string" ? value : JSON.stringify(value)
-}
-
-function validateInputs(workflow: CoreWorkflowDefinition, inputs: Record<string, unknown>): string[] {
-  const problems: string[] = []
-  for (const [key, definition] of Object.entries(workflow.inputs ?? {})) {
-    const value = inputs[key]
-    const required = definition.required === true || matchesRequiredWhen(definition, inputs)
-    if (required && isMissing(value)) {
-      problems.push(`Missing required workflow input: ${key}`)
-      continue
-    }
-    if (!isMissing(value)) {
-      const typeProblem = validateInputType(key, definition, value)
-      if (typeProblem) problems.push(typeProblem)
-    }
-  }
-  return problems
-}
-
-function matchesRequiredWhen(definition: WorkflowInputDefinition, inputs: Record<string, unknown>): boolean {
-  if (!definition.requiredWhen) return false
-  const match = definition.requiredWhen.match(/^inputs\.([A-Za-z0-9_.-]+)\s*(==|!=)\s*['"]([^'"]*)['"]$/)
-  if (!match) return false
-  const actual = String(inputs[match[1]] ?? "")
-  return match[2] === "==" ? actual === match[3] : actual !== match[3]
-}
-
-function validateInputType(key: string, definition: WorkflowInputDefinition, value: unknown): string | undefined {
-  if (definition.type === "number" && (typeof value !== "number" || Number.isNaN(value))) return `Workflow input must be a number: ${key}`
-  if (definition.type === "boolean" && typeof value !== "boolean") return `Workflow input must be a boolean: ${key}`
-  if (definition.type === "select" && definition.options && !definition.options.includes(String(value))) return `Workflow input has an unsupported option: ${key}`
-  return undefined
-}
-
-function isMissing(value: unknown): boolean {
-  return value === undefined || value === null || value === ""
 }
 
 function validateCommandGuardrails(workflow: CoreWorkflowDefinition, providerId: string): string | undefined {
