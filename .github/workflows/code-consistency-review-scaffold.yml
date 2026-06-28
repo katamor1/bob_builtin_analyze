@@ -1,0 +1,50 @@
+name: code-consistency-review-scaffold
+
+on:
+  pull_request:
+    paths:
+      - "docs/workflows/code-consistency-review/scaffold/**"
+      - "docs/workflows/code-consistency-review/schemas/**"
+      - "docs/workflows/code-consistency-review/templates/**"
+      - ".github/workflows/code-consistency-review-scaffold.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "docs/workflows/code-consistency-review/scaffold/**"
+      - "docs/workflows/code-consistency-review/schemas/**"
+      - "docs/workflows/code-consistency-review/templates/**"
+      - ".github/workflows/code-consistency-review-scaffold.yml"
+  workflow_dispatch:
+
+jobs:
+  validate-scaffold:
+    name: Validate scaffold
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: docs/workflows/code-consistency-review/scaffold
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: docs/workflows/code-consistency-review/scaffold/package-lock.json
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm run unit
+
+      - name: Smoke tests
+        run: npm run smoke
