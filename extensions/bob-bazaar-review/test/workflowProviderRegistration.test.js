@@ -18,3 +18,17 @@ test("Bazaar companion extension registers workflow providers with workflow-regi
   assert.match(source, /api\.registerActionProvider\(\{[\s\S]*id: "bobBazaar\.loadReviewRules"[\s\S]*loadReviewRules\(\)[\s\S]*\}\)/)
   assert.match(source, /api\.registerActionProvider\(\{[\s\S]*id: "bobBazaar\.captureReviewResult"[\s\S]*captureReviewResult\(firstStringArg\(args\)\)[\s\S]*\}\)/)
 })
+
+test("Bazaar workflow template declares the providers owned by this extension", () => {
+  const workflowPath = path.join(extensionRoot, "templates", ".bob", "workflows", "bazaar-project-rule-review", "WORKFLOW.md")
+  const workflow = fs.readFileSync(workflowPath, "utf8")
+
+  assert.match(workflow, /^stepCompletion: manual$/m)
+  assert.match(workflow, /^stepMessage: step$/m)
+  assert.doesNotMatch(workflow, /```workflow-step/)
+  assert.doesNotMatch(workflow, /^## Step:/m)
+  assert.match(workflow, /^steps:$/m)
+  assert.match(workflow, /id: review-input[\s\S]*?provider: bobBazaar\.openReviewGui[\s\S]*?sendResult: false[\s\S]*?completeOnSuccess: false/)
+  assert.match(workflow, /id: collect-context[\s\S]*?provider: bobBazaar\.collectReviewContext[\s\S]*?sendResult: true[\s\S]*?required: true[\s\S]*?completeOnSuccess: true/)
+  assert.match(workflow, /id: load-rules[\s\S]*?provider: bobBazaar\.loadReviewRules[\s\S]*?sendResult: true[\s\S]*?required: true[\s\S]*?completeOnSuccess: true/)
+})
