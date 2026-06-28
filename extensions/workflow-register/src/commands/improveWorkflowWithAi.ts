@@ -73,8 +73,9 @@ async function previewAndMaybeApplyReplacement(originalUri: vscode.Uri, candidat
 async function writeBackupAndReplacement(originalUri: vscode.Uri, candidate: WorkflowReplacementCandidate): Promise<void> {
   const folder = vscode.workspace.workspaceFolders?.[0]
   if (!folder) throw new Error("No workspace folder is open.")
-  const backupUri = vscode.Uri.joinPath(folder.uri, ...candidate.backupRelativePath.split("/"))
-  const backupDir = vscode.Uri.joinPath(backupUri, "..")
+  const parts = candidate.backupRelativePath.split("/").filter(Boolean)
+  const backupUri = vscode.Uri.joinPath(folder.uri, ...parts)
+  const backupDir = vscode.Uri.joinPath(folder.uri, ...parts.slice(0, -1))
   await vscode.workspace.fs.createDirectory(backupDir)
   await vscode.workspace.fs.writeFile(backupUri, new TextEncoder().encode(candidate.originalMarkdown))
   await vscode.workspace.fs.writeFile(originalUri, new TextEncoder().encode(candidate.replacementMarkdown))
