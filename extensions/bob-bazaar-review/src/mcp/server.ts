@@ -21,6 +21,8 @@ interface ToolDef {
   inputSchema: Record<string, unknown>
 }
 
+const SERVER_VERSION = "0.3.0"
+
 const client = new BazaarClient({
   bzrPath: process.env.BZR_PATH || "bzr",
   maxBuffer: Number(process.env.BZR_MAX_BUFFER || 10 * 1024 * 1024)
@@ -111,7 +113,7 @@ async function handleMessage(message: JsonRpcMessage): Promise<void> {
       respond(message.id, {
         protocolVersion: "2024-11-05",
         capabilities: { tools: {} },
-        serverInfo: { name: "bob-bazaar-review", version: "0.2.0" }
+        serverInfo: { name: "bob-bazaar-review", version: SERVER_VERSION }
       })
       return
     }
