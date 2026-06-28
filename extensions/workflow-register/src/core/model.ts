@@ -11,6 +11,7 @@ export interface WorkflowInputDefinition {
   title?: string
   required?: boolean
   requiredWhen?: string
+  prompt?: boolean
   default?: unknown
   options?: string[]
 }
