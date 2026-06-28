@@ -1,3 +1,5 @@
+import { ActionRegistry } from "./core/actionRegistry"
+
 export type ResultSource = "agent" | "lastAssistant"
 
 export interface ResultHandoffStep {
@@ -9,7 +11,13 @@ export interface ResultHandoffStep {
 }
 
 export interface ResultHandoffDeps {
-  executeCommand: (command: string, ...args: unknown[]) => Promise<unknown> | unknown
+  actions?: ActionRegistry
+  executeCommand?: (command: string, ...args: unknown[]) => Promise<unknown> | unknown
+  inputs?: Record<string, unknown>
+  state?: Record<string, string>
+  workflowId?: string
+  runId?: string
+  stepId?: string
 }
 
 export interface ResultHandoffResult {
@@ -24,8 +32,6 @@ interface MessageLike {
   role?: unknown
   content?: unknown
 }
-
-const ALLOWED_RESULT_COMMANDS = new Set(["bobBazaar.captureReviewResult"])
 
 export function resultSourceForStep(step: ResultHandoffStep): ResultSource {
   return step.resultSource ?? (step.runAgent ? "agent" : "lastAssistant")
@@ -45,17 +51,37 @@ export async function executeResultHandoff(step: ResultHandoffStep, resultText: 
   if (!step.captureResult) return { ok: true, skipped: true }
   if (!resultText?.trim()) return { ok: false, error: "No result text was available to hand off." }
   if (!step.resultCommand) return { ok: false, error: "captureResult requires resultCommand." }
-  if (!ALLOWED_RESULT_COMMANDS.has(step.resultCommand)) {
-    return { ok: false, error: `Unsupported result command: ${step.resultCommand}` }
-  }
+  const actions = deps.actions ?? createCommandFallbackRegistry(step.resultCommand, deps.executeCommand)
   try {
-    const value = await Promise.resolve(deps.executeCommand(step.resultCommand, resultText, ...(step.resultCommandArgs ?? [])))
-    const reportedError = commandReportedError(value)
+    const result = await actions.execute(step.resultCommand, {
+      args: [resultText, ...(step.resultCommandArgs ?? [])],
+      inputs: deps.inputs ?? {},
+      state: deps.state,
+      workflowId: deps.workflowId,
+      runId: deps.runId,
+      stepId: deps.stepId
+    })
+    if (!result.ok) return { ok: false, command: step.resultCommand, error: result.error ?? `Result handoff action failed: ${step.resultCommand}` }
+    const reportedError = commandReportedError(result.value)
     if (reportedError) return { ok: false, command: step.resultCommand, error: reportedError }
-    return { ok: true, command: step.resultCommand, value }
+    return { ok: true, command: step.resultCommand, value: result.value }
   } catch (error) {
     return { ok: false, command: step.resultCommand, error: error instanceof Error ? error.message : String(error) }
   }
+}
+
+function createCommandFallbackRegistry(command: string, executeCommand: ResultHandoffDeps["executeCommand"]): ActionRegistry {
+  const registry = new ActionRegistry()
+  if (executeCommand) {
+    registry.register({
+      id: command,
+      execute: (input) => {
+        const args = Array.isArray(input.args) ? input.args : input.args === undefined ? [] : [input.args]
+        return executeCommand(command, ...args)
+      }
+    })
+  }
+  return registry
 }
 
 function textContent(value: unknown): string | undefined {
