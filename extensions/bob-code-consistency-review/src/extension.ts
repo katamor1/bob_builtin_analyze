@@ -4,6 +4,7 @@ import { captureBobOutput } from "./core/bobOutputCapture"
 import { validateBobOutput } from "./core/bobOutputValidator"
 import { preprocessReview } from "./core/pipeline"
 import { generateHumanTriage } from "./triage/humanTriageHelper"
+import { buildCaptureWorkflowOptions } from "./workflowOptions"
 
 const WORKFLOW_REGISTER_EXTENSION_ID = "local.workflow-register"
 
@@ -48,7 +49,7 @@ async function registerWorkflowProviders(_context: vscode.ExtensionContext): Pro
   })
   api.registerActionProvider({
     id: "bobCodeConsistency.captureBobOutput",
-    execute: ({ args, state }) => runCaptureBobOutput(firstString(args) ?? state?.bobReviewResult ?? args)
+    execute: ({ args, inputs, state }) => runCaptureBobOutput(buildCaptureWorkflowOptions({ args, inputs, state }))
   })
   api.registerActionProvider({
     id: "bobCodeConsistency.validateOutput",

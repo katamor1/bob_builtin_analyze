@@ -107,6 +107,15 @@ runtime 実装は `extensions/bob-code-consistency-review/` に配置する。
 - `resources/schemas/` と `resources/templates/` は、この docs 配下の schema/template を runtime 用に同梱したもの。
 - `scaffold/` は仕様検証用の雛形として残し、実運用の Bob workflow からは新規拡張を呼び出す。
 
+## Bob 結合確認 sandbox
+
+`integration/launch-bob-code-consistency-sandbox.ps1` は、repo root を汚さず `%TEMP%/bob-workflow-integration-*` に確認用 workspace を作る。
+
+- `workflow-register`、`bob-bazaar-review`、`bob-code-consistency-review` の VSIX を isolated `--extensions-dir` に install する。
+- `bob2/bob-code` は raw copy ではなく `--extensionDevelopmentPath` で読み込む。
+- sample `review-input.yaml` と `.bob/workflows/code-consistency-review/WORKFLOW.md` は sandbox workspace にコピーする。
+- `-NoLaunch` を付けると VS Code は起動せず、sandbox 作成と拡張 install、起動コマンド表示だけを行う。
+
 ## 実装アセット
 
 `schemas/` と `templates/` は、仕様説明ではなく実装コードから読み込むアセットとして扱う。

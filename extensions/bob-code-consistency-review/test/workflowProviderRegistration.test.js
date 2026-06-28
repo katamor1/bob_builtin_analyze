@@ -16,6 +16,7 @@ test("extension registers code consistency workflow providers with workflow-regi
   assert.match(source, /registerWorkflowProviders\(context\)\.catch/)
   assert.match(source, /id: "bobCodeConsistency\.preprocess"/)
   assert.match(source, /id: "bobCodeConsistency\.captureBobOutput"/)
+  assert.match(source, /buildCaptureWorkflowOptions\(\{ args, inputs, state \}\)/)
   assert.match(source, /id: "bobCodeConsistency\.validateOutput"/)
   assert.match(source, /id: "bobCodeConsistency\.triage"/)
 })
