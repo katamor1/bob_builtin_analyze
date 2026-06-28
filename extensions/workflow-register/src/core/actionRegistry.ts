@@ -33,6 +33,25 @@ export interface DefaultActionRegistryOptions {
   executeCommand: (command: string, ...args: unknown[]) => Promise<unknown> | unknown
 }
 
-export function createDefaultActionRegistry(_options?: DefaultActionRegistryOptions): ActionRegistry {
-  return new ActionRegistry()
+export function createDefaultActionRegistry(options?: DefaultActionRegistryOptions): ActionRegistry {
+  const registry = new ActionRegistry()
+  if (options) {
+    registry.register({
+      id: "vscode.executeCommand",
+      execute: (input) => {
+        const args = argumentList(input.args)
+        const command = args.shift()
+        if (typeof command !== "string" || !command.trim()) {
+          throw new Error("vscode.executeCommand requires the command id as the first argument.")
+        }
+        return options.executeCommand(command, ...args)
+      }
+    })
+  }
+  return registry
+}
+
+function argumentList(value: unknown): unknown[] {
+  if (value === undefined) return []
+  return Array.isArray(value) ? [...value] : [value]
 }
