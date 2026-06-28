@@ -92,6 +92,13 @@ test("standalone workflow launcher uses the shared input resolver for conditiona
   assert.doesNotMatch(source, /for \(const \[key, definition\] of Object\.entries\(workflow\.inputs\)\)/)
 })
 
+test("default action registry is domain agnostic", () => {
+  const source = fs.readFileSync(path.join(extensionRoot, "src", "core", "actionRegistry.ts"), "utf8")
+
+  assert.doesNotMatch(source, /bobBazaar\./)
+  assert.match(source, /export function createDefaultActionRegistry\(_options\?: DefaultActionRegistryOptions\): ActionRegistry \{[\s\S]*return new ActionRegistry\(\)[\s\S]*\}/)
+})
+
 test("Bob registration uses CoreWorkflowDefinition as the only parsed workflow source", () => {
   const source = fs.readFileSync(path.join(extensionRoot, "src", "extension.ts"), "utf8")
 
