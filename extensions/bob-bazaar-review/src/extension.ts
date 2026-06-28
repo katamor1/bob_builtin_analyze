@@ -12,6 +12,26 @@ import { openBazaarReviewGui } from "./reviewGui"
 import { buildAddedFilesContentSection, loadBazaarRevisionPacketInput } from "./revisionInfo"
 import { BazaarReviewContextResult, buildReviewContextResult } from "./workflowBridge"
 
+const WORKFLOW_REGISTER_EXTENSION_ID = "local.workflow-register"
+
+interface WorkflowActionExecutionInput {
+  args: unknown
+  inputs: Record<string, unknown>
+  state?: Record<string, string>
+  workflowId?: string
+  runId?: string
+  stepId?: string
+}
+
+interface WorkflowActionProvider {
+  id: string
+  execute: (input: WorkflowActionExecutionInput) => Promise<unknown> | unknown
+}
+
+interface WorkflowRegisterApi {
+  registerActionProvider: (provider: WorkflowActionProvider) => void
+}
+
 interface ReviewRulesBridgeResult {
   status: "ok"
   checklistPath: string
@@ -39,10 +59,52 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("bobBazaar.reviewRangeWithProjectRules", () => reviewRange(context, true)),
     vscode.commands.registerCommand("bobBazaar.validateReviewResultJson", () => validateActiveReviewResultJson())
   )
+  registerWorkflowProviders(context).catch((error) => console.warn("Bob Bazaar workflow provider registration failed", error))
 }
 
 export function deactivate(): void {
   // No background process is kept by the extension host. Bob starts the MCP server on demand.
+}
+
+async function registerWorkflowProviders(context: vscode.ExtensionContext): Promise<void> {
+  const api = await getWorkflowRegisterApi()
+  if (!api) return
+  api.registerActionProvider({
+    id: "bobBazaar.openReviewGui",
+    execute: () => openBazaarReviewGui(context)
+  })
+  api.registerActionProvider({
+    id: "bobBazaar.collectReviewContext",
+    execute: () => collectReviewContext()
+  })
+  api.registerActionProvider({
+    id: "bobBazaar.loadReviewRules",
+    execute: () => loadReviewRules()
+  })
+  api.registerActionProvider({
+    id: "bobBazaar.captureReviewResult",
+    execute: ({ args }) => captureReviewResult(firstStringArg(args))
+  })
+}
+
+async function getWorkflowRegisterApi(): Promise<WorkflowRegisterApi | undefined> {
+  const extension = vscode.extensions.getExtension<WorkflowRegisterApi>(WORKFLOW_REGISTER_EXTENSION_ID)
+  if (!extension) {
+    console.warn(`Workflow register extension is not installed: ${WORKFLOW_REGISTER_EXTENSION_ID}`)
+    return undefined
+  }
+  const api = extension.isActive ? extension.exports : await extension.activate()
+  if (!api?.registerActionProvider) {
+    console.warn(`Workflow register extension does not expose registerActionProvider: ${WORKFLOW_REGISTER_EXTENSION_ID}`)
+    return undefined
+  }
+  return api
+}
+
+function firstStringArg(args: unknown): string | undefined {
+  const values = Array.isArray(args) ? args : args === undefined ? [] : [args]
+  const first = values[0]
+  return typeof first === "string" ? first : undefined
 }
 
 async function collectReviewContext(): Promise<BazaarReviewContextResult> {
