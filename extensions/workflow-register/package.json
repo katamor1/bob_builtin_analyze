@@ -26,9 +26,12 @@
     "onCommand:workflowRegister.runWorkflow",
     "onCommand:workflowRegister.inspectRuns",
     "onCommand:workflowRegister.resumeRun",
-    "onCommand:workflowRegister.retryCurrentStep"
+    "onCommand:workflowRegister.retryCurrentStep",
+    "onCommand:workflowRegister.validateCurrentWorkflow",
+    "onCommand:workflowRegister.validateWorkspaceWorkflows",
+    "onCommand:workflowRegister.createWorkflowFromTemplate"
   ],
-  "main": "./out/extension.js",
+  "main": "./out/extensionWithAuthoring.js",
   "contributes": {
     "commands": [
       {
@@ -74,6 +77,21 @@
       {
         "command": "workflowRegister.retryCurrentStep",
         "title": "Retry Current Workflow Step",
+        "category": "Bob Workflow Register"
+      },
+      {
+        "command": "workflowRegister.validateCurrentWorkflow",
+        "title": "Validate Current Workflow",
+        "category": "Bob Workflow Register"
+      },
+      {
+        "command": "workflowRegister.validateWorkspaceWorkflows",
+        "title": "Validate Workspace Workflows",
+        "category": "Bob Workflow Register"
+      },
+      {
+        "command": "workflowRegister.createWorkflowFromTemplate",
+        "title": "Create Workflow from Template",
         "category": "Bob Workflow Register"
       }
     ],
