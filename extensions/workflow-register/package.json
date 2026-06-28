@@ -27,6 +27,7 @@
     "onCommand:workflowRegister.inspectRuns",
     "onCommand:workflowRegister.resumeRun",
     "onCommand:workflowRegister.retryCurrentStep",
+    "onCommand:workflowRegister.inspectRunDiagnostics",
     "onCommand:workflowRegister.validateCurrentWorkflow",
     "onCommand:workflowRegister.validateWorkspaceWorkflows",
     "onCommand:workflowRegister.createWorkflowFromTemplate"
@@ -80,6 +81,11 @@
         "category": "Bob Workflow Register"
       },
       {
+        "command": "workflowRegister.inspectRunDiagnostics",
+        "title": "Inspect Workflow Run Diagnostics",
+        "category": "Bob Workflow Register"
+      },
+      {
         "command": "workflowRegister.validateCurrentWorkflow",
         "title": "Validate Current Workflow",
         "category": "Bob Workflow Register"
@@ -126,6 +132,7 @@
         { "command": "workflowRegister.inspectRuns" },
         { "command": "workflowRegister.resumeRun" },
         { "command": "workflowRegister.retryCurrentStep" },
+        { "command": "workflowRegister.inspectRunDiagnostics" },
         { "command": "workflowRegister.validateCurrentWorkflow" },
         { "command": "workflowRegister.validateWorkspaceWorkflows" },
         { "command": "workflowRegister.createWorkflowFromTemplate" }
