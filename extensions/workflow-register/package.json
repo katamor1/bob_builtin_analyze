@@ -125,7 +125,10 @@
         { "command": "workflowRegister.runWorkflow" },
         { "command": "workflowRegister.inspectRuns" },
         { "command": "workflowRegister.resumeRun" },
-        { "command": "workflowRegister.retryCurrentStep" }
+        { "command": "workflowRegister.retryCurrentStep" },
+        { "command": "workflowRegister.validateCurrentWorkflow" },
+        { "command": "workflowRegister.validateWorkspaceWorkflows" },
+        { "command": "workflowRegister.createWorkflowFromTemplate" }
       ]
     }
   },
