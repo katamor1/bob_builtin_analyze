@@ -6,274 +6,18 @@ import {
   EngineStep,
   ParseWorkflowRequest,
   ParseWorkflowResult,
+  ResultSinkDefinition,
+  ResultSourceDefinition,
   WorkflowInputDefinition,
   WorkflowStepCompletionMode,
   WorkflowStepMessageMode,
   WorkflowTodoDefinition
 } from "./model"
+import { knownWorkflowV1TopLevelFields, workflowV1Schema } from "./workflowSchema"
 
 const yaml = require("js-yaml") as { load(text: string): unknown }
-
 const ajv = new Ajv({ allErrors: true, strict: false })
-const DEFAULT_MAX_RESULT_BYTES = 20_000
-
-const failurePolicySchema = { enum: ["stop", "continue", "warn"] }
-
-const v1Schema = {
-  type: "object",
-  required: ["name", "description"],
-  properties: {
-    schemaVersion: { const: "workflow-register/v1" },
-    id: { type: "string" },
-    name: { type: "string", minLength: 1, pattern: "^[A-Za-z0-9][A-Za-z0-9._-]*$" },
-    description: { type: "string", minLength: 1 },
-    title: { type: "string" },
-    label: { type: "string" },
-    menuLabel: { type: "string" },
-    mode: { type: "string" },
-    category: { type: "string" },
-    todo: { type: "boolean" },
-    todoRequired: { type: "boolean" },
-    todoAsSteps: { type: "boolean" },
-    stepCompletion: { enum: ["auto", "manual"] },
-    stepMessage: { enum: ["full", "current", "silent", "step"] },
-    autoApproval: { type: "boolean" },
-    workspaceRequired: { type: "boolean" },
-    hidden: { type: "boolean" },
-    prompt: { type: "string" },
-    command: { type: "string" },
-    commandArgs: { type: "array" },
-    todos: {
-      type: "array",
-      items: {
-        anyOf: [
-          { type: "string" },
-          {
-            type: "object",
-            minProperties: 1,
-            maxProperties: 1,
-            additionalProperties: { type: "string" }
-          }
-        ]
-      }
-    },
-    permissions: { type: "array", items: { type: "string" } },
-    requires: {
-      type: "object",
-      properties: {
-        workspace: { type: "boolean" },
-        bob: {
-          type: "object",
-          properties: {
-            minVersion: { type: "string" }
-          },
-          additionalProperties: false
-        },
-        files: { type: "array", items: { type: "string" } }
-      },
-      additionalProperties: false
-    },
-    inputs: {
-      type: "object",
-      additionalProperties: {
-        type: "object",
-        required: ["type"],
-        properties: {
-          type: { enum: ["string", "number", "boolean", "select"] },
-          title: { type: "string" },
-          required: { type: "boolean" },
-          requiredWhen: { type: "string" },
-          default: {},
-          options: { type: "array", items: { type: "string" } }
-        },
-        additionalProperties: false
-      }
-    },
-    preflight: {
-      type: "array",
-      items: {
-        type: "object",
-        required: ["id"],
-        properties: {
-          id: { type: "string", minLength: 1 },
-          title: { type: "string" },
-          required: { type: "boolean" },
-          checks: { type: "array", items: { type: "string" } },
-          files: { type: "array", items: { type: "string" } },
-          failurePolicy: failurePolicySchema
-        },
-        additionalProperties: false
-      }
-    },
-    tools: {
-      type: "object",
-      additionalProperties: {
-        type: "object",
-        properties: {
-          purpose: { type: "string" },
-          required: { type: "boolean" },
-          outputKey: { type: "string" },
-          inputSource: { type: "string" },
-          failurePolicy: failurePolicySchema
-        },
-        additionalProperties: false
-      }
-    },
-    guardrails: {
-      type: "object",
-      properties: {
-        allowedCommands: { type: "array", items: { type: "string" } },
-        deniedCommands: { type: "array", items: { type: "string" } },
-        requireApproval: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              id: { type: "string" },
-              when: { type: "string" },
-              message: { type: "string" }
-            },
-            additionalProperties: false
-          }
-        }
-      },
-      additionalProperties: false
-    },
-    artifacts: {
-      type: "array",
-      items: {
-        type: "object",
-        required: ["id", "path"],
-        properties: {
-          id: { type: "string", minLength: 1 },
-          producedBy: { type: "string" },
-          path: { type: "string", minLength: 1 },
-          schema: { type: "string" }
-        },
-        additionalProperties: false
-      }
-    },
-    completion: {
-      type: "object",
-      properties: {
-        summary: { type: "string" },
-        includeArtifacts: { type: "boolean" },
-        validateResult: { type: "boolean" },
-        visualization: {
-          type: "object",
-          properties: {
-            type: { type: "string" },
-            enabled: { type: "boolean" }
-          },
-          additionalProperties: false
-        }
-      },
-      additionalProperties: false
-    },
-    steps: {
-      type: "array",
-      items: {
-        type: "object",
-        required: ["id", "title", "type"],
-        properties: {
-          id: { type: "string", minLength: 1 },
-          title: { type: "string", minLength: 1 },
-          type: { enum: ["command", "agent", "manual", "result"] },
-          required: { type: "boolean" },
-          action: {
-            type: "object",
-            required: ["provider"],
-            properties: {
-              provider: { type: "string", minLength: 1 },
-              args: {}
-            },
-            additionalProperties: false
-          },
-          prompt: { type: "string" },
-          sendResult: { type: "boolean" },
-          completeOnSuccess: { type: "boolean" },
-          includeState: { type: "array", items: { type: "string" } },
-          maxResultBytes: { type: "number" },
-          stateRequired: { type: "boolean" },
-          resultKey: { type: "string" },
-          result: {
-            type: "object",
-            required: ["source", "sinks"],
-            properties: {
-              source: { enum: ["state", "literal", "agent"] },
-              stateKey: { type: "string" },
-              text: { type: "string" },
-              sinks: {
-                type: "array",
-                items: {
-                  type: "object",
-                  required: ["type"],
-                  properties: {
-                    type: { enum: ["command", "file"] },
-                    command: { type: "string" },
-                    args: { type: "array" },
-                    path: { type: "string" },
-                    encoding: { type: "string" }
-                  },
-                  additionalProperties: false
-                }
-              }
-            },
-            additionalProperties: false
-          }
-        },
-        additionalProperties: false,
-        allOf: [
-          {
-            if: { properties: { type: { const: "command" } }, required: ["type"] },
-            then: { required: ["action"] }
-          },
-          {
-            if: { properties: { type: { const: "result" } }, required: ["type"] },
-            then: { required: ["result"] }
-          }
-        ]
-      }
-    }
-  },
-  additionalProperties: true
-}
-
-const validateV1 = ajv.compile(v1Schema)
-
-const knownV1TopLevelFields = new Set([
-  "schemaVersion",
-  "id",
-  "name",
-  "description",
-  "title",
-  "label",
-  "menuLabel",
-  "mode",
-  "category",
-  "permissions",
-  "requires",
-  "inputs",
-  "preflight",
-  "tools",
-  "guardrails",
-  "artifacts",
-  "completion",
-  "steps",
-  "todo",
-  "todoSource",
-  "todoRequired",
-  "todoAsSteps",
-  "stepCompletion",
-  "stepMessage",
-  "todos",
-  "autoApproval",
-  "workspaceRequired",
-  "hidden",
-  "command",
-  "commandArgs",
-  "prompt"
-])
+const validateV1 = ajv.compile(workflowV1Schema as object)
 
 export function parseWorkflowMarkdown(request: ParseWorkflowRequest): ParseWorkflowResult {
   const split = splitMarkdownFrontMatter(request.text)
@@ -294,24 +38,17 @@ function parseV1Workflow(request: ParseWorkflowRequest, fields: Record<string, u
   const valid = validateV1(fields)
   const diagnostics = valid ? [] : formatValidationErrors(request.filePath)
   const warnings = unknownTopLevelWarnings(request.filePath, fields)
-  const hasTypedSteps = Object.prototype.hasOwnProperty.call(fields, "steps")
-  const steps = Array.isArray(fields.steps) ? fields.steps : []
-  for (let index = 0; index < steps.length; index += 1) {
-    const step = asRecord(steps[index])
-    if (step.type === "command" && !step.action) {
-      diagnostics.push(`- fail: ${request.filePath}: steps/${index}/action is required for command steps.`)
-    }
-  }
   if (diagnostics.length > 0) return { ok: false, diagnostics }
 
-  const name = requiredString(fields, "name")
-  const engineSteps = hasTypedSteps
-    ? steps.map((step) => normalizeEngineStep(asRecord(step)))
-    : legacyEngineStepsFromWorkflow(fields, body)
+  const hasTypedSteps = Object.prototype.hasOwnProperty.call(fields, "steps")
+  const stepRecords = Array.isArray(fields.steps) ? fields.steps.map((step) => asRecord(step)) : []
+  const engineSteps = hasTypedSteps ? stepRecords.map(normalizeEngineStep) : legacyEngineStepsFromWorkflow(fields, body)
   const todos = workflowTodos(fields, body, engineSteps, hasTypedSteps)
   const todoEnabled = optionalBoolean(fields, "todo") ?? todos.length > 0
   const permissions = listField(fields, "permissions", todoEnabled ? ["read", "mcp", "skill", "todo"] : ["read", "mcp", "skill"])
   if (todoEnabled && !permissions.includes("todo")) permissions.push("todo")
+
+  const name = requiredString(fields, "name")
   const prompt = optionalString(fields, "prompt") ?? body.trim()
   const workflow: CoreWorkflowDefinition = {
     id: optionalString(fields, "id") ?? `${request.sourceId}.${name}`,
@@ -358,6 +95,8 @@ function parseLegacyWorkflow(request: ParseWorkflowRequest, fields: Record<strin
   if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name)) diagnostics.push(`- fail: ${request.filePath}: field 'name' must contain only letters, numbers, dot, underscore, or hyphen and must not start with punctuation.`)
   if (diagnostics.length > 0) return { ok: false, diagnostics }
 
+  const prompt = optionalString(fields, "prompt") ?? body.trim()
+  const engineSteps = legacyStepsFromMarkdown(body)
   const workflow: CoreWorkflowDefinition = {
     id: optionalString(fields, "id") ?? `${request.sourceId}.${name}`,
     name,
@@ -366,8 +105,8 @@ function parseLegacyWorkflow(request: ParseWorkflowRequest, fields: Record<strin
     description: description ?? "",
     schemaVersion: "legacy",
     filePath: request.filePath,
-    prompt: optionalString(fields, "prompt") ?? body.trim(),
-    promptWithoutTodo: removeMarkdownStepSections(removeMarkdownSection(optionalString(fields, "prompt") ?? body.trim(), "Todo")).trim(),
+    prompt,
+    promptWithoutTodo: removeMarkdownStepSections(removeMarkdownSection(prompt, "Todo")).trim(),
     command: optionalString(fields, "command"),
     commandArgs: arrayField(fields, "commandArgs"),
     mode: optionalString(fields, "mode") ?? "agent",
@@ -376,7 +115,7 @@ function parseLegacyWorkflow(request: ParseWorkflowRequest, fields: Record<strin
     autoApprovalEnabled: optionalBoolean(fields, "autoApproval") ?? true,
     workspaceRequired: optionalBoolean(fields, "workspaceRequired") ?? true,
     hidden: optionalBoolean(fields, "hidden") ?? false,
-    todoEnabled: legacyStepsFromMarkdown(body).length > 0,
+    todoEnabled: engineSteps.length > 0,
     todoRequired: optionalBoolean(fields, "todoRequired") ?? false,
     todoAsSteps: true,
     stepCompletion: stepCompletion(fields, "manual"),
@@ -389,14 +128,14 @@ function parseLegacyWorkflow(request: ParseWorkflowRequest, fields: Record<strin
     guardrails: {},
     artifacts: [],
     completion: {},
-    engineSteps: legacyStepsFromMarkdown(body)
+    engineSteps
   }
   return { ok: true, workflow, diagnostics: [`- ok: ${request.filePath}: ${workflow.id}; schemaVersion=legacy; steps=${workflow.engineSteps.length}`] }
 }
 
 function unknownTopLevelWarnings(filePath: string, fields: Record<string, unknown>): string[] {
   return Object.keys(fields)
-    .filter((key) => !knownV1TopLevelFields.has(key))
+    .filter((key) => !knownWorkflowV1TopLevelFields.has(key))
     .map((key) => `- warn: ${filePath}: unknown top-level field '${key}'.`)
 }
 
@@ -483,11 +222,7 @@ function normalizeGuardrails(record: Record<string, unknown>) {
     deniedCommands: listField(record, "deniedCommands"),
     requireApproval: approvals.map((approval) => {
       const approvalRecord = asRecord(approval)
-      return {
-        id: optionalString(approvalRecord, "id"),
-        when: optionalString(approvalRecord, "when"),
-        message: optionalString(approvalRecord, "message")
-      }
+      return { id: optionalString(approvalRecord, "id"), when: optionalString(approvalRecord, "when"), message: optionalString(approvalRecord, "message") }
     })
   }
 }
@@ -496,12 +231,7 @@ function normalizeArtifacts(value: unknown) {
   if (!Array.isArray(value)) return []
   return value.map((entry) => {
     const record = asRecord(entry)
-    return {
-      id: requiredString(record, "id"),
-      producedBy: optionalString(record, "producedBy"),
-      path: requiredString(record, "path"),
-      schema: optionalString(record, "schema")
-    }
+    return { id: requiredString(record, "id"), producedBy: optionalString(record, "producedBy"), path: requiredString(record, "path"), schema: optionalString(record, "schema") }
   })
 }
 
@@ -511,10 +241,7 @@ function normalizeCompletion(record: Record<string, unknown>) {
     summary: optionalString(record, "summary"),
     includeArtifacts: optionalBoolean(record, "includeArtifacts"),
     validateResult: optionalBoolean(record, "validateResult"),
-    visualization: Object.keys(visualization).length > 0 ? {
-      type: optionalString(visualization, "type"),
-      enabled: optionalBoolean(visualization, "enabled")
-    } : undefined
+    visualization: Object.keys(visualization).length > 0 ? { type: optionalString(visualization, "type"), enabled: optionalBoolean(visualization, "enabled") } : undefined
   }
 }
 
@@ -534,24 +261,22 @@ function normalizeEngineStep(step: Record<string, unknown>): EngineStep {
     const action = asRecord(step.action)
     return { ...base, type: "command", action: { provider: requiredString(action, "provider"), args: action.args }, resultKey: optionalString(step, "resultKey") }
   }
-  if (step.type === "agent") {
-    return { ...base, type: "agent", prompt: optionalString(step, "prompt"), resultKey: optionalString(step, "resultKey"), result: step.result ? normalizeResult(step.result) : undefined }
-  }
+  if (step.type === "agent") return { ...base, type: "agent", resultKey: optionalString(step, "resultKey"), result: step.result ? normalizeResult(step.result) : undefined }
   if (step.type === "result") return { ...base, type: "result", result: normalizeResult(step.result) }
   return { ...base, type: "manual" }
 }
 
-function normalizeResult(value: unknown) {
+function normalizeResult(value: unknown): ResultSourceDefinition {
   const record = asRecord(value)
   const sinks = Array.isArray(record.sinks) ? record.sinks.map((sink) => normalizeSink(asRecord(sink))) : []
-  if (record.source === "state") return { source: "state" as const, stateKey: requiredString(record, "stateKey"), sinks }
-  if (record.source === "literal") return { source: "literal" as const, text: requiredString(record, "text"), sinks }
-  return { source: "agent" as const, sinks }
+  if (record.source === "state") return { source: "state", stateKey: requiredString(record, "stateKey"), sinks }
+  if (record.source === "literal") return { source: "literal", text: requiredString(record, "text"), sinks }
+  return { source: "agent", sinks }
 }
 
-function normalizeSink(record: Record<string, unknown>) {
-  if (record.type === "command") return { type: "command" as const, command: requiredString(record, "command"), args: listField(record, "args") }
-  return { type: "file" as const, path: requiredString(record, "path"), encoding: optionalString(record, "encoding") as BufferEncoding | undefined }
+function normalizeSink(record: Record<string, unknown>): ResultSinkDefinition {
+  if (record.type === "command") return { type: "command", command: requiredString(record, "command"), args: listField(record, "args") }
+  return { type: "file", path: requiredString(record, "path"), encoding: optionalString(record, "encoding") as BufferEncoding | undefined }
 }
 
 function legacyStepsFromMarkdown(body: string): EngineStep[] {
@@ -583,29 +308,17 @@ function legacyEngineStepsFromTodos(todos: Array<{ id: string; title: string }>,
       stateRequired: optionalBoolean(config, "stateRequired")
     }
     const command = optionalString(config, "command")
-    if (command) {
-      return {
-        ...base,
-        type: "command" as const,
-        action: {
-          provider: command,
-          args: config.commandArgs
-        },
-        resultKey: optionalString(config, "resultKey")
-      }
-    }
+    if (command) return { ...base, type: "command", action: { provider: command, args: config.commandArgs }, resultKey: optionalString(config, "resultKey") }
     if (config.runAgent === true) {
       const resultCommand = optionalString(config, "resultCommand")
       return {
         ...base,
-        type: "agent" as const,
+        type: "agent",
         resultKey: optionalString(config, "resultKey"),
-        result: config.captureResult === true && resultCommand
-          ? { source: "agent" as const, sinks: [{ type: "command" as const, command: resultCommand, args: listField(config, "resultCommandArgs") }] }
-          : undefined
+        result: config.captureResult === true && resultCommand ? { source: "agent", sinks: [{ type: "command", command: resultCommand, args: listField(config, "resultCommandArgs") }] } : undefined
       }
     }
-    return { ...base, type: "manual" as const }
+    return { ...base, type: "manual" }
   })
 }
 
@@ -625,8 +338,7 @@ function legacyTodosFromYamlList(value: unknown): Array<{ id: string; title: str
   if (!Array.isArray(value)) return []
   return value.flatMap((item, index) => {
     if (typeof item === "string") return [parseLegacyTodoText(item, index + 1)]
-    const record = asRecord(item)
-    const entries = Object.entries(record)
+    const entries = Object.entries(asRecord(item))
     if (entries.length !== 1) return []
     const [id, title] = entries[0]
     return [{ id, title: String(title).trim() }]
