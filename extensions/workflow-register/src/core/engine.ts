@@ -3,15 +3,30 @@ import {
   CoreWorkflowDefinition,
   EngineStep,
   ResultSourceDefinition,
+  WorkflowArtifactDefinition,
+  WorkflowInputDefinition,
+  WorkflowPreflightDefinition,
   WorkflowRunState
 } from "./model"
 import { ResultSinkRegistry } from "./resultSinkRegistry"
 import { RunStateStore } from "./runStateStore"
 
+export interface WorkflowPreflightCheckInput {
+  workflow: CoreWorkflowDefinition
+  run: WorkflowRunState
+  checkId: string
+}
+
+export type WorkflowPreflightCheckResult = boolean | string | { ok: boolean; error?: string }
+
 export interface WorkflowEngineOptions {
   actions: ActionRegistry
   resultSinks: ResultSinkRegistry
   runStore: RunStateStore
+  workspaceAvailable?: () => Promise<boolean> | boolean
+  fileExists?: (relativePath: string) => Promise<boolean> | boolean
+  preflightChecks?: Record<string, (input: WorkflowPreflightCheckInput) => Promise<WorkflowPreflightCheckResult> | WorkflowPreflightCheckResult>
+  strictPreflightChecks?: boolean
 }
 
 export interface ResumeRunOptions {
@@ -23,22 +38,40 @@ export class WorkflowEngine {
   private readonly actions: ActionRegistry
   private readonly resultSinks: ResultSinkRegistry
   private readonly runStore: RunStateStore
+  private readonly workspaceAvailable?: WorkflowEngineOptions["workspaceAvailable"]
+  private readonly fileExists?: WorkflowEngineOptions["fileExists"]
+  private readonly preflightChecks: NonNullable<WorkflowEngineOptions["preflightChecks"]>
+  private readonly strictPreflightChecks: boolean
 
   constructor(options: WorkflowEngineOptions) {
     this.actions = options.actions
     this.resultSinks = options.resultSinks
     this.runStore = options.runStore
+    this.workspaceAvailable = options.workspaceAvailable
+    this.fileExists = options.fileExists
+    this.preflightChecks = options.preflightChecks ?? {}
+    this.strictPreflightChecks = options.strictPreflightChecks === true
   }
 
   async runWorkflow(workflow: CoreWorkflowDefinition, inputs: Record<string, unknown>): Promise<WorkflowRunState> {
-    const missingInputs = requiredInputs(workflow, inputs)
     const run = await this.runStore.createRun(workflow, inputs)
-    if (missingInputs.length > 0) {
+    const inputProblems = validateInputs(workflow, inputs)
+    if (inputProblems.length > 0) {
       run.status = "failed"
-      run.error = `Missing required workflow input(s): ${missingInputs.join(", ")}`
+      run.error = inputProblems.join("; ")
       await this.runStore.saveRun(run)
       return run
     }
+
+    const preflight = await this.evaluatePreflight(workflow, run)
+    if (preflight.warnings.length > 0) run.state["workflow.preflightWarnings"] = JSON.stringify(preflight.warnings)
+    if (preflight.errors.length > 0) {
+      run.status = "failed"
+      run.error = `Workflow preflight failed: ${preflight.errors.join("; ")}`
+      await this.runStore.saveRun(run)
+      return run
+    }
+
     await this.runStore.saveRun(run)
     return this.continueRun(workflow, run, 0)
   }
@@ -93,6 +126,17 @@ export class WorkflowEngine {
         return run
       }
 
+      const artifactResult = await this.writeProducedArtifacts(workflow, run, step)
+      if (!artifactResult.ok) {
+        stepState.status = "failed"
+        stepState.error = artifactResult.error
+        run.status = "failed"
+        run.error = artifactResult.error
+        run.currentStep = step.id
+        await this.runStore.saveRun(run)
+        return run
+      }
+
       stepState.status = "completed"
       stepState.completedAt = new Date().toISOString()
       stepState.error = undefined
@@ -110,6 +154,8 @@ export class WorkflowEngine {
     if (step.type === "manual") return { ok: false, held: true, error: "Manual workflow step is waiting for completion." }
     if (step.type === "agent") return { ok: false, error: "Bob task adapter is required for agent workflow steps." }
     if (step.type === "command") {
+      const guardrail = validateCommandGuardrails(workflow, step.action.provider)
+      if (guardrail) return { ok: false, error: guardrail }
       const args = renderValue(step.action.args, { inputs: run.inputs, state: run.state, run, workflow, step })
       const result = await this.actions.execute(step.action.provider, {
         args,
@@ -126,6 +172,24 @@ export class WorkflowEngine {
     return this.writeResultSinks(workflow, run, step.id, step.result)
   }
 
+  private async writeProducedArtifacts(workflow: CoreWorkflowDefinition, run: WorkflowRunState, step: EngineStep): Promise<{ ok: true } | { ok: false; error: string }> {
+    const artifacts = workflow.artifacts ?? []
+    for (const artifact of artifacts.filter((item) => item.producedBy === step.id)) {
+      const value = run.state[artifact.id]
+      if (value === undefined) continue
+      const path = renderArtifactPath(artifact, { inputs: run.inputs, state: run.state, run, workflow, step })
+      if (path.includes("{{")) continue
+      const write = await this.resultSinks.write({ type: "file", path }, {
+        workflowId: workflow.id,
+        runId: run.runId,
+        stepId: step.id,
+        text: value
+      })
+      if (!write.ok) return { ok: false, error: write.error ?? `Failed to write artifact: ${artifact.id}` }
+    }
+    return { ok: true }
+  }
+
   private async writeResultSinks(workflow: CoreWorkflowDefinition, run: WorkflowRunState, stepId: string, result: ResultSourceDefinition): Promise<{ ok: true } | { ok: false; error: string }> {
     const text = resultText(run, result)
     for (const sink of result.sinks) {
@@ -138,6 +202,48 @@ export class WorkflowEngine {
       if (!write.ok) return { ok: false, error: write.error ?? `Result sink failed: ${sink.type}` }
     }
     return { ok: true }
+  }
+
+  private async evaluatePreflight(workflow: CoreWorkflowDefinition, run: WorkflowRunState): Promise<{ errors: string[]; warnings: string[] }> {
+    const errors: string[] = []
+    const warnings: string[] = []
+    if (workflow.requires?.workspace && this.workspaceAvailable) {
+      const available = await Promise.resolve(this.workspaceAvailable())
+      if (!available) errors.push("Workspace is required but not available.")
+    }
+    for (const file of workflow.requires?.files ?? []) await this.checkFile(file, errors, warnings, true)
+    for (const preflight of workflow.preflight ?? []) await this.evaluatePreflightEntry(workflow, run, preflight, errors, warnings)
+    return { errors, warnings }
+  }
+
+  private async evaluatePreflightEntry(workflow: CoreWorkflowDefinition, run: WorkflowRunState, preflight: WorkflowPreflightDefinition, errors: string[], warnings: string[]): Promise<void> {
+    const policy = preflight.failurePolicy ?? "stop"
+    const required = preflight.required !== false
+    const fail = (message: string) => {
+      if (required && policy === "stop") errors.push(`${preflight.id}: ${message}`)
+      else warnings.push(`${preflight.id}: ${message}`)
+    }
+    for (const file of preflight.files ?? []) await this.checkFile(file, errors, warnings, required && policy === "stop", preflight.id)
+    for (const checkId of preflight.checks ?? []) {
+      const check = this.preflightChecks[checkId]
+      if (!check) {
+        if (this.strictPreflightChecks) fail(`Unsupported preflight check: ${checkId}`)
+        else warnings.push(`${preflight.id}: skipped unsupported preflight check: ${checkId}`)
+        continue
+      }
+      const result = await Promise.resolve(check({ workflow, run, checkId }))
+      const error = formatPreflightCheckFailure(result)
+      if (error) fail(`${checkId}: ${error}`)
+    }
+  }
+
+  private async checkFile(relativePath: string, errors: string[], warnings: string[], required: boolean, prefix?: string): Promise<void> {
+    if (!this.fileExists) return
+    const exists = await Promise.resolve(this.fileExists(relativePath))
+    if (exists) return
+    const message = `${prefix ? `${prefix}: ` : ""}Required workflow file is missing: ${relativePath}`
+    if (required) errors.push(message)
+    else warnings.push(message)
   }
 }
 
@@ -153,15 +259,62 @@ function formatStateValue(value: unknown): string {
   return typeof value === "string" ? value : JSON.stringify(value)
 }
 
-function requiredInputs(workflow: CoreWorkflowDefinition, inputs: Record<string, unknown>): string[] {
-  return Object.entries(workflow.inputs)
-    .filter(([, definition]) => definition.required)
-    .map(([key]) => key)
-    .filter((key) => inputs[key] === undefined || inputs[key] === "")
+function validateInputs(workflow: CoreWorkflowDefinition, inputs: Record<string, unknown>): string[] {
+  const problems: string[] = []
+  for (const [key, definition] of Object.entries(workflow.inputs ?? {})) {
+    const value = inputs[key]
+    const required = definition.required === true || matchesRequiredWhen(definition, inputs)
+    if (required && isMissing(value)) {
+      problems.push(`Missing required workflow input: ${key}`)
+      continue
+    }
+    if (!isMissing(value)) {
+      const typeProblem = validateInputType(key, definition, value)
+      if (typeProblem) problems.push(typeProblem)
+    }
+  }
+  return problems
+}
+
+function matchesRequiredWhen(definition: WorkflowInputDefinition, inputs: Record<string, unknown>): boolean {
+  if (!definition.requiredWhen) return false
+  const match = definition.requiredWhen.match(/^inputs\.([A-Za-z0-9_.-]+)\s*(==|!=)\s*['"]([^'"]*)['"]$/)
+  if (!match) return false
+  const actual = String(inputs[match[1]] ?? "")
+  return match[2] === "==" ? actual === match[3] : actual !== match[3]
+}
+
+function validateInputType(key: string, definition: WorkflowInputDefinition, value: unknown): string | undefined {
+  if (definition.type === "number" && (typeof value !== "number" || Number.isNaN(value))) return `Workflow input must be a number: ${key}`
+  if (definition.type === "boolean" && typeof value !== "boolean") return `Workflow input must be a boolean: ${key}`
+  if (definition.type === "select" && definition.options && !definition.options.includes(String(value))) return `Workflow input has an unsupported option: ${key}`
+  return undefined
+}
+
+function isMissing(value: unknown): boolean {
+  return value === undefined || value === null || value === ""
+}
+
+function validateCommandGuardrails(workflow: CoreWorkflowDefinition, providerId: string): string | undefined {
+  const guardrails = workflow.guardrails ?? {}
+  if (guardrails.deniedCommands?.includes(providerId)) return `Command is denied by workflow guardrails: ${providerId}`
+  if (guardrails.allowedCommands && guardrails.allowedCommands.length > 0 && !guardrails.allowedCommands.includes(providerId)) return `Command is not allowed by workflow guardrails: ${providerId}`
+  return undefined
+}
+
+function formatPreflightCheckFailure(result: WorkflowPreflightCheckResult): string | undefined {
+  if (result === true) return undefined
+  if (result === false) return "check returned false"
+  if (typeof result === "string") return result
+  return result.ok ? undefined : result.error ?? "check failed"
 }
 
 function nextPendingIndex(run: WorkflowRunState): number {
   return run.steps.findIndex((step) => step.status === "pending" || step.status === "held" || step.status === "failed")
+}
+
+function renderArtifactPath(artifact: WorkflowArtifactDefinition, context: { inputs: Record<string, unknown>; state: Record<string, string>; run: WorkflowRunState; workflow: CoreWorkflowDefinition; step: EngineStep }): string {
+  return renderTemplate(artifact.path, context)
 }
 
 function renderValue(value: unknown, context: { inputs: Record<string, unknown>; state: Record<string, string>; run: WorkflowRunState; workflow: CoreWorkflowDefinition; step: EngineStep }): unknown {
