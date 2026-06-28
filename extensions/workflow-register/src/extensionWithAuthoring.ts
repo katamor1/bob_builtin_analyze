@@ -1,6 +1,7 @@
 import * as vscode from "vscode"
 import { activate as activateCore, deactivate, WorkflowRegisterApi } from "./extension"
 import { createWorkflowFromTemplate } from "./commands/createWorkflow"
+import { inspectRunDiagnostics } from "./commands/inspectRunDiagnostics"
 import { isWorkflowDocument, validateCurrentWorkflow, validateTextDocument, validateWorkspaceWorkflows } from "./commands/validateWorkflow"
 import { WorkflowDiagnosticsReporter } from "./commands/workflowDiagnostics"
 
@@ -15,6 +16,7 @@ export function activate(context: vscode.ExtensionContext): WorkflowRegisterApi 
     vscode.commands.registerCommand("workflowRegister.validateCurrentWorkflow", () => validateCurrentWorkflow({ sourceId: sourceId(), showMarkdownReport, diagnostics })),
     vscode.commands.registerCommand("workflowRegister.validateWorkspaceWorkflows", () => validateWorkspaceWorkflows({ sourceId: sourceId(), showMarkdownReport, diagnostics })),
     vscode.commands.registerCommand("workflowRegister.createWorkflowFromTemplate", () => createWorkflowFromTemplate({ sourceId: sourceId(), showMarkdownReport })),
+    vscode.commands.registerCommand("workflowRegister.inspectRunDiagnostics", () => inspectRunDiagnostics({ showMarkdownReport })),
     vscode.workspace.onDidSaveTextDocument((document) => {
       if (isWorkflowDocument(document)) validateTextDocument(document, { sourceId: sourceId(), diagnostics })
     }),
