@@ -15,6 +15,8 @@
 | `human-triage-spec.md` | bob 出力を人間が採用・棄却・追加調査に分類する仕様 |
 | `c-cpp-analysis-scope.md` | C/C++ コード解析で抽出する対象 |
 | `document-extraction-spec.md` | Word / Excel / Markdown 文書抽出仕様 |
+| `mvp-implementation-plan.md` | MVP 実装マイルストーン、タスク、受け入れ条件 |
+| `mvp-architecture.md` | MVP の CLI、モジュール、データフロー構成 |
 
 ## 実装順序
 
@@ -26,6 +28,8 @@
 5. bob-prompt-template.md
 6. bob-output-schema.md
 7. human-triage-spec.md
+8. mvp-implementation-plan.md
+9. mvp-architecture.md
 ```
 
 ## MVP のゴール
@@ -39,6 +43,29 @@ MVP では、1 件のコード変更に対して以下を実現する。
 - bob 投入用の `review-package` を生成できる。
 - bob 出力を YAML として保存できる。
 - 人間が bob 出力を triage できる。
+
+## MVP 実装単位
+
+```text
+M1. review-input-validator
+M2. git-diff-collector
+M3. review-package-builder の最小版
+M4. document-extractor の最小版
+M5. c-cpp-change-analyzer の最小版
+M6. traceability-builder の最小版
+M7. bob-input.md 生成
+M8. bob-output-validator
+M9. human-triage-helper
+M10. サンプル変更で end-to-end 検証
+```
+
+## CLI の想定
+
+```bash
+bob-review preprocess --input review-input.yaml --out .bob-review/review-package
+bob-review validate-output --package .bob-review/review-package --bob-output .bob-review/bob-output/bob-output.yaml
+bob-review triage --package .bob-review/review-package --bob-output .bob-review/bob-output/bob-output.yaml --out .bob-review/human-triage
+```
 
 ## 担当境界
 
