@@ -2,14 +2,14 @@
 
 ## 1. 目的
 
-このディレクトリは、整合プレレビュー scaffold の最小検証に使う fixture を置く。
+このディレクトリは、整合プレレビュー scaffold の最小検証に使う fixture と自動テストを置く。
 
-MVP の初期段階では、完全な自動テストよりも、以下を人間と実装者が確認しやすくすることを優先する。
+MVP の初期段階では、以下を確認できることを優先する。
 
 - 正常な `review-input.yaml` を読み込めること
 - 不正な `review-input.yaml` を検出できること
 - 正常な `bob-output.yaml` を valid と判定できること
-- 最終承認してしまう `bob-output.yaml` を invalid と判定できること
+- evidence が空の finding を含む `bob-output.yaml` を invalid と判定できること
 - triage 用 Markdown / YAML を生成できること
 
 ## 2. fixture 一覧
@@ -17,27 +17,49 @@ MVP の初期段階では、完全な自動テストよりも、以下を人間�
 ```text
 tests/fixtures/
   review-input.valid.yaml
-  review-input.invalid-missing-head.yaml
+  review-input.invalid-missing-target.yaml
   bob-output.valid.yaml
   bob-output.invalid-final-approval.yaml
+  bob-output.invalid-missing-evidence.yaml
 ```
 
-## 3. 手動確認例
+`bob-output.invalid-final-approval.yaml` は、手動確認用の fixture として残す。
+自動テストでは、安全に扱いやすい `bob-output.invalid-missing-evidence.yaml` を使用する。
 
-### 3.1 review-input valid
+## 3. 自動テスト
 
 ```bash
-node dist/cli/main.js preprocess \
+npm run unit
+```
+
+対象:
+
+- `review-input-validator.test.ts`
+- `bob-output-validator.test.ts`
+
+確認内容:
+
+- valid review-input を受け付ける。
+- target ref が未指定の review-input を拒否する。
+- valid bob-output を受け付ける。
+- evidence が空の finding を含む bob-output を拒否する。
+
+## 4. 手動確認例
+
+### 4.1 review-input valid
+
+```bash
+node dist/src/cli/main.js preprocess \
   --input tests/fixtures/review-input.valid.yaml \
   --out .tmp/review-package
 ```
 
 この確認は Git diff を伴うため、fixture の `base` / `head` がローカルで解決できる必要がある。
 
-### 3.2 bob-output valid
+### 4.2 bob-output valid
 
 ```bash
-node dist/cli/main.js validate-output \
+node dist/src/cli/main.js validate-output \
   --package .tmp/review-package \
   --bob-output tests/fixtures/bob-output.valid.yaml
 ```
@@ -46,20 +68,32 @@ node dist/cli/main.js validate-output \
 
 - invalid error が出ない。
 
-### 3.3 bob-output invalid
+### 4.3 bob-output invalid
 
 ```bash
-node dist/cli/main.js validate-output \
+node dist/src/cli/main.js validate-output \
   --package .tmp/review-package \
-  --bob-output tests/fixtures/bob-output.invalid-final-approval.yaml
+  --bob-output tests/fixtures/bob-output.invalid-missing-evidence.yaml
 ```
 
 期待:
 
-- `review_summary.final_approval must be not_performed` を error として検出する。
+- evidence が空の finding を error として検出する。
 
-## 4. 後続で自動化すること
+## 5. smoke test
 
-- Node.js の `node:test` で validator の unit test を追加する。
-- fixture を使った smoke test script を追加する。
-- CI で scaffold の `npm run build` と validator テストを実行する。
+```bash
+npm run smoke
+```
+
+対象:
+
+- help 表示
+- valid bob-output 検証
+- human triage 生成
+
+## 6. 後続で自動化すること
+
+- CI で scaffold の `npm run build` と `npm run unit` を実行する。
+- preprocess を Git diff なし fixture でも検証できるようにする。
+- evidence-index 照合の unit test を追加する。
