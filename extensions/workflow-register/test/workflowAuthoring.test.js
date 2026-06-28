@@ -5,16 +5,26 @@ const { test } = require("node:test")
 
 const extensionRoot = path.resolve(__dirname, "..")
 const outRoot = path.join(extensionRoot, "out")
-const { createWorkflowMarkdown } = require(path.join(outRoot, "core", "workflowScaffold.js"))
-const { validateWorkflowText } = require(path.join(outRoot, "core", "workflowValidator.js"))
+const { createWorkflowMarkdown, workflowTemplates } = require(path.join(outRoot, "core", "workflowScaffold.js"))
+const { formatWorkflowDiagnostics, validateWorkflowText } = require(path.join(outRoot, "core", "workflowValidator.js"))
 const { workflowV1Schema } = require(path.join(outRoot, "core", "workflowSchema.js"))
 
-test("workflow scaffold output validates", () => {
-  const text = createWorkflowMarkdown({ name: "sample", title: "Sample", description: "Run sample workflow.", template: "simple-agent" })
-  const result = validateWorkflowText({ sourceId: "workflow-register", filePath: ".bob/workflows/sample/WORKFLOW.md", text })
-
-  assert.equal(result.ok, true)
-  assert.equal(result.diagnostics.some((diagnostic) => diagnostic.severity === "error"), false)
+test("all workflow scaffold templates validate", () => {
+  assert.deepEqual(workflowTemplates.map((template) => template.id), [
+    "simple-agent",
+    "command-then-agent",
+    "manual-checklist",
+    "input-driven-agent",
+    "preflight-files",
+    "artifact-output",
+    "guarded-command",
+    "review-workflow"
+  ])
+  for (const template of workflowTemplates) {
+    const text = createWorkflowMarkdown({ name: template.id, title: template.label, description: `Run ${template.label}.`, template: template.id })
+    const result = validateWorkflowText({ sourceId: "workflow-register", filePath: `.bob/workflows/${template.id}/WORKFLOW.md`, text })
+    assert.equal(result.ok, true, `${template.id}: ${formatWorkflowDiagnostics(result).join("\n")}`)
+  }
 })
 
 test("semantic validator rejects duplicate step ids", () => {
@@ -57,6 +67,7 @@ steps:
 
   assert.equal(result.ok, false)
   assert.ok(result.diagnostics.some((diagnostic) => diagnostic.message.includes("includeState references unknown resultKey 'missingContext'")))
+  assert.ok(formatWorkflowDiagnostics(result).some((line) => line.includes("hint:")))
 })
 
 test("public JSON schema mirrors runtime schema shape", () => {
