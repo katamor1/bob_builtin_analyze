@@ -17,9 +17,11 @@
     "Other"
   ],
   "extensionDependencies": [
-    "IBM.bob-code"
+    "IBM.bob-code",
+    "local.workflow-register"
   ],
   "activationEvents": [
+    "onStartupFinished",
     "onCommand:bobBazaar.openReviewGui",
     "onCommand:bobBazaar.collectReviewContext",
     "onCommand:bobBazaar.loadReviewRules",
