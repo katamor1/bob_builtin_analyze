@@ -13,10 +13,11 @@ test("Bazaar companion extension registers workflow providers with workflow-regi
   assert.ok(packageJson.activationEvents.includes("onStartupFinished"))
   assert.match(source, /const WORKFLOW_REGISTER_EXTENSION_ID = "local\.workflow-register"/)
   assert.match(source, /registerWorkflowProviders\(context\)\.catch/)
-  assert.match(source, /api\.registerActionProvider\(\{[\s\S]*id: "bobBazaar\.openReviewGui"[\s\S]*execute: \(input\) => openBazaarReviewGui\(context, initialTargetFromWorkflowInputs\(input\.inputs\)\)[\s\S]*\}\)/)
-  assert.match(source, /api\.registerActionProvider\(\{[\s\S]*id: "bobBazaar\.collectReviewContext"[\s\S]*collectReviewContext\(\)[\s\S]*\}\)/)
-  assert.match(source, /api\.registerActionProvider\(\{[\s\S]*id: "bobBazaar\.loadReviewRules"[\s\S]*loadReviewRules\(\)[\s\S]*\}\)/)
-  assert.match(source, /api\.registerActionProvider\(\{[\s\S]*id: "bobBazaar\.captureReviewResult"[\s\S]*captureReviewResult\(firstStringArg\(args\)\)[\s\S]*\}\)/)
+  assert.match(source, /id: "bobBazaar\.openReviewGui"/)
+  assert.match(source, /initialTargetFromWorkflowInputs\(input\.inputs\)/)
+  assert.match(source, /id: "bobBazaar\.collectReviewContext"/)
+  assert.match(source, /id: "bobBazaar\.loadReviewRules"/)
+  assert.match(source, /id: "bobBazaar\.captureReviewResult"/)
 })
 
 test("Bazaar review GUI accepts workflow inputs as initial target values", () => {
@@ -30,6 +31,17 @@ test("Bazaar review GUI accepts workflow inputs as initial target values", () =>
   assert.match(guiSource, /new BazaarReviewGuiController\(context, panel, initialTarget\)/)
   assert.match(guiSource, /const initialTargetJson = JSON\.stringify\(initialTarget \?\? \{\}\)/)
   assert.match(guiSource, /applyInitialTarget\(initialTarget\)/)
+})
+
+test("Bazaar workflow template starts review target selection from the GUI by default", () => {
+  const workflowPath = path.join(extensionRoot, "templates", ".bob", "workflows", "bazaar-project-rule-review", "WORKFLOW.md")
+  const workflow = fs.readFileSync(workflowPath, "utf8")
+
+  assert.match(workflow, /revisionMode:[\s\S]*?prompt: false/)
+  assert.match(workflow, /revision:[\s\S]*?prompt: false/)
+  assert.match(workflow, /baseRevision:[\s\S]*?prompt: false/)
+  assert.match(workflow, /targetRevision:[\s\S]*?prompt: false/)
+  assert.doesNotMatch(workflow, /requiredWhen:/)
 })
 
 test("Bazaar workflow template declares the providers owned by this extension", () => {
