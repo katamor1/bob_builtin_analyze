@@ -34,6 +34,19 @@ test("package exposes workflow authoring commands", () => {
   }
 })
 
+test("workflow authoring wrapper wires a configurable AI provider command", () => {
+  const packageJson = JSON.parse(fs.readFileSync(path.join(extensionRoot, "package.json"), "utf8"))
+  const source = fs.readFileSync(path.join(extensionRoot, "src", "extensionWithAuthoring.ts"), "utf8")
+  const setting = packageJson.contributes.configuration.properties["workflowRegister.aiProviderCommand"]
+
+  assert.equal(setting.type, "string")
+  assert.equal(setting.default, "")
+  assert.match(source, /import \{ createConfiguredWorkflowAiProvider \} from "\.\/core\/workflowAiProviderFactory"/)
+  assert.match(source, /config\(\)\.get<string>\("aiProviderCommand", ""\)/)
+  assert.match(source, /executeCommand: \(command, input\) => vscode\.commands\.executeCommand\(command, input\)/)
+  assert.match(source, /provider: aiProvider\(\)/)
+})
+
 test("completeStep command can be called silently by companion extensions", () => {
   const source = fs.readFileSync(path.join(extensionRoot, "src", "extension.ts"), "utf8")
 
