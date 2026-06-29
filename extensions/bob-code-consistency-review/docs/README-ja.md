@@ -15,6 +15,9 @@
 - `vcs-bazaar-ja.md`  
   Git の代わりに Bazaar 差分を使うための `review-input.yaml` 指定方法、`bzr --no-aliases` の扱い、`vcs_root`、`bzrPath` の設定をまとめています。
 
+- `text-encoding-ja.md`  
+  Shift-JIS / CP932 が混在する既存ソース、Markdown 文書、Git / Bazaar 差分、`review-input.yaml` の読み取り文字コード設定をまとめています。
+
 ## 既存ドキュメント
 
 - `../README.md`  
