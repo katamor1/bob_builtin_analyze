@@ -59,10 +59,25 @@ node_modules/**/.prettier*
 node_modules/**/.editorconfig
 node_modules/**/.npmignore
 
-# Dependency development sources and maps. Runtime JS / JSON / assets are kept.
-node_modules/**/src/**/*.ts
+# Dependency development sources, type declarations, and source maps.
+# Runtime JS / JSON / assets are kept.
+node_modules/**/*.ts
+node_modules/**/*.tsx
+node_modules/**/*.d.ts
 node_modules/**/*.map
 node_modules/**/*.tsbuildinfo
+node_modules/**/@types/**
+
+# Dependency documentation that is not needed at runtime.
+node_modules/**/README*
+node_modules/**/CHANGELOG*
+node_modules/**/CHANGES*
+node_modules/**/HISTORY*
+node_modules/**/CONTRIBUTING*
+node_modules/**/CODE_OF_CONDUCT*
+node_modules/**/SECURITY*
+node_modules/**/*.md
+node_modules/**/*.markdown
 
 # Binary package caches occasionally included by dependencies.
 node_modules/**/*.tgz
