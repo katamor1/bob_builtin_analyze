@@ -5,6 +5,7 @@ import {
   captureReviewResultFromCandidates,
   extractJsonFromText
 } from "./resultCaptureCore"
+import { resolveBazaarWorkspaceFolder } from "../workspaceResolver"
 
 export { CaptureReviewResultResult, extractJsonFromText }
 
@@ -73,15 +74,5 @@ async function showValidationIssues(issues: Array<{ path: string; message: strin
 }
 
 async function pickWorkspaceFolder(): Promise<vscode.WorkspaceFolder | undefined> {
-  const folders = vscode.workspace.workspaceFolders ?? []
-  if (folders.length === 0) {
-    await vscode.window.showWarningMessage("Open a workspace folder first.")
-    return undefined
-  }
-  if (folders.length === 1) return folders[0]
-  const picked = await vscode.window.showQuickPick(
-    folders.map((folder) => ({ label: folder.name, description: folder.uri.fsPath, folder })),
-    { title: "Select workspace for review result artifacts" }
-  )
-  return picked?.folder
+  return resolveBazaarWorkspaceFolder({ allowPick: true, title: "Select workspace for review result artifacts" })
 }

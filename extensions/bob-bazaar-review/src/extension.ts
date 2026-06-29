@@ -11,6 +11,7 @@ import { ReviewResult } from "./projectRules/types"
 import { BazaarReviewInitialTarget, openBazaarReviewGui } from "./reviewGui"
 import { buildAddedFilesContentSection, loadBazaarRevisionPacketInput } from "./revisionInfo"
 import { BazaarReviewContextResult, buildReviewContextResult } from "./workflowBridge"
+import { resolveBazaarWorkspaceFolder } from "./workspaceResolver"
 
 const WORKFLOW_REGISTER_EXTENSION_ID = "local.workflow-register"
 
@@ -19,6 +20,12 @@ interface WorkflowActionExecutionInput {
   inputs: Record<string, unknown>
   state?: Record<string, string>
   workflowId?: string
+  logicalWorkflowId?: string
+  workflowRoot?: string
+  workflowFile?: string
+  workflowFolderName?: string
+  bazaarRoot?: string
+  repositoryRoot?: string
   runId?: string
   stepId?: string
 }
@@ -71,7 +78,7 @@ async function registerWorkflowProviders(context: vscode.ExtensionContext): Prom
   if (!api) return
   api.registerActionProvider({
     id: "bobBazaar.openReviewGui",
-    execute: (input) => openBazaarReviewGui(context, initialTargetFromWorkflowInputs(input.inputs))
+    execute: (input) => openBazaarReviewGui(context, initialTargetFromWorkflowInputs(input.inputs, input))
   })
   api.registerActionProvider({
     id: "bobBazaar.collectReviewContext",
@@ -107,14 +114,18 @@ function firstStringArg(args: unknown): string | undefined {
   return typeof first === "string" ? first : undefined
 }
 
-function initialTargetFromWorkflowInputs(inputs: Record<string, unknown>): BazaarReviewInitialTarget | undefined {
+function initialTargetFromWorkflowInputs(inputs: Record<string, unknown>, input?: WorkflowActionExecutionInput): BazaarReviewInitialTarget | undefined {
+  const explicitBazaarRoot = stringInput(input?.bazaarRoot) ?? stringInput(input?.repositoryRoot) ?? stringInput(inputs.bazaarRoot) ?? stringInput(inputs.repositoryRoot)
   const target: BazaarReviewInitialTarget = {
     revisionMode: targetMode(inputs.revisionMode),
     revision: stringInput(inputs.revision),
     baseRevision: stringInput(inputs.baseRevision),
-    targetRevision: stringInput(inputs.targetRevision)
+    targetRevision: stringInput(inputs.targetRevision),
+    bazaarRoot: explicitBazaarRoot,
+    repositoryRoot: stringInput(inputs.repositoryRoot),
+    workflowRoot: stringInput(input?.workflowRoot)
   }
-  return target.revisionMode || target.revision || target.baseRevision || target.targetRevision ? target : undefined
+  return target.revisionMode || target.revision || target.baseRevision || target.targetRevision || target.bazaarRoot || target.repositoryRoot || target.workflowRoot ? target : undefined
 }
 
 function targetMode(value: unknown): BazaarReviewInitialTarget["revisionMode"] | undefined {
@@ -323,20 +334,7 @@ function getMaxAddedFileContentBytes(): number {
 }
 
 async function pickWorkspaceFolder(): Promise<vscode.WorkspaceFolder | undefined> {
-  const folders = vscode.workspace.workspaceFolders ?? []
-  if (folders.length === 0) {
-    await vscode.window.showWarningMessage("Open a Bazaar workspace folder first.")
-    return undefined
-  }
-  if (folders.length === 1) {
-    return folders[0]
-  }
-
-  const picked = await vscode.window.showQuickPick(
-    folders.map((folder) => ({ label: folder.name, description: folder.uri.fsPath, folder })),
-    { title: "Select Bazaar workspace" }
-  )
-  return picked?.folder
+  return resolveBazaarWorkspaceFolder({ allowPick: true, title: "Select Bazaar workspace" })
 }
 
 function findReviewPacketText(): string | undefined {

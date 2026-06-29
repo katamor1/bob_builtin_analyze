@@ -128,6 +128,7 @@ export interface WorkflowTodoDefinition {
 
 export interface CoreWorkflowDefinition {
   id: string
+  logicalWorkflowId?: string
   name: string
   label: string
   menuLabel?: string
@@ -135,6 +136,9 @@ export interface CoreWorkflowDefinition {
   schemaVersion: WorkflowSchemaVersion
   definitionHash?: string
   filePath?: string
+  workflowRoot?: string
+  workflowFile?: string
+  workflowFolderName?: string
   prompt: string
   promptWithoutTodo: string
   command?: string
@@ -163,6 +167,10 @@ export interface CoreWorkflowDefinition {
 
 export interface AgentExecutionInput {
   workflowId: string
+  logicalWorkflowId?: string
+  workflowRoot?: string
+  workflowFile?: string
+  workflowFolderName?: string
   runId: string
   stepId: string
   prompt: string
@@ -189,6 +197,10 @@ export interface ActionExecutionInput {
   inputs: Record<string, unknown>
   state?: Record<string, string>
   workflowId?: string
+  logicalWorkflowId?: string
+  workflowRoot?: string
+  workflowFile?: string
+  workflowFolderName?: string
   runId?: string
   stepId?: string
 }

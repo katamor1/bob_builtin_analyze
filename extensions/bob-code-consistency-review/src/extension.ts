@@ -5,6 +5,7 @@ import { validateBobOutput } from "./core/bobOutputValidator"
 import { preprocessReview } from "./core/pipeline"
 import { generateHumanTriage } from "./triage/humanTriageHelper"
 import { buildCaptureWorkflowOptions } from "./workflowOptions"
+import { resolveBobWorkspaceRoot } from "./workspaceResolver"
 
 const WORKFLOW_REGISTER_EXTENSION_ID = "local.workflow-register"
 
@@ -13,6 +14,12 @@ interface WorkflowActionExecutionInput {
   inputs: Record<string, unknown>
   state?: Record<string, string>
   workflowId?: string
+  logicalWorkflowId?: string
+  workflowRoot?: string
+  workflowFile?: string
+  workflowFolderName?: string
+  bobRoot?: string
+  workspaceRoot?: string
   runId?: string
   stepId?: string
 }
@@ -45,19 +52,22 @@ async function registerWorkflowProviders(_context: vscode.ExtensionContext): Pro
   if (!api) return
   api.registerActionProvider({
     id: "bobCodeConsistency.preprocess",
-    execute: ({ args, inputs }) => runPreprocess(mergeOptions(inputs, args))
+    execute: (input) => runPreprocess(mergeWorkflowOptions(input))
   })
   api.registerActionProvider({
     id: "bobCodeConsistency.captureBobOutput",
-    execute: ({ args, inputs, state }) => runCaptureBobOutput(buildCaptureWorkflowOptions({ args, inputs, state }))
+    execute: (input) => {
+      const { args, inputs, state } = input
+      return runCaptureBobOutput({ ...optionRecord(buildCaptureWorkflowOptions({ args, inputs, state })), ...workflowContextOptions(input) })
+    }
   })
   api.registerActionProvider({
     id: "bobCodeConsistency.validateOutput",
-    execute: ({ args, inputs }) => runValidateOutput(mergeOptions(inputs, args))
+    execute: (input) => runValidateOutput(mergeWorkflowOptions(input))
   })
   api.registerActionProvider({
     id: "bobCodeConsistency.triage",
-    execute: ({ args, inputs }) => runTriage(mergeOptions(inputs, args))
+    execute: (input) => runTriage(mergeWorkflowOptions(input))
   })
 }
 
@@ -76,9 +86,9 @@ async function getWorkflowRegisterApi(): Promise<WorkflowRegisterApi | undefined
 }
 
 async function runPreprocess(options?: unknown): Promise<unknown> {
-  const workspaceRoot = requireWorkspaceRoot()
   const config = vscode.workspace.getConfiguration("bobCodeConsistency")
   const record = optionRecord(options)
+  const workspaceRoot = await requireBobWorkspaceRoot(record)
   const inputPath = absolute(workspaceRoot, stringOption(record, "reviewInputPath") ?? config.get<string>("reviewInputPath", "review-input.yaml"))
   const outDir = absolute(workspaceRoot, stringOption(record, "reviewPackagePath") ?? stringOption(record, "outDir") ?? config.get<string>("reviewPackagePath", ".bob-review/review-package"))
   const diffFixturePath = optionalAbsolute(workspaceRoot, stringOption(record, "diffFixturePath"))
@@ -91,9 +101,9 @@ async function runPreprocess(options?: unknown): Promise<unknown> {
 }
 
 async function runCaptureBobOutput(textOrOptions?: unknown): Promise<unknown> {
-  const workspaceRoot = requireWorkspaceRoot()
   const config = vscode.workspace.getConfiguration("bobCodeConsistency")
   const record = optionRecord(textOrOptions)
+  const workspaceRoot = await requireBobWorkspaceRoot(record)
   const text = firstString(textOrOptions) ?? stringOption(record, "text") ?? await vscode.env.clipboard.readText()
   const bobOutputPath = absolute(workspaceRoot, stringOption(record, "bobOutputPath") ?? config.get<string>("bobOutputPath", ".bob-review/bob-output/bob-output.yaml"))
   const result = await captureBobOutput({ workspaceRoot, text, bobOutputPath })
@@ -103,9 +113,9 @@ async function runCaptureBobOutput(textOrOptions?: unknown): Promise<unknown> {
 }
 
 async function runValidateOutput(options?: unknown): Promise<unknown> {
-  const workspaceRoot = requireWorkspaceRoot()
   const config = vscode.workspace.getConfiguration("bobCodeConsistency")
   const record = optionRecord(options)
+  const workspaceRoot = await requireBobWorkspaceRoot(record)
   const packageDir = absolute(workspaceRoot, stringOption(record, "reviewPackagePath") ?? stringOption(record, "packageDir") ?? config.get<string>("reviewPackagePath", ".bob-review/review-package"))
   const bobOutputPath = absolute(workspaceRoot, stringOption(record, "bobOutputPath") ?? config.get<string>("bobOutputPath", ".bob-review/bob-output/bob-output.yaml"))
   const result = await validateBobOutput({ packageDir, bobOutputPath })
@@ -115,9 +125,9 @@ async function runValidateOutput(options?: unknown): Promise<unknown> {
 }
 
 async function runTriage(options?: unknown): Promise<unknown> {
-  const workspaceRoot = requireWorkspaceRoot()
   const config = vscode.workspace.getConfiguration("bobCodeConsistency")
   const record = optionRecord(options)
+  const workspaceRoot = await requireBobWorkspaceRoot(record)
   const packageDir = absolute(workspaceRoot, stringOption(record, "reviewPackagePath") ?? stringOption(record, "packageDir") ?? config.get<string>("reviewPackagePath", ".bob-review/review-package"))
   const bobOutputPath = absolute(workspaceRoot, stringOption(record, "bobOutputPath") ?? config.get<string>("bobOutputPath", ".bob-review/bob-output/bob-output.yaml"))
   const outDir = absolute(workspaceRoot, stringOption(record, "triagePath") ?? stringOption(record, "outDir") ?? config.get<string>("triagePath", ".bob-review/human-triage"))
@@ -126,10 +136,15 @@ async function runTriage(options?: unknown): Promise<unknown> {
   return result
 }
 
-function requireWorkspaceRoot(): string {
-  const folder = vscode.workspace.workspaceFolders?.[0]
-  if (!folder) throw new Error("Open a workspace folder first.")
-  return folder.uri.fsPath
+async function requireBobWorkspaceRoot(record: Record<string, unknown>): Promise<string> {
+  const root = await resolveBobWorkspaceRoot({
+    explicitRoot: stringOption(record, "bobRoot") ?? stringOption(record, "workspaceRoot"),
+    workflowRoot: stringOption(record, "workflowRoot"),
+    allowPick: true,
+    title: "Select Bob workspace"
+  })
+  if (!root) throw new Error("Open a workspace folder first.")
+  return root
 }
 
 function absolute(root: string, value: string): string {
@@ -142,6 +157,20 @@ function optionalAbsolute(root: string, value: string | undefined): string | und
 
 function mergeOptions(inputs: Record<string, unknown>, args: unknown): Record<string, unknown> {
   return { ...inputs, ...optionRecord(args) }
+}
+
+function mergeWorkflowOptions(input: WorkflowActionExecutionInput): Record<string, unknown> {
+  return { ...mergeOptions(input.inputs, input.args), ...workflowContextOptions(input) }
+}
+
+function workflowContextOptions(input: WorkflowActionExecutionInput): Record<string, unknown> {
+  return {
+    workflowRoot: input.workflowRoot,
+    workflowFile: input.workflowFile,
+    workflowFolderName: input.workflowFolderName,
+    bobRoot: input.bobRoot,
+    workspaceRoot: input.workspaceRoot
+  }
 }
 
 function optionRecord(value: unknown): Record<string, unknown> {

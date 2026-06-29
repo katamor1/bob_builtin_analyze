@@ -17,8 +17,19 @@ test("extension registers code consistency workflow providers with workflow-regi
   assert.match(source, /id: "bobCodeConsistency\.preprocess"/)
   assert.match(source, /id: "bobCodeConsistency\.captureBobOutput"/)
   assert.match(source, /buildCaptureWorkflowOptions\(\{ args, inputs, state \}\)/)
+  assert.match(source, /mergeWorkflowOptions\(input\)/)
   assert.match(source, /id: "bobCodeConsistency\.validateOutput"/)
   assert.match(source, /id: "bobCodeConsistency\.triage"/)
+})
+
+test("code consistency provider accepts workflowRoot without first-folder fallback", () => {
+  const source = fs.readFileSync(path.join(extensionRoot, "src", "extension.ts"), "utf8")
+
+  assert.match(source, /workflowRoot\?: string/)
+  assert.match(source, /bobRoot\?: string/)
+  assert.match(source, /resolveBobWorkspaceRoot/)
+  assert.doesNotMatch(source, /workspaceFolders\?\.\[0\]|workspaceFolders\?\[0\]/)
+  assert.doesNotMatch(source, /function requireWorkspaceRoot/)
 })
 
 test("Bob workflow template uses command providers instead of manual CLI instructions", () => {

@@ -6,6 +6,7 @@ import { loadProjectChecklist, loadReviewResultSchema } from "./projectRules/io"
 import { buildAddedFilesContentSection, loadBazaarRevisionPacketInput, parseChangedFileEntries, BazaarRevisionInfo, BazaarChangedFile } from "./revisionInfo"
 import { getBobWorkspaceStatus, initializeBobWorkspaceFromTemplates } from "./bobWorkspaceInit"
 import { completeCurrentWorkflowStepAfterGuiAction } from "./workflowStepCompletion"
+import { resolveBazaarWorkspaceFolder } from "./workspaceResolver"
 
 type TargetMode = "singleRevision" | "revisionRange" | "workingTreeSinceRevision"
 
@@ -14,6 +15,9 @@ export interface BazaarReviewInitialTarget {
   revision?: string
   baseRevision?: string
   targetRevision?: string
+  bazaarRoot?: string
+  repositoryRoot?: string
+  workflowRoot?: string
 }
 
 interface TargetRequest {
@@ -82,8 +86,13 @@ class BazaarReviewGuiController {
   }
 
   private async postWorkspaceState(): Promise<void> {
-    const folders = vscode.workspace.workspaceFolders ?? []
-    if (folders.length === 1 && !this.workspaceFolder) this.workspaceFolder = folders[0]
+    if (!this.workspaceFolder) {
+      this.workspaceFolder = await resolveBazaarWorkspaceFolder({
+        explicitRoot: this.initialTarget?.bazaarRoot ?? this.initialTarget?.repositoryRoot,
+        workflowRoot: this.initialTarget?.workflowRoot,
+        allowPick: false
+      })
+    }
     this.post({
       type: "workspaceState",
       workspace: this.workspaceFolder ? this.workspaceFolder.uri.fsPath : undefined
@@ -101,13 +110,14 @@ class BazaarReviewGuiController {
   }
 
   private async selectWorkspace(): Promise<void> {
-    const folders = vscode.workspace.workspaceFolders ?? []
-    if (folders.length === 0) throw new Error("Open a Bazaar workspace folder first.")
-    if (folders.length === 1) this.workspaceFolder = folders[0]
-    else {
-      const picked = await vscode.window.showQuickPick(folders.map((folder) => ({ label: folder.name, description: folder.uri.fsPath, folder })), { title: "Select Bazaar workspace" })
-      this.workspaceFolder = picked?.folder
-    }
+    const folder = await resolveBazaarWorkspaceFolder({
+      explicitRoot: this.initialTarget?.bazaarRoot ?? this.initialTarget?.repositoryRoot,
+      workflowRoot: this.initialTarget?.workflowRoot,
+      allowPick: true,
+      title: "Select Bazaar workspace"
+    })
+    if (!folder) throw new Error("Open a Bazaar workspace folder first.")
+    this.workspaceFolder = folder
     await this.postWorkspaceState()
   }
 
