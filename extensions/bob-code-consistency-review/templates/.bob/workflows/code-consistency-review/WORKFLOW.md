@@ -49,7 +49,6 @@ inputs:
     type: string
     title: テキスト読み取り文字コード
     default: auto
-    description: auto / utf8 / shift_jis / cp932 / windows-31j。review-input、Markdown 文書、C/C++ ソース、Git/Bazaar 差分 stdout、diff fixture に適用します。
   bobOutputPath:
     type: string
     title: Bob 出力 YAML の保存先
