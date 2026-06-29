@@ -11,7 +11,7 @@ import { ReviewResult } from "./projectRules/types"
 import { BazaarReviewInitialTarget, openBazaarReviewGui } from "./reviewGui"
 import { buildAddedFilesContentSection, loadBazaarRevisionPacketInput } from "./revisionInfo"
 import { BazaarReviewContextResult, buildReviewContextResult } from "./workflowBridge"
-import { resolveBazaarWorkspaceFolder } from "./workspaceResolver"
+import { resolveBazaarWorkspaceFolder, resolveBobWorkspaceFolder } from "./workspaceResolver"
 
 const WORKFLOW_REGISTER_EXTENSION_ID = "local.workflow-register"
 
@@ -86,11 +86,14 @@ async function registerWorkflowProviders(context: vscode.ExtensionContext): Prom
   })
   api.registerActionProvider({
     id: "bobBazaar.loadReviewRules",
-    execute: () => loadReviewRules()
+    execute: (input) => loadReviewRules(input)
   })
   api.registerActionProvider({
     id: "bobBazaar.captureReviewResult",
-    execute: ({ args, state }) => captureReviewResult(firstStringArg(args), { expectedChecklistItems: expectedChecklistItemsFromState(state) })
+    execute: (input) => captureReviewResult(firstStringArg(input.args), {
+      expectedChecklistItems: expectedChecklistItemsFromState(input.state),
+      workspaceRoot: stringInput(input.workflowRoot)
+    })
   })
 }
 
@@ -161,9 +164,9 @@ async function collectReviewContext(): Promise<BazaarReviewContextResult> {
   return buildReviewContextResult(packet)
 }
 
-async function loadReviewRules(): Promise<ReviewRulesBridgeResult> {
-  const folder = await pickWorkspaceFolder()
-  if (!folder) throw new Error("先に Bazaar ワークスペースフォルダーを開いてください。")
+async function loadReviewRules(input?: WorkflowActionExecutionInput): Promise<ReviewRulesBridgeResult> {
+  const folder = await pickBobWorkspaceFolder(input?.workflowRoot, input ? false : true)
+  if (!folder) throw new Error("先に Bob ワークスペースフォルダーを開いてください。")
 
   const config = vscode.workspace.getConfiguration("bobBazaar")
   const checklistPath = config.get<string>("projectRules.checklistPath", ".bob/review/checklist.json")
@@ -188,7 +191,7 @@ async function loadReviewRules(): Promise<ReviewRulesBridgeResult> {
 }
 
 async function configureMcp(context: vscode.ExtensionContext): Promise<void> {
-  const folder = await pickWorkspaceFolder()
+  const folder = await pickBobWorkspaceFolder(undefined, true)
   if (!folder) return
 
   const config = vscode.workspace.getConfiguration("bobBazaar")
@@ -208,7 +211,7 @@ async function configureMcp(context: vscode.ExtensionContext): Promise<void> {
 }
 
 async function initProjectRules(): Promise<void> {
-  const folder = await pickWorkspaceFolder()
+  const folder = await pickBobWorkspaceFolder(undefined, true)
   if (!folder) return
 
   const paths = await initializeProjectRules(folder.uri.fsPath)
@@ -219,8 +222,10 @@ async function initProjectRules(): Promise<void> {
 }
 
 async function reviewRevision(context: vscode.ExtensionContext, withProjectRules: boolean): Promise<void> {
-  const folder = await pickWorkspaceFolder()
-  if (!folder) return
+  const bazaarFolder = await pickBazaarWorkspaceFolder()
+  if (!bazaarFolder) return
+  const bobFolder = withProjectRules ? await pickBobWorkspaceFolder(undefined, true) : undefined
+  if (withProjectRules && !bobFolder) return
 
   const revision = await vscode.window.showInputBox({
     title: withProjectRules ? "プロジェクト規約付きで Bazaar 1リビジョンをレビュー" : "Bob で Bazaar 1リビジョンをレビュー",
@@ -231,10 +236,10 @@ async function reviewRevision(context: vscode.ExtensionContext, withProjectRules
 
   await withProgress("Bazaar 1リビジョンレビュー packet を作成しています", async () => {
     const client = makeBazaarClient()
-    const input = await loadBazaarRevisionPacketInput(client, folder.uri.fsPath, revision)
+    const input = await loadBazaarRevisionPacketInput(client, bazaarFolder.uri.fsPath, revision)
     const [addedFilesSection, projectRulesSection] = await Promise.all([
       buildAddedFilesContentSection(client, input.root, revision, input.info, getMaxAddedFileContentBytes()),
-      withProjectRules ? buildProjectRulesSectionForWorkspace(input.root) : Promise.resolve(undefined)
+      withProjectRules && bobFolder ? buildProjectRulesSectionForWorkspace(bobFolder.uri.fsPath) : Promise.resolve(undefined)
     ])
 
     const extraSections = [addedFilesSection, projectRulesSection].filter((section): section is string => Boolean(section))
@@ -253,8 +258,10 @@ async function reviewRevision(context: vscode.ExtensionContext, withProjectRules
 }
 
 async function reviewRange(context: vscode.ExtensionContext, withProjectRules: boolean): Promise<void> {
-  const folder = await pickWorkspaceFolder()
-  if (!folder) return
+  const bazaarFolder = await pickBazaarWorkspaceFolder()
+  if (!bazaarFolder) return
+  const bobFolder = withProjectRules ? await pickBobWorkspaceFolder(undefined, true) : undefined
+  if (withProjectRules && !bobFolder) return
 
   const baseRevision = await vscode.window.showInputBox({
     title: withProjectRules ? "プロジェクト規約付きで Bazaar リビジョン範囲をレビュー" : "Bob で Bazaar リビジョン範囲をレビュー",
@@ -272,10 +279,10 @@ async function reviewRange(context: vscode.ExtensionContext, withProjectRules: b
 
   await withProgress("Bazaar リビジョン範囲レビュー packet を作成しています", async () => {
     const client = makeBazaarClient()
-    const root = await client.root(folder.uri.fsPath)
+    const root = await client.root(bazaarFolder.uri.fsPath)
     const [diff, projectRulesSection] = await Promise.all([
       client.diffRange(root, baseRevision, targetRevision),
-      withProjectRules ? buildProjectRulesSectionForWorkspace(root) : Promise.resolve(undefined)
+      withProjectRules && bobFolder ? buildProjectRulesSectionForWorkspace(bobFolder.uri.fsPath) : Promise.resolve(undefined)
     ])
 
     const packet = buildReviewPacket({
@@ -350,8 +357,12 @@ function getMaxAddedFileContentBytes(): number {
   return config.get<number>("maxAddedFileContentBytes", 256 * 1024)
 }
 
-async function pickWorkspaceFolder(): Promise<vscode.WorkspaceFolder | undefined> {
+async function pickBazaarWorkspaceFolder(): Promise<vscode.WorkspaceFolder | undefined> {
   return resolveBazaarWorkspaceFolder({ allowPick: true, title: "Bazaar ワークスペースを選択" })
+}
+
+async function pickBobWorkspaceFolder(workflowRoot?: string, allowPick = true): Promise<vscode.WorkspaceFolder | undefined> {
+  return resolveBobWorkspaceFolder({ workflowRoot, allowPick, title: "Bob ワークスペースを選択" })
 }
 
 function findReviewPacketText(): string | undefined {
