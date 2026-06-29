@@ -285,5 +285,5 @@ function escapeCell(value: string): string {
 }
 
 function firstKnownId(text: string): string | undefined {
-  return text.match(/\b(?:REQ|BD|DD|TC|ERR|ISSUE|TICKET|LEDGER)-?[A-Za-z0-9_]+\b/)?.[0]
+  return text.match(/\b(?:REQ|BD|DD|TC|ERR|ISSUE|TICKET|LEDGER)(?:[-_][A-Za-z0-9]+)+\b/)?.[0]
 }

@@ -1,0 +1,67 @@
+schema_version: 1
+review_id: REVIEW-AI-MATRIX-001
+cases:
+  - id: CASE-OK-001
+    outcome: ok
+    category: requirement-code-consistency
+    target: Payment_CalculateLimit
+    expected_ai_shape: coverage_notes.checked
+    summary: Premium limit changed to 250 and matches requirement, design, and test spec.
+    evidence_refs:
+      - REQ-OK-001
+      - BD-OK-001
+      - DD-OK-001
+      - TC-OK-010
+  - id: CASE-NG-001
+    outcome: ng
+    category: requirement-code-consistency
+    target: Payment_HandleTimeout
+    expected_ai_shape: findings
+    summary: Timeout path returns ERR_OK even though requirement and ledger require ERR_TIMEOUT.
+    evidence_refs:
+      - REQ-NG-001
+      - DD-NG-001
+      - ERR_TIMEOUT
+  - id: CASE-NG-002
+    outcome: ng
+    category: design-code-consistency
+    target: Payment_AssessFraudScore
+    expected_ai_shape: findings
+    summary: Fraud score threshold is implemented as 90, while design requires 80.
+    evidence_refs:
+      - REQ-FRAUD-030
+      - DD-FRAUD-030
+      - ERR_FRAUD_REVIEW
+  - id: CASE-NG-003
+    outcome: ng
+    category: test-gap
+    target: Payment_AssessFraudScore
+    expected_ai_shape: findings
+    summary: Fraud review behavior has requirement and design evidence but no test case.
+    evidence_refs:
+      - REQ-FRAUD-030
+      - DD-FRAUD-030
+  - id: CASE-NG-004
+    outcome: ng
+    category: rt-ts-rule
+    target: Payment_UpdateRealtimeCache
+    expected_ai_shape: findings
+    summary: Realtime cache update adds printf in an RT path.
+    evidence_refs:
+      - DD-RT-040
+  - id: CASE-NA-001
+    outcome: n/a
+    category: out_of_scope
+    target: performance measurement and dashboard UI labels
+    expected_ai_shape: coverage_notes.out_of_scope
+    summary: These topics are explicitly outside this review.
+    evidence_refs:
+      - REQ-NA-001
+  - id: CASE-Q-001
+    outcome: question
+    category: document-version
+    target: TICKET-AI-105
+    expected_ai_shape: questions
+    summary: Ticket says fraud threshold decision is pending, so the reviewer should confirm final intent.
+    evidence_refs:
+      - TICKET-AI-105

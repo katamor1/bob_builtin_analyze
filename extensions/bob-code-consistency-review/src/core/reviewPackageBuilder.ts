@@ -82,14 +82,23 @@ function buildManifest(reviewInput: ReviewInput, diff: DiffSummary, evidence: Ev
 }
 
 function buildReviewSummary(reviewInput: ReviewInput, diff: DiffSummary): string {
-  return [
+  const lines = [
     `- review_id: ${reviewInput.review.id}`,
     `- title: ${reviewInput.review.title}`,
     `- target_range: ${diff.base}..${diff.head}`,
     `- change_type: ${reviewInput.review.change_type}`,
     `- purpose: ${reviewInput.review.purpose}`,
     `- review_focus: ${reviewInput.review_focus.join(", ")}`
-  ].join("\n")
+  ]
+  if (reviewInput.review.out_of_scope && reviewInput.review.out_of_scope.length > 0) {
+    lines.push(`- out_of_scope: ${joinHumanList(reviewInput.review.out_of_scope)}`)
+  }
+  return lines.join("\n")
+}
+
+function joinHumanList(values: string[]): string {
+  if (values.length <= 1) return values.join("")
+  return `${values.slice(0, -1).join(", ")} and ${values[values.length - 1]}`
 }
 
 function buildChangeSummary(reviewInput: ReviewInput, diff: DiffSummary, codeAnalysis: CodeAnalysisResult, documents: DocumentExtractionResult): string {
