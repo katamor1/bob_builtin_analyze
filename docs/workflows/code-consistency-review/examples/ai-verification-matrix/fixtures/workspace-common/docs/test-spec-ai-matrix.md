@@ -1,15 +1,15 @@
-# Test specification for payment status matrix
+# 決済ステータス変更 テスト仕様
 
-## TC-OK-010 Premium customer limit
+## TC-OK-010 プレミアム顧客の上限
 
-TC-OK-010: Given `requestedAmount = 120` and `customerTier = 2`,
-`Payment_CalculateLimit` must return `250`.
+TC-OK-010: `requestedAmount = 120` かつ `customerTier = 2` の場合、
+`Payment_CalculateLimit` は `250` を返すこと。
 
-## TC-TIMEOUT-020 Timeout status
+## TC-TIMEOUT-020 タイムアウトステータス
 
-TC-TIMEOUT-020: Given `timeoutDetected = true`, `Payment_HandleTimeout` must
-return `ERR_TIMEOUT`.
+TC-TIMEOUT-020: `timeoutDetected = true` の場合、`Payment_HandleTimeout` は
+`ERR_TIMEOUT` を返すこと。
 
-## Fraud review coverage note
+## 不正審査カバレッジ注記
 
-No test case is defined yet for `REQ-FRAUD-030` or `DD-FRAUD-030`.
+`REQ-FRAUD-030` および `DD-FRAUD-030` に対応するテストケースは、現時点では定義されていない。

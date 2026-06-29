@@ -1,11 +1,10 @@
-# Error ledger for payment status matrix
+# 決済ステータス変更 エラー台帳
 
 ## ERR_TIMEOUT
 
-ERR_TIMEOUT: Timeout was detected while waiting for the payment status update.
-The status must be handled as an error and returned to the caller.
+ERR_TIMEOUT: 決済ステータス更新待ちでタイムアウトを検出した。
+このステータスはエラーとして扱い、呼び出し元へ返却すること。
 
 ## ERR_FRAUD_REVIEW
 
-ERR_FRAUD_REVIEW: Fraud score is high enough to require manual review before
-settlement can continue.
+ERR_FRAUD_REVIEW: 不正スコアが高く、決済継続前に手動審査が必要である。

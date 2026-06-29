@@ -6,7 +6,7 @@ cases:
     category: requirement-code-consistency
     target: Payment_CalculateLimit
     expected_ai_shape: coverage_notes.checked
-    summary: Premium limit changed to 250 and matches requirement, design, and test spec.
+    summary: プレミアム顧客の上限が 250 に変更され、要求、設計、テスト仕様と整合している。
     evidence_refs:
       - REQ-OK-001
       - BD-OK-001
@@ -17,7 +17,7 @@ cases:
     category: requirement-code-consistency
     target: Payment_HandleTimeout
     expected_ai_shape: findings
-    summary: Timeout path returns ERR_OK even though requirement and ledger require ERR_TIMEOUT.
+    summary: 要求と台帳は ERR_TIMEOUT を求めているが、タイムアウト経路が ERR_OK を返している。
     evidence_refs:
       - REQ-NG-001
       - DD-NG-001
@@ -27,7 +27,7 @@ cases:
     category: design-code-consistency
     target: Payment_AssessFraudScore
     expected_ai_shape: findings
-    summary: Fraud score threshold is implemented as 90, while design requires 80.
+    summary: 設計では不正スコアしきい値 80 を要求しているが、実装は 90 になっている。
     evidence_refs:
       - REQ-FRAUD-030
       - DD-FRAUD-030
@@ -37,7 +37,7 @@ cases:
     category: test-gap
     target: Payment_AssessFraudScore
     expected_ai_shape: findings
-    summary: Fraud review behavior has requirement and design evidence but no test case.
+    summary: 不正審査には要求と設計の根拠があるが、対応するテストケースがない。
     evidence_refs:
       - REQ-FRAUD-030
       - DD-FRAUD-030
@@ -46,15 +46,15 @@ cases:
     category: rt-ts-rule
     target: Payment_UpdateRealtimeCache
     expected_ai_shape: findings
-    summary: Realtime cache update adds printf in an RT path.
+    summary: リアルタイムキャッシュ更新の RT 経路に printf が追加されている。
     evidence_refs:
       - DD-RT-040
   - id: CASE-NA-001
     outcome: n/a
     category: out_of_scope
-    target: performance measurement and dashboard UI labels
+    target: 性能測定およびダッシュボード表示文言
     expected_ai_shape: coverage_notes.out_of_scope
-    summary: These topics are explicitly outside this review.
+    summary: これらの項目は review-input で明示的に対象外とされている。
     evidence_refs:
       - REQ-NA-001
   - id: CASE-Q-001
@@ -62,6 +62,6 @@ cases:
     category: document-version
     target: TICKET-AI-105
     expected_ai_shape: questions
-    summary: Ticket says fraud threshold decision is pending, so the reviewer should confirm final intent.
+    summary: チケットでは不正スコアしきい値が未確定のため、最終意図の確認が必要である。
     evidence_refs:
       - TICKET-AI-105
