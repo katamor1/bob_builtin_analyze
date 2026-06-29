@@ -1,6 +1,7 @@
 import * as vscode from "vscode"
 import {
   CandidateText,
+  CaptureReviewResultOptions,
   CaptureReviewResultResult,
   captureReviewResultFromCandidates,
   extractJsonFromText
@@ -9,12 +10,12 @@ import { resolveBazaarWorkspaceFolder } from "../workspaceResolver"
 
 export { CaptureReviewResultResult, extractJsonFromText }
 
-export async function captureReviewResult(inputText?: string): Promise<CaptureReviewResultResult> {
+export async function captureReviewResult(inputText?: string, options: CaptureReviewResultOptions = {}): Promise<CaptureReviewResultResult> {
   const explicitInput = typeof inputText === "string" && inputText.trim().length > 0
   const candidates = explicitInput
     ? [{ source: "command argument", text: inputText }]
     : await buildDefaultCandidates()
-  const result = await captureCandidatesWithWorkspace(candidates)
+  const result = await captureCandidatesWithWorkspace(candidates, options)
   if (!explicitInput) await presentCaptureResult(result)
   return result
 }
@@ -25,10 +26,10 @@ export async function saveReviewResultFromClipboard(): Promise<CaptureReviewResu
   return result
 }
 
-async function captureCandidatesWithWorkspace(candidates: CandidateText[]): Promise<CaptureReviewResultResult> {
+async function captureCandidatesWithWorkspace(candidates: CandidateText[], options: CaptureReviewResultOptions = {}): Promise<CaptureReviewResultResult> {
   const folder = await pickWorkspaceFolder()
   if (!folder) throw new Error("Open a workspace folder before saving review result artifacts.")
-  return captureReviewResultFromCandidates(folder.uri.fsPath, candidates)
+  return captureReviewResultFromCandidates(folder.uri.fsPath, candidates, options)
 }
 
 async function buildDefaultCandidates(): Promise<CandidateText[]> {

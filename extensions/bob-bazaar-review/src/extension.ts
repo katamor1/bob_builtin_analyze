@@ -90,7 +90,7 @@ async function registerWorkflowProviders(context: vscode.ExtensionContext): Prom
   })
   api.registerActionProvider({
     id: "bobBazaar.captureReviewResult",
-    execute: ({ args }) => captureReviewResult(firstStringArg(args))
+    execute: ({ args, state }) => captureReviewResult(firstStringArg(args), { expectedChecklistItems: expectedChecklistItemsFromState(state) })
   })
 }
 
@@ -135,6 +135,22 @@ function targetMode(value: unknown): BazaarReviewInitialTarget["revisionMode"] |
 
 function stringInput(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined
+}
+
+function expectedChecklistItemsFromState(state: Record<string, string> | undefined): number | undefined {
+  const reviewRules = parseStateObject(state?.reviewRules)
+  const checklistItems = reviewRules?.checklistItems
+  return Number.isInteger(checklistItems) && (checklistItems as number) >= 0 ? checklistItems as number : undefined
+}
+
+function parseStateObject(value: string | undefined): Record<string, unknown> | undefined {
+  if (!value) return undefined
+  try {
+    const parsed = JSON.parse(value)
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : undefined
+  } catch {
+    return undefined
+  }
 }
 
 async function collectReviewContext(): Promise<BazaarReviewContextResult> {

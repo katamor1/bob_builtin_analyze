@@ -1,8 +1,10 @@
 import * as fs from "node:fs/promises"
 import * as path from "node:path"
 import { renderReviewResultMarkdown } from "./markdown"
-import { ReviewResult, ValidationIssue } from "./types"
+import { ReviewResult, ReviewStatus, ValidationIssue } from "./types"
 import { validateReviewResultJson } from "./validator"
+
+const STATUSES: ReviewStatus[] = ["pass", "fail", "unknown", "not_applicable", "blocked"]
 
 export interface CaptureReviewResultResult {
   status: "ok" | "error"
@@ -21,15 +23,19 @@ export interface CandidateText {
   text: string
 }
 
-export async function captureReviewResultText(workspaceRoot: string, text: string, source: string): Promise<CaptureReviewResultResult> {
-  return captureReviewResultFromCandidates(workspaceRoot, [{ source, text }])
+export interface CaptureReviewResultOptions {
+  expectedChecklistItems?: number
 }
 
-export async function captureReviewResultFromCandidates(workspaceRoot: string, candidates: CandidateText[]): Promise<CaptureReviewResultResult> {
+export async function captureReviewResultText(workspaceRoot: string, text: string, source: string, options: CaptureReviewResultOptions = {}): Promise<CaptureReviewResultResult> {
+  return captureReviewResultFromCandidates(workspaceRoot, [{ source, text }], options)
+}
+
+export async function captureReviewResultFromCandidates(workspaceRoot: string, candidates: CandidateText[], options: CaptureReviewResultOptions = {}): Promise<CaptureReviewResultResult> {
   for (const candidate of candidates) {
     const jsonText = extractJsonFromText(candidate.text)
     if (!jsonText) continue
-    return handleReviewResultJson(workspaceRoot, jsonText, candidate.source)
+    return handleReviewResultJson(workspaceRoot, jsonText, candidate.source, options)
   }
 
   return {
@@ -41,7 +47,7 @@ export async function captureReviewResultFromCandidates(workspaceRoot: string, c
   }
 }
 
-export async function handleReviewResultJson(workspaceRoot: string, jsonText: string, source: string): Promise<CaptureReviewResultResult> {
+export async function handleReviewResultJson(workspaceRoot: string, jsonText: string, source: string, options: CaptureReviewResultOptions = {}): Promise<CaptureReviewResultResult> {
   const normalizedJsonText = normalizeReviewResultJsonText(jsonText)
   const validation = validateReviewResultJson(normalizedJsonText)
   if (!validation.valid) {
@@ -55,6 +61,17 @@ export async function handleReviewResultJson(workspaceRoot: string, jsonText: st
   }
 
   const result = JSON.parse(normalizedJsonText) as ReviewResult
+  const completionIssues = validateChecklistCompletion(result, options)
+  if (completionIssues.length > 0) {
+    return {
+      status: "error",
+      source,
+      valid: false,
+      issueCount: completionIssues.length,
+      issues: completionIssues
+    }
+  }
+
   const artifacts = await saveReviewResultArtifacts(workspaceRoot, result)
   return {
     status: "ok",
@@ -85,6 +102,13 @@ function normalizeReviewResultJsonText(jsonText: string): string {
       changed = true
     }
   }
+  if (isRecord(value.summary)) {
+    const normalizedSummary = countChecklistStatuses(value.checklist_results)
+    if (!sameSummary(value.summary, normalizedSummary)) {
+      value.summary = normalizedSummary
+      changed = true
+    }
+  }
   return changed ? JSON.stringify(value, null, 2) : jsonText
 }
 
@@ -93,6 +117,38 @@ function normalizeChecklistSeverity(value: unknown): "info" | undefined {
   if (typeof value !== "string") return undefined
   const compact = value.trim().toLowerCase().replace(/[^a-z]+/g, "")
   return ["na", "notapplicable", "none", "null", "undefined"].includes(compact) ? "info" : undefined
+}
+
+function validateChecklistCompletion(result: ReviewResult, options: CaptureReviewResultOptions): ValidationIssue[] {
+  const expected = options.expectedChecklistItems
+  if (!Number.isInteger(expected) || expected === undefined || expected < 0) return []
+  const actual = result.checklist_results.length
+  return actual === expected
+    ? []
+    : [{ path: "$.checklist_results", message: `expected ${expected} checklist result(s), got ${actual}` }]
+}
+
+function countChecklistStatuses(items: unknown[]): Record<ReviewStatus, number> {
+  const counts: Record<ReviewStatus, number> = {
+    pass: 0,
+    fail: 0,
+    unknown: 0,
+    not_applicable: 0,
+    blocked: 0
+  }
+  for (const item of items) {
+    if (!isRecord(item)) continue
+    if (isReviewStatus(item.status)) counts[item.status] += 1
+  }
+  return counts
+}
+
+function sameSummary(summary: Record<string, unknown>, normalized: Record<ReviewStatus, number>): boolean {
+  return STATUSES.every((status) => summary[status] === normalized[status])
+}
+
+function isReviewStatus(value: unknown): value is ReviewStatus {
+  return typeof value === "string" && STATUSES.includes(value as ReviewStatus)
 }
 
 export async function saveReviewResultArtifacts(workspaceRoot: string, result: ReviewResult): Promise<{ jsonPath: string; markdownPath: string }> {

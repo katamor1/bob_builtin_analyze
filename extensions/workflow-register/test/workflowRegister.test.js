@@ -158,6 +158,9 @@ test("Bob adapter resolves workflow inputs and passes them to command providers"
   assert.match(source, /extractTaskWorkflowInputs\(definition, task\)/)
   assert.match(source, /collectWorkflowInputsWithResolver\(\{[\s\S]*inputs: workflow\.inputs,[\s\S]*provided,[\s\S]*prompt: \(key, definition, required\) => this\.promptForInput\(key, definition, required\)[\s\S]*\}\)/)
   assert.match(source, /actionRegistry\.execute\(step\.command, \{[\s\S]*inputs,[\s\S]*state,[\s\S]*workflowId: definition\.id,[\s\S]*workflowRoot: definition\.workflowRoot,[\s\S]*stepId[\s\S]*\}\)/)
+  assert.match(source, /captureAgentStepResult\([\s\S]*actionRegistry,[\s\S]*stepRuntime\.stateRecord\(definition\),[\s\S]*inputs[\s\S]*\)/)
+  assert.match(source, /actions: active\.actionRegistry/)
+  assert.match(source, /state: active\.state/)
   assert.doesNotMatch(source, /inputs: \{\}/)
 })
 

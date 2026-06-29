@@ -22,6 +22,8 @@ test("Bazaar workflow template declares v1 schema and uses revision-derived revi
   assert.match(workflow, /Replace `<revision>` with the actual Bazaar revision or range/)
   assert.match(workflow, /checklist_results\[\]\.severity` must always be exactly one of `error`, `warning`, or `info`/)
   assert.match(workflow, /Never put `N\/A`, `not_applicable`, `none`, or any status value in `severity`/)
+  assert.match(workflow, /Include one `checklist_results` entry for every loaded checklist rule/)
+  assert.match(workflow, /sum of `summary\.pass`, `summary\.fail`, `summary\.unknown`, `summary\.not_applicable`, and `summary\.blocked` must equal the loaded checklist rule count/)
   assert.doesNotMatch(workflow, /bazaar-r2-project-rule-review/)
   assert.doesNotMatch(workflow, /```workflow-step/)
   assert.doesNotMatch(workflow, /^## Step:/m)

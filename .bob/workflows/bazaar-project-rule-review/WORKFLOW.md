@@ -176,6 +176,8 @@ steps:
       `checklist_results[].severity` must always be exactly one of `error`, `warning`, or `info`.
       Never put `N/A`, `not_applicable`, `none`, or any status value in `severity`.
       For `pass`, `unknown`, `not_applicable`, or `blocked` checklist results, use `info` unless there is a concrete issue. For `fail`, use the rule's `severity_on_fail`.
+      Include one `checklist_results` entry for every loaded checklist rule.
+      The sum of `summary.pass`, `summary.fail`, `summary.unknown`, `summary.not_applicable`, and `summary.blocked` must equal the loaded checklist rule count.
 
       ```json
       {

@@ -18,6 +18,7 @@ test("Bazaar companion extension registers workflow providers with workflow-regi
   assert.match(source, /id: "bobBazaar\.collectReviewContext"/)
   assert.match(source, /id: "bobBazaar\.loadReviewRules"/)
   assert.match(source, /id: "bobBazaar\.captureReviewResult"/)
+  assert.match(source, /execute: \(\{ args, state \}\) => captureReviewResult\(firstStringArg\(args\), \{ expectedChecklistItems: expectedChecklistItemsFromState\(state\) \}\)/)
 })
 
 test("Bazaar workflow provider resolves repository root independently from workflowRoot", () => {

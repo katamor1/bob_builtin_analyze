@@ -152,6 +152,9 @@ interface ActiveStep {
   task: BobWorkflowTask
   stepDefinition?: WorkflowStepDefinition
   guardrails: WorkflowGuardrailsDefinition
+  actionRegistry?: ActionRegistry
+  inputs?: Record<string, unknown>
+  state?: Record<string, string>
   messageStartIndex: number
   resolve: (value: boolean) => void
 }
@@ -209,7 +212,13 @@ class StepRuntime {
   private readonly workflowInputs = new Map<string, Record<string, unknown>>()
   private sequence = 0
 
-  hold(workflow: WorkflowDefinition, step: { id: string; title: string }, task: BobWorkflowTask, stepDefinition?: WorkflowStepDefinition): Promise<boolean> {
+  hold(
+    workflow: WorkflowDefinition,
+    step: { id: string; title: string },
+    task: BobWorkflowTask,
+    stepDefinition?: WorkflowStepDefinition,
+    context: { actionRegistry?: ActionRegistry; inputs?: Record<string, unknown>; state?: Record<string, string> } = {}
+  ): Promise<boolean> {
     const key = `${++this.sequence}:${workflow.id}:${step.id}`
     return new Promise<boolean>((resolve) => {
       this.activeSteps.set(key, {
@@ -221,6 +230,9 @@ class StepRuntime {
         task,
         stepDefinition,
         guardrails: workflow.guardrails,
+        actionRegistry: context.actionRegistry,
+        inputs: context.inputs,
+        state: context.state,
         messageStartIndex: getTaskMessageCount(task),
         resolve
       })
@@ -311,7 +323,14 @@ async function captureHeldStepResult(active: ActiveStep): Promise<{ ok: boolean;
   const resultText = resultSourceForStep(step) === "lastAssistant" && Array.isArray(messages)
     ? extractLastAssistantText(messages, active.messageStartIndex)
     : undefined
-  return executeResultHandoff(step, resultText, { executeCommand: (command, ...args) => vscode.commands.executeCommand(command, ...args) })
+  return executeResultHandoff(step, resultText, {
+    actions: active.actionRegistry,
+    executeCommand: active.actionRegistry ? undefined : (command, ...args) => vscode.commands.executeCommand(command, ...args),
+    inputs: active.inputs,
+    state: active.state,
+    workflowId: active.workflowId,
+    stepId: active.stepId
+  })
 }
 
 function getTaskMessageCount(task: BobWorkflowTask): number {
@@ -878,10 +897,14 @@ async function runTodoStep(definition: WorkflowDefinition, stepRuntime: StepRunt
     }
     if (stepDefinition.resultKey) stepRuntime.saveState(definition, stepDefinition.resultKey, formatCommandResult(agentResult.value, stepDefinition.maxResultBytes))
     await task.sendMessage?.(agentResult.value, "assistant")
-    const handoff = await captureAgentStepResult(definition, stepDefinition, agentResult.value, task, messageStartIndex)
+    const handoff = await captureAgentStepResult(definition, stepDefinition, agentResult.value, task, messageStartIndex, actionRegistry, stepRuntime.stateRecord(definition), inputs)
     if (!handoff.ok) {
       await vscode.window.showErrorMessage(`Bob workflow result handoff failed: ${todo.id}: ${handoff.error}`)
-      return stepRuntime.hold(definition, { id: todo.id, title: todo.text }, task, stepDefinition)
+      return stepRuntime.hold(definition, { id: todo.id, title: todo.text }, task, stepDefinition, {
+        actionRegistry,
+        inputs,
+        state: stepRuntime.stateRecord(definition)
+      })
     }
     task.setStepComplete?.()
     return true
@@ -950,7 +973,16 @@ async function runWorkflowStepAgent(definition: WorkflowDefinition, todo: Workfl
   }
 }
 
-async function captureAgentStepResult(definition: WorkflowDefinition, stepDefinition: WorkflowStepDefinition, agentResult: string, task: BobWorkflowTask, messageStartIndex: number): Promise<{ ok: boolean; error?: string }> {
+async function captureAgentStepResult(
+  definition: WorkflowDefinition,
+  stepDefinition: WorkflowStepDefinition,
+  agentResult: string,
+  task: BobWorkflowTask,
+  messageStartIndex: number,
+  actionRegistry: ActionRegistry,
+  state: Record<string, string>,
+  inputs: Record<string, unknown>
+): Promise<{ ok: boolean; error?: string }> {
   if (!stepDefinition.captureResult) return { ok: true }
   if (stepDefinition.resultCommand) {
     const guardrail = validateCommandGuardrails(definition, stepDefinition.resultCommand)
@@ -960,7 +992,13 @@ async function captureAgentStepResult(definition: WorkflowDefinition, stepDefini
   const resultText = source === "agent"
     ? agentResult
     : extractLastAssistantText(task.getMessages?.() ?? [], messageStartIndex)
-  return executeResultHandoff(stepDefinition, resultText, { executeCommand: (command, ...args) => vscode.commands.executeCommand(command, ...args) })
+  return executeResultHandoff(stepDefinition, resultText, {
+    actions: actionRegistry,
+    inputs,
+    state,
+    workflowId: definition.id,
+    stepId: stepDefinition.id
+  })
 }
 
 async function runWorkflowStepCommand(definition: WorkflowDefinition, step: WorkflowStepDefinition | undefined, actionRegistry: ActionRegistry, stepId: string, state: Record<string, string>, inputs: Record<string, unknown>): Promise<WorkflowStepCommandResult | undefined> {
