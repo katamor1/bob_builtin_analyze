@@ -40,7 +40,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("bobCodeConsistency.validateOutput", (options?: unknown) => runValidateOutput(options)),
     vscode.commands.registerCommand("bobCodeConsistency.triage", (options?: unknown) => runTriage(options))
   )
-  registerWorkflowProviders(context).catch((error) => console.warn("Bob code consistency workflow provider registration failed", error))
+  registerWorkflowProviders(context).catch((error) => console.warn("Bob コード整合ワークフロー provider の登録に失敗しました", error))
 }
 
 export function deactivate(): void {
@@ -74,12 +74,12 @@ async function registerWorkflowProviders(_context: vscode.ExtensionContext): Pro
 async function getWorkflowRegisterApi(): Promise<WorkflowRegisterApi | undefined> {
   const extension = vscode.extensions.getExtension<WorkflowRegisterApi>(WORKFLOW_REGISTER_EXTENSION_ID)
   if (!extension) {
-    console.warn(`Workflow register extension is not installed: ${WORKFLOW_REGISTER_EXTENSION_ID}`)
+    console.warn(`workflow-register 拡張機能が見つかりません: ${WORKFLOW_REGISTER_EXTENSION_ID}`)
     return undefined
   }
   const api = extension.isActive ? extension.exports : await extension.activate()
   if (!api?.registerActionProvider) {
-    console.warn(`Workflow register extension does not expose registerActionProvider: ${WORKFLOW_REGISTER_EXTENSION_ID}`)
+    console.warn(`workflow-register 拡張機能が registerActionProvider を公開していません: ${WORKFLOW_REGISTER_EXTENSION_ID}`)
     return undefined
   }
   return api
@@ -93,7 +93,7 @@ async function runPreprocess(options?: unknown): Promise<unknown> {
   const outDir = absolute(workspaceRoot, stringOption(record, "reviewPackagePath") ?? stringOption(record, "outDir") ?? config.get<string>("reviewPackagePath", ".bob-review/review-package"))
   const diffFixturePath = optionalAbsolute(workspaceRoot, stringOption(record, "diffFixturePath"))
 
-  const result = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: "Preparing code consistency review package" }, () =>
+  const result = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: "コード整合レビュー用パッケージを作成しています" }, () =>
     preprocessReview({ workspaceRoot, inputPath, outDir, diffFixturePath })
   )
   await vscode.window.showInformationMessage(result.summary)
@@ -119,8 +119,8 @@ async function runValidateOutput(options?: unknown): Promise<unknown> {
   const packageDir = absolute(workspaceRoot, stringOption(record, "reviewPackagePath") ?? stringOption(record, "packageDir") ?? config.get<string>("reviewPackagePath", ".bob-review/review-package"))
   const bobOutputPath = absolute(workspaceRoot, stringOption(record, "bobOutputPath") ?? config.get<string>("bobOutputPath", ".bob-review/bob-output/bob-output.yaml"))
   const result = await validateBobOutput({ packageDir, bobOutputPath })
-  if (result.errors.length === 0) await vscode.window.showInformationMessage(`Bob output is valid (${result.warnings.length} warning(s)).`)
-  else await vscode.window.showErrorMessage(`Bob output is invalid: ${result.errors.length} error(s).`)
+  if (result.errors.length === 0) await vscode.window.showInformationMessage(`Bob 出力 YAML は有効です（warning: ${result.warnings.length} 件）。`)
+  else await vscode.window.showErrorMessage(`Bob 出力 YAML が無効です: error ${result.errors.length} 件。`)
   return { status: result.errors.length === 0 ? "ok" : "error", ...result }
 }
 
@@ -132,7 +132,7 @@ async function runTriage(options?: unknown): Promise<unknown> {
   const bobOutputPath = absolute(workspaceRoot, stringOption(record, "bobOutputPath") ?? config.get<string>("bobOutputPath", ".bob-review/bob-output/bob-output.yaml"))
   const outDir = absolute(workspaceRoot, stringOption(record, "triagePath") ?? stringOption(record, "outDir") ?? config.get<string>("triagePath", ".bob-review/human-triage"))
   const result = await generateHumanTriage({ packageDir, bobOutputPath, outDir })
-  await vscode.window.showInformationMessage(`Generated human triage files: ${outDir}`)
+  await vscode.window.showInformationMessage(`人間確認用 triage ファイルを生成しました: ${outDir}`)
   return result
 }
 
@@ -141,9 +141,9 @@ async function requireBobWorkspaceRoot(record: Record<string, unknown>): Promise
     explicitRoot: stringOption(record, "bobRoot") ?? stringOption(record, "workspaceRoot"),
     workflowRoot: stringOption(record, "workflowRoot"),
     allowPick: true,
-    title: "Select Bob workspace"
+    title: "Bob ワークスペースを選択"
   })
-  if (!root) throw new Error("Open a workspace folder first.")
+  if (!root) throw new Error("先にワークスペースフォルダーを開いてください。")
   return root
 }
 
