@@ -1,18 +1,16 @@
-# Basic design for payment status matrix
+# 決済ステータス変更 基本設計
 
-## BD-OK-001 Limit calculation
+## BD-OK-001 上限計算
 
-BD-OK-001: The limit calculation keeps the existing standard limit of `100`.
-Premium customers use `250` so that the settlement path no longer rejects
-approved high-value requests.
+BD-OK-001: 上限計算では、標準顧客の既存上限 `100` を維持する。
+プレミアム顧客は `250` を使用し、承認済みの高額リクエストが決済経路で拒否されないようにする。
 
-## BD-NG-001 Timeout error propagation
+## BD-NG-001 タイムアウトエラー伝播
 
-BD-NG-001: Timeout handling propagates the timeout as an error. The caller
-expects `ERR_TIMEOUT` and must not treat timeout as a successful status update.
+BD-NG-001: タイムアウト処理では、タイムアウトをエラーとして上位へ伝播する。
+呼び出し元は `ERR_TIMEOUT` を期待しており、タイムアウトを正常なステータス更新として扱ってはならない。
 
-## BD-FRAUD-030 Fraud review path
+## BD-FRAUD-030 不正審査経路
 
-BD-FRAUD-030: Fraud score review is a new decision point before final status
-settlement. Scores at or above the approved threshold must use
-`ERR_FRAUD_REVIEW`.
+BD-FRAUD-030: 不正スコア審査は、最終ステータス確定前に追加する判断点である。
+承認済みしきい値以上のスコアでは `ERR_FRAUD_REVIEW` を使用する。

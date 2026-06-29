@@ -1,6 +1,6 @@
-# Tickets for payment status matrix
+# 決済ステータス変更 チケット
 
 ## TICKET-AI-105
 
-TICKET-AI-105: Implement fraud review plumbing. The final fraud threshold still
-requires owner confirmation before release sign-off.
+TICKET-AI-105: 不正審査経路を実装する。最終的なしきい値は、リリース承認前に
+オーナー確認が必要である。

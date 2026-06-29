@@ -2,17 +2,17 @@ schema_version: 1
 
 review:
   id: REVIEW-AI-MATRIX-001
-  title: "Payment status behavior verification matrix"
+  title: "決済ステータス変更の整合性検証マトリクス"
   change_type: feature
-  purpose: "Verify that changed payment status behavior is consistent with requirements, design, ledger, and test specification evidence."
+  purpose: "決済ステータス関連の変更が要求、設計、台帳、テスト仕様の根拠と整合しているかを確認する。"
   base: main
   head: feature/ai-verification-matrix
   ticket_ids:
     - TICKET-AI-105
-  author_note: "This fixture intentionally contains OK, NG, N/A, and question outcomes for real AI verification."
+  author_note: "実AI検証用に OK、NG、N/A、確認質問の想定ケースを意図的に含めたベンチマーク fixture。"
   out_of_scope:
-    - "performance measurement"
-    - "dashboard UI labels"
+    - "性能測定"
+    - "ダッシュボード表示文言"
 
 artifacts:
   requirements:
