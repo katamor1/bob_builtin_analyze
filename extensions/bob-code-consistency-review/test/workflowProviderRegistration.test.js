@@ -32,6 +32,15 @@ test("code consistency provider accepts workflowRoot without first-folder fallba
   assert.doesNotMatch(source, /function requireWorkspaceRoot/)
 })
 
+test("workflow provider result notifications do not block step completion", () => {
+  const source = fs.readFileSync(path.join(extensionRoot, "src", "extension.ts"), "utf8")
+
+  assert.doesNotMatch(source, /await vscode\.window\.show(?:Information|Warning|Error)Message/)
+  assert.match(source, /function notifyInfo\(message: string\): void/)
+  assert.match(source, /void vscode\.window\.showInformationMessage\(message\)/)
+  assert.match(source, /void vscode\.window\.showErrorMessage\(message\)/)
+})
+
 test("Bob workflow template uses command providers instead of manual CLI instructions", () => {
   const workflowPath = path.join(repoRoot, ".bob", "workflows", "code-consistency-review", "WORKFLOW.md")
   const workflow = fs.readFileSync(workflowPath, "utf8")

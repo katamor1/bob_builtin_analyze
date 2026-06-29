@@ -79,6 +79,14 @@ test("preprocessReview builds the AI verification matrix package from a real git
   assert.match(bobInput, /タイムアウト/)
   assert.match(bobInput, /不正スコア/)
   assert.match(bobInput, /性能測定およびダッシュボード表示文言/)
+  assert.match(bobInput, /schema_version: 1/)
+  assert.match(bobInput, /result_type: pre_review/)
+  assert.match(bobInput, /id: PRE-001/)
+  assert.match(bobInput, /evidence_id: REQ-0001/)
+  assert.match(bobInput, /id: COV-001/)
+  assert.match(bobInput, /id: UNC-001/)
+  assert.doesNotMatch(bobInput, /schema_version: "1\.0"/)
+  assert.doesNotMatch(bobInput, /id: FIND-001/)
   assert.match(expectedOutcomes, /outcome: ok/)
   assert.match(expectedOutcomes, /outcome: ng/)
   assert.match(expectedOutcomes, /outcome: n\/a/)
@@ -99,6 +107,66 @@ test("AI verification matrix expected Bob output validates and generates triage"
   assert.ok(triage.itemCount >= 4)
   assert.match(fs.readFileSync(path.join(triageDir, "accepted-findings.md"), "utf8"), /PRE-001/)
   assert.match(fs.readFileSync(path.join(triageDir, "questions-to-author.md"), "utf8"), /Q-001/)
+})
+
+test("captureBobOutput canonicalizes common real-AI YAML shorthand before validation", async () => {
+  const workspace = createAiVerificationMatrixWorkspace()
+  const packageDir = path.join(workspace, ".bob-review", "review-package")
+  await preprocessReview({ workspaceRoot: workspace, inputPath: path.join(workspace, "review-input.yaml"), outDir: packageDir })
+
+  const bobOutputPath = path.join(workspace, ".bob-review", "bob-output", "bob-output.yaml")
+  const capture = await captureBobOutput({
+    workspaceRoot: workspace,
+    packageDir,
+    bobOutputPath,
+    text: `schema_version: "1.0"
+review_summary:
+  review_id: REVIEW-AI-MATRIX-001
+  target_range: main..feature/ai-verification-matrix
+  final_approval: not_performed
+  finding_count: 1
+  note: 入力範囲で確認したプレレビュー結果。
+findings:
+  - id: FIND-001
+    category: requirement-code-consistency
+    severity: high
+    confidence: high
+    summary: タイムアウト時に ERR_OK を返している。
+    evidence:
+      - REQ-0002
+      - SRC-0002
+    reason: 要求は ERR_TIMEOUT を求めている。
+    impact: タイムアウトが正常扱いになる。
+    recommended_action: ERR_TIMEOUT を返す。
+    human_check: 仕様変更の有無を確認する。
+questions:
+  - id: Q-001
+    summary: チケットの版数確認が必要。
+    reason: 承認済みしきい値が不明。
+    evidence:
+      - TICKET-0001
+    human_check: オーナーに確認する。
+coverage_notes:
+  - 性能測定およびダッシュボード表示文言は対象外。
+rejected_or_uncertain:
+  - id: REJ-001
+    summary: プレミアム顧客上限は整合しているため finding にしない。`
+  })
+
+  assert.equal(capture.status, "ok")
+  const report = await validateBobOutput({ packageDir, bobOutputPath })
+  assert.deepEqual(report.errors, [])
+
+  const saved = YAML.parse(fs.readFileSync(bobOutputPath, "utf8"))
+  assert.equal(saved.schema_version, 1)
+  assert.equal(saved.review_summary.result_type, "pre_review")
+  assert.equal(saved.findings[0].id, "PRE-001")
+  assert.deepEqual(saved.findings[0].evidence[0], { evidence_id: "REQ-0002", type: "requirement", ref: "REQ-NG-001" })
+  assert.equal(saved.questions[0].category, "document-version")
+  assert.equal(saved.questions[0].suggested_action, "オーナーに確認する。")
+  assert.equal(saved.coverage_notes[0].id, "COV-001")
+  assert.equal(saved.coverage_notes[0].type, "out_of_scope")
+  assert.equal(saved.rejected_or_uncertain[0].id, "UNC-001")
 })
 
 test("validateBobOutput rejects missing evidence ids and accepts package evidence", async () => {

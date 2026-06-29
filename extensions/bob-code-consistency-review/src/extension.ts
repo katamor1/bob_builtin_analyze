@@ -96,7 +96,7 @@ async function runInitializeWorkspace(context: vscode.ExtensionContext, options?
   const workspaceRoot = await requireBobWorkspaceRoot(record)
   const result = await initializeCodeConsistencyWorkspace({ context, workspaceRoot })
   const suffix = result.backupPath ? `\n既存ファイルのバックアップ: ${result.backupPath}` : ""
-  await vscode.window.showInformationMessage(`${result.message}${suffix}`)
+  notifyInfo(`${result.message}${suffix}`)
   return result
 }
 
@@ -111,7 +111,7 @@ async function runPreprocess(options?: unknown): Promise<unknown> {
   const result = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: "コード整合レビュー用パッケージを作成しています" }, () =>
     preprocessReview({ workspaceRoot, inputPath, outDir, diffFixturePath })
   )
-  await vscode.window.showInformationMessage(result.summary)
+  notifyInfo(result.summary)
   return result
 }
 
@@ -121,9 +121,10 @@ async function runCaptureBobOutput(textOrOptions?: unknown): Promise<unknown> {
   const workspaceRoot = await requireBobWorkspaceRoot(record)
   const text = firstString(textOrOptions) ?? stringOption(record, "text") ?? await vscode.env.clipboard.readText()
   const bobOutputPath = absolute(workspaceRoot, stringOption(record, "bobOutputPath") ?? config.get<string>("bobOutputPath", ".bob-review/bob-output/bob-output.yaml"))
-  const result = await captureBobOutput({ workspaceRoot, text, bobOutputPath })
-  if (result.status === "ok") await vscode.window.showInformationMessage(result.message)
-  else await vscode.window.showErrorMessage(result.message)
+  const packageDir = absolute(workspaceRoot, stringOption(record, "reviewPackagePath") ?? stringOption(record, "packageDir") ?? config.get<string>("reviewPackagePath", ".bob-review/review-package"))
+  const result = await captureBobOutput({ workspaceRoot, text, bobOutputPath, packageDir })
+  if (result.status === "ok") notifyInfo(result.message)
+  else notifyError(result.message)
   return result
 }
 
@@ -134,8 +135,8 @@ async function runValidateOutput(options?: unknown): Promise<unknown> {
   const packageDir = absolute(workspaceRoot, stringOption(record, "reviewPackagePath") ?? stringOption(record, "packageDir") ?? config.get<string>("reviewPackagePath", ".bob-review/review-package"))
   const bobOutputPath = absolute(workspaceRoot, stringOption(record, "bobOutputPath") ?? config.get<string>("bobOutputPath", ".bob-review/bob-output/bob-output.yaml"))
   const result = await validateBobOutput({ packageDir, bobOutputPath })
-  if (result.errors.length === 0) await vscode.window.showInformationMessage(`Bob 出力 YAML は有効です（warning: ${result.warnings.length} 件）。`)
-  else await vscode.window.showErrorMessage(`Bob 出力 YAML が無効です: error ${result.errors.length} 件。`)
+  if (result.errors.length === 0) notifyInfo(`Bob 出力 YAML は有効です（warning: ${result.warnings.length} 件）。`)
+  else notifyError(`Bob 出力 YAML が無効です: error ${result.errors.length} 件。`)
   return { status: result.errors.length === 0 ? "ok" : "error", ...result }
 }
 
@@ -147,8 +148,16 @@ async function runTriage(options?: unknown): Promise<unknown> {
   const bobOutputPath = absolute(workspaceRoot, stringOption(record, "bobOutputPath") ?? config.get<string>("bobOutputPath", ".bob-review/bob-output/bob-output.yaml"))
   const outDir = absolute(workspaceRoot, stringOption(record, "triagePath") ?? stringOption(record, "outDir") ?? config.get<string>("triagePath", ".bob-review/human-triage"))
   const result = await generateHumanTriage({ packageDir, bobOutputPath, outDir })
-  await vscode.window.showInformationMessage(`人間確認用 triage ファイルを生成しました: ${outDir}`)
+  notifyInfo(`人間確認用 triage ファイルを生成しました: ${outDir}`)
   return result
+}
+
+function notifyInfo(message: string): void {
+  void vscode.window.showInformationMessage(message)
+}
+
+function notifyError(message: string): void {
+  void vscode.window.showErrorMessage(message)
 }
 
 async function requireBobWorkspaceRoot(record: Record<string, unknown>): Promise<string> {
