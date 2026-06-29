@@ -5,6 +5,7 @@ import { validateBobOutput } from "./core/bobOutputValidator"
 import { preprocessReview } from "./core/pipeline"
 import { generateHumanTriage } from "./triage/humanTriageHelper"
 import { buildCaptureWorkflowOptions } from "./workflowOptions"
+import { initializeCodeConsistencyWorkspace } from "./workspaceInitializer"
 import { resolveBobWorkspaceRoot } from "./workspaceResolver"
 
 const WORKFLOW_REGISTER_EXTENSION_ID = "local.workflow-register"
@@ -35,6 +36,7 @@ interface WorkflowRegisterApi {
 
 export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
+    vscode.commands.registerCommand("bobCodeConsistency.initializeWorkspace", (options?: unknown) => runInitializeWorkspace(context, options)),
     vscode.commands.registerCommand("bobCodeConsistency.preprocess", (options?: unknown) => runPreprocess(options)),
     vscode.commands.registerCommand("bobCodeConsistency.captureBobOutput", (textOrOptions?: unknown) => runCaptureBobOutput(textOrOptions)),
     vscode.commands.registerCommand("bobCodeConsistency.validateOutput", (options?: unknown) => runValidateOutput(options)),
@@ -47,9 +49,13 @@ export function deactivate(): void {
   // No background resources are held by this extension.
 }
 
-async function registerWorkflowProviders(_context: vscode.ExtensionContext): Promise<void> {
+async function registerWorkflowProviders(context: vscode.ExtensionContext): Promise<void> {
   const api = await getWorkflowRegisterApi()
   if (!api) return
+  api.registerActionProvider({
+    id: "bobCodeConsistency.initializeWorkspace",
+    execute: (input) => runInitializeWorkspace(context, mergeWorkflowOptions(input))
+  })
   api.registerActionProvider({
     id: "bobCodeConsistency.preprocess",
     execute: (input) => runPreprocess(mergeWorkflowOptions(input))
@@ -83,6 +89,15 @@ async function getWorkflowRegisterApi(): Promise<WorkflowRegisterApi | undefined
     return undefined
   }
   return api
+}
+
+async function runInitializeWorkspace(context: vscode.ExtensionContext, options?: unknown): Promise<unknown> {
+  const record = optionRecord(options)
+  const workspaceRoot = await requireBobWorkspaceRoot(record)
+  const result = await initializeCodeConsistencyWorkspace({ context, workspaceRoot })
+  const suffix = result.backupPath ? `\n既存ファイルのバックアップ: ${result.backupPath}` : ""
+  await vscode.window.showInformationMessage(`${result.message}${suffix}`)
+  return result
 }
 
 async function runPreprocess(options?: unknown): Promise<unknown> {
