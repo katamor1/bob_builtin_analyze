@@ -106,9 +106,9 @@ artifacts:
   - id: reviewAnalysis
     producedBy: analyze-changes
     path: .bob/workflows/runs/{{run.id}}/review-analysis.md
-  - id: reviewResult
+  - id: reviewResultJson
     producedBy: output-result
-    path: .bob/review/results/{{review_id}}.json
+    path: .bob/workflows/runs/{{run.id}}/review-result.json
     schema: .bob/review/review-result.schema.json
 completion:
   summary: markdown
@@ -185,6 +185,8 @@ steps:
       読み込んだ checklist rule ごとに、必ず1つの `checklist_results` entry を含めてください。
       `summary.pass`、`summary.fail`、`summary.unknown`、`summary.not_applicable`、`summary.blocked` の合計は、読み込んだ checklist rule 数と一致している必要があります。
 
+      Markdown 生成や保存で中断した場合、このステップは保持された最新の assistant 出力を再利用して capture を再試行できます。差分収集や分析からやり直さず、直前に生成済みの review-result JSON を使って保存処理を再開してください。
+
       ```json
       {
         "review_id": "bazaar-r<revision>-project-rule-review",
@@ -227,6 +229,7 @@ steps:
       - reviewRules
       - reviewAnalysis
     stateRequired: true
+    resultKey: reviewResultJson
     result:
       source: agent
       sinks:
