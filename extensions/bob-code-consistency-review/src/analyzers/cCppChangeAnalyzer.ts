@@ -41,7 +41,7 @@ export async function analyzeCppChanges(diff: DiffSummary, reviewInput: ReviewIn
     const ranges = detectFunctions(lines)
     const fileDiffLines = diffLinesForFile(diffLines, file.path)
     for (const token of changedTokens) {
-      if (new RegExp(`^\s*#\s*define\s+${escapeRegExp(token)}\b`, "m").test(source)) defines.add(token)
+      if (new RegExp(`^\\s*#\\s*define\\s+${escapeRegExp(token)}\\b`, "m").test(source)) defines.add(token)
     }
     for (const globalName of detectGlobalCandidates(lines, changedTokens)) globals.add(globalName)
 
@@ -186,7 +186,7 @@ function detectCallees(body: string, functionName: string): string[] {
 
 function detectDirectCallers(ranges: FunctionRange[], functionName: string): string[] {
   return ranges
-    .filter((range) => range.name !== functionName && new RegExp(`\b${escapeRegExp(functionName)}\s*\(`).test(range.body.join("\n")))
+    .filter((range) => range.name !== functionName && new RegExp(`\\b${escapeRegExp(functionName)}\\s*\\(`).test(range.body.join("\n")))
     .map((range) => range.name)
     .sort()
 }
@@ -206,7 +206,7 @@ function detectRtForbidden(diffLines: DiffLine[], filePath: string): CodeAnalysi
   const result: CodeAnalysisResult["rtForbiddenCandidates"] = []
   for (const line of diffLines.filter((item) => item.kind === "add")) {
     for (const symbol of RT_FORBIDDEN) {
-      if (new RegExp(`\b${escapeRegExp(symbol)}\s*\(`).test(line.text)) {
+      if (new RegExp(`\\b${escapeRegExp(symbol)}\\s*\\(`).test(line.text)) {
         result.push({ symbol, file: toPosixPath(filePath), line: line.line, reason: "rule-based RT forbidden processing candidate" })
       }
     }

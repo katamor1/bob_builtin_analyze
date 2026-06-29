@@ -154,7 +154,8 @@ async function runTriage(options?: unknown): Promise<unknown> {
 }
 
 function notifyInfo(message: string): void {
-  void vscode.window.showInformationMessage(message)
+  console.info(message)
+  vscode.window.setStatusBarMessage(message, 5000)
 }
 
 function notifyError(message: string): void {
