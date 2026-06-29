@@ -1,21 +1,36 @@
 import * as path from "node:path"
 import { execFile } from "node:child_process"
 import { promisify } from "node:util"
-import { readTextFile, toPosixPath } from "./fileSystem"
+import { readTextFile, resolveWorkspacePath, toPosixPath } from "./fileSystem"
 import { decodeTextBuffer } from "./textEncoding"
 import type { DiffSummary, ReviewInput } from "./types"
 
 const execFileAsync = promisify(execFile)
 
-export async function collectGitDiff(reviewInput: ReviewInput, options: { workspaceRoot: string; diffFixturePath?: string }): Promise<DiffSummary> {
+type VcsKind = "git" | "bazaar"
+
+type CommandResult = {
+  stdout?: Buffer | string
+  stderr?: Buffer | string
+  code: number
+}
+
+export async function collectGitDiff(reviewInput: ReviewInput, options: { workspaceRoot: string; diffFixturePath?: string; bzrPath?: string }): Promise<DiffSummary> {
   if (options.diffFixturePath) {
     const fixture = JSON.parse(await readTextFile(options.diffFixturePath)) as DiffSummary
     return normalizeDiffLanguages(fixture)
   }
 
-  const nameStatus = await runGitText(["diff", "--name-status", reviewInput.review.base, reviewInput.review.head], options.workspaceRoot, 20 * 1024 * 1024)
-  const numstat = await runGitText(["diff", "--numstat", reviewInput.review.base, reviewInput.review.head], options.workspaceRoot, 20 * 1024 * 1024)
-  const unifiedDiff = await runGitText(["diff", "--unified=80", reviewInput.review.base, reviewInput.review.head], options.workspaceRoot, 50 * 1024 * 1024)
+  const vcs = normalizeVcs(reviewInput.review.vcs)
+  const vcsRoot = resolveVcsRoot(options.workspaceRoot, reviewInput.review.vcs_root)
+  if (vcs === "bazaar") return collectBazaarDiff(reviewInput, { ...options, vcsRoot })
+  return collectStandardGitDiff(reviewInput, { ...options, vcsRoot })
+}
+
+async function collectStandardGitDiff(reviewInput: ReviewInput, options: { workspaceRoot: string; vcsRoot: string }): Promise<DiffSummary> {
+  const nameStatus = await runGitText(["diff", "--name-status", reviewInput.review.base, reviewInput.review.head], options.vcsRoot, 20 * 1024 * 1024)
+  const numstat = await runGitText(["diff", "--numstat", reviewInput.review.base, reviewInput.review.head], options.vcsRoot, 20 * 1024 * 1024)
+  const unifiedDiff = await runGitText(["diff", "--unified=80", reviewInput.review.base, reviewInput.review.head], options.vcsRoot, 50 * 1024 * 1024)
 
   const counts = parseNumstat(numstat)
   const files = nameStatus.split(/\r?\n/).flatMap((line) => {
@@ -25,23 +40,58 @@ export async function collectGitDiff(reviewInput: ReviewInput, options: { worksp
     const filePath = statusToken.startsWith("R") ? parts[2] : parts[1]
     if (!filePath) return []
     const count = counts.get(toPosixPath(filePath))
-    return [{
-      path: toPosixPath(filePath),
-      status: statusFromGit(statusToken),
-      additions: count?.additions ?? 0,
-      deletions: count?.deletions ?? 0,
-      language: languageFromPath(filePath),
-      is_test: /(^|[\\/])(test|tests|spec)([\\/]|$)|\btest\b/i.test(filePath),
-      is_interface_candidate: /\.(h|hpp|hh)$/i.test(filePath)
-    }]
+    return [buildChangedFile(filePath, statusFromGit(statusToken), count)]
   })
 
-  return { base: reviewInput.review.base, head: reviewInput.review.head, files, unifiedDiff, warnings: [] }
+  return { vcs: "git", vcsRoot: options.vcsRoot, base: reviewInput.review.base, head: reviewInput.review.head, files, unifiedDiff, warnings: [] }
+}
+
+async function collectBazaarDiff(reviewInput: ReviewInput, options: { workspaceRoot: string; vcsRoot: string; bzrPath?: string }): Promise<DiffSummary> {
+  const bzrPath = options.bzrPath?.trim() || "bzr"
+  const revisionRange = `${reviewInput.review.base}..${reviewInput.review.head}`
+  const unifiedDiff = await runCommandText(
+    bzrPath,
+    ["--no-aliases", "diff", "-r", revisionRange],
+    options.vcsRoot,
+    50 * 1024 * 1024,
+    [0, 1],
+    { BZR_PROGRESS_BAR: "none" }
+  )
+  const files = parseBazaarDiffFiles(unifiedDiff)
+  return { vcs: "bazaar", vcsRoot: options.vcsRoot, base: reviewInput.review.base, head: reviewInput.review.head, files, unifiedDiff, warnings: [] }
 }
 
 async function runGitText(args: string[], cwd: string, maxBuffer: number): Promise<string> {
   const result = await execFileAsync("git", args, { cwd, maxBuffer, encoding: "buffer" } as any) as { stdout?: Buffer | string }
   return decodeTextBuffer(toBuffer(result.stdout))
+}
+
+function runCommandText(command: string, args: string[], cwd: string, maxBuffer: number, allowedExitCodes: number[], env?: Record<string, string>): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile(command, args, {
+      cwd,
+      maxBuffer,
+      encoding: "buffer",
+      shell: false,
+      env: { ...process.env, ...env }
+    } as any, (error, stdout, stderr) => {
+      const code = exitCode(error)
+      if (error && !allowedExitCodes.includes(code)) {
+        const stderrText = decodeTextBuffer(toBuffer(stderr))
+        const stdoutText = decodeTextBuffer(toBuffer(stdout))
+        reject(new Error(`${command} ${args.join(" ")} failed with exit code ${code}\n${stderrText || stdoutText}`.trim()))
+        return
+      }
+      resolve(decodeTextBuffer(toBuffer(stdout)))
+    })
+  })
+}
+
+function exitCode(error: unknown): number {
+  if (typeof error === "object" && error !== null && "code" in error && typeof (error as { code?: unknown }).code === "number") {
+    return (error as { code: number }).code
+  }
+  return 0
 }
 
 function toBuffer(value: Buffer | string | undefined): Buffer {
@@ -64,6 +114,48 @@ function parseNumstat(text: string): Map<string, { additions: number; deletions:
   return result
 }
 
+function parseBazaarDiffFiles(text: string): DiffSummary["files"] {
+  const files = new Map<string, DiffSummary["files"][number]>()
+  let current: DiffSummary["files"][number] | undefined
+
+  for (const line of text.split(/\r?\n/)) {
+    const header = line.match(/^===\s+(.+?)\s+file '(.+?)'(?:\s+=>\s+'(.+)')?$/)
+    if (header) {
+      const status = statusFromBazaar(header[1])
+      const filePath = status === "renamed" ? header[3] ?? header[2] : header[2]
+      current = buildChangedFile(filePath, status)
+      files.set(current.path, current)
+      continue
+    }
+
+    const plusFile = line.match(/^\+\+\+\s+(.+?)(?:\t.*)?$/)
+    if (plusFile && plusFile[1] !== "/dev/null") {
+      const filePath = normalizeDiffPath(plusFile[1])
+      current = files.get(filePath) ?? buildChangedFile(filePath, "modified")
+      files.set(current.path, current)
+      continue
+    }
+
+    if (!current || line.startsWith("+++ ") || line.startsWith("--- ") || line.startsWith("=== ") || line.startsWith("@@")) continue
+    if (line.startsWith("+")) current.additions = (current.additions ?? 0) + 1
+    else if (line.startsWith("-")) current.deletions = (current.deletions ?? 0) + 1
+  }
+
+  return Array.from(files.values())
+}
+
+function buildChangedFile(filePath: string, status: DiffSummary["files"][number]["status"], count?: { additions: number; deletions: number }): DiffSummary["files"][number] {
+  return {
+    path: toPosixPath(normalizeDiffPath(filePath)),
+    status,
+    additions: count?.additions ?? 0,
+    deletions: count?.deletions ?? 0,
+    language: languageFromPath(filePath),
+    is_test: /(^|[\\/])(test|tests|spec)([\\/]|$)|\btest\b/i.test(filePath),
+    is_interface_candidate: /\.(h|hpp|hh)$/i.test(filePath)
+  }
+}
+
 function statusFromGit(status: string): DiffSummary["files"][number]["status"] {
   if (status.startsWith("A")) return "added"
   if (status.startsWith("M")) return "modified"
@@ -72,11 +164,33 @@ function statusFromGit(status: string): DiffSummary["files"][number]["status"] {
   return "unknown"
 }
 
+function statusFromBazaar(status: string): DiffSummary["files"][number]["status"] {
+  const normalized = status.toLowerCase()
+  if (normalized.includes("added")) return "added"
+  if (normalized.includes("modified")) return "modified"
+  if (normalized.includes("removed") || normalized.includes("deleted")) return "deleted"
+  if (normalized.includes("renamed")) return "renamed"
+  return "unknown"
+}
+
 function normalizeDiffLanguages(diff: DiffSummary): DiffSummary {
   return {
     ...diff,
     files: diff.files.map((file) => ({ ...file, path: toPosixPath(file.path), language: file.language ?? languageFromPath(file.path) }))
   }
+}
+
+function normalizeVcs(value: ReviewInput["review"]["vcs"]): VcsKind {
+  if (value === "bazaar" || value === "bzr") return "bazaar"
+  return "git"
+}
+
+function resolveVcsRoot(workspaceRoot: string, value: string | undefined): string {
+  return value ? resolveWorkspacePath(workspaceRoot, value) : workspaceRoot
+}
+
+function normalizeDiffPath(filePath: string): string {
+  return filePath.replace(/^a\//, "").replace(/^b\//, "")
 }
 
 export function languageFromPath(filePath: string): string {
