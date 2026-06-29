@@ -25,6 +25,7 @@ export interface CandidateText {
 
 export interface CaptureReviewResultOptions {
   expectedChecklistItems?: number
+  workspaceRoot?: string
 }
 
 export async function captureReviewResultText(workspaceRoot: string, text: string, source: string, options: CaptureReviewResultOptions = {}): Promise<CaptureReviewResultResult> {
@@ -218,27 +219,22 @@ function extractBalancedJsonObject(text: string): string | undefined {
 
 function isValidJsonObject(text: string): boolean {
   try {
-    const value = JSON.parse(text)
-    return typeof value === "object" && value !== null && !Array.isArray(value)
+    const parsed = JSON.parse(text)
+    return Boolean(parsed && typeof parsed === "object" && !Array.isArray(parsed))
   } catch {
     return false
   }
 }
 
-function buildFallbackReviewId(result: ReviewResult): string {
-  const revision = result.vcs.revision ?? result.vcs.target_revision ?? "unknown"
-  return `bazaar-${revision}-${timestampForFilename(new Date())}`
-}
-
-function timestampForFilename(date: Date): string {
-  const pad = (value: number) => String(value).padStart(2, "0")
-  return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}-${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`
-}
-
 function sanitizeFilename(value: string): string {
-  return value.trim().replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || `review-result-${timestampForFilename(new Date())}`
+  return value.replace(/[^A-Za-z0-9_.-]+/g, "_").replace(/^_+|_+$/g, "") || "review-result"
+}
+
+function buildFallbackReviewId(result: ReviewResult): string {
+  const revision = result.vcs.revision || result.vcs.target_revision || result.vcs.base_revision || "unknown"
+  return `bazaar-${revision}-project-rule-review`
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
+  return Boolean(value && typeof value === "object" && !Array.isArray(value))
 }
