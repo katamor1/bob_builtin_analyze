@@ -1,13 +1,13 @@
-# extensions
+# extensions ディレクトリ
 
 このディレクトリには、IBM Bob を拡張するためのローカル VS Code 拡張機能を配置します。
 
-現在の主な構成は次の通りです。
+## 拡張機能 README 一覧
 
 | 拡張機能 | 役割 | README |
 | --- | --- | --- |
-| `workflow-register` | `.bob/workflows/*/WORKFLOW.md` を読み込み、IBM Bob の workflow source として登録する。作成、検証、実行、診断、AI 補助のコマンドも提供する。 | `extensions/workflow-register/README.md` |
-| `bob-bazaar-review` | Bazaar 差分レビュー、プロジェクト規約読み込み、review-result JSON 検証、読み取り専用 Bazaar MCP server を提供する。 | `extensions/bob-bazaar-review/README.md` |
+| `workflow-register` | `.bob/workflows/*/WORKFLOW.md` を読み込み、IBM Bob のワークフローソースとして登録する。作成、検証、実行、診断、AI 補助のコマンドも提供する。 | `extensions/workflow-register/README.md` |
+| `bob-bazaar-review` | Bazaar 差分レビュー、プロジェクト規約読み込み、review-result JSON 検証、読み取り専用 Bazaar MCP サーバーを提供する。 | `extensions/bob-bazaar-review/README.md` |
 
 ## 推奨する読み順
 
@@ -25,13 +25,13 @@ IBM.bob-code
        └─ bob-bazaar-review
 ```
 
-`workflow-register` は、Bob に workflow を登録する基盤拡張です。
+`workflow-register` は、Bob にワークフローを登録する基盤拡張です。
 
-`bob-bazaar-review` は、`workflow-register` から呼び出せる Bazaar レビュー用 command や result capture を提供する連携拡張です。
+`bob-bazaar-review` は、`workflow-register` から呼び出せる Bazaar レビュー用コマンドや結果取り込み機能を提供する連携拡張です。
 
-## `.bob` workspace 構成
+## `.bob` ワークスペース構成
 
-ワークフローとレビュー規約は、利用側 workspace の `.bob` に配置します。
+ワークフローとレビュー規約は、利用側ワークスペースの `.bob` に配置します。
 
 ```text
 .bob/
@@ -54,7 +54,7 @@ IBM.bob-code
 .bob/workflows/*/WORKFLOW.md
 ```
 
-`bob-bazaar-review` は Bazaar レビュー向けに `.bob/review`、`.bob/mcp.json`、同梱 workflow / skill / mode の初期化を支援します。
+`bob-bazaar-review` は Bazaar レビュー向けに `.bob/review`、`.bob/mcp.json`、同梱ワークフロー、Skill、Mode の初期化を支援します。
 
 ## 新しい拡張機能を追加するときの README 方針
 
@@ -70,6 +70,8 @@ IBM.bob-code
 - ビルド方法
 - セキュリティ上の注意点
 - 関連ドキュメント
+
+コマンド名、設定キー、JSON / YAML のフィールド名、ファイル名、識別子は実装上の名称として原文を維持します。
 
 ## ビルド方針
 
