@@ -1,7 +1,7 @@
 import * as fs from "node:fs/promises"
 import * as path from "node:path"
 import { languageFromPath } from "../core/gitDiffCollector"
-import { pathExists, resolveWorkspacePath, toPosixPath } from "../core/fileSystem"
+import { pathExists, readTextFile, resolveWorkspacePath, toPosixPath } from "../core/fileSystem"
 import type { CodeAnalysisResult, DiffSummary, EvidenceRef, ReviewInput } from "../core/types"
 
 type FunctionRange = { name: string; start: number; end: number; body: string[] }
@@ -31,11 +31,11 @@ export async function analyzeCppChanges(diff: DiffSummary, reviewInput: ReviewIn
     if (!C_LIKE_LANGUAGES.has(language)) continue
     const resolved = await resolveSourceFile(options.workspaceRoot, file.path)
     if (!resolved) {
-      warnings.push(`changed C/C++ file not found in workspace: ${file.path}`)
+      warnings.push(`変更された C/C++ ファイルがワークスペース内で見つかりません: ${file.path}`)
       continue
     }
 
-    const source = await fs.readFile(resolved, "utf8")
+    const source = await readTextFile(resolved)
     const lines = source.split(/\r?\n/)
     const ranges = detectFunctions(lines)
     const fileDiffLines = diffLinesForFile(diffLines, file.path)
@@ -63,7 +63,7 @@ export async function analyzeCppChanges(diff: DiffSummary, reviewInput: ReviewIn
     for (const candidate of detectRtForbidden(fileDiffLines, file.path)) rtForbiddenCandidates.push(candidate)
   }
 
-  if (changedSymbols.length === 0) warnings.push("No changed C/C++ function could be mapped from diff hunks.")
+  if (changedSymbols.length === 0) warnings.push("Git 差分から変更 C/C++ 関数を特定できませんでした。")
 
   const summaryMarkdown = renderSummary(changedSymbols, defines, globals, callGraph, rtForbiddenCandidates, reviewInput)
   return {
