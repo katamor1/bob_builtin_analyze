@@ -107,9 +107,10 @@ async function runPreprocess(options?: unknown): Promise<unknown> {
   const inputPath = absolute(workspaceRoot, stringOption(record, "reviewInputPath") ?? config.get<string>("reviewInputPath", "review-input.yaml"))
   const outDir = absolute(workspaceRoot, stringOption(record, "reviewPackagePath") ?? stringOption(record, "outDir") ?? config.get<string>("reviewPackagePath", ".bob-review/review-package"))
   const diffFixturePath = optionalAbsolute(workspaceRoot, stringOption(record, "diffFixturePath"))
+  const bzrPath = stringOption(record, "bzrPath") ?? config.get<string>("bzrPath", "bzr")
 
   const result = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: "コード整合レビュー用パッケージを作成しています" }, () =>
-    preprocessReview({ workspaceRoot, inputPath, outDir, diffFixturePath })
+    preprocessReview({ workspaceRoot, inputPath, outDir, diffFixturePath, bzrPath })
   )
   await vscode.window.showInformationMessage(result.summary)
   return result
