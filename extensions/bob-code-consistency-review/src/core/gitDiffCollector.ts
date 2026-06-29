@@ -9,9 +9,9 @@ const execFileAsync = promisify(execFile)
 
 type VcsKind = "git" | "bazaar"
 
-export async function collectGitDiff(reviewInput: ReviewInput, options: { workspaceRoot: string; diffFixturePath?: string; bzrPath?: string }): Promise<DiffSummary> {
+export async function collectGitDiff(reviewInput: ReviewInput, options: { workspaceRoot: string; diffFixturePath?: string; bzrPath?: string; textEncoding?: string }): Promise<DiffSummary> {
   if (options.diffFixturePath) {
-    const fixture = JSON.parse(await readTextFile(options.diffFixturePath)) as DiffSummary
+    const fixture = JSON.parse(await readTextFile(options.diffFixturePath, options.textEncoding)) as DiffSummary
     return normalizeDiffLanguages(fixture)
   }
 
@@ -21,10 +21,10 @@ export async function collectGitDiff(reviewInput: ReviewInput, options: { worksp
   return collectStandardGitDiff(reviewInput, { ...options, vcsRoot })
 }
 
-async function collectStandardGitDiff(reviewInput: ReviewInput, options: { workspaceRoot: string; vcsRoot: string }): Promise<DiffSummary> {
-  const nameStatus = await runGitText(["diff", "--name-status", reviewInput.review.base, reviewInput.review.head], options.vcsRoot, 20 * 1024 * 1024)
-  const numstat = await runGitText(["diff", "--numstat", reviewInput.review.base, reviewInput.review.head], options.vcsRoot, 20 * 1024 * 1024)
-  const unifiedDiff = await runGitText(["diff", "--unified=80", reviewInput.review.base, reviewInput.review.head], options.vcsRoot, 50 * 1024 * 1024)
+async function collectStandardGitDiff(reviewInput: ReviewInput, options: { workspaceRoot: string; vcsRoot: string; textEncoding?: string }): Promise<DiffSummary> {
+  const nameStatus = await runGitText(["diff", "--name-status", reviewInput.review.base, reviewInput.review.head], options.vcsRoot, 20 * 1024 * 1024, options.textEncoding)
+  const numstat = await runGitText(["diff", "--numstat", reviewInput.review.base, reviewInput.review.head], options.vcsRoot, 20 * 1024 * 1024, options.textEncoding)
+  const unifiedDiff = await runGitText(["diff", "--unified=80", reviewInput.review.base, reviewInput.review.head], options.vcsRoot, 50 * 1024 * 1024, options.textEncoding)
 
   const counts = parseNumstat(numstat)
   const files = nameStatus.split(/\r?\n/).flatMap((line) => {
@@ -40,7 +40,7 @@ async function collectStandardGitDiff(reviewInput: ReviewInput, options: { works
   return { vcs: "git", vcsRoot: options.vcsRoot, base: reviewInput.review.base, head: reviewInput.review.head, files, unifiedDiff, warnings: [] }
 }
 
-async function collectBazaarDiff(reviewInput: ReviewInput, options: { workspaceRoot: string; vcsRoot: string; bzrPath?: string }): Promise<DiffSummary> {
+async function collectBazaarDiff(reviewInput: ReviewInput, options: { workspaceRoot: string; vcsRoot: string; bzrPath?: string; textEncoding?: string }): Promise<DiffSummary> {
   const bzrPath = options.bzrPath?.trim() || "bzr"
   const revisionRange = `${reviewInput.review.base}..${reviewInput.review.head}`
   const unifiedDiff = await runCommandText(
@@ -49,18 +49,19 @@ async function collectBazaarDiff(reviewInput: ReviewInput, options: { workspaceR
     options.vcsRoot,
     50 * 1024 * 1024,
     [0, 1],
+    options.textEncoding,
     { BZR_PROGRESS_BAR: "none" }
   )
   const files = parseBazaarDiffFiles(unifiedDiff)
   return { vcs: "bazaar", vcsRoot: options.vcsRoot, base: reviewInput.review.base, head: reviewInput.review.head, files, unifiedDiff, warnings: [] }
 }
 
-async function runGitText(args: string[], cwd: string, maxBuffer: number): Promise<string> {
+async function runGitText(args: string[], cwd: string, maxBuffer: number, textEncoding = "auto"): Promise<string> {
   const result = await execFileAsync("git", args, { cwd, maxBuffer, encoding: "buffer" } as any) as { stdout?: Buffer | string }
-  return decodeTextBuffer(toBuffer(result.stdout))
+  return decodeTextBuffer(toBuffer(result.stdout), textEncoding)
 }
 
-function runCommandText(command: string, args: string[], cwd: string, maxBuffer: number, allowedExitCodes: number[], env?: Record<string, string>): Promise<string> {
+function runCommandText(command: string, args: string[], cwd: string, maxBuffer: number, allowedExitCodes: number[], textEncoding = "auto", env?: Record<string, string>): Promise<string> {
   return new Promise((resolve, reject) => {
     execFile(command, args, {
       cwd,
@@ -71,12 +72,12 @@ function runCommandText(command: string, args: string[], cwd: string, maxBuffer:
     } as any, (error, stdout, stderr) => {
       const code = exitCode(error)
       if (error && !allowedExitCodes.includes(code)) {
-        const stderrText = decodeTextBuffer(toBuffer(stderr))
-        const stdoutText = decodeTextBuffer(toBuffer(stdout))
+        const stderrText = decodeTextBuffer(toBuffer(stderr), textEncoding)
+        const stdoutText = decodeTextBuffer(toBuffer(stdout), textEncoding)
         reject(new Error(`${command} ${args.join(" ")} failed with exit code ${code}\n${stderrText || stdoutText}`.trim()))
         return
       }
-      resolve(decodeTextBuffer(toBuffer(stdout)))
+      resolve(decodeTextBuffer(toBuffer(stdout), textEncoding))
     })
   })
 }
