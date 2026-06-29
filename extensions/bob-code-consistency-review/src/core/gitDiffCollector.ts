@@ -2,6 +2,7 @@ import * as path from "node:path"
 import { execFile } from "node:child_process"
 import { promisify } from "node:util"
 import { readTextFile, toPosixPath } from "./fileSystem"
+import { decodeTextBuffer } from "./textEncoding"
 import type { DiffSummary, ReviewInput } from "./types"
 
 const execFileAsync = promisify(execFile)
@@ -12,9 +13,9 @@ export async function collectGitDiff(reviewInput: ReviewInput, options: { worksp
     return normalizeDiffLanguages(fixture)
   }
 
-  const { stdout: nameStatus } = await execFileAsync("git", ["diff", "--name-status", reviewInput.review.base, reviewInput.review.head], { cwd: options.workspaceRoot, maxBuffer: 20 * 1024 * 1024 })
-  const { stdout: numstat } = await execFileAsync("git", ["diff", "--numstat", reviewInput.review.base, reviewInput.review.head], { cwd: options.workspaceRoot, maxBuffer: 20 * 1024 * 1024 })
-  const { stdout: unifiedDiff } = await execFileAsync("git", ["diff", "--unified=80", reviewInput.review.base, reviewInput.review.head], { cwd: options.workspaceRoot, maxBuffer: 50 * 1024 * 1024 })
+  const nameStatus = await runGitText(["diff", "--name-status", reviewInput.review.base, reviewInput.review.head], options.workspaceRoot, 20 * 1024 * 1024)
+  const numstat = await runGitText(["diff", "--numstat", reviewInput.review.base, reviewInput.review.head], options.workspaceRoot, 20 * 1024 * 1024)
+  const unifiedDiff = await runGitText(["diff", "--unified=80", reviewInput.review.base, reviewInput.review.head], options.workspaceRoot, 50 * 1024 * 1024)
 
   const counts = parseNumstat(numstat)
   const files = nameStatus.split(/\r?\n/).flatMap((line) => {
@@ -36,6 +37,15 @@ export async function collectGitDiff(reviewInput: ReviewInput, options: { worksp
   })
 
   return { base: reviewInput.review.base, head: reviewInput.review.head, files, unifiedDiff, warnings: [] }
+}
+
+async function runGitText(args: string[], cwd: string, maxBuffer: number): Promise<string> {
+  const result = await execFileAsync("git", args, { cwd, maxBuffer, encoding: "buffer" } as any) as { stdout?: Buffer | string }
+  return decodeTextBuffer(toBuffer(result.stdout))
+}
+
+function toBuffer(value: Buffer | string | undefined): Buffer {
+  return Buffer.isBuffer(value) ? value : Buffer.from(value ?? "", "utf8")
 }
 
 function parseNumstat(text: string): Map<string, { additions: number; deletions: number }> {
