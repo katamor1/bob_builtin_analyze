@@ -11,7 +11,7 @@ const C_LIKE_LANGUAGES = new Set(["c", "cpp", "h", "hpp"])
 const CALL_EXCLUDES = new Set(["if", "for", "while", "switch", "return", "sizeof", "case"])
 const RT_FORBIDDEN = ["fopen", "fread", "fwrite", "fprintf", "printf", "scanf", "sleep", "Sleep", "malloc", "free", "system"]
 
-export async function analyzeCppChanges(diff: DiffSummary, reviewInput: ReviewInput, options: { workspaceRoot: string }): Promise<CodeAnalysisResult> {
+export async function analyzeCppChanges(diff: DiffSummary, reviewInput: ReviewInput, options: { workspaceRoot: string; textEncoding?: string }): Promise<CodeAnalysisResult> {
   const warnings: string[] = []
   const changedSymbols: CodeAnalysisResult["changedSymbols"] = []
   const functions: CodeAnalysisResult["functions"] = []
@@ -36,12 +36,12 @@ export async function analyzeCppChanges(diff: DiffSummary, reviewInput: ReviewIn
       continue
     }
 
-    const source = await readTextFile(resolved)
+    const source = await readTextFile(resolved, options.textEncoding)
     const lines = source.split(/\r?\n/)
     const ranges = detectFunctions(lines)
     const fileDiffLines = diffLinesForFile(diffLines, file.path)
     for (const token of changedTokens) {
-      if (new RegExp(`^\s*#\s*define\s+${escapeRegExp(token)}\b`, "m").test(source)) defines.add(token)
+      if (new RegExp("^\\s*#\\s*define\\s+" + escapeRegExp(token) + "\\b", "m").test(source)) defines.add(token)
     }
     for (const globalName of detectGlobalCandidates(lines, changedTokens)) globals.add(globalName)
 
@@ -186,7 +186,7 @@ function detectCallees(body: string, functionName: string): string[] {
 
 function detectDirectCallers(ranges: FunctionRange[], functionName: string): string[] {
   return ranges
-    .filter((range) => range.name !== functionName && new RegExp(`\b${escapeRegExp(functionName)}\s*\(`).test(range.body.join("\n")))
+    .filter((range) => range.name !== functionName && new RegExp("\\b" + escapeRegExp(functionName) + "\\s*\\(").test(range.body.join("\n")))
     .map((range) => range.name)
     .sort()
 }
@@ -206,7 +206,7 @@ function detectRtForbidden(diffLines: DiffLine[], filePath: string): CodeAnalysi
   const result: CodeAnalysisResult["rtForbiddenCandidates"] = []
   for (const line of diffLines.filter((item) => item.kind === "add")) {
     for (const symbol of RT_FORBIDDEN) {
-      if (new RegExp(`\b${escapeRegExp(symbol)}\s*\(`).test(line.text)) {
+      if (new RegExp("\\b" + escapeRegExp(symbol) + "\\s*\\(").test(line.text)) {
         result.push({ symbol, file: toPosixPath(filePath), line: line.line, reason: "rule-based RT forbidden processing candidate" })
       }
     }
