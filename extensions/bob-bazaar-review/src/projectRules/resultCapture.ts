@@ -6,7 +6,7 @@ import {
   captureReviewResultFromCandidates,
   extractJsonFromText
 } from "./resultCaptureCore"
-import { resolveBazaarWorkspaceFolder } from "../workspaceResolver"
+import { resolveBobWorkspaceFolder } from "../workspaceResolver"
 
 export { CaptureReviewResultResult, extractJsonFromText }
 
@@ -27,9 +27,9 @@ export async function saveReviewResultFromClipboard(): Promise<CaptureReviewResu
 }
 
 async function captureCandidatesWithWorkspace(candidates: CandidateText[], options: CaptureReviewResultOptions = {}): Promise<CaptureReviewResultResult> {
-  const folder = await pickWorkspaceFolder()
-  if (!folder) throw new Error("Open a workspace folder before saving review result artifacts.")
-  return captureReviewResultFromCandidates(folder.uri.fsPath, candidates, options)
+  const workspaceRoot = options.workspaceRoot ?? (await pickWorkspaceFolder())?.uri.fsPath
+  if (!workspaceRoot) throw new Error("レビュー結果 artifact を保存する前に Bob ワークスペースフォルダーを開いてください。")
+  return captureReviewResultFromCandidates(workspaceRoot, candidates, options)
 }
 
 async function buildDefaultCandidates(): Promise<CandidateText[]> {
@@ -48,14 +48,14 @@ async function buildDefaultCandidates(): Promise<CandidateText[]> {
 async function presentCaptureResult(result: CaptureReviewResultResult): Promise<void> {
   if (result.status !== "ok") {
     if (result.issues?.some((issue) => issue.message === "No review-result JSON was found.")) {
-      await vscode.window.showWarningMessage("No review-result JSON was found in the active editor or clipboard.")
+      await vscode.window.showWarningMessage("アクティブエディターまたはクリップボードに review-result JSON が見つかりませんでした。")
       return
     }
     await showValidationIssues(result.issues ?? [{ path: "$", message: "Review result validation failed." }])
     return
   }
 
-  await vscode.window.showInformationMessage(`Review result captured: ${result.reviewId}`)
+  await vscode.window.showInformationMessage(`レビュー結果を保存しました: ${result.reviewId}`)
   if (result.markdownPath) await openMarkdownSummary(vscode.Uri.file(result.markdownPath))
 }
 
@@ -75,5 +75,5 @@ async function showValidationIssues(issues: Array<{ path: string; message: strin
 }
 
 async function pickWorkspaceFolder(): Promise<vscode.WorkspaceFolder | undefined> {
-  return resolveBazaarWorkspaceFolder({ allowPick: true, title: "Select workspace for review result artifacts" })
+  return resolveBobWorkspaceFolder({ allowPick: true, title: "レビュー結果 artifact の保存先 Bob ワークスペースを選択" })
 }
