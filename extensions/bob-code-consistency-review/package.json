@@ -84,6 +84,12 @@
           "type": "string",
           "default": "bzr",
           "description": "review.vcs が bazaar / bzr の場合に使用する Bazaar 実行ファイルのパス。実行時は必ず --no-aliases を付与します。"
+        },
+        "bobCodeConsistency.textEncoding": {
+          "type": "string",
+          "enum": ["auto", "utf8", "shift_jis", "cp932", "windows-31j"],
+          "default": "auto",
+          "description": "review-input.yaml、Markdown 文書、C/C++ ソース、Git/Bazaar 差分 stdout、diff fixture の読み取り文字コード。auto は UTF-8 を優先し、文字化けが疑われる場合に Shift-JIS 系へ fallback します。"
         }
       }
     },
