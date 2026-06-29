@@ -23,13 +23,14 @@ export async function analyzeCppChanges(diff: DiffSummary, reviewInput: ReviewIn
   const globals = new Set<string>()
   const diffLines = parseUnifiedDiff(diff)
   const changedTokens = changedIdentifierTokens(diffLines)
+  const sourceRoot = diff.vcsRoot ?? options.workspaceRoot
   let functionIndex = 1
   let codeEvidenceIndex = 1
 
   for (const file of diff.files) {
     const language = file.language ?? languageFromPath(file.path)
     if (!C_LIKE_LANGUAGES.has(language)) continue
-    const resolved = await resolveSourceFile(options.workspaceRoot, file.path)
+    const resolved = await resolveSourceFile(sourceRoot, file.path)
     if (!resolved) {
       warnings.push(`変更された C/C++ ファイルがワークスペース内で見つかりません: ${file.path}`)
       continue
@@ -40,7 +41,7 @@ export async function analyzeCppChanges(diff: DiffSummary, reviewInput: ReviewIn
     const ranges = detectFunctions(lines)
     const fileDiffLines = diffLinesForFile(diffLines, file.path)
     for (const token of changedTokens) {
-      if (new RegExp(`^\\s*#\\s*define\\s+${escapeRegExp(token)}\\b`, "m").test(source)) defines.add(token)
+      if (new RegExp(`^\s*#\s*define\s+${escapeRegExp(token)}\b`, "m").test(source)) defines.add(token)
     }
     for (const globalName of detectGlobalCandidates(lines, changedTokens)) globals.add(globalName)
 
@@ -63,7 +64,7 @@ export async function analyzeCppChanges(diff: DiffSummary, reviewInput: ReviewIn
     for (const candidate of detectRtForbidden(fileDiffLines, file.path)) rtForbiddenCandidates.push(candidate)
   }
 
-  if (changedSymbols.length === 0) warnings.push("Git 差分から変更 C/C++ 関数を特定できませんでした。")
+  if (changedSymbols.length === 0) warnings.push("VCS 差分から変更 C/C++ 関数を特定できませんでした。")
 
   const summaryMarkdown = renderSummary(changedSymbols, defines, globals, callGraph, rtForbiddenCandidates, reviewInput)
   return {
@@ -90,12 +91,17 @@ function parseUnifiedDiff(diff: DiffSummary): DiffLine[] {
   for (const line of text.split(/\r?\n/)) {
     const gitFile = line.match(/^diff --git a\/(.+?) b\/(.+)$/)
     if (gitFile) {
-      currentFile = gitFile[2]
+      currentFile = normalizeDiffPath(gitFile[2])
       continue
     }
-    const plusFile = line.match(/^\+\+\+ b\/(.+)$/)
-    if (plusFile) {
-      currentFile = plusFile[1]
+    const bzrFile = line.match(/^===\s+.+?\s+file '(.+?)'(?:\s+=>\s+'(.+)')?$/)
+    if (bzrFile) {
+      currentFile = normalizeDiffPath(bzrFile[2] ?? bzrFile[1])
+      continue
+    }
+    const plusFile = line.match(/^\+\+\+\s+(.+?)(?:\t.*)?$/)
+    if (plusFile && plusFile[1] !== "/dev/null") {
+      currentFile = normalizeDiffPath(plusFile[1])
       continue
     }
     const hunk = line.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/)
@@ -104,7 +110,7 @@ function parseUnifiedDiff(diff: DiffSummary): DiffLine[] {
       newLine = Number(hunk[2])
       continue
     }
-    if (!currentFile || line.startsWith("+++ ") || line.startsWith("--- ")) continue
+    if (!currentFile || line.startsWith("+++ ") || line.startsWith("--- ") || line.startsWith("=== ")) continue
     if (line.startsWith("+")) {
       result.push({ file: currentFile, line: newLine, text: line.slice(1), kind: "add" })
       newLine += 1
@@ -180,7 +186,7 @@ function detectCallees(body: string, functionName: string): string[] {
 
 function detectDirectCallers(ranges: FunctionRange[], functionName: string): string[] {
   return ranges
-    .filter((range) => range.name !== functionName && new RegExp(`\\b${escapeRegExp(functionName)}\\s*\\(`).test(range.body.join("\n")))
+    .filter((range) => range.name !== functionName && new RegExp(`\b${escapeRegExp(functionName)}\s*\(`).test(range.body.join("\n")))
     .map((range) => range.name)
     .sort()
 }
@@ -200,7 +206,7 @@ function detectRtForbidden(diffLines: DiffLine[], filePath: string): CodeAnalysi
   const result: CodeAnalysisResult["rtForbiddenCandidates"] = []
   for (const line of diffLines.filter((item) => item.kind === "add")) {
     for (const symbol of RT_FORBIDDEN) {
-      if (new RegExp(`\\b${escapeRegExp(symbol)}\\s*\\(`).test(line.text)) {
+      if (new RegExp(`\b${escapeRegExp(symbol)}\s*\(`).test(line.text)) {
         result.push({ symbol, file: toPosixPath(filePath), line: line.line, reason: "rule-based RT forbidden processing candidate" })
       }
     }
@@ -245,7 +251,7 @@ async function findFilesByBasename(root: string, basename: string, limit: number
       return
     }
     for (const entry of entries) {
-      if (entry.name === ".git" || entry.name === "node_modules" || entry.name === "out" || entry.name === "dist") continue
+      if (entry.name === ".git" || entry.name === ".bzr" || entry.name === "node_modules" || entry.name === "out" || entry.name === "dist") continue
       const fullPath = path.join(dir, entry.name)
       if (entry.isFile() && entry.name === basename) result.push(fullPath)
       else if (entry.isDirectory()) await visit(fullPath)
@@ -305,6 +311,10 @@ function renderSummary(
     "",
     ...rtForbiddenCandidates.map((candidate) => `- ${candidate.symbol}: ${candidate.file}${candidate.line ? `:${candidate.line}` : ""} ${candidate.reason}`)
   ].join("\n")
+}
+
+function normalizeDiffPath(filePath: string): string {
+  return filePath.replace(/^a\//, "").replace(/^b\//, "")
 }
 
 function escapeRegExp(value: string): string {

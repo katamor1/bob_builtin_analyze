@@ -79,6 +79,11 @@
           "type": "string",
           "default": ".bob-review/human-triage",
           "description": "人間確認用 triage ファイルを書き込むワークスペース相対パス。"
+        },
+        "bobCodeConsistency.bzrPath": {
+          "type": "string",
+          "default": "bzr",
+          "description": "review.vcs が bazaar / bzr の場合に使用する Bazaar 実行ファイルのパス。実行時は必ず --no-aliases を付与します。"
         }
       }
     },

@@ -8,7 +8,12 @@
   拡張機能の目的、背景、スコープ、全体構成、入力モデル、review-package、workflow-register 連携、Bob にさせること / させないこと、セキュリティ方針、テスト方針をまとめた基本設計書です。
 
 - `detailed-design-ja.md`  
-  VS Code command、workflow-register provider、前処理 pipeline、Git diff 収集、文書抽出、C / C++ 軽量解析、review-package 生成、Bob 出力検証、human triage、テスト観点を整理した詳細設計書です。
+  VS Code command、workflow-register provider、前処理 pipeline、VCS 差分収集、文書抽出、C / C++ 軽量解析、review-package 生成、Bob 出力検証、human triage、テスト観点を整理した詳細設計書です。
+
+## 運用メモ
+
+- `vcs-bazaar-ja.md`  
+  Git の代わりに Bazaar 差分を使うための `review-input.yaml` 指定方法、`bzr --no-aliases` の扱い、`vcs_root`、`bzrPath` の設定をまとめています。
 
 ## 既存ドキュメント
 
