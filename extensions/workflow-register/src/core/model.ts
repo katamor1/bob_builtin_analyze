@@ -203,6 +203,16 @@ export interface ActionExecutionInput {
   workflowFolderName?: string
   runId?: string
   stepId?: string
+  /**
+   * Latest assistant text captured from the current workflow step chat.
+   * Result handoff providers may use this to resume from an already generated artifact
+   * instead of asking the agent to regenerate earlier outputs.
+   */
+  latestAssistantText?: string
+  /** Alias for latestAssistantText when the text is being handed off as a step result. */
+  resultText?: string
+  /** Alias for latestAssistantText for providers that treat the value as a generated artifact. */
+  artifactText?: string
 }
 
 export interface ActionExecutionResult {
