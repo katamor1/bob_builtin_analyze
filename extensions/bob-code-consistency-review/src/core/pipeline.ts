@@ -6,9 +6,9 @@ import { buildReviewPackage } from "./reviewPackageBuilder"
 import { validateReviewInput } from "./reviewInputValidator"
 import type { PreprocessResult } from "./types"
 
-export async function preprocessReview(input: { workspaceRoot: string; inputPath: string; outDir: string; diffFixturePath?: string }): Promise<PreprocessResult> {
+export async function preprocessReview(input: { workspaceRoot: string; inputPath: string; outDir: string; diffFixturePath?: string; bzrPath?: string }): Promise<PreprocessResult> {
   const reviewInput = await validateReviewInput(input.inputPath, input.workspaceRoot)
-  const diff = await collectGitDiff(reviewInput, { workspaceRoot: input.workspaceRoot, diffFixturePath: input.diffFixturePath })
+  const diff = await collectGitDiff(reviewInput, { workspaceRoot: input.workspaceRoot, diffFixturePath: input.diffFixturePath, bzrPath: input.bzrPath })
   const documents = await extractDocuments(reviewInput, { workspaceRoot: input.workspaceRoot })
   const codeAnalysis = await analyzeCppChanges(diff, reviewInput, { workspaceRoot: input.workspaceRoot })
   const traceability = await buildTraceability({ reviewInput, documents, codeAnalysis, diff })
