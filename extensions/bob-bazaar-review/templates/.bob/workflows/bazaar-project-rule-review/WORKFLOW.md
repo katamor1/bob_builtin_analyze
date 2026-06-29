@@ -125,6 +125,8 @@ steps:
       provider: bobBazaar.openReviewGui
     prompt: |
       Confirm the target Bazaar revision or revision range in the GUI. The Bazaar Review extension intentionally disables Bob pre-prompts for review target inputs so this workflow starts from the GUI by default.
+      If additional Bazaar CLI investigation is needed, never run `bzr <command>` directly.
+      Always run `bzr --no-aliases <command>` or use the provided MCP tools, which enforce that option internally.
     sendResult: false
     required: true
     completeOnSuccess: false
@@ -135,6 +137,8 @@ steps:
       provider: bobBazaar.collectReviewContext
     prompt: |
       Use the Bazaar review context returned by the command. Summarize revision metadata, changed files, and important diff areas. Use the Bazaar review packet already added to Bob context for full diff details.
+      Do not run Bazaar CLI without `--no-aliases`.
+      Prefer MCP tools for log, diff, cat, and status because the extension enforces `--no-aliases` internally.
     sendResult: true
     resultKey: reviewContext
     maxResultBytes: 20000
@@ -157,6 +161,8 @@ steps:
     type: agent
     prompt: |
       Analyze the changes against the checklist. Focus on interface impact, error handling, regression risk, data compatibility, and missing tests.
+      If you need more Bazaar context, use MCP tools first. If you must call Bazaar CLI directly, `bzr --no-aliases <command>` is mandatory.
+      Any `bzr <command>` call without `--no-aliases` is forbidden because user aliases can launch GUI tools and suppress stdout.
     includeState:
       - reviewContext
       - reviewRules

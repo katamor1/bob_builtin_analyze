@@ -1,4 +1,4 @@
-import * as fs from "node:fs/promises"
+﻿import * as fs from "node:fs/promises"
 import * as path from "node:path"
 import { decodeTextBuffer } from "../textEncoding"
 import { DEFAULT_CHECKLIST, REVIEW_RESULT_SCHEMA } from "./defaults"
@@ -53,7 +53,7 @@ export async function loadProjectChecklistRequired(workspaceRoot: string, explic
     return parsed
   } catch (error: any) {
     if (error?.code === "ENOENT") {
-      throw new Error(`プロジェクト review checklist ファイルが見つかりません: ${checklistPath}`)
+      throw new Error(`Project checklist file not found: ${checklistPath}。プロジェクト review checklist ファイルが見つかりません。`)
     }
     throw new Error(`プロジェクト review checklist の読み込みに失敗しました ${checklistPath}: ${error?.message ?? String(error)}`)
   }
@@ -79,7 +79,7 @@ export async function loadReviewResultSchemaRequired(workspaceRoot: string, expl
     return JSON.parse(raw)
   } catch (error: any) {
     if (error?.code === "ENOENT") {
-      throw new Error(`レビュー結果 schema ファイルが見つかりません: ${schemaPath}`)
+      throw new Error(`Review result schema file not found: ${schemaPath}。レビュー結果 schema ファイルが見つかりません。`)
     }
     throw new Error(`レビュー結果 schema の読み込みに失敗しました ${schemaPath}: ${error?.message ?? String(error)}`)
   }
@@ -92,7 +92,7 @@ export function resolveWorkspacePath(workspaceRoot: string, maybeRelativePath: s
     : path.resolve(root, maybeRelativePath)
   const relative = path.relative(root, target)
   if (isWorkspaceEscapingPath(relative) && process.env[ALLOW_EXTERNAL_REVIEW_RULES_ENV] !== "1") {
-    throw new Error(`プロジェクト review rule のパスがワークスペース外を指しています: ${maybeRelativePath}。外部パスを明示的に許可する場合は ${ALLOW_EXTERNAL_REVIEW_RULES_ENV}=1 を設定してください。`)
+    throw new Error(`Project review rule path escapes the workspace: ${maybeRelativePath}。プロジェクト review rule のパスがワークスペース外を指しています。外部パスを明示的に許可する場合は ${ALLOW_EXTERNAL_REVIEW_RULES_ENV}=1 を設定してください。`)
   }
   return target
 }
@@ -132,3 +132,4 @@ function assertChecklist(value: any, filePath: string): asserts value is Project
     }
   }
 }
+

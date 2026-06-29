@@ -6,6 +6,17 @@
 
 この README では、コマンド名、設定キー、JSON / YAML のフィールド名、ファイル名、識別子は実装上の名称として原文のまま記載します。
 
+## Bazaar alias 対策
+
+この拡張機能が実行する Bazaar CLI は、必ず `bzr --no-aliases <command>` 形式にします。
+
+理由は、ユーザー環境の Bazaar alias に `diff` や `log` で GUI ツールを起動する設定があると、拡張機能側に stdout として差分やログが返らず、レビュー packet の生成や MCP tool の応答が壊れるためです。
+
+AIチャット、Skill、Workflow、手動調査で Bazaar CLI を直接使う場合も同じです。
+
+- 禁止: `bzr diff ...`、`bzr log ...`、`bzr status`
+- 許可: `bzr --no-aliases diff ...`、`bzr --no-aliases log ...`、`bzr --no-aliases status`
+
 ## できること
 
 - Bazaar の revision / revision range / working tree 差分を取得する。

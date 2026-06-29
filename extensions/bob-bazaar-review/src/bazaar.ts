@@ -19,6 +19,8 @@ interface RunOptions {
   allowedExitCodes?: Array<number | string>
 }
 
+const REQUIRED_BZR_GLOBAL_OPTION = "--no-aliases"
+
 export class BazaarError extends Error {
   constructor(message: string, readonly details?: unknown) {
     super(message)
@@ -79,15 +81,16 @@ export class BazaarClient {
       throw new BazaarError("Bazaar の作業ディレクトリが不正です。")
     }
 
+    const commandArgs = withRequiredGlobalOption(args)
     const allowedExitCodes = options.allowedExitCodes ?? [0]
 
     try {
-      const result = await this.exec(cwd, args)
+      const result = await this.exec(cwd, commandArgs)
       return {
         stdout: decodeTextBuffer(result.stdout, this.textEncoding),
         stderr: decodeTextBuffer(result.stderr, this.textEncoding),
         command: this.bzrPath,
-        args,
+        args: commandArgs,
         cwd
       }
     } catch (error: any) {
@@ -100,15 +103,15 @@ export class BazaarClient {
           stdout,
           stderr,
           command: this.bzrPath,
-          args,
+          args: commandArgs,
           cwd
         }
       }
 
       const message = stderr.trim() || stdout.trim() || String(error?.message ?? error)
-      throw new BazaarError(`bzr ${args.join(" ")} が失敗しました: ${message}`, {
+      throw new BazaarError(`bzr ${commandArgs.join(" ")} が失敗しました: ${message}`, {
         cwd,
-        args,
+        args: commandArgs,
         stdout,
         stderr,
         code
@@ -139,6 +142,10 @@ export class BazaarClient {
       })
     })
   }
+}
+
+function withRequiredGlobalOption(args: string[]): string[] {
+  return args.includes(REQUIRED_BZR_GLOBAL_OPTION) ? [...args] : [REQUIRED_BZR_GLOBAL_OPTION, ...args]
 }
 
 function toBuffer(value: unknown): Buffer {
