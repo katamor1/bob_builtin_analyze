@@ -343,6 +343,8 @@ workflow-register-0.1.0.vsix
 
 ## 関連ドキュメント
 
+- `docs/basic-design-ja.md`
+- `docs/detailed-design-ja.md`
 - `docs/workflow-authoring-guide-ja.md`
 - `extensions/bob-bazaar-review/README.md`
 - `extensions/README.md`
