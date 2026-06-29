@@ -1,17 +1,19 @@
-# Bob Bazaar Review
+# Bob Bazaar Review（Bob Bazaar レビュー支援）
 
 `bob-bazaar-review` は、Bazaar リポジトリの差分レビューを IBM Bob から扱いやすくするための VS Code 拡張機能です。
 
-`IBM.bob-code` 本体は変更しません。ワークスペースの `.bob/mcp.json` に読み取り専用 Bazaar MCP server を登録し、レビュー対象の収集、プロジェクト規約の読み込み、review-result JSON の検証と保存を支援します。
+`IBM.bob-code` 本体は変更しません。ワークスペースの `.bob/mcp.json` に読み取り専用 Bazaar MCP サーバーを登録し、レビュー対象の収集、プロジェクト規約の読み込み、review-result JSON の検証と保存を支援します。
+
+この README では、コマンド名、設定キー、JSON / YAML のフィールド名、ファイル名、識別子は実装上の名称として原文のまま記載します。
 
 ## できること
 
 - Bazaar の revision / revision range / working tree 差分を取得する。
 - Bob に渡すレビュー用 Markdown パケットを作る。
 - `.bob/review/checklist.json` と `.bob/review/review-result.schema.json` を使ったプロジェクト規約レビューを支援する。
-- `workflow-register` の workflow step から呼び出せる command を提供する。
-- Bob が出力した review-result JSON を検証し、JSON と Markdown 成果物として保存する。
-- 読み取り専用の Bazaar MCP tools と project rule helper tools を提供する。
+- `workflow-register` のワークフローステップから呼び出せるコマンドを提供する。
+- Bob が出力した review-result JSON を検証し、JSON と Markdown の成果物として保存する。
+- 読み取り専用の Bazaar MCP ツールと、プロジェクト規約支援ツールを提供する。
 
 ## 依存関係
 
@@ -30,13 +32,13 @@
 
 ## 代表的な利用フロー
 
-1. Bazaar workspace を Bob IDE / VS Code で開く。
+1. Bazaar ワークスペースを Bob IDE / VS Code で開く。
 2. `Bob Bazaar: Open Bazaar Review GUI` を実行する。
 3. `.bob` が未初期化の場合は `.bobを初期化` を押す。
 4. レビュー対象を選ぶ。
 5. `取得` で revision 情報と変更ファイルを確認する。
 6. `レビューしてBobにADD` でレビュー用パケットを作成し、Bob context に追加する。
-7. Bob の workflow で `bazaar-project-rule-review` を実行する。
+7. Bob のワークフローで `bazaar-project-rule-review` を実行する。
 8. Bob が出力した JSON を `Bob Bazaar: Capture Review Result` で検証、保存する。
 
 ## Command Palette のコマンド
@@ -44,11 +46,11 @@
 | コマンド | 用途 |
 | --- | --- |
 | `Bob Bazaar: Open Bazaar Review GUI` | Bazaar レビュー用 GUI を開く。 |
-| `Bob Bazaar: Collect Bazaar Review Context` | workflow step から、現在のレビュー対象メタデータ、変更ファイル、レビュー用パケット概要を取得する。 |
-| `Bob Bazaar: Load Project Review Rules` | `.bob/review/checklist.json` と `.bob/review/review-result.schema.json` を読み込む。欠落時はエラー。 |
+| `Bob Bazaar: Collect Bazaar Review Context` | ワークフローステップから、現在のレビュー対象メタデータ、変更ファイル、レビュー用パケット概要を取得する。 |
+| `Bob Bazaar: Load Project Review Rules` | `.bob/review/checklist.json` と `.bob/review/review-result.schema.json` を読み込む。欠落時はエラーにする。 |
 | `Bob Bazaar: Capture Review Result` | active editor、selection、clipboard から review-result JSON を抽出し、検証して保存する。 |
 | `Bob Bazaar: Save Review Result from Clipboard` | clipboard だけを入力として review-result JSON を検証して保存する。 |
-| `Bob Bazaar: Configure Bazaar MCP for Bob` | `.bob/mcp.json` に Bazaar MCP server を登録する。 |
+| `Bob Bazaar: Configure Bazaar MCP for Bob` | `.bob/mcp.json` に Bazaar MCP サーバーを登録する。 |
 | `Bob Bazaar: Initialize Project Review Rules` | `.bob/review/checklist.json` と `.bob/review/review-result.schema.json` を未作成時に生成する。 |
 | `Bob Bazaar: Review Bazaar Revision with Bob` | `bzr log -r REV` と `bzr diff -c REV` をもとにレビュー用パケットを作る。 |
 | `Bob Bazaar: Review Bazaar Revision Range with Bob` | `bzr diff -r BASE..TARGET` をもとにレビュー用パケットを作る。 |
@@ -56,7 +58,7 @@
 | `Bob Bazaar: Review Bazaar Revision Range with Project Rules` | revision range レビューにプロジェクト規約と JSON 出力契約を追加する。 |
 | `Bob Bazaar: Validate Project Review Result JSON` | active editor / selection の review-result JSON を検証し、Markdown 表示できる。 |
 
-## Review GUI
+## レビュー GUI
 
 `Bob Bazaar: Open Bazaar Review GUI` を実行すると、GUI でレビュー対象を選べます。
 
@@ -80,14 +82,14 @@ GUI は次の `.bob` ファイルを確認します。
 | モード | 入力 | Bazaar 操作 |
 | --- | --- | --- |
 | `1リビジョン` | `Revision` | `bzr log -r REV` と `bzr diff -c REV` |
-| `リビジョン範囲` | `Base revision`, `Target revision` | `bzr diff -r BASE..TARGET`。可能なら target log も取得。 |
-| `TOPリビジョンと未コミット差分` | 任意の `Base revision` | 未入力なら `bzr revno` を使い、`bzr diff -r BASE` と `bzr status` を取得。 |
+| `リビジョン範囲` | `Base revision`, `Target revision` | `bzr diff -r BASE..TARGET`。可能なら target log も取得する。 |
+| `TOPリビジョンと未コミット差分` | 任意の `Base revision` | 未入力なら `bzr revno` を使い、`bzr diff -r BASE` と `bzr status` を取得する。 |
 
 単一 revision と revision range では、新規追加ファイルの内容も `bobBazaar.maxAddedFileContentBytes` の上限内でレビュー用パケットに含めます。
 
-## workflow-register との連携
+## `workflow-register` との連携
 
-この拡張は `workflow-register` から呼び出される command を提供します。代表例は同梱 workflow `bazaar-project-rule-review` です。
+この拡張は、`workflow-register` から呼び出されるコマンドを提供します。代表例は同梱ワークフロー `bazaar-project-rule-review` です。
 
 ### コンテキスト収集
 
@@ -103,7 +105,7 @@ completeOnSuccess: false
 ```
 ~~~~
 
-`collectReviewContext` は、GUI や command で作成された Bazaar review packet を読み、revision 情報、変更ファイル、byte count、Bob context に追加済みであることを示す summary を返します。
+`collectReviewContext` は、GUI やコマンドで作成された Bazaar review packet を読み、revision 情報、変更ファイル、byte count、Bob context に追加済みであることを示す summary を返します。
 
 ### 規約読み込み
 
@@ -159,13 +161,13 @@ Bob Bazaar: Save Review Result from Clipboard
 .bob/review/results/<review_id>.md
 ```
 
-Markdown は `renderReviewResultMarkdown` で生成され、件数、チェックリスト、evidence、findings を確認できます。検証に失敗した場合は、問題点を Markdown report として表示します。
+Markdown は `renderReviewResultMarkdown` で生成され、件数、チェックリスト、evidence、findings を確認できます。検証に失敗した場合は、問題点を Markdown レポートとして表示します。
 
-## MCP tools
+## MCP ツール
 
-同梱 MCP server は Bazaar 操作を読み取り専用で公開します。
+同梱 MCP サーバーは Bazaar 操作を読み取り専用で公開します。
 
-| Tool | Bazaar 操作 |
+| ツール | Bazaar 操作 |
 | --- | --- |
 | `bazaar_root` | `bzr root` |
 | `bazaar_revno` | `bzr revno` |
@@ -182,9 +184,9 @@ Markdown は `renderReviewResultMarkdown` で生成され、件数、チェッ�
 commit, push, pull, update, revert, merge, resolve
 ```
 
-project rule helper tools も公開します。
+プロジェクト規約支援ツールも公開します。
 
-| Tool | 用途 |
+| ツール | 用途 |
 | --- | --- |
 | `project_rules_init` | 既定の `.bob/review` 規約ファイルを作成する。 |
 | `project_rules_get_checklist` | project checklist JSON を返す。 |
@@ -240,16 +242,16 @@ Bob には JSON を先に返し、その後に Markdown checklist を出力す�
 
 | 設定 | 既定値 | 説明 |
 | --- | --- | --- |
-| `bobBazaar.bzrPath` | `bzr` | Bazaar 実行ファイルのパス。PATH にない場合は絶対パスを指定。 |
-| `bobBazaar.mcpServerName` | `bazaar` | `.bob/mcp.json` に書き込む MCP server 名。 |
+| `bobBazaar.bzrPath` | `bzr` | Bazaar 実行ファイルのパス。PATH にない場合は絶対パスを指定する。 |
+| `bobBazaar.mcpServerName` | `bazaar` | `.bob/mcp.json` に書き込む MCP サーバー名。 |
 | `bobBazaar.maxDiffBytes` | `1048576` | レビュー用パケットに含める diff の最大 byte 数。 |
-| `bobBazaar.maxAddedFileContentBytes` | `262144` | 新規追加ファイル本文を含める最大合計 byte 数。`0` で省略。 |
+| `bobBazaar.maxAddedFileContentBytes` | `262144` | 新規追加ファイル本文を含める最大合計 byte 数。`0` で省略する。 |
 | `bobBazaar.projectRules.checklistPath` | `.bob/review/checklist.json` | checklist JSON のパス。 |
 | `bobBazaar.projectRules.schemaPath` | `.bob/review/review-result.schema.json` | review-result JSON schema のパス。 |
 
 ## Bob MCP 設定
 
-Bazaar workspace を開いて次を実行します。
+Bazaar ワークスペースを開いて次を実行します。
 
 ```text
 Bob Bazaar: Configure Bazaar MCP for Bob
@@ -272,7 +274,7 @@ Bob Bazaar: Configure Bazaar MCP for Bob
 }
 ```
 
-`.bob/mcp.json` を変更した後は、Bob の MCP server を再読み込みするか、Bob IDE / VS Code を再起動してください。
+`.bob/mcp.json` を変更した後は、Bob の MCP サーバーを再読み込みするか、Bob IDE / VS Code を再起動してください。
 
 ## ビルド
 
@@ -294,7 +296,7 @@ code --install-extension bob-bazaar-review-0.3.0.vsix
 
 - Bazaar は shell 文字列ではなく `execFile` / argument array で実行します。
 - revision 文字列と repository relative path は実行前に検証します。
-- MCP server の Bazaar 操作は読み取り専用です。
+- MCP サーバーの Bazaar 操作は読み取り専用です。
 - diff と追加ファイル本文には byte 上限があります。
 - `pass` / `fail` の checklist result には evidence が必要です。
 - `fail` の rule には同じ `rule_id` を持つ finding が必要です。
