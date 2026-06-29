@@ -6,6 +6,8 @@ on:
       - "docs/workflows/code-consistency-review/scaffold/**"
       - "docs/workflows/code-consistency-review/schemas/**"
       - "docs/workflows/code-consistency-review/templates/**"
+      - "extensions/bob-code-consistency-review/**"
+      - ".bob/workflows/code-consistency-review/WORKFLOW.md"
       - ".github/workflows/code-consistency-review-scaffold.yml"
   push:
     branches:
@@ -14,6 +16,8 @@ on:
       - "docs/workflows/code-consistency-review/scaffold/**"
       - "docs/workflows/code-consistency-review/schemas/**"
       - "docs/workflows/code-consistency-review/templates/**"
+      - "extensions/bob-code-consistency-review/**"
+      - ".bob/workflows/code-consistency-review/WORKFLOW.md"
       - ".github/workflows/code-consistency-review-scaffold.yml"
   workflow_dispatch:
 
@@ -48,3 +52,34 @@ jobs:
 
       - name: Smoke tests
         run: npm run smoke
+
+  validate-extension:
+    name: Validate VS Code extension
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: extensions/bob-code-consistency-review
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: extensions/bob-code-consistency-review/package-lock.json
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Compile
+        run: npm run compile
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Package
+        run: npm run package
