@@ -17,8 +17,9 @@ test("Bazaar companion extension registers workflow providers with workflow-regi
   assert.match(source, /initialTargetFromWorkflowInputs\(input\.inputs, input\)/)
   assert.match(source, /id: "bobBazaar\.collectReviewContext"/)
   assert.match(source, /id: "bobBazaar\.loadReviewRules"/)
+  assert.match(source, /execute: \(input\) => loadReviewRules\(input\)/)
   assert.match(source, /id: "bobBazaar\.captureReviewResult"/)
-  assert.match(source, /execute: \(\{ args, state \}\) => captureReviewResult\(firstStringArg\(args\), \{ expectedChecklistItems: expectedChecklistItemsFromState\(state\) \}\)/)
+  assert.match(source, /execute: \(input\) => captureReviewResult\(firstStringArg\(input\.args\), \{[\s\S]*expectedChecklistItems: expectedChecklistItemsFromState\(input\.state\),[\s\S]*workspaceRoot: stringInput\(input\.workflowRoot\)[\s\S]*\}\)/)
 })
 
 test("Bazaar workflow provider resolves repository root independently from workflowRoot", () => {
@@ -30,7 +31,13 @@ test("Bazaar workflow provider resolves repository root independently from workf
   assert.match(source, /repositoryRoot\?: string/)
   assert.match(source, /const explicitBazaarRoot = stringInput\(input\?\.bazaarRoot\) \?\? stringInput\(input\?\.repositoryRoot\)/)
   assert.match(source, /bazaarRoot: explicitBazaarRoot/)
+  assert.match(source, /resolveBazaarWorkspaceFolder/)
+  assert.match(source, /resolveBobWorkspaceFolder/)
+  assert.match(guiSource, /private bazaarWorkspaceFolder\?: vscode\.WorkspaceFolder/)
+  assert.match(guiSource, /private bobWorkspaceFolder\?: vscode\.WorkspaceFolder/)
   assert.match(guiSource, /resolveBazaarWorkspaceFolder\(\{[\s\S]*workflowRoot: this\.initialTarget\?\.workflowRoot/)
+  assert.match(guiSource, /resolveBobWorkspaceFolder\(\{[\s\S]*workflowRoot: this\.initialTarget\?\.workflowRoot/)
+  assert.match(guiSource, /buildProjectRulesSectionForWorkspace\(bobFolder\.uri\.fsPath\)/)
   assert.doesNotMatch(guiSource, /workspaceFolders\?\.\[0\]|workspaceFolders\?\[0\]/)
 })
 
