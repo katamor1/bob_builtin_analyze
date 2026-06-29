@@ -16,7 +16,7 @@ permissions:
   - skill
   - todo
 autoApproval: true
-workspaceRequired: true
+workspaceRequired: false
 requires:
   workspace: true
   bob:
