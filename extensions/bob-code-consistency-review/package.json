@@ -22,6 +22,7 @@
   ],
   "activationEvents": [
     "onStartupFinished",
+    "onCommand:bobCodeConsistency.initializeWorkspace",
     "onCommand:bobCodeConsistency.preprocess",
     "onCommand:bobCodeConsistency.captureBobOutput",
     "onCommand:bobCodeConsistency.validateOutput",
@@ -30,6 +31,11 @@
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
+      {
+        "command": "bobCodeConsistency.initializeWorkspace",
+        "title": "コード整合レビュー: .bob ワークフロー定義を初期化",
+        "category": "Bob コード整合"
+      },
       {
         "command": "bobCodeConsistency.preprocess",
         "title": "コード整合レビュー: 入力を前処理して Bob 用パッケージを作成",
@@ -78,6 +84,7 @@
     },
     "menus": {
       "commandPalette": [
+        { "command": "bobCodeConsistency.initializeWorkspace" },
         { "command": "bobCodeConsistency.preprocess" },
         { "command": "bobCodeConsistency.captureBobOutput" },
         { "command": "bobCodeConsistency.validateOutput" },
