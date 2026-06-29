@@ -1,8 +1,8 @@
 ---
 schemaVersion: workflow-register/v1
 name: code-consistency-review
-description: Pre-review code changes against requirements, design, and test specifications.
-title: Code Consistency Pre-Review
+description: コード変更を要求書・設計書・テスト仕様書と照合し、正式レビュー前の整合プレレビューを実施します。
+title: コード整合プレレビュー
 category: code-review
 mode: agent
 todo: true
@@ -35,43 +35,43 @@ guardrails:
   requireApproval:
     - id: large-review-package
       when: ".bob-review/review-package/bob-input.md is too large for one review pass"
-      message: Split the review package and run this workflow per slice.
+      message: review-package が1回のレビューには大きすぎます。パッケージを分割し、slice ごとにこのワークフローを実行してください。
 inputs:
   reviewInputPath:
     type: string
-    title: review-input.yaml
+    title: review-input.yaml のパス
     default: review-input.yaml
   reviewPackagePath:
     type: string
-    title: Review package path
+    title: review-package の出力先
     default: .bob-review/review-package
   bobOutputPath:
     type: string
-    title: Bob output YAML path
+    title: Bob 出力 YAML の保存先
     default: .bob-review/bob-output/bob-output.yaml
   triagePath:
     type: string
-    title: Human triage path
+    title: 人間 triage の出力先
     default: .bob-review/human-triage
 tools:
   bobCodeConsistency.preprocess:
-    purpose: Generate the review package and bob-input.md.
+    purpose: review-package と bob-input.md を生成します。
     required: true
     outputKey: reviewPackage
     failurePolicy: stop
   bobCodeConsistency.captureBobOutput:
-    purpose: Capture the previous Bob YAML output to .bob-review/bob-output/bob-output.yaml.
+    purpose: 直前の Bob YAML 出力を .bob-review/bob-output/bob-output.yaml に保存します。
     required: true
     outputKey: captureResult
     inputSource: state
     failurePolicy: stop
   bobCodeConsistency.validateOutput:
-    purpose: Validate Bob YAML output against schema and package evidence.
+    purpose: Bob YAML 出力を schema と package evidence に照らして検証します。
     required: true
     outputKey: validationResult
     failurePolicy: stop
   bobCodeConsistency.triage:
-    purpose: Generate human triage files.
+    purpose: 人間確認用 triage ファイルを生成します。
     required: true
     outputKey: triageResult
     failurePolicy: stop
@@ -98,19 +98,19 @@ completion:
     enabled: false
 steps:
   - id: preprocess-review-package
-    title: Generate review-package and bob-input.md.
+    title: review-package と bob-input.md を生成
     type: command
     action:
       provider: bobCodeConsistency.preprocess
     prompt: |
-      Generate the review package from review-input.yaml. Stop if the command reports validation errors or missing source documents.
+      review-input.yaml から review-package を生成してください。入力検証エラーまたは関連文書の欠落が報告された場合は停止してください。
     sendResult: true
     resultKey: reviewPackage
     maxResultBytes: 20000
     required: true
     completeOnSuccess: true
   - id: run-bob-pre-review
-    title: Run the consistency pre-review from bob-input.md.
+    title: bob-input.md を使って整合プレレビューを実行
     type: agent
     required: true
     includeState:
@@ -119,20 +119,20 @@ steps:
     resultKey: bobReviewResult
     maxResultBytes: 40000
     prompt: |
-      Read .bob-review/review-package/bob-input.md and perform only the pre-review defined there.
+      .bob-review/review-package/bob-input.md を読み、そこに定義された整合プレレビューだけを実施してください。
 
-      Your role is to find evidence-backed inconsistency candidates and human follow-up questions across requirements, basic design, detailed design, test specifications, ledgers, tickets, and changed code.
+      あなたの役割は、要求書、基本設計書、詳細設計書、テスト仕様書、台帳、チケット、変更コードの間で、根拠に基づく不整合候補と人間への確認事項を抽出することです。
 
-      Hard constraints:
-      - Do not give final approval.
-      - Do not state that the change is fully covered.
-      - Do not treat missing evidence as proof of correctness.
-      - Every finding must include concrete evidence from the package.
-      - If evidence is weak, output a question rather than a finding.
+      厳守事項:
+      - 最終承認をしてはいけません。
+      - 変更が完全に網羅されていると断定してはいけません。
+      - 根拠が不足していることを、正しさの証明として扱ってはいけません。
+      - すべての finding には package 内の具体的な evidence を含めてください。
+      - 根拠が弱い場合は finding ではなく question として出力してください。
 
-      Return YAML that matches docs/workflows/code-consistency-review/schemas/bob-output.schema.json. The final_approval value must be not_performed.
+      docs/workflows/code-consistency-review/schemas/bob-output.schema.json に一致する YAML を返してください。final_approval の値は必ず not_performed にしてください。
   - id: capture-bob-output
-    title: Capture Bob YAML output.
+    title: Bob YAML 出力を取り込み
     type: command
     action:
       provider: bobCodeConsistency.captureBobOutput
@@ -140,38 +140,38 @@ steps:
       - bobReviewResult
     stateRequired: true
     prompt: |
-      Save the previous Bob YAML output to .bob-review/bob-output/bob-output.yaml.
+      直前の Bob YAML 出力を .bob-review/bob-output/bob-output.yaml に保存してください。
     sendResult: true
     resultKey: captureResult
     maxResultBytes: 10000
     required: true
     completeOnSuccess: true
   - id: validate-bob-output
-    title: Validate Bob YAML output.
+    title: Bob YAML 出力を検証
     type: command
     action:
       provider: bobCodeConsistency.validateOutput
     prompt: |
-      Validate the captured Bob YAML output against the schema and evidence-index.json. Do not continue while validation errors remain.
+      取り込んだ Bob YAML 出力を schema と evidence-index.json に照らして検証してください。検証エラーが残っている間は続行しないでください。
     sendResult: true
     resultKey: validationResult
     maxResultBytes: 20000
     required: true
     completeOnSuccess: true
   - id: human-triage
-    title: Generate human triage files.
+    title: 人間確認用 triage ファイルを生成
     type: command
     action:
       provider: bobCodeConsistency.triage
     prompt: |
-      Generate triage-result.yaml, accepted-findings.md, rejected-findings.md, questions-to-author.md, and follow-up-actions.md.
+      triage-result.yaml、accepted-findings.md、rejected-findings.md、questions-to-author.md、follow-up-actions.md を生成してください。
     sendResult: true
     resultKey: triageResult
     maxResultBytes: 20000
     required: true
     completeOnSuccess: true
   - id: handoff-formal-review
-    title: Prepare the formal review handoff.
+    title: 正式レビューへの引き継ぎを作成
     type: agent
     required: true
     includeState:
@@ -180,22 +180,22 @@ steps:
       - triageResult
     stateRequired: true
     prompt: |
-      Prepare a concise Markdown handoff for the formal human review.
+      正式な人間レビューへ渡すための簡潔な Markdown 引き継ぎを作成してください。
 
-      Include:
-      - review target and package path
-      - accepted pre-review finding candidates
-      - author questions
-      - validation errors or warnings, if any
-      - missing tests or document update gaps
-      - explicit note that Bob did not approve the change
+      含める内容:
+      - レビュー対象と package path
+      - 採用候補のプレレビュー指摘
+      - 作成者への確認事項
+      - 検証エラーまたは warning があればその内容
+      - 不足しているテストまたは文書更新の gap
+      - Bob はこの変更を承認していない、という明示的な注記
 
-      Keep the output as a handoff summary, not a final review decision.
+      出力は引き継ぎサマリに限定し、最終レビュー判断として書かないでください。
 ---
-# Code Consistency Pre-Review
+# コード整合プレレビュー
 
-## Goal
+## 目的
 
-Run a structured pre-review for code changes against requirements, design, and test specifications.
+コード変更を要求書・設計書・テスト仕様書と照合し、構造化された整合プレレビューを実施します。
 
-This workflow operationalizes `docs/workflows/code-consistency-review/` and keeps Bob in an assistive role. Bob may raise evidence-backed candidates and questions, but final interpretation, approval, and risk acceptance stay with the human reviewer.
+このワークフローは `docs/workflows/code-consistency-review/` の仕様を実行手順化し、Bob を支援役に限定します。Bob は根拠に基づく不整合候補と確認事項を提示できますが、最終解釈、承認、リスク受容は人間のレビュー担当者が行います。
