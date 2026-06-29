@@ -3,6 +3,7 @@ const fs = require("node:fs")
 const os = require("node:os")
 const path = require("node:path")
 const { test } = require("node:test")
+const iconv = require("iconv-lite")
 const YAML = require("yaml")
 
 const { preprocessReview } = require("../out/core/pipeline")
@@ -91,6 +92,32 @@ test("preprocessReview builds the AI verification matrix package from a real git
   assert.match(expectedOutcomes, /outcome: ng/)
   assert.match(expectedOutcomes, /outcome: n\/a/)
   assert.match(expectedOutcomes, /outcome: question/)
+})
+
+test("preprocessReview preserves Shift-JIS review input, documents, source, and git diff text", async () => {
+  const workspace = createShiftJisMixedWorkspace()
+  const outDir = path.join(workspace, ".bob-review", "review-package")
+  const result = await preprocessReview({ workspaceRoot: workspace, inputPath: path.join(workspace, "review-input.yaml"), outDir })
+
+  const documentExcerpts = fs.readFileSync(path.join(outDir, "document-excerpts.md"), "utf8")
+  const diffContext = fs.readFileSync(path.join(outDir, "diff-context.md"), "utf8")
+  const bobInput = fs.readFileSync(path.join(outDir, "bob-input.md"), "utf8")
+  const changedSymbols = JSON.parse(fs.readFileSync(path.join(outDir, "changed-symbols.json"), "utf8"))
+  const inputNormalized = JSON.parse(fs.readFileSync(path.join(outDir, "input-normalized.json"), "utf8"))
+
+  assert.equal(result.status, "ok")
+  assert.equal(inputNormalized.review.title, "Shift-JIS 混在検証")
+  assert.match(documentExcerpts, /REQ-SJIS-001/)
+  assert.match(documentExcerpts, /監査ログの日本語メッセージ/)
+  assert.match(diffContext, /状態更新: 文字コード確認/)
+  assert.match(diffContext, /printf/)
+  assert.match(bobInput, /Shift-JIS 混在検証/)
+  assert.match(bobInput, /監査ログの日本語メッセージ/)
+  assert.match(bobInput, /状態更新: 文字コード確認/)
+  assert.doesNotMatch(`${documentExcerpts}\n${diffContext}\n${bobInput}`, /\uFFFD/)
+  assert.ok(changedSymbols.defines.includes("STATUS_AUDIT"))
+  assert.ok(changedSymbols.rt_forbidden_candidates.some((candidate) => candidate.symbol === "printf"))
+  assert.ok(changedSymbols.symbols.some((symbol) => symbol.name === "Payment_CheckStatus"))
 })
 
 test("AI verification matrix expected Bob output validates and generates triage", async () => {
@@ -302,6 +329,90 @@ function createAiVerificationMatrixWorkspace() {
   git(workspace, "add", ".")
   git(workspace, "commit", "-m", "ai verification matrix head")
   return workspace
+}
+
+function createShiftJisMixedWorkspace() {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "bob-sjis-mixed-"))
+  fs.mkdirSync(path.join(workspace, "docs"), { recursive: true })
+  fs.mkdirSync(path.join(workspace, "src"), { recursive: true })
+  writeShiftJis(path.join(workspace, "review-input.yaml"), [
+    "schema_version: 1",
+    "review:",
+    "  id: REVIEW-SJIS-001",
+    "  title: Shift-JIS 混在検証",
+    "  change_type: bugfix",
+    "  purpose: 日本語コメントと仕様文書の文字化け確認",
+    "  base: main",
+    "  head: feature/sjis-mixed",
+    "  vcs: git",
+    "artifacts:",
+    "  requirements:",
+    "    - path: docs/requirements-sjis.md",
+    "      version: \"1.0\"",
+    "      sections:",
+    "        - REQ-SJIS-001",
+    "review_focus:",
+    "  - requirement-code-consistency",
+    "  - rt-ts-rule",
+    ""
+  ].join("\n"))
+  writeShiftJis(path.join(workspace, "docs", "requirements-sjis.md"), [
+    "# REQ-SJIS-001 状態更新",
+    "",
+    "REQ-SJIS-001: タイムアウト時は ERR_TIMEOUT を返し、監査ログの日本語メッセージを維持する。",
+    ""
+  ].join("\n"))
+  writeShiftJis(path.join(workspace, "src", "payment_status.h"), [
+    "#define ERR_OK 0",
+    "#define ERR_TIMEOUT 8",
+    "int Payment_CheckStatus(int timeoutDetected);",
+    ""
+  ].join("\n"))
+  writeShiftJis(path.join(workspace, "src", "payment_status.c"), [
+    "#include \"payment_status.h\"",
+    "#define STATUS_NORMAL 0",
+    "",
+    "int Payment_CheckStatus(int timeoutDetected)",
+    "{",
+    "    // 初期値",
+    "    if (timeoutDetected) {",
+    "        return ERR_TIMEOUT;",
+    "    }",
+    "    return ERR_OK;",
+    "}",
+    ""
+  ].join("\n"))
+
+  git(workspace, "init", "-b", "main")
+  git(workspace, "config", "user.email", "bob-fixture@example.local")
+  git(workspace, "config", "user.name", "Bob Fixture")
+  git(workspace, "add", ".")
+  git(workspace, "commit", "-m", "baseline")
+  git(workspace, "switch", "-c", "feature/sjis-mixed")
+  writeShiftJis(path.join(workspace, "src", "payment_status.c"), [
+    "#include \"payment_status.h\"",
+    "#include <stdio.h>",
+    "#define STATUS_NORMAL 0",
+    "#define STATUS_AUDIT 1",
+    "",
+    "int Payment_CheckStatus(int timeoutDetected)",
+    "{",
+    "    // 状態更新: 文字コード確認",
+    "    if (timeoutDetected) {",
+    "        printf(\"状態更新: %d\\n\", timeoutDetected);",
+    "        return ERR_OK;",
+    "    }",
+    "    return ERR_OK;",
+    "}",
+    ""
+  ].join("\n"))
+  git(workspace, "add", ".")
+  git(workspace, "commit", "-m", "sjis mixed head")
+  return workspace
+}
+
+function writeShiftJis(filePath, text) {
+  fs.writeFileSync(filePath, iconv.encode(text, "shift_jis"))
 }
 
 function copyFixtureTree(source, target) {

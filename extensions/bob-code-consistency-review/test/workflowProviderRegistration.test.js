@@ -20,6 +20,9 @@ test("extension registers code consistency workflow providers with workflow-regi
   assert.match(source, /mergeWorkflowOptions\(input\)/)
   assert.match(source, /id: "bobCodeConsistency\.validateOutput"/)
   assert.match(source, /id: "bobCodeConsistency\.triage"/)
+  assert.match(packageJson.contributes.configuration.properties["bobCodeConsistency.textEncoding"].description, /Shift-JIS/)
+  assert.match(source, /const textEncoding = stringOption\(record, "textEncoding"\)/)
+  assert.match(source, /preprocessReview\(\{ workspaceRoot, inputPath, outDir, diffFixturePath, bzrPath, textEncoding \}\)/)
 })
 
 test("code consistency provider accepts workflowRoot without first-folder fallback", () => {
@@ -48,6 +51,8 @@ test("Bob workflow template uses command providers instead of manual CLI instruc
 
   assert.match(workflow, /^schemaVersion: workflow-register\/v1$/m)
   assert.match(workflow, /provider: bobCodeConsistency\.preprocess/)
+  assert.match(workflow, /textEncoding:/)
+  assert.match(workflow, /default: auto/)
   assert.match(workflow, /provider: bobCodeConsistency\.captureBobOutput/)
   assert.match(workflow, /provider: bobCodeConsistency\.validateOutput/)
   assert.match(workflow, /provider: bobCodeConsistency\.triage/)

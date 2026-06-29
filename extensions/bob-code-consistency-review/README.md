@@ -61,8 +61,9 @@
 | `bobCodeConsistency.reviewPackagePath` | `.bob-review/review-package` | 生成する review-package のワークスペース相対パス。 |
 | `bobCodeConsistency.bobOutputPath` | `.bob-review/bob-output/bob-output.yaml` | 取り込んだ Bob 出力 YAML の保存先。 |
 | `bobCodeConsistency.triagePath` | `.bob-review/human-triage` | 人間 triage ファイルの出力先。 |
+| `bobCodeConsistency.textEncoding` | `auto` | `review-input.yaml`、Markdown 文書、C/C++ ソース、Git/Bazaar 差分 stdout、diff fixture の読み取り文字コード。`auto` / `utf8` / `shift_jis` / `cp932` / `windows-31j` を指定できます。 |
 
-各コマンドは、ワークフローや他拡張からの呼び出し時に同名オプションを受け取れます。たとえば `reviewInputPath`、`reviewPackagePath`、`bobOutputPath`、`triagePath` を入力値や `args` で渡すと、設定値より優先されます。
+各コマンドは、ワークフローや他拡張からの呼び出し時に同名オプションを受け取れます。たとえば `reviewInputPath`、`reviewPackagePath`、`textEncoding`、`bobOutputPath`、`triagePath` を入力値や `args` で渡すと、設定値より優先されます。
 
 ## `review-input.yaml`
 
