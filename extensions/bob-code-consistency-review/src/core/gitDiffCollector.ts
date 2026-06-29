@@ -9,12 +9,6 @@ const execFileAsync = promisify(execFile)
 
 type VcsKind = "git" | "bazaar"
 
-type CommandResult = {
-  stdout?: Buffer | string
-  stderr?: Buffer | string
-  code: number
-}
-
 export async function collectGitDiff(reviewInput: ReviewInput, options: { workspaceRoot: string; diffFixturePath?: string; bzrPath?: string }): Promise<DiffSummary> {
   if (options.diffFixturePath) {
     const fixture = JSON.parse(await readTextFile(options.diffFixturePath)) as DiffSummary
@@ -88,10 +82,11 @@ function runCommandText(command: string, args: string[], cwd: string, maxBuffer:
 }
 
 function exitCode(error: unknown): number {
+  if (!error) return 0
   if (typeof error === "object" && error !== null && "code" in error && typeof (error as { code?: unknown }).code === "number") {
     return (error as { code: number }).code
   }
-  return 0
+  return -1
 }
 
 function toBuffer(value: Buffer | string | undefined): Buffer {
