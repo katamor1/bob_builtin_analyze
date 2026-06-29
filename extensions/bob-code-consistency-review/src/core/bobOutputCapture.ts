@@ -11,13 +11,13 @@ export type CaptureBobOutputResult = {
 
 export async function captureBobOutput(input: { workspaceRoot: string; text: string; bobOutputPath: string }): Promise<CaptureBobOutputResult> {
   const yamlText = extractYamlFromText(input.text)
-  if (!yamlText) return { status: "error", message: "No YAML object was found in Bob output." }
+  if (!yamlText) return { status: "error", message: "Bob 出力内に YAML オブジェクトが見つかりませんでした。" }
 
   let parsed: any
   try {
     parsed = YAML.parse(yamlText)
   } catch (error) {
-    return { status: "error", message: `Invalid YAML: ${error instanceof Error ? error.message : String(error)}` }
+    return { status: "error", message: `YAML が不正です: ${error instanceof Error ? error.message : String(error)}` }
   }
   const normalized = `${YAML.stringify(parsed)}`
   await writeTextFile(input.bobOutputPath, normalized)
@@ -25,7 +25,7 @@ export async function captureBobOutput(input: { workspaceRoot: string; text: str
     status: "ok",
     bobOutputPath: path.resolve(input.bobOutputPath),
     reviewId: parsed?.review_summary?.review_id,
-    message: `Captured Bob output to ${input.bobOutputPath}`
+    message: `Bob 出力を保存しました: ${input.bobOutputPath}`
   }
 }
 
