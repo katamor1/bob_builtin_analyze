@@ -55,8 +55,11 @@ GUI が作った state でも、保存直前に必ず既存 validator を通す�
 - tab 切り替え時のタブ概要表示。
 - ヘルプ catalog 全体を横断する日本語/英語検索。
 - 検索結果クリックによる対象タブへの移動と対象 field への focus。
+- テンプレート select と Step 追加ボタンへの説明。
+- `includeState` / `Command` / `Result` 見出しへの説明。
+- `template` / `producedBy` / `stateKey` / `includeState` の動的選択肢説明。
 
-検索は `labelJa`、`fieldKey`、`summary`、`effect`、`whenToUse`、`caution`、`example`、選択肢説明を対象にする。たとえば `resultKey`、`承認`、`成果物`、`Bob`、`stop` などで検索できる。
+検索は `labelJa`、`fieldKey`、`summary`、`effect`、`whenToUse`、`caution`、`example`、選択肢説明を対象にする。たとえば `resultKey`、`承認`、`成果物`、`Bob`、`stop`、`テンプレート` などで検索できる。
 
 この機能は Webview 内だけで完結し、serializer / loader / save path には影響しない。
 

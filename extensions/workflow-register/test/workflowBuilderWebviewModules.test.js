@@ -56,6 +56,14 @@ test("workflow builder split modules expose approval, markdown body, and help ed
   assert.match(helpScript, /data-help-search/)
   assert.match(helpScript, /data-help-jump/)
   assert.match(helpScript, /jumpToHelpEntry/)
+  assert.match(helpScript, /template\.select/)
+  assert.match(helpScript, /steps\.addCommand/)
+  assert.match(helpScript, /section\.includeState/)
+  assert.match(helpScript, /section\.command/)
+  assert.match(helpScript, /section\.result/)
+  assert.match(helpScript, /dynamicChoiceHelp/)
+  assert.match(helpScript, /artifact\.producedBy/)
+  assert.match(helpScript, /dataset\.stateKey/)
 })
 
 test("workflow builder help catalog covers high priority Japanese help entries", () => {
