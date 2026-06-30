@@ -12,7 +12,7 @@ function renderAndValidate(model) {
   return { rendered, validation }
 }
 
-test("serializes requires, preflight, and completion sections", () => {
+test("serializes requires, preflight, completion, and approval guardrails", () => {
   const model = createAuthoringModelFromTemplate({
     name: "advanced-sections",
     title: "Advanced Sections",
@@ -21,6 +21,11 @@ test("serializes requires, preflight, and completion sections", () => {
   })
   model.requires = { workspace: true, bob: { minVersion: "2.0.0" }, files: ["docs/spec.md", "src/**/*.ts"] }
   model.preflight = [{ id: "check-inputs", title: "Check inputs", required: true, checks: ["workflow.filesExist"], files: ["docs/spec.md"], failurePolicy: "stop" }]
+  model.guardrails = {
+    allowedCommands: ["workflow.safeCommand"],
+    deniedCommands: ["workflow.dangerousCommand"],
+    requireApproval: [{ id: "approve-dangerous-change", when: "command.requiresApproval", message: "人間の承認が必要です。" }]
+  }
   model.completion = { summary: "Advanced workflow completed.", includeArtifacts: true, validateResult: true, visualization: { type: "markdown", enabled: true } }
 
   const { rendered, validation } = renderAndValidate(model)
@@ -29,11 +34,14 @@ test("serializes requires, preflight, and completion sections", () => {
   assert.match(rendered.markdown, /minVersion: 2\.0\.0/)
   assert.match(rendered.markdown, /preflight:/)
   assert.match(rendered.markdown, /failurePolicy: stop/)
+  assert.match(rendered.markdown, /guardrails:/)
+  assert.match(rendered.markdown, /requireApproval:/)
+  assert.match(rendered.markdown, /approve-dangerous-change/)
   assert.match(rendered.markdown, /completion:/)
   assert.match(rendered.markdown, /includeArtifacts: true/)
 })
 
-test("loads advanced sections back into the authoring model", () => {
+test("loads advanced sections and approval guardrails back into the authoring model", () => {
   const model = createAuthoringModelFromTemplate({
     name: "advanced-roundtrip",
     title: "Advanced Roundtrip",
@@ -42,6 +50,7 @@ test("loads advanced sections back into the authoring model", () => {
   })
   model.requires = { workspace: false, bob: { minVersion: "2.1.0" }, files: ["README.md"] }
   model.preflight = [{ id: "check-readme", title: "Check README", required: false, checks: ["workflow.filesExist"], files: ["README.md"], failurePolicy: "warn" }]
+  model.guardrails = { requireApproval: [{ id: "approve-report", when: "artifact.externalOutput", message: "外部出力前に承認してください。" }] }
   model.completion = { summary: "Done.", includeArtifacts: false, validateResult: true, visualization: { type: "table", enabled: false } }
 
   const { rendered } = renderAndValidate(model)
@@ -51,6 +60,8 @@ test("loads advanced sections back into the authoring model", () => {
   assert.deepEqual(loaded.model.requires.files, ["README.md"])
   assert.equal(loaded.model.preflight[0].id, "check-readme")
   assert.equal(loaded.model.preflight[0].failurePolicy, "warn")
+  assert.equal(loaded.model.guardrails.requireApproval[0].id, "approve-report")
+  assert.equal(loaded.model.guardrails.requireApproval[0].when, "artifact.externalOutput")
   assert.equal(loaded.model.completion.summary, "Done.")
   assert.equal(loaded.model.completion.visualization.type, "table")
 })
