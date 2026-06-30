@@ -142,15 +142,16 @@ flowchart TD
 2. `.bob/workflows/*/WORKFLOW.md` を探索する。
 3. workflow 定義を解析し、Bob の source API へ登録する。
 4. Bob の Workflow UI から workflow が開始される。
-5. `getSteps()` で返した step 定義に沿って実行する。
-6. command step は action provider を呼び出す。
-7. agent step は Bob task の `startSubagent` を使う。
-8. manual step は `completeCurrentStep` まで hold する。
-9. result handoff が必要な場合、最新 assistant 成果物を action provider へ渡す。
+5. `getSteps()` で返した Bob step は `BobWorkflowEngineRunner` に委譲する。
+6. Todo ごとの Bob step は `WorkflowEngine.runWorkflow(..., { executionMode: "singleStep" })` で実行する。
+7. command / result / artifact / run state 更新は command palette 経路と同じ `WorkflowEngine` が行う。
+8. agent step は Bob task の `startSubagent` を `AgentProvider` として接続する。
+9. manual step は Engine の manual completion controller 経由で `completeCurrentStep` まで待機する。
+10. 実行 hook から Bob chat message、Bob task snapshot、Bob task complete を同期する。
 
 ### 9.2 Command Palette 経由の standalone 実行
 
-`workflowRegister.runWorkflow` は `WorkflowEngine` を使い、workflow 定義を直接実行する。この経路では `FileRunStateStore` に run state を保存し、`resumeRun` / `retryCurrentStep` を利用できる。
+`workflowRegister.runWorkflow` は `WorkflowEngine` を使い、workflow 定義を直接実行する。この経路では `FileRunStateStore` に run state を保存し、`resumeRun` / `retryCurrentStep` を利用できる。Bob task は存在しないため Bob chat snapshot は保存しないが、既存 snapshot がある run の retry では `lastAssistantText` を復帰候補として参照できる。
 
 ## 10. 実行状態と再開
 
@@ -172,7 +173,9 @@ flowchart TD
 | Resume | hold された step を完了扱いにし、次 step から再開する。 |
 | Retry | current step を pending に戻し、同じ step から再実行する。 |
 
-Bob UI 経由の手動 step はメモリ上の active step と Bob task のメッセージを使う。result handoff では、チャットに残る最新 assistant 成果物を `latestAssistantText` / `resultText` / `artifactText` として action provider へ渡す。
+Bob UI 経由でも `run.json` が実行状態の正本である。`StepRuntime.activeSteps` は手動完了待ちの Promise と Bob task 参照だけを保持し、step state / inputs / outputs は `run.json` に保存する。
+
+Bob task 側の文脈は `.bob/workflows/runs/<runId>/task-snapshots/*.json` に補助証跡として保存する。`latest.json` は最新 snapshot のコピーであり、`workflow-start`、`step-start`、`agent-output`、`handoff-failed`、`held`、`failed`、`completed` の reason を持つ。result handoff では、現在の Bob task の latest assistant text、`latest.json`、該当 step の `agent-output` snapshot の順に復帰候補を探す。
 
 ## 11. 他拡張との連携
 
@@ -196,6 +199,7 @@ Bob UI 経由の手動 step はメモリ上の active step と Bob task のメ�
 - `file` result sink は workspace root 外への書き込みを拒否する。
 - result command sink は既定で許可リスト制にする。
 - `.bob/workflows` 配下のワークフローのみを登録対象にする。
+- task snapshot は workspace root 配下の `.bob/workflows/runs/<runId>/task-snapshots/` のみに保存する。
 
 ## 13. エラー処理方針
 
@@ -208,6 +212,7 @@ Bob UI 経由の手動 step はメモリ上の active step と Bob task のメ�
 | command provider 未登録 | step を failed / held にする。 |
 | manual step | held として待機する。 |
 | result handoff 失敗 | step を保持し、再実行または再完了できるようにする。 |
+| snapshot 保存失敗 | 実行 hook 内で警告扱いにし、workflow 実行の正本である `run.json` を優先する。 |
 
 ## 14. 運用と診断
 
@@ -226,19 +231,22 @@ Bob UI 経由の手動 step はメモリ上の active step と Bob task のメ�
 
 `WORKFLOW.md` は保存時と active editor 変更時に検証され、VS Code Diagnostics に反映される。
 
+`workflowRegister.inspectRunDiagnostics` は `run.json` に加えて task snapshot summary を表示し、workflow hash mismatch、step mismatch、`lastAssistantText` 有無、handoff error を確認できる。
+
 ## 15. テスト方針
 
 - parser の v1 / legacy 解析を検証する。
 - schema validation を検証する。
 - workflow engine の run / resume / retry を検証する。
 - result handoff の assistant 成果物渡しを検証する。
+- task snapshot の保存、pruning、診断表示、復帰候補利用を検証する。
 - workflow template と provider registration の契約を検証する。
 - workspace root 探索と multi-root 動作を検証する。
 
 ## 16. 今後の拡張方針
 
-- Bob UI 経由実行の永続 resume 強化。
-- active step の永続化。
+- Bob UI 経由実行と command palette 実行の追加 UX 改善。
+- active step の再接続 UI。
 - result handoff の再試行 UI 強化。
 - action provider / result sink の権限モデル拡張。
 - workflow definition migration の支援。

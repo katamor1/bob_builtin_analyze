@@ -111,3 +111,57 @@ test("workflow run recovery does not reuse a cache for different inputs", async 
   assert.equal(result.state.analyzeResult, "fresh-context-88")
   assert.equal((await runStore.listRuns()).length, 2)
 })
+
+test("retrying an agent handoff failure can reuse recovered text without rerunning the agent", async () => {
+  const { ActionRegistry } = require("../out/core/actionRegistry")
+  const { WorkflowEngine } = require("../out/core/engine")
+  const { createDefaultResultSinkRegistry } = require("../out/core/resultSinkRegistry")
+  const { FileRunStateStore } = require("../out/core/runStateStore")
+
+  const workspaceRoot = tempDir()
+  const workflow = {
+    id: "workflow-register.agent-recovery",
+    name: "agent-recovery",
+    label: "Agent Recovery",
+    description: "Agent recovery workflow.",
+    schemaVersion: "workflow-register/v1",
+    definitionHash: "definition-v1",
+    filePath: ".bob/workflows/agent-recovery/WORKFLOW.md",
+    inputs: {},
+    engineSteps: [
+      {
+        id: "analyze",
+        title: "Analyze",
+        type: "agent",
+        prompt: "Analyze",
+        resultKey: "analysis",
+        result: {
+          source: "agent",
+          sinks: [{ type: "file", path: ".bob/workflows/runs/{{run.id}}/steps/analyze.txt" }]
+        }
+      }
+    ]
+  }
+  const runStore = new FileRunStateStore({ workspaceRoot, now: () => "2026-06-30T00:00:00.000Z", engineVersion: "test-engine" })
+  const failed = await runStore.createRun(workflow, {})
+  failed.status = "failed"
+  failed.currentStep = "analyze"
+  failed.error = "Result sink failed: capture"
+  failed.steps[0].status = "failed"
+  failed.steps[0].error = failed.error
+  await runStore.saveRun(failed)
+
+  const engine = new WorkflowEngine({
+    actions: new ActionRegistry(),
+    resultSinks: createDefaultResultSinkRegistry({ workspaceRoot, executeCommand: async () => undefined }),
+    runStore,
+    agentProvider: { run: async () => { throw new Error("agent should not rerun") } },
+    recoverResultText: async ({ run, step }) => run.runId === failed.runId && step.id === "analyze" ? "recovered analysis" : undefined
+  })
+  const retried = await engine.retryCurrentStep(failed.runId, workflow)
+  const output = fs.readFileSync(path.join(workspaceRoot, ".bob", "workflows", "runs", failed.runId, "steps", "analyze.txt"), "utf8")
+
+  assert.equal(retried.status, "completed")
+  assert.equal(retried.state.analysis, "recovered analysis")
+  assert.equal(output, "recovered analysis")
+})

@@ -265,25 +265,20 @@ interface BobWorkflow {
 
 ## 11. Bob UI 経由実行設計
 
-### 11.1 Todo step 実行
+### 11.1 BobWorkflowEngineRunner
 
-`runTodoStep()` の処理は次の通り。
+Bob UI から呼ばれる step execution は `BobWorkflowEngineRunner` が受ける。Bob の step 表示は従来どおり `createBobWorkflow()` / `buildWorkflowSteps()` で作るが、実行本体は `WorkflowEngine` に委譲する。
 
-1. 最初の step なら workflow state / input cache を reset する。
-2. `ensureWorkflowInputs()` で不足入力を収集する。
-3. command step なら action provider を実行する。
-4. command result が `resultKey` を持つ場合は state に保存する。
-5. `includeState` が不足していれば hold する。
-6. step message を Bob chat に送る。
-7. agent step なら `startSubagent()` を呼ぶ。
-8. agent result を `resultKey` に保存する。
-9. `result` sink がある場合は handoff / sink 書き込みを行う。
-10. `completeOnSuccess` または auto completion の場合は Bob task を complete する。
-11. manual の場合は active step として保持する。
+| Bob UI 上の形 | Engine 実行 |
+| --- | --- |
+| Todo ごとの step | `runWorkflow(..., { executionMode: "singleStep", stepId })` |
+| 単一 `runWorkflow` step | `runWorkflow(..., { executionMode: "full" })` |
+
+`singleStep` では指定 step だけを実行し、途中 run は `status=running` のまま `run.json` に保存する。次の Bob step は同じ inputs と workflow hash で recoverable run を取得し、同一 `runId` の続きを実行する。
 
 ### 11.2 Workflow input 収集
 
-`ensureWorkflowInputs()` は `StepRuntime` の input cache を優先する。存在しない場合は、Bob task metadata から既知 input を抽出し、不足分だけ prompt する。
+`BobWorkflowEngineRunner` は Bob task ごとに解決済み input を cache する。初回は Bob task metadata から既知 input を抽出し、不足分だけ prompt する。
 
 抽出元は次の通り。
 
@@ -295,43 +290,62 @@ interface BobWorkflow {
 - message `_meta.workflow.meta`
 - message `_meta.workflow.inputs`
 
+### 11.3 Bob task adapter
+
+Bob task は次の adapter として Engine に接続する。
+
+| Adapter | 内容 |
+| --- | --- |
+| `AgentProvider` | `task.startSubagent()` を呼び、Bob subagent 結果を Engine の agent output として返す。 |
+| `manualCompletion` | `StepRuntime.activeSteps` に手動完了待ちを登録し、`completeCurrentStep` で解放する。 |
+| `WorkflowExecutionHooks` | Bob chat message、task snapshot、Bob step complete を Engine event から同期する。 |
+| `recoverResultText` | 現在の Bob task、`latest.json`、該当 step の `agent-output` snapshot から assistant text を復帰する。 |
+
+`StepRuntime` は手動完了待ちだけを保持する。workflow state、input、step status、run status は `run.json` が正本である。
+
 ## 12. Standalone Engine 詳細設計
 
 ### 12.1 実行開始
 
 `WorkflowEngine.runWorkflow()` は次の処理を行う。
 
-1. `RunStateStore.createRun()` で run を作成する。
-2. `validateWorkflowInputs()` で inputs を検証する。
-3. `evaluatePreflight()` を実行する。
-4. run state を保存する。
+1. recoverable run があれば読み込み、なければ `RunStateStore.createRun()` で run を作成する。
+2. workflow 開始時点で `run.json` を保存する。
+3. `validateWorkflowInputs()` で inputs を検証する。
+4. `evaluatePreflight()` を実行する。
 5. `continueRun()` で step 実行へ進む。
 
 ### 12.2 Step 実行
 
-`continueRun()` は step を順番に処理する。
+`continueRun()` は既定では step を順番に処理する。`executionMode=singleStep` の場合は指定 step だけを処理し、後続 step が残る場合は run を `running` として保存して戻る。
 
 ```mermaid
 flowchart TD
   A[start step] --> B[run.currentStep 更新]
   B --> C[run 保存]
-  C --> D[executeStep]
-  D -->|ok| E[writeProducedArtifacts]
-  D -->|held| H[step held / run held]
-  D -->|failed| F[step failed / run failed]
-  E -->|ok| G[step completed]
-  E -->|failed| F
-  G --> I[next step]
+  C --> D[onStepStart hook]
+  D --> E[executeStep]
+  E -->|ok| F[writeProducedArtifacts]
+  E -->|held| H[step held / run held]
+  E -->|failed| X[step failed / run failed]
+  F -->|ok| G[manual completion check]
+  F -->|failed| X
+  G -->|ok| I[step completed]
+  G -->|held| H
+  G -->|failed| X
+  I --> J[next step or return]
 ```
 
 ### 12.3 Step 種別ごとの実行
 
 | Step type | 実行内容 |
 | --- | --- |
-| `manual` | `held` を返し、外部完了待ちにする。 |
-| `agent` | `AgentProvider.run()` を呼び、必要なら result sink へ渡す。 |
+| `manual` | manual completion controller があれば待機し、なければ `held` を返す。 |
+| `agent` | `AgentProvider.run()` または復帰済み agent text を使い、必要なら result sink へ渡す。 |
 | `command` | `ActionRegistry.execute()` を呼び、必要なら state へ保存する。 |
 | `result` | `ResultSinkRegistry.write()` を呼ぶ。 |
+
+workflow の `stepCompletion=manual` では、agent step と `completeOnSuccess` step を除き、step 成功後に manual completion controller を通す。
 
 ### 12.4 再開
 
@@ -561,21 +575,38 @@ provider は `{ kind, payload }` を受け取り、draft / repair proposal / exp
 
 ## 22. 再開・中断対応詳細
 
-### 22.1 Standalone run
+### 22.1 run.json 正本
 
-`run.json` が永続化されるため、VS Code 再起動後も `resumeRun` / `retryCurrentStep` が可能である。
+`run.json` が永続化されるため、VS Code 再起動後も `resumeRun` / `retryCurrentStep` が可能である。Bob UI 経由でも command palette 経由でも、実行状態の正本は同じ `FileRunStateStore` が保存する `run.json` である。
 
-### 22.2 Bob UI active step
+### 22.2 Bob UI active step と singleStep
 
-Bob UI 経由の手動 step は `StepRuntime.activeSteps` に保持される。これは extension host のメモリ上にあるため、VS Code 再起動後は失われる。
+Bob UI 経由の手動 step は `StepRuntime.activeSteps` に保持される。これは extension host のメモリ上にあるため、VS Code 再起動後は失われる。ただし run state は `run.json` に保存済みであり、再実行時は同じ inputs / workflow hash の recoverable run を Engine が再利用する。
 
-### 22.3 チャット成果物の再利用
+Todo ごとの Bob step は Engine の `singleStep` 実行で 1 step だけ進める。途中 step の完了後は run を `running` のまま保存し、次の Bob step が同じ `runId` を継続する。
 
-`captureHeldStepResult()` は step 開始時点以降の message から最新 assistant message を取得し、result handoff に渡す。これにより、たとえば JSON 生成後に保存処理で失敗した場合、JSON を再生成せず保存処理だけ再試行できる。
+### 22.3 task snapshot
 
-### 22.4 今後の強化案
+Bob task のチャット文脈は `.bob/workflows/runs/<runId>/task-snapshots/` に補助証跡として保存する。
 
-- active step context を run state に永続化する。
+| reason | 保存タイミング |
+| --- | --- |
+| `workflow-start` | run 開始時 |
+| `step-start` | step 開始時 |
+| `agent-output` | agent output 取得直後 |
+| `handoff-failed` | result sink / handoff 失敗時 |
+| `held` | held 移行時 |
+| `failed` | failed 移行時 |
+| `completed` | step / workflow 完了時 |
+
+`latest.json` は最新 snapshot のコピーである。保存は atomic write で行い、`workflowRegister.taskSnapshots.*` 設定に従って最大サイズ、messages 保存有無、run あたり件数、pruning を制御する。
+
+### 22.4 チャット成果物の再利用
+
+result handoff や agent retry では、現在の Bob task の最新 assistant message、`latest.json`、該当 step の `agent-output` snapshot の順に `lastAssistantText` を探す。snapshot は `runId`、`workflowId`、`workflowDefinitionHash`、`stepId` が一致する場合だけ自動復帰に使う。
+
+### 22.5 今後の強化案
+
 - Bob task message から artifact 候補を選択できる UI を追加する。
 - result handoff 失敗時に自動で retry prompt を出す。
 - action provider に `resumeContext` を渡す。
