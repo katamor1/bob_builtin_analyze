@@ -2,12 +2,15 @@ import * as fs from "fs/promises"
 import * as path from "path"
 import { CoreWorkflowDefinition, WorkflowRunState } from "./model"
 
+const RECOVERABLE_RUN_STATUSES = new Set(["running", "held"])
+
 export interface RunStateStore {
   readonly workspaceRoot?: string
   createRun: (workflow: CoreWorkflowDefinition, inputs: Record<string, unknown>) => Promise<WorkflowRunState>
   saveRun: (run: WorkflowRunState) => Promise<void>
   loadRun: (runId: string) => Promise<WorkflowRunState | undefined>
   listRuns: () => Promise<WorkflowRunState[]>
+  findRecoverableRun?: (workflow: CoreWorkflowDefinition, inputs: Record<string, unknown>) => Promise<WorkflowRunState | undefined>
 }
 
 export interface FileRunStateStoreOptions {
@@ -57,7 +60,7 @@ export class FileRunStateStore implements RunStateStore {
     run.updatedAt = this.now()
     const file = this.runFile(run.runId)
     await fs.mkdir(path.dirname(file), { recursive: true })
-    await fs.writeFile(file, `${JSON.stringify(run, null, 2)}\n`, "utf8")
+    await atomicWriteFile(file, `${JSON.stringify(run, null, 2)}\n`)
   }
 
   async loadRun(runId: string): Promise<WorkflowRunState | undefined> {
@@ -86,6 +89,17 @@ export class FileRunStateStore implements RunStateStore {
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
   }
 
+  async findRecoverableRun(workflow: CoreWorkflowDefinition, inputs: Record<string, unknown>): Promise<WorkflowRunState | undefined> {
+    const expectedInputs = stableJson(inputs)
+    const runs = await this.listRuns()
+    return runs.find((run) => {
+      if (!RECOVERABLE_RUN_STATUSES.has(run.status)) return false
+      if (run.workflowId !== workflow.id) return false
+      if (!workflowDefinitionMatches(run, workflow)) return false
+      return stableJson(run.inputs) === expectedInputs
+    })
+  }
+
   private async nextRunId(workflowName: string, createdAt: string): Promise<string> {
     const stamp = createdAt.replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z").replace(/[^\dTZ]/g, "")
     const base = `${stamp}-${sanitize(workflowName)}`
@@ -102,6 +116,38 @@ export class FileRunStateStore implements RunStateStore {
   private runFile(runId: string): string {
     return path.join(this.runsRoot(), runId, "run.json")
   }
+}
+
+async function atomicWriteFile(file: string, content: string): Promise<void> {
+  const tempFile = `${file}.${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}.tmp`
+  try {
+    await fs.writeFile(tempFile, content, "utf8")
+    await fs.rename(tempFile, file)
+  } catch (error) {
+    await fs.rm(tempFile, { force: true }).catch(() => undefined)
+    throw error
+  }
+}
+
+function workflowDefinitionMatches(run: WorkflowRunState, workflow: CoreWorkflowDefinition): boolean {
+  if (run.workflowDefinitionHash && workflow.definitionHash && run.workflowDefinitionHash !== workflow.definitionHash) return false
+  if (run.workflowFile && workflow.filePath && run.workflowFile !== workflow.filePath) return false
+  return true
+}
+
+function stableJson(value: unknown): string {
+  return JSON.stringify(canonicalJson(value))
+}
+
+function canonicalJson(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalJson)
+  if (!value || typeof value !== "object") return value
+  return Object.fromEntries(
+    Object.keys(value as Record<string, unknown>)
+      .sort()
+      .filter((key) => (value as Record<string, unknown>)[key] !== undefined)
+      .map((key) => [key, canonicalJson((value as Record<string, unknown>)[key])])
+  )
 }
 
 async function exists(file: string): Promise<boolean> {
