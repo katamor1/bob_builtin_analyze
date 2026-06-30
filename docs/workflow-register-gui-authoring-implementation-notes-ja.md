@@ -48,6 +48,18 @@ Phase 3 では、既存の `schemaVersion: workflow-register/v1` workflow を GU
 - `workflowRegister.reload` を保存後に実行する。
 - legacy workflow は初期実装では GUI 編集対象外とし、明示的にエラーにする。
 
+## Phase 4: `requires` / `preflight` / `completion` 詳細 GUI 編集
+
+Phase 4 では、既存の Builder に詳細 section 編集タブを追加した。
+
+追加した内容は次のとおり。
+
+- `Requires` タブを追加し、`requires.workspace`、`requires.bob.minVersion`、`requires.files` を編集できるようにする。
+- `Preflight` タブを追加し、preflight item の追加・削除、`id`、`title`、`required`、`checks`、`files`、`failurePolicy` を編集できるようにする。
+- `Completion` タブを追加し、`summary`、`includeArtifacts`、`validateResult`、`visualization.type`、`visualization.enabled` を編集できるようにする。
+- 既存 serializer / loader の round-trip に乗せて、詳細 section も GUI 保存・既存編集の対象にする。
+- `workflowAuthoringAdvancedSections.test.js` を追加し、詳細 section の serialize / validate / load round-trip を確認する。
+
 ## 追加コマンド
 
 | command | title | 用途 |
@@ -71,6 +83,7 @@ extensions/workflow-register/src/webview/workflowBuilderPanel.ts
 extensions/workflow-register/test/workflowAuthoringSerializer.test.js
 extensions/workflow-register/test/workflowAuthoringReferenceAnalysis.test.js
 extensions/workflow-register/test/workflowAuthoringLoader.test.js
+extensions/workflow-register/test/workflowAuthoringAdvancedSections.test.js
 docs/workflow-register-gui-authoring-plan-ja.md
 docs/workflow-register-gui-authoring-implementation-notes-ja.md
 ```
@@ -79,7 +92,7 @@ docs/workflow-register-gui-authoring-implementation-notes-ja.md
 
 ### `WorkflowAuthoringModel`
 
-GUI 用の中間モデル。`WorkflowDesignDraft` より詳細に、GUI で編集する `inputs`、`steps`、`artifacts`、`guardrails` を保持する。
+GUI 用の中間モデル。`WorkflowDesignDraft` より詳細に、GUI で編集する `inputs`、`steps`、`artifacts`、`guardrails`、`requires`、`preflight`、`completion` を保持する。
 
 ```text
 Webview form state
@@ -185,6 +198,22 @@ GUI で扱う参照関係を分析する。
 - required
 - select options
 
+### requires
+
+- workspace
+- bob.minVersion
+- files
+
+### preflight
+
+- item の追加・削除
+- id
+- title
+- required
+- checks
+- files
+- failurePolicy
+
 ### artifacts
 
 - id
@@ -196,6 +225,14 @@ GUI で扱う参照関係を分析する。
 
 - allowedCommands
 - deniedCommands
+
+### completion
+
+- summary
+- includeArtifacts
+- validateResult
+- visualization.type
+- visualization.enabled
 
 ### preview / diagnostics
 
@@ -209,20 +246,19 @@ GUI で扱う参照関係を分析する。
 
 ## 現時点の制約
 
-この実装は MVP + Phase 2 + Phase 3 であり、次はまだ未対応である。
+この実装は MVP + Phase 2 + Phase 3 + Phase 4 であり、次はまだ未対応である。
 
 - legacy workflow の GUI 編集。
 - raw YAML との完全な双方向編集。
 - GUI 管理対象フィールドの YAML 表現やコメントの完全保持。
 - AI 提案の GUI 内部分適用。
 - provider 別 args schema。
-- `requires` / `preflight` の詳細 GUI 編集。
-- `completion` の詳細 GUI 編集。
+- `guardrails.requireApproval` の詳細 GUI 編集。
 - step 削除時の参照自動修復。
 
 ## 次の実装候補
 
-1. `requires` / `preflight` / `completion` の詳細 GUI 編集を追加する。
+1. `guardrails.requireApproval` の詳細 GUI 編集を追加する。
 2. `Design Workflow with AI` の出力を Webview に取り込み、GUI で修正して保存できるようにする。
 3. 選択中 step の prompt に対して AI 改善ボタンを追加する。
 4. `registerActionProvider` の一覧取得 API を追加し、command provider の候補表示を強化する。
