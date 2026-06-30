@@ -1,6 +1,6 @@
 import * as vscode from "vscode"
-import { createAuthoringModelFromTemplate, createEmptyAuthoringStep } from "../core/workflowAuthoringDefaults"
-import { WorkflowAuthoringInput, WorkflowAuthoringModel, WorkflowAuthoringStep, availableResultKeysBefore, nextUniqueId, normalizeId } from "../core/workflowAuthoringModel"
+import { createAuthoringModelFromTemplate } from "../core/workflowAuthoringDefaults"
+import { WorkflowAuthoringModel } from "../core/workflowAuthoringModel"
 import { serializeAuthoringModelToMarkdown } from "../core/workflowAuthoringSerializer"
 import { WorkflowTemplateKind, workflowTemplates } from "../core/workflowScaffold"
 import { formatWorkflowDiagnostics, validateWorkflowText } from "../core/workflowValidator"
@@ -64,9 +64,7 @@ export class WorkflowBuilderPanel {
       await this.preview(message.model)
       return
     }
-    if (message.type === "save") {
-      await this.save(message.model)
-    }
+    if (message.type === "save") await this.save(message.model)
   }
 
   private async preview(model: WorkflowAuthoringModel): Promise<void> {
@@ -134,25 +132,30 @@ export class WorkflowBuilderPanel {
   button { border: 1px solid var(--vscode-button-border, transparent); background: var(--vscode-button-background); color: var(--vscode-button-foreground); padding: 6px 10px; margin: 4px 4px 4px 0; border-radius: 2px; cursor: pointer; }
   button.secondary { background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); }
   button.danger { background: var(--vscode-inputValidation-errorBackground); color: var(--vscode-inputValidation-errorForeground); }
-  button.link { background: transparent; color: var(--vscode-textLink-foreground); border: none; padding-left: 0; }
+  button.link { background: transparent; color: var(--vscode-textLink-foreground); border: none; padding: 0; margin: 0; text-align: left; }
   .muted { color: var(--vscode-descriptionForeground); font-size: 12px; }
   .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .card { border: 1px solid var(--vscode-panel-border); padding: 10px; margin: 8px 0; border-radius: 4px; background: var(--vscode-sideBar-background); }
   .step-card { cursor: pointer; }
   .step-card.selected { outline: 1px solid var(--vscode-focusBorder); }
   .badge { display: inline-block; border: 1px solid var(--vscode-panel-border); padding: 1px 6px; border-radius: 99px; font-size: 11px; margin-left: 6px; }
+  .badge.warn { border-color: var(--vscode-inputValidation-warningBorder); background: var(--vscode-inputValidation-warningBackground); }
+  .badge.error { border-color: var(--vscode-inputValidation-errorBorder); background: var(--vscode-inputValidation-errorBackground); }
   .tabs { display: flex; gap: 8px; border-bottom: 1px solid var(--vscode-panel-border); margin-top: 12px; }
   .tab { padding: 6px 10px; cursor: pointer; border: 1px solid transparent; border-bottom: none; }
   .tab.active { border-color: var(--vscode-panel-border); background: var(--vscode-sideBar-background); }
   pre { white-space: pre-wrap; overflow: auto; padding: 10px; background: var(--vscode-textCodeBlock-background); border: 1px solid var(--vscode-panel-border); }
   .diagnostics.ok { border-left: 4px solid var(--vscode-testing-iconPassed); }
-  .diagnostics.ng { border-left: 4px solid var(--vscode-testing-iconFailed); }
+  .diagnostics.ng, .reference-issue { border-left: 4px solid var(--vscode-testing-iconFailed); }
+  .reference-ok { border-left: 4px solid var(--vscode-testing-iconPassed); }
+  .issue-list { margin: 6px 0 0 18px; padding: 0; }
+  .issue-list li { margin: 4px 0; }
 </style>
 </head>
 <body>
 <header>
   <h1>Bob Workflow Builder</h1>
-  <div class="muted">フォームで新しい <code>.bob/workflows/&lt;name&gt;/WORKFLOW.md</code> を作成します。AI連携と既存編集は後続フェーズの土台だけを残しています。</div>
+  <div class="muted">フォームで新しい <code>.bob/workflows/&lt;name&gt;/WORKFLOW.md</code> を作成します。参照関係は編集中に検出し、保存前にも既存 validator で確認します。</div>
 </header>
 <main>
   <aside>
@@ -203,11 +206,11 @@ function escapeHtml(value) {
     return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;' })[ch];
   });
 }
-function linesFromText(value) { return String(value || '').split(/\r?\n/).map(function(x) { return x.trim(); }).filter(Boolean); }
-function textFromLines(value) { return Array.isArray(value) ? value.join('\n') : ''; }
+function linesFromText(value) { return String(value || '').split(/\\r?\\n/).map(function(x) { return x.trim(); }).filter(Boolean); }
+function textFromLines(value) { return Array.isArray(value) ? value.join('\\n') : ''; }
 function selectedStep() { return model.steps[selectedStepIndex]; }
 function usedStepIds() { return model.steps.map(function(step) { return step.id; }); }
-function normalizeId(value) { return String(value || '').trim().replace(/\s+/g, '-').replace(/[^A-Za-z0-9._-]/g, '-').replace(/-+/g, '-').replace(/^[._-]+/, '').replace(/[._-]+$/, ''); }
+function normalizeId(value) { return String(value || '').trim().replace(/\\s+/g, '-').replace(/[^A-Za-z0-9._-]/g, '-').replace(/-+/g, '-').replace(/^[._-]+/, '').replace(/[._-]+$/, ''); }
 function nextId(base) {
   const normalized = normalizeId(base) || 'step';
   const used = new Set(usedStepIds());
@@ -216,13 +219,71 @@ function nextId(base) {
   return normalized + '-' + Date.now();
 }
 function titleFromId(id) { return String(id || 'New Step').split(/[._-]+/).filter(Boolean).map(function(part) { return part.slice(0, 1).toUpperCase() + part.slice(1); }).join(' ') || 'New Step'; }
-function resultKeysBefore(index) { return model.steps.slice(0, Math.max(0, index)).map(function(step) { return step.resultKey; }).filter(Boolean); }
 function ensureArrays() {
   model.inputs = Array.isArray(model.inputs) ? model.inputs : [];
   model.preflight = Array.isArray(model.preflight) ? model.preflight : [];
   model.steps = Array.isArray(model.steps) ? model.steps : [];
   model.artifacts = Array.isArray(model.artifacts) ? model.artifacts : [];
   if (!model.guardrails) model.guardrails = {};
+}
+function resultKeysBefore(index, steps) {
+  const target = steps || model.steps;
+  return target.slice(0, Math.max(0, index)).map(function(step) { return step.resultKey; }).filter(Boolean);
+}
+function allResultKeys(steps) { return new Set((steps || model.steps).map(function(step) { return step.resultKey; }).filter(Boolean)); }
+function analyzeReferences(steps) {
+  const targetSteps = steps || model.steps;
+  const issues = [];
+  const seenStepIds = new Set();
+  const seenResultKeys = new Set();
+  const resultKeys = allResultKeys(targetSteps);
+  targetSteps.forEach(function(step, index) {
+    if (seenStepIds.has(step.id)) issues.push({ kind: 'duplicate-step-id', severity: 'error', stepId: step.id, stepIndex: index, message: "Step '" + step.id + "' duplicates an earlier step id." });
+    seenStepIds.add(step.id);
+    (Array.isArray(step.includeState) ? step.includeState : []).forEach(function(key) {
+      if (!resultKeys.has(key)) issues.push({ kind: 'unknown-include-state', severity: 'error', stepId: step.id, stepIndex: index, key: key, message: "Step '" + step.id + "' includeState references unknown resultKey '" + key + "'." });
+      else if (!seenResultKeys.has(key)) issues.push({ kind: 'forward-include-state', severity: 'error', stepId: step.id, stepIndex: index, key: key, message: "Step '" + step.id + "' includeState references resultKey '" + key + "' before it is produced." });
+    });
+    if (step.resultKey) seenResultKeys.add(step.resultKey);
+  });
+  const stepIds = new Set(targetSteps.map(function(step) { return step.id; }));
+  model.artifacts.forEach(function(artifact) {
+    if (artifact.producedBy && !stepIds.has(artifact.producedBy)) issues.push({ kind: 'unknown-artifact-producer', severity: 'error', artifactId: artifact.id, key: artifact.producedBy, message: "Artifact '" + artifact.id + "' references unknown producedBy step '" + artifact.producedBy + "'." });
+  });
+  return issues;
+}
+function issuesForStep(index) {
+  const step = model.steps[index];
+  if (!step) return [];
+  return analyzeReferences().filter(function(issue) { return issue.stepIndex === index || issue.stepId === step.id; });
+}
+function deletionImpact(index) {
+  const step = model.steps[index];
+  if (!step) return [];
+  const messages = [];
+  if (step.resultKey) {
+    messages.push('削除される resultKey: ' + step.resultKey);
+    model.steps.forEach(function(candidate, candidateIndex) {
+      if (candidateIndex === index) return;
+      if ((candidate.includeState || []).includes(step.resultKey)) messages.push("step '" + candidate.id + "' の includeState '" + step.resultKey + "' が参照切れになります。");
+    });
+  }
+  model.artifacts.forEach(function(artifact) {
+    if (artifact.producedBy === step.id) messages.push("artifact '" + artifact.id + "' の producedBy が参照切れになります: " + artifact.path);
+  });
+  return messages;
+}
+function moveImpact(fromIndex, toIndex) {
+  if (toIndex < 0 || toIndex >= model.steps.length || fromIndex === toIndex) return [];
+  const next = model.steps.slice();
+  const moved = next.splice(fromIndex, 1)[0];
+  next.splice(toIndex, 0, moved);
+  return analyzeReferences(next).filter(function(issue) { return issue.stepId === moved.id || (moved.resultKey && issue.key === moved.resultKey) || (moved.includeState || []).includes(issue.key); }).map(function(issue) { return issue.message; });
+}
+function referenceSummaryHtml(index) {
+  const issues = issuesForStep(index);
+  if (issues.length === 0) return '<div class="card reference-ok"><strong>参照チェック OK</strong><div class="muted">この step の includeState / resultKey 参照は現在の順序では問題ありません。</div></div>';
+  return '<div class="card reference-issue"><strong>参照チェック</strong><ul class="issue-list">' + issues.map(function(issue) { return '<li>' + escapeHtml(issue.message) + '</li>'; }).join('') + '</ul></div>';
 }
 function requestPreview() {
   clearTimeout(previewTimer);
@@ -252,8 +313,9 @@ function renderStepsList() {
   list.innerHTML = model.steps.map(function(step, index) {
     const selected = index === selectedStepIndex ? ' selected' : '';
     const output = step.resultKey ? '<span class="badge">out: ' + escapeHtml(step.resultKey) + '</span>' : '';
+    const warning = issuesForStep(index).length > 0 ? '<span class="badge error">参照注意</span>' : '';
     return '<div class="card step-card' + selected + '" data-action="select-step" data-index="' + index + '">' +
-      '<strong>' + (index + 1) + '. ' + escapeHtml(step.title || step.id) + '</strong><span class="badge">' + escapeHtml(step.type) + '</span>' + output +
+      '<strong>' + (index + 1) + '. ' + escapeHtml(step.title || step.id) + '</strong><span class="badge">' + escapeHtml(step.type) + '</span>' + output + warning +
       '<div class="muted">' + escapeHtml(step.id) + '</div></div>';
   }).join('') || '<div class="muted">step がありません。追加してください。</div>';
 }
@@ -281,7 +343,7 @@ function renderStepDetail() {
   if (step.type === 'command') typeSpecific = renderCommandStep(step);
   else if (step.type === 'result') typeSpecific = renderResultStep(step, beforeKeys);
   else typeSpecific = '<label>prompt</label><textarea data-step-field="prompt">' + escapeHtml(step.prompt || '') + '</textarea>';
-  content.innerHTML = '<h2>Step detail</h2>' +
+  content.innerHTML = '<h2>Step detail</h2>' + referenceSummaryHtml(selectedStepIndex) +
     '<div class="row"><div><label>id</label><input data-step-field="id" value="' + escapeHtml(step.id) + '" /></div>' +
     '<div><label>type</label><select data-step-field="type">' + stepTypeOptions(step.type) + '</select></div></div>' +
     '<label>title</label><input data-step-field="title" value="' + escapeHtml(step.title) + '" />' +
@@ -289,8 +351,7 @@ function renderStepDetail() {
     '<label><input type="checkbox" style="width:auto" data-step-field="stateRequired" ' + (step.stateRequired ? 'checked' : '') + ' /> stateRequired</label></div>' +
     '<div class="row"><div><label>resultKey</label><input data-step-field="resultKey" value="' + escapeHtml(step.resultKey || '') + '" /></div>' +
     '<div><label>maxResultBytes</label><input type="number" data-step-field="maxResultBytes" value="' + escapeHtml(step.maxResultBytes || '') + '" /></div></div>' +
-    '<h3>includeState</h3>' + includeStateHtml +
-    typeSpecific +
+    '<h3>includeState</h3>' + includeStateHtml + typeSpecific +
     '<h3>操作</h3><button class="secondary" data-action="move-step-up">上へ</button><button class="secondary" data-action="move-step-down">下へ</button><button class="secondary" data-action="duplicate-step">複製</button><button class="danger" data-action="delete-step">削除</button>';
 }
 function stepTypeOptions(current) {
@@ -343,7 +404,8 @@ function renderArtifacts() {
   content.innerHTML = '<h2>Artifacts</h2><button data-action="add-artifact">+ artifact</button>' +
     model.artifacts.map(function(artifact, index) {
       const producedByOptions = [''].concat(stepIds).map(function(id) { return '<option value="' + escapeHtml(id) + '" ' + (id === artifact.producedBy ? 'selected' : '') + '>' + escapeHtml(id || '(未選択)') + '</option>'; }).join('');
-      return '<div class="card"><div class="row"><div><label>id</label><input data-artifact-index="' + index + '" data-artifact-field="id" value="' + escapeHtml(artifact.id) + '" /></div>' +
+      const issue = artifact.producedBy && !stepIds.includes(artifact.producedBy) ? '<div class="card reference-issue">producedBy が存在しない step を参照しています。</div>' : '';
+      return '<div class="card">' + issue + '<div class="row"><div><label>id</label><input data-artifact-index="' + index + '" data-artifact-field="id" value="' + escapeHtml(artifact.id) + '" /></div>' +
         '<div><label>producedBy</label><select data-artifact-index="' + index + '" data-artifact-field="producedBy">' + producedByOptions + '</select></div></div>' +
         '<label>path</label><input data-artifact-index="' + index + '" data-artifact-field="path" value="' + escapeHtml(artifact.path) + '" />' +
         '<button class="danger" data-action="delete-artifact" data-index="' + index + '">削除</button></div>';
@@ -356,10 +418,24 @@ function renderGuardrails() {
     '<label>deniedCommands（1行1 command）</label><textarea data-guardrail-field="deniedCommands">' + escapeHtml(textFromLines(guardrails.deniedCommands || [])) + '</textarea>' +
     '<p class="muted">command step を使う場合は、破壊的 command を deniedCommands に明示することを推奨します。</p>';
 }
+function diagnosticTargetStep(line) {
+  const match = String(line).match(/Step '([^']+)'/);
+  if (!match) return -1;
+  return model.steps.findIndex(function(step) { return step.id === match[1]; });
+}
+function renderDiagnosticsList() {
+  return latestDiagnostics.map(function(line) {
+    const index = diagnosticTargetStep(line);
+    if (index >= 0) return '<li><button class="link" data-action="goto-diagnostic-step" data-index="' + index + '">' + escapeHtml(line) + '</button></li>';
+    return '<li>' + escapeHtml(line) + '</li>';
+  }).join('');
+}
 function renderPreview() {
+  const issues = analyzeReferences();
+  const issueHtml = issues.length === 0 ? '<div class="card reference-ok"><strong>参照チェック OK</strong></div>' : '<div class="card reference-issue"><strong>参照チェック</strong><ul class="issue-list">' + issues.map(function(issue) { return '<li>' + escapeHtml(issue.message) + '</li>'; }).join('') + '</ul></div>';
   document.getElementById('content').innerHTML = '<h2>Preview / Diagnostics</h2>' +
-    '<button data-action="validate">Validate</button><button data-action="save">Save WORKFLOW.md</button>' +
-    '<div class="card diagnostics ' + (latestOk ? 'ok' : 'ng') + '"><strong>' + (latestOk ? 'Validation OK' : 'Validation has errors/warnings') + '</strong><pre>' + escapeHtml(latestDiagnostics.join('\n')) + '</pre></div>' +
+    '<button data-action="validate">Validate</button><button data-action="save">Save WORKFLOW.md</button>' + issueHtml +
+    '<div class="card diagnostics ' + (latestOk ? 'ok' : 'ng') + '"><strong>' + (latestOk ? 'Validation OK' : 'Validation has errors/warnings') + '</strong><ul class="issue-list">' + renderDiagnosticsList() + '</ul></div>' +
     '<h3>YAML / Markdown Preview</h3><pre>' + escapeHtml(latestPreview) + '</pre>';
 }
 function makeStep(type) {
@@ -370,15 +446,15 @@ function makeStep(type) {
   return { id: id, title: titleFromId(id), type: 'agent', prompt: 'Describe the task for Bob to perform.' };
 }
 function duplicate(value) { return JSON.parse(JSON.stringify(value)); }
+function confirmReferenceChange(title, messages) {
+  if (messages.length === 0) return true;
+  return confirm(title + '\\n\\n' + messages.map(function(message) { return '- ' + message; }).join('\\n'));
+}
 function handleFieldEvent(event) {
   const target = event.target;
   if (!target || !target.dataset) return;
   const value = target.type === 'checkbox' ? target.checked : target.value;
-  if (target.dataset.meta) {
-    model.metadata[target.dataset.meta] = value;
-    requestPreview();
-    return;
-  }
+  if (target.dataset.meta) { model.metadata[target.dataset.meta] = value; requestPreview(); return; }
   const step = selectedStep();
   if (step && target.dataset.stepField) {
     const field = target.dataset.stepField;
@@ -393,7 +469,7 @@ function handleFieldEvent(event) {
     }
     if (field === 'maxResultBytes') step[field] = value ? Number(value) : undefined;
     else step[field] = value;
-    renderStepsList(); requestPreview(); return;
+    renderStepsList(); renderTabs(); requestPreview(); return;
   }
   if (step && target.dataset.commandField && step.type === 'command') {
     if (!step.action) step.action = { provider: 'vscode.executeCommand', args: [] };
@@ -401,10 +477,7 @@ function handleFieldEvent(event) {
     if (target.dataset.commandField === 'provider') step.action.provider = value;
     if (target.dataset.commandField === 'commandId') step.action.args = [value].concat(args.slice(1));
     if (target.dataset.commandField === 'extraArgs') {
-      try {
-        const extra = JSON.parse(value || '[]');
-        step.action.args = [args[0] || ''].concat(Array.isArray(extra) ? extra : [extra]);
-      } catch (error) {}
+      try { const extra = JSON.parse(value || '[]'); step.action.args = [args[0] || ''].concat(Array.isArray(extra) ? extra : [extra]); } catch (error) {}
     }
     requestPreview(); return;
   }
@@ -416,8 +489,7 @@ function handleFieldEvent(event) {
       if (value === 'literal') step.result = { source: 'literal', text: result.text || '', sinks: sinks };
       else if (value === 'agent') step.result = { source: 'agent', sinks: sinks };
       else step.result = { source: 'state', stateKey: result.stateKey || '', sinks: sinks };
-      render();
-      return;
+      render(); return;
     }
     if (field === 'stateKey' && result.source === 'state') result.stateKey = value;
     if (field === 'text' && result.source === 'literal') result.text = value;
@@ -428,7 +500,7 @@ function handleFieldEvent(event) {
     step.includeState = Array.isArray(step.includeState) ? step.includeState : [];
     if (target.checked && !step.includeState.includes(target.dataset.stateKey)) step.includeState.push(target.dataset.stateKey);
     if (!target.checked) step.includeState = step.includeState.filter(function(key) { return key !== target.dataset.stateKey; });
-    requestPreview(); return;
+    renderStepsList(); renderTabs(); requestPreview(); return;
   }
   if (target.dataset.inputIndex) {
     const input = model.inputs[Number(target.dataset.inputIndex)];
@@ -442,7 +514,7 @@ function handleFieldEvent(event) {
     const artifact = model.artifacts[Number(target.dataset.artifactIndex)];
     if (!artifact) return;
     artifact[target.dataset.artifactField] = value || undefined;
-    requestPreview(); return;
+    renderTabs(); requestPreview(); return;
   }
   if (target.dataset.guardrailField) {
     if (!model.guardrails) model.guardrails = {};
@@ -458,11 +530,17 @@ document.addEventListener('click', function(event) {
   if (target.dataset.tab) { activeTab = target.dataset.tab; renderTabs(); return; }
   const action = target.dataset.action;
   if (action === 'select-step') { selectedStepIndex = Number(target.dataset.index); activeTab = 'step'; render(); return; }
+  if (action === 'goto-diagnostic-step') { selectedStepIndex = Number(target.dataset.index); activeTab = 'step'; render(); return; }
   if (action === 'add-step') { model.steps.push(makeStep(target.dataset.stepType)); selectedStepIndex = model.steps.length - 1; activeTab = 'step'; render(); return; }
-  if (action === 'delete-step') { if (selectedStep() && confirm('選択中 step を削除しますか？')) { model.steps.splice(selectedStepIndex, 1); render(); } return; }
+  if (action === 'delete-step') {
+    const messages = deletionImpact(selectedStepIndex);
+    const ok = messages.length > 0 ? confirmReferenceChange('この step を削除すると参照が切れる可能性があります。削除しますか？', messages) : confirm('選択中 step を削除しますか？');
+    if (selectedStep() && ok) { model.steps.splice(selectedStepIndex, 1); render(); }
+    return;
+  }
   if (action === 'duplicate-step') { const copy = duplicate(selectedStep()); copy.id = nextId(copy.id); if (copy.resultKey) copy.resultKey = copy.resultKey + '2'; model.steps.splice(selectedStepIndex + 1, 0, copy); selectedStepIndex += 1; render(); return; }
-  if (action === 'move-step-up' && selectedStepIndex > 0) { const s = model.steps.splice(selectedStepIndex, 1)[0]; model.steps.splice(selectedStepIndex - 1, 0, s); selectedStepIndex -= 1; render(); return; }
-  if (action === 'move-step-down' && selectedStepIndex < model.steps.length - 1) { const s = model.steps.splice(selectedStepIndex, 1)[0]; model.steps.splice(selectedStepIndex + 1, 0, s); selectedStepIndex += 1; render(); return; }
+  if (action === 'move-step-up' && selectedStepIndex > 0) { const warnings = moveImpact(selectedStepIndex, selectedStepIndex - 1); if (!confirmReferenceChange('この移動で参照順序が壊れる可能性があります。移動しますか？', warnings)) return; const s = model.steps.splice(selectedStepIndex, 1)[0]; model.steps.splice(selectedStepIndex - 1, 0, s); selectedStepIndex -= 1; render(); return; }
+  if (action === 'move-step-down' && selectedStepIndex < model.steps.length - 1) { const warnings = moveImpact(selectedStepIndex, selectedStepIndex + 1); if (!confirmReferenceChange('この移動で参照順序が壊れる可能性があります。移動しますか？', warnings)) return; const s = model.steps.splice(selectedStepIndex, 1)[0]; model.steps.splice(selectedStepIndex + 1, 0, s); selectedStepIndex += 1; render(); return; }
   if (action === 'add-input') { const id = nextId('input'); model.inputs.push({ id: id, type: 'string', title: titleFromId(id), required: false }); renderInputs(); requestPreview(); return; }
   if (action === 'delete-input') { model.inputs.splice(Number(target.dataset.index), 1); renderInputs(); requestPreview(); return; }
   if (action === 'add-artifact') { model.artifacts.push({ id: nextId('report'), producedBy: selectedStep() ? selectedStep().id : undefined, path: '.bob/artifacts/report.md' }); renderArtifacts(); requestPreview(); return; }
@@ -479,17 +557,8 @@ window.addEventListener('message', function(event) {
     latestOk = Boolean(message.ok);
     if (activeTab === 'preview') renderPreview();
   }
-  if (message.type === 'model') {
-    model = message.model;
-    selectedStepIndex = 0;
-    activeTab = 'step';
-    render();
-  }
-  if (message.type === 'saved') {
-    latestDiagnostics = ['- saved: ' + message.filePath];
-    activeTab = 'preview';
-    render();
-  }
+  if (message.type === 'model') { model = message.model; selectedStepIndex = 0; activeTab = 'step'; render(); }
+  if (message.type === 'saved') { latestDiagnostics = ['- saved: ' + message.filePath]; activeTab = 'preview'; render(); }
 });
 render();
 </script>
