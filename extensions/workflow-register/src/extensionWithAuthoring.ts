@@ -6,6 +6,7 @@ import { explainWorkflowDiagnostics } from "./commands/explainWorkflowDiagnostic
 import { improveWorkflowWithAi } from "./commands/improveWorkflowWithAi"
 import { inspectRunDiagnostics } from "./commands/inspectRunDiagnostics"
 import { isWorkflowDocument, validateCurrentWorkflow, validateTextDocument, validateWorkspaceWorkflows } from "./commands/validateWorkflow"
+import { openWorkflowBuilder } from "./commands/openWorkflowBuilder"
 import { createConfiguredWorkflowAiProvider } from "./core/workflowAiProviderFactory"
 import { WorkflowDiagnosticsReporter } from "./commands/workflowDiagnostics"
 
@@ -25,6 +26,7 @@ export function activate(context: vscode.ExtensionContext): WorkflowRegisterApi 
     vscode.commands.registerCommand("workflowRegister.validateCurrentWorkflow", () => validateCurrentWorkflow({ sourceId: sourceId(), showMarkdownReport, diagnostics })),
     vscode.commands.registerCommand("workflowRegister.validateWorkspaceWorkflows", () => validateWorkspaceWorkflows({ sourceId: sourceId(), showMarkdownReport, diagnostics })),
     vscode.commands.registerCommand("workflowRegister.createWorkflowFromTemplate", () => createWorkflowFromTemplate({ sourceId: sourceId(), showMarkdownReport })),
+    vscode.commands.registerCommand("workflowRegister.openWorkflowBuilder", () => openWorkflowBuilder({ sourceId: sourceId(), extensionUri: context.extensionUri })),
     vscode.commands.registerCommand("workflowRegister.inspectRunDiagnostics", () => inspectRunDiagnostics({ showMarkdownReport })),
     vscode.commands.registerCommand("workflowRegister.designWorkflowWithAi", () => designWorkflowWithAi({ sourceId: sourceId(), showMarkdownReport, provider: aiProvider() })),
     vscode.commands.registerCommand("workflowRegister.improveWorkflowWithAi", () => improveWorkflowWithAi({ sourceId: sourceId(), showMarkdownReport, provider: aiProvider() })),
