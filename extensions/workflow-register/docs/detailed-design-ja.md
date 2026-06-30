@@ -2,7 +2,7 @@
 
 ## 1. 文書の位置づけ
 
-本書は `extensions/workflow-register` 拡張機能の詳細設計を定義する。基本設計書で示した責務を、実装モジュール、主要データ構造、処理シーケンス、エラー処理、再開仕様、テスト観点に分解する。
+本書は `extensions/workflow-register` 拡張機能の詳細設計を定義する。基本設計で示した責務を、実装モジュール、主要データ構造、処理シーケンス、エラー処理、GUI Builder、再開仕様、テスト観点に分解する。
 
 ## 2. 実装構成
 
@@ -17,9 +17,11 @@ extensions/workflow-register/
     commands/
       createWorkflow.ts
       designWorkflowWithAi.ts
+      editWorkflowInBuilder.ts
       explainWorkflowDiagnostics.ts
       improveWorkflowWithAi.ts
       inspectRunDiagnostics.ts
+      openWorkflowBuilder.ts
       validateWorkflow.ts
       workflowDiagnostics.ts
     core/
@@ -35,10 +37,22 @@ extensions/workflow-register/
       runStateStore.ts
       workflowAiProvider.ts
       workflowAiProviderFactory.ts
+      workflowAuthoringDefaults.ts
+      workflowAuthoringLoader.ts
+      workflowAuthoringModel.ts
+      workflowAuthoringReferenceAnalysis.ts
+      workflowAuthoringSerializer.ts
       workflowSchema.ts
       workflowTemplates.ts
       workflowValidator.ts
       workspaceRoots.ts
+    webview/
+      README.md
+      workflowBuilderBodyScript.ts
+      workflowBuilderClientScript.ts
+      workflowBuilderHtml.ts
+      workflowBuilderPanel.ts
+      workflowBuilderStyles.ts
   test/
     *.test.js
 ```
@@ -53,19 +67,31 @@ extensions/workflow-register/
 
 1. `extensionWithAuthoring.activate(context)` を呼ぶ。
 2. `activateCore(context)` を呼び、core API を作る。
-3. authoring / validation / diagnostics 系 command を追加登録する。
+3. authoring / validation / diagnostics / GUI Builder 系 command を追加登録する。
 4. 既に開いている `WORKFLOW.md` を diagnostics 対象にする。
 5. core 側では `WorkflowRegisterService` を生成し、`reload` を非同期で実行する。
 6. Bob 拡張の遅延起動に備えて retry timer を設定する。
 
-### 3.2 入口モジュール
+### 3.2 command entry
 
-| ファイル | 役割 |
+| Command ID | 主な用途 |
 | --- | --- |
-| `extensionWithAuthoring.ts` | core activation に authoring 機能を重ねる薄い façade。 |
-| `extension.ts` | Bob 登録、command 登録、workflow 実行、run 管理の中核。 |
-
-`extensionWithAuthoring.ts` は `WorkflowRegisterApi` をそのまま返すため、他拡張から見た API は core と同一である。
+| `workflowRegister.reload` | `.bob/workflows/*/WORKFLOW.md` を再読み込みする。 |
+| `workflowRegister.inspect` | 登録状態と diagnostics を Markdown で表示する。 |
+| `workflowRegister.runWorkflow` | standalone engine で workflow を実行する。 |
+| `workflowRegister.inspectRuns` | 保存済み run state を一覧表示する。 |
+| `workflowRegister.resumeRun` | held run を再開する。 |
+| `workflowRegister.retryCurrentStep` | current step を再試行する。 |
+| `workflowRegister.inspectRunDiagnostics` | run state の診断を表示する。 |
+| `workflowRegister.validateCurrentWorkflow` | active editor の workflow を検証する。 |
+| `workflowRegister.validateWorkspaceWorkflows` | workspace 内 workflow を一括検証する。 |
+| `workflowRegister.createWorkflowFromTemplate` | template から `WORKFLOW.md` を作成する。 |
+| `workflowRegister.openWorkflowBuilder` | Webview GUI で新規 workflow を作成する。 |
+| `workflowRegister.editWorkflowInBuilder` | 既存 `workflow-register/v1` workflow を Webview GUI で編集する。 |
+| `workflowRegister.designWorkflowWithAi` | AI provider で新規 workflow draft を作る。 |
+| `workflowRegister.improveWorkflowWithAi` | AI provider で改善案を作り、preview / diff / backup 後に適用する。 |
+| `workflowRegister.explainWorkflowDiagnostics` | diagnostics を自然言語で説明する。 |
+| `workflowRegister.completeCurrentStep` | Bob UI 経由の current manual step を完了する。 |
 
 ## 4. 公開 API 設計
 
@@ -81,19 +107,7 @@ export interface WorkflowRegisterApi {
 }
 ```
 
-### 4.1 API の意図
-
-| API | 詳細 |
-| --- | --- |
-| `registerActionProvider` | command step の `action.provider` で参照できる provider を追加する。 |
-| `registerAgentProvider` | standalone engine の agent step を実行する provider を差し替える。 |
-| `registerResultSink` | `result.sinks[].type` で参照できる sink を追加する。 |
-| `listWorkflows` | parse 済みの `CoreWorkflowDefinition` 一覧を返す。 |
-| `runWorkflow` | workflow ID と inputs を指定して workflow を直接実行する。 |
-
 ## 5. Workflow 定義探索設計
-
-### 5.1 探索対象
 
 探索対象は次の glob に限定する。
 
@@ -101,17 +115,7 @@ export interface WorkflowRegisterApi {
 **/.bob/workflows/*/WORKFLOW.md
 ```
 
-### 5.2 workflow root 解決
-
-`workspaceRoots.ts` が `.bob` を持つ root 候補を解決する。
-
-優先順位は次の通り。
-
-1. VS Code workspace folder 直下に `.bob` がある場合、その folder を direct candidate とする。
-2. direct candidate がない場合、workspace folder の直下子ディレクトリに `.bob` があるか調べ child candidate とする。
-3. `.bob` が見つからない場合、workspace folder 自体を fallback candidate とする。
-
-この設計により、multi-root workspace で `.bob` と実作業ディレクトリが異なる構成でも workflow root を決定できる。
+`workspaceRoots.ts` は `.bob` を持つ root 候補を解決する。direct candidate、child candidate、fallback candidate の順で解決し、multi-root workspace で `.bob` と作業 root が異なる構成を扱う。
 
 ## 6. Workflow 読み込み設計
 
@@ -139,64 +143,17 @@ sequenceDiagram
   S->>B: source.registerWorkflow(createBobWorkflow(...))
 ```
 
-### 6.2 重複 ID 処理
-
 同じ logical workflow ID が複数 root から見つかった場合は、`workflowRoot` の basename と SHA-1 hash を使って一意化する。
 
-```text
-<logicalId>.<root-basename>-<hash8>
-```
+## 7. Parser / Schema / Validator 詳細
 
-これにより、同名 workflow が複数 workspace に存在しても Bob に登録できる。
+### 7.1 Parser
 
-## 7. Parser 詳細設計
+`parseWorkflowMarkdown()` は Markdown 先頭の YAML front matter を抽出し、`schemaVersion: workflow-register/v1` なら v1 parser、そうでなければ legacy parser を使う。
 
-### 7.1 入力
+v1 では `workflowV1Schema` を AJV で検証し、`CoreWorkflowDefinition` へ normalize する。Markdown body は `prompt` 未指定時の workflow prompt として扱う。
 
-```ts
-interface ParseWorkflowRequest {
-  sourceId: string
-  filePath: string
-  text: string
-}
-```
-
-### 7.2 出力
-
-```ts
-type ParseWorkflowResult =
-  | { ok: true; workflow: CoreWorkflowDefinition; diagnostics: string[] }
-  | { ok: false; diagnostics: string[] }
-```
-
-### 7.3 解析手順
-
-1. Markdown 先頭の YAML front matter を抽出する。
-2. `js-yaml` で YAML を object 化する。
-3. `schemaVersion: workflow-register/v1` の場合は v1 parser を使う。
-4. それ以外は legacy parser を使う。
-5. v1 では AJV で `workflowV1Schema` を検証する。
-6. `CoreWorkflowDefinition` へ normalize する。
-7. unknown top-level field は warning とする。
-
-### 7.4 v1 normalize 方針
-
-| 入力 | normalize 後 |
-| --- | --- |
-| `title` / `label` | `label` として扱う。優先順は `label` > `title` > `name`。 |
-| `menuLabel` | 未指定時は `label` 相当。 |
-| `permissions` | Todo 有効時は `todo` を自動追加する。 |
-| `steps` | `EngineStep[]` に変換する。 |
-| `artifacts` | `WorkflowArtifactDefinition[]` に変換する。 |
-| Markdown body | `prompt` 未指定時の workflow prompt として使う。 |
-
-### 7.5 legacy 互換
-
-legacy 形式では Markdown body の `## Todo` と `## Step: <id>` を使い、step を復元する。新規作成では v1 形式を推奨し、legacy は既存互換に限定する。
-
-## 8. Schema 詳細設計
-
-`workflowSchema.ts` は `workflow-register/v1` の構造を JSON Schema として定義する。
+### 7.2 Schema
 
 主な制約は次の通り。
 
@@ -208,12 +165,11 @@ legacy 形式では Markdown body の `## Todo` と `## Step: <id>` を使い、
 - step `type` は `command` / `agent` / `manual` / `result`。
 - `command` step では `action` を必須とする。
 - `result` step では `result` を必須とする。
+- `guardrails.requireApproval[]` は `id` / `when` / `message` を持てる。
 
-## 9. Validator 詳細設計
+### 7.3 Validator
 
-`workflowValidator.ts` は parser の構造検証に加え、参照整合性を検査する。
-
-### 9.1 検証項目
+`workflowValidator.ts` は parser の構造検証に加え、次を検査する。
 
 | 項目 | エラー条件 |
 | --- | --- |
@@ -228,35 +184,65 @@ legacy 形式では Markdown body の `## Todo` と `## Step: <id>` を使い、
 | requiredWhen | 存在しない input を参照する。 |
 | Guardrails | allowed と denied に同一 command がある。 |
 
-### 9.2 Diagnostics 表示
+## 8. GUI Builder 詳細
 
-`WorkflowDiagnosticsReporter` は `ValidateWorkflowResult` から VS Code `DiagnosticCollection` を更新する。`info` は VS Code diagnostics には出さず、warning / error を表示する。
+### 8.1 Authoring model
 
-## 10. Bob 登録設計
+`WorkflowAuthoringModel` は GUI 編集用の中間モデルである。実行用の `CoreWorkflowDefinition` とは異なり、GUI で編集しやすい配列形式の `inputs`、`steps`、`artifacts` と、Markdown body、`unknownFrontMatter` を保持する。
 
-### 10.1 Bob API 解決
-
-`loadBobApi()` が `IBM.bob-code` 拡張を取得し、必要に応じて activate する。`registerSource` がない場合は登録を中止し、inspect report に記録する。
-
-### 10.2 Bob workflow 変換
-
-`CoreWorkflowDefinition` は `adaptCoreWorkflowForBob()` で内部 `WorkflowDefinition` へ変換する。その後、`createBobWorkflow()` で Bob に渡す object を作る。
-
-```ts
-interface BobWorkflow {
-  hidden?: boolean
-  getId: () => string
-  getLabel: () => string
-  getMenuLabel: () => string
-  getDescription: () => string
-  getMode?: () => string
-  isEnabled: (env?: { workspace?: string }) => Promise<boolean>
-  getSteps: () => BobWorkflowStep[]
-  getApprovalConfig: () => { allowed_permissions: string[]; autoApprovalEnabled: boolean }
-}
+```text
+WORKFLOW.md
+  -> parseWorkflowMarkdown
+  -> workflowToAuthoringModel
+  -> Webview form state
+  -> serializeAuthoringModelToMarkdown
+  -> validateWorkflowText
+  -> Show Diff / backup / overwrite
 ```
 
-### 10.3 Step 生成
+### 8.2 新規作成
+
+`openWorkflowBuilder.ts` は Webview を開き、`workflowAuthoringDefaults.ts` の template から初期 model を生成する。対応 template は `simple-agent`、`command-then-agent`、`manual-checklist`、`input-driven-agent`、`preflight-files`、`artifact-output`、`guarded-command`、`review-workflow` である。
+
+### 8.3 既存編集
+
+`editWorkflowInBuilder.ts` は active editor または file picker で `WORKFLOW.md` を選び、`loadAuthoringModelFromMarkdown()` で GUI model を作る。
+
+- 対象は `schemaVersion: workflow-register/v1` のみ。
+- legacy workflow は GUI 編集対象外。
+- GUI 管理外 front matter は `unknownFrontMatter` として保持する。
+- Markdown body は `model.body` として保持する。
+
+### 8.4 Webview modules
+
+| file | role |
+| --- | --- |
+| `workflowBuilderPanel.ts` | WebviewPanel 作成、preview / diff / save、backup、reload。 |
+| `workflowBuilderHtml.ts` | HTML shell、CSP、nonce、initial state 埋め込み。 |
+| `workflowBuilderStyles.ts` | Webview CSS。 |
+| `workflowBuilderClientScript.ts` | form state、tab、step 操作、reference warning、details section 編集。 |
+| `workflowBuilderBodyScript.ts` | `Markdown Body` タブを追加し、`model.body` を編集する補助 script。 |
+
+### 8.5 Preview / Diff / Save
+
+Webview client は `preview` / `diff` / `save` / `resetTemplate` message を extension host へ送る。
+
+保存時は次の順で処理する。
+
+1. `serializeAuthoringModelToMarkdown()` で Markdown を生成する。
+2. `validateWorkflowText()` を実行する。
+3. error があれば保存しない。
+4. 既存ファイルがある場合は `WORKFLOW.backup-<timestamp>.md` を作る。
+5. `WORKFLOW.md` を書き込む。
+6. `workflowRegister.reload` を実行する。
+
+### 8.6 YAML 表記安定化
+
+`workflowAuthoringSerializer.ts` は `js-yaml.dump()` 後に `requires.bob.minVersion` と `guardrails.requireApproval[].when` をダブルクォート付きに正規化する。これは YAML の意味を変えるためではなく、既存運用ファイルとの差分ノイズを減らすためである。
+
+## 9. Bob 登録設計
+
+`CoreWorkflowDefinition` は `adaptCoreWorkflowForBob()` で内部 `WorkflowDefinition` へ変換する。その後、`createBobWorkflow()` で Bob に渡す object を作る。
 
 `buildWorkflowSteps()` は次の方針で Bob step を生成する。
 
@@ -357,170 +343,32 @@ workflow の `stepCompletion=manual` では、agent step と `completeOnSuccess`
 
 ## 13. Run State 詳細設計
 
-### 13.1 保存場所
+保存場所:
 
 ```text
 <workflowRoot>/.bob/workflows/runs/<runId>/run.json
 ```
 
-### 13.2 runId
+`FileRunStateStore.nextRunId()` は作成時刻と workflow name から runId を作る。同名が存在する場合は `-2`, `-3` のように連番を付与する。
 
-`FileRunStateStore.nextRunId()` は作成時刻と workflow name から runId を作る。
+## 13. Result Handoff / Sink 詳細
 
-```text
-<timestamp>-<workflowName>
-```
+agent step が JSON や Markdown などの成果物を chat に出力したあと、その成果物を action provider に渡して保存・検証・変換できる。
 
-同名が存在する場合は `-2`, `-3` のように連番を付与する。
+`executeResultHandoff()` は成果物 text を trim したうえで、互換用 `args[0]` と、明示フィールド `latestAssistantText` / `resultText` / `artifactText` の両方に渡す。
 
-### 13.3 run.json の主な項目
+`file` sink は workspace root 配下のみ許可し、path escape を拒否する。
 
-| 項目 | 説明 |
-| --- | --- |
-| `runId` | 実行 ID。 |
-| `workflowId` | 登録 workflow ID。 |
-| `workflowName` | workflow name。 |
-| `workflowSchemaVersion` | schema version。 |
-| `workflowDefinitionHash` | 定義全文の SHA-256。 |
-| `workflowFile` | workflow file path。 |
-| `engineVersion` | 拡張機能 version。 |
-| `status` | running / held / completed / failed。 |
-| `currentStep` | 現在 step ID。 |
-| `inputs` | 実行時入力。 |
-| `state` | step 間共有状態。 |
-| `steps` | 各 step の状態。 |
-| `error` | エラーメッセージ。 |
-
-## 14. Action Provider 詳細設計
-
-### 14.1 ActionRegistry
-
-`ActionRegistry` は provider ID と handler の Map を持つ。
-
-- `register(provider)` で登録する。
-- `execute(providerId, input)` で実行する。
-- provider 不在時は `Unsupported action provider` を返す。
-- 例外は捕捉し `ok: false` へ変換する。
-
-### 14.2 既定 provider
-
-`createDefaultActionRegistry()` は `vscode.executeCommand` provider を登録できる。この provider は `args[0]` を VS Code command ID として扱い、残りを command arguments として渡す。
-
-### 14.3 ActionExecutionInput
-
-Action provider へ渡す入力は次の通り。
-
-| 項目 | 説明 |
-| --- | --- |
-| `args` | step / sink で指定された引数。 |
-| `inputs` | workflow inputs。 |
-| `state` | workflow state。 |
-| `workflowId` | workflow ID。 |
-| `logicalWorkflowId` | 重複修飾前の logical ID。 |
-| `workflowRoot` | `.bob` を持つ root。 |
-| `workflowFile` | workflow file path。 |
-| `workflowFolderName` | workflow root candidate 名。 |
-| `runId` | run ID。 |
-| `stepId` | step ID。 |
-| `latestAssistantText` | chat から取得した最新 assistant 成果物。 |
-| `resultText` | `latestAssistantText` の result 用 alias。 |
-| `artifactText` | `latestAssistantText` の artifact 用 alias。 |
-
-## 15. Result Handoff 詳細設計
-
-### 15.1 目的
-
-agent step が JSON や Markdown などの成果物を chat に出力したあと、その成果物を action provider に渡して保存・検証・変換できるようにする。
-
-### 15.2 result source
-
-| source | 説明 |
-| --- | --- |
-| `agent` | agent step の戻り値を使う。 |
-| `lastAssistant` | Bob task の message 履歴から、step 開始後の最新 assistant message を使う。 |
-
-### 15.3 handoff 入力
-
-`executeResultHandoff()` は成果物 text を trim したうえで、次の両方に渡す。
-
-- 互換用: `args[0]`
-- 明示フィールド: `latestAssistantText`, `resultText`, `artifactText`
-
-これにより、既存 provider は `args[0]` のまま動作し、新しい provider は意味付きフィールドを優先できる。
-
-### 15.4 エラー判定
-
-action provider の戻り値が次の場合は handoff 失敗として扱う。
-
-- `status: "error"`
-- `valid: false`
-
-`issues` がある場合は、path と message を連結してエラーに含める。
-
-## 16. Result Sink 詳細設計
-
-### 16.1 Sink 種別
-
-| type | 処理 |
-| --- | --- |
-| `command` | VS Code command / action を呼び出す。 |
-| `file` | workspace root 配下へファイル保存する。 |
-
-### 16.2 file sink 安全制約
-
-`file` sink は `workspaceRoot` と `sink.path` を解決し、relative path が `..` で始まる、または絶対パスになる場合は拒否する。
-
-### 16.3 path template
-
-対応する placeholder は次の通り。
-
-- `{{run.id}}`
-- `{{runId}}`
-- `{{step.id}}`
-- `{{stepId}}`
-- `{{workflow.id}}`
-
-## 17. Guardrails 詳細設計
+## 14. Guardrails 詳細設計
 
 `guardrails.ts` は command provider の実行前にルールを検査する。
-
-想定する方針は次の通り。
 
 - `deniedCommands` に含まれる command は拒否する。
 - `allowedCommands` が指定されている場合、含まれない command は拒否する。
 - `allowedCommands` と `deniedCommands` の衝突は validator で検出する。
+- `requireApproval` は人間承認が必要な条件・メッセージを workflow 定義に残すための構造である。
 
-## 18. Input Resolver 詳細設計
-
-`inputResolver.ts` は workflow inputs の不足を解決する。
-
-### 18.1 isMissing
-
-次を missing とする。
-
-- `undefined`
-- `null`
-- 空文字列
-
-### 18.2 prompt 判定
-
-1. 既に値がある input は prompt しない。
-2. `prompt: false` の input は prompt しない。
-3. `required: true` または `requiredWhen` に一致する input は prompt 対象とする。
-4. required ではない input も、`prompt` が有効で未入力なら prompt 対象とする。
-
-### 18.3 requiredWhen
-
-サポート式は簡易形式のみである。
-
-```text
-inputs.<name> == "value"
-inputs.<name> != "value"
-```
-
-## 19. AI Authoring 詳細設計
-
-### 19.1 機能
+## 15. AI Authoring 詳細設計
 
 | command | 処理 |
 | --- | --- |
@@ -528,38 +376,23 @@ inputs.<name> != "value"
 | `improveWorkflowWithAi` | 現在の workflow と診断結果から改善案を作る。 |
 | `explainWorkflowDiagnostics` | 診断内容を自然言語で説明する。 |
 
-### 19.2 Provider
-
 AI provider は `workflowRegister.aiProviderCommand` で指定する。未設定時は mock provider を使う。
 
-provider は `{ kind, payload }` を受け取り、draft / repair proposal / explanation を返す。
+`improveWorkflowWithAi` は候補 Markdown を `.bob/workflows/.previews/...` に保存し、diff を表示し、明示確認後に backup を作成して適用する。
 
-### 19.3 改善適用
+## 16. Diagnostics 詳細設計
 
-`improveWorkflowWithAi` は次の流れで適用する。
+検証タイミング:
 
-1. 現在の workflow を検証する。
-2. AI provider へ改善要求を渡す。
-3. candidate Markdown を preview として `.bob/workflows/.previews/...` に保存する。
-4. diff を表示する。
-5. 明示確認後に backup を作成して適用する。
+- `validateCurrentWorkflow` command 実行時。
+- `validateWorkspaceWorkflows` command 実行時。
+- `WORKFLOW.md` 保存時。
+- active editor が `WORKFLOW.md` に切り替わった時。
+- GUI Builder preview / save 時。
 
-## 20. Diagnostics 詳細設計
+VS Code Diagnostics には error / warning を表示し、Markdown report には info も含める。
 
-### 20.1 検証タイミング
-
-- `validateCurrentWorkflow` command 実行時
-- `validateWorkspaceWorkflows` command 実行時
-- `WORKFLOW.md` 保存時
-- active editor が `WORKFLOW.md` に切り替わった時
-
-### 20.2 表示方法
-
-- VS Code Diagnostics には error / warning を表示する。
-- Markdown report には info も含めて表示する。
-- diagnostics hint により典型的な修正方針を提示する。
-
-## 21. エラー処理詳細
+## 17. エラー処理詳細
 
 | 発生箇所 | 処理 |
 | --- | --- |
@@ -615,52 +448,33 @@ result handoff や agent retry では、現在の Bob task の最新 assistant m
 
 ### 23.1 `.bob` root と作業 root の分離
 
-workflow-register は `.bob` を持つ root を workflow root として扱う。個別拡張は action provider の中で、必要に応じて別 root、たとえば Bazaar repository root を解決する。
+workflow-register は `.bob` を持つ root を workflow root として扱う。action provider には `workflowRoot` / `workflowFile` / `workflowFolderName` を渡す。
 
-### 23.2 workflowRoot の利用
+個別拡張は、必要に応じて action provider の中で Bazaar repository root やコードレビュー対象 root を解決する。
 
-action provider には `workflowRoot` を渡す。これにより、個別拡張は `.bob` 側の設定・チェックリスト・成果物保存先を安定して解決できる。
+## 19. テスト設計
 
-## 24. テスト設計
-
-### 24.1 単体テスト観点
-
-| テスト対象 | 観点 |
+| 対象 | 観点 |
 | --- | --- |
 | parser | v1 / legacy parse、diagnostics、unknown field。 |
-| schema | 必須項目、step type、input type。 |
+| schema | 必須項目、step type、input type、guardrails。 |
 | engine | run、preflight、command、agent、manual、result。 |
 | runStateStore | runId 採番、保存、読み込み、一覧。 |
 | resultHandoff | latest assistant text、args 互換、validation failure。 |
 | workflowValidator | state 参照、artifact 参照、guardrail 衝突。 |
 | workspaceRoots | direct / child / fallback candidate。 |
 | extension registration | Bob API 登録、workflow id 修飾、provider 呼び出し。 |
+| authoring serializer | YAML / Markdown 出力、quote 安定化、body 保持。 |
+| authoring loader | 既存 v1 workflow の GUI model 変換、unknownFrontMatter 保持。 |
+| reference analysis | includeState / producedBy / move / delete impact。 |
+| webview modules | split HTML / CSS / client script / body script の出力。 |
 
-### 24.2 結合テスト観点
-
-- `.bob/workflows/*/WORKFLOW.md` を配置して reload できる。
-- Bob Workflow UI に workflow が表示される。
-- command step が他拡張 action provider を呼べる。
-- agent step の出力を後続 step が `includeState` で参照できる。
-- result sink により workspace 内ファイルが保存される。
-- held step を complete して後続 step に進める。
-- run state から resume / retry できる。
-
-## 25. 非機能設計
-
-| 項目 | 方針 |
-| --- | --- |
-| 保守性 | core と commands を分離し、workflow engine は VS Code 依存を最小にする。 |
-| 拡張性 | provider registry により個別拡張の処理を後付けする。 |
-| 安全性 | shell を直接実行せず、file sink は workspace 外書き込みを拒否する。 |
-| 可観測性 | inspect report、run diagnostics、VS Code diagnostics を提供する。 |
-| 互換性 | legacy workflow 形式を読み込み可能にする。 |
-| 再開性 | run state と result handoff により途中成果物を再利用する。 |
-
-## 26. 変更時の注意点
+## 20. 変更時の注意点
 
 - `workflowV1Schema` を変更した場合は parser、validator、README、テンプレート、テストを同期する。
 - `ActionExecutionInput` を変更した場合は、連携拡張の action provider と result handoff テストを確認する。
 - `workspaceRequired` の扱いは Bob UI のフォルダ選択挙動へ影響するため、multi-root で確認する。
 - `ResultSinkRegistry` の command 許可リストを拡張する場合は、guardrails とセキュリティ観点を確認する。
 - active step の永続化を追加する場合は、Bob task object を直接保存しない設計にする。
+- GUI Builder の client script を変更する場合は、preview / save / diff / reference warning の回帰を確認する。
+- serializer の YAML 表記安定化を変更する場合は、既存運用 workflow との差分を確認する。
