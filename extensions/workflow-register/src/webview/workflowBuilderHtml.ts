@@ -1,4 +1,5 @@
 import { WorkflowAuthoringModel } from "../core/workflowAuthoringModel"
+import { renderWorkflowBuilderBodyScript } from "./workflowBuilderBodyScript"
 import { renderWorkflowBuilderClientScript } from "./workflowBuilderClientScript"
 import { renderWorkflowBuilderStyles } from "./workflowBuilderStyles"
 
@@ -55,6 +56,7 @@ const templates = ${JSON.stringify(options.templateOptions)};
 let model = ${JSON.stringify(options.initialModel)};
 let editMode = ${JSON.stringify(options.isEditMode)};
 ${renderWorkflowBuilderClientScript()}
+${renderWorkflowBuilderBodyScript()}
 </script>
 </body>
 </html>`
