@@ -22,6 +22,12 @@ export interface LoadAuthoringModelResult {
   originalText: string
 }
 
+/**
+ * Front matter fields that the GUI owns and may rewrite from form state.
+ *
+ * Any field not listed here is intentionally copied through unknownFrontMatter
+ * so existing hand-authored workflow metadata is not lost during GUI editing.
+ */
 const guiManagedFrontMatterFields = new Set([
   "schemaVersion",
   "name",
@@ -39,6 +45,13 @@ const guiManagedFrontMatterFields = new Set([
   "steps"
 ])
 
+/**
+ * Loads an existing workflow-register/v1 WORKFLOW.md into the GUI model.
+ *
+ * The loader first delegates semantic validation and normalization to the parser,
+ * then keeps authoring-only details that the execution model does not need:
+ * unknown front matter and the Markdown body after the YAML block.
+ */
 export function loadAuthoringModelFromMarkdown(options: LoadAuthoringModelOptions): LoadAuthoringModelResult {
   const split = splitMarkdownFrontMatter(options.text)
   if (!split) throw new Error("WORKFLOW.md has no YAML front matter.")
@@ -106,6 +119,7 @@ function normalizeAction(action: WorkflowActionDefinition): { provider: string; 
   return { provider: action.provider, args: Array.isArray(action.args) ? action.args : action.args === undefined ? undefined : [action.args] }
 }
 
+/** Preserves front matter owned by users or future workflow-register versions. */
 function preservedFrontMatter(frontMatter: Record<string, unknown>): Record<string, unknown> | undefined {
   const preserved: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(frontMatter)) {
