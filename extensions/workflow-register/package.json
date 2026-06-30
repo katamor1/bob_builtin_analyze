@@ -34,7 +34,8 @@
     "onCommand:workflowRegister.validateCurrentWorkflow",
     "onCommand:workflowRegister.validateWorkspaceWorkflows",
     "onCommand:workflowRegister.createWorkflowFromTemplate",
-    "onCommand:workflowRegister.openWorkflowBuilder"
+    "onCommand:workflowRegister.openWorkflowBuilder",
+    "onCommand:workflowRegister.editWorkflowInBuilder"
   ],
   "main": "./out/extensionWithAuthoring.js",
   "contributes": {
@@ -55,7 +56,8 @@
       { "command": "workflowRegister.validateCurrentWorkflow", "title": "Bob ワークフロー: 現在の定義を検証", "category": "Bob ワークフロー" },
       { "command": "workflowRegister.validateWorkspaceWorkflows", "title": "Bob ワークフロー: ワークスペース定義を検証", "category": "Bob ワークフロー" },
       { "command": "workflowRegister.createWorkflowFromTemplate", "title": "Bob ワークフロー: テンプレートから作成", "category": "Bob ワークフロー" },
-      { "command": "workflowRegister.openWorkflowBuilder", "title": "Bob ワークフロー: GUI で作成", "category": "Bob ワークフロー" }
+      { "command": "workflowRegister.openWorkflowBuilder", "title": "Bob ワークフロー: GUI で作成", "category": "Bob ワークフロー" },
+      { "command": "workflowRegister.editWorkflowInBuilder", "title": "Bob ワークフロー: GUI で編集", "category": "Bob ワークフロー" }
     ],
     "configuration": {
       "title": "Bob ワークフロー登録",
@@ -100,7 +102,8 @@
         { "command": "workflowRegister.validateCurrentWorkflow" },
         { "command": "workflowRegister.validateWorkspaceWorkflows" },
         { "command": "workflowRegister.createWorkflowFromTemplate" },
-        { "command": "workflowRegister.openWorkflowBuilder" }
+        { "command": "workflowRegister.openWorkflowBuilder" },
+        { "command": "workflowRegister.editWorkflowInBuilder" }
       ]
     }
   },
