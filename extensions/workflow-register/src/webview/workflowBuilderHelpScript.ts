@@ -31,10 +31,12 @@ function dynamicChoiceHelp(id, control) {
     if (!step) return '';
     return '<div class="help-option"><strong>選択中: ' + escapeHtml(step.id) + '</strong><p>' + escapeHtml(step.title || step.id) + ' / type: ' + escapeHtml(step.type) + '</p><p>この成果物は、この step が生成するものとして扱われます。</p></div>';
   }
-  if ((id === 'result.stateKey' || id === 'step.includeState') && control.value) {
-    const step = resultKeyProducer(control.value);
+  if (id === 'result.stateKey' || id === 'step.includeState') {
+    const key = (control.dataset && control.dataset.stateKey) || control.value;
+    if (!key) return '';
+    const step = resultKeyProducer(key);
     if (!step) return '';
-    return '<div class="help-option"><strong>選択中: ' + escapeHtml(control.value) + '</strong><p>生成元 step: ' + escapeHtml(step.id) + ' / ' + escapeHtml(step.title || step.id) + '</p><p>この前段結果を現在の step の入力または書き出し元として利用します。</p></div>';
+    return '<div class="help-option"><strong>選択中: ' + escapeHtml(key) + '</strong><p>生成元 step: ' + escapeHtml(step.id) + ' / ' + escapeHtml(step.title || step.id) + '</p><p>この前段結果を現在の step の入力または書き出し元として利用します。</p></div>';
   }
   return '';
 }
