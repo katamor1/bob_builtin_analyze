@@ -112,6 +112,127 @@ test("workflow run recovery does not reuse a cache for different inputs", async 
   assert.equal((await runStore.listRuns()).length, 2)
 })
 
+test("single-step retry reuses a failed current step with prior workflow state", async () => {
+  const { ActionRegistry } = require("../out/core/actionRegistry")
+  const { WorkflowEngine } = require("../out/core/engine")
+  const { createDefaultResultSinkRegistry } = require("../out/core/resultSinkRegistry")
+  const { FileRunStateStore } = require("../out/core/runStateStore")
+
+  const workspaceRoot = tempDir()
+  const workflow = {
+    id: "workflow-register.failed-single-step",
+    name: "failed-single-step",
+    label: "Failed Single Step",
+    schemaVersion: "workflow-register/v1",
+    definitionHash: "definition-v1",
+    filePath: ".bob/workflows/failed-single-step/WORKFLOW.md",
+    inputs: {},
+    engineSteps: [
+      { id: "collect-context", title: "Collect", type: "command", action: { provider: "sample.collect" }, resultKey: "reviewContext" },
+      { id: "load-rules", title: "Rules", type: "command", action: { provider: "sample.rules" }, resultKey: "reviewRules" },
+      {
+        id: "output-result",
+        title: "Output",
+        type: "agent",
+        includeState: ["reviewContext", "reviewRules"],
+        stateRequired: true,
+        resultKey: "reviewResultJson",
+        result: { source: "agent", sinks: [{ type: "command", command: "bobBazaar.captureReviewResult" }] }
+      }
+    ]
+  }
+  let now = "2026-06-30T00:00:00.000Z"
+  const runStore = new FileRunStateStore({ workspaceRoot, now: () => now, engineVersion: "test-engine" })
+  const failed = await runStore.createRun(workflow, {})
+  failed.status = "failed"
+  failed.currentStep = "output-result"
+  failed.error = "result command reported an error"
+  failed.state.reviewContext = "context"
+  failed.state.reviewRules = "rules"
+  failed.state.reviewResultJson = "markdown checklist output"
+  failed.steps[0].status = "completed"
+  failed.steps[1].status = "completed"
+  failed.steps[2].status = "failed"
+  failed.steps[2].error = failed.error
+  await runStore.saveRun(failed)
+
+  now = "2026-06-30T00:00:01.000Z"
+  const emptyFailed = await runStore.createRun(workflow, {})
+  emptyFailed.status = "failed"
+  emptyFailed.currentStep = "output-result"
+  emptyFailed.error = "empty retry should not be reused"
+  emptyFailed.steps[2].status = "failed"
+  emptyFailed.steps[2].error = emptyFailed.error
+  await runStore.saveRun(emptyFailed)
+
+  let captureContext
+  const engine = new WorkflowEngine({
+    actions: new ActionRegistry(),
+    resultSinks: createDefaultResultSinkRegistry({
+      workspaceRoot,
+      executeCommand: async (_command, _text, context) => {
+        captureContext = context
+        return { status: "ok", jsonText: "normalized review-result json" }
+      }
+    }),
+    runStore,
+    agentProvider: { run: async () => { throw new Error("agent should not rerun for failed handoff retry") } }
+  })
+
+  const retried = await engine.runWorkflow(workflow, {}, { executionMode: "singleStep", stepId: "output-result" })
+
+  assert.equal(retried.runId, failed.runId)
+  assert.equal(retried.status, "completed")
+  assert.equal(retried.state.reviewContext, "context")
+  assert.equal(retried.state.reviewRules, "rules")
+  assert.equal(retried.state.reviewResultJson, "normalized review-result json")
+  assert.equal(captureContext.state.reviewContext, "context")
+  assert.equal((await runStore.listRuns()).length, 2)
+})
+
+test("single-step later step without recoverable state fails before running the agent", async () => {
+  const { ActionRegistry } = require("../out/core/actionRegistry")
+  const { WorkflowEngine } = require("../out/core/engine")
+  const { createDefaultResultSinkRegistry } = require("../out/core/resultSinkRegistry")
+  const { FileRunStateStore } = require("../out/core/runStateStore")
+
+  const workspaceRoot = tempDir()
+  let agentCalls = 0
+  const workflow = {
+    id: "workflow-register.missing-single-step-state",
+    name: "missing-single-step-state",
+    label: "Missing Single Step State",
+    schemaVersion: "workflow-register/v1",
+    inputs: {},
+    engineSteps: [
+      { id: "collect-context", title: "Collect", type: "command", action: { provider: "sample.collect" }, resultKey: "reviewContext" },
+      {
+        id: "output-result",
+        title: "Output",
+        type: "agent",
+        includeState: ["reviewContext"],
+        stateRequired: true,
+        resultKey: "reviewResultJson"
+      }
+    ]
+  }
+  const engine = new WorkflowEngine({
+    actions: new ActionRegistry(),
+    resultSinks: createDefaultResultSinkRegistry({ workspaceRoot, executeCommand: async () => undefined }),
+    runStore: new FileRunStateStore({ workspaceRoot, now: () => "2026-06-30T00:00:00.000Z", engineVersion: "test-engine" }),
+    agentProvider: { run: async () => { agentCalls += 1; return "unexpected" } }
+  })
+
+  const run = await engine.runWorkflow(workflow, {}, { executionMode: "singleStep", stepId: "output-result" })
+
+  assert.equal(run.status, "failed")
+  assert.equal(run.currentStep, "output-result")
+  assert.equal(run.steps[0].status, "pending")
+  assert.equal(run.steps[1].status, "failed")
+  assert.match(run.error, /Workflow state is missing for step output-result: reviewContext/)
+  assert.equal(agentCalls, 0)
+})
+
 test("retrying an agent handoff failure can reuse recovered text without rerunning the agent", async () => {
   const { ActionRegistry } = require("../out/core/actionRegistry")
   const { WorkflowEngine } = require("../out/core/engine")

@@ -122,7 +122,7 @@ export class WorkflowEngine {
   }
 
   async runWorkflow(workflow: CoreWorkflowDefinition, inputs: Record<string, unknown>, options: RunWorkflowOptions = {}): Promise<WorkflowRunState> {
-    const recoveredRun = await this.runStore.findRecoverableRun?.(workflow, inputs)
+    const recoveredRun = await this.runStore.findRecoverableRun?.(workflow, inputs, options)
     const run = recoveredRun ?? await this.runStore.createRun(workflow, inputs)
     await this.runStore.saveRun(run)
     if (!recoveredRun) await this.emit(this.hooks.onWorkflowStart, { workflow, run })
@@ -187,6 +187,17 @@ export class WorkflowEngine {
       const step = workflow.engineSteps[index]
       const stepState = run.steps[index]
       run.currentStep = step.id
+      const missingState = missingRequiredState(step, run.state)
+      if (missingState.length > 0) {
+        const error = `Workflow state is missing for step ${step.id}: ${missingState.join(", ")}`
+        stepState.status = "failed"
+        stepState.error = error
+        run.status = "failed"
+        run.error = error
+        await this.runStore.saveRun(run)
+        await this.emit(this.hooks.onStepFailed, { workflow, run, step, error })
+        return run
+      }
       run.status = "running"
       stepState.status = "running"
       stepState.startedAt = stepState.startedAt ?? new Date().toISOString()
@@ -489,6 +500,14 @@ function startIndexForRun(workflow: CoreWorkflowDefinition, run: WorkflowRunStat
     return index
   }
   return recoverStartIndex(workflow, run)
+}
+
+function missingRequiredState(step: EngineStep, state: Record<string, string>): string[] {
+  if (!step.stateRequired) return []
+  return (step.includeState ?? []).filter((key) => {
+    const value = state[key]
+    return value === undefined || value.trim().length === 0
+  })
 }
 
 function renderArtifactPath(artifact: WorkflowArtifactDefinition, context: { inputs: Record<string, unknown>; state: Record<string, string>; run: WorkflowRunState; workflow: CoreWorkflowDefinition; step: EngineStep }): string {

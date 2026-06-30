@@ -4,13 +4,18 @@ import { CoreWorkflowDefinition, WorkflowRunState } from "./model"
 
 const RECOVERABLE_RUN_STATUSES = new Set(["running", "held"])
 
+export interface RecoverableRunLookupOptions {
+  executionMode?: "full" | "singleStep"
+  stepId?: string
+}
+
 export interface RunStateStore {
   readonly workspaceRoot?: string
   createRun: (workflow: CoreWorkflowDefinition, inputs: Record<string, unknown>) => Promise<WorkflowRunState>
   saveRun: (run: WorkflowRunState) => Promise<void>
   loadRun: (runId: string) => Promise<WorkflowRunState | undefined>
   listRuns: () => Promise<WorkflowRunState[]>
-  findRecoverableRun?: (workflow: CoreWorkflowDefinition, inputs: Record<string, unknown>) => Promise<WorkflowRunState | undefined>
+  findRecoverableRun?: (workflow: CoreWorkflowDefinition, inputs: Record<string, unknown>, options?: RecoverableRunLookupOptions) => Promise<WorkflowRunState | undefined>
 }
 
 export interface FileRunStateStoreOptions {
@@ -89,15 +94,10 @@ export class FileRunStateStore implements RunStateStore {
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
   }
 
-  async findRecoverableRun(workflow: CoreWorkflowDefinition, inputs: Record<string, unknown>): Promise<WorkflowRunState | undefined> {
+  async findRecoverableRun(workflow: CoreWorkflowDefinition, inputs: Record<string, unknown>, options: RecoverableRunLookupOptions = {}): Promise<WorkflowRunState | undefined> {
     const expectedInputs = stableJson(inputs)
     const runs = await this.listRuns()
-    return runs.find((run) => {
-      if (!RECOVERABLE_RUN_STATUSES.has(run.status)) return false
-      if (run.workflowId !== workflow.id) return false
-      if (!workflowDefinitionMatches(run, workflow)) return false
-      return stableJson(run.inputs) === expectedInputs
-    })
+    return runs.find((run) => isRecoverableRun(run, workflow, expectedInputs, options))
   }
 
   private async nextRunId(workflowName: string, createdAt: string): Promise<string> {
@@ -133,6 +133,19 @@ function workflowDefinitionMatches(run: WorkflowRunState, workflow: CoreWorkflow
   if (run.workflowDefinitionHash && workflow.definitionHash && run.workflowDefinitionHash !== workflow.definitionHash) return false
   if (run.workflowFile && workflow.filePath && run.workflowFile !== workflow.filePath) return false
   return true
+}
+
+function isRecoverableRun(run: WorkflowRunState, workflow: CoreWorkflowDefinition, expectedInputs: string, options: RecoverableRunLookupOptions): boolean {
+  if (run.workflowId !== workflow.id) return false
+  if (!workflowDefinitionMatches(run, workflow)) return false
+  if (stableJson(run.inputs) !== expectedInputs) return false
+  if (RECOVERABLE_RUN_STATUSES.has(run.status)) return true
+  if (run.status !== "failed" || options.executionMode !== "singleStep" || !options.stepId) return false
+  if (run.currentStep !== options.stepId) return false
+  const stepIndex = workflow.engineSteps.findIndex((step) => step.id === options.stepId)
+  if (stepIndex < 0) return false
+  if (run.steps[stepIndex]?.status !== "failed") return false
+  return run.steps.slice(0, stepIndex).every((step) => step.status === "completed")
 }
 
 function stableJson(value: unknown): string {

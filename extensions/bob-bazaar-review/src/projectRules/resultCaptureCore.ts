@@ -80,20 +80,54 @@ interface MarkdownChecklistDecision {
 function parseMarkdownChecklistDecisions(text: string, checklist: ProjectChecklist): Map<string, MarkdownChecklistDecision> {
   const decisions = new Map<string, MarkdownChecklistDecision>()
   const rulesById = new Map(checklist.rules.map((rule) => [rule.id, rule]))
+  parseMarkdownTableDecisions(text, rulesById, decisions)
+  parseMarkdownHeadingDecisions(text, rulesById, decisions)
+  return decisions
+}
+
+function parseMarkdownTableDecisions(text: string, rulesById: Map<string, ProjectRule>, decisions: Map<string, MarkdownChecklistDecision>): void {
   for (const line of text.split(/\r?\n/)) {
     const cells = splitMarkdownTableRow(line)
     if (cells.length < 2 || cells.every((cell) => /^:?-{3,}:?$/.test(cell.trim()))) continue
-    const rule = cells.flatMap((cell) => {
-      const plain = stripMarkdown(cell)
-      return Array.from(rulesById.values()).filter((candidate) => plain.includes(candidate.id))
-    })[0]
+    const rule = ruleFromText(cells.join(" "), rulesById)
     if (!rule) continue
     const status = parseReviewStatus(cells[cells.length - 1])
     if (!status) continue
     const reason = stripMarkdown(cells.length >= 4 ? cells[cells.length - 2] : cells.join(" / "))
     decisions.set(rule.id, { status, reason: reason || `${rule.id} was parsed from Markdown output as ${status}.` })
   }
-  return decisions
+}
+
+function parseMarkdownHeadingDecisions(text: string, rulesById: Map<string, ProjectRule>, decisions: Map<string, MarkdownChecklistDecision>): void {
+  let currentRule: ProjectRule | undefined
+  let reasonLines: string[] = []
+  for (const line of text.split(/\r?\n/)) {
+    const headingRule = /^#{2,6}\s+/.test(line) ? ruleFromText(line, rulesById) : undefined
+    if (headingRule) {
+      currentRule = headingRule
+      reasonLines = []
+      continue
+    }
+    if (!currentRule) continue
+    if (/^#{2,6}\s+/.test(line)) {
+      currentRule = undefined
+      reasonLines = []
+      continue
+    }
+    const status = parseStatusLine(line)
+    if (status) {
+      const reason = [...reasonLines, stripMarkdown(line)].filter(Boolean).join(" ")
+      decisions.set(currentRule.id, { status, reason: reason || `${currentRule.id} was parsed from Markdown output as ${status}.` })
+      continue
+    }
+    const reason = stripMarkdown(line.replace(/^\s*[-*]\s*/, ""))
+    if (reason) reasonLines.push(reason)
+  }
+}
+
+function ruleFromText(text: string, rulesById: Map<string, ProjectRule>): ProjectRule | undefined {
+  const plain = stripMarkdown(text)
+  return Array.from(rulesById.values()).find((candidate) => plain.includes(candidate.id))
 }
 
 function splitMarkdownTableRow(line: string): string[] {
@@ -105,12 +139,18 @@ function splitMarkdownTableRow(line: string): string[] {
 function parseReviewStatus(value: string): ReviewStatus | undefined {
   const plain = stripMarkdown(value).toLowerCase()
   const compact = plain.replace(/[^a-z0-9_\u3040-\u30ff\u3400-\u9fff]+/g, "")
-  if (compact.includes("not_applicable") || compact.includes("notapplicable") || /\bn\/?a\b/.test(plain) || compact.includes("対象外") || compact.includes("該当なし")) return "not_applicable"
+  if (compact.includes("not_applicable") || compact.includes("notapplicable") || /\bn\/?a\b/.test(plain) || compact.includes("対象外") || compact.includes("該当なし") || compact.includes("非適用")) return "not_applicable"
   if (compact.includes("blocked") || compact.includes("ブロック")) return "blocked"
   if (compact.includes("unknown") || compact.includes("不明") || compact.includes("未確認")) return "unknown"
   if (compact.includes("fail") || compact.includes("ng") || compact.includes("問題あり") || compact.includes("不合格")) return "fail"
   if (compact.includes("pass") || compact.includes("ok") || compact.includes("問題なし") || compact.includes("合格")) return "pass"
   return undefined
+}
+
+function parseStatusLine(line: string): ReviewStatus | undefined {
+  const plain = stripMarkdown(line)
+  if (!/(^|\s)(status|ステータス|判定)\s*[:：]/i.test(plain)) return undefined
+  return parseReviewStatus(plain)
 }
 
 function buildRecoveredReviewResult(rules: ProjectRule[], decisions: Map<string, MarkdownChecklistDecision>, reviewContext: Record<string, unknown> | undefined): ReviewResult {
@@ -153,9 +193,9 @@ function buildRecoveredReviewResult(rules: ProjectRule[], decisions: Map<string,
 }
 
 function buildRecoveredVcs(reviewContext: Record<string, unknown> | undefined): ReviewResult["vcs"] {
-  const revision = stringValue(reviewContext?.revision) ?? stringValue(reviewContext?.targetRevision) ?? stringValue(reviewContext?.target_revision)
   const baseRevision = stringValue(reviewContext?.baseRevision) ?? stringValue(reviewContext?.base_revision)
   const targetRevision = stringValue(reviewContext?.targetRevision) ?? stringValue(reviewContext?.target_revision)
+  const revision = stringValue(reviewContext?.revision) ?? (baseRevision ? undefined : targetRevision)
   const vcs: ReviewResult["vcs"] = {
     type: "bazaar",
     repository: stringValue(reviewContext?.workspacePath) ?? stringValue(reviewContext?.repository) ?? stringValue(reviewContext?.repositoryRoot),
@@ -169,7 +209,7 @@ function buildRecoveredVcs(reviewContext: Record<string, unknown> | undefined): 
 
 function buildRecoveredReviewId(reviewContext: Record<string, unknown> | undefined): string {
   const vcs = buildRecoveredVcs(reviewContext)
-  const revision = vcs.revision || [vcs.base_revision, vcs.target_revision].filter(Boolean).join("-") || "unknown"
+  const revision = [vcs.base_revision, vcs.target_revision].filter(Boolean).join("-") || vcs.revision || "unknown"
   return `bazaar-r${sanitizeReviewIdSegment(revision)}-project-rule-review`
 }
 
