@@ -14,6 +14,7 @@ import { FileRunStateStore, RunStateStore } from "./core/runStateStore"
 import { createBobTaskSnapshotProvider, FileTaskSnapshotStore, snapshotMatchesRun, TaskSnapshotProvider, TaskSnapshotReason, TaskSnapshotStore } from "./core/taskSnapshots"
 import { fallbackWorkspaceRootCandidates, findMarkerRoots, findWorkflowRootCandidates, MarkerRootCandidate, relativePathFromRoot, rootHasMarker } from "./core/workspaceRoots"
 import { executeResultHandoff, extractLastAssistantText, resultSourceForStep, ResultSource } from "./resultHandoff"
+import { appendWorkflowContext } from "./workflowPromptContext"
 
 const BOB_EXTENSION_ID = "IBM.bob-code"
 const WORKFLOW_GLOB = "**/.bob/workflows/*/WORKFLOW.md"
@@ -951,6 +952,9 @@ class BobWorkflowEngineRunner {
           const value = await task.startSubagent(buildWorkflowAgentPrompt({
             workflowId: this.options.definition.id,
             workflowName: this.options.definition.name,
+            workflowRoot: input.workflowRoot ?? this.options.definition.workflowRoot,
+            workflowFile: input.workflowFile ?? this.options.definition.workflowFile,
+            workflowFolderName: input.workflowFolderName ?? this.options.definition.workflowFolderName,
             stepIndex: todoContext.index,
             stepId: input.stepId,
             stepTitle: todoContext.todo?.text ?? stepDefinition?.id ?? input.stepId,
@@ -1012,7 +1016,7 @@ class BobWorkflowEngineRunner {
         const commandResult = { command: step.action.provider, ok: true, value: commandValue }
         const stateEntries = stateEntriesFromRecord(run.state, stepDefinition?.includeState ?? [])
         const message = shouldIncludeCommandResult(stepDefinition, commandResult) || stateEntries.length > 0
-          ? buildCommandResultMessage(context.todo, context.index, commandResult, stateEntries)
+          ? buildCommandResultMessage(this.options.definition, context.todo, context.index, commandResult, stateEntries)
           : undefined
         if (message) await task.sendMessage?.(message, "user")
       },
@@ -1112,14 +1116,15 @@ async function recoverResultTextFromSnapshots(snapshotStore: TaskSnapshotStore, 
 
 function buildStepMessage(definition: WorkflowDefinition, todo: WorkflowTodoItem, index: number, stepDefinition?: WorkflowStepDefinition, commandResult?: WorkflowStepCommandResult, stateEntries: WorkflowStateEntry[] = []): string | undefined {
   if (index === 0) return buildWorkflowStartMessage(definition, todo, index, stepDefinition, commandResult, stateEntries)
-  if (definition.stepMessage === "silent") return shouldIncludeCommandResult(stepDefinition, commandResult) || stateEntries.length > 0 ? buildCommandResultMessage(todo, index, commandResult, stateEntries) : undefined
+  if (definition.stepMessage === "silent") return shouldIncludeCommandResult(stepDefinition, commandResult) || stateEntries.length > 0 ? buildCommandResultMessage(definition, todo, index, commandResult, stateEntries) : undefined
   if (definition.stepMessage === "full") return buildWorkflowTodoStepMessage(definition, todo, index, stepDefinition, commandResult, stateEntries)
-  if (definition.stepMessage === "step") return buildStepPromptMessage(definition, todo, index, stepDefinition, commandResult, stateEntries) ?? buildCurrentTodoMessage(todo, index, stepDefinition, commandResult, stateEntries)
-  return buildCurrentTodoMessage(todo, index, stepDefinition, commandResult, stateEntries)
+  if (definition.stepMessage === "step") return buildStepPromptMessage(definition, todo, index, stepDefinition, commandResult, stateEntries) ?? buildCurrentTodoMessage(definition, todo, index, stepDefinition, commandResult, stateEntries)
+  return buildCurrentTodoMessage(definition, todo, index, stepDefinition, commandResult, stateEntries)
 }
 
 function buildWorkflowStartMessage(definition: WorkflowDefinition, currentTodo?: WorkflowTodoItem, currentIndex = 0, stepDefinition?: WorkflowStepDefinition, commandResult?: WorkflowStepCommandResult, stateEntries: WorkflowStateEntry[] = []): string {
   const lines = ["You are starting the following Bob workflow.", "", "Workflow:", `- id: ${definition.id}`, `- name: ${definition.name}`, `- title: ${definition.label}`, `- mode: ${definition.mode}`, ""]
+  appendWorkflowContext(lines, { workflowRoot: definition.workflowRoot, workflowFile: definition.workflowFile, workflowFolderName: definition.workflowFolderName, stateEntries })
   if (definition.todoEnabled) lines.push("First, create or update your Todo list using exactly the items below.", "Do not immediately mark them complete. Work through them one by one and only mark an item complete after the corresponding work is actually done.", "", "<workflow_todos>", ...definition.todos.map((todo) => `- [ ] ${todo.id}: ${todo.text}`), "</workflow_todos>", "")
   lines.push("Then follow the workflow instructions below.", "", "<workflow_instructions>", definition.promptWithoutTodo, "</workflow_instructions>")
   if (definition.stepMessage === "step" && currentTodo) {
@@ -1131,15 +1136,17 @@ function buildWorkflowStartMessage(definition: WorkflowDefinition, currentTodo?:
   return lines.join("\n")
 }
 
-function buildCurrentTodoMessage(todo: WorkflowTodoItem, index: number, stepDefinition?: WorkflowStepDefinition, commandResult?: WorkflowStepCommandResult, stateEntries: WorkflowStateEntry[] = []): string {
+function buildCurrentTodoMessage(definition: WorkflowDefinition, todo: WorkflowTodoItem, index: number, stepDefinition?: WorkflowStepDefinition, commandResult?: WorkflowStepCommandResult, stateEntries: WorkflowStateEntry[] = []): string {
   const lines = ["Current workflow Todo item:", `<workflow_todo index=\"${index + 1}\" id=\"${todo.id}\">`, `- [ ] ${todo.id}: ${todo.text}`, "</workflow_todo>"]
+  appendWorkflowContext(lines, { workflowRoot: definition.workflowRoot, workflowFile: definition.workflowFile, workflowFolderName: definition.workflowFolderName, stateEntries })
   appendCommandResult(lines, stepDefinition, commandResult)
   appendWorkflowState(lines, stateEntries)
   return lines.join("\n")
 }
 
-function buildCommandResultMessage(todo: WorkflowTodoItem, index: number, commandResult?: WorkflowStepCommandResult, stateEntries: WorkflowStateEntry[] = []): string | undefined {
+function buildCommandResultMessage(definition: WorkflowDefinition, todo: WorkflowTodoItem, index: number, commandResult?: WorkflowStepCommandResult, stateEntries: WorkflowStateEntry[] = []): string | undefined {
   const lines = ["Workflow step command result:", `<workflow_todo index=\"${index + 1}\" id=\"${todo.id}\">`, `- [ ] ${todo.id}: ${todo.text}`, "</workflow_todo>"]
+  appendWorkflowContext(lines, { workflowRoot: definition.workflowRoot, workflowFile: definition.workflowFile, workflowFolderName: definition.workflowFolderName, stateEntries })
   if (commandResult) lines.push("", buildCommandResultBlock(commandResult))
   appendWorkflowState(lines, stateEntries)
   return lines.join("\n")
@@ -1149,6 +1156,7 @@ function buildStepPromptMessage(definition: WorkflowDefinition, todo: WorkflowTo
   const stepBlock = buildStepPromptBlock(stepDefinition, todo, index)
   if (!stepBlock) return undefined
   const lines = ["Continue the Bob workflow using the current Step instructions.", "", stepBlock]
+  appendWorkflowContext(lines, { workflowRoot: definition.workflowRoot, workflowFile: definition.workflowFile, workflowFolderName: definition.workflowFolderName, stateEntries })
   appendCommandResult(lines, stepDefinition, commandResult)
   appendWorkflowState(lines, stateEntries)
   return lines.join("\n")
@@ -1162,6 +1170,7 @@ function buildStepPromptBlock(stepDefinition: WorkflowStepDefinition | undefined
 
 function buildWorkflowTodoStepMessage(definition: WorkflowDefinition, todo: WorkflowTodoItem, index: number, stepDefinition?: WorkflowStepDefinition, commandResult?: WorkflowStepCommandResult, stateEntries: WorkflowStateEntry[] = []): string {
   const lines = ["Continue the Bob workflow Todo list.", "", "Workflow:", `- id: ${definition.id}`, `- name: ${definition.name}`, `- title: ${definition.label}`, `- mode: ${definition.mode}`, "", "Current Todo item:", `<workflow_todo index=\"${index + 1}\" id=\"${todo.id}\">`, `- [ ] ${todo.id}: ${todo.text}`, "</workflow_todo>", "", "Work only on this Todo item now. Mark it complete only after the corresponding work is actually done."]
+  appendWorkflowContext(lines, { workflowRoot: definition.workflowRoot, workflowFile: definition.workflowFile, workflowFolderName: definition.workflowFolderName, stateEntries })
   appendCommandResult(lines, stepDefinition, commandResult)
   appendWorkflowState(lines, stateEntries)
   return lines.join("\n")

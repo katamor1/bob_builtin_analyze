@@ -189,6 +189,15 @@ test("Bob adapter resolves workflow inputs and passes them to command providers"
   assert.doesNotMatch(source, /inputs: \{\}/)
 })
 
+test("Bob workflow chat messages include bounded workflow root context", () => {
+  const source = fs.readFileSync(path.join(extensionRoot, "src", "extension.ts"), "utf8")
+
+  assert.match(source, /import \{ appendWorkflowContext \} from "\.\/workflowPromptContext"/)
+  assert.match(source, /appendWorkflowContext\(lines, \{[\s\S]*workflowRoot: definition\.workflowRoot[\s\S]*workflowFile: definition\.workflowFile[\s\S]*workflowFolderName: definition\.workflowFolderName[\s\S]*stateEntries[\s\S]*\}\)/)
+  assert.match(source, /buildCommandResultMessage\(this\.options\.definition, context\.todo, context\.index, commandResult, stateEntries\)/)
+  assert.match(source, /buildCurrentTodoMessage\(definition, todo, index, stepDefinition, commandResult, stateEntries\)/)
+})
+
 test("Bob adapter applies guardrails to Todo, result, and legacy top-level commands", () => {
   const source = fs.readFileSync(path.join(extensionRoot, "src", "extension.ts"), "utf8")
   const engine = fs.readFileSync(path.join(extensionRoot, "src", "core", "engine.ts"), "utf8")
