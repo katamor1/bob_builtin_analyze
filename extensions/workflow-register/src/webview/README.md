@@ -12,7 +12,7 @@ Webview の表示とクライアント処理は次のファイルへ分割する
 | `workflowBuilderClientScript.ts` | Webview 内で動く form state / tab / preview / guardrails UI 処理。 |
 | `workflowBuilderBodyScript.ts` | YAML front matter 以外の Markdown body 編集 UI を追加する補助 script。 |
 | `workflowBuilderHelpCatalog.ts` | GUI 設定者向けの日本語ヘルプ文言と選択肢説明。 |
-| `workflowBuilderHelpScript.ts` | 既存 form DOM へ `?` ボタン、field key、固定ヘルプパネルを追加する補助 script。 |
+| `workflowBuilderHelpScript.ts` | 既存 form DOM へ `?` ボタン、field key、固定ヘルプパネル、検索、項目ジャンプを追加する補助 script。 |
 
 ## Extension host と Webview の境界
 
@@ -53,6 +53,10 @@ GUI が作った state でも、保存直前に必ず既存 validator を通す�
 - input / select / textarea への focus 時のヘルプ切り替え。
 - select の選択値に応じた選択肢説明。
 - tab 切り替え時のタブ概要表示。
+- ヘルプ catalog 全体を横断する日本語/英語検索。
+- 検索結果クリックによる対象タブへの移動と対象 field への focus。
+
+検索は `labelJa`、`fieldKey`、`summary`、`effect`、`whenToUse`、`caution`、`example`、選択肢説明を対象にする。たとえば `resultKey`、`承認`、`成果物`、`Bob`、`stop` などで検索できる。
 
 この機能は Webview 内だけで完結し、serializer / loader / save path には影響しない。
 
