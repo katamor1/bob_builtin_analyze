@@ -3,6 +3,8 @@ const assert = require("node:assert/strict")
 
 const { createAuthoringModelFromTemplate } = require("../out/core/workflowAuthoringDefaults")
 const { renderWorkflowBuilderBodyScript } = require("../out/webview/workflowBuilderBodyScript")
+const { workflowBuilderHelpCatalog } = require("../out/webview/workflowBuilderHelpCatalog")
+const { renderWorkflowBuilderHelpScript } = require("../out/webview/workflowBuilderHelpScript")
 const { renderWorkflowBuilderHtml } = require("../out/webview/workflowBuilderHtml")
 const { renderWorkflowBuilderStyles } = require("../out/webview/workflowBuilderStyles")
 const { renderWorkflowBuilderClientScript } = require("../out/webview/workflowBuilderClientScript")
@@ -28,10 +30,13 @@ test("workflow builder html includes split style and client script output", () =
   assert.match(html, /Guardrails/)
   assert.match(html, /Markdown Body/)
   assert.match(html, /requireApproval/)
+  assert.match(html, /helpCatalog/)
+  assert.match(html, /workflowHelpPanel/)
 })
 
-test("workflow builder split modules expose approval and markdown body editor pieces", () => {
+test("workflow builder split modules expose approval, markdown body, and help editor pieces", () => {
   assert.match(renderWorkflowBuilderStyles(), /\.tabs/)
+  assert.match(renderWorkflowBuilderStyles(), /\.help-panel/)
   const script = renderWorkflowBuilderClientScript()
   assert.match(script, /add-approval/)
   assert.match(script, /delete-approval/)
@@ -41,4 +46,17 @@ test("workflow builder split modules expose approval and markdown body editor pi
   assert.match(bodyScript, /renderMarkdownBody/)
   assert.match(bodyScript, /data-body-field/)
   assert.match(bodyScript, /model\.body/)
+
+  const helpScript = renderWorkflowBuilderHelpScript()
+  assert.match(helpScript, /renderHelpPanel/)
+  assert.match(helpScript, /data-help-id/)
+  assert.match(helpScript, /MutationObserver/)
+})
+
+test("workflow builder help catalog covers high priority Japanese help entries", () => {
+  assert.equal(workflowBuilderHelpCatalog["step.type"].labelJa, "Step 種別")
+  assert.equal(workflowBuilderHelpCatalog["preflight.failurePolicy"].options.stop.label, "stop")
+  assert.match(workflowBuilderHelpCatalog["guardrails.allowedCommands"].summary, /許可/)
+  assert.match(workflowBuilderHelpCatalog["approval.when"].example, /reviewContext\.changedFiles\.count/)
+  assert.match(workflowBuilderHelpCatalog["completion.validateResult"].effect, /schema/)
 })
