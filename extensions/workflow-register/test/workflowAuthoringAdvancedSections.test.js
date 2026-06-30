@@ -32,15 +32,32 @@ test("serializes requires, preflight, completion, approval guardrails, and markd
   const { rendered, validation } = renderAndValidate(model)
   assert.equal(validation.ok, true)
   assert.match(rendered.markdown, /requires:/)
-  assert.match(rendered.markdown, /minVersion: 2\.0\.0/)
+  assert.match(rendered.markdown, /minVersion: "2\.0\.0"/)
   assert.match(rendered.markdown, /preflight:/)
   assert.match(rendered.markdown, /failurePolicy: stop/)
   assert.match(rendered.markdown, /guardrails:/)
   assert.match(rendered.markdown, /requireApproval:/)
   assert.match(rendered.markdown, /approve-dangerous-change/)
+  assert.match(rendered.markdown, /when: "command\.requiresApproval"/)
   assert.match(rendered.markdown, /completion:/)
   assert.match(rendered.markdown, /includeArtifacts: true/)
   assert.match(rendered.markdown, /## Review Procedure/)
+})
+
+test("quotes approval conditions with comparison expressions", () => {
+  const model = createAuthoringModelFromTemplate({
+    name: "approval-condition",
+    title: "Approval Condition",
+    description: "条件式を引用符付きで出力する。",
+    template: "simple-agent"
+  })
+  model.requires = { bob: { minVersion: "2.0.0" } }
+  model.guardrails = { requireApproval: [{ id: "large-change", when: "reviewContext.changedFiles.count > 100", message: "変更ファイル数が多いため承認してください。" }] }
+
+  const { rendered, validation } = renderAndValidate(model)
+  assert.equal(validation.ok, true)
+  assert.match(rendered.markdown, /minVersion: "2\.0\.0"/)
+  assert.match(rendered.markdown, /when: "reviewContext\.changedFiles\.count > 100"/)
 })
 
 test("loads advanced sections, approval guardrails, and markdown body back into the authoring model", () => {
