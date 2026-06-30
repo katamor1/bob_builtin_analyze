@@ -64,6 +64,7 @@ test("workflow builder split modules expose approval, markdown body, and help ed
   assert.match(helpScript, /dynamicChoiceHelp/)
   assert.match(helpScript, /artifact\.producedBy/)
   assert.match(helpScript, /dataset\.stateKey/)
+  assert.match(helpScript, /controlForHelpButton/)
 })
 
 test("workflow builder help catalog covers high priority Japanese help entries", () => {
