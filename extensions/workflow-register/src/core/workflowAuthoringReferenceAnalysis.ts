@@ -30,6 +30,13 @@ export interface WorkflowAuthoringMoveImpact {
   issues: WorkflowAuthoringReferenceIssue[]
 }
 
+/**
+ * Checks references that the GUI can break while editing step order or ids.
+ *
+ * The runtime validator still runs before save. This analysis is intentionally
+ * lightweight and focused on interactive UX: warn users as soon as a step move,
+ * removal, or artifact producer selection would create broken references.
+ */
 export function analyzeAuthoringReferences(model: WorkflowAuthoringModel): WorkflowAuthoringReferenceIssue[] {
   const issues: WorkflowAuthoringReferenceIssue[] = []
   const stepIds = new Set<string>()
@@ -62,6 +69,7 @@ export function analyzeAuthoringReferences(model: WorkflowAuthoringModel): Workf
   return issues
 }
 
+/** Returns the references that would be affected before the GUI deletes a step. */
 export function analyzeStepRemovalImpact(model: WorkflowAuthoringModel, stepIndex: number): WorkflowAuthoringRemovalImpact | undefined {
   const step = model.steps[stepIndex]
   if (!step) return undefined
@@ -74,6 +82,7 @@ export function analyzeStepRemovalImpact(model: WorkflowAuthoringModel, stepInde
   return { stepId: step.id, resultKeys, includeStateConsumers, producedArtifacts }
 }
 
+/** Simulates a move so the GUI can warn before it creates forward references. */
 export function analyzeStepMoveImpact(model: WorkflowAuthoringModel, fromIndex: number, toIndex: number): WorkflowAuthoringMoveImpact | undefined {
   const step = model.steps[fromIndex]
   if (!step || toIndex < 0 || toIndex >= model.steps.length || fromIndex === toIndex) return undefined
