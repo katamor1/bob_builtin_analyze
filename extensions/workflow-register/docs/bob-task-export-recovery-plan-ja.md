@@ -1,5 +1,15 @@
 # Bob タスクエクスポートを使った中断復旧補助計画
 
+## 実装状況
+
+この計画は `WorkflowEngine` 統一後の実装に反映済みである。
+
+- Bob UI 経由の Todo step は `WorkflowEngine.runWorkflow(..., { executionMode: "singleStep" })` で実行する。
+- command palette 経由は従来どおり `WorkflowEngine` の full 実行を使う。
+- `run.json` は両経路で共通の正本であり、Bob UI 側の `StepRuntime` は手動完了待ちだけを保持する。
+- Bob task snapshot は `TaskSnapshotProvider` / `FileTaskSnapshotStore` で保存する。
+- `workflowRegister.inspectRunDiagnostics` は snapshot summary と `run.json` の不整合を表示する。
+
 ## 目的
 
 `workflow-register` の中断復旧では、`.bob/workflows/runs/<runId>/run.json` を実行状態の正本として扱う。
@@ -163,18 +173,21 @@ export interface TaskSnapshotStore {
 
 保存処理は `run.json` と同様に atomic write を使う。
 
-### 3. `StepRuntime` / Bob adapter から保存する
+### 3. Engine hook / Bob adapter から保存する
 
-Bob 連携側では、次の関数周辺に保存ポイントを入れる。
+Bob 連携側では、`BobWorkflowEngineRunner` が `WorkflowExecutionHooks` を使って保存ポイントを接続する。
 
-- `runSingleWorkflowStep`
-- `runTodoStep`
-- `runWorkflowStepAgent`
-- `captureAgentStepResult`
-- `captureHeldStepResult`
-- `completeOrHoldStep`
+| Hook | reason |
+| --- | --- |
+| `onWorkflowStart` | `workflow-start` |
+| `onStepStart` | `step-start` |
+| `onAgentOutput` | `agent-output` |
+| `onHandoffFailed` | `handoff-failed` |
+| `onStepHeld` | `held` |
+| `onStepFailed` | `failed` |
+| `onStepCompleted` / `onWorkflowCompleted` | `completed` |
 
-特に `captureAgentStepResult` と `captureHeldStepResult` の前後は優先度が高い。
+手動完了時の `captureHeldStepResult` は、Engine の manual completion controller から登録された `activeSteps` を完了する時に呼ばれる。
 
 ### 4. handoff 再試行で利用する
 
@@ -184,6 +197,8 @@ Bob 連携側では、次の関数周辺に保存ポイントを入れる。
 2. `task-snapshots/latest.json` の `lastAssistantText`
 3. 該当 step の `agent-output` snapshot
 4. 見つからなければ通常の retry にフォールバック
+
+snapshot は `runId`、`workflowId`、`workflowDefinitionHash`、`stepId` が一致する場合だけ自動復帰に使う。
 
 これにより、AI の回答生成は完了していたが、ファイル保存や capture command の途中で落ちたケースを救済できる。
 
@@ -216,28 +231,28 @@ Bob タスクエクスポートには、ユーザー入力、レビュー対象�
 
 ### Phase 1: 証跡保存のみ
 
-- `TaskSnapshotProvider` を追加する。
-- `TaskSnapshotStore` を追加する。
-- workflow 開始、step 開始、failed / held 移行時に snapshot を保存する。
-- `latest.json` を保存する。
+- 完了: `TaskSnapshotProvider` を追加する。
+- 完了: `TaskSnapshotStore` を追加する。
+- 完了: workflow 開始、step 開始、failed / held 移行時に snapshot を保存する。
+- 完了: `latest.json` を保存する。
 
 ### Phase 2: handoff 救済
 
-- agent output 直後に snapshot を保存する。
-- handoff 失敗時に snapshot を保存する。
-- retry / resume 時に snapshot の `lastAssistantText` から handoff を再試行できるようにする。
+- 完了: agent output 直後に snapshot を保存する。
+- 完了: handoff 失敗時に snapshot を保存する。
+- 完了: retry / resume 時に snapshot の `lastAssistantText` から handoff を再試行できるようにする。
 
 ### Phase 3: 診断統合
 
-- `Inspect Workflow Run Diagnostics` に snapshot 情報を追加する。
-- `run.json` と snapshot の不整合を警告する。
-- snapshot があるのに `run.json` に `state` がないケースを検出する。
+- 完了: `Inspect Workflow Run Diagnostics` に snapshot 情報を追加する。
+- 完了: `run.json` と snapshot の不整合を警告する。
+- 完了: snapshot の `lastAssistantText` / handoff error 有無を表示する。
 
 ### Phase 4: 運用制御
 
-- snapshot 最大サイズを設定化する。
-- 保存有無を設定化する。
-- 古い snapshot の pruning を追加する。
+- 完了: snapshot 最大サイズを設定化する。
+- 完了: 保存有無を設定化する。
+- 完了: 古い snapshot の pruning を追加する。
 
 ## テスト計画
 

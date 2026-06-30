@@ -77,6 +77,33 @@
           "type": "string",
           "default": "",
           "description": "WorkflowAiProvider として使う任意の VS Code command。{ kind, payload } を受け取り、workflow design draft、repair proposal、diagnostic explanation を返します。"
+        },
+        "workflowRegister.taskSnapshots.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Bob UI 実行時に .bob/workflows/runs/<runId>/task-snapshots へ補助 snapshot を保存します。"
+        },
+        "workflowRegister.taskSnapshots.maxBytes": {
+          "type": "number",
+          "default": 262144,
+          "minimum": 1024,
+          "description": "1 task snapshot JSON の最大サイズ。超過時は古い messages から省略します。"
+        },
+        "workflowRegister.taskSnapshots.maxPerRun": {
+          "type": "number",
+          "default": 50,
+          "minimum": 1,
+          "description": "1 run に保持する task snapshot 数。latest.json はこの数に含めません。"
+        },
+        "workflowRegister.taskSnapshots.includeMessages": {
+          "type": "boolean",
+          "default": true,
+          "description": "task snapshot に Bob chat messages を含めます。無効時も metadata と lastAssistantText は保存対象です。"
+        },
+        "workflowRegister.taskSnapshots.pruneOnSave": {
+          "type": "boolean",
+          "default": true,
+          "description": "snapshot 保存時に maxPerRun を超えた古い snapshot を削除します。"
         }
       }
     },
