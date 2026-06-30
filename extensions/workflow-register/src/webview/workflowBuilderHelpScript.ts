@@ -228,6 +228,31 @@ function focusHelpTarget(id) {
   renderHelpPanel(id);
   return false;
 }
+function controlForHelpButton(button) {
+  const helpId = button.dataset && button.dataset.helpId;
+  if (!helpId) return undefined;
+  const section = button.closest && button.closest('[data-section-help]');
+  if (section) return section;
+  const label = button.closest && button.closest('label');
+  if (label) {
+    const inside = label.querySelector('[data-help-id="' + helpId + '"]:not(.help-button)');
+    if (inside) return inside;
+    let sibling = label.nextElementSibling;
+    while (sibling) {
+      if (sibling.matches && sibling.matches('[data-help-id="' + helpId + '"]:not(.help-button)')) return sibling;
+      const nested = sibling.querySelector && sibling.querySelector('[data-help-id="' + helpId + '"]:not(.help-button)');
+      if (nested) return nested;
+      if (sibling.tagName === 'LABEL' || sibling.tagName === 'H2' || sibling.tagName === 'H3') break;
+      sibling = sibling.nextElementSibling;
+    }
+  }
+  let previous = button.previousElementSibling;
+  while (previous) {
+    if (previous.matches && previous.matches('[data-help-id="' + helpId + '"]:not(.help-button)')) return previous;
+    previous = previous.previousElementSibling;
+  }
+  return document.querySelector('[data-help-id="' + helpId + '"]:not(.help-button)');
+}
 function jumpToHelpEntry(id) {
   const tab = helpTabForId(id);
   if (tab && typeof activeTab !== 'undefined' && activeTab !== tab) {
@@ -270,9 +295,7 @@ document.addEventListener('click', function(event) {
   if (button && button.classList && button.classList.contains('help-button')) {
     event.preventDefault();
     event.stopPropagation();
-    const label = button.closest('label');
-    const control = label ? label.querySelector('[data-help-id]:not(.help-button)') : button.previousElementSibling;
-    renderHelpPanel(button.dataset.helpId, control);
+    renderHelpPanel(button.dataset.helpId, controlForHelpButton(button));
     return;
   }
   const tab = event.target && event.target.closest ? event.target.closest('.tab') : undefined;
