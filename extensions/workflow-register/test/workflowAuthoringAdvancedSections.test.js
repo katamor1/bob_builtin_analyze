@@ -12,7 +12,7 @@ function renderAndValidate(model) {
   return { rendered, validation }
 }
 
-test("serializes requires, preflight, completion, and approval guardrails", () => {
+test("serializes requires, preflight, completion, approval guardrails, and markdown body", () => {
   const model = createAuthoringModelFromTemplate({
     name: "advanced-sections",
     title: "Advanced Sections",
@@ -27,6 +27,7 @@ test("serializes requires, preflight, completion, and approval guardrails", () =
     requireApproval: [{ id: "approve-dangerous-change", when: "command.requiresApproval", message: "人間の承認が必要です。" }]
   }
   model.completion = { summary: "Advanced workflow completed.", includeArtifacts: true, validateResult: true, visualization: { type: "markdown", enabled: true } }
+  model.body = "# Advanced Sections\n\n## Review Procedure\n\n1. Collect context.\n2. Review changes."
 
   const { rendered, validation } = renderAndValidate(model)
   assert.equal(validation.ok, true)
@@ -39,9 +40,10 @@ test("serializes requires, preflight, completion, and approval guardrails", () =
   assert.match(rendered.markdown, /approve-dangerous-change/)
   assert.match(rendered.markdown, /completion:/)
   assert.match(rendered.markdown, /includeArtifacts: true/)
+  assert.match(rendered.markdown, /## Review Procedure/)
 })
 
-test("loads advanced sections and approval guardrails back into the authoring model", () => {
+test("loads advanced sections, approval guardrails, and markdown body back into the authoring model", () => {
   const model = createAuthoringModelFromTemplate({
     name: "advanced-roundtrip",
     title: "Advanced Roundtrip",
@@ -52,6 +54,7 @@ test("loads advanced sections and approval guardrails back into the authoring mo
   model.preflight = [{ id: "check-readme", title: "Check README", required: false, checks: ["workflow.filesExist"], files: ["README.md"], failurePolicy: "warn" }]
   model.guardrails = { requireApproval: [{ id: "approve-report", when: "artifact.externalOutput", message: "外部出力前に承認してください。" }] }
   model.completion = { summary: "Done.", includeArtifacts: false, validateResult: true, visualization: { type: "table", enabled: false } }
+  model.body = "# Existing Body\n\n## Manual Notes\n\nKeep this section editable outside YAML."
 
   const { rendered } = renderAndValidate(model)
   const loaded = loadAuthoringModelFromMarkdown({ sourceId: "workflow-register", filePath: rendered.filePath, text: rendered.markdown })
@@ -64,4 +67,5 @@ test("loads advanced sections and approval guardrails back into the authoring mo
   assert.equal(loaded.model.guardrails.requireApproval[0].when, "artifact.externalOutput")
   assert.equal(loaded.model.completion.summary, "Done.")
   assert.equal(loaded.model.completion.visualization.type, "table")
+  assert.match(loaded.model.body, /## Manual Notes/)
 })

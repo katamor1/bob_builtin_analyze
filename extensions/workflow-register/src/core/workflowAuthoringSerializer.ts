@@ -32,7 +32,7 @@ export function serializeAuthoringModelToMarkdown(model: WorkflowAuthoringModel)
     completion: completionOrUndefined(model.completion),
     steps: nonEmptyArray(model.steps.map(serializeStep)) ?? []
   })
-  const frontMatterText = yaml.dump(frontMatter, { lineWidth: -1, noRefs: true, sortKeys: false }).trimEnd()
+  const frontMatterText = quoteStableYamlStrings(yaml.dump(frontMatter, { lineWidth: -1, noRefs: true, sortKeys: false }).trimEnd())
   const body = model.body?.trim() || `# ${title}\n\n## Goal\n\n${description}`
   return { name, filePath, markdown: `---\n${frontMatterText}\n---\n${body.trimEnd()}\n` }
 }
@@ -137,6 +137,22 @@ function completionOrUndefined(completion: WorkflowCompletionDefinition | undefi
     visualization: visualization && Object.keys(visualization).length > 0 ? visualization : undefined
   }) as WorkflowCompletionDefinition
   return Object.keys(next).length > 0 ? next : undefined
+}
+
+function quoteStableYamlStrings(text: string): string {
+  return text
+    .split("\n")
+    .map((line) => quoteYamlLineValue(line, "minVersion"))
+    .map((line) => quoteYamlLineValue(line, "when"))
+    .join("\n")
+}
+
+function quoteYamlLineValue(line: string, key: string): string {
+  const match = line.match(new RegExp(`^(\\s*${key}:\\s+)(.+)$`))
+  if (!match) return line
+  const value = match[2].trim()
+  if (!value || value.startsWith("\"") || value.startsWith("'") || value === "|" || value === ">") return line
+  return `${match[1]}${JSON.stringify(value)}`
 }
 
 function nonEmptyArray<T>(value: T[]): T[] | undefined {

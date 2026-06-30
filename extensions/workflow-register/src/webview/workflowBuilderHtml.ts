@@ -1,4 +1,5 @@
 import { WorkflowAuthoringModel } from "../core/workflowAuthoringModel"
+import { renderWorkflowBuilderBodyScript } from "./workflowBuilderBodyScript"
 import { renderWorkflowBuilderClientScript } from "./workflowBuilderClientScript"
 import { renderWorkflowBuilderStyles } from "./workflowBuilderStyles"
 
@@ -45,7 +46,7 @@ ${renderWorkflowBuilderStyles()}
 </aside>
 <section>
 <div class="tabs">
-<div class="tab active" data-tab="step">Step detail</div><div class="tab" data-tab="inputs">Inputs</div><div class="tab" data-tab="requires">Requires</div><div class="tab" data-tab="preflight">Preflight</div><div class="tab" data-tab="artifacts">Artifacts</div><div class="tab" data-tab="guardrails">Guardrails</div><div class="tab" data-tab="completion">Completion</div><div class="tab" data-tab="preview">Preview / Diagnostics</div>
+<div class="tab active" data-tab="step">Step detail</div><div class="tab" data-tab="inputs">Inputs</div><div class="tab" data-tab="requires">Requires</div><div class="tab" data-tab="preflight">Preflight</div><div class="tab" data-tab="artifacts">Artifacts</div><div class="tab" data-tab="guardrails">Guardrails</div><div class="tab" data-tab="completion">Completion</div><div class="tab" data-tab="body">Markdown Body</div><div class="tab" data-tab="preview">Preview / Diagnostics</div>
 </div>
 <div id="content"></div>
 </section>
@@ -55,6 +56,7 @@ const templates = ${JSON.stringify(options.templateOptions)};
 let model = ${JSON.stringify(options.initialModel)};
 let editMode = ${JSON.stringify(options.isEditMode)};
 ${renderWorkflowBuilderClientScript()}
+${renderWorkflowBuilderBodyScript()}
 </script>
 </body>
 </html>`
