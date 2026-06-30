@@ -37,6 +37,7 @@ test("workflow builder html includes split style and client script output", () =
 test("workflow builder split modules expose approval, markdown body, and help editor pieces", () => {
   assert.match(renderWorkflowBuilderStyles(), /\.tabs/)
   assert.match(renderWorkflowBuilderStyles(), /\.help-panel/)
+  assert.match(renderWorkflowBuilderStyles(), /\.help-search-results/)
   const script = renderWorkflowBuilderClientScript()
   assert.match(script, /add-approval/)
   assert.match(script, /delete-approval/)
@@ -51,6 +52,10 @@ test("workflow builder split modules expose approval, markdown body, and help ed
   assert.match(helpScript, /renderHelpPanel/)
   assert.match(helpScript, /data-help-id/)
   assert.match(helpScript, /MutationObserver/)
+  assert.match(helpScript, /searchHelpEntries/)
+  assert.match(helpScript, /data-help-search/)
+  assert.match(helpScript, /data-help-jump/)
+  assert.match(helpScript, /jumpToHelpEntry/)
 })
 
 test("workflow builder help catalog covers high priority Japanese help entries", () => {
