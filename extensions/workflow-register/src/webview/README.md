@@ -7,10 +7,12 @@ Webview の表示とクライアント処理は次のファイルへ分割する
 | file | role |
 | --- | --- |
 | `workflowBuilderPanel.ts` | WebviewPanel 作成、preview / diff / save、backup、`workflowRegister.reload` 実行。 |
-| `workflowBuilderHtml.ts` | HTML shell、CSP、nonce、初期 state 埋め込み。 |
-| `workflowBuilderStyles.ts` | Webview CSS。 |
+| `workflowBuilderHtml.ts` | HTML shell、CSP、nonce、初期 state、help catalog 埋め込み。 |
+| `workflowBuilderStyles.ts` | Webview CSS。3カラムレイアウトとヘルプパネルも定義する。 |
 | `workflowBuilderClientScript.ts` | Webview 内で動く form state / tab / preview / guardrails UI 処理。 |
 | `workflowBuilderBodyScript.ts` | YAML front matter 以外の Markdown body 編集 UI を追加する補助 script。 |
+| `workflowBuilderHelpCatalog.ts` | GUI 設定者向けの日本語ヘルプ文言と選択肢説明。 |
+| `workflowBuilderHelpScript.ts` | 既存 form DOM へ `?` ボタン、field key、固定ヘルプパネルを追加する補助 script。 |
 
 ## Extension host と Webview の境界
 
@@ -38,6 +40,21 @@ Webview form state
 ```
 
 GUI が作った state でも、保存直前に必ず既存 validator を通す。これにより Webview 側の入力不整合がそのままファイルに保存されることを避ける。
+
+## Contextual Help
+
+`workflowBuilderHelpCatalog.ts` は、日本語の項目説明、効果、注意、YAML例、select の選択肢説明を持つ静的 catalog である。
+
+`workflowBuilderHelpScript.ts` は既存のフォーム描画を大きく変更せず、DOM を観察して次を後付けする。
+
+- ラベル横の `?` ボタン。
+- `title` や `guardrails.requireApproval[].when` などの実フィールド名表示。
+- 右側固定の `この項目の説明` パネル。
+- input / select / textarea への focus 時のヘルプ切り替え。
+- select の選択値に応じた選択肢説明。
+- tab 切り替え時のタブ概要表示。
+
+この機能は Webview 内だけで完結し、serializer / loader / save path には影響しない。
 
 ## Guardrails tab
 
