@@ -66,8 +66,8 @@ export class WorkflowEngine {
   }
 
   async runWorkflow(workflow: CoreWorkflowDefinition, inputs: Record<string, unknown>): Promise<WorkflowRunState> {
-    const run = await this.runStore.createRun(workflow, inputs)
-    const inputProblems = validateWorkflowInputs(workflow.inputs ?? {}, inputs)
+    const run = await this.runStore.findRecoverableRun?.(workflow, inputs) ?? await this.runStore.createRun(workflow, inputs)
+    const inputProblems = validateWorkflowInputs(workflow.inputs ?? {}, run.inputs)
     if (inputProblems.length > 0) {
       run.status = "failed"
       run.error = inputProblems.join("; ")
@@ -84,8 +84,11 @@ export class WorkflowEngine {
       return run
     }
 
+    const startIndex = recoverStartIndex(workflow, run)
+    run.status = "running"
+    run.error = undefined
     await this.runStore.saveRun(run)
-    return this.continueRun(workflow, run, 0)
+    return this.continueRun(workflow, run, startIndex)
   }
 
   async resumeRun(runId: string, options: ResumeRunOptions): Promise<WorkflowRunState> {
@@ -333,6 +336,13 @@ function formatPreflightCheckFailure(result: WorkflowPreflightCheckResult): stri
 
 function nextPendingIndex(run: WorkflowRunState): number {
   return run.steps.findIndex((step) => step.status === "pending" || step.status === "held" || step.status === "failed")
+}
+
+function recoverStartIndex(workflow: CoreWorkflowDefinition, run: WorkflowRunState): number {
+  const currentIndex = run.currentStep ? workflow.engineSteps.findIndex((step) => step.id === run.currentStep) : -1
+  if (currentIndex >= 0) return run.steps[currentIndex]?.status === "completed" ? currentIndex + 1 : currentIndex
+  const pending = nextPendingIndex(run)
+  return pending >= 0 ? pending : workflow.engineSteps.length
 }
 
 function renderArtifactPath(artifact: WorkflowArtifactDefinition, context: { inputs: Record<string, unknown>; state: Record<string, string>; run: WorkflowRunState; workflow: CoreWorkflowDefinition; step: EngineStep }): string {
