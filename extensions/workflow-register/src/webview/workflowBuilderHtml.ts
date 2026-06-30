@@ -1,6 +1,8 @@
 import { WorkflowAuthoringModel } from "../core/workflowAuthoringModel"
 import { renderWorkflowBuilderBodyScript } from "./workflowBuilderBodyScript"
 import { renderWorkflowBuilderClientScript } from "./workflowBuilderClientScript"
+import { workflowBuilderHelpCatalog } from "./workflowBuilderHelpCatalog"
+import { renderWorkflowBuilderHelpScript } from "./workflowBuilderHelpScript"
 import { renderWorkflowBuilderStyles } from "./workflowBuilderStyles"
 
 export interface WorkflowBuilderTemplateOption {
@@ -53,10 +55,12 @@ ${renderWorkflowBuilderStyles()}
 </main>
 <script nonce="${options.nonce}">
 const templates = ${JSON.stringify(options.templateOptions)};
+const helpCatalog = ${JSON.stringify(workflowBuilderHelpCatalog)};
 let model = ${JSON.stringify(options.initialModel)};
 let editMode = ${JSON.stringify(options.isEditMode)};
 ${renderWorkflowBuilderClientScript()}
 ${renderWorkflowBuilderBodyScript()}
+${renderWorkflowBuilderHelpScript()}
 </script>
 </body>
 </html>`
