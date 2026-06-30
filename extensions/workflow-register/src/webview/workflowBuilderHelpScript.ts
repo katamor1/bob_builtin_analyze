@@ -1,6 +1,7 @@
 export function renderWorkflowBuilderHelpScript(): string {
   return String.raw`
 let activeHelpId = 'tab.step';
+let helpSearchQuery = '';
 const defaultHelpId = 'tab.step';
 function helpEntry(id) { return helpCatalog[id] || helpCatalog[defaultHelpId]; }
 function optionHelpHtml(entry, control) {
@@ -9,12 +10,57 @@ function optionHelpHtml(entry, control) {
   if (!option) return '';
   return '<div class="help-option"><strong>選択中: ' + escapeHtml(option.label) + '</strong><p>' + escapeHtml(option.summary) + '</p><p>' + escapeHtml(option.effect) + '</p>' + (option.caution ? '<p class="help-caution">注意: ' + escapeHtml(option.caution) + '</p>' : '') + '</div>';
 }
+function helpSearchText(id, entry) {
+  const optionText = entry.options ? Object.keys(entry.options).map(function(key) {
+    const option = entry.options[key];
+    return [key, option.label, option.summary, option.effect, option.caution].filter(Boolean).join(' ');
+  }).join(' ') : '';
+  return [id, entry.labelJa, entry.fieldKey, entry.summary, entry.effect, entry.whenToUse, entry.caution, entry.example, optionText].filter(Boolean).join(' ').toLowerCase();
+}
+function searchHelpEntries(query) {
+  const normalized = String(query || '').trim().toLowerCase();
+  if (!normalized) return [];
+  const words = normalized.split(/\s+/).filter(Boolean);
+  return Object.keys(helpCatalog).filter(function(id) {
+    const entry = helpCatalog[id];
+    const text = helpSearchText(id, entry);
+    return words.every(function(word) { return text.indexOf(word) >= 0; });
+  }).slice(0, 12);
+}
+function helpTabForId(id) {
+  if (!id) return undefined;
+  if (id.indexOf('tab.') === 0) return id.slice(4);
+  if (id.indexOf('meta.') === 0) return undefined;
+  if (id.indexOf('step.') === 0 || id.indexOf('command.') === 0 || id.indexOf('result.') === 0) return 'step';
+  if (id.indexOf('input.') === 0) return 'inputs';
+  if (id.indexOf('requires.') === 0) return 'requires';
+  if (id.indexOf('preflight.') === 0) return 'preflight';
+  if (id.indexOf('artifact.') === 0) return 'artifacts';
+  if (id.indexOf('guardrails.') === 0 || id.indexOf('approval.') === 0) return 'guardrails';
+  if (id.indexOf('completion.') === 0) return 'completion';
+  if (id.indexOf('body.') === 0) return 'body';
+  return undefined;
+}
+function helpSearchHtml() {
+  const results = searchHelpEntries(helpSearchQuery);
+  const value = escapeHtml(helpSearchQuery);
+  const resultHtml = !helpSearchQuery.trim()
+    ? '<div class="muted">例: resultKey / 承認 / 成果物 / Bob / stop</div>'
+    : results.length === 0
+      ? '<div class="muted">該当する項目がありません。</div>'
+      : '<div class="help-search-results">' + results.map(function(id) {
+          const entry = helpCatalog[id];
+          const tab = helpTabForId(id);
+          return '<button class="help-result" type="button" data-help-jump="' + escapeHtml(id) + '"><strong>' + escapeHtml(entry.labelJa) + '</strong><span>' + escapeHtml(entry.fieldKey) + '</span>' + (tab ? '<em>' + escapeHtml(tab) + '</em>' : '') + '</button>';
+        }).join('') + '</div>';
+  return '<div class="help-search"><label>ヘルプ検索</label><input data-help-search="true" value="' + value + '" placeholder="resultKey、承認、成果物、Bob など" />' + resultHtml + '</div>';
+}
 function renderHelpPanel(id, control) {
   activeHelpId = id || activeHelpId || defaultHelpId;
   const entry = helpEntry(activeHelpId);
   const panel = ensureHelpPanel();
   if (!entry || !panel) return;
-  panel.innerHTML = '<h2>この項目の説明</h2>' +
+  panel.innerHTML = helpSearchHtml() + '<h2>この項目の説明</h2>' +
     '<div class="help-title">' + escapeHtml(entry.labelJa) + '</div>' +
     '<div class="help-key">' + escapeHtml(entry.fieldKey) + '</div>' +
     '<p>' + escapeHtml(entry.summary) + '</p>' +
@@ -98,15 +144,55 @@ function helpForActiveTab() {
   if (!tab || !tab.dataset || !tab.dataset.tab) return defaultHelpId;
   return 'tab.' + tab.dataset.tab;
 }
+function focusHelpTarget(id) {
+  const target = document.querySelector('[data-help-id="' + id + '"]:not(.help-button)');
+  if (target && typeof target.focus === 'function') {
+    target.focus();
+    target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    renderHelpPanel(id, target);
+    return true;
+  }
+  renderHelpPanel(id);
+  return false;
+}
+function jumpToHelpEntry(id) {
+  const tab = helpTabForId(id);
+  if (tab && typeof activeTab !== 'undefined' && activeTab !== tab) {
+    activeTab = tab;
+    renderTabs();
+    setTimeout(function() { decorateHelpTargets(document.getElementById('content')); focusHelpTarget(id); }, 0);
+    return;
+  }
+  decorateHelpTargets(document);
+  focusHelpTarget(id);
+}
 document.addEventListener('focusin', function(event) {
   const control = event.target && event.target.closest ? event.target.closest('[data-help-id]') : undefined;
   if (control) renderHelpPanel(control.dataset.helpId, control);
+});
+document.addEventListener('input', function(event) {
+  const search = event.target && event.target.closest ? event.target.closest('[data-help-search]') : undefined;
+  if (!search) return;
+  helpSearchQuery = search.value;
+  renderHelpPanel(activeHelpId);
+  const nextSearch = document.querySelector('[data-help-search]');
+  if (nextSearch) {
+    nextSearch.focus();
+    nextSearch.setSelectionRange(nextSearch.value.length, nextSearch.value.length);
+  }
 });
 document.addEventListener('change', function(event) {
   const control = event.target && event.target.closest ? event.target.closest('[data-help-id]') : undefined;
   if (control) renderHelpPanel(control.dataset.helpId, control);
 });
 document.addEventListener('click', function(event) {
+  const jump = event.target && event.target.closest ? event.target.closest('[data-help-jump]') : undefined;
+  if (jump) {
+    event.preventDefault();
+    event.stopPropagation();
+    jumpToHelpEntry(jump.dataset.helpJump);
+    return;
+  }
   const button = event.target && event.target.closest ? event.target.closest('[data-help-id]') : undefined;
   if (button && button.classList && button.classList.contains('help-button')) {
     event.preventDefault();
