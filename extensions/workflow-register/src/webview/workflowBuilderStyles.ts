@@ -38,5 +38,9 @@ pre { white-space: pre-wrap; overflow: auto; padding: 10px; background: var(--vs
 .help-button { width: 18px; height: 18px; min-width: 18px; padding: 0; margin-left: 4px; border-radius: 50%; font-size: 11px; line-height: 16px; vertical-align: middle; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); }
 .help-option { border: 1px solid var(--vscode-panel-border); border-left: 4px solid var(--vscode-focusBorder); padding: 8px; margin: 10px 0; background: var(--vscode-editor-background); }
 .help-caution { color: var(--vscode-foreground); }
+.help-search { border-bottom: 1px solid var(--vscode-panel-border); padding-bottom: 10px; margin-bottom: 12px; }
+.help-search-results { display: grid; gap: 6px; margin-top: 8px; }
+.help-result { display: block; width: 100%; text-align: left; background: var(--vscode-editor-background); color: var(--vscode-foreground); border: 1px solid var(--vscode-panel-border); }
+.help-result span, .help-result em { display: block; color: var(--vscode-descriptionForeground); font-size: 11px; font-style: normal; margin-top: 2px; }
 `
 }
