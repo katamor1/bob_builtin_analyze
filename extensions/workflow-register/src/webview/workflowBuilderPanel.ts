@@ -1,3 +1,4 @@
+import * as path from "path"
 import * as vscode from "vscode"
 import { createAuthoringModelFromTemplate } from "../core/workflowAuthoringDefaults"
 import { WorkflowAuthoringModel } from "../core/workflowAuthoringModel"
@@ -9,11 +10,16 @@ export interface WorkflowBuilderPanelOptions {
   extensionUri: vscode.Uri
   workflowRoot: string
   sourceId: string
+  mode?: "create" | "edit"
+  initialModel?: WorkflowAuthoringModel
+  editingFilePath?: string
+  originalText?: string
 }
 
 type WorkflowBuilderMessage =
   | { type: "preview"; model: WorkflowAuthoringModel }
   | { type: "save"; model: WorkflowAuthoringModel }
+  | { type: "diff"; model: WorkflowAuthoringModel }
   | { type: "resetTemplate"; name: string; title?: string; description: string; template: WorkflowTemplateKind }
 
 export class WorkflowBuilderPanel {
@@ -21,10 +27,10 @@ export class WorkflowBuilderPanel {
   private readonly panel: vscode.WebviewPanel
   private disposables: vscode.Disposable[] = []
 
-  private constructor(private readonly options: WorkflowBuilderPanelOptions, initialModel: WorkflowAuthoringModel) {
+  private constructor(private options: WorkflowBuilderPanelOptions, initialModel: WorkflowAuthoringModel) {
     this.panel = vscode.window.createWebviewPanel(
       "workflowRegisterBuilder",
-      "Bob Workflow Builder",
+      this.panelTitle(),
       vscode.ViewColumn.One,
       { enableScripts: true, retainContextWhenHidden: true }
     )
@@ -34,13 +40,15 @@ export class WorkflowBuilderPanel {
   }
 
   static createOrShow(options: WorkflowBuilderPanelOptions): WorkflowBuilderPanel {
-    const initialModel = createAuthoringModelFromTemplate({
+    const initialModel = options.initialModel ?? createAuthoringModelFromTemplate({
       name: "new-workflow",
       title: "New Workflow",
       description: "Run New Workflow.",
       template: "simple-agent"
     })
     if (WorkflowBuilderPanel.currentPanel) {
+      WorkflowBuilderPanel.currentPanel.options = options
+      WorkflowBuilderPanel.currentPanel.panel.title = WorkflowBuilderPanel.currentPanel.panelTitle()
       WorkflowBuilderPanel.currentPanel.panel.reveal(vscode.ViewColumn.One)
       WorkflowBuilderPanel.currentPanel.postModel(initialModel)
       return WorkflowBuilderPanel.currentPanel
@@ -64,52 +72,102 @@ export class WorkflowBuilderPanel {
       await this.preview(message.model)
       return
     }
+    if (message.type === "diff") {
+      await this.showDiff(message.model)
+      return
+    }
     if (message.type === "save") await this.save(message.model)
   }
 
   private async preview(model: WorkflowAuthoringModel): Promise<void> {
     const rendered = serializeAuthoringModelToMarkdown(model)
-    const validation = validateWorkflowText({ sourceId: this.options.sourceId, filePath: rendered.filePath, text: rendered.markdown })
+    const targetUri = this.targetUri(rendered.filePath)
+    const filePath = this.displayPathForUri(targetUri, rendered.filePath)
+    const validation = validateWorkflowText({ sourceId: this.options.sourceId, filePath, text: rendered.markdown })
     await this.panel.webview.postMessage({
       type: "previewResult",
       markdown: rendered.markdown,
       ok: validation.ok,
-      diagnostics: formatWorkflowDiagnostics(validation)
+      diagnostics: formatWorkflowDiagnostics(validation),
+      filePath
     })
+  }
+
+  private async showDiff(model: WorkflowAuthoringModel): Promise<void> {
+    const rendered = serializeAuthoringModelToMarkdown(model)
+    const targetUri = this.targetUri(rendered.filePath)
+    if (this.options.mode !== "edit" || !(await exists(targetUri))) {
+      await vscode.window.showInformationMessage("Diff preview is available after opening an existing WORKFLOW.md in edit mode.")
+      return
+    }
+    const previewDir = vscode.Uri.joinPath(vscode.Uri.file(this.options.workflowRoot), ".bob", "workflows", ".previews")
+    await vscode.workspace.fs.createDirectory(previewDir)
+    const previewUri = vscode.Uri.joinPath(previewDir, `workflow-builder-${timestamp()}.md`)
+    await vscode.workspace.fs.writeFile(previewUri, new TextEncoder().encode(rendered.markdown))
+    await vscode.commands.executeCommand("vscode.diff", targetUri, previewUri, `Workflow Builder Preview: ${this.displayPathForUri(targetUri, rendered.filePath)}`)
   }
 
   private async save(model: WorkflowAuthoringModel): Promise<void> {
     const rendered = serializeAuthoringModelToMarkdown(model)
-    const validation = validateWorkflowText({ sourceId: this.options.sourceId, filePath: rendered.filePath, text: rendered.markdown })
+    const targetUri = this.targetUri(rendered.filePath)
+    const targetPath = this.displayPathForUri(targetUri, rendered.filePath)
+    const validation = validateWorkflowText({ sourceId: this.options.sourceId, filePath: targetPath, text: rendered.markdown })
     if (!validation.ok) {
-      await this.panel.webview.postMessage({ type: "previewResult", markdown: rendered.markdown, ok: false, diagnostics: formatWorkflowDiagnostics(validation) })
+      await this.panel.webview.postMessage({ type: "previewResult", markdown: rendered.markdown, ok: false, diagnostics: formatWorkflowDiagnostics(validation), filePath: targetPath })
       await vscode.window.showErrorMessage("Workflow validation failed. Fix errors before saving.")
       return
     }
 
-    const dir = vscode.Uri.joinPath(vscode.Uri.file(this.options.workflowRoot), ".bob", "workflows", rendered.name)
-    const uri = vscode.Uri.joinPath(dir, "WORKFLOW.md")
-    await vscode.workspace.fs.createDirectory(dir)
-    if (await exists(uri)) {
-      const overwrite = await vscode.window.showWarningMessage(`WORKFLOW.md already exists for '${rendered.name}'. Overwrite it after creating a backup?`, { modal: true }, "Overwrite")
-      if (overwrite !== "Overwrite") return
-      const backupUri = vscode.Uri.joinPath(dir, `WORKFLOW.backup-${timestamp()}.md`)
-      await vscode.workspace.fs.copy(uri, backupUri, { overwrite: true })
+    if (this.options.mode === "edit" && targetPath !== rendered.filePath) {
+      const proceed = await vscode.window.showWarningMessage(`The workflow name points to '${rendered.filePath}', but edit mode will update '${targetPath}'. Continue?`, { modal: true }, "Continue")
+      if (proceed !== "Continue") return
     }
-    await vscode.workspace.fs.writeFile(uri, new TextEncoder().encode(rendered.markdown))
-    await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(uri), { preview: false })
+
+    const dir = vscode.Uri.file(path.dirname(targetUri.fsPath))
+    await vscode.workspace.fs.createDirectory(dir)
+    if (await exists(targetUri)) {
+      const label = this.options.mode === "edit" ? "Apply changes" : "Overwrite"
+      const overwrite = await vscode.window.showWarningMessage(`${targetPath} already exists. ${label} after creating a backup?`, { modal: true }, label)
+      if (overwrite !== label) return
+      const backupUri = vscode.Uri.joinPath(dir, `WORKFLOW.backup-${timestamp()}.md`)
+      await vscode.workspace.fs.copy(targetUri, backupUri, { overwrite: true })
+    } else if (this.options.mode === "edit") {
+      const create = await vscode.window.showWarningMessage(`${targetPath} no longer exists. Create it?`, { modal: true }, "Create")
+      if (create !== "Create") return
+    }
+
+    await vscode.workspace.fs.writeFile(targetUri, new TextEncoder().encode(rendered.markdown))
+    await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(targetUri), { preview: false })
     await vscode.commands.executeCommand("workflowRegister.reload")
-    await this.panel.webview.postMessage({ type: "saved", filePath: rendered.filePath })
-    await vscode.window.showInformationMessage(`Saved ${rendered.filePath}`)
+    await this.panel.webview.postMessage({ type: "saved", filePath: targetPath })
+    await vscode.window.showInformationMessage(`Saved ${targetPath}`)
   }
 
   private postModel(model: WorkflowAuthoringModel): void {
-    void this.panel.webview.postMessage({ type: "model", model })
+    void this.panel.webview.postMessage({ type: "model", model, editMode: this.options.mode === "edit", filePath: this.options.editingFilePath ?? "" })
+  }
+
+  private panelTitle(): string {
+    return this.options.mode === "edit" ? "Bob Workflow Builder: Edit" : "Bob Workflow Builder"
+  }
+
+  private targetUri(renderedFilePath: string): vscode.Uri {
+    if (this.options.mode === "edit" && this.options.editingFilePath) return vscode.Uri.file(this.options.editingFilePath)
+    return vscode.Uri.joinPath(vscode.Uri.file(this.options.workflowRoot), ...renderedFilePath.split("/"))
+  }
+
+  private displayPathForUri(uri: vscode.Uri, fallback: string): string {
+    const relative = path.relative(this.options.workflowRoot, uri.fsPath).replace(/\\/g, "/")
+    return relative && !relative.startsWith("..") && !path.isAbsolute(relative) ? relative : fallback
   }
 
   private renderHtml(initialModel: WorkflowAuthoringModel): string {
     const nonce = getNonce()
     const templateOptions = workflowTemplates.map((template) => ({ id: template.id, label: template.label, description: template.description }))
+    const isEditMode = this.options.mode === "edit"
+    const modeNote = isEditMode
+      ? "既存の <code>WORKFLOW.md</code> を読み込んで編集します。保存時は backup を作成してから上書きします。"
+      : "フォームで新しい <code>.bob/workflows/&lt;name&gt;/WORKFLOW.md</code> を作成します。参照関係は編集中に検出し、保存前にも既存 validator で確認します。"
     return `<!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -155,7 +213,7 @@ export class WorkflowBuilderPanel {
 <body>
 <header>
   <h1>Bob Workflow Builder</h1>
-  <div class="muted">フォームで新しい <code>.bob/workflows/&lt;name&gt;/WORKFLOW.md</code> を作成します。参照関係は編集中に検出し、保存前にも既存 validator で確認します。</div>
+  <div class="muted">${modeNote}</div>
 </header>
 <main>
   <aside>
@@ -165,7 +223,7 @@ export class WorkflowBuilderPanel {
     <button class="secondary" data-action="apply-template">テンプレートを反映</button>
     <label>workflow name</label>
     <input id="workflowName" data-meta="name" />
-    <div class="muted">英数字、ドット、アンダースコア、ハイフンを推奨。保存先フォルダ名にも使います。</div>
+    <div class="muted">英数字、ドット、アンダースコア、ハイフンを推奨。新規作成では保存先フォルダ名にも使います。</div>
     <label>title</label>
     <input id="workflowTitle" data-meta="title" />
     <label>description</label>
@@ -194,12 +252,14 @@ export class WorkflowBuilderPanel {
 const vscode = acquireVsCodeApi();
 const templates = ${JSON.stringify(templateOptions)};
 let model = ${JSON.stringify(initialModel)};
+let editMode = ${JSON.stringify(isEditMode)};
 let activeTab = 'step';
 let selectedStepIndex = 0;
 let previewTimer = undefined;
 let latestPreview = '';
 let latestDiagnostics = ['- preview is not ready yet.'];
 let latestOk = false;
+let latestFilePath = '';
 
 function escapeHtml(value) {
   return String(value === undefined || value === null ? '' : value).replace(/[&<>\"]/g, function(ch) {
@@ -433,8 +493,10 @@ function renderDiagnosticsList() {
 function renderPreview() {
   const issues = analyzeReferences();
   const issueHtml = issues.length === 0 ? '<div class="card reference-ok"><strong>参照チェック OK</strong></div>' : '<div class="card reference-issue"><strong>参照チェック</strong><ul class="issue-list">' + issues.map(function(issue) { return '<li>' + escapeHtml(issue.message) + '</li>'; }).join('') + '</ul></div>';
+  const diffButton = editMode ? '<button class="secondary" data-action="diff">Show Diff</button>' : '';
+  const pathLine = latestFilePath ? '<div class="muted">target: ' + escapeHtml(latestFilePath) + '</div>' : '';
   document.getElementById('content').innerHTML = '<h2>Preview / Diagnostics</h2>' +
-    '<button data-action="validate">Validate</button><button data-action="save">Save WORKFLOW.md</button>' + issueHtml +
+    '<button data-action="validate">Validate</button>' + diffButton + '<button data-action="save">Save WORKFLOW.md</button>' + pathLine + issueHtml +
     '<div class="card diagnostics ' + (latestOk ? 'ok' : 'ng') + '"><strong>' + (latestOk ? 'Validation OK' : 'Validation has errors/warnings') + '</strong><ul class="issue-list">' + renderDiagnosticsList() + '</ul></div>' +
     '<h3>YAML / Markdown Preview</h3><pre>' + escapeHtml(latestPreview) + '</pre>';
 }
@@ -547,6 +609,7 @@ document.addEventListener('click', function(event) {
   if (action === 'delete-artifact') { model.artifacts.splice(Number(target.dataset.index), 1); renderArtifacts(); requestPreview(); return; }
   if (action === 'apply-template') { vscode.postMessage({ type: 'resetTemplate', name: model.metadata.name || 'new-workflow', title: model.metadata.title || '', description: model.metadata.description || 'Run workflow.', template: document.getElementById('templateSelect').value }); return; }
   if (action === 'validate') { vscode.postMessage({ type: 'preview', model: model }); return; }
+  if (action === 'diff') { vscode.postMessage({ type: 'diff', model: model }); return; }
   if (action === 'save') { vscode.postMessage({ type: 'save', model: model }); return; }
 });
 window.addEventListener('message', function(event) {
@@ -555,10 +618,17 @@ window.addEventListener('message', function(event) {
     latestPreview = message.markdown || '';
     latestDiagnostics = message.diagnostics || [];
     latestOk = Boolean(message.ok);
+    latestFilePath = message.filePath || latestFilePath;
     if (activeTab === 'preview') renderPreview();
   }
-  if (message.type === 'model') { model = message.model; selectedStepIndex = 0; activeTab = 'step'; render(); }
-  if (message.type === 'saved') { latestDiagnostics = ['- saved: ' + message.filePath]; activeTab = 'preview'; render(); }
+  if (message.type === 'model') {
+    model = message.model;
+    editMode = Boolean(message.editMode);
+    selectedStepIndex = 0;
+    activeTab = 'step';
+    render();
+  }
+  if (message.type === 'saved') { latestDiagnostics = ['- saved: ' + message.filePath]; latestFilePath = message.filePath || latestFilePath; activeTab = 'preview'; render(); }
 });
 render();
 </script>

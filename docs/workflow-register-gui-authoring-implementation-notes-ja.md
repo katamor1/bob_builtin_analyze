@@ -32,11 +32,28 @@ Phase 2 では、`resultKey` / `includeState` / `artifacts.producedBy` の関係
 - validator diagnostics のうち `Step '<id>' ...` 形式のものはクリックで該当 step へ移動できるようにする。
 - core 側に `workflowAuthoringReferenceAnalysis.ts` を追加し、参照分析をテスト可能にする。
 
+## Phase 3: 既存 `WORKFLOW.md` の GUI 編集
+
+Phase 3 では、既存の `schemaVersion: workflow-register/v1` workflow を GUI に読み込んで編集できるようにした。
+
+追加した内容は次のとおり。
+
+- Command Palette から `Bob ワークフロー: GUI で編集` を起動する。
+- active editor の `WORKFLOW.md`、または file picker で選択した Markdown を読み込む。
+- `parseWorkflowMarkdown` の結果を `WorkflowAuthoringModel` に変換する `workflowAuthoringLoader.ts` を追加する。
+- GUI 管理対象外の front matter、例: `category` / `permissions` などを `unknownFrontMatter` として保持し、保存時に再出力する。
+- Markdown body を保持し、GUI 保存時に維持する。
+- 既存編集モードでは Preview / Diagnostics に `Show Diff` を表示し、現在のファイルと生成後プレビューを VS Code diff で確認できるようにする。
+- 保存時は既存ファイルに対して `WORKFLOW.backup-<timestamp>.md` を作成してから上書きする。
+- `workflowRegister.reload` を保存後に実行する。
+- legacy workflow は初期実装では GUI 編集対象外とし、明示的にエラーにする。
+
 ## 追加コマンド
 
 | command | title | 用途 |
 | --- | --- | --- |
 | `workflowRegister.openWorkflowBuilder` | `Bob ワークフロー: GUI で作成` | Webview ベースのワークフロー作成画面を開く。 |
+| `workflowRegister.editWorkflowInBuilder` | `Bob ワークフロー: GUI で編集` | 既存 `WORKFLOW.md` を Webview Builder に読み込んで編集する。 |
 
 ## 追加・変更ファイル
 
@@ -44,13 +61,16 @@ Phase 2 では、`resultKey` / `includeState` / `artifacts.producedBy` の関係
 extensions/workflow-register/package.json
 extensions/workflow-register/src/extensionWithAuthoring.ts
 extensions/workflow-register/src/commands/openWorkflowBuilder.ts
+extensions/workflow-register/src/commands/editWorkflowInBuilder.ts
 extensions/workflow-register/src/core/workflowAuthoringModel.ts
 extensions/workflow-register/src/core/workflowAuthoringDefaults.ts
 extensions/workflow-register/src/core/workflowAuthoringSerializer.ts
 extensions/workflow-register/src/core/workflowAuthoringReferenceAnalysis.ts
+extensions/workflow-register/src/core/workflowAuthoringLoader.ts
 extensions/workflow-register/src/webview/workflowBuilderPanel.ts
 extensions/workflow-register/test/workflowAuthoringSerializer.test.js
 extensions/workflow-register/test/workflowAuthoringReferenceAnalysis.test.js
+extensions/workflow-register/test/workflowAuthoringLoader.test.js
 docs/workflow-register-gui-authoring-plan-ja.md
 docs/workflow-register-gui-authoring-implementation-notes-ja.md
 ```
@@ -67,6 +87,18 @@ Webview form state
   -> serializeAuthoringModelToMarkdown
   -> validateWorkflowText
   -> .bob/workflows/<name>/WORKFLOW.md
+```
+
+既存編集時は次の経路を使う。
+
+```text
+WORKFLOW.md
+  -> parseWorkflowMarkdown
+  -> workflowToAuthoringModel
+  -> Webview form state
+  -> serializeAuthoringModelToMarkdown
+  -> validateWorkflowText
+  -> Show Diff / backup / overwrite
 ```
 
 ### `workflowAuthoringDefaults.ts`
@@ -102,6 +134,18 @@ GUI で扱う参照関係を分析する。
 - 存在しない `artifacts.producedBy`
 - step 削除時の影響
 - step 移動時の影響
+
+### `workflowAuthoringLoader.ts`
+
+既存 `WORKFLOW.md` を GUI 用モデルへ変換する。
+
+主な方針:
+
+- `schemaVersion: workflow-register/v1` のみを対象にする。
+- `inputs` は配列形式の `WorkflowAuthoringInput[]` に変換する。
+- `engineSteps` は `WorkflowAuthoringStep[]` に変換する。
+- GUI 管理外の front matter は `unknownFrontMatter` に退避する。
+- body は `model.body` として保持する。
 
 ## MVP で対応した UI
 
@@ -160,23 +204,25 @@ GUI で扱う参照関係を分析する。
 - validation OK / NG 表示
 - 参照チェック結果
 - diagnostics から該当 step への移動
+- 既存編集時の diff preview
 - 保存ボタン
 
 ## 現時点の制約
 
-この実装は MVP + Phase 2 であり、次はまだ未対応である。
+この実装は MVP + Phase 2 + Phase 3 であり、次はまだ未対応である。
 
-- 既存 `WORKFLOW.md` の GUI 編集。
+- legacy workflow の GUI 編集。
+- raw YAML との完全な双方向編集。
+- GUI 管理対象フィールドの YAML 表現やコメントの完全保持。
 - AI 提案の GUI 内部分適用。
 - provider 別 args schema。
 - `requires` / `preflight` の詳細 GUI 編集。
 - `completion` の詳細 GUI 編集。
-- raw YAML との双方向編集。
 - step 削除時の参照自動修復。
 
 ## 次の実装候補
 
-1. `workflowRegister.editWorkflowInBuilder` を追加し、既存 `WORKFLOW.md` を GUI に読み込めるようにする。
+1. `requires` / `preflight` / `completion` の詳細 GUI 編集を追加する。
 2. `Design Workflow with AI` の出力を Webview に取り込み、GUI で修正して保存できるようにする。
 3. 選択中 step の prompt に対して AI 改善ボタンを追加する。
 4. `registerActionProvider` の一覧取得 API を追加し、command provider の候補表示を強化する。
