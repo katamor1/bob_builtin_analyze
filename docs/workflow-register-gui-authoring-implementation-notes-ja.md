@@ -60,6 +60,19 @@ Phase 4 では、既存の Builder に詳細 section 編集タブを追加した
 - 既存 serializer / loader の round-trip に乗せて、詳細 section も GUI 保存・既存編集の対象にする。
 - `workflowAuthoringAdvancedSections.test.js` を追加し、詳細 section の serialize / validate / load round-trip を確認する。
 
+## Phase 5: `guardrails.requireApproval` GUI 編集と Webview 分割
+
+Phase 5 では、承認ルールの GUI 編集と `workflowBuilderPanel.ts` の保守性改善を実施した。
+
+追加した内容は次のとおり。
+
+- `Guardrails` タブに `requireApproval` の追加・削除 UI を追加する。
+- approval rule の `id`、`when`、`message` を GUI で編集できるようにする。
+- `allowedCommands` / `deniedCommands` と同じ保存経路で `requireApproval` を serializer / validator / loader に流す。
+- `workflowAuthoringAdvancedSections.test.js` に approval rule の serialize / validate / load round-trip を追加する。
+- 肥大化していた `workflowBuilderPanel.ts` を VS Code panel 制御に絞る。
+- Webview shell を `workflowBuilderHtml.ts`、CSS を `workflowBuilderStyles.ts`、client-side script を `workflowBuilderClientScript.ts` へ分割する。
+
 ## 追加コマンド
 
 | command | title | 用途 |
@@ -80,6 +93,9 @@ extensions/workflow-register/src/core/workflowAuthoringSerializer.ts
 extensions/workflow-register/src/core/workflowAuthoringReferenceAnalysis.ts
 extensions/workflow-register/src/core/workflowAuthoringLoader.ts
 extensions/workflow-register/src/webview/workflowBuilderPanel.ts
+extensions/workflow-register/src/webview/workflowBuilderHtml.ts
+extensions/workflow-register/src/webview/workflowBuilderStyles.ts
+extensions/workflow-register/src/webview/workflowBuilderClientScript.ts
 extensions/workflow-register/test/workflowAuthoringSerializer.test.js
 extensions/workflow-register/test/workflowAuthoringReferenceAnalysis.test.js
 extensions/workflow-register/test/workflowAuthoringLoader.test.js
@@ -113,6 +129,22 @@ WORKFLOW.md
   -> validateWorkflowText
   -> Show Diff / backup / overwrite
 ```
+
+### `workflowBuilderPanel.ts`
+
+VS Code WebviewPanel の作成、preview / diff / save、ファイル保存、backup、reload など VS Code extension 側の処理だけを担当する。
+
+### `workflowBuilderHtml.ts`
+
+Webview の HTML shell を生成する。CSP nonce、初期モデル、テンプレート候補、編集モード表示を受け取る。
+
+### `workflowBuilderStyles.ts`
+
+Webview の CSS を生成する。
+
+### `workflowBuilderClientScript.ts`
+
+Webview 内で動く client-side script を生成する。フォーム状態、タブ切替、step 操作、参照チェック、詳細 section 編集、`guardrails.requireApproval` 編集を担当する。
 
 ### `workflowAuthoringDefaults.ts`
 
@@ -225,6 +257,10 @@ GUI で扱う参照関係を分析する。
 
 - allowedCommands
 - deniedCommands
+- requireApproval item の追加・削除
+- requireApproval.id
+- requireApproval.when
+- requireApproval.message
 
 ### completion
 
@@ -246,20 +282,19 @@ GUI で扱う参照関係を分析する。
 
 ## 現時点の制約
 
-この実装は MVP + Phase 2 + Phase 3 + Phase 4 であり、次はまだ未対応である。
+この実装は MVP + Phase 2 + Phase 3 + Phase 4 + Phase 5 であり、次はまだ未対応である。
 
 - legacy workflow の GUI 編集。
 - raw YAML との完全な双方向編集。
 - GUI 管理対象フィールドの YAML 表現やコメントの完全保持。
 - AI 提案の GUI 内部分適用。
 - provider 別 args schema。
-- `guardrails.requireApproval` の詳細 GUI 編集。
 - step 削除時の参照自動修復。
 
 ## 次の実装候補
 
-1. `guardrails.requireApproval` の詳細 GUI 編集を追加する。
-2. `Design Workflow with AI` の出力を Webview に取り込み、GUI で修正して保存できるようにする。
-3. 選択中 step の prompt に対して AI 改善ボタンを追加する。
-4. `registerActionProvider` の一覧取得 API を追加し、command provider の候補表示を強化する。
-5. step 削除時に参照を外す / producedBy を再選択する補助 UI を追加する。
+1. `Design Workflow with AI` の出力を Webview に取り込み、GUI で修正して保存できるようにする。
+2. 選択中 step の prompt に対して AI 改善ボタンを追加する。
+3. `registerActionProvider` の一覧取得 API を追加し、command provider の候補表示を強化する。
+4. step 削除時に参照を外す / producedBy を再選択する補助 UI を追加する。
+5. Webview client script をさらに機能別モジュールへ分割する。
