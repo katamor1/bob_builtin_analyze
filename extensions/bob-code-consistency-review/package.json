@@ -33,7 +33,7 @@
     "commands": [
       {
         "command": "bobCodeConsistency.initializeWorkspace",
-        "title": "コード整合レビュー: .bob ワークフロー定義を初期化",
+        "title": "コード整合レビュー: .bob ワークフロー定義と review-input 雛形を初期化",
         "category": "Bob コード整合"
       },
       {
