@@ -1,5 +1,4 @@
 import * as fs from "node:fs/promises"
-import * as path from "node:path"
 import YAML from "yaml"
 import { pathExists, resolveWorkspacePath, toPosixPath, writeTextFile } from "./fileSystem"
 import { formatSchemaErrors, loadSchemaValidator } from "./schemaLoader"
@@ -16,23 +15,24 @@ export const REVIEW_FOCUS_VALUES = [
   "shared-memory-impact"
 ] as const
 
+export const CHANGE_TYPE_VALUES = ["bugfix", "feature", "spec_change", "refactor", "performance", "maintenance"] as const
+export const VCS_VALUES = ["git", "bazaar", "bzr"] as const
+export const ARTIFACT_KIND_VALUES = ["requirements", "basic_design", "detailed_design", "test_spec", "ledgers", "tickets"] as const
+
+export type ReviewFocus = typeof REVIEW_FOCUS_VALUES[number]
+export type ChangeType = typeof CHANGE_TYPE_VALUES[number]
+export type VcsKind = typeof VCS_VALUES[number]
+export type ArtifactKind = typeof ARTIFACT_KIND_VALUES[number]
+
 export const REVIEW_FOCUS_PRESETS = {
   standard: ["requirement-code-consistency", "design-code-consistency", "test-gap"],
   document_update: ["document-update-gap", "unintended-change"],
   interface: ["interface-impact", "unintended-change"],
   rt_shared_memory: ["rt-ts-rule", "shared-memory-impact", "interface-impact"],
   test_gap: ["test-gap", "requirement-code-consistency"]
-} as const satisfies Record<string, ReviewFocus[]>
+} as const satisfies Record<string, readonly ReviewFocus[]>
 
-export const CHANGE_TYPE_VALUES = ["bugfix", "feature", "spec_change", "refactor", "performance", "maintenance"] as const
-export const VCS_VALUES = ["git", "bazaar", "bzr"] as const
-export const ARTIFACT_KIND_VALUES = ["requirements", "basic_design", "detailed_design", "test_spec", "ledgers", "tickets"] as const
-
-export type ReviewFocus = typeof REVIEW_FOCUS_VALUES[number]
 export type ReviewFocusPreset = keyof typeof REVIEW_FOCUS_PRESETS
-export type ChangeType = typeof CHANGE_TYPE_VALUES[number]
-export type VcsKind = typeof VCS_VALUES[number]
-export type ArtifactKind = typeof ARTIFACT_KIND_VALUES[number]
 
 export type ReviewInputDraft = {
   review: {
@@ -109,7 +109,7 @@ export async function buildReviewInputFromDraft(draft: ReviewInputDraft, options
   const schemaErrors = await validateReviewInputShape(reviewInput)
   errors.push(...schemaErrors)
 
-  if (errors.length > 0) return { status: "error", errors: uniqueStrings(errors), warnings }
+  if (errors.length > 0) return { status: "error", errors: uniqueStrings(errors) ?? [], warnings }
   return { status: "ok", reviewInput, yaml: renderReviewInputYaml(reviewInput), warnings }
 }
 
