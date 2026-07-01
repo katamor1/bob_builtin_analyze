@@ -3,6 +3,7 @@ import * as vscode from "vscode"
 import { captureBobOutput } from "./core/bobOutputCapture"
 import { validateBobOutput } from "./core/bobOutputValidator"
 import { preprocessReview } from "./core/pipeline"
+import { applyAiReviewInputDraft, prepareAiReviewInputDraftPrompt } from "./core/reviewInputAiDraftProvider"
 import { discoverReviewInputCandidates, type ReviewInputDocumentCandidate } from "./core/reviewInputDiscovery"
 import { ARTIFACT_KIND_VALUES, CHANGE_TYPE_VALUES, REVIEW_FOCUS_VALUES, VCS_VALUES, writeReviewInputFromDraft, type ArtifactKind, type ChangeType, type ReviewFocus, type ReviewInputArtifactDraft, type ReviewInputDraft, type VcsKind } from "./core/reviewInputBuilder"
 import { explainReviewInputDiagnostics, repairLegacyReviewInput } from "./core/reviewInputDiagnostics"
@@ -43,6 +44,8 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.commands.registerCommand("bobCodeConsistency.initializeWorkspace", (options?: unknown) => runInitializeWorkspace(context, options)),
     vscode.commands.registerCommand("bobCodeConsistency.createReviewInput", (options?: unknown) => runCreateReviewInput(options)),
+    vscode.commands.registerCommand("bobCodeConsistency.prepareAiReviewInputDraft", (options?: unknown) => runPrepareAiReviewInputDraft(options)),
+    vscode.commands.registerCommand("bobCodeConsistency.applyAiReviewInputDraft", (textOrOptions?: unknown) => runApplyAiReviewInputDraft(textOrOptions)),
     vscode.commands.registerCommand("bobCodeConsistency.repairReviewInput", (options?: unknown) => runRepairReviewInput(options)),
     vscode.commands.registerCommand("bobCodeConsistency.explainReviewInputDiagnostics", (options?: unknown) => runExplainReviewInputDiagnostics(options)),
     vscode.commands.registerCommand("bobCodeConsistency.preprocess", (options?: unknown) => runPreprocess(options)),
@@ -67,6 +70,14 @@ async function registerWorkflowProviders(context: vscode.ExtensionContext): Prom
   api.registerActionProvider({
     id: "bobCodeConsistency.createReviewInput",
     execute: (input) => runCreateReviewInput(mergeWorkflowOptions(input))
+  })
+  api.registerActionProvider({
+    id: "bobCodeConsistency.prepareAiReviewInputDraft",
+    execute: (input) => runPrepareAiReviewInputDraft(mergeWorkflowOptions(input))
+  })
+  api.registerActionProvider({
+    id: "bobCodeConsistency.applyAiReviewInputDraft",
+    execute: (input) => runApplyAiReviewInputDraft(mergeWorkflowOptions(input))
   })
   api.registerActionProvider({
     id: "bobCodeConsistency.repairReviewInput",
@@ -151,6 +162,65 @@ async function runCreateReviewInput(options?: unknown): Promise<unknown> {
   const warnings = [...discovery.warnings, ...result.warnings]
   notifyInfo(`review-input.yaml を生成しました: ${result.outputPath}${backup}${warnings.length > 0 ? `\nwarning: ${warnings.length} 件` : ""}`)
   return { ...result, discoveryWarnings: discovery.warnings }
+}
+
+async function runPrepareAiReviewInputDraft(options?: unknown): Promise<unknown> {
+  const config = vscode.workspace.getConfiguration("bobCodeConsistency")
+  const record = optionRecord(options)
+  const workspaceRoot = await requireBobWorkspaceRoot(record)
+  const reviewInputPath = absolute(workspaceRoot, stringOption(record, "reviewInputPath") ?? config.get<string>("reviewInputPath", "review-input.yaml"))
+  const outputDir = absolute(workspaceRoot, stringOption(record, "aiDraftPromptPath") ?? ".bob-review/review-input-draft")
+  const textEncoding = stringOption(record, "textEncoding") ?? config.get<string>("textEncoding", "auto")
+  const base = await stringOrPrompt(record, "base", "AI draft 用の base revision", "HEAD~1")
+  if (!base) return { status: "cancelled" }
+  const head = await stringOrPrompt(record, "head", "AI draft 用の head revision", "HEAD")
+  if (!head) return { status: "cancelled" }
+  const vcs = await vcsOrPrompt(record)
+  if (!vcs) return { status: "cancelled" }
+
+  const result = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: "AI draft 用プロンプトを作成しています" }, () =>
+    prepareAiReviewInputDraftPrompt({
+      workspaceRoot,
+      outputDir,
+      reviewInputPath,
+      base,
+      head,
+      vcs,
+      vcsRoot: stringOption(record, "vcsRoot") ?? stringOption(record, "vcs_root"),
+      bzrPath: stringOption(record, "bzrPath") ?? config.get<string>("bzrPath", "bzr"),
+      diffFixturePath: optionalAbsolute(workspaceRoot, stringOption(record, "diffFixturePath")),
+      textEncoding
+    })
+  )
+
+  await vscode.env.clipboard.writeText(result.prompt)
+  const document = await vscode.workspace.openTextDocument(result.promptPath)
+  await vscode.window.showTextDocument(document, { preview: false })
+  notifyInfo(`AI draft 用プロンプトを作成して clipboard にコピーしました: ${result.promptPath}${result.warnings.length > 0 ? `\nwarning: ${result.warnings.length} 件` : ""}`)
+  return result
+}
+
+async function runApplyAiReviewInputDraft(textOrOptions?: unknown): Promise<unknown> {
+  const config = vscode.workspace.getConfiguration("bobCodeConsistency")
+  const record = optionRecord(textOrOptions)
+  const workspaceRoot = await requireBobWorkspaceRoot(record)
+  const reviewInputPath = absolute(workspaceRoot, stringOption(record, "reviewInputPath") ?? config.get<string>("reviewInputPath", "review-input.yaml"))
+  const text = firstString(textOrOptions) ?? stringOption(record, "text") ?? await vscode.env.clipboard.readText()
+  const result = await applyAiReviewInputDraft({
+    workspaceRoot,
+    reviewInputPath,
+    text,
+    strictPaths: booleanOption(record, "strictPaths") ?? true
+  })
+
+  if (result.status === "error") {
+    notifyError(`AI draft JSON を review-input.yaml に変換できません: ${result.errors.join("; ")}`)
+    return result
+  }
+
+  const backup = result.backupPath ? `\n既存ファイルのバックアップ: ${result.backupPath}` : ""
+  notifyInfo(`AI draft JSON から review-input.yaml を生成しました: ${result.outputPath}${backup}${result.warnings.length > 0 ? `\nwarning: ${result.warnings.length} 件` : ""}`)
+  return result
 }
 
 async function collectReviewInputDraft(candidates: ReviewInputDocumentCandidate[]): Promise<ReviewInputDraft | undefined> {
@@ -328,6 +398,18 @@ async function pickValue<const T extends string>(values: readonly T[], placeHold
   return picked?.label as T | undefined
 }
 
+async function stringOrPrompt(record: Record<string, unknown>, key: string, prompt: string, value: string): Promise<string | undefined> {
+  const existing = stringOption(record, key)
+  if (existing) return existing
+  return vscode.window.showInputBox({ prompt, value })
+}
+
+async function vcsOrPrompt(record: Record<string, unknown>): Promise<VcsKind | undefined> {
+  const existing = stringOption(record, "vcs")
+  if (existing && (VCS_VALUES as readonly string[]).includes(existing)) return existing as VcsKind
+  return pickValue(VCS_VALUES, "AI draft 用の VCS を選択")
+}
+
 function splitCsv(value: string): string[] | undefined {
   const result = value.split(",").map((item) => item.trim()).filter(Boolean)
   return result.length > 0 ? result : undefined
@@ -367,6 +449,11 @@ function optionRecord(value: unknown): Record<string, unknown> {
 function stringOption(record: Record<string, unknown>, key: string): string | undefined {
   const value = record[key]
   return typeof value === "string" && value.trim() ? value.trim() : undefined
+}
+
+function booleanOption(record: Record<string, unknown>, key: string): boolean | undefined {
+  const value = record[key]
+  return typeof value === "boolean" ? value : undefined
 }
 
 function firstString(value: unknown): string | undefined {
