@@ -36,18 +36,20 @@
 ## 代表的な利用フロー
 
 1. Bob IDE / VS Code で対象ワークスペースを開く。
-2. ワークスペースに `review-input.yaml` を作成する。
-3. `Bob Code Consistency: Preprocess Code Consistency Review` を実行する。
-4. 生成された `.bob-review/review-package/bob-input.md` を Bob に渡し、整合プレレビューを実行する。
-5. Bob の YAML 出力をコピーし、`Bob Code Consistency: Capture Code Consistency Bob Output` で保存する。
-6. `Bob Code Consistency: Validate Code Consistency Bob Output` で schema と evidence 参照を検証する。
-7. `Bob Code Consistency: Generate Code Consistency Human Triage` で人間確認用ファイルを生成する。
-8. 人間が triage 結果を確認し、正式レビューや修正作業へ回す指摘を判断する。
+2. `Bob コード整合: コード整合レビュー: .bob ワークフロー定義と review-input 雛形を初期化` を実行し、`.bob/workflows/.../WORKFLOW.md` と `review-input.yaml` の雛形を作成する。
+3. `review-input.yaml` の `review`、`artifacts`、`review_focus` を実案件に合わせて編集する。
+4. `Bob Code Consistency: Preprocess Code Consistency Review` を実行する。
+5. 生成された `.bob-review/review-package/bob-input.md` を Bob に渡し、整合プレレビューを実行する。
+6. Bob の YAML 出力をコピーし、`Bob Code Consistency: Capture Code Consistency Bob Output` で保存する。
+7. `Bob Code Consistency: Validate Code Consistency Bob Output` で schema と evidence 参照を検証する。
+8. `Bob Code Consistency: Generate Code Consistency Human Triage` で人間確認用ファイルを生成する。
+9. 人間が triage 結果を確認し、正式レビューや修正作業へ回す指摘を判断する。
 
 ## Command Palette のコマンド
 
 | コマンド | 内部 command ID | 用途 |
 | --- | --- | --- |
+| `Bob コード整合: コード整合レビュー: .bob ワークフロー定義と review-input 雛形を初期化` | `bobCodeConsistency.initializeWorkspace` | `.bob/workflows/code-consistency-review/WORKFLOW.md` と `review-input.yaml` の雛形を作成する。既存 `review-input.yaml` は上書きせず、バックアップだけ作成する。 |
 | `Bob Code Consistency: Preprocess Code Consistency Review` | `bobCodeConsistency.preprocess` | `review-input.yaml`、Git 差分、文書、コード解析結果から `review-package` を生成する。 |
 | `Bob Code Consistency: Capture Code Consistency Bob Output` | `bobCodeConsistency.captureBobOutput` | Bob が出力した YAML を clipboard または引数から抽出し、`bob-output.yaml` として保存する。 |
 | `Bob Code Consistency: Validate Code Consistency Bob Output` | `bobCodeConsistency.validateOutput` | Bob 出力 YAML を schema と evidence index で検証する。 |
@@ -65,6 +67,25 @@
 
 各コマンドは、ワークフローや他拡張からの呼び出し時に同名オプションを受け取れます。たとえば `reviewInputPath`、`reviewPackagePath`、`textEncoding`、`bobOutputPath`、`triagePath` を入力値や `args` で渡すと、設定値より優先されます。
 
+## ワークスペース初期化
+
+`bobCodeConsistency.initializeWorkspace` は、ワークスペースに次のファイルを作成します。
+
+```text
+.bob/
+  workflows/
+    code-consistency-review/
+      WORKFLOW.md
+review-input.yaml
+docs/
+  review-input-placeholder.md
+```
+
+- `WORKFLOW.md` は同梱テンプレートと差分があれば、既存ファイルを `.bak-<timestamp>` に退避して更新します。
+- `review-input.yaml` が存在しない場合は、schema に沿った最小雛形を作成します。
+- `review-input.yaml` が既に存在する場合は、実案件の入力を壊さないため上書きしません。代わりに `.bak-<timestamp>` を作成します。
+- 雛形が参照する `docs/review-input-placeholder.md` は仮文書です。実レビューでは実際の要求書・設計書・テスト仕様書に差し替えてください。
+
 ## `review-input.yaml`
 
 `review-input.yaml` は整合プレレビューの入口です。schema 検証に加えて、指定された関連文書ファイルが存在することも確認します。
@@ -80,6 +101,7 @@ review:
   purpose: タイムアウト時の戻り値を要求仕様どおりに修正する
   base: HEAD~1
   head: HEAD
+  vcs: git
   ticket_ids:
     - BUG-1234
 artifacts:
@@ -89,18 +111,24 @@ artifacts:
         - REQ-TIMEOUT-001
   basic_design:
     - path: docs/basic-design-timeout.md
+      sections:
+        - BD-TIMEOUT-001
   detailed_design:
     - path: docs/detailed-design-timeout.md
+      sections:
+        - DD-TIMEOUT-001
   test_spec:
     - path: docs/test-spec-timeout.md
+      cases:
+        - TC-TIMEOUT-001
   ledgers:
     - path: docs/error-ledger.xlsx
       sheets:
         - errors
 review_focus:
-  - requirements_to_code
-  - design_to_code
-  - code_to_test
+  - requirement-code-consistency
+  - design-code-consistency
+  - test-gap
 analysis_options:
   include_callers: true
   include_callees: true
@@ -113,6 +141,19 @@ analysis_options:
     - c
     - h
 ```
+
+`review_focus` は schema で次の値に制限されています。
+
+| 値 | 用途 |
+| --- | --- |
+| `requirement-code-consistency` | 要求とコード変更の整合性を見る。 |
+| `design-code-consistency` | 基本設計・詳細設計とコード変更の整合性を見る。 |
+| `test-gap` | 変更に対するテスト仕様・テスト観点の不足を見る。 |
+| `document-update-gap` | コード変更に対して文書更新が不足していないかを見る。 |
+| `unintended-change` | 要求・設計に現れない意図しない変更候補を見る。 |
+| `interface-impact` | API、DLL export、共有ヘッダなどのインターフェース影響を見る。 |
+| `rt-ts-rule` | RT / TS 制約や禁止処理への影響を見る。 |
+| `shared-memory-impact` | 共有メモリやグローバルデータ構造への影響を見る。 |
 
 ## 前処理で生成する `review-package`
 
@@ -183,182 +224,3 @@ analysis_options:
 | `test_spec` | `test_spec` | `TC` |
 | `ledgers` | `ledger` | `LEDGER` |
 | `tickets` | `ticket` | `TICKET` |
-
-## C / C++ 変更解析
-
-C / C++ 解析は、Git 差分とワークスペース内の変更ファイルを使って、Bob に渡すコード根拠を作ります。
-
-主な抽出内容は次の通りです。
-
-- 対象言語: `c` / `cpp` / `h` / `hpp`
-- 変更関数候補
-- 変更関数のコードスライス
-- direct callee / caller 候補
-- call graph 候補
-- `#define` 候補
-- global 変数候補
-- RT スレッドで問題になりやすい禁止処理候補
-
-現在の解析は、軽量な正規表現ベースの MVP 実装です。clang AST による完全解析や関数ポインタ経由の厳密な追跡は、この拡張機能単体ではまだ行いません。
-
-## Bob 出力の取り込みと検証
-
-Bob 出力は YAML として扱います。`captureBobOutput` は、次の入力形式から YAML オブジェクトを抽出します。
-
-- fenced code block の YAML
-- `schema_version:` で始まる YAML
-- テキスト中に含まれる `schema_version:` 以降の YAML
-
-保存先の既定値は次の通りです。
-
-```text
-.bob-review/bob-output/bob-output.yaml
-```
-
-`validateOutput` は、次を確認します。
-
-- YAML として parse できるか。
-- `bob-output` schema に合っているか。
-- `findings[].evidence[]` と `questions[].evidence[]` が `evidence-index.json` に存在する `evidence_id` を参照しているか。
-- `findings` または `questions` が多すぎる場合に warning を出す。
-
-## 人間 triage 出力
-
-`triage` は Bob 出力から、既定では `.bob-review/human-triage` に次のファイルを生成します。
-
-```text
-.bob-review/
-  human-triage/
-    triage-result.yaml
-    accepted-findings.md
-    questions-to-author.md
-    rejected-findings.md
-    follow-up-actions.md
-```
-
-| ファイル | 用途 |
-| --- | --- |
-| `triage-result.yaml` | 各 finding / question に対する人間判断、担当、理由、後続対応を記録する。 |
-| `accepted-findings.md` | 採用候補のプレレビュー指摘を確認する。 |
-| `questions-to-author.md` | 作成者への確認事項を整理する。 |
-| `rejected-findings.md` | 棄却したプレレビュー指摘を人間が追記する。 |
-| `follow-up-actions.md` | 推奨対応や確認事項を後続アクションとして一覧化する。 |
-
-## `workflow-register` との連携
-
-この拡張機能は、`workflow-register` の `registerActionProvider` API に次の action provider を登録します。
-
-| action provider | 対応コマンド |
-| --- | --- |
-| `bobCodeConsistency.preprocess` | `bobCodeConsistency.preprocess` |
-| `bobCodeConsistency.captureBobOutput` | `bobCodeConsistency.captureBobOutput` |
-| `bobCodeConsistency.validateOutput` | `bobCodeConsistency.validateOutput` |
-| `bobCodeConsistency.triage` | `bobCodeConsistency.triage` |
-
-ワークフローから呼び出す例は次の通りです。
-
-```yaml
-steps:
-  - id: preprocess
-    title: 整合レビュー入力の前処理
-    type: command
-    action:
-      provider: bobCodeConsistency.preprocess
-      args:
-        reviewInputPath: review-input.yaml
-        reviewPackagePath: .bob-review/review-package
-    resultKey: reviewPackage
-    required: true
-    sendResult: true
-  - id: review-with-bob
-    title: Bob 整合プレレビュー
-    type: agent
-    includeState:
-      - reviewPackage
-    prompt: |
-      reviewPackage の bob-input.md と evidence_id を根拠に、コード変更と要求・設計・テスト仕様の不整合候補を抽出してください。
-  - id: capture-output
-    title: Bob 出力取り込み
-    type: command
-    action:
-      provider: bobCodeConsistency.captureBobOutput
-    resultKey: capturedBobOutput
-    required: true
-    sendResult: true
-  - id: validate-output
-    title: Bob 出力検証
-    type: command
-    action:
-      provider: bobCodeConsistency.validateOutput
-    resultKey: validationResult
-    required: true
-    sendResult: true
-  - id: triage
-    title: 人間 triage 生成
-    type: command
-    action:
-      provider: bobCodeConsistency.triage
-    resultKey: triageResult
-    required: true
-    sendResult: true
-```
-
-`captureBobOutput` は、ワークフロー状態、入力値、引数から取り込みオプションを組み立てます。明示的な `text` がない場合は clipboard から読み込みます。
-
-## Bob にさせること / させないこと
-
-| 区分 | 内容 |
-| --- | --- |
-| 拡張機能が行うこと | 入力検証、差分収集、文書抽出、コード根拠抽出、対応候補作成、Bob 入力生成、Bob 出力検証、triage ファイル生成。 |
-| Bob にさせること | `review-package` に含まれる根拠だけを使い、意味的な不整合候補、確認事項、推奨対応を抽出する。 |
-| 人間が行うこと | 指摘の採用判断、棄却理由、追加調査、正式レビュー、最終承認。 |
-| Bob にさせないこと | 正式承認、根拠なし断定、対象外ファイルの推測、大量ファイル探索、破壊的操作、コミットや PR 更新。 |
-
-## セキュリティと安全設計
-
-- Bob に投入する前に、差分・文書抜粋・コード根拠を `review-package` として固定する。
-- Bob の出力は YAML schema と `evidence-index.json` で検証する。
-- evidence 参照が存在しない finding / question はエラーにする。
-- 解析不能な情報は黙って捨てず、warning として保存する。
-- 文書やコードの全量投入ではなく、根拠 ID 付きの抜粋を渡す。
-- この拡張機能は正式承認を行わない。承認判断は必ず人間が行う。
-- コミット、push、PR コメント投稿などの副作用は、この拡張機能の通常フローには含めない。
-
-## ビルド
-
-```powershell
-cd extensions\bob-code-consistency-review
-npm install
-npm run compile
-npm run test
-npm run package
-```
-
-生成される VSIX 名は次の形式です。
-
-```text
-bob-code-consistency-review-0.1.0.vsix
-```
-
-## トラブルシュート
-
-| 症状 | 確認ポイント |
-| --- | --- |
-| `Open a workspace folder first.` | Bob IDE / VS Code でワークスペースフォルダを開いているか確認する。 |
-| `Invalid review-input.yaml` | `review-input.yaml` が schema に合っているか、必須フィールドがあるか確認する。 |
-| `review-input.yaml references missing artifact file(s)` | `artifacts` に指定した文書パスがワークスペース内に存在するか確認する。 |
-| `No changed C/C++ function could be mapped from diff hunks.` | 差分対象ファイルが `c` / `cpp` / `h` / `hpp` として認識されているか、変更後ファイルがワークスペースにあるか確認する。 |
-| `No YAML object was found in Bob output.` | Bob 出力に fenced YAML または `schema_version:` で始まる YAML が含まれているか確認する。 |
-| `evidence-index.json not found` | `validateOutput` の前に `preprocess` を実行し、同じ `reviewPackagePath` を指定しているか確認する。 |
-| `references unknown evidence_id` | Bob 出力の evidence が `evidence-index.json` に存在する ID を参照しているか確認する。 |
-
-## 関連ドキュメント
-
-- `docs/workflows/code-consistency-review/README.md`
-- `docs/workflows/code-consistency-review/review-input-schema.md`
-- `docs/workflows/code-consistency-review/review-package-spec.md`
-- `docs/workflows/code-consistency-review/bob-prompt-template.md`
-- `docs/workflows/code-consistency-review/bob-output-schema.md`
-- `docs/workflows/code-consistency-review/human-triage-spec.md`
-- `extensions/workflow-register/README.md`
-- `extensions/README.md`
