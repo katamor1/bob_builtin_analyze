@@ -3,11 +3,13 @@ const assert = require("node:assert/strict")
 
 const { createAuthoringModelFromTemplate } = require("../out/core/workflowAuthoringDefaults")
 const { renderWorkflowBuilderBodyScript } = require("../out/webview/workflowBuilderBodyScript")
+const { renderWorkflowBuilderClientScript } = require("../out/webview/workflowBuilderClientScript")
+const { renderWorkflowBuilderGuidedHelpScript } = require("../out/webview/workflowBuilderGuidedHelpScript")
 const { workflowBuilderHelpCatalog } = require("../out/webview/workflowBuilderHelpCatalog")
+const { WorkflowBuilderHelpIds, workflowBuilderHelpIdValues, isWorkflowBuilderHelpId } = require("../out/webview/workflowBuilderHelpIds")
 const { renderWorkflowBuilderHelpScript } = require("../out/webview/workflowBuilderHelpScript")
 const { renderWorkflowBuilderHtml } = require("../out/webview/workflowBuilderHtml")
 const { renderWorkflowBuilderStyles } = require("../out/webview/workflowBuilderStyles")
-const { renderWorkflowBuilderClientScript } = require("../out/webview/workflowBuilderClientScript")
 
 test("workflow builder html includes split style and client script output", () => {
   const model = createAuthoringModelFromTemplate({
@@ -33,6 +35,7 @@ test("workflow builder html includes split style and client script output", () =
   assert.match(html, /helpCatalog/)
   assert.match(html, /workflowHelpPanel/)
   assert.match(html, /workflowBuilderJumpToHelp/)
+  assert.match(html, /renderWorkflowBuilderGuidedHelpScript|stepTypeGuideHtml/)
 })
 
 test("workflow builder split modules expose approval, markdown body, help, and guided navigation pieces", () => {
@@ -46,12 +49,14 @@ test("workflow builder split modules expose approval, markdown body, help, and g
   assert.match(script, /add-approval/)
   assert.match(script, /delete-approval/)
   assert.match(script, /data-approval-field/)
-  assert.match(script, /stepTypeGuideHtml/)
-  assert.match(script, /stepOptionLabel/)
-  assert.match(script, /resultKeyOptionLabel/)
-  assert.match(script, /diagnosticTarget/)
   assert.match(script, /goto-help-target/)
-  assert.match(script, /workflowBuilderJumpToHelp/)
+
+  const guidedScript = renderWorkflowBuilderGuidedHelpScript()
+  assert.match(guidedScript, /stepTypeGuideHtml/)
+  assert.match(guidedScript, /stepOptionLabel/)
+  assert.match(guidedScript, /resultKeyOptionLabel/)
+  assert.match(guidedScript, /diagnosticTarget/)
+  assert.match(guidedScript, /gotoHelpTarget/)
 
   const bodyScript = renderWorkflowBuilderBodyScript()
   assert.match(bodyScript, /renderMarkdownBody/)
@@ -75,6 +80,15 @@ test("workflow builder split modules expose approval, markdown body, help, and g
   assert.match(helpScript, /artifact\.producedBy/)
   assert.match(helpScript, /dataset\.stateKey/)
   assert.match(helpScript, /controlForHelpButton/)
+})
+
+test("workflow builder help id registry exposes known ids", () => {
+  assert.equal(WorkflowBuilderHelpIds.StepType, "step.type")
+  assert.equal(WorkflowBuilderHelpIds.StepPrompt, "step.prompt")
+  assert.equal(WorkflowBuilderHelpIds.ArtifactProducedBy, "artifact.producedBy")
+  assert.ok(workflowBuilderHelpIdValues.includes("result.source"))
+  assert.equal(isWorkflowBuilderHelpId("guardrails.allowedCommands"), true)
+  assert.equal(isWorkflowBuilderHelpId("unknown.help"), false)
 })
 
 test("workflow builder help catalog covers high priority Japanese help entries", () => {
