@@ -48,7 +48,7 @@ export async function discoverReviewInputCandidates(workspaceRoot: string, optio
     const extension = path.extname(filePath).toLowerCase()
     try {
       if (extension === ".md" || extension === ".markdown") {
-        documents.push(await discoverMarkdownCandidate(filePath, relativePath, kind, options.textEncoding, maxIdsPerFile))
+        documents.push(await discoverMarkdownCandidate(filePath, relativePath, kind, options.textEncoding ?? "auto", maxIdsPerFile))
       } else if (extension === ".xlsx") {
         documents.push(discoverXlsxCandidate(filePath, relativePath, kind, maxIdsPerFile))
       } else {
@@ -83,7 +83,7 @@ async function walkDocumentFiles(root: string, maxFiles: number): Promise<string
   return result
 }
 
-async function discoverMarkdownCandidate(filePath: string, relativePath: string, kind: ArtifactKind, textEncoding = "auto", maxIds: number): Promise<ReviewInputDocumentCandidate> {
+async function discoverMarkdownCandidate(filePath: string, relativePath: string, kind: ArtifactKind, textEncoding: string, maxIds: number): Promise<ReviewInputDocumentCandidate> {
   const markdown = await readTextFile(filePath, textEncoding)
   const ids = uniqueMatches(markdown, maxIds)
   const selectorKey = kind === "test_spec" ? "cases" : "sections"
