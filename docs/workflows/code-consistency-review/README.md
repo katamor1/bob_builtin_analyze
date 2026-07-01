@@ -15,6 +15,7 @@
 | `human-triage-spec.md` | bob 出力を人間が採用・棄却・追加調査に分類する仕様 |
 | `c-cpp-analysis-scope.md` | C/C++ コード解析で抽出する対象 |
 | `document-extraction-spec.md` | Word / Excel / Markdown 文書抽出仕様 |
+| `traceability-sidecar-catalog.md` | 元文書非改変の sidecar catalog、ID付与、工程間リンク、レビューゲート、review-input 生成統合方針 |
 | `mvp-implementation-plan.md` | MVP 実装マイルストーン、タスク、受け入れ条件 |
 | `mvp-architecture.md` | MVP の CLI、モジュール、データフロー構成 |
 | `mvp-backlog.md` | MVP 実装チケット候補と着手順 |
@@ -102,7 +103,7 @@ bob-review triage --package .bob-review/review-package --bob-output .bob-review/
 runtime 実装は `extensions/bob-code-consistency-review/` に配置する。
 
 - VS Code 拡張 ID は `local.bob-code-consistency-review`。
-- `workflow-register` の `registerActionProvider` へ `bobCodeConsistency.preprocess`、`bobCodeConsistency.captureBobOutput`、`bobCodeConsistency.validateOutput`、`bobCodeConsistency.triage` を登録する。
+- `workflow-register` の `registerActionProvider` へ `bobCodeConsistency.preprocess`、`bobCodeConsistency.captureBobOutput`、`bobCodeConsistency.validateOutput`、`bobCodeConsistency.triage` に加え、traceability-prep 系の `prepareAiTraceabilityDraft`、`applyAiTraceabilityDraft`、`openTraceabilityPrep`、`validateTraceabilityCatalog`、`createReviewInputFromTraceability` を登録する。
 - `.bob/workflows/code-consistency-review/WORKFLOW.md` は manual CLI 手順ではなく、上記 provider を使って `preprocess -> Bob agent -> capture -> validate -> triage -> handoff` を実行する。
 - `resources/schemas/` と `resources/templates/` は、この docs 配下の schema/template を runtime 用に同梱したもの。
 - `scaffold/` は仕様検証用の雛形として残し、実運用の Bob workflow からは新規拡張を呼び出す。
