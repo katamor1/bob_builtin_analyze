@@ -92,10 +92,12 @@ async function getWorkflowRegisterApi(): Promise<WorkflowRegisterApi | undefined
 }
 
 async function runInitializeWorkspace(context: vscode.ExtensionContext, options?: unknown): Promise<unknown> {
+  const config = vscode.workspace.getConfiguration("bobCodeConsistency")
   const record = optionRecord(options)
   const workspaceRoot = await requireBobWorkspaceRoot(record)
-  const result = await initializeCodeConsistencyWorkspace({ context, workspaceRoot })
-  const suffix = result.backupPath ? `\n既存ファイルのバックアップ: ${result.backupPath}` : ""
+  const reviewInputPath = stringOption(record, "reviewInputPath") ?? config.get<string>("reviewInputPath", "review-input.yaml")
+  const result = await initializeCodeConsistencyWorkspace({ context, workspaceRoot, reviewInputPath })
+  const suffix = result.backupPath ? `\n既存 workflow ファイルのバックアップ: ${result.backupPath}` : ""
   notifyInfo(`${result.message}${suffix}`)
   return result
 }
