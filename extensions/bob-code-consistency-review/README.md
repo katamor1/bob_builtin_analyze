@@ -10,6 +10,7 @@
 
 - `review-input.yaml` を読み込み、対象レビュー、比較範囲、関連文書、レビュー観点を検証する。
 - `ReviewInputDraft` から正式な `review-input.yaml` を生成し、保存前に schema と文書パスを検証する。
+- AI には最終 YAML を書かせず、候補文書・diff summary・診断を渡して `ReviewInputDraft` JSON だけを返させる。
 - `docs/**/*.md|docx|xlsx` から関連文書候補と `REQ-*`、`BD-*`、`DD-*`、`TC-*`、`TICKET-*` などの ID 候補を抽出する。
 - Git / Bazaar、base / head、変更種別、関連文書、レビュー観点を対話式に選択して `review-input.yaml` を作成する。
 - Git 差分から変更ファイル、変更行、C / C++ の変更関数候補を抽出する。
@@ -41,13 +42,14 @@
 1. Bob IDE / VS Code で対象ワークスペースを開く。
 2. `Bob コード整合: コード整合レビュー: .bob ワークフロー定義と review-input 雛形を初期化` を実行し、`.bob/workflows/.../WORKFLOW.md` と `review-input.yaml` の雛形を作成する。
 3. 手書きする代わりに `Bob コード整合: コード整合レビュー: 対話式に review-input.yaml を作成` で、短いドラフトと候補選択から `review-input.yaml` を生成する。
-4. `review-input.yaml` の `review`、`artifacts`、`review_focus` を必要に応じて確認する。
-5. `Bob Code Consistency: Preprocess Code Consistency Review` を実行する。
-6. 生成された `.bob-review/review-package/bob-input.md` を Bob に渡し、整合プレレビューを実行する。
-7. Bob の YAML 出力をコピーし、`Bob Code Consistency: Capture Code Consistency Bob Output` で保存する。
-8. `Bob Code Consistency: Validate Code Consistency Bob Output` で schema と evidence 参照を検証する。
-9. `Bob Code Consistency: Generate Code Consistency Human Triage` で人間確認用ファイルを生成する。
-10. 人間が triage 結果を確認し、正式レビューや修正作業へ回す指摘を判断する。
+4. AI を使う場合は `Bob コード整合: コード整合レビュー: AI draft 用プロンプトを作成` でプロンプトを作り、AI の JSON 応答を `Bob コード整合: コード整合レビュー: AI draft JSON から review-input.yaml を生成` で取り込む。
+5. `review-input.yaml` の `review`、`artifacts`、`review_focus` を必要に応じて確認する。
+6. `Bob Code Consistency: Preprocess Code Consistency Review` を実行する。
+7. 生成された `.bob-review/review-package/bob-input.md` を Bob に渡し、整合プレレビューを実行する。
+8. Bob の YAML 出力をコピーし、`Bob Code Consistency: Capture Code Consistency Bob Output` で保存する。
+9. `Bob Code Consistency: Validate Code Consistency Bob Output` で schema と evidence 参照を検証する。
+10. `Bob Code Consistency: Generate Code Consistency Human Triage` で人間確認用ファイルを生成する。
+11. 人間が triage 結果を確認し、正式レビューや修正作業へ回す指摘を判断する。
 
 ## Command Palette のコマンド
 
@@ -55,6 +57,8 @@
 | --- | --- | --- |
 | `Bob コード整合: コード整合レビュー: .bob ワークフロー定義と review-input 雛形を初期化` | `bobCodeConsistency.initializeWorkspace` | `.bob/workflows/code-consistency-review/WORKFLOW.md` と `review-input.yaml` の雛形を作成する。既存 `review-input.yaml` は上書きせず、バックアップだけ作成する。 |
 | `Bob コード整合: コード整合レビュー: 対話式に review-input.yaml を作成` | `bobCodeConsistency.createReviewInput` | Git / Bazaar、base / head、変更種別、関連文書候補、レビュー観点を選び、`ReviewInputBuilder` 経由で `review-input.yaml` を生成する。 |
+| `Bob コード整合: コード整合レビュー: AI draft 用プロンプトを作成` | `bobCodeConsistency.prepareAiReviewInputDraft` | diff summary、関連文書候補、schema enum、既存 YAML 診断をまとめた AI draft 用 Markdown を作成し clipboard にコピーする。 |
+| `Bob コード整合: コード整合レビュー: AI draft JSON から review-input.yaml を生成` | `bobCodeConsistency.applyAiReviewInputDraft` | AI が返した `ReviewInputDraft` JSON を clipboard / 引数から読み、`ReviewInputBuilder` と validator を通して `review-input.yaml` に保存する。 |
 | `Bob コード整合: コード整合レビュー: review-input.yaml を自動修復` | `bobCodeConsistency.repairReviewInput` | 古い `review_focus` 名を現行 schema enum へ置換し、バックアップ後に保存する。 |
 | `Bob コード整合: コード整合レビュー: review-input.yaml 診断を説明` | `bobCodeConsistency.explainReviewInputDiagnostics` | `review-input.yaml` の schema / 文書パス診断を表示する。 |
 | `Bob Code Consistency: Preprocess Code Consistency Review` | `bobCodeConsistency.preprocess` | `review-input.yaml`、Git 差分、文書、コード解析結果から `review-package` を生成する。 |
@@ -95,10 +99,10 @@ docs/
 
 ## Draft -> Builder -> Validator
 
-`review-input.yaml` を人が直接フル手書きする代わりに、Phase 2 では次の流れを使います。
+`review-input.yaml` を人が直接フル手書きする代わりに、次の流れを使います。
 
 ```text
-人間 / 将来の AI / CLI
+人間 / AI / CLI
   -> ReviewInputDraft
   -> ReviewInputBuilder
   -> schema validator + artifact path validation
@@ -140,6 +144,32 @@ export type ReviewInputDraft = {
 - `review_focus` が未指定の場合は `focus_preset` から展開する。
 - `analysis_options` と `bob_options` は安全な既定値で補完する。
 - 既存 `review-input.yaml` へ保存する場合は `.bak-<timestamp>` を作成する。
+
+## AI draft provider
+
+AI 支援は、最終 YAML 生成ではなく `ReviewInputDraft` JSON の補助に限定します。
+
+```text
+prepareAiReviewInputDraft
+  -> diff summary / artifact candidates / diagnostics / enum constraints を Markdown 化
+  -> clipboard と .bob-review/review-input-draft/ai-draft-prompt.md に保存
+  -> AI に投入
+  -> AI は JSON object だけを返す
+applyAiReviewInputDraft
+  -> clipboard / 引数から JSON を抽出
+  -> JSON parse
+  -> ReviewInputBuilder
+  -> schema validator + artifact path validation
+  -> review-input.yaml
+```
+
+AI draft プロンプトには次の制約を含めます。
+
+- 出力は JSON object のみ。Markdown、YAML、説明文は禁止。
+- `artifact_candidates[].path` は候補一覧に存在する path のみ許可。
+- `artifact_candidates[].kind`、`review.change_type`、`review.vcs`、`review_focus` は schema enum のみ許可。
+- AI が存在しない文書パスや enum を返しても、`applyAiReviewInputDraft` 側の builder / validator で保存不可にする。
+- 最終承認や人間確認不要などの判断は AI にさせない。
 
 ## `review-input.yaml`
 
