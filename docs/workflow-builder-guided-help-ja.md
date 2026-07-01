@@ -10,6 +10,8 @@ Workflow Builder の設定項目が増えたため、静的ヘルプパネルだ
 2. Step type ごとの設定ガイド
 3. 選択肢の表示ラベル改善
 4. Diagnostics から設定項目への誘導
+5. Webview Client Script 分割
+6. Help ID Registry 化
 
 ## 1. Help Target 明示化
 
@@ -75,11 +77,51 @@ Preview / Diagnostics の診断や参照チェックに、関連設定へ移動�
 
 link を押すと対象タブへ移動し、可能な場合は該当 field に focus し、右側ヘルプも該当項目へ切り替える。
 
+## 5. Webview Client Script 分割
+
+`workflowBuilderClientScript.ts` は大きくなっているため、機能単位で段階的に分割する。
+
+今回の分割対象:
+
+- `workflowBuilderGuidedHelpScript.ts`
+  - `stepTypeGuideHtml`
+  - `stepOptionLabel`
+  - `resultKeyOptionLabel`
+  - `diagnosticTarget`
+  - `diagnosticLinkHtml`
+  - `renderDiagnosticsList`
+  - `gotoHelpTarget`
+
+`workflowBuilderHtml.ts` は、`renderWorkflowBuilderClientScript()` の後に `renderWorkflowBuilderGuidedHelpScript()` を合成する。
+
+## 6. Help ID Registry 化
+
+`workflowBuilderHelpIds.ts` を追加し、help id を定数化する。
+
+目的:
+
+- help id の typo を減らす。
+- renderer、help catalog、diagnostics 誘導先の対応を確認しやすくする。
+- 将来、catalog に存在しない help id を test で検出できるようにする。
+
+主な公開値:
+
+```ts
+WorkflowBuilderHelpIds.StepPrompt
+WorkflowBuilderHelpIds.StepIncludeState
+WorkflowBuilderHelpIds.CommandProvider
+WorkflowBuilderHelpIds.ResultSource
+WorkflowBuilderHelpIds.ArtifactProducedBy
+workflowBuilderHelpIdValues
+isWorkflowBuilderHelpId()
+```
+
 ## 非対象
 
 - Diagnostics の完全な構文解析。
 - エラーごとの自動修正。
 - AI による動的説明生成。
 - workflow 定義の保存ロジック変更。
+- `workflowBuilderClientScript.ts` の全面分割。
 
 これらは後続 phase の候補とする。
