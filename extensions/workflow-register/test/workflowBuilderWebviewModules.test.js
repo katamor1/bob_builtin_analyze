@@ -32,16 +32,26 @@ test("workflow builder html includes split style and client script output", () =
   assert.match(html, /requireApproval/)
   assert.match(html, /helpCatalog/)
   assert.match(html, /workflowHelpPanel/)
+  assert.match(html, /workflowBuilderJumpToHelp/)
 })
 
-test("workflow builder split modules expose approval, markdown body, and help editor pieces", () => {
-  assert.match(renderWorkflowBuilderStyles(), /\.tabs/)
-  assert.match(renderWorkflowBuilderStyles(), /\.help-panel/)
-  assert.match(renderWorkflowBuilderStyles(), /\.help-search-results/)
+test("workflow builder split modules expose approval, markdown body, help, and guided navigation pieces", () => {
+  const styles = renderWorkflowBuilderStyles()
+  assert.match(styles, /\.tabs/)
+  assert.match(styles, /\.help-panel/)
+  assert.match(styles, /\.help-search-results/)
+  assert.match(styles, /\.help-inline-guide/)
+
   const script = renderWorkflowBuilderClientScript()
   assert.match(script, /add-approval/)
   assert.match(script, /delete-approval/)
   assert.match(script, /data-approval-field/)
+  assert.match(script, /stepTypeGuideHtml/)
+  assert.match(script, /stepOptionLabel/)
+  assert.match(script, /resultKeyOptionLabel/)
+  assert.match(script, /diagnosticTarget/)
+  assert.match(script, /goto-help-target/)
+  assert.match(script, /workflowBuilderJumpToHelp/)
 
   const bodyScript = renderWorkflowBuilderBodyScript()
   assert.match(bodyScript, /renderMarkdownBody/)
