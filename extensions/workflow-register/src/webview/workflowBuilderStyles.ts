@@ -30,6 +30,8 @@ pre { white-space: pre-wrap; overflow: auto; padding: 10px; background: var(--vs
 .diagnostics.ng, .reference-issue { border-left: 4px solid var(--vscode-testing-iconFailed); }
 .issue-list { margin: 6px 0 0 18px; padding: 0; }
 .issue-list li { margin: 4px 0; }
+.help-inline-guide { border-left: 4px solid var(--vscode-focusBorder); }
+.help-inline-guide ol { margin: 6px 0 0 20px; padding: 0; }
 .help-panel { border-left: 1px solid var(--vscode-panel-border); background: var(--vscode-sideBar-background); padding: 14px; overflow: auto; }
 .help-panel h2 { margin-top: 0; }
 .help-panel p { line-height: 1.55; }
