@@ -61,6 +61,7 @@ let editMode = ${JSON.stringify(options.isEditMode)};
 ${renderWorkflowBuilderClientScript()}
 ${renderWorkflowBuilderBodyScript()}
 ${renderWorkflowBuilderHelpScript()}
+window.workflowBuilderJumpToHelp = typeof jumpToHelpEntry === 'function' ? jumpToHelpEntry : undefined;
 </script>
 </body>
 </html>`
