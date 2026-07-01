@@ -9,6 +9,9 @@
 ## できること
 
 - `review-input.yaml` を読み込み、対象レビュー、比較範囲、関連文書、レビュー観点を検証する。
+- `ReviewInputDraft` から正式な `review-input.yaml` を生成し、保存前に schema と文書パスを検証する。
+- `docs/**/*.md|docx|xlsx` から関連文書候補と `REQ-*`、`BD-*`、`DD-*`、`TC-*`、`TICKET-*` などの ID 候補を抽出する。
+- Git / Bazaar、base / head、変更種別、関連文書、レビュー観点を対話式に選択して `review-input.yaml` を作成する。
 - Git 差分から変更ファイル、変更行、C / C++ の変更関数候補を抽出する。
 - Markdown、Word `.docx`、Excel `.xlsx` から、要求・設計・テスト仕様・台帳などの根拠抜粋を作る。
 - 変更コードと文書抜粋を `evidence_id` 付きで `review-package` に整理する。
@@ -37,19 +40,23 @@
 
 1. Bob IDE / VS Code で対象ワークスペースを開く。
 2. `Bob コード整合: コード整合レビュー: .bob ワークフロー定義と review-input 雛形を初期化` を実行し、`.bob/workflows/.../WORKFLOW.md` と `review-input.yaml` の雛形を作成する。
-3. `review-input.yaml` の `review`、`artifacts`、`review_focus` を実案件に合わせて編集する。
-4. `Bob Code Consistency: Preprocess Code Consistency Review` を実行する。
-5. 生成された `.bob-review/review-package/bob-input.md` を Bob に渡し、整合プレレビューを実行する。
-6. Bob の YAML 出力をコピーし、`Bob Code Consistency: Capture Code Consistency Bob Output` で保存する。
-7. `Bob Code Consistency: Validate Code Consistency Bob Output` で schema と evidence 参照を検証する。
-8. `Bob Code Consistency: Generate Code Consistency Human Triage` で人間確認用ファイルを生成する。
-9. 人間が triage 結果を確認し、正式レビューや修正作業へ回す指摘を判断する。
+3. 手書きする代わりに `Bob コード整合: コード整合レビュー: 対話式に review-input.yaml を作成` で、短いドラフトと候補選択から `review-input.yaml` を生成する。
+4. `review-input.yaml` の `review`、`artifacts`、`review_focus` を必要に応じて確認する。
+5. `Bob Code Consistency: Preprocess Code Consistency Review` を実行する。
+6. 生成された `.bob-review/review-package/bob-input.md` を Bob に渡し、整合プレレビューを実行する。
+7. Bob の YAML 出力をコピーし、`Bob Code Consistency: Capture Code Consistency Bob Output` で保存する。
+8. `Bob Code Consistency: Validate Code Consistency Bob Output` で schema と evidence 参照を検証する。
+9. `Bob Code Consistency: Generate Code Consistency Human Triage` で人間確認用ファイルを生成する。
+10. 人間が triage 結果を確認し、正式レビューや修正作業へ回す指摘を判断する。
 
 ## Command Palette のコマンド
 
 | コマンド | 内部 command ID | 用途 |
 | --- | --- | --- |
 | `Bob コード整合: コード整合レビュー: .bob ワークフロー定義と review-input 雛形を初期化` | `bobCodeConsistency.initializeWorkspace` | `.bob/workflows/code-consistency-review/WORKFLOW.md` と `review-input.yaml` の雛形を作成する。既存 `review-input.yaml` は上書きせず、バックアップだけ作成する。 |
+| `Bob コード整合: コード整合レビュー: 対話式に review-input.yaml を作成` | `bobCodeConsistency.createReviewInput` | Git / Bazaar、base / head、変更種別、関連文書候補、レビュー観点を選び、`ReviewInputBuilder` 経由で `review-input.yaml` を生成する。 |
+| `Bob コード整合: コード整合レビュー: review-input.yaml を自動修復` | `bobCodeConsistency.repairReviewInput` | 古い `review_focus` 名を現行 schema enum へ置換し、バックアップ後に保存する。 |
+| `Bob コード整合: コード整合レビュー: review-input.yaml 診断を説明` | `bobCodeConsistency.explainReviewInputDiagnostics` | `review-input.yaml` の schema / 文書パス診断を表示する。 |
 | `Bob Code Consistency: Preprocess Code Consistency Review` | `bobCodeConsistency.preprocess` | `review-input.yaml`、Git 差分、文書、コード解析結果から `review-package` を生成する。 |
 | `Bob Code Consistency: Capture Code Consistency Bob Output` | `bobCodeConsistency.captureBobOutput` | Bob が出力した YAML を clipboard または引数から抽出し、`bob-output.yaml` として保存する。 |
 | `Bob Code Consistency: Validate Code Consistency Bob Output` | `bobCodeConsistency.validateOutput` | Bob 出力 YAML を schema と evidence index で検証する。 |
@@ -85,6 +92,54 @@ docs/
 - `review-input.yaml` が存在しない場合は、schema に沿った最小雛形を作成します。
 - `review-input.yaml` が既に存在する場合は、実案件の入力を壊さないため上書きしません。代わりに `.bak-<timestamp>` を作成します。
 - 雛形が参照する `docs/review-input-placeholder.md` は仮文書です。実レビューでは実際の要求書・設計書・テスト仕様書に差し替えてください。
+
+## Draft -> Builder -> Validator
+
+`review-input.yaml` を人が直接フル手書きする代わりに、Phase 2 では次の流れを使います。
+
+```text
+人間 / 将来の AI / CLI
+  -> ReviewInputDraft
+  -> ReviewInputBuilder
+  -> schema validator + artifact path validation
+  -> review-input.yaml
+```
+
+`ReviewInputDraft` は短いドラフトです。正式な YAML と違い、候補選択結果をそのまま持ちます。
+
+```ts
+export type ReviewInputDraft = {
+  review: {
+    id?: string
+    title?: string
+    change_type?: string
+    purpose?: string
+    base?: string
+    head?: string
+    vcs?: string
+    ticket_ids?: string[]
+    out_of_scope?: string[]
+  }
+  artifact_candidates: Array<{
+    kind: "requirements" | "basic_design" | "detailed_design" | "test_spec" | "ledgers" | "tickets"
+    path: string
+    sections?: string[]
+    sheets?: string[]
+    rows?: string[]
+    cases?: string[]
+  }>
+  focus_preset?: "standard" | "document_update" | "interface" | "rt_shared_memory" | "test_gap"
+  review_focus?: string[]
+}
+```
+
+`ReviewInputBuilder` は次を保証します。
+
+- `review_focus`、`change_type`、`vcs`、`artifact.kind` は schema で許可された値だけを受け付ける。
+- `artifact.path` は保存前にワークスペース上の実在パスとして検証する。
+- `review_focus` が未指定の場合は `focus_preset` から展開する。
+- `analysis_options` と `bob_options` は安全な既定値で補完する。
+- 既存 `review-input.yaml` へ保存する場合は `.bak-<timestamp>` を作成する。
 
 ## `review-input.yaml`
 
