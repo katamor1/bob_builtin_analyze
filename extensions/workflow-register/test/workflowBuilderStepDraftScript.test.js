@@ -10,8 +10,11 @@ test("step draft script exposes transaction controls and validation hooks", () =
 
   assert.match(script, /ensureStepDraft/)
   assert.match(script, /validateStepDraftInWebview/)
+  assert.match(script, /requestStepDraftHostValidation/)
+  assert.match(script, /stepDraftValidationResult/)
   assert.match(script, /apply-step-draft/)
   assert.match(script, /discard-step-draft/)
+  assert.match(script, /Host validation/)
   assert.match(script, /未確定の変更/)
 })
 
@@ -32,5 +35,6 @@ test("workflow builder html includes step draft script before help decoration", 
   })
 
   assert.match(html, /validateStepDraftInWebview/)
-  assert.ok(html.indexOf("validateStepDraftInWebview") < html.indexOf("renderWorkflowBuilderGuidedHelpScript") || html.includes("jumpToHelpEntry"))
+  assert.match(html, /requestStepDraftHostValidation/)
+  assert.ok(html.indexOf("validateStepDraftInWebview") < html.indexOf("jumpToHelpEntry"))
 })
