@@ -17,9 +17,10 @@ export function buildWorkflowRunDiagnosticReport(runs: WorkflowRunState[], optio
   const failed = runs.filter((run) => run.status === "failed").length
   const reviewing = runs.filter((run) => run.status === "reviewing").length
   const held = runs.filter((run) => run.status === "held").length
+  const attempts = runs.reduce((sum, run) => sum + run.steps.reduce((stepSum, step) => stepSum + (step.attempts?.length ?? 0), 0), 0)
   return {
     title: "Workflow Run Diagnostics",
-    summary: `${runs.length} run(s); ${failed} failed; ${reviewing} reviewing; ${held} held.`,
+    summary: `${runs.length} run(s); ${failed} failed; ${reviewing} reviewing; ${held} held; ${attempts} archived attempt(s).`,
     lines
   }
 }
@@ -39,9 +40,10 @@ export function formatWorkflowRunDiagnostics(run: WorkflowRunState, options: { s
     const hint = workflowRunFailureHint(run.error)
     if (hint) lines.push(`- suggested fix: ${hint}`)
   }
+  if (run.state["workflow.definitionMismatch"]) lines.push(`- workflow definition mismatch: ${run.state["workflow.definitionMismatch"]}`)
   const problemStep = currentProblemStep(run)
   if (problemStep) {
-    lines.push("", "Current attention step:", `- id: ${problemStep.id}`, `- title: ${problemStep.title}`, `- type: ${problemStep.type}`, `- status: ${problemStep.status}`)
+    lines.push("", "Current attention step:", `- id: ${problemStep.id}`, `- title: ${problemStep.title}`, `- type: ${problemStep.type}`, `- status: ${problemStep.status}`, `- current attempt: ${problemStep.attempt ?? 1}`, `- archived attempts: ${problemStep.attempts?.length ?? 0}`)
     if (problemStep.reviewStartedAt) lines.push(`- review started: ${problemStep.reviewStartedAt}`)
     if (problemStep.acceptedAt) lines.push(`- accepted: ${problemStep.acceptedAt}`)
     if (problemStep.error) {
@@ -54,7 +56,10 @@ export function formatWorkflowRunDiagnostics(run: WorkflowRunState, options: { s
   lines.push("", "State:", stateKeys.length === 0 ? "- no state values captured" : `- keys: ${stateKeys.join(", ")}`)
   if (run.state["workflow.preflightWarnings"]) lines.push(`- preflight warnings: ${run.state["workflow.preflightWarnings"]}`)
   lines.push("", "Steps:")
-  for (const step of run.steps) lines.push(`- ${step.id}: ${step.status}${step.reviewStartedAt ? `; reviewStartedAt=${step.reviewStartedAt}` : ""}${step.acceptedAt ? `; acceptedAt=${step.acceptedAt}` : ""}${step.error ? `; error=${step.error}` : ""}`)
+  for (const step of run.steps) {
+    lines.push(`- ${step.id}: ${step.status}; attempt=${step.attempt ?? 1}; archivedAttempts=${step.attempts?.length ?? 0}${step.reviewStartedAt ? `; reviewStartedAt=${step.reviewStartedAt}` : ""}${step.acceptedAt ? `; acceptedAt=${step.acceptedAt}` : ""}${step.error ? `; error=${step.error}` : ""}`)
+    appendAttemptSummaries(lines, step)
+  }
   appendTaskSnapshots(lines, run, options.snapshots ?? [])
   return lines
 }
@@ -72,12 +77,23 @@ export function workflowRunFailureHint(error: string): string | undefined {
   if (error.includes("Unsupported result sink")) return "Register a result sink for this sink type or use the built-in file sink."
   if (error.includes("Unsupported result command")) return "Allow or replace the command result sink. File sinks are usually safer for generated artifacts."
   if (error.includes("waiting for step review")) return "Accept the current step, or retry it after adjusting the workflow step definition."
+  if (error.includes("Workflow definition changed")) return "Enable stepReview.allowEditBeforeRetry or retry with the original workflow definition."
+  if (error.includes("Workflow step order/id changed")) return "Keep completed step ids and order stable while retrying a run."
   return undefined
 }
 
 function currentProblemStep(run: WorkflowRunState): RunStepState | undefined {
   return run.steps.find((step) => step.id === run.currentStep && (step.status === "failed" || step.status === "held" || step.status === "reviewing"))
     ?? run.steps.find((step) => step.status === "failed" || step.status === "held" || step.status === "reviewing")
+}
+
+function appendAttemptSummaries(lines: string[], step: RunStepState): void {
+  const attempts = step.attempts ?? []
+  if (attempts.length === 0) return
+  for (const attempt of attempts) {
+    const stateKeys = Object.keys(attempt.stateSnapshot ?? {}).sort()
+    lines.push(`  - attempt ${attempt.attempt}: ${attempt.status}; createdAt=${attempt.createdAt}; stateKeys=${stateKeys.length === 0 ? "none" : stateKeys.join(",")}${attempt.error ? `; error=${attempt.error}` : ""}`)
+  }
 }
 
 function appendTaskSnapshots(lines: string[], run: WorkflowRunState, snapshots: TaskSnapshotSummary[]): void {
