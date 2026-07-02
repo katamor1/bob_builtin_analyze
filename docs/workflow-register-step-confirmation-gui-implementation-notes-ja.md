@@ -2,7 +2,7 @@
 
 ## 実装範囲
 
-`docs/workflow-register-step-confirmation-gui-plan-ja.md` の Phase 1〜3 を中心に、Step detail の仮編集と確定前チェックを追加した。
+`docs/workflow-register-step-confirmation-gui-plan-ja.md` の Phase 1〜4 を中心に、Step detail の仮編集、確定前チェック、host 側 workflow-level preview check を追加した。
 
 ## 追加した主な機能
 
@@ -14,6 +14,7 @@
 - 未確定のまま別 step / 別 tab / template 反映 / step 操作へ移動しようとした場合、破棄確認を出す。
 - command / result / agent / manual の type 別チェックを Webview 内で即時表示する。
 - `id` / `resultKey` 変更が `artifacts.producedBy` や後続 `includeState` に与える影響を Apply 前に表示する。
+- `Validate step` で extension host に `validateStepDraft` message を送り、`validateWorkflowText` による workflow-level diagnostics も表示する。
 
 ## 追加ファイル
 
@@ -27,6 +28,7 @@ extensions/workflow-register/test/workflowBuilderStepDraftScript.test.js
 ## 変更ファイル
 
 ```text
+extensions/workflow-register/src/webview/workflowBuilderPanel.ts
 extensions/workflow-register/src/webview/workflowBuilderHtml.ts
 extensions/workflow-register/src/webview/workflowBuilderStyles.ts
 extensions/workflow-register/src/webview/README.md
@@ -48,6 +50,22 @@ extensions/workflow-register/src/webview/README.md
 - `resultKey` 変更で後続 `includeState` / `result.stateKey` が孤立する。
 - `id` 変更で `artifacts.producedBy` が孤立する。
 
+## Host validation
+
+`workflowBuilderPanel.ts` に `validateStepDraft` message を追加した。
+
+```text
+Webview draftStep
+  -> validateStepDraft message
+  -> core validateStepDraft
+  -> draftStep を仮反映した WorkflowAuthoringModel
+  -> serializeAuthoringModelToMarkdown
+  -> validateWorkflowText
+  -> stepDraftValidationResult message
+```
+
+Webview は `stepDraftValidationResult` を受け取り、Step detail の確定前チェックパネル内に Host validation と workflow-level diagnostics を表示する。
+
 ## Webview integration
 
 `workflowBuilderStepDraftScript.ts` は、既存 `workflowBuilderClientScript.ts` を全面改修せず、後段の script fragment として合成する。
@@ -66,7 +84,6 @@ Step draft script は、既存の `handleFieldEvent` を一度 remove し、Step
 
 ## 今後の残件
 
-- host 側で `validateWorkflowText` を使う step draft preview message を追加する。
 - warning 表示から対象 field へ focus するリンクを追加する。
 - `id` / `resultKey` 変更時の参照自動修復 option を追加する。
 - provider 別 args schema が取得できるようになったら、command step の args UI を provider ごとに分ける。
