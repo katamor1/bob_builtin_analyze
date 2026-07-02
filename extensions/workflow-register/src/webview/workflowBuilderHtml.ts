@@ -4,6 +4,7 @@ import { renderWorkflowBuilderClientScript } from "./workflowBuilderClientScript
 import { renderWorkflowBuilderGuidedHelpScript } from "./workflowBuilderGuidedHelpScript"
 import { workflowBuilderHelpCatalog } from "./workflowBuilderHelpCatalog"
 import { renderWorkflowBuilderHelpScript } from "./workflowBuilderHelpScript"
+import { renderWorkflowBuilderStepDraftRepairScript } from "./workflowBuilderStepDraftRepairScript"
 import { renderWorkflowBuilderStepDraftScript } from "./workflowBuilderStepDraftScript"
 import { renderWorkflowBuilderStyles } from "./workflowBuilderStyles"
 
@@ -64,6 +65,7 @@ let editMode = ${JSON.stringify(options.isEditMode)};
 let focusStepId = ${JSON.stringify(options.focusStepId ?? "")};
 ${renderWorkflowBuilderClientScript()}
 ${renderWorkflowBuilderStepDraftScript()}
+${renderWorkflowBuilderStepDraftRepairScript()}
 if (focusStepId) {
   const focusIndex = model.steps.findIndex(function(step) { return step.id === focusStepId; });
   if (focusIndex >= 0) { selectedStepIndex = focusIndex; activeTab = 'step'; render(); }
