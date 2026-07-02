@@ -15,7 +15,8 @@ import {
   shouldPauseForStepReview,
   startIndexForRun,
   validateRetryCompatibility,
-  validateRunStepCompatibility
+  validateRunStepCompatibility,
+  workflowStepReview
 } from "./engine/runState"
 import {
   formatStateValue,
@@ -199,13 +200,14 @@ export class WorkflowEngine {
   async retryCurrentStep(runId: string, workflow: CoreWorkflowDefinition): Promise<WorkflowRunState> {
     const run = await this.runStore.loadRun(runId)
     if (!run) throw new Error(`Workflow run not found: ${runId}`)
-    if (!workflow.stepReview.allowRetry) throw new Error("This workflow does not allow step retry.")
+    const review = workflowStepReview(workflow)
+    if (!review.allowRetry) throw new Error("This workflow does not allow step retry.")
     const index = workflow.engineSteps.findIndex((step) => step.id === run.currentStep)
     if (index < 0) throw new Error(`Current step is not part of workflow ${workflow.id}: ${run.currentStep ?? "none"}`)
     validateRetryCompatibility(run, workflow, index)
     const step = workflow.engineSteps[index]
     const stepState = run.steps[index]
-    if (workflow.stepReview.preserveAttempts) archiveAttempt(stepState, run.state)
+    if (review.preserveAttempts) archiveAttempt(stepState, run.state)
     run.status = "running"
     run.error = undefined
     stepState.status = "pending"
@@ -418,7 +420,7 @@ export class WorkflowEngine {
   }
 
   private async completeStepIfManual(workflow: CoreWorkflowDefinition, run: WorkflowRunState, step: EngineStep): Promise<{ ok: true } | { ok: false; held?: boolean; error: string }> {
-    if (workflow.stepReview.enabled) return { ok: true }
+    if (workflowStepReview(workflow).enabled) return { ok: true }
     if (step.type === "agent" || step.type === "manual" || step.completeOnSuccess || workflow.stepCompletion !== "manual") return { ok: true }
     return this.waitForManualCompletion(workflow, run, step)
   }

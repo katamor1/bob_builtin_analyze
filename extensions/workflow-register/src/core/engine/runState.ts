@@ -1,6 +1,15 @@
-import { CoreWorkflowDefinition, EngineStep, RunStepState, WorkflowRunState } from "../model"
+import { CoreWorkflowDefinition, EngineStep, RunStepState, WorkflowRunState, WorkflowStepReviewDefinition } from "../model"
 
 type WorkflowExecutionMode = "full" | "singleStep"
+
+const DEFAULT_STEP_REVIEW: WorkflowStepReviewDefinition = {
+  enabled: false,
+  pauseAfter: "none",
+  requireAcceptBeforeNext: false,
+  allowRetry: true,
+  allowEditBeforeRetry: true,
+  preserveAttempts: true
+}
 
 interface RunWorkflowOptionsLike {
   executionMode?: WorkflowExecutionMode
@@ -27,11 +36,17 @@ export function startIndexForRun(workflow: CoreWorkflowDefinition, run: Workflow
   return recoverStartIndex(workflow, run)
 }
 
+export function workflowStepReview(workflow: CoreWorkflowDefinition): WorkflowStepReviewDefinition {
+  const stepReview = (workflow as Partial<CoreWorkflowDefinition>).stepReview
+  return stepReview ?? DEFAULT_STEP_REVIEW
+}
+
 export function shouldPauseForStepReview(workflow: CoreWorkflowDefinition, step: EngineStep, mode: WorkflowExecutionMode): boolean {
   if (mode !== "full") return false
-  if (!workflow.stepReview.enabled) return false
-  if (workflow.stepReview.pauseAfter === "none") return false
-  if (workflow.stepReview.pauseAfter === "agentAndCommand") return step.type === "agent" || step.type === "command"
+  const review = workflowStepReview(workflow)
+  if (!review.enabled) return false
+  if (review.pauseAfter === "none") return false
+  if (review.pauseAfter === "agentAndCommand") return step.type === "agent" || step.type === "command"
   return true
 }
 
@@ -64,7 +79,8 @@ export function validateRunStepCompatibility(run: WorkflowRunState, workflow: Co
 }
 
 export function validateRetryCompatibility(run: WorkflowRunState, workflow: CoreWorkflowDefinition, targetIndex: number): void {
-  if (definitionHashChanged(run, workflow) && !workflow.stepReview.allowEditBeforeRetry) throw new Error("Workflow definition changed, and stepReview.allowEditBeforeRetry is false.")
+  const review = workflowStepReview(workflow)
+  if (definitionHashChanged(run, workflow) && !review.allowEditBeforeRetry) throw new Error("Workflow definition changed, and stepReview.allowEditBeforeRetry is false.")
   validateRunStepCompatibility(run, workflow, targetIndex)
 }
 
