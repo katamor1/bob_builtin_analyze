@@ -42,8 +42,8 @@ IBM.bob-code
 | 拡張機能 | 現在の分割状態 | まだ残っている主な責務 |
 | --- | --- | --- |
 | `workflow-register` | `bobWorkflowFactory.ts`、`bobWorkflowMessages.ts`、`bobTaskInputs.ts`、`taskSnapshotRecovery.ts`、`bobApi.ts`、`reports.ts` に低リスク helper を分離済み。 | `bobWorkflowRunner.ts` には `BobWorkflowEngineRunner` と `StepRuntime` が残る。次の候補は `StepRuntime` の単独分離。 |
-| `bob-bazaar-review` | `workflowRegisterBridge.ts` に workflow-register API 接続、workflow action input 解釈、capture option 変換を分離済み。 | `extension.ts` には GUI command、Bazaar packet 作成、project rules、Bob context 連携、review-result 検証が残る。 |
-| `bob-code-consistency-review` | `extensionCommandOptions.ts` に command option / prompt / path helper、`reviewInputWizard.ts` に review-input 作成 UI を分離済み。 | `extension.ts` には traceability command、review-input AI draft command、preprocess / capture / validate / triage が残る。 |
+| `bob-bazaar-review` | `workflowRegisterBridge.ts` に workflow-register API 接続と workflow action input helper、`bazaarReviewCommands.ts` に revision / range review packet command、`reviewResultValidationCommand.ts` に active editor の review-result JSON 検証を分離済み。 | `extension.ts` には command 登録、workflow provider 登録、project rules 読み込み、review packet 検索、MCP 設定、GUI 起動が残る。 |
+| `bob-code-consistency-review` | `extensionCommandOptions.ts`、`reviewInputWizard.ts`、`workflowProviderRegistration.ts`、`workspaceInitializer.ts`、`traceabilityCommands.ts`、`reviewExecutionCommands.ts` に command helper / UI / workflow provider / 初期化 / traceability / 実行系 command を分離済み。 | `extension.ts` には command 登録、handler mapping、review-input 作成・AI draft・診断系 command handler が残る。次の候補は `reviewInputCommands.ts`。 |
 
 詳細な分割方針は `docs/extension-refactor-review-54e1fe58.md` を参照してください。
 
