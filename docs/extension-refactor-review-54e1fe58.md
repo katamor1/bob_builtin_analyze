@@ -8,9 +8,9 @@
 
 | 拡張 | 主な役割 | 現状評価 |
 |---|---|---|
-| `extensions/workflow-register` | `.bob/workflows/*/WORKFLOW.md` の登録、実行、step review、Bob連携 | parser / engine / reports / Bob API helper は分割済み。次は `bobWorkflowRunner.ts` が主対象 |
-| `extensions/bob-bazaar-review` | Bazaar差分・リビジョン範囲からレビューpacketを作成しBobへ渡す | `extension.ts` に workflow-register bridge、GUI command、packet作成、project rules、Bob context連携が同居 |
-| `extensions/bob-code-consistency-review` | 要求・設計・テスト仕様とコード変更の整合プレレビュー用input/preprocess/output検証 | `extension.ts` がコマンド登録・入力収集・AI draft・traceability・preprocess・triageの入口をすべて持つ |
+| `extensions/workflow-register` | `.bob/workflows/*/WORKFLOW.md` の登録、実行、step review、Bob連携 | parser / engine / reports / Bob API helper は分割済み。`bobWorkflowRunner.ts` の低リスクhelper分離を実施済み |
+| `extensions/bob-bazaar-review` | Bazaar差分・リビジョン範囲からレビューpacketを作成しBobへ渡す | workflow-register bridge / workflow action input helper を `workflowRegisterBridge.ts` へ分離済み |
+| `extensions/bob-code-consistency-review` | 要求・設計・テスト仕様とコード変更の整合プレレビュー用input/preprocess/output検証 | command option / prompt / path helper を `extensionCommandOptions.ts` へ分離済み。次は wizard / traceability command 分割 |
 
 ## 1. workflow-register
 
@@ -20,7 +20,7 @@
 
 次に大きい責務は `src/bobWorkflowRunner.ts` に残っている。
 
-### 実施済みの分割方針
+### 実施済みの分割
 
 PR #30 で以下を切り出した。
 
@@ -32,6 +32,8 @@ PR #30 で以下を切り出した。
   - task snapshot から最新 assistant text を復元
 - `bobWorkflowFactory.ts`
   - Bob workflow object / step array の構築
+
+既存の外部 import を壊さないよう、`bobWorkflowRunner.ts` から `createBobWorkflow` / `extractTaskWorkflowInputs` / `recoverResultTextFromSnapshots` を再exportしている。
 
 ### 次に切る対象
 
@@ -74,17 +76,15 @@ src/bobStepRuntime.ts
 - Bob context 追加/clipboard/save dialog
 - review result JSON検証
 
-### 最初に切るべき対象
+### 実施済みの分割
 
-副作用が比較的小さい workflow-register bridge と workflow input helper を分離する。
-
-推奨ファイル:
+副作用が比較的小さい workflow-register bridge と workflow input helper を分離した。
 
 ```text
 src/workflowRegisterBridge.ts
 ```
 
-含める候補:
+移動済み:
 
 - `WorkflowActionExecutionInput`
 - `WorkflowActionProvider`
@@ -93,15 +93,11 @@ src/workflowRegisterBridge.ts
 - `isWorkflowRegisterExtensionAvailable`
 - `firstStringArg`
 - `initialTargetFromWorkflowInputs`
-- `targetMode`
 - `stringInput`
 - `captureOptionsFromCommandArgs`
-- `recordStringMap`
-- `recordInput`
-- `expectedChecklistItemsFromState`
-- `parseStateObject`
+- workflow state から expected checklist count を読む private helper 群
 
-これにより `extension.ts` は「command登録」「レビューpacket作成」「UI表示」に近づく。
+これにより `extension.ts` は「command登録」「レビューpacket作成」「UI表示」に近づいた。
 
 ### 次に切る対象
 
@@ -130,7 +126,7 @@ src/workflowRegisterBridge.ts
 
 ### 現状
 
-`src/extension.ts` は700行規模で、3拡張の中で最も優先度が高い。コマンド登録自体は明快だが、個別command handlerと入力補助が同居している。
+`src/extension.ts` は700行規模だったが、command option / prompt / path helper を外へ出して約620行規模まで下げた。まだ3拡張の中で最も優先度が高い。
 
 主な混在:
 
@@ -141,15 +137,14 @@ src/workflowRegisterBridge.ts
 - AI review-input draft作成/適用
 - traceability draft作成/適用/検証
 - preprocess / Bob output capture / output validate / triage
-- command option parser / path helper / prompt helper / notification helper
 
-### 最初に切るべき対象
+### 実施済みの分割
 
-#### `extensionCommandOptions.ts`
+```text
+src/extensionCommandOptions.ts
+```
 
-副作用は小さく、複数command handlerから横断利用される。
-
-含める候補:
+移動済み:
 
 - `notifyInfo`
 - `notifyError`
@@ -169,7 +164,7 @@ src/workflowRegisterBridge.ts
 
 注意点:
 
-- `requireBobWorkspaceRoot` は `resolveBobWorkspaceRoot` と VS Code UI に依存するため、純粋helperとは分けて扱うか、`extensionCommandOptions.ts` に VS Code依存ありと明記する。
+- `requireBobWorkspaceRoot` は `resolveBobWorkspaceRoot` と VS Code UI に依存するため、純粋helperではない。
 - `vcsOrPrompt` / `changeTypeOption` / `reviewFocusOption` は `reviewInputBuilder` の enum values に依存する。
 
 ### 次に切る対象
@@ -218,12 +213,13 @@ traceability機能は増え続ける可能性が高いため、早めに `extens
 
 ## 推奨実施順
 
-1. `workflow-register`: `bobWorkflowRunner.ts` の低リスクhelper分離（PR #30）
-2. `bob-code-consistency-review`: `extensionCommandOptions.ts` + `reviewInputWizard.ts`
-3. `bob-bazaar-review`: `workflowRegisterBridge.ts`
-4. `bob-code-consistency-review`: traceability / review-input / execution commands を段階分割
-5. `workflow-register`: `bobStepRuntime.ts`
-6. `bob-bazaar-review`: Bazaar packet生成 command / review result validation command を分割
+1. `workflow-register`: `bobWorkflowRunner.ts` の低リスクhelper分離（PR #30で実施済み）
+2. `bob-code-consistency-review`: `extensionCommandOptions.ts` へ helper 呼び出し移行（PR #30で実施済み）
+3. `bob-bazaar-review`: `workflowRegisterBridge.ts` へ bridge/helper 呼び出し移行（PR #30で実施済み）
+4. `bob-code-consistency-review`: `reviewInputWizard.ts`
+5. `bob-code-consistency-review`: traceability / review-input / execution commands を段階分割
+6. `workflow-register`: `bobStepRuntime.ts`
+7. `bob-bazaar-review`: Bazaar packet生成 command / review result validation command を分割
 
 ## AIが扱いやすい粒度の目安
 
