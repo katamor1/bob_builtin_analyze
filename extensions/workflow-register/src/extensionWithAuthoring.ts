@@ -6,7 +6,7 @@ import { editWorkflowInBuilder } from "./commands/editWorkflowInBuilder"
 import { explainWorkflowDiagnostics } from "./commands/explainWorkflowDiagnostics"
 import { improveWorkflowWithAi } from "./commands/improveWorkflowWithAi"
 import { inspectRunDiagnostics } from "./commands/inspectRunDiagnostics"
-import { acceptAndRunNextStep, acceptCurrentStep, inspectCurrentStep, runNextStep } from "./commands/stepReview"
+import { acceptAndRunNextStep, acceptCurrentStep, inspectCurrentStep, openCurrentStepInBuilder, runNextStep } from "./commands/stepReview"
 import { isWorkflowDocument, validateCurrentWorkflow, validateTextDocument, validateWorkspaceWorkflows } from "./commands/validateWorkflow"
 import { openWorkflowBuilder } from "./commands/openWorkflowBuilder"
 import { createConfiguredWorkflowAiProvider } from "./core/workflowAiProviderFactory"
@@ -24,6 +24,7 @@ export function activate(context: vscode.ExtensionContext): WorkflowRegisterApi 
     executeCommand: (command, input) => vscode.commands.executeCommand(command, input)
   })
   const stepReviewOptions = { showMarkdownReport }
+  const stepReviewBuilderOptions = { showMarkdownReport, sourceId: sourceId(), extensionUri: context.extensionUri }
   context.subscriptions.push(
     diagnostics,
     vscode.commands.registerCommand("workflowRegister.validateCurrentWorkflow", () => validateCurrentWorkflow({ sourceId: sourceId(), showMarkdownReport, diagnostics })),
@@ -36,6 +37,7 @@ export function activate(context: vscode.ExtensionContext): WorkflowRegisterApi 
     vscode.commands.registerCommand("workflowRegister.runNextStep", (runId?: string) => runNextStep(stepReviewOptions, runId)),
     vscode.commands.registerCommand("workflowRegister.acceptAndRunNextStep", (runId?: string) => acceptAndRunNextStep(stepReviewOptions, runId)),
     vscode.commands.registerCommand("workflowRegister.inspectCurrentStep", (runId?: string) => inspectCurrentStep(stepReviewOptions, runId)),
+    vscode.commands.registerCommand("workflowRegister.openCurrentStepInBuilder", (runId?: string) => openCurrentStepInBuilder(stepReviewBuilderOptions, runId)),
     vscode.commands.registerCommand("workflowRegister.designWorkflowWithAi", () => designWorkflowWithAi({ sourceId: sourceId(), showMarkdownReport, provider: aiProvider() })),
     vscode.commands.registerCommand("workflowRegister.improveWorkflowWithAi", () => improveWorkflowWithAi({ sourceId: sourceId(), showMarkdownReport, provider: aiProvider() })),
     vscode.commands.registerCommand("workflowRegister.explainWorkflowDiagnostics", () => explainWorkflowDiagnostics({ sourceId: sourceId(), showMarkdownReport, provider: aiProvider() })),
