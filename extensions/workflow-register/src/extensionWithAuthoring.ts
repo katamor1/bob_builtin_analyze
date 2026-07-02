@@ -10,8 +10,7 @@ import {
   acceptAndRunNextStep,
   acceptCurrentStep,
   inspectCurrentStep,
-  openCurrentStepInBuilder,
-  runNextStep
+  openCurrentStepInBuilder
 } from "./commands/stepReview"
 import {
   isWorkflowDocument,
@@ -61,7 +60,6 @@ export function activate(context: vscode.ExtensionContext): WorkflowRegisterApi 
     ),
     vscode.commands.registerCommand("workflowRegister.inspectRunDiagnostics", () => inspectRunDiagnostics({ showMarkdownReport })),
     vscode.commands.registerCommand("workflowRegister.acceptCurrentStep", (runId?: string) => acceptCurrentStep(stepReviewOptions, runId)),
-    vscode.commands.registerCommand("workflowRegister.runNextStep", (runId?: string) => runNextStep(stepReviewOptions, runId)),
     vscode.commands.registerCommand("workflowRegister.acceptAndRunNextStep", (runId?: string) => acceptAndRunNextStep(stepReviewOptions, runId)),
     vscode.commands.registerCommand("workflowRegister.inspectCurrentStep", (runId?: string) => inspectCurrentStep(stepReviewOptions, runId)),
     vscode.commands.registerCommand(

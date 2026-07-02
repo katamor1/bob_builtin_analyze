@@ -182,6 +182,172 @@ test("workflow engine can execute a single requested step and leave the run reco
   assert.deepEqual(events.map((event) => event[0]), ["workflow-start", "step-start", "step-completed", "step-start", "step-completed"])
 })
 
+test("workflow engine rejects out-of-order single-step execution by default", async () => {
+  const { ActionRegistry } = require("../out/core/actionRegistry")
+  const { WorkflowEngine } = require("../out/core/engine")
+  const { createDefaultResultSinkRegistry } = require("../out/core/resultSinkRegistry")
+  const { FileRunStateStore } = require("../out/core/runStateStore")
+
+  const workspaceRoot = tempDir()
+  let analyzeCalls = 0
+  const actions = new ActionRegistry()
+  actions.register({ id: "sample.collect", execute: async () => "context" })
+  actions.register({ id: "sample.analyze", execute: async () => { analyzeCalls += 1; return "analysis" } })
+  const engine = new WorkflowEngine({
+    actions,
+    resultSinks: createDefaultResultSinkRegistry({ workspaceRoot, executeCommand: async () => undefined }),
+    runStore: new FileRunStateStore({ workspaceRoot, now: () => "2026-07-03T00:00:00.000Z" })
+  })
+  const workflow = {
+    id: "workflow-register.ordered-single",
+    name: "ordered-single",
+    label: "Ordered Single",
+    description: "Ordered single-step workflow.",
+    schemaVersion: "workflow-register/v1",
+    inputs: {},
+    engineSteps: [
+      { id: "collect", title: "Collect", type: "command", action: { provider: "sample.collect" }, resultKey: "context" },
+      { id: "analyze", title: "Analyze", type: "command", action: { provider: "sample.analyze" }, resultKey: "analysis" }
+    ]
+  }
+
+  const run = await engine.runWorkflow(workflow, {}, { executionMode: "singleStep", stepId: "analyze" })
+
+  assert.equal(run.status, "failed")
+  assert.equal(run.currentStep, "analyze")
+  assert.equal(run.steps[0].status, "pending")
+  assert.equal(run.steps[1].status, "failed")
+  assert.match(run.error, /cannot run before previous step 'collect' is completed/)
+  assert.equal(analyzeCalls, 0)
+})
+
+test("workflow engine can explicitly allow out-of-order single-step execution", async () => {
+  const { ActionRegistry } = require("../out/core/actionRegistry")
+  const { WorkflowEngine } = require("../out/core/engine")
+  const { createDefaultResultSinkRegistry } = require("../out/core/resultSinkRegistry")
+  const { FileRunStateStore } = require("../out/core/runStateStore")
+
+  const workspaceRoot = tempDir()
+  const actions = new ActionRegistry()
+  actions.register({ id: "sample.analyze", execute: async () => "analysis" })
+  const engine = new WorkflowEngine({
+    actions,
+    resultSinks: createDefaultResultSinkRegistry({ workspaceRoot, executeCommand: async () => undefined }),
+    runStore: new FileRunStateStore({ workspaceRoot, now: () => "2026-07-03T00:00:00.000Z" })
+  })
+  const workflow = {
+    id: "workflow-register.out-of-order",
+    name: "out-of-order",
+    label: "Out of Order",
+    description: "Out-of-order workflow.",
+    schemaVersion: "workflow-register/v1",
+    inputs: {},
+    engineSteps: [
+      { id: "collect", title: "Collect", type: "command", action: { provider: "sample.collect" }, resultKey: "context" },
+      { id: "analyze", title: "Analyze", type: "command", action: { provider: "sample.analyze" }, resultKey: "analysis" }
+    ]
+  }
+
+  const run = await engine.runWorkflow(workflow, {}, { executionMode: "singleStep", stepId: "analyze", allowOutOfOrder: true })
+
+  assert.equal(run.status, "completed")
+  assert.equal(run.steps[0].status, "pending")
+  assert.equal(run.steps[1].status, "completed")
+  assert.equal(run.state.analysis, "analysis")
+})
+
+test("workflow engine pauses successful single-step execution for step review", async () => {
+  const { ActionRegistry } = require("../out/core/actionRegistry")
+  const { WorkflowEngine } = require("../out/core/engine")
+  const { createDefaultResultSinkRegistry } = require("../out/core/resultSinkRegistry")
+  const { FileRunStateStore } = require("../out/core/runStateStore")
+
+  const workspaceRoot = tempDir()
+  const actions = new ActionRegistry()
+  actions.register({ id: "sample.collect", execute: async () => "context" })
+  const engine = new WorkflowEngine({
+    actions,
+    resultSinks: createDefaultResultSinkRegistry({ workspaceRoot, executeCommand: async () => undefined }),
+    runStore: new FileRunStateStore({ workspaceRoot, now: () => "2026-07-03T00:00:00.000Z" })
+  })
+  const workflow = {
+    id: "workflow-register.review-gate",
+    name: "review-gate",
+    label: "Review Gate",
+    description: "Review-gated workflow.",
+    schemaVersion: "workflow-register/v1",
+    inputs: {},
+    stepReview: {
+      enabled: true,
+      pauseAfter: "everyStep",
+      requireAcceptBeforeNext: true,
+      allowRetry: true,
+      allowEditBeforeRetry: true,
+      preserveAttempts: true
+    },
+    engineSteps: [
+      { id: "collect", title: "Collect", type: "command", action: { provider: "sample.collect" }, resultKey: "context" },
+      { id: "next", title: "Next", type: "command", action: { provider: "sample.next" } }
+    ]
+  }
+
+  const run = await engine.runWorkflow(workflow, {}, { executionMode: "singleStep", stepId: "collect" })
+
+  assert.equal(run.status, "reviewing")
+  assert.equal(run.currentStep, "collect")
+  assert.equal(run.steps[0].status, "reviewing")
+  assert.equal(run.steps[0].completedAt, undefined)
+  assert.equal(run.state.context, "context")
+})
+
+test("retrying a reviewing step archives the rejected attempt state", async () => {
+  const { ActionRegistry } = require("../out/core/actionRegistry")
+  const { WorkflowEngine } = require("../out/core/engine")
+  const { createDefaultResultSinkRegistry } = require("../out/core/resultSinkRegistry")
+  const { FileRunStateStore } = require("../out/core/runStateStore")
+
+  const workspaceRoot = tempDir()
+  let count = 0
+  const actions = new ActionRegistry()
+  actions.register({ id: "sample.collect", execute: async () => `context-${++count}` })
+  const runStore = new FileRunStateStore({ workspaceRoot, now: () => "2026-07-03T00:00:00.000Z" })
+  const engine = new WorkflowEngine({
+    actions,
+    resultSinks: createDefaultResultSinkRegistry({ workspaceRoot, executeCommand: async () => undefined }),
+    runStore
+  })
+  const workflow = {
+    id: "workflow-register.review-retry",
+    name: "review-retry",
+    label: "Review Retry",
+    description: "Review retry workflow.",
+    schemaVersion: "workflow-register/v1",
+    inputs: {},
+    stepReview: {
+      enabled: true,
+      pauseAfter: "everyStep",
+      requireAcceptBeforeNext: true,
+      allowRetry: true,
+      allowEditBeforeRetry: true,
+      preserveAttempts: true
+    },
+    engineSteps: [
+      { id: "collect", title: "Collect", type: "command", action: { provider: "sample.collect" }, resultKey: "context" }
+    ]
+  }
+
+  const first = await engine.runWorkflow(workflow, {}, { executionMode: "singleStep", stepId: "collect" })
+  const retried = await engine.retryCurrentStep(first.runId, workflow)
+
+  assert.equal(retried.status, "reviewing")
+  assert.equal(retried.state.context, "context-2")
+  assert.equal(retried.steps[0].attempt, 2)
+  assert.equal(retried.steps[0].attempts.length, 1)
+  assert.equal(retried.steps[0].attempts[0].status, "reviewing")
+  assert.equal(retried.steps[0].attempts[0].reviewDecision, "rejected")
+  assert.equal(retried.steps[0].attempts[0].stateSnapshot.context, "context-1")
+})
+
 test("workflow engine manual completion controller can complete a held step in single-step mode", async () => {
   const { ActionRegistry } = require("../out/core/actionRegistry")
   const { WorkflowEngine } = require("../out/core/engine")

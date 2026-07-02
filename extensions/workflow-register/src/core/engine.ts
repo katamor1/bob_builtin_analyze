@@ -9,6 +9,7 @@ import {
 } from "./engine/preflight"
 import {
   archiveAttempt,
+  blockedPreviousStep,
   missingRequiredState,
   nextPendingIndex,
   noteDefinitionMismatch,
@@ -45,6 +46,7 @@ export type WorkflowExecutionMode = "full" | "singleStep"
 export interface RunWorkflowOptions {
   executionMode?: WorkflowExecutionMode
   stepId?: string
+  allowOutOfOrder?: boolean
 }
 
 export interface WorkflowEngineEventInput {
@@ -171,6 +173,20 @@ export class WorkflowEngine {
     }
 
     const startIndex = startIndexForRun(workflow, run, options)
+    const blocked = blockedPreviousStep(workflow, run, startIndex, options)
+    if (blocked) {
+      const step = workflow.engineSteps[startIndex]
+      const stepState = run.steps[startIndex]
+      const error = `Step '${step.id}' cannot run before previous step '${blocked.id}' is completed.`
+      run.status = "failed"
+      run.currentStep = step.id
+      run.error = error
+      stepState.status = "failed"
+      stepState.error = error
+      await this.runStore.saveRun(run)
+      await this.emit(this.hooks.onStepFailed, { workflow, run, step, error })
+      return run
+    }
     noteDefinitionMismatch(run, workflow)
     run.status = "running"
     run.error = undefined
@@ -207,7 +223,7 @@ export class WorkflowEngine {
     validateRetryCompatibility(run, workflow, index)
     const step = workflow.engineSteps[index]
     const stepState = run.steps[index]
-    if (review.preserveAttempts) archiveAttempt(stepState, run.state)
+    if (review.preserveAttempts) archiveAttempt(stepState, run.state, stepState.status === "reviewing" ? "rejected" : undefined)
     run.status = "running"
     run.error = undefined
     stepState.status = "pending"
