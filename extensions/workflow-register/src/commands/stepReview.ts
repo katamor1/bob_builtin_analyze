@@ -1,3 +1,4 @@
+import * as path from "path"
 import * as vscode from "vscode"
 import { editWorkflowInBuilder } from "./editWorkflowInBuilder"
 import { FileRunStateStore } from "../core/runStateStore"
@@ -110,7 +111,7 @@ export async function openCurrentStepInBuilder(options: StepReviewBuilderCommand
     await vscode.window.showWarningMessage(`Workflow file is not recorded for run: ${run.runId}`)
     return
   }
-  await editWorkflowInBuilder({ sourceId: options.sourceId, extensionUri: options.extensionUri }, { uri: vscode.Uri.file(run.workflowFile), focusStepId: run.currentStep })
+  await editWorkflowInBuilder({ sourceId: options.sourceId, extensionUri: options.extensionUri }, { uri: workflowFileUri(selection), focusStepId: run.currentStep })
 }
 
 function acceptReviewingStep(run: WorkflowRunState): WorkflowRunState {
@@ -152,6 +153,11 @@ function appendAttemptLines(lines: string[], step: RunStepState | undefined): vo
     const stateKeys = Object.keys(attempt.stateSnapshot ?? {}).sort()
     lines.push(`- attempt ${attempt.attempt}: ${attempt.status}; createdAt=${attempt.createdAt}; startedAt=${attempt.startedAt ?? "none"}; reviewStartedAt=${attempt.reviewStartedAt ?? "none"}; completedAt=${attempt.completedAt ?? "none"}; stateKeys=${stateKeys.length === 0 ? "none" : stateKeys.join(",")}; error=${attempt.error ?? "none"}`)
   }
+}
+
+function workflowFileUri(selection: RunSelection): vscode.Uri {
+  const file = selection.run.workflowFile ?? ""
+  return vscode.Uri.file(path.isAbsolute(file) ? file : path.join(selection.root, file))
 }
 
 async function pickRunSelection(title: string, predicate: (run: WorkflowRunState) => boolean = () => true): Promise<RunSelection | undefined> {
