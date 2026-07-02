@@ -1,60 +1,37 @@
 import * as vscode from "vscode"
-import {
-  BobWorkflowEngineRunner,
-  createBobWorkflow,
-  extractTaskWorkflowInputs,
-  recoverResultTextFromSnapshots,
-  StepRuntime
-} from "./bobWorkflowRunner"
-import { asSource, loadBobApi } from "./bobApi"
-import type { BobSourceLike, BobWorkflowApi } from "./bobApi"
+import { StepRuntime } from "./bobStepRuntime"
 import type { WorkflowDefinition } from "./bobWorkflowTypes"
-import { ActionProvider, ActionRegistry, createDefaultActionRegistry } from "./core/actionRegistry"
-import { createCommandAgentProvider } from "./core/agentProvider"
-import { WorkflowEngine, WorkflowEngineOptions } from "./core/engine"
+import type { BobSourceLike } from "./bobApi"
+import { ActionProvider, createDefaultActionRegistry } from "./core/actionRegistry"
 import { collectWorkflowInputsWithResolver } from "./core/inputCollector"
 import {
   AgentProvider,
   CoreWorkflowDefinition,
   WorkflowInputDefinition
 } from "./core/model"
-import { createDefaultResultSinkRegistry, ResultSinkRegistry } from "./core/resultSinkRegistry"
-import { FileRunStateStore, RunStateStore } from "./core/runStateStore"
-import { FileTaskSnapshotStore, TaskSnapshotStore } from "./core/taskSnapshots"
+import type { ResultSinkRegistry } from "./core/resultSinkRegistry"
 import {
   fallbackWorkspaceRootCandidates,
-  findMarkerRoots,
   findWorkflowRootCandidates,
-  MarkerRootCandidate,
-  rootHasMarker
+  MarkerRootCandidate
 } from "./core/workspaceRoots"
-import { formatAttempt, runAttempt, showMarkdownReport } from "./reports"
-import { loadWorkspaceWorkflows } from "./workflowDefinitionLoader"
+import { showMarkdownReport } from "./reports"
+import {
+  findRunSelection,
+  listRunSelections,
+  pickRunSelection
+} from "./workflowRunSelection"
+import {
+  deactivateRegisteredSource,
+  registerWorkflows as registerWorkflowDefinitions,
+  type RegistrationResult
+} from "./workflowRegistrationService"
+import { WorkflowRuntimeFactory } from "./workflowRuntimeFactory"
 
-const BOB_EXTENSION_ID = "IBM.bob-code"
 const WORKFLOW_GLOB = "**/.bob/workflows/*/WORKFLOW.md"
-
-interface RunSelection {
-  root: string
-  runId: string
-  run?: Awaited<ReturnType<RunStateStore["loadRun"]>>
-}
-
-interface RegistrationResult {
-  summary: string
-  lines: string[]
-}
 
 interface StepCompletionOptions {
   silent?: boolean
-}
-
-interface TaskSnapshotSettings {
-  enabled: boolean
-  maxBytes: number
-  maxPerRun: number
-  includeMessages: boolean
-  pruneOnSave: boolean
 }
 
 export interface WorkflowRegisterApi {
@@ -115,11 +92,20 @@ class WorkflowRegisterService implements vscode.Disposable {
     executeCommand: (command, ...args) => vscode.commands.executeCommand(command, ...args)
   })
   private readonly customResultSinks: Array<{ type: string; handler: Parameters<ResultSinkRegistry["register"]>[1] }> = []
+  private readonly runtimeFactory: WorkflowRuntimeFactory
   private agentProvider?: AgentProvider
   private registeredSource?: BobSourceLike
   private lastResult: RegistrationResult = { summary: "No workflow registration has run yet.", lines: [] }
 
   constructor(private readonly engineVersion: string) {
+    this.runtimeFactory = new WorkflowRuntimeFactory({
+      engineVersion,
+      actionRegistry: this.actionRegistry,
+      customResultSinks: this.customResultSinks,
+      stepRuntime: this.stepRuntime,
+      agentProvider: () => this.agentProvider,
+      inputsProvider: (workflow, provided) => this.collectBobWorkflowInputs(workflow, provided)
+    })
     this.watcher.onDidCreate(() => this.reload({ showReport: false }))
     this.watcher.onDidChange(() => this.reload({ showReport: false }))
     this.watcher.onDidDelete(() => this.reload({ showReport: false }))
@@ -127,7 +113,9 @@ class WorkflowRegisterService implements vscode.Disposable {
 
   dispose(): void {
     this.watcher.dispose()
-    void this.deactivateRegisteredSource()
+    const source = this.registeredSource
+    this.registeredSource = undefined
+    void deactivateRegisteredSource(source)
   }
 
   async inspect(): Promise<void> {
@@ -184,7 +172,7 @@ class WorkflowRegisterService implements vscode.Disposable {
     }
     const resolvedInputs = await this.collectWorkflowInputs(workflow, inputs)
     if (!resolvedInputs) return "Workflow input was cancelled."
-    const engine = this.createEngine(root)
+    const engine = this.runtimeFactory.createEngine(root)
     const run = await engine.runWorkflow(workflow, resolvedInputs)
     await vscode.window.showInformationMessage(`Workflow run ${run.status}: ${run.runId}`)
     return run
@@ -196,18 +184,15 @@ class WorkflowRegisterService implements vscode.Disposable {
       await vscode.window.showErrorMessage("No workspace folder is open.")
       return
     }
-    const runsByRoot = (await Promise.all(roots.map(async (candidate) => ({
-      candidate,
-      runs: await this.createRunStore(candidate.root).listRuns()
-    })))).flatMap(({ candidate, runs }) => runs.map((run) => ({ candidate, run })))
+    const runsByRoot = await listRunSelections(roots, (root) => this.runtimeFactory.createRunStore(root))
     const lines = runsByRoot.length === 0
       ? ["- No workflow runs were found."]
-      : runsByRoot.map(({ candidate, run }) => [
-        `- ${run.runId}: ${run.status}`,
-        `workflow=${run.workflowId}`,
-        `root=${candidate.root}`,
-        `currentStep=${run.currentStep ?? "none"}`,
-        `updatedAt=${run.updatedAt}`
+      : runsByRoot.map(({ root, run }) => [
+        `- ${run?.runId}: ${run?.status}`,
+        `workflow=${run?.workflowId}`,
+        `root=${root}`,
+        `currentStep=${run?.currentStep ?? "none"}`,
+        `updatedAt=${run?.updatedAt}`
       ].join("; "))
     await showMarkdownReport("Workflow Runs", `${runsByRoot.length} run(s).`, lines)
   }
@@ -222,115 +207,28 @@ class WorkflowRegisterService implements vscode.Disposable {
 
   private async resumeOrRetryRun(mode: "resume" | "retry", runId?: string): Promise<unknown> {
     if (this.coreWorkflows.size === 0) await this.reload({ showReport: false })
-    const selection = runId ? await this.findRunSelection(runId) : await this.pickRunSelection()
+    const roots = await this.workflowRootCandidates()
+    const selection = runId
+      ? await findRunSelection(runId, roots, (root) => this.runtimeFactory.createRunStore(root))
+      : await pickRunSelection(roots, (root) => this.runtimeFactory.createRunStore(root))
     if (!selection) {
       const message = "No workspace folder is open."
       if (!runId) return "No workflow run selected."
       await vscode.window.showErrorMessage(`Workflow run not found: ${runId}`)
       return message
     }
-    const runStore = this.createRunStore(selection.root)
+    const runStore = this.runtimeFactory.createRunStore(selection.root)
     const targetRunId = selection.runId
     const run = selection.run ?? await runStore.loadRun(targetRunId)
     if (!run) throw new Error(`Workflow run not found: ${targetRunId}`)
     const workflow = this.coreWorkflows.get(run.workflowId)
     if (!workflow) throw new Error(`Workflow definition is not loaded: ${run.workflowId}`)
-    const engine = this.createEngine(selection.root)
+    const engine = this.runtimeFactory.createEngine(selection.root)
     const result = mode === "resume"
       ? await engine.resumeRun(targetRunId, { workflow, completeHeldStep: true })
       : await engine.retryCurrentStep(targetRunId, workflow)
     await vscode.window.showInformationMessage(`Workflow run ${result.status}: ${result.runId}`)
     return result
-  }
-
-  private createEngine(workspaceRoot: string): WorkflowEngine {
-    const snapshotStore = this.createTaskSnapshotStore(workspaceRoot)
-    return new WorkflowEngine({
-      actions: this.actionRegistry,
-      resultSinks: this.createResultSinks(workspaceRoot),
-      runStore: this.createRunStore(workspaceRoot),
-      agentProvider: this.agentProvider ?? this.createCommandAgentProvider(),
-      preflightChecks: this.createPreflightChecks(workspaceRoot),
-      recoverResultText: snapshotStore
-        ? (input) => recoverResultTextFromSnapshots(snapshotStore, input.workflow, input.run, input.step)
-        : undefined
-    })
-  }
-
-  private createBobWorkflowRunner(workflow: WorkflowDefinition): BobWorkflowEngineRunner {
-    return new BobWorkflowEngineRunner({
-      definition: workflow,
-      coreWorkflow: workflow.core,
-      actionRegistry: this.actionRegistry,
-      resultSinks: (workspaceRoot) => this.createResultSinks(workspaceRoot),
-      runStore: (workspaceRoot) => this.createRunStore(workspaceRoot),
-      taskSnapshotStore: (workspaceRoot) => this.createTaskSnapshotStore(workspaceRoot),
-      preflightChecks: (workspaceRoot) => this.createPreflightChecks(workspaceRoot),
-      agentProvider: this.agentProvider ?? this.createCommandAgentProvider(),
-      stepRuntime: this.stepRuntime,
-      inputsProvider: (task, provided) => this.collectBobWorkflowInputs(workflow, {
-        ...extractTaskWorkflowInputs(workflow, task),
-        ...provided
-      })
-    })
-  }
-
-  private createCommandAgentProvider(): AgentProvider | undefined {
-    const config = vscode.workspace.getConfiguration("workflowRegister")
-    return createCommandAgentProvider({
-      command: config.get<string>("agentCommand", ""),
-      executeCommand: (command, input) => vscode.commands.executeCommand(command, input)
-    })
-  }
-
-  private createResultSinks(workspaceRoot: string): ResultSinkRegistry {
-    const registry = createDefaultResultSinkRegistry({
-      workspaceRoot,
-      executeCommand: (command, ...args) => vscode.commands.executeCommand(command, ...args)
-    })
-    for (const sink of this.customResultSinks) registry.register(sink.type, sink.handler)
-    return registry
-  }
-
-  private createRunStore(workspaceRoot: string): RunStateStore {
-    return new FileRunStateStore({ workspaceRoot, engineVersion: this.engineVersion })
-  }
-
-  private createTaskSnapshotStore(workspaceRoot: string): TaskSnapshotStore | undefined {
-    const settings = this.taskSnapshotSettings()
-    if (!settings.enabled) return undefined
-    return new FileTaskSnapshotStore({
-      workspaceRoot,
-      maxBytes: settings.maxBytes,
-      maxPerRun: settings.maxPerRun,
-      includeMessages: settings.includeMessages,
-      pruneOnSave: settings.pruneOnSave
-    })
-  }
-
-  private createPreflightChecks(workspaceRoot: string): NonNullable<WorkflowEngineOptions["preflightChecks"]> {
-    return {
-      bazaarRepository: () => this.bazaarRepositoryAvailable(workspaceRoot)
-    }
-  }
-
-  private async bazaarRepositoryAvailable(workspaceRoot: string): Promise<boolean> {
-    if (await rootHasMarker(workspaceRoot, ".bzr")) return true
-    const folders = vscode.workspace.workspaceFolders ?? []
-    if (folders.length === 0) return false
-    const candidates = await findMarkerRoots(folders, ".bzr")
-    return candidates.length > 0
-  }
-
-  private taskSnapshotSettings(): TaskSnapshotSettings {
-    const config = vscode.workspace.getConfiguration("workflowRegister")
-    return {
-      enabled: config.get<boolean>("taskSnapshots.enabled", true),
-      maxBytes: config.get<number>("taskSnapshots.maxBytes", 262_144),
-      maxPerRun: config.get<number>("taskSnapshots.maxPerRun", 50),
-      includeMessages: config.get<boolean>("taskSnapshots.includeMessages", true),
-      pruneOnSave: config.get<boolean>("taskSnapshots.pruneOnSave", true)
-    }
   }
 
   private async workflowRootCandidates(): Promise<MarkerRootCandidate[]> {
@@ -364,44 +262,6 @@ class WorkflowRegisterService implements vscode.Disposable {
       workflow
     })), { title: "Run Workflow" })
     return picked?.workflow
-  }
-
-  private async pickRunSelection(): Promise<RunSelection | undefined> {
-    const selections = await this.listRunSelections()
-    if (selections.length === 0) return undefined
-    const picked = await vscode.window.showQuickPick(selections.map((selection) => ({
-      label: selection.runId,
-      description: selection.run?.status,
-      detail: `${selection.run?.workflowId}; root=${selection.root}; currentStep=${selection.run?.currentStep ?? "none"}`,
-      selection
-    })), { title: "Workflow Run" })
-    return picked?.selection
-  }
-
-  private async findRunSelection(runId: string): Promise<RunSelection | undefined> {
-    return (await this.listRunSelections()).find((selection) => selection.runId === runId)
-  }
-
-  private async listRunSelections(): Promise<RunSelection[]> {
-    const roots = await this.workflowRootCandidates()
-    const nested = await Promise.all(roots.map(async (candidate) => {
-      const runStore = this.createRunStore(candidate.root)
-      const runs = await runStore.listRuns()
-      return runs.map((run) => ({ root: candidate.root, runId: run.runId, run }))
-    }))
-    return nested.flat().sort((a, b) => (b.run?.updatedAt ?? "").localeCompare(a.run?.updatedAt ?? ""))
-  }
-
-  private async pickRunId(runStore: RunStateStore): Promise<string | undefined> {
-    const runs = await runStore.listRuns()
-    if (runs.length === 0) return undefined
-    const picked = await vscode.window.showQuickPick(runs.map((run) => ({
-      label: run.runId,
-      description: run.status,
-      detail: `${run.workflowId}; currentStep=${run.currentStep ?? "none"}`,
-      runId: run.runId
-    })), { title: "Workflow Run" })
-    return picked?.runId
   }
 
   private async collectWorkflowInputs(workflow: CoreWorkflowDefinition, provided: Record<string, unknown>): Promise<Record<string, unknown> | undefined> {
@@ -443,65 +303,17 @@ class WorkflowRegisterService implements vscode.Disposable {
   }
 
   private async registerWorkflows(): Promise<RegistrationResult> {
-    const config = vscode.workspace.getConfiguration("workflowRegister")
-    const sourceId = config.get<string>("sourceId", "workflow-register")
-    const sourceName = config.get<string>("sourceName", "Workflow Register")
-    const lines: string[] = []
-    const loaded = await loadWorkspaceWorkflows(sourceId)
-    lines.push(...loaded.diagnostics)
+    const update = await registerWorkflowDefinitions({
+      previousSource: this.registeredSource,
+      createRunner: (workflow) => this.runtimeFactory.createBobWorkflowRunner(workflow)
+    })
     this.coreWorkflows.clear()
-    for (const workflow of loaded.coreWorkflows) this.coreWorkflows.set(workflow.id, workflow)
-    if (loaded.workflows.length === 0) {
-      await this.deactivateRegisteredSource(lines)
+    for (const workflow of update.coreWorkflows) this.coreWorkflows.set(workflow.id, workflow)
+    if (update.sourceChanged) this.registeredSource = update.registeredSource
+    if (update.idsChanged) {
       this.registeredIds.clear()
-      await vscode.commands.executeCommand("setContext", "bob-code.hasWorkflows", false)
-      return { summary: "No .bob workflows were found.", lines }
+      for (const id of update.registeredIds ?? []) this.registeredIds.add(id)
     }
-
-    const bob = await loadBobApi(BOB_EXTENSION_ID)
-    lines.push(`- Bob extension found: ${bob.found}`)
-    lines.push(`- Bob extension active: ${bob.active}`)
-    lines.push(`- Bob activation error: ${bob.activationError}`)
-    const api = bob.exportsValue as BobWorkflowApi | undefined
-    if (typeof api?.registerSource !== "function") {
-      lines.push("- fail: IBM Bob registerSource API is not available.")
-      return { summary: "Bob workflow registration API is unavailable.", lines }
-    }
-
-    await this.deactivateRegisteredSource(lines)
-    const sourceResult = await runAttempt("registerSource(sourceId, sourceName)", () => api.registerSource?.(sourceId, sourceName))
-    lines.push(formatAttempt(sourceResult))
-    const source = asSource(sourceResult.value)
-    lines.push(`- returned source keys: ${source ? Object.keys(source as Record<string, unknown>).join(",") || "none" : "none"}`)
-    lines.push(`- typeof source.registerWorkflow: ${typeof source?.registerWorkflow}`)
-    if (!source?.registerWorkflow) return { summary: "Bob accepted the source request, but workflows cannot be registered.", lines }
-    this.registeredSource = source
-
-    let registeredCount = 0
-    const registeredIds = new Set<string>()
-    for (const workflow of loaded.workflows) {
-      const attempt = await runAttempt(
-        `source.registerWorkflow(${workflow.id})`,
-        () => source.registerWorkflow?.(createBobWorkflow(workflow, this.createBobWorkflowRunner(workflow)))
-      )
-      lines.push(formatAttempt(attempt))
-      if (attempt.ok) {
-        registeredIds.add(workflow.id)
-        registeredCount += 1
-        source.log?.(`Workflow registered from ${workflow.file.fsPath}: ${workflow.id}`)
-      }
-    }
-    this.registeredIds.clear()
-    for (const id of registeredIds) this.registeredIds.add(id)
-    await vscode.commands.executeCommand("setContext", "bob-code.hasWorkflows", this.registeredIds.size > 0)
-    return { summary: `Registered ${registeredCount} workflow(s); ${this.registeredIds.size} workflow(s) are registered in this session.`, lines }
-  }
-
-  private async deactivateRegisteredSource(lines?: string[]): Promise<void> {
-    const source = this.registeredSource
-    this.registeredSource = undefined
-    if (!source?.deactivate) return
-    const attempt = await runAttempt("previousSource.deactivate()", () => source.deactivate?.())
-    lines?.push(formatAttempt(attempt))
+    return update.result
   }
 }
