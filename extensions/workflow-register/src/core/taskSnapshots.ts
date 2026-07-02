@@ -138,7 +138,7 @@ export class FileTaskSnapshotStore implements TaskSnapshotStore {
     }))
     return snapshots
       .filter((snapshot): snapshot is TaskSnapshotSummary => Boolean(snapshot))
-      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
   }
 
   async findLatestSnapshot(runId: string, predicate: (snapshot: TaskSnapshotPayload) => boolean): Promise<TaskSnapshotPayload | undefined> {
@@ -165,7 +165,7 @@ export class FileTaskSnapshotStore implements TaskSnapshotStore {
   private prepareSnapshot(snapshot: TaskSnapshotPayload): TaskSnapshotPayload {
     let prepared: TaskSnapshotPayload = {
       ...snapshot,
-      createdAt: snapshot.createdAt || this.now(),
+      createdAt: this.now(),
       messages: this.includeMessages ? snapshot.messages : undefined
     }
     while (Buffer.byteLength(JSON.stringify(prepared), "utf8") > this.maxBytes && prepared.messages && prepared.messages.length > 0) {
