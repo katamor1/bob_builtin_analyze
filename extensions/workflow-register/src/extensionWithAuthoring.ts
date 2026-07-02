@@ -11,6 +11,7 @@ import { isWorkflowDocument, validateCurrentWorkflow, validateTextDocument, vali
 import { openWorkflowBuilder } from "./commands/openWorkflowBuilder"
 import { createConfiguredWorkflowAiProvider } from "./core/workflowAiProviderFactory"
 import { WorkflowDiagnosticsReporter } from "./commands/workflowDiagnostics"
+import { showMarkdownReport } from "./reports"
 
 export { deactivate }
 
@@ -50,12 +51,4 @@ export function activate(context: vscode.ExtensionContext): WorkflowRegisterApi 
   )
   for (const document of vscode.workspace.textDocuments) if (isWorkflowDocument(document)) validateTextDocument(document, { sourceId: sourceId(), diagnostics })
   return api
-}
-
-async function showMarkdownReport(title: string, summary: string, lines: string[]): Promise<void> {
-  const document = await vscode.workspace.openTextDocument({
-    language: "markdown",
-    content: [`# ${title}`, "", summary, "", ...lines].join("\n")
-  })
-  await vscode.window.showTextDocument(document, { preview: false })
 }
