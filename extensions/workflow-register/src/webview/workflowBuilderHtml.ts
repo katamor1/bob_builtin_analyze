@@ -62,6 +62,11 @@ let model = ${JSON.stringify(options.initialModel)};
 let editMode = ${JSON.stringify(options.isEditMode)};
 let focusStepId = ${JSON.stringify(options.focusStepId ?? "")};
 ${renderWorkflowBuilderClientScript()}
+if (focusStepId) {
+  const focusIndex = model.steps.findIndex(function(step) { return step.id === focusStepId; });
+  if (focusIndex >= 0) { selectedStepIndex = focusIndex; activeTab = 'step'; render(); }
+  focusStepId = '';
+}
 ${renderWorkflowBuilderGuidedHelpScript()}
 ${renderWorkflowBuilderBodyScript()}
 ${renderWorkflowBuilderHelpScript()}
