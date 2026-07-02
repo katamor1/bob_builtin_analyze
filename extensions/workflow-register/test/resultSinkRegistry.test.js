@@ -34,7 +34,7 @@ test("result sink registry writes command and file sinks with allowlist enforcem
   })
   const rejected = await registry.write({
     type: "command",
-    command: "sample.notAllowed"
+    command: "workbench.action.files.save"
   }, {
     workflowId: "workflow-register.sample",
     runId: "run-1",
