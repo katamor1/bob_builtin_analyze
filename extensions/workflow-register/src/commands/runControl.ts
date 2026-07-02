@@ -8,19 +8,22 @@ interface RunControlCommandOptions {
   showMarkdownReport: (title: string, summary: string, lines: string[]) => Promise<void>
 }
 
-export async function pauseCurrentRun(_options: RunControlCommandOptions, runId?: string): Promise<unknown> {
-  return requestPause(runId, "afterCurrentStep", "manual")
+type RunCommandArg = string | RunSelection | { runId?: string; run?: { runId?: string } } | undefined
+
+export async function pauseCurrentRun(_options: RunControlCommandOptions, runArg?: RunCommandArg): Promise<unknown> {
+  return requestPause(runArg, "afterCurrentStep", "manual")
 }
 
-export async function pauseAfterCurrentStep(_options: RunControlCommandOptions, runId?: string): Promise<unknown> {
-  return requestPause(runId, "afterCurrentStep", "manual")
+export async function pauseAfterCurrentStep(_options: RunControlCommandOptions, runArg?: RunCommandArg): Promise<unknown> {
+  return requestPause(runArg, "afterCurrentStep", "manual")
 }
 
-export async function pauseBeforeNextAiCall(_options: RunControlCommandOptions, runId?: string): Promise<unknown> {
-  return requestPause(runId, "beforeNextAiCall", "manual-before-next-ai-call")
+export async function pauseBeforeNextAiCall(_options: RunControlCommandOptions, runArg?: RunCommandArg): Promise<unknown> {
+  return requestPause(runArg, "beforeNextAiCall", "manual-before-next-ai-call")
 }
 
-export async function resumePausedRun(_options: RunControlCommandOptions, runId?: string): Promise<unknown> {
+export async function resumePausedRun(_options: RunControlCommandOptions, runArg?: RunCommandArg): Promise<unknown> {
+  const runId = resolveRunId(runArg)
   const roots = await workflowRootCandidates()
   const selection = runId
     ? await findRunSelection(runId, roots, createRunStore)
@@ -45,7 +48,8 @@ export async function resumePausedRun(_options: RunControlCommandOptions, runId?
   return vscode.commands.executeCommand("workflowRegister.resumeRun", selection.runId)
 }
 
-export async function inspectRunControl(options: RunControlCommandOptions, runId?: string): Promise<void> {
+export async function inspectRunControl(options: RunControlCommandOptions, runArg?: RunCommandArg): Promise<void> {
+  const runId = resolveRunId(runArg)
   const roots = await workflowRootCandidates()
   const selections = await listRunSelections(roots, createRunStore)
   const selection = runId
@@ -72,7 +76,8 @@ export async function inspectRunControl(options: RunControlCommandOptions, runId
   await options.showMarkdownReport("Workflow Run Control", `${selection.runId}: ${run?.status ?? "unknown"}`, lines)
 }
 
-async function requestPause(runId: string | undefined, mode: RunPauseMode, reason: string): Promise<unknown> {
+async function requestPause(runArg: RunCommandArg, mode: RunPauseMode, reason: string): Promise<unknown> {
+  const runId = resolveRunId(runArg)
   const roots = await workflowRootCandidates()
   const selection = runId
     ? await findRunSelection(runId, roots, createRunStore)
@@ -117,6 +122,14 @@ async function pickInterruptibleRun(roots: MarkerRootCandidate[]): Promise<RunSe
     selection
   })), { title: "Pause Workflow Run" })
   return picked?.selection
+}
+
+function resolveRunId(value: RunCommandArg): string | undefined {
+  if (typeof value === "string") return value
+  if (!value || typeof value !== "object") return undefined
+  if (typeof value.runId === "string") return value.runId
+  if (value.run && typeof value.run.runId === "string") return value.run.runId
+  return undefined
 }
 
 function createRunStore(workspaceRoot: string): FileRunStateStore {
