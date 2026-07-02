@@ -5,19 +5,35 @@ const { test } = require("node:test")
 
 const extensionRoot = path.resolve(__dirname, "..")
 
+function readSource(...segments) {
+  return fs.readFileSync(path.join(extensionRoot, ...segments), "utf8")
+}
+
+function readWorkflowRuntimeSource() {
+  return [
+    ["src", "extension.ts"],
+    ["src", "bobWorkflowTypes.ts"],
+    ["src", "bobWorkflowRunner.ts"],
+    ["src", "workflowDefinitionLoader.ts"]
+  ]
+    .filter((segments) => fs.existsSync(path.join(extensionRoot, ...segments)))
+    .map((segments) => readSource(...segments))
+    .join("\n")
+}
+
 test("package entry points at the compiled authoring wrapper", () => {
-  const packageJson = JSON.parse(fs.readFileSync(path.join(extensionRoot, "package.json"), "utf8"))
-  const tsconfig = JSON.parse(fs.readFileSync(path.join(extensionRoot, "tsconfig.json"), "utf8"))
+  const packageJson = JSON.parse(readSource("package.json"))
+  const tsconfig = JSON.parse(readSource("tsconfig.json"))
 
   assert.equal(packageJson.main, "./out/extensionWithAuthoring.js")
   assert.deepEqual(tsconfig.include, ["src/**/*.ts"])
 })
 
 test("package exposes workflow authoring commands", () => {
-  const packageJson = JSON.parse(fs.readFileSync(path.join(extensionRoot, "package.json"), "utf8"))
+  const packageJson = JSON.parse(readSource("package.json"))
   const commandIds = packageJson.contributes.commands.map((command) => command.command)
   const paletteIds = packageJson.contributes.menus.commandPalette.map((entry) => entry.command)
-  const source = fs.readFileSync(path.join(extensionRoot, "src", "extensionWithAuthoring.ts"), "utf8")
+  const source = readSource("src", "extensionWithAuthoring.ts")
   for (const command of [
     "workflowRegister.validateCurrentWorkflow",
     "workflowRegister.validateWorkspaceWorkflows",
@@ -35,8 +51,8 @@ test("package exposes workflow authoring commands", () => {
 })
 
 test("workflow authoring wrapper wires a configurable AI provider command", () => {
-  const packageJson = JSON.parse(fs.readFileSync(path.join(extensionRoot, "package.json"), "utf8"))
-  const source = fs.readFileSync(path.join(extensionRoot, "src", "extensionWithAuthoring.ts"), "utf8")
+  const packageJson = JSON.parse(readSource("package.json"))
+  const source = readSource("src", "extensionWithAuthoring.ts")
   const setting = packageJson.contributes.configuration.properties["workflowRegister.aiProviderCommand"]
 
   assert.equal(setting.type, "string")
@@ -48,7 +64,7 @@ test("workflow authoring wrapper wires a configurable AI provider command", () =
 })
 
 test("completeStep command can be called silently by companion extensions", () => {
-  const source = fs.readFileSync(path.join(extensionRoot, "src", "extension.ts"), "utf8")
+  const source = readWorkflowRuntimeSource()
 
   assert.match(source, /interface StepCompletionOptions \{[\s\S]*silent\?: boolean[\s\S]*\}/)
   assert.match(source, /registerCommand\("workflowRegister\.completeStep", \(options\?: StepCompletionOptions\) => service\.completeCurrentStep\(options\)\)/)
@@ -58,16 +74,16 @@ test("completeStep command can be called silently by companion extensions", () =
 })
 
 test("activation schedules delayed workflow reload retries after Bob finishes startup", () => {
-  const source = fs.readFileSync(path.join(extensionRoot, "src", "extension.ts"), "utf8")
+  const source = readSource("src", "extension.ts")
 
   assert.match(source, /const retryDelaysMs = \[3000, 10000\]/)
   assert.match(source, /setTimeout\(\(\) => service\.reload\(\{ showReport: false \}\)/)
 })
 
 test("package contributes standalone workflow launcher commands without a hard Bob dependency", () => {
-  const packageJson = JSON.parse(fs.readFileSync(path.join(extensionRoot, "package.json"), "utf8"))
+  const packageJson = JSON.parse(readSource("package.json"))
   const commandIds = packageJson.contributes.commands.map((command) => command.command)
-  const source = fs.readFileSync(path.join(extensionRoot, "src", "extension.ts"), "utf8")
+  const source = readWorkflowRuntimeSource()
 
   assert.equal(packageJson.extensionDependencies, undefined)
   assert.ok(packageJson.activationEvents.includes("onCommand:workflowRegister.runWorkflow"))
@@ -83,7 +99,7 @@ test("package contributes standalone workflow launcher commands without a hard B
 })
 
 test("package exposes task snapshot retention settings", () => {
-  const packageJson = JSON.parse(fs.readFileSync(path.join(extensionRoot, "package.json"), "utf8"))
+  const packageJson = JSON.parse(readSource("package.json"))
   const properties = packageJson.contributes.configuration.properties
 
   assert.equal(properties["workflowRegister.taskSnapshots.enabled"].default, true)
@@ -94,8 +110,8 @@ test("package exposes task snapshot retention settings", () => {
 })
 
 test("standalone workflow launcher wires an AgentProvider through API or configured command", () => {
-  const packageJson = JSON.parse(fs.readFileSync(path.join(extensionRoot, "package.json"), "utf8"))
-  const source = fs.readFileSync(path.join(extensionRoot, "src", "extension.ts"), "utf8")
+  const packageJson = JSON.parse(readSource("package.json"))
+  const source = readWorkflowRuntimeSource()
 
   assert.equal(packageJson.contributes.configuration.properties["workflowRegister.agentCommand"].type, "string")
   assert.match(source, /import \{ createCommandAgentProvider \} from "\.\/core\/agentProvider"/)
@@ -106,7 +122,7 @@ test("standalone workflow launcher wires an AgentProvider through API or configu
 })
 
 test("standalone workflow launcher uses the shared input resolver for conditional prompts", () => {
-  const source = fs.readFileSync(path.join(extensionRoot, "src", "extension.ts"), "utf8")
+  const source = readWorkflowRuntimeSource()
 
   assert.match(source, /import \{ collectWorkflowInputsWithResolver \} from "\.\/core\/inputCollector"/)
   assert.match(source, /return collectWorkflowInputsWithResolver\(\{[\s\S]*inputs: workflow\.inputs,[\s\S]*provided,[\s\S]*prompt: \(key, definition, required\) => this\.promptForInput\(key, definition, required\)[\s\S]*\}\)/)
@@ -114,14 +130,14 @@ test("standalone workflow launcher uses the shared input resolver for conditiona
 })
 
 test("default action registry is domain agnostic", () => {
-  const source = fs.readFileSync(path.join(extensionRoot, "src", "core", "actionRegistry.ts"), "utf8")
+  const source = readSource("src", "core", "actionRegistry.ts")
 
   assert.doesNotMatch(source, /bobBazaar\./)
   assert.match(source, /registry\.register\(\{[\s\S]*id: "vscode\.executeCommand"[\s\S]*options\.executeCommand\(command, \.\.\.args\)[\s\S]*\}\)/)
 })
 
 test("Bob workflow Todo execution delegates to the shared WorkflowEngine runner", () => {
-  const source = fs.readFileSync(path.join(extensionRoot, "src", "extension.ts"), "utf8")
+  const source = readWorkflowRuntimeSource()
 
   assert.match(source, /createBobWorkflow\(workflow, this\.createBobWorkflowRunner\(workflow\)\)/)
   assert.match(source, /class BobWorkflowEngineRunner/)
@@ -135,7 +151,7 @@ test("Bob workflow Todo execution delegates to the shared WorkflowEngine runner"
 })
 
 test("Engine preflight checks Bazaar repositories across multi-root workspaces", () => {
-  const source = fs.readFileSync(path.join(extensionRoot, "src", "extension.ts"), "utf8")
+  const source = readWorkflowRuntimeSource()
 
   assert.match(source, /import \{[\s\S]*findMarkerRoots[\s\S]*\} from "\.\/core\/workspaceRoots"/)
   assert.match(source, /private createPreflightChecks\(workspaceRoot: string\): NonNullable<WorkflowEngineOptions\["preflightChecks"\]>/)
@@ -146,7 +162,7 @@ test("Engine preflight checks Bazaar repositories across multi-root workspaces",
 })
 
 test("Bob registration deactivates the previous source before replacing workflows", () => {
-  const source = fs.readFileSync(path.join(extensionRoot, "src", "extension.ts"), "utf8")
+  const source = readWorkflowRuntimeSource()
 
   assert.match(source, /interface BobSourceLike \{[\s\S]*deactivate\?: \(\) => unknown[\s\S]*\}/)
   assert.match(source, /private registeredSource\?: BobSourceLike/)
@@ -157,14 +173,14 @@ test("Bob registration deactivates the previous source before replacing workflow
 })
 
 test("Bob registration treats a false registerWorkflow return as failed", () => {
-  const source = fs.readFileSync(path.join(extensionRoot, "src", "extension.ts"), "utf8")
+  const source = readWorkflowRuntimeSource()
 
   assert.match(source, /return \{ label, ok: value !== false, message: describeReturn\(value\), value \}/)
   assert.match(source, /const attempt = await runAttempt\(`source\.registerWorkflow\(\$\{workflow\.id\}\)`[\s\S]*if \(attempt\.ok\) \{[\s\S]*registeredIds\.add\(workflow\.id\)[\s\S]*registeredCount \+= 1[\s\S]*\}/)
 })
 
 test("workflow reload re-registers current workflows and clears Bob context when none remain", () => {
-  const source = fs.readFileSync(path.join(extensionRoot, "src", "extension.ts"), "utf8")
+  const source = readWorkflowRuntimeSource()
 
   assert.doesNotMatch(source, /this\.registeredIds\.has\(workflow\.id\)/)
   assert.doesNotMatch(source, /already registered in this extension host session/)
@@ -174,7 +190,7 @@ test("workflow reload re-registers current workflows and clears Bob context when
 })
 
 test("Bob adapter resolves workflow inputs and passes them to command providers", () => {
-  const source = fs.readFileSync(path.join(extensionRoot, "src", "extension.ts"), "utf8")
+  const source = readWorkflowRuntimeSource()
 
   assert.match(source, /inputs: Record<string, WorkflowInputDefinition>/)
   assert.match(source, /inputs: core\.inputs/)
@@ -190,7 +206,7 @@ test("Bob adapter resolves workflow inputs and passes them to command providers"
 })
 
 test("Bob workflow chat messages include bounded workflow root context", () => {
-  const source = fs.readFileSync(path.join(extensionRoot, "src", "extension.ts"), "utf8")
+  const source = readWorkflowRuntimeSource()
 
   assert.match(source, /import \{ appendWorkflowContext \} from "\.\/workflowPromptContext"/)
   assert.match(source, /appendWorkflowContext\(lines, \{[\s\S]*workflowRoot: definition\.workflowRoot[\s\S]*workflowFile: definition\.workflowFile[\s\S]*workflowFolderName: definition\.workflowFolderName[\s\S]*stateEntries[\s\S]*\}\)/)
@@ -199,8 +215,8 @@ test("Bob workflow chat messages include bounded workflow root context", () => {
 })
 
 test("Bob adapter applies guardrails to Todo, result, and legacy top-level commands", () => {
-  const source = fs.readFileSync(path.join(extensionRoot, "src", "extension.ts"), "utf8")
-  const engine = fs.readFileSync(path.join(extensionRoot, "src", "core", "engine.ts"), "utf8")
+  const source = readWorkflowRuntimeSource()
+  const engine = readSource("src", "core", "engine.ts")
 
   assert.match(source, /import \{ validateCommandGuardrails \} from "\.\/core\/guardrails"/)
   assert.match(engine, /import \{ validateCommandGuardrails \} from "\.\/guardrails"/)
@@ -213,7 +229,7 @@ test("Bob adapter applies guardrails to Todo, result, and legacy top-level comma
 })
 
 test("Bob registration uses CoreWorkflowDefinition as the only parsed workflow source", () => {
-  const source = fs.readFileSync(path.join(extensionRoot, "src", "extension.ts"), "utf8")
+  const source = readWorkflowRuntimeSource()
 
   assert.match(source, /parseWorkflowMarkdown\(\{ sourceId, filePath: relativePath, text \}\)/)
   assert.match(source, /adaptCoreWorkflowForBob\(/)
@@ -223,11 +239,11 @@ test("Bob registration uses CoreWorkflowDefinition as the only parsed workflow s
 
 test("workflow-register does not silently use the first workspace folder in multi-root paths", () => {
   const sources = [
-    fs.readFileSync(path.join(extensionRoot, "src", "extension.ts"), "utf8"),
-    fs.readFileSync(path.join(extensionRoot, "src", "commands", "createWorkflow.ts"), "utf8"),
-    fs.readFileSync(path.join(extensionRoot, "src", "commands", "designWorkflowWithAi.ts"), "utf8"),
-    fs.readFileSync(path.join(extensionRoot, "src", "commands", "improveWorkflowWithAi.ts"), "utf8"),
-    fs.readFileSync(path.join(extensionRoot, "src", "commands", "inspectRunDiagnostics.ts"), "utf8")
+    readWorkflowRuntimeSource(),
+    readSource("src", "commands", "createWorkflow.ts"),
+    readSource("src", "commands", "designWorkflowWithAi.ts"),
+    readSource("src", "commands", "improveWorkflowWithAi.ts"),
+    readSource("src", "commands", "inspectRunDiagnostics.ts")
   ].join("\n")
 
   assert.doesNotMatch(sources, /workspaceFolders\?\.\[0\]|workspaceFolders\?\[0\]/)
@@ -235,8 +251,8 @@ test("workflow-register does not silently use the first workspace folder in mult
 })
 
 test("runtime dependencies are not excluded from VSIX packaging", () => {
-  const packageJson = JSON.parse(fs.readFileSync(path.join(extensionRoot, "package.json"), "utf8"))
-  const vscodeIgnore = fs.readFileSync(path.join(extensionRoot, ".vscodeignore"), "utf8")
+  const packageJson = JSON.parse(readSource("package.json"))
+  const vscodeIgnore = readSource(".vscodeignore")
 
   assert.equal(packageJson.scripts.package, "vsce package")
   assert.match(vscodeIgnore, /^node_modules\/\*\*$/m)
