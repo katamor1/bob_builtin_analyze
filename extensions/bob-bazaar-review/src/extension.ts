@@ -4,14 +4,21 @@ import { isBobCodeExtensionAvailable } from "./bobCodeExtension"
 import { addMarkdownPacketToBobContext } from "./bobContext"
 import { configureWorkspaceMcpServer } from "./mcpConfig"
 import { buildReviewPacket } from "./reviewPacket"
-import { initializeProjectRules, loadProjectChecklist, loadProjectChecklistRequired, loadReviewResultSchema, loadReviewResultSchemaRequired } from "./projectRules/io"
+import {
+  initializeProjectRules,
+  loadProjectChecklist,
+  loadProjectChecklistRequired,
+  loadReviewResultSchema,
+  loadReviewResultSchemaRequired
+} from "./projectRules/io"
 import { buildProjectRulesSection } from "./projectRules/packet"
 import { validateReviewResultJson } from "./projectRules/validator"
 import { renderReviewResultMarkdown } from "./projectRules/markdown"
 import { captureReviewResult, saveReviewResultFromClipboard } from "./projectRules/resultCapture"
 import { CaptureReviewResultOptions } from "./projectRules/resultCaptureCore"
 import { ReviewResult } from "./projectRules/types"
-import { BazaarReviewInitialTarget, openBazaarReviewGui } from "./reviewGui"
+import { openBazaarReviewGui } from "./reviewGui"
+import type { BazaarReviewInitialTarget } from "./reviewGuiTypes"
 import { buildAddedFilesContentSection, loadBazaarRevisionPacketInput } from "./revisionInfo"
 import { BazaarReviewContextResult, buildReviewContextResult } from "./workflowBridge"
 import { resolveBazaarWorkspaceFolder, resolveBobWorkspaceFolder } from "./workspaceResolver"
@@ -59,7 +66,10 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("bobBazaar.openReviewGui", () => openBazaarReviewGui(context)),
     vscode.commands.registerCommand("bobBazaar.collectReviewContext", () => collectReviewContext()),
     vscode.commands.registerCommand("bobBazaar.loadReviewRules", () => loadReviewRules()),
-    vscode.commands.registerCommand("bobBazaar.captureReviewResult", (inputText?: string, ...args: unknown[]) => captureReviewResult(inputText, captureOptionsFromCommandArgs(args))),
+    vscode.commands.registerCommand(
+      "bobBazaar.captureReviewResult",
+      (inputText?: string, ...args: unknown[]) => captureReviewResult(inputText, captureOptionsFromCommandArgs(args))
+    ),
     vscode.commands.registerCommand("bobBazaar.saveReviewResultFromClipboard", () => saveReviewResultFromClipboard()),
     vscode.commands.registerCommand("bobBazaar.configureMcp", () => configureMcp(context)),
     vscode.commands.registerCommand("bobBazaar.initProjectRules", () => initProjectRules()),
@@ -126,7 +136,11 @@ function firstStringArg(args: unknown): string | undefined {
 }
 
 function initialTargetFromWorkflowInputs(inputs: Record<string, unknown>, input?: WorkflowActionExecutionInput): BazaarReviewInitialTarget | undefined {
-  const explicitBazaarRoot = stringInput(input?.bazaarRoot) ?? stringInput(input?.repositoryRoot) ?? stringInput(inputs.bazaarRoot) ?? stringInput(inputs.repositoryRoot)
+  const explicitBazaarRoot =
+    stringInput(input?.bazaarRoot) ??
+    stringInput(input?.repositoryRoot) ??
+    stringInput(inputs.bazaarRoot) ??
+    stringInput(inputs.repositoryRoot)
   const target: BazaarReviewInitialTarget = {
     revisionMode: targetMode(inputs.revisionMode),
     revision: stringInput(inputs.revision),
@@ -136,7 +150,15 @@ function initialTargetFromWorkflowInputs(inputs: Record<string, unknown>, input?
     repositoryRoot: stringInput(inputs.repositoryRoot),
     workflowRoot: stringInput(input?.workflowRoot)
   }
-  return target.revisionMode || target.revision || target.baseRevision || target.targetRevision || target.bazaarRoot || target.repositoryRoot || target.workflowRoot ? target : undefined
+  const hasInitialTarget =
+    target.revisionMode ||
+    target.revision ||
+    target.baseRevision ||
+    target.targetRevision ||
+    target.bazaarRoot ||
+    target.repositoryRoot ||
+    target.workflowRoot
+  return hasInitialTarget ? target : undefined
 }
 
 function targetMode(value: unknown): BazaarReviewInitialTarget["revisionMode"] | undefined {
@@ -327,7 +349,10 @@ async function reviewRange(context: vscode.ExtensionContext, withProjectRules: b
       extraSections: projectRulesSection ? [projectRulesSection] : undefined
     })
 
-    await showAndOfferBobContext(context, packet, withProjectRules ? `bazaar-project-review-${baseRevision}-${targetRevision}.md` : `bazaar-review-${baseRevision}-${targetRevision}.md`)
+    const outputFileName = withProjectRules
+      ? `bazaar-project-review-${baseRevision}-${targetRevision}.md`
+      : `bazaar-review-${baseRevision}-${targetRevision}.md`
+    await showAndOfferBobContext(context, packet, outputFileName)
   })
 }
 

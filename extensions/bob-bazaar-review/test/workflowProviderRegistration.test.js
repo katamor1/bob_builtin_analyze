@@ -5,6 +5,10 @@ const { test } = require("node:test")
 
 const extensionRoot = path.resolve(__dirname, "..")
 
+function readSource(...parts) {
+  return parts.map((part) => fs.readFileSync(path.join(extensionRoot, "src", part), "utf8")).join("\n")
+}
+
 test("Bazaar companion extension has no required companion extension dependency", () => {
   const packageJson = JSON.parse(fs.readFileSync(path.join(extensionRoot, "package.json"), "utf8"))
   const source = fs.readFileSync(path.join(extensionRoot, "src", "extension.ts"), "utf8")
@@ -21,7 +25,13 @@ test("Bazaar companion extension has no required companion extension dependency"
   assert.match(source, /id: "bobBazaar\.loadReviewRules"/)
   assert.match(source, /execute: \(input\) => loadReviewRules\(input\)/)
   assert.match(source, /id: "bobBazaar\.captureReviewResult"/)
-  assert.match(source, /execute: \(input\) => captureReviewResult\(firstStringArg\(input\.args\), \{[\s\S]*expectedChecklistItems: expectedChecklistItemsFromState\(input\.state\),[\s\S]*workspaceRoot: stringInput\(input\.workflowRoot\),[\s\S]*workflowState: input\.state[\s\S]*\}\)/)
+  assert.match(source, new RegExp([
+    "execute: \\(input\\) => captureReviewResult\\(firstStringArg\\(input\\.args\\), \\{",
+    "expectedChecklistItems: expectedChecklistItemsFromState\\(input\\.state\\),",
+    "workspaceRoot: stringInput\\(input\\.workflowRoot\\),",
+    "workflowState: input\\.state",
+    "\\}\\)"
+  ].join("[\\s\\S]*")))
 })
 
 test("Bazaar review commands stop after creating markdown when IBM Bob is absent", () => {
@@ -36,14 +46,22 @@ test("Bazaar review commands auto-add the generated packet to Bob when workflow-
   const source = fs.readFileSync(path.join(extensionRoot, "src", "extension.ts"), "utf8")
 
   assert.match(source, /function isWorkflowRegisterExtensionAvailable\(\): boolean/)
-  assert.match(source, /if \(!isWorkflowRegisterExtensionAvailable\(\)\) \{[\s\S]*await addPacketToBobContext\(editor\.document\.uri, packet\)[\s\S]*workflow-register 未導入/)
+  assert.match(source, new RegExp([
+    "if \\(!isWorkflowRegisterExtensionAvailable\\(\\)\\) \\{",
+    "await addPacketToBobContext\\(editor\\.document\\.uri, packet\\)",
+    "workflow-register 未導入"
+  ].join("[\\s\\S]*")))
   assert.match(source, /Bob チャットへ挿入しました/)
 })
 
 test("Bazaar capture command accepts workflow context appended by result sinks", () => {
   const source = fs.readFileSync(path.join(extensionRoot, "src", "extension.ts"), "utf8")
 
-  assert.match(source, /registerCommand\("bobBazaar\.captureReviewResult", \(inputText\?: string, \.\.\.args: unknown\[\]\) => captureReviewResult\(inputText, captureOptionsFromCommandArgs\(args\)\)\)/)
+  assert.match(source, new RegExp([
+    "registerCommand\\(",
+    "\"bobBazaar\\.captureReviewResult\"",
+    "captureReviewResult\\(inputText, captureOptionsFromCommandArgs\\(args\\)\\)"
+  ].join("[\\s\\S]*")))
   assert.match(source, /function captureOptionsFromCommandArgs\(args: unknown\[\]\): CaptureReviewResultOptions/)
   assert.match(source, /const workflowState = recordStringMap\(context\.state\)/)
   assert.match(source, /workflowState[\s\S]*\}/)
@@ -56,7 +74,7 @@ test("Bazaar workflow provider resolves repository root independently from workf
   assert.match(source, /workflowRoot\?: string/)
   assert.match(source, /bazaarRoot\?: string/)
   assert.match(source, /repositoryRoot\?: string/)
-  assert.match(source, /const explicitBazaarRoot = stringInput\(input\?\.bazaarRoot\) \?\? stringInput\(input\?\.repositoryRoot\)/)
+  assert.match(source, /const explicitBazaarRoot =[\s\S]*stringInput\(input\?\.bazaarRoot\)[\s\S]*stringInput\(input\?\.repositoryRoot\)/)
   assert.match(source, /bazaarRoot: explicitBazaarRoot/)
   assert.match(source, /resolveBazaarWorkspaceFolder/)
   assert.match(source, /resolveBobWorkspaceFolder/)
@@ -70,7 +88,7 @@ test("Bazaar workflow provider resolves repository root independently from workf
 
 test("Bazaar review GUI accepts workflow inputs as initial target values", () => {
   const extensionSource = fs.readFileSync(path.join(extensionRoot, "src", "extension.ts"), "utf8")
-  const guiSource = fs.readFileSync(path.join(extensionRoot, "src", "reviewGui.ts"), "utf8")
+  const guiSource = readSource("reviewGui.ts", "reviewGuiHtml.ts", "reviewGuiTypes.ts")
 
   assert.match(extensionSource, /function initialTargetFromWorkflowInputs\(inputs: Record<string, unknown>, input\?: WorkflowActionExecutionInput\)/)
   assert.match(extensionSource, /revisionMode: targetMode\(inputs\.revisionMode\)/)
@@ -101,7 +119,18 @@ test("Bazaar workflow template declares the providers owned by this extension", 
   assert.doesNotMatch(workflow, /```workflow-step/)
   assert.doesNotMatch(workflow, /^## Step:/m)
   assert.match(workflow, /^steps:$/m)
-  assert.match(workflow, /id: review-input[\s\S]*?provider: bobBazaar\.openReviewGui[\s\S]*?sendResult: false[\s\S]*?completeOnSuccess: false/)
-  assert.match(workflow, /id: collect-context[\s\S]*?provider: bobBazaar\.collectReviewContext[\s\S]*?sendResult: true[\s\S]*?required: true[\s\S]*?completeOnSuccess: true/)
-  assert.match(workflow, /id: load-rules[\s\S]*?provider: bobBazaar\.loadReviewRules[\s\S]*?sendResult: true[\s\S]*?required: true[\s\S]*?completeOnSuccess: true/)
+  assertWorkflowProvider(workflow, "review-input", "openReviewGui", "false", undefined, "false")
+  assertWorkflowProvider(workflow, "collect-context", "collectReviewContext", "true", "true", "true")
+  assertWorkflowProvider(workflow, "load-rules", "loadReviewRules", "true", "true", "true")
 })
+
+function assertWorkflowProvider(workflow, stepId, provider, sendResult, required, completeOnSuccess) {
+  const parts = [
+    `id: ${stepId}`,
+    `provider: bobBazaar\\.${provider}`,
+    `sendResult: ${sendResult}`
+  ]
+  if (required !== undefined) parts.push(`required: ${required}`)
+  parts.push(`completeOnSuccess: ${completeOnSuccess}`)
+  assert.match(workflow, new RegExp(parts.join("[\\s\\S]*?")))
+}
