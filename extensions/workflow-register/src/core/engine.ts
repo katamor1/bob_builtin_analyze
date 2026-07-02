@@ -49,6 +49,7 @@ export interface WorkflowExecutionHooks {
   onStepHeld?: (input: WorkflowEngineEventInput) => Promise<void> | void
   onStepFailed?: (input: WorkflowEngineEventInput) => Promise<void> | void
   onStepCompleted?: (input: WorkflowEngineEventInput) => Promise<void> | void
+  onStepReviewRequired?: (input: WorkflowEngineEventInput) => Promise<void> | void
   onWorkflowCompleted?: (input: WorkflowEngineEventInput) => Promise<void> | void
   onWorkflowFailed?: (input: WorkflowEngineEventInput) => Promise<void> | void
 }
@@ -126,6 +127,7 @@ export class WorkflowEngine {
     const run = recoveredRun ?? await this.runStore.createRun(workflow, inputs)
     await this.runStore.saveRun(run)
     if (!recoveredRun) await this.emit(this.hooks.onWorkflowStart, { workflow, run })
+    if (run.status === "reviewing") return run
     const inputProblems = validateWorkflowInputs(workflow.inputs ?? {}, run.inputs)
     if (inputProblems.length > 0) {
       run.status = "failed"
@@ -155,6 +157,7 @@ export class WorkflowEngine {
   async resumeRun(runId: string, options: ResumeRunOptions): Promise<WorkflowRunState> {
     const run = await this.runStore.loadRun(runId)
     if (!run) throw new Error(`Workflow run not found: ${runId}`)
+    if (run.status === "reviewing") throw new Error("Workflow run is waiting for step review. Accept the current step or retry it before resuming.")
     let startIndex = options.workflow.engineSteps.findIndex((step) => step.id === run.currentStep)
     if (startIndex < 0) startIndex = nextPendingIndex(run)
     if (run.status === "held" && options.completeHeldStep && startIndex >= 0) {
@@ -173,10 +176,16 @@ export class WorkflowEngine {
     if (!run) throw new Error(`Workflow run not found: ${runId}`)
     const index = workflow.engineSteps.findIndex((step) => step.id === run.currentStep)
     if (index < 0) throw new Error(`Current step is not part of workflow ${workflow.id}: ${run.currentStep ?? "none"}`)
+    const step = workflow.engineSteps[index]
     run.status = "running"
     run.error = undefined
     run.steps[index].status = "pending"
     run.steps[index].error = undefined
+    run.steps[index].startedAt = undefined
+    run.steps[index].completedAt = undefined
+    run.steps[index].reviewStartedAt = undefined
+    run.steps[index].acceptedAt = undefined
+    if ("resultKey" in step && step.resultKey) delete run.state[step.resultKey]
     await this.runStore.saveRun(run)
     return this.continueRun(workflow, run, index, "full")
   }
@@ -237,6 +246,18 @@ export class WorkflowEngine {
         run.currentStep = step.id
         await this.runStore.saveRun(run)
         await this.emit(completion.held ? this.hooks.onStepHeld : this.hooks.onStepFailed, { workflow, run, step, error: completion.error })
+        return run
+      }
+
+      if (shouldPauseForStepReview(workflow, mode)) {
+        stepState.status = "reviewing"
+        stepState.reviewStartedAt = new Date().toISOString()
+        stepState.error = undefined
+        run.status = "reviewing"
+        run.currentStep = step.id
+        run.error = undefined
+        await this.runStore.saveRun(run)
+        await this.emit(this.hooks.onStepReviewRequired, { workflow, run, step })
         return run
       }
 
@@ -483,7 +504,7 @@ function formatPreflightCheckFailure(result: WorkflowPreflightCheckResult): stri
 }
 
 function nextPendingIndex(run: WorkflowRunState): number {
-  return run.steps.findIndex((step) => step.status === "pending" || step.status === "held" || step.status === "failed")
+  return run.steps.findIndex((step) => step.status === "pending" || step.status === "reviewing" || step.status === "held" || step.status === "failed")
 }
 
 function recoverStartIndex(workflow: CoreWorkflowDefinition, run: WorkflowRunState): number {
@@ -500,6 +521,10 @@ function startIndexForRun(workflow: CoreWorkflowDefinition, run: WorkflowRunStat
     return index
   }
   return recoverStartIndex(workflow, run)
+}
+
+function shouldPauseForStepReview(workflow: CoreWorkflowDefinition, mode: WorkflowExecutionMode): boolean {
+  return mode === "full" && workflow.stepCompletion === "manual"
 }
 
 function missingRequiredState(step: EngineStep, state: Record<string, string>): string[] {
