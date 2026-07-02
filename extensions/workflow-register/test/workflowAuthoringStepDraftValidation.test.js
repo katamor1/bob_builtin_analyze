@@ -73,9 +73,9 @@ test("step draft validation detects artifact producer impact", () => {
     description: "step id 変更による artifact producedBy 影響を検出する。",
     template: "artifact-output"
   })
-  const draftStep = { ...model.steps[0], id: "analyze-renamed" }
+  const draftStep = { ...model.steps[1], id: "write-report-renamed" }
 
-  const result = validateStepDraft({ model, originalStep: model.steps[0], draftStep, stepIndex: 0 })
+  const result = validateStepDraft({ model, originalStep: model.steps[1], draftStep, stepIndex: 1 })
 
   assert.equal(result.status, "error")
   assert.ok(result.affectedReferences.some((item) => item.code === "step.id.change.breaksArtifact"))
@@ -88,13 +88,13 @@ test("step draft repair updates artifact producers when step id changes", () => 
     description: "step id 変更時に producedBy を更新する。",
     template: "artifact-output"
   })
-  const draftStep = { ...model.steps[0], id: "analyze-renamed" }
+  const draftStep = { ...model.steps[1], id: "write-report-renamed" }
 
-  const repaired = applyStepDraftReferenceRepair({ model, originalStep: model.steps[0], draftStep, stepIndex: 0 })
+  const repaired = applyStepDraftReferenceRepair({ model, originalStep: model.steps[1], draftStep, stepIndex: 1 })
 
-  assert.deepEqual(repaired.updatedArtifactIds, ["analysis-report"])
-  assert.equal(repaired.model.artifacts[0].producedBy, "analyze-renamed")
-  assert.equal(repaired.model.steps[0].id, "analyze-renamed")
+  assert.deepEqual(repaired.updatedArtifactIds, ["report"])
+  assert.equal(repaired.model.artifacts[0].producedBy, "write-report-renamed")
+  assert.equal(repaired.model.steps[1].id, "write-report-renamed")
 })
 
 test("step draft repair updates includeState and result stateKey when resultKey changes", () => {
