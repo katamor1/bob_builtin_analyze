@@ -2,8 +2,8 @@ import * as path from "path"
 import { ActionRegistry } from "./actionRegistry"
 import {
   createDefaultPreflightChecks,
+  evaluatePreflight,
   exists,
-  formatPreflightCheckFailure,
   WorkflowPreflightCheckInput,
   WorkflowPreflightCheckResult
 } from "./engine/preflight"
@@ -31,7 +31,6 @@ import {
   CoreWorkflowDefinition,
   EngineStep,
   ResultSourceDefinition,
-  WorkflowPreflightDefinition,
   WorkflowRunState
 } from "./model"
 import { reportedActionError } from "./reportedActionError"
@@ -153,7 +152,14 @@ export class WorkflowEngine {
       return run
     }
 
-    const preflight = await this.evaluatePreflight(workflow, run)
+    const preflight = await evaluatePreflight({
+      workflow,
+      run,
+      workspaceAvailable: this.workspaceAvailable,
+      fileExists: this.fileExists,
+      preflightChecks: this.preflightChecks,
+      strictPreflightChecks: this.strictPreflightChecks
+    })
     if (preflight.warnings.length > 0) run.state["workflow.preflightWarnings"] = JSON.stringify(preflight.warnings)
     if (preflight.errors.length > 0) {
       run.status = "failed"
@@ -458,47 +464,5 @@ export class WorkflowEngine {
       if (!write.ok) return { ok: false, error: write.error ?? `Failed to write artifact: ${artifact.id}` }
     }
     return { ok: true }
-  }
-
-  private async evaluatePreflight(workflow: CoreWorkflowDefinition, run: WorkflowRunState): Promise<{ errors: string[]; warnings: string[] }> {
-    const errors: string[] = []
-    const warnings: string[] = []
-    if (workflow.requires?.workspace && this.workspaceAvailable) {
-      const available = await Promise.resolve(this.workspaceAvailable())
-      if (!available) errors.push("Workspace is required but not available.")
-    }
-    for (const file of workflow.requires?.files ?? []) await this.checkFile(file, errors, warnings, true)
-    for (const preflight of workflow.preflight ?? []) await this.evaluatePreflightEntry(workflow, run, preflight, errors, warnings)
-    return { errors, warnings }
-  }
-
-  private async evaluatePreflightEntry(workflow: CoreWorkflowDefinition, run: WorkflowRunState, preflight: WorkflowPreflightDefinition, errors: string[], warnings: string[]): Promise<void> {
-    const policy = preflight.failurePolicy ?? "stop"
-    const required = preflight.required !== false
-    const fail = (message: string) => {
-      if (required && policy === "stop") errors.push(`${preflight.id}: ${message}`)
-      else warnings.push(`${preflight.id}: ${message}`)
-    }
-    for (const file of preflight.files ?? []) await this.checkFile(file, errors, warnings, required && policy === "stop", preflight.id)
-    for (const checkId of preflight.checks ?? []) {
-      const check = this.preflightChecks[checkId]
-      if (!check) {
-        if (this.strictPreflightChecks) fail(`Unsupported preflight check: ${checkId}`)
-        else warnings.push(`${preflight.id}: skipped unsupported preflight check: ${checkId}`)
-        continue
-      }
-      const result = await Promise.resolve(check({ workflow, run, checkId }))
-      const error = formatPreflightCheckFailure(result)
-      if (error) fail(`${checkId}: ${error}`)
-    }
-  }
-
-  private async checkFile(relativePath: string, errors: string[], warnings: string[], required: boolean, prefix?: string): Promise<void> {
-    if (!this.fileExists) return
-    const exists = await Promise.resolve(this.fileExists(relativePath))
-    if (exists) return
-    const message = `${prefix ? `${prefix}: ` : ""}Required workflow file is missing: ${relativePath}`
-    if (required) errors.push(message)
-    else warnings.push(message)
   }
 }
