@@ -10,6 +10,17 @@ todoRequired: true
 todoAsSteps: true
 stepCompletion: manual
 stepMessage: step
+stepExecution:
+  mode: engineSteps
+  allowOutOfOrder: false
+  showInBob: true
+stepReview:
+  enabled: true
+  pauseAfter: everyStep
+  requireAcceptBeforeNext: true
+  allowRetry: true
+  allowEditBeforeRetry: true
+  preserveAttempts: true
 permissions:
   - read
   - mcp

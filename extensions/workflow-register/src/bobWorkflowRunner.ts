@@ -66,12 +66,24 @@ export class BobWorkflowEngineRunner {
   }
 
   async runTodoStep(todo: WorkflowTodoItem, index: number, task: BobWorkflowTask): Promise<boolean> {
-    return this.runEngine(task, { executionMode: "singleStep", stepId: todo.id })
+    return this.runEngine(task, {
+      executionMode: "singleStep",
+      stepId: todo.id,
+      allowOutOfOrder: this.options.definition.stepExecution.allowOutOfOrder
+    })
+  }
+
+  async runEngineStep(stepId: string, index: number, task: BobWorkflowTask): Promise<boolean> {
+    return this.runEngine(task, {
+      executionMode: "singleStep",
+      stepId,
+      allowOutOfOrder: this.options.definition.stepExecution.allowOutOfOrder
+    })
   }
 
   private async runEngine(
     task: BobWorkflowTask,
-    request: { executionMode: "full" | "singleStep"; stepId?: string }
+    request: { executionMode: "full" | "singleStep"; stepId?: string; allowOutOfOrder?: boolean }
   ): Promise<boolean> {
     const workspaceRoot = this.options.definition.workflowRoot
     if (!workspaceRoot) {
@@ -128,12 +140,13 @@ export class BobWorkflowEngineRunner {
     try {
       const run = await engine.runWorkflow(this.options.coreWorkflow, inputs, {
         executionMode: request.executionMode,
-        stepId: request.stepId
+        stepId: request.stepId,
+        allowOutOfOrder: request.allowOutOfOrder
       })
       if (run.status === "failed") {
         await vscode.window.showErrorMessage(`Bob workflow run failed: ${run.error ?? run.runId}`)
       }
-      return run.status === "completed" || run.status === "running"
+      return run.status === "completed" || run.status === "running" || run.status === "reviewing"
     } catch (error) {
       await vscode.window.showErrorMessage(
         `Bob workflow execution failed: ${error instanceof Error ? error.message : String(error)}`

@@ -7,6 +7,7 @@ const RECOVERABLE_RUN_STATUSES = new Set(["running", "reviewing", "held"])
 export interface RecoverableRunLookupOptions {
   executionMode?: "full" | "singleStep"
   stepId?: string
+  allowOutOfOrder?: boolean
 }
 
 export interface RunStateStore {
