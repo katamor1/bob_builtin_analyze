@@ -10,6 +10,13 @@ import {
 } from "./core/reviewInputBuilder"
 import { resolveBobWorkspaceRoot } from "./workspaceResolver"
 
+/**
+ * Shared helpers for the next `extension.ts` split.
+ *
+ * This module intentionally mirrors the option/prompt helpers that currently
+ * live in `extension.ts`; a follow-up refactor can move callers over in small
+ * batches without changing command behavior.
+ */
 export function notifyInfo(message: string): void {
   console.info(message)
   vscode.window.setStatusBarMessage(message, 5000)
