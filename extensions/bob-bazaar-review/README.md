@@ -101,7 +101,7 @@ GUI は次の `.bob` ファイルを確認します。
 
 この拡張は、`workflow-register` から呼び出される action provider を提供します。代表例は同梱ワークフロー `bazaar-project-rule-review` です。
 
-リファクタリング後は、workflow-register API 接続、workflow action input の解釈、capture option 変換を `src/workflowRegisterBridge.ts` に分離しています。`extension.ts` は command 登録、GUI、Bazaar packet 作成、Bob context 連携、review-result 検証を中心に扱います。
+リファクタリング後は、workflow-register API 接続、workflow action input の解釈、capture option 変換を `src/workflowRegisterBridge.ts` に分離しています。revision / range review packet 作成は `src/bazaarReviewCommands.ts`、active editor の review-result JSON 検証は `src/reviewResultValidationCommand.ts` に分離済みです。`extension.ts` は command 登録、workflow provider 登録、project rules 読み込み、review packet 検索、MCP 設定、GUI 起動を中心に扱います。
 
 ### コンテキスト収集
 
@@ -258,13 +258,15 @@ Bob には JSON を先に返し、その後に Markdown checklist を出力す�
 
 | ファイル / ディレクトリ | 責務 |
 | --- | --- |
-| `src/extension.ts` | VS Code command 登録、GUI 起動、Bazaar packet 作成、Bob context 追加、project rules、review-result 検証の入口。 |
+| `src/extension.ts` | VS Code command 登録、workflow provider 登録、GUI 起動、MCP 設定、project rules 読み込み、review packet 検索。 |
+| `src/bazaarReviewCommands.ts` | `reviewRevision` / `reviewRange`、Bazaar client 作成、project rules section 付与、Bob context / clipboard / file 保存の選択 UI。 |
+| `src/reviewResultValidationCommand.ts` | active editor / selection からの review-result JSON 検証と Markdown report 表示。 |
 | `src/workflowRegisterBridge.ts` | workflow-register API 取得、action provider 型、workflow input helper、capture option 変換。 |
 | `src/reviewGui*` / `src/webview/*` | Bazaar review GUI と初期化 UI。 |
 | `src/projectRules/*` | checklist / schema / review-result 検証と Markdown 変換。 |
 | `src/mcp/*` | 読み取り専用 Bazaar MCP server と project rules MCP tool。 |
 
-次の分割候補は、`extension.ts` から Bazaar packet 生成 command 群と review-result validation command を切り出すことです。
+次の分割候補は、`extension.ts` に残る `registerWorkflowProviders`、`collectReviewContext`、`loadReviewRules`、`configureMcp`、`initProjectRules` です。Command ID と workflow action provider ID は互換性に直結するため、分割時も名称は変更しません。
 
 ## 設定
 
