@@ -8,6 +8,7 @@ import {
   CoreWorkflowDefinition,
   EngineStep,
   ResultSourceDefinition,
+  RunStepState,
   WorkflowArtifactDefinition,
   WorkflowPreflightDefinition,
   WorkflowRunState
@@ -148,6 +149,7 @@ export class WorkflowEngine {
     }
 
     const startIndex = startIndexForRun(workflow, run, options)
+    noteDefinitionMismatch(run, workflow)
     run.status = "running"
     run.error = undefined
     await this.runStore.saveRun(run)
@@ -160,6 +162,8 @@ export class WorkflowEngine {
     if (run.status === "reviewing") throw new Error("Workflow run is waiting for step review. Accept the current step or retry it before resuming.")
     let startIndex = options.workflow.engineSteps.findIndex((step) => step.id === run.currentStep)
     if (startIndex < 0) startIndex = nextPendingIndex(run)
+    validateRunStepCompatibility(run, options.workflow, startIndex)
+    noteDefinitionMismatch(run, options.workflow)
     if (run.status === "held" && options.completeHeldStep && startIndex >= 0) {
       const held = run.steps[startIndex]
       held.status = "completed"
@@ -174,18 +178,24 @@ export class WorkflowEngine {
   async retryCurrentStep(runId: string, workflow: CoreWorkflowDefinition): Promise<WorkflowRunState> {
     const run = await this.runStore.loadRun(runId)
     if (!run) throw new Error(`Workflow run not found: ${runId}`)
+    if (!workflow.stepReview.allowRetry) throw new Error("This workflow does not allow step retry.")
     const index = workflow.engineSteps.findIndex((step) => step.id === run.currentStep)
     if (index < 0) throw new Error(`Current step is not part of workflow ${workflow.id}: ${run.currentStep ?? "none"}`)
+    validateRetryCompatibility(run, workflow, index)
     const step = workflow.engineSteps[index]
+    const stepState = run.steps[index]
+    if (workflow.stepReview.preserveAttempts) archiveAttempt(stepState, run.state)
     run.status = "running"
     run.error = undefined
-    run.steps[index].status = "pending"
-    run.steps[index].error = undefined
-    run.steps[index].startedAt = undefined
-    run.steps[index].completedAt = undefined
-    run.steps[index].reviewStartedAt = undefined
-    run.steps[index].acceptedAt = undefined
+    stepState.status = "pending"
+    stepState.error = undefined
+    stepState.startedAt = undefined
+    stepState.completedAt = undefined
+    stepState.reviewStartedAt = undefined
+    stepState.acceptedAt = undefined
+    stepState.attempt = (stepState.attempts?.length ?? 0) + 1
     if ("resultKey" in step && step.resultKey) delete run.state[step.resultKey]
+    noteDefinitionMismatch(run, workflow)
     await this.runStore.saveRun(run)
     return this.continueRun(workflow, run, index, "full")
   }
@@ -209,11 +219,12 @@ export class WorkflowEngine {
       }
       run.status = "running"
       stepState.status = "running"
-      stepState.startedAt = stepState.startedAt ?? new Date().toISOString()
+      stepState.attempt = stepState.attempt ?? ((stepState.attempts?.length ?? 0) + 1)
+      stepState.startedAt = new Date().toISOString()
       await this.runStore.saveRun(run)
       await this.emit(this.hooks.onStepStart, { workflow, run, step })
 
-      const stepResult = await this.executeStep(workflow, run, step)
+      const stepResult = await this.executeStep(workflow, run, step, index)
       if (!stepResult.ok) {
         stepState.status = stepResult.held ? "held" : "failed"
         stepState.error = stepResult.error
@@ -249,7 +260,7 @@ export class WorkflowEngine {
         return run
       }
 
-      if (shouldPauseForStepReview(workflow, mode)) {
+      if (shouldPauseForStepReview(workflow, step, mode)) {
         stepState.status = "reviewing"
         stepState.reviewStartedAt = new Date().toISOString()
         stepState.error = undefined
@@ -283,12 +294,14 @@ export class WorkflowEngine {
     return run
   }
 
-  private async executeStep(workflow: CoreWorkflowDefinition, run: WorkflowRunState, step: EngineStep): Promise<{ ok: true } | { ok: false; held?: boolean; error: string }> {
+  private async executeStep(workflow: CoreWorkflowDefinition, run: WorkflowRunState, step: EngineStep, stepIndex: number): Promise<{ ok: true } | { ok: false; held?: boolean; error: string }> {
     if (step.type === "manual") return this.waitForManualCompletion(workflow, run, step)
     if (step.type === "agent") {
       try {
+        const stepState = run.steps[stepIndex]
+        const isRetryAttempt = (stepState.attempt ?? 1) > 1
         let agentText = step.resultKey ? run.state[step.resultKey] : undefined
-        if (agentText === undefined) agentText = await this.recoverResultText?.({ workflow, run, step, reason: "retry-agent-result" })
+        if (agentText === undefined && !isRetryAttempt) agentText = await this.recoverResultText?.({ workflow, run, step, reason: "retry-agent-result" })
         if (agentText === undefined) {
           if (!this.agentProvider) return { ok: false, error: "Agent provider is required for agent workflow steps." }
           const prompt = renderTemplate(step.prompt ?? "", { inputs: run.inputs, state: run.state, run, workflow, step })
@@ -384,6 +397,7 @@ export class WorkflowEngine {
   }
 
   private async completeStepIfManual(workflow: CoreWorkflowDefinition, run: WorkflowRunState, step: EngineStep): Promise<{ ok: true } | { ok: false; held?: boolean; error: string }> {
+    if (workflow.stepReview.enabled) return { ok: true }
     if (step.type === "agent" || step.type === "manual" || step.completeOnSuccess || workflow.stepCompletion !== "manual") return { ok: true }
     return this.waitForManualCompletion(workflow, run, step)
   }
@@ -523,8 +537,54 @@ function startIndexForRun(workflow: CoreWorkflowDefinition, run: WorkflowRunStat
   return recoverStartIndex(workflow, run)
 }
 
-function shouldPauseForStepReview(workflow: CoreWorkflowDefinition, mode: WorkflowExecutionMode): boolean {
-  return mode === "full" && workflow.stepCompletion === "manual"
+function shouldPauseForStepReview(workflow: CoreWorkflowDefinition, step: EngineStep, mode: WorkflowExecutionMode): boolean {
+  if (mode !== "full") return false
+  if (!workflow.stepReview.enabled) return false
+  if (workflow.stepReview.pauseAfter === "none") return false
+  if (workflow.stepReview.pauseAfter === "agentAndCommand") return step.type === "agent" || step.type === "command"
+  return true
+}
+
+function archiveAttempt(stepState: RunStepState, state: Record<string, string>): void {
+  const attempt = stepState.attempt ?? ((stepState.attempts?.length ?? 0) + 1)
+  stepState.attempts = [
+    ...(stepState.attempts ?? []),
+    {
+      attempt,
+      status: stepState.status,
+      startedAt: stepState.startedAt,
+      completedAt: stepState.completedAt,
+      reviewStartedAt: stepState.reviewStartedAt,
+      acceptedAt: stepState.acceptedAt,
+      error: stepState.error,
+      stateSnapshot: { ...state },
+      createdAt: new Date().toISOString()
+    }
+  ]
+}
+
+function validateRunStepCompatibility(run: WorkflowRunState, workflow: CoreWorkflowDefinition, targetIndex: number): void {
+  const limit = Math.max(0, targetIndex)
+  for (let index = 0; index <= limit && index < run.steps.length; index += 1) {
+    const runStep = run.steps[index]
+    const workflowStep = workflow.engineSteps[index]
+    if (!workflowStep) throw new Error(`Workflow definition no longer contains step index ${index + 1} (${runStep.id}).`)
+    if (runStep.id !== workflowStep.id) throw new Error(`Workflow step order/id changed at index ${index + 1}: run=${runStep.id}; workflow=${workflowStep.id}.`)
+  }
+}
+
+function validateRetryCompatibility(run: WorkflowRunState, workflow: CoreWorkflowDefinition, targetIndex: number): void {
+  if (definitionHashChanged(run, workflow) && !workflow.stepReview.allowEditBeforeRetry) throw new Error("Workflow definition changed, and stepReview.allowEditBeforeRetry is false.")
+  validateRunStepCompatibility(run, workflow, targetIndex)
+}
+
+function noteDefinitionMismatch(run: WorkflowRunState, workflow: CoreWorkflowDefinition): void {
+  if (!definitionHashChanged(run, workflow)) return
+  run.state["workflow.definitionMismatch"] = JSON.stringify({ runHash: run.workflowDefinitionHash, currentHash: workflow.definitionHash, detectedAt: new Date().toISOString() })
+}
+
+function definitionHashChanged(run: WorkflowRunState, workflow: CoreWorkflowDefinition): boolean {
+  return Boolean(run.workflowDefinitionHash && workflow.definitionHash && run.workflowDefinitionHash !== workflow.definitionHash)
 }
 
 function missingRequiredState(step: EngineStep, state: Record<string, string>): string[] {
