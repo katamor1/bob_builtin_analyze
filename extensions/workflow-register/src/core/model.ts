@@ -1,6 +1,6 @@
 export type WorkflowSchemaVersion = "legacy" | "workflow-register/v1"
 export type WorkflowStepType = "command" | "agent" | "manual" | "result"
-export type RunStatus = "running" | "reviewing" | "held" | "completed" | "failed"
+export type RunStatus = "running" | "paused" | "reviewing" | "held" | "completed" | "failed"
 export type StepRunStatus = "pending" | "running" | "reviewing" | "held" | "completed" | "failed"
 export type WorkflowStepCompletionMode = "auto" | "manual"
 export type WorkflowStepMessageMode = "full" | "current" | "silent" | "step"
