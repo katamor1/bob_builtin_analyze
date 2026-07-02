@@ -37,6 +37,7 @@ import {
 } from "./model"
 import { reportedActionError } from "./reportedActionError"
 import { ResultSinkRegistry } from "./resultSinkRegistry"
+import { FileRunControlStore, RunControlState, RunControlStore } from "./runControlStore"
 import { RunStateStore } from "./runStateStore"
 
 export type { WorkflowPreflightCheckInput, WorkflowPreflightCheckResult } from "./engine/preflight"
@@ -56,6 +57,7 @@ export interface WorkflowEngineEventInput {
   agentText?: string
   commandValue?: unknown
   error?: string
+  pause?: RunControlState
 }
 
 export interface WorkflowExecutionHooks {
@@ -68,6 +70,7 @@ export interface WorkflowExecutionHooks {
   onStepFailed?: (input: WorkflowEngineEventInput) => Promise<void> | void
   onStepCompleted?: (input: WorkflowEngineEventInput) => Promise<void> | void
   onStepReviewRequired?: (input: WorkflowEngineEventInput) => Promise<void> | void
+  onRunPaused?: (input: WorkflowEngineEventInput) => Promise<void> | void
   onWorkflowCompleted?: (input: WorkflowEngineEventInput) => Promise<void> | void
   onWorkflowFailed?: (input: WorkflowEngineEventInput) => Promise<void> | void
 }
@@ -94,6 +97,7 @@ export interface WorkflowEngineOptions {
   actions: ActionRegistry
   resultSinks: ResultSinkRegistry
   runStore: RunStateStore
+  runControlStore?: RunControlStore
   agentProvider?: AgentProvider
   workspaceAvailable?: () => Promise<boolean> | boolean
   fileExists?: (relativePath: string) => Promise<boolean> | boolean
@@ -113,6 +117,7 @@ export class WorkflowEngine {
   private readonly actions: ActionRegistry
   private readonly resultSinks: ResultSinkRegistry
   private readonly runStore: RunStateStore
+  private readonly runControlStore?: RunControlStore
   private readonly agentProvider?: AgentProvider
   private readonly workspaceAvailable?: WorkflowEngineOptions["workspaceAvailable"]
   private readonly fileExists?: WorkflowEngineOptions["fileExists"]
@@ -126,8 +131,9 @@ export class WorkflowEngine {
     this.actions = options.actions
     this.resultSinks = options.resultSinks
     this.runStore = options.runStore
-    this.agentProvider = options.agentProvider
     const workspaceRoot = options.runStore.workspaceRoot
+    this.runControlStore = options.runControlStore ?? (workspaceRoot ? new FileRunControlStore({ workspaceRoot }) : undefined)
+    this.agentProvider = options.agentProvider
     this.workspaceAvailable = options.workspaceAvailable ?? (workspaceRoot ? (() => true) : undefined)
     this.fileExists = options.fileExists ?? (workspaceRoot ? ((relativePath) => exists(path.join(workspaceRoot, relativePath))) : undefined)
     this.preflightChecks = {
@@ -145,7 +151,7 @@ export class WorkflowEngine {
     const run = recoveredRun ?? await this.runStore.createRun(workflow, inputs)
     await this.runStore.saveRun(run)
     if (!recoveredRun) await this.emit(this.hooks.onWorkflowStart, { workflow, run })
-    if (run.status === "reviewing") return run
+    if (run.status === "reviewing" || run.status === "paused") return run
     const inputProblems = validateWorkflowInputs(workflow.inputs ?? {}, run.inputs)
     if (inputProblems.length > 0) {
       run.status = "failed"
@@ -154,6 +160,8 @@ export class WorkflowEngine {
       await this.emit(this.hooks.onWorkflowFailed, { workflow, run, error: run.error })
       return run
     }
+
+    if (await this.pauseIfRequested(workflow, run, workflow.engineSteps.find((step) => step.id === run.currentStep), "before-preflight")) return run
 
     const preflight = await evaluatePreflight({
       workflow,
@@ -202,6 +210,11 @@ export class WorkflowEngine {
     if (startIndex < 0) startIndex = nextPendingIndex(run)
     validateRunStepCompatibility(run, options.workflow, startIndex)
     noteDefinitionMismatch(run, options.workflow)
+    if (run.status === "paused") {
+      await this.runControlStore?.clearPause(runId)
+      run.status = "running"
+      run.error = undefined
+    }
     if (run.status === "held" && options.completeHeldStep && startIndex >= 0) {
       const held = run.steps[startIndex]
       held.status = "completed"
@@ -245,6 +258,7 @@ export class WorkflowEngine {
       const step = workflow.engineSteps[index]
       const stepState = run.steps[index]
       run.currentStep = step.id
+      if (await this.pauseIfRequested(workflow, run, step, `before-step:${step.id}`)) return run
       const missingState = missingRequiredState(step, run.state)
       if (missingState.length > 0) {
         const error = `Workflow state is missing for step ${step.id}: ${missingState.join(", ")}`
@@ -316,6 +330,8 @@ export class WorkflowEngine {
       stepState.error = undefined
       await this.runStore.saveRun(run)
       await this.emit(this.hooks.onStepCompleted, { workflow, run, step })
+      const nextStep = workflow.engineSteps[index + 1]
+      if (nextStep && await this.pauseIfRequested(workflow, run, nextStep, `after-step:${step.id}`)) return run
     }
 
     if (mode === "singleStep" && endIndex < workflow.engineSteps.length) {
@@ -447,6 +463,25 @@ export class WorkflowEngine {
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : String(error) }
     }
+  }
+
+  private async pauseIfRequested(workflow: CoreWorkflowDefinition, run: WorkflowRunState, nextStep: EngineStep | undefined, checkpoint: string): Promise<boolean> {
+    const control = await this.runControlStore?.loadControl(run.runId)
+    if (!control?.pauseRequestedAt || control.clearedAt) return false
+    run.status = "paused"
+    run.error = undefined
+    if (nextStep) run.currentStep = nextStep.id
+    run.state["workflow.pause"] = JSON.stringify({
+      pauseRequestedAt: control.pauseRequestedAt,
+      pauseReason: control.pauseReason ?? "manual",
+      requestedBy: control.requestedBy ?? "user",
+      mode: control.mode ?? "afterCurrentStep",
+      checkpoint,
+      detectedAt: new Date().toISOString()
+    })
+    await this.runStore.saveRun(run)
+    await this.emit(this.hooks.onRunPaused, { workflow, run, step: nextStep, pause: control })
+    return true
   }
 
   private async emit(hook: ((input: WorkflowEngineEventInput) => Promise<void> | void) | undefined, input: WorkflowEngineEventInput): Promise<void> {
