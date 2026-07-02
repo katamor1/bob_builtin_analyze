@@ -4,6 +4,7 @@ import { renderWorkflowBuilderClientScript } from "./workflowBuilderClientScript
 import { renderWorkflowBuilderGuidedHelpScript } from "./workflowBuilderGuidedHelpScript"
 import { workflowBuilderHelpCatalog } from "./workflowBuilderHelpCatalog"
 import { renderWorkflowBuilderHelpScript } from "./workflowBuilderHelpScript"
+import { renderWorkflowBuilderStepDraftScript } from "./workflowBuilderStepDraftScript"
 import { renderWorkflowBuilderStyles } from "./workflowBuilderStyles"
 
 export interface WorkflowBuilderTemplateOption {
@@ -62,6 +63,7 @@ let model = ${JSON.stringify(options.initialModel)};
 let editMode = ${JSON.stringify(options.isEditMode)};
 let focusStepId = ${JSON.stringify(options.focusStepId ?? "")};
 ${renderWorkflowBuilderClientScript()}
+${renderWorkflowBuilderStepDraftScript()}
 if (focusStepId) {
   const focusIndex = model.steps.findIndex(function(step) { return step.id === focusStepId; });
   if (focusIndex >= 0) { selectedStepIndex = focusIndex; activeTab = 'step'; render(); }
