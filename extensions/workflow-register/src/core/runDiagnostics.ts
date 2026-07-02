@@ -19,9 +19,10 @@ export function buildWorkflowRunDiagnosticReport(runs: WorkflowRunState[], optio
   const reviewing = runs.filter((run) => run.status === "reviewing").length
   const held = runs.filter((run) => run.status === "held").length
   const attempts = runs.reduce((sum, run) => sum + run.steps.reduce((stepSum, step) => stepSum + (step.attempts?.length ?? 0), 0), 0)
+  const pausedPart = paused > 0 ? ` ${paused} paused;` : ""
   return {
     title: "Workflow Run Diagnostics",
-    summary: `${runs.length} run(s); ${failed} failed; ${paused} paused; ${reviewing} reviewing; ${held} held; ${attempts} archived attempt(s).`,
+    summary: `${runs.length} run(s); ${failed} failed;${pausedPart} ${reviewing} reviewing; ${held} held; ${attempts} archived attempt(s).`,
     lines
   }
 }
