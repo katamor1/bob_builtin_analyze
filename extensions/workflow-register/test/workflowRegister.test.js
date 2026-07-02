@@ -12,8 +12,10 @@ function readSource(...segments) {
 function readWorkflowRuntimeSource() {
   return [
     ["src", "extension.ts"],
+    ["src", "bobApi.ts"],
     ["src", "bobWorkflowTypes.ts"],
     ["src", "bobWorkflowRunner.ts"],
+    ["src", "reports.ts"],
     ["src", "workflowDefinitionLoader.ts"]
   ]
     .filter((segments) => fs.existsSync(path.join(extensionRoot, ...segments)))
@@ -77,7 +79,7 @@ test("activation schedules delayed workflow reload retries after Bob finishes st
   const source = readSource("src", "extension.ts")
 
   assert.match(source, /const retryDelaysMs = \[3000, 10000\]/)
-  assert.match(source, /setTimeout\(\(\) => service\.reload\(\{ showReport: false \}\)/)
+  assert.match(source, /setTimeout\([\s\S]*service\.reload\(\{ showReport: false \}\)/)
 })
 
 test("package contributes standalone workflow launcher commands without a hard Bob dependency", () => {
@@ -176,7 +178,7 @@ test("Bob registration treats a false registerWorkflow return as failed", () => 
   const source = readWorkflowRuntimeSource()
 
   assert.match(source, /return \{ label, ok: value !== false, message: describeReturn\(value\), value \}/)
-  assert.match(source, /const attempt = await runAttempt\(`source\.registerWorkflow\(\$\{workflow\.id\}\)`[\s\S]*if \(attempt\.ok\) \{[\s\S]*registeredIds\.add\(workflow\.id\)[\s\S]*registeredCount \+= 1[\s\S]*\}/)
+  assert.match(source, /const attempt = await runAttempt\([\s\S]*`source\.registerWorkflow\(\$\{workflow\.id\}\)`[\s\S]*if \(attempt\.ok\) \{[\s\S]*registeredIds\.add\(workflow\.id\)[\s\S]*registeredCount \+= 1[\s\S]*\}/)
 })
 
 test("workflow reload re-registers current workflows and clears Bob context when none remain", () => {

@@ -1,5 +1,3 @@
-import * as path from "path"
-import { createHash } from "crypto"
 import * as vscode from "vscode"
 import {
   BobWorkflowEngineRunner,
@@ -8,16 +6,9 @@ import {
   recoverResultTextFromSnapshots,
   StepRuntime
 } from "./bobWorkflowRunner"
-import {
-  DEFAULT_MAX_RESULT_BYTES
-} from "./bobWorkflowTypes"
-import type {
-  BobSourceLike,
-  BobWorkflowApi,
-  LoadResult,
-  WorkflowDefinition,
-  WorkflowStepDefinition
-} from "./bobWorkflowTypes"
+import { asSource, loadBobApi } from "./bobApi"
+import type { BobSourceLike, BobWorkflowApi } from "./bobApi"
+import type { WorkflowDefinition } from "./bobWorkflowTypes"
 import { ActionProvider, ActionRegistry, createDefaultActionRegistry } from "./core/actionRegistry"
 import { createCommandAgentProvider } from "./core/agentProvider"
 import { WorkflowEngine, WorkflowEngineOptions } from "./core/engine"
@@ -25,16 +16,20 @@ import { collectWorkflowInputsWithResolver } from "./core/inputCollector"
 import {
   AgentProvider,
   CoreWorkflowDefinition,
-  EngineStep,
-  ResultSinkDefinition,
   WorkflowInputDefinition
 } from "./core/model"
-import { parseWorkflowMarkdown } from "./core/parser"
 import { createDefaultResultSinkRegistry, ResultSinkRegistry } from "./core/resultSinkRegistry"
 import { FileRunStateStore, RunStateStore } from "./core/runStateStore"
 import { FileTaskSnapshotStore, TaskSnapshotStore } from "./core/taskSnapshots"
-import { fallbackWorkspaceRootCandidates, findMarkerRoots, findWorkflowRootCandidates, MarkerRootCandidate, relativePathFromRoot, rootHasMarker } from "./core/workspaceRoots"
-import { resultSourceForStep } from "./resultHandoff"
+import {
+  fallbackWorkspaceRootCandidates,
+  findMarkerRoots,
+  findWorkflowRootCandidates,
+  MarkerRootCandidate,
+  rootHasMarker
+} from "./core/workspaceRoots"
+import { formatAttempt, runAttempt, showMarkdownReport } from "./reports"
+import { loadWorkspaceWorkflows } from "./workflowDefinitionLoader"
 
 const BOB_EXTENSION_ID = "IBM.bob-code"
 const WORKFLOW_GLOB = "**/.bob/workflows/*/WORKFLOW.md"
@@ -79,7 +74,10 @@ export function activate(context: vscode.ExtensionContext): WorkflowRegisterApi 
     vscode.commands.registerCommand("workflowRegister.completeCurrentStep", (options?: StepCompletionOptions) => service.completeCurrentStep(options)),
     vscode.commands.registerCommand("workflowRegister.completeStep", (options?: StepCompletionOptions) => service.completeCurrentStep(options)),
     vscode.commands.registerCommand("workflowRegister.inspectActiveSteps", () => service.inspectActiveSteps()),
-    vscode.commands.registerCommand("workflowRegister.runWorkflow", (workflowId?: string, inputs?: Record<string, unknown>) => service.runWorkflow(workflowId, inputs)),
+    vscode.commands.registerCommand(
+      "workflowRegister.runWorkflow",
+      (workflowId?: string, inputs?: Record<string, unknown>) => service.runWorkflow(workflowId, inputs)
+    ),
     vscode.commands.registerCommand("workflowRegister.inspectRuns", () => service.inspectRuns()),
     vscode.commands.registerCommand("workflowRegister.resumeRun", (runId?: string) => service.resumeRun(runId)),
     vscode.commands.registerCommand("workflowRegister.retryCurrentStep", (runId?: string) => service.retryCurrentStep(runId))
@@ -87,7 +85,12 @@ export function activate(context: vscode.ExtensionContext): WorkflowRegisterApi 
   service.reload({ showReport: false }).catch((error) => console.warn("Bob workflow registration failed", error))
   const retryDelaysMs = [3000, 10000]
   for (const delayMs of retryDelaysMs) {
-    const timer = setTimeout(() => service.reload({ showReport: false }).catch((error) => console.warn("Bob workflow registration retry failed", error)), delayMs)
+    const timer = setTimeout(
+      () => service.reload({ showReport: false }).catch((error) => {
+        console.warn("Bob workflow registration retry failed", error)
+      }),
+      delayMs
+    )
     context.subscriptions.push({ dispose: () => clearTimeout(timer) })
   }
   return {
@@ -135,7 +138,13 @@ class WorkflowRegisterService implements vscode.Disposable {
     const steps = this.stepRuntime.list()
     const lines = steps.length === 0
       ? ["- No active Bob workflow steps."]
-      : steps.map((step) => `- key=${step.key}; workflowId=${step.workflowId}; workflowTitle=${step.workflowLabel}; stepId=${step.stepId}; stepTitle=${step.title}`)
+      : steps.map((step) => [
+        `- key=${step.key}`,
+        `workflowId=${step.workflowId}`,
+        `workflowTitle=${step.workflowLabel}`,
+        `stepId=${step.stepId}`,
+        `stepTitle=${step.title}`
+      ].join("; "))
     await showMarkdownReport("Active Bob Workflow Steps", `${steps.length} active step(s).`, lines)
   }
 
@@ -193,7 +202,13 @@ class WorkflowRegisterService implements vscode.Disposable {
     })))).flatMap(({ candidate, runs }) => runs.map((run) => ({ candidate, run })))
     const lines = runsByRoot.length === 0
       ? ["- No workflow runs were found."]
-      : runsByRoot.map(({ candidate, run }) => `- ${run.runId}: ${run.status}; workflow=${run.workflowId}; root=${candidate.root}; currentStep=${run.currentStep ?? "none"}; updatedAt=${run.updatedAt}`)
+      : runsByRoot.map(({ candidate, run }) => [
+        `- ${run.runId}: ${run.status}`,
+        `workflow=${run.workflowId}`,
+        `root=${candidate.root}`,
+        `currentStep=${run.currentStep ?? "none"}`,
+        `updatedAt=${run.updatedAt}`
+      ].join("; "))
     await showMarkdownReport("Workflow Runs", `${runsByRoot.length} run(s).`, lines)
   }
 
@@ -443,7 +458,7 @@ class WorkflowRegisterService implements vscode.Disposable {
       return { summary: "No .bob workflows were found.", lines }
     }
 
-    const bob = await loadBobApi()
+    const bob = await loadBobApi(BOB_EXTENSION_ID)
     lines.push(`- Bob extension found: ${bob.found}`)
     lines.push(`- Bob extension active: ${bob.active}`)
     lines.push(`- Bob activation error: ${bob.activationError}`)
@@ -465,7 +480,10 @@ class WorkflowRegisterService implements vscode.Disposable {
     let registeredCount = 0
     const registeredIds = new Set<string>()
     for (const workflow of loaded.workflows) {
-      const attempt = await runAttempt(`source.registerWorkflow(${workflow.id})`, () => source.registerWorkflow?.(createBobWorkflow(workflow, this.createBobWorkflowRunner(workflow))))
+      const attempt = await runAttempt(
+        `source.registerWorkflow(${workflow.id})`,
+        () => source.registerWorkflow?.(createBobWorkflow(workflow, this.createBobWorkflowRunner(workflow)))
+      )
       lines.push(formatAttempt(attempt))
       if (attempt.ok) {
         registeredIds.add(workflow.id)
@@ -487,166 +505,3 @@ class WorkflowRegisterService implements vscode.Disposable {
     lines?.push(formatAttempt(attempt))
   }
 }
-
-async function loadWorkspaceWorkflows(sourceId: string): Promise<LoadResult> {
-  const diagnostics: string[] = []
-  const workflows: WorkflowDefinition[] = []
-  const coreWorkflows: CoreWorkflowDefinition[] = []
-  const folders = vscode.workspace.workspaceFolders ?? []
-  const roots = await findWorkflowRootCandidates(folders)
-  const searchRoots = roots.length > 0 ? roots : fallbackWorkspaceRootCandidates(folders)
-  for (const root of searchRoots) {
-    const files = await vscode.workspace.findFiles(new vscode.RelativePattern(root.root, ".bob/workflows/*/WORKFLOW.md"))
-    diagnostics.push(`- workspace: ${root.workspaceFolderName}; workflowRoot=${root.root}; marker=${root.marker}; depth=${root.depth}; workflow files: ${files.length}`)
-    for (const file of files) {
-      const result = await loadWorkflowFile(sourceId, file, root)
-      diagnostics.push(...result.diagnostics)
-      if (result.workflow) workflows.push(result.workflow)
-      if (result.coreWorkflow) coreWorkflows.push(result.coreWorkflow)
-    }
-  }
-  qualifyDuplicateWorkflowIds(workflows, coreWorkflows)
-  return { workflows, coreWorkflows, diagnostics }
-}
-
-async function loadWorkflowFile(sourceId: string, file: vscode.Uri, root: MarkerRootCandidate): Promise<{ workflow?: WorkflowDefinition; coreWorkflow?: CoreWorkflowDefinition; diagnostics: string[] }> {
-  const relativePath = relativePathFromRoot(root.root, file.fsPath)
-  const diagnostics: string[] = []
-  const folderName = path.basename(path.dirname(file.fsPath))
-  const text = Buffer.from(await vscode.workspace.fs.readFile(file)).toString("utf8").replace(/^\uFEFF/, "")
-  const parsed = parseWorkflowMarkdown({ sourceId, filePath: relativePath, text })
-  diagnostics.push(...parsed.diagnostics)
-  if (!parsed.ok) return { diagnostics }
-  const coreWorkflow = {
-    ...parsed.workflow,
-    logicalWorkflowId: parsed.workflow.id,
-    workflowRoot: root.root,
-    workflowFile: file.fsPath,
-    workflowFolderName: root.name
-  }
-  const workflow = adaptCoreWorkflowForBob(coreWorkflow, file)
-  if (folderName !== parsed.workflow.name) diagnostics.push(`- warn: ${relativePath}: folder name '${folderName}' differs from workflow name '${parsed.workflow.name}'.`)
-  if (workflow.todoRequired && workflow.todos.length === 0) return { diagnostics: [`- fail: ${relativePath}: todoRequired is true but no todo items were found.`] }
-  if (workflow.stepMessage === "step") for (const todo of workflow.todos) if (!workflow.stepsById[todo.id]?.prompt) diagnostics.push(`- warn: ${relativePath}: missing prompt for workflow step '${todo.id}'.`)
-
-  const stepCount = workflow.todoEnabled && workflow.todoAsSteps && workflow.todos.length > 0 ? workflow.todos.length : 1
-  const stepPromptCount = Object.values(workflow.stepsById).filter((step) => step.prompt.length > 0).length
-  const stepCommandCount = Object.values(workflow.stepsById).filter((step) => step.command).length
-  const agentStepCount = Object.values(workflow.stepsById).filter((step) => step.runAgent).length
-  const stateKeyCount = Object.values(workflow.stepsById).filter((step) => step.resultKey).length
-  const includeStateCount = Object.values(workflow.stepsById).filter((step) => step.includeState.length > 0).length
-  const captureResultCount = Object.values(workflow.stepsById).filter((step) => step.captureResult).length
-  diagnostics.push(`- ok: ${relativePath}: ${workflow.id}; todos=${workflow.todos.length}; todo=${workflow.todoEnabled}; steps=${stepCount}; stepCompletion=${workflow.stepCompletion}; stepMessage=${workflow.stepMessage}; stepPrompts=${stepPromptCount}; stepCommands=${stepCommandCount}; agentSteps=${agentStepCount}; stateKeys=${stateKeyCount}; includeState=${includeStateCount}; captureResults=${captureResultCount}`)
-  for (const step of Object.values(workflow.stepsById).filter((candidate) => candidate.command)) diagnostics.push(`- step command: ${step.id} -> ${step.command}; sendResult=${step.sendResult}; required=${step.required}; completeOnSuccess=${step.completeOnSuccess}`)
-  for (const step of Object.values(workflow.stepsById).filter((candidate) => candidate.runAgent)) diagnostics.push(`- agent step: ${step.id}; resultKey=${step.resultKey ?? "none"}; maxResultBytes=${step.maxResultBytes}`)
-  for (const step of Object.values(workflow.stepsById).filter((candidate) => candidate.resultKey || candidate.includeState.length > 0)) {
-    const savePart = step.resultKey ? `resultKey=${step.resultKey}` : "resultKey=none"
-    const includePart = step.includeState.length > 0 ? `includeState=${step.includeState.join(",")}` : "includeState=none"
-    diagnostics.push(`- step state: ${step.id}; ${savePart}; ${includePart}; stateRequired=${step.stateRequired}; maxResultBytes=${step.maxResultBytes}`)
-  }
-  for (const step of Object.values(workflow.stepsById).filter((candidate) => candidate.captureResult)) {
-    diagnostics.push(`- step capture: ${step.id}; resultSource=${resultSourceForStep(step)}; resultCommand=${step.resultCommand ?? "none"}`)
-  }
-  return { workflow, coreWorkflow, diagnostics }
-}
-
-function adaptCoreWorkflowForBob(core: CoreWorkflowDefinition, file: vscode.Uri): WorkflowDefinition {
-  const todos = core.todos.map((todo, index) => ({
-    id: todo.id,
-    text: todo.title,
-    raw: todo.raw ?? `${todo.id}: ${todo.title || `Step ${index + 1}`}`
-  }))
-  return {
-    id: core.id,
-    logicalWorkflowId: core.logicalWorkflowId ?? core.id,
-    name: core.name,
-    label: core.label,
-    menuLabel: core.menuLabel ?? core.label,
-    description: core.description,
-    prompt: core.prompt,
-    promptWithoutTodo: core.promptWithoutTodo,
-    command: core.command,
-    commandArgs: core.commandArgs,
-    mode: core.mode,
-    permissions: [...core.permissions],
-    autoApprovalEnabled: core.autoApprovalEnabled,
-    workspaceRequired: core.workspaceRequired,
-    hidden: core.hidden,
-    todoEnabled: core.todoEnabled,
-    todoRequired: core.todoRequired,
-    todoSource: "core",
-    todoAsSteps: core.todoAsSteps,
-    stepCompletion: core.stepCompletion,
-    stepMessage: core.stepMessage,
-    stepsById: Object.fromEntries(core.engineSteps.map((step) => [step.id, workflowStepDefinitionFromEngineStep(step)])),
-    todos,
-    inputs: core.inputs,
-    guardrails: core.guardrails,
-    workflowRoot: core.workflowRoot,
-    workflowFile: core.workflowFile,
-    workflowFolderName: core.workflowFolderName,
-    file,
-    core
-  }
-}
-
-function qualifyDuplicateWorkflowIds(workflows: WorkflowDefinition[], coreWorkflows: CoreWorkflowDefinition[]): void {
-  const counts = new Map<string, number>()
-  for (const workflow of coreWorkflows) counts.set(workflow.id, (counts.get(workflow.id) ?? 0) + 1)
-  for (const workflow of coreWorkflows) {
-    const logicalId = workflow.logicalWorkflowId ?? workflow.id
-    workflow.logicalWorkflowId = logicalId
-    if ((counts.get(logicalId) ?? 0) > 1) workflow.id = qualifiedWorkflowId(logicalId, workflow.workflowRoot)
-  }
-  for (const workflow of workflows) {
-    const logicalId = workflow.logicalWorkflowId ?? workflow.id
-    workflow.logicalWorkflowId = logicalId
-    if ((counts.get(logicalId) ?? 0) > 1) workflow.id = qualifiedWorkflowId(logicalId, workflow.workflowRoot)
-  }
-}
-
-function qualifiedWorkflowId(logicalId: string, workflowRoot: string | undefined): string {
-  const root = workflowRoot ?? "unknown"
-  const slug = path.basename(root).replace(/[^A-Za-z0-9_-]+/g, "-") || "workspace"
-  const hash = createHash("sha1").update(root).digest("hex").slice(0, 8)
-  return `${logicalId}.${slug}-${hash}`
-}
-
-function workflowStepDefinitionFromEngineStep(step: EngineStep): WorkflowStepDefinition {
-  const commandSink = commandResultSink(step)
-  return {
-    id: step.id,
-    prompt: step.prompt?.trim() ?? "",
-    command: step.type === "command" ? step.action.provider : undefined,
-    commandArgs: step.type === "command" ? argumentList(step.action.args) : [],
-    sendResult: step.sendResult ?? false,
-    required: step.required !== false,
-    completeOnSuccess: step.completeOnSuccess ?? false,
-    runAgent: step.type === "agent",
-    resultKey: "resultKey" in step ? step.resultKey : undefined,
-    includeState: step.includeState ?? [],
-    maxResultBytes: step.maxResultBytes ?? DEFAULT_MAX_RESULT_BYTES,
-    stateRequired: step.stateRequired !== false,
-    captureResult: Boolean(commandSink),
-    resultSource: step.type === "agent" && step.result?.source === "agent" ? "agent" : undefined,
-    resultCommand: commandSink?.command,
-    resultCommandArgs: commandSink?.args ?? []
-  }
-}
-
-function commandResultSink(step: EngineStep): Extract<ResultSinkDefinition, { type: "command" }> | undefined {
-  const result = "result" in step ? step.result : undefined
-  return result?.sinks.find((sink): sink is Extract<ResultSinkDefinition, { type: "command" }> => sink.type === "command")
-}
-
-function argumentList(value: unknown): unknown[] {
-  if (value === undefined) return []
-  return Array.isArray(value) ? value : [value]
-}
-
-async function loadBobApi(): Promise<{ found: boolean; active: boolean; activationError: string; exportsValue: unknown }> { const ext = vscode.extensions.getExtension<unknown>(BOB_EXTENSION_ID); let exportsValue: unknown; let activationError = "none"; if (ext) { try { exportsValue = ext.isActive ? ext.exports : await ext.activate() } catch (error) { activationError = error instanceof Error ? error.message : String(error) } } return { found: Boolean(ext), active: Boolean(ext?.isActive), activationError, exportsValue } }
-async function runAttempt(label: string, run: () => unknown): Promise<{ label: string; ok: boolean; message: string; value?: unknown }> { try { const value = await Promise.resolve(run()); return { label, ok: value !== false, message: describeReturn(value), value } } catch (error) { return { label, ok: false, message: error instanceof Error ? error.message : String(error) } } }
-function asSource(value: unknown): BobSourceLike | undefined { return typeof value === "object" && value !== null ? value as BobSourceLike : undefined }
-function formatAttempt(attempt: { label: string; ok: boolean; message: string }): string { return `- ${attempt.ok ? "ok" : "fail"}: ${attempt.label} -> ${attempt.message}` }
-function describeReturn(value: unknown): string { if (value === undefined) return "undefined"; if (value === null) return "null"; if (typeof value === "object") return `object(${Object.keys(value as Record<string, unknown>).slice(0, 20).join(",")})`; return String(value) }
-async function showMarkdownReport(title: string, summary: string, lines: string[]): Promise<void> { const report = [`# ${title}`, "", summary, "", ...lines].join("\n"); const doc = await vscode.workspace.openTextDocument({ language: "markdown", content: report }); await vscode.window.showTextDocument(doc, { preview: false }) }

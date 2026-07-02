@@ -12,10 +12,6 @@ export const DEFAULT_MAX_RESULT_BYTES = 20_000
 export type StepCompletionMode = "auto" | "manual"
 export type StepMessageMode = "full" | "current" | "silent" | "step"
 
-export interface BobWorkflowApi {
-  registerSource?: (id: string, name?: string) => unknown
-}
-
 export interface BobWorkflowTask {
   sendMessage?: (...args: unknown[]) => Promise<unknown> | Thenable<unknown> | unknown
   setStepComplete?: () => unknown
@@ -44,12 +40,6 @@ export interface BobWorkflow {
     allowed_permissions: string[]
     autoApprovalEnabled: boolean
   }
-}
-
-export interface BobSourceLike {
-  registerWorkflow?: (workflow: BobWorkflow) => unknown
-  log?: (message: string) => unknown
-  deactivate?: () => unknown
 }
 
 export interface WorkflowTodoItem {
