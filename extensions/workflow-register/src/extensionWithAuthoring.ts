@@ -13,6 +13,7 @@ import {
   pauseCurrentRun,
   resumePausedRun
 } from "./commands/runControl"
+import { WorkflowRunControlView } from "./commands/runControlView"
 import {
   acceptAndRunNextStep,
   acceptCurrentStep,
@@ -35,6 +36,8 @@ export { deactivate }
 export function activate(context: vscode.ExtensionContext): WorkflowRegisterApi {
   const api = activateCore(context)
   const diagnostics = new WorkflowDiagnosticsReporter()
+  const runControlView = new WorkflowRunControlView()
+  runControlView.start()
   const config = () => vscode.workspace.getConfiguration("workflowRegister")
   const sourceId = () => config().get<string>("sourceId", "workflow-register")
   const aiProvider = () => createConfiguredWorkflowAiProvider({
@@ -46,6 +49,9 @@ export function activate(context: vscode.ExtensionContext): WorkflowRegisterApi 
   const runControlOptions = { showMarkdownReport }
   context.subscriptions.push(
     diagnostics,
+    runControlView,
+    vscode.window.registerTreeDataProvider("workflowRegister.runs", runControlView),
+    vscode.commands.registerCommand("workflowRegister.refreshRunsView", () => runControlView.refresh()),
     vscode.commands.registerCommand(
       "workflowRegister.validateCurrentWorkflow",
       () => validateCurrentWorkflow({ sourceId: sourceId(), showMarkdownReport, diagnostics })
