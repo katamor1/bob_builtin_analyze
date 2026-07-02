@@ -178,7 +178,8 @@ test("Bob registration treats a false registerWorkflow return as failed", () => 
   const source = readWorkflowRuntimeSource()
 
   assert.match(source, /return \{ label, ok: value !== false, message: describeReturn\(value\), value \}/)
-  assert.match(source, /const attempt = await runAttempt\([\s\S]*`source\.registerWorkflow\(\$\{workflow\.id\}\)`[\s\S]*if \(attempt\.ok\) \{[\s\S]*registeredIds\.add\(workflow\.id\)[\s\S]*registeredCount \+= 1[\s\S]*\}/)
+  assert.match(source, /const attempt = await runAttempt\([\s\S]*`source\.registerWorkflow\(\$\{workflow\.id\}\)`/)
+  assert.match(source, /if \(attempt\.ok\) \{[\s\S]*registeredIds\.add\(workflow\.id\)[\s\S]*registeredCount \+= 1[\s\S]*\}/)
 })
 
 test("workflow reload re-registers current workflows and clears Bob context when none remain", () => {
