@@ -2,6 +2,7 @@ const test = require("node:test")
 const assert = require("node:assert/strict")
 
 const { createAuthoringModelFromTemplate } = require("../out/core/workflowAuthoringDefaults")
+const { applyStepDraftReferenceRepair } = require("../out/core/workflowAuthoringStepDraftRepair")
 const { validateStepDraft, formatStepDraftValidationSummary } = require("../out/core/workflowAuthoringStepDraftValidation")
 
 test("step draft validation blocks command step without provider", () => {
@@ -78,4 +79,43 @@ test("step draft validation detects artifact producer impact", () => {
 
   assert.equal(result.status, "error")
   assert.ok(result.affectedReferences.some((item) => item.code === "step.id.change.breaksArtifact"))
+})
+
+test("step draft repair updates artifact producers when step id changes", () => {
+  const model = createAuthoringModelFromTemplate({
+    name: "repair-artifact",
+    title: "Repair Artifact",
+    description: "step id 変更時に producedBy を更新する。",
+    template: "artifact-output"
+  })
+  const draftStep = { ...model.steps[0], id: "analyze-renamed" }
+
+  const repaired = applyStepDraftReferenceRepair({ model, originalStep: model.steps[0], draftStep, stepIndex: 0 })
+
+  assert.deepEqual(repaired.updatedArtifactIds, ["analysis-report"])
+  assert.equal(repaired.model.artifacts[0].producedBy, "analyze-renamed")
+  assert.equal(repaired.model.steps[0].id, "analyze-renamed")
+})
+
+test("step draft repair updates includeState and result stateKey when resultKey changes", () => {
+  const model = createAuthoringModelFromTemplate({
+    name: "repair-result-key",
+    title: "Repair ResultKey",
+    description: "resultKey 変更時に後続参照を更新する。",
+    template: "command-then-agent"
+  })
+  model.steps.push({
+    id: "write-context",
+    title: "Write context",
+    type: "result",
+    result: { source: "state", stateKey: "collectedContext", sinks: [{ type: "file", path: ".bob/artifacts/context.md" }] }
+  })
+  const draftStep = { ...model.steps[0], resultKey: "renamedContext" }
+
+  const repaired = applyStepDraftReferenceRepair({ model, originalStep: model.steps[0], draftStep, stepIndex: 0 })
+
+  assert.deepEqual(repaired.updatedStepIds, ["analyze"])
+  assert.deepEqual(repaired.updatedResultStateStepIds, ["write-context"])
+  assert.deepEqual(repaired.model.steps[1].includeState, ["renamedContext"])
+  assert.equal(repaired.model.steps[2].result.stateKey, "renamedContext")
 })
