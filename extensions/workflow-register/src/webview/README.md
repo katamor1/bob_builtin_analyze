@@ -6,11 +6,11 @@ Webview の表示とクライアント処理は次のファイルへ分割する
 
 | file | role |
 | --- | --- |
-| `workflowBuilderPanel.ts` | WebviewPanel 作成、preview / diff / save、backup、`workflowRegister.reload` 実行。 |
+| `workflowBuilderPanel.ts` | WebviewPanel 作成、preview / diff / save、backup、`workflowRegister.reload` 実行、step draft の host 側検証。 |
 | `workflowBuilderHtml.ts` | HTML shell、CSP、nonce、初期 state、help catalog 埋め込み、client script fragments の合成。 |
 | `workflowBuilderStyles.ts` | Webview CSS。3カラムレイアウト、ヘルプパネル、step draft 確定前チェック表示も定義する。 |
 | `workflowBuilderClientScript.ts` | Webview 内で動く form state / tab / preview / guardrails UI 処理。 |
-| `workflowBuilderStepDraftScript.ts` | Step detail の仮編集、確定前チェック、Apply / Discard、dirty 表示を担当する。 |
+| `workflowBuilderStepDraftScript.ts` | Step detail の仮編集、確定前チェック、host validation、Apply / Discard、dirty 表示を担当する。 |
 | `workflowBuilderGuidedHelpScript.ts` | Step type guide、動的選択肢ラベル、Diagnostics から設定項目への誘導。 |
 | `workflowBuilderBodyScript.ts` | YAML front matter 以外の Markdown body 編集 UI を追加する補助 script。 |
 | `workflowBuilderHelpIds.ts` | help id の定数 registry。renderer / catalog / diagnostics 誘導の typo を減らす。 |
@@ -26,6 +26,7 @@ Webview client は `vscode.postMessage(...)` で extension host へ要求を送�
 | message | host side behavior |
 | --- | --- |
 | `preview` | `WorkflowAuthoringModel` を Markdown 化し、`validateWorkflowText` を実行して diagnostics を Webview へ返す。 |
+| `validateStepDraft` | `draftStep` を仮反映した model を Markdown 化し、core step draft validation と `validateWorkflowText` の両方を返す。 |
 | `diff` | edit mode の既存 `WORKFLOW.md` と生成結果を VS Code diff で表示する。 |
 | `save` | 生成結果を validate し、backup 作成後に `WORKFLOW.md` を保存する。 |
 | `resetTemplate` | template から新しい `WorkflowAuthoringModel` を作り直して Webview に送る。 |
@@ -53,13 +54,16 @@ selected step
   -> draft clone
   -> Step detail form edits
   -> local / type-specific / reference impact checks
+  -> Validate step で host validation
   -> Apply changes
   -> model.steps[selectedStepIndex]
 ```
 
 `Apply changes` は error がある間は disabled にする。warning だけの場合は確認後に確定できる。dirty draft を保持したまま別 step や別 tab へ移動しようとした場合は、未確定変更を破棄するか確認する。
 
-この機能は Webview 内の即時 UX であり、保存前の `validateWorkflowText` は引き続き最終防衛線として必ず実行する。
+`Validate step` は Webview 内の即時チェックに加え、extension host で `validateStepDraft` と `validateWorkflowText` を実行する。これにより、保存前 validator 相当の workflow-level diagnostics を Step detail から確認できる。
+
+保存前の `validateWorkflowText` は引き続き最終防衛線として必ず実行する。
 
 ## Script split policy
 
