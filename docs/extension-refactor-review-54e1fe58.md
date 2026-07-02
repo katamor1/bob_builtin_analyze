@@ -10,7 +10,7 @@
 |---|---|---|
 | `extensions/workflow-register` | `.bob/workflows/*/WORKFLOW.md` の登録、実行、step review、Bob連携 | parser / engine / reports / Bob API helper は分割済み。`bobWorkflowRunner.ts` の低リスクhelper分離を実施済み |
 | `extensions/bob-bazaar-review` | Bazaar差分・リビジョン範囲からレビューpacketを作成しBobへ渡す | workflow-register bridge / workflow action input helper を `workflowRegisterBridge.ts` へ分離済み |
-| `extensions/bob-code-consistency-review` | 要求・設計・テスト仕様とコード変更の整合プレレビュー用input/preprocess/output検証 | command option / prompt / path helper を `extensionCommandOptions.ts` へ分離済み。次は wizard / traceability command 分割 |
+| `extensions/bob-code-consistency-review` | 要求・設計・テスト仕様とコード変更の整合プレレビュー用input/preprocess/output検証 | command option / prompt / path helper と review-input wizard を分離済み。次は traceability command 分割 |
 
 ## 1. workflow-register
 
@@ -126,14 +126,13 @@ src/workflowRegisterBridge.ts
 
 ### 現状
 
-`src/extension.ts` は700行規模だったが、command option / prompt / path helper を外へ出して約620行規模まで下げた。まだ3拡張の中で最も優先度が高い。
+`src/extension.ts` は700行規模だったが、command option / prompt / path helper と review-input wizard を外へ出して約520行規模まで下げた。まだ traceability / review execution command が残っている。
 
 主な混在:
 
 - VS Code command登録
 - workflow provider registration用handler mapping
 - workspace初期化
-- review-input生成 wizard
 - AI review-input draft作成/適用
 - traceability draft作成/適用/検証
 - preprocess / Bob output capture / output validate / triage
@@ -162,23 +161,23 @@ src/extensionCommandOptions.ts
 - `booleanOption`
 - `firstString`
 
+```text
+src/reviewInputWizard.ts
+```
+
+移動済み:
+
+- `collectReviewInputDraft`
+- `collectReviewMetadata`
+- `pickArtifacts`
+- `stripCandidateUiFields`
+
 注意点:
 
 - `requireBobWorkspaceRoot` は `resolveBobWorkspaceRoot` と VS Code UI に依存するため、純粋helperではない。
-- `vcsOrPrompt` / `changeTypeOption` / `reviewFocusOption` は `reviewInputBuilder` の enum values に依存する。
+- `reviewInputWizard.ts` は QuickPick/InputBox 依存があるが、review-input 作成UIに閉じている。
 
 ### 次に切る対象
-
-#### `reviewInputWizard.ts`
-
-含める候補:
-
-- `collectReviewInputDraft`
-- `pickArtifacts`
-- `stripCandidateUiFields`
-- `collectReviewMetadata`
-
-この単位は UI QuickPick/InputBox 依存があるが、review-input作成に閉じている。
 
 #### `traceabilityCommands.ts`
 
@@ -216,7 +215,7 @@ traceability機能は増え続ける可能性が高いため、早めに `extens
 1. `workflow-register`: `bobWorkflowRunner.ts` の低リスクhelper分離（PR #30で実施済み）
 2. `bob-code-consistency-review`: `extensionCommandOptions.ts` へ helper 呼び出し移行（PR #30で実施済み）
 3. `bob-bazaar-review`: `workflowRegisterBridge.ts` へ bridge/helper 呼び出し移行（PR #30で実施済み）
-4. `bob-code-consistency-review`: `reviewInputWizard.ts`
+4. `bob-code-consistency-review`: `reviewInputWizard.ts` へ wizard 移行（PR #30で実施済み）
 5. `bob-code-consistency-review`: traceability / review-input / execution commands を段階分割
 6. `workflow-register`: `bobStepRuntime.ts`
 7. `bob-bazaar-review`: Bazaar packet生成 command / review result validation command を分割
