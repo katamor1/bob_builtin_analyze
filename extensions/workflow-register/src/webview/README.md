@@ -8,8 +8,9 @@ Webview の表示とクライアント処理は次のファイルへ分割する
 | --- | --- |
 | `workflowBuilderPanel.ts` | WebviewPanel 作成、preview / diff / save、backup、`workflowRegister.reload` 実行。 |
 | `workflowBuilderHtml.ts` | HTML shell、CSP、nonce、初期 state、help catalog 埋め込み、client script fragments の合成。 |
-| `workflowBuilderStyles.ts` | Webview CSS。3カラムレイアウトとヘルプパネルも定義する。 |
+| `workflowBuilderStyles.ts` | Webview CSS。3カラムレイアウト、ヘルプパネル、step draft 確定前チェック表示も定義する。 |
 | `workflowBuilderClientScript.ts` | Webview 内で動く form state / tab / preview / guardrails UI 処理。 |
+| `workflowBuilderStepDraftScript.ts` | Step detail の仮編集、確定前チェック、Apply / Discard、dirty 表示を担当する。 |
 | `workflowBuilderGuidedHelpScript.ts` | Step type guide、動的選択肢ラベル、Diagnostics から設定項目への誘導。 |
 | `workflowBuilderBodyScript.ts` | YAML front matter 以外の Markdown body 編集 UI を追加する補助 script。 |
 | `workflowBuilderHelpIds.ts` | help id の定数 registry。renderer / catalog / diagnostics 誘導の typo を減らす。 |
@@ -43,6 +44,23 @@ Webview form state
 
 GUI が作った state でも、保存直前に必ず既存 validator を通す。これにより Webview 側の入力不整合がそのままファイルに保存されることを避ける。
 
+## Step draft confirmation
+
+`workflowBuilderStepDraftScript.ts` は Step detail の編集を main model へ即時反映しない。
+
+```text
+selected step
+  -> draft clone
+  -> Step detail form edits
+  -> local / type-specific / reference impact checks
+  -> Apply changes
+  -> model.steps[selectedStepIndex]
+```
+
+`Apply changes` は error がある間は disabled にする。warning だけの場合は確認後に確定できる。dirty draft を保持したまま別 step や別 tab へ移動しようとした場合は、未確定変更を破棄するか確認する。
+
+この機能は Webview 内の即時 UX であり、保存前の `validateWorkflowText` は引き続き最終防衛線として必ず実行する。
+
 ## Script split policy
 
 `workflowBuilderClientScript.ts` はまだ大きいが、Phase 8 以降は機能単位の script fragment へ段階的に分割する。
@@ -57,7 +75,7 @@ GUI が作った state でも、保存直前に必ず既存 validator を通す�
 - `renderDiagnosticsList`
 - `gotoHelpTarget`
 
-`workflowBuilderHtml.ts` は `renderWorkflowBuilderClientScript()` の後に `renderWorkflowBuilderGuidedHelpScript()` を合成する。これにより、既存の form state / event handler を保ちながら、Guided Help 周辺だけを独立してテストできる。
+`workflowBuilderHtml.ts` は `renderWorkflowBuilderClientScript()` の後に `renderWorkflowBuilderStepDraftScript()` と `renderWorkflowBuilderGuidedHelpScript()` を合成する。これにより、既存の form state / event handler を保ちながら、Step draft と Guided Help 周辺を独立してテストできる。
 
 ## Help ID Registry
 
