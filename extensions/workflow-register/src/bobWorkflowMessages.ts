@@ -20,16 +20,17 @@ export interface WorkflowControlBlockInput {
 
 export function buildWorkflowControlBlock(input: WorkflowControlBlockInput): string {
   const encodedRunId = encodeURIComponent(JSON.stringify([input.runId]))
+  const commandLink = (label: string, command: string) => `[${label}](command:${command}?${encodedRunId}) \`${command}\``
   const lines = [
     "Workflow controls:",
     `<workflow_controls runId="${escapeXmlAttribute(input.runId)}"${input.stepId ? ` stepId="${escapeXmlAttribute(input.stepId)}"` : ""}${input.status ? ` status="${escapeXmlAttribute(input.status)}"` : ""}>`,
-    `- Pause after current step: command:workflowRegister.pauseAfterCurrentStep?${encodedRunId}`,
-    `- Pause before next AI call: command:workflowRegister.pauseBeforeNextAiCall?${encodedRunId}`,
-    `- Inspect run control: command:workflowRegister.inspectRunControl?${encodedRunId}`,
-    `- Inspect current step: command:workflowRegister.inspectCurrentStep?${encodedRunId}`,
-    `- Open current step in Builder: command:workflowRegister.openCurrentStepInBuilder?${encodedRunId}`
+    `- ${commandLink("Pause after current step", "workflowRegister.pauseAfterCurrentStep")}`,
+    `- ${commandLink("Pause before next AI call", "workflowRegister.pauseBeforeNextAiCall")}`,
+    `- ${commandLink("Inspect run control", "workflowRegister.inspectRunControl")}`,
+    `- ${commandLink("Inspect current step", "workflowRegister.inspectCurrentStep")}`,
+    `- ${commandLink("Open current step in Builder", "workflowRegister.openCurrentStepInBuilder")}`
   ]
-  if (input.includeResume) lines.push(`- Resume paused run: command:workflowRegister.resumePausedRun?${encodedRunId}`)
+  if (input.includeResume) lines.push(`- ${commandLink("Resume paused run", "workflowRegister.resumePausedRun")}`)
   lines.push(
     "</workflow_controls>",
     "",
