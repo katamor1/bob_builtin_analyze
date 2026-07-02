@@ -321,10 +321,8 @@ export class WorkflowEngine {
     if (step.type === "manual") return this.waitForManualCompletion(workflow, run, step)
     if (step.type === "agent") {
       try {
-        const stepState = run.steps[stepIndex]
-        const isRetryAttempt = (stepState.attempt ?? 1) > 1
         let agentText = step.resultKey ? run.state[step.resultKey] : undefined
-        if (agentText === undefined && !isRetryAttempt) agentText = await this.recoverResultText?.({ workflow, run, step, reason: "retry-agent-result" })
+        if (agentText === undefined) agentText = await this.recoverResultText?.({ workflow, run, step, reason: "retry-agent-result" })
         if (agentText === undefined) {
           if (!this.agentProvider) return { ok: false, error: "Agent provider is required for agent workflow steps." }
           const prompt = renderTemplate(step.prompt ?? "", { inputs: run.inputs, state: run.state, run, workflow, step })
