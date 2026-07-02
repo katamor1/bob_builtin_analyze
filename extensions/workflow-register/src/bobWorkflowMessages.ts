@@ -10,6 +10,34 @@ import type {
 } from "./bobWorkflowTypes"
 import { appendWorkflowContext } from "./workflowPromptContext"
 
+export interface WorkflowControlBlockInput {
+  runId: string
+  stepId?: string
+  status?: string
+  currentStep?: string
+  includeResume?: boolean
+}
+
+export function buildWorkflowControlBlock(input: WorkflowControlBlockInput): string {
+  const encodedRunId = encodeURIComponent(JSON.stringify([input.runId]))
+  const lines = [
+    "Workflow controls:",
+    `<workflow_controls runId="${escapeXmlAttribute(input.runId)}"${input.stepId ? ` stepId="${escapeXmlAttribute(input.stepId)}"` : ""}${input.status ? ` status="${escapeXmlAttribute(input.status)}"` : ""}>`,
+    `- Pause after current step: command:workflowRegister.pauseAfterCurrentStep?${encodedRunId}`,
+    `- Pause before next AI call: command:workflowRegister.pauseBeforeNextAiCall?${encodedRunId}`,
+    `- Inspect run control: command:workflowRegister.inspectRunControl?${encodedRunId}`,
+    `- Inspect current step: command:workflowRegister.inspectCurrentStep?${encodedRunId}`,
+    `- Open current step in Builder: command:workflowRegister.openCurrentStepInBuilder?${encodedRunId}`
+  ]
+  if (input.includeResume) lines.push(`- Resume paused run: command:workflowRegister.resumePausedRun?${encodedRunId}`)
+  lines.push(
+    "</workflow_controls>",
+    "",
+    "Note: pause is graceful. If an AI response or command is already running, it stops after that response/command completes and before the next workflow step starts."
+  )
+  return lines.join("\n")
+}
+
 export function buildStepMessage(
   definition: WorkflowDefinition,
   todo: WorkflowTodoItem,
@@ -104,7 +132,7 @@ function buildCurrentTodoMessage(
 ): string {
   const lines = [
     "Current workflow Todo item:",
-    `<workflow_todo index=\"${index + 1}\" id=\"${todo.id}\">`,
+    `<workflow_todo index="${index + 1}" id="${todo.id}">`,
     `- [ ] ${todo.id}: ${todo.text}`,
     "</workflow_todo>"
   ]
@@ -128,7 +156,7 @@ export function buildCommandResultMessage(
 ): string | undefined {
   const lines = [
     "Workflow step command result:",
-    `<workflow_todo index=\"${index + 1}\" id=\"${todo.id}\">`,
+    `<workflow_todo index="${index + 1}" id="${todo.id}">`,
     `- [ ] ${todo.id}: ${todo.text}`,
     "</workflow_todo>"
   ]
@@ -173,7 +201,7 @@ function buildStepPromptBlock(
   const prompt = stepDefinition?.prompt.trim()
   if (!prompt) return undefined
   return [
-    `<workflow_step index=\"${index + 1}\" id=\"${todo.id}\">`,
+    `<workflow_step index="${index + 1}" id="${todo.id}">`,
     `Title: ${todo.text}`,
     "",
     "<workflow_step_instructions>",
@@ -201,7 +229,7 @@ function buildWorkflowTodoStepMessage(
     `- mode: ${definition.mode}`,
     "",
     "Current Todo item:",
-    `<workflow_todo index=\"${index + 1}\" id=\"${todo.id}\">`,
+    `<workflow_todo index="${index + 1}" id="${todo.id}">`,
     `- [ ] ${todo.id}: ${todo.text}`,
     "</workflow_todo>",
     "",
@@ -232,7 +260,7 @@ function appendWorkflowState(lines: string[], stateEntries: WorkflowStateEntry[]
   if (stateEntries.length === 0) return
   lines.push("", "<workflow_state>")
   for (const entry of stateEntries) {
-    lines.push(`<state key=\"${escapeXmlAttribute(entry.key)}\">`, entry.value, "</state>", "")
+    lines.push(`<state key="${escapeXmlAttribute(entry.key)}">`, entry.value, "</state>", "")
   }
   if (lines[lines.length - 1] === "") lines.pop()
   lines.push("</workflow_state>")
@@ -250,7 +278,7 @@ function buildCommandResultBlock(
   maxBytes = DEFAULT_MAX_RESULT_BYTES
 ): string {
   return [
-    `<workflow_step_command_result command=\"${escapeXmlAttribute(commandResult.command)}\" ok=\"${commandResult.ok}\">`,
+    `<workflow_step_command_result command="${escapeXmlAttribute(commandResult.command)}" ok="${commandResult.ok}">`,
     commandResult.ok ? formatCommandResult(commandResult.value, maxBytes) : `ERROR: ${commandResult.error}`,
     "</workflow_step_command_result>"
   ].join("\n")
