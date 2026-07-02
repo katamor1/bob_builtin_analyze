@@ -1,0 +1,36 @@
+const test = require("node:test")
+const assert = require("node:assert/strict")
+
+const { renderWorkflowBuilderStepDraftScript } = require("../out/webview/workflowBuilderStepDraftScript")
+const { renderWorkflowBuilderHtml } = require("../out/webview/workflowBuilderHtml")
+const { createAuthoringModelFromTemplate } = require("../out/core/workflowAuthoringDefaults")
+
+test("step draft script exposes transaction controls and validation hooks", () => {
+  const script = renderWorkflowBuilderStepDraftScript()
+
+  assert.match(script, /ensureStepDraft/)
+  assert.match(script, /validateStepDraftInWebview/)
+  assert.match(script, /apply-step-draft/)
+  assert.match(script, /discard-step-draft/)
+  assert.match(script, /未確定の変更/)
+})
+
+test("workflow builder html includes step draft script before help decoration", () => {
+  const model = createAuthoringModelFromTemplate({
+    name: "step-draft-html",
+    title: "Step Draft HTML",
+    description: "Step draft script is included.",
+    template: "simple-agent"
+  })
+  const html = renderWorkflowBuilderHtml({
+    cspSource: "vscode-resource:",
+    initialModel: model,
+    isEditMode: false,
+    modeNote: "mode note",
+    nonce: "nonce-456",
+    templateOptions: [{ id: "simple-agent", label: "Simple Agent", description: "simple" }]
+  })
+
+  assert.match(html, /validateStepDraftInWebview/)
+  assert.ok(html.indexOf("validateStepDraftInWebview") < html.indexOf("renderWorkflowBuilderGuidedHelpScript") || html.includes("jumpToHelpEntry"))
+})
