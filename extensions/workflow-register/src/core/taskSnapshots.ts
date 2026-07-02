@@ -231,6 +231,20 @@ export function createBobTaskSnapshotProvider(task: {
   }
 }
 
+export function snapshotMatchesRun(
+  snapshot: TaskSnapshotPayload,
+  workflow: CoreWorkflowDefinition,
+  run: WorkflowRunState,
+  step?: EngineStep
+): boolean {
+  if (snapshot.runId !== run.runId) return false
+  if (snapshot.workflowId !== workflow.id) return false
+  if (snapshot.workflowDefinitionHash && workflow.definitionHash && snapshot.workflowDefinitionHash !== workflow.definitionHash) return false
+  if (step && snapshot.stepId !== step.id) return false
+  if (!step && run.currentStep && snapshot.stepId !== run.currentStep) return false
+  return true
+}
+
 function summarizeSnapshot(fileName: string, snapshot: TaskSnapshotPayload): TaskSnapshotSummary {
   return {
     fileName,
