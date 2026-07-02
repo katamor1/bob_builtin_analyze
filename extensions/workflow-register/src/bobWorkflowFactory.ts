@@ -1,13 +1,14 @@
 import type {
   BobWorkflow,
   BobWorkflowStep,
+  BobWorkflowTask,
   WorkflowDefinition,
   WorkflowTodoItem
 } from "./bobWorkflowTypes"
 
 export interface BobWorkflowStepRunner {
-  runSingleWorkflowStep: (task: Parameters<BobWorkflowStep["execution"]>[0]) => Promise<boolean>
-  runTodoStep: (todo: WorkflowTodoItem, index: number, task: Parameters<BobWorkflowStep["execution"]>[0]) => Promise<boolean>
+  runSingleWorkflowStep: (task: BobWorkflowTask) => Promise<boolean>
+  runTodoStep: (todo: WorkflowTodoItem, index: number, task: BobWorkflowTask) => Promise<boolean>
 }
 
 export function createBobWorkflow(
