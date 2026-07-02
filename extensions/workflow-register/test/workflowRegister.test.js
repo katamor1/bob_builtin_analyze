@@ -210,7 +210,7 @@ test("Bob workflow chat messages include bounded workflow root context", () => {
 
   assert.match(source, /import \{ appendWorkflowContext \} from "\.\/workflowPromptContext"/)
   assert.match(source, /appendWorkflowContext\(lines, \{[\s\S]*workflowRoot: definition\.workflowRoot[\s\S]*workflowFile: definition\.workflowFile[\s\S]*workflowFolderName: definition\.workflowFolderName[\s\S]*stateEntries[\s\S]*\}\)/)
-  assert.match(source, /buildCommandResultMessage\(this\.options\.definition, context\.todo, context\.index, commandResult, stateEntries\)/)
+  assert.match(source, /buildCommandResultMessage\([\s\S]*this\.options\.definition,[\s\S]*context\.todo,[\s\S]*context\.index,[\s\S]*commandResult,[\s\S]*stateEntries[\s\S]*\)/)
   assert.match(source, /buildCurrentTodoMessage\(definition, todo, index, stepDefinition, commandResult, stateEntries\)/)
 })
 
