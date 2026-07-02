@@ -11,6 +11,8 @@ import {
   WorkflowInputDefinition,
   WorkflowStepCompletionMode,
   WorkflowStepMessageMode,
+  WorkflowStepReviewDefinition,
+  WorkflowStepReviewPauseAfter,
   WorkflowTodoDefinition
 } from "./model"
 import { knownWorkflowV1TopLevelFields, workflowV1Schema } from "./workflowSchema"
@@ -30,8 +32,12 @@ export function parseWorkflowMarkdown(request: ParseWorkflowRequest): ParseWorkf
     return { ok: false, diagnostics: [`- fail: ${request.filePath}: invalid YAML: ${formatError(error)}`] }
   }
 
-  if (fields.schemaVersion === "workflow-register/v1") return parseV1Workflow(request, fields, split.body, request.text)
-  return parseLegacyWorkflow(request, fields, split.body)
+  try {
+    if (fields.schemaVersion === "workflow-register/v1") return parseV1Workflow(request, fields, split.body, request.text)
+    return parseLegacyWorkflow(request, fields, split.body)
+  } catch (error) {
+    return { ok: false, diagnostics: [`- fail: ${request.filePath}: ${formatError(error)}`] }
+  }
 }
 
 function parseV1Workflow(request: ParseWorkflowRequest, fields: Record<string, unknown>, body: string, fullText: string): ParseWorkflowResult {
@@ -50,6 +56,7 @@ function parseV1Workflow(request: ParseWorkflowRequest, fields: Record<string, u
 
   const name = requiredString(fields, "name")
   const prompt = optionalString(fields, "prompt") ?? body.trim()
+  const stepCompletionValue = stepCompletion(fields, todoEnabled && todos.length > 0 ? "manual" : "auto")
   const workflow: CoreWorkflowDefinition = {
     id: optionalString(fields, "id") ?? `${request.sourceId}.${name}`,
     name,
@@ -72,8 +79,9 @@ function parseV1Workflow(request: ParseWorkflowRequest, fields: Record<string, u
     todoEnabled,
     todoRequired: optionalBoolean(fields, "todoRequired") ?? false,
     todoAsSteps: optionalBoolean(fields, "todoAsSteps") ?? (todoEnabled && todos.length > 0),
-    stepCompletion: stepCompletion(fields, todoEnabled && todos.length > 0 ? "manual" : "auto"),
+    stepCompletion: stepCompletionValue,
     stepMessage: stepMessage(fields, "current"),
+    stepReview: normalizeStepReview(fields.stepReview, stepCompletionValue),
     todos,
     inputs: normalizeInputs(asRecord(fields.inputs)),
     requires: normalizeRequires(asRecord(fields.requires)),
@@ -97,6 +105,7 @@ function parseLegacyWorkflow(request: ParseWorkflowRequest, fields: Record<strin
 
   const prompt = optionalString(fields, "prompt") ?? body.trim()
   const engineSteps = legacyStepsFromMarkdown(body)
+  const stepCompletionValue = stepCompletion(fields, "manual")
   const workflow: CoreWorkflowDefinition = {
     id: optionalString(fields, "id") ?? `${request.sourceId}.${name}`,
     name,
@@ -118,8 +127,9 @@ function parseLegacyWorkflow(request: ParseWorkflowRequest, fields: Record<strin
     todoEnabled: engineSteps.length > 0,
     todoRequired: optionalBoolean(fields, "todoRequired") ?? false,
     todoAsSteps: true,
-    stepCompletion: stepCompletion(fields, "manual"),
+    stepCompletion: stepCompletionValue,
     stepMessage: stepMessage(fields, "current"),
+    stepReview: normalizeStepReview(fields.stepReview, stepCompletionValue),
     todos: legacyTodosFromMarkdown(body),
     inputs: {},
     requires: {},
@@ -158,6 +168,24 @@ function stepCompletion(fields: Record<string, unknown>, fallback: WorkflowStepC
 function stepMessage(fields: Record<string, unknown>, fallback: WorkflowStepMessageMode): WorkflowStepMessageMode {
   const value = optionalString(fields, "stepMessage")
   return value === "full" || value === "current" || value === "silent" || value === "step" ? value : fallback
+}
+
+function normalizeStepReview(value: unknown, stepCompletionValue: WorkflowStepCompletionMode): WorkflowStepReviewDefinition {
+  const record = asRecord(value)
+  const enabled = optionalBoolean(record, "enabled") ?? stepCompletionValue === "manual"
+  const pauseAfter = stepReviewPauseAfter(optionalString(record, "pauseAfter"), enabled ? "everyStep" : "none")
+  return {
+    enabled,
+    pauseAfter,
+    requireAcceptBeforeNext: optionalBoolean(record, "requireAcceptBeforeNext") ?? enabled,
+    allowRetry: optionalBoolean(record, "allowRetry") ?? true,
+    allowEditBeforeRetry: optionalBoolean(record, "allowEditBeforeRetry") ?? true,
+    preserveAttempts: optionalBoolean(record, "preserveAttempts") ?? true
+  }
+}
+
+function stepReviewPauseAfter(value: string | undefined, fallback: WorkflowStepReviewPauseAfter): WorkflowStepReviewPauseAfter {
+  return value === "everyStep" || value === "agentAndCommand" || value === "none" ? value : fallback
 }
 
 function normalizeInputs(inputs: Record<string, unknown>): Record<string, WorkflowInputDefinition> {
