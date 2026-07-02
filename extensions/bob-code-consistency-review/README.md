@@ -348,16 +348,18 @@ analysis_options:
 
 | ファイル / ディレクトリ | 責務 |
 | --- | --- |
-| `src/extension.ts` | VS Code command 登録、workflow provider mapping、まだ分離していない command handler 群の入口。 |
+| `src/extension.ts` | VS Code command 登録、workflow provider handler mapping、review-input 作成・AI draft・診断系 command handler の入口。 |
 | `src/extensionCommandOptions.ts` | notification、workspace root 解決、path helper、string / boolean / array option、VCS / change type / review focus helper。 |
 | `src/reviewInputWizard.ts` | 対話式 `review-input.yaml` 作成 UI、文書候補選択、review metadata 収集。 |
-| `src/workflowProviderRegistration.ts` | `workflow-register` の action provider 登録。 |
+| `src/workflowProviderRegistration.ts` | `workflow-register` の action provider 登録と action provider から渡される option record の正規化。 |
 | `src/workspaceInitializer.ts` | `.bob/workflows/code-consistency-review/WORKFLOW.md` と `review-input.yaml` 雛形の初期化。 |
+| `src/traceabilityCommands.ts` | traceability AI draft 作成 / 反映、Traceability Prep Webview 起動、catalog gate 検証、accepted item からの `review-input.yaml` 生成。 |
+| `src/reviewExecutionCommands.ts` | preprocess、Bob output capture、Bob output validate、人間 triage 生成。 |
 | `src/core/*` | review-input builder、AI draft provider、traceability catalog、pipeline、Bob output capture / validator。 |
 | `src/webview/traceabilityPrepWebview.ts` | traceability item の人間承認 UI。 |
 | `src/triage/humanTriageHelper.ts` | 人間確認用 triage 成果物生成。 |
 
-次の分割候補は、`traceabilityCommands.ts`、`reviewInputCommands.ts`、`reviewExecutionCommands.ts` です。Command ID と `package.json` の contributes は互換性に直結するため、分割時も名称は変更しません。
+次の分割候補は、`extension.ts` に残る `runCreateReviewInput`、`runPrepareAiReviewInputDraft`、`runApplyAiReviewInputDraft`、`runRepairReviewInput`、`runExplainReviewInputDiagnostics` を `reviewInputCommands.ts` へ切り出すことです。Command ID と `package.json` の contributes は互換性に直結するため、分割時も名称は変更しません。
 
 ## ビルド
 
