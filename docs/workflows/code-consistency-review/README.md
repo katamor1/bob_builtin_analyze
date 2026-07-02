@@ -67,6 +67,10 @@
 
 MVP では、1 件のコード変更に対して以下を実現する。
 
+- 関連文書候補を収集し、AI draft 用 prompt にまとめられる。
+- 元文書を変更せず、`.bob-trace/traceability-catalog.json` に仕様単位、ID候補、工程間リンク、人間の承認状態を保持できる。
+- traceability gate で未承認、欠落、stale、未対応レビュー指摘を検出できる。
+- accepted catalog item から `review-input.yaml` を生成できる。
 - `review-input.yaml` で対象コミットと関連文書を指定できる。
 - Git 差分、変更ファイル、変更関数を抽出できる。
 - Word / Excel / Markdown から関連文書の抜粋を作れる。
@@ -74,6 +78,31 @@ MVP では、1 件のコード変更に対して以下を実現する。
 - bob 投入用の `review-package` を生成できる。
 - bob 出力を YAML として保存できる。
 - 人間が bob 出力を triage できる。
+
+## workflow の開始地点
+
+現行の `.bob/workflows/code-consistency-review/WORKFLOW.md` は、`review-input.yaml` が既に完成している状態だけを入口にしない。
+
+新しい入口は次の順序である。
+
+```text
+文書候補収集
+  -> traceability AI draft prompt 生成
+  -> AI が proposed-only catalog JSON を作成
+  -> AI draft JSON を sidecar catalog へ merge
+  -> Traceability Prep Webview で人間が承認 / 棄却 / 廃止
+  -> traceability gate 検証
+  -> accepted item から review-input.yaml 生成
+  -> review-package / bob-input.md 生成
+  -> Bob 整合プレレビュー
+  -> Bob 出力検証
+  -> 人間 triage
+  -> 正式レビュー引き継ぎ
+```
+
+このため workflow の `requires.files` から `review-input.yaml` 必須条件を外す。`review-input.yaml` は、前段の `create-review-input-from-traceability` step で生成される成果物として扱う。
+
+AI は traceability の正式承認を行わない。AI が作成できるのは `status: proposed` の候補だけであり、`accepted`、`rejected`、`deprecated` への遷移は Traceability Prep Webview で人間が実施する。
 
 ## MVP 実装単位
 
@@ -104,7 +133,7 @@ runtime 実装は `extensions/bob-code-consistency-review/` に配置する。
 
 - VS Code 拡張 ID は `local.bob-code-consistency-review`。
 - `workflow-register` の `registerActionProvider` へ `bobCodeConsistency.preprocess`、`bobCodeConsistency.captureBobOutput`、`bobCodeConsistency.validateOutput`、`bobCodeConsistency.triage` に加え、traceability-prep 系の `prepareAiTraceabilityDraft`、`applyAiTraceabilityDraft`、`openTraceabilityPrep`、`validateTraceabilityCatalog`、`createReviewInputFromTraceability` を登録する。
-- `.bob/workflows/code-consistency-review/WORKFLOW.md` は manual CLI 手順ではなく、上記 provider を使って `preprocess -> Bob agent -> capture -> validate -> triage -> handoff` を実行する。
+- `.bob/workflows/code-consistency-review/WORKFLOW.md` は manual CLI 手順ではなく、上記 provider を使って `collect-document-candidates -> traceability draft -> human approval -> create review-input -> preprocess -> Bob agent -> capture -> validate -> triage -> handoff` を実行する。
 - `resources/schemas/` と `resources/templates/` は、この docs 配下の schema/template を runtime 用に同梱したもの。
 - `scaffold/` は仕様検証用の雛形として残し、実運用の Bob workflow からは新規拡張を呼び出す。
 
@@ -128,63 +157,4 @@ runtime 実装は `extensions/bob-code-consistency-review/` に配置する。
 
 ## 実装スケルトン
 
-`scaffold/` には、既存拡張機能に組み込む前の MVP 実装スケルトンを配置する。
-
-- CLI サブコマンドの雛形
-- review-input 読み込みと JSON Schema 検証
-- Git diff 収集の雛形
-- document / C/C++ / traceability analyzer のスタブ
-- review-package 生成の雛形
-- bob-output の JSON Schema 検証
-- human triage 出力生成の雛形
-
-## scaffold 検証
-
-`scaffold/tests/fixtures/` には、最初の smoke test と unit test に使う fixture を配置する。
-
-- 正常な `review-input.yaml`
-- 比較先未指定の不正な `review-input.yaml`
-- 正常な `bob-output.yaml`
-- evidence が空の finding を含む不正な `bob-output.yaml`
-- `final_approval` が不正な `bob-output.yaml` 手動確認用
-
-`scaffold/package.json` には、`unit` と `smoke` の script を定義する。
-
-## scaffold CI
-
-`.github/workflows/code-consistency-review-scaffold.yml` では、scaffold 関連パス変更時に以下を実行する。
-
-- `npm install`
-- `npm run typecheck`
-- `npm run unit`
-- `npm run smoke`
-
-同じ workflow で `extensions/bob-code-consistency-review` の以下も実行する。
-
-- `npm install`
-- `npm run compile`
-- `npm test`
-- `npm run package`
-
-## E2E サンプル
-
-`examples/simple-timeout-bugfix/` には、timeout 発生時に `ERR_TIMEOUT` を返すべきところ、変更後コードが `ERR_OK` を返してしまう最小サンプルを配置する。
-
-このサンプルは、以下の確認に使う。
-
-- `review-input.yaml` の読み込み
-- Markdown 文書抽出
-- C コード変更解析
-- 要求・設計・コード・テスト対応候補の生成
-- bob-output YAML 検証
-- human triage 出力生成
-
-## 担当境界
-
-| 領域 | 主担当 |
-|---|---|
-| 事実抽出 | 拡張機能 |
-| 決定論的チェック | 拡張機能 / CI |
-| 意味的な不整合候補の抽出 | bob |
-| 指摘採用判断 | 人間 |
-| 正式承認 | 人間 |
+`scaffold/` は、仕様確定前に CLI / validator / CI の粒度を確認するためのスケルトンである。runtime 拡張実装が整った後も、仕様説明用の fixture として残す。
