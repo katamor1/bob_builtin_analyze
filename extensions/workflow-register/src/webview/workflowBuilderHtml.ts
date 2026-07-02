@@ -16,6 +16,7 @@ export interface RenderWorkflowBuilderHtmlOptions {
   cspSource: string
   initialModel: WorkflowAuthoringModel
   isEditMode: boolean
+  focusStepId?: string
   modeNote: string
   nonce: string
   templateOptions: WorkflowBuilderTemplateOption[]
@@ -59,6 +60,7 @@ const templates = ${JSON.stringify(options.templateOptions)};
 const helpCatalog = ${JSON.stringify(workflowBuilderHelpCatalog)};
 let model = ${JSON.stringify(options.initialModel)};
 let editMode = ${JSON.stringify(options.isEditMode)};
+let focusStepId = ${JSON.stringify(options.focusStepId ?? "")};
 ${renderWorkflowBuilderClientScript()}
 ${renderWorkflowBuilderGuidedHelpScript()}
 ${renderWorkflowBuilderBodyScript()}
