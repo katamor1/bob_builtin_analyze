@@ -6,14 +6,18 @@ const { test } = require("node:test")
 const extensionRoot = path.resolve(__dirname, "..")
 const repoRoot = path.resolve(extensionRoot, "..", "..")
 
+function readSource(...parts) {
+  return parts.map((part) => fs.readFileSync(path.join(extensionRoot, "src", part), "utf8")).join("\n")
+}
+
 test("extension registers code consistency workflow providers with workflow-register", () => {
   const packageJson = JSON.parse(fs.readFileSync(path.join(extensionRoot, "package.json"), "utf8"))
-  const source = fs.readFileSync(path.join(extensionRoot, "src", "extension.ts"), "utf8")
+  const source = readSource("extension.ts", "workflowProviderRegistration.ts")
 
   assert.ok(packageJson.extensionDependencies.includes("local.workflow-register"))
   assert.ok(packageJson.activationEvents.includes("onStartupFinished"))
   assert.match(source, /const WORKFLOW_REGISTER_EXTENSION_ID = "local\.workflow-register"/)
-  assert.match(source, /registerWorkflowProviders\(context\)\.catch/)
+  assert.match(source, /registerWorkflowProviders\(\{/)
   assert.match(source, /id: "bobCodeConsistency\.preprocess"/)
   assert.match(source, /id: "bobCodeConsistency\.captureBobOutput"/)
   assert.match(source, /buildCaptureWorkflowOptions\(\{ args, inputs, state \}\)/)
@@ -44,7 +48,7 @@ test("extension registers code consistency workflow providers with workflow-regi
 })
 
 test("code consistency provider accepts workflowRoot without first-folder fallback", () => {
-  const source = fs.readFileSync(path.join(extensionRoot, "src", "extension.ts"), "utf8")
+  const source = readSource("extension.ts", "workflowProviderRegistration.ts")
 
   assert.match(source, /workflowRoot\?: string/)
   assert.match(source, /bobRoot\?: string/)

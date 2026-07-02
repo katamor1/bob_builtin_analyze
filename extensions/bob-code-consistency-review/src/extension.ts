@@ -5,150 +5,112 @@ import { validateBobOutput } from "./core/bobOutputValidator"
 import { preprocessReview } from "./core/pipeline"
 import { applyAiReviewInputDraft, prepareAiReviewInputDraftPrompt } from "./core/reviewInputAiDraftProvider"
 import { discoverReviewInputCandidates, type ReviewInputDocumentCandidate } from "./core/reviewInputDiscovery"
-import { ARTIFACT_KIND_VALUES, CHANGE_TYPE_VALUES, REVIEW_FOCUS_VALUES, VCS_VALUES, writeReviewInputFromDraft, type ArtifactKind, type ChangeType, type ReviewFocus, type ReviewInputArtifactDraft, type ReviewInputDraft, type VcsKind } from "./core/reviewInputBuilder"
+import {
+  ARTIFACT_KIND_VALUES,
+  CHANGE_TYPE_VALUES,
+  REVIEW_FOCUS_VALUES,
+  VCS_VALUES,
+  writeReviewInputFromDraft,
+  type ArtifactKind,
+  type ChangeType,
+  type ReviewFocus,
+  type ReviewInputArtifactDraft,
+  type ReviewInputDraft,
+  type VcsKind
+} from "./core/reviewInputBuilder"
 import { explainReviewInputDiagnostics, repairLegacyReviewInput } from "./core/reviewInputDiagnostics"
 import { applyAiTraceabilityDraft, prepareAiTraceabilityDraftPrompt } from "./core/traceabilityAiDraftProvider"
 import { buildReviewInputDraftFromTraceability } from "./core/traceabilityCatalog"
-import { DEFAULT_TRACEABILITY_CATALOG_PATH, DEFAULT_TRACEABILITY_GATE_REPORT_PATH, readTraceabilityCatalog, validateAndWriteTraceabilityGateReport } from "./core/traceabilityCatalogStore"
+import {
+  DEFAULT_TRACEABILITY_CATALOG_PATH,
+  DEFAULT_TRACEABILITY_GATE_REPORT_PATH,
+  readTraceabilityCatalog,
+  validateAndWriteTraceabilityGateReport
+} from "./core/traceabilityCatalogStore"
 import { generateHumanTriage } from "./triage/humanTriageHelper"
 import { openTraceabilityPrepWebview } from "./webview/traceabilityPrepWebview"
-import { buildCaptureWorkflowOptions } from "./workflowOptions"
+import { optionRecord, registerWorkflowProviders } from "./workflowProviderRegistration"
 import { initializeCodeConsistencyWorkspace } from "./workspaceInitializer"
 import { resolveBobWorkspaceRoot } from "./workspaceResolver"
-
-const WORKFLOW_REGISTER_EXTENSION_ID = "local.workflow-register"
-
-interface WorkflowActionExecutionInput {
-  args: unknown
-  inputs: Record<string, unknown>
-  state?: Record<string, string>
-  workflowId?: string
-  logicalWorkflowId?: string
-  workflowRoot?: string
-  workflowFile?: string
-  workflowFolderName?: string
-  bobRoot?: string
-  workspaceRoot?: string
-  runId?: string
-  stepId?: string
-}
-
-interface WorkflowActionProvider {
-  id: string
-  execute: (input: WorkflowActionExecutionInput) => Promise<unknown> | unknown
-}
-
-interface WorkflowRegisterApi {
-  registerActionProvider: (provider: WorkflowActionProvider) => void
-}
 
 type CandidateQuickPickItem = vscode.QuickPickItem & { candidate: ReviewInputDocumentCandidate }
 
 export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
-    vscode.commands.registerCommand("bobCodeConsistency.initializeWorkspace", (options?: unknown) => runInitializeWorkspace(context, options)),
-    vscode.commands.registerCommand("bobCodeConsistency.createReviewInput", (options?: unknown) => runCreateReviewInput(options)),
-    vscode.commands.registerCommand("bobCodeConsistency.prepareAiReviewInputDraft", (options?: unknown) => runPrepareAiReviewInputDraft(options)),
-    vscode.commands.registerCommand("bobCodeConsistency.applyAiReviewInputDraft", (textOrOptions?: unknown) => runApplyAiReviewInputDraft(textOrOptions)),
-    vscode.commands.registerCommand("bobCodeConsistency.prepareAiTraceabilityDraft", (options?: unknown) => runPrepareAiTraceabilityDraft(options)),
-    vscode.commands.registerCommand("bobCodeConsistency.applyAiTraceabilityDraft", (textOrOptions?: unknown) => runApplyAiTraceabilityDraft(textOrOptions)),
-    vscode.commands.registerCommand("bobCodeConsistency.openTraceabilityPrep", (options?: unknown) => runOpenTraceabilityPrep(context, options)),
-    vscode.commands.registerCommand("bobCodeConsistency.validateTraceabilityCatalog", (options?: unknown) => runValidateTraceabilityCatalog(options)),
-    vscode.commands.registerCommand("bobCodeConsistency.createReviewInputFromTraceability", (options?: unknown) => runCreateReviewInputFromTraceability(options)),
-    vscode.commands.registerCommand("bobCodeConsistency.repairReviewInput", (options?: unknown) => runRepairReviewInput(options)),
-    vscode.commands.registerCommand("bobCodeConsistency.explainReviewInputDiagnostics", (options?: unknown) => runExplainReviewInputDiagnostics(options)),
+    vscode.commands.registerCommand(
+      "bobCodeConsistency.initializeWorkspace",
+      (options?: unknown) => runInitializeWorkspace(context, options)
+    ),
+    vscode.commands.registerCommand(
+      "bobCodeConsistency.createReviewInput",
+      (options?: unknown) => runCreateReviewInput(options)
+    ),
+    vscode.commands.registerCommand(
+      "bobCodeConsistency.prepareAiReviewInputDraft",
+      (options?: unknown) => runPrepareAiReviewInputDraft(options)
+    ),
+    vscode.commands.registerCommand(
+      "bobCodeConsistency.applyAiReviewInputDraft",
+      (textOrOptions?: unknown) => runApplyAiReviewInputDraft(textOrOptions)
+    ),
+    vscode.commands.registerCommand(
+      "bobCodeConsistency.prepareAiTraceabilityDraft",
+      (options?: unknown) => runPrepareAiTraceabilityDraft(options)
+    ),
+    vscode.commands.registerCommand(
+      "bobCodeConsistency.applyAiTraceabilityDraft",
+      (textOrOptions?: unknown) => runApplyAiTraceabilityDraft(textOrOptions)
+    ),
+    vscode.commands.registerCommand(
+      "bobCodeConsistency.openTraceabilityPrep",
+      (options?: unknown) => runOpenTraceabilityPrep(context, options)
+    ),
+    vscode.commands.registerCommand(
+      "bobCodeConsistency.validateTraceabilityCatalog",
+      (options?: unknown) => runValidateTraceabilityCatalog(options)
+    ),
+    vscode.commands.registerCommand(
+      "bobCodeConsistency.createReviewInputFromTraceability",
+      (options?: unknown) => runCreateReviewInputFromTraceability(options)
+    ),
+    vscode.commands.registerCommand(
+      "bobCodeConsistency.repairReviewInput",
+      (options?: unknown) => runRepairReviewInput(options)
+    ),
+    vscode.commands.registerCommand(
+      "bobCodeConsistency.explainReviewInputDiagnostics",
+      (options?: unknown) => runExplainReviewInputDiagnostics(options)
+    ),
     vscode.commands.registerCommand("bobCodeConsistency.preprocess", (options?: unknown) => runPreprocess(options)),
-    vscode.commands.registerCommand("bobCodeConsistency.captureBobOutput", (textOrOptions?: unknown) => runCaptureBobOutput(textOrOptions)),
+    vscode.commands.registerCommand(
+      "bobCodeConsistency.captureBobOutput",
+      (textOrOptions?: unknown) => runCaptureBobOutput(textOrOptions)
+    ),
     vscode.commands.registerCommand("bobCodeConsistency.validateOutput", (options?: unknown) => runValidateOutput(options)),
     vscode.commands.registerCommand("bobCodeConsistency.triage", (options?: unknown) => runTriage(options))
   )
-  registerWorkflowProviders(context).catch((error) => console.warn("Bob コード整合ワークフロー provider の登録に失敗しました", error))
+
+  registerWorkflowProviders({
+    initializeWorkspace: (options) => runInitializeWorkspace(context, options),
+    createReviewInput: runCreateReviewInput,
+    prepareAiReviewInputDraft: runPrepareAiReviewInputDraft,
+    applyAiReviewInputDraft: runApplyAiReviewInputDraft,
+    prepareAiTraceabilityDraft: runPrepareAiTraceabilityDraft,
+    applyAiTraceabilityDraft: runApplyAiTraceabilityDraft,
+    openTraceabilityPrep: (options) => runOpenTraceabilityPrep(context, options),
+    validateTraceabilityCatalog: runValidateTraceabilityCatalog,
+    createReviewInputFromTraceability: runCreateReviewInputFromTraceability,
+    repairReviewInput: runRepairReviewInput,
+    explainReviewInputDiagnostics: runExplainReviewInputDiagnostics,
+    preprocess: runPreprocess,
+    captureBobOutput: runCaptureBobOutput,
+    validateOutput: runValidateOutput,
+    triage: runTriage
+  }).catch((error) => console.warn("Bob コード整合ワークフロー provider の登録に失敗しました", error))
 }
 
 export function deactivate(): void {
   // No background resources are held by this extension.
-}
-
-async function registerWorkflowProviders(context: vscode.ExtensionContext): Promise<void> {
-  const api = await getWorkflowRegisterApi()
-  if (!api) return
-  api.registerActionProvider({
-    id: "bobCodeConsistency.initializeWorkspace",
-    execute: (input) => runInitializeWorkspace(context, mergeWorkflowOptions(input))
-  })
-  api.registerActionProvider({
-    id: "bobCodeConsistency.createReviewInput",
-    execute: (input) => runCreateReviewInput(mergeWorkflowOptions(input))
-  })
-  api.registerActionProvider({
-    id: "bobCodeConsistency.prepareAiReviewInputDraft",
-    execute: (input) => runPrepareAiReviewInputDraft(mergeWorkflowOptions(input))
-  })
-  api.registerActionProvider({
-    id: "bobCodeConsistency.applyAiReviewInputDraft",
-    execute: (input) => runApplyAiReviewInputDraft(mergeWorkflowOptions(input))
-  })
-  api.registerActionProvider({
-    id: "bobCodeConsistency.prepareAiTraceabilityDraft",
-    execute: (input) => runPrepareAiTraceabilityDraft(mergeWorkflowOptions(input))
-  })
-  api.registerActionProvider({
-    id: "bobCodeConsistency.applyAiTraceabilityDraft",
-    execute: (input) => runApplyAiTraceabilityDraft(mergeWorkflowOptions(input))
-  })
-  api.registerActionProvider({
-    id: "bobCodeConsistency.openTraceabilityPrep",
-    execute: (input) => runOpenTraceabilityPrep(context, mergeWorkflowOptions(input))
-  })
-  api.registerActionProvider({
-    id: "bobCodeConsistency.validateTraceabilityCatalog",
-    execute: (input) => runValidateTraceabilityCatalog(mergeWorkflowOptions(input))
-  })
-  api.registerActionProvider({
-    id: "bobCodeConsistency.createReviewInputFromTraceability",
-    execute: (input) => runCreateReviewInputFromTraceability(mergeWorkflowOptions(input))
-  })
-  api.registerActionProvider({
-    id: "bobCodeConsistency.repairReviewInput",
-    execute: (input) => runRepairReviewInput(mergeWorkflowOptions(input))
-  })
-  api.registerActionProvider({
-    id: "bobCodeConsistency.explainReviewInputDiagnostics",
-    execute: (input) => runExplainReviewInputDiagnostics(mergeWorkflowOptions(input))
-  })
-  api.registerActionProvider({
-    id: "bobCodeConsistency.preprocess",
-    execute: (input) => runPreprocess(mergeWorkflowOptions(input))
-  })
-  api.registerActionProvider({
-    id: "bobCodeConsistency.captureBobOutput",
-    execute: (input) => {
-      const { args, inputs, state } = input
-      return runCaptureBobOutput({ ...optionRecord(buildCaptureWorkflowOptions({ args, inputs, state })), ...workflowContextOptions(input) })
-    }
-  })
-  api.registerActionProvider({
-    id: "bobCodeConsistency.validateOutput",
-    execute: (input) => runValidateOutput(mergeWorkflowOptions(input))
-  })
-  api.registerActionProvider({
-    id: "bobCodeConsistency.triage",
-    execute: (input) => runTriage(mergeWorkflowOptions(input))
-  })
-}
-
-async function getWorkflowRegisterApi(): Promise<WorkflowRegisterApi | undefined> {
-  const extension = vscode.extensions.getExtension<WorkflowRegisterApi>(WORKFLOW_REGISTER_EXTENSION_ID)
-  if (!extension) {
-    console.warn(`workflow-register 拡張機能が見つかりません: ${WORKFLOW_REGISTER_EXTENSION_ID}`)
-    return undefined
-  }
-  const api = extension.isActive ? extension.exports : await extension.activate()
-  if (!api?.registerActionProvider) {
-    console.warn(`workflow-register 拡張機能が registerActionProvider を公開していません: ${WORKFLOW_REGISTER_EXTENSION_ID}`)
-    return undefined
-  }
-  return api
 }
 
 async function runInitializeWorkspace(context: vscode.ExtensionContext, options?: unknown): Promise<unknown> {
@@ -248,7 +210,8 @@ async function runApplyAiReviewInputDraft(textOrOptions?: unknown): Promise<unkn
   }
 
   const backup = result.backupPath ? `\n既存ファイルのバックアップ: ${result.backupPath}` : ""
-  notifyInfo(`AI draft JSON から review-input.yaml を生成しました: ${result.outputPath}${backup}${result.warnings.length > 0 ? `\nwarning: ${result.warnings.length} 件` : ""}`)
+  const warningSuffix = result.warnings.length > 0 ? `\nwarning: ${result.warnings.length} 件` : ""
+  notifyInfo(`AI draft JSON から review-input.yaml を生成しました: ${result.outputPath}${backup}${warningSuffix}`)
   return result
 }
 
@@ -256,7 +219,11 @@ async function runPrepareAiTraceabilityDraft(options?: unknown): Promise<unknown
   const config = vscode.workspace.getConfiguration("bobCodeConsistency")
   const record = optionRecord(options)
   const workspaceRoot = await requireBobWorkspaceRoot(record)
-  const catalogPath = absolute(workspaceRoot, stringOption(record, "traceabilityCatalogPath") ?? config.get<string>("traceabilityCatalogPath", DEFAULT_TRACEABILITY_CATALOG_PATH))
+  const catalogPath = absolute(
+    workspaceRoot,
+    stringOption(record, "traceabilityCatalogPath") ??
+      config.get<string>("traceabilityCatalogPath", DEFAULT_TRACEABILITY_CATALOG_PATH)
+  )
   const outputDir = absolute(workspaceRoot, stringOption(record, "aiTraceabilityDraftPromptPath") ?? ".bob-trace/ai-traceability-draft")
   const textEncoding = stringOption(record, "textEncoding") ?? config.get<string>("textEncoding", "auto")
   const base = await stringOrPrompt(record, "base", "traceability AI draft 用の base revision", "HEAD~1")
@@ -285,7 +252,8 @@ async function runPrepareAiTraceabilityDraft(options?: unknown): Promise<unknown
   await vscode.env.clipboard.writeText(result.prompt)
   const document = await vscode.workspace.openTextDocument(result.promptPath)
   await vscode.window.showTextDocument(document, { preview: false })
-  notifyInfo(`traceability AI draft 用プロンプトを作成して clipboard にコピーしました: ${result.promptPath}${result.warnings.length > 0 ? `\nwarning: ${result.warnings.length} 件` : ""}`)
+  const warningSuffix = result.warnings.length > 0 ? `\nwarning: ${result.warnings.length} 件` : ""
+  notifyInfo(`traceability AI draft 用プロンプトを作成して clipboard にコピーしました: ${result.promptPath}${warningSuffix}`)
   return result
 }
 
@@ -293,8 +261,16 @@ async function runApplyAiTraceabilityDraft(textOrOptions?: unknown): Promise<unk
   const config = vscode.workspace.getConfiguration("bobCodeConsistency")
   const record = optionRecord(textOrOptions)
   const workspaceRoot = await requireBobWorkspaceRoot(record)
-  const catalogPath = absolute(workspaceRoot, stringOption(record, "traceabilityCatalogPath") ?? config.get<string>("traceabilityCatalogPath", DEFAULT_TRACEABILITY_CATALOG_PATH))
-  const reportPath = absolute(workspaceRoot, stringOption(record, "traceabilityGateReportPath") ?? config.get<string>("traceabilityGateReportPath", DEFAULT_TRACEABILITY_GATE_REPORT_PATH))
+  const catalogPath = absolute(
+    workspaceRoot,
+    stringOption(record, "traceabilityCatalogPath") ??
+      config.get<string>("traceabilityCatalogPath", DEFAULT_TRACEABILITY_CATALOG_PATH)
+  )
+  const reportPath = absolute(
+    workspaceRoot,
+    stringOption(record, "traceabilityGateReportPath") ??
+      config.get<string>("traceabilityGateReportPath", DEFAULT_TRACEABILITY_GATE_REPORT_PATH)
+  )
   const textEncoding = stringOption(record, "textEncoding") ?? config.get<string>("textEncoding", "auto")
   const text = firstString(textOrOptions) ?? stringOption(record, "text") ?? await vscode.env.clipboard.readText()
   const result = await applyAiTraceabilityDraft({ workspaceRoot, catalogPath, text, textEncoding })
@@ -314,8 +290,16 @@ async function runValidateTraceabilityCatalog(options?: unknown): Promise<unknow
   const config = vscode.workspace.getConfiguration("bobCodeConsistency")
   const record = optionRecord(options)
   const workspaceRoot = await requireBobWorkspaceRoot(record)
-  const catalogPath = absolute(workspaceRoot, stringOption(record, "traceabilityCatalogPath") ?? config.get<string>("traceabilityCatalogPath", DEFAULT_TRACEABILITY_CATALOG_PATH))
-  const reportPath = absolute(workspaceRoot, stringOption(record, "traceabilityGateReportPath") ?? config.get<string>("traceabilityGateReportPath", DEFAULT_TRACEABILITY_GATE_REPORT_PATH))
+  const catalogPath = absolute(
+    workspaceRoot,
+    stringOption(record, "traceabilityCatalogPath") ??
+      config.get<string>("traceabilityCatalogPath", DEFAULT_TRACEABILITY_CATALOG_PATH)
+  )
+  const reportPath = absolute(
+    workspaceRoot,
+    stringOption(record, "traceabilityGateReportPath") ??
+      config.get<string>("traceabilityGateReportPath", DEFAULT_TRACEABILITY_GATE_REPORT_PATH)
+  )
   const textEncoding = stringOption(record, "textEncoding") ?? config.get<string>("textEncoding", "auto")
   const result = await validateAndWriteTraceabilityGateReport({ workspaceRoot, catalogPath, reportPath, textEncoding })
   if (result.status === "error") {
@@ -332,7 +316,11 @@ async function runCreateReviewInputFromTraceability(options?: unknown): Promise<
   const config = vscode.workspace.getConfiguration("bobCodeConsistency")
   const record = optionRecord(options)
   const workspaceRoot = await requireBobWorkspaceRoot(record)
-  const catalogPath = absolute(workspaceRoot, stringOption(record, "traceabilityCatalogPath") ?? config.get<string>("traceabilityCatalogPath", DEFAULT_TRACEABILITY_CATALOG_PATH))
+  const catalogPath = absolute(
+    workspaceRoot,
+    stringOption(record, "traceabilityCatalogPath") ??
+      config.get<string>("traceabilityCatalogPath", DEFAULT_TRACEABILITY_CATALOG_PATH)
+  )
   const reviewInputPath = absolute(workspaceRoot, stringOption(record, "reviewInputPath") ?? config.get<string>("reviewInputPath", "review-input.yaml"))
   const textEncoding = stringOption(record, "textEncoding") ?? config.get<string>("textEncoding", "auto")
   const read = await readTraceabilityCatalog({ workspaceRoot, catalogPath, textEncoding })
@@ -348,7 +336,11 @@ async function runCreateReviewInputFromTraceability(options?: unknown): Promise<
     review_focus: reviewFocusOption(record) ?? ["requirement-code-consistency", "design-code-consistency", "test-gap"]
   })
   if (build.status === "error") {
-    const reportPath = absolute(workspaceRoot, stringOption(record, "traceabilityGateReportPath") ?? config.get<string>("traceabilityGateReportPath", DEFAULT_TRACEABILITY_GATE_REPORT_PATH))
+    const reportPath = absolute(
+      workspaceRoot,
+      stringOption(record, "traceabilityGateReportPath") ??
+        config.get<string>("traceabilityGateReportPath", DEFAULT_TRACEABILITY_GATE_REPORT_PATH)
+    )
     await validateAndWriteTraceabilityGateReport({ workspaceRoot, catalogPath, reportPath, textEncoding })
     notifyError(`traceability gate error のため review-input.yaml を生成できません: ${build.errors.map((item) => item.code).join(", ")}`)
     return build
@@ -368,7 +360,8 @@ async function runCreateReviewInputFromTraceability(options?: unknown): Promise<
   }
 
   const backup = result.backupPath ? `\n既存ファイルのバックアップ: ${result.backupPath}` : ""
-  notifyInfo(`traceability catalog から review-input.yaml を生成しました: ${result.outputPath}${backup}${build.warnings.length > 0 ? `\ntraceability warning: ${build.warnings.length} 件` : ""}`)
+  const warningSuffix = build.warnings.length > 0 ? `\ntraceability warning: ${build.warnings.length} 件` : ""
+  notifyInfo(`traceability catalog から review-input.yaml を生成しました: ${result.outputPath}${backup}${warningSuffix}`)
   return { ...result, traceabilityWarnings: build.warnings }
 }
 
@@ -376,8 +369,16 @@ async function runOpenTraceabilityPrep(context: vscode.ExtensionContext, options
   const config = vscode.workspace.getConfiguration("bobCodeConsistency")
   const record = optionRecord(options)
   const workspaceRoot = await requireBobWorkspaceRoot(record)
-  const catalogPath = absolute(workspaceRoot, stringOption(record, "traceabilityCatalogPath") ?? config.get<string>("traceabilityCatalogPath", DEFAULT_TRACEABILITY_CATALOG_PATH))
-  const reportPath = absolute(workspaceRoot, stringOption(record, "traceabilityGateReportPath") ?? config.get<string>("traceabilityGateReportPath", DEFAULT_TRACEABILITY_GATE_REPORT_PATH))
+  const catalogPath = absolute(
+    workspaceRoot,
+    stringOption(record, "traceabilityCatalogPath") ??
+      config.get<string>("traceabilityCatalogPath", DEFAULT_TRACEABILITY_CATALOG_PATH)
+  )
+  const reportPath = absolute(
+    workspaceRoot,
+    stringOption(record, "traceabilityGateReportPath") ??
+      config.get<string>("traceabilityGateReportPath", DEFAULT_TRACEABILITY_GATE_REPORT_PATH)
+  )
   const textEncoding = stringOption(record, "textEncoding") ?? config.get<string>("textEncoding", "auto")
   const result = await openTraceabilityPrepWebview({ context, workspaceRoot, catalogPath, reportPath, textEncoding })
   if (result.status === "error") notifyError(`traceability prep を開けません: ${result.errors.join("; ")}`)
@@ -516,7 +517,12 @@ async function runPreprocess(options?: unknown): Promise<unknown> {
   const record = optionRecord(options)
   const workspaceRoot = await requireBobWorkspaceRoot(record)
   const inputPath = absolute(workspaceRoot, stringOption(record, "reviewInputPath") ?? config.get<string>("reviewInputPath", "review-input.yaml"))
-  const outDir = absolute(workspaceRoot, stringOption(record, "reviewPackagePath") ?? stringOption(record, "outDir") ?? config.get<string>("reviewPackagePath", ".bob-review/review-package"))
+  const outDir = absolute(
+    workspaceRoot,
+    stringOption(record, "reviewPackagePath") ??
+      stringOption(record, "outDir") ??
+      config.get<string>("reviewPackagePath", ".bob-review/review-package")
+  )
   const diffFixturePath = optionalAbsolute(workspaceRoot, stringOption(record, "diffFixturePath"))
   const bzrPath = stringOption(record, "bzrPath") ?? config.get<string>("bzrPath", "bzr")
   const textEncoding = stringOption(record, "textEncoding") ?? config.get<string>("textEncoding", "auto")
@@ -533,8 +539,17 @@ async function runCaptureBobOutput(textOrOptions?: unknown): Promise<unknown> {
   const record = optionRecord(textOrOptions)
   const workspaceRoot = await requireBobWorkspaceRoot(record)
   const text = firstString(textOrOptions) ?? stringOption(record, "text") ?? await vscode.env.clipboard.readText()
-  const bobOutputPath = absolute(workspaceRoot, stringOption(record, "bobOutputPath") ?? config.get<string>("bobOutputPath", ".bob-review/bob-output/bob-output.yaml"))
-  const packageDir = absolute(workspaceRoot, stringOption(record, "reviewPackagePath") ?? stringOption(record, "packageDir") ?? config.get<string>("reviewPackagePath", ".bob-review/review-package"))
+  const bobOutputPath = absolute(
+    workspaceRoot,
+    stringOption(record, "bobOutputPath") ??
+      config.get<string>("bobOutputPath", ".bob-review/bob-output/bob-output.yaml")
+  )
+  const packageDir = absolute(
+    workspaceRoot,
+    stringOption(record, "reviewPackagePath") ??
+      stringOption(record, "packageDir") ??
+      config.get<string>("reviewPackagePath", ".bob-review/review-package")
+  )
   const result = await captureBobOutput({ workspaceRoot, text, bobOutputPath, packageDir })
   if (result.status === "ok") notifyInfo(result.message)
   else notifyError(result.message)
@@ -545,8 +560,17 @@ async function runValidateOutput(options?: unknown): Promise<unknown> {
   const config = vscode.workspace.getConfiguration("bobCodeConsistency")
   const record = optionRecord(options)
   const workspaceRoot = await requireBobWorkspaceRoot(record)
-  const packageDir = absolute(workspaceRoot, stringOption(record, "reviewPackagePath") ?? stringOption(record, "packageDir") ?? config.get<string>("reviewPackagePath", ".bob-review/review-package"))
-  const bobOutputPath = absolute(workspaceRoot, stringOption(record, "bobOutputPath") ?? config.get<string>("bobOutputPath", ".bob-review/bob-output/bob-output.yaml"))
+  const packageDir = absolute(
+    workspaceRoot,
+    stringOption(record, "reviewPackagePath") ??
+      stringOption(record, "packageDir") ??
+      config.get<string>("reviewPackagePath", ".bob-review/review-package")
+  )
+  const bobOutputPath = absolute(
+    workspaceRoot,
+    stringOption(record, "bobOutputPath") ??
+      config.get<string>("bobOutputPath", ".bob-review/bob-output/bob-output.yaml")
+  )
   const result = await validateBobOutput({ packageDir, bobOutputPath })
   if (result.errors.length === 0) notifyInfo(`Bob 出力 YAML は有効です（warning: ${result.warnings.length} 件）。`)
   else notifyError(`Bob 出力 YAML が無効です: error ${result.errors.length} 件。`)
@@ -557,9 +581,23 @@ async function runTriage(options?: unknown): Promise<unknown> {
   const config = vscode.workspace.getConfiguration("bobCodeConsistency")
   const record = optionRecord(options)
   const workspaceRoot = await requireBobWorkspaceRoot(record)
-  const packageDir = absolute(workspaceRoot, stringOption(record, "reviewPackagePath") ?? stringOption(record, "packageDir") ?? config.get<string>("reviewPackagePath", ".bob-review/review-package"))
-  const bobOutputPath = absolute(workspaceRoot, stringOption(record, "bobOutputPath") ?? config.get<string>("bobOutputPath", ".bob-review/bob-output/bob-output.yaml"))
-  const outDir = absolute(workspaceRoot, stringOption(record, "triagePath") ?? stringOption(record, "outDir") ?? config.get<string>("triagePath", ".bob-review/human-triage"))
+  const packageDir = absolute(
+    workspaceRoot,
+    stringOption(record, "reviewPackagePath") ??
+      stringOption(record, "packageDir") ??
+      config.get<string>("reviewPackagePath", ".bob-review/review-package")
+  )
+  const bobOutputPath = absolute(
+    workspaceRoot,
+    stringOption(record, "bobOutputPath") ??
+      config.get<string>("bobOutputPath", ".bob-review/bob-output/bob-output.yaml")
+  )
+  const outDir = absolute(
+    workspaceRoot,
+    stringOption(record, "triagePath") ??
+      stringOption(record, "outDir") ??
+      config.get<string>("triagePath", ".bob-review/human-triage")
+  )
   const result = await generateHumanTriage({ packageDir, bobOutputPath, outDir })
   if (result.status === "ok") notifyInfo(`人間確認用 triage ファイルを生成しました: ${outDir}`)
   else notifyError(result.message)
@@ -637,29 +675,6 @@ function absolute(root: string, value: string): string {
 
 function optionalAbsolute(root: string, value: string | undefined): string | undefined {
   return value ? absolute(root, value) : undefined
-}
-
-function mergeOptions(inputs: Record<string, unknown>, args: unknown): Record<string, unknown> {
-  return { ...inputs, ...optionRecord(args) }
-}
-
-function mergeWorkflowOptions(input: WorkflowActionExecutionInput): Record<string, unknown> {
-  return { ...mergeOptions(input.inputs, input.args), ...workflowContextOptions(input) }
-}
-
-function workflowContextOptions(input: WorkflowActionExecutionInput): Record<string, unknown> {
-  return {
-    workflowRoot: input.workflowRoot,
-    workflowFile: input.workflowFile,
-    workflowFolderName: input.workflowFolderName,
-    bobRoot: input.bobRoot,
-    workspaceRoot: input.workspaceRoot
-  }
-}
-
-function optionRecord(value: unknown): Record<string, unknown> {
-  if (Array.isArray(value)) return optionRecord(value[0])
-  return typeof value === "object" && value !== null ? value as Record<string, unknown> : {}
 }
 
 function stringOption(record: Record<string, unknown>, key: string): string | undefined {
