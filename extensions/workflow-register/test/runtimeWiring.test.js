@@ -6,6 +6,8 @@ function runtimeSource() {
   return readSourceSet([
     "extension.ts",
     "workflowRuntimeFactory.ts",
+    "workflowAdapter.ts",
+    "bobWorkflowTypes.ts",
     "bobWorkflowRunner.ts",
     "bobStepRuntime.ts",
     "bobWorkflowMessages.ts",
