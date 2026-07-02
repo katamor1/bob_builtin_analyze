@@ -83,7 +83,7 @@ async function registerWorkflowProviders(context: vscode.ExtensionContext): Prom
   })
   api.registerActionProvider({
     id: "bobBazaar.captureReviewResult",
-    execute: (input) => captureReviewResult(firstStringArg(input.args), captureOptionsFromCommandArgs([input.args, input]))
+    execute: (input) => captureReviewResult(firstStringArg(input.args), captureOptionsFromCommandArgs([input]))
   })
 }
 
