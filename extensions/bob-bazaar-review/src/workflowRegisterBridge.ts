@@ -90,6 +90,10 @@ export function stringInput(value: unknown): string | undefined {
 export function captureOptionsFromCommandArgs(args: unknown[]): CaptureReviewResultOptions {
   const context = recordInput(args[args.length - 1])
   if (!context) return {}
+  return captureOptionsFromWorkflowContext(context)
+}
+
+function captureOptionsFromWorkflowContext(context: Record<string, unknown>): CaptureReviewResultOptions {
   const workflowState = recordStringMap(context.state)
   return {
     expectedChecklistItems: expectedChecklistItemsFromState(workflowState),
