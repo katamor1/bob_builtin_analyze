@@ -10,6 +10,7 @@ import type {
 import {
   buildCommandResultMessage,
   buildStepMessage,
+  buildWorkflowControlBlock,
   buildWorkflowStartMessage,
   shouldIncludeCommandResult
 } from "./bobWorkflowMessages"
@@ -224,6 +225,15 @@ export class BobWorkflowEngineRunner {
       }))
       if (payload) await snapshotStore.saveSnapshot(payload)
     }
+    const sendControlBlock = async (run: WorkflowRunState, step?: EngineStep, includeResume = false) => {
+      await task.sendMessage?.(buildWorkflowControlBlock({
+        runId: run.runId,
+        stepId: step?.id,
+        status: run.status,
+        currentStep: run.currentStep,
+        includeResume
+      }), "user")
+    }
     return {
       onWorkflowStart: async ({ workflow, run }) => snapshot("workflow-start", { workflow, run }),
       onStepStart: async ({ workflow, run, step }) => {
@@ -250,6 +260,7 @@ export class BobWorkflowEngineRunner {
             stateEntries
           )
         if (message) await task.sendMessage?.(message, "user")
+        await sendControlBlock(run, step)
         await snapshot("step-start", { workflow, run, step })
       },
       onCommandResult: async ({ run, step, commandValue }) => {
@@ -286,6 +297,21 @@ export class BobWorkflowEngineRunner {
       onStepCompleted: async ({ workflow, run, step }) => {
         if (step && !manuallyCompleted.has(stepKey(run.runId, step.id))) task.setStepComplete?.()
         await snapshot("completed", { workflow, run, step })
+      },
+      onStepReviewRequired: async ({ workflow, run, step }) => {
+        if (step) await sendControlBlock(run, step)
+        await snapshot("review-required", { workflow, run, step })
+      },
+      onRunPaused: async ({ workflow, run, step }) => {
+        await task.sendMessage?.([
+          "Workflow run paused.",
+          "",
+          `- runId: ${run.runId}`,
+          `- currentStep: ${run.currentStep ?? "none"}`,
+          "- pause mode: graceful; no in-flight AI response was force-cancelled."
+        ].join("\n"), "user")
+        await sendControlBlock(run, step, true)
+        await snapshot("paused", { workflow, run, step })
       },
       onWorkflowCompleted: async ({ workflow, run }) => snapshot("completed", { workflow, run })
     }
