@@ -76,7 +76,13 @@ export function blockedPreviousStep(workflow: CoreWorkflowDefinition, run: Workf
   const allowOutOfOrder = options.allowOutOfOrder ?? workflowStepExecution(workflow).allowOutOfOrder
   if (allowOutOfOrder) return undefined
   for (let index = 0; index < targetIndex && index < run.steps.length; index += 1) {
-    if (run.steps[index]?.status !== "completed") return run.steps[index]
+    const step = run.steps[index]
+    if (step?.status === "completed") continue
+    if (step?.status === "reviewing") {
+      acceptReviewedStep(step)
+      continue
+    }
+    return step
   }
   return undefined
 }
@@ -119,6 +125,14 @@ export function validateRetryCompatibility(run: WorkflowRunState, workflow: Core
 export function noteDefinitionMismatch(run: WorkflowRunState, workflow: CoreWorkflowDefinition): void {
   if (!definitionHashChanged(run, workflow)) return
   run.state["workflow.definitionMismatch"] = JSON.stringify({ runHash: run.workflowDefinitionHash, currentHash: workflow.definitionHash, detectedAt: new Date().toISOString() })
+}
+
+function acceptReviewedStep(step: RunStepState): void {
+  const now = new Date().toISOString()
+  step.status = "completed"
+  step.acceptedAt = step.acceptedAt ?? now
+  step.completedAt = step.completedAt ?? now
+  step.error = undefined
 }
 
 function definitionHashChanged(run: WorkflowRunState, workflow: CoreWorkflowDefinition): boolean {
