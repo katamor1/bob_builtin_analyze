@@ -18,19 +18,19 @@ import {
   workflowStepReview
 } from "./engine/runState"
 import {
-  formatStateValue,
-  renderArtifactPath,
-  renderTemplate,
-  renderValue,
-  replacementResultText
-} from "./engine/templateRenderer"
-import { validateCommandGuardrails } from "./guardrails"
+  writeProducedArtifacts as writeEngineProducedArtifacts,
+} from "./engine/resultWriters"
+import {
+  completeStepIfManual as completeEngineStepIfManual,
+  waitForManualCompletion as waitForEngineManualCompletion
+} from "./engine/manualCompletion"
+import { pauseRunIfRequested } from "./engine/runPause"
+import { executeAutomatedStep } from "./engine/stepExecutor"
 import { validateWorkflowInputs } from "./inputResolver"
 import {
   AgentProvider,
   CoreWorkflowDefinition,
   EngineStep,
-  ResultSourceDefinition,
   WorkflowRunState
 } from "./model"
 import type {
@@ -41,7 +41,6 @@ import type {
   WorkflowExecutionHooks,
   WorkflowExecutionMode
 } from "./engineTypes"
-import { reportedActionError } from "./reportedActionError"
 import { ResultSinkRegistry } from "./resultSinkRegistry"
 import { FileRunControlStore, RunControlStore } from "./runControlStore"
 import { RunStateStore } from "./runStateStore"
@@ -107,7 +106,16 @@ export class WorkflowEngine {
       return run
     }
 
-    if (await this.pauseIfRequested(workflow, run, workflow.engineSteps.find((step) => step.id === run.currentStep), "before-preflight")) return run
+    if (
+      await this.pauseIfRequested(
+        workflow,
+        run,
+        workflow.engineSteps.find((step) => step.id === run.currentStep),
+        "before-preflight"
+      )
+    ) {
+      return run
+    }
 
     const preflight = await evaluatePreflight({
       workflow,
@@ -228,7 +236,7 @@ export class WorkflowEngine {
       await this.runStore.saveRun(run)
       await this.emit(this.hooks.onStepStart, { workflow, run, step })
 
-      const stepResult = await this.executeStep(workflow, run, step, index)
+      const stepResult = await this.executeStep(workflow, run, step)
       if (!stepResult.ok) {
         stepState.status = stepResult.held ? "held" : "failed"
         stepState.error = stepResult.error
@@ -240,7 +248,12 @@ export class WorkflowEngine {
         return run
       }
 
-      const artifactResult = await this.writeProducedArtifacts(workflow, run, step)
+      const artifactResult = await writeEngineProducedArtifacts({
+        workflow,
+        run,
+        step,
+        resultSinks: this.resultSinks
+      })
       if (!artifactResult.ok) {
         stepState.status = "failed"
         stepState.error = artifactResult.error
@@ -252,7 +265,12 @@ export class WorkflowEngine {
         return run
       }
 
-      const completion = await this.completeStepIfManual(workflow, run, step)
+      const completion = await completeEngineStepIfManual({
+        workflow,
+        run,
+        step,
+        manualCompletion: this.manualCompletion
+      })
       if (!completion.ok) {
         stepState.status = completion.held ? "held" : "failed"
         stepState.error = completion.error
@@ -303,142 +321,28 @@ export class WorkflowEngine {
   private async executeStep(
     workflow: CoreWorkflowDefinition,
     run: WorkflowRunState,
-    step: EngineStep,
-    stepIndex: number
+    step: EngineStep
   ): Promise<{ ok: true } | { ok: false; held?: boolean; error: string }> {
-    if (step.type === "manual") return this.waitForManualCompletion(workflow, run, step)
-    if (step.type === "agent") {
-      try {
-        let agentText = step.resultKey ? run.state[step.resultKey] : undefined
-        if (agentText === undefined) agentText = await this.recoverResultText?.({ workflow, run, step, reason: "retry-agent-result" })
-        if (agentText === undefined) {
-          if (!this.agentProvider) return { ok: false, error: "Agent provider is required for agent workflow steps." }
-          const prompt = renderTemplate(step.prompt ?? "", { inputs: run.inputs, state: run.state, run, workflow, step })
-          agentText = await Promise.resolve(this.agentProvider.run({
-            workflowId: workflow.id,
-            logicalWorkflowId: workflow.logicalWorkflowId,
-            workflowRoot: workflow.workflowRoot,
-            workflowFile: workflow.workflowFile,
-            workflowFolderName: workflow.workflowFolderName,
-            runId: run.runId,
-            stepId: step.id,
-            prompt,
-            inputs: run.inputs,
-            state: run.state
-          }))
-        }
-        if (step.resultKey) run.state[step.resultKey] = agentText
-        await this.emit(this.hooks.onAgentOutput, { workflow, run, step, agentText })
-        if (step.result) return this.writeResultSinks(workflow, run, step, step.result, agentText)
-        return { ok: true }
-      } catch (error) {
-        return { ok: false, error: error instanceof Error ? error.message : String(error) }
-      }
-    }
-    if (step.type === "command") {
-      const guardrail = validateCommandGuardrails(workflow, step.action.provider)
-      if (guardrail) return { ok: false, error: guardrail }
-      const args = renderValue(step.action.args, { inputs: run.inputs, state: run.state, run, workflow, step })
-      const result = await this.actions.execute(step.action.provider, {
-        args,
-        inputs: run.inputs,
-        state: run.state,
-        workflowId: workflow.id,
-        logicalWorkflowId: workflow.logicalWorkflowId,
-        workflowRoot: workflow.workflowRoot,
-        workflowFile: workflow.workflowFile,
-        workflowFolderName: workflow.workflowFolderName,
-        runId: run.runId,
-        stepId: step.id
+    if (step.type === "manual") {
+      return waitForEngineManualCompletion({
+        workflow,
+        run,
+        step,
+        manualCompletion: this.manualCompletion
       })
-      if (!result.ok) return { ok: false, error: result.error ?? `Action provider failed: ${step.action.provider}` }
-      const actionError = reportedActionError(result.value)
-      if (actionError) return { ok: false, error: actionError }
-      if (step.resultKey) run.state[step.resultKey] = formatStateValue(result.value)
-      await this.emit(this.hooks.onCommandResult, { workflow, run, step, commandValue: result.value })
-      return { ok: true }
     }
-    return this.writeResultSinks(workflow, run, step, step.result)
-  }
-
-  private async writeResultSinks(
-    workflow: CoreWorkflowDefinition,
-    run: WorkflowRunState,
-    step: EngineStep,
-    result: ResultSourceDefinition,
-    agentText?: string
-  ): Promise<{ ok: true } | { ok: false; error: string }> {
-    try {
-      const text = await this.resultText(workflow, run, step, result, agentText)
-      for (const sink of result.sinks) {
-        const write = await this.resultSinks.write(sink, {
-          workflowId: workflow.id,
-          logicalWorkflowId: workflow.logicalWorkflowId,
-          workflowRoot: workflow.workflowRoot,
-          workflowFile: workflow.workflowFile,
-          workflowFolderName: workflow.workflowFolderName,
-          runId: run.runId,
-          stepId: step.id,
-          inputs: run.inputs,
-          state: run.state,
-          text
-        })
-        if (!write.ok) {
-          const error = write.error ?? `Result sink failed: ${sink.type}`
-          await this.emit(this.hooks.onHandoffFailed, { workflow, run, step, agentText: text, error })
-          return { ok: false, error }
-        }
-        const replacementText = replacementResultText(write.value)
-        if (replacementText !== undefined && "resultKey" in step && step.resultKey) run.state[step.resultKey] = replacementText
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      await this.emit(this.hooks.onHandoffFailed, { workflow, run, step, agentText, error: message })
-      return { ok: false, error: message }
-    }
-    return { ok: true }
-  }
-
-  private async resultText(
-    workflow: CoreWorkflowDefinition,
-    run: WorkflowRunState,
-    step: EngineStep,
-    result: ResultSourceDefinition,
-    agentText?: string
-  ): Promise<string> {
-    if (result.source === "literal") return result.text
-    if (result.source === "agent") {
-      const recovered = agentText ?? await this.recoverResultText?.({ workflow, run, step, reason: "missing-result-text" })
-      if (recovered === undefined) throw new Error("Agent result source is not available for this step.")
-      return recovered
-    }
-    const value = run.state[result.stateKey]
-    if (value === undefined) throw new Error(`Workflow state is missing: ${result.stateKey}`)
-    return value
-  }
-
-  private async completeStepIfManual(
-    workflow: CoreWorkflowDefinition,
-    run: WorkflowRunState,
-    step: EngineStep
-  ): Promise<{ ok: true } | { ok: false; held?: boolean; error: string }> {
-    if (workflowStepReview(workflow).enabled) return { ok: true }
-    if (step.type === "agent" || step.type === "manual" || step.completeOnSuccess || workflow.stepCompletion !== "manual") return { ok: true }
-    return this.waitForManualCompletion(workflow, run, step)
-  }
-
-  private async waitForManualCompletion(
-    workflow: CoreWorkflowDefinition,
-    run: WorkflowRunState,
-    step: EngineStep
-  ): Promise<{ ok: true } | { ok: false; held?: boolean; error: string }> {
-    if (!this.manualCompletion) return { ok: false, held: true, error: "Manual workflow step is waiting for completion." }
-    try {
-      const result = await Promise.resolve(this.manualCompletion({ workflow, run, step }))
-      return result.completed ? { ok: true } : { ok: false, held: true, error: result.error ?? "Manual workflow step is waiting for completion." }
-    } catch (error) {
-      return { ok: false, error: error instanceof Error ? error.message : String(error) }
-    }
+    return executeAutomatedStep({
+      workflow,
+      run,
+      step,
+      actions: this.actions,
+      agentProvider: this.agentProvider,
+      resultSinks: this.resultSinks,
+      recoverResultText: this.recoverResultText,
+      emitAgentOutput: (event) => this.emit(this.hooks.onAgentOutput, event),
+      emitCommandResult: (event) => this.emit(this.hooks.onCommandResult, event),
+      emitHandoffFailed: (event) => this.emit(this.hooks.onHandoffFailed, event)
+    })
   }
 
   private async pauseIfRequested(
@@ -447,22 +351,15 @@ export class WorkflowEngine {
     nextStep: EngineStep | undefined,
     checkpoint: string
   ): Promise<boolean> {
-    const control = await this.runControlStore?.loadControl(run.runId)
-    if (!control?.pauseRequestedAt || control.clearedAt) return false
-    run.status = "paused"
-    run.error = undefined
-    if (nextStep) run.currentStep = nextStep.id
-    run.state["workflow.pause"] = JSON.stringify({
-      pauseRequestedAt: control.pauseRequestedAt,
-      pauseReason: control.pauseReason ?? "manual",
-      requestedBy: control.requestedBy ?? "user",
-      mode: control.mode ?? "afterCurrentStep",
+    return pauseRunIfRequested({
+      workflow,
+      run,
+      nextStep,
       checkpoint,
-      detectedAt: new Date().toISOString()
+      runStore: this.runStore,
+      runControlStore: this.runControlStore,
+      emitRunPaused: (event) => this.emit(this.hooks.onRunPaused, event)
     })
-    await this.runStore.saveRun(run)
-    await this.emit(this.hooks.onRunPaused, { workflow, run, step: nextStep, pause: control })
-    return true
   }
 
   private async emit(hook: ((input: WorkflowEngineEventInput) => Promise<void> | void) | undefined, input: WorkflowEngineEventInput): Promise<void> {
@@ -472,33 +369,5 @@ export class WorkflowEngine {
     } catch (error) {
       console.warn("Workflow engine hook failed", error)
     }
-  }
-
-  private async writeProducedArtifacts(
-    workflow: CoreWorkflowDefinition,
-    run: WorkflowRunState,
-    step: EngineStep
-  ): Promise<{ ok: true } | { ok: false; error: string }> {
-    const artifacts = workflow.artifacts ?? []
-    for (const artifact of artifacts.filter((item) => item.producedBy === step.id)) {
-      const value = run.state[artifact.id]
-      if (value === undefined) continue
-      const path = renderArtifactPath(artifact, { inputs: run.inputs, state: run.state, run, workflow, step })
-      if (path.includes("{{")) continue
-      const write = await this.resultSinks.write({ type: "file", path }, {
-        workflowId: workflow.id,
-        logicalWorkflowId: workflow.logicalWorkflowId,
-        workflowRoot: workflow.workflowRoot,
-        workflowFile: workflow.workflowFile,
-        workflowFolderName: workflow.workflowFolderName,
-        runId: run.runId,
-        stepId: step.id,
-        inputs: run.inputs,
-        state: run.state,
-        text: value
-      })
-      if (!write.ok) return { ok: false, error: write.error ?? `Failed to write artifact: ${artifact.id}` }
-    }
-    return { ok: true }
   }
 }
