@@ -73,7 +73,7 @@ export async function registerWorkflowProviders(handlers: CodeConsistencyWorkflo
   })
   api.registerActionProvider({
     id: "bobCodeConsistency.applyAiTraceabilityDraft",
-    execute: (input) => handlers.applyAiTraceabilityDraft(mergeWorkflowOptions(input))
+    execute: (input) => handlers.applyAiTraceabilityDraft(buildApplyTraceabilityDraftOptions(input))
   })
   api.registerActionProvider({
     id: "bobCodeConsistency.openTraceabilityPrep",
@@ -137,6 +137,16 @@ function buildCaptureBobOutputOptions(input: WorkflowActionExecutionInput): Reco
     ...optionRecord(buildCaptureWorkflowOptions({ args, inputs, state })),
     ...workflowContextOptions(input)
   }
+}
+
+export function buildApplyTraceabilityDraftOptions(input: WorkflowActionExecutionInput): Record<string, unknown> {
+  const options = mergeWorkflowOptions(input)
+  if (typeof options.text === "string" && options.text.trim().length > 0) return options
+  const draftText = input.state?.traceabilityDraftJson
+  if (typeof draftText === "string" && draftText.trim().length > 0) {
+    return { ...options, text: draftText }
+  }
+  return options
 }
 
 function mergeWorkflowOptions(input: WorkflowActionExecutionInput): Record<string, unknown> {
