@@ -128,6 +128,20 @@ document.querySelectorAll('.tab').forEach(function(tab) {
   };
 });
 
+content.addEventListener('click', function(event) {
+  const button = event.target.closest('button[data-action]');
+  if (!button) return;
+  event.preventDefault();
+  invokeAction(button.dataset.action, readActionArgs(button));
+});
+
+content.addEventListener('change', function(event) {
+  const target = event.target;
+  if (!target || target.dataset.action !== 'typeFilter') return;
+  typeFilter = target.value;
+  renderItems();
+});
+
 window.addEventListener('message', function(event) {
   const message = event.data;
   if (message.type === 'model') {
@@ -147,6 +161,26 @@ window.addEventListener('message', function(event) {
 
 function send(action) {
   vscode.postMessage({ type: 'action', action: action });
+}
+
+function invokeAction(action, args) {
+  if (action === 'approveItem') approveItem(args[0]);
+  else if (action === 'rejectItem') rejectItem(args[0]);
+  else if (action === 'deprecateItem') deprecateItem(args[0]);
+  else if (action === 'approveLink') approveLink(args[0], args[1], args[2]);
+  else if (action === 'rejectLink') rejectLink(args[0], args[1], args[2]);
+  else if (action === 'approveDecision') approveDecision(args[0], args[1]);
+  else if (action === 'rejectDecision') rejectDecision(args[0], args[1]);
+  else if (action === 'approveDomain') approveDomain(args[0]);
+  else if (action === 'rejectDomain') rejectDomain(args[0]);
+}
+
+function readActionArgs(button) {
+  try {
+    return JSON.parse(button.dataset.args || '[]');
+  } catch {
+    return [];
+  }
 }
 
 function approveItem(id) {
@@ -220,10 +254,10 @@ function renderDomains() {
 function renderItems() {
   const types = ['all', 'requirement', 'basic_design', 'detailed_design', 'test_spec', 'qa_item', 'review_finding'];
   const selector = [
-    '<div class="toolbar"><select onchange="typeFilter=this.value;renderItems()">',
+    '<div class="toolbar"><select data-action="typeFilter">',
     types.map(function(type) {
       const selected = type === typeFilter ? 'selected' : '';
-      return '<option ' + selected + ' value="' + type + '">' + type + '</option>';
+      return '<option ' + selected + ' value="' + escapeHtml(type) + '">' + escapeHtml(type) + '</option>';
     }).join(''),
     '</select></div>'
   ].join('');
@@ -333,12 +367,7 @@ function row(title, state, body, actions) {
 
 function actionButton(action, args, label, secondary) {
   const classAttr = secondary ? ' class="secondary"' : '';
-  const onclick = action + '(' + args.map(jsArg).join(',') + ')';
-  return '<button' + classAttr + ' onclick="' + onclick + '">' + label + '</button>';
-}
-
-function jsArg(value) {
-  return "\\'" + esc(value) + "\\'";
+  return '<button' + classAttr + ' data-action="' + escapeHtml(action) + '" data-args="' + escapeHtml(JSON.stringify(args)) + '">' + escapeHtml(label) + '</button>';
 }
 
 function escapeHtml(value) {
@@ -350,10 +379,6 @@ function escapeHtml(value) {
       '"': '&quot;'
     }[character];
   });
-}
-
-function esc(value) {
-  return String(value ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 }
 
 render();
