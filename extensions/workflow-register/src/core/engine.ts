@@ -96,7 +96,8 @@ export class WorkflowEngine {
     const run = recoveredRun ?? await this.runStore.createRun(workflow, inputs)
     await this.runStore.saveRun(run)
     if (!recoveredRun) await this.emit(this.hooks.onWorkflowStart, { workflow, run })
-    if (run.status === "reviewing" || run.status === "paused") return run
+    if (run.status === "paused") return run
+    if (run.status === "reviewing" && !isOrderedSingleStepContinuation(options)) return run
     const inputProblems = validateWorkflowInputs(workflow.inputs ?? {}, run.inputs)
     if (inputProblems.length > 0) {
       run.status = "failed"
@@ -358,16 +359,15 @@ export class WorkflowEngine {
       checkpoint,
       runStore: this.runStore,
       runControlStore: this.runControlStore,
-      emitRunPaused: (event) => this.emit(this.hooks.onRunPaused, event)
+      hooks: this.hooks
     })
   }
 
-  private async emit(hook: ((input: WorkflowEngineEventInput) => Promise<void> | void) | undefined, input: WorkflowEngineEventInput): Promise<void> {
-    if (!hook) return
-    try {
-      await Promise.resolve(hook(input))
-    } catch (error) {
-      console.warn("Workflow engine hook failed", error)
-    }
+  private async emit(hook: ((event: WorkflowEngineEventInput) => Promise<void>) | undefined, event: WorkflowEngineEventInput): Promise<void> {
+    if (hook) await hook(event)
   }
+}
+
+function isOrderedSingleStepContinuation(options: RunWorkflowOptions): boolean {
+  return options.executionMode === "singleStep" && typeof options.stepId === "string" && options.stepId.length > 0
 }
