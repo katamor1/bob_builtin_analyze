@@ -13,7 +13,8 @@ function runtimeSource() {
     "bobWorkflowMessages.ts",
     "workflowInputPrompt.ts",
     "workflowRegisterService.ts",
-    "core/engine.ts"
+    "core/engine.ts",
+    "core/engine/stepExecutor.ts"
   ])
 }
 
@@ -158,13 +159,13 @@ test("Bob workflow chat messages include bounded workflow root context", () => {
 
 test("Bob adapter applies guardrails to Todo, result, and legacy top-level commands", () => {
   const source = runtimeSource()
-  const engine = readSrc("core", "engine.ts")
+  const stepExecutor = readSrc("core", "engine", "stepExecutor.ts")
 
   assert.match(source, /import \{ validateCommandGuardrails \} from "\.\/core\/guardrails"/)
-  assert.match(engine, /import \{ validateCommandGuardrails \} from "\.\/guardrails"/)
+  assert.match(stepExecutor, /import \{ validateCommandGuardrails \} from "\.\.\/guardrails"/)
   assert.match(source, /guardrails: WorkflowGuardrailsDefinition/)
   assert.match(source, /guardrails: core\.guardrails/)
-  assert.match(engine, /validateCommandGuardrails\(workflow, step\.action\.provider\)/)
+  assert.match(stepExecutor, /validateCommandGuardrails\(workflow, step\.action\.provider\)/)
   assert.match(source, /validateCommandGuardrails\(\{ guardrails: active\.guardrails \}, step\.resultCommand\)/)
   assert.match(source, /actionRegistry: this\.options\.actionRegistry/)
   assert.doesNotMatch(source, /vscode\.commands\.executeCommand\(definition\.command/)
