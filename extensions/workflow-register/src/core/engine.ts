@@ -359,11 +359,11 @@ export class WorkflowEngine {
       checkpoint,
       runStore: this.runStore,
       runControlStore: this.runControlStore,
-      hooks: this.hooks
+      emitRunPaused: (event) => this.emit(this.hooks.onRunPaused, event)
     })
   }
 
-  private async emit(hook: ((event: WorkflowEngineEventInput) => Promise<void>) | undefined, event: WorkflowEngineEventInput): Promise<void> {
+  private async emit(hook: ((event: WorkflowEngineEventInput) => Promise<void> | void) | undefined, event: WorkflowEngineEventInput): Promise<void> {
     if (hook) await hook(event)
   }
 }
