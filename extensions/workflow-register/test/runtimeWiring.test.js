@@ -11,8 +11,18 @@ function runtimeSource() {
     "bobWorkflowRunner.ts",
     "bobStepRuntime.ts",
     "bobWorkflowMessages.ts",
+    "workflowInputPrompt.ts",
+    "workflowRegisterService.ts",
     "core/engine.ts"
   ])
+}
+
+function orderedPattern(...parts) {
+  return new RegExp(parts.map(escapeRegex).join("[\\s\\S]*"))
+}
+
+function escapeRegex(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 }
 
 test("completeStep command can be called silently by companion extensions", () => {
@@ -39,14 +49,24 @@ test("standalone workflow launcher wires an AgentProvider through API or configu
   assert.match(source, /registerAgentProvider: \(provider: AgentProvider\) => void/)
   assert.match(source, /registerAgentProvider: \(provider\) => service\.registerAgentProvider\(provider\)/)
   assert.match(source, /agentProvider: this\.options\.agentProvider\(\) \?\? this\.createCommandAgentProvider\(\)/)
-  assert.match(source, /createCommandAgentProvider\(\{[\s\S]*command: config\.get<string>\("agentCommand", ""\),[\s\S]*vscode\.commands\.executeCommand\(command, input\)/)
+  assert.match(source, orderedPattern(
+    "createCommandAgentProvider({",
+    'command: config.get<string>("agentCommand", ""),',
+    "vscode.commands.executeCommand(command, input)"
+  ))
 })
 
 test("standalone workflow launcher uses the shared input resolver for conditional prompts", () => {
   const source = runtimeSource()
 
   assert.match(source, /import \{ collectWorkflowInputsWithResolver \} from "\.\/core\/inputCollector"/)
-  assert.match(source, /return collectWorkflowInputsWithResolver\(\{[\s\S]*inputs: workflow\.inputs,[\s\S]*provided,[\s\S]*prompt: \(key, definition, required\) => this\.promptForInput\(key, definition, required\)[\s\S]*\}\)/)
+  assert.match(source, orderedPattern(
+    "return collectWorkflowInputsWithResolver({",
+    "inputs: workflow.inputs,",
+    "provided,",
+    "prompt: promptForWorkflowInput",
+    "})"
+  ))
   assert.doesNotMatch(source, /for \(const \[key, definition\] of Object\.entries\(workflow\.inputs\)\)/)
 })
 
@@ -60,8 +80,17 @@ test("Bob workflow Todo execution delegates to the shared WorkflowEngine runner"
 
   assert.match(source, /createBobWorkflow\(workflow, input\.createRunner\(workflow\)\)/)
   assert.match(source, /class BobWorkflowEngineRunner/)
-  assert.match(source, /runTodoStep\(todo: WorkflowTodoItem, index: number, task: BobWorkflowTask\): Promise<boolean> \{[\s\S]*executionMode: "singleStep"[\s\S]*stepId: todo\.id/)
-  assert.match(source, /engine\.runWorkflow\(this\.options\.coreWorkflow, inputs, \{[\s\S]*executionMode: request\.executionMode[\s\S]*stepId: request\.stepId[\s\S]*\}\)/)
+  assert.match(source, orderedPattern(
+    "runTodoStep(todo: WorkflowTodoItem, index: number, task: BobWorkflowTask): Promise<boolean> {",
+    'executionMode: "singleStep"',
+    "stepId: todo.id"
+  ))
+  assert.match(source, orderedPattern(
+    "engine.runWorkflow(this.options.coreWorkflow, inputs, {",
+    "executionMode: request.executionMode",
+    "stepId: request.stepId",
+    "})"
+  ))
   assert.match(source, /createBobTaskSnapshotProvider\(task\)/)
   assert.match(source, /new FileTaskSnapshotStore\(/)
   assert.doesNotMatch(source, /async function runWorkflowStepCommand\(/)
@@ -86,11 +115,26 @@ test("Bob adapter resolves workflow inputs and passes them to command providers"
   assert.match(source, /inputs: Record<string, WorkflowInputDefinition>/)
   assert.match(source, /inputs: core\.inputs/)
   assert.match(source, /workflowRoot: core\.workflowRoot/)
-  assert.match(source, /collectBobWorkflowInputs\(workflow: WorkflowDefinition, provided: Record<string, unknown>\)/)
+  assert.match(source, orderedPattern(
+    "collectBobWorkflowInputs(",
+    "workflow: WorkflowDefinition,",
+    "provided: Record<string, unknown>"
+  ))
   assert.match(source, /extractTaskWorkflowInputs\(workflow, task\)/)
-  assert.match(source, /collectWorkflowInputsWithResolver\(\{[\s\S]*inputs: workflow\.inputs,[\s\S]*provided,[\s\S]*prompt: \(key, definition, required\) => this\.promptForInput\(key, definition, required\)[\s\S]*\}\)/)
+  assert.match(source, orderedPattern(
+    "collectWorkflowInputsWithResolver({",
+    "inputs: workflow.inputs,",
+    "provided,",
+    "prompt: promptForWorkflowInput",
+    "})"
+  ))
   assert.match(source, /createBobWorkflowRunner\(workflow: WorkflowDefinition\): BobWorkflowEngineRunner/)
-  assert.match(source, /inputsProvider: \(task, provided\) => this\.options\.inputsProvider\(workflow, \{[\s\S]*\.\.\.extractTaskWorkflowInputs\(workflow, task\)[\s\S]*\.\.\.provided[\s\S]*\}\)/)
+  assert.match(source, orderedPattern(
+    "inputsProvider: (task, provided) => this.options.inputsProvider(workflow, {",
+    "...extractTaskWorkflowInputs(workflow, task)",
+    "...provided",
+    "})"
+  ))
   assert.match(source, /runId: run\.runId/)
   assert.match(source, /state: run\.state/)
   assert.doesNotMatch(source, /inputs: \{\}/)
@@ -100,7 +144,14 @@ test("Bob workflow chat messages include bounded workflow root context", () => {
   const source = readSrc("bobWorkflowMessages.ts")
 
   assert.match(source, /import \{ appendWorkflowContext \} from "\.\/workflowPromptContext"/)
-  assert.match(source, /appendWorkflowContext\(lines, \{[\s\S]*workflowRoot: definition\.workflowRoot[\s\S]*workflowFile: definition\.workflowFile[\s\S]*workflowFolderName: definition\.workflowFolderName[\s\S]*stateEntries[\s\S]*\}\)/)
+  assert.match(source, orderedPattern(
+    "appendWorkflowContext(lines, {",
+    "workflowRoot: definition.workflowRoot",
+    "workflowFile: definition.workflowFile",
+    "workflowFolderName: definition.workflowFolderName",
+    "stateEntries",
+    "})"
+  ))
   assert.match(source, /buildCommandResultMessage\(definition, todo, index, commandResult, stateEntries\)/)
   assert.match(source, /buildCurrentTodoMessage\(definition, todo, index, stepDefinition, commandResult, stateEntries\)/)
 })

@@ -48,7 +48,12 @@ test("workflow authoring wrapper wires a configurable AI provider command", () =
 
 test("package contributes standalone workflow launcher commands without a hard Bob dependency", () => {
   const packageJson = readJson("package.json")
-  const source = readSourceSet(["extension.ts", "workflowRuntimeFactory.ts"])
+  const source = readSourceSet([
+    "extension.ts",
+    "workflowInputPrompt.ts",
+    "workflowRegisterService.ts",
+    "workflowRuntimeFactory.ts"
+  ])
 
   assert.equal(packageJson.extensionDependencies, undefined)
   for (const command of [
@@ -89,7 +94,13 @@ test("package exposes task snapshot retention settings", () => {
 
 test("workflow-register does not silently use the first workspace folder in multi-root paths", () => {
   const sources = [
-    readSourceSet(["extension.ts", "workflowDiscovery.ts", "workflowRuntimeFactory.ts"]),
+    readSourceSet([
+      "extension.ts",
+      "workflowDiscovery.ts",
+      "workflowInputPrompt.ts",
+      "workflowRegisterService.ts",
+      "workflowRuntimeFactory.ts"
+    ]),
     readSrc("commands", "createWorkflow.ts"),
     readSrc("commands", "designWorkflowWithAi.ts"),
     readSrc("commands", "improveWorkflowWithAi.ts"),
