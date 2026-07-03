@@ -124,6 +124,7 @@ test("workflow engine treats a reviewed previous step as accepted when running t
 
   assert.equal(first.status, "reviewing")
   assert.equal(first.steps[0].status, "reviewing")
+  assert.equal(second.status, "reviewing")
   assert.equal(second.steps[0].status, "completed")
   assert.equal(second.steps[0].acceptedAt !== undefined, true)
   assert.equal(second.steps[1].status, "reviewing")
