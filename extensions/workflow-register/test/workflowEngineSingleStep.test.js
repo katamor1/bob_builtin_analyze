@@ -83,6 +83,54 @@ test("workflow engine can execute a single requested step and leave the run reco
   ])
 })
 
+test("workflow engine treats a reviewed previous step as accepted when running the next ordered single step", async () => {
+  const { actions, engine } = createWorkflowEngineContext()
+  actions.register({ id: "sample.collect", execute: async () => "context" })
+  actions.register({ id: "sample.analyze", execute: async (input) => `analysis-${input.state.context}` })
+  const workflow = {
+    id: "workflow-register.reviewed-single-step",
+    name: "reviewed-single-step",
+    label: "Reviewed Single Step",
+    schemaVersion: "workflow-register/v1",
+    inputs: {},
+    stepReview: {
+      enabled: true,
+      pauseAfter: "everyStep",
+      requireAcceptBeforeNext: true,
+      allowRetry: true,
+      allowEditBeforeRetry: true,
+      preserveAttempts: true
+    },
+    engineSteps: [
+      {
+        id: "collect",
+        title: "Collect",
+        type: "command",
+        action: { provider: "sample.collect" },
+        resultKey: "context"
+      },
+      {
+        id: "analyze",
+        title: "Analyze",
+        type: "command",
+        action: { provider: "sample.analyze" },
+        resultKey: "analysis"
+      }
+    ]
+  }
+
+  const first = await engine.runWorkflow(workflow, {}, { executionMode: "singleStep", stepId: "collect" })
+  const second = await engine.runWorkflow(workflow, {}, { executionMode: "singleStep", stepId: "analyze" })
+
+  assert.equal(first.status, "reviewing")
+  assert.equal(first.steps[0].status, "reviewing")
+  assert.equal(second.status, "reviewing")
+  assert.equal(second.steps[0].status, "completed")
+  assert.equal(second.steps[0].acceptedAt !== undefined, true)
+  assert.equal(second.steps[1].status, "reviewing")
+  assert.equal(second.state.analysis, "analysis-context")
+})
+
 test("workflow engine rejects out-of-order single-step execution by default", async () => {
   const { actions, engine } = createWorkflowEngineContext({
     now: () => "2026-07-03T00:00:00.000Z"

@@ -26,6 +26,25 @@ test("collectWorkflowInputsWithResolver uses defaults without prompting", async 
   assert.equal(result.maxDepth, 2)
 })
 
+test("collectWorkflowInputsWithResolver treats empty optional defaults as resolved", async () => {
+  const prompts = []
+  const result = await collectWorkflowInputsWithResolver({
+    inputs: {
+      vcsRoot: { type: "string", title: "VCS root", default: "" },
+      docsRoot: { type: "string", title: "docs root", default: "docs" }
+    },
+    provided: {},
+    prompt: async (key) => {
+      prompts.push(key)
+      return undefined
+    }
+  })
+
+  assert.deepEqual(prompts, [])
+  assert.equal(result.vcsRoot, "")
+  assert.equal(result.docsRoot, "docs")
+})
+
 test("collectWorkflowInputsWithResolver does not re-prompt skipped optional inputs", async () => {
   const prompts = []
   const result = await collectWorkflowInputsWithResolver({
