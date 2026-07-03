@@ -47,7 +47,7 @@ export function buildStepMessage(
   commandResult?: WorkflowStepCommandResult,
   stateEntries: WorkflowStateEntry[] = []
 ): string | undefined {
-  if (index === 0) {
+  if (index === 0 && !usesEngineStepUi(definition)) {
     return buildWorkflowStartMessage(
       definition,
       todo,
@@ -96,7 +96,7 @@ export function buildWorkflowStartMessage(
     workflowFolderName: definition.workflowFolderName,
     stateEntries
   })
-  if (definition.todoEnabled) {
+  if (definition.todoEnabled && !usesEngineStepUi(definition)) {
     lines.push(
       "First, create or update your Todo list using exactly the items below.",
       "Do not immediately mark them complete. Work through them one by one and only mark an item complete after the corresponding work is actually done.",
@@ -259,59 +259,47 @@ function appendCommandResult(
 
 function appendWorkflowState(lines: string[], stateEntries: WorkflowStateEntry[]): void {
   if (stateEntries.length === 0) return
-  lines.push("", "<workflow_state>")
-  for (const entry of stateEntries) {
-    lines.push(`<state key="${escapeXmlAttribute(entry.key)}">`, entry.value, "</state>", "")
-  }
-  if (lines[lines.length - 1] === "") lines.pop()
-  lines.push("</workflow_state>")
+  lines.push(
+    "",
+    "Workflow state available to this step:",
+    "<workflow_state>",
+    ...stateEntries.map((entry) => `- ${entry.key}: ${entry.value}`),
+    "</workflow_state>"
+  )
 }
 
-export function shouldIncludeCommandResult(
-  stepDefinition?: WorkflowStepDefinition,
-  commandResult?: WorkflowStepCommandResult
-): boolean {
-  return Boolean(commandResult && (stepDefinition?.sendResult || !commandResult.ok))
+export function shouldIncludeCommandResult(stepDefinition: WorkflowStepDefinition | undefined, result: WorkflowStepCommandResult | undefined): boolean {
+  if (!result) return false
+  if (!stepDefinition?.sendResult) return false
+  if (result.ok === false) return true
+  if (result.value === undefined || result.value === null) return false
+  return String(result.value).length > 0
 }
 
-function buildCommandResultBlock(
-  commandResult: WorkflowStepCommandResult,
-  maxBytes = DEFAULT_MAX_RESULT_BYTES
-): string {
+function buildCommandResultBlock(result: WorkflowStepCommandResult, maxResultBytes = DEFAULT_MAX_RESULT_BYTES): string {
+  const payload = result.ok
+    ? { command: result.command, ok: true, value: truncate(String(result.value ?? ""), maxResultBytes) }
+    : { command: result.command, ok: false, error: result.error }
   return [
-    `<workflow_step_command_result command="${escapeXmlAttribute(commandResult.command)}" ok="${commandResult.ok}">`,
-    commandResult.ok ? formatCommandResult(commandResult.value, maxBytes) : `ERROR: ${commandResult.error}`,
-    "</workflow_step_command_result>"
+    "<workflow_command_result>",
+    JSON.stringify(payload, null, 2),
+    "</workflow_command_result>"
   ].join("\n")
 }
 
-function formatCommandResult(value: unknown, maxBytes = DEFAULT_MAX_RESULT_BYTES): string {
-  let formatted: string
-  if (value === undefined) formatted = "undefined"
-  else if (typeof value === "string") formatted = value
-  else {
-    try {
-      formatted = JSON.stringify(value, null, 2)
-    } catch {
-      formatted = String(value)
-    }
-  }
-  return truncateText(formatted, maxBytes)
+function truncate(value: string, maxBytes: number): string {
+  if (value.length <= maxBytes) return value
+  return `${value.slice(0, Math.max(0, maxBytes - 32))}\n... [truncated]`
 }
 
-function truncateText(value: string, maxBytes: number): string {
-  if (maxBytes <= 0 || Buffer.byteLength(value, "utf8") <= maxBytes) return value
-  let output = value
-  while (Buffer.byteLength(output, "utf8") > maxBytes && output.length > 0) {
-    output = output.slice(0, Math.max(0, output.length - 512))
-  }
-  return `${output}\n... [truncated to ${maxBytes} bytes]`
+function usesEngineStepUi(definition: WorkflowDefinition): boolean {
+  return definition.stepExecution.showInBob !== false && definition.stepExecution.mode === "engineSteps"
 }
 
 function escapeXmlAttribute(value: string): string {
   return value
     .replace(/&/g, "&amp;")
-    .replace(/\"/g, "&quot;")
+    .replace(/"/g, "&quot;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
 }
