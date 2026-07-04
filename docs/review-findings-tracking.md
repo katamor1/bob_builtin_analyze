@@ -18,7 +18,7 @@
 | --- | --- | --- | --- | --- |
 | [workflow-register-deep-review-2026-07-04-14afe83c.md](workflow-register-deep-review-2026-07-04-14afe83c.md) | deep review | `WFR-01` to `WFR-15` | partial | `WFR-01`、`WFR-03`、`WFR-06`、`WFR-12` は対応済み。 |
 | [workflow-register-maintainability-review-2026-07-04-14afe83c.md](workflow-register-maintainability-review-2026-07-04-14afe83c.md) | maintainability review | `WFR-MAINT-*` | backlog | ID 付き deep review と重なるものは canonical 側を優先する。 |
-| [bob-bazaar-review-deep-review-2026-07-04-14afe83c.md](bob-bazaar-review-deep-review-2026-07-04-14afe83c.md) | deep review | `BBR-01` to `BBR-20` | partial | `BBR-01`、`BBR-04`、`BBR-05`、`BBR-06`、`BBR-09`、`BBR-10`、`BBR-11`、`BBR-14`、`BBR-15`、`BBR-16`、`BBR-17`、`BBR-18`、`BBR-20` は対応済み。 |
+| [bob-bazaar-review-deep-review-2026-07-04-14afe83c.md](bob-bazaar-review-deep-review-2026-07-04-14afe83c.md) | deep review | `BBR-01` to `BBR-20` | partial | `BBR-01`、`BBR-02`、`BBR-04`、`BBR-05`、`BBR-06`、`BBR-09`、`BBR-10`、`BBR-11`、`BBR-14`、`BBR-15`、`BBR-16`、`BBR-17`、`BBR-18`、`BBR-20` は対応済み。 |
 | [bob-bazaar-review-maintainability-review-2026-07-04-14afe83c.md](bob-bazaar-review-maintainability-review-2026-07-04-14afe83c.md) | maintainability review | `BBR-MAINT-*` | backlog | clamp や allowed root など deep review と重なる項目を含む。 |
 | [bob-code-consistency-review-deep-review-2026-07-04-14afe83c.md](bob-code-consistency-review-deep-review-2026-07-04-14afe83c.md) | deep review | `CCR-01` to `CCR-16` | open | まだこの表上の対応済み項目はない。 |
 | [bob-code-consistency-review-maintainability-review-2026-07-04-14afe83c.md](bob-code-consistency-review-maintainability-review-2026-07-04-14afe83c.md) | maintainability review | `CCR-MAINT-*` | backlog | path boundary、revision validation、size limits は deep review 側と重なる。 |
@@ -52,7 +52,7 @@
 | canonical id | source | severity | summary | status | done commits / next action | verification |
 | --- | --- | --- | --- | --- | --- | --- |
 | `BBR-01` | `bob-bazaar-review-deep-review...:48` | High | MCP tools が任意 `cwd` を信頼し allowed root を検証しない | done | `80f5ccf7` | `extensions/bob-bazaar-review`: `npm.cmd test`; `git diff --check` |
-| `BBR-02` | `bob-bazaar-review-deep-review...:49` | High | `project_rules_init` write tool と read-only 認識のズレ | open | write capability 分離と explicit enable |  |
+| `BBR-02` | `bob-bazaar-review-deep-review...:49` | High | `project_rules_init` write tool と read-only 認識のズレ | done | `15704007` | `extensions/bob-bazaar-review`: `npm.cmd test`; `git diff --check` |
 | `BBR-03` | `bob-bazaar-review-deep-review...:50` | High | `bobBazaar.bzrPath` による任意 executable 実行面 | open | Workspace Trust と user/global 設定優先 |  |
 | `BBR-04` | `bob-bazaar-review-deep-review...:51` | High | diff size 設定と `truncateUtf8()` の異常値処理 | done | `d668a0fc` | `extensions/bob-bazaar-review`: `npm.cmd test`; `git diff --check` |
 | `BBR-05` | `bob-bazaar-review-deep-review...:52` | High | review-result validation が project schema / rule ID set と十分連動しない | done | `68b8cb45` | `extensions/bob-bazaar-review`: `npm.cmd test`; `git diff --check` |
@@ -101,7 +101,7 @@
 | `extensions-review:WR-02` | `extensions-review...:49` | `WFR-05` | duplicate / open | snapshot privacy。 |
 | `extensions-review:WR-03` | `extensions-review...:56` | `WFR-09` | duplicate / open | workflow builder edit boundary。 |
 | `extensions-review:WR-04` | `extensions-review...:58` | `WR-04` | open | Windows reserved name / trailing dot 対応。deep review に同一 ID なし。 |
-| `extensions-review:BBR-01` | `extensions-review...:50` | `BBR-01`, `BBR-02` | duplicate / partial | MCP allowed root は対応済み。write tool capability は `BBR-02` で継続。 |
+| `extensions-review:BBR-01` | `extensions-review...:50` | `BBR-01`, `BBR-02` | duplicate / done | MCP allowed root と write tool capability は対応済み。 |
 | `extensions-review:BBR-02` | `extensions-review...:54` | `BBR-04`, `BBR-16` | duplicate / done | runtime clamp と packet size clamp は対応済み。 |
 | `extensions-review:BBR-03` | `extensions-review...:55` | `BBR-07` | duplicate / open | packet 選択の曖昧さ。 |
 | `extensions-review:BBR-04` | `extensions-review...:57` | `BBR-18` | duplicate / done | Webview nonce は対応済み。 |
