@@ -4,6 +4,8 @@ import { applyTemplate, loadPromptTemplates } from "../templates/templateLoader"
 import { relativePosix, writeJsonFile, writeTextFile } from "./fileSystem"
 import type { CodeAnalysisResult, DiffSummary, DocumentExtractionResult, EvidenceRef, ReviewInput, TraceabilityResult } from "./types"
 
+const PRIVACY_NOTICE_JA = "生成物は社内設計書・顧客仕様・ソースコード・raw diff を含む可能性があります。"
+
 export async function buildReviewPackage(input: {
   workspaceRoot: string
   outDir: string
@@ -79,6 +81,13 @@ function buildManifest(reviewInput: ReviewInput, diff: DiffSummary, evidence: Ev
     "inputs:",
     `  review_package: ${relativePosix(workspaceRoot, outDir)}`,
     `  evidence_count: ${evidence.length}`,
+    "privacy_notice:",
+    "  generated_artifacts_may_contain_sensitive_context: true",
+    `  message: ${JSON.stringify("Generated files may contain internal design docs, customer specs, source code, and raw diff. Ignore .bob-review/ and .bob-trace/ai-traceability-draft/ unless intentionally versioned.")}`,
+    "  recommended_gitignore:",
+    "    - .bob-review/",
+    "    - .bob-trace/ai-traceability-draft/",
+    "    - .bob/workflows/runs/",
     ""
   ].filter((line): line is string => line !== undefined).join("\n")
 }
@@ -143,6 +152,7 @@ function buildDeterministicChecks(documents: DocumentExtractionResult, codeAnaly
     `- code analysis warnings: ${codeAnalysis.warnings.length}`,
     `- traceability warnings: ${traceability.warnings.length}`,
     `- evidence_id duplicates: ${hasDuplicateEvidenceIds([...documents.evidence, ...codeAnalysis.evidence]) ? "detected" : "none"}`,
+    `- privacy: ${PRIVACY_NOTICE_JA} .gitignore に .bob-review/ と .bob-trace/ai-traceability-draft/ が含まれていることを確認してください。`,
     "",
     "## Warnings",
     "",

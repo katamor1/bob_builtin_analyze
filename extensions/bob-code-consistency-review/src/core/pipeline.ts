@@ -37,6 +37,6 @@ export async function preprocessReview(input: { workspaceRoot: string; inputPath
     documentEvidence: documents.evidence.length,
     codeEvidence: codeAnalysis.evidence.length,
     warnings,
-    summary: `Generated review package for ${reviewInput.review.id}: ${diff.files.length} file(s), ${documents.evidence.length} document evidence item(s), ${codeAnalysis.evidence.length} code evidence item(s).`
+    summary: `Generated review package for ${reviewInput.review.id}: ${diff.files.length} file(s), ${documents.evidence.length} document evidence item(s), ${codeAnalysis.evidence.length} code evidence item(s). Generated artifacts may contain sensitive design, customer, source, or raw diff context; ensure .bob-review/ and .bob-trace/ai-traceability-draft/ are ignored unless intentionally versioned.`
   }
 }
