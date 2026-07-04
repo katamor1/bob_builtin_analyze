@@ -22,6 +22,8 @@ interface ToolDef {
 }
 
 const SERVER_VERSION = "0.3.0"
+const DEFAULT_MAX_REQUEST_BYTES = 1024 * 1024
+const MAX_REQUEST_BYTES = readPositiveIntegerEnv("BOB_BAZAAR_MCP_MAX_REQUEST_BYTES", DEFAULT_MAX_REQUEST_BYTES)
 
 const client = new BazaarClient({
   bzrPath: process.env.BZR_PATH || "bzr",
@@ -268,10 +270,24 @@ function optionalStringProp(description: string): Record<string, unknown> {
 
 class McpStdioReader {
   private buffer = Buffer.alloc(0)
+  private remainingOversizedBodyBytes = 0
 
-  constructor(private readonly onMessage: (message: JsonRpcMessage) => void | Promise<void>) {}
+  constructor(
+    private readonly onMessage: (message: JsonRpcMessage) => void | Promise<void>,
+    private readonly maxRequestBytes: number = MAX_REQUEST_BYTES,
+    private readonly onProtocolError: (code: number, message: string) => void = (code, message) => respondError(null, code, message)
+  ) {}
 
   push(chunk: Buffer): void {
+    if (this.remainingOversizedBodyBytes > 0) {
+      if (chunk.length <= this.remainingOversizedBodyBytes) {
+        this.remainingOversizedBodyBytes -= chunk.length
+        return
+      }
+      chunk = chunk.slice(this.remainingOversizedBodyBytes)
+      this.remainingOversizedBodyBytes = 0
+    }
+
     this.buffer = Buffer.concat([this.buffer, chunk])
 
     while (true) {
@@ -287,15 +303,35 @@ class McpStdioReader {
 
       const bodyStart = headerEnd + 4
       const bodyEnd = bodyStart + contentLength
+      if (contentLength > this.maxRequestBytes) {
+        this.rejectOversizedRequest(bodyStart, contentLength)
+        continue
+      }
       if (this.buffer.length < bodyEnd) return
 
       const body = this.buffer.slice(bodyStart, bodyEnd).toString("utf8")
       this.buffer = this.buffer.slice(bodyEnd)
 
-      void Promise.resolve(this.onMessage(JSON.parse(body))).catch((error) => {
+      let message: JsonRpcMessage
+      try {
+        message = JSON.parse(body)
+      } catch (error) {
+        this.onProtocolError(-32700, `Parse error: ${formatError(error)}`)
+        continue
+      }
+
+      void Promise.resolve(this.onMessage(message)).catch((error) => {
         process.stderr.write(`message handling error: ${formatError(error)}\n`)
       })
     }
+  }
+
+  private rejectOversizedRequest(bodyStart: number, contentLength: number): void {
+    const availableBodyBytes = Math.max(0, this.buffer.length - bodyStart)
+    const bytesToDiscardNow = Math.min(contentLength, availableBodyBytes)
+    this.buffer = this.buffer.slice(bodyStart + bytesToDiscardNow)
+    this.remainingOversizedBodyBytes = contentLength - bytesToDiscardNow
+    this.onProtocolError(-32000, `Content-Length ${contentLength} exceeds maximum ${this.maxRequestBytes} bytes.`)
   }
 }
 
@@ -307,6 +343,11 @@ function parseContentLength(header: string): number | undefined {
     }
   }
   return undefined
+}
+
+function readPositiveIntegerEnv(name: string, fallback: number): number {
+  const parsed = Number(process.env[name])
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback
 }
 
 const reader = new McpStdioReader(handleMessage)
