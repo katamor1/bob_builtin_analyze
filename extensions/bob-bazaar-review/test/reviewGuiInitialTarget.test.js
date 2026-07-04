@@ -3,7 +3,7 @@ const { test } = require("node:test")
 const { readSourceSet } = require("./helpers/sourceReader")
 
 test("Bazaar workflow provider resolves repository root independently from workflowRoot", () => {
-  const bridgeSource = readSourceSet(["workflowRegisterBridge.ts", "workspaceResolver.ts"])
+  const bridgeSource = readSourceSet(["workflowRegisterBridge.ts", "workspace/workspaceResolver.ts"])
   const guiSource = readSourceSet(["reviewGui.ts", "reviewGuiTypes.ts"])
 
   assert.match(bridgeSource, /workflowRoot\?: string/)

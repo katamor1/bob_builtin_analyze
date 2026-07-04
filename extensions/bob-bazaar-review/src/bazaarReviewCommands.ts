@@ -9,7 +9,7 @@ import { buildReviewPacket } from "./reviewPacket"
 import { clampMaxAddedFileContentBytes, clampMaxDiffBytes, maxBufferForDiffBytes } from "./reviewLimits"
 import { buildAddedFilesContentSection, loadBazaarRevisionPacketInput } from "./revisionInfo"
 import { isWorkflowRegisterExtensionAvailable } from "./workflowRegisterBridge"
-import { resolveBazaarWorkspaceFolder, resolveBobWorkspaceFolder } from "./workspaceResolver"
+import { resolveBazaarWorkspaceFolder, resolveBobWorkspaceFolder } from "./workspace/workspaceResolver"
 
 export async function reviewRevision(context: vscode.ExtensionContext, withProjectRules: boolean): Promise<void> {
   const bazaarFolder = await pickBazaarWorkspaceFolder()

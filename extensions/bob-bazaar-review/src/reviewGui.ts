@@ -17,7 +17,7 @@ import {
 import type { TargetRequest } from "./reviewTarget"
 import { getBobWorkspaceStatus, initializeBobWorkspaceFromTemplates } from "./bobWorkspaceInit"
 import { completeCurrentWorkflowStepAfterGuiAction } from "./workflowStepCompletion"
-import { resolveBazaarWorkspaceFolder, resolveBobWorkspaceFolder } from "./workspaceResolver"
+import { resolveBazaarWorkspaceFolder, resolveBobWorkspaceFolder } from "./workspace/workspaceResolver"
 import { renderHtml } from "./reviewGuiHtml"
 import type { BazaarReviewInitialTarget } from "./reviewGuiTypes"
 

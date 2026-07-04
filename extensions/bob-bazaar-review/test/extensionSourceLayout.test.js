@@ -22,3 +22,13 @@ test("extension entrypoint is a composition root for command and workflow regist
   assert.doesNotMatch(source, /function configureMcp/)
   assert.doesNotMatch(source, /function initProjectRules/)
 })
+
+test("workspace root resolution modules live under the workspace source boundary", () => {
+  for (const fileName of ["workspaceResolver.ts", "workspaceRoots.ts"]) {
+    assert.ok(fs.existsSync(path.join(extensionRoot, "src", "workspace", fileName)), `workspace/${fileName} must exist`)
+    assert.ok(!fs.existsSync(path.join(extensionRoot, "src", fileName)), `${fileName} must not stay at the src root`)
+  }
+
+  const resolverSource = readSrc("workspace", "workspaceResolver.ts")
+  assert.match(resolverSource, /from "\.\/workspaceRoots"/)
+})

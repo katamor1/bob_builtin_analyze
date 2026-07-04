@@ -10,7 +10,7 @@ import {
   stringInput,
   type WorkflowActionExecutionInput
 } from "./workflowRegisterBridge"
-import { resolveBobWorkspaceFolder } from "./workspaceResolver"
+import { resolveBobWorkspaceFolder } from "./workspace/workspaceResolver"
 
 /**
  * Summary returned to workflow steps after project review rules are loaded.
