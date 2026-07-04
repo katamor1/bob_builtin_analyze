@@ -49,6 +49,11 @@ test("workflow builder split modules expose approval, markdown body, help, and g
   assert.match(script, /add-approval/)
   assert.match(script, /delete-approval/)
   assert.match(script, /data-approval-field/)
+  assert.match(script, /data-manual-form-field/)
+  assert.match(script, /data-manual-approval-field/)
+  assert.match(script, /data-transition-default/)
+  assert.match(script, /data-transition-decisions-json/)
+  assert.match(script, /stepResultKeys/)
   assert.match(script, /goto-help-target/)
 
   const guidedScript = renderWorkflowBuilderGuidedHelpScript()
