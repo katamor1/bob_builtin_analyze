@@ -26,6 +26,23 @@ test("parseAiTraceabilityDraft rejects AI drafts that try to create accepted sta
   })), /AI draft must not create accepted state/)
 })
 
+test("parseAiTraceabilityDraft rejects oversized proposed draft fields and collections", () => {
+  const oversizedField = validProposedDraft()
+  oversizedField.domains[0].label = "x".repeat(3000)
+  assert.throws(() => parseAiTraceabilityDraft(JSON.stringify(oversizedField)), /exceeds max string length/)
+
+  const oversizedCollection = validProposedDraft()
+  oversizedCollection.items = Array.from({ length: 1001 }, (_, index) => ({
+    proposed_id: `REQ-RS001-PAY-${String(index + 1).padStart(4, "0")}`,
+    type: "requirement",
+    source_document_id: "RS001",
+    domain: "PAY",
+    sequence: index + 1,
+    status: "proposed"
+  }))
+  assert.throws(() => parseAiTraceabilityDraft(JSON.stringify(oversizedCollection)), /items exceeds max count/)
+})
+
 test("parseAiTraceabilityDraft prefers JSON fences over Mermaid fences", () => {
   const draft = parseAiTraceabilityDraft(`
 ### summary
@@ -144,6 +161,33 @@ test("applyAiTraceabilityDraft writes a proposed-only draft into the sidecar cat
   assert.equal(written.items[0].status, "proposed")
 })
 
+test("applyAiTraceabilityDraft rejects draft source paths outside the workspace before writing", async () => {
+  const workspaceRoot = await makeWorkspace()
+  const result = await applyAiTraceabilityDraft({
+    workspaceRoot,
+    text: JSON.stringify({
+      schema_version: 1,
+      documents: [{ document_id: "RS001", source_path: "../outside.md", id_source: "extracted" }],
+      domains: [{ code: "PAY", status: "proposed" }],
+      items: [{
+        proposed_id: "REQ-RS001-PAY-0001",
+        type: "requirement",
+        source_document_id: "RS001",
+        domain: "PAY",
+        sequence: 1,
+        source_path: "../outside.md",
+        status: "proposed"
+      }],
+      links: [],
+      decisions: []
+    })
+  })
+
+  assert.equal(result.status, "error")
+  assert.ok(result.errors.some((error) => error.includes("source_path")))
+  await assert.rejects(fs.readFile(path.join(workspaceRoot, ".bob-trace", "traceability-catalog.json"), "utf8"), /ENOENT/)
+})
+
 test("prepareAiTraceabilityDraftPrompt writes a proposed-only sidecar catalog prompt", async () => {
   const workspaceRoot = await makeWorkspace()
   await fs.mkdir(path.join(workspaceRoot, "docs"), { recursive: true })
@@ -189,5 +233,23 @@ function acceptedRequirement() {
     sequence: 1,
     status: "accepted",
     text_summary: "accepted"
+  }
+}
+
+function validProposedDraft() {
+  return {
+    schema_version: 1,
+    documents: [{ document_id: "RS001", source_path: "docs/requirements.md", id_source: "extracted" }],
+    domains: [{ code: "PAY", status: "proposed" }],
+    items: [{
+      proposed_id: "REQ-RS001-PAY-0001",
+      type: "requirement",
+      source_document_id: "RS001",
+      domain: "PAY",
+      sequence: 1,
+      status: "proposed"
+    }],
+    links: [],
+    decisions: []
   }
 }
