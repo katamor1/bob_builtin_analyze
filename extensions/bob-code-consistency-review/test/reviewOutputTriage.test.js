@@ -34,7 +34,7 @@ test("AI verification matrix expected Bob output validates and generates triage"
   assert.match(fs.readFileSync(path.join(triageDir, "questions-to-author.md"), "utf8"), /Q-001/)
 })
 
-test("capture, validate, and triage recover when real AI writes bob-output.yaml inside the review package", async () => {
+test("capture, validate, and triage do not silently use review-package bob-output fallback", async () => {
   const workspace = createAiVerificationMatrixWorkspace()
   const packageDir = path.join(workspace, ".bob-review", "review-package")
   await preprocessReview({ workspaceRoot: workspace, inputPath: path.join(workspace, "review-input.yaml"), outDir: packageDir })
@@ -49,20 +49,18 @@ test("capture, validate, and triage recover when real AI writes bob-output.yaml 
     bobOutputPath: canonicalOutputPath,
     text: "Bob wrote the YAML output to .bob-review/review-package/bob-output.yaml."
   })
-  assert.equal(capture.status, "ok")
-  assert.equal(path.resolve(capture.sourcePath), path.resolve(fallbackOutputPath))
-  assert.ok(fs.existsSync(canonicalOutputPath))
+  assert.equal(capture.status, "error")
+  assert.match(capture.message, /Bob output YAML not found/)
+  assert.equal(fs.existsSync(canonicalOutputPath), false)
 
-  fs.rmSync(path.dirname(canonicalOutputPath), { recursive: true, force: true })
   const report = await validateBobOutput({ packageDir, bobOutputPath: canonicalOutputPath })
-  assert.deepEqual(report.errors, [])
-  assert.ok(report.warnings.some((warning) => warning.includes("review-package/bob-output.yaml")))
+  assert.ok(report.errors.some((error) => error.includes("Bob output YAML not found")))
+  assert.equal(report.warnings.some((warning) => warning.includes("review-package/bob-output.yaml")), false)
 
   const triageDir = path.join(workspace, ".bob-review", "human-triage")
   const triage = await generateHumanTriage({ packageDir, bobOutputPath: canonicalOutputPath, outDir: triageDir })
-  assert.equal(triage.status, "ok")
-  assert.ok(triage.itemCount >= 4)
-  assert.match(fs.readFileSync(path.join(triageDir, "accepted-findings.md"), "utf8"), /PRE-001/)
+  assert.equal(triage.status, "error")
+  assert.match(triage.message, /Bob output YAML not found/)
 })
 
 test("generateHumanTriage reports a missing Bob output file without throwing ENOENT", async () => {

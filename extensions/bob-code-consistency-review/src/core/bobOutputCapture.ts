@@ -1,7 +1,6 @@
 import * as path from "node:path"
 import YAML from "yaml"
 import { pathExists, readTextFile, resolveWorkspacePathStrict, writeTextFile } from "./fileSystem"
-import { readBobOutputText } from "./bobOutputSource"
 import { canonicalizeBobOutputWithReport, type CanonicalizationIssue, type EvidenceIndexItem, type EvidenceLookup } from "./bobOutputCanonicalizer"
 import { validateParsedBobOutput } from "./bobOutputValidator"
 import type { ValidationReport } from "./types"
@@ -82,15 +81,9 @@ async function resolveCaptureSource(input: CaptureBobOutputInput): Promise<Captu
   const textYaml = extractYamlFromText(input.text)
   if (textYaml) return { yamlText: textYaml, message: "Bob output was read from command text." }
 
-  const fallback = await readBobOutputText({ bobOutputPath: input.bobOutputPath, packageDir: input.packageDir, includePrimary: false })
-  if (!fallback.ok) {
-    return { message: `Bob 出力内に YAML オブジェクトが見つかりませんでした。${fallback.error}` }
+  return {
+    message: "Bob 出力内に YAML オブジェクトが見つかりませんでした。Bob output YAML not found in command text; review-package/bob-output.yaml fallback is disabled."
   }
-  const fallbackYaml = extractYamlFromText(fallback.text)
-  if (!fallbackYaml) {
-    return { sourcePath: fallback.sourcePath, message: `Bob 出力内に YAML オブジェクトが見つかりませんでした: ${fallback.sourcePath}` }
-  }
-  return { yamlText: fallbackYaml, sourcePath: fallback.sourcePath, message: `Bob output was read from ${fallback.sourcePath}.` }
 }
 
 export function extractYamlFromText(text: string): string | undefined {
