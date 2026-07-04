@@ -196,6 +196,33 @@ commandArgs:
   assert.deepEqual(parsed.workflow.commandArgs, ["first", "second"])
 })
 
+test("legacy workflow parser records a definition hash", () => {
+  const text = `---
+name: legacy
+description: Legacy workflow.
+---
+# Legacy
+
+Do the legacy workflow.
+`
+  const changedText = text.replace("Do the legacy workflow.", "Do the changed legacy workflow.")
+  const parsed = parseWorkflowMarkdown({
+    sourceId: "workflow-register",
+    filePath: "C:/repo/.bob/workflows/legacy/WORKFLOW.md",
+    text
+  })
+  const changed = parseWorkflowMarkdown({
+    sourceId: "workflow-register",
+    filePath: "C:/repo/.bob/workflows/legacy/WORKFLOW.md",
+    text: changedText
+  })
+
+  assert.equal(parsed.ok, true, parsed.diagnostics.join("\n"))
+  assert.equal(changed.ok, true, changed.diagnostics.join("\n"))
+  assert.match(parsed.workflow.definitionHash, /^sha256:[0-9a-f]{64}$/)
+  assert.notEqual(parsed.workflow.definitionHash, changed.workflow.definitionHash)
+})
+
 test("v1 workflow parser keeps legacy todo workflow-step sections executable when front matter steps are absent", () => {
   const parsed = parseWorkflowMarkdown({
     sourceId: "workflow-register",
