@@ -16,7 +16,7 @@
 
 | document | kind | tracking scope | current status | notes |
 | --- | --- | --- | --- | --- |
-| [workflow-register-deep-review-2026-07-04-14afe83c.md](workflow-register-deep-review-2026-07-04-14afe83c.md) | deep review | `WFR-01` to `WFR-15` | partial | `WFR-01`、`WFR-02`、`WFR-03`、`WFR-04`、`WFR-05`、`WFR-06`、`WFR-12` は対応済み。 |
+| [workflow-register-deep-review-2026-07-04-14afe83c.md](workflow-register-deep-review-2026-07-04-14afe83c.md) | deep review | `WFR-01` to `WFR-15` | partial | `WFR-01`、`WFR-02`、`WFR-03`、`WFR-04`、`WFR-05`、`WFR-06`、`WFR-07`、`WFR-12` は対応済み。 |
 | [workflow-register-maintainability-review-2026-07-04-14afe83c.md](workflow-register-maintainability-review-2026-07-04-14afe83c.md) | maintainability review | `WFR-MAINT-*` | backlog | ID 付き deep review と重なるものは canonical 側を優先する。 |
 | [bob-bazaar-review-deep-review-2026-07-04-14afe83c.md](bob-bazaar-review-deep-review-2026-07-04-14afe83c.md) | deep review | `BBR-01` to `BBR-20` | done | `BBR-01` から `BBR-20` まで対応済み。 |
 | [bob-bazaar-review-maintainability-review-2026-07-04-14afe83c.md](bob-bazaar-review-maintainability-review-2026-07-04-14afe83c.md) | maintainability review | `BBR-MAINT-*` | backlog | clamp や allowed root など deep review と重なる項目を含む。 |
@@ -37,7 +37,7 @@
 | `WFR-04` | `workflow-register-deep-review...:52` | High | retry/recovery が古い assistant 出力を再利用する可能性 | done | `83049480` | `extensions/workflow-register`: `npm.cmd run compile; node --test test\workflowRunRecovery.test.js test\runtimeWiring.test.js`; `npm.cmd test`; `git diff --check` |
 | `WFR-05` | `workflow-register-deep-review...:53` | High | task snapshot の機密情報リスク | done | `8bef221a` | `extensions/workflow-register`: `npm.cmd run compile; node --test test\taskSnapshots.test.js test\workflowRegister.test.js`; `npm.cmd test`; `git diff --check` |
 | `WFR-06` | `workflow-register-deep-review...:54` | Medium | `requires.files` / `preflight.files` が workspace 外の存在確認に使える | done | `ba88d772` | `extensions/workflow-register`: `npm.cmd test`; `git diff --check` |
-| `WFR-07` | `workflow-register-deep-review...:55` | Medium | state / command result の prompt injection 境界が弱い | open | escaping と data-only 境界を追加 |  |
+| `WFR-07` | `workflow-register-deep-review...:55` | Medium | state / command result の prompt injection 境界が弱い | done | `0692e045` | `extensions/workflow-register`: `npm.cmd run compile; node --test test\agentStep.test.js test\bobWorkflowMessages.test.js test\runtimeWiring.test.js`; `npm.cmd test`; `git diff --check` |
 | `WFR-08` | `workflow-register-deep-review...:56` | Medium | template renderer の暗黙 JSON key 解決が予測しづらい | open | explicit path 参照へ寄せる |  |
 | `WFR-09` | `workflow-register-deep-review...:57` | Medium | GUI edit / AI repair の上書き対象 boundary | open | `.bob/workflows/*/WORKFLOW.md` を hard validate |  |
 | `WFR-10` | `workflow-register-deep-review...:58` | Medium | legacy workflow に definition hash がない | open | legacy hash 追加または recovery 対象外化 |  |
@@ -146,6 +146,7 @@
 | `8bef221a` | `WFR-05`, `extensions-review:WR-02` | default task snapshots to no chat messages, redact secrets, and ignore workflow run artifacts |
 | `aad8feb6` | `BBR-06` | dynamic Markdown fences for review packet content |
 | `ba88d772` | `WFR-06` | workspace containment for preflight paths |
+| `0692e045` | `WFR-07` | isolate workflow state and command result prompt data from executable instructions |
 | `6c94c7e1` | `WFR-12` | byte-safe command result truncation |
 | `8c86eb05` | `BBR-14` | Bazaar revision validation |
 | `fae99b40` | `BBR-18`, `extensions-review:BBR-04` | random GUI nonce |
