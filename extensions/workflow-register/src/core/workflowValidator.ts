@@ -193,6 +193,10 @@ function validateGuardrails(workflow: CoreWorkflowDefinition, diagnostics: Workf
   for (const denied of workflow.guardrails.deniedCommands ?? []) {
     if (allowed.has(denied)) diagnostics.push(error(filePath, `Guardrail command '${denied}' is both allowed and denied.`))
   }
+  const allowedCommandIds = new Set(workflow.guardrails.allowedCommandIds ?? [])
+  for (const denied of workflow.guardrails.deniedCommandIds ?? []) {
+    if (allowedCommandIds.has(denied)) diagnostics.push(error(filePath, `Guardrail command id '${denied}' is both allowed and denied.`))
+  }
 }
 
 function diagnosticFromParserLine(line: string, filePath: string): WorkflowDiagnostic {
@@ -210,6 +214,7 @@ function diagnosticHint(message: string): string | undefined {
   if (message.includes("Duplicate step id")) return "Each step id must be unique within one WORKFLOW.md."
   if (message.includes("select but has no options")) return "Add an options list to the select input."
   if (message.includes("producedBy step")) return "Set producedBy to the id of a step that exists in steps."
+  if (message.includes("command id")) return "Keep each VS Code command id in either allowedCommandIds or deniedCommandIds, not both."
   if (message.includes("both allowed and denied")) return "Keep each command in either allowedCommands or deniedCommands, not both."
   if (message.includes("missing YAML front matter")) return "Start the file with a YAML front matter block delimited by ---."
   if (message.includes("invalid YAML")) return "Check indentation, list markers, and quoted strings in the front matter."

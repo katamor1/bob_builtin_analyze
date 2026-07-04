@@ -106,9 +106,9 @@ async function executeCommandStep(input: {
   emitCommandResult: EngineEmitter
 }): Promise<{ ok: true } | { ok: false; error: string }> {
   const { workflow, run, step } = input
-  const guardrail = validateCommandGuardrails(workflow, step.action.provider)
-  if (guardrail) return { ok: false, error: guardrail }
   const args = renderValue(step.action.args, { inputs: run.inputs, state: run.state, run, workflow, step })
+  const guardrail = validateCommandGuardrails(workflow, step.action.provider, args)
+  if (guardrail) return { ok: false, error: guardrail }
   const result = await input.actions.execute(step.action.provider, {
     args,
     inputs: run.inputs,

@@ -52,6 +52,8 @@ export interface WorkflowApprovalRuleDefinition {
 export interface WorkflowGuardrailsDefinition {
   allowedCommands?: string[]
   deniedCommands?: string[]
+  allowedCommandIds?: string[]
+  deniedCommandIds?: string[]
   requireApproval?: WorkflowApprovalRuleDefinition[]
 }
 
