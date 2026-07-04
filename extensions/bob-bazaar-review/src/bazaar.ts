@@ -21,6 +21,7 @@ interface RunOptions {
 }
 
 const REQUIRED_BZR_GLOBAL_OPTION = "--no-aliases"
+const MAX_REVISION_SPEC_LENGTH = 128
 
 export class BazaarError extends Error {
   constructor(message: string, readonly details?: unknown) {
@@ -159,6 +160,12 @@ export function validateRevision(revision: string): string {
   const trimmed = revision.trim()
   if (!trimmed) {
     throw new BazaarError("リビジョンを入力してください。")
+  }
+  if (trimmed.length > MAX_REVISION_SPEC_LENGTH) {
+    throw new BazaarError(`Bazaar リビジョン指定が長すぎます: ${revision}`)
+  }
+  if (trimmed.startsWith("-") || trimmed.includes("..")) {
+    throw new BazaarError(`安全でない Bazaar リビジョン指定です: ${revision}`)
   }
 
   // Supports revno such as 1234, dotted revno such as 1.2.3,
