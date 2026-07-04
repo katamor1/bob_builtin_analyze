@@ -13,6 +13,7 @@ import {
   readTriage,
   validateReviewRecord,
   writeCampaignSummaryArtifacts,
+  writeReviewPacketArtifact,
   writeReviewRecord,
   writeTriage
 } from "./reviewRecordStore"
@@ -29,6 +30,8 @@ export interface ReviewRecordCommandInput {
   reviewResultJsonPath?: string
   reviewResultMarkdownPath?: string
   triageYamlPath?: string
+  reviewPacketText?: string
+  backupExistingPacket?: boolean
   workflow?: Record<string, unknown>
   vcs?: ReviewRecord["vcs"]
   metrics?: ReviewRecord["metrics"]
@@ -65,6 +68,11 @@ export async function createReviewRecord(input: ReviewRecordCommandInput = {}): 
   const reviewResultMarkdownPath = input.reviewResultMarkdownPath ?? `.bob/review/results/${reviewId}.md`
   const reviewPacketPath = input.reviewPacketPath ?? `.bob-review-records/campaigns/${campaignId}/records/${reviewId}/review-packet.md`
   const triageYamlPath = input.triageYamlPath ?? `.bob-review-records/campaigns/${campaignId}/records/${reviewId}/triage.yaml`
+  if (typeof input.reviewPacketText === "string") {
+    await writeReviewPacketArtifact(workspaceRoot, campaignId, reviewId, input.reviewPacketText, {
+      backupExisting: input.backupExistingPacket ?? true
+    })
+  }
   const reviewResult = await readJsonArtifact(workspaceRoot, reviewResultJsonPath)
 
   const record: ReviewRecord = {
@@ -254,4 +262,3 @@ function reviewFindingsHaveRuleIds(reviewResult: any): boolean {
   const findings = Array.isArray(reviewResult?.findings) ? reviewResult.findings : []
   return findings.every((finding: any) => typeof finding?.rule_id === "string" && finding.rule_id.trim().length > 0)
 }
-

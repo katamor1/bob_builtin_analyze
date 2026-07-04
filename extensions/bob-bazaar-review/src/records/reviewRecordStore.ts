@@ -45,6 +45,31 @@ export async function writeTriage(workspaceRoot: string, campaignId: string, rev
   return filePath
 }
 
+export async function writeReviewPacketArtifact(
+  workspaceRoot: string,
+  campaignId: string,
+  reviewId: string,
+  packetText: string,
+  options: { backupExisting?: boolean; overwrite?: boolean } = {}
+): Promise<{ packetPath: string; backupPaths: string[] }> {
+  const packetPath = path.join(recordDirectory(workspaceRoot, campaignId, reviewId), "review-packet.md")
+  const backupPaths: string[] = []
+  await fs.mkdir(path.dirname(packetPath), { recursive: true })
+
+  if (await exists(packetPath)) {
+    if (options.backupExisting) {
+      const backupPath = await nextBackupPath(packetPath)
+      await fs.copyFile(packetPath, backupPath)
+      backupPaths.push(backupPath)
+    } else if (!options.overwrite) {
+      throw new Error(`review packet artifact already exists: ${packetPath}`)
+    }
+  }
+
+  await fs.writeFile(packetPath, packetText, "utf8")
+  return { packetPath, backupPaths }
+}
+
 export async function readTriage(workspaceRoot: string, campaignId: string, reviewId: string): Promise<ReviewTriage> {
   const filePath = triageYamlPath(workspaceRoot, campaignId, reviewId)
   return fromYaml<ReviewTriage>(await fs.readFile(filePath, "utf8"))
@@ -279,3 +304,21 @@ function numberOrZero(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0
 }
 
+async function exists(filePath: string): Promise<boolean> {
+  try {
+    await fs.access(filePath)
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function nextBackupPath(filePath: string): Promise<string> {
+  const first = `${filePath}.bak`
+  if (!(await exists(first))) return first
+  for (let index = 1; index < 1000; index += 1) {
+    const candidate = `${filePath}.bak.${index}`
+    if (!(await exists(candidate))) return candidate
+  }
+  throw new Error(`could not allocate backup path for ${filePath}`)
+}

@@ -97,3 +97,27 @@ test("Phase 1 runtime templates can be copied into a workspace without touching 
     /deferred:/
   ])
 })
+
+test("Phase 1 review record operations are documented for README and real-machine UAT", () => {
+  assertFileIncludes("extensions/bob-bazaar-review/README.md", [
+    /\.bob-review-records/,
+    /bobBazaar\.records\.initCampaign/,
+    /bobBazaar\.records\.createRecord/,
+    /bobBazaar\.records\.createTriage/,
+    /bobBazaar\.records\.generateSummary/,
+    /review-packet\.md/,
+    /summary\.json/
+  ])
+
+  assertFileIncludes("extensions/bob-bazaar-review/docs/real-machine-test-spec-ja.md", [
+    /\.bob-review-records/,
+    /BZR-RT-036/,
+    /BZR-RT-037/,
+    /BZR-RT-038/,
+    /BZR-RT-039/,
+    /BZR-RT-040/,
+    /BZR-RT-041/,
+    /BZR-RT-042/,
+    /BZR-RT-043/
+  ])
+})

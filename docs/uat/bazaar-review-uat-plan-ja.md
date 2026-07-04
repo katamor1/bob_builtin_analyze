@@ -1,7 +1,7 @@
 # Bazaar Review UAT Plan
 
 - 対象: `workflow-register`, `bob-bazaar-review`, `bob-code-consistency-review`
-- 対象フェーズ: Phase 0 基盤安定化・運用設計
+- 対象フェーズ: Phase 0 基盤安定化・運用設計、Phase 1 Bazaar レビュー実績作成
 - 実施単位: 1 workspace、1 Bazaar repository、1 Bob 実行セッション
 - 判定語: `ok`, `ng`, `n/a`
 
@@ -33,6 +33,7 @@ UAT では機能の網羅よりも、運用者が迷わず再実行できるこ�
 ```gitignore
 .bob/review/results/
 .bob/workflows/runs/
+.bob-review-records/
 .bob-review/
 .bob-trace/ai-traceability-draft/
 ```
@@ -51,6 +52,11 @@ UAT では機能の網羅よりも、運用者が迷わず再実行できるこ�
 | UAT-BZR-08 | MCP cwd 境界 | workspace 外 path を MCP 操作対象に指定する。 | allowed root validation で拒否される。 | |
 | UAT-BZR-09 | alias 影響確認 | Bazaar alias がある環境で packet を生成する。 | 拡張機能の Bazaar 呼び出しは `--no-aliases` で成功する。 | |
 | UAT-BZR-10 | 再実行性 | 同じ条件でもう一度 packet 生成と取り込みを行う。 | 新しい artifact が作成され、既存結果の上書きや混線がない。 | |
+| UAT-BZR-11 | Phase 1 campaign 初期化 | `Bob Bazaar Review: 実績 campaign を初期化` を実行する。 | `.bob-review-records/campaigns/phase1-bazaar-review-uat-001` が作成される。 | |
+| UAT-BZR-12 | packet artifact | review packet を `review-packet.md` として campaign record 配下へ保存する。 | Bob に渡した packet が後から確認できる。 | |
+| UAT-BZR-13 | review record | capture 済み review-result から `record.yaml` を作成・検証する。 | review-result JSON/Markdown、packet、triage path が追跡できる。 | |
+| UAT-BZR-14 | human triage | `triage.yaml` を生成し、人間が採否を記入して検証する。 | `accepted` / `rejected` / `needs_investigation` / `deferred` が集計できる。 | |
+| UAT-BZR-15 | campaign summary | 複数 record から `summary.json` / `summary.md` を生成する。 | 件数、採否、所要時間、warning が表示される。 | |
 
 ## 5. Code Consistency 連携スモーク
 
@@ -79,6 +85,11 @@ UAT では機能の網羅よりも、運用者が迷わず再実行できるこ�
 | UAT-BZR-08 | | | | |
 | UAT-BZR-09 | | | | |
 | UAT-BZR-10 | | | | |
+| UAT-BZR-11 | | | | |
+| UAT-BZR-12 | | | | |
+| UAT-BZR-13 | | | | |
+| UAT-BZR-14 | | | | |
+| UAT-BZR-15 | | | | |
 | UAT-CCR-01 | | | | |
 | UAT-CCR-02 | | | | |
 | UAT-CCR-03 | | | | |
@@ -90,4 +101,5 @@ UAT では機能の網羅よりも、運用者が迷わず再実行できるこ�
 - `n/a` は理由が記録されている。
 - 生成物が許可領域外へ保存されていない。
 - Bob 出力、review-result、triage、traceability のうち、実施対象にした成果物 path が記録されている。
+- Phase 1 実績作成を対象にした場合は、`summary.md` に `records_total`、triage decision、warning が記録されている。
 - follow-up がある場合は owner と対応方針が決まっている。

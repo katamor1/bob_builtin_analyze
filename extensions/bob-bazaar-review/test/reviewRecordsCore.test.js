@@ -263,3 +263,27 @@ test("campaign summary aggregates valid records and exposes missing triage", asy
   assert.match(summaryMarkdown, /records_total/)
   assert.match(summaryMarkdown, /triage missing/)
 })
+
+test("review packet artifacts are written under the campaign record and protect existing evidence", async () => {
+  const {
+    writeReviewPacketArtifact
+  } = require("../out/records/reviewRecordStore")
+  const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "bob-bazaar-packet-artifact-"))
+  const campaignId = "phase1-bazaar-review-uat-001"
+  const reviewId = "bazaar-r125-project-rule-review"
+
+  const first = await writeReviewPacketArtifact(workspaceRoot, campaignId, reviewId, "# Packet v1\n")
+  assert.equal(path.relative(workspaceRoot, first.packetPath), path.join(".bob-review-records", "campaigns", campaignId, "records", reviewId, "review-packet.md"))
+  assert.deepEqual(first.backupPaths, [])
+  assert.equal(await fs.readFile(first.packetPath, "utf8"), "# Packet v1\n")
+
+  await assert.rejects(
+    () => writeReviewPacketArtifact(workspaceRoot, campaignId, reviewId, "# Packet v2\n"),
+    /already exists/
+  )
+
+  const second = await writeReviewPacketArtifact(workspaceRoot, campaignId, reviewId, "# Packet v2\n", { backupExisting: true })
+  assert.equal(await fs.readFile(second.packetPath, "utf8"), "# Packet v2\n")
+  assert.equal(second.backupPaths.length, 1)
+  assert.equal(await fs.readFile(second.backupPaths[0], "utf8"), "# Packet v1\n")
+})
