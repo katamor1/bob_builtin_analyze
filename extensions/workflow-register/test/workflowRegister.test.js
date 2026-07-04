@@ -48,6 +48,7 @@ test("workflow authoring wrapper wires a configurable AI provider command", () =
 
 test("package contributes standalone workflow launcher commands without a hard Bob dependency", () => {
   const packageJson = readJson("package.json")
+  const readme = readExtensionFile("README.md")
   const source = readSourceSet([
     "extension.ts",
     "workflowInputPrompt.ts",
@@ -56,6 +57,8 @@ test("package contributes standalone workflow launcher commands without a hard B
   ])
 
   assert.equal(packageJson.extensionDependencies, undefined)
+  assert.match(readme, /authoring \/ validation \/ standalone workflow execution は利用でき/)
+  assert.match(readme, /IBM Bob 拡張: `IBM\.bob-code`（Bob UI 登録時のみ必須）/)
   for (const command of [
     "workflowRegister.runWorkflow",
     "workflowRegister.runWorkflowStep",
