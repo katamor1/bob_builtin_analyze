@@ -12,7 +12,7 @@ import type {
 import type { ActionRegistry } from "./core/actionRegistry"
 import { createCommandAgentProvider } from "./core/agentProvider"
 import { WorkflowEngine } from "./core/engine"
-import type { WorkflowEngineOptions } from "./core/engine"
+import type { ManualCompletionInput, ManualCompletionResult, WorkflowEngineOptions } from "./core/engine"
 import type { AgentProvider } from "./core/model"
 import { createDefaultResultSinkRegistry, ResultSinkRegistry } from "./core/resultSinkRegistry"
 import { FileRunStateStore, RunStateStore } from "./core/runStateStore"
@@ -48,6 +48,7 @@ export class WorkflowRuntimeFactory {
       runStore: this.createRunStore(workspaceRoot),
       agentProvider: this.options.agentProvider() ?? this.createCommandAgentProvider(),
       preflightChecks: this.createPreflightChecks(workspaceRoot),
+      manualCompletion: (input) => this.holdStandaloneManualStep(input),
       recoverResultText: snapshotStore
         ? (input) => recoverResultTextFromSnapshots(snapshotStore, input.workflow, input.run, input.step)
         : undefined
@@ -74,6 +75,24 @@ export class WorkflowRuntimeFactory {
 
   createRunStore(workspaceRoot: string): RunStateStore {
     return new FileRunStateStore({ workspaceRoot, engineVersion: this.options.engineVersion })
+  }
+
+  private async holdStandaloneManualStep(input: ManualCompletionInput): Promise<ManualCompletionResult> {
+    return this.options.stepRuntime.hold(
+      {
+        id: input.workflow.id,
+        label: input.workflow.label,
+        guardrails: input.workflow.guardrails
+      },
+      { id: input.step.id, title: input.step.title },
+      {},
+      {
+        runId: input.run.runId,
+        coreStep: input.step,
+        inputs: input.run.inputs,
+        state: input.run.state
+      }
+    )
   }
 
   private createCommandAgentProvider(): AgentProvider | undefined {

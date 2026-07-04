@@ -114,21 +114,22 @@ export class BobWorkflowEngineRunner {
         messageStartIndexes
       ),
       manualCompletion: async ({ run, step }) => {
-        const completed = await this.options.stepRuntime.hold(
+        const result = await this.options.stepRuntime.hold(
           this.options.definition,
           { id: step.id, title: step.title },
           task,
           {
             runId: run.runId,
             stepDefinition: this.options.definition.stepsById[step.id],
+            coreStep: step,
             actionRegistry: this.options.actionRegistry,
             inputs: run.inputs,
             state: run.state,
             messageStartIndex: messageStartIndexes.get(stepKey(run.runId, step.id))
           }
         )
-        if (completed) manuallyCompleted.add(stepKey(run.runId, step.id))
-        return { completed }
+        if (result.completed) manuallyCompleted.add(stepKey(run.runId, step.id))
+        return result
       },
       recoverResultText: async ({ workflow, run, step, reason }) => {
         if (reason === "retry-agent-result") return undefined
