@@ -21,6 +21,7 @@ import {
 import {
   writeProducedArtifacts as writeEngineProducedArtifacts,
 } from "./engine/resultWriters"
+import { prepareRetryResultRecovery } from "./engine/recoveryState"
 import {
   completeStepIfManual as completeEngineStepIfManual,
   waitForManualCompletion as waitForEngineManualCompletion
@@ -199,6 +200,7 @@ export class WorkflowEngine {
     const step = workflow.engineSteps[index]
     const stepState = run.steps[index]
     if (review.preserveAttempts) archiveAttempt(stepState, run.state, stepState.status === "reviewing" ? "rejected" : undefined)
+    prepareRetryResultRecovery(run, step, stepState)
     run.status = "running"
     run.error = undefined
     stepState.status = "pending"

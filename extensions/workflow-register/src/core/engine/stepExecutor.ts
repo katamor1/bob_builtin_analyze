@@ -13,6 +13,7 @@ import type {
 import { reportedActionError } from "../reportedActionError"
 import type { ResultSinkRegistry } from "../resultSinkRegistry"
 import type { WorkflowEngineEventInput, WorkflowEngineOptions } from "../engineTypes"
+import { takeRetryResultRecoveryReason } from "./recoveryState"
 import {
   formatStateValue,
   renderTemplate,
@@ -64,7 +65,10 @@ async function executeAgentStep(input: {
   try {
     let agentText = step.resultKey ? run.state[step.resultKey] : undefined
     if (agentText === undefined) {
-      agentText = await input.recoverResultText?.({ workflow, run, step, reason: "retry-agent-result" })
+      const recoveryReason = takeRetryResultRecoveryReason(run, step)
+      if (recoveryReason) {
+        agentText = await input.recoverResultText?.({ workflow, run, step, reason: recoveryReason })
+      }
     }
     if (agentText === undefined) {
       if (!input.agentProvider) return { ok: false, error: "Agent provider is required for agent workflow steps." }

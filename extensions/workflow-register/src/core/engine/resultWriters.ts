@@ -6,6 +6,7 @@ import type {
 } from "../model"
 import type { ResultSinkRegistry } from "../resultSinkRegistry"
 import type { WorkflowEngineEventInput, WorkflowEngineOptions } from "../engineTypes"
+import { markResultHandoffFailed } from "./recoveryState"
 import {
   renderArtifactPath,
   replacementResultText
@@ -42,6 +43,7 @@ export async function writeResultSinks(input: {
       })
       if (!write.ok) {
         const error = write.error ?? `Result sink failed: ${sink.type}`
+        markResultHandoffFailed(run, step, error)
         await emitHandoffFailed({ workflow, run, step, agentText: text, error })
         return { ok: false, error }
       }
@@ -52,6 +54,7 @@ export async function writeResultSinks(input: {
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
+    markResultHandoffFailed(run, step, message)
     await emitHandoffFailed({ workflow, run, step, agentText, error: message })
     return { ok: false, error: message }
   }

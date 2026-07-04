@@ -100,6 +100,14 @@ test("Bob workflow Todo execution delegates to the shared WorkflowEngine runner"
   assert.doesNotMatch(source, /Unsupported step command\. Add it to the workflow-register allowlist before use\./)
 })
 
+test("Bob workflow result recovery is scoped to messages after the current step starts", () => {
+  const source = readSrc("bobWorkflowRunner.ts")
+
+  assert.match(source, /const messageStartIndex = messageStartIndexes\.get\(stepKey\(run\.runId, step\.id\)\) \?\? 0/)
+  assert.match(source, /extractLastAssistantText\(task\.getMessages\?\.\(\) \?\? \[\], messageStartIndex\)/)
+  assert.doesNotMatch(source, /extractLastAssistantText\(task\.getMessages\?\.\(\) \?\? \[\], 0\)/)
+})
+
 test("Engine preflight checks Bazaar repositories across multi-root workspaces", () => {
   const source = readSourceSet(["workflowRuntimeFactory.ts", "bobWorkflowRunner.ts"])
 

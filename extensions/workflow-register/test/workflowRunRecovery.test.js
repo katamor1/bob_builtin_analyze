@@ -286,3 +286,64 @@ test("retrying an agent handoff failure can reuse recovered text without rerunni
   assert.equal(retried.state.analysis, "recovered analysis")
   assert.equal(output, "recovered analysis")
 })
+
+test("retrying a failed agent step reruns the agent instead of recovering stale assistant text", async () => {
+  const { ActionRegistry } = require("../out/core/actionRegistry")
+  const { WorkflowEngine } = require("../out/core/engine")
+  const { createDefaultResultSinkRegistry } = require("../out/core/resultSinkRegistry")
+  const { FileRunStateStore } = require("../out/core/runStateStore")
+
+  const workspaceRoot = tempDir()
+  const workflow = {
+    id: "workflow-register.agent-retry-rerun",
+    name: "agent-retry-rerun",
+    label: "Agent Retry Rerun",
+    description: "Agent retry rerun workflow.",
+    schemaVersion: "workflow-register/v1",
+    definitionHash: "definition-v1",
+    filePath: ".bob/workflows/agent-retry-rerun/WORKFLOW.md",
+    inputs: {},
+    engineSteps: [
+      {
+        id: "analyze",
+        title: "Analyze",
+        type: "agent",
+        prompt: "Analyze",
+        resultKey: "analysis"
+      }
+    ]
+  }
+  const runStore = new FileRunStateStore({ workspaceRoot, now: () => "2026-06-30T00:00:00.000Z", engineVersion: "test-engine" })
+  const failed = await runStore.createRun(workflow, {})
+  failed.status = "failed"
+  failed.currentStep = "analyze"
+  failed.error = "Agent provider failed"
+  failed.steps[0].status = "failed"
+  failed.steps[0].error = failed.error
+  await runStore.saveRun(failed)
+
+  const recoveryReasons = []
+  let agentCalls = 0
+  const engine = new WorkflowEngine({
+    actions: new ActionRegistry(),
+    resultSinks: createDefaultResultSinkRegistry({ workspaceRoot, executeCommand: async () => undefined }),
+    runStore,
+    agentProvider: {
+      run: async () => {
+        agentCalls += 1
+        return "fresh analysis"
+      }
+    },
+    recoverResultText: async ({ reason }) => {
+      recoveryReasons.push(reason)
+      return "stale analysis"
+    }
+  })
+
+  const retried = await engine.retryCurrentStep(failed.runId, workflow)
+
+  assert.equal(retried.status, "completed")
+  assert.equal(agentCalls, 1)
+  assert.deepEqual(recoveryReasons, [])
+  assert.equal(retried.state.analysis, "fresh analysis")
+})
