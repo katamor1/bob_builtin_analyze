@@ -1,12 +1,14 @@
 import * as fs from "node:fs/promises"
 import * as path from "node:path"
-import * as cheerio from "cheerio"
-import * as mammoth from "mammoth"
-import * as XLSX from "xlsx"
 import { resolveWorkspacePathStrict, toPosixPath } from "../core/fileSystem"
 import { decodeTextBuffer } from "../core/textEncoding"
 import { normalizeReviewProcessingLimits, truncateUtf8Text, type ReviewProcessingLimits } from "../core/limits"
 import type { DocumentExtractionResult, EvidenceRef, ReviewInput } from "../core/types"
+
+type CheerioAPI = import("cheerio").CheerioAPI
+type CheerioModule = typeof import("cheerio")
+type MammothModule = typeof import("mammoth")
+type XlsxModule = typeof import("xlsx")
 
 type ArtifactRef = {
   path?: string
@@ -29,6 +31,10 @@ type ExtractedChunk = {
 }
 
 type DocumentMeta = DocumentExtractionResult["documents"][number]
+
+let cheerioModulePromise: Promise<CheerioModule> | undefined
+let mammothModulePromise: Promise<MammothModule> | undefined
+let xlsxModulePromise: Promise<XlsxModule> | undefined
 
 const ARTIFACT_TYPES: Record<string, { evidenceType: string; prefix: string; documentPrefix: string }> = {
   requirements: { evidenceType: "requirement", prefix: "REQ", documentPrefix: "REQ" },
@@ -187,6 +193,7 @@ function extractMarkdownChunks(markdown: string, evidenceType: string, selectors
 }
 
 async function extractDocxChunks(filePath: string, evidenceType: string, selectors: string[]): Promise<ExtractedChunk[]> {
+  const [mammoth, cheerio] = await Promise.all([loadMammoth(), loadCheerio()])
   const html = (await mammoth.convertToHtml({ path: filePath })).value
   const $ = cheerio.load(html)
   const chunks: ExtractedChunk[] = []
@@ -231,7 +238,8 @@ async function extractDocxChunks(filePath: string, evidenceType: string, selecto
   return matchingChunks(chunks, selectors)
 }
 
-function extractXlsxChunks(filePath: string, item: ArtifactRef, evidenceType: string, selectors: string[], warnings: string[], limits: ReviewProcessingLimits): ExtractedChunk[] {
+async function extractXlsxChunks(filePath: string, item: ArtifactRef, evidenceType: string, selectors: string[], warnings: string[], limits: ReviewProcessingLimits): Promise<ExtractedChunk[]> {
+  const XLSX = await loadXlsx()
   const workbook = XLSX.readFile(filePath, { cellDates: false })
   const allSelectedSheets = item.sheets && item.sheets.length > 0 ? item.sheets : workbook.SheetNames
   const selectedSheets = allSelectedSheets.slice(0, limits.maxWorkbookSheets)
@@ -309,7 +317,7 @@ function renderExcerpt(evidenceId: string, sourcePath: string, version: string |
   ].filter((line): line is string => line !== undefined).join("\n")
 }
 
-function htmlTableToMarkdown($: cheerio.CheerioAPI, table: any): string {
+function htmlTableToMarkdown($: CheerioAPI, table: any): string {
   const rows: string[][] = []
   $(table).find("tr").each((_, tr) => {
     const cells: string[] = []
@@ -340,4 +348,19 @@ function escapeCell(value: string): string {
 
 function firstKnownId(text: string): string | undefined {
   return text.match(/\b(?:REQ|BD|DD|TC|ERR|ISSUE|TICKET|LEDGER)(?:[-_][A-Za-z0-9]+)+\b/)?.[0]
+}
+
+function loadCheerio(): Promise<CheerioModule> {
+  cheerioModulePromise ??= import("cheerio")
+  return cheerioModulePromise
+}
+
+function loadMammoth(): Promise<MammothModule> {
+  mammothModulePromise ??= import("mammoth")
+  return mammothModulePromise
+}
+
+function loadXlsx(): Promise<XlsxModule> {
+  xlsxModulePromise ??= import("xlsx")
+  return xlsxModulePromise
 }

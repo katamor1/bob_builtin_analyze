@@ -1,8 +1,9 @@
 import * as fs from "node:fs/promises"
 import * as path from "node:path"
-import * as XLSX from "xlsx"
 import { readTextFile, relativePosix, resolveWorkspacePathStrict } from "./fileSystem"
 import type { ArtifactKind, ReviewInputArtifactDraft } from "./reviewInputBuilder"
+
+type XlsxModule = typeof import("xlsx")
 
 export type ReviewInputDiscoveryOptions = {
   docsRoot?: string
@@ -24,6 +25,7 @@ export type ReviewInputDiscoveryResult = {
 const DOCUMENT_EXTENSIONS = new Set([".md", ".markdown", ".docx", ".xlsx"])
 const SKIPPED_DIRECTORY_NAMES = new Set(["node_modules", ".git", ".bzr", ".bob-review", ".bob-trace", "out", "dist"])
 const KNOWN_ID_PATTERN = /\b(?:REQ|BD|DD|TC|QA|RV|ERR|ISSUE|TICKET|LEDGER)(?:[-_][A-Za-z0-9]+)+\b/g
+let xlsxModulePromise: Promise<XlsxModule> | undefined
 
 export async function discoverReviewInputCandidates(workspaceRoot: string, options: ReviewInputDiscoveryOptions = {}): Promise<ReviewInputDiscoveryResult> {
   const warnings: string[] = []
@@ -51,7 +53,7 @@ export async function discoverReviewInputCandidates(workspaceRoot: string, optio
       if (extension === ".md" || extension === ".markdown") {
         documents.push(await discoverMarkdownCandidate(filePath, relativePath, kind, options.textEncoding ?? "auto", maxIdsPerFile))
       } else if (extension === ".xlsx") {
-        documents.push(discoverXlsxCandidate(filePath, relativePath, kind, maxIdsPerFile))
+        documents.push(await discoverXlsxCandidate(filePath, relativePath, kind, maxIdsPerFile))
       } else {
         documents.push({ kind, path: relativePath, label: relativePath, description: `${kind}; ID 抽出は未実施` })
       }
@@ -97,7 +99,8 @@ async function discoverMarkdownCandidate(filePath: string, relativePath: string,
   }
 }
 
-function discoverXlsxCandidate(filePath: string, relativePath: string, kind: ArtifactKind, maxIds: number): ReviewInputDocumentCandidate {
+async function discoverXlsxCandidate(filePath: string, relativePath: string, kind: ArtifactKind, maxIds: number): Promise<ReviewInputDocumentCandidate> {
+  const XLSX = await loadXlsx()
   const workbook = XLSX.readFile(filePath, { cellDates: false, sheetRows: 80 })
   const ids: string[] = []
   for (const sheetName of workbook.SheetNames) {
@@ -152,4 +155,9 @@ function descriptionText(kind: ArtifactKind, ids: string[]): string {
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {
   return typeof error === "object" && error !== null && "code" in error
+}
+
+function loadXlsx(): Promise<XlsxModule> {
+  xlsxModulePromise ??= import("xlsx")
+  return xlsxModulePromise
 }
