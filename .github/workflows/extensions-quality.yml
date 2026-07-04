@@ -7,6 +7,8 @@ on:
       - "extensions/bob-bazaar-review/**"
       - "extensions/bob-code-consistency-review/**"
       - "scripts/check-artifact-size-policy.js"
+      - "scripts/check-export-star-policy.js"
+      - "scripts/report-extension-metrics.js"
       - ".github/workflows/extensions-quality.yml"
   push:
     branches:
@@ -16,6 +18,8 @@ on:
       - "extensions/bob-bazaar-review/**"
       - "extensions/bob-code-consistency-review/**"
       - "scripts/check-artifact-size-policy.js"
+      - "scripts/check-export-star-policy.js"
+      - "scripts/report-extension-metrics.js"
       - ".github/workflows/extensions-quality.yml"
   workflow_dispatch:
 
@@ -47,6 +51,12 @@ jobs:
 
       - name: Architecture policy
         run: npm run architecture:policy
+
+      - name: Source policy
+        run: npm run source:policy
+
+      - name: Schema policy
+        run: npm run schema:policy
 
       - name: Unused dependency report
         run: npm run unused:report
@@ -90,6 +100,9 @@ jobs:
 
       - name: Architecture policy
         run: npm run architecture:policy
+
+      - name: Source policy
+        run: npm run source:policy
 
       - name: Unused dependency report
         run: npm run unused:report
@@ -137,6 +150,9 @@ jobs:
       - name: Architecture policy
         run: npm run architecture:policy
 
+      - name: Source policy
+        run: npm run source:policy
+
       - name: Unused dependency report
         run: npm run unused:report
 
@@ -151,3 +167,60 @@ jobs:
 
       - name: VSIX policy
         run: npm run package:policy
+
+  extension-metrics:
+    name: Extension source metrics
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Generate extension metrics
+        run: node scripts/report-extension-metrics.js --output extension-metrics.md
+
+      - name: Add metrics to job summary
+        shell: bash
+        run: cat extension-metrics.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Comment extension metrics on pull request
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require("node:fs");
+            const marker = "<!-- bob-extension-metrics -->";
+            const body = `${marker}\n${fs.readFileSync("extension-metrics.md", "utf8")}`;
+            const issue_number = context.payload.pull_request.number;
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number
+            });
+            const previous = comments.data.find((comment) =>
+              comment.user?.type === "Bot" && comment.body?.includes(marker)
+            );
+            if (previous) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: previous.id,
+                body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number,
+                body
+              });
+            }

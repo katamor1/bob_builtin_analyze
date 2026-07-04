@@ -7,6 +7,7 @@ on:
       - "docs/workflows/code-consistency-review/schemas/**"
       - "docs/workflows/code-consistency-review/templates/**"
       - "extensions/bob-code-consistency-review/**"
+      - "scripts/check-export-star-policy.js"
       - ".bob/workflows/code-consistency-review/WORKFLOW.md"
       - ".github/workflows/code-consistency-review-scaffold.yml"
   push:
@@ -17,6 +18,7 @@ on:
       - "docs/workflows/code-consistency-review/schemas/**"
       - "docs/workflows/code-consistency-review/templates/**"
       - "extensions/bob-code-consistency-review/**"
+      - "scripts/check-export-star-policy.js"
       - ".bob/workflows/code-consistency-review/WORKFLOW.md"
       - ".github/workflows/code-consistency-review-scaffold.yml"
   workflow_dispatch:
@@ -80,6 +82,9 @@ jobs:
 
       - name: Architecture policy
         run: npm run architecture:policy
+
+      - name: Source policy
+        run: npm run source:policy
 
       - name: Unused dependency report
         run: npm run unused:report

@@ -11,6 +11,8 @@ test("workflow-register dependency policy requires a committed lockfile with pro
   assert.ok(fs.existsSync(lockPath), "package-lock.json must be committed for reproducible VSIX builds")
   assert.equal(packageJson.scripts["dependency:policy"], "node --test test/dependencyPolicy.test.js")
   assert.equal(packageJson.scripts["architecture:policy"], "node ../../scripts/check-import-cycles.js src")
+  assert.equal(packageJson.scripts["source:policy"], "node ../../scripts/check-export-star-policy.js src --allow src/core/model.ts")
+  assert.equal(packageJson.scripts["schema:policy"], "npm run compile && node --test test/workflowAuthoring.test.js")
   assert.equal(packageJson.scripts["unused:report"], "node ../../scripts/run-unused-checks.js")
   assert.equal(packageJson.scripts["audit:prod"], "npm audit --omit=dev --audit-level=high")
   assert.equal(packageJson.scripts["package:policy"], "node ../../scripts/check-vsix-policy.js --max-bytes 1200000")
@@ -49,12 +51,26 @@ test("workflow-register CI uses npm ci, dependency policy, production audit, tes
   assert.match(job, /run: npm ci/)
   assert.match(job, /run: npm run dependency:policy/)
   assert.match(job, /run: npm run architecture:policy/)
+  assert.match(job, /run: npm run source:policy/)
+  assert.match(job, /run: npm run schema:policy/)
   assert.match(job, /run: npm run unused:report/)
   assert.match(job, /run: npm run audit:prod/)
   assert.match(job, /run: npm test/)
   assert.match(job, /run: npm run package/)
   assert.match(job, /run: npm run package:policy/)
   assert.doesNotMatch(job, /run: npm install/)
+})
+
+test("shared extension CI reports source metrics back to pull requests", () => {
+  const workflowPath = repoPath(".github", "workflows", "extensions-quality.yml")
+  const workflow = fs.readFileSync(workflowPath, "utf8")
+  const metricsScript = repoPath("scripts", "report-extension-metrics.js")
+
+  assert.ok(fs.existsSync(metricsScript), "extension metrics script must be committed")
+  assert.match(workflow, /extension-metrics:/)
+  assert.match(workflow, /node scripts\/report-extension-metrics\.js --output extension-metrics\.md/)
+  assert.match(workflow, /GITHUB_STEP_SUMMARY/)
+  assert.match(workflow, /github\.rest\.issues\.(createComment|updateComment)/)
 })
 
 test("workflow-register README documents generated artifacts, package budget, dependencies, CLI, and trust boundary", () => {
