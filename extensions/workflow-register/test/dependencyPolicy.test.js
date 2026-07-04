@@ -11,9 +11,13 @@ test("workflow-register dependency policy requires a committed lockfile with pro
   assert.ok(fs.existsSync(lockPath), "package-lock.json must be committed for reproducible VSIX builds")
   assert.equal(packageJson.scripts["dependency:policy"], "node --test test/dependencyPolicy.test.js")
   assert.equal(packageJson.scripts["audit:prod"], "npm audit --omit=dev --audit-level=high")
+  assert.equal(packageJson.scripts["package:policy"], "node ../../scripts/check-vsix-policy.js --max-bytes 1200000")
 
   const gitignore = fs.readFileSync(repoPath(".gitignore"), "utf8").split(/\r?\n/)
   assert.ok(!gitignore.includes("extensions/workflow-register/package-lock.json"), "package-lock.json must not be ignored")
+
+  const vscodeignore = fs.readFileSync(path.join(extensionRoot, ".vscodeignore"), "utf8").split(/\r?\n/)
+  assert.ok(vscodeignore.includes("out/**/*.map"), "compiled source maps must be excluded from the VSIX")
 
   const lock = JSON.parse(fs.readFileSync(lockPath, "utf8"))
   const rootPackage = lock.packages?.[""]
@@ -42,5 +46,6 @@ test("workflow-register CI uses npm ci, dependency policy, production audit, tes
   assert.match(job, /run: npm run audit:prod/)
   assert.match(job, /run: npm test/)
   assert.match(job, /run: npm run package/)
+  assert.match(job, /run: npm run package:policy/)
   assert.doesNotMatch(job, /run: npm install/)
 })

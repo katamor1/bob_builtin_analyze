@@ -89,3 +89,6 @@ jobs:
 
       - name: Package
         run: npm run package
+
+      - name: VSIX policy
+        run: npm run package:policy

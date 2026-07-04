@@ -167,7 +167,8 @@
     "test": "npm run compile && node --test test/*.test.js",
     "watch": "tsc -watch -p ./",
     "vscode:prepublish": "npm run compile",
-    "package": "vsce package --no-dependencies"
+    "package": "vsce package --no-dependencies",
+    "package:policy": "node ../../scripts/check-vsix-policy.js --max-bytes 200000"
   },
   "devDependencies": {
     "@types/node": "^20.11.30",

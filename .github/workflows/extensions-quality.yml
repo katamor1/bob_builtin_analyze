@@ -52,6 +52,9 @@ jobs:
       - name: Package
         run: npm run package
 
+      - name: VSIX policy
+        run: npm run package:policy
+
   bob-bazaar-review:
     name: bob-bazaar-review
     runs-on: ubuntu-latest
@@ -86,6 +89,9 @@ jobs:
       - name: Package
         run: npm run package
 
+      - name: VSIX policy
+        run: npm run package:policy
+
   bob-code-consistency-review:
     name: bob-code-consistency-review
     runs-on: ubuntu-latest
@@ -119,3 +125,6 @@ jobs:
 
       - name: Package
         run: npm run package
+
+      - name: VSIX policy
+        run: npm run package:policy

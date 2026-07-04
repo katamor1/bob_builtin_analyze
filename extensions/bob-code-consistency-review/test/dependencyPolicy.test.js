@@ -11,6 +11,10 @@ test("extension dependency policy requires a committed lockfile with production 
   assert.ok(fs.existsSync(lockPath), "package-lock.json must be committed for reproducible VSIX builds")
   assert.equal(packageJson.scripts["dependency:policy"], "node --test test/dependencyPolicy.test.js")
   assert.equal(packageJson.scripts["audit:prod"], "npm audit --omit=dev --audit-level=high")
+  assert.equal(packageJson.scripts["package:policy"], "node ../../scripts/check-vsix-policy.js --max-bytes 11000000")
+
+  const vscodeignore = fs.readFileSync(path.join(extensionRoot, ".vscodeignore"), "utf8").split(/\r?\n/)
+  assert.ok(vscodeignore.includes("out/**/*.map"), "compiled source maps must be excluded from the VSIX")
 
   const lock = JSON.parse(fs.readFileSync(lockPath, "utf8"))
   const rootPackage = lock.packages?.[""]
@@ -35,5 +39,14 @@ test("extension CI uses npm ci, dependency policy, production audit, tests, and 
   assert.match(extensionJob, /run: npm run audit:prod/)
   assert.match(extensionJob, /run: npm test/)
   assert.match(extensionJob, /run: npm run package/)
+  assert.match(extensionJob, /run: npm run package:policy/)
   assert.doesNotMatch(extensionJob, /run: npm install/)
+
+  const sharedWorkflowPath = repoPath(".github", "workflows", "extensions-quality.yml")
+  const sharedWorkflow = fs.readFileSync(sharedWorkflowPath, "utf8")
+  const sharedJobStart = sharedWorkflow.indexOf("bob-code-consistency-review:")
+  assert.notEqual(sharedJobStart, -1, "bob-code-consistency-review shared CI job must exist")
+  const sharedJob = sharedWorkflow.slice(sharedJobStart)
+  assert.match(sharedJob, /working-directory: extensions\/bob-code-consistency-review/)
+  assert.match(sharedJob, /run: npm run package:policy/)
 })
