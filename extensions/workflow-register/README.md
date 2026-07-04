@@ -154,9 +154,19 @@ steps:
     type: manual
     prompt: |
       入力値と前提条件を確認してください。
+    userAction:
+      message: |
+        入力値と前提条件を確認してください。
+
+        確認が終わったら完了ボタンを押してください。
+      completeLabel: 確認完了
+      confirmOnComplete: true
+      confirmMessage: この確認 step を完了済みにして次へ進みます。よろしいですか？
 ```
 
-手動ステップを進めるには、`現在のワークフローステップを完了` または `Bob ワークフロー: 現在のステップを完了` を実行します。
+`userAction.message` は手動操作ページに表示する利用者向け手順です。未指定の場合は `prompt`、それも無い場合は既定文言を表示します。`completeLabel` は完了ボタンの文言、`confirmOnComplete` と `confirmMessage` は完了前確認に使います。
+
+手動ステップで停止すると、Bob UI 実行中は `Bob Workflow Manual Step` Webview が開きます。手動ステップを進めるには、そのページの完了ボタン、`Bob ワークフロー: 手動操作ステップを開く`、または従来の `Bob ワークフロー: 現在のステップを完了` を使います。
 
 入力値や承認結果を後続 step の state として使う場合は、structured manual step を使います。
 
@@ -325,6 +335,7 @@ steps:
 | `Bob ワークフロー: 現在のステップをGUIで編集` | current step の定義を GUI Builder で開く。 |
 | `Bob ワークフロー: 診断を確認` | run state と task snapshot の診断を確認する。 |
 | `Bob ワークフロー: 実行中ステップを確認` | 手動完了待ち active step を確認する。 |
+| `Bob ワークフロー: 手動操作ステップを開く` | held run または active manual step の手動操作ページを開く。 |
 | `Bob ワークフロー: 現在のステップを完了` | 現在の手動ステップを完了する。 |
 
 実行状態は、ワークスペース内の `.bob/workflows/runs/<runId>/run.json` に保存されます。
@@ -415,7 +426,7 @@ workflow-register-0.1.0.vsix
 | `includeState references unknown resultKey` | 参照先より前のステップに `resultKey` があるか確認する。 |
 | `Unsupported action provider` | provider ID が登録済みか、または `vscode.executeCommand` を使っているか確認する。 |
 | `select but has no options` | `inputs.<name>.options` に候補を追加する。 |
-| 手動ステップが進まない | `現在のワークフローステップを完了` または `Bob ワークフロー: 現在のステップを完了` を実行する。 |
+| 手動ステップが進まない | `Bob ワークフロー: 手動操作ステップを開く` で手動操作ページを開く。VS Code 再起動後など active task が無い held run は、`Bob ワークフロー: 実行を再開` または `Bob ワークフロー: 次のステップを実行` で復帰する。 |
 
 ## 保守・配布ポリシー
 

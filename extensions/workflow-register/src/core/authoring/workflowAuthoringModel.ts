@@ -11,7 +11,8 @@ import {
   WorkflowPreflightDefinition,
   WorkflowRequiresDefinition,
   WorkflowStepTransitionDefinition,
-  WorkflowStepType
+  WorkflowStepType,
+  WorkflowUserActionDefinition
 } from "../model"
 import { WorkflowTemplateKind } from "../workflowScaffold"
 
@@ -63,6 +64,7 @@ export interface WorkflowAuthoringStepBase {
   stateRequired?: boolean
   resultKey?: string
   transition?: WorkflowStepTransitionDefinition
+  userAction?: WorkflowUserActionDefinition
 }
 
 export interface WorkflowAuthoringCommandStep extends WorkflowAuthoringStepBase {

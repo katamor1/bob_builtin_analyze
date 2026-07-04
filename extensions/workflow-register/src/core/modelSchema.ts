@@ -157,6 +157,13 @@ export interface WorkflowActionDefinition {
   args?: unknown
 }
 
+export interface WorkflowUserActionDefinition {
+  message?: string
+  completeLabel?: string
+  confirmOnComplete?: boolean
+  confirmMessage?: string
+}
+
 export type ResultSourceDefinition =
   | { source: "state"; stateKey: string; sinks: ResultSinkDefinition[] }
   | { source: "literal"; text: string; sinks: ResultSinkDefinition[] }
@@ -174,6 +181,7 @@ export interface BaseEngineStep {
   maxResultBytes?: number
   stateRequired?: boolean
   transition?: WorkflowStepTransitionDefinition
+  userAction?: WorkflowUserActionDefinition
 }
 
 export interface CommandEngineStep extends BaseEngineStep {

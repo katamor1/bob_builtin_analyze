@@ -110,7 +110,8 @@ function engineStepToAuthoringStep(step: EngineStep): WorkflowAuthoringStep {
     maxResultBytes: step.maxResultBytes,
     stateRequired: step.stateRequired,
     resultKey: "resultKey" in step ? step.resultKey : undefined,
-    transition: step.transition
+    transition: step.transition,
+    userAction: step.userAction
   }
   if (step.type === "command") return { ...base, type: "command", action: normalizeAction(step.action) }
   if (step.type === "agent") return { ...base, type: "agent", result: step.result }

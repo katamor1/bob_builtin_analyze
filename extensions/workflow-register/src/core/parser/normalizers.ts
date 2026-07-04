@@ -13,7 +13,8 @@ import {
   WorkflowStepReviewDefinition,
   WorkflowStepReviewPauseAfter,
   WorkflowStepTransitionDefinition,
-  WorkflowTransitionConditionDefinition
+  WorkflowTransitionConditionDefinition,
+  WorkflowUserActionDefinition
 } from "../model"
 import { asRecord, listField, optionalBoolean, optionalNumber, optionalString, requiredString } from "./yamlFields"
 
@@ -182,7 +183,8 @@ export function normalizeEngineStep(step: Record<string, unknown>): EngineStep {
     includeState: listField(step, "includeState"),
     maxResultBytes: optionalNumber(step, "maxResultBytes"),
     stateRequired: optionalBoolean(step, "stateRequired"),
-    transition: normalizeStepTransition(step.transition)
+    transition: normalizeStepTransition(step.transition),
+    userAction: normalizeUserAction(step.userAction)
   }
   if (step.type === "command") {
     const action = asRecord(step.action)
@@ -257,6 +259,17 @@ function normalizeManualApproval(value: unknown): WorkflowManualApprovalDefiniti
     rejectLabel: optionalString(record, "rejectLabel"),
     message: optionalString(record, "message")
   }
+}
+
+export function normalizeUserAction(value: unknown): WorkflowUserActionDefinition | undefined {
+  const record = asRecord(value)
+  const normalized = {
+    message: optionalString(record, "message"),
+    completeLabel: optionalString(record, "completeLabel"),
+    confirmOnComplete: optionalBoolean(record, "confirmOnComplete"),
+    confirmMessage: optionalString(record, "confirmMessage")
+  }
+  return Object.values(normalized).some((entry) => entry !== undefined) ? normalized : undefined
 }
 
 export function normalizeResult(value: unknown): ResultSourceDefinition {

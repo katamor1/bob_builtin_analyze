@@ -47,10 +47,22 @@ function renderStepDetail() {
     '<div class="row"><div><label data-help-label="step.resultKey">resultKey</label><input data-help-id="step.resultKey" data-step-field="resultKey" value="' + escapeHtml(step.resultKey || '') + '" /></div><div><label data-help-label="step.maxResultBytes">maxResultBytes</label><input data-help-id="step.maxResultBytes" type="number" data-step-field="maxResultBytes" value="' + escapeHtml(step.maxResultBytes || '') + '" /></div></div>' +
     '<h3 data-section-help="section.includeState" data-help-id="section.includeState">includeState</h3>' + includeStateHtml +
     typeSpecific +
+    renderUserActionStep(step) +
     renderTransitionStep(step) +
     '<h3>操作</h3><button class="secondary" data-action="move-step-up">上へ</button><button class="secondary" data-action="move-step-down">下へ</button><button class="secondary" data-action="duplicate-step">複製</button><button class="danger" data-action="delete-step">削除</button>';
 }
 function stepTypeOptions(current) { const labels = { agent: 'AI に分析・生成させる', command: '拡張機能の処理を実行', manual: '人間確認で停止', result: '前段結果を保存' }; return ['agent', 'command', 'manual', 'result'].map(function(type) { return '<option value="' + type + '" ' + (type === current ? 'selected' : '') + '>' + escapeHtml(optionLabel(type, labels[type])) + '</option>'; }).join(''); }
+function ensureUserAction(step) { if (!step.userAction) step.userAction = {}; return step.userAction; }
+function renderUserActionStep(step) {
+  const userAction = step.userAction || {};
+  return '<h3 data-section-help="section.userAction" data-help-id="section.userAction">User action</h3><label data-help-label="step.userAction.message">手動操作ページのメッセージ</label><textarea data-help-id="step.userAction.message" data-user-action-field="message">' + escapeHtml(userAction.message || '') + '</textarea><div class="row"><div><label data-help-label="step.userAction.completeLabel">完了ボタン文言</label><input data-help-id="step.userAction.completeLabel" data-user-action-field="completeLabel" value="' + escapeHtml(userAction.completeLabel || '') + '" /></div><label><input type="checkbox" style="width:auto" data-help-id="step.userAction.confirmOnComplete" data-user-action-field="confirmOnComplete" ' + (userAction.confirmOnComplete ? 'checked' : '') + ' /> 完了前に確認する</label></div><label data-help-label="step.userAction.confirmMessage">確認メッセージ</label><textarea data-help-id="step.userAction.confirmMessage" data-user-action-field="confirmMessage">' + escapeHtml(userAction.confirmMessage || '') + '</textarea>' + userActionPreviewHtml(step);
+}
+function userActionPreviewHtml(step) {
+  const userAction = step.userAction || {};
+  const message = userAction.message || step.prompt || ((step.title || step.id) + ' の操作が完了したら、完了ボタンを押してください。');
+  const label = userAction.completeLabel || '完了';
+  return '<div class="card"><strong>実行時の表示イメージ</strong><div class="message-preview">' + escapeHtml(message) + '</div><button type="button" disabled>' + escapeHtml(label) + '</button><div class="muted">{{inputs.xxx}} などは実行時に置換されます。</div></div>';
+}
 function renderCommandStep(step) {
   const args = Array.isArray(step.action && step.action.args) ? step.action.args : [];
   const commandId = typeof args[0] === 'string' ? args[0] : '';

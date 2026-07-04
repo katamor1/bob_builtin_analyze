@@ -41,6 +41,7 @@ function handleFieldEvent(event) {
       replacement.prompt = step.prompt;
       replacement.includeState = step.includeState;
       replacement.transition = step.transition;
+      replacement.userAction = step.userAction;
       model.steps[selectedStepIndex] = replacement;
       render();
       return;
@@ -48,6 +49,17 @@ function handleFieldEvent(event) {
     if (field === 'maxResultBytes') step[field] = value ? Number(value) : undefined;
     else step[field] = value;
     renderStepsList(); renderTabs(); requestPreview(); return;
+  }
+  if (step && target.dataset.userActionField) {
+    const field = target.dataset.userActionField;
+    const userAction = ensureUserAction(step);
+    if (field === 'confirmOnComplete') userAction.confirmOnComplete = value;
+    else userAction[field] = value || undefined;
+    Object.keys(userAction).forEach(function(key) {
+      if (userAction[key] === undefined || userAction[key] === '') delete userAction[key];
+    });
+    if (Object.keys(userAction).length === 0) delete step.userAction;
+    renderTabs(); requestPreview(); return;
   }
   if (step && target.dataset.manualFormField && step.type === 'manual') {
     if (!step.form) step.form = { resultKey: '', fields: [] };

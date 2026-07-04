@@ -71,6 +71,17 @@ const manualApprovalSchema = {
   additionalProperties: false
 } as const
 
+const userActionSchema = {
+  type: "object",
+  properties: {
+    message: { type: "string" },
+    completeLabel: { type: "string" },
+    confirmOnComplete: { type: "boolean" },
+    confirmMessage: { type: "string" }
+  },
+  additionalProperties: false
+} as const
+
 const branchingSchema = {
   type: "object",
   properties: {
@@ -270,6 +281,7 @@ export const workflowV1Schema = {
           stateRequired: { type: "boolean" },
           resultKey: { type: "string" },
           transition: transitionSchema,
+          userAction: userActionSchema,
           form: manualFormSchema,
           approval: manualApprovalSchema,
           result: {

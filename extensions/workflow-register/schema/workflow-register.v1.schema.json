@@ -288,6 +288,16 @@
             },
             "additionalProperties": false
           },
+          "userAction": {
+            "type": "object",
+            "properties": {
+              "message": { "type": "string" },
+              "completeLabel": { "type": "string" },
+              "confirmOnComplete": { "type": "boolean" },
+              "confirmMessage": { "type": "string" }
+            },
+            "additionalProperties": false
+          },
           "result": {
             "type": "object",
             "required": ["source", "sinks"],

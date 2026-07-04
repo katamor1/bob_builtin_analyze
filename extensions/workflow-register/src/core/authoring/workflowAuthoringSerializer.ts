@@ -11,7 +11,8 @@ import {
   WorkflowManualFormDefinition,
   WorkflowPreflightDefinition,
   WorkflowRequiresDefinition,
-  WorkflowStepTransitionDefinition
+  WorkflowStepTransitionDefinition,
+  WorkflowUserActionDefinition
 } from "../model"
 import { normalizeWorkflowName } from "../workflowScaffold"
 
@@ -91,7 +92,8 @@ function serializeStep(step: WorkflowAuthoringStep): Record<string, unknown> {
     maxResultBytes: step.maxResultBytes,
     stateRequired: step.stateRequired,
     resultKey: step.resultKey,
-    transition: transitionOrUndefined(step.transition)
+    transition: transitionOrUndefined(step.transition),
+    userAction: userActionOrUndefined(step.userAction)
   })
   if (step.type === "command") return compactObject({ ...base, action: compactObject({ provider: step.action.provider, args: step.action.args && step.action.args.length > 0 ? step.action.args : undefined }) })
   if (step.type === "result") return compactObject({ ...base, result: serializeResult(step.result) })
@@ -142,6 +144,17 @@ function transitionOrUndefined(transition: WorkflowStepTransitionDefinition | un
     decisions: nonEmptyArray(decisions),
     default: transition.default
   })
+}
+
+function userActionOrUndefined(userAction: WorkflowUserActionDefinition | undefined): Record<string, unknown> | undefined {
+  if (!userAction) return undefined
+  const next = compactObject({
+    message: userAction.message,
+    completeLabel: userAction.completeLabel,
+    confirmOnComplete: userAction.confirmOnComplete,
+    confirmMessage: userAction.confirmMessage
+  })
+  return Object.keys(next).length > 0 ? next : undefined
 }
 
 function manualFormOrUndefined(form: WorkflowManualFormDefinition | undefined): Record<string, unknown> | undefined {

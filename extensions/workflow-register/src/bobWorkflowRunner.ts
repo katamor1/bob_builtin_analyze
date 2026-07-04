@@ -3,6 +3,7 @@ import { buildWorkflowAgentPrompt, extractSubagentResult } from "./agentStep"
 import type {
   BobWorkflowRunnerInputCollector,
   BobWorkflowTask,
+  ActiveStep,
   WorkflowDefinition,
   WorkflowStateEntry,
   WorkflowTodoItem
@@ -55,6 +56,7 @@ interface BobWorkflowEngineRunnerOptions {
   agentProvider?: AgentProvider
   stepRuntime: StepRuntime
   inputsProvider: BobWorkflowRunnerInputCollector
+  onManualStepHeld?: (input: { workflow: CoreWorkflowDefinition; run: WorkflowRunState; step: EngineStep; active: ActiveStep }) => Promise<void> | void
 }
 
 export class BobWorkflowEngineRunner {
@@ -125,7 +127,8 @@ export class BobWorkflowEngineRunner {
             actionRegistry: this.options.actionRegistry,
             inputs: run.inputs,
             state: run.state,
-            messageStartIndex: messageStartIndexes.get(stepKey(run.runId, step.id))
+            messageStartIndex: messageStartIndexes.get(stepKey(run.runId, step.id)),
+            onHeldStep: (active) => this.options.onManualStepHeld?.({ workflow: this.options.coreWorkflow, run, step, active })
           }
         )
         if (result.completed) manuallyCompleted.add(stepKey(run.runId, step.id))

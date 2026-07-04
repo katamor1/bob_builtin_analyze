@@ -6,6 +6,7 @@ import {
 } from "./bobWorkflowRunner"
 import { StepRuntime } from "./bobStepRuntime"
 import type {
+  ActiveStep,
   BobWorkflowRunnerInputCollector,
   WorkflowDefinition
 } from "./bobWorkflowTypes"
@@ -35,6 +36,7 @@ export interface WorkflowRuntimeFactoryOptions {
   stepRuntime: StepRuntime
   agentProvider: () => AgentProvider | undefined
   inputsProvider: (workflow: WorkflowDefinition, provided: Record<string, unknown>) => ReturnType<BobWorkflowRunnerInputCollector>
+  onManualStepHeld?: (input: { workflow: import("./core/model").CoreWorkflowDefinition; run: import("./core/model").WorkflowRunState; step: import("./core/model").EngineStep; active: ActiveStep }) => Promise<void> | void
 }
 
 export class WorkflowRuntimeFactory {
@@ -66,6 +68,7 @@ export class WorkflowRuntimeFactory {
       preflightChecks: (workspaceRoot) => this.createPreflightChecks(workspaceRoot),
       agentProvider: this.options.agentProvider() ?? this.createCommandAgentProvider(),
       stepRuntime: this.options.stepRuntime,
+      onManualStepHeld: this.options.onManualStepHeld,
       inputsProvider: (task, provided) => this.options.inputsProvider(workflow, {
         ...extractTaskWorkflowInputs(workflow, task),
         ...provided
@@ -90,7 +93,13 @@ export class WorkflowRuntimeFactory {
         runId: input.run.runId,
         coreStep: input.step,
         inputs: input.run.inputs,
-        state: input.run.state
+        state: input.run.state,
+        onHeldStep: (active) => this.options.onManualStepHeld?.({
+          workflow: input.workflow,
+          run: input.run,
+          step: input.step,
+          active
+        })
       }
     )
   }

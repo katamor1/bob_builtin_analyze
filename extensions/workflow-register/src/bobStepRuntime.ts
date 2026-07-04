@@ -5,9 +5,9 @@ import type {
 } from "./bobWorkflowTypes"
 import type { ActionRegistry } from "./core/actionRegistry"
 import type { ManualCompletionResult } from "./core/engineTypes"
-import type { EngineStep, WorkflowGuardrailsDefinition } from "./core/model"
-import { validateCommandGuardrails } from "./core/guardrails"
 import { formatStateValue } from "./core/engine/templateRenderer"
+import { validateCommandGuardrails } from "./core/guardrails"
+import type { EngineStep, WorkflowGuardrailsDefinition } from "./core/model"
 import {
   createVscodeManualStepCompletionPromptProvider,
   type ManualStepCompletionPromptProvider,
@@ -43,11 +43,12 @@ export class StepRuntime {
       inputs?: Record<string, unknown>
       state?: Record<string, string>
       messageStartIndex?: number
+      onHeldStep?: (active: ActiveStep) => Promise<void> | void
     }
   ): Promise<ManualCompletionResult> {
     const key = `${++this.sequence}:${workflow.id}:${step.id}`
     return new Promise<ManualCompletionResult>((resolve) => {
-      this.activeSteps.set(key, {
+      const active: ActiveStep = {
         key,
         workflowId: workflow.id,
         workflowLabel: workflow.label,
@@ -63,12 +64,33 @@ export class StepRuntime {
         state: context.state,
         messageStartIndex: context.messageStartIndex ?? getTaskMessageCount(task),
         resolve
+      }
+      this.activeSteps.set(key, active)
+      Promise.resolve(context.onHeldStep?.(active)).catch((error) => {
+        console.warn("Failed to open manual step panel", error)
       })
     })
   }
 
   list(): ActiveStep[] {
     return Array.from(this.activeSteps.values())
+  }
+
+  getActiveStep(key: string): ActiveStep | undefined {
+    return this.activeSteps.get(key)
+  }
+
+  async completeStepByKey(key: string, options: StepCompletionExpectation = {}): Promise<string> {
+    const result = await this.completeStepByKeyResult(key, options)
+    return result.message
+  }
+
+  async completeStepByKeyResult(key: string, options: StepCompletionExpectation = {}): Promise<StepCompletionResult> {
+    const active = this.activeSteps.get(key)
+    if (!active) return { ok: false, message: `No active Bob workflow step for key: ${key}` }
+    const mismatch = activeStepMismatch([active], options)
+    if (mismatch) return { ok: false, message: mismatch }
+    return this.completeStep(active, options)
   }
 
   async completeCurrentStep(options: StepCompletionExpectation = {}): Promise<string> {
@@ -80,24 +102,29 @@ export class StepRuntime {
     const mismatch = activeStepMismatch(steps, options)
     if (mismatch) return mismatch
     if (!active) return "No active Bob workflow step."
+    const result = await this.completeStep(active, options)
+    return result.message
+  }
+
+  private async completeStep(active: ActiveStep, options: StepCompletionExpectation): Promise<StepCompletionResult> {
     const completion = await this.collectManualCompletion(active, options)
     if (!completion.completed) {
       const message = completion.error ?? "Manual workflow step completion was cancelled."
       await vscode.window.showWarningMessage(message)
-      return message
+      return { ok: false, message }
     }
     const handoff = await captureHeldStepResult(active)
     if (!handoff.ok) {
       const message = `Could not capture Bob workflow step result: ${handoff.error}`
       await vscode.window.showErrorMessage(message)
-      return message
+      return { ok: false, message }
     }
     applyStateUpdates(active, completion.stateUpdates)
     applyManualCompletionState(active, completion)
     active.task.setStepComplete?.()
     active.resolve(completion)
     this.activeSteps.delete(active.key)
-    return `Completed: ${active.workflowLabel} / ${active.title}`
+    return { ok: true, message: `Completed: ${active.workflowLabel} / ${active.title}` }
   }
 
   private async collectManualCompletion(active: ActiveStep, options: StepCompletionExpectation): Promise<ManualCompletionResult> {
@@ -139,6 +166,11 @@ export interface StepCompletionExpectation {
   expectedRunId?: string
   expectedStepId?: string
   stateUpdates?: Record<string, string>
+}
+
+export interface StepCompletionResult {
+  ok: boolean
+  message: string
 }
 
 function hasExpectedStep(options: StepCompletionExpectation): boolean {
