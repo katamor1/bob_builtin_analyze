@@ -8,7 +8,7 @@ const {
 
 test("Bazaar companion extension has no required companion extension dependency", () => {
   const packageJson = readJson("package.json")
-  const source = readSourceSet(["extension.ts", "workflowRegisterBridge.ts"])
+  const source = readSourceSet(["extension.ts", "workflowRegisterBridge.ts", "workflowProviders.ts", "workflowActions.ts"])
   const extensionDependencies = packageJson.extensionDependencies ?? []
 
   assert.ok(!extensionDependencies.includes("IBM.bob-code"))
@@ -43,7 +43,7 @@ test("Bazaar capture command accepts workflow context appended by result sinks",
 })
 
 test("Bazaar workflow provider registration retries optional workflow-register integration", () => {
-  const source = readSourceSet(["extension.ts"])
+  const source = readSourceSet(["extension.ts", "workflowProviders.ts"])
 
   assert.match(source, /registerWorkflowProvidersWithRetry\(context\)/)
   assert.match(source, /WORKFLOW_PROVIDER_RETRY_DELAYS_MS/)
@@ -76,7 +76,7 @@ test("Bazaar workflow template declares the providers owned by this extension", 
 })
 
 test("Bazaar load-rules workflow result exposes project rule ids and schema to result capture", () => {
-  const source = readSourceSet(["extension.ts"])
+  const source = readSourceSet(["workflowActions.ts"])
 
   assert.match(source, /ruleIds: string\[\]/)
   assert.match(source, /reviewResultSchema: unknown/)
