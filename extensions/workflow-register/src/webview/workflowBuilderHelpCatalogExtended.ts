@@ -1,4 +1,4 @@
-import type { WorkflowBuilderHelpEntry } from "./workflowBuilderHelpCatalog"
+import type { WorkflowBuilderHelpEntry } from "./workflowBuilderHelpTypes"
 
 export const workflowBuilderExtendedHelpCatalog: Record<string, WorkflowBuilderHelpEntry> = {
   "input.id": {

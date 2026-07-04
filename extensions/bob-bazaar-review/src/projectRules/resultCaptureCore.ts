@@ -3,45 +3,17 @@ import * as fs from "node:fs/promises"
 import * as path from "node:path"
 import { renderReviewResultMarkdown } from "./markdown"
 import { recoverReviewResultFromMarkdown } from "./resultCaptureMarkdownRecovery"
+import type {
+  CandidateText,
+  CaptureReviewResultOptions,
+  CaptureReviewResultResult,
+  SavedReviewResultArtifacts
+} from "./resultCaptureTypes"
 import { validateJsonAgainstSchema } from "./schemaValidator"
-import { ReviewResult, ReviewStatus, ValidationIssue } from "./types"
+import type { ReviewResult, ReviewStatus, ValidationIssue } from "./types"
 import { validateReviewResultJson } from "./validator"
 
 const STATUSES: ReviewStatus[] = ["pass", "fail", "unknown", "not_applicable", "blocked"]
-
-export interface CaptureReviewResultResult {
-  status: "ok" | "error"
-  source: string
-  reviewId?: string
-  jsonPath?: string
-  markdownPath?: string
-  jsonText?: string
-  valid: boolean
-  issueCount: number
-  issues?: ValidationIssue[]
-  summary?: ReviewResult["summary"]
-}
-
-export interface SavedReviewResultArtifacts {
-  jsonPath: string
-  markdownPath: string
-  backupPaths: string[]
-}
-
-export interface CandidateText {
-  source: string
-  text: string
-}
-
-export interface CaptureReviewResultOptions {
-  expectedChecklistItems?: number
-  expectedRuleIds?: string[]
-  reviewResultSchema?: unknown
-  checklistVersion?: string
-  project?: string
-  workspaceRoot?: string
-  workflowState?: Record<string, string>
-}
 
 export async function captureReviewResultText(
   workspaceRoot: string,

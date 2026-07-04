@@ -10,6 +10,7 @@ test("extension dependency policy requires a committed lockfile with production 
   const lockPath = path.join(extensionRoot, "package-lock.json")
   assert.ok(fs.existsSync(lockPath), "package-lock.json must be committed for reproducible VSIX builds")
   assert.equal(packageJson.scripts["dependency:policy"], "node --test test/dependencyPolicy.test.js")
+  assert.equal(packageJson.scripts["architecture:policy"], "node ../../scripts/check-import-cycles.js src")
   assert.equal(packageJson.scripts["audit:prod"], "npm audit --omit=dev --audit-level=high")
   assert.equal(packageJson.scripts["package:policy"], "node ../../scripts/check-vsix-policy.js --max-bytes 11000000")
 
@@ -36,6 +37,7 @@ test("extension CI uses npm ci, dependency policy, production audit, tests, and 
   assert.match(extensionJob, /cache-dependency-path: extensions\/bob-code-consistency-review\/package-lock\.json/)
   assert.match(extensionJob, /run: npm ci/)
   assert.match(extensionJob, /run: npm run dependency:policy/)
+  assert.match(extensionJob, /run: npm run architecture:policy/)
   assert.match(extensionJob, /run: npm run audit:prod/)
   assert.match(extensionJob, /run: npm test/)
   assert.match(extensionJob, /run: npm run package/)
@@ -48,5 +50,6 @@ test("extension CI uses npm ci, dependency policy, production audit, tests, and 
   assert.notEqual(sharedJobStart, -1, "bob-code-consistency-review shared CI job must exist")
   const sharedJob = sharedWorkflow.slice(sharedJobStart)
   assert.match(sharedJob, /working-directory: extensions\/bob-code-consistency-review/)
+  assert.match(sharedJob, /run: npm run architecture:policy/)
   assert.match(sharedJob, /run: npm run package:policy/)
 })

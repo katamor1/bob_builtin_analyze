@@ -10,6 +10,7 @@ test("workflow-register dependency policy requires a committed lockfile with pro
   const lockPath = path.join(extensionRoot, "package-lock.json")
   assert.ok(fs.existsSync(lockPath), "package-lock.json must be committed for reproducible VSIX builds")
   assert.equal(packageJson.scripts["dependency:policy"], "node --test test/dependencyPolicy.test.js")
+  assert.equal(packageJson.scripts["architecture:policy"], "node ../../scripts/check-import-cycles.js src")
   assert.equal(packageJson.scripts["audit:prod"], "npm audit --omit=dev --audit-level=high")
   assert.equal(packageJson.scripts["package:policy"], "node ../../scripts/check-vsix-policy.js --max-bytes 1200000")
 
@@ -43,6 +44,7 @@ test("workflow-register CI uses npm ci, dependency policy, production audit, tes
   assert.match(job, /cache-dependency-path: extensions\/workflow-register\/package-lock\.json/)
   assert.match(job, /run: npm ci/)
   assert.match(job, /run: npm run dependency:policy/)
+  assert.match(job, /run: npm run architecture:policy/)
   assert.match(job, /run: npm run audit:prod/)
   assert.match(job, /run: npm test/)
   assert.match(job, /run: npm run package/)
