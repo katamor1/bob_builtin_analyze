@@ -2,6 +2,7 @@ import * as vscode from "vscode"
 import { BazaarClient } from "./bazaar"
 import { isBobCodeExtensionAvailable } from "./bobCodeExtension"
 import { addMarkdownPacketToBobContext } from "./bobContext"
+import { resolveBzrPath } from "./bzrPathTrust"
 import { loadProjectChecklistRequired, loadReviewResultSchemaRequired } from "./projectRules/io"
 import { buildProjectRulesSection } from "./projectRules/packet"
 import { buildReviewPacket } from "./reviewPacket"
@@ -105,7 +106,7 @@ async function buildProjectRulesSectionForWorkspace(workspaceRoot: string): Prom
 function makeBazaarClient(): BazaarClient {
   const config = vscode.workspace.getConfiguration("bobBazaar")
   return new BazaarClient({
-    bzrPath: config.get<string>("bzrPath", "bzr"),
+    bzrPath: resolveBzrPath(config, vscode.workspace.isTrusted),
     maxBuffer: maxBufferForDiffBytes(getMaxDiffBytes()),
     textEncoding: config.get<string>("textEncoding", "auto")
   })

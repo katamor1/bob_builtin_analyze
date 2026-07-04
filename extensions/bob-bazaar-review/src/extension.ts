@@ -1,5 +1,6 @@
 import * as vscode from "vscode"
 import { reviewRange, reviewRevision } from "./bazaarReviewCommands"
+import { resolveBzrPath } from "./bzrPathTrust"
 import { configureWorkspaceMcpServer } from "./mcpConfig"
 import {
   initializeProjectRules,
@@ -170,7 +171,7 @@ async function configureMcp(context: vscode.ExtensionContext): Promise<void> {
   if (!folder) return
 
   const config = vscode.workspace.getConfiguration("bobBazaar")
-  const bzrPath = config.get<string>("bzrPath", "bzr")
+  const bzrPath = resolveBzrPath(config, vscode.workspace.isTrusted)
   const textEncoding = config.get<string>("textEncoding", "auto")
   const serverName = config.get<string>("mcpServerName", "bazaar")
 

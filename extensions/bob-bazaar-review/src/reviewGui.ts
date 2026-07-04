@@ -2,6 +2,7 @@ import * as vscode from "vscode"
 import { BazaarClient } from "./bazaar"
 import { isBobCodeExtensionAvailable } from "./bobCodeExtension"
 import { addMarkdownPacketToBobContext } from "./bobContext"
+import { resolveBzrPath } from "./bzrPathTrust"
 import { buildReviewPacket } from "./reviewPacket"
 import { clampMaxAddedFileContentBytes, clampMaxDiffBytes, maxBufferForDiffBytes } from "./reviewLimits"
 import { buildProjectRulesSection } from "./projectRules/packet"
@@ -108,7 +109,7 @@ class BazaarReviewGuiController {
     const status = await initializeBobWorkspaceFromTemplates({
       context: this.context,
       workspaceFolder: folder,
-      bzrPath: config.get<string>("bzrPath", "bzr"),
+      bzrPath: resolveBzrPath(config, vscode.workspace.isTrusted),
       serverName: config.get<string>("mcpServerName", "bazaar"),
       textEncoding: config.get<string>("textEncoding", "auto")
     })
@@ -214,7 +215,7 @@ class BazaarReviewGuiController {
 function makeBazaarClient(): BazaarClient {
   const config = vscode.workspace.getConfiguration("bobBazaar")
   return new BazaarClient({
-    bzrPath: config.get<string>("bzrPath", "bzr"),
+    bzrPath: resolveBzrPath(config, vscode.workspace.isTrusted),
     maxBuffer: maxBufferForDiffBytes(getMaxDiffBytes()),
     textEncoding: config.get<string>("textEncoding", "auto")
   })
