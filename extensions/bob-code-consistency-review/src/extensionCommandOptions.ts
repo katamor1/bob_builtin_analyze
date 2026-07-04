@@ -16,6 +16,16 @@ export function notifyInfo(message: string): void {
   vscode.window.setStatusBarMessage(message, 5000)
 }
 
+export function notifyInfoWithReport(message: string, reportPath: string): void {
+  notifyInfo(message)
+  void vscode.window.showInformationMessage(message, "Open Report").then((selection) => {
+    if (selection !== "Open Report") return undefined
+    return vscode.workspace.openTextDocument(reportPath)
+      .then((document) => vscode.window.showTextDocument(document, { preview: false }))
+      .then(undefined, (error) => console.warn(`Failed to open report: ${reportPath}`, error))
+  })
+}
+
 export function notifyError(message: string): void {
   void vscode.window.showErrorMessage(message)
 }

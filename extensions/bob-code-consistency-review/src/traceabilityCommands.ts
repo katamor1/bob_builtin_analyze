@@ -16,6 +16,7 @@ import {
   firstString,
   notifyError,
   notifyInfo,
+  notifyInfoWithReport,
   optionalAbsolute,
   requireBobWorkspaceRoot,
   resolveTrustedBzrPath,
@@ -124,7 +125,7 @@ export async function runValidateTraceabilityCatalog(options?: unknown): Promise
   }
   const message = `traceability gate report を生成しました: ${result.reportPath}（error: ${result.report.errors.length} 件, warning: ${result.report.warnings.length} 件）`
   if (result.report.status === "error") notifyError(message)
-  else notifyInfo(message)
+  else notifyInfoWithReport(message, result.reportPath)
   return { ...result, status: result.report.status }
 }
 

@@ -1,3 +1,4 @@
+import * as path from "node:path"
 import * as vscode from "vscode"
 import { captureBobOutput } from "./core/bobOutputCapture"
 import { validateBobOutput } from "./core/bobOutputValidator"
@@ -7,6 +8,7 @@ import {
   firstString,
   notifyError,
   notifyInfo,
+  notifyInfoWithReport,
   numberOption,
   optionalAbsolute,
   requireBobWorkspaceRoot,
@@ -42,7 +44,7 @@ export async function runPreprocess(options?: unknown): Promise<unknown> {
   const result = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: "コード整合レビュー用パッケージを作成しています" }, () =>
     preprocessReview({ workspaceRoot, inputPath, outDir, diffFixturePath, bzrPath, textEncoding, limits })
   )
-  notifyInfo(result.summary)
+  notifyInfoWithReport(result.summary, path.join(result.packageDir, "deterministic-checks.md"))
   return result
 }
 
