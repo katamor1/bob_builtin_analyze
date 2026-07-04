@@ -3,7 +3,8 @@ import * as path from "node:path"
 import { resolveWorkspacePathStrict, toPosixPath } from "../core/fileSystem"
 import { decodeTextBuffer } from "../core/textEncoding"
 import { normalizeReviewProcessingLimits, truncateUtf8Text, type ReviewProcessingLimits } from "../core/limits"
-import type { DocumentExtractionResult, EvidenceRef, ReviewInput } from "../core/types"
+import type { DocumentExtractionResult, EvidenceRef } from "../core/documentTypes"
+import type { ReviewInput } from "../core/reviewTypes"
 
 type CheerioAPI = import("cheerio").CheerioAPI
 type CheerioModule = typeof import("cheerio")

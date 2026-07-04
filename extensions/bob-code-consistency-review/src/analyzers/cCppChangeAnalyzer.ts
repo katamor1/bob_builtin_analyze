@@ -2,7 +2,10 @@ import * as fs from "node:fs/promises"
 import * as path from "node:path"
 import { languageFromPath } from "../core/gitDiffCollector"
 import { pathExists, readTextFile, resolveWorkspacePath, toPosixPath } from "../core/fileSystem"
-import type { CodeAnalysisResult, DiffSummary, EvidenceRef, ReviewInput } from "../core/types"
+import type { CodeAnalysisResult } from "../core/analysisTypes"
+import type { DiffSummary } from "../core/diffTypes"
+import type { EvidenceRef } from "../core/documentTypes"
+import type { ReviewInput } from "../core/reviewTypes"
 
 type FunctionRange = { name: string; start: number; end: number; body: string[] }
 type DiffLine = { file: string; line: number; text: string; kind: "add" | "delete" }
