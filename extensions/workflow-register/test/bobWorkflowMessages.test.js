@@ -55,3 +55,20 @@ test("plain workflow start message still includes workflow todos when not using 
   assert.match(message, /<workflow_todos>/)
   assert.match(message, /- \[ \] collect: Collect/)
 })
+
+test("command result truncation uses UTF-8 byte length", () => {
+  const message = buildStepMessage(
+    workflow(),
+    workflow().todos[0],
+    0,
+    { ...stepDefinition, maxResultBytes: 24 },
+    { command: "sample.collect", ok: true, value: "あいうえおかきくけこ" }
+  )
+  const match = message.match(/<workflow_command_result>\n([\s\S]*?)\n<\/workflow_command_result>/)
+  assert.ok(match)
+  const payload = JSON.parse(match[1])
+
+  assert.match(payload.value, /\[truncated\]/)
+  assert.ok(Buffer.byteLength(payload.value, "utf8") <= 24)
+  assert.doesNotThrow(() => Buffer.from(payload.value, "utf8").toString("utf8"))
+})

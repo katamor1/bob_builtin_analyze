@@ -288,8 +288,15 @@ function buildCommandResultBlock(result: WorkflowStepCommandResult, maxResultByt
 }
 
 function truncate(value: string, maxBytes: number): string {
-  if (value.length <= maxBytes) return value
-  return `${value.slice(0, Math.max(0, maxBytes - 32))}\n... [truncated]`
+  const limit = Math.max(0, Math.floor(maxBytes))
+  if (Buffer.byteLength(value, "utf8") <= limit) return value
+  const marker = "\n... [truncated]"
+  const contentLimit = Math.max(0, limit - Buffer.byteLength(marker, "utf8"))
+  let output = value
+  while (Buffer.byteLength(output, "utf8") > contentLimit && output.length > 0) {
+    output = output.slice(0, -1)
+  }
+  return `${output}${marker}`
 }
 
 function usesEngineStepUi(definition: WorkflowDefinition): boolean {
