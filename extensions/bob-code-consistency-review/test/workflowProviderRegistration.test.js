@@ -53,6 +53,17 @@ test("code consistency provider accepts workflowRoot without first-folder fallba
   assert.doesNotMatch(source, /function requireWorkspaceRoot/)
 })
 
+test("traceability apply command can recover draft JSON from linked workflow output files", () => {
+  const source = readSourceSet(["traceabilityCommands.ts"])
+
+  assert.match(source, /resolveTraceabilityDraftText/)
+  assert.match(source, /extractTraceabilityDraftJsonPaths/)
+  assert.match(source, /ai-draft\.json/)
+  assert.match(source, /ai-draft-output\.json/)
+  assert.match(source, /readTextFile/)
+  assert.match(source, /resolveWorkspaceContainedPath/)
+})
+
 test("Bob workflow template uses command providers instead of manual CLI instructions", () => {
   const workflow = readRepoFile(".bob", "workflows", "code-consistency-review", "WORKFLOW.md")
 
@@ -64,6 +75,7 @@ test("Bob workflow template uses command providers instead of manual CLI instruc
   assert.match(workflow, /provider: bobCodeConsistency\.validateOutput/)
   assert.match(workflow, /provider: bobCodeConsistency\.triage/)
   assert.match(workflow, /id: apply-traceability-draft[\s\S]*includeState:[\s\S]*- traceabilityDraftJson/)
+  assert.match(workflow, /Markdown、説明文、mermaid、リンク、ファイル作成報告は禁止/)
   assert.doesNotMatch(workflow, /id: copy-traceability-draft-json/)
   assert.doesNotMatch(workflow, /clipboard/)
   assert.doesNotMatch(workflow, /node dist\/src\/cli\/main\.js preprocess/)
