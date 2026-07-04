@@ -18,7 +18,7 @@
 | --- | --- | --- | --- | --- |
 | [workflow-register-deep-review-2026-07-04-14afe83c.md](workflow-register-deep-review-2026-07-04-14afe83c.md) | deep review | `WFR-01` to `WFR-15` | partial | `WFR-01`、`WFR-03`、`WFR-06`、`WFR-12` は対応済み。 |
 | [workflow-register-maintainability-review-2026-07-04-14afe83c.md](workflow-register-maintainability-review-2026-07-04-14afe83c.md) | maintainability review | `WFR-MAINT-*` | backlog | ID 付き deep review と重なるものは canonical 側を優先する。 |
-| [bob-bazaar-review-deep-review-2026-07-04-14afe83c.md](bob-bazaar-review-deep-review-2026-07-04-14afe83c.md) | deep review | `BBR-01` to `BBR-20` | partial | `BBR-04`、`BBR-06`、`BBR-09`、`BBR-10`、`BBR-14`、`BBR-15`、`BBR-16`、`BBR-17`、`BBR-18`、`BBR-20` は対応済み。 |
+| [bob-bazaar-review-deep-review-2026-07-04-14afe83c.md](bob-bazaar-review-deep-review-2026-07-04-14afe83c.md) | deep review | `BBR-01` to `BBR-20` | partial | `BBR-04`、`BBR-06`、`BBR-09`、`BBR-10`、`BBR-11`、`BBR-14`、`BBR-15`、`BBR-16`、`BBR-17`、`BBR-18`、`BBR-20` は対応済み。 |
 | [bob-bazaar-review-maintainability-review-2026-07-04-14afe83c.md](bob-bazaar-review-maintainability-review-2026-07-04-14afe83c.md) | maintainability review | `BBR-MAINT-*` | backlog | clamp や allowed root など deep review と重なる項目を含む。 |
 | [bob-code-consistency-review-deep-review-2026-07-04-14afe83c.md](bob-code-consistency-review-deep-review-2026-07-04-14afe83c.md) | deep review | `CCR-01` to `CCR-16` | open | まだこの表上の対応済み項目はない。 |
 | [bob-code-consistency-review-maintainability-review-2026-07-04-14afe83c.md](bob-code-consistency-review-maintainability-review-2026-07-04-14afe83c.md) | maintainability review | `CCR-MAINT-*` | backlog | path boundary、revision validation、size limits は deep review 側と重なる。 |
@@ -61,7 +61,7 @@
 | `BBR-08` | `bob-bazaar-review-deep-review...:55` | Medium | GUI 後の workflow step 自動完了が run/step を照合しない | open | action input で runId / stepId を照合 |  |
 | `BBR-09` | `bob-bazaar-review-deep-review...:56` | Medium | project rules 付き CLI command が default checklist へ fallback し得る | done | `6f1db85c` | `extensions/bob-bazaar-review`: `npm.cmd test`; `git diff --check` |
 | `BBR-10` | `bob-bazaar-review-deep-review...:57` | Medium | review-result artifact の上書き | done | `25719710` | `extensions/bob-bazaar-review`: `npm.cmd test`; `git diff --check` |
-| `BBR-11` | `bob-bazaar-review-deep-review...:58` | Medium | MCP stdio reader に最大 Content-Length がない | open | max request bytes を導入 |  |
+| `BBR-11` | `bob-bazaar-review-deep-review...:58` | Medium | MCP stdio reader に最大 Content-Length がない | done | `b21ff2d2` | `extensions/bob-bazaar-review`: `npm.cmd test`; `git diff --check` |
 | `BBR-12` | `bob-bazaar-review-deep-review...:59` | Medium | `.bob` 初期化時の workflow template 上書き | open | backup、diff preview、confirmation |  |
 | `BBR-13` | `bob-bazaar-review-deep-review...:60` | Medium | review packet の privacy leak | open | path redaction と privacy notice |  |
 | `BBR-14` | `bob-bazaar-review-deep-review...:61` | Medium | revision validation の強化 | done | `8c86eb05` | `extensions/bob-bazaar-review`: `npm.cmd test`; `git diff --check` |
@@ -152,3 +152,4 @@
 | `6f1db85c` | `BBR-09` | require project rules assets for project-rules Bazaar review entrypoints |
 | `c17cbb34` | `ENC-01` | enforce UTF-8 without BOM for tracked extension text files |
 | `25719710` | `BBR-10` | back up existing review-result JSON and Markdown before atomic overwrite |
+| `b21ff2d2` | `BBR-11` | reject oversized MCP stdio requests and return JSON-RPC parse errors |
