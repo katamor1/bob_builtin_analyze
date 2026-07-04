@@ -1,11 +1,30 @@
 import * as fs from "node:fs/promises"
 import * as path from "node:path"
+import { randomUUID } from "node:crypto"
 import { applyTemplate, loadPromptTemplates } from "../templates/templateLoader"
 import { relativePosix, writeJsonFile, writeTextFile } from "./fileSystem"
 import { normalizeReviewProcessingLimits, truncateUtf8Text, type ReviewProcessingLimits } from "./limits"
 import type { CodeAnalysisResult, DiffSummary, DocumentExtractionResult, EvidenceRef, ReviewInput, TraceabilityResult } from "./types"
 
 const PRIVACY_NOTICE_JA = "生成物は社内設計書・顧客仕様・ソースコード・raw diff を含む可能性があります。"
+const MANAGED_PACKAGE_OUTPUTS = [
+  "prompts",
+  "code-slices",
+  "tables",
+  "input-normalized.json",
+  "changed-files.json",
+  "changed-symbols.json",
+  "document-index.json",
+  "evidence-index.json",
+  "traceability-map.json",
+  "manifest.yaml",
+  "change-summary.md",
+  "diff-context.md",
+  "document-excerpts.md",
+  "traceability-map.md",
+  "deterministic-checks.md",
+  "bob-input.md"
+]
 
 export async function buildReviewPackage(input: {
   workspaceRoot: string
@@ -20,7 +39,9 @@ export async function buildReviewPackage(input: {
   const { outDir, reviewInput, diff, documents, codeAnalysis, traceability } = input
   const limits = normalizeReviewProcessingLimits(input.limits)
   const packageWarnings: string[] = []
+  const generationId = randomUUID()
   await fs.mkdir(outDir, { recursive: true })
+  await cleanManagedPackageOutputs(outDir)
   await writePrompts(outDir)
   await writeCodeSlices(outDir, codeAnalysis)
   await writeTables(outDir, documents)
@@ -67,15 +88,16 @@ export async function buildReviewPackage(input: {
   const bobInput = limitBobInput(bobInputSource, limits, packageWarnings)
   deterministicChecks = buildDeterministicChecks(documents, codeAnalysis, traceability, packageWarnings)
 
-  await writeTextFile(path.join(outDir, "manifest.yaml"), buildManifest(reviewInput, diff, evidence, input.workspaceRoot, outDir, packageWarnings))
+  await writeTextFile(path.join(outDir, "manifest.yaml"), buildManifest(reviewInput, diff, evidence, input.workspaceRoot, outDir, packageWarnings, generationId))
   await writeTextFile(path.join(outDir, "deterministic-checks.md"), deterministicChecks)
   await writeTextFile(path.join(outDir, "bob-input.md"), bobInput)
   return packageWarnings
 }
 
-function buildManifest(reviewInput: ReviewInput, diff: DiffSummary, evidence: EvidenceRef[], workspaceRoot: string, outDir: string, packageWarnings: string[]): string {
+function buildManifest(reviewInput: ReviewInput, diff: DiffSummary, evidence: EvidenceRef[], workspaceRoot: string, outDir: string, packageWarnings: string[], generationId: string): string {
   return [
     "package_version: 1",
+    `generation_id: ${generationId}`,
     `created_at: ${JSON.stringify(new Date().toISOString())}`,
     "created_by: bob-code-consistency-review",
     "preprocess_version: 0.1.0",
@@ -104,6 +126,12 @@ function buildManifest(reviewInput: ReviewInput, diff: DiffSummary, evidence: Ev
     ...packageWarnings.map((warning) => `  - ${JSON.stringify(warning)}`),
     ""
   ].filter((line): line is string => line !== undefined).join("\n")
+}
+
+async function cleanManagedPackageOutputs(outDir: string): Promise<void> {
+  await Promise.all(MANAGED_PACKAGE_OUTPUTS.map((item) =>
+    fs.rm(path.join(outDir, item), { recursive: true, force: true })
+  ))
 }
 
 function buildReviewSummary(reviewInput: ReviewInput, diff: DiffSummary): string {
