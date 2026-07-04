@@ -22,7 +22,7 @@ export function evaluateTransitionCondition(
   return { matched: false, snapshot }
 }
 
-export function resolveStateValue(state: Record<string, string>, stateKey: string): unknown {
+function resolveStateValue(state: Record<string, string>, stateKey: string): unknown {
   const [rootKey, ...path] = stateKey.split(".")
   if (!rootKey) return undefined
   const raw = state[rootKey]

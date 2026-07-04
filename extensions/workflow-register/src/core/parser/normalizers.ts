@@ -198,7 +198,7 @@ export function normalizeEngineStep(step: Record<string, unknown>): EngineStep {
   }
 }
 
-export function normalizeStepTransition(value: unknown): WorkflowStepTransitionDefinition | undefined {
+function normalizeStepTransition(value: unknown): WorkflowStepTransitionDefinition | undefined {
   const record = asRecord(value)
   if (Object.keys(record).length === 0) return undefined
   const decisions = Array.isArray(record.decisions) ? record.decisions.map((entry) => {
@@ -228,7 +228,7 @@ function normalizeTransitionCondition(value: unknown): WorkflowTransitionConditi
   }
 }
 
-export function normalizeManualForm(value: unknown): WorkflowManualFormDefinition | undefined {
+function normalizeManualForm(value: unknown): WorkflowManualFormDefinition | undefined {
   const record = asRecord(value)
   if (Object.keys(record).length === 0) return undefined
   const fields = Array.isArray(record.fields) ? record.fields.map((entry) => {
@@ -248,7 +248,7 @@ export function normalizeManualForm(value: unknown): WorkflowManualFormDefinitio
   }
 }
 
-export function normalizeManualApproval(value: unknown): WorkflowManualApprovalDefinition | undefined {
+function normalizeManualApproval(value: unknown): WorkflowManualApprovalDefinition | undefined {
   const record = asRecord(value)
   if (Object.keys(record).length === 0) return undefined
   return {

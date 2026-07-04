@@ -282,3 +282,57 @@ branching definition と run branching state が `model.ts` に集中したた�
 4. `workflowRegister.test.js` の manifest assertion に branch command 3 件を追加する。
 5. internal helper export を削る。
 6. GUI Builder の branching loop editor と JSON parse diagnostics を追加する。
+
+## 対策実施結果
+
+実施日: 2026-07-05
+
+主要実装コミット:
+
+- `bfeb4267` `Validate branch loop targets and future state`
+- `d4c3874e` `Split branch transition runtime responsibilities`
+- `01e783b7` `Wire structured manual completion prompts`
+- `c8193d5b` `Expose branch checkpoint diagnostics and API`
+- `56a6ef3e` `Add branching controls to workflow builder`
+
+この最終レビュー文書更新コミットでは、上記対応の検証結果追記と internal helper export の整理を行った。
+
+### Findings 別対応状況
+
+| 指摘 | 対応 |
+| --- | --- |
+| `entryStep` が validation-only metadata | `decision.loop` 付き transition が loop の `entryStep` 以外へ戻る場合を validator error にした。future step が producer の `stateKey` 参照も error にした。 |
+| `branchTransitions.ts` の責務集中 | `branchState.ts`、`branchReset.ts`、`branchHistory.ts`、`branchCheckpoint.ts` へ分割し、`branchTransitions.ts` は orchestration に縮小した。 |
+| `WorkflowTransitionDefaultAction` が実質 `string` | 型定義を `string` に単純化し、予約 action の意味は runtime/validator 側へ寄せた。 |
+| Webview JSON 編集の黙殺 | manual form fields、transition decisions、command extra args の JSON parse error を `editorDiagnostics` として Preview / Diagnostics に表示するようにした。 |
+| branch checkpoint command が public API にない | `WorkflowRegisterApi` に `approveBranchCheckpoint`、`abortBranchCheckpoint`、`inspectBranching` を追加した。 |
+| manifest coverage が薄い | branch checkpoint command 3 件を `assertContributesCommand` の対象に追加した。 |
+| internal helper export | `resolveStateValue`、`normalizeStepTransition`、`normalizeManualForm`、`normalizeManualApproval` を internal function に戻した。 |
+
+### 追加対応
+
+- Bob UI / Command Palette / standalone engine の manual step completion で、structured form values と approval result を `ManualCompletionResult` として engine に返すようにした。
+- `checkpoint` status を Bob runner の成功扱いに追加し、checkpoint 到達を Bob 側 failure として扱わないようにした。
+- `inspectRunDiagnostics` に branch loops、checkpoint、branching history を統合し、`inspectBranching` と shared formatter を使うようにした。
+- GUI Builder に Branching タブを追加し、loop id、entryStep、maxIterations、extensionSize、checkpoint title/message を編集できるようにした。
+- Preview / Diagnostics に transition preview を追加し、backward transition と loop 指定を確認しやすくした。
+
+### 再レビュー観点の結果
+
+- コードサイズ: 追加対策後の分割により `branchTransitions.ts` は 103 行規模に縮小し、branch runtime の新規 module は 22-84 行に収まった。`bobStepRuntime.ts` は structured completion 対応で増加したが、prompt UI は `manualStepPrompt.ts` に分離した。
+- ファイル責務: branch runtime、manual prompt、branch diagnostics formatter を分離し、service/webview への追記を最小化した。
+- 依存・bundle: package dependency / lockfile の tracked 変更はない。VSIX は `workflow-register-step-back.vsix` として 858 files、1.12 MB で生成できた。
+- 未使用コード: 既存指摘の internal helper export は解消した。
+- 循環依存: 新規分割後も TypeScript compile が通り、追加 module 間の循環は作っていない。
+- 暗黙依存: `entryStep`、future `stateKey`、JSON parse failure、checkpoint API surface の暗黙依存を明示的な validation/API/diagnostics に寄せた。
+- 型定義: default action の実質 union を解消した。大きな型分割は今後の追加時の候補として残るが、今回の指摘対象は解消済み。
+- barrel export: 新しい barrel export は追加していない。
+- 自動テスト密度: 追加対策により full test は 206 件から 211 件へ増加した。manual completion、branch validation、API/manifest、diagnostics、GUI branching を regression test で固定した。
+
+### 最終確認
+
+- `npm.cmd test`: 211 tests / 211 pass。
+- `git diff --check`: exit 0。
+- `npm.cmd run package -- --out $env:TEMP\workflow-register-step-back.vsix`: success。VSIX は 858 files、1.12 MB。
+
+補足: package gate の初回実行では local `node_modules` の dev dependency 展開欠損により、`xmlbuilder` と `asynckit` の missing module が発生した。`package.json` / lockfile は変更せず、対象 package を npm tarball から `node_modules` へ再展開して検証した。
