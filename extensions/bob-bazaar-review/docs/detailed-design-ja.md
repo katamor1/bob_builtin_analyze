@@ -353,10 +353,11 @@ file basename は `review_id` を sanitize して作る。`review_id` が無い�
 | `workflowBridge.ts` | packet から workflow context 生成。 |
 | `workflowStepCompletion.ts` | workflow-register step completion 呼び出しの疎結合。 |
 | `mcp/server.ts` | tool list、readonly tool definitions、argument validation、result tools。 |
+| 実機 | VS Code / IBM Bob / workflow-register / Bazaar CLI / Webview / MCP の結合動作。 |
 
-詳細な単体テスト仕様は `unit-test-spec-ja.md` に定義する。
+詳細な単体テスト仕様は `unit-test-spec-ja.md`、実機テスト仕様は `real-machine-test-spec-ja.md` に定義する。
 
-## 22. 変更時の注意点
+## 25. 変更時の注意点
 
 - Bazaar command を追加する場合は、読み取り専用かを確認し、`--no-aliases` 強制経路を通す。
 - MCP tool を追加する場合は、input schema と README / 設計書 / tests を更新する。

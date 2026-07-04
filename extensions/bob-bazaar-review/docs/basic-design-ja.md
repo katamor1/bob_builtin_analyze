@@ -248,10 +248,11 @@ Bob が出力した review-result JSON は、command argument、active editor se
 - review results store と MCP result 取得 tools を検証する。
 - workflow template の UI 表示値、resultKey、artifact、guardrail、requires、preflight を検証する。
 - MCP server の tool 定義と readonly 境界を検証する。
+- 実機では VS Code / IBM Bob / workflow-register / Bob Workflow UI / Bazaar CLI / Webview / MCP を含む結合動作を確認する。
 
-詳細な単体テスト仕様は `unit-test-spec-ja.md` に定義する。
+詳細な単体テスト仕様は `unit-test-spec-ja.md`、実機テスト仕様は `real-machine-test-spec-ja.md` に定義する。
 
-## 17. 今後の拡張方針
+## 18. 今後の拡張方針
 
 - Bob UI 経由の中断再開をさらに強化する。
 - review packet の永続保存と再利用 UI を追加する。

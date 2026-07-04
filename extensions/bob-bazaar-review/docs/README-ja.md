@@ -1,6 +1,6 @@
 # bob-bazaar-review ドキュメント
 
-このディレクトリには、`bob-bazaar-review` 拡張機能の設計・運用に関するドキュメントを配置します。
+このディレクトリには、`bob-bazaar-review` 拡張機能の設計・運用・テストに関するドキュメントを配置します。
 
 ## 現在の実装状態
 
@@ -16,8 +16,13 @@
 - `detailed-design-ja.md`  
   実装モジュール、VS Code command、workspace 解決、BazaarClient、GUI、直接レビュー command、MCP server、workflow-register bridge、project rules、review-result capture、multi-root 動作、テスト観点を整理した詳細設計書です。
 
+## テスト仕様書
+
 - `unit-test-spec-ja.md`  
   BazaarClient、文字コード、workspace resolver、review packet、直接レビュー command、workflow-register bridge、review-result capture、MCP server、workflow template の単体テスト仕様書です。
+
+- `real-machine-test-spec-ja.md`  
+  VS Code、IBM Bob、workflow-register、Bob Workflow UI、Bazaar Review GUI、Bazaar CLI、MCP server、multi-root workspace を含む実機テスト仕様書です。
 
 ## 既存ドキュメント
 
