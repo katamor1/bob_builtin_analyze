@@ -11,6 +11,26 @@ function handleFieldEvent(event) {
   if (!target || !target.dataset) return;
   const value = target.type === 'checkbox' ? target.checked : target.value;
   if (target.dataset.meta) { model.metadata[target.dataset.meta] = value; requestPreview(); return; }
+  if (target.dataset.branchingField) {
+    ensureArrays();
+    if (target.dataset.branchingField === 'enabled') model.branching.enabled = value;
+    requestPreview(); return;
+  }
+  if (target.dataset.branchLoopIndex) {
+    ensureArrays();
+    const loop = model.branching.loops[Number(target.dataset.branchLoopIndex)];
+    if (!loop) return;
+    const field = target.dataset.branchLoopField;
+    if (field === 'maxIterations' || field === 'extensionSize') loop[field] = Math.max(1, Number(value) || 1);
+    else if (field === 'checkpointTitle' || field === 'checkpointMessage') {
+      if (!loop.checkpoint) loop.checkpoint = {};
+      if (field === 'checkpointTitle') loop.checkpoint.title = value || undefined;
+      else loop.checkpoint.message = value || undefined;
+    } else {
+      loop[field] = value || undefined;
+    }
+    requestPreview(); return;
+  }
   const step = selectedStep();
   if (step && target.dataset.stepField) {
     const field = target.dataset.stepField;
@@ -34,8 +54,9 @@ function handleFieldEvent(event) {
     if (target.dataset.manualFormField === 'fieldsJson') {
       try {
         const fields = JSON.parse(value || '[]');
-        if (Array.isArray(fields)) step.form.fields = fields;
-      } catch (error) {}
+        if (Array.isArray(fields)) { step.form.fields = fields; clearEditorDiagnostic('manualFormFields:' + step.id); }
+        else setEditorDiagnostic('manualFormFields:' + step.id, "Manual form fields JSON must be an array for step '" + step.id + "'.");
+      } catch (error) { setEditorDiagnostic('manualFormFields:' + step.id, "Manual form fields JSON parse error for step '" + step.id + "': " + error.message); }
     } else {
       step.form[target.dataset.manualFormField] = value || undefined;
     }
@@ -55,8 +76,9 @@ function handleFieldEvent(event) {
     const transition = ensureTransition(step);
     try {
       const decisions = JSON.parse(value || '[]');
-      if (Array.isArray(decisions)) transition.decisions = decisions;
-    } catch (error) {}
+      if (Array.isArray(decisions)) { transition.decisions = decisions; clearEditorDiagnostic('transitionDecisions:' + step.id); }
+      else setEditorDiagnostic('transitionDecisions:' + step.id, "Transition decisions JSON must be an array for step '" + step.id + "'.");
+    } catch (error) { setEditorDiagnostic('transitionDecisions:' + step.id, "Transition decisions JSON parse error for step '" + step.id + "': " + error.message); }
     requestPreview(); return;
   }
   if (step && target.dataset.commandField && step.type === 'command') {
@@ -68,7 +90,8 @@ function handleFieldEvent(event) {
       try {
         const extra = JSON.parse(value || '[]');
         step.action.args = [args[0] || ''].concat(Array.isArray(extra) ? extra : [extra]);
-      } catch (error) {}
+        clearEditorDiagnostic('commandExtraArgs:' + step.id);
+      } catch (error) { setEditorDiagnostic('commandExtraArgs:' + step.id, "Command extra args JSON parse error for step '" + step.id + "': " + error.message); }
     }
     requestPreview(); return;
   }

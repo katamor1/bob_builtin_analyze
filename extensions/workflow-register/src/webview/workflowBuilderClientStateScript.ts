@@ -8,15 +8,20 @@ let latestPreview = '';
 let latestDiagnostics = ['- preview is not ready yet.'];
 let latestOk = false;
 let latestFilePath = '';
+let editorDiagnostics = [];
 function escapeHtml(value) { return String(value === undefined || value === null ? '' : value).replace(/[&<>"]/g, function(ch) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]; }); }
 function linesFromText(value) { return String(value || '').split(/\r?\n/).map(function(x) { return x.trim(); }).filter(Boolean); }
 function textFromLines(value) { return Array.isArray(value) ? value.join('\n') : ''; }
 function selectedStep() { return model.steps[selectedStepIndex]; }
 function usedStepIds() { return model.steps.map(function(step) { return step.id; }); }
+function usedBranchLoopIds() { ensureArrays(); return model.branching.loops.map(function(loop) { return loop.id; }); }
 function normalizeId(value) { return String(value || '').trim().replace(/\s+/g, '-').replace(/[^A-Za-z0-9._-]/g, '-').replace(/-+/g, '-').replace(/^[._-]+/, '').replace(/[._-]+$/, ''); }
 function nextId(base) { const normalized = normalizeId(base) || 'step'; const used = new Set(usedStepIds()); if (!used.has(normalized)) return normalized; for (let i = 2; i < 1000; i++) if (!used.has(normalized + '-' + i)) return normalized + '-' + i; return normalized + '-' + Date.now(); }
+function nextBranchLoopId(base) { const normalized = normalizeId(base) || 'branch-loop'; const used = new Set(usedBranchLoopIds()); if (!used.has(normalized)) return normalized; for (let i = 2; i < 1000; i++) if (!used.has(normalized + '-' + i)) return normalized + '-' + i; return normalized + '-' + Date.now(); }
 function titleFromId(id) { return String(id || 'New Step').split(/[._-]+/).filter(Boolean).map(function(part) { return part.slice(0, 1).toUpperCase() + part.slice(1); }).join(' ') || 'New Step'; }
 function ensureArrays() { model.inputs = Array.isArray(model.inputs) ? model.inputs : []; model.preflight = Array.isArray(model.preflight) ? model.preflight : []; model.steps = Array.isArray(model.steps) ? model.steps : []; model.artifacts = Array.isArray(model.artifacts) ? model.artifacts : []; if (!model.guardrails) model.guardrails = {}; if (!Array.isArray(model.guardrails.requireApproval)) model.guardrails.requireApproval = []; if (!model.requires) model.requires = {}; if (!model.completion) model.completion = {}; if (!model.branching) model.branching = { enabled: false, loops: [] }; if (!Array.isArray(model.branching.loops)) model.branching.loops = []; }
+function setEditorDiagnostic(key, message) { editorDiagnostics = editorDiagnostics.filter(function(item) { return item.key !== key; }); if (message) editorDiagnostics.push({ key: key, message: message }); if (activeTab === 'preview') renderPreview(); }
+function clearEditorDiagnostic(key) { setEditorDiagnostic(key, undefined); }
 function stepResultKeys(step) { const keys = []; if (step && step.resultKey) keys.push(step.resultKey); if (step && step.type === 'manual') { if (step.form && step.form.resultKey) keys.push(step.form.resultKey); if (step.approval && step.approval.resultKey) keys.push(step.approval.resultKey); } return keys; }
 function resultKeysBefore(index, steps) { const target = steps || model.steps; return target.slice(0, Math.max(0, index)).flatMap(stepResultKeys).filter(Boolean); }
 function allResultKeys(steps) { return new Set((steps || model.steps).flatMap(stepResultKeys).filter(Boolean)); }
