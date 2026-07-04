@@ -132,13 +132,13 @@ test("review GUI only completes the workflow step after Bob context ADD succeeds
 
   assert.match(source, /if \(isBobCodeExtensionAvailable\(\)\) \{[\s\S]*addResult = await addPacketToBobContext\(doc\.uri, packet\)/)
   assert.match(source, /addResult === "added"[\s\S]*completeCurrentWorkflowStepAfterGuiAction/)
-  assert.match(source, /import \{ addMarkdownPacketToBobContext \} from "\.\.\/bobContext"/)
+  assert.match(source, /import \{ addMarkdownPacketToBobContext \} from "\.\.\/bob\/bobContext"/)
 })
 
 test("review GUI stops after markdown creation when IBM Bob is absent", () => {
   const source = fs.readFileSync(path.join(extensionRoot, "src", "ui", "reviewGui.ts"), "utf8")
 
-  assert.match(source, /import \{ isBobCodeExtensionAvailable \} from "\.\.\/bobCodeExtension"/)
+  assert.match(source, /import \{ isBobCodeExtensionAvailable \} from "\.\.\/bob\/bobCodeExtension"/)
   assert.match(source, /if \(isBobCodeExtensionAvailable\(\)\) \{[\s\S]*await addPacketToBobContext\(doc\.uri, packet\)[\s\S]*\} else \{[\s\S]*IBM Bob 拡張機能が見つからないため/)
   assert.match(source, /bobContextAvailable:/)
 })

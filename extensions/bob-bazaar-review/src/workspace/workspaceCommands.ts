@@ -1,8 +1,8 @@
 import * as vscode from "vscode"
-import { resolveBzrPath } from "./bazaar/bzrPathTrust"
-import { configureWorkspaceMcpServer } from "./mcpConfig"
-import { initializeProjectRules } from "./projectRules/io"
-import { resolveBobWorkspaceFolder } from "./workspace/workspaceResolver"
+import { resolveBzrPath } from "../bazaar/bzrPathTrust"
+import { configureWorkspaceMcpServer } from "../mcp/mcpConfig"
+import { initializeProjectRules } from "../projectRules/io"
+import { resolveBobWorkspaceFolder } from "./workspaceResolver"
 
 /**
  * Writes the Bazaar MCP server configuration for the selected Bob workspace.

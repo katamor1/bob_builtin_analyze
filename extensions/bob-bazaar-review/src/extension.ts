@@ -1,12 +1,12 @@
 import * as vscode from "vscode"
 import { reviewRange, reviewRevision } from "./bazaar/bazaarReviewCommands"
 import { captureReviewResult, saveReviewResultFromClipboard } from "./projectRules/resultCapture"
-import { validateActiveReviewResultJson } from "./reviewResultValidationCommand"
+import { validateActiveReviewResultJson } from "./projectRules/reviewResultValidationCommand"
 import { openBazaarReviewGui } from "./ui/reviewGui"
 import { collectReviewContext, loadReviewRules } from "./workflow/workflowActions"
 import { registerWorkflowProvidersWithRetry } from "./workflow/workflowProviders"
 import { captureOptionsFromCommandArgs } from "./workflow/workflowRegisterBridge"
-import { configureMcp, initProjectRules } from "./workspaceCommands"
+import { configureMcp, initProjectRules } from "./workspace/workspaceCommands"
 
 /**
  * Activates the Bob Bazaar review extension and registers VS Code commands plus workflow providers.

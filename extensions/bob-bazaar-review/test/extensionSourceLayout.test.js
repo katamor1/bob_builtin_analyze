@@ -6,7 +6,7 @@ const { test } = require("node:test")
 const { extensionRoot, readSrc } = require("./helpers/sourceReader")
 
 test("extension entrypoint is a composition root for command and workflow registrations", () => {
-  for (const fileName of ["workflow/workflowProviders.ts", "workflow/workflowActions.ts", "workspaceCommands.ts"]) {
+  for (const fileName of ["workflow/workflowProviders.ts", "workflow/workflowActions.ts", "workspace/workspaceCommands.ts"]) {
     assert.ok(fs.existsSync(path.join(extensionRoot, "src", fileName)), `${fileName} must exist`)
   }
 
@@ -81,4 +81,21 @@ test("bazaar review modules live under the bazaar source boundary", () => {
   const commandSource = readSrc("bazaar", "bazaarReviewCommands.ts")
   assert.match(commandSource, /from "\.\/bazaar"/)
   assert.match(commandSource, /from "\.\/reviewPacket"/)
+})
+
+test("extension source root only keeps the extension entrypoint", () => {
+  const rootFiles = fs.readdirSync(path.join(extensionRoot, "src"))
+    .filter((entry) => entry.endsWith(".ts"))
+    .sort()
+
+  assert.deepEqual(rootFiles, ["extension.ts"])
+
+  for (const fileName of ["bobCodeExtension.ts", "bobContext.ts"]) {
+    assert.ok(fs.existsSync(path.join(extensionRoot, "src", "bob", fileName)), `bob/${fileName} must exist`)
+  }
+  assert.ok(fs.existsSync(path.join(extensionRoot, "src", "mcp", "mcpConfig.ts")), "mcp/mcpConfig.ts must exist")
+  assert.ok(fs.existsSync(path.join(extensionRoot, "src", "projectRules", "reviewResultValidationCommand.ts")), "projectRules/reviewResultValidationCommand.ts must exist")
+  for (const fileName of ["bobWorkspaceInit.ts", "templateRefresh.ts", "workspaceCommands.ts"]) {
+    assert.ok(fs.existsSync(path.join(extensionRoot, "src", "workspace", fileName)), `workspace/${fileName} must exist`)
+  }
 })

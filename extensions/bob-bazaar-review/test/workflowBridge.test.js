@@ -79,14 +79,14 @@ test("required project rules loaders reject missing files for workflow steps", a
 })
 
 test("workspace initialization tracks the WORKFLOW.md directory layout", () => {
-  const source = require("node:fs").readFileSync(path.join(extensionRoot, "src", "bobWorkspaceInit.ts"), "utf8")
+  const source = require("node:fs").readFileSync(path.join(extensionRoot, "src", "workspace", "bobWorkspaceInit.ts"), "utf8")
 
   assert.match(source, /\.bob\/workflows\/bazaar-project-rule-review\/WORKFLOW\.md/)
   assert.doesNotMatch(source, /\.bob\/workflows\/bazaar-project-rule-review\.md/)
 })
 
 test("workspace initialization previews and confirms template refresh before overwriting existing workflow files", () => {
-  const source = require("node:fs").readFileSync(path.join(extensionRoot, "src", "bobWorkspaceInit.ts"), "utf8")
+  const source = require("node:fs").readFileSync(path.join(extensionRoot, "src", "workspace", "bobWorkspaceInit.ts"), "utf8")
 
   assert.match(source, /refreshTemplateFiles\(templateRoot,\s*root,\s*\{\s*confirmOverwrite:\s*confirmTemplateRefresh\s*\}\)/s)
   assert.match(source, /openTextDocument\(\{\s*language:\s*"markdown",\s*content:\s*renderTemplateRefreshPreviewMarkdown\(preview\)\s*\}\)/s)
