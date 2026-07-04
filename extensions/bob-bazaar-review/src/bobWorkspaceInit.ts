@@ -2,6 +2,7 @@ import * as fs from "node:fs/promises"
 import * as path from "node:path"
 import * as vscode from "vscode"
 import { configureWorkspaceMcpServer } from "./mcpConfig"
+import { refreshTemplateFile } from "./templateRefresh"
 
 export interface BobWorkspaceStatus {
   initialized: boolean
@@ -111,8 +112,7 @@ async function refreshTemplateFiles(templateRoot: string, workspaceRoot: string)
     const source = path.join(templateRoot, relative.replace(/^\.bob[\\/]/, ""))
     const target = path.join(workspaceRoot, relative)
     if (!(await exists(source))) continue
-    await fs.mkdir(path.dirname(target), { recursive: true })
-    await fs.copyFile(source, target)
+    await refreshTemplateFile(source, target)
   }
 }
 
