@@ -16,7 +16,7 @@
 
 | document | kind | tracking scope | current status | notes |
 | --- | --- | --- | --- | --- |
-| [workflow-register-deep-review-2026-07-04-14afe83c.md](workflow-register-deep-review-2026-07-04-14afe83c.md) | deep review | `WFR-01` to `WFR-15` | partial | `WFR-01`、`WFR-02`、`WFR-03`、`WFR-04`、`WFR-05`、`WFR-06`、`WFR-07`、`WFR-08`、`WFR-09`、`WFR-10`、`WFR-11`、`WFR-12`、`WFR-13`、`WFR-14` は対応済み。 |
+| [workflow-register-deep-review-2026-07-04-14afe83c.md](workflow-register-deep-review-2026-07-04-14afe83c.md) | deep review | `WFR-01` to `WFR-15` | done | `WFR-01` から `WFR-15` まで対応済み。 |
 | [workflow-register-maintainability-review-2026-07-04-14afe83c.md](workflow-register-maintainability-review-2026-07-04-14afe83c.md) | maintainability review | `WFR-MAINT-*` | backlog | ID 付き deep review と重なるものは canonical 側を優先する。 |
 | [bob-bazaar-review-deep-review-2026-07-04-14afe83c.md](bob-bazaar-review-deep-review-2026-07-04-14afe83c.md) | deep review | `BBR-01` to `BBR-20` | done | `BBR-01` から `BBR-20` まで対応済み。 |
 | [bob-bazaar-review-maintainability-review-2026-07-04-14afe83c.md](bob-bazaar-review-maintainability-review-2026-07-04-14afe83c.md) | maintainability review | `BBR-MAINT-*` | backlog | clamp や allowed root など deep review と重なる項目を含む。 |
@@ -45,7 +45,7 @@
 | `WFR-12` | `workflow-register-deep-review...:60` | Medium | `maxResultBytes` が byte ではなく文字数 | done | `6c94c7e1` | `extensions/workflow-register`: `npm.cmd test`; `git diff --check` |
 | `WFR-13` | `workflow-register-deep-review...:61` | Low | IBM Bob dependency の扱いが曖昧 | done | `2e6eb4c3` | `extensions/workflow-register`: `npm.cmd run compile; node --test test\workflowRegister.test.js`; `npm.cmd test`; `git diff --check` |
 | `WFR-14` | `workflow-register-deep-review...:62` | Low | Workspace Trust gating がない | done | `8d341e72` | `extensions/workflow-register`: `npm.cmd run compile; node --test test\actionRegistry.test.js test\resultSinkRegistry.test.js test\runtimeWiring.test.js`; `npm.cmd test`; `git diff --check` |
-| `WFR-15` | `workflow-register-deep-review...:63` | Low | run id 採番の競合余地 | open | UUID suffix または exclusive mkdir |  |
+| `WFR-15` | `workflow-register-deep-review...:63` | Low | run id 採番の競合余地 | done | `e3d5c971` | `extensions/workflow-register`: RED `node --test test\workflowRunRecovery.test.js`; `npm.cmd run compile; node --test test\workflowRunRecovery.test.js`; `npm.cmd test`; `git diff --check` |
 
 ### bob-bazaar-review
 
@@ -99,7 +99,7 @@
 | --- | --- | --- | --- | --- |
 | `extensions-review:WR-01` | `extensions-review...:48` | `WFR-01` | duplicate / done | deep review の `WFR-01` として対応済み。 |
 | `extensions-review:WR-02` | `extensions-review...:49` | `WFR-05` | duplicate / done | snapshot privacy は `WFR-05` として対応済み。 |
-| `extensions-review:WR-03` | `extensions-review...:56` | `WFR-09` | duplicate / open | workflow builder edit boundary。 |
+| `extensions-review:WR-03` | `extensions-review...:56` | `WFR-09` | duplicate / done | workflow builder edit boundary は `WFR-09` として対応済み。 |
 | `extensions-review:WR-04` | `extensions-review...:58` | `WR-04` | open | Windows reserved name / trailing dot 対応。deep review に同一 ID なし。 |
 | `extensions-review:BBR-01` | `extensions-review...:50` | `BBR-01`, `BBR-02` | duplicate / done | MCP allowed root と write tool capability は対応済み。 |
 | `extensions-review:BBR-02` | `extensions-review...:54` | `BBR-04`, `BBR-16` | duplicate / done | runtime clamp と packet size clamp は対応済み。 |
@@ -154,6 +154,7 @@
 | `6c94c7e1` | `WFR-12` | byte-safe command result truncation |
 | `2e6eb4c3` | `WFR-13` | clarify IBM Bob as optional for authoring and required only for Bob UI registration |
 | `8d341e72` | `WFR-14` | gate workflow execution, registration, command providers, and file sinks on Workspace Trust |
+| `e3d5c971` | `WFR-15` | randomize workflow run IDs and retry transient run-state rename failures |
 | `8c86eb05` | `BBR-14` | Bazaar revision validation |
 | `fae99b40` | `BBR-18`, `extensions-review:BBR-04` | random GUI nonce |
 | `c085b107` | `BBR-20` | pass text encoding to MCP config |
