@@ -70,6 +70,44 @@ steps:
   assert.ok(formatWorkflowDiagnostics(result).some((line) => line.includes("hint:")))
 })
 
+test("semantic validator warns about deprecated bare template placeholders", () => {
+  const text = `---
+schemaVersion: workflow-register/v1
+name: sample
+description: Sample workflow.
+artifacts:
+  - id: reviewResult
+    producedBy: collect
+    path: ".bob/review/results/{{review_id}}.json"
+steps:
+  - id: collect
+    title: Collect
+    type: command
+    action:
+      provider: sample.collect
+    resultKey: reviewContext
+  - id: save
+    title: Save
+    type: result
+    result:
+      source: state
+      stateKey: reviewContext
+      sinks:
+        - type: file
+          path: ".bob/review/results/{{json state.reviewContext.review_id}}.json"
+---
+# Sample
+`
+  const result = validateWorkflowText({ sourceId: "workflow-register", filePath: ".bob/workflows/sample/WORKFLOW.md", text })
+
+  assert.equal(result.ok, true)
+  assert.ok(result.diagnostics.some((diagnostic) => (
+    diagnostic.severity === "warning" &&
+    diagnostic.message.includes("Deprecated bare template placeholder '{{review_id}}'")
+  )))
+  assert.ok(!result.diagnostics.some((diagnostic) => diagnostic.message.includes("{{json state.reviewContext.review_id}}")))
+})
+
 test("public JSON schema mirrors runtime schema shape", () => {
   const publicSchema = JSON.parse(fs.readFileSync(path.join(extensionRoot, "schema", "workflow-register.v1.schema.json"), "utf8"))
 

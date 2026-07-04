@@ -233,6 +233,55 @@ test("workflow engine resolves artifact path placeholders from inputs and JSON s
   assert.equal(JSON.parse(fs.readFileSync(artifactPath, "utf8")).review_id, "bazaar-r123-project-rule-review")
 })
 
+test("workflow engine resolves explicit JSON state placeholders deterministically", async () => {
+  const { actions, engine } = createWorkflowEngineContext()
+  const calls = []
+  actions.register({
+    id: "sample.first",
+    execute: async () => ({ review_id: "first-review", nested: { target: "alpha" } })
+  })
+  actions.register({
+    id: "sample.second",
+    execute: async () => ({ review_id: "second-review", nested: { target: "beta" } })
+  })
+  actions.register({
+    id: "sample.save",
+    execute: async ({ args }) => {
+      calls.push(args)
+      return "saved"
+    }
+  })
+  const workflow = {
+    id: "workflow-register.explicit-json-placeholders",
+    name: "explicit-json-placeholders",
+    label: "Explicit JSON Placeholders",
+    schemaVersion: "workflow-register/v1",
+    inputs: {},
+    engineSteps: [
+      { id: "first", title: "First", type: "command", action: { provider: "sample.first" }, resultKey: "firstContext" },
+      { id: "second", title: "Second", type: "command", action: { provider: "sample.second" }, resultKey: "secondContext" },
+      {
+        id: "save",
+        title: "Save",
+        type: "command",
+        action: {
+          provider: "sample.save",
+          args: {
+            selectedReview: "{{json state.secondContext.review_id}}",
+            nestedTarget: "{{json state.firstContext.nested.target}}"
+          }
+        },
+        resultKey: "saveResult"
+      }
+    ]
+  }
+
+  const run = await engine.runWorkflow(workflow, {})
+
+  assert.equal(run.status, "completed")
+  assert.deepEqual(calls, [{ selectedReview: "second-review", nestedTarget: "alpha" }])
+})
+
 test("workflow engine fails denied or non-allowlisted command steps before executing them", async () => {
   const { actions, engine } = createWorkflowEngineContext()
   let executed = false
