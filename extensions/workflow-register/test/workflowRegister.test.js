@@ -123,6 +123,12 @@ test("workflow authoring write paths enforce WORKFLOW.md document boundaries", (
   assert.ok(panel.indexOf("isWorkflowDocumentPath(targetUri.fsPath)") < panel.indexOf("workspace.fs.writeFile(targetUri"))
 })
 
+test("workspace workflow validation uses strict diagnostics", () => {
+  const source = readSrc("commands", "validateWorkflow.ts")
+
+  assert.match(source, /validateWorkflowText\(\{ sourceId: options\.sourceId, filePath, text, strict: true \}\)/)
+})
+
 test("runtime dependencies are not excluded from VSIX packaging", () => {
   const packageJson = readJson("package.json")
   const vscodeIgnore = readExtensionFile(".vscodeignore")
