@@ -16,7 +16,7 @@
 
 | document | kind | tracking scope | current status | notes |
 | --- | --- | --- | --- | --- |
-| [workflow-register-deep-review-2026-07-04-14afe83c.md](workflow-register-deep-review-2026-07-04-14afe83c.md) | deep review | `WFR-01` to `WFR-15` | partial | `WFR-01`、`WFR-03`、`WFR-06`、`WFR-12` は対応済み。 |
+| [workflow-register-deep-review-2026-07-04-14afe83c.md](workflow-register-deep-review-2026-07-04-14afe83c.md) | deep review | `WFR-01` to `WFR-15` | partial | `WFR-01`、`WFR-02`、`WFR-03`、`WFR-06`、`WFR-12` は対応済み。 |
 | [workflow-register-maintainability-review-2026-07-04-14afe83c.md](workflow-register-maintainability-review-2026-07-04-14afe83c.md) | maintainability review | `WFR-MAINT-*` | backlog | ID 付き deep review と重なるものは canonical 側を優先する。 |
 | [bob-bazaar-review-deep-review-2026-07-04-14afe83c.md](bob-bazaar-review-deep-review-2026-07-04-14afe83c.md) | deep review | `BBR-01` to `BBR-20` | done | `BBR-01` から `BBR-20` まで対応済み。 |
 | [bob-bazaar-review-maintainability-review-2026-07-04-14afe83c.md](bob-bazaar-review-maintainability-review-2026-07-04-14afe83c.md) | maintainability review | `BBR-MAINT-*` | backlog | clamp や allowed root など deep review と重なる項目を含む。 |
@@ -32,7 +32,7 @@
 | canonical id | source | severity | summary | status | done commits / next action | verification |
 | --- | --- | --- | --- | --- | --- | --- |
 | `WFR-01` | `workflow-register-deep-review...:49` | High | `vscode.executeCommand` の実 command ID が guardrail 対象外 | done | `4b7ebb0f`, `e4daab04` | `extensions/workflow-register`: `npm.cmd test`; `git diff --check` |
-| `WFR-02` | `workflow-register-deep-review...:50` | High | `guardrails.requireApproval` が engine で enforcement されない | open | approval evaluator を engine に追加 |  |
+| `WFR-02` | `workflow-register-deep-review...:50` | High | `guardrails.requireApproval` が engine で enforcement されない | done | `b2404b8c` | `extensions/workflow-register`: `npm.cmd run compile; node --test test\workflowEngineCommandAgent.test.js test\workflowAuthoringAdvancedSections.test.js`; `npm.cmd test`; `git diff --check` |
 | `WFR-03` | `workflow-register-deep-review...:51` | High | singleStep 実行時に前段 `reviewing` step が暗黙 accepted される | done | `30e0264f` | `extensions/workflow-register`: `npm.cmd test`; `git diff --check` |
 | `WFR-04` | `workflow-register-deep-review...:52` | High | retry/recovery が古い assistant 出力を再利用する可能性 | open | retry 時の再実行優先と attempt 境界を修正 |  |
 | `WFR-05` | `workflow-register-deep-review...:53` | High | task snapshot の機密情報リスク | open | snapshot の opt-in 化、redaction、ignore helper |  |
@@ -139,6 +139,7 @@
 | --- | --- | --- |
 | `4b7ebb0f` | `WFR-01` | runtime command ID guardrail |
 | `e4daab04` | `WFR-01` | public schema / test sync |
+| `b2404b8c` | `WFR-02` | enforce approval guardrail holds before command execution and resume only after approval |
 | `d668a0fc` | `BBR-04`, `BBR-16`, `extensions-review:BBR-02` | Bazaar review size clamp and truncate handling |
 | `30e0264f` | `WFR-03` | block reviewed workflow steps until accepted |
 | `aad8feb6` | `BBR-06` | dynamic Markdown fences for review packet content |
