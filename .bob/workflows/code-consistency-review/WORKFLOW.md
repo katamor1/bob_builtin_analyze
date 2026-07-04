@@ -158,8 +158,16 @@ steps:
     resultKey: traceabilityDraftJson
     maxResultBytes: 60000
     prompt: |
-      traceabilityDraftPrompt を読み、JSON object だけを作成してください。
-      status は proposed のみ。item は proposed_id、link は proposed_from / proposed_to を使ってください。
+      traceabilityDraftPrompt を読み、この step の最終応答として traceability catalog draft の JSON object だけを返してください。
+
+      厳守事項:
+      - Markdown、説明文、mermaid、リンク、ファイル作成報告は禁止です。
+      - 応答の先頭は `{`、末尾は `}` にしてください。
+      - status は proposed のみです。
+      - item は id を持たず proposed_id だけを使ってください。
+      - link は from / to を持たず proposed_from / proposed_to だけを使ってください。
+      - accepted / rejected / deprecated は人間だけが決めます。
+      - 不確かな対応は無理に補完せず proposed 候補として残してください。
   - id: apply-traceability-draft
     title: AI draft JSON を sidecar catalog に反映
     type: command
