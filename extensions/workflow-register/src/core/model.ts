@@ -1,6 +1,6 @@
 export type WorkflowSchemaVersion = "legacy" | "workflow-register/v1"
 export type WorkflowStepType = "command" | "agent" | "manual" | "result"
-export type RunStatus = "running" | "paused" | "reviewing" | "held" | "completed" | "failed"
+export type RunStatus = "running" | "paused" | "checkpoint" | "reviewing" | "held" | "completed" | "failed"
 export type StepRunStatus = "pending" | "running" | "reviewing" | "held" | "completed" | "failed"
 export type WorkflowStepCompletionMode = "auto" | "manual"
 export type WorkflowStepMessageMode = "full" | "current" | "silent" | "step"
@@ -89,6 +89,69 @@ export interface WorkflowStepExecutionDefinition {
   showInBob: boolean
 }
 
+export interface WorkflowBranchingDefinition {
+  enabled: boolean
+  loops: WorkflowBranchLoopDefinition[]
+}
+
+export interface WorkflowBranchLoopDefinition {
+  id: string
+  title?: string
+  entryStep: string
+  maxIterations: number
+  extensionSize: number
+  checkpoint?: WorkflowBranchCheckpointDefinition
+}
+
+export interface WorkflowBranchCheckpointDefinition {
+  title?: string
+  message?: string
+}
+
+export interface WorkflowStepTransitionDefinition {
+  decisions: WorkflowTransitionDecisionDefinition[]
+  default: WorkflowTransitionDefaultAction
+}
+
+export type WorkflowTransitionDefaultAction = "next" | "end" | "fail" | string
+
+export interface WorkflowTransitionDecisionDefinition {
+  id: string
+  when: WorkflowTransitionConditionDefinition
+  goto: string
+  loop?: string
+}
+
+export interface WorkflowTransitionConditionDefinition {
+  stateKey: string
+  equals?: unknown
+  notEquals?: unknown
+  in?: unknown[]
+  exists?: boolean
+  truthy?: boolean
+}
+
+export interface WorkflowManualFormDefinition {
+  resultKey: string
+  fields: WorkflowManualFormFieldDefinition[]
+}
+
+export interface WorkflowManualFormFieldDefinition {
+  id: string
+  title?: string
+  type: "string" | "number" | "boolean" | "select"
+  required?: boolean
+  multiline?: boolean
+  options?: string[]
+}
+
+export interface WorkflowManualApprovalDefinition {
+  resultKey: string
+  approveLabel?: string
+  rejectLabel?: string
+  message?: string
+}
+
 export interface WorkflowActionDefinition {
   provider: string
   args?: unknown
@@ -114,6 +177,7 @@ export interface BaseEngineStep {
   includeState?: string[]
   maxResultBytes?: number
   stateRequired?: boolean
+  transition?: WorkflowStepTransitionDefinition
 }
 
 export interface CommandEngineStep extends BaseEngineStep {
@@ -130,6 +194,8 @@ export interface AgentEngineStep extends BaseEngineStep {
 
 export interface ManualEngineStep extends BaseEngineStep {
   type: "manual"
+  form?: WorkflowManualFormDefinition
+  approval?: WorkflowManualApprovalDefinition
 }
 
 export interface ResultEngineStep extends BaseEngineStep {
@@ -183,6 +249,7 @@ export interface CoreWorkflowDefinition {
   guardrails: WorkflowGuardrailsDefinition
   artifacts: WorkflowArtifactDefinition[]
   completion: WorkflowCompletionDefinition
+  branching?: WorkflowBranchingDefinition
   engineSteps: EngineStep[]
 }
 
@@ -273,7 +340,53 @@ export interface RunStepAttempt {
   reviewComment?: string
   error?: string
   stateSnapshot?: Record<string, string>
+  branchDecisionId?: string
+  branchLoopId?: string
+  branchFromStepId?: string
+  branchToStepId?: string
+  branchLoopCount?: number
   createdAt: string
+}
+
+export interface WorkflowRunBranchingState {
+  loops: Record<string, WorkflowBranchLoopState>
+  checkpoint?: WorkflowBranchCheckpointState
+  history: WorkflowBranchTransitionRecord[]
+}
+
+export interface WorkflowBranchLoopState {
+  loopId: string
+  count: number
+  allowed: number
+  maxIterations: number
+  extensionSize: number
+  checkpointCount: number
+  lastTransitionAt?: string
+}
+
+export interface WorkflowBranchCheckpointState {
+  id: string
+  loopId: string
+  fromStepId: string
+  toStepId: string
+  decisionId: string
+  count: number
+  allowed: number
+  extensionSize: number
+  message: string
+  createdAt: string
+}
+
+export interface WorkflowBranchTransitionRecord {
+  id: string
+  loopId?: string
+  decisionId: string
+  fromStepId: string
+  toStepId?: string
+  action: "next" | "goto" | "end" | "fail" | "checkpoint"
+  loopCount?: number
+  createdAt: string
+  conditionSnapshot?: unknown
 }
 
 export interface RunStepState {
@@ -302,6 +415,7 @@ export interface WorkflowRunState {
   currentStep?: string
   inputs: Record<string, unknown>
   state: Record<string, string>
+  branching?: WorkflowRunBranchingState
   steps: RunStepState[]
   createdAt: string
   updatedAt: string
