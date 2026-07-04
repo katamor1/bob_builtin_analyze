@@ -100,7 +100,7 @@
 | `extensions-review:WR-01` | `extensions-review...:48` | `WFR-01` | duplicate / done | deep review の `WFR-01` として対応済み。 |
 | `extensions-review:WR-02` | `extensions-review...:49` | `WFR-05` | duplicate / done | snapshot privacy は `WFR-05` として対応済み。 |
 | `extensions-review:WR-03` | `extensions-review...:56` | `WFR-09` | duplicate / done | workflow builder edit boundary は `WFR-09` として対応済み。 |
-| `extensions-review:WR-04` | `extensions-review...:58` | `WR-04` | open | Windows reserved name / trailing dot 対応。deep review に同一 ID なし。 |
+| `extensions-review:WR-04` | `extensions-review...:58` | `WR-04` | done | `d44cb69d`。Windows reserved name / trailing dot 対応。deep review に同一 ID なし。 |
 | `extensions-review:BBR-01` | `extensions-review...:50` | `BBR-01`, `BBR-02` | duplicate / done | MCP allowed root と write tool capability は対応済み。 |
 | `extensions-review:BBR-02` | `extensions-review...:54` | `BBR-04`, `BBR-16` | duplicate / done | runtime clamp と packet size clamp は対応済み。 |
 | `extensions-review:BBR-03` | `extensions-review...:55` | `BBR-07` | duplicate / done | packet 選択の曖昧さは `BBR-07` として対応済み。 |
@@ -155,6 +155,7 @@
 | `2e6eb4c3` | `WFR-13` | clarify IBM Bob as optional for authoring and required only for Bob UI registration |
 | `8d341e72` | `WFR-14` | gate workflow execution, registration, command providers, and file sinks on Workspace Trust |
 | `e3d5c971` | `WFR-15` | randomize workflow run IDs and retry transient run-state rename failures |
+| `d44cb69d` | `extensions-review:WR-04` | avoid Windows reserved workflow names and trailing dot path segments |
 | `8c86eb05` | `BBR-14` | Bazaar revision validation |
 | `fae99b40` | `BBR-18`, `extensions-review:BBR-04` | random GUI nonce |
 | `c085b107` | `BBR-20` | pass text encoding to MCP config |
