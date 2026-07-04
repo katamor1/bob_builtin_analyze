@@ -27,7 +27,10 @@ const SERVER_VERSION = "0.3.0"
 const DEFAULT_MAX_REQUEST_BYTES = 1024 * 1024
 const MAX_REQUEST_BYTES = readPositiveIntegerEnv("BOB_BAZAAR_MCP_MAX_REQUEST_BYTES", DEFAULT_MAX_REQUEST_BYTES)
 const ALLOWED_ROOTS_ENV = "BOB_BAZAAR_ALLOWED_ROOTS"
+const ENABLE_WRITE_TOOLS_ENV = "BOB_BAZAAR_ENABLE_WRITE_TOOLS"
+const WRITE_TOOL_NAMES = new Set(["project_rules_init"])
 const allowedRootInputs = readPathListEnv(ALLOWED_ROOTS_ENV)
+const writeToolsEnabled = process.env[ENABLE_WRITE_TOOLS_ENV] === "1"
 let allowedRootsPromise: Promise<string[]> | undefined
 
 const client = new BazaarClient({
@@ -131,7 +134,7 @@ async function handleMessage(message: JsonRpcMessage): Promise<void> {
     }
 
     if (message.method === "tools/list") {
-      respond(message.id, { tools })
+      respond(message.id, { tools: availableTools() })
       return
     }
 
@@ -169,6 +172,7 @@ async function callTool(name: string, args: any): Promise<any> {
     case "bazaar_status":
       return commandText(await client.status(await requiredAllowedCwd(args, "cwd")))
     case "project_rules_init":
+      requireWriteToolEnabled(name)
       return text(JSON.stringify(await initializeProjectRules(await requiredAllowedCwd(args, "cwd")), null, 2))
     case "project_rules_get_checklist":
       return jsonText(await loadProjectChecklist(await requiredAllowedCwd(args, "cwd"), optionalString(args, "path")))
@@ -190,6 +194,16 @@ async function callTool(name: string, args: any): Promise<any> {
       return jsonText(await readStoredReviewResult(async () => getReviewResult(await requiredAllowedCwd(args, "cwd"), requiredString(args, "reviewId"))))
     default:
       throw new BazaarError(`Unknown Bazaar MCP tool: ${name}`)
+  }
+}
+
+function availableTools(): ToolDef[] {
+  return writeToolsEnabled ? tools : tools.filter((tool) => !WRITE_TOOL_NAMES.has(tool.name))
+}
+
+function requireWriteToolEnabled(name: string): void {
+  if (!writeToolsEnabled) {
+    throw new BazaarError(`MCP write tool ${name} is disabled. Set ${ENABLE_WRITE_TOOLS_ENV}=1 to enable it explicitly.`)
   }
 }
 
