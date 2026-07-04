@@ -1,5 +1,5 @@
 import * as vscode from "vscode"
-import { StepRuntime } from "./bobStepRuntime"
+import { StepRuntime, type StepCompletionExpectation } from "./bobStepRuntime"
 import type { WorkflowDefinition } from "./bobWorkflowTypes"
 import type { BobSourceLike } from "./bobApi"
 import { ActionProvider, createDefaultActionRegistry } from "./core/actionRegistry"
@@ -29,7 +29,7 @@ import {
 
 const WORKFLOW_GLOB = "**/.bob/workflows/*/WORKFLOW.md"
 
-export interface StepCompletionOptions {
+export interface StepCompletionOptions extends StepCompletionExpectation {
   silent?: boolean
 }
 
@@ -87,7 +87,10 @@ export class WorkflowRegisterService implements vscode.Disposable {
   }
 
   async completeCurrentStep(options: StepCompletionOptions = {}): Promise<string> {
-    const message = await this.stepRuntime.completeCurrentStep()
+    const message = await this.stepRuntime.completeCurrentStep({
+      expectedRunId: options.expectedRunId,
+      expectedStepId: options.expectedStepId
+    })
     if (!options.silent) await vscode.window.showInformationMessage(message)
     return message
   }

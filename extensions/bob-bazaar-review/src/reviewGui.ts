@@ -174,6 +174,9 @@ class BazaarReviewGuiController {
         workflowStepCompleted = await completeCurrentWorkflowStepAfterGuiAction({
           executeCommand: (command, ...args) => vscode.commands.executeCommand(command, ...args),
           showWarningMessage: (message) => vscode.window.showWarningMessage(message)
+        }, {
+          runId: this.initialTarget?.runId,
+          stepId: this.initialTarget?.stepId
         })
       }
     } else {

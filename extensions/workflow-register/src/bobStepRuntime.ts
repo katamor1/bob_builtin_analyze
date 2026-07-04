@@ -54,8 +54,14 @@ export class StepRuntime {
     return Array.from(this.activeSteps.values())
   }
 
-  async completeCurrentStep(): Promise<string> {
-    const active = await this.pickActiveStep()
+  async completeCurrentStep(options: StepCompletionExpectation = {}): Promise<string> {
+    const steps = this.list()
+    if (steps.length === 0) return "No active Bob workflow step."
+    const active = hasExpectedStep(options)
+      ? pickExpectedStep(steps, options)
+      : await this.pickActiveStep(steps)
+    const mismatch = activeStepMismatch(steps, options)
+    if (mismatch) return mismatch
     if (!active) return "No active Bob workflow step."
     const handoff = await captureHeldStepResult(active)
     if (!handoff.ok) {
@@ -69,9 +75,7 @@ export class StepRuntime {
     return `Completed: ${active.workflowLabel} / ${active.title}`
   }
 
-  private async pickActiveStep(): Promise<ActiveStep | undefined> {
-    const steps = this.list()
-    if (steps.length === 0) return undefined
+  private async pickActiveStep(steps: ActiveStep[]): Promise<ActiveStep | undefined> {
     if (steps.length === 1) return steps[0]
     const picked = await vscode.window.showQuickPick(
       steps.map((step) => ({
@@ -84,6 +88,38 @@ export class StepRuntime {
     )
     return picked?.step
   }
+}
+
+export interface StepCompletionExpectation {
+  expectedRunId?: string
+  expectedStepId?: string
+}
+
+function hasExpectedStep(options: StepCompletionExpectation): boolean {
+  return Boolean(options.expectedRunId || options.expectedStepId)
+}
+
+function pickExpectedStep(steps: ActiveStep[], options: StepCompletionExpectation): ActiveStep | undefined {
+  const matchingSteps = steps.filter((step) => stepMatchesExpectation(step, options))
+  return matchingSteps.length === 1 ? matchingSteps[0] : undefined
+}
+
+function activeStepMismatch(steps: ActiveStep[], options: StepCompletionExpectation): string | undefined {
+  if (!hasExpectedStep(options)) return undefined
+  const matchingSteps = steps.filter((step) => stepMatchesExpectation(step, options))
+  if (matchingSteps.length === 1) return undefined
+  const expected = [
+    options.expectedRunId ? `runId=${options.expectedRunId}` : undefined,
+    options.expectedStepId ? `stepId=${options.expectedStepId}` : undefined
+  ].filter(Boolean).join(" ")
+  const active = steps.map((step) => `runId=${step.runId} stepId=${step.stepId}`).join("; ")
+  const suffix = matchingSteps.length > 1 ? `; matched ${matchingSteps.length} active steps` : ""
+  return `Active Bob workflow step mismatch: expected ${expected}; active ${active}.${suffix}`
+}
+
+function stepMatchesExpectation(step: ActiveStep, options: StepCompletionExpectation): boolean {
+  return (!options.expectedRunId || step.runId === options.expectedRunId) &&
+    (!options.expectedStepId || step.stepId === options.expectedStepId)
 }
 
 async function captureHeldStepResult(active: ActiveStep): Promise<{ ok: boolean; error?: string }> {

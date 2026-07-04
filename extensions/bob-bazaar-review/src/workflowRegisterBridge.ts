@@ -65,7 +65,9 @@ export function initialTargetFromWorkflowInputs(inputs: Record<string, unknown>,
     targetRevision: stringInput(inputs.targetRevision),
     bazaarRoot: explicitBazaarRoot,
     repositoryRoot: stringInput(inputs.repositoryRoot),
-    workflowRoot: stringInput(input?.workflowRoot)
+    workflowRoot: stringInput(input?.workflowRoot),
+    runId: stringInput(input?.runId),
+    stepId: stringInput(input?.stepId)
   }
   const hasInitialTarget =
     target.revisionMode ||
@@ -74,7 +76,9 @@ export function initialTargetFromWorkflowInputs(inputs: Record<string, unknown>,
     target.targetRevision ||
     target.bazaarRoot ||
     target.repositoryRoot ||
-    target.workflowRoot
+    target.workflowRoot ||
+    target.runId ||
+    target.stepId
   return hasInitialTarget ? target : undefined
 }
 

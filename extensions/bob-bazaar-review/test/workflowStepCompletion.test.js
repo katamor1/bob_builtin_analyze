@@ -20,6 +20,24 @@ test("GUI workflow completion calls the workflow-register step command silently"
   assert.deepEqual(calls, [["workflowRegister.completeStep", { silent: true }]])
 })
 
+test("GUI workflow completion passes expected workflow run and step ids", async () => {
+  const { completeCurrentWorkflowStepAfterGuiAction } = require("../out/workflowStepCompletion")
+  const calls = []
+
+  const completed = await completeCurrentWorkflowStepAfterGuiAction({
+    executeCommand: async (...args) => {
+      calls.push(args)
+      return "Completed: Bazaar Project Rule Review / Confirm the target Bazaar revision or revision range."
+    }
+  }, { runId: "run-1", stepId: "review-input" })
+
+  assert.equal(completed, true)
+  assert.deepEqual(calls, [[
+    "workflowRegister.completeStep",
+    { silent: true, expectedRunId: "run-1", expectedStepId: "review-input" }
+  ]])
+})
+
 test("GUI workflow completion reports no active workflow step without failing the GUI action", async () => {
   const { completeCurrentWorkflowStepAfterGuiAction } = require("../out/workflowStepCompletion")
   const warnings = []
@@ -46,6 +64,20 @@ test("GUI workflow completion reports result capture failures without treating t
   assert.equal(completed, false)
   assert.equal(warnings.length, 1)
   assert.match(warnings[0], /Could not capture Bob workflow step result/)
+})
+
+test("GUI workflow completion reports active step mismatches without treating the step as completed", async () => {
+  const { completeCurrentWorkflowStepAfterGuiAction } = require("../out/workflowStepCompletion")
+  const warnings = []
+
+  const completed = await completeCurrentWorkflowStepAfterGuiAction({
+    executeCommand: async () => "Active Bob workflow step mismatch: expected runId=run-2 stepId=review-input; active runId=run-1 stepId=review-input.",
+    showWarningMessage: async (message) => warnings.push(message)
+  }, { runId: "run-2", stepId: "review-input" })
+
+  assert.equal(completed, false)
+  assert.equal(warnings.length, 1)
+  assert.match(warnings[0], /Active Bob workflow step mismatch/)
 })
 
 test("GUI workflow completion reports command failures without failing the GUI action", async () => {
