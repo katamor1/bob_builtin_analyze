@@ -116,6 +116,7 @@ test("Bob workflow Todo execution delegates to the shared WorkflowEngine runner"
     "stepId: request.stepId",
     "})"
   ))
+  assert.match(source, /run\.status === "checkpoint"/)
   assert.match(source, /createBobTaskSnapshotProvider\(task\)/)
   assert.match(source, /new FileTaskSnapshotStore\(/)
   assert.doesNotMatch(source, /async function runWorkflowStepCommand\(/)

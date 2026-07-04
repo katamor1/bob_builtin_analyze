@@ -65,7 +65,10 @@ test("package contributes standalone workflow launcher commands without a hard B
     "workflowRegister.runNextStep",
     "workflowRegister.inspectRuns",
     "workflowRegister.resumeRun",
-    "workflowRegister.retryCurrentStep"
+    "workflowRegister.retryCurrentStep",
+    "workflowRegister.approveBranchCheckpoint",
+    "workflowRegister.abortBranchCheckpoint",
+    "workflowRegister.inspectBranching"
   ]) {
     assertContributesCommand(packageJson, command)
   }
@@ -75,6 +78,12 @@ test("package contributes standalone workflow launcher commands without a hard B
   assert.match(source, /registerCommand\("workflowRegister\.approveBranchCheckpoint", \(runId\?: string\) => service\.approveBranchCheckpoint\(runId\)\)/)
   assert.match(source, /registerCommand\("workflowRegister\.abortBranchCheckpoint", \(runId\?: string\) => service\.abortBranchCheckpoint\(runId\)\)/)
   assert.match(source, /registerCommand\("workflowRegister\.inspectBranching", \(runId\?: string\) => service\.inspectBranching\(runId\)\)/)
+  assert.match(source, /approveBranchCheckpoint: \(runId\?: string\) => Promise<unknown>/)
+  assert.match(source, /abortBranchCheckpoint: \(runId\?: string\) => Promise<unknown>/)
+  assert.match(source, /inspectBranching: \(runId\?: string\) => Promise<unknown>/)
+  assert.match(source, /approveBranchCheckpoint: \(runId\) => service\.approveBranchCheckpoint\(runId\)/)
+  assert.match(source, /abortBranchCheckpoint: \(runId\) => service\.abortBranchCheckpoint\(runId\)/)
+  assert.match(source, /inspectBranching: \(runId\) => service\.inspectBranching\(runId\)/)
   assert.match(source, /new FileRunStateStore\(\{ workspaceRoot, engineVersion: this\.options\.engineVersion \}\)/)
 })
 

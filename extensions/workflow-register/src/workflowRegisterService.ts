@@ -5,6 +5,7 @@ import type { BobSourceLike } from "./bobApi"
 import { ActionProvider, createDefaultActionRegistry } from "./core/actionRegistry"
 import type { AgentProvider, CoreWorkflowDefinition } from "./core/model"
 import type { ResultSinkRegistry } from "./core/resultSinkRegistry"
+import { formatBranchingDiagnostics } from "./core/runDiagnostics"
 import {
   fallbackWorkspaceRootCandidates,
   findWorkflowRootCandidates,
@@ -301,33 +302,8 @@ export class WorkflowRegisterService implements vscode.Disposable {
       `- currentStep: ${run.currentStep ?? "none"}`,
       `- root: ${selection.root}`
     ]
-    lines.push("", "## Branch Loops")
-    const loops = Object.values(run.branching?.loops ?? {})
-    if (loops.length === 0) lines.push("- No branch loops recorded.")
-    for (const loop of loops) {
-      lines.push(`- ${loop.loopId}: count=${loop.count}; allowed=${loop.allowed}; maxIterations=${loop.maxIterations}; extensionSize=${loop.extensionSize}; checkpoints=${loop.checkpointCount}; lastTransitionAt=${loop.lastTransitionAt ?? "none"}`)
-    }
-    lines.push("", "## Checkpoint")
-    const checkpoint = run.branching?.checkpoint
-    if (!checkpoint) {
-      lines.push("- none")
-    } else {
-      lines.push(
-        `- id: ${checkpoint.id}`,
-        `- loopId: ${checkpoint.loopId}`,
-        `- transition: ${checkpoint.fromStepId} -> ${checkpoint.toStepId}`,
-        `- decisionId: ${checkpoint.decisionId}`,
-        `- count: ${checkpoint.count}/${checkpoint.allowed}`,
-        `- extensionSize: ${checkpoint.extensionSize}`,
-        `- message: ${checkpoint.message}`
-      )
-    }
-    lines.push("", "## Branching History")
-    const history = run.branching?.history ?? []
-    if (history.length === 0) lines.push("- No branch transitions recorded.")
-    for (const item of history) {
-      lines.push(`- ${item.createdAt} ${item.action}: ${item.decisionId}; ${item.fromStepId} -> ${item.toStepId ?? "none"}; loop=${item.loopId ?? "none"}; count=${item.loopCount ?? "none"}`)
-    }
+    const branchingLines = formatBranchingDiagnostics(run)
+    lines.push("", ...(branchingLines.length > 0 ? branchingLines : ["Branch loops:", "- No branch loops recorded."]))
     await showMarkdownReport("Workflow Branching", `${run.runId}: ${run.status}`, lines)
     return run
   }
