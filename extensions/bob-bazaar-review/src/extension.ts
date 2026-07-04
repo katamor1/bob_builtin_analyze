@@ -3,9 +3,9 @@ import { reviewRange, reviewRevision } from "./bazaarReviewCommands"
 import { captureReviewResult, saveReviewResultFromClipboard } from "./projectRules/resultCapture"
 import { validateActiveReviewResultJson } from "./reviewResultValidationCommand"
 import { openBazaarReviewGui } from "./ui/reviewGui"
-import { captureOptionsFromCommandArgs } from "./workflowRegisterBridge"
-import { collectReviewContext, loadReviewRules } from "./workflowActions"
-import { registerWorkflowProvidersWithRetry } from "./workflowProviders"
+import { collectReviewContext, loadReviewRules } from "./workflow/workflowActions"
+import { registerWorkflowProvidersWithRetry } from "./workflow/workflowProviders"
+import { captureOptionsFromCommandArgs } from "./workflow/workflowRegisterBridge"
 import { configureMcp, initProjectRules } from "./workspaceCommands"
 
 /**

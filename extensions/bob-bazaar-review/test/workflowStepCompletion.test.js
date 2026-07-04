@@ -6,7 +6,7 @@ const { test } = require("node:test")
 const extensionRoot = path.resolve(__dirname, "..")
 
 test("GUI workflow completion calls the workflow-register step command silently", async () => {
-  const { completeCurrentWorkflowStepAfterGuiAction } = require("../out/workflowStepCompletion")
+  const { completeCurrentWorkflowStepAfterGuiAction } = require("../out/workflow/workflowStepCompletion")
   const calls = []
 
   const completed = await completeCurrentWorkflowStepAfterGuiAction({
@@ -21,7 +21,7 @@ test("GUI workflow completion calls the workflow-register step command silently"
 })
 
 test("GUI workflow completion passes expected workflow run and step ids", async () => {
-  const { completeCurrentWorkflowStepAfterGuiAction } = require("../out/workflowStepCompletion")
+  const { completeCurrentWorkflowStepAfterGuiAction } = require("../out/workflow/workflowStepCompletion")
   const calls = []
 
   const completed = await completeCurrentWorkflowStepAfterGuiAction({
@@ -39,7 +39,7 @@ test("GUI workflow completion passes expected workflow run and step ids", async 
 })
 
 test("GUI workflow completion passes workflow state updates for the completed step", async () => {
-  const { completeCurrentWorkflowStepAfterGuiAction } = require("../out/workflowStepCompletion")
+  const { completeCurrentWorkflowStepAfterGuiAction } = require("../out/workflow/workflowStepCompletion")
   const calls = []
 
   const completed = await completeCurrentWorkflowStepAfterGuiAction({
@@ -70,7 +70,7 @@ test("GUI workflow completion passes workflow state updates for the completed st
 })
 
 test("GUI workflow completion reports no active workflow step without failing the GUI action", async () => {
-  const { completeCurrentWorkflowStepAfterGuiAction } = require("../out/workflowStepCompletion")
+  const { completeCurrentWorkflowStepAfterGuiAction } = require("../out/workflow/workflowStepCompletion")
   const warnings = []
 
   const completed = await completeCurrentWorkflowStepAfterGuiAction({
@@ -84,7 +84,7 @@ test("GUI workflow completion reports no active workflow step without failing th
 })
 
 test("GUI workflow completion reports result capture failures without treating the step as completed", async () => {
-  const { completeCurrentWorkflowStepAfterGuiAction } = require("../out/workflowStepCompletion")
+  const { completeCurrentWorkflowStepAfterGuiAction } = require("../out/workflow/workflowStepCompletion")
   const warnings = []
 
   const completed = await completeCurrentWorkflowStepAfterGuiAction({
@@ -98,7 +98,7 @@ test("GUI workflow completion reports result capture failures without treating t
 })
 
 test("GUI workflow completion reports active step mismatches without treating the step as completed", async () => {
-  const { completeCurrentWorkflowStepAfterGuiAction } = require("../out/workflowStepCompletion")
+  const { completeCurrentWorkflowStepAfterGuiAction } = require("../out/workflow/workflowStepCompletion")
   const warnings = []
 
   const completed = await completeCurrentWorkflowStepAfterGuiAction({
@@ -112,7 +112,7 @@ test("GUI workflow completion reports active step mismatches without treating th
 })
 
 test("GUI workflow completion reports command failures without failing the GUI action", async () => {
-  const { completeCurrentWorkflowStepAfterGuiAction } = require("../out/workflowStepCompletion")
+  const { completeCurrentWorkflowStepAfterGuiAction } = require("../out/workflow/workflowStepCompletion")
   const warnings = []
 
   const completed = await completeCurrentWorkflowStepAfterGuiAction({

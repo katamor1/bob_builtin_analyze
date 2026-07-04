@@ -1,6 +1,6 @@
 import * as vscode from "vscode"
-import { openBazaarReviewGui } from "./ui/reviewGui"
-import { captureReviewResult } from "./projectRules/resultCapture"
+import { captureReviewResult } from "../projectRules/resultCapture"
+import { openBazaarReviewGui } from "../ui/reviewGui"
 import { collectReviewContext, loadReviewRules } from "./workflowActions"
 import {
   captureOptionsFromCommandArgs,

@@ -6,7 +6,7 @@ const { test } = require("node:test")
 const { extensionRoot, readSrc } = require("./helpers/sourceReader")
 
 test("extension entrypoint is a composition root for command and workflow registrations", () => {
-  for (const fileName of ["workflowProviders.ts", "workflowActions.ts", "workspaceCommands.ts"]) {
+  for (const fileName of ["workflow/workflowProviders.ts", "workflow/workflowActions.ts", "workspaceCommands.ts"]) {
     assert.ok(fs.existsSync(path.join(extensionRoot, "src", fileName)), `${fileName} must exist`)
   }
 
@@ -42,4 +42,21 @@ test("review GUI modules live under the ui source boundary", () => {
   const guiSource = readSrc("ui", "reviewGui.ts")
   assert.match(guiSource, /from "\.\/reviewGuiHtml"/)
   assert.match(guiSource, /from "\.\/reviewGuiTypes"/)
+})
+
+test("workflow integration modules live under the workflow source boundary", () => {
+  for (const fileName of [
+    "workflowActions.ts",
+    "workflowBridge.ts",
+    "workflowProviders.ts",
+    "workflowRegisterBridge.ts",
+    "workflowStepCompletion.ts"
+  ]) {
+    assert.ok(fs.existsSync(path.join(extensionRoot, "src", "workflow", fileName)), `workflow/${fileName} must exist`)
+    assert.ok(!fs.existsSync(path.join(extensionRoot, "src", fileName)), `${fileName} must not stay at the src root`)
+  }
+
+  const providersSource = readSrc("workflow", "workflowProviders.ts")
+  assert.match(providersSource, /from "\.\/workflowActions"/)
+  assert.match(providersSource, /from "\.\/workflowRegisterBridge"/)
 })

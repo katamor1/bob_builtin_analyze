@@ -6,7 +6,7 @@ const { test } = require("node:test")
 const extensionRoot = path.resolve(__dirname, "..")
 
 test("buildReviewContextResult summarizes packet metadata and changed files", () => {
-  const { buildReviewContextResult } = require("../out/workflowBridge")
+  const { buildReviewContextResult } = require("../out/workflow/workflowBridge")
   const packet = [
     "# Bazaar Revision Review Request",
     "",

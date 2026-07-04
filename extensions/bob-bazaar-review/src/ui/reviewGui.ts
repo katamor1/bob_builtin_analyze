@@ -16,7 +16,7 @@ import {
   validateTargetRequest
 } from "../reviewTarget"
 import type { TargetRequest } from "../reviewTarget"
-import { completeCurrentWorkflowStepAfterGuiAction } from "../workflowStepCompletion"
+import { completeCurrentWorkflowStepAfterGuiAction } from "../workflow/workflowStepCompletion"
 import { resolveBazaarWorkspaceFolder, resolveBobWorkspaceFolder } from "../workspace/workspaceResolver"
 import { renderHtml } from "./reviewGuiHtml"
 import type { BazaarReviewInitialTarget } from "./reviewGuiTypes"

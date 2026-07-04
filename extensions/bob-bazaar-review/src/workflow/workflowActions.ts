@@ -2,15 +2,15 @@ import * as vscode from "vscode"
 import {
   loadProjectChecklistRequired,
   loadReviewResultSchemaRequired
-} from "./projectRules/io"
-import { selectReviewPacketText } from "./reviewPacketSelection"
+} from "../projectRules/io"
+import { selectReviewPacketText } from "../reviewPacketSelection"
 import { BazaarReviewContextResult, buildReviewContextResult } from "./workflowBridge"
 import {
   firstStringArg,
   stringInput,
   type WorkflowActionExecutionInput
 } from "./workflowRegisterBridge"
-import { resolveBobWorkspaceFolder } from "./workspace/workspaceResolver"
+import { resolveBobWorkspaceFolder } from "../workspace/workspaceResolver"
 
 /**
  * Summary returned to workflow steps after project review rules are loaded.
