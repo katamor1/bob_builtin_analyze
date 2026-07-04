@@ -20,7 +20,7 @@
 | [workflow-register-maintainability-review-2026-07-04-14afe83c.md](workflow-register-maintainability-review-2026-07-04-14afe83c.md) | maintainability review | `WFR-MAINT-*` | backlog | ID 付き deep review と重なるものは canonical 側を優先する。 |
 | [bob-bazaar-review-deep-review-2026-07-04-14afe83c.md](bob-bazaar-review-deep-review-2026-07-04-14afe83c.md) | deep review | `BBR-01` to `BBR-20` | done | `BBR-01` から `BBR-20` まで対応済み。 |
 | [bob-bazaar-review-maintainability-review-2026-07-04-14afe83c.md](bob-bazaar-review-maintainability-review-2026-07-04-14afe83c.md) | maintainability review | `BBR-MAINT-*` | backlog | clamp や allowed root など deep review と重なる項目を含む。 |
-| [bob-code-consistency-review-deep-review-2026-07-04-14afe83c.md](bob-code-consistency-review-deep-review-2026-07-04-14afe83c.md) | deep review | `CCR-01` to `CCR-16` | partial | `CCR-01`、`CCR-02`、`CCR-03`、`CCR-04`、`CCR-05`、`CCR-06`、`CCR-07`、`CCR-08`、`CCR-09`、`CCR-10`、`CCR-11` は対応済み。 |
+| [bob-code-consistency-review-deep-review-2026-07-04-14afe83c.md](bob-code-consistency-review-deep-review-2026-07-04-14afe83c.md) | deep review | `CCR-01` to `CCR-16` | partial | `CCR-01`、`CCR-02`、`CCR-03`、`CCR-04`、`CCR-05`、`CCR-06`、`CCR-07`、`CCR-08`、`CCR-09`、`CCR-10`、`CCR-11`、`CCR-12` は対応済み。 |
 | [bob-code-consistency-review-maintainability-review-2026-07-04-14afe83c.md](bob-code-consistency-review-maintainability-review-2026-07-04-14afe83c.md) | maintainability review | `CCR-MAINT-*` | backlog | path boundary、revision validation、size limits は deep review 側と重なる。 |
 | [extensions-review-2026-07-04-14afe83c.md](extensions-review-2026-07-04-14afe83c.md) | cross-extension review | `extensions-review:<ID>` | duplicate / partial | canonical ID への対応表を下に置く。 |
 | [extensions-maintainability-review-2026-07-04-14afe83c.md](extensions-maintainability-review-2026-07-04-14afe83c.md) | cross-extension maintainability review | `EXT-MAINT-*` | backlog | 3 拡張共通の CI、bundle、依存、README backlog。 |
@@ -87,7 +87,7 @@
 | `CCR-09` | `bob-code-consistency-review-deep-review...:56` | Medium | `docsRoot` の workspace escape | done | `14067e27` | `extensions/bob-code-consistency-review`: `node --test test\pathBoundary.test.js`; `npm.cmd test`; `git diff --check` |
 | `CCR-10` | `bob-code-consistency-review-deep-review...:57` | Medium | Bob output fallback が stale output を拾い得る | done | `298d35f3` | `extensions/bob-code-consistency-review`: RED `node --test test\reviewOutputTriage.test.js`; `npm.cmd run compile`; `node --test test\reviewOutputTriage.test.js`; `node --test test\reviewOutputTriage.test.js test\bobOutputCaptureCanonicalize.test.js test\bobOutputPresentation.test.js test\reviewPipeline.test.js`; `npm.cmd test`; `git diff --check` |
 | `CCR-11` | `bob-code-consistency-review-deep-review...:58` | Medium | C/C++ analyzer の basename fallback | done | `060114c7` | `extensions/bob-code-consistency-review`: RED `node --test test\cCppChangeAnalyzer.test.js`; `npm.cmd run compile`; `node --test test\cCppChangeAnalyzer.test.js`; `node --test test\cCppChangeAnalyzer.test.js test\reviewPipeline.test.js test\sizeLimits.test.js`; `npm.cmd test`; `git diff --check` |
-| `CCR-12` | `bob-code-consistency-review-deep-review...:59` | Medium | package 出力先の stale files | open | 管理対象ファイルの clean と generation id |  |
+| `CCR-12` | `bob-code-consistency-review-deep-review...:59` | Medium | package 出力先の stale files | done | `a2c87da4` | `extensions/bob-code-consistency-review`: RED `node --test test\reviewPackageFreshness.test.js`; `npm.cmd run compile`; `node --test test\reviewPackageFreshness.test.js`; `node --test test\reviewPackageFreshness.test.js test\reviewPipeline.test.js test\sizeLimits.test.js test\privacyArtifacts.test.js`; `npm.cmd test`; `git diff --check` |
 | `CCR-13` | `bob-code-consistency-review-deep-review...:60` | Medium | AI draft / Bob output 抽出ロジックの曖昧さ | open | balanced parser、最大入力 bytes、複数候補エラー |  |
 | `CCR-14` | `bob-code-consistency-review-deep-review...:61` | Medium | workflow inputs と trusted command options が混ざっている | open | user input と trusted command options を分離 |  |
 | `CCR-15` | `bob-code-consistency-review-deep-review...:62` | Low | notification が軽すぎる | open | 重要操作は VS Code notification と report document |  |
@@ -164,6 +164,7 @@
 | `7a2e7d45` | `CCR-08` | validate traceability AI draft schema, field sizes, collection counts, and source paths before writing |
 | `298d35f3` | `CCR-10` | disable silent review-package bob-output fallback for capture, validation, and triage |
 | `060114c7` | `CCR-11` | skip ambiguous C/C++ source basename fallback candidates and warn instead |
+| `a2c87da4` | `CCR-12` | clean managed review package outputs and add generation id to manifest |
 | `8c86eb05` | `BBR-14` | Bazaar revision validation |
 | `fae99b40` | `BBR-18`, `extensions-review:BBR-04` | random GUI nonce |
 | `c085b107` | `BBR-20` | pass text encoding to MCP config |
