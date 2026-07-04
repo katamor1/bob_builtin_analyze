@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process"
 import { decodeTextBuffer } from "./textEncoding"
+import { clampExecBufferBytes } from "./reviewLimits"
 
 export interface BazaarCommandResult {
   stdout: string
@@ -35,7 +36,7 @@ export class BazaarClient {
 
   constructor(options: BazaarOptions) {
     this.bzrPath = options.bzrPath || "bzr"
-    this.maxBuffer = options.maxBuffer ?? 10 * 1024 * 1024
+    this.maxBuffer = clampExecBufferBytes(options.maxBuffer)
     this.textEncoding = options.textEncoding ?? "auto"
   }
 

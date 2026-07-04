@@ -1,4 +1,5 @@
 import { BazaarCommandResult } from "./bazaar"
+import { clampMaxDiffBytes, truncateUtf8 } from "./reviewLimits"
 
 export interface ReviewPacketOptions {
   repositoryRoot: string
@@ -14,8 +15,8 @@ export interface ReviewPacketOptions {
 
 export function buildReviewPacket(options: ReviewPacketOptions): string {
   const revisionLabel = buildRevisionLabel(options)
-  const diffText = truncateUtf8(options.diff.stdout, options.maxDiffBytes)
-  const logText = options.log ? truncateUtf8(options.log.stdout, 128 * 1024) : ""
+  const diffText = truncateUtf8(options.diff.stdout, clampMaxDiffBytes(options.maxDiffBytes), "diff")
+  const logText = options.log ? truncateUtf8(options.log.stdout, 128 * 1024, "log") : ""
 
   return [
     "# Bazaar Revision Review Request",
@@ -74,18 +75,4 @@ function buildRevisionLabel(options: ReviewPacketOptions): string {
     return `${options.baseRevision ?? "?"}..${options.targetRevision ?? "?"}`
   }
   return `working tree since ${options.baseRevision ?? "current basis"}`
-}
-
-function truncateUtf8(value: string, maxBytes: number): string {
-  const bytes = Buffer.byteLength(value, "utf8")
-  if (bytes <= maxBytes) {
-    return value
-  }
-
-  let result = value
-  while (Buffer.byteLength(result, "utf8") > maxBytes) {
-    result = result.slice(0, Math.floor(result.length * 0.9))
-  }
-
-  return `${result}\n\n[TRUNCATED: original output was ${bytes} bytes, limit is ${maxBytes} bytes]`
 }

@@ -3,6 +3,7 @@ import { BazaarClient } from "./bazaar"
 import { isBobCodeExtensionAvailable } from "./bobCodeExtension"
 import { addMarkdownPacketToBobContext } from "./bobContext"
 import { buildReviewPacket } from "./reviewPacket"
+import { clampMaxAddedFileContentBytes, clampMaxDiffBytes, maxBufferForDiffBytes } from "./reviewLimits"
 import { buildProjectRulesSection } from "./projectRules/packet"
 import { loadProjectChecklist, loadReviewResultSchema } from "./projectRules/io"
 import {
@@ -213,17 +214,17 @@ function makeBazaarClient(): BazaarClient {
   const config = vscode.workspace.getConfiguration("bobBazaar")
   return new BazaarClient({
     bzrPath: config.get<string>("bzrPath", "bzr"),
-    maxBuffer: Math.max(getMaxDiffBytes() * 2, 2 * 1024 * 1024),
+    maxBuffer: maxBufferForDiffBytes(getMaxDiffBytes()),
     textEncoding: config.get<string>("textEncoding", "auto")
   })
 }
 
 function getMaxDiffBytes(): number {
-  return vscode.workspace.getConfiguration("bobBazaar").get<number>("maxDiffBytes", 1024 * 1024)
+  return clampMaxDiffBytes(vscode.workspace.getConfiguration("bobBazaar").get<number>("maxDiffBytes", 1024 * 1024))
 }
 
 function getMaxAddedFileContentBytes(): number {
-  return vscode.workspace.getConfiguration("bobBazaar").get<number>("maxAddedFileContentBytes", 256 * 1024)
+  return clampMaxAddedFileContentBytes(vscode.workspace.getConfiguration("bobBazaar").get<number>("maxAddedFileContentBytes", 256 * 1024))
 }
 
 async function buildProjectRulesSectionForWorkspace(workspaceRoot: string): Promise<string> {

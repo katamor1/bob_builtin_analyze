@@ -1,4 +1,5 @@
 import { BazaarClient, BazaarCommandResult } from "./bazaar"
+import { clampMaxAddedFileContentBytes, truncateUtf8 } from "./reviewLimits"
 
 export type BazaarChangedFileStatus = "added" | "modified" | "removed" | "renamed" | "unknown"
 
@@ -63,8 +64,9 @@ export async function buildAddedFilesContentSection(
   info: BazaarRevisionInfo,
   maxBytes = 256 * 1024
 ): Promise<string | undefined> {
+  const maxContentBytes = clampMaxAddedFileContentBytes(maxBytes)
   const addedFiles = info.changedFileEntries.filter((entry) => entry.status === "added")
-  if (addedFiles.length === 0 || maxBytes <= 0) return undefined
+  if (addedFiles.length === 0 || maxContentBytes <= 0) return undefined
 
   const lines: string[] = [
     "## 追加ファイル本文",
@@ -72,7 +74,7 @@ export async function buildAddedFilesContentSection(
     "この Bazaar リビジョンで新規追加されたファイルの本文です。diff だけでは十分な文脈が得られない場合があるため、対象リビジョンの内容を明示的に含めます。",
     ""
   ]
-  let remainingBytes = maxBytes
+  let remainingBytes = maxContentBytes
   let truncated = false
 
   for (const entry of addedFiles) {
@@ -86,7 +88,7 @@ export async function buildAddedFilesContentSection(
       let content = result.stdout
       const contentBytes = Buffer.byteLength(content, "utf8")
       if (contentBytes > remainingBytes) {
-        content = truncateUtf8(content, remainingBytes)
+        content = truncateUtf8(content, remainingBytes, "added file content")
         truncated = true
       }
       remainingBytes -= Buffer.byteLength(content, "utf8")
@@ -105,7 +107,7 @@ export async function buildAddedFilesContentSection(
   }
 
   if (truncated) {
-    lines.push(`[TRUNCATED: 追加ファイル本文が ${maxBytes} bytes の上限を超えました。必要に応じて focused read/search tools で追加確認してください。]`)
+    lines.push(`[TRUNCATED: 追加ファイル本文が ${maxContentBytes} bytes の上限を超えました。必要に応じて focused read/search tools で追加確認してください。]`)
   }
 
   return lines.join("\n")
@@ -179,13 +181,4 @@ function normalizeStatus(status: string): BazaarChangedFileStatus {
     default:
       return "unknown"
   }
-}
-
-function truncateUtf8(value: string, maxBytes: number): string {
-  if (Buffer.byteLength(value, "utf8") <= maxBytes) return value
-  let result = value
-  while (Buffer.byteLength(result, "utf8") > maxBytes) {
-    result = result.slice(0, Math.floor(result.length * 0.9))
-  }
-  return `${result}\n\n[TRUNCATED]`
 }

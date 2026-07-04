@@ -118,12 +118,14 @@
           "type": "number",
           "default": 1048576,
           "minimum": 32768,
+          "maximum": 5242880,
           "description": "生成するレビュー packet に含める Bazaar diff の最大サイズ。"
         },
         "bobBazaar.maxAddedFileContentBytes": {
           "type": "number",
           "default": 262144,
           "minimum": 0,
+          "maximum": 2097152,
           "description": "新規追加ファイル本文をレビュー packet に含める最大合計サイズ。0 の場合、追加ファイル本文セクションを省略します。"
         },
         "bobBazaar.projectRules.checklistPath": {
