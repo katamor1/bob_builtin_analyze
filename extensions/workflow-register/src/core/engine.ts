@@ -28,6 +28,11 @@ import {
 } from "./engine/manualCompletion"
 import { pauseRunIfRequested } from "./engine/runPause"
 import { executeAutomatedStep } from "./engine/stepExecutor"
+import {
+  abortBranchCheckpointTransition,
+  applyStepTransition,
+  approveBranchCheckpointTransition
+} from "./engine/branchTransitions"
 import { validateWorkflowInputs } from "./inputResolver"
 import {
   AgentProvider,
@@ -98,6 +103,7 @@ export class WorkflowEngine {
     const run = recoveredRun ?? await this.runStore.createRun(workflow, inputs)
     await this.runStore.saveRun(run)
     if (!recoveredRun) await this.emit(this.hooks.onWorkflowStart, { workflow, run })
+    if (run.status === "checkpoint") return run
     if (run.status === "paused") return run
     if (run.status === "reviewing" && !isOrderedSingleStepContinuation(options)) return run
     const inputProblems = validateWorkflowInputs(workflow.inputs ?? {}, run.inputs)
@@ -162,6 +168,7 @@ export class WorkflowEngine {
   async resumeRun(runId: string, options: ResumeRunOptions): Promise<WorkflowRunState> {
     const run = await this.runStore.loadRun(runId)
     if (!run) throw new Error(`Workflow run not found: ${runId}`)
+    if (run.status === "checkpoint") throw new Error("Workflow run is waiting at a branch checkpoint. Approve or abort the checkpoint before resuming.")
     if (run.status === "reviewing") throw new Error("Workflow run is waiting for step review. Accept the current step or retry it before resuming.")
     let startIndex = options.workflow.engineSteps.findIndex((step) => step.id === run.currentStep)
     if (startIndex < 0) startIndex = nextPendingIndex(run)
@@ -214,6 +221,24 @@ export class WorkflowEngine {
     noteDefinitionMismatch(run, workflow)
     await this.runStore.saveRun(run)
     return this.continueRun(workflow, run, index, "full")
+  }
+
+  async approveBranchCheckpoint(runId: string, workflow: CoreWorkflowDefinition): Promise<WorkflowRunState> {
+    const run = await this.runStore.loadRun(runId)
+    if (!run) throw new Error(`Workflow run not found: ${runId}`)
+    const result = approveBranchCheckpointTransition(workflow, run)
+    if (!result.ok) throw new Error(result.error)
+    await this.runStore.saveRun(run)
+    return run
+  }
+
+  async abortBranchCheckpoint(runId: string, reason?: string): Promise<WorkflowRunState> {
+    const run = await this.runStore.loadRun(runId)
+    if (!run) throw new Error(`Workflow run not found: ${runId}`)
+    const result = abortBranchCheckpointTransition(run, reason)
+    if (!result.ok) throw new Error(result.error)
+    await this.runStore.saveRun(run)
+    return run
   }
 
   private async continueRun(
@@ -309,6 +334,27 @@ export class WorkflowEngine {
       stepState.error = undefined
       await this.runStore.saveRun(run)
       await this.emit(this.hooks.onStepCompleted, { workflow, run, step })
+      const transition = applyStepTransition({ workflow, run, step, stepIndex: index, mode })
+      if (transition.action === "end") {
+        await this.runStore.saveRun(run)
+        await this.emit(this.hooks.onWorkflowCompleted, { workflow, run })
+        return run
+      }
+      if (transition.action === "fail") {
+        await this.runStore.saveRun(run)
+        await this.emit(this.hooks.onStepFailed, { workflow, run, step, error: transition.error })
+        return run
+      }
+      if (transition.action === "goto") {
+        await this.runStore.saveRun(run)
+        if (transition.stop) return run
+        index = transition.nextIndex - 1
+        continue
+      }
+      if (transition.action === "checkpoint") {
+        await this.runStore.saveRun(run)
+        return run
+      }
       const nextStep = workflow.engineSteps[index + 1]
       if (nextStep && await this.pauseIfRequested(workflow, run, nextStep, `after-step:${step.id}`)) return run
     }

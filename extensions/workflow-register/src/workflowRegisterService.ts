@@ -199,6 +199,9 @@ export class WorkflowRegisterService implements vscode.Disposable {
     if (run.status === "held") {
       return this.warnStepGate("Current step is held. Complete the held step before running the next step.")
     }
+    if (run.status === "checkpoint") {
+      return this.warnStepGate("Current run is waiting at a branch checkpoint. Approve or abort the checkpoint before running the next step.")
+    }
     if (run.status === "failed") {
       return this.warnStepGate("Current step failed. Retry the current step before running the next step.")
     }
@@ -255,6 +258,80 @@ export class WorkflowRegisterService implements vscode.Disposable {
     return this.resumeOrRetryRun("retry", runId)
   }
 
+  async approveBranchCheckpoint(runId?: string): Promise<unknown> {
+    const trustError = await requireTrustedWorkspace("approve branch checkpoint")
+    if (trustError) return trustError
+    if (this.coreWorkflows.size === 0) await this.reload({ showReport: false })
+    const selection = await this.selectRun(runId)
+    if (!selection) return runId ? `Workflow run not found: ${runId}` : "No workflow run selected."
+    const runStore = this.runtimeFactory.createRunStore(selection.root)
+    const run = selection.run ?? await runStore.loadRun(selection.runId)
+    if (!run) throw new Error(`Workflow run not found: ${selection.runId}`)
+    const workflow = this.coreWorkflows.get(run.workflowId)
+    if (!workflow) throw new Error(`Workflow definition is not loaded: ${run.workflowId}`)
+    const engine = this.runtimeFactory.createEngine(selection.root)
+    const result = await engine.approveBranchCheckpoint(selection.runId, workflow)
+    await vscode.window.showInformationMessage(`Branch checkpoint approved: ${result.runId}`)
+    return result
+  }
+
+  async abortBranchCheckpoint(runId?: string): Promise<unknown> {
+    const trustError = await requireTrustedWorkspace("abort branch checkpoint")
+    if (trustError) return trustError
+    const selection = await this.selectRun(runId)
+    if (!selection) return runId ? `Workflow run not found: ${runId}` : "No workflow run selected."
+    const engine = this.runtimeFactory.createEngine(selection.root)
+    const result = await engine.abortBranchCheckpoint(selection.runId)
+    await vscode.window.showInformationMessage(`Branch checkpoint aborted: ${result.runId}`)
+    return result
+  }
+
+  async inspectBranching(runId?: string): Promise<unknown> {
+    const selection = await this.selectRun(runId)
+    if (!selection) {
+      const message = runId ? `Workflow run not found: ${runId}` : "No workflow run selected."
+      await vscode.window.showWarningMessage(message)
+      return message
+    }
+    const run = selection.run ?? await this.runtimeFactory.createRunStore(selection.root).loadRun(selection.runId)
+    if (!run) throw new Error(`Workflow run not found: ${selection.runId}`)
+    const lines = [
+      `- runId: ${run.runId}`,
+      `- status: ${run.status}`,
+      `- currentStep: ${run.currentStep ?? "none"}`,
+      `- root: ${selection.root}`
+    ]
+    lines.push("", "## Branch Loops")
+    const loops = Object.values(run.branching?.loops ?? {})
+    if (loops.length === 0) lines.push("- No branch loops recorded.")
+    for (const loop of loops) {
+      lines.push(`- ${loop.loopId}: count=${loop.count}; allowed=${loop.allowed}; maxIterations=${loop.maxIterations}; extensionSize=${loop.extensionSize}; checkpoints=${loop.checkpointCount}; lastTransitionAt=${loop.lastTransitionAt ?? "none"}`)
+    }
+    lines.push("", "## Checkpoint")
+    const checkpoint = run.branching?.checkpoint
+    if (!checkpoint) {
+      lines.push("- none")
+    } else {
+      lines.push(
+        `- id: ${checkpoint.id}`,
+        `- loopId: ${checkpoint.loopId}`,
+        `- transition: ${checkpoint.fromStepId} -> ${checkpoint.toStepId}`,
+        `- decisionId: ${checkpoint.decisionId}`,
+        `- count: ${checkpoint.count}/${checkpoint.allowed}`,
+        `- extensionSize: ${checkpoint.extensionSize}`,
+        `- message: ${checkpoint.message}`
+      )
+    }
+    lines.push("", "## Branching History")
+    const history = run.branching?.history ?? []
+    if (history.length === 0) lines.push("- No branch transitions recorded.")
+    for (const item of history) {
+      lines.push(`- ${item.createdAt} ${item.action}: ${item.decisionId}; ${item.fromStepId} -> ${item.toStepId ?? "none"}; loop=${item.loopId ?? "none"}; count=${item.loopCount ?? "none"}`)
+    }
+    await showMarkdownReport("Workflow Branching", `${run.runId}: ${run.status}`, lines)
+    return run
+  }
+
   private async resumeOrRetryRun(mode: "resume" | "retry", runId?: string): Promise<unknown> {
     const trustError = await requireTrustedWorkspace(`${mode} workflow run`)
     if (trustError) return trustError
@@ -273,6 +350,9 @@ export class WorkflowRegisterService implements vscode.Disposable {
     const targetRunId = selection.runId
     const run = selection.run ?? await runStore.loadRun(targetRunId)
     if (!run) throw new Error(`Workflow run not found: ${targetRunId}`)
+    if (mode === "resume" && run.status === "checkpoint") {
+      return this.warnStepGate("Current run is waiting at a branch checkpoint. Approve or abort the checkpoint before resuming.")
+    }
     const workflow = this.coreWorkflows.get(run.workflowId)
     if (!workflow) throw new Error(`Workflow definition is not loaded: ${run.workflowId}`)
     const engine = this.runtimeFactory.createEngine(selection.root)
@@ -281,6 +361,14 @@ export class WorkflowRegisterService implements vscode.Disposable {
       : await engine.retryCurrentStep(targetRunId, workflow)
     await vscode.window.showInformationMessage(`Workflow run ${result.status}: ${result.runId}`)
     return result
+  }
+
+  private async selectRun(runId?: string) {
+    const roots = await this.workflowRootCandidates()
+    if (roots.length === 0) return undefined
+    return runId
+      ? findRunSelection(runId, roots, (root) => this.runtimeFactory.createRunStore(root))
+      : pickRunSelection(roots, (root) => this.runtimeFactory.createRunStore(root))
   }
 
   private async workflowRootCandidates(): Promise<MarkerRootCandidate[]> {

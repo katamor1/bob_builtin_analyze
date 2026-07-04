@@ -91,7 +91,10 @@ export function activate(context: vscode.ExtensionContext): WorkflowRegisterApi 
     vscode.commands.registerCommand("workflowRegister.runNextStep", (runId?: string) => service.runNextStep(runId)),
     vscode.commands.registerCommand("workflowRegister.inspectRuns", () => service.inspectRuns()),
     vscode.commands.registerCommand("workflowRegister.resumeRun", (runId?: string) => service.resumeRun(runId)),
-    vscode.commands.registerCommand("workflowRegister.retryCurrentStep", (runId?: string) => service.retryCurrentStep(runId))
+    vscode.commands.registerCommand("workflowRegister.retryCurrentStep", (runId?: string) => service.retryCurrentStep(runId)),
+    vscode.commands.registerCommand("workflowRegister.approveBranchCheckpoint", (runId?: string) => service.approveBranchCheckpoint(runId)),
+    vscode.commands.registerCommand("workflowRegister.abortBranchCheckpoint", (runId?: string) => service.abortBranchCheckpoint(runId)),
+    vscode.commands.registerCommand("workflowRegister.inspectBranching", (runId?: string) => service.inspectBranching(runId))
   )
   service.reload({ showReport: false }).catch((error) => console.warn("Bob workflow registration failed", error))
   const retryDelaysMs = [3000, 10000]
