@@ -2,7 +2,7 @@ import * as fs from "node:fs/promises"
 import * as path from "node:path"
 import * as vscode from "vscode"
 import { configureWorkspaceMcpServer } from "./mcpConfig"
-import { refreshTemplateFile } from "./templateRefresh"
+import { refreshTemplateFile, type TemplateRefreshOptions, type TemplateRefreshPreview } from "./templateRefresh"
 
 export interface BobWorkspaceStatus {
   initialized: boolean
@@ -76,7 +76,7 @@ export async function initializeBobWorkspaceFromTemplates(options: {
   const targetRoot = path.join(root, ".bob")
 
   await copyDirectoryMissingOnly(templateRoot, targetRoot, new Set(["mcp.json.template"]))
-  await refreshTemplateFiles(templateRoot, root)
+  await refreshTemplateFiles(templateRoot, root, { confirmOverwrite: confirmTemplateRefresh })
   await configureWorkspaceMcpServer({
     workspaceFolder: options.workspaceFolder,
     extensionContext: options.context,
@@ -107,13 +107,37 @@ async function copyDirectoryMissingOnly(sourceDir: string, targetDir: string, sk
   }
 }
 
-async function refreshTemplateFiles(templateRoot: string, workspaceRoot: string): Promise<void> {
+async function refreshTemplateFiles(templateRoot: string, workspaceRoot: string, options: TemplateRefreshOptions = {}): Promise<void> {
   for (const relative of REFRESHABLE_TEMPLATE_FILES) {
     const source = path.join(templateRoot, relative.replace(/^\.bob[\\/]/, ""))
     const target = path.join(workspaceRoot, relative)
     if (!(await exists(source))) continue
-    await refreshTemplateFile(source, target)
+    await refreshTemplateFile(source, target, options)
   }
+}
+
+async function confirmTemplateRefresh(preview: TemplateRefreshPreview): Promise<boolean> {
+  const document = await vscode.workspace.openTextDocument({ language: "markdown", content: renderTemplateRefreshPreviewMarkdown(preview) })
+  await vscode.window.showTextDocument(document, { preview: false })
+  const updateLabel = "更新"
+  const skipLabel = "スキップ"
+  const message = `既存の ${path.basename(preview.targetPath)} をテンプレートで更新します。現在のファイルはバックアップ後に上書きされます。`
+  const choice = await vscode.window.showWarningMessage(message, { modal: true }, updateLabel, skipLabel)
+  return choice === updateLabel
+}
+
+function renderTemplateRefreshPreviewMarkdown(preview: TemplateRefreshPreview): string {
+  return [
+    "# Bob template refresh preview",
+    "",
+    `Target: \`${preview.targetPath}\``,
+    `Template: \`${preview.sourcePath}\``,
+    "",
+    "````diff",
+    preview.diffPreview,
+    "````",
+    ""
+  ].join("\n")
 }
 
 async function workflowTemplateStaleReason(workflowPath: string): Promise<string | undefined> {

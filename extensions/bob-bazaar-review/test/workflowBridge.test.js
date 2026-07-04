@@ -85,6 +85,15 @@ test("workspace initialization tracks the WORKFLOW.md directory layout", () => {
   assert.doesNotMatch(source, /\.bob\/workflows\/bazaar-project-rule-review\.md/)
 })
 
+test("workspace initialization previews and confirms template refresh before overwriting existing workflow files", () => {
+  const source = require("node:fs").readFileSync(path.join(extensionRoot, "src", "bobWorkspaceInit.ts"), "utf8")
+
+  assert.match(source, /refreshTemplateFiles\(templateRoot,\s*root,\s*\{\s*confirmOverwrite:\s*confirmTemplateRefresh\s*\}\)/s)
+  assert.match(source, /openTextDocument\(\{\s*language:\s*"markdown",\s*content:\s*renderTemplateRefreshPreviewMarkdown\(preview\)\s*\}\)/s)
+  assert.match(source, /showWarningMessage\([^)]*\{\s*modal:\s*true\s*\}/s)
+  assert.match(source, /return\s+choice\s*===\s*updateLabel/)
+})
+
 test("Bazaar changed file parser ignores timestamp suffixes on plus-plus-plus paths", () => {
   const { parseChangedFileEntries } = require("../out/revisionInfo")
   const diff = [
