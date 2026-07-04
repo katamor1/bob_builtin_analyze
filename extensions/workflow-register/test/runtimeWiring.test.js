@@ -54,8 +54,20 @@ test("standalone workflow launcher wires an AgentProvider through API or configu
   assert.match(source, orderedPattern(
     "createCommandAgentProvider({",
     'command: config.get<string>("agentCommand", ""),',
+    "requireTrustedCommandExecution(\"run configured agent command\")",
     "vscode.commands.executeCommand(command, input)"
   ))
+})
+
+test("runtime entry points and default providers check Workspace Trust", () => {
+  const source = runtimeSource()
+
+  assert.match(source, /import \{ requireTrustedWorkspace \} from "\.\/workspaceTrust"/)
+  assert.match(source, /async reload\(options: \{ showReport: boolean \}\): Promise<void> \{[\s\S]*requireTrustedWorkspace\("reload registration", \{ showWarning: options\.showReport \}\)/)
+  assert.match(source, /async runWorkflow\(workflowId\?: string, inputs: Record<string, unknown> = \{\}\): Promise<unknown> \{[\s\S]*requireTrustedWorkspace\("run workflow"\)/)
+  assert.match(source, /async runWorkflowStep\([\s\S]*requireTrustedWorkspace\("run workflow step"\)/)
+  assert.match(source, /isWorkspaceTrusted: \(\) => vscode\.workspace\.isTrusted/)
+  assert.match(source, /requireTrustedCommandExecution\("write command result sink"\)/)
 })
 
 test("standalone workflow launcher uses the shared input resolver for conditional prompts", () => {

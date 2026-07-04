@@ -26,6 +26,7 @@ import {
   collectBobWorkflowInputs,
   collectCoreWorkflowInputs
 } from "./workflowInputPrompt"
+import { requireTrustedWorkspace } from "./workspaceTrust"
 
 const WORKFLOW_GLOB = "**/.bob/workflows/*/WORKFLOW.md"
 
@@ -39,6 +40,7 @@ export class WorkflowRegisterService implements vscode.Disposable {
   private readonly stepRuntime = new StepRuntime()
   private readonly coreWorkflows = new Map<string, CoreWorkflowDefinition>()
   private readonly actionRegistry = createDefaultActionRegistry({
+    isWorkspaceTrusted: () => vscode.workspace.isTrusted,
     executeCommand: (command, ...args) => vscode.commands.executeCommand(command, ...args)
   })
   private readonly customResultSinks: Array<{ type: string; handler: Parameters<ResultSinkRegistry["register"]>[1] }> = []
@@ -87,6 +89,8 @@ export class WorkflowRegisterService implements vscode.Disposable {
   }
 
   async completeCurrentStep(options: StepCompletionOptions = {}): Promise<string> {
+    const trustError = await requireTrustedWorkspace("complete workflow step", { showWarning: !options.silent })
+    if (trustError) return trustError
     const message = await this.stepRuntime.completeCurrentStep({
       expectedRunId: options.expectedRunId,
       expectedStepId: options.expectedStepId,
@@ -113,6 +117,8 @@ export class WorkflowRegisterService implements vscode.Disposable {
   }
 
   async runWorkflow(workflowId?: string, inputs: Record<string, unknown> = {}): Promise<unknown> {
+    const trustError = await requireTrustedWorkspace("run workflow")
+    if (trustError) return trustError
     if (this.coreWorkflows.size === 0) await this.reload({ showReport: false })
     const workflow = workflowId
       ? this.coreWorkflows.get(workflowId)
@@ -137,6 +143,8 @@ export class WorkflowRegisterService implements vscode.Disposable {
     stepId?: string,
     inputs: Record<string, unknown> = {}
   ): Promise<unknown> {
+    const trustError = await requireTrustedWorkspace("run workflow step")
+    if (trustError) return trustError
     if (this.coreWorkflows.size === 0) await this.reload({ showReport: false })
     const workflow = workflowId
       ? this.coreWorkflows.get(workflowId)
@@ -165,6 +173,8 @@ export class WorkflowRegisterService implements vscode.Disposable {
   }
 
   async runNextStep(runId?: string): Promise<unknown> {
+    const trustError = await requireTrustedWorkspace("run next workflow step")
+    if (trustError) return trustError
     if (this.coreWorkflows.size === 0) await this.reload({ showReport: false })
     const roots = await this.workflowRootCandidates()
     if (roots.length === 0) {
@@ -246,6 +256,8 @@ export class WorkflowRegisterService implements vscode.Disposable {
   }
 
   private async resumeOrRetryRun(mode: "resume" | "retry", runId?: string): Promise<unknown> {
+    const trustError = await requireTrustedWorkspace(`${mode} workflow run`)
+    if (trustError) return trustError
     if (this.coreWorkflows.size === 0) await this.reload({ showReport: false })
     const roots = await this.workflowRootCandidates()
     const selection = runId
@@ -324,6 +336,12 @@ export class WorkflowRegisterService implements vscode.Disposable {
   }
 
   async reload(options: { showReport: boolean }): Promise<void> {
+    const trustError = await requireTrustedWorkspace("reload registration", { showWarning: options.showReport })
+    if (trustError) {
+      this.lastResult = { summary: "Workspace is not trusted.", lines: [`- fail: ${trustError}`] }
+      if (options.showReport) await showMarkdownReport("Bob Workflow Register", this.lastResult.summary, this.lastResult.lines)
+      return
+    }
     const result = await this.registerWorkflows()
     this.lastResult = result
     if (options.showReport) await showMarkdownReport("Bob Workflow Register", result.summary, result.lines)
