@@ -1,4 +1,3 @@
-import * as path from "node:path"
 import * as vscode from "vscode"
 import {
   CHANGE_TYPE_VALUES,
@@ -8,6 +7,7 @@ import {
   type ReviewFocus,
   type VcsKind
 } from "./core/reviewInputBuilder"
+import { resolveWorkspacePathStrict } from "./core/fileSystem"
 import { resolveBobWorkspaceRoot } from "./workspaceResolver"
 
 /** Shared VS Code command option, prompt, path, and notification helpers. */
@@ -77,7 +77,7 @@ export function splitCsv(value: string): string[] | undefined {
 }
 
 export function absolute(root: string, value: string): string {
-  return path.isAbsolute(value) ? value : path.join(root, value)
+  return resolveWorkspacePathStrict(root, value)
 }
 
 export function optionalAbsolute(root: string, value: string | undefined): string | undefined {

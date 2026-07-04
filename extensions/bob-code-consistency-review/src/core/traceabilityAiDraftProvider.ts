@@ -1,7 +1,7 @@
 import * as path from "node:path"
 import { collectGitDiff } from "./gitDiffCollector"
 import { discoverReviewInputCandidates } from "./reviewInputDiscovery"
-import { writeTextFile } from "./fileSystem"
+import { resolveWorkspacePathStrict, writeTextFile } from "./fileSystem"
 import {
   MAX_TRACEABILITY_CANDIDATE_COUNT,
   renderTraceabilityPrompt
@@ -59,6 +59,7 @@ const PROMPT_FILE_NAME = "ai-draft-prompt.md"
 
 export async function prepareAiTraceabilityDraftPrompt(input: PrepareAiTraceabilityDraftPromptInput): Promise<PrepareAiTraceabilityDraftPromptResult> {
   const warnings: string[] = []
+  const outputDir = resolveWorkspacePathStrict(input.workspaceRoot, input.outputDir, "aiTraceabilityDraftPromptPath")
   const discovery = await discoverReviewInputCandidates(input.workspaceRoot, {
     docsRoot: input.docsRoot,
     textEncoding: input.textEncoding,
@@ -83,7 +84,7 @@ export async function prepareAiTraceabilityDraftPrompt(input: PrepareAiTraceabil
   }
 
   const prompt = renderTraceabilityPrompt({ input, catalog, diff, candidates: discovery.documents, warnings })
-  const promptPath = path.join(input.outputDir, PROMPT_FILE_NAME)
+  const promptPath = path.join(outputDir, PROMPT_FILE_NAME)
   await writeTextFile(promptPath, prompt)
   return { status: "ok", promptPath, prompt, warnings }
 }

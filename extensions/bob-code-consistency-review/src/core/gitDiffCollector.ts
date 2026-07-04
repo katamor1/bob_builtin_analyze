@@ -1,7 +1,7 @@
 import * as path from "node:path"
 import { execFile } from "node:child_process"
 import { promisify } from "node:util"
-import { readTextFile, resolveWorkspacePath, toPosixPath } from "./fileSystem"
+import { readTextFile, resolveWorkspacePathStrict, toPosixPath } from "./fileSystem"
 import { decodeTextBuffer } from "./textEncoding"
 import type { DiffSummary, ReviewInput } from "./types"
 
@@ -11,7 +11,8 @@ type VcsKind = "git" | "bazaar"
 
 export async function collectGitDiff(reviewInput: ReviewInput, options: { workspaceRoot: string; diffFixturePath?: string; bzrPath?: string; textEncoding?: string }): Promise<DiffSummary> {
   if (options.diffFixturePath) {
-    const fixture = JSON.parse(await readTextFile(options.diffFixturePath, options.textEncoding)) as DiffSummary
+    const fixturePath = resolveWorkspacePathStrict(options.workspaceRoot, options.diffFixturePath, "diffFixturePath")
+    const fixture = JSON.parse(await readTextFile(fixturePath, options.textEncoding)) as DiffSummary
     return normalizeDiffLanguages(fixture)
   }
 
@@ -182,7 +183,7 @@ function normalizeVcs(value: ReviewInput["review"]["vcs"]): VcsKind {
 }
 
 function resolveVcsRoot(workspaceRoot: string, value: string | undefined): string {
-  return value ? resolveWorkspacePath(workspaceRoot, value) : workspaceRoot
+  return value ? resolveWorkspacePathStrict(workspaceRoot, value, "vcsRoot") : workspaceRoot
 }
 
 function normalizeDiffPath(filePath: string): string {

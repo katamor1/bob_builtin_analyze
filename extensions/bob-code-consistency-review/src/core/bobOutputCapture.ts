@@ -1,6 +1,6 @@
 import * as path from "node:path"
 import YAML from "yaml"
-import { pathExists, readTextFile, writeTextFile } from "./fileSystem"
+import { pathExists, readTextFile, resolveWorkspacePathStrict, writeTextFile } from "./fileSystem"
 import { readBobOutputText } from "./bobOutputSource"
 import { canonicalizeBobOutput, type EvidenceIndexItem, type EvidenceLookup } from "./bobOutputCanonicalizer"
 
@@ -26,7 +26,10 @@ type CaptureSourceResult = {
 }
 
 export async function captureBobOutput(input: CaptureBobOutputInput): Promise<CaptureBobOutputResult> {
-  const source = await resolveCaptureSource(input)
+  const bobOutputPath = resolveWorkspacePathStrict(input.workspaceRoot, input.bobOutputPath, "bobOutputPath")
+  const packageDir = input.packageDir ? resolveWorkspacePathStrict(input.workspaceRoot, input.packageDir, "reviewPackagePath") : undefined
+  const resolvedInput = { ...input, bobOutputPath, packageDir }
+  const source = await resolveCaptureSource(resolvedInput)
   if (!source.yamlText) return { status: "error", message: source.message }
 
   let parsed: any
@@ -36,16 +39,16 @@ export async function captureBobOutput(input: CaptureBobOutputInput): Promise<Ca
     const sourceLabel = source.sourcePath ? ` (${source.sourcePath})` : ""
     return { status: "error", message: `YAML が不正です${sourceLabel}: ${error instanceof Error ? error.message : String(error)}` }
   }
-  const evidenceLookup = await loadEvidenceLookup(input.packageDir)
+  const evidenceLookup = await loadEvidenceLookup(packageDir)
   const canonical = canonicalizeBobOutput(parsed, evidenceLookup)
   const normalized = `${YAML.stringify(canonical)}`
-  await writeTextFile(input.bobOutputPath, normalized)
+  await writeTextFile(bobOutputPath, normalized)
   return {
     status: "ok",
-    bobOutputPath: path.resolve(input.bobOutputPath),
+    bobOutputPath: path.resolve(bobOutputPath),
     sourcePath: source.sourcePath,
     reviewId: canonical?.review_summary?.review_id,
-    message: `Bob 出力を保存しました: ${input.bobOutputPath}${source.sourcePath ? ` (source: ${source.sourcePath})` : ""}`
+    message: `Bob 出力を保存しました: ${bobOutputPath}${source.sourcePath ? ` (source: ${source.sourcePath})` : ""}`
   }
 }
 

@@ -1,7 +1,7 @@
 import * as fs from "node:fs/promises"
 import * as path from "node:path"
 import * as XLSX from "xlsx"
-import { readTextFile, relativePosix } from "./fileSystem"
+import { readTextFile, relativePosix, resolveWorkspacePathStrict } from "./fileSystem"
 import type { ArtifactKind, ReviewInputArtifactDraft } from "./reviewInputBuilder"
 
 export type ReviewInputDiscoveryOptions = {
@@ -22,11 +22,12 @@ export type ReviewInputDiscoveryResult = {
 }
 
 const DOCUMENT_EXTENSIONS = new Set([".md", ".markdown", ".docx", ".xlsx"])
+const SKIPPED_DIRECTORY_NAMES = new Set(["node_modules", ".git", ".bzr", ".bob-review", ".bob-trace", "out", "dist"])
 const KNOWN_ID_PATTERN = /\b(?:REQ|BD|DD|TC|QA|RV|ERR|ISSUE|TICKET|LEDGER)(?:[-_][A-Za-z0-9]+)+\b/g
 
 export async function discoverReviewInputCandidates(workspaceRoot: string, options: ReviewInputDiscoveryOptions = {}): Promise<ReviewInputDiscoveryResult> {
   const warnings: string[] = []
-  const root = path.join(workspaceRoot, options.docsRoot ?? "docs")
+  const root = resolveWorkspacePathStrict(workspaceRoot, options.docsRoot ?? "docs", "docsRoot")
   const maxFiles = options.maxFiles ?? 200
   const maxIdsPerFile = options.maxIdsPerFile ?? 20
 
@@ -73,7 +74,7 @@ async function walkDocumentFiles(root: string, maxFiles: number): Promise<string
     for (const entry of entries) {
       const fullPath = path.join(current, entry.name)
       if (entry.isDirectory()) {
-        if (!entry.name.startsWith(".") && entry.name !== "node_modules") pending.push(fullPath)
+        if (!entry.name.startsWith(".") && !SKIPPED_DIRECTORY_NAMES.has(entry.name)) pending.push(fullPath)
         continue
       }
       if (entry.isFile() && DOCUMENT_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) result.push(fullPath)

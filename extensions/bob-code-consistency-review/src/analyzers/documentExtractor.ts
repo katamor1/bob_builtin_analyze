@@ -2,7 +2,7 @@ import * as path from "node:path"
 import * as cheerio from "cheerio"
 import * as mammoth from "mammoth"
 import * as XLSX from "xlsx"
-import { readTextFile, resolveWorkspacePath, toPosixPath } from "../core/fileSystem"
+import { readTextFile, resolveWorkspacePathStrict, toPosixPath } from "../core/fileSystem"
 import type { DocumentExtractionResult, EvidenceRef, ReviewInput } from "../core/types"
 
 type ArtifactRef = {
@@ -56,11 +56,11 @@ export async function extractDocuments(reviewInput: ReviewInput, options: { work
         continue
       }
 
-      const filePath = resolveWorkspacePath(options.workspaceRoot, item.path)
       const documentId = `DOC-${typeInfo.documentPrefix}-${String(documents.length + 1).padStart(4, "0")}`
       const selectors = selectorList(item)
       let chunks: ExtractedChunk[] = []
       try {
+        const filePath = resolveWorkspacePathStrict(options.workspaceRoot, item.path, "artifact path")
         chunks = await extractFileChunks(filePath, item, typeInfo.evidenceType, selectors, options.textEncoding)
       } catch (error) {
         warnings.push(`failed to extract ${item.path}: ${error instanceof Error ? error.message : String(error)}`)

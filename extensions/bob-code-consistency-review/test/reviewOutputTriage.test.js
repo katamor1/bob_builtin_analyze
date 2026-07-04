@@ -78,7 +78,9 @@ test("generateHumanTriage reports a missing Bob output file without throwing ENO
 })
 
 test("validateBobOutput rejects missing evidence ids and accepts package evidence", async () => {
-  const outDir = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "bob-review-validate-")), "review-package")
+  const outRoot = path.join(repoRoot, ".bob-review")
+  fs.mkdirSync(outRoot, { recursive: true })
+  const outDir = fs.mkdtempSync(path.join(outRoot, "review-validate-"))
   await preprocessReview({ workspaceRoot: repoRoot, inputPath: reviewInputPath, outDir, diffFixturePath })
 
   const validReport = await validateBobOutput({ packageDir: outDir, bobOutputPath: bobOutputFixturePath })

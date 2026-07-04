@@ -4,7 +4,7 @@ import { discoverReviewInputCandidates } from "./reviewInputDiscovery"
 import { explainReviewInputDiagnostics } from "./reviewInputDiagnostics"
 import { ARTIFACT_KIND_VALUES, CHANGE_TYPE_VALUES, REVIEW_FOCUS_VALUES, VCS_VALUES, writeReviewInputFromDraft, type ReviewInputDraft } from "./reviewInputBuilder"
 import type { DiffSummary, ReviewInput } from "./types"
-import { writeTextFile } from "./fileSystem"
+import { resolveWorkspacePathStrict, writeTextFile } from "./fileSystem"
 
 export type PrepareAiReviewInputDraftPromptInput = {
   workspaceRoot: string
@@ -43,10 +43,12 @@ const MAX_CANDIDATE_COUNT = 120
 
 export async function prepareAiReviewInputDraftPrompt(input: PrepareAiReviewInputDraftPromptInput): Promise<PrepareAiReviewInputDraftPromptResult> {
   const warnings: string[] = []
+  const outputDir = resolveWorkspacePathStrict(input.workspaceRoot, input.outputDir, "aiDraftPromptPath")
+  const reviewInputPath = resolveWorkspacePathStrict(input.workspaceRoot, input.reviewInputPath, "reviewInputPath")
   const discovery = await discoverReviewInputCandidates(input.workspaceRoot, { textEncoding: input.textEncoding, maxFiles: MAX_CANDIDATE_COUNT })
   warnings.push(...discovery.warnings)
 
-  const diagnostics = await explainReviewInputDiagnostics({ inputPath: input.reviewInputPath, workspaceRoot: input.workspaceRoot, textEncoding: input.textEncoding })
+  const diagnostics = await explainReviewInputDiagnostics({ inputPath: reviewInputPath, workspaceRoot: input.workspaceRoot, textEncoding: input.textEncoding })
   let diff: DiffSummary | undefined
   try {
     diff = await collectGitDiff(minimalReviewInput(input), {
@@ -60,7 +62,7 @@ export async function prepareAiReviewInputDraftPrompt(input: PrepareAiReviewInpu
   }
 
   const prompt = renderPrompt({ input, diagnostics, diff, candidates: discovery.documents, warnings })
-  const promptPath = path.join(input.outputDir, PROMPT_FILE_NAME)
+  const promptPath = path.join(outputDir, PROMPT_FILE_NAME)
   await writeTextFile(promptPath, prompt)
   return { status: "ok", promptPath, prompt, warnings }
 }
