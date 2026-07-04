@@ -9,6 +9,7 @@ import {
   notifyInfo,
   optionalAbsolute,
   requireBobWorkspaceRoot,
+  resolveTrustedBzrPath,
   stringOption
 } from "./extensionCommandOptions"
 import { generateHumanTriage } from "./triage/humanTriageHelper"
@@ -26,7 +27,7 @@ export async function runPreprocess(options?: unknown): Promise<unknown> {
       config.get<string>("reviewPackagePath", ".bob-review/review-package")
   )
   const diffFixturePath = optionalAbsolute(workspaceRoot, stringOption(record, "diffFixturePath"))
-  const bzrPath = stringOption(record, "bzrPath") ?? config.get<string>("bzrPath", "bzr")
+  const bzrPath = resolveTrustedBzrPath(record, config.get<string>("bzrPath", "bzr"))
   const textEncoding = stringOption(record, "textEncoding") ?? config.get<string>("textEncoding", "auto")
 
   const result = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: "コード整合レビュー用パッケージを作成しています" }, () =>

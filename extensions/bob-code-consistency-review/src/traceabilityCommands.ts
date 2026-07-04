@@ -18,6 +18,7 @@ import {
   notifyInfo,
   optionalAbsolute,
   requireBobWorkspaceRoot,
+  resolveTrustedBzrPath,
   reviewFocusOption,
   stringOption,
   stringOrPrompt,
@@ -57,7 +58,7 @@ export async function runPrepareAiTraceabilityDraft(options?: unknown): Promise<
       head,
       vcs,
       vcsRoot: stringOption(record, "vcsRoot") ?? stringOption(record, "vcs_root"),
-      bzrPath: stringOption(record, "bzrPath") ?? config.get<string>("bzrPath", "bzr"),
+      bzrPath: resolveTrustedBzrPath(record, config.get<string>("bzrPath", "bzr")),
       diffFixturePath: optionalAbsolute(workspaceRoot, stringOption(record, "diffFixturePath")),
       textEncoding
     })

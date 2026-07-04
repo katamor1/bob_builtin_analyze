@@ -84,6 +84,13 @@ export function optionalAbsolute(root: string, value: string | undefined): strin
   return value ? absolute(root, value) : undefined
 }
 
+export function resolveTrustedBzrPath(record: Record<string, unknown>, configuredPath: string | undefined): string {
+  if (stringOption(record, "bzrPath")) {
+    throw new Error("bzrPath cannot be overridden by workflow args. Configure bobCodeConsistency.bzrPath in user or global settings.")
+  }
+  return configuredPath?.trim() || "bzr"
+}
+
 export function stringOption(record: Record<string, unknown>, key: string): string | undefined {
   const value = record[key]
   return typeof value === "string" && value.trim() ? value.trim() : undefined

@@ -8,6 +8,7 @@ import type { DiffSummary, ReviewInput } from "./types"
 const execFileAsync = promisify(execFile)
 
 type VcsKind = "git" | "bazaar"
+const MAX_BAZAAR_REVISION_SPEC_LENGTH = 128
 
 export async function collectGitDiff(reviewInput: ReviewInput, options: { workspaceRoot: string; diffFixturePath?: string; bzrPath?: string; textEncoding?: string }): Promise<DiffSummary> {
   if (options.diffFixturePath) {
@@ -23,9 +24,11 @@ export async function collectGitDiff(reviewInput: ReviewInput, options: { worksp
 }
 
 async function collectStandardGitDiff(reviewInput: ReviewInput, options: { workspaceRoot: string; vcsRoot: string; textEncoding?: string }): Promise<DiffSummary> {
-  const nameStatus = await runGitText(["diff", "--name-status", reviewInput.review.base, reviewInput.review.head], options.vcsRoot, 20 * 1024 * 1024, options.textEncoding)
-  const numstat = await runGitText(["diff", "--numstat", reviewInput.review.base, reviewInput.review.head], options.vcsRoot, 20 * 1024 * 1024, options.textEncoding)
-  const unifiedDiff = await runGitText(["diff", "--unified=80", reviewInput.review.base, reviewInput.review.head], options.vcsRoot, 50 * 1024 * 1024, options.textEncoding)
+  const base = await resolveGitRevision(reviewInput.review.base, options.vcsRoot, options.textEncoding)
+  const head = await resolveGitRevision(reviewInput.review.head, options.vcsRoot, options.textEncoding)
+  const nameStatus = await runGitText(["diff", "--name-status", base, head], options.vcsRoot, 20 * 1024 * 1024, options.textEncoding)
+  const numstat = await runGitText(["diff", "--numstat", base, head], options.vcsRoot, 20 * 1024 * 1024, options.textEncoding)
+  const unifiedDiff = await runGitText(["diff", "--unified=80", base, head], options.vcsRoot, 50 * 1024 * 1024, options.textEncoding)
 
   const counts = parseNumstat(numstat)
   const files = nameStatus.split(/\r?\n/).flatMap((line) => {
@@ -38,12 +41,14 @@ async function collectStandardGitDiff(reviewInput: ReviewInput, options: { works
     return [buildChangedFile(filePath, statusFromGit(statusToken), count)]
   })
 
-  return { vcs: "git", vcsRoot: options.vcsRoot, base: reviewInput.review.base, head: reviewInput.review.head, files, unifiedDiff, warnings: [] }
+  return { vcs: "git", vcsRoot: options.vcsRoot, base, head, files, unifiedDiff, warnings: [] }
 }
 
 async function collectBazaarDiff(reviewInput: ReviewInput, options: { workspaceRoot: string; vcsRoot: string; bzrPath?: string; textEncoding?: string }): Promise<DiffSummary> {
   const bzrPath = options.bzrPath?.trim() || "bzr"
-  const revisionRange = `${reviewInput.review.base}..${reviewInput.review.head}`
+  const base = validateBazaarRevision(reviewInput.review.base)
+  const head = validateBazaarRevision(reviewInput.review.head)
+  const revisionRange = `${base}..${head}`
   const unifiedDiff = await runCommandText(
     bzrPath,
     ["--no-aliases", "diff", "-r", revisionRange],
@@ -54,7 +59,41 @@ async function collectBazaarDiff(reviewInput: ReviewInput, options: { workspaceR
     { BZR_PROGRESS_BAR: "none" }
   )
   const files = parseBazaarDiffFiles(unifiedDiff)
-  return { vcs: "bazaar", vcsRoot: options.vcsRoot, base: reviewInput.review.base, head: reviewInput.review.head, files, unifiedDiff, warnings: [] }
+  return { vcs: "bazaar", vcsRoot: options.vcsRoot, base, head, files, unifiedDiff, warnings: [] }
+}
+
+async function resolveGitRevision(revision: string, cwd: string, textEncoding = "auto"): Promise<string> {
+  const trimmed = revision.trim()
+  if (!trimmed) throw new Error("Invalid Git revision: revision is empty")
+
+  try {
+    const output = await runGitText(["rev-parse", "--verify", "--end-of-options", `${trimmed}^{commit}`], cwd, 1024 * 1024, textEncoding)
+    const sha = output.trim().split(/\r?\n/).at(-1) ?? ""
+    if (/^[0-9a-f]{40}$/i.test(sha)) return sha.toLowerCase()
+  } catch {
+    // Fall through to the normalized validation error below.
+  }
+
+  throw new Error(`Invalid Git revision: ${formatRevisionForError(revision)}`)
+}
+
+export function validateBazaarRevision(revision: string): string {
+  const trimmed = revision.trim()
+  if (!trimmed) throw new Error("リビジョンを入力してください。")
+  if (trimmed.length > MAX_BAZAAR_REVISION_SPEC_LENGTH) {
+    throw new Error(`Bazaar リビジョン指定が長すぎます: ${formatRevisionForError(revision)}`)
+  }
+  if (trimmed.startsWith("-") || trimmed.includes("..")) {
+    throw new Error(`安全でない Bazaar リビジョン指定です: ${formatRevisionForError(revision)}`)
+  }
+  if (!/^[A-Za-z0-9_.:+@/=-]+$/.test(trimmed)) {
+    throw new Error(`安全でない Bazaar リビジョン指定です: ${formatRevisionForError(revision)}`)
+  }
+  return trimmed
+}
+
+function formatRevisionForError(revision: string): string {
+  return revision.replace(/[\0\r\n\t]/g, " ").trim()
 }
 
 async function runGitText(args: string[], cwd: string, maxBuffer: number, textEncoding = "auto"): Promise<string> {
