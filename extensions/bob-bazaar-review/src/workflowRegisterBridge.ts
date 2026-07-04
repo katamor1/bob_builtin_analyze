@@ -97,6 +97,8 @@ function captureOptionsFromWorkflowContext(context: Record<string, unknown>): Ca
   const workflowState = recordStringMap(context.state)
   return {
     expectedChecklistItems: expectedChecklistItemsFromState(workflowState),
+    expectedRuleIds: expectedRuleIdsFromState(workflowState),
+    reviewResultSchema: reviewResultSchemaFromState(workflowState),
     workspaceRoot: stringInput(context.workflowRoot),
     workflowState
   }
@@ -116,9 +118,26 @@ function recordInput(value: unknown): Record<string, unknown> | undefined {
 }
 
 function expectedChecklistItemsFromState(state: Record<string, string> | undefined): number | undefined {
-  const reviewRules = parseStateObject(state?.reviewRules)
+  const reviewRules = reviewRulesFromState(state)
   const checklistItems = reviewRules?.checklistItems
   return Number.isInteger(checklistItems) && (checklistItems as number) >= 0 ? checklistItems as number : undefined
+}
+
+function expectedRuleIdsFromState(state: Record<string, string> | undefined): string[] | undefined {
+  const reviewRules = reviewRulesFromState(state)
+  const ruleIds = reviewRules?.ruleIds
+  if (!Array.isArray(ruleIds)) return undefined
+  const normalized = ruleIds.map((ruleId) => typeof ruleId === "string" ? ruleId.trim() : "").filter(Boolean)
+  return normalized.length > 0 ? normalized : undefined
+}
+
+function reviewResultSchemaFromState(state: Record<string, string> | undefined): unknown | undefined {
+  const reviewRules = reviewRulesFromState(state)
+  return reviewRules?.reviewResultSchema
+}
+
+function reviewRulesFromState(state: Record<string, string> | undefined): Record<string, unknown> | undefined {
+  return parseStateObject(state?.reviewRules)
 }
 
 function parseStateObject(value: string | undefined): Record<string, unknown> | undefined {

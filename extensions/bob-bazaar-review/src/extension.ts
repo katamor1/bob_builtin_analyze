@@ -35,8 +35,12 @@ interface ReviewRulesBridgeResult {
   checklistVersion?: string
   /** Number of checklist rule items that were loaded. */
   checklistItems: number
+  /** Checklist rule IDs in project checklist order. */
+  ruleIds: string[]
   /** Sorted list of rule categories found in the checklist. */
   categories: string[]
+  /** Review result JSON schema loaded for the project. */
+  reviewResultSchema: unknown
   /** Sorted top-level keys found in the review result JSON schema. */
   schemaTopLevelKeys: string[]
   /** Human-readable summary suitable for command and workflow output. */
@@ -138,6 +142,7 @@ async function loadReviewRules(input?: WorkflowActionExecutionInput): Promise<Re
     loadReviewResultSchemaRequired(folder.uri.fsPath, schemaPath)
   ])
   const categories = Array.from(new Set(checklist.rules.map((rule) => rule.category))).sort()
+  const ruleIds = checklist.rules.map((rule) => rule.id)
   const schemaTopLevelKeys = schema && typeof schema === "object" ? Object.keys(schema).sort() : []
   return {
     status: "ok",
@@ -146,7 +151,9 @@ async function loadReviewRules(input?: WorkflowActionExecutionInput): Promise<Re
     project: checklist.project,
     checklistVersion: checklist.version,
     checklistItems: checklist.rules.length,
+    ruleIds,
     categories,
+    reviewResultSchema: schema,
     schemaTopLevelKeys,
     summary: `プロジェクトレビュー規約 ${checklist.rules.length} 件を ${categories.length} カテゴリから読み込みました。レビュー結果 schema も利用できます。`
   }

@@ -36,6 +36,8 @@ test("Bazaar capture command accepts workflow context appended by result sinks",
   assert.match(source, /export function captureOptionsFromCommandArgs\(args: unknown\[\]\): CaptureReviewResultOptions/)
   assert.match(source, /const workflowState = recordStringMap\(context\.state\)/)
   assert.match(source, /expectedChecklistItems: expectedChecklistItemsFromState\(workflowState\)/)
+  assert.match(source, /expectedRuleIds: expectedRuleIdsFromState\(workflowState\)/)
+  assert.match(source, /reviewResultSchema: reviewResultSchemaFromState\(workflowState\)/)
   assert.match(source, /workspaceRoot: stringInput\(context\.workflowRoot\)/)
 })
 
@@ -60,6 +62,16 @@ test("Bazaar workflow template declares the providers owned by this extension", 
   assertWorkflowProvider(workflow, "review-input", "openReviewGui", "false", undefined, "false")
   assertWorkflowProvider(workflow, "collect-context", "collectReviewContext", "true", "true", "true")
   assertWorkflowProvider(workflow, "load-rules", "loadReviewRules", "true", "true", "true")
+})
+
+test("Bazaar load-rules workflow result exposes project rule ids and schema to result capture", () => {
+  const source = readSourceSet(["extension.ts"])
+
+  assert.match(source, /ruleIds: string\[\]/)
+  assert.match(source, /reviewResultSchema: unknown/)
+  assert.match(source, /const ruleIds = checklist\.rules\.map\(\(rule\) => rule\.id\)/)
+  assert.match(source, /ruleIds,/)
+  assert.match(source, /reviewResultSchema: schema/)
 })
 
 function assertWorkflowProvider(workflow, stepId, provider, sendResult, required, completeOnSuccess) {

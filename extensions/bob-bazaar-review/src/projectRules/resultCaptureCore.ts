@@ -3,6 +3,7 @@ import * as fs from "node:fs/promises"
 import * as path from "node:path"
 import { renderReviewResultMarkdown } from "./markdown"
 import { recoverReviewResultFromMarkdown } from "./resultCaptureMarkdownRecovery"
+import { validateJsonAgainstSchema } from "./schemaValidator"
 import { ReviewResult, ReviewStatus, ValidationIssue } from "./types"
 import { validateReviewResultJson } from "./validator"
 
@@ -34,6 +35,10 @@ export interface CandidateText {
 
 export interface CaptureReviewResultOptions {
   expectedChecklistItems?: number
+  expectedRuleIds?: string[]
+  reviewResultSchema?: unknown
+  checklistVersion?: string
+  project?: string
   workspaceRoot?: string
   workflowState?: Record<string, string>
 }
@@ -90,13 +95,15 @@ export async function handleReviewResultJson(
 
   const result = JSON.parse(normalizedJsonText) as ReviewResult
   const completionIssues = validateChecklistCompletion(result, options)
-  if (completionIssues.length > 0) {
+  const projectContractIssues = validateProjectContract(result, options)
+  const issues = [...completionIssues, ...projectContractIssues]
+  if (issues.length > 0) {
     return {
       status: "error",
       source,
       valid: false,
-      issueCount: completionIssues.length,
-      issues: completionIssues
+      issueCount: issues.length,
+      issues
     }
   }
 
@@ -155,6 +162,55 @@ function validateChecklistCompletion(result: ReviewResult, options: CaptureRevie
   return actual === expected
     ? []
     : [{ path: "$.checklist_results", message: `expected ${expected} checklist result(s), got ${actual}` }]
+}
+
+function validateProjectContract(result: ReviewResult, options: CaptureReviewResultOptions): ValidationIssue[] {
+  return [
+    ...validateExpectedRuleIds(result, options.expectedRuleIds),
+    ...validateReviewResultSchema(result, options.reviewResultSchema)
+  ]
+}
+
+function validateExpectedRuleIds(result: ReviewResult, expectedRuleIds: string[] | undefined): ValidationIssue[] {
+  const expected = normalizeRuleIds(expectedRuleIds)
+  if (!expected) return []
+
+  const issues: ValidationIssue[] = []
+  const expectedSet = new Set(expected)
+  const seen = new Map<string, number>()
+
+  result.checklist_results.forEach((item, index) => {
+    const previous = seen.get(item.rule_id)
+    if (previous !== undefined) {
+      issues.push({
+        path: `$.checklist_results[${index}].rule_id`,
+        message: `duplicate rule_id ${item.rule_id}; first seen at checklist_results[${previous}]`
+      })
+    } else {
+      seen.set(item.rule_id, index)
+    }
+    if (!expectedSet.has(item.rule_id)) {
+      issues.push({ path: `$.checklist_results[${index}].rule_id`, message: `unexpected rule_id ${item.rule_id}` })
+    }
+  })
+
+  for (const ruleId of expected) {
+    if (!seen.has(ruleId)) {
+      issues.push({ path: "$.checklist_results", message: `missing expected rule_id ${ruleId}` })
+    }
+  }
+
+  return issues
+}
+
+function validateReviewResultSchema(result: ReviewResult, schema: unknown): ValidationIssue[] {
+  return schema === undefined ? [] : validateJsonAgainstSchema(result, schema)
+}
+
+function normalizeRuleIds(ruleIds: string[] | undefined): string[] | undefined {
+  if (!Array.isArray(ruleIds)) return undefined
+  const normalized = ruleIds.map((ruleId) => typeof ruleId === "string" ? ruleId.trim() : "").filter(Boolean)
+  return normalized.length > 0 ? normalized : undefined
 }
 
 function countChecklistStatuses(items: unknown[]): Record<ReviewStatus, number> {

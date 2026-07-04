@@ -295,6 +295,62 @@ test("completed workflow checklist is saved after normalizing mismatched summary
   assert.match(await fs.readFile(result.markdownPath, "utf8"), /\| unknown \| 1 \|/)
 })
 
+test("workflow capture rejects duplicate, missing, and unexpected project rule ids", async () => {
+  const { captureReviewResultText } = require("../out/projectRules/resultCaptureCore")
+  const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "bob-review-capture-rule-ids-"))
+  const payload = validReviewResult("BRR-RULE-ID-COVERAGE")
+  payload.checklist_results = [
+    checklistResult("RULE-001", "pass", [{ file: "src/main.c", summary: "Rule one was checked." }]),
+    checklistResult("RULE-001", "pass", [{ file: "src/main.c", summary: "Rule one duplicate was checked." }]),
+    checklistResult("RULE-999", "not_applicable")
+  ]
+  payload.summary = {
+    pass: 2,
+    fail: 0,
+    unknown: 0,
+    not_applicable: 1,
+    blocked: 0
+  }
+
+  const result = await captureReviewResultText(
+    workspaceRoot,
+    `\`\`\`json\n${JSON.stringify(payload, null, 2)}\n\`\`\``,
+    "command argument",
+    { expectedRuleIds: ["RULE-001", "RULE-002"] }
+  )
+
+  assert.equal(result.status, "error")
+  const messages = result.issues.map((issue) => `${issue.path}: ${issue.message}`).join("\n")
+  assert.match(messages, /duplicate rule_id RULE-001/)
+  assert.match(messages, /missing expected rule_id RULE-002/)
+  assert.match(messages, /unexpected rule_id RULE-999/)
+  await assert.rejects(fs.stat(path.join(workspaceRoot, ".bob", "review", "results", "BRR-RULE-ID-COVERAGE.json")))
+})
+
+test("workflow capture validates review-result JSON against the project schema option", async () => {
+  const { captureReviewResultText } = require("../out/projectRules/resultCaptureCore")
+  const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "bob-review-capture-schema-"))
+  const payload = validReviewResult("BRR-PROJECT-SCHEMA")
+  const schema = {
+    type: "object",
+    required: ["review_id", "vcs", "checklist_results", "findings", "summary", "project_code"],
+    properties: {
+      project_code: { type: "string", minLength: 1 }
+    }
+  }
+
+  const result = await captureReviewResultText(
+    workspaceRoot,
+    `\`\`\`json\n${JSON.stringify(payload, null, 2)}\n\`\`\``,
+    "command argument",
+    { reviewResultSchema: schema }
+  )
+
+  assert.equal(result.status, "error")
+  assert.match(result.issues.map((issue) => issue.message).join("\n"), /project schema requires property project_code/)
+  await assert.rejects(fs.stat(path.join(workspaceRoot, ".bob", "review", "results", "BRR-PROJECT-SCHEMA.json")))
+})
+
 test("workflow checklist capture rejects incomplete checklist decisions before saving artifacts", async () => {
   const { captureReviewResultText } = require("../out/projectRules/resultCaptureCore")
   const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "bob-review-capture-incomplete-"))
