@@ -236,8 +236,15 @@ function isHumanReviewed(value: { status?: TraceabilityStatus }): boolean {
 }
 
 function extractJsonText(text: string): string {
-  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i)
-  if (fenced?.[1]?.trim()) return fenced[1].trim()
+  const jsonFence = text.match(/```json\s*([\s\S]*?)```/i)
+  if (jsonFence?.[1]?.trim()) return jsonFence[1].trim()
+
+  const genericFences = [...text.matchAll(/```\s*([\s\S]*?)```/g)]
+  for (const match of genericFences) {
+    const body = match[1]?.trim()
+    if (body?.startsWith("{")) return body
+  }
+
   const first = text.indexOf("{")
   const last = text.lastIndexOf("}")
   if (first >= 0 && last > first) return text.slice(first, last + 1).trim()
@@ -258,15 +265,21 @@ function minimalTraceabilityReviewInput(input: PrepareAiTraceabilityDraftPromptI
     schema_version: 1,
     review: {
       id: "traceability-ai-draft",
-      title: "Traceability AI draft context",
+      title: "traceability AI draft",
+      purpose: "Collect traceability candidates before review-input generation"
+    },
+    review_context: {
       change_type: "maintenance",
-      purpose: "Traceability AI draft context generation",
+      vcs: input.vcs,
       base: input.base,
       head: input.head,
-      vcs: input.vcs,
-      vcs_root: input.vcsRoot
+      workspace_path: input.vcsRoot
     },
-    artifacts: { requirements: [{ path: "traceability-placeholder.md" }] },
-    review_focus: ["requirement-code-consistency"]
+    source_documents: [],
+    code_changes: {
+      include: [],
+      exclude: []
+    },
+    review_focus: []
   }
 }
