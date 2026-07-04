@@ -2,6 +2,7 @@ import * as vscode from "vscode"
 import type { ActiveStep } from "./bobWorkflowTypes"
 import type { CoreWorkflowDefinition } from "./core/model"
 import { formatBranchingDiagnostics } from "./core/runDiagnostics"
+import { pendingReviewTransitionStepId } from "./core/engine/runState"
 import type { MarkerRootCandidate } from "./core/workspaceRoots"
 import { showMarkdownReport } from "./reports"
 import type { ManualStepPanelInput } from "./webview/manualStepViewModel"
@@ -123,6 +124,17 @@ export class WorkflowRunCommandService {
     }
     const workflow = this.options.coreWorkflows.get(run.workflowId)
     if (!workflow) throw new Error(`Workflow definition is not loaded: ${run.workflowId}`)
+    const pendingTransitionStepId = pendingReviewTransitionStepId(run)
+    if (pendingTransitionStepId) {
+      const engine = this.options.runtimeFactory.createEngine(selection.root)
+      const result = await engine.runWorkflow(workflow, run.inputs, {
+        executionMode: "singleStep",
+        stepId: pendingTransitionStepId,
+        allowOutOfOrder: workflow.stepExecution.allowOutOfOrder
+      })
+      await vscode.window.showInformationMessage(`Workflow run ${result.status}: ${result.runId}`)
+      return result
+    }
     const next = run.steps.find((step) => step.status === "pending")
     if (!next) {
       if (run.status !== "completed" && run.steps.every((step) => step.status === "completed")) {

@@ -9,9 +9,12 @@ import {
 import {
   archiveAttempt,
   blockedPreviousStep,
+  clearPendingReviewTransition,
   missingRequiredState,
+  markPendingReviewTransition,
   nextPendingIndex,
   noteDefinitionMismatch,
+  pendingReviewTransitionStepId,
   shouldPauseForStepReview,
   startIndexForRun,
   validateRetryCompatibility,
@@ -247,8 +250,12 @@ export class WorkflowEngine {
     startIndex: number,
     mode: WorkflowExecutionMode
   ): Promise<WorkflowRunState> {
-    const endIndex = mode === "singleStep" ? Math.min(startIndex + 1, workflow.engineSteps.length) : workflow.engineSteps.length
-    for (let index = startIndex; index < endIndex; index += 1) {
+    const pendingTransition = await this.applyPendingReviewedTransition(workflow, run, startIndex, mode)
+    if (pendingTransition.done) return run
+    const endIndex = mode === "singleStep"
+      ? Math.min(pendingTransition.startIndex + 1, workflow.engineSteps.length)
+      : workflow.engineSteps.length
+    for (let index = pendingTransition.startIndex; index < endIndex; index += 1) {
       const step = workflow.engineSteps[index]
       const stepState = run.steps[index]
       run.currentStep = step.id
@@ -318,6 +325,7 @@ export class WorkflowEngine {
       }
 
       if (shouldPauseForStepReview(workflow, step, mode)) {
+        markPendingReviewTransition(run, step)
         stepState.status = "reviewing"
         stepState.reviewStartedAt = new Date().toISOString()
         stepState.error = undefined
@@ -372,6 +380,63 @@ export class WorkflowEngine {
     await this.runStore.saveRun(run)
     await this.emit(this.hooks.onWorkflowCompleted, { workflow, run })
     return run
+  }
+
+  private async applyPendingReviewedTransition(
+    workflow: CoreWorkflowDefinition,
+    run: WorkflowRunState,
+    startIndex: number,
+    mode: WorkflowExecutionMode
+  ): Promise<{ startIndex: number; done: boolean }> {
+    const stepId = pendingReviewTransitionStepId(run)
+    if (!stepId || run.status === "reviewing") return { startIndex, done: false }
+    const stepIndex = workflow.engineSteps.findIndex((candidate) => candidate.id === stepId)
+    if (stepIndex < 0 || run.steps[stepIndex]?.status !== "completed") {
+      clearPendingReviewTransition(run)
+      return { startIndex, done: false }
+    }
+
+    const step = workflow.engineSteps[stepIndex]
+    clearPendingReviewTransition(run)
+    await this.emit(this.hooks.onStepCompleted, { workflow, run, step })
+    const transition = applyStepTransition({ workflow, run, step, stepIndex, mode })
+    if (transition.action === "next") {
+      const nextStep = workflow.engineSteps[transition.nextIndex]
+      if (!nextStep) {
+        run.status = "completed"
+        run.currentStep = undefined
+        run.error = undefined
+        await this.runStore.saveRun(run)
+        await this.emit(this.hooks.onWorkflowCompleted, { workflow, run })
+        return { startIndex: transition.nextIndex, done: true }
+      }
+      run.status = "running"
+      run.currentStep = nextStep.id
+      run.error = undefined
+      await this.runStore.saveRun(run)
+      return { startIndex: transition.nextIndex, done: false }
+    }
+    if (transition.action === "end") {
+      await this.runStore.saveRun(run)
+      await this.emit(this.hooks.onWorkflowCompleted, { workflow, run })
+      return { startIndex, done: true }
+    }
+    if (transition.action === "fail") {
+      await this.runStore.saveRun(run)
+      await this.emit(this.hooks.onStepFailed, { workflow, run, step, error: transition.error })
+      return { startIndex, done: true }
+    }
+    if (transition.action === "goto") {
+      await this.runStore.saveRun(run)
+      return transition.stop
+        ? { startIndex: transition.nextIndex, done: true }
+        : { startIndex: transition.nextIndex, done: false }
+    }
+    if (transition.action === "checkpoint") {
+      await this.runStore.saveRun(run)
+      return { startIndex: transition.nextIndex, done: true }
+    }
+    return { startIndex, done: false }
   }
 
   private async executeStep(

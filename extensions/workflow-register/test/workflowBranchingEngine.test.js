@@ -79,6 +79,34 @@ function workflowWithLoopLimit(maxIterations = 1) {
   return workflow
 }
 
+function acceptReviewingStepForTest(run) {
+  assert.equal(run.status, "reviewing")
+  const currentIndex = run.currentStep ? run.steps.findIndex((step) => step.id === run.currentStep) : -1
+  assert.notEqual(currentIndex, -1)
+  const current = run.steps[currentIndex]
+  assert.equal(current.status, "reviewing")
+  current.status = "completed"
+  current.acceptedAt = "2026-07-03T00:00:00.000Z"
+  current.completedAt = "2026-07-03T00:00:00.000Z"
+  current.error = undefined
+  if (run.state["workflow.review.pendingTransitionStepId"] === current.id) {
+    run.status = "running"
+    run.currentStep = current.id
+    run.error = undefined
+    return run
+  }
+  const nextIndex = run.steps.findIndex((step, index) => index > currentIndex && step.status === "pending")
+  if (nextIndex < 0) {
+    run.status = "completed"
+    run.currentStep = undefined
+  } else {
+    run.status = "running"
+    run.currentStep = run.steps[nextIndex].id
+  }
+  run.error = undefined
+  return run
+}
+
 test("workflow engine loops backward in full mode and reruns the reset range", async () => {
   const { actions, engine } = createWorkflowEngineContext()
   let collectCount = 0
@@ -171,6 +199,64 @@ test("workflow engine applies backward transition without continuing in single-s
   assert.equal(run.state["workflow.branching.lastValues.collect-user-input.userRequest"], "{\"request\":\"first-request\"}")
   assert.equal(run.state["workflow.branching.lastValues.generate-draft.generatedDraft"], "draft-from-first-request")
   assert.equal(run.branching.loops["revise-until-approved"].count, 1)
+})
+
+test("workflow engine applies reviewed step transitions before running the accepted next step", async () => {
+  const { actions, engine, runStore } = createWorkflowEngineContext({
+    engineOptions: {
+      agentProvider: {
+        run: async ({ state }) => `draft-from-${JSON.parse(state.userRequest).request}`
+      }
+    }
+  })
+  let finalizeCount = 0
+  actions.register({
+    id: "sample.collect",
+    execute: async () => ({ request: "first-request" })
+  })
+  actions.register({
+    id: "sample.preapproval",
+    execute: async () => ({ status: "ng" })
+  })
+  actions.register({
+    id: "sample.finalize",
+    execute: async () => {
+      finalizeCount += 1
+      return { ok: true }
+    }
+  })
+  const workflow = {
+    ...branchingWorkflow(),
+    stepReview: {
+      enabled: true,
+      pauseAfter: "everyStep",
+      requireAcceptBeforeNext: true,
+      allowRetry: true,
+      allowEditBeforeRetry: true,
+      preserveAttempts: true
+    }
+  }
+
+  const collected = acceptReviewingStepForTest(await engine.runWorkflow(workflow, {}, { executionMode: "singleStep", stepId: "collect-user-input" }))
+  await runStore.saveRun(collected)
+  const generated = acceptReviewingStepForTest(await engine.runWorkflow(workflow, {}, { executionMode: "singleStep", stepId: collected.currentStep }))
+  await runStore.saveRun(generated)
+  const reviewed = await engine.runWorkflow(workflow, {}, { executionMode: "singleStep", stepId: generated.currentStep })
+  const accepted = acceptReviewingStepForTest(reviewed)
+  await runStore.saveRun(accepted)
+
+  const run = await engine.runWorkflow(workflow, {}, { executionMode: "singleStep", stepId: accepted.currentStep })
+
+  assert.equal(run.status, "running")
+  assert.equal(run.currentStep, "collect-user-input")
+  assert.equal(run.steps[0].status, "pending")
+  assert.equal(run.steps[1].status, "pending")
+  assert.equal(run.steps[2].status, "pending")
+  assert.equal(run.state.userRequest, undefined)
+  assert.equal(run.state.generatedDraft, undefined)
+  assert.equal(run.state.preapproval, undefined)
+  assert.equal(run.branching.loops["revise-until-approved"].count, 1)
+  assert.equal(finalizeCount, 0)
 })
 
 test("workflow engine stops at a checkpoint when a loop exceeds its allowed count", async () => {
