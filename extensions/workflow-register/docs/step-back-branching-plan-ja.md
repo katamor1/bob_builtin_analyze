@@ -33,8 +33,6 @@ STEP N+3   : ユーザーへアプローバルを求める。
 
 `retryCurrentStep` は current step を再実行するための機能である。今回の「戻る」は、current step ではなく、指定した過去 step から入力・生成・チェックをやり直すための workflow-level transition である。
 
-したがって、次のように分ける。
-
 | 機能 | 対象 | 用途 |
 | --- | --- | --- |
 | Retry | 現在の step | 同じ step の失敗、レビュー差し戻しを再試行する。 |
@@ -44,7 +42,7 @@ STEP N+3   : ユーザーへアプローバルを求める。
 
 ## 3. 採用する設計方針
 
-### 3.1 workflow 定義に transition を追加する
+### 3.1 step に `transition` を追加する
 
 各 step に `transition` を追加し、step 成功後にどこへ進むかを条件で決める。
 
@@ -74,7 +72,7 @@ steps:
 
 `transition.decisions[]` は上から順に評価する。最初に一致した decision を採用し、一致しなければ `default` を使う。
 
-### 3.2 loop 制御を top-level `branching` に定義する
+### 3.2 top-level `branching` で loop 制御を定義する
 
 戻り先、上限、上限超過時の手動 checkpoint を workflow 全体で明示する。
 
@@ -395,8 +393,6 @@ engine.acceptCurrentStep(runId, workflow, { decision?: "approved" | "rejected" }
 
 この時点で、警告 message を Bob chat、VS Code notification、Run Tree View に表示する。
 
-表示例:
-
 ```text
 ループ上限に到達しました。
 
@@ -509,7 +505,6 @@ export interface WorkflowAuthoringManualStep extends WorkflowAuthoringStepBase {
 ---
 schemaVersion: workflow-register/v1
 name: revise-generate-approval
-summary: false
 description: 入力、生成、事前チェック、ユーザー承認を差し戻し可能にするサンプル
 title: 差し戻し付き生成承認
 mode: agent
@@ -616,8 +611,6 @@ steps:
 
 ユーザー入力、AI生成、事前チェック、ユーザー承認を反復します。
 ```
-
-注: `summary: false` は現行 schema では未知 field になるため、実装時には削除するか正式 field として定義する。上記例では YAML 断片の見やすさを優先している。正式サンプルでは現行 schema にない field は入れない。
 
 ## 11. Parser / Schema / Validator 変更
 
