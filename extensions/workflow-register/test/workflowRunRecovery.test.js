@@ -45,6 +45,54 @@ function sampleWorkflow() {
   }
 }
 
+test("file run state store allocates unique run ids before runs are saved", async () => {
+  const { FileRunStateStore } = require("../out/core/runStateStore")
+
+  const workspaceRoot = tempDir()
+  const workflow = sampleWorkflow()
+  const runStore = new FileRunStateStore({ workspaceRoot, now: () => "2026-06-30T00:00:00.000Z", engineVersion: "test-engine" })
+
+  const [first, second] = await Promise.all([
+    runStore.createRun(workflow, { revision: "77" }),
+    runStore.createRun(workflow, { revision: "77" })
+  ])
+
+  assert.notEqual(first.runId, second.runId)
+})
+
+test("file run state store retries transient rename failures while saving run state", async () => {
+  const fsPromises = require("node:fs/promises")
+  const { FileRunStateStore } = require("../out/core/runStateStore")
+
+  const workspaceRoot = tempDir()
+  const workflow = sampleWorkflow()
+  const runStore = new FileRunStateStore({ workspaceRoot, now: () => "2026-06-30T00:00:00.000Z", engineVersion: "test-engine" })
+  const run = await runStore.createRun(workflow, { revision: "77" })
+  await runStore.saveRun(run)
+
+  const originalRename = fsPromises.rename
+  let renameCalls = 0
+  fsPromises.rename = async (...args) => {
+    renameCalls += 1
+    if (renameCalls === 1) {
+      const error = new Error("transient rename failure")
+      error.code = "EPERM"
+      throw error
+    }
+    return originalRename(...args)
+  }
+
+  try {
+    run.status = "paused"
+    await runStore.saveRun(run)
+  } finally {
+    fsPromises.rename = originalRename
+  }
+
+  assert.equal(renameCalls, 2)
+  assert.equal((await runStore.loadRun(run.runId)).status, "paused")
+})
+
 test("workflow engine resumes a recoverable run with the same serialized inputs and state", async () => {
   const { ActionRegistry } = require("../out/core/actionRegistry")
   const { WorkflowEngine } = require("../out/core/engine")
