@@ -26,6 +26,32 @@ test("parseAiTraceabilityDraft rejects AI drafts that try to create accepted sta
   })), /AI draft must not create accepted state/)
 })
 
+test("parseAiTraceabilityDraft prefers JSON fences over Mermaid fences", () => {
+  const draft = parseAiTraceabilityDraft(`
+### summary
+
+\`\`\`mermaid
+graph LR
+  A --> B
+\`\`\`
+
+\`\`\`json
+{
+  "schema_version": 1,
+  "documents": [],
+  "domains": [{ "code": "PAY", "status": "proposed" }],
+  "items": [{ "proposed_id": "REQ-RS001-PAY-0001", "type": "requirement", "source_document_id": "RS001", "domain": "PAY", "sequence": 1, "status": "proposed" }],
+  "links": [],
+  "decisions": []
+}
+\`\`\`
+`)
+
+  assert.equal(draft.domains[0].code, "PAY")
+  assert.equal(draft.items[0].proposed_id, "REQ-RS001-PAY-0001")
+})
+
+
 test("mergeAiTraceabilityDraft preserves accepted catalog entries and replaces proposed candidates", () => {
   const existing = {
     schema_version: 1,
