@@ -43,3 +43,32 @@ test("workflow run command orchestration is split out of WorkflowRegisterService
   assert.doesNotMatch(serviceSource, /collectCoreWorkflowInputs/)
   assert.doesNotMatch(serviceSource, /pickRunSelection/)
 })
+
+test("core stage directories own schema, runtime, authoring, and snapshot implementations", () => {
+  const stageFiles = [
+    ["schema", "workflowSchema.ts", "workflowSchema.ts"],
+    ["runtime", "runStateStore.ts", "runStateStore.ts"],
+    ["runtime", "runControlStore.ts", "runControlStore.ts"],
+    ["runtime", "resultSinkRegistry.ts", "resultSinkRegistry.ts"],
+    ["authoring", "workflowAuthoringModel.ts", "workflowAuthoringModel.ts"],
+    ["authoring", "workflowAuthoringSerializer.ts", "workflowAuthoringSerializer.ts"],
+    ["authoring", "workflowAuthoringLoader.ts", "workflowAuthoringLoader.ts"],
+    ["snapshots", "taskSnapshots.ts", "taskSnapshots.ts"]
+  ]
+
+  for (const [stage, fileName, rootFileName] of stageFiles) {
+    const stagedPath = path.join(extensionRoot, "src", "core", stage, fileName)
+    const rootPath = path.join(extensionRoot, "src", "core", rootFileName)
+    assert.ok(fs.existsSync(stagedPath), `core/${stage}/${fileName} must own the implementation`)
+    assert.ok(fs.existsSync(rootPath), `core/${rootFileName} compatibility shim must remain for existing imports`)
+
+    const shimSource = readSrc("core", rootFileName)
+    const moduleName = path.basename(fileName, ".ts")
+    assert.match(shimSource, new RegExp(`export\\s+\\{[\\s\\S]*?\\}\\s+from "\\./${stage}/${moduleName}"`))
+    assert.doesNotMatch(
+      shimSource,
+      /^\s*export\s+(class|function|async function|interface|type)\s+\w+/m,
+      `core/${rootFileName} must delegate implementation to core/${stage}/${fileName}`
+    )
+  }
+})
