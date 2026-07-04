@@ -8,7 +8,7 @@ import type {
   WorkflowStepDefinition,
   WorkflowTodoItem
 } from "./bobWorkflowTypes"
-import { appendWorkflowContext } from "./workflowPromptContext"
+import { appendWorkflowContext, appendWorkflowStateDataBlock } from "./workflowPromptContext"
 
 export interface WorkflowControlBlockInput {
   runId: string
@@ -119,7 +119,7 @@ export function buildWorkflowStartMessage(
     if (stepBlock) lines.push("", "Current workflow step:", stepBlock)
   }
   appendCommandResult(lines, stepDefinition, commandResult)
-  appendWorkflowState(lines, stateEntries)
+  appendWorkflowStateDataBlock(lines, stateEntries)
   return lines.join("\n")
 }
 
@@ -144,7 +144,7 @@ function buildCurrentTodoMessage(
     stateEntries
   })
   appendCommandResult(lines, stepDefinition, commandResult)
-  appendWorkflowState(lines, stateEntries)
+  appendWorkflowStateDataBlock(lines, stateEntries)
   return lines.join("\n")
 }
 
@@ -168,7 +168,7 @@ export function buildCommandResultMessage(
     stateEntries
   })
   if (commandResult) lines.push("", buildCommandResultBlock(commandResult))
-  appendWorkflowState(lines, stateEntries)
+  appendWorkflowStateDataBlock(lines, stateEntries)
   return lines.join("\n")
 }
 
@@ -190,7 +190,7 @@ function buildStepPromptMessage(
     stateEntries
   })
   appendCommandResult(lines, stepDefinition, commandResult)
-  appendWorkflowState(lines, stateEntries)
+  appendWorkflowStateDataBlock(lines, stateEntries)
   return lines.join("\n")
 }
 
@@ -243,7 +243,7 @@ function buildWorkflowTodoStepMessage(
     stateEntries
   })
   appendCommandResult(lines, stepDefinition, commandResult)
-  appendWorkflowState(lines, stateEntries)
+  appendWorkflowStateDataBlock(lines, stateEntries)
   return lines.join("\n")
 }
 
@@ -255,17 +255,6 @@ function appendCommandResult(
   if (shouldIncludeCommandResult(stepDefinition, commandResult) && commandResult) {
     lines.push("", buildCommandResultBlock(commandResult, stepDefinition?.maxResultBytes))
   }
-}
-
-function appendWorkflowState(lines: string[], stateEntries: WorkflowStateEntry[]): void {
-  if (stateEntries.length === 0) return
-  lines.push(
-    "",
-    "Workflow state available to this step:",
-    "<workflow_state>",
-    ...stateEntries.map((entry) => `- ${entry.key}: ${entry.value}`),
-    "</workflow_state>"
-  )
 }
 
 export function shouldIncludeCommandResult(stepDefinition: WorkflowStepDefinition | undefined, result: WorkflowStepCommandResult | undefined): boolean {
@@ -281,10 +270,17 @@ function buildCommandResultBlock(result: WorkflowStepCommandResult, maxResultByt
     ? { command: result.command, ok: true, value: truncate(String(result.value ?? ""), maxResultBytes) }
     : { command: result.command, ok: false, error: result.error }
   return [
-    "<workflow_command_result>",
-    JSON.stringify(payload, null, 2),
+    "<workflow_command_result type=\"data-only\" encoding=\"json\">",
+    escapeJsonForPrompt(JSON.stringify(payload, null, 2)),
     "</workflow_command_result>"
   ].join("\n")
+}
+
+function escapeJsonForPrompt(value: string): string {
+  return value
+    .replace(/&/g, "\\u0026")
+    .replace(/</g, "\\u003c")
+    .replace(/>/g, "\\u003e")
 }
 
 function truncate(value: string, maxBytes: number): string {

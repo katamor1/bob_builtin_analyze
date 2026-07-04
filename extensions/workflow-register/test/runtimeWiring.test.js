@@ -153,7 +153,8 @@ test("Bob adapter resolves workflow inputs and passes them to command providers"
 test("Bob workflow chat messages include bounded workflow root context", () => {
   const source = readSrc("bobWorkflowMessages.ts")
 
-  assert.match(source, /import \{ appendWorkflowContext \} from "\.\/workflowPromptContext"/)
+  assert.match(source, /appendWorkflowContext/)
+  assert.match(source, /appendWorkflowStateDataBlock/)
   assert.match(source, orderedPattern(
     "appendWorkflowContext(lines, {",
     "workflowRoot: definition.workflowRoot",
