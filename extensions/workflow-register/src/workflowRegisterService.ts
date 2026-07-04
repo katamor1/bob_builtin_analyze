@@ -66,7 +66,10 @@ export class WorkflowRegisterService implements vscode.Disposable {
         showInformationMessage: (message) => Promise.resolve(vscode.window.showInformationMessage(message)),
         activeViewColumn: vscode.ViewColumn.Active
       },
-      completeStepByKey: (activeKey) => this.stepRuntime.completeStepByKey(activeKey)
+      completeStep: ({ activeKey, expectedRunId, expectedStepId }) => this.stepRuntime.completeStepByKeyResult(activeKey, {
+        expectedRunId,
+        expectedStepId
+      })
     })
     this.runtimeFactory = new WorkflowRuntimeFactory({
       engineVersion,

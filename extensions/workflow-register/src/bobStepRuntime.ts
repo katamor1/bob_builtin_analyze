@@ -63,9 +63,16 @@ export class StepRuntime {
     return this.activeSteps.get(key)
   }
 
-  async completeStepByKey(key: string, options: Pick<StepCompletionExpectation, "stateUpdates"> = {}): Promise<string> {
+  async completeStepByKey(key: string, options: StepCompletionExpectation = {}): Promise<string> {
+    const result = await this.completeStepByKeyResult(key, options)
+    return result.message
+  }
+
+  async completeStepByKeyResult(key: string, options: StepCompletionExpectation = {}): Promise<StepCompletionResult> {
     const active = this.activeSteps.get(key)
-    if (!active) return `No active Bob workflow step for key: ${key}`
+    if (!active) return { ok: false, message: `No active Bob workflow step for key: ${key}` }
+    const mismatch = activeStepMismatch([active], options)
+    if (mismatch) return { ok: false, message: mismatch }
     return this.completeStep(active, options)
   }
 
@@ -78,21 +85,22 @@ export class StepRuntime {
     const mismatch = activeStepMismatch(steps, options)
     if (mismatch) return mismatch
     if (!active) return "No active Bob workflow step."
-    return this.completeStep(active, options)
+    const result = await this.completeStep(active, options)
+    return result.message
   }
 
-  private async completeStep(active: ActiveStep, options: Pick<StepCompletionExpectation, "stateUpdates">): Promise<string> {
+  private async completeStep(active: ActiveStep, options: Pick<StepCompletionExpectation, "stateUpdates">): Promise<StepCompletionResult> {
     const handoff = await captureHeldStepResult(active)
     if (!handoff.ok) {
       const message = `Could not capture Bob workflow step result: ${handoff.error}`
       await vscode.window.showErrorMessage(message)
-      return message
+      return { ok: false, message }
     }
     applyStateUpdates(active, options.stateUpdates)
     active.task.setStepComplete?.()
     active.resolve(true)
     this.activeSteps.delete(active.key)
-    return `Completed: ${active.workflowLabel} / ${active.title}`
+    return { ok: true, message: `Completed: ${active.workflowLabel} / ${active.title}` }
   }
 
   private async pickActiveStep(steps: ActiveStep[]): Promise<ActiveStep | undefined> {
@@ -114,6 +122,11 @@ export interface StepCompletionExpectation {
   expectedRunId?: string
   expectedStepId?: string
   stateUpdates?: Record<string, string>
+}
+
+export interface StepCompletionResult {
+  ok: boolean
+  message: string
 }
 
 function hasExpectedStep(options: StepCompletionExpectation): boolean {
