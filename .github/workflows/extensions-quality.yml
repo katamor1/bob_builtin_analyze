@@ -1,0 +1,121 @@
+name: extensions-quality
+
+on:
+  pull_request:
+    paths:
+      - "extensions/workflow-register/**"
+      - "extensions/bob-bazaar-review/**"
+      - "extensions/bob-code-consistency-review/**"
+      - ".github/workflows/extensions-quality.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "extensions/workflow-register/**"
+      - "extensions/bob-bazaar-review/**"
+      - "extensions/bob-code-consistency-review/**"
+      - ".github/workflows/extensions-quality.yml"
+  workflow_dispatch:
+
+jobs:
+  workflow-register:
+    name: workflow-register
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: extensions/workflow-register
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: extensions/workflow-register/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Dependency policy
+        run: npm run dependency:policy
+
+      - name: Production dependency audit
+        run: npm run audit:prod
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Package
+        run: npm run package
+
+  bob-bazaar-review:
+    name: bob-bazaar-review
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: extensions/bob-bazaar-review
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: extensions/bob-bazaar-review/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Dependency policy
+        run: npm run dependency:policy
+
+      - name: Production dependency audit
+        run: npm run audit:prod
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Package
+        run: npm run package
+
+  bob-code-consistency-review:
+    name: bob-code-consistency-review
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: extensions/bob-code-consistency-review
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: extensions/bob-code-consistency-review/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Dependency policy
+        run: npm run dependency:policy
+
+      - name: Production dependency audit
+        run: npm run audit:prod
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Package
+        run: npm run package

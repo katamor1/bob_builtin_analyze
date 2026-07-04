@@ -1,6 +1,5 @@
 /extensions/bob-bazaar-review/node_modules
 /extensions/bob-bazaar-review/out
-extensions/bob-bazaar-review/package-lock.json
 *.vsix
 /.bob/*
 !/.bob/workflows/
@@ -14,6 +13,5 @@ extensions/bob-bazaar-review/package-lock.json
 /docs/workflows/code-consistency-review/scaffold/node_modules/
 /extensions/workflow-register/node_modules
 /extensions/workflow-register/out
-extensions/workflow-register/package-lock.json
 /extensions/bob-code-consistency-review/node_modules
 /extensions/bob-code-consistency-review/out
