@@ -117,7 +117,7 @@
 | `WFR-MAINT-H` | `workflow-register-maintainability-review...:401` | High | model 分割、source map 方針、madge、command ID guardrail、`type-fixes.d.ts` 撤去 | done | command ID guardrail は `WFR-01`、`out/**/*.map` 非同梱方針は `5befb9dd`、import cycle gate は `7e1658e4`、`type-fixes.d.ts` 撤去は `61768663`、model 分割は `53d18349` で対応済み。 |
 | `WFR-MAINT-M` | `workflow-register-maintainability-review...:409` | Medium | lockfile / `npm ci`、unused checks、service 分割、parser re-export 整理、VSIX budget | partial | `59a34c5b` で lockfile、`npm ci`、dependency policy、production audit、test、VSIX package の CI gate、`5befb9dd` で VSIX contents / size policy を追加済み。unused checks、service 分割、parser re-export 整理は残。 |
 | `WFR-MAINT-L` | `workflow-register-maintainability-review...:417` | Low | core 段階分割、README 追記、PR metrics | backlog |  |
-| `BBR-MAINT-H` | `bob-bazaar-review-maintainability-review...:452` | High | MCP allowed roots、MCP server 分割、runtime clamp、VSIX budget、madge | partial | MCP allowed roots は `BBR-01`、runtime clamp は `BBR-04` / `BBR-16`、VSIX contents / size policy は `5befb9dd`、import cycle gate は `7e1658e4` で対応済み。MCP server 分割は残。 |
+| `BBR-MAINT-H` | `bob-bazaar-review-maintainability-review...:452` | High | MCP allowed roots、MCP server 分割、runtime clamp、VSIX budget、madge | done | MCP allowed roots は `BBR-01`、runtime clamp は `BBR-04` / `BBR-16`、VSIX contents / size policy は `5befb9dd`、import cycle gate は `7e1658e4`、MCP server 分割は `834e2a8b` で対応済み。 |
 | `BBR-MAINT-M` | `bob-bazaar-review-maintainability-review...:460` | Medium | src 構造整理、extension composition root 化、packet URI/state 化、unused checks、lockfile | partial | `59a34c5b` で lockfile、`npm ci`、dependency policy、production audit、test、VSIX package の CI gate を追加済み。packet URI/state は `BBR-07` で対応済み。src 構造整理、extension composition root 化、unused checks は残。 |
 | `BBR-MAINT-L` | `bob-bazaar-review-maintainability-review...:468` | Low | MCP tool 型分離、README、template / prompt / schema size budget、`export *` 禁止 | backlog |  |
 | `CCR-MAINT-H` | `bob-code-consistency-review-maintainability-review...:460` | High | strict path resolver、revision validation、size limits、runtime dependency、VSIX CI | done | strict path resolver は `CCR-01` / `CCR-07` / `CCR-09`、revision validation は `CCR-02` / `CCR-03`、size limits は `CCR-06`、runtime dependency / VSIX CI は `CCR-16`、VSIX contents / size policy は `5befb9dd` で対応済み。 |
@@ -135,6 +135,7 @@
 | `VSIX-01` | `extensions/workflow-register`, `extensions/bob-bazaar-review`, `extensions/bob-code-consistency-review` | Packaged VSIX files stay within baseline size budgets and exclude extension `out/**/*.map` files | done | `5befb9dd` | `npm.cmd run package && npm.cmd run package:policy` in each extension; `npm.cmd test` in each extension |
 | `ARCH-01` | `extensions/workflow-register`, `extensions/bob-bazaar-review`, `extensions/bob-code-consistency-review` | `src` relative TypeScript imports are acyclic and checked in CI | done | `7e1658e4` | `npm.cmd run architecture:policy`; `npm.cmd test`; `npm.cmd run package && npm.cmd run package:policy` in each extension |
 | `MODEL-01` | `extensions/workflow-register` | `core/model.ts` is only a compatibility shim and workflow model types are split into schema/provider/sink/runtime files | done | `53d18349` | RED `node --test test\sourceLayoutPolicy.test.js`; `npm.cmd run compile`; `npm.cmd run architecture:policy`; `npm.cmd run dependency:policy`; `npm.cmd test`; `npm.cmd run package && npm.cmd run package:policy` |
+| `MCP-01` | `extensions/bob-bazaar-review` | MCP server entrypoint delegates JSON-RPC plumbing and Bazaar/project-rules tool implementations to separate modules | done | `834e2a8b` | RED `node --test test\mcpSourceLayout.test.js`; `npm.cmd run compile`; `node --test test\mcpAllowedRoots.test.js test\mcpRequestLimit.test.js test\mcpWriteTools.test.js test\mcpServerVersion.test.js test\mcpSourceLayout.test.js`; `npm.cmd run architecture:policy`; `npm.cmd run dependency:policy`; `npm.cmd test`; `npm.cmd run package && npm.cmd run package:policy` |
 
 ## Completed commit index
 
@@ -177,6 +178,7 @@
 | `7e1658e4` | `WFR-MAINT-H`, `BBR-MAINT-H`, `CCR-MAINT-M`, `EXT-MAINT-H`, `ARCH-01` | gate relative TypeScript import cycles and split existing type-only cycles |
 | `61768663` | `WFR-MAINT-H` | remove global `Object.title` type augmentation and add a regression policy |
 | `53d18349` | `WFR-MAINT-H`, `EXT-MAINT-H`, `MODEL-01` | split workflow core model types into schema, provider, sink, and runtime files |
+| `834e2a8b` | `BBR-MAINT-H`, `MCP-01` | split Bazaar MCP server JSON-RPC and tool implementations |
 | `8c86eb05` | `BBR-14` | Bazaar revision validation |
 | `fae99b40` | `BBR-18`, `extensions-review:BBR-04` | random GUI nonce |
 | `c085b107` | `BBR-20` | pass text encoding to MCP config |
