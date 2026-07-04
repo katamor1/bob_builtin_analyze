@@ -7,6 +7,7 @@ import type { CodeAnalysisResult, DiffSummary, EvidenceRef, ReviewInput } from "
 type FunctionRange = { name: string; start: number; end: number; body: string[] }
 type DiffLine = { file: string; line: number; text: string; kind: "add" | "delete" }
 type AnalyzeCppChangesOptions = { workspaceRoot: string; textEncoding?: string }
+type SourceResolution = { filePath?: string; warning?: string }
 
 const C_LIKE_LANGUAGES = new Set(["c", "cpp", "h", "hpp"])
 const CALL_EXCLUDES = new Set(["if", "for", "while", "switch", "return", "sizeof", "case"])
@@ -57,12 +58,12 @@ export async function analyzeCppChanges(
     const language = file.language ?? languageFromPath(file.path)
     if (!C_LIKE_LANGUAGES.has(language)) continue
     const resolved = await resolveSourceFile(sourceRoot, file.path)
-    if (!resolved) {
-      warnings.push(`変更された C/C++ ファイルがワークスペース内で見つかりません: ${file.path}`)
+    if (!resolved.filePath) {
+      warnings.push(resolved.warning ?? `変更された C/C++ ファイルがワークスペース内で見つかりません: ${file.path}`)
       continue
     }
 
-    const source = await readTextFile(resolved, options.textEncoding)
+    const source = await readTextFile(resolved.filePath, options.textEncoding)
     const lines = source.split(/\r?\n/)
     const ranges = detectFunctions(lines)
     const fileDiffLines = diffLinesForFile(diffLines, file.path)
@@ -303,12 +304,17 @@ function changedIdentifierTokens(diffLines: DiffLine[]): Set<string> {
   return result
 }
 
-async function resolveSourceFile(workspaceRoot: string, filePath: string): Promise<string | undefined> {
+async function resolveSourceFile(workspaceRoot: string, filePath: string): Promise<SourceResolution> {
   const direct = resolveWorkspacePath(workspaceRoot, filePath)
-  if (await pathExists(direct)) return direct
+  if (await pathExists(direct)) return { filePath: direct }
   const basename = path.basename(filePath)
   const candidates = await findFilesByBasename(workspaceRoot, basename, 2000)
-  return candidates[0]
+  if (candidates.length === 1) return { filePath: candidates[0] }
+  if (candidates.length > 1) {
+    const candidateList = candidates.map((candidate) => toPosixPath(path.relative(workspaceRoot, candidate))).join(", ")
+    return { warning: `ambiguous basename fallback for ${toPosixPath(filePath)}: ${candidateList}` }
+  }
+  return {}
 }
 
 async function findFilesByBasename(root: string, basename: string, limit: number): Promise<string[]> {
@@ -330,7 +336,7 @@ async function findFilesByBasename(root: string, basename: string, limit: number
     }
   }
   await visit(root)
-  return result
+  return result.sort((left, right) => left.localeCompare(right))
 }
 
 function renderCodeSlice(evidenceId: string, filePath: string, range: FunctionRange, diffLines: DiffLine[]): string {
