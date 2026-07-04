@@ -20,9 +20,9 @@
 | [workflow-register-maintainability-review-2026-07-04-14afe83c.md](workflow-register-maintainability-review-2026-07-04-14afe83c.md) | maintainability review | `WFR-MAINT-*` | backlog | ID 付き deep review と重なるものは canonical 側を優先する。 |
 | [bob-bazaar-review-deep-review-2026-07-04-14afe83c.md](bob-bazaar-review-deep-review-2026-07-04-14afe83c.md) | deep review | `BBR-01` to `BBR-20` | done | `BBR-01` から `BBR-20` まで対応済み。 |
 | [bob-bazaar-review-maintainability-review-2026-07-04-14afe83c.md](bob-bazaar-review-maintainability-review-2026-07-04-14afe83c.md) | maintainability review | `BBR-MAINT-*` | backlog | clamp や allowed root など deep review と重なる項目を含む。 |
-| [bob-code-consistency-review-deep-review-2026-07-04-14afe83c.md](bob-code-consistency-review-deep-review-2026-07-04-14afe83c.md) | deep review | `CCR-01` to `CCR-16` | partial | `CCR-01`、`CCR-02`、`CCR-03`、`CCR-04`、`CCR-05`、`CCR-06`、`CCR-07`、`CCR-08`、`CCR-09`、`CCR-10`、`CCR-11`、`CCR-12`、`CCR-13`、`CCR-14`、`CCR-15` は対応済み。 |
+| [bob-code-consistency-review-deep-review-2026-07-04-14afe83c.md](bob-code-consistency-review-deep-review-2026-07-04-14afe83c.md) | deep review | `CCR-01` to `CCR-16` | done | `CCR-01` から `CCR-16` まで対応済み。 |
 | [bob-code-consistency-review-maintainability-review-2026-07-04-14afe83c.md](bob-code-consistency-review-maintainability-review-2026-07-04-14afe83c.md) | maintainability review | `CCR-MAINT-*` | backlog | path boundary、revision validation、size limits は deep review 側と重なる。 |
-| [extensions-review-2026-07-04-14afe83c.md](extensions-review-2026-07-04-14afe83c.md) | cross-extension review | `extensions-review:<ID>` | duplicate / partial | canonical ID への対応表を下に置く。 |
+| [extensions-review-2026-07-04-14afe83c.md](extensions-review-2026-07-04-14afe83c.md) | cross-extension review | `extensions-review:<ID>` | done / duplicate | canonical ID への対応表を下に置く。重複指摘は canonical 側ですべて対応済み。 |
 | [extensions-maintainability-review-2026-07-04-14afe83c.md](extensions-maintainability-review-2026-07-04-14afe83c.md) | cross-extension maintainability review | `EXT-MAINT-*` | backlog | 3 拡張共通の CI、bundle、依存、README backlog。 |
 
 ## Canonical findings
@@ -91,7 +91,7 @@
 | `CCR-13` | `bob-code-consistency-review-deep-review...:60` | Medium | AI draft / Bob output 抽出ロジックの曖昧さ | done | `9133fe43` | `extensions/bob-code-consistency-review`: RED `node --test test\reviewInputAiDraftProvider.test.js test\traceabilityAiDraftProvider.test.js test\reviewOutputTriage.test.js`; `npm.cmd run compile`; `node --test test\reviewInputAiDraftProvider.test.js test\traceabilityAiDraftProvider.test.js test\reviewOutputTriage.test.js`; `node --test test\reviewInputAiDraftProvider.test.js test\traceabilityAiDraftProvider.test.js test\reviewOutputTriage.test.js test\bobOutputCaptureCanonicalize.test.js test\traceabilityCatalog.test.js test\traceabilityCommandWiring.test.js`; `npm.cmd test`; `git diff --check` |
 | `CCR-14` | `bob-code-consistency-review-deep-review...:61` | Medium | workflow inputs と trusted command options が混ざっている | done | `87a173f5` | `extensions/bob-code-consistency-review`: RED `node --test test\workflowUserOptions.test.js test\workflowOptions.test.js`; `npm.cmd run compile`; `node --test test\workflowUserOptions.test.js test\workflowOptions.test.js test\workflowProviderRegistration.test.js`; `node --test test\workflowUserOptions.test.js test\workflowOptions.test.js test\workflowProviderRegistration.test.js test\vcsValidation.test.js test\traceabilityCommandWiring.test.js test\reviewPipeline.test.js test\reviewOutputTriage.test.js`; `npm.cmd test`; `git diff --check` |
 | `CCR-15` | `bob-code-consistency-review-deep-review...:62` | Low | notification が軽すぎる | done | `ebfb268d` | `extensions/bob-code-consistency-review`: RED `node --test test\notificationBehavior.test.js`; `npm.cmd run compile`; `node --test test\notificationBehavior.test.js`; `node --test test\notificationBehavior.test.js test\reviewPipeline.test.js test\traceabilityCatalogStore.test.js test\traceabilityCommandWiring.test.js test\traceabilityCatalog.test.js`; `npm.cmd test`; `git diff --check` |
-| `CCR-16` | `bob-code-consistency-review-deep-review...:63` | Low | dependency / CI policy が弱い | open | lockfile、audit、license / SBOM、VSIX CI |  |
+| `CCR-16` | `bob-code-consistency-review-deep-review...:63` | Low | dependency / CI policy が弱い | done | `e561177` | `extensions/bob-code-consistency-review`: RED `node --test test\dependencyPolicy.test.js`; `npm.cmd run compile`; `npm.cmd run dependency:policy`; `npm.cmd test`; `npm.cmd run package`; `git diff --check`; local `npm.cmd run audit:prod` は registry certificate error で失敗（CI step は追加済み） |
 
 ## Cross-review mapping
 
@@ -120,7 +120,7 @@
 | `BBR-MAINT-H` | `bob-bazaar-review-maintainability-review...:452` | High | MCP allowed roots、MCP server 分割、runtime clamp、VSIX budget、madge | partial | runtime clamp は `BBR-04` / `BBR-16` で対応済み。 |
 | `BBR-MAINT-M` | `bob-bazaar-review-maintainability-review...:460` | Medium | src 構造整理、extension composition root 化、packet URI/state 化、unused checks、lockfile | backlog | packet URI/state は `BBR-07` と連動。 |
 | `BBR-MAINT-L` | `bob-bazaar-review-maintainability-review...:468` | Low | MCP tool 型分離、README、template / prompt / schema size budget、`export *` 禁止 | backlog |  |
-| `CCR-MAINT-H` | `bob-code-consistency-review-maintainability-review...:460` | High | strict path resolver、revision validation、size limits、runtime dependency、VSIX CI | partial | strict path resolver は `CCR-01` / `CCR-07` / `CCR-09`、revision validation は `CCR-02` / `CCR-03`、size limits は `CCR-06` で対応済み。残りは `CCR-16` と連動。 |
+| `CCR-MAINT-H` | `bob-code-consistency-review-maintainability-review...:460` | High | strict path resolver、revision validation、size limits、runtime dependency、VSIX CI | done | strict path resolver は `CCR-01` / `CCR-07` / `CCR-09`、revision validation は `CCR-02` / `CCR-03`、size limits は `CCR-06`、runtime dependency / VSIX CI は `CCR-16` で対応済み。 |
 | `CCR-MAINT-M` | `bob-code-consistency-review-maintainability-review...:468` | Medium | extractor / analyzer / command 分割、unused checks、madge | backlog |  |
 | `CCR-MAINT-L` | `bob-code-consistency-review-maintainability-review...:476` | Low | domain type 分割、traceability facade 分離、README、`.gitignore` helper | partial | `.gitignore` helper は `CCR-05` で対応済み。 |
 | `EXT-MAINT-H` | `extensions-maintainability-review...:519` | High | 3 拡張共通の madge、VSIX contents、source map 方針、heavy dependency lazy loading、workflow model 方針 | backlog | 各拡張の maintainability backlog と重複あり。 |
@@ -168,6 +168,7 @@
 | `9133fe43` | `CCR-13` | reject ambiguous or oversized AI draft JSON and Bob output YAML candidates |
 | `87a173f5` | `CCR-14` | allowlist workflow provider user options and reject trusted execution key overrides |
 | `ebfb268d` | `CCR-15` | add non-blocking Open Report notifications for review package and traceability gate reports |
+| `e561177` | `CCR-16`, `CCR-MAINT-H` | require npm ci, dependency policy, production audit, tests, and VSIX packaging in CI |
 | `8c86eb05` | `BBR-14` | Bazaar revision validation |
 | `fae99b40` | `BBR-18`, `extensions-review:BBR-04` | random GUI nonce |
 | `c085b107` | `BBR-20` | pass text encoding to MCP config |
