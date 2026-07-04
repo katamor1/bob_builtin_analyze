@@ -19,18 +19,36 @@ import {
 } from "./workflowRegisterBridge"
 import { resolveBobWorkspaceFolder } from "./workspaceResolver"
 
+/**
+ * Summary returned to workflow steps after project review rules are loaded.
+ */
 interface ReviewRulesBridgeResult {
+  /** Rule-loading status for workflow consumers. */
   status: "ok"
+  /** Workspace-relative or absolute path to the loaded checklist file. */
   checklistPath: string
+  /** Workspace-relative or absolute path to the loaded review result schema file. */
   schemaPath: string
+  /** Optional project name declared by the checklist. */
   project?: string
+  /** Optional checklist version declared by the project rules. */
   checklistVersion?: string
+  /** Number of checklist rule items that were loaded. */
   checklistItems: number
+  /** Sorted list of rule categories found in the checklist. */
   categories: string[]
+  /** Sorted top-level keys found in the review result JSON schema. */
   schemaTopLevelKeys: string[]
+  /** Human-readable summary suitable for command and workflow output. */
   summary: string
 }
 
+/**
+ * Activates the Bob Bazaar review extension and registers VS Code commands plus workflow providers.
+ *
+ * @param context VS Code extension context that owns command registrations and extension resources.
+ * @returns Nothing.
+ */
 export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.commands.registerCommand("bobBazaar.openReviewGui", () => openBazaarReviewGui(context)),
@@ -52,10 +70,21 @@ export function activate(context: vscode.ExtensionContext): void {
   registerWorkflowProviders(context).catch((error) => console.warn("Bob Bazaar ワークフロー provider の登録に失敗しました", error))
 }
 
+/**
+ * Deactivates the Bob Bazaar review extension.
+ *
+ * @returns Nothing.
+ */
 export function deactivate(): void {
   // No background process is kept by the extension host. Bob starts the MCP server on demand.
 }
 
+/**
+ * Registers Bazaar review actions with workflow-register when that dependency is available.
+ *
+ * @param context VS Code extension context passed to GUI and review command handlers.
+ * @returns A promise that resolves after provider registration is attempted.
+ */
 async function registerWorkflowProviders(context: vscode.ExtensionContext): Promise<void> {
   const api = await getWorkflowRegisterApi()
   if (!api) return
@@ -77,6 +106,12 @@ async function registerWorkflowProviders(context: vscode.ExtensionContext): Prom
   })
 }
 
+/**
+ * Collects the active Bazaar review packet from open editor documents for workflow execution.
+ *
+ * @returns Bazaar review context parsed from the visible review packet.
+ * @throws Error when no Bazaar review packet document is open.
+ */
 async function collectReviewContext(): Promise<BazaarReviewContextResult> {
   const packet = findReviewPacketText()
   if (!packet) {
@@ -85,6 +120,12 @@ async function collectReviewContext(): Promise<BazaarReviewContextResult> {
   return buildReviewContextResult(packet)
 }
 
+/**
+ * Loads project-specific review checklist and result schema files for commands or workflow actions.
+ *
+ * @param input Optional workflow action input that may provide the workspace root.
+ * @returns Summary of the loaded checklist and schema metadata.
+ */
 async function loadReviewRules(input?: WorkflowActionExecutionInput): Promise<ReviewRulesBridgeResult> {
   const folder = await pickBobWorkspaceFolder(input?.workflowRoot, input ? false : true)
   if (!folder) throw new Error("先に Bob ワークスペースフォルダーを開いてください。")
@@ -111,6 +152,12 @@ async function loadReviewRules(input?: WorkflowActionExecutionInput): Promise<Re
   }
 }
 
+/**
+ * Writes the Bazaar MCP server configuration for the selected Bob workspace.
+ *
+ * @param context VS Code extension context used to locate extension resources for MCP configuration.
+ * @returns A promise that resolves after configuration is saved or the user cancels folder selection.
+ */
 async function configureMcp(context: vscode.ExtensionContext): Promise<void> {
   const folder = await pickBobWorkspaceFolder(undefined, true)
   if (!folder) return
@@ -131,6 +178,11 @@ async function configureMcp(context: vscode.ExtensionContext): Promise<void> {
   )
 }
 
+/**
+ * Initializes project review rule files in the selected Bob workspace.
+ *
+ * @returns A promise that resolves after the rule scaffold is created or the user cancels folder selection.
+ */
 async function initProjectRules(): Promise<void> {
   const folder = await pickBobWorkspaceFolder(undefined, true)
   if (!folder) return
@@ -142,10 +194,22 @@ async function initProjectRules(): Promise<void> {
   await vscode.window.showTextDocument(checklistDoc, { preview: false })
 }
 
+/**
+ * Resolves the Bob workspace folder from workflow input or an interactive picker.
+ *
+ * @param workflowRoot Optional workspace root path supplied by workflow-register.
+ * @param allowPick Whether to show an interactive picker when the root is not supplied.
+ * @returns The selected workspace folder, or undefined when no folder is available.
+ */
 async function pickBobWorkspaceFolder(workflowRoot?: string, allowPick = true): Promise<vscode.WorkspaceFolder | undefined> {
   return resolveBobWorkspaceFolder({ workflowRoot, allowPick, title: "Bob ワークスペースを選択" })
 }
 
+/**
+ * Finds a Bazaar review packet in the active, visible, or open VS Code documents.
+ *
+ * @returns Review packet text when a matching document is open; otherwise undefined.
+ */
 function findReviewPacketText(): string | undefined {
   const active = vscode.window.activeTextEditor?.document
   const visible = vscode.window.visibleTextEditors.map((editor) => editor.document)
