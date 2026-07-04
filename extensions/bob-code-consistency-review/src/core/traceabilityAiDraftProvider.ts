@@ -266,20 +266,14 @@ function minimalTraceabilityReviewInput(input: PrepareAiTraceabilityDraftPromptI
     review: {
       id: "traceability-ai-draft",
       title: "traceability AI draft",
-      purpose: "Collect traceability candidates before review-input generation"
-    },
-    review_context: {
       change_type: "maintenance",
-      vcs: input.vcs,
+      purpose: "Collect traceability candidates before review-input generation",
       base: input.base,
       head: input.head,
-      workspace_path: input.vcsRoot
+      vcs: input.vcs,
+      vcs_root: input.vcsRoot
     },
-    source_documents: [],
-    code_changes: {
-      include: [],
-      exclude: []
-    },
+    artifacts: {},
     review_focus: []
   }
 }
