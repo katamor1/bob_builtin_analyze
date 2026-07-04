@@ -20,7 +20,7 @@
 | [workflow-register-maintainability-review-2026-07-04-14afe83c.md](workflow-register-maintainability-review-2026-07-04-14afe83c.md) | maintainability review | `WFR-MAINT-*` | backlog | ID 付き deep review と重なるものは canonical 側を優先する。 |
 | [bob-bazaar-review-deep-review-2026-07-04-14afe83c.md](bob-bazaar-review-deep-review-2026-07-04-14afe83c.md) | deep review | `BBR-01` to `BBR-20` | done | `BBR-01` から `BBR-20` まで対応済み。 |
 | [bob-bazaar-review-maintainability-review-2026-07-04-14afe83c.md](bob-bazaar-review-maintainability-review-2026-07-04-14afe83c.md) | maintainability review | `BBR-MAINT-*` | backlog | clamp や allowed root など deep review と重なる項目を含む。 |
-| [bob-code-consistency-review-deep-review-2026-07-04-14afe83c.md](bob-code-consistency-review-deep-review-2026-07-04-14afe83c.md) | deep review | `CCR-01` to `CCR-16` | partial | `CCR-01`、`CCR-02`、`CCR-03`、`CCR-07`、`CCR-09` は対応済み。 |
+| [bob-code-consistency-review-deep-review-2026-07-04-14afe83c.md](bob-code-consistency-review-deep-review-2026-07-04-14afe83c.md) | deep review | `CCR-01` to `CCR-16` | partial | `CCR-01`、`CCR-02`、`CCR-03`、`CCR-04`、`CCR-07`、`CCR-09` は対応済み。 |
 | [bob-code-consistency-review-maintainability-review-2026-07-04-14afe83c.md](bob-code-consistency-review-maintainability-review-2026-07-04-14afe83c.md) | maintainability review | `CCR-MAINT-*` | backlog | path boundary、revision validation、size limits は deep review 側と重なる。 |
 | [extensions-review-2026-07-04-14afe83c.md](extensions-review-2026-07-04-14afe83c.md) | cross-extension review | `extensions-review:<ID>` | duplicate / partial | canonical ID への対応表を下に置く。 |
 | [extensions-maintainability-review-2026-07-04-14afe83c.md](extensions-maintainability-review-2026-07-04-14afe83c.md) | cross-extension maintainability review | `EXT-MAINT-*` | backlog | 3 拡張共通の CI、bundle、依存、README backlog。 |
@@ -79,7 +79,7 @@
 | `CCR-01` | `bob-code-consistency-review-deep-review...:48` | High | workspace path boundary が一貫しない | done | `14067e27` | `extensions/bob-code-consistency-review`: RED `node --test test\pathBoundary.test.js`; `npm.cmd run compile`; `node --test test\pathBoundary.test.js test\reviewPipeline.test.js test\reviewOutputTriage.test.js test\reviewInputAiDraftProvider.test.js test\traceabilityAiDraftProvider.test.js test\traceabilityCatalogStore.test.js test\bobOutputCaptureCanonicalize.test.js`; `npm.cmd test`; `git diff --check` |
 | `CCR-02` | `bob-code-consistency-review-deep-review...:49` | High | Git / Bazaar revision validation が弱い | done | `e4707581` | `extensions/bob-code-consistency-review`: RED `node --test test\vcsValidation.test.js`; `npm.cmd run compile`; `node --test test\vcsValidation.test.js`; `node --test test\vcsValidation.test.js test\reviewPipeline.test.js test\reviewInputAiDraftProvider.test.js test\traceabilityAiDraftProvider.test.js test\traceabilityCommandWiring.test.js`; `npm.cmd test`; `git diff --check` |
 | `CCR-03` | `bob-code-consistency-review-deep-review...:50` | High | `bzrPath` を workflow args で上書きできる | done | `e4707581` | `extensions/bob-code-consistency-review`: RED `node --test test\vcsValidation.test.js`; `npm.cmd run compile`; `node --test test\vcsValidation.test.js`; `npm.cmd test`; `git diff --check` |
-| `CCR-04` | `bob-code-consistency-review-deep-review...:51` | High | Bob output canonicalizer が補正しすぎる | open | raw validation と canonicalized validation を分離 |  |
+| `CCR-04` | `bob-code-consistency-review-deep-review...:51` | High | Bob output canonicalizer が補正しすぎる | done | `844ef634` | `extensions/bob-code-consistency-review`: RED `node --test test\bobOutputCaptureCanonicalize.test.js`; `npm.cmd run compile`; `node --test test\bobOutputCaptureCanonicalize.test.js`; `node --test test\bobOutputCaptureCanonicalize.test.js test\reviewOutputTriage.test.js test\bobOutputPresentation.test.js`; `npm.cmd test`; `git diff --check` |
 | `CCR-05` | `bob-code-consistency-review-deep-review...:52` | High | generated artifacts の機密情報リスク | open | `.gitignore` helper、警告、redaction |  |
 | `CCR-06` | `bob-code-consistency-review-deep-review...:53` | Medium | 文書抽出・diff・Bob input のサイズ上限不足 | open | bytes / rows / sheets / excerpts 上限 |  |
 | `CCR-07` | `bob-code-consistency-review-deep-review...:54` | Medium | hand-written artifact path の workspace 内確認がない | done | `14067e27` | `extensions/bob-code-consistency-review`: `node --test test\pathBoundary.test.js`; `npm.cmd test`; `git diff --check` |
@@ -158,6 +158,7 @@
 | `d44cb69d` | `extensions-review:WR-04` | avoid Windows reserved workflow names and trailing dot path segments |
 | `14067e27` | `CCR-01`, `CCR-07`, `CCR-09`, `extensions-review:CCR-02` | enforce workspace containment for code consistency review paths |
 | `e4707581` | `CCR-02`, `CCR-03`, `extensions-review:CCR-01` | validate Git/Bazaar revisions and reject workflow bzrPath overrides |
+| `844ef634` | `CCR-04` | preserve raw Bob output, canonical validation, and canonicalization report |
 | `8c86eb05` | `BBR-14` | Bazaar revision validation |
 | `fae99b40` | `BBR-18`, `extensions-review:BBR-04` | random GUI nonce |
 | `c085b107` | `BBR-20` | pass text encoding to MCP config |
