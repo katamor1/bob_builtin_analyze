@@ -16,7 +16,7 @@
 
 | document | kind | tracking scope | current status | notes |
 | --- | --- | --- | --- | --- |
-| [workflow-register-deep-review-2026-07-04-14afe83c.md](workflow-register-deep-review-2026-07-04-14afe83c.md) | deep review | `WFR-01` to `WFR-15` | partial | `WFR-01`、`WFR-02`、`WFR-03`、`WFR-04`、`WFR-05`、`WFR-06`、`WFR-07`、`WFR-08`、`WFR-09`、`WFR-10`、`WFR-11`、`WFR-12` は対応済み。 |
+| [workflow-register-deep-review-2026-07-04-14afe83c.md](workflow-register-deep-review-2026-07-04-14afe83c.md) | deep review | `WFR-01` to `WFR-15` | partial | `WFR-01`、`WFR-02`、`WFR-03`、`WFR-04`、`WFR-05`、`WFR-06`、`WFR-07`、`WFR-08`、`WFR-09`、`WFR-10`、`WFR-11`、`WFR-12`、`WFR-13` は対応済み。 |
 | [workflow-register-maintainability-review-2026-07-04-14afe83c.md](workflow-register-maintainability-review-2026-07-04-14afe83c.md) | maintainability review | `WFR-MAINT-*` | backlog | ID 付き deep review と重なるものは canonical 側を優先する。 |
 | [bob-bazaar-review-deep-review-2026-07-04-14afe83c.md](bob-bazaar-review-deep-review-2026-07-04-14afe83c.md) | deep review | `BBR-01` to `BBR-20` | done | `BBR-01` から `BBR-20` まで対応済み。 |
 | [bob-bazaar-review-maintainability-review-2026-07-04-14afe83c.md](bob-bazaar-review-maintainability-review-2026-07-04-14afe83c.md) | maintainability review | `BBR-MAINT-*` | backlog | clamp や allowed root など deep review と重なる項目を含む。 |
@@ -43,7 +43,7 @@
 | `WFR-10` | `workflow-register-deep-review...:58` | Medium | legacy workflow に definition hash がない | done | `3a6e76e4` | `extensions/workflow-register`: `npm.cmd run compile; node --test test\workflowParserV1.test.js`; `npm.cmd test`; `git diff --check` |
 | `WFR-11` | `workflow-register-deep-review...:59` | Medium | schema の permissiveness と step-specific field 制約 | done | `9acda46b` | `extensions/workflow-register`: `npm.cmd run compile; node --test test\workflowParserV1.test.js test\workflowDefinitionLoader.test.js test\workflowRegister.test.js`; `npm.cmd test`; `git diff --check` |
 | `WFR-12` | `workflow-register-deep-review...:60` | Medium | `maxResultBytes` が byte ではなく文字数 | done | `6c94c7e1` | `extensions/workflow-register`: `npm.cmd test`; `git diff --check` |
-| `WFR-13` | `workflow-register-deep-review...:61` | Low | IBM Bob dependency の扱いが曖昧 | open | optional / required dependency 方針を package と README に反映 |  |
+| `WFR-13` | `workflow-register-deep-review...:61` | Low | IBM Bob dependency の扱いが曖昧 | done | `2e6eb4c3` | `extensions/workflow-register`: `npm.cmd run compile; node --test test\workflowRegister.test.js`; `npm.cmd test`; `git diff --check` |
 | `WFR-14` | `workflow-register-deep-review...:62` | Low | Workspace Trust gating がない | open | untrusted workspace で run / command / sink を抑止 |  |
 | `WFR-15` | `workflow-register-deep-review...:63` | Low | run id 採番の競合余地 | open | UUID suffix または exclusive mkdir |  |
 
@@ -152,6 +152,7 @@
 | `3a6e76e4` | `WFR-10` | add definition hashes to legacy workflow parsing |
 | `9acda46b` | `WFR-11` | strict registration diagnostics, x- extension fields, and step-type field warnings |
 | `6c94c7e1` | `WFR-12` | byte-safe command result truncation |
+| `2e6eb4c3` | `WFR-13` | clarify IBM Bob as optional for authoring and required only for Bob UI registration |
 | `8c86eb05` | `BBR-14` | Bazaar revision validation |
 | `fae99b40` | `BBR-18`, `extensions-review:BBR-04` | random GUI nonce |
 | `c085b107` | `BBR-20` | pass text encoding to MCP config |
