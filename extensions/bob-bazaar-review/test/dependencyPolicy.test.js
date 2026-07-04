@@ -56,3 +56,33 @@ test("bob-bazaar-review CI uses npm ci, dependency policy, production audit, tes
   assert.match(job, /run: npm run package:policy/)
   assert.doesNotMatch(job, /run: npm install/)
 })
+
+test("bob-bazaar-review README documents generated artifacts, package budget, dependencies, CLI, and trust boundary", () => {
+  const packageJson = readJson("package.json")
+  const readme = fs.readFileSync(path.join(extensionRoot, "README.md"), "utf8")
+  const packageBudget = packageJson.scripts["package:policy"].match(/--max-bytes\s+(\d+)/)?.[1]
+
+  for (const phrase of [
+    "生成物",
+    ".bob/mcp.json",
+    ".bob/review",
+    "review-result",
+    "VSIX サイズ",
+    packageBudget,
+    "暗黙依存",
+    "IBM.bob-code",
+    "workflow-register",
+    "必要 CLI",
+    "Node.js",
+    "npm ci",
+    "bzr --no-aliases",
+    "npm run dependency:policy",
+    "npm run architecture:policy",
+    "npm run unused:report",
+    "npm run audit:prod",
+    "npm run package:policy",
+    "Trusted Workspace"
+  ]) {
+    assert.ok(readme.includes(phrase), `README must document: ${phrase}`)
+  }
+})

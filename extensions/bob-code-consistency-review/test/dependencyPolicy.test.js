@@ -61,3 +61,34 @@ test("extension CI uses npm ci, dependency policy, production audit, tests, and 
   assert.match(sharedJob, /run: npm run unused:report/)
   assert.match(sharedJob, /run: npm run package:policy/)
 })
+
+test("extension README documents generated artifacts, package budget, dependencies, CLI, and trust boundary", () => {
+  const packageJson = readJson("package.json")
+  const readme = fs.readFileSync(path.join(extensionRoot, "README.md"), "utf8")
+  const packageBudget = packageJson.scripts["package:policy"].match(/--max-bytes\s+(\d+)/)?.[1]
+
+  for (const phrase of [
+    "生成物",
+    ".bob-review",
+    ".bob-trace",
+    "review-package",
+    "VSIX サイズ",
+    packageBudget,
+    "暗黙依存",
+    "IBM.bob-code",
+    "workflow-register",
+    "必要 CLI",
+    "Node.js",
+    "npm ci",
+    "git",
+    "bzr --no-aliases",
+    "npm run dependency:policy",
+    "npm run architecture:policy",
+    "npm run unused:report",
+    "npm run audit:prod",
+    "npm run package:policy",
+    "Trusted Workspace"
+  ]) {
+    assert.ok(readme.includes(phrase), `README must document: ${phrase}`)
+  }
+})

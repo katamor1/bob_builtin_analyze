@@ -57,6 +57,33 @@ test("workflow-register CI uses npm ci, dependency policy, production audit, tes
   assert.doesNotMatch(job, /run: npm install/)
 })
 
+test("workflow-register README documents generated artifacts, package budget, dependencies, CLI, and trust boundary", () => {
+  const packageJson = readJson("package.json")
+  const readme = fs.readFileSync(path.join(extensionRoot, "README.md"), "utf8")
+  const packageBudget = packageJson.scripts["package:policy"].match(/--max-bytes\s+(\d+)/)?.[1]
+
+  for (const phrase of [
+    "生成物",
+    ".bob/workflows",
+    ".bob/workflows/runs",
+    "VSIX サイズ",
+    packageBudget,
+    "暗黙依存",
+    "IBM.bob-code",
+    "必要 CLI",
+    "Node.js",
+    "npm ci",
+    "npm run dependency:policy",
+    "npm run architecture:policy",
+    "npm run unused:report",
+    "npm run audit:prod",
+    "npm run package:policy",
+    "Trusted Workspace"
+  ]) {
+    assert.ok(readme.includes(phrase), `README must document: ${phrase}`)
+  }
+})
+
 test("workflow-register source does not use global Object title augmentation", () => {
   const typeFixPath = path.join(extensionRoot, "src", "type-fixes.d.ts")
   assert.ok(!fs.existsSync(typeFixPath), "type-fixes.d.ts must not hide imprecise Object.title typing")
