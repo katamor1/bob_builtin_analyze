@@ -51,3 +51,31 @@ test("workflow-register CI uses npm ci, dependency policy, production audit, tes
   assert.match(job, /run: npm run package:policy/)
   assert.doesNotMatch(job, /run: npm install/)
 })
+
+test("workflow-register source does not use global Object title augmentation", () => {
+  const typeFixPath = path.join(extensionRoot, "src", "type-fixes.d.ts")
+  assert.ok(!fs.existsSync(typeFixPath), "type-fixes.d.ts must not hide imprecise Object.title typing")
+
+  const srcRoot = path.join(extensionRoot, "src")
+  const stack = [srcRoot]
+  const offenders = []
+  while (stack.length > 0) {
+    const current = stack.pop()
+    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+      const entryPath = path.join(current, entry.name)
+      if (entry.isDirectory()) {
+        stack.push(entryPath)
+        continue
+      }
+      if (!entry.name.endsWith(".d.ts")) {
+        continue
+      }
+      const text = fs.readFileSync(entryPath, "utf8")
+      if (/\binterface\s+Object\b/.test(text)) {
+        offenders.push(path.relative(extensionRoot, entryPath))
+      }
+    }
+  }
+
+  assert.deepEqual(offenders, [], "global Object augmentation must be replaced with precise local types")
+})
