@@ -13,6 +13,8 @@ extensions/workflow-register/
   docs/
     basic-design-ja.md
     detailed-design-ja.md
+    unit-test-spec-ja.md
+    real-machine-test-spec-ja.md
     workflow-authoring-guide-ja.md
     bob-task-export-recovery-plan-ja.md
     workflow-pause-resume-plan-ja.md
@@ -284,6 +286,8 @@ v1 schema の主な制約は次の通り。
 
 `StepRuntime` は永続状態ではない。VS Code 再起動で失われる。復帰時の正本は `run.json` であり、Bob chat 側の補助情報は task snapshot である。
 
+`completeCurrentStep()` は active step を選択し、必要なら `captureHeldStepResult()` で Bob chat の latest assistant text を result command へ handoff した後、`task.setStepComplete()` と Promise resolve を行う。
+
 ## 16. Result Handoff / Sink
 
 `executeResultHandoff()` は agent step が出力した text を trim し、互換用 `args[0]` と `latestAssistantText` / `resultText` / `artifactText` に渡す。`file` sink は workspace root 配下のみ許可し、path escape を拒否する。`command` sink は action provider または VS Code command を呼び出す。
@@ -338,14 +342,15 @@ AI provider は `workflowRegister.aiProviderCommand` で指定する。未設定
 | BobTaskInputs | metadata / message からの input 抽出。 |
 | BobWorkflowEngineRunner | full / singleStep、task input 抽出、hooks、manual completion。 |
 | authoring | serializer、loader、reference analysis、Webview module。 |
+| 実機 | VS Code / IBM Bob / workspace / Webview / Explorer view / Status Bar を含む結合動作。 |
 
-詳細な単体テスト仕様は `unit-test-spec-ja.md` に定義する。
+詳細な単体テスト仕様は `unit-test-spec-ja.md`、実機テスト仕様は `real-machine-test-spec-ja.md` に定義する。
 
 ## 22. 変更時の注意点
 
 - `workflowV1Schema` を変更した場合は parser、validator、README、テンプレート、GUI Builder、テストを同期する。
 - `WorkflowEngineOptions` または `WorkflowExecutionHooks` を変更した場合は Bob UI 実行系と standalone 実行系を確認する。
 - `RunStateStore` の recoverable 判定を変更した場合は singleStep 継続と resume / retry を確認する。
-- `RunControlState` を変更した場合は `runControl.ts`、`runPause.ts`、Run Control View、単体テストを更新する。
+- `RunControlState` を変更した場合は `runControl.ts`、`runPause.ts`、Run Control View、単体テスト、実機テストを更新する。
 - `TaskSnapshotPayload` を変更した場合は run diagnostics、snapshot pruning、復帰候補利用を更新する。
 - active step の永続化を検討する場合も、Bob task object や Promise は保存しない。

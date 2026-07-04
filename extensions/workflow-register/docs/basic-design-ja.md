@@ -17,6 +17,7 @@ Bob 上でレビューや設計作業を定型化する場合、次の課題が�
 - AI 出力後に保存や検証だけ失敗した場合、Bob chat 側の出力を救済したい。
 - 長い workflow を checkpoint で中断し、後で再開したい。
 - Explorer view / Status Bar で run 状態を確認したい。
+- GUI Builder、AI 補助、Diagnostics、Help を標準機能として運用したい。
 - 他拡張が action provider / agent provider / result sink を後付けできるようにしたい。
 
 ## 3. スコープ
@@ -25,6 +26,7 @@ Bob 上でレビューや設計作業を定型化する場合、次の課題が�
 
 - `.bob/workflows/*/WORKFLOW.md` の探索、解析、検証、登録。
 - `schemaVersion: workflow-register/v1` と legacy workflow の読み込み。
+- IBM Bob Workflow UI への source / workflow 登録。
 - Bob UI からの full 実行、Todo 単位の `singleStep` 実行、engine step 単位の実行。
 - Command Palette / 公開 API からの standalone 実行。
 - `command` / `agent` / `manual` / `result` step の実行。
@@ -32,10 +34,12 @@ Bob 上でレビューや設計作業を定型化する場合、次の課題が�
 - `run.json` による run state 保存と recoverable run 再利用。
 - `control.json` による pause request 保存、checkpoint 停止、paused run 再開。
 - task snapshot による Bob chat 文脈、metadata、last assistant text の補助保存。
+- `resumeRun` / `retryCurrentStep` / `runNextStep` / `acceptAndRunNextStep` による再開・段階実行。
 - result handoff、file / command result sink、artifact 出力。
-- Workflow / Run Diagnostics、Active Step 表示、Run Control 表示。
+- Workflow Diagnostics、Run Diagnostics、Active Step 表示、Run Control 表示。
 - Explorer view `workflowRegister.runs` と Status Bar による run 監視。
-- GUI Builder、template 作成、AI 設計、AI 改善、診断説明。
+- テンプレート作成、AI 設計、AI 改善、診断説明。
+- Webview GUI Builder による新規作成と既存 v1 workflow 編集。
 
 ### 3.2 対象外
 
@@ -86,8 +90,12 @@ VS Code Extension Host
 | Extension Entry | VS Code command 登録、Bob 連携、公開 API | `src/extension.ts` |
 | Authoring Entry | core activation に検証、AI 補助、GUI Builder、Run Control View を追加 | `src/extensionWithAuthoring.ts` |
 | WorkflowRegisterService | workflow 探索、Bob source 登録、run 操作、provider 管理 | `src/extension.ts` |
+| Bob API helper | Bob 拡張の取得、activation error 記録、source-like 変換 | `src/bobApi.ts` |
+| Report helper | attempt 実行、戻り値説明、Markdown report 表示 | `src/reports.ts` |
 | BobWorkflowFactory | Bob workflow object / visible step array の構築 | `src/bobWorkflowFactory.ts` |
 | BobWorkflowEngineRunner | Bob task を `WorkflowEngine` へ接続する UI 実行 adapter | `src/bobWorkflowRunner.ts` |
+| BobWorkflowMessages | workflow 開始、step 継続、command result、state block の message 生成 | `src/bobWorkflowMessages.ts`, `src/workflowPromptContext.ts` |
+| BobTaskInputs | Bob task metadata / message から workflow input を抽出 | `src/bobTaskInputs.ts` |
 | StepRuntime | Bob UI の manual step 完了待ちをメモリ上で保持 | `src/bobWorkflowRunner.ts` |
 | WorkflowEngine | full / singleStep / resume / retry / stepReview / pause を実行 | `src/core/engine.ts`, `src/core/engine/*`, `src/core/engineTypes.ts` |
 | Run State Store | `run.json` の作成、保存、一覧、recoverable run 探索 | `src/core/runStateStore.ts` |
@@ -95,11 +103,13 @@ VS Code Extension Host
 | Run Control Commands | pause / resume / inspect の command 処理 | `src/commands/runControl.ts` |
 | Run Control View | Explorer view と Status Bar に run 状態を表示 | `src/commands/runControlView.ts` |
 | Task Snapshot | Bob task snapshot 保存、latest、pruning、復帰候補取得 | `src/core/taskSnapshots.ts`, `src/taskSnapshotRecovery.ts` |
-| Parser / Validator | `WORKFLOW.md` の解析、schema validation、参照検証 | `src/core/parser.ts`, `src/core/workflowSchema.ts`, `src/core/workflowValidator.ts` |
+| Parser / Validator | `WORKFLOW.md` の解析、schema validation、参照検証 | `src/core/parser.ts`, `src/core/parser/*`, `src/core/workflowSchema.ts`, `src/core/workflowValidator.ts` |
 | Action / Agent / Sink | command step、agent step、result / artifact 出力 | `src/core/actionRegistry.ts`, `src/core/agentProvider.ts`, `src/core/resultSinkRegistry.ts` |
 | Result Handoff | Bob assistant 出力を command sink へ渡す | `src/resultHandoff.ts` |
+| Workspace Roots | `.bob` root と workspace root の解決 | `src/core/workspaceRoots.ts` |
 | GUI Builder | Webview 作成、preview、diff、backup、save | `src/webview/*`, `src/core/workflowAuthoring*.ts` |
 | AI Authoring | workflow 設計、改善、diagnostics 説明 | `src/commands/*Ai.ts`, `src/core/workflowAiProviderFactory.ts` |
+| Diagnostics | workflow / run diagnostics の Markdown 表示と VS Code Diagnostics | `src/commands/*Diagnostics.ts`, `src/commands/validateWorkflow.ts` |
 
 ## 7. ワークフロー定義モデル
 
@@ -116,6 +126,8 @@ step 種別は次の4種類である。
 | `manual` | 人間の確認完了を待つ。 |
 | `result` | state / literal / agent 結果を result sink に渡す。 |
 
+`includeState` は前段 step の `resultKey` を参照する。GUI Builder では参照切れ、前方参照、`artifact.producedBy` の不整合を即時警告する。
+
 ## 8. 実行方式
 
 | 実行方式 | Bob task | 主な用途 |
@@ -125,6 +137,8 @@ step 種別は次の4種類である。
 | Standalone full / singleStep | なし | Command Palette または公開 API から実行する。 |
 
 Bob UI 実行では、`BobWorkflowEngineRunner` が task metadata / messages から input 候補を抽出し、`task.startSubagent()`、`task.sendMessage()`、`task.setStepComplete()`、task snapshot、manual completion を扱う。Standalone 実行では Bob task を使わず、VS Code UI、registered provider、設定値を使う。
+
+`stepReview` が有効な場合、対象 step 成功後に run は `reviewing` で停止する。人間は `acceptCurrentStep`、`retryCurrentStep`、`acceptAndRunNextStep` を使い、承認・再試行・次 step 実行を選ぶ。
 
 ## 9. 実行状態、再開、run control
 
@@ -248,8 +262,9 @@ activation return value として次の API を公開する。
 - Bob workflow factory / messages / task input helper を検証する。
 - GUI authoring serializer / loader / reference analysis を検証する。
 - Run Control View の item 表示、context value、Status Bar 集計を検証する。
+- 実機では VS Code / IBM Bob / multi-root workspace / Bob UI step 実行 / Webview / Status Bar の結合動作を確認する。
 
-詳細な単体テスト仕様は `unit-test-spec-ja.md` に定義する。
+詳細な単体テスト仕様は `unit-test-spec-ja.md`、実機テスト仕様は `real-machine-test-spec-ja.md` に定義する。
 
 ## 15. 今後の拡張方針
 

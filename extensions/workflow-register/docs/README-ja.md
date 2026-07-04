@@ -1,6 +1,6 @@
 # workflow-register ドキュメント
 
-このディレクトリには、`workflow-register` 拡張機能の設計・運用に関するドキュメントを配置します。
+このディレクトリには、`workflow-register` 拡張機能の設計・運用・テストに関するドキュメントを配置します。
 
 ## 設計書
 
@@ -10,8 +10,13 @@
 - `detailed-design-ja.md`  
   実装モジュール、activation、command、設定、公開 API、parser / validator、Bob 登録、WorkflowEngine、run state、run control、Run Control View、task snapshot、result handoff、GUI Builder、diagnostics、テスト観点を整理した詳細設計書です。
 
+## テスト仕様書
+
 - `unit-test-spec-ja.md`  
   parser、validator、engine、run state、run control、Run Control View、task snapshot、result handoff、Bob adapter helper、authoring helper の単体テスト仕様書です。
+
+- `real-machine-test-spec-ja.md`  
+  VS Code / IBM Bob / Bob Workflow UI / Webview / Explorer view / Status Bar / multi-root workspace を含めた実機テスト仕様書です。
 
 ## 運用・検討メモ
 
