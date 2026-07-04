@@ -38,6 +38,37 @@ test("GUI workflow completion passes expected workflow run and step ids", async 
   ]])
 })
 
+test("GUI workflow completion passes workflow state updates for the completed step", async () => {
+  const { completeCurrentWorkflowStepAfterGuiAction } = require("../out/workflowStepCompletion")
+  const calls = []
+
+  const completed = await completeCurrentWorkflowStepAfterGuiAction({
+    executeCommand: async (...args) => {
+      calls.push(args)
+      return "Completed: Bazaar Project Rule Review / Confirm the target Bazaar revision or revision range."
+    }
+  }, {
+    runId: "run-1",
+    stepId: "review-input",
+    stateUpdates: {
+      "bobBazaar.reviewPacket": JSON.stringify({ packetUri: "untitled:packet-1", runId: "run-1" })
+    }
+  })
+
+  assert.equal(completed, true)
+  assert.deepEqual(calls, [[
+    "workflowRegister.completeStep",
+    {
+      silent: true,
+      expectedRunId: "run-1",
+      expectedStepId: "review-input",
+      stateUpdates: {
+        "bobBazaar.reviewPacket": JSON.stringify({ packetUri: "untitled:packet-1", runId: "run-1" })
+      }
+    }
+  ]])
+})
+
 test("GUI workflow completion reports no active workflow step without failing the GUI action", async () => {
   const { completeCurrentWorkflowStepAfterGuiAction } = require("../out/workflowStepCompletion")
   const warnings = []

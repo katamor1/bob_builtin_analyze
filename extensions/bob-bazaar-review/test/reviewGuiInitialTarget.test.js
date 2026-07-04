@@ -35,4 +35,6 @@ test("Bazaar review GUI accepts workflow inputs as initial target values", () =>
   assert.match(guiSource, /const initialTargetJson = JSON\.stringify\(initialTarget \?\? \{\}\)/)
   assert.match(guiSource, /applyInitialTarget\(initialTarget\)/)
   assert.match(guiSource, /completeCurrentWorkflowStepAfterGuiAction\([\s\S]*\{[\s\S]*runId: this\.initialTarget\?\.runId[\s\S]*stepId: this\.initialTarget\?\.stepId[\s\S]*\}/)
+  assert.match(guiSource, /REVIEW_PACKET_STATE_KEY/)
+  assert.match(guiSource, /stateUpdates: \{[\s\S]*\[REVIEW_PACKET_STATE_KEY\]: JSON\.stringify\(/)
 })

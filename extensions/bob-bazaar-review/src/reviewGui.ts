@@ -4,6 +4,7 @@ import { isBobCodeExtensionAvailable } from "./bobCodeExtension"
 import { addMarkdownPacketToBobContext } from "./bobContext"
 import { resolveBzrPath } from "./bzrPathTrust"
 import { buildReviewPacket } from "./reviewPacket"
+import { buildReviewPacketState, REVIEW_PACKET_STATE_KEY } from "./reviewPacketSelection"
 import { clampMaxAddedFileContentBytes, clampMaxDiffBytes, maxBufferForDiffBytes } from "./reviewLimits"
 import { buildProjectRulesSection } from "./projectRules/packet"
 import { loadProjectChecklistRequired, loadReviewResultSchemaRequired } from "./projectRules/io"
@@ -176,7 +177,15 @@ class BazaarReviewGuiController {
           showWarningMessage: (message) => vscode.window.showWarningMessage(message)
         }, {
           runId: this.initialTarget?.runId,
-          stepId: this.initialTarget?.stepId
+          stepId: this.initialTarget?.stepId,
+          stateUpdates: {
+            [REVIEW_PACKET_STATE_KEY]: JSON.stringify(buildReviewPacketState({
+              packetUri: doc.uri.toString(),
+              runId: this.initialTarget?.runId,
+              stepId: this.initialTarget?.stepId,
+              target: prepared.info.targetRevision ?? prepared.info.revision
+            }))
+          }
         })
       }
     } else {

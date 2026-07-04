@@ -69,6 +69,7 @@ export class StepRuntime {
       await vscode.window.showErrorMessage(message)
       return message
     }
+    applyStateUpdates(active, options.stateUpdates)
     active.task.setStepComplete?.()
     active.resolve(true)
     this.activeSteps.delete(active.key)
@@ -93,6 +94,7 @@ export class StepRuntime {
 export interface StepCompletionExpectation {
   expectedRunId?: string
   expectedStepId?: string
+  stateUpdates?: Record<string, string>
 }
 
 function hasExpectedStep(options: StepCompletionExpectation): boolean {
@@ -120,6 +122,14 @@ function activeStepMismatch(steps: ActiveStep[], options: StepCompletionExpectat
 function stepMatchesExpectation(step: ActiveStep, options: StepCompletionExpectation): boolean {
   return (!options.expectedRunId || step.runId === options.expectedRunId) &&
     (!options.expectedStepId || step.stepId === options.expectedStepId)
+}
+
+function applyStateUpdates(active: ActiveStep, stateUpdates: Record<string, string> | undefined): void {
+  if (!active.state || !stateUpdates) return
+  for (const [key, value] of Object.entries(stateUpdates)) {
+    if (!key || typeof value !== "string") continue
+    active.state[key] = value
+  }
 }
 
 async function captureHeldStepResult(active: ActiveStep): Promise<{ ok: boolean; error?: string }> {

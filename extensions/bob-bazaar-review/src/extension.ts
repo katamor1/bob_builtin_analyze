@@ -10,12 +10,14 @@ import {
 import { captureReviewResult, saveReviewResultFromClipboard } from "./projectRules/resultCapture"
 import { validateActiveReviewResultJson } from "./reviewResultValidationCommand"
 import { openBazaarReviewGui } from "./reviewGui"
+import { selectReviewPacketText } from "./reviewPacketSelection"
 import { BazaarReviewContextResult, buildReviewContextResult } from "./workflowBridge"
 import {
   captureOptionsFromCommandArgs,
   firstStringArg,
   getWorkflowRegisterApi,
   initialTargetFromWorkflowInputs,
+  stringInput,
   type WorkflowActionExecutionInput
 } from "./workflowRegisterBridge"
 import { resolveBobWorkspaceFolder } from "./workspaceResolver"
@@ -125,7 +127,7 @@ async function registerWorkflowProviders(context: vscode.ExtensionContext): Prom
   })
   api.registerActionProvider({
     id: "bobBazaar.collectReviewContext",
-    execute: () => collectReviewContext()
+    execute: (input) => collectReviewContext(input)
   })
   api.registerActionProvider({
     id: "bobBazaar.loadReviewRules",
@@ -145,8 +147,8 @@ async function registerWorkflowProviders(context: vscode.ExtensionContext): Prom
  * @returns Bazaar review context parsed from the visible review packet.
  * @throws Error when no Bazaar review packet document is open.
  */
-async function collectReviewContext(): Promise<BazaarReviewContextResult> {
-  const packet = findReviewPacketText()
+async function collectReviewContext(input?: WorkflowActionExecutionInput): Promise<BazaarReviewContextResult> {
+  const packet = await findReviewPacketText(input)
   if (!packet) {
     throw new Error("Bazaar レビュー packet ドキュメントが開かれていません。先に Bob Bazaar Review でレビュー packet を作成して Bob コンテキストに追加してください。")
   }
@@ -248,13 +250,33 @@ async function pickBobWorkspaceFolder(workflowRoot?: string, allowPick = true): 
  *
  * @returns Review packet text when a matching document is open; otherwise undefined.
  */
-function findReviewPacketText(): string | undefined {
+async function findReviewPacketText(input?: WorkflowActionExecutionInput): Promise<string | undefined> {
   const active = vscode.window.activeTextEditor?.document
   const visible = vscode.window.visibleTextEditors.map((editor) => editor.document)
   const documents = [active, ...visible, ...vscode.workspace.textDocuments].filter((doc): doc is vscode.TextDocument => Boolean(doc))
-  for (const document of documents) {
-    const text = document.getText()
-    if (text.includes("# Bazaar Revision Review Request") && text.includes("## Bazaar diff")) return text
-  }
-  return undefined
+  return selectReviewPacketText({
+    documents: documents.map((document) => ({
+      uri: document.uri.toString(),
+      fileName: document.fileName,
+      text: document.getText()
+    })),
+    activeUri: active?.uri.toString(),
+    visibleUris: visible.map((document) => document.uri.toString()),
+    expectedUri: packetUriFromWorkflowInput(input),
+    state: input?.state,
+    runId: input?.runId,
+    pickPacket: async (items) => {
+      const picked = await vscode.window.showQuickPick(
+        items.map((item) => ({ label: item.label, description: item.uri, detail: item.detail, item })),
+        { title: "Bazaar review packet を選択", placeHolder: "workflow に渡す Bazaar review packet を選択してください" }
+      )
+      return picked?.item
+    }
+  })
+}
+
+function packetUriFromWorkflowInput(input: WorkflowActionExecutionInput | undefined): string | undefined {
+  return firstStringArg(input?.args) ??
+    stringInput(input?.inputs.reviewPacketUri) ??
+    stringInput(input?.inputs.packetUri)
 }

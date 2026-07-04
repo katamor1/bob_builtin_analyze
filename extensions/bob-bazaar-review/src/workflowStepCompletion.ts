@@ -8,6 +8,7 @@ export interface WorkflowStepCompletionDeps {
 export interface WorkflowStepCompletionOptions {
   runId?: string
   stepId?: string
+  stateUpdates?: Record<string, string>
 }
 
 export async function completeCurrentWorkflowStepAfterGuiAction(
@@ -15,9 +16,15 @@ export async function completeCurrentWorkflowStepAfterGuiAction(
   options: WorkflowStepCompletionOptions = {}
 ): Promise<boolean> {
   try {
-    const commandOptions: { silent: true; expectedRunId?: string; expectedStepId?: string } = { silent: true }
+    const commandOptions: {
+      silent: true
+      expectedRunId?: string
+      expectedStepId?: string
+      stateUpdates?: Record<string, string>
+    } = { silent: true }
     if (options.runId) commandOptions.expectedRunId = options.runId
     if (options.stepId) commandOptions.expectedStepId = options.stepId
+    if (options.stateUpdates) commandOptions.stateUpdates = options.stateUpdates
     const result = await Promise.resolve(deps.executeCommand(COMPLETE_WORKFLOW_STEP_COMMAND, commandOptions))
     if (typeof result === "string" && /^No active Bob workflow step\./.test(result)) {
       await warn(deps, `Could not complete the current Bob workflow step automatically. ${result}`)

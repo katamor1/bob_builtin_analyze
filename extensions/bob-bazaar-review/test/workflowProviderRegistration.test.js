@@ -19,6 +19,7 @@ test("Bazaar companion extension has no required companion extension dependency"
   assert.match(source, /id: "bobBazaar\.openReviewGui"/)
   assert.match(source, /initialTargetFromWorkflowInputs\(input\.inputs, input\)/)
   assert.match(source, /id: "bobBazaar\.collectReviewContext"/)
+  assert.match(source, /execute: \(input\) => collectReviewContext\(input\)/)
   assert.match(source, /id: "bobBazaar\.loadReviewRules"/)
   assert.match(source, /execute: \(input\) => loadReviewRules\(input\)/)
   assert.match(source, /id: "bobBazaar\.captureReviewResult"/)

@@ -89,7 +89,8 @@ export class WorkflowRegisterService implements vscode.Disposable {
   async completeCurrentStep(options: StepCompletionOptions = {}): Promise<string> {
     const message = await this.stepRuntime.completeCurrentStep({
       expectedRunId: options.expectedRunId,
-      expectedStepId: options.expectedStepId
+      expectedStepId: options.expectedStepId,
+      stateUpdates: options.stateUpdates
     })
     if (!options.silent) await vscode.window.showInformationMessage(message)
     return message

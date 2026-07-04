@@ -32,7 +32,7 @@ test("completeStep command can be called silently by companion extensions", () =
   assert.match(source, /interface StepCompletionOptions extends StepCompletionExpectation \{[\s\S]*silent\?: boolean[\s\S]*\}/)
   assert.match(source, /registerCommand\("workflowRegister\.completeStep", \(options\?: StepCompletionOptions\) => service\.completeCurrentStep\(options\)\)/)
   assert.match(source, /async completeCurrentStep\(options: StepCompletionOptions = \{\}\): Promise<string>/)
-  assert.match(source, /this\.stepRuntime\.completeCurrentStep\(\{[\s\S]*expectedRunId: options\.expectedRunId[\s\S]*expectedStepId: options\.expectedStepId[\s\S]*\}\)/)
+  assert.match(source, /this\.stepRuntime\.completeCurrentStep\(\{[\s\S]*expectedRunId: options\.expectedRunId[\s\S]*expectedStepId: options\.expectedStepId[\s\S]*stateUpdates: options\.stateUpdates[\s\S]*\}\)/)
   assert.match(source, /if \(!options\.silent\) await vscode\.window\.showInformationMessage\(message\)/)
   assert.match(source, /return message/)
 })

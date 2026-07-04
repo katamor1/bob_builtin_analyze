@@ -89,3 +89,42 @@ test("StepRuntime refuses to complete a step when the expected step does not mat
   assert.equal(held.completed(), false)
   assert.equal(runtime.list().length, 1)
 })
+
+test("StepRuntime applies completion state updates only after the expected step matches", async () => {
+  const { StepRuntime } = loadStepRuntime()
+  const runtime = new StepRuntime()
+  const held = heldTask()
+  const state = {}
+
+  runtime.hold(workflow(), { id: "review-input", title: "Review target" }, held.task, { runId: "run-1", state })
+  const message = await runtime.completeCurrentStep({
+    expectedRunId: "run-1",
+    expectedStepId: "review-input",
+    stateUpdates: {
+      "bobBazaar.reviewPacket": JSON.stringify({ packetUri: "untitled:packet-1", runId: "run-1" })
+    }
+  })
+
+  assert.match(message, /Completed: Project Rule Review \/ Review target/)
+  assert.deepEqual(JSON.parse(state["bobBazaar.reviewPacket"]), { packetUri: "untitled:packet-1", runId: "run-1" })
+})
+
+test("StepRuntime does not apply completion state updates when the expected step mismatches", async () => {
+  const { StepRuntime } = loadStepRuntime()
+  const runtime = new StepRuntime()
+  const held = heldTask()
+  const state = {}
+
+  runtime.hold(workflow(), { id: "review-input", title: "Review target" }, held.task, { runId: "run-1", state })
+  const message = await runtime.completeCurrentStep({
+    expectedRunId: "run-2",
+    expectedStepId: "review-input",
+    stateUpdates: {
+      "bobBazaar.reviewPacket": JSON.stringify({ packetUri: "untitled:packet-1", runId: "run-2" })
+    }
+  })
+
+  assert.match(message, /Active Bob workflow step mismatch/)
+  assert.equal(state["bobBazaar.reviewPacket"], undefined)
+  assert.equal(held.completed(), false)
+})
