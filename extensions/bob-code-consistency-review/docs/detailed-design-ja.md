@@ -465,10 +465,11 @@ templates/.bob/workflows/code-consistency-review/WORKFLOW.md
 | `humanTriageHelper` | triage-result と Markdown 出力。 |
 | `workflowProviderRegistration` | 15 provider 登録、option merge、state handoff。 |
 | workflow template | requires、guardrails、artifacts、steps、prompt 制約。 |
+| 実機 | VS Code / IBM Bob / workflow-register / Bob Workflow UI / Webview / 実ファイルでの結合動作。 |
 
-詳細な単体テスト仕様は `unit-test-spec-ja.md` に定義する。
+詳細な単体テスト仕様は `unit-test-spec-ja.md`、実機テスト仕様は `real-machine-test-spec-ja.md` に定義する。
 
-## 28. 変更時の注意点
+## 27. 変更時の注意点
 
 - `review-input.schema.json` を変えた場合は README、設計書、テスト fixture、builder を同期する。
 - `bob-output.schema.json` を変えた場合は prompt `output-format.md` と validator test を同期する。

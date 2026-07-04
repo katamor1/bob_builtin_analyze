@@ -363,10 +363,11 @@ templates/.bob/workflows/code-consistency-review/WORKFLOW.md
 - triage 生成ファイルを検証する。
 - workflow-register provider 登録と option merge を検証する。
 - 同梱 workflow template の requires / guardrails / steps を検証する。
+- 実機では VS Code / IBM Bob / workflow-register / Bob Workflow UI / traceability Webview / 実文書形式を含む操作を確認する。
 
-詳細な単体テスト仕様は `unit-test-spec-ja.md` に定義する。
+詳細な単体テスト仕様は `unit-test-spec-ja.md`、実機テスト仕様は `real-machine-test-spec-ja.md` に定義する。
 
-## 17. 今後の拡張方針
+## 16. 今後の拡張方針
 
 - clang AST 連携による C / C++ 解析強化。
 - 関数ポインタ、構造体メンバ、グローバル変数影響の解析強化。
