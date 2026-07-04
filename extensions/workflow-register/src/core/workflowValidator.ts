@@ -4,6 +4,7 @@ import {
   ResultSinkDefinition,
   ResultSourceDefinition
 } from "./model"
+import { validateApprovalExpression } from "./approvalGuardrails"
 import { parseWorkflowMarkdown } from "./parser"
 
 export type WorkflowDiagnosticSeverity = "error" | "warning" | "info"
@@ -196,6 +197,10 @@ function validateGuardrails(workflow: CoreWorkflowDefinition, diagnostics: Workf
   const allowedCommandIds = new Set(workflow.guardrails.allowedCommandIds ?? [])
   for (const denied of workflow.guardrails.deniedCommandIds ?? []) {
     if (allowedCommandIds.has(denied)) diagnostics.push(error(filePath, `Guardrail command id '${denied}' is both allowed and denied.`))
+  }
+  for (const rule of workflow.guardrails.requireApproval ?? []) {
+    const issue = validateApprovalExpression(rule.when)
+    if (issue) diagnostics.push(error(filePath, rule.id ? `${issue} (rule: ${rule.id})` : issue))
   }
 }
 

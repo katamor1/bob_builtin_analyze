@@ -1,4 +1,8 @@
 import type { ActionRegistry } from "../actionRegistry"
+import {
+  findCommandApprovalRequirement,
+  markApprovalRequired
+} from "../approvalGuardrails"
 import { validateCommandGuardrails } from "../guardrails"
 import type {
   AgentProvider,
@@ -104,11 +108,23 @@ async function executeCommandStep(input: {
   step: Extract<EngineStep, { type: "command" }>
   actions: ActionRegistry
   emitCommandResult: EngineEmitter
-}): Promise<{ ok: true } | { ok: false; error: string }> {
+}): Promise<{ ok: true } | { ok: false; held?: boolean; error: string }> {
   const { workflow, run, step } = input
   const args = renderValue(step.action.args, { inputs: run.inputs, state: run.state, run, workflow, step })
   const guardrail = validateCommandGuardrails(workflow, step.action.provider, args)
   if (guardrail) return { ok: false, error: guardrail }
+  const approval = findCommandApprovalRequirement({
+    workflow,
+    run,
+    step,
+    providerId: step.action.provider,
+    args
+  })
+  if (approval && "error" in approval) return { ok: false, error: approval.error }
+  if (approval) {
+    markApprovalRequired(run, step.id, approval)
+    return { ok: false, held: true, error: approval.message }
+  }
   const result = await input.actions.execute(step.action.provider, {
     args,
     inputs: run.inputs,

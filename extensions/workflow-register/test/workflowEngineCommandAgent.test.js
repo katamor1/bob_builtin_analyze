@@ -181,6 +181,106 @@ test("workflow engine denies listed VS Code command ids", async () => {
   assert.equal(run.state.commandResult, undefined)
 })
 
+test("workflow engine holds matching command approval guardrails before executing the action", async () => {
+  const calls = []
+  const { actions, engine } = createWorkflowEngineContext()
+  actions.register({
+    id: "sample.collect",
+    execute: async () => {
+      calls.push("collect")
+      return "context"
+    }
+  })
+  const workflow = {
+    id: "workflow-register.command-approval",
+    name: "command-approval",
+    label: "Command Approval",
+    schemaVersion: "workflow-register/v1",
+    inputs: {},
+    guardrails: {
+      requireApproval: [
+        { id: "approve-collect", when: "provider == 'sample.collect'", message: "Collect requires approval." }
+      ]
+    },
+    engineSteps: [
+      {
+        id: "collect",
+        title: "Collect",
+        type: "command",
+        action: { provider: "sample.collect" },
+        resultKey: "context"
+      }
+    ]
+  }
+
+  const run = await engine.runWorkflow(workflow, {})
+
+  assert.equal(run.status, "held")
+  assert.equal(run.currentStep, "collect")
+  assert.equal(run.steps[0].status, "held")
+  assert.match(run.error, /Collect requires approval/)
+  assert.deepEqual(calls, [])
+  assert.equal(run.state.context, undefined)
+})
+
+test("workflow engine runs an approval-held command only after explicit approval resume", async () => {
+  const calls = []
+  const { actions, engine } = createWorkflowEngineContext()
+  actions.register({
+    id: "sample.collect",
+    execute: async () => {
+      calls.push("collect")
+      return "context"
+    }
+  })
+  actions.register({
+    id: "sample.analyze",
+    execute: async (input) => {
+      calls.push(["analyze", input.state.context])
+      return "analysis"
+    }
+  })
+  const workflow = {
+    id: "workflow-register.command-approval-resume",
+    name: "command-approval-resume",
+    label: "Command Approval Resume",
+    schemaVersion: "workflow-register/v1",
+    inputs: {},
+    guardrails: {
+      requireApproval: [
+        { id: "approve-collect", when: "provider == 'sample.collect'", message: "Collect requires approval." }
+      ]
+    },
+    engineSteps: [
+      {
+        id: "collect",
+        title: "Collect",
+        type: "command",
+        action: { provider: "sample.collect" },
+        resultKey: "context"
+      },
+      {
+        id: "analyze",
+        title: "Analyze",
+        type: "command",
+        action: { provider: "sample.analyze" },
+        resultKey: "analysis"
+      }
+    ]
+  }
+
+  const held = await engine.runWorkflow(workflow, {})
+  const resumed = await engine.resumeRun(held.runId, { workflow, completeHeldStep: true })
+
+  assert.equal(held.status, "held")
+  assert.equal(resumed.status, "completed")
+  assert.deepEqual(calls, ["collect", ["analyze", "context"]])
+  assert.equal(resumed.steps[0].status, "completed")
+  assert.equal(resumed.steps[1].status, "completed")
+  assert.equal(resumed.state.context, "context")
+  assert.equal(resumed.state.analysis, "analysis")
+})
+
 test("workflow engine fails command steps when providers return structured error results", async () => {
   const { ActionRegistry } = require("../out/core/actionRegistry")
   const { WorkflowEngine } = require("../out/core/engine")

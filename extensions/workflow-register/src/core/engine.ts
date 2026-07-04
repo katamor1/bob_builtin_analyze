@@ -1,5 +1,6 @@
 import * as path from "path"
 import { ActionRegistry } from "./actionRegistry"
+import { approveHeldWorkflowStep } from "./approvalGuardrails"
 import {
   createDefaultPreflightChecks,
   evaluatePreflight,
@@ -172,10 +173,16 @@ export class WorkflowEngine {
     }
     if (run.status === "held" && options.completeHeldStep && startIndex >= 0) {
       const held = run.steps[startIndex]
-      held.status = "completed"
-      held.completedAt = new Date().toISOString()
+      if (approveHeldWorkflowStep(run, held.id)) {
+        held.status = "pending"
+        held.error = undefined
+        held.startedAt = undefined
+      } else {
+        held.status = "completed"
+        held.completedAt = new Date().toISOString()
+        startIndex += 1
+      }
       run.status = "running"
-      startIndex += 1
     }
     await this.runStore.saveRun(run)
     return this.continueRun(options.workflow, run, Math.max(0, startIndex), "full")
