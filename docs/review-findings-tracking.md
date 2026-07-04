@@ -23,7 +23,7 @@
 | [bob-code-consistency-review-deep-review-2026-07-04-14afe83c.md](bob-code-consistency-review-deep-review-2026-07-04-14afe83c.md) | deep review | `CCR-01` to `CCR-16` | done | `CCR-01` から `CCR-16` まで対応済み。 |
 | [bob-code-consistency-review-maintainability-review-2026-07-04-14afe83c.md](bob-code-consistency-review-maintainability-review-2026-07-04-14afe83c.md) | maintainability review | `CCR-MAINT-*` | partial | path boundary、revision validation、size limits は deep review 側と重なる。runtime dependency / VSIX CI / VSIX policy は対応済み。 |
 | [extensions-review-2026-07-04-14afe83c.md](extensions-review-2026-07-04-14afe83c.md) | cross-extension review | `extensions-review:<ID>` | done / duplicate | canonical ID への対応表を下に置く。重複指摘は canonical 側ですべて対応済み。 |
-| [extensions-maintainability-review-2026-07-04-14afe83c.md](extensions-maintainability-review-2026-07-04-14afe83c.md) | cross-extension maintainability review | `EXT-MAINT-*` | partial | 3 拡張共通の CI、bundle、依存、README backlog。lockfile / `npm ci` / dependency policy / VSIX policy は対応済み。 |
+| [extensions-maintainability-review-2026-07-04-14afe83c.md](extensions-maintainability-review-2026-07-04-14afe83c.md) | cross-extension maintainability review | `EXT-MAINT-*` | done | 3 拡張共通の CI、bundle、依存、README、source policy、metrics、schema drift policy まで対応済み。 |
 
 ## Canonical findings
 
@@ -116,7 +116,7 @@
 | --- | --- | --- | --- | --- | --- |
 | `WFR-MAINT-H` | `workflow-register-maintainability-review...:401` | High | model 分割、source map 方針、madge、command ID guardrail、`type-fixes.d.ts` 撤去 | done | command ID guardrail は `WFR-01`、`out/**/*.map` 非同梱方針は `5befb9dd`、import cycle gate は `7e1658e4`、`type-fixes.d.ts` 撤去は `61768663`、model 分割は `53d18349` で対応済み。 |
 | `WFR-MAINT-M` | `workflow-register-maintainability-review...:409` | Medium | lockfile / `npm ci`、unused checks、service 分割、parser re-export 整理、VSIX budget | done | `59a34c5b` で lockfile、`npm ci`、dependency policy、production audit、test、VSIX package の CI gate、`5befb9dd` で VSIX contents / size policy、`36c458f9` で report-only unused checks、`02bbd22b` で parser re-export 整理、`494b5d55` で run command service 分割を対応済み。 |
-| `WFR-MAINT-L` | `workflow-register-maintainability-review...:417` | Low | core 段階分割、README 追記、PR metrics | backlog |  |
+| `WFR-MAINT-L` | `workflow-register-maintainability-review...:417` | Low | core 段階分割、README 追記、PR metrics | partial | README の生成物、VSIX サイズ、暗黙依存、必要 CLI、Trusted Workspace は `0ddb0415`、PR metrics は `6d0c788c` で対応済み。core 段階分割は残。 |
 | `BBR-MAINT-H` | `bob-bazaar-review-maintainability-review...:452` | High | MCP allowed roots、MCP server 分割、runtime clamp、VSIX budget、madge | done | MCP allowed roots は `BBR-01`、runtime clamp は `BBR-04` / `BBR-16`、VSIX contents / size policy は `5befb9dd`、import cycle gate は `7e1658e4`、MCP server 分割は `834e2a8b` で対応済み。 |
 | `BBR-MAINT-M` | `bob-bazaar-review-maintainability-review...:460` | Medium | src 構造整理、extension composition root 化、packet URI/state 化、unused checks、lockfile | done | `59a34c5b` で lockfile、`npm ci`、dependency policy、production audit、test、VSIX package の CI gate を追加済み。packet URI/state は `BBR-07`、report-only unused checks は `36c458f9`、extension composition root 化は `9c85153d`、workspace root-resolution module 整理は `c18290c9`、review GUI module 整理は `ebaec621`、workflow integration module 整理は `00cde5b7`、Bazaar domain module 整理は `b3b1ea2d`、root entrypoint 化は `448e399e` で対応済み。 |
 | `BBR-MAINT-L` | `bob-bazaar-review-maintainability-review...:468` | Low | MCP tool 型分離、README、template / prompt / schema size budget、`export *` 禁止 | done | `0ddb0415` で README の生成物、VSIX サイズ、暗黙依存、必要 CLI、Trusted Workspace を追記済み。`b98ecf65` で MCP tool contract を `toolTypes.ts` / `toolSchemas.ts` に分離し、template artifact size policy と `export *` 禁止 rule を追加済み。 |
@@ -125,7 +125,7 @@
 | `CCR-MAINT-L` | `bob-code-consistency-review-maintainability-review...:476` | Low | domain type 分割、traceability facade 分離、README、`.gitignore` helper | done | `.gitignore` helper は `CCR-05`、README の生成物、VSIX サイズ、暗黙依存、必要 CLI、Trusted Workspace は `0ddb0415`、domain type 分割と traceability facade 分離は `900d501f` で対応済み。 |
 | `EXT-MAINT-H` | `extensions-maintainability-review...:519` | High | 3 拡張共通の madge、VSIX contents、source map 方針、heavy dependency lazy loading、workflow model 方針 | done | `5befb9dd` で 3 拡張共通の VSIX contents / size policy と `out/**/*.map` 非同梱方針、`7e1658e4` で 3 拡張共通の import cycle gate、`53d18349` で workflow model 分割方針、`95074c6e` で heavy dependency lazy loading を追加済み。 |
 | `EXT-MAINT-M` | `extensions-maintainability-review...:527` | Medium | unused checks、lockfile / `npm ci`、README、size budget | done | `59a34c5b` で 3 拡張共通の lockfile、`npm ci`、dependency policy、production audit、test、VSIX package の CI gate、`5befb9dd` で VSIX size budget、`36c458f9` で 3 拡張共通の report-only unused checks、`0ddb0415` で 3 拡張 README の生成物、VSIX サイズ、暗黙依存、必要 CLI、Trusted Workspace の保守・配布ポリシーを追加済み。 |
-| `EXT-MAINT-L` | `extensions-maintainability-review...:534` | Low | re-export shim 限定、LOC/file count PR comment、schema / TypeScript drift check | backlog |  |
+| `EXT-MAINT-L` | `extensions-maintainability-review...:534` | Low | re-export shim 限定、LOC/file count PR comment、schema / TypeScript drift check | done | `6d0c788c` で 3 拡張共通の `source:policy`、PR metrics comment job、workflow-register の `schema:policy` を追加済み。 |
 
 ## Additional verification checks
 
@@ -206,3 +206,4 @@
 | `0ddb0415` | `EXT-MAINT-M` | document generated artifacts, VSIX budgets, dependencies, CLI, and trust boundaries in extension READMEs |
 | `b98ecf65` | `BBR-MAINT-L` | split MCP tool contracts and gate template artifact size / export-star policy |
 | `900d501f` | `CCR-MAINT-L` | split core review types by domain and keep traceabilityCatalog as a facade |
+| `6d0c788c` | `EXT-MAINT-L`, `WFR-MAINT-L` | add export-star source policy, workflow schema policy, and extension metrics PR reporting |
