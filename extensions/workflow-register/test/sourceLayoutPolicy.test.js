@@ -29,3 +29,17 @@ test("core parser uses a single directory barrel as its public import boundary",
   const parserIndexSource = readSrc("core", "parser", "index.ts")
   assert.match(parserIndexSource, /export \{ parseWorkflowMarkdown \} from "\.\/parseWorkflowMarkdown"/)
 })
+
+test("workflow run command orchestration is split out of WorkflowRegisterService", () => {
+  assert.ok(
+    fs.existsSync(path.join(extensionRoot, "src", "workflowRunCommands.ts")),
+    "workflowRunCommands.ts must own standalone run/resume command flow"
+  )
+
+  const serviceSource = readSrc("workflowRegisterService.ts")
+  assert.match(serviceSource, /import \{ WorkflowRunCommandService \} from "\.\/workflowRunCommands"/)
+  assert.match(serviceSource, /private readonly runCommands: WorkflowRunCommandService/)
+  assert.match(serviceSource, /runWorkflow\(workflowId\?: string, inputs: Record<string, unknown> = \{\}\): Promise<unknown> \{[\s\S]*return this\.runCommands\.runWorkflow\(workflowId, inputs\)/)
+  assert.doesNotMatch(serviceSource, /collectCoreWorkflowInputs/)
+  assert.doesNotMatch(serviceSource, /pickRunSelection/)
+})
