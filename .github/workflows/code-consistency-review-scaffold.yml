@@ -42,7 +42,7 @@ jobs:
           cache-dependency-path: docs/workflows/code-consistency-review/scaffold/package-lock.json
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: Typecheck
         run: npm run typecheck
@@ -73,7 +73,13 @@ jobs:
           cache-dependency-path: extensions/bob-code-consistency-review/package-lock.json
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
+
+      - name: Dependency policy
+        run: npm run dependency:policy
+
+      - name: Production dependency audit
+        run: npm run audit:prod
 
       - name: Compile
         run: npm run compile
