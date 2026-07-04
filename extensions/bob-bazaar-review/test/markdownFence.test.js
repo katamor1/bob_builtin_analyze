@@ -44,6 +44,50 @@ test("Bazaar review packet fences log and diff content safely", () => {
   assert.match(packet, /````diff\n=== modified file 'src\/main\.c'\n\+```text/)
 })
 
+test("Bazaar review packet redacts local paths by default", () => {
+  const { buildReviewPacket } = require("../out/reviewPacket")
+  const packet = buildReviewPacket({
+    repositoryRoot: "C:\\Users\\alice\\secret-project",
+    mode: "singleRevision",
+    revision: "7",
+    diff: {
+      command: "C:\\Users\\alice\\tools\\bzr.exe",
+      args: ["--no-aliases", "diff", "-c", "7"],
+      stdout: "+changed",
+      stderr: "",
+      exitCode: 0
+    },
+    maxDiffBytes: 1024 * 1024
+  })
+
+  assert.match(packet, /Repository root: <redacted local path>/)
+  assert.match(packet, /Local absolute paths are redacted/)
+  assert.match(packet, /bzr --no-aliases diff -c 7/)
+  assert.doesNotMatch(packet, /C:\\Users\\alice/)
+  assert.doesNotMatch(packet, /bzr\.exe/)
+})
+
+test("Bazaar review packet can include local paths when explicitly requested", () => {
+  const { buildReviewPacket } = require("../out/reviewPacket")
+  const packet = buildReviewPacket({
+    repositoryRoot: "C:\\Users\\alice\\secret-project",
+    mode: "singleRevision",
+    revision: "7",
+    diff: {
+      command: "C:\\Users\\alice\\tools\\bzr.exe",
+      args: ["--no-aliases", "diff", "-c", "7"],
+      stdout: "+changed",
+      stderr: "",
+      exitCode: 0
+    },
+    maxDiffBytes: 1024 * 1024,
+    includeLocalPaths: true
+  })
+
+  assert.match(packet, /Repository root: C:\\Users\\alice\\secret-project/)
+  assert.match(packet, /C:\\Users\\alice\\tools\\bzr\.exe --no-aliases diff -c 7/)
+})
+
 test("added file content section fences added files safely", async () => {
   const { buildAddedFilesContentSection } = require("../out/revisionInfo")
   const client = {

@@ -12,26 +12,29 @@ export interface ReviewPacketOptions {
   diff: BazaarCommandResult
   maxDiffBytes: number
   extraSections?: string[]
+  includeLocalPaths?: boolean
 }
 
 export function buildReviewPacket(options: ReviewPacketOptions): string {
   const revisionLabel = buildRevisionLabel(options)
   const diffText = truncateUtf8(options.diff.stdout, clampMaxDiffBytes(options.maxDiffBytes), "diff")
   const logText = options.log ? truncateUtf8(options.log.stdout, 128 * 1024, "log") : ""
+  const includeLocalPaths = options.includeLocalPaths === true
 
   return [
     "# Bazaar Revision Review Request",
     "",
     `VCS: Bazaar`,
-    `Repository root: ${options.repositoryRoot}`,
+    `Repository root: ${includeLocalPaths ? options.repositoryRoot : "<redacted local path>"}`,
     `Review mode: ${options.mode}`,
     `Revision target: ${revisionLabel}`,
+    includeLocalPaths ? "" : "Privacy: Local absolute paths are redacted from this packet by default.",
     "",
     "## Bazaar commands used",
     "",
     fencedCodeBlock("text", [
-      `${options.diff.command} ${options.diff.args.join(" ")}`,
-      options.log ? `${options.log.command} ${options.log.args.join(" ")}` : ""
+      formatCommand(options.diff, includeLocalPaths),
+      options.log ? formatCommand(options.log, includeLocalPaths) : ""
     ].filter(Boolean).join("\n")),
     "",
     "## Review instruction for Bob",
@@ -72,4 +75,9 @@ function buildRevisionLabel(options: ReviewPacketOptions): string {
     return `${options.baseRevision ?? "?"}..${options.targetRevision ?? "?"}`
   }
   return `working tree since ${options.baseRevision ?? "current basis"}`
+}
+
+function formatCommand(result: BazaarCommandResult, includeLocalPaths: boolean): string {
+  const command = includeLocalPaths ? result.command : "bzr"
+  return [command, ...result.args].join(" ")
 }
