@@ -2,13 +2,20 @@ import * as path from "node:path"
 import YAML from "yaml"
 import { pathExists, readTextFile, resolveWorkspacePathStrict, writeTextFile } from "./fileSystem"
 import { readBobOutputText } from "./bobOutputSource"
-import { canonicalizeBobOutput, type EvidenceIndexItem, type EvidenceLookup } from "./bobOutputCanonicalizer"
+import { canonicalizeBobOutputWithReport, type CanonicalizationIssue, type EvidenceIndexItem, type EvidenceLookup } from "./bobOutputCanonicalizer"
+import { validateParsedBobOutput } from "./bobOutputValidator"
+import type { ValidationReport } from "./types"
 
 export type CaptureBobOutputResult = {
   status: "ok" | "error"
   bobOutputPath?: string
+  rawOutputPath?: string
+  canonicalOutputPath?: string
   sourcePath?: string
   reviewId?: string
+  rawValidation?: ValidationReport
+  canonicalValidation?: ValidationReport
+  canonicalizationIssues?: CanonicalizationIssue[]
   message: string
 }
 
@@ -40,15 +47,34 @@ export async function captureBobOutput(input: CaptureBobOutputInput): Promise<Ca
     return { status: "error", message: `YAML が不正です${sourceLabel}: ${error instanceof Error ? error.message : String(error)}` }
   }
   const evidenceLookup = await loadEvidenceLookup(packageDir)
-  const canonical = canonicalizeBobOutput(parsed, evidenceLookup)
+  const rawValidation = await validateParsedBobOutput(parsed, { packageDir, requireEvidenceIndex: Boolean(packageDir) })
+  const canonicalized = canonicalizeBobOutputWithReport(parsed, evidenceLookup)
+  const canonical = canonicalized.output
+  const canonicalValidation = await validateParsedBobOutput(canonical, { packageDir, requireEvidenceIndex: Boolean(packageDir) })
+  const rawValidationIssues = rawValidation.errors.map((message): CanonicalizationIssue => ({
+    severity: "warning",
+    path: "$",
+    code: "raw_validation_error",
+    message
+  }))
+  const canonicalizationIssues = [...rawValidationIssues, ...canonicalized.report.issues]
   const normalized = `${YAML.stringify(canonical)}`
+  const rawOutputPath = path.join(path.dirname(bobOutputPath), "raw-output.yaml")
+  const canonicalOutputPath = path.join(path.dirname(bobOutputPath), "canonical-output.yaml")
+  await writeTextFile(rawOutputPath, ensureTrailingNewline(source.yamlText))
+  await writeTextFile(canonicalOutputPath, normalized)
   await writeTextFile(bobOutputPath, normalized)
   return {
     status: "ok",
     bobOutputPath: path.resolve(bobOutputPath),
+    rawOutputPath: path.resolve(rawOutputPath),
+    canonicalOutputPath: path.resolve(canonicalOutputPath),
     sourcePath: source.sourcePath,
     reviewId: canonical?.review_summary?.review_id,
-    message: `Bob 出力を保存しました: ${bobOutputPath}${source.sourcePath ? ` (source: ${source.sourcePath})` : ""}`
+    rawValidation,
+    canonicalValidation,
+    canonicalizationIssues,
+    message: `Bob 出力を保存しました: ${bobOutputPath}${source.sourcePath ? ` (source: ${source.sourcePath})` : ""}${rawValidation.errors.length > 0 ? ` (raw validation warning: ${rawValidation.errors.length})` : ""}`
   }
 }
 
@@ -80,6 +106,10 @@ function trimWorkflowStateTrailer(text: string): string {
   const lines = text.split(/\r?\n/)
   const stop = lines.findIndex((line, index) => index > 0 && /^<\/(?:state|workflow_state)>/.test(line.trim()))
   return (stop >= 0 ? lines.slice(0, stop) : lines).join("\n").trim()
+}
+
+function ensureTrailingNewline(text: string): string {
+  return `${text.trimEnd()}\n`
 }
 
 async function loadEvidenceLookup(packageDir: string | undefined): Promise<EvidenceLookup | undefined> {

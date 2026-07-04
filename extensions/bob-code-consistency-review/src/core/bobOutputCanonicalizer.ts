@@ -11,6 +11,17 @@ export type EvidenceLookup = {
   byRef: Map<string, EvidenceIndexItem>
 }
 
+export type CanonicalizationIssue = {
+  severity: "error" | "warning" | "info"
+  path: string
+  code: string
+  message: string
+}
+
+export type CanonicalizationReport = {
+  issues: CanonicalizationIssue[]
+}
+
 const EVIDENCE_TYPES = new Set([
   "requirement",
   "basic_design",
@@ -43,6 +54,15 @@ const QUESTION_CATEGORIES = new Set([
 const COVERAGE_TYPES = new Set(["checked", "partially_checked", "not_checked", "out_of_scope"])
 
 export function canonicalizeBobOutput(parsed: any, evidenceLookup: EvidenceLookup | undefined): any {
+  return canonicalizeBobOutputWithReport(parsed, evidenceLookup).output
+}
+
+export function canonicalizeBobOutputWithReport(parsed: any, evidenceLookup: EvidenceLookup | undefined): { output: any; report: CanonicalizationReport } {
+  const output = canonicalizeBobOutputCore(parsed, evidenceLookup)
+  return { output, report: buildCanonicalizationReport(parsed, output) }
+}
+
+function canonicalizeBobOutputCore(parsed: any, evidenceLookup: EvidenceLookup | undefined): any {
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return parsed
   return pruneUndefined({
     schema_version: normalizeSchemaVersion(parsed.schema_version),
@@ -52,6 +72,116 @@ export function canonicalizeBobOutput(parsed: any, evidenceLookup: EvidenceLooku
     coverage_notes: normalizeCoverageNotes(parsed.coverage_notes),
     rejected_or_uncertain: normalizeUncertainItems(parsed.rejected_or_uncertain)
   })
+}
+
+function buildCanonicalizationReport(parsed: any, output: any): CanonicalizationReport {
+  const report: CanonicalizationReport = { issues: [] }
+  if (!isRecord(parsed) || !isRecord(output)) return report
+
+  recordDroppedKeys(report, "$", parsed, new Set(["schema_version", "review_summary", "findings", "questions", "coverage_notes", "rejected_or_uncertain"]))
+  reportFieldTransform(report, "$.schema_version", parsed.schema_version, output.schema_version)
+
+  const inputSummary = isRecord(parsed.review_summary) ? parsed.review_summary : {}
+  const outputSummary = isRecord(output.review_summary) ? output.review_summary : {}
+  recordDroppedKeys(report, "$.review_summary", inputSummary, new Set([
+    "review_id",
+    "package_id",
+    "target_range",
+    "result_type",
+    "final_approval",
+    "scope_statement",
+    "generated_at",
+    "prompt_template_id",
+    "note",
+    "summary",
+    "reviewed_at"
+  ]))
+  for (const key of ["result_type", "final_approval", "scope_statement", "generated_at"] as const) {
+    reportFieldTransform(report, `$.review_summary.${key}`, inputSummary[key], outputSummary[key])
+  }
+
+  reportCollection(report, "findings", parsed.findings, output.findings, (itemReport, itemPath, input, normalized) => {
+    reportGeneratedId(itemReport, `${itemPath}.id`, input.id, normalized.id)
+    reportFieldTransform(itemReport, `${itemPath}.category`, input.category, normalized.category, "defaulted_category", "replaced_category")
+    reportEvidenceTransform(itemReport, `${itemPath}.evidence`, input.evidence, normalized.evidence)
+    recordDroppedKeys(itemReport, itemPath, input, new Set(["id", "category", "severity", "confidence", "summary", "evidence", "reason", "impact", "recommended_action", "human_check"]))
+  })
+  reportCollection(report, "questions", parsed.questions, output.questions, (itemReport, itemPath, input, normalized) => {
+    reportGeneratedId(itemReport, `${itemPath}.id`, input.id, normalized.id)
+    reportFieldTransform(itemReport, `${itemPath}.category`, input.category, normalized.category, "defaulted_category", "replaced_category")
+    reportFieldTransform(itemReport, `${itemPath}.suggested_action`, input.suggested_action, normalized.suggested_action)
+    reportEvidenceTransform(itemReport, `${itemPath}.evidence`, input.evidence, normalized.evidence)
+    recordDroppedKeys(itemReport, itemPath, input, new Set(["id", "category", "summary", "reason", "evidence", "suggested_owner", "suggested_action", "human_check"]))
+  })
+  reportCollection(report, "coverage_notes", parsed.coverage_notes, output.coverage_notes, (itemReport, itemPath, input, normalized) => {
+    reportGeneratedId(itemReport, `${itemPath}.id`, input.id, normalized.id)
+    reportFieldTransform(itemReport, `${itemPath}.type`, input.type, normalized.type, "defaulted_type", "replaced_type")
+    recordDroppedKeys(itemReport, itemPath, input, new Set(["id", "type", "summary"]))
+  })
+  reportCollection(report, "rejected_or_uncertain", parsed.rejected_or_uncertain, output.rejected_or_uncertain, (itemReport, itemPath, input, normalized) => {
+    reportGeneratedId(itemReport, `${itemPath}.id`, input.id, normalized.id)
+    reportFieldTransform(itemReport, `${itemPath}.summary`, input.summary, normalized.summary)
+    reportFieldTransform(itemReport, `${itemPath}.next_action`, input.next_action, normalized.next_action)
+    recordDroppedKeys(itemReport, itemPath, input, new Set(["id", "summary", "reason", "next_action", "human_check"]))
+  })
+  return report
+}
+
+function reportCollection(
+  report: CanonicalizationReport,
+  collectionName: string,
+  input: unknown,
+  normalized: unknown,
+  visit: (report: CanonicalizationReport, path: string, input: Record<string, unknown>, normalized: Record<string, unknown>) => void
+): void {
+  if (!Array.isArray(input) || !Array.isArray(normalized)) return
+  normalized.forEach((item, index) => {
+    if (!isRecord(item)) return
+    const source = isRecord(input[index]) ? input[index] : {}
+    visit(report, `$.${collectionName}[${index}]`, source, item)
+  })
+}
+
+function reportGeneratedId(report: CanonicalizationReport, path: string, input: unknown, normalized: unknown): void {
+  if (typeof normalized !== "string" || input === normalized) return
+  addIssue(report, "info", path, "generated_id", `Generated canonical id ${normalized}${typeof input === "string" ? ` from ${input}` : ""}.`)
+}
+
+function reportFieldTransform(
+  report: CanonicalizationReport,
+  path: string,
+  input: unknown,
+  normalized: unknown,
+  defaultCode = "defaulted_field",
+  replaceCode = "replaced_field"
+): void {
+  if (normalized === undefined || input === normalized) return
+  if (stringValue(input) === undefined) {
+    addIssue(report, "warning", path, defaultCode, `Filled ${path} with ${String(normalized)}.`)
+    return
+  }
+  addIssue(report, "warning", path, replaceCode, `Replaced ${path} value ${String(input)} with ${String(normalized)}.`)
+}
+
+function reportEvidenceTransform(report: CanonicalizationReport, path: string, input: unknown, normalized: unknown): void {
+  if (!Array.isArray(input) || !Array.isArray(normalized)) return
+  if (JSON.stringify(input) !== JSON.stringify(normalized)) {
+    addIssue(report, "info", path, "normalized_evidence", `Normalized evidence references at ${path}.`)
+  }
+}
+
+function recordDroppedKeys(report: CanonicalizationReport, path: string, input: Record<string, unknown>, allowed: Set<string>): void {
+  for (const key of Object.keys(input)) {
+    if (!allowed.has(key)) addIssue(report, "info", `${path}.${key}`, "dropped_field", `Dropped unsupported field ${path}.${key}.`)
+  }
+}
+
+function addIssue(report: CanonicalizationReport, severity: CanonicalizationIssue["severity"], path: string, code: string, message: string): void {
+  report.issues.push({ severity, path, code, message })
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
 }
 
 function normalizeSchemaVersion(value: unknown): unknown {
