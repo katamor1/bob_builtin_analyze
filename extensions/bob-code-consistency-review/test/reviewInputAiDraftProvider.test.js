@@ -35,6 +35,13 @@ test("parseAiReviewInputDraft extracts fenced JSON only", () => {
   assert.deepEqual(draft.artifact_candidates, [])
 })
 
+test("parseAiReviewInputDraft rejects ambiguous or oversized JSON candidates", () => {
+  const first = JSON.stringify({ review: { id: "first" }, artifact_candidates: [] })
+  const second = JSON.stringify({ review: { id: "second" }, artifact_candidates: [] })
+  assert.throws(() => parseAiReviewInputDraft(`\`\`\`json\n${first}\n\`\`\`\n\`\`\`json\n${second}\n\`\`\``), /multiple JSON candidates/)
+  assert.throws(() => parseAiReviewInputDraft(`${"x".repeat(1100 * 1024)}\n${first}`), /exceeds maximum/)
+})
+
 test("applyAiReviewInputDraft rejects invalid artifact paths before writing", async () => {
   const workspaceRoot = await makeWorkspace()
   const outputPath = path.join(workspaceRoot, "review-input.yaml")

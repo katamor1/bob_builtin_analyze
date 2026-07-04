@@ -6,6 +6,7 @@ import {
   MAX_TRACEABILITY_CANDIDATE_COUNT,
   renderTraceabilityPrompt
 } from "./traceabilityAiDraftPrompt"
+import { extractSingleJsonObjectText } from "./structuredTextExtractor"
 import {
   readTraceabilityCatalog,
   writeTraceabilityCatalog,
@@ -136,7 +137,7 @@ export async function applyAiTraceabilityDraft(input: ApplyAiTraceabilityDraftIn
 }
 
 export function parseAiTraceabilityDraft(text: string): TraceabilityCatalog {
-  const parsed = JSON.parse(extractJsonText(text)) as unknown
+  const parsed = JSON.parse(extractSingleJsonObjectText(text, { label: "AI traceability draft JSON text" })) as unknown
   if (!isRecord(parsed)) throw new Error("top-level value must be an object")
   if (parsed.schema_version !== 1) throw new Error("schema_version must be 1")
 
@@ -459,22 +460,6 @@ function decisionKey(decision: TraceabilityDecision): string {
 
 function isHumanReviewed(value: { status?: TraceabilityStatus }): boolean {
   return value.status === "accepted" || value.status === "rejected" || value.status === "deprecated"
-}
-
-function extractJsonText(text: string): string {
-  const jsonFence = text.match(/```json\s*([\s\S]*?)```/i)
-  if (jsonFence?.[1]?.trim()) return jsonFence[1].trim()
-
-  const genericFences = [...text.matchAll(/```\s*([\s\S]*?)```/g)]
-  for (const match of genericFences) {
-    const body = match[1]?.trim()
-    if (body?.startsWith("{")) return body
-  }
-
-  const first = text.indexOf("{")
-  const last = text.lastIndexOf("}")
-  if (first >= 0 && last > first) return text.slice(first, last + 1).trim()
-  return text.trim()
 }
 
 function arrayValue(value: unknown, name: string): unknown[] {

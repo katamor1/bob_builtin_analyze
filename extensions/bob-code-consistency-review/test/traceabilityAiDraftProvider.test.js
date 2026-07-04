@@ -68,6 +68,23 @@ graph LR
   assert.equal(draft.items[0].proposed_id, "REQ-RS001-PAY-0001")
 })
 
+test("parseAiTraceabilityDraft rejects multiple JSON candidates", () => {
+  const first = JSON.stringify(validProposedDraft())
+  const second = JSON.stringify({
+    ...validProposedDraft(),
+    domains: [{ code: "AUTH", status: "proposed" }],
+    items: [{
+      proposed_id: "REQ-RS001-AUTH-0001",
+      type: "requirement",
+      source_document_id: "RS001",
+      domain: "AUTH",
+      sequence: 1,
+      status: "proposed"
+    }]
+  })
+  assert.throws(() => parseAiTraceabilityDraft(`\`\`\`json\n${first}\n\`\`\`\n\`\`\`json\n${second}\n\`\`\``), /multiple JSON candidates/)
+})
+
 
 test("mergeAiTraceabilityDraft preserves accepted catalog entries and replaces proposed candidates", () => {
   const existing = {

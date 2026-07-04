@@ -5,6 +5,7 @@ import { explainReviewInputDiagnostics } from "./reviewInputDiagnostics"
 import { ARTIFACT_KIND_VALUES, CHANGE_TYPE_VALUES, REVIEW_FOCUS_VALUES, VCS_VALUES, writeReviewInputFromDraft, type ReviewInputDraft } from "./reviewInputBuilder"
 import type { DiffSummary, ReviewInput } from "./types"
 import { resolveWorkspacePathStrict, writeTextFile } from "./fileSystem"
+import { extractSingleJsonObjectText } from "./structuredTextExtractor"
 
 export type PrepareAiReviewInputDraftPromptInput = {
   workspaceRoot: string
@@ -96,21 +97,12 @@ export async function applyAiReviewInputDraft(input: ApplyAiReviewInputDraftInpu
 }
 
 export function parseAiReviewInputDraft(text: string): ReviewInputDraft {
-  const jsonText = extractJsonText(text)
+  const jsonText = extractSingleJsonObjectText(text, { label: "AI draft JSON text" })
   const parsed = JSON.parse(jsonText) as unknown
   if (!isRecord(parsed)) throw new Error("top-level value must be an object")
   if (!isRecord(parsed.review)) throw new Error("review must be an object")
   if (!Array.isArray(parsed.artifact_candidates)) throw new Error("artifact_candidates must be an array")
   return parsed as ReviewInputDraft
-}
-
-function extractJsonText(text: string): string {
-  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i)
-  if (fenced?.[1]?.trim()) return fenced[1].trim()
-  const first = text.indexOf("{")
-  const last = text.lastIndexOf("}")
-  if (first >= 0 && last > first) return text.slice(first, last + 1).trim()
-  return text.trim()
 }
 
 function renderPrompt(input: {

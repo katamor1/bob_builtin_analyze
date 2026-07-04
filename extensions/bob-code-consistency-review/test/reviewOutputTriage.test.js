@@ -63,6 +63,21 @@ test("capture, validate, and triage do not silently use review-package bob-outpu
   assert.match(triage.message, /Bob output YAML not found/)
 })
 
+test("captureBobOutput rejects multiple YAML output candidates", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "bob-review-multiple-yaml-"))
+  const outputPath = path.join(root, ".bob-review", "bob-output", "bob-output.yaml")
+  const output = fs.readFileSync(bobOutputFixturePath, "utf8")
+  const capture = await captureBobOutput({
+    workspaceRoot: root,
+    text: `\`\`\`yaml\n${output}\n\`\`\`\n\`\`\`yaml\n${output}\n\`\`\``,
+    bobOutputPath: outputPath
+  })
+
+  assert.equal(capture.status, "error")
+  assert.match(capture.message, /multiple YAML candidates/)
+  assert.equal(fs.existsSync(outputPath), false)
+})
+
 test("generateHumanTriage reports a missing Bob output file without throwing ENOENT", async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "bob-review-missing-output-"))
   const result = await generateHumanTriage({

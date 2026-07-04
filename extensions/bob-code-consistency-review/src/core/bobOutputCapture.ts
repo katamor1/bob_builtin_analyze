@@ -3,6 +3,7 @@ import YAML from "yaml"
 import { pathExists, readTextFile, resolveWorkspacePathStrict, writeTextFile } from "./fileSystem"
 import { canonicalizeBobOutputWithReport, type CanonicalizationIssue, type EvidenceIndexItem, type EvidenceLookup } from "./bobOutputCanonicalizer"
 import { validateParsedBobOutput } from "./bobOutputValidator"
+import { extractSingleYamlDocumentText } from "./structuredTextExtractor"
 import type { ValidationReport } from "./types"
 
 export type CaptureBobOutputResult = {
@@ -78,7 +79,12 @@ export async function captureBobOutput(input: CaptureBobOutputInput): Promise<Ca
 }
 
 async function resolveCaptureSource(input: CaptureBobOutputInput): Promise<CaptureSourceResult> {
-  const textYaml = extractYamlFromText(input.text)
+  let textYaml: string | undefined
+  try {
+    textYaml = extractYamlFromText(input.text)
+  } catch (error) {
+    return { message: `Bob output YAML extraction failed: ${error instanceof Error ? error.message : String(error)}` }
+  }
   if (textYaml) return { yamlText: textYaml, message: "Bob output was read from command text." }
 
   return {
@@ -87,18 +93,7 @@ async function resolveCaptureSource(input: CaptureBobOutputInput): Promise<Captu
 }
 
 export function extractYamlFromText(text: string): string | undefined {
-  const trimmed = text.trim()
-  if (!trimmed) return undefined
-  const fenced = trimmed.match(/```(?:yaml|yml|YAML)?\s*\r?\n([\s\S]*?)\r?\n```/)
-  if (fenced) return fenced[1].trim()
-  const start = trimmed.search(/^schema_version\s*:/m)
-  return start >= 0 ? trimWorkflowStateTrailer(trimmed.slice(start)) : undefined
-}
-
-function trimWorkflowStateTrailer(text: string): string {
-  const lines = text.split(/\r?\n/)
-  const stop = lines.findIndex((line, index) => index > 0 && /^<\/(?:state|workflow_state)>/.test(line.trim()))
-  return (stop >= 0 ? lines.slice(0, stop) : lines).join("\n").trim()
+  return extractSingleYamlDocumentText(text, { label: "Bob output YAML text" })
 }
 
 function ensureTrailingNewline(text: string): string {
