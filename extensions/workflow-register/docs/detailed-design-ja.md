@@ -130,6 +130,7 @@ extensions/workflow-register/
 | `workflowRegister.openCurrentStepInBuilder` | current step の workflow 定義を GUI Builder で開く。 |
 | `workflowRegister.inspectRunDiagnostics` | run state と task snapshot の診断を表示する。 |
 | `workflowRegister.inspectActiveSteps` | Bob UI の手動完了待ち active step を表示する。 |
+| `workflowRegister.openManualStepPanel` | held run または active manual step の手動操作 Webview を開く。 |
 | `workflowRegister.completeCurrentStep` | Bob UI 経由の current manual step を完了する。 |
 | `workflowRegister.completeStep` | `completeCurrentStep` の別名。 |
 | `workflowRegister.validateCurrentWorkflow` | active editor の workflow を検証する。 |
@@ -286,7 +287,9 @@ v1 schema の主な制約は次の通り。
 
 `StepRuntime` は永続状態ではない。VS Code 再起動で失われる。復帰時の正本は `run.json` であり、Bob chat 側の補助情報は task snapshot である。
 
-`completeCurrentStep()` は active step を選択し、必要なら `captureHeldStepResult()` で Bob chat の latest assistant text を result command へ handoff した後、`task.setStepComplete()` と Promise resolve を行う。
+`completeCurrentStep()` は active step を選択し、必要なら `captureHeldStepResult()` で Bob chat の latest assistant text を result command へ handoff した後、`task.setStepComplete()` と Promise resolve を行う。`completeStepByKey(activeKey)` は Manual Step Panel から指定 key の active step だけを完了するための経路であり、同じ完了 helper を使って result handoff と guardrails を bypass しない。
+
+`manualCompletion` は step が held になった時点で `onHeldStep` callback を呼ぶ。`WorkflowRegisterService` はこの callback から `ManualStepPanelController.show()` を呼び、`steps[].userAction`、`prompt`、run inputs、state snapshot を使って利用者向けメッセージを表示する。active task が残っていない held run では read-only 表示にし、誤って完了扱いにしない。
 
 ## 16. Result Handoff / Sink
 
@@ -295,6 +298,8 @@ v1 schema の主な制約は次の通り。
 ## 17. GUI Builder / AI Authoring
 
 GUI Builder の保存処理は、authoring model を Markdown 化し、検証し、error が無ければ既存ファイルを backup して `WORKFLOW.md` を書き込み、`workflowRegister.reload` を実行する。
+
+Step detail は `User action` section を持ち、`steps[].userAction.message`、`completeLabel`、`confirmOnComplete`、`confirmMessage` を編集できる。manual step では `userAction.message` が無い場合に `prompt` へ fallback する。Builder preview は template 変数を未展開のまま表示し、保存前 validation は利用者向けメッセージ欠落、長すぎるボタン文言、確認文の既定 fallback、無効化される `command:` URI を warning / info として出す。
 
 AI provider は `workflowRegister.aiProviderCommand` で指定する。未設定時は mock provider を使う。`improveWorkflowWithAi` は候補 Markdown を `.bob/workflows/.previews/...` に保存し、diff を表示し、明示確認後に backup を作成して適用する。
 

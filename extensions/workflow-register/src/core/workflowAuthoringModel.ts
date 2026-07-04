@@ -7,7 +7,8 @@ import {
   WorkflowInputDefinition,
   WorkflowPreflightDefinition,
   WorkflowRequiresDefinition,
-  WorkflowStepType
+  WorkflowStepType,
+  WorkflowUserActionDefinition
 } from "./model"
 import { WorkflowTemplateKind } from "./workflowScaffold"
 
@@ -57,6 +58,7 @@ export interface WorkflowAuthoringStepBase {
   maxResultBytes?: number
   stateRequired?: boolean
   resultKey?: string
+  userAction?: WorkflowUserActionDefinition
 }
 
 export interface WorkflowAuthoringCommandStep extends WorkflowAuthoringStepBase {

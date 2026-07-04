@@ -27,11 +27,12 @@ export class StepRuntime {
       inputs?: Record<string, unknown>
       state?: Record<string, string>
       messageStartIndex?: number
+      onHeldStep?: (active: ActiveStep) => Promise<void> | void
     }
   ): Promise<boolean> {
     const key = `${++this.sequence}:${workflow.id}:${step.id}`
     return new Promise<boolean>((resolve) => {
-      this.activeSteps.set(key, {
+      const active = {
         key,
         workflowId: workflow.id,
         workflowLabel: workflow.label,
@@ -46,12 +47,26 @@ export class StepRuntime {
         state: context.state,
         messageStartIndex: context.messageStartIndex ?? getTaskMessageCount(task),
         resolve
+      }
+      this.activeSteps.set(key, active)
+      Promise.resolve(context.onHeldStep?.(active)).catch((error) => {
+        console.warn("Failed to open manual step panel", error)
       })
     })
   }
 
   list(): ActiveStep[] {
     return Array.from(this.activeSteps.values())
+  }
+
+  getActiveStep(key: string): ActiveStep | undefined {
+    return this.activeSteps.get(key)
+  }
+
+  async completeStepByKey(key: string, options: Pick<StepCompletionExpectation, "stateUpdates"> = {}): Promise<string> {
+    const active = this.activeSteps.get(key)
+    if (!active) return `No active Bob workflow step for key: ${key}`
+    return this.completeStep(active, options)
   }
 
   async completeCurrentStep(options: StepCompletionExpectation = {}): Promise<string> {
@@ -63,6 +78,10 @@ export class StepRuntime {
     const mismatch = activeStepMismatch(steps, options)
     if (mismatch) return mismatch
     if (!active) return "No active Bob workflow step."
+    return this.completeStep(active, options)
+  }
+
+  private async completeStep(active: ActiveStep, options: Pick<StepCompletionExpectation, "stateUpdates">): Promise<string> {
     const handoff = await captureHeldStepResult(active)
     if (!handoff.ok) {
       const message = `Could not capture Bob workflow step result: ${handoff.error}`

@@ -164,6 +164,16 @@ export const workflowV1Schema = {
           maxResultBytes: { type: "number" },
           stateRequired: { type: "boolean" },
           resultKey: { type: "string" },
+          userAction: {
+            type: "object",
+            properties: {
+              message: { type: "string" },
+              completeLabel: { type: "string" },
+              confirmOnComplete: { type: "boolean" },
+              confirmMessage: { type: "string" }
+            },
+            additionalProperties: false
+          },
           result: {
             type: "object",
             required: ["source", "sinks"],

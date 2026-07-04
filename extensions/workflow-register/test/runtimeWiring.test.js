@@ -11,6 +11,7 @@ function runtimeSource() {
     "bobWorkflowRunner.ts",
     "bobStepRuntime.ts",
     "bobWorkflowMessages.ts",
+    "webview/manualStepPanel.ts",
     "workflowInputPrompt.ts",
     "workflowRegisterService.ts",
     "core/engine.ts",
@@ -192,4 +193,15 @@ test("Bob adapter applies guardrails to Todo, result, and legacy top-level comma
   assert.match(source, /validateCommandGuardrails\(\{ guardrails: active\.guardrails \}, step\.resultCommand\)/)
   assert.match(source, /actionRegistry: this\.options\.actionRegistry/)
   assert.doesNotMatch(source, /vscode\.commands\.executeCommand\(definition\.command/)
+})
+
+test("Bob manual completion opens a panel without bypassing the held completion path", () => {
+  const source = runtimeSource()
+
+  assert.match(source, /manualCompletion: async \(\{ run, step \}\) => \{/)
+  assert.match(source, /this\.options\.stepRuntime\.hold\(/)
+  assert.match(source, /onHeldStep: \(active\) => this\.options\.onManualStepHeld\?\.\(\{ workflow: this\.options\.coreWorkflow, run, step, active \}\)/)
+  assert.match(source, /completeStepByKey\(key: string/)
+  assert.match(source, /captureHeldStepResult\(active\)/)
+  assert.match(source, /active\.task\.setStepComplete\?\.\(\)/)
 })

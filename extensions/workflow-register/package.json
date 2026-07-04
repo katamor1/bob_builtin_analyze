@@ -31,6 +31,7 @@
     "onCommand:workflowRegister.retryCurrentStep",
     "onCommand:workflowRegister.acceptCurrentStep",
     "onCommand:workflowRegister.runNextStep",
+    "onCommand:workflowRegister.openManualStepPanel",
     "onCommand:workflowRegister.acceptAndRunNextStep",
     "onCommand:workflowRegister.inspectCurrentStep",
     "onCommand:workflowRegister.pauseCurrentRun",
@@ -65,6 +66,7 @@
       { "command": "workflowRegister.retryCurrentStep", "title": "Bob ワークフロー: 現在のステップを再試行", "category": "Bob ワークフロー" },
       { "command": "workflowRegister.acceptCurrentStep", "title": "Bob ワークフロー: 現在のステップ結果を承認", "category": "Bob ワークフロー" },
       { "command": "workflowRegister.runNextStep", "title": "Bob ワークフロー: 次のステップを実行", "category": "Bob ワークフロー" },
+      { "command": "workflowRegister.openManualStepPanel", "title": "Bob ワークフロー: 手動操作ステップを開く", "category": "Bob ワークフロー" },
       { "command": "workflowRegister.acceptAndRunNextStep", "title": "Bob ワークフロー: 承認して次のステップを実行", "category": "Bob ワークフロー" },
       { "command": "workflowRegister.inspectCurrentStep", "title": "Bob ワークフロー: 現在のステップ状態を確認", "category": "Bob ワークフロー" },
       { "command": "workflowRegister.pauseCurrentRun", "title": "Bob ワークフロー: 実行中 run を中断", "category": "Bob ワークフロー" },
@@ -158,6 +160,7 @@
         { "command": "workflowRegister.retryCurrentStep" },
         { "command": "workflowRegister.acceptCurrentStep" },
         { "command": "workflowRegister.runNextStep" },
+        { "command": "workflowRegister.openManualStepPanel" },
         { "command": "workflowRegister.acceptAndRunNextStep" },
         { "command": "workflowRegister.inspectCurrentStep" },
         { "command": "workflowRegister.pauseCurrentRun" },
@@ -193,6 +196,11 @@
         {
           "command": "workflowRegister.pauseAfterCurrentStep",
           "when": "view == workflowRegister.runs && viewItem =~ /workflowRun\\.(running|reviewing|held)/",
+          "group": "inline"
+        },
+        {
+          "command": "workflowRegister.openManualStepPanel",
+          "when": "view == workflowRegister.runs && viewItem == workflowRun.held",
           "group": "inline"
         },
         {

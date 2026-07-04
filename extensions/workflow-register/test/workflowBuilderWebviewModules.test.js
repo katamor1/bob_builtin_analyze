@@ -49,6 +49,9 @@ test("workflow builder split modules expose approval, markdown body, help, and g
   assert.match(script, /add-approval/)
   assert.match(script, /delete-approval/)
   assert.match(script, /data-approval-field/)
+  assert.match(script, /data-user-action-field/)
+  assert.match(script, /renderUserActionStep/)
+  assert.match(script, /userActionPreviewHtml/)
   assert.match(script, /goto-help-target/)
 
   const guidedScript = renderWorkflowBuilderGuidedHelpScript()
@@ -76,6 +79,8 @@ test("workflow builder split modules expose approval, markdown body, help, and g
   assert.match(helpScript, /section\.includeState/)
   assert.match(helpScript, /section\.command/)
   assert.match(helpScript, /section\.result/)
+  assert.match(helpScript, /section\.userAction/)
+  assert.match(helpScript, /step\.userAction\.message/)
   assert.match(helpScript, /dynamicChoiceHelp/)
   assert.match(helpScript, /artifact\.producedBy/)
   assert.match(helpScript, /dataset\.stateKey/)
@@ -85,6 +90,7 @@ test("workflow builder split modules expose approval, markdown body, help, and g
 test("workflow builder help id registry exposes known ids", () => {
   assert.equal(WorkflowBuilderHelpIds.StepType, "step.type")
   assert.equal(WorkflowBuilderHelpIds.StepPrompt, "step.prompt")
+  assert.equal(WorkflowBuilderHelpIds.StepUserActionMessage, "step.userAction.message")
   assert.equal(WorkflowBuilderHelpIds.ArtifactProducedBy, "artifact.producedBy")
   assert.ok(workflowBuilderHelpIdValues.includes("result.source"))
   assert.equal(isWorkflowBuilderHelpId("guardrails.allowedCommands"), true)
@@ -93,6 +99,7 @@ test("workflow builder help id registry exposes known ids", () => {
 
 test("workflow builder help catalog covers high priority Japanese help entries", () => {
   assert.equal(workflowBuilderHelpCatalog["step.type"].labelJa, "Step 種別")
+  assert.match(workflowBuilderHelpCatalog["step.userAction.message"].summary, /手動操作ページ/)
   assert.equal(workflowBuilderHelpCatalog["preflight.failurePolicy"].options.stop.label, "stop")
   assert.match(workflowBuilderHelpCatalog["guardrails.allowedCommands"].summary, /許可/)
   assert.match(workflowBuilderHelpCatalog["approval.when"].example, /reviewContext\.changedFiles\.count/)

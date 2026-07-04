@@ -1,5 +1,5 @@
 import { WorkflowAuthoringInput, WorkflowAuthoringModel, WorkflowAuthoringStep } from "./workflowAuthoringModel"
-import { ResultSinkDefinition, ResultSourceDefinition, WorkflowApprovalRuleDefinition, WorkflowArtifactDefinition, WorkflowCompletionDefinition, WorkflowGuardrailsDefinition, WorkflowPreflightDefinition, WorkflowRequiresDefinition } from "./model"
+import { ResultSinkDefinition, ResultSourceDefinition, WorkflowApprovalRuleDefinition, WorkflowArtifactDefinition, WorkflowCompletionDefinition, WorkflowGuardrailsDefinition, WorkflowPreflightDefinition, WorkflowRequiresDefinition, WorkflowUserActionDefinition } from "./model"
 import { normalizeWorkflowName } from "./workflowScaffold"
 
 const yaml = require("js-yaml") as { dump(value: unknown, options?: Record<string, unknown>): string }
@@ -76,12 +76,24 @@ function serializeStep(step: WorkflowAuthoringStep): Record<string, unknown> {
     includeState: step.includeState && step.includeState.length > 0 ? step.includeState : undefined,
     maxResultBytes: step.maxResultBytes,
     stateRequired: step.stateRequired,
-    resultKey: step.resultKey
+    resultKey: step.resultKey,
+    userAction: userActionOrUndefined(step.userAction)
   })
   if (step.type === "command") return compactObject({ ...base, action: compactObject({ provider: step.action.provider, args: step.action.args && step.action.args.length > 0 ? step.action.args : undefined }) })
   if (step.type === "result") return compactObject({ ...base, result: serializeResult(step.result) })
   if (step.type === "agent" && step.result) return compactObject({ ...base, result: serializeResult(step.result) })
   return base
+}
+
+function userActionOrUndefined(userAction: WorkflowUserActionDefinition | undefined): WorkflowUserActionDefinition | undefined {
+  if (!userAction) return undefined
+  const next = compactObject({
+    message: userAction.message,
+    completeLabel: userAction.completeLabel,
+    confirmOnComplete: userAction.confirmOnComplete,
+    confirmMessage: userAction.confirmMessage
+  }) as WorkflowUserActionDefinition
+  return Object.keys(next).length > 0 ? next : undefined
 }
 
 function serializeResult(result: ResultSourceDefinition): Record<string, unknown> {

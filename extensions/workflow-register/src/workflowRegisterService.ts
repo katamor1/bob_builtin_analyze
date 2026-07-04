@@ -16,6 +16,7 @@ import {
   listRunSelections,
   pickRunSelection
 } from "./workflowRunSelection"
+import { ManualStepPanelController } from "./webview/manualStepPanel"
 import {
   deactivateRegisteredSource,
   registerWorkflows as registerWorkflowDefinitions,
@@ -34,6 +35,8 @@ export interface StepCompletionOptions extends StepCompletionExpectation {
   silent?: boolean
 }
 
+type RunCommandArg = string | { runId?: string; run?: { runId?: string } } | undefined
+
 export class WorkflowRegisterService implements vscode.Disposable {
   private readonly registeredIds = new Set<string>()
   private readonly watcher = vscode.workspace.createFileSystemWatcher(WORKFLOW_GLOB)
@@ -44,19 +47,35 @@ export class WorkflowRegisterService implements vscode.Disposable {
     executeCommand: (command, ...args) => vscode.commands.executeCommand(command, ...args)
   })
   private readonly customResultSinks: Array<{ type: string; handler: Parameters<ResultSinkRegistry["register"]>[1] }> = []
+  private readonly manualStepPanel: ManualStepPanelController
   private readonly runtimeFactory: WorkflowRuntimeFactory
   private agentProvider?: AgentProvider
   private registeredSource?: BobSourceLike
   private lastResult: RegistrationResult = { summary: "No workflow registration has run yet.", lines: [] }
 
   constructor(private readonly engineVersion: string) {
+    this.manualStepPanel = new ManualStepPanelController({
+      host: {
+        createWebviewPanel: (viewType, title, showOptions, options) => vscode.window.createWebviewPanel(
+          viewType,
+          title,
+          showOptions as vscode.ViewColumn,
+          options
+        ),
+        showWarningMessage: (message, options, ...items) => Promise.resolve(vscode.window.showWarningMessage(message, options, ...items)),
+        showInformationMessage: (message) => Promise.resolve(vscode.window.showInformationMessage(message)),
+        activeViewColumn: vscode.ViewColumn.Active
+      },
+      completeStepByKey: (activeKey) => this.stepRuntime.completeStepByKey(activeKey)
+    })
     this.runtimeFactory = new WorkflowRuntimeFactory({
       engineVersion,
       actionRegistry: this.actionRegistry,
       customResultSinks: this.customResultSinks,
       stepRuntime: this.stepRuntime,
       agentProvider: () => this.agentProvider,
-      inputsProvider: (workflow, provided) => collectBobWorkflowInputs(workflow, provided)
+      inputsProvider: (workflow, provided) => collectBobWorkflowInputs(workflow, provided),
+      onManualStepHeld: (input) => this.manualStepPanel.show(input)
     })
     this.watcher.onDidCreate(() => this.reload({ showReport: false }))
     this.watcher.onDidChange(() => this.reload({ showReport: false }))
@@ -98,6 +117,54 @@ export class WorkflowRegisterService implements vscode.Disposable {
     })
     if (!options.silent) await vscode.window.showInformationMessage(message)
     return message
+  }
+
+  async openManualStepPanel(runArg?: RunCommandArg): Promise<string> {
+    const trustError = await requireTrustedWorkspace("open manual step panel")
+    if (trustError) return trustError
+    if (this.coreWorkflows.size === 0) await this.reload({ showReport: false })
+    const roots = await this.workflowRootCandidates()
+    if (roots.length === 0) {
+      const message = "No workspace folder is open."
+      await vscode.window.showWarningMessage(message)
+      return message
+    }
+    const runId = resolveRunId(runArg)
+    const selection = runId
+      ? await findRunSelection(runId, roots, (root) => this.runtimeFactory.createRunStore(root))
+      : await pickRunSelection(roots, (root) => this.runtimeFactory.createRunStore(root))
+    if (!selection) {
+      const message = runId ? `Workflow run not found: ${runId}` : "No workflow run selected."
+      await vscode.window.showWarningMessage(message)
+      return message
+    }
+    const runStore = this.runtimeFactory.createRunStore(selection.root)
+    const run = selection.run ?? await runStore.loadRun(selection.runId)
+    if (!run) {
+      const message = `Workflow run not found: ${selection.runId}`
+      await vscode.window.showWarningMessage(message)
+      return message
+    }
+    const workflow = this.coreWorkflows.get(run.workflowId)
+    if (!workflow) {
+      const message = `Workflow definition is not loaded: ${run.workflowId}`
+      await vscode.window.showWarningMessage(message)
+      return message
+    }
+    const stepId = run.currentStep ?? run.steps.find((candidate) => candidate.status === "held")?.id
+    const step = stepId ? workflow.engineSteps.find((candidate) => candidate.id === stepId) : undefined
+    if (!step) {
+      const message = `Workflow run has no current manual step: ${run.runId}`
+      await vscode.window.showWarningMessage(message)
+      return message
+    }
+    const active = this.stepRuntime.list().find((candidate) => (
+      candidate.runId === run.runId &&
+      candidate.workflowId === run.workflowId &&
+      candidate.stepId === step.id
+    ))
+    await this.manualStepPanel.show({ workflow, run, step, active })
+    return `Opened manual step panel: ${run.runId}`
   }
 
   registerActionProvider(provider: ActionProvider): void {
@@ -361,4 +428,12 @@ export class WorkflowRegisterService implements vscode.Disposable {
     }
     return update.result
   }
+}
+
+function resolveRunId(value: RunCommandArg): string | undefined {
+  if (typeof value === "string") return value
+  if (!value || typeof value !== "object") return undefined
+  if (typeof value.runId === "string") return value.runId
+  if (value.run && typeof value.run.runId === "string") return value.run.runId
+  return undefined
 }
