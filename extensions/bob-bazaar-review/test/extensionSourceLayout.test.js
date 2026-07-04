@@ -60,3 +60,25 @@ test("workflow integration modules live under the workflow source boundary", () 
   assert.match(providersSource, /from "\.\/workflowActions"/)
   assert.match(providersSource, /from "\.\/workflowRegisterBridge"/)
 })
+
+test("bazaar review modules live under the bazaar source boundary", () => {
+  for (const fileName of [
+    "bazaar.ts",
+    "bazaarReviewCommands.ts",
+    "bzrPathTrust.ts",
+    "markdownFence.ts",
+    "reviewLimits.ts",
+    "reviewPacket.ts",
+    "reviewPacketSelection.ts",
+    "reviewTarget.ts",
+    "revisionInfo.ts",
+    "textEncoding.ts"
+  ]) {
+    assert.ok(fs.existsSync(path.join(extensionRoot, "src", "bazaar", fileName)), `bazaar/${fileName} must exist`)
+    assert.ok(!fs.existsSync(path.join(extensionRoot, "src", fileName)), `${fileName} must not stay at the src root`)
+  }
+
+  const commandSource = readSrc("bazaar", "bazaarReviewCommands.ts")
+  assert.match(commandSource, /from "\.\/bazaar"/)
+  assert.match(commandSource, /from "\.\/reviewPacket"/)
+})

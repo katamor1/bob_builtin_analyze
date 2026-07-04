@@ -1,4 +1,4 @@
-import { BazaarError } from "../bazaar"
+import { BazaarError } from "../bazaar/bazaar"
 import { renderReviewResultMarkdown } from "../projectRules/markdown"
 import { initializeProjectRules, loadProjectChecklist, loadReviewResultSchema } from "../projectRules/io"
 import { getLatestReviewResult, getReviewResult } from "../projectRules/reviewResultsStore"

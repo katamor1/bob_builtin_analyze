@@ -1,4 +1,4 @@
-import { BazaarError } from "../bazaar"
+import { BazaarError } from "../bazaar/bazaar"
 
 export interface ToolDef {
   name: string

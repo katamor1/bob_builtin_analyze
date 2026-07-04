@@ -22,7 +22,7 @@ test("MCP server separates JSON-RPC plumbing from Bazaar and project-rules tool 
   assert.doesNotMatch(serverSource, /from "\.\.\/projectRules\//)
 
   const bazaarToolsSource = readMcpSource("bazaarTools.ts")
-  assert.match(bazaarToolsSource, /from "\.\.\/bazaar"/)
+  assert.match(bazaarToolsSource, /from "\.\.\/bazaar\/bazaar"/)
 
   const projectRulesToolsSource = readMcpSource("projectRulesTools.ts")
   assert.match(projectRulesToolsSource, /from "\.\.\/projectRules\//)

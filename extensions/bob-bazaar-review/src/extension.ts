@@ -1,5 +1,5 @@
 import * as vscode from "vscode"
-import { reviewRange, reviewRevision } from "./bazaarReviewCommands"
+import { reviewRange, reviewRevision } from "./bazaar/bazaarReviewCommands"
 import { captureReviewResult, saveReviewResultFromClipboard } from "./projectRules/resultCapture"
 import { validateActiveReviewResultJson } from "./reviewResultValidationCommand"
 import { openBazaarReviewGui } from "./ui/reviewGui"

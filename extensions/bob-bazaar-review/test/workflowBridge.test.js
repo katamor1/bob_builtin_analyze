@@ -95,7 +95,7 @@ test("workspace initialization previews and confirms template refresh before ove
 })
 
 test("Bazaar changed file parser ignores timestamp suffixes on plus-plus-plus paths", () => {
-  const { parseChangedFileEntries } = require("../out/revisionInfo")
+  const { parseChangedFileEntries } = require("../out/bazaar/revisionInfo")
   const diff = [
     "=== modified file 'test1.md'",
     "--- test1.md\t2026-05-16 11:24:18 +0000",
@@ -111,7 +111,7 @@ test("Bazaar changed file parser ignores timestamp suffixes on plus-plus-plus pa
 })
 
 test("Bazaar changed file parser handles renamed and binary files", () => {
-  const { parseChangedFileEntries } = require("../out/revisionInfo")
+  const { parseChangedFileEntries } = require("../out/bazaar/revisionInfo")
   const diff = [
     "=== renamed file 'src/old name.c' => 'src/new name.c'",
     "=== added file 'assets/logo.png'",
@@ -125,7 +125,7 @@ test("Bazaar changed file parser handles renamed and binary files", () => {
 })
 
 test("added file content section marks binary files without reading them as text", async () => {
-  const { buildAddedFilesContentSection } = require("../out/revisionInfo")
+  const { buildAddedFilesContentSection } = require("../out/bazaar/revisionInfo")
   let catCalls = 0
   const client = {
     cat: async () => {

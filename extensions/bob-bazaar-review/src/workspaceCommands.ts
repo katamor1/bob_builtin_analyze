@@ -1,5 +1,5 @@
 import * as vscode from "vscode"
-import { resolveBzrPath } from "./bzrPathTrust"
+import { resolveBzrPath } from "./bazaar/bzrPathTrust"
 import { configureWorkspaceMcpServer } from "./mcpConfig"
 import { initializeProjectRules } from "./projectRules/io"
 import { resolveBobWorkspaceFolder } from "./workspace/workspaceResolver"

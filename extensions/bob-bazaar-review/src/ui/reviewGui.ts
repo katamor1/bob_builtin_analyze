@@ -1,21 +1,21 @@
 import * as vscode from "vscode"
-import { BazaarClient } from "../bazaar"
+import { BazaarClient } from "../bazaar/bazaar"
 import { isBobCodeExtensionAvailable } from "../bobCodeExtension"
 import { addMarkdownPacketToBobContext } from "../bobContext"
 import { getBobWorkspaceStatus, initializeBobWorkspaceFromTemplates } from "../bobWorkspaceInit"
-import { resolveBzrPath } from "../bzrPathTrust"
+import { resolveBzrPath } from "../bazaar/bzrPathTrust"
 import { buildProjectRulesSection } from "../projectRules/packet"
 import { loadProjectChecklistRequired, loadReviewResultSchemaRequired } from "../projectRules/io"
-import { buildReviewPacket } from "../reviewPacket"
-import { buildReviewPacketState, REVIEW_PACKET_STATE_KEY } from "../reviewPacketSelection"
-import { clampMaxAddedFileContentBytes, clampMaxDiffBytes, maxBufferForDiffBytes } from "../reviewLimits"
+import { buildReviewPacket } from "../bazaar/reviewPacket"
+import { buildReviewPacketState, REVIEW_PACKET_STATE_KEY } from "../bazaar/reviewPacketSelection"
+import { clampMaxAddedFileContentBytes, clampMaxDiffBytes, maxBufferForDiffBytes } from "../bazaar/reviewLimits"
 import {
   buildTargetMetadataSection,
   parseTargetRequest,
   prepareTarget,
   validateTargetRequest
-} from "../reviewTarget"
-import type { TargetRequest } from "../reviewTarget"
+} from "../bazaar/reviewTarget"
+import type { TargetRequest } from "../bazaar/reviewTarget"
 import { completeCurrentWorkflowStepAfterGuiAction } from "../workflow/workflowStepCompletion"
 import { resolveBazaarWorkspaceFolder, resolveBobWorkspaceFolder } from "../workspace/workspaceResolver"
 import { renderHtml } from "./reviewGuiHtml"

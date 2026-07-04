@@ -1,4 +1,4 @@
-import { BazaarClient, BazaarError } from "../bazaar"
+import { BazaarClient, BazaarError } from "../bazaar/bazaar"
 import {
   commandText,
   objectSchema,

@@ -3,7 +3,7 @@ import {
   loadProjectChecklistRequired,
   loadReviewResultSchemaRequired
 } from "../projectRules/io"
-import { selectReviewPacketText } from "../reviewPacketSelection"
+import { selectReviewPacketText } from "../bazaar/reviewPacketSelection"
 import { BazaarReviewContextResult, buildReviewContextResult } from "./workflowBridge"
 import {
   firstStringArg,
