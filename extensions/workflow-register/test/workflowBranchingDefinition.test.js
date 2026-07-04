@@ -164,3 +164,95 @@ steps:
   assert.match(messages, /loop references unknown loop 'missing-loop'/)
   assert.match(messages, /condition must specify exactly one operator/)
 })
+
+test("validator rejects loop transitions that do not target the loop entry step", () => {
+  const validation = validateWorkflowText({
+    sourceId: "workflow-register",
+    filePath: "C:/repo/.bob/workflows/invalid-loop-entry/WORKFLOW.md",
+    text: workflowText(`
+branching:
+  enabled: true
+  loops:
+    - id: revise-loop
+      entryStep: collect-input
+      maxIterations: 5
+      extensionSize: 2
+steps:
+  - id: collect-input
+    title: Collect input
+    type: manual
+    form:
+      resultKey: input
+      fields: []
+  - id: regenerate
+    title: Regenerate
+    type: agent
+    resultKey: draft
+    prompt: Regenerate.
+  - id: review
+    title: Review
+    type: manual
+    approval:
+      resultKey: approval
+    transition:
+      decisions:
+        - id: retry
+          when:
+            stateKey: approval.decision
+            equals: rejected
+          goto: regenerate
+          loop: revise-loop
+      default: next
+`)
+  })
+
+  assert.equal(validation.ok, false)
+  assert.match(
+    validation.diagnostics.map((item) => item.message).join("\n"),
+    /loop 'revise-loop' must target entryStep 'collect-input'/
+  )
+})
+
+test("validator rejects transition conditions that read state produced only by a later step", () => {
+  const validation = validateWorkflowText({
+    sourceId: "workflow-register",
+    filePath: "C:/repo/.bob/workflows/future-state/WORKFLOW.md",
+    text: workflowText(`
+branching:
+  enabled: true
+  loops:
+    - id: retry-loop
+      entryStep: first
+      maxIterations: 5
+      extensionSize: 2
+steps:
+  - id: first
+    title: First
+    type: command
+    action:
+      provider: sample.first
+    resultKey: firstResult
+    transition:
+      decisions:
+        - id: use-future-state
+          when:
+            stateKey: laterResult.status
+            equals: retry
+          goto: first
+          loop: retry-loop
+      default: next
+  - id: second
+    title: Second
+    type: command
+    action:
+      provider: sample.second
+    resultKey: laterResult
+`)
+  })
+
+  assert.equal(validation.ok, false)
+  assert.match(
+    validation.diagnostics.map((item) => item.message).join("\n"),
+    /condition stateKey 'laterResult.status' is produced by later step 'second'/
+  )
+})

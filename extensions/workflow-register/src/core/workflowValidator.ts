@@ -31,6 +31,12 @@ export interface ValidateWorkflowResult {
   diagnostics: WorkflowDiagnostic[]
 }
 
+interface ResultKeyProducer {
+  stepId: string
+  source: string
+  index: number
+}
+
 export function validateWorkflowText(options: ValidateWorkflowTextOptions): ValidateWorkflowResult {
   const parsed = parseWorkflowMarkdown({ sourceId: options.sourceId, filePath: options.filePath, text: options.text })
   const diagnostics = parsed.diagnostics.map((line) => diagnosticFromParserLine(line, options.filePath))
@@ -51,7 +57,7 @@ export function validateCoreWorkflow(
   const filePath = options.filePath
   const stepIds = new Set<string>()
   const stepIndexes = new Map<string, number>()
-  const resultKeyProducers = new Map<string, { stepId: string; source: string }[]>()
+  const resultKeyProducers = new Map<string, ResultKeyProducer[]>()
 
   if (workflow.todoRequired && (workflow.todos ?? []).length === 0) {
     diagnostics.push(error(filePath, "todoRequired is true but no todo items were found."))
@@ -68,10 +74,10 @@ export function validateCoreWorkflow(
     if (stepIds.has(step.id)) diagnostics.push(error(filePath, `Duplicate step id '${step.id}'.`))
     stepIds.add(step.id)
     stepIndexes.set(step.id, index)
-    if ("resultKey" in step && step.resultKey) addResultKeyProducer(resultKeyProducers, step.resultKey, step.id, "resultKey")
+    if ("resultKey" in step && step.resultKey) addResultKeyProducer(resultKeyProducers, step.resultKey, step.id, "resultKey", index)
     if (step.type === "manual") {
-      if (step.form?.resultKey) addResultKeyProducer(resultKeyProducers, step.form.resultKey, step.id, "form resultKey")
-      if (step.approval?.resultKey) addResultKeyProducer(resultKeyProducers, step.approval.resultKey, step.id, "approval resultKey")
+      if (step.form?.resultKey) addResultKeyProducer(resultKeyProducers, step.form.resultKey, step.id, "form resultKey", index)
+      if (step.approval?.resultKey) addResultKeyProducer(resultKeyProducers, step.approval.resultKey, step.id, "approval resultKey", index)
     }
     if (step.maxResultBytes !== undefined && step.maxResultBytes <= 0) {
       diagnostics.push(error(filePath, `Step '${step.id}' maxResultBytes must be greater than zero.`))
@@ -83,7 +89,7 @@ export function validateCoreWorkflow(
 
   validateTodoStepMapping(workflow, stepIds, diagnostics, filePath)
   validateStateReferences(workflow.engineSteps, resultKeys, diagnostics, filePath)
-  validateBranching(workflow, stepIndexes, resultKeys, diagnostics, filePath)
+  validateBranching(workflow, stepIndexes, resultKeyProducers, diagnostics, filePath)
   validateArtifacts(workflow, stepIds, diagnostics, filePath)
   validateInputs(workflow, diagnostics, filePath)
   validatePreflight(workflow, options, diagnostics, filePath)
@@ -93,18 +99,19 @@ export function validateCoreWorkflow(
 }
 
 function addResultKeyProducer(
-  producers: Map<string, { stepId: string; source: string }[]>,
+  producers: Map<string, ResultKeyProducer[]>,
   key: string,
   stepId: string,
-  source: string
+  source: string,
+  index: number
 ): void {
   const items = producers.get(key) ?? []
-  items.push({ stepId, source })
+  items.push({ stepId, source, index })
   producers.set(key, items)
 }
 
 function validateResultKeyConflicts(
-  producers: Map<string, { stepId: string; source: string }[]>,
+  producers: Map<string, ResultKeyProducer[]>,
   diagnostics: WorkflowDiagnostic[],
   filePath: string
 ): void {
@@ -170,16 +177,18 @@ function validateStateReferences(steps: EngineStep[], resultKeys: Set<string>, d
 function validateBranching(
   workflow: CoreWorkflowDefinition,
   stepIndexes: Map<string, number>,
-  resultKeys: Set<string>,
+  resultKeyProducers: Map<string, ResultKeyProducer[]>,
   diagnostics: WorkflowDiagnostic[],
   filePath: string
 ): void {
   const branching = workflow.branching
   const loopIds = new Set<string>()
+  const loopEntrySteps = new Map<string, string>()
   if (branching) {
     for (const loop of branching.loops) {
       if (loopIds.has(loop.id)) diagnostics.push(error(filePath, `Duplicate branch loop id '${loop.id}'.`))
       loopIds.add(loop.id)
+      loopEntrySteps.set(loop.id, loop.entryStep)
       if (!stepIndexes.has(loop.entryStep)) {
         diagnostics.push(error(filePath, `Branch loop '${loop.id}' entryStep references unknown step '${loop.entryStep}'.`))
       }
@@ -197,7 +206,7 @@ function validateBranching(
     if (branching?.enabled !== true) {
       diagnostics.push(error(filePath, `Step '${step.id}' defines transition but branching.enabled is not true.`))
     }
-    validateTransition(step, stepIndexes, loopIds, resultKeys, diagnostics, filePath)
+    validateTransition(step, stepIndexes, loopIds, loopEntrySteps, resultKeyProducers, diagnostics, filePath)
   }
 }
 
@@ -205,7 +214,8 @@ function validateTransition(
   step: EngineStep,
   stepIndexes: Map<string, number>,
   loopIds: Set<string>,
-  resultKeys: Set<string>,
+  loopEntrySteps: Map<string, string>,
+  resultKeyProducers: Map<string, ResultKeyProducer[]>,
   diagnostics: WorkflowDiagnostic[],
   filePath: string
 ): void {
@@ -217,12 +227,12 @@ function validateTransition(
       diagnostics.push(error(filePath, `Step '${step.id}' has Duplicate transition decision id '${decision.id}'.`))
     }
     decisionIds.add(decision.id)
-    validateTransitionCondition(step.id, decision.id, decision.when, resultKeys, diagnostics, filePath)
-    validateGoto(step, decision.goto, decision.loop, stepIndexes, loopIds, diagnostics, filePath)
+    validateTransitionCondition(step.id, decision.id, decision.when, stepIndexes, resultKeyProducers, diagnostics, filePath)
+    validateGoto(step, decision.goto, decision.loop, stepIndexes, loopIds, loopEntrySteps, diagnostics, filePath)
   }
   const defaultAction = transition.default ?? "next"
   if (defaultAction !== "next" && defaultAction !== "end" && defaultAction !== "fail") {
-    validateGoto(step, defaultAction, undefined, stepIndexes, loopIds, diagnostics, filePath, "transition default")
+    validateGoto(step, defaultAction, undefined, stepIndexes, loopIds, loopEntrySteps, diagnostics, filePath, "transition default")
   }
 }
 
@@ -232,6 +242,7 @@ function validateGoto(
   loopId: string | undefined,
   stepIndexes: Map<string, number>,
   loopIds: Set<string>,
+  loopEntrySteps: Map<string, string>,
   diagnostics: WorkflowDiagnostic[],
   filePath: string,
   label = "goto"
@@ -242,6 +253,10 @@ function validateGoto(
   if (!stepIndexes.has(goto)) {
     diagnostics.push(error(filePath, `Step '${step.id}' ${label} references unknown step '${goto}'.`))
     return
+  }
+  const loopEntryStep = loopId ? loopEntrySteps.get(loopId) : undefined
+  if (loopEntryStep && goto !== loopEntryStep) {
+    diagnostics.push(error(filePath, `Step '${step.id}' ${label} loop '${loopId}' must target entryStep '${loopEntryStep}', not '${goto}'.`))
   }
   const currentIndex = stepIndexes.get(step.id) ?? 0
   const targetIndex = stepIndexes.get(goto) ?? currentIndex
@@ -254,7 +269,8 @@ function validateTransitionCondition(
   stepId: string,
   decisionId: string,
   condition: WorkflowTransitionConditionDefinition,
-  resultKeys: Set<string>,
+  stepIndexes: Map<string, number>,
+  resultKeyProducers: Map<string, ResultKeyProducer[]>,
   diagnostics: WorkflowDiagnostic[],
   filePath: string
 ): void {
@@ -269,8 +285,20 @@ function validateTransitionCondition(
     diagnostics.push(error(filePath, `Step '${stepId}' decision '${decisionId}' condition must specify exactly one operator.`))
   }
   const rootKey = condition.stateKey.split(".")[0]
-  if (rootKey && !resultKeys.has(rootKey)) {
+  const producers = rootKey ? resultKeyProducers.get(rootKey) : undefined
+  if (rootKey && !producers) {
     diagnostics.push(warning(filePath, `Step '${stepId}' decision '${decisionId}' condition stateKey '${condition.stateKey}' is not produced by a workflow resultKey.`))
+    return
+  }
+  const currentIndex = stepIndexes.get(stepId)
+  if (currentIndex === undefined || !producers) return
+  const hasPriorProducer = producers.some((producer) => producer.index <= currentIndex)
+  if (!hasPriorProducer) {
+    const firstLaterProducer = [...producers].sort((left, right) => left.index - right.index)[0]
+    diagnostics.push(error(
+      filePath,
+      `Step '${stepId}' decision '${decisionId}' condition stateKey '${condition.stateKey}' is produced by later step '${firstLaterProducer.stepId}'.`
+    ))
   }
 }
 

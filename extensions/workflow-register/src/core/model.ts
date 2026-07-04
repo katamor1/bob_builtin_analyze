@@ -113,7 +113,7 @@ export interface WorkflowStepTransitionDefinition {
   default: WorkflowTransitionDefaultAction
 }
 
-export type WorkflowTransitionDefaultAction = "next" | "end" | "fail" | string
+export type WorkflowTransitionDefaultAction = string
 
 export interface WorkflowTransitionDecisionDefinition {
   id: string
