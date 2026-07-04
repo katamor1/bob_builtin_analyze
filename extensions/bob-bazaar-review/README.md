@@ -356,6 +356,7 @@ npm ci
 npm run dependency:policy
 npm run architecture:policy
 npm run unused:report
+npm run artifact:policy
 npm run audit:prod
 npm test
 npm run package

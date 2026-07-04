@@ -12,6 +12,7 @@ test("bob-bazaar-review dependency policy requires a committed lockfile with pro
   assert.equal(packageJson.scripts["dependency:policy"], "node --test test/dependencyPolicy.test.js")
   assert.equal(packageJson.scripts["architecture:policy"], "node ../../scripts/check-import-cycles.js src")
   assert.equal(packageJson.scripts["unused:report"], "node ../../scripts/run-unused-checks.js")
+  assert.equal(packageJson.scripts["artifact:policy"], "node ../../scripts/check-artifact-size-policy.js --max-bytes 12000 templates")
   assert.equal(packageJson.scripts["audit:prod"], "npm audit --omit=dev --audit-level=high")
   assert.equal(packageJson.scripts["package:policy"], "node ../../scripts/check-vsix-policy.js --max-bytes 200000")
   assert.equal(packageJson.devDependencies.knip, "^5.0.0")
@@ -50,6 +51,7 @@ test("bob-bazaar-review CI uses npm ci, dependency policy, production audit, tes
   assert.match(job, /run: npm run dependency:policy/)
   assert.match(job, /run: npm run architecture:policy/)
   assert.match(job, /run: npm run unused:report/)
+  assert.match(job, /run: npm run artifact:policy/)
   assert.match(job, /run: npm run audit:prod/)
   assert.match(job, /run: npm test/)
   assert.match(job, /run: npm run package/)
@@ -79,6 +81,7 @@ test("bob-bazaar-review README documents generated artifacts, package budget, de
     "npm run dependency:policy",
     "npm run architecture:policy",
     "npm run unused:report",
+    "npm run artifact:policy",
     "npm run audit:prod",
     "npm run package:policy",
     "Trusted Workspace"
