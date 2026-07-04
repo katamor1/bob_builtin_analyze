@@ -115,7 +115,7 @@
 | tracking id | source | priority | summary | status | notes |
 | --- | --- | --- | --- | --- | --- |
 | `WFR-MAINT-H` | `workflow-register-maintainability-review...:401` | High | model 分割、source map 方針、madge、command ID guardrail、`type-fixes.d.ts` 撤去 | done | command ID guardrail は `WFR-01`、`out/**/*.map` 非同梱方針は `5befb9dd`、import cycle gate は `7e1658e4`、`type-fixes.d.ts` 撤去は `61768663`、model 分割は `53d18349` で対応済み。 |
-| `WFR-MAINT-M` | `workflow-register-maintainability-review...:409` | Medium | lockfile / `npm ci`、unused checks、service 分割、parser re-export 整理、VSIX budget | partial | `59a34c5b` で lockfile、`npm ci`、dependency policy、production audit、test、VSIX package の CI gate、`5befb9dd` で VSIX contents / size policy、`36c458f9` で report-only unused checks を追加済み。service 分割、parser re-export 整理は残。 |
+| `WFR-MAINT-M` | `workflow-register-maintainability-review...:409` | Medium | lockfile / `npm ci`、unused checks、service 分割、parser re-export 整理、VSIX budget | partial | `59a34c5b` で lockfile、`npm ci`、dependency policy、production audit、test、VSIX package の CI gate、`5befb9dd` で VSIX contents / size policy、`36c458f9` で report-only unused checks、`02bbd22b` で parser re-export 整理を対応済み。service 分割は残。 |
 | `WFR-MAINT-L` | `workflow-register-maintainability-review...:417` | Low | core 段階分割、README 追記、PR metrics | backlog |  |
 | `BBR-MAINT-H` | `bob-bazaar-review-maintainability-review...:452` | High | MCP allowed roots、MCP server 分割、runtime clamp、VSIX budget、madge | done | MCP allowed roots は `BBR-01`、runtime clamp は `BBR-04` / `BBR-16`、VSIX contents / size policy は `5befb9dd`、import cycle gate は `7e1658e4`、MCP server 分割は `834e2a8b` で対応済み。 |
 | `BBR-MAINT-M` | `bob-bazaar-review-maintainability-review...:460` | Medium | src 構造整理、extension composition root 化、packet URI/state 化、unused checks、lockfile | partial | `59a34c5b` で lockfile、`npm ci`、dependency policy、production audit、test、VSIX package の CI gate を追加済み。packet URI/state は `BBR-07`、report-only unused checks は `36c458f9` で対応済み。src 構造整理、extension composition root 化は残。 |
@@ -194,3 +194,4 @@
 | `25719710` | `BBR-10` | back up existing review-result JSON and Markdown before atomic overwrite |
 | `b21ff2d2` | `BBR-11` | reject oversized MCP stdio requests and return JSON-RPC parse errors |
 | `a0fceb5a` | `BBR-12` | preview and confirm workflow template refresh before overwriting existing files |
+| `02bbd22b` | `WFR-MAINT-M` | consolidate workflow-register parser public export on the directory barrel |
