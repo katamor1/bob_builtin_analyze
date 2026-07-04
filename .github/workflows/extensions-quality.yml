@@ -46,6 +46,9 @@ jobs:
       - name: Architecture policy
         run: npm run architecture:policy
 
+      - name: Unused dependency report
+        run: npm run unused:report
+
       - name: Production dependency audit
         run: npm run audit:prod
 
@@ -86,6 +89,9 @@ jobs:
       - name: Architecture policy
         run: npm run architecture:policy
 
+      - name: Unused dependency report
+        run: npm run unused:report
+
       - name: Production dependency audit
         run: npm run audit:prod
 
@@ -125,6 +131,9 @@ jobs:
 
       - name: Architecture policy
         run: npm run architecture:policy
+
+      - name: Unused dependency report
+        run: npm run unused:report
 
       - name: Production dependency audit
         run: npm run audit:prod
