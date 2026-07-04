@@ -2,6 +2,7 @@ import * as fs from "node:fs/promises"
 import * as path from "node:path"
 import { applyTemplate, loadPromptTemplates } from "../templates/templateLoader"
 import { relativePosix, writeJsonFile, writeTextFile } from "./fileSystem"
+import { normalizeReviewProcessingLimits, truncateUtf8Text, type ReviewProcessingLimits } from "./limits"
 import type { CodeAnalysisResult, DiffSummary, DocumentExtractionResult, EvidenceRef, ReviewInput, TraceabilityResult } from "./types"
 
 const PRIVACY_NOTICE_JA = "生成物は社内設計書・顧客仕様・ソースコード・raw diff を含む可能性があります。"
@@ -14,8 +15,11 @@ export async function buildReviewPackage(input: {
   documents: DocumentExtractionResult
   codeAnalysis: CodeAnalysisResult
   traceability: TraceabilityResult
-}): Promise<void> {
+  limits?: Partial<ReviewProcessingLimits>
+}): Promise<string[]> {
   const { outDir, reviewInput, diff, documents, codeAnalysis, traceability } = input
+  const limits = normalizeReviewProcessingLimits(input.limits)
+  const packageWarnings: string[] = []
   await fs.mkdir(outDir, { recursive: true })
   await writePrompts(outDir)
   await writeCodeSlices(outDir, codeAnalysis)
@@ -37,31 +41,39 @@ export async function buildReviewPackage(input: {
   await writeJsonFile(path.join(outDir, "evidence-index.json"), { evidence: evidence.map(stripEvidenceText) })
   await writeJsonFile(path.join(outDir, "traceability-map.json"), { rows: traceability.rows, warnings: traceability.warnings })
 
-  await writeTextFile(path.join(outDir, "manifest.yaml"), buildManifest(reviewInput, diff, evidence, input.workspaceRoot, outDir))
-  await writeTextFile(path.join(outDir, "change-summary.md"), buildChangeSummary(reviewInput, diff, codeAnalysis, documents))
-  await writeTextFile(path.join(outDir, "diff-context.md"), buildDiffContext(diff, codeAnalysis))
+  const changeSummary = buildChangeSummary(reviewInput, diff, codeAnalysis, documents)
+  const diffContext = buildDiffContext(diff, codeAnalysis, limits, packageWarnings)
+  let deterministicChecks = buildDeterministicChecks(documents, codeAnalysis, traceability, packageWarnings)
+
+  await writeTextFile(path.join(outDir, "change-summary.md"), changeSummary)
+  await writeTextFile(path.join(outDir, "diff-context.md"), diffContext)
   await writeTextFile(path.join(outDir, "document-excerpts.md"), documents.excerptsMarkdown)
   await writeTextFile(path.join(outDir, "traceability-map.md"), traceability.markdown)
-  await writeTextFile(path.join(outDir, "deterministic-checks.md"), buildDeterministicChecks(documents, codeAnalysis, traceability))
 
   const templates = await loadPromptTemplates()
-  const bobInput = applyTemplate(templates.bobInputTemplate, {
+  const bobInputSource = applyTemplate(templates.bobInputTemplate, {
     "prompt.system": templates.system,
     "prompt.task": templates.task,
     "prompt.output_format": templates.outputFormat,
     "review.summary": buildReviewSummary(reviewInput, diff),
-    change_summary: buildChangeSummary(reviewInput, diff, codeAnalysis, documents),
-    deterministic_checks: buildDeterministicChecks(documents, codeAnalysis, traceability),
+    change_summary: changeSummary,
+    deterministic_checks: deterministicChecks,
     document_excerpts: documents.excerptsMarkdown,
-    diff_context: buildDiffContext(diff, codeAnalysis),
+    diff_context: diffContext,
     changed_symbols_summary: codeAnalysis.summaryMarkdown,
     traceability_map: traceability.markdown,
     evidence_index_summary: evidenceIndexSummary(evidence)
   })
+  const bobInput = limitBobInput(bobInputSource, limits, packageWarnings)
+  deterministicChecks = buildDeterministicChecks(documents, codeAnalysis, traceability, packageWarnings)
+
+  await writeTextFile(path.join(outDir, "manifest.yaml"), buildManifest(reviewInput, diff, evidence, input.workspaceRoot, outDir, packageWarnings))
+  await writeTextFile(path.join(outDir, "deterministic-checks.md"), deterministicChecks)
   await writeTextFile(path.join(outDir, "bob-input.md"), bobInput)
+  return packageWarnings
 }
 
-function buildManifest(reviewInput: ReviewInput, diff: DiffSummary, evidence: EvidenceRef[], workspaceRoot: string, outDir: string): string {
+function buildManifest(reviewInput: ReviewInput, diff: DiffSummary, evidence: EvidenceRef[], workspaceRoot: string, outDir: string, packageWarnings: string[]): string {
   return [
     "package_version: 1",
     `created_at: ${JSON.stringify(new Date().toISOString())}`,
@@ -88,6 +100,8 @@ function buildManifest(reviewInput: ReviewInput, diff: DiffSummary, evidence: Ev
     "    - .bob-review/",
     "    - .bob-trace/ai-traceability-draft/",
     "    - .bob/workflows/runs/",
+    packageWarnings.length > 0 ? "truncation_warnings:" : undefined,
+    ...packageWarnings.map((warning) => `  - ${JSON.stringify(warning)}`),
     ""
   ].filter((line): line is string => line !== undefined).join("\n")
 }
@@ -129,7 +143,12 @@ function buildChangeSummary(reviewInput: ReviewInput, diff: DiffSummary, codeAna
   ].join("\n")
 }
 
-function buildDiffContext(diff: DiffSummary, codeAnalysis: CodeAnalysisResult): string {
+function buildDiffContext(diff: DiffSummary, codeAnalysis: CodeAnalysisResult, limits: ReviewProcessingLimits, packageWarnings: string[]): string {
+  const suffix = "\n\n[truncated: maxRawDiffBytes]\n"
+  const limitedDiff = truncateUtf8Text(diff.unifiedDiff ?? "", limits.maxRawDiffBytes, suffix)
+  if (limitedDiff.truncated) {
+    packageWarnings.push(`diff-context raw unified diff exceeded maxRawDiffBytes (${limitedDiff.originalBytes} > ${limits.maxRawDiffBytes}); truncated.`)
+  }
   return [
     "# 差分コンテキスト",
     "",
@@ -137,20 +156,21 @@ function buildDiffContext(diff: DiffSummary, codeAnalysis: CodeAnalysisResult): 
     "## Raw unified diff",
     "",
     "```diff",
-    diff.unifiedDiff ?? "",
+    limitedDiff.text,
     "```",
     ""
   ].join("\n")
 }
 
-function buildDeterministicChecks(documents: DocumentExtractionResult, codeAnalysis: CodeAnalysisResult, traceability: TraceabilityResult): string {
-  const warnings = [...documents.warnings, ...codeAnalysis.warnings, ...traceability.warnings]
+function buildDeterministicChecks(documents: DocumentExtractionResult, codeAnalysis: CodeAnalysisResult, traceability: TraceabilityResult, packageWarnings: string[] = []): string {
+  const warnings = [...documents.warnings, ...codeAnalysis.warnings, ...traceability.warnings, ...packageWarnings]
   return [
     "# 決定論的チェック結果",
     "",
     `- document extraction warnings: ${documents.warnings.length}`,
     `- code analysis warnings: ${codeAnalysis.warnings.length}`,
     `- traceability warnings: ${traceability.warnings.length}`,
+    `- package warnings: ${packageWarnings.length}`,
     `- evidence_id duplicates: ${hasDuplicateEvidenceIds([...documents.evidence, ...codeAnalysis.evidence]) ? "detected" : "none"}`,
     `- privacy: ${PRIVACY_NOTICE_JA} .gitignore に .bob-review/ と .bob-trace/ai-traceability-draft/ が含まれていることを確認してください。`,
     "",
@@ -158,6 +178,14 @@ function buildDeterministicChecks(documents: DocumentExtractionResult, codeAnaly
     "",
     ...(warnings.length > 0 ? warnings.map((warning) => `- ${warning}`) : ["- none"])
   ].join("\n")
+}
+
+function limitBobInput(text: string, limits: ReviewProcessingLimits, packageWarnings: string[]): string {
+  const suffix = "\n\n[truncated: maxBobInputBytes]\n"
+  const limited = truncateUtf8Text(text, limits.maxBobInputBytes, suffix)
+  if (!limited.truncated) return text
+  packageWarnings.push(`bob-input.md exceeded maxBobInputBytes (${limited.originalBytes} > ${limits.maxBobInputBytes}); truncated.`)
+  return limited.text
 }
 
 function evidenceIndexSummary(evidence: EvidenceRef[]): string {

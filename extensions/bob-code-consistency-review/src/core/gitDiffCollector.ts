@@ -3,6 +3,7 @@ import { execFile } from "node:child_process"
 import { promisify } from "node:util"
 import { readTextFile, resolveWorkspacePathStrict, toPosixPath } from "./fileSystem"
 import { decodeTextBuffer } from "./textEncoding"
+import { normalizeReviewProcessingLimits, truncateUtf8Text, type ReviewProcessingLimits } from "./limits"
 import type { DiffSummary, ReviewInput } from "./types"
 
 const execFileAsync = promisify(execFile)
@@ -10,17 +11,20 @@ const execFileAsync = promisify(execFile)
 type VcsKind = "git" | "bazaar"
 const MAX_BAZAAR_REVISION_SPEC_LENGTH = 128
 
-export async function collectGitDiff(reviewInput: ReviewInput, options: { workspaceRoot: string; diffFixturePath?: string; bzrPath?: string; textEncoding?: string }): Promise<DiffSummary> {
+export async function collectGitDiff(reviewInput: ReviewInput, options: { workspaceRoot: string; diffFixturePath?: string; bzrPath?: string; textEncoding?: string; limits?: Partial<ReviewProcessingLimits> }): Promise<DiffSummary> {
+  const limits = normalizeReviewProcessingLimits(options.limits)
   if (options.diffFixturePath) {
     const fixturePath = resolveWorkspacePathStrict(options.workspaceRoot, options.diffFixturePath, "diffFixturePath")
     const fixture = JSON.parse(await readTextFile(fixturePath, options.textEncoding)) as DiffSummary
-    return normalizeDiffLanguages(fixture)
+    return applyDiffLimits(normalizeDiffLanguages(fixture), limits)
   }
 
   const vcs = normalizeVcs(reviewInput.review.vcs)
   const vcsRoot = resolveVcsRoot(options.workspaceRoot, reviewInput.review.vcs_root)
-  if (vcs === "bazaar") return collectBazaarDiff(reviewInput, { ...options, vcsRoot })
-  return collectStandardGitDiff(reviewInput, { ...options, vcsRoot })
+  const diff = vcs === "bazaar"
+    ? await collectBazaarDiff(reviewInput, { ...options, vcsRoot })
+    : await collectStandardGitDiff(reviewInput, { ...options, vcsRoot })
+  return applyDiffLimits(diff, limits)
 }
 
 async function collectStandardGitDiff(reviewInput: ReviewInput, options: { workspaceRoot: string; vcsRoot: string; textEncoding?: string }): Promise<DiffSummary> {
@@ -213,6 +217,21 @@ function normalizeDiffLanguages(diff: DiffSummary): DiffSummary {
   return {
     ...diff,
     files: diff.files.map((file) => ({ ...file, path: toPosixPath(file.path), language: file.language ?? languageFromPath(file.path) }))
+  }
+}
+
+function applyDiffLimits(diff: DiffSummary, limits: ReviewProcessingLimits): DiffSummary {
+  if (!diff.unifiedDiff) return diff
+  const suffix = "\n\n[truncated: maxRawDiffBytes]\n"
+  const limited = truncateUtf8Text(diff.unifiedDiff, limits.maxRawDiffBytes, suffix)
+  if (!limited.truncated) return diff
+  return {
+    ...diff,
+    unifiedDiff: limited.text,
+    warnings: [
+      ...(diff.warnings ?? []),
+      `unified diff exceeded maxRawDiffBytes (${limited.originalBytes} > ${limits.maxRawDiffBytes}); raw diff truncated.`
+    ]
   }
 }
 

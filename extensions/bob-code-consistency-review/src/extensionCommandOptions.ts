@@ -101,6 +101,16 @@ export function booleanOption(record: Record<string, unknown>, key: string): boo
   return typeof value === "boolean" ? value : undefined
 }
 
+export function numberOption(record: Record<string, unknown>, key: string): number | undefined {
+  const value = record[key]
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) return value
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value.trim())
+    if (Number.isFinite(parsed) && parsed > 0) return parsed
+  }
+  return undefined
+}
+
 export function firstString(value: unknown): string | undefined {
   if (typeof value === "string") return value
   if (Array.isArray(value)) {

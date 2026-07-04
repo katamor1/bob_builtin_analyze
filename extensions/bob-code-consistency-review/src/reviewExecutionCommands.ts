@@ -7,6 +7,7 @@ import {
   firstString,
   notifyError,
   notifyInfo,
+  numberOption,
   optionalAbsolute,
   requireBobWorkspaceRoot,
   resolveTrustedBzrPath,
@@ -29,9 +30,17 @@ export async function runPreprocess(options?: unknown): Promise<unknown> {
   const diffFixturePath = optionalAbsolute(workspaceRoot, stringOption(record, "diffFixturePath"))
   const bzrPath = resolveTrustedBzrPath(record, config.get<string>("bzrPath", "bzr"))
   const textEncoding = stringOption(record, "textEncoding") ?? config.get<string>("textEncoding", "auto")
+  const limits = {
+    maxDocumentBytes: numberOption(record, "maxDocumentBytes") ?? config.get<number>("maxDocumentBytes"),
+    maxWorkbookSheets: numberOption(record, "maxWorkbookSheets") ?? config.get<number>("maxWorkbookSheets"),
+    maxRowsPerSheet: numberOption(record, "maxRowsPerSheet") ?? config.get<number>("maxRowsPerSheet"),
+    maxExcerptBytesPerDocument: numberOption(record, "maxExcerptBytesPerDocument") ?? config.get<number>("maxExcerptBytesPerDocument"),
+    maxRawDiffBytes: numberOption(record, "maxRawDiffBytes") ?? config.get<number>("maxRawDiffBytes"),
+    maxBobInputBytes: numberOption(record, "maxBobInputBytes") ?? config.get<number>("maxBobInputBytes")
+  }
 
   const result = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: "コード整合レビュー用パッケージを作成しています" }, () =>
-    preprocessReview({ workspaceRoot, inputPath, outDir, diffFixturePath, bzrPath, textEncoding })
+    preprocessReview({ workspaceRoot, inputPath, outDir, diffFixturePath, bzrPath, textEncoding, limits })
   )
   notifyInfo(result.summary)
   return result
