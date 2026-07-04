@@ -1,4 +1,5 @@
 import { BazaarCommandResult } from "./bazaar"
+import { fencedCodeBlock } from "./markdownFence"
 import { clampMaxDiffBytes, truncateUtf8 } from "./reviewLimits"
 
 export interface ReviewPacketOptions {
@@ -28,10 +29,10 @@ export function buildReviewPacket(options: ReviewPacketOptions): string {
     "",
     "## Bazaar commands used",
     "",
-    "```text",
-    `${options.diff.command} ${options.diff.args.join(" ")}`,
-    options.log ? `${options.log.command} ${options.log.args.join(" ")}` : "",
-    "```",
+    fencedCodeBlock("text", [
+      `${options.diff.command} ${options.diff.args.join(" ")}`,
+      options.log ? `${options.log.command} ${options.log.args.join(" ")}` : ""
+    ].filter(Boolean).join("\n")),
     "",
     "## Review instruction for Bob",
     "",
@@ -55,15 +56,11 @@ export function buildReviewPacket(options: ReviewPacketOptions): string {
     ...(options.extraSections ?? []).flatMap((section) => [section, ""]),
     logText ? "## Bazaar log" : "",
     logText ? "" : "",
-    logText ? "```text" : "",
-    logText,
-    logText ? "```" : "",
+    logText ? fencedCodeBlock("text", logText) : "",
     logText ? "" : "",
     "## Bazaar diff",
     "",
-    "```diff",
-    diffText,
-    "```"
+    fencedCodeBlock("diff", diffText)
   ].filter((line) => line !== undefined).join("\n")
 }
 

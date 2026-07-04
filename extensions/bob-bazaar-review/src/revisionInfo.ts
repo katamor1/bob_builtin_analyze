@@ -1,4 +1,5 @@
 import { BazaarClient, BazaarCommandResult } from "./bazaar"
+import { fencedCodeBlock } from "./markdownFence"
 import { clampMaxAddedFileContentBytes, truncateUtf8 } from "./reviewLimits"
 
 export type BazaarChangedFileStatus = "added" | "modified" | "removed" | "renamed" | "unknown"
@@ -94,9 +95,7 @@ export async function buildAddedFilesContentSection(
       remainingBytes -= Buffer.byteLength(content, "utf8")
       lines.push(`### ${entry.path}`)
       lines.push("")
-      lines.push("```text")
-      lines.push(content)
-      lines.push("```")
+      lines.push(fencedCodeBlock("text", content))
       lines.push("")
     } catch (error: any) {
       lines.push(`### ${entry.path}`)
