@@ -69,7 +69,7 @@ export class BazaarClient {
   }
 
   async cat(cwd: string, revision: string, relativePath: string): Promise<BazaarCommandResult> {
-    return this.run(cwd, ["cat", "-r", validateRevision(revision), validateRelativePath(relativePath)])
+    return this.run(cwd, ["cat", "-r", validateRevision(revision), "--", validateRelativePath(relativePath)])
   }
 
   async status(cwd: string): Promise<BazaarCommandResult> {
