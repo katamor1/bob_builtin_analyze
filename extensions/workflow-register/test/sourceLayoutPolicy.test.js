@@ -21,3 +21,11 @@ test("core workflow model types are split by responsibility with model.ts kept a
     "core/model.ts must re-export responsibility-specific model files instead of owning declarations"
   )
 })
+
+test("core parser uses a single directory barrel as its public import boundary", () => {
+  assert.ok(fs.existsSync(path.join(extensionRoot, "src", "core", "parser", "index.ts")), "parser/index.ts must own the public parser export")
+  assert.ok(!fs.existsSync(path.join(extensionRoot, "src", "core", "parser.ts")), "core/parser.ts must not duplicate the parser public export")
+
+  const parserIndexSource = readSrc("core", "parser", "index.ts")
+  assert.match(parserIndexSource, /export \{ parseWorkflowMarkdown \} from "\.\/parseWorkflowMarkdown"/)
+})
