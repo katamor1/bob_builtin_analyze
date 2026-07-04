@@ -32,3 +32,14 @@ test("workspace root resolution modules live under the workspace source boundary
   const resolverSource = readSrc("workspace", "workspaceResolver.ts")
   assert.match(resolverSource, /from "\.\/workspaceRoots"/)
 })
+
+test("review GUI modules live under the ui source boundary", () => {
+  for (const fileName of ["reviewGui.ts", "reviewGuiHtml.ts", "reviewGuiTypes.ts"]) {
+    assert.ok(fs.existsSync(path.join(extensionRoot, "src", "ui", fileName)), `ui/${fileName} must exist`)
+    assert.ok(!fs.existsSync(path.join(extensionRoot, "src", fileName)), `${fileName} must not stay at the src root`)
+  }
+
+  const guiSource = readSrc("ui", "reviewGui.ts")
+  assert.match(guiSource, /from "\.\/reviewGuiHtml"/)
+  assert.match(guiSource, /from "\.\/reviewGuiTypes"/)
+})

@@ -48,7 +48,7 @@ test("resolveBzrPath allows workspace overrides only when the workspace is trust
 })
 
 test("Bazaar command, GUI, and MCP setup use trust-aware bzrPath resolution", () => {
-  const source = readSourceSet(["bazaarReviewCommands.ts", "reviewGui.ts", "extension.ts"])
+  const source = readSourceSet(["bazaarReviewCommands.ts", "ui/reviewGui.ts", "extension.ts"])
 
   assert.match(source, /resolveBzrPath\(config, vscode\.workspace\.isTrusted\)/)
   assert.doesNotMatch(source, /config\.get<string>\("bzrPath", "bzr"\)/)

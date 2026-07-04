@@ -1,23 +1,23 @@
 import * as vscode from "vscode"
-import { BazaarClient } from "./bazaar"
-import { isBobCodeExtensionAvailable } from "./bobCodeExtension"
-import { addMarkdownPacketToBobContext } from "./bobContext"
-import { resolveBzrPath } from "./bzrPathTrust"
-import { buildReviewPacket } from "./reviewPacket"
-import { buildReviewPacketState, REVIEW_PACKET_STATE_KEY } from "./reviewPacketSelection"
-import { clampMaxAddedFileContentBytes, clampMaxDiffBytes, maxBufferForDiffBytes } from "./reviewLimits"
-import { buildProjectRulesSection } from "./projectRules/packet"
-import { loadProjectChecklistRequired, loadReviewResultSchemaRequired } from "./projectRules/io"
+import { BazaarClient } from "../bazaar"
+import { isBobCodeExtensionAvailable } from "../bobCodeExtension"
+import { addMarkdownPacketToBobContext } from "../bobContext"
+import { getBobWorkspaceStatus, initializeBobWorkspaceFromTemplates } from "../bobWorkspaceInit"
+import { resolveBzrPath } from "../bzrPathTrust"
+import { buildProjectRulesSection } from "../projectRules/packet"
+import { loadProjectChecklistRequired, loadReviewResultSchemaRequired } from "../projectRules/io"
+import { buildReviewPacket } from "../reviewPacket"
+import { buildReviewPacketState, REVIEW_PACKET_STATE_KEY } from "../reviewPacketSelection"
+import { clampMaxAddedFileContentBytes, clampMaxDiffBytes, maxBufferForDiffBytes } from "../reviewLimits"
 import {
   buildTargetMetadataSection,
   parseTargetRequest,
   prepareTarget,
   validateTargetRequest
-} from "./reviewTarget"
-import type { TargetRequest } from "./reviewTarget"
-import { getBobWorkspaceStatus, initializeBobWorkspaceFromTemplates } from "./bobWorkspaceInit"
-import { completeCurrentWorkflowStepAfterGuiAction } from "./workflowStepCompletion"
-import { resolveBazaarWorkspaceFolder, resolveBobWorkspaceFolder } from "./workspace/workspaceResolver"
+} from "../reviewTarget"
+import type { TargetRequest } from "../reviewTarget"
+import { completeCurrentWorkflowStepAfterGuiAction } from "../workflowStepCompletion"
+import { resolveBazaarWorkspaceFolder, resolveBobWorkspaceFolder } from "../workspace/workspaceResolver"
 import { renderHtml } from "./reviewGuiHtml"
 import type { BazaarReviewInitialTarget } from "./reviewGuiTypes"
 

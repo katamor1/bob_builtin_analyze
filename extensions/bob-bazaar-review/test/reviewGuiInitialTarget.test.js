@@ -4,7 +4,7 @@ const { readSourceSet } = require("./helpers/sourceReader")
 
 test("Bazaar workflow provider resolves repository root independently from workflowRoot", () => {
   const bridgeSource = readSourceSet(["workflowRegisterBridge.ts", "workspace/workspaceResolver.ts"])
-  const guiSource = readSourceSet(["reviewGui.ts", "reviewGuiTypes.ts"])
+  const guiSource = readSourceSet(["ui/reviewGui.ts", "ui/reviewGuiTypes.ts"])
 
   assert.match(bridgeSource, /workflowRoot\?: string/)
   assert.match(bridgeSource, /bazaarRoot\?: string/)
@@ -21,7 +21,7 @@ test("Bazaar workflow provider resolves repository root independently from workf
 
 test("Bazaar review GUI accepts workflow inputs as initial target values", () => {
   const bridgeSource = readSourceSet(["workflowRegisterBridge.ts"])
-  const guiSource = readSourceSet(["reviewGui.ts", "reviewGuiHtml.ts", "reviewGuiTypes.ts"])
+  const guiSource = readSourceSet(["ui/reviewGui.ts", "ui/reviewGuiHtml.ts", "ui/reviewGuiTypes.ts"])
 
   assert.match(bridgeSource, /function initialTargetFromWorkflowInputs\(inputs: Record<string, unknown>, input\?: WorkflowActionExecutionInput\)/)
   assert.match(bridgeSource, /revisionMode: targetMode\(inputs\.revisionMode\)/)

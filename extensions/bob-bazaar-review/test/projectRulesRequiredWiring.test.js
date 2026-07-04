@@ -5,7 +5,7 @@ const { readSrc } = require("./helpers/sourceReader")
 test("project rules review entrypoints require configured checklist and schema files", () => {
   const sources = [
     ["bazaarReviewCommands.ts", readSrc("bazaarReviewCommands.ts")],
-    ["reviewGui.ts", readSrc("reviewGui.ts")]
+    ["ui/reviewGui.ts", readSrc("ui", "reviewGui.ts")]
   ]
 
   for (const [fileName, source] of sources) {
