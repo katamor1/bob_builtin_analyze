@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto"
 import * as fs from "node:fs/promises"
 import * as path from "node:path"
 import { renderReviewResultMarkdown } from "./markdown"
@@ -18,6 +19,12 @@ export interface CaptureReviewResultResult {
   issueCount: number
   issues?: ValidationIssue[]
   summary?: ReviewResult["summary"]
+}
+
+export interface SavedReviewResultArtifacts {
+  jsonPath: string
+  markdownPath: string
+  backupPaths: string[]
 }
 
 export interface CandidateText {
@@ -173,16 +180,49 @@ function isReviewStatus(value: unknown): value is ReviewStatus {
   return typeof value === "string" && STATUSES.includes(value as ReviewStatus)
 }
 
-export async function saveReviewResultArtifacts(workspaceRoot: string, result: ReviewResult): Promise<{ jsonPath: string; markdownPath: string }> {
+export async function saveReviewResultArtifacts(workspaceRoot: string, result: ReviewResult): Promise<SavedReviewResultArtifacts> {
   const resultsDir = path.join(workspaceRoot, ".bob", "review", "results")
   await fs.mkdir(resultsDir, { recursive: true })
 
   const baseName = sanitizeFilename(result.review_id || buildFallbackReviewId(result))
   const jsonPath = path.join(resultsDir, `${baseName}.json`)
   const markdownPath = path.join(resultsDir, `${baseName}.md`)
-  await fs.writeFile(jsonPath, `${JSON.stringify(result, null, 2)}\n`, "utf8")
-  await fs.writeFile(markdownPath, `${renderReviewResultMarkdown(result)}\n`, "utf8")
-  return { jsonPath, markdownPath }
+  const backupPaths = [
+    await backupExistingFile(jsonPath),
+    await backupExistingFile(markdownPath)
+  ].filter((backupPath): backupPath is string => Boolean(backupPath))
+  await writeFileAtomic(jsonPath, `${JSON.stringify(result, null, 2)}\n`)
+  await writeFileAtomic(markdownPath, `${renderReviewResultMarkdown(result)}\n`)
+  return { jsonPath, markdownPath, backupPaths }
+}
+
+async function backupExistingFile(filePath: string): Promise<string | undefined> {
+  if (!(await fileExists(filePath))) return undefined
+  const suffix = new Date().toISOString().replace(/[:.]/g, "-")
+  const backupPath = `${filePath}.bak-${suffix}-${randomUUID()}`
+  await fs.copyFile(filePath, backupPath)
+  return backupPath
+}
+
+async function writeFileAtomic(filePath: string, content: string): Promise<void> {
+  const tempPath = `${filePath}.tmp-${process.pid}-${randomUUID()}`
+  try {
+    await fs.writeFile(tempPath, content, "utf8")
+    await fs.rename(tempPath, filePath)
+  } catch (error) {
+    await fs.rm(tempPath, { force: true }).catch(() => undefined)
+    throw error
+  }
+}
+
+async function fileExists(filePath: string): Promise<boolean> {
+  try {
+    await fs.stat(filePath)
+    return true
+  } catch (error: any) {
+    if (error?.code === "ENOENT") return false
+    throw error
+  }
 }
 
 export function extractJsonFromText(text: string): string | undefined {

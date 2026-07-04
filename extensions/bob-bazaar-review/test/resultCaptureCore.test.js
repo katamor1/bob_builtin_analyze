@@ -66,6 +66,36 @@ test("explicit review-result text is validated and saved as JSON and Markdown", 
   assert.match(await fs.readFile(result.markdownPath, "utf8"), /BRR-EXPLICIT-001/)
 })
 
+test("saving a duplicate review-result preserves previous JSON and Markdown backups", async () => {
+  const { captureReviewResultText } = require("../out/projectRules/resultCaptureCore")
+  const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "bob-review-capture-backup-"))
+  const reviewId = "BRR-DUPLICATE-001"
+  const first = validReviewResult(reviewId)
+  first.checklist_results[0].reason = "first result should be backed up"
+  const second = validReviewResult(reviewId)
+  second.checklist_results[0].reason = "second result should become current"
+
+  const firstResult = await captureReviewResultText(workspaceRoot, JSON.stringify(first, null, 2), "first")
+  const secondResult = await captureReviewResultText(workspaceRoot, JSON.stringify(second, null, 2), "second")
+
+  assert.equal(firstResult.status, "ok")
+  assert.equal(secondResult.status, "ok")
+  assert.equal(firstResult.jsonPath, secondResult.jsonPath)
+  assert.equal(firstResult.markdownPath, secondResult.markdownPath)
+
+  const resultsDir = path.dirname(secondResult.jsonPath)
+  const files = await fs.readdir(resultsDir)
+  const jsonBackups = files.filter((file) => /^BRR-DUPLICATE-001\.json\.bak-/.test(file))
+  const markdownBackups = files.filter((file) => /^BRR-DUPLICATE-001\.md\.bak-/.test(file))
+
+  assert.equal(jsonBackups.length, 1)
+  assert.equal(markdownBackups.length, 1)
+  assert.match(await fs.readFile(path.join(resultsDir, jsonBackups[0]), "utf8"), /first result should be backed up/)
+  assert.match(await fs.readFile(path.join(resultsDir, markdownBackups[0]), "utf8"), /first result should be backed up/)
+  assert.match(await fs.readFile(secondResult.jsonPath, "utf8"), /second result should become current/)
+  assert.match(await fs.readFile(secondResult.markdownPath, "utf8"), /second result should become current/)
+})
+
 test("invalid explicit review-result JSON returns validation issues without saving artifacts", async () => {
   const { captureReviewResultText } = require("../out/projectRules/resultCaptureCore")
   const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "bob-review-capture-invalid-"))
