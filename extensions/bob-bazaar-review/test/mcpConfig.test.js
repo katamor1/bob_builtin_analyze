@@ -18,6 +18,7 @@ test("configureWorkspaceMcpServer writes the configured Bazaar text encoding", a
   const config = JSON.parse(await fs.readFile(result.configPath, "utf8"))
 
   assert.equal(config.mcpServers.bazaar.env.BZR_TEXT_ENCODING, "shift_jis")
+  assert.equal(config.mcpServers.bazaar.env.BOB_BAZAAR_ALLOWED_ROOTS, workspaceRoot)
 })
 
 test("configureWorkspaceMcpServer rejects invalid server names", async () => {

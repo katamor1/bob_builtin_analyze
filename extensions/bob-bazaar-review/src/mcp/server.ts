@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import * as fs from "node:fs/promises"
+import * as path from "node:path"
 import { BazaarClient, BazaarError } from "../bazaar"
 import { initializeProjectRules, loadProjectChecklist, loadReviewResultSchema } from "../projectRules/io"
 import { validateReviewResultJson } from "../projectRules/validator"
@@ -24,6 +26,9 @@ interface ToolDef {
 const SERVER_VERSION = "0.3.0"
 const DEFAULT_MAX_REQUEST_BYTES = 1024 * 1024
 const MAX_REQUEST_BYTES = readPositiveIntegerEnv("BOB_BAZAAR_MCP_MAX_REQUEST_BYTES", DEFAULT_MAX_REQUEST_BYTES)
+const ALLOWED_ROOTS_ENV = "BOB_BAZAAR_ALLOWED_ROOTS"
+const allowedRootInputs = readPathListEnv(ALLOWED_ROOTS_ENV)
+let allowedRootsPromise: Promise<string[]> | undefined
 
 const client = new BazaarClient({
   bzrPath: process.env.BZR_PATH || "bzr",
@@ -148,27 +153,27 @@ async function handleMessage(message: JsonRpcMessage): Promise<void> {
 async function callTool(name: string, args: any): Promise<any> {
   switch (name) {
     case "bazaar_root":
-      return text(await client.root(requiredString(args, "cwd")))
+      return text(await client.root(await requiredAllowedCwd(args, "cwd")))
     case "bazaar_revno":
-      return text(await client.revno(requiredString(args, "cwd")))
+      return text(await client.revno(await requiredAllowedCwd(args, "cwd")))
     case "bazaar_log":
-      return commandText(await client.log(requiredString(args, "cwd"), optionalString(args, "revision")))
+      return commandText(await client.log(await requiredAllowedCwd(args, "cwd"), optionalString(args, "revision")))
     case "bazaar_diff_revision":
-      return commandText(await client.diffRevision(requiredString(args, "cwd"), requiredString(args, "revision")))
+      return commandText(await client.diffRevision(await requiredAllowedCwd(args, "cwd"), requiredString(args, "revision")))
     case "bazaar_diff_range":
-      return commandText(await client.diffRange(requiredString(args, "cwd"), requiredString(args, "baseRevision"), requiredString(args, "targetRevision")))
+      return commandText(await client.diffRange(await requiredAllowedCwd(args, "cwd"), requiredString(args, "baseRevision"), requiredString(args, "targetRevision")))
     case "bazaar_diff_working_tree":
-      return commandText(await client.diffWorkingTree(requiredString(args, "cwd"), optionalString(args, "baseRevision")))
+      return commandText(await client.diffWorkingTree(await requiredAllowedCwd(args, "cwd"), optionalString(args, "baseRevision")))
     case "bazaar_cat_revision":
-      return commandText(await client.cat(requiredString(args, "cwd"), requiredString(args, "revision"), requiredString(args, "path")))
+      return commandText(await client.cat(await requiredAllowedCwd(args, "cwd"), requiredString(args, "revision"), requiredString(args, "path")))
     case "bazaar_status":
-      return commandText(await client.status(requiredString(args, "cwd")))
+      return commandText(await client.status(await requiredAllowedCwd(args, "cwd")))
     case "project_rules_init":
-      return text(JSON.stringify(await initializeProjectRules(requiredString(args, "cwd")), null, 2))
+      return text(JSON.stringify(await initializeProjectRules(await requiredAllowedCwd(args, "cwd")), null, 2))
     case "project_rules_get_checklist":
-      return jsonText(await loadProjectChecklist(requiredString(args, "cwd"), optionalString(args, "path")))
+      return jsonText(await loadProjectChecklist(await requiredAllowedCwd(args, "cwd"), optionalString(args, "path")))
     case "project_rules_get_schema":
-      return jsonText(await loadReviewResultSchema(requiredString(args, "cwd"), optionalString(args, "path")))
+      return jsonText(await loadReviewResultSchema(await requiredAllowedCwd(args, "cwd"), optionalString(args, "path")))
     case "project_rules_validate_review_result":
       return jsonText(validateReviewResultJson(requiredString(args, "json")))
     case "project_rules_render_markdown": {
@@ -180,9 +185,9 @@ async function callTool(name: string, args: any): Promise<any> {
       return text(renderReviewResultMarkdown(parsed))
     }
     case "project_rules_get_latest_review_result":
-      return jsonText(await readStoredReviewResult(() => getLatestReviewResult(requiredString(args, "cwd"))))
+      return jsonText(await readStoredReviewResult(async () => getLatestReviewResult(await requiredAllowedCwd(args, "cwd"))))
     case "project_rules_get_review_result":
-      return jsonText(await readStoredReviewResult(() => getReviewResult(requiredString(args, "cwd"), requiredString(args, "reviewId"))))
+      return jsonText(await readStoredReviewResult(async () => getReviewResult(await requiredAllowedCwd(args, "cwd"), requiredString(args, "reviewId"))))
     default:
       throw new BazaarError(`Unknown Bazaar MCP tool: ${name}`)
   }
@@ -236,6 +241,29 @@ function requiredString(args: any, name: string): string {
     throw new BazaarError(`Missing required string argument: ${name}`)
   }
   return value
+}
+
+async function requiredAllowedCwd(args: any, name: string): Promise<string> {
+  return assertAllowedCwd(requiredString(args, name))
+}
+
+async function assertAllowedCwd(cwd: string): Promise<string> {
+  if (allowedRootInputs.length === 0) return cwd
+
+  const resolvedCwd = await fs.realpath(cwd)
+  const allowedRoots = await getAllowedRoots()
+  for (const root of allowedRoots) {
+    const relative = path.relative(root, resolvedCwd)
+    if (relative === "" || (relative && !relative.startsWith("..") && !path.isAbsolute(relative))) {
+      return resolvedCwd
+    }
+  }
+  throw new BazaarError(`cwd is outside allowed roots: ${cwd}`)
+}
+
+async function getAllowedRoots(): Promise<string[]> {
+  allowedRootsPromise ??= Promise.all(allowedRootInputs.map((root) => fs.realpath(root)))
+  return allowedRootsPromise
 }
 
 function optionalString(args: any, name: string): string | undefined {
@@ -348,6 +376,13 @@ function parseContentLength(header: string): number | undefined {
 function readPositiveIntegerEnv(name: string, fallback: number): number {
   const parsed = Number(process.env[name])
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback
+}
+
+function readPathListEnv(name: string): string[] {
+  return (process.env[name] ?? "")
+    .split(path.delimiter)
+    .map((item) => item.trim())
+    .filter(Boolean)
 }
 
 const reader = new McpStdioReader(handleMessage)

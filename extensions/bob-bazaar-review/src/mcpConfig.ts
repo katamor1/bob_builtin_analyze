@@ -33,7 +33,8 @@ export async function configureWorkspaceMcpServer(options: McpServerConfigOption
     args: [serverPath],
     env: {
       BZR_PATH: options.bzrPath,
-      BZR_TEXT_ENCODING: options.textEncoding ?? "auto"
+      BZR_TEXT_ENCODING: options.textEncoding ?? "auto",
+      BOB_BAZAAR_ALLOWED_ROOTS: workspaceRoot
     },
     disabled: false
   }
