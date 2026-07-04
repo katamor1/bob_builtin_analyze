@@ -159,6 +159,18 @@ export class WorkflowRegisterService implements vscode.Disposable {
     return this.runCommands.retryCurrentStep(runId)
   }
 
+  async approveBranchCheckpoint(runId?: string): Promise<unknown> {
+    return this.runCommands.approveBranchCheckpoint(runId)
+  }
+
+  async abortBranchCheckpoint(runId?: string): Promise<unknown> {
+    return this.runCommands.abortBranchCheckpoint(runId)
+  }
+
+  async inspectBranching(runId?: string): Promise<unknown> {
+    return this.runCommands.inspectBranching(runId)
+  }
+
   private async workflowRootCandidates(): Promise<MarkerRootCandidate[]> {
     const folders = vscode.workspace.workspaceFolders ?? []
     if (folders.length === 0) return []

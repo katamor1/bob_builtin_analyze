@@ -1,36 +1,52 @@
 import * as vscode from "vscode"
 import type {
   ActiveStep,
-  BobWorkflowTask,
-  WorkflowDefinition
+  BobWorkflowTask
 } from "./bobWorkflowTypes"
 import type { ActionRegistry } from "./core/actionRegistry"
+import type { ManualCompletionResult } from "./core/engineTypes"
+import type { EngineStep, WorkflowGuardrailsDefinition } from "./core/model"
 import { validateCommandGuardrails } from "./core/guardrails"
+import { formatStateValue } from "./core/engine/templateRenderer"
+import {
+  createVscodeManualStepCompletionPromptProvider,
+  type ManualStepCompletionPromptProvider,
+  type ManualStepCompletionPromptResult
+} from "./manualStepPrompt"
 import {
   executeResultHandoff,
   extractLastAssistantText,
   resultSourceForStep
 } from "./resultHandoff"
 
+interface StepRuntimeWorkflowContext {
+  id: string
+  label: string
+  guardrails: WorkflowGuardrailsDefinition
+}
+
 export class StepRuntime {
   private readonly activeSteps = new Map<string, ActiveStep>()
   private sequence = 0
 
+  constructor(private readonly promptProvider: ManualStepCompletionPromptProvider = createVscodeManualStepCompletionPromptProvider()) {}
+
   hold(
-    workflow: WorkflowDefinition,
+    workflow: StepRuntimeWorkflowContext,
     step: { id: string; title: string },
     task: BobWorkflowTask,
     context: {
       runId: string
       stepDefinition?: ActiveStep["stepDefinition"]
+      coreStep?: EngineStep
       actionRegistry?: ActionRegistry
       inputs?: Record<string, unknown>
       state?: Record<string, string>
       messageStartIndex?: number
     }
-  ): Promise<boolean> {
+  ): Promise<ManualCompletionResult> {
     const key = `${++this.sequence}:${workflow.id}:${step.id}`
-    return new Promise<boolean>((resolve) => {
+    return new Promise<ManualCompletionResult>((resolve) => {
       this.activeSteps.set(key, {
         key,
         workflowId: workflow.id,
@@ -39,6 +55,7 @@ export class StepRuntime {
         stepId: step.id,
         title: step.title,
         task,
+        coreStep: context.coreStep,
         stepDefinition: context.stepDefinition,
         guardrails: workflow.guardrails,
         actionRegistry: context.actionRegistry,
@@ -63,17 +80,44 @@ export class StepRuntime {
     const mismatch = activeStepMismatch(steps, options)
     if (mismatch) return mismatch
     if (!active) return "No active Bob workflow step."
+    const completion = await this.collectManualCompletion(active, options)
+    if (!completion.completed) {
+      const message = completion.error ?? "Manual workflow step completion was cancelled."
+      await vscode.window.showWarningMessage(message)
+      return message
+    }
     const handoff = await captureHeldStepResult(active)
     if (!handoff.ok) {
       const message = `Could not capture Bob workflow step result: ${handoff.error}`
       await vscode.window.showErrorMessage(message)
       return message
     }
-    applyStateUpdates(active, options.stateUpdates)
+    applyStateUpdates(active, completion.stateUpdates)
+    applyManualCompletionState(active, completion)
     active.task.setStepComplete?.()
-    active.resolve(true)
+    active.resolve(completion)
     this.activeSteps.delete(active.key)
     return `Completed: ${active.workflowLabel} / ${active.title}`
+  }
+
+  private async collectManualCompletion(active: ActiveStep, options: StepCompletionExpectation): Promise<ManualCompletionResult> {
+    const stateUpdates = options.stateUpdates
+    const step = active.coreStep
+    if (step?.type !== "manual" || (!step.form && !step.approval)) return { completed: true, stateUpdates }
+    const promptResult = await Promise.resolve(this.promptProvider.collectManualCompletion({
+      workflowLabel: active.workflowLabel,
+      runId: active.runId,
+      step,
+      inputs: active.inputs,
+      state: active.state,
+      previousFormValues: readPreviousFormValues(active, step)
+    }))
+    if (!promptResult) return { completed: false, error: "Manual workflow step completion was cancelled." }
+    return {
+      completed: true,
+      stateUpdates,
+      ...promptResult
+    }
   }
 
   private async pickActiveStep(steps: ActiveStep[]): Promise<ActiveStep | undefined> {
@@ -124,11 +168,47 @@ function stepMatchesExpectation(step: ActiveStep, options: StepCompletionExpecta
     (!options.expectedStepId || step.stepId === options.expectedStepId)
 }
 
-function applyStateUpdates(active: ActiveStep, stateUpdates: Record<string, string> | undefined): void {
+function applyStateUpdates(active: ActiveStep, stateUpdates: Record<string, unknown> | undefined): void {
   if (!active.state || !stateUpdates) return
   for (const [key, value] of Object.entries(stateUpdates)) {
-    if (!key || typeof value !== "string") continue
-    active.state[key] = value
+    if (!key || value === undefined) continue
+    active.state[key] = formatStateValue(value)
+  }
+}
+
+function applyManualCompletionState(active: ActiveStep, result: ManualCompletionResult): void {
+  const step = active.coreStep
+  if (!active.state || step?.type !== "manual") return
+  if (step.form?.resultKey) {
+    const value = result.formValues ?? result.stateUpdates?.[step.form.resultKey]
+    if (value !== undefined) active.state[step.form.resultKey] = formatStateValue(value)
+  }
+  if (step.approval?.resultKey) {
+    const value = result.approval ?? approvalFromPromptResult(result)
+    if (value !== undefined) active.state[step.approval.resultKey] = formatStateValue(value)
+  }
+}
+
+function approvalFromPromptResult(result: ManualStepCompletionPromptResult): ManualCompletionResult["approval"] | undefined {
+  if (!result.decision) return undefined
+  return {
+    decision: result.decision,
+    reason: result.reason,
+    comment: result.comment
+  }
+}
+
+function readPreviousFormValues(active: ActiveStep, step: Extract<EngineStep, { type: "manual" }>): Record<string, unknown> | undefined {
+  if (!step.form?.resultKey || !active.state) return undefined
+  const value = active.state[`workflow.branching.lastValues.${step.id}.${step.form.resultKey}`]
+  if (!value) return undefined
+  try {
+    const parsed = JSON.parse(value)
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : undefined
+  } catch {
+    return undefined
   }
 }
 

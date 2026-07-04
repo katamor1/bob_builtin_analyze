@@ -1,6 +1,8 @@
 import * as vscode from "vscode"
 import type { CoreWorkflowDefinition } from "./core/model"
+import { formatBranchingDiagnostics } from "./core/runDiagnostics"
 import type { MarkerRootCandidate } from "./core/workspaceRoots"
+import { showMarkdownReport } from "./reports"
 import { requireTrustedWorkspace } from "./workspaceTrust"
 import { collectCoreWorkflowInputs } from "./workflowInputPrompt"
 import {
@@ -106,6 +108,9 @@ export class WorkflowRunCommandService {
     if (run.status === "held") {
       return this.warnStepGate("Current step is held. Complete the held step before running the next step.")
     }
+    if (run.status === "checkpoint") {
+      return this.warnStepGate("Current run is waiting at a branch checkpoint. Approve or abort the checkpoint before running the next step.")
+    }
     if (run.status === "failed") {
       return this.warnStepGate("Current step failed. Retry the current step before running the next step.")
     }
@@ -143,6 +148,55 @@ export class WorkflowRunCommandService {
     return this.resumeOrRetryRun("retry", runId)
   }
 
+  async approveBranchCheckpoint(runId?: string): Promise<unknown> {
+    const trustError = await requireTrustedWorkspace("approve branch checkpoint")
+    if (trustError) return trustError
+    await this.ensureWorkflowsLoaded()
+    const selection = await this.selectRun(runId)
+    if (!selection) return runId ? `Workflow run not found: ${runId}` : "No workflow run selected."
+    const runStore = this.options.runtimeFactory.createRunStore(selection.root)
+    const run = selection.run ?? await runStore.loadRun(selection.runId)
+    if (!run) throw new Error(`Workflow run not found: ${selection.runId}`)
+    const workflow = this.options.coreWorkflows.get(run.workflowId)
+    if (!workflow) throw new Error(`Workflow definition is not loaded: ${run.workflowId}`)
+    const engine = this.options.runtimeFactory.createEngine(selection.root)
+    const result = await engine.approveBranchCheckpoint(selection.runId, workflow)
+    await vscode.window.showInformationMessage(`Branch checkpoint approved: ${result.runId}`)
+    return result
+  }
+
+  async abortBranchCheckpoint(runId?: string): Promise<unknown> {
+    const trustError = await requireTrustedWorkspace("abort branch checkpoint")
+    if (trustError) return trustError
+    const selection = await this.selectRun(runId)
+    if (!selection) return runId ? `Workflow run not found: ${runId}` : "No workflow run selected."
+    const engine = this.options.runtimeFactory.createEngine(selection.root)
+    const result = await engine.abortBranchCheckpoint(selection.runId)
+    await vscode.window.showInformationMessage(`Branch checkpoint aborted: ${result.runId}`)
+    return result
+  }
+
+  async inspectBranching(runId?: string): Promise<unknown> {
+    const selection = await this.selectRun(runId)
+    if (!selection) {
+      const message = runId ? `Workflow run not found: ${runId}` : "No workflow run selected."
+      await vscode.window.showWarningMessage(message)
+      return message
+    }
+    const run = selection.run ?? await this.options.runtimeFactory.createRunStore(selection.root).loadRun(selection.runId)
+    if (!run) throw new Error(`Workflow run not found: ${selection.runId}`)
+    const lines = [
+      `- runId: ${run.runId}`,
+      `- status: ${run.status}`,
+      `- currentStep: ${run.currentStep ?? "none"}`,
+      `- root: ${selection.root}`
+    ]
+    const branchingLines = formatBranchingDiagnostics(run)
+    lines.push("", ...(branchingLines.length > 0 ? branchingLines : ["Branch loops:", "- No branch loops recorded."]))
+    await showMarkdownReport("Workflow Branching", `${run.runId}: ${run.status}`, lines)
+    return run
+  }
+
   private async resumeOrRetryRun(mode: "resume" | "retry", runId?: string): Promise<unknown> {
     const trustError = await requireTrustedWorkspace(`${mode} workflow run`)
     if (trustError) return trustError
@@ -161,6 +215,9 @@ export class WorkflowRunCommandService {
     const targetRunId = selection.runId
     const run = selection.run ?? await runStore.loadRun(targetRunId)
     if (!run) throw new Error(`Workflow run not found: ${targetRunId}`)
+    if (mode === "resume" && run.status === "checkpoint") {
+      return this.warnStepGate("Current run is waiting at a branch checkpoint. Approve or abort the checkpoint before resuming.")
+    }
     const workflow = this.options.coreWorkflows.get(run.workflowId)
     if (!workflow) throw new Error(`Workflow definition is not loaded: ${run.workflowId}`)
     const engine = this.options.runtimeFactory.createEngine(selection.root)
@@ -173,6 +230,14 @@ export class WorkflowRunCommandService {
 
   private async ensureWorkflowsLoaded(): Promise<void> {
     if (this.options.coreWorkflows.size === 0) await this.options.ensureWorkflowsLoaded()
+  }
+
+  private async selectRun(runId?: string) {
+    const roots = await this.options.workflowRootCandidates()
+    if (roots.length === 0) return undefined
+    return runId
+      ? findRunSelection(runId, roots, (root) => this.options.runtimeFactory.createRunStore(root))
+      : pickRunSelection(roots, (root) => this.options.runtimeFactory.createRunStore(root))
   }
 
   private async pickWorkflowRoot(title: string): Promise<string | undefined> {

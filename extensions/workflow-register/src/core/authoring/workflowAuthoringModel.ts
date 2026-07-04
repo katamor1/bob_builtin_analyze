@@ -1,12 +1,16 @@
 import {
   ResultSourceDefinition,
   WorkflowArtifactDefinition,
+  WorkflowBranchingDefinition,
   WorkflowCompletionDefinition,
   WorkflowFailurePolicy,
   WorkflowGuardrailsDefinition,
   WorkflowInputDefinition,
+  WorkflowManualApprovalDefinition,
+  WorkflowManualFormDefinition,
   WorkflowPreflightDefinition,
   WorkflowRequiresDefinition,
+  WorkflowStepTransitionDefinition,
   WorkflowStepType
 } from "../model"
 import { WorkflowTemplateKind } from "../workflowScaffold"
@@ -17,6 +21,7 @@ export interface WorkflowAuthoringModel {
   requires?: WorkflowRequiresDefinition
   preflight: WorkflowPreflightDefinition[]
   guardrails?: WorkflowGuardrailsDefinition
+  branching?: WorkflowBranchingDefinition
   steps: WorkflowAuthoringStep[]
   artifacts: WorkflowArtifactDefinition[]
   completion?: WorkflowCompletionDefinition
@@ -57,6 +62,7 @@ export interface WorkflowAuthoringStepBase {
   maxResultBytes?: number
   stateRequired?: boolean
   resultKey?: string
+  transition?: WorkflowStepTransitionDefinition
 }
 
 export interface WorkflowAuthoringCommandStep extends WorkflowAuthoringStepBase {
@@ -74,6 +80,8 @@ export interface WorkflowAuthoringAgentStep extends WorkflowAuthoringStepBase {
 
 export interface WorkflowAuthoringManualStep extends WorkflowAuthoringStepBase {
   type: "manual"
+  form?: WorkflowManualFormDefinition
+  approval?: WorkflowManualApprovalDefinition
 }
 
 export interface WorkflowAuthoringResultStep extends WorkflowAuthoringStepBase {
@@ -95,7 +103,7 @@ export interface WorkflowAuthoringIssue {
 
 export function collectAuthoringReferences(model: WorkflowAuthoringModel): WorkflowAuthoringReferenceSummary {
   const stepIds = model.steps.map((step) => step.id).filter(Boolean)
-  const resultKeys = model.steps.map((step) => step.resultKey).filter((key): key is string => Boolean(key))
+  const resultKeys = model.steps.flatMap(authoringStepResultKeys)
   const commands = model.steps.flatMap((step) => {
     if (step.type !== "command") return []
     const firstArg = Array.isArray(step.action.args) ? step.action.args[0] : undefined
@@ -107,8 +115,15 @@ export function collectAuthoringReferences(model: WorkflowAuthoringModel): Workf
 export function availableResultKeysBefore(model: WorkflowAuthoringModel, stepIndex: number): string[] {
   return model.steps
     .slice(0, Math.max(0, stepIndex))
-    .map((step) => step.resultKey)
-    .filter((key): key is string => Boolean(key))
+    .flatMap(authoringStepResultKeys)
+}
+
+function authoringStepResultKeys(step: WorkflowAuthoringStep): string[] {
+  const keys = [step.resultKey]
+  if (step.type === "manual") {
+    keys.push(step.form?.resultKey, step.approval?.resultKey)
+  }
+  return keys.filter((key): key is string => Boolean(key))
 }
 
 export function nextUniqueId(base: string, usedIds: Iterable<string>): string {

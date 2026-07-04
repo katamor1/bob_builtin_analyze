@@ -97,6 +97,7 @@ steps:
 | `guardrails` | 許可コマンド、禁止コマンド、承認メッセージ。 |
 | `stepExecution` | Bob UI で full / Todo / engine `steps[]` のどれを visible step として表示するか、singleStep の順序制約を制御する。 |
 | `stepReview` | 各 step 後のレビュー停止、承認、再試行、attempt 保存を制御する。 |
+| `branching` | step 成功後の条件分岐と、過去 step へ戻る loop / checkpoint 上限を定義する。 |
 | `artifacts` | 生成成果物の宣言。 |
 | `completion` | 完了時の要約、成果物表示、結果検証。 |
 | `steps` | 実行ステップ本体。新規ワークフローではこの形式を推奨する。 |
@@ -156,6 +157,30 @@ steps:
 ```
 
 手動ステップを進めるには、`現在のワークフローステップを完了` または `Bob ワークフロー: 現在のステップを完了` を実行します。
+
+入力値や承認結果を後続 step の state として使う場合は、structured manual step を使います。
+
+```yaml
+steps:
+  - id: collect-user-input
+    title: 入力
+    type: manual
+    form:
+      resultKey: userRequest
+      fields:
+        - id: request
+          title: 依頼内容
+          type: string
+          required: true
+          multiline: true
+  - id: approve-output
+    title: 承認
+    type: manual
+    approval:
+      resultKey: userApproval
+      approveLabel: 承認
+      rejectLabel: リジェクト
+```
 
 ### 結果ステップ
 
@@ -226,6 +251,36 @@ stepReview:
 | `allowEditBeforeRetry` | workflow 定義変更後の retry を許可する。 |
 | `preserveAttempts` | retry 前の step attempt を保存する。 |
 
+## branching / transition
+
+`branching` と step-level `transition` を使うと、command / agent / manual step が `run.state` に保存した結果を条件評価し、過去 step へ戻れます。AI が実行制御を直接決めるのではなく、engine が `equals`、`notEquals`、`in`、`exists`、`truthy` の安全な条件だけを評価します。
+
+```yaml
+branching:
+  enabled: true
+  loops:
+    - id: revise-until-approved
+      entryStep: collect-user-input
+      maxIterations: 5
+      extensionSize: 5
+steps:
+  - id: preapproval-check
+    title: プレアプローバルチェック
+    type: command
+    resultKey: preapproval
+    transition:
+      decisions:
+        - id: preapproval-ng
+          when:
+            stateKey: preapproval.status
+            equals: ng
+          goto: collect-user-input
+          loop: revise-until-approved
+      default: next
+```
+
+後方 `goto` には `loop` が必須です。loop 上限に達すると run は `checkpoint` で停止し、`Bob ワークフロー: ループ上限を承認して続行` または `Bob ワークフロー: ループ上限で中止` だけが解除できます。サンプルは `samples/step-back-branching-approval` を参照してください。
+
 ## 検証
 
 | コマンド | 用途 |
@@ -241,6 +296,8 @@ stepReview:
 - ステップ ID が重複していないか。
 - `includeState` が存在する `resultKey` を参照しているか。
 - `result.source: state` の `stateKey` が存在するか。
+- `transition.goto` / `transition.loop` / condition が有効か。
+- manual `form.resultKey` / `approval.resultKey` が他の state producer と衝突していないか。
 - `artifact.producedBy` が存在するステップを参照しているか。
 - `select` input に `options` があるか。
 - `guardrails.allowedCommands` と `guardrails.deniedCommands` が衝突していないか。
@@ -262,6 +319,9 @@ stepReview:
 | `Bob ワークフロー: 次のステップを実行` | `reviewing` でない run の次の pending step を1つだけ実行する。 |
 | `Bob ワークフロー: 承認して次のステップを実行` | current step を承認して次 step を実行する。 |
 | `Bob ワークフロー: 現在のステップ状態を確認` | current step の状態を表示する。 |
+| `Bob ワークフロー: ループ上限を承認して続行` | branch checkpoint を解除し、loop 許可回数を追加する。 |
+| `Bob ワークフロー: ループ上限で中止` | branch checkpoint 中の run を安全に失敗終了する。 |
+| `Bob ワークフロー: 分岐状態を確認` | loop count、checkpoint、分岐履歴を表示する。 |
 | `Bob ワークフロー: 現在のステップをGUIで編集` | current step の定義を GUI Builder で開く。 |
 | `Bob ワークフロー: 診断を確認` | run state と task snapshot の診断を確認する。 |
 | `Bob ワークフロー: 実行中ステップを確認` | 手動完了待ち active step を確認する。 |
