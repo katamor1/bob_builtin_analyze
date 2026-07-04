@@ -68,6 +68,7 @@ export async function initializeBobWorkspaceFromTemplates(options: {
   workspaceFolder: vscode.WorkspaceFolder
   bzrPath: string
   serverName: string
+  textEncoding?: string
 }): Promise<BobWorkspaceStatus> {
   const root = options.workspaceFolder.uri.fsPath
   const templateRoot = options.context.asAbsolutePath(path.join("templates", ".bob"))
@@ -79,7 +80,8 @@ export async function initializeBobWorkspaceFromTemplates(options: {
     workspaceFolder: options.workspaceFolder,
     extensionContext: options.context,
     serverName: options.serverName,
-    bzrPath: options.bzrPath
+    bzrPath: options.bzrPath,
+    textEncoding: options.textEncoding
   })
 
   return getBobWorkspaceStatus(options.workspaceFolder, options.serverName)

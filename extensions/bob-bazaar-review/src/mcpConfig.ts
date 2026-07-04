@@ -7,6 +7,7 @@ export interface McpServerConfigOptions {
   extensionContext: vscode.ExtensionContext
   serverName: string
   bzrPath: string
+  textEncoding?: string
 }
 
 export interface McpServerConfigResult {
@@ -31,7 +32,7 @@ export async function configureWorkspaceMcpServer(options: McpServerConfigOption
     args: [serverPath],
     env: {
       BZR_PATH: options.bzrPath,
-      BZR_TEXT_ENCODING: "auto"
+      BZR_TEXT_ENCODING: options.textEncoding ?? "auto"
     },
     disabled: false
   }

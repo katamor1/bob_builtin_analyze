@@ -164,13 +164,15 @@ async function configureMcp(context: vscode.ExtensionContext): Promise<void> {
 
   const config = vscode.workspace.getConfiguration("bobBazaar")
   const bzrPath = config.get<string>("bzrPath", "bzr")
+  const textEncoding = config.get<string>("textEncoding", "auto")
   const serverName = config.get<string>("mcpServerName", "bazaar")
 
   const result = await configureWorkspaceMcpServer({
     workspaceFolder: folder,
     extensionContext: context,
     serverName,
-    bzrPath
+    bzrPath,
+    textEncoding
   })
 
   await vscode.window.showInformationMessage(

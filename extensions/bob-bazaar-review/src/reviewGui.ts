@@ -109,7 +109,8 @@ class BazaarReviewGuiController {
       context: this.context,
       workspaceFolder: folder,
       bzrPath: config.get<string>("bzrPath", "bzr"),
-      serverName: config.get<string>("mcpServerName", "bazaar")
+      serverName: config.get<string>("mcpServerName", "bazaar"),
+      textEncoding: config.get<string>("textEncoding", "auto")
     })
     this.post({ type: "bobWorkspaceStatus", ...status })
     this.post({ type: "initialized", message: ".bob 初期化が完了しました。Bob MCP サーバーを Refresh / Restart してください。" })
