@@ -59,3 +59,53 @@ test("traceabilityCatalog is a facade over validation, ids, types, and review-in
   assert.match(source, /from "\.\/traceabilityTypes"/)
   assert.doesNotMatch(source, /\bfunction\b|const ARTIFACT_KIND|validateTraceabilityCatalog\(/)
 })
+
+test("document extraction dispatch is separated from format-specific extractors", () => {
+  const analyzerRoot = path.join(extensionRoot, "src", "analyzers")
+  for (const fileName of [
+    "documentMarkdownExtractor.ts",
+    "documentDocxExtractor.ts",
+    "documentXlsxExtractor.ts"
+  ]) {
+    assert.ok(fs.existsSync(path.join(analyzerRoot, fileName)), `${fileName} must exist`)
+  }
+
+  const source = fs.readFileSync(path.join(analyzerRoot, "documentExtractor.ts"), "utf8")
+  assert.match(source, /from "\.\/documentMarkdownExtractor"/)
+  assert.match(source, /from "\.\/documentDocxExtractor"/)
+  assert.match(source, /from "\.\/documentXlsxExtractor"/)
+  assert.doesNotMatch(source, /function extractMarkdownChunks|function extractDocxChunks|function extractXlsxChunks/)
+  assert.doesNotMatch(source, /function htmlTableToMarkdown|function normalizeSheetRows/)
+})
+
+test("C/C++ change analysis delegates diff parsing, symbol detection, and rendering", () => {
+  const analyzerRoot = path.join(extensionRoot, "src", "analyzers")
+  for (const fileName of [
+    "cCppDiffParser.ts",
+    "cCppSymbolDetector.ts",
+    "cCppAnalysisRenderer.ts"
+  ]) {
+    assert.ok(fs.existsSync(path.join(analyzerRoot, fileName)), `${fileName} must exist`)
+  }
+
+  const source = fs.readFileSync(path.join(analyzerRoot, "cCppChangeAnalyzer.ts"), "utf8")
+  assert.match(source, /from "\.\/cCppDiffParser"/)
+  assert.match(source, /from "\.\/cCppSymbolDetector"/)
+  assert.match(source, /from "\.\/cCppAnalysisRenderer"/)
+  assert.doesNotMatch(source, /function parseUnifiedDiff|function detectFunctions|function renderSummary/)
+})
+
+test("extension entrypoint delegates command implementations to command modules", () => {
+  const commandRoot = path.join(extensionRoot, "src", "commands")
+  for (const fileName of [
+    "reviewInputCommands.ts",
+    "workspaceCommands.ts"
+  ]) {
+    assert.ok(fs.existsSync(path.join(commandRoot, fileName)), `${fileName} must exist`)
+  }
+
+  const source = fs.readFileSync(path.join(extensionRoot, "src", "extension.ts"), "utf8")
+  assert.match(source, /from "\.\/commands\/reviewInputCommands"/)
+  assert.match(source, /from "\.\/commands\/workspaceCommands"/)
+  assert.doesNotMatch(source, /async function run(?:Create|Prepare|Apply|Repair|Explain|Initialize)/)
+})
