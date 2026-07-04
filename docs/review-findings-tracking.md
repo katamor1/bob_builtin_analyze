@@ -17,13 +17,13 @@
 | document | kind | tracking scope | current status | notes |
 | --- | --- | --- | --- | --- |
 | [workflow-register-deep-review-2026-07-04-14afe83c.md](workflow-register-deep-review-2026-07-04-14afe83c.md) | deep review | `WFR-01` to `WFR-15` | done | `WFR-01` から `WFR-15` まで対応済み。 |
-| [workflow-register-maintainability-review-2026-07-04-14afe83c.md](workflow-register-maintainability-review-2026-07-04-14afe83c.md) | maintainability review | `WFR-MAINT-*` | backlog | ID 付き deep review と重なるものは canonical 側を優先する。 |
+| [workflow-register-maintainability-review-2026-07-04-14afe83c.md](workflow-register-maintainability-review-2026-07-04-14afe83c.md) | maintainability review | `WFR-MAINT-*` | partial | ID 付き deep review と重なるものは canonical 側を優先する。lockfile / `npm ci` / dependency policy は対応済み。 |
 | [bob-bazaar-review-deep-review-2026-07-04-14afe83c.md](bob-bazaar-review-deep-review-2026-07-04-14afe83c.md) | deep review | `BBR-01` to `BBR-20` | done | `BBR-01` から `BBR-20` まで対応済み。 |
-| [bob-bazaar-review-maintainability-review-2026-07-04-14afe83c.md](bob-bazaar-review-maintainability-review-2026-07-04-14afe83c.md) | maintainability review | `BBR-MAINT-*` | backlog | clamp や allowed root など deep review と重なる項目を含む。 |
+| [bob-bazaar-review-maintainability-review-2026-07-04-14afe83c.md](bob-bazaar-review-maintainability-review-2026-07-04-14afe83c.md) | maintainability review | `BBR-MAINT-*` | partial | clamp や allowed root など deep review と重なる項目を含む。lockfile / `npm ci` / dependency policy は対応済み。 |
 | [bob-code-consistency-review-deep-review-2026-07-04-14afe83c.md](bob-code-consistency-review-deep-review-2026-07-04-14afe83c.md) | deep review | `CCR-01` to `CCR-16` | done | `CCR-01` から `CCR-16` まで対応済み。 |
-| [bob-code-consistency-review-maintainability-review-2026-07-04-14afe83c.md](bob-code-consistency-review-maintainability-review-2026-07-04-14afe83c.md) | maintainability review | `CCR-MAINT-*` | backlog | path boundary、revision validation、size limits は deep review 側と重なる。 |
+| [bob-code-consistency-review-maintainability-review-2026-07-04-14afe83c.md](bob-code-consistency-review-maintainability-review-2026-07-04-14afe83c.md) | maintainability review | `CCR-MAINT-*` | partial | path boundary、revision validation、size limits は deep review 側と重なる。runtime dependency / VSIX CI は対応済み。 |
 | [extensions-review-2026-07-04-14afe83c.md](extensions-review-2026-07-04-14afe83c.md) | cross-extension review | `extensions-review:<ID>` | done / duplicate | canonical ID への対応表を下に置く。重複指摘は canonical 側ですべて対応済み。 |
-| [extensions-maintainability-review-2026-07-04-14afe83c.md](extensions-maintainability-review-2026-07-04-14afe83c.md) | cross-extension maintainability review | `EXT-MAINT-*` | backlog | 3 拡張共通の CI、bundle、依存、README backlog。 |
+| [extensions-maintainability-review-2026-07-04-14afe83c.md](extensions-maintainability-review-2026-07-04-14afe83c.md) | cross-extension maintainability review | `EXT-MAINT-*` | partial | 3 拡張共通の CI、bundle、依存、README backlog。lockfile / `npm ci` / dependency policy は対応済み。 |
 
 ## Canonical findings
 
@@ -115,16 +115,16 @@
 | tracking id | source | priority | summary | status | notes |
 | --- | --- | --- | --- | --- | --- |
 | `WFR-MAINT-H` | `workflow-register-maintainability-review...:401` | High | model 分割、source map 方針、madge、command ID guardrail、`type-fixes.d.ts` 撤去 | partial | command ID guardrail は `WFR-01` で対応済み。 |
-| `WFR-MAINT-M` | `workflow-register-maintainability-review...:409` | Medium | lockfile / `npm ci`、unused checks、service 分割、parser re-export 整理、VSIX budget | backlog |  |
+| `WFR-MAINT-M` | `workflow-register-maintainability-review...:409` | Medium | lockfile / `npm ci`、unused checks、service 分割、parser re-export 整理、VSIX budget | partial | `59a34c5b` で lockfile、`npm ci`、dependency policy、production audit、test、VSIX package の CI gate を追加済み。unused checks、service 分割、parser re-export 整理、VSIX budget は残。 |
 | `WFR-MAINT-L` | `workflow-register-maintainability-review...:417` | Low | core 段階分割、README 追記、PR metrics | backlog |  |
 | `BBR-MAINT-H` | `bob-bazaar-review-maintainability-review...:452` | High | MCP allowed roots、MCP server 分割、runtime clamp、VSIX budget、madge | partial | runtime clamp は `BBR-04` / `BBR-16` で対応済み。 |
-| `BBR-MAINT-M` | `bob-bazaar-review-maintainability-review...:460` | Medium | src 構造整理、extension composition root 化、packet URI/state 化、unused checks、lockfile | backlog | packet URI/state は `BBR-07` と連動。 |
+| `BBR-MAINT-M` | `bob-bazaar-review-maintainability-review...:460` | Medium | src 構造整理、extension composition root 化、packet URI/state 化、unused checks、lockfile | partial | `59a34c5b` で lockfile、`npm ci`、dependency policy、production audit、test、VSIX package の CI gate を追加済み。packet URI/state は `BBR-07` で対応済み。src 構造整理、extension composition root 化、unused checks は残。 |
 | `BBR-MAINT-L` | `bob-bazaar-review-maintainability-review...:468` | Low | MCP tool 型分離、README、template / prompt / schema size budget、`export *` 禁止 | backlog |  |
 | `CCR-MAINT-H` | `bob-code-consistency-review-maintainability-review...:460` | High | strict path resolver、revision validation、size limits、runtime dependency、VSIX CI | done | strict path resolver は `CCR-01` / `CCR-07` / `CCR-09`、revision validation は `CCR-02` / `CCR-03`、size limits は `CCR-06`、runtime dependency / VSIX CI は `CCR-16` で対応済み。 |
 | `CCR-MAINT-M` | `bob-code-consistency-review-maintainability-review...:468` | Medium | extractor / analyzer / command 分割、unused checks、madge | backlog |  |
 | `CCR-MAINT-L` | `bob-code-consistency-review-maintainability-review...:476` | Low | domain type 分割、traceability facade 分離、README、`.gitignore` helper | partial | `.gitignore` helper は `CCR-05` で対応済み。 |
 | `EXT-MAINT-H` | `extensions-maintainability-review...:519` | High | 3 拡張共通の madge、VSIX contents、source map 方針、heavy dependency lazy loading、workflow model 方針 | backlog | 各拡張の maintainability backlog と重複あり。 |
-| `EXT-MAINT-M` | `extensions-maintainability-review...:527` | Medium | unused checks、lockfile / `npm ci`、README、size budget | backlog |  |
+| `EXT-MAINT-M` | `extensions-maintainability-review...:527` | Medium | unused checks、lockfile / `npm ci`、README、size budget | partial | `59a34c5b` で 3 拡張共通の lockfile、`npm ci`、dependency policy、production audit、test、VSIX package の CI gate を追加済み。unused checks、README、size budget は残。 |
 | `EXT-MAINT-L` | `extensions-maintainability-review...:534` | Low | re-export shim 限定、LOC/file count PR comment、schema / TypeScript drift check | backlog |  |
 
 ## Additional verification checks
@@ -169,6 +169,7 @@
 | `87a173f5` | `CCR-14` | allowlist workflow provider user options and reject trusted execution key overrides |
 | `ebfb268d` | `CCR-15` | add non-blocking Open Report notifications for review package and traceability gate reports |
 | `e561177` | `CCR-16`, `CCR-MAINT-H` | require npm ci, dependency policy, production audit, tests, and VSIX packaging in CI |
+| `59a34c5b` | `WFR-MAINT-M`, `BBR-MAINT-M`, `EXT-MAINT-M` | add shared extension CI and dependency policy gates for workflow-register and bob-bazaar-review |
 | `8c86eb05` | `BBR-14` | Bazaar revision validation |
 | `fae99b40` | `BBR-18`, `extensions-review:BBR-04` | random GUI nonce |
 | `c085b107` | `BBR-20` | pass text encoding to MCP config |
