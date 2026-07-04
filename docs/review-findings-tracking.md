@@ -124,7 +124,7 @@
 | `CCR-MAINT-M` | `bob-code-consistency-review-maintainability-review...:468` | Medium | extractor / analyzer / command 分割、unused checks、madge | partial | import cycle gate は `7e1658e4`、report-only unused checks と `xlsx` production dependency 除去は `36c458f9` で対応済み。extractor / analyzer / command 分割は残。 |
 | `CCR-MAINT-L` | `bob-code-consistency-review-maintainability-review...:476` | Low | domain type 分割、traceability facade 分離、README、`.gitignore` helper | partial | `.gitignore` helper は `CCR-05` で対応済み。 |
 | `EXT-MAINT-H` | `extensions-maintainability-review...:519` | High | 3 拡張共通の madge、VSIX contents、source map 方針、heavy dependency lazy loading、workflow model 方針 | done | `5befb9dd` で 3 拡張共通の VSIX contents / size policy と `out/**/*.map` 非同梱方針、`7e1658e4` で 3 拡張共通の import cycle gate、`53d18349` で workflow model 分割方針、`95074c6e` で heavy dependency lazy loading を追加済み。 |
-| `EXT-MAINT-M` | `extensions-maintainability-review...:527` | Medium | unused checks、lockfile / `npm ci`、README、size budget | partial | `59a34c5b` で 3 拡張共通の lockfile、`npm ci`、dependency policy、production audit、test、VSIX package の CI gate、`5befb9dd` で VSIX size budget、`36c458f9` で 3 拡張共通の report-only unused checks を追加済み。README は残。 |
+| `EXT-MAINT-M` | `extensions-maintainability-review...:527` | Medium | unused checks、lockfile / `npm ci`、README、size budget | done | `59a34c5b` で 3 拡張共通の lockfile、`npm ci`、dependency policy、production audit、test、VSIX package の CI gate、`5befb9dd` で VSIX size budget、`36c458f9` で 3 拡張共通の report-only unused checks、`0ddb0415` で 3 拡張 README の生成物、VSIX サイズ、暗黙依存、必要 CLI、Trusted Workspace の保守・配布ポリシーを追加済み。 |
 | `EXT-MAINT-L` | `extensions-maintainability-review...:534` | Low | re-export shim 限定、LOC/file count PR comment、schema / TypeScript drift check | backlog |  |
 
 ## Additional verification checks
@@ -202,3 +202,5 @@
 | `00cde5b7` | `BBR-MAINT-M` | move bob-bazaar-review workflow integration modules under `src/workflow` |
 | `b3b1ea2d` | `BBR-MAINT-M` | move bob-bazaar-review Bazaar domain modules under `src/bazaar` |
 | `448e399e` | `BBR-MAINT-M` | keep bob-bazaar-review `src` root as the extension entrypoint |
+| `94b0e38e` | `BBR-MAINT-M` | close bob-bazaar-review source layout item in tracking table |
+| `0ddb0415` | `EXT-MAINT-M` | document generated artifacts, VSIX budgets, dependencies, CLI, and trust boundaries in extension READMEs |
