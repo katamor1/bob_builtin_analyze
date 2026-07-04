@@ -2,7 +2,7 @@ import * as vscode from "vscode"
 import { BazaarClient } from "./bazaar"
 import { isBobCodeExtensionAvailable } from "./bobCodeExtension"
 import { addMarkdownPacketToBobContext } from "./bobContext"
-import { loadProjectChecklist, loadReviewResultSchema } from "./projectRules/io"
+import { loadProjectChecklistRequired, loadReviewResultSchemaRequired } from "./projectRules/io"
 import { buildProjectRulesSection } from "./projectRules/packet"
 import { buildReviewPacket } from "./reviewPacket"
 import { clampMaxAddedFileContentBytes, clampMaxDiffBytes, maxBufferForDiffBytes } from "./reviewLimits"
@@ -96,8 +96,8 @@ async function buildProjectRulesSectionForWorkspace(workspaceRoot: string): Prom
   const checklistPath = config.get<string>("projectRules.checklistPath", ".bob/review/checklist.json")
   const schemaPath = config.get<string>("projectRules.schemaPath", ".bob/review/review-result.schema.json")
   const [checklist, schema] = await Promise.all([
-    loadProjectChecklist(workspaceRoot, checklistPath),
-    loadReviewResultSchema(workspaceRoot, schemaPath)
+    loadProjectChecklistRequired(workspaceRoot, checklistPath),
+    loadReviewResultSchemaRequired(workspaceRoot, schemaPath)
   ])
   return buildProjectRulesSection({ checklist, schema })
 }

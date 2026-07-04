@@ -5,7 +5,7 @@ import { addMarkdownPacketToBobContext } from "./bobContext"
 import { buildReviewPacket } from "./reviewPacket"
 import { clampMaxAddedFileContentBytes, clampMaxDiffBytes, maxBufferForDiffBytes } from "./reviewLimits"
 import { buildProjectRulesSection } from "./projectRules/packet"
-import { loadProjectChecklist, loadReviewResultSchema } from "./projectRules/io"
+import { loadProjectChecklistRequired, loadReviewResultSchemaRequired } from "./projectRules/io"
 import {
   buildTargetMetadataSection,
   parseTargetRequest,
@@ -231,8 +231,8 @@ function getMaxAddedFileContentBytes(): number {
 async function buildProjectRulesSectionForWorkspace(workspaceRoot: string): Promise<string> {
   const config = vscode.workspace.getConfiguration("bobBazaar")
   const [checklist, schema] = await Promise.all([
-    loadProjectChecklist(workspaceRoot, config.get<string>("projectRules.checklistPath", ".bob/review/checklist.json")),
-    loadReviewResultSchema(workspaceRoot, config.get<string>("projectRules.schemaPath", ".bob/review/review-result.schema.json"))
+    loadProjectChecklistRequired(workspaceRoot, config.get<string>("projectRules.checklistPath", ".bob/review/checklist.json")),
+    loadReviewResultSchemaRequired(workspaceRoot, config.get<string>("projectRules.schemaPath", ".bob/review/review-result.schema.json"))
   ])
   return buildProjectRulesSection({ checklist, schema })
 }
