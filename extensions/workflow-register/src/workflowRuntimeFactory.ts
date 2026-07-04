@@ -124,7 +124,7 @@ export class WorkflowRuntimeFactory {
       enabled: config.get<boolean>("taskSnapshots.enabled", true),
       maxBytes: config.get<number>("taskSnapshots.maxBytes", 262_144),
       maxPerRun: config.get<number>("taskSnapshots.maxPerRun", 50),
-      includeMessages: config.get<boolean>("taskSnapshots.includeMessages", true),
+      includeMessages: config.get<boolean>("taskSnapshots.includeMessages", false),
       pruneOnSave: config.get<boolean>("taskSnapshots.pruneOnSave", true)
     }
   }

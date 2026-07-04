@@ -134,8 +134,8 @@
         },
         "workflowRegister.taskSnapshots.includeMessages": {
           "type": "boolean",
-          "default": true,
-          "description": "task snapshot に Bob chat messages を含めます。無効時も metadata と lastAssistantText は保存対象です。"
+          "default": false,
+          "description": "task snapshot に Bob chat messages を含めます。必要な場合のみ明示的に有効化してください。無効時も metadata と lastAssistantText は redaction 後に保存対象です。"
         },
         "workflowRegister.taskSnapshots.pruneOnSave": {
           "type": "boolean",

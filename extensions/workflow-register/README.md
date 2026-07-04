@@ -268,6 +268,9 @@ stepReview:
 | `Bob ワークフロー: 現在のステップを完了` | 現在の手動ステップを完了する。 |
 
 実行状態は、ワークスペース内の `.bob/workflows/runs/<runId>/run.json` に保存されます。
+Task snapshot は `.bob/workflows/runs/<runId>/task-snapshots/` に保存され、既定では Bob chat messages を含めません。
+保存前に secret らしい文字列は best-effort で redaction され、snapshot 保存時は `.bob/workflows/runs/` がワークスペース直下の `.gitignore` に冪等に追加されます。
+chat messages まで診断に残したい場合だけ、`workflowRegister.taskSnapshots.includeMessages` を明示的に有効化してください。
 
 ## AI 補助
 

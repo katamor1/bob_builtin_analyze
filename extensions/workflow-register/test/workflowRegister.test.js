@@ -88,7 +88,7 @@ test("package exposes task snapshot retention settings", () => {
   assert.equal(properties["workflowRegister.taskSnapshots.enabled"].default, true)
   assert.equal(properties["workflowRegister.taskSnapshots.maxBytes"].default, 262144)
   assert.equal(properties["workflowRegister.taskSnapshots.maxPerRun"].default, 50)
-  assert.equal(properties["workflowRegister.taskSnapshots.includeMessages"].default, true)
+  assert.equal(properties["workflowRegister.taskSnapshots.includeMessages"].default, false)
   assert.equal(properties["workflowRegister.taskSnapshots.pruneOnSave"].default, true)
 })
 
