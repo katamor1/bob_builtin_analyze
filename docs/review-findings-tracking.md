@@ -127,6 +127,12 @@
 | `EXT-MAINT-M` | `extensions-maintainability-review...:527` | Medium | unused checks、lockfile / `npm ci`、README、size budget | backlog |  |
 | `EXT-MAINT-L` | `extensions-maintainability-review...:534` | Low | re-export shim 限定、LOC/file count PR comment、schema / TypeScript drift check | backlog |  |
 
+## Additional verification checks
+
+| tracking id | scope | check | status | done commits / next action | verification |
+| --- | --- | --- | --- | --- | --- |
+| `ENC-01` | `extensions/workflow-register`, `extensions/bob-bazaar-review`, `extensions/bob-code-consistency-review` | Git tracked text files are valid UTF-8 without BOM | done | `c17cbb34` | `extensions/bob-bazaar-review`: `npm.cmd test`; ad-hoc scan result: 343/343 `utf8`, 0 mismatches |
+
 ## Completed commit index
 
 | commit | tracked ids | note |
@@ -144,3 +150,4 @@
 | `b668b76d` | `BBR-15` | parse Bazaar rename and binary diffs |
 | `05ebd74e` | `BBR-17` | harden MCP config writes |
 | `6f1db85c` | `BBR-09` | require project rules assets for project-rules Bazaar review entrypoints |
+| `c17cbb34` | `ENC-01` | enforce UTF-8 without BOM for tracked extension text files |
