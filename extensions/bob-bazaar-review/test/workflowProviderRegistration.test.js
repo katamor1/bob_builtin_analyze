@@ -15,7 +15,7 @@ test("Bazaar companion extension has no required companion extension dependency"
   assert.ok(!extensionDependencies.includes("local.workflow-register"))
   assert.ok(packageJson.activationEvents.includes("onStartupFinished"))
   assert.match(source, /const WORKFLOW_REGISTER_EXTENSION_ID = "local\.workflow-register"/)
-  assert.match(source, /registerWorkflowProviders\(context\)\.catch/)
+  assert.match(source, /registerWorkflowProvidersWithRetry\(context\)/)
   assert.match(source, /id: "bobBazaar\.openReviewGui"/)
   assert.match(source, /initialTargetFromWorkflowInputs\(input\.inputs, input\)/)
   assert.match(source, /id: "bobBazaar\.collectReviewContext"/)
@@ -39,6 +39,16 @@ test("Bazaar capture command accepts workflow context appended by result sinks",
   assert.match(source, /expectedRuleIds: expectedRuleIdsFromState\(workflowState\)/)
   assert.match(source, /reviewResultSchema: reviewResultSchemaFromState\(workflowState\)/)
   assert.match(source, /workspaceRoot: stringInput\(context\.workflowRoot\)/)
+})
+
+test("Bazaar workflow provider registration retries optional workflow-register integration", () => {
+  const source = readSourceSet(["extension.ts"])
+
+  assert.match(source, /registerWorkflowProvidersWithRetry\(context\)/)
+  assert.match(source, /WORKFLOW_PROVIDER_RETRY_DELAYS_MS/)
+  assert.match(source, /vscode\.extensions\.onDidChange/)
+  assert.match(source, /setTimeout\(\(\) => attempt\(\)/)
+  assert.match(source, /workflowProvidersRegistered/)
 })
 
 test("Bazaar workflow template starts review target selection from the GUI by default", () => {
