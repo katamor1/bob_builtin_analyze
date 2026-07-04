@@ -18,7 +18,7 @@
 | --- | --- | --- | --- | --- |
 | [workflow-register-deep-review-2026-07-04-14afe83c.md](workflow-register-deep-review-2026-07-04-14afe83c.md) | deep review | `WFR-01` to `WFR-15` | partial | `WFR-01`、`WFR-03`、`WFR-06`、`WFR-12` は対応済み。 |
 | [workflow-register-maintainability-review-2026-07-04-14afe83c.md](workflow-register-maintainability-review-2026-07-04-14afe83c.md) | maintainability review | `WFR-MAINT-*` | backlog | ID 付き deep review と重なるものは canonical 側を優先する。 |
-| [bob-bazaar-review-deep-review-2026-07-04-14afe83c.md](bob-bazaar-review-deep-review-2026-07-04-14afe83c.md) | deep review | `BBR-01` to `BBR-20` | partial | `BBR-01`、`BBR-02`、`BBR-03`、`BBR-04`、`BBR-05`、`BBR-06`、`BBR-09`、`BBR-10`、`BBR-11`、`BBR-14`、`BBR-15`、`BBR-16`、`BBR-17`、`BBR-18`、`BBR-20` は対応済み。`BBR-12` は backup 対応まで partial。 |
+| [bob-bazaar-review-deep-review-2026-07-04-14afe83c.md](bob-bazaar-review-deep-review-2026-07-04-14afe83c.md) | deep review | `BBR-01` to `BBR-20` | partial | `BBR-01`、`BBR-02`、`BBR-03`、`BBR-04`、`BBR-05`、`BBR-06`、`BBR-09`、`BBR-10`、`BBR-11`、`BBR-14`、`BBR-15`、`BBR-16`、`BBR-17`、`BBR-18`、`BBR-19`、`BBR-20` は対応済み。`BBR-12` は backup 対応まで partial。 |
 | [bob-bazaar-review-maintainability-review-2026-07-04-14afe83c.md](bob-bazaar-review-maintainability-review-2026-07-04-14afe83c.md) | maintainability review | `BBR-MAINT-*` | backlog | clamp や allowed root など deep review と重なる項目を含む。 |
 | [bob-code-consistency-review-deep-review-2026-07-04-14afe83c.md](bob-code-consistency-review-deep-review-2026-07-04-14afe83c.md) | deep review | `CCR-01` to `CCR-16` | open | まだこの表上の対応済み項目はない。 |
 | [bob-code-consistency-review-maintainability-review-2026-07-04-14afe83c.md](bob-code-consistency-review-maintainability-review-2026-07-04-14afe83c.md) | maintainability review | `CCR-MAINT-*` | backlog | path boundary、revision validation、size limits は deep review 側と重なる。 |
@@ -69,7 +69,7 @@
 | `BBR-16` | `bob-bazaar-review-deep-review...:63` | Medium | config clamp と packet size 上限 | done | `d668a0fc` | `extensions/bob-bazaar-review`: `npm.cmd test`; `git diff --check` |
 | `BBR-17` | `bob-bazaar-review-deep-review...:64` | Medium | MCP config 書き込みの堅牢性 | done | `05ebd74e` | `extensions/bob-bazaar-review`: `npm.cmd test`; `git diff --check` |
 | `BBR-18` | `bob-bazaar-review-deep-review...:65` | Low | Webview nonce が `Date.now()` | done | `fae99b40` | `extensions/bob-bazaar-review`: `npm.cmd test`; `git diff --check` |
-| `BBR-19` | `bob-bazaar-review-deep-review...:66` | Low | workflow-register provider registration の retry が弱い | open | retry / backoff または extension change event |  |
+| `BBR-19` | `bob-bazaar-review-deep-review...:66` | Low | workflow-register provider registration の retry が弱い | done | `b42ac217` | `extensions/bob-bazaar-review`: `npm.cmd test`; `git diff --check` |
 | `BBR-20` | `bob-bazaar-review-deep-review...:67` | Low | MCP text encoding config が GUI / command とずれる | done | `c085b107` | `extensions/bob-bazaar-review`: `npm.cmd test`; `git diff --check` |
 
 ### bob-code-consistency-review
