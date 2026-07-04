@@ -76,6 +76,7 @@ test("public JSON schema mirrors runtime schema shape", () => {
   assert.deepEqual(publicSchema.required, workflowV1Schema.required)
   assert.deepEqual(Object.keys(publicSchema.properties).sort(), Object.keys(workflowV1Schema.properties).sort())
   assert.deepEqual(publicSchema.properties.stepExecution, workflowV1Schema.properties.stepExecution)
+  assert.deepEqual(publicSchema.properties.guardrails, workflowV1Schema.properties.guardrails)
   assert.deepEqual(workflowV1Schema.properties.stepExecution.properties.mode.enum, ["full", "todo", "engineSteps"])
   assert.deepEqual(publicSchema.properties.steps.items.required, workflowV1Schema.properties.steps.items.required)
   assert.deepEqual(publicSchema.properties.steps.items.properties.type.enum, workflowV1Schema.properties.steps.items.properties.type.enum)
