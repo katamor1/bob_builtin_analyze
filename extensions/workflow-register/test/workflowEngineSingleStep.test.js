@@ -83,10 +83,17 @@ test("workflow engine can execute a single requested step and leave the run reco
   ])
 })
 
-test("workflow engine treats a reviewed previous step as accepted when running the next ordered single step", async () => {
+test("workflow engine blocks the next ordered single step while the previous step is reviewing", async () => {
   const { actions, engine } = createWorkflowEngineContext()
   actions.register({ id: "sample.collect", execute: async () => "context" })
-  actions.register({ id: "sample.analyze", execute: async (input) => `analysis-${input.state.context}` })
+  let analyzeCalls = 0
+  actions.register({
+    id: "sample.analyze",
+    execute: async (input) => {
+      analyzeCalls += 1
+      return `analysis-${input.state.context}`
+    }
+  })
   const workflow = {
     id: "workflow-register.reviewed-single-step",
     name: "reviewed-single-step",
@@ -124,11 +131,67 @@ test("workflow engine treats a reviewed previous step as accepted when running t
 
   assert.equal(first.status, "reviewing")
   assert.equal(first.steps[0].status, "reviewing")
-  assert.equal(second.status, "reviewing")
-  assert.equal(second.steps[0].status, "completed")
-  assert.equal(second.steps[0].acceptedAt !== undefined, true)
-  assert.equal(second.steps[1].status, "reviewing")
-  assert.equal(second.state.analysis, "analysis-context")
+  assert.equal(second.status, "failed")
+  assert.equal(second.steps[0].status, "reviewing")
+  assert.equal(second.steps[0].acceptedAt, undefined)
+  assert.equal(second.steps[1].status, "failed")
+  assert.match(second.error, /cannot run before previous step 'collect' is completed/)
+  assert.equal(second.state.analysis, undefined)
+  assert.equal(analyzeCalls, 0)
+})
+
+test("workflow engine does not bypass reviewing steps with allowOutOfOrder", async () => {
+  const { actions, engine } = createWorkflowEngineContext()
+  actions.register({ id: "sample.collect", execute: async () => "context" })
+  let analyzeCalls = 0
+  actions.register({
+    id: "sample.analyze",
+    execute: async () => {
+      analyzeCalls += 1
+      return "analysis"
+    }
+  })
+  const workflow = {
+    id: "workflow-register.reviewed-single-step-out-of-order",
+    name: "reviewed-single-step-out-of-order",
+    label: "Reviewed Single Step Out Of Order",
+    schemaVersion: "workflow-register/v1",
+    inputs: {},
+    stepReview: {
+      enabled: true,
+      pauseAfter: "everyStep",
+      requireAcceptBeforeNext: true,
+      allowRetry: true,
+      allowEditBeforeRetry: true,
+      preserveAttempts: true
+    },
+    engineSteps: [
+      {
+        id: "collect",
+        title: "Collect",
+        type: "command",
+        action: { provider: "sample.collect" },
+        resultKey: "context"
+      },
+      {
+        id: "analyze",
+        title: "Analyze",
+        type: "command",
+        action: { provider: "sample.analyze" },
+        resultKey: "analysis"
+      }
+    ]
+  }
+
+  const first = await engine.runWorkflow(workflow, {}, { executionMode: "singleStep", stepId: "collect" })
+  const second = await engine.runWorkflow(workflow, {}, { executionMode: "singleStep", stepId: "analyze", allowOutOfOrder: true })
+
+  assert.equal(first.steps[0].status, "reviewing")
+  assert.equal(second.status, "failed")
+  assert.equal(second.steps[0].status, "reviewing")
+  assert.equal(second.steps[1].status, "failed")
+  assert.match(second.error, /cannot run before previous step 'collect' is completed/)
+  assert.equal(analyzeCalls, 0)
 })
 
 test("workflow engine rejects out-of-order single-step execution by default", async () => {
