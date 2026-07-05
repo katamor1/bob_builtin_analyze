@@ -44,6 +44,7 @@ import {
 import { openWorkflowBuilder } from "./commands/openWorkflowBuilder"
 import { openTemplateCustomizationStudio } from "./commands/openTemplateCustomizationStudio"
 import { createConfiguredWorkflowAiProvider } from "./core/workflowAiProviderFactory"
+import { OperationHubProvider } from "./gui/operationHubProvider"
 import { WorkflowDiagnosticsReporter } from "./commands/workflowDiagnostics"
 import { showMarkdownReport } from "./reports"
 
@@ -61,6 +62,7 @@ export function activate(context: vscode.ExtensionContext): WorkflowRegisterApi 
   const api = activateCore(context)
   const diagnostics = new WorkflowDiagnosticsReporter()
   const runControlView = new WorkflowRunControlView()
+  const operationHub = new OperationHubProvider({ api, extensionUri: context.extensionUri })
   runControlView.start()
   const config = () => vscode.workspace.getConfiguration("workflowRegister")
   const sourceId = () => config().get<string>("sourceId", "workflow-register")
@@ -76,7 +78,10 @@ export function activate(context: vscode.ExtensionContext): WorkflowRegisterApi 
   context.subscriptions.push(
     diagnostics,
     runControlView,
+    operationHub,
     vscode.window.registerTreeDataProvider("workflowRegister.runs", runControlView),
+    vscode.window.registerWebviewViewProvider("workflowRegister.operationHub", operationHub),
+    vscode.commands.registerCommand("workflowRegister.openOperationHub", () => operationHub.open()),
     vscode.commands.registerCommand("workflowRegister.refreshRunsView", () => runControlView.refresh()),
     vscode.commands.registerCommand(
       "workflowRegister.validateCurrentWorkflow",
