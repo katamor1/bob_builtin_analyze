@@ -9,8 +9,10 @@ const SERVER_VERSION = "0.3.0"
 const DEFAULT_MAX_REQUEST_BYTES = 1024 * 1024
 const MAX_REQUEST_BYTES = readPositiveIntegerEnv("BOB_BAZAAR_MCP_MAX_REQUEST_BYTES", DEFAULT_MAX_REQUEST_BYTES)
 const ALLOWED_ROOTS_ENV = "BOB_BAZAAR_ALLOWED_ROOTS"
+const ALLOW_UNRESTRICTED_CWD_ENV = "BOB_BAZAAR_ALLOW_UNRESTRICTED_CWD"
 const ENABLE_WRITE_TOOLS_ENV = "BOB_BAZAAR_ENABLE_WRITE_TOOLS"
 const allowedRootInputs = readPathListEnv(ALLOWED_ROOTS_ENV)
+const allowUnrestrictedCwd = process.env[ALLOW_UNRESTRICTED_CWD_ENV] === "1"
 let allowedRootsPromise: Promise<string[]> | undefined
 
 const tools = createMcpToolRegistry({
@@ -63,7 +65,10 @@ async function requiredAllowedCwd(args: unknown, name: string): Promise<string> 
 }
 
 async function assertAllowedCwd(cwd: string): Promise<string> {
-  if (allowedRootInputs.length === 0) return cwd
+  if (allowedRootInputs.length === 0) {
+    if (allowUnrestrictedCwd) return fs.realpath(cwd)
+    throw new Error(`allowed roots are not configured; set ${ALLOWED_ROOTS_ENV} or ${ALLOW_UNRESTRICTED_CWD_ENV}=1`)
+  }
 
   // MCP tool の cwd はエージェント入力なので、realpath 後に明示許可 root 配下だけへ閉じ込める。
   const resolvedCwd = await fs.realpath(cwd)

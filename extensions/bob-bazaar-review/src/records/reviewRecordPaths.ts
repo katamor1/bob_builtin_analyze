@@ -63,8 +63,16 @@ export function normalizeWorkspaceRelativePath(relativePath: string): string {
 function safePathSegment(value: string, fieldName: string): string {
   const trimmed = value.trim()
   if (!trimmed) throw new Error(`${fieldName} is required`)
-  if (/[\\/]/.test(trimmed) || trimmed === "." || trimmed === "..") {
-    throw new Error(`${fieldName} must not contain path separators`)
+  const reservedDeviceName = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/i
+  if (
+    /[<>:"/\\|?*\x00-\x1f]/.test(trimmed) ||
+    trimmed === "." ||
+    trimmed === ".." ||
+    trimmed.endsWith(".") ||
+    trimmed.endsWith(" ") ||
+    reservedDeviceName.test(trimmed)
+  ) {
+    throw new Error(`${fieldName} must be a safe path segment`)
   }
   return trimmed
 }

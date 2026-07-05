@@ -328,6 +328,26 @@ test("review packet artifacts are written under the campaign record and protect 
   assert.equal(await fs.readFile(second.backupPaths[0], "utf8"), "# Packet v1\n")
 })
 
+test("review record path segments reject Windows-reserved characters and device names", async () => {
+  const {
+    writeReviewPacketArtifact
+  } = require("../out/records/reviewRecordStore")
+  const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "bob-bazaar-record-id-safety-"))
+
+  await assert.rejects(
+    () => writeReviewPacketArtifact(workspaceRoot, "campaign:bad", "review-1", "# Packet\n"),
+    /campaign_id must be a safe path segment/
+  )
+  await assert.rejects(
+    () => writeReviewPacketArtifact(workspaceRoot, "CON", "review-1", "# Packet\n"),
+    /campaign_id must be a safe path segment/
+  )
+  await assert.rejects(
+    () => writeReviewPacketArtifact(workspaceRoot, "campaign-1", "review.", "# Packet\n"),
+    /review_id must be a safe path segment/
+  )
+})
+
 test("review packet artifacts can be written to the record input path when customized", async () => {
   const {
     writeReviewPacketArtifactAtPath
