@@ -7,6 +7,14 @@ import { explainWorkflowDiagnostics } from "./commands/explainWorkflowDiagnostic
 import { improveWorkflowWithAi } from "./commands/improveWorkflowWithAi"
 import { inspectRunDiagnostics } from "./commands/inspectRunDiagnostics"
 import {
+  collectEvidenceCommand,
+  generateCampaignSummaryCommand,
+  loadProcessInputCommand,
+  validateCatalogCommand,
+  validateReviewResultCommand,
+  writeProcessRecordCommand
+} from "./commands/processCommands"
+import {
   inspectRunControl,
   pauseAfterCurrentStep,
   pauseBeforeNextAiCall,
@@ -55,6 +63,7 @@ export function activate(context: vscode.ExtensionContext): WorkflowRegisterApi 
   const stepReviewOptions = { showMarkdownReport }
   const stepReviewBuilderOptions = { showMarkdownReport, sourceId: sourceId(), extensionUri: context.extensionUri }
   const runControlOptions = { showMarkdownReport }
+  const processCommandOptions = () => ({ workspaceRoot: requireWorkspaceRoot() })
   context.subscriptions.push(
     diagnostics,
     runControlView,
@@ -89,6 +98,12 @@ export function activate(context: vscode.ExtensionContext): WorkflowRegisterApi 
     vscode.commands.registerCommand("workflowRegister.pauseBeforeNextAiCall", (runId?: string) => pauseBeforeNextAiCall(runControlOptions, runId)),
     vscode.commands.registerCommand("workflowRegister.resumePausedRun", (runId?: string) => resumePausedRun(runControlOptions, runId)),
     vscode.commands.registerCommand("workflowRegister.inspectRunControl", (runId?: string) => inspectRunControl(runControlOptions, runId)),
+    vscode.commands.registerCommand("bobProcess.validateCatalog", (input) => validateCatalogCommand(input, processCommandOptions())),
+    vscode.commands.registerCommand("bobProcess.loadProcessInput", (input) => loadProcessInputCommand(input, processCommandOptions())),
+    vscode.commands.registerCommand("bobProcess.collectEvidence", (input) => collectEvidenceCommand(input, processCommandOptions())),
+    vscode.commands.registerCommand("bobProcess.validateReviewResult", (input) => validateReviewResultCommand(input, processCommandOptions())),
+    vscode.commands.registerCommand("bobProcess.writeProcessRecord", (input) => writeProcessRecordCommand(input, processCommandOptions())),
+    vscode.commands.registerCommand("bobProcess.generateCampaignSummary", (input) => generateCampaignSummaryCommand(input, processCommandOptions())),
     vscode.commands.registerCommand(
       "workflowRegister.openCurrentStepInBuilder",
       (runId?: string) => openCurrentStepInBuilder(stepReviewBuilderOptions, runId)
@@ -116,4 +131,12 @@ export function activate(context: vscode.ExtensionContext): WorkflowRegisterApi 
     if (isWorkflowDocument(document)) validateTextDocument(document, { sourceId: sourceId(), diagnostics })
   }
   return api
+}
+
+function requireWorkspaceRoot(): string {
+  const folder = vscode.workspace.workspaceFolders?.[0]
+  if (!folder) {
+    throw new Error("bobProcess commands require an open workspace folder")
+  }
+  return folder.uri.fsPath
 }
