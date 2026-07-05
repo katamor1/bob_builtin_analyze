@@ -52,7 +52,13 @@
     "onCommand:workflowRegister.validateWorkspaceWorkflows",
     "onCommand:workflowRegister.createWorkflowFromTemplate",
     "onCommand:workflowRegister.openWorkflowBuilder",
-    "onCommand:workflowRegister.editWorkflowInBuilder"
+    "onCommand:workflowRegister.editWorkflowInBuilder",
+    "onCommand:bobProcess.validateCatalog",
+    "onCommand:bobProcess.loadProcessInput",
+    "onCommand:bobProcess.collectEvidence",
+    "onCommand:bobProcess.validateReviewResult",
+    "onCommand:bobProcess.writeProcessRecord",
+    "onCommand:bobProcess.generateCampaignSummary"
   ],
   "main": "./out/extensionWithAuthoring.js",
   "contributes": {
@@ -90,7 +96,13 @@
       { "command": "workflowRegister.validateWorkspaceWorkflows", "title": "ワークスペース定義を検証", "category": "Bob Workflow" },
       { "command": "workflowRegister.createWorkflowFromTemplate", "title": "テンプレートから作成", "category": "Bob Workflow" },
       { "command": "workflowRegister.openWorkflowBuilder", "title": "GUI で作成", "category": "Bob Workflow" },
-      { "command": "workflowRegister.editWorkflowInBuilder", "title": "GUI で編集", "category": "Bob Workflow" }
+      { "command": "workflowRegister.editWorkflowInBuilder", "title": "GUI で編集", "category": "Bob Workflow" },
+      { "command": "bobProcess.validateCatalog", "title": "工程カタログを検証", "category": "Bob Workflow" },
+      { "command": "bobProcess.loadProcessInput", "title": "工程入力を検証", "category": "Bob Workflow" },
+      { "command": "bobProcess.collectEvidence", "title": "工程エビデンスを収集", "category": "Bob Workflow" },
+      { "command": "bobProcess.validateReviewResult", "title": "工程レビュー結果を検証", "category": "Bob Workflow" },
+      { "command": "bobProcess.writeProcessRecord", "title": "工程記録を書き込み", "category": "Bob Workflow" },
+      { "command": "bobProcess.generateCampaignSummary", "title": "工程サマリーを生成", "category": "Bob Workflow" }
     ],
     "views": {
       "explorer": [
@@ -187,7 +199,13 @@
         { "command": "workflowRegister.validateWorkspaceWorkflows" },
         { "command": "workflowRegister.createWorkflowFromTemplate" },
         { "command": "workflowRegister.openWorkflowBuilder" },
-        { "command": "workflowRegister.editWorkflowInBuilder" }
+        { "command": "workflowRegister.editWorkflowInBuilder" },
+        { "command": "bobProcess.validateCatalog" },
+        { "command": "bobProcess.loadProcessInput" },
+        { "command": "bobProcess.collectEvidence" },
+        { "command": "bobProcess.validateReviewResult" },
+        { "command": "bobProcess.writeProcessRecord" },
+        { "command": "bobProcess.generateCampaignSummary" }
       ],
       "view/title": [
         {
