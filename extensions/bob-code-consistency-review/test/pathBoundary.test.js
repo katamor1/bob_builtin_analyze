@@ -110,6 +110,27 @@ test("kind-aware output resolver rejects absolute, escaped, and misplaced genera
   )
 })
 
+test("kind-aware output resolver accepts custom workspace-relative generated artifact paths", async () => {
+  const workspaceRoot = await makeWorkspace()
+
+  assert.equal(
+    path.relative(workspaceRoot, resolveWorkspacePathForKind(workspaceRoot, ".custom/review-package", "review-package-output")),
+    path.join(".custom", "review-package")
+  )
+  assert.equal(
+    path.relative(workspaceRoot, resolveWorkspacePathForKind(workspaceRoot, ".custom/bob-output.yaml", "bob-output")),
+    path.join(".custom", "bob-output.yaml")
+  )
+  assert.equal(
+    path.relative(workspaceRoot, resolveWorkspacePathForKind(workspaceRoot, ".custom/human-triage", "human-triage-output")),
+    path.join(".custom", "human-triage")
+  )
+  assert.equal(
+    path.relative(workspaceRoot, resolveWorkspacePathForKind(workspaceRoot, ".custom/traceability-catalog.json", "traceability-catalog")),
+    path.join(".custom", "traceability-catalog.json")
+  )
+})
+
 test("kind-aware output resolver rejects symlink escapes", async (t) => {
   const workspaceRoot = await makeWorkspace()
   const outsideRoot = await fs.mkdtemp(path.join(os.tmpdir(), "bob-path-boundary-symlink-"))

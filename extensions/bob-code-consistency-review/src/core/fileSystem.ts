@@ -20,34 +20,41 @@ type WorkspacePathPolicy = {
 const WORKSPACE_PATH_POLICIES: Record<WorkspacePathKind, WorkspacePathPolicy> = {
   "review-package-output": {
     label: "reviewPackagePath",
-    description: ".bob-review/<review-package-directory>",
-    allow: (segments) => segmentEquals(segments[0], ".bob-review") &&
+    description: ".bob-review/<review-package-directory> or .custom/<path>",
+    allow: (segments) => (
+      segmentEquals(segments[0], ".bob-review") &&
       segments.length >= 2 &&
       !["bob-output", "human-triage"].some((reserved) => segmentEquals(segments[1], reserved))
+    ) || customPath(segments)
   },
   "bob-output": {
     label: "bobOutputPath",
-    description: ".bob-review/bob-output/*.yaml",
-    allow: (segments) => startsWithSegments(segments, [".bob-review", "bob-output"]) && segments.length >= 3 && /\.ya?ml$/i.test(segments[segments.length - 1])
+    description: ".bob-review/bob-output/*.yaml or .custom/*.yaml",
+    allow: (segments) => (
+      startsWithSegments(segments, [".bob-review", "bob-output"]) && segments.length >= 3 ||
+      customPath(segments)
+    ) && /\.ya?ml$/i.test(segments[segments.length - 1])
   },
   "human-triage-output": {
     label: "triagePath",
-    description: ".bob-review/human-triage/",
-    allow: (segments) => startsWithSegments(segments, [".bob-review", "human-triage"])
+    description: ".bob-review/human-triage/ or .custom/<path>",
+    allow: (segments) => startsWithSegments(segments, [".bob-review", "human-triage"]) || customPath(segments)
   },
   "traceability-catalog": {
     label: "traceabilityCatalogPath",
-    description: ".bob-trace/*.json outside ai-traceability-draft",
+    description: ".bob-trace/*.json outside ai-traceability-draft or .custom/*.json",
     allow: (segments) => segmentEquals(segments[0], ".bob-trace") &&
       !segmentEquals(segments[1], "ai-traceability-draft") &&
-      /\.json$/i.test(segments[segments.length - 1])
+      /\.json$/i.test(segments[segments.length - 1]) ||
+      customPath(segments) && /\.json$/i.test(segments[segments.length - 1])
   },
   "traceability-gate-report": {
     label: "traceabilityGateReportPath",
-    description: ".bob-trace/*.md outside ai-traceability-draft",
+    description: ".bob-trace/*.md outside ai-traceability-draft or .custom/*.md",
     allow: (segments) => segmentEquals(segments[0], ".bob-trace") &&
       !segmentEquals(segments[1], "ai-traceability-draft") &&
-      /\.md$/i.test(segments[segments.length - 1])
+      /\.md$/i.test(segments[segments.length - 1]) ||
+      customPath(segments) && /\.md$/i.test(segments[segments.length - 1])
   },
   "traceability-ai-draft-output": {
     label: "aiTraceabilityDraftPromptPath",
@@ -130,6 +137,10 @@ function startsWithSegments(segments: string[], prefix: string[]): boolean {
 
 function segmentEquals(left: string | undefined, right: string): boolean {
   return typeof left === "string" && left.toLowerCase() === right.toLowerCase()
+}
+
+function customPath(segments: string[]): boolean {
+  return segmentEquals(segments[0], ".custom") && segments.length >= 2
 }
 
 function assertRealPathInsideWorkspace(root: string, target: string, label: string, originalValue: string): void {
