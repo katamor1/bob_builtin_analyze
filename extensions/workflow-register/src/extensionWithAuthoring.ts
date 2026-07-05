@@ -15,6 +15,13 @@ import {
   writeProcessRecordCommand
 } from "./commands/processCommands"
 import {
+  checkReadinessCommand,
+  generateWorkflowCommand,
+  validateCustomizationCommand,
+  validateLibraryCommand,
+  validateProjectProfileCommand
+} from "./commands/templateCommands"
+import {
   inspectRunControl,
   pauseAfterCurrentStep,
   pauseBeforeNextAiCall,
@@ -64,6 +71,7 @@ export function activate(context: vscode.ExtensionContext): WorkflowRegisterApi 
   const stepReviewBuilderOptions = { showMarkdownReport, sourceId: sourceId(), extensionUri: context.extensionUri }
   const runControlOptions = { showMarkdownReport }
   const processCommandOptions = () => ({ workspaceRoot: requireWorkspaceRoot() })
+  const templateCommandOptions = () => ({ workspaceRoot: requireWorkspaceRoot() })
   context.subscriptions.push(
     diagnostics,
     runControlView,
@@ -104,6 +112,11 @@ export function activate(context: vscode.ExtensionContext): WorkflowRegisterApi 
     vscode.commands.registerCommand("bobProcess.validateReviewResult", (input) => validateReviewResultCommand(input, processCommandOptions())),
     vscode.commands.registerCommand("bobProcess.writeProcessRecord", (input) => writeProcessRecordCommand(input, processCommandOptions())),
     vscode.commands.registerCommand("bobProcess.generateCampaignSummary", (input) => generateCampaignSummaryCommand(input, processCommandOptions())),
+    vscode.commands.registerCommand("bobTemplate.validateLibrary", (input) => validateLibraryCommand(input, templateCommandOptions())),
+    vscode.commands.registerCommand("bobTemplate.validateProjectProfile", (input) => validateProjectProfileCommand(input, templateCommandOptions())),
+    vscode.commands.registerCommand("bobTemplate.validateCustomization", (input) => validateCustomizationCommand(input, templateCommandOptions())),
+    vscode.commands.registerCommand("bobTemplate.generateWorkflow", (input) => generateWorkflowCommand(input, templateCommandOptions())),
+    vscode.commands.registerCommand("bobTemplate.checkReadiness", (input) => checkReadinessCommand(input, templateCommandOptions())),
     vscode.commands.registerCommand(
       "workflowRegister.openCurrentStepInBuilder",
       (runId?: string) => openCurrentStepInBuilder(stepReviewBuilderOptions, runId)
