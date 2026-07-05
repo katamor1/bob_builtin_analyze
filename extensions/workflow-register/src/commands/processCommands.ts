@@ -5,7 +5,7 @@ import { collectProcessEvidence } from "../process/processEvidence"
 import { validateProcessInput } from "../process/processInputValidator"
 import { generateCampaignSummary, writeProcessRecord } from "../process/processRecordStore"
 import { validateProcessReviewResult } from "../process/processReviewResultValidator"
-import { workspacePath } from "../process/processPaths"
+import { validateSafePathSegment, workspacePath } from "../process/processPaths"
 import type { ProcessEvidenceIndex, ProcessInput } from "../process/processTypes"
 
 export interface ProcessCommandOptions {
@@ -20,6 +20,7 @@ export interface ProcessCommandInput {
   recordPath?: string
   record?: unknown
   campaignId?: string
+  runId?: string
 }
 
 export type ProcessCommandResult =
@@ -65,7 +66,11 @@ export async function collectEvidenceCommand(
   return runProcessCommand(async () => {
     const processInput = await loadAndValidateProcessInput(input, options)
     if (processInput.status === "error") return processInput
-    const evidence = await collectProcessEvidence(options.workspaceRoot, processInput.input as ProcessInput)
+    const runId = input.runId ?? (processInput.input as ProcessInput).runId
+    const runIdDiagnostic = validateSafePathSegment(runId, "runId")
+    if (runIdDiagnostic) return error([runIdDiagnostic])
+    const evidenceInput = { ...(processInput.input as ProcessInput), runId }
+    const evidence = await collectProcessEvidence(options.workspaceRoot, evidenceInput)
     return ok({
       index: evidence.index,
       absolutePath: evidence.absolutePath,
@@ -160,5 +165,5 @@ function ok(extra: Record<string, unknown>): ProcessCommandResult {
 }
 
 function error(diagnostics: string[]): ProcessCommandResult {
-  return { status: "error", diagnostics }
+  return { status: "error", diagnostics, message: diagnostics.join("; ") }
 }
