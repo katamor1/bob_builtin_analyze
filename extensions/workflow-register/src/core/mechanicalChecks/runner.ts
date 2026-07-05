@@ -3,11 +3,15 @@ import * as fs from "fs/promises"
 import * as path from "path"
 import {
   MechanicalCheckDefinition,
-  MechanicalCheckParserDefinition,
   MechanicalCheckProfile,
   MechanicalCheckStatus,
   MechanicalChecksConfig
 } from "./config"
+import {
+  MechanicalCheckEvidenceFile,
+  MechanicalCheckMetrics,
+  parseMechanicalCheckOutput
+} from "./parser"
 
 const PROFILE_RESULT_SCHEMA = "bob-mechanical-check-profile-result/v1"
 const CHECK_RESULT_SCHEMA = "bob-mechanical-check-result/v1"
@@ -57,24 +61,12 @@ export interface MechanicalCheckRunResult {
   evidence: Array<{ path: string; type: string }>
 }
 
-export interface MechanicalCheckMetrics {
-  new_warnings?: number
-  new_errors?: number
-  violations?: number
-}
-
 interface ProcessResult {
   exitCode?: number
   stdout: string
   stderr: string
   timedOut: boolean
   error?: string
-}
-
-interface EvidenceFile {
-  absolutePath: string
-  relativePath: string
-  type: string
 }
 
 export async function runMechanicalChecksProfile(input: RunMechanicalChecksProfileInput): Promise<MechanicalCheckProfileResult> {
@@ -157,7 +149,35 @@ async function runMechanicalCheck(input: {
   await fs.writeFile(stdoutPath, processResult.stdout, "utf8")
   await fs.writeFile(stderrPath, processResult.stderr, "utf8")
   const evidence = await collectEvidence(workspaceRoot, checkRoot, check.evidence.collect)
-  const metrics = await parseMetrics(check.parser, processResult, evidence)
+  const parsed = await parseMechanicalCheckOutput({
+    workspaceRoot,
+    parser: check.parser,
+    processResult,
+    evidence
+  })
+  if (!parsed.ok) {
+    const result = checkResult({
+      check,
+      status: "blocked",
+      startedAt,
+      finishedAt: timestamp(input.now),
+      exitCode: processResult.exitCode,
+      timedOut: processResult.timedOut || undefined,
+      stdoutPath,
+      stderrPath,
+      resultPath,
+      workspaceRoot,
+      summary: parsed.reason,
+      metrics: parsed.metrics,
+      evidence: evidence.map((item) => ({
+        path: workspaceRelativePath(workspaceRoot, item.absolutePath),
+        type: item.type
+      }))
+    })
+    await writeJson(resultPath, result)
+    return result
+  }
+  const metrics = parsed.metrics
   const assessed = assessCheck(check, processResult, metrics)
   const result = checkResult({
     check,
@@ -281,10 +301,10 @@ async function collectEvidence(
   workspaceRoot: string,
   checkRoot: string,
   patterns: string[]
-): Promise<EvidenceFile[]> {
+): Promise<MechanicalCheckEvidenceFile[]> {
   const evidenceRoot = path.join(checkRoot, "evidence")
   const files = await listWorkspaceFiles(workspaceRoot)
-  const collected: EvidenceFile[] = []
+  const collected: MechanicalCheckEvidenceFile[] = []
   for (const pattern of patterns) {
     const matcher = globMatcher(pattern)
     for (const file of files) {
@@ -300,23 +320,6 @@ async function collectEvidence(
     }
   }
   return dedupeEvidence(collected)
-}
-
-async function parseMetrics(
-  parser: MechanicalCheckParserDefinition,
-  processResult: ProcessResult,
-  evidence: EvidenceFile[]
-): Promise<MechanicalCheckMetrics> {
-  if (parser.type !== "regex") return {}
-  const text = [
-    processResult.stdout,
-    processResult.stderr,
-    ...await Promise.all(evidence.map((item) => readTextIfPossible(item.absolutePath)))
-  ].join("\n")
-  return {
-    ...parser.warningPattern ? { new_warnings: countPattern(text, parser.warningPattern) } : {},
-    ...parser.errorPattern ? { new_errors: countPattern(text, parser.errorPattern) } : {}
-  }
 }
 
 function assessCheck(
@@ -514,20 +517,12 @@ async function directoryExists(filePath: string): Promise<boolean> {
   }
 }
 
-async function readTextIfPossible(filePath: string): Promise<string> {
-  try {
-    return await fs.readFile(filePath, "utf8")
-  } catch {
-    return ""
-  }
-}
-
 function evidenceType(relativePath: string): string {
   const extension = path.extname(relativePath).replace(/^\./, "").toLowerCase()
   return extension || "file"
 }
 
-function dedupeEvidence(items: EvidenceFile[]): EvidenceFile[] {
+function dedupeEvidence(items: MechanicalCheckEvidenceFile[]): MechanicalCheckEvidenceFile[] {
   const seen = new Set<string>()
   return items.filter((item) => {
     if (seen.has(item.absolutePath)) return false
