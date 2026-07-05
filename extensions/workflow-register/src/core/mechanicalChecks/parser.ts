@@ -43,6 +43,7 @@ export interface ParseMechanicalCheckOutputInput {
   parser: MechanicalCheckParserDefinition
   processResult: MechanicalCheckProcessOutput
   evidence: MechanicalCheckEvidenceFile[]
+  knownIds?: Set<string>
 }
 
 export async function parseMechanicalCheckOutput(
@@ -58,6 +59,13 @@ export async function parseMechanicalCheckOutput(
 }
 
 async function parseRegexOutput(input: ParseMechanicalCheckOutputInput): Promise<MechanicalCheckParseResult> {
+  if (input.parser.type === "regex" && hasEvidenceDelta(input.parser)) {
+    const baselineTexts = await deltaEvidenceTexts(input, input.parser.baselineEvidence, ["log", "txt", "out", "err"], "regex baseline evidence")
+    const targetTexts = await deltaEvidenceTexts(input, input.parser.targetEvidence, ["log", "txt", "out", "err"], "regex target evidence")
+    if (baselineTexts.kind === "error") return baselineTexts.result
+    if (targetTexts.kind === "error") return targetTexts.result
+    return passedParse(regexDeltaMetrics(input.parser, baselineTexts.texts, targetTexts.texts), [])
+  }
   const text = (await inputTexts(input, ["log", "txt", "out", "err"], false)).map((item) => item.text).join("\n")
   return passedParse({
     ...input.parser.type === "regex" && input.parser.warningPattern
@@ -75,13 +83,51 @@ async function parseStructuredEvidence(
   evidenceTypes: string[],
   parser: (text: string, source: string) => MechanicalCheckFinding[]
 ): Promise<MechanicalCheckParseResult> {
+  if (hasEvidenceDelta(input.parser)) {
+    const baselineTexts = await deltaEvidenceTexts(input, input.parser.baselineEvidence, evidenceTypes, `${label} baseline evidence`)
+    const targetTexts = await deltaEvidenceTexts(input, input.parser.targetEvidence, evidenceTypes, `${label} target evidence`)
+    if (baselineTexts.kind === "error") return baselineTexts.result
+    if (targetTexts.kind === "error") return targetTexts.result
+    try {
+      const baselineFindings = dedupeFindings(baselineTexts.texts.flatMap((item) => parser(item.text, item.source)))
+      const targetFindings = dedupeFindings(targetTexts.texts.flatMap((item) => parser(item.text, item.source)))
+      const filtered = filterActionableFindings(targetFindings, baselineFindings, input.parser, input.knownIds)
+      return passedParse(filtered.metrics, filtered.findings)
+    } catch (error) {
+      return failedParse(`failed to parse ${label}: ${formatError(error)}`)
+    }
+  }
   const texts = await inputTexts(input, evidenceTypes, true)
   if (texts.length === 0) return failedParse(`${label} evidence not found`)
   try {
     const findings = dedupeFindings(texts.flatMap((item) => parser(item.text, item.source)))
-    return passedParse(findingMetrics(findings), findings)
+    const filtered = filterActionableFindings(findings, [], input.parser, input.knownIds)
+    return passedParse(filtered.metrics, filtered.findings)
   } catch (error) {
     return failedParse(`failed to parse ${label}: ${formatError(error)}`)
+  }
+}
+
+async function deltaEvidenceTexts(
+  input: ParseMechanicalCheckOutputInput,
+  patterns: string[] | undefined,
+  evidenceTypes: string[],
+  label: string
+): Promise<
+  | { kind: "texts"; texts: Array<{ text: string; source: string }> }
+  | { kind: "error"; result: MechanicalCheckParseResult }
+> {
+  const evidence = input.evidence.filter((item) => {
+    const typeMatches = evidenceTypes.includes(item.type) || evidenceTypes.includes(extensionOf(item.relativePath))
+    return typeMatches && (patterns ?? []).some((pattern) => globMatcher(pattern)(item.relativePath))
+  })
+  if (evidence.length === 0) return { kind: "error", result: failedParse(`${label} not found`) }
+  return {
+    kind: "texts",
+    texts: await Promise.all(evidence.map(async (item) => ({
+      text: await fs.readFile(item.absolutePath, "utf8"),
+      source: item.relativePath
+    })))
   }
 }
 
@@ -233,6 +279,72 @@ function findingMetrics(findings: MechanicalCheckFinding[]): MechanicalCheckMetr
   }
 }
 
+function regexDeltaMetrics(
+  parser: Extract<MechanicalCheckParserDefinition, { type: "regex" }>,
+  baselineTexts: Array<{ text: string; source: string }>,
+  targetTexts: Array<{ text: string; source: string }>
+): MechanicalCheckMetrics {
+  const baselineText = baselineTexts.map((item) => item.text).join("\n")
+  const targetText = targetTexts.map((item) => item.text).join("\n")
+  const newWarnings = parser.warningPattern
+    ? Math.max(0, countPattern(targetText, parser.warningPattern) - countPattern(baselineText, parser.warningPattern))
+    : undefined
+  const newErrors = parser.errorPattern
+    ? Math.max(0, countPattern(targetText, parser.errorPattern) - countPattern(baselineText, parser.errorPattern))
+    : undefined
+  return {
+    ...newWarnings !== undefined ? { new_warnings: newWarnings } : {},
+    ...newErrors !== undefined ? { new_errors: newErrors } : {}
+  }
+}
+
+function filterActionableFindings(
+  targetFindings: MechanicalCheckFinding[],
+  baselineFindings: MechanicalCheckFinding[],
+  parser: MechanicalCheckParserDefinition,
+  knownIds?: Set<string>
+): { metrics: MechanicalCheckMetrics; findings: MechanicalCheckFinding[] } {
+  const baselineKeys = new Set(baselineFindings.map((finding) => identityKey(finding, parser)))
+  const knownFindings = targetFindings.filter((finding) => isKnownFinding(finding, knownIds))
+  const findings = targetFindings.filter((finding) => !baselineKeys.has(identityKey(finding, parser)) && !isKnownFinding(finding, knownIds))
+  const includeKnown = baselineFindings.length > 0 || Boolean(knownIds?.size)
+  return {
+    metrics: {
+      total_findings: targetFindings.length,
+      new_findings: findings.length,
+      ...includeKnown ? { known_findings: knownFindings.length } : {},
+      violations: findings.length
+    },
+    findings
+  }
+}
+
+function identityKey(finding: MechanicalCheckFinding, parser: MechanicalCheckParserDefinition): string {
+  const columns = "identityColumns" in parser && parser.identityColumns?.length ? parser.identityColumns : ["fingerprint"]
+  return columns.map((column) => findingIdentityValue(finding, column)).join("|")
+}
+
+function findingIdentityValue(finding: MechanicalCheckFinding, column: string): string {
+  if (column === "id") return finding.id
+  if (column === "file") return finding.file ?? ""
+  if (column === "line") return finding.line === undefined ? "" : String(finding.line)
+  if (column === "message") return finding.message
+  if (column === "severity") return finding.severity
+  if (column === "source") return finding.source ?? ""
+  if (column === "fingerprint") return finding.fingerprint ?? ""
+  return ""
+}
+
+function isKnownFinding(finding: MechanicalCheckFinding, knownIds?: Set<string>): boolean {
+  return Boolean(knownIds?.has(finding.id) || (finding.fingerprint && knownIds?.has(finding.fingerprint)))
+}
+
+function hasEvidenceDelta(
+  parser: MechanicalCheckParserDefinition
+): parser is Exclude<MechanicalCheckParserDefinition, { type: "exit_code" }> & { baselineEvidence: string[]; targetEvidence: string[] } {
+  return "baselineEvidence" in parser && "targetEvidence" in parser && Boolean(parser.baselineEvidence?.length && parser.targetEvidence?.length)
+}
+
 function buildFinding(input: {
   id: string
   file?: string
@@ -324,6 +436,36 @@ function normalizeSeverity(value: string): "error" | "warning" | "info" {
 function extensionOf(relativePath: string): string {
   const dotIndex = relativePath.lastIndexOf(".")
   return dotIndex >= 0 ? relativePath.slice(dotIndex + 1).toLowerCase() : ""
+}
+
+function globMatcher(pattern: string): (relativePath: string) => boolean {
+  const source = pattern.replace(/\\/g, "/")
+  let regex = "^"
+  for (let index = 0; index < source.length; index += 1) {
+    if (source.startsWith("**/", index)) {
+      regex += "(?:.*/)?"
+      index += 2
+      continue
+    }
+    const char = source[index]
+    if (char === "*" && source[index + 1] === "*") {
+      regex += ".*"
+      index += 1
+    } else if (char === "*") {
+      regex += "[^/]*"
+    } else if (char === "?") {
+      regex += "[^/]"
+    } else {
+      regex += escapeRegExp(char)
+    }
+  }
+  regex += "$"
+  const compiled = new RegExp(regex)
+  return (relativePath) => compiled.test(relativePath.replace(/\\/g, "/"))
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[|\\{}()[\]^$+?.]/g, "\\$&")
 }
 
 function formatError(error: unknown): string {

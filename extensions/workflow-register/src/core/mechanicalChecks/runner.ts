@@ -147,6 +147,27 @@ async function runMechanicalCheck(input: {
     return result
   }
 
+  const knownIds = await loadKnownIds(workspaceRoot, check.passCondition.allowKnownIdsFile)
+  if (!knownIds.ok) {
+    await fs.writeFile(stdoutPath, "", "utf8")
+    await fs.writeFile(stderrPath, `${knownIds.reason}\n`, "utf8")
+    const result = checkResult({
+      check,
+      status: "blocked",
+      startedAt,
+      finishedAt: timestamp(input.now),
+      stdoutPath,
+      stderrPath,
+      resultPath,
+      workspaceRoot,
+      summary: knownIds.reason,
+      metrics: {},
+      evidence: []
+    })
+    await writeJson(resultPath, result)
+    return result
+  }
+
   const processResult = await executeCheckProcess(check, commandPath, cwdPath)
   await fs.writeFile(stdoutPath, processResult.stdout, "utf8")
   await fs.writeFile(stderrPath, processResult.stderr, "utf8")
@@ -155,7 +176,8 @@ async function runMechanicalCheck(input: {
     workspaceRoot,
     parser: check.parser,
     processResult,
-    evidence
+    evidence,
+    knownIds: knownIds.ids
   })
   if (!parsed.ok) {
     const result = checkResult({
@@ -342,6 +364,9 @@ function assessCheck(
   if (exceeds(metrics.new_errors, check.passCondition.maxNewErrors)) {
     violations.push(`new errors ${metrics.new_errors} exceeds limit ${check.passCondition.maxNewErrors}`)
   }
+  if (exceeds(metrics.new_findings, check.passCondition.maxNewFindings)) {
+    violations.push(`new findings ${metrics.new_findings} exceeds limit ${check.passCondition.maxNewFindings}`)
+  }
   if (exceeds(metrics.violations, check.passCondition.maxViolations)) {
     violations.push(`violations ${metrics.violations} exceeds limit ${check.passCondition.maxViolations}`)
   }
@@ -416,6 +441,24 @@ function profileSummaryMarkdown(result: MechanicalCheckProfileResult): string {
 async function writeJson(filePath: string, value: unknown): Promise<void> {
   await fs.mkdir(path.dirname(filePath), { recursive: true })
   await fs.writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8")
+}
+
+async function loadKnownIds(
+  workspaceRoot: string,
+  relativePath: string | undefined
+): Promise<{ ok: true; ids: Set<string> } | { ok: false; reason: string }> {
+  if (!relativePath) return { ok: true, ids: new Set() }
+  const knownIdsPath = resolveWorkspacePath(workspaceRoot, relativePath)
+  if (!knownIdsPath || !await fileExists(knownIdsPath)) {
+    return { ok: false, reason: `known ids file not found: ${relativePath}` }
+  }
+  const text = await fs.readFile(knownIdsPath, "utf8")
+  return {
+    ok: true,
+    ids: new Set(text.split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0 && !line.startsWith("#")))
+  }
 }
 
 async function listWorkspaceFiles(workspaceRoot: string): Promise<Array<{ absolutePath: string; relativePath: string }>> {

@@ -48,9 +48,14 @@ export interface MechanicalCheckDefinition {
 
 export type MechanicalCheckParserDefinition =
   | { type: "exit_code" }
-  | { type: "regex"; input?: MechanicalCheckParserInput; warningPattern?: string; errorPattern?: string }
-  | { type: "sarif"; input: MechanicalCheckParserInput }
-  | {
+  | ({
+    type: "regex"
+    input?: MechanicalCheckParserInput
+    warningPattern?: string
+    errorPattern?: string
+  } & MechanicalCheckDeltaDefinition)
+  | ({ type: "sarif"; input: MechanicalCheckParserInput } & MechanicalCheckDeltaDefinition)
+  | ({
     type: "csv"
     input: MechanicalCheckParserInput
     idColumn?: string
@@ -58,11 +63,18 @@ export type MechanicalCheckParserDefinition =
     lineColumn?: string
     messageColumn?: string
     severityColumn?: string
-  }
+  } & MechanicalCheckDeltaDefinition)
+
+export interface MechanicalCheckDeltaDefinition {
+  baselineEvidence?: string[]
+  targetEvidence?: string[]
+  identityColumns?: string[]
+}
 
 export interface MechanicalCheckPassCondition {
   maxNewWarnings?: number
   maxNewErrors?: number
+  maxNewFindings?: number
   maxViolations?: number
   allowKnownIdsFile?: string
 }
@@ -143,7 +155,7 @@ function normalizeCheck(
     validateWorkspaceRelativePath(evidencePath, `Check '${id}' evidence collect`, "evidence collect path", diagnostics, options)
   }
 
-  const parser = normalizeParser(id, asRecord(record.parser), diagnostics)
+  const parser = normalizeParser(id, asRecord(record.parser), diagnostics, options)
   const passCondition = normalizePassCondition(asRecord(record.pass_condition ?? record.passCondition))
   if (passCondition.allowKnownIdsFile) {
     validateWorkspaceRelativePath(
@@ -176,9 +188,11 @@ function normalizeCheck(
 function normalizeParser(
   checkId: string,
   record: Record<string, unknown>,
-  diagnostics: string[]
+  diagnostics: string[],
+  options: MechanicalChecksConfigValidationOptions
 ): MechanicalCheckParserDefinition {
   const type = stringField(record, "type") ?? "exit_code"
+  const delta = normalizeDeltaDefinition(checkId, record, diagnostics, options)
   if (!PARSERS.has(type)) {
     diagnostics.push(`Check '${checkId}' uses unsupported parser type '${type}'.`)
     return { type: "exit_code" }
@@ -188,13 +202,15 @@ function normalizeParser(
       type: "regex",
       input: parserInputField(record, "input"),
       warningPattern: stringField(record, "warning_pattern") ?? stringField(record, "warningPattern"),
-      errorPattern: stringField(record, "error_pattern") ?? stringField(record, "errorPattern")
+      errorPattern: stringField(record, "error_pattern") ?? stringField(record, "errorPattern"),
+      ...delta
     }
   }
   if (type === "sarif") {
     return {
       type: "sarif",
-      input: parserInputField(record, "input") ?? "evidence"
+      input: parserInputField(record, "input") ?? "evidence",
+      ...delta
     }
   }
   if (type === "csv") {
@@ -205,16 +221,39 @@ function normalizeParser(
       fileColumn: stringField(record, "file_column") ?? stringField(record, "fileColumn"),
       lineColumn: stringField(record, "line_column") ?? stringField(record, "lineColumn"),
       messageColumn: stringField(record, "message_column") ?? stringField(record, "messageColumn"),
-      severityColumn: stringField(record, "severity_column") ?? stringField(record, "severityColumn")
+      severityColumn: stringField(record, "severity_column") ?? stringField(record, "severityColumn"),
+      ...delta
     }
   }
   return { type: "exit_code" }
+}
+
+function normalizeDeltaDefinition(
+  checkId: string,
+  record: Record<string, unknown>,
+  diagnostics: string[],
+  options: MechanicalChecksConfigValidationOptions
+): MechanicalCheckDeltaDefinition {
+  const baselineEvidence = listField(record, "baseline_evidence").concat(listField(record, "baselineEvidence"))
+  const targetEvidence = listField(record, "target_evidence").concat(listField(record, "targetEvidence"))
+  for (const evidencePath of baselineEvidence) {
+    validateWorkspaceRelativePath(evidencePath, `Check '${checkId}' baseline evidence`, "path", diagnostics, options)
+  }
+  for (const evidencePath of targetEvidence) {
+    validateWorkspaceRelativePath(evidencePath, `Check '${checkId}' target evidence`, "path", diagnostics, options)
+  }
+  return compact({
+    baselineEvidence: baselineEvidence.length > 0 ? baselineEvidence : undefined,
+    targetEvidence: targetEvidence.length > 0 ? targetEvidence : undefined,
+    identityColumns: listField(record, "identity_columns").concat(listField(record, "identityColumns"))
+  })
 }
 
 function normalizePassCondition(record: Record<string, unknown>): MechanicalCheckPassCondition {
   return compact({
     maxNewWarnings: numberField(record, "max_new_warnings") ?? numberField(record, "maxNewWarnings"),
     maxNewErrors: numberField(record, "max_new_errors") ?? numberField(record, "maxNewErrors"),
+    maxNewFindings: numberField(record, "max_new_findings") ?? numberField(record, "maxNewFindings"),
     maxViolations: numberField(record, "max_violations") ?? numberField(record, "maxViolations"),
     allowKnownIdsFile: stringField(record, "allow_known_ids_file") ?? stringField(record, "allowKnownIdsFile")
   })

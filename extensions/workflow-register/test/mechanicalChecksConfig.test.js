@@ -106,6 +106,36 @@ test("mechanical check config accepts SARIF and CSV parser definitions", () => {
   assert.equal(result.config.checks[1].parser.fileColumn, "path")
 })
 
+test("mechanical check config accepts delta evidence, identity columns, and new finding threshold", () => {
+  const result = validateMechanicalChecksConfig(validConfig({
+    checks: [
+      {
+        ...validConfig().checks[0],
+        parser: {
+          type: "sarif",
+          input: "evidence",
+          baseline_evidence: ["out/baseline/**/*.sarif"],
+          target_evidence: ["out/target/**/*.sarif"],
+          identity_columns: ["id", "file", "line"]
+        },
+        evidence: {
+          collect: ["out/**/*.sarif"]
+        },
+        pass_condition: {
+          max_new_findings: 0,
+          allow_known_ids_file: ".bob/checks/known-static-analysis.txt"
+        }
+      }
+    ]
+  }), { workspaceRoot })
+
+  assert.equal(result.ok, true, result.diagnostics.join("\n"))
+  assert.deepEqual(result.config.checks[0].parser.baselineEvidence, ["out/baseline/**/*.sarif"])
+  assert.deepEqual(result.config.checks[0].parser.targetEvidence, ["out/target/**/*.sarif"])
+  assert.deepEqual(result.config.checks[0].parser.identityColumns, ["id", "file", "line"])
+  assert.equal(result.config.checks[0].passCondition.maxNewFindings, 0)
+})
+
 test("mechanical check config parses YAML into the normalized config shape", () => {
   const result = parseMechanicalChecksConfig(`
 schema_version: bob-mechanical-checks/v1
@@ -175,7 +205,9 @@ test("mechanical check config rejects unsupported runners, parser types, and uns
           collect: ["../logs/**/*.log", "C:/tmp/result.txt"]
         },
         parser: {
-          type: "xml"
+          type: "xml",
+          baseline_evidence: ["../baseline/**/*.sarif"],
+          target_evidence: ["C:/target/**/*.sarif"]
         }
       }
     ]
@@ -188,4 +220,6 @@ test("mechanical check config rejects unsupported runners, parser types, and uns
   assert.match(diagnostics, /cwd must be workspace-relative/)
   assert.match(diagnostics, /evidence collect path escapes the workspace/)
   assert.match(diagnostics, /unsupported parser type 'xml'/)
+  assert.match(diagnostics, /baseline evidence path escapes the workspace/)
+  assert.match(diagnostics, /target evidence path must be workspace-relative/)
 })

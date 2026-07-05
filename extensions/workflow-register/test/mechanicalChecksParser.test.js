@@ -209,3 +209,94 @@ test("mechanical check parser normalizes CSV findings with custom columns and qu
   assert.equal(result.findings[1].line, undefined)
   assert.deepEqual(result.findings.map((finding) => finding.severity), ["error", "warning"])
 })
+
+test("mechanical check parser reports only target findings absent from baseline evidence", async (t) => {
+  const workspaceRoot = tempWorkspace(t)
+  const baselinePath = writeFile(workspaceRoot, ".bob/mechanical-checks/runs/run/checks/sarif/evidence/out/baseline/result.sarif", JSON.stringify({
+    runs: [
+      {
+        results: [
+          {
+            ruleId: "SA001",
+            level: "error",
+            message: { text: "Known baseline issue" },
+            locations: [{ physicalLocation: { artifactLocation: { uri: "src/foo.c" }, region: { startLine: 10 } } }]
+          }
+        ]
+      }
+    ]
+  }))
+  const targetPath = writeFile(workspaceRoot, ".bob/mechanical-checks/runs/run/checks/sarif/evidence/out/target/result.sarif", JSON.stringify({
+    runs: [
+      {
+        results: [
+          {
+            ruleId: "SA001",
+            level: "error",
+            message: { text: "Known baseline issue" },
+            locations: [{ physicalLocation: { artifactLocation: { uri: "src/foo.c" }, region: { startLine: 10 } } }]
+          },
+          {
+            ruleId: "SA002",
+            level: "warning",
+            message: { text: "New target issue" },
+            locations: [{ physicalLocation: { artifactLocation: { uri: "src/bar.c" }, region: { startLine: 20 } } }]
+          }
+        ]
+      }
+    ]
+  }))
+
+  const result = await parseMechanicalCheckOutput({
+    workspaceRoot,
+    parser: {
+      type: "sarif",
+      input: "evidence",
+      baselineEvidence: ["out/baseline/**/*.sarif"],
+      targetEvidence: ["out/target/**/*.sarif"],
+      identityColumns: ["id", "file", "line"]
+    },
+    processResult: { stdout: "", stderr: "", timedOut: false },
+    evidence: [
+      { absolutePath: baselinePath, relativePath: "out/baseline/result.sarif", type: "sarif" },
+      { absolutePath: targetPath, relativePath: "out/target/result.sarif", type: "sarif" }
+    ]
+  })
+
+  assert.equal(result.ok, true, result.reason)
+  assert.deepEqual(result.metrics, {
+    total_findings: 2,
+    new_findings: 1,
+    known_findings: 0,
+    violations: 1
+  })
+  assert.deepEqual(result.findings.map((finding) => finding.id), ["SA002"])
+})
+
+test("mechanical check parser excludes configured known IDs and fingerprints from new findings", async (t) => {
+  const workspaceRoot = tempWorkspace(t)
+  const csvPath = writeFile(workspaceRoot, ".bob/mechanical-checks/runs/run/checks/csv/evidence/out/review/mismatch.csv", [
+    "id,file,line,message,severity",
+    "REV001,src/foo.c,12,Missing reviewed file,error",
+    "REV002,src/bar.c,34,Known mismatch,warning"
+  ].join("\n"))
+
+  const result = await parseMechanicalCheckOutput({
+    workspaceRoot,
+    parser: { type: "csv", input: "evidence" },
+    processResult: { stdout: "", stderr: "", timedOut: false },
+    evidence: [
+      { absolutePath: csvPath, relativePath: "out/review/mismatch.csv", type: "csv" }
+    ],
+    knownIds: new Set(["REV002"])
+  })
+
+  assert.equal(result.ok, true, result.reason)
+  assert.deepEqual(result.metrics, {
+    total_findings: 2,
+    new_findings: 1,
+    known_findings: 1,
+    violations: 1
+  })
+  assert.deepEqual(result.findings.map((finding) => finding.id), ["REV001"])
+})

@@ -155,6 +155,52 @@ test("mechanical check runner writes normalized parser findings into check resul
   assert.equal(result.checks[0].findings[0].line, 10)
 })
 
+test("mechanical check runner applies known IDs file and max new findings gate", async (t) => {
+  const workspaceRoot = tempWorkspace(t)
+  writeFile(workspaceRoot, ".bob/checks/known-static-analysis.txt", [
+    "# accepted existing analyzer finding",
+    "SA001"
+  ].join("\n"))
+  writeFile(workspaceRoot, "tools/write-known-and-new-sarif.js", [
+    "const fs = require('node:fs')",
+    "fs.mkdirSync('out/analyzer', { recursive: true })",
+    "fs.writeFileSync('out/analyzer/result.sarif', JSON.stringify({",
+    "  runs: [{ results: [",
+    "    { ruleId: 'SA001', level: 'error', message: { text: 'Known issue' }, locations: [{ physicalLocation: { artifactLocation: { uri: 'src/foo.c' }, region: { startLine: 10 } } }] },",
+    "    { ruleId: 'SA002', level: 'warning', message: { text: 'New issue' }, locations: [{ physicalLocation: { artifactLocation: { uri: 'src/bar.c' }, region: { startLine: 20 } } }] }",
+    "  ] }]",
+    "}))"
+  ].join("\n"))
+  const config = configFor([
+    {
+      id: "static-analysis-delta",
+      title: "Static analysis delta",
+      runner: "node",
+      command: "tools/write-known-and-new-sarif.js",
+      evidence: { collect: ["out/analyzer/**/*.sarif"] },
+      parser: { type: "sarif", input: "evidence" },
+      pass_condition: {
+        max_new_findings: 0,
+        allow_known_ids_file: ".bob/checks/known-static-analysis.txt"
+      }
+    }
+  ])
+
+  const result = await runMechanicalChecksProfile({
+    workspaceRoot,
+    config,
+    profile: "pre-code-review",
+    runId: "run-known"
+  })
+
+  assert.equal(result.status, "failed")
+  assert.equal(result.checks[0].metrics.total_findings, 2)
+  assert.equal(result.checks[0].metrics.known_findings, 1)
+  assert.equal(result.checks[0].metrics.new_findings, 1)
+  assert.deepEqual(result.checks[0].findings.map((finding) => finding.id), ["SA002"])
+  assert.match(result.checks[0].summary, /new findings 1 exceeds limit 0/)
+})
+
 test("mechanical check runner reports missing scripts and timeouts as blocked", async (t) => {
   const workspaceRoot = tempWorkspace(t)
   writeFile(workspaceRoot, "tools/sleep.js", "setTimeout(() => console.log('late'), 2000)\n")
