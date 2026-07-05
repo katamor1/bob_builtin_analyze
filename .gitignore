@@ -9,6 +9,8 @@
 !/.bob/workflows/*/WORKFLOW.md
 !/.bob/process/
 !/.bob/process/**
+!/.bob/template-library/
+!/.bob/template-library/**
 /.bob-process-runs/
 /.bob-process-records/
 /.bob-review/
