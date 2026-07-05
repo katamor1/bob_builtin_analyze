@@ -115,6 +115,46 @@ test("mechanical check runner maps regex pass-condition violations to failed or 
   assert.equal(warning.failed, 0)
 })
 
+test("mechanical check runner writes normalized parser findings into check results", async (t) => {
+  const workspaceRoot = tempWorkspace(t)
+  writeFile(workspaceRoot, "tools/write-sarif.js", [
+    "const fs = require('node:fs')",
+    "fs.mkdirSync('out/analyzer', { recursive: true })",
+    "fs.writeFileSync('out/analyzer/result.sarif', JSON.stringify({",
+    "  version: '2.1.0',",
+    "  runs: [{ results: [{",
+    "    ruleId: 'SA001',",
+    "    level: 'error',",
+    "    message: { text: 'Null dereference' },",
+    "    locations: [{ physicalLocation: { artifactLocation: { uri: 'src/foo.c' }, region: { startLine: 10 } } }]",
+    "  }] }]",
+    "}))"
+  ].join("\n"))
+  const config = configFor([
+    {
+      id: "static-analysis-delta",
+      title: "Static analysis delta",
+      runner: "node",
+      command: "tools/write-sarif.js",
+      evidence: { collect: ["out/analyzer/**/*.sarif"] },
+      parser: { type: "sarif", input: "evidence" }
+    }
+  ])
+
+  const result = await runMechanicalChecksProfile({
+    workspaceRoot,
+    config,
+    profile: "pre-code-review",
+    runId: "run-sarif"
+  })
+
+  assert.equal(result.status, "passed")
+  assert.equal(result.checks[0].metrics.total_findings, 1)
+  assert.equal(result.checks[0].findings[0].id, "SA001")
+  assert.equal(result.checks[0].findings[0].file, "src/foo.c")
+  assert.equal(result.checks[0].findings[0].line, 10)
+})
+
 test("mechanical check runner reports missing scripts and timeouts as blocked", async (t) => {
   const workspaceRoot = tempWorkspace(t)
   writeFile(workspaceRoot, "tools/sleep.js", "setTimeout(() => console.log('late'), 2000)\n")

@@ -54,3 +54,158 @@ test("mechanical check parser keeps regex warning and error counts from process 
   })
   assert.deepEqual(result.findings, [])
 })
+
+test("mechanical check parser normalizes unique SARIF results from evidence", async (t) => {
+  const workspaceRoot = tempWorkspace(t)
+  const sarifPath = writeFile(workspaceRoot, ".bob/mechanical-checks/runs/run/checks/sarif/evidence/out/analyzer/result.sarif", JSON.stringify({
+    version: "2.1.0",
+    runs: [
+      {
+        results: [
+          {
+            ruleId: "SA001",
+            level: "error",
+            message: { text: "Null dereference" },
+            locations: [
+              {
+                physicalLocation: {
+                  artifactLocation: { uri: "src/foo.c" },
+                  region: { startLine: 10 }
+                }
+              }
+            ]
+          },
+          {
+            ruleId: "SA001",
+            level: "error",
+            message: { text: "Null dereference" },
+            locations: [
+              {
+                physicalLocation: {
+                  artifactLocation: { uri: "src/foo.c" },
+                  region: { startLine: 10 }
+                }
+              }
+            ]
+          },
+          {
+            ruleId: "SA002",
+            level: "warning",
+            message: { text: "Missing region still parses" },
+            locations: [
+              {
+                physicalLocation: {
+                  artifactLocation: { uri: "src/bar.c" }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }))
+
+  const result = await parseMechanicalCheckOutput({
+    workspaceRoot,
+    parser: { type: "sarif", input: "evidence" },
+    processResult: { stdout: "", stderr: "", timedOut: false },
+    evidence: [
+      {
+        absolutePath: sarifPath,
+        relativePath: "out/analyzer/result.sarif",
+        type: "sarif"
+      }
+    ]
+  })
+
+  assert.equal(result.ok, true, result.reason)
+  assert.deepEqual(result.metrics, {
+    total_findings: 2,
+    new_findings: 2,
+    violations: 2
+  })
+  assert.deepEqual(result.findings.map((finding) => ({
+    id: finding.id,
+    file: finding.file,
+    line: finding.line,
+    message: finding.message,
+    severity: finding.severity
+  })), [
+    {
+      id: "SA001",
+      file: "src/foo.c",
+      line: 10,
+      message: "Null dereference",
+      severity: "error"
+    },
+    {
+      id: "SA002",
+      file: "src/bar.c",
+      line: undefined,
+      message: "Missing region still parses",
+      severity: "warning"
+    }
+  ])
+})
+
+test("mechanical check parser reports malformed SARIF as blocked parse result", async (t) => {
+  const workspaceRoot = tempWorkspace(t)
+  const sarifPath = writeFile(workspaceRoot, ".bob/mechanical-checks/runs/run/checks/sarif/evidence/out/analyzer/bad.sarif", "{not-json")
+
+  const result = await parseMechanicalCheckOutput({
+    workspaceRoot,
+    parser: { type: "sarif", input: "evidence" },
+    processResult: { stdout: "", stderr: "", timedOut: false },
+    evidence: [
+      {
+        absolutePath: sarifPath,
+        relativePath: "out/analyzer/bad.sarif",
+        type: "sarif"
+      }
+    ]
+  })
+
+  assert.equal(result.ok, false)
+  assert.match(result.reason, /failed to parse SARIF/)
+})
+
+test("mechanical check parser normalizes CSV findings with custom columns and quoted values", async (t) => {
+  const workspaceRoot = tempWorkspace(t)
+  const csvPath = writeFile(workspaceRoot, ".bob/mechanical-checks/runs/run/checks/csv/evidence/out/review/mismatch.csv", [
+    "code,path,row,text,level",
+    "REV001,src/foo.c,12,\"Missing reviewed file, target changed\",error",
+    "REV002,src/bar.c,not-a-number,Extra reviewed file,warning"
+  ].join("\n"))
+
+  const result = await parseMechanicalCheckOutput({
+    workspaceRoot,
+    parser: {
+      type: "csv",
+      input: "evidence",
+      idColumn: "code",
+      fileColumn: "path",
+      lineColumn: "row",
+      messageColumn: "text",
+      severityColumn: "level"
+    },
+    processResult: { stdout: "", stderr: "", timedOut: false },
+    evidence: [
+      {
+        absolutePath: csvPath,
+        relativePath: "out/review/mismatch.csv",
+        type: "csv"
+      }
+    ]
+  })
+
+  assert.equal(result.ok, true, result.reason)
+  assert.deepEqual(result.metrics, {
+    total_findings: 2,
+    new_findings: 2,
+    violations: 2
+  })
+  assert.equal(result.findings[0].message, "Missing reviewed file, target changed")
+  assert.equal(result.findings[0].line, 12)
+  assert.equal(result.findings[1].line, undefined)
+  assert.deepEqual(result.findings.map((finding) => finding.severity), ["error", "warning"])
+})

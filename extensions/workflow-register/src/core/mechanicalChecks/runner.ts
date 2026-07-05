@@ -9,6 +9,7 @@ import {
 } from "./config"
 import {
   MechanicalCheckEvidenceFile,
+  MechanicalCheckFinding,
   MechanicalCheckMetrics,
   parseMechanicalCheckOutput
 } from "./parser"
@@ -58,6 +59,7 @@ export interface MechanicalCheckRunResult {
   stderr_path: string
   result_path: string
   metrics: MechanicalCheckMetrics
+  findings: MechanicalCheckFinding[]
   evidence: Array<{ path: string; type: string }>
 }
 
@@ -169,6 +171,7 @@ async function runMechanicalCheck(input: {
       workspaceRoot,
       summary: parsed.reason,
       metrics: parsed.metrics,
+      findings: parsed.findings,
       evidence: evidence.map((item) => ({
         path: workspaceRelativePath(workspaceRoot, item.absolutePath),
         type: item.type
@@ -192,6 +195,7 @@ async function runMechanicalCheck(input: {
     workspaceRoot,
     summary: assessed.summary,
     metrics,
+    findings: parsed.findings,
     evidence: evidence.map((item) => ({
       path: workspaceRelativePath(workspaceRoot, item.absolutePath),
       type: item.type
@@ -256,6 +260,7 @@ function missingCheckResult(runRoot: string, checkId: string, startedAt: string,
     stderr_path: path.join(checkRoot, "stderr.log").replace(/\\/g, "/"),
     result_path: path.join(checkRoot, "result.json").replace(/\\/g, "/"),
     metrics: {},
+    findings: [],
     evidence: []
   }
 }
@@ -357,6 +362,7 @@ function checkResult(input: {
   workspaceRoot: string
   summary: string
   metrics: MechanicalCheckMetrics
+  findings?: MechanicalCheckFinding[]
   evidence: Array<{ path: string; type: string }>
 }): MechanicalCheckRunResult {
   return {
@@ -373,6 +379,7 @@ function checkResult(input: {
     stderr_path: workspaceRelativePath(input.workspaceRoot, input.stderrPath),
     result_path: workspaceRelativePath(input.workspaceRoot, input.resultPath),
     metrics: input.metrics,
+    findings: input.findings ?? [],
     evidence: input.evidence
   }
 }

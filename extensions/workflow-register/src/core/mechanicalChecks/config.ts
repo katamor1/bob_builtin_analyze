@@ -4,12 +4,14 @@ const yaml = require("js-yaml") as { load(text: string): unknown }
 
 const SCHEMA_VERSION = "bob-mechanical-checks/v1"
 const RUNNERS = new Set(["bat", "powershell", "python", "node", "executable"])
-const PARSERS = new Set(["exit_code", "regex"])
+const PARSERS = new Set(["exit_code", "regex", "sarif", "csv"])
+const PARSER_INPUTS = new Set(["stdout", "stderr", "evidence"])
 const GATES = new Set(["pre_code_review", "pre_bob_review", "post_bob_review", "pre_test_start", "release_readiness"])
 
 export type MechanicalCheckStatus = "passed" | "warning" | "failed" | "blocked"
 export type MechanicalCheckRunnerType = "bat" | "powershell" | "python" | "node" | "executable"
-export type MechanicalCheckParserType = "exit_code" | "regex"
+export type MechanicalCheckParserType = "exit_code" | "regex" | "sarif" | "csv"
+export type MechanicalCheckParserInput = "stdout" | "stderr" | "evidence"
 
 export interface MechanicalChecksConfig {
   schemaVersion: typeof SCHEMA_VERSION
@@ -46,7 +48,17 @@ export interface MechanicalCheckDefinition {
 
 export type MechanicalCheckParserDefinition =
   | { type: "exit_code" }
-  | { type: "regex"; warningPattern?: string; errorPattern?: string }
+  | { type: "regex"; input?: MechanicalCheckParserInput; warningPattern?: string; errorPattern?: string }
+  | { type: "sarif"; input: MechanicalCheckParserInput }
+  | {
+    type: "csv"
+    input: MechanicalCheckParserInput
+    idColumn?: string
+    fileColumn?: string
+    lineColumn?: string
+    messageColumn?: string
+    severityColumn?: string
+  }
 
 export interface MechanicalCheckPassCondition {
   maxNewWarnings?: number
@@ -174,8 +186,26 @@ function normalizeParser(
   if (type === "regex") {
     return {
       type: "regex",
+      input: parserInputField(record, "input"),
       warningPattern: stringField(record, "warning_pattern") ?? stringField(record, "warningPattern"),
       errorPattern: stringField(record, "error_pattern") ?? stringField(record, "errorPattern")
+    }
+  }
+  if (type === "sarif") {
+    return {
+      type: "sarif",
+      input: parserInputField(record, "input") ?? "evidence"
+    }
+  }
+  if (type === "csv") {
+    return {
+      type: "csv",
+      input: parserInputField(record, "input") ?? "evidence",
+      idColumn: stringField(record, "id_column") ?? stringField(record, "idColumn"),
+      fileColumn: stringField(record, "file_column") ?? stringField(record, "fileColumn"),
+      lineColumn: stringField(record, "line_column") ?? stringField(record, "lineColumn"),
+      messageColumn: stringField(record, "message_column") ?? stringField(record, "messageColumn"),
+      severityColumn: stringField(record, "severity_column") ?? stringField(record, "severityColumn")
     }
   }
   return { type: "exit_code" }
@@ -279,6 +309,11 @@ function booleanField(record: Record<string, unknown>, key: string): boolean | u
 function severityField(record: Record<string, unknown>, key: string): "error" | "warning" | "info" | undefined {
   const value = stringField(record, key)
   return value === "error" || value === "warning" || value === "info" ? value : undefined
+}
+
+function parserInputField(record: Record<string, unknown>, key: string): MechanicalCheckParserInput | undefined {
+  const value = stringField(record, key)
+  return value && PARSER_INPUTS.has(value) ? value as MechanicalCheckParserInput : undefined
 }
 
 function stringRecord(value: unknown): Record<string, string> {
