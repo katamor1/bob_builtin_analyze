@@ -103,6 +103,24 @@ test("template customization studio html exposes only allowed customization fiel
   assert.doesNotMatch(html, /allowedCommands/)
 })
 
+test("template customization studio refreshes template library from listTemplates responses", async () => {
+  const root = await studioWorkspace()
+  const library = await listTemplateLibrary(root)
+  const model = createDefaultStudioModel(library.templates[0])
+  const html = renderTemplateCustomizationStudioHtml({
+    cspSource: "vscode-resource:",
+    nonce: "test-nonce",
+    templates: library.templates,
+    model
+  })
+  const source = readSourceSet(["webview/templateCustomizationStudioClientScript.ts"])
+
+  assert.match(html, /id="templateList"/)
+  assert.match(source, /message\.type === 'templateList'/)
+  assert.match(source, /renderTemplateList/)
+  assert.match(source, /message\.templates/)
+})
+
 test("template customization studio readiness html exposes status score checks and next actions", async () => {
   const root = await studioWorkspace()
   const library = await listTemplateLibrary(root)

@@ -2,6 +2,8 @@ export function renderTemplateCustomizationStudioClientScript(): string {
   return String.raw`
 const vscode = typeof acquireVsCodeApi === 'function' ? acquireVsCodeApi() : { postMessage: function(message) { console.log(message); } };
 let activeTab = 'library';
+let templates = Array.isArray(initialTemplates) ? initialTemplates.slice() : [];
+let selectedTemplatePath = initialModel && initialModel.templatePath ? initialModel.templatePath : '';
 
 function $(id) {
   return document.getElementById(id);
@@ -54,6 +56,50 @@ function setText(id, value) {
   if (element) element.textContent = value || '';
 }
 
+function clearNode(node) {
+  while (node.firstChild) node.removeChild(node.firstChild);
+}
+
+function appendText(parent, className, value) {
+  const span = document.createElement('span');
+  if (className) span.className = className;
+  span.textContent = value || '';
+  parent.appendChild(span);
+  return span;
+}
+
+function renderBadges(parent, values) {
+  const badgeValues = Array.isArray(values) ? values : [];
+  badgeValues.forEach(function(value) {
+    appendText(parent, 'badge', value);
+  });
+}
+
+function renderTemplateList(nextTemplates, selectedPath) {
+  const list = $('templateList');
+  if (!list) return;
+  clearNode(list);
+  const entries = Array.isArray(nextTemplates) ? nextTemplates : [];
+  if (entries.length === 0) {
+    appendText(list, 'muted', 'metadata.yaml が見つかりません。');
+    return;
+  }
+  entries.forEach(function(template) {
+    const button = document.createElement('button');
+    const templatePath = template.templatePath || '';
+    button.className = 'template-item' + (templatePath === selectedPath ? ' selected' : '');
+    button.setAttribute('data-action', 'load-template');
+    button.setAttribute('data-template-path', templatePath);
+    appendText(button, 'template-title', template.displayName || template.templateId || 'template');
+    appendText(button, 'muted', (template.templateId || '') + ' / ' + (template.templateVersion || ''));
+    const badges = document.createElement('span');
+    renderBadges(badges, template.supportedLanguages);
+    renderBadges(badges, template.supportedVcs);
+    button.appendChild(badges);
+    list.appendChild(button);
+  });
+}
+
 function renderDiagnostics(result) {
   const diagnostics = result && Array.isArray(result.diagnostics) ? result.diagnostics : [];
   return diagnostics.length === 0 ? 'diagnostics: none' : diagnostics.join('\n');
@@ -80,11 +126,16 @@ function renderReadiness(readiness) {
 }
 
 document.addEventListener('click', function(event) {
-  const action = event.target && event.target.getAttribute ? event.target.getAttribute('data-action') : '';
+  const target = event.target && event.target.closest ? event.target.closest('[data-action]') : event.target;
+  const action = target && target.getAttribute ? target.getAttribute('data-action') : '';
   if (!action) return;
-  if (action === 'tab') setTab(event.target.getAttribute('data-tab'));
+  if (action === 'tab') setTab(target.getAttribute('data-tab'));
   if (action === 'refresh-library') post('listTemplates');
-  if (action === 'load-template') post('loadTemplate', { templatePath: event.target.getAttribute('data-template-path') });
+  if (action === 'load-template') {
+    selectedTemplatePath = target.getAttribute('data-template-path') || '';
+    renderTemplateList(templates, selectedTemplatePath);
+    post('loadTemplate', { templatePath: selectedTemplatePath });
+  }
   if (action === 'validate-profile') post('validateProfile', { model: currentModel() });
   if (action === 'validate-customization') post('validateCustomization', { model: currentModel() });
   if (action === 'preview-workflow') post('previewWorkflow', { model: currentModel() });
@@ -96,6 +147,12 @@ document.addEventListener('click', function(event) {
 
 window.addEventListener('message', function(event) {
   const message = event.data || {};
+  if (message.type === 'templateList') {
+    templates = Array.isArray(message.templates) ? message.templates : [];
+    selectedTemplatePath = currentModel().templatePath || selectedTemplatePath;
+    renderTemplateList(templates, selectedTemplatePath);
+    setText('diagnosticsOutput', renderDiagnostics(message));
+  }
   if (message.type === 'diagnostics') setText('diagnosticsOutput', renderDiagnostics(message.result));
   if (message.type === 'previewResult') {
     setText('previewOutput', message.markdown || '');

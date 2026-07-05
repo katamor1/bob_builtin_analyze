@@ -31,7 +31,7 @@ ${renderTemplateCustomizationStudioStyles()}
 <aside>
   <h2>Template Library</h2>
   <button class="secondary" data-action="refresh-library">再読み込み</button>
-  <div class="template-list">
+  <div id="templateList" class="template-list">
     ${renderTemplateList(options.templates, options.model.templatePath)}
   </div>
 </aside>
