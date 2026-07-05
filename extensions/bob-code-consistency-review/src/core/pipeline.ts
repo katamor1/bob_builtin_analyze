@@ -1,4 +1,4 @@
-import { analyzeCppChanges } from "../analyzers/cCppChangeAnalyzer"
+import { analyzeCodeChanges } from "../analyzers/codeChangeAnalyzer"
 import { extractDocuments } from "../analyzers/documentExtractor"
 import { buildTraceability } from "../analyzers/traceabilityBuilder"
 import { collectGitDiff } from "./gitDiffCollector"
@@ -17,7 +17,7 @@ export async function preprocessReview(input: { workspaceRoot: string; inputPath
   const reviewInput = await validateReviewInput(inputPath, input.workspaceRoot, textEncoding)
   const diff = await collectGitDiff(reviewInput, { workspaceRoot: input.workspaceRoot, diffFixturePath, bzrPath: input.bzrPath, textEncoding, limits })
   const documents = await extractDocuments(reviewInput, { workspaceRoot: input.workspaceRoot, textEncoding, limits })
-  const codeAnalysis = await analyzeCppChanges(diff, reviewInput, { workspaceRoot: input.workspaceRoot, textEncoding })
+  const codeAnalysis = await analyzeCodeChanges(diff, reviewInput, { workspaceRoot: input.workspaceRoot, textEncoding })
   const traceability = await buildTraceability({ reviewInput, documents, codeAnalysis, diff })
 
   const packageWarnings = await buildReviewPackage({
