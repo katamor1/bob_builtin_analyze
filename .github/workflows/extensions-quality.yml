@@ -6,9 +6,7 @@ on:
       - "extensions/workflow-register/**"
       - "extensions/bob-bazaar-review/**"
       - "extensions/bob-code-consistency-review/**"
-      - "scripts/check-artifact-size-policy.js"
-      - "scripts/check-export-star-policy.js"
-      - "scripts/report-extension-metrics.js"
+      - "scripts/*.js"
       - ".github/workflows/extensions-quality.yml"
   push:
     branches:
@@ -17,9 +15,7 @@ on:
       - "extensions/workflow-register/**"
       - "extensions/bob-bazaar-review/**"
       - "extensions/bob-code-consistency-review/**"
-      - "scripts/check-artifact-size-policy.js"
-      - "scripts/check-export-star-policy.js"
-      - "scripts/report-extension-metrics.js"
+      - "scripts/*.js"
       - ".github/workflows/extensions-quality.yml"
   workflow_dispatch:
 
