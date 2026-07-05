@@ -103,6 +103,54 @@ test("template customization studio html exposes only allowed customization fiel
   assert.doesNotMatch(html, /allowedCommands/)
 })
 
+test("template customization studio html escapes initial JSON inside script tags", () => {
+  const html = renderTemplateCustomizationStudioHtml({
+    cspSource: "vscode-resource:",
+    nonce: "test-nonce",
+    templates: [{
+      templateId: "danger-template",
+      templateVersion: "1.0.0",
+      displayName: "</script><script>throw new Error('x')</script>",
+      templatePath: ".bob/template-library/standard/process-code-precheck/metadata.yaml",
+      baseWorkflowPath: ".bob/template-library/standard/process-code-precheck/WORKFLOW.md",
+      baseTemplateHash: "sha256:test",
+      supportedLanguages: ["c_cpp"],
+      supportedVcs: ["bazaar"]
+    }],
+    model: {
+      templatePath: ".bob/template-library/standard/process-code-precheck/metadata.yaml",
+      templateId: "danger-template",
+      templateVersion: "1.0.0",
+      baseTemplateHash: "sha256:test",
+      projectId: "alpha-product",
+      displayName: "Alpha Product",
+      targetLanguage: "c_cpp",
+      vcsType: "bazaar",
+      vcsRoot: ".",
+      checklistPath: ".bob/process/checklists/code-precheck.yaml",
+      artifactOutputRoot: ".bob-process-runs/{{run.id}}/code-precheck",
+      uatEvidencePath: "docs/uat/evidence/alpha-product.md",
+      workflowName: "alpha-code-precheck",
+      title: "Line\u2028</script><script>alert(1)</script>",
+      description: "Description",
+      inputDefaults: {},
+      promptSupplement: "",
+      stepReviewPauseAfter: "agentAndCommand"
+    }
+  })
+
+  assert.doesNotMatch(html, /<\/script><script>/)
+  assert.match(html, /\\u003C\/script\\u003E/)
+})
+
+test("tracked standard template required files exist in the repository", async () => {
+  const metadata = yaml.load(await fs.readFile(path.join(repoRoot, ".bob", "template-library", "standard", "process-code-precheck", "metadata.yaml"), "utf8"))
+
+  for (const requiredFile of metadata.requiredFiles) {
+    assert.equal(fsSync.existsSync(path.join(repoRoot, requiredFile)), true, `${requiredFile} exists`)
+  }
+})
+
 test("template customization studio refreshes template library from listTemplates responses", async () => {
   const root = await studioWorkspace()
   const library = await listTemplateLibrary(root)

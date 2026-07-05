@@ -178,7 +178,7 @@ steps:
             reviewResultPath: .bob-process-runs/{{run.id}}/qa-intake/review-result.yaml
             humanGate:
               required: true
-              status: accepted
+              status: "{{json state.humanGate.decision}}"
     resultKey: processRecord
     required: true
     sendResult: true

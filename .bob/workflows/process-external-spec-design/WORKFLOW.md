@@ -83,7 +83,7 @@ steps:
       provider: vscode.executeCommand
       args:
         - bobProcess.writeProcessRecord
-        - record: { schemaVersion: bob-process-record/v1, campaignId: "{{json state.processInput.input.campaignId}}", runId: "{{run.id}}", workflowName: process-external-spec-design, phase: external_spec, status: completed, inputPath: "{{inputs.processInputPath}}", artifactRoot: ".bob-process-runs/{{run.id}}", evidenceIndexPath: ".bob-process-runs/{{run.id}}/evidence-index.json", reviewResultPath: ".bob-process-runs/{{run.id}}/external-spec-design/review-result.yaml", humanGate: { required: true, status: accepted } }
+        - record: { schemaVersion: bob-process-record/v1, campaignId: "{{json state.processInput.input.campaignId}}", runId: "{{run.id}}", workflowName: process-external-spec-design, phase: external_spec, status: completed, inputPath: "{{inputs.processInputPath}}", artifactRoot: ".bob-process-runs/{{run.id}}", evidenceIndexPath: ".bob-process-runs/{{run.id}}/evidence-index.json", reviewResultPath: ".bob-process-runs/{{run.id}}/external-spec-design/review-result.yaml", humanGate: { required: true, status: "{{json state.humanGate.decision}}" } }
     resultKey: processRecord
     sendResult: true
     completeOnSuccess: true

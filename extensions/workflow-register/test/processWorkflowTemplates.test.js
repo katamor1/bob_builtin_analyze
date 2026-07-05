@@ -55,6 +55,12 @@ test("Phase 3 process workflow templates parse cleanly and enforce command guard
     }
     assert.equal(parsed.workflow.engineSteps.some((step) => step.type === "manual" && step.approval), true, `${workflowName} has human gate`)
     assert.equal(parsed.workflow.engineSteps.some((step) => step.type === "agent"), true, `${workflowName} has agent work`)
+    const recordStep = parsed.workflow.engineSteps.find((step) => step.type === "command" && step.action.args[0] === "bobProcess.writeProcessRecord")
+    assert.equal(
+      recordStep?.action?.args?.[1]?.record?.humanGate?.status,
+      "{{json state.humanGate.decision}}",
+      `${workflowName} records the manual gate decision from state`
+    )
     for (const artifact of parsed.workflow.artifacts) {
       assert.match(artifact.path, /^\.bob-process-(runs|records)\//, `${workflowName} artifact ${artifact.id} stays in process roots`)
     }
@@ -71,7 +77,6 @@ test("Phase 3 process workflow templates parse cleanly and enforce command guard
       assert.ok(providers.includes("bobCodeConsistency.preprocess"), "code precheck runs Phase 2 preprocess")
       assert.ok(providers.includes("bobCodeConsistency.validateOutput"), "code precheck validates Phase 2 output")
       assert.ok(providers.includes("bobCodeConsistency.triage"), "code precheck prepares human triage")
-      const recordStep = parsed.workflow.engineSteps.find((step) => step.id === "write-process-record")
       assert.ok(recordStep.action.args[1].record.phase2Handoff, "code precheck writes Phase 2 handoff into process record")
     }
     assert.equal(parsed.diagnostics.some((line) => line.includes("- warn:")), false, `${workflowName}\n${parsed.diagnostics.join("\n")}`)

@@ -118,8 +118,8 @@ ${renderTemplateCustomizationStudioStyles()}
 </section>
 </main>
 <script nonce="${options.nonce}">
-const initialTemplates = ${JSON.stringify(options.templates)};
-const initialModel = ${JSON.stringify(options.model)};
+const initialTemplates = ${jsonForScript(options.templates)};
+const initialModel = ${jsonForScript(options.model)};
 ${renderTemplateCustomizationStudioClientScript()}
 </script>
 </body>
@@ -163,4 +163,13 @@ function escapeHtml(value: string): string {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
+}
+
+function jsonForScript(value: unknown): string {
+  return JSON.stringify(value)
+    .replace(/&/g, "\\u0026")
+    .replace(/</g, "\\u003C")
+    .replace(/>/g, "\\u003E")
+    .replace(/\u2028/g, "\\u2028")
+    .replace(/\u2029/g, "\\u2029")
 }

@@ -149,7 +149,7 @@ steps:
             artifactRoot: ".bob-process-runs/{{run.id}}"
             evidenceIndexPath: ".bob-process-runs/{{run.id}}/evidence-index.json"
             reviewResultPath: ".bob-process-runs/{{run.id}}/code-precheck/review-result.yaml"
-            humanGate: { required: true, status: accepted }
+            humanGate: { required: true, status: "{{json state.humanGate.decision}}" }
             phase2Handoff:
               reviewPackage: "{{inputs.reviewPackagePath}}"
               bobOutput: "{{inputs.bobOutputPath}}"
