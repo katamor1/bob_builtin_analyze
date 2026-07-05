@@ -7,6 +7,10 @@
 !/.bob/workflows/*/
 /.bob/workflows/*/*
 !/.bob/workflows/*/WORKFLOW.md
+!/.bob/process/
+!/.bob/process/**
+/.bob-process-runs/
+/.bob-process-records/
 /.bob-review/
 /docs/workflows/code-consistency-review/scaffold/.tmp/
 /docs/workflows/code-consistency-review/scaffold/dist/
