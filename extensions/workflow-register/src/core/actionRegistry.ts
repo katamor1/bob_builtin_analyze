@@ -1,5 +1,6 @@
 import { ActionExecutionInput, ActionExecutionResult } from "./model"
 import { requireWorkspaceTrust, type WorkspaceTrustCheck } from "./workspaceTrust"
+import { createMechanicalChecksActionProvider } from "./mechanicalChecks/actionProvider"
 
 export interface ActionProvider {
   id: string
@@ -37,6 +38,9 @@ export interface DefaultActionRegistryOptions {
 
 export function createDefaultActionRegistry(options?: DefaultActionRegistryOptions): ActionRegistry {
   const registry = new ActionRegistry()
+  registry.register(createMechanicalChecksActionProvider({
+    isWorkspaceTrusted: options?.isWorkspaceTrusted
+  }))
   if (options) {
     registry.register({
       id: "vscode.executeCommand",
