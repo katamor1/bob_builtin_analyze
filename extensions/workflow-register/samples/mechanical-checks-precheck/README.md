@@ -22,5 +22,5 @@ Expected result: `status: passed`.
 ## MVP Limits
 
 - GUI profile editing is out of scope for this MVP.
-- Parser support is `exit_code` and `regex`.
+- This sample covers the original smoke profile. Use `samples/mechanical-checks-parser-pilot` for SARIF, CSV, delta, and known-ID parser fixtures.
 - Runner blocks unsafe paths and missing scripts, but project teams must still review scripts for destructive operations before registering them.

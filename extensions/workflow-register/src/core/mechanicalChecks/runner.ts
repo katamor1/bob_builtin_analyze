@@ -3,11 +3,16 @@ import * as fs from "fs/promises"
 import * as path from "path"
 import {
   MechanicalCheckDefinition,
-  MechanicalCheckParserDefinition,
   MechanicalCheckProfile,
   MechanicalCheckStatus,
   MechanicalChecksConfig
 } from "./config"
+import {
+  MechanicalCheckEvidenceFile,
+  MechanicalCheckFinding,
+  MechanicalCheckMetrics,
+  parseMechanicalCheckOutput
+} from "./parser"
 
 const PROFILE_RESULT_SCHEMA = "bob-mechanical-check-profile-result/v1"
 const CHECK_RESULT_SCHEMA = "bob-mechanical-check-result/v1"
@@ -54,13 +59,8 @@ export interface MechanicalCheckRunResult {
   stderr_path: string
   result_path: string
   metrics: MechanicalCheckMetrics
+  findings: MechanicalCheckFinding[]
   evidence: Array<{ path: string; type: string }>
-}
-
-export interface MechanicalCheckMetrics {
-  new_warnings?: number
-  new_errors?: number
-  violations?: number
 }
 
 interface ProcessResult {
@@ -69,12 +69,6 @@ interface ProcessResult {
   stderr: string
   timedOut: boolean
   error?: string
-}
-
-interface EvidenceFile {
-  absolutePath: string
-  relativePath: string
-  type: string
 }
 
 export async function runMechanicalChecksProfile(input: RunMechanicalChecksProfileInput): Promise<MechanicalCheckProfileResult> {
@@ -153,11 +147,62 @@ async function runMechanicalCheck(input: {
     return result
   }
 
+  const knownIds = await loadKnownIds(workspaceRoot, check.passCondition.allowKnownIdsFile)
+  if (!knownIds.ok) {
+    await fs.writeFile(stdoutPath, "", "utf8")
+    await fs.writeFile(stderrPath, `${knownIds.reason}\n`, "utf8")
+    const result = checkResult({
+      check,
+      status: "blocked",
+      startedAt,
+      finishedAt: timestamp(input.now),
+      stdoutPath,
+      stderrPath,
+      resultPath,
+      workspaceRoot,
+      summary: knownIds.reason,
+      metrics: {},
+      evidence: []
+    })
+    await writeJson(resultPath, result)
+    return result
+  }
+
   const processResult = await executeCheckProcess(check, commandPath, cwdPath)
   await fs.writeFile(stdoutPath, processResult.stdout, "utf8")
   await fs.writeFile(stderrPath, processResult.stderr, "utf8")
   const evidence = await collectEvidence(workspaceRoot, checkRoot, check.evidence.collect)
-  const metrics = await parseMetrics(check.parser, processResult, evidence)
+  const parsed = await parseMechanicalCheckOutput({
+    workspaceRoot,
+    parser: check.parser,
+    processResult,
+    evidence,
+    knownIds: knownIds.ids
+  })
+  if (!parsed.ok) {
+    const result = checkResult({
+      check,
+      status: "blocked",
+      startedAt,
+      finishedAt: timestamp(input.now),
+      exitCode: processResult.exitCode,
+      timedOut: processResult.timedOut || undefined,
+      stdoutPath,
+      stderrPath,
+      resultPath,
+      workspaceRoot,
+      summary: parsed.reason,
+      metrics: parsed.metrics,
+      findings: parsed.findings,
+      evidence: evidence.map((item) => ({
+        path: workspaceRelativePath(workspaceRoot, item.absolutePath),
+        type: item.type
+      }))
+    })
+    await writeJson(resultPath, result)
+    return result
+  }
+  const metrics = parsed.metrics
   const assessed = assessCheck(check, processResult, metrics)
   const result = checkResult({
     check,
@@ -172,6 +217,7 @@ async function runMechanicalCheck(input: {
     workspaceRoot,
     summary: assessed.summary,
     metrics,
+    findings: parsed.findings,
     evidence: evidence.map((item) => ({
       path: workspaceRelativePath(workspaceRoot, item.absolutePath),
       type: item.type
@@ -236,6 +282,7 @@ function missingCheckResult(runRoot: string, checkId: string, startedAt: string,
     stderr_path: path.join(checkRoot, "stderr.log").replace(/\\/g, "/"),
     result_path: path.join(checkRoot, "result.json").replace(/\\/g, "/"),
     metrics: {},
+    findings: [],
     evidence: []
   }
 }
@@ -281,10 +328,10 @@ async function collectEvidence(
   workspaceRoot: string,
   checkRoot: string,
   patterns: string[]
-): Promise<EvidenceFile[]> {
+): Promise<MechanicalCheckEvidenceFile[]> {
   const evidenceRoot = path.join(checkRoot, "evidence")
   const files = await listWorkspaceFiles(workspaceRoot)
-  const collected: EvidenceFile[] = []
+  const collected: MechanicalCheckEvidenceFile[] = []
   for (const pattern of patterns) {
     const matcher = globMatcher(pattern)
     for (const file of files) {
@@ -302,23 +349,6 @@ async function collectEvidence(
   return dedupeEvidence(collected)
 }
 
-async function parseMetrics(
-  parser: MechanicalCheckParserDefinition,
-  processResult: ProcessResult,
-  evidence: EvidenceFile[]
-): Promise<MechanicalCheckMetrics> {
-  if (parser.type !== "regex") return {}
-  const text = [
-    processResult.stdout,
-    processResult.stderr,
-    ...await Promise.all(evidence.map((item) => readTextIfPossible(item.absolutePath)))
-  ].join("\n")
-  return {
-    ...parser.warningPattern ? { new_warnings: countPattern(text, parser.warningPattern) } : {},
-    ...parser.errorPattern ? { new_errors: countPattern(text, parser.errorPattern) } : {}
-  }
-}
-
 function assessCheck(
   check: MechanicalCheckDefinition,
   processResult: ProcessResult,
@@ -333,6 +363,9 @@ function assessCheck(
   }
   if (exceeds(metrics.new_errors, check.passCondition.maxNewErrors)) {
     violations.push(`new errors ${metrics.new_errors} exceeds limit ${check.passCondition.maxNewErrors}`)
+  }
+  if (exceeds(metrics.new_findings, check.passCondition.maxNewFindings)) {
+    violations.push(`new findings ${metrics.new_findings} exceeds limit ${check.passCondition.maxNewFindings}`)
   }
   if (exceeds(metrics.violations, check.passCondition.maxViolations)) {
     violations.push(`violations ${metrics.violations} exceeds limit ${check.passCondition.maxViolations}`)
@@ -354,6 +387,7 @@ function checkResult(input: {
   workspaceRoot: string
   summary: string
   metrics: MechanicalCheckMetrics
+  findings?: MechanicalCheckFinding[]
   evidence: Array<{ path: string; type: string }>
 }): MechanicalCheckRunResult {
   return {
@@ -370,6 +404,7 @@ function checkResult(input: {
     stderr_path: workspaceRelativePath(input.workspaceRoot, input.stderrPath),
     result_path: workspaceRelativePath(input.workspaceRoot, input.resultPath),
     metrics: input.metrics,
+    findings: input.findings ?? [],
     evidence: input.evidence
   }
 }
@@ -384,6 +419,10 @@ function profileSummaryMarkdown(result: MechanicalCheckProfileResult): string {
     check.title,
     check.status,
     check.summary,
+    metricCell(check.metrics.total_findings),
+    metricCell(check.metrics.new_findings),
+    metricCell(check.metrics.known_findings),
+    topFindingsCell(check.findings),
     check.evidence.map((item) => item.path).join(", ")
   ])
   return [
@@ -396,16 +435,45 @@ function profileSummaryMarkdown(result: MechanicalCheckProfileResult): string {
     `- failed: ${result.failed}`,
     `- blocked: ${result.blocked}`,
     "",
-    "| Check | Result | Summary | Evidence |",
-    "|---|---|---|---|",
+    "| Check | Result | Summary | Total findings | New findings | Known findings | Top findings | Evidence |",
+    "|---|---|---|---:|---:|---:|---|---|",
     ...rows.map((row) => `| ${row.map(escapeMarkdownTableCell).join(" | ")} |`),
     ""
   ].join("\n")
 }
 
+function metricCell(value: number | undefined): string {
+  return value === undefined ? "" : String(value)
+}
+
+function topFindingsCell(findings: MechanicalCheckFinding[]): string {
+  return findings.slice(0, 3).map((finding) => {
+    const location = finding.file ? ` (${finding.file}${finding.line === undefined ? "" : `:${finding.line}`})` : ""
+    return `${finding.id}: ${finding.message}${location}`
+  }).join("; ")
+}
+
 async function writeJson(filePath: string, value: unknown): Promise<void> {
   await fs.mkdir(path.dirname(filePath), { recursive: true })
   await fs.writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8")
+}
+
+async function loadKnownIds(
+  workspaceRoot: string,
+  relativePath: string | undefined
+): Promise<{ ok: true; ids: Set<string> } | { ok: false; reason: string }> {
+  if (!relativePath) return { ok: true, ids: new Set() }
+  const knownIdsPath = resolveWorkspacePath(workspaceRoot, relativePath)
+  if (!knownIdsPath || !await fileExists(knownIdsPath)) {
+    return { ok: false, reason: `known ids file not found: ${relativePath}` }
+  }
+  const text = await fs.readFile(knownIdsPath, "utf8")
+  return {
+    ok: true,
+    ids: new Set(text.split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0 && !line.startsWith("#")))
+  }
 }
 
 async function listWorkspaceFiles(workspaceRoot: string): Promise<Array<{ absolutePath: string; relativePath: string }>> {
@@ -514,20 +582,12 @@ async function directoryExists(filePath: string): Promise<boolean> {
   }
 }
 
-async function readTextIfPossible(filePath: string): Promise<string> {
-  try {
-    return await fs.readFile(filePath, "utf8")
-  } catch {
-    return ""
-  }
-}
-
 function evidenceType(relativePath: string): string {
   const extension = path.extname(relativePath).replace(/^\./, "").toLowerCase()
   return extension || "file"
 }
 
-function dedupeEvidence(items: EvidenceFile[]): EvidenceFile[] {
+function dedupeEvidence(items: MechanicalCheckEvidenceFile[]): MechanicalCheckEvidenceFile[] {
   const seen = new Set<string>()
   return items.filter((item) => {
     if (seen.has(item.absolutePath)) return false

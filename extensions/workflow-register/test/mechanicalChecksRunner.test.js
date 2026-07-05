@@ -115,6 +115,123 @@ test("mechanical check runner maps regex pass-condition violations to failed or 
   assert.equal(warning.failed, 0)
 })
 
+test("mechanical check runner writes normalized parser findings into check results", async (t) => {
+  const workspaceRoot = tempWorkspace(t)
+  writeFile(workspaceRoot, "tools/write-sarif.js", [
+    "const fs = require('node:fs')",
+    "fs.mkdirSync('out/analyzer', { recursive: true })",
+    "fs.writeFileSync('out/analyzer/result.sarif', JSON.stringify({",
+    "  version: '2.1.0',",
+    "  runs: [{ results: [{",
+    "    ruleId: 'SA001',",
+    "    level: 'error',",
+    "    message: { text: 'Null dereference' },",
+    "    locations: [{ physicalLocation: { artifactLocation: { uri: 'src/foo.c' }, region: { startLine: 10 } } }]",
+    "  }] }]",
+    "}))"
+  ].join("\n"))
+  const config = configFor([
+    {
+      id: "static-analysis-delta",
+      title: "Static analysis delta",
+      runner: "node",
+      command: "tools/write-sarif.js",
+      evidence: { collect: ["out/analyzer/**/*.sarif"] },
+      parser: { type: "sarif", input: "evidence" }
+    }
+  ])
+
+  const result = await runMechanicalChecksProfile({
+    workspaceRoot,
+    config,
+    profile: "pre-code-review",
+    runId: "run-sarif"
+  })
+
+  assert.equal(result.status, "passed")
+  assert.equal(result.checks[0].metrics.total_findings, 1)
+  assert.equal(result.checks[0].findings[0].id, "SA001")
+  assert.equal(result.checks[0].findings[0].file, "src/foo.c")
+  assert.equal(result.checks[0].findings[0].line, 10)
+  const summary = fs.readFileSync(path.join(workspaceRoot, ".bob", "mechanical-checks", "runs", "run-sarif", "profile-summary.md"), "utf8")
+  assert.match(summary, /New findings/)
+  assert.match(summary, /Known findings/)
+  assert.match(summary, /SA001: Null dereference/)
+})
+
+test("mechanical check runner applies known IDs file and max new findings gate", async (t) => {
+  const workspaceRoot = tempWorkspace(t)
+  writeFile(workspaceRoot, ".bob/checks/known-static-analysis.txt", [
+    "# accepted existing analyzer finding",
+    "SA001"
+  ].join("\n"))
+  writeFile(workspaceRoot, "tools/write-known-and-new-sarif.js", [
+    "const fs = require('node:fs')",
+    "fs.mkdirSync('out/analyzer', { recursive: true })",
+    "fs.writeFileSync('out/analyzer/result.sarif', JSON.stringify({",
+    "  runs: [{ results: [",
+    "    { ruleId: 'SA001', level: 'error', message: { text: 'Known issue' }, locations: [{ physicalLocation: { artifactLocation: { uri: 'src/foo.c' }, region: { startLine: 10 } } }] },",
+    "    { ruleId: 'SA002', level: 'warning', message: { text: 'New issue' }, locations: [{ physicalLocation: { artifactLocation: { uri: 'src/bar.c' }, region: { startLine: 20 } } }] }",
+    "  ] }]",
+    "}))"
+  ].join("\n"))
+  const config = configFor([
+    {
+      id: "static-analysis-delta",
+      title: "Static analysis delta",
+      runner: "node",
+      command: "tools/write-known-and-new-sarif.js",
+      evidence: { collect: ["out/analyzer/**/*.sarif"] },
+      parser: { type: "sarif", input: "evidence" },
+      pass_condition: {
+        max_new_findings: 0,
+        allow_known_ids_file: ".bob/checks/known-static-analysis.txt"
+      }
+    }
+  ])
+
+  const result = await runMechanicalChecksProfile({
+    workspaceRoot,
+    config,
+    profile: "pre-code-review",
+    runId: "run-known"
+  })
+
+  assert.equal(result.status, "failed")
+  assert.equal(result.checks[0].metrics.total_findings, 2)
+  assert.equal(result.checks[0].metrics.known_findings, 1)
+  assert.equal(result.checks[0].metrics.new_findings, 1)
+  assert.deepEqual(result.checks[0].findings.map((finding) => finding.id), ["SA002"])
+  assert.match(result.checks[0].summary, /new findings 1 exceeds limit 0/)
+})
+
+test("mechanical check runner reports missing regex evidence as blocked", async (t) => {
+  const workspaceRoot = tempWorkspace(t)
+  writeFile(workspaceRoot, "tools/no-evidence.js", "console.log('no evidence written')\n")
+  const config = configFor([
+    {
+      id: "missing-evidence",
+      title: "Missing evidence",
+      runner: "node",
+      command: "tools/no-evidence.js",
+      evidence: { collect: ["out/missing/**/*.log"] },
+      parser: { type: "regex", input: "evidence", warning_pattern: "warning" },
+      pass_condition: { max_new_warnings: 0 }
+    }
+  ])
+
+  const result = await runMechanicalChecksProfile({
+    workspaceRoot,
+    config,
+    profile: "pre-code-review",
+    runId: "run-missing-evidence"
+  })
+
+  assert.equal(result.status, "blocked")
+  assert.equal(result.checks[0].status, "blocked")
+  assert.match(result.checks[0].summary, /regex evidence not found/)
+})
+
 test("mechanical check runner reports missing scripts and timeouts as blocked", async (t) => {
   const workspaceRoot = tempWorkspace(t)
   writeFile(workspaceRoot, "tools/sleep.js", "setTimeout(() => console.log('late'), 2000)\n")

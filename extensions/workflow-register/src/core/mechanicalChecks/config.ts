@@ -4,12 +4,14 @@ const yaml = require("js-yaml") as { load(text: string): unknown }
 
 const SCHEMA_VERSION = "bob-mechanical-checks/v1"
 const RUNNERS = new Set(["bat", "powershell", "python", "node", "executable"])
-const PARSERS = new Set(["exit_code", "regex"])
+const PARSERS = new Set(["exit_code", "regex", "sarif", "csv"])
+const PARSER_INPUTS = new Set(["stdout", "stderr", "evidence"])
 const GATES = new Set(["pre_code_review", "pre_bob_review", "post_bob_review", "pre_test_start", "release_readiness"])
 
 export type MechanicalCheckStatus = "passed" | "warning" | "failed" | "blocked"
 export type MechanicalCheckRunnerType = "bat" | "powershell" | "python" | "node" | "executable"
-export type MechanicalCheckParserType = "exit_code" | "regex"
+export type MechanicalCheckParserType = "exit_code" | "regex" | "sarif" | "csv"
+export type MechanicalCheckParserInput = "stdout" | "stderr" | "evidence"
 
 export interface MechanicalChecksConfig {
   schemaVersion: typeof SCHEMA_VERSION
@@ -46,11 +48,33 @@ export interface MechanicalCheckDefinition {
 
 export type MechanicalCheckParserDefinition =
   | { type: "exit_code" }
-  | { type: "regex"; warningPattern?: string; errorPattern?: string }
+  | ({
+    type: "regex"
+    input?: MechanicalCheckParserInput
+    warningPattern?: string
+    errorPattern?: string
+  } & MechanicalCheckDeltaDefinition)
+  | ({ type: "sarif"; input: MechanicalCheckParserInput } & MechanicalCheckDeltaDefinition)
+  | ({
+    type: "csv"
+    input: MechanicalCheckParserInput
+    idColumn?: string
+    fileColumn?: string
+    lineColumn?: string
+    messageColumn?: string
+    severityColumn?: string
+  } & MechanicalCheckDeltaDefinition)
+
+export interface MechanicalCheckDeltaDefinition {
+  baselineEvidence?: string[]
+  targetEvidence?: string[]
+  identityColumns?: string[]
+}
 
 export interface MechanicalCheckPassCondition {
   maxNewWarnings?: number
   maxNewErrors?: number
+  maxNewFindings?: number
   maxViolations?: number
   allowKnownIdsFile?: string
 }
@@ -131,7 +155,7 @@ function normalizeCheck(
     validateWorkspaceRelativePath(evidencePath, `Check '${id}' evidence collect`, "evidence collect path", diagnostics, options)
   }
 
-  const parser = normalizeParser(id, asRecord(record.parser), diagnostics)
+  const parser = normalizeParser(id, asRecord(record.parser), diagnostics, options)
   const passCondition = normalizePassCondition(asRecord(record.pass_condition ?? record.passCondition))
   if (passCondition.allowKnownIdsFile) {
     validateWorkspaceRelativePath(
@@ -164,9 +188,11 @@ function normalizeCheck(
 function normalizeParser(
   checkId: string,
   record: Record<string, unknown>,
-  diagnostics: string[]
+  diagnostics: string[],
+  options: MechanicalChecksConfigValidationOptions
 ): MechanicalCheckParserDefinition {
   const type = stringField(record, "type") ?? "exit_code"
+  const delta = normalizeDeltaDefinition(checkId, record, diagnostics, options)
   if (!PARSERS.has(type)) {
     diagnostics.push(`Check '${checkId}' uses unsupported parser type '${type}'.`)
     return { type: "exit_code" }
@@ -174,17 +200,60 @@ function normalizeParser(
   if (type === "regex") {
     return {
       type: "regex",
+      input: parserInputField(checkId, record, "input", diagnostics),
       warningPattern: stringField(record, "warning_pattern") ?? stringField(record, "warningPattern"),
-      errorPattern: stringField(record, "error_pattern") ?? stringField(record, "errorPattern")
+      errorPattern: stringField(record, "error_pattern") ?? stringField(record, "errorPattern"),
+      ...delta
+    }
+  }
+  if (type === "sarif") {
+    return {
+      type: "sarif",
+      input: parserInputField(checkId, record, "input", diagnostics) ?? "evidence",
+      ...delta
+    }
+  }
+  if (type === "csv") {
+    return {
+      type: "csv",
+      input: parserInputField(checkId, record, "input", diagnostics) ?? "evidence",
+      idColumn: stringField(record, "id_column") ?? stringField(record, "idColumn"),
+      fileColumn: stringField(record, "file_column") ?? stringField(record, "fileColumn"),
+      lineColumn: stringField(record, "line_column") ?? stringField(record, "lineColumn"),
+      messageColumn: stringField(record, "message_column") ?? stringField(record, "messageColumn"),
+      severityColumn: stringField(record, "severity_column") ?? stringField(record, "severityColumn"),
+      ...delta
     }
   }
   return { type: "exit_code" }
+}
+
+function normalizeDeltaDefinition(
+  checkId: string,
+  record: Record<string, unknown>,
+  diagnostics: string[],
+  options: MechanicalChecksConfigValidationOptions
+): MechanicalCheckDeltaDefinition {
+  const baselineEvidence = listField(record, "baseline_evidence").concat(listField(record, "baselineEvidence"))
+  const targetEvidence = listField(record, "target_evidence").concat(listField(record, "targetEvidence"))
+  for (const evidencePath of baselineEvidence) {
+    validateWorkspaceRelativePath(evidencePath, `Check '${checkId}' baseline evidence`, "path", diagnostics, options)
+  }
+  for (const evidencePath of targetEvidence) {
+    validateWorkspaceRelativePath(evidencePath, `Check '${checkId}' target evidence`, "path", diagnostics, options)
+  }
+  return compact({
+    baselineEvidence: baselineEvidence.length > 0 ? baselineEvidence : undefined,
+    targetEvidence: targetEvidence.length > 0 ? targetEvidence : undefined,
+    identityColumns: listField(record, "identity_columns").concat(listField(record, "identityColumns"))
+  })
 }
 
 function normalizePassCondition(record: Record<string, unknown>): MechanicalCheckPassCondition {
   return compact({
     maxNewWarnings: numberField(record, "max_new_warnings") ?? numberField(record, "maxNewWarnings"),
     maxNewErrors: numberField(record, "max_new_errors") ?? numberField(record, "maxNewErrors"),
+    maxNewFindings: numberField(record, "max_new_findings") ?? numberField(record, "maxNewFindings"),
     maxViolations: numberField(record, "max_violations") ?? numberField(record, "maxViolations"),
     allowKnownIdsFile: stringField(record, "allow_known_ids_file") ?? stringField(record, "allowKnownIdsFile")
   })
@@ -279,6 +348,19 @@ function booleanField(record: Record<string, unknown>, key: string): boolean | u
 function severityField(record: Record<string, unknown>, key: string): "error" | "warning" | "info" | undefined {
   const value = stringField(record, key)
   return value === "error" || value === "warning" || value === "info" ? value : undefined
+}
+
+function parserInputField(
+  checkId: string,
+  record: Record<string, unknown>,
+  key: string,
+  diagnostics: string[]
+): MechanicalCheckParserInput | undefined {
+  const value = stringField(record, key)
+  if (!value) return undefined
+  if (PARSER_INPUTS.has(value)) return value as MechanicalCheckParserInput
+  diagnostics.push(`Check '${checkId}' uses unsupported parser input '${value}'.`)
+  return undefined
 }
 
 function stringRecord(value: unknown): Record<string, string> {
