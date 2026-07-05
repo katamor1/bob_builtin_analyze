@@ -19,6 +19,8 @@
   "activationEvents": [
     "onStartupFinished",
     "onCommand:bobBazaar.openReviewGui",
+    "onCommand:bobBazaar.openResultCaptureGui",
+    "onCommand:bobBazaar.openHumanTriageGui",
     "onCommand:bobBazaar.collectReviewContext",
     "onCommand:bobBazaar.loadReviewRules",
     "onCommand:bobBazaar.captureReviewResult",
@@ -43,6 +45,16 @@
       {
         "command": "bobBazaar.openReviewGui",
         "title": "GUI を開く",
+        "category": "Bob Bazaar Review"
+      },
+      {
+        "command": "bobBazaar.openResultCaptureGui",
+        "title": "Result Capture GUI を開く",
+        "category": "Bob Bazaar Review"
+      },
+      {
+        "command": "bobBazaar.openHumanTriageGui",
+        "title": "Human Triage GUI を開く",
         "category": "Bob Bazaar Review"
       },
       {
@@ -186,6 +198,12 @@
       "commandPalette": [
         {
           "command": "bobBazaar.openReviewGui"
+        },
+        {
+          "command": "bobBazaar.openResultCaptureGui"
+        },
+        {
+          "command": "bobBazaar.openHumanTriageGui"
         },
         {
           "command": "bobBazaar.collectReviewContext"
