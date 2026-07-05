@@ -42,7 +42,8 @@ async function handleMessage(message: JsonRpcMessage): Promise<void> {
     }
 
     if (message.method === "tools/call") {
-      const result = await tools.callTool(message.params?.name, message.params?.arguments ?? {})
+      const call = parseToolCallParams(message.params)
+      const result = await tools.callTool(call.name, call.arguments)
       respond(message.id, result)
       return
     }
@@ -62,6 +63,23 @@ async function requiredAllowedCwd(args: unknown, name: string): Promise<string> 
     throw new Error(`Missing required string argument: ${name}`)
   }
   return assertAllowedCwd(value)
+}
+
+function parseToolCallParams(params: unknown): { name: string; arguments: unknown } {
+  if (!isRecord(params)) {
+    throw new Error("tools/call params must be an object")
+  }
+  if (typeof params.name !== "string" || !params.name.trim()) {
+    throw new Error("Missing required tools/call string parameter: name")
+  }
+  return {
+    name: params.name,
+    arguments: params.arguments ?? {}
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
 }
 
 async function assertAllowedCwd(cwd: string): Promise<string> {
