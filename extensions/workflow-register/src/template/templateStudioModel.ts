@@ -8,9 +8,16 @@ import {
   type ProjectProfile,
   type WorkflowCustomization,
   type WorkflowTemplate,
+  validateProjectProfile,
+  validateWorkflowCustomization,
   validateWorkflowTemplate
 } from "./templateValidation"
 import { generateCustomizedWorkflow, hashTemplateWorkflow } from "./templateGenerator"
+import {
+  checkTemplateReadiness,
+  renderReadinessMarkdown,
+  type TemplateReadiness
+} from "./templateReadiness"
 
 const TEMPLATE_LIBRARY_ROOT = ".bob/template-library"
 const STANDARD_TEMPLATE_ID = "process-code-precheck"
@@ -112,6 +119,26 @@ export type TemplateStudioDiffPreviewResult =
       workflowMarkdown?: string
     }
 
+export type TemplateStudioValidationResult<T> =
+  | { status: "ok"; diagnostics: string[]; value: T }
+  | { status: "error"; diagnostics: string[]; value?: T }
+
+export type TemplateStudioReadinessResult =
+  | {
+      status: "ok"
+      diagnostics: string[]
+      readiness: TemplateReadiness
+      readinessJsonPath: string
+      readinessMarkdownPath: string
+    }
+  | {
+      status: "error"
+      diagnostics: string[]
+      readiness?: TemplateReadiness
+      readinessJsonPath?: string
+      readinessMarkdownPath?: string
+    }
+
 export async function listTemplateLibrary(workspaceRoot: string): Promise<TemplateLibraryListResult> {
   const diagnostics: string[] = []
   const entries: TemplateLibraryEntry[] = []
@@ -210,6 +237,26 @@ export function customizationPathForStudioModel(model: TemplateCustomizationStud
   return `.bob/template-customizations/${model.workflowName}.yaml`
 }
 
+export function validateProfileFromStudioModel(
+  model: TemplateCustomizationStudioModel
+): TemplateStudioValidationResult<ProjectProfile> {
+  const projectProfile = buildProjectProfileFromStudioModel(model)
+  const validation = validateProjectProfile(projectProfile)
+  return validation.ok
+    ? { status: "ok", diagnostics: validation.diagnostics, value: validation.profile }
+    : { status: "error", diagnostics: validation.diagnostics, value: projectProfile }
+}
+
+export function validateCustomizationFromStudioModel(
+  model: TemplateCustomizationStudioModel
+): TemplateStudioValidationResult<WorkflowCustomization> {
+  const customization = buildCustomizationFromStudioModel(model)
+  const validation = validateWorkflowCustomization(customization)
+  return validation.ok
+    ? { status: "ok", diagnostics: validation.diagnostics, value: validation.customization }
+    : { status: "error", diagnostics: validation.diagnostics, value: customization }
+}
+
 export async function previewWorkflowFromStudioModel(
   workspaceRoot: string,
   model: TemplateCustomizationStudioModel
@@ -277,6 +324,30 @@ export async function writeWorkflowDiffPreviewFromStudioModel(
     previewPath,
     targetPath: preview.relativePath,
     workflowMarkdown: preview.workflowMarkdown
+  }
+}
+
+export async function checkReadinessFromStudioModel(
+  workspaceRoot: string,
+  model: TemplateCustomizationStudioModel
+): Promise<TemplateStudioReadinessResult> {
+  try {
+    const input = await loadStudioGenerationInput(workspaceRoot, model)
+    const readiness = await checkTemplateReadiness({
+      workspaceRoot,
+      ...input
+    })
+    const projectId = safeSegmentOrFallback(model.projectId, "unknown-project")
+    const workflowName = safeSegmentOrFallback(model.workflowName, "unknown-workflow")
+    const readinessJsonPath = `.bob/template-readiness/${projectId}/${workflowName}-readiness.json`
+    const readinessMarkdownPath = `.bob/template-readiness/${projectId}/${workflowName}-readiness.md`
+    await Promise.all([
+      writeWorkspaceText(workspaceRoot, readinessJsonPath, JSON.stringify({ readiness }, null, 2)),
+      writeWorkspaceText(workspaceRoot, readinessMarkdownPath, renderReadinessMarkdown(readiness))
+    ])
+    return { status: "ok", diagnostics: [], readiness, readinessJsonPath, readinessMarkdownPath }
+  } catch (error) {
+    return { status: "error", diagnostics: [errorMessage(error)] }
   }
 }
 
@@ -440,6 +511,10 @@ function timestamp(): string {
   const now = new Date()
   const pad = (value: number) => String(value).padStart(2, "0")
   return `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`
+}
+
+function safeSegmentOrFallback(value: string, fallback: string): string {
+  return /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(value) && !value.includes("..") ? value : fallback
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

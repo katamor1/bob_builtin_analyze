@@ -59,6 +59,26 @@ function renderDiagnostics(result) {
   return diagnostics.length === 0 ? 'diagnostics: none' : diagnostics.join('\n');
 }
 
+function renderReadiness(readiness) {
+  if (!readiness) return;
+  const status = readiness.status || 'error';
+  const statusNode = $('readinessStatus');
+  if (statusNode) {
+    statusNode.className = 'panel status ' + status;
+    statusNode.textContent = 'status: ' + status;
+  }
+  setText('readinessScore', 'score: ' + String(readiness.score));
+  const checks = Array.isArray(readiness.checks) ? readiness.checks : [];
+  setText('readinessChecks', checks.map(function(check) {
+    const diagnostics = Array.isArray(check.diagnostics) && check.diagnostics.length > 0
+      ? ' - ' + check.diagnostics.join('; ')
+      : '';
+    return check.status + ': ' + check.id + ' - ' + check.title + diagnostics;
+  }).join('\n'));
+  const nextActions = Array.isArray(readiness.nextActions) ? readiness.nextActions : [];
+  setText('readinessNextActions', nextActions.length === 0 ? 'None' : nextActions.join('\n'));
+}
+
 document.addEventListener('click', function(event) {
   const action = event.target && event.target.getAttribute ? event.target.getAttribute('data-action') : '';
   if (!action) return;
@@ -82,7 +102,9 @@ window.addEventListener('message', function(event) {
     setText('diagnosticsOutput', renderDiagnostics(message));
   }
   if (message.type === 'readinessResult') {
-    setText('readinessOutput', JSON.stringify(message.readiness || message.result || {}, null, 2));
+    const readiness = message.readiness || (message.result && message.result.readiness);
+    renderReadiness(readiness);
+    setText('readinessOutput', JSON.stringify(message, null, 2));
   }
 });
 

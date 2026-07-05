@@ -103,6 +103,12 @@ ${renderTemplateCustomizationStudioStyles()}
       <button data-action="check-readiness">readiness check</button>
       <button data-action="open-readiness-report" class="secondary">report を開く</button>
     </div>
+    <div id="readinessStatus" class="panel status">status: not checked</div>
+    <div id="readinessScore" class="panel">score: -</div>
+    <h3>checks</h3>
+    <div id="readinessChecks" class="panel"></div>
+    <h3>nextActions</h3>
+    <div id="readinessNextActions" class="panel"></div>
     <pre id="readinessOutput"></pre>
   </div>
 

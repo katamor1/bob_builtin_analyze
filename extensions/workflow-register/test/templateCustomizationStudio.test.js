@@ -12,10 +12,13 @@ const repoRoot = path.resolve(__dirname, "..", "..", "..")
 const { parseWorkflowMarkdown } = require(path.join(outRoot, "core", "parser"))
 const {
   buildProjectProfileFromStudioModel,
+  checkReadinessFromStudioModel,
   createDefaultStudioModel,
   generateWorkflowFromStudioModel,
   listTemplateLibrary,
   previewWorkflowFromStudioModel,
+  validateCustomizationFromStudioModel,
+  validateProfileFromStudioModel,
   writeWorkflowDiffPreviewFromStudioModel
 } = require(path.join(outRoot, "template", "templateStudioModel"))
 const {
@@ -38,6 +41,18 @@ async function studioWorkspace() {
   await copyFileInto(root, ".bob/template-library/standard/process-code-precheck/metadata.yaml")
   await copyFileInto(root, ".bob/template-library/standard/process-code-precheck/WORKFLOW.md")
   return root
+}
+
+async function addReadinessFiles(root, model, options = {}) {
+  await fs.mkdir(path.join(root, ".bob", "process", "checklists"), { recursive: true })
+  await fs.writeFile(path.join(root, ".bob", "process", "process-catalog.yaml"), "schemaVersion: bob-process-catalog/v1\n", "utf8")
+  if (options.checklist !== false) {
+    await fs.writeFile(path.join(root, model.checklistPath), "checks: []\n", "utf8")
+  }
+  if (options.uatEvidence !== false) {
+    await fs.mkdir(path.dirname(path.join(root, model.uatEvidencePath)), { recursive: true })
+    await fs.writeFile(path.join(root, model.uatEvidencePath), "# UAT evidence\n", "utf8")
+  }
 }
 
 test("template customization studio lists the tracked standard template and builds Bazaar-safe defaults", async () => {
@@ -86,6 +101,27 @@ test("template customization studio html exposes only allowed customization fiel
   assert.doesNotMatch(html, /command provider/)
   assert.doesNotMatch(html, /result sink type/)
   assert.doesNotMatch(html, /allowedCommands/)
+})
+
+test("template customization studio readiness html exposes status score checks and next actions", async () => {
+  const root = await studioWorkspace()
+  const library = await listTemplateLibrary(root)
+  const model = createDefaultStudioModel(library.templates[0])
+  const html = renderTemplateCustomizationStudioHtml({
+    cspSource: "vscode-resource:",
+    nonce: "test-nonce",
+    templates: library.templates,
+    model
+  })
+
+  assert.match(html, /id="readinessStatus"/)
+  assert.match(html, /id="readinessScore"/)
+  assert.match(html, /id="readinessChecks"/)
+  assert.match(html, /id="readinessNextActions"/)
+  assert.match(html, /nextActions/)
+  assert.match(html, /status\.pass/)
+  assert.match(html, /status\.warning/)
+  assert.match(html, /status\.fail/)
 })
 
 test("template customization studio previews and generates a valid workflow with template metadata", async () => {
@@ -169,4 +205,64 @@ test("template customization studio panel wires preview generation and diff host
   assert.match(source, /generateWorkflowFromStudioModel/)
   assert.match(source, /writeWorkflowDiffPreviewFromStudioModel/)
   assert.match(source, /vscode\.diff/)
+})
+
+test("template customization studio validates profile and customization and writes readiness reports", async () => {
+  const root = await studioWorkspace()
+  const library = await listTemplateLibrary(root)
+  const model = createDefaultStudioModel(library.templates[0])
+  model.projectId = "alpha-product"
+  model.workflowName = "alpha-code-precheck"
+  model.checklistPath = ".bob/process/checklists/alpha-code-precheck.yaml"
+  model.uatEvidencePath = "docs/uat/evidence/alpha-product.md"
+  await addReadinessFiles(root, model)
+
+  const profile = validateProfileFromStudioModel(model)
+  assert.equal(profile.status, "ok", profile.diagnostics.join("\n"))
+  const customization = validateCustomizationFromStudioModel(model)
+  assert.equal(customization.status, "ok", customization.diagnostics.join("\n"))
+
+  const readiness = await checkReadinessFromStudioModel(root, model)
+  assert.equal(readiness.status, "ok", readiness.diagnostics.join("\n"))
+  assert.equal(readiness.readiness.status, "pass", readiness.readiness.nextActions.join("\n"))
+  assert.equal(readiness.readinessJsonPath, ".bob/template-readiness/alpha-product/alpha-code-precheck-readiness.json")
+  assert.equal(readiness.readinessMarkdownPath, ".bob/template-readiness/alpha-product/alpha-code-precheck-readiness.md")
+  assert.ok(fsSync.existsSync(path.join(root, readiness.readinessJsonPath)))
+  assert.ok(fsSync.existsSync(path.join(root, readiness.readinessMarkdownPath)))
+
+  const report = yaml.load(await fs.readFile(path.join(root, readiness.readinessJsonPath), "utf8"))
+  assert.equal(report.readiness.status, "pass")
+  assert.equal(Array.isArray(report.readiness.checks), true)
+})
+
+test("template customization studio readiness warns when UAT evidence is absent", async () => {
+  const root = await studioWorkspace()
+  const library = await listTemplateLibrary(root)
+  const model = createDefaultStudioModel(library.templates[0])
+  model.projectId = "alpha-product"
+  model.workflowName = "alpha-code-precheck"
+  model.checklistPath = ".bob/process/checklists/alpha-code-precheck.yaml"
+  model.uatEvidencePath = "docs/uat/evidence/alpha-product.md"
+  await addReadinessFiles(root, model, { uatEvidence: false })
+
+  const readiness = await checkReadinessFromStudioModel(root, model)
+  assert.equal(readiness.status, "ok", readiness.diagnostics.join("\n"))
+  assert.equal(readiness.readiness.status, "warning")
+  assert.match(readiness.readiness.nextActions.join("\n"), /UAT evidence is not present/)
+})
+
+test("template customization studio panel wires validation readiness and report actions", () => {
+  const source = readSourceSet([
+    "webview/templateCustomizationStudioPanel.ts",
+    "webview/templateCustomizationStudioClientScript.ts"
+  ])
+
+  for (const messageType of ["validateProfile", "validateCustomization", "checkReadiness", "openReadinessReport"]) {
+    assert.match(source, new RegExp(messageType))
+  }
+  assert.match(source, /validateProfileFromStudioModel/)
+  assert.match(source, /validateCustomizationFromStudioModel/)
+  assert.match(source, /checkReadinessFromStudioModel/)
+  assert.match(source, /readinessMarkdownPath/)
+  assert.match(source, /showTextDocument/)
 })

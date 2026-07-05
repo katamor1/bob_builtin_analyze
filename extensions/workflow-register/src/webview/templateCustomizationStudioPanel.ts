@@ -1,9 +1,12 @@
 import * as vscode from "vscode"
 import {
+  checkReadinessFromStudioModel,
   createDefaultStudioModel,
   generateWorkflowFromStudioModel,
   listTemplateLibrary,
   previewWorkflowFromStudioModel,
+  validateCustomizationFromStudioModel,
+  validateProfileFromStudioModel,
   type TemplateCustomizationStudioModel,
   type TemplateLibraryEntry,
   writeWorkflowDiffPreviewFromStudioModel
@@ -18,8 +21,12 @@ export interface TemplateCustomizationStudioPanelOptions {
 type TemplateCustomizationStudioMessage =
   | { type: "listTemplates" }
   | { type: "loadTemplate"; templatePath?: string }
+  | { type: "validateProfile"; model?: TemplateCustomizationStudioModel }
+  | { type: "validateCustomization"; model?: TemplateCustomizationStudioModel }
   | { type: "previewWorkflow"; model?: TemplateCustomizationStudioModel }
   | { type: "generateWorkflow"; model?: TemplateCustomizationStudioModel }
+  | { type: "checkReadiness"; model?: TemplateCustomizationStudioModel }
+  | { type: "openReadinessReport" }
   | { type: "showWorkflowDiff"; model?: TemplateCustomizationStudioModel }
   | { type: string; model?: TemplateCustomizationStudioModel; [key: string]: unknown }
 
@@ -29,6 +36,7 @@ export class TemplateCustomizationStudioPanel {
   private disposables: vscode.Disposable[] = []
   private templates: TemplateLibraryEntry[]
   private model: TemplateCustomizationStudioModel
+  private lastReadinessMarkdownPath: string | undefined
 
   private constructor(private options: TemplateCustomizationStudioPanelOptions, templates: TemplateLibraryEntry[], model: TemplateCustomizationStudioModel, diagnostics: string[]) {
     this.templates = templates
@@ -82,6 +90,14 @@ export class TemplateCustomizationStudioPanel {
       this.panel.webview.html = this.renderHtml([])
       return
     }
+    if (message.type === "validateProfile") {
+      await this.validateProfile(modelFromMessage(message, this.model))
+      return
+    }
+    if (message.type === "validateCustomization") {
+      await this.validateCustomization(modelFromMessage(message, this.model))
+      return
+    }
     if (message.type === "previewWorkflow") {
       await this.preview(modelFromMessage(message, this.model))
       return
@@ -90,9 +106,29 @@ export class TemplateCustomizationStudioPanel {
       await this.generate(modelFromMessage(message, this.model))
       return
     }
+    if (message.type === "checkReadiness") {
+      await this.checkReadiness(modelFromMessage(message, this.model))
+      return
+    }
+    if (message.type === "openReadinessReport") {
+      await this.openReadinessReport()
+      return
+    }
     if (message.type === "showWorkflowDiff") {
       await this.showDiff(modelFromMessage(message, this.model))
     }
+  }
+
+  private async validateProfile(model: TemplateCustomizationStudioModel): Promise<void> {
+    this.model = model
+    const result = validateProfileFromStudioModel(model)
+    await this.panel.webview.postMessage({ type: "diagnostics", scope: "profile", result })
+  }
+
+  private async validateCustomization(model: TemplateCustomizationStudioModel): Promise<void> {
+    this.model = model
+    const result = validateCustomizationFromStudioModel(model)
+    await this.panel.webview.postMessage({ type: "diagnostics", scope: "customization", result })
   }
 
   private async preview(model: TemplateCustomizationStudioModel): Promise<void> {
@@ -147,6 +183,35 @@ export class TemplateCustomizationStudioPanel {
     }
     await vscode.commands.executeCommand("vscode.diff", targetUri, previewUri, `Template Studio Preview: ${result.targetPath}`)
     await this.panel.webview.postMessage({ type: "previewResult", status: "ok", markdown: result.workflowMarkdown, diagnostics: result.diagnostics, filePath: result.previewPath })
+  }
+
+  private async checkReadiness(model: TemplateCustomizationStudioModel): Promise<void> {
+    this.model = model
+    const result = await checkReadinessFromStudioModel(this.options.workspaceRoot, model)
+    if (result.status === "ok") {
+      this.lastReadinessMarkdownPath = result.readinessMarkdownPath
+    }
+    await this.panel.webview.postMessage({
+      type: "readinessResult",
+      status: result.status,
+      diagnostics: result.diagnostics,
+      readiness: result.readiness,
+      readinessJsonPath: result.readinessJsonPath,
+      readinessMarkdownPath: result.readinessMarkdownPath
+    })
+  }
+
+  private async openReadinessReport(): Promise<void> {
+    if (!this.lastReadinessMarkdownPath) {
+      await vscode.window.showInformationMessage("Readiness report is not available yet. Run readiness check first.")
+      return
+    }
+    const reportUri = workspaceUri(this.options.workspaceRoot, this.lastReadinessMarkdownPath)
+    if (!(await exists(reportUri))) {
+      await vscode.window.showErrorMessage(`Readiness report is missing: ${this.lastReadinessMarkdownPath}`)
+      return
+    }
+    await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(reportUri), { preview: false })
   }
 
   private renderHtml(diagnostics: string[]): string {
