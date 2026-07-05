@@ -8,7 +8,7 @@ import { buildReviewPackage } from "./reviewPackageBuilder"
 import { validateReviewInput } from "./reviewInputValidator"
 import type { PreprocessResult } from "./preprocessTypes"
 
-export async function preprocessReview(input: { workspaceRoot: string; inputPath: string; outDir: string; diffFixturePath?: string; bzrPath?: string; textEncoding?: string; limits?: Partial<ReviewProcessingLimits> }): Promise<PreprocessResult> {
+export async function preprocessReview(input: { workspaceRoot: string; inputPath: string; outDir: string; diffFixturePath?: string; bzrPath?: string; textEncoding?: string; limits?: Partial<ReviewProcessingLimits>; workflowRunId?: string }): Promise<PreprocessResult> {
   const textEncoding = input.textEncoding ?? "auto"
   const limits = normalizeReviewProcessingLimits(input.limits)
   const inputPath = resolveWorkspacePathStrict(input.workspaceRoot, input.inputPath, "reviewInputPath")
@@ -28,7 +28,8 @@ export async function preprocessReview(input: { workspaceRoot: string; inputPath
     documents,
     codeAnalysis,
     traceability,
-    limits
+    limits,
+    workflowRunId: input.workflowRunId
   })
 
   const warnings = [...diff.warnings, ...documents.warnings, ...codeAnalysis.warnings, ...traceability.warnings, ...packageWarnings]
