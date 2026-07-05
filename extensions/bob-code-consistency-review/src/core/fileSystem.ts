@@ -94,7 +94,33 @@ export function resolveWorkspacePathStrict(workspaceRoot: string, value: string,
   const resolved = path.resolve(path.isAbsolute(value) ? value : path.join(root, value))
   // 絶対パスも入力として許すが、最終的な解決先は workspaceRoot 配下に限定する。
   if (!isInsidePath(root, resolved)) throw new Error(`${label} escapes workspace: ${value}`)
+  assertRealPathInsideWorkspace(root, resolved, label, value)
   return resolved
+}
+
+export function normalizeChangedFilePathStrict(value: string, label = "changed file path"): string {
+  if (typeof value !== "string" || !value.trim()) throw new Error(`${label} is empty`)
+  if (/[\0-\x1F\x7F]/u.test(value)) throw new Error(`${label} contains control characters: ${value}`)
+  const normalizedSlashes = value.trim().replace(/\\/g, "/")
+  if (
+    normalizedSlashes.startsWith("/") ||
+    normalizedSlashes.startsWith("//") ||
+    /^[A-Za-z]:/.test(value) ||
+    path.win32.isAbsolute(value) ||
+    path.posix.isAbsolute(normalizedSlashes)
+  ) {
+    throw new Error(`${label} must be workspace-relative: ${value}`)
+  }
+  const segments = normalizedSlashes.split("/")
+  if (segments.some((segment) => segment === "..")) throw new Error(`${label} escapes workspace: ${value}`)
+  if (segments.some((segment) => segment.trim().length === 0 || segment === ".")) {
+    throw new Error(`${label} contains empty or . segments: ${value}`)
+  }
+  const normalized = path.posix.normalize(normalizedSlashes)
+  if (normalized === "." || normalized.startsWith("../") || normalized === "..") {
+    throw new Error(`${label} escapes workspace: ${value}`)
+  }
+  return normalized
 }
 
 export function resolveWorkspacePathForKind(workspaceRoot: string, value: string, kind: WorkspacePathKind): string {
