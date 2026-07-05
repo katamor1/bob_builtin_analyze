@@ -1,9 +1,12 @@
 import * as vscode from "vscode"
 import {
   createDefaultStudioModel,
+  generateWorkflowFromStudioModel,
   listTemplateLibrary,
+  previewWorkflowFromStudioModel,
   type TemplateCustomizationStudioModel,
-  type TemplateLibraryEntry
+  type TemplateLibraryEntry,
+  writeWorkflowDiffPreviewFromStudioModel
 } from "../template/templateStudioModel"
 import { renderTemplateCustomizationStudioHtml } from "./templateCustomizationStudioHtml"
 
@@ -15,7 +18,10 @@ export interface TemplateCustomizationStudioPanelOptions {
 type TemplateCustomizationStudioMessage =
   | { type: "listTemplates" }
   | { type: "loadTemplate"; templatePath?: string }
-  | { type: string; [key: string]: unknown }
+  | { type: "previewWorkflow"; model?: TemplateCustomizationStudioModel }
+  | { type: "generateWorkflow"; model?: TemplateCustomizationStudioModel }
+  | { type: "showWorkflowDiff"; model?: TemplateCustomizationStudioModel }
+  | { type: string; model?: TemplateCustomizationStudioModel; [key: string]: unknown }
 
 export class TemplateCustomizationStudioPanel {
   private static currentPanel: TemplateCustomizationStudioPanel | undefined
@@ -74,7 +80,73 @@ export class TemplateCustomizationStudioPanel {
       const template = this.templates.find((candidate) => candidate.templatePath === message.templatePath) ?? this.templates[0]
       this.model = createDefaultStudioModel(template)
       this.panel.webview.html = this.renderHtml([])
+      return
     }
+    if (message.type === "previewWorkflow") {
+      await this.preview(modelFromMessage(message, this.model))
+      return
+    }
+    if (message.type === "generateWorkflow") {
+      await this.generate(modelFromMessage(message, this.model))
+      return
+    }
+    if (message.type === "showWorkflowDiff") {
+      await this.showDiff(modelFromMessage(message, this.model))
+    }
+  }
+
+  private async preview(model: TemplateCustomizationStudioModel): Promise<void> {
+    this.model = model
+    const result = await previewWorkflowFromStudioModel(this.options.workspaceRoot, model)
+    await this.panel.webview.postMessage({
+      type: "previewResult",
+      status: result.status,
+      markdown: result.workflowMarkdown ?? "",
+      diagnostics: result.diagnostics,
+      filePath: result.relativePath ?? ""
+    })
+  }
+
+  private async generate(model: TemplateCustomizationStudioModel): Promise<void> {
+    this.model = model
+    const result = await generateWorkflowFromStudioModel(this.options.workspaceRoot, model)
+    if (result.status !== "ok") {
+      await this.panel.webview.postMessage({ type: "previewResult", status: result.status, markdown: result.workflowMarkdown ?? "", diagnostics: result.diagnostics, filePath: result.relativePath ?? "" })
+      await vscode.window.showErrorMessage(`Workflow generation failed: ${result.diagnostics.join("; ")}`)
+      return
+    }
+    const workflowUri = workspaceUri(this.options.workspaceRoot, result.workflowPath)
+    await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(workflowUri), { preview: false })
+    await vscode.commands.executeCommand("workflowRegister.reload")
+    await this.panel.webview.postMessage({
+      type: "generated",
+      status: "ok",
+      workflowPath: result.workflowPath,
+      projectProfilePath: result.projectProfilePath,
+      customizationPath: result.customizationPath,
+      backupPath: result.backupPath,
+      diagnostics: result.diagnostics
+    })
+    await vscode.window.showInformationMessage(`Generated ${result.workflowPath}`)
+  }
+
+  private async showDiff(model: TemplateCustomizationStudioModel): Promise<void> {
+    this.model = model
+    const result = await writeWorkflowDiffPreviewFromStudioModel(this.options.workspaceRoot, model)
+    if (result.status !== "ok") {
+      await this.panel.webview.postMessage({ type: "previewResult", status: result.status, markdown: result.workflowMarkdown ?? "", diagnostics: result.diagnostics, filePath: result.targetPath ?? "" })
+      await vscode.window.showErrorMessage(`Workflow preview failed: ${result.diagnostics.join("; ")}`)
+      return
+    }
+    const targetUri = workspaceUri(this.options.workspaceRoot, result.targetPath)
+    const previewUri = workspaceUri(this.options.workspaceRoot, result.previewPath)
+    if (!(await exists(targetUri))) {
+      await vscode.window.showInformationMessage("既存 WORKFLOW.md がないため diff は開かず、preview ファイルだけを作成しました。")
+      await this.panel.webview.postMessage({ type: "previewResult", status: "ok", markdown: result.workflowMarkdown, diagnostics: result.diagnostics, filePath: result.previewPath })
+      return
+    }
+    await vscode.commands.executeCommand("vscode.diff", targetUri, previewUri, `Template Studio Preview: ${result.targetPath}`)
+    await this.panel.webview.postMessage({ type: "previewResult", status: "ok", markdown: result.workflowMarkdown, diagnostics: result.diagnostics, filePath: result.previewPath })
   }
 
   private renderHtml(diagnostics: string[]): string {
@@ -86,6 +158,26 @@ export class TemplateCustomizationStudioPanel {
       diagnostics
     })
   }
+}
+
+async function exists(uri: vscode.Uri): Promise<boolean> {
+  try {
+    await vscode.workspace.fs.stat(uri)
+    return true
+  } catch {
+    return false
+  }
+}
+
+function modelFromMessage(
+  message: { model?: TemplateCustomizationStudioModel },
+  fallback: TemplateCustomizationStudioModel
+): TemplateCustomizationStudioModel {
+  return message.model ?? fallback
+}
+
+function workspaceUri(workspaceRoot: string, relativePath: string): vscode.Uri {
+  return vscode.Uri.joinPath(vscode.Uri.file(workspaceRoot), ...relativePath.split("/"))
 }
 
 function getNonce(): string {
