@@ -15,6 +15,11 @@ const expectedProcessWorkflows = [
   "process-internal-spec-review",
   "process-coding-plan",
   "process-code-precheck",
+  "process-unit-test-design",
+  "process-unit-test-execution-review",
+  "process-functional-test-design",
+  "process-functional-test-execution-review",
+  "process-integration-test-design",
   "process-common-review"
 ]
 
