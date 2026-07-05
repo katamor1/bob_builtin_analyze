@@ -73,6 +73,7 @@ function checkForbiddenEntries(entries) {
   const rules = [
     { pattern: /^extension\/src\//, reason: "source directory" },
     { pattern: /^extension\/tests?\//, reason: "test directory" },
+    { pattern: /^extension\/docs\//, reason: "development documentation" },
     { pattern: /^extension\/\.vscode\//, reason: "editor settings" },
     { pattern: /^extension\/\.git\//, reason: "git metadata" },
     { pattern: /^extension\/package-lock\.json$/, reason: "package lock" },

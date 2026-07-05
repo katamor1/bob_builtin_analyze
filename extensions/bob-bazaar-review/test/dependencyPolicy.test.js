@@ -29,6 +29,7 @@ test("bob-bazaar-review dependency policy requires a committed lockfile with pro
 
   const vscodeignore = fs.readFileSync(path.join(extensionRoot, ".vscodeignore"), "utf8").split(/\r?\n/)
   assert.ok(vscodeignore.includes("out/**/*.map"), "compiled source maps must be excluded from the VSIX")
+  assert.ok(vscodeignore.includes("docs/**"), "development docs must be excluded from the VSIX")
 
   const lock = JSON.parse(fs.readFileSync(lockPath, "utf8"))
   const rootPackage = lock.packages?.[""]

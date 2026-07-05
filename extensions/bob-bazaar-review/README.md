@@ -382,7 +382,7 @@ code --install-extension bob-bazaar-review-0.3.0.vsix
 
 ### VSIX サイズ
 
-`npm run package:policy` は VSIX サイズの上限を `350000` bytes として確認します。配布前は `npm run package` と `npm run package:policy` を続けて実行してください。`out/**/*.map` は VSIX に同梱しません。
+`npm run package:policy` は VSIX サイズの上限を `350000` bytes として確認します。配布前は `npm run package` と `npm run package:policy` を続けて実行してください。`out/**/*.map` と開発用の `docs/**` は VSIX に同梱しません。
 
 ### 暗黙依存
 
@@ -411,6 +411,8 @@ npm run package:metrics
 `bobBazaar.bzrPath` の workspace override は Trusted Workspace のときだけ利用します。MCP tool は allowed root の内側だけを受け付け、`.bob/mcp.json` と `.bob/review` は選択された Bob workspace 配下へ書き込みます。
 
 ## 関連ドキュメント
+
+以下はソースリポジトリ上の関連ドキュメントです。VSIX には同梱しません。
 
 - `docs/README-ja.md`
 - `docs/workflow-authoring-guide-ja.md`

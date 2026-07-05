@@ -442,7 +442,7 @@ workflow-register-0.1.0.vsix
 
 ### VSIX サイズ
 
-`npm run package:policy` は VSIX サイズの上限を `1200000` bytes として確認します。配布前は `npm run package` と `npm run package:policy` を続けて実行してください。`out/**/*.map` は VSIX に同梱しません。
+`npm run package:policy` は VSIX サイズの上限を `1200000` bytes として確認します。配布前は `npm run package` と `npm run package:policy` を続けて実行してください。`out/**/*.map` と開発用の `docs/**` は VSIX に同梱しません。
 
 ### 暗黙依存
 
@@ -468,6 +468,8 @@ npm run package:policy
 ワークフロー定義、実行状態、task snapshot は開いている workspace の `.bob` 配下だけを対象にします。信頼できない workspace では、外部コマンドを実行する command step、result sink、AI provider command の利用範囲を確認してから実行してください。
 
 ## 関連ドキュメント
+
+以下はソースリポジトリ上の関連ドキュメントです。VSIX には同梱しません。
 
 - `docs/basic-design-ja.md`
 - `docs/detailed-design-ja.md`
