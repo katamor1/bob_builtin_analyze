@@ -84,11 +84,11 @@ test("bob-bazaar-review docs reflect current module layout and MCP safety gates"
 test("bob-bazaar-review metadata version uses the package version source", () => {
   const metadata = fs.readFileSync(path.join(extensionRoot, "src", "shared", "extensionMetadata.ts"), "utf8")
   const mcpServer = fs.readFileSync(path.join(extensionRoot, "src", "mcp", "server.ts"), "utf8")
-  const resultCapture = fs.readFileSync(path.join(extensionRoot, "src", "projectRules", "resultCaptureCore.ts"), "utf8")
+  const resultCaptureArtifacts = fs.readFileSync(path.join(extensionRoot, "src", "projectRules", "resultCaptureArtifacts.ts"), "utf8")
 
   assert.match(metadata, /export const EXTENSION_VERSION = readPackageVersion\(\)/)
   assert.match(mcpServer, /version: EXTENSION_VERSION/)
-  assert.match(resultCapture, /producer_version: EXTENSION_VERSION/)
+  assert.match(resultCaptureArtifacts, /producer_version: EXTENSION_VERSION/)
   assert.doesNotMatch(mcpServer, /0\.3\.0/)
-  assert.doesNotMatch(resultCapture, /producer_version: "0\.3\.0"/)
+  assert.doesNotMatch(resultCaptureArtifacts, /producer_version: "0\.3\.0"/)
 })
