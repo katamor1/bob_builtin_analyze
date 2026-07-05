@@ -204,7 +204,7 @@ export function renderReviewGuiScript(nonce: string, initialTargetJson: string):
         mode,
         revision: $("revision").value.trim(),
         baseRevision,
-        targetRevision: $("targetRevision").value.trim()
+        ...(mode === "revisionRange" ? { targetRevision: $("targetRevision").value.trim() } : {})
       }
     }
 

@@ -72,7 +72,7 @@ steps:
     type: command
     action:
       provider: bobCodeConsistency.preprocess
-      args: { inputPath: "{{inputs.phase2ReviewInputPath}}", outDir: "{{inputs.reviewPackagePath}}", textEncoding: "{{inputs.textEncoding}}", workflowRunId: "{{run.id}}" }
+      args: { reviewInputPath: "{{inputs.phase2ReviewInputPath}}", outDir: "{{inputs.reviewPackagePath}}", textEncoding: "{{inputs.textEncoding}}", workflowRunId: "{{run.id}}" }
     resultKey: phase2Preprocess
     sendResult: true
     completeOnSuccess: true
@@ -131,6 +131,12 @@ steps:
     title: Phase 2 triage と工程結果を人間が確認
     type: manual
     approval: { resultKey: humanGate, approveLabel: 記録へ進む, rejectLabel: 差し戻す, message: Phase 2 出力、validateOutput、human triage、工程レビュー結果を確認してください。 }
+    transition:
+      decisions:
+        - id: approved
+          when: { stateKey: humanGate.decision, equals: approved }
+          goto: write-process-record
+      default: fail
   - id: write-process-record
     title: 工程記録を書き込む
     type: command
