@@ -53,6 +53,32 @@ export async function writeReviewPacketArtifact(
   options: { backupExisting?: boolean; overwrite?: boolean } = {}
 ): Promise<{ packetPath: string; backupPaths: string[] }> {
   const packetPath = path.join(recordDirectory(workspaceRoot, campaignId, reviewId), "review-packet.md")
+  return writeReviewPacketFile(packetPath, packetText, options)
+}
+
+export async function writeReviewPacketArtifactAtPath(
+  workspaceRoot: string,
+  packetRelativePath: string,
+  packetText: string,
+  options: { backupExisting?: boolean; overwrite?: boolean } = {}
+): Promise<{ packetPath: string; backupPaths: string[] }> {
+  const packetPath = resolvePacketArtifactPath(workspaceRoot, packetRelativePath)
+  return writeReviewPacketFile(packetPath, packetText, options)
+}
+
+function resolvePacketArtifactPath(workspaceRoot: string, packetRelativePath: string): string {
+  try {
+    return resolveWorkspaceRelativePath(workspaceRoot, packetRelativePath)
+  } catch (error: any) {
+    throw new Error(`workspace-relative path escapes workspace: ${packetRelativePath}: ${error?.message ?? String(error)}`)
+  }
+}
+
+async function writeReviewPacketFile(
+  packetPath: string,
+  packetText: string,
+  options: { backupExisting?: boolean; overwrite?: boolean }
+): Promise<{ packetPath: string; backupPaths: string[] }> {
   const backupPaths: string[] = []
   await fs.mkdir(path.dirname(packetPath), { recursive: true })
 
