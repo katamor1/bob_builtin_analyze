@@ -396,12 +396,14 @@ code --install-extension bob-bazaar-review-0.3.0.vsix
 npm ci
 npm run dependency:policy
 npm run architecture:policy
+npm run unused:policy
 npm run unused:report
 npm run artifact:policy
 npm run audit:prod
 npm test
 npm run package
 npm run package:policy
+npm run package:metrics
 ```
 
 ### Trusted Workspace

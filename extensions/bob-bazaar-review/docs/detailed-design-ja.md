@@ -409,3 +409,4 @@ file basename は `review_id` を sanitize して作る。`review_id` が無い�
 - review-result schema を変更する場合は validator、example、prompt、workflow output contract を同期する。
 - workspace resolver を変更する場合は multi-root の `.bob` / `.bzr` 分離動作を確認する。
 - result capture を変更する場合は workflow-register result handoff 互換、`args[0]` 入力、`workflowRoot` 保存先を確認する。
+- dependency を追加・削除する場合は `unused:policy` と `package:metrics` の結果を確認し、VSIX size 差分を release / PR summary に残す。

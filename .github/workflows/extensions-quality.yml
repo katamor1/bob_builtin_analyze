@@ -103,6 +103,9 @@ jobs:
       - name: Unused dependency report
         run: npm run unused:report
 
+      - name: Unused dependency policy
+        run: npm run unused:policy
+
       - name: Artifact size policy
         run: npm run artifact:policy
 
@@ -117,6 +120,9 @@ jobs:
 
       - name: VSIX policy
         run: npm run package:policy
+
+      - name: VSIX metrics
+        run: npm run package:metrics
 
   bob-code-consistency-review:
     name: bob-code-consistency-review
