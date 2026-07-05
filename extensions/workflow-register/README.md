@@ -9,6 +9,7 @@
 - `.bob/workflows/*/WORKFLOW.md` を Bob ワークフローとして登録する。
 - `schemaVersion: workflow-register/v1` のワークフロー定義を検証する。
 - テンプレートまたは GUI Builder から新しいワークフローを作成する。
+- Template Customization Studio で標準テンプレート、project profile、customization を選び、readiness を確認して workflow を生成する。
 - 手動ステップ、コマンドステップ、エージェントステップ、結果ステップを順番に実行する。
 - ステップの結果を workflow state に保存し、後続ステップへ渡す。
 - 実行状態を `.bob/workflows/runs/<runId>/run.json` に保存し、診断、再開、再試行を行う。
@@ -45,7 +46,7 @@
 ## 最短手順
 
 1. Bob IDE / VS Code で対象ワークスペースを開く。
-2. Command Palette で `Bob Workflow: テンプレートから作成` または `Bob Workflow: GUI で作成` を実行する。
+2. Command Palette で `Bob Workflow: テンプレートから作成`、`Bob Workflow: テンプレートカスタマイズ Studio`、または `Bob Workflow: GUI で作成` を実行する。
 3. 生成された `.bob/workflows/<name>/WORKFLOW.md` を編集する。
 4. `Bob Workflow: 現在の定義を検証` で検証する。
 5. `Bob Workflow: ファイルを再読み込み` で再読み込みする。
@@ -355,6 +356,12 @@ AI プロバイダーは `workflowRegister.aiProviderCommand` で指定します
 
 `AI で改善` は候補 Markdown を preview し、`.bob/workflows/.previews/...` に保存し、diff を表示します。明示確認後に backup を作成して適用します。
 
+## Template Customization Studio
+
+`Bob Workflow: テンプレートカスタマイズ Studio` は、標準テンプレートを選択し、project profile と customization を Webview 上で編集して `WORKFLOW.md` を生成する画面です。Studio はテンプレート metadata から `targetLanguage` と `vcs.type` の候補を作り、input default の `string` / `number` / `boolean` / `null` 型を保持します。
+
+生成前には profile / customization / readiness を検証します。`artifactOutputRoot` は phase artifact root として扱い、workspace root 外や symlink escape への書き込みは拒否します。既存の profile、customization、workflow は上書き前に backup されます。Bazaar profile では `bzr --no-aliases` を含む prompt supplement が補完され、Git profile には Bazaar 専用 supplement を混入させません。
+
 ## 拡張ポイント
 
 別拡張は `workflow-register` の API を使って処理を差し込めます。
@@ -464,7 +471,7 @@ npm run package:policy
 
 - `docs/basic-design-ja.md`
 - `docs/detailed-design-ja.md`
-- `docs/workflow-authoring-guide-ja.md`
+- `docs/workflow-authoring-guide.md`
 - `docs/bob-task-export-recovery-plan-ja.md`
 - `extensions/bob-bazaar-review/README.md`
 - `extensions/bob-code-consistency-review/README.md`
