@@ -156,7 +156,6 @@ steps:
       - traceabilityDraftPrompt
     stateRequired: true
     resultKey: traceabilityDraftJson
-    maxResultBytes: 60000
     prompt: |
       traceabilityDraftPrompt を読み、この step の最終応答として traceability catalog draft の JSON object だけを返してください。
 
@@ -240,7 +239,6 @@ steps:
       - reviewPackage
     stateRequired: true
     resultKey: bobReviewResult
-    maxResultBytes: 40000
     prompt: Bob 出力 schema に一致する YAML を返してください。final_approval は not_performed にしてください。
   - id: capture-bob-output
     title: Bob YAML 出力を取り込み
