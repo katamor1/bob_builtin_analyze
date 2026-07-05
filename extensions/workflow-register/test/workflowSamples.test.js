@@ -5,6 +5,7 @@ const { test } = require("node:test")
 
 const outRoot = path.resolve(__dirname, "..", "out")
 const { parseWorkflowMarkdown } = require(path.join(outRoot, "core", "parser"))
+const { parseMechanicalChecksConfig } = require(path.join(outRoot, "core", "mechanicalChecks", "config"))
 
 test("review-gated step execution sample workflow validates", () => {
   const workflowFile = path.resolve(
@@ -62,4 +63,22 @@ test("step-back branching approval sample workflow validates", () => {
   assert.equal(parsed.workflow.engineSteps[3].approval.resultKey, "userApproval")
   assert.equal(parsed.workflow.engineSteps[2].transition.decisions[0].goto, "collect-user-input")
   assert.equal(parsed.workflow.engineSteps[3].transition.decisions[0].goto, "collect-user-input")
+})
+
+test("mechanical checks precheck sample workflow and profile validate", () => {
+  const sampleRoot = path.resolve(__dirname, "..", "samples", "mechanical-checks-precheck")
+  const workflowFile = path.join(sampleRoot, ".bob", "workflows", "mechanical-checks-precheck", "WORKFLOW.md")
+  const configFile = path.join(sampleRoot, ".bob", "checks", "mechanical-checks.yaml")
+  const parsed = parseWorkflowMarkdown({
+    sourceId: "workflow-register",
+    filePath: ".bob/workflows/mechanical-checks-precheck/WORKFLOW.md",
+    text: fs.readFileSync(workflowFile, "utf8")
+  })
+  const config = parseMechanicalChecksConfig(fs.readFileSync(configFile, "utf8"), { workspaceRoot: sampleRoot })
+
+  assert.equal(parsed.ok, true, parsed.diagnostics.join("\n"))
+  assert.equal(config.ok, true, config.diagnostics.join("\n"))
+  assert.equal(parsed.workflow.engineSteps[0].action.provider, "workflowRegister.runMechanicalChecks")
+  assert.equal(parsed.workflow.engineSteps[0].transition.default, "fail")
+  assert.deepEqual(config.config.profiles.map((profile) => profile.id), ["pre-code-review"])
 })
