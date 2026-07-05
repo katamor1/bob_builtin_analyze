@@ -17,6 +17,12 @@ import { fromYaml, toYaml } from "./reviewRecordYaml"
 
 export { generateCampaignSummary, writeCampaignSummaryArtifacts } from "./reviewRecordSummary"
 
+/**
+ * `.bob-review-records` 配下へ review record YAML を保存する。
+ *
+ * この file は review campaign の監査用生成物なので、書き込み前に schema と
+ * record identity を固定し、後続 triage/summary が同じ ID を参照できる状態にする。
+ */
 export async function writeReviewRecord(workspaceRoot: string, record: ReviewRecord): Promise<string> {
   validateRecordIdentity(record)
   const filePath = recordYamlPath(workspaceRoot, record.campaign_id, record.review_id)
@@ -54,6 +60,12 @@ export async function writeReviewPacketArtifact(
   return writeReviewPacketFile(packetPath, packetText, options)
 }
 
+/**
+ * workflow から指定された workspace-relative path へ review packet artifact を保存する。
+ *
+ * packet には差分や規約など機密になり得る内容が含まれるため、任意の絶対パスではなく
+ * workspace containment を通過した path だけを生成物の出力先にする。
+ */
 export async function writeReviewPacketArtifactAtPath(
   workspaceRoot: string,
   packetRelativePath: string,
