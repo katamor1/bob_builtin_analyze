@@ -83,10 +83,37 @@ export const REVIEW_GUI_STYLE = `
     .hidden {
       display: none;
     }
+    .wizard {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .wizard-step {
+      border: 1px solid var(--vscode-panel-border);
+      border-radius: 4px;
+      padding: 8px;
+      background: var(--vscode-editor-background);
+    }
 `
 
 export const REVIEW_GUI_BODY = `
   <h1>Bob Bazaar レビュー</h1>
+  <div class="card">
+    <h2>Wizard v2</h2>
+    <div class="wizard" aria-label="Bazaar review wizard steps">
+      <div class="wizard-step"><strong>campaign</strong><div class="small">実績 campaign / record の準備</div></div>
+      <div class="wizard-step"><strong>target</strong><div class="small">revision / range / working tree を選択</div></div>
+      <div class="wizard-step"><strong>rules</strong><div class="small">project rules と readonly MCP 状態を確認</div></div>
+      <div class="wizard-step"><strong>result capture</strong><div class="small">Bob 出力を検証して保存</div></div>
+      <div class="wizard-step"><strong>human triage</strong><div class="small">finding の採否判断を記録</div></div>
+      <div class="wizard-step"><strong>summary</strong><div class="small">campaign summary へ集計</div></div>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <button class="secondary" id="openResultCapture">Result Capture を開く</button>
+      <button class="secondary" id="openHumanTriage">Human Triage を開く</button>
+    </div>
+  </div>
   <div class="row">
     <button class="secondary" id="selectWorkspace">Bazaar ワークスペースを選択</button>
     <span id="workspace">ワークスペース未選択</span>
@@ -174,6 +201,8 @@ export function renderReviewGuiScript(nonce: string, initialTargetJson: string):
 
     $("selectWorkspace").onclick = () => vscode.postMessage({ type: "selectWorkspace" })
     $("initializeBob").onclick = () => vscode.postMessage({ type: "initializeBobWorkspace" })
+    $("openResultCapture").onclick = () => vscode.postMessage({ type: "openResultCapture" })
+    $("openHumanTriage").onclick = () => vscode.postMessage({ type: "openHumanTriage" })
     $("mode").onchange = () => {
       updateMode()
       clearLoaded()
