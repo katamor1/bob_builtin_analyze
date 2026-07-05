@@ -148,13 +148,19 @@ function parseNumstat(text: string): Map<string, { additions: number; deletions:
     if (parts.length < 3) continue
     const additions = Number.parseInt(parts[0], 10)
     const deletions = Number.parseInt(parts[1], 10)
-    const filePath = parts[2]
+    const filePath = normalizeNumstatPath(parts.slice(2).join("\t"))
     result.set(toPosixPath(filePath), {
       additions: Number.isFinite(additions) ? additions : 0,
       deletions: Number.isFinite(deletions) ? deletions : 0
     })
   }
   return result
+}
+
+function normalizeNumstatPath(filePath: string): string {
+  const renamed = filePath.match(/^(.*)\{(.+?) => (.+?)\}(.*)$/)
+  if (!renamed) return filePath
+  return `${renamed[1]}${renamed[3]}${renamed[4]}`
 }
 
 function parseBazaarDiffFiles(text: string): DiffSummary["files"] {

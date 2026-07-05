@@ -380,7 +380,7 @@ code --install-extension bob-bazaar-review-0.3.0.vsix
 
 ### VSIX サイズ
 
-`npm run package:policy` は VSIX サイズの上限を `200000` bytes として確認します。配布前は `npm run package` と `npm run package:policy` を続けて実行してください。`out/**/*.map` は VSIX に同梱しません。
+`npm run package:policy` は VSIX サイズの上限を `350000` bytes として確認します。配布前は `npm run package` と `npm run package:policy` を続けて実行してください。`out/**/*.map` は VSIX に同梱しません。
 
 ### 暗黙依存
 
