@@ -9,6 +9,12 @@ const repoRoot = path.resolve(__dirname, "..", "..", "..")
 const expectedProcessWorkflows = [
   "process-code-doc-investigation",
   "process-qa-intake-analysis",
+  "process-external-spec-design",
+  "process-external-spec-review",
+  "process-internal-spec-design",
+  "process-internal-spec-review",
+  "process-coding-plan",
+  "process-code-precheck",
   "process-common-review"
 ]
 
@@ -48,8 +54,20 @@ test("Phase 3 process workflow templates parse cleanly and enforce command guard
       assert.match(artifact.path, /^\.bob-process-(runs|records)\//, `${workflowName} artifact ${artifact.id} stays in process roots`)
     }
     for (const step of parsed.workflow.engineSteps.filter((item) => item.type === "command")) {
-      assert.equal(step.action.provider, "vscode.executeCommand", `${workflowName}:${step.id} uses command bridge`)
-      assert.ok(parsed.workflow.guardrails.allowedCommandIds.includes(step.action.args[0]), `${workflowName}:${step.id} command id is allowlisted`)
+      assert.ok(parsed.workflow.guardrails.allowedCommands.includes(step.action.provider), `${workflowName}:${step.id} provider is allowlisted`)
+      if (step.action.provider === "vscode.executeCommand") {
+        assert.ok(parsed.workflow.guardrails.allowedCommandIds.includes(step.action.args[0]), `${workflowName}:${step.id} command id is allowlisted`)
+      }
+    }
+    if (workflowName === "process-code-precheck") {
+      const providers = parsed.workflow.engineSteps
+        .filter((step) => step.type === "command")
+        .map((step) => step.action.provider)
+      assert.ok(providers.includes("bobCodeConsistency.preprocess"), "code precheck runs Phase 2 preprocess")
+      assert.ok(providers.includes("bobCodeConsistency.validateOutput"), "code precheck validates Phase 2 output")
+      assert.ok(providers.includes("bobCodeConsistency.triage"), "code precheck prepares human triage")
+      const recordStep = parsed.workflow.engineSteps.find((step) => step.id === "write-process-record")
+      assert.ok(recordStep.action.args[1].record.phase2Handoff, "code precheck writes Phase 2 handoff into process record")
     }
     assert.equal(parsed.diagnostics.some((line) => line.includes("- warn:")), false, `${workflowName}\n${parsed.diagnostics.join("\n")}`)
   }
