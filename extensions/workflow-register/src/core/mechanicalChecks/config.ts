@@ -200,7 +200,7 @@ function normalizeParser(
   if (type === "regex") {
     return {
       type: "regex",
-      input: parserInputField(record, "input"),
+      input: parserInputField(checkId, record, "input", diagnostics),
       warningPattern: stringField(record, "warning_pattern") ?? stringField(record, "warningPattern"),
       errorPattern: stringField(record, "error_pattern") ?? stringField(record, "errorPattern"),
       ...delta
@@ -209,14 +209,14 @@ function normalizeParser(
   if (type === "sarif") {
     return {
       type: "sarif",
-      input: parserInputField(record, "input") ?? "evidence",
+      input: parserInputField(checkId, record, "input", diagnostics) ?? "evidence",
       ...delta
     }
   }
   if (type === "csv") {
     return {
       type: "csv",
-      input: parserInputField(record, "input") ?? "evidence",
+      input: parserInputField(checkId, record, "input", diagnostics) ?? "evidence",
       idColumn: stringField(record, "id_column") ?? stringField(record, "idColumn"),
       fileColumn: stringField(record, "file_column") ?? stringField(record, "fileColumn"),
       lineColumn: stringField(record, "line_column") ?? stringField(record, "lineColumn"),
@@ -350,9 +350,17 @@ function severityField(record: Record<string, unknown>, key: string): "error" | 
   return value === "error" || value === "warning" || value === "info" ? value : undefined
 }
 
-function parserInputField(record: Record<string, unknown>, key: string): MechanicalCheckParserInput | undefined {
+function parserInputField(
+  checkId: string,
+  record: Record<string, unknown>,
+  key: string,
+  diagnostics: string[]
+): MechanicalCheckParserInput | undefined {
   const value = stringField(record, key)
-  return value && PARSER_INPUTS.has(value) ? value as MechanicalCheckParserInput : undefined
+  if (!value) return undefined
+  if (PARSER_INPUTS.has(value)) return value as MechanicalCheckParserInput
+  diagnostics.push(`Check '${checkId}' uses unsupported parser input '${value}'.`)
+  return undefined
 }
 
 function stringRecord(value: unknown): Record<string, string> {

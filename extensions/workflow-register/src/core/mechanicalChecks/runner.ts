@@ -419,6 +419,10 @@ function profileSummaryMarkdown(result: MechanicalCheckProfileResult): string {
     check.title,
     check.status,
     check.summary,
+    metricCell(check.metrics.total_findings),
+    metricCell(check.metrics.new_findings),
+    metricCell(check.metrics.known_findings),
+    topFindingsCell(check.findings),
     check.evidence.map((item) => item.path).join(", ")
   ])
   return [
@@ -431,11 +435,22 @@ function profileSummaryMarkdown(result: MechanicalCheckProfileResult): string {
     `- failed: ${result.failed}`,
     `- blocked: ${result.blocked}`,
     "",
-    "| Check | Result | Summary | Evidence |",
-    "|---|---|---|---|",
+    "| Check | Result | Summary | Total findings | New findings | Known findings | Top findings | Evidence |",
+    "|---|---|---|---:|---:|---:|---|---|",
     ...rows.map((row) => `| ${row.map(escapeMarkdownTableCell).join(" | ")} |`),
     ""
   ].join("\n")
+}
+
+function metricCell(value: number | undefined): string {
+  return value === undefined ? "" : String(value)
+}
+
+function topFindingsCell(findings: MechanicalCheckFinding[]): string {
+  return findings.slice(0, 3).map((finding) => {
+    const location = finding.file ? ` (${finding.file}${finding.line === undefined ? "" : `:${finding.line}`})` : ""
+    return `${finding.id}: ${finding.message}${location}`
+  }).join("; ")
 }
 
 async function writeJson(filePath: string, value: unknown): Promise<void> {

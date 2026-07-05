@@ -153,6 +153,10 @@ test("mechanical check runner writes normalized parser findings into check resul
   assert.equal(result.checks[0].findings[0].id, "SA001")
   assert.equal(result.checks[0].findings[0].file, "src/foo.c")
   assert.equal(result.checks[0].findings[0].line, 10)
+  const summary = fs.readFileSync(path.join(workspaceRoot, ".bob", "mechanical-checks", "runs", "run-sarif", "profile-summary.md"), "utf8")
+  assert.match(summary, /New findings/)
+  assert.match(summary, /Known findings/)
+  assert.match(summary, /SA001: Null dereference/)
 })
 
 test("mechanical check runner applies known IDs file and max new findings gate", async (t) => {
@@ -199,6 +203,33 @@ test("mechanical check runner applies known IDs file and max new findings gate",
   assert.equal(result.checks[0].metrics.new_findings, 1)
   assert.deepEqual(result.checks[0].findings.map((finding) => finding.id), ["SA002"])
   assert.match(result.checks[0].summary, /new findings 1 exceeds limit 0/)
+})
+
+test("mechanical check runner reports missing regex evidence as blocked", async (t) => {
+  const workspaceRoot = tempWorkspace(t)
+  writeFile(workspaceRoot, "tools/no-evidence.js", "console.log('no evidence written')\n")
+  const config = configFor([
+    {
+      id: "missing-evidence",
+      title: "Missing evidence",
+      runner: "node",
+      command: "tools/no-evidence.js",
+      evidence: { collect: ["out/missing/**/*.log"] },
+      parser: { type: "regex", input: "evidence", warning_pattern: "warning" },
+      pass_condition: { max_new_warnings: 0 }
+    }
+  ])
+
+  const result = await runMechanicalChecksProfile({
+    workspaceRoot,
+    config,
+    profile: "pre-code-review",
+    runId: "run-missing-evidence"
+  })
+
+  assert.equal(result.status, "blocked")
+  assert.equal(result.checks[0].status, "blocked")
+  assert.match(result.checks[0].summary, /regex evidence not found/)
 })
 
 test("mechanical check runner reports missing scripts and timeouts as blocked", async (t) => {

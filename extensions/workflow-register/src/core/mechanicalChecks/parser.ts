@@ -66,7 +66,9 @@ async function parseRegexOutput(input: ParseMechanicalCheckOutputInput): Promise
     if (targetTexts.kind === "error") return targetTexts.result
     return passedParse(regexDeltaMetrics(input.parser, baselineTexts.texts, targetTexts.texts), [])
   }
-  const text = (await inputTexts(input, ["log", "txt", "out", "err"], false)).map((item) => item.text).join("\n")
+  const texts = await inputTexts(input, ["log", "txt", "out", "err"], false)
+  if ("input" in input.parser && input.parser.input === "evidence" && texts.length === 0) return failedParse("regex evidence not found")
+  const text = texts.map((item) => item.text).join("\n")
   return passedParse({
     ...input.parser.type === "regex" && input.parser.warningPattern
       ? { new_warnings: countPattern(text, input.parser.warningPattern) }

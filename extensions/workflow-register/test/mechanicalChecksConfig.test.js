@@ -136,6 +136,26 @@ test("mechanical check config accepts delta evidence, identity columns, and new 
   assert.equal(result.config.checks[0].passCondition.maxNewFindings, 0)
 })
 
+test("mechanical check config rejects unsupported parser input values", () => {
+  const result = validateMechanicalChecksConfig(validConfig({
+    checks: [
+      {
+        ...validConfig().checks[0],
+        parser: {
+          type: "sarif",
+          input: "bogus"
+        },
+        evidence: {
+          collect: ["out/analyzer/**/*.sarif"]
+        }
+      }
+    ]
+  }), { workspaceRoot })
+
+  assert.equal(result.ok, false)
+  assert.match(result.diagnostics.join("\n"), /unsupported parser input 'bogus'/)
+})
+
 test("mechanical check config parses YAML into the normalized config shape", () => {
   const result = parseMechanicalChecksConfig(`
 schema_version: bob-mechanical-checks/v1
