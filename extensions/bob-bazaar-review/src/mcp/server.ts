@@ -4,8 +4,8 @@ import * as path from "node:path"
 import { formatError, McpStdioReader, respond, respondError } from "./jsonRpc"
 import type { JsonRpcMessage } from "./jsonRpc"
 import { createMcpToolRegistry } from "./tools"
+import { EXTENSION_NAME, EXTENSION_VERSION } from "../shared/extensionMetadata"
 
-const SERVER_VERSION = "0.3.0"
 const DEFAULT_MAX_REQUEST_BYTES = 1024 * 1024
 const MAX_REQUEST_BYTES = readPositiveIntegerEnv("BOB_BAZAAR_MCP_MAX_REQUEST_BYTES", DEFAULT_MAX_REQUEST_BYTES)
 const ALLOWED_ROOTS_ENV = "BOB_BAZAAR_ALLOWED_ROOTS"
@@ -27,7 +27,7 @@ async function handleMessage(message: JsonRpcMessage): Promise<void> {
       respond(message.id, {
         protocolVersion: "2024-11-05",
         capabilities: { tools: {} },
-        serverInfo: { name: "bob-bazaar-review", version: SERVER_VERSION }
+        serverInfo: { name: EXTENSION_NAME, version: EXTENSION_VERSION }
       })
       return
     }

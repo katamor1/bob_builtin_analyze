@@ -240,11 +240,13 @@ commit, push, pull, update, revert, merge, resolve
 
 | ツール | 用途 |
 | --- | --- |
-| `project_rules_init` | 既定の `.bob/review` 規約ファイルを作成する。 |
+| `project_rules_init` | 既定の `.bob/review` 規約ファイルを作成する。既定では非公開の write tool。 |
 | `project_rules_get_checklist` | project checklist JSON を返す。 |
 | `project_rules_get_schema` | review-result JSON schema を返す。 |
 | `project_rules_validate_review_result` | 正規化 review-result JSON を検証する。 |
 | `project_rules_render_markdown` | 正規化 review-result JSON を Markdown checklist に変換する。 |
+
+`project_rules_init` は `BOB_BAZAAR_ENABLE_WRITE_TOOLS=1` を明示した MCP server でのみ `tools/list` に出ます。既定状態では直接 call しても `isError: true` になり、`.bob/review` へは書き込みません。Bazaar / result 取得 tools も `BOB_BAZAAR_ALLOWED_ROOTS` の内側だけを受け付け、手動起動で allowed roots を省略する場合は `BOB_BAZAAR_ALLOW_UNRESTRICTED_CWD=1` が必要です。
 
 ## プロジェクト規約ファイル
 

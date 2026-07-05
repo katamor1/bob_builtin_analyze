@@ -12,6 +12,7 @@ import type {
 import { validateJsonAgainstSchema } from "./schemaValidator"
 import type { ReviewResult, ReviewStatus, ValidationIssue } from "./types"
 import { validateReviewResultJson } from "./validator"
+import { EXTENSION_NAME, EXTENSION_VERSION } from "../shared/extensionMetadata"
 
 const STATUSES: ReviewStatus[] = ["pass", "fail", "unknown", "not_applicable", "blocked"]
 
@@ -230,8 +231,8 @@ export async function saveReviewResultArtifacts(workspaceRoot: string, result: R
 
 function buildArtifactMetadata(result: ReviewResult, options: CaptureReviewResultOptions): Record<string, unknown> {
   return {
-    producer_extension: "bob-bazaar-review",
-    producer_version: "0.3.0",
+    producer_extension: EXTENSION_NAME,
+    producer_version: EXTENSION_VERSION,
     workflow_run_id: options.workflowRunId ?? "",
     source_vcs: result.vcs.type || "bazaar",
     source_revision: sourceRevision(result),
