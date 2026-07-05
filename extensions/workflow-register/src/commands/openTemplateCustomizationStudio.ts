@@ -7,5 +7,5 @@ export interface OpenTemplateCustomizationStudioOptions {
 }
 
 export async function openTemplateCustomizationStudio(options: OpenTemplateCustomizationStudioOptions): Promise<void> {
-  TemplateCustomizationStudioPanel.createOrShow(options)
+  await TemplateCustomizationStudioPanel.createOrShow(options)
 }

@@ -1,0 +1,92 @@
+export function renderTemplateCustomizationStudioClientScript(): string {
+  return String.raw`
+const vscode = typeof acquireVsCodeApi === 'function' ? acquireVsCodeApi() : { postMessage: function(message) { console.log(message); } };
+let activeTab = 'library';
+
+function $(id) {
+  return document.getElementById(id);
+}
+
+function post(type, extra) {
+  vscode.postMessage(Object.assign({ type: type }, extra || {}));
+}
+
+function currentModel() {
+  const defaults = {};
+  document.querySelectorAll('[data-input-default]').forEach(function(input) {
+    defaults[input.getAttribute('data-input-default')] = input.value;
+  });
+  return {
+    templatePath: $('templatePath').value,
+    templateId: $('templateId').value,
+    templateVersion: $('templateVersion').value,
+    baseTemplateHash: $('baseTemplateHash').value,
+    projectId: $('projectId').value,
+    displayName: $('displayName').value,
+    targetLanguage: $('targetLanguage').value,
+    vcsType: $('vcsType').value,
+    vcsRoot: $('vcsRoot').value,
+    checklistPath: $('checklistPath').value,
+    artifactOutputRoot: $('artifactOutputRoot').value,
+    uatEvidencePath: $('uatEvidencePath').value,
+    workflowName: $('workflowName').value,
+    title: $('workflowTitle').value,
+    description: $('workflowDescription').value,
+    inputDefaults: defaults,
+    promptSupplement: $('promptSupplement').value,
+    requireHumanGate: true,
+    stepReviewPauseAfter: $('stepReviewPauseAfter').value
+  };
+}
+
+function setTab(name) {
+  activeTab = name;
+  document.querySelectorAll('.tab').forEach(function(tab) {
+    tab.classList.toggle('active', tab.getAttribute('data-tab') === name);
+  });
+  document.querySelectorAll('.tab-panel').forEach(function(panel) {
+    panel.classList.toggle('active', panel.getAttribute('data-panel') === name);
+  });
+}
+
+function setText(id, value) {
+  const element = $(id);
+  if (element) element.textContent = value || '';
+}
+
+function renderDiagnostics(result) {
+  const diagnostics = result && Array.isArray(result.diagnostics) ? result.diagnostics : [];
+  return diagnostics.length === 0 ? 'diagnostics: none' : diagnostics.join('\n');
+}
+
+document.addEventListener('click', function(event) {
+  const action = event.target && event.target.getAttribute ? event.target.getAttribute('data-action') : '';
+  if (!action) return;
+  if (action === 'tab') setTab(event.target.getAttribute('data-tab'));
+  if (action === 'refresh-library') post('listTemplates');
+  if (action === 'load-template') post('loadTemplate', { templatePath: event.target.getAttribute('data-template-path') });
+  if (action === 'validate-profile') post('validateProfile', { model: currentModel() });
+  if (action === 'validate-customization') post('validateCustomization', { model: currentModel() });
+  if (action === 'preview-workflow') post('previewWorkflow', { model: currentModel() });
+  if (action === 'generate-workflow') post('generateWorkflow', { model: currentModel() });
+  if (action === 'check-readiness') post('checkReadiness', { model: currentModel() });
+  if (action === 'open-readiness-report') post('openReadinessReport');
+  if (action === 'show-workflow-diff') post('showWorkflowDiff', { model: currentModel() });
+});
+
+window.addEventListener('message', function(event) {
+  const message = event.data || {};
+  if (message.type === 'diagnostics') setText('diagnosticsOutput', renderDiagnostics(message.result));
+  if (message.type === 'previewResult') {
+    setText('previewOutput', message.markdown || '');
+    setText('diagnosticsOutput', renderDiagnostics(message));
+  }
+  if (message.type === 'readinessResult') {
+    setText('readinessOutput', JSON.stringify(message.readiness || message.result || {}, null, 2));
+  }
+});
+
+setTab(activeTab);
+post('listTemplates');
+`
+}
