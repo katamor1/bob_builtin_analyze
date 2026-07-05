@@ -42,6 +42,7 @@ import {
   validateWorkspaceWorkflows
 } from "./commands/validateWorkflow"
 import { openWorkflowBuilder } from "./commands/openWorkflowBuilder"
+import { openTemplateCustomizationStudio } from "./commands/openTemplateCustomizationStudio"
 import { createConfiguredWorkflowAiProvider } from "./core/workflowAiProviderFactory"
 import { WorkflowDiagnosticsReporter } from "./commands/workflowDiagnostics"
 import { showMarkdownReport } from "./reports"
@@ -118,6 +119,10 @@ export function activate(context: vscode.ExtensionContext): WorkflowRegisterApi 
     vscode.commands.registerCommand("bobTemplate.generateWorkflow", (input) => generateWorkflowCommand(input, templateCommandOptions())),
     vscode.commands.registerCommand("bobTemplate.checkReadiness", (input) => checkReadinessCommand(input, templateCommandOptions())),
     vscode.commands.registerCommand(
+      "bobTemplate.openCustomizationStudio",
+      () => openTemplateCustomizationStudio({ extensionUri: context.extensionUri, workspaceRoot: requireTemplateWorkspaceRoot() })
+    ),
+    vscode.commands.registerCommand(
       "workflowRegister.openCurrentStepInBuilder",
       (runId?: string) => openCurrentStepInBuilder(stepReviewBuilderOptions, runId)
     ),
@@ -150,6 +155,14 @@ function requireWorkspaceRoot(): string {
   const folder = vscode.workspace.workspaceFolders?.[0]
   if (!folder) {
     throw new Error("bobProcess commands require an open workspace folder")
+  }
+  return folder.uri.fsPath
+}
+
+function requireTemplateWorkspaceRoot(): string {
+  const folder = vscode.workspace.workspaceFolders?.[0]
+  if (!folder) {
+    throw new Error("bobTemplate commands require an open workspace folder")
   }
   return folder.uri.fsPath
 }

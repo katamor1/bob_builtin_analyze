@@ -63,7 +63,8 @@
     "onCommand:bobTemplate.validateProjectProfile",
     "onCommand:bobTemplate.validateCustomization",
     "onCommand:bobTemplate.generateWorkflow",
-    "onCommand:bobTemplate.checkReadiness"
+    "onCommand:bobTemplate.checkReadiness",
+    "onCommand:bobTemplate.openCustomizationStudio"
   ],
   "main": "./out/extensionWithAuthoring.js",
   "contributes": {
@@ -112,7 +113,8 @@
       { "command": "bobTemplate.validateProjectProfile", "title": "プロジェクトプロファイルを検証", "category": "Bob Workflow" },
       { "command": "bobTemplate.validateCustomization", "title": "テンプレートカスタマイズを検証", "category": "Bob Workflow" },
       { "command": "bobTemplate.generateWorkflow", "title": "カスタムワークフローを生成", "category": "Bob Workflow" },
-      { "command": "bobTemplate.checkReadiness", "title": "テンプレート Readiness を確認", "category": "Bob Workflow" }
+      { "command": "bobTemplate.checkReadiness", "title": "テンプレート Readiness を確認", "category": "Bob Workflow" },
+      { "command": "bobTemplate.openCustomizationStudio", "title": "テンプレートカスタマイズ Studio", "category": "Bob Workflow" }
     ],
     "views": {
       "explorer": [
@@ -220,7 +222,8 @@
         { "command": "bobTemplate.validateProjectProfile" },
         { "command": "bobTemplate.validateCustomization" },
         { "command": "bobTemplate.generateWorkflow" },
-        { "command": "bobTemplate.checkReadiness" }
+        { "command": "bobTemplate.checkReadiness" },
+        { "command": "bobTemplate.openCustomizationStudio" }
       ],
       "view/title": [
         {
