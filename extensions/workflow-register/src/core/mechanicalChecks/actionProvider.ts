@@ -4,7 +4,7 @@ import type { ActionExecutionInput } from "../model"
 import { requireWorkspaceTrust, type WorkspaceTrustCheck } from "../workspaceTrust"
 import { MechanicalChecksConfig, parseMechanicalChecksConfig } from "./config"
 import { MechanicalCheckProfileResult, runMechanicalChecksProfile } from "./runner"
-import type { ActionProvider } from "../actionRegistry"
+import type { ActionProvider } from "../actionTypes"
 
 export const MECHANICAL_CHECKS_ACTION_PROVIDER_ID = "workflowRegister.runMechanicalChecks"
 const DEFAULT_CONFIG_PATH = ".bob/checks/mechanical-checks.yaml"

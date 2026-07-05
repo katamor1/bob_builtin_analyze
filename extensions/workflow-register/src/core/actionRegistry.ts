@@ -1,11 +1,9 @@
 import { ActionExecutionInput, ActionExecutionResult } from "./model"
 import { requireWorkspaceTrust, type WorkspaceTrustCheck } from "./workspaceTrust"
 import { createMechanicalChecksActionProvider } from "./mechanicalChecks/actionProvider"
+import type { ActionProvider } from "./actionTypes"
 
-export interface ActionProvider {
-  id: string
-  execute: (input: ActionExecutionInput) => Promise<unknown> | unknown
-}
+export type { ActionProvider } from "./actionTypes"
 
 export class ActionRegistry {
   private readonly providers = new Map<string, ActionProvider>()
