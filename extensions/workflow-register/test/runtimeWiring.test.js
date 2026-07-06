@@ -156,6 +156,15 @@ test("review-gated Bob tasks are completed when Operation Hub accepts the step",
   assert.match(stepReview, /reviewTaskRegistry\.complete\(accepted\.runId, acceptedStepId\)/)
 })
 
+test("Operation Hub accept-and-run-next lets Bob task advance instead of standalone agent execution", () => {
+  const stepReview = readSrc("commands", "stepReview.ts")
+
+  assert.match(stepReview, /interface AcceptedStepResult \{[\s\S]*completedViaBobTask: boolean[\s\S]*\}/)
+  assert.match(stepReview, /const completedViaBobTask = reviewTaskRegistry\.complete\(accepted\.runId, acceptedStepId\)/)
+  assert.match(stepReview, /if \(accepted\.completedViaBobTask\) \{[\s\S]*return accepted\.run[\s\S]*\}/)
+  assert.match(stepReview, /vscode\.commands\.executeCommand\("workflowRegister\.runNextStep", accepted\.run\.runId\)/)
+})
+
 test("Bob workflow result recovery is scoped to messages after the current step starts", () => {
   const source = readSrc("bobWorkflowRunner.ts")
 

@@ -26,10 +26,40 @@ interface AcceptOptions {
   silent?: boolean
 }
 
+interface AcceptedStepResult {
+  run: WorkflowRunState
+  message: string
+  completedViaBobTask: boolean
+}
+
 const RUN_NEXT_STEP_LABEL = "次のステップを実行"
 const OPEN_OPERATION_HUB_LABEL = "Operation Hub を開く"
 
 export async function acceptCurrentStep(options: StepReviewCommandOptions, runId?: string, acceptOptions: AcceptOptions = {}): Promise<WorkflowRunState | string> {
+  const accepted = await acceptReviewedStep(runId)
+  if (typeof accepted === "string") return accepted
+  if (!acceptOptions.silent) await showAcceptedStepMessage(accepted.run, accepted.message, accepted.completedViaBobTask)
+  return accepted.run
+}
+
+export async function acceptAndRunNextStep(options: StepReviewCommandOptions, runId?: string): Promise<unknown> {
+  const accepted = await acceptReviewedStep(runId)
+  if (typeof accepted === "string") {
+    await vscode.window.showWarningMessage(accepted)
+    return accepted
+  }
+  if (accepted.run.status === "completed") {
+    const message = `Workflow run completed: ${accepted.run.runId}`
+    await vscode.window.showInformationMessage(message)
+    return accepted.run
+  }
+  if (accepted.completedViaBobTask) {
+    return accepted.run
+  }
+  return vscode.commands.executeCommand("workflowRegister.runNextStep", accepted.run.runId)
+}
+
+async function acceptReviewedStep(runId?: string): Promise<AcceptedStepResult | string> {
   const selection = runId ? await findRunSelection(runId) : await pickRunSelection("Accept reviewed workflow step", (run) => run.status === "reviewing")
   if (!selection) return runId ? `Workflow run not found or not waiting for review: ${runId}` : "No reviewing workflow run selected."
   const runStore = new FileRunStateStore({ workspaceRoot: selection.root })
@@ -38,33 +68,22 @@ export async function acceptCurrentStep(options: StepReviewCommandOptions, runId
   const acceptedStepId = run.currentStep
   const accepted = acceptReviewingStep(run)
   await runStore.saveRun(accepted)
-  reviewTaskRegistry.complete(accepted.runId, acceptedStepId)
+  const completedViaBobTask = reviewTaskRegistry.complete(accepted.runId, acceptedStepId)
   const message = pendingReviewTransitionStepId(accepted)
     ? `Accepted step; pending transition will run from ${accepted.currentStep}: ${accepted.runId}`
     : accepted.status === "completed"
     ? `Accepted final step and completed workflow run: ${accepted.runId}`
     : `Accepted step; next step is ${accepted.currentStep}: ${accepted.runId}`
-  if (!acceptOptions.silent) await showAcceptedStepMessage(accepted, message)
-  return accepted
+  return { run: accepted, message, completedViaBobTask }
 }
 
-export async function acceptAndRunNextStep(options: StepReviewCommandOptions, runId?: string): Promise<unknown> {
-  const accepted = await acceptCurrentStep(options, runId, { silent: true })
-  if (typeof accepted === "string") {
-    await vscode.window.showWarningMessage(accepted)
-    return accepted
-  }
-  if (accepted.status === "completed") {
-    const message = `Workflow run completed: ${accepted.runId}`
-    await vscode.window.showInformationMessage(message)
-    return accepted
-  }
-  return vscode.commands.executeCommand("workflowRegister.runNextStep", accepted.runId)
-}
-
-async function showAcceptedStepMessage(accepted: WorkflowRunState, message: string): Promise<void> {
+async function showAcceptedStepMessage(accepted: WorkflowRunState, message: string, completedViaBobTask: boolean): Promise<void> {
   if (accepted.status !== "running" || !accepted.currentStep) {
     await vscode.window.showInformationMessage(message)
+    return
+  }
+  if (completedViaBobTask) {
+    await vscode.window.showInformationMessage(`${message}. Bob 側のステップ完了へ反映しました。`)
     return
   }
   const selected = await vscode.window.showInformationMessage(
