@@ -11,10 +11,12 @@ export interface RenderOperationHubHtmlInput {
   cspSource: string
   nonce: string
   model: OperationHubModel
+  refreshedAt?: string
 }
 
 export function renderOperationHubHtml(input: RenderOperationHubHtmlInput): string {
   const { cspSource, nonce, model } = input
+  const refreshLabel = input.refreshedAt ? ` / 更新 ${escapeHtml(input.refreshedAt)}` : ""
   return `<!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -55,7 +57,7 @@ export function renderOperationHubHtml(input: RenderOperationHubHtmlInput): stri
   <main>
     <header>
       <h1>Bob Operation Hub</h1>
-      <div class="muted">${escapeHtml(model.home.workspaceName)} / workflow ${model.home.workflowCount} / active run ${model.home.activeRunCount}</div>
+      <div class="muted">${escapeHtml(model.home.workspaceName)} / workflow ${model.home.workflowCount} / active run ${model.home.activeRunCount}${refreshLabel}</div>
       <div class="actions">${model.home.recommendedActions.map(renderActionButton).join("")}</div>
     </header>
     <section class="section" id="setup">

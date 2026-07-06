@@ -115,6 +115,7 @@ export function activate(context: vscode.ExtensionContext): WorkflowRegisterApi 
     operationHub,
     vscode.window.registerWebviewViewProvider("workflowRegister.operationHub", operationHub),
     vscode.commands.registerCommand("workflowRegister.openOperationHub", (input?: unknown) => operationHub.open(input)),
+    vscode.commands.registerCommand("workflowRegister.refreshOperationHub", () => operationHub.refreshFromCommand()),
     vscode.commands.registerCommand("workflowRegister.reload", () => service.reload({ showReport: true })),
     vscode.commands.registerCommand("workflowRegister.inspect", () => service.inspect()),
     vscode.commands.registerCommand("workflowRegister.completeCurrentStep", (options?: StepCompletionOptions) => service.completeCurrentStep(options)),

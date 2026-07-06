@@ -28,6 +28,26 @@ test("package contributes the Operation Hub command and Explorer view", () => {
   assert.doesNotMatch(wrapper, /registerCommand\("workflowRegister\.openOperationHub"/)
 })
 
+test("Operation Hub title action refreshes the visible hub instead of reopening it", () => {
+  const packageJson = readJson("package.json")
+  const core = readSrc("extension.ts")
+  const provider = readSrc("gui", "operationHubProvider.ts")
+  const viewTitleItems = packageJson.contributes.menus["view/title"]
+
+  assertContributesCommand(packageJson, "workflowRegister.refreshOperationHub")
+  assert.ok(packageJson.activationEvents.includes("onCommand:workflowRegister.refreshOperationHub"))
+  assert.deepEqual(
+    viewTitleItems.filter((item) => item.when === "view == workflowRegister.operationHub"),
+    [{
+      command: "workflowRegister.refreshOperationHub",
+      when: "view == workflowRegister.operationHub",
+      group: "navigation"
+    }]
+  )
+  assert.match(core, /registerCommand\("workflowRegister\.refreshOperationHub", \(\) => operationHub\.refreshFromCommand\(\)\)/)
+  assert.match(provider, /async refreshFromCommand\(\): Promise<void>/)
+})
+
 test("Operation Hub model builds home setup catalog and run monitor sections", () => {
   const { buildOperationHubModel } = require("../out/gui/operationHubModel")
 
@@ -232,6 +252,29 @@ test("Operation Hub html uses nonce protected scripts and data-action buttons", 
   assert.doesNotMatch(html, /eval\(/)
   assert.ok(OPERATION_HUB_ALLOWED_ACTIONS.includes("acceptAndRunNextStep"))
   assert.ok(OPERATION_HUB_ALLOWED_ACTIONS.includes("openRunControl"))
+})
+
+test("Operation Hub html exposes the latest refresh time", () => {
+  const { renderOperationHubHtml } = require("../out/gui/operationHubHtml")
+  const { buildOperationHubModel } = require("../out/gui/operationHubModel")
+
+  const model = buildOperationHubModel({
+    workspaceName: "repo",
+    workspaceRoots: ["C:\\repo"],
+    extensionStatus: [],
+    setup: {
+      bobRootPresent: true,
+      workflowsPresent: false,
+      runStatePresent: false,
+      mcpConfigPresent: true,
+      traceabilityPresent: false
+    },
+    workflows: [],
+    runs: []
+  })
+  const html = renderOperationHubHtml({ model, cspSource: "vscode-resource:", nonce: "nonce-123", refreshedAt: "12:34:56" })
+
+  assert.match(html, /更新 12:34:56/)
 })
 
 test("Operation Hub html highlights the focused run", () => {

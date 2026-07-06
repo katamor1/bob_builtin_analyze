@@ -79,13 +79,22 @@ export class OperationHubProvider implements vscode.WebviewViewProvider, vscode.
     await this.refresh()
   }
 
+  async refreshFromCommand(): Promise<void> {
+    if (!this.view) {
+      await this.open(this.focusedRunId)
+      return
+    }
+    await this.refresh()
+  }
+
   async refresh(): Promise<void> {
     if (!this.view) return
     const model = await this.loadModel()
     this.view.webview.html = renderOperationHubHtml({
       cspSource: this.view.webview.cspSource,
       nonce: nonce(),
-      model
+      model,
+      refreshedAt: refreshTimestamp()
     })
   }
 
@@ -236,4 +245,8 @@ function nonce(): string {
   let value = ""
   for (let i = 0; i < 24; i += 1) value += alphabet[Math.floor(Math.random() * alphabet.length)]
   return value
+}
+
+function refreshTimestamp(): string {
+  return new Date().toLocaleTimeString("ja-JP", { hour12: false })
 }
