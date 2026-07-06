@@ -9,7 +9,8 @@ const {
 
 test("package contributes the Operation Hub command and Explorer view", () => {
   const packageJson = readJson("package.json")
-  const source = readSrc("extensionWithAuthoring.ts")
+  const core = readSrc("extension.ts")
+  const wrapper = readSrc("extensionWithAuthoring.ts")
 
   assertContributesCommand(packageJson, "workflowRegister.openOperationHub")
   assert.ok(packageJson.activationEvents.includes("onView:workflowRegister.operationHub"))
@@ -17,8 +18,10 @@ test("package contributes the Operation Hub command and Explorer view", () => {
     packageJson.contributes.views.explorer.some((view) => view.id === "workflowRegister.operationHub" && view.name === "Bob Operation Hub"),
     "Operation Hub explorer view contribution"
   )
-  assert.match(source, /registerWebviewViewProvider\("workflowRegister\.operationHub"/)
-  assert.match(source, /registerCommand\("workflowRegister\.openOperationHub"/)
+  assert.match(core, /registerWebviewViewProvider\("workflowRegister\.operationHub"/)
+  assert.match(core, /registerCommand\("workflowRegister\.openOperationHub"/)
+  assert.doesNotMatch(wrapper, /registerWebviewViewProvider\("workflowRegister\.operationHub"/)
+  assert.doesNotMatch(wrapper, /registerCommand\("workflowRegister\.openOperationHub"/)
 })
 
 test("Operation Hub model builds home setup catalog and run monitor sections", () => {
@@ -279,10 +282,10 @@ test("Operation Hub provider routes accept-and-run-next with the run id", () => 
 })
 
 test("Operation Hub provider accepts run focus arguments from the open command", () => {
-  const wrapper = readSrc("extensionWithAuthoring.ts")
+  const core = readSrc("extension.ts")
   const provider = readSrc("gui", "operationHubProvider.ts")
 
-  assert.match(wrapper, /registerCommand\("workflowRegister\.openOperationHub", \(input\?: unknown\) => operationHub\.open\(input\)\)/)
+  assert.match(core, /registerCommand\("workflowRegister\.openOperationHub", \(input\?: unknown\) => operationHub\.open\(input\)\)/)
   assert.match(provider, /type OperationHubOpenInput = string \| \{ runId\?: string; stepId\?: string; reason\?: "stepGate" \| "paused" \}/)
   assert.match(provider, /private focusedRunId\?: string/)
   assert.match(provider, /focusedRunId: this\.focusedRunId/)
