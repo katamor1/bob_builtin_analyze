@@ -29,7 +29,7 @@ requires:
     minVersion: "2.0.0"
 guardrails:
   allowedCommands:
-    - bobCodeConsistency.prepareAiTraceabilityDraft
+    - vscode.executeCommand
     - bobCodeConsistency.captureAiTraceabilityDraft
     - bobCodeConsistency.applyAiTraceabilityDraft
     - bobCodeConsistency.openTraceabilityPrep
@@ -39,6 +39,8 @@ guardrails:
     - bobCodeConsistency.captureBobOutput
     - bobCodeConsistency.validateOutput
     - bobCodeConsistency.triage
+  allowedCommandIds:
+    - bobCodeConsistency.prepareAiTraceabilityDraft
 inputs:
   reviewId:
     type: string
@@ -142,7 +144,16 @@ steps:
     title: 文書候補と差分サマリを収集
     type: command
     action:
-      provider: bobCodeConsistency.prepareAiTraceabilityDraft
+      provider: vscode.executeCommand
+      args:
+        - bobCodeConsistency.prepareAiTraceabilityDraft
+        - aiTraceabilityDraftPromptPath: "{{inputs.aiTraceabilityDraftPromptPath}}"
+          base: "{{inputs.base}}"
+          docsRoot: "{{inputs.docsRoot}}"
+          head: "{{inputs.head}}"
+          textEncoding: "{{inputs.textEncoding}}"
+          vcs: "{{inputs.vcs}}"
+          vcsRoot: "{{inputs.vcsRoot}}"
     prompt: traceability AI draft 用 prompt を生成してください。
     sendResult: true
     resultKey: traceabilityDraftPrompt
