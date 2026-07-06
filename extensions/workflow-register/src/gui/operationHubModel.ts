@@ -12,6 +12,7 @@ export const OPERATION_HUB_ALLOWED_ACTIONS = [
   "resumeRun",
   "retryCurrentStep",
   "acceptCurrentStep",
+  "acceptAndRunNextStep",
   "runNextStep",
   "openManualStepPanel",
   "pauseCurrentRun",
@@ -53,6 +54,7 @@ export interface OperationHubModelInput {
   setup: OperationHubSetupState
   workflows: OperationHubWorkflowInput[]
   runs: OperationHubRunInput[]
+  focusedRunId?: string
 }
 
 export type OperationHubWorkflowInput = Pick<
@@ -109,6 +111,7 @@ export interface OperationHubRunSummary {
   totalStepCount: number
   updatedAt: string
   root: string
+  focused: boolean
   primaryActions: OperationHubAction[]
   artifacts: OperationHubArtifactSummary[]
 }
@@ -123,8 +126,8 @@ export interface OperationHubModel {
 export function buildOperationHubModel(input: OperationHubModelInput): OperationHubModel {
   const workflowCatalog = buildWorkflowCatalog(input.workflows)
   const runMonitor = input.runs
-    .map((item) => summarizeRunForHub(item.root, item.run))
-    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+    .map((item) => summarizeRunForHub(item.root, item.run, input.focusedRunId))
+    .sort((a, b) => Number(b.focused) - Number(a.focused) || b.updatedAt.localeCompare(a.updatedAt))
     .slice(0, 20)
   const activeRunCount = runMonitor.filter((run) => !["completed", "failed"].includes(run.status)).length
   return {
@@ -141,7 +144,7 @@ export function buildOperationHubModel(input: OperationHubModelInput): Operation
   }
 }
 
-export function summarizeRunForHub(root: string, run: WorkflowRunState): OperationHubRunSummary {
+export function summarizeRunForHub(root: string, run: WorkflowRunState, focusedRunId?: string): OperationHubRunSummary {
   const currentStep = run.steps.find((step) => step.id === run.currentStep)
   const completedStepCount = run.steps.filter((step) => step.status === "completed").length
   return {
@@ -149,12 +152,13 @@ export function summarizeRunForHub(root: string, run: WorkflowRunState): Operati
     workflowId: run.workflowId,
     workflowName: run.workflowName || run.workflowId,
     status: run.status,
-    statusLabel: statusLabel(run.status),
+    statusLabel: statusLabel(run),
     currentStepLabel: currentStep ? `${currentStep.id}: ${currentStep.title}` : run.currentStep ?? "未選択",
     completedStepCount,
     totalStepCount: run.steps.length,
     updatedAt: run.updatedAt,
     root,
+    focused: run.runId === focusedRunId,
     primaryActions: actionsForRun(run),
     artifacts: artifactsForRun(root, run)
   }
@@ -243,10 +247,11 @@ function buildWorkflowCatalog(workflows: OperationHubWorkflowInput[]): Operation
 
 function actionsForRun(run: WorkflowRunState): OperationHubAction[] {
   const inspect = { id: "inspectRunControl", label: "詳細", commandId: "workflowRegister.inspectRunControl", runId: run.runId } as const
+  const current = run.currentStep ? run.steps.find((step) => step.id === run.currentStep) : undefined
   switch (run.status) {
     case "reviewing":
       return [
-        { id: "acceptCurrentStep", label: "承認して次へ", commandId: "workflowRegister.acceptCurrentStep", runId: run.runId, variant: "primary" },
+        { id: "acceptAndRunNextStep", label: "承認して次へ", commandId: "workflowRegister.acceptAndRunNextStep", runId: run.runId, variant: "primary" },
         { id: "retryCurrentStep", label: "再試行", commandId: "workflowRegister.retryCurrentStep", runId: run.runId },
         inspect
       ]
@@ -267,6 +272,12 @@ function actionsForRun(run: WorkflowRunState): OperationHubAction[] {
         inspect
       ]
     case "running":
+      if (current?.status === "pending") {
+        return [
+          { id: "runNextStep", label: "次へ", commandId: "workflowRegister.runNextStep", runId: run.runId, variant: "primary" },
+          inspect
+        ]
+      }
       return [
         { id: "pauseCurrentRun", label: "一時停止", commandId: "workflowRegister.pauseCurrentRun", runId: run.runId },
         inspect
@@ -305,8 +316,10 @@ function looksLikeArtifactPath(value: string): boolean {
   return /^\.bob[/-]/i.test(trimmed) || /^\.bob-/i.test(trimmed) || /\.(md|json|ya?ml|txt|csv|html)$/i.test(trimmed) || path.isAbsolute(trimmed)
 }
 
-function statusLabel(status: WorkflowRunState["status"]): string {
-  switch (status) {
+function statusLabel(run: WorkflowRunState): string {
+  const current = run.currentStep ? run.steps.find((step) => step.id === run.currentStep) : undefined
+  if (run.status === "running" && current?.status === "pending") return "次ステップ実行待ち"
+  switch (run.status) {
     case "running": return "実行中"
     case "paused": return "一時停止"
     case "checkpoint": return "分岐確認待ち"
@@ -314,6 +327,6 @@ function statusLabel(status: WorkflowRunState["status"]): string {
     case "held": return "手動操作待ち"
     case "completed": return "完了"
     case "failed": return "失敗"
-    default: return status
+    default: return run.status
   }
 }

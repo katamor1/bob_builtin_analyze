@@ -82,7 +82,7 @@ export function activate(context: vscode.ExtensionContext): WorkflowRegisterApi 
     operationHub,
     vscode.window.registerTreeDataProvider("workflowRegister.runs", runControlView),
     vscode.window.registerWebviewViewProvider("workflowRegister.operationHub", operationHub),
-    vscode.commands.registerCommand("workflowRegister.openOperationHub", () => operationHub.open()),
+    vscode.commands.registerCommand("workflowRegister.openOperationHub", (input?: unknown) => operationHub.open(input)),
     vscode.commands.registerCommand("workflowRegister.refreshRunsView", () => runControlView.refresh()),
     vscode.commands.registerCommand(
       "workflowRegister.validateCurrentWorkflow",
