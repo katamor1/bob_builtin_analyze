@@ -29,12 +29,14 @@ test("extension registers code consistency workflow providers with workflow-regi
   assert.match(source, /id: "bobCodeConsistency\.validateOutput"/)
   assert.match(source, /id: "bobCodeConsistency\.triage"/)
   assert.match(source, /id: "bobCodeConsistency\.prepareAiTraceabilityDraft"/)
+  assert.match(source, /id: "bobCodeConsistency\.captureAiTraceabilityDraft"/)
   assert.match(source, /id: "bobCodeConsistency\.applyAiTraceabilityDraft"/)
   assert.match(source, /id: "bobCodeConsistency\.openTraceabilityPrep"/)
   assert.match(source, /id: "bobCodeConsistency\.validateTraceabilityCatalog"/)
   assert.match(source, /id: "bobCodeConsistency\.createReviewInputFromTraceability"/)
   for (const command of [
     "bobCodeConsistency.prepareAiTraceabilityDraft",
+    "bobCodeConsistency.captureAiTraceabilityDraft",
     "bobCodeConsistency.applyAiTraceabilityDraft",
     "bobCodeConsistency.openTraceabilityPrep",
     "bobCodeConsistency.validateTraceabilityCatalog",
@@ -79,7 +81,13 @@ test("Bob workflow template uses command providers instead of manual CLI instruc
   assert.match(workflow, /provider: bobCodeConsistency\.captureBobOutput/)
   assert.match(workflow, /provider: bobCodeConsistency\.validateOutput/)
   assert.match(workflow, /provider: bobCodeConsistency\.triage/)
+  const generateStepStart = workflow.indexOf("  - id: generate-traceability-draft")
+  const applyStepStart = workflow.indexOf("  - id: apply-traceability-draft")
+  const generateStep = workflow.slice(generateStepStart, applyStepStart)
+  assert.match(workflow, /allowedCommands:[\s\S]*- bobCodeConsistency\.captureAiTraceabilityDraft/)
+  assert.match(generateStep, /id: generate-traceability-draft[\s\S]*type: command[\s\S]*provider: bobCodeConsistency\.captureAiTraceabilityDraft/)
   assert.match(workflow, /id: apply-traceability-draft[\s\S]*includeState:[\s\S]*- traceabilityDraftJson/)
+  assert.doesNotMatch(generateStep, /type: agent/)
   assert.match(workflow, /Markdown、説明文、mermaid、リンク、ファイル作成報告は禁止/)
   assert.doesNotMatch(workflow, /id: copy-traceability-draft-json/)
   assert.doesNotMatch(workflow, /clipboard/)
