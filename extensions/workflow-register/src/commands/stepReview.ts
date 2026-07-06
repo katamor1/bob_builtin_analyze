@@ -5,6 +5,7 @@ import { FileRunStateStore } from "../core/runStateStore"
 import { RunStepState, WorkflowRunState } from "../core/model"
 import { pendingReviewTransitionStepId } from "../core/engine/runState"
 import { fallbackWorkspaceRootCandidates, findWorkflowRootCandidates, MarkerRootCandidate } from "../core/workspaceRoots"
+import { reviewTaskRegistry } from "../reviewTaskRegistry"
 
 interface StepReviewCommandOptions {
   showMarkdownReport: (title: string, summary: string, lines: string[]) => Promise<void>
@@ -34,8 +35,10 @@ export async function acceptCurrentStep(options: StepReviewCommandOptions, runId
   const runStore = new FileRunStateStore({ workspaceRoot: selection.root })
   const run = await runStore.loadRun(selection.runId)
   if (!run) return `Workflow run not found: ${selection.runId}`
+  const acceptedStepId = run.currentStep
   const accepted = acceptReviewingStep(run)
   await runStore.saveRun(accepted)
+  reviewTaskRegistry.complete(accepted.runId, acceptedStepId)
   const message = pendingReviewTransitionStepId(accepted)
     ? `Accepted step; pending transition will run from ${accepted.currentStep}: ${accepted.runId}`
     : accepted.status === "completed"
