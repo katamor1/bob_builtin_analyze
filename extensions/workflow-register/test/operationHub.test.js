@@ -15,8 +15,12 @@ test("package contributes the Operation Hub command and Explorer view", () => {
   assertContributesCommand(packageJson, "workflowRegister.openOperationHub")
   assert.ok(packageJson.activationEvents.includes("onView:workflowRegister.operationHub"))
   assert.ok(
-    packageJson.contributes.views.explorer.some((view) => view.id === "workflowRegister.operationHub" && view.name === "Bob Operation Hub"),
-    "Operation Hub explorer view contribution"
+    packageJson.contributes.views.explorer.some((view) => (
+      view.id === "workflowRegister.operationHub" &&
+      view.name === "Bob Operation Hub" &&
+      view.type === "webview"
+    )),
+    "Operation Hub explorer webview contribution"
   )
   assert.match(core, /registerWebviewViewProvider\("workflowRegister\.operationHub"/)
   assert.match(core, /registerCommand\("workflowRegister\.openOperationHub"/)
