@@ -161,20 +161,15 @@ steps:
     required: true
     completeOnSuccess: true
   - id: generate-traceability-draft
-    title: traceability proposed draft JSON を取り込み
-    type: command
-    action:
-      provider: bobCodeConsistency.captureAiTraceabilityDraft
+    title: traceability proposed draft JSON を生成
+    type: agent
     required: true
     includeState:
       - traceabilityDraftPrompt
     stateRequired: true
     resultKey: traceabilityDraftJson
-    sendResult: true
-    maxResultBytes: 30000
-    completeOnSuccess: true
     prompt: |
-      traceabilityDraftPrompt を AI に渡し、返ってきた traceability catalog draft JSON を .bob-trace/ai-traceability-draft/ai-draft.json に保存してから実行してください。
+      state.traceabilityDraftPrompt の prompt を使い、traceability catalog draft JSON を作成してください。
 
       厳守事項:
       - Markdown、説明文、mermaid、リンク、ファイル作成報告は禁止です。
