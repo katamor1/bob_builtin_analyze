@@ -59,7 +59,7 @@ test("code consistency provider accepts workflowRoot without first-folder fallba
   assert.doesNotMatch(source, /function requireWorkspaceRoot/)
 })
 
-test("traceability apply command can recover draft JSON from linked workflow output files", () => {
+test("traceability apply command can recover and normalize draft JSON", () => {
   const source = readSourceSet(["traceabilityCommands.ts"])
 
   assert.match(source, /resolveTraceabilityDraftText/)
@@ -69,6 +69,8 @@ test("traceability apply command can recover draft JSON from linked workflow out
   assert.match(source, /readTextFile/)
   assert.match(source, /resolveTraceabilityDraftPath/)
   assert.match(source, /resolveWorkspacePathStrict/)
+  assert.match(source, /canonicalizeTraceabilityDraftText/)
+  assert.match(source, /test_case: "test_spec"/)
 })
 
 test("Bob workflow template uses command providers instead of manual CLI instructions", () => {
@@ -88,6 +90,7 @@ test("Bob workflow template uses command providers instead of manual CLI instruc
   const applyStepStart = workflow.indexOf("  - id: apply-traceability-draft")
   const generateStep = workflow.slice(generateStepStart, validateDraftStepStart)
   const validateDraftStep = workflow.slice(validateDraftStepStart, applyStepStart)
+  const applyStep = workflow.slice(applyStepStart, workflow.indexOf("  - id: approve-traceability-catalog"))
   assert.match(workflow, /allowedCommands:[\s\S]*- vscode\.executeCommand/)
   assert.match(workflow, /allowedCommandIds:[\s\S]*- bobCodeConsistency\.prepareAiTraceabilityDraft/)
   assert.match(collectStep, /id: collect-document-candidates[\s\S]*provider: vscode\.executeCommand/)
@@ -104,10 +107,12 @@ test("Bob workflow template uses command providers instead of manual CLI instruc
   assert.doesNotMatch(generateStep, /provider: bobCodeConsistency\.captureAiTraceabilityDraft/)
   assert.match(generateStep, /resultKey: traceabilityDraftJson/)
   assert.match(generateStep, /途中で切らず、必ず閉じた JSON object/)
+  assert.match(generateStep, /test_case は無効/)
   assert.match(validateDraftStep, /id: validate-traceability-draft[\s\S]*provider: bobCodeConsistency\.captureAiTraceabilityDraft/)
   assert.match(validateDraftStep, /text: "\{\{state\.traceabilityDraftJson\}\}"/)
-  assert.match(validateDraftStep, /resultKey: traceabilityDraftJson/)
-  assert.match(workflow, /id: apply-traceability-draft[\s\S]*includeState:[\s\S]*- traceabilityDraftJson/)
+  assert.match(validateDraftStep, /resultKey: validatedTraceabilityDraftJson/)
+  assert.match(applyStep, /text: "\{\{state\.validatedTraceabilityDraftJson\}\}"/)
+  assert.match(applyStep, /includeState:[\s\S]*- validatedTraceabilityDraftJson/)
   assert.match(workflow, /Markdown、説明文、mermaid、リンク、ファイル作成報告は禁止/)
   assert.doesNotMatch(workflow, /id: copy-traceability-draft-json/)
   assert.doesNotMatch(workflow, /clipboard/)
