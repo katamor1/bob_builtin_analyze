@@ -50,6 +50,10 @@ export class ReviewTaskRegistry {
     return true
   }
 
+  registerTask(runId: string | undefined, stepId: string | undefined, task: BobWorkflowTask): boolean {
+    return this.register(runId, stepId, task)
+  }
+
   taskForRun(runId: string | undefined): BobWorkflowTask | undefined {
     return runId ? this.tasksByRun.get(runId) : undefined
   }
