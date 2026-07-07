@@ -25,7 +25,13 @@ Object.assign(helpCatalog, {
   'manual.approval.message': { id: 'manual.approval.message', labelJa: '承認メッセージ', fieldKey: 'steps[].approval.message', summary: '承認者へ表示する説明文です。', effect: '何を確認して承認または却下すべきかを明示します。' },
   'section.transition': { id: 'section.transition', labelJa: 'Transition', fieldKey: 'steps[].transition', summary: 'step 完了後の分岐先を定義します。', effect: 'stateKey の値に応じて goto、loop、default を切り替えられます。' },
   'transition.default': { id: 'transition.default', labelJa: 'Default transition', fieldKey: 'steps[].transition.default', summary: 'どの decision にも一致しない場合の遷移先です。', effect: 'next / end / fail または step id を指定できます。' },
-  'transition.decisions': { id: 'transition.decisions', labelJa: 'Decision JSON', fieldKey: 'steps[].transition.decisions', summary: '条件付き遷移の decision 配列です。', effect: 'when.stateKey と equals / notEquals / in / exists / truthy のいずれか1つで分岐できます。', caution: 'backward goto では branching.loops[].id を loop に指定してください。' }
+  'transition.decisions': { id: 'transition.decisions', labelJa: 'Decision JSON', fieldKey: 'steps[].transition.decisions', summary: '条件付き遷移の decision 配列です。', effect: 'when.stateKey と equals / notEquals / in / exists / truthy のいずれか1つで分岐できます。', caution: 'backward goto では branching.loops[].id を loop に指定してください。' },
+  'section.resultSinks': { id: 'section.resultSinks', labelJa: 'Result sinks', fieldKey: 'steps[].result.sinks', summary: 'result の出力先を定義します。', effect: '複数の sink を並べて、同じ result を複数の出力先へ渡せます。' },
+  'result.sink.type': { id: 'result.sink.type', labelJa: 'Sink type', fieldKey: 'steps[].result.sinks[].type', summary: 'sink の種類です。', effect: 'file は path へ保存し、command は command / args 設定を使います。' },
+  'result.sink.path': { id: 'result.sink.path', labelJa: 'File sink path', fieldKey: 'steps[].result.sinks[].path', summary: 'file sink の保存先パスです。', effect: 'workspace root 配下の成果物として result を保存します。' },
+  'result.sink.encoding': { id: 'result.sink.encoding', labelJa: 'File encoding', fieldKey: 'steps[].result.sinks[].encoding', summary: 'file sink の文字エンコーディングです。', effect: '未指定なら writer 側の既定 encoding を使います。' },
+  'result.sink.command': { id: 'result.sink.command', labelJa: 'Command sink name', fieldKey: 'steps[].result.sinks[].command', summary: 'command sink の識別名です。', effect: 'result text を別の sink 処理へ渡すときに使います。' },
+  'result.sink.argsJson': { id: 'result.sink.argsJson', labelJa: 'Command sink args', fieldKey: 'steps[].result.sinks[].args', summary: 'command sink の追加引数です。GUI では JSON array として編集します。', effect: '固定値や template 値を sink 側へ渡せます。' }
 });
 `
 }
