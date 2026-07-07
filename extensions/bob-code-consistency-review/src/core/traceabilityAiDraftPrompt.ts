@@ -52,6 +52,9 @@ export function renderTraceabilityPrompt(input: {
     "- 出力は JSON object だけ。Markdown、YAML、説明文、コメントは禁止。",
     "- prefixは REQ / BD / DD / TC / QA / RV のみ。",
     "- ID形式は `<prefix>-<元文書ID>-<領域>-0001`。例: `REQ-RS001-PAY-0001`。",
+    "- item.type は requirement / basic_design / detailed_design / test_spec / qa_item / review_finding のみ。",
+    "- prefixとitem.typeの対応: REQ=requirement, BD=basic_design, DD=detailed_design, TC=test_spec, QA=qa_item, RV=review_finding。",
+    "- test_spec文書のcasesやTC prefixのitemでも type は必ず `test_spec`。`test_case`、`test`、`testcase` は使わない。",
     "- statusは必ず `proposed`。人間承認前に `accepted`、`rejected`、`deprecated` を作らない。",
     "- itemは `id` を持ってはいけない。linkは `from` / `to` を持ってはいけない。",
     "- link_typeは `satisfies`, `elaborates`, `verified_by`, `clarifies`, `reviewed_by`, `references` のみ。",
@@ -79,6 +82,16 @@ export function renderTraceabilityPrompt(input: {
           source_path: "docs/requirements.md",
           status: "proposed",
           text_summary: "要求の要約"
+        },
+        {
+          proposed_id: "TC-TC001-PAY-0001",
+          type: "test_spec",
+          source_document_id: "TC001",
+          domain: "PAY",
+          sequence: 1,
+          source_path: "docs/test-spec.md",
+          status: "proposed",
+          text_summary: "テスト仕様の要約"
         },
         {
           proposed_id: "QA-QA001-PAY-0001",

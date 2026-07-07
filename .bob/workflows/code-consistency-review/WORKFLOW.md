@@ -180,6 +180,8 @@ steps:
       - accepted / rejected / deprecated は人間だけが決めます。
       - 不確かな対応は無理に補完せず proposed 候補として残してください。
       - 出力が長くなりそうな場合は候補数を絞り、途中で切らず、必ず閉じた JSON object として完結させてください。
+      - item.type は requirement / basic_design / detailed_design / test_spec / qa_item / review_finding のいずれかだけです。
+      - TC prefix や test_spec 文書由来の item は type: "test_spec" にしてください。test_case は無効です。
   - id: validate-traceability-draft
     title: traceability draft JSON を検証・正規化
     type: command
@@ -194,7 +196,7 @@ steps:
     stateRequired: true
     prompt: state.traceabilityDraftJson を JSON として検証し、正規化してください。
     sendResult: true
-    resultKey: traceabilityDraftJson
+    resultKey: validatedTraceabilityDraftJson
     maxResultBytes: 30000
     required: true
     completeOnSuccess: true
@@ -203,10 +205,12 @@ steps:
     type: command
     action:
       provider: bobCodeConsistency.applyAiTraceabilityDraft
+      args:
+        text: "{{state.validatedTraceabilityDraftJson}}"
     includeState:
-      - traceabilityDraftJson
+      - validatedTraceabilityDraftJson
     stateRequired: true
-    prompt: state.traceabilityDraftJson を検証し、traceability catalog へ merge して gate report を生成してください。
+    prompt: state.validatedTraceabilityDraftJson を検証し、traceability catalog へ merge して gate report を生成してください。
     sendResult: true
     resultKey: traceabilityCatalog
     maxResultBytes: 30000
