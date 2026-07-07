@@ -117,21 +117,9 @@ inputs:
     title: human triage path
     default: .bob-review/human-triage
 artifacts:
-  - id: traceabilityDraftPrompt
-    producedBy: collect-document-candidates
-    path: .bob-trace/ai-traceability-draft/ai-draft-prompt.md
-  - id: traceabilityCatalog
-    producedBy: apply-traceability-draft
-    path: .bob-trace/traceability-catalog.json
   - id: traceabilityGateReport
     producedBy: validate-traceability-catalog
     path: .bob-trace/gate-report.md
-  - id: reviewInput
-    producedBy: create-review-input-from-traceability
-    path: review-input.yaml
-  - id: reviewPackage
-    producedBy: preprocess-review-package
-    path: .bob-review/review-package
   - id: bobOutput
     producedBy: capture-bob-output
     path: .bob-review/bob-output/bob-output.yaml
@@ -212,7 +200,7 @@ steps:
     stateRequired: true
     prompt: state.validatedTraceabilityDraftJson を検証し、traceability catalog へ merge して gate report を生成してください。
     sendResult: true
-    resultKey: traceabilityCatalog
+    resultKey: traceabilityCatalogResult
     maxResultBytes: 30000
     required: true
     completeOnSuccess: true
