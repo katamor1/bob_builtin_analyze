@@ -68,6 +68,7 @@ export function renderOperationHubHtml(input: RenderOperationHubHtmlInput): stri
     button.secondary { background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); }
     button.danger { background: var(--vscode-inputValidation-errorBackground); color: var(--vscode-foreground); }
     button:disabled { opacity: 0.55; cursor: not-allowed; }
+    button[aria-busy="true"] { cursor: progress; }
     .progress { margin-top: 6px; height: 6px; border: 1px solid var(--vscode-panel-border); background: var(--vscode-editor-background); }
     .progress span { display: block; height: 100%; background: var(--vscode-progressBar-background); }
     .artifact { display: flex; justify-content: space-between; align-items: center; gap: 6px; border-top: 1px solid var(--vscode-panel-border); padding-top: 6px; margin-top: 6px; }
@@ -84,17 +85,35 @@ export function renderOperationHubHtml(input: RenderOperationHubHtmlInput): stri
     const vscode = acquireVsCodeApi();
     document.addEventListener('click', (event) => {
       const button = event.target && event.target.closest ? event.target.closest('button[data-action]') : undefined;
-      if (!button) return;
-      button.disabled = true;
-      vscode.postMessage({
+      if (!button || button.disabled || button.dataset.pending === 'true') return;
+      const payload = {
         type: 'operationHub.action',
         action: button.dataset.action,
         workflowId: button.dataset.workflowId,
         runId: button.dataset.runId,
         artifactPath: button.dataset.artifactPath
-      });
-      setTimeout(() => { button.disabled = false; }, 1200);
+      };
+      markActionPending(button);
+      vscode.postMessage(payload);
     });
+
+    function markActionPending(button) {
+      button.dataset.pending = 'true';
+      button.setAttribute('aria-busy', 'true');
+      const originalLabel = button.textContent || '';
+      button.dataset.originalLabel = originalLabel;
+      button.textContent = pendingLabel(button.dataset.action, originalLabel);
+      for (const candidate of document.querySelectorAll('button[data-action]')) {
+        candidate.disabled = true;
+      }
+    }
+
+    function pendingLabel(action, originalLabel) {
+      if (action === 'refresh') return '更新中…';
+      if (action === 'openArtifact') return '開いています…';
+      if (action === 'openOperationHubPanel') return '開いています…';
+      return '反映中…';
+    }
   </script>
 </body>
 </html>`
