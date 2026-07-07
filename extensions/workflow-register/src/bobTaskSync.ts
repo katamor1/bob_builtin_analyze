@@ -1,6 +1,7 @@
 import type { BobWorkflowTask } from "./bobWorkflowTypes"
 import type {
   BobTaskSyncDriftStatus,
+  BobTaskSyncState,
   CoreWorkflowDefinition,
   WorkflowRunState
 } from "./core/model"
@@ -70,8 +71,8 @@ export function reconcileBobTaskSync(
 ): BobTaskSyncReconcileResult {
   const now = options.now?.() ?? new Date().toISOString()
   const targetCompletedThroughIndex = completedPrefixIndex(run)
-  const sync = run.bobTaskSync ?? {
-    schemaVersion: "workflow-register/bob-task-sync/v1" as const,
+  const sync: BobTaskSyncState = run.bobTaskSync ?? {
+    schemaVersion: "workflow-register/bob-task-sync/v1",
     projectionVersion: 1,
     completedThroughIndex: -1
   }
