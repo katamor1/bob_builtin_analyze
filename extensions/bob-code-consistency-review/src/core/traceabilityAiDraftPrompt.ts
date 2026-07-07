@@ -58,6 +58,8 @@ export function renderTraceabilityPrompt(input: {
     "- statusは必ず `proposed`。人間承認前に `accepted`、`rejected`、`deprecated` を作らない。",
     "- itemは `id` を持ってはいけない。linkは `from` / `to` を持ってはいけない。",
     "- link_typeは `satisfies`, `elaborates`, `verified_by`, `clarifies`, `reviewed_by`, `references` のみ。",
+    "- link direction は gate validator に合わせる: `satisfies` は REQ -> BD、`elaborates` は BD -> DD、`verified_by` は REQ/DD -> TC。逆向きは禁止。",
+    "- テスト仕様が要求と詳細設計の両方を確認する場合は、REQ -> TC と DD -> TC の `verified_by` link を両方出してください。",
     "- `clarifies` は `QA -> REQ/BD/DD/TC/RV`、`reviewed_by` は `REQ/BD/DD/TC/QA -> RV`。",
     "- 不確かな対応は無理にaccepted相当へ補完せず、proposed候補として残す。",
     "",
@@ -82,6 +84,26 @@ export function renderTraceabilityPrompt(input: {
           source_path: "docs/requirements.md",
           status: "proposed",
           text_summary: "要求の要約"
+        },
+        {
+          proposed_id: "BD-BD001-PAY-0001",
+          type: "basic_design",
+          source_document_id: "BD001",
+          domain: "PAY",
+          sequence: 1,
+          source_path: "docs/basic-design.md",
+          status: "proposed",
+          text_summary: "基本設計の要約"
+        },
+        {
+          proposed_id: "DD-DD001-PAY-0001",
+          type: "detailed_design",
+          source_document_id: "DD001",
+          domain: "PAY",
+          sequence: 1,
+          source_path: "docs/detailed-design.md",
+          status: "proposed",
+          text_summary: "詳細設計の要約"
         },
         {
           proposed_id: "TC-TC001-PAY-0001",
@@ -119,6 +141,24 @@ export function renderTraceabilityPrompt(input: {
           proposed_from: "REQ-RS001-PAY-0001",
           proposed_to: "BD-BD001-PAY-0001",
           link_type: "satisfies",
+          status: "proposed"
+        },
+        {
+          proposed_from: "BD-BD001-PAY-0001",
+          proposed_to: "DD-DD001-PAY-0001",
+          link_type: "elaborates",
+          status: "proposed"
+        },
+        {
+          proposed_from: "REQ-RS001-PAY-0001",
+          proposed_to: "TC-TC001-PAY-0001",
+          link_type: "verified_by",
+          status: "proposed"
+        },
+        {
+          proposed_from: "DD-DD001-PAY-0001",
+          proposed_to: "TC-TC001-PAY-0001",
+          link_type: "verified_by",
           status: "proposed"
         },
         {
