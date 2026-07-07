@@ -1,10 +1,14 @@
-import type { BobWorkflowTask } from "./bobWorkflowTypes"
 import type {
   BobTaskSyncDriftStatus,
   BobTaskSyncState,
   CoreWorkflowDefinition,
   WorkflowRunState
 } from "./core/model"
+
+export interface BobTaskSyncTask {
+  setStepComplete?: () => unknown
+  startSubagent?: (...args: unknown[]) => unknown
+}
 
 export type BobTaskSyncReason =
   | "bob-runner-step-completed"
@@ -18,7 +22,7 @@ export type BobTaskSyncReason =
 
 export interface BobTaskSyncReconcileOptions {
   reason: BobTaskSyncReason
-  task?: BobWorkflowTask
+  task?: BobTaskSyncTask
   alreadyApplied?: boolean
   now?: () => string
 }
@@ -33,10 +37,10 @@ export interface BobTaskSyncReconcileResult {
 }
 
 export class BobTaskSyncRegistry {
-  private readonly tasksByStep = new Map<string, BobWorkflowTask>()
-  private readonly tasksByRun = new Map<string, BobWorkflowTask>()
+  private readonly tasksByStep = new Map<string, BobTaskSyncTask>()
+  private readonly tasksByRun = new Map<string, BobTaskSyncTask>()
 
-  registerTask(runId: string | undefined, stepId: string | undefined, task: BobWorkflowTask): boolean {
+  registerTask(runId: string | undefined, stepId: string | undefined, task: BobTaskSyncTask): boolean {
     if (!runId || !stepId) return false
     if (typeof task.setStepComplete !== "function" && typeof task.startSubagent !== "function") return false
     this.tasksByStep.set(syncTaskKey(runId, stepId), task)
@@ -44,11 +48,11 @@ export class BobTaskSyncRegistry {
     return true
   }
 
-  taskForRun(runId: string | undefined): BobWorkflowTask | undefined {
+  taskForRun(runId: string | undefined): BobTaskSyncTask | undefined {
     return runId ? this.tasksByRun.get(runId) : undefined
   }
 
-  taskForStep(runId: string | undefined, stepId: string | undefined): BobWorkflowTask | undefined {
+  taskForStep(runId: string | undefined, stepId: string | undefined): BobTaskSyncTask | undefined {
     return runId && stepId ? this.tasksByStep.get(syncTaskKey(runId, stepId)) : undefined
   }
 
