@@ -52,6 +52,7 @@ export function renderTraceabilityPrompt(input: {
     "- 出力は JSON object だけ。Markdown、YAML、説明文、コメントは禁止。",
     "- prefixは REQ / BD / DD / TC / QA / RV のみ。",
     "- ID形式は `<prefix>-<元文書ID>-<領域>-0001`。例: `REQ-RS001-PAY-0001`。",
+    "- sequence は proposed_id 末尾4桁と必ず一致させてください。例: `REQ-RS001-PAY-0001` の sequence は 1。文書全体の出現順ではありません。",
     "- item.type は requirement / basic_design / detailed_design / test_spec / qa_item / review_finding のみ。",
     "- prefixとitem.typeの対応: REQ=requirement, BD=basic_design, DD=detailed_design, TC=test_spec, QA=qa_item, RV=review_finding。",
     "- test_spec文書のcasesやTC prefixのitemでも type は必ず `test_spec`。`test_case`、`test`、`testcase` は使わない。",
