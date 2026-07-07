@@ -1,10 +1,3 @@
-import type {
-  BobTaskSyncDriftStatus,
-  BobTaskSyncState,
-  CoreWorkflowDefinition,
-  WorkflowRunState
-} from "./core/model"
-
 export interface BobTaskSyncTask {
   setStepComplete?: () => unknown
   startSubagent?: (...args: unknown[]) => unknown
@@ -19,6 +12,41 @@ export type BobTaskSyncReason =
   | "manual-completed"
   | "paused"
   | "inspect"
+
+export type BobTaskSyncDriftStatus = "unknown" | "synced" | "repairPending" | "taskUnavailable" | "requiresNewBobTask" | "repairFailed"
+export type BobTaskSyncStepExecutionMode = "full" | "todo" | "engineSteps"
+
+export interface BobTaskSyncDriftState {
+  status: BobTaskSyncDriftStatus
+  reason?: string
+  detectedAt?: string
+  details?: string
+}
+
+export interface BobTaskSyncState {
+  schemaVersion: "workflow-register/bob-task-sync/v1"
+  projectionVersion: number
+  mode?: BobTaskSyncStepExecutionMode
+  workflowDefinitionHash?: string
+  completedThroughIndex: number
+  completedThroughStepId?: string
+  lastAppliedAt?: string
+  lastCheckedAt?: string
+  liveTaskAvailable?: boolean
+  drift?: BobTaskSyncDriftState
+}
+
+export interface BobTaskSyncRunState {
+  runId: string
+  workflowDefinitionHash?: string
+  bobTaskSync?: BobTaskSyncState
+  steps: Array<{ id: string; status: string }>
+}
+
+export interface BobTaskSyncWorkflowDefinition {
+  definitionHash?: string
+  stepExecution?: { mode?: BobTaskSyncStepExecutionMode }
+}
 
 export interface BobTaskSyncReconcileOptions {
   reason: BobTaskSyncReason
@@ -57,8 +85,8 @@ export class BobTaskSyncRegistry {
   }
 
   reconcileRun(
-    run: WorkflowRunState,
-    workflow: CoreWorkflowDefinition | undefined,
+    run: BobTaskSyncRunState,
+    workflow: BobTaskSyncWorkflowDefinition | undefined,
     options: BobTaskSyncReconcileOptions
   ): BobTaskSyncReconcileResult {
     const task = options.task ?? this.taskForRun(run.runId)
@@ -69,8 +97,8 @@ export class BobTaskSyncRegistry {
 export const bobTaskSyncRegistry = new BobTaskSyncRegistry()
 
 export function reconcileBobTaskSync(
-  run: WorkflowRunState,
-  workflow: CoreWorkflowDefinition | undefined,
+  run: BobTaskSyncRunState,
+  workflow: BobTaskSyncWorkflowDefinition | undefined,
   options: BobTaskSyncReconcileOptions
 ): BobTaskSyncReconcileResult {
   const now = options.now?.() ?? new Date().toISOString()
@@ -152,7 +180,7 @@ export function reconcileBobTaskSync(
   return result("synced", targetCompletedThroughIndex, sync.completedThroughIndex, appliedStepCount, taskAvailable)
 }
 
-export function completedPrefixIndex(run: WorkflowRunState): number {
+export function completedPrefixIndex(run: BobTaskSyncRunState): number {
   let completedThrough = -1
   for (const [index, step] of run.steps.entries()) {
     if (step.status !== "completed") break
@@ -165,7 +193,7 @@ function normalizeCompletedIndex(value: number | undefined): number {
   return Number.isFinite(value) ? Math.trunc(value as number) : -1
 }
 
-function stepIdAt(run: WorkflowRunState, index: number): string | undefined {
+function stepIdAt(run: BobTaskSyncRunState, index: number): string | undefined {
   return index >= 0 ? run.steps[index]?.id : undefined
 }
 
