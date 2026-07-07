@@ -22,7 +22,10 @@ Object.assign(helpCatalog, {
   'manual.approval.resultKey': { id: 'manual.approval.resultKey', labelJa: 'Approval resultKey', fieldKey: 'steps[].approval.resultKey', summary: '承認結果を workflow state に保存する名前です。', effect: 'transition.when.stateKey から承認結果を見て分岐できます。' },
   'manual.approval.approveLabel': { id: 'manual.approval.approveLabel', labelJa: '承認ボタン文言', fieldKey: 'steps[].approval.approveLabel', summary: '承認ボタンに表示する文言です。', effect: '承認の意味を step に合わせて明確にできます。' },
   'manual.approval.rejectLabel': { id: 'manual.approval.rejectLabel', labelJa: '却下ボタン文言', fieldKey: 'steps[].approval.rejectLabel', summary: '却下ボタンに表示する文言です。', effect: '却下時に戻す、修正する、中止するなどの意味を明確にできます。' },
-  'manual.approval.message': { id: 'manual.approval.message', labelJa: '承認メッセージ', fieldKey: 'steps[].approval.message', summary: '承認者へ表示する説明文です。', effect: '何を確認して承認または却下すべきかを明示します。' }
+  'manual.approval.message': { id: 'manual.approval.message', labelJa: '承認メッセージ', fieldKey: 'steps[].approval.message', summary: '承認者へ表示する説明文です。', effect: '何を確認して承認または却下すべきかを明示します。' },
+  'section.transition': { id: 'section.transition', labelJa: 'Transition', fieldKey: 'steps[].transition', summary: 'step 完了後の分岐先を定義します。', effect: 'stateKey の値に応じて goto、loop、default を切り替えられます。' },
+  'transition.default': { id: 'transition.default', labelJa: 'Default transition', fieldKey: 'steps[].transition.default', summary: 'どの decision にも一致しない場合の遷移先です。', effect: 'next / end / fail または step id を指定できます。' },
+  'transition.decisions': { id: 'transition.decisions', labelJa: 'Decision JSON', fieldKey: 'steps[].transition.decisions', summary: '条件付き遷移の decision 配列です。', effect: 'when.stateKey と equals / notEquals / in / exists / truthy のいずれか1つで分岐できます。', caution: 'backward goto では branching.loops[].id を loop に指定してください。' }
 });
 `
 }
