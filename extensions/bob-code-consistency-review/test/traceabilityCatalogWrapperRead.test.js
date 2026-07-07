@@ -20,7 +20,7 @@ test("readTraceabilityCatalog reads catalog nested in command result", async () 
       schema_version: 1,
       documents: [],
       domains: [{ code: "PAY", status: "proposed" }],
-      items: [{ proposed_id: "REQ-RS001-PAY-0001", type: "requirement", source_document_id: "RS001", domain: "PAY", sequence: 1, status: "proposed" }],
+      items: [{ proposed_id: "REQ-RS001-PAY-0001", type: "requirement", source_document_id: "RS001", domain: "PAY", sequence: 9, status: "proposed" }],
       links: [],
       decisions: []
     }
@@ -31,4 +31,5 @@ test("readTraceabilityCatalog reads catalog nested in command result", async () 
   assert.equal(read.status, "ok")
   assert.equal(read.catalog.domains.length, 1)
   assert.equal(read.catalog.items.length, 1)
+  assert.equal(read.catalog.items[0].sequence, 1)
 })
