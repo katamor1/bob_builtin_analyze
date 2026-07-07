@@ -179,6 +179,25 @@ steps:
       - link は from / to を持たず proposed_from / proposed_to だけを使ってください。
       - accepted / rejected / deprecated は人間だけが決めます。
       - 不確かな対応は無理に補完せず proposed 候補として残してください。
+      - 出力が長くなりそうな場合は候補数を絞り、途中で切らず、必ず閉じた JSON object として完結させてください。
+  - id: validate-traceability-draft
+    title: traceability draft JSON を検証・正規化
+    type: command
+    action:
+      provider: bobCodeConsistency.captureAiTraceabilityDraft
+      args:
+        text: "{{state.traceabilityDraftJson}}"
+        aiTraceabilityDraftPromptPath: "{{inputs.aiTraceabilityDraftPromptPath}}"
+        textEncoding: "{{inputs.textEncoding}}"
+    includeState:
+      - traceabilityDraftJson
+    stateRequired: true
+    prompt: state.traceabilityDraftJson を JSON として検証し、正規化してください。
+    sendResult: true
+    resultKey: traceabilityDraftJson
+    maxResultBytes: 30000
+    required: true
+    completeOnSuccess: true
   - id: apply-traceability-draft
     title: AI draft JSON を sidecar catalog に反映
     type: command
