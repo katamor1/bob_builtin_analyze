@@ -14,7 +14,15 @@ Object.assign(helpCatalog, {
   'branching.loop.extensionSize': { id: 'branching.loop.extensionSize', labelJa: '延長単位', fieldKey: 'branching.loops[].extensionSize', summary: 'checkpoint で反復回数を延長するときの単位です。', effect: '人間承認により追加試行を許可する設計にできます。' },
   'branching.loop.checkpointTitle': { id: 'branching.loop.checkpointTitle', labelJa: 'Checkpoint タイトル', fieldKey: 'branching.loops[].checkpoint.title', summary: 'loop 上限到達時に表示する checkpoint 名です。', effect: '利用者に、なぜ workflow が止まったのかを伝えやすくします。' },
   'branching.loop.checkpointMessage': { id: 'branching.loop.checkpointMessage', labelJa: 'Checkpoint メッセージ', fieldKey: 'branching.loops[].checkpoint.message', summary: 'loop 上限到達時に表示する確認文です。', effect: '延長、調査、中止の判断に必要な観点を示せます。' },
-  'section.branchCheckpoint': { id: 'section.branchCheckpoint', labelJa: 'Checkpoint', fieldKey: 'branching.loops[].checkpoint', summary: 'loop が上限に達したときの人間確認設定です。', effect: '反復を続けるか、中止するかを人間が判断しやすくします。' }
+  'section.branchCheckpoint': { id: 'section.branchCheckpoint', labelJa: 'Checkpoint', fieldKey: 'branching.loops[].checkpoint', summary: 'loop が上限に達したときの人間確認設定です。', effect: '反復を続けるか、中止するかを人間が判断しやすくします。' },
+  'section.manualForm': { id: 'section.manualForm', labelJa: 'Manual Form', fieldKey: 'steps[].form', summary: 'manual step で利用者から値を受け取るフォームです。', effect: '入力結果を form.resultKey に保存し、後続 step の state として利用できます。' },
+  'manual.form.resultKey': { id: 'manual.form.resultKey', labelJa: 'Form resultKey', fieldKey: 'steps[].form.resultKey', summary: 'フォーム回答を workflow state に保存する名前です。', effect: '後続 step の includeState や result.source=state から参照できます。' },
+  'manual.form.fieldsJson': { id: 'manual.form.fieldsJson', labelJa: 'Form fields JSON', fieldKey: 'steps[].form.fields', summary: 'manual form の fields 配列を JSON で編集します。', effect: 'id / title / type / required / multiline / options を field ごとに定義できます。', caution: 'type は string / number / boolean / select のいずれかです。select では options を指定してください。' },
+  'section.manualApproval': { id: 'section.manualApproval', labelJa: 'Manual Approval', fieldKey: 'steps[].approval', summary: 'manual step で承認・却下の判断を記録する設定です。', effect: '承認結果を approval.resultKey に保存し、後続分岐や state 参照に使えます。' },
+  'manual.approval.resultKey': { id: 'manual.approval.resultKey', labelJa: 'Approval resultKey', fieldKey: 'steps[].approval.resultKey', summary: '承認結果を workflow state に保存する名前です。', effect: 'transition.when.stateKey から承認結果を見て分岐できます。' },
+  'manual.approval.approveLabel': { id: 'manual.approval.approveLabel', labelJa: '承認ボタン文言', fieldKey: 'steps[].approval.approveLabel', summary: '承認ボタンに表示する文言です。', effect: '承認の意味を step に合わせて明確にできます。' },
+  'manual.approval.rejectLabel': { id: 'manual.approval.rejectLabel', labelJa: '却下ボタン文言', fieldKey: 'steps[].approval.rejectLabel', summary: '却下ボタンに表示する文言です。', effect: '却下時に戻す、修正する、中止するなどの意味を明確にできます。' },
+  'manual.approval.message': { id: 'manual.approval.message', labelJa: '承認メッセージ', fieldKey: 'steps[].approval.message', summary: '承認者へ表示する説明文です。', effect: '何を確認して承認または却下すべきかを明示します。' }
 });
 `
 }
