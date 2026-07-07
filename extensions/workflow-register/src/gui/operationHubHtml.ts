@@ -205,9 +205,11 @@ function renderRun(run: OperationHubRunSummary): string {
   const focusBadge = run.focused ? `<span class="badge warning">操作対象</span>` : ""
   const statusKind = run.status === "failed" ? "error" : "info"
   const statusBadge = `<span class="badge ${statusKind}">${escapeHtml(run.statusLabel)}</span>`
+  const syncBadge = `<span class="badge ${escapeHtml(run.bobTaskSyncStatus)}">${escapeHtml(run.bobTaskSyncLabel)}</span>`
   return `<article class="${cardClass}">
     <div class="card-title"><h3>${escapeHtml(run.workflowName)}</h3><span class="title-badges">${focusBadge}${statusBadge}</span></div>
     <div class="muted"><code>${escapeHtml(run.runId)}</code> / ${escapeHtml(run.currentStepLabel)}</div>
+    <div class="muted">${syncBadge}</div>
     <div class="progress" aria-label="progress"><span style="width:${percent}%"></span></div>
     <div class="muted">${run.completedStepCount}/${run.totalStepCount} step / updated ${escapeHtml(run.updatedAt)}</div>
     <div class="actions">${run.primaryActions.map(renderActionButton).join("")}</div>

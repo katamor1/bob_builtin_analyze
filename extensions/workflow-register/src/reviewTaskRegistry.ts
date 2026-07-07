@@ -18,6 +18,14 @@ export class ReviewTaskRegistry {
     return true
   }
 
+  taskForRun(runId: string | undefined): BobWorkflowTask | undefined {
+    return runId ? this.tasksByRun.get(runId) : undefined
+  }
+
+  taskForStep(runId: string | undefined, stepId: string | undefined): BobWorkflowTask | undefined {
+    return runId && stepId ? this.tasksByStep.get(reviewTaskKey(runId, stepId)) : undefined
+  }
+
   complete(runId: string | undefined, stepId: string | undefined): boolean {
     if (!runId || !stepId) return false
     const key = reviewTaskKey(runId, stepId)
@@ -36,7 +44,7 @@ export class ReviewTaskRegistry {
   }
 
   agentProviderForRun(runId: string | undefined, workflow: CoreWorkflowDefinition): AgentProvider | undefined {
-    const task = runId ? this.tasksByRun.get(runId) : undefined
+    const task = this.taskForRun(runId)
     if (typeof task?.startSubagent !== "function") return undefined
     const startSubagent = task.startSubagent.bind(task)
     return {
