@@ -70,7 +70,7 @@ export class ReviewTaskRegistry {
     this.tasksByStep.delete(key)
     if (typeof task?.setStepComplete !== "function") return false
     try {
-      task.setStepComplete()
+      void task.setStepComplete()
       this.completedSteps.add(key)
       return true
     } catch (error) {
@@ -79,11 +79,11 @@ export class ReviewTaskRegistry {
     }
   }
 
-  reconcileRun(
+  async reconcileRun(
     run: WorkflowRunState,
     workflow: CoreWorkflowDefinition | undefined,
     options: BobTaskSyncReconcileOptions
-  ): BobTaskSyncReconcileResult {
+  ): Promise<BobTaskSyncReconcileResult> {
     const task = options.task ?? this.taskForRun(run.runId)
     return reconcileBobTaskSync(run, workflow, { ...options, task })
   }
@@ -120,11 +120,11 @@ export class ReviewTaskRegistry {
 export const reviewTaskRegistry = new ReviewTaskRegistry()
 export const bobTaskSyncRegistry = reviewTaskRegistry
 
-export function reconcileBobTaskSync(
+export async function reconcileBobTaskSync(
   run: WorkflowRunState,
   workflow: CoreWorkflowDefinition | undefined,
   options: BobTaskSyncReconcileOptions
-): BobTaskSyncReconcileResult {
+): Promise<BobTaskSyncReconcileResult> {
   const now = options.now?.() ?? new Date().toISOString()
   const targetCompletedThroughIndex = completedPrefixIndex(run)
   const sync: BobTaskSyncState = run.bobTaskSync ?? {
@@ -184,7 +184,7 @@ export function reconcileBobTaskSync(
   let appliedStepCount = 0
   for (let index = previousCompletedThroughIndex + 1; index <= targetCompletedThroughIndex; index += 1) {
     try {
-      options.task.setStepComplete()
+      await applyBobStepComplete(options.task)
       appliedStepCount += 1
       sync.completedThroughIndex = index
       sync.completedThroughStepId = stepIdAt(run, index)
@@ -211,6 +211,16 @@ export function completedPrefixIndex(run: WorkflowRunState): number {
     completedThrough = index
   }
   return completedThrough
+}
+
+async function applyBobStepComplete(task: BobWorkflowTask): Promise<void> {
+  if (typeof task.setStepComplete !== "function") throw new Error("Bob task does not support setStepComplete.")
+  await Promise.resolve(task.setStepComplete())
+  await waitForBobTodoProjectionTick()
+}
+
+function waitForBobTodoProjectionTick(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0))
 }
 
 function normalizeCompletedIndex(value: number | undefined): number {
