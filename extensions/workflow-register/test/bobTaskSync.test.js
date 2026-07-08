@@ -37,6 +37,16 @@ function run(statuses, sync) {
   }
 }
 
+function taskExport(completedThroughIndex) {
+  return {
+    todos: workflow().engineSteps.map((step, index) => ({
+      id: step.id,
+      title: step.title,
+      completed: index <= completedThroughIndex
+    }))
+  }
+}
+
 const now = () => "2026-07-07T00:00:01.000Z"
 
 test("completedPrefixIndex returns the contiguous completed prefix", () => {
@@ -77,6 +87,53 @@ test("reconcileBobTaskSync waits for async Bob task completion before updating p
   assert.equal(result.status, "synced")
   assert.equal(result.appliedStepCount, 1)
   assert.equal(target.bobTaskSync.completedThroughIndex, 0)
+})
+
+test("reconcileBobTaskSync trusts task export projection over a stale stored projection", async () => {
+  const target = run(["completed", "completed", "reviewing"], {
+    schemaVersion: "workflow-register/bob-task-sync/v1",
+    projectionVersion: 1,
+    completedThroughIndex: 2,
+    completedThroughStepId: "apply"
+  })
+  let completions = 0
+  let taskProjection = 0
+  const result = await reconcileBobTaskSync(target, workflow(), {
+    reason: "operation-hub-next",
+    now,
+    task: {
+      setStepComplete: () => {
+        completions += 1
+        taskProjection += 1
+      },
+      toSerializable: () => taskExport(taskProjection)
+    }
+  })
+
+  assert.equal(result.status, "synced")
+  assert.equal(result.appliedStepCount, 1)
+  assert.equal(completions, 1)
+  assert.equal(target.bobTaskSync.completedThroughIndex, 1)
+  assert.equal(target.bobTaskSync.completedThroughStepId, "draft")
+})
+
+test("reconcileBobTaskSync reports repairFailed when task export projection does not advance", async () => {
+  const target = run(["completed", "completed", "reviewing"])
+  let completions = 0
+  const result = await reconcileBobTaskSync(target, workflow(), {
+    reason: "operation-hub-next",
+    now,
+    task: {
+      setStepComplete: () => { completions += 1 },
+      toSerializable: () => taskExport(0)
+    }
+  })
+
+  assert.equal(result.status, "repairFailed")
+  assert.equal(result.appliedStepCount, 0)
+  assert.equal(completions, 1)
+  assert.equal(target.bobTaskSync.completedThroughIndex, 0)
+  assert.match(target.bobTaskSync.drift.details, /task export still reports/i)
 })
 
 test("reconcileBobTaskSync records taskUnavailable without a live task", async () => {
