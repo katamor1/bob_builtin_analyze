@@ -163,6 +163,10 @@ export class WorkflowRegisterService implements vscode.Disposable {
     return this.runCommands.startFromStepWithArtifacts(workflowId, stepId, sourceRunId, inputs)
   }
 
+  async importArtifactsFromTaskSnapshots(runId?: string): Promise<unknown> {
+    return this.runCommands.importArtifactsFromTaskSnapshots(runId)
+  }
+
   async runNextStep(runId?: string): Promise<unknown> {
     return this.runCommands.runNextStep(runId)
   }
