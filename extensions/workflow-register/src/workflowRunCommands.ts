@@ -5,15 +5,18 @@ import type { ActiveStep } from "./bobWorkflowTypes"
 import { bobTaskSyncRegistry, type BobTaskSyncReason } from "./bobTaskSync"
 import {
   hydrateWorkflowStateFromArtifacts,
+  importArtifactsFromTaskSnapshots as importTaskSnapshotArtifacts,
   parseWorkflowArtifactManifest,
   seedWorkflowRunFromArtifacts,
   stateKeysProducedBeforeStep,
   validateWorkflowArtifactManifest,
+  type TaskSnapshotArtifactImportIssue,
   type WorkflowArtifactManifest
 } from "./core/artifacts"
 import type { CoreWorkflowDefinition, WorkflowRunState } from "./core/model"
 import { formatBranchingDiagnostics } from "./core/runDiagnostics"
 import { pendingReviewTransitionStepId } from "./core/engine/runState"
+import { FileTaskSnapshotStore } from "./core/taskSnapshots"
 import type { MarkerRootCandidate } from "./core/workspaceRoots"
 import { showMarkdownReport } from "./reports"
 import type { ManualStepPanelInput } from "./webview/manualStepViewModel"
@@ -175,6 +178,38 @@ export class WorkflowRunCommandService {
     const engine = this.options.runtimeFactory.createEngine(root)
     const result = await engine.resumeRun(seeded.runId, { workflow })
     await vscode.window.showInformationMessage(`Workflow run ${result.status}: ${result.runId}; reused ${seededRun.reusedStepIds.length} step(s) from ${source.run.runId}`)
+    return result
+  }
+
+  async importArtifactsFromTaskSnapshots(runId?: string): Promise<unknown> {
+    const trustError = await requireTrustedWorkspace("import artifacts from task snapshots")
+    if (trustError) return trustError
+    await this.ensureWorkflowsLoaded()
+    const selection = await this.selectRun(runId)
+    if (!selection) return runId ? `Workflow run not found: ${runId}` : "No workflow run selected."
+    const runStore = this.options.runtimeFactory.createRunStore(selection.root)
+    const run = selection.run ?? await runStore.loadRun(selection.runId)
+    if (!run) throw new Error(`Workflow run not found: ${selection.runId}`)
+    const workflow = this.options.coreWorkflows.get(run.workflowId)
+    if (!workflow) throw new Error(`Workflow definition is not loaded: ${run.workflowId}`)
+
+    const result = await importTaskSnapshotArtifacts({
+      workflow,
+      run,
+      snapshotStore: new FileTaskSnapshotStore({ workspaceRoot: selection.root }),
+      writeFile: (relativePath, text) => writeWorkspaceFile(selection.root, relativePath, text)
+    })
+    if (result.importedCount > 0) await runStore.saveRun(run)
+    const lines = [
+      `- runId: ${run.runId}`,
+      `- workflow: ${workflow.id}`,
+      `- imported: ${result.importedCount}`,
+      `- manifest: ${result.manifest ? "updated" : "not updated"}`,
+      "",
+      "Issues:",
+      ...formatSnapshotImportIssues(result.issues)
+    ]
+    await showMarkdownReport("Task Snapshot Artifact Import", result.ok ? "Imported artifacts from task snapshots." : "No artifacts were imported from task snapshots.", lines)
     return result
   }
 
@@ -517,6 +552,23 @@ async function loadArtifactManifest(root: string, run: WorkflowRunState): Promis
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined
     throw error
   }
+}
+
+async function writeWorkspaceFile(root: string, relativePath: string, text: string): Promise<void> {
+  const resolved = path.resolve(root, relativePath)
+  if (!isContainedPath(root, resolved)) throw new Error(`Artifact path escapes workspace root: ${relativePath}`)
+  await fs.mkdir(path.dirname(resolved), { recursive: true })
+  await fs.writeFile(resolved, text, "utf8")
+}
+
+function isContainedPath(root: string, target: string): boolean {
+  const relative = path.relative(path.resolve(root), path.resolve(target))
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative))
+}
+
+function formatSnapshotImportIssues(issues: TaskSnapshotArtifactImportIssue[]): string[] {
+  if (issues.length === 0) return ["- ok: No task snapshot import issues."]
+  return issues.map((issue) => `- ${issue.severity}: ${issue.artifactId ? `${issue.artifactId}: ` : ""}${issue.message}`)
 }
 
 function resolveRunId(value: RunCommandArg): string | undefined {
