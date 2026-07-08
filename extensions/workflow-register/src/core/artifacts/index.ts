@@ -40,3 +40,15 @@ export type {
   SeedWorkflowRunFromArtifactsResult,
   WorkflowArtifactReuseRecord
 } from "./seedRun"
+export {
+  TASK_SNAPSHOT_IMPORT_STATE_KEY,
+  importArtifactsFromTaskSnapshots,
+  snapshotText
+} from "./taskSnapshotImport"
+export type {
+  ImportArtifactsFromTaskSnapshotsInput,
+  TaskSnapshotArtifactImportEntry,
+  TaskSnapshotArtifactImportIssue,
+  TaskSnapshotArtifactImportRecord,
+  TaskSnapshotArtifactImportResult
+} from "./taskSnapshotImport"
