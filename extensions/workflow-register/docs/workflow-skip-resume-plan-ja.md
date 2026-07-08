@@ -1,10 +1,12 @@
-# workflow-register skip 再開 Phase 1 設計
+# workflow-register skip 再開 Phase 1/2 設計
 
 ## 目的
 
 複数 step の workflow で、既存 run の成果物を再利用し、途中 step から安全に開始できるようにする。
 
 Phase 1 では、途中開始コマンド本体までは実装しない。先に「再利用できる成果物とは何か」を workflow 定義と実行結果に残せるようにし、後続 Phase の state hydration / startFromStep の土台を作る。
+
+Phase 2 では、Phase 1 の manifest を core API として切り出し、artifact file から `run.state` を復元する state hydration 部品を追加する。
 
 ## Phase 1 の範囲
 
@@ -20,6 +22,20 @@ Phase 1 では次はまだ実施しない。
 - artifact file から `run.state` を復元する state hydration。
 - Bob task export から artifact を自動生成する fallback。
 - Bob Todo UI 上で skipped / reused を表示する専用状態。
+
+## Phase 2 の範囲
+
+Phase 2 で実施することは次の 3 点である。
+
+1. artifact manifest の型、parse、serialize、互換性検証を `src/core/artifacts/artifactManifest.ts` に切り出す。
+2. `src/core/artifacts/stateHydration.ts` に artifact file から `run.state` を復元する helper を追加する。
+3. checksum、byte size、workspace-relative path、`workflowId`、`workflowDefinitionHash`、`inputsHash` を hydration 前に検証する。
+
+Phase 2 では次はまだ実施しない。
+
+- Command Palette / Operation Hub からの `startFromStep` UI。
+- hydrate 済み step を `completed` として seed run を作る command。
+- Bob Todo UI の projection repair。
 
 ## Opt-in metadata
 
@@ -102,9 +118,54 @@ Validator は opt-in workflow に対して次を警告する。workspace strict 
 
 同じ内容は `run.state["workflow.artifactManifest"]` にも JSON 文字列として保存する。これにより、`run.json` だけを見ても、どの artifact がどの resultKey から生成されたか確認できる。
 
+## State hydration
+
+Phase 2 では、manifest から対象 state key を選び、artifact file を読み込んで `run.state` に復元する。
+
+```ts
+await hydrateWorkflowStateFromArtifacts({
+  workflow,
+  run,
+  manifest,
+  stateKeys: stateKeysRequiredByStep(workflow, "analyze"),
+  readFile: (relativePath) => fs.readFile(path.join(workflowRoot, relativePath), "utf8")
+})
+```
+
+Hydration は次を検証してから state を更新する。
+
+- manifest の `workflowId` が対象 workflow と一致する。
+- `workflowDefinitionHash` が一致する。ただし caller が明示的に mismatch を許可した場合は進められる。
+- `inputsHash` が target run inputs と一致する。ただし caller が明示的に mismatch を許可した場合は進められる。
+- artifact path が workspace-relative safe path である。
+- artifact file の byte size と sha256 が manifest と一致する。
+
+復元後は `run.state["workflow.artifactHydration"]` に provenance を保存する。
+
+```json
+{
+  "schemaVersion": "workflow-register/artifact-hydration/v1",
+  "sourceRunId": "20260708T...",
+  "sourceWorkflowId": "workflow-register.example",
+  "sourceWorkflowDefinitionHash": "sha256:...",
+  "hydratedAt": "2026-07-08T00:00:00.000Z",
+  "hydrated": [
+    {
+      "stateKey": "collectContext",
+      "artifactId": "collectContext",
+      "producedBy": "collect-context",
+      "path": ".bob/workflows/runs/20260708T.../artifacts/collect-context/collectContext.md",
+      "sha256": "...",
+      "bytes": 12345,
+      "sourceRunId": "20260708T..."
+    }
+  ]
+}
+```
+
 ## Bob task export との関係
 
-Bob task export / task snapshot は Phase 1 では manifest の正本にしない。
+Bob task export / task snapshot は Phase 1/2 では manifest の正本にしない。
 
 理由は、snapshot は診断と handoff 救済の補助証跡であり、最大サイズ制限や redaction により `lastAssistantText` / `taskExport` が省略される可能性があるためである。
 
@@ -112,7 +173,7 @@ Bob task export / task snapshot は Phase 1 では manifest の正本にしな�
 
 ## 後続 Phase への接続
 
-Phase 2 以降では、manifest を使って次を実装する。
+Phase 3 以降では、manifest と hydration helper を使って次を実装する。
 
 1. reuse 元 run / manifest を選ぶ。
 2. `workflowId`、`workflowDefinitionHash`、`inputsHash`、artifact checksum を検証する。
