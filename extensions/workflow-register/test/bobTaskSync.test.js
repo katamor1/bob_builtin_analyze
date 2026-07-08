@@ -45,10 +45,10 @@ test("completedPrefixIndex returns the contiguous completed prefix", () => {
   assert.equal(completedPrefixIndex(run(["completed", "completed", "completed"])), 2)
 })
 
-test("reconcileBobTaskSync advances a live Bob task to the JSON completed prefix", () => {
+test("reconcileBobTaskSync advances a live Bob task to the JSON completed prefix", async () => {
   const target = run(["completed", "completed", "reviewing"])
   let completions = 0
-  const result = reconcileBobTaskSync(target, workflow(), {
+  const result = await reconcileBobTaskSync(target, workflow(), {
     reason: "operation-hub-next",
     now,
     task: { setStepComplete: () => { completions += 1 } }
@@ -60,23 +60,45 @@ test("reconcileBobTaskSync advances a live Bob task to the JSON completed prefix
   assert.equal(target.bobTaskSync.completedThroughStepId, "draft")
 })
 
-test("reconcileBobTaskSync records taskUnavailable without a live task", () => {
+test("reconcileBobTaskSync awaits async Bob task completions before marking synced", async () => {
+  const target = run(["completed", "completed", "reviewing"])
+  const events = []
+  const resultPromise = reconcileBobTaskSync(target, workflow(), {
+    reason: "operation-hub-next",
+    now,
+    task: {
+      setStepComplete: async () => {
+        events.push("start")
+        await Promise.resolve()
+        events.push("done")
+      }
+    }
+  })
+  assert.equal(target.bobTaskSync.completedThroughIndex, -1)
+  const result = await resultPromise
+  assert.equal(result.status, "synced")
+  assert.equal(result.appliedStepCount, 2)
+  assert.deepEqual(events, ["start", "done", "start", "done"])
+  assert.equal(target.bobTaskSync.completedThroughIndex, 1)
+})
+
+test("reconcileBobTaskSync records taskUnavailable without a live task", async () => {
   const target = run(["completed", "reviewing", "pending"])
-  const result = reconcileBobTaskSync(target, workflow(), { reason: "operation-hub-resume", now })
+  const result = await reconcileBobTaskSync(target, workflow(), { reason: "operation-hub-resume", now })
   assert.equal(result.status, "taskUnavailable")
   assert.equal(result.appliedStepCount, 0)
   assert.equal(target.bobTaskSync.completedThroughIndex, -1)
   assert.equal(target.bobTaskSync.drift.status, "taskUnavailable")
 })
 
-test("reconcileBobTaskSync does not rewind Bob Todo projection on retry", () => {
+test("reconcileBobTaskSync does not rewind Bob Todo projection on retry", async () => {
   const target = run(["completed", "pending", "pending"], {
     schemaVersion: "workflow-register/bob-task-sync/v1",
     projectionVersion: 1,
     completedThroughIndex: 1,
     completedThroughStepId: "draft"
   })
-  const result = reconcileBobTaskSync(target, workflow(), {
+  const result = await reconcileBobTaskSync(target, workflow(), {
     reason: "operation-hub-retry",
     now,
     task: { setStepComplete: () => { throw new Error("unexpected completion") } }
@@ -85,10 +107,10 @@ test("reconcileBobTaskSync does not rewind Bob Todo projection on retry", () => 
   assert.equal(target.bobTaskSync.completedThroughIndex, 1)
 })
 
-test("reconcileBobTaskSync can record an already-applied manual completion", () => {
+test("reconcileBobTaskSync can record an already-applied manual completion", async () => {
   const target = run(["completed", "pending", "pending"])
   let completions = 0
-  const result = reconcileBobTaskSync(target, workflow(), {
+  const result = await reconcileBobTaskSync(target, workflow(), {
     reason: "manual-completed",
     now,
     alreadyApplied: true,
