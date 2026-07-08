@@ -55,7 +55,7 @@ export class WorkflowRunControlView implements vscode.Disposable, vscode.TreeDat
       `updatedAt: ${item.run.updatedAt}`
     ].filter(Boolean).join("\n")
     treeItem.iconPath = new vscode.ThemeIcon(iconForRun(item.run))
-    treeItem.contextValue = [`workflowRun.${item.run.status}`, artifactStatus.context].filter(Boolean).join(".")
+    treeItem.contextValue = `workflowRun.${item.run.status}`
     treeItem.command = {
       command: "workflowRegister.inspectRunControl",
       title: "Inspect Run Control",
@@ -101,22 +101,20 @@ export class WorkflowRunControlView implements vscode.Disposable, vscode.TreeDat
   }
 }
 
-function artifactStatusForRun(run: WorkflowRunState): { description?: string; tooltip?: string; context?: string } {
+function artifactStatusForRun(run: WorkflowRunState): { description?: string; tooltip?: string } {
   const reuse = parseReuse(run.state[ARTIFACT_REUSE_STATE_KEY])
   if (reuse) {
     const reusedStepCount = Array.isArray(reuse.reusedStepIds) ? reuse.reusedStepIds.length : 0
     const hydratedKeyCount = Array.isArray(reuse.hydratedKeys) ? reuse.hydratedKeys.length : 0
     return {
       description: `reused ${reusedStepCount}`,
-      tooltip: `artifact reuse: ${reusedStepCount} step(s), ${hydratedKeyCount} state key(s), source=${reuse.sourceRunId ?? "unknown"}, start=${reuse.startStepId ?? "unknown"}`,
-      context: "artifactReuse"
+      tooltip: `artifact reuse: ${reusedStepCount} step(s), ${hydratedKeyCount} state key(s), source=${reuse.sourceRunId ?? "unknown"}, start=${reuse.startStepId ?? "unknown"}`
     }
   }
   if (typeof run.state[ARTIFACT_MANIFEST_STATE_KEY] === "string") {
     return {
       description: "artifacts",
-      tooltip: "artifact manifest is available for skip resume",
-      context: "artifactManifest"
+      tooltip: "artifact manifest is available for skip resume"
     }
   }
   return {}
