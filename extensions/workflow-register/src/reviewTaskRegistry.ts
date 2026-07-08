@@ -297,10 +297,11 @@ function collectTaskProjection(
 
 function projectionFromTodoArray(value: unknown[], run: WorkflowRunState, source: string, path: string): BobTaskProjection | undefined {
   if (run.steps.length === 0 || value.length < Math.min(2, run.steps.length)) return undefined
-  const statuses = value.slice(0, run.steps.length).map(todoCompletionState)
+  const relevantLength = Math.min(value.length, run.steps.length)
+  const statuses = value.slice(0, relevantLength).map(todoCompletionState)
   const knownStatusCount = statuses.filter(Boolean).length
   if (knownStatusCount === 0) return undefined
-  const matchingStepCount = value.slice(0, run.steps.length).filter((item, index) => todoItemMatchesStep(item, run.steps[index])).length
+  const matchingStepCount = value.slice(0, relevantLength).filter((item, index) => todoItemMatchesStep(item, run.steps[index])).length
   const pathLooksRelevant = /todo|task|step|item|checklist/i.test(path)
   if (!pathLooksRelevant && matchingStepCount < 2 && value.length !== run.steps.length) return undefined
   let completedThroughIndex = -1
@@ -308,6 +309,7 @@ function projectionFromTodoArray(value: unknown[], run: WorkflowRunState, source
     if (status !== "completed") break
     completedThroughIndex += 1
   }
+  completedThroughIndex = Math.min(completedThroughIndex, run.steps.length - 1)
   const confidence = knownStatusCount + (matchingStepCount * 3) + (pathLooksRelevant ? 5 : 0) + (value.length === run.steps.length ? 2 : 0)
   return {
     completedThroughIndex,
