@@ -1,7 +1,9 @@
+import { createHash } from "crypto"
 import type {
   CoreWorkflowDefinition,
   EngineStep,
   ResultSourceDefinition,
+  WorkflowArtifactDefinition,
   WorkflowRunState
 } from "../model"
 import type { ResultSinkRegistry } from "../resultSinkRegistry"
@@ -15,6 +17,34 @@ import {
 
 type RecoverResultText = NonNullable<WorkflowEngineOptions["recoverResultText"]>
 type HandoffEmitter = (input: WorkflowEngineEventInput) => Promise<void>
+
+const ARTIFACT_MANIFEST_STATE_KEY = "workflow.artifactManifest"
+const ARTIFACT_MANIFEST_PATH = ".bob/workflows/runs/{{run.id}}/artifacts/manifest.json"
+
+interface WorkflowArtifactManifestEntry {
+  id: string
+  stateKey: string
+  producedBy: string
+  path: string
+  schema?: string
+  sha256: string
+  bytes: number
+  source: "workflow-artifact"
+  updatedAt: string
+}
+
+interface WorkflowArtifactManifest {
+  schemaVersion: "workflow-register/artifact-manifest/v1"
+  workflowId: string
+  logicalWorkflowId?: string
+  workflowDefinitionHash?: string
+  workflowFile?: string
+  runId: string
+  inputsHash: string
+  createdAt: string
+  updatedAt: string
+  artifacts: WorkflowArtifactManifestEntry[]
+}
 
 export async function writeResultSinks(input: {
   workflow: CoreWorkflowDefinition
@@ -72,6 +102,7 @@ export async function writeProducedArtifacts(input: {
 }): Promise<{ ok: true } | { ok: false; error: string }> {
   const { workflow, run, step, resultSinks } = input
   const artifacts = workflow.artifacts ?? []
+  const manifestEntries: WorkflowArtifactManifestEntry[] = []
   for (const artifact of artifacts.filter((item) => item.producedBy === step.id)) {
     const value = run.state[artifact.id]
     if (value === undefined) continue
@@ -91,6 +122,23 @@ export async function writeProducedArtifacts(input: {
       text: value
     })
     if (!write.ok) return { ok: false, error: write.error ?? `Failed to write artifact: ${artifact.id}` }
+    manifestEntries.push(artifactManifestEntry(artifact, step, path, value))
+  }
+  if (manifestEntries.length > 0) {
+    const manifest = updateArtifactManifest(workflow, run, manifestEntries)
+    const manifestWrite = await resultSinks.write({ type: "file", path: ARTIFACT_MANIFEST_PATH }, {
+      workflowId: workflow.id,
+      logicalWorkflowId: workflow.logicalWorkflowId,
+      workflowRoot: workflow.workflowRoot,
+      workflowFile: workflow.workflowFile,
+      workflowFolderName: workflow.workflowFolderName,
+      runId: run.runId,
+      stepId: step.id,
+      inputs: run.inputs,
+      state: run.state,
+      text: `${JSON.stringify(manifest, null, 2)}\n`
+    })
+    if (!manifestWrite.ok) return { ok: false, error: manifestWrite.error ?? "Failed to write artifact manifest." }
   }
   return { ok: true }
 }
@@ -118,4 +166,90 @@ async function resultText(input: {
   const value = run.state[result.stateKey]
   if (value === undefined) throw new Error(`Workflow state is missing: ${result.stateKey}`)
   return value
+}
+
+function artifactManifestEntry(
+  artifact: WorkflowArtifactDefinition,
+  step: EngineStep,
+  path: string,
+  value: string
+): WorkflowArtifactManifestEntry {
+  const bytes = Buffer.byteLength(value, "utf8")
+  return {
+    id: artifact.id,
+    stateKey: artifact.id,
+    producedBy: step.id,
+    path,
+    schema: artifact.schema,
+    sha256: sha256(value),
+    bytes,
+    source: "workflow-artifact",
+    updatedAt: new Date().toISOString()
+  }
+}
+
+function updateArtifactManifest(
+  workflow: CoreWorkflowDefinition,
+  run: WorkflowRunState,
+  entries: WorkflowArtifactManifestEntry[]
+): WorkflowArtifactManifest {
+  const now = new Date().toISOString()
+  const current = parseArtifactManifest(run.state[ARTIFACT_MANIFEST_STATE_KEY])
+  const artifacts = new Map<string, WorkflowArtifactManifestEntry>()
+  for (const entry of current?.artifacts ?? []) artifacts.set(artifactEntryKey(entry), entry)
+  for (const entry of entries) artifacts.set(artifactEntryKey(entry), entry)
+  const manifest: WorkflowArtifactManifest = {
+    schemaVersion: "workflow-register/artifact-manifest/v1",
+    workflowId: workflow.id,
+    logicalWorkflowId: workflow.logicalWorkflowId,
+    workflowDefinitionHash: workflow.definitionHash,
+    workflowFile: workflow.filePath,
+    runId: run.runId,
+    inputsHash: `sha256:${sha256(stableJson(run.inputs))}`,
+    createdAt: current?.createdAt ?? now,
+    updatedAt: now,
+    artifacts: Array.from(artifacts.values()).sort((left, right) => {
+      const byStep = left.producedBy.localeCompare(right.producedBy)
+      return byStep !== 0 ? byStep : left.id.localeCompare(right.id)
+    })
+  }
+  run.state[ARTIFACT_MANIFEST_STATE_KEY] = JSON.stringify(manifest)
+  return manifest
+}
+
+function parseArtifactManifest(value: string | undefined): WorkflowArtifactManifest | undefined {
+  if (!value) return undefined
+  try {
+    const parsed = JSON.parse(value)
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return undefined
+    const record = parsed as Partial<WorkflowArtifactManifest>
+    if (record.schemaVersion !== "workflow-register/artifact-manifest/v1") return undefined
+    if (!Array.isArray(record.artifacts)) return undefined
+    return record as WorkflowArtifactManifest
+  } catch {
+    return undefined
+  }
+}
+
+function artifactEntryKey(entry: WorkflowArtifactManifestEntry): string {
+  return `${entry.producedBy}\u0000${entry.id}`
+}
+
+function sha256(value: string): string {
+  return createHash("sha256").update(value).digest("hex")
+}
+
+function stableJson(value: unknown): string {
+  return JSON.stringify(canonicalJson(value))
+}
+
+function canonicalJson(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalJson)
+  if (!value || typeof value !== "object") return value
+  return Object.fromEntries(
+    Object.keys(value as Record<string, unknown>)
+      .sort()
+      .filter((key) => (value as Record<string, unknown>)[key] !== undefined)
+      .map((key) => [key, canonicalJson((value as Record<string, unknown>)[key])])
+  )
 }
