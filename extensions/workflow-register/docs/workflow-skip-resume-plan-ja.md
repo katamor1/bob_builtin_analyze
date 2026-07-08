@@ -1,4 +1,4 @@
-# workflow-register skip 再開 Phase 1/2 設計
+# workflow-register skip 再開 Phase 1/2/3 設計
 
 ## 目的
 
@@ -7,6 +7,8 @@
 Phase 1 では、途中開始コマンド本体までは実装しない。先に「再利用できる成果物とは何か」を workflow 定義と実行結果に残せるようにし、後続 Phase の state hydration / startFromStep の土台を作る。
 
 Phase 2 では、Phase 1 の manifest を core API として切り出し、artifact file から `run.state` を復元する state hydration 部品を追加する。
+
+Phase 3 では、manifest / hydration を実際の command 導線へ接続し、既存 run の成果物から新しい run を seed して指定 step から開始できるようにする。
 
 ## Phase 1 の範囲
 
@@ -36,6 +38,21 @@ Phase 2 では次はまだ実施しない。
 - Command Palette / Operation Hub からの `startFromStep` UI。
 - hydrate 済み step を `completed` として seed run を作る command。
 - Bob Todo UI の projection repair。
+
+## Phase 3 の範囲
+
+Phase 3 で実施することは次の 4 点である。
+
+1. `workflowRegister.startFromStepWithArtifacts` command を追加する。
+2. workflow / start step / reuse 元 run を QuickPick で選び、target inputs と互換性のある manifest だけを候補にする。
+3. 開始 step より前に生成される state key を artifact file から hydrate し、前段 step を `completed` として新 run を seed する。
+4. seed 済み run を通常の `WorkflowEngine.resumeRun()` に渡し、開始 step から続行する。
+
+Phase 3 では次はまだ実施しない。
+
+- Operation Hub の専用ボタン表示。
+- Bob Todo UI で reused/skipped を専用表示する projection。
+- task snapshot から artifact を生成する fallback import。
 
 ## Opt-in metadata
 
@@ -163,9 +180,61 @@ Hydration は次を検証してから state を更新する。
 }
 ```
 
+## Start from artifacts command
+
+Phase 3 の command は次の ID で公開する。
+
+```text
+workflowRegister.startFromStepWithArtifacts
+```
+
+引数を渡さない場合、次を順に選択する。
+
+1. workflow
+2. start step
+3. workflow inputs
+4. reuse 元 run
+
+引数で呼ぶ場合は次の形を想定する。
+
+```ts
+vscode.commands.executeCommand(
+  "workflowRegister.startFromStepWithArtifacts",
+  workflowId,
+  stepId,
+  sourceRunId,
+  inputs
+)
+```
+
+実行時の流れは次の通り。
+
+1. target workflow と inputs を決める。
+2. 同じ workspace root の run 一覧から artifact manifest を持つ run を探す。
+3. manifest の `workflowId` / `workflowDefinitionHash` / `inputsHash` が target workflow と inputs に一致する run だけを候補にする。
+4. 開始 step より前に生成される state key を artifact file から hydrate する。
+5. 新規 run を作成し、開始 step より前の step を `completed` にする。
+6. `run.state["workflow.artifactReuse"]` に reuse provenance を保存する。
+7. `WorkflowEngine.resumeRun()` に渡し、開始 step から通常実行する。
+
+`workflow.artifactReuse` は次の形式で保存する。
+
+```json
+{
+  "schemaVersion": "workflow-register/artifact-reuse/v1",
+  "sourceRunId": "20260708T...",
+  "sourceWorkflowId": "workflow-register.example",
+  "sourceWorkflowDefinitionHash": "sha256:...",
+  "startStepId": "analyze",
+  "reusedStepIds": ["collect-context"],
+  "hydratedKeys": ["collectContext"],
+  "createdAt": "2026-07-08T00:00:00.000Z"
+}
+```
+
 ## Bob task export との関係
 
-Bob task export / task snapshot は Phase 1/2 では manifest の正本にしない。
+Bob task export / task snapshot は Phase 1/2/3 では manifest の正本にしない。
 
 理由は、snapshot は診断と handoff 救済の補助証跡であり、最大サイズ制限や redaction により `lastAssistantText` / `taskExport` が省略される可能性があるためである。
 
@@ -173,10 +242,9 @@ Bob task export / task snapshot は Phase 1/2 では manifest の正本にしな
 
 ## 後続 Phase への接続
 
-Phase 3 以降では、manifest と hydration helper を使って次を実装する。
+Phase 4 以降では、Phase 3 の command を使いやすくするために次を追加する。
 
-1. reuse 元 run / manifest を選ぶ。
-2. `workflowId`、`workflowDefinitionHash`、`inputsHash`、artifact checksum を検証する。
-3. 開始 step より前に必要な artifact を読み、`run.state` を seed する。
-4. seed 済み step を `completed` とし、reuse provenance を run state に残す。
-5. `currentStep` を開始 step にして通常の `WorkflowEngine` で続行する。
+1. Operation Hub に「この step から成果物再利用で開始」導線を追加する。
+2. Bob Todo UI の projection に reused/skipped の診断表示を追加する。
+3. task snapshot から artifact を生成する fallback import を追加する。
+4. Builder で file-bound skip resume に必要な artifact 定義を自動生成する。
