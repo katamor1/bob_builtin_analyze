@@ -65,7 +65,7 @@ async function acceptReviewedStep(runId?: string): Promise<AcceptedStepResult | 
   if (!run) return `Workflow run not found: ${selection.runId}`
   const acceptedStepId = run.currentStep
   const accepted = acceptReviewingStep(run)
-  const sync = bobTaskSyncRegistry.reconcileRun(accepted, undefined, {
+  const sync = await bobTaskSyncRegistry.reconcileRun(accepted, undefined, {
     reason: "review-accepted",
     task: reviewTaskRegistry.taskForStep(accepted.runId, acceptedStepId) ?? reviewTaskRegistry.taskForRun(accepted.runId)
   })
