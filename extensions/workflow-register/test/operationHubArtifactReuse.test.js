@@ -43,7 +43,7 @@ test("Operation Hub model exposes start-from-artifacts action for runs with a ma
 
   const model = buildOperationHubModel({
     workspaceName: "repo",
-    workspaceRoots: ["C:\\repo"],
+    workspaceRoots: ["/repo"],
     extensionStatus: [],
     setup: {
       bobRootPresent: true,
@@ -55,7 +55,7 @@ test("Operation Hub model exposes start-from-artifacts action for runs with a ma
     workflows: [],
     runs: [
       {
-        root: "C:\\repo",
+        root: "/repo",
         run: {
           runId: "source-run",
           workflowId: "qa.review",
@@ -89,7 +89,7 @@ test("Operation Hub model summarizes artifact reuse provenance", () => {
 
   const model = buildOperationHubModel({
     workspaceName: "repo",
-    workspaceRoots: ["C:\\repo"],
+    workspaceRoots: ["/repo"],
     extensionStatus: [],
     setup: {
       bobRootPresent: true,
@@ -101,7 +101,7 @@ test("Operation Hub model summarizes artifact reuse provenance", () => {
     workflows: [],
     runs: [
       {
-        root: "C:\\repo",
+        root: "/repo",
         run: {
           runId: "target-run",
           workflowId: "qa.review",
