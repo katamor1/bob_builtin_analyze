@@ -476,7 +476,7 @@ export class WorkflowRunCommandService {
   }
 
   private async reconcileBobTask(root: string, run: WorkflowRunState, workflow: CoreWorkflowDefinition, reason: BobTaskSyncReason): Promise<void> {
-    const sync = bobTaskSyncRegistry.reconcileRun(run, workflow, {
+    const sync = await bobTaskSyncRegistry.reconcileRun(run, workflow, {
       reason,
       task: reviewTaskRegistry.taskForRun(run.runId)
     })
