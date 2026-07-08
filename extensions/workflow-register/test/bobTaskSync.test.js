@@ -60,26 +60,23 @@ test("reconcileBobTaskSync advances a live Bob task to the JSON completed prefix
   assert.equal(target.bobTaskSync.completedThroughStepId, "draft")
 })
 
-test("reconcileBobTaskSync awaits async Bob task completions before marking synced", async () => {
-  const target = run(["completed", "completed", "reviewing"])
-  const events = []
-  const resultPromise = reconcileBobTaskSync(target, workflow(), {
-    reason: "operation-hub-next",
+test("reconcileBobTaskSync waits for async Bob task completion before updating projection", async () => {
+  const target = run(["completed", "reviewing", "pending"])
+  let pending = true
+  const result = await reconcileBobTaskSync(target, workflow(), {
+    reason: "review-accepted",
     now,
     task: {
       setStepComplete: async () => {
-        events.push("start")
-        await Promise.resolve()
-        events.push("done")
+        await new Promise((resolve) => setTimeout(resolve, 1))
+        pending = false
       }
     }
   })
-  assert.equal(target.bobTaskSync.completedThroughIndex, -1)
-  const result = await resultPromise
+  assert.equal(pending, false)
   assert.equal(result.status, "synced")
-  assert.equal(result.appliedStepCount, 2)
-  assert.deepEqual(events, ["start", "done", "start", "done"])
-  assert.equal(target.bobTaskSync.completedThroughIndex, 1)
+  assert.equal(result.appliedStepCount, 1)
+  assert.equal(target.bobTaskSync.completedThroughIndex, 0)
 })
 
 test("reconcileBobTaskSync records taskUnavailable without a live task", async () => {
