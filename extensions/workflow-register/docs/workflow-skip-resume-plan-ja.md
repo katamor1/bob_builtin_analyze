@@ -1,4 +1,4 @@
-# workflow-register skip 再開 Phase 1/2/3 設計
+# workflow-register skip 再開 Phase 1/2/3/4 設計
 
 ## 目的
 
@@ -9,6 +9,8 @@ Phase 1 では、途中開始コマンド本体までは実装しない。先に
 Phase 2 では、Phase 1 の manifest を core API として切り出し、artifact file から `run.state` を復元する state hydration 部品を追加する。
 
 Phase 3 では、manifest / hydration を実際の command 導線へ接続し、既存 run の成果物から新しい run を seed して指定 step から開始できるようにする。
+
+Phase 4 では、Phase 3 の command を Operation Hub / Runs View から見つけやすくし、再利用済み run と再利用可能 artifact manifest を UI で確認できるようにする。
 
 ## Phase 1 の範囲
 
@@ -53,6 +55,21 @@ Phase 3 では次はまだ実施しない。
 - Operation Hub の専用ボタン表示。
 - Bob Todo UI で reused/skipped を専用表示する projection。
 - task snapshot から artifact を生成する fallback import。
+
+## Phase 4 の範囲
+
+Phase 4 で実施することは次の 4 点である。
+
+1. Operation Hub の run card に artifact manifest の有無を badge 表示する。
+2. artifact manifest を持つ run に「成果物から開始」ボタンを表示し、`workflowRegister.startFromStepWithArtifacts` を `workflowId + sourceRunId` で呼ぶ。
+3. `workflow.artifactReuse` を持つ run を Operation Hub と Explorer の Runs View で reused run として表示する。
+4. Operation Hub の auto refresh 対象に `artifacts/manifest.json` を追加し、manifest 生成後に画面へ反映する。
+
+Phase 4 では次はまだ実施しない。
+
+- task snapshot から artifact を生成する fallback import。
+- Builder で file-bound skip resume artifact 定義を自動生成する。
+- Bob Todo UI 内の todo item 表示そのものに reused/skipped marker を埋め込む。
 
 ## Opt-in metadata
 
@@ -232,9 +249,19 @@ vscode.commands.executeCommand(
 }
 ```
 
+## Operation Hub / Runs View
+
+Phase 4 では Operation Hub の run card に次を表示する。
+
+- `Reusable artifacts: N`: artifact manifest がある run。
+- `Artifacts reused: N step(s), M state key(s)`: artifact reuse で作られた run。
+- `成果物から開始`: artifact manifest がある run から新しい start-from-artifacts run を作る action。
+
+Explorer の `Bob Workflow Runs` view でも、artifact manifest がある run は `artifacts`、reuse 済み run は `reused N` と表示し、tooltip に source run と start step を出す。
+
 ## Bob task export との関係
 
-Bob task export / task snapshot は Phase 1/2/3 では manifest の正本にしない。
+Bob task export / task snapshot は Phase 1/2/3/4 では manifest の正本にしない。
 
 理由は、snapshot は診断と handoff 救済の補助証跡であり、最大サイズ制限や redaction により `lastAssistantText` / `taskExport` が省略される可能性があるためである。
 
@@ -242,9 +269,8 @@ Bob task export / task snapshot は Phase 1/2/3 では manifest の正本にし�
 
 ## 後続 Phase への接続
 
-Phase 4 以降では、Phase 3 の command を使いやすくするために次を追加する。
+Phase 5 以降では、Phase 4 の UI 導線をさらに使いやすくするために次を追加する。
 
-1. Operation Hub に「この step から成果物再利用で開始」導線を追加する。
-2. Bob Todo UI の projection に reused/skipped の診断表示を追加する。
-3. task snapshot から artifact を生成する fallback import を追加する。
-4. Builder で file-bound skip resume に必要な artifact 定義を自動生成する。
+1. task snapshot から artifact を生成する fallback import を追加する。
+2. Builder で file-bound skip resume に必要な artifact 定義を自動生成する。
+3. Bob Todo UI 内の todo item 表示そのものに reused/skipped marker を埋め込む。
