@@ -1,4 +1,4 @@
-# workflow-register skip 再開 Phase 1/2/3/4 設計
+# workflow-register skip 再開 Phase 1/2/3/4/5 設計
 
 ## 目的
 
@@ -12,6 +12,8 @@ Phase 3 では、manifest / hydration を実際の command 導線へ接続し、
 
 Phase 4 では、Phase 3 の command を Operation Hub / Runs View から見つけやすくし、再利用済み run と再利用可能 artifact manifest を UI で確認できるようにする。
 
+Phase 5 では、manifest が無い古い Bob UI run を救済するため、task snapshot の `lastAssistantText` / `taskExport` から artifact file と artifact manifest を生成する fallback import を追加する。
+
 ## Phase 1 の範囲
 
 Phase 1 で実施することは次の 3 点である。
@@ -20,13 +22,6 @@ Phase 1 で実施することは次の 3 点である。
 2. opt-in した workflow に対し、resultKey と artifact の対応を validator で確認する。
 3. 実行時に `artifacts` から書き出した成果物を manifest に記録する。
 
-Phase 1 では次はまだ実施しない。
-
-- 既存 run / manifest を選択して新 run を seed する UI。
-- artifact file から `run.state` を復元する state hydration。
-- Bob task export から artifact を自動生成する fallback。
-- Bob Todo UI 上で skipped / reused を表示する専用状態。
-
 ## Phase 2 の範囲
 
 Phase 2 で実施することは次の 3 点である。
@@ -34,12 +29,6 @@ Phase 2 で実施することは次の 3 点である。
 1. artifact manifest の型、parse、serialize、互換性検証を `src/core/artifacts/artifactManifest.ts` に切り出す。
 2. `src/core/artifacts/stateHydration.ts` に artifact file から `run.state` を復元する helper を追加する。
 3. checksum、byte size、workspace-relative path、`workflowId`、`workflowDefinitionHash`、`inputsHash` を hydration 前に検証する。
-
-Phase 2 では次はまだ実施しない。
-
-- Command Palette / Operation Hub からの `startFromStep` UI。
-- hydrate 済み step を `completed` として seed run を作る command。
-- Bob Todo UI の projection repair。
 
 ## Phase 3 の範囲
 
@@ -50,12 +39,6 @@ Phase 3 で実施することは次の 4 点である。
 3. 開始 step より前に生成される state key を artifact file から hydrate し、前段 step を `completed` として新 run を seed する。
 4. seed 済み run を通常の `WorkflowEngine.resumeRun()` に渡し、開始 step から続行する。
 
-Phase 3 では次はまだ実施しない。
-
-- Operation Hub の専用ボタン表示。
-- Bob Todo UI で reused/skipped を専用表示する projection。
-- task snapshot から artifact を生成する fallback import。
-
 ## Phase 4 の範囲
 
 Phase 4 で実施することは次の 4 点である。
@@ -65,11 +48,20 @@ Phase 4 で実施することは次の 4 点である。
 3. `workflow.artifactReuse` を持つ run を Operation Hub と Explorer の Runs View で reused run として表示する。
 4. Operation Hub の auto refresh 対象に `artifacts/manifest.json` を追加し、manifest 生成後に画面へ反映する。
 
-Phase 4 では次はまだ実施しない。
+## Phase 5 の範囲
 
-- task snapshot から artifact を生成する fallback import。
+Phase 5 で実施することは次の 4 点である。
+
+1. `workflowRegister.importArtifactsFromTaskSnapshots` command を追加する。
+2. task snapshot の `lastAssistantText`、または `taskExport` 内の `resultText` / `artifactText` / `text` などから import 候補 text を抽出する。
+3. workflow の `artifacts[].producedBy` と producing step の `resultKey` が一致する場合だけ artifact file を生成し、manifest entry の `source` を `task-snapshot` にする。
+4. `run.state["workflow.taskSnapshotImport"]` に import provenance を保存し、以後は Phase 3/4 の start-from-artifacts 導線へ乗せる。
+
+Phase 5 では次はまだ実施しない。
+
 - Builder で file-bound skip resume artifact 定義を自動生成する。
 - Bob Todo UI 内の todo item 表示そのものに reused/skipped marker を埋め込む。
+- task snapshot import の内容差分を GUI で確認してから apply する画面。
 
 ## Opt-in metadata
 
@@ -176,27 +168,6 @@ Hydration は次を検証してから state を更新する。
 
 復元後は `run.state["workflow.artifactHydration"]` に provenance を保存する。
 
-```json
-{
-  "schemaVersion": "workflow-register/artifact-hydration/v1",
-  "sourceRunId": "20260708T...",
-  "sourceWorkflowId": "workflow-register.example",
-  "sourceWorkflowDefinitionHash": "sha256:...",
-  "hydratedAt": "2026-07-08T00:00:00.000Z",
-  "hydrated": [
-    {
-      "stateKey": "collectContext",
-      "artifactId": "collectContext",
-      "producedBy": "collect-context",
-      "path": ".bob/workflows/runs/20260708T.../artifacts/collect-context/collectContext.md",
-      "sha256": "...",
-      "bytes": 12345,
-      "sourceRunId": "20260708T..."
-    }
-  ]
-}
-```
-
 ## Start from artifacts command
 
 Phase 3 の command は次の ID で公開する。
@@ -234,18 +205,52 @@ vscode.commands.executeCommand(
 6. `run.state["workflow.artifactReuse"]` に reuse provenance を保存する。
 7. `WorkflowEngine.resumeRun()` に渡し、開始 step から通常実行する。
 
-`workflow.artifactReuse` は次の形式で保存する。
+## Task snapshot import command
+
+Phase 5 の command は次の ID で公開する。
+
+```text
+workflowRegister.importArtifactsFromTaskSnapshots
+```
+
+引数なしの場合は run を選択し、引数ありの場合は対象 run id を渡す。
+
+```ts
+vscode.commands.executeCommand(
+  "workflowRegister.importArtifactsFromTaskSnapshots",
+  runId
+)
+```
+
+実行時の流れは次の通り。
+
+1. 対象 run と workflow definition を読む。
+2. workflow の `artifacts` のうち `producedBy` を持つ artifact を見る。
+3. producing step の `resultKey` / manual resultKey と artifact id が一致するものだけを import 対象にする。
+4. 各 step の最新 task snapshot から `lastAssistantText` を優先して取得し、なければ `taskExport` 内の text-like field を探す。
+5. artifact path を render し、workspace-relative safe path の場合だけ artifact file を書く。
+6. manifest entry の `source` を `task-snapshot` として保存する。
+7. `run.state["workflow.taskSnapshotImport"]` に import provenance を保存する。
+
+`workflow.taskSnapshotImport` は次の形式で保存する。
 
 ```json
 {
-  "schemaVersion": "workflow-register/artifact-reuse/v1",
+  "schemaVersion": "workflow-register/task-snapshot-import/v1",
   "sourceRunId": "20260708T...",
-  "sourceWorkflowId": "workflow-register.example",
-  "sourceWorkflowDefinitionHash": "sha256:...",
-  "startStepId": "analyze",
-  "reusedStepIds": ["collect-context"],
-  "hydratedKeys": ["collectContext"],
-  "createdAt": "2026-07-08T00:00:00.000Z"
+  "importedAt": "2026-07-08T00:00:00.000Z",
+  "imported": [
+    {
+      "artifactId": "collectContext",
+      "stateKey": "collectContext",
+      "producedBy": "collect-context",
+      "snapshotReason": "agent-output",
+      "snapshotCreatedAt": "2026-07-08T00:00:00.000Z",
+      "path": ".bob/workflows/runs/20260708T.../artifacts/collect-context/collectContext.md",
+      "sha256": "...",
+      "bytes": 12345
+    }
+  ]
 }
 ```
 
@@ -261,16 +266,16 @@ Explorer の `Bob Workflow Runs` view でも、artifact manifest がある run �
 
 ## Bob task export との関係
 
-Bob task export / task snapshot は Phase 1/2/3/4 では manifest の正本にしない。
+Bob task export / task snapshot は Phase 1/2/3/4/5 でも manifest の正本ではない。
 
-理由は、snapshot は診断と handoff 救済の補助証跡であり、最大サイズ制限や redaction により `lastAssistantText` / `taskExport` が省略される可能性があるためである。
+Phase 5 では、artifact が存在しない古い run を救う明示 command の入力としてだけ使う。import 後は `.bob/workflows/runs/<runId>/artifacts/...` と `workflow.artifactManifest` が再開用の正本になり、以後の start-from-artifacts は task snapshot を直接読まない。
 
-後続 Phase では、artifact が存在しない古い run だけを対象に、task snapshot から候補 text を取り出し、ユーザー確認後に artifact file と manifest を生成する fallback を追加する。
+snapshot は最大サイズ制限や redaction により `lastAssistantText` / `taskExport` が省略・短縮される可能性がある。そのため import できない step は warning として report に残し、自動的に不完全な artifact を作らない。
 
 ## 後続 Phase への接続
 
-Phase 5 以降では、Phase 4 の UI 導線をさらに使いやすくするために次を追加する。
+Phase 6 以降では、Phase 5 の fallback import をさらに使いやすくするために次を追加する。
 
-1. task snapshot から artifact を生成する fallback import を追加する。
-2. Builder で file-bound skip resume に必要な artifact 定義を自動生成する。
-3. Bob Todo UI 内の todo item 表示そのものに reused/skipped marker を埋め込む。
+1. Builder で file-bound skip resume に必要な artifact 定義を自動生成する。
+2. Bob Todo UI 内の todo item 表示そのものに reused/skipped marker を埋め込む。
+3. task snapshot import の内容差分を GUI で確認してから apply する画面を追加する。
