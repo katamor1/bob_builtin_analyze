@@ -36,22 +36,8 @@ jobs:
 
           replace_once(
               "extensions/workflow-register/src/core/workflowValidator.ts",
-              '''  if (workflow.stepMessage === "step") {
-            for (const step of workflow.engineSteps) {
-              if (!step.prompt?.trim()) {
-                diagnostics.push(warning(filePath, `stepMessage is 'step' but step '${step.id}' has no prompt.`))
-              }
-            }
-          }
-          ''',
-              '''  if (workflow.stepMessage === "step") {
-            for (const step of workflow.engineSteps) {
-              if (step.type !== "result" && !step.prompt?.trim()) {
-                diagnostics.push(warning(filePath, `stepMessage is 'step' but step '${step.id}' has no prompt.`))
-              }
-            }
-          }
-          '''
+              "      if (!step.prompt?.trim()) {\n",
+              "      if (step.type !== \"result\" && !step.prompt?.trim()) {\n"
           )
 
           replace_once(
