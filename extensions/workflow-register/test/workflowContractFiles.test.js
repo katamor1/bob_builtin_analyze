@@ -39,18 +39,80 @@ test("integration workflow templates are strict-clean and match workspace mirror
   }
 })
 
+test("result step prompt and includeState are accepted as Bob runtime fields", () => {
+  const validation = validateStrictText(`---
+schemaVersion: workflow-register/v1
+name: result-runtime-fields
+description: Result runtime field validation.
+stepMessage: step
+steps:
+  - id: collect
+    title: Collect context
+    type: command
+    prompt: Collect the context.
+    action:
+      provider: sample.collect
+    resultKey: context
+  - id: save
+    title: Save context
+    type: result
+    prompt: Save the collected context.
+    includeState:
+      - context
+    result:
+      source: state
+      stateKey: context
+      sinks:
+        - type: file
+          path: .bob/workflows/runs/{{run.id}}/context.json
+---
+# Result runtime fields
+`)
+
+  assert.equal(validation.ok, true, formatDiagnostics(validation))
+  assert.equal(validation.workflow.engineSteps[1].prompt, "Save the collected context.")
+  assert.deepEqual(validation.workflow.engineSteps[1].includeState, ["context"])
+})
+
+test("step messages allow result steps to use their result definition without a prompt", () => {
+  const validation = validateStrictText(`---
+schemaVersion: workflow-register/v1
+name: result-step-without-prompt
+description: Result step prompt fallback validation.
+stepMessage: step
+steps:
+  - id: write
+    title: Write result
+    type: result
+    result:
+      source: literal
+      text: done
+      sinks:
+        - type: file
+          path: .bob/workflows/runs/{{run.id}}/done.txt
+---
+# Result step without prompt
+`)
+
+  assert.equal(validation.ok, true, formatDiagnostics(validation))
+})
+
 function assertStrictWorkflow(relativePath, text = readRepoFile(relativePath)) {
-  const validation = validateWorkflowText({
+  const validation = validateStrictText(text, relativePath)
+  assert.equal(validation.ok, true, `${relativePath}\n${formatDiagnostics(validation)}`)
+}
+
+function validateStrictText(text, filePath = "test/fixtures/inline/WORKFLOW.md") {
+  return validateWorkflowText({
     sourceId: "workflow-register",
-    filePath: relativePath,
+    filePath,
     text,
     strict: true
   })
-  assert.equal(
-    validation.ok,
-    true,
-    `${relativePath}\n${validation.diagnostics.map((item) => `${item.severity}: ${item.message}`).join("\n")}`
-  )
+}
+
+function formatDiagnostics(validation) {
+  return validation.diagnostics.map((item) => `${item.severity}: ${item.message}`).join("\n")
 }
 
 function readRepoFile(relativePath) {
