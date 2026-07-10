@@ -1,23 +1,25 @@
 name: apply-workflow-validation-fixes
 
 on:
-  push:
+  pull_request:
     branches:
-      - agent/workflow-validation-contracts
+      - main
+    paths:
+      - ".github/workflows/apply-workflow-validation-fixes.yml"
 
 permissions:
   contents: write
 
 jobs:
   apply:
-    if: github.actor != 'github-actions[bot]'
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout branch
         uses: actions/checkout@v4
         with:
-          ref: agent/workflow-validation-contracts
+          ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
 
       - name: Apply targeted fixes
@@ -80,6 +82,8 @@ jobs:
 
       - name: Commit fixes
         shell: bash
+        env:
+          HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -89,4 +93,4 @@ jobs:
             extensions/bob-bazaar-review/templates/.bob/workflows/bazaar-project-rule-review/WORKFLOW.md \
             .bob/workflows/bazaar-project-rule-review/WORKFLOW.md
           git commit -m "Fix workflow validation contract alignment"
-          git push origin HEAD:agent/workflow-validation-contracts
+          git push origin "HEAD:${HEAD_BRANCH}"
