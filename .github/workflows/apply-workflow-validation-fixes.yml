@@ -1,0 +1,106 @@
+name: apply-workflow-validation-fixes
+
+on:
+  push:
+    branches:
+      - agent/workflow-validation-contracts
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/workflow-validation-contracts
+          fetch-depth: 0
+
+      - name: Apply targeted fixes
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(relative_path: str, old: str, new: str) -> None:
+              path = Path(relative_path)
+              text = path.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"expected exactly one replacement in {relative_path}, found {count}")
+              path.write_text(text.replace(old, new), encoding="utf-8")
+
+          replace_once(
+              "extensions/workflow-register/src/core/workflowValidator.ts",
+              '''  if (workflow.stepMessage === "step") {
+            for (const step of workflow.engineSteps) {
+              if (!step.prompt?.trim()) {
+                diagnostics.push(warning(filePath, `stepMessage is 'step' but step '${step.id}' has no prompt.`))
+              }
+            }
+          }
+          ''',
+              '''  if (workflow.stepMessage === "step") {
+            for (const step of workflow.engineSteps) {
+              if (step.type !== "result" && !step.prompt?.trim()) {
+                diagnostics.push(warning(filePath, `stepMessage is 'step' but step '${step.id}' has no prompt.`))
+              }
+            }
+          }
+          '''
+          )
+
+          replace_once(
+              "extensions/workflow-register/src/core/parser/parseV1Workflow.ts",
+              '  if (type === "result") return ["action", "prompt", "resultKey", "includeState", "sendResult", "completeOnSuccess", "runAgent", "captureResult", "resultCommand", "resultCommandArgs", "maxResultBytes"]\n',
+              '  if (type === "result") return ["action", "resultKey", "sendResult", "completeOnSuccess", "runAgent", "captureResult", "resultCommand", "resultCommandArgs", "maxResultBytes"]\n'
+          )
+
+          for workflow_path in (
+              ".bob/workflows/bazaar-project-rule-review/WORKFLOW.md",
+              "extensions/bob-bazaar-review/templates/.bob/workflows/bazaar-project-rule-review/WORKFLOW.md",
+          ):
+              replace_once(
+                  workflow_path,
+                  "    resultKey: reviewAnalysis\n    maxResultBytes: 20000\n  - id: output-result\n",
+                  "    resultKey: reviewAnalysis\n  - id: output-result\n"
+              )
+          PY
+
+          git diff --check
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: extensions/workflow-register/package-lock.json
+
+      - name: Install workflow-register dependencies
+        working-directory: extensions/workflow-register
+        run: npm ci
+
+      - name: Run focused workflow contract tests
+        working-directory: extensions/workflow-register
+        run: npm run compile && node --test test/workflowContractFiles.test.js
+
+      - name: Run workflow-register test suite
+        working-directory: extensions/workflow-register
+        run: npm test
+
+      - name: Commit fixes
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            extensions/workflow-register/src/core/workflowValidator.ts \
+            extensions/workflow-register/src/core/parser/parseV1Workflow.ts \
+            extensions/bob-bazaar-review/templates/.bob/workflows/bazaar-project-rule-review/WORKFLOW.md \
+            .bob/workflows/bazaar-project-rule-review/WORKFLOW.md
+          git commit -m "Fix workflow validation contract alignment"
+          git push origin HEAD:agent/workflow-validation-contracts
