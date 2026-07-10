@@ -105,7 +105,7 @@ test("applyTraceabilityPrepAction defers eligible gate errors as accepted TBD de
   assert.equal(result.catalog.decisions[0].decision, "tbd")
   assert.equal(result.catalog.decisions[0].gate, "detailed_design")
   assert.equal(result.catalog.decisions[0].status, "accepted")
-  assert.ok(result.model.warnings.some((item) => item.code === "tbd_decision"))
+  assert.ok(result.model.report.warnings.some((item) => item.code === "tbd_decision"))
   assert.ok(!result.model.report.errors.some((item) => item.code === "missing_detailed_design"))
 })
 
