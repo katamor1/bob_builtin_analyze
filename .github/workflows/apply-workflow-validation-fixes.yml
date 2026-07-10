@@ -21,6 +21,7 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
+          show-progress: false
 
       - name: Apply targeted fixes
         shell: bash
@@ -70,17 +71,39 @@ jobs:
 
       - name: Install workflow-register dependencies
         working-directory: extensions/workflow-register
-        run: npm ci
+        run: npm ci --silent
 
       - name: Run focused workflow contract tests
         working-directory: extensions/workflow-register
         run: npm run compile && node --test test/workflowContractFiles.test.js
 
       - name: Run workflow-register test suite
+        id: full_tests
+        continue-on-error: true
         working-directory: extensions/workflow-register
-        run: npm test
+        env:
+          TEST_LOG: ${{ runner.temp }}/workflow-register-tests.log
+        run: npm test > "$TEST_LOG" 2>&1
+
+      - name: Upload workflow-register test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: workflow-register-test-log
+          path: ${{ runner.temp }}/workflow-register-tests.log
+          if-no-files-found: error
+
+      - name: Report full test failure
+        if: steps.full_tests.outcome != 'success'
+        shell: bash
+        env:
+          TEST_LOG: ${{ runner.temp }}/workflow-register-tests.log
+        run: |
+          tail -120 "$TEST_LOG"
+          exit 1
 
       - name: Commit fixes
+        if: steps.full_tests.outcome == 'success'
         shell: bash
         env:
           HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
