@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - ".github/workflows/apply-workflow-validation-fixes.yml"
+      - "extensions/workflow-register/test/runtimeWiring.test.js"
 
 permissions:
   contents: write
