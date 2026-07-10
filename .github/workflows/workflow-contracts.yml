@@ -1,0 +1,51 @@
+name: workflow-contracts
+
+on:
+  pull_request:
+    paths:
+      - "extensions/workflow-register/**"
+      - "extensions/bob-bazaar-review/templates/**/WORKFLOW.md"
+      - "extensions/bob-code-consistency-review/templates/**/WORKFLOW.md"
+      - ".bob/workflows/bazaar-project-rule-review/WORKFLOW.md"
+      - ".bob/workflows/code-consistency-review/WORKFLOW.md"
+      - ".github/workflows/workflow-contracts.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "extensions/workflow-register/**"
+      - "extensions/bob-bazaar-review/templates/**/WORKFLOW.md"
+      - "extensions/bob-code-consistency-review/templates/**/WORKFLOW.md"
+      - ".bob/workflows/bazaar-project-rule-review/WORKFLOW.md"
+      - ".bob/workflows/code-consistency-review/WORKFLOW.md"
+      - ".github/workflows/workflow-contracts.yml"
+  workflow_dispatch:
+
+jobs:
+  validate:
+    name: Strict workflow validation
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: extensions/workflow-register
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: extensions/workflow-register/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Compile
+        run: npm run compile
+
+      - name: Validate workflow contracts
+        run: node --test test/workflowContractFiles.test.js
