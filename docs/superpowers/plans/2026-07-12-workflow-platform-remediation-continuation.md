@@ -130,10 +130,10 @@
 - Produces: one prompt-context builder that receives the engine-rendered `AgentExecutionInput.prompt`.
 - Consumes: standalone engine, live Bob task, and Operation Hub continuation agent providers.
 
-- [ ] Add a failing parity test with `{{inputs.*}}`, `{{state.*}}`, and escaped data-only content.
-- [ ] Remove raw `stepDefinition.prompt` / `step.prompt` precedence from Bob adapters.
-- [ ] Prove standalone, Bob, and Operation Hub providers receive identical rendered step text.
-- [ ] Run focused tests, compile, diff checks, and commit `fix: share rendered prompts across workflow entry points`.
+- [x] Add a failing parity test with `{{inputs.*}}`, `{{state.*}}`, and escaped data-only content.
+- [x] Remove raw `stepDefinition.prompt` / `step.prompt` precedence from Bob adapters.
+- [x] Prove standalone, Bob, and Operation Hub providers receive identical rendered step text.
+- [x] Run focused tests, compile, diff checks, and commit `fix: share rendered prompts across workflow entry points`.
 
 ### Task 5: Compile Once for Registration and Validation
 
