@@ -17,7 +17,8 @@ function writeTestConfiguration() {
     version: "1.106.1",
     extensionDevelopmentPath: process.cwd(),
     mocha: {
-      timeout: 30_000
+      timeout: 30_000,
+      ui: "bdd"
     }
   }
   fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf8")
@@ -28,8 +29,8 @@ function registerExtensionHostTests() {
   const assert = require("node:assert/strict")
   const vscode = require("vscode")
 
-  suite("Extension Host activation smoke", () => {
-    test("activates the extension and registers representative commands", async () => {
+  describe("Extension Host activation smoke", () => {
+    it("activates the extension and registers representative commands", async () => {
       const extensionId = requiredEnvironmentValue("SMOKE_EXTENSION_ID")
       const requiredCommands = requiredEnvironmentValue("SMOKE_COMMANDS")
         .split(",")
