@@ -41,11 +41,13 @@ test("validateRevision accepts expected Bazaar revision forms", () => {
   assert.equal(validateRevision("revid:user@example-20260627010101-abc"), "revid:user@example-20260627010101-abc")
 })
 
-test("validateRevision rejects option-like, range, and oversized specs", () => {
+test("validateRevision rejects option-like, range, oversized, and control-character specs", () => {
   assert.throws(() => validateRevision("--help"), /リビジョン指定/)
   assert.throws(() => validateRevision("-r1"), /リビジョン指定/)
   assert.throws(() => validateRevision("1..2"), /リビジョン指定/)
   assert.throws(() => validateRevision("a".repeat(129)), /長すぎます/)
+  assert.throws(() => validateRevision("\n1234"), /安全でない Bazaar リビジョン指定/)
+  assert.throws(() => validateRevision("1234\r"), /安全でない Bazaar リビジョン指定/)
 })
 
 test("validateRelativePath accepts repository-relative paths and option-like file names", () => {
@@ -77,6 +79,8 @@ test("validateRelativePath rejects traversal, dot, empty, and control-character 
     "a//b.txt",
     "./file.txt",
     "a/\u0001b.txt",
+    "\nsrc/main.c",
+    "src/main.c\r",
     ""
   ]) {
     assert.throws(() => validateRelativePath(candidate), /Bazaar パス|親ディレクトリ/)
