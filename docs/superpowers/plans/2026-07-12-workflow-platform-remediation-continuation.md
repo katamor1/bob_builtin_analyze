@@ -168,12 +168,12 @@
 - Produces: explicit approved/rejected transitions for every process review gate.
 - Consumes: normalized `humanGate` decision and record/summary providers.
 
-- [ ] Add a contract test enumerating every process workflow and failing when reject has no terminal transition.
-- [ ] Add deterministic approve and reject E2E fixtures; reject must leave record/summary providers uncalled.
-- [ ] Update all templates and mirrors together, preserving their declared synchronization contract.
-- [ ] Cover missing review artifacts and stable rejected diagnostics.
-- [ ] Run process, workflow contract, compile, and diff checks.
-- [ ] Commit `fix: terminate process workflows on rejection`.
+- [x] Add a contract test enumerating every process workflow and failing when reject has no terminal transition.
+- [x] Add deterministic approve and reject E2E fixtures; reject must leave record/summary providers uncalled.
+- [x] Update all templates and mirrors together, preserving their declared synchronization contract.
+- [x] Cover missing review artifacts and stable rejected diagnostics.
+- [x] Run process, workflow contract, compile, and diff checks.
+- [x] Commit `fix: terminate process workflows on rejection`.
 
 ### Task 7: Make Operation Hub Mutations Transactional
 
