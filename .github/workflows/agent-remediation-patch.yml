@@ -9,6 +9,7 @@ on:
       - "scripts/agent-limit-remediation-patch.mjs"
       - "scripts/agent-quality-policy-fixes.mjs"
       - "scripts/agent-doc-sync.mjs"
+      - "scripts/agent-workflow-prompt-patch.mjs"
       - ".github/workflows/agent-remediation-patch.yml"
 
 permissions:
@@ -36,6 +37,7 @@ jobs:
           node scripts/agent-limit-remediation-patch.mjs
           node scripts/agent-quality-policy-fixes.mjs
           node scripts/agent-doc-sync.mjs
+          node scripts/agent-workflow-prompt-patch.mjs
       - name: Install workflow-register dependencies
         working-directory: extensions/workflow-register
         run: npm ci
@@ -47,7 +49,7 @@ jobs:
         run: npm ci
       - name: Verify workflow-register provider lifecycle and architecture
         working-directory: extensions/workflow-register
-        run: npm run compile && node --test test/actionRegistry.test.js && npm run architecture:policy
+        run: npm run compile && node --test test/actionRegistry.test.js && npm run architecture:policy && node --test test/workflowContractFiles.test.js
       - name: Verify Bazaar provider lifecycle and dependency policy
         working-directory: extensions/bob-bazaar-review
         run: npm run compile && node --test test/workflowProviderRegistration.test.js test/bazaarClient.test.js test/externalProcessRunner.test.js test/externalProcessWiring.test.js && npm run unused:policy
@@ -64,5 +66,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          git commit -m "fix: close remaining extension quality policy gaps"
+          git commit -m "fix: make process workflow contracts strict-clean"
           git push origin HEAD:agent/three-extension-remediation-20260711
