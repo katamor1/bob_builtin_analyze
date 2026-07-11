@@ -1,6 +1,6 @@
 # Bob Code Consistency Review Workspace v2 機能追加・改善企画
 
-- ステータス: Proposed
+- ステータス: Proposed（設計レビュー待ち）
 - 作成日: 2026-07-11
 - 対象リポジトリ: `katamor1/bob_builtin_analyze`
 - 対象拡張機能: `extensions/bob-code-consistency-review`
@@ -288,7 +288,7 @@ commands / webview
 CCR-YYYYMMDD-HHMMSS-<6-hex>
 ```
 
-時刻は UTC、suffix は input hash と乱数から生成し、同一秒の衝突を避ける。
+時刻は UTC とし、suffix は `crypto.randomBytes(3)` 相当の乱数から生成する。session 作成時に review input が未確定でも生成でき、同一秒の衝突を避けられる方式とする。
 
 ### 8.3 Stage と Health
 
@@ -307,11 +307,17 @@ type ReviewSessionStage =
 type ReviewSessionHealth =
   | "ready"
   | "warning"
-  | "blocked"
   | "stale"
+  | "blocked"
 ```
 
-`stage` は到達済み工程を表し、`health` は現在の成果物が利用可能かを表す。
+`stage` は到達済み工程を表し、`health` は現在の成果物が利用可能かを表す。複数の health 条件が同時に成立した場合は、次の優先順位で一つを表示する。
+
+```text
+blocked > stale > warning > ready
+```
+
+package と Bob output はそれぞれ `fresh` / `stale` の内部 freshness を持ち、session health は各 readiness check の結果から導出する。
 
 ### 8.4 Session schema
 
@@ -334,27 +340,29 @@ type ReviewSessionHealth =
   },
   "input": {
     "path": "review-input.yaml",
-    "sha256": "..."
+    "sha256": "<sha256>"
   },
   "artifacts": {
     "document_hashes": {},
-    "traceability_catalog_sha256": "..."
+    "traceability_catalog_sha256": "<sha256>"
   },
   "package": {
     "path": ".bob-review/review-package",
-    "generation_id": "...",
-    "manifest_sha256": "...",
-    "created_at": "2026-07-11T02:18:00Z"
+    "generation_id": "package-001",
+    "manifest_sha256": "<sha256>",
+    "created_at": "2026-07-11T02:18:00Z",
+    "freshness": "fresh"
   },
   "bob_output": {
     "path": ".bob-review/bob-output/bob-output.yaml",
-    "sha256": "...",
-    "validation_report_path": ".bob-review/bob-output/validation-report.json"
+    "sha256": "<sha256>",
+    "validation_report_path": ".bob-review/bob-output/validation-report.json",
+    "freshness": "fresh"
   },
   "triage": {
     "path": ".bob-review/human-triage",
-    "source_sha256": "...",
-    "decisions_sha256": "...",
+    "source_sha256": "<sha256>",
+    "decisions_sha256": "<sha256>",
     "open_items": 3
   }
 }
@@ -362,7 +370,7 @@ type ReviewSessionHealth =
 
 ### 8.5 Freshness 判定
 
-次のいずれかが変わった場合、package の `health` を `stale` とする。
+次のいずれかが変わった場合、package freshness を `stale` とする。
 
 - resolved base / head
 - `review-input.yaml` の SHA-256
@@ -372,13 +380,19 @@ type ReviewSessionHealth =
 - processing limits
 - analyzer version / adapter set
 
-Bob output は次の場合に `stale` または `blocked` とする。
+Bob output freshness は次の場合に `stale` とする。
 
 - package generation ID が一致しない。
 - review ID が一致しない。
 - package manifest hash が一致しない。
-- evidence-index に存在しない evidence を参照する。
 - package 再生成後に Bob output が更新されていない。
+
+次の場合は freshness ではなく session health を `blocked` とする。
+
+- Bob output を parse できない。
+- schema error がある。
+- evidence-index に存在しない evidence を参照する。
+- triage source と Bob output hash が一致しない。
 
 ### 8.6 Readiness の再計算
 
@@ -417,9 +431,9 @@ Dashboard は次のカードを表示する。
 | Bob Output | captured、raw / normalized、validation errors / warnings、identity match |
 | Human Triage | finding 数、未判断、owner 未設定、follow-up 未完了 |
 
-各カードには次の一操作を表示する。
+各カードには次を表示する。
 
-- 修正または生成に進む primary action
+- 修正または生成に進む primary action を一つ
 - 詳細ファイルを開く secondary action
 - stale / blocked の理由
 
@@ -467,7 +481,7 @@ Dashboard は次のカードを表示する。
 schema_version: triage-source/v1
 review_id: timeout-bugfix-r1
 package_generation_id: package-001
-bob_output_sha256: "..."
+bob_output_sha256: "<sha256>"
 items:
   - source_id: PRE-001
     source_type: finding
@@ -475,10 +489,10 @@ items:
     severity: high
     confidence: medium
     summary: timeout 処理が要求と一致しない可能性がある
-    reason: "..."
-    impact: "..."
-    recommended_action: "..."
-    human_check: "..."
+    reason: 要求の異常系と変更後コードの分岐が一致しない
+    impact: timeout 時の上位通知が正常扱いとなる可能性がある
+    recommended_action: 詳細設計と実装を確認する
+    human_check: 設計担当者が今回の対象範囲を確認する
     evidence:
       - evidence_id: REQ-0001
         type: requirement
@@ -490,7 +504,7 @@ items:
 ```yaml
 schema_version: triage-decisions/v1
 review_id: timeout-bugfix-r1
-source_sha256: "..."
+source_sha256: "<sha256>"
 decision_revision: 3
 updated_at: "2026-07-11T02:30:00Z"
 items:
@@ -538,7 +552,7 @@ type TriageDecision =
 | `rejected` | `reason` |
 | `needs_investigation` | `reason`、`owner` または follow-up action |
 | `deferred` | `reason`、follow-up due |
-| `question` | `reason`、`owner` または suggested recipient |
+| `question` | `reason`、`owner` |
 
 ### 10.7 Markdown projection
 
@@ -561,7 +575,7 @@ projection は source と decisions から毎回再生成し、人手で Markdow
 5. 既存ファイルを backup する。
 6. 新しい projection を生成する。
 
-移行は一度だけ実行し、結果を `migration-report.md` に残す。
+移行済みかどうかは `triage-decisions.yaml` の存在と schema version で判定する。結果を `migration-report.md` に残し、同じ旧ファイルを繰り返し移行しない。
 
 ## 11. Evidence-centered Triage UI
 
@@ -609,25 +623,30 @@ Evidence ID をクリックした際は `evidence-index.json` を参照し、次
 
 ## 12. Result Capture Diagnostics v2
 
-### 12.1 保存物
+### 12.1 保存物と正本
+
+設定済み `bobOutputPath` を、normalized Bob output の正本として維持する。既定値は `.bob-review/bob-output/bob-output.yaml` である。
+
+既定配置は次のとおりとする。
 
 ```text
 .bob-review/bob-output/
-  raw-output.txt
-  normalized-output.yaml
+  bob-output.yaml          configured bobOutputPath / normalized canonical output
+  raw-output.txt           Bobから受け取った未変更テキスト
   validation-report.json
   validation-report.md
 ```
 
-既存 `bob-output.yaml` を互換 path として維持する場合は、`normalized-output.yaml` と同一内容にし、manifest に canonical path を記録する。
+`bobOutputPath` が custom path の場合、support files はその parent directory に生成する。別 directory へ暗黙に二重保存しない。
 
 ### 12.2 Raw と normalized の分離
 
 - `raw-output.txt` は Bob から受け取った内容を変更せず保存する。
-- normalization は別成果物へ出力する。
+- 設定済み `bobOutputPath` は normalized output の正本とする。
 - 自動補正した field は validation report に記録する。
 - raw schema error と normalized schema error を別に表示する。
 - `final_approval` など固定値の違反を黙って補正して成功扱いにしない。
+- raw output を normalized output で上書きしない。
 
 ### 12.3 診断モデル
 
@@ -842,7 +861,7 @@ SQL adapter の評価後、次の順を既定とする。
 - 既存 `bobCodeConsistency.*` command ID
 - `review-input.yaml`
 - 既存 `reviewPackagePath`
-- `bobOutputPath`
+- 設定済み `bobOutputPath`
 - `triagePath`
 - workflow-register action provider contract
 - `triage-result.yaml` の互換 projection
@@ -1090,24 +1109,26 @@ Workspace v2 の企画完了条件は次のとおりである。
 
 ## 24. 決定事項
 
-本設計で確定する事項は次のとおりである。
+本設計で提案する決定事項は次のとおりである。
 
 1. 第一弾は Triage Integrity とする。
 2. Triage source と human decision を別ファイルへ分離する。
 3. `triage-result.yaml` は互換 projection として維持する。
 4. Review Session は既存成果物を移動せず、hash と generation ID で関連付ける。
 5. session の進捗は `stage`、利用可否は `health` で表す。
-6. Readiness は成果物から再計算し、保存状態を盲信しない。
-7. Workspace は既存3画面の facade として段階導入する。
-8. Bob raw output を normalized output で上書きしない。
-9. 採用率だけをレビュー品質指標にしない。
-10. 最初の専用 language adapter は SQL とする。
-11. 既存 command ID と workflow contract を維持する。
-12. 基盤強化 PR #68 と重複する実装は行わない。
+6. health の優先順位は `blocked > stale > warning > ready` とする。
+7. Readiness は成果物から再計算し、保存状態を盲信しない。
+8. Workspace は既存3画面の facade として段階導入する。
+9. 設定済み `bobOutputPath` を normalized output の正本として維持する。
+10. Bob raw output を normalized output で上書きしない。
+11. 採用率だけをレビュー品質指標にしない。
+12. 最初の専用 language adapter は SQL とする。
+13. 既存 command ID と workflow contract を維持する。
+14. 基盤強化 PR #68 と重複する実装は行わない。
 
 ## 25. 実装計画への移行条件
 
-実装計画を作成する前に、次をレビューする。
+実装計画を作成する前に、利用者レビューで次を確認する。
 
 - Phase 1 の triage file schema
 - 既存 `triage-result.yaml` の migration 方針
