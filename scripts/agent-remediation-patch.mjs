@@ -200,3 +200,55 @@ function disposeRegistrations(registrations: vscode.Disposable[]): void {
   registrations.length = 0
 }
 `)
+
+replaceIdempotent(
+  "extensions/bob-bazaar-review/package.json",
+  '        "bobBazaar.textEncoding": { "type": "string", "default": "auto", "enum": ["auto", "utf8", "shift_jis", "cp932", "windows-31j"], "description": "Bazaar の log / diff / cat 出力を読み取る文字コード。auto は UTF-8 を優先し、文字化けが疑われる場合に Shift-JIS 系として読み直します。" },',
+  '        "bobBazaar.textEncoding": { "type": "string", "default": "auto", "enum": ["auto", "utf8", "shift_jis", "cp932", "windows-31j"], "description": "Bazaar の log / diff / cat 出力を読み取る文字コード。auto は UTF-8 を優先し、文字化けが疑われる場合に Shift-JIS 系として読み直します。" },\n        "bobBazaar.commandTimeoutMs": { "type": "number", "default": 120000, "minimum": 1000, "maximum": 600000, "description": "Bazaar CLI 1回あたりのハードタイムアウト（ミリ秒）。" },'
+)
+replaceIdempotent(
+  "extensions/bob-bazaar-review/src/bazaar/bazaarReviewCommands.ts",
+  '    textEncoding: config.get<string>("textEncoding", "auto"),\n    signal',
+  '    textEncoding: config.get<string>("textEncoding", "auto"),\n    timeoutMs: config.get<number>("commandTimeoutMs", 120_000),\n    signal'
+)
+
+replaceIdempotent(
+  "extensions/bob-code-consistency-review/package.json",
+  '        "bobCodeConsistency.bzrPath": {\n          "type": "string",\n          "default": "bzr",\n          "description": "review.vcs が bazaar / bzr の場合に使用する Bazaar 実行ファイルのパス。実行時は必ず --no-aliases を付与します。"\n        },',
+  '        "bobCodeConsistency.bzrPath": {\n          "type": "string",\n          "default": "bzr",\n          "description": "review.vcs が bazaar / bzr の場合に使用する Bazaar 実行ファイルのパス。実行時は必ず --no-aliases を付与します。"\n        },\n        "bobCodeConsistency.vcsCommandTimeoutMs": {\n          "type": "number",\n          "default": 120000,\n          "minimum": 1000,\n          "maximum": 600000,\n          "description": "Git / Bazaar CLI 1回あたりのハードタイムアウト（ミリ秒）。"\n        },'
+)
+replaceIdempotent(
+  "extensions/bob-code-consistency-review/package.json",
+  '          "default": 5242880,\n          "description": "1 文書あたりの読み取り上限 bytes。Markdown は上限まで読み、DOCX/XLSX は上限超過時に抽出を中止します。"',
+  '          "default": 5242880,\n          "minimum": 1,\n          "maximum": 52428800,\n          "description": "1 文書あたりの読み取り上限 bytes。Markdown は上限まで読み、DOCX/XLSX は上限超過時に抽出を中止します。"'
+)
+replaceIdempotent(
+  "extensions/bob-code-consistency-review/package.json",
+  '          "default": 20,\n          "description": "XLSX 抽出時に処理する最大 sheet 数。"',
+  '          "default": 20,\n          "minimum": 1,\n          "maximum": 100,\n          "description": "XLSX 抽出時に処理する最大 sheet 数。"'
+)
+replaceIdempotent(
+  "extensions/bob-code-consistency-review/package.json",
+  '          "default": 500,\n          "description": "XLSX 抽出時に 1 sheet あたり処理する最大 data row 数。"',
+  '          "default": 500,\n          "minimum": 1,\n          "maximum": 5000,\n          "description": "XLSX 抽出時に 1 sheet あたり処理する最大 data row 数。"'
+)
+replaceIdempotent(
+  "extensions/bob-code-consistency-review/package.json",
+  '          "default": 65536,\n          "description": "1 evidence excerpt あたりの最大 UTF-8 bytes。超過分は truncation warning とともに切り詰めます。"',
+  '          "default": 65536,\n          "minimum": 1,\n          "maximum": 1048576,\n          "description": "1 evidence excerpt あたりの最大 UTF-8 bytes。超過分は truncation warning とともに切り詰めます。"'
+)
+replaceIdempotent(
+  "extensions/bob-code-consistency-review/package.json",
+  '          "default": 1048576,\n          "description": "review package と Bob input に含める raw unified diff の最大 UTF-8 bytes。"',
+  '          "default": 1048576,\n          "minimum": 1,\n          "maximum": 10485760,\n          "description": "review package と Bob input に含める raw unified diff の最大 UTF-8 bytes。"'
+)
+replaceIdempotent(
+  "extensions/bob-code-consistency-review/package.json",
+  '          "default": 2097152,\n          "description": "生成する bob-input.md の最大 UTF-8 bytes。"',
+  '          "default": 2097152,\n          "minimum": 1,\n          "maximum": 8388608,\n          "description": "生成する bob-input.md の最大 UTF-8 bytes。"'
+)
+replaceIdempotent(
+  "extensions/bob-code-consistency-review/src/workflowProviderRegistration.ts",
+  '    "maxWorkbookSheets",\n    "outDir",',
+  '    "maxWorkbookSheets",\n    "vcsCommandTimeoutMs",\n    "outDir",'
+)
