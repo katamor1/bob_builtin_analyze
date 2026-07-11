@@ -163,6 +163,9 @@ function positiveTimeout(value: number | undefined): number {
 
 export function validateRevision(revision: string): string {
   const trimmed = revision.trim()
+  if (/[\0-\x1F\x7F]/u.test(revision)) {
+    throw new BazaarError(`安全でない Bazaar リビジョン指定です: ${revision}`)
+  }
   if (!trimmed) {
     throw new BazaarError("リビジョンを入力してください。")
   }
@@ -186,7 +189,7 @@ export function validateRelativePath(relativePath: string): string {
   const normalized = trimmed.replace(/\\/g, "/")
   if (
     !trimmed ||
-    /[\0-\x1F\x7F]/u.test(trimmed) ||
+    /[\0-\x1F\x7F]/u.test(relativePath) ||
     path.win32.isAbsolute(trimmed) ||
     path.posix.isAbsolute(normalized) ||
     /^[A-Za-z]:/.test(trimmed)
