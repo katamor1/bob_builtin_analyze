@@ -43,6 +43,25 @@ test("retry controller keeps registrations when the workflow API identity is unc
   controller.dispose()
 })
 
+test("retry controller rolls back partial registrations from an unsuccessful attempt", async () => {
+  const disposed = []
+  const controller = startRetryRegistrationController({
+    retryDelaysMs: [],
+    register: async () => ({
+      registered: false,
+      registrations: [disposable("partial", disposed)]
+    }),
+    currentApi: () => undefined,
+    subscribeChanges: () => disposable("listener", disposed),
+    own: () => {},
+    reportError: assert.fail
+  })
+
+  await tick()
+  assert.deepEqual(disposed, ["partial"])
+  controller.dispose()
+})
+
 test("retry controller discards stale registrations after an API generation change", async () => {
   const first = deferred()
   const api1 = { id: 1 }
@@ -97,4 +116,4 @@ test("retry controller disposes a registration that completes after deactivation
   await tick()
 
   assert.ok(disposed.includes("late"))
-}
+})
