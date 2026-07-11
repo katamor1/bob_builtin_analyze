@@ -6,6 +6,7 @@ const path = require("node:path")
 const { test } = require("node:test")
 
 const { collectGitDiff } = require("../out/core/gitDiffCollector")
+const { ExternalProcessError } = require("../out/core/externalProcessRunner")
 const { readSourceSet } = require("./helpers/sourceReader")
 
 test("collectGitDiff resolves valid git refs to commit SHAs before diffing", async () => {
@@ -25,6 +26,24 @@ test("collectGitDiff rejects git revision options before diffing", async () => {
   await assert.rejects(
     () => collectGitDiff(reviewInput({ base: "--output=x", head: "HEAD", vcs: "git" }), { workspaceRoot: workspace }),
     /Invalid Git revision/
+  )
+})
+
+test("collectGitDiff preserves cancellation while resolving Git revisions", async () => {
+  const workspace = createGitWorkspace()
+  const controller = new AbortController()
+  controller.abort()
+
+  await assert.rejects(
+    () => collectGitDiff(
+      reviewInput({ base: "main", head: "feature/vcs-validation", vcs: "git" }),
+      { workspaceRoot: workspace, signal: controller.signal }
+    ),
+    (error) => {
+      assert.ok(error instanceof ExternalProcessError)
+      assert.equal(error.kind, "cancelled")
+      return true
+    }
   )
 })
 
