@@ -48,18 +48,24 @@ test("Bazaar workflow provider registration retries optional workflow-register i
   assert.match(source, /registerWorkflowProvidersWithRetry\(context\)/)
   assert.match(source, /WORKFLOW_PROVIDER_RETRY_DELAYS_MS/)
   assert.match(source, /vscode\.extensions\.onDidChange/)
-  assert.match(source, /setTimeout\(\(\) => attempt\(\)/)
+  assert.match(source, /setTimeout\(/)
+  assert.match(source, /timers\.delete\(timer\)/)
   assert.match(source, /providersRegistered/)
 })
 
-test("Bazaar provider retry lifecycle recovers restarts and disposes late registrations", () => {
+test("Bazaar provider retry lifecycle recovers restarts and disposes stale or late registrations", () => {
   const source = readSourceSet(["workflow/workflowProviders.ts"])
 
   assert.match(source, /let disposed = false/)
+  assert.match(source, /let generation = 0/)
+  assert.match(source, /let registeredApi: WorkflowRegisterApi \| undefined/)
   assert.match(source, /let registrationAttempt: Promise<boolean> \| undefined/)
   assert.match(source, /let activeRegistrations: vscode\.Disposable\[\] = \[\]/)
-  assert.match(source, /if \(disposed\) \{[\s\S]*disposeRegistrations\(result\.registrations\)[\s\S]*return false/)
-  assert.match(source, /if \(providersRegistered && workflowExtension\?\.isActive\) return/)
+  assert.match(source, /const currentAttempt = performAttempt\(generation\)/)
+  assert.match(source, /if \(disposed \|\| attemptGeneration !== generation\)/)
+  assert.match(source, /disposeRegistrations\(result\.registrations\)/)
+  assert.match(source, /if \(registrationAttempt === currentAttempt\) registrationAttempt = undefined/)
+  assert.match(source, /currentApi === registeredApi/)
   assert.match(source, /disposeRegistrations\(activeRegistrations\)/)
   assert.doesNotMatch(source, /^let workflowProviderRegistrationAttempt/m)
 })
