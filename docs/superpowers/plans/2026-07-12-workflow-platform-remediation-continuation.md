@@ -112,11 +112,11 @@
 - Produces: an explicit command-result ownership contract distinguishing provider-owned canonical paths from engine-owned result sinks.
 - Consumes: existing process command envelopes and artifact declarations.
 
-- [ ] Add an engine-level failing test proving `evidence-index.json`, `process-record.yaml`, and campaign summary contents are overwritten today.
-- [ ] Add the smallest schema/runtime ownership field or envelope convention that prevents a second engine write while retaining state metadata.
-- [ ] Validate missing, conflicting, and duplicate ownership declarations.
-- [ ] Run process command, workflow engine, schema, compile, and diff checks.
-- [ ] Commit `fix: preserve provider-owned workflow artifacts`.
+- [x] Add an engine-level failing test proving `evidence-index.json`, `process-record.yaml`, and campaign summary contents are overwritten today.
+- [x] Add the smallest schema/runtime ownership field or envelope convention that prevents a second engine write while retaining state metadata.
+- [x] Validate missing, conflicting, and duplicate ownership declarations.
+- [x] Run process command, workflow engine, schema, compile, and diff checks.
+- [x] Commit `fix: preserve provider-owned workflow artifacts`.
 
 ### Task 4: Use One Rendered Prompt Across Every Agent Entry Point
 
