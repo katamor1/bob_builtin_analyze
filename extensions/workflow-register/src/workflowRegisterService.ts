@@ -24,6 +24,7 @@ import { collectBobWorkflowInputs } from "./workflowInputPrompt"
 import { WorkflowRunCommandService } from "./workflowRunCommands"
 import type { RunCommandArg } from "./workflowRunCommands"
 import { requireTrustedWorkspace } from "./workspaceTrust"
+import { ReviewAcceptanceCoordinator } from "./reviewAcceptanceCoordinator"
 
 const WORKFLOW_GLOB = "**/.bob/workflows/*/WORKFLOW.md"
 
@@ -35,6 +36,7 @@ export class WorkflowRegisterService implements vscode.Disposable {
   private readonly registeredIds = new Set<string>()
   private readonly watcher = vscode.workspace.createFileSystemWatcher(WORKFLOW_GLOB)
   private readonly bobWorkflowGates = new BobWorkflowGateRegistry()
+  private readonly reviewAcceptances = new ReviewAcceptanceCoordinator()
   private readonly stepRuntime = new StepRuntime()
   private readonly coreWorkflows = new Map<string, CoreWorkflowDefinition>()
   private readonly actionRegistry = createDefaultActionRegistry({
@@ -141,6 +143,10 @@ export class WorkflowRegisterService implements vscode.Disposable {
 
   acceptBobWorkflowGate(runId: string, stepId: string): BobWorkflowGateAcceptResult {
     return this.bobWorkflowGates.accept(runId, stepId)
+  }
+
+  coordinateReviewAcceptance<T>(workspaceRoot: string, runId: string, operation: () => Promise<T>): Promise<T> {
+    return this.reviewAcceptances.coordinate(workspaceRoot, runId, operation)
   }
 
   registerActionProvider(provider: ActionProvider): ActionProviderRegistration {

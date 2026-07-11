@@ -71,3 +71,58 @@ test("a later wait starts a fresh lifecycle for the same run and step", async ()
   assert.equal(registry.accept("run-4", "review"), "accepted")
   assert.equal(await afterAbort, true)
 })
+
+test("review acceptance coordinators isolate identical workspace and run keys per service", async () => {
+  const { ReviewAcceptanceCoordinator } = require("../out/reviewAcceptanceCoordinator")
+  const firstService = new ReviewAcceptanceCoordinator()
+  const secondService = new ReviewAcceptanceCoordinator()
+  let releaseFirst
+  const firstReleased = new Promise((resolve) => { releaseFirst = resolve })
+  let releaseSecond
+  const secondReleased = new Promise((resolve) => { releaseSecond = resolve })
+  let firstOwnerCalls = 0
+  let firstDuplicateCalls = 0
+  let secondOwnerCalls = 0
+
+  const firstOwner = firstService.coordinate("C:\\same-root", "same-run", async () => {
+    firstOwnerCalls += 1
+    await firstReleased
+    return "first-service"
+  })
+  const firstDuplicate = firstService.coordinate("C:\\same-root", "same-run", async () => {
+    firstDuplicateCalls += 1
+    return "duplicate"
+  })
+  const secondOwner = secondService.coordinate("C:\\same-root", "same-run", async () => {
+    secondOwnerCalls += 1
+    await secondReleased
+    return "second-service"
+  })
+  await Promise.resolve()
+
+  assert.strictEqual(firstDuplicate, firstOwner)
+  assert.notStrictEqual(secondOwner, firstOwner)
+  assert.equal(firstOwnerCalls, 1)
+  assert.equal(firstDuplicateCalls, 0)
+  assert.equal(secondOwnerCalls, 1)
+
+  releaseFirst()
+  releaseSecond()
+  assert.deepEqual(await Promise.all([firstOwner, firstDuplicate, secondOwner]), [
+    "first-service",
+    "first-service",
+    "second-service"
+  ])
+
+  const retry = firstService.coordinate("C:\\same-root", "same-run", async () => "first-service-retry")
+  assert.notStrictEqual(retry, firstOwner)
+  assert.equal(await retry, "first-service-retry")
+
+  const failed = firstService.coordinate("C:\\same-root", "failed-run", async () => {
+    throw new Error("coordinated acceptance failed")
+  })
+  await assert.rejects(failed, /coordinated acceptance failed/)
+  const recovered = firstService.coordinate("C:\\same-root", "failed-run", async () => "recovered")
+  assert.notStrictEqual(recovered, failed)
+  assert.equal(await recovered, "recovered")
+})

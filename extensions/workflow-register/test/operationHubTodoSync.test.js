@@ -45,40 +45,37 @@ function reviewingWorkflow() {
   }
 }
 
-function synchronizeConcurrentReviewLoads(t, FileRunStateStore, targetRunId) {
+function synchronizeConcurrentReviewSelections(t, FileRunStateStore) {
   const originalListRuns = FileRunStateStore.prototype.listRuns
-  const originalLoadRun = FileRunStateStore.prototype.loadRun
   let listed = 0
-  let listsReleased = false
   let releaseLists
   const listsReady = new Promise((resolve) => { releaseLists = resolve })
-  let loaded = 0
-  let releaseLoads
-  const loadsReady = new Promise((resolve) => { releaseLoads = resolve })
 
   FileRunStateStore.prototype.listRuns = async function synchronizedListRuns() {
     const runs = await originalListRuns.call(this)
     listed += 1
-    if (listed === 2) {
-      listsReleased = true
-      releaseLists()
-    }
+    if (listed === 2) releaseLists()
     await listsReady
     return runs
   }
-  FileRunStateStore.prototype.loadRun = async function synchronizedLoadRun(runId) {
-    const loadedRun = await originalLoadRun.call(this, runId)
-    if (runId === targetRunId && listsReleased) {
-      loaded += 1
-      if (loaded === 2) releaseLoads()
-      await loadsReady
-    }
-    return loadedRun
-  }
   t.after(() => {
     FileRunStateStore.prototype.listRuns = originalListRuns
-    FileRunStateStore.prototype.loadRun = originalLoadRun
   })
+}
+
+function createTestReviewAcceptanceCoordinator(onCoordinate = () => undefined) {
+  let inFlight
+  return (workspaceRoot, runId, operation) => {
+    onCoordinate({ workspaceRoot, runId, joined: Boolean(inFlight) })
+    if (inFlight) return inFlight
+    const owner = Promise.resolve().then(operation)
+    let coordinated
+    coordinated = owner.finally(() => {
+      if (inFlight === coordinated) inFlight = undefined
+    })
+    inFlight = coordinated
+    return coordinated
+  }
 }
 
 test("Operation Hub accept-and-run-next always starts the next step after accepting review", () => {
@@ -119,11 +116,12 @@ test("concurrent review acceptance never falls back after the live gate was alre
   const gateRegistry = new BobWorkflowGateRegistry()
   const gate = gateRegistry.waitForDecision({ runId: run.runId, stepId: "review", status: "reviewing" })
 
-  synchronizeConcurrentReviewLoads(t, FileRunStateStore, run.runId)
+  synchronizeConcurrentReviewSelections(t, FileRunStateStore)
 
   const decisions = []
   const options = {
     showMarkdownReport: async () => undefined,
+    coordinateReviewAcceptance: createTestReviewAcceptanceCoordinator(),
     acceptBobWorkflowGate: (runId, stepId) => {
       const decision = gateRegistry.accept(runId, stepId)
       decisions.push(decision)
@@ -188,12 +186,13 @@ test("concurrent review acceptance after an aborted live gate shares exactly one
   assert.equal(gateRegistry.abort(run.runId, "review", "terminal review failure"), true)
   await rejected
 
-  synchronizeConcurrentReviewLoads(t, FileRunStateStore, run.runId)
+  synchronizeConcurrentReviewSelections(t, FileRunStateStore)
 
   const decisions = []
   const { acceptCurrentStep } = loadStepReview(workspaceRoot)
   const options = {
     showMarkdownReport: async () => undefined,
+    coordinateReviewAcceptance: createTestReviewAcceptanceCoordinator(),
     acceptBobWorkflowGate: (runId, stepId) => {
       const decision = gateRegistry.accept(runId, stepId)
       decisions.push(decision)
@@ -237,12 +236,13 @@ test("concurrent review acceptance without a live gate shares exactly one legacy
       setStepCompleteFinished = true
     }
   })
-  synchronizeConcurrentReviewLoads(t, FileRunStateStore, run.runId)
+  synchronizeConcurrentReviewSelections(t, FileRunStateStore)
 
   const decisions = []
   const { acceptCurrentStep } = loadStepReview(workspaceRoot)
   const options = {
     showMarkdownReport: async () => undefined,
+    coordinateReviewAcceptance: createTestReviewAcceptanceCoordinator(),
     acceptBobWorkflowGate: () => {
       decisions.push("missing")
       return "missing"
@@ -274,7 +274,7 @@ test("failed single-flight review acceptance is removed so a later retry can pro
   run.steps[0].status = "reviewing"
   await runStore.saveRun(run)
 
-  synchronizeConcurrentReviewLoads(t, FileRunStateStore, run.runId)
+  synchronizeConcurrentReviewSelections(t, FileRunStateStore)
   const originalSaveRun = FileRunStateStore.prototype.saveRun
   let acceptedSaveCalls = 0
   FileRunStateStore.prototype.saveRun = async function failFirstAcceptedSave(candidate) {
@@ -289,6 +289,7 @@ test("failed single-flight review acceptance is removed so a later retry can pro
   const { acceptCurrentStep } = loadStepReview(workspaceRoot)
   const options = {
     showMarkdownReport: async () => undefined,
+    coordinateReviewAcceptance: createTestReviewAcceptanceCoordinator(),
     acceptBobWorkflowGate: () => "missing"
   }
   const failed = await Promise.allSettled([
@@ -303,6 +304,78 @@ test("failed single-flight review acceptance is removed so a later retry can pro
   const retried = await acceptCurrentStep(options, run.runId, { silent: true })
   assert.notEqual(typeof retried, "string")
   assert.equal(retried.status, "completed")
+})
+
+test("a caller arriving after durable acceptance joins the in-flight reconciliation", async (t) => {
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "workflow-register-late-accept-"))
+  t.after(() => fs.rmSync(workspaceRoot, { recursive: true, force: true }))
+  fs.mkdirSync(path.join(workspaceRoot, ".bob"), { recursive: true })
+  const { bobTaskSyncRegistry } = require("../out/bobTaskSync")
+  const { FileRunStateStore } = require("../out/core/runStateStore")
+  const { reviewTaskRegistry } = require("../out/reviewTaskRegistry")
+  const runStore = new FileRunStateStore({ workspaceRoot })
+  const workflow = reviewingWorkflow()
+  workflow.id = "workflow-register.late-review"
+  workflow.name = "late-review"
+  const run = await runStore.createRun(workflow, {})
+  run.status = "reviewing"
+  run.currentStep = "review"
+  run.steps[0].status = "reviewing"
+  await runStore.saveRun(run)
+
+  let setStepCompleteCalls = 0
+  reviewTaskRegistry.registerTask(run.runId, "review", {
+    setStepComplete: async () => { setStepCompleteCalls += 1 }
+  })
+
+  const originalReconcileRun = bobTaskSyncRegistry.reconcileRun
+  let releaseReconciliation
+  const reconciliationReleased = new Promise((resolve) => { releaseReconciliation = resolve })
+  let markReconciliationStarted
+  const reconciliationStarted = new Promise((resolve) => { markReconciliationStarted = resolve })
+  bobTaskSyncRegistry.reconcileRun = async function pausedReconciliation(...args) {
+    if (args[0]?.runId === run.runId) {
+      markReconciliationStarted()
+      await reconciliationReleased
+    }
+    return originalReconcileRun.apply(this, args)
+  }
+  t.after(() => { bobTaskSyncRegistry.reconcileRun = originalReconcileRun })
+
+  let markLateCallerJoined
+  const lateCallerJoined = new Promise((resolve) => { markLateCallerJoined = resolve })
+  const coordinateReviewAcceptance = createTestReviewAcceptanceCoordinator((input) => {
+    if (input.joined) markLateCallerJoined()
+  })
+  const decisions = []
+  const options = {
+    showMarkdownReport: async () => undefined,
+    coordinateReviewAcceptance,
+    acceptBobWorkflowGate: () => {
+      decisions.push("missing")
+      return "missing"
+    }
+  }
+  const { acceptCurrentStep } = loadStepReview(workspaceRoot)
+
+  const owner = acceptCurrentStep(options, run.runId, { silent: true })
+  await reconciliationStarted
+  const durablyAccepted = await runStore.loadRun(run.runId)
+  assert.equal(durablyAccepted.status, "completed")
+
+  const late = acceptCurrentStep(options, run.runId, { silent: true })
+  const overlap = await Promise.race([
+    lateCallerJoined.then(() => "joined"),
+    late.then(() => "settled", () => "settled")
+  ])
+  releaseReconciliation()
+  const results = await Promise.allSettled([owner, late])
+
+  assert.equal(overlap, "joined")
+  assert.deepEqual(results.map((result) => result.status), ["fulfilled", "fulfilled"])
+  assert.equal(results[0].value, results[1].value)
+  assert.equal(setStepCompleteCalls, 1)
+  assert.deepEqual(decisions, ["missing"])
 })
 
 test("Bob runner and Operation Hub command reconciliation await async Todo projection", () => {

@@ -415,20 +415,28 @@ test("Bob adapter resolves workflow inputs and passes them to command providers"
   ))
 })
 
-test("WorkflowRegisterService owns and exposes the Bob review gate registry", () => {
+test("WorkflowRegisterService owns and exposes Bob review gates and acceptance coordination", () => {
   const service = readSrc("workflowRegisterService.ts")
   const factory = readSrc("workflowRuntimeFactory.ts")
   const extension = readSrc("extension.ts")
   const authoring = readSrc("extensionWithAuthoring.ts")
+  const stepReview = readSrc("commands", "stepReview.ts")
 
   assert.match(service, /private readonly bobWorkflowGates = new BobWorkflowGateRegistry\(\)/)
+  assert.match(service, /private readonly reviewAcceptances = new ReviewAcceptanceCoordinator\(\)/)
   assert.match(service, /gateRegistry: this\.bobWorkflowGates/)
   assert.match(service, /acceptBobWorkflowGate\(runId: string, stepId: string\): BobWorkflowGateAcceptResult \{[\s\S]*this\.bobWorkflowGates\.accept\(runId, stepId\)/)
+  assert.match(service, /coordinateReviewAcceptance<T>\([\s\S]*this\.reviewAcceptances\.coordinate\(workspaceRoot, runId, operation\)/)
   assert.match(factory, /gateRegistry: BobWorkflowGateRegistry/)
   assert.match(factory, /gateRegistry: this\.options\.gateRegistry/)
   assert.match(extension, /acceptBobWorkflowGate: \(runId: string, stepId: string\) => BobWorkflowGateAcceptResult/)
   assert.match(extension, /acceptBobWorkflowGate: \(runId, stepId\) => service\.acceptBobWorkflowGate\(runId, stepId\)/)
+  assert.match(extension, /coordinateReviewAcceptance: <T>\(workspaceRoot: string, runId: string, operation: \(\) => Promise<T>\) => Promise<T>/)
+  assert.match(extension, /coordinateReviewAcceptance: \(workspaceRoot, runId, operation\) => service\.coordinateReviewAcceptance\(workspaceRoot, runId, operation\)/)
   assert.match(authoring, /acceptBobWorkflowGate: api\.acceptBobWorkflowGate/)
+  assert.match(authoring, /coordinateReviewAcceptance: api\.coordinateReviewAcceptance/)
+  assert.match(stepReview, /options\.coordinateReviewAcceptance\(selection\.root, selection\.runId, \(\) => acceptReviewedStepOnce\(options, selection\.root, selection\.runId\)\)/)
+  assert.doesNotMatch(stepReview, /reviewAcceptancesInFlight/)
 })
 
 test("WorkflowRegisterService disposes pending gates before source deactivation", () => {

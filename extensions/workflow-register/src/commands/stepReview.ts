@@ -12,6 +12,7 @@ import type { BobWorkflowGateAcceptResult } from "../bobWorkflowGateRegistry"
 interface StepReviewCommandOptions {
   showMarkdownReport: (title: string, summary: string, lines: string[]) => Promise<void>
   acceptBobWorkflowGate: (runId: string, stepId: string) => BobWorkflowGateAcceptResult
+  coordinateReviewAcceptance: <T>(workspaceRoot: string, runId: string, operation: () => Promise<T>) => Promise<T>
 }
 
 export interface StepReviewBuilderCommandOptions extends StepReviewCommandOptions {
@@ -37,7 +38,6 @@ interface AcceptedStepResult {
 
 const RUN_NEXT_STEP_LABEL = "次のステップを実行"
 const OPEN_OPERATION_HUB_LABEL = "Operation Hub を開く"
-const reviewAcceptancesInFlight = new Map<string, Promise<AcceptedStepResult>>()
 
 export async function acceptCurrentStep(options: StepReviewCommandOptions, runId?: string, acceptOptions: AcceptOptions = {}): Promise<WorkflowRunState | string> {
   const accepted = await acceptReviewedStep(options, runId)
@@ -63,23 +63,13 @@ export async function acceptAndRunNextStep(options: StepReviewCommandOptions, ru
 async function acceptReviewedStep(options: StepReviewCommandOptions, runId?: string): Promise<AcceptedStepResult | string> {
   const selection = runId ? await findRunSelection(runId) : await pickRunSelection("Accept reviewed workflow step", (run) => run.status === "reviewing")
   if (!selection) return runId ? `Workflow run not found or not waiting for review: ${runId}` : "No reviewing workflow run selected."
-  const runStore = new FileRunStateStore({ workspaceRoot: selection.root })
-  const run = await runStore.loadRun(selection.runId)
-  if (!run) return `Workflow run not found: ${selection.runId}`
-  const key = reviewAcceptanceKey(run.runId, run.currentStep)
-  const existing = reviewAcceptancesInFlight.get(key)
-  if (existing) return existing
-
-  const acceptance = Promise.resolve().then(() => acceptReviewedStepOnce(options, runStore, run))
-  reviewAcceptancesInFlight.set(key, acceptance)
-  try {
-    return await acceptance
-  } finally {
-    if (reviewAcceptancesInFlight.get(key) === acceptance) reviewAcceptancesInFlight.delete(key)
-  }
+  return options.coordinateReviewAcceptance(selection.root, selection.runId, () => acceptReviewedStepOnce(options, selection.root, selection.runId))
 }
 
-async function acceptReviewedStepOnce(options: StepReviewCommandOptions, runStore: FileRunStateStore, run: WorkflowRunState): Promise<AcceptedStepResult> {
+async function acceptReviewedStepOnce(options: StepReviewCommandOptions, workspaceRoot: string, runId: string): Promise<AcceptedStepResult | string> {
+  const runStore = new FileRunStateStore({ workspaceRoot })
+  const run = await runStore.loadRun(runId)
+  if (!run) return `Workflow run not found: ${runId}`
   const acceptedStepId = run.currentStep
   const accepted = acceptReviewingStep(run)
   await runStore.saveRun(accepted)
@@ -102,10 +92,6 @@ async function acceptReviewedStepOnce(options: StepReviewCommandOptions, runStor
     ? `Accepted final step and completed workflow run: ${accepted.runId}`
     : `Accepted step; next step is ${accepted.currentStep}: ${accepted.runId}`
   return { run: accepted, message, completedViaBobTask }
-}
-
-function reviewAcceptanceKey(runId: string, stepId: string | undefined): string {
-  return JSON.stringify([runId, stepId ?? null])
 }
 
 async function showAcceptedStepMessage(accepted: WorkflowRunState, message: string, completedViaBobTask: boolean): Promise<void> {

@@ -22,6 +22,15 @@ export interface WorkflowRegisterApi {
    */
   acceptBobWorkflowGate: (runId: string, stepId: string) => BobWorkflowGateAcceptResult
   /**
+   * 同じ workspace run に対する重複 review acceptance を、現在の service activation 内で共有する。
+   *
+   * @param workspaceRoot workflow run を所有する workspace root。
+   * @param runId acceptance 対象 run identifier。
+   * @param operation durable acceptance と Bob reconciliation を含む owner operation。
+   * @returns 同じ root/run で進行中の owner Promise、または新しい owner Promise。
+   */
+  coordinateReviewAcceptance: <T>(workspaceRoot: string, runId: string, operation: () => Promise<T>) => Promise<T>
+  /**
    * custom action step を実行する workflow action provider を登録する。
    *
    * @param provider workflow runtime へ公開する action provider 実装。
@@ -125,6 +134,7 @@ export function activate(context: vscode.ExtensionContext): WorkflowRegisterApi 
   const service = new WorkflowRegisterService(String(context.extension.packageJSON.version ?? "unknown"))
   const api: WorkflowRegisterApi = {
     acceptBobWorkflowGate: (runId, stepId) => service.acceptBobWorkflowGate(runId, stepId),
+    coordinateReviewAcceptance: (workspaceRoot, runId, operation) => service.coordinateReviewAcceptance(workspaceRoot, runId, operation),
     registerActionProvider: (provider) => service.registerActionProvider(provider),
     registerAgentProvider: (provider) => service.registerAgentProvider(provider),
     registerResultSink: (type, handler) => service.registerResultSink(type, handler),
