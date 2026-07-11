@@ -519,9 +519,14 @@ function warnBareTemplatePlaceholders(value: string | undefined, location: strin
 
 function diagnosticFromParserLine(line: string, filePath: string): WorkflowDiagnostic {
   const trimmed = line.replace(/^[-*]\s*/, "")
-  if (trimmed.startsWith("fail:")) return error(filePath, trimmed.slice(5).trim())
-  if (trimmed.startsWith("warn:")) return warning(filePath, trimmed.slice(5).trim())
-  return { severity: "info", filePath, message: trimmed.replace(/^ok:\s*/, "") }
+  if (trimmed.startsWith("fail:")) return error(filePath, withoutParserFilePath(trimmed.slice(5).trim(), filePath))
+  if (trimmed.startsWith("warn:")) return warning(filePath, withoutParserFilePath(trimmed.slice(5).trim(), filePath))
+  return { severity: "info", filePath, message: withoutParserFilePath(trimmed.replace(/^ok:\s*/, ""), filePath) }
+}
+
+function withoutParserFilePath(message: string, filePath: string): string {
+  const prefix = `${filePath}: `
+  return message.startsWith(prefix) ? message.slice(prefix.length) : message
 }
 
 function diagnosticHint(message: string): string | undefined {

@@ -361,6 +361,70 @@ test("CI workflow contract paths include the canonical compiler source", () => {
   assert.equal(ciWorkflow.match(/extensions\/workflow-register\/src\/core\/workflowCompiler\.ts/g)?.length, 2)
 })
 
+test("formatted parser diagnostics include their file path exactly once", async (t) => {
+  const { compileWorkflowDocument, formatWorkflowDiagnostics } = require(path.join(outRoot, "core", "workflowCompiler.js"))
+  const filePath = ".bob/workflows/sample/WORKFLOW.md"
+  const cases = [
+    {
+      name: "missing front matter",
+      text: "not a workflow",
+      severity: "error",
+      message: "missing YAML front matter."
+    },
+    {
+      name: "invalid YAML syntax",
+      text: "---\nname: [\n---\n",
+      severity: "error",
+      messagePrefix: "invalid YAML:"
+    },
+    {
+      name: "schema failure",
+      text: "---\nschemaVersion: workflow-register/v1\ndescription: Missing name.\nsteps: []\n---\n",
+      severity: "error",
+      message: "/ must have required property 'name'."
+    },
+    {
+      name: "parser warning",
+      text: warningWorkflow,
+      severity: "warning",
+      message: "unknown top-level field 'unknownTopLevel'."
+    },
+    {
+      name: "parser info",
+      text: workflowText("sample", "  []"),
+      severity: "info",
+      message: "workflow-register.sample; schemaVersion=workflow-register/v1; steps=0"
+    }
+  ]
+
+  for (const item of cases) {
+    await t.test(item.name, () => {
+      const result = compileWorkflowDocument({ sourceId: "workflow-register", filePath, text: item.text })
+      const diagnostic = result.diagnostics.find((candidate) => candidate.severity === item.severity)
+      assert.ok(diagnostic)
+      if (item.message) assert.equal(diagnostic.message, item.message)
+      if (item.messagePrefix) assert.ok(diagnostic.message.startsWith(item.messagePrefix))
+      const formatted = formatWorkflowDiagnostics({ ...result, diagnostics: [diagnostic] })[0]
+      assert.equal(countOccurrences(formatted, `${filePath}: `), 1, formatted)
+    })
+  }
+})
+
+test("parser diagnostic normalization preserves matching path text inside the message body", () => {
+  const { compileWorkflowDocument, formatWorkflowDiagnostics } = require(path.join(outRoot, "core", "workflowCompiler.js"))
+  const filePath = ".bob/workflows/sample/WORKFLOW.md"
+  const embeddedPathWorkflow = workflowText("embedded-path", "  []", `"${filePath}: note": true`)
+  const result = compileWorkflowDocument({ sourceId: "workflow-register", filePath, text: embeddedPathWorkflow })
+  const warning = result.diagnostics.find((item) => item.severity === "warning")
+
+  assert.ok(warning)
+  assert.equal(warning.message, `unknown top-level field '${filePath}: note'.`)
+  assert.equal(
+    formatWorkflowDiagnostics({ ...result, diagnostics: [warning] })[0],
+    `- warning: ${filePath}: unknown top-level field '${filePath}: note'.`
+  )
+})
+
 test("workflow compiler owns parse, semantic, strict, catalog, and diagnostic parity", () => {
   const { compileWorkflowDocument } = require(path.join(outRoot, "core", "workflowCompiler.js"))
   const { parseWorkflowMarkdown } = require(path.join(outRoot, "core", "parser"))
@@ -463,4 +527,8 @@ function compareDiagnostics(left, right) {
 
 function compareText(left, right) {
   return left < right ? -1 : left > right ? 1 : 0
+}
+
+function countOccurrences(value, search) {
+  return value.split(search).length - 1
 }
