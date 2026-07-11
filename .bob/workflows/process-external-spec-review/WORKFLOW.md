@@ -12,6 +12,7 @@ stepCompletion: manual
 stepMessage: step
 stepExecution: { mode: engineSteps, allowOutOfOrder: false, showInBob: true }
 stepReview: { enabled: true, pauseAfter: agentAndCommand, requireAcceptBeforeNext: true, allowRetry: true, allowEditBeforeRetry: true, preserveAttempts: true }
+branching: { enabled: true }
 autoApproval: true
 workspaceRequired: true
 permissions: [read, todo]
@@ -81,6 +82,12 @@ steps:
     type: manual
     prompt: 工程の成果物、検証結果、レビュー結果を人間が確認し、記録へ進むか差し戻すかを判断してください。
     approval: { resultKey: humanGate, approveLabel: 記録へ進む, rejectLabel: 差し戻す, message: 外部仕様レビューの指摘と証跡を確認してください。 }
+    transition:
+      decisions:
+        - id: approved
+          when: { stateKey: humanGate.decision, equals: approved }
+          goto: write-process-record
+      default: fail
   - id: write-process-record
     title: 工程記録を書き込む
     type: command

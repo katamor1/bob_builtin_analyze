@@ -64,6 +64,14 @@ test("Phase 3 process workflow templates parse cleanly and enforce command guard
     }
     assert.equal(parsed.workflow.engineSteps.some((step) => step.type === "manual" && step.approval), true, `${workflowName} has human gate`)
     assert.equal(parsed.workflow.engineSteps.some((step) => step.type === "agent"), true, `${workflowName} has agent work`)
+    assert.equal(parsed.workflow.branching?.enabled, true, `${workflowName} enables fail-closed branching`)
+    const humanGateStep = parsed.workflow.engineSteps.find((step) => step.id === "human-gate")
+    assert.equal(humanGateStep?.transition?.default, "fail", `${workflowName} rejects must stop before record writing`)
+    const approvedDecision = humanGateStep?.transition?.decisions?.[0]
+    assert.equal(approvedDecision?.id, "approved", `${workflowName} approval transition is explicit`)
+    assert.equal(approvedDecision?.when?.stateKey, "humanGate.decision", `${workflowName} branches on the manual gate decision`)
+    assert.equal(approvedDecision?.when?.equals, "approved", `${workflowName} records only after explicit approval`)
+    assert.equal(approvedDecision?.goto, "write-process-record", `${workflowName} approval proceeds to record writing`)
     const recordStep = parsed.workflow.engineSteps.find((step) => step.type === "command" && step.action.args[0] === "bobProcess.writeProcessRecord")
     assert.equal(
       recordStep?.action?.args?.[1]?.record?.humanGate?.status,
@@ -111,13 +119,6 @@ test("Phase 3 process workflow templates parse cleanly and enforce command guard
         false,
         "code precheck must not use the ignored preprocess inputPath option"
       )
-      const humanGateStep = parsed.workflow.engineSteps.find((step) => step.id === "human-gate")
-      assert.equal(humanGateStep?.transition?.default, "fail", "code precheck rejects must stop before record writing")
-      const approvedDecision = humanGateStep?.transition?.decisions?.[0]
-      assert.equal(approvedDecision?.id, "approved", "code precheck approval transition is explicit")
-      assert.equal(approvedDecision?.when?.stateKey, "humanGate.decision", "code precheck branches on manual gate decision")
-      assert.equal(approvedDecision?.when?.equals, "approved", "code precheck only records after explicit human approval")
-      assert.equal(approvedDecision?.goto, "write-process-record", "code precheck approval proceeds to record writing")
       assert.ok(recordStep.action.args[1].record.phase2Handoff, "code precheck writes Phase 2 handoff into process record")
     }
     assert.equal(parsed.diagnostics.some((line) => line.includes("- warn:")), false, `${workflowName}\n${parsed.diagnostics.join("\n")}`)

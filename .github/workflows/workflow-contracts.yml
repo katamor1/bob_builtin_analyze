@@ -9,12 +9,14 @@ on:
       - "extensions/**/templates/**/WORKFLOW.md"
       - "docs/workflows/**/WORKFLOW.md"
       - "docs/workflows/action-provider-contracts.json"
+      - ".bob/process/process-catalog.yaml"
       - "extensions/workflow-register/src/core/actionRegistry.ts"
       - "extensions/workflow-register/src/core/mechanicalChecks/actionProvider.ts"
       - "extensions/workflow-register/src/core/engine/preflight.ts"
       - "extensions/workflow-register/src/core/workflowCompiler.ts"
       - "extensions/workflow-register/src/core/workflowValidator.ts"
       - "extensions/workflow-register/test/workflowContractFiles.test.js"
+      - "extensions/workflow-register/test/processWorkflowContracts.test.js"
       - "extensions/bob-bazaar-review/src/workflow/workflowProviders.ts"
       - "extensions/bob-code-consistency-review/src/workflowProviderRegistration.ts"
       - "extensions/workflow-register/package.json"
@@ -31,12 +33,14 @@ on:
       - "extensions/**/templates/**/WORKFLOW.md"
       - "docs/workflows/**/WORKFLOW.md"
       - "docs/workflows/action-provider-contracts.json"
+      - ".bob/process/process-catalog.yaml"
       - "extensions/workflow-register/src/core/actionRegistry.ts"
       - "extensions/workflow-register/src/core/mechanicalChecks/actionProvider.ts"
       - "extensions/workflow-register/src/core/engine/preflight.ts"
       - "extensions/workflow-register/src/core/workflowCompiler.ts"
       - "extensions/workflow-register/src/core/workflowValidator.ts"
       - "extensions/workflow-register/test/workflowContractFiles.test.js"
+      - "extensions/workflow-register/test/processWorkflowContracts.test.js"
       - "extensions/bob-bazaar-review/src/workflow/workflowProviders.ts"
       - "extensions/bob-code-consistency-review/src/workflowProviderRegistration.ts"
       - "extensions/workflow-register/package.json"
@@ -79,7 +83,7 @@ jobs:
         shell: bash
         run: |
           set +e
-          node --test test/workflowContractFiles.test.js > "$RUNNER_TEMP/workflow-contracts.log" 2>&1
+          node --test test/workflowContractFiles.test.js test/processWorkflowContracts.test.js > "$RUNNER_TEMP/workflow-contracts.log" 2>&1
           status=$?
           if [ "$status" -ne 0 ]; then
             echo "Workflow contract validation failed. Relevant output:"

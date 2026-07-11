@@ -5,7 +5,7 @@ import { collectProcessEvidence } from "../process/processEvidence"
 import { validateProcessInput } from "../process/processInputValidator"
 import { generateCampaignSummary, writeProcessRecord } from "../process/processRecordStore"
 import { validateProcessReviewResult } from "../process/processReviewResultValidator"
-import { validateSafePathSegment, workspacePath } from "../process/processPaths"
+import { validateExistingWorkspacePath, validateSafePathSegment, workspacePath } from "../process/processPaths"
 import type { ProcessEvidenceIndex, ProcessInput } from "../process/processTypes"
 
 export interface ProcessCommandOptions {
@@ -104,6 +104,12 @@ export async function writeProcessRecordCommand(
 ): Promise<ProcessCommandResult> {
   return runProcessCommand(async () => {
     const record = normalizeRecordForWrite(input.record ?? (await readWorkspaceData(options.workspaceRoot, requiredPath(input.recordPath, "recordPath"))).data)
+    const gateDiagnostic = completedRequiredGateDiagnostic(record)
+    if (gateDiagnostic) return error([gateDiagnostic])
+    if (isRecord(record) && record.status === "completed" && record.reviewResultPath !== undefined) {
+      const reviewDiagnostics = await validateExistingWorkspacePath(options.workspaceRoot, record.reviewResultPath, "reviewResultPath")
+      if (reviewDiagnostics.length > 0) return error(reviewDiagnostics)
+    }
     const written = await writeProcessRecord(options.workspaceRoot, record)
     return ok(withProviderArtifact("processRecord", written.relativePath, {
       absolutePath: written.absolutePath,
@@ -190,6 +196,12 @@ function normalizeRecordForWrite(record: unknown): unknown {
       status: "accepted"
     }
   }
+}
+
+function completedRequiredGateDiagnostic(record: unknown): string | undefined {
+  if (!isRecord(record) || record.status !== "completed" || !isRecord(record.humanGate)) return undefined
+  if (record.humanGate.required !== true || record.humanGate.status === "accepted") return undefined
+  return "completed process record requires humanGate.status 'accepted' when humanGate.required is true"
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

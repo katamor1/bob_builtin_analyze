@@ -21,6 +21,7 @@ stepReview:
   allowRetry: true
   allowEditBeforeRetry: true
   preserveAttempts: true
+branching: { enabled: true }
 autoApproval: true
 workspaceRequired: true
 permissions:
@@ -163,6 +164,12 @@ steps:
       rejectLabel: 差し戻す
       message: レビュー結果、証跡、未解決事項を確認してください。
     required: true
+    transition:
+      decisions:
+        - id: approved
+          when: { stateKey: humanGate.decision, equals: approved }
+          goto: write-process-record
+      default: fail
   - id: write-process-record
     title: 工程記録を書き込む
     type: command
