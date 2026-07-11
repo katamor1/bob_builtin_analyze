@@ -116,6 +116,9 @@ async function resolveGitRevision(
 
 export function validateBazaarRevision(revision: string): string {
   const trimmed = revision.trim()
+  if (/[\0-\x1F\x7F]/u.test(revision)) {
+    throw new Error(`安全でない Bazaar リビジョン指定です: ${formatRevisionForError(revision)}`)
+  }
   if (!trimmed) throw new Error("リビジョンを入力してください。")
   if (trimmed.length > MAX_BAZAAR_REVISION_SPEC_LENGTH) {
     throw new Error(`Bazaar リビジョン指定が長すぎます: ${formatRevisionForError(revision)}`)
