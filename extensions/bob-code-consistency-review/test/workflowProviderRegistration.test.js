@@ -57,7 +57,19 @@ test("workflow-register and IBM Bob are soft dependencies with delayed provider 
   assert.match(source, /WORKFLOW_PROVIDER_RETRY_DELAYS_MS/)
   assert.match(source, /context\.subscriptions\.push/)
   assert.match(source, /clearTimeout/)
-  assert.match(source, /workflowProvidersRegistered/)
+  assert.match(source, /providersRegistered/)
+})
+
+test("code consistency provider retry lifecycle recovers restarts and disposes late registrations", () => {
+  const source = readSourceSet(["extension.ts", "workflowProviderRegistration.ts"])
+
+  assert.match(source, /let disposed = false/)
+  assert.match(source, /let registrationAttempt: Promise<boolean> \| undefined/)
+  assert.match(source, /let activeRegistrations: vscode\.Disposable\[\] = \[\]/)
+  assert.match(source, /if \(disposed\) \{[\s\S]*disposeRegistrations\(result\.registrations\)[\s\S]*return false/)
+  assert.match(source, /if \(providersRegistered && workflowExtension\?\.isActive\) return/)
+  assert.match(source, /disposeRegistrations\(activeRegistrations\)/)
+  assert.doesNotMatch(source, /^let workflowProviderRegistrationAttempt/m)
 })
 
 test("code consistency workflow providers declare ownership and register disposables", () => {
