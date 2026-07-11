@@ -50,7 +50,19 @@ jobs:
       - name: Verify code consistency remediation
         working-directory: extensions/bob-code-consistency-review
         run: npm run compile && node --test test/traceabilityPrepWebviewAssets.test.js test/workflowProviderRegistration.test.js test/sizeLimits.test.js test/traceabilityCommandWiring.test.js
-      - name: Commit patched sources
+      - name: Capture remaining policy failures
+        shell: bash
+        run: |
+          mkdir -p docs/tmp
+          (
+            cd extensions/workflow-register
+            npm run architecture:policy
+          ) > docs/tmp/workflow-register-architecture-policy.log 2>&1 || true
+          (
+            cd extensions/bob-bazaar-review
+            npm run unused:policy
+          ) > docs/tmp/bob-bazaar-review-unused-policy.log 2>&1 || true
+      - name: Commit patched sources and diagnostics
         shell: bash
         run: |
           if git diff --quiet; then
@@ -60,5 +72,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          git commit -m "fix: apply verified remediation patches"
+          git commit -m "chore: capture quality policy diagnostics"
           git push origin HEAD:agent/three-extension-remediation-20260711
