@@ -22,7 +22,7 @@
 
 実装項目はPR #68のブランチ `agent/three-extension-remediation-20260711` へ反映済みである。追加レビューで、Git revision解決中のcancel/timeout分類保持、provider登録に実際に使用したAPI identityの保持、`registered:false`時の部分登録rollback、process termination後settlement、Extension Host smoke runtime契約も追加した。
 
-Extension Host smokeは最小拡張で`@vscode/test-cli@0.0.12`がproject rootから`@vscode/test-electron`を解決できず、activation前に失敗することを再現した。`@vscode/test-electron@2.5.2`の一時導入、明示preflight、`skipExtensionDependencies: true`、VSIX生成後のruntime導入へ修正済みである。ローカルではtest runtime解決を通過したが、DNS制約によりVS Code download完了までは確認できない。
+Extension Host smokeは最小拡張で`@vscode/test-cli@0.0.12`がproject rootから`@vscode/test-electron`を解決できず、activation前に失敗することを再現した。VSIX検査後にCLI `0.0.12`とElectron runtime `2.5.2`をproject rootへ一時導入し、両packageの明示preflight、project-local binary実行、`skipExtensionDependencies: true`、smoke contract testへ修正済みである。ローカルではruntime解決を通過したが、DNS制約によりVS Code download完了までは確認できない。
 
 GitHub Actionsは最新付近でも全jobがrunner割当前に終了しており、最新headの全体CIと実機試験は未完了である。PRはdraftを維持し、CI／実機ゲートが閉じるまでmergeしない。
 
@@ -110,7 +110,9 @@ GitHub Actionsは最新付近でも全jobがrunner割当前に終了しており
 
 **Files:**
 - Modify: `.github/workflows/extensions-quality.yml`
+- Modify: `.github/workflows/extension-host-smoke-diagnostic.yml`
 - Modify: `scripts/extension-host-smoke.test.js`
+- Create: `scripts/extension-host-smoke-contract.test.js`
 - Modify: three extensions' basic design, detailed design, unit test, real-machine test documents
 - Modify: `docs/review-findings-tracking.md`
 - Modify: `docs/release-evidence/three-extension-remediation-2026-07-11.md`
@@ -121,11 +123,13 @@ GitHub Actionsは最新付近でも全jobがrunner割当前に終了しており
 - [x] 外部GitHub Actionsをfull commit SHAへ固定する。
 - [x] 一時的な旧`agent-*` workflowとpatch scriptを削除する。
 - [x] Extension Host smokeの`@vscode/test-electron`欠落をRED再現する。
-- [x] `@vscode/test-electron@2.5.2`導入後にtest CLIのruntime解決を通過することを確認する。
-- [x] smoke configへruntime preflight、BDD UI、`skipExtensionDependencies: true`を追加する。
+- [x] CLI `0.0.12`とElectron runtime `2.5.2`をproject rootへ一時導入する。
+- [x] transientな`npx --package`を廃止し、project-localの`vscode-test` binaryへ統一する。
+- [x] smoke configへ両packageのruntime preflight、BDD UI、`skipExtensionDependencies: true`を追加する。
 - [x] VSIX生成・policyをtest runtime導入前へ移し、配布物との境界を固定する。
+- [x] smoke contract testでpackage version、local binary、preflightを固定する。
 - [x] release evidenceへ局所RED/GREENとrunner blockerを記録する。
-- [ ] GitHub runner復旧後、実Extension Host smokeを3拡張で完走する。
+- [ ] GitHub runner復旧後、smoke contractと実Extension Host smokeを3拡張で完走する。
 - [ ] smoke成功後、一時`extension-host-smoke-diagnostic.yml`を削除する。
 
 ### Final Verification
@@ -133,6 +137,7 @@ GitHub Actionsは最新付近でも全jobがrunner割当前に終了しており
 - [ ] `workflow-register`: dependency, architecture, source, schema, unit, package, package policy
 - [ ] `bob-bazaar-review`: dependency, architecture, source, unused, artifact, unit, package, package policy
 - [ ] `bob-code-consistency-review`: dependency, architecture, source, unit, package, package policy
+- [ ] smoke harness contract test
 - [ ] 全workflow strict/provider-aware contract test
 - [ ] Windows/Ubuntu CI
 - [ ] VS Code Extension Host activation smoke
