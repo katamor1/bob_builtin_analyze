@@ -73,11 +73,11 @@ export async function collectEvidenceCommand(
     if (runIdDiagnostic) return error([runIdDiagnostic])
     const evidenceInput = { ...(processInput.input as ProcessInput), runId }
     const evidence = await collectProcessEvidence(options.workspaceRoot, evidenceInput)
-    return ok({
+    return ok(withProviderArtifact("evidenceIndex", evidence.relativePath, {
       index: evidence.index,
       absolutePath: evidence.absolutePath,
       relativePath: evidence.relativePath
-    })
+    }))
   })
 }
 
@@ -105,12 +105,12 @@ export async function writeProcessRecordCommand(
   return runProcessCommand(async () => {
     const record = normalizeRecordForWrite(input.record ?? (await readWorkspaceData(options.workspaceRoot, requiredPath(input.recordPath, "recordPath"))).data)
     const written = await writeProcessRecord(options.workspaceRoot, record)
-    return ok({
+    return ok(withProviderArtifact("processRecord", written.relativePath, {
       absolutePath: written.absolutePath,
       relativePath: written.relativePath,
       backupAbsolutePath: written.backupAbsolutePath,
       backupRelativePath: written.backupRelativePath
-    })
+    }))
   })
 }
 
@@ -121,11 +121,11 @@ export async function generateCampaignSummaryCommand(
   return runProcessCommand(async () => {
     const campaignId = requiredPath(input.campaignId, "campaignId")
     const summary = await generateCampaignSummary(options.workspaceRoot, campaignId)
-    return ok({
+    return ok(withProviderArtifact("campaignSummary", summary.relativePath, {
       summary: summary.summary,
       absolutePath: summary.absolutePath,
       relativePath: summary.relativePath
-    })
+    }))
   })
 }
 
@@ -168,6 +168,15 @@ function ok(extra: Record<string, unknown>): ProcessCommandResult {
 
 function error(diagnostics: string[]): ProcessCommandResult {
   return { status: "error", diagnostics, message: diagnostics.join("; ") }
+}
+
+function withProviderArtifact(id: string, artifactPath: string, payload: Record<string, unknown>): Record<string, unknown> {
+  return {
+    ...payload,
+    $workflow: {
+      artifacts: [{ id, ownership: "provider", path: artifactPath }]
+    }
+  }
 }
 
 function normalizeRecordForWrite(record: unknown): unknown {

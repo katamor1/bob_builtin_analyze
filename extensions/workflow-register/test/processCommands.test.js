@@ -106,6 +106,9 @@ test("process command handlers validate catalog/input, collect evidence, write r
   assert.equal(evidence.status, "ok", evidence.diagnostics.join("\n"))
   assert.equal(evidence.index.entries.length, 2)
   assert.equal(evidence.relativePath, ".bob-process-runs/run-001/evidence-index.json")
+  assert.deepEqual(evidence.$workflow, {
+    artifacts: [{ id: "evidenceIndex", ownership: "provider", path: evidence.relativePath }]
+  })
 
   const reviewResult = {
     schemaVersion: PROCESS_REVIEW_RESULT_SCHEMA_VERSION,
@@ -145,11 +148,17 @@ test("process command handlers validate catalog/input, collect evidence, write r
   }, { workspaceRoot: root })
   assert.equal(record.status, "ok", record.diagnostics.join("\n"))
   assert.equal(record.relativePath, ".bob-process-records/campaigns/campaign-alpha/records/run-001/record.yaml")
+  assert.deepEqual(record.$workflow, {
+    artifacts: [{ id: "processRecord", ownership: "provider", path: record.relativePath }]
+  })
 
   const summary = await generateCampaignSummaryCommand({ campaignId: "campaign-alpha" }, { workspaceRoot: root })
   assert.equal(summary.status, "ok", summary.diagnostics.join("\n"))
   assert.equal(summary.summary.recordCount, 1)
   assert.deepEqual(summary.summary.statusCounts, { completed: 1 })
+  assert.deepEqual(summary.$workflow, {
+    artifacts: [{ id: "campaignSummary", ownership: "provider", path: summary.relativePath }]
+  })
 })
 
 test("writeProcessRecordCommand normalizes manual approval decisions before validation", async () => {

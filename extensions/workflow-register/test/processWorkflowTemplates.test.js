@@ -73,6 +73,20 @@ test("Phase 3 process workflow templates parse cleanly and enforce command guard
     for (const artifact of parsed.workflow.artifacts) {
       assert.match(artifact.path, /^\.bob-process-(runs|records)\//, `${workflowName} artifact ${artifact.id} stays in process roots`)
     }
+    for (const [artifactId, stepId] of [
+      ["evidenceIndex", "collect-evidence"],
+      ["processRecord", "write-process-record"],
+      ["campaignSummary", "generate-campaign-summary"]
+    ]) {
+      const matches = parsed.workflow.artifacts.filter((artifact) => artifact.id === artifactId)
+      assert.equal(matches.length, 1, `${workflowName} declares ${artifactId} exactly once`)
+      assert.equal(matches[0].producedBy, stepId, `${workflowName} assigns ${artifactId} to ${stepId}`)
+    }
+    const reviewArtifacts = parsed.workflow.artifacts.filter((artifact) => artifact.id === "reviewResult")
+    const reviewResultStep = parsed.workflow.engineSteps.find((step) => step.id === "save-review-result")
+    assert.equal(reviewArtifacts.length, 1, `${workflowName} declares reviewResult exactly once`)
+    assert.equal(reviewArtifacts[0].producedBy, "save-review-result", `${workflowName} keeps reviewResult engine-owned`)
+    assert.equal(reviewResultStep?.type, "result", `${workflowName} writes reviewResult through an engine result step`)
     for (const step of parsed.workflow.engineSteps.filter((item) => item.type === "command")) {
       assert.ok(parsed.workflow.guardrails.allowedCommands.includes(step.action.provider), `${workflowName}:${step.id} provider is allowlisted`)
       if (step.action.provider === "vscode.executeCommand") {

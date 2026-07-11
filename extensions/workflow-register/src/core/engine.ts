@@ -46,6 +46,7 @@ import {
   CoreWorkflowDefinition,
   EngineStep,
   RunStepState,
+  WorkflowProviderArtifactMetadata,
   WorkflowRunState
 } from "./model"
 import type {
@@ -319,7 +320,8 @@ export class WorkflowEngine {
         workflow,
         run,
         step,
-        resultSinks: this.resultSinks
+        resultSinks: this.resultSinks,
+        providerArtifacts: stepResult.providerArtifacts
       })
       if (!artifactResult.ok) {
         stepState.status = "failed"
@@ -468,7 +470,10 @@ export class WorkflowEngine {
     workflow: CoreWorkflowDefinition,
     run: WorkflowRunState,
     step: EngineStep
-  ): Promise<{ ok: true } | { ok: false; held?: boolean; error: string }> {
+  ): Promise<
+    | { ok: true; providerArtifacts?: WorkflowProviderArtifactMetadata[] }
+    | { ok: false; held?: boolean; error: string }
+  > {
     if (step.type === "manual") {
       return waitForEngineManualCompletion({
         workflow,
