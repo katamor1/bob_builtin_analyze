@@ -23,13 +23,28 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: extensions/bob-code-consistency-review/package-lock.json
+          cache-dependency-path: |
+            extensions/workflow-register/package-lock.json
+            extensions/bob-bazaar-review/package-lock.json
+            extensions/bob-code-consistency-review/package-lock.json
       - name: Apply deterministic patch
         run: node scripts/agent-remediation-patch.mjs
+      - name: Install workflow-register dependencies
+        working-directory: extensions/workflow-register
+        run: npm ci
+      - name: Install Bazaar review dependencies
+        working-directory: extensions/bob-bazaar-review
+        run: npm ci
       - name: Install code consistency dependencies
         working-directory: extensions/bob-code-consistency-review
         run: npm ci
-      - name: Verify focused regressions
+      - name: Verify workflow-register provider lifecycle
+        working-directory: extensions/workflow-register
+        run: npm run compile && node --test test/actionRegistry.test.js
+      - name: Verify Bazaar provider lifecycle
+        working-directory: extensions/bob-bazaar-review
+        run: npm run compile && node --test test/workflowProviderRegistration.test.js
+      - name: Verify code consistency provider lifecycle
         working-directory: extensions/bob-code-consistency-review
         run: npm run compile && node --test test/traceabilityPrepWebviewAssets.test.js test/workflowProviderRegistration.test.js
       - name: Commit patched sources
