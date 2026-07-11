@@ -170,6 +170,54 @@ jobs:
       - name: VSIX policy
         run: npm run package:policy
 
+  windows-smoke:
+    name: Windows / ${{ matrix.extension }}
+    runs-on: windows-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        extension:
+          - workflow-register
+          - bob-bazaar-review
+          - bob-code-consistency-review
+
+    defaults:
+      run:
+        working-directory: extensions/${{ matrix.extension }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: extensions/${{ matrix.extension }}/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Dependency policy
+        run: npm run dependency:policy
+
+      - name: Architecture policy
+        run: npm run architecture:policy
+
+      - name: Source policy
+        run: npm run source:policy
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Package
+        run: npm run package
+
+      - name: VSIX policy
+        run: npm run package:policy
+
   extension-metrics:
     name: Extension source metrics
     runs-on: ubuntu-latest
