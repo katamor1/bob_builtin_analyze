@@ -6,7 +6,12 @@ import {
 } from "./fileSystem"
 import { classifyLanguageFromPath } from "./languageClassifier"
 import { decodeTextBuffer } from "./textEncoding"
-import { normalizeReviewProcessingLimits, truncateUtf8Text, type ReviewProcessingLimits } from "./limits"
+import {
+  maxVcsProcessBufferBytes,
+  normalizeReviewProcessingLimits,
+  truncateUtf8Text,
+  type ReviewProcessingLimits
+} from "./limits"
 import { ExternalProcessError, runExternalProcess } from "./externalProcessRunner"
 import type { DiffSummary } from "./diffTypes"
 import type { ReviewInput } from "./reviewTypes"
@@ -36,8 +41,8 @@ export async function collectGitDiff(reviewInput: ReviewInput, options: {
   const vcs = normalizeVcs(reviewInput.review.vcs)
   const vcsRoot = resolveVcsRoot(options.workspaceRoot, reviewInput.review.vcs_root)
   const diff = vcs === "bazaar"
-    ? await collectBazaarDiff(reviewInput, { ...options, vcsRoot })
-    : await collectStandardGitDiff(reviewInput, { ...options, vcsRoot })
+    ? await collectBazaarDiff(reviewInput, { ...options, vcsRoot, limits })
+    : await collectStandardGitDiff(reviewInput, { ...options, vcsRoot, limits })
   return applyDiffLimits(diff, limits)
 }
 
@@ -45,14 +50,16 @@ async function collectStandardGitDiff(reviewInput: ReviewInput, options: {
   workspaceRoot: string
   vcsRoot: string
   textEncoding?: string
+  limits: ReviewProcessingLimits
   commandTimeoutMs?: number
   signal?: AbortSignal
 }): Promise<DiffSummary> {
   const base = await resolveGitRevision(reviewInput.review.base, options.vcsRoot, options.textEncoding, options.commandTimeoutMs, options.signal)
   const head = await resolveGitRevision(reviewInput.review.head, options.vcsRoot, options.textEncoding, options.commandTimeoutMs, options.signal)
-  const nameStatus = await runGitText(["diff", "--find-renames", "--name-status", "-z", base, head], options.vcsRoot, 20 * 1024 * 1024, options.textEncoding, options.commandTimeoutMs, options.signal)
-  const numstat = await runGitText(["diff", "--find-renames", "--numstat", "-z", base, head], options.vcsRoot, 20 * 1024 * 1024, options.textEncoding, options.commandTimeoutMs, options.signal)
-  const unifiedDiff = await runGitText(["diff", "--find-renames", "--unified=80", base, head], options.vcsRoot, 50 * 1024 * 1024, options.textEncoding, options.commandTimeoutMs, options.signal)
+  const processBufferBytes = maxVcsProcessBufferBytes(options.limits.maxRawDiffBytes)
+  const nameStatus = await runGitText(["diff", "--find-renames", "--name-status", "-z", base, head], options.vcsRoot, processBufferBytes, options.textEncoding, options.commandTimeoutMs, options.signal)
+  const numstat = await runGitText(["diff", "--find-renames", "--numstat", "-z", base, head], options.vcsRoot, processBufferBytes, options.textEncoding, options.commandTimeoutMs, options.signal)
+  const unifiedDiff = await runGitText(["diff", "--find-renames", "--unified=80", base, head], options.vcsRoot, processBufferBytes, options.textEncoding, options.commandTimeoutMs, options.signal)
 
   const counts = parseNumstatZ(numstat)
   const files = parseNameStatusZ(nameStatus).map(({ statusToken, filePath }) => {
@@ -68,6 +75,7 @@ async function collectBazaarDiff(reviewInput: ReviewInput, options: {
   vcsRoot: string
   bzrPath?: string
   textEncoding?: string
+  limits: ReviewProcessingLimits
   commandTimeoutMs?: number
   signal?: AbortSignal
 }): Promise<DiffSummary> {
@@ -75,12 +83,13 @@ async function collectBazaarDiff(reviewInput: ReviewInput, options: {
   const base = validateBazaarRevision(reviewInput.review.base)
   const head = validateBazaarRevision(reviewInput.review.head)
   const revisionRange = `${base}..${head}`
+  const processBufferBytes = maxVcsProcessBufferBytes(options.limits.maxRawDiffBytes)
   // Bazaar の alias は差分本文と副作用を変え得るため、収集系でも bzr --no-aliases を必ず先頭に置く。
   const unifiedDiff = await runCommandText(
     bzrPath,
     ["--no-aliases", "diff", "-r", revisionRange],
     options.vcsRoot,
-    50 * 1024 * 1024,
+    processBufferBytes,
     [0, 1],
     options.textEncoding,
     { BZR_PROGRESS_BAR: "none" },
