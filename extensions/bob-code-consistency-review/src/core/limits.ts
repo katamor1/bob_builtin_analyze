@@ -34,6 +34,10 @@ export const MAX_REVIEW_PROCESSING_LIMITS: ReviewProcessingLimits = {
   maxBobInputBytes: 8 * 1024 * 1024
 }
 
+export const MIN_VCS_PROCESS_BUFFER_BYTES = 1024 * 1024
+export const MAX_VCS_PROCESS_BUFFER_BYTES = 20 * 1024 * 1024
+const VCS_PROCESS_BUFFER_FIXED_HEADROOM_BYTES = 64 * 1024
+
 export function normalizeReviewProcessingLimits(input: Partial<ReviewProcessingLimits> | undefined): ReviewProcessingLimits {
   return {
     maxDocumentBytes: boundedLimit(
@@ -73,6 +77,21 @@ export function normalizeReviewProcessingLimits(input: Partial<ReviewProcessingL
       MAX_REVIEW_PROCESSING_LIMITS.maxBobInputBytes
     )
   }
+}
+
+/**
+ * Git/Bazaar CLI outputのhard bufferをartifact上限から導出する。
+ * 2倍のtruncation headroomとstderr用固定headroomを持たせつつ、20MiBを超えない。
+ */
+export function maxVcsProcessBufferBytes(maxRawDiffBytes: number | undefined): number {
+  const normalizedDiffBytes = boundedLimit(
+    maxRawDiffBytes,
+    DEFAULT_REVIEW_PROCESSING_LIMITS.maxRawDiffBytes,
+    MIN_REVIEW_PROCESSING_LIMITS.maxRawDiffBytes,
+    MAX_REVIEW_PROCESSING_LIMITS.maxRawDiffBytes
+  )
+  const derived = normalizedDiffBytes * 2 + VCS_PROCESS_BUFFER_FIXED_HEADROOM_BYTES
+  return Math.max(MIN_VCS_PROCESS_BUFFER_BYTES, Math.min(MAX_VCS_PROCESS_BUFFER_BYTES, derived))
 }
 
 export function truncateUtf8Text(text: string, maxBytes: number, suffix: string): { text: string; truncated: boolean; originalBytes: number } {
