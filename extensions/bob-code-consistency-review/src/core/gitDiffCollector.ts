@@ -1,4 +1,9 @@
-import { readTextFile, resolveWorkspacePathStrict, toPosixPath } from "./fileSystem"
+import {
+  normalizeChangedFilePathStrict,
+  readTextFile,
+  resolveWorkspacePathStrict,
+  toPosixPath
+} from "./fileSystem"
 import { classifyLanguageFromPath } from "./languageClassifier"
 import { decodeTextBuffer } from "./textEncoding"
 import { normalizeReviewProcessingLimits, truncateUtf8Text, type ReviewProcessingLimits } from "./limits"
@@ -45,19 +50,14 @@ async function collectStandardGitDiff(reviewInput: ReviewInput, options: {
 }): Promise<DiffSummary> {
   const base = await resolveGitRevision(reviewInput.review.base, options.vcsRoot, options.textEncoding, options.commandTimeoutMs, options.signal)
   const head = await resolveGitRevision(reviewInput.review.head, options.vcsRoot, options.textEncoding, options.commandTimeoutMs, options.signal)
-  const nameStatus = await runGitText(["diff", "--find-renames", "--name-status", base, head], options.vcsRoot, 20 * 1024 * 1024, options.textEncoding, options.commandTimeoutMs, options.signal)
-  const numstat = await runGitText(["diff", "--find-renames", "--numstat", base, head], options.vcsRoot, 20 * 1024 * 1024, options.textEncoding, options.commandTimeoutMs, options.signal)
+  const nameStatus = await runGitText(["diff", "--find-renames", "--name-status", "-z", base, head], options.vcsRoot, 20 * 1024 * 1024, options.textEncoding, options.commandTimeoutMs, options.signal)
+  const numstat = await runGitText(["diff", "--find-renames", "--numstat", "-z", base, head], options.vcsRoot, 20 * 1024 * 1024, options.textEncoding, options.commandTimeoutMs, options.signal)
   const unifiedDiff = await runGitText(["diff", "--find-renames", "--unified=80", base, head], options.vcsRoot, 50 * 1024 * 1024, options.textEncoding, options.commandTimeoutMs, options.signal)
 
-  const counts = parseNumstat(numstat)
-  const files = nameStatus.split(/\r?\n/).flatMap((line) => {
-    if (!line.trim()) return []
-    const parts = line.split("\t")
-    const statusToken = parts[0] ?? ""
-    const filePath = statusToken.startsWith("R") ? parts[2] : parts[1]
-    if (!filePath) return []
-    const count = counts.get(toPosixPath(filePath))
-    return [buildChangedFile(filePath, statusFromGit(statusToken), count)]
+  const counts = parseNumstatZ(numstat)
+  const files = parseNameStatusZ(nameStatus).map(({ statusToken, filePath }) => {
+    const normalizedPath = normalizeChangedFilePathStrict(filePath)
+    return buildChangedFile(normalizedPath, statusFromGit(statusToken), counts.get(normalizedPath))
   })
 
   return { vcs: "git", vcsRoot: options.vcsRoot, base, head, files, unifiedDiff, warnings: [] }
@@ -133,7 +133,7 @@ export function validateBazaarRevision(revision: string): string {
 }
 
 function formatRevisionForError(revision: string): string {
-  return revision.replace(/[\0\r\n\t]/g, " ").trim()
+  return revision.replace(/[\0-\x1F\x7F]/g, " ").trim()
 }
 
 async function runGitText(
@@ -176,26 +176,72 @@ function normalizeCommandTimeout(value: number | undefined): number {
   return Math.max(MIN_VCS_COMMAND_TIMEOUT_MS, Math.min(MAX_VCS_COMMAND_TIMEOUT_MS, Math.floor(value)))
 }
 
-function parseNumstat(text: string): Map<string, { additions: number; deletions: number }> {
+function parseNameStatusZ(text: string): Array<{ statusToken: string; filePath: string }> {
+  const fields = nulFields(text)
+  const records: Array<{ statusToken: string; filePath: string }> = []
+  let index = 0
+
+  while (index < fields.length) {
+    const statusToken = fields[index++]
+    if (!statusToken) continue
+    if (statusToken.startsWith("R") || statusToken.startsWith("C")) {
+      const previousPath = fields[index++]
+      const filePath = fields[index++]
+      if (previousPath === undefined || filePath === undefined) {
+        throw new Error(`Malformed Git name-status rename record: ${statusToken}`)
+      }
+      records.push({ statusToken, filePath })
+      continue
+    }
+
+    const filePath = fields[index++]
+    if (filePath === undefined) throw new Error(`Malformed Git name-status record: ${statusToken}`)
+    records.push({ statusToken, filePath })
+  }
+
+  return records
+}
+
+function parseNumstatZ(text: string): Map<string, { additions: number; deletions: number }> {
+  const fields = nulFields(text)
   const result = new Map<string, { additions: number; deletions: number }>()
-  for (const line of text.split(/\r?\n/)) {
-    const parts = line.split("\t")
-    if (parts.length < 3) continue
-    const additions = Number.parseInt(parts[0], 10)
-    const deletions = Number.parseInt(parts[1], 10)
-    const filePath = normalizeNumstatPath(parts.slice(2).join("\t"))
-    result.set(toPosixPath(filePath), {
+  let index = 0
+
+  while (index < fields.length) {
+    const record = fields[index++]
+    if (!record) continue
+    const firstTab = record.indexOf("\t")
+    const secondTab = firstTab >= 0 ? record.indexOf("\t", firstTab + 1) : -1
+    if (firstTab < 0 || secondTab < 0) throw new Error(`Malformed Git numstat record: ${record}`)
+
+    const additionsToken = record.slice(0, firstTab)
+    const deletionsToken = record.slice(firstTab + 1, secondTab)
+    let filePath = record.slice(secondTab + 1)
+    if (!filePath) {
+      const previousPath = fields[index++]
+      const renamedPath = fields[index++]
+      if (previousPath === undefined || renamedPath === undefined) {
+        throw new Error("Malformed Git numstat rename record.")
+      }
+      filePath = renamedPath
+    }
+
+    const normalizedPath = normalizeChangedFilePathStrict(filePath)
+    const additions = Number.parseInt(additionsToken, 10)
+    const deletions = Number.parseInt(deletionsToken, 10)
+    result.set(normalizedPath, {
       additions: Number.isFinite(additions) ? additions : 0,
       deletions: Number.isFinite(deletions) ? deletions : 0
     })
   }
+
   return result
 }
 
-function normalizeNumstatPath(filePath: string): string {
-  const renamed = filePath.match(/^(.*)\{(.+?) => (.+?)\}(.*)$/)
-  if (!renamed) return filePath
-  return `${renamed[1]}${renamed[3]}${renamed[4]}`
+function nulFields(text: string): string[] {
+  const fields = text.split("\0")
+  if (fields.at(-1) === "") fields.pop()
+  return fields
 }
 
 function parseBazaarDiffFiles(text: string): DiffSummary["files"] {
@@ -214,8 +260,9 @@ function parseBazaarDiffFiles(text: string): DiffSummary["files"] {
 
     const plusFile = line.match(/^\+\+\+\s+(.+?)(?:\t.*)?$/)
     if (plusFile && plusFile[1] !== "/dev/null") {
-      const filePath = normalizeDiffPath(plusFile[1])
-      current = files.get(filePath) ?? buildChangedFile(filePath, "modified")
+      const filePath = plusFile[1]
+      const normalizedPath = normalizeChangedFilePathStrict(filePath)
+      current = files.get(normalizedPath) ?? buildChangedFile(normalizedPath, "modified")
       files.set(current.path, current)
       continue
     }
@@ -229,14 +276,15 @@ function parseBazaarDiffFiles(text: string): DiffSummary["files"] {
 }
 
 function buildChangedFile(filePath: string, status: DiffSummary["files"][number]["status"], count?: { additions: number; deletions: number }): DiffSummary["files"][number] {
+  const normalizedPath = normalizeChangedFilePathStrict(filePath)
   return {
-    path: toPosixPath(normalizeDiffPath(filePath)),
+    path: normalizedPath,
     status,
     additions: count?.additions ?? 0,
     deletions: count?.deletions ?? 0,
-    language: languageFromPath(filePath),
-    is_test: /(^|[\\/])(test|tests|spec)([\\/]|$)|\btest\b/i.test(filePath),
-    is_interface_candidate: /\.(h|hpp|hh)$/i.test(filePath)
+    language: languageFromPath(normalizedPath),
+    is_test: /(^|[\\/])(test|tests|spec)([\\/]|$)|\btest\b/i.test(normalizedPath),
+    is_interface_candidate: /\.(h|hpp|hh)$/i.test(normalizedPath)
   }
 }
 
@@ -286,10 +334,6 @@ function normalizeVcs(value: ReviewInput["review"]["vcs"]): VcsKind {
 
 function resolveVcsRoot(workspaceRoot: string, value: string | undefined): string {
   return value ? resolveWorkspacePathStrict(workspaceRoot, value, "vcsRoot") : workspaceRoot
-}
-
-function normalizeDiffPath(filePath: string): string {
-  return filePath.replace(/^a\//, "").replace(/^b\//, "")
 }
 
 export function languageFromPath(filePath: string): string {
