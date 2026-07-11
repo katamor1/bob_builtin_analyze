@@ -11,11 +11,13 @@ if (process.argv.includes("--write-config")) {
 }
 
 function writeTestConfiguration() {
+  assertTestRuntimeAvailable()
   const configPath = path.join(process.cwd(), ".vscode-test.json")
   const config = {
     files: __filename,
     version: "1.106.1",
     extensionDevelopmentPath: process.cwd(),
+    skipExtensionDependencies: true,
     mocha: {
       timeout: 30_000,
       ui: "bdd"
@@ -23,6 +25,16 @@ function writeTestConfiguration() {
   }
   fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf8")
   process.stdout.write(`Wrote ${configPath}\n`)
+}
+
+function assertTestRuntimeAvailable() {
+  try {
+    require.resolve("@vscode/test-electron", { paths: [process.cwd()] })
+  } catch {
+    throw new Error(
+      "@vscode/test-electron must be installed in the extension project before running Extension Host smoke tests."
+    )
+  }
 }
 
 function registerExtensionHostTests() {
