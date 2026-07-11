@@ -29,7 +29,7 @@ export async function preprocessReview(input: PreprocessReviewInput): Promise<Pr
   const diffFixturePath = input.diffFixturePath
     ? resolveWorkspacePathStrict(input.workspaceRoot, input.diffFixturePath, "diffFixturePath")
     : undefined
-  const reviewInput = await validateReviewInput(inputPath, input.workspaceRoot, textEncoding)
+  const reviewInput = await validateReviewInput(inputPath, input.workspaceRoot, textEncoding, limits.maxDocumentBytes)
   const diff = await collectGitDiff(reviewInput, {
     workspaceRoot: input.workspaceRoot,
     diffFixturePath,
