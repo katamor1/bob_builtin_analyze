@@ -80,7 +80,7 @@ jobs:
           npm run compile > "$RUNNER_TEMP/bazaar-review-test.log" 2>&1
           status=$?
           if [ "$status" -eq 0 ]; then
-            node --test test/workflowProviderRegistration.test.js >> "$RUNNER_TEMP/bazaar-review-test.log" 2>&1
+            node --test test/workflowProviderRegistration.test.js test/externalProcessRunner.test.js test/externalProcessWiring.test.js >> "$RUNNER_TEMP/bazaar-review-test.log" 2>&1
             status=$?
           fi
           tail -n 180 "$RUNNER_TEMP/bazaar-review-test.log" > "$RUNNER_TEMP/bazaar-review-test-tail.log"
@@ -95,7 +95,7 @@ jobs:
             const fs = require("node:fs");
             const marker = "<!-- agent-bazaar-provider-diagnostic -->";
             const tail = fs.readFileSync(process.env.RUNNER_TEMP + "/bazaar-review-test-tail.log", "utf8");
-            const body = `${marker}\n## Bazaar provider focused diagnostic\n\nExit: ${process.env.TEST_STATUS}\n\n\`\`\`text\n${tail.slice(-12000)}\n\`\`\``;
+            const body = `${marker}\n## Bazaar focused diagnostic\n\nExit: ${process.env.TEST_STATUS}\n\n\`\`\`text\n${tail.slice(-12000)}\n\`\`\``;
             const issue_number = 68;
             const comments = await github.rest.issues.listComments({ owner: context.repo.owner, repo: context.repo.repo, issue_number });
             const previous = comments.data.find((comment) => comment.body?.includes(marker));
@@ -134,7 +134,7 @@ jobs:
             const fs = require("node:fs");
             const marker = "<!-- agent-code-consistency-test-diagnostic -->";
             const tail = fs.readFileSync(process.env.RUNNER_TEMP + "/code-consistency-test-tail.log", "utf8");
-            const body = `${marker}\n## Targeted test diagnostic\n\nExit: ${process.env.TEST_STATUS}\n\n\`\`\`text\n${tail.slice(-12000)}\n\`\`\``;
+            const body = `${marker}\n## Code consistency diagnostic\n\nExit: ${process.env.TEST_STATUS}\n\n\`\`\`text\n${tail.slice(-12000)}\n\`\`\``;
             const issue_number = 68;
             const comments = await github.rest.issues.listComments({ owner: context.repo.owner, repo: context.repo.repo, issue_number });
             const previous = comments.data.find((comment) => comment.body?.includes(marker));
