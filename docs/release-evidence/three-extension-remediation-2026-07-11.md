@@ -14,15 +14,41 @@
 
 ## 2. 実装済み契約
 
+### 2.1 Dependency / provider lifecycle
+
 - IBM Bobおよびcompanion extensionをsoft dependencyとして扱い、未導入時も通常commandを起動できる。
 - providerは`sourceId`を持ち、同一IDの無警告上書きを拒否し、登録解除用Disposableを返す。
-- provider登録controllerはAPI identityとgenerationを管理し、stale/late/partial registrationをrollbackする。
-- Git/Bazaar processは`shell: false`、hard timeout、AbortSignal、output budget、process-tree killを使用する。
+- provider登録controllerはAPI identityとgenerationを管理し、stale/late registrationをrollbackする。
+- unsuccessful attemptが部分登録を返した場合も全Disposableをrollbackする。
+- successful resultにはAPI identityを必須化し、欠落時は登録を破棄して再試行対象とする。
+- `workflow-register` API世代が変わらないextension変更では再登録せず、API世代変更時だけ旧登録を解除する。
+
+### 2.2 Git / Bazaar外部プロセス
+
+- processは`shell: false`、hard timeout、AbortSignal、output budget、process-tree killを使用する。
+- timeoutは1,000〜600,000 msへクランプする。
+- `timeout`、`cancelled`、`bufferExceeded`、`spawnFailure`、`nonZeroExit`を分類する。
+- abort事前確認とlistener登録の間のキャンセル競合を閉じる。
+- stdout/stderrの合計保持量は設定byte budgetを超えない。
+- timeout/cancel/overflow時はchildの`exit`/`close`、または有限のtermination fallback後にPromiseをsettleする。
 - Git revision validationは`nonZeroExit`だけを不正revisionへ正規化し、cancel/timeout等のprocess error kindを保持する。
-- Bazaar revision/pathはtrim前の制御文字を拒否する。pathはPOSIX/Windows absolute、drive-relative、UNC、device path、dot/traversal segmentも拒否する。
-- review processing limitはmanifest/runtime共通のmin/default/maxを持ち、最終Bob入力は総byte budget内へ切り詰める。
+
+### 2.3 Path / processing limits
+
+- Bazaar revision/pathはtrim前の制御文字を拒否する。
+- pathはPOSIX/Windows absolute、drive-relative、UNC、device path、dot/traversal/empty segmentも拒否する。
+- review processing limitはmanifest/runtime共通のmin/default/maxを持つ。
+- UTF-8切り詰めsuffixを含め、最終出力をbyte budget内へ収める。
+
+### 2.4 Workflow / VSIX / smoke契約
+
 - repository内の対象`WORKFLOW.md`を再帰探索し、provider、preflight、nested command、template mirrorをstrict検証する。
+- `.bob/template-library/**/WORKFLOW.md`変更もworkflow contract CIを起動する。
 - sample固有の外部commandは、正確なsample pathとworkflow guardrail宣言の両方を満たす場合だけ許可する。
+- `.vscode-test.json`は3拡張すべての`.vscodeignore`で除外する。
+- VSIX policyは`extension/.vscode-test.json`と`extension/.vscode-test/**`を独立して拒否する。
+- dependency policy testはignoreとpackage policyの両方を固定する。
+- Extension Host smokeはMochaのBDD interfaceを明示し、`describe`/`it`を使用する。
 
 ## 3. 確認済み証跡
 
@@ -38,48 +64,89 @@
 
 ### 3.2 2026-07-11 局所再現
 
-| 検証 | 結果 | 内容 |
-| --- | --- | --- |
-| retry registration controller | 3 passed / 0 failed | 同一API維持、generation切替、部分登録rollbackとstale disposal |
-| remediation behavior | 4 passed / 0 failed | Git cancel分類保持、invalid Git ref正規化、Bazaar revision/pathのtrim前制御文字拒否 |
-| sample command allowlist | passed | sample path限定、guardrail宣言必須、production pathでは拒否 |
-| provider API identity typecheck | passed | registrationで取得したAPI型をcontrollerへ直接返せること |
+#### Provider API-generation controller
+
+| Module | 結果 |
+| --- | --- |
+| `bob-bazaar-review` | 5 passed / 0 failed |
+| `bob-code-consistency-review` | 5 passed / 0 failed |
+
+確認内容:
+
+- 同一API identityでは再登録しない。
+- unsuccessful partial registrationをrollbackする。
+- API generation切替後のstale登録を破棄する。
+- deactivate後に完了したlate登録を破棄する。
+- API identityなしのsuccessful resultを拒否・rollbackする。
+
+#### External process runner
+
+| Module | 結果 |
+| --- | --- |
+| `bob-bazaar-review` | 9 passed / 0 failed |
+| `bob-code-consistency-review` | 9 passed / 0 failed |
+
+確認内容:
+
+- hard timeoutと最低値クランプ。
+- 通常キャンセルとpreflight/listener境界キャンセル。
+- output overflow分類。
+- retained stdout + stderrが設定budget以内。
+- overflow rejection時点でchild PIDが残留しない。
+- 許可された非zero exit code。
+- 拒否された非zero exit codeとstderr保持。
+
+TDD記録:
+
+- RED: 1,024-byte budgetで65,536-byte stream chunkを保持した。
+- GREEN: retained stdout + stderrは1,024 bytes以下になった。
+- RED: `bufferExceeded` rejection直後にchild PIDが生存していた。
+- GREEN: child exit/closeまたは有限fallback後にrejectionするようになった。
+
+#### その他の局所確認
+
+| 検証 | 結果 |
+| --- | --- |
+| Git cancel分類保持 / invalid ref正規化 | passed |
+| Bazaar revision/path trim前制御文字拒否 | passed |
+| sample command path-scoped allowlist | passed |
+| VSIX `.vscode-test` ignore/policy/dependency-test契約 | 3拡張すべてpassed |
+| Extension Host smoke script syntax/config/fake-host | passed |
+| provider API identity typecheck | passed |
 
 局所再現は変更ロジックを隔離した補助証跡であり、repository全体のcompile/testを代替しない。
 
 ## 4. GitHub Actions runner起動前ブロッカー
 
-### 4.1 本体workflow
+### 4.1 第三者Actionを使わないrunner probe
 
-実装head `fcd1a08d213833e78b49a9d30ec240e5d7dbb657` で次のrunを確認した。
+原因をrepository code、checkout、npm、第三者Actionから切り離すため、一時的にechoと`node --version`だけを持つprobeをUbuntu/Windowsで実行した。
 
 | Workflow | Run ID | 結果 |
 | --- | ---: | --- |
-| `extensions-quality` | `29141950093` | failure |
-| `workflow-contracts` | `29141950101` | failure |
-| `code-consistency-review-scaffold` | `29141950122` | failure |
+| `actions-runner-probe` | `29142077414` | Ubuntu/Windowsともstep開始前failure、`steps: null`、logなし |
+| `actions-runner-probe` | `29142295720` | Ubuntu/Windowsともstep開始前failure、`steps: null`、logなし |
 
-`extensions-quality`のUbuntu/Windowsを含む全jobが`steps: null`、`logs_url: null`のまま終了した。
+probeは診断後に削除済みである。
 
-### 4.2 第三者Actionを使わないrunner probe
+### 4.2 本体workflow
 
-原因をrepository code、checkout、npm、第三者Actionから切り離すため、一時的に単一echo stepだけを持つ`actions-runner-probe`を追加した。
+同じ症状は次の本体workflowでも継続している。
 
-| Workflow | Run ID | Job | 結果 |
-| --- | ---: | --- | --- |
-| `actions-runner-probe` | `29142077414` | `ubuntu-probe` | failure / `steps: null` / logなし |
-| `actions-runner-probe` | `29142077414` | `windows-probe` | failure / `steps: null` / logなし |
+| Workflow | 代表Run ID | 結果 |
+| --- | ---: | --- |
+| `extensions-quality` | `29144425440` | Ubuntu/Windowsを含む全jobが`action_required`、`steps: null` |
+| `workflow-contracts` | `29144425442` | validation jobが`action_required`、`steps: null` |
+| `code-consistency-review-scaffold` | `29144425461` | 2 jobとも`action_required`、`steps: null` |
 
-probeはcheckoutやrepository fileを参照せず、`echo`と`node --version`だけを実行する。それでも両OSでstep開始前に終了したため、現在のfailureはworkflow実装やテストコードではなく、GitHub-hosted runner割当以前のaccount/repository設定にあると判定した。診断後、probe workflowはcommit `15b2003468a80905d8dc095edf037655f0aa33f2`で削除した。
-
-ただしgreen evidenceが存在しないためmergeは許可しない。
+checkoutやrepository codeを一切使わないprobeでも再現するため、現在のfailureはworkflow実装やテストコードではなく、GitHub-hosted runner割当以前のaccount/repository設定にあると判定する。ただしgreen evidenceが存在しないためmergeは許可しない。
 
 ### 4.3 repository管理者が確認する項目
 
 1. GitHub accountのBilling / PlansでActions利用枠、spending limit、支払い状態を確認する。
 2. Repository Settings → Actions → GeneralでActionsが許可されていることを確認する。
-3. GitHub-hosted runnerの利用が無効化されていないことを確認する。
-4. Actions利用制限を解除後、PR #68の最新runで`Re-run all jobs`を実行する。
+3. private repositoryでGitHub-hosted Ubuntu/Windows runnerが許可されていることを確認する。
+4. 制限解除後、PR #68の最新headで3 workflowを再実行する。
 5. jobがstep 1を開始し、job logを生成することを確認する。
 
 ## 5. 最新headで必要な自動ゲート
