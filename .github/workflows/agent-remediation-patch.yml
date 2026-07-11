@@ -7,6 +7,7 @@ on:
     paths:
       - "scripts/agent-remediation-patch.mjs"
       - "scripts/agent-limit-remediation-patch.mjs"
+      - "scripts/agent-quality-policy-fixes.mjs"
       - "scripts/agent-doc-sync.mjs"
       - ".github/workflows/agent-remediation-patch.yml"
 
@@ -33,6 +34,7 @@ jobs:
         run: |
           node scripts/agent-remediation-patch.mjs
           node scripts/agent-limit-remediation-patch.mjs
+          node scripts/agent-quality-policy-fixes.mjs
           node scripts/agent-doc-sync.mjs
       - name: Install workflow-register dependencies
         working-directory: extensions/workflow-register
@@ -43,12 +45,12 @@ jobs:
       - name: Install code consistency dependencies
         working-directory: extensions/bob-code-consistency-review
         run: npm ci
-      - name: Verify workflow-register provider lifecycle
+      - name: Verify workflow-register provider lifecycle and architecture
         working-directory: extensions/workflow-register
-        run: npm run compile && node --test test/actionRegistry.test.js
-      - name: Verify Bazaar provider lifecycle
+        run: npm run compile && node --test test/actionRegistry.test.js && npm run architecture:policy
+      - name: Verify Bazaar provider lifecycle and dependency policy
         working-directory: extensions/bob-bazaar-review
-        run: npm run compile && node --test test/workflowProviderRegistration.test.js test/bazaarClient.test.js test/externalProcessRunner.test.js test/externalProcessWiring.test.js
+        run: npm run compile && node --test test/workflowProviderRegistration.test.js test/bazaarClient.test.js test/externalProcessRunner.test.js test/externalProcessWiring.test.js && npm run unused:policy
       - name: Verify code consistency remediation
         working-directory: extensions/bob-code-consistency-review
         run: npm run compile && node --test test/traceabilityPrepWebviewAssets.test.js test/workflowProviderRegistration.test.js test/sizeLimits.test.js test/limitsPolicy.test.js test/externalProcessRunner.test.js test/externalProcessWiring.test.js test/traceabilityCommandWiring.test.js
@@ -62,5 +64,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          git commit -m "docs: synchronize three-extension remediation contracts"
+          git commit -m "fix: close remaining extension quality policy gaps"
           git push origin HEAD:agent/three-extension-remediation-20260711
