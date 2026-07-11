@@ -3,21 +3,37 @@ name: workflow-contracts
 on:
   pull_request:
     paths:
-      - "extensions/workflow-register/**"
-      - "extensions/bob-bazaar-review/templates/**/WORKFLOW.md"
-      - "extensions/bob-code-consistency-review/templates/**/WORKFLOW.md"
-      - ".bob/workflows/bazaar-project-rule-review/WORKFLOW.md"
-      - ".bob/workflows/code-consistency-review/WORKFLOW.md"
+      - ".bob/workflows/**/WORKFLOW.md"
+      - "extensions/workflow-register/samples/**/WORKFLOW.md"
+      - "extensions/**/templates/**/WORKFLOW.md"
+      - "docs/workflows/**/WORKFLOW.md"
+      - "extensions/workflow-register/src/core/actionRegistry.ts"
+      - "extensions/workflow-register/src/core/engine/preflight.ts"
+      - "extensions/workflow-register/src/core/workflowValidator.ts"
+      - "extensions/workflow-register/test/workflowContractFiles.test.js"
+      - "extensions/bob-bazaar-review/src/workflow/workflowProviders.ts"
+      - "extensions/bob-code-consistency-review/src/workflowProviderRegistration.ts"
+      - "extensions/workflow-register/package.json"
+      - "extensions/bob-bazaar-review/package.json"
+      - "extensions/bob-code-consistency-review/package.json"
       - ".github/workflows/workflow-contracts.yml"
   push:
     branches:
       - main
     paths:
-      - "extensions/workflow-register/**"
-      - "extensions/bob-bazaar-review/templates/**/WORKFLOW.md"
-      - "extensions/bob-code-consistency-review/templates/**/WORKFLOW.md"
-      - ".bob/workflows/bazaar-project-rule-review/WORKFLOW.md"
-      - ".bob/workflows/code-consistency-review/WORKFLOW.md"
+      - ".bob/workflows/**/WORKFLOW.md"
+      - "extensions/workflow-register/samples/**/WORKFLOW.md"
+      - "extensions/**/templates/**/WORKFLOW.md"
+      - "docs/workflows/**/WORKFLOW.md"
+      - "extensions/workflow-register/src/core/actionRegistry.ts"
+      - "extensions/workflow-register/src/core/engine/preflight.ts"
+      - "extensions/workflow-register/src/core/workflowValidator.ts"
+      - "extensions/workflow-register/test/workflowContractFiles.test.js"
+      - "extensions/bob-bazaar-review/src/workflow/workflowProviders.ts"
+      - "extensions/bob-code-consistency-review/src/workflowProviderRegistration.ts"
+      - "extensions/workflow-register/package.json"
+      - "extensions/bob-bazaar-review/package.json"
+      - "extensions/bob-code-consistency-review/package.json"
       - ".github/workflows/workflow-contracts.yml"
   workflow_dispatch:
 
