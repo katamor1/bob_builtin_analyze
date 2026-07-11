@@ -20,11 +20,11 @@
 
 ## 実施状況（2026-07-11）
 
-実装項目はPR #68のブランチ `agent/three-extension-remediation-20260711` へ反映済みである。追加レビューで、Git revision解決中のcancel/timeout分類保持、provider登録に実際に使用したAPI identityの保持、`registered:false`時の部分登録rollback、process termination後settlement、Extension Host smoke runtime契約も追加した。
+実装項目はPR #68のブランチ `agent/three-extension-remediation-20260711` へ反映済みである。追加レビューで、Git revision解決中のcancel/timeout分類保持、provider登録に実際に使用したAPI identityの保持、`registered:false`時の部分登録rollback、process termination後settlement、Extension Host smoke runtime契約、provider Disposableの単一所有も追加した。
 
-Extension Host smokeは最小拡張で`@vscode/test-cli@0.0.12`がproject rootから`@vscode/test-electron`を解決できず、activation前に失敗することを再現した。VSIX検査後にCLI `0.0.12`とElectron runtime `2.5.2`をproject rootへ一時導入し、両packageの明示preflight、project-local binary実行、`skipExtensionDependencies: true`、smoke contract testへ修正済みである。ローカルではruntime解決を通過したが、DNS制約によりVS Code download完了までは確認できない。
+Extension Host smokeは最小拡張で`@vscode/test-cli@0.0.12`がproject rootから`@vscode/test-electron`を解決できず、activation前に失敗することを再現した。VSIX検査後にCLI `0.0.12`とElectron runtime `2.5.2`をproject rootへ一時導入し、両packageの明示preflight、project-local binary実行、`skipExtensionDependencies: true`、smoke contract testへ修正済みである。一時的なsmoke診断workflowは、重複jobとprivate repository minutes消費を避けるため削除した。
 
-GitHub Actionsは最新付近でも全jobがrunner割当前に終了しており、最新headの全体CIと実機試験は未完了である。PRはdraftを維持し、CI／実機ゲートが閉じるまでmergeしない。
+provider controllerは両拡張ともstrict隔離compile後に6 tests passed / 0 failed、smoke harness contractは3 tests passed / 0 failedである。GitHub Actionsは最新付近でも全jobがrunner割当前に終了しており、最新headの全体CIと実機試験は未完了である。PRはdraftを維持し、CI／実機ゲートが閉じるまでmergeしない。
 
 ---
 
@@ -34,14 +34,18 @@ GitHub Actionsは最新付近でも全jobがrunner割当前に終了しており
 - Modify: `extensions/bob-code-consistency-review/package.json`
 - Modify: `extensions/bob-code-consistency-review/src/extension.ts`
 - Modify: `extensions/bob-code-consistency-review/src/workflowProviderRegistration.ts`
+- Modify: `extensions/bob-code-consistency-review/src/retryRegistrationController.ts`
 - Modify: `extensions/bob-code-consistency-review/test/workflowProviderRegistration.test.js`
+- Modify: `extensions/bob-code-consistency-review/test/retryRegistrationController.test.js`
 
 - [x] hard dependencyを固定する既存テストを、soft dependencyと遅延登録の期待値へ変更する。
 - [x] PR上でテスト失敗を確認する。
 - [x] `extensionDependencies`を削除し、`onDidChange`と限定retryを持つ登録controllerを実装する。
 - [x] 登録済み状態、timer、listenerをdisposeできるようにする。
 - [x] API generation、stale/late completion、部分登録rollbackをテストする。
-- [ ] 最新headで対象テストとモジュール全体テストを再実行する。
+- [x] provider Disposableをcontrollerだけが所有し、二重disposeと旧世代subscription蓄積を防止する。
+- [x] controllerをstrict隔離compileし、6 tests passed / 0 failedを確認する。
+- [ ] 最新headで対象モジュール全体テストを再実行する。
 
 ### Task 2: Provider Ownership, Duplicate Rejection, and Disposal
 
@@ -59,6 +63,7 @@ GitHub Actionsは最新付近でも全jobがrunner割当前に終了しており
 - [x] service dispose時にcustom providerを解除する。
 - [x] BBR/CCR登録側で`sourceId`を付与し、返却Disposableを保持する。
 - [x] 登録に実際に使用したAPI objectをgeneration identityとして保持する。
+- [x] companion側のcontrollerをprovider Disposableの唯一のownerにする。
 
 ### Task 3: External Process Timeout, Cancellation, and Kill
 
@@ -110,7 +115,7 @@ GitHub Actionsは最新付近でも全jobがrunner割当前に終了しており
 
 **Files:**
 - Modify: `.github/workflows/extensions-quality.yml`
-- Modify: `.github/workflows/extension-host-smoke-diagnostic.yml`
+- Delete: `.github/workflows/extension-host-smoke-diagnostic.yml`
 - Modify: `scripts/extension-host-smoke.test.js`
 - Create: `scripts/extension-host-smoke-contract.test.js`
 - Modify: three extensions' basic design, detailed design, unit test, real-machine test documents
@@ -128,16 +133,17 @@ GitHub Actionsは最新付近でも全jobがrunner割当前に終了しており
 - [x] smoke configへ両packageのruntime preflight、BDD UI、`skipExtensionDependencies: true`を追加する。
 - [x] VSIX生成・policyをtest runtime導入前へ移し、配布物との境界を固定する。
 - [x] smoke contract testでpackage version、local binary、preflightを固定する。
+- [x] smoke harness contractを局所実行し、3 tests passed / 0 failedを確認する。
+- [x] 一時`extension-host-smoke-diagnostic.yml`を削除し、本体workflowへ一本化する。
 - [x] release evidenceへ局所RED/GREENとrunner blockerを記録する。
 - [ ] GitHub runner復旧後、smoke contractと実Extension Host smokeを3拡張で完走する。
-- [ ] smoke成功後、一時`extension-host-smoke-diagnostic.yml`を削除する。
 
 ### Final Verification
 
 - [ ] `workflow-register`: dependency, architecture, source, schema, unit, package, package policy
 - [ ] `bob-bazaar-review`: dependency, architecture, source, unused, artifact, unit, package, package policy
 - [ ] `bob-code-consistency-review`: dependency, architecture, source, unit, package, package policy
-- [ ] smoke harness contract test
+- [x] smoke harness contract test（局所3 passed / 0 failed）
 - [ ] 全workflow strict/provider-aware contract test
 - [ ] Windows/Ubuntu CI
 - [ ] VS Code Extension Host activation smoke
