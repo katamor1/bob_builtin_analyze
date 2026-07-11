@@ -13,6 +13,7 @@ const {
   normalizeReviewProcessingLimits
 } = require("../out/core/limits")
 const { buildReviewPackage } = require("../out/core/reviewPackageBuilder")
+const { validateReviewInput } = require("../out/core/reviewInputValidator")
 
 test("normalizeReviewProcessingLimits clamps every setting to a finite min/max range", () => {
   const minimum = normalizeReviewProcessingLimits({
@@ -64,6 +65,33 @@ test("package configuration exposes the same processing limit ranges as runtime"
   }
 })
 
+test("validateReviewInput rejects an input file above the configured document byte limit", async () => {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "bob-size-review-input-"))
+  const inputPath = path.join(workspace, "review-input.yaml")
+  fs.writeFileSync(inputPath, JSON.stringify(reviewInput("docs/unused.md")), "utf8")
+
+  await assert.rejects(
+    () => validateReviewInput(inputPath, workspace, "utf8", 64),
+    /review-input\.yaml exceeded maxDocumentBytes/
+  )
+})
+
+test("validateReviewInput rejects excessive aggregate artifact references before path checks", async () => {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "bob-size-artifact-refs-"))
+  const inputPath = path.join(workspace, "review-input.yaml")
+  const input = reviewInput("docs/unused.md")
+  input.artifacts.requirements = Array.from({ length: 501 }, (_, index) => ({
+    path: `docs/missing-${index}.md`,
+    sections: [`REQ-${index}`]
+  }))
+  fs.writeFileSync(inputPath, JSON.stringify(input), "utf8")
+
+  await assert.rejects(
+    () => validateReviewInput(inputPath, workspace, "utf8"),
+    /artifact references exceed maximum \(501 > 500\)/
+  )
+})
+
 test("extractDocuments limits document bytes and excerpt bytes with warnings", async () => {
   const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "bob-size-doc-"))
   fs.mkdirSync(path.join(workspace, "docs"), { recursive: true })
@@ -86,6 +114,34 @@ test("extractDocuments limits document bytes and excerpt bytes with warnings", a
   assert.ok(result.warnings.some((warning) => warning.includes("maxExcerptBytesPerDocument")))
   assert.ok(Buffer.byteLength(result.evidence[0].text, "utf8") <= 120)
   assert.match(result.excerptsMarkdown, /\[truncated/)
+})
+
+test("extractDocuments enforces an aggregate excerpt budget across documents", async () => {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "bob-size-doc-total-"))
+  fs.mkdirSync(path.join(workspace, "docs"), { recursive: true })
+  for (const [name, requirement] of [["one.md", "REQ-TOTAL-001"], ["two.md", "REQ-TOTAL-002"]]) {
+    fs.writeFileSync(path.join(workspace, "docs", name), [
+      `# ${requirement}`,
+      "",
+      `${requirement} ${"aggregate sensitive context ".repeat(30)}`,
+      ""
+    ].join("\n"), "utf8")
+  }
+
+  const input = reviewInput("docs/one.md")
+  input.artifacts.requirements.push({ path: "docs/two.md", sections: ["REQ-TOTAL-002"] })
+  const result = await extractDocuments(input, {
+    workspaceRoot: workspace,
+    limits: {
+      maxDocumentBytes: 4096,
+      maxExcerptBytesPerDocument: 1024,
+      maxBobInputBytes: 320
+    }
+  })
+
+  assert.ok(Buffer.byteLength(result.excerptsMarkdown, "utf8") <= 320)
+  assert.ok(result.warnings.some((warning) => warning.includes("aggregate maxBobInputBytes")))
+  assert.ok(result.evidence.reduce((total, item) => total + Buffer.byteLength(item.text ?? "", "utf8"), 0) <= 320)
 })
 
 test("collectGitDiff truncates raw unified diff and records a warning", async () => {
