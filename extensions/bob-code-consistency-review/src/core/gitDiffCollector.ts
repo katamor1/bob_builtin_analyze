@@ -8,7 +8,9 @@ import type { ReviewInput } from "./reviewTypes"
 
 type VcsKind = "git" | "bazaar"
 const MAX_BAZAAR_REVISION_SPEC_LENGTH = 128
+const MIN_VCS_COMMAND_TIMEOUT_MS = 1_000
 const DEFAULT_VCS_COMMAND_TIMEOUT_MS = 120_000
+const MAX_VCS_COMMAND_TIMEOUT_MS = 600_000
 
 export async function collectGitDiff(reviewInput: ReviewInput, options: {
   workspaceRoot: string
@@ -166,9 +168,8 @@ async function runCommandText(
 }
 
 function normalizeCommandTimeout(value: number | undefined): number {
-  return typeof value === "number" && Number.isFinite(value) && value > 0
-    ? Math.floor(value)
-    : DEFAULT_VCS_COMMAND_TIMEOUT_MS
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return DEFAULT_VCS_COMMAND_TIMEOUT_MS
+  return Math.max(MIN_VCS_COMMAND_TIMEOUT_MS, Math.min(MAX_VCS_COMMAND_TIMEOUT_MS, Math.floor(value)))
 }
 
 function parseNumstat(text: string): Map<string, { additions: number; deletions: number }> {
