@@ -1,3 +1,4 @@
+import * as path from "node:path"
 import { decodeTextBuffer } from "./textEncoding"
 import { clampExecBufferBytes } from "./reviewLimits"
 import {
@@ -180,12 +181,21 @@ export function validateRevision(revision: string): string {
 }
 
 export function validateRelativePath(relativePath: string): string {
-  const normalized = relativePath.replace(/\\/g, "/").trim()
-  if (!normalized || normalized.startsWith("/") || normalized.includes("\0")) {
+  const trimmed = relativePath.trim()
+  const normalized = trimmed.replace(/\\/g, "/")
+  if (
+    !trimmed ||
+    /[\0-\x1F\x7F]/u.test(trimmed) ||
+    path.win32.isAbsolute(trimmed) ||
+    path.posix.isAbsolute(normalized) ||
+    /^[A-Za-z]:/.test(trimmed)
+  ) {
     throw new BazaarError(`安全でない Bazaar パスです: ${relativePath}`)
   }
-  if (normalized.split("/").includes("..")) {
-    throw new BazaarError(`親ディレクトリ参照は許可しません: ${relativePath}`)
+
+  const segments = normalized.split("/")
+  if (segments.some((segment) => !segment || segment === "." || segment === "..")) {
+    throw new BazaarError(`安全でない Bazaar パスです: ${relativePath}`)
   }
   return normalized
 }
