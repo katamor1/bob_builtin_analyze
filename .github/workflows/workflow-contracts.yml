@@ -37,6 +37,10 @@ on:
       - ".github/workflows/workflow-contracts.yml"
   workflow_dispatch:
 
+concurrency:
+  group: workflow-contracts-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   validate:
     name: Strict workflow validation
