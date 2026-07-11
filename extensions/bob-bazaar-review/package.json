@@ -140,6 +140,9 @@
     ],
     "project": [
       "src/**/*.ts"
+    ],
+    "ignoreDependencies": [
+      "js-yaml"
     ]
   }
 }
