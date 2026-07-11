@@ -67,6 +67,12 @@ jobs:
       - name: Unit tests
         run: npm test
 
+      - name: Package
+        run: npm run package
+
+      - name: VSIX policy
+        run: npm run package:policy
+
       - name: Install VS Code test runtime
         run: npm install --no-save --package-lock=false --ignore-scripts @vscode/test-electron@2.5.2
 
@@ -77,12 +83,6 @@ jobs:
         run: |
           node ../../scripts/extension-host-smoke.test.js --write-config
           xvfb-run -a npx --yes --package "@vscode/test-cli@0.0.12" vscode-test
-
-      - name: Package
-        run: npm run package
-
-      - name: VSIX policy
-        run: npm run package:policy
 
   bob-bazaar-review:
     name: bob-bazaar-review
@@ -130,6 +130,15 @@ jobs:
       - name: Unit tests
         run: npm test
 
+      - name: Package
+        run: npm run package
+
+      - name: VSIX policy
+        run: npm run package:policy
+
+      - name: VSIX metrics
+        run: npm run package:metrics
+
       - name: Install VS Code test runtime
         run: npm install --no-save --package-lock=false --ignore-scripts @vscode/test-electron@2.5.2
 
@@ -140,15 +149,6 @@ jobs:
         run: |
           node ../../scripts/extension-host-smoke.test.js --write-config
           xvfb-run -a npx --yes --package "@vscode/test-cli@0.0.12" vscode-test
-
-      - name: Package
-        run: npm run package
-
-      - name: VSIX policy
-        run: npm run package:policy
-
-      - name: VSIX metrics
-        run: npm run package:metrics
 
   bob-code-consistency-review:
     name: bob-code-consistency-review
@@ -190,6 +190,12 @@ jobs:
       - name: Unit tests
         run: npm test
 
+      - name: Package
+        run: npm run package
+
+      - name: VSIX policy
+        run: npm run package:policy
+
       - name: Install VS Code test runtime
         run: npm install --no-save --package-lock=false --ignore-scripts @vscode/test-electron@2.5.2
 
@@ -200,12 +206,6 @@ jobs:
         run: |
           node ../../scripts/extension-host-smoke.test.js --write-config
           xvfb-run -a npx --yes --package "@vscode/test-cli@0.0.12" vscode-test
-
-      - name: Package
-        run: npm run package
-
-      - name: VSIX policy
-        run: npm run package:policy
 
   windows-smoke:
     name: Windows / ${{ matrix.extension }}
@@ -255,6 +255,12 @@ jobs:
       - name: Unit tests
         run: npm test
 
+      - name: Package
+        run: npm run package
+
+      - name: VSIX policy
+        run: npm run package:policy
+
       - name: Install VS Code test runtime
         run: npm install --no-save --package-lock=false --ignore-scripts @vscode/test-electron@2.5.2
 
@@ -266,12 +272,6 @@ jobs:
         run: |
           node ../../scripts/extension-host-smoke.test.js --write-config
           npx --yes --package "@vscode/test-cli@0.0.12" vscode-test
-
-      - name: Package
-        run: npm run package
-
-      - name: VSIX policy
-        run: npm run package:policy
 
   extension-metrics:
     name: Extension source metrics
