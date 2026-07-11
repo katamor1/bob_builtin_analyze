@@ -189,7 +189,8 @@ test("workflow authoring write paths enforce WORKFLOW.md document boundaries", (
 test("workspace workflow validation uses strict diagnostics", () => {
   const source = readSrc("commands", "validateWorkflow.ts")
 
-  assert.match(source, /validateWorkflowText\(\{ sourceId: options\.sourceId, filePath, text, strict: true \}\)/)
+  assert.match(source, /const discovered = await discoverWorkspaceWorkflowFiles\(\)/)
+  assert.match(source, /compileWorkflowDocument\(\{ sourceId: options\.sourceId, filePath: candidate\.relativePath, text, strict: true \}\)/)
 })
 
 test("runtime dependencies are not excluded from VSIX packaging", () => {
