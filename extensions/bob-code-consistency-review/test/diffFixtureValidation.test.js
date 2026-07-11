@@ -1,6 +1,6 @@
 const assert = require("node:assert/strict")
 const { test } = require("node:test")
-const { parseDiffFixture } = require("../out/core/diffFixture")
+const { parseDiffFixture, parseDiffFixtureText } = require("../out/core/diffFixture")
 
 test("diff fixture parser returns a normalized trusted summary", () => {
   const parsed = parseDiffFixture({
@@ -53,6 +53,13 @@ test("diff fixture parser defaults optional warnings and classifies languages", 
 
   assert.deepEqual(parsed.warnings, [])
   assert.equal(parsed.files[0].language, "cpp")
+})
+
+test("diff fixture text parser reports invalid JSON at the fixture boundary", () => {
+  assert.throws(
+    () => parseDiffFixtureText('{"base":"base",'),
+    /diff fixture JSON is invalid/
+  )
 })
 
 test("diff fixture parser rejects malformed roots and required fields", () => {
