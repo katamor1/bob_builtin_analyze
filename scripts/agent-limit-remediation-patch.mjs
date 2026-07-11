@@ -1,5 +1,6 @@
 import fs from "node:fs"
 
+// This temporary patch runner also acts as the explicit trigger for remote verification.
 const packagePath = "extensions/bob-code-consistency-review/package.json"
 const packageJson = JSON.parse(fs.readFileSync(packagePath, "utf8"))
 if (Array.isArray(packageJson.extensionDependencies) && packageJson.extensionDependencies.length === 0) {
