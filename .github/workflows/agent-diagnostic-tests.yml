@@ -7,7 +7,6 @@ on:
     paths:
       - "extensions/workflow-register/**"
       - "extensions/bob-bazaar-review/**"
-      - "extensions/bob-code-consistency-review/**"
       - ".github/workflows/agent-diagnostic-tests.yml"
 
 permissions:
@@ -16,7 +15,7 @@ permissions:
   pull-requests: write
 
 jobs:
-  workflow-register:
+  workflow-register-architecture:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -29,37 +28,33 @@ jobs:
           cache: npm
           cache-dependency-path: extensions/workflow-register/package-lock.json
       - run: npm ci
-      - name: Capture focused test output
-        id: tests
+      - name: Capture architecture policy output
+        id: policy
         shell: bash
         run: |
           set +e
-          npm run compile > "$RUNNER_TEMP/workflow-register-test.log" 2>&1
+          npm run architecture:policy > "$RUNNER_TEMP/workflow-register-architecture.log" 2>&1
           status=$?
-          if [ "$status" -eq 0 ]; then
-            node --test test/actionRegistry.test.js >> "$RUNNER_TEMP/workflow-register-test.log" 2>&1
-            status=$?
-          fi
-          tail -n 180 "$RUNNER_TEMP/workflow-register-test.log" > "$RUNNER_TEMP/workflow-register-test-tail.log"
+          tail -n 220 "$RUNNER_TEMP/workflow-register-architecture.log" > "$RUNNER_TEMP/workflow-register-architecture-tail.log"
           echo "status=$status" >> "$GITHUB_OUTPUT"
           exit 0
-      - name: Comment workflow-register diagnostic tail
+      - name: Comment architecture diagnostic
         uses: actions/github-script@v7
         env:
-          TEST_STATUS: ${{ steps.tests.outputs.status }}
+          POLICY_STATUS: ${{ steps.policy.outputs.status }}
         with:
           script: |
             const fs = require("node:fs");
-            const marker = "<!-- agent-workflow-register-test-diagnostic -->";
-            const tail = fs.readFileSync(process.env.RUNNER_TEMP + "/workflow-register-test-tail.log", "utf8");
-            const body = `${marker}\n## Workflow-register focused diagnostic\n\nExit: ${process.env.TEST_STATUS}\n\n\`\`\`text\n${tail.slice(-12000)}\n\`\`\``;
+            const marker = "<!-- agent-workflow-register-architecture-diagnostic -->";
+            const tail = fs.readFileSync(process.env.RUNNER_TEMP + "/workflow-register-architecture-tail.log", "utf8");
+            const body = `${marker}\n## Workflow-register architecture diagnostic\n\nExit: ${process.env.POLICY_STATUS}\n\n\`\`\`text\n${tail.slice(-12000)}\n\`\`\``;
             const issue_number = 68;
             const comments = await github.rest.issues.listComments({ owner: context.repo.owner, repo: context.repo.repo, issue_number });
             const previous = comments.data.find((comment) => comment.body?.includes(marker));
             if (previous) await github.rest.issues.updateComment({ owner: context.repo.owner, repo: context.repo.repo, comment_id: previous.id, body });
             else await github.rest.issues.createComment({ owner: context.repo.owner, repo: context.repo.repo, issue_number, body });
 
-  bazaar-review:
+  bazaar-review-unused:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -72,75 +67,26 @@ jobs:
           cache: npm
           cache-dependency-path: extensions/bob-bazaar-review/package-lock.json
       - run: npm ci
-      - name: Capture focused test output
-        id: tests
+      - name: Capture unused dependency policy output
+        id: policy
         shell: bash
         run: |
           set +e
-          npm run compile > "$RUNNER_TEMP/bazaar-review-test.log" 2>&1
+          npm run unused:policy > "$RUNNER_TEMP/bazaar-unused-policy.log" 2>&1
           status=$?
-          if [ "$status" -eq 0 ]; then
-            node --test test/workflowProviderRegistration.test.js test/externalProcessRunner.test.js test/externalProcessWiring.test.js test/bazaarClient.test.js >> "$RUNNER_TEMP/bazaar-review-test.log" 2>&1
-            status=$?
-          fi
-          grep -n -B 25 -A 70 -E "not ok|AssertionError|error TS[0-9]+" "$RUNNER_TEMP/bazaar-review-test.log" > "$RUNNER_TEMP/bazaar-review-test-tail.log"
-          if [ ! -s "$RUNNER_TEMP/bazaar-review-test-tail.log" ]; then
-            tail -n 180 "$RUNNER_TEMP/bazaar-review-test.log" > "$RUNNER_TEMP/bazaar-review-test-tail.log"
-          fi
+          tail -n 220 "$RUNNER_TEMP/bazaar-unused-policy.log" > "$RUNNER_TEMP/bazaar-unused-policy-tail.log"
           echo "status=$status" >> "$GITHUB_OUTPUT"
           exit 0
-      - name: Comment Bazaar diagnostic tail
+      - name: Comment unused-policy diagnostic
         uses: actions/github-script@v7
         env:
-          TEST_STATUS: ${{ steps.tests.outputs.status }}
+          POLICY_STATUS: ${{ steps.policy.outputs.status }}
         with:
           script: |
             const fs = require("node:fs");
-            const marker = "<!-- agent-bazaar-provider-diagnostic -->";
-            const tail = fs.readFileSync(process.env.RUNNER_TEMP + "/bazaar-review-test-tail.log", "utf8");
-            const body = `${marker}\n## Bazaar focused diagnostic\n\nExit: ${process.env.TEST_STATUS}\n\n\`\`\`text\n${tail.slice(0, 12000)}\n\`\`\``;
-            const issue_number = 68;
-            const comments = await github.rest.issues.listComments({ owner: context.repo.owner, repo: context.repo.repo, issue_number });
-            const previous = comments.data.find((comment) => comment.body?.includes(marker));
-            if (previous) await github.rest.issues.updateComment({ owner: context.repo.owner, repo: context.repo.repo, comment_id: previous.id, body });
-            else await github.rest.issues.createComment({ owner: context.repo.owner, repo: context.repo.repo, issue_number, body });
-
-  code-consistency:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: extensions/bob-code-consistency-review
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: extensions/bob-code-consistency-review/package-lock.json
-      - run: npm ci
-      - name: Capture full test output
-        id: tests
-        shell: bash
-        run: |
-          set +e
-          npm test > "$RUNNER_TEMP/code-consistency-test.log" 2>&1
-          status=$?
-          grep -n -B 35 -A 90 -E "not ok|AssertionError|error TS[0-9]+" "$RUNNER_TEMP/code-consistency-test.log" > "$RUNNER_TEMP/code-consistency-test-tail.log"
-          if [ ! -s "$RUNNER_TEMP/code-consistency-test-tail.log" ]; then
-            tail -n 140 "$RUNNER_TEMP/code-consistency-test.log" > "$RUNNER_TEMP/code-consistency-test-tail.log"
-          fi
-          echo "status=$status" >> "$GITHUB_OUTPUT"
-          exit 0
-      - name: Comment diagnostic tail
-        uses: actions/github-script@v7
-        env:
-          TEST_STATUS: ${{ steps.tests.outputs.status }}
-        with:
-          script: |
-            const fs = require("node:fs");
-            const marker = "<!-- agent-code-consistency-test-diagnostic -->";
-            const tail = fs.readFileSync(process.env.RUNNER_TEMP + "/code-consistency-test-tail.log", "utf8");
-            const body = `${marker}\n## Code consistency full diagnostic\n\nExit: ${process.env.TEST_STATUS}\n\n\`\`\`text\n${tail.slice(0, 12000)}\n\`\`\``;
+            const marker = "<!-- agent-bazaar-unused-policy-diagnostic -->";
+            const tail = fs.readFileSync(process.env.RUNNER_TEMP + "/bazaar-unused-policy-tail.log", "utf8");
+            const body = `${marker}\n## Bazaar unused-policy diagnostic\n\nExit: ${process.env.POLICY_STATUS}\n\n\`\`\`text\n${tail.slice(-12000)}\n\`\`\``;
             const issue_number = 68;
             const comments = await github.rest.issues.listComments({ owner: context.repo.owner, repo: context.repo.repo, issue_number });
             const previous = comments.data.find((comment) => comment.body?.includes(marker));
