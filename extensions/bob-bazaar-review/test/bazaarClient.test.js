@@ -1,7 +1,7 @@
 const assert = require("node:assert/strict")
 const test = require("node:test")
 
-const { BazaarClient, validateRevision } = require("../out/bazaar/bazaar")
+const { BazaarClient, validateRelativePath, validateRevision } = require("../out/bazaar/bazaar")
 
 test("BazaarClient.cat separates option parsing before relative file paths", async () => {
   const client = new BazaarClient({ bzrPath: "bzr" })
@@ -32,4 +32,39 @@ test("validateRevision rejects option-like, range, and oversized specs", () => {
   assert.throws(() => validateRevision("-r1"), /リビジョン指定/)
   assert.throws(() => validateRevision("1..2"), /リビジョン指定/)
   assert.throws(() => validateRevision("a".repeat(129)), /長すぎます/)
+})
+
+test("validateRelativePath accepts repository-relative paths and option-like file names", () => {
+  assert.equal(validateRelativePath("src/main.c"), "src/main.c")
+  assert.equal(validateRelativePath("dir\\nested\\file.txt"), "dir/nested/file.txt")
+  assert.equal(validateRelativePath("--help"), "--help")
+  assert.equal(validateRelativePath("dir/--help"), "dir/--help")
+})
+
+test("validateRelativePath rejects POSIX and Windows absolute or drive-relative paths", () => {
+  for (const candidate of [
+    "/etc/passwd",
+    "C:\\secret.txt",
+    "C:/secret.txt",
+    "C:secret.txt",
+    "\\\\server\\share\\secret.txt",
+    "\\\\?\\C:\\secret.txt",
+    "\\\\.\\pipe\\name"
+  ]) {
+    assert.throws(() => validateRelativePath(candidate), /安全でない Bazaar パス/)
+  }
+})
+
+test("validateRelativePath rejects traversal, dot, empty, and control-character segments", () => {
+  for (const candidate of [
+    "../secret.txt",
+    "a/../secret.txt",
+    "a/./b.txt",
+    "a//b.txt",
+    "./file.txt",
+    "a/\u0001b.txt",
+    ""
+  ]) {
+    assert.throws(() => validateRelativePath(candidate), /Bazaar パス|親ディレクトリ/)
+  }
 })
