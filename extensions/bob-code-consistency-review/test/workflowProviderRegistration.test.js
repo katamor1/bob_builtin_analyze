@@ -11,10 +11,8 @@ test("extension registers code consistency workflow providers with workflow-regi
   const packageJson = readJson("package.json")
   const source = readSourceSet(["extension.ts", "workflowProviderRegistration.ts"])
 
-  assert.ok(packageJson.extensionDependencies.includes("local.workflow-register"))
   assert.ok(packageJson.activationEvents.includes("onStartupFinished"))
   assert.match(source, /const WORKFLOW_REGISTER_EXTENSION_ID = "local\.workflow-register"/)
-  assert.match(source, /registerWorkflowProviders\(\{/)
   assert.match(source, /id: "bobCodeConsistency\.preprocess"/)
   assert.match(source, /id: "bobCodeConsistency\.captureBobOutput"/)
   assert.match(source, /buildCaptureWorkflowOptions\(\{ args, inputs, state \}\)/)
@@ -47,6 +45,19 @@ test("extension registers code consistency workflow providers with workflow-regi
   assert.equal(packageJson.contributes.configuration.properties["bobCodeConsistency.traceabilityCatalogPath"].default, ".bob-trace/traceability-catalog.json")
   assert.equal(packageJson.contributes.configuration.properties["bobCodeConsistency.traceabilityGateReportPath"].default, ".bob-trace/gate-report.md")
   assert.match(packageJson.contributes.configuration.properties["bobCodeConsistency.textEncoding"].description, /Shift-JIS/)
+})
+
+test("workflow-register and IBM Bob are soft dependencies with delayed provider registration recovery", () => {
+  const packageJson = readJson("package.json")
+  const source = readSourceSet(["extension.ts", "workflowProviderRegistration.ts"])
+
+  assert.ok(!packageJson.extensionDependencies || packageJson.extensionDependencies.length === 0)
+  assert.match(source, /registerWorkflowProvidersWithRetry/)
+  assert.match(source, /vscode\.extensions\.onDidChange/)
+  assert.match(source, /WORKFLOW_PROVIDER_RETRY_DELAYS_MS/)
+  assert.match(source, /context\.subscriptions\.push/)
+  assert.match(source, /clearTimeout/)
+  assert.match(source, /workflowProvidersRegistered/)
 })
 
 test("code consistency provider accepts workflowRoot without first-folder fallback", () => {
