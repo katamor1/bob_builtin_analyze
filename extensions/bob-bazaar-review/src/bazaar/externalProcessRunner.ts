@@ -119,6 +119,7 @@ export function runExternalProcess(options: ExternalProcessOptions): Promise<Ext
     }
 
     options.signal?.addEventListener("abort", onAbort, { once: true })
+    if (options.signal?.aborted) onAbort()
 
     const collect = (target: Buffer[], chunk: Buffer | string): void => {
       if (settled) return
