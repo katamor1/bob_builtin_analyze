@@ -1,9 +1,9 @@
 import {
   normalizeChangedFilePathStrict,
   readTextFile,
-  resolveWorkspacePathStrict,
-  toPosixPath
+  resolveWorkspacePathStrict
 } from "./fileSystem"
+import { parseDiffFixtureText } from "./diffFixture"
 import { classifyLanguageFromPath } from "./languageClassifier"
 import { decodeTextBuffer } from "./textEncoding"
 import {
@@ -34,8 +34,8 @@ export async function collectGitDiff(reviewInput: ReviewInput, options: {
   const limits = normalizeReviewProcessingLimits(options.limits)
   if (options.diffFixturePath) {
     const fixturePath = resolveWorkspacePathStrict(options.workspaceRoot, options.diffFixturePath, "diffFixturePath")
-    const fixture = JSON.parse(await readTextFile(fixturePath, options.textEncoding)) as DiffSummary
-    return applyDiffLimits(normalizeDiffLanguages(fixture), limits)
+    const fixture = parseDiffFixtureText(await readTextFile(fixturePath, options.textEncoding))
+    return applyDiffLimits(fixture, limits)
   }
 
   const vcs = normalizeVcs(reviewInput.review.vcs)
@@ -312,20 +312,6 @@ function statusFromBazaar(status: string): DiffSummary["files"][number]["status"
   if (normalized.includes("removed") || normalized.includes("deleted")) return "deleted"
   if (normalized.includes("renamed")) return "renamed"
   return "unknown"
-}
-
-function normalizeDiffLanguages(diff: DiffSummary): DiffSummary {
-  return {
-    ...diff,
-    files: diff.files.map((file) => {
-      const normalizedPath = normalizeChangedFilePathStrict(file.path)
-      return {
-        ...file,
-        path: normalizedPath,
-        language: file.language ?? languageFromPath(normalizedPath)
-      }
-    })
-  }
 }
 
 function applyDiffLimits(diff: DiffSummary, limits: ReviewProcessingLimits): DiffSummary {
