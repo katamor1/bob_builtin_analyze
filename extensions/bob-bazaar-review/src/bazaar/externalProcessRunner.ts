@@ -1,4 +1,7 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process"
+import { spawn, type ChildProcessByStdio } from "node:child_process"
+import type { Readable } from "node:stream"
+
+type ExternalProcessChild = ChildProcessByStdio<null, Readable, Readable>
 
 export type ExternalProcessErrorKind =
   | "timeout"
@@ -60,7 +63,7 @@ export function runExternalProcess(options: ExternalProcessOptions): Promise<Ext
     const stderrChunks: Buffer[] = []
     let bufferedBytes = 0
     let settled = false
-    let child: ChildProcessWithoutNullStreams
+    let child: ExternalProcessChild
 
     const stdout = (): Buffer => Buffer.concat(stdoutChunks)
     const stderr = (): Buffer => Buffer.concat(stderrChunks)
@@ -167,7 +170,7 @@ function positiveInteger(value: number, label: string): number {
   return Math.floor(value)
 }
 
-function terminateProcessTree(child: ChildProcessWithoutNullStreams): void {
+function terminateProcessTree(child: ExternalProcessChild): void {
   const pid = child.pid
   if (!pid) {
     child.kill("SIGKILL")
