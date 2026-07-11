@@ -52,6 +52,16 @@ test("Bazaar workflow provider registration retries optional workflow-register i
   assert.match(source, /workflowProvidersRegistered/)
 })
 
+test("Bazaar workflow providers declare ownership and register disposables", () => {
+  const source = readSourceSet(["workflow/workflowRegisterBridge.ts", "workflow/workflowProviders.ts"])
+
+  assert.match(source, /const BAZAAR_PROVIDER_SOURCE_ID = "local\.bob-bazaar-review"/)
+  assert.match(source, /sourceId: BAZAAR_PROVIDER_SOURCE_ID/)
+  assert.match(source, /const registrations: vscode\.Disposable\[\] = \[\]/)
+  assert.match(source, /disposeRegistrations\(registrations\)/)
+  assert.match(source, /context\.subscriptions\.push\(\.\.\.registrations\)/)
+})
+
 test("Bazaar workflow template starts review target selection from the GUI by default", () => {
   const workflow = readExtensionFile("templates", ".bob", "workflows", "bazaar-project-rule-review", "WORKFLOW.md")
 
