@@ -40,7 +40,7 @@
 - review processing limitはmanifest/runtime共通のmin/default/maxを持つ。
 - UTF-8切り詰めsuffixを含め、最終出力をbyte budget内へ収める。
 
-### 2.4 Workflow / VSIX / smoke契約
+### 2.4 Workflow / VSIX / Extension Host smoke契約
 
 - repository内の対象`WORKFLOW.md`を再帰探索し、provider、preflight、nested command、template mirrorをstrict検証する。
 - `.bob/template-library/**/WORKFLOW.md`変更もworkflow contract CIを起動する。
@@ -49,6 +49,10 @@
 - VSIX policyは`extension/.vscode-test.json`と`extension/.vscode-test/**`を独立して拒否する。
 - dependency policy testはignoreとpackage policyの両方を固定する。
 - Extension Host smokeはMochaのBDD interfaceを明示し、`describe`/`it`を使用する。
+- smoke設定生成時に、project rootから`@vscode/test-electron`を解決できることをpreflight検査する。
+- `@vscode/test-cli@0.0.12`と対応する`@vscode/test-electron@2.5.2`をsmoke実行前にproject rootへ一時導入する。
+- soft dependencyをMarketplaceから暗黙導入しないよう、test configurationで`skipExtensionDependencies: true`を指定する。
+- test runtimeはVSIX生成・policy・metrics完了後に導入し、配布物へ混入させない。
 
 ## 3. 確認済み証跡
 
@@ -116,6 +120,24 @@ TDD記録:
 
 局所再現は変更ロジックを隔離した補助証跡であり、repository全体のcompile/testを代替しない。
 
+### 3.3 Extension Host smoke依存の根本原因
+
+`@vscode/test-cli@0.0.12`を使った最小拡張で、CIと同じ`.vscode-test.json`およびsmoke scriptを再現した。
+
+| 段階 | 結果 |
+| --- | --- |
+| RED | `@vscode/test-electron`をextension projectへ導入せず実行すると、`Can't resolve '@vscode/test-electron'`で拡張起動前に失敗した。 |
+| 原因確認 | test CLIはconfig directoryを起点に`@vscode/test-electron`を動的解決する。CLI package側では同packageがdevDependencyであり、利用projectへ自動導入されない。 |
+| GREEN境界 | extension projectへ`@vscode/test-electron@2.5.2`を導入すると動的解決を通過し、VS Code download処理まで到達した。 |
+| ローカル残制約 | 実行環境のDNS制約により`update.code.visualstudio.com`の名前解決で停止したため、実Extension Hostの完走証跡ではない。 |
+
+対応:
+
+1. CIでVSIXを先に生成・検査する。
+2. その後に`@vscode/test-electron@2.5.2`を`--no-save --package-lock=false --ignore-scripts`で導入する。
+3. smoke config生成時にもruntime解決を検査し、欠落時は明確なerrorを返す。
+4. `skipExtensionDependencies: true`でsoft dependencyの暗黙導入を抑止する。
+
 ## 4. GitHub Actions runner起動前ブロッカー
 
 ### 4.1 第三者Actionを使わないrunner probe
@@ -129,37 +151,38 @@ TDD記録:
 
 probeは診断後に削除済みである。
 
-### 4.2 本体workflow
+### 4.2 最新head付近のworkflow
 
-同じ症状は次の本体workflowでも継続している。
+smoke runtime修正後も、次のrunはrunner割当前に終了しており、修正コード自体はGitHub上でまだ実行されていない。
 
-| Workflow | 代表Run ID | 結果 |
+| Workflow | Run ID | 結果 |
 | --- | ---: | --- |
-| `extensions-quality` | `29144425440` | Ubuntu/Windowsを含む全jobが`action_required`、`steps: null` |
-| `workflow-contracts` | `29144425442` | validation jobが`action_required`、`steps: null` |
-| `code-consistency-review-scaffold` | `29144425461` | 2 jobとも`action_required`、`steps: null` |
+| `extensions-quality` | `29149471170` | Ubuntu/Windowsを含む全jobが`steps: null`、logなし |
+| `workflow-contracts` | `29149471213` | validation jobがstep開始前failure |
+| `code-consistency-review-scaffold` | `29149471168` | 2 jobともstep開始前failure |
+| `extension-host-smoke-diagnostic` | `29149471180` | 3 smoke jobとも`steps: null`、artifactなし |
 
-checkoutやrepository codeを一切使わないprobeでも再現するため、現在のfailureはworkflow実装やテストコードではなく、GitHub-hosted runner割当以前のaccount/repository設定にあると判定する。ただしgreen evidenceが存在しないためmergeは許可しない。
+checkoutやrepository codeを一切使わないprobeでも再現するため、現在のfailureはworkflow実装やテストコードとは別に、GitHub-hosted runner割当以前のaccount/repository設定にも存在すると判定する。ただしExtension Host修正のGitHub上のgreen evidenceもまだ存在しないためmergeは許可しない。
 
 ### 4.3 repository管理者が確認する項目
 
 1. GitHub accountのBilling / PlansでActions利用枠、spending limit、支払い状態を確認する。
 2. Repository Settings → Actions → GeneralでActionsが許可されていることを確認する。
 3. private repositoryでGitHub-hosted Ubuntu/Windows runnerが許可されていることを確認する。
-4. 制限解除後、PR #68の最新headで3 workflowを再実行する。
+4. 制限解除後、PR #68の最新headで4 workflowを再実行する。
 5. jobがstep 1を開始し、job logを生成することを確認する。
 
 ## 5. 最新headで必要な自動ゲート
 
 | Gate | 必須結果 | 実績 |
 | --- | --- | --- |
-| workflow-register Ubuntu | dependency / architecture / source / schema / unit / package / VSIX policy 全成功 | 未実施 |
-| bob-bazaar-review Ubuntu | dependency / architecture / source / unused / artifact / unit / package / VSIX policy 全成功 | 未実施 |
-| bob-code-consistency-review Ubuntu | dependency / architecture / source / unit / package / VSIX policy 全成功 | 未実施 |
+| workflow-register Ubuntu | dependency / architecture / source / schema / unit / package / VSIX policy 全成功 | 最新head未実施 |
+| bob-bazaar-review Ubuntu | dependency / architecture / source / unused / artifact / unit / package / VSIX policy 全成功 | 最新head未実施 |
+| bob-code-consistency-review Ubuntu | dependency / architecture / source / unit / package / VSIX policy 全成功 | 最新head未実施 |
 | Windows matrix | 3拡張すべて成功 | 未実施 |
-| Extension Host smoke | 3拡張のactivationと代表command登録成功 | 未実施 |
-| workflow contracts | 全対象workflow strict/provider-aware検証成功 | 未実施 |
-| code consistency scaffold | scaffoldとVS Code extensionの2 job成功 | 未実施 |
+| Extension Host smoke | 3拡張のactivationと代表command登録成功 | runtime解決修正済み、GitHub実行待ち |
+| workflow contracts | 全対象workflow strict/provider-aware検証成功 | 最新head未実施 |
+| code consistency scaffold | scaffoldとVS Code extensionの2 job成功 | 最新head未実施 |
 
 ## 6. 実機ゲート
 
@@ -204,7 +227,7 @@ checkoutやrepository codeを一切使わないprobeでも再現するため、�
 | IBM Bob実機担当 / 結果 |  |
 | Bazaar実機担当 / 結果 |  |
 | multi-root担当 / 結果 |  |
-| 未解決リスク |  |
+| 未解決リスク | GitHub-hosted runnerがstep開始前に終了する状態、実IBM Bob/Bazaar/multi-root未実施 |
 | リリース判定者 |  |
 | 判定 | `release / conditional / reject` |
 
