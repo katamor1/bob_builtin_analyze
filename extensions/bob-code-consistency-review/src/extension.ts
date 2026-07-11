@@ -24,7 +24,20 @@ import {
 import { openConsistencyHumanTriageGui } from "./webview/consistencyHumanTriage"
 import { openConsistencyResultCaptureGui } from "./webview/consistencyResultCapture"
 import { openConsistencyReviewWizard } from "./webview/consistencyReviewWizard"
-import { registerWorkflowProviders } from "./workflowProviderRegistration"
+import {
+  registerWorkflowProviders,
+  type CodeConsistencyWorkflowHandlers
+} from "./workflowProviderRegistration"
+
+const WORKFLOW_REGISTER_EXTENSION_ID = "local.workflow-register"
+const WORKFLOW_PROVIDER_RETRY_DELAYS_MS = [1000, 3000, 10000] as const
+
+interface WorkflowRegisterApiLike {
+  registerActionProvider?: unknown
+}
+
+let workflowProvidersRegistered = false
+let workflowProviderRegistrationAttempt: Promise<boolean> | undefined
 
 /**
  * Bob コード整合プレレビュー拡張を有効化し、command と workflow entry point を登録する。
@@ -105,7 +118,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("bobCodeConsistency.triage", (options?: unknown) => runTriage(options))
   )
 
-  registerWorkflowProviders({
+  registerWorkflowProvidersWithRetry(context, {
     initializeWorkspace: (options) => runInitializeWorkspace(context, options),
     createReviewInput: runCreateReviewInput,
     prepareAiReviewInputDraft: runPrepareAiReviewInputDraft,
@@ -122,7 +135,84 @@ export function activate(context: vscode.ExtensionContext): void {
     captureBobOutput: runCaptureBobOutput,
     validateOutput: runValidateOutput,
     triage: runTriage
-  }).catch((error) => console.warn("Bob コード整合ワークフロー provider の登録に失敗しました", error))
+  })
+}
+
+/**
+ * workflow-register が未導入または遅延起動した場合に備えて provider 登録を再試行する。
+ *
+ * @param context retry timer と extension change listener の所有者。
+ * @param handlers workflow action provider が呼ぶ command handler 群。
+ * @returns なし。
+ */
+export function registerWorkflowProvidersWithRetry(
+  context: vscode.ExtensionContext,
+  handlers: CodeConsistencyWorkflowHandlers
+): void {
+  let disposed = false
+  let retryIndex = 0
+  const timers = new Set<ReturnType<typeof setTimeout>>()
+
+  const scheduleRetry = (): void => {
+    if (disposed || workflowProvidersRegistered || retryIndex >= WORKFLOW_PROVIDER_RETRY_DELAYS_MS.length) return
+    const delayMs = WORKFLOW_PROVIDER_RETRY_DELAYS_MS[retryIndex]
+    retryIndex += 1
+    const timer = setTimeout(() => {
+      timers.delete(timer)
+      void attempt()
+    }, delayMs)
+    timers.add(timer)
+  }
+
+  const attempt = async (): Promise<boolean> => {
+    if (disposed || workflowProvidersRegistered) return workflowProvidersRegistered
+    if (workflowProviderRegistrationAttempt) return workflowProviderRegistrationAttempt
+
+    workflowProviderRegistrationAttempt = tryRegisterWorkflowProviders(handlers)
+    try {
+      const registered = await workflowProviderRegistrationAttempt
+      if (!registered) scheduleRetry()
+      return registered
+    } catch (error) {
+      console.warn("Bob コード整合ワークフロー provider の登録に失敗しました", error)
+      scheduleRetry()
+      return false
+    } finally {
+      workflowProviderRegistrationAttempt = undefined
+    }
+  }
+
+  const extensionListener = vscode.extensions.onDidChange(() => {
+    retryIndex = 0
+    for (const timer of timers) clearTimeout(timer)
+    timers.clear()
+    void attempt()
+  })
+
+  context.subscriptions.push(
+    extensionListener,
+    {
+      dispose: () => {
+        disposed = true
+        for (const timer of timers) clearTimeout(timer)
+        timers.clear()
+      }
+    }
+  )
+
+  void attempt()
+}
+
+async function tryRegisterWorkflowProviders(handlers: CodeConsistencyWorkflowHandlers): Promise<boolean> {
+  const extension = vscode.extensions.getExtension<WorkflowRegisterApiLike>(WORKFLOW_REGISTER_EXTENSION_ID)
+  if (!extension) return false
+
+  const api = extension.isActive ? extension.exports : await extension.activate()
+  if (!api?.registerActionProvider) return false
+
+  await registerWorkflowProviders(handlers)
+  workflowProvidersRegistered = true
+  return true
 }
 
 /**
@@ -131,5 +221,5 @@ export function activate(context: vscode.ExtensionContext): void {
  * @returns なし。
  */
 export function deactivate(): void {
-  // この拡張は常駐 resource を保持しない。
+  // retry timer と listener は extension context subscriptions が破棄する。
 }
