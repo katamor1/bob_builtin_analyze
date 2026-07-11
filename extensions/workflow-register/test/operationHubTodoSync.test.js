@@ -10,12 +10,13 @@ test("Operation Hub accept-and-run-next always starts the next step after accept
   assert.doesNotMatch(source, /if \(accepted\.completedViaBobTask\) \{\s*return accepted\.run\s*\}/)
 })
 
-test("review acceptance awaits Bob Todo completion and reports only actual applications", () => {
+test("review acceptance skips Todo completion for a live gate and awaits only the stale-gate fallback", () => {
   const source = readSrc("commands", "stepReview.ts")
 
-  assert.match(source, /const sync = await bobTaskSyncRegistry\.reconcileRun/)
-  assert.match(source, /const completedViaBobTask = sync\.status === "synced" && sync\.appliedStepCount > 0/)
-  assert.doesNotMatch(source, /const completedViaBobTask = sync\.status === "synced" && sync\.taskAvailable/)
+  assert.match(source, /let completedViaBobTask = acceptedViaLiveGate/)
+  assert.match(source, /if \(!acceptedViaLiveGate\) \{[\s\S]*const sync = await bobTaskSyncRegistry\.reconcileRun/)
+  assert.match(source, /completedViaBobTask = sync\.status === "synced" && sync\.appliedStepCount > 0/)
+  assert.doesNotMatch(source, /completedViaBobTask = sync\.status === "synced" && sync\.taskAvailable/)
 })
 
 test("Bob runner and Operation Hub command reconciliation await async Todo projection", () => {

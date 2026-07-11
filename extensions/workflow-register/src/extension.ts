@@ -13,6 +13,14 @@ import type { StepCompletionOptions } from "./workflowRegisterService"
  */
 export interface WorkflowRegisterApi {
   /**
+   * live Bob execution が待機している review gate を承認する。
+   *
+   * @param runId 承認済み run identifier。
+   * @param stepId 承認済み step identifier。
+   * @returns 対応する live gate を解放した場合は true。
+   */
+  acceptBobWorkflowGate: (runId: string, stepId: string) => boolean
+  /**
    * custom action step を実行する workflow action provider を登録する。
    *
    * @param provider workflow runtime へ公開する action provider 実装。
@@ -115,6 +123,7 @@ export interface WorkflowRegisterApi {
 export function activate(context: vscode.ExtensionContext): WorkflowRegisterApi {
   const service = new WorkflowRegisterService(String(context.extension.packageJSON.version ?? "unknown"))
   const api: WorkflowRegisterApi = {
+    acceptBobWorkflowGate: (runId, stepId) => service.acceptBobWorkflowGate(runId, stepId),
     registerActionProvider: (provider) => service.registerActionProvider(provider),
     registerAgentProvider: (provider) => service.registerAgentProvider(provider),
     registerResultSink: (type, handler) => service.registerResultSink(type, handler),

@@ -46,6 +46,7 @@ export { extractTaskWorkflowInputs } from "./bobTaskInputs"
 export { StepRuntime } from "./bobStepRuntime"
 export { recoverResultTextFromSnapshots } from "./taskSnapshotRecovery"
 import { recoverResultTextFromSnapshots } from "./taskSnapshotRecovery"
+import type { BobWorkflowGateRegistry } from "./bobWorkflowGateRegistry"
 
 interface BobWorkflowEngineRunnerOptions {
   definition: WorkflowDefinition
@@ -58,7 +59,12 @@ interface BobWorkflowEngineRunnerOptions {
   agentProvider?: AgentProvider
   stepRuntime: StepRuntime
   inputsProvider: BobWorkflowRunnerInputCollector
+  gateRegistry: BobWorkflowGateRegistry
   onManualStepHeld?: (input: { workflow: CoreWorkflowDefinition; run: WorkflowRunState; step: EngineStep; active: ActiveStep }) => Promise<void> | void
+}
+
+interface ReviewGateWait {
+  promise?: Promise<boolean>
 }
 
 export class BobWorkflowEngineRunner {
@@ -105,6 +111,7 @@ export class BobWorkflowEngineRunner {
     const runStore = this.options.runStore(workspaceRoot)
     const manuallyCompleted = new Set<string>()
     const messageStartIndexes = new Map<string, number>()
+    const reviewGate: ReviewGateWait = {}
     const engine = new WorkflowEngine({
       actions: this.options.actionRegistry,
       resultSinks: this.options.resultSinks(workspaceRoot),
@@ -117,7 +124,8 @@ export class BobWorkflowEngineRunner {
         snapshotStore,
         runStore,
         manuallyCompleted,
-        messageStartIndexes
+        messageStartIndexes,
+        reviewGate
       ),
       manualCompletion: async ({ run, step }) => {
         const result = await this.options.stepRuntime.hold(
@@ -160,7 +168,15 @@ export class BobWorkflowEngineRunner {
       if ((run.status === "reviewing" || run.status === "held") && run.error) {
         await vscode.window.showWarningMessage("ワークフローはユーザー操作待ちです。Operation Hub を開きました。")
       }
-      return run.status === "completed" || run.status === "running" || run.status === "paused" || run.status === "reviewing" || run.status === "held" || run.status === "checkpoint"
+      if (run.status === "reviewing") {
+        if (!run.currentStep) throw new Error(`Reviewing workflow run has no current step: ${run.runId}`)
+        return await (reviewGate.promise ?? this.options.gateRegistry.waitForDecision({
+          runId: run.runId,
+          stepId: run.currentStep,
+          status: run.status
+        }))
+      }
+      return run.status === "completed" || run.status === "running" || run.status === "paused" || run.status === "held" || run.status === "checkpoint"
     } catch (error) {
       await vscode.window.showErrorMessage(
         `Bob workflow execution failed: ${error instanceof Error ? error.message : String(error)}`
@@ -214,7 +230,8 @@ export class BobWorkflowEngineRunner {
     snapshotStore: TaskSnapshotStore | undefined,
     runStore: RunStateStore,
     manuallyCompleted: Set<string>,
-    messageStartIndexes: Map<string, number>
+    messageStartIndexes: Map<string, number>,
+    reviewGate: ReviewGateWait
   ): WorkflowExecutionHooks {
     const snapshot = async (
       reason: TaskSnapshotReason,
@@ -327,6 +344,12 @@ export class BobWorkflowEngineRunner {
       },
       onStepReviewRequired: async ({ workflow, run, step }) => {
         if (step) {
+          reviewGate.promise = this.options.gateRegistry.waitForDecision({
+            runId: run.runId,
+            stepId: step.id,
+            status: run.status
+          })
+          void reviewGate.promise.catch(() => undefined)
           reviewTaskRegistry.register(run.runId, step.id, task)
           bobTaskSyncRegistry.registerTask(run.runId, step.id, task)
           await sendControlBlock(run, step)

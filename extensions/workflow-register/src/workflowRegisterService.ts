@@ -1,4 +1,5 @@
 import * as vscode from "vscode"
+import { BobWorkflowGateRegistry } from "./bobWorkflowGateRegistry"
 import { StepRuntime, type StepCompletionExpectation } from "./bobStepRuntime"
 import type { BobSourceLike } from "./bobApi"
 import { createDefaultActionRegistry } from "./core/actionRegistry"
@@ -33,6 +34,7 @@ export interface StepCompletionOptions extends StepCompletionExpectation {
 export class WorkflowRegisterService implements vscode.Disposable {
   private readonly registeredIds = new Set<string>()
   private readonly watcher = vscode.workspace.createFileSystemWatcher(WORKFLOW_GLOB)
+  private readonly bobWorkflowGates = new BobWorkflowGateRegistry()
   private readonly stepRuntime = new StepRuntime()
   private readonly coreWorkflows = new Map<string, CoreWorkflowDefinition>()
   private readonly actionRegistry = createDefaultActionRegistry({
@@ -71,6 +73,7 @@ export class WorkflowRegisterService implements vscode.Disposable {
       actionRegistry: this.actionRegistry,
       customResultSinks: this.customResultSinks,
       stepRuntime: this.stepRuntime,
+      gateRegistry: this.bobWorkflowGates,
       agentProvider: () => this.agentProvider,
       inputsProvider: (workflow, provided) => collectBobWorkflowInputs(workflow, provided),
       onManualStepHeld: (input) => this.manualStepPanel.show(input)
@@ -91,6 +94,7 @@ export class WorkflowRegisterService implements vscode.Disposable {
   dispose(): void {
     this.watcher.dispose()
     this.manualStepPanel.dispose()
+    this.bobWorkflowGates.dispose()
     try {
       this.actionProviderRegistrations.dispose()
     } catch (error) {
@@ -133,6 +137,10 @@ export class WorkflowRegisterService implements vscode.Disposable {
 
   async openManualStepPanel(runArg?: RunCommandArg): Promise<string> {
     return this.runCommands.openManualStepPanel(runArg)
+  }
+
+  acceptBobWorkflowGate(runId: string, stepId: string): boolean {
+    return this.bobWorkflowGates.accept(runId, stepId)
   }
 
   registerActionProvider(provider: ActionProvider): ActionProviderRegistration {

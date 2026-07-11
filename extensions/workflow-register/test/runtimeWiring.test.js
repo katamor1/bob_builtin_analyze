@@ -1,10 +1,16 @@
 const assert = require("node:assert/strict")
+const fs = require("node:fs")
+const Module = require("node:module")
+const os = require("node:os")
+const path = require("node:path")
 const { test } = require("node:test")
 const { readSourceSet, readSrc } = require("./helpers/sourceReader")
 
 function runtimeSource() {
   return readSourceSet([
     "extension.ts",
+    "extensionWithAuthoring.ts",
+    "bobWorkflowGateRegistry.ts",
     "workflowRuntimeFactory.ts",
     "workflowAdapter.ts",
     "bobWorkflowTypes.ts",
@@ -13,6 +19,7 @@ function runtimeSource() {
     "bobTaskSync.ts",
     "bobWorkflowMessages.ts",
     "reviewTaskRegistry.ts",
+    "commands/stepReview.ts",
     "webview/manualStepPanel.ts",
     "workflowInputPrompt.ts",
     "workflowRegisterService.ts",
@@ -20,6 +27,38 @@ function runtimeSource() {
     "core/engine.ts",
     "core/engine/stepExecutor.ts"
   ])
+}
+
+function loadBobWorkflowRunner() {
+  const modulePath = require.resolve("../out/bobWorkflowRunner.js")
+  delete require.cache[modulePath]
+  const originalLoad = Module._load
+  Module._load = function patchedLoad(request, parent, isMain) {
+    if (request === "vscode") {
+      return {
+        commands: { executeCommand: async () => undefined },
+        window: {
+          showErrorMessage: async () => undefined,
+          showWarningMessage: async () => undefined
+        }
+      }
+    }
+    return originalLoad.call(this, request, parent, isMain)
+  }
+  try {
+    return require(modulePath)
+  } finally {
+    Module._load = originalLoad
+  }
+}
+
+async function waitForReviewingRun(runStore) {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const run = (await runStore.listRuns()).find((candidate) => candidate.status === "reviewing")
+    if (run) return run
+    await new Promise((resolve) => setTimeout(resolve, 5))
+  }
+  throw new Error("Bob workflow did not reach reviewing state.")
 }
 
 function orderedPattern(...parts) {
@@ -137,6 +176,119 @@ test("Bob workflow runner surfaces step review gates without failing the run", (
   assert.doesNotMatch(source, /Bob workflow step gate:/)
 })
 
+test("Bob workflow runner remains pending at review until its registry accepts the gate", async (t) => {
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "workflow-register-bob-gate-"))
+  t.after(() => fs.rmSync(workspaceRoot, { recursive: true, force: true }))
+  const { ActionRegistry } = require("../out/core/actionRegistry")
+  const { BobWorkflowGateRegistry } = require("../out/bobWorkflowGateRegistry")
+  const { FileRunStateStore } = require("../out/core/runStateStore")
+  const { createDefaultResultSinkRegistry } = require("../out/core/resultSinkRegistry")
+  const { BobWorkflowEngineRunner, StepRuntime } = loadBobWorkflowRunner()
+  const actionRegistry = new ActionRegistry()
+  actionRegistry.register({ id: "sample.collect", execute: async () => "context" })
+  const runStore = new FileRunStateStore({ workspaceRoot })
+  const gateRegistry = new BobWorkflowGateRegistry()
+  const coreWorkflow = {
+    id: "workflow-register.bob-review-gate",
+    name: "bob-review-gate",
+    label: "Bob Review Gate",
+    description: "Bob review gate behavior test.",
+    schemaVersion: "workflow-register/v1",
+    inputs: {},
+    stepReview: {
+      enabled: true,
+      pauseAfter: "everyStep",
+      requireAcceptBeforeNext: true,
+      allowRetry: true,
+      allowEditBeforeRetry: true,
+      preserveAttempts: true
+    },
+    engineSteps: [{
+      id: "review",
+      title: "Review",
+      type: "command",
+      action: { provider: "sample.collect" },
+      resultKey: "context"
+    }]
+  }
+  const definition = {
+    id: coreWorkflow.id,
+    name: coreWorkflow.name,
+    label: coreWorkflow.label,
+    menuLabel: coreWorkflow.label,
+    description: coreWorkflow.description,
+    prompt: "",
+    promptWithoutTodo: "",
+    commandArgs: [],
+    mode: "agent",
+    permissions: [],
+    autoApprovalEnabled: true,
+    workspaceRequired: false,
+    hidden: false,
+    todoEnabled: true,
+    todoRequired: false,
+    todoSource: "",
+    todoAsSteps: true,
+    stepCompletion: "auto",
+    stepMessage: "none",
+    stepExecution: { mode: "engineSteps", allowOutOfOrder: false, showInBob: true },
+    stepsById: {
+      review: {
+        id: "review",
+        prompt: "",
+        commandArgs: [],
+        sendResult: false,
+        required: true,
+        completeOnSuccess: true,
+        runAgent: false,
+        includeState: [],
+        maxResultBytes: 1024,
+        stateRequired: false,
+        captureResult: false,
+        resultCommandArgs: []
+      }
+    },
+    todos: [{ id: "review", text: "Review", raw: "review: Review" }],
+    inputs: {},
+    guardrails: {},
+    workflowRoot: workspaceRoot,
+    file: { fsPath: path.join(workspaceRoot, "WORKFLOW.md") },
+    core: coreWorkflow
+  }
+  const runner = new BobWorkflowEngineRunner({
+    definition,
+    coreWorkflow,
+    actionRegistry,
+    resultSinks: () => createDefaultResultSinkRegistry({
+      workspaceRoot,
+      executeCommand: async () => undefined
+    }),
+    runStore: () => runStore,
+    taskSnapshotStore: () => undefined,
+    preflightChecks: () => ({ bazaarRepository: async () => true }),
+    stepRuntime: new StepRuntime(),
+    inputsProvider: async () => ({}),
+    gateRegistry
+  })
+  let settled = false
+  const execution = runner.runEngineStep("review", 0, {
+    sendMessage: async () => undefined,
+    setStepComplete: () => undefined
+  })
+  void execution.then(
+    () => { settled = true },
+    () => { settled = true }
+  )
+
+  const reviewing = await waitForReviewingRun(runStore)
+  await new Promise((resolve) => setImmediate(resolve))
+
+  assert.equal(settled, false)
+  assert.equal(gateRegistry.isPending(reviewing.runId, "review"), true)
+  assert.equal(gateRegistry.accept(reviewing.runId, "review"), true)
+  assert.equal(await execution, true)
+})
+
 test("Bob workflow runner opens Operation Hub when user action is required", () => {
   const source = readSrc("bobWorkflowRunner.ts")
 
@@ -146,7 +298,7 @@ test("Bob workflow runner opens Operation Hub when user action is required", () 
   assert.match(source, /await this\.openOperationHubForRun\(run, step, "paused"\)/)
 })
 
-test("review-gated Bob tasks are reconciled when Operation Hub accepts the step", () => {
+test("review-gated Bob tasks use live gate acceptance before Todo-sync fallback", () => {
   const runner = readSrc("bobWorkflowRunner.ts")
   const stepReview = readSrc("commands", "stepReview.ts")
 
@@ -154,15 +306,21 @@ test("review-gated Bob tasks are reconciled when Operation Hub accepts the step"
   assert.match(runner, /bobTaskSyncRegistry\.registerTask\(run\.runId, step\.id, task\)/)
   assert.match(stepReview, /import \{ bobTaskSyncRegistry \} from "\.\.\/bobTaskSync"/)
   assert.match(stepReview, /const acceptedStepId = run\.currentStep/)
-  assert.match(stepReview, /await bobTaskSyncRegistry\.reconcileRun\(accepted, undefined/)
+  assert.match(stepReview, orderedPattern(
+    "await runStore.saveRun(accepted)",
+    "options.acceptBobWorkflowGate(accepted.runId, acceptedStepId)",
+    "if (!acceptedViaLiveGate)",
+    "await bobTaskSyncRegistry.reconcileRun(accepted, undefined"
+  ))
 })
 
-test("Operation Hub accept-and-run-next lets Bob task advance instead of standalone agent execution", () => {
+test("Operation Hub live gate owns Bob advancement while stale gates keep Todo-sync fallback", () => {
   const stepReview = readSrc("commands", "stepReview.ts")
 
   assert.match(stepReview, /interface AcceptedStepResult \{[\s\S]*completedViaBobTask: boolean[\s\S]*\}/)
-  assert.match(stepReview, /const sync = await bobTaskSyncRegistry\.reconcileRun\(accepted, undefined/)
-  assert.match(stepReview, /const completedViaBobTask = sync\.status === "synced" && sync\.appliedStepCount > 0/)
+  assert.match(stepReview, /let completedViaBobTask = acceptedViaLiveGate/)
+  assert.match(stepReview, /if \(!acceptedViaLiveGate\) \{[\s\S]*await bobTaskSyncRegistry\.reconcileRun\(accepted, undefined/)
+  assert.match(stepReview, /completedViaBobTask = sync\.status === "synced" && sync\.appliedStepCount > 0/)
   assert.match(stepReview, /return \{ run: accepted, message, completedViaBobTask \}/)
   assert.match(stepReview, /if \(completedViaBobTask\) \{/)
   assert.match(stepReview, /vscode\.commands\.executeCommand\("workflowRegister\.runNextStep", accepted\.run\.runId\)/)
@@ -223,5 +381,31 @@ test("Bob adapter resolves workflow inputs and passes them to command providers"
     "provided,",
     "prompt: promptForWorkflowInput",
     "})"
+  ))
+})
+
+test("WorkflowRegisterService owns and exposes the Bob review gate registry", () => {
+  const service = readSrc("workflowRegisterService.ts")
+  const factory = readSrc("workflowRuntimeFactory.ts")
+  const extension = readSrc("extension.ts")
+  const authoring = readSrc("extensionWithAuthoring.ts")
+
+  assert.match(service, /private readonly bobWorkflowGates = new BobWorkflowGateRegistry\(\)/)
+  assert.match(service, /gateRegistry: this\.bobWorkflowGates/)
+  assert.match(service, /acceptBobWorkflowGate\(runId: string, stepId: string\): boolean \{[\s\S]*this\.bobWorkflowGates\.accept\(runId, stepId\)/)
+  assert.match(factory, /gateRegistry: BobWorkflowGateRegistry/)
+  assert.match(factory, /gateRegistry: this\.options\.gateRegistry/)
+  assert.match(extension, /acceptBobWorkflowGate: \(runId: string, stepId: string\) => boolean/)
+  assert.match(extension, /acceptBobWorkflowGate: \(runId, stepId\) => service\.acceptBobWorkflowGate\(runId, stepId\)/)
+  assert.match(authoring, /acceptBobWorkflowGate: api\.acceptBobWorkflowGate/)
+})
+
+test("WorkflowRegisterService disposes pending gates before source deactivation", () => {
+  const source = readSrc("workflowRegisterService.ts")
+
+  assert.match(source, orderedPattern(
+    "this.manualStepPanel.dispose()",
+    "this.bobWorkflowGates.dispose()",
+    "deactivateRegisteredSource(source)"
   ))
 })

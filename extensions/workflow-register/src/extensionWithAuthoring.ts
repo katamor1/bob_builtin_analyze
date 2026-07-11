@@ -69,8 +69,13 @@ export function activate(context: vscode.ExtensionContext): WorkflowRegisterApi 
     command: config().get<string>("aiProviderCommand", ""),
     executeCommand: (command, input) => vscode.commands.executeCommand(command, input)
   })
-  const stepReviewOptions = { showMarkdownReport }
-  const stepReviewBuilderOptions = { showMarkdownReport, sourceId: sourceId(), extensionUri: context.extensionUri }
+  const stepReviewOptions = { showMarkdownReport, acceptBobWorkflowGate: api.acceptBobWorkflowGate }
+  const stepReviewBuilderOptions = {
+    showMarkdownReport,
+    acceptBobWorkflowGate: api.acceptBobWorkflowGate,
+    sourceId: sourceId(),
+    extensionUri: context.extensionUri
+  }
   const runControlOptions = { showMarkdownReport }
   const processCommandOptions = (input: unknown) => ({ workspaceRoot: workspaceRootFromCommandInput(input, "bobProcess") })
   const templateCommandOptions = (input: unknown) => ({ workspaceRoot: workspaceRootFromCommandInput(input, "bobTemplate") })

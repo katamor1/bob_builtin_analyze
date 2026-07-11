@@ -10,6 +10,7 @@ import { reviewTaskRegistry } from "../reviewTaskRegistry"
 
 interface StepReviewCommandOptions {
   showMarkdownReport: (title: string, summary: string, lines: string[]) => Promise<void>
+  acceptBobWorkflowGate: (runId: string, stepId: string) => boolean
 }
 
 export interface StepReviewBuilderCommandOptions extends StepReviewCommandOptions {
@@ -37,14 +38,14 @@ const RUN_NEXT_STEP_LABEL = "次のステップを実行"
 const OPEN_OPERATION_HUB_LABEL = "Operation Hub を開く"
 
 export async function acceptCurrentStep(options: StepReviewCommandOptions, runId?: string, acceptOptions: AcceptOptions = {}): Promise<WorkflowRunState | string> {
-  const accepted = await acceptReviewedStep(runId)
+  const accepted = await acceptReviewedStep(options, runId)
   if (typeof accepted === "string") return accepted
   if (!acceptOptions.silent) await showAcceptedStepMessage(accepted.run, accepted.message, accepted.completedViaBobTask)
   return accepted.run
 }
 
 export async function acceptAndRunNextStep(options: StepReviewCommandOptions, runId?: string): Promise<unknown> {
-  const accepted = await acceptReviewedStep(runId)
+  const accepted = await acceptReviewedStep(options, runId)
   if (typeof accepted === "string") {
     await vscode.window.showWarningMessage(accepted)
     return accepted
@@ -57,7 +58,7 @@ export async function acceptAndRunNextStep(options: StepReviewCommandOptions, ru
   return vscode.commands.executeCommand("workflowRegister.runNextStep", accepted.run.runId)
 }
 
-async function acceptReviewedStep(runId?: string): Promise<AcceptedStepResult | string> {
+async function acceptReviewedStep(options: StepReviewCommandOptions, runId?: string): Promise<AcceptedStepResult | string> {
   const selection = runId ? await findRunSelection(runId) : await pickRunSelection("Accept reviewed workflow step", (run) => run.status === "reviewing")
   if (!selection) return runId ? `Workflow run not found or not waiting for review: ${runId}` : "No reviewing workflow run selected."
   const runStore = new FileRunStateStore({ workspaceRoot: selection.root })
@@ -65,12 +66,19 @@ async function acceptReviewedStep(runId?: string): Promise<AcceptedStepResult | 
   if (!run) return `Workflow run not found: ${selection.runId}`
   const acceptedStepId = run.currentStep
   const accepted = acceptReviewingStep(run)
-  const sync = await bobTaskSyncRegistry.reconcileRun(accepted, undefined, {
-    reason: "review-accepted",
-    task: reviewTaskRegistry.taskForStep(accepted.runId, acceptedStepId) ?? reviewTaskRegistry.taskForRun(accepted.runId)
-  })
   await runStore.saveRun(accepted)
-  const completedViaBobTask = sync.status === "synced" && sync.appliedStepCount > 0
+  const acceptedViaLiveGate = Boolean(
+    acceptedStepId && options.acceptBobWorkflowGate(accepted.runId, acceptedStepId)
+  )
+  let completedViaBobTask = acceptedViaLiveGate
+  if (!acceptedViaLiveGate) {
+    const sync = await bobTaskSyncRegistry.reconcileRun(accepted, undefined, {
+      reason: "review-accepted",
+      task: reviewTaskRegistry.taskForStep(accepted.runId, acceptedStepId) ?? reviewTaskRegistry.taskForRun(accepted.runId)
+    })
+    await runStore.saveRun(accepted)
+    completedViaBobTask = sync.status === "synced" && sync.appliedStepCount > 0
+  }
   const message = pendingReviewTransitionStepId(accepted)
     ? `Accepted step; pending transition will run from ${accepted.currentStep}: ${accepted.runId}`
     : accepted.status === "completed"
