@@ -168,7 +168,7 @@ export function registerWorkflowProvidersWithRetry(
     if (disposed || workflowProvidersRegistered) return workflowProvidersRegistered
     if (workflowProviderRegistrationAttempt) return workflowProviderRegistrationAttempt
 
-    workflowProviderRegistrationAttempt = tryRegisterWorkflowProviders(handlers)
+    workflowProviderRegistrationAttempt = tryRegisterWorkflowProviders(context, handlers)
     try {
       const registered = await workflowProviderRegistrationAttempt
       if (!registered) scheduleRetry()
@@ -203,14 +203,20 @@ export function registerWorkflowProvidersWithRetry(
   void attempt()
 }
 
-async function tryRegisterWorkflowProviders(handlers: CodeConsistencyWorkflowHandlers): Promise<boolean> {
+async function tryRegisterWorkflowProviders(
+  context: vscode.ExtensionContext,
+  handlers: CodeConsistencyWorkflowHandlers
+): Promise<boolean> {
   const extension = vscode.extensions.getExtension<WorkflowRegisterApiLike>(WORKFLOW_REGISTER_EXTENSION_ID)
   if (!extension) return false
 
   const api = extension.isActive ? extension.exports : await extension.activate()
   if (!api?.registerActionProvider) return false
 
-  await registerWorkflowProviders(handlers)
+  const { registered, registrations } = await registerWorkflowProviders(handlers)
+  if (!registered) return false
+  context.subscriptions.push(...registrations)
+  context.subscriptions.push({ dispose: () => { workflowProvidersRegistered = false } })
   workflowProvidersRegistered = true
   return true
 }
