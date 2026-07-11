@@ -14,8 +14,10 @@ const workflowSearchRoots = [
   "extensions/bob-code-consistency-review/templates",
   "docs/workflows"
 ]
-const providerSourcePaths = [
+const providerCatalogPath = "docs/workflows/action-provider-contracts.json"
+const providerImplementationSourcePaths = [
   "extensions/workflow-register/src/core/actionRegistry.ts",
+  "extensions/workflow-register/src/core/mechanicalChecks/actionProvider.ts",
   "extensions/bob-bazaar-review/src/workflow/workflowProviders.ts",
   "extensions/bob-code-consistency-review/src/workflowProviderRegistration.ts"
 ]
@@ -45,7 +47,7 @@ const integrationWorkflowPairs = [
 
 test("all repository workflow contracts are discovered and strict-clean", () => {
   const workflowPaths = discoverWorkflowPaths()
-  const providerIds = discoverActionProviderIds()
+  const providerIds = readActionProviderCatalogIds()
   const commandIds = discoverContributedCommandIds()
 
   assert.ok(workflowPaths.length >= 21, `Expected at least 21 workflow contracts, found ${workflowPaths.length}`)
@@ -70,8 +72,11 @@ test("integration workflow templates match their workspace mirrors", () => {
   }
 })
 
-test("provider discovery reflects the extension registration sources", () => {
-  const providerIds = discoverActionProviderIds()
+test("canonical provider catalog exactly matches extension registration sources", () => {
+  const catalogIds = readActionProviderCatalogIds()
+  const implementationIds = discoverImplementedActionProviderIds()
+
+  assert.deepEqual(implementationIds, catalogIds)
   for (const expected of [
     "vscode.executeCommand",
     "workflowRegister.runMechanicalChecks",
@@ -84,7 +89,23 @@ test("provider discovery reflects the extension registration sources", () => {
     "bobCodeConsistency.validateOutput",
     "bobCodeConsistency.triage"
   ]) {
-    assert.ok(providerIds.includes(expected), `Missing action provider contract: ${expected}`)
+    assert.ok(catalogIds.includes(expected), `Missing action provider contract: ${expected}`)
+  }
+})
+
+test("provider catalog has stable owners, unique ids, and no implicit implementation ids", () => {
+  const catalog = readProviderCatalog()
+  assert.deepEqual(Object.keys(catalog.providers).sort(), [
+    "local.bob-bazaar-review",
+    "local.bob-code-consistency-review",
+    "local.workflow-register"
+  ])
+
+  const allIds = Object.values(catalog.providers).flat()
+  assert.equal(new Set(allIds).size, allIds.length, "Action provider ids must be globally unique")
+  for (const id of allIds) {
+    assert.match(id, /^[A-Za-z0-9._-]+$/, `Invalid action provider id: ${id}`)
+    assert.equal(id, id.trim(), `Action provider id has outer whitespace: ${id}`)
   }
 })
 
@@ -172,11 +193,31 @@ function discoverWorkflowPaths() {
   return [...result].sort()
 }
 
-function discoverActionProviderIds() {
-  const result = new Set(["workflowRegister.runMechanicalChecks"])
-  for (const relativePath of providerSourcePaths) {
+function readActionProviderCatalogIds() {
+  const catalog = readProviderCatalog()
+  return [...new Set(Object.values(catalog.providers).flat())].sort()
+}
+
+function readProviderCatalog() {
+  const catalog = JSON.parse(readRepoFile(providerCatalogPath))
+  assert.equal(catalog.schema_version, "bob-action-provider-contracts/v1")
+  assert.ok(catalog.providers && typeof catalog.providers === "object" && !Array.isArray(catalog.providers))
+  for (const [owner, ids] of Object.entries(catalog.providers)) {
+    assert.match(owner, /^[A-Za-z0-9._-]+$/, `Invalid action provider owner: ${owner}`)
+    assert.ok(Array.isArray(ids), `Provider catalog entry must be an array: ${owner}`)
+    assert.ok(ids.every((id) => typeof id === "string"), `Provider catalog ids must be strings: ${owner}`)
+  }
+  return catalog
+}
+
+function discoverImplementedActionProviderIds() {
+  const result = new Set()
+  for (const relativePath of providerImplementationSourcePaths) {
     const source = readRepoFile(relativePath)
     for (const match of source.matchAll(/\bid:\s*"([A-Za-z0-9._-]+)"/g)) result.add(match[1])
+    for (const match of source.matchAll(/\b[A-Z0-9_]*ACTION_PROVIDER_ID\s*=\s*"([A-Za-z0-9._-]+)"/g)) {
+      result.add(match[1])
+    }
   }
   return [...result].sort()
 }
@@ -219,7 +260,7 @@ function isDeclaredSampleExternalCommand(relativePath, workflow, commandId) {
     (workflow.guardrails?.allowedCommandIds ?? []).includes(commandId)
 }
 
-function validateStrictText(text, filePath = "test/fixtures/inline/WORKFLOW.md", providerIds = discoverActionProviderIds()) {
+function validateStrictText(text, filePath = "test/fixtures/inline/WORKFLOW.md", providerIds = readActionProviderCatalogIds()) {
   return validateWorkflowText({
     sourceId: "workflow-register",
     filePath,
