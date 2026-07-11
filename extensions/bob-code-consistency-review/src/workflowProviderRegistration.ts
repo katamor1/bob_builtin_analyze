@@ -26,15 +26,13 @@ interface WorkflowActionProvider {
   execute: (input: WorkflowActionExecutionInput) => Promise<unknown> | unknown
 }
 
-interface WorkflowRegisterApi {
+export interface WorkflowRegisterApi {
   registerActionProvider: (provider: WorkflowActionProvider) => vscode.Disposable | void
 }
 
-export interface WorkflowProviderRegistrationResult {
-  registered: boolean
-  registrations: vscode.Disposable[]
-  api?: WorkflowRegisterApi
-}
+export type WorkflowProviderRegistrationResult =
+  | { registered: false; registrations: vscode.Disposable[]; api?: undefined }
+  | { registered: true; registrations: vscode.Disposable[]; api: WorkflowRegisterApi }
 
 type WorkflowCommandHandler = (options?: unknown) => Promise<unknown> | unknown
 
