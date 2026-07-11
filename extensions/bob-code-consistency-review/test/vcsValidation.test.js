@@ -5,7 +5,7 @@ const os = require("node:os")
 const path = require("node:path")
 const { test } = require("node:test")
 
-const { collectGitDiff } = require("../out/core/gitDiffCollector")
+const { collectGitDiff, validateBazaarRevision } = require("../out/core/gitDiffCollector")
 const { ExternalProcessError } = require("../out/core/externalProcessRunner")
 const { readSourceSet } = require("./helpers/sourceReader")
 
@@ -54,6 +54,15 @@ test("collectGitDiff rejects unsafe Bazaar revisions before executing bzr", asyn
     () => collectGitDiff(reviewInput({ base: "1;bad", head: "2", vcs: "bazaar" }), { workspaceRoot: workspace, bzrPath: process.execPath }),
     /安全でない Bazaar リビジョン指定/
   )
+})
+
+test("validateBazaarRevision rejects control characters before trimming", () => {
+  for (const candidate of ["\n1234", "1234\r", "12\t34", "12\u000034"]) {
+    assert.throws(
+      () => validateBazaarRevision(candidate),
+      /安全でない Bazaar リビジョン指定/
+    )
+  }
 })
 
 test("collectGitDiff classifies renamed, spaced, and binary Git paths", async () => {
