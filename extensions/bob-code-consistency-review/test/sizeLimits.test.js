@@ -6,7 +6,63 @@ const { test } = require("node:test")
 
 const { extractDocuments } = require("../out/analyzers/documentExtractor")
 const { collectGitDiff } = require("../out/core/gitDiffCollector")
+const {
+  DEFAULT_REVIEW_PROCESSING_LIMITS,
+  MAX_REVIEW_PROCESSING_LIMITS,
+  MIN_REVIEW_PROCESSING_LIMITS,
+  normalizeReviewProcessingLimits
+} = require("../out/core/limits")
 const { buildReviewPackage } = require("../out/core/reviewPackageBuilder")
+
+test("normalizeReviewProcessingLimits clamps every setting to a finite min/max range", () => {
+  const minimum = normalizeReviewProcessingLimits({
+    maxDocumentBytes: 0.1,
+    maxWorkbookSheets: 0.1,
+    maxRowsPerSheet: 0.1,
+    maxExcerptBytesPerDocument: 0.1,
+    maxRawDiffBytes: 0.1,
+    maxBobInputBytes: 0.1
+  })
+  assert.deepEqual(minimum, MIN_REVIEW_PROCESSING_LIMITS)
+
+  const maximum = normalizeReviewProcessingLimits({
+    maxDocumentBytes: Number.MAX_SAFE_INTEGER,
+    maxWorkbookSheets: Number.MAX_SAFE_INTEGER,
+    maxRowsPerSheet: Number.MAX_SAFE_INTEGER,
+    maxExcerptBytesPerDocument: Number.MAX_SAFE_INTEGER,
+    maxRawDiffBytes: Number.MAX_SAFE_INTEGER,
+    maxBobInputBytes: Number.MAX_SAFE_INTEGER
+  })
+  assert.deepEqual(maximum, MAX_REVIEW_PROCESSING_LIMITS)
+
+  const fallback = normalizeReviewProcessingLimits({
+    maxDocumentBytes: Number.NaN,
+    maxWorkbookSheets: Number.POSITIVE_INFINITY,
+    maxRowsPerSheet: -1,
+    maxExcerptBytesPerDocument: undefined,
+    maxRawDiffBytes: Number.NEGATIVE_INFINITY,
+    maxBobInputBytes: -99
+  })
+  assert.deepEqual(fallback, DEFAULT_REVIEW_PROCESSING_LIMITS)
+})
+
+test("package configuration exposes the same processing limit ranges as runtime", () => {
+  const packageJson = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "package.json"), "utf8"))
+  const properties = packageJson.contributes.configuration.properties
+  for (const [propertySuffix, runtimeKey] of [
+    ["maxDocumentBytes", "maxDocumentBytes"],
+    ["maxWorkbookSheets", "maxWorkbookSheets"],
+    ["maxRowsPerSheet", "maxRowsPerSheet"],
+    ["maxExcerptBytesPerDocument", "maxExcerptBytesPerDocument"],
+    ["maxRawDiffBytes", "maxRawDiffBytes"],
+    ["maxBobInputBytes", "maxBobInputBytes"]
+  ]) {
+    const definition = properties[`bobCodeConsistency.${propertySuffix}`]
+    assert.equal(definition.minimum, MIN_REVIEW_PROCESSING_LIMITS[runtimeKey])
+    assert.equal(definition.maximum, MAX_REVIEW_PROCESSING_LIMITS[runtimeKey])
+    assert.equal(definition.default, DEFAULT_REVIEW_PROCESSING_LIMITS[runtimeKey])
+  }
+})
 
 test("extractDocuments limits document bytes and excerpt bytes with warnings", async () => {
   const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "bob-size-doc-"))
