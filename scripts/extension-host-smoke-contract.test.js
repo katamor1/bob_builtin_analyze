@@ -44,12 +44,14 @@ test("Extension Host workflows install and execute the pinned local VS Code test
   }
 })
 
-test("Extension Host smoke preflights both local packages and preserves soft-dependency isolation", () => {
+test("Extension Host smoke preflights packages, the local binary, and soft-dependency isolation", () => {
   const smokeSource = readRepoFile("scripts", "extension-host-smoke.test.js")
 
   assert.match(smokeSource, /"@vscode\/test-cli"/)
   assert.match(smokeSource, /"@vscode\/test-electron"/)
   assert.match(smokeSource, /require\.resolve\(packageName, \{ paths: \[process\.cwd\(\)\] \}\)/)
+  assert.match(smokeSource, /const cliBinaryName = process\.platform === "win32" \? "vscode-test\.cmd" : "vscode-test"/)
+  assert.match(smokeSource, /fs\.existsSync\(cliBinaryPath\)/)
   assert.match(smokeSource, /skipExtensionDependencies:\s*true/)
   assert.match(smokeSource, /ui:\s*"bdd"/)
 })
