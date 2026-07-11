@@ -85,6 +85,14 @@ test("code consistency provider retry lifecycle recovers restarts and disposes s
   assert.doesNotMatch(source, /^let workflowProviderRegistrationAttempt/m)
 })
 
+test("code consistency provider generation records the exact API used for registration", () => {
+  const source = readSourceSet(["extension.ts", "workflowProviderRegistration.ts"])
+
+  assert.match(source, /return \{ registered: true, registrations, api \}/)
+  assert.match(source, /register: \(\) => registerWorkflowProviders\(handlers\)/)
+  assert.doesNotMatch(source, /api: result\.registered \? currentWorkflowRegisterApi\(\) : undefined/)
+})
+
 test("code consistency workflow providers declare ownership and register disposables", () => {
   const source = readSourceSet(["extension.ts", "workflowProviderRegistration.ts"])
 
