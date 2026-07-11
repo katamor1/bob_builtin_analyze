@@ -19,7 +19,7 @@
 - provider登録controllerはAPI identityとgenerationを管理し、stale/late/partial registrationをrollbackする。
 - Git/Bazaar processは`shell: false`、hard timeout、AbortSignal、output budget、process-tree killを使用する。
 - Git revision validationは`nonZeroExit`だけを不正revisionへ正規化し、cancel/timeout等のprocess error kindを保持する。
-- Bazaar pathはPOSIX/Windows absolute、drive-relative、UNC、device path、dot/traversal/control-character segmentを拒否する。
+- Bazaar revision/pathはtrim前の制御文字を拒否する。pathはPOSIX/Windows absolute、drive-relative、UNC、device path、dot/traversal segmentも拒否する。
 - review processing limitはmanifest/runtime共通のmin/default/maxを持ち、最終Bob入力は総byte budget内へ切り詰める。
 - repository内の対象`WORKFLOW.md`を再帰探索し、provider、preflight、nested command、template mirrorをstrict検証する。
 - sample固有の外部commandは、正確なsample pathとworkflow guardrail宣言の両方を満たす場合だけ許可する。
@@ -41,23 +41,40 @@
 | 検証 | 結果 | 内容 |
 | --- | --- | --- |
 | retry registration controller | 3 passed / 0 failed | 同一API維持、generation切替、部分登録rollbackとstale disposal |
-| Git revision error classification | passed | pre-aborted signalが`ExternalProcessError(kind=cancelled)`として保持され、不正revisionだけがvalidation errorへ正規化されること |
+| remediation behavior | 4 passed / 0 failed | Git cancel分類保持、invalid Git ref正規化、Bazaar revision/pathのtrim前制御文字拒否 |
+| sample command allowlist | passed | sample path限定、guardrail宣言必須、production pathでは拒否 |
+| provider API identity typecheck | passed | registrationで取得したAPI型をcontrollerへ直接返せること |
 
 局所再現は変更ロジックを隔離した補助証跡であり、repository全体のcompile/testを代替しない。
 
 ## 4. GitHub Actions runner起動前ブロッカー
 
-実装head `4e9e5ae682aa38bfed5335ebca71bc938db8562a` で次のrunを確認した。
+### 4.1 本体workflow
+
+実装head `fcd1a08d213833e78b49a9d30ec240e5d7dbb657` で次のrunを確認した。
 
 | Workflow | Run ID | 結果 |
 | --- | ---: | --- |
-| `extensions-quality` | `29141749817` | failure |
-| `workflow-contracts` | `29141749823` | failure |
-| `code-consistency-review-scaffold` | `29141749820` | failure |
+| `extensions-quality` | `29141950093` | failure |
+| `workflow-contracts` | `29141950101` | failure |
+| `code-consistency-review-scaffold` | `29141950122` | failure |
 
-`extensions-quality`のUbuntu/Windowsを含む全jobが`steps: null`、`logs_url: null`のまま終了している。これはcheckout、install、compile、testのいずれも開始されていない状態であり、現時点ではコード内failureとして扱わない。ただし、green evidenceが存在しないためmergeは許可しない。
+`extensions-quality`のUbuntu/Windowsを含む全jobが`steps: null`、`logs_url: null`のまま終了した。
 
-### 4.1 repository管理者が確認する項目
+### 4.2 第三者Actionを使わないrunner probe
+
+原因をrepository code、checkout、npm、第三者Actionから切り離すため、一時的に単一echo stepだけを持つ`actions-runner-probe`を追加した。
+
+| Workflow | Run ID | Job | 結果 |
+| --- | ---: | --- | --- |
+| `actions-runner-probe` | `29142077414` | `ubuntu-probe` | failure / `steps: null` / logなし |
+| `actions-runner-probe` | `29142077414` | `windows-probe` | failure / `steps: null` / logなし |
+
+probeはcheckoutやrepository fileを参照せず、`echo`と`node --version`だけを実行する。それでも両OSでstep開始前に終了したため、現在のfailureはworkflow実装やテストコードではなく、GitHub-hosted runner割当以前のaccount/repository設定にあると判定した。診断後、probe workflowはcommit `15b2003468a80905d8dc095edf037655f0aa33f2`で削除した。
+
+ただしgreen evidenceが存在しないためmergeは許可しない。
+
+### 4.3 repository管理者が確認する項目
 
 1. GitHub accountのBilling / PlansでActions利用枠、spending limit、支払い状態を確認する。
 2. Repository Settings → Actions → GeneralでActionsが許可されていることを確認する。
@@ -96,7 +113,7 @@
 | --- | --- | --- | --- |
 | timeout | 終了しないBazaar wrapperを指定 | 上限時間で`timeout`、子process残留なし | 未実施 |
 | cancel | 実行中progressをキャンセル | `cancelled`、子process残留なし | 未実施 |
-| path boundary | drive / UNC / device / traversal pathを投入 | CLI実行前に拒否 | 未実施 |
+| path boundary | drive / UNC / device / traversal / control文字を投入 | CLI実行前に拒否 | 未実施 |
 | exit code 1 | 差分ありのdiff | 成功扱い | 未実施 |
 
 ### 6.3 multi-root
