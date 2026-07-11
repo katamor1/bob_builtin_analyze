@@ -117,3 +117,26 @@ test("retry controller disposes a registration that completes after deactivation
 
   assert.ok(disposed.includes("late"))
 })
+
+test("retry controller rejects a successful result without API identity", async () => {
+  const disposed = []
+  const errors = []
+  const controller = startRetryRegistrationController({
+    retryDelaysMs: [],
+    register: async () => ({
+      registered: true,
+      registrations: [disposable("missing-api", disposed)]
+    }),
+    currentApi: () => undefined,
+    subscribeChanges: () => disposable("listener", disposed),
+    own: () => {},
+    reportError: (error) => errors.push(error)
+  })
+
+  await tick()
+
+  assert.ok(disposed.includes("missing-api"))
+  assert.equal(errors.length, 1)
+  assert.match(String(errors[0]), /API identity/)
+  controller.dispose()
+})
