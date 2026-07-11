@@ -10,6 +10,18 @@ const DIFF_STATUSES = new Set<DiffSummary["files"][number]["status"]>([
   "unknown"
 ])
 
+/** JSON textをparseし、trusted DiffSummary境界へ正規化する。 */
+export function parseDiffFixtureText(text: string): DiffSummary {
+  let value: unknown
+  try {
+    value = JSON.parse(text)
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error)
+    throw new Error(`diff fixture JSON is invalid: ${detail}`)
+  }
+  return parseDiffFixture(value)
+}
+
 /**
  * JSON由来のdiff fixtureを実VCS出力と同じtrusted DiffSummary境界へ正規化する。
  */
