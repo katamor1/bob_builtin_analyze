@@ -33,6 +33,7 @@ interface WorkflowRegisterApi {
 export interface WorkflowProviderRegistrationResult {
   registered: boolean
   registrations: vscode.Disposable[]
+  api?: WorkflowRegisterApi
 }
 
 type WorkflowCommandHandler = (options?: unknown) => Promise<unknown> | unknown
@@ -218,7 +219,7 @@ export async function registerWorkflowProviders(
       id: "bobCodeConsistency.triage",
       execute: (input) => handlers.triage(mergeWorkflowOptions("bobCodeConsistency.triage", input))
     })
-    return { registered: true, registrations }
+    return { registered: true, registrations, api }
   } catch (error) {
     disposeRegistrations(registrations)
     throw error
