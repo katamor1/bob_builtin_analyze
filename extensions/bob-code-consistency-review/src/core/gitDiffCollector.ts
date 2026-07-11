@@ -1,18 +1,24 @@
-import { execFile } from "node:child_process"
-import { promisify } from "node:util"
 import { readTextFile, resolveWorkspacePathStrict, toPosixPath } from "./fileSystem"
 import { classifyLanguageFromPath } from "./languageClassifier"
 import { decodeTextBuffer } from "./textEncoding"
 import { normalizeReviewProcessingLimits, truncateUtf8Text, type ReviewProcessingLimits } from "./limits"
+import { runExternalProcess } from "./externalProcessRunner"
 import type { DiffSummary } from "./diffTypes"
 import type { ReviewInput } from "./reviewTypes"
 
-const execFileAsync = promisify(execFile)
-
 type VcsKind = "git" | "bazaar"
 const MAX_BAZAAR_REVISION_SPEC_LENGTH = 128
+const DEFAULT_VCS_COMMAND_TIMEOUT_MS = 120_000
 
-export async function collectGitDiff(reviewInput: ReviewInput, options: { workspaceRoot: string; diffFixturePath?: string; bzrPath?: string; textEncoding?: string; limits?: Partial<ReviewProcessingLimits> }): Promise<DiffSummary> {
+export async function collectGitDiff(reviewInput: ReviewInput, options: {
+  workspaceRoot: string
+  diffFixturePath?: string
+  bzrPath?: string
+  textEncoding?: string
+  limits?: Partial<ReviewProcessingLimits>
+  commandTimeoutMs?: number
+  signal?: AbortSignal
+}): Promise<DiffSummary> {
   const limits = normalizeReviewProcessingLimits(options.limits)
   if (options.diffFixturePath) {
     const fixturePath = resolveWorkspacePathStrict(options.workspaceRoot, options.diffFixturePath, "diffFixturePath")
@@ -28,17 +34,23 @@ export async function collectGitDiff(reviewInput: ReviewInput, options: { worksp
   return applyDiffLimits(diff, limits)
 }
 
-async function collectStandardGitDiff(reviewInput: ReviewInput, options: { workspaceRoot: string; vcsRoot: string; textEncoding?: string }): Promise<DiffSummary> {
-  const base = await resolveGitRevision(reviewInput.review.base, options.vcsRoot, options.textEncoding)
-  const head = await resolveGitRevision(reviewInput.review.head, options.vcsRoot, options.textEncoding)
-  const nameStatus = await runGitText(["diff", "--find-renames", "--name-status", base, head], options.vcsRoot, 20 * 1024 * 1024, options.textEncoding)
-  const numstat = await runGitText(["diff", "--find-renames", "--numstat", base, head], options.vcsRoot, 20 * 1024 * 1024, options.textEncoding)
-  const unifiedDiff = await runGitText(["diff", "--find-renames", "--unified=80", base, head], options.vcsRoot, 50 * 1024 * 1024, options.textEncoding)
+async function collectStandardGitDiff(reviewInput: ReviewInput, options: {
+  workspaceRoot: string
+  vcsRoot: string
+  textEncoding?: string
+  commandTimeoutMs?: number
+  signal?: AbortSignal
+}): Promise<DiffSummary> {
+  const base = await resolveGitRevision(reviewInput.review.base, options.vcsRoot, options.textEncoding, options.commandTimeoutMs, options.signal)
+  const head = await resolveGitRevision(reviewInput.review.head, options.vcsRoot, options.textEncoding, options.commandTimeoutMs, options.signal)
+  const nameStatus = await runGitText(["diff", "--find-renames", "--name-status", base, head], options.vcsRoot, 20 * 1024 * 1024, options.textEncoding, options.commandTimeoutMs, options.signal)
+  const numstat = await runGitText(["diff", "--find-renames", "--numstat", base, head], options.vcsRoot, 20 * 1024 * 1024, options.textEncoding, options.commandTimeoutMs, options.signal)
+  const unifiedDiff = await runGitText(["diff", "--find-renames", "--unified=80", base, head], options.vcsRoot, 50 * 1024 * 1024, options.textEncoding, options.commandTimeoutMs, options.signal)
 
   const counts = parseNumstat(numstat)
   const files = nameStatus.split(/\r?\n/).flatMap((line) => {
     if (!line.trim()) return []
-    const parts = line.split(/\t/)
+    const parts = line.split("\t")
     const statusToken = parts[0] ?? ""
     const filePath = statusToken.startsWith("R") ? parts[2] : parts[1]
     if (!filePath) return []
@@ -49,7 +61,14 @@ async function collectStandardGitDiff(reviewInput: ReviewInput, options: { works
   return { vcs: "git", vcsRoot: options.vcsRoot, base, head, files, unifiedDiff, warnings: [] }
 }
 
-async function collectBazaarDiff(reviewInput: ReviewInput, options: { workspaceRoot: string; vcsRoot: string; bzrPath?: string; textEncoding?: string }): Promise<DiffSummary> {
+async function collectBazaarDiff(reviewInput: ReviewInput, options: {
+  workspaceRoot: string
+  vcsRoot: string
+  bzrPath?: string
+  textEncoding?: string
+  commandTimeoutMs?: number
+  signal?: AbortSignal
+}): Promise<DiffSummary> {
   const bzrPath = options.bzrPath?.trim() || "bzr"
   const base = validateBazaarRevision(reviewInput.review.base)
   const head = validateBazaarRevision(reviewInput.review.head)
@@ -62,19 +81,27 @@ async function collectBazaarDiff(reviewInput: ReviewInput, options: { workspaceR
     50 * 1024 * 1024,
     [0, 1],
     options.textEncoding,
-    { BZR_PROGRESS_BAR: "none" }
+    { BZR_PROGRESS_BAR: "none" },
+    options.commandTimeoutMs,
+    options.signal
   )
   const files = parseBazaarDiffFiles(unifiedDiff)
   return { vcs: "bazaar", vcsRoot: options.vcsRoot, base, head, files, unifiedDiff, warnings: [] }
 }
 
-async function resolveGitRevision(revision: string, cwd: string, textEncoding = "auto"): Promise<string> {
+async function resolveGitRevision(
+  revision: string,
+  cwd: string,
+  textEncoding = "auto",
+  commandTimeoutMs?: number,
+  signal?: AbortSignal
+): Promise<string> {
   const trimmed = revision.trim()
   if (!trimmed) throw new Error("Invalid Git revision: revision is empty")
 
   try {
     // Git revision は rev-parse --verify --end-of-options で commit SHA に固定し、以降の diff へ曖昧指定を渡さない。
-    const output = await runGitText(["rev-parse", "--verify", "--end-of-options", `${trimmed}^{commit}`], cwd, 1024 * 1024, textEncoding)
+    const output = await runGitText(["rev-parse", "--verify", "--end-of-options", `${trimmed}^{commit}`], cwd, 1024 * 1024, textEncoding, commandTimeoutMs, signal)
     const sha = output.trim().split(/\r?\n/).at(-1) ?? ""
     if (/^[0-9a-f]{40}$/i.test(sha)) return sha.toLowerCase()
   } catch {
@@ -103,48 +130,51 @@ function formatRevisionForError(revision: string): string {
   return revision.replace(/[\0\r\n\t]/g, " ").trim()
 }
 
-async function runGitText(args: string[], cwd: string, maxBuffer: number, textEncoding = "auto"): Promise<string> {
-  const result = await execFileAsync("git", args, { cwd, maxBuffer, encoding: "buffer" } as any) as { stdout?: Buffer | string }
-  return decodeTextBuffer(toBuffer(result.stdout), textEncoding)
+async function runGitText(
+  args: string[],
+  cwd: string,
+  maxBuffer: number,
+  textEncoding = "auto",
+  commandTimeoutMs?: number,
+  signal?: AbortSignal
+): Promise<string> {
+  return runCommandText("git", args, cwd, maxBuffer, [0], textEncoding, undefined, commandTimeoutMs, signal)
 }
 
-function runCommandText(command: string, args: string[], cwd: string, maxBuffer: number, allowedExitCodes: number[], textEncoding = "auto", env?: Record<string, string>): Promise<string> {
-  return new Promise((resolve, reject) => {
-    execFile(command, args, {
-      cwd,
-      maxBuffer,
-      encoding: "buffer",
-      shell: false,
-      env: { ...process.env, ...env }
-    } as any, (error, stdout, stderr) => {
-      const code = exitCode(error)
-      if (error && !allowedExitCodes.includes(code)) {
-        const stderrText = decodeTextBuffer(toBuffer(stderr), textEncoding)
-        const stdoutText = decodeTextBuffer(toBuffer(stdout), textEncoding)
-        reject(new Error(`${command} ${args.join(" ")} failed with exit code ${code}\n${stderrText || stdoutText}`.trim()))
-        return
-      }
-      resolve(decodeTextBuffer(toBuffer(stdout), textEncoding))
-    })
+async function runCommandText(
+  command: string,
+  args: string[],
+  cwd: string,
+  maxBuffer: number,
+  allowedExitCodes: number[],
+  textEncoding = "auto",
+  env?: Record<string, string>,
+  commandTimeoutMs?: number,
+  signal?: AbortSignal
+): Promise<string> {
+  const result = await runExternalProcess({
+    command,
+    args,
+    cwd,
+    maxBufferBytes: maxBuffer,
+    timeoutMs: normalizeCommandTimeout(commandTimeoutMs),
+    allowedExitCodes,
+    signal,
+    env: { ...process.env, ...env }
   })
+  return decodeTextBuffer(result.stdout, textEncoding)
 }
 
-function exitCode(error: unknown): number {
-  if (!error) return 0
-  if (typeof error === "object" && error !== null && "code" in error && typeof (error as { code?: unknown }).code === "number") {
-    return (error as { code: number }).code
-  }
-  return -1
-}
-
-function toBuffer(value: Buffer | string | undefined): Buffer {
-  return Buffer.isBuffer(value) ? value : Buffer.from(value ?? "", "utf8")
+function normalizeCommandTimeout(value: number | undefined): number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? Math.floor(value)
+    : DEFAULT_VCS_COMMAND_TIMEOUT_MS
 }
 
 function parseNumstat(text: string): Map<string, { additions: number; deletions: number }> {
   const result = new Map<string, { additions: number; deletions: number }>()
   for (const line of text.split(/\r?\n/)) {
-    const parts = line.split(/\t/)
+    const parts = line.split("\t")
     if (parts.length < 3) continue
     const additions = Number.parseInt(parts[0], 10)
     const deletions = Number.parseInt(parts[1], 10)
