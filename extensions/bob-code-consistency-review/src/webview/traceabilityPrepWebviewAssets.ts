@@ -111,7 +111,7 @@ pre {
 }
 
 export function serializeTraceabilityPrepInitialModel(model: unknown): string {
-  return JSON.stringify(model).replace(/</g, "\u003c")
+  return JSON.stringify(model).replace(/</g, "\\u003c")
 }
 
 export function renderTraceabilityPrepClientScript(initialJson: string): string {
