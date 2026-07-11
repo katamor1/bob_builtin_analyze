@@ -67,6 +67,9 @@ jobs:
       - name: Unit tests
         run: npm test
 
+      - name: Install VS Code test runtime
+        run: npm install --no-save --package-lock=false --ignore-scripts @vscode/test-electron@2.5.2
+
       - name: Extension Host smoke
         env:
           SMOKE_EXTENSION_ID: local.workflow-register
@@ -127,6 +130,9 @@ jobs:
       - name: Unit tests
         run: npm test
 
+      - name: Install VS Code test runtime
+        run: npm install --no-save --package-lock=false --ignore-scripts @vscode/test-electron@2.5.2
+
       - name: Extension Host smoke
         env:
           SMOKE_EXTENSION_ID: local.bob-bazaar-review
@@ -183,6 +189,9 @@ jobs:
 
       - name: Unit tests
         run: npm test
+
+      - name: Install VS Code test runtime
+        run: npm install --no-save --package-lock=false --ignore-scripts @vscode/test-electron@2.5.2
 
       - name: Extension Host smoke
         env:
@@ -245,6 +254,9 @@ jobs:
 
       - name: Unit tests
         run: npm test
+
+      - name: Install VS Code test runtime
+        run: npm install --no-save --package-lock=false --ignore-scripts @vscode/test-electron@2.5.2
 
       - name: Extension Host smoke
         shell: pwsh
