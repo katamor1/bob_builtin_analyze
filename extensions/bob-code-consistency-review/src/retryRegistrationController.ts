@@ -75,10 +75,8 @@ export function startRetryRegistrationController<Api>(
       return false
     }
 
-    const registrations = result.registrations
-    activeRegistrations = registrations
+    activeRegistrations = result.registrations
     registeredApi = result.api
-    options.own(...registrations)
     providersRegistered = true
     return true
   }
