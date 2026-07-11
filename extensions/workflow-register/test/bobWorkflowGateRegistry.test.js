@@ -126,3 +126,71 @@ test("review acceptance coordinators isolate identical workspace and run keys pe
   assert.notStrictEqual(recovered, failed)
   assert.equal(await recovered, "recovered")
 })
+
+test("a live gate keeps its Bob-visible owner while the durable gate step is rebound", async () => {
+  const registry = new BobWorkflowGateRegistry()
+  const pending = registry.waitForDecision({
+    workspaceRoot: "C:\\workspace",
+    runId: "run-rebind",
+    stepId: "source",
+    ownerStepId: "source",
+    status: "held"
+  })
+
+  try {
+    const initial = registry.pendingForRun("C:\\workspace", "run-rebind")
+    assert.deepEqual(initial, {
+      workspaceRoot: "C:\\workspace",
+      runId: "run-rebind",
+      stepId: "source",
+      ownerStepId: "source",
+      status: "held"
+    })
+
+    const rebound = registry.rebind("C:\\workspace", "run-rebind", {
+      stepId: "target",
+      status: "checkpoint"
+    })
+
+    assert.strictEqual(rebound, pending)
+    assert.deepEqual(registry.pendingForRun("C:\\workspace", "run-rebind"), {
+      workspaceRoot: "C:\\workspace",
+      runId: "run-rebind",
+      stepId: "target",
+      ownerStepId: "source",
+      status: "checkpoint"
+    })
+    assert.equal(registry.acceptPending("C:\\workspace", "run-rebind"), "accepted")
+    assert.equal(await pending, true)
+    assert.equal(registry.acceptPending("C:\\workspace", "run-rebind"), "alreadyAccepted")
+  } finally {
+    registry.abort("run-rebind", "source", "test cleanup")
+    registry.abort("run-rebind", "target", "test cleanup")
+    await pending.catch(() => undefined)
+  }
+})
+
+test("abortPending rejects a rebound gate with the stable terminal reason", async () => {
+  const registry = new BobWorkflowGateRegistry()
+  const pending = registry.waitForDecision({
+    workspaceRoot: "C:\\workspace",
+    runId: "run-abort",
+    stepId: "source",
+    ownerStepId: "source",
+    status: "checkpoint"
+  })
+  const rejected = assert.rejects(pending, /Bob workflow run aborted at branch checkpoint\./)
+
+  try {
+    assert.equal(
+      registry.abortPending("C:\\workspace", "run-abort", "Bob workflow run aborted at branch checkpoint."),
+      true
+    )
+    await rejected
+    assert.equal(registry.pendingForRun("C:\\workspace", "run-abort"), undefined)
+    assert.equal(registry.acceptPending("C:\\workspace", "run-abort"), "aborted")
+  } finally {
+    registry.abort("run-abort", "source", "Bob workflow run aborted at branch checkpoint.")
+    await rejected
+  }
+})

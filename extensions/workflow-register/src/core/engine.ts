@@ -45,6 +45,7 @@ import {
   WorkflowRunState
 } from "./model"
 import type {
+  RetryRunOptions,
   ResumeRunOptions,
   RunWorkflowOptions,
   WorkflowEngineEventInput,
@@ -61,6 +62,7 @@ export type {
   ManualCompletionInput,
   ManualCompletionResult,
   RecoverResultTextInput,
+  RetryRunOptions,
   ResumeRunOptions,
   RunWorkflowOptions,
   WorkflowEngineEventInput,
@@ -205,10 +207,14 @@ export class WorkflowEngine {
       run.status = "running"
     }
     await this.runStore.saveRun(run)
-    return this.continueRun(options.workflow, run, Math.max(0, startIndex), "full")
+    return this.continueRun(options.workflow, run, Math.max(0, startIndex), options.executionMode ?? "full")
   }
 
-  async retryCurrentStep(runId: string, workflow: CoreWorkflowDefinition): Promise<WorkflowRunState> {
+  async retryCurrentStep(
+    runId: string,
+    workflow: CoreWorkflowDefinition,
+    options: RetryRunOptions = {}
+  ): Promise<WorkflowRunState> {
     const run = await this.runStore.loadRun(runId)
     if (!run) throw new Error(`Workflow run not found: ${runId}`)
     const review = workflowStepReview(workflow)
@@ -232,7 +238,7 @@ export class WorkflowEngine {
     if ("resultKey" in step && step.resultKey) delete run.state[step.resultKey]
     noteDefinitionMismatch(run, workflow)
     await this.runStore.saveRun(run)
-    return this.continueRun(workflow, run, index, "full")
+    return this.continueRun(workflow, run, index, options.executionMode ?? "full")
   }
 
   async approveBranchCheckpoint(runId: string, workflow: CoreWorkflowDefinition): Promise<WorkflowRunState> {

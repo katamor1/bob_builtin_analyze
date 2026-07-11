@@ -86,7 +86,11 @@ export class WorkflowRegisterService implements vscode.Disposable {
       ensureWorkflowsLoaded: () => this.reload({ showReport: false }),
       workflowRootCandidates: () => this.workflowRootCandidates(),
       activeSteps: () => this.stepRuntime.list(),
-      showManualStepPanel: (input) => this.manualStepPanel.show(input)
+      showManualStepPanel: (input) => this.manualStepPanel.show(input),
+      gateRegistry: this.bobWorkflowGates,
+      coordinateGateDecision: (workspaceRoot, runId, operation) => (
+        this.reviewAcceptances.coordinate(workspaceRoot, runId, operation)
+      )
     })
     this.watcher.onDidCreate(() => this.reload({ showReport: false }))
     this.watcher.onDidChange(() => this.reload({ showReport: false }))

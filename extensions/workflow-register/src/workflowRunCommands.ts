@@ -2,6 +2,7 @@ import * as fs from "fs/promises"
 import * as path from "path"
 import * as vscode from "vscode"
 import type { ActiveStep } from "./bobWorkflowTypes"
+import { BobWorkflowGateRegistry, type BobWorkflowGateDecision } from "./bobWorkflowGateRegistry"
 import { bobTaskSyncRegistry, type BobTaskSyncReason } from "./bobTaskSync"
 import {
   hydrateWorkflowStateFromArtifacts,
@@ -16,6 +17,7 @@ import {
 import type { CoreWorkflowDefinition, WorkflowRunState } from "./core/model"
 import { formatBranchingDiagnostics } from "./core/runDiagnostics"
 import { pendingReviewTransitionStepId } from "./core/engine/runState"
+import { FileRunControlStore } from "./core/runControlStore"
 import { FileTaskSnapshotStore } from "./core/taskSnapshots"
 import type { MarkerRootCandidate } from "./core/workspaceRoots"
 import { showMarkdownReport } from "./reports"
@@ -45,7 +47,11 @@ export interface WorkflowRunCommandServiceOptions {
   workflowRootCandidates: () => Promise<MarkerRootCandidate[]>
   activeSteps: () => ActiveStep[]
   showManualStepPanel: (input: ManualStepPanelInput) => Promise<void>
+  gateRegistry: BobWorkflowGateRegistry
+  coordinateGateDecision: <T>(workspaceRoot: string, runId: string, operation: () => Promise<T>) => Promise<T>
 }
+
+const CHECKPOINT_ABORT_REASON = "Bob workflow run aborted at branch checkpoint."
 
 export class WorkflowRunCommandService {
   constructor(private readonly options: WorkflowRunCommandServiceOptions) {}
@@ -370,15 +376,20 @@ export class WorkflowRunCommandService {
     await this.ensureWorkflowsLoaded()
     const selection = await this.selectRun(runId)
     if (!selection) return runId ? `Workflow run not found: ${runId}` : "No workflow run selected."
-    const runStore = this.options.runtimeFactory.createRunStore(selection.root)
-    const run = selection.run ?? await runStore.loadRun(selection.runId)
-    if (!run) throw new Error(`Workflow run not found: ${selection.runId}`)
-    const workflow = this.options.coreWorkflows.get(run.workflowId)
-    if (!workflow) throw new Error(`Workflow definition is not loaded: ${run.workflowId}`)
-    const engine = this.options.runtimeFactory.createEngine(selection.root)
-    const result = await engine.approveBranchCheckpoint(selection.runId, workflow)
-    await vscode.window.showInformationMessage(`Branch checkpoint approved: ${result.runId}`)
-    return result
+    return this.options.coordinateGateDecision(selection.root, selection.runId, async () => {
+      const runStore = this.options.runtimeFactory.createRunStore(selection.root)
+      const run = await runStore.loadRun(selection.runId)
+      if (!run) throw new Error(`Workflow run not found: ${selection.runId}`)
+      const workflow = this.options.coreWorkflows.get(run.workflowId)
+      if (!workflow) throw new Error(`Workflow definition is not loaded: ${run.workflowId}`)
+      const engine = this.options.runtimeFactory.createEngine(selection.root)
+      const result = await engine.approveBranchCheckpoint(selection.runId, workflow)
+      if (this.options.gateRegistry.pendingForRun(selection.root, selection.runId)) {
+        this.options.gateRegistry.acceptPending(selection.root, selection.runId)
+      }
+      await vscode.window.showInformationMessage(`Branch checkpoint approved: ${result.runId}`)
+      return result
+    })
   }
 
   async abortBranchCheckpoint(runId?: string): Promise<unknown> {
@@ -386,10 +397,13 @@ export class WorkflowRunCommandService {
     if (trustError) return trustError
     const selection = await this.selectRun(runId)
     if (!selection) return runId ? `Workflow run not found: ${runId}` : "No workflow run selected."
-    const engine = this.options.runtimeFactory.createEngine(selection.root)
-    const result = await engine.abortBranchCheckpoint(selection.runId)
-    await vscode.window.showInformationMessage(`Branch checkpoint aborted: ${result.runId}`)
-    return result
+    return this.options.coordinateGateDecision(selection.root, selection.runId, async () => {
+      const engine = this.options.runtimeFactory.createEngine(selection.root)
+      const result = await engine.abortBranchCheckpoint(selection.runId, CHECKPOINT_ABORT_REASON)
+      this.options.gateRegistry.abortPending(selection.root, selection.runId, CHECKPOINT_ABORT_REASON)
+      await vscode.window.showInformationMessage(`Branch checkpoint aborted: ${result.runId}`)
+      return result
+    })
   }
 
   async inspectBranching(runId?: string): Promise<unknown> {
@@ -427,23 +441,70 @@ export class WorkflowRunCommandService {
       await vscode.window.showErrorMessage(`Workflow run not found: ${runId}`)
       return message
     }
-    const runStore = this.options.runtimeFactory.createRunStore(selection.root)
-    const targetRunId = selection.runId
-    const run = selection.run ?? await runStore.loadRun(targetRunId)
-    if (!run) throw new Error(`Workflow run not found: ${targetRunId}`)
+    return this.options.coordinateGateDecision(selection.root, selection.runId, () => (
+      this.resumeOrRetryRunOnce(mode, selection.root, selection.runId)
+    ))
+  }
+
+  private async resumeOrRetryRunOnce(
+    mode: "resume" | "retry",
+    root: string,
+    runId: string
+  ): Promise<unknown> {
+    const runStore = this.options.runtimeFactory.createRunStore(root)
+    const run = await runStore.loadRun(runId)
+    if (!run) throw new Error(`Workflow run not found: ${runId}`)
     if (mode === "resume" && run.status === "checkpoint") {
       return this.warnStepGate("Current run is waiting at a branch checkpoint. Approve or abort the checkpoint before resuming.")
     }
     const workflow = this.options.coreWorkflows.get(run.workflowId)
     if (!workflow) throw new Error(`Workflow definition is not loaded: ${run.workflowId}`)
+    const liveGate = this.options.gateRegistry.pendingForRun(root, runId)
+    if (mode === "resume" && run.status === "paused" && liveGate?.status === "paused" && ownerStepCompleted(run, liveGate)) {
+      await new FileRunControlStore({ workspaceRoot: root }).clearPause(runId)
+      run.status = "running"
+      run.error = undefined
+      await runStore.saveRun(run)
+      this.options.gateRegistry.acceptPending(root, runId)
+      await vscode.window.showInformationMessage(`Workflow run ${run.status}: ${run.runId}`)
+      return run
+    }
+
     const agentProvider = reviewTaskRegistry.agentProviderForRun(run.runId, workflow)
-    const engine = this.options.runtimeFactory.createEngine(selection.root, agentProvider)
+    const engine = this.options.runtimeFactory.createEngine(root, agentProvider)
     const result = mode === "resume"
-      ? await engine.resumeRun(targetRunId, { workflow, completeHeldStep: true })
-      : await engine.retryCurrentStep(targetRunId, workflow)
-    await this.reconcileBobTask(selection.root, result, workflow, mode === "resume" ? "operation-hub-resume" : "operation-hub-retry")
+      ? await engine.resumeRun(runId, {
+        workflow,
+        completeHeldStep: true,
+        executionMode: liveGate ? "singleStep" : undefined
+      })
+      : await engine.retryCurrentStep(runId, workflow, {
+        executionMode: liveGate ? "singleStep" : undefined
+      })
+    if (liveGate) {
+      this.updateLiveGateAfterCommand(root, result, liveGate)
+    } else {
+      await this.reconcileBobTask(root, result, workflow, mode === "resume" ? "operation-hub-resume" : "operation-hub-retry")
+    }
     await vscode.window.showInformationMessage(`Workflow run ${result.status}: ${result.runId}`)
     return result
+  }
+
+  private updateLiveGateAfterCommand(
+    root: string,
+    run: WorkflowRunState,
+    gate: BobWorkflowGateDecision & { ownerStepId: string }
+  ): void {
+    const stepId = run.currentStep ?? gate.stepId
+    if (isHumanGateStatus(run.status)) {
+      this.options.gateRegistry.rebind(root, run.runId, { stepId, status: run.status })
+      return
+    }
+    if (ownerStepCompleted(run, gate) || run.status === "completed") {
+      this.options.gateRegistry.acceptPending(root, run.runId)
+      return
+    }
+    this.options.gateRegistry.rebind(root, run.runId, { stepId, status: run.status })
   }
 
   private async pickArtifactSourceRun(
@@ -577,4 +638,15 @@ function resolveRunId(value: RunCommandArg): string | undefined {
   if (typeof value.runId === "string") return value.runId
   if (value.run && typeof value.run.runId === "string") return value.run.runId
   return undefined
+}
+
+function ownerStepCompleted(
+  run: WorkflowRunState,
+  gate: BobWorkflowGateDecision & { ownerStepId: string }
+): boolean {
+  return run.steps.find((step) => step.id === gate.ownerStepId)?.status === "completed"
+}
+
+function isHumanGateStatus(status: WorkflowRunState["status"]): boolean {
+  return status === "reviewing" || status === "held" || status === "checkpoint" || status === "paused"
 }

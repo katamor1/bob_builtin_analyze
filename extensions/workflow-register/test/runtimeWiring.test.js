@@ -257,7 +257,8 @@ test("Bob workflow Todo execution delegates to the shared WorkflowEngine runner"
     "stepId: request.stepId",
     "})"
   ))
-  assert.match(source, /run\.status === "checkpoint"/)
+  assert.match(source, /if \(isBobHumanGate\(run\.status\)\)/)
+  assert.match(source, /status === "reviewing" \|\| status === "held" \|\| status === "checkpoint" \|\| status === "paused"/)
   assert.match(source, /createBobTaskSnapshotProvider\(task\)/)
   assert.match(source, /new FileTaskSnapshotStore\(/)
   assert.doesNotMatch(source, /async function runWorkflowStepCommand\(/)
@@ -367,8 +368,11 @@ test("standalone next-step commands reuse the Bob review task agent provider", (
   assert.match(workflowRunCommands, /await this\.reconcileBobTask\(selection\.root, result, workflow, "operation-hub-next"\)/)
   assert.match(workflowRunCommands, orderedPattern(
     'private async resumeOrRetryRun(mode: "resume" | "retry", runId?: string): Promise<unknown> {',
+    "this.options.coordinateGateDecision(selection.root, selection.runId",
+    "this.resumeOrRetryRunOnce(mode, selection.root, selection.runId)",
+    "private async resumeOrRetryRunOnce(",
     "const agentProvider = reviewTaskRegistry.agentProviderForRun(run.runId, workflow)",
-    "const engine = this.options.runtimeFactory.createEngine(selection.root, agentProvider)",
+    "const engine = this.options.runtimeFactory.createEngine(root, agentProvider)",
     "mode === \"resume\" ? \"operation-hub-resume\" : \"operation-hub-retry\""
   ))
   assert.match(runtimeFactory, /createEngine\(workspaceRoot: string, agentProvider\?: AgentProvider\): WorkflowEngine/)
@@ -427,6 +431,7 @@ test("WorkflowRegisterService owns and exposes Bob review gates and acceptance c
   assert.match(service, /gateRegistry: this\.bobWorkflowGates/)
   assert.match(service, /acceptBobWorkflowGate\(runId: string, stepId: string\): BobWorkflowGateAcceptResult \{[\s\S]*this\.bobWorkflowGates\.accept\(runId, stepId\)/)
   assert.match(service, /coordinateReviewAcceptance<T>\([\s\S]*this\.reviewAcceptances\.coordinate\(workspaceRoot, runId, operation\)/)
+  assert.match(service, /coordinateGateDecision: \(workspaceRoot, runId, operation\) => \([\s\S]*this\.reviewAcceptances\.coordinate\(workspaceRoot, runId, operation\)/)
   assert.match(factory, /gateRegistry: BobWorkflowGateRegistry/)
   assert.match(factory, /gateRegistry: this\.options\.gateRegistry/)
   assert.match(extension, /acceptBobWorkflowGate: \(runId: string, stepId: string\) => BobWorkflowGateAcceptResult/)

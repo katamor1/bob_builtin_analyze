@@ -44,7 +44,6 @@ export async function resumePausedRun(_options: RunControlCommandOptions, runArg
     await vscode.window.showWarningMessage(message)
     return message
   }
-  await createControlStore(selection.root).clearPause(selection.runId)
   return vscode.commands.executeCommand("workflowRegister.resumeRun", selection.runId)
 }
 

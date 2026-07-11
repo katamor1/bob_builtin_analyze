@@ -63,10 +63,12 @@ interface BobWorkflowEngineRunnerOptions {
   onManualStepHeld?: (input: { workflow: CoreWorkflowDefinition; run: WorkflowRunState; step: EngineStep; active: ActiveStep }) => Promise<void> | void
 }
 
-interface ReviewGateWait {
+interface BobGateWait {
   promise?: Promise<boolean>
   runId?: string
   stepId?: string
+  ownerStepId?: string
+  status?: WorkflowRunState["status"]
 }
 
 export class BobWorkflowEngineRunner {
@@ -113,7 +115,7 @@ export class BobWorkflowEngineRunner {
     const runStore = this.options.runStore(workspaceRoot)
     const manuallyCompleted = new Set<string>()
     const messageStartIndexes = new Map<string, number>()
-    const reviewGate: ReviewGateWait = {}
+    const gateWait: BobGateWait = {}
     const engine = new WorkflowEngine({
       actions: this.options.actionRegistry,
       resultSinks: this.options.resultSinks(workspaceRoot),
@@ -127,7 +129,9 @@ export class BobWorkflowEngineRunner {
         runStore,
         manuallyCompleted,
         messageStartIndexes,
-        reviewGate
+        gateWait,
+        workspaceRoot,
+        request.stepId
       ),
       manualCompletion: async ({ run, step }) => {
         const result = await this.options.stepRuntime.hold(
@@ -158,37 +162,40 @@ export class BobWorkflowEngineRunner {
           : undefined
       }
     })
+    let run: WorkflowRunState
     try {
-      const run = await engine.runWorkflow(this.options.coreWorkflow, inputs, {
+      run = await engine.runWorkflow(this.options.coreWorkflow, inputs, {
         executionMode: request.executionMode,
         stepId: request.stepId,
         allowOutOfOrder: request.allowOutOfOrder
       })
-      if (run.status === "failed") {
-        await vscode.window.showErrorMessage(`Bob workflow run failed: ${run.error ?? run.runId}`)
-      }
-      if ((run.status === "reviewing" || run.status === "held") && run.error) {
-        await vscode.window.showWarningMessage("ワークフローはユーザー操作待ちです。Operation Hub を開きました。")
-      }
-      if (run.status === "reviewing") {
-        if (!run.currentStep) throw new Error(`Reviewing workflow run has no current step: ${run.runId}`)
-        return await (reviewGate.promise ?? this.options.gateRegistry.waitForDecision({
-          runId: run.runId,
-          stepId: run.currentStep,
-          status: run.status
-        }))
-      }
-      return run.status === "completed" || run.status === "running" || run.status === "paused" || run.status === "held" || run.status === "checkpoint"
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
-      if (reviewGate.runId && reviewGate.stepId) {
-        this.options.gateRegistry.abort(reviewGate.runId, reviewGate.stepId, message)
+      if (gateWait.runId && gateWait.stepId) {
+        this.options.gateRegistry.abort(gateWait.runId, gateWait.stepId, message)
       }
       await vscode.window.showErrorMessage(
         `Bob workflow execution failed: ${message}`
       )
       return false
     }
+    if (run.status === "failed") {
+      await vscode.window.showErrorMessage(`Bob workflow run failed: ${run.error ?? run.runId}`)
+    }
+    if ((run.status === "reviewing" || run.status === "held") && run.error) {
+      await vscode.window.showWarningMessage("ワークフローはユーザー操作待ちです。Operation Hub を開きました。")
+    }
+    if (isBobHumanGate(run.status)) {
+      if (!run.currentStep) throw new Error(`Gated workflow run has no current step: ${run.runId} (${run.status})`)
+      return gateWait.promise ?? this.beginGateWait(
+        gateWait,
+        workspaceRoot,
+        run,
+        run.currentStep,
+        request.stepId ?? run.currentStep
+      )
+    }
+    return run.status === "completed" || run.status === "running"
   }
 
   private async inputsForTask(task: BobWorkflowTask): Promise<Record<string, unknown> | undefined> {
@@ -237,7 +244,9 @@ export class BobWorkflowEngineRunner {
     runStore: RunStateStore,
     manuallyCompleted: Set<string>,
     messageStartIndexes: Map<string, number>,
-    reviewGate: ReviewGateWait
+    gateWait: BobGateWait,
+    workspaceRoot: string,
+    ownerStepId: string | undefined
   ): WorkflowExecutionHooks {
     const snapshot = async (
       reason: TaskSnapshotReason,
@@ -337,7 +346,10 @@ export class BobWorkflowEngineRunner {
         await snapshot("handoff-failed", { workflow, run, step, agentText, error })
       },
       onStepHeld: async ({ workflow, run, step, error }) => {
-        if (step) bobTaskSyncRegistry.registerTask(run.runId, step.id, task)
+        if (step) {
+          this.beginGateWait(gateWait, workspaceRoot, run, step.id, ownerStepId ?? step.id)
+          bobTaskSyncRegistry.registerTask(run.runId, step.id, task)
+        }
         await this.openOperationHubForRun(run, step, "stepGate")
         await snapshot("held", { workflow, run, step, error })
       },
@@ -350,14 +362,7 @@ export class BobWorkflowEngineRunner {
       },
       onStepReviewRequired: async ({ workflow, run, step }) => {
         if (step) {
-          reviewGate.runId = run.runId
-          reviewGate.stepId = step.id
-          reviewGate.promise = this.options.gateRegistry.waitForDecision({
-            runId: run.runId,
-            stepId: step.id,
-            status: run.status
-          })
-          void reviewGate.promise.catch(() => undefined)
+          this.beginGateWait(gateWait, workspaceRoot, run, step.id, ownerStepId ?? step.id)
           reviewTaskRegistry.register(run.runId, step.id, task)
           bobTaskSyncRegistry.registerTask(run.runId, step.id, task)
           await sendControlBlock(run, step)
@@ -366,7 +371,10 @@ export class BobWorkflowEngineRunner {
         await snapshot("review-required", { workflow, run, step })
       },
       onRunPaused: async ({ workflow, run, step }) => {
-        if (step) bobTaskSyncRegistry.registerTask(run.runId, step.id, task)
+        if (step) {
+          this.beginGateWait(gateWait, workspaceRoot, run, step.id, ownerStepId ?? step.id)
+          bobTaskSyncRegistry.registerTask(run.runId, step.id, task)
+        }
         await task.sendMessage?.([
           "Workflow run paused.",
           "",
@@ -380,6 +388,29 @@ export class BobWorkflowEngineRunner {
       },
       onWorkflowCompleted: async ({ workflow, run }) => snapshot("completed", { workflow, run })
     }
+  }
+
+  private beginGateWait(
+    gateWait: BobGateWait,
+    workspaceRoot: string,
+    run: WorkflowRunState,
+    stepId: string,
+    ownerStepId: string
+  ): Promise<boolean> {
+    if (gateWait.promise) return gateWait.promise
+    gateWait.runId = run.runId
+    gateWait.stepId = stepId
+    gateWait.ownerStepId = ownerStepId
+    gateWait.status = run.status
+    gateWait.promise = this.options.gateRegistry.waitForDecision({
+      workspaceRoot,
+      runId: run.runId,
+      stepId,
+      ownerStepId,
+      status: run.status
+    })
+    void gateWait.promise.catch(() => undefined)
+    return gateWait.promise
   }
 
   private async openOperationHubForRun(run: WorkflowRunState, step: EngineStep | undefined, reason: "stepGate" | "paused"): Promise<void> {
@@ -401,6 +432,10 @@ export class BobWorkflowEngineRunner {
 
 function stepKey(runId: string, stepId: string): string {
   return `${runId}:${stepId}`
+}
+
+function isBobHumanGate(status: WorkflowRunState["status"]): boolean {
+  return status === "reviewing" || status === "held" || status === "checkpoint" || status === "paused"
 }
 
 function stateEntriesFromRecord(state: Record<string, string>, keys: string[]): WorkflowStateEntry[] {
