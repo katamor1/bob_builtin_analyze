@@ -117,6 +117,7 @@ const WORKFLOW_COMMAND_ALLOWED_OPTIONS: Record<string, readonly string[]> = {
     "maxRawDiffBytes",
     "maxRowsPerSheet",
     "maxWorkbookSheets",
+    "vcsCommandTimeoutMs",
     "outDir",
     "reviewInputPath",
     "reviewPackagePath",

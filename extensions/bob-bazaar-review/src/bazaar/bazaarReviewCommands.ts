@@ -123,6 +123,7 @@ function makeBazaarClient(signal?: AbortSignal): BazaarClient {
     bzrPath: resolveBzrPath(config, vscode.workspace.isTrusted),
     maxBuffer: maxBufferForDiffBytes(getMaxDiffBytes()),
     textEncoding: config.get<string>("textEncoding", "auto"),
+    timeoutMs: config.get<number>("commandTimeoutMs", 120_000),
     signal
   })
 }
