@@ -317,7 +317,14 @@ function statusFromBazaar(status: string): DiffSummary["files"][number]["status"
 function normalizeDiffLanguages(diff: DiffSummary): DiffSummary {
   return {
     ...diff,
-    files: diff.files.map((file) => ({ ...file, path: toPosixPath(file.path), language: file.language ?? languageFromPath(file.path) }))
+    files: diff.files.map((file) => {
+      const normalizedPath = normalizeChangedFilePathStrict(file.path)
+      return {
+        ...file,
+        path: normalizedPath,
+        language: file.language ?? languageFromPath(normalizedPath)
+      }
+    })
   }
 }
 
