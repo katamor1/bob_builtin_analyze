@@ -91,11 +91,11 @@
 - Consumes: Task 1 registry.
 - Produces: gate-decision wiring for `held`, `checkpoint`, and `paused` without resolving on retry.
 
-- [ ] Add failing lifecycle tests for all gate statuses, retry, checkpoint approval/abort, pause/resume, duplicate UI commands, and service disposal.
-- [ ] Verify RED with the focused test file.
-- [ ] Keep retry bound to the original pending Promise; resolve only when durable state says the Bob-visible step was accepted/completed.
-- [ ] Reject terminal aborts with a stable error and never use `false` as a gate decision.
-- [ ] Run focused tests, compile, `git diff --check`, and commit `fix: synchronize Bob gate lifecycle decisions`.
+- [x] Add failing lifecycle tests for all gate statuses, retry, checkpoint approval/abort, pause/resume, duplicate UI commands, and service disposal.
+- [x] Verify RED with the focused test file.
+- [x] Keep retry bound to the original pending Promise; resolve only when durable state says the Bob-visible step was accepted/completed.
+- [x] Reject terminal aborts with a stable error and never use `false` as a gate decision.
+- [x] Run focused tests, compile, `git diff --check`, and commit `fix: synchronize Bob gate lifecycle decisions`.
 
 ### Task 3: Preserve Provider-Owned Canonical Artifacts
 
