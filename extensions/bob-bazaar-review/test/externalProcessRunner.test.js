@@ -74,6 +74,22 @@ test("external process runner terminates output that exceeds the buffer budget",
   )
 })
 
+test("bufferExceeded errors retain no more than the configured byte budget", async () => {
+  const maxBufferBytes = 1024
+  await assert.rejects(
+    runNode("process.stdout.write('x'.repeat(65536)); process.stderr.write('y'.repeat(65536))", { maxBufferBytes }),
+    (error) => {
+      assert.ok(error instanceof ExternalProcessError)
+      assert.equal(error.kind, "bufferExceeded")
+      assert.ok(
+        error.stdout.length + error.stderr.length <= maxBufferBytes,
+        `retained ${error.stdout.length + error.stderr.length} bytes for a ${maxBufferBytes}-byte budget`
+      )
+      return true
+    }
+  )
+})
+
 test("external process runner accepts explicitly allowed non-zero exit codes", async () => {
   const result = await runNode("process.exit(1)", { allowedExitCodes: [0, 1] })
   assert.equal(result.exitCode, 1)
