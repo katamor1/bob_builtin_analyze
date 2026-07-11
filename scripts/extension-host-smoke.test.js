@@ -47,6 +47,12 @@ function assertTestRuntimeAvailable() {
       `Extension Host smoke requires these packages in the extension project: ${missingPackages.join(", ")}.`
     )
   }
+
+  const cliBinaryName = process.platform === "win32" ? "vscode-test.cmd" : "vscode-test"
+  const cliBinaryPath = path.join(process.cwd(), "node_modules", ".bin", cliBinaryName)
+  if (!fs.existsSync(cliBinaryPath)) {
+    throw new Error(`Extension Host smoke cannot find the project-local CLI binary: ${cliBinaryPath}`)
+  }
 }
 
 function registerExtensionHostTests() {
