@@ -31,7 +31,9 @@ interface RunOptions {
 
 const REQUIRED_BZR_GLOBAL_OPTION = "--no-aliases"
 const MAX_REVISION_SPEC_LENGTH = 128
+const MIN_BAZAAR_TIMEOUT_MS = 1_000
 const DEFAULT_BAZAAR_TIMEOUT_MS = 120_000
+const MAX_BAZAAR_TIMEOUT_MS = 600_000
 
 export class BazaarError extends Error {
   constructor(message: string, readonly details?: unknown) {
@@ -155,9 +157,8 @@ function withRequiredGlobalOption(args: string[]): string[] {
 }
 
 function positiveTimeout(value: number | undefined): number {
-  return typeof value === "number" && Number.isFinite(value) && value > 0
-    ? Math.floor(value)
-    : DEFAULT_BAZAAR_TIMEOUT_MS
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return DEFAULT_BAZAAR_TIMEOUT_MS
+  return Math.max(MIN_BAZAAR_TIMEOUT_MS, Math.min(MAX_BAZAAR_TIMEOUT_MS, Math.floor(value)))
 }
 
 export function validateRevision(revision: string): string {
