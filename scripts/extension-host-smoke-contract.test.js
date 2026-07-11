@@ -20,28 +20,21 @@ const pinnedRuntimeInstall = /npm install --no-save --package-lock=false --ignor
 const transientCliInvocation = /npx\s+--yes\s+--package\s+["']?@vscode\/test-cli/
 const localCliInvocation = /node_modules[\\/]\.bin[\\/]vscode-test(?:\.cmd)?/
 
-test("Extension Host workflows install and execute the pinned local VS Code test runtime", () => {
+test("Extension Host workflow installs and executes the pinned local VS Code test runtime", () => {
   const qualityWorkflow = readRepoFile(".github", "workflows", "extensions-quality.yml")
-  const diagnosticWorkflow = readRepoFile(".github", "workflows", "extension-host-smoke-diagnostic.yml")
 
   assert.equal(
     occurrenceCount(qualityWorkflow, pinnedRuntimeInstall),
     4,
     "extensions-quality must install the pinned CLI and Electron runtime in all three Ubuntu jobs and the Windows matrix"
   )
-  assert.equal(
-    occurrenceCount(diagnosticWorkflow, pinnedRuntimeInstall),
-    1,
-    "the diagnostic workflow must install the same pinned local runtime"
-  )
+  assert.doesNotMatch(qualityWorkflow, transientCliInvocation, "extensions-quality must not execute a transient npx --package CLI")
+  assert.match(qualityWorkflow, localCliInvocation, "extensions-quality must execute the project-local vscode-test binary")
+})
 
-  for (const [name, workflow] of [
-    ["extensions-quality", qualityWorkflow],
-    ["extension-host-smoke-diagnostic", diagnosticWorkflow]
-  ]) {
-    assert.doesNotMatch(workflow, transientCliInvocation, `${name} must not execute a transient npx --package CLI`)
-    assert.match(workflow, localCliInvocation, `${name} must execute the project-local vscode-test binary`)
-  }
+test("temporary Extension Host diagnostic workflow is not shipped", () => {
+  const diagnosticWorkflowPath = path.join(repoRoot, ".github", "workflows", "extension-host-smoke-diagnostic.yml")
+  assert.equal(fs.existsSync(diagnosticWorkflowPath), false)
 })
 
 test("Extension Host smoke preflights packages, the local binary, and soft-dependency isolation", () => {

@@ -31,8 +31,8 @@ interface RunOptions {
 
 const REQUIRED_BZR_GLOBAL_OPTION = "--no-aliases"
 const MAX_REVISION_SPEC_LENGTH = 128
-const MIN_BAZAAR_TIMEOUT_MS = 1_000
 const DEFAULT_BAZAAR_TIMEOUT_MS = 120_000
+const MIN_BAZAAR_TIMEOUT_MS = 1_000
 const MAX_BAZAAR_TIMEOUT_MS = 600_000
 
 export class BazaarError extends Error {
@@ -189,6 +189,7 @@ export function validateRelativePath(relativePath: string): string {
   const normalized = trimmed.replace(/\\/g, "/")
   if (
     !trimmed ||
+    trimmed !== relativePath ||
     /[\0-\x1F\x7F]/u.test(relativePath) ||
     path.win32.isAbsolute(trimmed) ||
     path.posix.isAbsolute(normalized) ||

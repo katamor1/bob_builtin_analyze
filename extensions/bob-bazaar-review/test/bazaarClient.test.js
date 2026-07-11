@@ -71,7 +71,7 @@ test("validateRelativePath rejects POSIX and Windows absolute or drive-relative 
   }
 })
 
-test("validateRelativePath rejects traversal, dot, empty, and control-character segments", () => {
+test("validateRelativePath rejects traversal, dot, empty, control-character, and outer-whitespace paths", () => {
   for (const candidate of [
     "../secret.txt",
     "a/../secret.txt",
@@ -81,6 +81,9 @@ test("validateRelativePath rejects traversal, dot, empty, and control-character 
     "a/\u0001b.txt",
     "\nsrc/main.c",
     "src/main.c\r",
+    " src/main.c",
+    "src/main.c ",
+    "\u00a0src/main.c",
     ""
   ]) {
     assert.throws(() => validateRelativePath(candidate), /Bazaar パス|親ディレクトリ/)
