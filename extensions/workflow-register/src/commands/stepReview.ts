@@ -37,6 +37,7 @@ interface AcceptedStepResult {
 
 const RUN_NEXT_STEP_LABEL = "次のステップを実行"
 const OPEN_OPERATION_HUB_LABEL = "Operation Hub を開く"
+const reviewAcceptancesInFlight = new Map<string, Promise<AcceptedStepResult>>()
 
 export async function acceptCurrentStep(options: StepReviewCommandOptions, runId?: string, acceptOptions: AcceptOptions = {}): Promise<WorkflowRunState | string> {
   const accepted = await acceptReviewedStep(options, runId)
@@ -65,6 +66,20 @@ async function acceptReviewedStep(options: StepReviewCommandOptions, runId?: str
   const runStore = new FileRunStateStore({ workspaceRoot: selection.root })
   const run = await runStore.loadRun(selection.runId)
   if (!run) return `Workflow run not found: ${selection.runId}`
+  const key = reviewAcceptanceKey(run.runId, run.currentStep)
+  const existing = reviewAcceptancesInFlight.get(key)
+  if (existing) return existing
+
+  const acceptance = Promise.resolve().then(() => acceptReviewedStepOnce(options, runStore, run))
+  reviewAcceptancesInFlight.set(key, acceptance)
+  try {
+    return await acceptance
+  } finally {
+    if (reviewAcceptancesInFlight.get(key) === acceptance) reviewAcceptancesInFlight.delete(key)
+  }
+}
+
+async function acceptReviewedStepOnce(options: StepReviewCommandOptions, runStore: FileRunStateStore, run: WorkflowRunState): Promise<AcceptedStepResult> {
   const acceptedStepId = run.currentStep
   const accepted = acceptReviewingStep(run)
   await runStore.saveRun(accepted)
@@ -87,6 +102,10 @@ async function acceptReviewedStep(options: StepReviewCommandOptions, runId?: str
     ? `Accepted final step and completed workflow run: ${accepted.runId}`
     : `Accepted step; next step is ${accepted.currentStep}: ${accepted.runId}`
   return { run: accepted, message, completedViaBobTask }
+}
+
+function reviewAcceptanceKey(runId: string, stepId: string | undefined): string {
+  return JSON.stringify([runId, stepId ?? null])
 }
 
 async function showAcceptedStepMessage(accepted: WorkflowRunState, message: string, completedViaBobTask: boolean): Promise<void> {
