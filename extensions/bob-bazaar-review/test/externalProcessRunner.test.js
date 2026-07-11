@@ -1,4 +1,7 @@
 const assert = require("node:assert/strict")
+const fs = require("node:fs")
+const os = require("node:os")
+const path = require("node:path")
 const { test } = require("node:test")
 
 const {
@@ -90,6 +93,24 @@ test("bufferExceeded errors retain no more than the configured byte budget", asy
   )
 })
 
+test("process runner settles only after a buffer-exceeded child exits", async () => {
+  const pidFile = path.join(os.tmpdir(), `external-runner-${process.pid}-${Date.now()}.pid`)
+  try {
+    await assert.rejects(
+      runNode(
+        `require('node:fs').writeFileSync(${JSON.stringify(pidFile)}, String(process.pid)); ` +
+          "process.stdout.write('x'.repeat(65536)); setInterval(() => {}, 1000)",
+        { maxBufferBytes: 1024 }
+      ),
+      (error) => error instanceof ExternalProcessError && error.kind === "bufferExceeded"
+    )
+    const pid = Number(fs.readFileSync(pidFile, "utf8"))
+    assert.equal(isProcessAlive(pid), false, `child ${pid} was still alive after rejection`)
+  } finally {
+    fs.rmSync(pidFile, { force: true })
+  }
+})
+
 test("external process runner accepts explicitly allowed non-zero exit codes", async () => {
   const result = await runNode("process.exit(1)", { allowedExitCodes: [0, 1] })
   assert.equal(result.exitCode, 1)
@@ -107,3 +128,12 @@ test("external process runner classifies disallowed exit codes", async () => {
     }
   )
 })
+
+function isProcessAlive(pid) {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch {
+    return false
+  }
+}
