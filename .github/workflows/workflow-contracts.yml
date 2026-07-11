@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - ".bob/workflows/**/WORKFLOW.md"
+      - ".bob/template-library/**/WORKFLOW.md"
       - "extensions/workflow-register/samples/**/WORKFLOW.md"
       - "extensions/**/templates/**/WORKFLOW.md"
       - "docs/workflows/**/WORKFLOW.md"
@@ -22,6 +23,7 @@ on:
       - main
     paths:
       - ".bob/workflows/**/WORKFLOW.md"
+      - ".bob/template-library/**/WORKFLOW.md"
       - "extensions/workflow-register/samples/**/WORKFLOW.md"
       - "extensions/**/templates/**/WORKFLOW.md"
       - "docs/workflows/**/WORKFLOW.md"
