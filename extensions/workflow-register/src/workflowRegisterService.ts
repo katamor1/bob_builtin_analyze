@@ -90,6 +90,7 @@ export class WorkflowRegisterService implements vscode.Disposable {
 
   dispose(): void {
     this.watcher.dispose()
+    this.manualStepPanel.dispose()
     try {
       this.actionProviderRegistrations.dispose()
     } catch (error) {
