@@ -60,14 +60,19 @@ test("workflow-register and IBM Bob are soft dependencies with delayed provider 
   assert.match(source, /providersRegistered/)
 })
 
-test("code consistency provider retry lifecycle recovers restarts and disposes late registrations", () => {
+test("code consistency provider retry lifecycle recovers restarts and disposes stale or late registrations", () => {
   const source = readSourceSet(["extension.ts", "workflowProviderRegistration.ts"])
 
   assert.match(source, /let disposed = false/)
+  assert.match(source, /let generation = 0/)
+  assert.match(source, /let registeredApi: WorkflowRegisterApiLike \| undefined/)
   assert.match(source, /let registrationAttempt: Promise<boolean> \| undefined/)
   assert.match(source, /let activeRegistrations: vscode\.Disposable\[\] = \[\]/)
-  assert.match(source, /if \(disposed\) \{[\s\S]*disposeRegistrations\(result\.registrations\)[\s\S]*return false/)
-  assert.match(source, /if \(providersRegistered && workflowExtension\?\.isActive\) return/)
+  assert.match(source, /const currentAttempt = performAttempt\(generation\)/)
+  assert.match(source, /if \(disposed \|\| attemptGeneration !== generation\)/)
+  assert.match(source, /disposeRegistrations\(result\.registrations\)/)
+  assert.match(source, /if \(registrationAttempt === currentAttempt\) registrationAttempt = undefined/)
+  assert.match(source, /currentApi === registeredApi/)
   assert.match(source, /disposeRegistrations\(activeRegistrations\)/)
   assert.doesNotMatch(source, /^let workflowProviderRegistrationAttempt/m)
 })
