@@ -28,11 +28,23 @@ function writeTestConfiguration() {
 }
 
 function assertTestRuntimeAvailable() {
-  try {
-    require.resolve("@vscode/test-electron", { paths: [process.cwd()] })
-  } catch {
+  const requiredPackages = [
+    "@vscode/test-cli",
+    "@vscode/test-electron"
+  ]
+  const missingPackages = []
+
+  for (const packageName of requiredPackages) {
+    try {
+      require.resolve(packageName, { paths: [process.cwd()] })
+    } catch {
+      missingPackages.push(packageName)
+    }
+  }
+
+  if (missingPackages.length > 0) {
     throw new Error(
-      "@vscode/test-electron must be installed in the extension project before running Extension Host smoke tests."
+      `Extension Host smoke requires these packages in the extension project: ${missingPackages.join(", ")}.`
     )
   }
 }
