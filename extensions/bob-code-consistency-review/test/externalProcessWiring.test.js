@@ -16,6 +16,14 @@ test("Git and Bazaar diff collection use the bounded external process runner", (
   assert.doesNotMatch(source, /execFileAsync|execFile\(/)
 })
 
+test("VCS command timeout is clamped to the manifest range", () => {
+  const source = readSource("core", "gitDiffCollector.ts")
+
+  assert.match(source, /const MIN_VCS_COMMAND_TIMEOUT_MS = 1_000/)
+  assert.match(source, /const MAX_VCS_COMMAND_TIMEOUT_MS = 600_000/)
+  assert.match(source, /Math\.max\(MIN_VCS_COMMAND_TIMEOUT_MS, Math\.min\(MAX_VCS_COMMAND_TIMEOUT_MS, Math\.floor\(value\)\)\)/)
+})
+
 test("preprocess progress propagates cancellation into VCS collection", () => {
   const commandSource = readSource("reviewExecutionCommands.ts")
   const pipelineSource = readSource("core", "pipeline.ts")
