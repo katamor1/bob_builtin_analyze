@@ -24,6 +24,12 @@ const packagePaths = [
   "extensions/bob-code-consistency-review/package.json"
 ]
 const availablePreflightChecks = ["workspaceOpen", "bobWorkspaceInitialized", "bazaarRepository"]
+const sampleExternalCommandAllowlist = new Map([
+  [
+    "extensions/workflow-register/samples/step-back-branching-approval/.bob/workflows/step-back-branching-approval/WORKFLOW.md",
+    new Set(["example.preapprovalCheck"])
+  ]
+])
 
 const integrationWorkflowPairs = [
   {
@@ -78,6 +84,19 @@ test("provider discovery reflects the extension registration sources", () => {
   ]) {
     assert.ok(providerIds.includes(expected), `Missing action provider contract: ${expected}`)
   }
+})
+
+test("sample external command allowlist is path-scoped and guardrail-declared", () => {
+  const samplePath = "extensions/workflow-register/samples/step-back-branching-approval/.bob/workflows/step-back-branching-approval/WORKFLOW.md"
+  const validation = validateStrictText(readRepoFile(samplePath), samplePath)
+  assert.equal(validation.ok, true, formatDiagnostics(validation))
+  const commandIds = discoverContributedCommandIds()
+
+  assert.doesNotThrow(() => assertNestedCommandContracts(samplePath, validation.workflow, commandIds))
+  assert.throws(
+    () => assertNestedCommandContracts(".bob/workflows/production-copy/WORKFLOW.md", validation.workflow, commandIds),
+    /uncontributed command 'example\.preapprovalCheck'/
+  )
 })
 
 test("result step prompt and includeState are accepted as Bob runtime fields", () => {
@@ -177,12 +196,25 @@ function assertNestedCommandContracts(relativePath, workflow, commandIds) {
     const args = step.action.args
     const commandId = Array.isArray(args) ? args[0] : undefined
     assert.equal(typeof commandId, "string", `${relativePath}: step '${step.id}' must pass a command id as vscode.executeCommand args[0]`)
-    assert.ok(commandIds.has(commandId), `${relativePath}: step '${step.id}' references uncontributed command '${commandId}'`)
+    assert.ok(
+      commandIds.has(commandId) || isDeclaredSampleExternalCommand(relativePath, workflow, commandId),
+      `${relativePath}: step '${step.id}' references uncontributed command '${commandId}'`
+    )
   }
 
   for (const commandId of workflow.guardrails?.allowedCommandIds ?? []) {
-    assert.ok(commandIds.has(commandId), `${relativePath}: guardrails allow uncontributed command '${commandId}'`)
+    assert.ok(
+      commandIds.has(commandId) || isDeclaredSampleExternalCommand(relativePath, workflow, commandId),
+      `${relativePath}: guardrails allow uncontributed command '${commandId}'`
+    )
   }
+}
+
+function isDeclaredSampleExternalCommand(relativePath, workflow, commandId) {
+  if (typeof commandId !== "string") return false
+  const allowedCommands = sampleExternalCommandAllowlist.get(relativePath)
+  return allowedCommands?.has(commandId) === true &&
+    (workflow.guardrails?.allowedCommandIds ?? []).includes(commandId)
 }
 
 function validateStrictText(text, filePath = "test/fixtures/inline/WORKFLOW.md", providerIds = discoverActionProviderIds()) {
