@@ -1,0 +1,53 @@
+name: agent-policy-diagnostics
+
+on:
+  pull_request:
+    paths:
+      - "extensions/workflow-register/**"
+      - "extensions/bob-bazaar-review/**"
+      - ".github/workflows/agent-policy-diagnostics.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: |
+            extensions/workflow-register/package-lock.json
+            extensions/bob-bazaar-review/package-lock.json
+      - name: Install workflow-register dependencies
+        working-directory: extensions/workflow-register
+        run: npm ci
+      - name: Install Bazaar review dependencies
+        working-directory: extensions/bob-bazaar-review
+        run: npm ci
+      - name: Capture policy outputs
+        shell: bash
+        run: |
+          mkdir -p policy-diagnostics
+          set +e
+          (
+            cd extensions/workflow-register
+            npm run architecture:policy
+          ) > policy-diagnostics/workflow-register-architecture.log 2>&1
+          echo $? > policy-diagnostics/workflow-register-architecture.status
+          (
+            cd extensions/bob-bazaar-review
+            npm run unused:policy
+          ) > policy-diagnostics/bob-bazaar-review-unused.log 2>&1
+          echo $? > policy-diagnostics/bob-bazaar-review-unused.status
+          exit 0
+      - name: Upload policy diagnostics
+        uses: actions/upload-artifact@v4
+        with:
+          name: policy-diagnostics
+          path: policy-diagnostics
+          if-no-files-found: error
+          retention-days: 1
