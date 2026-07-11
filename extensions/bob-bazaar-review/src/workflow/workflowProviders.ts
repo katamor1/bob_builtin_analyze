@@ -1,6 +1,10 @@
 import * as vscode from "vscode"
 import { captureReviewResult } from "../projectRules/resultCapture"
 import { openBazaarReviewGui } from "../ui/reviewGui"
+import {
+  startRetryRegistrationController,
+  type RegistrationAttemptResult
+} from "./retryRegistrationController"
 import { collectReviewContext, loadReviewRules } from "./workflowActions"
 import {
   captureOptionsFromCommandArgs,
@@ -15,111 +19,29 @@ import {
 const WORKFLOW_PROVIDER_RETRY_DELAYS_MS = [1000, 3000, 10000]
 const BAZAAR_PROVIDER_SOURCE_ID = "local.bob-bazaar-review"
 
-interface WorkflowProviderRegistrationResult {
-  registered: boolean
-  registrations: vscode.Disposable[]
-}
-
 /**
  * workflow-register が利用できる場合に Bazaar レビュー用 action provider を登録する。
  *
- * provider ID は WORKFLOW.md から参照される互換性契約であり、再試行しても同じ ID だけを登録する。
- *
- * @param context GUI と review command handler に渡す VS Code extension context。
- * @returns なし。
+ * provider ID は WORKFLOW.md から参照される互換性契約であり、API世代が変わった場合だけ再登録する。
  */
 export function registerWorkflowProvidersWithRetry(context: vscode.ExtensionContext): void {
-  let disposed = false
-  let providersRegistered = false
-  let registrationAttempt: Promise<boolean> | undefined
-  let activeRegistrations: vscode.Disposable[] = []
-  let retryIndex = 0
-  const timers = new Set<ReturnType<typeof setTimeout>>()
-
-  const clearRetryTimers = (): void => {
-    for (const timer of timers) clearTimeout(timer)
-    timers.clear()
-  }
-
-  const resetRegistration = (): void => {
-    disposeRegistrations(activeRegistrations)
-    activeRegistrations = []
-    providersRegistered = false
-  }
-
-  const scheduleRetry = (): void => {
-    if (disposed || providersRegistered || retryIndex >= WORKFLOW_PROVIDER_RETRY_DELAYS_MS.length) return
-    const timer = setTimeout(() => attempt(), WORKFLOW_PROVIDER_RETRY_DELAYS_MS[retryIndex])
-    retryIndex += 1
-    timers.add(timer)
-  }
-
-  const performAttempt = async (): Promise<boolean> => {
-    const result = await registerWorkflowProviders(context)
-    if (disposed) {
-      disposeRegistrations(result.registrations)
-      return false
-    }
-    if (!result.registered) {
-      scheduleRetry()
-      return false
-    }
-
-    activeRegistrations = result.registrations
-    context.subscriptions.push(...result.registrations)
-    providersRegistered = true
-    return true
-  }
-
-  const attempt = async (): Promise<boolean> => {
-    if (disposed || providersRegistered) return providersRegistered
-    if (registrationAttempt) return registrationAttempt
-
-    registrationAttempt = performAttempt()
-    try {
-      return await registrationAttempt
-    } catch (error) {
-      console.warn("Bob Bazaar ワークフロー provider の登録に失敗しました", error)
-      scheduleRetry()
-      return false
-    } finally {
-      registrationAttempt = undefined
-    }
-  }
-
-  const extensionListener = vscode.extensions.onDidChange(() => {
-    const workflowExtension = vscode.extensions.getExtension(WORKFLOW_REGISTER_EXTENSION_ID)
-    if (providersRegistered && workflowExtension?.isActive) return
-    resetRegistration()
-    retryIndex = 0
-    clearRetryTimers()
-    void attempt()
+  startRetryRegistrationController<WorkflowRegisterApi>({
+    retryDelaysMs: WORKFLOW_PROVIDER_RETRY_DELAYS_MS,
+    register: () => registerWorkflowProviders(context),
+    currentApi: () => {
+      const extension = vscode.extensions.getExtension<WorkflowRegisterApi>(WORKFLOW_REGISTER_EXTENSION_ID)
+      return extension?.isActive ? extension.exports : undefined
+    },
+    subscribeChanges: (listener) => vscode.extensions.onDidChange(listener),
+    own: (...registrations) => context.subscriptions.push(...registrations),
+    reportError: (error) => console.warn("Bob Bazaar ワークフロー provider の登録に失敗しました", error)
   })
-
-  context.subscriptions.push(
-    extensionListener,
-    {
-      dispose: () => {
-        disposed = true
-        clearRetryTimers()
-        resetRegistration()
-      }
-    }
-  )
-  void attempt()
 }
 
-/**
- * workflow-register API へ Bazaar レビュー用 action provider を実際に登録する。
- *
- * workflow-register が未起動または未導入の場合は false を返し、呼び出し元の retry に任せる。
- *
- * @param context GUI と review command handler に渡す VS Code extension context。
- * @returns provider 登録結果と、登録解除に使う disposable 群。
- */
+/** workflow-register APIへBazaarレビュー用providerを一括登録する。 */
 async function registerWorkflowProviders(
   context: vscode.ExtensionContext
-): Promise<WorkflowProviderRegistrationResult> {
+): Promise<RegistrationAttemptResult<WorkflowRegisterApi>> {
   const api = await getWorkflowRegisterApi()
   if (!api) return { registered: false, registrations: [] }
 
@@ -141,7 +63,7 @@ async function registerWorkflowProviders(
       id: "bobBazaar.captureReviewResult",
       execute: (input) => captureReviewResult(firstStringArg(input.args), captureOptionsFromCommandArgs([input]))
     })
-    return { registered: true, registrations }
+    return { registered: true, registrations, api }
   } catch (error) {
     disposeRegistrations(registrations)
     throw error
