@@ -1,4 +1,4 @@
-import { buildWorkflowAgentPrompt, extractSubagentResult } from "./agentStep"
+import { buildWorkflowAgentExecutionPrompt, extractSubagentResult } from "./agentStep"
 import type { BobWorkflowTask } from "./bobWorkflowTypes"
 import type {
   AgentProvider,
@@ -7,7 +7,6 @@ import type {
   CoreWorkflowDefinition,
   WorkflowRunState
 } from "./core/model"
-import type { WorkflowStateEntry } from "./workflowPromptContext"
 
 export type BobTaskSyncReason =
   | "bob-runner-step-completed"
@@ -106,18 +105,16 @@ export class ReviewTaskRegistry {
       run: async (input) => {
         const stepIndex = workflow.engineSteps.findIndex((candidate) => candidate.id === input.stepId)
         const step = stepIndex >= 0 ? workflow.engineSteps[stepIndex] : undefined
-        const value = await startSubagent(buildWorkflowAgentPrompt({
-          workflowId: workflow.id,
+        const value = await startSubagent(buildWorkflowAgentExecutionPrompt({
+          execution: input,
           workflowName: workflow.name,
-          workflowRoot: input.workflowRoot ?? workflow.workflowRoot,
-          workflowFile: input.workflowFile ?? workflow.workflowFile,
-          workflowFolderName: input.workflowFolderName ?? workflow.workflowFolderName,
+          workflowRoot: workflow.workflowRoot,
+          workflowFile: workflow.workflowFile,
+          workflowFolderName: workflow.workflowFolderName,
           stepIndex: Math.max(0, stepIndex),
-          stepId: input.stepId,
           stepTitle: step?.title ?? input.stepId,
-          stepPrompt: step?.prompt ?? input.prompt,
           workflowInstructions: workflow.promptWithoutTodo,
-          stateEntries: stateEntriesFromRecord(input.state, step?.includeState ?? [])
+          includeState: step?.includeState ?? []
         }))
         const result = extractSubagentResult(value)
         if (!result) throw new Error("Bob subagent returned no result.")
@@ -396,8 +393,4 @@ function syncResult(
 
 function reviewTaskKey(runId: string, stepId: string): string {
   return `${runId}:${stepId}`
-}
-
-function stateEntriesFromRecord(state: Record<string, string>, keys: string[]): WorkflowStateEntry[] {
-  return keys.flatMap((key) => state[key] === undefined ? [] : [{ key, value: state[key] }])
 }

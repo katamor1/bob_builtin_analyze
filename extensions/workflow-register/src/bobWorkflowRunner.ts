@@ -1,5 +1,5 @@
 import * as vscode from "vscode"
-import { buildWorkflowAgentPrompt, extractSubagentResult } from "./agentStep"
+import { buildWorkflowAgentExecutionPrompt, extractSubagentResult } from "./agentStep"
 import type {
   BobWorkflowRunnerInputCollector,
   BobWorkflowTask,
@@ -214,18 +214,16 @@ export class BobWorkflowEngineRunner {
         if (typeof task.startSubagent === "function") {
           const stepDefinition = this.options.definition.stepsById[input.stepId]
           const todoContext = this.todoContext(input.stepId)
-          const value = await task.startSubagent(buildWorkflowAgentPrompt({
-            workflowId: this.options.definition.id,
+          const value = await task.startSubagent(buildWorkflowAgentExecutionPrompt({
+            execution: input,
             workflowName: this.options.definition.name,
-            workflowRoot: input.workflowRoot ?? this.options.definition.workflowRoot,
-            workflowFile: input.workflowFile ?? this.options.definition.workflowFile,
-            workflowFolderName: input.workflowFolderName ?? this.options.definition.workflowFolderName,
+            workflowRoot: this.options.definition.workflowRoot,
+            workflowFile: this.options.definition.workflowFile,
+            workflowFolderName: this.options.definition.workflowFolderName,
             stepIndex: todoContext.index,
-            stepId: input.stepId,
             stepTitle: todoContext.todo?.text ?? stepDefinition?.id ?? input.stepId,
-            stepPrompt: stepDefinition?.prompt ?? input.prompt,
             workflowInstructions: this.options.definition.promptWithoutTodo,
-            stateEntries: stateEntriesFromRecord(input.state, stepDefinition?.includeState ?? [])
+            includeState: stepDefinition?.includeState ?? []
           }))
           const result = extractSubagentResult(value)
           if (!result) throw new Error("Bob subagent returned no result.")
