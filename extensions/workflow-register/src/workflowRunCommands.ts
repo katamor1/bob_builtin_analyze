@@ -31,6 +31,7 @@ import {
 } from "./workflowRunSelection"
 import { WorkflowRuntimeFactory } from "./workflowRuntimeFactory"
 import { reviewTaskRegistry } from "./reviewTaskRegistry"
+import type { ReviewAcceptanceOperationKind } from "./reviewAcceptanceCoordinator"
 
 export type RunCommandArg = string | { runId?: string; run?: { runId?: string } } | undefined
 
@@ -48,7 +49,12 @@ export interface WorkflowRunCommandServiceOptions {
   activeSteps: () => ActiveStep[]
   showManualStepPanel: (input: ManualStepPanelInput) => Promise<void>
   gateRegistry: BobWorkflowGateRegistry
-  coordinateGateDecision: <T>(workspaceRoot: string, runId: string, operation: () => Promise<T>) => Promise<T>
+  coordinateGateDecision: <T>(
+    workspaceRoot: string,
+    runId: string,
+    kind: ReviewAcceptanceOperationKind,
+    operation: () => Promise<T>
+  ) => Promise<T>
 }
 
 const CHECKPOINT_ABORT_REASON = "Bob workflow run aborted at branch checkpoint."
@@ -376,7 +382,7 @@ export class WorkflowRunCommandService {
     await this.ensureWorkflowsLoaded()
     const selection = await this.selectRun(runId)
     if (!selection) return runId ? `Workflow run not found: ${runId}` : "No workflow run selected."
-    return this.options.coordinateGateDecision(selection.root, selection.runId, async () => {
+    return this.options.coordinateGateDecision(selection.root, selection.runId, "checkpoint-approve", async () => {
       const runStore = this.options.runtimeFactory.createRunStore(selection.root)
       const run = await runStore.loadRun(selection.runId)
       if (!run) throw new Error(`Workflow run not found: ${selection.runId}`)
@@ -397,7 +403,7 @@ export class WorkflowRunCommandService {
     if (trustError) return trustError
     const selection = await this.selectRun(runId)
     if (!selection) return runId ? `Workflow run not found: ${runId}` : "No workflow run selected."
-    return this.options.coordinateGateDecision(selection.root, selection.runId, async () => {
+    return this.options.coordinateGateDecision(selection.root, selection.runId, "checkpoint-abort", async () => {
       const engine = this.options.runtimeFactory.createEngine(selection.root)
       const result = await engine.abortBranchCheckpoint(selection.runId, CHECKPOINT_ABORT_REASON)
       this.options.gateRegistry.abortPending(selection.root, selection.runId, CHECKPOINT_ABORT_REASON)
@@ -441,9 +447,14 @@ export class WorkflowRunCommandService {
       await vscode.window.showErrorMessage(`Workflow run not found: ${runId}`)
       return message
     }
-    return this.options.coordinateGateDecision(selection.root, selection.runId, () => (
-      this.resumeOrRetryRunOnce(mode, selection.root, selection.runId)
-    ))
+    return this.options.coordinateGateDecision(
+      selection.root,
+      selection.runId,
+      mode === "resume" ? "run-resume" : "run-retry",
+      () => (
+        this.resumeOrRetryRunOnce(mode, selection.root, selection.runId)
+      )
+    )
   }
 
   private async resumeOrRetryRunOnce(

@@ -368,7 +368,10 @@ test("standalone next-step commands reuse the Bob review task agent provider", (
   assert.match(workflowRunCommands, /await this\.reconcileBobTask\(selection\.root, result, workflow, "operation-hub-next"\)/)
   assert.match(workflowRunCommands, orderedPattern(
     'private async resumeOrRetryRun(mode: "resume" | "retry", runId?: string): Promise<unknown> {',
-    "this.options.coordinateGateDecision(selection.root, selection.runId",
+    "this.options.coordinateGateDecision(",
+    "selection.root,",
+    "selection.runId,",
+    'mode === "resume" ? "run-resume" : "run-retry",',
     "this.resumeOrRetryRunOnce(mode, selection.root, selection.runId)",
     "private async resumeOrRetryRunOnce(",
     "const agentProvider = reviewTaskRegistry.agentProviderForRun(run.runId, workflow)",
@@ -425,13 +428,16 @@ test("WorkflowRegisterService owns and exposes Bob review gates and acceptance c
   const extension = readSrc("extension.ts")
   const authoring = readSrc("extensionWithAuthoring.ts")
   const stepReview = readSrc("commands", "stepReview.ts")
+  const workflowRunCommands = readSrc("workflowRunCommands.ts")
 
   assert.match(service, /private readonly bobWorkflowGates = new BobWorkflowGateRegistry\(\)/)
   assert.match(service, /private readonly reviewAcceptances = new ReviewAcceptanceCoordinator\(\)/)
   assert.match(service, /gateRegistry: this\.bobWorkflowGates/)
   assert.match(service, /acceptBobWorkflowGate\(workspaceRoot: string, runId: string, stepId: string\): BobWorkflowGateAcceptResult \{[\s\S]*this\.bobWorkflowGates\.accept\(workspaceRoot, runId, stepId\)/)
-  assert.match(service, /coordinateReviewAcceptance<T>\([\s\S]*this\.reviewAcceptances\.coordinate\(workspaceRoot, runId, operation\)/)
-  assert.match(service, /coordinateGateDecision: \(workspaceRoot, runId, operation\) => \([\s\S]*this\.reviewAcceptances\.coordinate\(workspaceRoot, runId, operation\)/)
+  assert.match(service, /coordinateReviewAcceptance<T>\([\s\S]*this\.reviewAcceptances\.coordinate\(workspaceRoot, runId, "review-accept", operation\)/)
+  assert.match(service, /coordinateGateDecision: \(workspaceRoot, runId, kind, operation\) => \([\s\S]*this\.reviewAcceptances\.coordinate\(workspaceRoot, runId, kind, operation\)/)
+  assert.match(workflowRunCommands, /coordinateGateDecision\(selection\.root, selection\.runId, "checkpoint-approve", async \(\) =>/)
+  assert.match(workflowRunCommands, /coordinateGateDecision\(selection\.root, selection\.runId, "checkpoint-abort", async \(\) =>/)
   assert.match(factory, /gateRegistry: BobWorkflowGateRegistry/)
   assert.match(factory, /gateRegistry: this\.options\.gateRegistry/)
   assert.match(extension, /acceptBobWorkflowGate: \(workspaceRoot: string, runId: string, stepId: string\) => BobWorkflowGateAcceptResult/)

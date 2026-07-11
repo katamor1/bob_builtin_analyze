@@ -1,17 +1,38 @@
-export class ReviewAcceptanceCoordinator {
-  private readonly inFlight = new Map<string, Promise<unknown>>()
+export type ReviewAcceptanceOperationKind =
+  | "review-accept"
+  | "run-resume"
+  | "run-retry"
+  | "checkpoint-approve"
+  | "checkpoint-abort"
 
-  coordinate<T>(workspaceRoot: string, runId: string, operation: () => Promise<T>): Promise<T> {
+interface InFlightOperation {
+  kind: ReviewAcceptanceOperationKind
+  promise: Promise<unknown>
+}
+
+export class ReviewAcceptanceCoordinator {
+  private readonly inFlight = new Map<string, InFlightOperation>()
+
+  coordinate<T>(
+    workspaceRoot: string,
+    runId: string,
+    kind: ReviewAcceptanceOperationKind,
+    operation: () => Promise<T>
+  ): Promise<T> {
     const key = acceptanceKey(workspaceRoot, runId)
     const existing = this.inFlight.get(key)
-    if (existing) return existing as Promise<T>
+    if (existing?.kind === kind) return existing.promise as Promise<T>
+    if (existing) {
+      const retry = () => this.coordinate(workspaceRoot, runId, kind, operation)
+      return existing.promise.then(retry, retry)
+    }
 
     const owner = Promise.resolve().then(operation)
     let coordinated!: Promise<T>
     coordinated = owner.finally(() => {
-      if (this.inFlight.get(key) === coordinated) this.inFlight.delete(key)
+      if (this.inFlight.get(key)?.promise === coordinated) this.inFlight.delete(key)
     })
-    this.inFlight.set(key, coordinated)
+    this.inFlight.set(key, { kind, promise: coordinated })
     return coordinated
   }
 }

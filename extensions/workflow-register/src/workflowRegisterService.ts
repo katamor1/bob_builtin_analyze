@@ -88,8 +88,8 @@ export class WorkflowRegisterService implements vscode.Disposable {
       activeSteps: () => this.stepRuntime.list(),
       showManualStepPanel: (input) => this.manualStepPanel.show(input),
       gateRegistry: this.bobWorkflowGates,
-      coordinateGateDecision: (workspaceRoot, runId, operation) => (
-        this.reviewAcceptances.coordinate(workspaceRoot, runId, operation)
+      coordinateGateDecision: (workspaceRoot, runId, kind, operation) => (
+        this.reviewAcceptances.coordinate(workspaceRoot, runId, kind, operation)
       )
     })
     this.watcher.onDidCreate(() => this.reload({ showReport: false }))
@@ -150,7 +150,7 @@ export class WorkflowRegisterService implements vscode.Disposable {
   }
 
   coordinateReviewAcceptance<T>(workspaceRoot: string, runId: string, operation: () => Promise<T>): Promise<T> {
-    return this.reviewAcceptances.coordinate(workspaceRoot, runId, operation)
+    return this.reviewAcceptances.coordinate(workspaceRoot, runId, "review-accept", operation)
   }
 
   registerActionProvider(provider: ActionProvider): ActionProviderRegistration {

@@ -88,16 +88,16 @@ test("review acceptance coordinators isolate identical workspace and run keys pe
   let firstDuplicateCalls = 0
   let secondOwnerCalls = 0
 
-  const firstOwner = firstService.coordinate("C:\\same-root", "same-run", async () => {
+  const firstOwner = firstService.coordinate("C:\\same-root", "same-run", "review-accept", async () => {
     firstOwnerCalls += 1
     await firstReleased
     return "first-service"
   })
-  const firstDuplicate = firstService.coordinate("C:\\same-root", "same-run", async () => {
+  const firstDuplicate = firstService.coordinate("C:\\same-root", "same-run", "review-accept", async () => {
     firstDuplicateCalls += 1
     return "duplicate"
   })
-  const secondOwner = secondService.coordinate("C:\\same-root", "same-run", async () => {
+  const secondOwner = secondService.coordinate("C:\\same-root", "same-run", "review-accept", async () => {
     secondOwnerCalls += 1
     await secondReleased
     return "second-service"
@@ -118,17 +118,41 @@ test("review acceptance coordinators isolate identical workspace and run keys pe
     "second-service"
   ])
 
-  const retry = firstService.coordinate("C:\\same-root", "same-run", async () => "first-service-retry")
+  const retry = firstService.coordinate("C:\\same-root", "same-run", "review-accept", async () => "first-service-retry")
   assert.notStrictEqual(retry, firstOwner)
   assert.equal(await retry, "first-service-retry")
 
-  const failed = firstService.coordinate("C:\\same-root", "failed-run", async () => {
+  const failed = firstService.coordinate("C:\\same-root", "failed-run", "review-accept", async () => {
     throw new Error("coordinated acceptance failed")
   })
   await assert.rejects(failed, /coordinated acceptance failed/)
-  const recovered = firstService.coordinate("C:\\same-root", "failed-run", async () => "recovered")
+  const recovered = firstService.coordinate("C:\\same-root", "failed-run", "review-accept", async () => "recovered")
   assert.notStrictEqual(recovered, failed)
   assert.equal(await recovered, "recovered")
+})
+
+test("a different coordinator operation waits for a failed owner before running", async () => {
+  const { ReviewAcceptanceCoordinator } = require("../out/reviewAcceptanceCoordinator")
+  const coordinator = new ReviewAcceptanceCoordinator()
+  let releaseOwner
+  const ownerReleased = new Promise((resolve) => { releaseOwner = resolve })
+  let retryCalls = 0
+  const owner = coordinator.coordinate("C:\\same-root", "same-run", "run-resume", async () => {
+    await ownerReleased
+    throw new Error("resume failed")
+  })
+  const queued = coordinator.coordinate("C:\\same-root", "same-run", "run-retry", async () => {
+    retryCalls += 1
+    return "retry-after-failure"
+  })
+  const ownerRejected = assert.rejects(owner, /resume failed/)
+
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(retryCalls, 0)
+  releaseOwner()
+  await ownerRejected
+  assert.equal(await queued, "retry-after-failure")
+  assert.equal(retryCalls, 1)
 })
 
 test("a live gate keeps its Bob-visible owner while the durable gate step is rebound", async () => {

@@ -373,7 +373,7 @@ function createCommandService(root, workflow, engine, gateRegistry = new BobWork
     activeSteps: () => [],
     showManualStepPanel: async () => undefined,
     gateRegistry,
-    coordinateGateDecision: (workspaceRoot, runId, operation) => coordinator.coordinate(workspaceRoot, runId, operation)
+    coordinateGateDecision: (workspaceRoot, runId, kind, operation) => coordinator.coordinate(workspaceRoot, runId, kind, operation)
   })
   return { gateRegistry, runStore, service }
 }
@@ -547,7 +547,7 @@ test("live held resume executes only the Bob-visible owner step", async (t) => {
     activeSteps: () => [],
     showManualStepPanel: async () => undefined,
     gateRegistry,
-    coordinateGateDecision: (workspaceRoot, runId, operation) => coordinator.coordinate(workspaceRoot, runId, operation)
+    coordinateGateDecision: (workspaceRoot, runId, kind, operation) => coordinator.coordinate(workspaceRoot, runId, kind, operation)
   })
 
   const result = await service.resumeRun(held.runId)
@@ -628,10 +628,18 @@ test("checkpoint abort durably fails the run before rejecting the live gate with
   const root = tempRoot(t, "workflow-register-gate-checkpoint-abort-")
   const workflow = coreWorkflow(root, "gate-checkpoint-abort", [commandStep("source"), commandStep("target")])
   let runStore
+  let abortCalls = 0
   let receivedReason
+  let markAbortStarted
+  const abortStarted = new Promise((resolve) => { markAbortStarted = resolve })
+  let releaseAbort
+  const abortReleased = new Promise((resolve) => { releaseAbort = resolve })
   const engine = {
     abortBranchCheckpoint: async (runId, reason) => {
+      abortCalls += 1
       receivedReason = reason
+      markAbortStarted()
+      await abortReleased
       const run = await runStore.loadRun(runId)
       run.status = "failed"
       run.error = reason
@@ -646,14 +654,21 @@ test("checkpoint abort durably fails the run before rejecting the live gate with
   const rejected = assert.rejects(gate, /Bob workflow run aborted at branch checkpoint\./)
 
   try {
-    const result = await context.service.abortBranchCheckpoint(run.runId)
+    const first = context.service.abortBranchCheckpoint(run.runId)
+    const duplicate = context.service.abortBranchCheckpoint(run.runId)
+    await abortStarted
+    assert.equal(abortCalls, 1)
+    releaseAbort()
+    const [result, duplicateResult] = await Promise.all([first, duplicate])
 
     assert.equal(receivedReason, "Bob workflow run aborted at branch checkpoint.")
     await rejected
     assert.equal(result.status, "failed")
+    assert.equal(duplicateResult.status, "failed")
     assert.equal((await runStore.loadRun(run.runId)).error, receivedReason)
     assert.equal(context.gateRegistry.pendingForRun(root, run.runId), undefined)
   } finally {
+    releaseAbort()
     if (typeof context.gateRegistry.abortPending === "function") {
       context.gateRegistry.abortPending(root, run.runId, "Bob workflow run aborted at branch checkpoint.")
     } else {
@@ -753,6 +768,125 @@ test("sequential checkpoint abort reuses one durable decision and rejects a late
     context.service.approveBranchCheckpoint(run.runId),
     /already aborted|conflicting checkpoint decision/i
   )
+})
+
+test("concurrent checkpoint approval then abort waits for persistence and rejects the abort", async (t) => {
+  const root = tempRoot(t, "workflow-register-gate-checkpoint-race-approve-")
+  const workflow = coreWorkflow(root, "gate-checkpoint-race-approve", [commandStep("source"), commandStep("target")])
+  const runStore = new FileRunStateStore({ workspaceRoot: root, engineVersion: "checkpoint-race-test" })
+  const realEngine = createCheckpointEngine(root, runStore)
+  let approveCalls = 0
+  let abortCalls = 0
+  let markApproveStarted
+  const approveStarted = new Promise((resolve) => { markApproveStarted = resolve })
+  let releaseApprove
+  const approveReleased = new Promise((resolve) => { releaseApprove = resolve })
+  const engine = {
+    approveBranchCheckpoint: async (...args) => {
+      approveCalls += 1
+      markApproveStarted()
+      await approveReleased
+      return realEngine.approveBranchCheckpoint(...args)
+    },
+    abortBranchCheckpoint: async (...args) => {
+      abortCalls += 1
+      return realEngine.abortBranchCheckpoint(...args)
+    }
+  }
+  const context = createCommandService(root, workflow, engine, new BobWorkflowGateRegistry(), runStore)
+  const run = await saveCheckpointedRun(runStore, workflow, "checkpoint-race-approve")
+  const gate = context.gateRegistry.waitForDecision({
+    workspaceRoot: root,
+    runId: run.runId,
+    stepId: "target",
+    ownerStepId: "source",
+    status: "checkpoint"
+  })
+
+  const winner = context.service.approveBranchCheckpoint(run.runId)
+  await approveStarted
+  const loser = context.service.abortBranchCheckpoint(run.runId)
+  const loserConflict = assert.rejects(loser, /already approved|conflicting checkpoint decision/i)
+
+  try {
+    await new Promise((resolve) => setImmediate(resolve))
+    assert.equal(abortCalls, 0)
+    releaseApprove()
+    const approved = await winner
+    await loserConflict
+    assert.equal(approved.status, "running")
+    assert.equal(await gate, true)
+    assert.equal(approveCalls, 1)
+    assert.equal(abortCalls, 1)
+    const persisted = await runStore.loadRun(run.runId)
+    assert.equal(persisted.branching.checkpointDecisions.length, 1)
+    assert.equal(persisted.branching.checkpointDecisions[0].outcome, "approved")
+  } finally {
+    releaseApprove()
+    await Promise.allSettled([winner, loser, loserConflict])
+    context.gateRegistry.abortPending(root, run.runId, "test cleanup")
+    await gate.catch(() => undefined)
+  }
+})
+
+test("concurrent checkpoint abort then approval waits for persistence and rejects the approval", async (t) => {
+  const root = tempRoot(t, "workflow-register-gate-checkpoint-race-abort-")
+  const workflow = coreWorkflow(root, "gate-checkpoint-race-abort", [commandStep("source"), commandStep("target")])
+  const runStore = new FileRunStateStore({ workspaceRoot: root, engineVersion: "checkpoint-race-test" })
+  const realEngine = createCheckpointEngine(root, runStore)
+  let approveCalls = 0
+  let abortCalls = 0
+  let markAbortStarted
+  const abortStarted = new Promise((resolve) => { markAbortStarted = resolve })
+  let releaseAbort
+  const abortReleased = new Promise((resolve) => { releaseAbort = resolve })
+  const engine = {
+    approveBranchCheckpoint: async (...args) => {
+      approveCalls += 1
+      return realEngine.approveBranchCheckpoint(...args)
+    },
+    abortBranchCheckpoint: async (...args) => {
+      abortCalls += 1
+      markAbortStarted()
+      await abortReleased
+      return realEngine.abortBranchCheckpoint(...args)
+    }
+  }
+  const context = createCommandService(root, workflow, engine, new BobWorkflowGateRegistry(), runStore)
+  const run = await saveCheckpointedRun(runStore, workflow, "checkpoint-race-abort")
+  const gate = context.gateRegistry.waitForDecision({
+    workspaceRoot: root,
+    runId: run.runId,
+    stepId: "target",
+    ownerStepId: "source",
+    status: "checkpoint"
+  })
+  const gateRejected = assert.rejects(gate, /Bob workflow run aborted at branch checkpoint\./)
+
+  const winner = context.service.abortBranchCheckpoint(run.runId)
+  await abortStarted
+  const loser = context.service.approveBranchCheckpoint(run.runId)
+  const loserConflict = assert.rejects(loser, /already aborted|conflicting checkpoint decision/i)
+
+  try {
+    await new Promise((resolve) => setImmediate(resolve))
+    assert.equal(approveCalls, 0)
+    releaseAbort()
+    const aborted = await winner
+    await gateRejected
+    await loserConflict
+    assert.equal(aborted.status, "failed")
+    assert.equal(abortCalls, 1)
+    assert.equal(approveCalls, 1)
+    const persisted = await runStore.loadRun(run.runId)
+    assert.equal(persisted.branching.checkpointDecisions.length, 1)
+    assert.equal(persisted.branching.checkpointDecisions[0].outcome, "aborted")
+  } finally {
+    releaseAbort()
+    await Promise.allSettled([winner, loser, loserConflict, gateRejected])
+    context.gateRegistry.abortPending(root, run.runId, "Bob workflow run aborted at branch checkpoint.")
+    await gate.catch(() => undefined)
+  }
 })
 
 test("live pause resume releases a completed owner without running the next step", async (t) => {
