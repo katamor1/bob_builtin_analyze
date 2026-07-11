@@ -8,6 +8,7 @@ const { validateWorkflowText } = require("../out/core/workflowValidator")
 const repoRoot = path.resolve(__dirname, "..", "..", "..")
 const workflowSearchRoots = [
   ".bob/workflows",
+  ".bob/template-library",
   "extensions/workflow-register/samples",
   "extensions/bob-bazaar-review/templates",
   "extensions/bob-code-consistency-review/templates",
@@ -47,10 +48,11 @@ test("all repository workflow contracts are discovered and strict-clean", () => 
   const providerIds = discoverActionProviderIds()
   const commandIds = discoverContributedCommandIds()
 
-  assert.ok(workflowPaths.length >= 20, `Expected at least 20 workflow contracts, found ${workflowPaths.length}`)
+  assert.ok(workflowPaths.length >= 21, `Expected at least 21 workflow contracts, found ${workflowPaths.length}`)
   assert.ok(workflowPaths.includes(".bob/workflows/process-coding-plan/WORKFLOW.md"))
   assert.ok(workflowPaths.includes(".bob/workflows/bazaar-project-rule-review/WORKFLOW.md"))
   assert.ok(workflowPaths.includes(".bob/workflows/code-consistency-review/WORKFLOW.md"))
+  assert.ok(workflowPaths.includes(".bob/template-library/standard/process-code-precheck/WORKFLOW.md"))
 
   for (const relativePath of workflowPaths) {
     const text = readRepoFile(relativePath)
