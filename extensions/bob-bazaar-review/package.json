@@ -68,12 +68,12 @@
       "properties": {
         "bobBazaar.bzrPath": { "type": "string", "default": "bzr", "description": "Bazaar 実行ファイルのパス。PATH に bzr がない場合は絶対パスを指定します。" },
         "bobBazaar.textEncoding": { "type": "string", "default": "auto", "enum": ["auto", "utf8", "shift_jis", "cp932", "windows-31j"], "description": "Bazaar の log / diff / cat 出力を読み取る文字コード。auto は UTF-8 を優先し、文字化けが疑われる場合に Shift-JIS 系として読み直します。" },
-        "bobBazaar.commandTimeoutMs": { "type": "number", "default": 120000, "minimum": 1000, "maximum": 600000, "description": "Bazaar CLI 1回あたりのハードタイムアウト（ミリ秒）。" },
         "bobBazaar.mcpServerName": { "type": "string", "default": "bazaar", "description": ".bob/mcp.json に書き込む MCP サーバー名。" },
         "bobBazaar.maxDiffBytes": { "type": "number", "default": 1048576, "minimum": 32768, "maximum": 5242880, "description": "生成するレビュー packet に含める Bazaar diff の最大サイズ。" },
         "bobBazaar.maxAddedFileContentBytes": { "type": "number", "default": 262144, "minimum": 0, "maximum": 2097152, "description": "新規追加ファイル本文をレビュー packet に含める最大合計サイズ。0 の場合、追加ファイル本文セクションを省略します。" },
         "bobBazaar.projectRules.checklistPath": { "type": "string", "default": ".bob/review/checklist.json", "description": "プロジェクト固有レビュー checklist JSON のワークスペース相対パスまたは絶対パス。" },
-        "bobBazaar.projectRules.schemaPath": { "type": "string", "default": ".bob/review/review-result.schema.json", "description": "レビュー結果 JSON schema のワークスペース相対パスまたは絶対パス。" }
+        "bobBazaar.projectRules.schemaPath": { "type": "string", "default": ".bob/review/review-result.schema.json", "description": "レビュー結果 JSON schema のワークスペース相対パスまたは絶対パス。" },
+        "bobBazaar.commandTimeoutMs": { "type": "number", "default": 120000, "minimum": 1000, "maximum": 600000, "description": "Bazaar CLI と関連する外部コマンドのタイムアウト（ミリ秒）。GUI からキャンセルした場合も同じ実行境界を中止します。" }
       }
     },
     "menus": {
@@ -132,5 +132,14 @@
   },
   "dependencies": {
     "js-yaml": "^4.1.0"
+  },
+  "knip": {
+    "entry": [
+      "src/extension.ts",
+      "src/mcp/server.ts"
+    ],
+    "project": [
+      "src/**/*.ts"
+    ]
   }
 }
