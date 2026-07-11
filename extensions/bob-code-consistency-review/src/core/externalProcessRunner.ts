@@ -124,9 +124,13 @@ export function runExternalProcess(options: ExternalProcessOptions): Promise<Ext
     const collect = (target: Buffer[], chunk: Buffer | string): void => {
       if (settled) return
       const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
-      target.push(buffer)
-      bufferedBytes += buffer.length
-      if (bufferedBytes > maxBufferBytes) {
+      const remainingBytes = maxBufferBytes - bufferedBytes
+      const retainedBytes = Math.min(buffer.length, Math.max(0, remainingBytes))
+      if (retainedBytes > 0) {
+        target.push(buffer.subarray(0, retainedBytes))
+        bufferedBytes += retainedBytes
+      }
+      if (retainedBytes < buffer.length) {
         fail(
           "bufferExceeded",
           `Command output exceeded ${maxBufferBytes} bytes: ${options.command}`
