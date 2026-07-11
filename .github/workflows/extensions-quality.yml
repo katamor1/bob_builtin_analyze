@@ -19,6 +19,10 @@ on:
       - ".github/workflows/extensions-quality.yml"
   workflow_dispatch:
 
+concurrency:
+  group: extensions-quality-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   workflow-register:
     name: workflow-register
