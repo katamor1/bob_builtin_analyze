@@ -7,6 +7,7 @@ on:
     paths:
       - "scripts/agent-remediation-patch.mjs"
       - "scripts/agent-limit-remediation-patch.mjs"
+      - "scripts/agent-doc-sync.mjs"
       - ".github/workflows/agent-remediation-patch.yml"
 
 permissions:
@@ -32,6 +33,7 @@ jobs:
         run: |
           node scripts/agent-remediation-patch.mjs
           node scripts/agent-limit-remediation-patch.mjs
+          node scripts/agent-doc-sync.mjs
       - name: Install workflow-register dependencies
         working-directory: extensions/workflow-register
         run: npm ci
@@ -46,23 +48,11 @@ jobs:
         run: npm run compile && node --test test/actionRegistry.test.js
       - name: Verify Bazaar provider lifecycle
         working-directory: extensions/bob-bazaar-review
-        run: npm run compile && node --test test/workflowProviderRegistration.test.js
+        run: npm run compile && node --test test/workflowProviderRegistration.test.js test/bazaarClient.test.js test/externalProcessRunner.test.js test/externalProcessWiring.test.js
       - name: Verify code consistency remediation
         working-directory: extensions/bob-code-consistency-review
-        run: npm run compile && node --test test/traceabilityPrepWebviewAssets.test.js test/workflowProviderRegistration.test.js test/sizeLimits.test.js test/traceabilityCommandWiring.test.js
-      - name: Capture remaining policy failures
-        shell: bash
-        run: |
-          mkdir -p docs/tmp
-          (
-            cd extensions/workflow-register
-            npm run architecture:policy
-          ) > docs/tmp/workflow-register-architecture-policy.log 2>&1 || true
-          (
-            cd extensions/bob-bazaar-review
-            npm run unused:policy
-          ) > docs/tmp/bob-bazaar-review-unused-policy.log 2>&1 || true
-      - name: Commit patched sources and diagnostics
+        run: npm run compile && node --test test/traceabilityPrepWebviewAssets.test.js test/workflowProviderRegistration.test.js test/sizeLimits.test.js test/limitsPolicy.test.js test/externalProcessRunner.test.js test/externalProcessWiring.test.js test/traceabilityCommandWiring.test.js
+      - name: Commit patched sources and documents
         shell: bash
         run: |
           if git diff --quiet; then
@@ -72,5 +62,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          git commit -m "chore: capture quality policy diagnostics"
+          git commit -m "docs: synchronize three-extension remediation contracts"
           git push origin HEAD:agent/three-extension-remediation-20260711
