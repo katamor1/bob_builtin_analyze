@@ -18,10 +18,11 @@ test("waitForDecision keeps one pending Promise until the gate is accepted", asy
   assert.equal(settled, false)
   assert.strictEqual(duplicate, first)
   assert.equal(registry.isPending("run-1", "review"), true)
-  assert.equal(registry.accept("run-1", "review"), true)
+  assert.equal(registry.accept("run-1", "review"), "accepted")
   assert.equal(await first, true)
   assert.equal(registry.isPending("run-1", "review"), false)
-  assert.equal(registry.accept("run-1", "review"), false)
+  assert.equal(registry.accept("run-1", "review"), "alreadySettled")
+  assert.equal(registry.accept("missing", "review"), "missing")
 })
 
 test("abort rejects a pending gate and ignores stale decisions", async () => {
@@ -33,7 +34,7 @@ test("abort rejects a pending gate and ignores stale decisions", async () => {
   await rejected
   assert.equal(registry.isPending("run-2", "review"), false)
   assert.equal(registry.abort("run-2", "review", "stale"), false)
-  assert.equal(registry.accept("run-2", "review"), false)
+  assert.equal(registry.accept("run-2", "review"), "alreadySettled")
 })
 
 test("dispose rejects every pending gate and is idempotent", async () => {
@@ -49,5 +50,20 @@ test("dispose rejects every pending gate and is idempotent", async () => {
   await Promise.all([firstRejected, secondRejected])
   assert.equal(registry.isPending("run-3", "first"), false)
   assert.equal(registry.isPending("run-3", "second"), false)
-  assert.equal(registry.accept("run-3", "first"), false)
+  assert.equal(registry.accept("run-3", "first"), "alreadySettled")
+})
+
+test("a later wait starts a fresh lifecycle for the same run and step", async () => {
+  const registry = new BobWorkflowGateRegistry()
+  const first = registry.waitForDecision({ runId: "run-4", stepId: "review", status: "reviewing" })
+  assert.equal(registry.accept("run-4", "review"), "accepted")
+  assert.equal(await first, true)
+
+  const retried = registry.waitForDecision({ runId: "run-4", stepId: "review", status: "reviewing" })
+
+  assert.notStrictEqual(retried, first)
+  assert.equal(registry.isPending("run-4", "review"), true)
+  const rejected = assert.rejects(retried, /retry terminated/)
+  assert.equal(registry.abort("run-4", "review", "retry terminated"), true)
+  await rejected
 })

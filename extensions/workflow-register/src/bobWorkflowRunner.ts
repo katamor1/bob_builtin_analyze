@@ -65,6 +65,8 @@ interface BobWorkflowEngineRunnerOptions {
 
 interface ReviewGateWait {
   promise?: Promise<boolean>
+  runId?: string
+  stepId?: string
 }
 
 export class BobWorkflowEngineRunner {
@@ -178,8 +180,12 @@ export class BobWorkflowEngineRunner {
       }
       return run.status === "completed" || run.status === "running" || run.status === "paused" || run.status === "held" || run.status === "checkpoint"
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      if (reviewGate.runId && reviewGate.stepId) {
+        this.options.gateRegistry.abort(reviewGate.runId, reviewGate.stepId, message)
+      }
       await vscode.window.showErrorMessage(
-        `Bob workflow execution failed: ${error instanceof Error ? error.message : String(error)}`
+        `Bob workflow execution failed: ${message}`
       )
       return false
     }
@@ -344,6 +350,8 @@ export class BobWorkflowEngineRunner {
       },
       onStepReviewRequired: async ({ workflow, run, step }) => {
         if (step) {
+          reviewGate.runId = run.runId
+          reviewGate.stepId = step.id
           reviewGate.promise = this.options.gateRegistry.waitForDecision({
             runId: run.runId,
             stepId: step.id,

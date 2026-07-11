@@ -1,5 +1,5 @@
 import * as vscode from "vscode"
-import { BobWorkflowGateRegistry } from "./bobWorkflowGateRegistry"
+import { BobWorkflowGateRegistry, type BobWorkflowGateAcceptResult } from "./bobWorkflowGateRegistry"
 import { StepRuntime, type StepCompletionExpectation } from "./bobStepRuntime"
 import type { BobSourceLike } from "./bobApi"
 import { createDefaultActionRegistry } from "./core/actionRegistry"
@@ -139,7 +139,7 @@ export class WorkflowRegisterService implements vscode.Disposable {
     return this.runCommands.openManualStepPanel(runArg)
   }
 
-  acceptBobWorkflowGate(runId: string, stepId: string): boolean {
+  acceptBobWorkflowGate(runId: string, stepId: string): BobWorkflowGateAcceptResult {
     return this.bobWorkflowGates.accept(runId, stepId)
   }
 

@@ -5,6 +5,7 @@ import type { ResultSinkRegistry } from "./core/resultSinkRegistry"
 import { OperationHubProvider } from "./gui/operationHubProvider"
 import { WorkflowRegisterService } from "./workflowRegisterService"
 import type { StepCompletionOptions } from "./workflowRegisterService"
+import type { BobWorkflowGateAcceptResult } from "./bobWorkflowGateRegistry"
 
 /**
  * 他の Bob companion extension へ公開する workflow-register API。
@@ -17,9 +18,9 @@ export interface WorkflowRegisterApi {
    *
    * @param runId 承認済み run identifier。
    * @param stepId 承認済み step identifier。
-   * @returns 対応する live gate を解放した場合は true。
+   * @returns gate を今回解放した、既に解放済み、または live gate が存在しないことを表す atomic decision。
    */
-  acceptBobWorkflowGate: (runId: string, stepId: string) => boolean
+  acceptBobWorkflowGate: (runId: string, stepId: string) => BobWorkflowGateAcceptResult
   /**
    * custom action step を実行する workflow action provider を登録する。
    *

@@ -7,10 +7,11 @@ import { RunStepState, WorkflowRunState } from "../core/model"
 import { pendingReviewTransitionStepId } from "../core/engine/runState"
 import { fallbackWorkspaceRootCandidates, findWorkflowRootCandidates, MarkerRootCandidate } from "../core/workspaceRoots"
 import { reviewTaskRegistry } from "../reviewTaskRegistry"
+import type { BobWorkflowGateAcceptResult } from "../bobWorkflowGateRegistry"
 
 interface StepReviewCommandOptions {
   showMarkdownReport: (title: string, summary: string, lines: string[]) => Promise<void>
-  acceptBobWorkflowGate: (runId: string, stepId: string) => boolean
+  acceptBobWorkflowGate: (runId: string, stepId: string) => BobWorkflowGateAcceptResult
 }
 
 export interface StepReviewBuilderCommandOptions extends StepReviewCommandOptions {
@@ -67,11 +68,12 @@ async function acceptReviewedStep(options: StepReviewCommandOptions, runId?: str
   const acceptedStepId = run.currentStep
   const accepted = acceptReviewingStep(run)
   await runStore.saveRun(accepted)
-  const acceptedViaLiveGate = Boolean(
-    acceptedStepId && options.acceptBobWorkflowGate(accepted.runId, acceptedStepId)
-  )
+  const gateDecision = acceptedStepId
+    ? options.acceptBobWorkflowGate(accepted.runId, acceptedStepId)
+    : "missing"
+  const acceptedViaLiveGate = gateDecision !== "missing"
   let completedViaBobTask = acceptedViaLiveGate
-  if (!acceptedViaLiveGate) {
+  if (gateDecision === "missing") {
     const sync = await bobTaskSyncRegistry.reconcileRun(accepted, undefined, {
       reason: "review-accepted",
       task: reviewTaskRegistry.taskForStep(accepted.runId, acceptedStepId) ?? reviewTaskRegistry.taskForRun(accepted.runId)

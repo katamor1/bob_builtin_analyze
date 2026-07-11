@@ -61,6 +61,103 @@ async function waitForReviewingRun(runStore) {
   throw new Error("Bob workflow did not reach reviewing state.")
 }
 
+function createBobReviewRunner(t) {
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "workflow-register-bob-gate-"))
+  t.after(() => fs.rmSync(workspaceRoot, { recursive: true, force: true }))
+  const { ActionRegistry } = require("../out/core/actionRegistry")
+  const { BobWorkflowGateRegistry } = require("../out/bobWorkflowGateRegistry")
+  const { FileRunStateStore } = require("../out/core/runStateStore")
+  const { createDefaultResultSinkRegistry } = require("../out/core/resultSinkRegistry")
+  const { BobWorkflowEngineRunner, StepRuntime } = loadBobWorkflowRunner()
+  const actionRegistry = new ActionRegistry()
+  actionRegistry.register({ id: "sample.collect", execute: async () => "context" })
+  const runStore = new FileRunStateStore({ workspaceRoot })
+  const gateRegistry = new BobWorkflowGateRegistry()
+  const coreWorkflow = {
+    id: "workflow-register.bob-review-gate",
+    name: "bob-review-gate",
+    label: "Bob Review Gate",
+    description: "Bob review gate behavior test.",
+    schemaVersion: "workflow-register/v1",
+    inputs: {},
+    stepReview: {
+      enabled: true,
+      pauseAfter: "everyStep",
+      requireAcceptBeforeNext: true,
+      allowRetry: true,
+      allowEditBeforeRetry: true,
+      preserveAttempts: true
+    },
+    engineSteps: [{
+      id: "review",
+      title: "Review",
+      type: "command",
+      action: { provider: "sample.collect" },
+      resultKey: "context"
+    }]
+  }
+  const definition = {
+    id: coreWorkflow.id,
+    name: coreWorkflow.name,
+    label: coreWorkflow.label,
+    menuLabel: coreWorkflow.label,
+    description: coreWorkflow.description,
+    prompt: "",
+    promptWithoutTodo: "",
+    commandArgs: [],
+    mode: "agent",
+    permissions: [],
+    autoApprovalEnabled: true,
+    workspaceRequired: false,
+    hidden: false,
+    todoEnabled: true,
+    todoRequired: false,
+    todoSource: "",
+    todoAsSteps: true,
+    stepCompletion: "auto",
+    stepMessage: "none",
+    stepExecution: { mode: "engineSteps", allowOutOfOrder: false, showInBob: true },
+    stepsById: {
+      review: {
+        id: "review",
+        prompt: "",
+        commandArgs: [],
+        sendResult: false,
+        required: true,
+        completeOnSuccess: true,
+        runAgent: false,
+        includeState: [],
+        maxResultBytes: 1024,
+        stateRequired: false,
+        captureResult: false,
+        resultCommandArgs: []
+      }
+    },
+    todos: [{ id: "review", text: "Review", raw: "review: Review" }],
+    inputs: {},
+    guardrails: {},
+    workflowRoot: workspaceRoot,
+    file: { fsPath: path.join(workspaceRoot, "WORKFLOW.md") },
+    core: coreWorkflow
+  }
+  const runner = new BobWorkflowEngineRunner({
+    definition,
+    coreWorkflow,
+    actionRegistry,
+    resultSinks: () => createDefaultResultSinkRegistry({
+      workspaceRoot,
+      executeCommand: async () => undefined
+    }),
+    runStore: () => runStore,
+    taskSnapshotStore: () => undefined,
+    preflightChecks: () => ({ bazaarRepository: async () => true }),
+    stepRuntime: new StepRuntime(),
+    inputsProvider: async () => ({}),
+    gateRegistry
+  })
+  return { gateRegistry, runStore, runner }
+}
+
 function orderedPattern(...parts) {
   return new RegExp(parts.map(escapeRegex).join("[\\s\\S]*"))
 }
@@ -177,99 +274,7 @@ test("Bob workflow runner surfaces step review gates without failing the run", (
 })
 
 test("Bob workflow runner remains pending at review until its registry accepts the gate", async (t) => {
-  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "workflow-register-bob-gate-"))
-  t.after(() => fs.rmSync(workspaceRoot, { recursive: true, force: true }))
-  const { ActionRegistry } = require("../out/core/actionRegistry")
-  const { BobWorkflowGateRegistry } = require("../out/bobWorkflowGateRegistry")
-  const { FileRunStateStore } = require("../out/core/runStateStore")
-  const { createDefaultResultSinkRegistry } = require("../out/core/resultSinkRegistry")
-  const { BobWorkflowEngineRunner, StepRuntime } = loadBobWorkflowRunner()
-  const actionRegistry = new ActionRegistry()
-  actionRegistry.register({ id: "sample.collect", execute: async () => "context" })
-  const runStore = new FileRunStateStore({ workspaceRoot })
-  const gateRegistry = new BobWorkflowGateRegistry()
-  const coreWorkflow = {
-    id: "workflow-register.bob-review-gate",
-    name: "bob-review-gate",
-    label: "Bob Review Gate",
-    description: "Bob review gate behavior test.",
-    schemaVersion: "workflow-register/v1",
-    inputs: {},
-    stepReview: {
-      enabled: true,
-      pauseAfter: "everyStep",
-      requireAcceptBeforeNext: true,
-      allowRetry: true,
-      allowEditBeforeRetry: true,
-      preserveAttempts: true
-    },
-    engineSteps: [{
-      id: "review",
-      title: "Review",
-      type: "command",
-      action: { provider: "sample.collect" },
-      resultKey: "context"
-    }]
-  }
-  const definition = {
-    id: coreWorkflow.id,
-    name: coreWorkflow.name,
-    label: coreWorkflow.label,
-    menuLabel: coreWorkflow.label,
-    description: coreWorkflow.description,
-    prompt: "",
-    promptWithoutTodo: "",
-    commandArgs: [],
-    mode: "agent",
-    permissions: [],
-    autoApprovalEnabled: true,
-    workspaceRequired: false,
-    hidden: false,
-    todoEnabled: true,
-    todoRequired: false,
-    todoSource: "",
-    todoAsSteps: true,
-    stepCompletion: "auto",
-    stepMessage: "none",
-    stepExecution: { mode: "engineSteps", allowOutOfOrder: false, showInBob: true },
-    stepsById: {
-      review: {
-        id: "review",
-        prompt: "",
-        commandArgs: [],
-        sendResult: false,
-        required: true,
-        completeOnSuccess: true,
-        runAgent: false,
-        includeState: [],
-        maxResultBytes: 1024,
-        stateRequired: false,
-        captureResult: false,
-        resultCommandArgs: []
-      }
-    },
-    todos: [{ id: "review", text: "Review", raw: "review: Review" }],
-    inputs: {},
-    guardrails: {},
-    workflowRoot: workspaceRoot,
-    file: { fsPath: path.join(workspaceRoot, "WORKFLOW.md") },
-    core: coreWorkflow
-  }
-  const runner = new BobWorkflowEngineRunner({
-    definition,
-    coreWorkflow,
-    actionRegistry,
-    resultSinks: () => createDefaultResultSinkRegistry({
-      workspaceRoot,
-      executeCommand: async () => undefined
-    }),
-    runStore: () => runStore,
-    taskSnapshotStore: () => undefined,
-    preflightChecks: () => ({ bazaarRepository: async () => true }),
-    stepRuntime: new StepRuntime(),
-    inputsProvider: async () => ({}),
-    gateRegistry
-  })
+  const { gateRegistry, runStore, runner } = createBobReviewRunner(t)
   let settled = false
   const execution = runner.runEngineStep("review", 0, {
     sendMessage: async () => undefined,
@@ -285,8 +290,33 @@ test("Bob workflow runner remains pending at review until its registry accepts t
 
   assert.equal(settled, false)
   assert.equal(gateRegistry.isPending(reviewing.runId, "review"), true)
-  assert.equal(gateRegistry.accept(reviewing.runId, "review"), true)
+  assert.equal(gateRegistry.accept(reviewing.runId, "review"), "accepted")
   assert.equal(await execution, true)
+})
+
+test("Bob workflow runner aborts a registered review gate when a terminal review hook fails", async (t) => {
+  const { gateRegistry, runStore, runner } = createBobReviewRunner(t)
+  const unhandledRejections = []
+  const recordUnhandled = (reason) => { unhandledRejections.push(reason) }
+  process.on("unhandledRejection", recordUnhandled)
+  t.after(() => process.off("unhandledRejection", recordUnhandled))
+
+  const execution = runner.runEngineStep("review", 0, {
+    sendMessage: async (message) => {
+      if (String(message).includes('status="reviewing"')) {
+        throw new Error("review control delivery failed")
+      }
+    },
+    setStepComplete: () => undefined
+  })
+
+  assert.equal(await execution, false)
+  const reviewing = await waitForReviewingRun(runStore)
+  await new Promise((resolve) => setImmediate(resolve))
+  await new Promise((resolve) => setImmediate(resolve))
+
+  assert.equal(gateRegistry.isPending(reviewing.runId, "review"), false)
+  assert.deepEqual(unhandledRejections, [])
 })
 
 test("Bob workflow runner opens Operation Hub when user action is required", () => {
@@ -309,7 +339,7 @@ test("review-gated Bob tasks use live gate acceptance before Todo-sync fallback"
   assert.match(stepReview, orderedPattern(
     "await runStore.saveRun(accepted)",
     "options.acceptBobWorkflowGate(accepted.runId, acceptedStepId)",
-    "if (!acceptedViaLiveGate)",
+    'if (gateDecision === "missing")',
     "await bobTaskSyncRegistry.reconcileRun(accepted, undefined"
   ))
 })
@@ -319,7 +349,7 @@ test("Operation Hub live gate owns Bob advancement while stale gates keep Todo-s
 
   assert.match(stepReview, /interface AcceptedStepResult \{[\s\S]*completedViaBobTask: boolean[\s\S]*\}/)
   assert.match(stepReview, /let completedViaBobTask = acceptedViaLiveGate/)
-  assert.match(stepReview, /if \(!acceptedViaLiveGate\) \{[\s\S]*await bobTaskSyncRegistry\.reconcileRun\(accepted, undefined/)
+  assert.match(stepReview, /if \(gateDecision === "missing"\) \{[\s\S]*await bobTaskSyncRegistry\.reconcileRun\(accepted, undefined/)
   assert.match(stepReview, /completedViaBobTask = sync\.status === "synced" && sync\.appliedStepCount > 0/)
   assert.match(stepReview, /return \{ run: accepted, message, completedViaBobTask \}/)
   assert.match(stepReview, /if \(completedViaBobTask\) \{/)
@@ -392,10 +422,10 @@ test("WorkflowRegisterService owns and exposes the Bob review gate registry", ()
 
   assert.match(service, /private readonly bobWorkflowGates = new BobWorkflowGateRegistry\(\)/)
   assert.match(service, /gateRegistry: this\.bobWorkflowGates/)
-  assert.match(service, /acceptBobWorkflowGate\(runId: string, stepId: string\): boolean \{[\s\S]*this\.bobWorkflowGates\.accept\(runId, stepId\)/)
+  assert.match(service, /acceptBobWorkflowGate\(runId: string, stepId: string\): BobWorkflowGateAcceptResult \{[\s\S]*this\.bobWorkflowGates\.accept\(runId, stepId\)/)
   assert.match(factory, /gateRegistry: BobWorkflowGateRegistry/)
   assert.match(factory, /gateRegistry: this\.options\.gateRegistry/)
-  assert.match(extension, /acceptBobWorkflowGate: \(runId: string, stepId: string\) => boolean/)
+  assert.match(extension, /acceptBobWorkflowGate: \(runId: string, stepId: string\) => BobWorkflowGateAcceptResult/)
   assert.match(extension, /acceptBobWorkflowGate: \(runId, stepId\) => service\.acceptBobWorkflowGate\(runId, stepId\)/)
   assert.match(authoring, /acceptBobWorkflowGate: api\.acceptBobWorkflowGate/)
 })

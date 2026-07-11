@@ -6,6 +6,8 @@ export interface BobWorkflowGateDecision {
   status: RunStatus
 }
 
+export type BobWorkflowGateAcceptResult = "accepted" | "alreadySettled" | "missing"
+
 interface PendingGate {
   promise: Promise<boolean>
   reject: (reason: Error) => void
@@ -14,6 +16,7 @@ interface PendingGate {
 
 export class BobWorkflowGateRegistry {
   private readonly pending = new Map<string, PendingGate>()
+  private readonly settled = new Set<string>()
   private disposed = false
 
   waitForDecision(input: BobWorkflowGateDecision): Promise<boolean> {
@@ -21,6 +24,7 @@ export class BobWorkflowGateRegistry {
     const existing = this.pending.get(key)
     if (existing) return existing.promise
     if (this.disposed) return Promise.reject(new Error("Bob workflow gate registry is disposed."))
+    this.settled.delete(key)
 
     let resolve!: PendingGate["resolve"]
     let reject!: PendingGate["reject"]
@@ -32,13 +36,14 @@ export class BobWorkflowGateRegistry {
     return promise
   }
 
-  accept(runId: string, stepId: string): boolean {
+  accept(runId: string, stepId: string): BobWorkflowGateAcceptResult {
     const key = gateKey(runId, stepId)
     const gate = this.pending.get(key)
-    if (!gate) return false
+    if (!gate) return this.settled.has(key) ? "alreadySettled" : "missing"
     this.pending.delete(key)
+    this.settled.add(key)
     gate.resolve(true)
-    return true
+    return "accepted"
   }
 
   abort(runId: string, stepId: string, reason: string): boolean {
@@ -46,6 +51,7 @@ export class BobWorkflowGateRegistry {
     const gate = this.pending.get(key)
     if (!gate) return false
     this.pending.delete(key)
+    this.settled.add(key)
     gate.reject(new Error(reason))
     return true
   }
@@ -57,9 +63,12 @@ export class BobWorkflowGateRegistry {
   dispose(): void {
     if (this.disposed) return
     this.disposed = true
-    const gates = [...this.pending.values()]
+    const gates = [...this.pending.entries()]
     this.pending.clear()
-    for (const gate of gates) gate.reject(new Error("Bob workflow gate registry is disposed."))
+    for (const [key, gate] of gates) {
+      this.settled.add(key)
+      gate.reject(new Error("Bob workflow gate registry is disposed."))
+    }
   }
 }
 
