@@ -114,7 +114,7 @@ test("concurrent review acceptance never falls back after the live gate was alre
     setStepComplete: () => { setStepCompleteCalls += 1 }
   })
   const gateRegistry = new BobWorkflowGateRegistry()
-  const gate = gateRegistry.waitForDecision({ runId: run.runId, stepId: "review", status: "reviewing" })
+  const gate = gateRegistry.waitForDecision({ workspaceRoot, runId: run.runId, stepId: "review", status: "reviewing" })
 
   synchronizeConcurrentReviewSelections(t, FileRunStateStore)
 
@@ -122,8 +122,8 @@ test("concurrent review acceptance never falls back after the live gate was alre
   const options = {
     showMarkdownReport: async () => undefined,
     coordinateReviewAcceptance: createTestReviewAcceptanceCoordinator(),
-    acceptBobWorkflowGate: (runId, stepId) => {
-      const decision = gateRegistry.accept(runId, stepId)
+    acceptBobWorkflowGate: (root, runId, stepId) => {
+      const decision = gateRegistry.accept(root, runId, stepId)
       decisions.push(decision)
       return decision
     }
@@ -145,7 +145,7 @@ test("concurrent review acceptance never falls back after the live gate was alre
   reopened.currentStep = "review"
   reopened.steps[0].status = "reviewing"
   await runStore.saveRun(reopened)
-  const freshGate = gateRegistry.waitForDecision({ runId: run.runId, stepId: "review", status: "reviewing" })
+  const freshGate = gateRegistry.waitForDecision({ workspaceRoot, runId: run.runId, stepId: "review", status: "reviewing" })
 
   await acceptCurrentStep(options, run.runId, { silent: true })
 
@@ -181,9 +181,9 @@ test("concurrent review acceptance after an aborted live gate shares exactly one
     }
   })
   const gateRegistry = new BobWorkflowGateRegistry()
-  const gate = gateRegistry.waitForDecision({ runId: run.runId, stepId: "review", status: "reviewing" })
+  const gate = gateRegistry.waitForDecision({ workspaceRoot, runId: run.runId, stepId: "review", status: "reviewing" })
   const rejected = assert.rejects(gate, /terminal review failure/)
-  assert.equal(gateRegistry.abort(run.runId, "review", "terminal review failure"), true)
+  assert.equal(gateRegistry.abort(workspaceRoot, run.runId, "review", "terminal review failure"), true)
   await rejected
 
   synchronizeConcurrentReviewSelections(t, FileRunStateStore)
@@ -193,8 +193,8 @@ test("concurrent review acceptance after an aborted live gate shares exactly one
   const options = {
     showMarkdownReport: async () => undefined,
     coordinateReviewAcceptance: createTestReviewAcceptanceCoordinator(),
-    acceptBobWorkflowGate: (runId, stepId) => {
-      const decision = gateRegistry.accept(runId, stepId)
+    acceptBobWorkflowGate: (root, runId, stepId) => {
+      const decision = gateRegistry.accept(root, runId, stepId)
       decisions.push(decision)
       return decision
     }
@@ -208,7 +208,7 @@ test("concurrent review acceptance after an aborted live gate shares exactly one
   assert.equal(setStepCompleteFinished, true)
   assert.deepEqual(decisions, ["aborted"])
   assert.equal(results[0], results[1])
-  assert.equal(gateRegistry.isPending(run.runId, "review"), false)
+  assert.equal(gateRegistry.isPending(workspaceRoot, run.runId, "review"), false)
 })
 
 test("concurrent review acceptance without a live gate shares exactly one legacy reconciliation", async (t) => {

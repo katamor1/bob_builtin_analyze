@@ -145,8 +145,8 @@ export class WorkflowRegisterService implements vscode.Disposable {
     return this.runCommands.openManualStepPanel(runArg)
   }
 
-  acceptBobWorkflowGate(runId: string, stepId: string): BobWorkflowGateAcceptResult {
-    return this.bobWorkflowGates.accept(runId, stepId)
+  acceptBobWorkflowGate(workspaceRoot: string, runId: string, stepId: string): BobWorkflowGateAcceptResult {
+    return this.bobWorkflowGates.accept(workspaceRoot, runId, stepId)
   }
 
   coordinateReviewAcceptance<T>(workspaceRoot: string, runId: string, operation: () => Promise<T>): Promise<T> {

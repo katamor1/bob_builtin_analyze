@@ -171,8 +171,8 @@ export class BobWorkflowEngineRunner {
       })
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
-      if (gateWait.runId && gateWait.stepId) {
-        this.options.gateRegistry.abort(gateWait.runId, gateWait.stepId, message)
+      if (gateWait.runId && (gateWait.ownerStepId || gateWait.stepId)) {
+        this.options.gateRegistry.abort(workspaceRoot, gateWait.runId, gateWait.ownerStepId ?? gateWait.stepId!, message)
       }
       await vscode.window.showErrorMessage(
         `Bob workflow execution failed: ${message}`

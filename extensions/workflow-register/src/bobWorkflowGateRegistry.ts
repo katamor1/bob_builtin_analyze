@@ -1,7 +1,8 @@
+import * as path from "path"
 import type { RunStatus } from "./core/model"
 
 export interface BobWorkflowGateDecision {
-  workspaceRoot?: string
+  workspaceRoot: string
   runId: string
   stepId: string
   ownerStepId?: string
@@ -26,11 +27,13 @@ export class BobWorkflowGateRegistry {
   private disposed = false
 
   waitForDecision(input: BobWorkflowGateDecision): Promise<boolean> {
-    const key = gateKey(input.runId, input.stepId)
+    const ownerStepId = input.ownerStepId ?? input.stepId
+    const key = gateKey(input.workspaceRoot, input.runId, ownerStepId)
     const existing = this.pending.get(key)
     if (existing) return existing.promise
     if (this.disposed) return Promise.reject(new Error("Bob workflow gate registry is disposed."))
     this.settled.delete(key)
+    this.settled.delete(gateKey(input.workspaceRoot, input.runId, input.stepId))
     this.settledRuns.delete(runKey(input.workspaceRoot, input.runId))
 
     let resolve!: PendingGate["resolve"]
@@ -42,7 +45,7 @@ export class BobWorkflowGateRegistry {
     this.pending.set(key, {
       decision: {
         ...input,
-        ownerStepId: input.ownerStepId ?? input.stepId
+        ownerStepId
       },
       promise,
       reject,
@@ -51,43 +54,47 @@ export class BobWorkflowGateRegistry {
     return promise
   }
 
-  accept(runId: string, stepId: string): BobWorkflowGateAcceptResult {
-    const key = gateKey(runId, stepId)
-    const gate = this.pending.get(key)
-    if (!gate) {
+  accept(workspaceRoot: string, runId: string, stepId: string): BobWorkflowGateAcceptResult {
+    const entry = this.pendingEntryForGate(workspaceRoot, runId, stepId)
+    if (!entry) {
+      const key = gateKey(workspaceRoot, runId, stepId)
       const settled = this.settled.get(key)
       if (settled === "accepted") return "alreadyAccepted"
       return settled ?? "missing"
     }
+    return this.acceptEntry(entry)
+  }
+
+  private acceptEntry([key, gate]: [string, PendingGate]): BobWorkflowGateAcceptResult {
     this.pending.delete(key)
-    this.settled.set(key, "accepted")
-    this.settledRuns.set(runKey(gate.decision.workspaceRoot, runId), "accepted")
+    this.rememberOutcome(key, gate, "accepted")
     gate.resolve(true)
     return "accepted"
   }
 
   acceptPending(workspaceRoot: string, runId: string): BobWorkflowGateAcceptResult {
-    const gate = this.pendingEntryForRun(workspaceRoot, runId)
-    if (gate) return this.accept(runId, gate[1].decision.stepId)
+    const entry = this.pendingEntryForRun(workspaceRoot, runId)
+    if (entry) return this.acceptEntry(entry)
     const settled = this.settledRuns.get(runKey(workspaceRoot, runId))
     if (settled === "accepted") return "alreadyAccepted"
     return settled ?? "missing"
   }
 
-  abort(runId: string, stepId: string, reason: string): boolean {
-    const key = gateKey(runId, stepId)
-    const gate = this.pending.get(key)
-    if (!gate) return false
+  abort(workspaceRoot: string, runId: string, stepId: string, reason: string): boolean {
+    const entry = this.pendingEntryForGate(workspaceRoot, runId, stepId)
+    return entry ? this.abortEntry(entry, reason) : false
+  }
+
+  private abortEntry([key, gate]: [string, PendingGate], reason: string): boolean {
     this.pending.delete(key)
-    this.settled.set(key, "aborted")
-    this.settledRuns.set(runKey(gate.decision.workspaceRoot, runId), "aborted")
+    this.rememberOutcome(key, gate, "aborted")
     gate.reject(new Error(reason))
     return true
   }
 
   abortPending(workspaceRoot: string, runId: string, reason: string): boolean {
-    const gate = this.pendingEntryForRun(workspaceRoot, runId)
-    return gate ? this.abort(runId, gate[1].decision.stepId, reason) : false
+    const entry = this.pendingEntryForRun(workspaceRoot, runId)
+    return entry ? this.abortEntry(entry, reason) : false
   }
 
   pendingForRun(workspaceRoot: string, runId: string): BobWorkflowGateDecision & { ownerStepId: string } | undefined {
@@ -103,13 +110,13 @@ export class BobWorkflowGateRegistry {
     const entry = this.pendingEntryForRun(workspaceRoot, runId)
     if (!entry) return undefined
     const [currentKey, gate] = entry
-    const nextKey = gateKey(runId, decision.stepId)
-    const conflict = this.pending.get(nextKey)
-    if (conflict && conflict !== gate) return undefined
-    if (currentKey !== nextKey) {
-      this.pending.delete(currentKey)
-      this.pending.set(nextKey, gate)
-    }
+    const nextKey = gateKey(workspaceRoot, runId, decision.stepId)
+    const conflict = [...this.pending.entries()].some(([key, candidate]) => (
+      key !== currentKey
+      && runKey(candidate.decision.workspaceRoot, candidate.decision.runId) === runKey(workspaceRoot, runId)
+      && (candidate.decision.ownerStepId === decision.stepId || candidate.decision.stepId === decision.stepId)
+    ))
+    if (conflict) return undefined
     this.settled.delete(nextKey)
     gate.decision = {
       ...gate.decision,
@@ -119,8 +126,8 @@ export class BobWorkflowGateRegistry {
     return gate.promise
   }
 
-  isPending(runId: string, stepId: string): boolean {
-    return this.pending.has(gateKey(runId, stepId))
+  isPending(workspaceRoot: string, runId: string, stepId: string): boolean {
+    return Boolean(this.pendingEntryForGate(workspaceRoot, runId, stepId))
   }
 
   dispose(): void {
@@ -129,24 +136,51 @@ export class BobWorkflowGateRegistry {
     const gates = [...this.pending.entries()]
     this.pending.clear()
     for (const [key, gate] of gates) {
-      this.settled.set(key, "aborted")
-      this.settledRuns.set(runKey(gate.decision.workspaceRoot, gate.decision.runId), "aborted")
+      this.rememberOutcome(key, gate, "aborted")
       gate.reject(new Error("Bob workflow gate registry is disposed."))
     }
   }
 
-  private pendingEntryForRun(workspaceRoot: string, runId: string): [string, PendingGate] | undefined {
+  private pendingEntryForGate(workspaceRoot: string, runId: string, stepId: string): [string, PendingGate] | undefined {
+    const ownerKey = gateKey(workspaceRoot, runId, stepId)
+    const ownerGate = this.pending.get(ownerKey)
+    if (ownerGate) return [ownerKey, ownerGate]
+    const requestedRunKey = runKey(workspaceRoot, runId)
     const matches = [...this.pending.entries()].filter(([, gate]) => (
-      gate.decision.workspaceRoot === workspaceRoot && gate.decision.runId === runId
+      runKey(gate.decision.workspaceRoot, gate.decision.runId) === requestedRunKey
+      && gate.decision.stepId === stepId
     ))
     return matches.length === 1 ? matches[0] : undefined
   }
+
+  private pendingEntryForRun(workspaceRoot: string, runId: string): [string, PendingGate] | undefined {
+    const requestedRunKey = runKey(workspaceRoot, runId)
+    const matches = [...this.pending.entries()].filter(([, gate]) => (
+      runKey(gate.decision.workspaceRoot, gate.decision.runId) === requestedRunKey
+    ))
+    return matches.length === 1 ? matches[0] : undefined
+  }
+
+  private rememberOutcome(key: string, gate: PendingGate, outcome: SettledGateOutcome): void {
+    this.settled.set(key, outcome)
+    this.settled.set(gateKey(
+      gate.decision.workspaceRoot,
+      gate.decision.runId,
+      gate.decision.stepId
+    ), outcome)
+    this.settledRuns.set(runKey(gate.decision.workspaceRoot, gate.decision.runId), outcome)
+  }
 }
 
-function gateKey(runId: string, stepId: string): string {
-  return `${runId}:${stepId}`
+function gateKey(workspaceRoot: string, runId: string, ownerStepId: string): string {
+  return JSON.stringify([normalizeWorkspaceRoot(workspaceRoot), runId, ownerStepId])
 }
 
-function runKey(workspaceRoot: string | undefined, runId: string): string {
-  return JSON.stringify([workspaceRoot ?? "", runId])
+function runKey(workspaceRoot: string, runId: string): string {
+  return JSON.stringify([normalizeWorkspaceRoot(workspaceRoot), runId])
+}
+
+function normalizeWorkspaceRoot(workspaceRoot: string): string {
+  const normalized = path.resolve(workspaceRoot)
+  return process.platform === "win32" ? normalized.toLowerCase() : normalized
 }

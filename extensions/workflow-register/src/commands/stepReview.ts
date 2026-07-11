@@ -11,7 +11,7 @@ import type { BobWorkflowGateAcceptResult } from "../bobWorkflowGateRegistry"
 
 interface StepReviewCommandOptions {
   showMarkdownReport: (title: string, summary: string, lines: string[]) => Promise<void>
-  acceptBobWorkflowGate: (runId: string, stepId: string) => BobWorkflowGateAcceptResult
+  acceptBobWorkflowGate: (workspaceRoot: string, runId: string, stepId: string) => BobWorkflowGateAcceptResult
   coordinateReviewAcceptance: <T>(workspaceRoot: string, runId: string, operation: () => Promise<T>) => Promise<T>
 }
 
@@ -74,7 +74,7 @@ async function acceptReviewedStepOnce(options: StepReviewCommandOptions, workspa
   const accepted = acceptReviewingStep(run)
   await runStore.saveRun(accepted)
   const gateDecision = acceptedStepId
-    ? options.acceptBobWorkflowGate(accepted.runId, acceptedStepId)
+    ? options.acceptBobWorkflowGate(workspaceRoot, accepted.runId, acceptedStepId)
     : "missing"
   const acceptedViaLiveGate = gateDecision === "accepted" || gateDecision === "alreadyAccepted"
   let completedViaBobTask = acceptedViaLiveGate

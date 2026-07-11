@@ -32,6 +32,10 @@ import {
 import { pauseRunIfRequested } from "./engine/runPause"
 import { executeAutomatedStep } from "./engine/stepExecutor"
 import {
+  latestBranchCheckpointDecision,
+  recordBranchCheckpointDecision
+} from "./engine/branchCheckpoint"
+import {
   abortBranchCheckpointTransition,
   applyStepTransition,
   approveBranchCheckpointTransition
@@ -244,8 +248,11 @@ export class WorkflowEngine {
   async approveBranchCheckpoint(runId: string, workflow: CoreWorkflowDefinition): Promise<WorkflowRunState> {
     const run = await this.runStore.loadRun(runId)
     if (!run) throw new Error(`Workflow run not found: ${runId}`)
+    const checkpoint = run.status === "checkpoint" ? run.branching?.checkpoint : undefined
+    if (!checkpoint) return resolvePriorCheckpointDecision(run, "approved")
     const result = approveBranchCheckpointTransition(workflow, run)
     if (!result.ok) throw new Error(result.error)
+    recordBranchCheckpointDecision({ run, checkpoint, outcome: "approved" })
     await this.runStore.saveRun(run)
     return run
   }
@@ -253,8 +260,11 @@ export class WorkflowEngine {
   async abortBranchCheckpoint(runId: string, reason?: string): Promise<WorkflowRunState> {
     const run = await this.runStore.loadRun(runId)
     if (!run) throw new Error(`Workflow run not found: ${runId}`)
+    const checkpoint = run.status === "checkpoint" ? run.branching?.checkpoint : undefined
+    if (!checkpoint) return resolvePriorCheckpointDecision(run, "aborted")
     const result = abortBranchCheckpointTransition(run, reason)
     if (!result.ok) throw new Error(result.error)
+    recordBranchCheckpointDecision({ run, checkpoint, outcome: "aborted", reason })
     await this.runStore.saveRun(run)
     return run
   }
@@ -501,6 +511,17 @@ export class WorkflowEngine {
   private async emit(hook: ((event: WorkflowEngineEventInput) => Promise<void> | void) | undefined, event: WorkflowEngineEventInput): Promise<void> {
     if (hook) await hook(event)
   }
+}
+
+function resolvePriorCheckpointDecision(
+  run: WorkflowRunState,
+  requested: "approved" | "aborted"
+): WorkflowRunState {
+  const prior = latestBranchCheckpointDecision(run)
+  if (!prior) throw new Error(`Workflow run is not waiting at a branch checkpoint: ${run.status}`)
+  if (prior.outcome === requested) return run
+  const requestedAction = requested === "approved" ? "approve" : "abort"
+  throw new Error(`Branch checkpoint '${prior.checkpointId}' was already ${prior.outcome}; cannot ${requestedAction} it.`)
 }
 
 function isOrderedSingleStepContinuation(options: RunWorkflowOptions): boolean {

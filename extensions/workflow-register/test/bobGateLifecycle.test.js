@@ -63,6 +63,7 @@ const { FileRunControlStore } = require("../out/core/runControlStore")
 const { FileRunStateStore } = require("../out/core/runStateStore")
 const { createDefaultResultSinkRegistry } = require("../out/core/resultSinkRegistry")
 const { WorkflowEngine } = require("../out/core/engine")
+const { reviewTaskRegistry } = require("../out/reviewTaskRegistry")
 
 function tempRoot(t, prefix) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), prefix))
@@ -228,7 +229,10 @@ test("Bob runner remains pending when the engine returns held", async (t) => {
   const { gateRegistry, runStore, runner } = createRunner(t, workflow, (actions) => {
     actions.register({ id: "sample.collect", execute: async () => "context" })
   })
-  const execution = runner.runEngineStep("collect", 0, { sendMessage: async () => undefined })
+  const execution = runner.runEngineStep("collect", 0, {
+    sendMessage: async () => undefined,
+    setStepComplete: () => undefined
+  })
   const settlement = trackSettlement(execution)
   const held = await waitForRunStatus(runStore, "held")
 
@@ -268,7 +272,10 @@ test("Bob runner remains pending at a branch checkpoint", async (t) => {
   const { gateRegistry, runStore, runner } = createRunner(t, workflow, (actions) => {
     actions.register({ id: "sample.loop", execute: async () => "retry" })
   })
-  const execution = runner.runEngineStep("loop", 0, { sendMessage: async () => undefined })
+  const execution = runner.runEngineStep("loop", 0, {
+    sendMessage: async () => undefined,
+    setStepComplete: () => undefined
+  })
   const settlement = trackSettlement(execution)
   const checkpointed = await waitForRunStatus(runStore, "checkpoint")
 
@@ -297,7 +304,10 @@ test("Bob runner keeps the completed owner step pending when a pause points at t
     })
     actions.register({ id: "sample.second", execute: async () => "second" })
   })
-  const execution = runner.runEngineStep("first", 0, { sendMessage: async () => undefined })
+  const execution = runner.runEngineStep("first", 0, {
+    sendMessage: async () => undefined,
+    setStepComplete: () => undefined
+  })
   const settlement = trackSettlement(execution)
   const paused = await waitForRunStatus(runStore, "paused")
 
@@ -331,7 +341,7 @@ test("StepRuntime manual hold remains the only pending primitive for a manual Bo
   await waitFor(() => stepRuntime.list().length === 1)
   const active = stepRuntime.list()[0]
 
-  assert.equal(gateRegistry.isPending(active.runId, "manual"), false)
+  assert.equal(gateRegistry.isPending(root, active.runId, "manual"), false)
   assert.match(await stepRuntime.completeStepByKey(active.key), /Completed:/)
   assert.equal(await execution, true)
   assert.equal(completed, 1)
@@ -348,8 +358,8 @@ function markerRoot(root) {
   }
 }
 
-function createCommandService(root, workflow, engine, gateRegistry = new BobWorkflowGateRegistry()) {
-  const runStore = new FileRunStateStore({ workspaceRoot: root, engineVersion: "gate-command-test" })
+function createCommandService(root, workflow, engine, gateRegistry = new BobWorkflowGateRegistry(), providedRunStore) {
+  const runStore = providedRunStore ?? new FileRunStateStore({ workspaceRoot: root, engineVersion: "gate-command-test" })
   const coordinator = new ReviewAcceptanceCoordinator()
   const runtimeFactory = {
     createRunStore: () => runStore,
@@ -378,6 +388,48 @@ async function saveRunWithStatus(runStore, workflow, status, currentStep, stepSt
   }
   await runStore.saveRun(run)
   return run
+}
+
+async function saveCheckpointedRun(runStore, workflow, checkpointId) {
+  const run = await saveRunWithStatus(runStore, workflow, "checkpoint", "target", {
+    source: "completed",
+    target: "pending"
+  })
+  run.branching = {
+    loops: {
+      loop: {
+        loopId: "loop",
+        count: 1,
+        allowed: 1,
+        maxIterations: 1,
+        extensionSize: 1,
+        checkpointCount: 1
+      }
+    },
+    history: [],
+    checkpoint: {
+      id: checkpointId,
+      loopId: "loop",
+      fromStepId: "source",
+      toStepId: "target",
+      decisionId: "retry",
+      count: 1,
+      allowed: 1,
+      extensionSize: 1,
+      message: checkpointId,
+      createdAt: new Date().toISOString()
+    }
+  }
+  await runStore.saveRun(run)
+  return run
+}
+
+function createCheckpointEngine(root, runStore) {
+  return new WorkflowEngine({
+    actions: new ActionRegistry(),
+    resultSinks: createDefaultResultSinkRegistry({ workspaceRoot: root, executeCommand: async () => undefined }),
+    runStore
+  })
 }
 
 test("duplicate retry commands rebind one live Promise and resolve it only after durable completion", async (t) => {
@@ -451,8 +503,8 @@ test("duplicate retry commands rebind one live Promise and resolve it only after
     if (typeof context.gateRegistry.abortPending === "function") {
       context.gateRegistry.abortPending(root, run.runId, "test cleanup")
     } else {
-      context.gateRegistry.abort(run.runId, "source", "test cleanup")
-      context.gateRegistry.abort(run.runId, "target", "test cleanup")
+      context.gateRegistry.abort(root, run.runId, "source", "test cleanup")
+      context.gateRegistry.abort(root, run.runId, "target", "test cleanup")
     }
     await gate.catch(() => undefined)
   }
@@ -566,7 +618,7 @@ test("checkpoint approval is single-flight, durable before accept, and leaves ne
     if (typeof context.gateRegistry.abortPending === "function") {
       context.gateRegistry.abortPending(root, run.runId, "test cleanup")
     } else {
-      context.gateRegistry.abort(run.runId, "target", "test cleanup")
+      context.gateRegistry.abort(root, run.runId, "source", "test cleanup")
     }
     await gate.catch(() => undefined)
   }
@@ -605,10 +657,102 @@ test("checkpoint abort durably fails the run before rejecting the live gate with
     if (typeof context.gateRegistry.abortPending === "function") {
       context.gateRegistry.abortPending(root, run.runId, "Bob workflow run aborted at branch checkpoint.")
     } else {
-      context.gateRegistry.abort(run.runId, "target", "Bob workflow run aborted at branch checkpoint.")
+      context.gateRegistry.abort(root, run.runId, "source", "Bob workflow run aborted at branch checkpoint.")
     }
     await rejected
   }
+})
+
+test("sequential checkpoint approval reuses one durable decision and rejects a later abort", async (t) => {
+  const root = tempRoot(t, "workflow-register-gate-checkpoint-sequential-approve-")
+  const workflow = coreWorkflow(root, "gate-checkpoint-sequential-approve", [commandStep("source"), commandStep("target")])
+  const runStore = new FileRunStateStore({ workspaceRoot: root, engineVersion: "checkpoint-decision-test" })
+  const engine = createCheckpointEngine(root, runStore)
+  const context = createCommandService(root, workflow, engine, new BobWorkflowGateRegistry(), runStore)
+  const run = await saveCheckpointedRun(runStore, workflow, "checkpoint-sequential-approve")
+  const gate = context.gateRegistry.waitForDecision({
+    workspaceRoot: root,
+    runId: run.runId,
+    stepId: "target",
+    ownerStepId: "source",
+    status: "checkpoint"
+  })
+
+  const first = await context.service.approveBranchCheckpoint(run.runId)
+  assert.equal(await gate, true)
+  const firstPersisted = await runStore.loadRun(run.runId)
+  const firstLoop = { ...firstPersisted.branching.loops.loop }
+
+  const duplicate = await context.service.approveBranchCheckpoint(run.runId)
+  const duplicatePersisted = await runStore.loadRun(run.runId)
+
+  assert.equal(first.status, "running")
+  assert.equal(duplicate.status, "running")
+  assert.deepEqual(duplicatePersisted.branching.loops.loop, firstLoop)
+  assert.equal(Array.isArray(duplicatePersisted.branching.checkpointDecisions), true)
+  assert.equal(duplicatePersisted.branching.checkpointDecisions.length, 1)
+  assert.deepEqual(duplicatePersisted.branching.checkpointDecisions[0], firstPersisted.branching.checkpointDecisions[0])
+  assert.deepEqual(duplicatePersisted.branching.checkpointDecisions[0], {
+    checkpointId: "checkpoint-sequential-approve",
+    outcome: "approved",
+    loopId: "loop",
+    ownerStepId: "source",
+    targetStepId: "target",
+    transitionDecisionId: "retry",
+    decidedAt: duplicatePersisted.branching.checkpointDecisions[0].decidedAt
+  })
+  assert.match(duplicatePersisted.branching.checkpointDecisions[0].decidedAt, /^\d{4}-\d{2}-\d{2}T/)
+  await assert.rejects(
+    context.service.abortBranchCheckpoint(run.runId),
+    /already approved|conflicting checkpoint decision/i
+  )
+})
+
+test("sequential checkpoint abort reuses one durable decision and rejects a later approval", async (t) => {
+  const root = tempRoot(t, "workflow-register-gate-checkpoint-sequential-abort-")
+  const workflow = coreWorkflow(root, "gate-checkpoint-sequential-abort", [commandStep("source"), commandStep("target")])
+  const runStore = new FileRunStateStore({ workspaceRoot: root, engineVersion: "checkpoint-decision-test" })
+  const engine = createCheckpointEngine(root, runStore)
+  const context = createCommandService(root, workflow, engine, new BobWorkflowGateRegistry(), runStore)
+  const run = await saveCheckpointedRun(runStore, workflow, "checkpoint-sequential-abort")
+  const gate = context.gateRegistry.waitForDecision({
+    workspaceRoot: root,
+    runId: run.runId,
+    stepId: "target",
+    ownerStepId: "source",
+    status: "checkpoint"
+  })
+  const gateRejected = assert.rejects(gate, /Bob workflow run aborted at branch checkpoint\./)
+
+  const first = await context.service.abortBranchCheckpoint(run.runId)
+  await gateRejected
+  const firstPersisted = await runStore.loadRun(run.runId)
+  const firstLoop = { ...firstPersisted.branching.loops.loop }
+
+  const duplicate = await context.service.abortBranchCheckpoint(run.runId)
+  const duplicatePersisted = await runStore.loadRun(run.runId)
+
+  assert.equal(first.status, "failed")
+  assert.equal(duplicate.status, "failed")
+  assert.deepEqual(duplicatePersisted.branching.loops.loop, firstLoop)
+  assert.equal(Array.isArray(duplicatePersisted.branching.checkpointDecisions), true)
+  assert.equal(duplicatePersisted.branching.checkpointDecisions.length, 1)
+  assert.deepEqual(duplicatePersisted.branching.checkpointDecisions[0], firstPersisted.branching.checkpointDecisions[0])
+  assert.deepEqual(duplicatePersisted.branching.checkpointDecisions[0], {
+    checkpointId: "checkpoint-sequential-abort",
+    outcome: "aborted",
+    loopId: "loop",
+    ownerStepId: "source",
+    targetStepId: "target",
+    transitionDecisionId: "retry",
+    decidedAt: duplicatePersisted.branching.checkpointDecisions[0].decidedAt,
+    reason: "Bob workflow run aborted at branch checkpoint."
+  })
+  assert.match(duplicatePersisted.branching.checkpointDecisions[0].decidedAt, /^\d{4}-\d{2}-\d{2}T/)
+  await assert.rejects(
+    context.service.approveBranchCheckpoint(run.runId),
+    /already aborted|conflicting checkpoint decision/i
+  )
 })
 
 test("live pause resume releases a completed owner without running the next step", async (t) => {
@@ -646,7 +790,7 @@ test("live pause resume releases a completed owner without running the next step
     if (typeof context.gateRegistry.abortPending === "function") {
       context.gateRegistry.abortPending(root, run.runId, "test cleanup")
     } else {
-      context.gateRegistry.abort(run.runId, "target", "test cleanup")
+      context.gateRegistry.abort(root, run.runId, "source", "test cleanup")
     }
     await gate.catch(() => undefined)
   }
@@ -673,6 +817,7 @@ test("pause resume keeps the standalone engine path when there is no live Bob ga
   const context = createCommandService(root, workflow, engine)
   runStore = context.runStore
   const run = await saveRunWithStatus(runStore, workflow, "paused", "source", { source: "pending" })
+  reviewTaskRegistry.registerTask(run.runId, "source", { setStepComplete: () => undefined })
 
   const result = await context.service.resumeRun(run.runId)
 

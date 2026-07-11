@@ -156,7 +156,7 @@ function createBobReviewRunner(t) {
     inputsProvider: async () => ({}),
     gateRegistry
   })
-  return { gateRegistry, runStore, runner }
+  return { gateRegistry, runStore, runner, workspaceRoot }
 }
 
 function orderedPattern(...parts) {
@@ -276,7 +276,7 @@ test("Bob workflow runner surfaces step review gates without failing the run", (
 })
 
 test("Bob workflow runner remains pending at review until its registry accepts the gate", async (t) => {
-  const { gateRegistry, runStore, runner } = createBobReviewRunner(t)
+  const { gateRegistry, runStore, runner, workspaceRoot } = createBobReviewRunner(t)
   let settled = false
   const execution = runner.runEngineStep("review", 0, {
     sendMessage: async () => undefined,
@@ -291,13 +291,13 @@ test("Bob workflow runner remains pending at review until its registry accepts t
   await new Promise((resolve) => setImmediate(resolve))
 
   assert.equal(settled, false)
-  assert.equal(gateRegistry.isPending(reviewing.runId, "review"), true)
-  assert.equal(gateRegistry.accept(reviewing.runId, "review"), "accepted")
+  assert.equal(gateRegistry.isPending(workspaceRoot, reviewing.runId, "review"), true)
+  assert.equal(gateRegistry.accept(workspaceRoot, reviewing.runId, "review"), "accepted")
   assert.equal(await execution, true)
 })
 
 test("Bob workflow runner aborts a registered review gate when a terminal review hook fails", async (t) => {
-  const { gateRegistry, runStore, runner } = createBobReviewRunner(t)
+  const { gateRegistry, runStore, runner, workspaceRoot } = createBobReviewRunner(t)
   const unhandledRejections = []
   const recordUnhandled = (reason) => { unhandledRejections.push(reason) }
   process.on("unhandledRejection", recordUnhandled)
@@ -317,7 +317,7 @@ test("Bob workflow runner aborts a registered review gate when a terminal review
   await new Promise((resolve) => setImmediate(resolve))
   await new Promise((resolve) => setImmediate(resolve))
 
-  assert.equal(gateRegistry.isPending(reviewing.runId, "review"), false)
+  assert.equal(gateRegistry.isPending(workspaceRoot, reviewing.runId, "review"), false)
   assert.deepEqual(unhandledRejections, [])
 })
 
@@ -340,7 +340,7 @@ test("review-gated Bob tasks use live gate acceptance before Todo-sync fallback"
   assert.match(stepReview, /const acceptedStepId = run\.currentStep/)
   assert.match(stepReview, orderedPattern(
     "await runStore.saveRun(accepted)",
-    "options.acceptBobWorkflowGate(accepted.runId, acceptedStepId)",
+    "options.acceptBobWorkflowGate(workspaceRoot, accepted.runId, acceptedStepId)",
     'if (gateDecision === "missing" || gateDecision === "aborted")',
     "await bobTaskSyncRegistry.reconcileRun(accepted, undefined"
   ))
@@ -429,13 +429,13 @@ test("WorkflowRegisterService owns and exposes Bob review gates and acceptance c
   assert.match(service, /private readonly bobWorkflowGates = new BobWorkflowGateRegistry\(\)/)
   assert.match(service, /private readonly reviewAcceptances = new ReviewAcceptanceCoordinator\(\)/)
   assert.match(service, /gateRegistry: this\.bobWorkflowGates/)
-  assert.match(service, /acceptBobWorkflowGate\(runId: string, stepId: string\): BobWorkflowGateAcceptResult \{[\s\S]*this\.bobWorkflowGates\.accept\(runId, stepId\)/)
+  assert.match(service, /acceptBobWorkflowGate\(workspaceRoot: string, runId: string, stepId: string\): BobWorkflowGateAcceptResult \{[\s\S]*this\.bobWorkflowGates\.accept\(workspaceRoot, runId, stepId\)/)
   assert.match(service, /coordinateReviewAcceptance<T>\([\s\S]*this\.reviewAcceptances\.coordinate\(workspaceRoot, runId, operation\)/)
   assert.match(service, /coordinateGateDecision: \(workspaceRoot, runId, operation\) => \([\s\S]*this\.reviewAcceptances\.coordinate\(workspaceRoot, runId, operation\)/)
   assert.match(factory, /gateRegistry: BobWorkflowGateRegistry/)
   assert.match(factory, /gateRegistry: this\.options\.gateRegistry/)
-  assert.match(extension, /acceptBobWorkflowGate: \(runId: string, stepId: string\) => BobWorkflowGateAcceptResult/)
-  assert.match(extension, /acceptBobWorkflowGate: \(runId, stepId\) => service\.acceptBobWorkflowGate\(runId, stepId\)/)
+  assert.match(extension, /acceptBobWorkflowGate: \(workspaceRoot: string, runId: string, stepId: string\) => BobWorkflowGateAcceptResult/)
+  assert.match(extension, /acceptBobWorkflowGate: \(workspaceRoot, runId, stepId\) => service\.acceptBobWorkflowGate\(workspaceRoot, runId, stepId\)/)
   assert.match(extension, /coordinateReviewAcceptance: <T>\(workspaceRoot: string, runId: string, operation: \(\) => Promise<T>\) => Promise<T>/)
   assert.match(extension, /coordinateReviewAcceptance: \(workspaceRoot, runId, operation\) => service\.coordinateReviewAcceptance\(workspaceRoot, runId, operation\)/)
   assert.match(authoring, /acceptBobWorkflowGate: api\.acceptBobWorkflowGate/)

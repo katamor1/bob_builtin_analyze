@@ -5,8 +5,9 @@ const { BobWorkflowGateRegistry } = require("../out/bobWorkflowGateRegistry")
 
 test("waitForDecision keeps one pending Promise until the gate is accepted", async () => {
   const registry = new BobWorkflowGateRegistry()
-  const first = registry.waitForDecision({ runId: "run-1", stepId: "review", status: "reviewing" })
-  const duplicate = registry.waitForDecision({ runId: "run-1", stepId: "review", status: "reviewing" })
+  const root = "C:\\workspace"
+  const first = registry.waitForDecision({ workspaceRoot: root, runId: "run-1", stepId: "review", status: "reviewing" })
+  const duplicate = registry.waitForDecision({ workspaceRoot: root, runId: "run-1", stepId: "review", status: "reviewing" })
   let settled = false
   void first.then(
     () => { settled = true },
@@ -17,30 +18,32 @@ test("waitForDecision keeps one pending Promise until the gate is accepted", asy
 
   assert.equal(settled, false)
   assert.strictEqual(duplicate, first)
-  assert.equal(registry.isPending("run-1", "review"), true)
-  assert.equal(registry.accept("run-1", "review"), "accepted")
+  assert.equal(registry.isPending(root, "run-1", "review"), true)
+  assert.equal(registry.accept(root, "run-1", "review"), "accepted")
   assert.equal(await first, true)
-  assert.equal(registry.isPending("run-1", "review"), false)
-  assert.equal(registry.accept("run-1", "review"), "alreadyAccepted")
-  assert.equal(registry.accept("missing", "review"), "missing")
+  assert.equal(registry.isPending(root, "run-1", "review"), false)
+  assert.equal(registry.accept(root, "run-1", "review"), "alreadyAccepted")
+  assert.equal(registry.accept(root, "missing", "review"), "missing")
 })
 
 test("abort rejects a pending gate and ignores stale decisions", async () => {
   const registry = new BobWorkflowGateRegistry()
-  const pending = registry.waitForDecision({ runId: "run-2", stepId: "review", status: "reviewing" })
+  const root = "C:\\workspace"
+  const pending = registry.waitForDecision({ workspaceRoot: root, runId: "run-2", stepId: "review", status: "reviewing" })
   const rejected = assert.rejects(pending, /run was terminated/)
 
-  assert.equal(registry.abort("run-2", "review", "run was terminated"), true)
+  assert.equal(registry.abort(root, "run-2", "review", "run was terminated"), true)
   await rejected
-  assert.equal(registry.isPending("run-2", "review"), false)
-  assert.equal(registry.abort("run-2", "review", "stale"), false)
-  assert.equal(registry.accept("run-2", "review"), "aborted")
+  assert.equal(registry.isPending(root, "run-2", "review"), false)
+  assert.equal(registry.abort(root, "run-2", "review", "stale"), false)
+  assert.equal(registry.accept(root, "run-2", "review"), "aborted")
 })
 
 test("dispose rejects every pending gate and is idempotent", async () => {
   const registry = new BobWorkflowGateRegistry()
-  const first = registry.waitForDecision({ runId: "run-3", stepId: "first", status: "reviewing" })
-  const second = registry.waitForDecision({ runId: "run-3", stepId: "second", status: "reviewing" })
+  const root = "C:\\workspace"
+  const first = registry.waitForDecision({ workspaceRoot: root, runId: "run-3", stepId: "first", status: "reviewing" })
+  const second = registry.waitForDecision({ workspaceRoot: root, runId: "run-3", stepId: "second", status: "reviewing" })
   const firstRejected = assert.rejects(first, /disposed/i)
   const secondRejected = assert.rejects(second, /disposed/i)
 
@@ -48,27 +51,28 @@ test("dispose rejects every pending gate and is idempotent", async () => {
   registry.dispose()
 
   await Promise.all([firstRejected, secondRejected])
-  assert.equal(registry.isPending("run-3", "first"), false)
-  assert.equal(registry.isPending("run-3", "second"), false)
-  assert.equal(registry.accept("run-3", "first"), "aborted")
+  assert.equal(registry.isPending(root, "run-3", "first"), false)
+  assert.equal(registry.isPending(root, "run-3", "second"), false)
+  assert.equal(registry.accept(root, "run-3", "first"), "aborted")
 })
 
 test("a later wait starts a fresh lifecycle for the same run and step", async () => {
   const registry = new BobWorkflowGateRegistry()
-  const first = registry.waitForDecision({ runId: "run-4", stepId: "review", status: "reviewing" })
-  assert.equal(registry.accept("run-4", "review"), "accepted")
+  const root = "C:\\workspace"
+  const first = registry.waitForDecision({ workspaceRoot: root, runId: "run-4", stepId: "review", status: "reviewing" })
+  assert.equal(registry.accept(root, "run-4", "review"), "accepted")
   assert.equal(await first, true)
 
-  const retried = registry.waitForDecision({ runId: "run-4", stepId: "review", status: "reviewing" })
+  const retried = registry.waitForDecision({ workspaceRoot: root, runId: "run-4", stepId: "review", status: "reviewing" })
 
   assert.notStrictEqual(retried, first)
-  assert.equal(registry.isPending("run-4", "review"), true)
+  assert.equal(registry.isPending(root, "run-4", "review"), true)
   const rejected = assert.rejects(retried, /retry terminated/)
-  assert.equal(registry.abort("run-4", "review", "retry terminated"), true)
+  assert.equal(registry.abort(root, "run-4", "review", "retry terminated"), true)
   await rejected
 
-  const afterAbort = registry.waitForDecision({ runId: "run-4", stepId: "review", status: "reviewing" })
-  assert.equal(registry.accept("run-4", "review"), "accepted")
+  const afterAbort = registry.waitForDecision({ workspaceRoot: root, runId: "run-4", stepId: "review", status: "reviewing" })
+  assert.equal(registry.accept(root, "run-4", "review"), "accepted")
   assert.equal(await afterAbort, true)
 })
 
@@ -164,8 +168,7 @@ test("a live gate keeps its Bob-visible owner while the durable gate step is reb
     assert.equal(await pending, true)
     assert.equal(registry.acceptPending("C:\\workspace", "run-rebind"), "alreadyAccepted")
   } finally {
-    registry.abort("run-rebind", "source", "test cleanup")
-    registry.abort("run-rebind", "target", "test cleanup")
+    registry.abort("C:\\workspace", "run-rebind", "source", "test cleanup")
     await pending.catch(() => undefined)
   }
 })
@@ -190,7 +193,53 @@ test("abortPending rejects a rebound gate with the stable terminal reason", asyn
     assert.equal(registry.pendingForRun("C:\\workspace", "run-abort"), undefined)
     assert.equal(registry.acceptPending("C:\\workspace", "run-abort"), "aborted")
   } finally {
-    registry.abort("run-abort", "source", "Bob workflow run aborted at branch checkpoint.")
+    registry.abort("C:\\workspace", "run-abort", "source", "Bob workflow run aborted at branch checkpoint.")
     await rejected
   }
+})
+
+test("identical run and owner ids stay isolated across workspace roots", async () => {
+  const registry = new BobWorkflowGateRegistry()
+  const firstRoot = "C:\\workspace-a"
+  const secondRoot = "C:\\workspace-b"
+  const first = registry.waitForDecision({
+    workspaceRoot: firstRoot,
+    runId: "same-run",
+    stepId: "same-step",
+    ownerStepId: "same-step",
+    status: "held"
+  })
+  const second = registry.waitForDecision({
+    workspaceRoot: secondRoot,
+    runId: "same-run",
+    stepId: "same-step",
+    ownerStepId: "same-step",
+    status: "paused"
+  })
+  const secondRejected = assert.rejects(second, /second root aborted/)
+
+  assert.notStrictEqual(first, second)
+  assert.equal(registry.isPending(firstRoot, "same-run", "same-step"), true)
+  assert.equal(registry.isPending(secondRoot, "same-run", "same-step"), true)
+  assert.equal(registry.pendingForRun(firstRoot, "same-run").status, "held")
+  assert.equal(registry.pendingForRun(secondRoot, "same-run").status, "paused")
+
+  assert.equal(registry.accept(firstRoot, "same-run", "same-step"), "accepted")
+  assert.equal(await first, true)
+  assert.equal(registry.isPending(secondRoot, "same-run", "same-step"), true)
+  assert.equal(registry.abort(secondRoot, "same-run", "same-step", "second root aborted"), true)
+  await secondRejected
+  assert.equal(registry.accept(firstRoot, "same-run", "same-step"), "alreadyAccepted")
+  assert.equal(registry.accept(secondRoot, "same-run", "same-step"), "aborted")
+
+  const fresh = registry.waitForDecision({
+    workspaceRoot: firstRoot,
+    runId: "same-run",
+    stepId: "same-step",
+    ownerStepId: "same-step",
+    status: "reviewing"
+  })
+  assert.notStrictEqual(fresh, first)
+  assert.equal(registry.accept(firstRoot, "same-run", "same-step"), "accepted")
+  assert.equal(await fresh, true)
 })

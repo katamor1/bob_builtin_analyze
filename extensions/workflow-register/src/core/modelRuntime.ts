@@ -26,6 +26,7 @@ export interface RunStepAttempt {
 export interface WorkflowRunBranchingState {
   loops: Record<string, WorkflowBranchLoopState>
   checkpoint?: WorkflowBranchCheckpointState
+  checkpointDecisions?: WorkflowBranchCheckpointDecisionRecord[]
   history: WorkflowBranchTransitionRecord[]
 }
 
@@ -50,6 +51,19 @@ export interface WorkflowBranchCheckpointState {
   extensionSize: number
   message: string
   createdAt: string
+}
+
+export type WorkflowBranchCheckpointDecisionOutcome = "approved" | "aborted"
+
+export interface WorkflowBranchCheckpointDecisionRecord {
+  checkpointId: string
+  outcome: WorkflowBranchCheckpointDecisionOutcome
+  loopId: string
+  ownerStepId: string
+  targetStepId: string
+  transitionDecisionId: string
+  decidedAt: string
+  reason?: string
 }
 
 export interface WorkflowBranchTransitionRecord {
