@@ -57,6 +57,9 @@ jobs:
       - name: Compile extension
         run: npm run compile
 
+      - name: Install VS Code test runtime
+        run: npm install --no-save --package-lock=false --ignore-scripts @vscode/test-electron@2.5.2
+
       - name: Capture Extension Host smoke
         id: smoke
         shell: bash
