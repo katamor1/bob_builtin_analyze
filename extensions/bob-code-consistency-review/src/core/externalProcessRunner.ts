@@ -1,0 +1,191 @@
+import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process"
+
+export type ExternalProcessErrorKind =
+  | "timeout"
+  | "cancelled"
+  | "bufferExceeded"
+  | "spawnFailure"
+  | "nonZeroExit"
+
+export interface ExternalProcessOptions {
+  command: string
+  args: string[]
+  cwd: string
+  env?: NodeJS.ProcessEnv
+  maxBufferBytes: number
+  timeoutMs: number
+  allowedExitCodes?: number[]
+  signal?: AbortSignal
+}
+
+export interface ExternalProcessResult {
+  stdout: Buffer
+  stderr: Buffer
+  exitCode: number
+}
+
+export class ExternalProcessError extends Error {
+  constructor(
+    message: string,
+    readonly kind: ExternalProcessErrorKind,
+    readonly command: string,
+    readonly args: string[],
+    readonly cwd: string,
+    readonly stdout: Buffer = Buffer.alloc(0),
+    readonly stderr: Buffer = Buffer.alloc(0),
+    readonly exitCode?: number
+  ) {
+    super(message)
+    this.name = "ExternalProcessError"
+  }
+}
+
+export function runExternalProcess(options: ExternalProcessOptions): Promise<ExternalProcessResult> {
+  const maxBufferBytes = positiveInteger(options.maxBufferBytes, "maxBufferBytes")
+  const timeoutMs = positiveInteger(options.timeoutMs, "timeoutMs")
+  const allowedExitCodes = new Set(options.allowedExitCodes ?? [0])
+
+  if (options.signal?.aborted) {
+    return Promise.reject(new ExternalProcessError(
+      `Command cancelled before start: ${options.command}`,
+      "cancelled",
+      options.command,
+      [...options.args],
+      options.cwd
+    ))
+  }
+
+  return new Promise((resolve, reject) => {
+    const stdoutChunks: Buffer[] = []
+    const stderrChunks: Buffer[] = []
+    let bufferedBytes = 0
+    let settled = false
+    let child: ChildProcessWithoutNullStreams
+
+    const stdout = (): Buffer => Buffer.concat(stdoutChunks)
+    const stderr = (): Buffer => Buffer.concat(stderrChunks)
+
+    const cleanup = (): void => {
+      clearTimeout(timeout)
+      options.signal?.removeEventListener("abort", onAbort)
+    }
+
+    const fail = (kind: ExternalProcessErrorKind, message: string, exitCode?: number): void => {
+      if (settled) return
+      settled = true
+      cleanup()
+      terminateProcessTree(child)
+      reject(new ExternalProcessError(
+        message,
+        kind,
+        options.command,
+        [...options.args],
+        options.cwd,
+        stdout(),
+        stderr(),
+        exitCode
+      ))
+    }
+
+    const onAbort = (): void => fail("cancelled", `Command cancelled: ${options.command}`)
+    const timeout = setTimeout(
+      () => fail("timeout", `Command timed out after ${timeoutMs} ms: ${options.command}`),
+      timeoutMs
+    )
+
+    try {
+      child = spawn(options.command, options.args, {
+        cwd: options.cwd,
+        env: options.env,
+        shell: false,
+        windowsHide: true,
+        detached: process.platform !== "win32",
+        stdio: ["ignore", "pipe", "pipe"]
+      })
+    } catch (error) {
+      settled = true
+      cleanup()
+      reject(new ExternalProcessError(
+        `Failed to start command ${options.command}: ${error instanceof Error ? error.message : String(error)}`,
+        "spawnFailure",
+        options.command,
+        [...options.args],
+        options.cwd
+      ))
+      return
+    }
+
+    options.signal?.addEventListener("abort", onAbort, { once: true })
+
+    const collect = (target: Buffer[], chunk: Buffer | string): void => {
+      if (settled) return
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+      target.push(buffer)
+      bufferedBytes += buffer.length
+      if (bufferedBytes > maxBufferBytes) {
+        fail(
+          "bufferExceeded",
+          `Command output exceeded ${maxBufferBytes} bytes: ${options.command}`
+        )
+      }
+    }
+
+    child.stdout.on("data", (chunk) => collect(stdoutChunks, chunk))
+    child.stderr.on("data", (chunk) => collect(stderrChunks, chunk))
+    child.on("error", (error) => {
+      fail(
+        "spawnFailure",
+        `Command failed to start ${options.command}: ${error.message}`
+      )
+    })
+    child.on("close", (code) => {
+      if (settled) return
+      settled = true
+      cleanup()
+      const exitCode = typeof code === "number" ? code : -1
+      const result = { stdout: stdout(), stderr: stderr(), exitCode }
+      if (allowedExitCodes.has(exitCode)) {
+        resolve(result)
+        return
+      }
+      reject(new ExternalProcessError(
+        `Command exited with code ${exitCode}: ${options.command}`,
+        "nonZeroExit",
+        options.command,
+        [...options.args],
+        options.cwd,
+        result.stdout,
+        result.stderr,
+        exitCode
+      ))
+    })
+  })
+}
+
+function positiveInteger(value: number, label: string): number {
+  if (!Number.isFinite(value) || value <= 0) throw new Error(`${label} must be a positive finite number.`)
+  return Math.floor(value)
+}
+
+function terminateProcessTree(child: ChildProcessWithoutNullStreams): void {
+  const pid = child.pid
+  if (!pid) {
+    child.kill("SIGKILL")
+    return
+  }
+
+  if (process.platform === "win32") {
+    const killer = spawn("taskkill", ["/pid", String(pid), "/T", "/F"], {
+      windowsHide: true,
+      stdio: "ignore"
+    })
+    killer.once("error", () => child.kill("SIGKILL"))
+    return
+  }
+
+  try {
+    process.kill(-pid, "SIGKILL")
+  } catch {
+    child.kill("SIGKILL")
+  }
+}
