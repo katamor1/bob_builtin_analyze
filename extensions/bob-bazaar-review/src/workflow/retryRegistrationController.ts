@@ -2,11 +2,9 @@ export interface DisposableLike {
   dispose: () => void
 }
 
-export interface RegistrationAttemptResult<Api> {
-  registered: boolean
-  registrations: DisposableLike[]
-  api?: Api
-}
+export type RegistrationAttemptResult<Api> =
+  | { registered: false; registrations: DisposableLike[]; api?: undefined }
+  | { registered: true; registrations: DisposableLike[]; api: Api }
 
 export interface RetryRegistrationControllerOptions<Api> {
   retryDelaysMs: readonly number[]
@@ -69,6 +67,12 @@ export function startRetryRegistrationController<Api>(
     }
     if (!result.registered) {
       disposeRegistrations(result.registrations)
+      scheduleRetry()
+      return false
+    }
+    if (result.api === undefined) {
+      disposeRegistrations(result.registrations)
+      options.reportError(new Error("Provider registration succeeded without API identity."))
       scheduleRetry()
       return false
     }
