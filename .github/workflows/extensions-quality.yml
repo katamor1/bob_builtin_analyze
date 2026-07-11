@@ -73,7 +73,7 @@ jobs:
           SMOKE_COMMANDS: workflowRegister.reload,workflowRegister.runWorkflow
         run: |
           node ../../scripts/extension-host-smoke.test.js --write-config
-          xvfb-run -a npx --yes --package "@vscode/test-cli@0.0.13" vscode-test
+          xvfb-run -a npx --yes --package "@vscode/test-cli@0.0.12" vscode-test
 
       - name: Package
         run: npm run package
@@ -133,7 +133,7 @@ jobs:
           SMOKE_COMMANDS: bobBazaar.openReviewGui,bobBazaar.reviewRevision
         run: |
           node ../../scripts/extension-host-smoke.test.js --write-config
-          xvfb-run -a npx --yes --package "@vscode/test-cli@0.0.13" vscode-test
+          xvfb-run -a npx --yes --package "@vscode/test-cli@0.0.12" vscode-test
 
       - name: Package
         run: npm run package
@@ -190,7 +190,7 @@ jobs:
           SMOKE_COMMANDS: bobCodeConsistency.openReviewWizard,bobCodeConsistency.preprocess
         run: |
           node ../../scripts/extension-host-smoke.test.js --write-config
-          xvfb-run -a npx --yes --package "@vscode/test-cli@0.0.13" vscode-test
+          xvfb-run -a npx --yes --package "@vscode/test-cli@0.0.12" vscode-test
 
       - name: Package
         run: npm run package
@@ -253,7 +253,7 @@ jobs:
           SMOKE_COMMANDS: ${{ matrix.smoke_commands }}
         run: |
           node ../../scripts/extension-host-smoke.test.js --write-config
-          npx --yes --package "@vscode/test-cli@0.0.13" vscode-test
+          npx --yes --package "@vscode/test-cli@0.0.12" vscode-test
 
       - name: Package
         run: npm run package
