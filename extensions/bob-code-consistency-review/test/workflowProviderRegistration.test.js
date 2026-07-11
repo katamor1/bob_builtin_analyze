@@ -49,7 +49,11 @@ test("extension registers code consistency workflow providers with workflow-regi
 
 test("workflow-register and IBM Bob are soft dependencies with delayed provider registration recovery", () => {
   const packageJson = readJson("package.json")
-  const source = readSourceSet(["extension.ts", "workflowProviderRegistration.ts"])
+  const source = readSourceSet([
+    "extension.ts",
+    "workflowProviderRegistration.ts",
+    "retryRegistrationController.ts"
+  ])
 
   assert.ok(!packageJson.extensionDependencies || packageJson.extensionDependencies.length === 0)
   assert.match(source, /registerWorkflowProvidersWithRetry/)
@@ -61,13 +65,17 @@ test("workflow-register and IBM Bob are soft dependencies with delayed provider 
 })
 
 test("code consistency provider retry lifecycle recovers restarts and disposes stale or late registrations", () => {
-  const source = readSourceSet(["extension.ts", "workflowProviderRegistration.ts"])
+  const source = readSourceSet([
+    "extension.ts",
+    "workflowProviderRegistration.ts",
+    "retryRegistrationController.ts"
+  ])
 
   assert.match(source, /let disposed = false/)
   assert.match(source, /let generation = 0/)
-  assert.match(source, /let registeredApi: WorkflowRegisterApiLike \| undefined/)
+  assert.match(source, /let registeredApi: Api \| undefined/)
   assert.match(source, /let registrationAttempt: Promise<boolean> \| undefined/)
-  assert.match(source, /let activeRegistrations: vscode\.Disposable\[\] = \[\]/)
+  assert.match(source, /let activeRegistrations: DisposableLike\[\] = \[\]/)
   assert.match(source, /const currentAttempt = performAttempt\(generation\)/)
   assert.match(source, /if \(disposed \|\| attemptGeneration !== generation\)/)
   assert.match(source, /disposeRegistrations\(result\.registrations\)/)
