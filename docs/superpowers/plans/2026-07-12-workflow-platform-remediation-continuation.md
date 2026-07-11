@@ -149,11 +149,11 @@
 - Produces: `compileWorkflowDocument(...)` returning the normalized definition plus deterministic diagnostics.
 - Consumes: workspace reload, registration, current-document validation, workspace validation, and tests.
 
-- [ ] Add failing tests where schema-valid but semantically invalid workflows are rejected identically by registration and commands.
-- [ ] Route every entry point through one compiler and deterministic diagnostic ordering.
-- [ ] Ensure invalid definitions are never passed to `source.registerWorkflow` and valid definitions retain stable hashes/IDs.
-- [ ] Run loader, validation, registration, strict contract, compile, and diff checks.
-- [ ] Commit `fix: unify workflow compilation and registration validation`.
+- [x] Add failing tests where schema-valid but semantically invalid workflows are rejected identically by registration and commands.
+- [x] Route every entry point through one compiler and deterministic diagnostic ordering.
+- [x] Ensure invalid definitions are never passed to `source.registerWorkflow` and valid definitions retain stable hashes/IDs.
+- [x] Run loader, validation, registration, strict contract, compile, and diff checks.
+- [x] Commit `fix: unify workflow compilation and registration validation`.
 
 ### Task 6: Stop Process Workflows on Human Rejection
 
