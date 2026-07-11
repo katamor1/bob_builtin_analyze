@@ -19,6 +19,20 @@ test("BazaarClient.cat separates option parsing before relative file paths", asy
   })
 })
 
+test("BazaarClient clamps command timeouts to the manifest range", async () => {
+  const captured = []
+  const processRunner = async (options) => {
+    captured.push(options.timeoutMs)
+    return { stdout: Buffer.alloc(0), stderr: Buffer.alloc(0), exitCode: 0 }
+  }
+
+  await new BazaarClient({ bzrPath: "bzr", timeoutMs: 1, processRunner }).status(process.cwd())
+  await new BazaarClient({ bzrPath: "bzr", timeoutMs: Number.MAX_SAFE_INTEGER, processRunner }).status(process.cwd())
+  await new BazaarClient({ bzrPath: "bzr", timeoutMs: Number.NaN, processRunner }).status(process.cwd())
+
+  assert.deepEqual(captured, [1000, 600000, 120000])
+})
+
 test("validateRevision accepts expected Bazaar revision forms", () => {
   assert.equal(validateRevision("1234"), "1234")
   assert.equal(validateRevision("1.2.3"), "1.2.3")
