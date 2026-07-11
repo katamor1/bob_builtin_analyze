@@ -1,0 +1,46 @@
+name: agent-remediation-patch
+
+on:
+  push:
+    branches:
+      - agent/three-extension-remediation-20260711
+    paths:
+      - "scripts/agent-remediation-patch.mjs"
+      - ".github/workflows/agent-remediation-patch.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/three-extension-remediation-20260711
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: extensions/bob-code-consistency-review/package-lock.json
+      - name: Apply deterministic patch
+        run: node scripts/agent-remediation-patch.mjs
+      - name: Install code consistency dependencies
+        working-directory: extensions/bob-code-consistency-review
+        run: npm ci
+      - name: Verify focused regressions
+        working-directory: extensions/bob-code-consistency-review
+        run: npm run compile && node --test test/traceabilityPrepWebviewAssets.test.js test/workflowProviderRegistration.test.js
+      - name: Commit patched sources
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo "No remediation changes to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: apply verified remediation patches"
+          git push origin HEAD:agent/three-extension-remediation-20260711
