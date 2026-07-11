@@ -101,7 +101,8 @@ export function resolveWorkspacePathStrict(workspaceRoot: string, value: string,
 export function normalizeChangedFilePathStrict(value: string, label = "changed file path"): string {
   if (typeof value !== "string" || !value.trim()) throw new Error(`${label} is empty`)
   if (/[\0-\x1F\x7F]/u.test(value)) throw new Error(`${label} contains control characters: ${value}`)
-  const normalizedSlashes = value.trim().replace(/\\/g, "/")
+  if (value.trim() !== value) throw new Error(`${label} contains outer whitespace: ${value}`)
+  const normalizedSlashes = value.replace(/\\/g, "/")
   if (
     normalizedSlashes.startsWith("/") ||
     normalizedSlashes.startsWith("//") ||
