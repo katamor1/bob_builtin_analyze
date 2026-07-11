@@ -1,5 +1,6 @@
 import fs from "node:fs"
 
+// This temporary deterministic patch is kept idempotent so remote verification can re-run safely.
 const operationHubPath = "extensions/workflow-register/src/gui/operationHubProvider.ts"
 let operationHub = fs.readFileSync(operationHubPath, "utf8")
 operationHub = replaceOnce(
