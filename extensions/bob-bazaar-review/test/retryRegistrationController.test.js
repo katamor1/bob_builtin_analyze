@@ -140,3 +140,29 @@ test("retry controller rejects a successful result without API identity", async 
   assert.match(String(errors[0]), /API identity/)
   controller.dispose()
 })
+
+test("retry controller exclusively owns provider registrations", async () => {
+  const api = {}
+  const disposed = []
+  const owned = []
+  const controller = startRetryRegistrationController({
+    retryDelaysMs: [],
+    register: async () => ({
+      registered: true,
+      api,
+      registrations: [disposable("provider", disposed)]
+    }),
+    currentApi: () => api,
+    subscribeChanges: () => disposable("listener", disposed),
+    own: (...disposables) => owned.push(...disposables),
+    reportError: assert.fail
+  })
+
+  await tick()
+
+  assert.equal(owned.length, 1)
+  assert.equal(owned[0], controller)
+  controller.dispose()
+  for (const ownedDisposable of owned) ownedDisposable.dispose()
+  assert.deepEqual(disposed, ["provider", "listener"])
+})
