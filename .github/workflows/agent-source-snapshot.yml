@@ -1,0 +1,25 @@
+name: agent-source-snapshot
+
+on:
+  pull_request:
+    paths:
+      - "extensions/workflow-register/src/gui/operationHubProvider.ts"
+      - "extensions/bob-bazaar-review/package.json"
+      - ".github/workflows/agent-source-snapshot.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/upload-artifact@v4
+        with:
+          name: policy-fix-source-snapshot
+          path: |
+            extensions/workflow-register/src/gui/operationHubProvider.ts
+            extensions/bob-bazaar-review/package.json
+          if-no-files-found: error
+          retention-days: 1
