@@ -43,6 +43,9 @@ jobs:
           cache: npm
           cache-dependency-path: extensions/workflow-register/package-lock.json
 
+      - name: Verify Extension Host smoke contract
+        run: node --test ../../scripts/extension-host-smoke-contract.test.js
+
       - name: Install dependencies
         run: npm ci
 
@@ -73,8 +76,8 @@ jobs:
       - name: VSIX policy
         run: npm run package:policy
 
-      - name: Install VS Code test runtime
-        run: npm install --no-save --package-lock=false --ignore-scripts @vscode/test-electron@2.5.2
+      - name: Install pinned local VS Code test runtime
+        run: npm install --no-save --package-lock=false --ignore-scripts --audit=false --fund=false @vscode/test-cli@0.0.12 @vscode/test-electron@2.5.2
 
       - name: Extension Host smoke
         env:
@@ -82,7 +85,7 @@ jobs:
           SMOKE_COMMANDS: workflowRegister.reload,workflowRegister.runWorkflow
         run: |
           node ../../scripts/extension-host-smoke.test.js --write-config
-          xvfb-run -a npx --yes --package "@vscode/test-cli@0.0.12" vscode-test
+          xvfb-run -a ./node_modules/.bin/vscode-test
 
   bob-bazaar-review:
     name: bob-bazaar-review
@@ -139,8 +142,8 @@ jobs:
       - name: VSIX metrics
         run: npm run package:metrics
 
-      - name: Install VS Code test runtime
-        run: npm install --no-save --package-lock=false --ignore-scripts @vscode/test-electron@2.5.2
+      - name: Install pinned local VS Code test runtime
+        run: npm install --no-save --package-lock=false --ignore-scripts --audit=false --fund=false @vscode/test-cli@0.0.12 @vscode/test-electron@2.5.2
 
       - name: Extension Host smoke
         env:
@@ -148,7 +151,7 @@ jobs:
           SMOKE_COMMANDS: bobBazaar.openReviewGui,bobBazaar.reviewRevision
         run: |
           node ../../scripts/extension-host-smoke.test.js --write-config
-          xvfb-run -a npx --yes --package "@vscode/test-cli@0.0.12" vscode-test
+          xvfb-run -a ./node_modules/.bin/vscode-test
 
   bob-code-consistency-review:
     name: bob-code-consistency-review
@@ -196,8 +199,8 @@ jobs:
       - name: VSIX policy
         run: npm run package:policy
 
-      - name: Install VS Code test runtime
-        run: npm install --no-save --package-lock=false --ignore-scripts @vscode/test-electron@2.5.2
+      - name: Install pinned local VS Code test runtime
+        run: npm install --no-save --package-lock=false --ignore-scripts --audit=false --fund=false @vscode/test-cli@0.0.12 @vscode/test-electron@2.5.2
 
       - name: Extension Host smoke
         env:
@@ -205,7 +208,7 @@ jobs:
           SMOKE_COMMANDS: bobCodeConsistency.openReviewWizard,bobCodeConsistency.preprocess
         run: |
           node ../../scripts/extension-host-smoke.test.js --write-config
-          xvfb-run -a npx --yes --package "@vscode/test-cli@0.0.12" vscode-test
+          xvfb-run -a ./node_modules/.bin/vscode-test
 
   windows-smoke:
     name: Windows / ${{ matrix.extension }}
@@ -261,8 +264,8 @@ jobs:
       - name: VSIX policy
         run: npm run package:policy
 
-      - name: Install VS Code test runtime
-        run: npm install --no-save --package-lock=false --ignore-scripts @vscode/test-electron@2.5.2
+      - name: Install pinned local VS Code test runtime
+        run: npm install --no-save --package-lock=false --ignore-scripts --audit=false --fund=false @vscode/test-cli@0.0.12 @vscode/test-electron@2.5.2
 
       - name: Extension Host smoke
         shell: pwsh
@@ -271,7 +274,7 @@ jobs:
           SMOKE_COMMANDS: ${{ matrix.smoke_commands }}
         run: |
           node ../../scripts/extension-host-smoke.test.js --write-config
-          npx --yes --package "@vscode/test-cli@0.0.12" vscode-test
+          & .\node_modules\.bin\vscode-test.cmd
 
   extension-metrics:
     name: Extension source metrics
