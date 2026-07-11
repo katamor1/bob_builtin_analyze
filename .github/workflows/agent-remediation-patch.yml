@@ -6,6 +6,7 @@ on:
       - agent/three-extension-remediation-20260711
     paths:
       - "scripts/agent-remediation-patch.mjs"
+      - "scripts/agent-limit-remediation-patch.mjs"
       - ".github/workflows/agent-remediation-patch.yml"
 
 permissions:
@@ -27,8 +28,10 @@ jobs:
             extensions/workflow-register/package-lock.json
             extensions/bob-bazaar-review/package-lock.json
             extensions/bob-code-consistency-review/package-lock.json
-      - name: Apply deterministic patch
-        run: node scripts/agent-remediation-patch.mjs
+      - name: Apply deterministic patches
+        run: |
+          node scripts/agent-remediation-patch.mjs
+          node scripts/agent-limit-remediation-patch.mjs
       - name: Install workflow-register dependencies
         working-directory: extensions/workflow-register
         run: npm ci
@@ -44,9 +47,9 @@ jobs:
       - name: Verify Bazaar provider lifecycle
         working-directory: extensions/bob-bazaar-review
         run: npm run compile && node --test test/workflowProviderRegistration.test.js
-      - name: Verify code consistency provider lifecycle
+      - name: Verify code consistency remediation
         working-directory: extensions/bob-code-consistency-review
-        run: npm run compile && node --test test/traceabilityPrepWebviewAssets.test.js test/workflowProviderRegistration.test.js
+        run: npm run compile && node --test test/traceabilityPrepWebviewAssets.test.js test/workflowProviderRegistration.test.js test/sizeLimits.test.js test/traceabilityCommandWiring.test.js
       - name: Commit patched sources
         shell: bash
         run: |
