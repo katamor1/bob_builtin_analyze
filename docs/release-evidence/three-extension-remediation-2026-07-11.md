@@ -22,6 +22,7 @@
 - unsuccessful attemptが部分登録を返した場合も全Disposableをrollbackする。
 - successful resultにはAPI identityを必須化し、欠落時は登録を破棄して再試行対象とする。
 - `workflow-register` API世代が変わらないextension変更では再登録せず、API世代変更時だけ旧登録を解除する。
+- provider Disposableはcontrollerだけが所有し、extension contextとの二重所有、二重dispose、旧世代Disposableの蓄積を防ぐ。
 
 ### 2.2 Git / Bazaar外部プロセス
 
@@ -54,6 +55,7 @@
 - CLIは一時`npx --package`から起動せず、project-localの`node_modules/.bin/vscode-test`を実行する。
 - soft dependencyをMarketplaceから暗黙導入しないよう、test configurationで`skipExtensionDependencies: true`を指定する。
 - `scripts/extension-host-smoke-contract.test.js`で、package version、local binary、preflight、soft-dependency isolationを固定する。
+- 一時的な`extension-host-smoke-diagnostic.yml`は削除し、本体品質workflowへ検証を一本化する。
 
 ## 3. 確認済み証跡
 
@@ -73,8 +75,8 @@
 
 | Module | 結果 |
 | --- | --- |
-| `bob-bazaar-review` | 5 passed / 0 failed |
-| `bob-code-consistency-review` | 5 passed / 0 failed |
+| `bob-bazaar-review` | 6 passed / 0 failed |
+| `bob-code-consistency-review` | 6 passed / 0 failed |
 
 確認内容:
 
@@ -83,6 +85,9 @@
 - API generation切替後のstale登録を破棄する。
 - deactivate後に完了したlate登録を破棄する。
 - API identityなしのsuccessful resultを拒否・rollbackする。
+- provider登録はcontrollerだけが所有し、host側のsubscription再disposeでもprovider Disposableを二重実行しない。
+
+両controllerはrepositoryと同じ`target: ES2022`、`module: commonjs`、`strict: true`相当で隔離compileした後、Node.js built-in test runnerで実行した。
 
 #### External process runner
 
@@ -117,7 +122,7 @@ TDD記録:
 | sample command path-scoped allowlist | passed |
 | VSIX `.vscode-test` ignore/policy/dependency-test契約 | 3拡張すべてpassed |
 | Extension Host smoke script syntax/config/fake-host | passed |
-| updated smoke / contract script syntax | passed (`node --check`) |
+| smoke harness contract | 3 passed / 0 failed |
 | provider API identity typecheck | passed |
 
 局所再現は変更ロジックを隔離した補助証跡であり、repository全体のcompile/testを代替しない。
@@ -157,14 +162,15 @@ probeは診断後に削除済みである。
 
 ### 4.2 最新観測workflow
 
-観測head `7c35f2379c2beefd86b1473fda6c5e3fa7f879c2`では、local CLI統一後のworkflowもrunner割当前に終了し、修正コード自体はGitHub上でまだ実行されていない。
+最新head `063a6605cc929950a60a13e0c74defe422974370`でも、本体3 workflowはrunner割当前に終了し、修正コード自体はGitHub上でまだ実行されていない。
 
 | Workflow | Run ID | 結果 |
 | --- | ---: | --- |
-| `extensions-quality` | `29150073607` | Ubuntu/Windowsを含む全jobが`steps: null`、logなし |
-| `workflow-contracts` | `29150073595` | validation jobがstep開始前failure |
-| `code-consistency-review-scaffold` | `29150073596` | 2 jobともstep開始前failure |
-| `extension-host-smoke-diagnostic` | `29150073613` | 3 smoke jobともstep開始前failure、artifactなし |
+| `extensions-quality` | `29151169155` | Ubuntu/Windowsを含む全jobが`steps: null`、logなし |
+| `workflow-contracts` | `29151169138` | validation jobがstep開始前failure |
+| `code-consistency-review-scaffold` | `29151169148` | 2 jobともstep開始前failure |
+
+過去の専用smoke診断runも同じ理由でartifactを生成できなかったため、重複する診断workflowは削除した。
 
 checkoutやrepository codeを一切使わないprobeでも再現するため、現在のfailureはworkflow実装やテストコードとは別に、GitHub-hosted runner割当以前のaccount/repository設定にも存在すると判定する。green evidenceが存在しないためmergeは許可しない。
 
@@ -173,14 +179,14 @@ checkoutやrepository codeを一切使わないprobeでも再現するため、�
 1. GitHub accountのBilling / PlansでActions利用枠、spending limit、支払い状態を確認する。
 2. Repository Settings → Actions → GeneralでActionsが許可されていることを確認する。
 3. private repositoryでGitHub-hosted Ubuntu/Windows runnerが許可されていることを確認する。
-4. 制限解除後、PR #68の最新headで4 workflowを再実行する。
+4. 制限解除後、PR #68の最新headで3 workflowを再実行する。
 5. jobがstep 1を開始し、job logを生成することを確認する。
 
 ## 5. 最新headで必要な自動ゲート
 
 | Gate | 必須結果 | 実績 |
 | --- | --- | --- |
-| smoke harness contract | pinned local CLI/Electron、local binary、preflight、soft dependency isolation | 実装済み、GitHub実行待ち |
+| smoke harness contract | pinned local CLI/Electron、local binary、preflight、soft dependency isolation | 局所3 passed、GitHub実行待ち |
 | workflow-register Ubuntu | dependency / architecture / source / schema / unit / package / VSIX policy 全成功 | 最新head未実施 |
 | bob-bazaar-review Ubuntu | dependency / architecture / source / unused / artifact / unit / package / VSIX policy 全成功 | 最新head未実施 |
 | bob-code-consistency-review Ubuntu | dependency / architecture / source / unit / package / VSIX policy 全成功 | 最新head未実施 |
@@ -223,7 +229,7 @@ checkoutやrepository codeを一切使わないprobeでも再現するため、�
 
 | 項目 | 記入欄 |
 | --- | --- |
-| 最新PR head SHA |  |
+| 最新PR head SHA | `063a6605cc929950a60a13e0c74defe422974370` |
 | Actions再実行日時 |  |
 | Ubuntu合格 |  |
 | Windows合格 |  |
