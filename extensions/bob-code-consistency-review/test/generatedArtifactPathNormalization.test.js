@@ -15,18 +15,20 @@ test("generated artifact paths preserve meaningful inner spaces", () => {
   assert.equal(path.relative(workspaceRoot, resolved), path.join(".custom", "review package"))
 })
 
-test("generated artifact paths reject silent outer-whitespace and segment normalization", () => {
+test("generated artifact paths reject silent whitespace and segment normalization", () => {
   const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "bob-generated-path-"))
   for (const candidate of [
     " .custom/review-package",
     ".custom/review-package ",
     "\u00a0.custom/review-package",
+    ".custom/ review-package",
+    ".custom/review-package /nested",
     ".custom/./review-package",
     ".custom//review-package"
   ]) {
     assert.throws(
       () => resolveWorkspacePathForKind(workspaceRoot, candidate, "review-package-output"),
-      /outer whitespace|empty or \. segments/
+      /outer whitespace|segment whitespace|empty or \. segments/
     )
   }
 })
