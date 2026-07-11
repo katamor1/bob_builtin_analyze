@@ -16,12 +16,15 @@
 - provider ID、command ID、workflow IDは互換性契約として扱う。
 - 既存のBob非依存コマンドはIBM Bobまたは`workflow-register`不在でも起動できること。
 - 3拡張すべてでcompile、policy、unit test、VSIX packageを検証する。
+- CI用の一時依存や生成設定をVSIXへ混入させない。
 
 ## 実施状況（2026-07-11）
 
-実装項目はPR #68のブランチ `agent/three-extension-remediation-20260711` へ反映済みである。追加レビューで、Git revision解決中のcancel/timeout分類保持、provider登録に実際に使用したAPI identityの保持、`registered:false`時の部分登録rollbackも追加した。
+実装項目はPR #68のブランチ `agent/three-extension-remediation-20260711` へ反映済みである。追加レビューで、Git revision解決中のcancel/timeout分類保持、provider登録に実際に使用したAPI identityの保持、`registered:false`時の部分登録rollback、process termination後settlement、Extension Host smoke runtime契約も追加した。
 
-局所検証では、retry controllerのAPI identity維持・generation切替・部分rollbackを3件、Git revision解決のcancel分類と不正revision正規化を確認した。GitHub Actionsは全jobがstep開始前に終了しており、最新headの全体CIと実機試験は未完了である。PRはdraftを維持し、CI／実機ゲートが閉じるまでmergeしない。
+Extension Host smokeは最小拡張で`@vscode/test-cli@0.0.12`がproject rootから`@vscode/test-electron`を解決できず、activation前に失敗することを再現した。`@vscode/test-electron@2.5.2`の一時導入、明示preflight、`skipExtensionDependencies: true`、VSIX生成後のruntime導入へ修正済みである。ローカルではtest runtime解決を通過したが、DNS制約によりVS Code download完了までは確認できない。
+
+GitHub Actionsは最新付近でも全jobがrunner割当前に終了しており、最新headの全体CIと実機試験は未完了である。PRはdraftを維持し、CI／実機ゲートが閉じるまでmergeしない。
 
 ---
 
@@ -73,6 +76,7 @@
 - [x] raw `execFile`呼び出しをrunner経由へ置換する。
 - [x] preflight-to-listenerのcancel競合を閉じる。
 - [x] Git revision validationでは`nonZeroExit`だけを不正revisionへ正規化し、cancel/timeout等を保持する。
+- [x] retained outputをbudget内へ制限し、child exit/closeまたは有限fallback後にPromiseをsettleする。
 
 ### Task 4: Windows Path Validation and Processing Limit Clamps
 
@@ -106,15 +110,23 @@
 
 **Files:**
 - Modify: `.github/workflows/extensions-quality.yml`
+- Modify: `scripts/extension-host-smoke.test.js`
 - Modify: three extensions' basic design, detailed design, unit test, real-machine test documents
 - Modify: `docs/review-findings-tracking.md`
+- Modify: `docs/release-evidence/three-extension-remediation-2026-07-11.md`
 
 - [x] Windows matrixとExtension Host smokeを追加する。
 - [x] soft dependency、provider lifecycle、timeout、path、limit、contract CIを文書へ反映する。
 - [x] verification項目をtrackingへ記録する。
 - [x] 外部GitHub Actionsをfull commit SHAへ固定する。
-- [x] 一時的な`agent-*` workflowとpatch scriptを削除する。
-- [ ] release evidenceへ最新headのCI／実機結果を記録する。
+- [x] 一時的な旧`agent-*` workflowとpatch scriptを削除する。
+- [x] Extension Host smokeの`@vscode/test-electron`欠落をRED再現する。
+- [x] `@vscode/test-electron@2.5.2`導入後にtest CLIのruntime解決を通過することを確認する。
+- [x] smoke configへruntime preflight、BDD UI、`skipExtensionDependencies: true`を追加する。
+- [x] VSIX生成・policyをtest runtime導入前へ移し、配布物との境界を固定する。
+- [x] release evidenceへ局所RED/GREENとrunner blockerを記録する。
+- [ ] GitHub runner復旧後、実Extension Host smokeを3拡張で完走する。
+- [ ] smoke成功後、一時`extension-host-smoke-diagnostic.yml`を削除する。
 
 ### Final Verification
 
