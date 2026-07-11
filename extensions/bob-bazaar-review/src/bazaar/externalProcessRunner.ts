@@ -45,6 +45,7 @@ export class ExternalProcessError extends Error {
 
 const MIN_EXTERNAL_PROCESS_TIMEOUT_MS = 1_000
 const MAX_EXTERNAL_PROCESS_TIMEOUT_MS = 600_000
+const PROCESS_TERMINATION_WAIT_MS = 2_000
 
 export function runExternalProcess(options: ExternalProcessOptions): Promise<ExternalProcessResult> {
   const maxBufferBytes = positiveInteger(options.maxBufferBytes, "maxBufferBytes")
@@ -80,8 +81,7 @@ export function runExternalProcess(options: ExternalProcessOptions): Promise<Ext
       if (settled) return
       settled = true
       cleanup()
-      terminateProcessTree(child)
-      reject(new ExternalProcessError(
+      const error = new ExternalProcessError(
         message,
         kind,
         options.command,
@@ -90,7 +90,11 @@ export function runExternalProcess(options: ExternalProcessOptions): Promise<Ext
         stdout(),
         stderr(),
         exitCode
-      ))
+      )
+      void terminateProcessTree(child).then(
+        () => reject(error),
+        () => reject(error)
+      )
     }
 
     const onAbort = (): void => fail("cancelled", `Command cancelled: ${options.command}`)
@@ -183,25 +187,68 @@ function boundedTimeout(value: number): number {
   return Math.max(MIN_EXTERNAL_PROCESS_TIMEOUT_MS, Math.min(MAX_EXTERNAL_PROCESS_TIMEOUT_MS, timeout))
 }
 
-function terminateProcessTree(child: ExternalProcessChild): void {
-  const pid = child.pid
-  if (!pid) {
-    child.kill("SIGKILL")
-    return
-  }
+function terminateProcessTree(child: ExternalProcessChild): Promise<void> {
+  return new Promise((resolve) => {
+    let finished = false
+    let timeout: ReturnType<typeof setTimeout>
 
-  if (process.platform === "win32") {
-    const killer = spawn("taskkill", ["/pid", String(pid), "/T", "/F"], {
-      windowsHide: true,
-      stdio: "ignore"
-    })
-    killer.once("error", () => child.kill("SIGKILL"))
-    return
-  }
+    const finish = (): void => {
+      if (finished) return
+      finished = true
+      clearTimeout(timeout)
+      child.removeListener("exit", finish)
+      child.removeListener("close", finish)
+      resolve()
+    }
 
-  try {
-    process.kill(-pid, "SIGKILL")
-  } catch {
-    child.kill("SIGKILL")
-  }
+    const fallbackKill = (): void => {
+      try {
+        child.kill("SIGKILL")
+      } catch {
+        // Best effort: the process may already be gone.
+      }
+    }
+
+    timeout = setTimeout(() => {
+      fallbackKill()
+      finish()
+    }, PROCESS_TERMINATION_WAIT_MS)
+
+    child.once("exit", finish)
+    child.once("close", finish)
+
+    if (child.exitCode !== null || child.signalCode !== null) {
+      finish()
+      return
+    }
+
+    const pid = child.pid
+    if (!pid) {
+      fallbackKill()
+      return
+    }
+
+    if (process.platform === "win32") {
+      try {
+        const killer = spawn("taskkill", ["/pid", String(pid), "/T", "/F"], {
+          windowsHide: true,
+          stdio: "ignore"
+        })
+        killer.once("error", fallbackKill)
+        killer.once("close", (code) => {
+          if (code !== 0) fallbackKill()
+          if (child.exitCode !== null || child.signalCode !== null) finish()
+        })
+      } catch {
+        fallbackKill()
+      }
+      return
+    }
+
+    try {
+      process.kill(-pid, "SIGKILL")
+    } catch {
+      fallbackKill()
+    }
+  })
 }
