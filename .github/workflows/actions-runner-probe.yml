@@ -1,0 +1,35 @@
+name: actions-runner-probe
+
+on:
+  push:
+    branches:
+      - agent/three-extension-remediation-20260711
+    paths:
+      - ".github/workflows/actions-runner-probe.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ubuntu-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Confirm Ubuntu runner allocation
+        shell: bash
+        run: |
+          echo "runner-started=true"
+          echo "os=$RUNNER_OS"
+          node --version
+
+  windows-probe:
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - name: Confirm Windows runner allocation
+        shell: pwsh
+        run: |
+          Write-Output "runner-started=true"
+          Write-Output "os=$env:RUNNER_OS"
+          node --version
