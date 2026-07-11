@@ -115,13 +115,17 @@ jobs:
           cache: npm
           cache-dependency-path: extensions/bob-code-consistency-review/package-lock.json
       - run: npm ci
-      - name: Capture test output
+      - name: Capture focused test output
         id: tests
         shell: bash
         run: |
           set +e
-          npm test > "$RUNNER_TEMP/code-consistency-test.log" 2>&1
+          npm run compile > "$RUNNER_TEMP/code-consistency-test.log" 2>&1
           status=$?
+          if [ "$status" -eq 0 ]; then
+            node --test test/externalProcessRunner.test.js test/externalProcessWiring.test.js >> "$RUNNER_TEMP/code-consistency-test.log" 2>&1
+            status=$?
+          fi
           tail -n 180 "$RUNNER_TEMP/code-consistency-test.log" > "$RUNNER_TEMP/code-consistency-test-tail.log"
           echo "status=$status" >> "$GITHUB_OUTPUT"
           exit 0
@@ -134,7 +138,7 @@ jobs:
             const fs = require("node:fs");
             const marker = "<!-- agent-code-consistency-test-diagnostic -->";
             const tail = fs.readFileSync(process.env.RUNNER_TEMP + "/code-consistency-test-tail.log", "utf8");
-            const body = `${marker}\n## Code consistency diagnostic\n\nExit: ${process.env.TEST_STATUS}\n\n\`\`\`text\n${tail.slice(-12000)}\n\`\`\``;
+            const body = `${marker}\n## Code consistency focused diagnostic\n\nExit: ${process.env.TEST_STATUS}\n\n\`\`\`text\n${tail.slice(-12000)}\n\`\`\``;
             const issue_number = 68;
             const comments = await github.rest.issues.listComments({ owner: context.repo.owner, repo: context.repo.repo, issue_number });
             const previous = comments.data.find((comment) => comment.body?.includes(marker));
