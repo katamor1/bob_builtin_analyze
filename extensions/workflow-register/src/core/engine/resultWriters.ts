@@ -79,22 +79,25 @@ export async function writeProducedArtifacts(input: {
   step: EngineStep
   resultSinks: ResultSinkRegistry
   providerArtifacts?: WorkflowProviderArtifactMetadata[]
+  stateOverlay?: Record<string, string>
 }): Promise<{ ok: true } | { ok: false; error: string }> {
   const { workflow, run, step, resultSinks } = input
   const artifacts = workflow.artifacts ?? []
+  const state = { ...run.state, ...(input.stateOverlay ?? {}) }
   const providerEntries = await validateProviderArtifacts({
     workflow,
     run,
     step,
+    state,
     providerArtifacts: input.providerArtifacts ?? []
   })
   if (!providerEntries.ok) return providerEntries
   const manifestEntries: WorkflowArtifactManifestEntry[] = [...providerEntries.entries.values()]
   for (const artifact of artifacts.filter((item) => item.producedBy === step.id)) {
     if (providerEntries.entries.has(artifact.id)) continue
-    const value = run.state[artifact.id]
+    const value = state[artifact.id]
     if (value === undefined) continue
-    const path = renderArtifactPath(artifact, { inputs: run.inputs, state: run.state, run, workflow, step })
+    const path = renderArtifactPath(artifact, { inputs: run.inputs, state, run, workflow, step })
     // artifact path に未解決テンプレートが残る場合は、誤った literal path への生成物書き込みを避ける。
     if (path.includes("{{")) continue
     const write = await resultSinks.write({ type: "file", path }, {
@@ -106,7 +109,7 @@ export async function writeProducedArtifacts(input: {
       runId: run.runId,
       stepId: step.id,
       inputs: run.inputs,
-      state: run.state,
+      state,
       text: value
     })
     if (!write.ok) return { ok: false, error: write.error ?? `Failed to write artifact: ${artifact.id}` }
@@ -123,7 +126,7 @@ export async function writeProducedArtifacts(input: {
       runId: run.runId,
       stepId: step.id,
       inputs: run.inputs,
-      state: run.state,
+      state: { ...state, ...run.state },
       text: `${JSON.stringify(manifest, null, 2)}\n`
     })
     if (!manifestWrite.ok) return { ok: false, error: manifestWrite.error ?? "Failed to write artifact manifest." }
@@ -135,6 +138,7 @@ async function validateProviderArtifacts(input: {
   workflow: CoreWorkflowDefinition
   run: WorkflowRunState
   step: EngineStep
+  state: Record<string, string>
   providerArtifacts: WorkflowProviderArtifactMetadata[]
 }): Promise<
   | { ok: true; entries: Map<string, WorkflowArtifactManifestEntry> }
@@ -146,6 +150,12 @@ async function validateProviderArtifacts(input: {
     return { ok: false, error: "Provider artifact metadata requires a workflow root." }
   }
   const root = nodePath.resolve(input.workflow.workflowRoot)
+  let rootRealPath: string
+  try {
+    rootRealPath = await fs.realpath(root)
+  } catch (error) {
+    return { ok: false, error: `Provider artifact workflow root could not be resolved: ${error instanceof Error ? error.message : String(error)}` }
+  }
   for (const metadata of input.providerArtifacts) {
     const declarations = (input.workflow.artifacts ?? []).filter((artifact) => artifact.id === metadata.id)
     if (declarations.length === 0) {
@@ -163,7 +173,7 @@ async function validateProviderArtifacts(input: {
     }
     const renderedPath = renderArtifactPath(artifact, {
       inputs: input.run.inputs,
-      state: input.run.state,
+      state: input.state,
       run: input.run,
       workflow: input.workflow,
       step: input.step
@@ -179,28 +189,27 @@ async function validateProviderArtifacts(input: {
     if (relative.startsWith("..") || nodePath.isAbsolute(relative)) {
       return { ok: false, error: `Provider artifact '${metadata.id}' path escapes the workspace.` }
     }
-    let stat
+    let targetRealPath: string
     try {
-      stat = await fs.stat(target)
+      targetRealPath = await fs.realpath(target)
     } catch (error) {
       if (isMissingFileError(error)) {
         return { ok: false, error: `Provider artifact '${metadata.id}' file does not exist.` }
       }
-      return { ok: false, error: `Provider artifact '${metadata.id}' could not be inspected: ${error instanceof Error ? error.message : String(error)}` }
+      return { ok: false, error: `Provider artifact '${metadata.id}' could not be resolved: ${error instanceof Error ? error.message : String(error)}` }
     }
-    if (!stat.isFile()) {
-      return { ok: false, error: `Provider artifact '${metadata.id}' path is not a file.` }
+    const realRelative = nodePath.relative(rootRealPath, targetRealPath)
+    if (realRelative.startsWith("..") || nodePath.isAbsolute(realRelative)) {
+      return { ok: false, error: `Provider artifact '${metadata.id}' path escapes the workspace.` }
     }
+    let handle: Awaited<ReturnType<typeof fs.open>> | undefined
     try {
-      const [rootRealPath, targetRealPath, content] = await Promise.all([
-        fs.realpath(root),
-        fs.realpath(target),
-        fs.readFile(target)
-      ])
-      const realRelative = nodePath.relative(rootRealPath, targetRealPath)
-      if (realRelative.startsWith("..") || nodePath.isAbsolute(realRelative)) {
-        return { ok: false, error: `Provider artifact '${metadata.id}' path escapes the workspace.` }
+      handle = await fs.open(targetRealPath, "r")
+      const stat = await handle.stat()
+      if (!stat.isFile()) {
+        return { ok: false, error: `Provider artifact '${metadata.id}' path is not a file.` }
       }
+      const content = await handle.readFile()
       entries.set(metadata.id, createWorkflowArtifactManifestEntry({
         artifact,
         step: input.step,
@@ -209,7 +218,12 @@ async function validateProviderArtifacts(input: {
         source: "provider-artifact"
       }))
     } catch (error) {
+      if (isMissingFileError(error)) {
+        return { ok: false, error: `Provider artifact '${metadata.id}' file does not exist.` }
+      }
       return { ok: false, error: `Provider artifact '${metadata.id}' could not be read: ${error instanceof Error ? error.message : String(error)}` }
+    } finally {
+      await handle?.close().catch(() => undefined)
     }
   }
   return { ok: true, entries }

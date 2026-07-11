@@ -26,8 +26,17 @@ import { writeResultSinks } from "./resultWriters"
 
 type RecoverResultText = NonNullable<WorkflowEngineOptions["recoverResultText"]>
 type EngineEmitter = (input: WorkflowEngineEventInput) => Promise<void>
-type AutomatedStepResult =
-  | { ok: true; providerArtifacts?: WorkflowProviderArtifactMetadata[] }
+export interface StagedCommandResult {
+  commandValue: unknown
+  stateUpdates: Record<string, string>
+}
+
+export type AutomatedStepResult =
+  | {
+    ok: true
+    providerArtifacts?: WorkflowProviderArtifactMetadata[]
+    stagedCommandResult?: StagedCommandResult
+  }
   | { ok: false; held?: boolean; error: string }
 
 export async function executeAutomatedStep(input: {
@@ -39,7 +48,6 @@ export async function executeAutomatedStep(input: {
   agentProvider?: AgentProvider
   recoverResultText?: RecoverResultText
   emitAgentOutput: EngineEmitter
-  emitCommandResult: EngineEmitter
   emitHandoffFailed: EngineEmitter
 }): Promise<AutomatedStepResult> {
   const { workflow, run, step } = input
@@ -119,7 +127,6 @@ async function executeCommandStep(input: {
   run: WorkflowRunState
   step: Extract<EngineStep, { type: "command" }>
   actions: ActionRegistry
-  emitCommandResult: EngineEmitter
 }): Promise<AutomatedStepResult> {
   const { workflow, run, step } = input
   const stateKeyError = step.resultKey ? reservedWorkflowStateKeyError(step.resultKey, "workflow resultKey") : undefined
@@ -157,9 +164,14 @@ async function executeCommandStep(input: {
   if (actionError) return { ok: false, error: actionError }
   const commandResult = splitWorkflowCommandResult(result.value)
   if (!commandResult.ok) return commandResult
-  if (step.resultKey) run.state[step.resultKey] = formatStateValue(commandResult.payload)
-  await input.emitCommandResult({ workflow, run, step, commandValue: commandResult.payload })
-  return { ok: true, providerArtifacts: commandResult.providerArtifacts }
+  return {
+    ok: true,
+    providerArtifacts: commandResult.providerArtifacts,
+    stagedCommandResult: {
+      commandValue: commandResult.payload,
+      stateUpdates: step.resultKey ? { [step.resultKey]: formatStateValue(commandResult.payload) } : {}
+    }
+  }
 }
 
 function splitWorkflowCommandResult(value: unknown): {

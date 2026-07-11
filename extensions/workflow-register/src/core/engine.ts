@@ -30,7 +30,7 @@ import {
   waitForManualCompletion as waitForEngineManualCompletion
 } from "./engine/manualCompletion"
 import { pauseRunIfRequested } from "./engine/runPause"
-import { executeAutomatedStep } from "./engine/stepExecutor"
+import { executeAutomatedStep, type AutomatedStepResult } from "./engine/stepExecutor"
 import {
   latestBranchCheckpointDecision,
   recordBranchCheckpointDecision
@@ -46,7 +46,6 @@ import {
   CoreWorkflowDefinition,
   EngineStep,
   RunStepState,
-  WorkflowProviderArtifactMetadata,
   WorkflowRunState
 } from "./model"
 import type {
@@ -321,7 +320,8 @@ export class WorkflowEngine {
         run,
         step,
         resultSinks: this.resultSinks,
-        providerArtifacts: stepResult.providerArtifacts
+        providerArtifacts: stepResult.providerArtifacts,
+        stateOverlay: stepResult.stagedCommandResult?.stateUpdates
       })
       if (!artifactResult.ok) {
         stepState.status = "failed"
@@ -332,6 +332,16 @@ export class WorkflowEngine {
         await this.runStore.saveRun(run)
         await this.emit(this.hooks.onStepFailed, { workflow, run, step, error: artifactResult.error })
         return run
+      }
+
+      if (stepResult.stagedCommandResult) {
+        Object.assign(run.state, stepResult.stagedCommandResult.stateUpdates)
+        await this.emit(this.hooks.onCommandResult, {
+          workflow,
+          run,
+          step,
+          commandValue: stepResult.stagedCommandResult.commandValue
+        })
       }
 
       const completion = await completeEngineStepIfManual({
@@ -470,10 +480,7 @@ export class WorkflowEngine {
     workflow: CoreWorkflowDefinition,
     run: WorkflowRunState,
     step: EngineStep
-  ): Promise<
-    | { ok: true; providerArtifacts?: WorkflowProviderArtifactMetadata[] }
-    | { ok: false; held?: boolean; error: string }
-  > {
+  ): Promise<AutomatedStepResult> {
     if (step.type === "manual") {
       return waitForEngineManualCompletion({
         workflow,
@@ -491,7 +498,6 @@ export class WorkflowEngine {
       resultSinks: this.resultSinks,
       recoverResultText: this.recoverResultText,
       emitAgentOutput: (event) => this.emit(this.hooks.onAgentOutput, event),
-      emitCommandResult: (event) => this.emit(this.hooks.onCommandResult, event),
       emitHandoffFailed: (event) => this.emit(this.hooks.onHandoffFailed, event)
     })
   }

@@ -1,6 +1,7 @@
 const assert = require("node:assert/strict")
 const crypto = require("node:crypto")
 const fs = require("node:fs/promises")
+const os = require("node:os")
 const path = require("node:path")
 const { test } = require("node:test")
 
@@ -11,7 +12,14 @@ function sha256(value) {
 }
 
 test("workflow engine preserves provider-written canonical process artifacts", async () => {
-  const { actions, engine, workspaceRoot } = createWorkflowEngineContext()
+  const commandEvents = []
+  const { actions, engine, workspaceRoot } = createWorkflowEngineContext({
+    engineOptions: {
+      hooks: {
+        onCommandResult: (event) => commandEvents.push(event)
+      }
+    }
+  })
   const canonicalArtifacts = [
     {
       id: "evidenceIndex",
@@ -88,8 +96,15 @@ test("workflow engine preserves provider-written canonical process artifacts", a
 
   assert.equal(run.status, "completed")
   assert.deepEqual(actualContents, canonicalArtifacts.map((artifact) => artifact.content))
+  assert.equal(commandEvents.length, canonicalArtifacts.length)
   for (const artifact of canonicalArtifacts) {
     assert.deepEqual(JSON.parse(run.state[artifact.id]), {
+      status: "ok",
+      diagnostics: [],
+      relativePath: artifact.path.replace("{{run.id}}", run.runId)
+    })
+    const event = commandEvents.find((candidate) => candidate.step.id === artifact.stepId)
+    assert.deepEqual(event.commandValue, {
       status: "ok",
       diagnostics: [],
       relativePath: artifact.path.replace("{{run.id}}", run.runId)
@@ -178,7 +193,14 @@ test("workflow engine rejects invalid provider artifact metadata", async (t) => 
 
   for (const scenario of cases) {
     await t.test(scenario.name, async () => {
-      const { actions, engine, workspaceRoot } = createWorkflowEngineContext()
+      const commandEvents = []
+      const { actions, engine, workspaceRoot } = createWorkflowEngineContext({
+        engineOptions: {
+          hooks: {
+            onCommandResult: (event) => commandEvents.push(event)
+          }
+        }
+      })
       const declaredPath = scenario.declaredPath ?? ".bob-process-runs/{{run.id}}/evidence-index.json"
       actions.register({
         id: "sample.collect-evidence",
@@ -221,8 +243,128 @@ test("workflow engine rejects invalid provider artifact metadata", async (t) => 
 
       assert.equal(run.status, "failed")
       assert.match(run.error, scenario.error)
+      assert.equal(run.state.evidenceIndex, undefined, "failed provider metadata must not commit resultKey state")
+      assert.equal(commandEvents.length, 0, "failed provider metadata must not emit a successful command result")
     })
   }
+})
+
+test("staged command state renders provider artifact paths before atomic commit", async () => {
+  const commandEvents = []
+  const { actions, engine, workspaceRoot } = createWorkflowEngineContext({
+    engineOptions: {
+      hooks: {
+        onCommandResult: (event) => commandEvents.push(event)
+      }
+    }
+  })
+  actions.register({
+    id: "sample.overlay",
+    execute: async (input) => {
+      const relativePath = `.bob-process-runs/${input.runId}/overlay.json`
+      const absolutePath = path.join(workspaceRoot, ...relativePath.split("/"))
+      await fs.mkdir(path.dirname(absolutePath), { recursive: true })
+      await fs.writeFile(absolutePath, "provider-overlay\n", "utf8")
+      return {
+        $workflow: {
+          artifacts: [{ id: "evidenceIndex", ownership: "provider", path: relativePath }]
+        },
+        status: "ok",
+        diagnostics: [],
+        relativePath
+      }
+    }
+  })
+  const workflow = {
+    id: "workflow-register.provider-overlay",
+    name: "provider-overlay",
+    label: "Provider Overlay",
+    description: "Render a provider path from staged command state.",
+    schemaVersion: "workflow-register/v1",
+    workflowRoot: workspaceRoot,
+    inputs: {},
+    artifacts: [{
+      id: "evidenceIndex",
+      producedBy: "collect-evidence",
+      path: "{{json state.evidenceIndex.relativePath}}"
+    }],
+    engineSteps: [{
+      id: "collect-evidence",
+      title: "Collect evidence",
+      type: "command",
+      action: { provider: "sample.overlay" },
+      resultKey: "evidenceIndex"
+    }]
+  }
+
+  const run = await engine.runWorkflow(workflow, {})
+
+  assert.equal(run.status, "completed")
+  assert.equal(commandEvents.length, 1)
+  assert.deepEqual(commandEvents[0].commandValue, JSON.parse(run.state.evidenceIndex))
+})
+
+test("provider artifact containment rejects a symlink before reading its outside target", async (t) => {
+  const { actions, engine, workspaceRoot } = createWorkflowEngineContext()
+  const outsideRoot = await fs.mkdtemp(path.join(os.tmpdir(), "workflow-provider-outside-"))
+  const outsidePath = path.join(outsideRoot, "outside.json")
+  const relativePath = ".bob-process-runs/provider-link.json"
+  const linkPath = path.join(workspaceRoot, ...relativePath.split("/"))
+  await fs.writeFile(outsidePath, "outside-secret\n", "utf8")
+  await fs.mkdir(path.dirname(linkPath), { recursive: true })
+  try {
+    await fs.symlink(outsidePath, linkPath, "file")
+  } catch (error) {
+    if (error && (error.code === "EPERM" || error.code === "EACCES" || error.code === "ENOTSUP")) {
+      t.skip(`symlink creation is unavailable: ${error.code}`)
+      return
+    }
+    throw error
+  }
+  actions.register({
+    id: "sample.symlink",
+    execute: () => ({
+      $workflow: {
+        artifacts: [{ id: "evidenceIndex", ownership: "provider", path: relativePath }]
+      },
+      status: "ok",
+      diagnostics: [],
+      relativePath
+    })
+  })
+  const workflow = {
+    id: "workflow-register.provider-symlink",
+    name: "provider-symlink",
+    label: "Provider Symlink",
+    description: "Reject provider artifact symlink escapes before reading.",
+    schemaVersion: "workflow-register/v1",
+    workflowRoot: workspaceRoot,
+    inputs: {},
+    artifacts: [{ id: "evidenceIndex", producedBy: "collect-evidence", path: relativePath }],
+    engineSteps: [{
+      id: "collect-evidence",
+      title: "Collect evidence",
+      type: "command",
+      action: { provider: "sample.symlink" },
+      resultKey: "evidenceIndex"
+    }]
+  }
+  const originalReadFile = fs.readFile
+  let providerPathReadCount = 0
+  fs.readFile = async (file, ...args) => {
+    if (path.resolve(String(file)) === path.resolve(linkPath)) providerPathReadCount += 1
+    return originalReadFile(file, ...args)
+  }
+  let run
+  try {
+    run = await engine.runWorkflow(workflow, {})
+  } finally {
+    fs.readFile = originalReadFile
+  }
+
+  assert.equal(run.status, "failed")
+  assert.match(run.error, /path escapes the workspace/)
+  assert.equal(providerPathReadCount, 0, "outside symlink target must not be read before containment succeeds")
 })
 
 test("metadata-free providers retain engine-owned artifact writes", async () => {
