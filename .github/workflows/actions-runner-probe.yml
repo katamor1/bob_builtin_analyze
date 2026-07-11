@@ -1,6 +1,9 @@
 name: actions-runner-probe
 
 on:
+  pull_request:
+    paths:
+      - ".github/workflows/actions-runner-probe.yml"
   push:
     branches:
       - agent/three-extension-remediation-20260711
