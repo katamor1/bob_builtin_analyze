@@ -1,0 +1,92 @@
+name: extension-host-smoke-diagnostic
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/extension-host-smoke-diagnostic.yml"
+      - "scripts/extension-host-smoke.test.js"
+      - "extensions/workflow-register/**"
+      - "extensions/bob-bazaar-review/**"
+      - "extensions/bob-code-consistency-review/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: extension-host-smoke-diagnostic-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: ${{ matrix.extension }} smoke diagnostic
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - extension: workflow-register
+            extension_id: local.workflow-register
+            smoke_commands: workflowRegister.reload,workflowRegister.runWorkflow
+          - extension: bob-bazaar-review
+            extension_id: local.bob-bazaar-review
+            smoke_commands: bobBazaar.openReviewGui,bobBazaar.reviewRevision
+          - extension: bob-code-consistency-review
+            extension_id: local.bob-code-consistency-review
+            smoke_commands: bobCodeConsistency.openReviewWizard,bobCodeConsistency.preprocess
+
+    defaults:
+      run:
+        working-directory: extensions/${{ matrix.extension }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: extensions/${{ matrix.extension }}/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Compile extension
+        run: npm run compile
+
+      - name: Capture Extension Host smoke
+        id: smoke
+        shell: bash
+        env:
+          SMOKE_EXTENSION_ID: ${{ matrix.extension_id }}
+          SMOKE_COMMANDS: ${{ matrix.smoke_commands }}
+        run: |
+          set +e
+          node ../../scripts/extension-host-smoke.test.js --write-config > "$RUNNER_TEMP/${{ matrix.extension }}-smoke.log" 2>&1
+          status=$?
+          if [ "$status" -eq 0 ]; then
+            xvfb-run -a npx --yes --package "@vscode/test-cli@0.0.12" vscode-test >> "$RUNNER_TEMP/${{ matrix.extension }}-smoke.log" 2>&1
+            status=$?
+          fi
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          echo "--- diagnostic tail ---"
+          tail -n 240 "$RUNNER_TEMP/${{ matrix.extension }}-smoke.log"
+          exit 0
+
+      - name: Upload smoke diagnostic
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: extension-host-smoke-${{ matrix.extension }}
+          path: ${{ runner.temp }}/${{ matrix.extension }}-smoke.log
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Enforce smoke result
+        shell: bash
+        env:
+          SMOKE_STATUS: ${{ steps.smoke.outputs.status }}
+        run: |
+          test "$SMOKE_STATUS" -eq 0
