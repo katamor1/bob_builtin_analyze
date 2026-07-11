@@ -21,7 +21,7 @@ test("waitForDecision keeps one pending Promise until the gate is accepted", asy
   assert.equal(registry.accept("run-1", "review"), "accepted")
   assert.equal(await first, true)
   assert.equal(registry.isPending("run-1", "review"), false)
-  assert.equal(registry.accept("run-1", "review"), "alreadySettled")
+  assert.equal(registry.accept("run-1", "review"), "alreadyAccepted")
   assert.equal(registry.accept("missing", "review"), "missing")
 })
 
@@ -34,7 +34,7 @@ test("abort rejects a pending gate and ignores stale decisions", async () => {
   await rejected
   assert.equal(registry.isPending("run-2", "review"), false)
   assert.equal(registry.abort("run-2", "review", "stale"), false)
-  assert.equal(registry.accept("run-2", "review"), "alreadySettled")
+  assert.equal(registry.accept("run-2", "review"), "aborted")
 })
 
 test("dispose rejects every pending gate and is idempotent", async () => {
@@ -50,7 +50,7 @@ test("dispose rejects every pending gate and is idempotent", async () => {
   await Promise.all([firstRejected, secondRejected])
   assert.equal(registry.isPending("run-3", "first"), false)
   assert.equal(registry.isPending("run-3", "second"), false)
-  assert.equal(registry.accept("run-3", "first"), "alreadySettled")
+  assert.equal(registry.accept("run-3", "first"), "aborted")
 })
 
 test("a later wait starts a fresh lifecycle for the same run and step", async () => {
@@ -66,4 +66,8 @@ test("a later wait starts a fresh lifecycle for the same run and step", async ()
   const rejected = assert.rejects(retried, /retry terminated/)
   assert.equal(registry.abort("run-4", "review", "retry terminated"), true)
   await rejected
+
+  const afterAbort = registry.waitForDecision({ runId: "run-4", stepId: "review", status: "reviewing" })
+  assert.equal(registry.accept("run-4", "review"), "accepted")
+  assert.equal(await afterAbort, true)
 })

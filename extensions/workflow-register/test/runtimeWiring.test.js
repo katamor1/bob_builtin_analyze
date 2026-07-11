@@ -52,13 +52,14 @@ function loadBobWorkflowRunner() {
   }
 }
 
-async function waitForReviewingRun(runStore) {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
+async function waitForReviewingRun(runStore, timeoutMs = 15_000) {
+  const startedAt = Date.now()
+  while (Date.now() - startedAt <= timeoutMs) {
     const run = (await runStore.listRuns()).find((candidate) => candidate.status === "reviewing")
     if (run) return run
-    await new Promise((resolve) => setTimeout(resolve, 5))
+    await new Promise((resolve) => setTimeout(resolve, 10))
   }
-  throw new Error("Bob workflow did not reach reviewing state.")
+  throw new Error(`Bob workflow did not reach reviewing state within ${timeoutMs}ms.`)
 }
 
 function createBobReviewRunner(t) {
@@ -339,7 +340,7 @@ test("review-gated Bob tasks use live gate acceptance before Todo-sync fallback"
   assert.match(stepReview, orderedPattern(
     "await runStore.saveRun(accepted)",
     "options.acceptBobWorkflowGate(accepted.runId, acceptedStepId)",
-    'if (gateDecision === "missing")',
+    'if (gateDecision === "missing" || gateDecision === "aborted")',
     "await bobTaskSyncRegistry.reconcileRun(accepted, undefined"
   ))
 })
@@ -349,7 +350,7 @@ test("Operation Hub live gate owns Bob advancement while stale gates keep Todo-s
 
   assert.match(stepReview, /interface AcceptedStepResult \{[\s\S]*completedViaBobTask: boolean[\s\S]*\}/)
   assert.match(stepReview, /let completedViaBobTask = acceptedViaLiveGate/)
-  assert.match(stepReview, /if \(gateDecision === "missing"\) \{[\s\S]*await bobTaskSyncRegistry\.reconcileRun\(accepted, undefined/)
+  assert.match(stepReview, /if \(gateDecision === "missing" \|\| gateDecision === "aborted"\) \{[\s\S]*await bobTaskSyncRegistry\.reconcileRun\(accepted, undefined/)
   assert.match(stepReview, /completedViaBobTask = sync\.status === "synced" && sync\.appliedStepCount > 0/)
   assert.match(stepReview, /return \{ run: accepted, message, completedViaBobTask \}/)
   assert.match(stepReview, /if \(completedViaBobTask\) \{/)

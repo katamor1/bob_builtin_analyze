@@ -71,9 +71,9 @@ async function acceptReviewedStep(options: StepReviewCommandOptions, runId?: str
   const gateDecision = acceptedStepId
     ? options.acceptBobWorkflowGate(accepted.runId, acceptedStepId)
     : "missing"
-  const acceptedViaLiveGate = gateDecision !== "missing"
+  const acceptedViaLiveGate = gateDecision === "accepted" || gateDecision === "alreadyAccepted"
   let completedViaBobTask = acceptedViaLiveGate
-  if (gateDecision === "missing") {
+  if (gateDecision === "missing" || gateDecision === "aborted") {
     const sync = await bobTaskSyncRegistry.reconcileRun(accepted, undefined, {
       reason: "review-accepted",
       task: reviewTaskRegistry.taskForStep(accepted.runId, acceptedStepId) ?? reviewTaskRegistry.taskForRun(accepted.runId)

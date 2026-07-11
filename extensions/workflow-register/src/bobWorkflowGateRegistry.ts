@@ -6,7 +6,9 @@ export interface BobWorkflowGateDecision {
   status: RunStatus
 }
 
-export type BobWorkflowGateAcceptResult = "accepted" | "alreadySettled" | "missing"
+export type BobWorkflowGateAcceptResult = "accepted" | "alreadyAccepted" | "aborted" | "missing"
+
+type SettledGateOutcome = "accepted" | "aborted"
 
 interface PendingGate {
   promise: Promise<boolean>
@@ -16,7 +18,7 @@ interface PendingGate {
 
 export class BobWorkflowGateRegistry {
   private readonly pending = new Map<string, PendingGate>()
-  private readonly settled = new Set<string>()
+  private readonly settled = new Map<string, SettledGateOutcome>()
   private disposed = false
 
   waitForDecision(input: BobWorkflowGateDecision): Promise<boolean> {
@@ -39,9 +41,13 @@ export class BobWorkflowGateRegistry {
   accept(runId: string, stepId: string): BobWorkflowGateAcceptResult {
     const key = gateKey(runId, stepId)
     const gate = this.pending.get(key)
-    if (!gate) return this.settled.has(key) ? "alreadySettled" : "missing"
+    if (!gate) {
+      const settled = this.settled.get(key)
+      if (settled === "accepted") return "alreadyAccepted"
+      return settled ?? "missing"
+    }
     this.pending.delete(key)
-    this.settled.add(key)
+    this.settled.set(key, "accepted")
     gate.resolve(true)
     return "accepted"
   }
@@ -51,7 +57,7 @@ export class BobWorkflowGateRegistry {
     const gate = this.pending.get(key)
     if (!gate) return false
     this.pending.delete(key)
-    this.settled.add(key)
+    this.settled.set(key, "aborted")
     gate.reject(new Error(reason))
     return true
   }
@@ -66,7 +72,7 @@ export class BobWorkflowGateRegistry {
     const gates = [...this.pending.entries()]
     this.pending.clear()
     for (const [key, gate] of gates) {
-      this.settled.add(key)
+      this.settled.set(key, "aborted")
       gate.reject(new Error("Bob workflow gate registry is disposed."))
     }
   }

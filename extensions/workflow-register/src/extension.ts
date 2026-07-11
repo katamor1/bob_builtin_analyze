@@ -18,7 +18,7 @@ export interface WorkflowRegisterApi {
    *
    * @param runId 承認済み run identifier。
    * @param stepId 承認済み step identifier。
-   * @returns gate を今回解放した、既に解放済み、または live gate が存在しないことを表す atomic decision。
+   * @returns 今回 accept、accept 済み、abort/dispose 済み、または live gate 不在を表す atomic decision。
    */
   acceptBobWorkflowGate: (runId: string, stepId: string) => BobWorkflowGateAcceptResult
   /**
