@@ -367,6 +367,107 @@ test("provider artifact containment rejects a symlink before reading its outside
   assert.equal(providerPathReadCount, 0, "outside symlink target must not be read before containment succeeds")
 })
 
+test("provider artifact validation rejects replacement between containment and open", async (t) => {
+  const commandEvents = []
+  const { actions, engine, workspaceRoot } = createWorkflowEngineContext({
+    engineOptions: {
+      hooks: {
+        onCommandResult: (event) => commandEvents.push(event)
+      }
+    }
+  })
+  const outsideRoot = await fs.mkdtemp(path.join(os.tmpdir(), "workflow-provider-open-race-"))
+  const outsidePath = path.join(outsideRoot, "outside.json")
+  const relativePath = ".bob-process-runs/provider-race.json"
+  const targetPath = path.join(workspaceRoot, ...relativePath.split("/"))
+  const trustedBackupPath = `${targetPath}.trusted`
+  const probeLinkPath = path.join(workspaceRoot, ".bob-process-runs", "symlink-probe.json")
+  await fs.mkdir(path.dirname(targetPath), { recursive: true })
+  await fs.writeFile(targetPath, "trusted-provider-content\n", "utf8")
+  await fs.writeFile(outsidePath, "outside-secret\n", "utf8")
+  try {
+    await fs.symlink(outsidePath, probeLinkPath, "file")
+    await fs.unlink(probeLinkPath)
+  } catch (error) {
+    await fs.unlink(probeLinkPath).catch(() => undefined)
+    if (error && (error.code === "EPERM" || error.code === "EACCES" || error.code === "ENOTSUP")) {
+      t.skip(`symlink creation is unavailable: ${error.code}`)
+      return
+    }
+    throw error
+  }
+  actions.register({
+    id: "sample.open-race",
+    execute: () => ({
+      $workflow: {
+        artifacts: [{ id: "evidenceIndex", ownership: "provider", path: relativePath }]
+      },
+      status: "ok",
+      diagnostics: [],
+      relativePath
+    })
+  })
+  const workflow = {
+    id: "workflow-register.provider-open-race",
+    name: "provider-open-race",
+    label: "Provider Open Race",
+    description: "Reject provider artifact replacement after containment validation.",
+    schemaVersion: "workflow-register/v1",
+    workflowRoot: workspaceRoot,
+    inputs: {},
+    artifacts: [{ id: "evidenceIndex", producedBy: "collect-evidence", path: relativePath }],
+    engineSteps: [{
+      id: "collect-evidence",
+      title: "Collect evidence",
+      type: "command",
+      action: { provider: "sample.open-race" },
+      resultKey: "evidenceIndex"
+    }]
+  }
+  const originalOpen = fs.open
+  let replacementAttempted = false
+  let replacementCompleted = false
+  let restorationCompleted = false
+  let outsideContentReadCount = 0
+  fs.open = async (file, ...args) => {
+    const isProviderOpen = path.resolve(String(file)) === path.resolve(targetPath)
+    if (isProviderOpen && !replacementAttempted) {
+      replacementAttempted = true
+      await fs.rename(targetPath, trustedBackupPath)
+      await fs.symlink(outsidePath, targetPath, "file")
+      replacementCompleted = true
+    }
+    const handle = await originalOpen(file, ...args)
+    if (isProviderOpen && replacementCompleted) {
+      await fs.unlink(targetPath)
+      await fs.rename(trustedBackupPath, targetPath)
+      restorationCompleted = true
+      const originalHandleReadFile = handle.readFile.bind(handle)
+      handle.readFile = async (...readArgs) => {
+        outsideContentReadCount += 1
+        return originalHandleReadFile(...readArgs)
+      }
+    }
+    return handle
+  }
+  let run
+  try {
+    run = await engine.runWorkflow(workflow, {})
+  } finally {
+    fs.open = originalOpen
+  }
+  const manifestPath = path.join(workspaceRoot, ".bob", "workflows", "runs", run.runId, "artifacts", "manifest.json")
+
+  assert.equal(replacementCompleted, true, "the test must replace the validated file immediately before open")
+  assert.equal(restorationCompleted, true, "the original path must be restored before post-open validation")
+  assert.equal(run.status, "failed")
+  assert.match(run.error, /changed during validation/)
+  assert.equal(run.state.evidenceIndex, undefined, "failed artifact validation must not commit resultKey state")
+  assert.equal(commandEvents.length, 0, "failed artifact validation must not emit a command-result hook")
+  assert.equal(outsideContentReadCount, 0, "the replacement target must be rejected before content is read")
+  await assert.rejects(fs.access(manifestPath), (error) => error && error.code === "ENOENT")
+})
+
 test("metadata-free providers retain engine-owned artifact writes", async () => {
   const { actions, engine, workspaceRoot } = createWorkflowEngineContext()
   actions.register({

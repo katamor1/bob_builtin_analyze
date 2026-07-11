@@ -202,12 +202,47 @@ async function validateProviderArtifacts(input: {
     if (realRelative.startsWith("..") || nodePath.isAbsolute(realRelative)) {
       return { ok: false, error: `Provider artifact '${metadata.id}' path escapes the workspace.` }
     }
+    let preOpenStat: Awaited<ReturnType<typeof fs.lstat>>
+    try {
+      preOpenStat = await fs.lstat(targetRealPath, { bigint: true })
+    } catch (error) {
+      return { ok: false, error: `Provider artifact '${metadata.id}' changed during validation: ${error instanceof Error ? error.message : String(error)}` }
+    }
+    if (!preOpenStat.isFile()) {
+      return { ok: false, error: `Provider artifact '${metadata.id}' path is not a file.` }
+    }
     let handle: Awaited<ReturnType<typeof fs.open>> | undefined
     try {
       handle = await fs.open(targetRealPath, "r")
-      const stat = await handle.stat()
-      if (!stat.isFile()) {
-        return { ok: false, error: `Provider artifact '${metadata.id}' path is not a file.` }
+      const handleStat = await handle.stat({ bigint: true })
+      if (!handleStat.isFile()) {
+        return { ok: false, error: `Provider artifact '${metadata.id}' changed during validation.` }
+      }
+      let postOpenRealPath: string
+      try {
+        postOpenRealPath = await fs.realpath(targetRealPath)
+      } catch (error) {
+        return { ok: false, error: `Provider artifact '${metadata.id}' changed during validation: ${error instanceof Error ? error.message : String(error)}` }
+      }
+      const postOpenRelative = nodePath.relative(rootRealPath, postOpenRealPath)
+      if (postOpenRelative.startsWith("..") || nodePath.isAbsolute(postOpenRelative)) {
+        return { ok: false, error: `Provider artifact '${metadata.id}' path escapes the workspace.` }
+      }
+      if (nodePath.relative(targetRealPath, postOpenRealPath) !== "") {
+        return { ok: false, error: `Provider artifact '${metadata.id}' changed during validation.` }
+      }
+      let postOpenStat: Awaited<ReturnType<typeof fs.lstat>>
+      try {
+        postOpenStat = await fs.lstat(targetRealPath, { bigint: true })
+      } catch (error) {
+        return { ok: false, error: `Provider artifact '${metadata.id}' changed during validation: ${error instanceof Error ? error.message : String(error)}` }
+      }
+      if (
+        !postOpenStat.isFile()
+        || !hasSameFileIdentity(preOpenStat, handleStat)
+        || !hasSameFileIdentity(handleStat, postOpenStat)
+      ) {
+        return { ok: false, error: `Provider artifact '${metadata.id}' changed during validation.` }
       }
       const content = await handle.readFile()
       entries.set(metadata.id, createWorkflowArtifactManifestEntry({
@@ -236,6 +271,13 @@ function normalizeArtifactPath(value: string): string {
 function isWorkspaceRelativePath(value: string): boolean {
   if (!value.trim() || nodePath.isAbsolute(value) || /^[A-Za-z]:[\\/]/.test(value)) return false
   return !normalizeArtifactPath(value).split("/").some((segment) => segment === "..")
+}
+
+function hasSameFileIdentity(
+  left: { dev: bigint; ino: bigint },
+  right: { dev: bigint; ino: bigint }
+): boolean {
+  return left.dev === right.dev && left.ino === right.ino
 }
 
 function isMissingFileError(error: unknown): boolean {
