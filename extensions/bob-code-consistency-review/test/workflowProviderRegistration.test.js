@@ -60,6 +60,16 @@ test("workflow-register and IBM Bob are soft dependencies with delayed provider 
   assert.match(source, /workflowProvidersRegistered/)
 })
 
+test("code consistency workflow providers declare ownership and register disposables", () => {
+  const source = readSourceSet(["extension.ts", "workflowProviderRegistration.ts"])
+
+  assert.match(source, /const CODE_CONSISTENCY_PROVIDER_SOURCE_ID = "local\.bob-code-consistency-review"/)
+  assert.match(source, /sourceId: CODE_CONSISTENCY_PROVIDER_SOURCE_ID/)
+  assert.match(source, /const registrations: vscode\.Disposable\[\] = \[\]/)
+  assert.match(source, /disposeRegistrations\(registrations\)/)
+  assert.match(source, /context\.subscriptions\.push\(\.\.\.registrations\)/)
+})
+
 test("code consistency provider accepts workflowRoot without first-folder fallback", () => {
   const source = readSourceSet(["extension.ts", "workflowProviderRegistration.ts", "workspaceResolver.ts"])
 
