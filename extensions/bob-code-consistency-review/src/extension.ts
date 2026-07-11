@@ -25,19 +25,13 @@ import { openConsistencyHumanTriageGui } from "./webview/consistencyHumanTriage"
 import { openConsistencyResultCaptureGui } from "./webview/consistencyResultCapture"
 import { openConsistencyReviewWizard } from "./webview/consistencyReviewWizard"
 import {
+  disposeRegistrations,
   registerWorkflowProviders,
   type CodeConsistencyWorkflowHandlers
 } from "./workflowProviderRegistration"
 
 const WORKFLOW_REGISTER_EXTENSION_ID = "local.workflow-register"
 const WORKFLOW_PROVIDER_RETRY_DELAYS_MS = [1000, 3000, 10000] as const
-
-interface WorkflowRegisterApiLike {
-  registerActionProvider?: unknown
-}
-
-let workflowProvidersRegistered = false
-let workflowProviderRegistrationAttempt: Promise<boolean> | undefined
 
 /**
  * Bob コード整合プレレビュー拡張を有効化し、command と workflow entry point を登録する。
@@ -150,42 +144,70 @@ export function registerWorkflowProvidersWithRetry(
   handlers: CodeConsistencyWorkflowHandlers
 ): void {
   let disposed = false
+  let providersRegistered = false
+  let registrationAttempt: Promise<boolean> | undefined
+  let activeRegistrations: vscode.Disposable[] = []
   let retryIndex = 0
   const timers = new Set<ReturnType<typeof setTimeout>>()
 
+  const clearRetryTimers = (): void => {
+    for (const timer of timers) clearTimeout(timer)
+    timers.clear()
+  }
+
+  const resetRegistration = (): void => {
+    disposeRegistrations(activeRegistrations)
+    activeRegistrations = []
+    providersRegistered = false
+  }
+
   const scheduleRetry = (): void => {
-    if (disposed || workflowProvidersRegistered || retryIndex >= WORKFLOW_PROVIDER_RETRY_DELAYS_MS.length) return
+    if (disposed || providersRegistered || retryIndex >= WORKFLOW_PROVIDER_RETRY_DELAYS_MS.length) return
     const delayMs = WORKFLOW_PROVIDER_RETRY_DELAYS_MS[retryIndex]
     retryIndex += 1
-    const timer = setTimeout(() => {
-      timers.delete(timer)
-      void attempt()
-    }, delayMs)
+    const timer = setTimeout(() => attempt(), delayMs)
     timers.add(timer)
   }
 
-  const attempt = async (): Promise<boolean> => {
-    if (disposed || workflowProvidersRegistered) return workflowProvidersRegistered
-    if (workflowProviderRegistrationAttempt) return workflowProviderRegistrationAttempt
+  const performAttempt = async (): Promise<boolean> => {
+    const result = await registerWorkflowProviders(handlers)
+    if (disposed) {
+      disposeRegistrations(result.registrations)
+      return false
+    }
+    if (!result.registered) {
+      scheduleRetry()
+      return false
+    }
 
-    workflowProviderRegistrationAttempt = tryRegisterWorkflowProviders(context, handlers)
+    activeRegistrations = result.registrations
+    context.subscriptions.push(...result.registrations)
+    providersRegistered = true
+    return true
+  }
+
+  const attempt = async (): Promise<boolean> => {
+    if (disposed || providersRegistered) return providersRegistered
+    if (registrationAttempt) return registrationAttempt
+
+    registrationAttempt = performAttempt()
     try {
-      const registered = await workflowProviderRegistrationAttempt
-      if (!registered) scheduleRetry()
-      return registered
+      return await registrationAttempt
     } catch (error) {
       console.warn("Bob コード整合ワークフロー provider の登録に失敗しました", error)
       scheduleRetry()
       return false
     } finally {
-      workflowProviderRegistrationAttempt = undefined
+      registrationAttempt = undefined
     }
   }
 
   const extensionListener = vscode.extensions.onDidChange(() => {
+    const workflowExtension = vscode.extensions.getExtension(WORKFLOW_REGISTER_EXTENSION_ID)
+    if (providersRegistered && workflowExtension?.isActive) return
+    resetRegistration()
     retryIndex = 0
-    for (const timer of timers) clearTimeout(timer)
-    timers.clear()
+    clearRetryTimers()
     void attempt()
   })
 
@@ -194,31 +216,13 @@ export function registerWorkflowProvidersWithRetry(
     {
       dispose: () => {
         disposed = true
-        for (const timer of timers) clearTimeout(timer)
-        timers.clear()
+        clearRetryTimers()
+        resetRegistration()
       }
     }
   )
 
   void attempt()
-}
-
-async function tryRegisterWorkflowProviders(
-  context: vscode.ExtensionContext,
-  handlers: CodeConsistencyWorkflowHandlers
-): Promise<boolean> {
-  const extension = vscode.extensions.getExtension<WorkflowRegisterApiLike>(WORKFLOW_REGISTER_EXTENSION_ID)
-  if (!extension) return false
-
-  const api = extension.isActive ? extension.exports : await extension.activate()
-  if (!api?.registerActionProvider) return false
-
-  const { registered, registrations } = await registerWorkflowProviders(handlers)
-  if (!registered) return false
-  context.subscriptions.push(...registrations)
-  context.subscriptions.push({ dispose: () => { workflowProvidersRegistered = false } })
-  workflowProvidersRegistered = true
-  return true
 }
 
 /**
@@ -227,5 +231,5 @@ async function tryRegisterWorkflowProviders(
  * @returns なし。
  */
 export function deactivate(): void {
-  // retry timer と listener は extension context subscriptions が破棄する。
+  // retry timer、provider 登録、listener は extension context subscriptions が破棄する。
 }
