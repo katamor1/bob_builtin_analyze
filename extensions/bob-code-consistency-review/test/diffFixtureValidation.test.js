@@ -52,7 +52,7 @@ test("diff fixture parser defaults optional warnings and classifies languages", 
   })
 
   assert.deepEqual(parsed.warnings, [])
-  assert.equal(parsed.files[0].language, "cpp")
+  assert.equal(parsed.files[0].language, "hpp")
 })
 
 test("diff fixture text parser reports invalid JSON at the fixture boundary", () => {
