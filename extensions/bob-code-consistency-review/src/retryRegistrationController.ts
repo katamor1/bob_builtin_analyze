@@ -66,6 +66,7 @@ export function startRetryRegistrationController<Api>(
       return false
     }
     if (!result.registered) {
+      disposeRegistrations(result.registrations)
       scheduleRetry()
       return false
     }
