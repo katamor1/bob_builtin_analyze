@@ -43,9 +43,12 @@ export class ExternalProcessError extends Error {
   }
 }
 
+const MIN_EXTERNAL_PROCESS_TIMEOUT_MS = 1_000
+const MAX_EXTERNAL_PROCESS_TIMEOUT_MS = 600_000
+
 export function runExternalProcess(options: ExternalProcessOptions): Promise<ExternalProcessResult> {
   const maxBufferBytes = positiveInteger(options.maxBufferBytes, "maxBufferBytes")
-  const timeoutMs = positiveInteger(options.timeoutMs, "timeoutMs")
+  const timeoutMs = boundedTimeout(options.timeoutMs)
   const allowedExitCodes = new Set(options.allowedExitCodes ?? [0])
 
   if (options.signal?.aborted) {
@@ -118,9 +121,6 @@ export function runExternalProcess(options: ExternalProcessOptions): Promise<Ext
       return
     }
 
-    options.signal?.addEventListener("abort", onAbort, { once: true })
-    if (options.signal?.aborted) onAbort()
-
     const collect = (target: Buffer[], chunk: Buffer | string): void => {
       if (settled) return
       const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
@@ -163,12 +163,20 @@ export function runExternalProcess(options: ExternalProcessOptions): Promise<Ext
         exitCode
       ))
     })
+
+    options.signal?.addEventListener("abort", onAbort, { once: true })
+    if (options.signal?.aborted) onAbort()
   })
 }
 
 function positiveInteger(value: number, label: string): number {
   if (!Number.isFinite(value) || value <= 0) throw new Error(`${label} must be a positive finite number.`)
   return Math.floor(value)
+}
+
+function boundedTimeout(value: number): number {
+  const timeout = positiveInteger(value, "timeoutMs")
+  return Math.max(MIN_EXTERNAL_PROCESS_TIMEOUT_MS, Math.min(MAX_EXTERNAL_PROCESS_TIMEOUT_MS, timeout))
 }
 
 function terminateProcessTree(child: ExternalProcessChild): void {
