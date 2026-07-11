@@ -27,15 +27,12 @@ import { openConsistencyResultCaptureGui } from "./webview/consistencyResultCapt
 import { openConsistencyReviewWizard } from "./webview/consistencyReviewWizard"
 import {
   registerWorkflowProviders,
-  type CodeConsistencyWorkflowHandlers
+  type CodeConsistencyWorkflowHandlers,
+  type WorkflowRegisterApi
 } from "./workflowProviderRegistration"
 
 const WORKFLOW_REGISTER_EXTENSION_ID = "local.workflow-register"
 const WORKFLOW_PROVIDER_RETRY_DELAYS_MS = [1000, 3000, 10000] as const
-
-interface WorkflowRegisterApiLike {
-  registerActionProvider?: unknown
-}
 
 /** Bob コード整合プレレビュー拡張を有効化する。 */
 export function activate(context: vscode.ExtensionContext): void {
@@ -134,7 +131,7 @@ export function registerWorkflowProvidersWithRetry(
   context: vscode.ExtensionContext,
   handlers: CodeConsistencyWorkflowHandlers
 ): void {
-  startRetryRegistrationController<WorkflowRegisterApiLike>({
+  startRetryRegistrationController<WorkflowRegisterApi>({
     retryDelaysMs: WORKFLOW_PROVIDER_RETRY_DELAYS_MS,
     register: () => registerWorkflowProviders(handlers),
     currentApi: currentWorkflowRegisterApi,
@@ -144,8 +141,8 @@ export function registerWorkflowProvidersWithRetry(
   })
 }
 
-function currentWorkflowRegisterApi(): WorkflowRegisterApiLike | undefined {
-  const extension = vscode.extensions.getExtension<WorkflowRegisterApiLike>(WORKFLOW_REGISTER_EXTENSION_ID)
+function currentWorkflowRegisterApi(): WorkflowRegisterApi | undefined {
+  const extension = vscode.extensions.getExtension<WorkflowRegisterApi>(WORKFLOW_REGISTER_EXTENSION_ID)
   return extension?.isActive ? extension.exports : undefined
 }
 
