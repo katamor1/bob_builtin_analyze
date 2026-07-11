@@ -40,7 +40,7 @@ export async function preprocessReview(input: PreprocessReviewInput): Promise<Pr
     signal: input.abortSignal
   })
   const documents = await extractDocuments(reviewInput, { workspaceRoot: input.workspaceRoot, textEncoding, limits })
-  const codeAnalysis = await analyzeCodeChanges(diff, reviewInput, { workspaceRoot: input.workspaceRoot, textEncoding })
+  const codeAnalysis = await analyzeCodeChanges(diff, reviewInput, { workspaceRoot: input.workspaceRoot, textEncoding, limits })
   const traceability = await buildTraceability({ reviewInput, documents, codeAnalysis, diff })
 
   const packageWarnings = await buildReviewPackage({
