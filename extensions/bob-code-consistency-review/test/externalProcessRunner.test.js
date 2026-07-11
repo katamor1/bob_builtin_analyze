@@ -44,6 +44,24 @@ test("external process runner propagates AbortSignal cancellation", async () => 
   await rejectsWithKind(running, "cancelled")
 })
 
+test("external process runner closes the preflight-to-listener cancellation race", async () => {
+  let abortedReads = 0
+  const signal = {
+    get aborted() {
+      abortedReads += 1
+      return abortedReads >= 2
+    },
+    addEventListener() {},
+    removeEventListener() {}
+  }
+
+  await rejectsWithKind(
+    runNode("setInterval(() => {}, 1000)", { signal, timeoutMs: 100 }),
+    "cancelled"
+  )
+  assert.ok(abortedReads >= 2)
+})
+
 test("external process runner terminates output that exceeds the buffer budget", async () => {
   await rejectsWithKind(
     runNode("process.stdout.write('x'.repeat(65536))", { maxBufferBytes: 1024 }),
