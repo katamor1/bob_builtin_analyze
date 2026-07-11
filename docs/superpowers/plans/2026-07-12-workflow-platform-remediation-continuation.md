@@ -43,33 +43,33 @@
 - Produces: `BobWorkflowGateRegistry.isPending(runId, stepId): boolean` and idempotent `dispose()`.
 - Consumes: `WorkflowRunState.runId`, `WorkflowRunState.currentStep`, and the existing `acceptCurrentStep` durable state transition.
 
-- [ ] **Step 1: Add a failing registry unit test**
+- [x] **Step 1: Add a failing registry unit test**
 
   Cover a pending Promise, deduplicated wait for the same key, explicit accept resolving `true`, terminal abort rejecting, stale decisions returning `false`, and dispose rejecting every pending gate.
 
-- [ ] **Step 2: Run the registry test and record RED**
+- [x] **Step 2: Run the registry test and record RED**
 
   Run: `npm.cmd run compile && node --test test/bobWorkflowGateRegistry.test.js`
 
   Expected: FAIL because `out/bobWorkflowGateRegistry.js` or the required API does not exist.
 
-- [ ] **Step 3: Implement the minimal registry**
+- [x] **Step 3: Implement the minimal registry**
 
   Use one `Map<string, PendingGate>` keyed by `${runId}:${stepId}`. Remove entries before resolving or rejecting them, reuse the existing Promise for duplicate waits, and make `dispose()` idempotent.
 
-- [ ] **Step 4: Add a failing Bob-runner review-gate behavior test**
+- [x] **Step 4: Add a failing Bob-runner review-gate behavior test**
 
   Execute a real one-step `stepReview.enabled: true` workflow through `BobWorkflowEngineRunner`; assert that the returned Promise remains unsettled after the run reaches `reviewing`, then call the same registry used by the runner and assert it resolves `true`.
 
-- [ ] **Step 5: Wire review waits and acceptance**
+- [x] **Step 5: Wire review waits and acceptance**
 
   Inject one service-owned registry through `WorkflowRuntimeFactory` into every `BobWorkflowEngineRunner`. When `runEngine` receives `reviewing`, call `waitForDecision` instead of returning a boolean. After `acceptReviewedStep` durably saves the accepted run, resolve the matching gate. When a live gate was resolved, do not manually advance Bob through `setStepComplete`; the original Bob execution Promise owns that advancement.
 
-- [ ] **Step 6: Dispose pending gates with the service**
+- [x] **Step 6: Dispose pending gates with the service**
 
   `WorkflowRegisterService.dispose()` must abort all pending gate Promises after UI resources are disposed and before source deactivation finishes.
 
-- [ ] **Step 7: Verify and commit**
+- [x] **Step 7: Verify and commit**
 
   Run: `npm.cmd run compile && node --test test/bobWorkflowGateRegistry.test.js test/runtimeWiring.test.js`
 
@@ -212,4 +212,3 @@
 - [ ] Perform a broad whole-branch review and fix every Critical/Important finding.
 - [ ] Re-audit the Contract v2, reproducible-runtime, and operator-UX plans against the new tree before continuing those phases.
 - [ ] Commit `test: close workflow platform P0 regressions`.
-
