@@ -62,3 +62,9 @@ test("workflow service removes manually disposed action providers from its lifec
   assert.doesNotMatch(source, /actionProviderRegistrations: ActionProviderRegistration\[\]/)
   assert.doesNotMatch(source, /actionProviderRegistrations\.push\(/)
 })
+
+test("workflow service closes the manual step panel during deactivation", () => {
+  const source = registrationSource()
+
+  assert.match(source, /dispose\(\): void \{[\s\S]*this\.watcher\.dispose\(\)[\s\S]*this\.manualStepPanel\.dispose\(\)/)
+})
