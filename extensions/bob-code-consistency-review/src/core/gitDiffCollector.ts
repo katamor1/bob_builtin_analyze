@@ -2,7 +2,7 @@ import { readTextFile, resolveWorkspacePathStrict, toPosixPath } from "./fileSys
 import { classifyLanguageFromPath } from "./languageClassifier"
 import { decodeTextBuffer } from "./textEncoding"
 import { normalizeReviewProcessingLimits, truncateUtf8Text, type ReviewProcessingLimits } from "./limits"
-import { runExternalProcess } from "./externalProcessRunner"
+import { ExternalProcessError, runExternalProcess } from "./externalProcessRunner"
 import type { DiffSummary } from "./diffTypes"
 import type { ReviewInput } from "./reviewTypes"
 
@@ -106,8 +106,9 @@ async function resolveGitRevision(
     const output = await runGitText(["rev-parse", "--verify", "--end-of-options", `${trimmed}^{commit}`], cwd, 1024 * 1024, textEncoding, commandTimeoutMs, signal)
     const sha = output.trim().split(/\r?\n/).at(-1) ?? ""
     if (/^[0-9a-f]{40}$/i.test(sha)) return sha.toLowerCase()
-  } catch {
-    // git の詳細 error はそのまま出さず、下の正規化済み validation error に揃える。
+  } catch (error) {
+    if (!(error instanceof ExternalProcessError) || error.kind !== "nonZeroExit") throw error
+    // rev-parse が対象を解決できない場合だけ、下の正規化済み validation error に揃える。
   }
 
   throw new Error(`Invalid Git revision: ${formatRevisionForError(revision)}`)
