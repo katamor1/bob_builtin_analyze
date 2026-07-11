@@ -49,10 +49,11 @@
 - VSIX policyは`extension/.vscode-test.json`と`extension/.vscode-test/**`を独立して拒否する。
 - dependency policy testはignoreとpackage policyの両方を固定する。
 - Extension Host smokeはMochaのBDD interfaceを明示し、`describe`/`it`を使用する。
-- smoke設定生成時に、project rootから`@vscode/test-electron`を解決できることをpreflight検査する。
-- `@vscode/test-cli@0.0.12`と対応する`@vscode/test-electron@2.5.2`をsmoke実行前にproject rootへ一時導入する。
+- smoke設定生成時に、project rootから`@vscode/test-cli`と`@vscode/test-electron`の両方を解決できることをpreflight検査する。
+- VSIX生成・policy・metrics完了後に、`@vscode/test-cli@0.0.12`と`@vscode/test-electron@2.5.2`をproject rootへ一時導入する。
+- CLIは一時`npx --package`から起動せず、project-localの`node_modules/.bin/vscode-test`を実行する。
 - soft dependencyをMarketplaceから暗黙導入しないよう、test configurationで`skipExtensionDependencies: true`を指定する。
-- test runtimeはVSIX生成・policy・metrics完了後に導入し、配布物へ混入させない。
+- `scripts/extension-host-smoke-contract.test.js`で、package version、local binary、preflight、soft-dependency isolationを固定する。
 
 ## 3. 確認済み証跡
 
@@ -116,6 +117,7 @@ TDD記録:
 | sample command path-scoped allowlist | passed |
 | VSIX `.vscode-test` ignore/policy/dependency-test契約 | 3拡張すべてpassed |
 | Extension Host smoke script syntax/config/fake-host | passed |
+| updated smoke / contract script syntax | passed (`node --check`) |
 | provider API identity typecheck | passed |
 
 局所再現は変更ロジックを隔離した補助証跡であり、repository全体のcompile/testを代替しない。
@@ -126,17 +128,19 @@ TDD記録:
 
 | 段階 | 結果 |
 | --- | --- |
-| RED | `@vscode/test-electron`をextension projectへ導入せず実行すると、`Can't resolve '@vscode/test-electron'`で拡張起動前に失敗した。 |
-| 原因確認 | test CLIはconfig directoryを起点に`@vscode/test-electron`を動的解決する。CLI package側では同packageがdevDependencyであり、利用projectへ自動導入されない。 |
-| GREEN境界 | extension projectへ`@vscode/test-electron@2.5.2`を導入すると動的解決を通過し、VS Code download処理まで到達した。 |
+| RED | extension projectから`@vscode/test-electron`を解決できず、`Can't resolve '@vscode/test-electron'`で拡張起動前に失敗した。 |
+| 原因確認 | test CLIはconfig directoryを起点にElectron runtimeを動的解決する。CLI package側のdevDependencyは利用projectへ自動導入されない。 |
+| GREEN境界 | project rootへ必要runtimeを導入すると動的解決を通過し、VS Code download処理まで到達した。 |
 | ローカル残制約 | 実行環境のDNS制約により`update.code.visualstudio.com`の名前解決で停止したため、実Extension Hostの完走証跡ではない。 |
 
-対応:
+最終対応:
 
 1. CIでVSIXを先に生成・検査する。
-2. その後に`@vscode/test-electron@2.5.2`を`--no-save --package-lock=false --ignore-scripts`で導入する。
-3. smoke config生成時にもruntime解決を検査し、欠落時は明確なerrorを返す。
-4. `skipExtensionDependencies: true`でsoft dependencyの暗黙導入を抑止する。
+2. その後にCLI `0.0.12`とElectron runtime `2.5.2`を`--no-save --package-lock=false --ignore-scripts --audit=false --fund=false`でproject rootへ導入する。
+3. smoke config生成時に両packageのlocal resolutionを検査する。
+4. transientな`npx --package`を廃止し、local binaryを実行する。
+5. `skipExtensionDependencies: true`でsoft dependencyの暗黙導入を抑止する。
+6. smoke contract testで上記を回帰防止する。
 
 ## 4. GitHub Actions runner起動前ブロッカー
 
@@ -151,18 +155,18 @@ TDD記録:
 
 probeは診断後に削除済みである。
 
-### 4.2 最新head付近のworkflow
+### 4.2 最新観測workflow
 
-smoke runtime修正後も、次のrunはrunner割当前に終了しており、修正コード自体はGitHub上でまだ実行されていない。
+観測head `7c35f2379c2beefd86b1473fda6c5e3fa7f879c2`では、local CLI統一後のworkflowもrunner割当前に終了し、修正コード自体はGitHub上でまだ実行されていない。
 
 | Workflow | Run ID | 結果 |
 | --- | ---: | --- |
-| `extensions-quality` | `29149471170` | Ubuntu/Windowsを含む全jobが`steps: null`、logなし |
-| `workflow-contracts` | `29149471213` | validation jobがstep開始前failure |
-| `code-consistency-review-scaffold` | `29149471168` | 2 jobともstep開始前failure |
-| `extension-host-smoke-diagnostic` | `29149471180` | 3 smoke jobとも`steps: null`、artifactなし |
+| `extensions-quality` | `29150073607` | Ubuntu/Windowsを含む全jobが`steps: null`、logなし |
+| `workflow-contracts` | `29150073595` | validation jobがstep開始前failure |
+| `code-consistency-review-scaffold` | `29150073596` | 2 jobともstep開始前failure |
+| `extension-host-smoke-diagnostic` | `29150073613` | 3 smoke jobともstep開始前failure、artifactなし |
 
-checkoutやrepository codeを一切使わないprobeでも再現するため、現在のfailureはworkflow実装やテストコードとは別に、GitHub-hosted runner割当以前のaccount/repository設定にも存在すると判定する。ただしExtension Host修正のGitHub上のgreen evidenceもまだ存在しないためmergeは許可しない。
+checkoutやrepository codeを一切使わないprobeでも再現するため、現在のfailureはworkflow実装やテストコードとは別に、GitHub-hosted runner割当以前のaccount/repository設定にも存在すると判定する。green evidenceが存在しないためmergeは許可しない。
 
 ### 4.3 repository管理者が確認する項目
 
@@ -176,11 +180,12 @@ checkoutやrepository codeを一切使わないprobeでも再現するため、�
 
 | Gate | 必須結果 | 実績 |
 | --- | --- | --- |
+| smoke harness contract | pinned local CLI/Electron、local binary、preflight、soft dependency isolation | 実装済み、GitHub実行待ち |
 | workflow-register Ubuntu | dependency / architecture / source / schema / unit / package / VSIX policy 全成功 | 最新head未実施 |
 | bob-bazaar-review Ubuntu | dependency / architecture / source / unused / artifact / unit / package / VSIX policy 全成功 | 最新head未実施 |
 | bob-code-consistency-review Ubuntu | dependency / architecture / source / unit / package / VSIX policy 全成功 | 最新head未実施 |
 | Windows matrix | 3拡張すべて成功 | 未実施 |
-| Extension Host smoke | 3拡張のactivationと代表command登録成功 | runtime解決修正済み、GitHub実行待ち |
+| Extension Host smoke | 3拡張のactivationと代表command登録成功 | local runtime修正済み、GitHub実行待ち |
 | workflow contracts | 全対象workflow strict/provider-aware検証成功 | 最新head未実施 |
 | code consistency scaffold | scaffoldとVS Code extensionの2 job成功 | 最新head未実施 |
 
