@@ -8,6 +8,12 @@ import { pendingReviewTransitionStepId } from "../core/engine/runState"
 import { fallbackWorkspaceRootCandidates, findWorkflowRootCandidates, MarkerRootCandidate } from "../core/workspaceRoots"
 import { reviewTaskRegistry } from "../reviewTaskRegistry"
 import type { BobWorkflowGateAcceptResult } from "../bobWorkflowGateRegistry"
+import {
+  isOperationHubRunMutationTarget,
+  OperationHubRunMutationTarget,
+  readOperationHubRunSnapshot,
+  validateOperationHubRunMutationTarget
+} from "../operationHubMutationTarget"
 
 interface StepReviewCommandOptions {
   showMarkdownReport: (title: string, summary: string, lines: string[]) => Promise<void>
@@ -34,20 +40,24 @@ interface AcceptedStepResult {
   run: WorkflowRunState
   message: string
   completedViaBobTask: boolean
+  workspaceRoot: string
+  revision: string
 }
+
+type ReviewRunArg = string | OperationHubRunMutationTarget | undefined
 
 const RUN_NEXT_STEP_LABEL = "次のステップを実行"
 const OPEN_OPERATION_HUB_LABEL = "Operation Hub を開く"
 
-export async function acceptCurrentStep(options: StepReviewCommandOptions, runId?: string, acceptOptions: AcceptOptions = {}): Promise<WorkflowRunState | string> {
-  const accepted = await acceptReviewedStep(options, runId)
+export async function acceptCurrentStep(options: StepReviewCommandOptions, runArg?: ReviewRunArg, acceptOptions: AcceptOptions = {}): Promise<WorkflowRunState | string> {
+  const accepted = await acceptReviewedStep(options, runArg)
   if (typeof accepted === "string") return accepted
   if (!acceptOptions.silent) await showAcceptedStepMessage(accepted.run, accepted.message, accepted.completedViaBobTask)
   return accepted.run
 }
 
-export async function acceptAndRunNextStep(options: StepReviewCommandOptions, runId?: string): Promise<unknown> {
-  const accepted = await acceptReviewedStep(options, runId)
+export async function acceptAndRunNextStep(options: StepReviewCommandOptions, runArg?: ReviewRunArg): Promise<unknown> {
+  const accepted = await acceptReviewedStep(options, runArg)
   if (typeof accepted === "string") {
     await vscode.window.showWarningMessage(accepted)
     return accepted
@@ -57,11 +67,24 @@ export async function acceptAndRunNextStep(options: StepReviewCommandOptions, ru
     await vscode.window.showInformationMessage(message)
     return accepted.run
   }
-  return vscode.commands.executeCommand("workflowRegister.runNextStep", accepted.run.runId)
+  if (!isOperationHubRunMutationTarget(runArg)) {
+    return vscode.commands.executeCommand("workflowRegister.runNextStep", accepted.run.runId)
+  }
+  return vscode.commands.executeCommand("workflowRegister.runNextStep", {
+    source: "operationHub",
+    workspaceRoot: accepted.workspaceRoot,
+    runId: accepted.run.runId,
+    expectedRevision: accepted.revision
+  } satisfies OperationHubRunMutationTarget)
 }
 
-async function acceptReviewedStep(options: StepReviewCommandOptions, runId?: string): Promise<AcceptedStepResult | string> {
-  const selection = runId ? await findRunSelection(runId) : await pickRunSelection("Accept reviewed workflow step", (run) => run.status === "reviewing")
+async function acceptReviewedStep(options: StepReviewCommandOptions, runArg?: ReviewRunArg): Promise<AcceptedStepResult | string> {
+  const runId = typeof runArg === "string" ? runArg : runArg?.runId
+  const selection = isOperationHubRunMutationTarget(runArg)
+    ? await validateReviewRunTarget(runArg)
+    : runId
+      ? await findRunSelection(runId)
+      : await pickRunSelection("Accept reviewed workflow step", (run) => run.status === "reviewing")
   if (!selection) return runId ? `Workflow run not found or not waiting for review: ${runId}` : "No reviewing workflow run selected."
   return options.coordinateReviewAcceptance(selection.root, selection.runId, () => acceptReviewedStepOnce(options, selection.root, selection.runId))
 }
@@ -91,7 +114,8 @@ async function acceptReviewedStepOnce(options: StepReviewCommandOptions, workspa
     : accepted.status === "completed"
     ? `Accepted final step and completed workflow run: ${accepted.runId}`
     : `Accepted step; next step is ${accepted.currentStep}: ${accepted.runId}`
-  return { run: accepted, message, completedViaBobTask }
+  const snapshot = await readOperationHubRunSnapshot(workspaceRoot, accepted.runId)
+  return { run: accepted, message, completedViaBobTask, workspaceRoot, revision: snapshot.revision }
 }
 
 async function showAcceptedStepMessage(accepted: WorkflowRunState, message: string, completedViaBobTask: boolean): Promise<void> {
@@ -234,6 +258,19 @@ async function pickRunSelection(title: string, predicate: (run: WorkflowRunState
 
 async function findRunSelection(runId: string): Promise<RunSelection | undefined> {
   return (await listRunSelections()).find((selection) => selection.runId === runId)
+}
+
+async function validateReviewRunTarget(target: OperationHubRunMutationTarget): Promise<RunSelection> {
+  const roots = await workflowRootCandidates()
+  const validated = await validateOperationHubRunMutationTarget(
+    target,
+    roots.map((candidate) => candidate.root)
+  )
+  return {
+    root: validated.workspaceRoot,
+    runId: target.runId,
+    run: validated.snapshot.run
+  }
 }
 
 async function listRunSelections(): Promise<RunSelection[]> {

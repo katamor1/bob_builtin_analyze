@@ -3,12 +3,17 @@ import { FileRunControlStore, RunPauseMode } from "../core/runControlStore"
 import { FileRunStateStore } from "../core/runStateStore"
 import { fallbackWorkspaceRootCandidates, findWorkflowRootCandidates, MarkerRootCandidate } from "../core/workspaceRoots"
 import { findRunSelection, listRunSelections, pickRunSelection, RunSelection } from "../workflowRunSelection"
+import {
+  isOperationHubRunMutationTarget,
+  OperationHubRunMutationTarget,
+  validateOperationHubRunMutationTarget
+} from "../operationHubMutationTarget"
 
 interface RunControlCommandOptions {
   showMarkdownReport: (title: string, summary: string, lines: string[]) => Promise<void>
 }
 
-type RunCommandArg = string | RunSelection | { runId?: string; run?: { runId?: string } } | undefined
+type RunCommandArg = string | OperationHubRunMutationTarget | RunSelection | { runId?: string; run?: { runId?: string } } | undefined
 
 export async function pauseCurrentRun(_options: RunControlCommandOptions, runArg?: RunCommandArg): Promise<unknown> {
   return requestPause(runArg, "afterCurrentStep", "manual")
@@ -25,9 +30,11 @@ export async function pauseBeforeNextAiCall(_options: RunControlCommandOptions, 
 export async function resumePausedRun(_options: RunControlCommandOptions, runArg?: RunCommandArg): Promise<unknown> {
   const runId = resolveRunId(runArg)
   const roots = await workflowRootCandidates()
-  const selection = runId
-    ? await findRunSelection(runId, roots, createRunStore)
-    : await pickRunSelection(roots, createRunStore)
+  const selection = isOperationHubRunMutationTarget(runArg)
+    ? await validateStructuredRunSelection(runArg, roots)
+    : runId
+      ? await findRunSelection(runId, roots, createRunStore)
+      : await pickRunSelection(roots, createRunStore)
   if (!selection) {
     const message = runId ? `Workflow run not found: ${runId}` : "No workflow run selected."
     await vscode.window.showWarningMessage(message)
@@ -44,7 +51,12 @@ export async function resumePausedRun(_options: RunControlCommandOptions, runArg
     await vscode.window.showWarningMessage(message)
     return message
   }
-  return vscode.commands.executeCommand("workflowRegister.resumeRun", selection.runId)
+  return vscode.commands.executeCommand(
+    "workflowRegister.resumeRun",
+    isOperationHubRunMutationTarget(runArg)
+      ? { ...runArg, workspaceRoot: selection.root }
+      : selection.runId
+  )
 }
 
 export async function inspectRunControl(options: RunControlCommandOptions, runArg?: RunCommandArg): Promise<void> {
@@ -78,9 +90,11 @@ export async function inspectRunControl(options: RunControlCommandOptions, runAr
 async function requestPause(runArg: RunCommandArg, mode: RunPauseMode, reason: string): Promise<unknown> {
   const runId = resolveRunId(runArg)
   const roots = await workflowRootCandidates()
-  const selection = runId
-    ? await findRunSelection(runId, roots, createRunStore)
-    : await pickInterruptibleRun(roots)
+  const selection = isOperationHubRunMutationTarget(runArg)
+    ? await validateStructuredRunSelection(runArg, roots)
+    : runId
+      ? await findRunSelection(runId, roots, createRunStore)
+      : await pickInterruptibleRun(roots)
   if (!selection) {
     const message = runId ? `Workflow run not found: ${runId}` : "No running workflow run selected."
     await vscode.window.showWarningMessage(message)
@@ -127,7 +141,7 @@ function resolveRunId(value: RunCommandArg): string | undefined {
   if (typeof value === "string") return value
   if (!value || typeof value !== "object") return undefined
   if (typeof value.runId === "string") return value.runId
-  if (value.run && typeof value.run.runId === "string") return value.run.runId
+  if ("run" in value && value.run && typeof value.run.runId === "string") return value.run.runId
   return undefined
 }
 
@@ -137,6 +151,21 @@ function createRunStore(workspaceRoot: string): FileRunStateStore {
 
 function createControlStore(workspaceRoot: string): FileRunControlStore {
   return new FileRunControlStore({ workspaceRoot })
+}
+
+async function validateStructuredRunSelection(
+  target: OperationHubRunMutationTarget,
+  roots: MarkerRootCandidate[]
+): Promise<RunSelection> {
+  const validated = await validateOperationHubRunMutationTarget(
+    target,
+    roots.map((candidate) => candidate.root)
+  )
+  return {
+    root: validated.workspaceRoot,
+    runId: target.runId,
+    run: validated.snapshot.run
+  }
 }
 
 async function workflowRootCandidates(): Promise<MarkerRootCandidate[]> {

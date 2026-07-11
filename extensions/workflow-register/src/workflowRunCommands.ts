@@ -20,6 +20,14 @@ import { pendingReviewTransitionStepId } from "./core/engine/runState"
 import { FileRunControlStore } from "./core/runControlStore"
 import { FileTaskSnapshotStore } from "./core/taskSnapshots"
 import type { MarkerRootCandidate } from "./core/workspaceRoots"
+import {
+  canonicalOperationHubWorkspaceRoot,
+  isOperationHubRunMutationTarget,
+  isOperationHubWorkflowMutationTarget,
+  OperationHubRunMutationTarget,
+  OperationHubWorkflowMutationTarget,
+  validateOperationHubRunMutationTarget
+} from "./operationHubMutationTarget"
 import { showMarkdownReport } from "./reports"
 import type { ManualStepPanelInput } from "./webview/manualStepViewModel"
 import { requireTrustedWorkspace } from "./workspaceTrust"
@@ -27,13 +35,16 @@ import { collectCoreWorkflowInputs } from "./workflowInputPrompt"
 import {
   findRunSelection,
   listRunSelections,
-  pickRunSelection
+  pickRunSelection,
+  RunSelection
 } from "./workflowRunSelection"
 import { WorkflowRuntimeFactory } from "./workflowRuntimeFactory"
 import { reviewTaskRegistry } from "./reviewTaskRegistry"
 import type { ReviewAcceptanceOperationKind } from "./reviewAcceptanceCoordinator"
 
-export type RunCommandArg = string | { runId?: string; run?: { runId?: string } } | undefined
+export type RunCommandArg = string | OperationHubRunMutationTarget | { runId?: string; run?: { runId?: string } } | undefined
+export type WorkflowCommandArg = string | OperationHubWorkflowMutationTarget | undefined
+export type ArtifactSourceRunArg = string | OperationHubRunMutationTarget | undefined
 
 interface ArtifactSourceRunSelection {
   root: string
@@ -66,15 +77,19 @@ export class WorkflowRunCommandService {
     return Array.from(this.options.coreWorkflows.values()).sort((a, b) => a.label.localeCompare(b.label))
   }
 
-  async runWorkflow(workflowId?: string, inputs: Record<string, unknown> = {}): Promise<unknown> {
+  async runWorkflow(workflowArg?: WorkflowCommandArg, inputs: Record<string, unknown> = {}): Promise<unknown> {
     const trustError = await requireTrustedWorkspace("run workflow")
     if (trustError) return trustError
     await this.ensureWorkflowsLoaded()
+    const operationHubTarget = isOperationHubWorkflowMutationTarget(workflowArg) ? workflowArg : undefined
+    const workflowId = operationHubTarget?.workflowId ?? (typeof workflowArg === "string" ? workflowArg : undefined)
     const workflow = workflowId
       ? this.options.coreWorkflows.get(workflowId)
       : await this.pickCoreWorkflow()
     if (!workflow) return "No workflow selected."
-    const root = workflow.workflowRoot ?? await this.pickWorkflowRoot("Select workflow workspace")
+    const root = operationHubTarget
+      ? await this.validateOperationHubWorkflowRoot(operationHubTarget, workflow)
+      : workflow.workflowRoot ?? await this.pickWorkflowRoot("Select workflow workspace")
     if (!root) {
       const message = "No workspace folder is open."
       await vscode.window.showErrorMessage(message)
@@ -125,7 +140,7 @@ export class WorkflowRunCommandService {
   async startFromStepWithArtifacts(
     workflowId?: string,
     stepId?: string,
-    sourceRunId?: string,
+    sourceRunArg?: ArtifactSourceRunArg,
     inputs: Record<string, unknown> = {}
   ): Promise<unknown> {
     const trustError = await requireTrustedWorkspace("start workflow from artifacts")
@@ -139,7 +154,9 @@ export class WorkflowRunCommandService {
       ? workflow.engineSteps.find((candidate) => candidate.id === stepId)
       : await this.pickWorkflowStep(workflow)
     if (!step) return stepId ? `Workflow step not found: ${stepId}` : "No workflow step selected."
-    const root = workflow.workflowRoot ?? await this.pickWorkflowRoot("Select workflow workspace")
+    const sourceTarget = isOperationHubRunMutationTarget(sourceRunArg) ? sourceRunArg : undefined
+    const sourceRunId = sourceTarget?.runId ?? (typeof sourceRunArg === "string" ? sourceRunArg : undefined)
+    let root = workflow.workflowRoot ?? await this.pickWorkflowRoot("Select workflow workspace")
     if (!root) {
       const message = "No workspace folder is open."
       await vscode.window.showErrorMessage(message)
@@ -147,6 +164,18 @@ export class WorkflowRunCommandService {
     }
     const resolvedInputs = await collectCoreWorkflowInputs(workflow, inputs)
     if (!resolvedInputs) return "Workflow input was cancelled."
+
+    if (sourceTarget) {
+      const roots = await this.options.workflowRootCandidates()
+      const validated = await validateOperationHubRunMutationTarget(
+        sourceTarget,
+        roots.map((candidate) => candidate.root)
+      )
+      if (workflow.workflowRoot) {
+        await canonicalOperationHubWorkspaceRoot(workflow.workflowRoot, [validated.workspaceRoot])
+      }
+      root = validated.workspaceRoot
+    }
 
     const source = await this.pickArtifactSourceRun(root, workflow, resolvedInputs, sourceRunId)
     if (!source) {
@@ -225,7 +254,7 @@ export class WorkflowRunCommandService {
     return result
   }
 
-  async runNextStep(runId?: string): Promise<unknown> {
+  async runNextStep(runArg?: RunCommandArg): Promise<unknown> {
     const trustError = await requireTrustedWorkspace("run next workflow step")
     if (trustError) return trustError
     await this.ensureWorkflowsLoaded()
@@ -235,9 +264,8 @@ export class WorkflowRunCommandService {
       await vscode.window.showErrorMessage(message)
       return message
     }
-    const selection = runId
-      ? await findRunSelection(runId, roots, (root) => this.options.runtimeFactory.createRunStore(root))
-      : await pickRunSelection(roots, (root) => this.options.runtimeFactory.createRunStore(root))
+    const runId = resolveRunId(runArg)
+    const selection = await this.selectRunArgument(runArg, roots)
     if (!selection) {
       const message = runId ? `Workflow run not found: ${runId}` : "No workflow run selected."
       if (runId) await vscode.window.showWarningMessage(message)
@@ -368,12 +396,12 @@ export class WorkflowRunCommandService {
     await showMarkdownReport("Workflow Runs", `${runsByRoot.length} run(s).`, lines)
   }
 
-  async resumeRun(runId?: string): Promise<unknown> {
-    return this.resumeOrRetryRun("resume", runId)
+  async resumeRun(runArg?: RunCommandArg): Promise<unknown> {
+    return this.resumeOrRetryRun("resume", runArg)
   }
 
-  async retryCurrentStep(runId?: string): Promise<unknown> {
-    return this.resumeOrRetryRun("retry", runId)
+  async retryCurrentStep(runArg?: RunCommandArg): Promise<unknown> {
+    return this.resumeOrRetryRun("retry", runArg)
   }
 
   async approveBranchCheckpoint(runId?: string): Promise<unknown> {
@@ -433,14 +461,13 @@ export class WorkflowRunCommandService {
     return run
   }
 
-  private async resumeOrRetryRun(mode: "resume" | "retry", runId?: string): Promise<unknown> {
+  private async resumeOrRetryRun(mode: "resume" | "retry", runArg?: RunCommandArg): Promise<unknown> {
     const trustError = await requireTrustedWorkspace(`${mode} workflow run`)
     if (trustError) return trustError
     await this.ensureWorkflowsLoaded()
     const roots = await this.options.workflowRootCandidates()
-    const selection = runId
-      ? await findRunSelection(runId, roots, (root) => this.options.runtimeFactory.createRunStore(root))
-      : await pickRunSelection(roots, (root) => this.options.runtimeFactory.createRunStore(root))
+    const runId = resolveRunId(runArg)
+    const selection = await this.selectRunArgument(runArg, roots)
     if (!selection) {
       const message = "No workspace folder is open."
       if (!runId) return "No workflow run selected."
@@ -560,6 +587,42 @@ export class WorkflowRunCommandService {
     if (this.options.coreWorkflows.size === 0) await this.options.ensureWorkflowsLoaded()
   }
 
+  private async selectRunArgument(
+    runArg: RunCommandArg,
+    roots: MarkerRootCandidate[]
+  ): Promise<RunSelection | undefined> {
+    if (isOperationHubRunMutationTarget(runArg)) {
+      const validated = await validateOperationHubRunMutationTarget(
+        runArg,
+        roots.map((candidate) => candidate.root)
+      )
+      return {
+        root: validated.workspaceRoot,
+        runId: runArg.runId,
+        run: validated.snapshot.run
+      }
+    }
+    const runId = resolveRunId(runArg)
+    return runId
+      ? findRunSelection(runId, roots, (root) => this.options.runtimeFactory.createRunStore(root))
+      : pickRunSelection(roots, (root) => this.options.runtimeFactory.createRunStore(root))
+  }
+
+  private async validateOperationHubWorkflowRoot(
+    target: OperationHubWorkflowMutationTarget,
+    workflow: CoreWorkflowDefinition
+  ): Promise<string> {
+    const roots = await this.options.workflowRootCandidates()
+    const workspaceRoot = await canonicalOperationHubWorkspaceRoot(
+      target.workspaceRoot,
+      roots.map((candidate) => candidate.root)
+    )
+    if (workflow.workflowRoot) {
+      await canonicalOperationHubWorkspaceRoot(workflow.workflowRoot, [workspaceRoot])
+    }
+    return workspaceRoot
+  }
+
   private async selectRun(runId?: string) {
     const roots = await this.options.workflowRootCandidates()
     if (roots.length === 0) return undefined
@@ -647,7 +710,7 @@ function resolveRunId(value: RunCommandArg): string | undefined {
   if (typeof value === "string") return value
   if (!value || typeof value !== "object") return undefined
   if (typeof value.runId === "string") return value.runId
-  if (value.run && typeof value.run.runId === "string") return value.run.runId
+  if ("run" in value && value.run && typeof value.run.runId === "string") return value.run.runId
   return undefined
 }
 

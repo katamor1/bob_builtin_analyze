@@ -6,6 +6,7 @@ import { OperationHubProvider } from "./gui/operationHubProvider"
 import { WorkflowRegisterService } from "./workflowRegisterService"
 import type { StepCompletionOptions } from "./workflowRegisterService"
 import type { BobWorkflowGateAcceptResult } from "./bobWorkflowGateRegistry"
+import type { ArtifactSourceRunArg, RunCommandArg, WorkflowCommandArg } from "./workflowRunCommands"
 
 /**
  * 他の Bob companion extension へ公開する workflow-register API。
@@ -164,7 +165,7 @@ export function activate(context: vscode.ExtensionContext): WorkflowRegisterApi 
     vscode.commands.registerCommand("workflowRegister.inspectActiveSteps", () => service.inspectActiveSteps()),
     vscode.commands.registerCommand(
       "workflowRegister.runWorkflow",
-      (workflowId?: string, inputs?: Record<string, unknown>) => service.runWorkflow(workflowId, inputs)
+      (workflowArg?: WorkflowCommandArg, inputs?: Record<string, unknown>) => service.runWorkflow(workflowArg, inputs)
     ),
     vscode.commands.registerCommand(
       "workflowRegister.runWorkflowStep",
@@ -174,14 +175,14 @@ export function activate(context: vscode.ExtensionContext): WorkflowRegisterApi 
     ),
     vscode.commands.registerCommand(
       "workflowRegister.startFromStepWithArtifacts",
-      (workflowId?: string, stepId?: string, sourceRunId?: string, inputs?: Record<string, unknown>) => service.startFromStepWithArtifacts(workflowId, stepId, sourceRunId, inputs)
+      (workflowId?: string, stepId?: string, sourceRunArg?: ArtifactSourceRunArg, inputs?: Record<string, unknown>) => service.startFromStepWithArtifacts(workflowId, stepId, sourceRunArg, inputs)
     ),
     vscode.commands.registerCommand("workflowRegister.importArtifactsFromTaskSnapshots", (runId?: string) => service.importArtifactsFromTaskSnapshots(runId)),
-    vscode.commands.registerCommand("workflowRegister.runNextStep", (runId?: string) => service.runNextStep(runId)),
+    vscode.commands.registerCommand("workflowRegister.runNextStep", (runArg?: RunCommandArg) => service.runNextStep(runArg)),
     vscode.commands.registerCommand("workflowRegister.openManualStepPanel", (runArg?: unknown) => service.openManualStepPanel(runArg as Parameters<WorkflowRegisterService["openManualStepPanel"]>[0])),
     vscode.commands.registerCommand("workflowRegister.inspectRuns", () => service.inspectRuns()),
-    vscode.commands.registerCommand("workflowRegister.resumeRun", (runId?: string) => service.resumeRun(runId)),
-    vscode.commands.registerCommand("workflowRegister.retryCurrentStep", (runId?: string) => service.retryCurrentStep(runId)),
+    vscode.commands.registerCommand("workflowRegister.resumeRun", (runArg?: RunCommandArg) => service.resumeRun(runArg)),
+    vscode.commands.registerCommand("workflowRegister.retryCurrentStep", (runArg?: RunCommandArg) => service.retryCurrentStep(runArg)),
     vscode.commands.registerCommand("workflowRegister.approveBranchCheckpoint", (runId?: string) => service.approveBranchCheckpoint(runId)),
     vscode.commands.registerCommand("workflowRegister.abortBranchCheckpoint", (runId?: string) => service.abortBranchCheckpoint(runId)),
     vscode.commands.registerCommand("workflowRegister.inspectBranching", (runId?: string) => service.inspectBranching(runId))

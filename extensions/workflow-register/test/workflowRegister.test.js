@@ -75,8 +75,8 @@ test("package contributes standalone workflow launcher commands without a hard B
   }
   assert.match(source, /new WorkflowRegisterService\(String\(context\.extension\.packageJSON\.version \?\? "unknown"\)\)/)
   assert.match(source, /registerCommand\([\s\S]*"workflowRegister\.runWorkflowStep"[\s\S]*service\.runWorkflowStep\(workflowId, stepId, inputs\)/)
-  assert.match(source, /registerCommand\([\s\S]*"workflowRegister\.startFromStepWithArtifacts"[\s\S]*service\.startFromStepWithArtifacts\(workflowId, stepId, sourceRunId, inputs\)/)
-  assert.match(source, /registerCommand\("workflowRegister\.runNextStep", \(runId\?: string\) => service\.runNextStep\(runId\)\)/)
+  assert.match(source, /registerCommand\([\s\S]*"workflowRegister\.startFromStepWithArtifacts"[\s\S]*service\.startFromStepWithArtifacts\(workflowId, stepId, sourceRunArg, inputs\)/)
+  assert.match(source, /registerCommand\("workflowRegister\.runNextStep", \(runArg\?: RunCommandArg\) => service\.runNextStep\(runArg\)\)/)
   assert.match(source, /registerCommand\("workflowRegister\.approveBranchCheckpoint", \(runId\?: string\) => service\.approveBranchCheckpoint\(runId\)\)/)
   assert.match(source, /registerCommand\("workflowRegister\.abortBranchCheckpoint", \(runId\?: string\) => service\.abortBranchCheckpoint\(runId\)\)/)
   assert.match(source, /registerCommand\("workflowRegister\.inspectBranching", \(runId\?: string\) => service\.inspectBranching\(runId\)\)/)

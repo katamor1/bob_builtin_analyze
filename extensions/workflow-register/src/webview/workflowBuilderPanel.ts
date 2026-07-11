@@ -140,12 +140,21 @@ export class WorkflowBuilderPanel {
       const label = this.options.mode === "edit" ? "Apply changes" : "Overwrite"
       const overwrite = await vscode.window.showWarningMessage(`${targetPath} already exists. ${label} after creating a backup?`, { modal: true }, label)
       if (overwrite !== label) return
-      await vscode.workspace.fs.copy(targetUri, vscode.Uri.joinPath(dir, `WORKFLOW.backup-${timestamp()}.md`), { overwrite: true })
+      const existingBytes = await vscode.workspace.fs.readFile(targetUri)
+      if (this.options.mode === "edit" && this.options.originalText !== undefined) {
+        const currentText = new TextDecoder().decode(existingBytes)
+        if (currentText !== this.options.originalText) {
+          await vscode.window.showWarningMessage(`${targetPath} was changed outside this Builder. Reopen or refresh the workflow before saving again.`)
+          return
+        }
+      }
+      await vscode.workspace.fs.writeFile(vscode.Uri.joinPath(dir, `WORKFLOW.backup-${timestamp()}.md`), existingBytes)
     } else if (this.options.mode === "edit") {
       const create = await vscode.window.showWarningMessage(`${targetPath} no longer exists. Create it?`, { modal: true }, "Create")
       if (create !== "Create") return
     }
     await vscode.workspace.fs.writeFile(targetUri, new TextEncoder().encode(rendered.markdown))
+    this.options.originalText = rendered.markdown
     await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(targetUri), { preview: false })
     await vscode.commands.executeCommand("workflowRegister.reload")
     await this.panel.webview.postMessage({ type: "saved", filePath: targetPath })

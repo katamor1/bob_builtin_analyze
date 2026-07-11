@@ -22,7 +22,7 @@ import {
 import { WorkflowRuntimeFactory } from "./workflowRuntimeFactory"
 import { collectBobWorkflowInputs } from "./workflowInputPrompt"
 import { WorkflowRunCommandService } from "./workflowRunCommands"
-import type { RunCommandArg } from "./workflowRunCommands"
+import type { ArtifactSourceRunArg, RunCommandArg, WorkflowCommandArg } from "./workflowRunCommands"
 import { requireTrustedWorkspace } from "./workspaceTrust"
 import { ReviewAcceptanceCoordinator } from "./reviewAcceptanceCoordinator"
 
@@ -169,8 +169,8 @@ export class WorkflowRegisterService implements vscode.Disposable {
     return this.runCommands.listCoreWorkflows()
   }
 
-  async runWorkflow(workflowId?: string, inputs: Record<string, unknown> = {}): Promise<unknown> {
-    return this.runCommands.runWorkflow(workflowId, inputs)
+  async runWorkflow(workflowArg?: WorkflowCommandArg, inputs: Record<string, unknown> = {}): Promise<unknown> {
+    return this.runCommands.runWorkflow(workflowArg, inputs)
   }
 
   async runWorkflowStep(
@@ -184,30 +184,30 @@ export class WorkflowRegisterService implements vscode.Disposable {
   async startFromStepWithArtifacts(
     workflowId?: string,
     stepId?: string,
-    sourceRunId?: string,
+    sourceRunArg?: ArtifactSourceRunArg,
     inputs: Record<string, unknown> = {}
   ): Promise<unknown> {
-    return this.runCommands.startFromStepWithArtifacts(workflowId, stepId, sourceRunId, inputs)
+    return this.runCommands.startFromStepWithArtifacts(workflowId, stepId, sourceRunArg, inputs)
   }
 
   async importArtifactsFromTaskSnapshots(runId?: string): Promise<unknown> {
     return this.runCommands.importArtifactsFromTaskSnapshots(runId)
   }
 
-  async runNextStep(runId?: string): Promise<unknown> {
-    return this.runCommands.runNextStep(runId)
+  async runNextStep(runArg?: RunCommandArg): Promise<unknown> {
+    return this.runCommands.runNextStep(runArg)
   }
 
   async inspectRuns(): Promise<void> {
     return this.runCommands.inspectRuns()
   }
 
-  async resumeRun(runId?: string): Promise<unknown> {
-    return this.runCommands.resumeRun(runId)
+  async resumeRun(runArg?: RunCommandArg): Promise<unknown> {
+    return this.runCommands.resumeRun(runArg)
   }
 
-  async retryCurrentStep(runId?: string): Promise<unknown> {
-    return this.runCommands.retryCurrentStep(runId)
+  async retryCurrentStep(runArg?: RunCommandArg): Promise<unknown> {
+    return this.runCommands.retryCurrentStep(runArg)
   }
 
   async approveBranchCheckpoint(runId?: string): Promise<unknown> {

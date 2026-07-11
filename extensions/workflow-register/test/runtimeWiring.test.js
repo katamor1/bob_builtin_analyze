@@ -205,7 +205,7 @@ test("runtime entry points and default providers check Workspace Trust", () => {
 
   assert.match(source, /import \{ requireTrustedWorkspace \} from "\.\/workspaceTrust"/)
   assert.match(source, /async reload\(options: \{ showReport: boolean \}\): Promise<void> \{[\s\S]*requireTrustedWorkspace\("reload registration", \{ showWarning: options\.showReport \}\)/)
-  assert.match(source, /async runWorkflow\(workflowId\?: string, inputs: Record<string, unknown> = \{\}\): Promise<unknown> \{[\s\S]*requireTrustedWorkspace\("run workflow"\)/)
+  assert.match(source, /async runWorkflow\(workflowArg\?: WorkflowCommandArg, inputs: Record<string, unknown> = \{\}\): Promise<unknown> \{[\s\S]*requireTrustedWorkspace\("run workflow"\)/)
   assert.match(source, /async runWorkflowStep\([\s\S]*requireTrustedWorkspace\("run workflow step"\)/)
   assert.match(source, /isWorkspaceTrusted: \(\) => vscode\.workspace\.isTrusted/)
   assert.match(source, /requireTrustedCommandExecution\("write command result sink"\)/)
@@ -353,7 +353,7 @@ test("Operation Hub live gate owns Bob advancement while stale gates keep Todo-s
   assert.match(stepReview, /let completedViaBobTask = acceptedViaLiveGate/)
   assert.match(stepReview, /if \(gateDecision === "missing" \|\| gateDecision === "aborted"\) \{[\s\S]*await bobTaskSyncRegistry\.reconcileRun\(accepted, undefined/)
   assert.match(stepReview, /completedViaBobTask = sync\.status === "synced" && sync\.appliedStepCount > 0/)
-  assert.match(stepReview, /return \{ run: accepted, message, completedViaBobTask \}/)
+  assert.match(stepReview, /return \{ run: accepted, message, completedViaBobTask, workspaceRoot, revision: snapshot\.revision \}/)
   assert.match(stepReview, /if \(completedViaBobTask\) \{/)
   assert.match(stepReview, /vscode\.commands\.executeCommand\("workflowRegister\.runNextStep", accepted\.run\.runId\)/)
 })
@@ -367,7 +367,7 @@ test("standalone next-step commands reuse the Bob review task agent provider", (
   assert.match(workflowRunCommands, /this\.options\.runtimeFactory\.createEngine\(selection\.root, agentProvider\)/)
   assert.match(workflowRunCommands, /await this\.reconcileBobTask\(selection\.root, result, workflow, "operation-hub-next"\)/)
   assert.match(workflowRunCommands, orderedPattern(
-    'private async resumeOrRetryRun(mode: "resume" | "retry", runId?: string): Promise<unknown> {',
+    'private async resumeOrRetryRun(mode: "resume" | "retry", runArg?: RunCommandArg): Promise<unknown> {',
     "this.options.coordinateGateDecision(",
     "selection.root,",
     "selection.runId,",

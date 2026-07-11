@@ -16,7 +16,7 @@ test("Operation Hub next-step execution passes an AgentProvider into the standal
 test("Operation Hub retry and resume execution reuses the run-scoped Bob AgentProvider", () => {
   const runCommands = readSrc("workflowRunCommands.ts")
 
-  assert.match(runCommands, /private async resumeOrRetryRun\(mode: "resume" \| "retry", runId\?: string\): Promise<unknown>/)
+  assert.match(runCommands, /private async resumeOrRetryRun\(mode: "resume" \| "retry", runArg\?: RunCommandArg\): Promise<unknown>/)
   assert.match(runCommands, /const agentProvider = reviewTaskRegistry\.agentProviderForRun\(run\.runId, workflow\)/)
   assert.match(runCommands, /const engine = this\.options\.runtimeFactory\.createEngine\(selection\.root, agentProvider\)/)
   assert.match(runCommands, /mode === "resume" \? "operation-hub-resume" : "operation-hub-retry"/)

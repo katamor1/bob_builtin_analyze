@@ -1,10 +1,16 @@
 import * as fs from "fs/promises"
 import * as path from "path"
 import * as vscode from "vscode"
-import type { CoreWorkflowDefinition } from "../core/model"
+import type { CoreWorkflowDefinition, WorkflowRunState } from "../core/model"
 import { FileRunStateStore } from "../core/runStateStore"
 import { fallbackWorkspaceRootCandidates, findWorkflowRootCandidates, MarkerRootCandidate } from "../core/workspaceRoots"
 import { renderOperationHubHtml } from "./operationHubHtml"
+import {
+  canonicalOperationHubWorkspaceRoot,
+  operationHubContentRevision,
+  refreshRequired,
+  validateOperationHubRunMutationTarget
+} from "../operationHubMutationTarget"
 import {
   buildOperationHubModel,
   OPERATION_HUB_ALLOWED_ACTIONS,
@@ -12,6 +18,11 @@ import {
   OperationHubModel,
   OperationHubSetupState
 } from "./operationHubModel"
+import {
+  OperationHubMutationCoordinator,
+  OperationHubMutationIdentity,
+  OperationHubMutationTargetKind
+} from "./operationHubMutationCoordinator"
 
 interface OperationHubWorkflowApi {
   listWorkflows: () => CoreWorkflowDefinition[]
@@ -27,7 +38,14 @@ interface OperationHubMessage {
   action: OperationHubActionId
   workflowId?: string
   runId?: string
+  workspaceRoot?: string
+  expectedRevision?: string
   artifactPath?: string
+}
+
+interface ValidatedMutationTarget {
+  identity: OperationHubMutationIdentity
+  expectedRevision?: string
 }
 
 type OperationHubOpenInput = string | { runId?: string; stepId?: string; reason?: "stepGate" | "paused" }
@@ -62,6 +80,18 @@ const RUN_ID_ACTIONS: readonly OperationHubActionId[] = [
   "openRunControl"
 ]
 
+const MUTATING_RUN_ACTIONS: readonly OperationHubActionId[] = [
+  "startFromArtifacts",
+  "resumeRun",
+  "retryCurrentStep",
+  "acceptCurrentStep",
+  "acceptAndRunNextStep",
+  "runNextStep",
+  "pauseCurrentRun"
+]
+
+const MUTATING_WORKFLOW_ACTIONS: readonly OperationHubActionId[] = ["runWorkflow"]
+
 const RUN_MONITOR_WATCH_PATTERNS = [
   ".bob/workflows/runs/**/run.json",
   ".bob/workflows/runs/**/control.json",
@@ -81,6 +111,7 @@ export class OperationHubProvider implements vscode.WebviewViewProvider, vscode.
   private readonly runWatcherDisposables: vscode.Disposable[] = []
   private readonly disposables: vscode.Disposable[] = []
   private readonly panelDisposables: vscode.Disposable[] = []
+  private readonly mutations = new OperationHubMutationCoordinator()
 
   constructor(private readonly options: OperationHubProviderOptions) {}
 
@@ -166,6 +197,10 @@ export class OperationHubProvider implements vscode.WebviewViewProvider, vscode.
       if (!command) {
         throw new Error(`Unsupported Operation Hub action: ${message.action}`)
       }
+      if (isMutationAction(message.action)) {
+        await this.executeMutation(message, command)
+        return
+      }
       this.scheduleActionRefreshes()
       await vscode.commands.executeCommand(command, ...commandArgsForAction(message))
       await this.refreshAll()
@@ -174,6 +209,57 @@ export class OperationHubProvider implements vscode.WebviewViewProvider, vscode.
       await this.refreshAll().catch((refreshError) => {
         console.warn("Bob Operation Hub refresh after action failure failed", refreshError)
       })
+    }
+  }
+
+  private async executeMutation(message: OperationHubMessage, command: string): Promise<void> {
+    const target = await this.validateMutationTarget(message)
+    await this.mutations.coordinate(target.identity, async () => {
+      if (target.identity.targetKind === "run") {
+        await assertCurrentRunRevision(
+          target.identity.workspaceRoot,
+          target.identity.targetId,
+          target.expectedRevision
+        )
+      }
+      this.scheduleActionRefreshes()
+      await vscode.commands.executeCommand(command, ...mutationCommandArgs(message, target))
+      await this.refreshAll()
+    })
+  }
+
+  private async validateMutationTarget(message: OperationHubMessage): Promise<ValidatedMutationTarget> {
+    const workspaceRoot = await validateCanonicalWorkspaceRoot(
+      message.workspaceRoot,
+      vscode.workspace.workspaceFolders ?? []
+    )
+    const targetKind: OperationHubMutationTargetKind = MUTATING_RUN_ACTIONS.includes(message.action)
+      ? "run"
+      : "workflow"
+    const targetId = targetKind === "run" ? message.runId : message.workflowId
+    if (!targetId?.trim()) {
+      throw refreshRequired(`${targetKind} target が指定されていません。`)
+    }
+    if (targetKind === "workflow") {
+      const workflow = this.options.api.listWorkflows().find((candidate) => candidate.id === targetId)
+      const workflowRoot = workflow?.workflowRoot
+      if (!workflow || !workflowRoot) {
+        throw refreshRequired(`workflow '${targetId}' は現在の catalog にありません。`)
+      }
+      try {
+        await canonicalOperationHubWorkspaceRoot(workflowRoot, [workspaceRoot])
+      } catch {
+        throw refreshRequired(`workflow '${targetId}' の workspace が変更されました。`)
+      }
+    }
+    return {
+      identity: {
+        actionId: message.action,
+        workspaceRoot,
+        targetKind,
+        targetId
+      },
+      expectedRevision: message.expectedRevision
     }
   }
 
@@ -218,7 +304,10 @@ export class OperationHubProvider implements vscode.WebviewViewProvider, vscode.
     const runs = await Promise.all(roots.map(async (candidate) => {
       const store = new FileRunStateStore({ workspaceRoot: candidate.root })
       const runStates = await store.listRuns()
-      return runStates.map((run) => ({ root: candidate.root, run }))
+      const snapshots = await Promise.all(runStates.map((run) => loadRunSnapshot(candidate.root, run.runId)))
+      return snapshots
+        .filter((snapshot): snapshot is NonNullable<typeof snapshot> => Boolean(snapshot))
+        .map((snapshot) => ({ root: candidate.root, run: snapshot.run, revision: snapshot.revision }))
     }))
     return buildOperationHubModel({
       workspaceName: folders.length === 0 ? "No workspace" : folders.map((folder) => folder.name).join(", "),
@@ -317,8 +406,30 @@ export function parseOperationHubMessage(message: unknown): OperationHubMessage 
     action: candidate.action,
     workflowId: typeof candidate.workflowId === "string" ? candidate.workflowId : undefined,
     runId: typeof candidate.runId === "string" ? candidate.runId : undefined,
+    workspaceRoot: typeof candidate.workspaceRoot === "string" ? candidate.workspaceRoot : undefined,
+    expectedRevision: typeof candidate.expectedRevision === "string" ? candidate.expectedRevision : undefined,
     artifactPath: typeof candidate.artifactPath === "string" ? candidate.artifactPath : undefined
   }
+}
+
+function mutationCommandArgs(message: OperationHubMessage, target: ValidatedMutationTarget): unknown[] {
+  if (target.identity.targetKind === "workflow") {
+    return [{
+      source: "operationHub",
+      workspaceRoot: target.identity.workspaceRoot,
+      workflowId: target.identity.targetId
+    }]
+  }
+  const runTarget = {
+    source: "operationHub",
+    workspaceRoot: target.identity.workspaceRoot,
+    runId: target.identity.targetId,
+    expectedRevision: target.expectedRevision
+  }
+  if (message.action === "startFromArtifacts") {
+    return message.workflowId ? [message.workflowId, undefined, runTarget] : []
+  }
+  return [runTarget]
 }
 
 function commandArgsForAction(message: OperationHubMessage): unknown[] {
@@ -382,6 +493,50 @@ async function exists(file: string): Promise<boolean> {
 function isAllowedAction(action: string): action is OperationHubActionId {
   return (OPERATION_HUB_ALLOWED_ACTIONS as readonly string[]).includes(action)
 }
+
+function isMutationAction(action: OperationHubActionId): boolean {
+  return MUTATING_RUN_ACTIONS.includes(action) || MUTATING_WORKFLOW_ACTIONS.includes(action)
+}
+
+async function validateCanonicalWorkspaceRoot(
+  requestedRoot: string | undefined,
+  folders: readonly vscode.WorkspaceFolder[]
+): Promise<string> {
+  if (!requestedRoot?.trim()) throw refreshRequired("workspace root が指定されていません。")
+  const candidates = await workflowRootCandidates(folders)
+  return canonicalOperationHubWorkspaceRoot(requestedRoot, candidates.map((candidate) => candidate.root))
+}
+
+async function assertCurrentRunRevision(
+  workspaceRoot: string,
+  runId: string,
+  expectedRevision: string | undefined
+): Promise<void> {
+  await validateOperationHubRunMutationTarget({
+    source: "operationHub",
+    workspaceRoot,
+    runId,
+    expectedRevision: expectedRevision ?? ""
+  }, [workspaceRoot])
+}
+
+async function loadRunSnapshot(
+  workspaceRoot: string,
+  runId: string
+): Promise<{ run: WorkflowRunState; revision: string } | undefined> {
+  const runFile = path.join(workspaceRoot, ".bob", "workflows", "runs", runId, "run.json")
+  try {
+    const bytes = await fs.readFile(runFile)
+    return {
+      run: JSON.parse(bytes.toString("utf8")) as WorkflowRunState,
+      revision: operationHubContentRevision(bytes)
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined
+    throw error
+  }
+}
+
 
 function isContainedPath(root: string, target: string): boolean {
   const relative = path.relative(path.resolve(root), path.resolve(target))
