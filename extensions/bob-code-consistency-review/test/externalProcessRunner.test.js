@@ -37,6 +37,11 @@ test("external process runner terminates commands that exceed the hard timeout",
   assert.ok(Date.now() - startedAt < 1500)
 })
 
+test("external process runner clamps timeouts below the safety minimum", async () => {
+  const result = await runNode("setTimeout(() => {}, 50)", { timeoutMs: 1 })
+  assert.equal(result.exitCode, 0)
+})
+
 test("external process runner propagates AbortSignal cancellation", async () => {
   const controller = new AbortController()
   const running = runNode("setInterval(() => {}, 1000)", { signal: controller.signal })
