@@ -149,3 +149,20 @@ test("Bazaar human triage GUI renders metrics decision validation and finalize a
   assert.match(source, /vscode\.workspace\.workspaceFolders/)
   assert.doesNotMatch(html, /onclick=/)
 })
+
+test("Campaign Dashboard command is registered and Review GUI opens it with fixed context", () => {
+  const packageJson = readJson("package.json")
+  const extensionSource = readSrc("extension.ts")
+  const reviewSource = readSrc("ui/reviewGui.ts")
+  const { renderHtml } = require("../out/ui/reviewGuiHtml")
+  const html = renderHtml("vscode-resource:")
+
+  assertContributesCommand(packageJson, "bobBazaar.openCampaignDashboard")
+  assert.match(extensionSource, /openBazaarCampaignDashboardGui/)
+  assert.match(extensionSource, /registerCommand\(\s*"bobBazaar\.openCampaignDashboard"/)
+  assert.match(html, /id="openCampaignDashboard"/)
+  assert.match(html, /type: "openCampaignDashboard"/)
+  assert.match(reviewSource, /bobBazaar\.openCampaignDashboard/)
+  assert.match(reviewSource, /campaignId/)
+  assert.doesNotMatch(html, /onclick=/)
+})

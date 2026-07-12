@@ -19,6 +19,7 @@
   "activationEvents": [
     "onStartupFinished",
     "onCommand:bobBazaar.openReviewGui",
+    "onCommand:bobBazaar.openCampaignDashboard",
     "onCommand:bobBazaar.openResultCaptureGui",
     "onCommand:bobBazaar.openHumanTriageGui",
     "onCommand:bobBazaar.collectReviewContext",
@@ -43,6 +44,7 @@
   "contributes": {
     "commands": [
       { "command": "bobBazaar.openReviewGui", "title": "GUI を開く", "category": "Bob Bazaar Review" },
+      { "command": "bobBazaar.openCampaignDashboard", "title": "Campaign Dashboard を開く", "category": "Bob Bazaar Review" },
       { "command": "bobBazaar.openResultCaptureGui", "title": "Result Capture GUI を開く", "category": "Bob Bazaar Review" },
       { "command": "bobBazaar.openHumanTriageGui", "title": "Human Triage GUI を開く", "category": "Bob Bazaar Review" },
       { "command": "bobBazaar.collectReviewContext", "title": "レビューコンテキストを収集", "category": "Bob Bazaar Review" },
@@ -79,6 +81,7 @@
     "menus": {
       "commandPalette": [
         { "command": "bobBazaar.openReviewGui" },
+        { "command": "bobBazaar.openCampaignDashboard" },
         { "command": "bobBazaar.openResultCaptureGui" },
         { "command": "bobBazaar.openHumanTriageGui" },
         { "command": "bobBazaar.collectReviewContext" },

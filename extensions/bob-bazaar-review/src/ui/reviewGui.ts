@@ -87,6 +87,8 @@ class BazaarReviewGuiController {
         await this.openReviewRunCommand("bobBazaar.openResultCaptureGui")
       } else if (message?.type === "openHumanTriage") {
         await this.openReviewRunCommand("bobBazaar.openHumanTriageGui")
+      } else if (message?.type === "openCampaignDashboard") {
+        await this.openCampaignDashboard(message)
       } else if (message?.type === "refreshReviewRuns") {
         await this.postReviewRuns()
       } else if (message?.type === "resumeReviewRun") {
@@ -97,6 +99,16 @@ class BazaarReviewGuiController {
     } catch (error: any) {
       this.post({ type: "error", message: error?.message ?? String(error) })
     }
+  }
+
+  private async openCampaignDashboard(message: any): Promise<void> {
+    const workspaceRoot = this.activeReviewRun?.workspaceRoot ??
+      this.bobWorkspaceFolder?.uri.fsPath ??
+      this.bazaarWorkspaceFolder?.uri.fsPath
+    if (!workspaceRoot) throw new Error("Campaign Dashboardを開くworkspaceが選択されていません。")
+    const campaignId = this.activeReviewRun?.campaignId ??
+      textOrDefault(message?.campaignId, DEFAULT_CAMPAIGN_ID)
+    await vscode.commands.executeCommand("bobBazaar.openCampaignDashboard", { workspaceRoot, campaignId })
   }
 
   private async openReviewRunCommand(command: string): Promise<void> {

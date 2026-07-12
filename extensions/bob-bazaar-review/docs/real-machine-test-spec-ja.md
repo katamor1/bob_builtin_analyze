@@ -560,6 +560,92 @@ bazaar_test/branch2/
 - 承認後に追加されるのは`review-run.json`だけである。
 - 既存packet / result / triage / recordのbytesが変化しない。
 
+### 6.7 Review Run Wizard v3 Iteration 3 Campaign Dashboard
+
+#### BZR-RT-051 Dashboard起動・campaign選択・refresh
+
+1. 2件以上のcampaignを持つBob workspaceを開く。
+2. Command PaletteまたはReview GUIからCampaign Dashboardを開く。
+3. campaignを切り替え、refreshする。
+
+期待結果:
+
+- campaign候補がsafe IDだけで表示される。
+- run一覧が`updatedAt`降順になる。
+- refresh後に最新のReview Run / record / triageが反映される。
+- workspace外rootは拒否される。
+
+#### BZR-RT-052 Human Triage pendingの可視化
+
+1. triageなしrun、invalid triage run、valid triage runを用意する。
+2. Dashboardを開く。
+
+期待結果:
+
+- triageなしとinvalid triageがpending tableに出る。
+- run一覧からは消えない。
+- pending findingはaccepted / rejected件数へ加算されない。
+- reasonはwarningに表示される。
+
+#### BZR-RT-053 schema / finding rateの照合
+
+1. schema valid / invalid recordとdecisionが既知のtriageを用意する。
+2. Overviewのrateを手計算する。
+3. recordまたはtriageが0件のcampaignも開く。
+
+期待結果:
+
+- schema validation、finding acceptance / rejection / resolutionの分母が仕様通りである。
+- 分母0は`0%`ではなく`n/a`になる。
+
+#### BZR-RT-054 rule / change type trend
+
+1. 同じrule IDを複数runで検出する。
+2. 3種類のtarget modeを持つrunを用意する。
+
+期待結果:
+
+- rule trendのdetected / accepted / rejected件数がtriageと一致する。
+- ruleは検出数順に並ぶ。
+- change typeは`singleRevision`、`revisionRange`、`workingTreeSinceRevision`として集計される。
+- file名からsource / test / docs分類を推測しない。
+
+#### BZR-RT-055 JSON / Markdown / CSV export
+
+1. comma、quote、改行を含むwarningがあるcampaignを表示する。
+2. exportを実行する。
+3. 3形式を比較する。
+
+期待結果:
+
+- campaign directoryへ`dashboard.json`、`dashboard.md`、`dashboard.csv`が作成される。
+- campaign ID、overview、rule、change type、warningが3形式で一致する。
+- CSVのcomma / quote / newlineがRFC 4180形式でescapeされる。
+
+#### BZR-RT-056 malformed evidenceとexport failure
+
+1. malformed record / triage / resultとsymlink record directoryを用意する。
+2. Dashboardを開く。
+3. 既存dashboard exportを用意し、置換途中で失敗するfixtureを作る。
+
+期待結果:
+
+- Dashboard全体を停止せずwarningを表示する。
+- conflicting artifactからdecisionを生成しない。
+- symlink / junctionを追跡しない。
+- export失敗時は画面を維持し、旧exportを復元する。
+
+#### BZR-RT-057 review evidence不変性
+
+1. packet、result、triage、record、summaryのhashを取得する。
+2. Dashboardのrefreshとexportを複数回実行する。
+3. hashを再取得する。
+
+期待結果:
+
+- 既存review evidenceのbytesが変化しない。
+- 変更されるのは`dashboard.json`、`dashboard.md`、`dashboard.csv`だけである。
+
 ## 7. 実機テスト結果記録テンプレート
 
 | 項目 | 記入欄 |
@@ -588,6 +674,8 @@ bazaar_test/branch2/
 - Review Runの開始、画面間handoff、中断再開、decision validation、metrics、finalizeが合格する。
 - summary失敗時にrecordを保持し、失敗phaseから再試行できる。
 - legacy recoveryが確認付きかつ非破壊である。
+- Campaign Dashboardのpending、rate、rule / target mode trend、warning、3形式exportがsource artifactと一致する。
+- Dashboard refresh / exportが既存review evidenceを変更しない。
 - active editor validation と MCP result tools が保存済み result を扱える。
 - Bob Workflow UI 経由で主要 provider が provider missing にならない。
 - multi-root で `.bob` と `.bzr` の責務分離が守られる。
@@ -598,7 +686,7 @@ bazaar_test/branch2/
 | 優先度 | 対象 |
 | --- | --- |
 | P0 | 起動、project rules初期化、Review Run開始、packet、capture、Human Triage、標準finalize。 |
-| P1 | 中断再開、summary failure retry、legacy recovery、workflow provider、MCP、multi-root。 |
+| P1 | 中断再開、summary failure retry、legacy recovery、Campaign Dashboard、workflow provider、MCP、multi-root。 |
 | P2 | revisionRange、working tree、Shift-JIS / CP932、diff / added file truncation。 |
 | P3 | file save fallback、Bob 拡張なし fallback、unsafe input、OS 差分。 |
 
