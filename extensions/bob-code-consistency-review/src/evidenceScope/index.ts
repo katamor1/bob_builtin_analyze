@@ -1,3 +1,10 @@
+export {
+  ARTIFACT_LEDGER_PATH,
+  loadArtifactLedger,
+  reconcileArtifactLedger,
+  updateArtifactLedger,
+  writeArtifactLedger
+} from "./artifactLedger"
 export { buildEvidenceScope } from "./changeScopeEngine"
 export { createContextBudgetArtifact } from "./contextBudgetArtifact"
 export { planContextBudget } from "./contextBudgetPlanner"
@@ -49,3 +56,14 @@ export type {
   SelectedScopeItem,
   UnknownImpact
 } from "./evidenceScopeTypes"
+
+export type {
+  ArtifactKind,
+  ArtifactLedger,
+  ArtifactLedgerLoadResult,
+  ArtifactLedgerRecord,
+  ArtifactLedgerReconcileInput,
+  ArtifactLedgerUpdateResult,
+  ArtifactObservation,
+  ArtifactStatus
+} from "./artifactLedger"
