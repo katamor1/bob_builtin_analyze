@@ -1,0 +1,185 @@
+name: agent-record-automatic-pause-final-evidence
+
+on:
+  pull_request:
+    paths:
+      - "extensions/workflow-register/test/fixtures/automatic-pause-ci-verification.txt"
+      - "extensions/workflow-register/samples/ci-verification/WORKFLOW.md"
+      - ".github/workflows/agent-record-automatic-pause-final-evidence.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  record:
+    if: github.event.pull_request.head.ref == 'agent/workflow-automatic-pause-ci-verification-20260712'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: agent/workflow-automatic-pause-limits-20260712
+          fetch-depth: 0
+      - name: Record final verification evidence
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from textwrap import dedent
+
+          plan_path = Path("docs/superpowers/plans/2026-07-12-workflow-automatic-pause-limits.md")
+          plan = plan_path.read_text(encoding="utf-8")
+          if "## Execution Status" not in plan:
+              marker = "**Tech Stack:** TypeScript, Node.js built-in test runner, AJV/JSON Schema, VS Code Extension API, `Intl.DateTimeFormat`, existing `WorkflowEngine`, `FileRunControlStore`, and run diagnostics.\n"
+              status = dedent('''
+
+              ## Execution Status
+
+              - Repository implementation: complete on draft PR #75.
+              - Focused automatic-pause tests: GREEN.
+              - Full workflow-register suite: GREEN on Ubuntu and Windows.
+              - Dependency, architecture, source, and schema policies: GREEN.
+              - Package and VSIX policy: GREEN.
+              - Extension Host smoke: GREEN on Ubuntu and Windows.
+              - Strict workflow contract validation: GREEN.
+              - Independent review: Critical 0 / Important 0 / Minor 0 open.
+              - Temporary diagnostic and mutation workflows: removed from the deliverable branch.
+              - Pull request state: remains draft while current-main reconciliation and external real-environment evidence are open.
+              ''')
+              if marker not in plan:
+                  raise SystemExit("plan status insertion marker not found")
+              plan = plan.replace(marker, marker + status, 1)
+          plan = plan.replace("- [ ]", "- [x]")
+          if "## Remaining Verification Outside This Implementation Slice" not in plan:
+              plan += dedent('''
+
+              ## Remaining Verification Outside This Implementation Slice
+
+              - [ ] Reconcile draft PR #75 with the current `main` branch and re-run required checks on the reconciled head.
+              - [ ] Confirm pause, resume, and bounded override in a real IBM Bob environment.
+              - [ ] Confirm inherited real Bazaar timeout / cancel process cleanup evidence.
+              - [ ] Confirm Bob root / VCS root separation in a real multi-root workspace.
+              ''')
+          plan_path.write_text(plan.rstrip() + "\n", encoding="utf-8")
+
+          review_path = Path("docs/release-evidence/workflow-automatic-pause-independent-review-2026-07-12.md")
+          review = review_path.read_text(encoding="utf-8")
+          review = review.replace(
+              "- Review state: repository implementation reviewed; external real-environment gates remain open",
+              "- Review state: repository implementation and hosted quality gates reviewed; current-main reconciliation and external real-environment gates remain open"
+          )
+          review = review.replace(
+              "- Merge/release verdict: remains draft / NO-GO until final GitHub-hosted checks and external real-environment evidence are complete",
+              "- Merge/release verdict: remains draft / NO-GO until current-main reconciliation and external real-environment evidence are complete"
+          )
+          old_remaining = dedent('''
+          ## Remaining external gates
+
+          - final-head Ubuntu and Windows `extensions-quality`
+          - final-head Extension Host smoke
+          - final-head `workflow-contracts`
+          - IBM Bob real-environment pause, resume, and bounded-override confirmation
+          - inherited real Bazaar and multi-root release evidence
+          ''').strip()
+          new_remaining = dedent('''
+          ## Final hosted-gate update
+
+          The final deliverable source tree was verified through temporary draft PR #80 without adding its trigger fixture to PR #75:
+
+          - `extensions-quality` run `29198637806`: success
+          - `workflow-contracts` run `29198637797`: success
+          - Ubuntu and Windows workflow-register unit, package, VSIX policy, and Extension Host smoke: success
+          - Ubuntu and Windows related-extension quality jobs: success
+
+          ## Remaining gates
+
+          - reconcile PR #75 with the current `main` branch and re-run required checks on the reconciled head
+          - IBM Bob real-environment pause, resume, and bounded-override confirmation
+          - inherited real Bazaar timeout / cancel process-cleanup evidence
+          - real multi-root Bob root / VCS root separation evidence
+          ''').strip()
+          if old_remaining in review:
+              review = review.replace(old_remaining, new_remaining)
+          elif "## Final hosted-gate update" not in review:
+              review += "\n\n" + new_remaining
+          review_path.write_text(review.rstrip() + "\n", encoding="utf-8")
+
+          evidence = dedent('''
+          # Workflow Automatic Pause Verification Evidence
+
+          - Date: 2026-07-12
+          - Repository: `katamor1/bob_builtin_analyze`
+          - Issue: #73
+          - Draft implementation PR: #75
+          - Deliverable source head: `5adabec8e03ea4af948d6d2518dd5628f35e367c`
+          - Temporary verification PR: #80
+          - Verification commit: `1878b5ee5f05b60d99694db4eb4fcc81d4a63622`
+
+          ## Delivered behavior
+
+          - workflow-level and workspace-level `runControl.limits`
+          - elapsed-run, agent-attempt, and timezone-local cutoff evaluation
+          - graceful checkpoint pause without force cancellation
+          - structured `workflow.pause` provenance
+          - bounded 15 / 30 / 60 minute automatic-pause overrides with reason and operator
+          - manual Pause precedence over automatic override
+          - Run Diagnostics and Run Control reporting
+          - standalone and Bob runner policy wiring
+          - timezone-local midnight rollover protection
+          - heartbeat lock-file replacement classified as transient contention without weakening path security
+          - Windows short/long temporary-path fixture normalization
+
+          ## TDD evidence
+
+          A deterministic regression, `workflowRunLockHeartbeatContention.test.js`, was committed before the production fix. The RED run reproduced the same path-identity error as the existing child-process lock test. The implementation then narrowed retry behavior to atomic `run.lock.json` heartbeat replacement errors; symlink, junction, workspace escape, and ownership failures remain hard errors.
+
+          ## Hosted verification
+
+          ### Workflow contracts
+
+          - Run: `29198637797`
+          - Conclusion: success
+          - Compile: success
+          - Strict workflow contract validation: success
+
+          ### Extension quality
+
+          - Run: `29198637806`
+          - Conclusion: success
+          - `workflow-register` Ubuntu: policies, unit tests, package, VSIX policy, Extension Host smoke — success
+          - `workflow-register` Windows: policies, unit tests, package, VSIX policy, Extension Host smoke — success
+          - `bob-code-consistency-review` Ubuntu / Windows: success
+          - `bob-bazaar-review` Ubuntu / Windows: success
+
+          ### Finalization job
+
+          Before the deliverable commit, the finalization job reran workflow-register dependency, architecture, source, and schema policies; the full test suite; package; VSIX policy; bob-code-consistency-review tests; and `git diff --check`. All completed successfully.
+
+          ## Cleanup
+
+          All temporary diagnostic, mutation, recording, and verification workflows were removed from PR #75. The valid workflow fixture used to trigger `workflow-contracts` exists only on temporary PR #80 and is not part of the deliverable branch.
+
+          ## Verdict
+
+          - Repository implementation: PASS
+          - Hosted repository quality gates: PASS
+          - Ready to leave draft: NO, pending current-main reconciliation and the external gates below
+
+          ## Remaining external and integration gates
+
+          - real IBM Bob pause / resume / override confirmation
+          - real Bazaar timeout / cancel child-process cleanup evidence
+          - real multi-root Bob root / VCS root separation evidence
+          ''').strip() + "\n"
+          Path("docs/release-evidence/workflow-automatic-pause-2026-07-12.md").write_text(evidence, encoding="utf-8")
+          PY
+      - name: Commit evidence
+        shell: bash
+        run: |
+          rm .github/workflows/agent-record-automatic-pause-final-evidence.yml
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "docs: record final automatic pause verification"
+          git push origin HEAD:agent/workflow-automatic-pause-limits-20260712
