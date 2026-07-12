@@ -56,7 +56,7 @@ interface BobWorkflowEngineRunnerOptions {
   actionRegistry: ActionRegistry
   resultSinks: (workspaceRoot: string) => ResultSinkRegistry
   runStore: (workspaceRoot: string) => RunStateStore
-  runControlStore: (workspaceRoot: string) => RunControlStore
+  runControlStore?: (workspaceRoot: string) => RunControlStore
   taskSnapshotStore: (workspaceRoot: string) => TaskSnapshotStore | undefined
   preflightChecks: (workspaceRoot: string) => NonNullable<WorkflowEngineOptions["preflightChecks"]>
   agentProvider?: AgentProvider
@@ -124,7 +124,7 @@ export class BobWorkflowEngineRunner {
       actions: this.options.actionRegistry,
       resultSinks: this.options.resultSinks(workspaceRoot),
       runStore,
-      runControlStore: this.options.runControlStore(workspaceRoot),
+      runControlStore: this.options.runControlStore?.(workspaceRoot),
       agentProvider: this.createAgentProvider(task),
       preflightChecks: this.options.preflightChecks(workspaceRoot),
       hooks: this.createHooks(
