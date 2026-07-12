@@ -6,15 +6,13 @@ on:
       - agent/bob-bazaar-review-review-run-v3-iteration2
     paths:
       - ".github/workflows/bob-bazaar-review-iteration2-sync.yml"
-  pull_request:
-    paths:
-      - ".github/workflows/bob-bazaar-review-iteration2-sync.yml"
 
 permissions:
   contents: write
 
 jobs:
   diagnose-merge:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Iteration 2 branch
@@ -31,14 +29,13 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git merge --no-commit --no-ff origin/main
           status=$?
+          mkdir -p .github/diagnostics
           if [ "$status" -eq 0 ]; then
-            echo "MERGE_CLEAN=true" | tee -a "$GITHUB_ENV"
-            git merge --abort 2>/dev/null || true
-            exit 0
+            printf 'clean\n' > .github/diagnostics/bob-bazaar-review-iteration2-conflicts.txt
+          else
+            git diff --name-only --diff-filter=U > .github/diagnostics/bob-bazaar-review-iteration2-conflicts.txt
           fi
-          echo "MERGE_CLEAN=false" | tee -a "$GITHUB_ENV"
-          echo "## Iteration 2 / main merge conflicts" >> "$GITHUB_STEP_SUMMARY"
-          git diff --name-only --diff-filter=U | tee /tmp/iteration2-conflicts.txt
-          sed 's/^/- `/' /tmp/iteration2-conflicts.txt | sed 's/$/`/' >> "$GITHUB_STEP_SUMMARY"
           git merge --abort 2>/dev/null || true
-          exit 1
+          git add .github/diagnostics/bob-bazaar-review-iteration2-conflicts.txt
+          git commit -m "ci: record Iteration 2 merge conflicts with main"
+          git push origin HEAD:agent/bob-bazaar-review-review-run-v3-iteration2
