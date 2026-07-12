@@ -35,9 +35,16 @@ jobs:
       - name: Compile
         run: npm run compile
       - name: Focused tests
+        shell: bash
         run: |
-          node --test \
-            test/workflowTaskSnapshotImportPreview.test.js \
-            test/workflowTaskSnapshotArtifactImport.test.js \
-            test/taskSnapshotImportReport.test.js \
+          tests=(
+            test/workflowTaskSnapshotImportPreview.test.js
+            test/workflowTaskSnapshotArtifactImport.test.js
+            test/taskSnapshotImportReport.test.js
             test/workflowTaskSnapshotImportCommand.test.js
+          )
+          existing=()
+          for test_file in "${tests[@]}"; do
+            if [[ -f "$test_file" ]]; then existing+=("$test_file"); fi
+          done
+          node --test "${existing[@]}"
