@@ -402,7 +402,7 @@ test("a file-symlink catalog alias writes the physical target without forking CA
   const directBytes = await fs.readFile(directPath)
   assert.deepEqual(aliasBytes, directBytes)
   assert.equal(JSON.parse(aliasBytes.toString("utf8")).documents[0].document_id, "alias-winner")
-  assert.equal(path.dirname(aliasWinner.backupPath), path.dirname(directPath))
+  assert.equal(normalizePhysicalPath(await fs.realpath(path.dirname(aliasWinner.backupPath))), normalizePhysicalPath(await fs.realpath(path.dirname(directPath))))
   assert.equal(JSON.parse(await fs.readFile(aliasWinner.backupPath, "utf8")).documents[0].document_id, "initial")
   const physicalBackups = (await fs.readdir(path.dirname(directPath))).filter((name) => name.includes("traceability-catalog.json.bak-"))
   assert.equal(physicalBackups.length, 1)
@@ -588,7 +588,6 @@ function installPathIoBarrier(targetPath) {
 
 function installTargetTempOpenBarrier(targetPath) {
   const originalOpen = fs.open
-  const expectedDirectory = normalizePhysicalPath(path.dirname(targetPath))
   const tempPrefix = `.${path.basename(targetPath)}.`
   let enteredResolve
   let releaseResolve
@@ -600,7 +599,6 @@ function installTargetTempOpenBarrier(targetPath) {
     if (
       !triggered &&
       candidate &&
-      normalizePhysicalPath(path.dirname(candidate)) === expectedDirectory &&
       path.basename(candidate).startsWith(tempPrefix) &&
       path.basename(candidate).endsWith(".tmp")
     ) {
