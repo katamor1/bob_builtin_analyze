@@ -97,4 +97,10 @@ Phase 5 GREEN implementation:
 178e2290145364e859007c0ef900923070dd418d
 ```
 
-bot-authored implementation commit の pull-request workflow は GitHub により `action_required` となり jobs が作成されなかった。これは test failure ではない。人間 authored の本 checkpoint commit で正式 Linux/Windows matrix を再起動し、run IDs と結論をこの記録および PR #72 に追記する。
+Phase 5 record checkpoint:
+
+```text
+9f873616508ed5169054575dc73bbbefa994e375
+```
+
+bot-authored implementation commit の pull-request workflow は GitHub により `action_required` となり jobs が作成されなかった。これは test failure ではない。この人間 authored verification update を正式 Linux/Windows matrix の trigger とし、run IDs と結論は完了後に PR #72 および最終 Phase 6 verification recordへ同期する。
