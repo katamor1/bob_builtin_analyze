@@ -124,10 +124,17 @@ test("Operation Hub exposes only non-mutating run detail for a future run-state 
   assert.deepEqual(summary.primaryActions.map((action) => action.id), ["inspectRunControl"])
 })
 
-test("runNextStep rejects a future run instead of creating a replacement current run", async (t) => {
+test("runNextStep rejects an explicit future run even when a matching current run exists", async (t) => {
   const root = tempRoot(t)
   const run = futureRun(root)
+  const current = {
+    ...futureRun(root),
+    schemaVersion: "workflow-register/run-state/v1",
+    runId: "20260712T000000Z-current-peer",
+    updatedAt: "2026-07-12T00:00:30.000Z"
+  }
   await writeRun(root, run)
+  await writeRun(root, current)
   const vscode = vscodeStub(root)
   const { ActionRegistry } = require("../out/core/actionRegistry.js")
   const { WorkflowEngine } = require("../out/core/engine.js")
@@ -163,7 +170,9 @@ test("runNextStep rejects a future run instead of creating a replacement current
     /read-only schemaVersion 'workflow-register\/run-state\/v2'/
   )
   const persisted = await new FileRunStateStore({ workspaceRoot: root }).listRuns()
-  assert.deepEqual(persisted.map((candidate) => candidate.runId), [run.runId])
+  assert.deepEqual(persisted.map((candidate) => candidate.runId).sort(), [current.runId, run.runId].sort())
+  assert.equal(persisted.find((candidate) => candidate.runId === current.runId).status, "running")
+  assert.equal(persisted.find((candidate) => candidate.runId === current.runId).steps[0].status, "pending")
 })
 
 test("pause command rejects a future run before writing control.json", async (t) => {
