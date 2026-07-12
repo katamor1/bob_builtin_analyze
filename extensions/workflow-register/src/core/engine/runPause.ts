@@ -7,10 +7,7 @@ import type {
 import type { RunControlState, RunControlStore } from "../runControlStore"
 import type { RunStateStore } from "../runStateStore"
 import type { WorkflowEngineEventInput } from "../engineTypes"
-import {
-  evaluateAutomaticPause,
-  type AutomaticPausePolicySource
-} from "./automaticPause"
+import { evaluateAutomaticPause, type AutomaticPausePolicySource } from "./automaticPause"
 
 type RunPauseEmitter = (input: WorkflowEngineEventInput) => Promise<void>
 
@@ -31,13 +28,17 @@ export async function pauseRunIfRequested(input: {
   }
 
   const policies: AutomaticPausePolicySource[] = []
-  if (hasLimits(workflow.runControl?.limits)) {
-    policies.push({ source: "workflow", limits: workflow.runControl.limits })
-  }
-  if (hasLimits(runControlStore?.workspaceAutomaticPauseLimits)) {
-    policies.push({ source: "workspace", limits: runControlStore.workspaceAutomaticPauseLimits })
-  }
-  const decision = evaluateAutomaticPause({ run, nextStep, now, policies })
+  if (hasLimits(workflow.runControl?.limits)) policies.push({ source: "workflow", limits: workflow.runControl.limits })
+  const workspaceLimits = runControlStore?.workspaceAutomaticPauseLimits
+  if (hasLimits(workspaceLimits)) policies.push({ source: "workspace", limits: workspaceLimits })
+
+  const decision = evaluateAutomaticPause({
+    run,
+    nextStep,
+    now,
+    policies,
+    override: control?.automaticPauseOverride
+  })
   if (!decision) return false
 
   const detectedAt = now.toISOString()
@@ -54,7 +55,7 @@ export async function pauseRunIfRequested(input: {
     observed: decision.observed,
     detectedAt
   })
-  const automaticControl: RunControlState = {
+  const pause: RunControlState = {
     schemaVersion: "workflow-register/run-control/v1",
     runId: run.runId,
     pauseRequestedAt: detectedAt,
@@ -63,7 +64,7 @@ export async function pauseRunIfRequested(input: {
     mode: "afterCurrentStep"
   }
   await runStore.saveRun(run)
-  await emitRunPaused({ workflow, run, step: nextStep, pause: automaticControl })
+  await emitRunPaused({ workflow, run, step: nextStep, pause })
   return true
 }
 
