@@ -154,10 +154,12 @@ When a valid journal exists:
 - If `run.json` has `previousRunHash`, write `nextRun`.
 - If `run.json` already has `nextRunHash`, do not rewrite it.
 - Otherwise, stop with a journal conflict.
-- If the event log head is `previousEventHash`, append `nextEvent`.
+- If the event log head is `previousEventHash`, require `nextEvent.sequence` to equal the next sequence and append `nextEvent`.
 - If the event log head already equals `nextEvent.hash`, do not append it again.
 - Otherwise, stop with an event-head conflict.
 - Remove the journal only after both materialized state and event evidence match.
+
+The journal parser also requires `nextEvent.previousRunHash` to equal the journal's `previousRunHash`, and binds the presence of `previousEventHash` to first-versus-subsequent event sequencing.
 
 Recovery is idempotent. A malformed or foreign journal is never deleted automatically.
 
@@ -199,9 +201,11 @@ interface WorkflowRunLockV1 {
 
 ### 8.4 Operation boundary
 
-`coordinateWorkflowRunExecution()` acquires the lease around the full run mutation, including provider execution. `FileRunStateStore.saveRun()` also acquires it defensively; reentrant acquisition is a no-op for the owning async chain. Checkpoint operations are routed through the coordinator as well.
+`coordinateWorkflowRunExecution()` acquires the lease around the full `run.json` mutation, including provider execution. `FileRunStateStore.saveRun()` also acquires it defensively; reentrant acquisition is a no-op for the owning async chain. Checkpoint operations are routed through the coordinator as well.
 
-`FileRunControlStore` uses the same lease for control mutations, so pause and resume-control writes cannot race a state transition.
+`control.json` is deliberately a separate operator-signal contract and does **not** acquire the execution lease. `requestPause()`, `clearPause()`, and `recordResumeNote()` first validate that the selected run uses the current writable run-state schema, then atomically replace the direct contained `control.json` file and fsync the file and run directory. This allows an operator to request a pause while a long provider or agent call still owns the execution lease; the engine consumes the signal at its next safe checkpoint. Future-version runs remain ineligible for control mutation.
+
+Concurrent control writes use the existing destination-identity comparison and atomic replacement rules. They are not part of the `run.json` journal/event transaction, and last successful signal replacement defines the current control request.
 
 ### 8.5 Optimistic revision check
 
@@ -251,7 +255,8 @@ No diagnostic includes workflow state values, prompts, provider payloads, or art
 ### Phase 1
 
 - current recovery remains preferred for ordinary inputs;
-- an explicitly loaded future run remains the selected target and is rejected.
+- an explicitly loaded future run remains the selected target and is rejected;
+- a rejected future-run save preserves the prior read-only diagnostic.
 
 ### Phase 2
 
@@ -263,7 +268,7 @@ No diagnostic includes workflow state values, prompts, provider payloads, or art
 
 ### Phase 3
 
-Inject failures after journal write, run replacement, and event append. Reopen the store and verify exactly-once recovery, stable timestamps, journal cleanup, and unchanged data on conflicts.
+Inject failures after journal write, run replacement, and event append. Reopen the store and verify exactly-once recovery, stable timestamps, journal cleanup, unchanged data on conflicts, and journal/event ancestry agreement.
 
 ### Phase 4
 
@@ -274,7 +279,8 @@ Inject failures after journal write, run replacement, and event append. Reopen t
 - stale loaded state fails revision comparison;
 - same run ID in different physical workspace roots remains independent;
 - workspace aliases map to the same lease key;
-- future-version runs never acquire a mutation lease.
+- future-version runs never acquire a mutation lease;
+- pause requests remain writable while another execution lease is active.
 
 ## 12. Rollout and PR structure
 

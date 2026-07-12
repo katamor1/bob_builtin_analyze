@@ -13,7 +13,7 @@ const {
 } = require("../out/core/traceabilityCatalogStore")
 
 async function makeWorkspace() {
-  return fs.mkdtemp(path.join(os.tmpdir(), "bob-trace-store-"))
+  return fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), "bob-trace-store-")))
 }
 
 test("readTraceabilityCatalog returns an empty sidecar catalog when missing", async () => {

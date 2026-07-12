@@ -84,7 +84,13 @@ export function parseWorkflowRunJournal(value: unknown, expectedRunId: string): 
   if (nextRun.runId !== expectedRunId) throw new Error(`Workflow run '${expectedRunId}' journal next run id does not match.`)
   const calculatedNextRunHash = hashWorkflowRunBytes(serializeWorkflowRunState(nextRun))
   if (calculatedNextRunHash !== nextRunHash) throw new Error(`Workflow run '${expectedRunId}' journal nextRunHash does not match nextRun.`)
-  const nextEvent = validateJournalEvent(record.nextEvent, expectedRunId, previousEventHash, nextRunHash)
+  const nextEvent = validateJournalEvent(
+    record.nextEvent,
+    expectedRunId,
+    previousEventHash,
+    previousRunHash,
+    nextRunHash
+  )
   return {
     schemaVersion: CURRENT_WORKFLOW_RUN_JOURNAL_SCHEMA_VERSION,
     transactionId,
@@ -144,6 +150,12 @@ export async function recoverWorkflowRunJournal(input: RecoverWorkflowRunJournal
   const currentEventHash = eventState.head?.hash
   let appendedEvent = false
   if (currentEventHash === journal.previousEventHash) {
+    const expectedSequence = (eventState.head?.sequence ?? 0) + 1
+    if (journal.nextEvent.sequence !== expectedSequence) {
+      throw new Error(
+        `Workflow run '${input.runId}' journal nextEvent sequence ${journal.nextEvent.sequence} does not match expected ${expectedSequence}.`
+      )
+    }
     await appendWorkflowRunEvent(input.workspaceRoot, input.runId, journal.nextEvent)
     appendedEvent = true
   } else if (currentEventHash !== journal.nextEvent.hash) {
@@ -163,6 +175,7 @@ function validateJournalEvent(
   value: unknown,
   expectedRunId: string,
   previousEventHash: string | undefined,
+  journalPreviousRunHash: string | undefined,
   nextRunHash: string
 ): WorkflowRunEventV1 {
   const record = requiredRecord(value, `Workflow run '${expectedRunId}' journal nextEvent`)
@@ -182,7 +195,16 @@ function validateJournalEvent(
   if (eventPreviousHash !== previousEventHash) {
     throw new Error(`Workflow run '${expectedRunId}' journal nextEvent previousEventHash does not match the journal.`)
   }
-  const previousRunHash = optionalString(record.previousRunHash, "previousRunHash", expectedRunId)
+  if (previousEventHash === undefined && sequence !== 1) {
+    throw new Error(`Workflow run '${expectedRunId}' journal nextEvent sequence must be 1 when there is no previous event.`)
+  }
+  if (previousEventHash !== undefined && sequence < 2) {
+    throw new Error(`Workflow run '${expectedRunId}' journal nextEvent sequence must follow the previous event.`)
+  }
+  const eventPreviousRunHash = optionalString(record.previousRunHash, "previousRunHash", expectedRunId)
+  if (eventPreviousRunHash !== journalPreviousRunHash) {
+    throw new Error(`Workflow run '${expectedRunId}' journal nextEvent previousRunHash does not match the journal.`)
+  }
   const runHash = requiredString(record.runHash, "runHash", expectedRunId)
   if (runHash !== nextRunHash) throw new Error(`Workflow run '${expectedRunId}' journal nextEvent runHash does not match nextRunHash.`)
   const snapshot = requiredRecord(record.snapshot, `Workflow run '${expectedRunId}' journal nextEvent snapshot`) as unknown as WorkflowRunState
@@ -199,7 +221,7 @@ function validateJournalEvent(
     kind: kind as WorkflowRunEventV1["kind"],
     occurredAt,
     previousEventHash: eventPreviousHash,
-    previousRunHash,
+    previousRunHash: eventPreviousRunHash,
     runHash,
     snapshot
   }

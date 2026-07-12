@@ -417,7 +417,7 @@ test("Operation Hub provider coordinates duplicate structured run mutations befo
     "workflowRegister.retryCurrentStep",
     {
       source: "operationHub",
-      workspaceRoot: fs.realpathSync(run.root),
+      workspaceRoot: fs.realpathSync.native(run.root),
       runId: run.runId,
       expectedRevision: run.revision
     }
@@ -533,7 +533,7 @@ test("Operation Hub openArtifact opens the verified physical URI for an in-works
 
   assert.deepEqual(state.errors, [])
   assert.deepEqual(state.openedDocuments, [{
-    uri: { fsPath: fs.realpathSync(aliasArtifact) },
+    uri: { fsPath: fs.realpathSync.native(aliasArtifact) },
     options: { preview: false }
   }])
 })
@@ -569,7 +569,7 @@ test("workflow run commands route a structured Operation Hub target to its exact
   })
 
   assert.equal(result.status, "reviewing")
-  assert.deepEqual(state.engineRoots, [fs.realpathSync(rootB.root)])
+  assert.deepEqual(state.engineRoots, [fs.realpathSync.native(rootB.root)])
 })
 
 test("workflow run commands reject stale structured revisions before run-store or engine access", async (t) => {
@@ -757,7 +757,7 @@ test("workflow run commands treat a structured workflow target as identity rathe
   })
 
   assert.equal(result.status, "running")
-  assert.deepEqual(state.engineRoots, [fs.realpathSync(rootB.root)])
+  assert.deepEqual(state.engineRoots, [fs.realpathSync.native(rootB.root)])
   assert.deepEqual(state.workflowIds, ["workflow-register.target"])
 })
 

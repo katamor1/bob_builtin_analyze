@@ -4,7 +4,7 @@ const os = require("node:os")
 const path = require("node:path")
 const { test } = require("node:test")
 
-const { FileRunStateStore } = require("../out/core/runStateStore")
+const { CURRENT_WORKFLOW_RUN_STATE_SCHEMA_VERSION, FileRunStateStore } = require("../out/core/runStateStore")
 
 async function makeWorkspace() {
   return fs.mkdtemp(path.join(os.tmpdir(), "workflow-run-store-boundary-")).then((root) => fs.realpath(root))
@@ -63,20 +63,14 @@ test("FileRunStateStore rejects unsafe run-id path segments", async () => {
   }
 })
 
-test("FileRunStateStore isolates outside run-directory aliases from list results", async (t) => {
+test("FileRunStateStore rejects outside run-directory aliases for load and list", async (t) => {
   const workspaceRoot = await makeWorkspace()
   const escaped = await outsideRunAlias(t, workspaceRoot)
   if (!escaped) return
   const store = new FileRunStateStore({ workspaceRoot })
 
   await assert.rejects(store.loadRun(escaped.runId), /workspace|outside|symlink|contain/i)
-  const runs = await store.listRuns()
-  const diagnostic = store.getLoadDiagnostics().find((item) => item.runId === escaped.runId)
-
-  assert.deepEqual(runs, [])
-  assert.ok(diagnostic)
-  assert.equal(diagnostic.severity, "error")
-  assert.match(diagnostic.message, /workspace|outside|symlink|contain/i)
+  await assert.rejects(store.listRuns(), /workspace|outside|symlink|contain/i)
   assert.equal(await fs.readFile(escaped.runFile, "utf8"), escaped.runBytes)
   assert.equal(await fs.readFile(escaped.controlFile, "utf8"), escaped.controlBytes)
 })
@@ -224,3 +218,31 @@ test("FileRunStateStore rejects an out-of-band materialized replacement that bre
   assert.equal(diagnostic.code, "event-log-invalid")
   assert.equal(await fs.readFile(runFile, "utf8"), replacementBytes)
 })
+
+test("FileRunStateStore retries a contained atomic replacement detected between open and read", async (t) => {
+      const workspaceRoot = await makeWorkspace()
+      const store = new FileRunStateStore({ workspaceRoot })
+      const runFile = path.join(workspaceRoot, ".bob", "workflows", "runs", "run-atomic-read", "run.json")
+      const replacementFile = path.join(path.dirname(runFile), "replacement.json")
+      const initial = { ...runState("run-atomic-read", "initial"), schemaVersion: CURRENT_WORKFLOW_RUN_STATE_SCHEMA_VERSION }
+      const replacement = { ...runState("run-atomic-read", "replacement"), schemaVersion: CURRENT_WORKFLOW_RUN_STATE_SCHEMA_VERSION }
+      await fs.mkdir(path.dirname(runFile), { recursive: true })
+      await fs.writeFile(runFile, `${JSON.stringify(initial, null, 2)}
+`)
+      await fs.writeFile(replacementFile, `${JSON.stringify(replacement, null, 2)}
+`)
+      const originalOpen = fs.open
+      let replaced = false
+      fs.open = async function replaceBeforeOpen(file, flags, mode) {
+        if (!replaced && path.resolve(String(file)) === path.resolve(runFile)) {
+          replaced = true
+          await fs.rename(replacementFile, runFile)
+        }
+        return originalOpen.call(this, file, flags, mode)
+      }
+      t.after(() => { fs.open = originalOpen })
+
+      const loaded = await store.loadRun("run-atomic-read")
+
+      assert.equal(loaded.state.marker, "replacement")
+    })

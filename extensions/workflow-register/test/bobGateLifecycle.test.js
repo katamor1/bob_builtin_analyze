@@ -94,7 +94,7 @@ function aliasedTempRoot(t, prefix) {
     }
     throw error
   }
-  return { aliasRoot, physicalRoot: fs.realpathSync(physicalRoot) }
+  return { aliasRoot, physicalRoot: fs.realpathSync.native(physicalRoot) }
 }
 
 function commandStep(id, provider = `sample.${id}`) {

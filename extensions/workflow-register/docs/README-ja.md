@@ -13,6 +13,12 @@
 - `run-state-schema-v1-ja.md`  
   `run.json` の schema version、historical v0 migration、exact-byte backup、future-version read-only protection、invalid document isolationを定義します。
 
+- `reproducible-runtime-phase4-ja.md`  
+  immutable event log、crash journal、fsync、cross-process lease、stale-write protection、`control.json` の独立signal契約、運用診断と復旧手順を定義します。
+
+- `reproducible-runtime-phase4-windows-ja.md`  
+  Windowsの8.3 short path、native realpath、heartbeat中のlock replacement、Windows回帰testの追加契約を定義します。
+
 ## テスト仕様書
 
 - `unit-test-spec-ja.md`  
@@ -20,6 +26,14 @@
 
 - `real-machine-test-spec-ja.md`  
   VS Code / IBM Bob / Bob Workflow UI / Webview / Template Customization Studio / Explorer view / Status Bar / multi-root workspace を含めた実機テスト仕様書です。
+
+## Release evidence
+
+- [`workflow-reproducible-runtime-phase4-2026-07-12.md`](../../../docs/release-evidence/workflow-reproducible-runtime-phase4-2026-07-12.md)  
+  Phase 2〜4のevent、journal、lease、CAS、runner復旧、hardening review、検証ゲートを記録します。
+
+- [`workflow-reproducible-runtime-phase4-windows-2026-07-12.md`](../../../docs/release-evidence/workflow-reproducible-runtime-phase4-windows-2026-07-12.md)  
+  Windows root identity、lock retry、Linux / Windows final matrix、release decisionを記録します。
 
 ## 運用・検討メモ
 
