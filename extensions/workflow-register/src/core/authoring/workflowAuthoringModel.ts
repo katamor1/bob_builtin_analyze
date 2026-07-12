@@ -25,6 +25,9 @@ export interface WorkflowAuthoringModel {
   branching?: WorkflowBranchingDefinition
   steps: WorkflowAuthoringStep[]
   artifacts: WorkflowArtifactDefinition[]
+  skipResume?: {
+    fileBound: boolean
+  }
   completion?: WorkflowCompletionDefinition
   body?: string
   unknownFrontMatter?: Record<string, unknown>
