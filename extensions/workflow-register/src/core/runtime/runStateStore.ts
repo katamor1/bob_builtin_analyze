@@ -133,9 +133,17 @@ export class FileRunStateStore implements RunStateStore {
 
   async listRuns(): Promise<WorkflowRunState[]> {
     const entries = await listContainedRunIds(this.workspaceRoot)
+    const entrySet = new Set(entries)
+    for (const runId of this.loadDiagnostics.keys()) {
+      if (!entrySet.has(runId)) this.loadDiagnostics.delete(runId)
+    }
     const runs = await Promise.all(entries.map(async (entry) => {
       try {
-        return await this.loadRun(entry)
+        const run = await this.loadRun(entry)
+        if (!run) {
+          this.recordInvalidLoad(entry, new Error(`Workflow run '${entry}' is missing run.json.`))
+        }
+        return run
       } catch {
         return undefined
       }
