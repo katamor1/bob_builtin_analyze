@@ -42,6 +42,7 @@ jobs:
         shell: pwsh
         run: |
           $probe = Join-Path $env:RUNNER_TEMP "traceability-open-probe.cjs"
+          $probeLog = Join-Path $env:RUNNER_TEMP "traceability-open-probe.log"
           @'
           const fs = require("node:fs/promises")
           const os = require("node:os")
@@ -56,19 +57,21 @@ jobs:
           console.log("open patched", fs.open === originalOpen)
           ;(async () => {
             const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "bob-trace-open-probe-"))
+            console.log("workspaceRoot", JSON.stringify(workspaceRoot))
+            console.log("workspaceRealpath", JSON.stringify(await fs.realpath(workspaceRoot)))
             await store.writeTraceabilityCatalog({
               workspaceRoot,
               catalog: { schema_version: 1, documents: [], domains: [], items: [], links: [], decisions: [] }
             })
-            console.log("workspaceRoot", JSON.stringify(workspaceRoot))
             const result = await store.validateAndWriteTraceabilityGateReport({ workspaceRoot })
-            console.log("report result", result.status, result.reportPath)
+            console.log("report result", result.status, JSON.stringify(result.reportPath))
           })().catch((error) => {
             console.error(error)
             process.exitCode = 1
           })
           '@ | Set-Content -Path $probe -Encoding utf8
-          node $probe
+          node $probe *> $probeLog
+          Get-Content $probeLog
 
       - name: Run traceability CAS suite and capture TAP
         shell: pwsh
@@ -80,11 +83,13 @@ jobs:
           Get-Content $log -Tail 320
           exit $status
 
-      - name: Upload unit log
+      - name: Upload diagnostic logs
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: traceability-cas-windows-log
-          path: ${{ runner.temp }}/traceability-cas-windows.log
+          name: traceability-windows-diagnostic-logs
+          path: |
+            ${{ runner.temp }}/traceability-open-probe.log
+            ${{ runner.temp }}/traceability-cas-windows.log
           if-no-files-found: error
           retention-days: 3
