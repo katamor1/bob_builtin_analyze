@@ -35,6 +35,8 @@
 
 利用者が内容を確認した場合だけ明示選択できます。
 
+Core APIで`selectedArtifactIds`を省略した場合も、`defaultSelected === true`のcandidateだけを自動importします。Truncated、redacted、既存file変更、既存state keyのcandidateを暗黙importしません。救済が必要なcallerはpreviewを確認し、対象artifact IDを明示してください。
+
 ## Preview digest
 
 Previewはrun identity、workflow definition hash、snapshot identity、target content hash、既存file hashからdigestを作ります。
@@ -69,7 +71,9 @@ Import後は次で確認できます。
 
 - command IDは`workflowRegister.importArtifactsFromTaskSnapshots`のままです。
 - artifact manifestは`workflow-register/artifact-manifest/v1`を維持します。
-- core APIでselectionを省略した既存callerは、従来どおりimport可能candidateを対象にします。
+- provenanceは`workflow-register/task-snapshot-import/v1`を維持します。
+- selection省略時はdefault-safe candidateだけを自動importします。
+- 明示選択したreview済みcandidateは、truncated/redactedでも救済できます。
 - task snapshot自体は再開の正本ではありません。Import後のartifact fileとmanifestが正本です。
 
 ## 対象外
