@@ -66,6 +66,7 @@ test("Bazaar result capture GUI binds to an active Review Run", () => {
   assert.match(html, /vscode\.postMessage/)
   assert.match(source, /validateReviewRunCommandInput/)
   assert.match(source, /vscode\.workspace\.workspaceFolders/)
+  assert.match(source, /expectedReviewId: reviewRun\?\.reviewId/)
   assert.doesNotMatch(html, /onclick=/)
 })
 
