@@ -13,11 +13,13 @@ if (process.argv.includes("--write-config")) {
 function writeTestConfiguration() {
   assertTestRuntimeAvailable()
   const configPath = path.join(process.cwd(), ".vscode-test.json")
+  const workspaceFolder = smokeWorkspaceFolder()
   const config = {
     files: smokeTestFiles(),
     version: "1.106.1",
     extensionDevelopmentPath: process.cwd(),
     skipExtensionDependencies: true,
+    ...(workspaceFolder ? { workspaceFolder } : {}),
     mocha: {
       timeout: 30_000,
       ui: "bdd"
@@ -46,6 +48,20 @@ function smokeTestFiles() {
     files.push(resolved)
   }
   return files
+}
+
+function smokeWorkspaceFolder() {
+  const configured = process.env.SMOKE_WORKSPACE_FOLDER
+  if (typeof configured !== "string" || configured.trim().length === 0) return undefined
+
+  const resolved = path.resolve(process.cwd(), configured.trim())
+  if (!fs.existsSync(resolved)) {
+    throw new Error(`Extension Host smoke workspace folder does not exist: ${resolved}`)
+  }
+  if (!fs.statSync(resolved).isDirectory()) {
+    throw new Error(`Extension Host smoke workspace path is not a directory: ${resolved}`)
+  }
+  return resolved
 }
 
 function assertTestRuntimeAvailable() {
