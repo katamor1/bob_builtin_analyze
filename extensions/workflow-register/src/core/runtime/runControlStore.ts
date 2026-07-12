@@ -1,3 +1,4 @@
+import type { WorkflowRunControlLimitsDefinition } from "../model"
 import { assertWorkflowRunStateWritable } from "./runStateCodec"
 import { FileRunStateStore } from "./runStateStore"
 import { readContainedRunFile, writeContainedRunFile } from "./runStatePath"
@@ -29,20 +30,29 @@ export interface RunControlStore {
   loadControl: (runId: string) => Promise<RunControlState | undefined>
   isPauseRequested: (runId: string) => Promise<boolean>
   recordResumeNote?: (runId: string, note: string) => Promise<RunControlState>
+  currentDate?: () => Date
+  workspaceAutomaticPauseLimits?: WorkflowRunControlLimitsDefinition
 }
 
 export interface FileRunControlStoreOptions {
   workspaceRoot: string
   now?: () => string
+  workspaceAutomaticPauseLimits?: WorkflowRunControlLimitsDefinition
 }
 
 export class FileRunControlStore implements RunControlStore {
   private readonly workspaceRoot: string
   private readonly now: () => string
+  readonly workspaceAutomaticPauseLimits?: WorkflowRunControlLimitsDefinition
 
   constructor(options: FileRunControlStoreOptions) {
     this.workspaceRoot = options.workspaceRoot
     this.now = options.now ?? (() => new Date().toISOString())
+    this.workspaceAutomaticPauseLimits = options.workspaceAutomaticPauseLimits
+  }
+
+  currentDate(): Date {
+    return new Date(this.now())
   }
 
   async requestPause(input: PauseRequestInput): Promise<RunControlState> {
