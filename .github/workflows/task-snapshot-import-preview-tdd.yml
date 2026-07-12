@@ -7,8 +7,11 @@ on:
       - "extensions/workflow-register/src/core/artifacts/taskSnapshotImport*.ts"
       - "extensions/workflow-register/src/taskSnapshotImport*.ts"
       - "extensions/workflow-register/src/workflowRunCommands.ts"
+      - "extensions/workflow-register/src/gui/operationHub*.ts"
+      - "extensions/workflow-register/src/commands/runControlView.ts"
       - "extensions/workflow-register/test/workflowTaskSnapshotImport*.test.js"
       - "extensions/workflow-register/test/taskSnapshotImport*.test.js"
+      - "extensions/workflow-register/test/operationHubTaskSnapshotImport.test.js"
   workflow_dispatch:
 
 permissions:
@@ -43,6 +46,7 @@ jobs:
             test/workflowTaskSnapshotImportSelectiveApply.test.js
             test/taskSnapshotImportReport.test.js
             test/workflowTaskSnapshotImportCommand.test.js
+            test/operationHubTaskSnapshotImport.test.js
           )
           existing=()
           for test_file in "${tests[@]}"; do
