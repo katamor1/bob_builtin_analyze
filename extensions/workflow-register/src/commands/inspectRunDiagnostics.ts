@@ -18,6 +18,9 @@ export async function inspectRunDiagnostics(options: InspectRunDiagnosticsOption
   const runs = await store.listRuns()
   const snapshotStore = new FileTaskSnapshotStore({ workspaceRoot })
   const snapshotsByRunId = Object.fromEntries(await Promise.all(runs.map(async (run) => [run.runId, await snapshotStore.listSnapshots(run.runId)] as const)))
-  const report = buildWorkflowRunDiagnosticReport(runs, { snapshotsByRunId })
+  const report = buildWorkflowRunDiagnosticReport(runs, {
+    snapshotsByRunId,
+    runDocumentDiagnostics: store.getLoadDiagnostics()
+  })
   await options.showMarkdownReport(report.title, report.summary, report.lines)
 }
