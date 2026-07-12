@@ -1,59 +1,37 @@
-name: Fetch shared implementation plan
+name: Temporary implementation workspace export
 
 on:
-  push:
+  pull_request:
     branches:
-      - codex/execute-shared-plan-6a53743e
+      - main
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  fetch-plan:
-    if: github.actor != 'github-actions[bot]'
+  export-workspace:
+    if: github.head_ref == 'codex/execute-shared-plan-6a53743e'
     runs-on: ubuntu-latest
     steps:
-      - name: Check out branch
-        uses: actions/checkout@v4
+      - name: Check out pull request
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
-          ref: codex/execute-shared-plan-6a53743e
           fetch-depth: 0
 
-      - name: Fetch and validate shared conversation
-        env:
-          SHARE_API_URL: https://chatgpt.com/backend-api/share/6a53743e-7444-83e8-b0f8-b21f9a9864d5
+      - name: Archive implementation workspace
+        shell: bash
         run: |
           set -euo pipefail
-          mkdir -p .codex
-          curl --fail --silent --show-error --location \
-            --retry 3 --retry-delay 2 \
-            -H 'User-Agent: Mozilla/5.0' \
-            -H 'Referer: https://chatgpt.com/' \
-            -H 'Origin: https://chatgpt.com' \
-            "$SHARE_API_URL" \
-            -o .codex/shared-plan.json
-          python - <<'PY'
-          import json
-          from pathlib import Path
+          git archive \
+            --format=tar.gz \
+            --output="$RUNNER_TEMP/bob-evidence-scope-workspace.tar.gz" \
+            HEAD \
+            extensions scripts .github docs .bob
 
-          path = Path('.codex/shared-plan.json')
-          payload = json.loads(path.read_text(encoding='utf-8'))
-          if not isinstance(payload, dict):
-              raise SystemExit('Shared conversation payload is not a JSON object')
-          if not any(key in payload for key in ('mapping', 'conversation', 'messages')):
-              raise SystemExit(f'Unexpected shared conversation keys: {sorted(payload)[:20]}')
-          print(f'Fetched shared conversation: {path.stat().st_size} bytes')
-          PY
-
-      - name: Commit captured plan
-        run: |
-          set -euo pipefail
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add .codex/shared-plan.json
-          if git diff --cached --quiet; then
-            echo 'Shared plan is unchanged.'
-            exit 0
-          fi
-          git commit -m 'chore: capture shared implementation plan'
-          git push origin HEAD:codex/execute-shared-plan-6a53743e
+      - name: Upload implementation workspace
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: bob-evidence-scope-workspace
+          path: ${{ runner.temp }}/bob-evidence-scope-workspace.tar.gz
+          if-no-files-found: error
+          retention-days: 1
