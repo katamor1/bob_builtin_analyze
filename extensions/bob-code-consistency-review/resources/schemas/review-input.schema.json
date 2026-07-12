@@ -166,6 +166,11 @@
           "maximum": 300,
           "default": 80
         },
+        "repository_symbol_index_path": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\.json$"
+        },
         "language": {
           "type": "array",
           "items": {
@@ -218,6 +223,19 @@
         "forbid_final_approval": {
           "type": "boolean",
           "const": true
+        },
+        "evidence_scope_rules": {
+          "type": "array",
+          "items": {}
+        },
+        "evidence_scope_rule_pack_path": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\.(?:json|ya?ml)$"
+        },
+        "evidence_scope_include_low_priority": {
+          "type": "boolean",
+          "default": false
         }
       }
     }
