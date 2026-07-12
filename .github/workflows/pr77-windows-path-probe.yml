@@ -1,0 +1,51 @@
+name: pr77-windows-path-probe
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/pr77-windows-path-probe.yml"
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+
+      - name: Probe Windows realpath representations
+        shell: pwsh
+        run: |
+          @'
+          const fs = require("node:fs")
+          const fsp = require("node:fs/promises")
+          const os = require("node:os")
+          const path = require("node:path")
+          ;(async () => {
+            const created = fs.mkdtempSync(path.join(os.tmpdir(), "pr77-path-probe-"))
+            const out = {
+              tmpdir: os.tmpdir(),
+              created,
+              resolved: path.resolve(created),
+              realpathSync: fs.realpathSync(created),
+              realpathSyncNative: fs.realpathSync.native(created),
+              realpathPromise: await fsp.realpath(created)
+            }
+            console.log(JSON.stringify(out, null, 2))
+            fs.rmSync(created, { recursive: true, force: true })
+          })().catch((error) => { console.error(error); process.exit(1) })
+          '@ | Set-Content -Path $env:RUNNER_TEMP\probe.js -Encoding utf8
+          node $env:RUNNER_TEMP\probe.js | Tee-Object -FilePath $env:RUNNER_TEMP\path-probe.json
+
+      - name: Upload path probe
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: pr77-windows-path-probe
+          path: ${{ runner.temp }}/path-probe.json
+          retention-days: 1
