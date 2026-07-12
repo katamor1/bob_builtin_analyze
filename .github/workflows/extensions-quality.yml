@@ -42,26 +42,22 @@ jobs:
               raise SystemExit("test import target not found")
           text = text.replace(old_import, new_import, 1)
 
-          old_setup = '''  const store = new FileRunStateStore({ workspaceRoot })
-            await store.saveRun(runState("run-1", "initial"))
-            const runFile = path.join(workspaceRoot, ".bob", "workflows", "runs", "run-1", "run.json")
-            const replacementFile = path.join(path.dirname(runFile), "replacement.json")
-            await fs.writeFile(replacementFile, `${JSON.stringify(runState("run-1", "replacement"), null, 2)}\n`)
-          '''
-          new_setup = '''  const store = new FileRunStateStore({ workspaceRoot })
-            const runFile = path.join(workspaceRoot, ".bob", "workflows", "runs", "run-1", "run.json")
-            const replacementFile = path.join(path.dirname(runFile), "replacement.json")
-            const initial = { ...runState("run-1", "initial"), schemaVersion: CURRENT_WORKFLOW_RUN_STATE_SCHEMA_VERSION }
-            const replacement = { ...runState("run-1", "replacement"), schemaVersion: CURRENT_WORKFLOW_RUN_STATE_SCHEMA_VERSION }
-            await fs.mkdir(path.dirname(runFile), { recursive: true })
-            await fs.writeFile(runFile, `${JSON.stringify(initial, null, 2)}\n`)
-            await fs.writeFile(replacementFile, `${JSON.stringify(replacement, null, 2)}\n`)
-          '''
-          old_setup = old_setup.replace("            ", "  ")
-          new_setup = new_setup.replace("            ", "  ")
-          if old_setup not in text:
-              raise SystemExit("atomic replacement test target not found")
-          path.write_text(text.replace(old_setup, new_setup, 1))
+          test_name = 'test("FileRunStateStore retries a contained atomic replacement detected between open and read", async (t) => {'
+          test_start = text.index(test_name)
+          setup_start = text.index('  const workspaceRoot = await makeWorkspace()', test_start)
+          setup_end = text.index('  const originalOpen = fs.open', setup_start)
+          replacement_setup = '''  const workspaceRoot = await makeWorkspace()
+          const store = new FileRunStateStore({ workspaceRoot })
+          const runFile = path.join(workspaceRoot, ".bob", "workflows", "runs", "run-1", "run.json")
+          const replacementFile = path.join(path.dirname(runFile), "replacement.json")
+          const initial = { ...runState("run-1", "initial"), schemaVersion: CURRENT_WORKFLOW_RUN_STATE_SCHEMA_VERSION }
+          const replacement = { ...runState("run-1", "replacement"), schemaVersion: CURRENT_WORKFLOW_RUN_STATE_SCHEMA_VERSION }
+          await fs.mkdir(path.dirname(runFile), { recursive: true })
+          await fs.writeFile(runFile, `${JSON.stringify(initial, null, 2)}\n`)
+          await fs.writeFile(replacementFile, `${JSON.stringify(replacement, null, 2)}\n`)
+          '''.replace("          ", "  ")
+          text = text[:setup_start] + replacement_setup + text[setup_end:]
+          path.write_text(text)
           PY
 
       - name: Restore production workflow
