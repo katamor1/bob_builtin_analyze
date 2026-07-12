@@ -8,7 +8,7 @@
 
 リファクタリング後は、`workflow-register` 連携を `src/workflow/`、直接レビュー command と Bazaar packet 生成を `src/bazaar/`、active editor の review-result JSON 検証を `src/projectRules/`、Bob 拡張連携を `src/bob/`、GUI を `src/ui/`、workspace 初期化と root 解決を `src/workspace/`、MCP server を `src/mcp/`、review record / triage / summary を `src/records/` に分離しています。
 
-Review Run Wizard v3では、`src/reviewRuns/`がReview GUI、Result Capture、Human Triage間のrun contextを管理します。Iteration 1でpacketからtriage draftまでを接続し、Iteration 2で中断・再開、phase status、timing、decision validation、record/summary一括finalize、legacy artifact復旧を追加しています。
+Review Run Wizard v3では、`src/reviewRuns/`がReview GUI、Result Capture、Human Triage間のrun contextを管理します。Iteration 1でpacketからtriage draftまでを接続し、Iteration 2で中断・再開、phase status、timing、decision validation、record/summary一括finalize、legacy artifact復旧を追加しています。Iteration 3では`src/dashboard/`でcampaign進捗、coverage、timing、change type、rule effectivenessを再集計し、JSON / Markdown / CSVとDashboard Webviewを提供します。
 
 ## 設計書
 
@@ -24,6 +24,9 @@ Review Run Wizard v3では、`src/reviewRuns/`がReview GUI、Result Capture、H
 - `review-run-v3-iteration2-ja.md`  
   Review Run Wizard v3 Iteration 2 のprogress/metrics field、stale-write保護、未完了run再開、decision validation、finalize順序、legacy recovery、セキュリティ、UATをまとめた実装仕様書です。
 
+- `review-run-v3-iteration3-dashboard-ja.md`  
+  Review Run Wizard v3 Iteration 3 のCampaign Dashboard、KPI定義、coverage、rule/change type集計、CSV安全化、Webview、artifact、UATをまとめた実装仕様書です。
+
 - `review-run-id-allocation-ja.md`  
   同一campaign内で既存・legacy・並行Review Runを上書きしない、`-02`以降のcollision-safe ID予約契約をまとめています。
 
@@ -33,10 +36,10 @@ Review Run Wizard v3では、`src/reviewRuns/`がReview GUI、Result Capture、H
 ## テスト仕様書
 
 - `unit-test-spec-ja.md`  
-  BazaarClient、文字コード、workspace resolver、review packet、直接レビュー command、workflow-register bridge、review-result capture、MCP server、review record、Review Run、workflow template の単体テスト仕様書です。
+  BazaarClient、文字コード、workspace resolver、review packet、直接レビュー command、workflow-register bridge、review-result capture、MCP server、review record、Review Run、Campaign Dashboard、workflow template の単体テスト仕様書です。
 
 - `real-machine-test-spec-ja.md`  
-  VS Code、IBM Bob、workflow-register、Bob Workflow UI、Bazaar Review GUI、Review Run再開/finalize/recovery、Bazaar CLI、MCP server、multi-root workspace を含む実機テスト仕様書です。
+  VS Code、IBM Bob、workflow-register、Bob Workflow UI、Bazaar Review GUI、Review Run再開/finalize/recovery、Campaign Dashboard、Bazaar CLI、MCP server、multi-root workspace を含む実機テスト仕様書です。
 
 ## 既存ドキュメント
 
