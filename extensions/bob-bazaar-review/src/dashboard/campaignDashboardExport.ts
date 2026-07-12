@@ -243,7 +243,12 @@ export async function writeCampaignDashboardArtifacts(
       await fs.rename(entry.temporary, entry.destination)
       installed.add(entry.destination)
     }
-    await Promise.all(Array.from(backups.values()).map((backup) => fs.rm(backup, { force: true })))
+    // Backup cleanup happens after all three new exports are installed. A cleanup
+    // failure must not enter rollback: doing so could delete a new export after
+    // another backup was already removed, losing both the old and new file.
+    for (const backup of backups.values()) {
+      await fs.rm(backup, { force: true }).catch(() => undefined)
+    }
     return paths
   } catch (error) {
     for (const destination of installed) await fs.rm(destination, { force: true }).catch(() => undefined)

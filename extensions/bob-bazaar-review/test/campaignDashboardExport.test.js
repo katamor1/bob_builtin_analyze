@@ -243,3 +243,34 @@ test("keeps a transaction backup when rollback cannot restore an old export", as
   assert.ok(backupName, "failed rollback must retain the old Markdown export as a backup")
   assert.equal(await fs.readFile(path.join(campaignDir, backupName), "utf8"), "old-dashboard.md")
 })
+
+test("keeps installed exports when backup cleanup fails after a successful replacement", async () => {
+  const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "bbr-dashboard-export-cleanup-"))
+  const campaignDir = path.join(workspaceRoot, ".bob-review-records", "campaigns", "campaign-1")
+  await fs.mkdir(campaignDir, { recursive: true })
+  for (const fileName of ["dashboard.json", "dashboard.md", "dashboard.csv"]) {
+    await fs.writeFile(path.join(campaignDir, fileName), `old-${fileName}`, "utf8")
+  }
+
+  const originalRm = fs.rm
+  fs.rm = async (target, options) => {
+    if (String(target).includes(".replace.") && String(target).endsWith(".bak")) {
+      throw new Error("forced backup cleanup failure")
+    }
+    return originalRm(target, options)
+  }
+
+  try {
+    await writeCampaignDashboardArtifacts(workspaceRoot, "campaign-1", dashboardFixture())
+  } finally {
+    fs.rm = originalRm
+  }
+
+  assert.equal(JSON.parse(await fs.readFile(path.join(campaignDir, "dashboard.json"), "utf8")).campaign_id, "campaign-1")
+  assert.match(await fs.readFile(path.join(campaignDir, "dashboard.md"), "utf8"), /RULE-1/)
+  assert.match(await fs.readFile(path.join(campaignDir, "dashboard.csv"), "utf8"), /fixture_warning/)
+  assert.ok(
+    (await fs.readdir(campaignDir)).some((name) => name.includes(".replace.") && name.endsWith(".bak")),
+    "cleanup failure may retain a backup but must not roll back installed exports"
+  )
+})
