@@ -57,30 +57,26 @@ jobs:
               'const assert = require("node:assert/strict")\nconst fsSync = require("node:fs")\n'
             )
           }
-          const before = `function normalizePhysicalPath(value) {
-            const resolved = path.resolve(value)
-            return process.platform === "win32" ? resolved.toLowerCase() : resolved
-          }`.replace(/^          /gm, "")
-          const after = `function normalizePhysicalPath(value) {
-            const resolved = path.resolve(value)
-            let physicalPath = resolved
-            try {
-              physicalPath = fsSync.realpathSync.native(resolved)
-            } catch {
-              // The path may be a not-yet-created candidate. Its existing parent is
-              // normalized by callers before comparison, so lexical fallback is safe.
-            }
-            const normalized = stripWindowsExtendedPathPrefix(physicalPath)
-            return process.platform === "win32" ? normalized.toLowerCase() : normalized
-          }
-
-          function stripWindowsExtendedPathPrefix(value) {
-            if (value.startsWith("\\\\?\\UNC\\")) return \`\\\\\${value.slice(8)}\`
-            if (value.startsWith("\\\\?\\")) return value.slice(4)
-            return value
-          }`.replace(/^          /gm, "")
+          const before = [
+            'function normalizePhysicalPath(value) {',
+            '  const resolved = path.resolve(value)',
+            '  return process.platform === "win32" ? resolved.toLowerCase() : resolved',
+            '}'
+          ].join('\n')
+          const after = [
+            'function normalizePhysicalPath(value) {',
+            '  const resolved = path.resolve(value)',
+            '  let physicalPath = resolved',
+            '  try {',
+            '    physicalPath = fsSync.realpathSync.native(resolved)',
+            '  } catch {',
+            '    // Not-yet-created candidates fall back to their lexical path.',
+            '  }',
+            '  return process.platform === "win32" ? physicalPath.toLowerCase() : physicalPath',
+            '}'
+          ].join('\n')
           if (text.includes(before)) text = text.replace(before, after)
-          else if (!text.includes("stripWindowsExtendedPathPrefix")) {
+          else if (!text.includes('fsSync.realpathSync.native(resolved)')) {
             throw new Error("normalizePhysicalPath source did not match the expected contract")
           }
           fs.writeFileSync(filePath, text)
