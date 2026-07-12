@@ -188,18 +188,18 @@
 **Interfaces:**
 - Produces: single-flight action execution, preserved builder inputs, explicit overwrite confirmation, and compare-and-set traceability updates.
 
-- [ ] Add separate failing tests for duplicate action messages, input round-trip, existing-file save, and stale traceability writes.
-- [ ] Implement per-action/run single-flight keys and release them in `finally`.
-- [ ] Preserve unknown and inactive-tab builder fields through preview/save.
-- [ ] Require host confirmation before overwriting and reject stale state revisions with a refresh diagnostic.
-- [ ] Run focused UI-model tests, full compile/test, and diff checks.
-- [ ] Commit `fix: make workflow operator mutations transactional`.
+- [x] Add separate failing tests for duplicate action messages, input round-trip, existing-file save, and stale traceability writes.
+- [x] Implement per-action/run single-flight keys and release them in `finally`.
+- [x] Preserve unknown and inactive-tab builder fields through preview/save.
+- [x] Require host confirmation before overwriting and reject stale state revisions with a refresh diagnostic.
+- [x] Run focused UI-model tests, cumulative isolated/full-equivalent verification, compile, policy, and diff checks.
+- [x] Commit `fix: make workflow operator mutations transactional` plus independent-review hardening follow-ups.
 
 ### Task 8: P0 End-to-End Closure and Follow-On Phase Rebaseline
 
 **Files:**
 - Create: `extensions/workflow-register/test/workflowPlatformP0E2e.test.js`
-- Modify: `docs/release-evidence/workflow-platform-remediation-2026-07-12.md`
+- Create: `docs/release-evidence/workflow-platform-remediation-2026-07-12.md`
 - Modify: this plan's checkboxes and continuation notes.
 
 **Interfaces:**
@@ -212,3 +212,7 @@
 - [ ] Perform a broad whole-branch review and fix every Critical/Important finding.
 - [ ] Re-audit the Contract v2, reproducible-runtime, and operator-UX plans against the new tree before continuing those phases.
 - [ ] Commit `test: close workflow platform P0 regressions`.
+
+**Task 8 verification note:** This Windows host enters periodic high-load states that make fixed wall-clock tests non-deterministic. Per operator direction, a full-equivalent PASS may be assembled from a broad run plus isolated green reruns when every test has green evidence against unchanged relevant source. Preserve the raw broad-run failures and the cumulative mapping in release evidence rather than relabeling an individual failing command as green.
+
+**Task 8 review debt:** Recheck Operation Hub artifact payload/open physical containment during the whole-branch review. The lexical-only open behavior predates Task 7, so it was excluded from Task 7's diff verdict but remains relevant to the Phase 0 workspace-boundary acceptance criteria.
