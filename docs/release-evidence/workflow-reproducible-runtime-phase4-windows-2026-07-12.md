@@ -7,9 +7,10 @@
 - Component: `extensions/workflow-register`
 - Pull request: `#77`
 - Branch: `agent/workflow-reproducible-runtime-phase4-hardening-20260712`
-- Verified code head before this evidence commit: `8ec553afad7f32715da9e315556483eec23a7d4c`
+- Guarded Windows code head: `8ec553afad7f32715da9e315556483eec23a7d4c`
+- Final cleanup and evidence head: `2ca175ec79c0b6e1541a7295f6c3e5645a86fb1b`
 
-この補遺は、Phase 4 hardeningで残っていたWindows unit-test failureの原因、RED/GREEN、修正、正式matrixの再実行条件を記録します。
+この補遺は、Phase 4 hardeningで残っていたWindows unit-test failureの原因、RED/GREEN、修正、正式matrix、および最終review結果を記録します。
 
 ## 2. Initial Windows failure
 
@@ -114,31 +115,70 @@ Windowsでruntimeと同じphysical identityを期待値に使う同期fixtureを
 8ec553afad7f32715da9e315556483eec23a7d4c
 ```
 
-## 6. CI recursion handling
+## 6. Final official verification
 
-上記commitはGitHub Actions tokenからpushされたため、直後のautomatic pull-request runは`action_required`となりjobを生成しませんでした。これはrepository codeのtest failureではなく、GitHub Actionsのrecursive workflow suppressionです。
+一時probe workflowを削除し、operator補遺とrelease evidenceを含むcleanup済みheadで正式workflowを実行しました。
 
-そのため、GitHub App経由でこのoperator補遺とrelease-evidence補遺をcommitし、最新headで通常の`extensions-quality` matrixを再生成します。
+### `extensions-quality`
 
-## 7. Current gate
+```text
+run: 29195212541
+head: 2ca175ec79c0b6e1541a7295f6c3e5645a86fb1b
+result: success
+```
 
-このevidence commit時点では次が完了しています。
+7 jobs:
 
-- journal ancestry hardening
-- future read-only diagnostic preservation
-- independent `control.json` operator signal contract
-- run-directory alias rejection
-- heartbeat lock-read retry
-- Windows physical-root fixture correction
-- Linux full suite / policy / package / Extension Host smoke
-- Windows full `workflow-register` suiteのguarded verification
-- Windows CCR / Bazaar matrix verification
+| Job | Result |
+| --- | --- |
+| Linux `workflow-register` | PASS |
+| Linux `bob-code-consistency-review` | PASS |
+| Linux `bob-bazaar-review` | PASS |
+| Windows `workflow-register` | PASS |
+| Windows `bob-code-consistency-review` | PASS |
+| Windows `bob-bazaar-review` | PASS |
+| Extension source metrics | PASS |
 
-残るgate:
+`workflow-register`では、LinuxとWindowsの両方でunit tests、dependency / architecture / source policy、package、VSIX policy、Extension Host smokeまで完走しました。Linuxではschema policy、unused report、production auditも完走しています。
 
-1. このevidenceを含む最新headの正式`extensions-quality` 7-job matrix
-2. final diff reviewでCritical 0 / Important 0
-3. PR本文とrelease decisionの同期
-4. temporary diagnostic PR #78のclose
+### `code-consistency-review-scaffold`
 
-上記が完了するまでPR #77はDraft、Merge / Releaseは**NO-GO**です。
+```text
+run: 29195212516
+head: 2ca175ec79c0b6e1541a7295f6c3e5645a86fb1b
+result: success
+```
+
+- Validate VS Code extension: PASS
+- Validate scaffold: PASS
+
+## 7. Final diff review
+
+cleanup済みheadで次を再確認しました。
+
+- journalとnext eventの`previousRunHash` ancestry
+- first / subsequent event sequence boundary
+- recovery appendのexact next sequence
+- future run save rejection後のread-only diagnostic保持
+- `control.json`の独立operator-signal契約
+- direct run-directory / alias containment
+- heartbeat中のtransient lock read retry
+- Windows short / long physical-root identity
+- temporary diagnostic workflowがPR差分へ残っていないこと
+
+判定:
+
+```text
+Critical: 0
+Important: 0
+```
+
+残余リスクはPhase 4主証跡に記載したevent retention、external provider side effect、filesystem/device durability、same-user TOCTOUです。今回のhardeningで新しい未解決Critical / Important findingは確認していません。
+
+## 8. Release decision
+
+Phase 4 hardeningの実装、回帰test、Linux / Windows full matrix、policy、package、VSIX、Extension Host、scaffold、およびfinal diff reviewは完了しました。
+
+PR #77について、コード・CI・package gateは**GO**です。PR本文同期、Draft解除、診断PR #78のclose後にmergeできます。
+
+この補遺は、主証跡`workflow-reproducible-runtime-phase4-2026-07-12.md`の旧NO-GO判定を、上記final headとrunに対して更新します。
