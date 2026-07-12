@@ -27,63 +27,26 @@
         "head"
       ],
       "properties": {
-        "id": {
-          "type": "string",
-          "minLength": 1
-        },
-        "title": {
-          "type": "string",
-          "minLength": 1
-        },
+        "id": { "type": "string", "minLength": 1 },
+        "title": { "type": "string", "minLength": 1 },
         "change_type": {
           "type": "string",
-          "enum": [
-            "bugfix",
-            "feature",
-            "spec_change",
-            "refactor",
-            "performance",
-            "maintenance"
-          ]
+          "enum": ["bugfix", "feature", "spec_change", "refactor", "performance", "maintenance"]
         },
-        "purpose": {
-          "type": "string",
-          "minLength": 1
-        },
-        "base": {
-          "type": "string",
-          "minLength": 1
-        },
-        "head": {
-          "type": "string",
-          "minLength": 1
-        },
-        "vcs": {
-          "type": "string",
-          "enum": ["git", "bazaar", "bzr"],
-          "default": "git"
-        },
-        "vcs_root": {
-          "type": "string",
-          "minLength": 1
-        },
+        "purpose": { "type": "string", "minLength": 1 },
+        "base": { "type": "string", "minLength": 1 },
+        "head": { "type": "string", "minLength": 1 },
+        "vcs": { "type": "string", "enum": ["git", "bazaar", "bzr"], "default": "git" },
+        "vcs_root": { "type": "string", "minLength": 1 },
         "ticket_ids": {
           "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1
-          },
+          "items": { "type": "string", "minLength": 1 },
           "uniqueItems": true
         },
-        "author_note": {
-          "type": "string"
-        },
+        "author_note": { "type": "string" },
         "out_of_scope": {
           "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1
-          }
+          "items": { "type": "string", "minLength": 1 }
         }
       }
     },
@@ -92,24 +55,12 @@
       "additionalProperties": false,
       "minProperties": 1,
       "properties": {
-        "requirements": {
-          "$ref": "#/$defs/document_list"
-        },
-        "basic_design": {
-          "$ref": "#/$defs/document_list"
-        },
-        "detailed_design": {
-          "$ref": "#/$defs/document_list"
-        },
-        "test_spec": {
-          "$ref": "#/$defs/document_list"
-        },
-        "ledgers": {
-          "$ref": "#/$defs/document_list"
-        },
-        "tickets": {
-          "$ref": "#/$defs/document_list"
-        }
+        "requirements": { "$ref": "#/$defs/document_list" },
+        "basic_design": { "$ref": "#/$defs/document_list" },
+        "detailed_design": { "$ref": "#/$defs/document_list" },
+        "test_spec": { "$ref": "#/$defs/document_list" },
+        "ledgers": { "$ref": "#/$defs/document_list" },
+        "tickets": { "$ref": "#/$defs/document_list" }
       }
     },
     "review_focus": {
@@ -134,109 +85,73 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "include_callers": {
-          "type": "boolean",
-          "default": true
-        },
-        "include_callees": {
-          "type": "boolean",
-          "default": true
-        },
-        "include_global_access": {
-          "type": "boolean",
-          "default": true
-        },
-        "include_struct_impact": {
-          "type": "boolean",
-          "default": true
-        },
-        "include_ledgers": {
-          "type": "boolean",
-          "default": true
-        },
-        "max_call_depth": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 5,
-          "default": 2
-        },
-        "max_code_context_lines": {
-          "type": "integer",
-          "minimum": 10,
-          "maximum": 300,
-          "default": 80
-        },
+        "include_callers": { "type": "boolean", "default": true },
+        "include_callees": { "type": "boolean", "default": true },
+        "include_global_access": { "type": "boolean", "default": true },
+        "include_struct_impact": { "type": "boolean", "default": true },
+        "include_ledgers": { "type": "boolean", "default": true },
+        "max_call_depth": { "type": "integer", "minimum": 0, "maximum": 5, "default": 2 },
+        "max_code_context_lines": { "type": "integer", "minimum": 10, "maximum": 300, "default": 80 },
         "repository_symbol_index_path": {
           "type": "string",
           "minLength": 1,
           "pattern": "\\.json$"
+        },
+        "repository_symbol_index_mode": {
+          "type": "string",
+          "enum": ["consume", "build"],
+          "default": "consume"
+        },
+        "repository_symbol_index_cache_path": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\.cache\\.json$"
         },
         "language": {
           "type": "array",
           "items": {
             "type": "string",
             "enum": [
-              "c",
-              "cpp",
-              "h",
-              "hpp",
-              "typescript",
-              "javascript",
-              "python",
-              "csharp",
-              "java",
-              "go",
-              "rust",
-              "shell",
-              "sql",
-              "json",
-              "yaml",
-              "markdown",
-              "text",
-              "unknown"
+              "c", "cpp", "h", "hpp", "typescript", "javascript", "python", "csharp", "java", "go", "rust",
+              "shell", "sql", "json", "yaml", "markdown", "text", "unknown"
             ]
           },
           "uniqueItems": true
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "repository_symbol_index_mode": { "const": "build" } },
+            "required": ["repository_symbol_index_mode"]
+          },
+          "then": { "required": ["repository_symbol_index_path"] }
+        },
+        {
+          "if": { "required": ["repository_symbol_index_cache_path"] },
+          "then": {
+            "required": ["repository_symbol_index_mode"],
+            "properties": { "repository_symbol_index_mode": { "const": "build" } }
+          }
+        }
+      ]
     },
     "bob_options": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "prompt_template": {
-          "type": "string",
-          "default": "consistency-review-v1"
-        },
-        "output_format": {
-          "type": "string",
-          "const": "yaml"
-        },
-        "require_evidence": {
-          "type": "boolean",
-          "const": true
-        },
-        "allow_questions": {
-          "type": "boolean",
-          "default": true
-        },
-        "forbid_final_approval": {
-          "type": "boolean",
-          "const": true
-        },
-        "evidence_scope_rules": {
-          "type": "array",
-          "items": {}
-        },
+        "prompt_template": { "type": "string", "default": "consistency-review-v1" },
+        "output_format": { "type": "string", "const": "yaml" },
+        "require_evidence": { "type": "boolean", "const": true },
+        "allow_questions": { "type": "boolean", "default": true },
+        "forbid_final_approval": { "type": "boolean", "const": true },
+        "evidence_scope_rules": { "type": "array", "items": {} },
         "evidence_scope_rule_pack_path": {
           "type": "string",
           "minLength": 1,
           "pattern": "\\.(?:json|ya?ml)$"
         },
-        "evidence_scope_include_low_priority": {
-          "type": "boolean",
-          "default": false
-        }
+        "evidence_scope_include_low_priority": { "type": "boolean", "default": false }
       }
     }
   },
@@ -244,60 +159,37 @@
     "document_list": {
       "type": "array",
       "minItems": 1,
-      "items": {
-        "$ref": "#/$defs/document_ref"
-      }
+      "items": { "$ref": "#/$defs/document_ref" }
     },
     "document_ref": {
       "type": "object",
       "additionalProperties": false,
       "required": ["path"],
       "properties": {
-        "path": {
-          "type": "string",
-          "minLength": 1
-        },
-        "version": {
-          "type": "string"
-        },
-        "updated_at": {
-          "type": "string"
-        },
+        "path": { "type": "string", "minLength": 1 },
+        "version": { "type": "string" },
+        "updated_at": { "type": "string" },
         "sections": {
           "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1
-          },
+          "items": { "type": "string", "minLength": 1 },
           "uniqueItems": true
         },
         "sheets": {
           "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1
-          },
+          "items": { "type": "string", "minLength": 1 },
           "uniqueItems": true
         },
         "rows": {
           "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1
-          },
+          "items": { "type": "string", "minLength": 1 },
           "uniqueItems": true
         },
         "cases": {
           "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1
-          },
+          "items": { "type": "string", "minLength": 1 },
           "uniqueItems": true
         },
-        "note": {
-          "type": "string"
-        }
+        "note": { "type": "string" }
       }
     }
   }
