@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 jobs:
-  diagnose-merge:
+  merge-and-verify:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
@@ -20,22 +20,48 @@ jobs:
         with:
           ref: agent/bob-bazaar-review-review-run-v3-acceptance
           fetch-depth: 0
-      - name: Record merge conflicts with main
+
+      - name: Merge latest main and remove diagnostics
         shell: bash
         run: |
-          set +e
+          set -euo pipefail
           git fetch origin main
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git merge --no-commit --no-ff origin/main
-          status=$?
-          mkdir -p .github/diagnostics
-          if [ "$status" -eq 0 ]; then
-            printf 'clean\n' > .github/diagnostics/bob-bazaar-review-acceptance-conflicts.txt
-          else
-            git diff --name-only --diff-filter=U > .github/diagnostics/bob-bazaar-review-acceptance-conflicts.txt
-          fi
-          git merge --abort 2>/dev/null || true
-          git add .github/diagnostics/bob-bazaar-review-acceptance-conflicts.txt
-          git commit -m "ci: record acceptance merge conflicts with main"
+          rm -f .github/diagnostics/bob-bazaar-review-acceptance-conflicts.txt
+          git rm -f .github/workflows/bob-bazaar-review-acceptance-sync.yml
+          git add -A
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: extensions/bob-bazaar-review/package-lock.json
+
+      - name: Install dependencies
+        working-directory: extensions/bob-bazaar-review
+        run: npm ci
+
+      - name: Full bob-bazaar-review gate
+        working-directory: extensions/bob-bazaar-review
+        shell: bash
+        run: |
+          npm test
+          npm run dependency:policy
+          npm run architecture:policy
+          npm run source:policy
+          npm run unused:report
+          npm run unused:policy
+          npm run artifact:policy
+          npm run audit:prod
+          npm run package
+          npm run package:policy
+          npm run package:metrics
+
+      - name: Commit and push synchronized acceptance branch
+        shell: bash
+        run: |
+          git commit -m "merge: synchronize Review Run v3 acceptance with main"
           git push origin HEAD:agent/bob-bazaar-review-review-run-v3-acceptance
