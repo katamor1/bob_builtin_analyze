@@ -175,13 +175,13 @@ export function validateDecisionRecord(sourceId: string, record: TriageDecisionR
   }
   if (decision === "rejected" && !reason) throw invalid(sourceId, "rejected requires reason")
   if (decision === "needs_investigation" && (!reason || (!owner && !followUpAction))) {
-    throw invalid(sourceId, "needs_investigation requires reason and owner or follow_up action")
+    throw invalid(sourceId, "needs_investigation requires owner or follow_up action; reason is also required")
   }
   if (decision === "deferred" && (!reason || !followUpDue)) {
-    throw invalid(sourceId, "deferred requires reason and follow_up due")
+    throw invalid(sourceId, "deferred requires follow_up due; reason is also required")
   }
   if (decision === "question" && (!reason || (!owner && !suggestedRecipient))) {
-    throw invalid(sourceId, "question requires reason and owner or suggested_recipient")
+    throw invalid(sourceId, "question requires owner or suggested_recipient; reason is also required")
   }
 }
 
@@ -214,6 +214,7 @@ function applyKnownPatch(
       }
       applyStringField(followUp, rawFollowUp, "action")
       applyStringField(followUp, rawFollowUp, "due")
+      if (followUp.required === false && !nonEmpty(followUp.action) && !nonEmpty(followUp.due)) delete followUp.required
       if (Object.keys(followUp).length > 0) next.follow_up = followUp
       else delete next.follow_up
     }
