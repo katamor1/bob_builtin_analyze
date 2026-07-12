@@ -1,0 +1,58 @@
+name: agent-diagnose-main-reconciliation
+
+on:
+  pull_request:
+    paths:
+      - "extensions/workflow-register/test/fixtures/automatic-pause-ci-verification.txt"
+      - ".github/workflows/agent-diagnose-main-reconciliation.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    if: github.event.pull_request.head.ref == 'agent/workflow-automatic-pause-ci-verification-20260712'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: agent/workflow-automatic-pause-limits-20260712
+          fetch-depth: 0
+      - name: Attempt non-destructive main merge
+        shell: bash
+        run: |
+          set +e
+          git fetch origin main
+          git config merge.conflictStyle diff3
+          git merge --no-commit --no-ff origin/main > "$RUNNER_TEMP/merge-output.txt" 2>&1
+          status=$?
+          {
+            echo "merge_status=$status"
+            echo "feature=$(git rev-parse HEAD)"
+            echo "main=$(git rev-parse origin/main)"
+            echo "merge_base=$(git merge-base HEAD origin/main)"
+            echo
+            echo "CONFLICT_FILES"
+            git diff --name-only --diff-filter=U
+            echo
+            echo "STATUS"
+            git status --short
+            echo
+            echo "MERGE_OUTPUT"
+            cat "$RUNNER_TEMP/merge-output.txt"
+            echo
+            echo "COMBINED_DIFF"
+            git diff --cc --stat
+            git diff --cc
+          } > "$RUNNER_TEMP/main-reconciliation.txt"
+          cat "$RUNNER_TEMP/main-reconciliation.txt"
+          git merge --abort >/dev/null 2>&1 || true
+          exit 0
+      - name: Upload reconciliation evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: automatic-pause-main-reconciliation
+          path: ${{ runner.temp }}/main-reconciliation.txt
+          if-no-files-found: error
+          retention-days: 1
