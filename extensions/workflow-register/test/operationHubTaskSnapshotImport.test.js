@@ -1,5 +1,4 @@
 const assert = require("node:assert/strict")
-const Module = require("node:module")
 const { test } = require("node:test")
 const { readSrc } = require("./helpers/sourceReader")
 
@@ -59,7 +58,7 @@ test("Operation Hub exposes task snapshot import provenance as a distinct badge"
   assert.equal(summary.taskSnapshotImportStatus, "ok")
   assert.match(summary.taskSnapshotImportLabel, /Imported from task snapshot: 1 artifact/)
   assert.match(summary.taskSnapshotImportLabel, /2026-07-12T12:34:56.000Z/)
-  const html = renderOperationHubHtml(model, { cspSource: "vscode-resource:", nonce: "nonce" })
+  const html = renderOperationHubHtml({ model, cspSource: "vscode-resource:", nonce: "nonce" })
   assert.match(html, /Imported from task snapshot: 1 artifact/)
 })
 
