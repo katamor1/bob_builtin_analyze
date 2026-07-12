@@ -95,3 +95,22 @@ test("workflow policy wins deterministic ties before workspace policy", () => {
   assert.equal(decision.source, "workflow")
   assert.equal(decision.kind, "maxRunMinutes")
 })
+
+test("an active bounded override suppresses automatic limits until expiry", () => {
+  const policies = [policy("workflow", { maxRunMinutes: 45 })]
+  const override = {
+    schemaVersion: "workflow-register/automatic-pause-override/v1",
+    createdAt: "2026-07-12T01:00:00.000Z",
+    expiresAt: "2026-07-12T01:30:00.000Z",
+    requestedBy: "user",
+    reason: "Finish the current review."
+  }
+  assert.equal(evaluateAutomaticPause({
+    run: run(), nextStep: agentStep(),
+    now: new Date("2026-07-12T01:29:59.999Z"), policies, override
+  }), undefined)
+  assert.equal(evaluateAutomaticPause({
+    run: run(), nextStep: agentStep(),
+    now: new Date("2026-07-12T01:30:00.000Z"), policies, override
+  }).kind, "maxRunMinutes")
+})
