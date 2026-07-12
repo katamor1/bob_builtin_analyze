@@ -1,2 +1,2 @@
 This file exists only to trigger pull-request verification for PR #75's current source tree.
-Verification round: standard job applies physical-path fixture fixes.
+Verification round: capture physical-path fixture Linux verification.
