@@ -133,7 +133,23 @@ function skipResumeFromFrontMatter(frontMatter: Record<string, unknown>): Workfl
 function preservedFrontMatter(frontMatter: Record<string, unknown>): Record<string, unknown> | undefined {
   const preserved: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(frontMatter)) {
+    if (key === "x-skipResume") {
+      const extension = preservedSkipResumeExtension(value)
+      if (extension !== undefined) preserved[key] = extension
+      continue
+    }
     if (!guiManagedFrontMatterFields.has(key)) preserved[key] = value
+  }
+  return Object.keys(preserved).length > 0 ? preserved : undefined
+}
+
+function preservedSkipResumeExtension(value: unknown): unknown | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value
+  const extension = value as Record<string, unknown>
+  const preserved: Record<string, unknown> = {}
+  for (const [key, entry] of Object.entries(extension)) {
+    if (key === "fileBound" && typeof entry === "boolean") continue
+    preserved[key] = entry
   }
   return Object.keys(preserved).length > 0 ? preserved : undefined
 }
