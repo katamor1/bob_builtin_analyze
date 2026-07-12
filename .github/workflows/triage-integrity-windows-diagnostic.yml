@@ -12,11 +12,11 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   diagnose:
-    name: Windows traceability barrier diagnostic
+    name: Windows traceability identity fix verification
     runs-on: windows-latest
     timeout-minutes: 20
 
@@ -43,7 +43,7 @@ jobs:
       - name: Compile
         run: npm run compile
 
-      - name: Instrument basename-scoped CAS barrier
+      - name: Apply Windows-safe traceability test identity checks
         shell: pwsh
         run: |
           @'
@@ -53,36 +53,29 @@ jobs:
           let text = fs.readFileSync(filePath, "utf8").replace(/\r\n/g, "\n")
           const directoryLine = '  const expectedDirectory = normalizePhysicalPath(path.dirname(targetPath))\n'
           const conditionLine = '      normalizePhysicalPath(path.dirname(candidate)) === expectedDirectory &&\n'
+          const lexicalAssertion = '  assert.equal(path.dirname(aliasWinner.backupPath), path.dirname(directPath))\n'
+          const physicalAssertion = '  assert.equal(normalizePhysicalPath(await fs.realpath(path.dirname(aliasWinner.backupPath))), normalizePhysicalPath(await fs.realpath(path.dirname(directPath))))\n'
           if (text.includes(directoryLine)) text = text.replace(directoryLine, "")
           if (text.includes(conditionLine)) text = text.replace(conditionLine, "")
-          const candidateLine = '    const candidate = typeof args[0] === "string" ? args[0] : undefined\n'
-          const debugLine = '    console.error("CAS_OPEN", JSON.stringify(candidate), JSON.stringify(candidate ? path.basename(candidate) : ""), JSON.stringify(tempPrefix))\n'
-          if (!text.includes(debugLine)) {
-            if (!text.includes(candidateLine)) throw new Error("CAS candidate line not found")
-            text = text.replace(candidateLine, candidateLine + debugLine)
-          }
+          if (text.includes(lexicalAssertion)) text = text.replace(lexicalAssertion, physicalAssertion)
+          if (text.includes("expectedDirectory")) throw new Error("expectedDirectory remains after patch")
+          if (!text.includes(physicalAssertion.trim())) throw new Error("physical backup assertion was not installed")
           fs.writeFileSync(filePath, text)
           '@ | node
 
-      - name: Run traceability CAS suite and capture evidence
+      - name: Run traceability CAS suite
+        run: node --test test/traceabilityCatalogStore.test.js
+
+      - name: Commit verified Windows traceability test fix
+        working-directory: .
         shell: pwsh
         run: |
-          $log = Join-Path $env:RUNNER_TEMP "traceability-cas-windows.log"
-          $patched = Join-Path $env:RUNNER_TEMP "traceabilityCatalogStore.patched.test.js"
-          Copy-Item test\traceabilityCatalogStore.test.js $patched
-          & node --test test/traceabilityCatalogStore.test.js *> $log
-          $status = $LASTEXITCODE
-          Write-Host "Unit test exit code: $status"
-          Get-Content $log -Tail 420
-          exit $status
-
-      - name: Upload diagnostic evidence
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: traceability-cas-barrier-diagnostic
-          path: |
-            ${{ runner.temp }}/traceability-cas-windows.log
-            ${{ runner.temp }}/traceabilityCatalogStore.patched.test.js
-          if-no-files-found: error
-          retention-days: 3
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add extensions/bob-code-consistency-review/test/traceabilityCatalogStore.test.js
+          if (git diff --cached --quiet) {
+            Write-Host "Windows traceability test fix is already committed."
+            exit 0
+          }
+          git commit -m "test: compare traceability paths by physical identity"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
