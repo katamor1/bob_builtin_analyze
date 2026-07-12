@@ -1,7 +1,11 @@
 import { randomBytes } from "node:crypto"
 import * as fs from "node:fs/promises"
 import * as path from "node:path"
-import { reviewRunJsonPath, validateReviewRunSegment } from "./reviewRunPaths"
+import {
+  assertReviewRunPathContained,
+  reviewRunJsonPath,
+  validateReviewRunSegment
+} from "./reviewRunPaths"
 import {
   REVIEW_RUN_SCHEMA_VERSION,
   type ReviewRunContext,
@@ -15,9 +19,12 @@ const TARGET_MODES = new Set<ReviewRunTargetMode>(["singleRevision", "revisionRa
 export async function writeReviewRun(context: ReviewRunContext): Promise<string> {
   assertReviewRunContext(context)
   const filePath = reviewRunJsonPath(context.workspaceRoot, context.campaignId, context.reviewId)
-  await fs.mkdir(path.dirname(filePath), { recursive: true })
+  const directory = path.dirname(filePath)
+  await assertReviewRunPathContained(context.workspaceRoot, directory)
+  await fs.mkdir(directory, { recursive: true })
+  await assertReviewRunPathContained(context.workspaceRoot, directory)
   const temporaryPath = path.join(
-    path.dirname(filePath),
+    directory,
     `.review-run.${process.pid}.${randomBytes(6).toString("hex")}.tmp`
   )
   try {
@@ -34,6 +41,7 @@ export async function readReviewRun(workspaceRoot: string, campaignId: string, r
   const safeCampaignId = validateReviewRunSegment(campaignId, "campaignId")
   const safeReviewId = validateReviewRunSegment(reviewId, "reviewId")
   const filePath = reviewRunJsonPath(workspaceRoot, safeCampaignId, safeReviewId)
+  await assertReviewRunPathContained(workspaceRoot, filePath)
   let parsed: unknown
   try {
     parsed = JSON.parse(await fs.readFile(filePath, "utf8"))
