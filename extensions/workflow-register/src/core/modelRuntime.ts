@@ -113,6 +113,7 @@ export interface RunStepState {
 }
 
 export interface WorkflowRunState {
+  schemaVersion?: string
   runId: string
   workflowId: string
   workflowName: string
