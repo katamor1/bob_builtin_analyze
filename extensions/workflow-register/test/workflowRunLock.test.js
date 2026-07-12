@@ -12,10 +12,11 @@ const {
   serializeWorkflowRunLock,
   withWorkflowRunLock
 } = require("../out/core/runtime/runLock.js")
+const runDurabilityPath = require("../out/core/runtime/runDurabilityPath.js")
 const {
   readRunDurabilityFile,
   replaceRunDurabilityFile
-} = require("../out/core/runtime/runDurabilityPath.js")
+} = runDurabilityPath
 
 function root(t) {
   const value = fs.mkdtempSync(path.join(os.tmpdir(), "workflow-lock-"))
@@ -82,6 +83,45 @@ test("same-run callers serialize while different runs and roots remain independe
   releaseFirst.resolve()
   await Promise.all([first, second, otherRun, otherRoot])
   assert.deepEqual(order, ["first:start", "first:end", "second"])
+})
+
+test("lock acquisition retries when the owner file disappears before inspection", async (t) => {
+  const workspace = root(t)
+  const firstStarted = deferred()
+  const releaseFirst = deferred()
+  const first = withWorkflowRunLock(workspace, "run-1", async () => {
+    firstStarted.resolve()
+    await releaseFirst.promise
+  }, { timeoutMs: 1_000, heartbeatMs: 0 })
+  await firstStarted.promise
+
+  const originalRead = runDurabilityPath.readRunDurabilityFile
+  let injected = false
+  runDurabilityPath.readRunDurabilityFile = async (...args) => {
+    if (!injected && args[2] === "run.lock.json") {
+      injected = true
+      const error = new Error("simulated lock disappearance during acquisition")
+      error.code = "ENOENT"
+      throw error
+    }
+    return originalRead(...args)
+  }
+
+  try {
+    const second = withWorkflowRunLock(workspace, "run-1", async () => "second", {
+      timeoutMs: 1_000,
+      heartbeatMs: 0,
+      pollMs: 5
+    })
+    await new Promise((resolve) => setImmediate(resolve))
+    releaseFirst.resolve()
+    assert.equal(await second, "second")
+    assert.equal(injected, true)
+  } finally {
+    runDurabilityPath.readRunDurabilityFile = originalRead
+    releaseFirst.resolve()
+    await first
+  }
 })
 
 test("same async chain re-enters one lock without deadlock", async (t) => {
