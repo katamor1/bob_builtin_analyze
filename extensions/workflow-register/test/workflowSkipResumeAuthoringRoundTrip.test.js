@@ -30,6 +30,15 @@ artifacts:
 # Builder File Bound
 `
 
+function validateRendered(rendered) {
+  return validateWorkflowText({
+    sourceId: "workflow-register",
+    filePath: rendered.filePath,
+    text: rendered.markdown,
+    strict: true
+  })
+}
+
 test("loader exposes x-skipResume as explicit authoring metadata and round-trips it", () => {
   const loaded = loadAuthoringModelFromMarkdown({
     sourceId: "workflow-register",
@@ -42,12 +51,30 @@ test("loader exposes x-skipResume as explicit authoring metadata and round-trips
 
   const rendered = serializeAuthoringModelToMarkdown(loaded.model)
   assert.match(rendered.markdown, /x-skipResume:\n\s+fileBound: true/)
-  const validation = validateWorkflowText({
+  const validation = validateRendered(rendered)
+  assert.equal(validation.ok, true, validation.diagnostics.map((item) => item.message).join("\n"))
+})
+
+test("loader preserves unknown x-skipResume subfields across Builder round-trip", () => {
+  const source = fileBoundWorkflow.replace(
+    "  fileBound: true\n",
+    "  fileBound: true\n  futureMode: cautious\n  provenance:\n    retain: true\n"
+  )
+  const loaded = loadAuthoringModelFromMarkdown({
     sourceId: "workflow-register",
-    filePath: rendered.filePath,
-    text: rendered.markdown,
-    strict: true
+    filePath: ".bob/workflows/builder-file-bound/WORKFLOW.md",
+    text: source
   })
+
+  assert.deepEqual(loaded.model.skipResume, { fileBound: true })
+  assert.deepEqual(loaded.model.unknownFrontMatter?.["x-skipResume"], {
+    futureMode: "cautious",
+    provenance: { retain: true }
+  })
+
+  const rendered = serializeAuthoringModelToMarkdown(loaded.model)
+  assert.match(rendered.markdown, /x-skipResume:\n\s+futureMode: cautious\n\s+provenance:\n\s+retain: true\n\s+fileBound: true/)
+  const validation = validateRendered(rendered)
   assert.equal(validation.ok, true, validation.diagnostics.map((item) => item.message).join("\n"))
 })
 
@@ -69,11 +96,6 @@ test("serializer emits explicit skip resume metadata from a new authoring model"
 
   const rendered = serializeAuthoringModelToMarkdown(model)
   assert.match(rendered.markdown, /x-skipResume:\n\s+fileBound: true/)
-  const validation = validateWorkflowText({
-    sourceId: "workflow-register",
-    filePath: rendered.filePath,
-    text: rendered.markdown,
-    strict: true
-  })
+  const validation = validateRendered(rendered)
   assert.equal(validation.ok, true, validation.diagnostics.map((item) => item.message).join("\n"))
 })
