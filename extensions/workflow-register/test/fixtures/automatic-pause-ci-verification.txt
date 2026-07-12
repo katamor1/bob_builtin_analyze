@@ -1,2 +1,2 @@
 This file exists only to trigger pull-request verification for PR #75's current source tree.
-Verification round: physical-path fixtures with missing-parent support.
+Verification round: committed Windows physical-path fixtures.
