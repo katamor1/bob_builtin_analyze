@@ -297,6 +297,15 @@ export class WorkflowEngine {
   }
 
   async approveBranchCheckpoint(runId: string, workflow: CoreWorkflowDefinition): Promise<WorkflowRunState> {
+    return coordinateWorkflowRunExecution(
+      this.runStore,
+      runId,
+      `checkpoint:approve:${workflow.id}:${workflow.definitionHash ?? ""}`,
+      () => this.approveBranchCheckpointOwned(runId, workflow)
+    )
+  }
+
+  private async approveBranchCheckpointOwned(runId: string, workflow: CoreWorkflowDefinition): Promise<WorkflowRunState> {
     const run = await this.runStore.loadRun(runId)
     if (!run) throw new Error(`Workflow run not found: ${runId}`)
     const checkpoint = run.status === "checkpoint" ? run.branching?.checkpoint : undefined
@@ -309,6 +318,15 @@ export class WorkflowEngine {
   }
 
   async abortBranchCheckpoint(runId: string, reason?: string): Promise<WorkflowRunState> {
+    return coordinateWorkflowRunExecution(
+      this.runStore,
+      runId,
+      `checkpoint:abort:${reason ?? ""}`,
+      () => this.abortBranchCheckpointOwned(runId, reason)
+    )
+  }
+
+  private async abortBranchCheckpointOwned(runId: string, reason?: string): Promise<WorkflowRunState> {
     const run = await this.runStore.loadRun(runId)
     if (!run) throw new Error(`Workflow run not found: ${runId}`)
     const checkpoint = run.status === "checkpoint" ? run.branching?.checkpoint : undefined

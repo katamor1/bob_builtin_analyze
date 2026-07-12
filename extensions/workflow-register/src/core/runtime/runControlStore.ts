@@ -1,6 +1,7 @@
 import { assertWorkflowRunStateWritable } from "./runStateCodec"
 import { FileRunStateStore } from "./runStateStore"
 import { readContainedRunFile, writeContainedRunFile } from "./runStatePath"
+import { syncRunMaterializedFile } from "./runDurabilityPath"
 
 export type RunPauseMode = "afterCurrentStep" | "beforeNextAiCall"
 
@@ -124,5 +125,6 @@ export class FileRunControlStore implements RunControlStore {
       `${JSON.stringify(control, null, 2)}\n`,
       "control.json"
     )
+    await syncRunMaterializedFile(this.workspaceRoot, control.runId, "control.json")
   }
 }
