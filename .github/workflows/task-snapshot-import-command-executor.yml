@@ -28,35 +28,19 @@ jobs:
           file = Path("extensions/workflow-register/src/workflowRunCommands.ts")
           text = file.read_text(encoding="utf-8")
 
-          old_import = '''  hydrateWorkflowStateFromArtifacts,
-          importArtifactsFromTaskSnapshots as importTaskSnapshotArtifacts,
-          parseWorkflowArtifactManifest,
-          seedWorkflowRunFromArtifacts,
-          stateKeysProducedBeforeStep,
-          validateWorkflowArtifactManifest,
-          type TaskSnapshotArtifactImportIssue,
-          type WorkflowArtifactManifest
-          } from "./core/artifacts"'''
-          new_import = '''  hydrateWorkflowStateFromArtifacts,
-          importArtifactsFromTaskSnapshots as importTaskSnapshotArtifacts,
-          parseWorkflowArtifactManifest,
-          previewArtifactsFromTaskSnapshots,
-          seedWorkflowRunFromArtifacts,
-          stateKeysProducedBeforeStep,
-          validateWorkflowArtifactManifest,
-          type TaskSnapshotArtifactImportIssue,
-          type WorkflowArtifactManifest
-          } from "./core/artifacts"'''
-          if old_import not in text:
-              raise SystemExit("artifact import block not found")
-          text = text.replace(old_import, new_import, 1)
+          import_anchor = '  parseWorkflowArtifactManifest,\n  seedWorkflowRunFromArtifacts,'
+          import_replacement = '  parseWorkflowArtifactManifest,\n  previewArtifactsFromTaskSnapshots,\n  seedWorkflowRunFromArtifacts,'
+          if '  previewArtifactsFromTaskSnapshots,' not in text:
+              if import_anchor not in text:
+                  raise SystemExit("artifact import anchor not found")
+              text = text.replace(import_anchor, import_replacement, 1)
 
-          anchor = 'import { showMarkdownReport } from "./reports"\n'
-          addition = 'import { chooseTaskSnapshotImportSelection } from "./taskSnapshotImportReport"\n'
-          if addition not in text:
-              if anchor not in text:
+          report_anchor = 'import { showMarkdownReport } from "./reports"\n'
+          report_import = 'import { chooseTaskSnapshotImportSelection } from "./taskSnapshotImportReport"\n'
+          if report_import not in text:
+              if report_anchor not in text:
                   raise SystemExit("report import anchor not found")
-              text = text.replace(anchor, anchor + addition, 1)
+              text = text.replace(report_anchor, report_anchor + report_import, 1)
 
           start = text.index('  async importArtifactsFromTaskSnapshots(runId?: string): Promise<unknown> {')
           end = text.index('\n  async runNextStep(', start)
