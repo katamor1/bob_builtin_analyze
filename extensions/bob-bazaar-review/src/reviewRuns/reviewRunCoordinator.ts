@@ -1,7 +1,12 @@
 import * as fs from "node:fs/promises"
 import * as path from "node:path"
 import { writeReviewPacketArtifact } from "../records/reviewRecordStore"
-import { reviewRunDirectory, validateReviewRunSegment } from "./reviewRunPaths"
+import {
+  assertReviewRunPathContained,
+  reviewRunDirectory,
+  reviewRunPacketPath,
+  validateReviewRunSegment
+} from "./reviewRunPaths"
 import type { CreateReviewRunContextInput } from "./reviewRunState"
 import { advanceReviewRun, createReviewRunContext } from "./reviewRunState"
 import { readReviewRun, writeReviewRun } from "./reviewRunStore"
@@ -33,6 +38,8 @@ export async function startReviewRun(input: CreateReviewRunContextInput): Promis
 }
 
 export async function recordReviewPacket(context: ReviewRunContext, packetText: string): Promise<ReviewRunContext> {
+  const expectedPacketPath = reviewRunPacketPath(context.workspaceRoot, context.campaignId, context.reviewId)
+  await assertReviewRunPathContained(context.workspaceRoot, expectedPacketPath)
   const { packetPath } = await writeReviewPacketArtifact(
     context.workspaceRoot,
     context.campaignId,
@@ -145,7 +152,10 @@ async function reserveReviewRunIdentity(
 ): Promise<{ reviewId: string; directory: string }> {
   const safeRequestedReviewId = validateReviewRunSegment(requestedReviewId, "reviewId")
   const firstDirectory = reviewRunDirectory(workspaceRoot, campaignId, safeRequestedReviewId)
-  await fs.mkdir(path.dirname(firstDirectory), { recursive: true })
+  const recordsRoot = path.dirname(firstDirectory)
+  await assertReviewRunPathContained(workspaceRoot, recordsRoot)
+  await fs.mkdir(recordsRoot, { recursive: true })
+  await assertReviewRunPathContained(workspaceRoot, recordsRoot)
 
   for (let index = 1; index <= 999; index += 1) {
     const reviewId = index === 1
@@ -155,8 +165,10 @@ async function reserveReviewRunIdentity(
         "reviewId"
       )
     const directory = reviewRunDirectory(workspaceRoot, campaignId, reviewId)
+    await assertReviewRunPathContained(workspaceRoot, directory)
     try {
       await fs.mkdir(directory)
+      await assertReviewRunPathContained(workspaceRoot, directory)
       return { reviewId, directory }
     } catch (error) {
       if (isNodeError(error) && error.code === "EEXIST") continue
