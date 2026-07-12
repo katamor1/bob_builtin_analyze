@@ -31,8 +31,11 @@ jobs:
       - name: Apply physical-path fixture fixes
         run: python .github/scripts/apply-windows-path-test-fixes.py
       - name: Verify affected Linux tests
+        id: verify
+        continue-on-error: true
         shell: bash
         run: |
+          set +e
           cd extensions/workflow-register
           npm ci --silent
           npm run compile --silent
@@ -45,12 +48,33 @@ jobs:
             test/workflowPlatformP0E2e.test.js \
             test/workflowRunStateMigrationPath.test.js \
             test/workflowTaskSnapshotArtifactImport.test.js \
-            test/workspaceFileTransaction.test.js
+            test/workspaceFileTransaction.test.js \
+            > "$RUNNER_TEMP/workflow-register-path-fixes.log" 2>&1
+          workflow_status=$?
           cd ../bob-code-consistency-review
           npm ci --silent
           npm run compile --silent
-          node --test test/traceabilityCatalogStore.test.js
+          node --test test/traceabilityCatalogStore.test.js \
+            > "$RUNNER_TEMP/bob-code-consistency-path-fixes.log" 2>&1
+          bob_status=$?
+          for log in "$RUNNER_TEMP/workflow-register-path-fixes.log" "$RUNNER_TEMP/bob-code-consistency-path-fixes.log"; do
+            echo "=== $log ==="
+            grep -n -B 30 -A 140 -E "not ok|AssertionError|ERR_ASSERTION|error:|Error:" "$log" || tail -n 50 "$log"
+          done
+          test "$workflow_status" = "0"
+          test "$bob_status" = "0"
+      - name: Upload path-fix verification logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-path-fix-linux-verification
+          path: |
+            ${{ runner.temp }}/workflow-register-path-fixes.log
+            ${{ runner.temp }}/bob-code-consistency-path-fixes.log
+          if-no-files-found: error
+          retention-days: 1
       - name: Commit verified portability fixes
+        if: steps.verify.outcome == 'success'
         shell: bash
         run: |
           rm -f \
@@ -62,6 +86,11 @@ jobs:
           git add -A
           git commit -m "test: canonicalize Windows workspace fixtures"
           git push origin HEAD:agent/workflow-automatic-pause-limits-20260712
+      - name: Preserve verification result
+        if: always()
+        env:
+          VERIFY_OUTCOME: ${{ steps.verify.outcome }}
+        run: test "$VERIFY_OUTCOME" = "success"
 
   focused-automatic-pause:
     runs-on: ubuntu-latest
