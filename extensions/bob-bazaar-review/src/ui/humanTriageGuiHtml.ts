@@ -5,6 +5,7 @@ export interface HumanTriageGuiModel {
   reviewId: string
   reviewResultJsonPath: string
   triagePath?: string
+  reviewRunBound?: boolean
   issues: string[]
   items: TriageItem[]
 }
@@ -19,6 +20,7 @@ const DECISIONS: TriageDecision[] = ["accepted", "rejected", "needs_investigatio
 
 export function renderHumanTriageHtml(input: RenderHumanTriageHtmlInput): string {
   const { model } = input
+  const readonly = model.reviewRunBound ? " readonly" : ""
   return `<!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -35,6 +37,7 @@ export function renderHumanTriageHtml(input: RenderHumanTriageHtmlInput): string
     .field { display: flex; flex-direction: column; gap: 4px; min-width: 220px; flex: 1 1 220px; }
     label, .muted { color: var(--vscode-descriptionForeground); font-size: 12px; }
     input, select, textarea { color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border); padding: 7px; }
+    input[readonly] { opacity: 0.85; }
     textarea { min-height: 54px; }
     .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
     button { border: 0; padding: 7px 11px; color: var(--vscode-button-foreground); background: var(--vscode-button-background); cursor: pointer; }
@@ -52,18 +55,19 @@ export function renderHumanTriageHtml(input: RenderHumanTriageHtmlInput): string
   <h1>Human Triage</h1>
   <section class="card">
     <h2>対象</h2>
+    ${model.reviewRunBound ? `<div class="muted">Active Review Runから引き継いだ値です。campaign / review / result pathの再入力は不要です。</div>` : ""}
     <div class="row">
       <div class="field">
         <label for="campaignId">campaign_id</label>
-        <input id="campaignId" value="${escapeHtml(model.campaignId)}">
+        <input id="campaignId" value="${escapeHtml(model.campaignId)}"${readonly}>
       </div>
       <div class="field">
         <label for="reviewId">review_id</label>
-        <input id="reviewId" value="${escapeHtml(model.reviewId)}">
+        <input id="reviewId" value="${escapeHtml(model.reviewId)}"${readonly}>
       </div>
       <div class="field">
         <label for="reviewResultJsonPath">review-result JSON</label>
-        <input id="reviewResultJsonPath" value="${escapeHtml(model.reviewResultJsonPath)}">
+        <input id="reviewResultJsonPath" value="${escapeHtml(model.reviewResultJsonPath)}"${readonly}>
       </div>
     </div>
     <div class="muted">triage: ${escapeHtml(model.triagePath ?? "未生成")}</div>
