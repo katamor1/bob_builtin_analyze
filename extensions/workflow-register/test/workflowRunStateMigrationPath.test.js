@@ -8,7 +8,7 @@ const { test } = require("node:test")
 const {
   ensureContainedRunStateMigrationBackup,
   readContainedRunStateMigrationBackup
-} = require("../out/core/runtime/runStatePath.js")
+} = require("../out/core/runtime/runStateMigrationBackup.js")
 
 function tempRoot() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "workflow-run-migration-path-"))
