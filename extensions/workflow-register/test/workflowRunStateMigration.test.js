@@ -213,30 +213,19 @@ test("listRuns isolates malformed and missing run documents with stable diagnost
   const store = new FileRunStateStore({ workspaceRoot: root })
 
   const runs = await store.listRuns()
+  const diagnostics = store.getLoadDiagnostics()
   assert.deepEqual(runs.map((run) => run.runId), [valid.runId])
   assert.deepEqual(
-    store.getLoadDiagnostics().map(({ runId, severity, code, message }) => ({ runId, severity, code, message })),
+    diagnostics.map(({ runId, severity, code }) => ({ runId, severity, code })),
     [
-      {
-        runId: invalidId,
-        severity: "error",
-        code: "invalid",
-        message: assert.match.stringMatching(/contains invalid JSON/)
-      },
-      {
-        runId: malformedId,
-        severity: "error",
-        code: "invalid",
-        message: assert.match.stringMatching(/field 'workflowId'/)
-      },
-      {
-        runId: missingId,
-        severity: "error",
-        code: "invalid",
-        message: `Workflow run '${missingId}' is missing run.json.`
-      }
+      { runId: invalidId, severity: "error", code: "invalid" },
+      { runId: malformedId, severity: "error", code: "invalid" },
+      { runId: missingId, severity: "error", code: "invalid" }
     ]
   )
+  assert.match(diagnostics[0].message, /contains invalid JSON/)
+  assert.match(diagnostics[1].message, /field 'workflowId'/)
+  assert.equal(diagnostics[2].message, `Workflow run '${missingId}' is missing run.json.`)
   await assert.rejects(store.loadRun(invalidId), /contains invalid JSON/)
 })
 
