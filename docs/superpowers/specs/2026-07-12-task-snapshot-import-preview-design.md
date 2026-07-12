@@ -11,7 +11,7 @@ Task snapshot から artifact を生成する前に、抽出元、生成先、�
 3. extension host が副作用なしの preview を構築する。
 4. Markdown preview に run / workflow / step / snapshot / source / path / schema / bytes / checksum / existing-file diff を表示する。
 5. QuickPick で artifact を複数選択する。
-6. truncated snapshot は初期選択しない。既存ファイルを書き換える候補も初期選択しない。
+6. truncated、redacted、既存file変更、既存state keyのcandidateは初期選択しない。
 7. 既存ファイルを書き換える選択がある場合、diff を確認したことを明示する modal confirmation を必須にする。
 8. apply は preview と同じ planner を再実行し、preview digest と現在の既存ファイル hash が一致した場合だけ transaction を開始する。
 9. artifact files、manifest、run state、import provenance を同じ transaction 境界でcommitする。
@@ -32,10 +32,10 @@ Candidate は次を保持する。
 - snapshot createdAt / reason
 - extraction source: `lastAssistantText` または `taskExport`
 - target path / schema / UTF-8 byte length / SHA-256
-- snapshot truncated flag
+- snapshot truncated flag / omitted message count
 - text に `[REDACTED]` が含まれる可能性
 - existing file existence / byte length / SHA-256 / changed flag
-- stable unified-style diff text
+- size-bound unified-style diff text
 - defaultSelected
 - blocker / warning
 
@@ -60,7 +60,9 @@ Apply は次を拒否する。
 - preview 後に既存ファイルが変化した場合
 - selected candidate がblockerを持つ場合
 - existing changed file を `overwriteExisting` なしで選択した場合
-- truncated candidate を明示選択せず自動適用しようとする場合
+- explicit empty selection
+
+Selection未指定のcore callerは`defaultSelected === true`のcandidateだけを自動対象にする。Truncated、redacted、既存file変更、既存state keyは自動importしない。利用者がpreviewを確認して`selectedArtifactIds`を明示した場合は、truncated/redacted candidateも救済できる。
 
 選択なしの場合はファイル、manifest、run stateを一切変更しない。
 
@@ -68,13 +70,16 @@ Apply は次を拒否する。
 
 `WorkflowRunCommandService.importArtifactsFromTaskSnapshots()` は、最初にpreview reportを表示し、その後QuickPickを表示する。Apply時にpreview digestとselected IDsを渡す。
 
-Reportはartifact本文全体を無制限に埋め込まず、diff previewをサイズ上限付きで表示する。checksumとbyte数は常に表示する。
+Reportはartifact本文全体を無制限に埋め込まず、diff previewをサイズ上限付きで表示する。checksumとbyte数は常に表示する。Diff fenceは本文中の最長backtick runより長くしてMarkdown境界を維持する。
+
+利用者のpreview確認中はexecution leaseを保持しない。Selection後にrunを再loadし、review gate / execution lease内でplannerを再実行してdigestを検証する。
 
 ## Safety and compatibility
 
 - 既存command IDは維持する。
 - 引数なしの既存呼び出しはpreview-first UXへ移行する。
-- core APIを直接使う既存testは、selection未指定時に従来どおり安全な候補を全選択する互換動作を維持する。
+- core APIを直接使いselectionを省略するcallerは、default-safe candidateだけを自動importする。
+- unsafe candidateを救済するcallerは`selectedArtifactIds`を明示する。
 - `writeWorkspaceFilesAtomically()` によるtransactionとrun-state rollbackを維持する。
 - workspace-relative containmentは既存runtime boundaryを利用する。
 - snapshot本文、既存ファイル本文、diffをrelease evidenceへ保存しない。
@@ -83,9 +88,12 @@ Reportはartifact本文全体を無制限に埋め込まず、diff previewをサ
 
 - previewは副作用を起こさない。
 - `lastAssistantText`と`taskExport`のsourceを区別する。
-- truncated candidateはdefault unselected。
-- existing changed fileはdefault unselectedでdiffを持つ。
+- truncated / redacted / existing-changed / existing-state candidateはdefault unselected。
+- selection省略時はdefault-safe candidateだけをimportする。
+- explicit selectionならreview済みtruncated candidateをimportできる。
+- existing changed fileはdiffと明示confirmationを必要とする。
 - selective applyは選択したartifactだけを書き込む。
 - preview/apply digest mismatchを拒否する。
 - batch中の失敗はartifact、manifest、run stateをrollbackする。
-- commandはpreview → selection → overwrite confirmation → applyの順序を守る。
+- commandはpreview → selection → overwrite confirmation → gate / lease → applyの順序を守る。
+- Operation Hub / Runs Viewはsnapshot本文なしでimport件数と日時を表示する。
