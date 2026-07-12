@@ -1,6 +1,6 @@
 # Bob Code Consistency Review Triage Integrity Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Replace mutable all-in-one triage data with an immutable Bob-output source snapshot, keyed human decisions, conflict-safe saves, deterministic projections, and one-time migration from the legacy `triage-result.yaml` format.
 
@@ -92,7 +92,7 @@ export async function saveHumanTriageDecisions(input: {
 
 - Preserves the existing `generateHumanTriage()` API from `humanTriageHelper`.
 
-- [ ] **Step 1: Add a generation regression**
+- [x] **Step 1: Add a generation regression**
 
 Create a temporary workspace and Bob output containing one finding and one question. Call `generateHumanTriage()` and assert:
 
@@ -106,7 +106,7 @@ assert.match(read("questions-to-author.md"), /Q-001/)
 
 Parse `triage-source.yaml` and require source schema `triage-source/v1`, the full finding context, and the question context. Parse `triage-decisions.yaml` and require schema `triage-decisions/v1`, revision `0`, and the exact source hash.
 
-- [ ] **Step 2: Add a decision save regression**
+- [x] **Step 2: Add a decision save regression**
 
 Load the workspace state, save an accepted finding with owner, reason, final severity, review comment, and follow-up. Require:
 
@@ -119,7 +119,7 @@ assert.match(read("follow-up-actions.md"), /owner-a/)
 
 Seed an unknown top-level decision field and an unknown nested `follow_up` field before saving; require both to survive the merge.
 
-- [ ] **Step 3: Add identity and conflict regressions**
+- [x] **Step 3: Add identity and conflict regressions**
 
 Cover:
 
@@ -136,7 +136,7 @@ await assert.rejects(
 
 Reverse the posted item order and require decisions still attach to their original `source_id`.
 
-- [ ] **Step 4: Add validation regressions**
+- [x] **Step 4: Add validation regressions**
 
 Require stable validation errors for:
 
@@ -150,7 +150,7 @@ Require stable validation errors for:
 
 Also reject unknown decisions and unknown `source_id` values.
 
-- [ ] **Step 5: Add migration regressions**
+- [x] **Step 5: Add migration regressions**
 
 Seed only a legacy `triage-result.yaml`, then call generation. Require:
 
@@ -162,11 +162,11 @@ assert.equal(decisions.items["PRE-001"].decision, "accepted")
 
 Include an unmatched legacy source ID and require it in the migration warning without adding it to current decisions.
 
-- [ ] **Step 6: Update existing projection expectations**
+- [x] **Step 6: Update existing projection expectations**
 
 In `reviewOutputTriage.test.js`, replace generation-time assertions that `accepted-findings.md` already contains findings. Require the file to exist and contain no `PRE-*` item until a human decision is saved.
 
-- [ ] **Step 7: Update GUI surface expectations**
+- [x] **Step 7: Update GUI surface expectations**
 
 Require generated HTML to contain:
 
@@ -178,7 +178,7 @@ assert.match(html, /sourceSha256/)
 assert.match(html, /decisionRevision/)
 ```
 
-- [ ] **Step 8: Run focused tests and verify RED**
+- [x] **Step 8: Run focused tests and verify RED**
 
 Run:
 
@@ -190,7 +190,7 @@ node --test test/humanTriageIntegrity.test.js test/reviewOutputTriage.test.js te
 
 Expected: FAIL because `humanTriageWorkspace` and the new triage files do not exist, and current projections still put every finding into `accepted-findings.md`.
 
-- [ ] **Step 9: Commit RED tests**
+- [x] **Step 9: Commit RED tests**
 
 ```bash
 git add extensions/bob-code-consistency-review/test/humanTriageIntegrity.test.js \
@@ -239,19 +239,19 @@ export function hashTriageSourceText(text: string): string
 export function parseTriageSource(text: string): TriageSourceV1
 ```
 
-- [ ] **Step 1: Add focused source builder tests**
+- [x] **Step 1: Add focused source builder tests**
 
 Require findings and questions to retain every input property except `id`, which becomes `source_id`. Require duplicate IDs, missing IDs, invalid top-level arrays, and an empty review ID to fail.
 
-- [ ] **Step 2: Run the source tests and verify RED**
+- [x] **Step 2: Run the source tests and verify RED**
 
 Expected: module-not-found or missing-export failure for `triageSource`.
 
-- [ ] **Step 3: Define the triage domain types**
+- [x] **Step 3: Define the triage domain types**
 
 Add exact source, decision, workspace, UI item, and projection interfaces to `triageTypes.ts`. Use `Record<string, unknown>` extension points only where unknown-field preservation is required.
 
-- [ ] **Step 4: Implement source building and parsing**
+- [x] **Step 4: Implement source building and parsing**
 
 Use `YAML.parse` and `YAML.stringify`. Copy source payloads rather than mutating Bob output. Validate IDs and duplicate identities. Compute SHA-256 with:
 
@@ -259,7 +259,7 @@ Use `YAML.parse` and `YAML.stringify`. Copy source payloads rather than mutating
 createHash("sha256").update(text, "utf8").digest("hex")
 ```
 
-- [ ] **Step 5: Run focused tests and verify GREEN**
+- [x] **Step 5: Run focused tests and verify GREEN**
 
 Run:
 
@@ -270,7 +270,7 @@ node --test test/humanTriageIntegrity.test.js --test-name-pattern="source"
 
 Expected: source tests PASS.
 
-- [ ] **Step 6: Commit source contracts**
+- [x] **Step 6: Commit source contracts**
 
 ```bash
 git add extensions/bob-code-consistency-review/src/triage/triageTypes.ts \
@@ -327,11 +327,11 @@ export function mergeTriageDecisionPatches(input: {
 }): TriageDecisionsV1
 ```
 
-- [ ] **Step 1: Add parser and merge RED tests**
+- [x] **Step 1: Add parser and merge RED tests**
 
 Require exact schemas, non-negative integer revisions, a map-shaped `items`, and matching review IDs. Require posted object order to have no effect on identity.
 
-- [ ] **Step 2: Add unknown-field preservation RED tests**
+- [x] **Step 2: Add unknown-field preservation RED tests**
 
 Seed:
 
@@ -347,7 +347,7 @@ items:
 
 Patch owner and reason only. Require `custom_audit_flag` and `custom_ticket` to remain unchanged.
 
-- [ ] **Step 3: Implement trusted patch normalization**
+- [x] **Step 3: Implement trusted patch normalization**
 
 Accept only these posted fields:
 
@@ -366,11 +366,11 @@ Accept only these posted fields:
 
 Ignore posted unknown fields. Preserve unknown fields already stored on disk. Empty known string fields delete the stored known value rather than leaving whitespace.
 
-- [ ] **Step 4: Implement validation**
+- [x] **Step 4: Implement validation**
 
 Apply the exact requirements from the design. Use stable messages prefixed with `TRIAGE_DECISION_INVALID <source_id>:`. Validate final severity against `critical`, `high`, `medium`, `low`, and `info`.
 
-- [ ] **Step 5: Implement optimistic locking**
+- [x] **Step 5: Implement optimistic locking**
 
 Throw:
 
@@ -381,7 +381,7 @@ new Error("TRIAGE_REVISION_CONFLICT: ...")
 
 before returning a modified object. Increment `decision_revision` exactly once per successful save.
 
-- [ ] **Step 6: Run decision tests and verify GREEN**
+- [x] **Step 6: Run decision tests and verify GREEN**
 
 ```bash
 npm run compile
@@ -390,7 +390,7 @@ node --test test/humanTriageIntegrity.test.js --test-name-pattern="decision|conf
 
 Expected: decision tests PASS.
 
-- [ ] **Step 7: Commit decision storage**
+- [x] **Step 7: Commit decision storage**
 
 ```bash
 git add extensions/bob-code-consistency-review/src/triage/triageDecisions.ts \
@@ -450,7 +450,7 @@ export async function saveHumanTriageDecisions(input: {
 
 - `generateHumanTriage()` delegates to `regenerateHumanTriageWorkspace()`.
 
-- [ ] **Step 1: Implement projection construction**
+- [x] **Step 1: Implement projection construction**
 
 Join source items with decisions by `source_id`. Produce:
 
@@ -472,7 +472,7 @@ Rules:
 - follow-up Markdown contains only decisions with `follow_up.required: true`.
 - every Markdown is regenerated; none is treated as user-editable state.
 
-- [ ] **Step 2: Implement staged multi-file replacement**
+- [x] **Step 2: Implement staged multi-file replacement**
 
 `replaceTriageFilesAtomically(outDir, files)` must:
 
@@ -484,7 +484,7 @@ Rules:
 6. On any failure, remove new targets and restore every original backup.
 7. Remove the staging directory in `finally`.
 
-- [ ] **Step 3: Implement legacy migration**
+- [x] **Step 3: Implement legacy migration**
 
 When `triage-decisions.yaml` is absent and `triage-result.yaml` exists:
 
@@ -495,17 +495,17 @@ When `triage-decisions.yaml` is absent and `triage-result.yaml` exists:
 - Set `decision_revision` to `1` when at least one item migrates, otherwise `0`.
 - Include the old `triage-result.yaml` in the backup set before writing the new projection.
 
-- [ ] **Step 4: Implement generation**
+- [x] **Step 4: Implement generation**
 
 Read Bob output through `readBobOutputText()`, hash exact Bob-output bytes, build and serialize the source, migrate or retain matching decisions, then write source, decisions, projections, and migration report in one transaction.
 
 When a previous decisions file exists, retain only decision records whose `source_id` still exists. Record dropped IDs as warnings in `migration-report.md`; never silently apply them to a different item.
 
-- [ ] **Step 5: Implement load and save**
+- [x] **Step 5: Implement load and save**
 
 Load must verify source hash, decisions source hash, review ID, and projection identity. Save must merge patches, build all projections in memory, and replace decisions plus projections transactionally without rewriting `triage-source.yaml`.
 
-- [ ] **Step 6: Preserve the public helper API**
+- [x] **Step 6: Preserve the public helper API**
 
 Keep:
 
@@ -515,7 +515,7 @@ export async function generateHumanTriage(...): Promise<HumanTriageResult>
 
 and delegate to `regenerateHumanTriageWorkspace()` so workflow commands and existing imports remain valid.
 
-- [ ] **Step 7: Run focused tests and verify GREEN**
+- [x] **Step 7: Run focused tests and verify GREEN**
 
 ```bash
 npm run compile
@@ -524,7 +524,7 @@ node --test test/humanTriageIntegrity.test.js test/reviewOutputTriage.test.js
 
 Expected: all triage domain and existing pipeline tests PASS.
 
-- [ ] **Step 8: Commit workspace persistence**
+- [x] **Step 8: Commit workspace persistence**
 
 ```bash
 git add extensions/bob-code-consistency-review/src/triage \
@@ -557,15 +557,15 @@ interface HumanTriageMessage {
 }
 ```
 
-- [ ] **Step 1: Add controller-message RED tests through exported pure parsing helpers**
+- [x] **Step 1: Add controller-message RED tests through exported pure parsing helpers**
 
 Export and test a pure `parseHumanTriageMessage()` helper. Require save messages to reject missing source hash, missing integer revision, duplicate source IDs, and non-array items.
 
-- [ ] **Step 2: Replace direct YAML mutation**
+- [x] **Step 2: Replace direct YAML mutation**
 
 Remove direct reads and writes of `triage-result.yaml` from the controller. `loadModel()` calls `loadHumanTriageWorkspace()`. `saveDecisions()` calls the domain service with lock metadata and posted patches.
 
-- [ ] **Step 3: Add explicit untriaged UI state**
+- [x] **Step 3: Add explicit untriaged UI state**
 
 Render a blank decision option before the five decisions:
 
@@ -575,19 +575,19 @@ Render a blank decision option before the five decisions:
 
 This prevents an untouched row from becoming `accepted` merely because it is the first select option.
 
-- [ ] **Step 4: Render source context and decision fields**
+- [x] **Step 4: Render source context and decision fields**
 
 Display summary, category, original severity, confidence, reason, impact, recommended action, human check, and evidence IDs. Add editable final severity, owner, human reason, review comment, suggested recipient, follow-up required, follow-up action, and due date.
 
-- [ ] **Step 5: Post lock metadata and decision patches only**
+- [x] **Step 5: Post lock metadata and decision patches only**
 
 Embed escaped model metadata in `data-` attributes or JavaScript literals. `collectItems()` posts only `source_id` and editable decision fields; it does not post source payload fields.
 
-- [ ] **Step 6: Preserve security contracts**
+- [x] **Step 6: Preserve security contracts**
 
 Maintain CSP nonce, action whitelist, HTML escaping, and no inline `onclick`. Never trust `source_type`, summary, evidence, or other source fields from the browser.
 
-- [ ] **Step 7: Run GUI and domain tests**
+- [x] **Step 7: Run GUI and domain tests**
 
 ```bash
 npm run compile
@@ -596,7 +596,7 @@ node --test test/guiFirstSurfaces.test.js test/humanTriageIntegrity.test.js
 
 Expected: PASS.
 
-- [ ] **Step 8: Commit GUI wiring**
+- [x] **Step 8: Commit GUI wiring**
 
 ```bash
 git add extensions/bob-code-consistency-review/src/webview/consistencyHumanTriage.ts \
@@ -620,7 +620,7 @@ git commit -m "feat: preserve triage decisions in the GUI"
 **Interfaces:**
 - Documents the exact schemas, file roles, migration, validation, and operator flow implemented by Tasks 1–5.
 
-- [ ] **Step 1: Update README**
+- [x] **Step 1: Update README**
 
 Document the new triage directory:
 
@@ -638,23 +638,23 @@ migration-report.md
 
 State clearly that Markdown files are generated projections and must not be used as the decision source of truth.
 
-- [ ] **Step 2: Update detailed design**
+- [x] **Step 2: Update detailed design**
 
 Add source/decision separation, exact schema identifiers, optimistic locking, transactional replacement, migration behavior, and GUI trust boundary.
 
-- [ ] **Step 3: Update unit-test specification**
+- [x] **Step 3: Update unit-test specification**
 
 Map the new tests to requirements covering field preservation, keyed identity, validation, source/revision conflict, migration, rollback, and projection classification.
 
-- [ ] **Step 4: Update real-machine test specification**
+- [x] **Step 4: Update real-machine test specification**
 
 Add operator steps for generate, edit, save, reload, source-change conflict, two-window revision conflict, migration, and backup inspection.
 
-- [ ] **Step 5: Mark completed plan checkboxes**
+- [x] **Step 5: Mark completed plan checkboxes**
 
-Change each completed `- [ ]` to `- [x]`. Do not mark a step complete unless its command was run or its GitHub Actions equivalent passed.
+Change each completed `- [x]` to `- [x]`. Do not mark a step complete unless its command was run or its GitHub Actions equivalent passed.
 
-- [ ] **Step 6: Run the full extension suite**
+- [x] **Step 6: Run the full extension suite**
 
 ```bash
 cd extensions/bob-code-consistency-review
@@ -669,7 +669,7 @@ npm run package:policy
 
 Expected: all commands exit `0`.
 
-- [ ] **Step 7: Inspect the final diff**
+- [x] **Step 7: Inspect the final diff**
 
 ```bash
 git status --short
@@ -679,7 +679,7 @@ git diff --stat main...HEAD
 
 Expected: only Phase 1 code, tests, plan, design, and synchronized documentation are present.
 
-- [ ] **Step 8: Commit documentation and plan completion**
+- [x] **Step 8: Commit documentation and plan completion**
 
 ```bash
 git add docs/superpowers/specs/2026-07-11-bob-code-consistency-review-workspace-v2-design.md \
@@ -691,6 +691,15 @@ git add docs/superpowers/specs/2026-07-11-bob-code-consistency-review-workspace-
 git commit -m "docs: specify triage integrity operation"
 ```
 
-- [ ] **Step 9: Open a draft pull request**
+- [x] **Step 9: Open a draft pull request**
 
 Create a draft PR from `agent/bob-code-consistency-review-triage-integrity` to `main`. Include implementation summary, migration behavior, validation commands, known environment limits, and manual UAT still required.
+
+<!-- TRIAGE-INTEGRITY-EXECUTION-2026-07-12 -->
+## Execution Evidence
+
+- TDD RED contracts were committed before production implementation.
+- Focused source, decision, projection, migration, transaction, GUI-boundary, and compatibility tests pass.
+- Windows full extension verification ran dependency, architecture, source, unit, package, and VSIX policy gates.
+- Ubuntu and Windows repository workflows remain the final share gate on the post-finalization commit.
+- Manual IBM Bob operator UAT remains a release-candidate gate and is not represented as automated completion.

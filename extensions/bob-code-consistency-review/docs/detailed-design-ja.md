@@ -516,3 +516,49 @@ templates/.bob/workflows/code-consistency-review/WORKFLOW.md
 - review processing limit は manifest と runtime で同じ最小・既定・最大値を持つ。UTF-8 切り詰め後の suffix を含めても byte 上限を超えないこと。
 - repository 内の全 WORKFLOW.md を strict validation し、provider、preflight、nested command ID、template mirror の契約ずれを CI で拒否する。
 - Ubuntu と Windows の両方で compile、unit test、VSIX package、package policy を確認する。IBM Bob 実環境の UI / task / MCP は release candidate 実機ゲートで確認する。
+
+<!-- TRIAGE-INTEGRITY-2026-07-12 -->
+## 2026-07-12 Human Triage Integrity 詳細設計
+
+### データ境界
+
+```text
+Bob output
+  -> TriageSourceBuilder
+  -> triage-source.yaml        immutable / triage-source/v1
+  -> TriageDecisionStore
+  -> triage-decisions.yaml     human-editable / triage-decisions/v1
+  -> TriageProjectionBuilder
+  -> triage-result.yaml + Markdown projections
+```
+
+`triage-source.yaml` は Bob output の exact text hash、review ID、package ID、finding / question の全source contextを保持する。Webview messageからsource payloadを受け取らない。`triage-decisions.yaml` は `source_id` keyのmapで、人間が編集できるfieldと同schema内の未知fieldだけを保持する。
+
+### 競合制御
+
+- GUI load時にsource fileのSHA-256と`decision_revision`を取得する。
+- save時にdisk上の値と一致しなければ、source変更は`TRIAGE_SOURCE_CHANGED`、decision競合は`TRIAGE_REVISION_CONFLICT`で拒否する。
+- array positionをidentityとして使用しない。posted `source_id` の重複と未知IDを拒否する。
+- successful saveごとに`decision_revision`を1だけ増加する。
+
+### Decision validation
+
+| decision | 必須field |
+| --- | --- |
+| `accepted` | reason、owner、final severity |
+| `rejected` | reason |
+| `needs_investigation` | reason、およびownerまたはfollow-up action |
+| `deferred` | reason、follow-up due |
+| `question` | reason、およびownerまたはsuggested recipient |
+
+### File transaction
+
+全成果物を同一directory内のstaging directoryへ書き、YAML parseを完了してから既存fileをunique backupへrenameする。すべてのstaged fileをinstallできた場合だけ成功とする。途中失敗時は新規targetを削除し、backup setを元のfile名へ戻す。Markdownは常にsourceとdecisionsから再生成し、手編集内容を再入力として扱わない。
+
+### Legacy migration
+
+`triage-decisions.yaml`がなくlegacy `triage-result.yaml`がある場合だけ一回migrationする。現在のsourceに存在するIDのdecision fieldだけを移し、`triaged_by`と`triaged_at`を保持する。不一致IDは`migration-report.md`へ記録し、source本文や判断を補完しない。
+
+### GUI trust boundary
+
+Webviewから受理するのはaction whitelist、lock token、`source_id`、decision fieldだけである。summary、category、original severity、confidence、evidence、Bob reason等はdisk上の`triage-source.yaml`を正とする。CSP nonce、HTML escape、inline `onclick`禁止を維持する。
