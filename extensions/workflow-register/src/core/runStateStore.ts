@@ -13,7 +13,11 @@ export {
   isWorkflowRunStateWritable,
   prepareWorkflowRunStateForWrite
 } from "./runtime/runStateCodec"
-export type { DecodedWorkflowRunState, RunStateLoadDiagnostic } from "./runtime/runStateCodec"
+export type {
+  DecodedWorkflowRunState,
+  RunStateLoadDiagnostic,
+  RunStateLoadDiagnosticCode
+} from "./runtime/runStateCodec"
 export {
   CURRENT_WORKFLOW_RUN_EVENT_SCHEMA_VERSION,
   appendWorkflowRunEvent,
