@@ -41,6 +41,7 @@ const guiManagedFrontMatterFields = new Set([
   "guardrails",
   "branching",
   "artifacts",
+  "x-skipResume",
   "completion",
   "steps"
 ])
@@ -85,6 +86,7 @@ export function workflowToAuthoringModel(workflow: CoreWorkflowDefinition, front
     branching: workflow.branching,
     steps: workflow.engineSteps.map(engineStepToAuthoringStep),
     artifacts: workflow.artifacts,
+    skipResume: authoringSkipResume(workflow),
     completion: workflow.completion,
     body: body.trim(),
     unknownFrontMatter: preservedFrontMatter(frontMatter)
@@ -119,6 +121,11 @@ function engineStepToAuthoringStep(step: EngineStep): WorkflowAuthoringStep {
 
 function normalizeAction(action: WorkflowActionDefinition): { provider: string; args?: unknown[] } {
   return { provider: action.provider, args: Array.isArray(action.args) ? action.args : action.args === undefined ? undefined : [action.args] }
+}
+
+function authoringSkipResume(workflow: CoreWorkflowDefinition): WorkflowAuthoringModel["skipResume"] {
+  const skipResume = (workflow as CoreWorkflowDefinition & { skipResume?: { fileBound?: boolean } }).skipResume
+  return skipResume?.fileBound === true ? { fileBound: true } : undefined
 }
 
 /** user または将来の workflow-register version が所有する front matter を保持する。 */
