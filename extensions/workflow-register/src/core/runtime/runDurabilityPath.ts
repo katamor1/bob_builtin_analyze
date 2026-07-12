@@ -66,10 +66,17 @@ export async function replaceRunDurabilityFile(
   workspaceRoot: string,
   runId: string,
   fileName: RunDurabilityFileName,
-  content: string
+  content: string,
+  expectedBytes?: Buffer
 ): Promise<void> {
   assertRunDurabilityFileName(fileName)
   assertSafeWorkflowRunId(runId)
+  if (expectedBytes) {
+    const expectedSnapshot = await readRunDurabilityFile(workspaceRoot, runId, fileName)
+    if (!expectedSnapshot || !expectedSnapshot.bytes.equals(expectedBytes)) {
+      throw new Error(`${durabilityLabel(runId, fileName)} changed before replacement.`)
+    }
+  }
   const root = await canonicalWorkspaceRoot(workspaceRoot)
   const runDirectory = await directDirectoryChain(root, [...RUNS_ROOT_SEGMENTS, runId], true)
   const filePath = path.join(runDirectory.path, fileName)
@@ -300,7 +307,7 @@ async function assertTargetUnchanged(
 async function syncDirectFile(filePath: string, root: string, label: string): Promise<void> {
   await directRegularFile(filePath, root, label)
   const noFollow = typeof constants.O_NOFOLLOW === "number" ? constants.O_NOFOLLOW : 0
-  const handle = await fs.open(filePath, constants.O_RDONLY | noFollow)
+  const handle = await fs.open(filePath, constants.O_RDWR | noFollow)
   try {
     await handle.sync()
   } finally {
