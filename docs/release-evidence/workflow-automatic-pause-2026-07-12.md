@@ -4,7 +4,8 @@
 - Repository: `katamor1/bob_builtin_analyze`
 - Issue: #73
 - Draft implementation PR: #75
-- Deliverable source head: `5adabec8e03ea4af948d6d2518dd5628f35e367c`
+- Reconciled implementation commit: `5e9bad7621e279314f58fbacdced591654fee576`
+- Required-check evidence head: `516560f27237dbd422f597d73bc1680407d72ba8`
 - Temporary verification PR: #80
 - Verification commit: `1878b5ee5f05b60d99694db4eb4fcc81d4a63622`
 
@@ -56,10 +57,20 @@ All temporary diagnostic, mutation, recording, and verification workflows were r
 
 - Repository implementation: PASS
 - Hosted repository quality gates: PASS
-- Ready to leave draft: NO, pending current-main reconciliation and the external gates below
+- Ready to leave draft: NO, pending only the external real-environment gates below
 
 ## Remaining external and integration gates
 
 - real IBM Bob pause / resume / override confirmation
 - real Bazaar timeout / cancel child-process cleanup evidence
 - real multi-root Bob root / VCS root separation evidence
+
+## Reconciled-head required checks
+
+After merging current `main`, the user-authored evidence head `516560f27237dbd422f597d73bc1680407d72ba8` passed:
+
+- `workflow-contracts` run `29199698139`: success
+- `extensions-quality` run `29199698142`: success
+- `code-consistency-review-scaffold` run `29199698155`: success
+- Ubuntu and Windows workflow-register policy, unit, package, VSIX policy, and Extension Host smoke jobs: success
+- Ubuntu and Windows related-extension jobs: success

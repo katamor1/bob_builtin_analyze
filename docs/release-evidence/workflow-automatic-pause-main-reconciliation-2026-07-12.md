@@ -62,4 +62,11 @@ The merge workflow removed its temporary reconciliation and diagnostic workflow 
 
 ## Branch relationship after reconciliation
 
-The feature branch is ahead of `main` and behind by zero commits. GitHub reports PR #75 as mergeable. The pull request remains draft only for the required hosted-check rerun on the reconciled head and the separately tracked real IBM Bob, Bazaar process-cleanup, and multi-root evidence.
+The feature branch is ahead of `main` and behind by zero commits. GitHub reports PR #75 as mergeable. Required hosted checks passed on user-authored evidence head `516560f27237dbd422f597d73bc1680407d72ba8`; the pull request remains draft only for separately tracked real IBM Bob, Bazaar process-cleanup, and multi-root evidence.
+
+## Reconciled-head hosted checks
+
+- `workflow-contracts` run `29199698139`: success
+- `extensions-quality` run `29199698142`: success
+- `code-consistency-review-scaffold` run `29199698155`: success
+- Ubuntu / Windows unit tests, package, VSIX policy, and Extension Host smoke: success

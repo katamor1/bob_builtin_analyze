@@ -20,7 +20,7 @@
 - Strict workflow contract validation: GREEN.
 - Independent review: Critical 0 / Important 0 / Minor 0 open.
 - Temporary diagnostic and mutation workflows: removed from the deliverable branch.
-- Pull request state: remains draft while current-main reconciliation and external real-environment evidence are open.
+- Pull request state: current-main reconciliation and required hosted checks are complete; the PR remains draft only for external real-environment evidence.
 
 ## Global Constraints
 
@@ -205,7 +205,7 @@ clearAutomaticPauseOverride(runId): Promise<RunControlState>
 
 ## Remaining Verification Outside This Implementation Slice
 
-- [ ] Reconcile draft PR #75 with the current `main` branch and re-run required checks on the reconciled head.
+- [x] Reconciled draft PR #75 with `main` at `57ff053bc3f476e3e9d268a743f25edeb0d68356`; reconciliation commit `5e9bad7621e279314f58fbacdced591654fee576`; required checks passed on evidence head `516560f27237dbd422f597d73bc1680407d72ba8`.
 - [ ] Confirm pause, resume, and bounded override in a real IBM Bob environment.
 - [ ] Confirm inherited real Bazaar timeout / cancel process cleanup evidence.
 - [ ] Confirm Bob root / VCS root separation in a real multi-root workspace.
