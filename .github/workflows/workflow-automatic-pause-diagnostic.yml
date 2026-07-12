@@ -7,7 +7,12 @@ on:
       - "extensions/workflow-register/src/core/schema/workflowSchema.ts"
       - "extensions/workflow-register/schema/workflow-register.v1.schema.json"
       - "extensions/workflow-register/src/core/parser/**"
-      - "extensions/workflow-register/test/workflowAutomaticPauseDefinition.test.js"
+      - "extensions/workflow-register/src/core/engine/automaticPause.ts"
+      - "extensions/workflow-register/src/core/engine/runPause.ts"
+      - "extensions/workflow-register/src/core/runtime/runControlStore.ts"
+      - "extensions/workflow-register/src/core/runDiagnostics.ts"
+      - "extensions/workflow-register/src/commands/inspectRunDiagnostics.ts"
+      - "extensions/workflow-register/test/workflowAutomaticPause*.test.js"
       - ".github/workflows/workflow-automatic-pause-diagnostic.yml"
 
 concurrency:
@@ -15,7 +20,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  focused-definition-test:
+  focused-automatic-pause:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -33,14 +38,15 @@ jobs:
         run: npm ci --silent
       - name: Compile
         run: npm run compile --silent
-      - name: Run focused definition test
+      - name: Run focused automatic-pause tests
+        id: focused
         shell: bash
         run: |
           set +e
-          node --test test/workflowAutomaticPauseDefinition.test.js > "$RUNNER_TEMP/automatic-pause-definition.log" 2>&1
+          node --test test/workflowAutomaticPause*.test.js > "$RUNNER_TEMP/automatic-pause-focused.log" 2>&1
           status=$?
-          cat "$RUNNER_TEMP/automatic-pause-definition.log"
-          exit "$status"
+          cat "$RUNNER_TEMP/automatic-pause-focused.log"
+          echo "status=$status" >> "$GITHUB_OUTPUT"
       - name: Run full workflow-register test suite
         id: full
         shell: bash
@@ -60,11 +66,11 @@ jobs:
         with:
           name: automatic-pause-test-logs
           path: |
-            ${{ runner.temp }}/automatic-pause-definition.log
+            ${{ runner.temp }}/automatic-pause-focused.log
             ${{ runner.temp }}/workflow-register-full.log
           if-no-files-found: error
           retention-days: 1
-      - name: Fail when full suite failed
-        if: steps.full.outputs.status != '0'
+      - name: Fail when focused or full suite failed
+        if: steps.focused.outputs.status != '0' || steps.full.outputs.status != '0'
         shell: bash
         run: exit 1
