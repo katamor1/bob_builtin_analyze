@@ -286,6 +286,8 @@ function nonNegative(value: number | undefined, fallback: number, label: string)
 }
 
 function isTransientLockReadError(error: unknown): boolean {
+  const code = (error as NodeJS.ErrnoException).code
+  if (code === "ENOENT" || code === "ENOTDIR") return true
   const message = formatError(error)
   return /durability file 'run\.lock\.json' changed while (it was being read|its path was being verified)/i.test(message)
 }
