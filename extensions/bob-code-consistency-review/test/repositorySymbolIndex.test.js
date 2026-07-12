@@ -219,10 +219,14 @@ test("preprocessReview records repository index provenance and changes stale inp
 
   const inputPath = path.join(workspace, "review-input.yaml")
   const originalInput = fs.readFileSync(inputPath, "utf8")
-  assert.match(originalInput, /analysis_options:\s*\n/)
+  const eol = originalInput.includes("\r\n") ? "\r\n" : "\n"
+  assert.match(originalInput, /analysis_options:\r?\n/)
   fs.writeFileSync(
     inputPath,
-    originalInput.replace("analysis_options:\n", `analysis_options:\n  repository_symbol_index_path: ${relativePath}\n`),
+    originalInput.replace(
+      /analysis_options:\r?\n/,
+      `analysis_options:${eol}  repository_symbol_index_path: ${relativePath}${eol}`
+    ),
     "utf8"
   )
 
