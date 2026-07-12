@@ -71,7 +71,8 @@ class BazaarResultCaptureGuiController {
   private async capture(inputText?: string): Promise<void> {
     const reviewRun = await this.resolveReviewRun()
     const result = await captureReviewResult(inputText, {
-      workspaceRoot: reviewRun?.workspaceRoot
+      workspaceRoot: reviewRun?.workspaceRoot,
+      expectedReviewId: reviewRun?.reviewId
     })
     await this.postResult(result, reviewRun)
   }
