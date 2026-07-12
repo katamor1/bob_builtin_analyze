@@ -21,3 +21,5 @@
 /extensions/workflow-register/out
 /extensions/bob-code-consistency-review/node_modules
 /extensions/bob-code-consistency-review/out
+/.worktrees/
+/.superpowers/

@@ -1,3 +1,0 @@
-extensions/bob-bazaar-review/README.md
-extensions/bob-bazaar-review/docs/real-machine-test-spec-ja.md
-extensions/bob-bazaar-review/docs/unit-test-spec-ja.md
