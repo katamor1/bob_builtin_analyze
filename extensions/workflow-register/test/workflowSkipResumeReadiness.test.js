@@ -3,7 +3,7 @@ const assert = require("node:assert/strict")
 
 const { serializeAuthoringModelToMarkdown } = require("../out/core/workflowAuthoringSerializer")
 const { validateWorkflowText } = require("../out/core/workflowValidator")
-const { planSkipResumeReadiness } = require("../out/core/workflowSkipResumeReadiness")
+const { planSkipResumeReadiness } = require("../out/core/authoring/workflowSkipResumeReadiness")
 
 function baseModel() {
   return {
