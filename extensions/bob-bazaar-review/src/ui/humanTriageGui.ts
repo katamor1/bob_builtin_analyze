@@ -12,7 +12,11 @@ import type { ReviewRecordCommandInput } from "../records/reviewRecordCommands"
 import { readTriage, writeTriage } from "../records/reviewRecordStore"
 import { summarizeTriageItems, validateTriage } from "../records/reviewTriage"
 import type { ReviewTriage, TriageDecision, TriageItem } from "../records/reviewRecordTypes"
-import { loadReviewRun, recordTriageDraft } from "../reviewRuns/reviewRunCoordinator"
+import {
+  loadReviewRun,
+  recordTriageDraft,
+  validateReviewRunCommandInput
+} from "../reviewRuns/reviewRunCoordinator"
 import type { ReviewRunCommandInput, ReviewRunContext } from "../reviewRuns/reviewRunTypes"
 import { renderHumanTriageHtml, type HumanTriageGuiModel } from "./humanTriageGuiHtml"
 
@@ -114,7 +118,11 @@ class BazaarHumanTriageGuiController {
   private async resolveReviewRun(): Promise<ReviewRunContext | undefined> {
     if (this.activeReviewRun) return this.activeReviewRun
     if (!this.reviewRunInput) return undefined
-    this.activeReviewRun = await loadReviewRun(this.reviewRunInput)
+    const validatedInput = validateReviewRunCommandInput(
+      this.reviewRunInput,
+      (vscode.workspace.workspaceFolders ?? []).map((folder) => folder.uri.fsPath)
+    )
+    this.activeReviewRun = await loadReviewRun(validatedInput)
     return this.activeReviewRun
   }
 
