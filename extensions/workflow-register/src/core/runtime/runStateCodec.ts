@@ -79,19 +79,24 @@ export function decodeWorkflowRunState(value: unknown, expectedRunId?: string): 
   }
 }
 
-export function prepareWorkflowRunStateForWrite(run: WorkflowRunState): WorkflowRunState {
-  if (run.schemaVersion === undefined) {
-    return { ...run, schemaVersion: CURRENT_WORKFLOW_RUN_STATE_SCHEMA_VERSION }
-  }
-  if (run.schemaVersion === CURRENT_WORKFLOW_RUN_STATE_SCHEMA_VERSION) {
-    return { ...run }
-  }
-  if (typeof run.schemaVersion !== "string") {
+export function isWorkflowRunStateWritable(run: WorkflowRunState): boolean {
+  return run.schemaVersion === undefined || run.schemaVersion === CURRENT_WORKFLOW_RUN_STATE_SCHEMA_VERSION
+}
+
+export function assertWorkflowRunStateWritable(run: WorkflowRunState): void {
+  if (isWorkflowRunStateWritable(run)) return
+  const schemaVersion: unknown = run.schemaVersion
+  if (typeof schemaVersion !== "string") {
     throw new Error(`Workflow run '${run.runId}' has a non-string schemaVersion and cannot be written.`)
   }
   throw new Error(
-    `Workflow run '${run.runId}' uses read-only schemaVersion ${quoted(run.schemaVersion)}; current writable version is '${CURRENT_WORKFLOW_RUN_STATE_SCHEMA_VERSION}'.`
+    `Workflow run '${run.runId}' uses read-only schemaVersion ${quoted(schemaVersion)}; current writable version is '${CURRENT_WORKFLOW_RUN_STATE_SCHEMA_VERSION}'.`
   )
+}
+
+export function prepareWorkflowRunStateForWrite(run: WorkflowRunState): WorkflowRunState {
+  assertWorkflowRunStateWritable(run)
+  return { ...run, schemaVersion: CURRENT_WORKFLOW_RUN_STATE_SCHEMA_VERSION }
 }
 
 export function isCurrentWorkflowRunState(run: WorkflowRunState): boolean {
