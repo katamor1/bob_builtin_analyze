@@ -9,8 +9,8 @@ permissions:
   contents: read
 
 jobs:
-  focused-lock-diagnostic:
-    name: Focused workflow lock diagnostic
+  focused-lock-green:
+    name: Focused workflow lock GREEN
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -19,9 +19,9 @@ jobs:
         with:
           ref: agent/workflow-reproducible-runtime-phase4-hardening-20260712
 
-      - name: Verify implementation head
+      - name: Verify coordinated test head
         shell: bash
-        run: test "$(git rev-parse HEAD)" = "9deb80c9f500bc4906177a6903264042115c622a"
+        run: test "$(git rev-parse HEAD)" = "d9c1f23615c1b1f05dc793efc1b83e43eabd1ff0"
 
       - name: Setup Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -38,22 +38,6 @@ jobs:
         working-directory: extensions/workflow-register
         run: npm run compile
 
-      - name: Run focused lock test and capture output
-        shell: bash
+      - name: Run focused lock test
         working-directory: extensions/workflow-register
-        run: |
-          set +e
-          node --test test/workflowRunLock.test.js > focused-lock-output.txt 2>&1
-          status=$?
-          set -e
-          printf 'exit_code=%s\n' "$status" > focused-lock-diagnostic.txt
-          cat focused-lock-output.txt >> focused-lock-diagnostic.txt
-          cat focused-lock-diagnostic.txt
-          exit 0
-
-      - name: Upload focused diagnostic
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: focused-workflow-lock-diagnostic
-          path: extensions/workflow-register/focused-lock-diagnostic.txt
-          retention-days: 1
+        run: node --test test/workflowRunLock.test.js
