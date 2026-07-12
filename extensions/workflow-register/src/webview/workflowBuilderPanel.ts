@@ -5,6 +5,11 @@ import { createAuthoringModelFromTemplate } from "../core/workflowAuthoringDefau
 import { WorkflowAuthoringModel, WorkflowAuthoringStep } from "../core/workflowAuthoringModel"
 import { serializeAuthoringModelToMarkdown } from "../core/workflowAuthoringSerializer"
 import { validateStepDraft } from "../core/workflowAuthoringStepDraftValidation"
+import {
+  applyWorkflowSkipResumeReadiness,
+  planWorkflowSkipResumeReadiness,
+  WorkflowSkipResumeReadinessPlan
+} from "../core/workflowSkipResumeReadiness"
 import { validateWorkflowDocumentPath } from "../core/workflowDocumentPath"
 import { WorkflowTemplateKind, workflowTemplates } from "../core/workflowScaffold"
 import { formatWorkflowDiagnostics, validateWorkflowText } from "../core/workflowValidator"
@@ -27,6 +32,8 @@ type WorkflowBuilderMessage =
   | { type: "diff"; model: WorkflowAuthoringModel }
   | { type: "validateStepDraft"; model: WorkflowAuthoringModel; draftStep: WorkflowAuthoringStep; stepIndex: number }
   | { type: "resetTemplate"; name: string; title?: string; description: string; template: WorkflowTemplateKind }
+  | { type: "previewSkipResumeReadiness"; model: WorkflowAuthoringModel; selectedCandidateIds?: string[] }
+  | { type: "applySkipResumeReadiness"; model: WorkflowAuthoringModel; selectedCandidateIds: string[]; previewToken: string }
 
 type WorkflowBuilderSession = {
   readonly token: symbol
@@ -41,6 +48,12 @@ type WorkflowBuilderSaveContext = {
   readonly targetPath: string
 }
 
+type WorkflowBuilderReadinessPreview = {
+  readonly token: string
+  readonly sessionToken: symbol
+  readonly fingerprint: string
+}
+
 export class WorkflowBuilderPanel {
   private static currentPanel: WorkflowBuilderPanel | undefined
   private readonly panel: vscode.WebviewPanel
@@ -48,6 +61,7 @@ export class WorkflowBuilderPanel {
   private readonly saveQueues = new Map<string, Promise<void>>()
   private options: WorkflowBuilderPanelOptions
   private activeSession: WorkflowBuilderSession
+  private readinessPreview?: WorkflowBuilderReadinessPreview
 
   private constructor(options: WorkflowBuilderPanelOptions, initialModel: WorkflowAuthoringModel) {
     this.options = { ...options }
@@ -71,6 +85,7 @@ export class WorkflowBuilderPanel {
 
   dispose(): void {
     WorkflowBuilderPanel.currentPanel = undefined
+    this.readinessPreview = undefined
     while (this.disposables.length) this.disposables.pop()?.dispose()
   }
 
@@ -82,6 +97,8 @@ export class WorkflowBuilderPanel {
     if (message.type === "preview") return this.preview(message.model)
     if (message.type === "diff") return this.showDiff(message.model)
     if (message.type === "validateStepDraft") return this.validateStepDraft(message.model, message.draftStep, message.stepIndex)
+    if (message.type === "previewSkipResumeReadiness") return this.previewSkipResumeReadiness(message.model, message.selectedCandidateIds)
+    if (message.type === "applySkipResumeReadiness") return this.applySkipResumeReadiness(message.model, message.selectedCandidateIds, message.previewToken)
     if (message.type === "save") await this.enqueueSave(message.model)
   }
 
@@ -106,6 +123,7 @@ export class WorkflowBuilderPanel {
   private startSession(options: WorkflowBuilderPanelOptions, initialModel: WorkflowAuthoringModel): void {
     this.options = { ...options }
     this.activeSession = createSession(options)
+    this.readinessPreview = undefined
     this.panel.title = this.panelTitle()
     this.panel.reveal(vscode.ViewColumn.One)
     this.postModel(initialModel)
@@ -117,6 +135,94 @@ export class WorkflowBuilderPanel {
     const filePath = this.displayPathForUri(targetUri, rendered.filePath)
     const validation = validateWorkflowText({ sourceId: this.options.sourceId, filePath, text: rendered.markdown })
     await this.panel.webview.postMessage({ type: "previewResult", markdown: rendered.markdown, ok: validation.ok, diagnostics: formatWorkflowDiagnostics(validation), filePath })
+  }
+
+  private async previewSkipResumeReadiness(model: WorkflowAuthoringModel, selectedCandidateIds?: string[]): Promise<void> {
+    try {
+      const session = this.activeSession
+      const plan = planWorkflowSkipResumeReadiness(model, selectedCandidateIds)
+      let ok = false
+      let previewToken: string | undefined
+      let diagnostics = readinessPlanDiagnostics(plan)
+      let filePath = ""
+      if (plan.errors.length === 0) {
+        const applied = applyWorkflowSkipResumeReadiness(model, plan.selectedCandidateIds, plan.fingerprint)
+        const rendered = serializeAuthoringModelToMarkdown(applied.model)
+        const targetUri = this.targetUri(rendered.filePath, session.options)
+        filePath = this.displayPathForUri(targetUri, rendered.filePath, session.options)
+        const validation = validateWorkflowText({
+          sourceId: session.options.sourceId,
+          filePath,
+          text: rendered.markdown,
+          strict: true
+        })
+        diagnostics = [...diagnostics, ...formatWorkflowDiagnostics(validation)]
+        ok = validation.ok
+        if (ok && this.isActiveSession(session)) {
+          previewToken = randomUUID()
+          this.readinessPreview = {
+            token: previewToken,
+            sessionToken: session.token,
+            fingerprint: plan.fingerprint
+          }
+        } else {
+          this.readinessPreview = undefined
+        }
+      } else {
+        this.readinessPreview = undefined
+      }
+      if (!this.isActiveSession(session)) return
+      await this.panel.webview.postMessage({
+        type: "skipResumeReadinessPreviewResult",
+        plan,
+        ok,
+        previewToken,
+        diagnostics: uniqueStrings(diagnostics),
+        filePath
+      })
+    } catch (error) {
+      this.readinessPreview = undefined
+      await vscode.window.showErrorMessage(`Skip Resume Readiness preview failed: ${formatError(error)}`)
+    }
+  }
+
+  private async applySkipResumeReadiness(
+    model: WorkflowAuthoringModel,
+    selectedCandidateIds: string[],
+    previewToken: string
+  ): Promise<void> {
+    const session = this.activeSession
+    const preview = this.readinessPreview
+    try {
+      if (!preview || preview.token !== previewToken || preview.sessionToken !== session.token) {
+        throw new Error("The readiness preview is stale or belongs to another Builder session. Preview again before applying changes.")
+      }
+      const applied = applyWorkflowSkipResumeReadiness(model, selectedCandidateIds, preview.fingerprint)
+      const rendered = serializeAuthoringModelToMarkdown(applied.model)
+      const targetUri = this.targetUri(rendered.filePath, session.options)
+      const filePath = this.displayPathForUri(targetUri, rendered.filePath, session.options)
+      const validation = validateWorkflowText({
+        sourceId: session.options.sourceId,
+        filePath,
+        text: rendered.markdown,
+        strict: true
+      })
+      if (!validation.ok) {
+        throw new Error(`The proposed readiness model is not strict-valid: ${formatWorkflowDiagnostics(validation).join(" ")}`)
+      }
+      if (!this.isActiveSession(session)) return
+      this.readinessPreview = undefined
+      await this.panel.webview.postMessage({
+        type: "skipResumeReadinessApplied",
+        model: applied.model,
+        plan: applied.plan,
+        diagnostics: formatWorkflowDiagnostics(validation),
+        filePath
+      })
+    } catch (error) {
+      this.readinessPreview = undefined
+      await vscode.window.showErrorMessage(`Skip Resume Readiness apply failed: ${formatError(error)}`)
+    }
   }
 
   private async validateStepDraft(model: WorkflowAuthoringModel, draftStep: WorkflowAuthoringStep, stepIndex: number): Promise<void> {
@@ -264,6 +370,7 @@ export class WorkflowBuilderPanel {
   }
 
   private postModel(model: WorkflowAuthoringModel): void {
+    this.readinessPreview = undefined
     void this.panel.webview.postMessage({ type: "model", model, editMode: this.options.mode === "edit", filePath: this.options.editingFilePath ?? "", focusStepId: this.options.focusStepId ?? "" })
   }
 
@@ -309,6 +416,22 @@ async function exists(uri: vscode.Uri): Promise<boolean> {
 function createSession(options: WorkflowBuilderPanelOptions): WorkflowBuilderSession {
   const snapshot = Object.freeze({ ...options })
   return { token: Symbol("workflowBuilderSession"), options: snapshot, originalText: snapshot.originalText }
+}
+
+function readinessPlanDiagnostics(plan: WorkflowSkipResumeReadinessPlan): string[] {
+  return [
+    ...plan.errors.map((message) => `- error: ${message}`),
+    ...plan.warnings.map((message) => `- warning: ${message}`),
+    ...plan.unavailable.map((item) => `- error: ${item.message}`)
+  ]
+}
+
+function uniqueStrings(values: readonly string[]): string[] {
+  return [...new Set(values)]
+}
+
+function formatError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
 }
 
 async function createExclusiveBackup(dir: vscode.Uri, existingBytes: Uint8Array): Promise<vscode.Uri> {
