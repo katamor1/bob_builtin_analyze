@@ -7,6 +7,7 @@ import type {
   AgentProvider,
   CoreWorkflowDefinition,
   EngineStep,
+  WorkflowRunControlLimitsDefinition,
   WorkflowRunState
 } from "./model"
 import type { RunControlState, RunControlStore } from "./runControlStore"
@@ -90,6 +91,8 @@ export interface WorkflowEngineOptions {
   hooks?: WorkflowExecutionHooks
   manualCompletion?: (input: ManualCompletionInput) => Promise<ManualCompletionResult> | ManualCompletionResult
   recoverResultText?: (input: RecoverResultTextInput) => Promise<string | undefined> | string | undefined
+  clock?: () => Date
+  workspaceRunControlLimits?: WorkflowRunControlLimitsDefinition
 }
 
 export interface ResumeRunOptions {
