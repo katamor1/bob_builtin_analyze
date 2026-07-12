@@ -47,7 +47,8 @@ step ID / resultKeyをartifact pathへ埋め込む前にportable segment validat
 - Focused/full evidence run: `29201666390`, success.
 - Implementation-head official Linux/Windows matrix: `29201666388`, success.
 - Cleanup/evidence-head official Linux/Windows matrix: `29201954593`, success.
-- Package、VSIX policy、Extension Host smoke: success on both platforms.
+- Final head official matrix: `29202222078`, success after rerunning the initially failing Windows `workflow-register` job.
+- The rerun completed unit tests, package, VSIX policy, and Extension Host smoke successfully; no source or test change was required.
 - Temporary `.github/workflows/workflow-builder-skip-resume-*` files: 0 in final PR diff.
 
 ## Decision
