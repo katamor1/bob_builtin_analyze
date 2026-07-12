@@ -1,0 +1,160 @@
+name: agent-apply-windows-path-test-fixes
+
+on:
+  pull_request:
+    paths:
+      - "extensions/workflow-register/test/fixtures/automatic-pause-ci-verification.txt"
+      - ".github/workflows/agent-apply-windows-path-test-fixes.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: agent/workflow-automatic-pause-limits-20260712
+          fetch-depth: 0
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+      - name: Canonicalize physical-path fixtures
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path_value: str, old: str, new: str) -> None:
+              path = Path(path_value)
+              text = path.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path_value}: expected one match, found {count}: {old!r}")
+              path.write_text(text.replace(old, new), encoding="utf-8")
+
+          replace_once(
+              "extensions/workflow-register/test/helpers/workflowEngineFixtures.js",
+              '  return fs.mkdtempSync(path.join(os.tmpdir(), prefix))',
+              '  return fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), prefix)))'
+          )
+          replace_once(
+              "extensions/workflow-register/test/bobGateLifecycle.test.js",
+              '  const root = fs.mkdtempSync(path.join(os.tmpdir(), prefix))',
+              '  const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), prefix)))'
+          )
+          replace_once(
+              "extensions/workflow-register/test/operationHubMutations.test.js",
+              '  const root = fs.mkdtempSync(path.join(os.tmpdir(), "workflow-register-operation-hub-"))',
+              '  const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "workflow-register-operation-hub-")))'
+          )
+          replace_once(
+              "extensions/workflow-register/test/workflowPlatformP0E2e.test.js",
+              '  const root = fs.mkdtempSync(path.join(os.tmpdir(), prefix))',
+              '  const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), prefix)))'
+          )
+          replace_once(
+              "extensions/workflow-register/test/workflowArtifactManifest.test.js",
+              '  return fs.mkdtempSync(path.join(os.tmpdir(), "workflow-register-artifacts-"))',
+              '  return fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "workflow-register-artifacts-")))'
+          )
+          replace_once(
+              "extensions/workflow-register/test/workspaceFileTransaction.test.js",
+              '  const root = fs.mkdtempSync(path.join(os.tmpdir(), "workflow-register-file-transaction-"))',
+              '  const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "workflow-register-file-transaction-")))'
+          )
+          replace_once(
+              "extensions/workflow-register/test/workflowRunStateMigrationPath.test.js",
+              '  return fs.mkdtempSync(path.join(os.tmpdir(), "workflow-run-migration-path-"))',
+              '  return fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "workflow-run-migration-path-")))'
+          )
+          replace_once(
+              "extensions/workflow-register/test/runStateStorePathBoundary.test.js",
+              '  return fs.mkdtemp(path.join(os.tmpdir(), "workflow-run-store-boundary-"))',
+              '  return fs.mkdtemp(path.join(os.tmpdir(), "workflow-run-store-boundary-")).then((root) => fs.realpath(root))'
+          )
+
+          snapshot_path = Path("extensions/workflow-register/test/workflowTaskSnapshotArtifactImport.test.js")
+          snapshot_text = snapshot_path.read_text(encoding="utf-8")
+          marker = 'const root = fs.mkdtempSync(path.join(os.tmpdir(), '
+          count = snapshot_text.count(marker)
+          if count < 2:
+              raise SystemExit(f"{snapshot_path}: expected at least two root fixtures, found {count}")
+          lines = []
+          for line in snapshot_text.splitlines(keepends=True):
+              if marker in line and "realpathSync.native" not in line:
+                  stripped = line.rstrip("\r\n")
+                  line_ending = line[len(stripped):]
+                  stripped = stripped.replace(
+                      'const root = fs.mkdtempSync(',
+                      'const root = fs.realpathSync.native(fs.mkdtempSync(',
+                      1
+                  ) + ')'
+                  line = stripped + line_ending
+              lines.append(line)
+          snapshot_path.write_text("".join(lines), encoding="utf-8")
+
+          trace_path = Path("extensions/bob-code-consistency-review/test/traceabilityCatalogStore.test.js")
+          trace = trace_path.read_text(encoding="utf-8")
+          call_marker = "const barrier = installTargetTempOpenBarrier("
+          call_count = trace.count(call_marker)
+          if call_count < 1:
+              raise SystemExit(f"{trace_path}: no temp-open barriers found")
+          trace = trace.replace(call_marker, "const barrier = await installTargetTempOpenBarrier(")
+          old_function = '''function installTargetTempOpenBarrier(targetPath) {
+  const originalOpen = fs.open
+  const expectedDirectory = normalizePhysicalPath(path.dirname(targetPath))
+'''
+          new_function = '''async function installTargetTempOpenBarrier(targetPath) {
+  const originalOpen = fs.open
+  const expectedDirectory = normalizePhysicalPath(await fs.realpath(path.dirname(targetPath)))
+'''
+          if trace.count(old_function) != 1:
+              raise SystemExit(f"{trace_path}: temp-open barrier function anchor mismatch")
+          trace_path.write_text(trace.replace(old_function, new_function), encoding="utf-8")
+          print(f"Updated {call_count} traceability barrier call site(s).")
+          PY
+      - name: Verify affected Linux tests
+        shell: bash
+        run: |
+          cd extensions/workflow-register
+          npm ci --silent
+          npm run compile --silent
+          node --test \
+            test/bobGateLifecycle.test.js \
+            test/operationHubMutations.test.js \
+            test/processWorkflowEngineArtifacts.test.js \
+            test/runStateStorePathBoundary.test.js \
+            test/workflowArtifactManifest.test.js \
+            test/workflowPlatformP0E2e.test.js \
+            test/workflowRunStateMigrationPath.test.js \
+            test/workflowTaskSnapshotArtifactImport.test.js \
+            test/workspaceFileTransaction.test.js
+          cd ../bob-code-consistency-review
+          npm ci --silent
+          npm run compile --silent
+          node --test test/traceabilityCatalogStore.test.js
+      - name: Commit verified test portability fixes
+        shell: bash
+        run: |
+          rm -f .github/workflows/agent-apply-windows-path-test-fixes.yml
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            .github/workflows/agent-apply-windows-path-test-fixes.yml \
+            extensions/workflow-register/test/helpers/workflowEngineFixtures.js \
+            extensions/workflow-register/test/bobGateLifecycle.test.js \
+            extensions/workflow-register/test/operationHubMutations.test.js \
+            extensions/workflow-register/test/workflowPlatformP0E2e.test.js \
+            extensions/workflow-register/test/workflowArtifactManifest.test.js \
+            extensions/workflow-register/test/workflowTaskSnapshotArtifactImport.test.js \
+            extensions/workflow-register/test/workspaceFileTransaction.test.js \
+            extensions/workflow-register/test/workflowRunStateMigrationPath.test.js \
+            extensions/workflow-register/test/runStateStorePathBoundary.test.js \
+            extensions/bob-code-consistency-review/test/traceabilityCatalogStore.test.js
+          git commit -m "test: canonicalize Windows workspace fixtures"
+          git push origin HEAD:agent/workflow-automatic-pause-limits-20260712
