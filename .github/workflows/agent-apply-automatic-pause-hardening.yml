@@ -1,0 +1,394 @@
+name: agent-apply-automatic-pause-hardening
+
+on:
+  push:
+    branches:
+      - agent/workflow-automatic-pause-limits-20260712
+    paths:
+      - ".github/workflows/agent-apply-automatic-pause-hardening.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: agent/workflow-automatic-pause-limits-20260712
+          fetch-depth: 0
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: extensions/workflow-register/package-lock.json
+      - name: Apply production and documentation changes
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path_value: str, old: str, new: str) -> None:
+              path = Path(path_value)
+              text = path.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path_value}: expected one match, found {count}: {old[:80]!r}")
+              path.write_text(text.replace(old, new), encoding="utf-8")
+
+          def append_once(path_value: str, marker: str, addition: str) -> None:
+              path = Path(path_value)
+              text = path.read_text(encoding="utf-8")
+              if marker in text:
+                  return
+              path.write_text(text.rstrip() + "\n\n" + addition.strip() + "\n", encoding="utf-8")
+
+          replace_once(
+              "extensions/workflow-register/src/core/schema/workflowSchema.ts",
+              '        maxAgentStepsPerRun: { type: "number", exclusiveMinimum: 0 },',
+              '        maxAgentStepsPerRun: { type: "integer", exclusiveMinimum: 0 },'
+          )
+          replace_once(
+              "extensions/workflow-register/schema/workflow-register.v1.schema.json",
+              '            "maxAgentStepsPerRun": { "type": "number", "exclusiveMinimum": 0 },',
+              '            "maxAgentStepsPerRun": { "type": "integer", "exclusiveMinimum": 0 },'
+          )
+
+          run_diagnostics = "extensions/workflow-register/src/core/runDiagnostics.ts"
+          replace_once(
+              run_diagnostics,
+              'import type { RunStepState, WorkflowRunState } from "./model"\n',
+              'import type { RunStepState, WorkflowRunState } from "./model"\nimport type { RunControlState } from "./runControlStore"\n'
+          )
+          replace_once(
+              run_diagnostics,
+              '  durabilityByRunId?: Record<string, WorkflowRunDurabilitySummary>\n}',
+              '  durabilityByRunId?: Record<string, WorkflowRunDurabilitySummary>\n  controlsByRunId?: Record<string, RunControlState | undefined>\n}'
+          )
+          replace_once(
+              run_diagnostics,
+              '      snapshots: options.snapshotsByRunId?.[run.runId] ?? [],\n      durability: options.durabilityByRunId?.[run.runId]\n',
+              '      snapshots: options.snapshotsByRunId?.[run.runId] ?? [],\n      durability: options.durabilityByRunId?.[run.runId],\n      control: options.controlsByRunId?.[run.runId]\n'
+          )
+          replace_once(
+              run_diagnostics,
+              '  options: { snapshots?: TaskSnapshotSummary[]; durability?: WorkflowRunDurabilitySummary } = {}\n',
+              '  options: { snapshots?: TaskSnapshotSummary[]; durability?: WorkflowRunDurabilitySummary; control?: RunControlState } = {}\n'
+          )
+          replace_once(
+              run_diagnostics,
+              '  if (run.state["workflow.pause"]) lines.push("", "Pause:", ...formatJsonState(run.state["workflow.pause"]))\n',
+              '  appendPauseDiagnostics(lines, run.state["workflow.pause"], options.control)\n'
+          )
+          pause_helpers = '''function appendPauseDiagnostics(
+            lines: string[],
+            value: string | undefined,
+            control: RunControlState | undefined
+          ): void {
+            if (value) {
+              const parsed = parseJsonRecord(value)
+              if (parsed?.schemaVersion === "workflow-register/automatic-pause/v1") {
+                lines.push(
+                  "",
+                  "Automatic pause:",
+                  `- kind: ${String(parsed.kind ?? "unknown")}`,
+                  `- source: ${String(parsed.source ?? "unknown")}`,
+                  `- checkpoint: ${String(parsed.checkpoint ?? "unknown")}`,
+                  `- next step: ${String(parsed.nextStepId ?? "none")}`,
+                  `- detected: ${String(parsed.detectedAt ?? "unknown")}`
+                )
+                appendRecordFields(lines, "limit", parsed.limit)
+                appendRecordFields(lines, "observed", parsed.observed)
+              } else {
+                lines.push("", "Pause:", ...formatJsonState(value))
+              }
+            }
+
+            const override = control?.automaticPauseOverride
+            if (!override) return
+            lines.push(
+              "",
+              "Automatic pause override:",
+              `- schema: ${override.schemaVersion}`,
+              `- requested by: ${override.requestedBy}`,
+              `- created: ${override.createdAt}`,
+              `- expires: ${override.expiresAt}`,
+              `- reason: ${override.reason}`
+            )
+          }
+
+          function appendRecordFields(lines: string[], prefix: string, value: unknown): void {
+            if (!isRecord(value)) return
+            for (const key of Object.keys(value).sort()) {
+              lines.push(`- ${prefix}.${key}: ${formatDiagnosticValue(value[key])}`)
+            }
+          }
+
+          function parseJsonRecord(value: string): Record<string, unknown> | undefined {
+            try {
+              const parsed = JSON.parse(value)
+              return isRecord(parsed) ? parsed : undefined
+            } catch {
+              return undefined
+            }
+          }
+
+          function isRecord(value: unknown): value is Record<string, unknown> {
+            return Boolean(value && typeof value === "object" && !Array.isArray(value))
+          }
+
+          function formatDiagnosticValue(value: unknown): string {
+            if (typeof value === "string") return value
+            if (typeof value === "number" || typeof value === "boolean") return String(value)
+            if (value === null) return "null"
+            return JSON.stringify(value) ?? String(value)
+          }
+
+          '''
+          replace_once(
+              run_diagnostics,
+              'function formatJsonState(value: string): string[] {\n',
+              pause_helpers + 'function formatJsonState(value: string): string[] {\n'
+          )
+
+          inspect_path = "extensions/workflow-register/src/commands/inspectRunDiagnostics.ts"
+          replace_once(
+              inspect_path,
+              'import type { WorkflowRunDurabilitySummary } from "../core/runDiagnostics"\n',
+              'import type { WorkflowRunDurabilitySummary } from "../core/runDiagnostics"\nimport { FileRunControlStore } from "../core/runControlStore"\nimport type { RunControlState } from "../core/runControlStore"\n'
+          )
+          replace_once(
+              inspect_path,
+              '  const snapshotsByRunId = Object.fromEntries(await Promise.all(runs.map(async (run) => [run.runId, await snapshotStore.listSnapshots(run.runId)] as const)))\n',
+              '''  const snapshotsByRunId = Object.fromEntries(await Promise.all(runs.map(async (run) => [run.runId, await snapshotStore.listSnapshots(run.runId)] as const)))
+  const controlStore = new FileRunControlStore({ workspaceRoot })
+  const controlsByRunId: Record<string, RunControlState | undefined> = {}
+  const controlDiagnostics: RunStateLoadDiagnostic[] = []
+  for (const run of runs) {
+    try {
+      controlsByRunId[run.runId] = await controlStore.loadControl(run.runId)
+    } catch (error) {
+      controlDiagnostics.push({
+        runId: run.runId,
+        severity: "error",
+        code: "invalid",
+        message: `Workflow run control could not be inspected: ${formatError(error)}`
+      })
+    }
+  }
+'''
+          )
+          replace_once(
+              inspect_path,
+              '    snapshotsByRunId,\n    durabilityByRunId,\n',
+              '    snapshotsByRunId,\n    durabilityByRunId,\n    controlsByRunId,\n'
+          )
+          replace_once(
+              inspect_path,
+              '      ...store.getLoadDiagnostics(),\n      ...durabilityDiagnostics\n',
+              '      ...store.getLoadDiagnostics(),\n      ...controlDiagnostics,\n      ...durabilityDiagnostics\n'
+          )
+
+          report_path = Path("extensions/workflow-register/src/commands/runControlReport.ts")
+          if report_path.exists():
+              raise SystemExit(f"{report_path}: already exists")
+          report_path.write_text('''import type { WorkflowRunState } from "../core/model"
+          import type { RunControlState } from "../core/runControlStore"
+          import { parseAutomaticPauseState } from "./automaticPauseResume"
+
+          export interface RunControlReportInput {
+            runId: string
+            root: string
+            run?: WorkflowRunState
+            control?: RunControlState
+          }
+
+          export function buildRunControlReportLines(input: RunControlReportInput): string[] {
+            const { runId, root, run, control } = input
+            const automaticPause = parseAutomaticPauseState(run?.state["workflow.pause"])
+            const override = control?.automaticPauseOverride
+            return [
+              `- runId: ${runId}`,
+              `- root: ${root}`,
+              `- runStatus: ${run?.status ?? "unknown"}`,
+              `- currentStep: ${run?.currentStep ?? "none"}`,
+              `- pauseRequestedAt: ${control?.pauseRequestedAt ?? "none"}`,
+              `- pauseReason: ${control?.pauseReason ?? "none"}`,
+              `- requestedBy: ${control?.requestedBy ?? "none"}`,
+              `- mode: ${control?.mode ?? "none"}`,
+              `- clearedAt: ${control?.clearedAt ?? "none"}`,
+              `- automaticPauseKind: ${automaticPause?.kind ?? "none"}`,
+              `- automaticPauseSource: ${automaticPause?.source ?? "none"}`,
+              `- automaticPauseCheckpoint: ${automaticPause?.checkpoint ?? "none"}`,
+              `- automaticPauseNextStep: ${automaticPause?.nextStepId ?? "none"}`,
+              `- automaticPauseDetectedAt: ${automaticPause?.detectedAt ?? "none"}`,
+              `- automaticPauseLimit: ${automaticPause ? JSON.stringify(automaticPause.limit) : "none"}`,
+              `- automaticPauseObserved: ${automaticPause ? JSON.stringify(automaticPause.observed) : "none"}`,
+              `- automaticOverrideSchema: ${override?.schemaVersion ?? "none"}`,
+              `- automaticOverrideRequestedBy: ${override?.requestedBy ?? "none"}`,
+              `- automaticOverrideCreatedAt: ${override?.createdAt ?? "none"}`,
+              `- automaticOverrideExpiresAt: ${override?.expiresAt ?? "none"}`,
+              `- automaticOverrideReason: ${override?.reason ?? "none"}`,
+              `- workflow.pause: ${run?.state["workflow.pause"] ?? "none"}`
+            ]
+          }
+          '''.replace("          ", ""), encoding="utf-8")
+
+          run_control_path = "extensions/workflow-register/src/commands/runControl.ts"
+          replace_once(
+              run_control_path,
+              'import { prepareAutomaticPauseResume } from "./automaticPauseResumeUi"\n',
+              'import { prepareAutomaticPauseResume } from "./automaticPauseResumeUi"\nimport { buildRunControlReportLines } from "./runControlReport"\n'
+          )
+          replace_once(
+              run_control_path,
+              '''  const lines = [
+    `- runId: ${selection.runId}`,
+    `- root: ${selection.root}`,
+    `- runStatus: ${run?.status ?? "unknown"}`,
+    `- currentStep: ${run?.currentStep ?? "none"}`,
+    `- pauseRequestedAt: ${control?.pauseRequestedAt ?? "none"}`,
+    `- pauseReason: ${control?.pauseReason ?? "none"}`,
+    `- requestedBy: ${control?.requestedBy ?? "none"}`,
+    `- mode: ${control?.mode ?? "none"}`,
+    `- clearedAt: ${control?.clearedAt ?? "none"}`,
+    `- automaticOverrideExpiresAt: ${control?.automaticPauseOverride?.expiresAt ?? "none"}`,
+    `- automaticOverrideReason: ${control?.automaticPauseOverride?.reason ?? "none"}`,
+    `- workflow.pause: ${run?.state["workflow.pause"] ?? "none"}`
+  ]
+''',
+              '''  const lines = buildRunControlReportLines({
+    runId: selection.runId,
+    root: selection.root,
+    run,
+    control
+  })
+'''
+          )
+
+          append_once(
+              "extensions/workflow-register/README.md",
+              "## 決定的な自動 Pause 制限",
+              '''## 決定的な自動 Pause 制限
+
+長時間または無人の workflow は、実行中の agent / command を強制終了せず、次の安全な checkpoint で自動的に `paused` にできます。
+
+```yaml
+runControl:
+  limits:
+    maxRunMinutes: 45
+    maxAgentStepsPerRun: 6
+    pauseAtLocalTime: "18:00"
+    timezone: "Asia/Tokyo"
+```
+
+- `maxRunMinutes` は run の `createdAt` からの経過分数で判定します。
+- `maxAgentStepsPerRun` は archived attempt と現在の開始済み agent attempt を数え、次の agent 呼び出し前で停止します。
+- `pauseAtLocalTime` は `timezone` の IANA timezone で判定します。
+- workflow と workspace の設定は独立して評価され、先に到達した制限が停止理由になります。
+- 手動 pause は常に優先されます。自動 Pause から再開するときだけ、15 / 30 / 60 分の期限付き override を理由付きで設定できます。
+
+Workspace 設定は `workflowRegister.runControl.maxRunMinutes`、`maxAgentStepsPerRun`、`pauseAtLocalTime`、`timezone` を使用します。数値 `0` と空の時刻は無効を意味します。停止理由、limit、observed value、checkpoint、override は Run Diagnostics / Run Control で確認できます。'''
+          )
+          append_once(
+              "extensions/workflow-register/docs/basic-design-ja.md",
+              "## 決定的な自動 Pause 制御",
+              '''## 決定的な自動 Pause 制御
+
+- `CoreWorkflowDefinition.runControl.limits` と workspace settings を同じ limit model に正規化する。
+- manual pause request を先に評価し、override が存在しても manual pause を抑制しない。
+- 自動制限は `before-preflight`、`before-step:<id>`、`after-step:<id>` の既存安全 checkpoint だけで評価する。
+- 実行中 provider の cancel、process kill、Bob subagent interrupt は行わない。
+- `run.json` の `workflow.pause` に停止理由を、`control.json` の `automaticPauseOverride` に期限付き例外を保存する。
+- standalone と Bob UI は `WorkflowRuntimeFactory.createRunControlStore()` を共有し、workspace policy の解釈を一致させる。'''
+          )
+          append_once(
+              "extensions/workflow-register/docs/detailed-design-ja.md",
+              "## 自動 Pause 制限の詳細設計",
+              '''## 自動 Pause 制限の詳細設計
+
+### 定義と設定
+
+`WORKFLOW.md` は `runControl.limits` に `maxRunMinutes`、整数の `maxAgentStepsPerRun`、`pauseAtLocalTime`、`timezone` を持てる。workspace settings の `0` / 空文字は disabled として除去し、その他の有効な項目は不正項目と独立して保持する。
+
+### 評価順序
+
+1. `control.json` の未clearな manual pause request を評価する。
+2. 有効期限内の `automaticPauseOverride` があれば自動制限だけを抑制する。
+3. workflow policy、workspace policy の順に、`maxRunMinutes`、`maxAgentStepsPerRun`、`pauseAtLocalTime` を評価する。
+4. dueな制限があれば次stepを開始せず、`workflow-register/automatic-pause/v1` の構造化記録を `run.state["workflow.pause"]` に保存して `paused` にする。
+
+### 永続記録
+
+自動停止記録は `kind`、`source`、`checkpoint`、`nextStepId`、`limit`、`observed`、`detectedAt` を含む。override は `workflow-register/automatic-pause-override/v1` として `createdAt`、`expiresAt`、`requestedBy`、`reason` を保持する。既存の run/control schema version は変更せず、追加fieldはoptionalとする。'''
+          )
+          append_once(
+              "extensions/workflow-register/docs/unit-test-spec-ja.md",
+              "## 自動 Pause 制限テスト",
+              '''## 自動 Pause 制限テスト
+
+- parser / public schema: 正常4field、非正数、fractional agent limit、HH:mm、timezone必須、未知IANA timezone。
+- pure evaluator: 境界直前・境界一致・境界超過、agent以外を停止しないこと、attempt集計、workflow/workspace tie-break、override有効期限。
+- engine: preflight前、次agent前、manual pause優先、強制cancelを行わないこと、構造化`workflow.pause`。
+- control store / command: override保存・置換・clear、1〜1440分、理由必須、future run read-only、Operation Hub revision再検証。
+- runtime wiring: standalone / Bob が同じworkspace policy factoryを利用すること。
+- diagnostics: pauseのkind/source/limit/observedとoverrideのactor/reason/expiryを構造化表示すること。'''
+          )
+          append_once(
+              "extensions/workflow-register/docs/real-machine-test-spec-ja.md",
+              "## 自動 Pause 実機確認",
+              '''## 自動 Pause 実機確認
+
+1. 2つ以上のagent stepを持つworkflowへ `maxAgentStepsPerRun: 1` を設定する。
+2. Bob UIとstandaloneの双方で実行し、1つ目のstep完了後、2つ目のagent開始前に`paused`になることを確認する。
+3. Run Diagnosticsでkind、source、checkpoint、limit、observed valueを確認する。
+4. 再開時に30分overrideを選び、理由を入力し、`control.json`とRun Control表示へactor/reason/expiryが保存されることを確認する。
+5. override中に手動pauseを要求し、手動pauseが優先されることを確認する。
+6. `pauseAtLocalTime`を現在時刻の直前へ設定し、指定timezoneで次checkpoint停止することを確認する。
+7. 停止時に実行中agent / commandの強制cancelや子process killが発生しないことを確認する。'''
+          )
+
+          roadmap = "docs/workflow-register-feature-roadmap-2026-07-11.md"
+          roadmap_text = Path(roadmap).read_text(encoding="utf-8")
+          if "- ステータス: 企画案" in roadmap_text:
+              roadmap_text = roadmap_text.replace("- ステータス: 企画案", "- ステータス: 実行中", 1)
+              Path(roadmap).write_text(roadmap_text, encoding="utf-8")
+          append_once(
+              roadmap,
+              "## 実行状況更新 — 2026-07-12",
+              '''## 実行状況更新 — 2026-07-12
+
+| 項目 | 状態 | 証跡 |
+| --- | --- | --- |
+| P0-1 Stabilization | コード統合済み。実環境release gateは継続追跡 | PR #68 merged on 2026-07-12 |
+| P0-2 stacked PR整理 | 完了 | PR #64、#65、#66をclosedへ正規化 |
+| P0-3 Run State versioning | 完了 | `workflow-register/run-state/v1`、migration backup、future read-only、event/journal/leaseをmainへ統合 |
+| P1-5 deterministic automatic pause | 実装・検証中 | Issue #73 / draft PR #75 |
+
+P1-5ではworkflow/workspace limit、pure evaluator、graceful checkpoint pause、bounded override、Bob/standalone wiring、構造化diagnosticsを実装する。PRは全repository gateと外部実環境証跡が揃うまでdraftを維持する。'''
+          )
+
+          Path(".github/workflows/agent-apply-automatic-pause-hardening.yml").unlink()
+          PY
+      - name: Install dependencies
+        working-directory: extensions/workflow-register
+        run: npm ci --silent
+      - name: Verify focused behavior and policies
+        working-directory: extensions/workflow-register
+        run: |
+          npm run compile --silent
+          node --test test/workflowAutomaticPause*.test.js test/workflowRunStateDiagnostics.test.js test/workflowRuntime.test.js
+          npm run schema:policy
+          npm run architecture:policy
+          npm run source:policy
+      - name: Commit implementation
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat: complete automatic pause diagnostics and documentation"
+          git push origin HEAD:agent/workflow-automatic-pause-limits-20260712
