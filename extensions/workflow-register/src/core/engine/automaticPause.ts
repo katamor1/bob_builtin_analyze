@@ -3,6 +3,7 @@ import type {
   WorkflowRunControlLimitsDefinition,
   WorkflowRunState
 } from "../model"
+import type { WorkflowAutomaticPauseOverride } from "../runControlStore"
 
 export type AutomaticPausePolicySourceKind = "workflow" | "workspace"
 export type AutomaticPauseKind = "maxRunMinutes" | "maxAgentStepsPerRun" | "pauseAtLocalTime"
@@ -10,14 +11,6 @@ export type AutomaticPauseKind = "maxRunMinutes" | "maxAgentStepsPerRun" | "paus
 export interface AutomaticPausePolicySource {
   source: AutomaticPausePolicySourceKind
   limits: WorkflowRunControlLimitsDefinition
-}
-
-export interface WorkflowAutomaticPauseOverride {
-  schemaVersion: "workflow-register/automatic-pause-override/v1"
-  createdAt: string
-  expiresAt: string
-  requestedBy: string
-  reason: string
 }
 
 export interface AutomaticPauseDecision {
