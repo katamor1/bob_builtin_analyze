@@ -159,11 +159,13 @@ export class FileRunStateStore implements RunStateStore {
       && workflowDefinitionMatches(run, workflow)
       && stableJson(run.inputs) === expectedInputs
     ))
+    const recoverable = matchingRuns.find((run) => isRecoverableRun(run, workflow, expectedInputs, options))
+    if (recoverable) return recoverable
     if (options.executionMode === "singleStep") {
       const readOnly = matchingRuns.find((run) => !isCurrentWorkflowRunState(run))
       if (readOnly) assertWorkflowRunStateWritable(readOnly)
     }
-    return matchingRuns.find((run) => isRecoverableRun(run, workflow, expectedInputs, options))
+    return undefined
   }
 
   private async loadRunShared(runId: string): Promise<SharedRunLoadResult> {
