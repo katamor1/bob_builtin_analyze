@@ -6,14 +6,17 @@ on:
       - codex/execute-shared-plan-6a53743e
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   diagnose:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: codex/execute-shared-plan-6a53743e
       - name: Setup Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
@@ -31,15 +34,17 @@ jobs:
         shell: bash
         run: |
           set +e
-          node --test test/projectRulePack.test.js test/evidenceScopePipeline.test.js > "${RUNNER_TEMP}/phase3-tests.log" 2>&1
-          echo $? > "${RUNNER_TEMP}/phase3-tests.exit-code"
+          node --test test/projectRulePack.test.js test/evidenceScopePipeline.test.js > phase3-tests.log 2>&1
+          echo $? > phase3-tests.exit-code
           exit 0
-      - name: Upload diagnostic
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: evidence-scope-phase3-diagnostic
-          path: |
-            ${{ runner.temp }}/phase3-tests.log
-            ${{ runner.temp }}/phase3-tests.exit-code
-          if-no-files-found: error
-          retention-days: 1
+      - name: Commit diagnostic
+        run: |
+          set -euo pipefail
+          mkdir -p docs/implementation/diagnostics
+          cp extensions/bob-code-consistency-review/phase3-tests.log docs/implementation/diagnostics/evidence-scope-phase3-tests.log
+          cp extensions/bob-code-consistency-review/phase3-tests.exit-code docs/implementation/diagnostics/evidence-scope-phase3-tests.exit-code
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/implementation/diagnostics/evidence-scope-phase3-tests.log docs/implementation/diagnostics/evidence-scope-phase3-tests.exit-code
+          git commit -m 'ci: record evidence scope phase 3 diagnostics'
+          git push origin HEAD:codex/execute-shared-plan-6a53743e
