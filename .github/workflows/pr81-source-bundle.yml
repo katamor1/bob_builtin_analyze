@@ -1,0 +1,41 @@
+name: pr81-source-bundle
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/pr81-source-bundle.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Record source manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          find extensions/workflow-register/src/core/authoring \
+               extensions/workflow-register/src/webview \
+               extensions/workflow-register/test \
+               -type f -print | sort > pr81-source-manifest.txt
+
+      - name: Upload implementation source
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: pr81-workflow-register-source
+          path: |
+            extensions/workflow-register/src/core/authoring
+            extensions/workflow-register/src/webview
+            extensions/workflow-register/test
+            extensions/workflow-register/package.json
+            extensions/workflow-register/tsconfig.json
+            pr81-source-manifest.txt
+          if-no-files-found: error
+          retention-days: 1
