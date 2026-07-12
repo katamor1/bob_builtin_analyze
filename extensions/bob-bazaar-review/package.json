@@ -131,5 +131,17 @@
   },
   "dependencies": {
     "js-yaml": "^4.1.0"
+  },
+  "knip": {
+    "entry": [
+      "src/extension.ts",
+      "src/mcp/server.ts"
+    ],
+    "project": [
+      "src/**/*.ts"
+    ],
+    "ignoreDependencies": [
+      "js-yaml"
+    ]
   }
 }
