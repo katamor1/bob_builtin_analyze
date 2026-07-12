@@ -8,6 +8,7 @@ const { test } = require("node:test")
 const {
   appendWorkflowRunEvent,
   buildWorkflowRunEvent,
+  hashStableJson,
   hashWorkflowRunBytes,
   readWorkflowRunEventLog,
   serializeWorkflowRunState
@@ -85,6 +86,11 @@ function transaction(previous, next, previousEvent) {
   })
 }
 
+function rehashEvent(event, changes) {
+  const { hash: _hash, ...withoutHash } = { ...event, ...changes }
+  return { ...withoutHash, hash: hashStableJson(withoutHash) }
+}
+
 test("journal parser validates run and event hash agreement", async (t) => {
   const previous = run("running", "2026-07-12T00:01:00.000Z")
   const next = run("paused", "2026-07-12T00:02:00.000Z")
@@ -102,6 +108,49 @@ test("journal parser validates run and event hash agreement", async (t) => {
   for (const [name, value, pattern] of cases) {
     await t.test(name, () => assert.throws(() => parseWorkflowRunJournal(value, "run-1"), pattern))
   }
+})
+
+test("journal parser binds the next event to the journal run revision and event ancestry", () => {
+  const previous = run("running", "2026-07-12T00:01:00.000Z")
+  const next = run("paused", "2026-07-12T00:02:00.000Z")
+  const previousEvent = buildWorkflowRunEvent({
+    run: previous,
+    kind: "run.created",
+    occurredAt: previous.updatedAt,
+    eventId: "event-previous"
+  })
+  const chained = transaction(previous, next, previousEvent)
+  assert.deepEqual(parseWorkflowRunJournal(chained, "run-1"), chained)
+
+  const wrongPreviousRunEvent = buildWorkflowRunEvent({
+    run: next,
+    kind: "run.updated",
+    occurredAt: next.updatedAt,
+    eventId: "event-wrong-previous-run",
+    previousEvent,
+    previousRunHash: `sha256:${"9".repeat(64)}`
+  })
+  assert.throws(
+    () => parseWorkflowRunJournal({ ...chained, nextEvent: wrongPreviousRunEvent }, "run-1"),
+    /previousRunHash/
+  )
+
+  const firstEventJournal = transaction(undefined, next)
+  assert.throws(
+    () => parseWorkflowRunJournal({
+      ...firstEventJournal,
+      nextEvent: rehashEvent(firstEventJournal.nextEvent, { sequence: 2 })
+    }, "run-1"),
+    /sequence/
+  )
+
+  assert.throws(
+    () => parseWorkflowRunJournal({
+      ...chained,
+      nextEvent: rehashEvent(chained.nextEvent, { sequence: 1 })
+    }, "run-1"),
+    /sequence/
+  )
 })
 
 test("journal recovery completes every crash point exactly once", async (t) => {
