@@ -144,26 +144,30 @@ test("allocates unique Review Run ids for concurrent starts", async () => {
   assert.deepEqual(runs.map((run) => run.reviewId).sort(), ["review-1", "review-1-02"])
 })
 
-test("validates Review Run command roots against open workspace folders", () => {
-  const workspaceRoot = path.resolve("/workspace/project")
+test("validates Review Run command roots against open workspace folders", async (t) => {
+  const openWorkspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "bbr-command-boundary-"))
+  const workspaceRoot = path.join(openWorkspaceRoot, "project")
+  await fs.mkdir(workspaceRoot)
+  t.after(() => fs.rm(openWorkspaceRoot, { recursive: true, force: true }))
+
   assert.deepEqual(
-    validateReviewRunCommandInput(
+    await validateReviewRunCommandInput(
       { workspaceRoot, campaignId: "campaign-1", reviewId: "review-1" },
-      [path.resolve("/workspace")]
+      [openWorkspaceRoot]
     ),
     { workspaceRoot, campaignId: "campaign-1", reviewId: "review-1" }
   )
-  assert.throws(
+  await assert.rejects(
     () => validateReviewRunCommandInput(
-      { workspaceRoot: path.resolve("/outside"), campaignId: "campaign-1", reviewId: "review-1" },
-      [path.resolve("/workspace")]
+      { workspaceRoot: path.resolve(openWorkspaceRoot, "..", "outside"), campaignId: "campaign-1", reviewId: "review-1" },
+      [openWorkspaceRoot]
     ),
     /inside an open workspace folder/
   )
-  assert.throws(
+  await assert.rejects(
     () => validateReviewRunCommandInput(
-      { workspaceRoot, campaignId: "campaign/escape", reviewId: "review-1" },
-      [path.resolve("/workspace")]
+      { workspaceRoot, campaignId: "campaign\/escape", reviewId: "review-1" },
+      [openWorkspaceRoot]
     ),
     /campaignId/
   )
