@@ -374,6 +374,16 @@ review-result、packet、triage、record、Review Runにはレビュー対象や
 - `docs/review-run-v3-iteration1-ja.md`
 - `docs/review-run-v3-iteration2-ja.md`
 - `docs/review-run-v3-iteration3-dashboard-ja.md`
+- `docs/review-run-v3-acceptance-ja.md`
+- `docs/review-run-v3-integration-result-ja.md`
 - `docs/unit-test-spec-ja.md`
 - `docs/real-machine-test-spec-ja.md`
 - `docs/workflow-authoring-guide-ja.md`
+
+<!-- REMEDIATION-2026-07-11 -->
+## Integration and process safety
+
+- Companion extensions are optional unless the command explicitly needs them; provider registration retries after delayed activation.
+- Workflow providers are owner-scoped, reject duplicate IDs, and are disposed with the extension lifecycle.
+- Git and Bazaar subprocesses have bounded output, hard timeouts, cancellation, and process-tree termination.
+- Release validation runs on both Ubuntu and Windows, while IBM Bob UI/MCP checks remain a release-candidate real-machine gate.

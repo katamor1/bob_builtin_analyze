@@ -44,6 +44,9 @@ Review Run Wizard v3では、`src/reviewRuns/`がReview GUI、Result Capture、H
 - `review-run-v3-acceptance-ja.md`  
   Iteration 1〜3を横断する自動受入テスト、identity / phase / metrics / Human Triage / evidence不変条件、回帰gate、stack統合順、rollbackを定義します。
 
+- `review-run-v3-integration-result-ja.md`  
+  PR #76 / #79 / #83 / #85の実merge SHA、main同期時の競合解消、検証結果、互換性、rollback順を記録します。
+
 ## 既存ドキュメント
 
 - `../README.md`  
