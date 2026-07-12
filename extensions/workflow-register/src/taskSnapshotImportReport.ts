@@ -115,6 +115,14 @@ function formatCandidate(candidate: TaskSnapshotImportPreviewCandidate): string[
   ]
   if (candidate.existing.sha256) lines.push(`- existing checksum: ${candidate.existing.sha256}`)
   for (const issue of candidate.issues) lines.push(`- ${issue.severity}: ${issue.message}`)
-  if (candidate.diff) lines.push("", "```diff", candidate.diff.trimEnd(), "```")
+  if (candidate.diff) {
+    const fence = markdownFenceFor(candidate.diff)
+    lines.push("", `${fence}diff`, candidate.diff.trimEnd(), fence)
+  }
   return lines
+}
+
+function markdownFenceFor(value: string): string {
+  const longest = Math.max(0, ...Array.from(value.matchAll(/`+/g), (match) => match[0].length))
+  return "`".repeat(Math.max(3, longest + 1))
 }
