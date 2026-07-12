@@ -6,14 +6,18 @@ on:
       - codex/execute-shared-plan-6a53743e
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   diagnose:
+    if: github.actor != 'github-actions[bot]'
     runs-on: windows-2025
     steps:
-      - name: Checkout
+      - name: Checkout branch
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: codex/execute-shared-plan-6a53743e
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -48,14 +52,18 @@ jobs:
           $LASTEXITCODE | Out-File -Encoding ascii "$env:RUNNER_TEMP\phase4-full.exit-code"
           exit 0
 
-      - name: Upload diagnostic
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: phase4-windows-diagnostic
-          path: |
-            ${{ runner.temp }}\phase4-focused.log
-            ${{ runner.temp }}\phase4-focused.exit-code
-            ${{ runner.temp }}\phase4-full.log
-            ${{ runner.temp }}\phase4-full.exit-code
-          if-no-files-found: error
-          retention-days: 1
+      - name: Commit diagnostic logs
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $target = 'docs/implementation/diagnostics'
+          New-Item -ItemType Directory -Force -Path $target | Out-Null
+          Copy-Item "$env:RUNNER_TEMP\phase4-focused.log" "$target\phase4-windows-focused.log"
+          Copy-Item "$env:RUNNER_TEMP\phase4-focused.exit-code" "$target\phase4-windows-focused.exit-code"
+          Copy-Item "$env:RUNNER_TEMP\phase4-full.log" "$target\phase4-windows-full.log"
+          Copy-Item "$env:RUNNER_TEMP\phase4-full.exit-code" "$target\phase4-windows-full.exit-code"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/implementation/diagnostics
+          git commit -m 'ci: record phase 4 Windows diagnostics'
+          git push origin HEAD:codex/execute-shared-plan-6a53743e
