@@ -9,6 +9,7 @@
 - Main head reconciled: `57ff053bc3f476e3e9d268a743f25edeb0d68356`
 - Reconciliation commit: `5e9bad7621e279314f58fbacdced591654fee576`
 - Reconciliation workflow run: `29199542141`
+- Final evidence synchronization commit before this record: `db4fcc63c0c4489cd215e6c4f038beea5b82a9e0`
 
 ## Conflict inventory
 
@@ -70,3 +71,5 @@ The feature branch is ahead of `main` and behind by zero commits. GitHub reports
 - `extensions-quality` run `29199698142`: success
 - `code-consistency-review-scaffold` run `29199698155`: success
 - Ubuntu / Windows unit tests, package, VSIX policy, and Extension Host smoke: success
+
+This user-authored evidence update intentionally triggers one final required-check pass after all plan and evidence files were synchronized.
