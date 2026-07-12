@@ -1,6 +1,6 @@
 # Bob Code Consistency Review Triage Operator Extension Host Plan
 
-- Status: implemented and verified
+- Status: implemented and verified / IBM Bob UAT kit ready
 - Date: 2026-07-12
 - Repository: `katamor1/bob_builtin_analyze`
 - Extension: `extensions/bob-code-consistency-review`
@@ -113,6 +113,22 @@ extensions-quality.yml
 
 `extensions-quality`全体は、変更対象外の`workflow-register` unit jobがUbuntu / Windowsで失敗するためfailureとなる。この計画の正本判定は、変更対象である`bob-code-consistency-review`のUbuntu / Windows jobとscaffold workflowの結果とする。
 
+## IBM Bob UAT kit continuation
+
+自動化対象外のintegration / visual gateを実施可能な形へ固定した。
+
+- [x] `extensions/bob-code-consistency-review/docs/triage-integrity-ibm-bob-uat-runbook-ja.md`を追加した。
+- [x] `extensions/bob-code-consistency-review/docs/triage-integrity-ibm-bob-uat-evidence-template.md`を追加した。
+- [x] `test/fixtures/triage-operator-uat/bob-output-initial.yaml`を追加した。
+- [x] `test/fixtures/triage-operator-uat/bob-output-regenerated.yaml`を追加した。
+- [x] `test/fixtures/triage-operator-uat/legacy-triage-result.yaml`を追加した。
+- [x] fixtureの用途、copy手順、制約をREADMEへ記録した。
+- [ ] 実IBM Bob環境でrunbookを実行する。
+- [ ] 日付入りUAT evidenceを`docs/release-evidence/`へcommitする。
+- [ ] Operator / reviewer / release ownerがsign-offする。
+
+fixtureはHuman Triageの競合・migration・projection専用で、任意のreview-packageのevidence indexとは対応しない。Bob output validationを含むE2Eでは、実際に生成したreview-packageとBob agent resultを使う。
+
 ## Remaining manual gate
 
 以下は実IBM Bob環境でのみ確認する。
@@ -123,4 +139,4 @@ extensions-quality.yml
 - Webviewの視覚的表示、keyboard操作、operator向け文言
 - Developer Tools Console全体の警告・例外確認
 
-コアtriage persistence、conflict、migration、projection、Webview reopenは自動ゲートへ移行済みである。
+コアtriage persistence、conflict、migration、projection、Webview reopenは自動ゲートへ移行済みである。残件はUAT kitに従って実施し、未実施項目は`pass`ではなく`pending`として記録する。
