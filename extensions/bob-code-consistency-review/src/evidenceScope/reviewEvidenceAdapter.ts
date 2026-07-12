@@ -2,6 +2,8 @@ import type { CodeAnalysisResult } from "../core/analysisTypes"
 import type { DocumentExtractionResult, EvidenceRef } from "../core/documentTypes"
 import { buildEvidenceScope } from "./changeScopeEngine"
 import { InMemoryDocumentEvidenceAdapter } from "./documentEvidenceAdapter"
+import { mergeRepositoryScopeData } from "./repositorySymbolIndexAdapter"
+import type { LoadedRepositorySymbolIndex } from "./repositorySymbolIndexLoader"
 import type {
   DependencyEdge,
   DocumentEvidenceUnit,
@@ -9,8 +11,6 @@ import type {
   ProjectRule,
   ScopeSymbol
 } from "./evidenceScopeTypes"
-import { mergeRepositoryScopeData } from "./repositorySymbolIndexAdapter"
-import type { LoadedRepositorySymbolIndex } from "./repositorySymbolIndexLoader"
 
 export type ReviewEvidenceScopeOptions = {
   changedSymbolIds?: string[]
@@ -28,21 +28,30 @@ export function buildReviewEvidenceScope(
   options: ReviewEvidenceScopeOptions
 ): EvidenceScopeResult {
   const analysisSymbols = adaptSymbols(analysis)
-  const symbolIdByAlias = buildSymbolAliasIndex([
-    ...analysisSymbols,
-    ...(options.repositoryIndex?.symbols ?? [])
-  ])
+  const initialMerge = mergeRepositoryScopeData(analysisSymbols, [], options.repositoryIndex)
+  const symbolIdByAlias = buildSymbolAliasIndex(initialMerge.symbols)
+  for (const [analysisId, canonicalId] of initialMerge.symbolIdMap) {
+    symbolIdByAlias.set(analysisId, canonicalId)
+  }
+
   const analysisEdges = adaptDependencyEdges(analysis, symbolIdByAlias)
-  const merged = mergeRepositoryScopeData(analysisSymbols, analysisEdges, options.repositoryIndex)
+  const repositoryScope = mergeRepositoryScopeData(
+    analysisSymbols,
+    analysisEdges,
+    options.repositoryIndex
+  )
   const documentUnits = adaptDocumentEvidence(documents?.evidence ?? [])
-  const changedSymbolIds = options.changedSymbolIds?.length
+  const requestedChangedSymbolIds = options.changedSymbolIds?.length
     ? options.changedSymbolIds
     : analysis.changedSymbols.map((symbol) => symbol.id)
+  const changedSymbolIds = requestedChangedSymbolIds.map((id) =>
+    repositoryScope.symbolIdMap.get(id) ?? symbolIdByAlias.get(id) ?? id
+  )
 
-  return buildEvidenceScope({
+  const scope = buildEvidenceScope({
     changedSymbolIds,
-    symbols: merged.symbols,
-    dependencyEdges: merged.dependencyEdges,
+    symbols: repositoryScope.symbols,
+    dependencyEdges: repositoryScope.dependencyEdges,
     maxDependencyDepth: options.maxDependencyDepth,
     rules: options.rules,
     documentEvidence: new InMemoryDocumentEvidenceAdapter(documentUnits),
@@ -50,6 +59,15 @@ export function buildReviewEvidenceScope(
     tokenBudget: options.tokenBudget,
     includeLowPriority: options.includeLowPriority
   })
+
+  return {
+    ...scope,
+    warnings: [...new Set([
+      ...initialMerge.warnings,
+      ...repositoryScope.warnings,
+      ...scope.warnings
+    ])].sort()
+  }
 }
 
 function adaptSymbols(analysis: CodeAnalysisResult): ScopeSymbol[] {
@@ -96,9 +114,15 @@ function adaptSymbols(analysis: CodeAnalysisResult): ScopeSymbol[] {
 
 function buildSymbolAliasIndex(symbols: ScopeSymbol[]): Map<string, string> {
   const aliases = new Map<string, string>()
+  const idsByName = new Map<string, string[]>()
   for (const symbol of symbols) {
     aliases.set(symbol.id, symbol.id)
-    if (!aliases.has(symbol.name)) aliases.set(symbol.name, symbol.id)
+    const ids = idsByName.get(symbol.name) ?? []
+    ids.push(symbol.id)
+    idsByName.set(symbol.name, ids)
+  }
+  for (const [name, ids] of idsByName) {
+    if (ids.length === 1) aliases.set(name, ids[0])
   }
   return aliases
 }
