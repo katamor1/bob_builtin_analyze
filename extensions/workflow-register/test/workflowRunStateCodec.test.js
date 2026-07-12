@@ -82,12 +82,12 @@ test("run-state codec rejects malformed schema discriminators", async (t) => {
     {
       name: "foreign schema family",
       value: "other-product/run-state/v1",
-      message: /unsupported workflow run state schemaVersion 'other-product\/run-state\/v1'/
+      message: /Unsupported workflow run state schemaVersion 'other-product\/run-state\/v1'/
     },
     {
       name: "zero version",
       value: "workflow-register/run-state/v0",
-      message: /unsupported workflow run state schemaVersion 'workflow-register\/run-state\/v0'/
+      message: /Unsupported workflow run state schemaVersion 'workflow-register\/run-state\/v0'/
     },
     {
       name: "number",
@@ -119,7 +119,7 @@ test("run-state codec rejects malformed schema discriminators", async (t) => {
 test("run-state codec validates the stable inspectable core", async (t) => {
   const base = parseFixture("v1-basic.json")
   const cases = [
-    ["non-object document", null, /workflow run document must be an object/],
+    ["non-object document", null, /Workflow run document must be an object/],
     ["missing workflow id", { ...base, workflowId: undefined }, /field 'workflowId' must be a non-empty string/],
     ["invalid run status", { ...base, status: "unknown" }, /field 'status' has unsupported value 'unknown'/],
     ["invalid inputs", { ...base, inputs: [] }, /field 'inputs' must be an object/],
