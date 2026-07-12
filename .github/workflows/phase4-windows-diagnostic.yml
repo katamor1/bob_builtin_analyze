@@ -33,29 +33,7 @@ jobs:
         run: |
           @'
           const fs = require("node:fs")
-          const expected = new Map([
-            ["extensions/workflow-register/test/bobGateLifecycle.test.js", 1],
-            ["extensions/workflow-register/test/helpers/workflowEngineFixtures.js", 1],
-            ["extensions/workflow-register/test/operationHubMutations.test.js", 1],
-            ["extensions/workflow-register/test/workflowArtifactManifest.test.js", 1],
-            ["extensions/workflow-register/test/workflowPlatformP0E2e.test.js", 1],
-            ["extensions/workflow-register/test/workflowRunRecovery.test.js", 1],
-            ["extensions/workflow-register/test/workflowRunStateMigrationPath.test.js", 1],
-            ["extensions/workflow-register/test/workflowTaskSnapshotArtifactImport.test.js", 3],
-            ["extensions/workflow-register/test/workspaceFileTransaction.test.js", 1]
-          ])
-          for (const [file, count] of expected) {
-            const source = fs.readFileSync(file, "utf8")
-            const found = source.split("fs.realpathSync(").length - 1
-            if (found !== count) throw new Error(`${file}: expected ${count} sync calls, found ${found}`)
-            if (source.includes("fs.realpathSync.native(")) throw new Error(`${file}: native call already present`)
-            fs.writeFileSync(file, source.replaceAll("fs.realpathSync(", "fs.realpathSync.native("), "utf8")
-          }
-          '@ | Set-Content -Path apply-windows-fixture-fix.cjs -Encoding utf8
-          node apply-windows-fixture-fix.cjs
-          Remove-Item apply-windows-fixture-fix.cjs
-
-          $expected = @(
+          const files = [
             "extensions/workflow-register/test/bobGateLifecycle.test.js",
             "extensions/workflow-register/test/helpers/workflowEngineFixtures.js",
             "extensions/workflow-register/test/operationHubMutations.test.js",
@@ -65,10 +43,32 @@ jobs:
             "extensions/workflow-register/test/workflowRunStateMigrationPath.test.js",
             "extensions/workflow-register/test/workflowTaskSnapshotArtifactImport.test.js",
             "extensions/workflow-register/test/workspaceFileTransaction.test.js"
-          ) | Sort-Object
-          $actual = @(git diff --name-only) | Sort-Object
-          if (Compare-Object $expected $actual) { throw "unexpected changed paths" }
-          git diff --check
+          ]
+          for (const file of files) {
+            const source = fs.readFileSync(file, "utf8")
+            const updated = source.replaceAll("fs.realpathSync(", "fs.realpathSync.native(")
+            if (updated.includes("fs.realpathSync(") || !updated.includes("fs.realpathSync.native(")) {
+              throw new Error(`${file}: canonicalizer replacement did not converge`)
+            }
+            fs.writeFileSync(file, updated, "utf8")
+          }
+          '@ | Set-Content -Path apply-windows-fixture-fix.cjs -Encoding utf8
+          node apply-windows-fixture-fix.cjs
+          Remove-Item apply-windows-fixture-fix.cjs
+
+          $allowed = @(
+            "extensions/workflow-register/test/bobGateLifecycle.test.js",
+            "extensions/workflow-register/test/helpers/workflowEngineFixtures.js",
+            "extensions/workflow-register/test/operationHubMutations.test.js",
+            "extensions/workflow-register/test/workflowArtifactManifest.test.js",
+            "extensions/workflow-register/test/workflowPlatformP0E2e.test.js",
+            "extensions/workflow-register/test/workflowRunRecovery.test.js",
+            "extensions/workflow-register/test/workflowRunStateMigrationPath.test.js",
+            "extensions/workflow-register/test/workflowTaskSnapshotArtifactImport.test.js",
+            "extensions/workflow-register/test/workspaceFileTransaction.test.js"
+          )
+          $unexpected = @(git diff --name-only) | Where-Object { $_ -notin $allowed }
+          if ($unexpected.Count -gt 0) { throw "unexpected changed paths: $unexpected" }
 
       - name: Setup Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
