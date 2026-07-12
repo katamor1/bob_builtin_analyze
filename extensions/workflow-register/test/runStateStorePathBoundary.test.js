@@ -191,16 +191,14 @@ test("FileRunStateStore list ignores only owned atomic temp files in the runs ro
 
 test("FileRunStateStore retries a contained atomic replacement detected between open and read", async (t) => {
   const workspaceRoot = await makeWorkspace()
-const store = new FileRunStateStore({ workspaceRoot })
-const runFile = path.join(workspaceRoot, ".bob", "workflows", "runs", "run-1", "run.json")
-const replacementFile = path.join(path.dirname(runFile), "replacement.json")
-const initial = { ...runState("run-1", "initial"), schemaVersion: CURRENT_WORKFLOW_RUN_STATE_SCHEMA_VERSION }
-const replacement = { ...runState("run-1", "replacement"), schemaVersion: CURRENT_WORKFLOW_RUN_STATE_SCHEMA_VERSION }
-await fs.mkdir(path.dirname(runFile), { recursive: true })
-await fs.writeFile(runFile, `${JSON.stringify(initial, null, 2)}
-`)
-await fs.writeFile(replacementFile, `${JSON.stringify(replacement, null, 2)}
-`)
+  const store = new FileRunStateStore({ workspaceRoot })
+  const runFile = path.join(workspaceRoot, ".bob", "workflows", "runs", "run-1", "run.json")
+  const replacementFile = path.join(path.dirname(runFile), "replacement.json")
+  const initial = { ...runState("run-1", "initial"), schemaVersion: CURRENT_WORKFLOW_RUN_STATE_SCHEMA_VERSION }
+  const replacement = { ...runState("run-1", "replacement"), schemaVersion: CURRENT_WORKFLOW_RUN_STATE_SCHEMA_VERSION }
+  await fs.mkdir(path.dirname(runFile), { recursive: true })
+  await fs.writeFile(runFile, `${JSON.stringify(initial, null, 2)}\n`)
+  await fs.writeFile(replacementFile, `${JSON.stringify(replacement, null, 2)}\n`)
   const originalOpen = fs.open
   let replaced = false
   fs.open = async function replaceBeforeOpen(file, flags, mode) {
