@@ -1,0 +1,176 @@
+name: agent-finalize-automatic-pause-deliverables
+
+on:
+  pull_request:
+    paths:
+      - "extensions/workflow-register/test/fixtures/automatic-pause-ci-verification.txt"
+      - ".github/workflows/agent-finalize-automatic-pause-deliverables.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    if: github.event.pull_request.head.ref == 'agent/workflow-automatic-pause-ci-verification-20260712'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: agent/workflow-automatic-pause-limits-20260712
+          fetch-depth: 0
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: extensions/workflow-register/package-lock.json
+      - name: Finalize documentation and cleanup
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from textwrap import dedent
+
+          def append_once(path_value: str, marker: str, addition: str) -> None:
+              path = Path(path_value)
+              text = path.read_text(encoding="utf-8")
+              if marker in text:
+                  return
+              path.write_text(text.rstrip() + "\n\n" + dedent(addition).strip() + "\n", encoding="utf-8")
+
+          def replace_once_if_present(path_value: str, old: str, new: str) -> None:
+              path = Path(path_value)
+              text = path.read_text(encoding="utf-8")
+              if old not in text:
+                  return
+              if text.count(old) != 1:
+                  raise SystemExit(f"{path_value}: ambiguous replacement for {old[:80]!r}")
+              path.write_text(text.replace(old, new), encoding="utf-8")
+
+          readme = "extensions/workflow-register/README.md"
+          replace_once_if_present(
+              readme,
+              "| `stepReview` | 各 step 後のレビュー停止、承認、再試行、attempt 保存を制御する。 |\n| `branching` |",
+              "| `stepReview` | 各 step 後のレビュー停止、承認、再試行、attempt 保存を制御する。 |\n| `runControl` | 経過時間、agent 呼び出し数、ローカル時刻による安全な自動 Pause 制限を定義する。 |\n| `branching` |"
+          )
+          append_once(readme, "## 決定的な自動 Pause 制限", '''
+          ## 決定的な自動 Pause 制限
+
+          長時間または無人の workflow は、実行中の agent / command を強制終了せず、次の安全な checkpoint で自動的に `paused` にできます。
+
+          ```yaml
+          runControl:
+            limits:
+              maxRunMinutes: 45
+              maxAgentStepsPerRun: 6
+              pauseAtLocalTime: "18:00"
+              timezone: "Asia/Tokyo"
+          ```
+
+          - `maxRunMinutes` は run の `createdAt` からの経過時間で判定します。
+          - `maxAgentStepsPerRun` は archived attempt と開始済み agent attempt を数え、次の agent 呼び出し前で停止します。
+          - `pauseAtLocalTime` は `timezone` の IANA timezone で判定し、日付をまたいでも到達済み cutoff を解除しません。
+          - workflow と workspace の policy は独立して評価し、決定的な順序で最初に到達した制限を停止理由にします。
+          - 手動 Pause は常に優先されます。自動 Pause から再開するときだけ、15 / 30 / 60 分の期限付き override を選択でき、理由と操作者を `control.json` に記録します。
+          - `Bob Workflow: 中断・再開状態を確認` と Run Diagnostics で、kind、source、checkpoint、limit、observed value、override を確認できます。
+
+          Workspace setting では `workflowRegister.runControl.maxRunMinutes`、`maxAgentStepsPerRun`、`pauseAtLocalTime`、`timezone` を使用します。数値 `0` と空の時刻は無効を表します。
+          ''')
+
+          append_once("extensions/workflow-register/docs/basic-design-ja.md", "## 決定的な自動 Pause", '''
+          ## 決定的な自動 Pause
+
+          `runControl.limits` は、provider 固有の cancel API に依存せず、既存の安全な engine checkpoint で run を `paused` にする。対象は経過時間、agent 呼び出し数、IANA timezone 上のローカル時刻である。実行中の agent / command / process / Bob subagent は強制停止しない。
+
+          workflow policy と workspace policy は同じ純粋 evaluator で独立評価する。手動 Pause request を先に確認し、期限付き override は自動制限だけを抑止する。実行状態は `run.json`、操作者制御と override は `control.json` を正本とする。
+          ''')
+          append_once("extensions/workflow-register/docs/detailed-design-ja.md", "## 自動 Pause evaluator と override", '''
+          ## 自動 Pause evaluator と override
+
+          `evaluateAutomaticPause()` は `WorkflowRunState`、次 step、注入時計、workflow / workspace policy、optional override を受け取り、`maxRunMinutes`、`maxAgentStepsPerRun`、`pauseAtLocalTime` の決定を返す。local cutoff は timezone-local の日付と時刻を比較し、run が cutoff 日を越えた後に午前0時へ戻っても停止条件を維持する。
+
+          engine は manual request を先に処理し、その後に自動制限を評価する。停止時は `workflow-register/automatic-pause/v1` を `state["workflow.pause"]` に保存し、kind、source、checkpoint、nextStepId、limit、observed、detectedAt を記録する。override は `workflow-register/automatic-pause-override/v1` として `control.json` に保存し、期限切れ後は再び制限を評価する。
+
+          active lease の heartbeat による `run.lock.json` の原子的置換は、path identity 検査で観測された場合に限り transient contention として再試行する。symlink、junction、workspace escape、所有 token 変更は引き続き拒否する。
+          ''')
+          append_once("extensions/workflow-register/docs/unit-test-spec-ja.md", "## 自動 Pause 制限テスト", '''
+          ## 自動 Pause 制限テスト
+
+          - schema / parser: 正常値、未知フィールド、0以下、小数 agent 上限、`HH:mm`、IANA timezone を検証する。
+          - evaluator: 境界直前・境界一致・境界超過、attempt 集計、policy tie-break、override 有効期限、timezone と日付跨ぎを固定時計で検証する。
+          - engine: preflight / next step / next agent call 前の graceful pause、manual precedence、構造化 state 保存を検証する。
+          - runtime wiring: standalone と Bob runner が同じ workspace policy を受け取ることを検証する。
+          - diagnostics / command: automatic pause と override の全 provenance、Operation Hub revision check、cancel 経路を検証する。
+          - durability: heartbeat による lock file の原子的置換を transient contention として扱い、最終的に busy / locked を返すことを決定的に再現する。
+          ''')
+          append_once("extensions/workflow-register/docs/real-machine-test-spec-ja.md", "## 自動 Pause 実機確認", '''
+          ## 自動 Pause 実機確認
+
+          1. `maxRunMinutes`、`maxAgentStepsPerRun`、`pauseAtLocalTime` を個別に設定した workflow を IBM Bob から実行する。
+          2. 実行中の agent / command が強制終了されず、次の安全な checkpoint で `paused` になることを確認する。
+          3. Run Diagnostics と Run Control で kind、source、checkpoint、limit、observed、detectedAt を確認する。
+          4. 15 / 30 / 60 分 override を理由付きで設定し、期限内は自動制限だけが抑止されることを確認する。
+          5. override 中に手動 Pause を要求し、手動要求が優先されることを確認する。
+          6. VS Code 再起動、Bob task handle の再接続、multi-root workspace でも同一 run と正しい workspace root が選択されることを確認する。
+
+          GitHub-hosted Ubuntu / Windows、package、VSIX policy、Extension Host smoke はリポジトリゲートで扱う。IBM Bob、実 Bazaar、multi-root の確認結果は別途 release evidence に記録する。
+          ''')
+
+          roadmap = "docs/workflow-register-feature-roadmap-2026-07-11.md"
+          replace_once_if_present(roadmap, "- ステータス: 企画案", "- ステータス: 実行中")
+          replace_once_if_present(
+              roadmap,
+              "- pause / resume は実装済みだが、業務終了時刻、最大 run 時間、最大 agent step 数などの自動 pause が未実装である。",
+              "- 決定的な自動 Pause は Issue #73 / draft PR #75 でリポジトリ実装と Ubuntu / Windows 品質ゲートまで完了した。実 IBM Bob / Bazaar / multi-root 証跡は未完了である。"
+          )
+          replace_once_if_present(
+              roadmap,
+              "### P1-5. 決定的な自動 Pause 制限を追加する\n",
+              "### P1-5. 決定的な自動 Pause 制限を追加する\n\n**実行状況（2026-07-12）:** Issue #73 / draft PR #75 で実装済み。focused / full suite、Ubuntu / Windows、package、VSIX policy、Extension Host smoke は GREEN。実 IBM Bob / Bazaar / multi-root は外部ゲートとして継続する。\n"
+          )
+
+          trace = Path("extensions/bob-code-consistency-review/test/traceabilityCatalogStore.test.js")
+          text = trace.read_text(encoding="utf-8")
+          text = text.replace(
+              "\nassert.equal(\n  normalizePhysicalPath(await fs.realpath(path.dirname(aliasWinner.backupPath))),\n  normalizePhysicalPath(await fs.realpath(path.dirname(directPath)))\n)\n",
+              "\n  assert.equal(\n    normalizePhysicalPath(await fs.realpath(path.dirname(aliasWinner.backupPath))),\n    normalizePhysicalPath(await fs.realpath(path.dirname(directPath)))\n  )\n"
+          )
+          trace.write_text(text, encoding="utf-8")
+          PY
+          rm -f \
+            .github/workflows/agent-diagnose-workflow-register-ci.yml \
+            .github/workflows/agent-finalize-automatic-pause-plan.yml \
+            .github/workflows/agent-finish-automatic-pause.yml \
+            .github/workflows/agent-fix-automatic-pause-midnight.yml \
+            .github/workflows/agent-record-automatic-pause-ci.yml \
+            .github/workflows/agent-rerun-final-quality.yml \
+            .github/workflows/workflow-automatic-pause-diagnostic.yml
+      - name: Verify workflow-register repository gates
+        working-directory: extensions/workflow-register
+        shell: bash
+        run: |
+          npm ci --silent
+          npm run dependency:policy --silent
+          npm run architecture:policy --silent
+          npm run source:policy --silent
+          npm run schema:policy --silent
+          npm test --silent
+          npm run package --silent
+          npm run package:policy --silent
+      - name: Verify bob-code-consistency-review
+        working-directory: extensions/bob-code-consistency-review
+        shell: bash
+        run: |
+          npm ci --silent
+          npm test --silent
+      - name: Commit finalized deliverables
+        shell: bash
+        run: |
+          rm .github/workflows/agent-finalize-automatic-pause-deliverables.yml
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "docs: finalize automatic pause controls and evidence"
+          git push origin HEAD:agent/workflow-automatic-pause-limits-20260712
