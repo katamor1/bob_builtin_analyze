@@ -18,46 +18,39 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
-      - name: Apply coordinator compile fix
+      - name: Apply Review Run normalization fix
         if: github.actor != 'github-actions[bot]'
         shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
-          p = Path("extensions/bob-bazaar-review/src/reviewRuns/reviewRunCoordinator.ts")
+          p = Path("extensions/bob-bazaar-review/src/reviewRuns/reviewRunState.ts")
           s = p.read_text()
-          marker = "\n".join([
-              '  if (!result.jsonPath || !result.markdownPath) {',
-              '    throw new Error("Captured review result paths are required")',
+          old = "\n".join([
+              'function normalizePhaseProgress(value: any, fallback: ReviewRunPhaseMap[ReviewRunTrackedPhase]) {',
+              '  if (!value || typeof value !== "object" || !isReviewRunPhaseStatus(value.status)) return { ...fallback }',
+              '  return {',
+              '    status: value.status,',
+              '    startedAt: typeof value.startedAt === "string" ? value.startedAt : undefined,',
+              '    completedAt: typeof value.completedAt === "string" ? value.completedAt : undefined,',
+              '    issue: typeof value.issue === "string" ? value.issue : undefined',
               '  }',
-              ''
+              '}'
           ])
-          insertion = "\n".join([
-              '  const jsonPath = result.jsonPath',
-              '  const markdownPath = result.markdownPath',
-              '  const metadataPath = result.metadataPath',
-              ''
+          new = "\n".join([
+              'function normalizePhaseProgress(value: any, fallback: ReviewRunPhaseMap[ReviewRunTrackedPhase]) {',
+              '  if (!value || typeof value !== "object" || !isReviewRunPhaseStatus(value.status)) return { ...fallback }',
+              '  return {',
+              '    status: value.status,',
+              '    ...(typeof value.startedAt === "string" ? { startedAt: value.startedAt } : {}),',
+              '    ...(typeof value.completedAt === "string" ? { completedAt: value.completedAt } : {}),',
+              '    ...(typeof value.issue === "string" ? { issue: value.issue } : {})',
+              '  }',
+              '}'
           ])
-          if 'const jsonPath = result.jsonPath' not in s:
-              if marker not in s:
-                  raise SystemExit("result path guard not found")
-              s = s.replace(marker, marker + insertion, 1)
-          s = s.replace(
-              'toWorkspaceRelativeArtifactPath(latest.workspaceRoot, result.jsonPath)',
-              'toWorkspaceRelativeArtifactPath(latest.workspaceRoot, jsonPath)',
-              1
-          )
-          s = s.replace(
-              'toWorkspaceRelativeArtifactPath(latest.workspaceRoot, result.markdownPath)',
-              'toWorkspaceRelativeArtifactPath(latest.workspaceRoot, markdownPath)',
-              1
-          )
-          s = s.replace(
-              'reviewResultMetadataPath: result.metadataPath\n          ? toWorkspaceRelativeArtifactPath(latest.workspaceRoot, result.metadataPath)',
-              'reviewResultMetadataPath: metadataPath\n          ? toWorkspaceRelativeArtifactPath(latest.workspaceRoot, metadataPath)',
-              1
-          )
-          p.write_text(s)
+          if old not in s:
+              raise SystemExit("normalizePhaseProgress block not found")
+          p.write_text(s.replace(old, new, 1))
           PY
       - name: Commit and push fix
         if: github.actor != 'github-actions[bot]'
@@ -65,8 +58,8 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add extensions/bob-bazaar-review/src/reviewRuns/reviewRunCoordinator.ts
-          git commit -m "fix: narrow Review Run result artifact paths"
+          git add extensions/bob-bazaar-review/src/reviewRuns/reviewRunState.ts
+          git commit -m "fix: preserve Review Run phase shape on read"
           git push origin HEAD:${{ github.event.pull_request.head.ref }}
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -93,5 +86,4 @@ jobs:
           path: |
             extensions/bob-bazaar-review/test-output.txt
             extensions/bob-bazaar-review/test-exit-code.txt
-            extensions/bob-bazaar-review/src/reviewRuns/reviewRunCoordinator.ts
           if-no-files-found: error
