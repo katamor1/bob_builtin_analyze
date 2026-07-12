@@ -6,110 +6,112 @@ on:
       - ".github/workflows/phase4-windows-diagnostic.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  source-bundle:
-    name: Source bundle
+  apply-fixture-fix:
+    name: Apply canonical Windows fixture fix
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - name: Checkout
+      - name: Checkout Phase 4 branch
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-
-      - name: Upload selected sources
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: phase4-windows-source-bundle
-          retention-days: 1
-          path: |
-            extensions/workflow-register/src/core/runtime/runLock.ts
-            extensions/workflow-register/test/helpers/workflowEngineFixtures.js
-            extensions/workflow-register/test/bobGateLifecycle.test.js
-            extensions/workflow-register/test/operationHubMutations.test.js
-            extensions/workflow-register/test/processWorkflowEngineArtifacts.test.js
-            extensions/workflow-register/test/runStateStorePathBoundary.test.js
-            extensions/workflow-register/test/workflowArtifactManifest.test.js
-            extensions/workflow-register/test/workflowPlatformP0E2e.test.js
-            extensions/workflow-register/test/workflowRunLock.test.js
-            extensions/workflow-register/test/workflowRunRecovery.test.js
-            extensions/workflow-register/test/workflowRunStateMigrationPath.test.js
-            extensions/workflow-register/test/workflowTaskSnapshotArtifactImport.test.js
-            extensions/workflow-register/test/workspaceFileTransaction.test.js
-            extensions/bob-code-consistency-review/test/traceabilityCatalogStore.test.js
+          ref: agent/workflow-reproducible-runtime-phase4-hardening-20260712
+          fetch-depth: 0
 
-  windows-diagnostic:
-    name: Windows diagnostic / ${{ matrix.extension }}
-    runs-on: windows-latest
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        extension:
-          - workflow-register
-          - bob-code-consistency-review
-
-    defaults:
-      run:
-        working-directory: extensions/${{ matrix.extension }}
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: extensions/${{ matrix.extension }}/package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run tests and extract failures
-        shell: pwsh
+      - name: Verify expected parent
+        shell: bash
         run: |
-          & npm.cmd test *> test-output.txt
-          $exitCode = $LASTEXITCODE
-          $lines = @(Get-Content test-output.txt)
-          $selected = [System.Collections.Generic.List[string]]::new()
-          $failureCount = 0
-          for ($index = 0; $index -lt $lines.Count; $index += 1) {
-            if ($lines[$index] -match '^not ok ') {
-              $failureCount += 1
-              if ($failureCount -le 20) {
-                $start = [Math]::Max(0, $index - 1)
-                $end = [Math]::Min($lines.Count - 1, $index + 24)
-                for ($cursor = $start; $cursor -le $end; $cursor += 1) {
-                  $selected.Add($lines[$cursor])
-                }
-                $selected.Add('---')
-              }
-            }
-          }
-          $summary = @($lines | Where-Object { $_ -match '^# (tests|pass|fail|cancelled|skipped|todo|duration_ms)' })
-          $report = [System.Collections.Generic.List[string]]::new()
-          $report.Add('extension=${{ matrix.extension }}')
-          $report.Add("exit_code=$exitCode")
-          $report.Add("failure_count=$failureCount")
-          $report.Add('')
-          $report.Add('FAILURES')
-          if ($selected.Count -eq 0) {
-            $report.Add('(none)')
-          } else {
-            foreach ($line in $selected) { $report.Add($line) }
-          }
-          $report.Add('')
-          $report.Add('SUMMARY')
-          foreach ($line in $summary) { $report.Add($line) }
-          $report | Set-Content -Path diagnostic.txt -Encoding utf8
-          exit 0
+          test "$(git rev-parse HEAD)" = "8afb8474973c86546d0ddd869a366da970354820"
 
-      - name: Upload diagnostic artifact
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: phase4-windows-${{ matrix.extension }}
-          path: extensions/${{ matrix.extension }}/diagnostic.txt
-          if-no-files-found: error
-          retention-days: 1
+      - name: Canonicalize temporary workspace roots
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          replacements = {
+              "extensions/workflow-register/test/helpers/workflowEngineFixtures.js": [
+                  ("return fs.mkdtempSync(path.join(os.tmpdir(), prefix))", "return fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), prefix)))"),
+              ],
+              "extensions/workflow-register/test/bobGateLifecycle.test.js": [
+                  ("const root = fs.mkdtempSync(path.join(os.tmpdir(), prefix))", "const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), prefix)))"),
+              ],
+              "extensions/workflow-register/test/operationHubMutations.test.js": [
+                  ("const root = fs.mkdtempSync(path.join(os.tmpdir(), \"workflow-register-operation-hub-\"))", "const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), \"workflow-register-operation-hub-\")))"),
+              ],
+              "extensions/workflow-register/test/runStateStorePathBoundary.test.js": [
+                  ("return fs.mkdtemp(path.join(os.tmpdir(), \"workflow-run-store-boundary-\"))", "return fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), \"workflow-run-store-boundary-\")))"),
+              ],
+              "extensions/workflow-register/test/workflowArtifactManifest.test.js": [
+                  ("return fs.mkdtempSync(path.join(os.tmpdir(), \"workflow-register-artifacts-\"))", "return fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), \"workflow-register-artifacts-\")))"),
+              ],
+              "extensions/workflow-register/test/workflowPlatformP0E2e.test.js": [
+                  ("const root = fs.mkdtempSync(path.join(os.tmpdir(), prefix))", "const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), prefix)))"),
+              ],
+              "extensions/workflow-register/test/workflowRunRecovery.test.js": [
+                  ("return fs.mkdtempSync(path.join(os.tmpdir(), \"workflow-register-recovery-\"))", "return fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), \"workflow-register-recovery-\")))"),
+              ],
+              "extensions/workflow-register/test/workflowRunStateMigrationPath.test.js": [
+                  ("return fs.mkdtempSync(path.join(os.tmpdir(), \"workflow-run-migration-path-\"))", "return fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), \"workflow-run-migration-path-\")))"),
+              ],
+              "extensions/workflow-register/test/workflowTaskSnapshotArtifactImport.test.js": [
+                  ("const root = fs.mkdtempSync(path.join(os.tmpdir(), \"workflow-register-snapshot-transaction-\"))", "const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), \"workflow-register-snapshot-transaction-\")))"),
+                  ("const root = fs.mkdtempSync(path.join(os.tmpdir(), \"workflow-register-snapshot-save-rollback-\"))", "const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), \"workflow-register-snapshot-save-rollback-\")))"),
+                  ("const root = fs.mkdtempSync(path.join(os.tmpdir(), \"workflow-register-snapshot-post-save-\"))", "const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), \"workflow-register-snapshot-post-save-\")))"),
+              ],
+              "extensions/workflow-register/test/workspaceFileTransaction.test.js": [
+                  ("const root = fs.mkdtempSync(path.join(os.tmpdir(), \"workflow-register-file-transaction-\"))", "const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), \"workflow-register-file-transaction-\")))"),
+              ],
+              "extensions/bob-code-consistency-review/test/traceabilityCatalogStore.test.js": [
+                  ("return fs.mkdtemp(path.join(os.tmpdir(), \"bob-trace-store-\"))", "return fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), \"bob-trace-store-\")))"),
+              ],
+          }
+
+          for file_name, pairs in replacements.items():
+              path = Path(file_name)
+              text = path.read_text(encoding="utf-8")
+              for old, new in pairs:
+                  count = text.count(old)
+                  if count != 1:
+                      raise SystemExit(f"{file_name}: expected one occurrence, found {count}: {old}")
+                  text = text.replace(old, new, 1)
+              path.write_text(text, encoding="utf-8")
+          PY
+
+      - name: Verify test source syntax and diff
+        shell: bash
+        run: |
+          node --check extensions/workflow-register/test/helpers/workflowEngineFixtures.js
+          node --check extensions/workflow-register/test/bobGateLifecycle.test.js
+          node --check extensions/workflow-register/test/operationHubMutations.test.js
+          node --check extensions/workflow-register/test/runStateStorePathBoundary.test.js
+          node --check extensions/workflow-register/test/workflowArtifactManifest.test.js
+          node --check extensions/workflow-register/test/workflowPlatformP0E2e.test.js
+          node --check extensions/workflow-register/test/workflowRunRecovery.test.js
+          node --check extensions/workflow-register/test/workflowRunStateMigrationPath.test.js
+          node --check extensions/workflow-register/test/workflowTaskSnapshotArtifactImport.test.js
+          node --check extensions/workflow-register/test/workspaceFileTransaction.test.js
+          node --check extensions/bob-code-consistency-review/test/traceabilityCatalogStore.test.js
+          git diff --check
+
+      - name: Commit and push fixture fix
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            extensions/workflow-register/test/helpers/workflowEngineFixtures.js \
+            extensions/workflow-register/test/bobGateLifecycle.test.js \
+            extensions/workflow-register/test/operationHubMutations.test.js \
+            extensions/workflow-register/test/runStateStorePathBoundary.test.js \
+            extensions/workflow-register/test/workflowArtifactManifest.test.js \
+            extensions/workflow-register/test/workflowPlatformP0E2e.test.js \
+            extensions/workflow-register/test/workflowRunRecovery.test.js \
+            extensions/workflow-register/test/workflowRunStateMigrationPath.test.js \
+            extensions/workflow-register/test/workflowTaskSnapshotArtifactImport.test.js \
+            extensions/workflow-register/test/workspaceFileTransaction.test.js \
+            extensions/bob-code-consistency-review/test/traceabilityCatalogStore.test.js
+          git commit -m "test: canonicalize Windows workspace fixtures"
+          git push origin HEAD:agent/workflow-reproducible-runtime-phase4-hardening-20260712
