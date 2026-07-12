@@ -136,7 +136,7 @@ test("does not double-count Human Triage time when a completed decision set is s
 })
 
 test("retries summary finalization from the persisted record phase with a stale caller context", async () => {
-  const { workspaceRoot, campaignId, reviewId, run } = await prepareTriageCompletedRun("bbr-finalize-retry-")
+  const { workspaceRoot, campaignId, reviewId, run, triagePath } = await prepareTriageCompletedRun("bbr-finalize-retry-")
   const summaryJsonPath = path.join(workspaceRoot, ".bob-review-records", "campaigns", campaignId, "summary.json")
   await fs.mkdir(summaryJsonPath, { recursive: true })
 
@@ -153,8 +153,11 @@ test("retries summary finalization from the persisted record phase with a stale 
   const recordBeforeRetry = await fs.readFile(recordPath, "utf8")
 
   await fs.rm(summaryJsonPath, { recursive: true, force: true })
-  const retried = await finalizeReviewRun(run, "2026-07-12T00:07:00.000Z")
+  const refreshed = await recordTriageCompleted(run, triagePath, "2026-07-12T00:06:30.000Z")
+  assert.equal(refreshed.metrics.humanTriageSeconds, run.metrics.humanTriageSeconds)
+  assert.equal(refreshed.phases.summary.status, "failed")
 
+  const retried = await finalizeReviewRun(refreshed, "2026-07-12T00:07:00.000Z")
   assert.equal(retried.context.status, "completed")
   assert.equal(retried.context.phases.record.status, "completed")
   assert.equal(retried.context.phases.summary.status, "completed")
