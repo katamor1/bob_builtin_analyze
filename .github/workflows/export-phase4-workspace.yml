@@ -1,0 +1,39 @@
+name: Export phase 4 workspace
+
+on:
+  push:
+    branches:
+      - codex/execute-shared-plan-6a53743e
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: codex/execute-shared-plan-6a53743e
+          fetch-depth: 0
+
+      - name: Create source archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar \
+            --exclude=.git \
+            --exclude='*/node_modules' \
+            --exclude='*/out' \
+            --exclude='*.vsix' \
+            -czf "$RUNNER_TEMP/bob-phase4-workspace.tar.gz" .
+
+      - name: Upload source archive
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: bob-phase4-workspace-${{ github.sha }}
+          path: ${{ runner.temp }}/bob-phase4-workspace.tar.gz
+          if-no-files-found: error
+          retention-days: 1
