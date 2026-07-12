@@ -23,6 +23,11 @@ import {
   startReviewRun,
   validateReviewRunCommandInput
 } from "../reviewRuns/reviewRunCoordinator"
+import {
+  listLegacyReviewCandidates,
+  previewLegacyReviewRecovery,
+  recoverLegacyReviewRun
+} from "../reviewRuns/reviewRunRecovery"
 import { buildReviewRunResumeCandidate, nextReviewRunAction } from "../reviewRuns/reviewRunResume"
 import { buildReviewId } from "../reviewRuns/reviewRunState"
 import { listReviewRuns } from "../reviewRuns/reviewRunStore"
@@ -86,6 +91,8 @@ class BazaarReviewGuiController {
         await this.postReviewRuns()
       } else if (message?.type === "resumeReviewRun") {
         await this.resumeReviewRun(message)
+      } else if (message?.type === "recoverLegacyReview") {
+        await this.recoverLegacyReview()
       }
     } catch (error: any) {
       this.post({ type: "error", message: error?.message ?? String(error) })
@@ -170,6 +177,72 @@ class BazaarReviewGuiController {
     } else if (action === "humanTriage" || action === "finalize") {
       await vscode.commands.executeCommand("bobBazaar.openHumanTriageGui", reviewRunCommandInput(run))
     }
+  }
+
+  private async recoverLegacyReview(): Promise<void> {
+    const folder = this.bobWorkspaceFolder ?? this.bazaarWorkspaceFolder
+    if (!folder) throw new Error("legacy成果物を検索するworkspaceが選択されていません。")
+    const candidates = await listLegacyReviewCandidates(folder.uri.fsPath)
+    if (candidates.length === 0) {
+      await vscode.window.showInformationMessage("復旧可能なlegacy review-resultを検出できませんでした。")
+      return
+    }
+    const selected = await vscode.window.showQuickPick(
+      candidates.map((candidate) => ({
+        label: candidate.reviewId,
+        description: candidate.campaignIds.length > 0 ? candidate.campaignIds.join(", ") : "campaign未特定",
+        detail: [candidate.resultJsonPath, ...candidate.issues].join(" · "),
+        candidate
+      })),
+      { title: "復旧するlegacy Reviewを選択" }
+    )
+    if (!selected) return
+
+    let campaignId: string | undefined
+    if (selected.candidate.campaignIds.length === 1) {
+      campaignId = selected.candidate.campaignIds[0]
+    } else if (selected.candidate.campaignIds.length > 1) {
+      const pickedCampaign = await vscode.window.showQuickPick(selected.candidate.campaignIds, {
+        title: "Review Runを関連付けるcampaignを選択"
+      })
+      if (!pickedCampaign) return
+      campaignId = pickedCampaign
+    } else {
+      campaignId = await vscode.window.showInputBox({
+        title: "Review Runを関連付けるcampaign ID",
+        value: DEFAULT_CAMPAIGN_ID,
+        validateInput: (value) => value.trim() ? undefined : "campaign IDは必須です。"
+      })
+      if (!campaignId) return
+    }
+
+    const preview = await previewLegacyReviewRecovery(folder.uri.fsPath, selected.candidate, campaignId)
+    if (preview.blockingIssues.length > 0) {
+      throw new Error(`legacy recoveryを実行できません:\n${preview.blockingIssues.join("\n")}`)
+    }
+    const artifactLines = Object.entries(preview.artifacts)
+      .filter(([, value]) => value)
+      .map(([name, value]) => `${name}: ${value}`)
+    const confirmation = await vscode.window.showWarningMessage(
+      [
+        `legacy成果物からReview Runを復旧します: ${preview.campaignId} / ${preview.reviewId}`,
+        "既存成果物は変更せずreview-run.jsonだけを生成します。",
+        ...artifactLines,
+        ...preview.warnings.map((warning) => `warning: ${warning}`)
+      ].join("\n"),
+      { modal: true },
+      "復旧する"
+    )
+    if (confirmation !== "復旧する") return
+
+    const run = await recoverLegacyReviewRun(preview)
+    this.activeReviewRun = run
+    this.post({
+      type: "activeReviewRun",
+      reviewRun: serializeReviewRun(run),
+      message: "legacy成果物からReview Runを復旧しました。"
+    })
+    await this.postReviewRuns()
   }
 
   private async selectWorkspace(): Promise<void> {
