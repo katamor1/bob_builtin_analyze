@@ -1,0 +1,65 @@
+name: agent-fix-bob-runner-compat
+
+on:
+  push:
+    branches:
+      - agent/workflow-automatic-pause-limits-20260712
+    paths:
+      - ".github/workflows/agent-fix-bob-runner-compat.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: agent/workflow-automatic-pause-limits-20260712
+          fetch-depth: 0
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: extensions/workflow-register/package-lock.json
+      - name: Apply compatibility fix
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("extensions/workflow-register/src/bobWorkflowRunner.ts")
+          text = path.read_text(encoding="utf-8")
+          old_type = "  runControlStore: (workspaceRoot: string) => RunControlStore\n"
+          new_type = "  runControlStore?: (workspaceRoot: string) => RunControlStore\n"
+          old_call = "      runControlStore: this.options.runControlStore(workspaceRoot),\n"
+          new_call = "      runControlStore: this.options.runControlStore?.(workspaceRoot),\n"
+          if text.count(old_type) != 1:
+              raise SystemExit("expected required runControlStore option exactly once")
+          if text.count(old_call) != 1:
+              raise SystemExit("expected direct runControlStore call exactly once")
+          text = text.replace(old_type, new_type).replace(old_call, new_call)
+          path.write_text(text, encoding="utf-8")
+
+          workflow = Path(".github/workflows/agent-fix-bob-runner-compat.yml")
+          workflow.unlink()
+          PY
+      - name: Install dependencies
+        working-directory: extensions/workflow-register
+        run: npm ci --silent
+      - name: Verify focused compatibility regressions
+        working-directory: extensions/workflow-register
+        run: |
+          npm run compile --silent
+          node --test test/agentPromptParity.test.js test/bobGateLifecycle.test.js test/runtimeWiring.test.js
+      - name: Commit compatibility fix
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add extensions/workflow-register/src/bobWorkflowRunner.ts .github/workflows/agent-fix-bob-runner-compat.yml
+          git commit -m "fix: preserve Bob runner run-control compatibility"
+          git push origin HEAD:agent/workflow-automatic-pause-limits-20260712
