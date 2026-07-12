@@ -53,11 +53,24 @@ test("code consistency Extension Host smoke loads triage operator flows", () => 
   const qualityWorkflow = readRepoFile(".github", "workflows", "extensions-quality.yml")
   const smokeSource = readRepoFile("scripts", "extension-host-smoke.test.js")
   const operatorTestPath = path.join(repoRoot, "scripts", "triage-integrity-extension-host.test.js")
+  const operatorWorkspacePath = path.join(
+    repoRoot,
+    "extensions",
+    "bob-code-consistency-review",
+    "test",
+    "fixtures",
+    "triage-operator-workspace"
+  )
 
   assert.match(smokeSource, /SMOKE_EXTRA_FILES/)
+  assert.match(smokeSource, /SMOKE_WORKSPACE_FOLDER/)
   assert.match(smokeSource, /files:\s*smokeTestFiles\(\)/)
   assert.match(qualityWorkflow, /SMOKE_EXTRA_FILES:\s*\.\.\/\.\.\/scripts\/triage-integrity-extension-host\.test\.js/)
+  assert.match(qualityWorkflow, /SMOKE_WORKSPACE_FOLDER:\s*test\/fixtures\/triage-operator-workspace/)
   assert.match(qualityWorkflow, /extra_test_files:\s*"\.\.\/\.\.\/scripts\/triage-integrity-extension-host\.test\.js"/)
+  assert.match(qualityWorkflow, /workspace_folder:\s*"test\/fixtures\/triage-operator-workspace"/)
   assert.match(qualityWorkflow, /SMOKE_EXTRA_FILES:\s*\$\{\{\s*matrix\.extra_test_files\s*\}\}/)
+  assert.match(qualityWorkflow, /SMOKE_WORKSPACE_FOLDER:\s*\$\{\{\s*matrix\.workspace_folder\s*\}\}/)
   assert.equal(fs.existsSync(operatorTestPath), true, "triage operator Extension Host test file must be committed")
+  assert.equal(fs.existsSync(operatorWorkspacePath), true, "triage operator workspace fixture must be committed")
 })
