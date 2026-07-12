@@ -12,6 +12,7 @@ import {
   loadProjectRulePack,
   mergeProjectRules
 } from "./projectRulePackLoader"
+import { loadRepositorySymbolIndex } from "./repositorySymbolIndexLoader"
 import { buildReviewEvidenceScope } from "./reviewEvidenceAdapter"
 
 export type ReviewContextBudgetInput = {
@@ -43,13 +44,21 @@ export async function buildReviewContextBudget(
     maxBytes: input.limits.maxDocumentBytes,
     textEncoding: input.textEncoding
   })
+  const repositoryIndex = await loadRepositorySymbolIndex({
+    workspaceRoot: input.workspaceRoot,
+    indexPath: input.reviewInput.analysis_options?.repository_symbol_index_path,
+    expectedSourceRevision: input.diff.head,
+    maxBytes: input.limits.maxDocumentBytes,
+    textEncoding: input.textEncoding
+  })
   const mergedRules = mergeProjectRules(loadedRulePack?.rules ?? [], parsedInlineRules.rules)
   const scope = buildReviewEvidenceScope(input.codeAnalysis, input.documents, {
     tokenBudget: Math.max(1, Math.floor(input.limits.maxBobInputBytes / 4)),
     maxDependencyDepth: input.reviewInput.analysis_options?.max_call_depth ?? 1,
     rules: mergedRules.rules,
     documentKeywords: reviewDocumentKeywords(input.reviewInput),
-    includeLowPriority: input.reviewInput.bob_options?.evidence_scope_include_low_priority === true
+    includeLowPriority: input.reviewInput.bob_options?.evidence_scope_include_low_priority === true,
+    repositoryIndex
   })
   const warnings = [
     ...new Set([
@@ -66,7 +75,8 @@ export async function buildReviewContextBudget(
       tokenEstimation: TOKEN_ESTIMATION_POLICY,
       ruleSource: loadedRulePack?.sourcePath
         ?? (rawInlineRules === undefined ? "none" : INLINE_RULE_CONFIG_SOURCE),
-      ...(loadedRulePack ? { rulePack: loadedRulePack } : {})
+      ...(loadedRulePack ? { rulePack: loadedRulePack } : {}),
+      ...(repositoryIndex ? { symbolIndex: repositoryIndex } : {})
     }
   )
 

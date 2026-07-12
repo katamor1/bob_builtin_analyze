@@ -9,6 +9,8 @@ import type {
   ProjectRule,
   ScopeSymbol
 } from "./evidenceScopeTypes"
+import { mergeRepositoryScopeData } from "./repositorySymbolIndexAdapter"
+import type { LoadedRepositorySymbolIndex } from "./repositorySymbolIndexLoader"
 
 export type ReviewEvidenceScopeOptions = {
   changedSymbolIds?: string[]
@@ -17,6 +19,7 @@ export type ReviewEvidenceScopeOptions = {
   rules: ProjectRule[]
   documentKeywords?: string[]
   includeLowPriority?: boolean
+  repositoryIndex?: LoadedRepositorySymbolIndex
 }
 
 export function buildReviewEvidenceScope(
@@ -24,9 +27,13 @@ export function buildReviewEvidenceScope(
   documents: DocumentExtractionResult | undefined,
   options: ReviewEvidenceScopeOptions
 ): EvidenceScopeResult {
-  const symbols = adaptSymbols(analysis)
-  const symbolIdByAlias = buildSymbolAliasIndex(symbols)
-  const dependencyEdges = adaptDependencyEdges(analysis, symbolIdByAlias)
+  const analysisSymbols = adaptSymbols(analysis)
+  const symbolIdByAlias = buildSymbolAliasIndex([
+    ...analysisSymbols,
+    ...(options.repositoryIndex?.symbols ?? [])
+  ])
+  const analysisEdges = adaptDependencyEdges(analysis, symbolIdByAlias)
+  const merged = mergeRepositoryScopeData(analysisSymbols, analysisEdges, options.repositoryIndex)
   const documentUnits = adaptDocumentEvidence(documents?.evidence ?? [])
   const changedSymbolIds = options.changedSymbolIds?.length
     ? options.changedSymbolIds
@@ -34,8 +41,8 @@ export function buildReviewEvidenceScope(
 
   return buildEvidenceScope({
     changedSymbolIds,
-    symbols,
-    dependencyEdges,
+    symbols: merged.symbols,
+    dependencyEdges: merged.dependencyEdges,
     maxDependencyDepth: options.maxDependencyDepth,
     rules: options.rules,
     documentEvidence: new InMemoryDocumentEvidenceAdapter(documentUnits),
@@ -83,7 +90,6 @@ function adaptSymbols(analysis: CodeAnalysisResult): ScopeSymbol[] {
       riskTags: []
     })
   }
-
 
   return [...byId.values()].sort((left, right) => left.id.localeCompare(right.id))
 }

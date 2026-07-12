@@ -4,6 +4,8 @@ export { planContextBudget } from "./contextBudgetPlanner"
 export { InMemoryDocumentEvidenceAdapter } from "./documentEvidenceAdapter"
 export { parseProjectRules } from "./projectRuleConfig"
 export { loadProjectRulePack, mergeProjectRules } from "./projectRulePackLoader"
+export { mergeRepositoryScopeData } from "./repositorySymbolIndexAdapter"
+export { loadRepositorySymbolIndex } from "./repositorySymbolIndexLoader"
 export { buildReviewContextBudget } from "./reviewContextBudget"
 export { buildReviewEvidenceScope } from "./reviewEvidenceAdapter"
 export { selectApplicableRules } from "./rulePackEngine"
@@ -12,6 +14,12 @@ export type {
   LoadProjectRulePackInput,
   ProjectRulePackProvenance
 } from "./projectRulePackLoader"
+export type { MergedRepositoryScopeData } from "./repositorySymbolIndexAdapter"
+export type {
+  LoadedRepositorySymbolIndex,
+  LoadRepositorySymbolIndexInput,
+  RepositorySymbolIndexProvenance
+} from "./repositorySymbolIndexLoader"
 export type {
   ReviewContextBudgetInput,
   ReviewContextBudgetResult

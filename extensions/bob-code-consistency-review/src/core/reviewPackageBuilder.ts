@@ -127,6 +127,7 @@ function buildManifest(
   workflowRunId?: string
 ): string {
   const rulePack = contextBudgetArtifact?.rule_pack
+  const symbolIndex = contextBudgetArtifact?.symbol_index
   return [
     "package_version: 1",
     `generation_id: ${generationId}`,
@@ -142,7 +143,8 @@ function buildManifest(
     `  input_hash: ${sha256Prefixed({
       reviewInput,
       diff: diffHashInput(diff),
-      rulePackHash: rulePack?.content_hash ?? ""
+      rulePackHash: rulePack?.content_hash ?? "",
+      symbolIndexHash: symbolIndex?.content_hash ?? ""
     })}`,
     "  contains_sensitive_context: true",
     "  human_review_required: true",
@@ -167,6 +169,12 @@ function buildManifest(
     rulePack ? `  project_rule_pack_id: ${yamlScalar(rulePack.id)}` : undefined,
     rulePack ? `  project_rule_pack_version: ${JSON.stringify(rulePack.version)}` : undefined,
     rulePack ? `  project_rule_pack_hash: ${yamlScalar(rulePack.content_hash)}` : undefined,
+    symbolIndex ? `  repository_symbol_index: ${yamlScalar(symbolIndex.source_path)}` : undefined,
+    symbolIndex ? `  repository_symbol_index_id: ${yamlScalar(symbolIndex.id)}` : undefined,
+    symbolIndex ? `  repository_symbol_index_revision: ${yamlScalar(symbolIndex.source_revision)}` : undefined,
+    symbolIndex ? `  repository_symbol_index_hash: ${yamlScalar(symbolIndex.content_hash)}` : undefined,
+    symbolIndex ? `  repository_symbol_count: ${symbolIndex.symbol_count}` : undefined,
+    symbolIndex ? `  repository_edge_count: ${symbolIndex.edge_count}` : undefined,
     "privacy_notice:",
     "  generated_artifacts_may_contain_sensitive_context: true",
     `  message: ${JSON.stringify("Generated files may contain internal design docs, customer specs, source code, and raw diff. Ignore .bob-review/ and .bob-trace/ai-traceability-draft/ unless intentionally versioned.")}`,

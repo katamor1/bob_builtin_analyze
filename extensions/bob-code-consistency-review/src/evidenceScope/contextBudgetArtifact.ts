@@ -1,5 +1,6 @@
 import type { EvidenceScopeResult } from "./evidenceScopeTypes"
 import type { ProjectRulePackProvenance } from "./projectRulePackLoader"
+import type { RepositorySymbolIndexProvenance } from "./repositorySymbolIndexLoader"
 
 export type ContextBudgetArtifactMetadata = {
   base: string
@@ -7,6 +8,7 @@ export type ContextBudgetArtifactMetadata = {
   tokenEstimation: string
   ruleSource: string
   rulePack?: ProjectRulePackProvenance
+  symbolIndex?: RepositorySymbolIndexProvenance
 }
 
 export type ContextBudgetRulePack = {
@@ -17,6 +19,16 @@ export type ContextBudgetRulePack = {
   content_hash: string
 }
 
+export type ContextBudgetSymbolIndex = {
+  schema_version: 1
+  id: string
+  source_revision: string
+  source_path: string
+  content_hash: string
+  symbol_count: number
+  edge_count: number
+}
+
 export type ContextBudgetArtifact = {
   schema_version: 1
   selection_policy: "bob-evidence-scope-v1"
@@ -25,6 +37,7 @@ export type ContextBudgetArtifact = {
   token_estimation: string
   rule_source: string
   rule_pack?: ContextBudgetRulePack
+  symbol_index?: ContextBudgetSymbolIndex
   selected_code: EvidenceScopeResult["selectedCode"]
   applicable_rules: EvidenceScopeResult["applicableRules"]
   selected_documents: EvidenceScopeResult["selectedDocuments"]
@@ -46,13 +59,26 @@ export function createContextBudgetArtifact(
     rule_source: metadata.ruleSource,
     ...(metadata.rulePack
       ? {
-          rule_pack: {
-            schema_version: 1,
-            id: metadata.rulePack.id,
-            version: metadata.rulePack.version,
-            source_path: metadata.rulePack.sourcePath,
-            content_hash: metadata.rulePack.contentHash
-          }
+rule_pack: {
+  schema_version: 1,
+  id: metadata.rulePack.id,
+  version: metadata.rulePack.version,
+  source_path: metadata.rulePack.sourcePath,
+  content_hash: metadata.rulePack.contentHash
+}
+        }
+      : {}),
+    ...(metadata.symbolIndex
+      ? {
+symbol_index: {
+  schema_version: 1,
+  id: metadata.symbolIndex.id,
+  source_revision: metadata.symbolIndex.sourceRevision,
+  source_path: metadata.symbolIndex.sourcePath,
+  content_hash: metadata.symbolIndex.contentHash,
+  symbol_count: metadata.symbolIndex.symbolCount,
+  edge_count: metadata.symbolIndex.edgeCount
+}
         }
       : {}),
     selected_code: scope.selectedCode,

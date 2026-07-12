@@ -166,6 +166,11 @@
           "maximum": 300,
           "default": 80
         },
+        "repository_symbol_index_path": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\.json$"
+        },
         "language": {
           "type": "array",
           "items": {
