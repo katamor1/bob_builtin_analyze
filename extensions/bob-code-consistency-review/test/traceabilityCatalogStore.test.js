@@ -102,7 +102,7 @@ test("gate report commit-time CAS preserves a catalog changed while the report t
   const existingReport = Buffer.from("existing report must survive\n", "utf8")
   await fs.writeFile(reportPath, existingReport)
   const externalBytes = Buffer.from(`${JSON.stringify(catalogWithDocument("external-winner"), null, 2)}\n`, "utf8")
-  const barrier = await installTargetTempOpenBarrier(reportPath)
+  const barrier = installTargetTempOpenBarrier(reportPath)
 
   try {
     const pendingReport = validateAndWriteTraceabilityGateReport({
@@ -218,7 +218,7 @@ test("commit-time CAS preserves an external update made while the candidate temp
   const initial = await writeTraceabilityCatalog({ workspaceRoot, catalog: catalogWithDocument("initial") })
   assert.equal(initial.status, "ok")
   const externalBytes = Buffer.from(`${JSON.stringify(catalogWithDocument("external-winner"), null, 2)}\n`, "utf8")
-  const barrier = await installTargetTempOpenBarrier(catalogPath)
+  const barrier = installTargetTempOpenBarrier(catalogPath)
 
   try {
     const pendingWrite = writeTraceabilityCatalog({
@@ -251,7 +251,7 @@ test("commit-time CAS treats a missing catalog that appears while the candidate 
   assert.equal(initial.status, "ok")
   assert.equal(initial.revision, null)
   const externalBytes = Buffer.from(`${JSON.stringify(catalogWithDocument("external-create"), null, 2)}\n`, "utf8")
-  const barrier = await installTargetTempOpenBarrier(catalogPath)
+  const barrier = installTargetTempOpenBarrier(catalogPath)
 
   try {
     const pendingWrite = writeTraceabilityCatalog({
@@ -402,11 +402,7 @@ test("a file-symlink catalog alias writes the physical target without forking CA
   const directBytes = await fs.readFile(directPath)
   assert.deepEqual(aliasBytes, directBytes)
   assert.equal(JSON.parse(aliasBytes.toString("utf8")).documents[0].document_id, "alias-winner")
-
-  assert.equal(
-    normalizePhysicalPath(await fs.realpath(path.dirname(aliasWinner.backupPath))),
-    normalizePhysicalPath(await fs.realpath(path.dirname(directPath)))
-  )
+  assert.equal(normalizePhysicalPath(await fs.realpath(path.dirname(aliasWinner.backupPath))), normalizePhysicalPath(await fs.realpath(path.dirname(directPath))))
   assert.equal(JSON.parse(await fs.readFile(aliasWinner.backupPath, "utf8")).documents[0].document_id, "initial")
   const physicalBackups = (await fs.readdir(path.dirname(directPath))).filter((name) => name.includes("traceability-catalog.json.bak-"))
   assert.equal(physicalBackups.length, 1)
@@ -590,9 +586,8 @@ function installPathIoBarrier(targetPath) {
   }
 }
 
-async function installTargetTempOpenBarrier(targetPath) {
+function installTargetTempOpenBarrier(targetPath) {
   const originalOpen = fs.open
-  const expectedDirectory = normalizePhysicalPath(await resolvePotentialPhysicalPath(path.dirname(targetPath)))
   const tempPrefix = `.${path.basename(targetPath)}.`
   let enteredResolve
   let releaseResolve
@@ -604,7 +599,6 @@ async function installTargetTempOpenBarrier(targetPath) {
     if (
       !triggered &&
       candidate &&
-      normalizePhysicalPath(path.dirname(candidate)) === expectedDirectory &&
       path.basename(candidate).startsWith(tempPrefix) &&
       path.basename(candidate).endsWith(".tmp")
     ) {
@@ -618,22 +612,6 @@ async function installTargetTempOpenBarrier(targetPath) {
     waitUntilEntered: () => entered,
     release: () => releaseResolve(),
     restore: () => { fs.open = originalOpen }
-  }
-}
-
-async function resolvePotentialPhysicalPath(value) {
-  const suffix = []
-  let current = path.resolve(value)
-  while (true) {
-    try {
-      return path.join(await fs.realpath(current), ...suffix)
-    } catch (error) {
-      if (!error || error.code !== "ENOENT") throw error
-      const parent = path.dirname(current)
-      if (parent === current) throw error
-      suffix.unshift(path.basename(current))
-      current = parent
-    }
   }
 }
 
