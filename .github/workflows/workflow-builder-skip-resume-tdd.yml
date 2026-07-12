@@ -1,0 +1,50 @@
+name: workflow-builder-skip-resume-tdd
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/workflow-builder-skip-resume-tdd.yml"
+      - "extensions/workflow-register/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  focused:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: extensions/workflow-register
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: extensions/workflow-register/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Capture focused result
+        shell: bash
+        run: |
+          set +e
+          npm run compile > focused-output.txt 2>&1
+          compile_status=$?
+          node --test test/workflowSkipResumeAuthoringRoundTrip.test.js >> focused-output.txt 2>&1
+          test_status=$?
+          {
+            echo
+            echo "compile_status=${compile_status}"
+            echo "test_status=${test_status}"
+          } >> focused-output.txt
+          exit 0
+      - name: Upload focused evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: workflow-builder-skip-resume-tdd
+          path: extensions/workflow-register/focused-output.txt
+          retention-days: 1
