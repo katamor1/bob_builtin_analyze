@@ -45,14 +45,42 @@ jobs:
             exit 1
           fi
 
-          git checkout --theirs -- \
+          git checkout --theirs -- extensions/workflow-register/test/workflowRunRecovery.test.js
+          git checkout --ours -- \
             extensions/workflow-register/src/core/runtime/runLock.ts \
-            extensions/workflow-register/test/workflowRunRecovery.test.js
-          git checkout --ours -- extensions/workflow-register/test/runStateStorePathBoundary.test.js
+            extensions/workflow-register/test/runStateStorePathBoundary.test.js
 
           python - <<'PY'
           from pathlib import Path
           from textwrap import dedent
+
+          run_lock_path = Path("extensions/workflow-register/src/core/runtime/runLock.ts")
+          run_lock = run_lock_path.read_text(encoding="utf-8")
+          old_helper = dedent('''
+          function isTransientLockContention(error: unknown, runId: string): boolean {
+            const message = formatError(error)
+            return message.includes(`Workflow run '${runId}' durability file 'run.lock.json'`)
+              && (
+                message.includes("changed while its path was being verified")
+                || message.includes("changed while it was being read")
+              )
+          }
+          ''').strip()
+          new_helper = dedent('''
+          function isTransientLockContention(error: unknown, runId: string): boolean {
+            const code = (error as NodeJS.ErrnoException).code
+            if (code === "ENOENT" || code === "ENOTDIR") return true
+            const message = formatError(error)
+            return message.includes(`Workflow run '${runId}' durability file 'run.lock.json'`)
+              && (
+                message.includes("changed while its path was being verified")
+                || message.includes("changed while it was being read")
+              )
+          }
+          ''').strip()
+          if run_lock.count(old_helper) != 1:
+              raise SystemExit("run-lock contention helper anchor mismatch")
+          run_lock_path.write_text(run_lock.replace(old_helper, new_helper), encoding="utf-8")
 
           path = Path("extensions/workflow-register/test/runStateStorePathBoundary.test.js")
           text = path.read_text(encoding="utf-8")
@@ -62,6 +90,42 @@ jobs:
               text = text.replace(old_import, new_import, 1)
           elif new_import not in text:
               raise SystemExit("run-state store import anchor not found")
+
+          old_alias_test = dedent('''
+          test("FileRunStateStore isolates outside run-directory aliases from list results", async (t) => {
+            const workspaceRoot = await makeWorkspace()
+            const escaped = await outsideRunAlias(t, workspaceRoot)
+            if (!escaped) return
+            const store = new FileRunStateStore({ workspaceRoot })
+
+            await assert.rejects(store.loadRun(escaped.runId), /workspace|outside|symlink|contain/i)
+            const runs = await store.listRuns()
+            const diagnostic = store.getLoadDiagnostics().find((item) => item.runId === escaped.runId)
+
+            assert.deepEqual(runs, [])
+            assert.ok(diagnostic)
+            assert.equal(diagnostic.severity, "error")
+            assert.match(diagnostic.message, /workspace|outside|symlink|contain/i)
+            assert.equal(await fs.readFile(escaped.runFile, "utf8"), escaped.runBytes)
+            assert.equal(await fs.readFile(escaped.controlFile, "utf8"), escaped.controlBytes)
+          })
+          ''').strip()
+          new_alias_test = dedent('''
+          test("FileRunStateStore rejects outside run-directory aliases for load and list", async (t) => {
+            const workspaceRoot = await makeWorkspace()
+            const escaped = await outsideRunAlias(t, workspaceRoot)
+            if (!escaped) return
+            const store = new FileRunStateStore({ workspaceRoot })
+
+            await assert.rejects(store.loadRun(escaped.runId), /workspace|outside|symlink|contain/i)
+            await assert.rejects(store.listRuns(), /workspace|outside|symlink|contain/i)
+            assert.equal(await fs.readFile(escaped.runFile, "utf8"), escaped.runBytes)
+            assert.equal(await fs.readFile(escaped.controlFile, "utf8"), escaped.controlBytes)
+          })
+          ''').strip()
+          if text.count(old_alias_test) != 1:
+              raise SystemExit("run-state alias test anchor mismatch")
+          text = text.replace(old_alias_test, new_alias_test)
 
           marker = 'test("FileRunStateStore retries a contained atomic replacement detected between open and read"'
           if marker not in text:
