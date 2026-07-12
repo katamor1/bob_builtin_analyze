@@ -132,7 +132,9 @@ test("completes Review Run v3 through dashboard export without mutating review e
   const finalized = await finalizeReviewRun(run, "2026-07-13T00:07:00.000Z")
   assert.equal(finalized.context.status, "completed")
   assert.equal(finalized.context.phase, "completed")
-  assert.equal(finalized.context.phases.summary.status, "completed")
+  for (const [phase, progress] of Object.entries(finalized.context.phases)) {
+    assert.equal(progress.status, "completed", `${phase} phase must be completed`)
+  }
 
   const persistedRun = await readReviewRun(workspaceRoot, campaignId, reviewId)
   const record = await readReviewRecord(workspaceRoot, campaignId, reviewId)
