@@ -1,2 +1,2 @@
 This file exists only to trigger pull-request verification for PR #75's current source tree.
-Verification round: reconcile automatic pause with current main.
+Verification round: capture main reconciliation verification details.
