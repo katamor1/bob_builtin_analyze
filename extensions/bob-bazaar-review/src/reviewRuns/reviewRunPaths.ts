@@ -2,13 +2,14 @@ import * as path from "node:path"
 
 const WINDOWS_RESERVED_NAME = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/i
 const CONTROL_CHARACTER = /[\u0000-\u001f\u007f]/
+const WINDOWS_FORBIDDEN_CHARACTER = /[<>:"/\\|?*]/
 
 export function validateReviewRunSegment(value: string, fieldName: string): string {
   if (/[. ]$/.test(value)) throw new Error(`${fieldName} must not end with a dot or space`)
   const normalized = value.trim()
   if (!normalized) throw new Error(`${fieldName} is required`)
   if (normalized === "." || normalized === "..") throw new Error(`${fieldName} must be a safe path segment`)
-  if (normalized.includes("/") || normalized.includes("\\")) throw new Error(`${fieldName} must not contain path separators`)
+  if (WINDOWS_FORBIDDEN_CHARACTER.test(normalized)) throw new Error(`${fieldName} must not contain Windows-forbidden characters`)
   if (CONTROL_CHARACTER.test(normalized)) throw new Error(`${fieldName} must not contain control characters`)
   if (WINDOWS_RESERVED_NAME.test(normalized)) throw new Error(`${fieldName} must not use a Windows reserved name`)
   return normalized
