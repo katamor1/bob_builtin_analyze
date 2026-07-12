@@ -19,6 +19,10 @@ on:
       - ".github/workflows/extensions-quality.yml"
   workflow_dispatch:
 
+concurrency:
+  group: extensions-quality-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   workflow-register:
     name: workflow-register
@@ -30,14 +34,17 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
           cache: npm
           cache-dependency-path: extensions/workflow-register/package-lock.json
+
+      - name: Verify Extension Host smoke contract
+        run: node --test ../../scripts/extension-host-smoke-contract.test.js
 
       - name: Install dependencies
         run: npm ci
@@ -69,6 +76,17 @@ jobs:
       - name: VSIX policy
         run: npm run package:policy
 
+      - name: Install pinned local VS Code test runtime
+        run: npm install --no-save --package-lock=false --ignore-scripts --audit=false --fund=false @vscode/test-cli@0.0.12 @vscode/test-electron@2.5.2
+
+      - name: Extension Host smoke
+        env:
+          SMOKE_EXTENSION_ID: local.workflow-register
+          SMOKE_COMMANDS: workflowRegister.reload,workflowRegister.runWorkflow
+        run: |
+          node ../../scripts/extension-host-smoke.test.js --write-config
+          xvfb-run -a ./node_modules/.bin/vscode-test
+
   bob-bazaar-review:
     name: bob-bazaar-review
     runs-on: ubuntu-latest
@@ -79,10 +97,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
           cache: npm
@@ -124,6 +142,17 @@ jobs:
       - name: VSIX metrics
         run: npm run package:metrics
 
+      - name: Install pinned local VS Code test runtime
+        run: npm install --no-save --package-lock=false --ignore-scripts --audit=false --fund=false @vscode/test-cli@0.0.12 @vscode/test-electron@2.5.2
+
+      - name: Extension Host smoke
+        env:
+          SMOKE_EXTENSION_ID: local.bob-bazaar-review
+          SMOKE_COMMANDS: bobBazaar.openReviewGui,bobBazaar.reviewRevision
+        run: |
+          node ../../scripts/extension-host-smoke.test.js --write-config
+          xvfb-run -a ./node_modules/.bin/vscode-test
+
   bob-code-consistency-review:
     name: bob-code-consistency-review
     runs-on: ubuntu-latest
@@ -134,10 +163,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
           cache: npm
@@ -170,6 +199,83 @@ jobs:
       - name: VSIX policy
         run: npm run package:policy
 
+      - name: Install pinned local VS Code test runtime
+        run: npm install --no-save --package-lock=false --ignore-scripts --audit=false --fund=false @vscode/test-cli@0.0.12 @vscode/test-electron@2.5.2
+
+      - name: Extension Host smoke
+        env:
+          SMOKE_EXTENSION_ID: local.bob-code-consistency-review
+          SMOKE_COMMANDS: bobCodeConsistency.openReviewWizard,bobCodeConsistency.preprocess
+        run: |
+          node ../../scripts/extension-host-smoke.test.js --write-config
+          xvfb-run -a ./node_modules/.bin/vscode-test
+
+  windows-smoke:
+    name: Windows / ${{ matrix.extension }}
+    runs-on: windows-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - extension: workflow-register
+            extension_id: local.workflow-register
+            smoke_commands: workflowRegister.reload,workflowRegister.runWorkflow
+          - extension: bob-bazaar-review
+            extension_id: local.bob-bazaar-review
+            smoke_commands: bobBazaar.openReviewGui,bobBazaar.reviewRevision
+          - extension: bob-code-consistency-review
+            extension_id: local.bob-code-consistency-review
+            smoke_commands: bobCodeConsistency.openReviewWizard,bobCodeConsistency.preprocess
+
+    defaults:
+      run:
+        working-directory: extensions/${{ matrix.extension }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: extensions/${{ matrix.extension }}/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Dependency policy
+        run: npm run dependency:policy
+
+      - name: Architecture policy
+        run: npm run architecture:policy
+
+      - name: Source policy
+        run: npm run source:policy
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Package
+        run: npm run package
+
+      - name: VSIX policy
+        run: npm run package:policy
+
+      - name: Install pinned local VS Code test runtime
+        run: npm install --no-save --package-lock=false --ignore-scripts --audit=false --fund=false @vscode/test-cli@0.0.12 @vscode/test-electron@2.5.2
+
+      - name: Extension Host smoke
+        shell: pwsh
+        env:
+          SMOKE_EXTENSION_ID: ${{ matrix.extension_id }}
+          SMOKE_COMMANDS: ${{ matrix.smoke_commands }}
+        run: |
+          node ../../scripts/extension-host-smoke.test.js --write-config
+          & .\node_modules\.bin\vscode-test.cmd
+
   extension-metrics:
     name: Extension source metrics
     runs-on: ubuntu-latest
@@ -181,10 +287,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
 
@@ -196,7 +302,8 @@ jobs:
         run: cat extension-metrics.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Comment extension metrics on pull request
-        uses: actions/github-script@v7
+        continue-on-error: true
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         with:
           script: |
             const fs = require("node:fs");
