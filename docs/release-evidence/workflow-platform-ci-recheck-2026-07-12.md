@@ -80,4 +80,12 @@ GitHub API から、PR #68 head に紐づく失敗 workflow の failed jobs 再�
 
 ## 6. 次回確認
 
-本証跡を追加した最新 `main` 起点の draft PR で、新しい workflow run が runner step まで進むかを再確認する。新 attempt でも `steps: null` の場合は外部 blocker 継続として記録し、repository code の修正で green 化を試みない。
+本証跡だけを変更する draft PR は、3 workflow の `pull_request.paths` に一致しないため、新しい run を自動生成しない。runner 状態を確認するためだけの無意味な workflow / source 変更は追加しない。
+
+repository / organization 側の Actions 利用設定と課金状態を確認した後、最新 `main` または実コード変更を含む Phase 1 branch に対して、次の workflow を `workflow_dispatch` で実行する。
+
+1. `extensions-quality`
+2. `workflow-contracts`
+3. `code-consistency-review-scaffold`
+
+各 run について runner step、job logs、Ubuntu / Windows の結果を新しい run ID とともに記録する。再び `steps: null` の場合は外部 blocker 継続として扱い、repository code の修正で green 化を試みない。
