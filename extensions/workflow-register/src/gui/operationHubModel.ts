@@ -2,6 +2,7 @@ import * as path from "path"
 import {
   ARTIFACT_MANIFEST_STATE_KEY,
   ARTIFACT_REUSE_STATE_KEY,
+  TASK_SNAPSHOT_IMPORT_STATE_KEY,
   parseWorkflowArtifactManifest,
   type WorkflowArtifactManifest
 } from "../core/artifacts"
@@ -126,6 +127,8 @@ export interface OperationHubRunSummary {
   artifactManifestStatus?: OperationHubStatus
   artifactReuseLabel?: string
   artifactReuseStatus?: OperationHubStatus
+  taskSnapshotImportLabel?: string
+  taskSnapshotImportStatus?: OperationHubStatus
   completedStepCount: number
   totalStepCount: number
   updatedAt: string
@@ -147,6 +150,11 @@ interface ArtifactReuseState {
   startStepId?: string
   reusedStepIds?: unknown[]
   hydratedKeys?: unknown[]
+}
+
+interface TaskSnapshotImportState {
+  importedAt?: string
+  imported?: unknown[]
 }
 
 export function buildOperationHubModel(input: OperationHubModelInput): OperationHubModel {
@@ -188,6 +196,7 @@ export function summarizeRunForHub(
   const bobTaskSync = summarizeBobTaskSync(run)
   const manifest = artifactManifestForRun(run)
   const artifactReuse = summarizeArtifactReuse(run)
+  const taskSnapshotImport = summarizeTaskSnapshotImport(run)
   return {
     runId: run.runId,
     workflowId: run.workflowId,
@@ -201,6 +210,8 @@ export function summarizeRunForHub(
     artifactManifestStatus: manifest ? "ok" : undefined,
     artifactReuseLabel: artifactReuse?.label,
     artifactReuseStatus: artifactReuse?.status,
+    taskSnapshotImportLabel: taskSnapshotImport?.label,
+    taskSnapshotImportStatus: taskSnapshotImport?.status,
     completedStepCount,
     totalStepCount: run.steps.length,
     updatedAt: run.updatedAt,
@@ -430,6 +441,16 @@ function summarizeArtifactReuse(run: WorkflowRunState): { label: string; status:
   const source = parsed.sourceRunId ? ` from ${parsed.sourceRunId}` : ""
   const start = parsed.startStepId ? ` / start ${parsed.startStepId}` : ""
   return { label: `Artifacts reused: ${reused} step(s), ${hydrated} state key(s)${source}${start}`, status: "ok" }
+}
+
+function summarizeTaskSnapshotImport(run: WorkflowRunState): { label: string; status: OperationHubStatus } | undefined {
+  const value = run.state[TASK_SNAPSHOT_IMPORT_STATE_KEY]
+  if (typeof value !== "string") return undefined
+  const parsed = parseJsonObject(value) as TaskSnapshotImportState | undefined
+  if (!parsed) return undefined
+  const count = Array.isArray(parsed.imported) ? parsed.imported.length : 0
+  const at = parsed.importedAt ? ` / ${parsed.importedAt}` : ""
+  return { label: `Imported from task snapshot: ${count} artifact(s)${at}`, status: "ok" }
 }
 
 function artifactManifestForRun(run: WorkflowRunState): WorkflowArtifactManifest | undefined {

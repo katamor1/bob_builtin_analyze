@@ -8,6 +8,7 @@ import {
   hydrateWorkflowStateFromArtifacts,
   importArtifactsFromTaskSnapshots as importTaskSnapshotArtifacts,
   parseWorkflowArtifactManifest,
+  previewArtifactsFromTaskSnapshots,
   seedWorkflowRunFromArtifacts,
   stateKeysProducedBeforeStep,
   validateWorkflowArtifactManifest,
@@ -36,6 +37,7 @@ import {
   validateOperationHubRunMutationTarget
 } from "./operationHubMutationTarget"
 import { showMarkdownReport } from "./reports"
+import { chooseTaskSnapshotImportSelection } from "./taskSnapshotImportReport"
 import type { ManualStepPanelInput } from "./webview/manualStepViewModel"
 import { writeWorkspaceFilesAtomically } from "./core/runtime/workspaceFileTransaction"
 import { requireTrustedWorkspace } from "./workspaceTrust"
@@ -235,50 +237,112 @@ export class WorkflowRunCommandService {
   }
 
   async importArtifactsFromTaskSnapshots(runId?: string): Promise<unknown> {
-    const trustError = await requireTrustedWorkspace("import artifacts from task snapshots")
-    if (trustError) return trustError
-    await this.ensureWorkflowsLoaded()
-    const selection = await this.selectRun(runId)
-    if (!selection) return runId ? `Workflow run not found: ${runId}` : "No workflow run selected."
-    const runStore = this.options.runtimeFactory.createRunStore(selection.root)
-    if (workflowRunExecutionActiveForWorkspace(selection.root, selection.runId)) {
-      throw new Error(`Cannot import task snapshot artifacts while workflow run is executing: ${selection.runId}`)
-    }
-    const imported = await this.options.coordinateGateDecision(
-      selection.root,
-      selection.runId,
-      "artifact-import",
-      () => coordinateWorkflowRunExecution(runStore, selection.runId, "importTaskSnapshotArtifacts", async () => {
-        const run = await runStore.loadRun(selection.runId)
-        if (!run) throw new Error(`Workflow run not found: ${selection.runId}`)
-        const workflow = this.options.coreWorkflows.get(run.workflowId)
-        if (!workflow) throw new Error(`Workflow definition is not loaded: ${run.workflowId}`)
-        const result = await importTaskSnapshotArtifacts({
-          workflow,
-          run,
-          snapshotStore: new FileTaskSnapshotStore({ workspaceRoot: selection.root }),
-          persistStateRollback: () => runStore.saveRun(run),
-          writeFiles: (writes, commitState) => writeWorkspaceFilesAtomically(selection.root, writes, async () => {
-            await Promise.resolve(commitState())
-            await runStore.saveRun(run)
-          })
-        })
-        return { result, run, workflow }
-      })
-    )
-    const { result, run, workflow } = imported
-    const lines = [
-      `- runId: ${run.runId}`,
-      `- workflow: ${workflow.id}`,
-      `- imported: ${result.importedCount}`,
-      `- manifest: ${result.manifest ? "updated" : "not updated"}`,
-      "",
-      "Issues:",
-      ...formatSnapshotImportIssues(result.issues)
-    ]
-    await showMarkdownReport("Task Snapshot Artifact Import", result.ok ? "Imported artifacts from task snapshots." : "No artifacts were imported from task snapshots.", lines)
-    return result
+  const trustError = await requireTrustedWorkspace("import artifacts from task snapshots")
+  if (trustError) return trustError
+  await this.ensureWorkflowsLoaded()
+  const selection = await this.selectRun(runId)
+  if (!selection) return runId ? `Workflow run not found: ${runId}` : "No workflow run selected."
+  if (workflowRunExecutionActiveForWorkspace(selection.root, selection.runId)) {
+    throw new Error(`Cannot import task snapshot artifacts while workflow run is executing: ${selection.runId}`)
   }
+
+  const runStore = this.options.runtimeFactory.createRunStore(selection.root)
+  const previewRun = await runStore.loadRun(selection.runId)
+  if (!previewRun) throw new Error(`Workflow run not found: ${selection.runId}`)
+  assertWorkflowRunStateWritable(previewRun)
+  const previewWorkflow = this.options.coreWorkflows.get(previewRun.workflowId)
+  if (!previewWorkflow) throw new Error(`Workflow definition is not loaded: ${previewRun.workflowId}`)
+  const snapshotStore = new FileTaskSnapshotStore({ workspaceRoot: selection.root })
+  const preview = await previewArtifactsFromTaskSnapshots({
+    workflow: previewWorkflow,
+    run: previewRun,
+    snapshotStore,
+    readFile: (relativePath) => readOptionalPhysicallyContainedWorkspaceFile(selection.root, relativePath)
+  })
+  const chosen = await chooseTaskSnapshotImportSelection({
+    preview,
+    run: previewRun,
+    workflow: previewWorkflow,
+    prompts: {
+      showPreview: (lines) => showMarkdownReport(
+        "Task Snapshot Artifact Import Preview",
+        "Review extraction sources, target files, checksums, and diffs before selecting artifacts.",
+        lines
+      ),
+      pickArtifacts: async (items) => {
+        const picked = await vscode.window.showQuickPick(items.map((item) => ({
+          label: item.label,
+          description: item.description,
+          detail: item.detail,
+          picked: item.picked,
+          item
+        })), {
+          title: `Task Snapshot Artifact Import: ${previewRun.runId}`,
+          placeHolder: "Select artifacts to import. Truncated, redacted, and changed-file candidates are unselected by default.",
+          canPickMany: true,
+          matchOnDescription: true,
+          matchOnDetail: true
+        })
+        return picked?.map((item) => item.item.artifactId)
+      },
+      confirmOverwrite: async (count) => {
+        const confirm = "Import and overwrite"
+        const picked = await vscode.window.showWarningMessage(
+          `${count} selected artifact file(s) have different existing content. Confirm that you reviewed the preview diff before overwriting.`,
+          { modal: true },
+          confirm
+        )
+        return picked === confirm
+      }
+    }
+  })
+  if (!chosen) return "Task snapshot artifact import cancelled."
+  if (chosen.selectedArtifactIds.length === 0) {
+    const message = "No task snapshot artifacts were selected."
+    await vscode.window.showInformationMessage(message)
+    return { ok: false, importedCount: 0, issues: [{ severity: "info", message }] }
+  }
+
+  const imported = await this.options.coordinateGateDecision(
+    selection.root,
+    selection.runId,
+    "artifact-import",
+    () => coordinateWorkflowRunExecution(runStore, selection.runId, "importTaskSnapshotArtifacts", async () => {
+      const run = await runStore.loadRun(selection.runId)
+      if (!run) throw new Error(`Workflow run not found: ${selection.runId}`)
+      const workflow = this.options.coreWorkflows.get(run.workflowId)
+      if (!workflow) throw new Error(`Workflow definition is not loaded: ${run.workflowId}`)
+      const result = await importTaskSnapshotArtifacts({
+        workflow,
+        run,
+        snapshotStore: new FileTaskSnapshotStore({ workspaceRoot: selection.root }),
+        readFile: (relativePath) => readOptionalPhysicallyContainedWorkspaceFile(selection.root, relativePath),
+        selectedArtifactIds: chosen.selectedArtifactIds,
+        expectedPreviewDigest: preview.previewDigest,
+        overwriteExisting: chosen.overwriteExisting,
+        persistStateRollback: () => runStore.saveRun(run),
+        writeFiles: (writes, commitState) => writeWorkspaceFilesAtomically(selection.root, writes, async () => {
+          await Promise.resolve(commitState())
+          await runStore.saveRun(run)
+        })
+      })
+      return { result, run, workflow }
+    })
+  )
+  const { result, run, workflow } = imported
+  const lines = [
+    `- runId: ${run.runId}`,
+    `- workflow: ${workflow.id}`,
+    `- imported: ${result.importedCount}`,
+    `- manifest: ${result.manifest ? "updated" : "not updated"}`,
+    `- preview digest: ${result.previewDigest ?? preview.previewDigest}`,
+    "",
+    "Issues:",
+    ...formatSnapshotImportIssues(result.issues)
+  ]
+  await showMarkdownReport("Task Snapshot Artifact Import", result.ok ? "Imported selected artifacts from task snapshots." : "No artifacts were imported from task snapshots.", lines)
+  return result
+}
 
   async runNextStep(runArg?: RunCommandArg): Promise<unknown> {
     const trustError = await requireTrustedWorkspace("run next workflow step")
@@ -737,6 +801,15 @@ async function loadArtifactManifest(root: string, run: WorkflowRunState): Promis
   try {
     const snapshot = await readContainedRunArtifactManifest(root, run.runId)
     return parseWorkflowArtifactManifest(snapshot.bytes.toString("utf8"))
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined
+    throw error
+  }
+}
+
+async function readOptionalPhysicallyContainedWorkspaceFile(root: string, relativePath: string): Promise<string | undefined> {
+  try {
+    return await readPhysicallyContainedWorkspaceFile(root, relativePath)
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined
     throw error
