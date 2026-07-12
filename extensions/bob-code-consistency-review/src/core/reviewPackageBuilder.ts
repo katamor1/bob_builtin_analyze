@@ -1,6 +1,7 @@
 import * as fs from "node:fs/promises"
 import * as path from "node:path"
 import { createHash, randomUUID } from "node:crypto"
+import type { ContextBudgetArtifact } from "../evidenceScope/contextBudgetArtifact"
 import { applyTemplate, loadPromptTemplates } from "../templates/templateLoader"
 import { relativePosix, writeJsonFile, writeTextFile } from "./fileSystem"
 import { normalizeReviewProcessingLimits, truncateUtf8Text, type ReviewProcessingLimits } from "./limits"
@@ -21,6 +22,7 @@ const MANAGED_PACKAGE_OUTPUTS = [
   "document-index.json",
   "evidence-index.json",
   "traceability-map.json",
+  "context-budget-report.json",
   "manifest.yaml",
   "change-summary.md",
   "diff-context.md",
@@ -38,6 +40,7 @@ export async function buildReviewPackage(input: {
   documents: DocumentExtractionResult
   codeAnalysis: CodeAnalysisResult
   traceability: TraceabilityResult
+  contextBudgetArtifact?: ContextBudgetArtifact
   limits?: Partial<ReviewProcessingLimits>
   workflowRunId?: string
 }): Promise<string[]> {
@@ -66,6 +69,9 @@ export async function buildReviewPackage(input: {
   await writeJsonFile(path.join(outDir, "document-index.json"), { documents: documents.documents, warnings: documents.warnings })
   await writeJsonFile(path.join(outDir, "evidence-index.json"), { evidence: evidence.map(stripEvidenceText) })
   await writeJsonFile(path.join(outDir, "traceability-map.json"), { rows: traceability.rows, warnings: traceability.warnings })
+  if (input.contextBudgetArtifact) {
+    await writeJsonFile(path.join(outDir, "context-budget-report.json"), input.contextBudgetArtifact)
+  }
 
   const changeSummary = buildChangeSummary(reviewInput, diff, codeAnalysis, documents)
   const diffContext = buildDiffContext(diff, codeAnalysis, limits, packageWarnings)
@@ -93,13 +99,33 @@ export async function buildReviewPackage(input: {
   const bobInput = limitBobInput(bobInputSource, limits, packageWarnings)
   deterministicChecks = buildDeterministicChecks(documents, codeAnalysis, traceability, packageWarnings)
 
-  await writeTextFile(path.join(outDir, "manifest.yaml"), buildManifest(reviewInput, diff, evidence, input.workspaceRoot, outDir, packageWarnings, generationId, input.workflowRunId))
+  await writeTextFile(path.join(outDir, "manifest.yaml"), buildManifest(
+    reviewInput,
+    diff,
+    evidence,
+    input.workspaceRoot,
+    outDir,
+    input.contextBudgetArtifact,
+    packageWarnings,
+    generationId,
+    input.workflowRunId
+  ))
   await writeTextFile(path.join(outDir, "deterministic-checks.md"), deterministicChecks)
   await writeTextFile(path.join(outDir, "bob-input.md"), bobInput)
   return packageWarnings
 }
 
-function buildManifest(reviewInput: ReviewInput, diff: DiffSummary, evidence: EvidenceRef[], workspaceRoot: string, outDir: string, packageWarnings: string[], generationId: string, workflowRunId?: string): string {
+function buildManifest(
+  reviewInput: ReviewInput,
+  diff: DiffSummary,
+  evidence: EvidenceRef[],
+  workspaceRoot: string,
+  outDir: string,
+  contextBudgetArtifact: ContextBudgetArtifact | undefined,
+  packageWarnings: string[],
+  generationId: string,
+  workflowRunId?: string
+): string {
   return [
     "package_version: 1",
     `generation_id: ${generationId}`,
@@ -129,6 +155,9 @@ function buildManifest(reviewInput: ReviewInput, diff: DiffSummary, evidence: Ev
     "inputs:",
     `  review_package: ${relativePosix(workspaceRoot, outDir)}`,
     `  evidence_count: ${evidence.length}`,
+    contextBudgetArtifact
+      ? `  context_budget_report: ${relativePosix(workspaceRoot, path.join(outDir, "context-budget-report.json"))}`
+      : undefined,
     "privacy_notice:",
     "  generated_artifacts_may_contain_sensitive_context: true",
     `  message: ${JSON.stringify("Generated files may contain internal design docs, customer specs, source code, and raw diff. Ignore .bob-review/ and .bob-trace/ai-traceability-draft/ unless intentionally versioned.")}`,
