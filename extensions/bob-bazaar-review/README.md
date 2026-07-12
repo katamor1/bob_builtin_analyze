@@ -255,7 +255,10 @@ Bazaar / result toolは`BOB_BAZAAR_ALLOWED_ROOTS`内だけを受け付けます�
 
 | directory | 責務 |
 | --- | --- |
+| `src/bazaar/bazaarReviewCommands.ts` | Direct revision / range review commandとBob context連携 |
 | `src/bazaar/` | Bazaar client、target、packet、direct command |
+| `src/projectRules/reviewResultValidationCommand.ts` | Active editorのreview-result検証とMarkdown report |
+| `src/workflow/workflowRegisterBridge.ts` | workflow-register API、action input、capture option変換 |
 | `src/projectRules/` | checklist、schema、result検証 |
 | `src/reviewRuns/` | state、store、metrics、resume、finalize、recovery、coordinator |
 | `src/ui/` | Review GUI、Result Capture、Human Triage |
