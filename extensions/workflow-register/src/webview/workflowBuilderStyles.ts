@@ -52,5 +52,11 @@ pre { white-space: pre-wrap; overflow: auto; padding: 10px; background: var(--vs
 .help-search-results { display: grid; gap: 6px; margin-top: 8px; }
 .help-result { display: block; width: 100%; text-align: left; background: var(--vscode-editor-background); color: var(--vscode-foreground); border: 1px solid var(--vscode-panel-border); }
 .help-result span, .help-result em { display: block; color: var(--vscode-descriptionForeground); font-size: 11px; font-style: normal; margin-top: 2px; }
+.skip-resume-readiness { border-left: 4px solid var(--vscode-focusBorder); }
+.skip-resume-candidate { border-top: 1px solid var(--vscode-panel-border); padding: 8px 0; }
+.skip-resume-candidate:first-of-type { border-top: none; }
+.skip-resume-blockers { border-left: 4px solid var(--vscode-testing-iconFailed); padding: 8px; margin: 8px 0; background: var(--vscode-inputValidation-errorBackground); }
+.skip-resume-markdown-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; margin-top: 10px; }
+.skip-resume-markdown-grid pre { max-height: 320px; font-size: 11px; }
 `
 }

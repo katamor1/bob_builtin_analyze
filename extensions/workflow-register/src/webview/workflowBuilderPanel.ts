@@ -4,6 +4,11 @@ import * as vscode from "vscode"
 import { createAuthoringModelFromTemplate } from "../core/workflowAuthoringDefaults"
 import { WorkflowAuthoringModel, WorkflowAuthoringStep } from "../core/workflowAuthoringModel"
 import { serializeAuthoringModelToMarkdown } from "../core/workflowAuthoringSerializer"
+import {
+  applySkipResumeReadiness,
+  buildSkipResumeReadinessPreview,
+  SkipResumeReadinessPreview
+} from "../core/authoring/workflowSkipResumeReadinessPreview"
 import { validateStepDraft } from "../core/workflowAuthoringStepDraftValidation"
 import { validateWorkflowDocumentPath } from "../core/workflowDocumentPath"
 import { WorkflowTemplateKind, workflowTemplates } from "../core/workflowScaffold"
@@ -25,6 +30,8 @@ type WorkflowBuilderMessage =
   | { type: "preview"; model: WorkflowAuthoringModel }
   | { type: "save"; model: WorkflowAuthoringModel }
   | { type: "diff"; model: WorkflowAuthoringModel }
+  | { type: "previewSkipResumeReadiness"; model: WorkflowAuthoringModel; selectedStepIds?: string[]; requestId: string }
+  | { type: "applySkipResumeReadiness"; model: WorkflowAuthoringModel; selectedStepIds: string[]; requestId: string }
   | { type: "validateStepDraft"; model: WorkflowAuthoringModel; draftStep: WorkflowAuthoringStep; stepIndex: number }
   | { type: "resetTemplate"; name: string; title?: string; description: string; template: WorkflowTemplateKind }
 
@@ -80,6 +87,8 @@ export class WorkflowBuilderPanel {
       return
     }
     if (message.type === "preview") return this.preview(message.model)
+    if (message.type === "previewSkipResumeReadiness") return this.previewSkipResumeReadiness(message.model, message.selectedStepIds, message.requestId)
+    if (message.type === "applySkipResumeReadiness") return this.applySkipResumeReadiness(message.model, message.selectedStepIds, message.requestId)
     if (message.type === "diff") return this.showDiff(message.model)
     if (message.type === "validateStepDraft") return this.validateStepDraft(message.model, message.draftStep, message.stepIndex)
     if (message.type === "save") await this.enqueueSave(message.model)
@@ -109,6 +118,47 @@ export class WorkflowBuilderPanel {
     this.panel.title = this.panelTitle()
     this.panel.reveal(vscode.ViewColumn.One)
     this.postModel(initialModel)
+  }
+
+  private async previewSkipResumeReadiness(model: WorkflowAuthoringModel, selectedStepIds: string[] | undefined, requestId: string): Promise<void> {
+    const preview = buildSkipResumeReadinessPreview(model, selectedStepIds, { sourceId: this.options.sourceId })
+    await this.panel.webview.postMessage({
+      type: "skipResumeReadinessPreviewResult",
+      requestId,
+      ...this.skipResumeReadinessPreviewPayload(preview)
+    })
+  }
+
+  private async applySkipResumeReadiness(model: WorkflowAuthoringModel, selectedStepIds: string[], requestId: string): Promise<void> {
+    const result = applySkipResumeReadiness(model, selectedStepIds, { sourceId: this.options.sourceId })
+    if (!result.ok || !result.model) {
+      await this.panel.webview.postMessage({
+        type: "skipResumeReadinessPreviewResult",
+        requestId,
+        ...this.skipResumeReadinessPreviewPayload(result)
+      })
+      return
+    }
+    await this.panel.webview.postMessage({
+      type: "skipResumeReadinessApplied",
+      requestId,
+      model: result.model,
+      preview: this.skipResumeReadinessPreviewPayload(result)
+    })
+  }
+
+  private skipResumeReadinessPreviewPayload(preview: SkipResumeReadinessPreview): Record<string, unknown> {
+    return {
+      ok: preview.ok,
+      candidates: preview.candidates,
+      blockingIssues: preview.blockingIssues,
+      changes: preview.changes,
+      selectedStepIds: preview.selectedStepIds,
+      beforeMarkdown: preview.beforeMarkdown,
+      afterMarkdown: preview.afterMarkdown,
+      diagnostics: formatWorkflowDiagnostics({ ok: preview.ok, diagnostics: preview.diagnostics }),
+      filePath: preview.filePath
+    }
   }
 
   private async preview(model: WorkflowAuthoringModel): Promise<void> {

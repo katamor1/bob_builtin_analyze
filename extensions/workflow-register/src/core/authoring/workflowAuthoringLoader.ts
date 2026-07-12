@@ -40,6 +40,7 @@ const guiManagedFrontMatterFields = new Set([
   "preflight",
   "guardrails",
   "branching",
+  "x-skipResume",
   "artifacts",
   "completion",
   "steps"
@@ -83,6 +84,7 @@ export function workflowToAuthoringModel(workflow: CoreWorkflowDefinition, front
     preflight: workflow.preflight,
     guardrails: workflow.guardrails,
     branching: workflow.branching,
+    skipResume: skipResumeFromFrontMatter(frontMatter),
     steps: workflow.engineSteps.map(engineStepToAuthoringStep),
     artifacts: workflow.artifacts,
     completion: workflow.completion,
@@ -121,11 +123,33 @@ function normalizeAction(action: WorkflowActionDefinition): { provider: string; 
   return { provider: action.provider, args: Array.isArray(action.args) ? action.args : action.args === undefined ? undefined : [action.args] }
 }
 
+function skipResumeFromFrontMatter(frontMatter: Record<string, unknown>): WorkflowAuthoringModel["skipResume"] {
+  const extension = asRecord(frontMatter["x-skipResume"])
+  const fileBound = extension.fileBound
+  return typeof fileBound === "boolean" ? { fileBound } : undefined
+}
+
 /** user または将来の workflow-register version が所有する front matter を保持する。 */
 function preservedFrontMatter(frontMatter: Record<string, unknown>): Record<string, unknown> | undefined {
   const preserved: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(frontMatter)) {
+    if (key === "x-skipResume") {
+      const extension = preservedSkipResumeExtension(value)
+      if (extension !== undefined) preserved[key] = extension
+      continue
+    }
     if (!guiManagedFrontMatterFields.has(key)) preserved[key] = value
+  }
+  return Object.keys(preserved).length > 0 ? preserved : undefined
+}
+
+function preservedSkipResumeExtension(value: unknown): unknown | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value
+  const extension = value as Record<string, unknown>
+  const preserved: Record<string, unknown> = {}
+  for (const [key, entry] of Object.entries(extension)) {
+    if (key === "fileBound" && typeof entry === "boolean") continue
+    preserved[key] = entry
   }
   return Object.keys(preserved).length > 0 ? preserved : undefined
 }

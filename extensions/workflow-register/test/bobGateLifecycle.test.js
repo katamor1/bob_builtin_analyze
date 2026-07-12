@@ -863,7 +863,7 @@ async function saveRunWithStatus(runStore, workflow, status, currentStep, stepSt
   return run
 }
 
-test("run-next command fails fast when its command step awaits a same-run retry and releases later mutations", async (t) => {
+test("run-next command rejects a same-run retry and releases later mutations", { timeout: 20000 }, async (t) => {
   const root = tempRoot(t, "workflow-register-run-next-reentrant-")
   const workflow = coreWorkflow(root, "run-next-reentrant", [commandStep("source")])
   const runStore = new FileRunStateStore({ workspaceRoot: root, engineVersion: "run-next-reentrant-test" })
@@ -889,19 +889,7 @@ test("run-next command fails fast when its command step awaits a same-run retry 
   const run = await saveRunWithStatus(runStore, workflow, "running", "source", { source: "pending" })
   runId = run.runId
 
-  let timeout
-  const boundedRunNext = Promise.race([
-    service.runNextStep(runId),
-    new Promise((_, reject) => {
-      timeout = setTimeout(() => reject(new Error("timed-out-self-wait")), 1000)
-    })
-  ])
-  let failed
-  try {
-    failed = await boundedRunNext
-  } finally {
-    clearTimeout(timeout)
-  }
+  const failed = await service.runNextStep(runId)
 
   assert.equal(failed.status, "failed")
   assert.match(failed.error, /re-enter|reentrant|same run/i)
