@@ -186,3 +186,35 @@ test("listRuns isolates malformed run documents and reports stable diagnostics",
   )
   await assert.rejects(store.loadRun(invalidId), /contains invalid JSON/)
 })
+
+test("migration I/O ENOENT is reported instead of being mistaken for a missing run", async (t) => {
+  const root = tempRoot()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const historicalBytes = readFixture("v0-basic.json")
+  const historical = JSON.parse(historicalBytes)
+  await writeRunDocument(root, historical.runId, historicalBytes)
+  const store = new FileRunStateStore({ workspaceRoot: root })
+  const originalLink = fsp.link
+  fsp.link = async () => {
+    const error = new Error("simulated backup publication disappearance")
+    error.code = "ENOENT"
+    throw error
+  }
+
+  try {
+    await assert.rejects(
+      store.loadRun(historical.runId),
+      /simulated backup publication disappearance/
+    )
+  } finally {
+    fsp.link = originalLink
+  }
+
+  assert.equal(fs.readFileSync(runFile(root, historical.runId), "utf8"), historicalBytes)
+  assert.deepEqual(store.getLoadDiagnostics(), [{
+    runId: historical.runId,
+    severity: "error",
+    code: "invalid",
+    message: "simulated backup publication disappearance"
+  }])
+})
