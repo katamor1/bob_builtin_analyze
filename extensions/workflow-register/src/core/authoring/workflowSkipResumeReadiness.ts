@@ -27,6 +27,12 @@ interface ReusableOutput {
   resultKey: string
 }
 
+const WINDOWS_RESERVED_ARTIFACT_SEGMENTS = new Set([
+  "CON", "PRN", "AUX", "NUL",
+  "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+  "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"
+])
+
 export function planSkipResumeReadiness(
   model: WorkflowAuthoringModel,
   selectedStepIds?: readonly string[]
@@ -55,12 +61,21 @@ export function planSkipResumeReadiness(
     const issues: string[] = []
     let status: SkipResumeReadinessCandidateStatus = "ready"
 
+    if (!isPortableArtifactPathSegment(step.id)) {
+      status = "blocked"
+      issues.push(`Step id '${step.id}' must be a portable artifact path segment before skip resume artifacts can be generated.`)
+    }
+    if (!isPortableArtifactPathSegment(resultKey)) {
+      status = "blocked"
+      issues.push(`ResultKey '${resultKey}' from step '${step.id}' must be a portable artifact path segment before skip resume artifacts can be generated.`)
+    }
+
     if (exact.length > 1) {
       status = "blocked"
       issues.push(`Artifact '${resultKey}' is defined more than once for step '${step.id}'.`)
     } else if (exact.length === 1) {
       if (isRunScopedArtifactPath(exact[0].path)) {
-        status = "existing"
+        if (status !== "blocked") status = "existing"
       } else {
         status = "blocked"
         issues.push(`Artifact '${resultKey}' for step '${step.id}' must use a run-scoped path containing '{{run.id}}' or '{{runId}}'.`)
@@ -166,6 +181,13 @@ function generatedArtifact(stepId: string, resultKey: string): WorkflowArtifactD
     path: `.bob/workflows/runs/{{run.id}}/artifacts/${stepId}/${resultKey}.md`,
     schema: "text/markdown"
   }
+}
+
+function isPortableArtifactPathSegment(value: string): boolean {
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(value)) return false
+  if (value.endsWith(".")) return false
+  const base = value.split(".", 1)[0].toUpperCase()
+  return !WINDOWS_RESERVED_ARTIFACT_SEGMENTS.has(base)
 }
 
 function isRunScopedArtifactPath(path: string): boolean {
