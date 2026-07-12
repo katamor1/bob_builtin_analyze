@@ -10,6 +10,7 @@ import {
   validateOperationHubRunMutationTarget
 } from "../operationHubMutationTarget"
 import { prepareAutomaticPauseResume } from "./automaticPauseResumeUi"
+import { buildRunControlReportLines } from "./runControlReport"
 
 interface RunControlCommandOptions {
   showMarkdownReport: (title: string, summary: string, lines: string[]) => Promise<void>
@@ -80,20 +81,12 @@ export async function inspectRunControl(options: RunControlCommandOptions, runAr
   }
   const control = await createControlStore(selection.root).loadControl(selection.runId)
   const run = selection.run ?? await createRunStore(selection.root).loadRun(selection.runId)
-  const lines = [
-    `- runId: ${selection.runId}`,
-    `- root: ${selection.root}`,
-    `- runStatus: ${run?.status ?? "unknown"}`,
-    `- currentStep: ${run?.currentStep ?? "none"}`,
-    `- pauseRequestedAt: ${control?.pauseRequestedAt ?? "none"}`,
-    `- pauseReason: ${control?.pauseReason ?? "none"}`,
-    `- requestedBy: ${control?.requestedBy ?? "none"}`,
-    `- mode: ${control?.mode ?? "none"}`,
-    `- clearedAt: ${control?.clearedAt ?? "none"}`,
-    `- automaticOverrideExpiresAt: ${control?.automaticPauseOverride?.expiresAt ?? "none"}`,
-    `- automaticOverrideReason: ${control?.automaticPauseOverride?.reason ?? "none"}`,
-    `- workflow.pause: ${run?.state["workflow.pause"] ?? "none"}`
-  ]
+  const lines = buildRunControlReportLines({
+    runId: selection.runId,
+    root: selection.root,
+    run,
+    control
+  })
   await options.showMarkdownReport("Workflow Run Control", `${selection.runId}: ${run?.status ?? "unknown"}`, lines)
 }
 
