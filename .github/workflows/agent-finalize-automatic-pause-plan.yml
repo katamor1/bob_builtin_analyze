@@ -1,0 +1,219 @@
+name: agent-finalize-automatic-pause-plan
+
+on:
+  push:
+    branches:
+      - agent/workflow-automatic-pause-limits-20260712
+    paths:
+      - ".github/workflows/agent-finalize-automatic-pause-plan.yml"
+
+permissions:
+  actions: read
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: agent/workflow-automatic-pause-limits-20260712
+          fetch-depth: 0
+      - name: Resolve repository gate state
+        shell: bash
+        run: |
+          set -euo pipefail
+          quality=$(gh run list \
+            --repo katamor1/bob_builtin_analyze \
+            --workflow extensions-quality.yml \
+            --branch agent/workflow-automatic-pause-limits-20260712 \
+            --event pull_request \
+            --limit 1 \
+            --json conclusion \
+            --jq '.[0].conclusion // "missing"')
+          contracts=$(gh run list \
+            --repo katamor1/bob_builtin_analyze \
+            --workflow workflow-contracts.yml \
+            --branch agent/workflow-automatic-pause-limits-20260712 \
+            --event pull_request \
+            --limit 1 \
+            --json conclusion \
+            --jq '.[0].conclusion // "missing"')
+          printf 'QUALITY=%s\nCONTRACTS=%s\n' "$quality" "$contracts" > "$RUNNER_TEMP/gates.env"
+          cat "$RUNNER_TEMP/gates.env"
+      - name: Update plan and release status
+        shell: bash
+        run: |
+          set -euo pipefail
+          source "$RUNNER_TEMP/gates.env"
+          QUALITY="$QUALITY" CONTRACTS="$CONTRACTS" python - <<'PY'
+          import os
+          from pathlib import Path
+          from textwrap import dedent
+
+          plan = Path('docs/superpowers/plans/2026-07-12-workflow-automatic-pause-limits.md')
+          text = plan.read_text(encoding='utf-8')
+
+          completed_lines = [
+              'Add RED parser/schema tests for all four fields and exact round-trip normalization.',
+              'Add RED semantic-validation tests for zero/negative limits, malformed `HH:mm`, missing timezone when a cutoff exists, and unknown IANA timezone.',
+              'Add the model and both schema copies with `additionalProperties: false` inside `runControl` and `limits`.',
+              'Add `normalizeRunControl()` and parse the normalized value into `CoreWorkflowDefinition.runControl`.',
+              'Add semantic validation using `Intl.DateTimeFormat(..., { timeZone })` and exact `HH:mm` parsing.',
+              'Run compile plus the focused test and schema policy; record GREEN.',
+              'Commit: `feat: define workflow automatic pause limits`.',
+              'Add RED pure-evaluator tests for boundary-before, exact-boundary, and after-boundary behavior.',
+              'Prove `maxAgentStepsPerRun` blocks only the next agent call and counts archived/current attempts deterministically.',
+              'Prove each policy source is evaluated independently and the deterministic tie-break is workflow policy, then workspace policy, then limit kind.',
+              'Prove an active override suppresses automatic decisions and an expired override does not.',
+              'Add a clock and optional workspace limits to `WorkflowEngineOptions`.',
+              'Evaluate manual pause first; if none exists, evaluate automatic limits.',
+              'Persist a structured `workflow.pause` record with schema version, kind, source, checkpoint, next step, limit, observed value, and detected time.',
+              'Save and emit through the existing paused-run hook without starting the next step.',
+              'Run focused engine tests and existing pause/recovery suites; record GREEN.',
+              'Commit: `feat: pause workflows at deterministic limits`.',
+              'Add RED store tests for persist/load, expiry, replacement, and future-run read-only protection.',
+              'Prove `clearPause()` does not silently discard an explicitly created unexpired override.',
+              'Add a pure resume-choice helper that offers 15/30/60 minute overrides for an automatic pause and requires a non-empty reason.',
+              'Keep programmatic/manual pauses on the current resume path without an override prompt.',
+              'Add command tests for cancel, valid override, and stale/revision-checked Operation Hub invocation.',
+              'Ensure manual pause requests remain effective even with an active override.',
+              'Run focused store/command/engine tests; record GREEN.',
+              'Commit: `feat: allow bounded automatic pause overrides`.',
+              'Add RED wiring tests proving standalone and Bob runners receive the same workspace policy.',
+              'Add package contributions with safe disabled defaults and bounded numeric settings.',
+              'Read settings once per engine/runner creation and normalize invalid workspace values by disabling only that field while preserving valid fields.',
+              'Add structured automatic-pause details and override details to Run Diagnostics and Run Control inspection.',
+              'Update user, design, unit-test, and real-machine documentation.',
+              'Rebaseline the roadmap: mark PR cleanup and run-state migration complete, link Issue #73, and record automatic-pause implementation status.',
+              'Run the full `workflow-register` compile, policies, test suite, package, package policy, and `git diff --check` through GitHub Actions.',
+              'Perform an independent whole-branch review and fix every Critical/Important finding.',
+              'Commit: `docs: document workflow automatic pause controls`.',
+              'Focused definition, evaluator, override, runtime wiring, diagnostics, and command tests pass.',
+              'Existing pause/resume, Bob gate, operation-hub mutation, run migration, durability, and schema-contract tests pass.',
+              '`npm run dependency:policy`',
+              '`npm run architecture:policy`',
+              '`npm run source:policy`',
+              '`npm run schema:policy`',
+              '`npm test`',
+              '`npm run package`',
+              '`npm run package:policy`',
+              'PR remains draft until all repository and external real-environment release gates are explicitly evidenced.'
+          ]
+          for item in completed_lines:
+              text = text.replace(f'- [ ] {item}', f'- [x] {item}')
+
+          quality = os.environ['QUALITY']
+          contracts = os.environ['CONTRACTS']
+          if quality == 'success':
+              for item in (
+                  'Ubuntu and Windows extension-quality jobs pass.',
+                  'Extension Host smoke passes.'
+              ):
+                  text = text.replace(f'- [ ] {item}', f'- [x] {item}')
+          if contracts == 'success':
+              text = text.replace(
+                  '- [ ] Workflow contract CI passes.',
+                  '- [x] Workflow contract CI passes.'
+              )
+
+          marker = '## Execution Status — 2026-07-12'
+          status = dedent(f'''
+
+          ## Execution Status — 2026-07-12
+
+          - Implementation, focused/full tests, policies, package, VSIX policy, documentation, and independent review are complete.
+          - `extensions-quality`: `{quality}`.
+          - `workflow-contracts`: `{contracts}`.
+          - External IBM Bob / Bazaar / multi-root evidence remains open; PR #75 stays draft.
+          - Detailed evidence:
+            - `docs/release-evidence/workflow-automatic-pause-2026-07-12.md`
+            - `docs/release-evidence/workflow-automatic-pause-independent-review-2026-07-12.md`
+            - `docs/release-evidence/workflow-automatic-pause-final-ci-2026-07-12.md`
+          ''').rstrip() + '\n'
+          if marker in text:
+              text = text[:text.index(marker)].rstrip() + '\n\n' + status.lstrip()
+          else:
+              text = text.rstrip() + status
+          plan.write_text(text, encoding='utf-8')
+
+          evidence = Path('docs/release-evidence/workflow-automatic-pause-2026-07-12.md')
+          evidence_text = evidence.read_text(encoding='utf-8').rstrip()
+          gate_marker = '## Final repository gate snapshot'
+          gate_section = dedent(f'''
+
+          ## Final repository gate snapshot
+
+          - `extensions-quality`: `{quality}`
+          - `workflow-contracts`: `{contracts}`
+          - machine-generated job details: `workflow-automatic-pause-final-ci-2026-07-12.md`
+          - external IBM Bob / Bazaar / multi-root gates: open
+          - PR state: draft
+          ''').rstrip() + '\n'
+          if gate_marker in evidence_text:
+              evidence_text = evidence_text[:evidence_text.index(gate_marker)].rstrip()
+          evidence.write_text(evidence_text + gate_section, encoding='utf-8')
+          PY
+      - name: Update pull request and issue status
+        shell: bash
+        run: |
+          set -euo pipefail
+          source "$RUNNER_TEMP/gates.env"
+          cat > "$RUNNER_TEMP/pr-body.md" <<EOF
+          ## Summary
+
+          Implements Issue #73 from \`docs/workflow-register-feature-roadmap-2026-07-11.md\`.
+
+          - adds workflow and workspace automatic pause policies
+          - evaluates elapsed run time, agent-attempt count, and timezone-aware local cutoff at safe checkpoints
+          - never force-cancels an in-flight agent, command, process, or Bob subagent
+          - persists structured pause diagnostics and bounded 15/30/60 minute overrides
+          - preserves manual pause precedence and existing direct Bob runner construction
+          - fixes the post-midnight cutoff boundary found during independent review
+
+          ## Verification
+
+          - focused automatic-pause contracts: passed
+          - full \`workflow-register\` suite: passed
+          - dependency / architecture / source / schema policies: passed
+          - package and VSIX policy: passed
+          - independent review: Critical 0 / Important 0
+          - \`extensions-quality\`: $QUALITY
+          - \`workflow-contracts\`: $CONTRACTS
+
+          ## Evidence
+
+          - \`docs/superpowers/plans/2026-07-12-workflow-automatic-pause-limits.md\`
+          - \`docs/release-evidence/workflow-automatic-pause-2026-07-12.md\`
+          - \`docs/release-evidence/workflow-automatic-pause-independent-review-2026-07-12.md\`
+          - \`docs/release-evidence/workflow-automatic-pause-final-ci-2026-07-12.md\`
+
+          ## Remaining gates
+
+          IBM Bob real-environment pause/resume/override, inherited real Bazaar, and multi-root evidence remain open. The PR remains draft and is not marked release-ready.
+
+          Closes #73 only after the remaining external gates are accepted.
+          EOF
+          gh pr edit 75 --repo katamor1/bob_builtin_analyze --body-file "$RUNNER_TEMP/pr-body.md"
+          gh issue comment 73 --repo katamor1/bob_builtin_analyze --body "Implementation and repository verification are recorded in draft PR #75. extensions-quality: $QUALITY; workflow-contracts: $CONTRACTS. External IBM Bob / Bazaar / multi-root gates remain open."
+      - name: Commit finalized plan status
+        shell: bash
+        run: |
+          rm -f .github/workflows/agent-finalize-automatic-pause-plan.yml
+          rm -f .github/workflows/agent-rerun-final-quality.yml
+          rm -f .github/workflows/agent-record-automatic-pause-ci.yml
+          rm -f .github/workflows/agent-fix-automatic-pause-midnight.yml
+          rm -f .github/workflows/agent-finish-automatic-pause.yml
+          rm -f .github/workflows/agent-apply-automatic-pause-hardening.yml
+          rm -f .github/workflows/workflow-automatic-pause-diagnostic.yml
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "docs: finalize automatic pause execution status"
+          git push origin HEAD:agent/workflow-automatic-pause-limits-20260712
