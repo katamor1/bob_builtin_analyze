@@ -2,6 +2,7 @@ import { randomUUID } from "crypto"
 import type { CoreWorkflowDefinition, WorkflowRunState } from "../model"
 import {
   CURRENT_WORKFLOW_RUN_STATE_SCHEMA_VERSION,
+  assertWorkflowRunStateWritable,
   decodeWorkflowRunState,
   isCurrentWorkflowRunState,
   prepareWorkflowRunStateForWrite
@@ -172,7 +173,16 @@ export class FileRunStateStore implements RunStateStore {
   async findRecoverableRun(workflow: CoreWorkflowDefinition, inputs: Record<string, unknown>, options: RecoverableRunLookupOptions = {}): Promise<WorkflowRunState | undefined> {
     const expectedInputs = stableJson(inputs)
     const runs = await this.listRuns()
-    return runs.find((run) => isRecoverableRun(run, workflow, expectedInputs, options))
+    const matchingRuns = runs.filter((run) => (
+      run.workflowId === workflow.id
+      && workflowDefinitionMatches(run, workflow)
+      && stableJson(run.inputs) === expectedInputs
+    ))
+    if (options.executionMode === "singleStep") {
+      const readOnly = matchingRuns.find((run) => !isCurrentWorkflowRunState(run))
+      if (readOnly) assertWorkflowRunStateWritable(readOnly)
+    }
+    return matchingRuns.find((run) => isRecoverableRun(run, workflow, expectedInputs, options))
   }
 
   private async nextRunId(workflowName: string, createdAt: string): Promise<string> {
