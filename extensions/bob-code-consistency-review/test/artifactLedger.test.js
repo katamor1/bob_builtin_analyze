@@ -1,9 +1,11 @@
 const assert = require("node:assert/strict")
 const { createHash } = require("node:crypto")
+const { execFileSync } = require("node:child_process")
 const fs = require("node:fs")
 const os = require("node:os")
 const path = require("node:path")
 const { test } = require("node:test")
+const { createMultiLanguageGitReviewWorkspace } = require("./helpers/reviewPipelineFixtures")
 
 function ledgerApi() {
   return require("../out/evidenceScope/artifactLedger")
@@ -314,4 +316,113 @@ function canonicalManagedHash(entries) {
     hash.update("\0")
   }
   return `sha256:${hash.digest("hex")}`
+}
+
+test("corrupt persisted ledger is ignored and rebuilt with a warning", async () => {
+  const { updateArtifactLedger } = ledgerApi()
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "bob-ledger-corrupt-"))
+  fs.mkdirSync(path.join(workspace, ".bob-review"), { recursive: true })
+  fs.writeFileSync(path.join(workspace, ".bob-review", "artifact-ledger.json"), "{broken", "utf8")
+
+  const result = await updateArtifactLedger({
+    workspaceRoot: workspace,
+    sourceRevision: REV_A,
+    observations: [observation()],
+    completeKinds: ["repository-symbol-index"],
+    maxBytes: 1024 * 1024
+  })
+
+  assert.equal(result.fresh, 1)
+  assert.equal(result.stale, 0)
+  assert.ok(result.warnings.some((warning) => warning.includes("artifact ledger ignored")))
+  const persisted = JSON.parse(fs.readFileSync(path.join(workspace, ".bob-review", "artifact-ledger.json"), "utf8"))
+  assert.deepEqual(persisted, result.ledger)
+})
+
+test("preprocess build mode records repository index and review package lineage", async () => {
+  const { preprocessReview } = require("../out/core/pipeline")
+  const workspace = createMultiLanguageGitReviewWorkspace()
+  const inputPath = path.join(workspace, "review-input.yaml")
+  const original = fs.readFileSync(inputPath, "utf8")
+  const newline = original.includes("\r\n") ? "\r\n" : "\n"
+  const configured = original.replace(
+    /analysis_options:\r?\n/,
+    `analysis_options:${newline}  repository_symbol_index_mode: build${newline}  repository_symbol_index_path: .bob/evidence-scope/repository-symbol-index.json${newline}  repository_symbol_index_cache_path: .bob/evidence-scope/repository-symbol-index.cache.json${newline}`
+  )
+  assert.notEqual(configured, original)
+  fs.writeFileSync(inputPath, configured, "utf8")
+
+  const result = await preprocessReview({
+    workspaceRoot: workspace,
+    inputPath,
+    outDir: ".bob-review/review-package"
+  })
+
+  assert.ok(result.artifactLedger)
+  assert.equal(result.artifactLedger.path, ".bob-review/artifact-ledger.json")
+  assert.equal(result.artifactLedger.stale, 0)
+  assert.equal(result.artifactLedger.missing, 0)
+  const ledger = JSON.parse(fs.readFileSync(path.join(workspace, ".bob-review", "artifact-ledger.json"), "utf8"))
+  const indexRecord = ledger.artifacts.find((item) => item.kind === "repository-symbol-index")
+  const packageRecord = ledger.artifacts.find((item) => item.kind === "review-package")
+  assert.equal(indexRecord.status, "fresh")
+  assert.equal(packageRecord.status, "fresh")
+  assert.deepEqual(packageRecord.depends_on, [indexRecord.id])
+  assert.match(packageRecord.content_hash, /^sha256:[0-9a-f]{64}$/)
+  assert.match(packageRecord.input_hash, /^sha256:[0-9a-f]{64}$/)
+  assert.doesNotMatch(JSON.stringify(ledger), /RAW-PRODUCER-SENTINEL|Raw unified diff/)
+})
+
+test("upstream checkpoint persists a stale prior package when package rebuild fails", async () => {
+  const { preprocessReview } = require("../out/core/pipeline")
+  const workspace = createMultiLanguageGitReviewWorkspace()
+  const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: workspace, encoding: "utf8" }).trim()
+  const inputPath = path.join(workspace, "review-input.yaml")
+  const original = fs.readFileSync(inputPath, "utf8")
+  const newline = original.includes("\r\n") ? "\r\n" : "\n"
+  const configured = original.replace(
+    /analysis_options:\r?\n/,
+    `analysis_options:${newline}  repository_symbol_index_path: .bob/evidence-scope/repository-symbol-index.json${newline}`
+  )
+  fs.writeFileSync(inputPath, configured, "utf8")
+  fs.mkdirSync(path.join(workspace, ".bob", "evidence-scope"), { recursive: true })
+  writeExternalIndex(workspace, head, "one")
+
+  await preprocessReview({
+    workspaceRoot: workspace,
+    inputPath,
+    outDir: ".bob-review/review-package"
+  })
+  let ledger = JSON.parse(fs.readFileSync(path.join(workspace, ".bob-review", "artifact-ledger.json"), "utf8"))
+  assert.equal(ledger.artifacts.find((item) => item.kind === "review-package").status, "fresh")
+
+  writeExternalIndex(workspace, head, "two")
+  fs.mkdirSync(path.join(workspace, ".custom"), { recursive: true })
+  fs.writeFileSync(path.join(workspace, ".custom", "review-package"), "blocks directory creation", "utf8")
+  await assert.rejects(
+    preprocessReview({
+      workspaceRoot: workspace,
+      inputPath,
+      outDir: ".custom/review-package"
+    }),
+    /EEXIST|not a directory|ENOTDIR/
+  )
+
+  ledger = JSON.parse(fs.readFileSync(path.join(workspace, ".bob-review", "artifact-ledger.json"), "utf8"))
+  const packageRecord = ledger.artifacts.find((item) => item.kind === "review-package")
+  assert.equal(packageRecord.status, "stale")
+  assert.ok(packageRecord.stale_reasons.includes("upstream-changed:repository-symbol-index:external-repo"))
+})
+
+function writeExternalIndex(workspace, sourceRevision, generator) {
+  fs.writeFileSync(
+    path.join(workspace, ".bob", "evidence-scope", "repository-symbol-index.json"),
+    `${JSON.stringify({
+      schema_version: 1,
+      index: { id: "external-repo", source_revision: sourceRevision, generator },
+      symbols: [],
+      edges: []
+    }, null, 2)}\n`,
+    "utf8"
+  )
 }
