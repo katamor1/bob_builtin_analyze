@@ -15,6 +15,7 @@ export type {
   WorkflowAuthoringModel,
   WorkflowAuthoringReferenceSummary,
   WorkflowAuthoringResultStep,
+  WorkflowAuthoringSkipResumeDefinition,
   WorkflowAuthoringStep,
   WorkflowAuthoringStepBase
 } from "./authoring/workflowAuthoringModel"
