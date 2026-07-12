@@ -5,7 +5,8 @@ import type { CaptureReviewResultResult } from "../projectRules/resultCapture"
 import {
   loadReviewRun,
   recordReviewResult,
-  reviewRunCommandInput
+  reviewRunCommandInput,
+  validateReviewRunCommandInput
 } from "../reviewRuns/reviewRunCoordinator"
 import type { ReviewRunCommandInput, ReviewRunContext } from "../reviewRuns/reviewRunTypes"
 import { renderResultCaptureHtml } from "./resultCaptureGuiHtml"
@@ -114,7 +115,11 @@ class BazaarResultCaptureGuiController {
   private async resolveReviewRun(): Promise<ReviewRunContext | undefined> {
     if (this.activeReviewRun) return this.activeReviewRun
     if (!this.reviewRunInput) return undefined
-    this.activeReviewRun = await loadReviewRun(this.reviewRunInput)
+    const validatedInput = validateReviewRunCommandInput(
+      this.reviewRunInput,
+      (vscode.workspace.workspaceFolders ?? []).map((folder) => folder.uri.fsPath)
+    )
+    this.activeReviewRun = await loadReviewRun(validatedInput)
     return this.activeReviewRun
   }
 
