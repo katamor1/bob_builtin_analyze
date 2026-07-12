@@ -1,0 +1,59 @@
+name: Fetch shared implementation plan
+
+on:
+  push:
+    branches:
+      - codex/execute-shared-plan-6a53743e
+
+permissions:
+  contents: write
+
+jobs:
+  fetch-plan:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: codex/execute-shared-plan-6a53743e
+          fetch-depth: 0
+
+      - name: Fetch and validate shared conversation
+        env:
+          SHARE_API_URL: https://chatgpt.com/backend-api/share/6a53743e-7444-83e8-b0f8-b21f9a9864d5
+        run: |
+          set -euo pipefail
+          mkdir -p .codex
+          curl --fail --silent --show-error --location \
+            --retry 3 --retry-delay 2 \
+            -H 'User-Agent: Mozilla/5.0' \
+            -H 'Referer: https://chatgpt.com/' \
+            -H 'Origin: https://chatgpt.com' \
+            "$SHARE_API_URL" \
+            -o .codex/shared-plan.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path('.codex/shared-plan.json')
+          payload = json.loads(path.read_text(encoding='utf-8'))
+          if not isinstance(payload, dict):
+              raise SystemExit('Shared conversation payload is not a JSON object')
+          if not any(key in payload for key in ('mapping', 'conversation', 'messages')):
+              raise SystemExit(f'Unexpected shared conversation keys: {sorted(payload)[:20]}')
+          print(f'Fetched shared conversation: {path.stat().st_size} bytes')
+          PY
+
+      - name: Commit captured plan
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .codex/shared-plan.json
+          if git diff --cached --quiet; then
+            echo 'Shared plan is unchanged.'
+            exit 0
+          fi
+          git commit -m 'chore: capture shared implementation plan'
+          git push origin HEAD:codex/execute-shared-plan-6a53743e
