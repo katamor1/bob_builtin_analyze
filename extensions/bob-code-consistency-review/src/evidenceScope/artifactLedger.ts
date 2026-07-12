@@ -11,7 +11,7 @@ const LEDGER_ID = "bob-evidence-scope"
 const MAX_ARTIFACT_RECORDS = 512
 const MAX_DEPENDENCIES_PER_RECORD = 64
 const HASH_PATTERN = /^sha256:[0-9a-f]{64}$/u
-const REVISION_PATTERN = /^(?:[0-9a-f]{40})(?:\.\.[0-9a-f]{40})?$/u
+const REVISION_PATTERN = /^[A-Za-z0-9._/@:+~^-]+(?:\.\.[A-Za-z0-9._/@:+~^-]+)?$/u
 
 export type ArtifactKind = "repository-symbol-index" | "project-rule-pack" | "review-package"
 export type ArtifactStatus = "fresh" | "stale" | "missing"
@@ -64,7 +64,7 @@ export function reconcileArtifactLedger(
   previous: ArtifactLedger | undefined,
   input: ArtifactLedgerReconcileInput
 ): ArtifactLedger {
-  const sourceRevision = normalizeHeadRevision(input.sourceRevision)
+  const sourceRevision = normalizeRevision(input.sourceRevision, "artifact ledger source revision")
   const normalizedPrevious = previous ? validateLedger(previous) : undefined
   const observations = normalizeObservations(input.observations)
   const completeKinds = new Set(input.completeKinds.map(normalizeKind))
@@ -250,7 +250,7 @@ function validateLedger(value: unknown): ArtifactLedger {
   if (!isRecord(value)) throw new Error("artifact ledger root must be an object")
   if (value.schema_version !== 1) throw new Error(`unsupported artifact ledger schema_version: ${String(value.schema_version)}`)
   if (value.ledger_id !== LEDGER_ID) throw new Error(`unsupported artifact ledger id: ${String(value.ledger_id)}`)
-  const sourceRevision = normalizeHeadRevision(value.source_revision)
+  const sourceRevision = normalizeRevision(value.source_revision, "artifact ledger source revision")
   if (!Array.isArray(value.artifacts)) throw new Error("artifact ledger artifacts must be an array")
   if (value.artifacts.length > MAX_ARTIFACT_RECORDS) {
     throw new Error(`artifact ledger record count exceeded maximum (${value.artifacts.length} > ${MAX_ARTIFACT_RECORDS})`)
@@ -333,18 +333,17 @@ function normalizeHash(value: unknown, label: string): string {
   return value
 }
 
-function normalizeHeadRevision(value: unknown): string {
-  if (typeof value !== "string") throw new Error("artifact ledger source revision must be a 40-character commit SHA")
-  const normalized = value.trim().toLowerCase()
-  if (!/^[0-9a-f]{40}$/u.test(normalized)) throw new Error(`artifact ledger source revision must be a 40-character commit SHA: ${value}`)
+function normalizeRevision(value: unknown, label: string): string {
+  if (typeof value !== "string") throw new Error(`${label} is invalid`)
+  const normalized = value.trim()
+  if (!normalized || normalized.length > 512 || !REVISION_PATTERN.test(normalized)) {
+    throw new Error(`${label} is invalid: ${value}`)
+  }
   return normalized
 }
 
 function normalizeRecordRevision(value: unknown, label: string): string {
-  if (typeof value !== "string") throw new Error(`${label} is invalid`)
-  const normalized = value.trim().toLowerCase()
-  if (!REVISION_PATTERN.test(normalized)) throw new Error(`${label} is invalid: ${value}`)
-  return normalized
+  return normalizeRevision(value, label)
 }
 
 function normalizeText(value: unknown, label: string): string {
