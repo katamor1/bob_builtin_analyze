@@ -120,7 +120,7 @@ const runControlSchema = {
       type: "object",
       properties: {
         maxRunMinutes: { type: "number", exclusiveMinimum: 0 },
-        maxAgentStepsPerRun: { type: "number", exclusiveMinimum: 0 },
+        maxAgentStepsPerRun: { type: "integer", exclusiveMinimum: 0 },
         pauseAtLocalTime: { type: "string", pattern: "^(?:[01]\\d|2[0-3]):[0-5]\\d$" },
         timezone: { type: "string", minLength: 1 }
       },
