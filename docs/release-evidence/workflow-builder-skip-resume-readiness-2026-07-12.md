@@ -11,11 +11,12 @@
 | Pull request | #82 |
 | Verified implementation head | `91d8dcd56b8ef5ee336f09c34e5e7ec73f930055` |
 | Documentation trigger head | `deaa33020527371200b6e4f407690ced069ef817` |
+| Temporary workflow cleanup head | `c1433e3f69312229a379c14a8aa8c4bc393d21a9` |
 | Full suite | 789 passed / 0 failed / 0 skipped |
 | Official matrix | `extensions-quality` run `29201666388`: success |
 | Focused/full evidence | `workflow-builder-skip-resume-tdd` run `29201666390`: success |
 | Whole-diff review | Critical 0 / Important 0 |
-| Merge gate | **GO after temporary workflow cleanup and final branch checks** |
+| Merge gate | **GO — temporary workflow cleanup complete; final PR checks must remain green** |
 
 ## 2. Delivered behavior
 
@@ -88,4 +89,6 @@ Important: 0
 
 ## 7. Cleanup
 
-TDD evidence取得用の`.github/workflows/workflow-builder-skip-resume-tdd.yml`と、このdocumentation finalizerは最終cleanup tailで削除する。PR差分にtemporary workflowを残さない。
+TDD evidence取得用の`.github/workflows/workflow-builder-skip-resume-tdd.yml`はcommit `9e49f58e343162792b33b5e52f9f892acff2f160`で削除した。Documentation finalizerはcommit `c1433e3f69312229a379c14a8aa8c4bc393d21a9`で削除した。
+
+最終PR file listにtemporary `.github/workflows/workflow-builder-skip-resume-*`は残っていない。実装、test、operator document、plan、release evidence、review evidenceだけを配布候補差分として維持する。
