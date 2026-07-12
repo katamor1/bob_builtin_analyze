@@ -12,6 +12,8 @@ import type { ReviewRecordCommandInput } from "../records/reviewRecordCommands"
 import { readTriage, writeTriage } from "../records/reviewRecordStore"
 import { summarizeTriageItems, validateTriage } from "../records/reviewTriage"
 import type { ReviewTriage, TriageDecision, TriageItem } from "../records/reviewRecordTypes"
+import { loadReviewRun, recordTriageDraft } from "../reviewRuns/reviewRunCoordinator"
+import type { ReviewRunCommandInput, ReviewRunContext } from "../reviewRuns/reviewRunTypes"
 import { renderHumanTriageHtml, type HumanTriageGuiModel } from "./humanTriageGuiHtml"
 
 type HumanTriageAction =
@@ -31,23 +33,30 @@ interface HumanTriageMessage {
   items?: unknown[]
 }
 
-export function openBazaarHumanTriageGui(context: vscode.ExtensionContext): void {
+export function openBazaarHumanTriageGui(
+  context: vscode.ExtensionContext,
+  reviewRunInput?: ReviewRunCommandInput
+): void {
   const panel = vscode.window.createWebviewPanel("bobBazaarHumanTriage", "Bazaar Human Triage", vscode.ViewColumn.One, {
     enableScripts: true,
     retainContextWhenHidden: true
   })
-  const controller = new BazaarHumanTriageGuiController(context, panel)
+  const controller = new BazaarHumanTriageGuiController(context, panel, reviewRunInput)
   context.subscriptions.push(panel.webview.onDidReceiveMessage((message) => controller.handleMessage(message)))
-  controller.render(defaultModel())
+  controller.render()
 }
 
 class BazaarHumanTriageGuiController {
-  private model: HumanTriageGuiModel = defaultModel()
+  private model: HumanTriageGuiModel
+  private activeReviewRun?: ReviewRunContext
 
   constructor(
     private readonly context: vscode.ExtensionContext,
-    private readonly panel: vscode.WebviewPanel
-  ) {}
+    private readonly panel: vscode.WebviewPanel,
+    private readonly reviewRunInput?: ReviewRunCommandInput
+  ) {
+    this.model = defaultModel(reviewRunInput)
+  }
 
   render(model: HumanTriageGuiModel = this.model): void {
     this.model = model
@@ -71,6 +80,7 @@ class BazaarHumanTriageGuiController {
         this.post({ ok: true, message: `campaign を初期化しました: ${result.targetRoot}` })
       } else if (message.action === "createTriage") {
         const result = await createReviewTriage(input)
+        if (this.activeReviewRun) this.activeReviewRun = await recordTriageDraft(this.activeReviewRun, result.path)
         await this.reloadTriage(input, result.path, result.issues)
       } else if (message.action === "validateTriage") {
         const result = await validateReviewTriageCommand(input)
@@ -90,11 +100,22 @@ class BazaarHumanTriageGuiController {
   }
 
   private async commandInput(message: HumanTriageMessage): Promise<ReviewRecordCommandInput> {
-    const workspaceRoot = await resolveWorkspaceRoot()
-    const campaignId = textOrDefault(message.campaignId, this.model.campaignId)
-    const reviewId = textOrDefault(message.reviewId, this.model.reviewId)
-    const reviewResultJsonPath = textOrDefault(message.reviewResultJsonPath, `.bob/review/results/${reviewId}.json`)
+    const reviewRun = await this.resolveReviewRun()
+    const workspaceRoot = reviewRun?.workspaceRoot ?? await resolveWorkspaceRoot()
+    const campaignId = reviewRun?.campaignId ?? textOrDefault(message.campaignId, this.model.campaignId)
+    const reviewId = reviewRun?.reviewId ?? textOrDefault(message.reviewId, this.model.reviewId)
+    const reviewResultJsonPath = textOrDefault(
+      message.reviewResultJsonPath,
+      reviewRun?.artifacts.reviewResultJsonPath ?? `.bob/review/results/${reviewId}.json`
+    )
     return { workspaceRoot, campaignId, reviewId, reviewResultJsonPath }
+  }
+
+  private async resolveReviewRun(): Promise<ReviewRunContext | undefined> {
+    if (this.activeReviewRun) return this.activeReviewRun
+    if (!this.reviewRunInput) return undefined
+    this.activeReviewRun = await loadReviewRun(this.reviewRunInput)
+    return this.activeReviewRun
   }
 
   private async reloadTriage(input: ReviewRecordCommandInput, triagePath: string, issues: string[]): Promise<void> {
@@ -104,6 +125,7 @@ class BazaarHumanTriageGuiController {
       reviewId: required(input.reviewId, "reviewId"),
       reviewResultJsonPath: input.reviewResultJsonPath ?? `.bob/review/results/${input.reviewId}.json`,
       triagePath,
+      reviewRunBound: Boolean(this.reviewRunInput),
       issues,
       items: triage.items
     })
@@ -127,6 +149,7 @@ class BazaarHumanTriageGuiController {
         reviewId,
         reviewResultJsonPath: input.reviewResultJsonPath ?? `.bob/review/results/${reviewId}.json`,
         triagePath: path.join(workspaceRoot, ".bob-review-records", "campaigns", campaignId, "records", reviewId, "triage.yaml"),
+        reviewRunBound: Boolean(this.reviewRunInput),
         issues,
         items
       })
@@ -138,6 +161,7 @@ class BazaarHumanTriageGuiController {
       reviewId,
       reviewResultJsonPath: input.reviewResultJsonPath ?? `.bob/review/results/${reviewId}.json`,
       triagePath,
+      reviewRunBound: Boolean(this.reviewRunInput),
       issues: [],
       items: next.items
     })
@@ -148,11 +172,13 @@ class BazaarHumanTriageGuiController {
   }
 }
 
-function defaultModel(): HumanTriageGuiModel {
+function defaultModel(reviewRunInput?: ReviewRunCommandInput): HumanTriageGuiModel {
+  const reviewId = reviewRunInput?.reviewId ?? ""
   return {
-    campaignId: "phase1-bazaar-review-uat-001",
-    reviewId: "",
-    reviewResultJsonPath: ".bob/review/results/<review_id>.json",
+    campaignId: reviewRunInput?.campaignId ?? "phase1-bazaar-review-uat-001",
+    reviewId,
+    reviewResultJsonPath: reviewId ? `.bob/review/results/${reviewId}.json` : ".bob/review/results/<review_id>.json",
+    reviewRunBound: Boolean(reviewRunInput),
     issues: [],
     items: []
   }
