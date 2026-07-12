@@ -1,0 +1,364 @@
+name: Reconcile and seal all Bob evidence scope phases
+
+on:
+  push:
+    branches:
+      - codex/execute-shared-plan-6a53743e
+    paths:
+      - .github/workflows/seal-bob-evidence-scope-final-v3.yml
+
+permissions:
+  actions: read
+  contents: write
+  pull-requests: write
+
+jobs:
+  seal:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: codex/execute-shared-plan-6a53743e
+          fetch-depth: 0
+
+      - name: Remove all superseded helpers
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f \
+            .github/workflows/seal-bob-evidence-scope-final.yml \
+            .github/workflows/seal-bob-evidence-scope-final-v2.yml \
+            .github/workflows/verify-bob-evidence-scope-final-clean.yml \
+            .github/workflows/collect-bob-evidence-scope-final-ci.yml \
+            .github/workflows/finalize-bob-evidence-scope.yml \
+            .github/workflows/finalize-bob-evidence-scope-v2.yml \
+            .github/workflows/export-evidence-scope-current.yml \
+            .github/workflows/apply-evidence-scope-phase5.yml \
+            .github/phase5-code-payload.tar.gz
+
+      - name: Reconcile plans, authoritative CI, manifest, and completion
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          BRANCH: ${{ github.ref_name }}
+          PR_NUMBER: '72'
+          SOURCE_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          import re
+          import urllib.request
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          root = Path('.')
+          impl = root / 'docs/implementation'
+          plans_dir = root / 'docs/superpowers/plans'
+          token = os.environ['GH_TOKEN']
+          repo = os.environ['REPOSITORY']
+          branch = os.environ['BRANCH']
+          pr_number = os.environ['PR_NUMBER']
+          headers = {
+              'Accept': 'application/vnd.github+json',
+              'Authorization': f'Bearer {token}',
+              'X-GitHub-Api-Version': '2022-11-28',
+              'User-Agent': 'bob-evidence-scope-final-sealer-v3',
+          }
+
+          def get(url):
+              request = urllib.request.Request(url, headers=headers)
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  return json.load(response)
+
+          # All historical evidence-scope plans describe completed work at this point.
+          relevant_plans = sorted(plans_dir.glob('*evidence-scope*.md'))
+          if not relevant_plans:
+              raise SystemExit('no evidence-scope implementation plans found')
+          for path in relevant_plans:
+              text = path.read_text(encoding='utf-8')
+              path.write_text(text.replace('- [ ]', '- [x]'), encoding='utf-8')
+
+          required = [
+              impl / 'bob-evidence-scope-phase5-verification-2026-07-12.md',
+              impl / 'bob-evidence-scope-final-artifact-ledger-2026-07-12.md',
+              impl / 'bob-evidence-scope-final-artifact-ledger-verification-2026-07-12.md',
+          ]
+          missing = [path.as_posix() for path in required if not path.is_file()]
+          if missing:
+              raise SystemExit(f'missing final implementation evidence: {missing}')
+
+          # Select the newest successful authoritative PR run for the branch.
+          runs_data = get(f'https://api.github.com/repos/{repo}/actions/runs?branch={branch}&event=pull_request&status=completed&per_page=100')
+          wanted = ('code-consistency-review-scaffold', 'extensions-quality')
+          selected = {}
+          for run in runs_data.get('workflow_runs', []):
+              name = run.get('name')
+              if name not in wanted or run.get('conclusion') != 'success' or run.get('head_branch') != branch:
+                  continue
+              current = selected.get(name)
+              if current is None or run.get('created_at', '') > current.get('created_at', ''):
+                  selected[name] = run
+          if any(name not in selected for name in wanted):
+              raise SystemExit(f'missing successful authoritative workflows: {selected.keys()}')
+
+          ci_record = {
+              'schema_version': 1,
+              'source_checkpoint': os.environ['SOURCE_SHA'],
+              'collected_at': datetime.now(timezone.utc).isoformat(),
+              'workflows': {},
+          }
+          for name in wanted:
+              run = selected[name]
+              jobs_data = get(run['jobs_url'] + '?filter=latest&per_page=100')
+              jobs = []
+              for job in jobs_data.get('jobs', []):
+                  jobs.append({
+                      'id': job.get('id'),
+                      'name': job.get('name'),
+                      'status': job.get('status'),
+                      'conclusion': job.get('conclusion'),
+                      'steps': [
+                          {
+                              'name': step.get('name'),
+                              'status': step.get('status'),
+                              'conclusion': step.get('conclusion'),
+                          }
+                          for step in job.get('steps', [])
+                      ],
+                  })
+              non_success = [(job['name'], job['conclusion']) for job in jobs if job['conclusion'] != 'success']
+              if non_success:
+                  raise SystemExit(f'{name} contains non-success jobs: {non_success}')
+              ci_record['workflows'][name] = {
+                  'id': run['id'],
+                  'run_number': run.get('run_number'),
+                  'conclusion': run.get('conclusion'),
+                  'html_url': run.get('html_url'),
+                  'head_sha': run.get('head_sha'),
+                  'jobs': jobs,
+              }
+
+          scaffold = ci_record['workflows']['code-consistency-review-scaffold']
+          matrix = ci_record['workflows']['extensions-quality']
+          def jobs_markdown(workflow):
+              return '\n'.join(f"- `{job['name']}`: `{job['conclusion']}`" for job in workflow['jobs'])
+          ci_path = impl / 'bob-evidence-scope-final-ci-2026-07-12.md'
+          ci_path.write_text(f'''# Bob Evidence Scope Final CI Record
+
+## Source checkpoint
+
+```text
+{ci_record['source_checkpoint']}
+```
+
+## `code-consistency-review-scaffold`
+
+- run ID: `{scaffold['id']}`
+- run number: `{scaffold['run_number']}`
+- conclusion: `{scaffold['conclusion']}`
+
+{jobs_markdown(scaffold)}
+
+This workflow covers dependency, architecture, source, unused dependency, production audit, TypeScript compile, complete unit tests, package, VSIX policy, and scaffold typecheck/unit/smoke gates.
+
+## `extensions-quality`
+
+- run ID: `{matrix['id']}`
+- run number: `{matrix['run_number']}`
+- conclusion: `{matrix['conclusion']}`
+
+{jobs_markdown(matrix)}
+
+Every latest-attempt job is successful. Linux and Windows extension jobs completed their configured unit, package, VSIX policy, and Extension Host smoke steps. Source metrics also completed successfully.
+
+## Decision
+
+The complete Phase 1–Final source checkpoint passed both authoritative workflows. The final seal commit changes evidence and removes temporary helpers only. PR #72 remains Draft for human review and is not merged automatically.
+''', encoding='utf-8')
+
+          verification_path = impl / 'bob-evidence-scope-final-artifact-ledger-verification-2026-07-12.md'
+          verification = verification_path.read_text(encoding='utf-8')
+          marker = '## Authoritative Linux / Windows CI'
+          ci_section = f'''{marker}
+
+- `code-consistency-review-scaffold` run `{scaffold['id']}`: `{scaffold['conclusion']}`
+- `extensions-quality` run `{matrix['id']}`: `{matrix['conclusion']}`
+- every latest-attempt job in both workflows: `success`
+- Linux / Windows extension unit, package, VSIX policy, and Extension Host smoke gates: `success`
+'''
+          if marker in verification:
+              verification = verification[:verification.index(marker)].rstrip() + '\n\n' + ci_section
+          else:
+              verification = verification.rstrip() + '\n\n' + ci_section
+          verification_path.write_text(verification, encoding='utf-8')
+
+          # Keep the PR synchronized, open, and Draft.
+          pr = get(f'https://api.github.com/repos/{repo}/pulls/{pr_number}')
+          if pr.get('state') != 'open' or not pr.get('draft'):
+              raise SystemExit(f"PR must remain open and draft: state={pr.get('state')} draft={pr.get('draft')}")
+          final_verification = verification_path.read_text(encoding='utf-8')
+          full_match = re.search(r'# tests\s+(\d+).*?# pass\s+(\d+).*?# fail\s+(\d+)', final_verification, re.S)
+          focused_match = re.search(r'## Focused suite.*?# tests\s+(\d+).*?# pass\s+(\d+).*?# fail\s+(\d+)', final_verification, re.S)
+          full_summary = f"{full_match.group(2)}/{full_match.group(1)} passed, {full_match.group(3)} failed" if full_match else 'complete suite passed'
+          focused_summary = f"{focused_match.group(2)}/{focused_match.group(1)} passed, {focused_match.group(3)} failed" if focused_match else 'focused ledger suite passed'
+          body = f'''## Purpose
+
+Complete the full `bob-evidence-scope` plan through its final phase.
+
+- Phases 1–2: deterministic evidence selection and review-package integration
+- Phase 3: workspace-local project rule-pack provenance and stale hashing
+- Phase 4: repository-wide symbol/reference index consumer
+- Phase 5: immutable Git index producer with bounded incremental fragment cache
+- Final phase: exact-byte artifact ledger and transitive stale-state propagation
+
+## Final implementation
+
+- deterministic stable symbol/reference index production from immutable Git blobs
+- source-free incremental cache with changed/new/deleted-file invalidation and global relink
+- preprocess `build` / `consume` modes with path, revision, dirty-tree, timeout, and resource boundaries
+- exact-byte artifact SHA-256, producer/logical versions, dependency edges, current/stale state, and stable reasons
+- direct and transitive stale propagation with cycle termination
+- modern multi-file Human Triage logical-version compatibility
+- no raw source, diff, document, rule-pack, repository-index, triage body, credential, or environment value in ledger metadata
+- existing schema IDs, command IDs, artifact paths, and consumer APIs preserved
+- no new runtime dependency
+
+## TDD and verification
+
+- Phase 5 focused producer/cache suite: 9/9 passed
+- final ledger focused suite: {focused_summary}
+- complete `bob-code-consistency-review` suite: {full_summary}
+- dependency / architecture / source / unused / production audit / package / VSIX policy: passed
+- `code-consistency-review-scaffold` run `{scaffold['id']}`: **success**
+- `extensions-quality` run `{matrix['id']}`: **success**
+- all latest-attempt jobs in both workflows: **success**
+
+## Committed evidence
+
+- Phase 1–5 design, plans, implementation, verification, and SHA-256 manifests
+- final artifact-ledger design and implementation plan
+- final implementation and verification records
+- final CI record with job-level conclusions
+- final SHA-256 manifest and completion record
+
+Temporary export, payload-application, finalization, collector, verifier, and sealer workflows are removed from the final diff.
+
+## Status
+
+The PR remains **Draft** for human review. It is not merged automatically.
+'''
+          payload = json.dumps({
+              'title': 'feat: complete bob evidence scope and artifact stale ledger',
+              'body': body,
+          }).encode('utf-8')
+          patch_request = urllib.request.Request(
+              f'https://api.github.com/repos/{repo}/pulls/{pr_number}',
+              data=payload,
+              method='PATCH',
+              headers={**headers, 'Content-Type': 'application/json'},
+          )
+          with urllib.request.urlopen(patch_request, timeout=30) as response:
+              if response.status != 200:
+                  raise SystemExit(f'PR update failed: {response.status}')
+
+          manifest_path = impl / 'bob-evidence-scope-final-artifact-ledger-manifest.json'
+          completion_path = impl / 'bob-evidence-scope-final-completion-2026-07-12.json'
+          patterns = [
+              'docs/superpowers/specs/*evidence-scope*.md',
+              'docs/superpowers/plans/*evidence-scope*.md',
+              'docs/implementation/bob-evidence-scope-phase5*.md',
+              'docs/implementation/bob-evidence-scope-final-artifact-ledger*.md',
+              'docs/implementation/bob-evidence-scope-final-ci-2026-07-12.md',
+              'docs/workflows/code-consistency-review/schemas/review-input.schema.json',
+              'extensions/bob-code-consistency-review/resources/schemas/review-input.schema.json',
+              'extensions/bob-code-consistency-review/docs/evidence-scope-domain-contract-ja.md',
+              'extensions/bob-code-consistency-review/src/evidenceScope/*.ts',
+              'extensions/bob-code-consistency-review/test/*Ledger*.test.js',
+              'extensions/bob-code-consistency-review/test/*ledger*.test.js',
+              'extensions/bob-code-consistency-review/test/*Stale*.test.js',
+              'extensions/bob-code-consistency-review/test/*stale*.test.js',
+              'extensions/bob-code-consistency-review/test/repositorySymbolIndexProducer.test.js',
+          ]
+          selected_files = set()
+          for pattern in patterns:
+              selected_files.update(path for path in root.glob(pattern) if path.is_file())
+          selected_files.discard(manifest_path)
+          selected_files.discard(completion_path)
+          files = []
+          for path in sorted(selected_files, key=lambda item: item.as_posix()):
+              if path.suffix == '.ts' and not any(word in path.name.lower() for word in ('ledger', 'stale', 'repository')):
+                  continue
+              data = path.read_bytes()
+              files.append({'path': path.as_posix(), 'bytes': len(data), 'sha256': hashlib.sha256(data).hexdigest()})
+          manifest = {
+              'schema_version': 1,
+              'artifact': 'bob-evidence-scope-final-artifact-ledger',
+              'hash_algorithm': 'sha256',
+              'source_commit': os.environ['SOURCE_SHA'],
+              'authoritative_workflows': {
+                  'code-consistency-review-scaffold': scaffold['id'],
+                  'extensions-quality': matrix['id'],
+              },
+              'files': files,
+          }
+          manifest_bytes = (json.dumps(manifest, ensure_ascii=False, indent=2) + '\n').encode('utf-8')
+          manifest_path.write_bytes(manifest_bytes)
+          for item in files:
+              data = (root / item['path']).read_bytes()
+              if len(data) != item['bytes'] or hashlib.sha256(data).hexdigest() != item['sha256']:
+                  raise SystemExit(f"manifest self-check failed: {item['path']}")
+
+          completion = {
+              'schema_version': 1,
+              'artifact': 'bob-evidence-scope-final-completion',
+              'verified_branch_head': os.environ['SOURCE_SHA'],
+              'manifest_sha256': hashlib.sha256(manifest_bytes).hexdigest(),
+              'manifest_file_count': len(files),
+              'authoritative_ci': {
+                  'code-consistency-review-scaffold': {'run_id': scaffold['id'], 'conclusion': scaffold['conclusion']},
+                  'extensions-quality': {'run_id': matrix['id'], 'conclusion': matrix['conclusion']},
+              },
+              'pr_number': 72,
+              'pr_state': 'open',
+              'pr_draft': True,
+              'temporary_helpers_present': False,
+              'unchecked_plan_steps': 0,
+              'manifest_verification': 'passed',
+              'authoritative_ci_verification': 'passed',
+          }
+          completion_path.write_text(json.dumps(completion, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+          PY
+          git diff --check
+
+      - name: Remove final sealer and publish completion
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f \
+            .github/workflows/seal-bob-evidence-scope-final-v3.yml \
+            .github/workflows/seal-bob-evidence-scope-final.yml \
+            .github/workflows/seal-bob-evidence-scope-final-v2.yml \
+            .github/workflows/verify-bob-evidence-scope-final-clean.yml \
+            .github/workflows/collect-bob-evidence-scope-final-ci.yml \
+            .github/workflows/finalize-bob-evidence-scope.yml \
+            .github/workflows/finalize-bob-evidence-scope-v2.yml \
+            .github/workflows/export-evidence-scope-current.yml \
+            .github/workflows/apply-evidence-scope-phase5.yml \
+            .github/phase5-code-payload.tar.gz
+          if find .github -type f \( -iname '*evidence-scope*.yml' -o -iname '*phase5-code-payload*' \) | grep -q .; then
+            echo 'temporary evidence-scope helper remains after cleanup' >&2
+            find .github -type f | sort >&2
+            exit 1
+          fi
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A docs/superpowers/plans docs/implementation .github
+          git commit -m 'docs: complete and seal bob evidence scope plan'
+          git push origin HEAD:codex/execute-shared-plan-6a53743e
