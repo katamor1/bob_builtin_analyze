@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "crypto"
 import type { WorkflowRunState } from "../model"
+import { decodeWorkflowRunState, isCurrentWorkflowRunState } from "./runStateCodec"
 import { appendRunDurabilityFile, readRunDurabilityFile } from "./runDurabilityPath"
 
 export const CURRENT_WORKFLOW_RUN_EVENT_SCHEMA_VERSION = "workflow-register/run-event/v1" as const
@@ -119,16 +120,22 @@ function parseWorkflowRunEvent(
   if (!["run.created", "run.updated", "run.migrated", "run.recovered"].includes(kind)) {
     throw new Error(`Workflow run '${expectedRunId}' event ${sequence} has unsupported kind '${kind}'.`)
   }
-  const occurredAt = requiredString(record.occurredAt, "occurredAt", expectedRunId)
+  const occurredAt = requiredTimestamp(record.occurredAt, "occurredAt", expectedRunId)
   const previousEventHash = optionalString(record.previousEventHash, "previousEventHash", expectedRunId)
   const expectedPreviousHash = previous?.hash
   if (previousEventHash !== expectedPreviousHash) {
     throw new Error(`Workflow run '${expectedRunId}' event ${sequence} previous event hash does not match the event log head.`)
   }
   const previousRunHash = optionalString(record.previousRunHash, "previousRunHash", expectedRunId)
+  if (previous && previousRunHash !== previous.runHash) {
+    throw new Error(`Workflow run '${expectedRunId}' event ${sequence} previous run hash does not match the prior snapshot.`)
+  }
   const runHash = requiredString(record.runHash, "runHash", expectedRunId)
-  const snapshot = requiredRecord(record.snapshot, `Workflow run '${expectedRunId}' event ${sequence} snapshot`) as unknown as WorkflowRunState
-  if (snapshot.runId !== expectedRunId) throw new Error(`Workflow run '${expectedRunId}' event ${sequence} snapshot run id does not match.`)
+  const decodedSnapshot = decodeWorkflowRunState(record.snapshot, expectedRunId)
+  if (!isCurrentWorkflowRunState(decodedSnapshot.run) || decodedSnapshot.migrated || decodedSnapshot.readOnly) {
+    throw new Error(`Workflow run '${expectedRunId}' event ${sequence} snapshot must use the current writable run-state schema.`)
+  }
+  const snapshot = decodedSnapshot.run
   const calculatedRunHash = hashWorkflowRunBytes(serializeWorkflowRunState(snapshot))
   if (runHash !== calculatedRunHash) throw new Error(`Workflow run '${expectedRunId}' event ${sequence} runHash does not match its snapshot.`)
   const hash = requiredString(record.hash, "hash", expectedRunId)
@@ -168,6 +175,14 @@ function requiredRecord(value: unknown, label: string): Record<string, unknown> 
 function requiredString(value: unknown, field: string, runId: string): string {
   if (typeof value !== "string" || !value) throw new Error(`Workflow run '${runId}' event field '${field}' must be a non-empty string.`)
   return value
+}
+
+function requiredTimestamp(value: unknown, field: string, runId: string): string {
+  const timestamp = requiredString(value, field, runId)
+  if (!Number.isFinite(Date.parse(timestamp))) {
+    throw new Error(`Workflow run '${runId}' event field '${field}' must be an ISO timestamp.`)
+  }
+  return timestamp
 }
 
 function optionalString(value: unknown, field: string, runId: string): string | undefined {
