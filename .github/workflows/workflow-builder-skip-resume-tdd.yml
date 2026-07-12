@@ -38,6 +38,7 @@ jobs:
             test/workflowSkipResumeAuthoringRoundTrip.test.js \
             test/workflowSkipResumeReadiness.test.js \
             test/workflowSkipResumeReadinessPreview.test.js \
+            test/workflowBuilderSkipResumeReadinessWebview.test.js \
             >> focused-output.txt 2>&1
           test_status=$?
           {
