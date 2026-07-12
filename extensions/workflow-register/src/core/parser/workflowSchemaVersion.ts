@@ -1,4 +1,4 @@
-export type WorkflowSchemaRoute = "legacy" | "workflow-register/v1"
+type WorkflowSchemaRoute = "legacy" | "workflow-register/v1"
 
 export function resolveWorkflowSchemaVersion(value: unknown): WorkflowSchemaRoute {
   if (value === undefined || value === "legacy") return "legacy"
