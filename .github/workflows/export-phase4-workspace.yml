@@ -1,6 +1,9 @@
 name: Export phase 4 workspace
 
 on:
+  pull_request:
+    paths:
+      - ".github/workflows/export-phase4-workspace.yml"
   push:
     branches:
       - codex/execute-shared-plan-6a53743e
