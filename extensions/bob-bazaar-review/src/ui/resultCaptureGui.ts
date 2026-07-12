@@ -116,7 +116,7 @@ class BazaarResultCaptureGuiController {
   private async resolveReviewRun(): Promise<ReviewRunContext | undefined> {
     if (this.activeReviewRun) return this.activeReviewRun
     if (!this.reviewRunInput) return undefined
-    const validatedInput = validateReviewRunCommandInput(
+    const validatedInput = await validateReviewRunCommandInput(
       this.reviewRunInput,
       (vscode.workspace.workspaceFolders ?? []).map((folder) => folder.uri.fsPath)
     )
