@@ -24,11 +24,11 @@ jobs:
       - name: Verify coordinated head
         shell: pwsh
         run: |
-          if ((git rev-parse HEAD).Trim() -ne "d9c1f23615c1b1f05dc793efc1b83e43eabd1ff0") {
+          if ((git rev-parse HEAD).Trim() -ne "11c7ac5e06bf0a2e8d428772e4c7b4b5dc9f8143") {
             throw "unexpected Phase 4 head"
           }
 
-      - name: Use the native canonicalizer proven by the Windows probe
+      - name: Apply native canonical roots and remove temporary diagnostic
         shell: pwsh
         run: |
           @'
@@ -55,8 +55,10 @@ jobs:
           '@ | Set-Content -Path apply-windows-fixture-fix.cjs -Encoding utf8
           node apply-windows-fixture-fix.cjs
           Remove-Item apply-windows-fixture-fix.cjs
+          Remove-Item .github/workflows/pr77-windows-workflow-register-diagnostic.yml
 
           $allowed = @(
+            ".github/workflows/pr77-windows-workflow-register-diagnostic.yml",
             "extensions/workflow-register/test/bobGateLifecycle.test.js",
             "extensions/workflow-register/test/helpers/workflowEngineFixtures.js",
             "extensions/workflow-register/test/operationHubMutations.test.js",
@@ -90,7 +92,8 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add `
+          git add -A -- `
+            .github/workflows/pr77-windows-workflow-register-diagnostic.yml `
             extensions/workflow-register/test/bobGateLifecycle.test.js `
             extensions/workflow-register/test/helpers/workflowEngineFixtures.js `
             extensions/workflow-register/test/operationHubMutations.test.js `
