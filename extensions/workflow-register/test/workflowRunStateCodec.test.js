@@ -5,7 +5,9 @@ const { test } = require("node:test")
 
 const {
   CURRENT_WORKFLOW_RUN_STATE_SCHEMA_VERSION,
+  assertWorkflowRunStateWritable,
   decodeWorkflowRunState,
+  isWorkflowRunStateWritable,
   prepareWorkflowRunStateForWrite
 } = require("../out/core/runtime/runStateCodec.js")
 
@@ -59,6 +61,22 @@ test("future run-state versions are inspectable and read-only", () => {
   assert.deepEqual(decoded.run.futureField, { preserved: true })
   assert.throws(
     () => prepareWorkflowRunStateForWrite(decoded.run),
+    /read-only schemaVersion 'workflow-register\/run-state\/v2'/
+  )
+})
+
+test("run-state writable boundary accepts only omitted and current versions", () => {
+  const historical = parseFixture("v0-basic.json")
+  const current = parseFixture("v1-basic.json")
+  const future = { ...current, schemaVersion: "workflow-register/run-state/v2" }
+
+  assert.equal(isWorkflowRunStateWritable(historical), true)
+  assert.equal(isWorkflowRunStateWritable(current), true)
+  assert.equal(isWorkflowRunStateWritable(future), false)
+  assert.doesNotThrow(() => assertWorkflowRunStateWritable(historical))
+  assert.doesNotThrow(() => assertWorkflowRunStateWritable(current))
+  assert.throws(
+    () => assertWorkflowRunStateWritable(future),
     /read-only schemaVersion 'workflow-register\/run-state\/v2'/
   )
 })
