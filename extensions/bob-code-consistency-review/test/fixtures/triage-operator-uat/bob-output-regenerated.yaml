@@ -1,0 +1,35 @@
+schema_version: 1
+review_summary:
+  review_id: CCR-UAT-001
+  package_id: package-regenerated
+  target_range: main..feature/triage-uat-v2
+  result_type: pre_review
+  final_approval: not_performed
+  scope_statement: Deterministic Human Triage UAT fixture after source regeneration.
+findings:
+  - id: PRE-001
+    category: risk
+    severity: critical
+    confidence: high
+    summary: Regenerated source says the timeout branch can corrupt the completion state.
+    evidence:
+      - evidence_id: SRC-0002
+        type: code
+        ref: src/sample.ts:18-32
+    reason: The regenerated review package contains a changed state transition.
+    impact: A timed-out operation can be recorded as successfully completed.
+    recommended_action: Reload the Human Triage screen and reassess the regenerated source.
+    human_check: Verify the latest package ID and source hash before saving.
+questions:
+  - id: Q-001
+    category: owner-decision
+    summary: Confirm who approves the regenerated timeout behavior.
+    reason: The regenerated package changes the affected owner.
+    evidence:
+      - evidence_id: TICKET-0002
+        type: ticket
+        ref: ISSUE-CCR-UAT-2
+    suggested_owner: platform-owner
+    suggested_action: Ask the platform owner before formal review.
+coverage_notes: []
+rejected_or_uncertain: []

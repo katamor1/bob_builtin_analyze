@@ -71,7 +71,7 @@ test("code consistency result capture GUI exposes YAML validation before triage"
   assert.doesNotMatch(html, /onclick=/)
 })
 
-test("code consistency human triage GUI renders generated triage items", () => {
+test("code consistency human triage GUI renders source context and conflict tokens", () => {
   const { renderConsistencyHumanTriageHtml } = require("../out/webview/consistencyHumanTriageHtml")
   const html = renderConsistencyHumanTriageHtml({
     cspSource: "vscode-resource:",
@@ -79,8 +79,28 @@ test("code consistency human triage GUI renders generated triage items", () => {
     model: {
       outDir: ".bob-review/human-triage",
       bobOutputPath: ".bob-review/bob-output/bob-output.yaml",
+      sourceSha256: "abc123",
+      decisionRevision: 4,
       items: [
-        { source_id: "F-1", source_type: "finding", decision: "", final_severity: "major", owner: "", reason: "", review_comment: "要確認" }
+        {
+          source_id: "PRE-001",
+          source_type: "finding",
+          category: "risk",
+          severity: "high",
+          confidence: "medium",
+          summary: "要確認",
+          source_reason: "根拠を確認する",
+          impact: "利用者影響",
+          recommended_action: "実装を修正する",
+          human_check: "設計担当が確認する",
+          evidence: [{ evidence_id: "SRC-0001", type: "code", ref: "src/a.ts:1" }],
+          decision: "",
+          final_severity: "",
+          owner: "",
+          reason: "",
+          review_comment: "",
+          follow_up: { required: false, action: "", due: "" }
+        }
       ],
       issues: []
     }
@@ -89,8 +109,14 @@ test("code consistency human triage GUI renders generated triage items", () => {
   assert.match(html, /Human Triage/)
   assert.match(html, /data-action="generateTriage"/)
   assert.match(html, /data-action="saveDecisions"/)
-  assert.match(html, /F-1/)
-  assert.match(html, /major/)
+  assert.match(html, /PRE-001/)
+  assert.match(html, /SRC-0001/)
+  assert.match(html, /value="" selected>未判断/)
+  assert.match(html, /data-field="follow_up_required"/)
+  assert.match(html, /data-field="follow_up_action"/)
+  assert.match(html, /data-field="follow_up_due"/)
+  assert.match(html, /sourceSha256/)
+  assert.match(html, /decisionRevision/)
   assert.match(html, /nonce-789/)
   assert.doesNotMatch(html, /onclick=/)
 })

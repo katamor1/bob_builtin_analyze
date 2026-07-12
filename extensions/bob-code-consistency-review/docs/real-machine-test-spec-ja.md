@@ -478,3 +478,43 @@ powershell -File docs\workflows\code-consistency-review\integration\launch-bob-c
 4. multi-root workspace で Bob root と VCS root が混同されないこと。
 5. IBM Bob 実環境で workflow source、step review、result handoff、MCP、Webview の代表 smoke を実施し、結果を release evidence に保存すること。
 6. workflow-contracts CI が repository 内の全対象 WORKFLOW.md を検証し成功していること。
+
+<!-- TRIAGE-INTEGRITY-2026-07-12 -->
+## 2026-07-12 Human Triage Integrity 実機テスト
+
+### CCR-RT-036 Generate / edit / save / reload
+
+| 項目 | 内容 |
+| --- | --- |
+| 手順 | Bob outputをcapture・validateし、Human Triage GUIで生成する。findingをaccepted、questionをquestionとして必要fieldを入力し保存後、GUIを閉じて再度開く。 |
+| 期待結果 | source contextは不変で、人間decision、owner、reason、comment、follow-upが再表示される。accepted / question / follow-up Markdownが保存内容と一致する。 |
+
+### CCR-RT-037 Source change conflict
+
+| 項目 | 内容 |
+| --- | --- |
+| 手順 | GUIを開いたままBob outputを変更してtriageを再生成し、古い画面から保存する。 |
+| 期待結果 | `TRIAGE_SOURCE_CHANGED`で保存を拒否し、新しいsourceとprojectionを上書きしない。再読込後は新sourceを表示する。 |
+
+### CCR-RT-038 Two-window decision revision conflict
+
+| 項目 | 内容 |
+| --- | --- |
+| 手順 | Human Triage GUIを2画面で開き、画面Aで保存後、古い画面Bから保存する。 |
+| 期待結果 | 画面Bは`TRIAGE_REVISION_CONFLICT`となる。Aのdecisionと生成成果物を保持し、再読込後に最新revisionを表示する。 |
+
+### CCR-RT-039 Legacy migration
+
+| 項目 | 内容 |
+| --- | --- |
+| 手順 | legacy `triage-result.yaml`だけを配置し、matching IDとunmatched IDを含めてtriageを生成する。 |
+| 期待結果 | matching decisionだけが`triage-decisions.yaml`へ移り、旧resultのbackupと`migration-report.md`が作成される。unmatched IDは判断へ混入しない。 |
+
+### CCR-RT-040 Backup and projection inspection
+
+| 項目 | 内容 |
+| --- | --- |
+| 手順 | decisionを複数回保存し、triage directoryのsource、decisions、互換YAML、各Markdown、backupを比較する。 |
+| 期待結果 | `triage-source.yaml`をGUI保存が変更せず、decision revisionが成功ごとに1増える。Markdownはdecision分類と一致し、手編集を正本として取り込まない。 |
+
+Phase 1の実機合格にはCCR-RT-036からCCR-RT-040の結果と、Developer Tools Consoleに未処理例外がないことをrelease evidenceへ記録する。

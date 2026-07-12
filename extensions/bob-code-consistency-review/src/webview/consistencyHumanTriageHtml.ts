@@ -1,18 +1,12 @@
-export interface ConsistencyHumanTriageItem {
-  source_id?: string
-  source_type?: string
-  decision?: string
-  final_severity?: string
-  owner?: string
-  reason?: string
-  review_comment?: string
-  question?: string
-  follow_up?: Record<string, unknown>
-}
+import type { HumanTriageViewItem } from "../triage/triageTypes"
+
+export type ConsistencyHumanTriageItem = HumanTriageViewItem
 
 export interface ConsistencyHumanTriageModel {
   outDir: string
   bobOutputPath: string
+  sourceSha256: string
+  decisionRevision: number
   items: ConsistencyHumanTriageItem[]
   issues: string[]
 }
@@ -24,6 +18,7 @@ export interface RenderConsistencyHumanTriageHtmlInput {
 }
 
 const DECISIONS = ["accepted", "rejected", "needs_investigation", "deferred", "question"] as const
+const SEVERITIES = ["critical", "high", "medium", "low", "info"] as const
 
 export function renderConsistencyHumanTriageHtml(input: RenderConsistencyHumanTriageHtmlInput): string {
   const { model } = input
@@ -38,19 +33,23 @@ export function renderConsistencyHumanTriageHtml(input: RenderConsistencyHumanTr
     body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); padding: 18px; }
     h1 { font-size: 20px; margin: 0 0 12px; }
     h2 { font-size: 15px; margin: 18px 0 8px; }
-    .card { border: 1px solid var(--vscode-panel-border); background: var(--vscode-sideBar-background); border-radius: 6px; padding: 12px; margin-top: 12px; }
-    .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    h3 { font-size: 14px; margin: 0; }
+    .card, .triage-item { border: 1px solid var(--vscode-panel-border); background: var(--vscode-sideBar-background); border-radius: 6px; padding: 12px; margin-top: 12px; }
+    .actions, .fields, .metadata { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
     button { border: 0; padding: 7px 11px; color: var(--vscode-button-foreground); background: var(--vscode-button-background); cursor: pointer; }
     button.secondary { color: var(--vscode-button-secondaryForeground); background: var(--vscode-button-secondaryBackground); }
-    table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-    th, td { border: 1px solid var(--vscode-panel-border); padding: 6px; text-align: left; vertical-align: top; }
-    th { color: var(--vscode-descriptionForeground); font-weight: 500; }
-    input, select, textarea { color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border); padding: 6px; }
-    textarea { min-height: 54px; min-width: 220px; }
+    input, select, textarea { color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border); padding: 6px; box-sizing: border-box; }
+    textarea { min-height: 62px; width: 100%; }
+    .field { display: flex; flex-direction: column; gap: 4px; min-width: 180px; flex: 1 1 180px; }
+    .wide { flex-basis: 100%; }
     .muted { color: var(--vscode-descriptionForeground); font-size: 12px; }
     .status { white-space: pre-wrap; margin-top: 10px; }
     .error { color: var(--vscode-errorForeground); }
     .ok { color: var(--vscode-testing-iconPassed); }
+    .source-context { margin-top: 8px; padding: 8px; background: var(--vscode-editor-background); border-radius: 4px; }
+    .source-context p { margin: 5px 0; white-space: pre-wrap; }
+    .evidence { margin: 6px 0 0; padding-left: 20px; }
+    .follow-up { align-items: end; }
     code { font-family: var(--vscode-editor-font-family); }
   </style>
 </head>
@@ -59,15 +58,16 @@ export function renderConsistencyHumanTriageHtml(input: RenderConsistencyHumanTr
   <section class="card">
     <h2>対象</h2>
     <div class="muted">bob-output: ${escapeHtml(model.bobOutputPath)} / triage: ${escapeHtml(model.outDir)}</div>
+    <div class="muted">source: ${escapeHtml(shortHash(model.sourceSha256))} / decision revision: ${model.decisionRevision}</div>
     <div class="actions">
       <button type="button" data-action="generateTriage">triage を生成</button>
-      <button type="button" data-action="saveDecisions">すべて保存</button>
+      <button type="button" data-action="saveDecisions"${model.sourceSha256 ? "" : " disabled"}>すべて保存</button>
       <button type="button" class="secondary" data-action="openResultCapture">Result Capture へ戻る</button>
     </div>
   </section>
   <section class="card">
     <h2>Finding / Question 採否判断</h2>
-    ${model.items.length === 0 ? `<div class="muted">triage を生成すると item が表示されます。</div>` : renderItemsTable(model.items)}
+    ${model.items.length === 0 ? `<div class="muted">triage を生成すると item が表示されます。</div>` : model.items.map(renderItem).join("")}
   </section>
   <section class="card">
     <h2>検証結果</h2>
@@ -75,23 +75,35 @@ export function renderConsistencyHumanTriageHtml(input: RenderConsistencyHumanTr
   </section>
   <script nonce="${escapeHtml(input.nonce)}">
     const vscode = acquireVsCodeApi();
+    const sourceSha256 = ${scriptValue(model.sourceSha256)};
+    const decisionRevision = ${model.decisionRevision};
     document.addEventListener('click', (event) => {
       const button = event.target && event.target.closest ? event.target.closest('button[data-action]') : undefined;
-      if (!button) return;
+      if (!button || button.disabled) return;
       button.disabled = true;
-      vscode.postMessage({ type: 'consistencyHumanTriage.action', action: button.dataset.action, items: collectItems() });
+      vscode.postMessage({
+        type: 'consistencyHumanTriage.action',
+        action: button.dataset.action,
+        sourceSha256,
+        decisionRevision,
+        items: collectItems()
+      });
       setTimeout(() => { button.disabled = false; }, 1200);
     });
     function collectItems() {
       return Array.from(document.querySelectorAll('[data-triage-row]')).map((row) => ({
         source_id: row.dataset.sourceId,
-        source_type: row.dataset.sourceType,
         decision: row.querySelector('[data-field="decision"]').value,
         final_severity: row.querySelector('[data-field="final_severity"]').value,
         owner: row.querySelector('[data-field="owner"]').value,
         reason: row.querySelector('[data-field="reason"]').value,
         review_comment: row.querySelector('[data-field="review_comment"]').value,
-        question: row.dataset.question || ''
+        suggested_recipient: row.querySelector('[data-field="suggested_recipient"]').value,
+        follow_up: {
+          required: row.querySelector('[data-field="follow_up_required"]').checked,
+          action: row.querySelector('[data-field="follow_up_action"]').value,
+          due: row.querySelector('[data-field="follow_up_due"]').value
+        }
       }));
     }
     window.addEventListener('message', (event) => {
@@ -105,31 +117,69 @@ export function renderConsistencyHumanTriageHtml(input: RenderConsistencyHumanTr
 </html>`
 }
 
-function renderItemsTable(items: ConsistencyHumanTriageItem[]): string {
-  return `<table>
-    <thead>
-      <tr>
-        <th>source</th>
-        <th>decision</th>
-        <th>severity</th>
-        <th>owner</th>
-        <th>reason</th>
-        <th>comment</th>
-      </tr>
-    </thead>
-    <tbody>${items.map(renderItemRow).join("")}</tbody>
-  </table>`
+function renderItem(item: ConsistencyHumanTriageItem): string {
+  const followUp = item.follow_up ?? {}
+  return `<article class="triage-item" data-triage-row data-source-id="${escapeHtml(item.source_id)}">
+    <h3><code>${escapeHtml(item.source_id)}</code> ${escapeHtml(item.summary ?? "")}</h3>
+    <div class="metadata muted">${[
+      item.source_type,
+      item.category,
+      item.severity ? `severity: ${item.severity}` : undefined,
+      item.confidence ? `confidence: ${item.confidence}` : undefined
+    ].filter(Boolean).map((value) => `<span>${escapeHtml(value)}</span>`).join("")}</div>
+    <div class="source-context">
+      ${sourceLine("Bob reason", item.source_reason)}
+      ${sourceLine("impact", item.impact)}
+      ${sourceLine("recommended action", item.recommended_action ?? item.suggested_action)}
+      ${sourceLine("suggested owner", item.suggested_owner)}
+      ${sourceLine("human check", item.human_check)}
+      ${renderEvidence(item)}
+    </div>
+    <div class="fields">
+      <label class="field">decision<select data-field="decision">${decisionOptions(item.decision)}</select></label>
+      <label class="field">final severity<select data-field="final_severity">${severityOptions(item.final_severity)}</select></label>
+      <label class="field">owner<input data-field="owner" value="${escapeHtml(item.owner ?? "")}"></label>
+      <label class="field">suggested recipient<input data-field="suggested_recipient" value="${escapeHtml(item.suggested_recipient ?? "")}"></label>
+      <label class="field wide">human reason<textarea data-field="reason">${escapeHtml(item.reason ?? "")}</textarea></label>
+      <label class="field wide">review comment<textarea data-field="review_comment">${escapeHtml(item.review_comment ?? "")}</textarea></label>
+    </div>
+    <div class="fields follow-up">
+      <label><input type="checkbox" data-field="follow_up_required"${followUp.required ? " checked" : ""}> follow-up required</label>
+      <label class="field">follow-up action<input data-field="follow_up_action" value="${escapeHtml(followUp.action ?? "")}"></label>
+      <label class="field">due<input type="date" data-field="follow_up_due" value="${escapeHtml(followUp.due ?? "")}"></label>
+    </div>
+  </article>`
 }
 
-function renderItemRow(item: ConsistencyHumanTriageItem): string {
-  return `<tr data-triage-row data-source-id="${escapeHtml(item.source_id ?? "")}" data-source-type="${escapeHtml(item.source_type ?? "")}" data-question="${escapeHtml(item.question ?? "")}">
-    <td><code>${escapeHtml(item.source_id ?? "")}</code><div class="muted">${escapeHtml(item.source_type ?? "")}</div></td>
-    <td><select data-field="decision">${DECISIONS.map((decision) => `<option value="${decision}"${decision === item.decision ? " selected" : ""}>${decision}</option>`).join("")}</select></td>
-    <td><input data-field="final_severity" value="${escapeHtml(item.final_severity ?? "")}"></td>
-    <td><input data-field="owner" value="${escapeHtml(item.owner ?? "")}"></td>
-    <td><textarea data-field="reason">${escapeHtml(item.reason ?? "")}</textarea></td>
-    <td><textarea data-field="review_comment">${escapeHtml(item.review_comment ?? "")}</textarea></td>
-  </tr>`
+function decisionOptions(selected: string | undefined): string {
+  return [
+    `<option value=""${selected ? "" : " selected"}>未判断</option>`,
+    ...DECISIONS.map((decision) => `<option value="${decision}"${decision === selected ? " selected" : ""}>${decision}</option>`)
+  ].join("")
+}
+
+function severityOptions(selected: string | undefined): string {
+  return [
+    `<option value=""${selected ? "" : " selected"}>未設定</option>`,
+    ...SEVERITIES.map((severity) => `<option value="${severity}"${severity === selected ? " selected" : ""}>${severity}</option>`)
+  ].join("")
+}
+
+function renderEvidence(item: ConsistencyHumanTriageItem): string {
+  if (item.evidence.length === 0) return ""
+  return `<div class="muted">evidence</div><ul class="evidence">${item.evidence.map((evidence) => `<li><code>${escapeHtml(evidence.evidence_id ?? "(no id)")}</code> ${escapeHtml(evidence.type ?? "")} ${escapeHtml(evidence.ref ?? "")}</li>`).join("")}</ul>`
+}
+
+function sourceLine(label: string, value: string | undefined): string {
+  return value ? `<p><strong>${escapeHtml(label)}:</strong> ${escapeHtml(value)}</p>` : ""
+}
+
+function shortHash(value: string): string {
+  return value ? value.slice(0, 12) : "未生成"
+}
+
+function scriptValue(value: string): string {
+  return JSON.stringify(value).replace(/</g, "\\u003c").replace(/>/g, "\\u003e").replace(/&/g, "\\u0026")
 }
 
 function escapeHtml(value: unknown): string {

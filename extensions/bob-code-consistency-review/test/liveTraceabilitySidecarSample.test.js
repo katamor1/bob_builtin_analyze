@@ -145,7 +145,9 @@ test("preprocessReview builds a package from the live traceability sidecar sampl
     outDir: ".bob-review/human-triage"
   })
   assert.equal(triage.status, "ok")
-  assert.match(fs.readFileSync(path.join(triageDir, "accepted-findings.md"), "utf8"), /PRE-001/)
+  assert.ok(fs.existsSync(path.join(triageDir, "triage-source.yaml")))
+  assert.ok(fs.existsSync(path.join(triageDir, "triage-decisions.yaml")))
+  assert.doesNotMatch(fs.readFileSync(path.join(triageDir, "accepted-findings.md"), "utf8"), /PRE-001/)
   assert.match(fs.readFileSync(path.join(triageDir, "questions-to-author.md"), "utf8"), /Q-001/)
 })
 

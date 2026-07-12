@@ -437,3 +437,33 @@ npm run package:policy
 - Workflow providers are owner-scoped, reject duplicate IDs, and are disposed with the extension lifecycle.
 - Git and Bazaar subprocesses have bounded output, hard timeouts, cancellation, and process-tree termination.
 - Release validation runs on both Ubuntu and Windows, while IBM Bob UI/MCP checks remain a release-candidate real-machine gate.
+
+<!-- TRIAGE-INTEGRITY-2026-07-12 -->
+## Human Triage Integrity
+
+Human Triage は、Bob 出力由来の情報と人間の判断を別の正本として保存します。GUI は Bob finding / question の本文を更新せず、`source_id` に紐づく判断だけを保存します。
+
+```text
+.bob-review/human-triage/
+  triage-source.yaml
+  triage-decisions.yaml
+  triage-result.yaml
+  accepted-findings.md
+  rejected-findings.md
+  investigation-items.md
+  questions-to-author.md
+  follow-up-actions.md
+  migration-report.md
+```
+
+| ファイル | 役割 |
+| --- | --- |
+| `triage-source.yaml` | `triage-source/v1`。Bob output から生成する immutable snapshot。 |
+| `triage-decisions.yaml` | `triage-decisions/v1`。人間が編集する decision、severity、owner、reason、comment、follow-up を `source_id` key で保持する。 |
+| `triage-result.yaml` | 従来利用との互換用 projection。正本ではない。 |
+| 各 Markdown | source と decisions から毎回再生成する閲覧・引き継ぎ用 projection。手編集を判断の正本にしない。 |
+| `migration-report.md` | legacy migration、削除された source ID、rebase warning を記録する。 |
+
+保存時は `source_sha256` と `decision_revision` を確認します。別画面や再生成によってsourceまたはdecisionが変わった場合は `TRIAGE_SOURCE_CHANGED` または `TRIAGE_REVISION_CONFLICT` となるため、画面を再読込して判断をやり直してください。
+
+旧 `triage-result.yaml` だけが存在するworkspaceでは、初回生成時に一致する `source_id` の判断を `triage-decisions.yaml` へ移行します。旧ファイルはbackupされ、一致しないIDは推測で移さず `migration-report.md` に残します。
