@@ -96,10 +96,12 @@ test("lock acquisition retries when the owner file disappears before inspection"
   await firstStarted.promise
 
   const originalRead = runDurabilityPath.readRunDurabilityFile
+  const readInjected = deferred()
   let injected = false
   runDurabilityPath.readRunDurabilityFile = async (...args) => {
     if (!injected && args[2] === "run.lock.json") {
       injected = true
+      readInjected.resolve()
       const error = new Error("simulated lock disappearance during acquisition")
       error.code = "ENOENT"
       throw error
@@ -113,7 +115,7 @@ test("lock acquisition retries when the owner file disappears before inspection"
       heartbeatMs: 0,
       pollMs: 5
     })
-    await new Promise((resolve) => setImmediate(resolve))
+    await readInjected.promise
     releaseFirst.resolve()
     assert.equal(await second, "second")
     assert.equal(injected, true)
