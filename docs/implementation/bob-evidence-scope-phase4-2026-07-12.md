@@ -68,17 +68,27 @@ loader は次を fatal error とする。
 
 `is_test: true` の symbol には deterministic に `test-impact` risk tag を追加する。unknown edge は target を解決せず、`target_hint` と reason を既存 `unknown_impact` へ残す。
 
-## Merge precedence
+## Stable identity と merge precedence
 
-`mergeRepositoryScopeData` は index graph と current analysis graph を統合する。
+`mergeRepositoryScopeData` は index graph と current analysis graph を統合する。changed-file analyzer の ID は処理順由来の `FUNC-0001` や `CODE-0001` になり得るため、repository index の stable ID と直接一致しない場合がある。
+
+対応付けは次の順で行う。
+
+1. analysis ID と index ID が完全一致する場合、その stable ID を使う。
+2. 完全一致しない場合、正規化した `(path, name, kind)` が index 内で一意に一致するときだけ index stable ID へ昇格する。
+3. 一致候補が複数ある場合は analysis ID を維持し、deterministic warning を残す。
+4. 一致候補がない場合も analysis ID を維持する。
+
+merge precedence は次のとおりである。
 
 - index symbol を先に登録する。
-- current analysis symbol が同じ ID を持つ場合は current analysis を採用する。
+- current analysis symbol は対応付け後の stable ID で index record を上書きする。
 - index edge を先に登録する。
-- current analysis edge が同じ canonical identity を持つ場合は current analysis を採用する。
+- current analysis call edge は merged alias table で stable ID へ解決する。
+- current analysis edge が同じ canonical identity を持つ場合は current analysis reason を採用する。
 - 最終 symbol と edge は stable identity 順に整列する。
 
-current analysis を authoritative にすることで、今回の diff から得た新しい path、change type、code-slice token estimate が stale index record に上書きされない。
+current analysis を authoritative にすることで、今回の diff から得た新しい path、change type、code-slice token estimate、call reason が index record に上書きされない。一方、stable ID 昇格により index の外部 caller/callee edge を一時 ID の changed symbol から辿れる。
 
 ## Scope expansion
 
@@ -139,9 +149,20 @@ Phase 4 の test-only RED commit は `1f307870e6269ef418a70a63e97908d62a5efc6e` 
 
 RED run では dependency、architecture、source、unused、production audit、TypeScript compile が成功した後、新規 unit tests が repository-index module 未実装のため失敗した。scaffold tests は同じ commit で成功した。
 
-GREEN implementation commit は `8ddee71561bbb6d8f8ef48589da2e2cc85eaad7a` である。実装 commit を生成した verification workflow は、commit 前に full unit suite と dependency / architecture / source / unused / audit / package / VSIX policy gate を実行し、すべて exit `0` の場合だけ branch へ push する構成とした。
+GREEN implementation anchor は `8ddee71561bbb6d8f8ef48589da2e2cc85eaad7a` である。実装 commit を生成した verification workflow は、commit 前に full unit suite と dependency / architecture / source / unused / audit / package / VSIX policy gate を実行し、すべて exit `0` の場合だけ branch へ push する構成とした。
 
-最終の test count と Linux / Windows matrix conclusion は、ユーザー署名のこの成果物 commit に対する GitHub Actions 完了後、Phase 4 検証記録と PR 本文へ固定する。
+初回 Windows matrix では production loader ではなく test fixture setup の LF 固定置換が CRLF checkout で一致せず、設定 path が挿入されない問題を検出した。また、追加した stable-identity test により、一時 analysis ID を repository stable ID へ昇格する adapter 契約の不足も検出した。
+
+修正後は次を確認した。
+
+- Phase 4 focused suite: 8/8
+- CRLF fixture を強制した Phase 4 focused suite: 8/8
+- complete extension suite: 223/223
+- dependency / architecture / source / unused / audit: exit 0
+- VSIX package: generated
+- VSIX policy: 3,660,812 bytes / 1,900 entries
+
+最終 Linux / Windows matrix conclusion は、この成果物一式を含む user-authored final head に対して確認し、PR 本文へ固定する。
 
 ## Non-goals
 
