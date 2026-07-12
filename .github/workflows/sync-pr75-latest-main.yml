@@ -1,7 +1,9 @@
 name: sync-pr75-latest-main
 
 on:
-  pull_request:
+  push:
+    branches:
+      - agent/workflow-automatic-pause-limits-20260712
     paths:
       - .github/workflows/sync-pr75-latest-main.yml
 
@@ -10,14 +12,13 @@ permissions:
 
 jobs:
   sync:
-    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
       - name: Checkout feature branch
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
-          ref: ${{ github.head_ref }}
+          ref: agent/workflow-automatic-pause-limits-20260712
           fetch-depth: 0
 
       - name: Configure git
@@ -152,4 +153,4 @@ jobs:
           git add -A
           git diff --cached --check
           git commit -m "merge: synchronize automatic pause with latest main"
-          git push origin HEAD:${{ github.head_ref }}
+          git push origin HEAD:agent/workflow-automatic-pause-limits-20260712
