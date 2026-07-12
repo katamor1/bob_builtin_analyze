@@ -12,6 +12,7 @@ export type WorkspacePathKind =
   | "traceability-ai-draft-output"
   | "repository-symbol-index-output"
   | "repository-symbol-index-cache"
+  | "artifact-ledger"
 
 type WorkspacePathPolicy = {
   label: string
@@ -78,6 +79,11 @@ const WORKSPACE_PATH_POLICIES: Record<WorkspacePathKind, WorkspacePathPolicy> = 
       startsWithSegments(segments, [".bob", "evidence-scope"]) && segments.length >= 3 ||
       customPath(segments)
     ) && /\.cache\.json$/i.test(segments[segments.length - 1])
+  },
+  "artifact-ledger": {
+    label: "artifactLedgerPath",
+    description: ".bob-review/artifact-ledger.json",
+    allow: (segments) => startsWithSegments(segments, [".bob-review", "artifact-ledger.json"]) && segments.length === 2
   }
 }
 
