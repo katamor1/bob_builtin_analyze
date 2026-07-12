@@ -1,0 +1,371 @@
+name: agent-apply-automatic-pause-current-fixes
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/agent-apply-automatic-pause-current-fixes.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout head branch
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: agent/workflow-automatic-pause-limits-20260712
+          fetch-depth: 0
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: extensions/workflow-register/package-lock.json
+      - name: Apply production fixes
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from textwrap import dedent
+
+          def replace_once(path_value: str, old: str, new: str) -> None:
+              path = Path(path_value)
+              text = path.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path_value}: expected one match, found {count}: {old[:120]!r}")
+              path.write_text(text.replace(old, new), encoding="utf-8")
+
+          replace_once(
+              "extensions/workflow-register/src/core/schema/workflowSchema.ts",
+              '        maxAgentStepsPerRun: { type: "number", exclusiveMinimum: 0 },',
+              '        maxAgentStepsPerRun: { type: "integer", exclusiveMinimum: 0 },'
+          )
+          replace_once(
+              "extensions/workflow-register/schema/workflow-register.v1.schema.json",
+              '            "maxAgentStepsPerRun": { "type": "number", "exclusiveMinimum": 0 },',
+              '            "maxAgentStepsPerRun": { "type": "integer", "exclusiveMinimum": 0 },'
+          )
+
+          automatic_pause = "extensions/workflow-register/src/core/engine/automaticPause.ts"
+          replace_once(
+              automatic_pause,
+              "    const localTime = localTimeDecision(input.now, policy)\n",
+              "    const localTime = localTimeDecision(input.run, input.now, policy)\n"
+          )
+          replace_once(
+              automatic_pause,
+              dedent('''
+              function localTimeDecision(now: Date, policy: AutomaticPausePolicySource): AutomaticPauseDecision | undefined {
+                const { pauseAtLocalTime, timezone } = policy.limits
+                if (!pauseAtLocalTime || !timezone) return undefined
+                const localTime = formatLocalTime(now, timezone)
+                if (minutesSinceMidnight(localTime) < minutesSinceMidnight(pauseAtLocalTime)) return undefined
+                return {
+                  kind: "pauseAtLocalTime",
+                  source: policy.source,
+                  limit: { pauseAtLocalTime, timezone },
+                  observed: { localTime, timezone }
+                }
+              }
+              ''').strip(),
+              dedent('''
+              function localTimeDecision(
+                run: WorkflowRunState,
+                now: Date,
+                policy: AutomaticPausePolicySource
+              ): AutomaticPauseDecision | undefined {
+                const { pauseAtLocalTime, timezone } = policy.limits
+                if (!pauseAtLocalTime || !timezone) return undefined
+                const localTime = formatLocalTime(now, timezone)
+                const currentLocalDate = formatLocalDate(now, timezone)
+                const createdAt = new Date(run.createdAt)
+                const runLocalDate = Number.isNaN(createdAt.getTime())
+                  ? currentLocalDate
+                  : formatLocalDate(createdAt, timezone)
+                if (currentLocalDate < runLocalDate) return undefined
+                if (
+                  currentLocalDate === runLocalDate
+                  && minutesSinceMidnight(localTime) < minutesSinceMidnight(pauseAtLocalTime)
+                ) return undefined
+                return {
+                  kind: "pauseAtLocalTime",
+                  source: policy.source,
+                  limit: { pauseAtLocalTime, timezone },
+                  observed: { localTime, timezone }
+                }
+              }
+              ''').strip()
+          )
+          replace_once(
+              automatic_pause,
+              dedent('''
+              function minutesSinceMidnight(value: string): number {
+              ''').strip(),
+              dedent('''
+              function formatLocalDate(value: Date, timezone: string): string {
+                const parts = new Intl.DateTimeFormat("en-US", {
+                  timeZone: timezone,
+                  year: "numeric",
+                  month: "2-digit",
+                  day: "2-digit"
+                }).formatToParts(value)
+                const year = parts.find((part) => part.type === "year")?.value ?? "0000"
+                const month = parts.find((part) => part.type === "month")?.value ?? "00"
+                const day = parts.find((part) => part.type === "day")?.value ?? "00"
+                return `${year}-${month}-${day}`
+              }
+
+              function minutesSinceMidnight(value: string): number {
+              ''').strip()
+          )
+
+          diagnostics_path = "extensions/workflow-register/src/core/runDiagnostics.ts"
+          replace_once(
+              diagnostics_path,
+              'import type { RunStepState, WorkflowRunState } from "./model"\n',
+              'import type { RunStepState, WorkflowRunState } from "./model"\nimport type { RunControlState } from "./runControlStore"\n'
+          )
+          replace_once(
+              diagnostics_path,
+              '  durabilityByRunId?: Record<string, WorkflowRunDurabilitySummary>\n}',
+              '  durabilityByRunId?: Record<string, WorkflowRunDurabilitySummary>\n  controlsByRunId?: Record<string, RunControlState | undefined>\n}'
+          )
+          replace_once(
+              diagnostics_path,
+              '      snapshots: options.snapshotsByRunId?.[run.runId] ?? [],\n      durability: options.durabilityByRunId?.[run.runId]\n',
+              '      snapshots: options.snapshotsByRunId?.[run.runId] ?? [],\n      durability: options.durabilityByRunId?.[run.runId],\n      control: options.controlsByRunId?.[run.runId]\n'
+          )
+          replace_once(
+              diagnostics_path,
+              '  options: { snapshots?: TaskSnapshotSummary[]; durability?: WorkflowRunDurabilitySummary } = {}\n',
+              '  options: { snapshots?: TaskSnapshotSummary[]; durability?: WorkflowRunDurabilitySummary; control?: RunControlState } = {}\n'
+          )
+          replace_once(
+              diagnostics_path,
+              '  if (run.state["workflow.pause"]) lines.push("", "Pause:", ...formatJsonState(run.state["workflow.pause"]))\n',
+              '  appendPauseDiagnostics(lines, run.state["workflow.pause"], options.control)\n'
+          )
+          helpers = dedent('''
+          function appendPauseDiagnostics(
+            lines: string[],
+            value: string | undefined,
+            control: RunControlState | undefined
+          ): void {
+            if (value) {
+              const parsed = parseJsonRecord(value)
+              if (parsed?.schemaVersion === "workflow-register/automatic-pause/v1") {
+                lines.push(
+                  "",
+                  "Automatic pause:",
+                  `- kind: ${String(parsed.kind ?? "unknown")}`,
+                  `- source: ${String(parsed.source ?? "unknown")}`,
+                  `- checkpoint: ${String(parsed.checkpoint ?? "unknown")}`,
+                  `- next step: ${String(parsed.nextStepId ?? "none")}`,
+                  `- detected: ${String(parsed.detectedAt ?? "unknown")}`
+                )
+                appendRecordFields(lines, "limit", parsed.limit)
+                appendRecordFields(lines, "observed", parsed.observed)
+              } else {
+                lines.push("", "Pause:", ...formatJsonState(value))
+              }
+            }
+
+            const override = control?.automaticPauseOverride
+            if (!override) return
+            lines.push(
+              "",
+              "Automatic pause override:",
+              `- schema: ${override.schemaVersion}`,
+              `- requested by: ${override.requestedBy}`,
+              `- created: ${override.createdAt}`,
+              `- expires: ${override.expiresAt}`,
+              `- reason: ${override.reason}`
+            )
+          }
+
+          function appendRecordFields(lines: string[], prefix: string, value: unknown): void {
+            if (!isRecord(value)) return
+            for (const key of Object.keys(value).sort()) {
+              lines.push(`- ${prefix}.${key}: ${formatDiagnosticValue(value[key])}`)
+            }
+          }
+
+          function parseJsonRecord(value: string): Record<string, unknown> | undefined {
+            try {
+              const parsed = JSON.parse(value)
+              return isRecord(parsed) ? parsed : undefined
+            } catch {
+              return undefined
+            }
+          }
+
+          function isRecord(value: unknown): value is Record<string, unknown> {
+            return Boolean(value && typeof value === "object" && !Array.isArray(value))
+          }
+
+          function formatDiagnosticValue(value: unknown): string {
+            if (typeof value === "string") return value
+            if (typeof value === "number" || typeof value === "boolean") return String(value)
+            if (value === null) return "null"
+            return JSON.stringify(value) ?? String(value)
+          }
+
+          ''')
+          replace_once(
+              diagnostics_path,
+              'function formatJsonState(value: string): string[] {\n',
+              helpers + 'function formatJsonState(value: string): string[] {\n'
+          )
+
+          inspect_path = "extensions/workflow-register/src/commands/inspectRunDiagnostics.ts"
+          replace_once(
+              inspect_path,
+              'import type { WorkflowRunDurabilitySummary } from "../core/runDiagnostics"\n',
+              'import type { WorkflowRunDurabilitySummary } from "../core/runDiagnostics"\nimport { FileRunControlStore } from "../core/runControlStore"\nimport type { RunControlState } from "../core/runControlStore"\n'
+          )
+          replace_once(
+              inspect_path,
+              '  const snapshotsByRunId = Object.fromEntries(await Promise.all(runs.map(async (run) => [run.runId, await snapshotStore.listSnapshots(run.runId)] as const)))\n',
+              dedent('''
+                const snapshotsByRunId = Object.fromEntries(await Promise.all(runs.map(async (run) => [run.runId, await snapshotStore.listSnapshots(run.runId)] as const)))
+                const controlStore = new FileRunControlStore({ workspaceRoot })
+                const controlsByRunId: Record<string, RunControlState | undefined> = {}
+                const controlDiagnostics: RunStateLoadDiagnostic[] = []
+                for (const run of runs) {
+                  try {
+                    controlsByRunId[run.runId] = await controlStore.loadControl(run.runId)
+                  } catch (error) {
+                    controlDiagnostics.push({
+                      runId: run.runId,
+                      severity: "error",
+                      code: "invalid",
+                      message: `Workflow run control could not be inspected: ${formatError(error)}`
+                    })
+                  }
+                }
+              ''').lstrip()
+          )
+          replace_once(
+              inspect_path,
+              '    snapshotsByRunId,\n    durabilityByRunId,\n',
+              '    snapshotsByRunId,\n    durabilityByRunId,\n    controlsByRunId,\n'
+          )
+          replace_once(
+              inspect_path,
+              '      ...store.getLoadDiagnostics(),\n      ...durabilityDiagnostics\n',
+              '      ...store.getLoadDiagnostics(),\n      ...controlDiagnostics,\n      ...durabilityDiagnostics\n'
+          )
+
+          report_path = Path("extensions/workflow-register/src/commands/runControlReport.ts")
+          report_path.write_text(dedent('''
+          import type { WorkflowRunState } from "../core/model"
+          import type { RunControlState } from "../core/runControlStore"
+          import { parseAutomaticPauseState } from "./automaticPauseResume"
+
+          export interface RunControlReportInput {
+            runId: string
+            root: string
+            run?: WorkflowRunState
+            control?: RunControlState
+          }
+
+          export function buildRunControlReportLines(input: RunControlReportInput): string[] {
+            const { runId, root, run, control } = input
+            const automaticPause = parseAutomaticPauseState(run?.state["workflow.pause"])
+            const override = control?.automaticPauseOverride
+            return [
+              `- runId: ${runId}`,
+              `- root: ${root}`,
+              `- runStatus: ${run?.status ?? "unknown"}`,
+              `- currentStep: ${run?.currentStep ?? "none"}`,
+              `- pauseRequestedAt: ${control?.pauseRequestedAt ?? "none"}`,
+              `- pauseReason: ${control?.pauseReason ?? "none"}`,
+              `- requestedBy: ${control?.requestedBy ?? "none"}`,
+              `- mode: ${control?.mode ?? "none"}`,
+              `- clearedAt: ${control?.clearedAt ?? "none"}`,
+              `- automaticPauseKind: ${automaticPause?.kind ?? "none"}`,
+              `- automaticPauseSource: ${automaticPause?.source ?? "none"}`,
+              `- automaticPauseCheckpoint: ${automaticPause?.checkpoint ?? "none"}`,
+              `- automaticPauseNextStep: ${automaticPause?.nextStepId ?? "none"}`,
+              `- automaticPauseDetectedAt: ${automaticPause?.detectedAt ?? "none"}`,
+              `- automaticPauseLimit: ${automaticPause ? JSON.stringify(automaticPause.limit) : "none"}`,
+              `- automaticPauseObserved: ${automaticPause ? JSON.stringify(automaticPause.observed) : "none"}`,
+              `- automaticOverrideSchema: ${override?.schemaVersion ?? "none"}`,
+              `- automaticOverrideRequestedBy: ${override?.requestedBy ?? "none"}`,
+              `- automaticOverrideCreatedAt: ${override?.createdAt ?? "none"}`,
+              `- automaticOverrideExpiresAt: ${override?.expiresAt ?? "none"}`,
+              `- automaticOverrideReason: ${override?.reason ?? "none"}`,
+              `- workflow.pause: ${run?.state["workflow.pause"] ?? "none"}`
+            ]
+          }
+          ''').lstrip(), encoding="utf-8")
+
+          run_control_path = "extensions/workflow-register/src/commands/runControl.ts"
+          replace_once(
+              run_control_path,
+              'import { prepareAutomaticPauseResume } from "./automaticPauseResumeUi"\n',
+              'import { prepareAutomaticPauseResume } from "./automaticPauseResumeUi"\nimport { buildRunControlReportLines } from "./runControlReport"\n'
+          )
+          replace_once(
+              run_control_path,
+              dedent('''
+                const lines = [
+                  `- runId: ${selection.runId}`,
+                  `- root: ${selection.root}`,
+                  `- runStatus: ${run?.status ?? "unknown"}`,
+                  `- currentStep: ${run?.currentStep ?? "none"}`,
+                  `- pauseRequestedAt: ${control?.pauseRequestedAt ?? "none"}`,
+                  `- pauseReason: ${control?.pauseReason ?? "none"}`,
+                  `- requestedBy: ${control?.requestedBy ?? "none"}`,
+                  `- mode: ${control?.mode ?? "none"}`,
+                  `- clearedAt: ${control?.clearedAt ?? "none"}`,
+                  `- automaticOverrideExpiresAt: ${control?.automaticPauseOverride?.expiresAt ?? "none"}`,
+                  `- automaticOverrideReason: ${control?.automaticPauseOverride?.reason ?? "none"}`,
+                  `- workflow.pause: ${run?.state["workflow.pause"] ?? "none"}`
+                ]
+              ''').lstrip(),
+              dedent('''
+                const lines = buildRunControlReportLines({
+                  runId: selection.runId,
+                  root: selection.root,
+                  run,
+                  control
+                })
+              ''').lstrip()
+          )
+          PY
+      - name: Install dependencies
+        working-directory: extensions/workflow-register
+        run: npm ci --silent
+      - name: Compile and verify focused contracts
+        working-directory: extensions/workflow-register
+        run: |
+          npm run compile --silent
+          node --test test/workflowAutomaticPause*.test.js test/workflowRunStateDiagnostics.test.js
+          npm run schema:policy --silent
+          npm run architecture:policy --silent
+          npm run source:policy --silent
+      - name: Commit verified changes
+        shell: bash
+        run: |
+          rm -f \
+            .github/workflows/agent-apply-automatic-pause-current-fixes.yml \
+            .github/workflows/agent-apply-automatic-pause-hardening.yml
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            .github/workflows/agent-apply-automatic-pause-current-fixes.yml \
+            .github/workflows/agent-apply-automatic-pause-hardening.yml \
+            extensions/workflow-register/schema/workflow-register.v1.schema.json \
+            extensions/workflow-register/src/core/schema/workflowSchema.ts \
+            extensions/workflow-register/src/core/engine/automaticPause.ts \
+            extensions/workflow-register/src/core/runDiagnostics.ts \
+            extensions/workflow-register/src/commands/inspectRunDiagnostics.ts \
+            extensions/workflow-register/src/commands/runControl.ts \
+            extensions/workflow-register/src/commands/runControlReport.ts
+          git commit -m "feat: complete automatic pause diagnostics and cutoffs"
+          git push origin HEAD:agent/workflow-automatic-pause-limits-20260712
