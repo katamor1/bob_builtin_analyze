@@ -22,7 +22,7 @@
 5. Linux / Windows unit、policy、package、VSIX、Extension Host resultsを確認した。
 6. 最終PR file listにtemporary workflowが残っていないことを確認した。
 7. P1-1 production code後のtail commitを確認し、`49ce3001849820238e44c10a2ca33180796094ae`がtest-onlyであることを確認した。
-8. 最新mainとの統合はPR merge resultをcheckoutするfresh matrixで判定する。
+8. 最新mainとの統合をPR merge result `61d3ed06defe14f6de5f737337712d0dc299be55`上の正式matrixで確認した。
 
 ## Findings fixed during review
 
@@ -56,13 +56,11 @@ step ID / resultKeyをartifact pathへ埋め込む前にportable segment validat
 - Implementation-head official Linux/Windows matrix: `29201666388`, success.
 - Cleanup/evidence-head official Linux/Windows matrix: `29202077515`, success.
 - Reviewed feature head matrix: `29202805399`, success.
+- Latest-main merge-result matrix: `29203656774`, success; all 7 jobs completed unit tests, package, VSIX policy, and Extension Host smoke.
 - Temporary `.github/workflows/workflow-builder-skip-resume-*` files: 0 in final PR diff.
-- Current merge-result matrix: triggered by the final evidence tail; exact run and conclusion are synchronized to PR #82 before Draft removal.
 
 ## Decision
 
-Feature code and reviewed diff: **GO**.
-
-PR integration gate: **PENDING current Linux / Windows merge-result matrix**.
+Code, CI, package, and latest-main integration gate: **GO**.
 
 Product release remains separately gated by real IBM Bob、Bazaar、multi-root、distribution-signing UAT.
