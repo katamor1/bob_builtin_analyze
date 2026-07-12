@@ -164,7 +164,42 @@ test("future run-state versions load read-only and are excluded from recovery", 
   }])
 })
 
-test("listRuns isolates malformed run documents and reports stable diagnostics", async (t) => {
+test("workflow engine rejects a future run before clearing pause state", async (t) => {
+  const root = tempRoot()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const future = {
+    ...parseFixture("v1-basic.json"),
+    schemaVersion: "workflow-register/run-state/v2",
+    status: "paused",
+    currentStep: "review",
+    steps: [{ id: "review", title: "Review", type: "manual", status: "pending" }]
+  }
+  const bytes = `${JSON.stringify(future, null, 2)}\n`
+  await writeRunDocument(root, future.runId, bytes)
+  const store = new FileRunStateStore({ workspaceRoot: root })
+  const { ActionRegistry } = require("../out/core/actionRegistry.js")
+  const { WorkflowEngine } = require("../out/core/engine.js")
+  const { ResultSinkRegistry } = require("../out/core/resultSinkRegistry.js")
+  let clearPauseCalls = 0
+  const engine = new WorkflowEngine({
+    actions: new ActionRegistry(),
+    resultSinks: new ResultSinkRegistry(),
+    runStore: store,
+    runControlStore: {
+      clearPause: async () => { clearPauseCalls += 1 }
+    }
+  })
+
+  await assert.rejects(
+    engine.resumeRun(future.runId, { workflow: workflow() }),
+    /read-only schemaVersion 'workflow-register\/run-state\/v2'/
+  )
+
+  assert.equal(clearPauseCalls, 0)
+  assert.equal(fs.readFileSync(runFile(root, future.runId), "utf8"), bytes)
+})
+
+test("listRuns isolates malformed and missing run documents with stable diagnostics", async (t) => {
   const root = tempRoot()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   const valid = parseFixture("v1-basic.json")
@@ -173,15 +208,33 @@ test("listRuns isolates malformed run documents and reports stable diagnostics",
   await writeRunDocument(root, invalidId, "{ not valid json\n")
   const malformedId = "20260712T000000Z-malformed-000000000004"
   await writeRunDocument(root, malformedId, `${JSON.stringify({ runId: malformedId }, null, 2)}\n`)
+  const missingId = "20260712T000000Z-missing-000000000005"
+  await fsp.mkdir(runDirectory(root, missingId), { recursive: true })
   const store = new FileRunStateStore({ workspaceRoot: root })
 
   const runs = await store.listRuns()
   assert.deepEqual(runs.map((run) => run.runId), [valid.runId])
   assert.deepEqual(
-    store.getLoadDiagnostics().map(({ runId, severity, code }) => ({ runId, severity, code })),
+    store.getLoadDiagnostics().map(({ runId, severity, code, message }) => ({ runId, severity, code, message })),
     [
-      { runId: invalidId, severity: "error", code: "invalid" },
-      { runId: malformedId, severity: "error", code: "invalid" }
+      {
+        runId: invalidId,
+        severity: "error",
+        code: "invalid",
+        message: assert.match.stringMatching(/contains invalid JSON/)
+      },
+      {
+        runId: malformedId,
+        severity: "error",
+        code: "invalid",
+        message: assert.match.stringMatching(/field 'workflowId'/)
+      },
+      {
+        runId: missingId,
+        severity: "error",
+        code: "invalid",
+        message: `Workflow run '${missingId}' is missing run.json.`
+      }
     ]
   )
   await assert.rejects(store.loadRun(invalidId), /contains invalid JSON/)
