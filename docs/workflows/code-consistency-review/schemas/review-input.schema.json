@@ -223,6 +223,11 @@
           "type": "array",
           "items": {}
         },
+        "evidence_scope_rule_pack_path": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\.(?:json|ya?ml)$"
+        },
         "evidence_scope_include_low_priority": {
           "type": "boolean",
           "default": false
