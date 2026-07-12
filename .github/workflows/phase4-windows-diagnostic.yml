@@ -4,15 +4,19 @@ on:
   pull_request:
     paths:
       - ".github/workflows/phase4-windows-diagnostic.yml"
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  focused-lock-green:
-    name: Focused workflow lock GREEN
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+  workflow-register-windows:
+    name: Windows workflow-register diagnostic
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: extensions/workflow-register
     steps:
       - name: Checkout Phase 4 branch
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -20,8 +24,11 @@ jobs:
           ref: agent/workflow-reproducible-runtime-phase4-hardening-20260712
 
       - name: Verify coordinated test head
-        shell: bash
-        run: test "$(git rev-parse HEAD)" = "d9c1f23615c1b1f05dc793efc1b83e43eabd1ff0"
+        shell: pwsh
+        run: |
+          if ((git rev-parse HEAD).Trim() -ne "d9c1f23615c1b1f05dc793efc1b83e43eabd1ff0") {
+            throw "unexpected Phase 4 head"
+          }
 
       - name: Setup Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -31,13 +38,46 @@ jobs:
           cache-dependency-path: extensions/workflow-register/package-lock.json
 
       - name: Install dependencies
-        working-directory: extensions/workflow-register
         run: npm ci
 
-      - name: Compile
-        working-directory: extensions/workflow-register
-        run: npm run compile
+      - name: Run tests and extract failures
+        shell: pwsh
+        run: |
+          & npm.cmd test *> test-output.txt
+          $exitCode = $LASTEXITCODE
+          $lines = @(Get-Content test-output.txt)
+          $selected = [System.Collections.Generic.List[string]]::new()
+          $failureCount = 0
+          for ($index = 0; $index -lt $lines.Count; $index += 1) {
+            if ($lines[$index] -match '^not ok ') {
+              $failureCount += 1
+              $start = [Math]::Max(0, $index - 1)
+              $end = [Math]::Min($lines.Count - 1, $index + 35)
+              for ($cursor = $start; $cursor -le $end; $cursor += 1) {
+                $selected.Add($lines[$cursor])
+              }
+              $selected.Add('---')
+            }
+          }
+          $summary = @($lines | Where-Object { $_ -match '^# (tests|pass|fail|cancelled|skipped|todo|duration_ms)' })
+          $report = [System.Collections.Generic.List[string]]::new()
+          $report.Add("head=$(git rev-parse HEAD)")
+          $report.Add("exit_code=$exitCode")
+          $report.Add("failure_count=$failureCount")
+          $report.Add('')
+          $report.Add('FAILURES')
+          if ($selected.Count -eq 0) { $report.Add('(none)') } else { foreach ($line in $selected) { $report.Add($line) } }
+          $report.Add('')
+          $report.Add('SUMMARY')
+          foreach ($line in $summary) { $report.Add($line) }
+          $report | Set-Content -Path diagnostic.txt -Encoding utf8
+          exit 0
 
-      - name: Run focused lock test
-        working-directory: extensions/workflow-register
-        run: node --test test/workflowRunLock.test.js
+      - name: Upload diagnostic artifact
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: phase4-windows-workflow-register-d9c1
+          path: extensions/workflow-register/diagnostic.txt
+          if-no-files-found: error
+          retention-days: 1
