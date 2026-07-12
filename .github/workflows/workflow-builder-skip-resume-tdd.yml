@@ -13,7 +13,7 @@ permissions:
 jobs:
   focused:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: extensions/workflow-register
@@ -28,24 +28,24 @@ jobs:
           cache-dependency-path: extensions/workflow-register/package-lock.json
       - name: Install dependencies
         run: npm ci
-      - name: Capture focused result
+      - name: Capture full-suite result
         shell: bash
         run: |
           set +e
-          npm run compile > focused-output.txt 2>&1
-          compile_status=$?
-          node --test \
-            test/workflowSkipResumeAuthoringRoundTrip.test.js \
-            test/workflowSkipResumeReadiness.test.js \
-            test/workflowSkipResumeReadinessPreview.test.js \
-            test/workflowBuilderSkipResumeReadinessWebview.test.js \
-            >> focused-output.txt 2>&1
-          test_status=$?
-          {
-            echo
-            echo "compile_status=${compile_status}"
-            echo "test_status=${test_status}"
-          } >> focused-output.txt
+          npm test > full-output.txt 2>&1
+          status=$?
+          FULL_STATUS="$status" node - <<'NODE'
+          const fs = require('fs')
+          const text = fs.readFileSync('full-output.txt', 'utf8')
+          const lines = text.split(/\r?\n/)
+          const selected = []
+          for (let i = 0; i < lines.length; i += 1) {
+            if (/^(not ok|# fail|# tests|# pass|# duration_ms)/.test(lines[i])) {
+              selected.push(...lines.slice(Math.max(0, i - 8), Math.min(lines.length, i + 35)))
+            }
+          }
+          fs.writeFileSync('focused-output.txt', selected.join('\n') + `\nfull_status=${process.env.FULL_STATUS}\n`)
+          NODE
           exit 0
       - name: Upload focused evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
