@@ -2,15 +2,29 @@ import * as fs from "node:fs/promises"
 import * as path from "node:path"
 import { writeReviewPacketArtifact } from "../records/reviewRecordStore"
 import {
+  completeBobReviewTimer,
+  completeHumanTriageTimer,
+  correctReviewRunMetrics,
+  startBobReviewTimer,
+  startHumanTriageTimer,
+  type ReviewRunMetricCorrection
+} from "./reviewRunMetrics"
+import {
   assertReviewRunPathContained,
   reviewRunDirectory,
   reviewRunPacketPath,
   validateReviewRunSegment
 } from "./reviewRunPaths"
 import type { CreateReviewRunContextInput } from "./reviewRunState"
-import { advanceReviewRun, createReviewRunContext } from "./reviewRunState"
+import {
+  clearReviewRunIssues,
+  createReviewRunContext,
+  setReviewRunPhaseProgress
+} from "./reviewRunState"
 import { readReviewRun, writeReviewRun } from "./reviewRunStore"
 import type { ReviewRunCommandInput, ReviewRunContext } from "./reviewRunTypes"
+
+const mutationQueues = new Map<string, Promise<void>>()
 
 export interface ReviewRunCaptureResult {
   status: "ok" | "error"
@@ -37,27 +51,42 @@ export async function startReviewRun(input: CreateReviewRunContextInput): Promis
   }
 }
 
-export async function recordReviewPacket(context: ReviewRunContext, packetText: string): Promise<ReviewRunContext> {
-  const expectedPacketPath = reviewRunPacketPath(context.workspaceRoot, context.campaignId, context.reviewId)
-  await assertReviewRunPathContained(context.workspaceRoot, expectedPacketPath)
-  const { packetPath } = await writeReviewPacketArtifact(
-    context.workspaceRoot,
-    context.campaignId,
-    context.reviewId,
-    packetText,
-    { backupExisting: true }
-  )
-  const next = advanceReviewRun(context, {
-    phase: "packet",
-    artifacts: { reviewPacketPath: toWorkspaceRelativeArtifactPath(context.workspaceRoot, packetPath) }
+export async function recordReviewPacket(
+  context: ReviewRunContext,
+  packetText: string,
+  now = new Date().toISOString()
+): Promise<ReviewRunContext> {
+  return mutateReviewRun(context, async (latest) => {
+    const expectedPacketPath = reviewRunPacketPath(latest.workspaceRoot, latest.campaignId, latest.reviewId)
+    await assertReviewRunPathContained(latest.workspaceRoot, expectedPacketPath)
+    const { packetPath } = await writeReviewPacketArtifact(
+      latest.workspaceRoot,
+      latest.campaignId,
+      latest.reviewId,
+      packetText,
+      { backupExisting: true }
+    )
+    let next = setReviewRunPhaseProgress(latest, {
+      trackedPhase: "packet",
+      status: "completed",
+      phase: "packet",
+      artifacts: { reviewPacketPath: toWorkspaceRelativeArtifactPath(latest.workspaceRoot, packetPath) },
+      now
+    })
+    next = setReviewRunPhaseProgress(next, {
+      trackedPhase: "result",
+      status: "in_progress",
+      now
+    })
+    next = clearReviewRunIssues(next, "packet")
+    return { ...next, metrics: startBobReviewTimer(next.metrics, now) }
   })
-  await writeReviewRun(next)
-  return next
 }
 
 export async function recordReviewResult(
   context: ReviewRunContext,
-  result: ReviewRunCaptureResult
+  result: ReviewRunCaptureResult,
+  now = new Date().toISOString()
 ): Promise<ReviewRunContext> {
   if (result.status !== "ok" || result.valid !== true) {
     throw new Error("Cannot attach an invalid review result to a Review Run")
@@ -68,27 +97,98 @@ export async function recordReviewResult(
   if (!result.jsonPath || !result.markdownPath) {
     throw new Error("Captured review result paths are required")
   }
-  const next = advanceReviewRun(context, {
-    phase: "result",
-    artifacts: {
-      reviewResultJsonPath: toWorkspaceRelativeArtifactPath(context.workspaceRoot, result.jsonPath),
-      reviewResultMarkdownPath: toWorkspaceRelativeArtifactPath(context.workspaceRoot, result.markdownPath),
-      reviewResultMetadataPath: result.metadataPath
-        ? toWorkspaceRelativeArtifactPath(context.workspaceRoot, result.metadataPath)
-        : undefined
+
+  return mutateReviewRun(context, async (latest) => {
+    if (result.reviewId !== latest.reviewId) {
+      throw new Error(`Captured review_id ${String(result.reviewId)} does not match active Review Run ${latest.reviewId}`)
     }
+    let metrics = latest.metrics
+    if (!metrics.bobReviewStartedAt) {
+      metrics = startBobReviewTimer(metrics, latest.phases.packet.completedAt ?? latest.updatedAt)
+    }
+    metrics = completeBobReviewTimer(metrics, now)
+    metrics = startHumanTriageTimer(metrics, now)
+
+    let next = setReviewRunPhaseProgress(latest, {
+      trackedPhase: "result",
+      status: "completed",
+      phase: "result",
+      artifacts: {
+        reviewResultJsonPath: toWorkspaceRelativeArtifactPath(latest.workspaceRoot, result.jsonPath),
+        reviewResultMarkdownPath: toWorkspaceRelativeArtifactPath(latest.workspaceRoot, result.markdownPath),
+        reviewResultMetadataPath: result.metadataPath
+          ? toWorkspaceRelativeArtifactPath(latest.workspaceRoot, result.metadataPath)
+          : undefined
+      },
+      now
+    })
+    next = setReviewRunPhaseProgress(next, {
+      trackedPhase: "triage",
+      status: "in_progress",
+      now
+    })
+    next = clearReviewRunIssues(next, "result")
+    return { ...next, metrics }
   })
-  await writeReviewRun(next)
-  return next
 }
 
-export async function recordTriageDraft(context: ReviewRunContext, triagePath: string): Promise<ReviewRunContext> {
-  const next = advanceReviewRun(context, {
-    phase: "triage",
-    artifacts: { triageYamlPath: toWorkspaceRelativeArtifactPath(context.workspaceRoot, triagePath) }
+export async function recordTriageDraft(
+  context: ReviewRunContext,
+  triagePath: string,
+  now = new Date().toISOString()
+): Promise<ReviewRunContext> {
+  return mutateReviewRun(context, async (latest) => {
+    let metrics = latest.metrics
+    if (!metrics.humanTriageStartedAt) metrics = startHumanTriageTimer(metrics, now)
+    const next = setReviewRunPhaseProgress(latest, {
+      trackedPhase: "triage",
+      status: "in_progress",
+      phase: "triage",
+      artifacts: { triageYamlPath: toWorkspaceRelativeArtifactPath(latest.workspaceRoot, triagePath) },
+      now
+    })
+    return { ...clearReviewRunIssues(next, "triage"), metrics }
   })
-  await writeReviewRun(next)
-  return next
+}
+
+export async function recordTriageCompleted(
+  context: ReviewRunContext,
+  triagePath: string,
+  now = new Date().toISOString()
+): Promise<ReviewRunContext> {
+  return mutateReviewRun(context, async (latest) => {
+    let metrics = latest.metrics
+    if (!metrics.humanTriageStartedAt) {
+      metrics = startHumanTriageTimer(metrics, latest.phases.triage.startedAt ?? latest.updatedAt)
+    }
+    metrics = completeHumanTriageTimer(metrics, now)
+    let next = setReviewRunPhaseProgress(latest, {
+      trackedPhase: "triage",
+      status: "completed",
+      phase: "triage",
+      artifacts: { triageYamlPath: toWorkspaceRelativeArtifactPath(latest.workspaceRoot, triagePath) },
+      now
+    })
+    next = setReviewRunPhaseProgress(next, {
+      trackedPhase: "record",
+      status: "in_progress",
+      now
+    })
+    next = clearReviewRunIssues(next, "triage")
+    return { ...next, metrics }
+  })
+}
+
+export async function correctActiveReviewRunMetrics(
+  context: ReviewRunContext,
+  correction: ReviewRunMetricCorrection,
+  now = new Date().toISOString()
+): Promise<ReviewRunContext> {
+  return mutateReviewRun(context, async (latest) => ({
+    ...latest,
+    updatedAt: now,
+    metrics: correctReviewRunMetrics(latest.metrics, correction)
+  }))
 }
 
 export async function loadReviewRun(input: ReviewRunCommandInput): Promise<ReviewRunContext> {
@@ -151,6 +251,42 @@ export function toWorkspaceRelativeArtifactPath(workspaceRoot: string, filePath:
     throw new Error(`Artifact path is outside Review Run workspace: ${filePath}`)
   }
   return relative.split(path.sep).join("/")
+}
+
+async function mutateReviewRun(
+  context: ReviewRunContext,
+  updater: (latest: ReviewRunContext) => Promise<ReviewRunContext> | ReviewRunContext
+): Promise<ReviewRunContext> {
+  const key = reviewRunMutationKey(context)
+  const previous = mutationQueues.get(key) ?? Promise.resolve()
+  let result: ReviewRunContext | undefined
+  let failure: unknown
+  const current = previous
+    .catch(() => undefined)
+    .then(async () => {
+      try {
+        const latest = await readReviewRun(context.workspaceRoot, context.campaignId, context.reviewId)
+        if (latest.updatedAt !== context.updatedAt) {
+          throw new Error(
+            `Review Run changed since it was loaded: expected updatedAt ${context.updatedAt}, got ${latest.updatedAt}`
+          )
+        }
+        result = await updater(latest)
+        await writeReviewRun(result, { expectedUpdatedAt: latest.updatedAt })
+      } catch (error) {
+        failure = error
+      }
+    })
+  mutationQueues.set(key, current)
+  await current
+  if (mutationQueues.get(key) === current) mutationQueues.delete(key)
+  if (failure) throw failure
+  if (!result) throw new Error("Review Run update did not produce a result")
+  return result
+}
+
+function reviewRunMutationKey(context: ReviewRunContext): string {
+  return [path.resolve(context.workspaceRoot), context.campaignId, context.reviewId].join("\u0000")
 }
 
 function isAbsolutePath(value: string): boolean {
