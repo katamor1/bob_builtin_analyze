@@ -20,6 +20,12 @@ export type PreprocessResult = {
     cacheStatus: "miss" | "partial" | "hit"
     warnings: string[]
   }
+  artifactLedger: {
+    path: string
+    fresh: number
+    stale: number
+    missing: number
+  }
   warnings: string[]
   summary: string
 }
