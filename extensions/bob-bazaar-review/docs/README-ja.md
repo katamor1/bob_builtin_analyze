@@ -22,6 +22,9 @@
 - `review-run-id-allocation-ja.md`  
   同一campaign内で既存・legacy・並行Review Runを上書きしない、`-02`以降のcollision-safe ID予約契約をまとめています。
 
+- `review-run-command-boundary-ja.md`  
+  Result Capture / Human Triage command引数のopen workspace境界、ID再検証、workspace外root拒否をまとめています。
+
 ## テスト仕様書
 
 - `unit-test-spec-ja.md`  
