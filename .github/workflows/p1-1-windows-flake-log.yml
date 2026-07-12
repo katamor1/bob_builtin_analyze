@@ -6,6 +6,9 @@ on:
       - diagnostic/p1-1-windows-flake-20260712
     paths:
       - ".github/workflows/p1-1-windows-flake-log.yml"
+  pull_request:
+    paths:
+      - ".github/workflows/p1-1-windows-flake-log.yml"
   workflow_dispatch:
 
 permissions:
@@ -67,7 +70,7 @@ jobs:
                   ranges.append((start, end))
 
           output = [
-              f"source_job_id=86677231701",
+              "source_job_id=86677231701",
               f"line_count={len(lines)}",
               f"hit_count={len(hits)}",
               "",
