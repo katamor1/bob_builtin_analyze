@@ -1,6 +1,7 @@
 import { analyzeCodeChanges } from "../analyzers/codeChangeAnalyzer"
 import { extractDocuments } from "../analyzers/documentExtractor"
 import { buildTraceability } from "../analyzers/traceabilityBuilder"
+import { buildReviewContextBudget } from "../evidenceScope/reviewContextBudget"
 import { collectGitDiff } from "./gitDiffCollector"
 import { resolveWorkspacePathForKind, resolveWorkspacePathStrict } from "./fileSystem"
 import { normalizeReviewProcessingLimits, type ReviewProcessingLimits } from "./limits"
@@ -41,6 +42,7 @@ export async function preprocessReview(input: PreprocessReviewInput): Promise<Pr
   })
   const documents = await extractDocuments(reviewInput, { workspaceRoot: input.workspaceRoot, textEncoding, limits })
   const codeAnalysis = await analyzeCodeChanges(diff, reviewInput, { workspaceRoot: input.workspaceRoot, textEncoding, limits })
+  const contextBudget = buildReviewContextBudget({ reviewInput, diff, documents, codeAnalysis, limits })
   const traceability = await buildTraceability({ reviewInput, documents, codeAnalysis, diff })
 
   const packageWarnings = await buildReviewPackage({
@@ -51,11 +53,19 @@ export async function preprocessReview(input: PreprocessReviewInput): Promise<Pr
     documents,
     codeAnalysis,
     traceability,
+    contextBudgetArtifact: contextBudget.artifact,
     limits,
     workflowRunId: input.workflowRunId
   })
 
-  const warnings = [...diff.warnings, ...documents.warnings, ...codeAnalysis.warnings, ...traceability.warnings, ...packageWarnings]
+  const warnings = [
+    ...diff.warnings,
+    ...documents.warnings,
+    ...codeAnalysis.warnings,
+    ...contextBudget.warnings,
+    ...traceability.warnings,
+    ...packageWarnings
+  ]
   return {
     status: "ok",
     reviewId: reviewInput.review.id,
