@@ -6,6 +6,7 @@ export { parseProjectRules } from "./projectRuleConfig"
 export { loadProjectRulePack, mergeProjectRules } from "./projectRulePackLoader"
 export { mergeRepositoryScopeData } from "./repositorySymbolIndexAdapter"
 export { loadRepositorySymbolIndex } from "./repositorySymbolIndexLoader"
+export { produceRepositorySymbolIndex } from "./repositorySymbolIndexProducer"
 export { buildReviewContextBudget } from "./reviewContextBudget"
 export { buildReviewEvidenceScope } from "./reviewEvidenceAdapter"
 export { selectApplicableRules } from "./rulePackEngine"
@@ -22,6 +23,11 @@ export type {
   LoadRepositorySymbolIndexInput,
   RepositorySymbolIndexProvenance
 } from "./repositorySymbolIndexLoader"
+export type {
+  ProduceRepositorySymbolIndexInput,
+  ProduceRepositorySymbolIndexResult,
+  RepositoryIndexCacheStatus
+} from "./repositorySymbolIndexProducer"
 export type {
   ReviewContextBudgetInput,
   ReviewContextBudgetResult
