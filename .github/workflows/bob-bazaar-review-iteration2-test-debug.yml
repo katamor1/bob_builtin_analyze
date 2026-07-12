@@ -41,4 +41,5 @@ jobs:
           path: |
             extensions/bob-bazaar-review/test-output.txt
             extensions/bob-bazaar-review/test-exit-code.txt
+            extensions/bob-bazaar-review/src/reviewRuns/reviewRunCoordinator.ts
           if-no-files-found: error
