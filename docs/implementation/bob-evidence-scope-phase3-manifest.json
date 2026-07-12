@@ -2,7 +2,7 @@
   "schema_version": 1,
   "artifact": "bob-evidence-scope-phase3",
   "hash_algorithm": "sha256",
-  "source_commit": "8e5de54139775928110c01cf151ec0520063923b",
+  "source_commit": "2564d4b04058d9e08316e4c44d8e3c00249646d3",
   "files": [
     {
       "path": "docs/superpowers/plans/2026-07-12-bob-evidence-scope-phase3.md",
@@ -16,8 +16,8 @@
     },
     {
       "path": "docs/implementation/bob-evidence-scope-phase3-verification-2026-07-12.md",
-      "bytes": 4572,
-      "sha256": "5c1120f890ed7358e92a4023084b7b5ee3952a319065fee0c2619a0421f36821"
+      "bytes": 4689,
+      "sha256": "5b2cf07789c08dc34878507d12b234b2315344d669a1dbc48cb81d41027f7853"
     },
     {
       "path": "docs/workflows/code-consistency-review/schemas/evidence-scope-rule-pack.schema.json",
@@ -81,8 +81,8 @@
     },
     {
       "path": "extensions/bob-code-consistency-review/test/projectRulePack.test.js",
-      "bytes": 6543,
-      "sha256": "99c1ff36d4a703b06ffbb13e83b72bd15e1fc82c2f7d313bcec62f819f68a004"
+      "bytes": 6751,
+      "sha256": "46cf0c893a17de6cef40e9062415a222f7994ce7bb01c459f4fa57b86b33d4c7"
     }
   ]
 }
