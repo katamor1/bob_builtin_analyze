@@ -12,6 +12,7 @@ Webview の表示とクライアント処理は次のファイルへ分割する
 | `workflowBuilderClientScript.ts` | Webview 内で動く form state / tab / preview / guardrails UI 処理。 |
 | `workflowBuilderStepDraftScript.ts` | Step detail の仮編集、確定前チェック、host validation、Apply / Discard、dirty 表示を担当する。 |
 | `workflowBuilderGuidedHelpScript.ts` | Step type guide、動的選択肢ラベル、Diagnostics から設定項目への誘導。 |
+| `workflowBuilderSkipResumeReadinessScript.ts` | Artifactsタブのskip-resume候補選択、stale preview破棄、preview/apply message処理。 |
 | `workflowBuilderBodyScript.ts` | YAML front matter 以外の Markdown body 編集 UI を追加する補助 script。 |
 | `workflowBuilderHelpIds.ts` | help id の定数 registry。renderer / catalog / diagnostics 誘導の typo を減らす。 |
 | `workflowBuilderHelpCatalog.ts` | GUI 設定者向けの日本語ヘルプ文言と選択肢説明。 |
@@ -30,6 +31,16 @@ Webview client は `vscode.postMessage(...)` で extension host へ要求を送�
 | `diff` | edit mode の既存 `WORKFLOW.md` と生成結果を VS Code diff で表示する。 |
 | `save` | 生成結果を validate し、backup 作成後に `WORKFLOW.md` を保存する。 |
 | `resetTemplate` | template から新しい `WorkflowAuthoringModel` を作り直して Webview に送る。 |
+| `previewSkipResumeReadiness` | pure plannerを実行し、候補、blocker、Before / After Markdown、strict diagnosticsを返す。 |
+| `applySkipResumeReadiness` | 同じplannerを再実行し、strict-validな場合だけ更新済みmodelを返す。 |
+
+
+## Skip Resume Readiness
+
+`workflowBuilderSkipResumeReadinessScript.ts`はArtifactsタブを開いた時点でsource signature付きpreviewを要求する。steps、artifacts、または`skipResume`が変わるとcached previewを破棄し、古いrequest IDのresponseを無視する。
+
+applyはWebviewのpreview結果を正本にせず、extension hostが`planSkipResumeReadiness()`とstrict validationを再実行する。成功時もファイルへ直接書かず、Builder modelだけを置き換えて通常previewを更新し、適用済みmodelからreadiness previewを再取得する。
+
 
 ## Save path
 

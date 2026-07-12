@@ -1,6 +1,6 @@
 # Workflow Builder Skip Resume Readiness Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Add a preview-first, selective, conflict-safe setup flow in Workflow Builder that produces a strict-valid `x-skipResume.fileBound` workflow without overwriting existing artifact definitions.
 
@@ -34,7 +34,7 @@
 - Produces: `WorkflowAuthoringModel.skipResume?: { fileBound: boolean }`.
 - Consumes: existing `x-skipResume` parser contract.
 
-- [ ] **Step 1: Add failing loader round-trip coverage**
+- [x] **Step 1: Add failing loader round-trip coverage**
 
 Add a workflow fixture containing:
 
@@ -51,7 +51,7 @@ assert.equal(loaded.model.unknownFrontMatter?.["x-skipResume"], undefined)
 assert.match(rendered.markdown, /x-skipResume:\n\s+fileBound: true/)
 ```
 
-- [ ] **Step 2: Add failing serializer coverage**
+- [x] **Step 2: Add failing serializer coverage**
 
 Create an authoring model, set:
 
@@ -61,7 +61,7 @@ model.skipResume = { fileBound: true }
 
 Assert generated Markdown contains the extension field and passes strict validation after adding matching run-scoped artifacts.
 
-- [ ] **Step 3: Run RED**
+- [x] **Step 3: Run RED**
 
 Run:
 
@@ -72,7 +72,7 @@ node --test test/workflowAuthoringLoader.test.js test/workflowAuthoringSerialize
 
 Expected: FAIL because `skipResume` is not an explicit authoring property and serializer does not emit `x-skipResume`.
 
-- [ ] **Step 4: Implement model, loader, and serializer support**
+- [x] **Step 4: Implement model, loader, and serializer support**
 
 Add:
 
@@ -90,7 +90,7 @@ Add `x-skipResume` to `guiManagedFrontMatterFields`, read it from front matter u
   : undefined
 ```
 
-- [ ] **Step 5: Verify GREEN and commit**
+- [x] **Step 5: Verify GREEN and commit**
 
 Run:
 
@@ -123,7 +123,7 @@ planSkipResumeReadiness(
 ): SkipResumeReadinessPlan
 ```
 
-- [ ] **Step 1: Write failing deterministic generation tests**
+- [x] **Step 1: Write failing deterministic generation tests**
 
 Cover:
 
@@ -141,11 +141,11 @@ assert.deepEqual(plan.nextModel.artifacts[0], {
 
 Assert the input model is unchanged.
 
-- [ ] **Step 2: Write failing manual-output and idempotency tests**
+- [x] **Step 2: Write failing manual-output and idempotency tests**
 
 Cover manual `form.resultKey` and `approval.resultKey`, exact existing artifacts, repeated planning, and an explicit subset in `selectedStepIds`.
 
-- [ ] **Step 3: Write failing blocker tests**
+- [x] **Step 3: Write failing blocker tests**
 
 Cover:
 
@@ -158,7 +158,7 @@ Cover:
 
 Assert the planner reports stable messages containing the relevant step/artifact IDs and does not modify existing definitions.
 
-- [ ] **Step 4: Run RED**
+- [x] **Step 4: Run RED**
 
 Run:
 
@@ -169,7 +169,7 @@ node --test test/workflowSkipResumeReadiness.test.js
 
 Expected: FAIL because the planner module does not exist.
 
-- [ ] **Step 5: Implement minimal planner**
+- [x] **Step 5: Implement minimal planner**
 
 Use a deep-cloned model, deterministic step order, and this path generator:
 
@@ -186,7 +186,7 @@ function generatedArtifact(stepId: string, resultKey: string): WorkflowArtifactD
 
 Do not auto-fix blockers. Add selected `ready` candidates, retain exact `existing` candidates, and set `nextModel.skipResume = { fileBound: true }` only in the returned clone.
 
-- [ ] **Step 6: Verify planner and strict validation**
+- [x] **Step 6: Verify planner and strict validation**
 
 Serialize `plan.nextModel` and run:
 
@@ -201,7 +201,7 @@ validateWorkflowText({
 
 Assert a valid generated workflow is strict-green.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 Run:
 
@@ -235,7 +235,7 @@ applySkipResumeReadiness(model, selectedStepIds, validationContext)
 
 Both return the same plan/validation evidence; apply additionally returns the strict-valid `nextModel` or an error result.
 
-- [ ] **Step 1: Write failing preview/apply parity tests**
+- [x] **Step 1: Write failing preview/apply parity tests**
 
 Assert preview and apply return identical:
 
@@ -248,7 +248,7 @@ Assert preview and apply return identical:
 
 Assert apply refuses blockers and returns no model.
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 Run:
 
@@ -259,7 +259,7 @@ node --test test/workflowSkipResumeReadinessPreview.test.js
 
 Expected: FAIL because the preview boundary does not exist.
 
-- [ ] **Step 3: Implement the shared boundary**
+- [x] **Step 3: Implement the shared boundary**
 
 Serialize before/after models, run strict validation on after Markdown, and compute:
 
@@ -270,7 +270,7 @@ ok = plan.blockingIssues.length === 0
 
 Apply must recompute rather than trusting preview output.
 
-- [ ] **Step 4: Wire host messages**
+- [x] **Step 4: Wire host messages**
 
 Extend `WorkflowBuilderMessage` with:
 
@@ -281,7 +281,7 @@ Extend `WorkflowBuilderMessage` with:
 
 Post `skipResumeReadinessPreviewResult` and `skipResumeReadinessApplied` responses. On failed apply, return the fresh preview evidence and do not mutate the model.
 
-- [ ] **Step 5: Verify and commit**
+- [x] **Step 5: Verify and commit**
 
 Run:
 
@@ -310,7 +310,7 @@ feat: preview and apply skip resume readiness
 - Consumes: host messages from Task 3.
 - Produces: preview-first candidate selection and `apply-skip-resume-readiness` action in the Artifacts tab.
 
-- [ ] **Step 1: Add failing Webview contract assertions**
+- [x] **Step 1: Add failing Webview contract assertions**
 
 Assert rendered client/HTML includes:
 
@@ -325,7 +325,7 @@ data-skip-resume-step-id
 
 Assert the script keeps an explicit preview source signature and clears stale preview after model changes.
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 Run:
 
@@ -336,7 +336,7 @@ node --test test/workflowBuilderWebviewModules.test.js
 
 Expected: FAIL because the setup script and actions do not exist.
 
-- [ ] **Step 3: Implement preview-first UI**
+- [x] **Step 3: Implement preview-first UI**
 
 The Artifacts renderer prepends a readiness card. The client script:
 
@@ -348,11 +348,11 @@ The Artifacts renderer prepends a readiness card. The client script:
 - posts apply with the current selected step IDs;
 - replaces `model` only after `skipResumeReadinessApplied`.
 
-- [ ] **Step 4: Preserve ordinary artifact editing**
+- [x] **Step 4: Preserve ordinary artifact editing**
 
 Existing add/edit/delete artifact handlers must continue to work and must invalidate the cached readiness preview.
 
-- [ ] **Step 5: Verify and commit**
+- [x] **Step 5: Verify and commit**
 
 Run:
 
@@ -383,7 +383,7 @@ feat: add skip resume readiness to builder
 - Consumes: Tasks 1-4.
 - Produces: operator-facing behavior, verification evidence, and completed plan status.
 
-- [ ] **Step 1: Document the Builder workflow**
+- [x] **Step 1: Document the Builder workflow**
 
 Record:
 
@@ -396,7 +396,7 @@ Record:
 
 State that existing artifacts are never rewritten automatically and that resultKey correction remains manual.
 
-- [ ] **Step 2: Run focused verification**
+- [x] **Step 2: Run focused verification**
 
 ```text
 npm run compile
@@ -410,7 +410,7 @@ node --test \
 
 Expected: all pass, zero failures.
 
-- [ ] **Step 3: Run full quality gates**
+- [x] **Step 3: Run full quality gates**
 
 ```text
 npm test
@@ -425,11 +425,11 @@ npm run package:policy
 git diff --check
 ```
 
-- [ ] **Step 4: Run Ubuntu and Windows Actions**
+- [x] **Step 4: Run Ubuntu and Windows Actions**
 
 Require `workflow-register` unit tests, package, VSIX policy, and Extension Host smoke to complete successfully on both platforms.
 
-- [ ] **Step 5: Review the whole diff**
+- [x] **Step 5: Review the whole diff**
 
 Review model compatibility, non-destructive artifact handling, preview/apply parity, stale preview invalidation, Webview message safety, and source/package policy. Record:
 
@@ -438,11 +438,11 @@ Critical: 0
 Important: 0
 ```
 
-- [ ] **Step 6: Update evidence and plan checkboxes**
+- [x] **Step 6: Update evidence and plan checkboxes**
 
 Record exact head SHA, workflow run IDs, test counts, package result, and residual risks.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 Commit:
 
@@ -450,7 +450,7 @@ Commit:
 docs: record builder skip resume readiness gates
 ```
 
-- [ ] **Step 8: Open a Draft PR**
+- [x] **Step 8: Open a Draft PR**
 
 Base: `main`
 
@@ -461,3 +461,14 @@ Add Skip Resume Readiness setup to Workflow Builder
 ```
 
 Keep Merge / Release NO-GO until final Actions and independent review are green.
+
+
+## Completion Record
+
+- Implementation code head: `91d8dcd56b8ef5ee336f09c34e5e7ec73f930055`.
+- Full suite: 789 tests passed, 0 failed, 0 skipped.
+- Focused TDD workflow: run `29201666390`, success.
+- Official Linux/Windows matrix: run `29201666388`, success.
+- Package, VSIX policy, and Extension Host smoke: success on Linux and Windows.
+- Whole-diff review after stale-preview, portable-path, and extension-field fixes: Critical 0 / Important 0.
+- Temporary CI workflows are removed in the cleanup tail after this documentation commit.

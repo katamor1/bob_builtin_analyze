@@ -279,3 +279,19 @@ Phase 6 以降では、Phase 5 の fallback import をさらに使いやすく�
 1. Builder で file-bound skip resume に必要な artifact 定義を自動生成する。
 2. Bob Todo UI 内の todo item 表示そのものに reused/skipped marker を埋め込む。
 3. task snapshot import の内容差分を GUI で確認してから apply する画面を追加する。
+
+
+## Phase 6 — Workflow Builder readiness setup
+
+Workflow Builderの`Artifacts`タブに、file-bound skip resume定義をpreview-firstで準備する`途中再開 readiness`カードを追加した。
+
+- command / agent / manual form / manual approvalのresult keyを候補化する。
+- artifact ID、`producedBy`、run-scoped path、schemaを生成前に表示する。
+- candidateを選択し、Before / After Markdownとstrict diagnosticsを確認してからmodelへ適用する。
+- previewとapplyは同じpure plannerとstrict validatorを再実行する。
+- 既存artifactの削除、rename、上書きは行わない。
+- agentの`resultKey`不足、result stepのfile sink不足、ownership衝突、非portable path segmentはblockerとする。
+- apply後は適用済みmodelからfresh previewを取得する。
+- `x-skipResume`の未知サブフィールドをBuilder round-tripで保持する。
+
+applyは`WORKFLOW.md`を直接保存しない。利用者は既存の`Preview / Diagnostics`、`Diff`、`Save`経路で最終確認と保存を行う。

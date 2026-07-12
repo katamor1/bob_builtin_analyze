@@ -67,7 +67,7 @@ skipResume?: {
 }
 ```
 
-loader は `x-skipResume` を GUI 管理fieldとして読み、serializer は同じfield名で書き戻す。これにより YAML 手編集と GUI round-trip の両方で設定が消えない。
+loader は `x-skipResume` を GUI 管理fieldとして読み、serializer は同じfield名で書き戻す。これにより YAML 手編集と GUI round-trip の両方で設定が消えない。 `fileBound`以外の未知サブフィールドはauthoring modelの`unknownFrontMatter["x-skipResume"]`へ退避し、serializerが管理値とmergeして前方互換に書き戻す。
 
 ### 4.2 Pure readiness planner
 

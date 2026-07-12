@@ -73,7 +73,7 @@ manual stepは`form.resultKey`と`approval.resultKey`をそれぞれ候補とし
 
 `x-skipResume`は`WorkflowAuthoringModel.skipResume`として明示管理する。既存WORKFLOW.mdの読み込み、Builder編集、serializer出力の往復で消えない。
 
-未知front matterは従来どおり`unknownFrontMatter`で保持するが、`x-skipResume`はBuilder管理項目なので二重出力しない。
+未知front matterは従来どおり`unknownFrontMatter`で保持する。`x-skipResume.fileBound`はBuilderが管理する一方、`x-skipResume`内の未知サブフィールドは`unknownFrontMatter["x-skipResume"]`へ保持し、保存時に管理値とmergeするため失われない。
 
 ## トラブルシューティング
 
