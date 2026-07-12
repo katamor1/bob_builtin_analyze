@@ -116,7 +116,22 @@ function runCommandHarness(t) {
       return {
         listRuns: async () => [fixture.run],
         loadRun: async () => fixture.run,
-        createRun: async () => ({ ...fixture.run, runId: "seeded-run", state: {}, inputs: {} }),
+        createRun: async (selectedWorkflow, inputs) => ({
+          ...fixture.run,
+          runId: "seeded-run",
+          workflowId: selectedWorkflow.id,
+          workflowName: selectedWorkflow.name,
+          status: "running",
+          currentStep: selectedWorkflow.engineSteps[0]?.id,
+          state: {},
+          inputs,
+          steps: selectedWorkflow.engineSteps.map((step) => ({
+            id: step.id,
+            title: step.title,
+            type: step.type,
+            status: "pending"
+          }))
+        }),
         saveRun: async (run) => { state.savedRuns.push(run) }
       }
     },
@@ -146,7 +161,7 @@ function runCommandHarness(t) {
     },
     coordinateGateDecision: (...args) => state.coordinateGateDecision(...args)
   })
-  return { rootA, rootB, service, state }
+  return { rootA, rootB, service, state, workflow }
 }
 
 function providerHarness(t, run = tempRunRoot(t)) {
@@ -671,6 +686,65 @@ test("workflow artifact start rejects an external artifacts-directory alias", as
   assert.equal(state.savedRuns.length, 0)
   assert.equal(state.engineRoots.length, 0)
   assert.equal(fs.readFileSync(manifestFile, "utf8"), manifestBytes)
+})
+
+test("workflow artifact hydration rejects a manifest entry through an external junction", async (t) => {
+  const { rootB, service, state, workflow } = runCommandHarness(t)
+  workflow.definitionHash = "definition-v1"
+  workflow.engineSteps = [
+    { id: "collect", title: "Collect", type: "agent", prompt: "Collect", resultKey: "context" },
+    { id: "step", title: "Step", type: "command" }
+  ]
+  workflow.artifacts = [{ id: "context", producedBy: "collect", path: "linked/secret.txt" }]
+
+  const outsideRoot = fs.mkdtempSync(path.join(os.tmpdir(), "workflow-register-external-hydration-"))
+  const secretText = "outside secret"
+  fs.writeFileSync(path.join(outsideRoot, "secret.txt"), secretText)
+  const linkedDirectory = path.join(rootB.root, "linked")
+  try {
+    fs.symlinkSync(outsideRoot, linkedDirectory, process.platform === "win32" ? "junction" : "dir")
+  } catch (error) {
+    fs.rmSync(outsideRoot, { recursive: true, force: true })
+    if (["EPERM", "EACCES", "ENOTSUP", "UNKNOWN"].includes(error.code)) {
+      t.skip(`directory alias unavailable: ${error.code}`)
+      return
+    }
+    throw error
+  }
+  t.after(() => fs.rmSync(outsideRoot, { recursive: true, force: true }))
+
+  const manifestDirectory = path.join(path.dirname(rootB.runFile), "artifacts")
+  fs.mkdirSync(manifestDirectory, { recursive: true })
+  fs.writeFileSync(path.join(manifestDirectory, "manifest.json"), `${JSON.stringify({
+    schemaVersion: "workflow-register/artifact-manifest/v1",
+    workflowId: workflow.id,
+    workflowDefinitionHash: workflow.definitionHash,
+    runId: rootB.runId,
+    inputsHash: `sha256:${crypto.createHash("sha256").update("{}").digest("hex")}`,
+    createdAt: "2026-07-12T00:00:00.000Z",
+    updatedAt: "2026-07-12T00:00:00.000Z",
+    artifacts: [{
+      id: "context",
+      stateKey: "context",
+      producedBy: "collect",
+      path: "linked/secret.txt",
+      sha256: crypto.createHash("sha256").update(secretText).digest("hex"),
+      bytes: Buffer.byteLength(secretText, "utf8"),
+      source: "workflow-artifact",
+      updatedAt: "2026-07-12T00:00:00.000Z"
+    }]
+  })}\n`)
+
+  const result = await service.startFromStepWithArtifacts(workflow.id, "step", {
+    source: "operationHub",
+    workspaceRoot: rootB.root,
+    runId: rootB.runId,
+    expectedRevision: rootB.revision
+  }, {})
+  assert.match(String(result), /workspace|outside|junction|alias|physical/i)
+
+  assert.equal(state.savedRuns.length, 0)
+  assert.equal(state.engineRoots.length, 0)
 })
 
 test("workflow run commands treat a structured workflow target as identity rather than a workflow id object", async (t) => {

@@ -8,6 +8,7 @@ const { test } = require("node:test")
 const vscodeState = {
   executedCommands: [],
   executeCommand: async () => undefined,
+  informationMessages: [],
   workspaceFolders: []
 }
 
@@ -20,13 +21,18 @@ const vscode = {
   },
   window: {
     showErrorMessage: async () => undefined,
-    showInformationMessage: async () => undefined,
+    showInformationMessage: async (...args) => {
+      vscodeState.informationMessages.push(args)
+      return undefined
+    },
     showQuickPick: async (items) => items[0],
+    showTextDocument: async () => undefined,
     showWarningMessage: async () => undefined
   },
   workspace: {
     get isTrusted() { return true },
-    get workspaceFolders() { return vscodeState.workspaceFolders }
+    get workspaceFolders() { return vscodeState.workspaceFolders },
+    openTextDocument: async () => ({})
   }
 }
 
@@ -47,15 +53,17 @@ function loadWithVscode(modulePaths) {
   }
 }
 
-const [runnerModule, commandModule, runControlModule] = loadWithVscode([
+const [runnerModule, commandModule, runControlModule, stepReviewModule] = loadWithVscode([
   "../out/bobWorkflowRunner.js",
   "../out/workflowRunCommands.js",
-  "../out/commands/runControl.js"
+  "../out/commands/runControl.js",
+  "../out/commands/stepReview.js"
 ])
 
-const { BobWorkflowEngineRunner, StepRuntime } = runnerModule
+const { BobWorkflowEngineRunner, StepRuntime, createBobWorkflow } = runnerModule
 const { WorkflowRunCommandService } = commandModule
 const { resumePausedRun } = runControlModule
+const { acceptAndRunNextStep, acceptCurrentStep } = stepReviewModule
 const { BobWorkflowGateRegistry } = require("../out/bobWorkflowGateRegistry")
 const { ReviewAcceptanceCoordinator } = require("../out/reviewAcceptanceCoordinator")
 const { ActionRegistry } = require("../out/core/actionRegistry")
@@ -64,11 +72,29 @@ const { FileRunStateStore } = require("../out/core/runStateStore")
 const { createDefaultResultSinkRegistry } = require("../out/core/resultSinkRegistry")
 const { WorkflowEngine } = require("../out/core/engine")
 const { reviewTaskRegistry } = require("../out/reviewTaskRegistry")
+const { readOperationHubRunSnapshot } = require("../out/operationHubMutationTarget")
 
 function tempRoot(t, prefix) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), prefix))
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   return root
+}
+
+function aliasedTempRoot(t, prefix) {
+  const base = tempRoot(t, prefix)
+  const physicalRoot = path.join(base, "physical")
+  const aliasRoot = path.join(base, "alias")
+  fs.mkdirSync(physicalRoot)
+  try {
+    fs.symlinkSync(physicalRoot, aliasRoot, process.platform === "win32" ? "junction" : "dir")
+  } catch (error) {
+    if (["EPERM", "EACCES", "ENOTSUP", "UNKNOWN"].includes(error.code)) {
+      t.skip(`directory alias unavailable: ${error.code}`)
+      return undefined
+    }
+    throw error
+  }
+  return { aliasRoot, physicalRoot: fs.realpathSync(physicalRoot) }
 }
 
 function commandStep(id, provider = `sample.${id}`) {
@@ -171,7 +197,7 @@ function createRunner(t, workflow, registerActions) {
     inputsProvider: async () => ({}),
     gateRegistry
   })
-  return { gateRegistry, runStore, runner, stepRuntime }
+  return { actions, gateRegistry, runStore, runner, stepRuntime }
 }
 
 async function waitForRunStatus(runStore, status, timeoutMs = 10_000) {
@@ -218,6 +244,66 @@ async function abortExecution(registry, root, runId, execution) {
   ])
 }
 
+async function acceptLiveReview(root, runId, gateRegistry, silent = true) {
+  const previousFolders = vscodeState.workspaceFolders
+  vscodeState.workspaceFolders = [{ name: path.basename(root), uri: { fsPath: root } }]
+  try {
+    return await acceptCurrentStep({
+      showMarkdownReport: async () => undefined,
+      acceptBobWorkflowGate: (workspaceRoot, acceptedRunId, stepId) => (
+        gateRegistry.accept(workspaceRoot, acceptedRunId, stepId)
+      ),
+      acceptBobWorkflowGateWithMetadata: (workspaceRoot, acceptedRunId, stepId) => (
+        gateRegistry.acceptWithMetadata(workspaceRoot, acceptedRunId, stepId)
+      ),
+      coordinateReviewAcceptance: async (_workspaceRoot, _acceptedRunId, operation) => operation()
+    }, runId, { silent })
+  } finally {
+    vscodeState.workspaceFolders = previousFolders
+  }
+}
+
+async function acceptLiveReviewAndRunNext(root, runId, gateRegistry, runNextStep) {
+  const previousFolders = vscodeState.workspaceFolders
+  const previousExecuteCommand = vscodeState.executeCommand
+  const snapshot = await readOperationHubRunSnapshot(root, runId)
+  const target = {
+    source: "operationHub",
+    workspaceRoot: root,
+    runId,
+    expectedRevision: snapshot.revision
+  }
+  vscodeState.workspaceFolders = [{ name: path.basename(root), uri: { fsPath: root } }]
+  vscodeState.executeCommand = async (command, commandTarget) => {
+    if (command === "workflowRegister.runNextStep") return runNextStep(commandTarget)
+    return undefined
+  }
+  try {
+    return await acceptAndRunNextStep({
+      showMarkdownReport: async () => undefined,
+      acceptBobWorkflowGate: (workspaceRoot, acceptedRunId, stepId) => (
+        gateRegistry.accept(workspaceRoot, acceptedRunId, stepId)
+      ),
+      acceptBobWorkflowGateWithMetadata: (workspaceRoot, acceptedRunId, stepId) => (
+        gateRegistry.acceptWithMetadata(workspaceRoot, acceptedRunId, stepId)
+      ),
+      coordinateReviewAcceptance: async (_workspaceRoot, _acceptedRunId, operation) => operation()
+    }, target)
+  } finally {
+    vscodeState.workspaceFolders = previousFolders
+    vscodeState.executeCommand = previousExecuteCommand
+  }
+}
+
+function realCommandService(root, workflow, actions, runStore, gateRegistry) {
+  const engine = new WorkflowEngine({
+    actions,
+    resultSinks: createDefaultResultSinkRegistry({ workspaceRoot: root, executeCommand: async () => undefined }),
+    runStore
+  })
+  return createCommandService(root, workflow, engine, gateRegistry, runStore).service
+}
+
 test("Bob runner remains pending when the engine returns held", async (t) => {
   const root = tempRoot(t, "workflow-register-bob-held-")
   const step = commandStep("collect")
@@ -244,7 +330,8 @@ test("Bob runner remains pending when the engine returns held", async (t) => {
       runId: held.runId,
       stepId: "collect",
       ownerStepId: "collect",
-      status: "held"
+      status: "held",
+      executionMode: "singleStep"
     })
     const rejected = assert.rejects(execution, /terminal held abort/)
     assert.equal(gateRegistry.abortPending(root, held.runId, "terminal held abort"), true)
@@ -321,7 +408,8 @@ test("Bob runner keeps the completed owner step pending when a pause points at t
       runId: paused.runId,
       stepId: "second",
       ownerStepId: "first",
-      status: "paused"
+      status: "paused",
+      executionMode: "singleStep"
     })
   } finally {
     await abortExecution(gateRegistry, root, paused.runId, execution)
@@ -345,6 +433,391 @@ test("StepRuntime manual hold remains the only pending primitive for a manual Bo
   assert.match(await stepRuntime.completeStepByKey(active.key), /Completed:/)
   assert.equal(await execution, true)
   assert.equal(completed, 1)
+})
+
+test("full fallback manual completion keeps its wrapper Todo pending until later providers finish", async (t) => {
+  const root = tempRoot(t, "workflow-register-bob-full-manual-")
+  const workflow = coreWorkflow(root, "bob-full-manual", [
+    { id: "manual", title: "manual", type: "manual" },
+    commandStep("followup")
+  ], {
+    stepExecution: { mode: "engineSteps", allowOutOfOrder: false, showInBob: false }
+  })
+  let followupEntered
+  const followupStarted = new Promise((resolve) => { followupEntered = resolve })
+  let releaseFollowup
+  const followupReleased = new Promise((resolve) => { releaseFollowup = resolve })
+  let followupCalls = 0
+  const { runner, stepRuntime } = createRunner(t, workflow, (actions) => {
+    actions.register({
+      id: "sample.followup",
+      execute: async () => {
+        followupCalls += 1
+        followupEntered()
+        await followupReleased
+        return "followup"
+      }
+    })
+  })
+  const [fallbackStep] = createBobWorkflow(bobDefinition(workflow), runner).getSteps()
+  let wrapperTodoCompletions = 0
+  const execution = fallbackStep.execution({
+    sendMessage: async () => undefined,
+    setStepComplete: () => { wrapperTodoCompletions += 1 }
+  })
+  const settlement = trackSettlement(execution)
+
+  try {
+    await waitFor(() => stepRuntime.list().length === 1)
+    const active = stepRuntime.list()[0]
+    assert.match(await stepRuntime.completeStepByKey(active.key), /Completed:/)
+    await followupStarted
+
+    assert.equal(wrapperTodoCompletions, 0, "an internal manual step must not complete the full wrapper Todo")
+    assert.equal(settlement.settled, false)
+    assert.equal(followupCalls, 1)
+
+    releaseFollowup()
+    assert.equal(await execution, true)
+    assert.equal(wrapperTodoCompletions, 0)
+  } finally {
+    releaseFollowup()
+    await execution.catch(() => undefined)
+  }
+})
+
+test("full fallback after-step pause releases its completed owner before the wrapper continues", async (t) => {
+  const root = tempRoot(t, "workflow-register-bob-full-pause-")
+  const workflow = coreWorkflow(root, "bob-full-pause", [commandStep("source"), commandStep("target")], {
+    stepExecution: { mode: "engineSteps", allowOutOfOrder: false, showInBob: false }
+  })
+  const controlStore = new FileRunControlStore({ workspaceRoot: root })
+  let targetEntered
+  const targetStarted = new Promise((resolve) => { targetEntered = resolve })
+  let releaseTarget
+  const targetReleased = new Promise((resolve) => { releaseTarget = resolve })
+  let targetCalls = 0
+  const { actions, gateRegistry, runStore, runner } = createRunner(t, workflow, (actions) => {
+    actions.register({
+      id: "sample.source",
+      execute: async ({ runId }) => {
+        await controlStore.requestPause({ runId, requestedBy: "test" })
+        return "source"
+      }
+    })
+    actions.register({
+      id: "sample.target",
+      execute: async () => {
+        targetCalls += 1
+        targetEntered()
+        await targetReleased
+        return "target"
+      }
+    })
+  })
+  const commandService = realCommandService(root, workflow, actions, runStore, gateRegistry)
+  const [fallbackStep] = createBobWorkflow(bobDefinition(workflow), runner).getSteps()
+  let wrapperTodoCompletions = 0
+  const execution = fallbackStep.execution({
+    sendMessage: async () => undefined,
+    setStepComplete: () => { wrapperTodoCompletions += 1 }
+  })
+  const executionSettlement = trackSettlement(execution)
+  const paused = await waitForRunStatus(runStore, "paused")
+  let resumeExecution
+
+  try {
+    assert.deepEqual(gateRegistry.pendingForRun(root, paused.runId), {
+      workspaceRoot: root,
+      runId: paused.runId,
+      stepId: "target",
+      ownerStepId: "source",
+      status: "paused",
+      executionMode: "full"
+    })
+
+    resumeExecution = commandService.resumeRun(paused.runId)
+    const resumeSettlement = trackSettlement(resumeExecution)
+    await targetStarted
+    await new Promise((resolve) => setImmediate(resolve))
+
+    assert.equal(resumeSettlement.settled, true, "Resume must release the full wrapper instead of executing target itself")
+    assert.equal(executionSettlement.settled, false)
+    assert.equal(wrapperTodoCompletions, 0)
+    assert.equal(targetCalls, 1)
+
+    const resumed = await resumeExecution
+    assert.equal(resumed.status, "running")
+    releaseTarget()
+    assert.equal(await execution, true)
+    assert.equal(targetCalls, 1)
+  } finally {
+    releaseTarget()
+    gateRegistry.abortPending(root, paused.runId, "test cleanup")
+    await Promise.allSettled([execution, resumeExecution].filter(Boolean))
+  }
+})
+
+test("full Bob wrapper owns continuation after structured accept-and-next and executes the next step once", async (t) => {
+  const root = tempRoot(t, "workflow-register-bob-fallback-review-")
+  fs.mkdirSync(path.join(root, ".bob"), { recursive: true })
+  const workflow = coreWorkflow(root, "bob-fallback-review", [commandStep("first"), commandStep("second")], {
+    stepReview: {
+      enabled: true,
+      pauseAfter: "everyStep",
+      requireAcceptBeforeNext: true,
+      allowRetry: true,
+      allowEditBeforeRetry: true,
+      preserveAttempts: true
+    },
+    stepExecution: { mode: "engineSteps", allowOutOfOrder: false, showInBob: false }
+  })
+  const commandCalls = []
+  const { actions, gateRegistry, runStore, runner } = createRunner(t, workflow, (actions) => {
+    actions.register({ id: "sample.first", execute: async () => { commandCalls.push("first"); return "first" } })
+    actions.register({ id: "sample.second", execute: async () => { commandCalls.push("second"); return "second" } })
+  })
+  const commandService = realCommandService(root, workflow, actions, runStore, gateRegistry)
+  let runNextStepCalls = 0
+  const [fallbackStep] = createBobWorkflow(bobDefinition(workflow), runner).getSteps()
+  assert.equal(fallbackStep.id, "runWorkflow")
+
+  const execution = fallbackStep.execution({
+    sendMessage: async () => undefined,
+    setStepComplete: () => undefined
+  })
+  const settlement = trackSettlement(execution)
+  const firstReview = await waitForRunStatus(runStore, "reviewing")
+
+  try {
+    assert.equal(firstReview.currentStep, "first")
+    assert.deepEqual(commandCalls, ["first"])
+    assert.equal(settlement.settled, false)
+
+    await acceptLiveReviewAndRunNext(root, firstReview.runId, gateRegistry, async (target) => {
+      runNextStepCalls += 1
+      return commandService.runNextStep(target)
+    })
+    await new Promise((resolve) => setImmediate(resolve))
+    assert.equal(settlement.settled, false, "the single Bob step must not complete while the same run still has work")
+
+    const secondReview = await waitForRunStatus(runStore, "reviewing")
+    assert.equal(secondReview.runId, firstReview.runId)
+    assert.equal(secondReview.currentStep, "second")
+    assert.equal(runNextStepCalls, 0)
+    assert.deepEqual(commandCalls, ["first", "second"])
+    assert.deepEqual(gateRegistry.pendingForRun(root, firstReview.runId), {
+      workspaceRoot: root,
+      runId: firstReview.runId,
+      stepId: "second",
+      ownerStepId: "second",
+      status: "reviewing",
+      executionMode: "full"
+    })
+
+    await acceptLiveReview(root, firstReview.runId, gateRegistry)
+    assert.equal(await execution, true)
+
+    const completed = await runStore.loadRun(firstReview.runId)
+    assert.equal(completed.status, "completed")
+    assert.equal(completed.currentStep, undefined)
+    assert.deepEqual(completed.steps.map((step) => step.status), ["completed", "completed"])
+    assert.deepEqual(commandCalls, ["first", "second"])
+    assert.deepEqual((await runStore.listRuns()).map((run) => run.runId), [firstReview.runId])
+    assert.deepEqual(settlement, { settled: true, resolutions: 1, rejections: 0 })
+  } finally {
+    await abortExecution(gateRegistry, root, firstReview.runId, execution)
+  }
+})
+
+test("full Bob wrapper shares physical root identity with Operation Hub through a workspace alias", async (t) => {
+  const roots = aliasedTempRoot(t, "workflow-register-bob-root-alias-")
+  if (!roots) return
+  const { aliasRoot, physicalRoot } = roots
+  fs.mkdirSync(path.join(physicalRoot, ".bob"), { recursive: true })
+  const workflow = coreWorkflow(aliasRoot, "bob-root-alias", [commandStep("first"), commandStep("second")], {
+    stepReview: {
+      enabled: true,
+      pauseAfter: "everyStep",
+      requireAcceptBeforeNext: true,
+      allowRetry: true,
+      allowEditBeforeRetry: true,
+      preserveAttempts: true
+    },
+    stepExecution: { mode: "engineSteps", allowOutOfOrder: false, showInBob: false }
+  })
+  const commandCalls = []
+  const { gateRegistry, runStore, runner } = createRunner(t, workflow, (actions) => {
+    actions.register({ id: "sample.first", execute: async () => { commandCalls.push("first"); return "first" } })
+    actions.register({ id: "sample.second", execute: async () => { commandCalls.push("second"); return "second" } })
+  })
+  let runNextStepCalls = 0
+  const [fallbackStep] = createBobWorkflow(bobDefinition(workflow), runner).getSteps()
+  const task = {
+    sendMessage: async () => undefined,
+    setStepComplete: () => undefined
+  }
+  const execution = fallbackStep.execution(task)
+  const firstReview = await waitForRunStatus(runStore, "reviewing")
+
+  try {
+    await acceptLiveReviewAndRunNext(aliasRoot, firstReview.runId, gateRegistry, async () => {
+      runNextStepCalls += 1
+      return undefined
+    })
+
+    assert.equal(runNextStepCalls, 0)
+    assert.equal(reviewTaskRegistry.taskForStep(physicalRoot, firstReview.runId, "first"), task)
+    assert.equal(gateRegistry.isPending(physicalRoot, firstReview.runId, "first"), false)
+
+    const secondReview = await waitForRunStatus(runStore, "reviewing")
+    assert.equal(secondReview.currentStep, "second")
+    assert.deepEqual(commandCalls, ["first", "second"])
+    assert.deepEqual(gateRegistry.pendingForRun(physicalRoot, firstReview.runId), {
+      workspaceRoot: physicalRoot,
+      runId: firstReview.runId,
+      stepId: "second",
+      ownerStepId: "second",
+      status: "reviewing",
+      executionMode: "full"
+    })
+
+    await acceptLiveReviewAndRunNext(aliasRoot, firstReview.runId, gateRegistry, async () => {
+      runNextStepCalls += 1
+      return undefined
+    })
+    assert.equal(await execution, true)
+    assert.equal(runNextStepCalls, 0)
+    assert.equal(gateRegistry.pendingForRun(physicalRoot, firstReview.runId), undefined)
+  } finally {
+    gateRegistry.abortPending(aliasRoot, firstReview.runId, "test cleanup")
+    gateRegistry.abortPending(physicalRoot, firstReview.runId, "test cleanup")
+    await Promise.race([
+      execution.catch(() => false),
+      new Promise((resolve) => setTimeout(resolve, 250))
+    ])
+  }
+})
+
+test("single-step Bob execution keeps structured accept-and-next dispatch and executes the next provider once", async (t) => {
+  const root = tempRoot(t, "workflow-register-bob-single-step-review-")
+  fs.mkdirSync(path.join(root, ".bob"), { recursive: true })
+  const workflow = coreWorkflow(root, "bob-single-step-review", [commandStep("first"), commandStep("second")], {
+    stepReview: {
+      enabled: true,
+      pauseAfter: "everyStep",
+      requireAcceptBeforeNext: true,
+      allowRetry: true,
+      allowEditBeforeRetry: true,
+      preserveAttempts: true
+    }
+  })
+  const commandCalls = []
+  const { actions, gateRegistry, runStore, runner } = createRunner(t, workflow, (actions) => {
+    actions.register({ id: "sample.first", execute: async () => { commandCalls.push("first"); return "first" } })
+    actions.register({ id: "sample.second", execute: async () => { commandCalls.push("second"); return "second" } })
+  })
+  const commandService = realCommandService(root, workflow, actions, runStore, gateRegistry)
+  let runNextStepCalls = 0
+  const execution = runner.runEngineStep("first", 0, {
+    sendMessage: async () => undefined,
+    setStepComplete: () => undefined
+  })
+  const firstReview = await waitForRunStatus(runStore, "reviewing")
+
+  try {
+    await acceptLiveReviewAndRunNext(root, firstReview.runId, gateRegistry, async (target) => {
+      runNextStepCalls += 1
+      return commandService.runNextStep(target)
+    })
+
+    assert.equal(await execution, true)
+    assert.equal(runNextStepCalls, 1)
+    assert.deepEqual(commandCalls, ["first", "second"])
+  } finally {
+    await abortExecution(gateRegistry, root, firstReview.runId, execution)
+  }
+})
+
+test("full fallback wrapper does not project internal transition completion into its single Bob Todo", async (t) => {
+  const root = tempRoot(t, "workflow-register-bob-full-transition-")
+  fs.mkdirSync(path.join(root, ".bob"), { recursive: true })
+  const first = {
+    ...commandStep("first"),
+    transition: { decisions: [], default: "second" }
+  }
+  const workflow = coreWorkflow(root, "bob-full-transition", [first, commandStep("second")], {
+    stepReview: {
+      enabled: true,
+      pauseAfter: "everyStep",
+      requireAcceptBeforeNext: true,
+      allowRetry: true,
+      allowEditBeforeRetry: true,
+      preserveAttempts: true
+    },
+    stepExecution: { mode: "engineSteps", allowOutOfOrder: false, showInBob: false }
+  })
+  const commandCalls = []
+  const { gateRegistry, runStore, runner } = createRunner(t, workflow, (actions) => {
+    actions.register({ id: "sample.first", execute: async () => { commandCalls.push("first"); return "first" } })
+    actions.register({ id: "sample.second", execute: async () => { commandCalls.push("second"); return "second" } })
+  })
+  const [fallbackStep] = createBobWorkflow(bobDefinition(workflow), runner).getSteps()
+  let setStepCompleteCalls = 0
+  const execution = fallbackStep.execution({
+    sendMessage: async () => undefined,
+    setStepComplete: () => { setStepCompleteCalls += 1 }
+  })
+  const settlement = trackSettlement(execution)
+  const firstReview = await waitForRunStatus(runStore, "reviewing")
+
+  try {
+    vscodeState.informationMessages = []
+    await acceptLiveReview(root, firstReview.runId, gateRegistry, false)
+    const secondReview = await waitForRunStatus(runStore, "reviewing")
+
+    assert.equal(secondReview.runId, firstReview.runId)
+    assert.equal(secondReview.currentStep, "second")
+    assert.equal(settlement.settled, false)
+    assert.equal(setStepCompleteCalls, 0)
+    assert.deepEqual(commandCalls, ["first", "second"])
+    assert.equal(vscodeState.informationMessages.length, 1)
+    assert.equal(vscodeState.informationMessages[0].length, 1)
+    assert.match(vscodeState.informationMessages[0][0], /Bob ワークフローが同じ run を続行します。/)
+
+    await acceptLiveReview(root, firstReview.runId, gateRegistry)
+    assert.equal(await execution, true)
+    assert.equal(setStepCompleteCalls, 0)
+  } finally {
+    await abortExecution(gateRegistry, root, firstReview.runId, execution)
+  }
+})
+
+test("single-step explicit transition still projects one completed Bob Todo and stops at the target", async (t) => {
+  const root = tempRoot(t, "workflow-register-bob-single-transition-")
+  const first = {
+    ...commandStep("first"),
+    transition: { decisions: [], default: "second" }
+  }
+  const workflow = coreWorkflow(root, "bob-single-transition", [first, commandStep("second")])
+  const commandCalls = []
+  const { runStore, runner } = createRunner(t, workflow, (actions) => {
+    actions.register({ id: "sample.first", execute: async () => { commandCalls.push("first"); return "first" } })
+    actions.register({ id: "sample.second", execute: async () => { commandCalls.push("second"); return "second" } })
+  })
+  let setStepCompleteCalls = 0
+
+  assert.equal(await runner.runEngineStep("first", 0, {
+    sendMessage: async () => undefined,
+    setStepComplete: () => { setStepCompleteCalls += 1 }
+  }), true)
+
+  const [run] = await runStore.listRuns()
+  assert.equal(run.status, "running")
+  assert.equal(run.currentStep, "second")
+  assert.deepEqual(run.steps.map((step) => step.status), ["completed", "pending"])
+  assert.equal(setStepCompleteCalls, 1)
+  assert.deepEqual(commandCalls, ["first"])
 })
 
 function markerRoot(root) {
@@ -389,6 +862,55 @@ async function saveRunWithStatus(runStore, workflow, status, currentStep, stepSt
   await runStore.saveRun(run)
   return run
 }
+
+test("run-next command fails fast when its command step awaits a same-run retry and releases later mutations", async (t) => {
+  const root = tempRoot(t, "workflow-register-run-next-reentrant-")
+  const workflow = coreWorkflow(root, "run-next-reentrant", [commandStep("source")])
+  const runStore = new FileRunStateStore({ workspaceRoot: root, engineVersion: "run-next-reentrant-test" })
+  const actions = new ActionRegistry()
+  let service
+  let runId
+  let actionCalls = 0
+  actions.register({
+    id: "sample.source",
+    execute: async () => {
+      actionCalls += 1
+      if (actionCalls === 1) return service.retryCurrentStep(runId)
+      return "retry-completed"
+    }
+  })
+  const engine = new WorkflowEngine({
+    actions,
+    resultSinks: createDefaultResultSinkRegistry({ workspaceRoot: root, executeCommand: async () => undefined }),
+    runStore
+  })
+  const context = createCommandService(root, workflow, engine, new BobWorkflowGateRegistry(), runStore)
+  service = context.service
+  const run = await saveRunWithStatus(runStore, workflow, "running", "source", { source: "pending" })
+  runId = run.runId
+
+  let timeout
+  const boundedRunNext = Promise.race([
+    service.runNextStep(runId),
+    new Promise((_, reject) => {
+      timeout = setTimeout(() => reject(new Error("timed-out-self-wait")), 1000)
+    })
+  ])
+  let failed
+  try {
+    failed = await boundedRunNext
+  } finally {
+    clearTimeout(timeout)
+  }
+
+  assert.equal(failed.status, "failed")
+  assert.match(failed.error, /re-enter|reentrant|same run/i)
+  assert.equal(actionCalls, 1)
+
+  const recovered = await service.retryCurrentStep(runId)
+  assert.equal(recovered.status, "completed")
+  assert.equal(actionCalls, 2)
+})
 
 async function saveCheckpointedRun(runStore, workflow, checkpointId) {
   const run = await saveRunWithStatus(runStore, workflow, "checkpoint", "target", {
@@ -951,7 +1473,7 @@ test("pause resume keeps the standalone engine path when there is no live Bob ga
   const context = createCommandService(root, workflow, engine)
   runStore = context.runStore
   const run = await saveRunWithStatus(runStore, workflow, "paused", "source", { source: "pending" })
-  reviewTaskRegistry.registerTask(run.runId, "source", { setStepComplete: () => undefined })
+  reviewTaskRegistry.registerTask(root, run.runId, "source", { setStepComplete: () => undefined })
 
   const result = await context.service.resumeRun(run.runId)
 
@@ -1003,5 +1525,109 @@ test("disposing the service-owned registry rejects held, checkpoint, and paused 
   await Promise.all(rejected)
   for (const status of ["held", "checkpoint", "paused"]) {
     assert.equal(registry.pendingForRun("C:\\workspace", `run-${status}`), undefined)
+  }
+})
+
+test("task snapshot import fails fast while the run is executing and preserves the owner state", async (t) => {
+  const { coordinateWorkflowRunExecution } = require("../out/core/engine/runExecutionCoordinator")
+  const { FileTaskSnapshotStore } = require("../out/core/taskSnapshots")
+  const root = tempRoot(t, "workflow-register-import-coordination-")
+  const workflow = coreWorkflow(root, "import-coordination", [{
+    id: "draft",
+    title: "Draft",
+    type: "agent",
+    prompt: "Draft",
+    resultKey: "draft"
+  }], {
+    definitionHash: "definition-v1",
+    artifacts: [{
+      id: "draft",
+      producedBy: "draft",
+      path: ".bob/workflows/runs/{{run.id}}/artifacts/draft.md"
+    }]
+  })
+  const delegate = new FileRunStateStore({ workspaceRoot: root, engineVersion: "import-coordination-test" })
+  const run = await delegate.createRun(workflow, {})
+  await delegate.saveRun(run)
+  await new FileTaskSnapshotStore({ workspaceRoot: root }).saveSnapshot({
+    schemaVersion: "workflow-register/task-snapshot/v1",
+    createdAt: "2026-07-12T00:00:00.000Z",
+    reason: "agent-output",
+    runId: run.runId,
+    workflowId: workflow.id,
+    workflowDefinitionHash: workflow.definitionHash,
+    stepId: "draft",
+    lastAssistantText: "recovered draft"
+  })
+
+  const deferred = () => {
+    let resolve
+    const promise = new Promise((done) => { resolve = done })
+    return { promise, resolve }
+  }
+  const staleCaptured = deferred()
+  const ownerMaySave = deferred()
+  const ownerSaved = deferred()
+  const ownerMayFinish = deferred()
+  const gateKinds = []
+  const runStore = {
+    workspaceRoot: root,
+    createRun: (...args) => delegate.createRun(...args),
+    loadRun: (...args) => delegate.loadRun(...args),
+    saveRun: (...args) => delegate.saveRun(...args),
+    findRecoverableRun: (...args) => delegate.findRecoverableRun(...args),
+    listRuns: async () => {
+      const stale = await delegate.listRuns()
+      staleCaptured.resolve()
+      await ownerSaved.promise
+      return stale
+    }
+  }
+  const owner = coordinateWorkflowRunExecution(runStore, run.runId, "test-owner", async () => {
+    await ownerMaySave.promise
+    const current = await delegate.loadRun(run.runId)
+    current.status = "completed"
+    current.currentStep = undefined
+    current.steps[0].status = "completed"
+    current.state.engineWinner = "preserved"
+    await delegate.saveRun(current)
+    ownerSaved.resolve()
+    await ownerMayFinish.promise
+  })
+  const service = new WorkflowRunCommandService({
+    coreWorkflows: new Map([[workflow.id, workflow]]),
+    runtimeFactory: { createRunStore: () => runStore, createEngine: () => ({}) },
+    ensureWorkflowsLoaded: async () => undefined,
+    workflowRootCandidates: async () => [markerRoot(root)],
+    activeSteps: () => [],
+    showManualStepPanel: async () => undefined,
+    gateRegistry: new BobWorkflowGateRegistry(),
+    coordinateGateDecision: async (_workspaceRoot, _runId, kind, operation) => {
+      gateKinds.push(kind)
+      return operation()
+    }
+  })
+
+  const importing = service.importArtifactsFromTaskSnapshots(run.runId)
+  try {
+    await staleCaptured.promise
+    ownerMaySave.resolve()
+    await ownerSaved.promise
+    await assert.rejects(importing, /while workflow run is executing/)
+    ownerMayFinish.resolve()
+    await owner
+
+    const persisted = await delegate.loadRun(run.runId)
+    assert.deepEqual(gateKinds, [], "a running engine must be rejected before entering a nested mutation queue")
+    assert.equal(persisted.status, "completed")
+    assert.equal(persisted.currentStep, undefined)
+    assert.equal(persisted.steps[0].status, "completed")
+    assert.equal(persisted.state.engineWinner, "preserved")
+    assert.equal(persisted.state.draft, undefined)
+  } finally {
+    ownerMaySave.resolve()
+    ownerSaved.resolve()
+    ownerMayFinish.resolve()
+    await Promise.allSettled([owner, importing])
   }
 })

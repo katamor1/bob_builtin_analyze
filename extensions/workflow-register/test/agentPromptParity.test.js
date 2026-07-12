@@ -214,13 +214,13 @@ test("direct, live Bob, and Operation Hub share one rendered agent step prompt",
   const operationHubPrompts = []
   const { ReviewTaskRegistry } = require("../out/reviewTaskRegistry")
   const registry = new ReviewTaskRegistry()
-  assert.equal(registry.register("operation-run", "collect-prior", {
+  assert.equal(registry.register(workspaceRoot, "operation-run", "collect-prior", {
     startSubagent: async (prompt) => {
       operationHubPrompts.push(prompt)
       return { result: "Operation Hub result" }
     }
   }), true)
-  const operationHubProvider = registry.agentProviderForRun("operation-run", workflow)
+  const operationHubProvider = registry.agentProviderForRun(workspaceRoot, "operation-run", workflow)
   assert.ok(operationHubProvider)
   const operationHubRun = await createEngine(workspaceRoot, operationHubProvider, priorResult).runWorkflow(workflow, inputs)
   assert.equal(operationHubRun.status, "completed")

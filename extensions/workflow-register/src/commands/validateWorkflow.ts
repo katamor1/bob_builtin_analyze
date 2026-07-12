@@ -42,7 +42,7 @@ export async function validateWorkspaceWorkflows(options: ValidateWorkflowComman
 
 export function validateTextDocument(document: vscode.TextDocument, options: Pick<ValidateWorkflowCommandOptions, "sourceId" | "diagnostics">) {
   const filePath = workflowDocumentFilePath(document.uri)
-  const result = compileWorkflowDocument({ sourceId: options.sourceId, filePath, text: document.getText() })
+  const result = compileWorkflowDocument({ sourceId: options.sourceId, filePath, text: document.getText(), strict: true })
   options.diagnostics?.set(document.uri, result)
   return result
 }

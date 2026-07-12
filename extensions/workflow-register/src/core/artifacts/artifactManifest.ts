@@ -62,7 +62,7 @@ export function createWorkflowArtifactManifestEntry(input: {
   }
 }
 
-export function updateWorkflowArtifactManifest(input: {
+export function buildWorkflowArtifactManifest(input: {
   workflow: CoreWorkflowDefinition
   run: WorkflowRunState
   entries: WorkflowArtifactManifestEntry[]
@@ -88,7 +88,23 @@ export function updateWorkflowArtifactManifest(input: {
       return byStep !== 0 ? byStep : left.id.localeCompare(right.id)
     })
   }
-  input.run.state[ARTIFACT_MANIFEST_STATE_KEY] = serializeWorkflowArtifactManifest(manifest)
+  return manifest
+}
+
+export function commitWorkflowArtifactManifest(
+  run: WorkflowRunState,
+  manifest: WorkflowArtifactManifest
+): void {
+  run.state[ARTIFACT_MANIFEST_STATE_KEY] = serializeWorkflowArtifactManifest(manifest)
+}
+
+// Preserve the original public helper while transactional callers use the
+// explicit build/write/commit sequence above.
+export function updateWorkflowArtifactManifest(
+  input: Parameters<typeof buildWorkflowArtifactManifest>[0]
+): WorkflowArtifactManifest {
+  const manifest = buildWorkflowArtifactManifest(input)
+  commitWorkflowArtifactManifest(input.run, manifest)
   return manifest
 }
 

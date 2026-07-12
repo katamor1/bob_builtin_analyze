@@ -5,7 +5,7 @@ import type { ResultSinkRegistry } from "./core/resultSinkRegistry"
 import { OperationHubProvider } from "./gui/operationHubProvider"
 import { WorkflowRegisterService } from "./workflowRegisterService"
 import type { StepCompletionOptions } from "./workflowRegisterService"
-import type { BobWorkflowGateAcceptResult } from "./bobWorkflowGateRegistry"
+import type { BobWorkflowGateAcceptance, BobWorkflowGateAcceptResult } from "./bobWorkflowGateRegistry"
 import type { ArtifactSourceRunArg, RunCommandArg, WorkflowCommandArg } from "./workflowRunCommands"
 
 /**
@@ -23,6 +23,10 @@ export interface WorkflowRegisterApi {
    * @returns 今回 accept、accept 済み、abort/dispose 済み、または live gate 不在を表す atomic decision。
    */
   acceptBobWorkflowGate: (workspaceRoot: string, runId: string, stepId: string) => BobWorkflowGateAcceptResult
+  /**
+   * live gate の承認結果と、その承認を待っていた Bob execution metadata を同時に返す。
+   */
+  acceptBobWorkflowGateWithMetadata: (workspaceRoot: string, runId: string, stepId: string) => BobWorkflowGateAcceptance
   /**
    * 同じ workspace run に対する重複 review acceptance を、現在の service activation 内で共有する。
    *
@@ -136,6 +140,7 @@ export function activate(context: vscode.ExtensionContext): WorkflowRegisterApi 
   const service = new WorkflowRegisterService(String(context.extension.packageJSON.version ?? "unknown"))
   const api: WorkflowRegisterApi = {
     acceptBobWorkflowGate: (workspaceRoot, runId, stepId) => service.acceptBobWorkflowGate(workspaceRoot, runId, stepId),
+    acceptBobWorkflowGateWithMetadata: (workspaceRoot, runId, stepId) => service.acceptBobWorkflowGateWithMetadata(workspaceRoot, runId, stepId),
     coordinateReviewAcceptance: (workspaceRoot, runId, operation) => service.coordinateReviewAcceptance(workspaceRoot, runId, operation),
     registerActionProvider: (provider) => service.registerActionProvider(provider),
     registerAgentProvider: (provider) => service.registerAgentProvider(provider),

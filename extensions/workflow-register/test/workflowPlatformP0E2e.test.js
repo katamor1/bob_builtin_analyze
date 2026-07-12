@@ -406,7 +406,8 @@ test("P0 approve keeps Bob pending until durable acceptance and resolves exactly
     runId: "p0-approve-run",
     stepId: "collect",
     ownerStepId: "collect",
-    status: "reviewing"
+    status: "reviewing",
+    executionMode: "singleStep"
   })
   assert.deepEqual({ bobStepCompletions, rejections, resolutions }, {
     bobStepCompletions: 0,
@@ -798,7 +799,7 @@ test("P0 Operation Hub runNextStep uses the standalone rendered prompt", async (
   const initialSnapshot = await readOperationHubRunSnapshot(workspaceRoot, operationRunId)
   const operationPrompts = []
   let projectedStepCompletions = 0
-  assert.equal(reviewTaskRegistry.register(operationRunId, "analyze", {
+  assert.equal(reviewTaskRegistry.register(workspaceRoot, operationRunId, "analyze", {
     startSubagent: async (prompt) => {
       operationPrompts.push(prompt)
       return { result: "operation-hub-result" }

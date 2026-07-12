@@ -1,5 +1,6 @@
-import * as path from "path"
+import type { WorkflowExecutionMode } from "./core/engineTypes"
 import type { RunStatus } from "./core/model"
+import { normalizeWorkspaceRootIdentity } from "./workspaceRootIdentity"
 
 export interface BobWorkflowGateDecision {
   workspaceRoot: string
@@ -7,9 +8,15 @@ export interface BobWorkflowGateDecision {
   stepId: string
   ownerStepId?: string
   status: RunStatus
+  executionMode?: WorkflowExecutionMode
 }
 
 export type BobWorkflowGateAcceptResult = "accepted" | "alreadyAccepted" | "aborted" | "missing"
+
+export interface BobWorkflowGateAcceptance {
+  result: BobWorkflowGateAcceptResult
+  gate?: BobWorkflowGateDecision & { ownerStepId: string }
+}
 
 type SettledGateOutcome = "accepted" | "aborted"
 
@@ -63,6 +70,13 @@ export class BobWorkflowGateRegistry {
       return settled ?? "missing"
     }
     return this.acceptEntry(entry)
+  }
+
+  acceptWithMetadata(workspaceRoot: string, runId: string, stepId: string): BobWorkflowGateAcceptance {
+    const entry = this.pendingEntryForGate(workspaceRoot, runId, stepId)
+    if (!entry) return { result: this.accept(workspaceRoot, runId, stepId) }
+    const gate = { ...entry[1].decision }
+    return { result: this.acceptEntry(entry), gate }
   }
 
   private acceptEntry([key, gate]: [string, PendingGate]): BobWorkflowGateAcceptResult {
@@ -181,6 +195,5 @@ function runKey(workspaceRoot: string, runId: string): string {
 }
 
 function normalizeWorkspaceRoot(workspaceRoot: string): string {
-  const normalized = path.resolve(workspaceRoot)
-  return process.platform === "win32" ? normalized.toLowerCase() : normalized
+  return normalizeWorkspaceRootIdentity(workspaceRoot)
 }

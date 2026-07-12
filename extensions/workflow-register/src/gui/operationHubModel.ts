@@ -65,6 +65,7 @@ export interface OperationHubModelInput {
   workflows: OperationHubWorkflowInput[]
   runs: OperationHubRunInput[]
   focusedRunId?: string
+  focusedWorkspaceRoot?: string
 }
 
 export type OperationHubWorkflowInput = Pick<
@@ -150,7 +151,13 @@ interface ArtifactReuseState {
 export function buildOperationHubModel(input: OperationHubModelInput): OperationHubModel {
   const workflowCatalog = buildWorkflowCatalog(input.workflows)
   const runMonitor = input.runs
-    .map((item) => summarizeRunForHub(item.root, item.run, input.focusedRunId, item.revision))
+    .map((item) => summarizeRunForHub(
+      item.root,
+      item.run,
+      input.focusedRunId,
+      item.revision,
+      input.focusedWorkspaceRoot
+    ))
     .sort((a, b) => Number(b.focused) - Number(a.focused) || b.updatedAt.localeCompare(a.updatedAt))
     .slice(0, 20)
   const activeRunCount = runMonitor.filter((run) => !["completed", "failed"].includes(run.status)).length
@@ -168,7 +175,13 @@ export function buildOperationHubModel(input: OperationHubModelInput): Operation
   }
 }
 
-export function summarizeRunForHub(root: string, run: WorkflowRunState, focusedRunId?: string, revision?: string): OperationHubRunSummary {
+export function summarizeRunForHub(
+  root: string,
+  run: WorkflowRunState,
+  focusedRunId?: string,
+  revision?: string,
+  focusedWorkspaceRoot?: string
+): OperationHubRunSummary {
   const currentStep = run.steps.find((step) => step.id === run.currentStep)
   const completedStepCount = run.steps.filter((step) => step.status === "completed").length
   const bobTaskSync = summarizeBobTaskSync(run)
@@ -191,10 +204,20 @@ export function summarizeRunForHub(root: string, run: WorkflowRunState, focusedR
     totalStepCount: run.steps.length,
     updatedAt: run.updatedAt,
     root,
-    focused: run.runId === focusedRunId,
+    focused: run.runId === focusedRunId && (
+      !focusedWorkspaceRoot || sameWorkspaceRoot(root, focusedWorkspaceRoot)
+    ),
     primaryActions: actionsForRun(root, run, Boolean(manifest?.artifacts.length), revision),
     artifacts: artifactsForRun(root, run, manifest)
   }
+}
+
+function sameWorkspaceRoot(left: string, right: string): boolean {
+  const normalize = (value: string) => {
+    const resolved = path.resolve(value)
+    return process.platform === "win32" ? resolved.toLowerCase() : resolved
+  }
+  return normalize(left) === normalize(right)
 }
 
 function buildRecommendedActions(activeRunCount: number): OperationHubAction[] {

@@ -356,6 +356,85 @@ test("workspace validation compiles the same nested marker-root document set as 
   }))
 })
 
+test("explicit current and workspace validation match strict registration diagnostics for warning-only workflows", async (t) => {
+  const workspaceRoot = await fsp.mkdtemp(path.join(os.tmpdir(), "workflow-compiler-strict-parity-"))
+  t.after(() => fs.rmSync(workspaceRoot, { recursive: true, force: true }))
+  const warningPath = await writeWorkflow(workspaceRoot, "warning-workflow", warningWorkflow)
+  resetRuntime(workspaceRoot, [warningPath])
+
+  const document = {
+    uri: { fsPath: warningPath },
+    getText: () => warningWorkflow
+  }
+  runtime.activeTextEditor = { document }
+  const currentReports = []
+  const currentDiagnostics = new Map()
+  const workspaceReports = []
+  const workspaceDiagnostics = new Map()
+  const { compileWorkflowDocument, formatWorkflowDiagnostics } = require(path.join(outRoot, "core", "workflowCompiler.js"))
+  const {
+    validateCurrentWorkflow,
+    validateTextDocument,
+    validateWorkspaceWorkflows
+  } = requireWithVscode(path.join("commands", "validateWorkflow.js"))
+  const expected = compileWorkflowDocument({
+    sourceId: "workflow-register",
+    filePath: ".bob/workflows/warning-workflow/WORKFLOW.md",
+    text: warningWorkflow,
+    strict: true
+  })
+
+  const currentResult = validateTextDocument(document, {
+    sourceId: "workflow-register",
+    diagnostics: {
+      set: (uri, result) => currentDiagnostics.set(uri.fsPath, result)
+    }
+  })
+  await validateCurrentWorkflow({
+    sourceId: "workflow-register",
+    diagnostics: {
+      set: (uri, result) => currentDiagnostics.set(uri.fsPath, result)
+    },
+    showMarkdownReport: async (title, summary, lines) => currentReports.push({ title, summary, lines })
+  })
+  await validateWorkspaceWorkflows({
+    sourceId: "workflow-register",
+    diagnostics: {
+      clear: () => workspaceDiagnostics.clear(),
+      set: (uri, result) => workspaceDiagnostics.set(uri.fsPath, result)
+    },
+    showMarkdownReport: async (title, summary, lines) => workspaceReports.push({ title, summary, lines })
+  })
+
+  const { loadWorkspaceWorkflows } = requireWithVscode("workflowDefinitionLoader.js")
+  const loaded = await loadWorkspaceWorkflows("workflow-register")
+  const { registerWorkflows } = requireWithVscode("workflowRegistrationService.js")
+  const registered = await registerWorkflows({ createRunner: runnerStub })
+  const expectedLines = formatWorkflowDiagnostics(expected)
+
+  assert.equal(expected.ok, false)
+  assert.deepEqual(currentResult, expected)
+  assert.deepEqual(currentDiagnostics.get(warningPath), expected)
+  assert.deepEqual(workspaceDiagnostics.get(warningPath), expected)
+  assert.deepEqual(currentReports, [{
+    title: "Current Workflow Validation",
+    summary: "1 workflow file; 1 error(s); 0 warning(s).",
+    lines: expectedLines
+  }])
+  assert.deepEqual(workspaceReports, [{
+    title: "Workspace Workflow Validation",
+    summary: "1 workflow file(s); 1 error(s); 0 warning(s).",
+    lines: expectedLines
+  }])
+  assert.deepEqual(loaded.workflows, [])
+  assert.deepEqual(loaded.coreWorkflows, [])
+  assert.deepEqual(loaded.diagnostics.slice(-expectedLines.length), expectedLines)
+  assert.deepEqual(registered.coreWorkflows, [])
+  assert.deepEqual(registered.result.lines.slice(-expectedLines.length), expectedLines)
+  assert.equal(runtime.registerSourceCalls, 0)
+  assert.deepEqual(runtime.registeredWorkflows, [])
+})
+
 test("CI workflow contract paths include the canonical compiler source", () => {
   const ciWorkflow = fs.readFileSync(path.resolve(__dirname, "..", "..", "..", ".github", "workflows", "workflow-contracts.yml"), "utf8")
   assert.equal(ciWorkflow.match(/extensions\/workflow-register\/src\/core\/workflowCompiler\.ts/g)?.length, 2)

@@ -73,11 +73,13 @@ export function activate(context: vscode.ExtensionContext): WorkflowRegisterApi 
   const stepReviewOptions = {
     showMarkdownReport,
     acceptBobWorkflowGate: api.acceptBobWorkflowGate,
+    acceptBobWorkflowGateWithMetadata: api.acceptBobWorkflowGateWithMetadata,
     coordinateReviewAcceptance: api.coordinateReviewAcceptance
   }
   const stepReviewBuilderOptions = {
     showMarkdownReport,
     acceptBobWorkflowGate: api.acceptBobWorkflowGate,
+    acceptBobWorkflowGateWithMetadata: api.acceptBobWorkflowGateWithMetadata,
     coordinateReviewAcceptance: api.coordinateReviewAcceptance,
     sourceId: sourceId(),
     extensionUri: context.extensionUri

@@ -8,12 +8,14 @@ import type {
   WorkflowRunState
 } from "../model"
 import {
+  ARTIFACT_MANIFEST_STATE_KEY,
   ARTIFACT_MANIFEST_PATH,
+  buildWorkflowArtifactManifest,
+  commitWorkflowArtifactManifest,
   createWorkflowArtifactManifestEntry,
-  updateWorkflowArtifactManifest,
   type WorkflowArtifactManifestEntry
 } from "../artifacts/artifactManifest"
-import type { ResultSinkRegistry } from "../resultSinkRegistry"
+import type { ResultSinkFileTransactionWrite, ResultSinkRegistry } from "../resultSinkRegistry"
 import type { WorkflowEngineEventInput, WorkflowEngineOptions } from "../engineTypes"
 import { assertUserWritableStateKey } from "../stateKeys"
 import { markResultHandoffFailed } from "./recoveryState"
@@ -80,6 +82,7 @@ export async function writeProducedArtifacts(input: {
   resultSinks: ResultSinkRegistry
   providerArtifacts?: WorkflowProviderArtifactMetadata[]
   stateOverlay?: Record<string, string>
+  commitState?: () => Promise<void> | void
 }): Promise<{ ok: true } | { ok: false; error: string }> {
   const { workflow, run, step, resultSinks } = input
   const artifacts = workflow.artifacts ?? []
@@ -93,6 +96,7 @@ export async function writeProducedArtifacts(input: {
   })
   if (!providerEntries.ok) return providerEntries
   const manifestEntries: WorkflowArtifactManifestEntry[] = [...providerEntries.entries.values()]
+  const fileWrites: ResultSinkFileTransactionWrite[] = []
   for (const artifact of artifacts.filter((item) => item.producedBy === step.id)) {
     if (providerEntries.entries.has(artifact.id)) continue
     const value = state[artifact.id]
@@ -100,36 +104,61 @@ export async function writeProducedArtifacts(input: {
     const path = renderArtifactPath(artifact, { inputs: run.inputs, state, run, workflow, step })
     // artifact path に未解決テンプレートが残る場合は、誤った literal path への生成物書き込みを避ける。
     if (path.includes("{{")) continue
-    const write = await resultSinks.write({ type: "file", path }, {
-      workflowId: workflow.id,
-      logicalWorkflowId: workflow.logicalWorkflowId,
-      workflowRoot: workflow.workflowRoot,
-      workflowFile: workflow.workflowFile,
-      workflowFolderName: workflow.workflowFolderName,
-      runId: run.runId,
-      stepId: step.id,
-      inputs: run.inputs,
-      state,
-      text: value
+    fileWrites.push({
+      sink: { type: "file", path },
+      input: {
+        workflowId: workflow.id,
+        logicalWorkflowId: workflow.logicalWorkflowId,
+        workflowRoot: workflow.workflowRoot,
+        workflowFile: workflow.workflowFile,
+        workflowFolderName: workflow.workflowFolderName,
+        runId: run.runId,
+        stepId: step.id,
+        inputs: run.inputs,
+        state,
+        text: value
+      }
     })
-    if (!write.ok) return { ok: false, error: write.error ?? `Failed to write artifact: ${artifact.id}` }
     manifestEntries.push(createWorkflowArtifactManifestEntry({ artifact, step, path, text: value }))
   }
   if (manifestEntries.length > 0) {
-    const manifest = updateWorkflowArtifactManifest({ workflow, run, entries: manifestEntries })
-    const manifestWrite = await resultSinks.write({ type: "file", path: ARTIFACT_MANIFEST_PATH }, {
-      workflowId: workflow.id,
-      logicalWorkflowId: workflow.logicalWorkflowId,
-      workflowRoot: workflow.workflowRoot,
-      workflowFile: workflow.workflowFile,
-      workflowFolderName: workflow.workflowFolderName,
-      runId: run.runId,
-      stepId: step.id,
-      inputs: run.inputs,
-      state: { ...state, ...run.state },
-      text: `${JSON.stringify(manifest, null, 2)}\n`
+    const manifest = buildWorkflowArtifactManifest({ workflow, run, entries: manifestEntries })
+    const previousManifestState = run.state[ARTIFACT_MANIFEST_STATE_KEY]
+    fileWrites.push({
+      sink: { type: "file", path: ARTIFACT_MANIFEST_PATH },
+      input: {
+        workflowId: workflow.id,
+        logicalWorkflowId: workflow.logicalWorkflowId,
+        workflowRoot: workflow.workflowRoot,
+        workflowFile: workflow.workflowFile,
+        workflowFolderName: workflow.workflowFolderName,
+        runId: run.runId,
+        stepId: step.id,
+        inputs: run.inputs,
+        state: { ...state, ...run.state },
+        text: `${JSON.stringify(manifest, null, 2)}\n`
+      }
+    })
+    const manifestWrite = await resultSinks.writeFileTransaction(fileWrites, async () => {
+      commitWorkflowArtifactManifest(run, manifest)
+      try {
+        await Promise.resolve(input.commitState?.())
+      } catch (error) {
+        if (previousManifestState === undefined) {
+          delete run.state[ARTIFACT_MANIFEST_STATE_KEY]
+        } else {
+          run.state[ARTIFACT_MANIFEST_STATE_KEY] = previousManifestState
+        }
+        throw error
+      }
     })
     if (!manifestWrite.ok) return { ok: false, error: manifestWrite.error ?? "Failed to write artifact manifest." }
+  } else {
+    try {
+      await Promise.resolve(input.commitState?.())
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) }
+    }
   }
   return { ok: true }
 }

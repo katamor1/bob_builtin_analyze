@@ -96,7 +96,7 @@ test("authoring wrapper delegates accept-and-run-next to the core next-step comm
   const stepReview = readSrc("commands", "stepReview.ts")
 
   assert.doesNotMatch(wrapper, /registerCommand\("workflowRegister\.runNextStep"/)
-  assert.match(stepReview, /vscode\.commands\.executeCommand\("workflowRegister\.runNextStep", accepted\.runId\)/)
+  assert.match(stepReview, /vscode\.commands\.executeCommand\("workflowRegister\.runNextStep", operationHubTargetForAcceptedStep\(accepted\)\)/)
   assert.doesNotMatch(stepReview, /vscode\.commands\.executeCommand\("workflowRegister\.resumeRun", accepted\.runId\)/)
 })
 
@@ -106,8 +106,8 @@ test("accept-only review command tells operators the next step is not started", 
   assert.match(stepReview, /const RUN_NEXT_STEP_LABEL = "次のステップを実行"/)
   assert.match(stepReview, /const OPEN_OPERATION_HUB_LABEL = "Operation Hub を開く"/)
   assert.match(stepReview, /次のステップはまだ開始されていません。/)
-  assert.match(stepReview, /vscode\.commands\.executeCommand\("workflowRegister\.runNextStep", accepted\.runId\)/)
-  assert.match(stepReview, /vscode\.commands\.executeCommand\("workflowRegister\.openOperationHub", \{ runId: accepted\.runId, stepId: accepted\.currentStep/)
+  assert.match(stepReview, /vscode\.commands\.executeCommand\("workflowRegister\.runNextStep", \{[\s\S]*workspaceRoot,[\s\S]*runId: accepted\.runId,[\s\S]*expectedRevision: revision/)
+  assert.match(stepReview, /vscode\.commands\.executeCommand\("workflowRegister\.openOperationHub", \{[\s\S]*workspaceRoot,[\s\S]*runId: accepted\.runId,[\s\S]*stepId: accepted\.currentStep/)
 })
 
 test("package exposes task snapshot retention settings", () => {

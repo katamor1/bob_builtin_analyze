@@ -7,7 +7,7 @@ import { RunStepState, WorkflowRunState } from "../core/model"
 import { pendingReviewTransitionStepId } from "../core/engine/runState"
 import { fallbackWorkspaceRootCandidates, findWorkflowRootCandidates, MarkerRootCandidate } from "../core/workspaceRoots"
 import { reviewTaskRegistry } from "../reviewTaskRegistry"
-import type { BobWorkflowGateAcceptResult } from "../bobWorkflowGateRegistry"
+import type { BobWorkflowGateAcceptance, BobWorkflowGateAcceptResult } from "../bobWorkflowGateRegistry"
 import {
   assertOperationHubRunRevision,
   isOperationHubRunMutationTarget,
@@ -19,6 +19,7 @@ import {
 interface StepReviewCommandOptions {
   showMarkdownReport: (title: string, summary: string, lines: string[]) => Promise<void>
   acceptBobWorkflowGate: (workspaceRoot: string, runId: string, stepId: string) => BobWorkflowGateAcceptResult
+  acceptBobWorkflowGateWithMetadata?: (workspaceRoot: string, runId: string, stepId: string) => BobWorkflowGateAcceptance
   coordinateReviewAcceptance: <T>(workspaceRoot: string, runId: string, operation: () => Promise<T>) => Promise<T>
 }
 
@@ -41,6 +42,7 @@ interface AcceptedStepResult {
   run: WorkflowRunState
   message: string
   completedViaBobTask: boolean
+  continuationOwnedByBob: boolean
   workspaceRoot: string
   revision: string
 }
@@ -53,7 +55,16 @@ const OPEN_OPERATION_HUB_LABEL = "Operation Hub を開く"
 export async function acceptCurrentStep(options: StepReviewCommandOptions, runArg?: ReviewRunArg, acceptOptions: AcceptOptions = {}): Promise<WorkflowRunState | string> {
   const accepted = await acceptReviewedStep(options, runArg)
   if (typeof accepted === "string") return accepted
-  if (!acceptOptions.silent) await showAcceptedStepMessage(accepted.run, accepted.message, accepted.completedViaBobTask)
+  if (!acceptOptions.silent) {
+    await showAcceptedStepMessage(
+      accepted.run,
+      accepted.message,
+      accepted.completedViaBobTask,
+      accepted.continuationOwnedByBob,
+      accepted.workspaceRoot,
+      accepted.revision
+    )
+  }
   return accepted.run
 }
 
@@ -68,15 +79,8 @@ export async function acceptAndRunNextStep(options: StepReviewCommandOptions, ru
     await vscode.window.showInformationMessage(message)
     return accepted.run
   }
-  if (!isOperationHubRunMutationTarget(runArg)) {
-    return vscode.commands.executeCommand("workflowRegister.runNextStep", accepted.run.runId)
-  }
-  return vscode.commands.executeCommand("workflowRegister.runNextStep", {
-    source: "operationHub",
-    workspaceRoot: accepted.workspaceRoot,
-    runId: accepted.run.runId,
-    expectedRevision: accepted.revision
-  } satisfies OperationHubRunMutationTarget)
+  if (accepted.continuationOwnedByBob) return accepted.run
+  return vscode.commands.executeCommand("workflowRegister.runNextStep", operationHubTargetForAcceptedStep(accepted))
 }
 
 async function acceptReviewedStep(options: StepReviewCommandOptions, runArg?: ReviewRunArg): Promise<AcceptedStepResult | string> {
@@ -112,15 +116,19 @@ async function acceptReviewedStepOnce(
   const acceptedStepId = run.currentStep
   const accepted = acceptReviewingStep(run)
   await runStore.saveRun(accepted)
-  const gateDecision = acceptedStepId
-    ? options.acceptBobWorkflowGate(workspaceRoot, accepted.runId, acceptedStepId)
-    : "missing"
+  const gateAcceptance: BobWorkflowGateAcceptance = acceptedStepId
+    ? options.acceptBobWorkflowGateWithMetadata?.(workspaceRoot, accepted.runId, acceptedStepId)
+      ?? { result: options.acceptBobWorkflowGate(workspaceRoot, accepted.runId, acceptedStepId) }
+    : { result: "missing" }
+  const gateDecision = gateAcceptance.result
   const acceptedViaLiveGate = gateDecision === "accepted" || gateDecision === "alreadyAccepted"
+  const continuationOwnedByBob = acceptedViaLiveGate && gateAcceptance.gate?.executionMode === "full"
   let completedViaBobTask = acceptedViaLiveGate
   if (gateDecision === "missing" || gateDecision === "aborted") {
-    const sync = await bobTaskSyncRegistry.reconcileRun(accepted, undefined, {
+    const sync = await bobTaskSyncRegistry.reconcileRun(workspaceRoot, accepted, undefined, {
       reason: "review-accepted",
-      task: reviewTaskRegistry.taskForStep(accepted.runId, acceptedStepId) ?? reviewTaskRegistry.taskForRun(accepted.runId)
+      task: reviewTaskRegistry.taskForStep(workspaceRoot, accepted.runId, acceptedStepId)
+        ?? reviewTaskRegistry.taskForRun(workspaceRoot, accepted.runId)
     })
     await runStore.saveRun(accepted)
     completedViaBobTask = sync.status === "synced" && sync.appliedStepCount > 0
@@ -131,12 +139,23 @@ async function acceptReviewedStepOnce(
     ? `Accepted final step and completed workflow run: ${accepted.runId}`
     : `Accepted step; next step is ${accepted.currentStep}: ${accepted.runId}`
   const snapshot = await readOperationHubRunSnapshot(workspaceRoot, accepted.runId)
-  return { run: accepted, message, completedViaBobTask, workspaceRoot, revision: snapshot.revision }
+  return { run: accepted, message, completedViaBobTask, continuationOwnedByBob, workspaceRoot, revision: snapshot.revision }
 }
 
-async function showAcceptedStepMessage(accepted: WorkflowRunState, message: string, completedViaBobTask: boolean): Promise<void> {
+async function showAcceptedStepMessage(
+  accepted: WorkflowRunState,
+  message: string,
+  completedViaBobTask: boolean,
+  continuationOwnedByBob: boolean,
+  workspaceRoot: string,
+  revision: string
+): Promise<void> {
   if (accepted.status !== "running" || !accepted.currentStep) {
     await vscode.window.showInformationMessage(message)
+    return
+  }
+  if (continuationOwnedByBob) {
+    await vscode.window.showInformationMessage(`${message}. Bob ワークフローが同じ run を続行します。`)
     return
   }
   if (completedViaBobTask) {
@@ -149,9 +168,28 @@ async function showAcceptedStepMessage(accepted: WorkflowRunState, message: stri
     OPEN_OPERATION_HUB_LABEL
   )
   if (selected === RUN_NEXT_STEP_LABEL) {
-    await vscode.commands.executeCommand("workflowRegister.runNextStep", accepted.runId)
+    await vscode.commands.executeCommand("workflowRegister.runNextStep", {
+      source: "operationHub",
+      workspaceRoot,
+      runId: accepted.runId,
+      expectedRevision: revision
+    } satisfies OperationHubRunMutationTarget)
   } else if (selected === OPEN_OPERATION_HUB_LABEL) {
-    await vscode.commands.executeCommand("workflowRegister.openOperationHub", { runId: accepted.runId, stepId: accepted.currentStep, reason: "stepGate" })
+    await vscode.commands.executeCommand("workflowRegister.openOperationHub", {
+      workspaceRoot,
+      runId: accepted.runId,
+      stepId: accepted.currentStep,
+      reason: "stepGate"
+    })
+  }
+}
+
+function operationHubTargetForAcceptedStep(accepted: AcceptedStepResult): OperationHubRunMutationTarget {
+  return {
+    source: "operationHub",
+    workspaceRoot: accepted.workspaceRoot,
+    runId: accepted.run.runId,
+    expectedRevision: accepted.revision
   }
 }
 

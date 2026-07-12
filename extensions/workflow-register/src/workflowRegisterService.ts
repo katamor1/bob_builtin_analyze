@@ -1,5 +1,9 @@
 import * as vscode from "vscode"
-import { BobWorkflowGateRegistry, type BobWorkflowGateAcceptResult } from "./bobWorkflowGateRegistry"
+import {
+  BobWorkflowGateRegistry,
+  type BobWorkflowGateAcceptance,
+  type BobWorkflowGateAcceptResult
+} from "./bobWorkflowGateRegistry"
 import { StepRuntime, type StepCompletionExpectation } from "./bobStepRuntime"
 import type { BobSourceLike } from "./bobApi"
 import { createDefaultActionRegistry } from "./core/actionRegistry"
@@ -147,6 +151,10 @@ export class WorkflowRegisterService implements vscode.Disposable {
 
   acceptBobWorkflowGate(workspaceRoot: string, runId: string, stepId: string): BobWorkflowGateAcceptResult {
     return this.bobWorkflowGates.accept(workspaceRoot, runId, stepId)
+  }
+
+  acceptBobWorkflowGateWithMetadata(workspaceRoot: string, runId: string, stepId: string): BobWorkflowGateAcceptance {
+    return this.bobWorkflowGates.acceptWithMetadata(workspaceRoot, runId, stepId)
   }
 
   coordinateReviewAcceptance<T>(workspaceRoot: string, runId: string, operation: () => Promise<T>): Promise<T> {

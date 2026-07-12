@@ -78,12 +78,14 @@ function createTestReviewAcceptanceCoordinator(onCoordinate = () => undefined) {
   }
 }
 
-test("Operation Hub accept-and-run-next always starts the next step after accepting review", () => {
+test("Operation Hub accept-and-run-next leaves continuation to a live full Bob wrapper only", () => {
   const source = readSrc("commands", "stepReview.ts")
 
   assert.match(source, /export async function acceptAndRunNextStep/)
-  assert.match(source, /return vscode\.commands\.executeCommand\("workflowRegister\.runNextStep", accepted\.run\.runId\)/)
-  assert.doesNotMatch(source, /if \(accepted\.completedViaBobTask\) \{\s*return accepted\.run\s*\}/)
+  assert.match(source, /if \(accepted\.continuationOwnedByBob\) return accepted\.run/)
+  assert.match(source, /return vscode\.commands\.executeCommand\("workflowRegister\.runNextStep", operationHubTargetForAcceptedStep\(accepted\)\)/)
+  assert.match(source, /workspaceRoot: accepted\.workspaceRoot[\s\S]*expectedRevision: accepted\.revision/)
+  assert.doesNotMatch(source, /if \(accepted\.completedViaBobTask\) \{?\s*return accepted\.run/)
 })
 
 test("review acceptance skips Todo completion for a live gate and awaits only the stale-gate fallback", () => {
@@ -110,7 +112,7 @@ test("concurrent review acceptance never falls back after the live gate was alre
   await runStore.saveRun(run)
 
   let setStepCompleteCalls = 0
-  reviewTaskRegistry.registerTask(run.runId, "review", {
+  reviewTaskRegistry.registerTask(workspaceRoot, run.runId, "review", {
     setStepComplete: () => { setStepCompleteCalls += 1 }
   })
   const gateRegistry = new BobWorkflowGateRegistry()
@@ -173,7 +175,7 @@ test("concurrent review acceptance after an aborted live gate shares exactly one
 
   let setStepCompleteCalls = 0
   let setStepCompleteFinished = false
-  reviewTaskRegistry.registerTask(run.runId, "review", {
+  reviewTaskRegistry.registerTask(workspaceRoot, run.runId, "review", {
     setStepComplete: async () => {
       setStepCompleteCalls += 1
       await new Promise((resolve) => setImmediate(resolve))
@@ -229,7 +231,7 @@ test("concurrent review acceptance without a live gate shares exactly one legacy
 
   let setStepCompleteCalls = 0
   let setStepCompleteFinished = false
-  reviewTaskRegistry.registerTask(run.runId, "review", {
+  reviewTaskRegistry.registerTask(workspaceRoot, run.runId, "review", {
     setStepComplete: async () => {
       setStepCompleteCalls += 1
       await new Promise((resolve) => setImmediate(resolve))
@@ -257,6 +259,50 @@ test("concurrent review acceptance without a live gate shares exactly one legacy
   assert.equal(setStepCompleteFinished, true)
   assert.deepEqual(decisions, ["missing"])
   assert.equal(results[0], results[1])
+})
+
+test("review acceptance without a live gate reconciles only the matching workspace task", async (t) => {
+  const rootA = fs.mkdtempSync(path.join(os.tmpdir(), "workflow-register-root-local-a-"))
+  const rootB = fs.mkdtempSync(path.join(os.tmpdir(), "workflow-register-root-local-b-"))
+  t.after(() => fs.rmSync(rootA, { recursive: true, force: true }))
+  t.after(() => fs.rmSync(rootB, { recursive: true, force: true }))
+  fs.mkdirSync(path.join(rootA, ".bob"), { recursive: true })
+  fs.mkdirSync(path.join(rootB, ".bob"), { recursive: true })
+  const { FileRunStateStore } = require("../out/core/runStateStore")
+  const { reviewTaskRegistry } = require("../out/reviewTaskRegistry")
+  const workflow = reviewingWorkflow()
+  workflow.id = "workflow-register.root-local-review"
+  workflow.name = "root-local-review"
+  const runStoreA = new FileRunStateStore({ workspaceRoot: rootA })
+  const runStoreB = new FileRunStateStore({ workspaceRoot: rootB })
+  const run = await runStoreA.createRun(workflow, {})
+  run.status = "reviewing"
+  run.currentStep = "review"
+  run.steps[0].status = "reviewing"
+  await runStoreA.saveRun(run)
+  await runStoreB.saveRun(JSON.parse(JSON.stringify(run)))
+
+  let completionsA = 0
+  let completionsB = 0
+  assert.equal(reviewTaskRegistry.registerTask(rootA, run.runId, "review", {
+    setStepComplete: () => { completionsA += 1 }
+  }), true)
+  assert.equal(reviewTaskRegistry.registerTask(rootB, run.runId, "review", {
+    setStepComplete: () => { completionsB += 1 }
+  }), true)
+
+  const { acceptCurrentStep } = loadStepReview(rootA)
+  const accepted = await acceptCurrentStep({
+    showMarkdownReport: async () => undefined,
+    coordinateReviewAcceptance: createTestReviewAcceptanceCoordinator(),
+    acceptBobWorkflowGate: () => "missing"
+  }, run.runId, { silent: true })
+
+  assert.notEqual(typeof accepted, "string")
+  assert.equal(accepted.status, "completed")
+  assert.equal(completionsA, 1)
+  assert.equal(completionsB, 0)
+  assert.equal((await runStoreB.loadRun(run.runId)).status, "reviewing")
 })
 
 test("failed single-flight review acceptance is removed so a later retry can proceed", async (t) => {
@@ -324,7 +370,7 @@ test("a caller arriving after durable acceptance joins the in-flight reconciliat
   await runStore.saveRun(run)
 
   let setStepCompleteCalls = 0
-  reviewTaskRegistry.registerTask(run.runId, "review", {
+  reviewTaskRegistry.registerTask(workspaceRoot, run.runId, "review", {
     setStepComplete: async () => { setStepCompleteCalls += 1 }
   })
 
@@ -334,7 +380,7 @@ test("a caller arriving after durable acceptance joins the in-flight reconciliat
   let markReconciliationStarted
   const reconciliationStarted = new Promise((resolve) => { markReconciliationStarted = resolve })
   bobTaskSyncRegistry.reconcileRun = async function pausedReconciliation(...args) {
-    if (args[0]?.runId === run.runId) {
+    if (args[1]?.runId === run.runId) {
       markReconciliationStarted()
       await reconciliationReleased
     }

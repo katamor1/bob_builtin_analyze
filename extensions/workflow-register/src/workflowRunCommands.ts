@@ -17,6 +17,10 @@ import {
 import type { CoreWorkflowDefinition, WorkflowRunState } from "./core/model"
 import { formatBranchingDiagnostics } from "./core/runDiagnostics"
 import { pendingReviewTransitionStepId } from "./core/engine/runState"
+import {
+  coordinateWorkflowRunExecution,
+  workflowRunExecutionActiveForWorkspace
+} from "./core/engine/runExecutionCoordinator"
 import { FileRunControlStore } from "./core/runControlStore"
 import { FileTaskSnapshotStore } from "./core/taskSnapshots"
 import { readContainedRunArtifactManifest } from "./core/runtime/runStatePath"
@@ -32,6 +36,7 @@ import {
 } from "./operationHubMutationTarget"
 import { showMarkdownReport } from "./reports"
 import type { ManualStepPanelInput } from "./webview/manualStepViewModel"
+import { writeWorkspaceFilesAtomically } from "./core/runtime/workspaceFileTransaction"
 import { requireTrustedWorkspace } from "./workspaceTrust"
 import { collectCoreWorkflowInputs } from "./workflowInputPrompt"
 import {
@@ -201,7 +206,7 @@ export class WorkflowRunCommandService {
       run: seeded,
       manifest: source.manifest,
       stateKeys,
-      readFile: (relativePath) => fs.readFile(path.join(root, relativePath), "utf8")
+      readFile: (relativePath) => readPhysicallyContainedWorkspaceFile(root, relativePath)
     })
     if (!hydration.ok) {
       const message = `Workflow artifact hydration failed: ${hydration.issues.map((issue) => issue.message).join("; ")}`
@@ -235,18 +240,32 @@ export class WorkflowRunCommandService {
     const selection = await this.selectRun(runId)
     if (!selection) return runId ? `Workflow run not found: ${runId}` : "No workflow run selected."
     const runStore = this.options.runtimeFactory.createRunStore(selection.root)
-    const run = selection.run ?? await runStore.loadRun(selection.runId)
-    if (!run) throw new Error(`Workflow run not found: ${selection.runId}`)
-    const workflow = this.options.coreWorkflows.get(run.workflowId)
-    if (!workflow) throw new Error(`Workflow definition is not loaded: ${run.workflowId}`)
-
-    const result = await importTaskSnapshotArtifacts({
-      workflow,
-      run,
-      snapshotStore: new FileTaskSnapshotStore({ workspaceRoot: selection.root }),
-      writeFile: (relativePath, text) => writeWorkspaceFile(selection.root, relativePath, text)
-    })
-    if (result.importedCount > 0) await runStore.saveRun(run)
+    if (workflowRunExecutionActiveForWorkspace(selection.root, selection.runId)) {
+      throw new Error(`Cannot import task snapshot artifacts while workflow run is executing: ${selection.runId}`)
+    }
+    const imported = await this.options.coordinateGateDecision(
+      selection.root,
+      selection.runId,
+      "artifact-import",
+      () => coordinateWorkflowRunExecution(runStore, selection.runId, "importTaskSnapshotArtifacts", async () => {
+        const run = await runStore.loadRun(selection.runId)
+        if (!run) throw new Error(`Workflow run not found: ${selection.runId}`)
+        const workflow = this.options.coreWorkflows.get(run.workflowId)
+        if (!workflow) throw new Error(`Workflow definition is not loaded: ${run.workflowId}`)
+        const result = await importTaskSnapshotArtifacts({
+          workflow,
+          run,
+          snapshotStore: new FileTaskSnapshotStore({ workspaceRoot: selection.root }),
+          persistStateRollback: () => runStore.saveRun(run),
+          writeFiles: (writes, commitState) => writeWorkspaceFilesAtomically(selection.root, writes, async () => {
+            await Promise.resolve(commitState())
+            await runStore.saveRun(run)
+          })
+        })
+        return { result, run, workflow }
+      })
+    )
+    const { result, run, workflow } = imported
     const lines = [
       `- runId: ${run.runId}`,
       `- workflow: ${workflow.id}`,
@@ -277,12 +296,26 @@ export class WorkflowRunCommandService {
       if (runId) await vscode.window.showWarningMessage(message)
       return message
     }
-    if (isOperationHubRunMutationTarget(runArg)) {
-      await assertOperationHubRunRevision(selection.root, selection.runId, runArg.expectedRevision)
+    if (workflowRunExecutionActiveForWorkspace(selection.root, selection.runId)) {
+      throw new Error(`Cannot run the next step while workflow run is executing: ${selection.runId}`)
     }
-    const runStore = this.options.runtimeFactory.createRunStore(selection.root)
-    const run = selection.run ?? await runStore.loadRun(selection.runId)
-    if (!run) throw new Error(`Workflow run not found: ${selection.runId}`)
+    return this.options.coordinateGateDecision(
+      selection.root,
+      selection.runId,
+      "run-next",
+      () => this.runNextStepOnce(
+        selection.root,
+        selection.runId,
+        isOperationHubRunMutationTarget(runArg) ? runArg.expectedRevision : undefined
+      )
+    )
+  }
+
+  private async runNextStepOnce(root: string, runId: string, expectedRevision?: string): Promise<unknown> {
+    if (expectedRevision) await assertOperationHubRunRevision(root, runId, expectedRevision)
+    const runStore = this.options.runtimeFactory.createRunStore(root)
+    const run = await runStore.loadRun(runId)
+    if (!run) throw new Error(`Workflow run not found: ${runId}`)
     if (run.status === "reviewing") {
       return this.warnStepGate("Current step is waiting for review. Accept or retry it before running the next step.")
     }
@@ -297,16 +330,16 @@ export class WorkflowRunCommandService {
     }
     const workflow = this.options.coreWorkflows.get(run.workflowId)
     if (!workflow) throw new Error(`Workflow definition is not loaded: ${run.workflowId}`)
-    const agentProvider = reviewTaskRegistry.agentProviderForRun(run.runId, workflow)
+    const agentProvider = reviewTaskRegistry.agentProviderForRun(root, run.runId, workflow)
     const pendingTransitionStepId = pendingReviewTransitionStepId(run)
     if (pendingTransitionStepId) {
-      const engine = this.options.runtimeFactory.createEngine(selection.root, agentProvider)
+      const engine = this.options.runtimeFactory.createEngine(root, agentProvider)
       const result = await engine.runWorkflow(workflow, run.inputs, {
         executionMode: "singleStep",
         stepId: pendingTransitionStepId,
         allowOutOfOrder: workflow.stepExecution.allowOutOfOrder
       })
-      await this.reconcileBobTask(selection.root, result, workflow, "operation-hub-next")
+      await this.reconcileBobTask(root, result, workflow, "operation-hub-next")
       await vscode.window.showInformationMessage(`Workflow run ${result.status}: ${result.runId}`)
       return result
     }
@@ -316,7 +349,7 @@ export class WorkflowRunCommandService {
         run.status = "completed"
         run.currentStep = undefined
         run.error = undefined
-        await this.reconcileBobTask(selection.root, run, workflow, "operation-hub-next")
+        await this.reconcileBobTask(root, run, workflow, "operation-hub-next")
       } else {
         await runStore.saveRun(run)
       }
@@ -326,13 +359,13 @@ export class WorkflowRunCommandService {
       await vscode.window.showInformationMessage(message)
       return run
     }
-    const engine = this.options.runtimeFactory.createEngine(selection.root, agentProvider)
+    const engine = this.options.runtimeFactory.createEngine(root, agentProvider)
     const result = await engine.runWorkflow(workflow, run.inputs, {
       executionMode: "singleStep",
       stepId: next.id,
       allowOutOfOrder: workflow.stepExecution.allowOutOfOrder
     })
-    await this.reconcileBobTask(selection.root, result, workflow, "operation-hub-next")
+    await this.reconcileBobTask(root, result, workflow, "operation-hub-next")
     await vscode.window.showInformationMessage(`Workflow run ${result.status}: ${result.runId}`)
     return result
   }
@@ -524,7 +557,7 @@ export class WorkflowRunCommandService {
       return run
     }
 
-    const agentProvider = reviewTaskRegistry.agentProviderForRun(run.runId, workflow)
+    const agentProvider = reviewTaskRegistry.agentProviderForRun(root, run.runId, workflow)
     const engine = this.options.runtimeFactory.createEngine(root, agentProvider)
     const result = mode === "resume"
       ? await engine.resumeRun(runId, {
@@ -591,9 +624,9 @@ export class WorkflowRunCommandService {
   }
 
   private async reconcileBobTask(root: string, run: WorkflowRunState, workflow: CoreWorkflowDefinition, reason: BobTaskSyncReason): Promise<void> {
-    const sync = await bobTaskSyncRegistry.reconcileRun(run, workflow, {
+    const sync = await bobTaskSyncRegistry.reconcileRun(root, run, workflow, {
       reason,
-      task: reviewTaskRegistry.taskForRun(run.runId)
+      task: reviewTaskRegistry.taskForRun(root, run.runId)
     })
     if (sync.status !== "synced") console.warn(sync.message)
     await this.options.runtimeFactory.createRunStore(root).saveRun(run)
@@ -705,16 +738,30 @@ async function loadArtifactManifest(root: string, run: WorkflowRunState): Promis
   }
 }
 
-async function writeWorkspaceFile(root: string, relativePath: string, text: string): Promise<void> {
-  const resolved = path.resolve(root, relativePath)
-  if (!isContainedPath(root, resolved)) throw new Error(`Artifact path escapes workspace root: ${relativePath}`)
-  await fs.mkdir(path.dirname(resolved), { recursive: true })
-  await fs.writeFile(resolved, text, "utf8")
+async function readPhysicallyContainedWorkspaceFile(root: string, relativePath: string): Promise<string> {
+  const lexicalRoot = path.resolve(root)
+  const lexicalTarget = path.resolve(lexicalRoot, relativePath)
+  assertContainedWorkspacePath(lexicalRoot, lexicalTarget, relativePath)
+  const [physicalRoot, physicalTarget] = await Promise.all([
+    fs.realpath(lexicalRoot),
+    fs.realpath(lexicalTarget)
+  ])
+  assertContainedWorkspacePath(physicalRoot, physicalTarget, relativePath)
+  const handle = await fs.open(physicalTarget, "r")
+  try {
+    const stat = await handle.stat()
+    if (!stat.isFile()) throw new Error(`Artifact path is not a regular file: ${relativePath}`)
+    return await handle.readFile({ encoding: "utf8" })
+  } finally {
+    await handle.close()
+  }
 }
 
-function isContainedPath(root: string, target: string): boolean {
+function assertContainedWorkspacePath(root: string, target: string, label: string): void {
   const relative = path.relative(path.resolve(root), path.resolve(target))
-  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative))
+  if (relative.startsWith("..") || path.isAbsolute(relative)) {
+    throw new Error(`Artifact path escapes the physical workspace root: ${label}`)
+  }
 }
 
 function formatSnapshotImportIssues(issues: TaskSnapshotArtifactImportIssue[]): string[] {

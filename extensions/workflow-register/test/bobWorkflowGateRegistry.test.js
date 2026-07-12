@@ -1,4 +1,7 @@
 const assert = require("node:assert/strict")
+const fs = require("node:fs")
+const os = require("node:os")
+const path = require("node:path")
 const { test } = require("node:test")
 
 const { BobWorkflowGateRegistry } = require("../out/bobWorkflowGateRegistry")
@@ -24,6 +27,113 @@ test("waitForDecision keeps one pending Promise until the gate is accepted", asy
   assert.equal(registry.isPending(root, "run-1", "review"), false)
   assert.equal(registry.accept(root, "run-1", "review"), "alreadyAccepted")
   assert.equal(registry.accept(root, "missing", "review"), "missing")
+})
+
+test("acceptWithMetadata atomically returns the live full-wrapper gate decision", async () => {
+  const registry = new BobWorkflowGateRegistry()
+  const root = "C:\\workspace"
+  const pending = registry.waitForDecision({
+    workspaceRoot: root,
+    runId: "run-metadata",
+    stepId: "review",
+    ownerStepId: "runWorkflow",
+    status: "reviewing",
+    executionMode: "full"
+  })
+
+  assert.deepEqual(registry.acceptWithMetadata(root, "run-metadata", "review"), {
+    result: "accepted",
+    gate: {
+      workspaceRoot: root,
+      runId: "run-metadata",
+      stepId: "review",
+      ownerStepId: "runWorkflow",
+      status: "reviewing",
+      executionMode: "full"
+    }
+  })
+  assert.equal(await pending, true)
+  assert.deepEqual(registry.acceptWithMetadata(root, "run-metadata", "review"), {
+    result: "alreadyAccepted"
+  })
+})
+
+test("a workspace alias accepts the gate registered for its physical root", async (t) => {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), "workflow-register-gate-root-alias-"))
+  t.after(() => fs.rmSync(base, { recursive: true, force: true }))
+  const physicalRoot = path.join(base, "physical")
+  const aliasRoot = path.join(base, "alias")
+  fs.mkdirSync(physicalRoot)
+  try {
+    fs.symlinkSync(physicalRoot, aliasRoot, process.platform === "win32" ? "junction" : "dir")
+  } catch (error) {
+    if (["EPERM", "EACCES", "ENOTSUP", "UNKNOWN"].includes(error.code)) {
+      t.skip(`directory alias unavailable: ${error.code}`)
+      return
+    }
+    throw error
+  }
+  const registry = new BobWorkflowGateRegistry()
+  const pending = registry.waitForDecision({
+    workspaceRoot: physicalRoot,
+    runId: "run-alias",
+    stepId: "review",
+    status: "reviewing",
+    executionMode: "full"
+  })
+
+  try {
+    assert.equal(registry.acceptWithMetadata(aliasRoot, "run-alias", "review").result, "accepted")
+    assert.equal(await pending, true)
+    assert.equal(registry.pendingForRun(physicalRoot, "run-alias"), undefined)
+  } finally {
+    registry.abortPending(physicalRoot, "run-alias", "test cleanup")
+    await Promise.race([
+      pending.catch(() => false),
+      new Promise((resolve) => setTimeout(resolve, 250))
+    ])
+  }
+})
+
+test("acceptWithMetadata returns the exact accepted gate when the run has multiple pending gates", async () => {
+  const registry = new BobWorkflowGateRegistry()
+  const root = "C:\\workspace"
+  const full = registry.waitForDecision({
+    workspaceRoot: root,
+    runId: "run-multiple",
+    stepId: "full-review",
+    ownerStepId: "full-owner",
+    status: "reviewing",
+    executionMode: "full"
+  })
+  const singleStep = registry.waitForDecision({
+    workspaceRoot: root,
+    runId: "run-multiple",
+    stepId: "single-review",
+    ownerStepId: "single-owner",
+    status: "reviewing",
+    executionMode: "singleStep"
+  })
+  const singleStepRejected = assert.rejects(singleStep, /test cleanup/)
+
+  try {
+    assert.deepEqual(registry.acceptWithMetadata(root, "run-multiple", "full-review"), {
+      result: "accepted",
+      gate: {
+        workspaceRoot: root,
+        runId: "run-multiple",
+        stepId: "full-review",
+        ownerStepId: "full-owner",
+        status: "reviewing",
+        executionMode: "full"
+      }
+    })
+    assert.equal(await full, true)
+    assert.equal(registry.isPending(root, "run-multiple", "single-review"), true)
+  } finally {
+    registry.abort(root, "run-multiple", "single-review", "test cleanup")
+    await singleStepRejected
+  }
 })
 
 test("abort rejects a pending gate and ignores stale decisions", async () => {
@@ -131,6 +241,46 @@ test("review acceptance coordinators isolate identical workspace and run keys pe
   assert.equal(await recovered, "recovered")
 })
 
+test("review acceptance coordinator single-flights workspace aliases", async (t) => {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), "workflow-register-coordinator-root-alias-"))
+  t.after(() => fs.rmSync(base, { recursive: true, force: true }))
+  const physicalRoot = path.join(base, "physical")
+  const aliasRoot = path.join(base, "alias")
+  fs.mkdirSync(physicalRoot)
+  try {
+    fs.symlinkSync(physicalRoot, aliasRoot, process.platform === "win32" ? "junction" : "dir")
+  } catch (error) {
+    if (["EPERM", "EACCES", "ENOTSUP", "UNKNOWN"].includes(error.code)) {
+      t.skip(`directory alias unavailable: ${error.code}`)
+      return
+    }
+    throw error
+  }
+  const { ReviewAcceptanceCoordinator } = require("../out/reviewAcceptanceCoordinator")
+  const coordinator = new ReviewAcceptanceCoordinator()
+  let releaseOwner
+  const ownerReleased = new Promise((resolve) => { releaseOwner = resolve })
+  let aliasOperationCalls = 0
+  const owner = coordinator.coordinate(physicalRoot, "same-run", "review-accept", async () => {
+    await ownerReleased
+    return "accepted"
+  })
+  const alias = coordinator.coordinate(aliasRoot, "same-run", "review-accept", async () => {
+    aliasOperationCalls += 1
+    await ownerReleased
+    return "duplicate"
+  })
+  await Promise.resolve()
+
+  try {
+    assert.strictEqual(alias, owner)
+    assert.equal(aliasOperationCalls, 0)
+  } finally {
+    releaseOwner()
+    await Promise.all([owner, alias])
+  }
+})
+
 test("a different coordinator operation waits for a failed owner before running", async () => {
   const { ReviewAcceptanceCoordinator } = require("../out/reviewAcceptanceCoordinator")
   const coordinator = new ReviewAcceptanceCoordinator()
@@ -153,6 +303,64 @@ test("a different coordinator operation waits for a failed owner before running"
   await ownerRejected
   assert.equal(await queued, "retry-after-failure")
   assert.equal(retryCalls, 1)
+})
+
+test("review acceptance coordination rejects same-run reentrancy instead of self-waiting", async () => {
+  const { ReviewAcceptanceCoordinator } = require("../out/reviewAcceptanceCoordinator")
+  const coordinator = new ReviewAcceptanceCoordinator()
+  const root = path.resolve("workspace-review-acceptance-reentrant")
+  let nestedCalls = 0
+
+  const runNext = coordinator.coordinate(root, "same-run", "run-next", async () => (
+    coordinator.coordinate(root, "same-run", "checkpoint-approve", async () => {
+      nestedCalls += 1
+      return "nested-result"
+    })
+  ))
+  let timeout
+  const bounded = Promise.race([
+    runNext,
+    new Promise((_, reject) => {
+      timeout = setTimeout(() => reject(new Error("timed-out-self-wait")), 250)
+    })
+  ])
+
+  try {
+    await assert.rejects(bounded, /re-enter|reentrant|same run/i)
+  } finally {
+    clearTimeout(timeout)
+  }
+  assert.equal(nestedCalls, 0)
+})
+
+test("review acceptance coordination rejects indirect ancestor-run reentrancy", async () => {
+  const { ReviewAcceptanceCoordinator } = require("../out/reviewAcceptanceCoordinator")
+  const coordinator = new ReviewAcceptanceCoordinator()
+  const root = path.resolve("workspace-review-acceptance-indirect-reentrant")
+  let nestedCalls = 0
+
+  const runA = coordinator.coordinate(root, "run-a", "run-next", async () => (
+    coordinator.coordinate(root, "run-b", "run-next", async () => (
+      coordinator.coordinate(root, "run-a", "run-retry", async () => {
+        nestedCalls += 1
+        return "nested-result"
+      })
+    ))
+  ))
+  let timeout
+  const bounded = Promise.race([
+    runA,
+    new Promise((_, reject) => {
+      timeout = setTimeout(() => reject(new Error("timed-out-indirect-self-wait")), 250)
+    })
+  ])
+
+  try {
+    await assert.rejects(bounded, /re-enter|reentrant|same run/i)
+  } finally {
+    clearTimeout(timeout)
+  }
+  assert.equal(nestedCalls, 0)
 })
 
 test("a live gate keeps its Bob-visible owner while the durable gate step is rebound", async () => {

@@ -49,7 +49,7 @@ interface ValidatedMutationTarget {
   expectedRevision?: string
 }
 
-type OperationHubOpenInput = string | { runId?: string; stepId?: string; reason?: "stepGate" | "paused" }
+type OperationHubOpenInput = string | { workspaceRoot?: string; runId?: string; stepId?: string; reason?: "stepGate" | "paused" }
 
 const ACTION_COMMANDS: Partial<Record<OperationHubActionId, string>> = {
   openWorkflowBuilder: "workflowRegister.openWorkflowBuilder",
@@ -106,6 +106,7 @@ export class OperationHubProvider implements vscode.WebviewViewProvider, vscode.
   private view?: vscode.WebviewView
   private panel?: vscode.WebviewPanel
   private focusedRunId?: string
+  private focusedWorkspaceRoot?: string
   private watchedRunRootsKey = ""
   private pendingAutoRefresh?: ReturnType<typeof setTimeout>
   private readonly actionRefreshTimers = new Set<ReturnType<typeof setTimeout>>()
@@ -136,7 +137,10 @@ export class OperationHubProvider implements vscode.WebviewViewProvider, vscode.
 
   async refreshFromCommand(): Promise<void> {
     if (!this.view) {
-      await this.open(this.focusedRunId)
+      await this.open(this.focusedRunId ? {
+        workspaceRoot: this.focusedWorkspaceRoot,
+        runId: this.focusedRunId
+      } : undefined)
       return
     }
     await this.refreshAll()
@@ -303,6 +307,10 @@ export class OperationHubProvider implements vscode.WebviewViewProvider, vscode.
   private async loadModel(): Promise<OperationHubModel> {
     const folders = vscode.workspace.workspaceFolders ?? []
     const roots = await workflowRootCandidates(folders)
+    const focusedWorkspaceRoot = await matchingCandidateRoot(
+      this.focusedWorkspaceRoot,
+      roots.map((candidate) => candidate.root)
+    )
     const runs = await Promise.all(roots.map(async (candidate) => {
       const store = new FileRunStateStore({ workspaceRoot: candidate.root })
       const runStates = await store.listRuns()
@@ -322,7 +330,8 @@ export class OperationHubProvider implements vscode.WebviewViewProvider, vscode.
       setup: await setupState(roots),
       workflows: this.options.api.listWorkflows(),
       runs: runs.flat(),
-      focusedRunId: this.focusedRunId
+      focusedRunId: this.focusedRunId,
+      focusedWorkspaceRoot
     })
   }
 
@@ -391,8 +400,33 @@ export class OperationHubProvider implements vscode.WebviewViewProvider, vscode.
   private applyOpenInput(input: unknown): OperationHubOpenInput | undefined {
     const parsed = parseOperationHubOpenInput(input)
     this.focusedRunId = typeof parsed === "string" ? parsed : parsed?.runId
+    this.focusedWorkspaceRoot = typeof parsed === "string" ? undefined : parsed?.workspaceRoot
     return parsed
   }
+}
+
+async function matchingCandidateRoot(requestedRoot: string | undefined, candidateRoots: readonly string[]): Promise<string | undefined> {
+  if (!requestedRoot) return undefined
+  let requestedPhysical: string
+  try {
+    requestedPhysical = await fs.realpath(path.resolve(requestedRoot))
+  } catch {
+    return undefined
+  }
+  const requestedKey = canonicalPathKey(requestedPhysical)
+  for (const candidateRoot of candidateRoots) {
+    try {
+      if (canonicalPathKey(await fs.realpath(path.resolve(candidateRoot))) === requestedKey) return candidateRoot
+    } catch {
+      // A stale workspace candidate is ignored until the next refresh.
+    }
+  }
+  return undefined
+}
+
+function canonicalPathKey(value: string): string {
+  const resolved = path.resolve(value)
+  return process.platform === "win32" ? resolved.toLowerCase() : resolved
 }
 
 export function parseOperationHubMessage(message: unknown): OperationHubMessage | undefined {
@@ -445,9 +479,12 @@ function commandArgsForAction(message: OperationHubMessage): unknown[] {
 function parseOperationHubOpenInput(input: unknown): OperationHubOpenInput | undefined {
   if (typeof input === "string") return input.trim() ? input : undefined
   if (!input || typeof input !== "object") return undefined
-  const candidate = input as Partial<Record<"runId" | "stepId" | "reason", unknown>>
+  const candidate = input as Partial<Record<"workspaceRoot" | "runId" | "stepId" | "reason", unknown>>
   if (typeof candidate.runId !== "string" || candidate.runId.trim().length === 0) return undefined
   const parsed: OperationHubOpenInput = { runId: candidate.runId }
+  if (typeof candidate.workspaceRoot === "string" && candidate.workspaceRoot.trim().length > 0) {
+    parsed.workspaceRoot = candidate.workspaceRoot
+  }
   if (typeof candidate.stepId === "string") parsed.stepId = candidate.stepId
   if (candidate.reason === "stepGate" || candidate.reason === "paused") parsed.reason = candidate.reason
   return parsed
