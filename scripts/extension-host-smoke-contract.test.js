@@ -2,12 +2,13 @@
 "use strict"
 
 const assert = require("node:assert/strict")
+const childProcess = require("node:child_process")
 const fs = require("node:fs")
 const path = require("node:path")
-const zlib = require("node:zlib")
 const { test } = require("node:test")
 
 const repoRoot = path.resolve(__dirname, "..")
+const captureBranch = "codex/execute-shared-plan-6a53743e"
 
 function readRepoFile(...segments) {
   return fs.readFileSync(path.join(repoRoot, ...segments), "utf8")
@@ -82,6 +83,21 @@ function sharedMessages(payload) {
     .sort((left, right) => (left?.create_time ?? 0) - (right?.create_time ?? 0))
 }
 
+function persistCapture(relativePath, value) {
+  childProcess.execFileSync("git", ["fetch", "origin", captureBranch], { cwd: repoRoot, stdio: "inherit" })
+  childProcess.execFileSync("git", ["checkout", "-B", captureBranch, "FETCH_HEAD"], { cwd: repoRoot, stdio: "inherit" })
+
+  const outputPath = path.join(repoRoot, relativePath)
+  fs.mkdirSync(path.dirname(outputPath), { recursive: true })
+  fs.writeFileSync(outputPath, `${JSON.stringify(value, null, 2)}\n`, "utf8")
+
+  childProcess.execFileSync("git", ["config", "user.name", "github-actions[bot]"], { cwd: repoRoot })
+  childProcess.execFileSync("git", ["config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com"], { cwd: repoRoot })
+  childProcess.execFileSync("git", ["add", relativePath], { cwd: repoRoot })
+  childProcess.execFileSync("git", ["commit", "-m", `chore: capture ${path.basename(relativePath)}`], { cwd: repoRoot, stdio: "inherit" })
+  childProcess.execFileSync("git", ["push", "origin", `HEAD:${captureBranch}`], { cwd: repoRoot, stdio: "inherit" })
+}
+
 const pinnedRuntimeInstall = /npm install --no-save --package-lock=false --ignore-scripts --audit=false --fund=false @vscode\/test-cli@0\.0\.12 @vscode\/test-electron@2\.5\.2/g
 const transientCliInvocation = /npx\s+--yes\s+--package\s+["']?@vscode\/test-cli/
 const localCliInvocation = /node_modules[\\/]\.bin[\\/]vscode-test(?:\.cmd)?/
@@ -117,7 +133,12 @@ test("Extension Host smoke preflights packages, the local binary, and soft-depen
 
 test(
   "capture the referenced shared implementation plan for this execution branch",
-  { skip: process.env.GITHUB_HEAD_REF !== "codex/execute-shared-plan-6a53743e" },
+  {
+    skip:
+      process.env.GITHUB_HEAD_REF !== captureBranch ||
+      fs.existsSync(path.join(repoRoot, ".codex", "shared-plan.json")) ||
+      fs.existsSync(path.join(repoRoot, ".codex", "share-diagnostic.json"))
+  },
   async () => {
     const response = await fetch("https://chatgpt.com/backend-api/share/6a53743e-7444-83e8-b0f8-b21f9a9864d5", {
       headers: {
@@ -126,9 +147,19 @@ test(
         "User-Agent": "Mozilla/5.0"
       }
     })
-    assert.equal(response.ok, true, `shared plan request failed with HTTP ${response.status}`)
+    const responseText = await response.text()
 
-    const payload = await response.json()
+    if (!response.ok) {
+      persistCapture(".codex/share-diagnostic.json", {
+        status: response.status,
+        statusText: response.statusText,
+        headers: Object.fromEntries(response.headers.entries()),
+        bodyPreview: responseText.slice(0, 4000)
+      })
+      assert.fail(`shared plan request failed with HTTP ${response.status}`)
+    }
+
+    const payload = JSON.parse(responseText)
     const messages = sharedMessages(payload)
     const transcript = messages
       .map((message, index) => {
@@ -140,16 +171,10 @@ test(
       .join("\n\n")
 
     assert.ok(transcript.length > 0, "shared conversation did not contain readable messages")
-
-    const captured = JSON.stringify({
+    persistCapture(".codex/shared-plan.json", {
       title: payload?.title ?? payload?.conversation?.title ?? "",
       messageCount: messages.length,
       transcript
     })
-    const encoded = zlib.gzipSync(Buffer.from(captured, "utf8")).toString("base64")
-
-    console.log("SHARED_PLAN_GZIP_BASE64_BEGIN")
-    console.log(encoded.match(/.{1,120}/g).join("\n"))
-    console.log("SHARED_PLAN_GZIP_BASE64_END")
   }
 )
