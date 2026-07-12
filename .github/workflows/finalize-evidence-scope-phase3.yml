@@ -1,0 +1,90 @@
+name: Finalize evidence scope phase 3 artifacts
+
+on:
+  push:
+    branches:
+      - codex/execute-shared-plan-6a53743e
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: codex/execute-shared-plan-6a53743e
+          fetch-depth: 0
+
+      - name: Complete plan and generate SHA-256 manifest
+        env:
+          SOURCE_COMMIT: ${{ github.sha }}
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          plan = Path("docs/superpowers/plans/2026-07-12-bob-evidence-scope-phase3.md")
+          plan.write_text(
+              plan.read_text(encoding="utf-8").replace("- [ ]", "- [x]"),
+              encoding="utf-8",
+          )
+
+          paths = [
+              "docs/superpowers/plans/2026-07-12-bob-evidence-scope-phase3.md",
+              "docs/implementation/bob-evidence-scope-phase3-2026-07-12.md",
+              "docs/implementation/bob-evidence-scope-phase3-verification-2026-07-12.md",
+              "docs/workflows/code-consistency-review/schemas/evidence-scope-rule-pack.schema.json",
+              "docs/workflows/code-consistency-review/schemas/review-input.schema.json",
+              "extensions/bob-code-consistency-review/docs/evidence-scope-domain-contract-ja.md",
+              "extensions/bob-code-consistency-review/resources/schemas/evidence-scope-rule-pack.schema.json",
+              "extensions/bob-code-consistency-review/resources/schemas/review-input.schema.json",
+              "extensions/bob-code-consistency-review/src/core/pipeline.ts",
+              "extensions/bob-code-consistency-review/src/core/reviewPackageBuilder.ts",
+              "extensions/bob-code-consistency-review/src/core/schemaLoader.ts",
+              "extensions/bob-code-consistency-review/src/evidenceScope/contextBudgetArtifact.ts",
+              "extensions/bob-code-consistency-review/src/evidenceScope/index.ts",
+              "extensions/bob-code-consistency-review/src/evidenceScope/projectRulePackLoader.ts",
+              "extensions/bob-code-consistency-review/src/evidenceScope/reviewContextBudget.ts",
+              "extensions/bob-code-consistency-review/test/projectRulePack.test.js",
+          ]
+
+          files = []
+          for item in paths:
+              data = Path(item).read_bytes()
+              files.append({
+                  "path": item,
+                  "bytes": len(data),
+                  "sha256": hashlib.sha256(data).hexdigest(),
+              })
+
+          payload = {
+              "schema_version": 1,
+              "artifact": "bob-evidence-scope-phase3",
+              "hash_algorithm": "sha256",
+              "source_commit": os.environ["SOURCE_COMMIT"],
+              "files": files,
+          }
+          Path("docs/implementation/bob-evidence-scope-phase3-manifest.json").write_text(
+              json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Remove one-shot workflow and commit artifacts
+        run: |
+          set -euo pipefail
+          rm .github/workflows/finalize-evidence-scope-phase3.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A \
+            docs/superpowers/plans/2026-07-12-bob-evidence-scope-phase3.md \
+            docs/implementation/bob-evidence-scope-phase3-manifest.json \
+            .github/workflows/finalize-evidence-scope-phase3.yml
+          git commit -m 'docs: finalize bob evidence scope phase 3 artifacts'
+          git push origin HEAD:codex/execute-shared-plan-6a53743e
