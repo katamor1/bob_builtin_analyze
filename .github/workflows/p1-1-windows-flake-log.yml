@@ -1,0 +1,93 @@
+name: p1-1-windows-flake-log
+
+on:
+  push:
+    branches:
+      - diagnostic/p1-1-windows-flake-20260712
+    paths:
+      - ".github/workflows/p1-1-windows-flake-log.yml"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  extract-failed-job:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Download and extract failed Windows job log
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FAILED_JOB_ID: "86677231701"
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/raw
+          curl --fail --location \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/jobs/${FAILED_JOB_ID}/logs" \
+            --output evidence/failed-job-download
+
+          if unzip -t evidence/failed-job-download >/dev/null 2>&1; then
+            unzip -q evidence/failed-job-download -d evidence/raw
+          else
+            cp evidence/failed-job-download evidence/raw/job.log
+          fi
+
+          find evidence/raw -type f -print0 | sort -z | xargs -0 cat > evidence/full.log
+          sha256sum evidence/full.log > evidence/sha256.txt
+
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          lines = Path("evidence/full.log").read_text(encoding="utf-8", errors="replace").splitlines()
+          patterns = [
+              re.compile(r"\bnot ok\b", re.I),
+              re.compile(r"failureType", re.I),
+              re.compile(r"ERR_[A-Z_]"),
+              re.compile(r"AssertionError", re.I),
+              re.compile(r"\bactual:\s*", re.I),
+              re.compile(r"\bexpected:\s*", re.I),
+              re.compile(r"\bstack:\s*", re.I),
+              re.compile(r"# fail\s+[1-9]", re.I),
+              re.compile(r"npm error", re.I),
+          ]
+          hits = [index for index, line in enumerate(lines) if any(pattern.search(line) for pattern in patterns)]
+          ranges = []
+          for hit in hits:
+              start = max(0, hit - 20)
+              end = min(len(lines), hit + 90)
+              if ranges and start <= ranges[-1][1]:
+                  ranges[-1] = (ranges[-1][0], max(ranges[-1][1], end))
+              else:
+                  ranges.append((start, end))
+
+          output = [
+              f"source_job_id=86677231701",
+              f"line_count={len(lines)}",
+              f"hit_count={len(hits)}",
+              "",
+          ]
+          if ranges:
+              for number, (start, end) in enumerate(ranges, 1):
+                  output.append(f"===== RANGE {number}: lines {start + 1}-{end} =====")
+                  output.extend(f"{index + 1:06d}: {lines[index]}" for index in range(start, end))
+                  output.append("")
+          else:
+              output.append("No failure pattern matched; including final 1200 lines.")
+              start = max(0, len(lines) - 1200)
+              output.extend(f"{index + 1:06d}: {lines[index]}" for index in range(start, len(lines)))
+
+          Path("evidence/failure-extract.txt").write_text("\n".join(output) + "\n", encoding="utf-8")
+          PY
+
+      - name: Upload failure evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: p1-1-windows-failure-log
+          path: evidence/
+          retention-days: 1
