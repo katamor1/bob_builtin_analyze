@@ -11,7 +11,7 @@ const {
 } = require("../out/core/runtime/runStateMigrationBackup.js")
 
 function tempRoot() {
-  return fs.mkdtempSync(path.join(os.tmpdir(), "workflow-run-migration-path-"))
+  return fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "workflow-run-migration-path-")))
 }
 
 function runsDirectory(root) {

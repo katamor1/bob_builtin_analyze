@@ -75,7 +75,7 @@ const { reviewTaskRegistry } = require("../out/reviewTaskRegistry")
 const { readOperationHubRunSnapshot } = require("../out/operationHubMutationTarget")
 
 function tempRoot(t, prefix) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), prefix))
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), prefix)))
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   return root
 }

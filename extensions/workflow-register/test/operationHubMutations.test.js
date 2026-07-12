@@ -24,7 +24,7 @@ function loadProviderWithVscode(vscode) {
 }
 
 function tempRunRoot(t, updatedAt = "2026-07-12T01:00:00.000Z") {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "workflow-register-operation-hub-"))
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "workflow-register-operation-hub-")))
   const runId = "shared-run"
   const runFile = path.join(root, ".bob", "workflows", "runs", runId, "run.json")
   fs.mkdirSync(path.dirname(runFile), { recursive: true })

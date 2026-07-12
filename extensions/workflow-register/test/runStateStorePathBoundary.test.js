@@ -7,7 +7,7 @@ const { test } = require("node:test")
 const { CURRENT_WORKFLOW_RUN_STATE_SCHEMA_VERSION, FileRunStateStore } = require("../out/core/runStateStore")
 
 async function makeWorkspace() {
-  return fs.mkdtemp(path.join(os.tmpdir(), "workflow-run-store-boundary-"))
+  return fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), "workflow-run-store-boundary-")))
 }
 
 function runState(runId, marker = "initial") {

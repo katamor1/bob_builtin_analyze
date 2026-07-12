@@ -176,7 +176,7 @@ test("task snapshot import restores an existing artifact and manifest when batch
     updateWorkflowArtifactManifest
   } = require("../out/core/artifacts/artifactManifest")
   const { writeWorkspaceFilesAtomically } = require("../out/core/runtime/workspaceFileTransaction")
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "workflow-register-snapshot-transaction-"))
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "workflow-register-snapshot-transaction-")))
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   const targetWorkflow = { ...workflow(), workflowRoot: root }
   const targetRun = run()
@@ -247,7 +247,7 @@ test("task snapshot import restores an existing artifact and manifest when batch
 test("task snapshot import rolls files and in-memory state back when durable run save fails", async (t) => {
   const { importArtifactsFromTaskSnapshots } = require("../out/core/artifacts/taskSnapshotImport")
   const { writeWorkspaceFilesAtomically } = require("../out/core/runtime/workspaceFileTransaction")
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "workflow-register-snapshot-save-rollback-"))
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "workflow-register-snapshot-save-rollback-")))
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   const targetWorkflow = { ...workflow(), workflowRoot: root }
   const targetRun = run()
@@ -286,7 +286,7 @@ test("task snapshot import durably restores prior state when run save reports fa
   const { importArtifactsFromTaskSnapshots } = require("../out/core/artifacts/taskSnapshotImport")
   const { writeWorkspaceFilesAtomically } = require("../out/core/runtime/workspaceFileTransaction")
   const { FileRunStateStore } = require("../out/core/runStateStore")
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "workflow-register-snapshot-post-save-"))
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "workflow-register-snapshot-post-save-")))
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   const targetWorkflow = { ...workflow(), workflowRoot: root }
   const targetRun = run()
