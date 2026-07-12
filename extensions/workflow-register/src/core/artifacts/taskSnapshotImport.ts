@@ -86,9 +86,13 @@ export async function importArtifactsFromTaskSnapshots(
   const explicitSelection = input.selectedArtifactIds !== undefined
   const selectedIds = explicitSelection
     ? new Set(input.selectedArtifactIds)
-    : new Set(preview.candidates.map((candidate) => candidate.artifactId))
-  if (explicitSelection && selectedIds.size === 0) {
-    issues.push(info("No task snapshot artifacts were selected."))
+    : new Set(preview.candidates
+      .filter((candidate) => candidate.defaultSelected)
+      .map((candidate) => candidate.artifactId))
+  if (selectedIds.size === 0) {
+    issues.push(info(explicitSelection
+      ? "No task snapshot artifacts were selected."
+      : "No task snapshot artifacts are safe for automatic import; review and select candidates explicitly."))
     return { ok: false, importedCount: 0, issues, previewDigest: preview.previewDigest }
   }
 
