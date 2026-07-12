@@ -10,7 +10,7 @@ function workflowText(runControl) {
   return `---
 schemaVersion: workflow-register/v1
 name: automatic-pause
- description: Automatic pause workflow.
+description: Automatic pause workflow.
 runControl:
 ${runControl}
 steps:
