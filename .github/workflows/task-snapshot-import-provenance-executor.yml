@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - ".github/workflows/task-snapshot-import-provenance-executor.yml"
+      - ".github/workflows/task-snapshot-import-provenance-executor-v2.yml"
 
 permissions:
   contents: write
@@ -27,112 +28,63 @@ jobs:
 
           model_file = Path("extensions/workflow-register/src/gui/operationHubModel.ts")
           model = model_file.read_text(encoding="utf-8")
-          model = model.replace(
-              '  ARTIFACT_REUSE_STATE_KEY,\n  parseWorkflowArtifactManifest,',
-              '  ARTIFACT_REUSE_STATE_KEY,\n  TASK_SNAPSHOT_IMPORT_STATE_KEY,\n  parseWorkflowArtifactManifest,',
-              1
-          )
-          model = model.replace(
-              '  artifactReuseLabel?: string\n  artifactReuseStatus?: OperationHubStatus\n  completedStepCount: number',
-              '  artifactReuseLabel?: string\n  artifactReuseStatus?: OperationHubStatus\n  taskSnapshotImportLabel?: string\n  taskSnapshotImportStatus?: OperationHubStatus\n  completedStepCount: number',
-              1
-          )
-          state_anchor = '''interface ArtifactReuseState {
-            sourceRunId?: string
-            startStepId?: string
-            reusedStepIds?: unknown[]
-            hydratedKeys?: unknown[]
-          }
-          '''
-          state_insert = state_anchor + '''
-          interface TaskSnapshotImportState {
-            importedAt?: string
-            imported?: unknown[]
-          }
-          '''
-          if 'interface TaskSnapshotImportState' not in model:
-              if state_anchor not in model:
-                  raise SystemExit("artifact reuse state anchor not found")
-              model = model.replace(state_anchor, state_insert, 1)
-          model = model.replace(
-              '  const artifactReuse = summarizeArtifactReuse(run)\n  return {',
-              '  const artifactReuse = summarizeArtifactReuse(run)\n  const taskSnapshotImport = summarizeTaskSnapshotImport(run)\n  return {',
-              1
-          )
-          model = model.replace(
-              '    artifactReuseLabel: artifactReuse?.label,\n    artifactReuseStatus: artifactReuse?.status,\n    completedStepCount,',
-              '    artifactReuseLabel: artifactReuse?.label,\n    artifactReuseStatus: artifactReuse?.status,\n    taskSnapshotImportLabel: taskSnapshotImport?.label,\n    taskSnapshotImportStatus: taskSnapshotImport?.status,\n    completedStepCount,',
-              1
-          )
-          function_anchor = 'function artifactManifestForRun(run: WorkflowRunState): WorkflowArtifactManifest | undefined {'
-          function_text = '''function summarizeTaskSnapshotImport(run: WorkflowRunState): { label: string; status: OperationHubStatus } | undefined {
-            const value = run.state[TASK_SNAPSHOT_IMPORT_STATE_KEY]
-            if (typeof value !== "string") return undefined
-            const parsed = parseJsonObject(value) as TaskSnapshotImportState | undefined
-            if (!parsed) return undefined
-            const count = Array.isArray(parsed.imported) ? parsed.imported.length : 0
-            const at = parsed.importedAt ? ` / ${parsed.importedAt}` : ""
-            return { label: `Imported from task snapshot: ${count} artifact(s)${at}`, status: "ok" }
-          }
+          if "TASK_SNAPSHOT_IMPORT_STATE_KEY" not in model:
+              model = model.replace("  ARTIFACT_REUSE_STATE_KEY,\n", "  ARTIFACT_REUSE_STATE_KEY,\n  TASK_SNAPSHOT_IMPORT_STATE_KEY,\n", 1)
+          if "taskSnapshotImportLabel?: string" not in model:
+              model = model.replace("  artifactReuseStatus?: OperationHubStatus\n", "  artifactReuseStatus?: OperationHubStatus\n  taskSnapshotImportLabel?: string\n  taskSnapshotImportStatus?: OperationHubStatus\n", 1)
+          if "interface TaskSnapshotImportState" not in model:
+              index = model.index("export function buildOperationHubModel")
+              model = model[:index] + "interface TaskSnapshotImportState {\n  importedAt?: string\n  imported?: unknown[]\n}\n\n" + model[index:]
+          if "const taskSnapshotImport = summarizeTaskSnapshotImport(run)" not in model:
+              model = model.replace("  const artifactReuse = summarizeArtifactReuse(run)\n", "  const artifactReuse = summarizeArtifactReuse(run)\n  const taskSnapshotImport = summarizeTaskSnapshotImport(run)\n", 1)
+          if "taskSnapshotImportLabel: taskSnapshotImport?.label" not in model:
+              model = model.replace("    artifactReuseStatus: artifactReuse?.status,\n", "    artifactReuseStatus: artifactReuse?.status,\n    taskSnapshotImportLabel: taskSnapshotImport?.label,\n    taskSnapshotImportStatus: taskSnapshotImport?.status,\n", 1)
+          if "function summarizeTaskSnapshotImport" not in model:
+              index = model.index("function artifactManifestForRun")
+              helper = '''function summarizeTaskSnapshotImport(run: WorkflowRunState): { label: string; status: OperationHubStatus } | undefined {
+  const value = run.state[TASK_SNAPSHOT_IMPORT_STATE_KEY]
+  if (typeof value !== "string") return undefined
+  const parsed = parseJsonObject(value) as TaskSnapshotImportState | undefined
+  if (!parsed) return undefined
+  const count = Array.isArray(parsed.imported) ? parsed.imported.length : 0
+  const at = parsed.importedAt ? ` / ${parsed.importedAt}` : ""
+  return { label: `Imported from task snapshot: ${count} artifact(s)${at}`, status: "ok" }
+}
 
-          '''
-          if 'function summarizeTaskSnapshotImport' not in model:
-              if function_anchor not in model:
-                  raise SystemExit("manifest function anchor not found")
-              model = model.replace(function_anchor, function_text + function_anchor, 1)
+'''
+              model = model[:index] + helper + model[index:]
           model_file.write_text(model, encoding="utf-8")
 
           html_file = Path("extensions/workflow-register/src/gui/operationHubHtml.ts")
           html = html_file.read_text(encoding="utf-8")
-          html = html.replace(
-              '''  const reuseBadge = run.artifactReuseLabel && run.artifactReuseStatus
-                ? `<span class="badge ${escapeHtml(run.artifactReuseStatus)}">${escapeHtml(run.artifactReuseLabel)}</span>`
-                : ""
-            return `<article class="${cardClass}">''',
-              '''  const reuseBadge = run.artifactReuseLabel && run.artifactReuseStatus
-                ? `<span class="badge ${escapeHtml(run.artifactReuseStatus)}">${escapeHtml(run.artifactReuseLabel)}</span>`
-                : ""
-              const taskSnapshotImportBadge = run.taskSnapshotImportLabel && run.taskSnapshotImportStatus
-                ? `<span class="badge ${escapeHtml(run.taskSnapshotImportStatus)}">${escapeHtml(run.taskSnapshotImportLabel)}</span>`
-                : ""
-            return `<article class="${cardClass}">''',
-              1
-          )
-          html = html.replace('${syncBadge}${manifestBadge}${reuseBadge}</span>', '${syncBadge}${manifestBadge}${reuseBadge}${taskSnapshotImportBadge}</span>', 1)
+          if "const taskSnapshotImportBadge" not in html:
+              index = html.index('  return `<article class="${cardClass}">')
+              badge = '''  const taskSnapshotImportBadge = run.taskSnapshotImportLabel && run.taskSnapshotImportStatus
+    ? `<span class="badge ${escapeHtml(run.taskSnapshotImportStatus)}">${escapeHtml(run.taskSnapshotImportLabel)}</span>`
+    : ""
+'''
+              html = html[:index] + badge + html[index:]
+          html = html.replace("${syncBadge}${manifestBadge}${reuseBadge}</span>", "${syncBadge}${manifestBadge}${reuseBadge}${taskSnapshotImportBadge}</span>", 1)
           html_file.write_text(html, encoding="utf-8")
 
           view_file = Path("extensions/workflow-register/src/commands/runControlView.ts")
           view = view_file.read_text(encoding="utf-8")
-          view = view.replace(
-              'import { ARTIFACT_MANIFEST_STATE_KEY, ARTIFACT_REUSE_STATE_KEY } from "../core/artifacts"',
-              'import { ARTIFACT_MANIFEST_STATE_KEY, ARTIFACT_REUSE_STATE_KEY, TASK_SNAPSHOT_IMPORT_STATE_KEY } from "../core/artifacts"',
-              1
-          )
-          manifest_anchor = '''  if (typeof run.state[ARTIFACT_MANIFEST_STATE_KEY] === "string") {
-            return {
-              description: "artifacts",
-              tooltip: "artifact manifest is available for skip resume"
-            }
-          }
-          '''
-          import_block = '''  const imported = parseReuse(run.state[TASK_SNAPSHOT_IMPORT_STATE_KEY])
-            if (imported) {
-              const importedCount = Array.isArray(imported.imported) ? imported.imported.length : 0
-              return {
-                description: `snapshot ${importedCount}`,
-                tooltip: `imported from task snapshot: ${importedCount} artifact(s), at=${imported.importedAt ?? "unknown"}`
-              }
-            }
-          '''
-          if 'description: `snapshot ${importedCount}`' not in view:
-              if manifest_anchor not in view:
-                  raise SystemExit("run view manifest anchor not found")
-              view = view.replace(manifest_anchor, import_block + manifest_anchor, 1)
-          view = view.replace(
-              '  if (run.state[ARTIFACT_REUSE_STATE_KEY]) return "references"\n  if (run.state[ARTIFACT_MANIFEST_STATE_KEY]) return "archive"',
-              '  if (run.state[ARTIFACT_REUSE_STATE_KEY]) return "references"\n  if (run.state[TASK_SNAPSHOT_IMPORT_STATE_KEY]) return "cloud-download"\n  if (run.state[ARTIFACT_MANIFEST_STATE_KEY]) return "archive"',
-              1
-          )
+          if "TASK_SNAPSHOT_IMPORT_STATE_KEY" not in view.split("\n", 8)[3]:
+              view = view.replace('import { ARTIFACT_MANIFEST_STATE_KEY, ARTIFACT_REUSE_STATE_KEY } from "../core/artifacts"', 'import { ARTIFACT_MANIFEST_STATE_KEY, ARTIFACT_REUSE_STATE_KEY, TASK_SNAPSHOT_IMPORT_STATE_KEY } from "../core/artifacts"', 1)
+          if "description: `snapshot ${importedCount}`" not in view:
+              index = view.index('  if (typeof run.state[ARTIFACT_MANIFEST_STATE_KEY] === "string") {')
+              block = '''  const imported = parseReuse(run.state[TASK_SNAPSHOT_IMPORT_STATE_KEY])
+  if (imported) {
+    const importedCount = Array.isArray(imported.imported) ? imported.imported.length : 0
+    return {
+      description: `snapshot ${importedCount}`,
+      tooltip: `imported from task snapshot: ${importedCount} artifact(s), at=${imported.importedAt ?? "unknown"}`
+    }
+  }
+'''
+              view = view[:index] + block + view[index:]
+          if 'return "cloud-download"' not in view:
+              view = view.replace('  if (run.state[ARTIFACT_REUSE_STATE_KEY]) return "references"\n', '  if (run.state[ARTIFACT_REUSE_STATE_KEY]) return "references"\n  if (run.state[TASK_SNAPSHOT_IMPORT_STATE_KEY]) return "cloud-download"\n', 1)
           view_file.write_text(view, encoding="utf-8")
           PY
       - name: Verify projections
@@ -140,20 +92,15 @@ jobs:
         run: |
           npm ci
           npm run compile
-          node --test \
-            test/operationHubTaskSnapshotImport.test.js \
-            test/operationHubArtifactReuse.test.js \
-            test/runControlViewArtifactReuse.test.js
+          tests=(test/operationHubTaskSnapshotImport.test.js test/operationHubArtifactReuse.test.js)
+          [[ -f test/runControlViewArtifactReuse.test.js ]] && tests+=(test/runControlViewArtifactReuse.test.js)
+          node --test "${tests[@]}"
       - name: Commit verified projections
         shell: bash
         run: |
-          rm .github/workflows/task-snapshot-import-provenance-executor.yml
+          rm -f .github/workflows/task-snapshot-import-provenance-executor.yml .github/workflows/task-snapshot-import-provenance-executor-v2.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add \
-            extensions/workflow-register/src/gui/operationHubModel.ts \
-            extensions/workflow-register/src/gui/operationHubHtml.ts \
-            extensions/workflow-register/src/commands/runControlView.ts \
-            .github/workflows/task-snapshot-import-provenance-executor.yml
+          git add extensions/workflow-register/src/gui/operationHubModel.ts extensions/workflow-register/src/gui/operationHubHtml.ts extensions/workflow-register/src/commands/runControlView.ts .github/workflows/task-snapshot-import-provenance-executor.yml .github/workflows/task-snapshot-import-provenance-executor-v2.yml
           git commit -m "feat: surface task snapshot import provenance"
           git push origin HEAD:${{ github.head_ref }}
