@@ -1,12 +1,5 @@
-import type {
-  CoreWorkflowDefinition,
-  EngineStep,
-  WorkflowArtifactDefinition,
-  WorkflowRunState
-} from "../model"
+import type { CoreWorkflowDefinition, WorkflowRunState } from "../model"
 import type { TaskSnapshotPayload, TaskSnapshotStore } from "../taskSnapshots"
-import { snapshotMatchesRun } from "../taskSnapshots"
-import { renderArtifactPath } from "../engine/templateRenderer"
 import type { WorkspaceFileTransactionWrite } from "../runtime/workspaceFileTransaction"
 import {
   ARTIFACT_MANIFEST_PATH,
@@ -16,6 +9,11 @@ import {
   type WorkflowArtifactManifest,
   type WorkflowArtifactManifestEntry
 } from "./artifactManifest"
+import {
+  outputStateKeyForArtifact,
+  previewArtifactsFromTaskSnapshots,
+  snapshotImportText
+} from "./taskSnapshotImportPreview"
 
 export const TASK_SNAPSHOT_IMPORT_STATE_KEY = "workflow.taskSnapshotImport"
 
@@ -49,6 +47,7 @@ export interface TaskSnapshotArtifactImportResult {
   importedCount: number
   manifest?: WorkflowArtifactManifest
   issues: TaskSnapshotArtifactImportIssue[]
+  previewDigest?: string
 }
 
 export interface ImportArtifactsFromTaskSnapshotsInput {
@@ -60,72 +59,73 @@ export interface ImportArtifactsFromTaskSnapshotsInput {
     commitState: () => Promise<void> | void
   ) => Promise<void> | void
   persistStateRollback?: () => Promise<void> | void
+  readFile?: (relativePath: string) => Promise<string | undefined> | string | undefined
+  selectedArtifactIds?: readonly string[]
+  expectedPreviewDigest?: string
   now?: () => string
   overwrite?: boolean
+  overwriteExisting?: boolean
 }
 
 export async function importArtifactsFromTaskSnapshots(
   input: ImportArtifactsFromTaskSnapshotsInput
 ): Promise<TaskSnapshotArtifactImportResult> {
-  const issues: TaskSnapshotArtifactImportIssue[] = []
+  const preview = await previewArtifactsFromTaskSnapshots({
+    workflow: input.workflow,
+    run: input.run,
+    snapshotStore: input.snapshotStore,
+    readFile: input.readFile,
+    overwriteState: input.overwrite
+  })
+  const issues: TaskSnapshotArtifactImportIssue[] = [...preview.issues]
+  if (input.expectedPreviewDigest && input.expectedPreviewDigest !== preview.previewDigest) {
+    issues.push(error("Task snapshot import preview changed; refresh the preview before applying."))
+    return { ok: false, importedCount: 0, issues, previewDigest: preview.previewDigest }
+  }
+
+  const explicitSelection = input.selectedArtifactIds !== undefined
+  const selectedIds = explicitSelection
+    ? new Set(input.selectedArtifactIds)
+    : new Set(preview.candidates.map((candidate) => candidate.artifactId))
+  if (explicitSelection && selectedIds.size === 0) {
+    issues.push(info("No task snapshot artifacts were selected."))
+    return { ok: false, importedCount: 0, issues, previewDigest: preview.previewDigest }
+  }
+
   const entries: WorkflowArtifactManifestEntry[] = []
   const imported: TaskSnapshotArtifactImportEntry[] = []
   const stateUpdates: Record<string, string> = {}
   const fileWrites: WorkspaceFileTransactionWrite[] = []
-  const artifactCandidates = (input.workflow.artifacts ?? []).filter((artifact) => artifact.producedBy)
-  if (artifactCandidates.length === 0) {
-    return { ok: false, importedCount: 0, issues: [warning("Workflow has no produced artifacts to import from task snapshots.")] }
-  }
 
-  for (const artifact of artifactCandidates) {
-    const step = input.workflow.engineSteps.find((candidate) => candidate.id === artifact.producedBy)
-    if (!step) {
-      issues.push(warning(`Artifact '${artifact.id}' references unknown producing step '${artifact.producedBy}'.`, artifact.id, artifact.producedBy))
+  for (const candidate of preview.candidates) {
+    if (!selectedIds.has(candidate.artifactId)) continue
+    const artifact = input.workflow.artifacts.find((item) => item.id === candidate.artifactId && item.producedBy === candidate.stepId)
+    const step = input.workflow.engineSteps.find((item) => item.id === candidate.stepId)
+    if (!artifact || !step) {
+      issues.push(error(`Task snapshot import candidate '${candidate.artifactId}' no longer matches the workflow definition.`, candidate.artifactId, candidate.stepId))
       continue
     }
     const stateKey = outputStateKeyForArtifact(step, artifact)
-    if (!stateKey) {
-      issues.push(warning(`Artifact '${artifact.id}' is not tied to an output state key for step '${step.id}'.`, artifact.id, step.id))
+    if (!stateKey || stateKey !== candidate.stateKey) {
+      issues.push(error(`Task snapshot import candidate '${candidate.artifactId}' no longer matches its output state key.`, candidate.artifactId, candidate.stepId))
       continue
     }
     if (!input.overwrite && input.run.state[stateKey] !== undefined) {
-      issues.push(info(`State key '${stateKey}' already exists; task snapshot import skipped.`, artifact.id, step.id))
+      issues.push(info(`State key '${stateKey}' already exists; task snapshot import skipped.`, candidate.artifactId, candidate.stepId))
       continue
     }
-    const snapshot = await input.snapshotStore.findLatestSnapshot(input.run.runId, (candidate) => (
-      snapshotMatchesRun(candidate, input.workflow, input.run, step) && Boolean(snapshotText(candidate)?.trim())
-    ))
-    if (!snapshot) {
-      issues.push(warning(`No task snapshot text found for artifact '${artifact.id}' from step '${step.id}'.`, artifact.id, step.id))
+    if (candidate.existing.changed && !input.overwriteExisting) {
+      issues.push(error(`Artifact '${candidate.artifactId}' requires explicit overwrite confirmation because the target file already has different content.`, candidate.artifactId, candidate.stepId))
       continue
     }
-    const text = snapshotText(snapshot)
-    if (!text?.trim()) {
-      issues.push(warning(`Task snapshot for artifact '${artifact.id}' has no importable text.`, artifact.id, step.id))
-      continue
-    }
-    const renderedPath = renderArtifactPath(artifact, {
-      inputs: input.run.inputs,
-      state: { ...input.run.state, ...stateUpdates },
-      run: input.run,
-      workflow: input.workflow,
-      step
-    })
-    if (renderedPath.includes("{{")) {
-      issues.push(error(`Artifact '${artifact.id}' path still contains unresolved template placeholders.`, artifact.id, step.id))
-      continue
-    }
-    if (!isWorkspaceRelativePath(renderedPath)) {
-      issues.push(error(`Artifact '${artifact.id}' path is not a workspace-relative safe path.`, artifact.id, step.id))
-      continue
-    }
-    fileWrites.push({ relativePath: renderedPath, text, encoding: "utf8" })
-    stateUpdates[stateKey] = text
+
+    fileWrites.push({ relativePath: candidate.path, text: candidate.text, encoding: "utf8" })
+    stateUpdates[stateKey] = candidate.text
     const entry = createWorkflowArtifactManifestEntry({
       artifact,
       step,
-      path: renderedPath,
-      text,
+      path: candidate.path,
+      text: candidate.text,
       source: "task-snapshot",
       now: input.now
     })
@@ -134,15 +134,25 @@ export async function importArtifactsFromTaskSnapshots(
       artifactId: entry.id,
       stateKey,
       producedBy: entry.producedBy,
-      snapshotReason: snapshot.reason,
-      snapshotCreatedAt: snapshot.createdAt,
+      snapshotReason: candidate.snapshotReason,
+      snapshotCreatedAt: candidate.snapshotCreatedAt,
       path: entry.path,
       sha256: entry.sha256,
       bytes: entry.bytes
     })
   }
 
-  if (entries.length === 0) return { ok: false, importedCount: 0, issues }
+  if (entries.length === 0) {
+    if (explicitSelection) {
+      for (const artifactId of selectedIds) {
+        if (!preview.candidates.some((candidate) => candidate.artifactId === artifactId)) {
+          issues.push(warning(`Selected artifact '${artifactId}' is not available in the current task snapshot preview.`, artifactId))
+        }
+      }
+    }
+    return { ok: false, importedCount: 0, issues, previewDigest: preview.previewDigest }
+  }
+
   const manifest = buildWorkflowArtifactManifest({ workflow: input.workflow, run: input.run, entries, now: input.now })
   const importState = JSON.stringify({
     schemaVersion: "workflow-register/task-snapshot-import/v1",
@@ -155,6 +165,7 @@ export async function importArtifactsFromTaskSnapshots(
     text: `${JSON.stringify(manifest, null, 2)}\n`,
     encoding: "utf8"
   })
+
   const stateBeforeCommit = { ...input.run.state }
   let stateCommitted = false
   try {
@@ -178,50 +189,11 @@ export async function importArtifactsFromTaskSnapshots(
     }
     throw error
   }
-  return { ok: true, importedCount: entries.length, manifest, issues }
+  return { ok: true, importedCount: entries.length, manifest, issues, previewDigest: preview.previewDigest }
 }
 
 export function snapshotText(snapshot: TaskSnapshotPayload): string | undefined {
-  if (snapshot.lastAssistantText?.trim()) return snapshot.lastAssistantText
-  const exported = textFromTaskExport(snapshot.taskExport)
-  return exported?.trim() ? exported : undefined
-}
-
-function outputStateKeyForArtifact(step: EngineStep, artifact: WorkflowArtifactDefinition): string | undefined {
-  if (step.type === "manual") {
-    if (step.form?.resultKey === artifact.id) return step.form.resultKey
-    if (step.approval?.resultKey === artifact.id) return step.approval.resultKey
-    return undefined
-  }
-  if ("resultKey" in step && step.resultKey === artifact.id) return step.resultKey
-  if (step.type === "result" && step.result.source === "state" && step.result.stateKey === artifact.id) return step.result.stateKey
-  return undefined
-}
-
-function textFromTaskExport(value: unknown, depth = 0): string | undefined {
-  if (typeof value === "string") return value
-  if (!value || typeof value !== "object" || depth > 6) return undefined
-  if (Array.isArray(value)) {
-    for (let index = value.length - 1; index >= 0; index -= 1) {
-      const found = textFromTaskExport(value[index], depth + 1)
-      if (found?.trim()) return found
-    }
-    return undefined
-  }
-  const record = value as Record<string, unknown>
-  for (const key of ["result", "jsonText", "artifactText", "resultText", "text", "content", "output", "message", "lastAssistantText"]) {
-    const found = textFromTaskExport(record[key], depth + 1)
-    if (found?.trim()) return found
-  }
-  return undefined
-}
-
-function isWorkspaceRelativePath(value: string): boolean {
-  if (!value.trim()) return false
-  if (/^[A-Za-z]:[\\/]/.test(value) || value.startsWith("/") || value.startsWith("\\\\")) return false
-  const normalized = value.replace(/\\/g, "/")
-  if (normalized.split("/").some((segment) => segment === "..")) return false
-  return true
+  return snapshotImportText(snapshot)?.text
 }
 
 function error(message: string, artifactId?: string, stepId?: string): TaskSnapshotArtifactImportIssue {

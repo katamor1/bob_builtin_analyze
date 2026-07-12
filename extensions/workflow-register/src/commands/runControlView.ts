@@ -1,5 +1,5 @@
 import * as vscode from "vscode"
-import { ARTIFACT_MANIFEST_STATE_KEY, ARTIFACT_REUSE_STATE_KEY } from "../core/artifacts"
+import { ARTIFACT_MANIFEST_STATE_KEY, ARTIFACT_REUSE_STATE_KEY, TASK_SNAPSHOT_IMPORT_STATE_KEY } from "../core/artifacts"
 import type { WorkflowRunState } from "../core/model"
 import { FileRunStateStore, isWorkflowRunStateWritable } from "../core/runStateStore"
 import { fallbackWorkspaceRootCandidates, findWorkflowRootCandidates } from "../core/workspaceRoots"
@@ -122,6 +122,14 @@ function artifactStatusForRun(run: WorkflowRunState): { description?: string; to
       tooltip: `artifact reuse: ${reusedStepCount} step(s), ${hydratedKeyCount} state key(s), source=${reuse.sourceRunId ?? "unknown"}, start=${reuse.startStepId ?? "unknown"}`
     }
   }
+  const imported = parseReuse(run.state[TASK_SNAPSHOT_IMPORT_STATE_KEY])
+  if (imported) {
+    const importedCount = Array.isArray(imported.imported) ? imported.imported.length : 0
+    return {
+      description: `snapshot ${importedCount}`,
+      tooltip: `imported from task snapshot: ${importedCount} artifact(s), at=${imported.importedAt ?? "unknown"}`
+    }
+  }
   if (typeof run.state[ARTIFACT_MANIFEST_STATE_KEY] === "string") {
     return {
       description: "artifacts",
@@ -133,6 +141,7 @@ function artifactStatusForRun(run: WorkflowRunState): { description?: string; to
 
 function iconForRun(run: WorkflowRunState): string {
   if (run.state[ARTIFACT_REUSE_STATE_KEY]) return "references"
+  if (run.state[TASK_SNAPSHOT_IMPORT_STATE_KEY]) return "cloud-download"
   if (run.state[ARTIFACT_MANIFEST_STATE_KEY]) return "archive"
   return iconForStatus(run.status)
 }

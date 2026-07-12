@@ -52,3 +52,17 @@ export type {
   TaskSnapshotArtifactImportRecord,
   TaskSnapshotArtifactImportResult
 } from "./taskSnapshotImport"
+export {
+  isWorkspaceRelativeArtifactPath,
+  outputStateKeyForArtifact,
+  previewArtifactsFromTaskSnapshots,
+  snapshotImportText
+} from "./taskSnapshotImportPreview"
+export type {
+  PreviewArtifactsFromTaskSnapshotsInput,
+  TaskSnapshotArtifactImportPreview,
+  TaskSnapshotImportExistingFile,
+  TaskSnapshotImportExtractionSource,
+  TaskSnapshotImportPreviewCandidate,
+  TaskSnapshotImportPreviewIssue
+} from "./taskSnapshotImportPreview"
