@@ -1,16 +1,22 @@
-import * as path from "node:path"
 import * as vscode from "vscode"
-import YAML from "yaml"
-import { pathExists, readTextFile, resolveWorkspacePathForKind, writeTextFile } from "../core/fileSystem"
 import { runTriage } from "../reviewExecutionCommands"
+import {
+  loadHumanTriageWorkspace,
+  saveHumanTriageDecisions
+} from "../triage/humanTriageWorkspace"
 import { resolveBobWorkspaceRoot } from "../workspaceResolver"
-import { renderConsistencyHumanTriageHtml, type ConsistencyHumanTriageItem, type ConsistencyHumanTriageModel } from "./consistencyHumanTriageHtml"
+import {
+  renderConsistencyHumanTriageHtml,
+  type ConsistencyHumanTriageModel
+} from "./consistencyHumanTriageHtml"
 
 type HumanTriageAction = "generateTriage" | "saveDecisions" | "openResultCapture"
 
-interface HumanTriageMessage {
+export interface HumanTriageMessage {
   type: "consistencyHumanTriage.action"
   action: HumanTriageAction
+  sourceSha256?: string
+  decisionRevision?: number
   items?: unknown[]
 }
 
@@ -48,7 +54,7 @@ class ConsistencyHumanTriageController {
         this.model = await this.loadModel([describeResult(result)])
         this.render()
       } else if (message.action === "saveDecisions") {
-        await this.saveDecisions(message.items ?? [])
+        await this.saveDecisions(message)
       } else if (message.action === "openResultCapture") {
         await vscode.commands.executeCommand("bobCodeConsistency.openResultCaptureGui")
         this.post({ ok: true, message: "Result Capture を開きました。" })
@@ -71,27 +77,29 @@ class ConsistencyHumanTriageController {
     const config = vscode.workspace.getConfiguration("bobCodeConsistency")
     const outDirValue = config.get<string>("triagePath", ".bob-review/human-triage")
     const bobOutputPath = config.get<string>("bobOutputPath", ".bob-review/bob-output/bob-output.yaml")
-    const outDir = resolveWorkspacePathForKind(this.workspaceRoot, outDirValue, "human-triage-output")
-    const triagePath = path.join(outDir, "triage-result.yaml")
-    const items = await readTriageItems(triagePath)
+    const workspace = await loadHumanTriageWorkspace({ workspaceRoot: this.workspaceRoot, outDir: outDirValue })
     return {
       outDir: outDirValue,
       bobOutputPath,
-      items,
-      issues
+      sourceSha256: workspace.sourceSha256,
+      decisionRevision: workspace.decisionRevision,
+      items: workspace.items,
+      issues: [...workspace.issues, ...issues]
     }
   }
 
-  private async saveDecisions(rawItems: unknown[]): Promise<void> {
-    const config = vscode.workspace.getConfiguration("bobCodeConsistency")
-    const outDir = resolveWorkspacePathForKind(this.workspaceRoot, config.get<string>("triagePath", ".bob-review/human-triage"), "human-triage-output")
-    const triagePath = path.join(outDir, "triage-result.yaml")
-    if (!(await pathExists(triagePath))) throw new Error("triage-result.yaml がありません。先に triage を生成してください。")
-    const parsed = YAML.parse(await readTextFile(triagePath)) as Record<string, unknown>
-    const items = rawItems.map(normalizePostedItem)
-    parsed.items = items
-    await writeTextFile(triagePath, YAML.stringify(parsed))
-    this.model = await this.loadModel([`保存しました: ${triagePath}`])
+  private async saveDecisions(message: HumanTriageMessage): Promise<void> {
+    if (!message.sourceSha256 || !Number.isInteger(message.decisionRevision) || !message.items) {
+      throw new Error("triage save token が不足しています。画面を再読込してください。")
+    }
+    await saveHumanTriageDecisions({
+      workspaceRoot: this.workspaceRoot,
+      outDir: vscode.workspace.getConfiguration("bobCodeConsistency").get<string>("triagePath", ".bob-review/human-triage"),
+      expectedSourceSha256: message.sourceSha256,
+      expectedDecisionRevision: message.decisionRevision as number,
+      items: message.items
+    })
+    this.model = await this.loadModel(["triage decision と生成成果物を保存しました。"])
     this.render()
   }
 
@@ -100,22 +108,23 @@ class ConsistencyHumanTriageController {
   }
 }
 
-async function readTriageItems(triagePath: string): Promise<ConsistencyHumanTriageItem[]> {
-  if (!(await pathExists(triagePath))) return []
-  const parsed = YAML.parse(await readTextFile(triagePath)) as { items?: unknown[] }
-  return Array.isArray(parsed.items) ? parsed.items.map(normalizePostedItem) : []
-}
-
-function parseHumanTriageMessage(message: unknown): HumanTriageMessage | undefined {
+export function parseHumanTriageMessage(message: unknown): HumanTriageMessage | undefined {
   if (!message || typeof message !== "object") return undefined
-  const candidate = message as Partial<Record<keyof HumanTriageMessage, unknown>>
+  const candidate = message as Record<string, unknown>
   if (candidate.type !== "consistencyHumanTriage.action") return undefined
   if (!isHumanTriageAction(candidate.action)) return undefined
-  return {
+  const parsed: HumanTriageMessage = {
     type: "consistencyHumanTriage.action",
-    action: candidate.action,
-    items: Array.isArray(candidate.items) ? candidate.items : undefined
+    action: candidate.action
   }
+  if (candidate.action !== "saveDecisions") return parsed
+  if (typeof candidate.sourceSha256 !== "string" || !candidate.sourceSha256.trim()) return undefined
+  if (!Number.isInteger(candidate.decisionRevision) || Number(candidate.decisionRevision) < 0) return undefined
+  if (!Array.isArray(candidate.items) || !hasUniquePostedSourceIds(candidate.items)) return undefined
+  parsed.sourceSha256 = candidate.sourceSha256
+  parsed.decisionRevision = Number(candidate.decisionRevision)
+  parsed.items = candidate.items
+  return parsed
 }
 
 async function requireWorkspaceRoot(): Promise<string> {
@@ -124,28 +133,19 @@ async function requireWorkspaceRoot(): Promise<string> {
   return root
 }
 
-function normalizePostedItem(value: unknown): ConsistencyHumanTriageItem {
-  if (!value || typeof value !== "object") throw new Error("triage item が不正です。")
-  const record = value as Record<string, unknown>
-  return {
-    source_id: stringOrUndefined(record.source_id),
-    source_type: stringOrUndefined(record.source_type),
-    decision: stringOrUndefined(record.decision),
-    final_severity: stringOrUndefined(record.final_severity),
-    owner: stringOrUndefined(record.owner),
-    reason: stringOrUndefined(record.reason),
-    review_comment: stringOrUndefined(record.review_comment),
-    question: stringOrUndefined(record.question),
-    follow_up: record.follow_up && typeof record.follow_up === "object" ? record.follow_up as Record<string, unknown> : undefined
+function hasUniquePostedSourceIds(items: unknown[]): boolean {
+  const seen = new Set<string>()
+  for (const value of items) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return false
+    const sourceId = (value as Record<string, unknown>).source_id
+    if (typeof sourceId !== "string" || !sourceId.trim() || seen.has(sourceId)) return false
+    seen.add(sourceId)
   }
+  return true
 }
 
 function isHumanTriageAction(value: unknown): value is HumanTriageAction {
   return value === "generateTriage" || value === "saveDecisions" || value === "openResultCapture"
-}
-
-function stringOrUndefined(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim() ? value.trim() : undefined
 }
 
 function describeResult(result: unknown): string {
