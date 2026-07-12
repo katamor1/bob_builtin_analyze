@@ -86,8 +86,8 @@
 - [x] Run Ubuntu/Windows Actions including package, VSIX policy, and Extension Host smoke on final code head `784864813169492709edd2536d9236fbb2f00d17`.
 - [x] Run workflow contracts and review scaffold on the same head.
 - [x] Remove temporary diagnostic/executor workflows.
-- [ ] Complete the documentation-only tail matrix.
-- [ ] Update PR body with final exact SHA and run IDs.
+- [x] Complete the documentation-only tail matrix on head `c7db2e9d2be63a744cb55397a6e5d452289246a1`.
+- [ ] Update PR body with the final head and run IDs.
 - [ ] Mark ready and merge only with all required checks green.
 
 ## Completion record
@@ -99,7 +99,8 @@
 - Focused final diagnostic: run `29206130109`, compile 0, 7 passed / 0 failed.
 - Final code head: `784864813169492709edd2536d9236fbb2f00d17`.
 - Final code matrix: `29206419912`, all 7 jobs success.
-- Workflow contracts / review scaffold: `29206419896` / `29206419897`, success.
+- Documentation gate head: `c7db2e9d2be63a744cb55397a6e5d452289246a1`.
+- Documentation matrix / contracts / review scaffold: `29206741706` / `29206741679` / `29206741682`, success.
 - Whole-diff review: Critical 0 / Important 0.
 - Temporary workflows: removed from final PR diff.
-- Documentation-only tail, PR readiness, and merge: pending.
+- PR body synchronization, ready transition, and merge: pending.
