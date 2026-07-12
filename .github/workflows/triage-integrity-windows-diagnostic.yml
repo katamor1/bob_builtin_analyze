@@ -43,7 +43,7 @@ jobs:
       - name: Compile
         run: npm run compile
 
-      - name: Apply physical path normalization to CAS test barrier
+      - name: Apply basename-scoped CAS barrier fix
         shell: pwsh
         run: |
           @'
@@ -51,33 +51,12 @@ jobs:
           const path = require("node:path")
           const filePath = path.join(process.cwd(), "test", "traceabilityCatalogStore.test.js")
           let text = fs.readFileSync(filePath, "utf8").replace(/\r\n/g, "\n")
-          if (!text.includes('const fsSync = require("node:fs")')) {
-            text = text.replace(
-              'const assert = require("node:assert/strict")\n',
-              'const assert = require("node:assert/strict")\nconst fsSync = require("node:fs")\n'
-            )
-          }
-          const before = [
-            'function normalizePhysicalPath(value) {',
-            '  const resolved = path.resolve(value)',
-            '  return process.platform === "win32" ? resolved.toLowerCase() : resolved',
-            '}'
-          ].join('\n')
-          const after = [
-            'function normalizePhysicalPath(value) {',
-            '  const resolved = path.resolve(value)',
-            '  let physicalPath = resolved',
-            '  try {',
-            '    physicalPath = fsSync.realpathSync.native(resolved)',
-            '  } catch {',
-            '    // Not-yet-created candidates fall back to their lexical path.',
-            '  }',
-            '  return process.platform === "win32" ? physicalPath.toLowerCase() : physicalPath',
-            '}'
-          ].join('\n')
-          if (text.includes(before)) text = text.replace(before, after)
-          else if (!text.includes('fsSync.realpathSync.native(resolved)')) {
-            throw new Error("normalizePhysicalPath source did not match the expected contract")
+          const directoryLine = '  const expectedDirectory = normalizePhysicalPath(path.dirname(targetPath))\n'
+          const conditionLine = '      normalizePhysicalPath(path.dirname(candidate)) === expectedDirectory &&\n'
+          if (text.includes(directoryLine)) text = text.replace(directoryLine, "")
+          if (text.includes(conditionLine)) text = text.replace(conditionLine, "")
+          if (text.includes("expectedDirectory")) {
+            throw new Error("expectedDirectory remains after CAS barrier patch")
           }
           fs.writeFileSync(filePath, text)
           '@ | node
@@ -93,8 +72,8 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add extensions/bob-code-consistency-review/test/traceabilityCatalogStore.test.js
           if (git diff --cached --quiet) {
-            Write-Host "Windows path normalization is already committed."
+            Write-Host "Windows CAS barrier fix is already committed."
             exit 0
           }
-          git commit -m "test: canonicalize Windows traceability paths"
+          git commit -m "test: make traceability CAS barrier path-agnostic"
           git push origin HEAD:${{ github.event.pull_request.head.ref }}
