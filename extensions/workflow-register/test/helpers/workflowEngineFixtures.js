@@ -3,7 +3,7 @@ const os = require("node:os")
 const path = require("node:path")
 
 function tempDir(prefix = "workflow-register-") {
-  return fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), prefix)))
+  return fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), prefix)))
 }
 
 function fixedNow() {

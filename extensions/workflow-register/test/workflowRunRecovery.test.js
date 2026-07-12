@@ -5,7 +5,7 @@ const path = require("node:path")
 const { test } = require("node:test")
 
 function tempDir() {
-  return fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "workflow-register-recovery-")))
+  return fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "workflow-register-recovery-")))
 }
 
 function sampleWorkflow() {

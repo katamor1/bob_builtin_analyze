@@ -75,7 +75,7 @@ const { reviewTaskRegistry } = require("../out/reviewTaskRegistry")
 const { readOperationHubRunSnapshot } = require("../out/operationHubMutationTarget")
 
 function tempRoot(t, prefix) {
-  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), prefix)))
+  const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), prefix)))
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   return root
 }
@@ -94,7 +94,7 @@ function aliasedTempRoot(t, prefix) {
     }
     throw error
   }
-  return { aliasRoot, physicalRoot: fs.realpathSync(physicalRoot) }
+  return { aliasRoot, physicalRoot: fs.realpathSync.native(physicalRoot) }
 }
 
 function commandStep(id, provider = `sample.${id}`) {

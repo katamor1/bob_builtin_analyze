@@ -6,7 +6,7 @@ const path = require("node:path")
 const { test } = require("node:test")
 
 function tempDir(t) {
-  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "workflow-register-file-transaction-")))
+  const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "workflow-register-file-transaction-")))
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   return root
 }
