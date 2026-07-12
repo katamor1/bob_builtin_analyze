@@ -27,13 +27,13 @@ function loadPanelWithVscode(vscode) {
   }
 }
 
-function existingWorkflow(t) {
+function existingWorkflow(t, options = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "workflow-builder-transaction-"))
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   const model = createAuthoringModelFromTemplate({
     name: "transactional-builder",
     title: "Transactional Builder",
-    description: "Original workflow description.",
+    description: options.description ?? "Original workflow description.",
     template: "simple-agent"
   })
   const rendered = serializeAuthoringModelToMarkdown(model)
@@ -51,9 +51,13 @@ function existingWorkflow(t) {
 function createPanelHarness(t) {
   const fixture = existingWorkflow(t)
   const state = {
+    beforeBackupWrite: async () => undefined,
+    beforeTargetWrite: async () => undefined,
     commands: [],
+    copies: [],
     errors: [],
     information: [],
+    onWarningMessage: () => undefined,
     posted: [],
     shownDocuments: [],
     warningResponses: [],
@@ -108,20 +112,38 @@ function createPanelHarness(t) {
       showTextDocument: async (document) => { state.shownDocuments.push(document) },
       showWarningMessage: async (message) => {
         state.warnings.push(message)
+        state.onWarningMessage(message)
         return state.warningResponses.shift()
       }
     },
     workspace: {
       fs: {
-        copy: async (source, target) => {
-          await fs.promises.copyFile(source.fsPath, target.fsPath)
+        copy: async (source, target, options) => {
+          if (/^WORKFLOW\.backup-.*\.md$/.test(path.basename(target.fsPath))) {
+            await state.beforeBackupWrite(target.fsPath)
+          }
+          state.copies.push({ source: source.fsPath, target: target.fsPath, options })
+          await fs.promises.copyFile(
+            source.fsPath,
+            target.fsPath,
+            options?.overwrite === false ? fs.constants.COPYFILE_EXCL : 0
+          )
         },
         createDirectory: async (target) => {
           await fs.promises.mkdir(target.fsPath, { recursive: true })
         },
+        delete: async (target) => {
+          await fs.promises.rm(target.fsPath, { force: true })
+        },
         readFile: async (target) => fs.promises.readFile(target.fsPath),
         stat: async (target) => fs.promises.stat(target.fsPath),
         writeFile: async (target, bytes) => {
+          if (/^WORKFLOW\.backup-.*\.md$/.test(path.basename(target.fsPath))) {
+            await state.beforeBackupWrite(target.fsPath)
+          }
+          if (path.basename(target.fsPath) === "WORKFLOW.md") {
+            await state.beforeTargetWrite(target.fsPath)
+          }
           await fs.promises.writeFile(target.fsPath, bytes)
         }
       },
@@ -139,10 +161,20 @@ function createPanelHarness(t) {
     initialModel: fixture.model
   })
   t.after(() => panel.dispose())
+  const showFixture = (nextFixture) => WorkflowBuilderPanel.createOrShow({
+    extensionUri: uri(nextFixture.root),
+    workflowRoot: nextFixture.root,
+    sourceId: "workflow-register",
+    mode: "edit",
+    editingFilePath: nextFixture.target,
+    originalText: nextFixture.oldText,
+    initialModel: nextFixture.model
+  })
   return {
     ...fixture,
     builder,
     panel,
+    showFixture,
     state,
     send: (message) => receiveMessage(message)
   }
@@ -157,6 +189,16 @@ function editedModel(model, description) {
 
 function backupFiles(target) {
   return fs.readdirSync(path.dirname(target)).filter((name) => /^WORKFLOW\.backup-.*\.md$/.test(name))
+}
+
+function deferred() {
+  let resolve
+  const promise = new Promise((resolvePromise) => { resolve = resolvePromise })
+  return { promise, resolve }
+}
+
+function nextTurn() {
+  return new Promise((resolve) => setImmediate(resolve))
 }
 
 function complexWorkflowModel() {
@@ -339,6 +381,260 @@ test("Builder rejects an external edit against originalText before backup, overw
     [...harness.state.errors, ...harness.state.warnings].some((message) => /refresh|reopen|再読込|更新/i.test(message)),
     `expected refresh/reopen diagnostic, got ${JSON.stringify({ errors: harness.state.errors, warnings: harness.state.warnings })}`
   )
+})
+
+test("Builder preserves a target created while the missing-target Create confirmation is open", async (t) => {
+  const harness = createPanelHarness(t)
+  fs.unlinkSync(harness.target)
+  const createPromptShown = deferred()
+  const createDecision = deferred()
+  harness.state.onWarningMessage = (message) => {
+    if (/no longer exists.*create/i.test(message)) createPromptShown.resolve()
+  }
+  harness.state.warningResponses.push(createDecision.promise)
+
+  const staleSave = harness.send({ type: "save", model: editedModel(harness.model, "Stale missing-target description.") })
+  await createPromptShown.promise
+  const externalText = harness.oldText.replace("Original workflow description.", "External creator wins.")
+  fs.writeFileSync(harness.target, externalText)
+  createDecision.resolve("Create")
+  await staleSave
+
+  assert.equal(fs.readFileSync(harness.target, "utf8"), externalText)
+  assert.deepEqual(backupFiles(harness.target), [])
+  assert.deepEqual(harness.state.commands, [])
+  assert.deepEqual(harness.state.shownDocuments, [])
+  assert.equal(harness.state.posted.some((message) => message.type === "saved"), false)
+  assert.equal(harness.state.information.length, 0)
+  assert.ok(
+    harness.state.warnings.some((message) => /refresh|reopen|再読込|更新/i.test(message)),
+    `expected refresh/reopen diagnostic, got ${JSON.stringify(harness.state.warnings)}`
+  )
+
+  fs.writeFileSync(harness.target, harness.oldText)
+  harness.state.warningResponses.push("Apply changes")
+  await harness.send({ type: "save", model: editedModel(harness.model, "Fresh missing-target retry.") })
+
+  assert.match(fs.readFileSync(harness.target, "utf8"), /description: Fresh missing-target retry\./)
+  assert.deepEqual(harness.state.commands, [["workflowRegister.reload"]])
+  assert.equal(harness.state.posted.filter((message) => message.type === "saved").length, 1)
+})
+
+test("Builder creates the target when it is still missing after Create confirmation", async (t) => {
+  const harness = createPanelHarness(t)
+  fs.unlinkSync(harness.target)
+  harness.state.warningResponses.push("Create")
+
+  await harness.send({ type: "save", model: editedModel(harness.model, "Confirmed missing-target create.") })
+
+  assert.match(fs.readFileSync(harness.target, "utf8"), /description: Confirmed missing-target create\./)
+  assert.deepEqual(backupFiles(harness.target), [])
+  assert.deepEqual(harness.state.commands, [["workflowRegister.reload"]])
+  assert.equal(harness.state.shownDocuments.length, 1)
+  assert.equal(harness.state.posted.filter((message) => message.type === "saved").length, 1)
+})
+
+test("Builder revalidates original bytes after a blocked backup and preserves the external winner", async (t) => {
+  const harness = createPanelHarness(t)
+  const backupStarted = deferred()
+  const releaseBackup = deferred()
+  let blockFirstBackup = true
+  harness.state.beforeBackupWrite = async () => {
+    if (!blockFirstBackup) return
+    blockFirstBackup = false
+    backupStarted.resolve()
+    await releaseBackup.promise
+  }
+  harness.state.warningResponses.push("Apply changes")
+
+  const staleSave = harness.send({ type: "save", model: editedModel(harness.model, "Stale builder description.") })
+  await backupStarted.promise
+  const externalText = harness.oldText.replace("Original workflow description.", "External winner during backup.")
+  fs.writeFileSync(harness.target, externalText)
+  releaseBackup.resolve()
+  await staleSave
+
+  assert.equal(fs.readFileSync(harness.target, "utf8"), externalText)
+  assert.deepEqual(harness.state.commands, [])
+  assert.deepEqual(harness.state.shownDocuments, [])
+  assert.equal(harness.state.posted.some((message) => message.type === "saved"), false)
+  assert.equal(harness.state.information.length, 0)
+  assert.ok(
+    harness.state.warnings.some((message) => /refresh|reopen|再読込|更新/i.test(message)),
+    `expected refresh/reopen diagnostic, got ${JSON.stringify(harness.state.warnings)}`
+  )
+
+  fs.writeFileSync(harness.target, harness.oldText)
+  harness.state.warningResponses.push("Apply changes")
+  await harness.send({ type: "save", model: editedModel(harness.model, "Fresh retry description.") })
+
+  assert.match(fs.readFileSync(harness.target, "utf8"), /description: Fresh retry description\./)
+  assert.deepEqual(harness.state.commands, [["workflowRegister.reload"]])
+  assert.equal(harness.state.posted.filter((message) => message.type === "saved").length, 1)
+})
+
+test("Builder serializes concurrent save messages for the same target", async (t) => {
+  const harness = createPanelHarness(t)
+  const backupStarted = deferred()
+  const releaseBackup = deferred()
+  let blockFirstBackup = true
+  harness.state.beforeBackupWrite = async () => {
+    if (!blockFirstBackup) return
+    blockFirstBackup = false
+    backupStarted.resolve()
+    await releaseBackup.promise
+  }
+  harness.state.warningResponses.push("Apply changes", "Apply changes")
+
+  const firstSave = harness.send({ type: "save", model: editedModel(harness.model, "First concurrent description.") })
+  await backupStarted.promise
+  const secondSave = harness.send({ type: "save", model: editedModel(harness.model, "Second concurrent description.") })
+  await nextTurn()
+  const warningCountWhileFirstSaveIsBlocked = harness.state.warnings.length
+  releaseBackup.resolve()
+  await Promise.all([firstSave, secondSave])
+
+  assert.equal(warningCountWhileFirstSaveIsBlocked, 1)
+  assert.match(fs.readFileSync(harness.target, "utf8"), /description: Second concurrent description\./)
+  assert.deepEqual(harness.state.commands, [["workflowRegister.reload"], ["workflowRegister.reload"]])
+  assert.equal(harness.state.posted.filter((message) => message.type === "saved").length, 2)
+})
+
+test("Builder aborts a queued save when the panel switches sessions before the operation starts", async (t) => {
+  const harness = createPanelHarness(t)
+  const sessionB = existingWorkflow(t, { description: "Session B original description." })
+  harness.state.warningResponses.push("Apply changes", "Apply changes")
+
+  const staleSessionASave = harness.send({ type: "save", model: editedModel(harness.model, "Stale session A description.") })
+  harness.showFixture(sessionB)
+  await staleSessionASave
+
+  assert.equal(fs.readFileSync(harness.target, "utf8"), harness.oldText)
+  assert.equal(fs.readFileSync(sessionB.target, "utf8"), sessionB.oldText)
+  assert.deepEqual(backupFiles(harness.target), [])
+  assert.deepEqual(backupFiles(sessionB.target), [])
+  assert.deepEqual(harness.state.commands, [])
+  assert.deepEqual(harness.state.shownDocuments, [])
+  assert.equal(harness.state.posted.some((message) => message.type === "saved"), false)
+  assert.deepEqual(harness.state.information, [])
+
+  await harness.send({ type: "save", model: editedModel(sessionB.model, "Fresh session B description.") })
+
+  assert.equal(fs.readFileSync(harness.target, "utf8"), harness.oldText)
+  assert.match(fs.readFileSync(sessionB.target, "utf8"), /description: Fresh session B description\./)
+  assert.equal(backupFiles(sessionB.target).length, 1)
+  assert.deepEqual(harness.state.commands, [["workflowRegister.reload"]])
+  assert.equal(harness.state.posted.filter((message) => message.type === "saved").length, 1)
+})
+
+test("Builder rolls back a backup and aborts when the panel switches sessions during backup", async (t) => {
+  const harness = createPanelHarness(t)
+  const sessionB = existingWorkflow(t, { description: "Session B original during backup." })
+  const backupStarted = deferred()
+  const releaseBackup = deferred()
+  let blockFirstBackup = true
+  harness.state.beforeBackupWrite = async () => {
+    if (!blockFirstBackup) return
+    blockFirstBackup = false
+    backupStarted.resolve()
+    await releaseBackup.promise
+  }
+  harness.state.warningResponses.push("Apply changes", "Apply changes")
+
+  const staleSessionASave = harness.send({ type: "save", model: editedModel(harness.model, "Stale session A during backup.") })
+  await backupStarted.promise
+  harness.showFixture(sessionB)
+  releaseBackup.resolve()
+  await staleSessionASave
+
+  assert.equal(fs.readFileSync(harness.target, "utf8"), harness.oldText)
+  assert.equal(fs.readFileSync(sessionB.target, "utf8"), sessionB.oldText)
+  assert.deepEqual(backupFiles(harness.target), [])
+  assert.deepEqual(backupFiles(sessionB.target), [])
+  assert.deepEqual(harness.state.commands, [])
+  assert.deepEqual(harness.state.shownDocuments, [])
+  assert.equal(harness.state.posted.some((message) => message.type === "saved"), false)
+  assert.deepEqual(harness.state.information, [])
+
+  await harness.send({ type: "save", model: editedModel(sessionB.model, "Fresh session B after backup switch.") })
+
+  assert.equal(fs.readFileSync(harness.target, "utf8"), harness.oldText)
+  assert.match(fs.readFileSync(sessionB.target, "utf8"), /description: Fresh session B after backup switch\./)
+  assert.equal(backupFiles(sessionB.target).length, 1)
+  assert.deepEqual(harness.state.commands, [["workflowRegister.reload"]])
+  assert.equal(harness.state.posted.filter((message) => message.type === "saved").length, 1)
+})
+
+test("Builder reloads a committed save without sending stale UI when the panel switches sessions during target write", async (t) => {
+  const harness = createPanelHarness(t)
+  const sessionB = existingWorkflow(t, { description: "Session B original during target write." })
+  const targetWriteStarted = deferred()
+  const releaseTargetWrite = deferred()
+  let blockFirstTargetWrite = true
+  harness.state.beforeTargetWrite = async () => {
+    if (!blockFirstTargetWrite) return
+    blockFirstTargetWrite = false
+    targetWriteStarted.resolve()
+    await releaseTargetWrite.promise
+  }
+  harness.state.warningResponses.push("Apply changes", "Apply changes")
+
+  const committedSessionASave = harness.send({ type: "save", model: editedModel(harness.model, "Committed session A description.") })
+  await targetWriteStarted.promise
+  harness.showFixture(sessionB)
+  releaseTargetWrite.resolve()
+  await committedSessionASave
+
+  assert.match(fs.readFileSync(harness.target, "utf8"), /description: Committed session A description\./)
+  assert.equal(fs.readFileSync(sessionB.target, "utf8"), sessionB.oldText)
+  assert.equal(backupFiles(harness.target).length, 1)
+  assert.deepEqual(backupFiles(sessionB.target), [])
+  assert.deepEqual(harness.state.commands, [["workflowRegister.reload"]])
+  assert.deepEqual(harness.state.shownDocuments, [])
+  assert.equal(harness.state.posted.some((message) => message.type === "saved"), false)
+  assert.deepEqual(harness.state.information, [])
+
+  await harness.send({ type: "save", model: editedModel(sessionB.model, "Fresh session B after target write.") })
+
+  assert.match(fs.readFileSync(harness.target, "utf8"), /description: Committed session A description\./)
+  assert.match(fs.readFileSync(sessionB.target, "utf8"), /description: Fresh session B after target write\./)
+  assert.deepEqual(harness.state.commands, [["workflowRegister.reload"], ["workflowRegister.reload"]])
+  assert.equal(harness.state.shownDocuments.length, 1)
+  assert.equal(harness.state.posted.filter((message) => message.type === "saved").length, 1)
+  assert.equal(harness.state.information.length, 1)
+})
+
+test("Builder retains two exclusively-created backups for successful saves in the same second", async (t) => {
+  const harness = createPanelHarness(t)
+  const RealDate = global.Date
+  const fixedTime = new RealDate("2026-07-12T03:04:05.000Z")
+  global.Date = class FixedDate extends RealDate {
+    constructor(...args) {
+      super(...(args.length ? args : [fixedTime.getTime()]))
+    }
+
+    static now() {
+      return fixedTime.getTime()
+    }
+  }
+  t.after(() => { global.Date = RealDate })
+  harness.state.warningResponses.push("Apply changes", "Apply changes")
+  const firstModel = editedModel(harness.model, "First same-second description.")
+  const secondModel = editedModel(harness.model, "Second same-second description.")
+
+  await harness.send({ type: "save", model: firstModel })
+  await harness.send({ type: "save", model: secondModel })
+
+  const backups = backupFiles(harness.target)
+  const backupContents = backups
+    .map((name) => fs.readFileSync(path.join(path.dirname(harness.target), name), "utf8"))
+    .sort()
+  const firstText = serializeAuthoringModelToMarkdown(firstModel).markdown
+  assert.equal(backups.length, 2)
+  assert.equal(new Set(backups).size, 2)
+  assert.deepEqual(backupContents, [harness.oldText, firstText].sort())
+  assert.equal(harness.state.copies.length, 2)
+  assert.ok(harness.state.copies.every(({ options }) => options?.overwrite === false))
 })
 
 test("Builder advances its originalText baseline only after each successful save", async (t) => {

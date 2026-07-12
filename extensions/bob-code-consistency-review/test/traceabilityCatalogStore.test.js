@@ -92,6 +92,62 @@ test("validateAndWriteTraceabilityGateReport writes the markdown gate report", a
   assert.match(await fs.readFile(result.reportPath, "utf8"), /# Traceability Gate Report/)
 })
 
+test("gate report commit-time CAS preserves a catalog changed while the report temp file is pending", async () => {
+  const workspaceRoot = await makeWorkspace()
+  const catalogPath = path.join(workspaceRoot, DEFAULT_TRACEABILITY_CATALOG_PATH)
+  const reportPath = path.join(workspaceRoot, DEFAULT_TRACEABILITY_GATE_REPORT_PATH)
+  const initial = await writeTraceabilityCatalog({ workspaceRoot, catalog: catalogWithDocument("initial") })
+  assert.equal(initial.status, "ok")
+  await fs.mkdir(path.dirname(reportPath), { recursive: true })
+  const existingReport = Buffer.from("existing report must survive\n", "utf8")
+  await fs.writeFile(reportPath, existingReport)
+  const externalBytes = Buffer.from(`${JSON.stringify(catalogWithDocument("external-winner"), null, 2)}\n`, "utf8")
+  const barrier = installTargetTempOpenBarrier(reportPath)
+
+  try {
+    const pendingReport = validateAndWriteTraceabilityGateReport({
+      workspaceRoot,
+      expectedRevision: initial.revision
+    })
+    await barrier.waitUntilEntered()
+    await fs.writeFile(catalogPath, externalBytes)
+    barrier.release()
+
+    const result = await pendingReport
+    assert.equal(result.status, "error")
+    assert.equal(result.code, "stale_revision")
+    assert.deepEqual(await fs.readFile(catalogPath), externalBytes)
+    assert.deepEqual(await fs.readFile(reportPath), existingReport)
+    const names = await fs.readdir(path.dirname(reportPath))
+    assert.equal(names.some((name) => name.endsWith(".tmp")), false)
+  } finally {
+    barrier.release()
+    barrier.restore()
+  }
+})
+
+test("gate reports reject a report file alias that resolves to the catalog itself", async (t) => {
+  const workspaceRoot = await makeWorkspace()
+  const catalogPath = path.join(workspaceRoot, DEFAULT_TRACEABILITY_CATALOG_PATH)
+  const initial = await writeTraceabilityCatalog({ workspaceRoot, catalog: catalogWithDocument("catalog-must-survive") })
+  assert.equal(initial.status, "ok")
+  const catalogBytes = await fs.readFile(catalogPath)
+  const reportRelativePath = ".custom/catalog-report-alias.md"
+  const reportAliasPath = path.join(workspaceRoot, reportRelativePath)
+  if (!await createCatalogFileAlias(t, catalogPath, reportAliasPath)) return
+
+  const result = await validateAndWriteTraceabilityGateReport({
+    workspaceRoot,
+    reportPath: reportRelativePath,
+    expectedRevision: initial.revision
+  })
+
+  assert.equal(result.status, "error")
+  assert.match(result.errors.join("\n"), /same physical target|catalog/i)
+  assert.deepEqual(await fs.readFile(catalogPath), catalogBytes)
+  assert.equal((await fs.lstat(reportAliasPath)).isSymbolicLink(), true)
+})
+
 test("catalog compare-and-set allows one A/B writer and rejects the stale writer without another backup", async () => {
   const workspaceRoot = await makeWorkspace()
   await writeTraceabilityCatalog({ workspaceRoot, catalog: catalogWithDocument("initial") })
@@ -154,6 +210,71 @@ test("catalog backups remain unique across same-second successful writes", async
   assert.notEqual(first.backupPath, second.backupPath)
   assert.equal(JSON.parse(await fs.readFile(first.backupPath, "utf8")).documents[0].document_id, "initial")
   assert.equal(JSON.parse(await fs.readFile(second.backupPath, "utf8")).documents[0].document_id, "first")
+})
+
+test("commit-time CAS preserves an external update made while the candidate temp file is pending", async () => {
+  const workspaceRoot = await makeWorkspace()
+  const catalogPath = path.join(workspaceRoot, DEFAULT_TRACEABILITY_CATALOG_PATH)
+  const initial = await writeTraceabilityCatalog({ workspaceRoot, catalog: catalogWithDocument("initial") })
+  assert.equal(initial.status, "ok")
+  const externalBytes = Buffer.from(`${JSON.stringify(catalogWithDocument("external-winner"), null, 2)}\n`, "utf8")
+  const barrier = installTargetTempOpenBarrier(catalogPath)
+
+  try {
+    const pendingWrite = writeTraceabilityCatalog({
+      workspaceRoot,
+      catalog: catalogWithDocument("stale-candidate"),
+      backupExisting: true,
+      expectedRevision: initial.revision
+    })
+    await barrier.waitUntilEntered()
+    await fs.writeFile(catalogPath, externalBytes)
+    barrier.release()
+
+    const result = await pendingWrite
+    assert.equal(result.status, "error")
+    assert.equal(result.code, "stale_revision")
+    assert.deepEqual(await fs.readFile(catalogPath), externalBytes)
+    const names = await fs.readdir(path.dirname(catalogPath))
+    assert.equal(names.some((name) => name.endsWith(".tmp")), false)
+    assert.equal(names.some((name) => name.includes("traceability-catalog.json.bak-")), false)
+  } finally {
+    barrier.release()
+    barrier.restore()
+  }
+})
+
+test("commit-time CAS treats a missing catalog that appears while the candidate temp file is pending as stale", async () => {
+  const workspaceRoot = await makeWorkspace()
+  const catalogPath = path.join(workspaceRoot, DEFAULT_TRACEABILITY_CATALOG_PATH)
+  const initial = await readTraceabilityCatalog({ workspaceRoot })
+  assert.equal(initial.status, "ok")
+  assert.equal(initial.revision, null)
+  const externalBytes = Buffer.from(`${JSON.stringify(catalogWithDocument("external-create"), null, 2)}\n`, "utf8")
+  const barrier = installTargetTempOpenBarrier(catalogPath)
+
+  try {
+    const pendingWrite = writeTraceabilityCatalog({
+      workspaceRoot,
+      catalog: catalogWithDocument("stale-create"),
+      backupExisting: true,
+      expectedRevision: initial.revision
+    })
+    await barrier.waitUntilEntered()
+    await fs.writeFile(catalogPath, externalBytes)
+    barrier.release()
+
+    const result = await pendingWrite
+    assert.equal(result.status, "error")
+    assert.equal(result.code, "stale_revision")
+    assert.deepEqual(await fs.readFile(catalogPath), externalBytes)
+    const names = await fs.readdir(path.dirname(catalogPath))
+    assert.equal(names.some((name) => name.endsWith(".tmp")), false)
+    assert.equal(names.some((name) => name.includes("traceability-catalog.json.bak-")), false)
+  } finally {
+    barrier.release()
+    barrier.restore()
+  }
 })
 
 test("gate report expected revision rejects a changed catalog without writing a stale report", async () => {
@@ -462,6 +583,37 @@ function installPathIoBarrier(targetPath) {
       fs.realpath = originalRealpath
       fs.readFile = originalReadFile
     }
+  }
+}
+
+function installTargetTempOpenBarrier(targetPath) {
+  const originalOpen = fs.open
+  const expectedDirectory = normalizePhysicalPath(path.dirname(targetPath))
+  const tempPrefix = `.${path.basename(targetPath)}.`
+  let enteredResolve
+  let releaseResolve
+  let triggered = false
+  const entered = new Promise((resolve) => { enteredResolve = resolve })
+  const released = new Promise((resolve) => { releaseResolve = resolve })
+  fs.open = async (...args) => {
+    const candidate = typeof args[0] === "string" ? args[0] : undefined
+    if (
+      !triggered &&
+      candidate &&
+      normalizePhysicalPath(path.dirname(candidate)) === expectedDirectory &&
+      path.basename(candidate).startsWith(tempPrefix) &&
+      path.basename(candidate).endsWith(".tmp")
+    ) {
+      triggered = true
+      enteredResolve()
+      await released
+    }
+    return Reflect.apply(originalOpen, fs, args)
+  }
+  return {
+    waitUntilEntered: () => entered,
+    release: () => releaseResolve(),
+    restore: () => { fs.open = originalOpen }
   }
 }
 

@@ -37,6 +37,16 @@ type ParentGuard = {
   identity: FileIdentity
 }
 
+class StaleCatalogRevisionError extends Error {
+  constructor(
+    readonly observedRevision: string | null,
+    readonly currentRevision: string | null
+  ) {
+    super(staleRevisionMessage(observedRevision, currentRevision))
+    this.name = "StaleCatalogRevisionError"
+  }
+}
+
 export async function readTraceabilityCatalog(input: {
   workspaceRoot: string
   catalogPath?: string
@@ -59,6 +69,8 @@ export async function writeTraceabilityCatalog(input: {
   const workspacePhysicalRoot = await resolveWorkspacePhysicalRoot(input.workspaceRoot)
   const catalogPath = resolveCatalogPath(input.workspaceRoot, input.catalogPath)
   return withCatalogPathLock(workspacePhysicalRoot, catalogPath, async (target) => {
+    let backupPath: string | undefined
+    let backupParentGuard: ParentGuard | undefined
     try {
       const existingBytes = await readOptionalFile(target)
       const currentRevision = existingBytes ? contentRevision(existingBytes) : null
@@ -66,16 +78,20 @@ export async function writeTraceabilityCatalog(input: {
         return staleCatalogWrite(catalogPath, input.expectedRevision, currentRevision)
       }
 
-      let backupPath: string | undefined
       if (input.backupExisting && existingBytes) {
         const parentGuard = await ensureParentGuard(target)
+        backupParentGuard = parentGuard
         backupPath = uniqueBackupPath(target.physicalPath)
         await writeNewFile(backupPath, existingBytes, parentGuard)
       }
       const bytes = Buffer.from(`${JSON.stringify(normalizeCatalog(input.catalog), null, 2)}\n`, "utf8")
-      await atomicReplaceFile(target, bytes)
+      await atomicReplaceFile(target, bytes, () => validateCatalogCommitRevision(target, currentRevision))
       return { status: "ok", catalogPath, backupPath, revision: contentRevision(bytes) }
     } catch (error) {
+      if (error instanceof StaleCatalogRevisionError) {
+        if (backupPath && backupParentGuard) await removeGuardedFile(backupPath, backupParentGuard)
+        return staleCatalogWrite(catalogPath, error.observedRevision, error.currentRevision)
+      }
       return {
         status: "error",
         catalogPath,
@@ -112,9 +128,25 @@ export async function validateAndWriteTraceabilityGateReport(input: {
     const markdown = renderTraceabilityGateReport(report)
     try {
       const reportTarget = await resolvePhysicalTarget(workspacePhysicalRoot, reportPath)
-      await atomicReplaceFile(reportTarget, Buffer.from(markdown, "utf8"))
+      if (samePhysicalPath(reportTarget.physicalPath, target.physicalPath)) {
+        throw new Error(`traceability gate report resolves to the same physical target as the catalog: ${reportPath}`)
+      }
+      await atomicReplaceFile(
+        reportTarget,
+        Buffer.from(markdown, "utf8"),
+        () => validateCatalogCommitRevision(target, read.revision)
+      )
       return { status: "ok", catalogPath, reportPath, report, markdown, revision: read.revision }
     } catch (error) {
+      if (error instanceof StaleCatalogRevisionError) {
+        return {
+          status: "error",
+          code: "stale_revision",
+          catalogPath,
+          reportPath,
+          errors: [error.message]
+        }
+      }
       return {
         status: "error",
         catalogPath,
@@ -232,6 +264,14 @@ async function readOptionalFile(target: PhysicalTarget): Promise<Buffer | undefi
   }
 }
 
+async function validateCatalogCommitRevision(target: PhysicalTarget, observedRevision: string | null): Promise<void> {
+  const commitBytes = await readOptionalFile(target)
+  const commitRevision = commitBytes ? contentRevision(commitBytes) : null
+  if (commitRevision !== observedRevision) {
+    throw new StaleCatalogRevisionError(observedRevision, commitRevision)
+  }
+}
+
 function contentRevision(bytes: Uint8Array): string {
   return `sha256:${createHash("sha256").update(bytes).digest("hex")}`
 }
@@ -240,7 +280,11 @@ function uniqueBackupPath(catalogPath: string): string {
   return `${catalogPath}.bak-${timestampForFileName(new Date())}-${randomUUID().replace(/-/g, "").slice(0, 12)}`
 }
 
-async function atomicReplaceFile(target: PhysicalTarget, bytes: Uint8Array): Promise<void> {
+async function atomicReplaceFile(
+  target: PhysicalTarget,
+  bytes: Uint8Array,
+  validateCommit?: () => Promise<void>
+): Promise<void> {
   const parentGuard = await ensureParentGuard(target)
   const tempPath = path.join(parentGuard.physicalPath, `.${path.basename(target.physicalPath)}.${process.pid}.${randomUUID()}.tmp`)
   try {
@@ -249,6 +293,7 @@ async function atomicReplaceFile(target: PhysicalTarget, bytes: Uint8Array): Pro
       await validateParentGuard(parentGuard)
       await validatePhysicalTarget(target)
       await assertPhysicalPathMatches(target.workspacePhysicalRoot, tempPath, tempPath)
+      await validateCommit?.()
     })
     await validatePhysicalTarget(target)
   } catch (error) {
