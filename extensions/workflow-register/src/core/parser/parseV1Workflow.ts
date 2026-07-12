@@ -58,6 +58,7 @@ export function parseV1Workflow(request: ParseWorkflowRequest, fields: Record<st
   const prompt = optionalString(fields, "prompt") ?? body.trim()
   const stepCompletionValue = stepCompletion(fields, todoEnabled && todos.length > 0 ? "manual" : "auto")
   const todoAsStepsValue = optionalBoolean(fields, "todoAsSteps") ?? (todoEnabled && todos.length > 0)
+  const runControl = normalizeRunControl(fields.runControl)
   const workflow: CoreWorkflowDefinition = {
     id: optionalString(fields, "id") ?? `${request.sourceId}.${name}`,
     name,
@@ -84,7 +85,6 @@ export function parseV1Workflow(request: ParseWorkflowRequest, fields: Record<st
     stepMessage: stepMessage(fields, "current"),
     stepExecution: normalizeStepExecution(fields.stepExecution, todoAsStepsValue ? "todo" : "full"),
     stepReview: normalizeStepReview(fields.stepReview, stepCompletionValue),
-    runControl: normalizeRunControl(fields.runControl),
     todos,
     inputs: normalizeInputs(asRecord(fields.inputs)),
     requires: normalizeRequires(asRecord(fields.requires)),
@@ -96,6 +96,7 @@ export function parseV1Workflow(request: ParseWorkflowRequest, fields: Record<st
     branching: normalizeBranching(fields.branching),
     engineSteps
   }
+  if (runControl) Object.assign(workflow, { runControl })
   const skipResume = skipResumeFromExtensionFields(fields)
   if (skipResume) Object.assign(workflow, { skipResume })
   return { ok: true, workflow, diagnostics: [...warnings, `- ok: ${request.filePath}: ${workflow.id}; schemaVersion=workflow-register/v1; steps=${workflow.engineSteps.length}`] }
