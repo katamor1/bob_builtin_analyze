@@ -41,7 +41,7 @@ test("preprocessReview emits the evidence scope budget report and manifest hando
 
   assert.equal(report.schema_version, 1)
   assert.equal(report.selection_policy, "bob-evidence-scope-v1")
-  assert.equal(report.source_revision, "main..feature/multi-language-git-review")
+  assert.match(report.source_revision, /^[0-9a-f]{40}\.\.[0-9a-f]{40}$/)
   assert.equal(report.rule_source, "review-input.bob_options.evidence_scope_rules")
   assert.equal(report.budget.budgetTokens, 524288)
   assert.match(report.scope_fingerprint, /^scope-[0-9a-f]{8}$/)
