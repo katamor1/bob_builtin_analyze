@@ -103,19 +103,31 @@ export function reviewRunCommandInput(context: ReviewRunContext): ReviewRunComma
   }
 }
 
-export function validateReviewRunCommandInput(
+export async function validateReviewRunCommandInput(
   input: ReviewRunCommandInput,
   openWorkspaceRoots: string[]
-): ReviewRunCommandInput {
+): Promise<ReviewRunCommandInput> {
   const workspaceRoot = path.resolve(input.workspaceRoot)
-  if (!openWorkspaceRoots.some((root) => isInsideOrSame(path.resolve(root), workspaceRoot))) {
-    throw new Error(`Review Run workspaceRoot must be inside an open workspace folder: ${input.workspaceRoot}`)
+  const campaignId = validateReviewRunSegment(input.campaignId, "campaignId")
+  const reviewId = validateReviewRunSegment(input.reviewId, "reviewId")
+  const candidateRoots = openWorkspaceRoots
+    .map((root) => path.resolve(root))
+    .filter((root) => isInsideOrSame(root, workspaceRoot))
+
+  let lastBoundaryError: unknown
+  for (const root of candidateRoots) {
+    try {
+      await assertReviewRunPathContained(root, workspaceRoot)
+      const stats = await fs.stat(workspaceRoot)
+      if (!stats.isDirectory()) throw new Error("workspaceRoot is not a directory")
+      return { workspaceRoot, campaignId, reviewId }
+    } catch (error) {
+      lastBoundaryError = error
+    }
   }
-  return {
-    workspaceRoot,
-    campaignId: validateReviewRunSegment(input.campaignId, "campaignId"),
-    reviewId: validateReviewRunSegment(input.reviewId, "reviewId")
-  }
+
+  const detail = lastBoundaryError instanceof Error ? `: ${lastBoundaryError.message}` : ""
+  throw new Error(`Review Run workspaceRoot must be a safe path inside an open workspace folder: ${input.workspaceRoot}${detail}`)
 }
 
 export function buildReviewRunMetadataSection(context: ReviewRunContext): string {
