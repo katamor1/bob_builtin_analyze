@@ -13,6 +13,12 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  apply-windows-path-test-fixes:
+    if: github.event.pull_request.head.ref == 'agent/workflow-automatic-pause-ci-verification-20260712'
+    uses: ./.github/workflows/agent-apply-windows-path-test-fixes.yml
+    permissions:
+      contents: write
+
   focused-automatic-pause:
     runs-on: ubuntu-latest
     defaults:
