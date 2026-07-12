@@ -14,7 +14,7 @@ function writeTestConfiguration() {
   assertTestRuntimeAvailable()
   const configPath = path.join(process.cwd(), ".vscode-test.json")
   const config = {
-    files: __filename,
+    files: smokeTestFiles(),
     version: "1.106.1",
     extensionDevelopmentPath: process.cwd(),
     skipExtensionDependencies: true,
@@ -25,6 +25,27 @@ function writeTestConfiguration() {
   }
   fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf8")
   process.stdout.write(`Wrote ${configPath}\n`)
+}
+
+function smokeTestFiles() {
+  const files = [__filename]
+  const configured = process.env.SMOKE_EXTRA_FILES
+  if (typeof configured !== "string" || configured.trim().length === 0) return files
+
+  const seen = new Set(files.map((filePath) => path.resolve(filePath)))
+  for (const entry of configured.split(",").map((value) => value.trim()).filter(Boolean)) {
+    const resolved = path.resolve(process.cwd(), entry)
+    if (!fs.existsSync(resolved)) {
+      throw new Error(`Extension Host smoke extra test file does not exist: ${resolved}`)
+    }
+    if (!fs.statSync(resolved).isFile()) {
+      throw new Error(`Extension Host smoke extra test path is not a file: ${resolved}`)
+    }
+    if (seen.has(resolved)) continue
+    seen.add(resolved)
+    files.push(resolved)
+  }
+  return files
 }
 
 function assertTestRuntimeAvailable() {
