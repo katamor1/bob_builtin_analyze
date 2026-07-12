@@ -26,15 +26,12 @@ jobs:
       - name: Install dependencies
         working-directory: extensions/bob-code-consistency-review
         run: npm ci
-      - name: Compile
-        working-directory: extensions/bob-code-consistency-review
-        run: npm run compile
-      - name: Capture focused tests
+      - name: Capture full test suite
         working-directory: extensions/bob-code-consistency-review
         shell: bash
         run: |
           set +e
-          node --test test/projectRulePack.test.js test/evidenceScopePipeline.test.js > phase3-tests.log 2>&1
+          npm test > phase3-tests.log 2>&1
           echo $? > phase3-tests.exit-code
           exit 0
       - name: Commit diagnostic
@@ -46,5 +43,5 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add docs/implementation/diagnostics/evidence-scope-phase3-tests.log docs/implementation/diagnostics/evidence-scope-phase3-tests.exit-code
-          git commit -m 'ci: record evidence scope phase 3 diagnostics'
+          git commit -m 'ci: record full evidence scope phase 3 diagnostics'
           git push origin HEAD:codex/execute-shared-plan-6a53743e
