@@ -48,3 +48,16 @@ test("Extension Host smoke preflights packages, the local binary, and soft-depen
   assert.match(smokeSource, /skipExtensionDependencies:\s*true/)
   assert.match(smokeSource, /ui:\s*"bdd"/)
 })
+
+test("code consistency Extension Host smoke loads triage operator flows", () => {
+  const qualityWorkflow = readRepoFile(".github", "workflows", "extensions-quality.yml")
+  const smokeSource = readRepoFile("scripts", "extension-host-smoke.test.js")
+  const operatorTestPath = path.join(repoRoot, "scripts", "triage-integrity-extension-host.test.js")
+
+  assert.match(smokeSource, /SMOKE_EXTRA_FILES/)
+  assert.match(smokeSource, /files:\s*smokeTestFiles\(\)/)
+  assert.match(qualityWorkflow, /SMOKE_EXTRA_FILES:\s*\.\.\/\.\.\/scripts\/triage-integrity-extension-host\.test\.js/)
+  assert.match(qualityWorkflow, /extra_test_files:\s*"\.\.\/\.\.\/scripts\/triage-integrity-extension-host\.test\.js"/)
+  assert.match(qualityWorkflow, /SMOKE_EXTRA_FILES:\s*\$\{\{\s*matrix\.extra_test_files\s*\}\}/)
+  assert.equal(fs.existsSync(operatorTestPath), true, "triage operator Extension Host test file must be committed")
+})
