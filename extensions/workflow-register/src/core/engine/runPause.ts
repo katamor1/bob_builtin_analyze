@@ -21,12 +21,10 @@ export async function pauseRunIfRequested(input: {
   checkpoint: string
   runStore: RunStateStore
   runControlStore?: RunControlStore
-  workspaceLimits?: WorkflowRunControlLimitsDefinition
-  clock?: () => Date
   emitRunPaused: RunPauseEmitter
 }): Promise<boolean> {
   const { workflow, run, nextStep, checkpoint, runStore, runControlStore, emitRunPaused } = input
-  const now = (input.clock ?? (() => new Date()))()
+  const now = runControlStore?.currentDate?.() ?? new Date()
   const control = await runControlStore?.loadControl(run.runId)
   if (control?.pauseRequestedAt && !control.clearedAt) {
     return persistManualPause({ workflow, run, nextStep, checkpoint, runStore, emitRunPaused, control, now })
@@ -36,8 +34,8 @@ export async function pauseRunIfRequested(input: {
   if (hasLimits(workflow.runControl?.limits)) {
     policies.push({ source: "workflow", limits: workflow.runControl.limits })
   }
-  if (hasLimits(input.workspaceLimits)) {
-    policies.push({ source: "workspace", limits: input.workspaceLimits })
+  if (hasLimits(runControlStore?.workspaceAutomaticPauseLimits)) {
+    policies.push({ source: "workspace", limits: runControlStore.workspaceAutomaticPauseLimits })
   }
   const decision = evaluateAutomaticPause({ run, nextStep, now, policies })
   if (!decision) return false
