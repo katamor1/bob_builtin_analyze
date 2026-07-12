@@ -4,6 +4,7 @@
 
 - task snapshot preview planner and digest
 - selective apply and existing-file overwrite boundary
+- safe implicit-selection defaults
 - existing artifact/manifest/run-state transaction and rollback
 - command preview / QuickPick / confirmation / lease ordering
 - Markdown preview report
@@ -19,7 +20,8 @@
 4. Artifact file、manifest、run state、provenanceが既存transactionに含まれ、失敗時にrollbackされることを確認した。
 5. Physical workspace containmentとunsafe path rejectionを確認した。
 6. Snapshot本文がrelease evidenceやprovenance badgeへ混入しないことを確認した。
-7. Linux / Windows unit、policy、package、VSIX、Extension Host gateを確認する。
+7. Selection省略時にunsafe candidateを暗黙importしないことを確認した。
+8. Linux / Windows unit、policy、package、VSIX、Extension Host gateを確認した。
 
 ## Findings fixed during review
 
@@ -35,10 +37,15 @@ Production codeはconfirmation labelを変数へ定義してから`showWarningMe
 
 Import recordはrun stateに存在したが、Operation HubとRuns Viewでは通常artifact manifestと区別できなかった。本文を表示せず、件数とimport日時だけをbadge、description、tooltipへ投影した。
 
+### Important — omitted selection could import unsafe snapshots implicitly
+
+Core APIで`selectedArtifactIds`を省略すると、previewで初期選択されないtruncated/redacted candidateまで自動importできる経路があった。Selection省略時は`defaultSelected === true`だけを対象にし、安全candidateが0件ならno-opに変更した。明示選択ではreview済みtruncated candidateを救済できる回帰testを追加した。
+
 ## Non-destructive invariants
 
 - Previewはartifact file、manifest、run stateを変更しない。
 - Explicit empty selectionはno-opである。
+- Implicit selectionはdefault-safe candidateだけを対象にする。
 - Existing changed fileは確認なしで上書きしない。
 - Unselected candidateはfile、manifest、stateへ入らない。
 - Preview digest mismatchはtransaction開始前に停止する。
@@ -61,14 +68,16 @@ Import recordはrun stateに存在したが、Operation HubとRuns Viewでは通
 - Report GREEN: run `29205015256`。
 - Provenance RED: run `29205308654`。
 - Focused final diagnostic: run `29206130109`, 7 passed / 0 failed, compile status 0。
-- Linux full workflow-register gate: run `29206130088`, unit / policy / package / VSIX / Extension Host success。
-- Final evidence-tail matrix: pending.
+- Final code head: `784864813169492709edd2536d9236fbb2f00d17`。
+- Final code matrix: `extensions-quality` run `29206419912`, all 7 jobs success。
+- Workflow contracts: run `29206419896`, success。
+- Review scaffold: run `29206419897`, success。
 
-## Final result before evidence-tail matrix
+## Final result
 
 | Severity | Open findings |
 | --- | ---: |
 | Critical | 0 |
 | Important | 0 |
 
-Code-review gate is GO. Merge gate remains NO-GO until the final evidence-tail Ubuntu / Windows matrix succeeds.
+Code, cross-platform CI, package, VSIX, and Extension Host gates are GO. Documentation-only tail must complete without introducing a new finding before the PR is marked ready and merged.
