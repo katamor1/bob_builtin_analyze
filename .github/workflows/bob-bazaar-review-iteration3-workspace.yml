@@ -6,6 +6,9 @@ on:
       - agent/bob-bazaar-review-review-run-v3-iteration3
     paths:
       - ".github/workflows/bob-bazaar-review-iteration3-workspace.yml"
+  pull_request:
+    paths:
+      - ".github/workflows/bob-bazaar-review-iteration3-workspace.yml"
 
 permissions:
   contents: read
