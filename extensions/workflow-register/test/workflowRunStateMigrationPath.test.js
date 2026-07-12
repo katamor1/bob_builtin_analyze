@@ -14,8 +14,12 @@ function tempRoot() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "workflow-run-migration-path-"))
 }
 
+function runsDirectory(root) {
+  return path.join(root, ".bob", "workflows", "runs")
+}
+
 function runDirectory(root, runId) {
-  return path.join(root, ".bob", "workflows", "runs", runId)
+  return path.join(runsDirectory(root), runId)
 }
 
 async function prepareRunDirectory(root, runId) {
@@ -82,4 +86,47 @@ test("migration backup rejects a symlink target instead of following it", async 
     /must be a direct regular file and not a symlink/
   )
   assert.equal(fs.readFileSync(outsideFile, "utf8"), "outside\n")
+})
+
+test("migration backup removes its owned temp file when temp identity verification fails", async (t) => {
+  const root = tempRoot()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const runId = "20260712T000000Z-temp-cleanup-000000000004"
+  await prepareRunDirectory(root, runId)
+  const rootRunsDirectory = runsDirectory(root)
+  const originalLstat = fsp.lstat
+  let injected = false
+
+  fsp.lstat = async (filePath, ...args) => {
+    const resolved = path.resolve(String(filePath))
+    const isOwnedTemp = path.dirname(resolved) === path.resolve(rootRunsDirectory)
+      && path.basename(resolved).startsWith(`.${runId}.`)
+      && path.basename(resolved).endsWith(".tmp")
+    if (!injected && isOwnedTemp) {
+      injected = true
+      const error = new Error("simulated migration temp identity failure")
+      error.code = "EIO"
+      throw error
+    }
+    return originalLstat(filePath, ...args)
+  }
+
+  try {
+    await assert.rejects(
+      ensureContainedRunStateMigrationBackup(root, runId, "historical\n"),
+      /simulated migration temp identity failure/
+    )
+  } finally {
+    fsp.lstat = originalLstat
+  }
+
+  assert.equal(injected, true)
+  assert.deepEqual(
+    fs.readdirSync(rootRunsDirectory).filter((name) => name.endsWith(".tmp")),
+    []
+  )
+  assert.equal(
+    fs.existsSync(path.join(runDirectory(root, runId), "run-state-v0.backup.json")),
+    false
+  )
 })
