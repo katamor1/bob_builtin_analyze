@@ -11,9 +11,12 @@ concurrency:
   group: triage-integrity-windows-diagnostic-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: write
+
 jobs:
   diagnose:
-    name: Windows triage unit diagnostic
+    name: Windows traceability path fix verification
     runs-on: windows-latest
     timeout-minutes: 20
 
@@ -22,8 +25,10 @@ jobs:
         working-directory: extensions/bob-code-consistency-review
 
     steps:
-      - name: Checkout
+      - name: Checkout implementation branch
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
 
       - name: Setup Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -38,58 +43,62 @@ jobs:
       - name: Compile
         run: npm run compile
 
-      - name: Probe Windows fs.open paths and bindings
+      - name: Apply physical path normalization to CAS test barrier
         shell: pwsh
         run: |
-          $probe = Join-Path $env:RUNNER_TEMP "traceability-open-probe.cjs"
-          $probeLog = Join-Path $env:RUNNER_TEMP "traceability-open-probe.log"
           @'
-          const fs = require("node:fs/promises")
-          const os = require("node:os")
+          const fs = require("node:fs")
           const path = require("node:path")
-          const store = require(path.join(process.cwd(), "out", "core", "traceabilityCatalogStore"))
-          console.log("open descriptor", Object.getOwnPropertyDescriptor(fs, "open"))
-          const originalOpen = fs.open
-          fs.open = async (...args) => {
-            console.log("OPEN_ARG", typeof args[0], JSON.stringify(String(args[0])))
-            return Reflect.apply(originalOpen, fs, args)
+          const filePath = path.join(process.cwd(), "test", "traceabilityCatalogStore.test.js")
+          let text = fs.readFileSync(filePath, "utf8")
+          if (!text.includes('const fsSync = require("node:fs")')) {
+            text = text.replace(
+              'const assert = require("node:assert/strict")\n',
+              'const assert = require("node:assert/strict")\nconst fsSync = require("node:fs")\n'
+            )
           }
-          console.log("open patched", fs.open === originalOpen)
-          ;(async () => {
-            const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "bob-trace-open-probe-"))
-            console.log("workspaceRoot", JSON.stringify(workspaceRoot))
-            console.log("workspaceRealpath", JSON.stringify(await fs.realpath(workspaceRoot)))
-            await store.writeTraceabilityCatalog({
-              workspaceRoot,
-              catalog: { schema_version: 1, documents: [], domains: [], items: [], links: [], decisions: [] }
-            })
-            const result = await store.validateAndWriteTraceabilityGateReport({ workspaceRoot })
-            console.log("report result", result.status, JSON.stringify(result.reportPath))
-          })().catch((error) => {
-            console.error(error)
-            process.exitCode = 1
-          })
-          '@ | Set-Content -Path $probe -Encoding utf8
-          node $probe *> $probeLog
-          Get-Content $probeLog
+          const before = `function normalizePhysicalPath(value) {
+            const resolved = path.resolve(value)
+            return process.platform === "win32" ? resolved.toLowerCase() : resolved
+          }`.replace(/^          /gm, "")
+          const after = `function normalizePhysicalPath(value) {
+            const resolved = path.resolve(value)
+            let physicalPath = resolved
+            try {
+              physicalPath = fsSync.realpathSync.native(resolved)
+            } catch {
+              // The path may be a not-yet-created candidate. Its existing parent is
+              // normalized by callers before comparison, so lexical fallback is safe.
+            }
+            const normalized = stripWindowsExtendedPathPrefix(physicalPath)
+            return process.platform === "win32" ? normalized.toLowerCase() : normalized
+          }
 
-      - name: Run traceability CAS suite and capture TAP
+          function stripWindowsExtendedPathPrefix(value) {
+            if (value.startsWith("\\\\?\\UNC\\")) return \`\\\\\${value.slice(8)}\`
+            if (value.startsWith("\\\\?\\")) return value.slice(4)
+            return value
+          }`.replace(/^          /gm, "")
+          if (text.includes(before)) text = text.replace(before, after)
+          else if (!text.includes("stripWindowsExtendedPathPrefix")) {
+            throw new Error("normalizePhysicalPath source did not match the expected contract")
+          }
+          fs.writeFileSync(filePath, text)
+          '@ | node
+
+      - name: Run traceability CAS suite
+        run: node --test test/traceabilityCatalogStore.test.js
+
+      - name: Commit verified Windows path fix
+        working-directory: .
         shell: pwsh
         run: |
-          $log = Join-Path $env:RUNNER_TEMP "traceability-cas-windows.log"
-          & node --test test/traceabilityCatalogStore.test.js *> $log
-          $status = $LASTEXITCODE
-          Write-Host "Traceability CAS test exit code: $status"
-          Get-Content $log -Tail 320
-          exit $status
-
-      - name: Upload diagnostic logs
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: traceability-windows-diagnostic-logs
-          path: |
-            ${{ runner.temp }}/traceability-open-probe.log
-            ${{ runner.temp }}/traceability-cas-windows.log
-          if-no-files-found: error
-          retention-days: 3
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add extensions/bob-code-consistency-review/test/traceabilityCatalogStore.test.js
+          if (git diff --cached --quiet) {
+            Write-Host "Windows path normalization is already committed."
+            exit 0
+          }
+          git commit -m "test: canonicalize Windows traceability paths"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
