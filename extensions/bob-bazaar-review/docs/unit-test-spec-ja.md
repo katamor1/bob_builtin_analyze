@@ -272,6 +272,26 @@
 - 入力: resultのみ、packet/triage/record付き、ID不一致、複数campaign、既存runの各fixture。
 - 期待結果: previewでblocking issueを返し、確認済みケースだけ`review-run.json`を追加する。既存artifact bytesは変更しない。
 
+### BZR-UT-049 Campaign Dashboard: overviewとrateを集計する
+
+- 入力: complete / in-progress Review Run、valid / invalid record、valid / missing triage。
+- 期待結果: run数、pending triage、schema / finding rateが定義済み分母で集計され、分母0は`null`になる。
+
+### BZR-UT-050 Campaign Dashboard: ruleとchange type trendを集計する
+
+- 入力: 複数rule IDと`singleRevision` / `revisionRange` / `workingTreeSinceRevision`のReview Run。
+- 期待結果: ruleは検出数順、change typeは固定順で表示され、valid triageだけがdecisionへ加算される。
+
+### BZR-UT-051 Campaign Dashboard: evidenceを安全に読み込みexportする
+
+- 入力: malformed / missing / identity mismatch / symlink artifactと、comma / quote / newlineを含むwarning。
+- 期待結果: evidenceを推測せずwarningへ出し、JSON / Markdown / RFC 4180 CSVが同じmodelから生成される。serialization / write失敗時は旧exportを保持する。
+
+### BZR-UT-052 Campaign Dashboard: Webviewとcommand境界を維持する
+
+- 入力: Dashboard HTML model、open workspace外root、unsafe campaign ID、不正message type。
+- 期待結果: CSP nonce、HTML escape、固定message allowlist、workspace containmentが有効で、`bobBazaar.openCampaignDashboard`がCommand PaletteとReview GUIから起動できる。
+
 ## 4.1 実テスト対応表
 
 | 観点 | 主な testcase ID | 実テスト file |
@@ -286,6 +306,7 @@
 | review record / triage / campaign summary | BZR-UT-039〜040、045 | `test/reviewRecordsCore.test.js`, `test/reviewRecordCommands.test.js`, `test/reviewTriageDecision.test.js`, `test/phase1RecordTemplates.test.js` |
 | Review Run progress / metrics / stale write / finalize | BZR-UT-042〜046 | `test/reviewRunState.test.js`, `test/reviewRunMetrics.test.js`, `test/reviewRunStore.test.js`, `test/reviewRunFinalize.test.js` |
 | Review Run resume / legacy recovery / GUI contract | BZR-UT-047〜048 | `test/reviewRunResume.test.js`, `test/reviewRunRecovery.test.js`, `test/guiFirstSurfaces.test.js` |
+| Campaign Dashboard aggregation / loader / export / GUI | BZR-UT-049〜052 | `test/campaignDashboardCore.test.js`, `test/campaignDashboard.test.js`, `test/campaignDashboardExport.test.js`, `test/campaignDashboardGui.test.js`, `test/guiFirstSurfaces.test.js` |
 | docs / source layout contracts | BZR-UT-036 | `test/architectureContracts.test.js`, `test/extensionSourceLayout.test.js` |
 
 ## 5. 非機能観点
@@ -304,3 +325,4 @@
 - Bazaar CLI、VS Code、Bob、workflow-register の実体が無くてもテストが完結する。
 - readonly 境界、path validation、workspace 分離、result 保存が回帰テストで守られる。
 - Review Runの再開、metrics、decision validation、finalize retry、legacy recoveryが回帰テストで守られる。
+- Campaign Dashboardのrate、trend、warning、export、Webview境界が回帰テストで守られる。

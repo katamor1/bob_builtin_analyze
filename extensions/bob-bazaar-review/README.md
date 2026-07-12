@@ -26,6 +26,7 @@ bzr --no-aliases <command>
 - packet、result、Human Triage、record、summary、所要時間をReview Runとして追跡する。
 - 中断したReview Runを一覧から再開する。
 - Iteration 1以前のartifactを確認付きでReview Runへ復旧する。
+- campaign単位のReview Run、Human Triage、rule、target mode、時間指標をDashboardで確認・exportする。
 - 読み取り専用Bazaar MCP toolsとproject rules toolsを提供する。
 
 ## 任意連携
@@ -63,6 +64,7 @@ VS Codeを閉じた後は、Review GUIの未完了Review Run一覧から続き�
 | 表示名 | command ID | 用途 |
 | --- | --- | --- |
 | GUIを開く | `bobBazaar.openReviewGui` | Review Run Wizard v3を開く。 |
+| Campaign Dashboardを開く | `bobBazaar.openCampaignDashboard` | campaign実績とdata qualityを表示・exportする。 |
 | Result Capture GUIを開く | `bobBazaar.openResultCaptureGui` | Bob出力を検証・保存する。 |
 | Human Triage GUIを開く | `bobBazaar.openHumanTriageGui` | 人間判断、metrics補正、finalizeを行う。 |
 | レビューコンテキストを収集 | `bobBazaar.collectReviewContext` | packetからworkflow contextを作る。 |
@@ -104,6 +106,9 @@ Review GUI、Result Capture、Human Triageを、永続化された同じrun cont
           notes.md
       summary.json
       summary.md
+      dashboard.json
+      dashboard.md
+      dashboard.csv
 
 .bob/
   review/
@@ -175,6 +180,33 @@ summaryが失敗しても作成済みrecordを保持します。次回はpersist
 - target、artifact、warningをmodalで確認する。
 - 承認後に追加するのは`review-run.json`だけとする。
 - 既存artifactをrename、上書き、補正しない。
+
+## Campaign Dashboard
+
+`bobBazaar.openCampaignDashboard`は、Review Run、record、valid Human Triage、review-resultをcampaign単位で集計します。Review GUIの`Campaign Dashboardを開く`からも起動できます。
+
+表示内容:
+
+- Review Run一覧と次の操作。
+- Human Triage pending一覧。
+- schema validation成功率。
+- findingのaccepted / rejected / needs investigation / deferredと各rate。
+- rule別の検出数・採用率・棄却率。
+- target mode別の傾向。Dashboard v1ではこれを`change_type`とする。
+- baseline / Bob review / Human Triage / estimated savedの時間。
+- malformed、missing、identity mismatch、symlink除外などのdata quality warning。
+
+rateの分母が0の場合は`0%`ではなく`n/a`です。decisionはvalidな`triage.yaml`だけから集計し、pending triageを自動採否しません。
+
+export先:
+
+```text
+.bob-review-records/campaigns/<campaign_id>/dashboard.json
+.bob-review-records/campaigns/<campaign_id>/dashboard.md
+.bob-review-records/campaigns/<campaign_id>/dashboard.csv
+```
+
+3形式は同じmodelから生成します。既存の`summary.json` / `summary.md`、packet、result、triage、recordは変更しません。
 
 ## Review GUIのtarget mode
 
@@ -261,7 +293,8 @@ Bazaar / result toolは`BOB_BAZAAR_ALLOWED_ROOTS`内だけを受け付けます�
 | `src/workflow/workflowRegisterBridge.ts` | workflow-register API、action input、capture option変換 |
 | `src/projectRules/` | checklist、schema、result検証 |
 | `src/reviewRuns/` | state、store、metrics、resume、finalize、recovery、coordinator |
-| `src/ui/` | Review GUI、Result Capture、Human Triage |
+| `src/dashboard/` | campaign evidence集計、rate / trend、JSON / Markdown / CSV export |
+| `src/ui/` | Review GUI、Result Capture、Human Triage、Campaign Dashboard |
 | `src/workflow/` | workflow-register bridge |
 | `src/workspace/` | workspace rootと`.bob`初期化 |
 | `src/records/` | record、triage、summary |
@@ -340,6 +373,7 @@ review-result、packet、triage、record、Review Runにはレビュー対象や
 - `docs/README-ja.md`
 - `docs/review-run-v3-iteration1-ja.md`
 - `docs/review-run-v3-iteration2-ja.md`
+- `docs/review-run-v3-iteration3-dashboard-ja.md`
 - `docs/unit-test-spec-ja.md`
 - `docs/real-machine-test-spec-ja.md`
 - `docs/workflow-authoring-guide-ja.md`

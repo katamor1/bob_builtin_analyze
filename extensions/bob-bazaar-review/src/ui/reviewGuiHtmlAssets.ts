@@ -42,6 +42,7 @@ export const REVIEW_GUI_BODY = `
     <div class="row" style="margin-top:12px">
       <button class="secondary" id="openResultCapture">Result Capture を開く</button>
       <button class="secondary" id="openHumanTriage">Human Triage を開く</button>
+      <button class="secondary" id="openCampaignDashboard">Campaign Dashboard を開く</button>
     </div>
   </div>
 
@@ -117,6 +118,7 @@ export function renderReviewGuiScript(nonce: string, initialTargetJson: string):
     $("initializeBob").onclick = () => vscode.postMessage({ type: "initializeBobWorkspace" })
     $("openResultCapture").onclick = () => vscode.postMessage({ type: "openResultCapture" })
     $("openHumanTriage").onclick = () => vscode.postMessage({ type: "openHumanTriage" })
+    $("openCampaignDashboard").onclick = () => vscode.postMessage({ type: "openCampaignDashboard", campaignId: $("campaignId").value.trim() })
     $("refreshReviewRuns").onclick = () => vscode.postMessage({ type: "refreshReviewRuns" })
     $("resumeReviewRun").onclick = () => {
       const selected = selectedRun()

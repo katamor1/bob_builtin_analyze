@@ -4,6 +4,10 @@ import { captureReviewResult, saveReviewResultFromClipboard } from "./projectRul
 import { validateActiveReviewResultJson } from "./projectRules/reviewResultValidationCommand"
 import { registerReviewRecordCommands } from "./records/reviewRecordCommands"
 import type { ReviewRunCommandInput } from "./reviewRuns/reviewRunTypes"
+import {
+  openBazaarCampaignDashboardGui,
+  type CampaignDashboardCommandInput
+} from "./ui/campaignDashboardGui"
 import { openBazaarHumanTriageGui } from "./ui/humanTriageGui"
 import { openBazaarResultCaptureGui } from "./ui/resultCaptureGui"
 import { openBazaarReviewGui } from "./ui/reviewGui"
@@ -23,6 +27,10 @@ import { configureMcp, initProjectRules } from "./workspace/workspaceCommands"
 export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.commands.registerCommand("bobBazaar.openReviewGui", () => openBazaarReviewGui(context)),
+    vscode.commands.registerCommand(
+      "bobBazaar.openCampaignDashboard",
+      (input?: CampaignDashboardCommandInput) => openBazaarCampaignDashboardGui(context, input)
+    ),
     vscode.commands.registerCommand(
       "bobBazaar.openResultCaptureGui",
       (input?: ReviewRunCommandInput) => openBazaarResultCaptureGui(context, input)
