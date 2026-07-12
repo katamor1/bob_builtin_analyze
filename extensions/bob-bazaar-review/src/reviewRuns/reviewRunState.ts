@@ -289,9 +289,9 @@ function normalizePhaseProgress(value: any, fallback: ReviewRunPhaseMap[ReviewRu
   if (!value || typeof value !== "object" || !isReviewRunPhaseStatus(value.status)) return { ...fallback }
   return {
     status: value.status,
-    startedAt: typeof value.startedAt === "string" ? value.startedAt : undefined,
-    completedAt: typeof value.completedAt === "string" ? value.completedAt : undefined,
-    issue: typeof value.issue === "string" ? value.issue : undefined
+    ...(typeof value.startedAt === "string" ? { startedAt: value.startedAt } : {}),
+    ...(typeof value.completedAt === "string" ? { completedAt: value.completedAt } : {}),
+    ...(typeof value.issue === "string" ? { issue: value.issue } : {})
   }
 }
 
