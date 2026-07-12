@@ -1,0 +1,90 @@
+name: workflow-builder-skip-resume-task1
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/workflow-builder-skip-resume-task1.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: agent/workflow-builder-skip-resume-readiness-20260712
+          fetch-depth: 0
+      - name: Apply exact Task 1 changes
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs')
+
+          function replaceExactly(file, before, after) {
+            const source = fs.readFileSync(file, 'utf8')
+            const count = source.split(before).length - 1
+            if (count !== 1) throw new Error(`${file}: expected one match, got ${count}`)
+            fs.writeFileSync(file, source.replace(before, after), 'utf8')
+          }
+
+          replaceExactly(
+            'extensions/workflow-register/src/core/authoring/workflowAuthoringModel.ts',
+            '  artifacts: WorkflowArtifactDefinition[]\n  completion?: WorkflowCompletionDefinition',
+            '  artifacts: WorkflowArtifactDefinition[]\n  skipResume?: {\n    fileBound: boolean\n  }\n  completion?: WorkflowCompletionDefinition'
+          )
+
+          replaceExactly(
+            'extensions/workflow-register/src/core/authoring/workflowAuthoringLoader.ts',
+            '  "branching",\n  "artifacts",',
+            '  "branching",\n  "x-skipResume",\n  "artifacts",'
+          )
+          replaceExactly(
+            'extensions/workflow-register/src/core/authoring/workflowAuthoringLoader.ts',
+            '    branching: workflow.branching,\n    steps: workflow.engineSteps.map(engineStepToAuthoringStep),',
+            '    branching: workflow.branching,\n    skipResume: skipResumeFromFrontMatter(frontMatter),\n    steps: workflow.engineSteps.map(engineStepToAuthoringStep),'
+          )
+          replaceExactly(
+            'extensions/workflow-register/src/core/authoring/workflowAuthoringLoader.ts',
+            '/** user または将来の workflow-register version が所有する front matter を保持する。 */',
+            `function skipResumeFromFrontMatter(frontMatter: Record<string, unknown>): WorkflowAuthoringModel["skipResume"] {\n  const extension = asRecord(frontMatter["x-skipResume"])\n  const fileBound = extension.fileBound\n  return typeof fileBound === "boolean" ? { fileBound } : undefined\n}\n\n/** user または将来の workflow-register version が所有する front matter を保持する。 */`
+          )
+
+          replaceExactly(
+            'extensions/workflow-register/src/core/authoring/workflowAuthoringSerializer.ts',
+            '    branching: branchingOrUndefined(model.branching),\n    artifacts: nonEmptyArray(model.artifacts.map(serializeArtifact)),',
+            '    branching: branchingOrUndefined(model.branching),\n    "x-skipResume": model.skipResume?.fileBound === true ? { fileBound: true } : undefined,\n    artifacts: nonEmptyArray(model.artifacts.map(serializeArtifact)),'
+          )
+          NODE
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: extensions/workflow-register/package-lock.json
+      - name: Install dependencies
+        working-directory: extensions/workflow-register
+        run: npm ci
+      - name: Verify Task 1 GREEN
+        working-directory: extensions/workflow-register
+        run: |
+          npm run compile
+          node --test test/workflowSkipResumeAuthoringRoundTrip.test.js test/workflowAuthoringLoader.test.js test/workflowAuthoringSerializer.test.js
+      - name: Remove executor and commit verified changes
+        shell: bash
+        run: |
+          rm .github/workflows/workflow-builder-skip-resume-task1.yml
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A -- \
+            .github/workflows/workflow-builder-skip-resume-task1.yml \
+            extensions/workflow-register/src/core/authoring/workflowAuthoringModel.ts \
+            extensions/workflow-register/src/core/authoring/workflowAuthoringLoader.ts \
+            extensions/workflow-register/src/core/authoring/workflowAuthoringSerializer.ts
+          git commit -m "feat: round-trip skip resume authoring metadata"
+          git push origin HEAD:agent/workflow-builder-skip-resume-readiness-20260712
