@@ -30,5 +30,6 @@ test("task snapshot import command uses contained reads and modal overwrite conf
   assert.match(source, /readOptionalPhysicallyContainedWorkspaceFile/)
   assert.match(source, /showMarkdownReport\(\s*"Task Snapshot Artifact Import Preview"/)
   assert.match(source, /canPickMany:\s*true/)
-  assert.match(source, /showWarningMessage\([\s\S]*\{ modal: true \}[\s\S]*Import and overwrite/)
+  assert.match(source, /const confirm = "Import and overwrite"/)
+  assert.match(source, /showWarningMessage\([\s\S]*\{ modal: true \},[\s\S]*confirm\s*\)/)
 })
