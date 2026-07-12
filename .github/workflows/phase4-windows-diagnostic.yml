@@ -9,6 +9,34 @@ permissions:
   contents: read
 
 jobs:
+  source-bundle:
+    name: Source bundle
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Upload selected sources
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: phase4-windows-source-bundle
+          retention-days: 1
+          path: |
+            extensions/workflow-register/src/core/runtime/runLock.ts
+            extensions/workflow-register/test/helpers/workflowEngineFixtures.js
+            extensions/workflow-register/test/bobGateLifecycle.test.js
+            extensions/workflow-register/test/operationHubMutations.test.js
+            extensions/workflow-register/test/processWorkflowEngineArtifacts.test.js
+            extensions/workflow-register/test/runStateStorePathBoundary.test.js
+            extensions/workflow-register/test/workflowArtifactManifest.test.js
+            extensions/workflow-register/test/workflowPlatformP0E2e.test.js
+            extensions/workflow-register/test/workflowRunLock.test.js
+            extensions/workflow-register/test/workflowRunRecovery.test.js
+            extensions/workflow-register/test/workflowRunStateMigrationPath.test.js
+            extensions/workflow-register/test/workflowTaskSnapshotArtifactImport.test.js
+            extensions/workflow-register/test/workspaceFileTransaction.test.js
+            extensions/bob-code-consistency-review/test/traceabilityCatalogStore.test.js
+
   windows-diagnostic:
     name: Windows diagnostic / ${{ matrix.extension }}
     runs-on: windows-latest
