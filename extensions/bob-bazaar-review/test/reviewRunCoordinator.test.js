@@ -10,7 +10,8 @@ const {
   recordReviewPacket,
   recordReviewResult,
   recordTriageDraft,
-  startReviewRun
+  startReviewRun,
+  validateReviewRunCommandInput
 } = require("../out/reviewRuns/reviewRunCoordinator")
 
 async function start() {
@@ -141,4 +142,29 @@ test("allocates unique Review Run ids for concurrent starts", async () => {
   }
   const runs = await Promise.all([startReviewRun(input), startReviewRun(input)])
   assert.deepEqual(runs.map((run) => run.reviewId).sort(), ["review-1", "review-1-02"])
+})
+
+test("validates Review Run command roots against open workspace folders", () => {
+  const workspaceRoot = path.resolve("/workspace/project")
+  assert.deepEqual(
+    validateReviewRunCommandInput(
+      { workspaceRoot, campaignId: "campaign-1", reviewId: "review-1" },
+      [path.resolve("/workspace")]
+    ),
+    { workspaceRoot, campaignId: "campaign-1", reviewId: "review-1" }
+  )
+  assert.throws(
+    () => validateReviewRunCommandInput(
+      { workspaceRoot: path.resolve("/outside"), campaignId: "campaign-1", reviewId: "review-1" },
+      [path.resolve("/workspace")]
+    ),
+    /inside an open workspace folder/
+  )
+  assert.throws(
+    () => validateReviewRunCommandInput(
+      { workspaceRoot, campaignId: "campaign/escape", reviewId: "review-1" },
+      [path.resolve("/workspace")]
+    ),
+    /campaignId/
+  )
 })
