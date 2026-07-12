@@ -178,3 +178,21 @@ test("pause command rejects a future run before writing control.json", async (t)
   )
   assert.equal(fs.existsSync(paths.controlFile), false)
 })
+
+test("pause command still writes control state for a current v1 run", async (t) => {
+  const root = tempRoot(t)
+  const run = {
+    ...futureRun(root),
+    schemaVersion: "workflow-register/run-state/v1",
+    runId: "20260712T000000Z-current-running"
+  }
+  const paths = await writeRun(root, run)
+  const { pauseCurrentRun } = loadWithVscode("commands/runControl.js", vscodeStub(root))
+
+  await pauseCurrentRun({ showMarkdownReport: async () => undefined }, run.runId)
+
+  const control = JSON.parse(fs.readFileSync(paths.controlFile, "utf8"))
+  assert.equal(control.schemaVersion, "workflow-register/run-control/v1")
+  assert.equal(control.runId, run.runId)
+  assert.equal(control.pauseRequestedAt !== undefined, true)
+})
