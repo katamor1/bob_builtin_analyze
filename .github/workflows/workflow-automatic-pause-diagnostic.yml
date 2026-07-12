@@ -1,3 +1,4 @@
+# Temporary verification workflow for PR #75; removed after standard gates are evidenced.
 name: workflow-automatic-pause-diagnostic
 
 on:
