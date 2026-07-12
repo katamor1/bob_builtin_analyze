@@ -60,7 +60,11 @@
         },
         "vcs": {
           "type": "string",
-          "enum": ["git", "bazaar", "bzr"],
+          "enum": [
+            "git",
+            "bazaar",
+            "bzr"
+          ],
           "default": "git"
         },
         "vcs_root": {
@@ -171,6 +175,19 @@
           "minLength": 1,
           "pattern": "\\.json$"
         },
+        "repository_symbol_index_mode": {
+          "type": "string",
+          "enum": [
+            "consume",
+            "build"
+          ],
+          "default": "consume"
+        },
+        "repository_symbol_index_cache_path": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\.cache\\.json$"
+        },
         "language": {
           "type": "array",
           "items": {
@@ -198,7 +215,43 @@
           },
           "uniqueItems": true
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "repository_symbol_index_mode": {
+                "const": "build"
+              }
+            },
+            "required": [
+              "repository_symbol_index_mode"
+            ]
+          },
+          "then": {
+            "required": [
+              "repository_symbol_index_path"
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "repository_symbol_index_cache_path"
+            ]
+          },
+          "then": {
+            "required": [
+              "repository_symbol_index_mode"
+            ],
+            "properties": {
+              "repository_symbol_index_mode": {
+                "const": "build"
+              }
+            }
+          }
+        }
+      ]
     },
     "bob_options": {
       "type": "object",
@@ -251,7 +304,9 @@
     "document_ref": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["path"],
+      "required": [
+        "path"
+      ],
       "properties": {
         "path": {
           "type": "string",
