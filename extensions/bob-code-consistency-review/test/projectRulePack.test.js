@@ -36,6 +36,16 @@ test("project rule pack loader reads bounded workspace-local bytes without modif
   assert.equal(loaded.contentHash, `sha256:${createHash("sha256").update(before).digest("hex")}`)
   assert.deepEqual(loaded.rules.map((rule) => rule.id), ["typescript-change"])
   assert.deepEqual(fs.readFileSync(filePath), before)
+
+  await assert.rejects(
+    loadProjectRulePack({
+      workspaceRoot: workspace,
+      rulePackPath: relativePath,
+      maxBytes: 32,
+      textEncoding: "utf8"
+    }),
+    /exceeded maxDocumentBytes/
+  )
 })
 
 test("project rule pack loader rejects path escape and unsupported schema versions", async () => {
