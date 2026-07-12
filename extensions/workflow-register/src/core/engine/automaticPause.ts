@@ -34,7 +34,7 @@ export function evaluateAutomaticPause(input: {
     if (elapsed) return elapsed
     const agentCount = agentCountDecision(input.run, input.nextStep, policy)
     if (agentCount) return agentCount
-    const localTime = localTimeDecision(input.now, policy)
+    const localTime = localTimeDecision(input.run, input.now, policy)
     if (localTime) return localTime
   }
   return undefined
@@ -80,11 +80,27 @@ function agentCountDecision(
   }
 }
 
-function localTimeDecision(now: Date, policy: AutomaticPausePolicySource): AutomaticPauseDecision | undefined {
+function localTimeDecision(
+  run: WorkflowRunState,
+  now: Date,
+  policy: AutomaticPausePolicySource
+): AutomaticPauseDecision | undefined {
   const { pauseAtLocalTime, timezone } = policy.limits
   if (!pauseAtLocalTime || !timezone) return undefined
+
   const localTime = formatLocalTime(now, timezone)
-  if (minutesSinceMidnight(localTime) < minutesSinceMidnight(pauseAtLocalTime)) return undefined
+  const currentLocalDate = formatLocalDate(now, timezone)
+  const createdAt = new Date(run.createdAt)
+  const runLocalDate = Number.isNaN(createdAt.getTime())
+    ? currentLocalDate
+    : formatLocalDate(createdAt, timezone)
+
+  if (currentLocalDate < runLocalDate) return undefined
+  if (
+    currentLocalDate === runLocalDate
+    && minutesSinceMidnight(localTime) < minutesSinceMidnight(pauseAtLocalTime)
+  ) return undefined
+
   return {
     kind: "pauseAtLocalTime",
     source: policy.source,
@@ -103,6 +119,19 @@ function formatLocalTime(now: Date, timezone: string): string {
   const hour = parts.find((part) => part.type === "hour")?.value ?? "00"
   const minute = parts.find((part) => part.type === "minute")?.value ?? "00"
   return `${hour.padStart(2, "0")}:${minute.padStart(2, "0")}`
+}
+
+function formatLocalDate(value: Date, timezone: string): string {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(value)
+  const year = parts.find((part) => part.type === "year")?.value ?? "0000"
+  const month = parts.find((part) => part.type === "month")?.value ?? "00"
+  const day = parts.find((part) => part.type === "day")?.value ?? "00"
+  return `${year}-${month}-${day}`
 }
 
 function minutesSinceMidnight(value: string): number {
