@@ -1,3 +1,4 @@
+import * as fs from "node:fs/promises"
 import * as path from "node:path"
 
 const WINDOWS_RESERVED_NAME = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/i
@@ -28,4 +29,46 @@ export function reviewRunJsonPath(workspaceRoot: string, campaignId: string, rev
 
 export function reviewRunPacketPath(workspaceRoot: string, campaignId: string, reviewId: string): string {
   return path.join(reviewRunDirectory(workspaceRoot, campaignId, reviewId), "review-packet.md")
+}
+
+export async function assertReviewRunPathContained(workspaceRoot: string, targetPath: string): Promise<void> {
+  const root = path.resolve(workspaceRoot)
+  const target = path.resolve(targetPath)
+  const relative = path.relative(root, target)
+  if (!isInsideOrSameRelative(relative)) {
+    throw new Error(`Path is outside Review Run workspace: ${targetPath}`)
+  }
+
+  const rootRealPath = await fs.realpath(root)
+  let currentPath = root
+  for (const segment of relative ? relative.split(path.sep) : []) {
+    currentPath = path.join(currentPath, segment)
+    let stats: import("node:fs").Stats
+    try {
+      stats = await fs.lstat(currentPath)
+    } catch (error) {
+      if (isNodeError(error) && error.code === "ENOENT") return
+      throw error
+    }
+    if (stats.isSymbolicLink()) {
+      throw new Error(`Review Run path must not traverse a symbolic link: ${currentPath}`)
+    }
+    const currentRealPath = await fs.realpath(currentPath)
+    const realRelative = path.relative(rootRealPath, currentRealPath)
+    if (!isInsideOrSameRelative(realRelative)) {
+      throw new Error(`Path is outside Review Run workspace after realpath resolution: ${targetPath}`)
+    }
+  }
+}
+
+function isInsideOrSameRelative(relativePath: string): boolean {
+  return relativePath === "" || (
+    relativePath !== ".." &&
+    !relativePath.startsWith(`..${path.sep}`) &&
+    !path.isAbsolute(relativePath)
+  )
+}
+
+function isNodeError(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && "code" in error
 }
