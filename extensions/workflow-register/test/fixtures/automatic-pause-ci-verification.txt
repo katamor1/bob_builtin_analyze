@@ -1,2 +1,2 @@
 This file exists only to trigger pull-request verification for PR #75's current source tree.
-Verification round: diagnose reconciliation with current main after git identity fix.
+Verification round: reconcile automatic pause with current main.
