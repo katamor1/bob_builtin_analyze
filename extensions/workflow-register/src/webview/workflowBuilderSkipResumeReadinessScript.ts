@@ -183,13 +183,13 @@ window.addEventListener('message', function(event) {
   if (message.type === 'skipResumeReadinessApplied') {
     if (message.requestId !== skipResumeReadinessRequestId) return;
     model = message.model;
-    skipResumeReadinessPreview = Object.assign({ requestId: message.requestId }, message.preview || {});
-    skipResumeReadinessPreviewSourceSignature = skipResumeReadinessSourceSignature();
-    skipResumeReadinessPendingSignature = '';
-    skipResumeReadinessSelection = new Set(skipResumeReadinessPreview.selectedStepIds || []);
+    const appliedSelection = new Set((message.preview && message.preview.selectedStepIds) || []);
+    invalidateSkipResumeReadinessPreview();
+    skipResumeReadinessSelection = appliedSelection;
     skipResumeReadinessSelectionInitialized = true;
     requestPreview();
     render();
+    requestSkipResumeReadinessPreview(true);
   }
 });
 `
