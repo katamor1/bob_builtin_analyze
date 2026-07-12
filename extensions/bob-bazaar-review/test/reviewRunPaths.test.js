@@ -18,7 +18,26 @@ test("review run paths stay under the campaign record directory", () => {
 })
 
 test("review run path segments reject traversal and unsafe Windows names", () => {
-  for (const value of ["", ".", "..", "../escape", "a/b", "a\\b", "CON", "con.txt", "name.", "name ", "a\u0000b"]) {
+  for (const value of [
+    "",
+    ".",
+    "..",
+    "../escape",
+    "a/b",
+    "a\\b",
+    "a:b",
+    "a?b",
+    "a*b",
+    "a|b",
+    "a<b",
+    "a>b",
+    "a\"b",
+    "CON",
+    "con.txt",
+    "name.",
+    "name ",
+    "a\u0000b"
+  ]) {
     assert.throws(() => validateReviewRunSegment(value, "reviewId"), /reviewId/)
   }
 })
