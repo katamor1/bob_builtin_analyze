@@ -1,0 +1,144 @@
+name: agent-reconcile-automatic-pause-main
+
+on:
+  pull_request:
+    paths:
+      - "extensions/workflow-register/test/fixtures/automatic-pause-ci-verification.txt"
+      - ".github/workflows/agent-reconcile-automatic-pause-main.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  reconcile:
+    if: github.event.pull_request.head.ref == 'agent/workflow-automatic-pause-ci-verification-20260712'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: agent/workflow-automatic-pause-limits-20260712
+          fetch-depth: 0
+      - name: Merge current main and resolve bounded conflicts
+        shell: bash
+        run: |
+          git fetch origin main
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config merge.conflictStyle diff3
+          set +e
+          git merge --no-commit --no-ff origin/main
+          merge_status=$?
+          set -e
+          if [ "$merge_status" -ne 1 ]; then
+            echo "Expected a bounded conflict merge, got status $merge_status" >&2
+            exit 1
+          fi
+          mapfile -t conflicts < <(git diff --name-only --diff-filter=U | sort)
+          expected=(
+            "extensions/workflow-register/src/core/runtime/runLock.ts"
+            "extensions/workflow-register/test/runStateStorePathBoundary.test.js"
+            "extensions/workflow-register/test/workflowRunRecovery.test.js"
+          )
+          if [ "${conflicts[*]}" != "${expected[*]}" ]; then
+            printf 'Unexpected conflicts:\n%s\n' "${conflicts[*]}" >&2
+            exit 1
+          fi
+
+          git checkout --theirs -- \
+            extensions/workflow-register/src/core/runtime/runLock.ts \
+            extensions/workflow-register/test/workflowRunRecovery.test.js
+          git checkout --ours -- extensions/workflow-register/test/runStateStorePathBoundary.test.js
+
+          python - <<'PY'
+          from pathlib import Path
+          from textwrap import dedent
+
+          path = Path("extensions/workflow-register/test/runStateStorePathBoundary.test.js")
+          text = path.read_text(encoding="utf-8")
+          old_import = 'const { FileRunStateStore } = require("../out/core/runStateStore")'
+          new_import = 'const { CURRENT_WORKFLOW_RUN_STATE_SCHEMA_VERSION, FileRunStateStore } = require("../out/core/runStateStore")'
+          if old_import in text:
+              text = text.replace(old_import, new_import, 1)
+          elif new_import not in text:
+              raise SystemExit("run-state store import anchor not found")
+
+          marker = 'test("FileRunStateStore retries a contained atomic replacement detected between open and read"'
+          if marker not in text:
+              text = text.rstrip() + "\n\n" + dedent('''
+              test("FileRunStateStore retries a contained atomic replacement detected between open and read", async (t) => {
+                const workspaceRoot = await makeWorkspace()
+                const store = new FileRunStateStore({ workspaceRoot })
+                const runFile = path.join(workspaceRoot, ".bob", "workflows", "runs", "run-atomic-read", "run.json")
+                const replacementFile = path.join(path.dirname(runFile), "replacement.json")
+                const initial = { ...runState("run-atomic-read", "initial"), schemaVersion: CURRENT_WORKFLOW_RUN_STATE_SCHEMA_VERSION }
+                const replacement = { ...runState("run-atomic-read", "replacement"), schemaVersion: CURRENT_WORKFLOW_RUN_STATE_SCHEMA_VERSION }
+                await fs.mkdir(path.dirname(runFile), { recursive: true })
+                await fs.writeFile(runFile, `${JSON.stringify(initial, null, 2)}\n`)
+                await fs.writeFile(replacementFile, `${JSON.stringify(replacement, null, 2)}\n`)
+                const originalOpen = fs.open
+                let replaced = false
+                fs.open = async function replaceBeforeOpen(file, flags, mode) {
+                  if (!replaced && path.resolve(String(file)) === path.resolve(runFile)) {
+                    replaced = true
+                    await fs.rename(replacementFile, runFile)
+                  }
+                  return originalOpen.call(this, file, flags, mode)
+                }
+                t.after(() => { fs.open = originalOpen })
+
+                const loaded = await store.loadRun("run-atomic-read")
+
+                assert.equal(loaded.state.marker, "replacement")
+              })
+              ''').strip() + "\n"
+          path.write_text(text, encoding="utf-8")
+          PY
+
+          git add \
+            extensions/workflow-register/src/core/runtime/runLock.ts \
+            extensions/workflow-register/test/runStateStorePathBoundary.test.js \
+            extensions/workflow-register/test/workflowRunRecovery.test.js
+          rm -f \
+            .github/workflows/agent-diagnose-main-reconciliation.yml \
+            .github/workflows/agent-reconcile-automatic-pause-main.yml
+          git add -A
+          if git diff --name-only --diff-filter=U | grep -q .; then
+            echo "Unresolved merge conflicts remain" >&2
+            git diff --name-only --diff-filter=U >&2
+            exit 1
+          fi
+          git diff --check
+      - name: Verify workflow-register reconciliation
+        working-directory: extensions/workflow-register
+        shell: bash
+        run: |
+          npm ci --silent
+          npm run compile --silent
+          node --test \
+            test/workflowAutomaticPause*.test.js \
+            test/workflowRunLock.test.js \
+            test/workflowRunLockHeartbeatContention.test.js \
+            test/runStateStorePathBoundary.test.js \
+            test/workflowRunRecovery.test.js \
+            test/workflowRunJournal.test.js \
+            test/workflowRunStateMigration.test.js
+          npm run dependency:policy --silent
+          npm run architecture:policy --silent
+          npm run source:policy --silent
+          npm run schema:policy --silent
+          npm test --silent
+          npm run package --silent
+          npm run package:policy --silent
+      - name: Verify related extension reconciliation
+        working-directory: extensions/bob-code-consistency-review
+        shell: bash
+        run: |
+          npm ci --silent
+          npm test --silent
+      - name: Commit reconciled main
+        shell: bash
+        run: |
+          git diff --check
+          git commit -m "Merge current main into automatic pause limits"
+          git push origin HEAD:agent/workflow-automatic-pause-limits-20260712
