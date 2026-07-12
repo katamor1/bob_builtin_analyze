@@ -26,7 +26,13 @@ test("durability path creates, replaces, appends and conditionally removes direc
   assert.equal((await readRunDurabilityFile(workspace, "run-1", "run.lock.json")).bytes.toString("utf8"), "owner\n")
 
   await replaceRunDurabilityFile(workspace, "run-1", "run-state.journal.json", "one\n")
-  await replaceRunDurabilityFile(workspace, "run-1", "run-state.journal.json", "two\n")
+  const firstJournal = await readRunDurabilityFile(workspace, "run-1", "run-state.journal.json")
+  await replaceRunDurabilityFile(workspace, "run-1", "run-state.journal.json", "two\n", firstJournal.bytes)
+  assert.equal((await readRunDurabilityFile(workspace, "run-1", "run-state.journal.json")).bytes.toString("utf8"), "two\n")
+  await assert.rejects(
+    replaceRunDurabilityFile(workspace, "run-1", "run-state.journal.json", "stale\n", firstJournal.bytes),
+    /changed before replacement/
+  )
   assert.equal((await readRunDurabilityFile(workspace, "run-1", "run-state.journal.json")).bytes.toString("utf8"), "two\n")
 
   await appendRunDurabilityFile(workspace, "run-1", "events.ndjson", "a\n")
