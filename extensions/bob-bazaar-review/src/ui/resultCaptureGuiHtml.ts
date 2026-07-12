@@ -1,6 +1,9 @@
+import type { ReviewRunCommandInput } from "../reviewRuns/reviewRunTypes"
+
 export interface RenderResultCaptureHtmlInput {
   cspSource: string
   nonce: string
+  reviewRun?: ReviewRunCommandInput
 }
 
 export function renderResultCaptureHtml(input: RenderResultCaptureHtmlInput): string {
@@ -24,10 +27,12 @@ export function renderResultCaptureHtml(input: RenderResultCaptureHtmlInput): st
     .status { white-space: pre-wrap; margin-top: 10px; }
     .ok { color: var(--vscode-testing-iconPassed); }
     .error { color: var(--vscode-errorForeground); }
+    code { font-family: var(--vscode-editor-font-family); }
   </style>
 </head>
 <body>
   <h1>Result Capture</h1>
+  ${renderReviewRunCard(input.reviewRun)}
   <section class="card">
     <h2>Bob 出力候補</h2>
     <div class="muted">active editor selection、active editor、clipboard の順で既存 capture helper に渡します。保存前に review-result JSON schema と checklist contract を検証します。</div>
@@ -70,6 +75,17 @@ export function renderResultCaptureHtml(input: RenderResultCaptureHtmlInput): st
   </script>
 </body>
 </html>`
+}
+
+function renderReviewRunCard(reviewRun: ReviewRunCommandInput | undefined): string {
+  if (!reviewRun) {
+    return `<section class="card"><div class="muted">Standalone mode: 保存先と review_id は取り込み結果から決定します。</div></section>`
+  }
+  return `<section class="card">
+    <h2>Active Review Run</h2>
+    <div><code>${escapeHtml(reviewRun.campaignId)}</code> / <code>${escapeHtml(reviewRun.reviewId)}</code></div>
+    <div class="muted">最終JSONはこの exact review_id を使用してください。保存成功後は同じReview RunのHuman Triageを開きます。</div>
+  </section>`
 }
 
 function escapeHtml(value: unknown): string {
