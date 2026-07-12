@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from "async_hooks"
+import { assertWorkflowRunStateWritable } from "../runStateStore"
 import type { RunStateStore } from "../runStateStore"
 import { normalizeWorkspaceRootIdentity } from "../../workspaceRootIdentity"
 
@@ -55,7 +56,11 @@ export function coordinateWorkflowRunExecution<T>(
   operationKey: string,
   operation: () => Promise<T>
 ): Promise<T> {
-  return coordinator.coordinate(runStoreScope(runStore), runId, operationKey, operation)
+  return coordinator.coordinate(runStoreScope(runStore), runId, operationKey, async () => {
+    const run = await runStore.loadRun(runId)
+    if (run) assertWorkflowRunStateWritable(run)
+    return operation()
+  })
 }
 
 export function workflowRunExecutionActive(runStore: RunStateStore, runId: string): boolean {
