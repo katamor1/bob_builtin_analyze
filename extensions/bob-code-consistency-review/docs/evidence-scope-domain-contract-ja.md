@@ -1,10 +1,10 @@
-# `bob-evidence-scope` ドメイン契約（Phase 1）
+# `bob-evidence-scope` ドメイン契約（Phase 1–2）
 
 ## 目的
 
 `bob-evidence-scope` は、レビュー対象の巨大なコード・文書・規約を無条件に AI へ渡すのではなく、今回の変更に必要な evidence を決定論的に選び、採用・除外理由と概算 token 量を残すためのドメイン境界です。
 
-Phase 1 は `bob-code-consistency-review` 内の独立モジュールとして実装します。既存 pipeline の安定性を保ったまま契約と選定アルゴリズムを固め、複数 workflow から独立利用する段階で別 VSIX に切り出せる構造にしています。
+Phase 1 は選定ドメインと serializer を独立実装し、Phase 2 は既存 `preprocessReview` と review-package へ接続します。現在も `bob-code-consistency-review` 内の独立モジュールですが、public API と pipeline adapter を分けているため、複数 workflow から独立利用する段階で別 VSIX へ切り出せます。
 
 ## 公開 API
 
@@ -12,6 +12,7 @@ Phase 1 は `bob-code-consistency-review` 内の独立モジュールとして�
 
 - `buildEvidenceScope(request)`
 - `buildReviewEvidenceScope(codeAnalysis, documents, options)`
+- `buildReviewContextBudget(input)`
 - `planContextBudget(items, policy)`
 - `selectApplicableRules(rules, symbols)`
 - `parseProjectRules(value)`
@@ -33,7 +34,7 @@ Phase 1 は `bob-code-consistency-review` 内の独立モジュールとして�
 
 incoming と outgoing の両方向を impact として扱います。caller index が `caller -> callee`、callee 展開が `callee -> dependency` のどちらで表現されても、直接接続した symbol を候補化するためです。
 
-`resolution: "unknown"` の edge は展開しませんが、`unknownImpact` に次を残します。
+`resolution: "unknown"` の edge は展開しませんが、`unknownImpact` に残します。
 
 ```json
 {
@@ -46,7 +47,7 @@ incoming と outgoing の両方向を impact として扱います。caller inde
 
 ## Project Rule Pack Engine
 
-Phase 1 の設定入口は `review-input.yaml` の `bob_options.evidence_scope_rules` を想定します。`bob_options` は既存 schema 上 `Record<string, unknown>` であり、既存項目を壊さず段階導入できます。
+Phase 2 の設定入口は `review-input.yaml` の `bob_options.evidence_scope_rules` です。
 
 ```yaml
 bob_options:
@@ -66,7 +67,12 @@ bob_options:
         risk_tags:
           - compatibility
         interface_change: true
+  evidence_scope_include_low_priority: false
 ```
+
+`review-input.schema.json` は `evidence_scope_rules` が array であることと、`evidence_scope_include_low_priority` が boolean であることを検証します。rule entry の詳細は `parseProjectRules` が検証します。
+
+この分離により、不正 rule は review-input 全体の hard failure にせず、rule ID を含む warning として除外できます。ただし `bob_options` の未知項目は引き続き `additionalProperties: false` で拒否します。
 
 `applies_when` に指定した次元はすべて一致する必要があります。各配列内は OR、異なる次元間は AND です。
 
@@ -76,7 +82,7 @@ bob_options:
 - `risk_tags`
 - `interface_change`
 
-不正な rule は例外で全処理を停止せず、rule ID を含む warning とともに除外します。重複 ID は先勝ちです。
+重複 rule ID は先勝ちです。`evaluation: local` の rule は token cost 0、`evaluation: ai` の rule は `estimated_tokens` を budget へ加算します。
 
 ## Document Evidence adapter
 
@@ -126,25 +132,66 @@ bob_options:
 - 除外理由は `token-budget` または `low-priority-policy` です。
 - duplicate は `kind:id` で統合し、理由を重複排除します。
 
-Phase 1 の token 数は概算です。既存 analyzer から変換する adapter では `ceil(text.length / 4)` を使用し、課金 token や特定モデル tokenizer と同一であるとは扱いません。
+既存 analyzer から変換する adapter の evidence 見積りは `ceil(text.length / 4)` です。Phase 2 pipeline の budget は `max(1, floor(maxBobInputBytes / 4))` です。課金 token や特定モデル tokenizer と同一とは扱いません。
+
+## Pipeline adapter
+
+`buildReviewContextBudget` は、検証済み `ReviewInput`、immutable SHA を持つ `DiffSummary`、文書 evidence、コード解析結果、正規化済み limits を受け取ります。
+
+処理内容は次です。
+
+1. `bob_options.evidence_scope_rules` を parse する。
+2. review ID、ticket ID、review focus、title、purpose から document keyword を作る。
+3. `analysis_options.max_call_depth` で依存展開深度を決める。未指定時は 1。
+4. `maxBobInputBytes` から scope budget を算出する。
+5. `buildReviewEvidenceScope` を実行する。
+6. parser warning と scope warning を sort・deduplicate する。
+7. `createContextBudgetArtifact` で artifact を作る。
+
+`preprocessReview` は scope warning を既存の diff/document/code/traceability/package warning とともに返します。public input/result shape は変えません。
 
 ## `context-budget-report.json` 契約
 
-`createContextBudgetArtifact` は次を含む schema version 1 の決定論的 object を生成します。
+Phase 2 は `review-package/context-budget-report.json` を毎回生成します。
 
-- `selection_policy: bob-evidence-scope-v1`
-- `scope_fingerprint`
-- `source_revision`
-- `token_estimation`
-- `rule_source`
-- `selected_code`
-- `applicable_rules`
-- `selected_documents`
-- `unknown_impact`
-- `budget.selected` / `budget.excluded`
-- `warnings`
+```json
+{
+  "schema_version": 1,
+  "selection_policy": "bob-evidence-scope-v1",
+  "scope_fingerprint": "scope-1234abcd",
+  "source_revision": "<40-char-sha>..<40-char-sha>",
+  "token_estimation": "ceil(text.length / 4); budget=floor(maxBobInputBytes / 4)",
+  "rule_source": "review-input.bob_options.evidence_scope_rules",
+  "selected_code": [],
+  "applicable_rules": [],
+  "selected_documents": [],
+  "unknown_impact": [],
+  "budget": {
+    "budgetTokens": 524288,
+    "selectedTokens": 0,
+    "requiredTokens": 0,
+    "overBudget": false,
+    "selected": [],
+    "excluded": []
+  },
+  "warnings": []
+}
+```
 
-Phase 1 は serializer と契約までを実装します。`review-package/context-budget-report.json` への pipeline 接続は次の実装単位です。
+report は raw source body、raw diff、文書本文、code-slice Markdown を複製しません。次工程は ID、priority、estimate、reason、fingerprint、unknown impact を使って、必要な evidence 本体を既存 package から参照します。
+
+## Managed output と manifest
+
+`context-budget-report.json` は `MANAGED_PACKAGE_OUTPUTS` の一部です。package 再生成時に stale copy を消し、現在の artifact がある場合だけ書き直します。
+
+`manifest.yaml` は artifact が存在するときだけ次を出力します。
+
+```yaml
+inputs:
+  context_budget_report: .bob-review/review-package/context-budget-report.json
+```
+
+低レベル API として `buildReviewPackage` を artifact なしで呼んだ場合、この行はありませんが、古い report は削除されます。
 
 ## Determinism
 
@@ -152,7 +199,22 @@ Phase 1 は serializer と契約までを実装します。`review-package/conte
 
 - 選定順
 - budget report
+- warning 順
 - unknown impact 順
 - `scopeFingerprint`
 
-fingerprint は security 用 checksum ではありません。選定 scope の安定比較用に、unknown impact の reason を含む sorted canonical identity へ FNV-1a 32-bit を適用しています。artifact ledger へ接続する段階では SHA-256 の input hash を別途記録します。
+VCS ref は report 生成前に 40 桁 commit SHA へ解決されます。branch 名を source revision として記録しません。
+
+fingerprint は security 用 checksum ではありません。選定 scope の安定比較用に、unknown impact の reason を含む sorted canonical identity へ FNV-1a 32-bit を適用しています。Phase 3 の rule pack と将来の artifact ledger では、別途 SHA-256 input hash を記録します。
+
+## Phase 3 境界
+
+次の実装単位では project rule pack ファイルを read-only で読み込み、schema/version、source path、SHA-256 rule-pack hash を report と manifest へ追加します。
+
+Phase 2 は次を行いません。
+
+- workspace 外 rule pack の探索
+- UNC/AD credential 管理
+- raw document cache
+- producer 横断 artifact index
+- stale artifact の ledger 伝播
