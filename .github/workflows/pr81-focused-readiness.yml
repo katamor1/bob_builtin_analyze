@@ -1,0 +1,33 @@
+name: pr81-focused-readiness
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/pr81-focused-readiness.yml"
+      - "extensions/workflow-register/src/core/authoring/**"
+      - "extensions/workflow-register/src/core/workflowSkipResumeReadiness.ts"
+      - "extensions/workflow-register/test/workflowSkipResumeReadiness.test.js"
+  workflow_dispatch:
+
+jobs:
+  focused:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: extensions/workflow-register
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: extensions/workflow-register/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Compile
+        run: npm run compile
+      - name: Focused readiness tests
+        run: node --test test/workflowSkipResumeReadiness.test.js
