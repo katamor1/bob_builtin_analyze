@@ -88,3 +88,57 @@ test("rejects artifact paths outside the workspace", async () => {
     /outside Review Run workspace/
   )
 })
+
+test("allocates a suffix instead of overwriting an existing Review Run", async () => {
+  const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "bbr-coordinator-collision-"))
+  const input = {
+    workspaceRoot,
+    campaignId: "campaign-1",
+    reviewId: "review-1",
+    target: { mode: "singleRevision", repositoryRoot: workspaceRoot, revision: "1" },
+    now: "2026-07-12T00:00:00.000Z"
+  }
+  const first = await startReviewRun(input)
+  const second = await startReviewRun(input)
+
+  assert.equal(first.reviewId, "review-1")
+  assert.equal(second.reviewId, "review-1-02")
+  assert.equal((await readReviewRun(workspaceRoot, "campaign-1", "review-1")).reviewId, "review-1")
+  assert.equal((await readReviewRun(workspaceRoot, "campaign-1", "review-1-02")).reviewId, "review-1-02")
+})
+
+test("treats an existing legacy record directory as an occupied Review Run id", async () => {
+  const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "bbr-coordinator-legacy-"))
+  const legacyDirectory = path.join(
+    workspaceRoot,
+    ".bob-review-records",
+    "campaigns",
+    "campaign-1",
+    "records",
+    "review-1"
+  )
+  await fs.mkdir(legacyDirectory, { recursive: true })
+  await fs.writeFile(path.join(legacyDirectory, "record.yaml"), "review_id: review-1\n", "utf8")
+
+  const run = await startReviewRun({
+    workspaceRoot,
+    campaignId: "campaign-1",
+    reviewId: "review-1",
+    target: { mode: "singleRevision", repositoryRoot: workspaceRoot, revision: "1" }
+  })
+
+  assert.equal(run.reviewId, "review-1-02")
+  assert.equal(await fs.readFile(path.join(legacyDirectory, "record.yaml"), "utf8"), "review_id: review-1\n")
+})
+
+test("allocates unique Review Run ids for concurrent starts", async () => {
+  const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "bbr-coordinator-concurrent-"))
+  const input = {
+    workspaceRoot,
+    campaignId: "campaign-1",
+    reviewId: "review-1",
+    target: { mode: "singleRevision", repositoryRoot: workspaceRoot, revision: "1" }
+  }
+  const runs = await Promise.all([startReviewRun(input), startReviewRun(input)])
+  assert.deepEqual(runs.map((run) => run.reviewId).sort(), ["review-1", "review-1-02"])
+})
