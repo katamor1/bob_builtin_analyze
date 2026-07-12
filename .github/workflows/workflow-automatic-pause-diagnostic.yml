@@ -15,9 +15,53 @@ concurrency:
 jobs:
   apply-windows-path-test-fixes:
     if: github.event.pull_request.head.ref == 'agent/workflow-automatic-pause-ci-verification-20260712'
-    uses: ./.github/workflows/agent-apply-windows-path-test-fixes.yml
+    runs-on: ubuntu-latest
     permissions:
       contents: write
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: agent/workflow-automatic-pause-limits-20260712
+          fetch-depth: 0
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+      - name: Apply physical-path fixture fixes
+        run: python .github/scripts/apply-windows-path-test-fixes.py
+      - name: Verify affected Linux tests
+        shell: bash
+        run: |
+          cd extensions/workflow-register
+          npm ci --silent
+          npm run compile --silent
+          node --test \
+            test/bobGateLifecycle.test.js \
+            test/operationHubMutations.test.js \
+            test/processWorkflowEngineArtifacts.test.js \
+            test/runStateStorePathBoundary.test.js \
+            test/workflowArtifactManifest.test.js \
+            test/workflowPlatformP0E2e.test.js \
+            test/workflowRunStateMigrationPath.test.js \
+            test/workflowTaskSnapshotArtifactImport.test.js \
+            test/workspaceFileTransaction.test.js
+          cd ../bob-code-consistency-review
+          npm ci --silent
+          npm run compile --silent
+          node --test test/traceabilityCatalogStore.test.js
+      - name: Commit verified portability fixes
+        shell: bash
+        run: |
+          rm -f \
+            .github/scripts/apply-windows-path-test-fixes.py \
+            .github/workflows/agent-apply-windows-path-test-fixes.yml
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "test: canonicalize Windows workspace fixtures"
+          git push origin HEAD:agent/workflow-automatic-pause-limits-20260712
 
   focused-automatic-pause:
     runs-on: ubuntu-latest
