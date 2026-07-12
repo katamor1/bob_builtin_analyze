@@ -1,0 +1,1048 @@
+name: Apply evidence scope phase 4
+
+on:
+  push:
+    branches:
+      - codex/execute-shared-plan-6a53743e
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: codex/execute-shared-plan-6a53743e
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: extensions/bob-code-consistency-review/package-lock.json
+
+      - name: Install dependencies
+        working-directory: extensions/bob-code-consistency-review
+        run: npm ci
+
+      - name: Apply Phase 4 implementation
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          files = {}
+
+          files["extensions/bob-code-consistency-review/resources/schemas/repository-symbol-index.schema.json"] = r'''{
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "$id": "https://example.local/bob-review/repository-symbol-index.schema.json",
+            "title": "bob evidence scope repository symbol index",
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "schema_version",
+              "index",
+              "symbols",
+              "edges"
+            ],
+            "properties": {
+              "schema_version": {
+                "type": "integer",
+                "const": 1
+              },
+              "index": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "source_revision"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "source_revision": {
+                    "type": "string",
+                    "pattern": "^[0-9a-fA-F]{40}$"
+                  },
+                  "generator": {
+                    "type": "string"
+                  },
+                  "generated_at": {
+                    "type": "string"
+                  }
+                }
+              },
+              "symbols": {
+                "type": "array",
+                "maxItems": 50000,
+                "items": {
+                  "$ref": "#/$defs/symbol"
+                }
+              },
+              "edges": {
+                "type": "array",
+                "maxItems": 200000,
+                "items": {
+                  "$ref": "#/$defs/edge"
+                }
+              }
+            },
+            "$defs": {
+              "symbol": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "name",
+                  "path",
+                  "kind"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "path": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "kind": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "language": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "estimated_tokens": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "visibility": {
+                    "type": "string",
+                    "enum": [
+                      "public",
+                      "protected",
+                      "private",
+                      "internal",
+                      "unknown"
+                    ]
+                  },
+                  "interface_change": {
+                    "type": "boolean"
+                  },
+                  "risk_tags": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "uniqueItems": true
+                  },
+                  "is_test": {
+                    "type": "boolean"
+                  }
+                }
+              },
+              "edge": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "from",
+                  "kind",
+                  "resolution",
+                  "reason"
+                ],
+                "properties": {
+                  "from": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "to": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "kind": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "resolution": {
+                    "type": "string",
+                    "enum": [
+                      "resolved",
+                      "unknown"
+                    ]
+                  },
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "target_hint": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "allOf": [
+                  {
+                    "if": {
+                      "properties": {
+                        "resolution": {
+                          "const": "resolved"
+                        }
+                      }
+                    },
+                    "then": {
+                      "required": [
+                        "to"
+                      ]
+                    }
+                  },
+                  {
+                    "if": {
+                      "properties": {
+                        "resolution": {
+                          "const": "unknown"
+                        }
+                      }
+                    },
+                    "then": {
+                      "required": [
+                        "target_hint"
+                      ],
+                      "not": {
+                        "required": [
+                          "to"
+                        ]
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+          '''.strip() + "\n"
+          files["docs/workflows/code-consistency-review/schemas/repository-symbol-index.schema.json"] = files["extensions/bob-code-consistency-review/resources/schemas/repository-symbol-index.schema.json"]
+
+          files["extensions/bob-code-consistency-review/src/evidenceScope/repositorySymbolIndexLoader.ts"] = r'''import { createHash } from "node:crypto"
+          import * as fs from "node:fs/promises"
+          import {
+            normalizeChangedFilePathStrict,
+            resolveWorkspacePathStrict
+          } from "../core/fileSystem"
+          import { formatSchemaErrors, loadSchemaValidator } from "../core/schemaLoader"
+          import { decodeTextBuffer } from "../core/textEncoding"
+          import type { DependencyEdge, ScopeSymbol } from "./evidenceScopeTypes"
+
+          export type RepositorySymbolIndexProvenance = {
+            id: string
+            sourceRevision: string
+            sourcePath: string
+            contentHash: string
+            symbolCount: number
+            edgeCount: number
+          }
+
+          export type LoadedRepositorySymbolIndex = RepositorySymbolIndexProvenance & {
+            symbols: ScopeSymbol[]
+            dependencyEdges: DependencyEdge[]
+          }
+
+          export type LoadRepositorySymbolIndexInput = {
+            workspaceRoot: string
+            indexPath: unknown
+            expectedSourceRevision: string
+            maxBytes: number
+            textEncoding?: string
+          }
+
+          export async function loadRepositorySymbolIndex(
+            input: LoadRepositorySymbolIndexInput
+          ): Promise<LoadedRepositorySymbolIndex | undefined> {
+            if (input.indexPath === undefined || input.indexPath === null) return undefined
+            if (typeof input.indexPath !== "string" || !input.indexPath.trim()) {
+              throw new Error("repository symbol index path must be a non-empty string")
+            }
+
+            const sourcePath = normalizeChangedFilePathStrict(
+              input.indexPath,
+              "repository symbol index path"
+            )
+            if (!/\.json$/i.test(sourcePath)) {
+              throw new Error(`repository symbol index path must end in .json: ${sourcePath}`)
+            }
+
+            const resolvedPath = resolveWorkspacePathStrict(
+              input.workspaceRoot,
+              sourcePath,
+              "repository symbol index path"
+            )
+            const rawBytes = await readIndexBytes(resolvedPath, input.maxBytes, sourcePath)
+            const rawText = decodeTextBuffer(rawBytes, input.textEncoding ?? "auto")
+            const parsed = parseIndexJson(rawText, sourcePath)
+            const validate = await loadSchemaValidator("repository-symbol-index")
+            if (!validate(parsed)) {
+              const errors = formatSchemaErrors(validate)
+              throw new Error(
+                `Invalid repository symbol index (${sourcePath}):\n${errors.map((error) => `- ${error}`).join("\n")}`
+              )
+            }
+
+            const document = parsed as RepositorySymbolIndexDocument
+            const sourceRevision = normalizeRevision(document.index.source_revision, "repository symbol index source revision")
+            const expectedRevision = normalizeRevision(input.expectedSourceRevision, "expected repository source revision")
+            if (sourceRevision !== expectedRevision) {
+              throw new Error(
+                `repository symbol index source revision mismatch (${sourceRevision} != ${expectedRevision}): ${sourcePath}`
+              )
+            }
+
+            const { symbols, dependencyEdges } = validateGraph(document, sourcePath)
+            return {
+              id: document.index.id,
+              sourceRevision,
+              sourcePath,
+              contentHash: `sha256:${createHash("sha256").update(rawBytes).digest("hex")}`,
+              symbolCount: symbols.length,
+              edgeCount: dependencyEdges.length,
+              symbols,
+              dependencyEdges
+            }
+          }
+
+          type RepositorySymbolIndexDocument = {
+            schema_version: 1
+            index: {
+              id: string
+              source_revision: string
+              generator?: string
+              generated_at?: string
+            }
+            symbols: RepositoryIndexSymbol[]
+            edges: RepositoryIndexEdge[]
+          }
+
+          type RepositoryIndexSymbol = {
+            id: string
+            name: string
+            path: string
+            kind: string
+            language?: string
+            estimated_tokens?: number
+            visibility?: "public" | "protected" | "private" | "internal" | "unknown"
+            interface_change?: boolean
+            risk_tags?: string[]
+            is_test?: boolean
+          }
+
+          type RepositoryIndexEdge = {
+            from: string
+            to?: string
+            kind: string
+            resolution: "resolved" | "unknown"
+            reason: string
+            target_hint?: string
+          }
+
+          function validateGraph(
+            document: RepositorySymbolIndexDocument,
+            sourcePath: string
+          ): { symbols: ScopeSymbol[]; dependencyEdges: DependencyEdge[] } {
+            const symbolById = new Map<string, ScopeSymbol>()
+            for (const raw of document.symbols) {
+              if (symbolById.has(raw.id)) {
+                throw new Error(`duplicate repository symbol id: ${raw.id} (${sourcePath})`)
+              }
+              const riskTags = [...new Set([
+                ...(raw.risk_tags ?? []),
+                ...(raw.is_test ? ["test-impact"] : [])
+              ])].sort()
+              symbolById.set(raw.id, {
+                id: raw.id,
+                name: raw.name,
+                path: normalizeChangedFilePathStrict(raw.path, `repository symbol ${raw.id} path`),
+                kind: raw.kind,
+                ...(raw.language ? { language: raw.language } : {}),
+                estimatedTokens: normalizeTokenCount(raw.estimated_tokens ?? estimateTokens(raw.name)),
+                ...(raw.visibility ? { visibility: raw.visibility } : {}),
+                ...(raw.interface_change !== undefined ? { interfaceChange: raw.interface_change } : {}),
+                riskTags
+              })
+            }
+
+            const edgeByKey = new Map<string, DependencyEdge>()
+            for (const raw of document.edges) {
+              if (!symbolById.has(raw.from)) {
+                throw new Error(`repository edge source not found: ${raw.from} (${sourcePath})`)
+              }
+              if (raw.resolution === "resolved") {
+                if (!raw.to || !symbolById.has(raw.to)) {
+                  throw new Error(`resolved edge target not found: ${raw.to ?? "<missing>"} (${sourcePath})`)
+                }
+              }
+              const edge: DependencyEdge = {
+                from: raw.from,
+                ...(raw.to ? { to: raw.to } : {}),
+                kind: raw.kind,
+                resolution: raw.resolution,
+                reason: raw.reason,
+                ...(raw.target_hint ? { targetHint: raw.target_hint } : {})
+              }
+              const key = canonicalEdgeKey(edge)
+              if (edgeByKey.has(key)) {
+                throw new Error(`duplicate repository dependency edge: ${formatEdge(edge)} (${sourcePath})`)
+              }
+              edgeByKey.set(key, edge)
+            }
+
+            return {
+              symbols: [...symbolById.values()].sort((left, right) => left.id.localeCompare(right.id)),
+              dependencyEdges: [...edgeByKey.values()].sort(compareEdges)
+            }
+          }
+
+          async function readIndexBytes(filePath: string, maxBytes: number, sourcePath: string): Promise<Buffer> {
+            const normalizedMaxBytes = Number.isFinite(maxBytes) && maxBytes > 0 ? Math.floor(maxBytes) : 0
+            if (normalizedMaxBytes <= 0) {
+              throw new Error(`repository symbol index maxBytes must be positive: ${maxBytes}`)
+            }
+
+            const handle = await fs.open(filePath, "r")
+            try {
+              const before = await handle.stat()
+              if (!before.isFile()) throw new Error(`repository symbol index is not a file: ${sourcePath}`)
+              if (before.size > normalizedMaxBytes) {
+                throw new Error(
+                  `repository symbol index exceeded maxDocumentBytes (${before.size} > ${normalizedMaxBytes}): ${sourcePath}`
+                )
+              }
+
+              const buffer = Buffer.alloc(before.size)
+              let offset = 0
+              while (offset < buffer.length) {
+                const read = await handle.read(buffer, offset, buffer.length - offset, offset)
+                if (read.bytesRead === 0) break
+                offset += read.bytesRead
+              }
+
+              const after = await handle.stat()
+              if (after.size > normalizedMaxBytes) {
+                throw new Error(
+                  `repository symbol index exceeded maxDocumentBytes (${after.size} > ${normalizedMaxBytes}): ${sourcePath}`
+                )
+              }
+              if (after.size !== before.size || offset !== before.size) {
+                throw new Error(`repository symbol index changed while reading: ${sourcePath}`)
+              }
+              return buffer
+            } finally {
+              await handle.close()
+            }
+          }
+
+          function parseIndexJson(rawText: string, sourcePath: string): unknown {
+            try {
+              return JSON.parse(rawText) as unknown
+            } catch (error) {
+              const message = error instanceof Error ? error.message : String(error)
+              throw new Error(`Invalid repository symbol index (${sourcePath}): JSON parse failed: ${message}`)
+            }
+          }
+
+          function normalizeRevision(value: string, label: string): string {
+            const normalized = value.trim().toLowerCase()
+            if (!/^[0-9a-f]{40}$/.test(normalized)) throw new Error(`${label} must be a 40-character commit SHA: ${value}`)
+            return normalized
+          }
+
+          function normalizeTokenCount(value: number): number {
+            if (!Number.isFinite(value)) return 0
+            return Math.max(0, Math.ceil(value))
+          }
+
+          function estimateTokens(value: string): number {
+            return Math.max(1, Math.ceil(value.length / 4))
+          }
+
+          function canonicalEdgeKey(edge: DependencyEdge): string {
+            return `${edge.from}\u0000${edge.to ?? ""}\u0000${edge.kind}\u0000${edge.resolution}`
+          }
+
+          function formatEdge(edge: DependencyEdge): string {
+            return `${edge.from} -> ${edge.to ?? edge.targetHint ?? "unknown"} (${edge.kind}/${edge.resolution})`
+          }
+
+          function compareEdges(left: DependencyEdge, right: DependencyEdge): number {
+            return canonicalEdgeKey(left).localeCompare(canonicalEdgeKey(right))
+              || left.reason.localeCompare(right.reason)
+              || (left.targetHint ?? "").localeCompare(right.targetHint ?? "")
+          }
+          '''.replace("          ", "").strip() + "\n"
+
+          files["extensions/bob-code-consistency-review/src/evidenceScope/repositorySymbolIndexAdapter.ts"] = r'''import type { DependencyEdge, ScopeSymbol } from "./evidenceScopeTypes"
+          import type { LoadedRepositorySymbolIndex } from "./repositorySymbolIndexLoader"
+
+          export type MergedRepositoryScopeData = {
+            symbols: ScopeSymbol[]
+            dependencyEdges: DependencyEdge[]
+          }
+
+          export function mergeRepositoryScopeData(
+            analysisSymbols: ScopeSymbol[],
+            analysisEdges: DependencyEdge[],
+            repositoryIndex: LoadedRepositorySymbolIndex | undefined
+          ): MergedRepositoryScopeData {
+            const symbolsById = new Map<string, ScopeSymbol>()
+            for (const symbol of repositoryIndex?.symbols ?? []) symbolsById.set(symbol.id, symbol)
+            for (const symbol of analysisSymbols) symbolsById.set(symbol.id, symbol)
+
+            const edgesByKey = new Map<string, DependencyEdge>()
+            for (const edge of repositoryIndex?.dependencyEdges ?? []) edgesByKey.set(edgeKey(edge), edge)
+            for (const edge of analysisEdges) edgesByKey.set(edgeKey(edge), edge)
+
+            return {
+              symbols: [...symbolsById.values()].sort((left, right) => left.id.localeCompare(right.id)),
+              dependencyEdges: [...edgesByKey.values()].sort(compareEdges)
+            }
+          }
+
+          function edgeKey(edge: DependencyEdge): string {
+            return `${edge.from}\u0000${edge.to ?? ""}\u0000${edge.kind}\u0000${edge.resolution}`
+          }
+
+          function compareEdges(left: DependencyEdge, right: DependencyEdge): number {
+            return edgeKey(left).localeCompare(edgeKey(right))
+              || left.reason.localeCompare(right.reason)
+              || (left.targetHint ?? "").localeCompare(right.targetHint ?? "")
+          }
+          '''.replace("          ", "").strip() + "\n"
+
+          files["extensions/bob-code-consistency-review/src/evidenceScope/reviewEvidenceAdapter.ts"] = r'''import type { CodeAnalysisResult } from "../core/analysisTypes"
+          import type { DocumentExtractionResult, EvidenceRef } from "../core/documentTypes"
+          import { buildEvidenceScope } from "./changeScopeEngine"
+          import { InMemoryDocumentEvidenceAdapter } from "./documentEvidenceAdapter"
+          import type {
+            DependencyEdge,
+            DocumentEvidenceUnit,
+            EvidenceScopeResult,
+            ProjectRule,
+            ScopeSymbol
+          } from "./evidenceScopeTypes"
+          import { mergeRepositoryScopeData } from "./repositorySymbolIndexAdapter"
+          import type { LoadedRepositorySymbolIndex } from "./repositorySymbolIndexLoader"
+
+          export type ReviewEvidenceScopeOptions = {
+            changedSymbolIds?: string[]
+            tokenBudget: number
+            maxDependencyDepth: number
+            rules: ProjectRule[]
+            documentKeywords?: string[]
+            includeLowPriority?: boolean
+            repositoryIndex?: LoadedRepositorySymbolIndex
+          }
+
+          export function buildReviewEvidenceScope(
+            analysis: CodeAnalysisResult,
+            documents: DocumentExtractionResult | undefined,
+            options: ReviewEvidenceScopeOptions
+          ): EvidenceScopeResult {
+            const analysisSymbols = adaptSymbols(analysis)
+            const symbolIdByAlias = buildSymbolAliasIndex([
+              ...analysisSymbols,
+              ...(options.repositoryIndex?.symbols ?? [])
+            ])
+            const analysisEdges = adaptDependencyEdges(analysis, symbolIdByAlias)
+            const merged = mergeRepositoryScopeData(analysisSymbols, analysisEdges, options.repositoryIndex)
+            const documentUnits = adaptDocumentEvidence(documents?.evidence ?? [])
+            const changedSymbolIds = options.changedSymbolIds?.length
+              ? options.changedSymbolIds
+              : analysis.changedSymbols.map((symbol) => symbol.id)
+
+            return buildEvidenceScope({
+              changedSymbolIds,
+              symbols: merged.symbols,
+              dependencyEdges: merged.dependencyEdges,
+              maxDependencyDepth: options.maxDependencyDepth,
+              rules: options.rules,
+              documentEvidence: new InMemoryDocumentEvidenceAdapter(documentUnits),
+              documentKeywords: options.documentKeywords,
+              tokenBudget: options.tokenBudget,
+              includeLowPriority: options.includeLowPriority
+            })
+          }
+
+          function adaptSymbols(analysis: CodeAnalysisResult): ScopeSymbol[] {
+            const sliceByFunction = new Map<string, CodeAnalysisResult["codeSlices"][number]>()
+            for (const slice of analysis.codeSlices) {
+              if (slice.functionName && !sliceByFunction.has(slice.functionName)) sliceByFunction.set(slice.functionName, slice)
+            }
+
+            const byId = new Map<string, ScopeSymbol>()
+            for (const changed of analysis.changedSymbols) {
+              const slice = analysis.codeSlices.find((item) => item.evidence_id === changed.evidence_id)
+                ?? sliceByFunction.get(changed.name)
+              byId.set(changed.id, {
+                id: changed.id,
+                name: changed.name,
+                path: changed.file,
+                kind: changed.kind,
+                language: languageFromPath(changed.file),
+                estimatedTokens: estimateTokens(slice?.text ?? changed.name),
+                interfaceChange: isInterfaceChange(changed.change_type),
+                riskTags: riskTagsForChangedSymbol(changed.change_type)
+              })
+            }
+
+            for (const fn of analysis.functions) {
+              const existing = byId.get(fn.id)
+              if (existing) continue
+              const slice = analysis.codeSlices.find((item) => item.evidence_id === fn.evidence_id)
+                ?? sliceByFunction.get(fn.name)
+              byId.set(fn.id, {
+                id: fn.id,
+                name: fn.name,
+                path: fn.file,
+                kind: "function",
+                language: languageFromPath(fn.file),
+                estimatedTokens: estimateTokens(slice?.text ?? fn.name),
+                interfaceChange: false,
+                riskTags: []
+              })
+            }
+
+            return [...byId.values()].sort((left, right) => left.id.localeCompare(right.id))
+          }
+
+          function buildSymbolAliasIndex(symbols: ScopeSymbol[]): Map<string, string> {
+            const aliases = new Map<string, string>()
+            for (const symbol of symbols) {
+              aliases.set(symbol.id, symbol.id)
+              if (!aliases.has(symbol.name)) aliases.set(symbol.name, symbol.id)
+            }
+            return aliases
+          }
+
+          function adaptDependencyEdges(analysis: CodeAnalysisResult, aliases: Map<string, string>): DependencyEdge[] {
+            return analysis.callGraph.map((edge) => {
+              const from = aliases.get(edge.from) ?? edge.from
+              const to = aliases.get(edge.to)
+              return {
+                from,
+                ...(to ? { to } : { targetHint: edge.to }),
+                kind: "calls",
+                resolution: to ? "resolved" : "unknown",
+                reason: edge.reason
+              }
+            })
+          }
+
+          function adaptDocumentEvidence(evidence: EvidenceRef[]): DocumentEvidenceUnit[] {
+            return evidence.map((item) => ({
+              id: item.evidence_id,
+              sourcePath: item.source ?? item.ref,
+              locator: item.location ?? item.ref,
+              contentHash: stableFingerprint(item.text ?? item.ref),
+              estimatedTokens: estimateTokens(item.text ?? item.ref),
+              tags: [item.type],
+              keywords: tokenize(item.text ?? item.ref)
+            }))
+          }
+
+          function estimateTokens(value: string): number {
+            return Math.max(1, Math.ceil(value.length / 4))
+          }
+
+          function isInterfaceChange(changeType: string | undefined): boolean {
+            const normalized = (changeType ?? "").toLowerCase()
+            return normalized.includes("signature") || normalized.includes("interface") || normalized.includes("public")
+          }
+
+          function riskTagsForChangedSymbol(changeType: string | undefined): string[] {
+            return isInterfaceChange(changeType) ? ["compatibility"] : []
+          }
+
+          function languageFromPath(path: string): string {
+            const extension = path.toLowerCase().split(".").pop() ?? ""
+            if (["c", "h"].includes(extension)) return "c"
+            if (["cc", "cpp", "cxx", "hpp", "hh", "hxx"].includes(extension)) return "cpp"
+            if (extension === "ts" || extension === "tsx") return "typescript"
+            if (extension === "js" || extension === "jsx") return "javascript"
+            if (extension === "py") return "python"
+            if (extension === "java") return "java"
+            if (extension === "sql") return "sql"
+            return extension || "unknown"
+          }
+
+          function tokenize(value: string): string[] {
+            return [...new Set(value.toLowerCase().split(/[^\p{L}\p{N}_-]+/u).filter((term) => term.length >= 2))].sort()
+          }
+
+          function stableFingerprint(value: string): string {
+            let hash = 0x811c9dc5
+            for (let index = 0; index < value.length; index += 1) {
+              hash ^= value.charCodeAt(index)
+              hash = Math.imul(hash, 0x01000193) >>> 0
+            }
+            return hash.toString(16).padStart(8, "0")
+          }
+          '''.replace("          ", "").strip() + "\n"
+
+          files["extensions/bob-code-consistency-review/src/evidenceScope/contextBudgetArtifact.ts"] = r'''import type { EvidenceScopeResult } from "./evidenceScopeTypes"
+          import type { ProjectRulePackProvenance } from "./projectRulePackLoader"
+          import type { RepositorySymbolIndexProvenance } from "./repositorySymbolIndexLoader"
+
+          export type ContextBudgetArtifactMetadata = {
+            base: string
+            head: string
+            tokenEstimation: string
+            ruleSource: string
+            rulePack?: ProjectRulePackProvenance
+            symbolIndex?: RepositorySymbolIndexProvenance
+          }
+
+          export type ContextBudgetRulePack = {
+            schema_version: 1
+            id: string
+            version: string
+            source_path: string
+            content_hash: string
+          }
+
+          export type ContextBudgetSymbolIndex = {
+            schema_version: 1
+            id: string
+            source_revision: string
+            source_path: string
+            content_hash: string
+            symbol_count: number
+            edge_count: number
+          }
+
+          export type ContextBudgetArtifact = {
+            schema_version: 1
+            selection_policy: "bob-evidence-scope-v1"
+            scope_fingerprint: string
+            source_revision: string
+            token_estimation: string
+            rule_source: string
+            rule_pack?: ContextBudgetRulePack
+            symbol_index?: ContextBudgetSymbolIndex
+            selected_code: EvidenceScopeResult["selectedCode"]
+            applicable_rules: EvidenceScopeResult["applicableRules"]
+            selected_documents: EvidenceScopeResult["selectedDocuments"]
+            unknown_impact: EvidenceScopeResult["unknownImpact"]
+            budget: EvidenceScopeResult["budgetReport"]
+            warnings: string[]
+          }
+
+          export function createContextBudgetArtifact(
+            scope: EvidenceScopeResult,
+            metadata: ContextBudgetArtifactMetadata
+          ): ContextBudgetArtifact {
+            return {
+              schema_version: 1,
+              selection_policy: "bob-evidence-scope-v1",
+              scope_fingerprint: scope.scopeFingerprint,
+              source_revision: sourceRevision(metadata.base, metadata.head),
+              token_estimation: metadata.tokenEstimation,
+              rule_source: metadata.ruleSource,
+              ...(metadata.rulePack
+                ? {
+                    rule_pack: {
+                      schema_version: 1,
+                      id: metadata.rulePack.id,
+                      version: metadata.rulePack.version,
+                      source_path: metadata.rulePack.sourcePath,
+                      content_hash: metadata.rulePack.contentHash
+                    }
+                  }
+                : {}),
+              ...(metadata.symbolIndex
+                ? {
+                    symbol_index: {
+                      schema_version: 1,
+                      id: metadata.symbolIndex.id,
+                      source_revision: metadata.symbolIndex.sourceRevision,
+                      source_path: metadata.symbolIndex.sourcePath,
+                      content_hash: metadata.symbolIndex.contentHash,
+                      symbol_count: metadata.symbolIndex.symbolCount,
+                      edge_count: metadata.symbolIndex.edgeCount
+                    }
+                  }
+                : {}),
+              selected_code: scope.selectedCode,
+              applicable_rules: scope.applicableRules,
+              selected_documents: scope.selectedDocuments,
+              unknown_impact: scope.unknownImpact,
+              budget: scope.budgetReport,
+              warnings: scope.warnings
+            }
+          }
+
+          function sourceRevision(base: string, head: string): string {
+            if (base && head) return `${base}..${head}`
+            return head || base || ""
+          }
+          '''.replace("          ", "").strip() + "\n"
+
+          files["extensions/bob-code-consistency-review/src/evidenceScope/reviewContextBudget.ts"] = r'''import type { CodeAnalysisResult } from "../core/analysisTypes"
+          import type { DiffSummary } from "../core/diffTypes"
+          import type { DocumentExtractionResult } from "../core/documentTypes"
+          import type { ReviewProcessingLimits } from "../core/limits"
+          import type { ReviewInput } from "../core/reviewTypes"
+          import {
+            createContextBudgetArtifact,
+            type ContextBudgetArtifact
+          } from "./contextBudgetArtifact"
+          import { parseProjectRules } from "./projectRuleConfig"
+          import {
+            loadProjectRulePack,
+            mergeProjectRules
+          } from "./projectRulePackLoader"
+          import { loadRepositorySymbolIndex } from "./repositorySymbolIndexLoader"
+          import { buildReviewEvidenceScope } from "./reviewEvidenceAdapter"
+
+          export type ReviewContextBudgetInput = {
+            workspaceRoot: string
+            reviewInput: ReviewInput
+            diff: DiffSummary
+            documents: DocumentExtractionResult
+            codeAnalysis: CodeAnalysisResult
+            limits: ReviewProcessingLimits
+            textEncoding?: string
+          }
+
+          export type ReviewContextBudgetResult = {
+            artifact: ContextBudgetArtifact
+            warnings: string[]
+          }
+
+          const TOKEN_ESTIMATION_POLICY = "ceil(text.length / 4); budget=floor(maxBobInputBytes / 4)"
+          const INLINE_RULE_CONFIG_SOURCE = "review-input.bob_options.evidence_scope_rules"
+
+          export async function buildReviewContextBudget(
+            input: ReviewContextBudgetInput
+          ): Promise<ReviewContextBudgetResult> {
+            const rawInlineRules = input.reviewInput.bob_options?.evidence_scope_rules
+            const parsedInlineRules = parseProjectRules(rawInlineRules)
+            const loadedRulePack = await loadProjectRulePack({
+              workspaceRoot: input.workspaceRoot,
+              rulePackPath: input.reviewInput.bob_options?.evidence_scope_rule_pack_path,
+              maxBytes: input.limits.maxDocumentBytes,
+              textEncoding: input.textEncoding
+            })
+            const repositoryIndex = await loadRepositorySymbolIndex({
+              workspaceRoot: input.workspaceRoot,
+              indexPath: input.reviewInput.analysis_options?.repository_symbol_index_path,
+              expectedSourceRevision: input.diff.head,
+              maxBytes: input.limits.maxDocumentBytes,
+              textEncoding: input.textEncoding
+            })
+            const mergedRules = mergeProjectRules(loadedRulePack?.rules ?? [], parsedInlineRules.rules)
+            const scope = buildReviewEvidenceScope(input.codeAnalysis, input.documents, {
+              tokenBudget: Math.max(1, Math.floor(input.limits.maxBobInputBytes / 4)),
+              maxDependencyDepth: input.reviewInput.analysis_options?.max_call_depth ?? 1,
+              rules: mergedRules.rules,
+              documentKeywords: reviewDocumentKeywords(input.reviewInput),
+              includeLowPriority: input.reviewInput.bob_options?.evidence_scope_include_low_priority === true,
+              repositoryIndex
+            })
+            const warnings = [
+              ...new Set([
+                ...parsedInlineRules.warnings,
+                ...mergedRules.warnings,
+                ...scope.warnings
+              ])
+            ].sort()
+            const artifact = createContextBudgetArtifact(
+              { ...scope, warnings },
+              {
+                base: input.diff.base,
+                head: input.diff.head,
+                tokenEstimation: TOKEN_ESTIMATION_POLICY,
+                ruleSource: loadedRulePack?.sourcePath
+                  ?? (rawInlineRules === undefined ? "none" : INLINE_RULE_CONFIG_SOURCE),
+                ...(loadedRulePack ? { rulePack: loadedRulePack } : {}),
+                ...(repositoryIndex ? { symbolIndex: repositoryIndex } : {})
+              }
+            )
+
+            return { artifact, warnings }
+          }
+
+          function reviewDocumentKeywords(reviewInput: ReviewInput): string[] {
+            const values = [
+              reviewInput.review.id,
+              ...(reviewInput.review.ticket_ids ?? []),
+              ...reviewInput.review_focus,
+              ...tokenize(reviewInput.review.title),
+              ...tokenize(reviewInput.review.purpose)
+            ]
+            return [...new Set(values.map((value) => value.trim()).filter(Boolean))].sort()
+          }
+
+          function tokenize(value: string): string[] {
+            return value
+              .toLowerCase()
+              .split(/[^\p{L}\p{N}_-]+/u)
+              .filter((term) => term.length >= 2)
+          }
+          '''.replace("          ", "").strip() + "\n"
+
+          files["extensions/bob-code-consistency-review/src/evidenceScope/index.ts"] = r'''export { buildEvidenceScope } from "./changeScopeEngine"
+          export { createContextBudgetArtifact } from "./contextBudgetArtifact"
+          export { planContextBudget } from "./contextBudgetPlanner"
+          export { InMemoryDocumentEvidenceAdapter } from "./documentEvidenceAdapter"
+          export { parseProjectRules } from "./projectRuleConfig"
+          export { loadProjectRulePack, mergeProjectRules } from "./projectRulePackLoader"
+          export { mergeRepositoryScopeData } from "./repositorySymbolIndexAdapter"
+          export { loadRepositorySymbolIndex } from "./repositorySymbolIndexLoader"
+          export { buildReviewContextBudget } from "./reviewContextBudget"
+          export { buildReviewEvidenceScope } from "./reviewEvidenceAdapter"
+          export { selectApplicableRules } from "./rulePackEngine"
+          export type {
+            LoadedProjectRulePack,
+            LoadProjectRulePackInput,
+            ProjectRulePackProvenance
+          } from "./projectRulePackLoader"
+          export type { MergedRepositoryScopeData } from "./repositorySymbolIndexAdapter"
+          export type {
+            LoadedRepositorySymbolIndex,
+            LoadRepositorySymbolIndexInput,
+            RepositorySymbolIndexProvenance
+          } from "./repositorySymbolIndexLoader"
+          export type {
+            ReviewContextBudgetInput,
+            ReviewContextBudgetResult
+          } from "./reviewContextBudget"
+          export type {
+            ContextBudgetReport,
+            DependencyEdge,
+            DocumentEvidenceAdapter,
+            DocumentEvidenceQuery,
+            DocumentEvidenceUnit,
+            EvidenceScopeRequest,
+            EvidenceScopeResult,
+            ProjectRule,
+            RuleApplicability,
+            ScopeBudgetItem,
+            ScopeItemKind,
+            ScopePriority,
+            ScopeSymbol,
+            SelectedScopeItem,
+            UnknownImpact
+          } from "./evidenceScopeTypes"
+          '''.replace("          ", "").strip() + "\n"
+
+          files["extensions/bob-code-consistency-review/src/core/schemaLoader.ts"] = r'''import * as path from "node:path"
+          import Ajv2020, { ErrorObject, ValidateFunction } from "ajv/dist/2020"
+          import { readTextFile } from "./fileSystem"
+
+          export type SchemaName = "review-input" | "bob-output" | "evidence-scope-rule-pack" | "repository-symbol-index"
+
+          export async function loadSchemaValidator(name: SchemaName): Promise<ValidateFunction> {
+            const schemaPath = path.join(__dirname, "..", "..", "resources", "schemas", `${name}.schema.json`)
+            const schema = JSON.parse(await readTextFile(schemaPath))
+            const ajv = new Ajv2020({ allErrors: true, strict: false })
+            return ajv.compile(schema)
+          }
+
+          export function formatSchemaErrors(validate: ValidateFunction): string[] {
+            return (validate.errors ?? []).map(formatError)
+          }
+
+          function formatError(error: ErrorObject): string {
+            const pathText = error.instancePath || "$"
+            const params = Object.keys(error.params ?? {}).length > 0 ? ` ${JSON.stringify(error.params)}` : ""
+            return `${pathText} ${error.message ?? "is invalid"}${params}`
+          }
+          '''.replace("          ", "").strip() + "\n"
+
+          for path, content in files.items():
+              target = Path(path)
+              target.parent.mkdir(parents=True, exist_ok=True)
+              target.write_text(content, encoding="utf-8")
+
+          review_types = Path("extensions/bob-code-consistency-review/src/core/reviewTypes.ts")
+          text = review_types.read_text(encoding="utf-8")
+          text = text.replace(
+              "    max_code_context_lines?: number\n    language?: string[]",
+              "    max_code_context_lines?: number\n    repository_symbol_index_path?: string\n    language?: string[]"
+          )
+          review_types.write_text(text, encoding="utf-8")
+
+          for schema_path in [
+              Path("extensions/bob-code-consistency-review/resources/schemas/review-input.schema.json"),
+              Path("docs/workflows/code-consistency-review/schemas/review-input.schema.json"),
+          ]:
+              text = schema_path.read_text(encoding="utf-8")
+              needle = '''        "max_code_context_lines": {
+                    "type": "integer",
+                    "minimum": 10,
+                    "maximum": 300,
+                    "default": 80
+                  },
+                  "language": {'''
+              replacement = '''        "max_code_context_lines": {
+                    "type": "integer",
+                    "minimum": 10,
+                    "maximum": 300,
+                    "default": 80
+                  },
+                  "repository_symbol_index_path": {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": "\\\\.json$"
+                  },
+                  "language": {'''
+              if needle not in text:
+                  raise SystemExit(f"review-input insertion point not found: {schema_path}")
+              schema_path.write_text(text.replace(needle, replacement), encoding="utf-8")
+
+          package_builder = Path("extensions/bob-code-consistency-review/src/core/reviewPackageBuilder.ts")
+          text = package_builder.read_text(encoding="utf-8")
+          text = text.replace(
+              "  const rulePack = contextBudgetArtifact?.rule_pack\n  return [",
+              "  const rulePack = contextBudgetArtifact?.rule_pack\n  const symbolIndex = contextBudgetArtifact?.symbol_index\n  return ["
+          )
+          text = text.replace(
+              "      diff: diffHashInput(diff),\n      rulePackHash: rulePack?.content_hash ?? \"\"\n    })}`",
+              "      diff: diffHashInput(diff),\n      rulePackHash: rulePack?.content_hash ?? \"\",\n      symbolIndexHash: symbolIndex?.content_hash ?? \"\"\n    })}`"
+          )
+          text = text.replace(
+              "    rulePack ? `  project_rule_pack_hash: ${yamlScalar(rulePack.content_hash)}` : undefined,\n    \"privacy_notice:\",",
+              "    rulePack ? `  project_rule_pack_hash: ${yamlScalar(rulePack.content_hash)}` : undefined,\n    symbolIndex ? `  repository_symbol_index: ${yamlScalar(symbolIndex.source_path)}` : undefined,\n    symbolIndex ? `  repository_symbol_index_id: ${yamlScalar(symbolIndex.id)}` : undefined,\n    symbolIndex ? `  repository_symbol_index_revision: ${yamlScalar(symbolIndex.source_revision)}` : undefined,\n    symbolIndex ? `  repository_symbol_index_hash: ${yamlScalar(symbolIndex.content_hash)}` : undefined,\n    symbolIndex ? `  repository_symbol_count: ${symbolIndex.symbol_count}` : undefined,\n    symbolIndex ? `  repository_edge_count: ${symbolIndex.edge_count}` : undefined,\n    \"privacy_notice:\","
+          )
+          package_builder.write_text(text, encoding="utf-8")
+          PY
+
+      - name: Verify implementation
+        working-directory: extensions/bob-code-consistency-review
+        run: |
+          npm test
+          npm run dependency:policy
+          npm run architecture:policy
+          npm run source:policy
+          npm run unused:report
+          npm run audit:prod
+          npm run package
+          npm run package:policy
+
+      - name: Commit implementation
+        run: |
+          set -euo pipefail
+          rm .github/workflows/apply-evidence-scope-phase4.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'feat: consume repository symbol index in evidence scope'
+          git push origin HEAD:codex/execute-shared-plan-6a53743e
