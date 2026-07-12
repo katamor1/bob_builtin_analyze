@@ -1,0 +1,240 @@
+diff --git a/extensions/bob-code-consistency-review/test/traceabilityCatalogStore.test.js b/extensions/bob-code-consistency-review/test/traceabilityCatalogStore.test.js
+index 7e9e55a..54c4030 100644
+--- a/extensions/bob-code-consistency-review/test/traceabilityCatalogStore.test.js
++++ b/extensions/bob-code-consistency-review/test/traceabilityCatalogStore.test.js
+@@ -13,7 +13,7 @@ const {
+ } = require("../out/core/traceabilityCatalogStore")
+ 
+ async function makeWorkspace() {
+-  return fs.mkdtemp(path.join(os.tmpdir(), "bob-trace-store-"))
++  return fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), "bob-trace-store-")))
+ }
+ 
+ test("readTraceabilityCatalog returns an empty sidecar catalog when missing", async () => {
+diff --git a/extensions/workflow-register/src/core/runtime/runLock.ts b/extensions/workflow-register/src/core/runtime/runLock.ts
+index df77d64..31b97ef 100644
+--- a/extensions/workflow-register/src/core/runtime/runLock.ts
++++ b/extensions/workflow-register/src/core/runtime/runLock.ts
+@@ -286,6 +286,8 @@ function nonNegative(value: number | undefined, fallback: number, label: string)
+ }
+ 
+ function isTransientLockReadError(error: unknown): boolean {
++  const code = (error as NodeJS.ErrnoException).code
++  if (code === "ENOENT" || code === "ENOTDIR") return true
+   const message = formatError(error)
+   return /durability file 'run\.lock\.json' changed while (it was being read|its path was being verified)/i.test(message)
+ }
+diff --git a/extensions/workflow-register/test/bobGateLifecycle.test.js b/extensions/workflow-register/test/bobGateLifecycle.test.js
+index 8773b14..cec559d 100644
+--- a/extensions/workflow-register/test/bobGateLifecycle.test.js
++++ b/extensions/workflow-register/test/bobGateLifecycle.test.js
+@@ -75,7 +75,7 @@ const { reviewTaskRegistry } = require("../out/reviewTaskRegistry")
+ const { readOperationHubRunSnapshot } = require("../out/operationHubMutationTarget")
+ 
+ function tempRoot(t, prefix) {
+-  const root = fs.mkdtempSync(path.join(os.tmpdir(), prefix))
++  const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), prefix)))
+   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+   return root
+ }
+diff --git a/extensions/workflow-register/test/helpers/workflowEngineFixtures.js b/extensions/workflow-register/test/helpers/workflowEngineFixtures.js
+index 24a2642..85e598e 100644
+--- a/extensions/workflow-register/test/helpers/workflowEngineFixtures.js
++++ b/extensions/workflow-register/test/helpers/workflowEngineFixtures.js
+@@ -3,7 +3,7 @@ const os = require("node:os")
+ const path = require("node:path")
+ 
+ function tempDir(prefix = "workflow-register-") {
+-  return fs.mkdtempSync(path.join(os.tmpdir(), prefix))
++  return fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), prefix)))
+ }
+ 
+ function fixedNow() {
+diff --git a/extensions/workflow-register/test/operationHubMutations.test.js b/extensions/workflow-register/test/operationHubMutations.test.js
+index 888b3d6..1f08f36 100644
+--- a/extensions/workflow-register/test/operationHubMutations.test.js
++++ b/extensions/workflow-register/test/operationHubMutations.test.js
+@@ -24,7 +24,7 @@ function loadProviderWithVscode(vscode) {
+ }
+ 
+ function tempRunRoot(t, updatedAt = "2026-07-12T01:00:00.000Z") {
+-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "workflow-register-operation-hub-"))
++  const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "workflow-register-operation-hub-")))
+   const runId = "shared-run"
+   const runFile = path.join(root, ".bob", "workflows", "runs", runId, "run.json")
+   fs.mkdirSync(path.dirname(runFile), { recursive: true })
+diff --git a/extensions/workflow-register/test/runStateStorePathBoundary.test.js b/extensions/workflow-register/test/runStateStorePathBoundary.test.js
+index 5a2f76c..861adf0 100644
+--- a/extensions/workflow-register/test/runStateStorePathBoundary.test.js
++++ b/extensions/workflow-register/test/runStateStorePathBoundary.test.js
+@@ -7,7 +7,7 @@ const { test } = require("node:test")
+ const { CURRENT_WORKFLOW_RUN_STATE_SCHEMA_VERSION, FileRunStateStore } = require("../out/core/runStateStore")
+ 
+ async function makeWorkspace() {
+-  return fs.mkdtemp(path.join(os.tmpdir(), "workflow-run-store-boundary-"))
++  return fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), "workflow-run-store-boundary-")))
+ }
+ 
+ function runState(runId, marker = "initial") {
+diff --git a/extensions/workflow-register/test/workflowArtifactManifest.test.js b/extensions/workflow-register/test/workflowArtifactManifest.test.js
+index 59222bb..754becd 100644
+--- a/extensions/workflow-register/test/workflowArtifactManifest.test.js
++++ b/extensions/workflow-register/test/workflowArtifactManifest.test.js
+@@ -6,7 +6,7 @@ const path = require("node:path")
+ const { test } = require("node:test")
+ 
+ function tempDir() {
+-  return fs.mkdtempSync(path.join(os.tmpdir(), "workflow-register-artifacts-"))
++  return fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "workflow-register-artifacts-")))
+ }
+ 
+ function sha256(value) {
+diff --git a/extensions/workflow-register/test/workflowPlatformP0E2e.test.js b/extensions/workflow-register/test/workflowPlatformP0E2e.test.js
+index 841ec20..e104f71 100644
+--- a/extensions/workflow-register/test/workflowPlatformP0E2e.test.js
++++ b/extensions/workflow-register/test/workflowPlatformP0E2e.test.js
+@@ -109,7 +109,7 @@ function deferred() {
+ }
+ 
+ function tempRoot(t, prefix) {
+-  const root = fs.mkdtempSync(path.join(os.tmpdir(), prefix))
++  const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), prefix)))
+   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+   return root
+ }
+diff --git a/extensions/workflow-register/test/workflowRunLock.test.js b/extensions/workflow-register/test/workflowRunLock.test.js
+index 0bb92cf..40d5bb2 100644
+--- a/extensions/workflow-register/test/workflowRunLock.test.js
++++ b/extensions/workflow-register/test/workflowRunLock.test.js
+@@ -12,10 +12,11 @@ const {
+   serializeWorkflowRunLock,
+   withWorkflowRunLock
+ } = require("../out/core/runtime/runLock.js")
++const runDurabilityPath = require("../out/core/runtime/runDurabilityPath.js")
+ const {
+   readRunDurabilityFile,
+   replaceRunDurabilityFile
+-} = require("../out/core/runtime/runDurabilityPath.js")
++} = runDurabilityPath
+ 
+ function root(t) {
+   const value = fs.mkdtempSync(path.join(os.tmpdir(), "workflow-lock-"))
+@@ -84,6 +85,47 @@ test("same-run callers serialize while different runs and roots remain independe
+   assert.deepEqual(order, ["first:start", "first:end", "second"])
+ })
+ 
++test("lock acquisition retries when the owner file disappears before inspection", async (t) => {
++  const workspace = root(t)
++  const firstStarted = deferred()
++  const releaseFirst = deferred()
++  const first = withWorkflowRunLock(workspace, "run-1", async () => {
++    firstStarted.resolve()
++    await releaseFirst.promise
++  }, { timeoutMs: 1_000, heartbeatMs: 0 })
++  await firstStarted.promise
++
++  const originalRead = runDurabilityPath.readRunDurabilityFile
++  const readInjected = deferred()
++  let injected = false
++  runDurabilityPath.readWorkflowRunEventLog = runDurabilityPath.readWorkflowRunEventLog
++  runDurabilityPath.readRunDurabilityFile = async (...args) => {
++    if (!injected && args[2] === "run.lock.json") {
++      injected = true
++      readInjected.resolve()
++      const error = new Error("simulated lock disappearance during acquisition")
++      error.code = "ENOENT"
++      throw error
++    }
++    return originalRead(...args)
++  }
++
++  try {
++    const second = withWorkflowRunLock(workspace, "run-1", async () => "second", {
++      timeoutMs: 1_000,
++      heartbeatMs: 0,
++      pollMs: 5
++    })
++    await readInjected.promise
++    releaseFirst.resolve()
++    assert.equal(await second, "second")
++    assert.equal(injected, true)
++  } finally {
++    runDurabilityPath.readRunDurabilityFile = originalRead
++    releaseFirst.resolve()
++    await first
++  }
++})
++
+ test("same async chain re-enters one lock without deadlock", async (t) => {
+   const workspace = root(t)
+   const result = await withWorkflowRunLock(workspace, "run-1", () => (
+diff --git a/extensions/workflow-register/test/workflowRunRecovery.test.js b/extensions/workflow-register/test/workflowRunRecovery.test.js
+index 9180888..0551cf7 100644
+--- a/extensions/workflow-register/test/workflowRunRecovery.test.js
++++ b/extensions/workflow-register/test/workflowRunRecovery.test.js
+@@ -5,7 +5,7 @@ const path = require("node:path")
+ const { test } = require("node:test")
+ 
+ function tempDir() {
+-  return fs.mkdtempSync(path.join(os.tmpdir(), "workflow-register-recovery-"))
++  return fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "workflow-register-recovery-")))
+ }
+ 
+ function sampleWorkflow() {
+diff --git a/extensions/workflow-register/test/workflowRunStateMigrationPath.test.js b/extensions/workflow-register/test/workflowRunStateMigrationPath.test.js
+index 09143a3..88ed44e 100644
+--- a/extensions/workflow-register/test/workflowRunStateMigrationPath.test.js
++++ b/extensions/workflow-register/test/workflowRunStateMigrationPath.test.js
+@@ -11,7 +11,7 @@ const {
+ } = require("../out/core/runtime/runStateMigrationBackup.js")
+ 
+ function tempRoot() {
+-  return fs.mkdtempSync(path.join(os.tmpdir(), "workflow-run-migration-path-"))
++  return fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "workflow-run-migration-path-")))
+ }
+ 
+ function runsDirectory(root) {
+diff --git a/extensions/workflow-register/test/workflowTaskSnapshotArtifactImport.test.js b/extensions/workflow-register/test/workflowTaskSnapshotArtifactImport.test.js
+index 794bd2e..97b1382 100644
+--- a/extensions/workflow-register/test/workflowTaskSnapshotArtifactImport.test.js
++++ b/extensions/workflow-register/test/workflowTaskSnapshotArtifactImport.test.js
+@@ -176,7 +176,7 @@ test("task snapshot import restores an existing artifact and manifest when batch
+     updateWorkflowArtifactManifest
+   } = require("../out/core/artifacts/artifactManifest")
+   const { writeWorkspaceFilesAtomically } = require("../out/core/runtime/workspaceFileTransaction")
+-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "workflow-register-snapshot-transaction-"))
++  const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "workflow-register-snapshot-transaction-")))
+   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+   const targetWorkflow = { ...workflow(), workflowRoot: root }
+   const targetRun = run()
+@@ -247,7 +247,7 @@ test("task snapshot import restores an existing artifact and manifest when batch
+ test("task snapshot import rolls files and in-memory state back when durable run save fails", async (t) => {
+   const { importArtifactsFromTaskSnapshots } = require("../out/core/artifacts/taskSnapshotImport")
+   const { writeWorkspaceFilesAtomically } = require("../out/core/runtime/workspaceFileTransaction")
+-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "workflow-register-snapshot-save-rollback-"))
++  const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "workflow-register-snapshot-save-rollback-")))
+   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+   const targetWorkflow = { ...workflow(), workflowRoot: root }
+   const targetRun = run()
+@@ -286,7 +286,7 @@ test("task snapshot import durably restores prior state when run save reports fa
+   const { importArtifactsFromTaskSnapshots } = require("../out/core/artifacts/taskSnapshotImport")
+   const { writeWorkspaceFilesAtomically } = require("../out/core/runtime/workspaceFileTransaction")
+   const { FileRunStateStore } = require("../out/core/runStateStore")
+-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "workflow-register-snapshot-post-save-"))
++  const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "workflow-register-snapshot-post-save-")))
+   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+   const targetWorkflow = { ...workflow(), workflowRoot: root }
+   const targetRun = run()
+diff --git a/extensions/workflow-register/test/workspaceFileTransaction.test.js b/extensions/workflow-register/test/workspaceFileTransaction.test.js
+index c9e5323..8507460 100644
+--- a/extensions/workflow-register/test/workspaceFileTransaction.test.js
++++ b/extensions/workflow-register/test/workspaceFileTransaction.test.js
+@@ -6,7 +6,7 @@ const path = require("node:path")
+ const { test } = require("node:test")
+ 
+ function tempDir(t) {
+-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "workflow-register-file-transaction-"))
++  const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "workflow-register-file-transaction-")))
+   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+   return root
+ }
