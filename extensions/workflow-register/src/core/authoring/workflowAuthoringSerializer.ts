@@ -49,7 +49,7 @@ export function serializeAuthoringModelToMarkdown(model: WorkflowAuthoringModel)
     preflight: nonEmptyArray(model.preflight.map(serializePreflight)),
     guardrails: guardrailsOrUndefined(model.guardrails),
     branching: branchingOrUndefined(model.branching),
-    "x-skipResume": model.skipResume?.fileBound === true ? { fileBound: true } : undefined,
+    "x-skipResume": skipResumeOrUndefined(model),
     artifacts: nonEmptyArray(model.artifacts.map(serializeArtifact)),
     completion: completionOrUndefined(model.completion),
     steps: nonEmptyArray(model.steps.map(serializeStep)) ?? []
@@ -57,6 +57,15 @@ export function serializeAuthoringModelToMarkdown(model: WorkflowAuthoringModel)
   const frontMatterText = quoteStableYamlStrings(yaml.dump(frontMatter, { lineWidth: -1, noRefs: true, sortKeys: false }).trimEnd())
   const body = model.body?.trim() || `# ${title}\n\n## Goal\n\n${description}`
   return { name, filePath, markdown: `---\n${frontMatterText}\n---\n${body.trimEnd()}\n` }
+}
+
+function skipResumeOrUndefined(model: WorkflowAuthoringModel): unknown | undefined {
+  const preserved = model.unknownFrontMatter?.["x-skipResume"]
+  if (!model.skipResume) return preserved
+  const extension = preserved && typeof preserved === "object" && !Array.isArray(preserved)
+    ? preserved as Record<string, unknown>
+    : {}
+  return { ...extension, fileBound: model.skipResume.fileBound }
 }
 
 function inputsToRecord(inputs: WorkflowAuthoringInput[]): Record<string, unknown> | undefined {
