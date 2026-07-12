@@ -9,6 +9,7 @@
 - Branch: `agent/workflow-reproducible-runtime-phase4-hardening-20260712`
 - Guarded Windows code head: `8ec553afad7f32715da9e315556483eec23a7d4c`
 - Final cleanup and evidence head: `2ca175ec79c0b6e1541a7295f6c3e5645a86fb1b`
+- Documentation-only follow-up head: `1aeed8994b1c9aa3f4b54e77dd492ab4ec19eec6`
 
 この補遺は、Phase 4 hardeningで残っていたWindows unit-test failureの原因、RED/GREEN、修正、正式matrix、および最終review結果を記録します。
 
@@ -151,6 +152,8 @@ result: success
 
 - Validate VS Code extension: PASS
 - Validate scaffold: PASS
+
+`1aeed8994b1c9aa3f4b54e77dd492ab4ec19eec6`までのfollow-upはoperator文書、evidence、READMEだけを変更しており、上記で検証したruntime/test/packaging内容は変更していません。
 
 ## 7. Final diff review
 
