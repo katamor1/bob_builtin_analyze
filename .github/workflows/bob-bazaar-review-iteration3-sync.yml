@@ -1,0 +1,41 @@
+name: bob-bazaar-review-iteration3-sync
+
+on:
+  push:
+    branches:
+      - agent/bob-bazaar-review-review-run-v3-iteration3
+    paths:
+      - ".github/workflows/bob-bazaar-review-iteration3-sync.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose-merge:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Iteration 3 branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/bob-bazaar-review-review-run-v3-iteration3
+          fetch-depth: 0
+      - name: Record merge conflicts with main
+        shell: bash
+        run: |
+          set +e
+          git fetch origin main
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git merge --no-commit --no-ff origin/main
+          status=$?
+          mkdir -p .github/diagnostics
+          if [ "$status" -eq 0 ]; then
+            printf 'clean\n' > .github/diagnostics/bob-bazaar-review-iteration3-conflicts.txt
+          else
+            git diff --name-only --diff-filter=U > .github/diagnostics/bob-bazaar-review-iteration3-conflicts.txt
+          fi
+          git merge --abort 2>/dev/null || true
+          git add .github/diagnostics/bob-bazaar-review-iteration3-conflicts.txt
+          git commit -m "ci: record Iteration 3 merge conflicts with main"
+          git push origin HEAD:agent/bob-bazaar-review-review-run-v3-iteration3
