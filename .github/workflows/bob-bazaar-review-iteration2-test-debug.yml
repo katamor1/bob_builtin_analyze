@@ -1,0 +1,44 @@
+name: bob-bazaar-review-iteration2-test-debug
+
+on:
+  pull_request:
+    paths:
+      - "extensions/bob-bazaar-review/**"
+      - ".github/workflows/bob-bazaar-review-iteration2-test-debug.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  capture-test-output:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: extensions/bob-bazaar-review
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: extensions/bob-bazaar-review/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Capture npm test output
+        shell: bash
+        run: |
+          set +e
+          npm test > test-output.txt 2>&1
+          status=$?
+          printf '%s\n' "$status" > test-exit-code.txt
+          exit 0
+      - name: Upload test output
+        uses: actions/upload-artifact@v4
+        with:
+          name: bob-bazaar-review-iteration2-test-output
+          path: |
+            extensions/bob-bazaar-review/test-output.txt
+            extensions/bob-bazaar-review/test-exit-code.txt
+          if-no-files-found: error
