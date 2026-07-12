@@ -8,7 +8,7 @@ import {
   isCurrentWorkflowRunState,
   prepareWorkflowRunStateForWrite
 } from "./runStateCodec"
-import type { RunStateLoadDiagnostic } from "./runStateCodec"
+import type { RunStateLoadDiagnostic, RunStateLoadDiagnosticCode } from "./runStateCodec"
 import { ensureContainedRunStateMigrationBackup } from "./runStateMigrationBackup"
 import {
   listContainedRunIds,
@@ -38,6 +38,11 @@ import { withWorkflowRunLock } from "./runLock"
 import type { WorkflowRunLockOptions } from "./runLock"
 
 const RECOVERABLE_RUN_STATUSES = new Set(["running", "paused", "checkpoint", "reviewing", "held"])
+const PERSISTENT_INFORMATION_CODES = new Set<RunStateLoadDiagnosticCode>([
+  "migrated",
+  "journal-recovered",
+  "lock-reclaimed"
+])
 
 interface SharedRunLoadResult {
   run?: WorkflowRunState
@@ -91,7 +96,19 @@ export class FileRunStateStore implements RunStateStore {
   }
 
   async withRunLock<T>(runId: string, operation: () => Promise<T>): Promise<T> {
-    return withWorkflowRunLock(this.workspaceRoot, runId, operation, this.lockOptions)
+    const configuredReclaimed = this.lockOptions?.onReclaimed
+    return withWorkflowRunLock(this.workspaceRoot, runId, operation, {
+      ...this.lockOptions,
+      onReclaimed: (message) => {
+        this.setLoadDiagnostic({
+          runId,
+          severity: "warning",
+          code: "lock-reclaimed",
+          message
+        })
+        configuredReclaimed?.(message)
+      }
+    })
   }
 
   async createRun(workflow: CoreWorkflowDefinition, inputs: Record<string, unknown>): Promise<WorkflowRunState> {
@@ -125,27 +142,32 @@ export class FileRunStateStore implements RunStateStore {
   }
 
   async saveRun(run: WorkflowRunState): Promise<void> {
-    await this.withRunLock(run.runId, async () => {
-      await this.recoverPendingJournalOwned(run.runId)
-      const currentBytes = await readRunBytes(this.workspaceRoot, run.runId)
-      const currentHash = currentBytes ? hashWorkflowRunBytes(currentBytes) : undefined
-      const expectedRevision = runRevisionByObject.get(run)
-      if (expectedRevision === "missing") {
-        if (currentHash !== undefined) {
-          throw new Error(`Workflow run '${run.runId}' changed since it was created; stale revision cannot be written.`)
+    try {
+      await this.withRunLock(run.runId, async () => {
+        await this.recoverPendingJournalOwned(run.runId)
+        const currentBytes = await readRunBytes(this.workspaceRoot, run.runId)
+        const currentHash = currentBytes ? hashWorkflowRunBytes(currentBytes) : undefined
+        const expectedRevision = runRevisionByObject.get(run)
+        if (expectedRevision === "missing") {
+          if (currentHash !== undefined) {
+            throw new Error(`Workflow run '${run.runId}' changed since it was created; stale revision cannot be written.`)
+          }
+        } else if (typeof expectedRevision === "string" && expectedRevision !== currentHash) {
+          throw new Error(`Workflow run '${run.runId}' changed since it was loaded; stale revision cannot be written.`)
         }
-      } else if (typeof expectedRevision === "string" && expectedRevision !== currentHash) {
-        throw new Error(`Workflow run '${run.runId}' changed since it was loaded; stale revision cannot be written.`)
-      }
-      const next = prepareWorkflowRunStateForWrite(structuredClone(run))
-      next.updatedAt = this.now()
-      const kind: WorkflowRunEventKind = currentBytes ? "run.updated" : "run.created"
-      const committedHash = await this.commitSnapshotOwned(run.runId, next, currentBytes, kind, next.updatedAt)
-      run.schemaVersion = CURRENT_WORKFLOW_RUN_STATE_SCHEMA_VERSION
-      run.updatedAt = next.updatedAt
-      runRevisionByObject.set(run, committedHash)
-      rememberExplicitRunTarget(run)
-    })
+        const next = prepareWorkflowRunStateForWrite(structuredClone(run))
+        next.updatedAt = this.now()
+        const kind: WorkflowRunEventKind = currentBytes ? "run.updated" : "run.created"
+        const committedHash = await this.commitSnapshotOwned(run.runId, next, currentBytes, kind, next.updatedAt)
+        run.schemaVersion = CURRENT_WORKFLOW_RUN_STATE_SCHEMA_VERSION
+        run.updatedAt = next.updatedAt
+        runRevisionByObject.set(run, committedHash)
+        rememberExplicitRunTarget(run)
+      })
+    } catch (error) {
+      this.recordLoadFailure(run.runId, error)
+      throw error
+    }
   }
 
   async loadRun(runId: string): Promise<WorkflowRunState | undefined> {
@@ -165,7 +187,7 @@ export class FileRunStateStore implements RunStateStore {
       if (result.run) rememberExplicitRunTarget(result.run)
       return result.run
     } catch (error) {
-      this.recordInvalidLoad(runId, error)
+      this.recordLoadFailure(runId, error)
       throw error
     }
   }
@@ -302,7 +324,14 @@ export class FileRunStateStore implements RunStateStore {
       writeRunText: (content) => writeContainedRunFile(this.workspaceRoot, runId, content),
       syncRunFile: () => syncRunMaterializedFile(this.workspaceRoot, runId)
     })
-    if (result.recovered) this.clearTransientLoadDiagnostic(runId)
+    if (result.recovered) {
+      this.setLoadDiagnostic({
+        runId,
+        severity: "info",
+        code: "journal-recovered",
+        message: `Recovered interrupted workflow run transaction '${result.journal?.transactionId ?? "unknown"}'.`
+      })
+    }
   }
 
   private async commitSnapshotOwned(
@@ -369,9 +398,20 @@ export class FileRunStateStore implements RunStateStore {
     })
   }
 
+  private recordLoadFailure(runId: string, error: unknown): void {
+    const message = formatError(error)
+    const code = diagnosticCodeForError(message)
+    this.setLoadDiagnostic({
+      runId,
+      severity: code === "lock-busy" ? "warning" : "error",
+      code,
+      message
+    })
+  }
+
   private clearTransientLoadDiagnostic(runId: string): void {
     const existing = this.loadDiagnostics.get(runId)
-    if (existing && existing.code !== "migrated") this.loadDiagnostics.delete(runId)
+    if (existing && !PERSISTENT_INFORMATION_CODES.has(existing.code)) this.loadDiagnostics.delete(runId)
   }
 }
 
@@ -437,6 +477,15 @@ function isRecoverableRun(run: WorkflowRunState, workflow: CoreWorkflowDefinitio
     return run.steps.slice(0, reviewOrHeldGateIndex).every((step) => step.status === "completed")
   }
   return run.steps.slice(0, stepIndex).every((step) => step.status === "completed")
+}
+
+function diagnosticCodeForError(message: string): RunStateLoadDiagnosticCode {
+  const normalized = message.toLowerCase()
+  if (normalized.includes("event log")) return "event-log-invalid"
+  if (normalized.includes("journal")) return "journal-conflict"
+  if (normalized.includes("stale revision") || normalized.includes("changed since it was loaded") || normalized.includes("changed since it was created")) return "stale-write"
+  if (normalized.includes("busy or locked") || normalized.includes("lock ownership") || normalized.includes("lock disappeared")) return "lock-busy"
+  return "invalid"
 }
 
 function stableJson(value: unknown): string {
