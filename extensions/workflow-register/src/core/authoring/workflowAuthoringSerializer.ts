@@ -49,6 +49,7 @@ export function serializeAuthoringModelToMarkdown(model: WorkflowAuthoringModel)
     preflight: nonEmptyArray(model.preflight.map(serializePreflight)),
     guardrails: guardrailsOrUndefined(model.guardrails),
     branching: branchingOrUndefined(model.branching),
+    "x-skipResume": model.skipResume?.fileBound === true ? { fileBound: true } : undefined,
     artifacts: nonEmptyArray(model.artifacts.map(serializeArtifact)),
     completion: completionOrUndefined(model.completion),
     steps: nonEmptyArray(model.steps.map(serializeStep)) ?? []
