@@ -10,10 +10,11 @@
 | Branch | `agent/workflow-builder-skip-resume-readiness-20260712` |
 | Pull request | #82 |
 | Verified implementation head | `91d8dcd56b8ef5ee336f09c34e5e7ec73f930055` |
-| Final evidence head | `756c325a0de3a8963de0ce3063679d42adf1af5a` |
+| Final branch head | `900e629f1dc9e474eff5c29f923e606318e0ce3c` |
 | Full suite | 789 passed / 0 failed / 0 skipped |
 | Implementation matrix | `extensions-quality` run `29201666388`: success |
-| Final cleanup/evidence matrix | `extensions-quality` run `29202077515`: success |
+| Cleanup/evidence matrix | `extensions-quality` run `29202077515`: success |
+| Final matrix | `extensions-quality` run `29202523734`: success |
 | Focused/full evidence | `workflow-builder-skip-resume-tdd` run `29201666390`: success |
 | Whole-diff review | Critical 0 / Important 0 |
 | Merge gate | **GO** |
@@ -46,13 +47,15 @@ Loaderはboolean `fileBound`だけを管理値として抽出し、それ以外�
 
 ## 4. Full quality gates
 
-Implementation headの`extensions-quality` run `29201666388`と、最終cleanup/evidence headのrun `29202077515`はいずれも成功した。
+Implementation headの`extensions-quality` run `29201666388`、cleanup/evidence headのrun `29202077515`、final branch headのrun `29202523734`はいずれも成功した。
 
 - Linux `workflow-register`: unit、dependency / architecture / source / schema policy、audit、package、VSIX policy、Extension Host smokeが成功。
 - Windows `workflow-register`: unit、policy、package、VSIX policy、Extension Host smokeが成功。
 - Linux / Windows `bob-code-consistency-review`: 成功。
 - Linux / Windows `bob-bazaar-review`: 成功。
 - Extension source metrics: 成功。
+
+Final branch headでは7ジョブすべてが一回の正式matrixで成功した。
 
 Custom full-suite evidenceでは次を記録した。
 
