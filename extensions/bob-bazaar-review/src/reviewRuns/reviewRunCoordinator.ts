@@ -177,6 +177,15 @@ export async function recordTriageCompleted(
   now = new Date().toISOString()
 ): Promise<ReviewRunContext> {
   return mutateReviewRun(context, async (latest) => {
+    const triageYamlPath = toWorkspaceRelativeArtifactPath(latest.workspaceRoot, triagePath)
+    if (latest.phases.triage.status === "completed") {
+      return clearReviewRunIssues({
+        ...latest,
+        updatedAt: now,
+        artifacts: { ...latest.artifacts, triageYamlPath }
+      }, "triage")
+    }
+
     let metrics = latest.metrics
     if (!metrics.humanTriageStartedAt) {
       metrics = startHumanTriageTimer(metrics, latest.phases.triage.startedAt ?? latest.updatedAt)
@@ -186,7 +195,7 @@ export async function recordTriageCompleted(
       trackedPhase: "triage",
       status: "completed",
       phase: "triage",
-      artifacts: { triageYamlPath: toWorkspaceRelativeArtifactPath(latest.workspaceRoot, triagePath) },
+      artifacts: { triageYamlPath },
       now
     })
     next = setReviewRunPhaseProgress(next, {
@@ -215,35 +224,53 @@ export async function finalizeReviewRun(
   context: ReviewRunContext,
   now = new Date().toISOString()
 ): Promise<ReviewRunFinalizeResult> {
-  if (context.phases.triage.status !== "completed") {
+  let current = await readReviewRun(context.workspaceRoot, context.campaignId, context.reviewId)
+  if (current.phases.triage.status !== "completed") {
     throw new Error("triage phase must be completed before Review Run finalization")
   }
 
-  let current = context
-  let recordPath = ""
-  try {
-    current = await mutateReviewRun(current, async (latest) => {
-      if (latest.phases.triage.status !== "completed") {
-        throw new Error("triage phase must be completed before Review Run finalization")
-      }
-      const result = await createReviewRunRecordArtifact(latest)
-      recordPath = result.recordPath
-      let next = setReviewRunPhaseProgress(latest, {
-        trackedPhase: "record",
-        status: "completed",
-        artifacts: { recordYamlPath: toWorkspaceRelativeArtifactPath(latest.workspaceRoot, result.recordPath) },
-        now
+  let recordPath = await readableReviewRunArtifactPath(current, current.artifacts.recordYamlPath)
+  const existingSummaryJsonPath = await readableReviewRunArtifactPath(current, current.artifacts.summaryJsonPath)
+  const existingSummaryMarkdownPath = await readableReviewRunArtifactPath(current, current.artifacts.summaryMarkdownPath)
+  if (
+    current.status === "completed" &&
+    recordPath &&
+    existingSummaryJsonPath &&
+    existingSummaryMarkdownPath
+  ) {
+    return {
+      context: current,
+      recordPath,
+      summaryJsonPath: existingSummaryJsonPath,
+      summaryMarkdownPath: existingSummaryMarkdownPath
+    }
+  }
+
+  if (current.phases.record.status !== "completed" || !recordPath) {
+    try {
+      current = await mutateReviewRun(current, async (latest) => {
+        if (latest.phases.triage.status !== "completed") {
+          throw new Error("triage phase must be completed before Review Run finalization")
+        }
+        const result = await createReviewRunRecordArtifact(latest)
+        recordPath = result.recordPath
+        let next = setReviewRunPhaseProgress(latest, {
+          trackedPhase: "record",
+          status: "completed",
+          artifacts: { recordYamlPath: toWorkspaceRelativeArtifactPath(latest.workspaceRoot, result.recordPath) },
+          now
+        })
+        next = setReviewRunPhaseProgress(next, {
+          trackedPhase: "summary",
+          status: "in_progress",
+          now
+        })
+        return clearReviewRunIssues(next, "record")
       })
-      next = setReviewRunPhaseProgress(next, {
-        trackedPhase: "summary",
-        status: "in_progress",
-        now
-      })
-      return clearReviewRunIssues(next, "record")
-    })
-  } catch (error) {
-    await recordReviewRunPhaseFailure(context, "record", error, now).catch(() => undefined)
-    throw error
+    } catch (error) {
+      await recordReviewRunPhaseFailure(current, "record", error, now).catch(() => undefined)
+      throw error
+    }
   }
 
   let summaryJsonPath = ""
@@ -270,6 +297,7 @@ export async function finalizeReviewRun(
     throw error
   }
 
+  if (!recordPath) throw new Error("Review Run record path was not produced")
   return { context: current, recordPath, summaryJsonPath, summaryMarkdownPath }
 }
 
@@ -357,6 +385,22 @@ async function recordReviewRunPhaseFailure(
       recordedAt: now
     })
   })
+}
+
+async function readableReviewRunArtifactPath(
+  context: ReviewRunContext,
+  artifactPath: string | undefined
+): Promise<string | undefined> {
+  if (!artifactPath?.trim()) return undefined
+  const absolutePath = path.resolve(context.workspaceRoot, artifactPath)
+  await assertReviewRunPathContained(context.workspaceRoot, absolutePath)
+  try {
+    const stats = await fs.stat(absolutePath)
+    return stats.isFile() ? absolutePath : undefined
+  } catch (error) {
+    if (isNodeError(error) && error.code === "ENOENT") return undefined
+    throw error
+  }
 }
 
 async function mutateReviewRun(
