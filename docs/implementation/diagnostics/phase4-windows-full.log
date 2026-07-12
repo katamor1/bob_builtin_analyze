@@ -1,0 +1,1429 @@
+TAP version 13
+# Subtest: workflow action contract docs define code consistency provider ids
+ok 1 - workflow action contract docs define code consistency provider ids
+  ---
+  duration_ms: 1.9755
+  type: 'test'
+  ...
+# Subtest: code consistency README reflects current implementation, dependencies, and artifact paths
+ok 2 - code consistency README reflects current implementation, dependencies, and artifact paths
+  ---
+  duration_ms: 0.6213
+  type: 'test'
+  ...
+# Subtest: code consistency Japanese specs stay aligned with current test and dependency contracts
+ok 3 - code consistency Japanese specs stay aligned with current test and dependency contracts
+  ---
+  duration_ms: 2.0865
+  type: 'test'
+  ...
+# Subtest: captureBobOutput canonicalizes common real-AI YAML shorthand before validation
+ok 4 - captureBobOutput canonicalizes common real-AI YAML shorthand before validation
+  ---
+  duration_ms: 1420.3478
+  type: 'test'
+  ...
+# Subtest: captureBobOutput canonicalizes workflow-state wrapped real-AI output before validation
+ok 5 - captureBobOutput canonicalizes workflow-state wrapped real-AI output before validation
+  ---
+  duration_ms: 1372.0539
+  type: 'test'
+  ...
+# Subtest: code consistency Bob output tests do not depend on Bazaar presentation source layout
+ok 6 - code consistency Bob output tests do not depend on Bazaar presentation source layout
+  ---
+  duration_ms: 1.9927
+  type: 'test'
+  ...
+# Subtest: diffLinesForFile keeps same-basename hunks scoped to the requested path
+ok 7 - diffLinesForFile keeps same-basename hunks scoped to the requested path
+  ---
+  duration_ms: 4.3428
+  type: 'test'
+  ...
+# Subtest: analyzeCppChanges skips ambiguous basename fallback candidates
+ok 8 - analyzeCppChanges skips ambiguous basename fallback candidates
+  ---
+  duration_ms: 39.7078
+  type: 'test'
+  ...
+# Subtest: analyzeCppChanges rejects changed file paths that escape the workspace
+ok 9 - analyzeCppChanges rejects changed file paths that escape the workspace
+  ---
+  duration_ms: 3.0982
+  type: 'test'
+  ...
+# Subtest: changed file paths preserve meaningful inner spaces
+ok 10 - changed file paths preserve meaningful inner spaces
+  ---
+  duration_ms: 1.287
+  type: 'test'
+  ...
+# Subtest: changed file paths reject outer whitespace instead of selecting another file
+ok 11 - changed file paths reject outer whitespace instead of selecting another file
+  ---
+  duration_ms: 0.6141
+  type: 'test'
+  ...
+# Subtest: analyzeCodeChanges shares one aggregate budget across generic code evidence
+ok 12 - analyzeCodeChanges shares one aggregate budget across generic code evidence
+  ---
+  duration_ms: 12.2311
+  type: 'test'
+  ...
+# Subtest: analyzeCodeChanges skips oversized C and C++ source reads and falls back to diff evidence
+ok 13 - analyzeCodeChanges skips oversized C and C++ source reads and falls back to diff evidence
+  ---
+  duration_ms: 11.4184
+  type: 'test'
+  ...
+# Subtest: code evidence budget enforces per-item and aggregate UTF-8 limits
+ok 14 - code evidence budget enforces per-item and aggregate UTF-8 limits
+  ---
+  duration_ms: 2.7645
+  type: 'test'
+  ...
+# Subtest: code evidence budget stops after the aggregate budget is exhausted
+ok 15 - code evidence budget stops after the aggregate budget is exhausted
+  ---
+  duration_ms: 0.4471
+  type: 'test'
+  ...
+# Subtest: code evidence budget caps retained evidence item count
+ok 16 - code evidence budget caps retained evidence item count
+  ---
+  duration_ms: 0.423
+  type: 'test'
+  ...
+# Subtest: Command Palette display names use English Bob category before the colon
+ok 17 - Command Palette display names use English Bob category before the colon
+  ---
+  duration_ms: 2.8633
+  type: 'test'
+  ...
+# Subtest: traceability AI draft entrypoints document AI proposal and human approval boundaries
+ok 18 - traceability AI draft entrypoints document AI proposal and human approval boundaries
+  ---
+  duration_ms: 2.2944
+  type: 'test'
+  ...
+# Subtest: extension dependency policy requires a committed lockfile and local release scripts
+ok 19 - extension dependency policy requires a committed lockfile and local release scripts
+  ---
+  duration_ms: 6.9917
+  type: 'test'
+  ...
+# Subtest: extension README documents generated artifacts, package budget, dependencies, CLI, and trust boundary
+ok 20 - extension README documents generated artifacts, package budget, dependencies, CLI, and trust boundary
+  ---
+  duration_ms: 0.9446
+  type: 'test'
+  ...
+# Subtest: diff fixtures normalize safe Windows separators without stripping real prefixes
+ok 21 - diff fixtures normalize safe Windows separators without stripping real prefixes
+  ---
+  duration_ms: 16.53
+  type: 'test'
+  ...
+# Subtest: diff fixtures reject unsafe or silently normalized changed paths
+ok 22 - diff fixtures reject unsafe or silently normalized changed paths
+  ---
+  duration_ms: 44.7647
+  type: 'test'
+  ...
+# Subtest: diff fixture parser returns a normalized trusted summary
+ok 23 - diff fixture parser returns a normalized trusted summary
+  ---
+  duration_ms: 3.9378
+  type: 'test'
+  ...
+# Subtest: diff fixture parser defaults optional warnings and classifies languages
+ok 24 - diff fixture parser defaults optional warnings and classifies languages
+  ---
+  duration_ms: 0.4569
+  type: 'test'
+  ...
+# Subtest: diff fixture text parser reports invalid JSON at the fixture boundary
+ok 25 - diff fixture text parser reports invalid JSON at the fixture boundary
+  ---
+  duration_ms: 0.8916
+  type: 'test'
+  ...
+# Subtest: diff fixture parser rejects malformed roots and required fields
+ok 26 - diff fixture parser rejects malformed roots and required fields
+  ---
+  duration_ms: 0.8195
+  type: 'test'
+  ...
+# Subtest: diff fixture parser rejects invalid file records and metrics
+ok 27 - diff fixture parser rejects invalid file records and metrics
+  ---
+  duration_ms: 0.6774
+  type: 'test'
+  ...
+# Subtest: diff fixture parser rejects duplicate normalized paths
+ok 28 - diff fixture parser rejects duplicate normalized paths
+  ---
+  duration_ms: 0.6987
+  type: 'test'
+  ...
+# Subtest: extractDocuments reads Markdown, docx, and xlsx selectors with unique evidence ids
+ok 29 - extractDocuments reads Markdown, docx, and xlsx selectors with unique evidence ids
+  ---
+  duration_ms: 701.7742
+  type: 'test'
+  ...
+# Subtest: change scope expands deterministic direct and two-hop impact while retaining unknown impact
+ok 30 - change scope expands deterministic direct and two-hop impact while retaining unknown impact
+  ---
+  duration_ms: 26.7094
+  type: 'test'
+  ...
+# Subtest: rule pack applies structured path, language, risk, symbol kind, and interface conditions
+ok 31 - rule pack applies structured path, language, risk, symbol kind, and interface conditions
+  ---
+  duration_ms: 0.9435
+  type: 'test'
+  ...
+# Subtest: document evidence adapter ranks symbol links before tags and removes duplicate ids
+ok 32 - document evidence adapter ranks symbol links before tags and removes duplicate ids
+  ---
+  duration_ms: 1.2691
+  type: 'test'
+  ...
+# Subtest: context budget always retains required entries and records policy and budget exclusions
+ok 33 - context budget always retains required entries and records policy and budget exclusions
+  ---
+  duration_ms: 0.4419
+  type: 'test'
+  ...
+# Subtest: review adapter converts existing code and document analysis into a scoped result
+ok 34 - review adapter converts existing code and document analysis into a scoped result
+  ---
+  duration_ms: 2.8473
+  type: 'test'
+  ...
+# Subtest: project rule config accepts structured bob_options rules and reports invalid entries
+ok 35 - project rule config accepts structured bob_options rules and reports invalid entries
+  ---
+  duration_ms: 1.4937
+  type: 'test'
+  ...
+# Subtest: context budget artifact is deterministic and records VCS and selection policy
+ok 36 - context budget artifact is deterministic and records VCS and selection policy
+  ---
+  duration_ms: 0.69
+  type: 'test'
+  ...
+# Subtest: evidence scope domain exposes a stable explicit public surface
+ok 37 - evidence scope domain exposes a stable explicit public surface
+  ---
+  duration_ms: 150.8781
+  type: 'test'
+  ...
+# Subtest: invalid dependency depth is normalized to zero
+ok 38 - invalid dependency depth is normalized to zero
+  ---
+  duration_ms: 0.9843
+  type: 'test'
+  ...
+# Subtest: scope fingerprint changes when unknown-impact evidence changes
+ok 39 - scope fingerprint changes when unknown-impact evidence changes
+  ---
+  duration_ms: 1.1323
+  type: 'test'
+  ...
+# Subtest: preprocessReview emits the evidence scope budget report and manifest handoff
+ok 40 - preprocessReview emits the evidence scope budget report and manifest handoff
+  ---
+  duration_ms: 1153.4576
+  type: 'test'
+  ...
+# Subtest: buildReviewPackage removes a stale context budget report when no current artifact is supplied
+ok 41 - buildReviewPackage removes a stale context budget report when no current artifact is supplied
+  ---
+  duration_ms: 70.6113
+  type: 'test'
+  ...
+# Subtest: external process runner terminates commands that exceed the hard timeout
+ok 42 - external process runner terminates commands that exceed the hard timeout
+  ---
+  duration_ms: 1180.4551
+  type: 'test'
+  ...
+# Subtest: external process runner clamps timeouts below the safety minimum
+ok 43 - external process runner clamps timeouts below the safety minimum
+  ---
+  duration_ms: 159.1213
+  type: 'test'
+  ...
+# Subtest: external process runner propagates AbortSignal cancellation
+ok 44 - external process runner propagates AbortSignal cancellation
+  ---
+  duration_ms: 180.1324
+  type: 'test'
+  ...
+# Subtest: external process runner closes the preflight-to-listener cancellation race
+ok 45 - external process runner closes the preflight-to-listener cancellation race
+  ---
+  duration_ms: 129.8701
+  type: 'test'
+  ...
+# Subtest: external process runner terminates output that exceeds the buffer budget
+ok 46 - external process runner terminates output that exceeds the buffer budget
+  ---
+  duration_ms: 93.3279
+  type: 'test'
+  ...
+# Subtest: bufferExceeded errors retain no more than the configured byte budget
+ok 47 - bufferExceeded errors retain no more than the configured byte budget
+  ---
+  duration_ms: 267.7425
+  type: 'test'
+  ...
+# Subtest: process runner settles only after a buffer-exceeded child exits
+ok 48 - process runner settles only after a buffer-exceeded child exits
+  ---
+  duration_ms: 330.9604
+  type: 'test'
+  ...
+# Subtest: external process runner accepts explicitly allowed non-zero exit codes
+ok 49 - external process runner accepts explicitly allowed non-zero exit codes
+  ---
+  duration_ms: 104.9482
+  type: 'test'
+  ...
+# Subtest: external process runner classifies disallowed exit codes
+ok 50 - external process runner classifies disallowed exit codes
+  ---
+  duration_ms: 113.4493
+  type: 'test'
+  ...
+# Subtest: Git and Bazaar diff collection use the bounded external process runner
+ok 51 - Git and Bazaar diff collection use the bounded external process runner
+  ---
+  duration_ms: 2.3215
+  type: 'test'
+  ...
+# Subtest: VCS command timeout is clamped to the manifest range
+ok 52 - VCS command timeout is clamped to the manifest range
+  ---
+  duration_ms: 0.624
+  type: 'test'
+  ...
+# Subtest: preprocess progress propagates cancellation into VCS collection
+ok 53 - preprocess progress propagates cancellation into VCS collection
+  ---
+  duration_ms: 0.84
+  type: 'test'
+  ...
+# Subtest: generated artifact paths preserve meaningful inner spaces
+ok 54 - generated artifact paths preserve meaningful inner spaces
+  ---
+  duration_ms: 6.7382
+  type: 'test'
+  ...
+# Subtest: generated artifact paths reject silent whitespace and segment normalization
+ok 55 - generated artifact paths reject silent whitespace and segment normalization
+  ---
+  duration_ms: 3.5495
+  type: 'test'
+  ...
+# Subtest: generated artifact paths reject control characters before filesystem resolution
+ok 56 - generated artifact paths reject control characters before filesystem resolution
+  ---
+  duration_ms: 1.9817
+  type: 'test'
+  ...
+# Subtest: analyzeCodeChanges emits generic evidence for non C/C++ changed files
+ok 57 - analyzeCodeChanges emits generic evidence for non C/C++ changed files
+  ---
+  duration_ms: 17.52
+  type: 'test'
+  ...
+# Subtest: analyzeCodeChanges honors analysis_options.language as an explicit filter
+ok 58 - analyzeCodeChanges honors analysis_options.language as an explicit filter
+  ---
+  duration_ms: 5.4697
+  type: 'test'
+  ...
+# Subtest: package and extension expose code consistency GUI first commands
+ok 59 - package and extension expose code consistency GUI first commands
+  ---
+  duration_ms: 2.9783
+  type: 'test'
+  ...
+# Subtest: consistency review wizard renders evidence picker traceability and package actions
+ok 60 - consistency review wizard renders evidence picker traceability and package actions
+  ---
+  duration_ms: 261.903
+  type: 'test'
+  ...
+# Subtest: code consistency result capture GUI exposes YAML validation before triage
+ok 61 - code consistency result capture GUI exposes YAML validation before triage
+  ---
+  duration_ms: 1.1337
+  type: 'test'
+  ...
+# Subtest: code consistency human triage GUI renders generated triage items
+ok 62 - code consistency human triage GUI renders generated triage items
+  ---
+  duration_ms: 1.1339
+  type: 'test'
+  ...
+# Subtest: document extraction dependencies are loaded lazily instead of during extension activation
+ok 63 - document extraction dependencies are loaded lazily instead of during extension activation
+  ---
+  duration_ms: 4.4079
+  type: 'test'
+  ...
+# Subtest: integration sandbox launcher uses Bob as an extension development path
+ok 64 - integration sandbox launcher uses Bob as an extension development path
+  ---
+  duration_ms: 4.9168
+  type: 'test'
+  ...
+# Subtest: classifyLanguageFromPath maps common review languages to stable names
+ok 65 - classifyLanguageFromPath maps common review languages to stable names
+  ---
+  duration_ms: 2.049
+  type: 'test'
+  ...
+# Subtest: isCLikeLanguage only includes languages handled by the C/C++ analyzer
+ok 66 - isCLikeLanguage only includes languages handled by the C/C++ analyzer
+  ---
+  duration_ms: 0.3197
+  type: 'test'
+  ...
+# Subtest: review-input schemas allow the supported Phase 2 language filter values
+ok 67 - review-input schemas allow the supported Phase 2 language filter values
+  ---
+  duration_ms: 1.3321
+  type: 'test'
+  ...
+# Subtest: default review-input authoring does not constrain analysis to C headers only
+ok 68 - default review-input authoring does not constrain analysis to C headers only
+  ---
+  duration_ms: 11.8505
+  type: 'test'
+  ...
+# Subtest: truncateUtf8Text includes the suffix inside the byte budget
+ok 69 - truncateUtf8Text includes the suffix inside the byte budget
+  ---
+  duration_ms: 2.2076
+  type: 'test'
+  ...
+# Subtest: live traceability sidecar sample contains draft input and a gate-valid catalog
+ok 70 - live traceability sidecar sample contains draft input and a gate-valid catalog
+  ---
+  duration_ms: 1004.3569
+  type: 'test'
+  ...
+# Subtest: live traceability sidecar sample prompt input discovers docs and git diff
+ok 71 - live traceability sidecar sample prompt input discovers docs and git diff
+  ---
+  duration_ms: 1687.9366
+  type: 'test'
+  ...
+# Subtest: preprocessReview builds a package from the live traceability sidecar sample
+ok 72 - preprocessReview builds a package from the live traceability sidecar sample
+  ---
+  duration_ms: 1407.0093
+  type: 'test'
+  ...
+# Subtest: package manifest command ids are readable
+ok 73 - package manifest command ids are readable
+  ---
+  duration_ms: 5.1671
+  type: 'test'
+  ...
+# Subtest: workflow provider result notifications do not block step completion
+ok 74 - workflow provider result notifications do not block step completion
+  ---
+  duration_ms: 3.4001
+  type: 'test'
+  ...
+# Subtest: review input validation rejects existing artifact paths outside the workspace
+ok 75 - review input validation rejects existing artifact paths outside the workspace
+  ---
+  duration_ms: 148.7224
+  type: 'test'
+  ...
+# Subtest: review input discovery rejects docsRoot values outside the workspace
+ok 76 - review input discovery rejects docsRoot values outside the workspace
+  ---
+  duration_ms: 14.3481
+  type: 'test'
+  ...
+# Subtest: kind-aware output resolver rejects absolute, escaped, and misplaced generated artifact paths
+ok 77 - kind-aware output resolver rejects absolute, escaped, and misplaced generated artifact paths
+  ---
+  duration_ms: 8.5856
+  type: 'test'
+  ...
+# Subtest: kind-aware output resolver accepts custom workspace-relative generated artifact paths
+ok 78 - kind-aware output resolver accepts custom workspace-relative generated artifact paths
+  ---
+  duration_ms: 14.5179
+  type: 'test'
+  ...
+# Subtest: kind-aware output resolver rejects symlink escapes
+ok 79 - kind-aware output resolver rejects symlink escapes
+  ---
+  duration_ms: 8.7569
+  type: 'test'
+  ...
+# Subtest: strict workspace resolver rejects symlink escapes for read paths
+ok 80 - strict workspace resolver rejects symlink escapes for read paths
+  ---
+  duration_ms: 76.4527
+  type: 'test'
+  ...
+# Subtest: preprocessReview rejects absolute review package output paths
+ok 81 - preprocessReview rejects absolute review package output paths
+  ---
+  duration_ms: 30.355
+  type: 'test'
+  ...
+# Subtest: preprocessReview rejects review package output outside the allowed artifact area
+ok 82 - preprocessReview rejects review package output outside the allowed artifact area
+  ---
+  duration_ms: 7.7058
+  type: 'test'
+  ...
+# Subtest: captureBobOutput rejects bob output paths outside the bob-output area
+ok 83 - captureBobOutput rejects bob output paths outside the bob-output area
+  ---
+  duration_ms: 6.4361
+  type: 'test'
+  ...
+# Subtest: generateHumanTriage rejects triage output paths outside the triage area
+ok 84 - generateHumanTriage rejects triage output paths outside the triage area
+  ---
+  duration_ms: 8.0829
+  type: 'test'
+  ...
+# Subtest: traceability catalog writes reject paths outside the traceability area
+ok 85 - traceability catalog writes reject paths outside the traceability area
+  ---
+  duration_ms: 6.918
+  type: 'test'
+  ...
+# Subtest: preprocessReview rejects diff fixtures outside the workspace
+ok 86 - preprocessReview rejects diff fixtures outside the workspace
+  ---
+  duration_ms: 10.32
+  type: 'test'
+  ...
+# Subtest: initializeCodeConsistencyWorkspace adds generated artifact gitignore helper
+ok 87 - initializeCodeConsistencyWorkspace adds generated artifact gitignore helper
+  ---
+  duration_ms: 47.4258
+  type: 'test'
+  ...
+# Subtest: preprocessReview records generated artifact privacy notice in the review package
+ok 88 - preprocessReview records generated artifact privacy notice in the review package
+  ---
+  duration_ms: 229.1608
+  type: 'test'
+  ...
+# Subtest: process-code-precheck workflow hands Phase 2 artifacts into the process record
+ok 89 - process-code-precheck workflow hands Phase 2 artifacts into the process record
+  ---
+  duration_ms: 1.8881
+  type: 'test'
+  ...
+# Subtest: project rule pack loader reads bounded workspace-local bytes without modifying the source
+ok 90 - project rule pack loader reads bounded workspace-local bytes without modifying the source
+  ---
+  duration_ms: 120.0501
+  type: 'test'
+  ...
+# Subtest: project rule pack loader rejects path escape and unsupported schema versions
+ok 91 - project rule pack loader rejects path escape and unsupported schema versions
+  ---
+  duration_ms: 59.8263
+  type: 'test'
+  ...
+# Subtest: project rules remain authoritative when inline rules reuse an id
+ok 92 - project rules remain authoritative when inline rules reuse an id
+  ---
+  duration_ms: 18.1523
+  type: 'test'
+  ...
+# Subtest: preprocessReview records rule pack provenance and changes stale input hash when only pack bytes change
+ok 93 - preprocessReview records rule pack provenance and changes stale input hash when only pack bytes change
+  ---
+  duration_ms: 2215.2797
+  type: 'test'
+  ...
+# Subtest: repository symbol index loader reads bounded workspace-local bytes without modifying the source
+ok 94 - repository symbol index loader reads bounded workspace-local bytes without modifying the source
+  ---
+  duration_ms: 135.5287
+  type: 'test'
+  ...
+# Subtest: repository symbol index loader rejects workspace escape and stale revisions
+ok 95 - repository symbol index loader rejects workspace escape and stale revisions
+  ---
+  duration_ms: 73.3997
+  type: 'test'
+  ...
+# Subtest: repository symbol index loader rejects duplicate and dangling graph records
+ok 96 - repository symbol index loader rejects duplicate and dangling graph records
+  ---
+  duration_ms: 164.4304
+  type: 'test'
+  ...
+# Subtest: repository index merge expands external caller callee type global and test impact deterministically
+ok 97 - repository index merge expands external caller callee type global and test impact deterministically
+  ---
+  duration_ms: 6.2355
+  type: 'test'
+  ...
+# Subtest: preprocessReview records repository index provenance and changes stale input hash when only index bytes change
+not ok 98 - preprocessReview records repository index provenance and changes stale input hash when only index bytes change
+  ---
+  duration_ms: 1804.0272
+  type: 'test'
+  location: 'D:\\a\\bob_builtin_analyze\\bob_builtin_analyze\\extensions\\bob-code-consistency-review\\test\\repositorySymbolIndex.test.js:154:1'
+  failureType: 'testCodeFailure'
+  error: "Cannot read properties of undefined (reading 'content_hash')"
+  code: 'ERR_TEST_FAILURE'
+  name: 'TypeError'
+  stack: |-
+    TestContext.<anonymous> (D:\a\bob_builtin_analyze\bob_builtin_analyze\extensions\bob-code-consistency-review\test\repositorySymbolIndex.test.js:183:44)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: repository symbol index is part of the explicit evidence-scope public surface
+ok 99 - repository symbol index is part of the explicit evidence-scope public surface
+  ---
+  duration_ms: 2.8585
+  type: 'test'
+  ...
+# Subtest: retry controller keeps registrations when the workflow API identity is unchanged
+ok 100 - retry controller keeps registrations when the workflow API identity is unchanged
+  ---
+  duration_ms: 9.6365
+  type: 'test'
+  ...
+# Subtest: retry controller rolls back partial registrations from an unsuccessful attempt
+ok 101 - retry controller rolls back partial registrations from an unsuccessful attempt
+  ---
+  duration_ms: 2.2156
+  type: 'test'
+  ...
+# Subtest: retry controller discards stale registrations after an API generation change
+ok 102 - retry controller discards stale registrations after an API generation change
+  ---
+  duration_ms: 1.1423
+  type: 'test'
+  ...
+# Subtest: retry controller disposes a registration that completes after deactivation
+ok 103 - retry controller disposes a registration that completes after deactivation
+  ---
+  duration_ms: 1.2886
+  type: 'test'
+  ...
+# Subtest: retry controller rejects a successful result without API identity
+ok 104 - retry controller rejects a successful result without API identity
+  ---
+  duration_ms: 1.0721
+  type: 'test'
+  ...
+# Subtest: retry controller exclusively owns provider registrations
+ok 105 - retry controller exclusively owns provider registrations
+  ---
+  duration_ms: 1.9475
+  type: 'test'
+  ...
+# Subtest: parseAiReviewInputDraft extracts fenced JSON only
+ok 106 - parseAiReviewInputDraft extracts fenced JSON only
+  ---
+  duration_ms: 2.5159
+  type: 'test'
+  ...
+# Subtest: parseAiReviewInputDraft rejects ambiguous or oversized JSON candidates
+ok 107 - parseAiReviewInputDraft rejects ambiguous or oversized JSON candidates
+  ---
+  duration_ms: 1.3898
+  type: 'test'
+  ...
+# Subtest: applyAiReviewInputDraft rejects invalid artifact paths before writing
+ok 108 - applyAiReviewInputDraft rejects invalid artifact paths before writing
+  ---
+  duration_ms: 151.9142
+  type: 'test'
+  ...
+# Subtest: applyAiReviewInputDraft rejects artifact paths outside the workspace before writing
+ok 109 - applyAiReviewInputDraft rejects artifact paths outside the workspace before writing
+  ---
+  duration_ms: 71.0728
+  type: 'test'
+  ...
+# Subtest: applyAiReviewInputDraft writes schema-valid YAML through the builder
+ok 110 - applyAiReviewInputDraft writes schema-valid YAML through the builder
+  ---
+  duration_ms: 80.8491
+  type: 'test'
+  ...
+# Subtest: prepareAiReviewInputDraftPrompt writes constrained prompt with candidates and diff
+ok 111 - prepareAiReviewInputDraftPrompt writes constrained prompt with candidates and diff
+  ---
+  duration_ms: 33.9483
+  type: 'test'
+  ...
+# Subtest: AI verification matrix expected Bob output validates and generates triage
+ok 112 - AI verification matrix expected Bob output validates and generates triage
+  ---
+  duration_ms: 1417.4865
+  type: 'test'
+  ...
+# Subtest: capture, validate, and triage do not silently use review-package bob-output fallback
+ok 113 - capture, validate, and triage do not silently use review-package bob-output fallback
+  ---
+  duration_ms: 1147.7931
+  type: 'test'
+  ...
+# Subtest: captureBobOutput rejects multiple YAML output candidates
+ok 114 - captureBobOutput rejects multiple YAML output candidates
+  ---
+  duration_ms: 3.0166
+  type: 'test'
+  ...
+# Subtest: generateHumanTriage reports a missing Bob output file without throwing ENOENT
+ok 115 - generateHumanTriage reports a missing Bob output file without throwing ENOENT
+  ---
+  duration_ms: 3.8711
+  type: 'test'
+  ...
+# Subtest: validateBobOutput rejects missing evidence ids and accepts package evidence
+ok 116 - validateBobOutput rejects missing evidence ids and accepts package evidence
+  ---
+  duration_ms: 181.0975
+  type: 'test'
+  ...
+# Subtest: captureBobOutput and generateHumanTriage create review artifacts
+ok 117 - captureBobOutput and generateHumanTriage create review artifacts
+  ---
+  duration_ms: 117.6307
+  type: 'test'
+  ...
+# Subtest: buildReviewPackage cleans managed artifacts and records a generation id
+ok 118 - buildReviewPackage cleans managed artifacts and records a generation id
+  ---
+  duration_ms: 56.6375
+  type: 'test'
+  ...
+# Subtest: preprocessReview builds a review package with document and code evidence
+ok 119 - preprocessReview builds a review package with document and code evidence
+  ---
+  duration_ms: 270.2333
+  type: 'test'
+  ...
+# Subtest: preprocessReview builds the AI verification matrix package from a real git diff
+ok 120 - preprocessReview builds the AI verification matrix package from a real git diff
+  ---
+  duration_ms: 1162.4075
+  type: 'test'
+  ...
+# Subtest: preprocessReview preserves Shift-JIS review input, documents, source, and git diff text
+ok 121 - preprocessReview preserves Shift-JIS review input, documents, source, and git diff text
+  ---
+  duration_ms: 964.3561
+  type: 'test'
+  ...
+# Subtest: preprocessReview builds generic code evidence for a multi-language git diff
+ok 122 - preprocessReview builds generic code evidence for a multi-language git diff
+  ---
+  duration_ms: 976.6484
+  type: 'test'
+  ...
+# Subtest: normalizeReviewProcessingLimits clamps every setting to a finite min/max range
+ok 123 - normalizeReviewProcessingLimits clamps every setting to a finite min/max range
+  ---
+  duration_ms: 3.0958
+  type: 'test'
+  ...
+# Subtest: package configuration exposes the same processing limit ranges as runtime
+ok 124 - package configuration exposes the same processing limit ranges as runtime
+  ---
+  duration_ms: 0.612
+  type: 'test'
+  ...
+# Subtest: validateReviewInput rejects an input file above the configured document byte limit
+ok 125 - validateReviewInput rejects an input file above the configured document byte limit
+  ---
+  duration_ms: 12.1491
+  type: 'test'
+  ...
+# Subtest: validateReviewInput rejects excessive aggregate artifact references before path checks
+ok 126 - validateReviewInput rejects excessive aggregate artifact references before path checks
+  ---
+  duration_ms: 228.2542
+  type: 'test'
+  ...
+# Subtest: extractDocuments limits document bytes and excerpt bytes with warnings
+ok 127 - extractDocuments limits document bytes and excerpt bytes with warnings
+  ---
+  duration_ms: 20.4789
+  type: 'test'
+  ...
+# Subtest: extractDocuments enforces an aggregate excerpt budget across documents
+ok 128 - extractDocuments enforces an aggregate excerpt budget across documents
+  ---
+  duration_ms: 5.552
+  type: 'test'
+  ...
+# Subtest: collectGitDiff truncates raw unified diff and records a warning
+ok 129 - collectGitDiff truncates raw unified diff and records a warning
+  ---
+  duration_ms: 4.5036
+  type: 'test'
+  ...
+# Subtest: buildReviewPackage records truncation warnings in manifest and deterministic checks
+ok 130 - buildReviewPackage records truncation warnings in manifest and deterministic checks
+  ---
+  duration_ms: 40.2804
+  type: 'test'
+  ...
+# Subtest: core review types are split by domain instead of collected in one implementation file
+ok 131 - core review types are split by domain instead of collected in one implementation file
+  ---
+  duration_ms: 19.6039
+  type: 'test'
+  ...
+# Subtest: traceabilityCatalog is a facade over validation, ids, types, and review-input conversion
+ok 132 - traceabilityCatalog is a facade over validation, ids, types, and review-input conversion
+  ---
+  duration_ms: 0.4878
+  type: 'test'
+  ...
+# Subtest: document extraction dispatch is separated from format-specific extractors
+ok 133 - document extraction dispatch is separated from format-specific extractors
+  ---
+  duration_ms: 0.8898
+  type: 'test'
+  ...
+# Subtest: C/C++ change analysis delegates diff parsing, symbol detection, and rendering
+ok 134 - C/C++ change analysis delegates diff parsing, symbol detection, and rendering
+  ---
+  duration_ms: 0.836
+  type: 'test'
+  ...
+# Subtest: extension entrypoint delegates command implementations to command modules
+ok 135 - extension entrypoint delegates command implementations to command modules
+  ---
+  duration_ms: 1.2678
+  type: 'test'
+  ...
+# Subtest: parseAiTraceabilityDraft rejects AI drafts that try to create accepted state
+ok 136 - parseAiTraceabilityDraft rejects AI drafts that try to create accepted state
+  ---
+  duration_ms: 4.6467
+  type: 'test'
+  ...
+# Subtest: parseAiTraceabilityDraft rejects oversized proposed draft fields and collections
+ok 137 - parseAiTraceabilityDraft rejects oversized proposed draft fields and collections
+  ---
+  duration_ms: 13.6793
+  type: 'test'
+  ...
+# Subtest: parseAiTraceabilityDraft prefers JSON fences over Mermaid fences
+ok 138 - parseAiTraceabilityDraft prefers JSON fences over Mermaid fences
+  ---
+  duration_ms: 0.9151
+  type: 'test'
+  ...
+# Subtest: parseAiTraceabilityDraft rejects multiple JSON candidates
+ok 139 - parseAiTraceabilityDraft rejects multiple JSON candidates
+  ---
+  duration_ms: 0.3682
+  type: 'test'
+  ...
+# Subtest: mergeAiTraceabilityDraft preserves accepted catalog entries and replaces proposed candidates
+ok 140 - mergeAiTraceabilityDraft preserves accepted catalog entries and replaces proposed candidates
+  ---
+  duration_ms: 1.2292
+  type: 'test'
+  ...
+# Subtest: applyAiTraceabilityDraft writes a proposed-only draft into the sidecar catalog
+ok 141 - applyAiTraceabilityDraft writes a proposed-only draft into the sidecar catalog
+  ---
+  duration_ms: 34.3775
+  type: 'test'
+  ...
+# Subtest: concurrent AI draft applications preserve one winner and surface one stale conflict
+ok 142 - concurrent AI draft applications preserve one winner and surface one stale conflict
+  ---
+  duration_ms: 51.6084
+  type: 'test'
+  ...
+# Subtest: applyAiTraceabilityDraft rejects draft source paths outside the workspace before writing
+ok 143 - applyAiTraceabilityDraft rejects draft source paths outside the workspace before writing
+  ---
+  duration_ms: 2.9564
+  type: 'test'
+  ...
+# Subtest: prepareAiTraceabilityDraftPrompt writes a proposed-only sidecar catalog prompt
+ok 144 - prepareAiTraceabilityDraftPrompt writes a proposed-only sidecar catalog prompt
+  ---
+  duration_ms: 50.187
+  type: 'test'
+  ...
+# Subtest: validateTraceabilityCatalog accepts approved sidecar traceability with links
+ok 145 - validateTraceabilityCatalog accepts approved sidecar traceability with links
+  ---
+  duration_ms: 4.6971
+  type: 'test'
+  ...
+# Subtest: validateTraceabilityCatalog reports missing downstream gate links
+ok 146 - validateTraceabilityCatalog reports missing downstream gate links
+  ---
+  duration_ms: 0.6692
+  type: 'test'
+  ...
+# Subtest: validateTraceabilityCatalog accepts approved n/a decisions for missing links
+ok 147 - validateTraceabilityCatalog accepts approved n/a decisions for missing links
+  ---
+  duration_ms: 0.5279
+  type: 'test'
+  ...
+# Subtest: validateTraceabilityCatalog accepts TBD decisions for missing links and keeps warnings
+ok 148 - validateTraceabilityCatalog accepts TBD decisions for missing links and keeps warnings
+  ---
+  duration_ms: 0.5386
+  type: 'test'
+  ...
+# Subtest: validateTraceabilityCatalog rejects accepted items that use unapproved domains
+ok 149 - validateTraceabilityCatalog rejects accepted items that use unapproved domains
+  ---
+  duration_ms: 0.3954
+  type: 'test'
+  ...
+# Subtest: buildReviewInputDraftFromTraceability converts accepted catalog items into review-input draft artifacts
+ok 150 - buildReviewInputDraftFromTraceability converts accepted catalog items into review-input draft artifacts
+  ---
+  duration_ms: 0.5504
+  type: 'test'
+  ...
+# Subtest: validateTraceabilityCatalog accepts linked QA and resolved review findings
+ok 151 - validateTraceabilityCatalog accepts linked QA and resolved review findings
+  ---
+  duration_ms: 0.463
+  type: 'test'
+  ...
+# Subtest: validateTraceabilityCatalog reports accepted QA items without clarifies links
+ok 152 - validateTraceabilityCatalog reports accepted QA items without clarifies links
+  ---
+  duration_ms: 0.2939
+  type: 'test'
+  ...
+# Subtest: validateTraceabilityCatalog reports unlinked or unresolved review findings
+ok 153 - validateTraceabilityCatalog reports unlinked or unresolved review findings
+  ---
+  duration_ms: 0.6158
+  type: 'test'
+  ...
+# Subtest: validateTraceabilityCatalog accepts TBD decisions for QA and review-finding gates
+ok 154 - validateTraceabilityCatalog accepts TBD decisions for QA and review-finding gates
+  ---
+  duration_ms: 0.689
+  type: 'test'
+  ...
+# Subtest: buildReviewInputDraftFromTraceability maps accepted QA and review findings into review-input artifacts
+ok 155 - buildReviewInputDraftFromTraceability maps accepted QA and review findings into review-input artifacts
+  ---
+  duration_ms: 0.4133
+  type: 'test'
+  ...
+# Subtest: readTraceabilityCatalog returns an empty sidecar catalog when missing
+ok 156 - readTraceabilityCatalog returns an empty sidecar catalog when missing
+  ---
+  duration_ms: 37.9913
+  type: 'test'
+  ...
+# Subtest: readTraceabilityCatalog returns an opaque raw-content revision for an existing catalog
+ok 157 - readTraceabilityCatalog returns an opaque raw-content revision for an existing catalog
+  ---
+  duration_ms: 31.8803
+  type: 'test'
+  ...
+# Subtest: writeTraceabilityCatalog backs up an existing sidecar before overwrite
+ok 158 - writeTraceabilityCatalog backs up an existing sidecar before overwrite
+  ---
+  duration_ms: 45.1766
+  type: 'test'
+  ...
+# Subtest: validateAndWriteTraceabilityGateReport writes the markdown gate report
+ok 159 - validateAndWriteTraceabilityGateReport writes the markdown gate report
+  ---
+  duration_ms: 49.9479
+  type: 'test'
+  ...
+# Subtest: gate report commit-time CAS preserves a catalog changed while the report temp file is pending
+not ok 160 - gate report commit-time CAS preserves a catalog changed while the report temp file is pending
+  ---
+  duration_ms: 34.0488
+  type: 'test'
+  location: 'D:\\a\\bob_builtin_analyze\\bob_builtin_analyze\\extensions\\bob-code-consistency-review\\test\\traceabilityCatalogStore.test.js:95:1'
+  failureType: 'cancelledByParent'
+  error: 'Promise resolution is still pending but the event loop has already resolved'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    process.emit (node:events:519:28)
+  ...
+# Subtest: gate reports reject a report file alias that resolves to the catalog itself
+not ok 161 - gate reports reject a report file alias that resolves to the catalog itself
+  ---
+  duration_ms: 0
+  type: 'test'
+  location: 'D:\\a\\bob_builtin_analyze\\bob_builtin_analyze\\extensions\\bob-code-consistency-review\\test\\traceabilityCatalogStore.test.js:129:1'
+  failureType: 'cancelledByParent'
+  error: 'Promise resolution is still pending but the event loop has already resolved'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    process.emit (node:events:519:28)
+  ...
+# Subtest: catalog compare-and-set allows one A/B writer and rejects the stale writer without another backup
+not ok 162 - catalog compare-and-set allows one A/B writer and rejects the stale writer without another backup
+  ---
+  duration_ms: 0
+  type: 'test'
+  location: 'D:\\a\\bob_builtin_analyze\\bob_builtin_analyze\\extensions\\bob-code-consistency-review\\test\\traceabilityCatalogStore.test.js:151:1'
+  failureType: 'cancelledByParent'
+  error: 'Promise resolution is still pending but the event loop has already resolved'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    process.emit (node:events:519:28)
+  ...
+# Subtest: catalog backups remain unique across same-second successful writes
+not ok 163 - catalog backups remain unique across same-second successful writes
+  ---
+  duration_ms: 0
+  type: 'test'
+  location: 'D:\\a\\bob_builtin_analyze\\bob_builtin_analyze\\extensions\\bob-code-consistency-review\\test\\traceabilityCatalogStore.test.js:192:1'
+  failureType: 'cancelledByParent'
+  error: 'Promise resolution is still pending but the event loop has already resolved'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    process.emit (node:events:519:28)
+  ...
+# Subtest: commit-time CAS preserves an external update made while the candidate temp file is pending
+not ok 164 - commit-time CAS preserves an external update made while the candidate temp file is pending
+  ---
+  duration_ms: 0
+  type: 'test'
+  location: 'D:\\a\\bob_builtin_analyze\\bob_builtin_analyze\\extensions\\bob-code-consistency-review\\test\\traceabilityCatalogStore.test.js:215:1'
+  failureType: 'cancelledByParent'
+  error: 'Promise resolution is still pending but the event loop has already resolved'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    process.emit (node:events:519:28)
+  ...
+# Subtest: commit-time CAS treats a missing catalog that appears while the candidate temp file is pending as stale
+not ok 165 - commit-time CAS treats a missing catalog that appears while the candidate temp file is pending as stale
+  ---
+  duration_ms: 0
+  type: 'test'
+  location: 'D:\\a\\bob_builtin_analyze\\bob_builtin_analyze\\extensions\\bob-code-consistency-review\\test\\traceabilityCatalogStore.test.js:247:1'
+  failureType: 'cancelledByParent'
+  error: 'Promise resolution is still pending but the event loop has already resolved'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    process.emit (node:events:519:28)
+  ...
+# Subtest: gate report expected revision rejects a changed catalog without writing a stale report
+not ok 166 - gate report expected revision rejects a changed catalog without writing a stale report
+  ---
+  duration_ms: 0
+  type: 'test'
+  location: 'D:\\a\\bob_builtin_analyze\\bob_builtin_analyze\\extensions\\bob-code-consistency-review\\test\\traceabilityCatalogStore.test.js:280:1'
+  failureType: 'cancelledByParent'
+  error: 'Promise resolution is still pending but the event loop has already resolved'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    process.emit (node:events:519:28)
+  ...
+# Subtest: physical catalog aliases share one CAS queue for an existing target
+not ok 167 - physical catalog aliases share one CAS queue for an existing target
+  ---
+  duration_ms: 0
+  type: 'test'
+  location: 'D:\\a\\bob_builtin_analyze\\bob_builtin_analyze\\extensions\\bob-code-consistency-review\\test\\traceabilityCatalogStore.test.js:295:1'
+  failureType: 'cancelledByParent'
+  error: 'Promise resolution is still pending but the event loop has already resolved'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    process.emit (node:events:519:28)
+  ...
+# Subtest: physical catalog aliases share one CAS queue while the target is missing
+not ok 168 - physical catalog aliases share one CAS queue while the target is missing
+  ---
+  duration_ms: 0
+  type: 'test'
+  location: 'D:\\a\\bob_builtin_analyze\\bob_builtin_analyze\\extensions\\bob-code-consistency-review\\test\\traceabilityCatalogStore.test.js:325:1'
+  failureType: 'cancelledByParent'
+  error: 'Promise resolution is still pending but the event loop has already resolved'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    process.emit (node:events:519:28)
+  ...
+# Subtest: a file-symlink catalog alias writes the physical target without forking CAS state
+not ok 169 - a file-symlink catalog alias writes the physical target without forking CAS state
+  ---
+  duration_ms: 0
+  type: 'test'
+  location: 'D:\\a\\bob_builtin_analyze\\bob_builtin_analyze\\extensions\\bob-code-consistency-review\\test\\traceabilityCatalogStore.test.js:355:1'
+  failureType: 'cancelledByParent'
+  error: 'Promise resolution is still pending but the event loop has already resolved'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    process.emit (node:events:519:28)
+  ...
+# Subtest: standalone catalog reads reject a file alias retargeted outside after lexical validation
+not ok 170 - standalone catalog reads reject a file alias retargeted outside after lexical validation
+  ---
+  duration_ms: 0
+  type: 'test'
+  location: 'D:\\a\\bob_builtin_analyze\\bob_builtin_analyze\\extensions\\bob-code-consistency-review\\test\\traceabilityCatalogStore.test.js:411:1'
+  failureType: 'cancelledByParent'
+  error: 'Promise resolution is still pending but the event loop has already resolved'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    process.emit (node:events:519:28)
+  ...
+# Subtest: catalog writes reject a file alias retargeted outside after lexical validation
+not ok 171 - catalog writes reject a file alias retargeted outside after lexical validation
+  ---
+  duration_ms: 0
+  type: 'test'
+  location: 'D:\\a\\bob_builtin_analyze\\bob_builtin_analyze\\extensions\\bob-code-consistency-review\\test\\traceabilityCatalogStore.test.js:440:1'
+  failureType: 'cancelledByParent'
+  error: 'Promise resolution is still pending but the event loop has already resolved'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    process.emit (node:events:519:28)
+  ...
+# Subtest: catalog reads reject aliases that already resolve outside the physical workspace
+not ok 172 - catalog reads reject aliases that already resolve outside the physical workspace
+  ---
+  duration_ms: 0
+  type: 'test'
+  location: 'D:\\a\\bob_builtin_analyze\\bob_builtin_analyze\\extensions\\bob-code-consistency-review\\test\\traceabilityCatalogStore.test.js:474:1'
+  failureType: 'cancelledByParent'
+  error: 'Promise resolution is still pending but the event loop has already resolved'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    process.emit (node:events:519:28)
+  ...
+# Subtest: catalog reads and writes reject dangling file aliases
+not ok 173 - catalog reads and writes reject dangling file aliases
+  ---
+  duration_ms: 0
+  type: 'test'
+  location: 'D:\\a\\bob_builtin_analyze\\bob_builtin_analyze\\extensions\\bob-code-consistency-review\\test\\traceabilityCatalogStore.test.js:489:1'
+  failureType: 'cancelledByParent'
+  error: 'Promise resolution is still pending but the event loop has already resolved'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    process.emit (node:events:519:28)
+  ...
+# Subtest: readTraceabilityCatalog reads catalog nested in command result
+ok 174 - readTraceabilityCatalog reads catalog nested in command result
+  ---
+  duration_ms: 34.222
+  type: 'test'
+  ...
+# Subtest: traceability commands carry text encoding into catalog and review-input flows
+ok 175 - traceability commands carry text encoding into catalog and review-input flows
+  ---
+  duration_ms: 2.6212
+  type: 'test'
+  ...
+# Subtest: traceability commands reuse review metadata and focus options from shared helpers
+ok 176 - traceability commands reuse review metadata and focus options from shared helpers
+  ---
+  duration_ms: 2.1553
+  type: 'test'
+  ...
+# Subtest: traceability gate reports stay on the catalog revision that triggered them
+ok 177 - traceability gate reports stay on the catalog revision that triggered them
+  ---
+  duration_ms: 0.7608
+  type: 'test'
+  ...
+# Subtest: create-review-input rejects a catalog changed while metadata was collected
+ok 178 - create-review-input rejects a catalog changed while metadata was collected
+  ---
+  duration_ms: 5.5805
+  type: 'test'
+  ...
+# Subtest: parseAiTraceabilityDraft canonicalizes reverse proposed link directions
+ok 179 - parseAiTraceabilityDraft canonicalizes reverse proposed link directions
+  ---
+  duration_ms: 5.2979
+  type: 'test'
+  ...
+# Subtest: Traceability Prep rejects an external winner without saved or gate-report side effects
+ok 180 - Traceability Prep rejects an external winner without saved or gate-report side effects
+  ---
+  duration_ms: 71.6035
+  type: 'test'
+  ...
+# Subtest: Traceability Prep serializes same-panel actions and consecutive saves while advancing revision
+ok 181 - Traceability Prep serializes same-panel actions and consecutive saves while advancing revision
+  ---
+  duration_ms: 163.0228
+  type: 'test'
+  ...
+# Subtest: applyTraceabilityPrepAction approves proposed items and links into accepted endpoints
+ok 182 - applyTraceabilityPrepAction approves proposed items and links into accepted endpoints
+  ---
+  duration_ms: 3.0396
+  type: 'test'
+  ...
+# Subtest: applyTraceabilityPrepAction restores item status and generated fields from the original catalog
+ok 183 - applyTraceabilityPrepAction restores item status and generated fields from the original catalog
+  ---
+  duration_ms: 2.0236
+  type: 'test'
+  ...
+# Subtest: applyTraceabilityPrepAction restores link endpoints from the original catalog
+ok 184 - applyTraceabilityPrepAction restores link endpoints from the original catalog
+  ---
+  duration_ms: 0.5509
+  type: 'test'
+  ...
+# Subtest: applyTraceabilityPrepAction rejects n/a approval without a reason
+ok 185 - applyTraceabilityPrepAction rejects n/a approval without a reason
+  ---
+  duration_ms: 0.6103
+  type: 'test'
+  ...
+# Subtest: applyTraceabilityPrepAction defers eligible gate errors as accepted TBD decisions
+ok 186 - applyTraceabilityPrepAction defers eligible gate errors as accepted TBD decisions
+  ---
+  duration_ms: 0.9802
+  type: 'test'
+  ...
+# Subtest: buildTraceabilityPrepModel exposes QA and review gate issues for the Webview
+ok 187 - buildTraceabilityPrepModel exposes QA and review gate issues for the Webview
+  ---
+  duration_ms: 0.3678
+  type: 'test'
+  ...
+# Subtest: traceability prep command opens a Webview approval surface
+ok 188 - traceability prep command opens a Webview approval surface
+  ---
+  duration_ms: 2.7016
+  type: 'test'
+  ...
+# Subtest: traceability prep client script avoids CSP-blocked inline handlers
+ok 189 - traceability prep client script avoids CSP-blocked inline handlers
+  ---
+  duration_ms: 1.6755
+  type: 'test'
+  ...
+# Subtest: traceability prep initial model cannot terminate the script tag
+ok 190 - traceability prep initial model cannot terminate the script tag
+  ---
+  duration_ms: 0.4375
+  type: 'test'
+  ...
+# Subtest: VCS process buffers derive from maxRawDiffBytes with bounded headroom
+ok 191 - VCS process buffers derive from maxRawDiffBytes with bounded headroom
+  ---
+  duration_ms: 2.5693
+  type: 'test'
+  ...
+# Subtest: Git and Bazaar diff collection use the limit-derived process buffer
+ok 192 - Git and Bazaar diff collection use the limit-derived process buffer
+  ---
+  duration_ms: 0.8418
+  type: 'test'
+  ...
+# Subtest: collectGitDiff resolves valid git refs to commit SHAs before diffing
+ok 193 - collectGitDiff resolves valid git refs to commit SHAs before diffing
+  ---
+  duration_ms: 831.1664
+  type: 'test'
+  ...
+# Subtest: collectGitDiff rejects git revision options before diffing
+ok 194 - collectGitDiff rejects git revision options before diffing
+  ---
+  duration_ms: 438.4738
+  type: 'test'
+  ...
+# Subtest: collectGitDiff preserves cancellation while resolving Git revisions
+ok 195 - collectGitDiff preserves cancellation while resolving Git revisions
+  ---
+  duration_ms: 363.0512
+  type: 'test'
+  ...
+# Subtest: collectGitDiff rejects unsafe Bazaar revisions before executing bzr
+ok 196 - collectGitDiff rejects unsafe Bazaar revisions before executing bzr
+  ---
+  duration_ms: 0.9092
+  type: 'test'
+  ...
+# Subtest: validateBazaarRevision rejects control characters before trimming
+ok 197 - validateBazaarRevision rejects control characters before trimming
+  ---
+  duration_ms: 0.2914
+  type: 'test'
+  ...
+# Subtest: collectGitDiff classifies renamed, spaced, and binary Git paths
+ok 198 - collectGitDiff classifies renamed, spaced, and binary Git paths
+  ---
+  duration_ms: 614.3457
+  type: 'test'
+  ...
+# Subtest: collectGitDiff preserves real a and b directory prefixes
+ok 199 - collectGitDiff preserves real a and b directory prefixes
+  ---
+  duration_ms: 553.5855
+  type: 'test'
+  ...
+# Subtest: collectGitDiff rejects control-character Git paths instead of accepting quoted aliases
+ok 200 - collectGitDiff rejects control-character Git paths instead of accepting quoted aliases
+  ---
+  duration_ms: 0.3798
+  type: 'test'
+  ...
+# Subtest: command wiring rejects workflow arg bzrPath overrides
+ok 201 - command wiring rejects workflow arg bzrPath overrides
+  ---
+  duration_ms: 0.9783
+  type: 'test'
+  ...
+# Subtest: capture workflow options preserve configured output path while using Bob result state as text
+ok 202 - capture workflow options preserve configured output path while using Bob result state as text
+  ---
+  duration_ms: 2.9873
+  type: 'test'
+  ...
+# Subtest: capture workflow options prefer explicit text from args over state text
+ok 203 - capture workflow options prefer explicit text from args over state text
+  ---
+  duration_ms: 0.5589
+  type: 'test'
+  ...
+# Subtest: capture workflow options preserve raw text args while keeping workflow inputs
+ok 204 - capture workflow options preserve raw text args while keeping workflow inputs
+  ---
+  duration_ms: 0.2713
+  type: 'test'
+  ...
+# Subtest: capture workflow options reject dangerous workflow execution keys
+ok 205 - capture workflow options reject dangerous workflow execution keys
+  ---
+  duration_ms: 0.825
+  type: 'test'
+  ...
+# Subtest: extension registers code consistency workflow providers with workflow-register
+ok 206 - extension registers code consistency workflow providers with workflow-register
+  ---
+  duration_ms: 4.7549
+  type: 'test'
+  ...
+# Subtest: workflow-register and IBM Bob are soft dependencies with delayed provider registration recovery
+ok 207 - workflow-register and IBM Bob are soft dependencies with delayed provider registration recovery
+  ---
+  duration_ms: 1.2687
+  type: 'test'
+  ...
+# Subtest: code consistency provider retry lifecycle recovers restarts and disposes stale or late registrations
+ok 208 - code consistency provider retry lifecycle recovers restarts and disposes stale or late registrations
+  ---
+  duration_ms: 1.5834
+  type: 'test'
+  ...
+# Subtest: code consistency provider generation records the exact API used for registration
+ok 209 - code consistency provider generation records the exact API used for registration
+  ---
+  duration_ms: 0.6236
+  type: 'test'
+  ...
+# Subtest: code consistency workflow providers declare ownership and register disposables
+ok 210 - code consistency workflow providers declare ownership and register disposables
+  ---
+  duration_ms: 1.5866
+  type: 'test'
+  ...
+# Subtest: code consistency provider accepts workflowRoot without first-folder fallback
+ok 211 - code consistency provider accepts workflowRoot without first-folder fallback
+  ---
+  duration_ms: 0.7888
+  type: 'test'
+  ...
+# Subtest: traceability apply command can recover and normalize draft JSON
+ok 212 - traceability apply command can recover and normalize draft JSON
+  ---
+  duration_ms: 0.5572
+  type: 'test'
+  ...
+# Subtest: Bob workflow template uses command providers instead of manual CLI instructions
+ok 213 - Bob workflow template uses command providers instead of manual CLI instructions
+  ---
+  duration_ms: 1.7283
+  type: 'test'
+  ...
+# Subtest: safe workflow options keep only command-allowed user keys
+ok 214 - safe workflow options keep only command-allowed user keys
+  ---
+  duration_ms: 2.9886
+  type: 'test'
+  ...
+# Subtest: safe workflow options reject blocked execution keys from inputs or args
+ok 215 - safe workflow options reject blocked execution keys from inputs or args
+  ---
+  duration_ms: 0.798
+  type: 'test'
+  ...
+# Subtest: safe workflow options drop command-unallowed keys that are not globally blocked
+ok 216 - safe workflow options drop command-unallowed keys that are not globally blocked
+  ---
+  duration_ms: 0.2909
+  type: 'test'
+  ...
+# Subtest: code consistency root resolver prefers direct .bob folders
+ok 217 - code consistency root resolver prefers direct .bob folders
+  ---
+  duration_ms: 39.5065
+  type: 'test'
+  ...
+# Subtest: code consistency resolver can accept workflowRoot when it owns .bob
+ok 218 - code consistency resolver can accept workflowRoot when it owns .bob
+  ---
+  duration_ms: 9.3331
+  type: 'test'
+  ...
+# Subtest: code consistency root resolver finds immediate child .bob folders when no direct marker exists
+ok 219 - code consistency root resolver finds immediate child .bob folders when no direct marker exists
+  ---
+  duration_ms: 4.8878
+  type: 'test'
+  ...
+# Subtest: code consistency workspace resolver prompts when multiple .bob candidates exist
+ok 220 - code consistency workspace resolver prompts when multiple .bob candidates exist
+  ---
+  duration_ms: 28.1232
+  type: 'test'
+  ...
+# Subtest: code consistency workspace resolver falls back to a single top folder when no .bob marker exists
+ok 221 - code consistency workspace resolver falls back to a single top folder when no .bob marker exists
+  ---
+  duration_ms: 3.2583
+  type: 'test'
+  ...
+1..221
+# tests 221
+# suites 0
+# pass 206
+# fail 1
+# cancelled 14
+# skipped 0
+# todo 0
+# duration_ms 13644.2468
