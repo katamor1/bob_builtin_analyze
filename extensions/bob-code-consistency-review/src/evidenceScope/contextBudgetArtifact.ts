@@ -1,10 +1,20 @@
 import type { EvidenceScopeResult } from "./evidenceScopeTypes"
+import type { ProjectRulePackProvenance } from "./projectRulePackLoader"
 
 export type ContextBudgetArtifactMetadata = {
   base: string
   head: string
   tokenEstimation: string
   ruleSource: string
+  rulePack?: ProjectRulePackProvenance
+}
+
+export type ContextBudgetRulePack = {
+  schema_version: 1
+  id: string
+  version: string
+  source_path: string
+  content_hash: string
 }
 
 export type ContextBudgetArtifact = {
@@ -14,6 +24,7 @@ export type ContextBudgetArtifact = {
   source_revision: string
   token_estimation: string
   rule_source: string
+  rule_pack?: ContextBudgetRulePack
   selected_code: EvidenceScopeResult["selectedCode"]
   applicable_rules: EvidenceScopeResult["applicableRules"]
   selected_documents: EvidenceScopeResult["selectedDocuments"]
@@ -33,6 +44,17 @@ export function createContextBudgetArtifact(
     source_revision: sourceRevision(metadata.base, metadata.head),
     token_estimation: metadata.tokenEstimation,
     rule_source: metadata.ruleSource,
+    ...(metadata.rulePack
+      ? {
+          rule_pack: {
+            schema_version: 1,
+            id: metadata.rulePack.id,
+            version: metadata.rulePack.version,
+            source_path: metadata.rulePack.sourcePath,
+            content_hash: metadata.rulePack.contentHash
+          }
+        }
+      : {}),
     selected_code: scope.selectedCode,
     applicable_rules: scope.applicableRules,
     selected_documents: scope.selectedDocuments,
