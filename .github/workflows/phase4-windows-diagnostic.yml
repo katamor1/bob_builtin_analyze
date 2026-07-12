@@ -9,8 +9,8 @@ permissions:
   contents: read
 
 jobs:
-  focused-lock-red:
-    name: Focused workflow lock RED
+  focused-lock-green:
+    name: Focused workflow lock GREEN
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -19,9 +19,9 @@ jobs:
         with:
           ref: agent/workflow-reproducible-runtime-phase4-hardening-20260712
 
-      - name: Verify test-only head
+      - name: Verify implementation head
         shell: bash
-        run: test "$(git rev-parse HEAD)" = "214c8fe58fee5beb15eb1d69a1110f5bd4385bde"
+        run: test "$(git rev-parse HEAD)" = "9deb80c9f500bc4906177a6903264042115c622a"
 
       - name: Setup Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -38,23 +38,6 @@ jobs:
         working-directory: extensions/workflow-register
         run: npm run compile
 
-      - name: Run focused lock test and preserve RED
-        id: focused
-        shell: bash
+      - name: Run focused lock test
         working-directory: extensions/workflow-register
-        run: |
-          set +e
-          node --test test/workflowRunLock.test.js > focused-lock-red.txt 2>&1
-          status=$?
-          set -e
-          cat focused-lock-red.txt
-          test "$status" -ne 0
-          grep -F "lock acquisition retries when the owner file disappears before inspection" focused-lock-red.txt
-          grep -F "simulated lock disappearance during acquisition" focused-lock-red.txt
-
-      - name: Upload focused RED evidence
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: focused-workflow-lock-red
-          path: extensions/workflow-register/focused-lock-red.txt
-          retention-days: 1
+        run: node --test test/workflowRunLock.test.js
