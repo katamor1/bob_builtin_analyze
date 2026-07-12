@@ -1,0 +1,209 @@
+name: task-snapshot-import-command-executor
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/task-snapshot-import-command-executor.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+      - name: Apply command adapter
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          file = Path("extensions/workflow-register/src/workflowRunCommands.ts")
+          text = file.read_text(encoding="utf-8")
+
+          old_import = '''  hydrateWorkflowStateFromArtifacts,
+          importArtifactsFromTaskSnapshots as importTaskSnapshotArtifacts,
+          parseWorkflowArtifactManifest,
+          seedWorkflowRunFromArtifacts,
+          stateKeysProducedBeforeStep,
+          validateWorkflowArtifactManifest,
+          type TaskSnapshotArtifactImportIssue,
+          type WorkflowArtifactManifest
+          } from "./core/artifacts"'''
+          new_import = '''  hydrateWorkflowStateFromArtifacts,
+          importArtifactsFromTaskSnapshots as importTaskSnapshotArtifacts,
+          parseWorkflowArtifactManifest,
+          previewArtifactsFromTaskSnapshots,
+          seedWorkflowRunFromArtifacts,
+          stateKeysProducedBeforeStep,
+          validateWorkflowArtifactManifest,
+          type TaskSnapshotArtifactImportIssue,
+          type WorkflowArtifactManifest
+          } from "./core/artifacts"'''
+          if old_import not in text:
+              raise SystemExit("artifact import block not found")
+          text = text.replace(old_import, new_import, 1)
+
+          anchor = 'import { showMarkdownReport } from "./reports"\n'
+          addition = 'import { chooseTaskSnapshotImportSelection } from "./taskSnapshotImportReport"\n'
+          if addition not in text:
+              if anchor not in text:
+                  raise SystemExit("report import anchor not found")
+              text = text.replace(anchor, anchor + addition, 1)
+
+          start = text.index('  async importArtifactsFromTaskSnapshots(runId?: string): Promise<unknown> {')
+          end = text.index('\n  async runNextStep(', start)
+          method = '''  async importArtifactsFromTaskSnapshots(runId?: string): Promise<unknown> {
+            const trustError = await requireTrustedWorkspace("import artifacts from task snapshots")
+            if (trustError) return trustError
+            await this.ensureWorkflowsLoaded()
+            const selection = await this.selectRun(runId)
+            if (!selection) return runId ? `Workflow run not found: ${runId}` : "No workflow run selected."
+            if (workflowRunExecutionActiveForWorkspace(selection.root, selection.runId)) {
+              throw new Error(`Cannot import task snapshot artifacts while workflow run is executing: ${selection.runId}`)
+            }
+
+            const runStore = this.options.runtimeFactory.createRunStore(selection.root)
+            const previewRun = await runStore.loadRun(selection.runId)
+            if (!previewRun) throw new Error(`Workflow run not found: ${selection.runId}`)
+            assertWorkflowRunStateWritable(previewRun)
+            const previewWorkflow = this.options.coreWorkflows.get(previewRun.workflowId)
+            if (!previewWorkflow) throw new Error(`Workflow definition is not loaded: ${previewRun.workflowId}`)
+            const snapshotStore = new FileTaskSnapshotStore({ workspaceRoot: selection.root })
+            const preview = await previewArtifactsFromTaskSnapshots({
+              workflow: previewWorkflow,
+              run: previewRun,
+              snapshotStore,
+              readFile: (relativePath) => readOptionalPhysicallyContainedWorkspaceFile(selection.root, relativePath)
+            })
+            const chosen = await chooseTaskSnapshotImportSelection({
+              preview,
+              run: previewRun,
+              workflow: previewWorkflow,
+              prompts: {
+                showPreview: (lines) => showMarkdownReport(
+                  "Task Snapshot Artifact Import Preview",
+                  "Review extraction sources, target files, checksums, and diffs before selecting artifacts.",
+                  lines
+                ),
+                pickArtifacts: async (items) => {
+                  const picked = await vscode.window.showQuickPick(items.map((item) => ({
+                    label: item.label,
+                    description: item.description,
+                    detail: item.detail,
+                    picked: item.picked,
+                    item
+                  })), {
+                    title: `Task Snapshot Artifact Import: ${previewRun.runId}`,
+                    placeHolder: "Select artifacts to import. Truncated, redacted, and changed-file candidates are unselected by default.",
+                    canPickMany: true,
+                    matchOnDescription: true,
+                    matchOnDetail: true
+                  })
+                  return picked?.map((item) => item.item.artifactId)
+                },
+                confirmOverwrite: async (count) => {
+                  const confirm = "Import and overwrite"
+                  const picked = await vscode.window.showWarningMessage(
+                    `${count} selected artifact file(s) have different existing content. Confirm that you reviewed the preview diff before overwriting.`,
+                    { modal: true },
+                    confirm
+                  )
+                  return picked === confirm
+                }
+              }
+            })
+            if (!chosen) return "Task snapshot artifact import cancelled."
+            if (chosen.selectedArtifactIds.length === 0) {
+              const message = "No task snapshot artifacts were selected."
+              await vscode.window.showInformationMessage(message)
+              return { ok: false, importedCount: 0, issues: [{ severity: "info", message }] }
+            }
+
+            const imported = await this.options.coordinateGateDecision(
+              selection.root,
+              selection.runId,
+              "artifact-import",
+              () => coordinateWorkflowRunExecution(runStore, selection.runId, "importTaskSnapshotArtifacts", async () => {
+                const run = await runStore.loadRun(selection.runId)
+                if (!run) throw new Error(`Workflow run not found: ${selection.runId}`)
+                const workflow = this.options.coreWorkflows.get(run.workflowId)
+                if (!workflow) throw new Error(`Workflow definition is not loaded: ${run.workflowId}`)
+                const result = await importTaskSnapshotArtifacts({
+                  workflow,
+                  run,
+                  snapshotStore: new FileTaskSnapshotStore({ workspaceRoot: selection.root }),
+                  readFile: (relativePath) => readOptionalPhysicallyContainedWorkspaceFile(selection.root, relativePath),
+                  selectedArtifactIds: chosen.selectedArtifactIds,
+                  expectedPreviewDigest: preview.previewDigest,
+                  overwriteExisting: chosen.overwriteExisting,
+                  persistStateRollback: () => runStore.saveRun(run),
+                  writeFiles: (writes, commitState) => writeWorkspaceFilesAtomically(selection.root, writes, async () => {
+                    await Promise.resolve(commitState())
+                    await runStore.saveRun(run)
+                  })
+                })
+                return { result, run, workflow }
+              })
+            )
+            const { result, run, workflow } = imported
+            const lines = [
+              `- runId: ${run.runId}`,
+              `- workflow: ${workflow.id}`,
+              `- imported: ${result.importedCount}`,
+              `- manifest: ${result.manifest ? "updated" : "not updated"}`,
+              `- preview digest: ${result.previewDigest ?? preview.previewDigest}`,
+              "",
+              "Issues:",
+              ...formatSnapshotImportIssues(result.issues)
+            ]
+            await showMarkdownReport("Task Snapshot Artifact Import", result.ok ? "Imported selected artifacts from task snapshots." : "No artifacts were imported from task snapshots.", lines)
+            return result
+          }
+          '''
+          text = text[:start] + method + text[end:]
+
+          helper_anchor = 'async function readPhysicallyContainedWorkspaceFile(root: string, relativePath: string): Promise<string> {'
+          helper = '''async function readOptionalPhysicallyContainedWorkspaceFile(root: string, relativePath: string): Promise<string | undefined> {
+            try {
+              return await readPhysicallyContainedWorkspaceFile(root, relativePath)
+            } catch (error) {
+              if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined
+              throw error
+            }
+          }
+
+          '''
+          if helper not in text:
+              if helper_anchor not in text:
+                  raise SystemExit("workspace file helper anchor not found")
+              text = text.replace(helper_anchor, helper + helper_anchor, 1)
+
+          file.write_text(text, encoding="utf-8")
+          PY
+      - name: Verify adapter
+        working-directory: extensions/workflow-register
+        run: |
+          npm ci
+          npm run compile
+          node --test \
+            test/workflowTaskSnapshotImportPreview.test.js \
+            test/workflowTaskSnapshotArtifactImport.test.js \
+            test/workflowTaskSnapshotImportSelectiveApply.test.js \
+            test/taskSnapshotImportReport.test.js
+      - name: Commit verified adapter
+        shell: bash
+        run: |
+          rm .github/workflows/task-snapshot-import-command-executor.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add extensions/workflow-register/src/workflowRunCommands.ts .github/workflows/task-snapshot-import-command-executor.yml
+          git commit -m "feat: add preview-first task snapshot import command"
+          git push origin HEAD:${{ github.head_ref }}
