@@ -129,22 +129,21 @@ test("runNextStep rejects a future run instead of creating a replacement current
   const run = futureRun(root)
   await writeRun(root, run)
   const vscode = vscodeStub(root)
+  const { ActionRegistry } = require("../out/core/actionRegistry.js")
+  const { WorkflowEngine } = require("../out/core/engine.js")
+  const { ResultSinkRegistry } = require("../out/core/resultSinkRegistry.js")
   const { FileRunStateStore } = require("../out/core/runStateStore.js")
   const { WorkflowRunCommandService } = loadWithVscode("workflowRunCommands.js", vscode)
-  let engineCreations = 0
   const definition = workflow(root)
   const service = new WorkflowRunCommandService({
     coreWorkflows: new Map([[definition.id, definition]]),
     runtimeFactory: {
       createRunStore: (workspaceRoot) => new FileRunStateStore({ workspaceRoot }),
-      createEngine: () => {
-        engineCreations += 1
-        return {
-          runWorkflow: async () => {
-            throw new Error("engine must not start for a future run-state version")
-          }
-        }
-      }
+      createEngine: (workspaceRoot) => new WorkflowEngine({
+        actions: new ActionRegistry(),
+        resultSinks: new ResultSinkRegistry(),
+        runStore: new FileRunStateStore({ workspaceRoot })
+      })
     },
     ensureWorkflowsLoaded: async () => undefined,
     workflowRootCandidates: async () => [markerRoot(root)],
@@ -163,7 +162,8 @@ test("runNextStep rejects a future run instead of creating a replacement current
     service.runNextStep(run.runId),
     /read-only schemaVersion 'workflow-register\/run-state\/v2'/
   )
-  assert.equal(engineCreations, 0)
+  const persisted = await new FileRunStateStore({ workspaceRoot: root }).listRuns()
+  assert.deepEqual(persisted.map((candidate) => candidate.runId), [run.runId])
 })
 
 test("pause command rejects a future run before writing control.json", async (t) => {
