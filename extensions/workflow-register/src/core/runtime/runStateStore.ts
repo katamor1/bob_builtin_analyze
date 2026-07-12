@@ -1,12 +1,12 @@
 import { randomUUID } from "crypto"
-import { CoreWorkflowDefinition, WorkflowRunState } from "../model"
+import type { CoreWorkflowDefinition, WorkflowRunState } from "../model"
 import {
   CURRENT_WORKFLOW_RUN_STATE_SCHEMA_VERSION,
   decodeWorkflowRunState,
   isCurrentWorkflowRunState,
-  prepareWorkflowRunStateForWrite,
-  RunStateLoadDiagnostic
+  prepareWorkflowRunStateForWrite
 } from "./runStateCodec"
+import type { RunStateLoadDiagnostic } from "./runStateCodec"
 import { ensureContainedRunStateMigrationBackup } from "./runStateMigrationBackup"
 import {
   listContainedRunIds,
@@ -86,8 +86,16 @@ export class FileRunStateStore implements RunStateStore {
   }
 
   async loadRun(runId: string): Promise<WorkflowRunState | undefined> {
+    let snapshot: Awaited<ReturnType<typeof readContainedRunFile>>
     try {
-      const snapshot = await readContainedRunFile(this.workspaceRoot, runId)
+      snapshot = await readContainedRunFile(this.workspaceRoot, runId)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined
+      this.recordInvalidLoad(runId, error)
+      throw error
+    }
+
+    try {
       const text = snapshot.bytes.toString("utf8")
       let value: unknown
       try {
@@ -118,14 +126,7 @@ export class FileRunStateStore implements RunStateStore {
       }
       return decoded.run
     } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code
-      if (code === "ENOENT") return undefined
-      this.setLoadDiagnostic({
-        runId,
-        severity: "error",
-        code: "invalid",
-        message: formatError(error)
-      })
+      this.recordInvalidLoad(runId, error)
       throw error
     }
   }
@@ -178,6 +179,15 @@ export class FileRunStateStore implements RunStateStore {
 
   private setLoadDiagnostic(diagnostic: RunStateLoadDiagnostic): void {
     this.loadDiagnostics.set(diagnostic.runId, diagnostic)
+  }
+
+  private recordInvalidLoad(runId: string, error: unknown): void {
+    this.setLoadDiagnostic({
+      runId,
+      severity: "error",
+      code: "invalid",
+      message: formatError(error)
+    })
   }
 
   private clearTransientLoadDiagnostic(runId: string): void {
