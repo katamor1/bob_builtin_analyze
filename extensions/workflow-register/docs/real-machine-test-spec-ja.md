@@ -483,3 +483,14 @@ Pause smoke test.
 4. multi-root workspace で Bob root と VCS root が混同されないこと。
 5. IBM Bob 実環境で workflow source、step review、result handoff、MCP、Webview の代表 smoke を実施し、結果を release evidence に保存すること。
 6. workflow-contracts CI が repository 内の全対象 WORKFLOW.md を検証し成功していること。
+
+## 自動 Pause 実機確認
+
+1. `maxRunMinutes`、`maxAgentStepsPerRun`、`pauseAtLocalTime` を個別に設定した workflow を IBM Bob から実行する。
+2. 実行中の agent / command が強制終了されず、次の安全な checkpoint で `paused` になることを確認する。
+3. Run Diagnostics と Run Control で kind、source、checkpoint、limit、observed、detectedAt を確認する。
+4. 15 / 30 / 60 分 override を理由付きで設定し、期限内は自動制限だけが抑止されることを確認する。
+5. override 中に手動 Pause を要求し、手動要求が優先されることを確認する。
+6. VS Code 再起動、Bob task handle の再接続、multi-root workspace でも同一 run と正しい workspace root が選択されることを確認する。
+
+GitHub-hosted Ubuntu / Windows、package、VSIX policy、Extension Host smoke はリポジトリゲートで扱う。IBM Bob、実 Bazaar、multi-root の確認結果は別途 release evidence に記録する。

@@ -25,6 +25,7 @@ import {
   stepCompletion,
   stepMessage
 } from "./normalizers"
+import { normalizeRunControl, validateRunControlFields } from "./runControl"
 import { arrayField, asRecord, listField, optionalBoolean, optionalString, requiredString } from "./yamlFields"
 
 const ajv = new Ajv({ allErrors: true, strict: false })
@@ -38,6 +39,8 @@ export function parseV1Workflow(request: ParseWorkflowRequest, fields: Record<st
   const valid = validateV1(fields)
   const diagnostics = valid ? [] : formatValidationErrors(request.filePath)
   if (diagnostics.length > 0) return { ok: false, diagnostics }
+  const runControlDiagnostics = validateRunControlFields(fields.runControl, request.filePath)
+  if (runControlDiagnostics.length > 0) return { ok: false, diagnostics: runControlDiagnostics }
 
   const hasTypedSteps = Object.prototype.hasOwnProperty.call(fields, "steps")
   const stepRecords = Array.isArray(fields.steps) ? fields.steps.map((step) => asRecord(step)) : []
@@ -55,6 +58,7 @@ export function parseV1Workflow(request: ParseWorkflowRequest, fields: Record<st
   const prompt = optionalString(fields, "prompt") ?? body.trim()
   const stepCompletionValue = stepCompletion(fields, todoEnabled && todos.length > 0 ? "manual" : "auto")
   const todoAsStepsValue = optionalBoolean(fields, "todoAsSteps") ?? (todoEnabled && todos.length > 0)
+  const runControl = normalizeRunControl(fields.runControl)
   const workflow: CoreWorkflowDefinition = {
     id: optionalString(fields, "id") ?? `${request.sourceId}.${name}`,
     name,
@@ -92,6 +96,7 @@ export function parseV1Workflow(request: ParseWorkflowRequest, fields: Record<st
     branching: normalizeBranching(fields.branching),
     engineSteps
   }
+  if (runControl) Object.assign(workflow, { runControl })
   const skipResume = skipResumeFromExtensionFields(fields)
   if (skipResume) Object.assign(workflow, { skipResume })
   return { ok: true, workflow, diagnostics: [...warnings, `- ok: ${request.filePath}: ${workflow.id}; schemaVersion=workflow-register/v1; steps=${workflow.engineSteps.length}`] }
@@ -138,6 +143,15 @@ function skipResumeFromExtensionFields(fields: Record<string, unknown>): SkipRes
 
 function formatValidationErrors(filePath: string): string[] {
   return (validateV1.errors ?? []).map((error) => {
+    if (error.instancePath === "/runControl/limits/maxRunMinutes" && error.keyword === "exclusiveMinimum") {
+      return `- fail: ${filePath}: runControl.limits.maxRunMinutes must be greater than zero.`
+    }
+    if (error.instancePath === "/runControl/limits/maxAgentStepsPerRun" && error.keyword === "exclusiveMinimum") {
+      return `- fail: ${filePath}: runControl.limits.maxAgentStepsPerRun must be greater than zero.`
+    }
+    if (error.instancePath === "/runControl/limits/pauseAtLocalTime" && error.keyword === "pattern") {
+      return `- fail: ${filePath}: runControl.limits.pauseAtLocalTime must use HH:mm in 24-hour time.`
+    }
     const location = error.instancePath || "/"
     return `- fail: ${filePath}: ${location} ${error.message ?? "is invalid"}.`
   })

@@ -112,6 +112,17 @@ export interface WorkflowStepExecutionDefinition {
   showInBob: boolean
 }
 
+export interface WorkflowRunControlLimitsDefinition {
+  maxRunMinutes?: number
+  maxAgentStepsPerRun?: number
+  pauseAtLocalTime?: string
+  timezone?: string
+}
+
+export interface WorkflowRunControlDefinition {
+  limits?: WorkflowRunControlLimitsDefinition
+}
+
 export interface WorkflowBranchingDefinition {
   enabled: boolean
   loops: WorkflowBranchLoopDefinition[]
@@ -280,6 +291,7 @@ export interface CoreWorkflowDefinition {
   stepMessage: WorkflowStepMessageMode
   stepExecution: WorkflowStepExecutionDefinition
   stepReview: WorkflowStepReviewDefinition
+  runControl?: WorkflowRunControlDefinition
   todos: WorkflowTodoDefinition[]
   inputs: Record<string, WorkflowInputDefinition>
   requires: WorkflowRequiresDefinition

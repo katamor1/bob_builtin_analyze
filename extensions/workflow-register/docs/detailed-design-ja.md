@@ -395,3 +395,11 @@ AI provider は `workflowRegister.aiProviderCommand` で指定する。未設定
 - review processing limit は manifest と runtime で同じ最小・既定・最大値を持つ。UTF-8 切り詰め後の suffix を含めても byte 上限を超えないこと。
 - repository 内の全 WORKFLOW.md を strict validation し、provider、preflight、nested command ID、template mirror の契約ずれを CI で拒否する。
 - Ubuntu と Windows の両方で compile、unit test、VSIX package、package policy を確認する。IBM Bob 実環境の UI / task / MCP は release candidate 実機ゲートで確認する。
+
+## 自動 Pause evaluator と override
+
+`evaluateAutomaticPause()` は `WorkflowRunState`、次 step、注入時計、workflow / workspace policy、optional override を受け取り、`maxRunMinutes`、`maxAgentStepsPerRun`、`pauseAtLocalTime` の決定を返す。local cutoff は timezone-local の日付と時刻を比較し、run が cutoff 日を越えた後に午前0時へ戻っても停止条件を維持する。
+
+engine は manual request を先に処理し、その後に自動制限を評価する。停止時は `workflow-register/automatic-pause/v1` を `state["workflow.pause"]` に保存し、kind、source、checkpoint、nextStepId、limit、observed、detectedAt を記録する。override は `workflow-register/automatic-pause-override/v1` として `control.json` に保存し、期限切れ後は再び制限を評価する。
+
+active lease の heartbeat による `run.lock.json` の原子的置換は、path identity 検査で観測された場合に限り transient contention として再試行する。symlink、junction、workspace escape、所有 token 変更は引き続き拒否する。

@@ -137,37 +137,33 @@ async function acquireWorkflowRunLock(
       createdAt: now.toISOString(),
       heartbeatAt: now.toISOString()
     }
-    if (await createRunDurabilityFile(workspaceRoot, runId, "run.lock.json", serializeWorkflowRunLock(owner))) return owner
-
-    let snapshot: Awaited<ReturnType<typeof readRunDurabilityFile>>
+    let contentionMessage = "Lock metadata changed while it was being inspected."
     try {
-      snapshot = await readRunDurabilityFile(workspaceRoot, runId, "run.lock.json")
-    } catch (error) {
-      if (!isTransientLockReadError(error)) throw error
-      const elapsed = Date.now() - startedAt
-      if (elapsed >= options.timeoutMs) {
-        throw new Error(`Workflow run '${runId}' is busy or locked by another process. The lock changed while its heartbeat was being refreshed.`)
-      }
-      await options.sleep(Math.min(options.pollMs, Math.max(1, options.timeoutMs - elapsed)))
-      continue
-    }
-    if (!snapshot) continue
-    const inspection = inspectExistingLock(snapshot.bytes, snapshot.mtimeMs, runId, options)
-    if (inspection.reclaim) {
-      const removed = await removeRunDurabilityFile(workspaceRoot, runId, "run.lock.json", snapshot.bytes)
-      if (removed) {
-        try {
-          options.onReclaimed?.(inspection.message)
-        } catch (error) {
-          console.warn("Workflow run lock reclamation callback failed.", error)
+      if (await createRunDurabilityFile(workspaceRoot, runId, "run.lock.json", serializeWorkflowRunLock(owner))) return owner
+
+      const snapshot = await readRunDurabilityFile(workspaceRoot, runId, "run.lock.json")
+      if (!snapshot) continue
+      const inspection = inspectExistingLock(snapshot.bytes, snapshot.mtimeMs, runId, options)
+      contentionMessage = inspection.message
+      if (inspection.reclaim) {
+        const removed = await removeRunDurabilityFile(workspaceRoot, runId, "run.lock.json", snapshot.bytes)
+        if (removed) {
+          try {
+            options.onReclaimed?.(inspection.message)
+          } catch (error) {
+            console.warn("Workflow run lock reclamation callback failed.", error)
+          }
+          continue
         }
-        continue
       }
+    } catch (error) {
+      if (!isTransientLockContention(error, runId)) throw error
+      contentionMessage = `Lock metadata changed while it was being inspected (${formatError(error)}).`
     }
 
     const elapsed = Date.now() - startedAt
     if (elapsed >= options.timeoutMs) {
-      throw new Error(`Workflow run '${runId}' is busy or locked by another process. ${inspection.message}`)
+      throw new Error(`Workflow run '${runId}' is busy or locked by another process. ${contentionMessage}`)
     }
     await options.sleep(Math.min(options.pollMs, Math.max(1, options.timeoutMs - elapsed)))
   }
@@ -247,6 +243,17 @@ function inspectExistingLock(
   }
 }
 
+function isTransientLockContention(error: unknown, runId: string): boolean {
+  const code = (error as NodeJS.ErrnoException).code
+  if (code === "ENOENT" || code === "ENOTDIR") return true
+  const message = formatError(error)
+  return message.includes(`Workflow run '${runId}' durability file 'run.lock.json'`)
+    && (
+      message.includes("changed while its path was being verified")
+      || message.includes("changed while it was being read")
+    )
+}
+
 function resolveOptions(options: WorkflowRunLockOptions): ResolvedWorkflowRunLockOptions {
   return {
     timeoutMs: nonNegative(options.timeoutMs, 5_000, "timeoutMs"),
@@ -283,13 +290,6 @@ function nonNegative(value: number | undefined, fallback: number, label: string)
     throw new Error(`Workflow run lock option '${label}' must be a non-negative finite number.`)
   }
   return selected
-}
-
-function isTransientLockReadError(error: unknown): boolean {
-  const code = (error as NodeJS.ErrnoException).code
-  if (code === "ENOENT" || code === "ENOTDIR") return true
-  const message = formatError(error)
-  return /durability file 'run\.lock\.json' changed while (it was being read|its path was being verified)/i.test(message)
 }
 
 function requiredRecord(value: unknown, label: string): Record<string, unknown> {

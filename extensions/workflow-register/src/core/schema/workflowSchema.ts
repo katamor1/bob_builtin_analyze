@@ -113,6 +113,23 @@ const branchingSchema = {
   additionalProperties: false
 } as const
 
+const runControlSchema = {
+  type: "object",
+  properties: {
+    limits: {
+      type: "object",
+      properties: {
+        maxRunMinutes: { type: "number", exclusiveMinimum: 0 },
+        maxAgentStepsPerRun: { type: "integer", exclusiveMinimum: 0 },
+        pauseAtLocalTime: { type: "string", pattern: "^(?:[01]\\d|2[0-3]):[0-5]\\d$" },
+        timezone: { type: "string", minLength: 1 }
+      },
+      additionalProperties: false
+    }
+  },
+  additionalProperties: false
+} as const
+
 export const workflowV1Schema = {
   type: "object",
   required: ["name", "description"],
@@ -152,6 +169,7 @@ export const workflowV1Schema = {
       },
       additionalProperties: false
     },
+    runControl: runControlSchema,
     branching: branchingSchema,
     autoApproval: { type: "boolean" },
     workspaceRequired: { type: "boolean" },

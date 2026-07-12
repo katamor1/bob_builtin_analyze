@@ -12,11 +12,13 @@ import type {
   WorkflowDefinition
 } from "./bobWorkflowTypes"
 import type { ActionRegistry } from "./core/actionRegistry"
+import { normalizeAutomaticPauseSettings } from "./core/automaticPauseSettings"
 import { createCommandAgentProvider } from "./core/agentProvider"
 import { WorkflowEngine } from "./core/engine"
 import type { ManualCompletionInput, ManualCompletionResult, WorkflowEngineOptions } from "./core/engine"
 import type { AgentProvider } from "./core/model"
 import { createDefaultResultSinkRegistry, ResultSinkRegistry } from "./core/resultSinkRegistry"
+import { FileRunControlStore, RunControlStore } from "./core/runControlStore"
 import { FileRunStateStore, RunStateStore } from "./core/runStateStore"
 import { FileTaskSnapshotStore, TaskSnapshotStore } from "./core/taskSnapshots"
 import { findMarkerRoots, rootHasMarker } from "./core/workspaceRoots"
@@ -50,6 +52,7 @@ export class WorkflowRuntimeFactory {
       actions: this.options.actionRegistry,
       resultSinks: this.createResultSinks(workspaceRoot),
       runStore: this.createRunStore(workspaceRoot),
+      runControlStore: this.createRunControlStore(workspaceRoot),
       agentProvider: agentProvider ?? this.options.agentProvider() ?? this.createCommandAgentProvider(),
       preflightChecks: this.createPreflightChecks(workspaceRoot),
       manualCompletion: (input) => this.holdStandaloneManualStep(input),
@@ -66,6 +69,7 @@ export class WorkflowRuntimeFactory {
       actionRegistry: this.options.actionRegistry,
       resultSinks: (workspaceRoot) => this.createResultSinks(workspaceRoot),
       runStore: (workspaceRoot) => this.createRunStore(workspaceRoot),
+      runControlStore: (workspaceRoot) => this.createRunControlStore(workspaceRoot),
       taskSnapshotStore: (workspaceRoot) => this.createTaskSnapshotStore(workspaceRoot),
       preflightChecks: (workspaceRoot) => this.createPreflightChecks(workspaceRoot),
       agentProvider: this.options.agentProvider() ?? this.createCommandAgentProvider(),
@@ -81,6 +85,15 @@ export class WorkflowRuntimeFactory {
 
   createRunStore(workspaceRoot: string): RunStateStore {
     return new FileRunStateStore({ workspaceRoot, engineVersion: this.options.engineVersion })
+  }
+
+  createRunControlStore(workspaceRoot: string): RunControlStore {
+    const settings = this.automaticPauseSettings()
+    for (const diagnostic of settings.diagnostics) console.warn(`[workflow-register] ${diagnostic}`)
+    return new FileRunControlStore({
+      workspaceRoot,
+      workspaceAutomaticPauseLimits: settings.limits
+    })
   }
 
   private async holdStandaloneManualStep(input: ManualCompletionInput): Promise<ManualCompletionResult> {
@@ -155,6 +168,16 @@ export class WorkflowRuntimeFactory {
     if (folders.length === 0) return false
     const candidates = await findMarkerRoots(folders, ".bzr")
     return candidates.length > 0
+  }
+
+  private automaticPauseSettings(): ReturnType<typeof normalizeAutomaticPauseSettings> {
+    const config = vscode.workspace.getConfiguration("workflowRegister")
+    return normalizeAutomaticPauseSettings({
+      maxRunMinutes: config.get<number>("runControl.maxRunMinutes", 0),
+      maxAgentStepsPerRun: config.get<number>("runControl.maxAgentStepsPerRun", 0),
+      pauseAtLocalTime: config.get<string>("runControl.pauseAtLocalTime", ""),
+      timezone: config.get<string>("runControl.timezone", "Asia/Tokyo")
+    })
   }
 
   private taskSnapshotSettings(): TaskSnapshotSettings {

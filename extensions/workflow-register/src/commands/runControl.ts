@@ -9,6 +9,8 @@ import {
   OperationHubRunMutationTarget,
   validateOperationHubRunMutationTarget
 } from "../operationHubMutationTarget"
+import { prepareAutomaticPauseResume } from "./automaticPauseResumeUi"
+import { buildRunControlReportLines } from "./runControlReport"
 
 interface RunControlCommandOptions {
   showMarkdownReport: (title: string, summary: string, lines: string[]) => Promise<void>
@@ -52,6 +54,12 @@ export async function resumePausedRun(_options: RunControlCommandOptions, runArg
     await vscode.window.showWarningMessage(message)
     return message
   }
+  const prepared = await prepareAutomaticPauseResume({
+    workspaceRoot: selection.root,
+    run,
+    expectedRevision: isOperationHubRunMutationTarget(runArg) ? runArg.expectedRevision : undefined
+  })
+  if (!prepared) return "Automatic pause resume cancelled."
   return vscode.commands.executeCommand(
     "workflowRegister.resumeRun",
     isOperationHubRunMutationTarget(runArg)
@@ -73,18 +81,12 @@ export async function inspectRunControl(options: RunControlCommandOptions, runAr
   }
   const control = await createControlStore(selection.root).loadControl(selection.runId)
   const run = selection.run ?? await createRunStore(selection.root).loadRun(selection.runId)
-  const lines = [
-    `- runId: ${selection.runId}`,
-    `- root: ${selection.root}`,
-    `- runStatus: ${run?.status ?? "unknown"}`,
-    `- currentStep: ${run?.currentStep ?? "none"}`,
-    `- pauseRequestedAt: ${control?.pauseRequestedAt ?? "none"}`,
-    `- pauseReason: ${control?.pauseReason ?? "none"}`,
-    `- requestedBy: ${control?.requestedBy ?? "none"}`,
-    `- mode: ${control?.mode ?? "none"}`,
-    `- clearedAt: ${control?.clearedAt ?? "none"}`,
-    `- workflow.pause: ${run?.state["workflow.pause"] ?? "none"}`
-  ]
+  const lines = buildRunControlReportLines({
+    runId: selection.runId,
+    root: selection.root,
+    run,
+    control
+  })
   await options.showMarkdownReport("Workflow Run Control", `${selection.runId}: ${run?.status ?? "unknown"}`, lines)
 }
 

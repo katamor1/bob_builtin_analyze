@@ -7,7 +7,7 @@ const { test } = require("node:test")
 const { CURRENT_WORKFLOW_RUN_STATE_SCHEMA_VERSION, FileRunStateStore } = require("../out/core/runStateStore")
 
 async function makeWorkspace() {
-  return fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), "workflow-run-store-boundary-")))
+  return fs.mkdtemp(path.join(os.tmpdir(), "workflow-run-store-boundary-")).then((root) => fs.realpath(root))
 }
 
 function runState(runId, marker = "initial") {
@@ -189,16 +189,14 @@ test("FileRunStateStore list ignores only owned atomic temp files in the runs ro
   assert.deepEqual(runs.map((run) => run.runId), ["run-1"])
 })
 
-test("FileRunStateStore retries a contained atomic replacement detected between open and read", async (t) => {
+test("FileRunStateStore rejects an out-of-band materialized replacement that breaks the event chain", async (t) => {
   const workspaceRoot = await makeWorkspace()
   const store = new FileRunStateStore({ workspaceRoot })
+  await store.saveRun(runState("run-1", "initial"))
   const runFile = path.join(workspaceRoot, ".bob", "workflows", "runs", "run-1", "run.json")
   const replacementFile = path.join(path.dirname(runFile), "replacement.json")
-  const initial = { ...runState("run-1", "initial"), schemaVersion: CURRENT_WORKFLOW_RUN_STATE_SCHEMA_VERSION }
-  const replacement = { ...runState("run-1", "replacement"), schemaVersion: CURRENT_WORKFLOW_RUN_STATE_SCHEMA_VERSION }
-  await fs.mkdir(path.dirname(runFile), { recursive: true })
-  await fs.writeFile(runFile, `${JSON.stringify(initial, null, 2)}\n`)
-  await fs.writeFile(replacementFile, `${JSON.stringify(replacement, null, 2)}\n`)
+  const replacementBytes = `${JSON.stringify(runState("run-1", "replacement"), null, 2)}\n`
+  await fs.writeFile(replacementFile, replacementBytes)
   const originalOpen = fs.open
   let replaced = false
   fs.open = async function replaceBeforeOpen(file, flags, mode) {
@@ -210,7 +208,41 @@ test("FileRunStateStore retries a contained atomic replacement detected between 
   }
   t.after(() => { fs.open = originalOpen })
 
-  const loaded = await store.loadRun("run-1")
+  await assert.rejects(
+    store.loadRun("run-1"),
+    /event log head does not match the materialized run revision/i
+  )
+  const diagnostic = store.getLoadDiagnostics().find((item) => item.runId === "run-1")
 
-  assert.equal(loaded.state.marker, "replacement")
+  assert.ok(diagnostic)
+  assert.equal(diagnostic.code, "event-log-invalid")
+  assert.equal(await fs.readFile(runFile, "utf8"), replacementBytes)
 })
+
+test("FileRunStateStore retries a contained atomic replacement detected between open and read", async (t) => {
+      const workspaceRoot = await makeWorkspace()
+      const store = new FileRunStateStore({ workspaceRoot })
+      const runFile = path.join(workspaceRoot, ".bob", "workflows", "runs", "run-atomic-read", "run.json")
+      const replacementFile = path.join(path.dirname(runFile), "replacement.json")
+      const initial = { ...runState("run-atomic-read", "initial"), schemaVersion: CURRENT_WORKFLOW_RUN_STATE_SCHEMA_VERSION }
+      const replacement = { ...runState("run-atomic-read", "replacement"), schemaVersion: CURRENT_WORKFLOW_RUN_STATE_SCHEMA_VERSION }
+      await fs.mkdir(path.dirname(runFile), { recursive: true })
+      await fs.writeFile(runFile, `${JSON.stringify(initial, null, 2)}
+`)
+      await fs.writeFile(replacementFile, `${JSON.stringify(replacement, null, 2)}
+`)
+      const originalOpen = fs.open
+      let replaced = false
+      fs.open = async function replaceBeforeOpen(file, flags, mode) {
+        if (!replaced && path.resolve(String(file)) === path.resolve(runFile)) {
+          replaced = true
+          await fs.rename(replacementFile, runFile)
+        }
+        return originalOpen.call(this, file, flags, mode)
+      }
+      t.after(() => { fs.open = originalOpen })
+
+      const loaded = await store.loadRun("run-atomic-read")
+
+      assert.equal(loaded.state.marker, "replacement")
+    })

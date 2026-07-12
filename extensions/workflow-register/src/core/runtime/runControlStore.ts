@@ -1,9 +1,18 @@
+import type { WorkflowRunControlLimitsDefinition } from "../model"
 import { assertWorkflowRunStateWritable } from "./runStateCodec"
 import { FileRunStateStore } from "./runStateStore"
 import { readContainedRunFile, writeContainedRunFile } from "./runStatePath"
 import { syncRunMaterializedFile } from "./runDurabilityPath"
 
 export type RunPauseMode = "afterCurrentStep" | "beforeNextAiCall"
+
+export interface WorkflowAutomaticPauseOverride {
+  schemaVersion: "workflow-register/automatic-pause-override/v1"
+  createdAt: string
+  expiresAt: string
+  requestedBy: string
+  reason: string
+}
 
 export interface RunControlState {
   schemaVersion: "workflow-register/run-control/v1"
@@ -14,6 +23,7 @@ export interface RunControlState {
   mode?: RunPauseMode
   clearedAt?: string
   resumeNote?: string
+  automaticPauseOverride?: WorkflowAutomaticPauseOverride
 }
 
 export interface PauseRequestInput {
@@ -23,26 +33,44 @@ export interface PauseRequestInput {
   mode?: RunPauseMode
 }
 
+export interface AutomaticPauseOverrideInput {
+  runId: string
+  durationMinutes: number
+  reason: string
+  requestedBy?: string
+}
+
 export interface RunControlStore {
   requestPause: (input: PauseRequestInput) => Promise<RunControlState>
   clearPause: (runId: string) => Promise<RunControlState>
   loadControl: (runId: string) => Promise<RunControlState | undefined>
   isPauseRequested: (runId: string) => Promise<boolean>
   recordResumeNote?: (runId: string, note: string) => Promise<RunControlState>
+  setAutomaticPauseOverride?: (input: AutomaticPauseOverrideInput) => Promise<RunControlState>
+  clearAutomaticPauseOverride?: (runId: string) => Promise<RunControlState>
+  currentDate?: () => Date
+  workspaceAutomaticPauseLimits?: WorkflowRunControlLimitsDefinition
 }
 
 export interface FileRunControlStoreOptions {
   workspaceRoot: string
   now?: () => string
+  workspaceAutomaticPauseLimits?: WorkflowRunControlLimitsDefinition
 }
 
 export class FileRunControlStore implements RunControlStore {
   private readonly workspaceRoot: string
   private readonly now: () => string
+  readonly workspaceAutomaticPauseLimits?: WorkflowRunControlLimitsDefinition
 
   constructor(options: FileRunControlStoreOptions) {
     this.workspaceRoot = options.workspaceRoot
     this.now = options.now ?? (() => new Date().toISOString())
+    this.workspaceAutomaticPauseLimits = options.workspaceAutomaticPauseLimits
+  }
+
+  currentDate(): Date {
+    return new Date(this.now())
   }
 
   async requestPause(input: PauseRequestInput): Promise<RunControlState> {
@@ -74,6 +102,46 @@ export class FileRunControlStore implements RunControlStore {
       requestedBy: undefined,
       mode: undefined,
       clearedAt: this.now()
+    }
+    await this.saveControl(next)
+    return next
+  }
+
+  async setAutomaticPauseOverride(input: AutomaticPauseOverrideInput): Promise<RunControlState> {
+    await this.requireWritableRun(input.runId)
+    if (!Number.isInteger(input.durationMinutes) || input.durationMinutes < 1 || input.durationMinutes > 1440) {
+      throw new Error("Automatic pause override durationMinutes must be an integer between 1 and 1440.")
+    }
+    const reason = input.reason.trim()
+    if (!reason) throw new Error("Automatic pause override reason is required.")
+    const createdAt = this.now()
+    const createdAtMs = Date.parse(createdAt)
+    if (!Number.isFinite(createdAtMs)) throw new Error("Automatic pause override clock returned an invalid timestamp.")
+    const existing = await this.loadControl(input.runId)
+    const next: RunControlState = {
+      ...(existing ?? { schemaVersion: "workflow-register/run-control/v1", runId: input.runId }),
+      schemaVersion: "workflow-register/run-control/v1",
+      runId: input.runId,
+      automaticPauseOverride: {
+        schemaVersion: "workflow-register/automatic-pause-override/v1",
+        createdAt,
+        expiresAt: new Date(createdAtMs + input.durationMinutes * 60_000).toISOString(),
+        requestedBy: input.requestedBy ?? "user",
+        reason
+      }
+    }
+    await this.saveControl(next)
+    return next
+  }
+
+  async clearAutomaticPauseOverride(runId: string): Promise<RunControlState> {
+    await this.requireWritableRun(runId)
+    const existing = await this.loadControl(runId)
+    const next: RunControlState = {
+      ...(existing ?? { schemaVersion: "workflow-register/run-control/v1", runId }),
+      schemaVersion: "workflow-register/run-control/v1",
+      runId,
+      automaticPauseOverride: undefined
     }
     await this.saveControl(next)
     return next

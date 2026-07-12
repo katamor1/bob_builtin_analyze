@@ -2,7 +2,7 @@
 
 - 作成日: 2026-07-11
 - 対象: `extensions/workflow-register`
-- ステータス: 企画案
+- ステータス: 実行中
 - 対象リポジトリ: `katamor1/bob_builtin_analyze`
 
 ## 1. エグゼクティブサマリー
@@ -52,7 +52,7 @@
 - `run.json` 自身の schema version と migration chain がない。
 - task snapshot から artifact を復元する際、適用前に差分を確認する UX がない。
 - `held` だが Bob task handle を失った run の復旧導線が弱い。
-- pause / resume は実装済みだが、業務終了時刻、最大 run 時間、最大 agent step 数などの自動 pause が未実装である。
+- 決定的な自動 Pause は Issue #73 / draft PR #75 でリポジトリ実装と Ubuntu / Windows 品質ゲートまで完了した。実 IBM Bob / Bazaar / multi-root 証跡は未完了である。
 - run directory 全体の保存期間、容量、cleanup policy がない。
 - `WorkflowEngine`、command service、composition root、Webview panel に機能が集中しやすい。
 
@@ -301,6 +301,8 @@ Task snapshot から artifact を生成する前に、利用者が抽出元、�
 ## Milestone 2 — `workflow-register/v0.4.0-runtime-guardrails`
 
 ### P1-5. 決定的な自動 Pause 制限を追加する
+
+**実行状況（2026-07-12）:** Issue #73 / draft PR #75 で実装済み。focused / full suite、Ubuntu / Windows、package、VSIX policy、Extension Host smoke は GREEN。実 IBM Bob / Bazaar / multi-root は外部ゲートとして継続する。
 
 **Issue title**
 

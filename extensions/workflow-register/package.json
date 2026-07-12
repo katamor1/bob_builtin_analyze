@@ -75,57 +75,263 @@
   "main": "./out/extensionWithAuthoring.js",
   "contributes": {
     "commands": [
-      { "command": "workflowRegister.openOperationHub", "title": "Operation Hub を開く", "category": "Bob Workflow" },
-      { "command": "workflowRegister.refreshOperationHub", "title": "Operation Hub を更新", "category": "Bob Workflow", "icon": "$(refresh)" },
-      { "command": "workflowRegister.openOperationHubPanel", "title": "Operation Hub を広く開く", "category": "Bob Workflow", "icon": "$(layout)" },
-      { "command": "workflowRegister.reload", "title": "ファイルを再読み込み", "category": "Bob Workflow" },
-      { "command": "workflowRegister.inspect", "title": "登録状態を確認", "category": "Bob Workflow" },
-      { "command": "workflowRegister.completeCurrentStep", "title": "現在のステップを完了", "category": "Bob Workflow" },
-      { "command": "workflowRegister.completeStep", "title": "現在のワークフローステップを完了", "category": "Bob Workflow" },
-      { "command": "workflowRegister.inspectActiveSteps", "title": "実行中ステップを確認", "category": "Bob Workflow" },
-      { "command": "workflowRegister.runWorkflow", "title": "実行", "category": "Bob Workflow" },
-      { "command": "workflowRegister.runWorkflowStep", "title": "ステップを実行", "category": "Bob Workflow" },
-      { "command": "workflowRegister.startFromStepWithArtifacts", "title": "成果物から途中ステップを開始", "category": "Bob Workflow" },
-      { "command": "workflowRegister.importArtifactsFromTaskSnapshots", "title": "Task Snapshot から成果物を取り込む", "category": "Bob Workflow" },
-      { "command": "workflowRegister.inspectRuns", "title": "実行履歴を確認", "category": "Bob Workflow" },
-      { "command": "workflowRegister.resumeRun", "title": "実行を再開", "category": "Bob Workflow" },
-      { "command": "workflowRegister.retryCurrentStep", "title": "現在のステップを再試行", "category": "Bob Workflow" },
-      { "command": "workflowRegister.acceptCurrentStep", "title": "現在のステップ結果を承認", "category": "Bob Workflow" },
-      { "command": "workflowRegister.runNextStep", "title": "次のステップを実行", "category": "Bob Workflow" },
-      { "command": "workflowRegister.openManualStepPanel", "title": "手動操作ステップを開く", "category": "Bob Workflow" },
-      { "command": "workflowRegister.acceptAndRunNextStep", "title": "承認して次のステップを実行", "category": "Bob Workflow" },
-      { "command": "workflowRegister.inspectCurrentStep", "title": "現在のステップ状態を確認", "category": "Bob Workflow" },
-      { "command": "workflowRegister.pauseCurrentRun", "title": "実行中 run を中断", "category": "Bob Workflow" },
-      { "command": "workflowRegister.pauseAfterCurrentStep", "title": "現在ステップ後に中断", "category": "Bob Workflow" },
-      { "command": "workflowRegister.pauseBeforeNextAiCall", "title": "次のAI呼び出し前に中断", "category": "Bob Workflow" },
-      { "command": "workflowRegister.resumePausedRun", "title": "中断 run を再開", "category": "Bob Workflow" },
-      { "command": "workflowRegister.inspectRunControl", "title": "中断・再開状態を確認", "category": "Bob Workflow" },
-      { "command": "workflowRegister.approveBranchCheckpoint", "title": "ループ上限を承認して続行", "category": "Bob Workflow" },
-      { "command": "workflowRegister.abortBranchCheckpoint", "title": "ループ上限で中止", "category": "Bob Workflow" },
-      { "command": "workflowRegister.inspectBranching", "title": "分岐状態を確認", "category": "Bob Workflow" },
-      { "command": "workflowRegister.refreshRunsView", "title": "実行一覧を更新", "category": "Bob Workflow" },
-      { "command": "workflowRegister.openCurrentStepInBuilder", "title": "現在のステップをGUIで編集", "category": "Bob Workflow" },
-      { "command": "workflowRegister.inspectRunDiagnostics", "title": "診断を確認", "category": "Bob Workflow" },
-      { "command": "workflowRegister.designWorkflowWithAi", "title": "AI で新規設計", "category": "Bob Workflow" },
-      { "command": "workflowRegister.improveWorkflowWithAi", "title": "AI で改善", "category": "Bob Workflow" },
-      { "command": "workflowRegister.explainWorkflowDiagnostics", "title": "診断を AI で説明", "category": "Bob Workflow" },
-      { "command": "workflowRegister.validateCurrentWorkflow", "title": "現在の定義を検証", "category": "Bob Workflow" },
-      { "command": "workflowRegister.validateWorkspaceWorkflows", "title": "ワークスペース定義を検証", "category": "Bob Workflow" },
-      { "command": "workflowRegister.createWorkflowFromTemplate", "title": "テンプレートから作成", "category": "Bob Workflow" },
-      { "command": "workflowRegister.openWorkflowBuilder", "title": "GUI で作成", "category": "Bob Workflow" },
-      { "command": "workflowRegister.editWorkflowInBuilder", "title": "GUI で編集", "category": "Bob Workflow" },
-      { "command": "bobProcess.validateCatalog", "title": "工程カタログを検証", "category": "Bob Workflow" },
-      { "command": "bobProcess.loadProcessInput", "title": "工程入力を検証", "category": "Bob Workflow" },
-      { "command": "bobProcess.collectEvidence", "title": "工程エビデンスを収集", "category": "Bob Workflow" },
-      { "command": "bobProcess.validateReviewResult", "title": "工程レビュー結果を検証", "category": "Bob Workflow" },
-      { "command": "bobProcess.writeProcessRecord", "title": "工程記録を書き込み", "category": "Bob Workflow" },
-      { "command": "bobProcess.generateCampaignSummary", "title": "工程サマリーを生成", "category": "Bob Workflow" },
-      { "command": "bobTemplate.validateLibrary", "title": "テンプレートライブラリを検証", "category": "Bob Workflow" },
-      { "command": "bobTemplate.validateProjectProfile", "title": "プロジェクトプロファイルを検証", "category": "Bob Workflow" },
-      { "command": "bobTemplate.validateCustomization", "title": "テンプレートカスタマイズを検証", "category": "Bob Workflow" },
-      { "command": "bobTemplate.generateWorkflow", "title": "カスタムワークフローを生成", "category": "Bob Workflow" },
-      { "command": "bobTemplate.checkReadiness", "title": "テンプレート Readiness を確認", "category": "Bob Workflow" },
-      { "command": "bobTemplate.openCustomizationStudio", "title": "テンプレートカスタマイズ Studio", "category": "Bob Workflow" }
+      {
+        "command": "workflowRegister.openOperationHub",
+        "title": "Operation Hub を開く",
+        "category": "Bob Workflow"
+      },
+      {
+        "command": "workflowRegister.refreshOperationHub",
+        "title": "Operation Hub を更新",
+        "category": "Bob Workflow",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "workflowRegister.openOperationHubPanel",
+        "title": "Operation Hub を広く開く",
+        "category": "Bob Workflow",
+        "icon": "$(layout)"
+      },
+      {
+        "command": "workflowRegister.reload",
+        "title": "ファイルを再読み込み",
+        "category": "Bob Workflow"
+      },
+      {
+        "command": "workflowRegister.inspect",
+        "title": "登録状態を確認",
+        "category": "Bob Workflow"
+      },
+      {
+        "command": "workflowRegister.completeCurrentStep",
+        "title": "現在のステップを完了",
+        "category": "Bob Workflow"
+      },
+      {
+        "command": "workflowRegister.completeStep",
+        "title": "現在のワークフローステップを完了",
+        "category": "Bob Workflow"
+      },
+      {
+        "command": "workflowRegister.inspectActiveSteps",
+        "title": "実行中ステップを確認",
+        "category": "Bob Workflow"
+      },
+      {
+        "command": "workflowRegister.runWorkflow",
+        "title": "実行",
+        "category": "Bob Workflow"
+      },
+      {
+        "command": "workflowRegister.runWorkflowStep",
+        "title": "ステップを実行",
+        "category": "Bob Workflow"
+      },
+      {
+        "command": "workflowRegister.startFromStepWithArtifacts",
+        "title": "成果物から途中ステップを開始",
+        "category": "Bob Workflow"
+      },
+      {
+        "command": "workflowRegister.importArtifactsFromTaskSnapshots",
+        "title": "Task Snapshot から成果物を取り込む",
+        "category": "Bob Workflow"
+      },
+      {
+        "command": "workflowRegister.inspectRuns",
+        "title": "実行履歴を確認",
+        "category": "Bob Workflow"
+      },
+      {
+        "command": "workflowRegister.resumeRun",
+        "title": "実行を再開",
+        "category": "Bob Workflow"
+      },
+      {
+        "command": "workflowRegister.retryCurrentStep",
+        "title": "現在のステップを再試行",
+        "category": "Bob Workflow"
+      },
+      {
+        "command": "workflowRegister.acceptCurrentStep",
+        "title": "現在のステップ結果を承認",
+        "category": "Bob Workflow"
+      },
+      {
+        "command": "workflowRegister.runNextStep",
+        "title": "次のステップを実行",
+        "category": "Bob Workflow"
+      },
+      {
+        "command": "workflowRegister.openManualStepPanel",
+        "title": "手動操作ステップを開く",
+        "category": "Bob Workflow"
+      },
+      {
+        "command": "workflowRegister.acceptAndRunNextStep",
+        "title": "承認して次のステップを実行",
+        "category": "Bob Workflow"
+      },
+      {
+        "command": "workflowRegister.inspectCurrentStep",
+        "title": "現在のステップ状態を確認",
+        "category": "Bob Workflow"
+      },
+      {
+        "command": "workflowRegister.pauseCurrentRun",
+        "title": "実行中 run を中断",
+        "category": "Bob Workflow"
+      },
+      {
+        "command": "workflowRegister.pauseAfterCurrentStep",
+        "title": "現在ステップ後に中断",
+        "category": "Bob Workflow"
+      },
+      {
+        "command": "workflowRegister.pauseBeforeNextAiCall",
+        "title": "次のAI呼び出し前に中断",
+        "category": "Bob Workflow"
+      },
+      {
+        "command": "workflowRegister.resumePausedRun",
+        "title": "中断 run を再開",
+        "category": "Bob Workflow"
+      },
+      {
+        "command": "workflowRegister.inspectRunControl",
+        "title": "中断・再開状態を確認",
+        "category": "Bob Workflow"
+      },
+      {
+        "command": "workflowRegister.approveBranchCheckpoint",
+        "title": "ループ上限を承認して続行",
+        "category": "Bob Workflow"
+      },
+      {
+        "command": "workflowRegister.abortBranchCheckpoint",
+        "title": "ループ上限で中止",
+        "category": "Bob Workflow"
+      },
+      {
+        "command": "workflowRegister.inspectBranching",
+        "title": "分岐状態を確認",
+        "category": "Bob Workflow"
+      },
+      {
+        "command": "workflowRegister.refreshRunsView",
+        "title": "実行一覧を更新",
+        "category": "Bob Workflow"
+      },
+      {
+        "command": "workflowRegister.openCurrentStepInBuilder",
+        "title": "現在のステップをGUIで編集",
+        "category": "Bob Workflow"
+      },
+      {
+        "command": "workflowRegister.inspectRunDiagnostics",
+        "title": "診断を確認",
+        "category": "Bob Workflow"
+      },
+      {
+        "command": "workflowRegister.designWorkflowWithAi",
+        "title": "AI で新規設計",
+        "category": "Bob Workflow"
+      },
+      {
+        "command": "workflowRegister.improveWorkflowWithAi",
+        "title": "AI で改善",
+        "category": "Bob Workflow"
+      },
+      {
+        "command": "workflowRegister.explainWorkflowDiagnostics",
+        "title": "診断を AI で説明",
+        "category": "Bob Workflow"
+      },
+      {
+        "command": "workflowRegister.validateCurrentWorkflow",
+        "title": "現在の定義を検証",
+        "category": "Bob Workflow"
+      },
+      {
+        "command": "workflowRegister.validateWorkspaceWorkflows",
+        "title": "ワークスペース定義を検証",
+        "category": "Bob Workflow"
+      },
+      {
+        "command": "workflowRegister.createWorkflowFromTemplate",
+        "title": "テンプレートから作成",
+        "category": "Bob Workflow"
+      },
+      {
+        "command": "workflowRegister.openWorkflowBuilder",
+        "title": "GUI で作成",
+        "category": "Bob Workflow"
+      },
+      {
+        "command": "workflowRegister.editWorkflowInBuilder",
+        "title": "GUI で編集",
+        "category": "Bob Workflow"
+      },
+      {
+        "command": "bobProcess.validateCatalog",
+        "title": "工程カタログを検証",
+        "category": "Bob Workflow"
+      },
+      {
+        "command": "bobProcess.loadProcessInput",
+        "title": "工程入力を検証",
+        "category": "Bob Workflow"
+      },
+      {
+        "command": "bobProcess.collectEvidence",
+        "title": "工程エビデンスを収集",
+        "category": "Bob Workflow"
+      },
+      {
+        "command": "bobProcess.validateReviewResult",
+        "title": "工程レビュー結果を検証",
+        "category": "Bob Workflow"
+      },
+      {
+        "command": "bobProcess.writeProcessRecord",
+        "title": "工程記録を書き込み",
+        "category": "Bob Workflow"
+      },
+      {
+        "command": "bobProcess.generateCampaignSummary",
+        "title": "工程サマリーを生成",
+        "category": "Bob Workflow"
+      },
+      {
+        "command": "bobTemplate.validateLibrary",
+        "title": "テンプレートライブラリを検証",
+        "category": "Bob Workflow"
+      },
+      {
+        "command": "bobTemplate.validateProjectProfile",
+        "title": "プロジェクトプロファイルを検証",
+        "category": "Bob Workflow"
+      },
+      {
+        "command": "bobTemplate.validateCustomization",
+        "title": "テンプレートカスタマイズを検証",
+        "category": "Bob Workflow"
+      },
+      {
+        "command": "bobTemplate.generateWorkflow",
+        "title": "カスタムワークフローを生成",
+        "category": "Bob Workflow"
+      },
+      {
+        "command": "bobTemplate.checkReadiness",
+        "title": "テンプレート Readiness を確認",
+        "category": "Bob Workflow"
+      },
+      {
+        "command": "bobTemplate.openCustomizationStudio",
+        "title": "テンプレートカスタマイズ Studio",
+        "category": "Bob Workflow"
+      }
     ],
     "views": {
       "explorer": [
@@ -189,62 +395,187 @@
           "type": "boolean",
           "default": true,
           "description": "snapshot 保存時に maxPerRun を超えた古い snapshot を削除します。"
+        },
+        "workflowRegister.runControl.maxRunMinutes": {
+          "type": "number",
+          "default": 0,
+          "minimum": 0,
+          "description": "次の安全な checkpoint で run を自動停止するまでの最大実行時間（分）。0 は無効。"
+        },
+        "workflowRegister.runControl.maxAgentStepsPerRun": {
+          "type": "integer",
+          "default": 0,
+          "minimum": 0,
+          "description": "1 run で開始できる agent step 呼び出し回数の上限。0 は無効。"
+        },
+        "workflowRegister.runControl.pauseAtLocalTime": {
+          "type": "string",
+          "default": "",
+          "pattern": "^$|^(?:[01]\\d|2[0-3]):[0-5]\\d$",
+          "description": "指定したローカル時刻以降、新しい step を開始せず自動停止します。空文字は無効。"
+        },
+        "workflowRegister.runControl.timezone": {
+          "type": "string",
+          "default": "Asia/Tokyo",
+          "description": "pauseAtLocalTime の判定に使う IANA timezone。"
         }
       }
     },
     "menus": {
       "commandPalette": [
-        { "command": "workflowRegister.openOperationHub" },
-        { "command": "workflowRegister.refreshOperationHub" },
-        { "command": "workflowRegister.openOperationHubPanel" },
-        { "command": "workflowRegister.reload" },
-        { "command": "workflowRegister.inspect" },
-        { "command": "workflowRegister.completeCurrentStep" },
-        { "command": "workflowRegister.completeStep" },
-        { "command": "workflowRegister.inspectActiveSteps" },
-        { "command": "workflowRegister.runWorkflow" },
-        { "command": "workflowRegister.runWorkflowStep" },
-        { "command": "workflowRegister.startFromStepWithArtifacts" },
-        { "command": "workflowRegister.importArtifactsFromTaskSnapshots" },
-        { "command": "workflowRegister.inspectRuns" },
-        { "command": "workflowRegister.resumeRun" },
-        { "command": "workflowRegister.retryCurrentStep" },
-        { "command": "workflowRegister.acceptCurrentStep" },
-        { "command": "workflowRegister.runNextStep" },
-        { "command": "workflowRegister.openManualStepPanel" },
-        { "command": "workflowRegister.acceptAndRunNextStep" },
-        { "command": "workflowRegister.inspectCurrentStep" },
-        { "command": "workflowRegister.pauseCurrentRun" },
-        { "command": "workflowRegister.pauseAfterCurrentStep" },
-        { "command": "workflowRegister.pauseBeforeNextAiCall" },
-        { "command": "workflowRegister.resumePausedRun" },
-        { "command": "workflowRegister.inspectRunControl" },
-        { "command": "workflowRegister.approveBranchCheckpoint" },
-        { "command": "workflowRegister.abortBranchCheckpoint" },
-        { "command": "workflowRegister.inspectBranching" },
-        { "command": "workflowRegister.refreshRunsView" },
-        { "command": "workflowRegister.openCurrentStepInBuilder" },
-        { "command": "workflowRegister.inspectRunDiagnostics" },
-        { "command": "workflowRegister.designWorkflowWithAi" },
-        { "command": "workflowRegister.improveWorkflowWithAi" },
-        { "command": "workflowRegister.explainWorkflowDiagnostics" },
-        { "command": "workflowRegister.validateCurrentWorkflow" },
-        { "command": "workflowRegister.validateWorkspaceWorkflows" },
-        { "command": "workflowRegister.createWorkflowFromTemplate" },
-        { "command": "workflowRegister.openWorkflowBuilder" },
-        { "command": "workflowRegister.editWorkflowInBuilder" },
-        { "command": "bobProcess.validateCatalog" },
-        { "command": "bobProcess.loadProcessInput" },
-        { "command": "bobProcess.collectEvidence" },
-        { "command": "bobProcess.validateReviewResult" },
-        { "command": "bobProcess.writeProcessRecord" },
-        { "command": "bobProcess.generateCampaignSummary" },
-        { "command": "bobTemplate.validateLibrary" },
-        { "command": "bobTemplate.validateProjectProfile" },
-        { "command": "bobTemplate.validateCustomization" },
-        { "command": "bobTemplate.generateWorkflow" },
-        { "command": "bobTemplate.checkReadiness" },
-        { "command": "bobTemplate.openCustomizationStudio" }
+        {
+          "command": "workflowRegister.openOperationHub"
+        },
+        {
+          "command": "workflowRegister.refreshOperationHub"
+        },
+        {
+          "command": "workflowRegister.openOperationHubPanel"
+        },
+        {
+          "command": "workflowRegister.reload"
+        },
+        {
+          "command": "workflowRegister.inspect"
+        },
+        {
+          "command": "workflowRegister.completeCurrentStep"
+        },
+        {
+          "command": "workflowRegister.completeStep"
+        },
+        {
+          "command": "workflowRegister.inspectActiveSteps"
+        },
+        {
+          "command": "workflowRegister.runWorkflow"
+        },
+        {
+          "command": "workflowRegister.runWorkflowStep"
+        },
+        {
+          "command": "workflowRegister.startFromStepWithArtifacts"
+        },
+        {
+          "command": "workflowRegister.importArtifactsFromTaskSnapshots"
+        },
+        {
+          "command": "workflowRegister.inspectRuns"
+        },
+        {
+          "command": "workflowRegister.resumeRun"
+        },
+        {
+          "command": "workflowRegister.retryCurrentStep"
+        },
+        {
+          "command": "workflowRegister.acceptCurrentStep"
+        },
+        {
+          "command": "workflowRegister.runNextStep"
+        },
+        {
+          "command": "workflowRegister.openManualStepPanel"
+        },
+        {
+          "command": "workflowRegister.acceptAndRunNextStep"
+        },
+        {
+          "command": "workflowRegister.inspectCurrentStep"
+        },
+        {
+          "command": "workflowRegister.pauseCurrentRun"
+        },
+        {
+          "command": "workflowRegister.pauseAfterCurrentStep"
+        },
+        {
+          "command": "workflowRegister.pauseBeforeNextAiCall"
+        },
+        {
+          "command": "workflowRegister.resumePausedRun"
+        },
+        {
+          "command": "workflowRegister.inspectRunControl"
+        },
+        {
+          "command": "workflowRegister.approveBranchCheckpoint"
+        },
+        {
+          "command": "workflowRegister.abortBranchCheckpoint"
+        },
+        {
+          "command": "workflowRegister.inspectBranching"
+        },
+        {
+          "command": "workflowRegister.refreshRunsView"
+        },
+        {
+          "command": "workflowRegister.openCurrentStepInBuilder"
+        },
+        {
+          "command": "workflowRegister.inspectRunDiagnostics"
+        },
+        {
+          "command": "workflowRegister.designWorkflowWithAi"
+        },
+        {
+          "command": "workflowRegister.improveWorkflowWithAi"
+        },
+        {
+          "command": "workflowRegister.explainWorkflowDiagnostics"
+        },
+        {
+          "command": "workflowRegister.validateCurrentWorkflow"
+        },
+        {
+          "command": "workflowRegister.validateWorkspaceWorkflows"
+        },
+        {
+          "command": "workflowRegister.createWorkflowFromTemplate"
+        },
+        {
+          "command": "workflowRegister.openWorkflowBuilder"
+        },
+        {
+          "command": "workflowRegister.editWorkflowInBuilder"
+        },
+        {
+          "command": "bobProcess.validateCatalog"
+        },
+        {
+          "command": "bobProcess.loadProcessInput"
+        },
+        {
+          "command": "bobProcess.collectEvidence"
+        },
+        {
+          "command": "bobProcess.validateReviewResult"
+        },
+        {
+          "command": "bobProcess.writeProcessRecord"
+        },
+        {
+          "command": "bobProcess.generateCampaignSummary"
+        },
+        {
+          "command": "bobTemplate.validateLibrary"
+        },
+        {
+          "command": "bobTemplate.validateProjectProfile"
+        },
+        {
+          "command": "bobTemplate.validateCustomization"
+        },
+        {
+          "command": "bobTemplate.generateWorkflow"
+        },
+        {
+          "command": "bobTemplate.checkReadiness"
+        },
+        {
+          "command": "bobTemplate.openCustomizationStudio"
+        }
       ],
       "view/title": [
         {

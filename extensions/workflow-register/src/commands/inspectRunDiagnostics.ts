@@ -1,6 +1,8 @@
 import * as vscode from "vscode"
 import { buildWorkflowRunDiagnosticReport } from "../core/runDiagnostics"
 import type { WorkflowRunDurabilitySummary } from "../core/runDiagnostics"
+import { FileRunControlStore } from "../core/runControlStore"
+import type { RunControlState } from "../core/runControlStore"
 import { FileRunStateStore } from "../core/runStateStore"
 import type { RunStateLoadDiagnostic } from "../core/runStateStore"
 import { readRunDurabilityFile } from "../core/runtime/runDurabilityPath"
@@ -22,14 +24,31 @@ export async function inspectRunDiagnostics(options: InspectRunDiagnosticsOption
   const runs = await store.listRuns()
   const snapshotStore = new FileTaskSnapshotStore({ workspaceRoot })
   const snapshotsByRunId = Object.fromEntries(await Promise.all(runs.map(async (run) => [run.runId, await snapshotStore.listSnapshots(run.runId)] as const)))
+  const controlStore = new FileRunControlStore({ workspaceRoot })
+  const controlsByRunId: Record<string, RunControlState | undefined> = {}
+  const controlDiagnostics: RunStateLoadDiagnostic[] = []
+  for (const run of runs) {
+    try {
+      controlsByRunId[run.runId] = await controlStore.loadControl(run.runId)
+    } catch (error) {
+      controlDiagnostics.push({
+        runId: run.runId,
+        severity: "error",
+        code: "invalid",
+        message: `Workflow run control could not be inspected: ${formatError(error)}`
+      })
+    }
+  }
   const durabilityInspections = await Promise.all(runs.map(async (run) => [run.runId, await inspectRunDurability(workspaceRoot, run.runId)] as const))
   const durabilityByRunId = Object.fromEntries(durabilityInspections.map(([runId, inspection]) => [runId, inspection.summary]))
   const durabilityDiagnostics = durabilityInspections.flatMap(([, inspection]) => inspection.diagnostics)
   const report = buildWorkflowRunDiagnosticReport(runs, {
     snapshotsByRunId,
     durabilityByRunId,
+    controlsByRunId,
     runDocumentDiagnostics: sortDiagnostics([
       ...store.getLoadDiagnostics(),
+      ...controlDiagnostics,
       ...durabilityDiagnostics
     ])
   })
