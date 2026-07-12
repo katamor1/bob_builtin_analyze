@@ -1,3 +1,4 @@
+import { assertWorkflowRunStateWritable, FileRunStateStore } from "../runStateStore"
 import { readContainedRunFile, writeContainedRunFile } from "./runStatePath"
 
 export type RunPauseMode = "afterCurrentStep" | "beforeNextAiCall"
@@ -43,6 +44,7 @@ export class FileRunControlStore implements RunControlStore {
   }
 
   async requestPause(input: PauseRequestInput): Promise<RunControlState> {
+    await this.requireWritableRun(input.runId)
     const existing = await this.loadControl(input.runId)
     const next: RunControlState = {
       ...(existing ?? { schemaVersion: "workflow-register/run-control/v1", runId: input.runId }),
@@ -59,6 +61,7 @@ export class FileRunControlStore implements RunControlStore {
   }
 
   async clearPause(runId: string): Promise<RunControlState> {
+    await this.requireWritableRun(runId)
     const existing = await this.loadControl(runId)
     const next: RunControlState = {
       ...(existing ?? { schemaVersion: "workflow-register/run-control/v1", runId }),
@@ -95,6 +98,7 @@ export class FileRunControlStore implements RunControlStore {
   }
 
   async recordResumeNote(runId: string, note: string): Promise<RunControlState> {
+    await this.requireWritableRun(runId)
     const existing = await this.loadControl(runId)
     const next: RunControlState = {
       ...(existing ?? { schemaVersion: "workflow-register/run-control/v1", runId }),
@@ -104,6 +108,12 @@ export class FileRunControlStore implements RunControlStore {
     }
     await this.saveControl(next)
     return next
+  }
+
+  private async requireWritableRun(runId: string): Promise<void> {
+    const run = await new FileRunStateStore({ workspaceRoot: this.workspaceRoot }).loadRun(runId)
+    if (!run) throw new Error(`Workflow run not found: ${runId}`)
+    assertWorkflowRunStateWritable(run)
   }
 
   private async saveControl(control: RunControlState): Promise<void> {
