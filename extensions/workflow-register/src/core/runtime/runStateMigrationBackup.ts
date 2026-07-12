@@ -2,7 +2,8 @@ import { randomUUID } from "crypto"
 import { constants } from "fs"
 import * as fs from "fs/promises"
 import * as path from "path"
-import { assertSafeWorkflowRunId, ContainedRunFileSnapshot } from "./runStatePath"
+import { assertSafeWorkflowRunId } from "./runStatePath"
+import type { ContainedRunFileSnapshot } from "./runStatePath"
 
 export const RUN_STATE_V0_BACKUP_FILE_NAME = "run-state-v0.backup.json" as const
 
@@ -95,7 +96,7 @@ export async function ensureContainedRunStateMigrationBackup(
     await assertDirectoryIdentity(runsRoot, "Workflow runs directory")
     await assertDirectoryIdentity(runDirectory, `Workflow run '${runId}' directory`)
   } finally {
-    if (tempIdentity && await directoryStillMatches(runsRoot)) {
+    if (await directoryStillMatches(runsRoot)) {
       await fs.rm(tempPath, { force: true }).catch(() => undefined)
     }
   }
