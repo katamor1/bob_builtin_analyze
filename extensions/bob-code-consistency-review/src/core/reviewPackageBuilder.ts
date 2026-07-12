@@ -126,6 +126,7 @@ function buildManifest(
   generationId: string,
   workflowRunId?: string
 ): string {
+  const rulePack = contextBudgetArtifact?.rule_pack
   return [
     "package_version: 1",
     `generation_id: ${generationId}`,
@@ -138,7 +139,11 @@ function buildManifest(
     `  workflow_run_id: ${yamlScalar(workflowRunId ?? "")}`,
     `  source_vcs: ${yamlScalar(diff.vcs ?? "git")}`,
     `  source_revision: ${yamlScalar(sourceRevision(diff))}`,
-    `  input_hash: ${sha256Prefixed({ reviewInput, diff: diffHashInput(diff) })}`,
+    `  input_hash: ${sha256Prefixed({
+      reviewInput,
+      diff: diffHashInput(diff),
+      rulePackHash: rulePack?.content_hash ?? ""
+    })}`,
     "  contains_sensitive_context: true",
     "  human_review_required: true",
     "repository:",
@@ -158,6 +163,10 @@ function buildManifest(
     contextBudgetArtifact
       ? `  context_budget_report: ${relativePosix(workspaceRoot, path.join(outDir, "context-budget-report.json"))}`
       : undefined,
+    rulePack ? `  project_rule_pack: ${yamlScalar(rulePack.source_path)}` : undefined,
+    rulePack ? `  project_rule_pack_id: ${yamlScalar(rulePack.id)}` : undefined,
+    rulePack ? `  project_rule_pack_version: ${JSON.stringify(rulePack.version)}` : undefined,
+    rulePack ? `  project_rule_pack_hash: ${yamlScalar(rulePack.content_hash)}` : undefined,
     "privacy_notice:",
     "  generated_artifacts_may_contain_sensitive_context: true",
     `  message: ${JSON.stringify("Generated files may contain internal design docs, customer specs, source code, and raw diff. Ignore .bob-review/ and .bob-trace/ai-traceability-draft/ unless intentionally versioned.")}`,
