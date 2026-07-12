@@ -96,12 +96,12 @@ export function planSkipResumeReadiness(
     changes.push(`Add artifact '${candidate.resultKey}' for step '${candidate.stepId}'.`)
   }
 
-  const selectedStepIds = model.steps
+  const resolvedSelectedStepIds = model.steps
     .map((step) => step.id)
     .filter((stepId, index, all) => all.indexOf(stepId) === index)
     .filter((stepId) => candidates.some((candidate) => candidate.stepId === stepId && candidate.selected))
 
-  return { candidates, blockingIssues, changes, selectedStepIds, nextModel }
+  return { candidates, blockingIssues, changes, selectedStepIds: resolvedSelectedStepIds, nextModel }
 }
 
 function reusableOutputs(steps: readonly WorkflowAuthoringStep[]): ReusableOutput[] {
