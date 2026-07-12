@@ -110,35 +110,90 @@ jobs:
           fi
           git diff --check
       - name: Verify workflow-register reconciliation
+        id: workflow_register
+        continue-on-error: true
         working-directory: extensions/workflow-register
         shell: bash
         run: |
-          npm ci --silent
-          npm run compile --silent
-          node --test \
-            test/workflowAutomaticPause*.test.js \
+          set +e
+          log="$RUNNER_TEMP/workflow-register-reconciliation.log"
+          status=0
+          run_check() {
+            echo "=== $* ===" >> "$log"
+            "$@" >> "$log" 2>&1
+            code=$?
+            echo "exit=$code" >> "$log"
+            if [ "$code" -ne 0 ] && [ "$status" -eq 0 ]; then status=$code; fi
+          }
+          run_check npm ci --silent
+          run_check npm run compile --silent
+          run_check node --test \
+            test/workflowAutomaticPauseContractHardening.test.js \
+            test/workflowAutomaticPauseDefinition.test.js \
+            test/workflowAutomaticPauseDiagnostics.test.js \
+            test/workflowAutomaticPauseEngine.test.js \
+            test/workflowAutomaticPauseEvaluator.test.js \
+            test/workflowAutomaticPauseLocalCutoff.test.js \
+            test/workflowAutomaticPauseOverride.test.js \
+            test/workflowAutomaticPauseResume.test.js \
+            test/workflowAutomaticPauseResumeUi.test.js \
+            test/workflowAutomaticPauseRunControlReport.test.js \
+            test/workflowAutomaticPauseRuntimeWiring.test.js \
+            test/workflowAutomaticPauseSettings.test.js \
             test/workflowRunLock.test.js \
             test/workflowRunLockHeartbeatContention.test.js \
             test/runStateStorePathBoundary.test.js \
             test/workflowRunRecovery.test.js \
             test/workflowRunJournal.test.js \
             test/workflowRunStateMigration.test.js
-          npm run dependency:policy --silent
-          npm run architecture:policy --silent
-          npm run source:policy --silent
-          npm run schema:policy --silent
-          npm test --silent
-          npm run package --silent
-          npm run package:policy --silent
+          run_check npm run dependency:policy --silent
+          run_check npm run architecture:policy --silent
+          run_check npm run source:policy --silent
+          run_check npm run schema:policy --silent
+          run_check npm test --silent
+          run_check npm run package --silent
+          run_check npm run package:policy --silent
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          grep -n -B 35 -A 180 -E "not ok|AssertionError|ERR_ASSERTION|error:|Error:|exit=[1-9]" "$log" || tail -n 120 "$log"
+          exit 0
       - name: Verify related extension reconciliation
+        id: related
+        if: always()
+        continue-on-error: true
         working-directory: extensions/bob-code-consistency-review
         shell: bash
         run: |
-          npm ci --silent
-          npm test --silent
+          set +e
+          log="$RUNNER_TEMP/bob-code-consistency-reconciliation.log"
+          npm ci --silent > "$log" 2>&1
+          status=$?
+          if [ "$status" -eq 0 ]; then npm test --silent >> "$log" 2>&1; status=$?; fi
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          grep -n -B 35 -A 180 -E "not ok|AssertionError|ERR_ASSERTION|error:|Error:" "$log" || tail -n 120 "$log"
+          exit 0
+      - name: Upload reconciliation verification logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: automatic-pause-main-reconciliation-verification
+          path: |
+            ${{ runner.temp }}/workflow-register-reconciliation.log
+            ${{ runner.temp }}/bob-code-consistency-reconciliation.log
+          if-no-files-found: error
+          retention-days: 1
       - name: Commit reconciled main
+        if: steps.workflow_register.outputs.status == '0' && steps.related.outputs.status == '0'
         shell: bash
         run: |
           git diff --check
           git commit -m "Merge current main into automatic pause limits"
           git push origin HEAD:agent/workflow-automatic-pause-limits-20260712
+      - name: Preserve reconciliation verification result
+        if: always()
+        env:
+          WORKFLOW_REGISTER_STATUS: ${{ steps.workflow_register.outputs.status }}
+          RELATED_STATUS: ${{ steps.related.outputs.status }}
+        shell: bash
+        run: |
+          test "$WORKFLOW_REGISTER_STATUS" = "0"
+          test "$RELATED_STATUS" = "0"
