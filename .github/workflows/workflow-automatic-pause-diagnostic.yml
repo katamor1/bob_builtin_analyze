@@ -1,0 +1,52 @@
+name: workflow-automatic-pause-diagnostic
+
+on:
+  pull_request:
+    paths:
+      - "extensions/workflow-register/src/core/modelSchema.ts"
+      - "extensions/workflow-register/src/core/schema/workflowSchema.ts"
+      - "extensions/workflow-register/schema/workflow-register.v1.schema.json"
+      - "extensions/workflow-register/src/core/parser/**"
+      - "extensions/workflow-register/test/workflowAutomaticPauseDefinition.test.js"
+      - ".github/workflows/workflow-automatic-pause-diagnostic.yml"
+
+concurrency:
+  group: workflow-automatic-pause-diagnostic-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  focused-definition-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: extensions/workflow-register
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: extensions/workflow-register/package-lock.json
+      - name: Install dependencies
+        run: npm ci --silent
+      - name: Compile
+        run: npm run compile --silent
+      - name: Run focused definition test
+        id: focused
+        shell: bash
+        run: |
+          set +e
+          node --test test/workflowAutomaticPauseDefinition.test.js > "$RUNNER_TEMP/automatic-pause-definition.log" 2>&1
+          status=$?
+          cat "$RUNNER_TEMP/automatic-pause-definition.log"
+          exit "$status"
+      - name: Upload focused test log
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: automatic-pause-definition-log
+          path: ${{ runner.temp }}/automatic-pause-definition.log
+          if-no-files-found: error
+          retention-days: 1
