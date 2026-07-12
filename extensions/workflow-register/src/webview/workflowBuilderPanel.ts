@@ -30,8 +30,8 @@ type WorkflowBuilderMessage =
   | { type: "preview"; model: WorkflowAuthoringModel }
   | { type: "save"; model: WorkflowAuthoringModel }
   | { type: "diff"; model: WorkflowAuthoringModel }
-  | { type: "previewSkipResumeReadiness"; model: WorkflowAuthoringModel; selectedStepIds?: string[] }
-  | { type: "applySkipResumeReadiness"; model: WorkflowAuthoringModel; selectedStepIds: string[] }
+  | { type: "previewSkipResumeReadiness"; model: WorkflowAuthoringModel; selectedStepIds?: string[]; requestId: string }
+  | { type: "applySkipResumeReadiness"; model: WorkflowAuthoringModel; selectedStepIds: string[]; requestId: string }
   | { type: "validateStepDraft"; model: WorkflowAuthoringModel; draftStep: WorkflowAuthoringStep; stepIndex: number }
   | { type: "resetTemplate"; name: string; title?: string; description: string; template: WorkflowTemplateKind }
 
@@ -87,8 +87,8 @@ export class WorkflowBuilderPanel {
       return
     }
     if (message.type === "preview") return this.preview(message.model)
-    if (message.type === "previewSkipResumeReadiness") return this.previewSkipResumeReadiness(message.model, message.selectedStepIds)
-    if (message.type === "applySkipResumeReadiness") return this.applySkipResumeReadiness(message.model, message.selectedStepIds)
+    if (message.type === "previewSkipResumeReadiness") return this.previewSkipResumeReadiness(message.model, message.selectedStepIds, message.requestId)
+    if (message.type === "applySkipResumeReadiness") return this.applySkipResumeReadiness(message.model, message.selectedStepIds, message.requestId)
     if (message.type === "diff") return this.showDiff(message.model)
     if (message.type === "validateStepDraft") return this.validateStepDraft(message.model, message.draftStep, message.stepIndex)
     if (message.type === "save") await this.enqueueSave(message.model)
@@ -120,25 +120,28 @@ export class WorkflowBuilderPanel {
     this.postModel(initialModel)
   }
 
-  private async previewSkipResumeReadiness(model: WorkflowAuthoringModel, selectedStepIds?: string[]): Promise<void> {
+  private async previewSkipResumeReadiness(model: WorkflowAuthoringModel, selectedStepIds: string[] | undefined, requestId: string): Promise<void> {
     const preview = buildSkipResumeReadinessPreview(model, selectedStepIds, { sourceId: this.options.sourceId })
     await this.panel.webview.postMessage({
       type: "skipResumeReadinessPreviewResult",
+      requestId,
       ...this.skipResumeReadinessPreviewPayload(preview)
     })
   }
 
-  private async applySkipResumeReadiness(model: WorkflowAuthoringModel, selectedStepIds: string[]): Promise<void> {
+  private async applySkipResumeReadiness(model: WorkflowAuthoringModel, selectedStepIds: string[], requestId: string): Promise<void> {
     const result = applySkipResumeReadiness(model, selectedStepIds, { sourceId: this.options.sourceId })
     if (!result.ok || !result.model) {
       await this.panel.webview.postMessage({
         type: "skipResumeReadinessPreviewResult",
+        requestId,
         ...this.skipResumeReadinessPreviewPayload(result)
       })
       return
     }
     await this.panel.webview.postMessage({
       type: "skipResumeReadinessApplied",
+      requestId,
       model: result.model,
       preview: this.skipResumeReadinessPreviewPayload(result)
     })

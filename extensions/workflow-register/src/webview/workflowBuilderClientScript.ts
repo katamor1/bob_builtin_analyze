@@ -3,6 +3,7 @@ import { renderWorkflowBuilderClientStateScript } from "./workflowBuilderClientS
 import { renderWorkflowBuilderCoreRendererScript } from "./workflowBuilderCoreRendererScript"
 import { renderWorkflowBuilderFieldEventsScript } from "./workflowBuilderFieldEventsScript"
 import { renderWorkflowBuilderPreviewScript } from "./workflowBuilderPreviewScript"
+import { renderWorkflowBuilderSkipResumeReadinessScript } from "./workflowBuilderSkipResumeReadinessScript"
 import { renderWorkflowBuilderStepOperationsScript } from "./workflowBuilderStepOperationsScript"
 import { renderWorkflowBuilderStepRendererScript } from "./workflowBuilderStepRendererScript"
 import { renderWorkflowBuilderTabRenderersScript } from "./workflowBuilderTabRenderersScript"
@@ -16,6 +17,7 @@ export function renderWorkflowBuilderClientScript(): string {
     renderWorkflowBuilderPreviewScript(),
     renderWorkflowBuilderStepOperationsScript(),
     renderWorkflowBuilderFieldEventsScript(),
+    renderWorkflowBuilderSkipResumeReadinessScript(),
     renderWorkflowBuilderActionEventsScript()
   ].join("\n")
 }
