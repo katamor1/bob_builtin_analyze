@@ -42,6 +42,7 @@ test("Bazaar review GUI renders Review Run Wizard v3 and persists packet handoff
 
 test("Bazaar result capture GUI binds to an active Review Run", () => {
   const { renderResultCaptureHtml } = require("../out/ui/resultCaptureGuiHtml")
+  const source = readSrc("ui/resultCaptureGui.ts")
   const html = renderResultCaptureHtml({
     cspSource: "vscode-resource:",
     nonce: "nonce-123",
@@ -63,11 +64,14 @@ test("Bazaar result capture GUI binds to an active Review Run", () => {
   assert.match(html, /data-action="openTriage"/)
   assert.match(html, /nonce-123/)
   assert.match(html, /vscode\.postMessage/)
+  assert.match(source, /validateReviewRunCommandInput/)
+  assert.match(source, /vscode\.workspace\.workspaceFolders/)
   assert.doesNotMatch(html, /onclick=/)
 })
 
 test("Bazaar human triage GUI renders read-only Review Run identity and decision actions", () => {
   const { renderHumanTriageHtml } = require("../out/ui/humanTriageGuiHtml")
+  const source = readSrc("ui/humanTriageGui.ts")
   const html = renderHumanTriageHtml({
     cspSource: "vscode-resource:",
     nonce: "nonce-456",
@@ -101,5 +105,7 @@ test("Bazaar human triage GUI renders read-only Review Run identity and decision
   assert.match(html, /F-1/)
   assert.match(html, /needs_investigation/)
   assert.match(html, /nonce-456/)
+  assert.match(source, /validateReviewRunCommandInput/)
+  assert.match(source, /vscode\.workspace\.workspaceFolders/)
   assert.doesNotMatch(html, /onclick=/)
 })
