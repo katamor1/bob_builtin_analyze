@@ -34,7 +34,6 @@ jobs:
       - name: Compile
         run: npm run compile --silent
       - name: Run focused definition test
-        id: focused
         shell: bash
         run: |
           set +e
@@ -42,11 +41,30 @@ jobs:
           status=$?
           cat "$RUNNER_TEMP/automatic-pause-definition.log"
           exit "$status"
-      - name: Upload focused test log
+      - name: Run full workflow-register test suite
+        id: full
+        shell: bash
+        run: |
+          set +e
+          node --test test/*.test.js > "$RUNNER_TEMP/workflow-register-full.log" 2>&1
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            grep -n -B 25 -A 120 -E "not ok|AssertionError|ERR_ASSERTION|error:" "$RUNNER_TEMP/workflow-register-full.log" || tail -n 300 "$RUNNER_TEMP/workflow-register-full.log"
+          else
+            tail -n 30 "$RUNNER_TEMP/workflow-register-full.log"
+          fi
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+      - name: Upload test logs
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: automatic-pause-definition-log
-          path: ${{ runner.temp }}/automatic-pause-definition.log
+          name: automatic-pause-test-logs
+          path: |
+            ${{ runner.temp }}/automatic-pause-definition.log
+            ${{ runner.temp }}/workflow-register-full.log
           if-no-files-found: error
           retention-days: 1
+      - name: Fail when full suite failed
+        if: steps.full.outputs.status != '0'
+        shell: bash
+        run: exit 1
