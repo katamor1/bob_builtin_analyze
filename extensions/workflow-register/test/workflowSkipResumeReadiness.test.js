@@ -164,6 +164,31 @@ test("planner blocks artifact ownership and path conflicts without overwriting t
   }
 })
 
+test("planner rejects unsafe or non-portable generated path segments", () => {
+  const cases = [
+    { stepId: "../collect", resultKey: "report", expected: /step id.*portable artifact path segment/i },
+    { stepId: "collect", resultKey: "../report", expected: /resultKey.*portable artifact path segment/i },
+    { stepId: "collect", resultKey: "CON", expected: /resultKey.*portable artifact path segment/i }
+  ]
+
+  for (const item of cases) {
+    const model = baseModel()
+    model.steps = [{
+      id: item.stepId,
+      title: "Unsafe output",
+      type: "agent",
+      prompt: "Produce output.",
+      resultKey: item.resultKey
+    }]
+
+    const plan = planSkipResumeReadiness(model)
+
+    assert.ok(plan.blockingIssues.some((issue) => item.expected.test(issue)), `${item.stepId}/${item.resultKey}: ${plan.blockingIssues.join("\n")}`)
+    assert.equal(plan.candidates[0].status, "blocked")
+    assert.equal(plan.nextModel.artifacts.length, 0)
+  }
+})
+
 test("a complete generated model passes strict workflow validation", () => {
   const plan = planSkipResumeReadiness(baseModel())
   const rendered = serializeAuthoringModelToMarkdown(plan.nextModel)
