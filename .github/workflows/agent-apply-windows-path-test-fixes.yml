@@ -1,6 +1,7 @@
 name: agent-apply-windows-path-test-fixes
 
 on:
+  workflow_call:
   pull_request:
     paths:
       - "extensions/workflow-register/test/fixtures/automatic-pause-ci-verification.txt"
