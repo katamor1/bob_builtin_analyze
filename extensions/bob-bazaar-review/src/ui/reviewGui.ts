@@ -1,31 +1,35 @@
 import * as vscode from "vscode"
 import { BazaarClient } from "../bazaar/bazaar"
-import { isBobCodeExtensionAvailable } from "../bob/bobCodeExtension"
-import { addMarkdownPacketToBobContext } from "../bob/bobContext"
-import { getBobWorkspaceStatus, initializeBobWorkspaceFromTemplates } from "../workspace/bobWorkspaceInit"
-import { resolveBzrPath } from "../bazaar/bzrPathTrust"
-import { buildProjectRulesSection } from "../projectRules/packet"
-import { loadProjectChecklistRequired, loadReviewResultSchemaRequired } from "../projectRules/io"
+import { clampMaxAddedFileContentBytes, clampMaxDiffBytes, maxBufferForDiffBytes } from "../bazaar/reviewLimits"
 import { buildReviewPacket } from "../bazaar/reviewPacket"
 import { buildReviewPacketState, REVIEW_PACKET_STATE_KEY } from "../bazaar/reviewPacketSelection"
-import { clampMaxAddedFileContentBytes, clampMaxDiffBytes, maxBufferForDiffBytes } from "../bazaar/reviewLimits"
+import { resolveBzrPath } from "../bazaar/bzrPathTrust"
 import {
   buildTargetMetadataSection,
   parseTargetRequest,
   prepareTarget,
-  validateTargetRequest
+  validateTargetRequest,
+  type TargetRequest
 } from "../bazaar/reviewTarget"
-import type { TargetRequest } from "../bazaar/reviewTarget"
+import { isBobCodeExtensionAvailable } from "../bob/bobCodeExtension"
+import { addMarkdownPacketToBobContext } from "../bob/bobContext"
+import { loadProjectChecklistRequired, loadReviewResultSchemaRequired } from "../projectRules/io"
+import { buildProjectRulesSection } from "../projectRules/packet"
 import {
   buildReviewRunMetadataSection,
+  loadReviewRun,
   recordReviewPacket,
   reviewRunCommandInput,
-  startReviewRun
+  startReviewRun,
+  validateReviewRunCommandInput
 } from "../reviewRuns/reviewRunCoordinator"
+import { buildReviewRunResumeCandidate, nextReviewRunAction } from "../reviewRuns/reviewRunResume"
 import { buildReviewId } from "../reviewRuns/reviewRunState"
-import type { ReviewRunContext } from "../reviewRuns/reviewRunTypes"
-import { completeCurrentWorkflowStepAfterGuiAction } from "../workflow/workflowStepCompletion"
+import { listReviewRuns } from "../reviewRuns/reviewRunStore"
+import type { ReviewRunCommandInput, ReviewRunContext } from "../reviewRuns/reviewRunTypes"
+import { getBobWorkspaceStatus, initializeBobWorkspaceFromTemplates } from "../workspace/bobWorkspaceInit"
 import { resolveBazaarWorkspaceFolder, resolveBobWorkspaceFolder } from "../workspace/workspaceResolver"
+import { completeCurrentWorkflowStepAfterGuiAction } from "../workflow/workflowStepCompletion"
 import { renderHtml } from "./reviewGuiHtml"
 import type { BazaarReviewInitialTarget } from "./reviewGuiTypes"
 
@@ -63,14 +67,26 @@ class BazaarReviewGuiController {
 
   private async handleMessage(message: any): Promise<void> {
     try {
-      // Webview message は UI 入力として扱い、ホスト側で対象解析と workspace 解決をやり直してから副作用を起こす。
-      if (message?.type === "ready") await this.postWorkspaceState()
-      else if (message?.type === "selectWorkspace") await this.selectWorkspace()
-      else if (message?.type === "initializeBobWorkspace") await this.initializeBobWorkspace()
-      else if (message?.type === "loadTarget") await this.loadTarget(parseTargetRequest(message))
-      else if (message?.type === "reviewTarget") await this.reviewTarget(parseTargetRequest(message), parseReviewRunSelection(message))
-      else if (message?.type === "openResultCapture") await this.openReviewRunCommand("bobBazaar.openResultCaptureGui")
-      else if (message?.type === "openHumanTriage") await this.openReviewRunCommand("bobBazaar.openHumanTriageGui")
+      if (message?.type === "ready") {
+        await this.postWorkspaceState()
+        await this.postReviewRuns()
+      } else if (message?.type === "selectWorkspace") {
+        await this.selectWorkspace()
+      } else if (message?.type === "initializeBobWorkspace") {
+        await this.initializeBobWorkspace()
+      } else if (message?.type === "loadTarget") {
+        await this.loadTarget(parseTargetRequest(message))
+      } else if (message?.type === "reviewTarget") {
+        await this.reviewTarget(parseTargetRequest(message), parseReviewRunSelection(message))
+      } else if (message?.type === "openResultCapture") {
+        await this.openReviewRunCommand("bobBazaar.openResultCaptureGui")
+      } else if (message?.type === "openHumanTriage") {
+        await this.openReviewRunCommand("bobBazaar.openHumanTriageGui")
+      } else if (message?.type === "refreshReviewRuns") {
+        await this.postReviewRuns()
+      } else if (message?.type === "resumeReviewRun") {
+        await this.resumeReviewRun(message)
+      }
     } catch (error: any) {
       this.post({ type: "error", message: error?.message ?? String(error) })
     }
@@ -100,8 +116,8 @@ class BazaarReviewGuiController {
     }
     this.post({
       type: "workspaceState",
-      workspace: this.bazaarWorkspaceFolder ? this.bazaarWorkspaceFolder.uri.fsPath : undefined,
-      bobWorkspace: this.bobWorkspaceFolder ? this.bobWorkspaceFolder.uri.fsPath : undefined
+      workspace: this.bazaarWorkspaceFolder?.uri.fsPath,
+      bobWorkspace: this.bobWorkspaceFolder?.uri.fsPath
     })
     await this.postBobWorkspaceStatus()
   }
@@ -113,6 +129,47 @@ class BazaarReviewGuiController {
     }
     const serverName = vscode.workspace.getConfiguration("bobBazaar").get<string>("mcpServerName", "bazaar")
     this.post({ type: "bobWorkspaceStatus", ...(await getBobWorkspaceStatus(this.bobWorkspaceFolder, serverName)) })
+  }
+
+  private async postReviewRuns(): Promise<void> {
+    const folder = this.bobWorkspaceFolder ?? this.bazaarWorkspaceFolder
+    if (!folder) {
+      this.post({ type: "reviewRuns", items: [] })
+      return
+    }
+    const items = (await listReviewRuns(folder.uri.fsPath))
+      .filter((run) => run.status !== "completed")
+      .map(buildReviewRunResumeCandidate)
+    this.post({ type: "reviewRuns", items })
+  }
+
+  private async resumeReviewRun(message: any): Promise<void> {
+    const rawInput: ReviewRunCommandInput = {
+      workspaceRoot: requiredText(message?.workspaceRoot, "workspaceRoot"),
+      campaignId: requiredText(message?.campaignId, "campaignId"),
+      reviewId: requiredText(message?.reviewId, "reviewId")
+    }
+    const input = await validateReviewRunCommandInput(
+      rawInput,
+      (vscode.workspace.workspaceFolders ?? []).map((folder) => folder.uri.fsPath)
+    )
+    const run = await loadReviewRun(input)
+    this.activeReviewRun = run
+    const action = nextReviewRunAction(run)
+    if (action === "review") {
+      this.post({ type: "resumeTarget", target: run.target, reviewRun: serializeReviewRun(run) })
+      return
+    }
+    this.post({
+      type: "activeReviewRun",
+      reviewRun: serializeReviewRun(run),
+      message: `Review Runを再開しました。次の操作: ${action}`
+    })
+    if (action === "resultCapture") {
+      await vscode.commands.executeCommand("bobBazaar.openResultCaptureGui", reviewRunCommandInput(run))
+    } else if (action === "humanTriage" || action === "finalize") {
+      await vscode.commands.executeCommand("bobBazaar.openHumanTriageGui", reviewRunCommandInput(run))
+    }
   }
 
   private async selectWorkspace(): Promise<void> {
@@ -128,6 +185,7 @@ class BazaarReviewGuiController {
       this.bobWorkspaceFolder = await resolveBobWorkspaceFolder({ workflowRoot: this.initialTarget?.workflowRoot, allowPick: false })
     }
     await this.postWorkspaceState()
+    await this.postReviewRuns()
   }
 
   private async initializeBobWorkspace(): Promise<void> {
@@ -144,6 +202,7 @@ class BazaarReviewGuiController {
     })
     this.post({ type: "bobWorkspaceStatus", ...status })
     this.post({ type: "initialized", message: ".bob 初期化が完了しました。Bob MCP サーバーを Refresh / Restart してください。" })
+    await this.postReviewRuns()
   }
 
   private async loadTarget(request: TargetRequest): Promise<void> {
@@ -191,18 +250,19 @@ class BazaarReviewGuiController {
       baseRevision: prepared.info.baseRevision,
       targetRevision: prepared.info.targetRevision
     })
-    let reviewRun = await startReviewRun({
-      workspaceRoot: runWorkspaceFolder.uri.fsPath,
-      campaignId: selection.campaignId,
-      reviewId,
-      target: {
-        mode: prepared.info.mode,
-        repositoryRoot: prepared.root,
-        revision: prepared.info.revision,
-        baseRevision: prepared.info.baseRevision,
-        targetRevision: prepared.info.targetRevision
-      }
-    })
+    let reviewRun = this.reusableTargetRun(selection.campaignId, reviewId, prepared.root, prepared.info)
+      ?? await startReviewRun({
+        workspaceRoot: runWorkspaceFolder.uri.fsPath,
+        campaignId: selection.campaignId,
+        reviewId,
+        target: {
+          mode: prepared.info.mode,
+          repositoryRoot: prepared.root,
+          revision: prepared.info.revision,
+          baseRevision: prepared.info.baseRevision,
+          targetRevision: prepared.info.targetRevision
+        }
+      })
     const projectRulesSection = request.withProjectRules && bobFolder ? await buildProjectRulesSectionForWorkspace(bobFolder.uri.fsPath) : undefined
     const extraSections = [
       buildReviewRunMetadataSection(reviewRun),
@@ -258,13 +318,24 @@ class BazaarReviewGuiController {
       bobContextAvailable: addResult !== "skipped",
       bobContextAdded: addResult === "added",
       workflowStepCompleted,
-      reviewRun: {
-        campaignId: reviewRun.campaignId,
-        reviewId: reviewRun.reviewId,
-        phase: reviewRun.phase,
-        reviewPacketPath: reviewRun.artifacts.reviewPacketPath
-      }
+      reviewRun: serializeReviewRun(reviewRun)
     })
+    await this.postReviewRuns()
+  }
+
+  private reusableTargetRun(campaignId: string, reviewId: string, repositoryRoot: string, info: any): ReviewRunContext | undefined {
+    const run = this.activeReviewRun
+    if (!run || run.status === "completed" || run.phases.packet.status === "completed") return undefined
+    if (run.campaignId !== campaignId || run.reviewId !== reviewId) return undefined
+    if (run.target.mode !== info.mode || run.target.repositoryRoot !== repositoryRoot) {
+      throw new Error("選択したReview Runのtargetと現在のBazaar targetが一致しません。")
+    }
+    if ((run.target.revision ?? "") !== (info.revision ?? "") ||
+        (run.target.baseRevision ?? "") !== (info.baseRevision ?? "") ||
+        (run.target.targetRevision ?? "") !== (info.targetRevision ?? "")) {
+      throw new Error("選択したReview Runのrevision情報と現在のtargetが一致しません。")
+    }
+    return run
   }
 
   private async requireBazaarWorkspaceFolder(): Promise<vscode.WorkspaceFolder> {
@@ -297,6 +368,20 @@ function parseReviewRunSelection(message: any): ReviewRunSelection {
   }
 }
 
+function serializeReviewRun(run: ReviewRunContext): Record<string, unknown> {
+  return {
+    workspaceRoot: run.workspaceRoot,
+    campaignId: run.campaignId,
+    reviewId: run.reviewId,
+    phase: run.phase,
+    status: run.status,
+    phases: Object.fromEntries(Object.entries(run.phases).map(([phase, progress]) => [phase, progress.status])),
+    artifacts: run.artifacts,
+    metrics: run.metrics,
+    target: run.target
+  }
+}
+
 function textOrDefault(value: unknown, fallback: string): string {
   return textOrUndefined(value) ?? fallback
 }
@@ -304,6 +389,12 @@ function textOrDefault(value: unknown, fallback: string): string {
 function textOrUndefined(value: unknown): string | undefined {
   const text = typeof value === "string" ? value.trim() : ""
   return text || undefined
+}
+
+function requiredText(value: unknown, fieldName: string): string {
+  const text = textOrUndefined(value)
+  if (!text) throw new Error(`${fieldName} is required`)
+  return text
 }
 
 function makeBazaarClient(): BazaarClient {
