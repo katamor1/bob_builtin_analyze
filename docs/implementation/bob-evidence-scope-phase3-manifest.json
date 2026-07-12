@@ -2,22 +2,22 @@
   "schema_version": 1,
   "artifact": "bob-evidence-scope-phase3",
   "hash_algorithm": "sha256",
-  "source_commit": "fa8e16ace18c37a07d7402843102815277add255",
+  "source_commit": "8e5de54139775928110c01cf151ec0520063923b",
   "files": [
     {
       "path": "docs/superpowers/plans/2026-07-12-bob-evidence-scope-phase3.md",
       "bytes": 12085,
-      "sha256": "c149eccbac4d9ad338b63cab41c4556d55fc3063af7ee7579bf5b7bc5b8aefeb"
+      "sha256": "05e1e80eb896ad9ee1ac80f18cdd67ea2862cda83b0afa5af6332a65999f5c8d"
     },
     {
       "path": "docs/implementation/bob-evidence-scope-phase3-2026-07-12.md",
-      "bytes": 3282,
-      "sha256": "4a1b97582fa8fa595873062801c4ead540f712794e3a26b086e78653b8891d74"
+      "bytes": 5374,
+      "sha256": "d3d1e02a780a033e3e9af1223a57a341e1996e5b855be0abc20d339c181efd95"
     },
     {
       "path": "docs/implementation/bob-evidence-scope-phase3-verification-2026-07-12.md",
-      "bytes": 2719,
-      "sha256": "79236fbb97349a1868753a98ee49a971330dff412976d65057efb826aff4c7a2"
+      "bytes": 4572,
+      "sha256": "5c1120f890ed7358e92a4023084b7b5ee3952a319065fee0c2619a0421f36821"
     },
     {
       "path": "docs/workflows/code-consistency-review/schemas/evidence-scope-rule-pack.schema.json",

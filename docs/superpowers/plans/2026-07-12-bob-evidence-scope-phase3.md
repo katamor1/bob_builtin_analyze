@@ -1,6 +1,6 @@
 # Bob Evidence Scope Phase 3 Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Load a workspace-local project rule-pack file read-only, validate its schema/version, apply its rules in the evidence-scope pipeline, and record stable source and SHA-256 provenance for stale detection and future artifact-ledger handoff.
 
@@ -35,7 +35,7 @@
 - Requires: asynchronous `buildReviewContextBudget(input)` through `preprocessReview`.
 - Requires: `context-budget-report.json.rule_pack` and manifest rule-pack provenance.
 
-- [ ] **Step 1: Write the failing bounded-loader test**
+- [x] **Step 1: Write the failing bounded-loader test**
 
 Create a temporary workspace and `.bob/evidence-scope/project-rules.yaml` with:
 
@@ -56,7 +56,7 @@ rules:
 
 Assert that `loadProjectRulePack` returns the normalized workspace-relative source path, pack ID/version, parsed rule, and a `sha256:<64 hex>` raw-byte hash. Read the file before and after loading and assert the bytes are unchanged.
 
-- [ ] **Step 2: Write the failing validation-boundary tests**
+- [x] **Step 2: Write the failing validation-boundary tests**
 
 Assert that:
 
@@ -69,7 +69,7 @@ await assert.rejects(
 
 and that a pack with `schema_version: 2` is rejected with `Invalid evidence scope rule pack` and a schema-version diagnostic.
 
-- [ ] **Step 3: Write the failing pipeline provenance test**
+- [x] **Step 3: Write the failing pipeline provenance test**
 
 Use `createMultiLanguageGitReviewWorkspace()`, create the rule pack, add `evidence_scope_rule_pack_path` under `bob_options`, run `preprocessReview`, and assert:
 
@@ -85,7 +85,7 @@ assert.match(manifest, /project_rule_pack_hash: sha256:[0-9a-f]{64}/)
 
 Change only the rule-pack file bytes, rerun preprocessing, and assert the report hash and manifest `input_hash` both change while the review input and Git revisions remain unchanged.
 
-- [ ] **Step 4: Verify RED**
+- [x] **Step 4: Verify RED**
 
 Run:
 
@@ -110,7 +110,7 @@ Expected: FAIL because `projectRulePackLoader` does not exist and the pipeline d
 - Produces: `mergeProjectRules(projectRules, inlineRules): { rules, warnings }`.
 - Produces: `ProjectRulePackProvenance` with `id`, `version`, `sourcePath`, and `contentHash`.
 
-- [ ] **Step 1: Add the v1 rule-pack schema**
+- [x] **Step 1: Add the v1 rule-pack schema**
 
 The schema requires:
 
@@ -124,15 +124,15 @@ The schema requires:
 
 Each rule uses the existing rule contract: `id`, `title`, `evaluation`, optional `estimated_tokens`, optional priority, and structured `applies_when`. Both runtime and mirrored documentation schemas must be byte-identical.
 
-- [ ] **Step 2: Implement bounded read-only loading**
+- [x] **Step 2: Implement bounded read-only loading**
 
 Normalize the configured path with `normalizeChangedFilePathStrict`, resolve it with `resolveWorkspacePathStrict`, require a supported extension, open the file using mode `r`, reject files larger than `maxBytes` before or after reading, hash the exact buffer with SHA-256, and decode using the configured text encoding.
 
-- [ ] **Step 3: Validate and convert the document**
+- [x] **Step 3: Validate and convert the document**
 
 Parse with `YAML.parse`, validate with `loadSchemaValidator("evidence-scope-rule-pack")`, convert `rules` through `parseProjectRules`, and reject any semantic warnings from the authoritative pack, including duplicate IDs.
 
-- [ ] **Step 4: Merge inline rules deterministically**
+- [x] **Step 4: Merge inline rules deterministically**
 
 Keep all project rule IDs first. Append inline rules whose IDs are absent. For duplicate inline IDs, retain the project rule and emit:
 
@@ -142,7 +142,7 @@ duplicate inline evidence scope rule <id>; project rule pack entry retained.
 
 Sort final rules and warnings deterministically.
 
-- [ ] **Step 5: Export the public surface explicitly**
+- [x] **Step 5: Export the public surface explicitly**
 
 Add named exports only; do not introduce `export *`.
 
@@ -161,15 +161,15 @@ Add named exports only; do not introduce `export *`.
 - `ContextBudgetArtifact` gains optional `rule_pack` provenance.
 - `manifest.yaml` records `project_rule_pack`, `project_rule_pack_id`, `project_rule_pack_version`, and `project_rule_pack_hash` when present.
 
-- [ ] **Step 1: Admit the configuration path**
+- [x] **Step 1: Admit the configuration path**
 
 Add `bob_options.evidence_scope_rule_pack_path` as a non-empty `.yaml`, `.yml`, or `.json` workspace-relative string in both review-input schemas.
 
-- [ ] **Step 2: Load and merge rules before scope selection**
+- [x] **Step 2: Load and merge rules before scope selection**
 
 Await the project loader, parse inline rules, merge them, and use the merged list in `buildReviewEvidenceScope`. Set `rule_source` to the normalized rule-pack path when a pack is present, otherwise preserve the Phase 2 inline/none behavior.
 
-- [ ] **Step 3: Serialize provenance without raw content**
+- [x] **Step 3: Serialize provenance without raw content**
 
 Add this optional report object:
 
@@ -185,11 +185,11 @@ Add this optional report object:
 }
 ```
 
-- [ ] **Step 4: Connect provenance to stale and ledger inputs**
+- [x] **Step 4: Connect provenance to stale and ledger inputs**
 
 Add rule-pack fields under manifest `inputs`. Include `contextBudgetArtifact.rule_pack.content_hash` in the value used to produce `artifact_metadata.input_hash`; when no pack is configured, preserve deterministic Phase 2 behavior with an empty rule-pack hash input.
 
-- [ ] **Step 5: Verify GREEN and regression gates**
+- [x] **Step 5: Verify GREEN and regression gates**
 
 Run:
 
@@ -219,19 +219,19 @@ Expected: all commands exit `0`.
 **Interfaces:**
 - Produces reviewable implementation, TDD, CI, security-boundary, and checksum records.
 
-- [ ] **Step 1: Record behavior and boundaries**
+- [x] **Step 1: Record behavior and boundaries**
 
 Document the configuration contract, read-only path boundary, size limit, schema/version policy, merge precedence, exact-byte SHA-256 semantics, manifest handoff, stale-input behavior, and absence of raw rule-pack content in generated artifacts.
 
-- [ ] **Step 2: Record RED and GREEN evidence**
+- [x] **Step 2: Record RED and GREEN evidence**
 
 Include test-only commit SHA, expected RED failures, final test counts, policy checks, audit, VSIX packaging, Linux/Windows CI conclusions, and any investigated transient failure.
 
-- [ ] **Step 3: Generate the SHA-256 manifest**
+- [x] **Step 3: Generate the SHA-256 manifest**
 
 Record each Phase 3 source, schema, test, plan, and documentation path with byte size and SHA-256 digest. The runtime and mirrored rule-pack schemas must have identical hashes.
 
-- [ ] **Step 4: Commit and update PR #72**
+- [x] **Step 4: Commit and update PR #72**
 
 Commit all Phase 3 artifacts to `codex/execute-shared-plan-6a53743e`, keep the PR in draft state, update its description with implementation and verification evidence, and retain the branch for the next phase.
 
