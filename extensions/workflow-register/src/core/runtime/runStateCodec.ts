@@ -36,10 +36,21 @@ export interface DecodedWorkflowRunState {
   diagnostics: string[]
 }
 
+export type RunStateLoadDiagnosticCode =
+  | "migrated"
+  | "read-only"
+  | "invalid"
+  | "event-log-invalid"
+  | "journal-recovered"
+  | "journal-conflict"
+  | "lock-reclaimed"
+  | "lock-busy"
+  | "stale-write"
+
 export interface RunStateLoadDiagnostic {
   runId: string
   severity: "info" | "warning" | "error"
-  code: "migrated" | "read-only" | "invalid"
+  code: RunStateLoadDiagnosticCode
   message: string
 }
 
