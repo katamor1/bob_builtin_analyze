@@ -59,7 +59,7 @@ Windows verificationでは、少なくとも次を確認します。
 - active owner中にlock fileが一時的に消えてもacquirerが即時I/O errorを漏らさない。
 - heartbeat replace中のidentity changeをbounded retryする。
 - timeout後は`busy or locked by another process` familyへ収束する。
--同一physical rootのshort/long representationでduplicate executionを許可しない。
+- 同一physical rootのshort/long representationでduplicate executionを許可しない。
 - Operation Hub、Bob runner、artifact transaction、migration backupが同じphysical rootを共有する。
 - temporary diagnostic workflowを最終diffへ残さない。
 
