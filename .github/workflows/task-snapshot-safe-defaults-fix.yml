@@ -1,0 +1,213 @@
+name: task-snapshot-safe-defaults-fix
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/task-snapshot-safe-defaults-fix.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Apply safe implicit-selection behavior
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          source = Path("extensions/workflow-register/src/core/artifacts/taskSnapshotImport.ts")
+          text = source.read_text(encoding="utf-8")
+          old = '''  const explicitSelection = input.selectedArtifactIds !== undefined
+          const selectedIds = explicitSelection
+            ? new Set(input.selectedArtifactIds)
+            : new Set(preview.candidates.map((candidate) => candidate.artifactId))
+          if (explicitSelection && selectedIds.size === 0) {
+            issues.push(info("No task snapshot artifacts were selected."))
+            return { ok: false, importedCount: 0, issues, previewDigest: preview.previewDigest }
+          }
+          '''
+          new = '''  const explicitSelection = input.selectedArtifactIds !== undefined
+          const selectedIds = explicitSelection
+            ? new Set(input.selectedArtifactIds)
+            : new Set(preview.candidates
+              .filter((candidate) => candidate.defaultSelected)
+              .map((candidate) => candidate.artifactId))
+          if (selectedIds.size === 0) {
+            issues.push(info(explicitSelection
+              ? "No task snapshot artifacts were selected."
+              : "No task snapshot artifacts are safe for automatic import; review and select candidates explicitly."))
+            return { ok: false, importedCount: 0, issues, previewDigest: preview.previewDigest }
+          }
+          '''
+          if old not in text:
+            raise SystemExit("implicit-selection anchor not found")
+          source.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          test = Path("extensions/workflow-register/test/workflowTaskSnapshotImportSafeDefaults.test.js")
+          test.write_text(r'''const assert = require("node:assert/strict")
+          const { test } = require("node:test")
+
+          function workflow() {
+            return {
+              id: "workflow-register.snapshot-safe-defaults",
+              name: "snapshot-safe-defaults",
+              label: "Snapshot Safe Defaults",
+              description: "Safe implicit task snapshot import.",
+              schemaVersion: "workflow-register/v1",
+              definitionHash: "sha256:safe-defaults",
+              filePath: ".bob/workflows/snapshot-safe-defaults/WORKFLOW.md",
+              inputs: {},
+              artifacts: [
+                { id: "draft", producedBy: "draft", path: ".bob/workflows/runs/{{run.id}}/artifacts/draft/draft.md", schema: "text/markdown" },
+                { id: "summary", producedBy: "summary", path: ".bob/workflows/runs/{{run.id}}/artifacts/summary/summary.md", schema: "text/markdown" }
+              ],
+              engineSteps: [
+                { id: "draft", title: "Draft", type: "agent", prompt: "Draft", resultKey: "draft" },
+                { id: "summary", title: "Summary", type: "agent", prompt: "Summary", resultKey: "summary" }
+              ]
+            }
+          }
+
+          function run() {
+            return {
+              runId: "run-safe-defaults",
+              workflowId: "workflow-register.snapshot-safe-defaults",
+              workflowName: "Snapshot Safe Defaults",
+              status: "completed",
+              inputs: {},
+              state: {},
+              steps: [
+                { id: "draft", title: "Draft", type: "agent", status: "completed" },
+                { id: "summary", title: "Summary", type: "agent", status: "completed" }
+              ],
+              createdAt: "2026-07-12T00:00:00.000Z",
+              updatedAt: "2026-07-12T00:00:01.000Z"
+            }
+          }
+
+          function snapshots() {
+            return [
+              {
+                schemaVersion: "workflow-register/task-snapshot/v1",
+                createdAt: "2026-07-12T00:00:02.000Z",
+                reason: "agent-output",
+                runId: "run-safe-defaults",
+                workflowId: "workflow-register.snapshot-safe-defaults",
+                workflowDefinitionHash: "sha256:safe-defaults",
+                stepId: "draft",
+                lastAssistantText: "partial draft",
+                truncated: true,
+                omittedMessageCount: 2
+              },
+              {
+                schemaVersion: "workflow-register/task-snapshot/v1",
+                createdAt: "2026-07-12T00:00:03.000Z",
+                reason: "agent-output",
+                runId: "run-safe-defaults",
+                workflowId: "workflow-register.snapshot-safe-defaults",
+                workflowDefinitionHash: "sha256:safe-defaults",
+                stepId: "summary",
+                lastAssistantText: "token=[REDACTED]"
+              }
+            ]
+          }
+
+          function snapshotStore() {
+            const items = snapshots()
+            return {
+              findLatestSnapshot: async (_runId, predicate) => {
+                for (const item of [...items].reverse()) if (predicate(item)) return structuredClone(item)
+                return undefined
+              }
+            }
+          }
+
+          test("implicit import writes only default-safe candidates", async () => {
+            const { importArtifactsFromTaskSnapshots } = require("../out/core/artifacts/taskSnapshotImport")
+            const targetRun = run()
+            let writeCalls = 0
+
+            const result = await importArtifactsFromTaskSnapshots({
+              workflow: workflow(),
+              run: targetRun,
+              snapshotStore: snapshotStore(),
+              writeFiles: async () => { writeCalls += 1 }
+            })
+
+            assert.equal(result.ok, false)
+            assert.equal(result.importedCount, 0)
+            assert.equal(writeCalls, 0)
+            assert.deepEqual(targetRun.state, {})
+            assert.match(result.issues.map((issue) => issue.message).join("\n"), /safe for automatic import|select candidates explicitly/i)
+          })
+
+          test("an explicitly reviewed truncated candidate remains importable", async () => {
+            const { importArtifactsFromTaskSnapshots } = require("../out/core/artifacts/taskSnapshotImport")
+            const { previewArtifactsFromTaskSnapshots } = require("../out/core/artifacts/taskSnapshotImportPreview")
+            const targetRun = run()
+            const store = snapshotStore()
+            const preview = await previewArtifactsFromTaskSnapshots({
+              workflow: workflow(),
+              run: targetRun,
+              snapshotStore: store,
+              readFile: async () => undefined
+            })
+            let writeCalls = 0
+
+            const result = await importArtifactsFromTaskSnapshots({
+              workflow: workflow(),
+              run: targetRun,
+              snapshotStore: store,
+              readFile: async () => undefined,
+              selectedArtifactIds: ["draft"],
+              expectedPreviewDigest: preview.previewDigest,
+              writeFiles: async (_writes, commitState) => {
+                writeCalls += 1
+                await commitState()
+              }
+            })
+
+            assert.equal(result.ok, true, result.issues.map((issue) => issue.message).join("\n"))
+            assert.equal(result.importedCount, 1)
+            assert.equal(writeCalls, 1)
+            assert.equal(targetRun.state.draft, "partial draft")
+            assert.equal(targetRun.state.summary, undefined)
+          })
+          ''', encoding="utf-8")
+          PY
+
+      - name: Verify focused contracts
+        working-directory: extensions/workflow-register
+        run: |
+          npm ci
+          npm run compile
+          node --test \
+            test/workflowTaskSnapshotImportSafeDefaults.test.js \
+            test/workflowTaskSnapshotImportPreview.test.js \
+            test/workflowTaskSnapshotImportSelectiveApply.test.js \
+            test/workflowTaskSnapshotArtifactImport.test.js \
+            test/taskSnapshotImportReport.test.js \
+            test/workflowTaskSnapshotImportCommand.test.js \
+            test/operationHubTaskSnapshotImport.test.js
+
+      - name: Commit verified fix and remove temporary workflow
+        shell: bash
+        run: |
+          rm .github/workflows/task-snapshot-safe-defaults-fix.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "fix: keep unsafe task snapshots explicitly selected"
+          git push origin HEAD:${{ github.head_ref }}
