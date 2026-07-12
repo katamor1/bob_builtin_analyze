@@ -19,6 +19,9 @@
 - `review-run-v3-iteration1-ja.md`  
   Review Run Wizard v3 Iteration 1 のrun schema、artifact配置、ID/path安全性、Review GUIからResult Capture・Human Triageへのhandoff、互換性、テスト、UATをまとめた実装仕様書です。
 
+- `review-run-id-allocation-ja.md`  
+  同一campaign内で既存・legacy・並行Review Runを上書きしない、`-02`以降のcollision-safe ID予約契約をまとめています。
+
 ## テスト仕様書
 
 - `unit-test-spec-ja.md`  
