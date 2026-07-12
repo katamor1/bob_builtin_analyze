@@ -1,9 +1,7 @@
 name: agent-diagnose-workflow-register-ci
 
 on:
-  push:
-    branches:
-      - agent/workflow-automatic-pause-limits-20260712
+  pull_request:
     paths:
       - ".github/workflows/agent-diagnose-workflow-register-ci.yml"
       - "extensions/workflow-register/**"
@@ -13,7 +11,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: agent-diagnose-workflow-register-ci-${{ github.ref }}
+  group: agent-diagnose-workflow-register-ci-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
