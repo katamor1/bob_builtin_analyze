@@ -28,18 +28,11 @@ jobs:
 
           path = Path("extensions/workflow-register/src/core/runtime/runStatePath.ts")
           text = path.read_text()
-          old = '''      if (entry.isFile() && isOwnedRunTempFile(entry.name)) continue
-                assertSafeWorkflowRunId(entry.name)
-                entries.push(entry.name)
-          '''
-          new = '''      if (entry.isFile() && isOwnedRunTempFile(entry.name)) continue
-                assertSafeWorkflowRunId(entry.name)
-                await directDirectoryChain(root, [...RUNS_ROOT_SEGMENTS, entry.name], false)
-                entries.push(entry.name)
-          '''
+          old = "      assertSafeWorkflowRunId(entry.name)\n      entries.push(entry.name)"
+          new = "      assertSafeWorkflowRunId(entry.name)\n      await directDirectoryChain(root, [...RUNS_ROOT_SEGMENTS, entry.name], false)\n      entries.push(entry.name)"
           if old not in text:
               raise SystemExit("runStatePath target not found")
-          path.write_text(text.replace(old, new))
+          path.write_text(text.replace(old, new, 1))
 
           path = Path("extensions/workflow-register/test/runStateStorePathBoundary.test.js")
           text = path.read_text()
@@ -47,18 +40,15 @@ jobs:
           new_import = 'const { CURRENT_WORKFLOW_RUN_STATE_SCHEMA_VERSION, FileRunStateStore } = require("../out/core/runStateStore")'
           if old_import not in text:
               raise SystemExit("test import target not found")
-          text = text.replace(old_import, new_import)
-          old_test = '''test("FileRunStateStore retries a contained atomic replacement detected between open and read", async (t) => {
-            const workspaceRoot = await makeWorkspace()
-            const store = new FileRunStateStore({ workspaceRoot })
+          text = text.replace(old_import, new_import, 1)
+
+          old_setup = '''  const store = new FileRunStateStore({ workspaceRoot })
             await store.saveRun(runState("run-1", "initial"))
             const runFile = path.join(workspaceRoot, ".bob", "workflows", "runs", "run-1", "run.json")
             const replacementFile = path.join(path.dirname(runFile), "replacement.json")
             await fs.writeFile(replacementFile, `${JSON.stringify(runState("run-1", "replacement"), null, 2)}\n`)
           '''
-          new_test = '''test("FileRunStateStore retries a contained atomic replacement detected between open and read", async (t) => {
-            const workspaceRoot = await makeWorkspace()
-            const store = new FileRunStateStore({ workspaceRoot })
+          new_setup = '''  const store = new FileRunStateStore({ workspaceRoot })
             const runFile = path.join(workspaceRoot, ".bob", "workflows", "runs", "run-1", "run.json")
             const replacementFile = path.join(path.dirname(runFile), "replacement.json")
             const initial = { ...runState("run-1", "initial"), schemaVersion: CURRENT_WORKFLOW_RUN_STATE_SCHEMA_VERSION }
@@ -67,9 +57,11 @@ jobs:
             await fs.writeFile(runFile, `${JSON.stringify(initial, null, 2)}\n`)
             await fs.writeFile(replacementFile, `${JSON.stringify(replacement, null, 2)}\n`)
           '''
-          if old_test not in text:
+          old_setup = old_setup.replace("            ", "  ")
+          new_setup = new_setup.replace("            ", "  ")
+          if old_setup not in text:
               raise SystemExit("atomic replacement test target not found")
-          path.write_text(text.replace(old_test, new_test))
+          path.write_text(text.replace(old_setup, new_setup, 1))
           PY
 
       - name: Restore production workflow
