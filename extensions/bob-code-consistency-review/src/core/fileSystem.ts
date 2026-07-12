@@ -10,6 +10,8 @@ export type WorkspacePathKind =
   | "traceability-catalog"
   | "traceability-gate-report"
   | "traceability-ai-draft-output"
+  | "repository-symbol-index-output"
+  | "repository-symbol-index-cache"
 
 type WorkspacePathPolicy = {
   label: string
@@ -60,6 +62,22 @@ const WORKSPACE_PATH_POLICIES: Record<WorkspacePathKind, WorkspacePathPolicy> = 
     label: "aiTraceabilityDraftPromptPath",
     description: ".bob-trace/ai-traceability-draft/",
     allow: (segments) => startsWithSegments(segments, [".bob-trace", "ai-traceability-draft"])
+  },
+  "repository-symbol-index-output": {
+    label: "repositorySymbolIndexPath",
+    description: ".bob/evidence-scope/*.json or .custom/*.json",
+    allow: (segments) => (
+      startsWithSegments(segments, [".bob", "evidence-scope"]) && segments.length >= 3 ||
+      customPath(segments)
+    ) && /\.json$/i.test(segments[segments.length - 1])
+  },
+  "repository-symbol-index-cache": {
+    label: "repositorySymbolIndexCachePath",
+    description: ".bob/evidence-scope/*.cache.json or .custom/*.cache.json",
+    allow: (segments) => (
+      startsWithSegments(segments, [".bob", "evidence-scope"]) && segments.length >= 3 ||
+      customPath(segments)
+    ) && /\.cache\.json$/i.test(segments[segments.length - 1])
   }
 }
 
