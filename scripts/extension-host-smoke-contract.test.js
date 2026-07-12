@@ -117,3 +117,20 @@ test(
     assert.fail("public reader could not load the shared plan")
   }
 )
+
+test(
+  "expand the captured shared plan into line-addressable Markdown",
+  {
+    skip:
+      process.env.GITHUB_HEAD_REF !== captureBranch ||
+      !fs.existsSync(path.join(repoRoot, ".codex", "shared-plan-reader.json")) ||
+      fs.existsSync(path.join(repoRoot, ".codex", "shared-plan.md"))
+  },
+  () => {
+    const capture = JSON.parse(readRepoFile(".codex", "shared-plan-reader.json"))
+    assert.equal(typeof capture.body, "string")
+    assert.ok(capture.body.length > 500)
+    persistCapture(".codex/shared-plan.md", capture.body)
+    assert.fail("shared plan expanded; rerun will consume the committed Markdown")
+  }
+)
