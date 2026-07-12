@@ -131,13 +131,14 @@ function renderItem(item: ConsistencyHumanTriageItem): string {
       ${sourceLine("Bob reason", item.source_reason)}
       ${sourceLine("impact", item.impact)}
       ${sourceLine("recommended action", item.recommended_action ?? item.suggested_action)}
+      ${sourceLine("suggested owner", item.suggested_owner)}
       ${sourceLine("human check", item.human_check)}
       ${renderEvidence(item)}
     </div>
     <div class="fields">
       <label class="field">decision<select data-field="decision">${decisionOptions(item.decision)}</select></label>
       <label class="field">final severity<select data-field="final_severity">${severityOptions(item.final_severity)}</select></label>
-      <label class="field">owner<input data-field="owner" value="${escapeHtml(item.owner ?? item.suggested_owner ?? "")}"></label>
+      <label class="field">owner<input data-field="owner" value="${escapeHtml(item.owner ?? "")}"></label>
       <label class="field">suggested recipient<input data-field="suggested_recipient" value="${escapeHtml(item.suggested_recipient ?? "")}"></label>
       <label class="field wide">human reason<textarea data-field="reason">${escapeHtml(item.reason ?? "")}</textarea></label>
       <label class="field wide">review comment<textarea data-field="review_comment">${escapeHtml(item.review_comment ?? "")}</textarea></label>
