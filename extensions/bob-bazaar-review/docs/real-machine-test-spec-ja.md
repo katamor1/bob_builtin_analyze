@@ -2,7 +2,7 @@
 
 ## 1. 目的
 
-本書は `extensions/bob-bazaar-review` の実機テスト仕様を定義する。単体テストでは mock 化する VS Code Extension Host、IBM Bob、workflow-register、Bob Workflow UI、Webview、Bazaar CLI、MCP server、multi-root workspace、実ファイル I/O を含めて確認する。
+本書は `extensions/bob-bazaar-review` の実機テスト仕様を定義する。Review Runの中断・再開・finalize・legacy recoveryも対象とする。単体テストでは mock 化する VS Code Extension Host、IBM Bob、workflow-register、Bob Workflow UI、Webview、Bazaar CLI、MCP server、multi-root workspace、実ファイル I/O を含めて確認する。
 
 ## 2. テスト対象
 
@@ -461,6 +461,105 @@ bazaar_test/branch2/
 | 手順 | 1. `summary.md` を開く。<br>2. 件数、採用/棄却/追加調査、所要時間、warning を確認する。 |
 | 期待結果 | Phase 1 実績報告へ転記でき、triage missing や invalid record が隠れない。 |
 
+### 6.6 Review Run Wizard v3 Iteration 2
+
+#### BZR-RT-044 Review Run開始とartifact関連付け
+
+1. Review GUIでcampaignとsingle revisionを選ぶ。
+2. Review Runを開始する。
+3. record directoryとresult directoryを確認する。
+
+期待結果:
+
+- `review-run.json`と`review-packet.md`が同じcampaign / review IDで作成される。
+- packetのReview Run sectionにexact `review_id`契約がある。
+- phaseはpacket completed、result in_progressになる。
+- workspace外pathやunsafe IDは保存前に拒否される。
+
+#### BZR-RT-045 VS Code再起動後の再開
+
+1. packet保存後、Result Capture前にVS Codeを閉じる。
+2. 同じworkspaceを開きReview GUIを再表示する。
+3. 未完了Review Runを選択し再開する。
+
+期待結果:
+
+- runが`updatedAt`順の候補に表示される。
+- next actionが`resultCapture`になる。
+- campaign / review ID、packetを再入力・再生成しない。
+- result保存後に再度中断した場合はHuman Triageから再開する。
+
+#### BZR-RT-046 decision別Human Triage validation
+
+各decisionについて不足値を作り、保存を試す。
+
+| decision | 不足時に拒否するfield |
+| --- | --- |
+| `accepted` | ownerとactionの両方 |
+| `rejected` | reason |
+| `needs_investigation` | ownerまたはaction |
+| `deferred` | reason |
+
+期待結果:
+
+- Webviewでfinding行ごとの不足を表示する。
+- host側validationでも保存を拒否する。
+- 修正後はtriage phaseがcompletedになる。
+
+#### BZR-RT-047 Metricsの自動計測と補正
+
+1. packetを保存してからvalid resultを保存する。
+2. Human Triageを完了する。
+3. baseline / Bob / Human Triage時間を確認する。
+4. 有効値、負数、NaN相当、30日超を入力する。
+
+期待結果:
+
+- Bob reviewとHuman Triageの経過時間が自動記録される。
+- valid補正は`user_corrected`として残る。
+- invalid補正は拒否される。
+- 完了済みtriageを再保存してもHuman Triage時間を二重加算しない。
+
+#### BZR-RT-048 Review Run一括finalize
+
+1. valid triageまで進める。
+2. metricsを確認・補正する。
+3. `Review Runを完了して集計`を実行する。
+
+期待結果:
+
+- `record.yaml`が生成・検証される。
+- campaign `summary.json` / `summary.md`が再生成される。
+- record / summary phaseとReview Run全体がcompletedになる。
+- target、packet、result、triage、record、summaryが同じcampaign / review IDで結び付く。
+
+#### BZR-RT-049 Summary失敗からの再試行
+
+1. summary出力先をdirectoryにするなど、summary writeだけが失敗するfixtureを作る。
+2. finalizeを実行する。
+3. failure causeを解消し、古いHuman Triage画面から再度finalizeする。
+
+期待結果:
+
+- `record.yaml`を保持し、record phaseはcompletedのままになる。
+- summaryだけfailedになり、retryable issueが表示される。
+- 再操作時にpersisted stateへ追従し、recordを作り直さずsummaryから続行する。
+- 最終的にReview Runがcompletedになる。
+
+#### BZR-RT-050 Legacy artifact recovery
+
+1. `review-run.json`のないresult / packet / triage / recordを用意する。
+2. Review GUIからlegacy recoveryを開く。
+3. 単一campaign、複数campaign、review ID不一致、既存runの各ケースを試す。
+
+期待結果:
+
+- 推測target、artifact、warningをpreviewとmodal確認で表示する。
+- 複数campaignは明示選択までblockする。
+- ID不一致と既存run上書きを拒否する。
+- 承認後に追加されるのは`review-run.json`だけである。
+- 既存packet / result / triage / recordのbytesが変化しない。
+
 ## 7. 実機テスト結果記録テンプレート
 
 | 項目 | 記入欄 |
@@ -486,6 +585,9 @@ bazaar_test/branch2/
 - Bazaar CLI 読み取り操作が `--no-aliases` 経路で実行され、packet が生成できる。
 - review-result JSON / Markdown が `.bob/review/results` に保存できる。
 - Phase 1 record / triage / summary が `.bob-review-records` に保存できる。
+- Review Runの開始、画面間handoff、中断再開、decision validation、metrics、finalizeが合格する。
+- summary失敗時にrecordを保持し、失敗phaseから再試行できる。
+- legacy recoveryが確認付きかつ非破壊である。
 - active editor validation と MCP result tools が保存済み result を扱える。
 - Bob Workflow UI 経由で主要 provider が provider missing にならない。
 - multi-root で `.bob` と `.bzr` の責務分離が守られる。
@@ -495,8 +597,8 @@ bazaar_test/branch2/
 
 | 優先度 | 対象 |
 | --- | --- |
-| P0 | 起動、project rules 初期化、GUI packet 生成、direct reviewRevision、capture、validation。 |
-| P1 | workflow-register provider、Bob Workflow UI、MCP initialize / tools/list、multi-root、Phase 1 record / triage / summary。 |
+| P0 | 起動、project rules初期化、Review Run開始、packet、capture、Human Triage、標準finalize。 |
+| P1 | 中断再開、summary failure retry、legacy recovery、workflow provider、MCP、multi-root。 |
 | P2 | revisionRange、working tree、Shift-JIS / CP932、diff / added file truncation。 |
 | P3 | file save fallback、Bob 拡張なし fallback、unsafe input、OS 差分。 |
 

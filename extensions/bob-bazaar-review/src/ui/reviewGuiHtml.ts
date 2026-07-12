@@ -4,7 +4,11 @@ import type { BazaarReviewInitialTarget } from "./reviewGuiTypes"
 
 export function renderHtml(cspSource: string, initialTarget?: BazaarReviewInitialTarget): string {
   const nonce = createNonce()
-  const initialTargetJson = JSON.stringify(initialTarget ?? {}).replace(/</g, "\\u003c")
+  const initialTargetJson = JSON.stringify(initialTarget ?? {}).replace(/</g, "\u003c")
+  const script = renderReviewGuiScript(nonce, initialTargetJson).replace(
+    `    $("refreshReviewRuns").onclick = () => vscode.postMessage({ type: "refreshReviewRuns" })`,
+    `    $("refreshReviewRuns").onclick = () => vscode.postMessage({ type: "refreshReviewRuns" })\n    $("recoverLegacyReview").onclick = () => vscode.postMessage({ type: "recoverLegacyReview" })`
+  )
 
   return `<!DOCTYPE html>
 <html lang="ja">
@@ -19,7 +23,12 @@ export function renderHtml(cspSource: string, initialTarget?: BazaarReviewInitia
   <style>${REVIEW_GUI_STYLE}</style>
 </head>
 <body>${REVIEW_GUI_BODY}
-  ${renderReviewGuiScript(nonce, initialTargetJson)}
+  <div class="card">
+    <h2>Legacy Review Recovery</h2>
+    <div class="small">既存packet/result/triage/recordを変更せず、確認後にreview-run.jsonだけを生成します。</div>
+    <div class="row" style="margin-top:10px"><button class="secondary" id="recoverLegacyReview">legacy成果物から復旧</button></div>
+  </div>
+  ${script}
 </body>
 </html>`
 }

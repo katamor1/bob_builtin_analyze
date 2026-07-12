@@ -18,6 +18,7 @@ export function createTriageDraft(reviewResult: any, options: TriageDraftOptions
   const findings = Array.isArray(reviewResult?.findings) ? reviewResult.findings : []
   const checklistResults = Array.isArray(reviewResult?.checklist_results) ? reviewResult.checklist_results : []
   const items: TriageItem[] = []
+  const defaultOwner = optionalString(options.triagedBy)
 
   const findingRuleIds = new Set<string>()
   for (const finding of findings) {
@@ -29,6 +30,7 @@ export function createTriageDraft(reviewResult: any, options: TriageDraftOptions
       rule_id: ruleId,
       decision: "needs_investigation",
       action: "investigate",
+      owner: defaultOwner,
       reason: typeof finding?.title === "string" ? finding.title : "Bob finding requires human review."
     })
   }
@@ -42,6 +44,7 @@ export function createTriageDraft(reviewResult: any, options: TriageDraftOptions
       rule_id: ruleId,
       decision: "needs_investigation",
       action: "investigate",
+      owner: defaultOwner,
       reason: typeof checklist?.reason === "string" ? checklist.reason : "Failed checklist rule has no finding."
     })
   }
@@ -87,9 +90,8 @@ export function validateTriage(triage: any, reviewResult?: any): string[] {
     }
     if (!TRIAGE_DECISIONS.includes(item?.decision)) {
       issues.push(`items[${index}].decision has invalid decision: ${item?.decision}`)
-    }
-    if (item?.decision === "accepted" && (typeof item?.action !== "string" || !item.action.trim())) {
-      issues.push(`items[${index}].action is required when decision is accepted`)
+    } else {
+      issues.push(...validateDecisionFields(item, index))
     }
   })
   if (knownFindingIds) {
@@ -120,6 +122,27 @@ export function summarizeTriageItems(items: TriageItem[]): TriageSummary {
   }
 }
 
+function validateDecisionFields(item: any, index: number): string[] {
+  const issues: string[] = []
+  const owner = optionalString(item?.owner)
+  const action = optionalString(item?.action)
+  const reason = optionalString(item?.reason)
+  if (item?.decision === "accepted" && !owner && !action) {
+    issues.push(`items[${index}].owner or action is required when decision is accepted`)
+  }
+  if (item?.decision === "rejected" && !reason) {
+    issues.push(`items[${index}].reason is required when decision is rejected`)
+  }
+  if (item?.decision === "needs_investigation") {
+    if (!owner) issues.push(`items[${index}].owner is required when decision is needs_investigation`)
+    if (!action) issues.push(`items[${index}].action is required when decision is needs_investigation`)
+  }
+  if (item?.decision === "deferred" && !reason) {
+    issues.push(`items[${index}].reason is required when decision is deferred`)
+  }
+  return issues
+}
+
 function knownReviewFindingIds(reviewResult: any): Set<string> | undefined {
   if (!reviewResult) return undefined
   const ids = new Set<string>()
@@ -141,4 +164,8 @@ function requireString(value: unknown, fieldName: string): string {
     throw new Error(`${fieldName} is required`)
   }
   return value
+}
+
+function optionalString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined
 }

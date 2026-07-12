@@ -5,17 +5,17 @@ const path = require("node:path")
 const { test } = require("node:test")
 
 const { reviewRunJsonPath } = require("../out/reviewRuns/reviewRunPaths")
-const { createReviewRunContext } = require("../out/reviewRuns/reviewRunState")
-const { readReviewRun, writeReviewRun } = require("../out/reviewRuns/reviewRunStore")
+const { advanceReviewRun, createReviewRunContext } = require("../out/reviewRuns/reviewRunState")
+const { listReviewRuns, readReviewRun, writeReviewRun } = require("../out/reviewRuns/reviewRunStore")
 
-async function makeRun() {
-  const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "bbr-review-run-"))
+async function makeRun(overrides = {}) {
+  const workspaceRoot = overrides.workspaceRoot ?? await fs.mkdtemp(path.join(os.tmpdir(), "bbr-review-run-"))
   const run = createReviewRunContext({
     workspaceRoot,
-    campaignId: "campaign-1",
-    reviewId: "review-1",
+    campaignId: overrides.campaignId ?? "campaign-1",
+    reviewId: overrides.reviewId ?? "review-1",
     target: { mode: "singleRevision", repositoryRoot: workspaceRoot, revision: "1" },
-    now: "2026-07-12T00:00:00.000Z"
+    now: overrides.now ?? "2026-07-12T00:00:00.000Z"
   })
   return { workspaceRoot, run }
 }
@@ -60,4 +60,68 @@ test("removes its temporary file when replacement fails", async () => {
   await assert.rejects(() => writeReviewRun(run))
   const files = await fs.readdir(path.dirname(filePath))
   assert.deepEqual(files, ["review-run.json"])
+})
+
+test("rejects a stale Review Run update and preserves the newer state", async () => {
+  const { workspaceRoot, run } = await makeRun()
+  await writeReviewRun(run)
+  const firstReader = await readReviewRun(workspaceRoot, run.campaignId, run.reviewId)
+  const staleReader = await readReviewRun(workspaceRoot, run.campaignId, run.reviewId)
+
+  const newer = advanceReviewRun(firstReader, {
+    phase: "packet",
+    artifacts: { reviewPacketPath: "packet.md" },
+    now: "2026-07-12T00:01:00.000Z"
+  })
+  await writeReviewRun(newer, { expectedUpdatedAt: firstReader.updatedAt })
+
+  const staleUpdate = advanceReviewRun(staleReader, {
+    phase: "packet",
+    artifacts: { reviewPacketPath: "stale-packet.md" },
+    now: "2026-07-12T00:02:00.000Z"
+  })
+  await assert.rejects(
+    () => writeReviewRun(staleUpdate, { expectedUpdatedAt: staleReader.updatedAt }),
+    /changed since it was loaded/
+  )
+  assert.equal((await readReviewRun(workspaceRoot, run.campaignId, run.reviewId)).artifacts.reviewPacketPath, "packet.md")
+})
+
+test("lists normalized Review Runs newest first and skips templates and symlinks", async (t) => {
+  const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "bbr-review-run-list-"))
+  const first = (await makeRun({
+    workspaceRoot,
+    campaignId: "campaign-a",
+    reviewId: "review-a",
+    now: "2026-07-12T00:00:00.000Z"
+  })).run
+  const second = (await makeRun({
+    workspaceRoot,
+    campaignId: "campaign-b",
+    reviewId: "review-b",
+    now: "2026-07-12T01:00:00.000Z"
+  })).run
+  await writeReviewRun(first)
+  await writeReviewRun(second)
+
+  const templateDirectory = path.join(workspaceRoot, ".bob-review-records", "campaigns", "campaign-a", "records", "_template")
+  await fs.mkdir(templateDirectory, { recursive: true })
+  await fs.writeFile(path.join(templateDirectory, "review-run.json"), "{}", "utf8")
+
+  const recordsRoot = path.join(workspaceRoot, ".bob-review-records", "campaigns", "campaign-a", "records")
+  const outside = await fs.mkdtemp(path.join(os.tmpdir(), "bbr-review-run-list-outside-"))
+  try {
+    await fs.symlink(outside, path.join(recordsRoot, "linked-review"), process.platform === "win32" ? "junction" : "dir")
+  } catch (error) {
+    if (["EPERM", "EACCES", "ENOTSUP"].includes(error?.code)) {
+      t.diagnostic(`symlink assertion skipped: ${error.code}`)
+    } else {
+      throw error
+    }
+  }
+
+  const runs = await listReviewRuns(workspaceRoot)
+  assert.deepEqual(runs.map((item) => item.reviewId), ["review-b", "review-a"])
+  assert.equal(runs.every((item) => item.status === "in_progress"), true)
+  assert.equal(runs.every((item) => item.phases.target.status === "completed"), true)
 })

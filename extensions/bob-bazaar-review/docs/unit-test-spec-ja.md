@@ -236,6 +236,41 @@
 - 入力: valid review-result。
 - 期待結果: artifact metadata の `producer_version` が `package.json` の version と一致する。
 
+### BZR-UT-042 Review Run: progressとIteration 1互換を維持する
+
+- 入力: 新規Review Runと、`phases` / `metrics`を持たないIteration 1の`review-run.json`。
+- 期待結果: 6 phaseが補完され、必須artifactなしの`completed`を拒否し、読み書き後も未設定fieldのshapeが変化しない。
+
+### BZR-UT-043 Review Run: metricsを計測・補正する
+
+- 入力: Bob review / Human Triageの開始・終了時刻と手動補正値。
+- 期待結果: 秒を加算し分へ小数第1位で変換する。負数、NaN、Infinity、30日超を拒否する。
+
+### BZR-UT-044 Review Run: stale writeと同一run更新競合を拒否する
+
+- 入力: 同じrunを2回読み、片方を保存した後の古いcontext。
+- 期待結果: `Review Run changed since it was loaded`で拒否し、先に保存された状態を保持する。
+
+### BZR-UT-045 Human Triage: decision別必須入力を検証する
+
+- 入力: `accepted`、`rejected`、`needs_investigation`、`deferred`の各item。
+- 期待結果: owner / action / reasonの契約違反をitem path付きで返し、validな組合せは通る。
+
+### BZR-UT-046 Review Run: finalizeと失敗phase再試行を保証する
+
+- 入力: valid packet/result/triage、計測済みmetrics、summary出力を一度失敗させるfilesystem fixture。
+- 期待結果: recordを保持したままsummaryだけfailedになり、stale caller contextから再試行してcompletedへ進む。完了済みtriageの再保存で時間を二重加算しない。
+
+### BZR-UT-047 Review Run: 未完了runの再開位置を判定する
+
+- 入力: target / packet / result / triage / record / completedの各状態。
+- 期待結果: `review`、`resultCapture`、`humanTriage`、`finalize`、`none`をartifactとphase statusから判定する。
+
+### BZR-UT-048 Review Run: legacy artifactを非破壊復旧する
+
+- 入力: resultのみ、packet/triage/record付き、ID不一致、複数campaign、既存runの各fixture。
+- 期待結果: previewでblocking issueを返し、確認済みケースだけ`review-run.json`を追加する。既存artifact bytesは変更しない。
+
 ## 4.1 実テスト対応表
 
 | 観点 | 主な testcase ID | 実テスト file |
@@ -247,7 +282,9 @@
 | workflow bridge / provider / step completion | BZR-UT-018〜021、035〜036 | `test/workflowBridge.test.js`, `test/workflowProviderRegistration.test.js`, `test/workflowStepCompletion.test.js`, `test/workflowTemplate.test.js` |
 | project rules / capture / validation / result store | BZR-UT-022〜031、041 | `test/projectRulesPath.test.js`, `test/resultCaptureCore.test.js`, `test/reviewResultsStore.test.js`, `test/mcpServerVersion.test.js` |
 | MCP server / write tools / allowed roots | BZR-UT-032〜034、037〜038 | `test/mcpWriteTools.test.js`, `test/mcpAllowedRoots.test.js`, `test/mcpRequestLimit.test.js`, `test/mcpSourceLayout.test.js` |
-| review record / triage / campaign summary | BZR-UT-039〜040 | `test/reviewRecordsCore.test.js`, `test/reviewRecordCommands.test.js`, `test/phase1RecordTemplates.test.js` |
+| review record / triage / campaign summary | BZR-UT-039〜040、045 | `test/reviewRecordsCore.test.js`, `test/reviewRecordCommands.test.js`, `test/phase1RecordTemplates.test.js` |
+| Review Run progress / metrics / stale write / finalize | BZR-UT-042〜046 | `test/reviewRunState.test.js`, `test/reviewRunMetrics.test.js`, `test/reviewRunStore.test.js`, `test/reviewRunFinalize.test.js` |
+| Review Run resume / legacy recovery / GUI contract | BZR-UT-047〜048 | `test/reviewRunResume.test.js`, `test/reviewRunRecovery.test.js`, `test/guiFirstSurfaces.test.js` |
 | docs / source layout contracts | BZR-UT-036 | `test/architectureContracts.test.js`, `test/extensionSourceLayout.test.js` |
 
 ## 5. 非機能観点
@@ -257,6 +294,7 @@
 - Bob extension / workflow-register extension の有無は `vscode.extensions.getExtension` stub で制御する。
 - 日本語 fixture は UTF-8 と Shift-JIS / CP932 の両方を持つ。
 - file path のテストは Windows / POSIX 差異を吸収する。
+- Review Runのartifact testは一時workspace内で行い、symlink / stale write / failure retryを外部状態へ依存せず再現する。
 
 ## 6. 完了条件
 
@@ -264,6 +302,7 @@
 - `node --test test/*.test.js` が成功する。
 - Bazaar CLI、VS Code、Bob、workflow-register の実体が無くてもテストが完結する。
 - readonly 境界、path validation、workspace 分離、result 保存が回帰テストで守られる。
+- Review Runの再開、metrics、decision validation、finalize retry、legacy recoveryが回帰テストで守られる。
 
 <!-- REMEDIATION-2026-07-11 -->
 ## 2026-07-11 追加単体テスト契約

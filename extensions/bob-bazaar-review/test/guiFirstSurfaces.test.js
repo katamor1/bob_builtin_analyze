@@ -23,7 +23,7 @@ test("package and extension expose Review Run-aware capture and triage commands"
   assert.match(source, /openBazaarHumanTriageGui\(context, input\)/)
 })
 
-test("Bazaar review GUI renders Review Run Wizard v3 and persists packet handoff", () => {
+test("Bazaar review GUI renders Review Run Wizard v3 resume and recovery surfaces", () => {
   const { renderHtml } = require("../out/ui/reviewGuiHtml")
   const html = renderHtml("vscode-resource:")
   const source = readSrc("ui/reviewGui.ts")
@@ -34,10 +34,25 @@ test("Bazaar review GUI renders Review Run Wizard v3 and persists packet handoff
   assert.match(html, /id="runState"/)
   assert.match(html, /id="openResultCapture"/)
   assert.match(html, /id="openHumanTriage"/)
+  assert.match(html, /id="incompleteRun"/)
+  assert.match(html, /id="refreshReviewRuns"/)
+  assert.match(html, /id="resumeReviewRun"/)
+  assert.match(html, /id="phaseStatuses"/)
+  assert.match(html, /id="runArtifacts"/)
+  assert.match(html, /id="recoverLegacyReview"/)
+  assert.match(html, /type: "refreshReviewRuns"/)
+  assert.match(html, /type: "resumeReviewRun"/)
+  assert.match(html, /type: "recoverLegacyReview"/)
   assert.match(source, /startReviewRun/)
   assert.match(source, /recordReviewPacket/)
   assert.match(source, /buildReviewRunMetadataSection/)
   assert.match(source, /reviewRunCommandInput/)
+  assert.match(source, /listReviewRuns/)
+  assert.match(source, /nextReviewRunAction/)
+  assert.match(source, /listLegacyReviewCandidates/)
+  assert.match(source, /previewLegacyReviewRecovery/)
+  assert.match(source, /recoverLegacyReviewRun/)
+  assert.doesNotMatch(html, /onclick=/)
 })
 
 test("Bazaar result capture GUI binds to an active Review Run", () => {
@@ -70,7 +85,7 @@ test("Bazaar result capture GUI binds to an active Review Run", () => {
   assert.doesNotMatch(html, /onclick=/)
 })
 
-test("Bazaar human triage GUI renders read-only Review Run identity and decision actions", () => {
+test("Bazaar human triage GUI renders metrics decision validation and finalize actions", () => {
   const { renderHumanTriageHtml } = require("../out/ui/humanTriageGuiHtml")
   const source = readSrc("ui/humanTriageGui.ts")
   const html = renderHumanTriageHtml({
@@ -82,12 +97,26 @@ test("Bazaar human triage GUI renders read-only Review Run identity and decision
       reviewResultJsonPath: ".bob/review/results/review-1.json",
       triagePath: ".bob-review-records/campaigns/phase1/records/review-1/triage.yaml",
       reviewRunBound: true,
+      reviewRunStatus: "in_progress",
+      phaseStatuses: {
+        target: "completed",
+        packet: "completed",
+        result: "completed",
+        triage: "completed",
+        record: "in_progress",
+        summary: "not_started"
+      },
+      baselineReviewMinutes: 15,
+      bobReviewMinutes: 2.5,
+      humanTriageMinutes: 1.2,
+      canFinalize: true,
       issues: [],
       items: [
         {
           finding_id: "F-1",
           rule_id: "RULE-1",
           decision: "needs_investigation",
+          owner: "team-a",
           action: "investigate",
           reason: "確認が必要"
         }
@@ -100,13 +129,23 @@ test("Bazaar human triage GUI renders read-only Review Run identity and decision
   assert.match(html, /id="campaignId"[^>]*readonly/)
   assert.match(html, /id="reviewId"[^>]*readonly/)
   assert.match(html, /id="reviewResultJsonPath"[^>]*readonly/)
+  assert.match(html, /id="baselineReviewMinutes"/)
+  assert.match(html, /id="bobReviewMinutes"/)
+  assert.match(html, /id="humanTriageMinutes"/)
   assert.match(html, /data-action="createTriage"/)
   assert.match(html, /data-action="saveDecisions"/)
-  assert.match(html, /data-action="generateSummary"/)
+  assert.match(html, /data-action="saveMetrics"/)
+  assert.match(html, /data-action="finalizeReviewRun"/)
+  assert.doesNotMatch(html, /data-action="generateSummary"/)
+  assert.match(html, /acceptedにはownerまたはaction/)
+  assert.match(html, /needs_investigationにはowner/)
   assert.match(html, /F-1/)
   assert.match(html, /needs_investigation/)
   assert.match(html, /nonce-456/)
   assert.match(source, /validateReviewRunCommandInput/)
+  assert.match(source, /recordTriageCompleted/)
+  assert.match(source, /correctActiveReviewRunMetrics/)
+  assert.match(source, /finalizeReviewRun/)
   assert.match(source, /vscode\.workspace\.workspaceFolders/)
   assert.doesNotMatch(html, /onclick=/)
 })
