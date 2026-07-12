@@ -96,6 +96,21 @@ export function reviewRunCommandInput(context: ReviewRunContext): ReviewRunComma
   }
 }
 
+export function validateReviewRunCommandInput(
+  input: ReviewRunCommandInput,
+  openWorkspaceRoots: string[]
+): ReviewRunCommandInput {
+  const workspaceRoot = path.resolve(input.workspaceRoot)
+  if (!openWorkspaceRoots.some((root) => isInsideOrSame(path.resolve(root), workspaceRoot))) {
+    throw new Error(`Review Run workspaceRoot must be inside an open workspace folder: ${input.workspaceRoot}`)
+  }
+  return {
+    workspaceRoot,
+    campaignId: validateReviewRunSegment(input.campaignId, "campaignId"),
+    reviewId: validateReviewRunSegment(input.reviewId, "reviewId")
+  }
+}
+
 export function buildReviewRunMetadataSection(context: ReviewRunContext): string {
   return [
     "## Review Run",
@@ -159,6 +174,11 @@ async function removeReservedDirectoryIfEmpty(directory: string): Promise<void> 
     if (isNodeError(error) && (error.code === "ENOENT" || error.code === "ENOTEMPTY" || error.code === "EEXIST")) return
     throw error
   }
+}
+
+function isInsideOrSame(root: string, target: string): boolean {
+  const relative = path.relative(root, target)
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative))
 }
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {
