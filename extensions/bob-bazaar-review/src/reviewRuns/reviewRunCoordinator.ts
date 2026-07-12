@@ -178,7 +178,7 @@ async function removeReservedDirectoryIfEmpty(directory: string): Promise<void> 
 
 function isInsideOrSame(root: string, target: string): boolean {
   const relative = path.relative(root, target)
-  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative))
+  return relative === "" || (relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative))
 }
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {
