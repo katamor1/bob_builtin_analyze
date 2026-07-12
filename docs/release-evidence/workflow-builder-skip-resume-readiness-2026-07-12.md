@@ -12,18 +12,22 @@
 | Verified implementation head | `91d8dcd56b8ef5ee336f09c34e5e7ec73f930055` |
 | Reviewed feature/evidence head | `4c774f8c5350562e1ed8b008b421c034b76aa5ae` |
 | Test-stabilization head | `49ce3001849820238e44c10a2ca33180796094ae` |
-| Latest main observed before final merge-result verification | `3e7f8b4283df654a76eb682a11b30f05ee4e4afc` |
+| Latest-main merge-result verification head | `2652efbd17a0612d7fffc1190a4e1e6ef0599f1a` |
+| Latest main observed for that merge result | `3e7f8b4283df654a76eb682a11b30f05ee4e4afc` |
 | Full suite | 789 passed / 0 failed / 0 skipped |
 | Implementation matrix | `extensions-quality` run `29201666388`: success |
 | Cleanup/evidence matrix | `extensions-quality` run `29202077515`: success |
 | Reviewed feature matrix | `extensions-quality` run `29202805399`: success |
+| Latest-main merge-result matrix | `extensions-quality` run `29203656774`: success |
 | Focused/full evidence | `workflow-builder-skip-resume-tdd` run `29201666390`: success |
 | Whole-diff review | Critical 0 / Important 0 |
-| Merge gate | **PENDING — current PR merge-result matrix** |
+| Merge gate | **GO** |
 
 `49ce3001849820238e44c10a2ca33180796094ae`はproduction codeを変更しない。`bobGateLifecycle.test.js`から1秒のwall-clock競争を除き、Node test runnerの20秒timeoutで同じreentrant rejectionと後続mutation解放を検証するtest-only stabilizationである。
 
-この証跡更新は、最新`main`とPR headからGitHubが生成するmerge resultを正式Linux / Windows matrixで再検証するための同期イベントでもある。最終run IDと判定はPR #82本文へ同期し、全job greenになるまでDraftを維持する。
+`2652efbd17a0612d7fffc1190a4e1e6ef0599f1a`に対するPR merge resultは、当時の最新`main`とheadをGitHubが統合して生成した。run `29203656774`で7ジョブすべてがgreenになったため、履歴上mainより遅れていること自体を未検証リスクとして残さない。
+
+この判定更新commit以降はrelease/review evidenceだけのtailであり、runtime、Webview、authoring model、test contractを変更しない。
 
 ## 2. Delivered behavior
 
@@ -53,7 +57,7 @@ Loaderはboolean `fileBound`だけを管理値として抽出し、それ以外�
 
 ## 4. Full quality gates
 
-Implementation headの`extensions-quality` run `29201666388`、cleanup/evidence headのrun `29202077515`、reviewed feature headのrun `29202805399`はいずれも成功した。
+Implementation headの`extensions-quality` run `29201666388`、cleanup/evidence headのrun `29202077515`、reviewed feature headのrun `29202805399`、latest-main merge-result run `29203656774`はいずれも成功した。
 
 - Linux `workflow-register`: unit、dependency / architecture / source / schema policy、audit、package、VSIX policy、Extension Host smokeが成功。
 - Windows `workflow-register`: unit、policy、package、VSIX policy、Extension Host smokeが成功。
@@ -61,7 +65,7 @@ Implementation headの`extensions-quality` run `29201666388`、cleanup/evidence 
 - Linux / Windows `bob-bazaar-review`: 成功。
 - Extension source metrics: 成功。
 
-Reviewed feature headでは7ジョブすべてが一回の正式matrixで成功した。
+Latest-main merge resultでも7ジョブすべてが一回の正式matrixで成功した。
 
 Custom full-suite evidenceでは次を記録した。
 
@@ -105,12 +109,11 @@ TDD evidence取得用の`.github/workflows/workflow-builder-skip-resume-tdd.yml`
 
 ## 8. Latest-main merge-result gate
 
-PR branchは長時間の並行開発中に`main`より履歴上遅れたが、GitHubの`pull_request` workflowは現在のbaseとheadから生成したmerge resultをcheckoutする。したがって、最新mainとの統合判定はbranch head単体の過去runではなく、この証跡commitが起動する正式matrixを正本とする。
+PR branchは長時間の並行開発中に`main`より履歴上遅れたが、GitHubの`pull_request` workflowは現在のbaseとheadから生成したmerge resultをcheckoutする。run `29203656774`は、この統合結果に対して次をすべて確認した。
 
-必須条件:
+- PRはmergeable。
+- Linux / Windows `workflow-register`のunit、policy、package、VSIX policy、Extension Host smokeが成功。
+- companion extensionのLinux / Windows jobとsource metricsが成功。
+- temporary diagnostic workflowはPR差分へ再出現していない。
 
-- PRがmergeableである。
-- Linux / Windows `workflow-register`のunit、policy、package、VSIX policy、Extension Host smokeが成功する。
-- companion extensionのLinux / Windows jobとsource metricsが成功する。
-- temporary diagnostic workflowがPR差分へ再出現しない。
-- 上記成立後にPR本文を最新runへ同期し、Draftを解除する。
+以上によりCode / CI / package gateは**GO**とする。実IBM Bob / Bazaar / multi-root / distribution-signing UATは製品配布の別ゲートとして継続する。
