@@ -16,7 +16,7 @@ test("package and extension expose Review Run-aware capture and triage commands"
     "bobBazaar.openHumanTriageGui"
   ]) {
     assertContributesCommand(packageJson, command)
-    assert.match(source, new RegExp(`registerCommand\\("${command.replace(/\./g, "\\.")}"`))
+    assert.match(source, new RegExp(`registerCommand\\(\\s*"${command.replace(/\./g, "\\.")}"`))
   }
   assert.match(source, /ReviewRunCommandInput/)
   assert.match(source, /openBazaarResultCaptureGui\(context, input\)/)
