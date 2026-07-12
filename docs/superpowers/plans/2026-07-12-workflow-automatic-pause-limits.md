@@ -8,6 +8,20 @@
 
 **Tech Stack:** TypeScript, Node.js built-in test runner, AJV/JSON Schema, VS Code Extension API, `Intl.DateTimeFormat`, existing `WorkflowEngine`, `FileRunControlStore`, and run diagnostics.
 
+
+## Execution Status
+
+- Repository implementation: complete on draft PR #75.
+- Focused automatic-pause tests: GREEN.
+- Full workflow-register suite: GREEN on Ubuntu and Windows.
+- Dependency, architecture, source, and schema policies: GREEN.
+- Package and VSIX policy: GREEN.
+- Extension Host smoke: GREEN on Ubuntu and Windows.
+- Strict workflow contract validation: GREEN.
+- Independent review: Critical 0 / Important 0 / Minor 0 open.
+- Temporary diagnostic and mutation workflows: removed from the deliverable branch.
+- Pull request state: remains draft while current-main reconciliation and external real-environment evidence are open.
+
 ## Global Constraints
 
 - Do not force-cancel an in-flight agent, command, process, or Bob subagent.
@@ -49,13 +63,13 @@ export interface WorkflowRunControlDefinition {
 }
 ```
 
-- [ ] Add RED parser/schema tests for all four fields and exact round-trip normalization.
-- [ ] Add RED semantic-validation tests for zero/negative limits, malformed `HH:mm`, missing timezone when a cutoff exists, and unknown IANA timezone.
-- [ ] Add the model and both schema copies with `additionalProperties: false` inside `runControl` and `limits`.
-- [ ] Add `normalizeRunControl()` and parse the normalized value into `CoreWorkflowDefinition.runControl`.
-- [ ] Add semantic validation using `Intl.DateTimeFormat(..., { timeZone })` and exact `HH:mm` parsing.
-- [ ] Run compile plus the focused test and schema policy; record GREEN.
-- [ ] Commit: `feat: define workflow automatic pause limits`.
+- [x] Add RED parser/schema tests for all four fields and exact round-trip normalization.
+- [x] Add RED semantic-validation tests for zero/negative limits, malformed `HH:mm`, missing timezone when a cutoff exists, and unknown IANA timezone.
+- [x] Add the model and both schema copies with `additionalProperties: false` inside `runControl` and `limits`.
+- [x] Add `normalizeRunControl()` and parse the normalized value into `CoreWorkflowDefinition.runControl`.
+- [x] Add semantic validation using `Intl.DateTimeFormat(..., { timeZone })` and exact `HH:mm` parsing.
+- [x] Run compile plus the focused test and schema policy; record GREEN.
+- [x] Commit: `feat: define workflow automatic pause limits`.
 
 ### Task 2: Implement the Pure Evaluator and Engine Checkpoints
 
@@ -90,16 +104,16 @@ export function evaluateAutomaticPause(input: {
 }): AutomaticPauseDecision | undefined
 ```
 
-- [ ] Add RED pure-evaluator tests for boundary-before, exact-boundary, and after-boundary behavior.
-- [ ] Prove `maxAgentStepsPerRun` blocks only the next agent call and counts archived/current attempts deterministically.
-- [ ] Prove each policy source is evaluated independently and the deterministic tie-break is workflow policy, then workspace policy, then limit kind.
-- [ ] Prove an active override suppresses automatic decisions and an expired override does not.
-- [ ] Add a clock and optional workspace limits to `WorkflowEngineOptions`.
-- [ ] Evaluate manual pause first; if none exists, evaluate automatic limits.
-- [ ] Persist a structured `workflow.pause` record with schema version, kind, source, checkpoint, next step, limit, observed value, and detected time.
-- [ ] Save and emit through the existing paused-run hook without starting the next step.
-- [ ] Run focused engine tests and existing pause/recovery suites; record GREEN.
-- [ ] Commit: `feat: pause workflows at deterministic limits`.
+- [x] Add RED pure-evaluator tests for boundary-before, exact-boundary, and after-boundary behavior.
+- [x] Prove `maxAgentStepsPerRun` blocks only the next agent call and counts archived/current attempts deterministically.
+- [x] Prove each policy source is evaluated independently and the deterministic tie-break is workflow policy, then workspace policy, then limit kind.
+- [x] Prove an active override suppresses automatic decisions and an expired override does not.
+- [x] Add a clock and optional workspace limits to `WorkflowEngineOptions`.
+- [x] Evaluate manual pause first; if none exists, evaluate automatic limits.
+- [x] Persist a structured `workflow.pause` record with schema version, kind, source, checkpoint, next step, limit, observed value, and detected time.
+- [x] Save and emit through the existing paused-run hook without starting the next step.
+- [x] Run focused engine tests and existing pause/recovery suites; record GREEN.
+- [x] Commit: `feat: pause workflows at deterministic limits`.
 
 ### Task 3: Add Bounded Resume Overrides
 
@@ -125,14 +139,14 @@ setAutomaticPauseOverride(input): Promise<RunControlState>
 clearAutomaticPauseOverride(runId): Promise<RunControlState>
 ```
 
-- [ ] Add RED store tests for persist/load, expiry, replacement, and future-run read-only protection.
-- [ ] Prove `clearPause()` does not silently discard an explicitly created unexpired override.
-- [ ] Add a pure resume-choice helper that offers 15/30/60 minute overrides for an automatic pause and requires a non-empty reason.
-- [ ] Keep programmatic/manual pauses on the current resume path without an override prompt.
-- [ ] Add command tests for cancel, valid override, and stale/revision-checked Operation Hub invocation.
-- [ ] Ensure manual pause requests remain effective even with an active override.
-- [ ] Run focused store/command/engine tests; record GREEN.
-- [ ] Commit: `feat: allow bounded automatic pause overrides`.
+- [x] Add RED store tests for persist/load, expiry, replacement, and future-run read-only protection.
+- [x] Prove `clearPause()` does not silently discard an explicitly created unexpired override.
+- [x] Add a pure resume-choice helper that offers 15/30/60 minute overrides for an automatic pause and requires a non-empty reason.
+- [x] Keep programmatic/manual pauses on the current resume path without an override prompt.
+- [x] Add command tests for cancel, valid override, and stale/revision-checked Operation Hub invocation.
+- [x] Ensure manual pause requests remain effective even with an active override.
+- [x] Run focused store/command/engine tests; record GREEN.
+- [x] Commit: `feat: allow bounded automatic pause overrides`.
 
 ### Task 4: Wire Workspace Settings, Diagnostics, and Documentation
 
@@ -162,28 +176,36 @@ clearAutomaticPauseOverride(runId): Promise<RunControlState>
 
 `0`/empty means disabled at the settings boundary. Only positive normalized limits reach the evaluator.
 
-- [ ] Add RED wiring tests proving standalone and Bob runners receive the same workspace policy.
-- [ ] Add package contributions with safe disabled defaults and bounded numeric settings.
-- [ ] Read settings once per engine/runner creation and normalize invalid workspace values by disabling only that field while preserving valid fields.
-- [ ] Add structured automatic-pause details and override details to Run Diagnostics and Run Control inspection.
-- [ ] Update user, design, unit-test, and real-machine documentation.
-- [ ] Rebaseline the roadmap: mark PR cleanup and run-state migration complete, link Issue #73, and record automatic-pause implementation status.
-- [ ] Run the full `workflow-register` compile, policies, test suite, package, VSIX policy, and `git diff --check` through GitHub Actions.
-- [ ] Perform an independent whole-branch review and fix every Critical/Important finding.
-- [ ] Commit: `docs: document workflow automatic pause controls`.
+- [x] Add RED wiring tests proving standalone and Bob runners receive the same workspace policy.
+- [x] Add package contributions with safe disabled defaults and bounded numeric settings.
+- [x] Read settings once per engine/runner creation and normalize invalid workspace values by disabling only that field while preserving valid fields.
+- [x] Add structured automatic-pause details and override details to Run Diagnostics and Run Control inspection.
+- [x] Update user, design, unit-test, and real-machine documentation.
+- [x] Rebaseline the roadmap: mark PR cleanup and run-state migration complete, link Issue #73, and record automatic-pause implementation status.
+- [x] Run the full `workflow-register` compile, policies, test suite, package, VSIX policy, and `git diff --check` through GitHub Actions.
+- [x] Perform an independent whole-branch review and fix every Critical/Important finding.
+- [x] Commit: `docs: document workflow automatic pause controls`.
 
 ### Final Verification
 
-- [ ] Focused definition, evaluator, override, runtime wiring, diagnostics, and command tests pass.
-- [ ] Existing pause/resume, Bob gate, operation-hub mutation, run migration, durability, and schema-contract tests pass.
-- [ ] `npm run dependency:policy`
-- [ ] `npm run architecture:policy`
-- [ ] `npm run source:policy`
-- [ ] `npm run schema:policy`
-- [ ] `npm test`
-- [ ] `npm run package`
-- [ ] `npm run package:policy`
-- [ ] Ubuntu and Windows extension-quality jobs pass.
-- [ ] Extension Host smoke passes.
-- [ ] Workflow contract CI passes.
-- [ ] PR remains draft until all repository and external real-environment release gates are explicitly evidenced.
+- [x] Focused definition, evaluator, override, runtime wiring, diagnostics, and command tests pass.
+- [x] Existing pause/resume, Bob gate, operation-hub mutation, run migration, durability, and schema-contract tests pass.
+- [x] `npm run dependency:policy`
+- [x] `npm run architecture:policy`
+- [x] `npm run source:policy`
+- [x] `npm run schema:policy`
+- [x] `npm test`
+- [x] `npm run package`
+- [x] `npm run package:policy`
+- [x] Ubuntu and Windows extension-quality jobs pass.
+- [x] Extension Host smoke passes.
+- [x] Workflow contract CI passes.
+- [x] PR remains draft until all repository and external real-environment release gates are explicitly evidenced.
+
+
+## Remaining Verification Outside This Implementation Slice
+
+- [ ] Reconcile draft PR #75 with the current `main` branch and re-run required checks on the reconciled head.
+- [ ] Confirm pause, resume, and bounded override in a real IBM Bob environment.
+- [ ] Confirm inherited real Bazaar timeout / cancel process cleanup evidence.
+- [ ] Confirm Bob root / VCS root separation in a real multi-root workspace.

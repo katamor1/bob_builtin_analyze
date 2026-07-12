@@ -4,7 +4,7 @@
 - Repository: `katamor1/bob_builtin_analyze`
 - Scope: `extensions/workflow-register` automatic pause changes in draft PR #75
 - Issue: #73
-- Review state: repository implementation reviewed; external real-environment gates remain open
+- Review state: repository implementation and hosted quality gates reviewed; current-main reconciliation and external real-environment gates remain open
 
 ## Review scope
 
@@ -69,12 +69,20 @@ All commands completed successfully against the same reviewed source tree before
 - Important findings: 0 open
 - Minor findings: 0 open
 - Repository implementation verdict: PASS
-- Merge/release verdict: remains draft / NO-GO until final GitHub-hosted checks and external real-environment evidence are complete
+- Merge/release verdict: remains draft / NO-GO until current-main reconciliation and external real-environment evidence are complete
 
-## Remaining external gates
+## Final hosted-gate update
 
-- final-head Ubuntu and Windows `extensions-quality`
-- final-head Extension Host smoke
-- final-head `workflow-contracts`
+The final deliverable source tree was verified through temporary draft PR #80 without adding its trigger fixture to PR #75:
+
+- `extensions-quality` run `29198637806`: success
+- `workflow-contracts` run `29198637797`: success
+- Ubuntu and Windows workflow-register unit, package, VSIX policy, and Extension Host smoke: success
+- Ubuntu and Windows related-extension quality jobs: success
+
+## Remaining gates
+
+- reconcile PR #75 with the current `main` branch and re-run required checks on the reconciled head
 - IBM Bob real-environment pause, resume, and bounded-override confirmation
-- inherited real Bazaar and multi-root release evidence
+- inherited real Bazaar timeout / cancel process-cleanup evidence
+- real multi-root Bob root / VCS root separation evidence
