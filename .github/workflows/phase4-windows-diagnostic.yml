@@ -1,4 +1,4 @@
-name: phase4-windows-path-probe
+name: phase4-windows-fixture-fix
 
 on:
   pull_request:
@@ -7,72 +7,99 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  path-probe:
-    name: Probe Windows path canonicalizers
+  apply-windows-fixture-fix:
+    name: Apply and verify native Windows canonical roots
     runs-on: windows-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
     steps:
-      - name: Checkout
+      - name: Checkout PR 77 branch
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: agent/workflow-reproducible-runtime-phase4-hardening-20260712
+          fetch-depth: 0
+
+      - name: Verify coordinated head
+        shell: pwsh
+        run: |
+          if ((git rev-parse HEAD).Trim() -ne "d9c1f23615c1b1f05dc793efc1b83e43eabd1ff0") {
+            throw "unexpected Phase 4 head"
+          }
+
+      - name: Use the native canonicalizer proven by the Windows probe
+        shell: pwsh
+        run: |
+          @'
+          const fs = require("node:fs")
+          const expected = new Map([
+            ["extensions/workflow-register/test/bobGateLifecycle.test.js", 1],
+            ["extensions/workflow-register/test/helpers/workflowEngineFixtures.js", 1],
+            ["extensions/workflow-register/test/operationHubMutations.test.js", 1],
+            ["extensions/workflow-register/test/workflowArtifactManifest.test.js", 1],
+            ["extensions/workflow-register/test/workflowPlatformP0E2e.test.js", 1],
+            ["extensions/workflow-register/test/workflowRunRecovery.test.js", 1],
+            ["extensions/workflow-register/test/workflowRunStateMigrationPath.test.js", 1],
+            ["extensions/workflow-register/test/workflowTaskSnapshotArtifactImport.test.js", 3],
+            ["extensions/workflow-register/test/workspaceFileTransaction.test.js", 1]
+          ])
+          for (const [file, count] of expected) {
+            const source = fs.readFileSync(file, "utf8")
+            const found = source.split("fs.realpathSync(").length - 1
+            if (found !== count) throw new Error(`${file}: expected ${count} sync calls, found ${found}`)
+            if (source.includes("fs.realpathSync.native(")) throw new Error(`${file}: native call already present`)
+            fs.writeFileSync(file, source.replaceAll("fs.realpathSync(", "fs.realpathSync.native("), "utf8")
+          }
+          '@ | Set-Content -Path apply-windows-fixture-fix.cjs -Encoding utf8
+          node apply-windows-fixture-fix.cjs
+          Remove-Item apply-windows-fixture-fix.cjs
+
+          $expected = @(
+            "extensions/workflow-register/test/bobGateLifecycle.test.js",
+            "extensions/workflow-register/test/helpers/workflowEngineFixtures.js",
+            "extensions/workflow-register/test/operationHubMutations.test.js",
+            "extensions/workflow-register/test/workflowArtifactManifest.test.js",
+            "extensions/workflow-register/test/workflowPlatformP0E2e.test.js",
+            "extensions/workflow-register/test/workflowRunRecovery.test.js",
+            "extensions/workflow-register/test/workflowRunStateMigrationPath.test.js",
+            "extensions/workflow-register/test/workflowTaskSnapshotArtifactImport.test.js",
+            "extensions/workflow-register/test/workspaceFileTransaction.test.js"
+          ) | Sort-Object
+          $actual = @(git diff --name-only) | Sort-Object
+          if (Compare-Object $expected $actual) { throw "unexpected changed paths" }
+          git diff --check
 
       - name: Setup Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
+          cache: npm
+          cache-dependency-path: extensions/workflow-register/package-lock.json
 
-      - name: Probe path APIs
+      - name: Install dependencies
+        working-directory: extensions/workflow-register
+        run: npm ci
+
+      - name: Verify full workflow-register suite on Windows
+        working-directory: extensions/workflow-register
+        run: npm test
+
+      - name: Commit and push verified fixture fix
         shell: pwsh
         run: |
-          @'
-          const fs = require("node:fs")
-          const fsp = require("node:fs/promises")
-          const os = require("node:os")
-          const path = require("node:path")
-          const cp = require("node:child_process")
-          const util = require("node:util")
-
-          ;(async () => {
-            const root = fs.mkdtempSync(path.join(os.tmpdir(), "phase4-path-probe-"))
-            const results = { platform: process.platform, node: process.version, tmpdir: os.tmpdir(), root }
-            const syncProbe = (name, operation) => {
-              try { results[name] = operation() } catch (error) { results[`${name}Error`] = String(error?.stack ?? error) }
-            }
-            const asyncProbe = async (name, operation) => {
-              try { results[name] = await operation() } catch (error) { results[`${name}Error`] = String(error?.stack ?? error) }
-            }
-            syncProbe("pathResolve", () => path.resolve(root))
-            syncProbe("realpathSync", () => fs.realpathSync(root))
-            syncProbe("realpathSyncNative", () => fs.realpathSync.native(root))
-            syncProbe("realpathSyncNamespaced", () => fs.realpathSync(path.toNamespacedPath(root)))
-            syncProbe("realpathSyncNativeNamespaced", () => fs.realpathSync.native(path.toNamespacedPath(root)))
-            await asyncProbe("promisesRealpath", () => fsp.realpath(root))
-            await asyncProbe("callbackRealpath", () => util.promisify(fs.realpath)(root))
-            if (typeof fs.realpath.native === "function") {
-              await asyncProbe("callbackRealpathNative", () => util.promisify(fs.realpath.native)(root))
-            } else {
-              results.callbackRealpathNativeError = "fs.realpath.native is unavailable"
-            }
-            syncProbe("cmdFull", () => cp.execFileSync(process.env.ComSpec, ["/d", "/s", "/c", `for %I in ("${root}") do @echo %~fI`], { encoding: "utf8" }).trim())
-            syncProbe("powershellFullName", () => cp.execFileSync("powershell.exe", ["-NoProfile", "-Command", `(Get-Item -LiteralPath '${root.replaceAll("'", "''")}').FullName`], { encoding: "utf8" }).trim())
-            syncProbe("powershellResolvePath", () => cp.execFileSync("powershell.exe", ["-NoProfile", "-Command", `(Resolve-Path -LiteralPath '${root.replaceAll("'", "''")}').ProviderPath`], { encoding: "utf8" }).trim())
-            fs.writeFileSync("path-probe.json", `${JSON.stringify(results, null, 2)}\n`, "utf8")
-            console.log(JSON.stringify(results, null, 2))
-          })().catch((error) => {
-            fs.writeFileSync("path-probe.json", `${JSON.stringify({ fatal: String(error?.stack ?? error) }, null, 2)}\n`, "utf8")
-            console.error(error)
-          })
-          '@ | Set-Content -Path path-probe.cjs -Encoding utf8
-          node path-probe.cjs
-          exit 0
-
-      - name: Upload path probe
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: phase4-windows-path-probe
-          path: path-probe.json
-          if-no-files-found: error
-          retention-days: 1
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add `
+            extensions/workflow-register/test/bobGateLifecycle.test.js `
+            extensions/workflow-register/test/helpers/workflowEngineFixtures.js `
+            extensions/workflow-register/test/operationHubMutations.test.js `
+            extensions/workflow-register/test/workflowArtifactManifest.test.js `
+            extensions/workflow-register/test/workflowPlatformP0E2e.test.js `
+            extensions/workflow-register/test/workflowRunRecovery.test.js `
+            extensions/workflow-register/test/workflowRunStateMigrationPath.test.js `
+            extensions/workflow-register/test/workflowTaskSnapshotArtifactImport.test.js `
+            extensions/workflow-register/test/workspaceFileTransaction.test.js
+          git diff --cached --check
+          git commit -m "test: use native Windows workspace identities"
+          git push origin HEAD:agent/workflow-reproducible-runtime-phase4-hardening-20260712
