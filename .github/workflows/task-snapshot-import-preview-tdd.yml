@@ -40,6 +40,7 @@ jobs:
           tests=(
             test/workflowTaskSnapshotImportPreview.test.js
             test/workflowTaskSnapshotArtifactImport.test.js
+            test/workflowTaskSnapshotImportSelectiveApply.test.js
             test/taskSnapshotImportReport.test.js
             test/workflowTaskSnapshotImportCommand.test.js
           )
