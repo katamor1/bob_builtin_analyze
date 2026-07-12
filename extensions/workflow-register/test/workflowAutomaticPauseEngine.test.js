@@ -6,6 +6,7 @@ const { test } = require("node:test")
 
 const { ActionRegistry } = require("../out/core/actionRegistry")
 const { WorkflowEngine } = require("../out/core/engine")
+const { FileRunControlStore } = require("../out/core/runControlStore")
 const { ResultSinkRegistry } = require("../out/core/resultSinkRegistry")
 const { FileRunStateStore } = require("../out/core/runStateStore")
 
@@ -59,8 +60,8 @@ test("engine pauses before preflight when elapsed limit is due", async () => {
     actions: new ActionRegistry(),
     resultSinks: new ResultSinkRegistry(),
     runStore: new FileRunStateStore({ workspaceRoot, now: () => "2026-07-12T00:00:00.000Z" }),
-    agentProvider: { run: () => { calls += 1; return "done" } },
-    clock: () => new Date("2026-07-12T00:45:00.000Z")
+    runControlStore: new FileRunControlStore({ workspaceRoot, now: () => "2026-07-12T00:45:00.000Z" }),
+    agentProvider: { run: () => { calls += 1; return "done" } }
   })
   const result = await engine.runWorkflow(workflow({
     runControl: { limits: { maxRunMinutes: 45 } }
@@ -88,8 +89,8 @@ test("engine pauses after the first agent step before starting the next agent ca
     actions: new ActionRegistry(),
     resultSinks: new ResultSinkRegistry(),
     runStore: new FileRunStateStore({ workspaceRoot, now: () => "2026-07-12T00:00:00.000Z" }),
-    agentProvider: { run: (input) => { calls.push(input.stepId); return `${input.stepId}-done` } },
-    clock: () => new Date("2026-07-12T00:01:00.000Z")
+    runControlStore: new FileRunControlStore({ workspaceRoot, now: () => "2026-07-12T00:01:00.000Z" }),
+    agentProvider: { run: (input) => { calls.push(input.stepId); return `${input.stepId}-done` } }
   })
   const result = await engine.runWorkflow(workflow({
     runControl: { limits: { maxAgentStepsPerRun: 1 } },
