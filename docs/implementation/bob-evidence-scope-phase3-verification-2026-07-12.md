@@ -1,54 +1,40 @@
 # Bob Evidence Scope Phase 3 検証記録
 
-## TDD
+- test-only commit: `916d0df9a0d579f3b2ea28f1976c3b2b11c5db8f`
+- GREEN implementation anchor: `0962c4af7d9cec69673117fd3e8c3e970bf3598e`
+- code-consistency-review-scaffold run: `29200318548`
+- extensions-quality run: `29200318583`
+
+## TDD RED
 
 Phase 3 の test-first 対象は `test/projectRulePack.test.js` である。
 
-RED では次の契約が未実装で失敗した。
+RED commit では既存の dependency、architecture、source、unused、audit、TypeScript compile が成功し、新規 Unit tests が次の未実装契約を検出した。
 
-- `projectRulePackLoader` の public module
-- bounded read-only load と raw-byte SHA-256
+- `projectRulePackLoader` public module
+- bounded read-only load と exact raw-byte SHA-256
 - workspace escape / unsupported schema version の拒否
 - project-authoritative rule merge
 - pipeline report と manifest の rule-pack provenance
 - rule-pack bytes のみが変わった場合の stale input hash 更新
 
-実装後、focused suite は 6/6 成功した。
+失敗は production regression ではなく、新しい module/provenance contract が存在しないことによる期待どおりの RED であった。
+
+## Focused GREEN
+
+`projectRulePack.test.js` の4テストが成功した。
 
 ```text
-# tests 6
-# pass 6
+# tests 4
+# pass 4
 # fail 0
 ```
 
-## Full suite
-
-GitHub Actions 上で次を実行した。
-
-```bash
-cd extensions/bob-code-consistency-review
-npm test
-```
-
-結果:
-
-```text
-# tests 215
-# suites 0
-# pass 215
-# fail 0
-# cancelled 0
-# skipped 0
-# todo 0
-```
-
-compile も同一 command 内で成功している。
-
-## 検証内容
+検証した behavior は次のとおり。
 
 ### Loader boundary
 
-- workspace-local `.yaml` を read-only に読み込む
+- workspace-local `.yaml` を mode `r` で読み込む
 - source bytes が読み込み前後で同一
 - source path を POSIX 形式の workspace-relative path として保持
 - SHA-256 が exact source bytes と一致
@@ -73,13 +59,30 @@ compile も同一 command 内で成功している。
 - rule-pack bytes のみの変更で manifest `input_hash` が変わる
 - raw rule-pack body を report に格納しない
 
-### Regression
+## Full suite
+
+GitHub Actions `code-consistency-review-scaffold` run `29200318548` で次を実行した。
+
+```bash
+cd extensions/bob-code-consistency-review
+npm test
+```
+
+結果:
+
+```text
+# tests 215
+# suites 0
+# pass 215
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+```
 
 Phase 1/2 の evidence scope、既存 preprocessing、Bob output、traceability、VCS、workflow provider、package freshness を含む全215テストが成功した。
 
-## Policy / package gate
-
-PR CI の既存 workflow で次を検証する。
+同じ job で次も成功した。
 
 - dependency policy
 - architecture policy
@@ -87,14 +90,43 @@ PR CI の既存 workflow で次を検証する。
 - unused dependency report
 - production dependency audit
 - TypeScript compile
-- full unit tests
 - VSIX package
 - VSIX policy
-- Extension Host smoke
-- Linux / Windows matrix
 
-最終 CI run ID と conclusion は PR 本文へ同期する。
+scaffold typecheck、unit tests、smoke tests も成功した。
 
-## 一時診断
+## Linux / Windows extension validation
 
-失敗原因の切り分けに使用した `.github/workflows/evidence-scope-phase3-diagnostic.yml` と `docs/implementation/diagnostics/` は最終成果物から削除する。診断ログの内容は本記録へ要約し、raw log は残さない。
+`extensions-quality` run `29200318583` では Phase 3 対象の `bob-code-consistency-review` が次を完了した。
+
+- Linux dependency / architecture / source / unit / package / VSIX policy
+- Linux Extension Host smoke
+- Windows dependency / architecture / source / unit / package / VSIX policy
+- Windows Extension Host smoke
+
+いずれも成功した。
+
+同じ multi-extension workflow 内の別拡張 `workflow-register` は、最初の Linux unit-test attempt が一度失敗した。Phase 3 対象拡張と scaffold は同一 commit で成功しており、branch 更新により rerun attempt が途中 cancel されたため、この attempt は Phase 3 acceptance evidence には使用しない。最終 branch head は改めて全 workflow を実行し、PR 本文へ conclusion を同期する。
+
+## Schema parity
+
+次の pair は byte-identical である。
+
+- runtime / documentation `evidence-scope-rule-pack.schema.json`
+- runtime / documentation `review-input.schema.json`
+
+checksum manifest で byte size と SHA-256 の一致を確認する。
+
+## Privacy / security verification
+
+- workspace boundary と realpath/symlink boundary を既存 path helper で強制
+- read-only file handle
+- `maxDocumentBytes` の read 前後検査
+- exact raw bytes の SHA-256
+- raw rule-pack body 非出力
+- no credential storage
+- no new npm dependency
+
+## Temporary artifacts
+
+一時 manifest/diagnostic workflow と raw diagnostic log は final branch から削除する。永続成果物は implementation record、verification record、domain contract、plan、schema、source、tests、checksum manifest のみとする。
