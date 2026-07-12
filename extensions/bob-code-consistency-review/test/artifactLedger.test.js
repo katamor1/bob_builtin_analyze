@@ -1,4 +1,8 @@
 const assert = require("node:assert/strict")
+const { createHash } = require("node:crypto")
+const fs = require("node:fs")
+const os = require("node:os")
+const path = require("node:path")
 const { test } = require("node:test")
 
 function ledgerApi() {
@@ -187,3 +191,127 @@ test("duplicate observations and self dependencies are rejected", () => {
     /must not depend on itself/
   )
 })
+
+test("manifest and ledger share the deterministic review-package input hash", async () => {
+  const {
+    buildReviewPackage,
+    computeReviewPackageInputHash
+  } = require("../out/core/reviewPackageBuilder")
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "bob-ledger-input-hash-"))
+  const outDir = path.join(workspace, ".bob-review", "review-package")
+  const reviewInput = minimalReviewInput()
+  const diff = minimalDiff(workspace)
+  const contextBudgetArtifact = {
+    rule_pack: {
+      schema_version: 1,
+      id: "rules",
+      version: "1",
+      source_path: ".bob/evidence-scope/rules.yaml",
+      content_hash: HASH_A
+    },
+    symbol_index: {
+      schema_version: 1,
+      id: "repo",
+      source_revision: REV_A,
+      source_path: ".bob/evidence-scope/repository-symbol-index.json",
+      content_hash: HASH_B,
+      symbol_count: 1,
+      edge_count: 0
+    }
+  }
+
+  await buildReviewPackage({
+    workspaceRoot: workspace,
+    outDir,
+    reviewInput,
+    diff,
+    documents: { documents: [], excerptsMarkdown: "", evidence: [], warnings: [] },
+    codeAnalysis: emptyCodeAnalysis(),
+    traceability: { rows: [], warnings: [], markdown: "" },
+    contextBudgetArtifact
+  })
+
+  const expected = computeReviewPackageInputHash(reviewInput, diff, contextBudgetArtifact)
+  const manifest = fs.readFileSync(path.join(outDir, "manifest.yaml"), "utf8")
+  const match = manifest.match(/^  input_hash: (sha256:[0-9a-f]{64})$/m)
+  assert.ok(match)
+  assert.equal(match[1], expected)
+})
+
+test("managed package content hashing is canonical and excludes user files", async () => {
+  const { computeManagedReviewPackageContentHash } = require("../out/core/reviewPackageBuilder")
+  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "bob-ledger-content-hash-"))
+  fs.mkdirSync(path.join(outDir, "prompts"), { recursive: true })
+  fs.writeFileSync(path.join(outDir, "prompts", "b.md"), "bravo", "utf8")
+  fs.writeFileSync(path.join(outDir, "prompts", "a.md"), "alpha", "utf8")
+  fs.writeFileSync(path.join(outDir, "user-note.md"), "not managed", "utf8")
+
+  const first = await computeManagedReviewPackageContentHash(outDir)
+  const expected = canonicalManagedHash([
+    ["prompts/a.md", Buffer.from("alpha")],
+    ["prompts/b.md", Buffer.from("bravo")]
+  ])
+  assert.equal(first, expected)
+
+  fs.writeFileSync(path.join(outDir, "user-note.md"), "changed user data", "utf8")
+  assert.equal(await computeManagedReviewPackageContentHash(outDir), first)
+  fs.writeFileSync(path.join(outDir, "prompts", "a.md"), "changed", "utf8")
+  assert.notEqual(await computeManagedReviewPackageContentHash(outDir), first)
+})
+
+function minimalReviewInput() {
+  return {
+    schema_version: 1,
+    review: {
+      id: "REVIEW-LEDGER-HASH",
+      title: "Ledger hashing",
+      change_type: "maintenance",
+      purpose: "share package hashes",
+      base: REV_A,
+      head: REV_B,
+      vcs: "git"
+    },
+    artifacts: {},
+    review_focus: ["requirement-code-consistency"]
+  }
+}
+
+function minimalDiff(workspace) {
+  return {
+    vcs: "git",
+    vcsRoot: workspace,
+    base: REV_A,
+    head: REV_B,
+    files: [],
+    unifiedDiff: "",
+    warnings: []
+  }
+}
+
+function emptyCodeAnalysis() {
+  return {
+    changedSymbols: [],
+    functions: [],
+    defines: [],
+    globals: [],
+    callGraph: [],
+    rtForbiddenCandidates: [],
+    codeSlices: [],
+    evidence: [],
+    summaryMarkdown: "",
+    warnings: []
+  }
+}
+
+function canonicalManagedHash(entries) {
+  const hash = createHash("sha256")
+  for (const [relativePath, bytes] of entries.sort((left, right) => left[0].localeCompare(right[0]))) {
+    hash.update(relativePath)
+    hash.update("\0")
+    hash.update(String(bytes.length))
+    hash.update("\0")
+    hash.update(bytes)
+    hash.update("\0")
+  }
+  return `sha256:${hash.digest("hex")}`
+}
