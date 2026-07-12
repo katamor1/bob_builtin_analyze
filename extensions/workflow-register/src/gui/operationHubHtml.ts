@@ -215,10 +215,13 @@ function renderRun(run: OperationHubRunSummary): string {
   const reuseBadge = run.artifactReuseLabel && run.artifactReuseStatus
     ? `<span class="badge ${escapeHtml(run.artifactReuseStatus)}">${escapeHtml(run.artifactReuseLabel)}</span>`
     : ""
+  const taskSnapshotImportBadge = run.taskSnapshotImportLabel && run.taskSnapshotImportStatus
+  ? `<span class="badge ${escapeHtml(run.taskSnapshotImportStatus)}">${escapeHtml(run.taskSnapshotImportLabel)}</span>`
+  : ""
   return `<article class="${cardClass}">
     <div class="card-title"><h3>${escapeHtml(run.workflowName)}</h3><span class="title-badges">${focusBadge}${statusBadge}</span></div>
     <div class="muted"><code>${escapeHtml(run.runId)}</code> / ${escapeHtml(run.currentStepLabel)}</div>
-    <div class="muted"><span class="run-badges">${syncBadge}${manifestBadge}${reuseBadge}</span></div>
+    <div class="muted"><span class="run-badges">${syncBadge}${manifestBadge}${reuseBadge}${taskSnapshotImportBadge}</span></div>
     <div class="progress" aria-label="progress"><span style="width:${percent}%"></span></div>
     <div class="muted">${run.completedStepCount}/${run.totalStepCount} step / updated ${escapeHtml(run.updatedAt)}</div>
     <div class="actions">${run.primaryActions.map(renderActionButton).join("")}</div>
