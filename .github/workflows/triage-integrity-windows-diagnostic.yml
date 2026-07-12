@@ -38,6 +38,38 @@ jobs:
       - name: Compile
         run: npm run compile
 
+      - name: Probe Windows fs.open paths and bindings
+        shell: pwsh
+        run: |
+          $probe = Join-Path $env:RUNNER_TEMP "traceability-open-probe.cjs"
+          @'
+          const fs = require("node:fs/promises")
+          const os = require("node:os")
+          const path = require("node:path")
+          const store = require(path.join(process.cwd(), "out", "core", "traceabilityCatalogStore"))
+          console.log("open descriptor", Object.getOwnPropertyDescriptor(fs, "open"))
+          const originalOpen = fs.open
+          fs.open = async (...args) => {
+            console.log("OPEN_ARG", typeof args[0], JSON.stringify(String(args[0])))
+            return Reflect.apply(originalOpen, fs, args)
+          }
+          console.log("open patched", fs.open === originalOpen)
+          ;(async () => {
+            const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "bob-trace-open-probe-"))
+            await store.writeTraceabilityCatalog({
+              workspaceRoot,
+              catalog: { schema_version: 1, documents: [], domains: [], items: [], links: [], decisions: [] }
+            })
+            console.log("workspaceRoot", JSON.stringify(workspaceRoot))
+            const result = await store.validateAndWriteTraceabilityGateReport({ workspaceRoot })
+            console.log("report result", result.status, result.reportPath)
+          })().catch((error) => {
+            console.error(error)
+            process.exitCode = 1
+          })
+          '@ | Set-Content -Path $probe -Encoding utf8
+          node $probe
+
       - name: Run traceability CAS suite and capture TAP
         shell: pwsh
         run: |
