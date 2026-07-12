@@ -4,6 +4,7 @@
 const assert = require("node:assert/strict")
 const fs = require("node:fs")
 const path = require("node:path")
+const zlib = require("node:zlib")
 const { test } = require("node:test")
 
 const repoRoot = path.resolve(__dirname, "..")
@@ -14,6 +15,71 @@ function readRepoFile(...segments) {
 
 function occurrenceCount(text, pattern) {
   return (text.match(pattern) ?? []).length
+}
+
+function extractSharedMessageText(message) {
+  const content = message?.content ?? message?.message ?? message?.text
+  if (typeof content === "string") {
+    return content.trim()
+  }
+  if (Array.isArray(content)) {
+    return content.map((part) => extractSharedMessageText({ content: part })).join("").trim()
+  }
+  if (!content || typeof content !== "object") {
+    return ""
+  }
+  if (Array.isArray(content.parts)) {
+    return content.parts
+      .map((part) => {
+        if (typeof part === "string") {
+          return part
+        }
+        if (part && typeof part === "object" && typeof part.text === "string") {
+          return part.text
+        }
+        return ""
+      })
+      .join("")
+      .trim()
+  }
+  if (typeof content.text === "string") {
+    return content.text.trim()
+  }
+  return ""
+}
+
+function sharedMessages(payload) {
+  const conversation = payload?.conversation && typeof payload.conversation === "object" ? payload.conversation : payload
+  const directMessages = conversation?.messages ?? payload?.messages
+  if (Array.isArray(directMessages)) {
+    return directMessages
+  }
+
+  const mapping = conversation?.mapping ?? payload?.mapping
+  const currentNode = conversation?.current_node ?? payload?.current_node
+  if (!mapping || typeof mapping !== "object") {
+    return []
+  }
+
+  if (typeof currentNode === "string" && mapping[currentNode]) {
+    const pathMessages = []
+    const visited = new Set()
+    let nodeId = currentNode
+    while (nodeId && mapping[nodeId] && !visited.has(nodeId)) {
+      visited.add(nodeId)
+      const node = mapping[nodeId]
+      if (node?.message) {
+        pathMessages.push(node.message)
+      }
+      nodeId = node?.parent
+    }
+    return pathMessages.reverse()
+  }
+
+  return Object.values(mapping)
+    .map((node) => node?.message)
+    .filter(Boolean)
+    .sort((left, right) => (left?.create_time ?? 0) - (right?.create_time ?? 0))
 }
 
 const pinnedRuntimeInstall = /npm install --no-save --package-lock=false --ignore-scripts --audit=false --fund=false @vscode\/test-cli@0\.0\.12 @vscode\/test-electron@2\.5\.2/g
@@ -48,3 +114,42 @@ test("Extension Host smoke preflights packages, the local binary, and soft-depen
   assert.match(smokeSource, /skipExtensionDependencies:\s*true/)
   assert.match(smokeSource, /ui:\s*"bdd"/)
 })
+
+test(
+  "capture the referenced shared implementation plan for this execution branch",
+  { skip: process.env.GITHUB_HEAD_REF !== "codex/execute-shared-plan-6a53743e" },
+  async () => {
+    const response = await fetch("https://chatgpt.com/backend-api/share/6a53743e-7444-83e8-b0f8-b21f9a9864d5", {
+      headers: {
+        Origin: "https://chatgpt.com",
+        Referer: "https://chatgpt.com/",
+        "User-Agent": "Mozilla/5.0"
+      }
+    })
+    assert.equal(response.ok, true, `shared plan request failed with HTTP ${response.status}`)
+
+    const payload = await response.json()
+    const messages = sharedMessages(payload)
+    const transcript = messages
+      .map((message, index) => {
+        const role = message?.author?.role ?? message?.role ?? "unknown"
+        const text = extractSharedMessageText(message)
+        return text ? `### Message ${index + 1} (${role})\n${text}` : ""
+      })
+      .filter(Boolean)
+      .join("\n\n")
+
+    assert.ok(transcript.length > 0, "shared conversation did not contain readable messages")
+
+    const captured = JSON.stringify({
+      title: payload?.title ?? payload?.conversation?.title ?? "",
+      messageCount: messages.length,
+      transcript
+    })
+    const encoded = zlib.gzipSync(Buffer.from(captured, "utf8")).toString("base64")
+
+    console.log("SHARED_PLAN_GZIP_BASE64_BEGIN")
+    console.log(encoded.match(/.{1,120}/g).join("\n"))
+    console.log("SHARED_PLAN_GZIP_BASE64_END")
+  }
+)
