@@ -6,11 +6,11 @@ on:
       - ".github/workflows/phase4-windows-diagnostic.yml"
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  apply-fixture-fix:
-    name: Apply canonical Windows fixture fix
+  focused-lock-red:
+    name: Focused workflow lock RED
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -18,100 +18,43 @@ jobs:
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           ref: agent/workflow-reproducible-runtime-phase4-hardening-20260712
-          fetch-depth: 0
 
-      - name: Verify expected parent
+      - name: Verify test-only head
         shell: bash
-        run: |
-          test "$(git rev-parse HEAD)" = "8afb8474973c86546d0ddd869a366da970354820"
+        run: test "$(git rev-parse HEAD)" = "214c8fe58fee5beb15eb1d69a1110f5bd4385bde"
 
-      - name: Canonicalize temporary workspace roots
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: extensions/workflow-register/package-lock.json
+
+      - name: Install dependencies
+        working-directory: extensions/workflow-register
+        run: npm ci
+
+      - name: Compile
+        working-directory: extensions/workflow-register
+        run: npm run compile
+
+      - name: Run focused lock test and preserve RED
+        id: focused
         shell: bash
+        working-directory: extensions/workflow-register
         run: |
-          python - <<'PY'
-          from pathlib import Path
+          set +e
+          node --test test/workflowRunLock.test.js > focused-lock-red.txt 2>&1
+          status=$?
+          set -e
+          cat focused-lock-red.txt
+          test "$status" -ne 0
+          grep -F "lock acquisition retries when the owner file disappears before inspection" focused-lock-red.txt
+          grep -F "simulated lock disappearance during acquisition" focused-lock-red.txt
 
-          replacements = {
-              "extensions/workflow-register/test/helpers/workflowEngineFixtures.js": [
-                  ("return fs.mkdtempSync(path.join(os.tmpdir(), prefix))", "return fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), prefix)))"),
-              ],
-              "extensions/workflow-register/test/bobGateLifecycle.test.js": [
-                  ("const root = fs.mkdtempSync(path.join(os.tmpdir(), prefix))", "const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), prefix)))"),
-              ],
-              "extensions/workflow-register/test/operationHubMutations.test.js": [
-                  ("const root = fs.mkdtempSync(path.join(os.tmpdir(), \"workflow-register-operation-hub-\"))", "const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), \"workflow-register-operation-hub-\")))"),
-              ],
-              "extensions/workflow-register/test/runStateStorePathBoundary.test.js": [
-                  ("return fs.mkdtemp(path.join(os.tmpdir(), \"workflow-run-store-boundary-\"))", "return fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), \"workflow-run-store-boundary-\")))"),
-              ],
-              "extensions/workflow-register/test/workflowArtifactManifest.test.js": [
-                  ("return fs.mkdtempSync(path.join(os.tmpdir(), \"workflow-register-artifacts-\"))", "return fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), \"workflow-register-artifacts-\")))"),
-              ],
-              "extensions/workflow-register/test/workflowPlatformP0E2e.test.js": [
-                  ("const root = fs.mkdtempSync(path.join(os.tmpdir(), prefix))", "const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), prefix)))"),
-              ],
-              "extensions/workflow-register/test/workflowRunRecovery.test.js": [
-                  ("return fs.mkdtempSync(path.join(os.tmpdir(), \"workflow-register-recovery-\"))", "return fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), \"workflow-register-recovery-\")))"),
-              ],
-              "extensions/workflow-register/test/workflowRunStateMigrationPath.test.js": [
-                  ("return fs.mkdtempSync(path.join(os.tmpdir(), \"workflow-run-migration-path-\"))", "return fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), \"workflow-run-migration-path-\")))"),
-              ],
-              "extensions/workflow-register/test/workflowTaskSnapshotArtifactImport.test.js": [
-                  ("const root = fs.mkdtempSync(path.join(os.tmpdir(), \"workflow-register-snapshot-transaction-\"))", "const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), \"workflow-register-snapshot-transaction-\")))"),
-                  ("const root = fs.mkdtempSync(path.join(os.tmpdir(), \"workflow-register-snapshot-save-rollback-\"))", "const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), \"workflow-register-snapshot-save-rollback-\")))"),
-                  ("const root = fs.mkdtempSync(path.join(os.tmpdir(), \"workflow-register-snapshot-post-save-\"))", "const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), \"workflow-register-snapshot-post-save-\")))"),
-              ],
-              "extensions/workflow-register/test/workspaceFileTransaction.test.js": [
-                  ("const root = fs.mkdtempSync(path.join(os.tmpdir(), \"workflow-register-file-transaction-\"))", "const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), \"workflow-register-file-transaction-\")))"),
-              ],
-              "extensions/bob-code-consistency-review/test/traceabilityCatalogStore.test.js": [
-                  ("return fs.mkdtemp(path.join(os.tmpdir(), \"bob-trace-store-\"))", "return fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), \"bob-trace-store-\")))"),
-              ],
-          }
-
-          for file_name, pairs in replacements.items():
-              path = Path(file_name)
-              text = path.read_text(encoding="utf-8")
-              for old, new in pairs:
-                  count = text.count(old)
-                  if count != 1:
-                      raise SystemExit(f"{file_name}: expected one occurrence, found {count}: {old}")
-                  text = text.replace(old, new, 1)
-              path.write_text(text, encoding="utf-8")
-          PY
-
-      - name: Verify test source syntax and diff
-        shell: bash
-        run: |
-          node --check extensions/workflow-register/test/helpers/workflowEngineFixtures.js
-          node --check extensions/workflow-register/test/bobGateLifecycle.test.js
-          node --check extensions/workflow-register/test/operationHubMutations.test.js
-          node --check extensions/workflow-register/test/runStateStorePathBoundary.test.js
-          node --check extensions/workflow-register/test/workflowArtifactManifest.test.js
-          node --check extensions/workflow-register/test/workflowPlatformP0E2e.test.js
-          node --check extensions/workflow-register/test/workflowRunRecovery.test.js
-          node --check extensions/workflow-register/test/workflowRunStateMigrationPath.test.js
-          node --check extensions/workflow-register/test/workflowTaskSnapshotArtifactImport.test.js
-          node --check extensions/workflow-register/test/workspaceFileTransaction.test.js
-          node --check extensions/bob-code-consistency-review/test/traceabilityCatalogStore.test.js
-          git diff --check
-
-      - name: Commit and push fixture fix
-        shell: bash
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add \
-            extensions/workflow-register/test/helpers/workflowEngineFixtures.js \
-            extensions/workflow-register/test/bobGateLifecycle.test.js \
-            extensions/workflow-register/test/operationHubMutations.test.js \
-            extensions/workflow-register/test/runStateStorePathBoundary.test.js \
-            extensions/workflow-register/test/workflowArtifactManifest.test.js \
-            extensions/workflow-register/test/workflowPlatformP0E2e.test.js \
-            extensions/workflow-register/test/workflowRunRecovery.test.js \
-            extensions/workflow-register/test/workflowRunStateMigrationPath.test.js \
-            extensions/workflow-register/test/workflowTaskSnapshotArtifactImport.test.js \
-            extensions/workflow-register/test/workspaceFileTransaction.test.js \
-            extensions/bob-code-consistency-review/test/traceabilityCatalogStore.test.js
-          git commit -m "test: canonicalize Windows workspace fixtures"
-          git push origin HEAD:agent/workflow-reproducible-runtime-phase4-hardening-20260712
+      - name: Upload focused RED evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: focused-workflow-lock-red
+          path: extensions/workflow-register/focused-lock-red.txt
+          retention-days: 1
