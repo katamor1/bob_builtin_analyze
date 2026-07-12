@@ -145,7 +145,11 @@ async function acquireWorkflowRunLock(
     if (inspection.reclaim) {
       const removed = await removeRunDurabilityFile(workspaceRoot, runId, "run.lock.json", snapshot.bytes)
       if (removed) {
-        options.onReclaimed?.(inspection.message)
+        try {
+          options.onReclaimed?.(inspection.message)
+        } catch (error) {
+          console.warn("Workflow run lock reclamation callback failed.", error)
+        }
         continue
       }
     }
@@ -174,7 +178,13 @@ async function refreshWorkflowRunLock(
   }
   if (current.token !== owner.token) throw new Error(`Workflow run '${runId}' lock ownership changed while the run was active.`)
   const next: WorkflowRunLockV1 = { ...current, heartbeatAt: options.now().toISOString() }
-  await replaceRunDurabilityFile(workspaceRoot, runId, "run.lock.json", serializeWorkflowRunLock(next))
+  await replaceRunDurabilityFile(
+    workspaceRoot,
+    runId,
+    "run.lock.json",
+    serializeWorkflowRunLock(next),
+    snapshot.bytes
+  )
   owner.heartbeatAt = next.heartbeatAt
 }
 
