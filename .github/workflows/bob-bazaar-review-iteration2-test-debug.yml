@@ -18,7 +18,7 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
-      - name: Apply verified coordinator patch
+      - name: Apply coordinator compile fix
         if: github.actor != 'github-actions[bot]'
         shell: bash
         run: |
@@ -26,127 +26,37 @@ jobs:
           from pathlib import Path
           p = Path("extensions/bob-bazaar-review/src/reviewRuns/reviewRunCoordinator.ts")
           s = p.read_text()
-          changed = False
-          old = '''  if (!result.jsonPath || !result.markdownPath) {
-            throw new Error("Captured review result paths are required")
-          }
-
-          return mutateReviewRun(context, async (latest) => {'''
-          new = '''  if (!result.jsonPath || !result.markdownPath) {
-            throw new Error("Captured review result paths are required")
-          }
-          const jsonPath = result.jsonPath
-          const markdownPath = result.markdownPath
-          const metadataPath = result.metadataPath
-
-          return mutateReviewRun(context, async (latest) => {'''
-          if old in s:
-            s = s.replace(old, new, 1)
-            s = s.replace('toWorkspaceRelativeArtifactPath(latest.workspaceRoot, result.jsonPath)', 'toWorkspaceRelativeArtifactPath(latest.workspaceRoot, jsonPath)', 1)
-            s = s.replace('toWorkspaceRelativeArtifactPath(latest.workspaceRoot, result.markdownPath)', 'toWorkspaceRelativeArtifactPath(latest.workspaceRoot, markdownPath)', 1)
-            s = s.replace('reviewResultMetadataPath: result.metadataPath\n          ? toWorkspaceRelativeArtifactPath(latest.workspaceRoot, result.metadataPath)', 'reviewResultMetadataPath: metadataPath\n          ? toWorkspaceRelativeArtifactPath(latest.workspaceRoot, metadataPath)', 1)
-            changed = True
-          old = '''  return mutateReviewRun(context, async (latest) => {
-            let metrics = latest.metrics
-            if (!metrics.humanTriageStartedAt) {
-              metrics = startHumanTriageTimer(metrics, latest.phases.triage.startedAt ?? latest.updatedAt)
-            }
-            metrics = completeHumanTriageTimer(metrics, now)
-            let next = setReviewRunPhaseProgress(latest, {
-              trackedPhase: "triage",
-              status: "completed",
-              phase: "triage",
-              artifacts: { triageYamlPath: toWorkspaceRelativeArtifactPath(latest.workspaceRoot, triagePath) },
-              now
-            })'''
-          new = '''  return mutateReviewRun(context, async (latest) => {
-            const triageYamlPath = toWorkspaceRelativeArtifactPath(latest.workspaceRoot, triagePath)
-            if (latest.phases.triage.status === "completed") {
-              return clearReviewRunIssues({
-                ...latest,
-                updatedAt: now,
-                artifacts: { ...latest.artifacts, triageYamlPath }
-              }, "triage")
-            }
-
-            let metrics = latest.metrics
-            if (!metrics.humanTriageStartedAt) {
-              metrics = startHumanTriageTimer(metrics, latest.phases.triage.startedAt ?? latest.updatedAt)
-            }
-            metrics = completeHumanTriageTimer(metrics, now)
-            let next = setReviewRunPhaseProgress(latest, {
-              trackedPhase: "triage",
-              status: "completed",
-              phase: "triage",
-              artifacts: { triageYamlPath },
-              now
-            })'''
-          if old in s:
-            s = s.replace(old, new, 1)
-            changed = True
-          old = '''  let current = context
-          let recordPath = ""
-          try {
-            current = await mutateReviewRun(current, async (latest) => {
-              if (latest.phases.triage.status !== "completed") {
-                throw new Error("triage phase must be completed before Review Run finalization")
-              }
-              const result = await createReviewRunRecordArtifact(latest)
-              recordPath = result.recordPath
-              let next = setReviewRunPhaseProgress(latest, {
-                trackedPhase: "record",
-                status: "completed",
-                artifacts: { recordYamlPath: toWorkspaceRelativeArtifactPath(latest.workspaceRoot, result.recordPath) },
-                now
-              })
-              next = setReviewRunPhaseProgress(next, {
-                trackedPhase: "summary",
-                status: "in_progress",
-                now
-              })
-              return clearReviewRunIssues(next, "record")
-            })
-          } catch (error) {
-            await recordReviewRunPhaseFailure(context, "record", error, now).catch(() => undefined)
-            throw error
-          }
-          '''
-          new = '''  let current = context
-          let recordPath = context.artifacts.recordYamlPath
-            ? path.resolve(context.workspaceRoot, context.artifacts.recordYamlPath)
-            : ""
-          if (current.phases.record.status !== "completed" || !current.artifacts.recordYamlPath) {
-            try {
-              current = await mutateReviewRun(current, async (latest) => {
-                if (latest.phases.triage.status !== "completed") {
-                  throw new Error("triage phase must be completed before Review Run finalization")
-                }
-                const result = await createReviewRunRecordArtifact(latest)
-                recordPath = result.recordPath
-                let next = setReviewRunPhaseProgress(latest, {
-                  trackedPhase: "record",
-                  status: "completed",
-                  artifacts: { recordYamlPath: toWorkspaceRelativeArtifactPath(latest.workspaceRoot, result.recordPath) },
-                  now
-                })
-                next = setReviewRunPhaseProgress(next, {
-                  trackedPhase: "summary",
-                  status: "in_progress",
-                  now
-                })
-                return clearReviewRunIssues(next, "record")
-              })
-            } catch (error) {
-              await recordReviewRunPhaseFailure(context, "record", error, now).catch(() => undefined)
-              throw error
-            }
-          }
-          '''
-          if old in s:
-            s = s.replace(old, new, 1)
-            changed = True
-          if not changed:
-            raise SystemExit("verified patch did not match current coordinator source")
+          marker = "\n".join([
+              '  if (!result.jsonPath || !result.markdownPath) {',
+              '    throw new Error("Captured review result paths are required")',
+              '  }',
+              ''
+          ])
+          insertion = "\n".join([
+              '  const jsonPath = result.jsonPath',
+              '  const markdownPath = result.markdownPath',
+              '  const metadataPath = result.metadataPath',
+              ''
+          ])
+          if 'const jsonPath = result.jsonPath' not in s:
+              if marker not in s:
+                  raise SystemExit("result path guard not found")
+              s = s.replace(marker, marker + insertion, 1)
+          s = s.replace(
+              'toWorkspaceRelativeArtifactPath(latest.workspaceRoot, result.jsonPath)',
+              'toWorkspaceRelativeArtifactPath(latest.workspaceRoot, jsonPath)',
+              1
+          )
+          s = s.replace(
+              'toWorkspaceRelativeArtifactPath(latest.workspaceRoot, result.markdownPath)',
+              'toWorkspaceRelativeArtifactPath(latest.workspaceRoot, markdownPath)',
+              1
+          )
+          s = s.replace(
+              'reviewResultMetadataPath: result.metadataPath\n          ? toWorkspaceRelativeArtifactPath(latest.workspaceRoot, result.metadataPath)',
+              'reviewResultMetadataPath: metadataPath\n          ? toWorkspaceRelativeArtifactPath(latest.workspaceRoot, metadataPath)',
+              1
+          )
           p.write_text(s)
           PY
       - name: Commit and push fix
@@ -156,7 +66,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add extensions/bob-bazaar-review/src/reviewRuns/reviewRunCoordinator.ts
-          git commit -m "fix: stabilize Review Run result and finalize updates"
+          git commit -m "fix: narrow Review Run result artifact paths"
           git push origin HEAD:${{ github.event.pull_request.head.ref }}
       - name: Setup Node.js
         uses: actions/setup-node@v4
