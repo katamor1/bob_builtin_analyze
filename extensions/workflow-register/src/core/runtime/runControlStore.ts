@@ -2,8 +2,6 @@ import { assertWorkflowRunStateWritable } from "./runStateCodec"
 import { FileRunStateStore } from "./runStateStore"
 import { readContainedRunFile, writeContainedRunFile } from "./runStatePath"
 import { syncRunMaterializedFile } from "./runDurabilityPath"
-import { withWorkflowRunLock } from "./runLock"
-import type { WorkflowRunLockOptions } from "./runLock"
 
 export type RunPauseMode = "afterCurrentStep" | "beforeNextAiCall"
 
@@ -36,56 +34,49 @@ export interface RunControlStore {
 export interface FileRunControlStoreOptions {
   workspaceRoot: string
   now?: () => string
-  lockOptions?: WorkflowRunLockOptions
 }
 
 export class FileRunControlStore implements RunControlStore {
   private readonly workspaceRoot: string
   private readonly now: () => string
-  private readonly lockOptions?: WorkflowRunLockOptions
 
   constructor(options: FileRunControlStoreOptions) {
     this.workspaceRoot = options.workspaceRoot
     this.now = options.now ?? (() => new Date().toISOString())
-    this.lockOptions = options.lockOptions
   }
 
   async requestPause(input: PauseRequestInput): Promise<RunControlState> {
-    return this.withRunLock(input.runId, async () => {
-      await this.requireWritableRun(input.runId)
-      const existing = await this.loadControl(input.runId)
-      const next: RunControlState = {
-        ...(existing ?? { schemaVersion: "workflow-register/run-control/v1", runId: input.runId }),
-        schemaVersion: "workflow-register/run-control/v1",
-        runId: input.runId,
-        pauseRequestedAt: this.now(),
-        pauseReason: input.reason ?? existing?.pauseReason ?? "manual",
-        requestedBy: input.requestedBy ?? existing?.requestedBy ?? "user",
-        mode: input.mode ?? existing?.mode ?? "afterCurrentStep",
-        clearedAt: undefined
-      }
-      await this.saveControl(next)
-      return next
-    })
+    await this.requireWritableRun(input.runId)
+    const existing = await this.loadControl(input.runId)
+    const next: RunControlState = {
+      ...(existing ?? { schemaVersion: "workflow-register/run-control/v1", runId: input.runId }),
+      schemaVersion: "workflow-register/run-control/v1",
+      runId: input.runId,
+      pauseRequestedAt: this.now(),
+      pauseReason: input.reason ?? existing?.pauseReason ?? "manual",
+      requestedBy: input.requestedBy ?? existing?.requestedBy ?? "user",
+      mode: input.mode ?? existing?.mode ?? "afterCurrentStep",
+      clearedAt: undefined
+    }
+    await this.saveControl(next)
+    return next
   }
 
   async clearPause(runId: string): Promise<RunControlState> {
-    return this.withRunLock(runId, async () => {
-      await this.requireWritableRun(runId)
-      const existing = await this.loadControl(runId)
-      const next: RunControlState = {
-        ...(existing ?? { schemaVersion: "workflow-register/run-control/v1", runId }),
-        schemaVersion: "workflow-register/run-control/v1",
-        runId,
-        pauseRequestedAt: undefined,
-        pauseReason: undefined,
-        requestedBy: undefined,
-        mode: undefined,
-        clearedAt: this.now()
-      }
-      await this.saveControl(next)
-      return next
-    })
+    await this.requireWritableRun(runId)
+    const existing = await this.loadControl(runId)
+    const next: RunControlState = {
+      ...(existing ?? { schemaVersion: "workflow-register/run-control/v1", runId }),
+      schemaVersion: "workflow-register/run-control/v1",
+      runId,
+      pauseRequestedAt: undefined,
+      pauseReason: undefined,
+      requestedBy: undefined,
+      mode: undefined,
+      clearedAt: this.now()
+    }
+    await this.saveControl(next)
+    return next
   }
 
   async loadControl(runId: string): Promise<RunControlState | undefined> {
@@ -109,26 +100,20 @@ export class FileRunControlStore implements RunControlStore {
   }
 
   async recordResumeNote(runId: string, note: string): Promise<RunControlState> {
-    return this.withRunLock(runId, async () => {
-      await this.requireWritableRun(runId)
-      const existing = await this.loadControl(runId)
-      const next: RunControlState = {
-        ...(existing ?? { schemaVersion: "workflow-register/run-control/v1", runId }),
-        schemaVersion: "workflow-register/run-control/v1",
-        runId,
-        resumeNote: note
-      }
-      await this.saveControl(next)
-      return next
-    })
-  }
-
-  private async withRunLock<T>(runId: string, operation: () => Promise<T>): Promise<T> {
-    return withWorkflowRunLock(this.workspaceRoot, runId, operation, this.lockOptions)
+    await this.requireWritableRun(runId)
+    const existing = await this.loadControl(runId)
+    const next: RunControlState = {
+      ...(existing ?? { schemaVersion: "workflow-register/run-control/v1", runId }),
+      schemaVersion: "workflow-register/run-control/v1",
+      runId,
+      resumeNote: note
+    }
+    await this.saveControl(next)
+    return next
   }
 
   private async requireWritableRun(runId: string): Promise<void> {
-    const run = await new FileRunStateStore({ workspaceRoot: this.workspaceRoot, lockOptions: this.lockOptions }).loadRun(runId)
+    const run = await new FileRunStateStore({ workspaceRoot: this.workspaceRoot }).loadRun(runId)
     if (!run) throw new Error(`Workflow run not found: ${runId}`)
     assertWorkflowRunStateWritable(run)
   }
