@@ -114,6 +114,9 @@ export async function recordReviewResult(
   if (!result.jsonPath || !result.markdownPath) {
     throw new Error("Captured review result paths are required")
   }
+  const jsonPath = result.jsonPath
+  const markdownPath = result.markdownPath
+  const metadataPath = result.metadataPath
 
   return mutateReviewRun(context, async (latest) => {
     if (result.reviewId !== latest.reviewId) {
@@ -131,10 +134,10 @@ export async function recordReviewResult(
       status: "completed",
       phase: "result",
       artifacts: {
-        reviewResultJsonPath: toWorkspaceRelativeArtifactPath(latest.workspaceRoot, result.jsonPath),
-        reviewResultMarkdownPath: toWorkspaceRelativeArtifactPath(latest.workspaceRoot, result.markdownPath),
-        reviewResultMetadataPath: result.metadataPath
-          ? toWorkspaceRelativeArtifactPath(latest.workspaceRoot, result.metadataPath)
+        reviewResultJsonPath: toWorkspaceRelativeArtifactPath(latest.workspaceRoot, jsonPath),
+        reviewResultMarkdownPath: toWorkspaceRelativeArtifactPath(latest.workspaceRoot, markdownPath),
+        reviewResultMetadataPath: metadataPath
+          ? toWorkspaceRelativeArtifactPath(latest.workspaceRoot, metadataPath)
           : undefined
       },
       now
