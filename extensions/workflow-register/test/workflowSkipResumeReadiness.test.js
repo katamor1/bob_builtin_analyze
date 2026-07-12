@@ -217,6 +217,7 @@ test("apply rejects a stale preview fingerprint", () => {
 
 test("applied readiness round-trips through YAML and passes strict validation", () => {
   const model = validModel()
+  model.artifacts = model.artifacts.filter((artifact) => artifact.id !== "auditTrail")
   const preview = planWorkflowSkipResumeReadiness(model)
   const applied = applyWorkflowSkipResumeReadiness(model, preview.selectedCandidateIds, preview.fingerprint)
   const rendered = serializeAuthoringModelToMarkdown(applied.model)
