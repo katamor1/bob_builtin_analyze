@@ -137,26 +137,33 @@ async function acquireWorkflowRunLock(
       createdAt: now.toISOString(),
       heartbeatAt: now.toISOString()
     }
-    if (await createRunDurabilityFile(workspaceRoot, runId, "run.lock.json", serializeWorkflowRunLock(owner))) return owner
+    let contentionMessage = "Lock metadata changed while it was being inspected."
+    try {
+      if (await createRunDurabilityFile(workspaceRoot, runId, "run.lock.json", serializeWorkflowRunLock(owner))) return owner
 
-    const snapshot = await readRunDurabilityFile(workspaceRoot, runId, "run.lock.json")
-    if (!snapshot) continue
-    const inspection = inspectExistingLock(snapshot.bytes, snapshot.mtimeMs, runId, options)
-    if (inspection.reclaim) {
-      const removed = await removeRunDurabilityFile(workspaceRoot, runId, "run.lock.json", snapshot.bytes)
-      if (removed) {
-        try {
-          options.onReclaimed?.(inspection.message)
-        } catch (error) {
-          console.warn("Workflow run lock reclamation callback failed.", error)
+      const snapshot = await readRunDurabilityFile(workspaceRoot, runId, "run.lock.json")
+      if (!snapshot) continue
+      const inspection = inspectExistingLock(snapshot.bytes, snapshot.mtimeMs, runId, options)
+      contentionMessage = inspection.message
+      if (inspection.reclaim) {
+        const removed = await removeRunDurabilityFile(workspaceRoot, runId, "run.lock.json", snapshot.bytes)
+        if (removed) {
+          try {
+            options.onReclaimed?.(inspection.message)
+          } catch (error) {
+            console.warn("Workflow run lock reclamation callback failed.", error)
+          }
+          continue
         }
-        continue
       }
+    } catch (error) {
+      if (!isTransientLockContention(error, runId)) throw error
+      contentionMessage = `Lock metadata changed while it was being inspected (${formatError(error)}).`
     }
 
     const elapsed = Date.now() - startedAt
     if (elapsed >= options.timeoutMs) {
-      throw new Error(`Workflow run '${runId}' is busy or locked by another process. ${inspection.message}`)
+      throw new Error(`Workflow run '${runId}' is busy or locked by another process. ${contentionMessage}`)
     }
     await options.sleep(Math.min(options.pollMs, Math.max(1, options.timeoutMs - elapsed)))
   }
@@ -234,6 +241,15 @@ function inspectExistingLock(
       ? `Reclaimed stale foreign-host lock from ${lock.hostname} after ${heartbeatAgeMs}ms.`
       : `Owned by ${lock.pid} on ${lock.hostname}; heartbeat age ${heartbeatAgeMs}ms.`
   }
+}
+
+function isTransientLockContention(error: unknown, runId: string): boolean {
+  const message = formatError(error)
+  return message.includes(`Workflow run '${runId}' durability file 'run.lock.json'`)
+    && (
+      message.includes("changed while its path was being verified")
+      || message.includes("changed while it was being read")
+    )
 }
 
 function resolveOptions(options: WorkflowRunLockOptions): ResolvedWorkflowRunLockOptions {
