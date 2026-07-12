@@ -4,14 +4,14 @@
 - ブランチ: `agent/bob-code-consistency-review-triage-integrity`
 - Pull Request: `#74`
 - 記録日: 2026-07-12
-- 状態: automated gates complete / manual operator UAT pending
+- 状態: automated core and operator gates complete / IBM Bob integration UAT pending
 
 ## 実装範囲
 
-Workspace v2 Phase 1 として、Bob output由来のsource dataと人間のdecisionを分離した。
+Workspace v2 Phase 1として、Bob output由来のsource dataと人間のdecisionを分離した。
 
-- `triage-source/v1` のimmutable snapshot
-- `triage-decisions/v1` の`source_id` keyed decision store
+- `triage-source/v1`のimmutable snapshot
+- `triage-decisions/v1`の`source_id` keyed decision store
 - `source_sha256`と`decision_revision`によるoptimistic locking
 - decision別validation
 - accepted / rejected / investigation / question / follow-up Markdown projection
@@ -33,11 +33,18 @@ Workspace v2 Phase 1 として、Bob output由来のsource dataと人間のdecis
 
 その後、source、decision、projection、transaction、migration、GUI boundaryの順に実装してfocused testをGREENにした。
 
+Operator Extension Host gateについても、追加test file / workspace fixtureの配線契約を先に追加した。
+
+- RED contract commit: `ca2fa5ccac398229e0366057d58255afc2f676a4`
+- RED確認: `extensions-quality` run `29194873809`の`Verify Extension Host smoke contract`
+- workspace contract追加: `9528529d0934ac596f2e9b27d3cb268b37fde5ec`
+- GREEN implementation head: `105f9962ce994c17be118880a7aaa75c30644319`
+
 ## 自動検証
 
 ### Windows full verification
 
-GitHub Actions run `29193276984` で次を実行し、すべて成功した。
+GitHub Actions run `29193276984`で次を実行し、すべて成功した。
 
 ```text
 npm ci
@@ -53,28 +60,75 @@ npm run package:policy
 
 ### Windows traceability regression
 
-既存CAS regression testがWindowsの8.3短縮pathと長形式pathをlexical stringで比較していたため、temporary file barrierとbackup parent assertionをphysical identity基準へ変更した。GitHub Actions run `29193144292` で対象suiteが成功した。
+既存CAS regression testがWindowsの8.3短縮pathと長形式pathをlexical stringで比較していたため、temporary file barrierとbackup parent assertionをphysical identity基準へ変更した。GitHub Actions run `29193144292`で対象suiteが成功した。
 
-### Repository workflows
+### Human Triage operator Extension Host gate
 
-本ファイルのコミットを通常のPull Request eventとして使用し、最新headに対する次のworkflowを最終共有gateとする。
+共通smoke runnerへ次を追加した。
 
-- `code-consistency-review-scaffold`
-- `extensions-quality`（Ubuntu / Windows、unit、package、VSIX policy、Extension Host smoke）
+- `SMOKE_EXTRA_FILES`: extension固有の追加Mocha test file
+- `SMOKE_WORKSPACE_FOLDER`: Extension Host起動時に開くworkspace fixture
 
-結果はPull Request checksを正本とする。
+`bob-code-consistency-review`では`triage-integrity-extension-host.test.js`と`triage-operator-workspace`をUbuntu / Windowsの両方へ接続した。
+
+自動化したoperator flow:
+
+1. `bobCodeConsistency.triage`による生成
+2. accepted decision保存
+3. workspace state再読込とprojection保持
+4. Bob output再生成後の`TRIAGE_SOURCE_CHANGED`
+5. stale revisionによる`TRIAGE_REVISION_CONFLICT`
+6. legacy `triage-result.yaml` migration
+7. unmatched legacy IDのmigration report
+8. legacy backupとaccepted projection
+9. Human Triage Webviewのopen / close / reopen
+10. operator flow中の`unhandledRejection`不在
+
+実行結果:
+
+- `extensions-quality` run `29195289814`
+  - Ubuntu `bob-code-consistency-review`: success
+  - Windows `bob-code-consistency-review`: success
+  - 両jobでunit、package、VSIX policy、Extension Host smokeがsuccess
+- `code-consistency-review-scaffold` run `29195289840`
+  - scaffold: success
+  - VS Code extension validation: success
+
+`extensions-quality` workflow全体は、変更対象外の`workflow-register` unit jobがUbuntu / Windowsで失敗するためfailureとなる。本Phase 1の対象判定は、`bob-code-consistency-review`のUbuntu / Windows jobとscaffold workflowの結果を正本とする。
+
+## Operator gateの自動化範囲
+
+従来manualとしていた次のcore flowは自動gateへ移行した。
+
+- generate → save → reload
+- source change conflict
+- stale revision conflict
+- matching legacy migration
+- unmatched ID report
+- backup / projection確認
+- Webview reopen
+- test processでのunhandled rejection検出
+
+二画面の競合は、同一source hash / revisionを保持した二つのsave attemptとしてdomain contractを再現している。二つのpanelを目視操作するUI確認はmanual gateに残す。
 
 ## 手動UAT残件
 
-次は実VS Code / IBM Bob環境でのみ確認可能なため、merge後のrelease candidateまたはmerge前のoperator gateとして実施する。
+実IBM Bob環境でのみ確認可能な範囲をrelease-candidate gateとして残す。
 
-1. generate → edit → save → close → reopenでdecisionとsource contextが一致する。
-2. triage再生成後、古い画面からのsaveが`TRIAGE_SOURCE_CHANGED`になる。
-3. 二画面競合で古い画面が`TRIAGE_REVISION_CONFLICT`になる。
-4. legacy `triage-result.yaml`からmatching IDだけが移行される。
-5. backup、projection、migration reportが仕様どおりである。
-6. Developer Tools Consoleに未処理例外が残らない。
+1. Bob agentによるreview実行とresult handoff
+2. workflow-register / Bob Workflow UIを介した一連の操作
+3. MCP連携
+4. 二つのHuman Triage panelを使った視覚的競合表示
+5. Webview layout、focus、keyboard操作、operator向け文言
+6. Developer Tools Console全体のwarning / exception確認
+
+## 関連文書
+
+- `docs/superpowers/plans/2026-07-12-bob-code-consistency-review-triage-integrity.md`
+- `docs/superpowers/plans/2026-07-12-bob-code-consistency-review-triage-operator-extension-host.md`
+- `docs/superpowers/specs/2026-07-11-bob-code-consistency-review-workspace-v2-design.md`
+- `extensions/bob-code-consistency-review/docs/triage-operator-extension-host-test-spec-ja.md`
 
 ## 判定
 
-Phase 1のコード、単体・package gate、設計・運用文書の同期は完了した。自動workflowが最新headで成功した後も、実IBM Bob operator UATが完了するまではrelease可とは判定しない。
+Phase 1のコード、単体・package gate、Ubuntu / Windows Extension Host operator gate、設計・運用文書の同期は完了した。IBM Bob本体、workflow UI、MCP、visual operator UATが完了するまではrelease可とは判定せず、Pull Requestはdraftで維持する。
