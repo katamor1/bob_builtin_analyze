@@ -1,0 +1,88 @@
+{
+  "schema_version": 1,
+  "artifact": "bob-evidence-scope-phase3",
+  "hash_algorithm": "sha256",
+  "source_commit": "fa8e16ace18c37a07d7402843102815277add255",
+  "files": [
+    {
+      "path": "docs/superpowers/plans/2026-07-12-bob-evidence-scope-phase3.md",
+      "bytes": 12085,
+      "sha256": "c149eccbac4d9ad338b63cab41c4556d55fc3063af7ee7579bf5b7bc5b8aefeb"
+    },
+    {
+      "path": "docs/implementation/bob-evidence-scope-phase3-2026-07-12.md",
+      "bytes": 3282,
+      "sha256": "4a1b97582fa8fa595873062801c4ead540f712794e3a26b086e78653b8891d74"
+    },
+    {
+      "path": "docs/implementation/bob-evidence-scope-phase3-verification-2026-07-12.md",
+      "bytes": 2719,
+      "sha256": "79236fbb97349a1868753a98ee49a971330dff412976d65057efb826aff4c7a2"
+    },
+    {
+      "path": "docs/workflows/code-consistency-review/schemas/evidence-scope-rule-pack.schema.json",
+      "bytes": 2485,
+      "sha256": "498d3a9bdbf70202bc3dda4568a3d525942c17c56be4e1bc17cf6016d6fcf6e7"
+    },
+    {
+      "path": "docs/workflows/code-consistency-review/schemas/review-input.schema.json",
+      "bytes": 6721,
+      "sha256": "d66ebac80d31b87164db0298b26b430256a34149ea34aca2800ee4e4c4cab4d2"
+    },
+    {
+      "path": "extensions/bob-code-consistency-review/docs/evidence-scope-domain-contract-ja.md",
+      "bytes": 11085,
+      "sha256": "bc3596ffc639957a1128fcf74040b6c0604910b895fc5e07bb2f7a4502f17f88"
+    },
+    {
+      "path": "extensions/bob-code-consistency-review/resources/schemas/evidence-scope-rule-pack.schema.json",
+      "bytes": 2485,
+      "sha256": "498d3a9bdbf70202bc3dda4568a3d525942c17c56be4e1bc17cf6016d6fcf6e7"
+    },
+    {
+      "path": "extensions/bob-code-consistency-review/resources/schemas/review-input.schema.json",
+      "bytes": 6721,
+      "sha256": "d66ebac80d31b87164db0298b26b430256a34149ea34aca2800ee4e4c4cab4d2"
+    },
+    {
+      "path": "extensions/bob-code-consistency-review/src/core/pipeline.ts",
+      "bytes": 3601,
+      "sha256": "13432512b4453dac85c232ccbb37de8d856fe3aac6ccf51bbc979a14b289d29e"
+    },
+    {
+      "path": "extensions/bob-code-consistency-review/src/core/reviewPackageBuilder.ts",
+      "bytes": 14223,
+      "sha256": "027eb63b7da78f63d43dd0d54c9a2fb8634fc23844a12bd105e9356790e65a4e"
+    },
+    {
+      "path": "extensions/bob-code-consistency-review/src/core/schemaLoader.ts",
+      "bytes": 972,
+      "sha256": "2b8b97dfc4cefd7c6094f46cd3b3317b2dc100f08f30f6be0256952d4b504da4"
+    },
+    {
+      "path": "extensions/bob-code-consistency-review/src/evidenceScope/contextBudgetArtifact.ts",
+      "bytes": 2108,
+      "sha256": "0d9f613fcce3319dabb372b69e90572093f058d9ce2ad35dee6c3855990d778e"
+    },
+    {
+      "path": "extensions/bob-code-consistency-review/src/evidenceScope/index.ts",
+      "bytes": 1166,
+      "sha256": "fbc4147b34db37a37611e99d65a221f73c5d13545434b302408a3fe6037b2f53"
+    },
+    {
+      "path": "extensions/bob-code-consistency-review/src/evidenceScope/projectRulePackLoader.ts",
+      "bytes": 5344,
+      "sha256": "8a63e2e0b78b8c0cf9a6062a75cbe539c159809b8420cac6b1a1e0738651a031"
+    },
+    {
+      "path": "extensions/bob-code-consistency-review/src/evidenceScope/reviewContextBudget.ts",
+      "bytes": 3280,
+      "sha256": "53ca4aef4dea32132a577eedbbf1544e90fc6676e9efe3187d6e7f43c29277d7"
+    },
+    {
+      "path": "extensions/bob-code-consistency-review/test/projectRulePack.test.js",
+      "bytes": 6543,
+      "sha256": "99c1ff36d4a703b06ffbb13e83b72bd15e1fc82c2f7d313bcec62f819f68a004"
+    }
+  ]
+}
