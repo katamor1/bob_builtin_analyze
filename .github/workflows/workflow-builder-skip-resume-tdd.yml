@@ -34,7 +34,10 @@ jobs:
           set +e
           npm run compile > focused-output.txt 2>&1
           compile_status=$?
-          node --test test/workflowSkipResumeAuthoringRoundTrip.test.js >> focused-output.txt 2>&1
+          node --test \
+            test/workflowSkipResumeAuthoringRoundTrip.test.js \
+            test/workflowSkipResumeReadiness.test.js \
+            >> focused-output.txt 2>&1
           test_status=$?
           {
             echo
