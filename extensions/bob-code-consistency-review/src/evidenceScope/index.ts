@@ -14,7 +14,9 @@ export type {
   LoadProjectRulePackInput,
   ProjectRulePackProvenance
 } from "./projectRulePackLoader"
-export type { MergedRepositoryScopeData } from "./repositorySymbolIndexAdapter"
+export type {
+  RepositoryScopeData
+} from "./repositorySymbolIndexAdapter"
 export type {
   LoadedRepositorySymbolIndex,
   LoadRepositorySymbolIndexInput,
