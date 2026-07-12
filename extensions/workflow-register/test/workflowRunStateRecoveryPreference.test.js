@@ -48,7 +48,7 @@ function run(runId, schemaVersion, updatedAt) {
   }
 }
 
-test("single-step recovery returns a current run even when newer future evidence also matches", async (t) => {
+async function prepareRuns(t) {
   const root = tempRoot(t)
   const current = run(
     "20260712T000000Z-current-recovery",
@@ -62,6 +62,11 @@ test("single-step recovery returns a current run even when newer future evidence
   )
   await writeRun(root, current)
   await writeRun(root, future)
+  return { root, current, future }
+}
+
+test("single-step recovery returns a current run even when newer future evidence also matches", async (t) => {
+  const { root, current } = await prepareRuns(t)
   const store = new FileRunStateStore({ workspaceRoot: root })
 
   const selected = await store.findRecoverableRun(workflow(), {}, {
@@ -70,4 +75,18 @@ test("single-step recovery returns a current run even when newer future evidence
   })
 
   assert.equal(selected.runId, current.runId)
+})
+
+test("single-step recovery preserves an explicitly loaded future run target", async (t) => {
+  const { root, future } = await prepareRuns(t)
+  const store = new FileRunStateStore({ workspaceRoot: root })
+  const selectedFuture = await store.loadRun(future.runId)
+
+  await assert.rejects(
+    store.findRecoverableRun(workflow(), selectedFuture.inputs, {
+      executionMode: "singleStep",
+      stepId: "review"
+    }),
+    /read-only schemaVersion 'workflow-register\/run-state\/v2'/
+  )
 })
