@@ -102,7 +102,7 @@ test("gate report commit-time CAS preserves a catalog changed while the report t
   const existingReport = Buffer.from("existing report must survive\n", "utf8")
   await fs.writeFile(reportPath, existingReport)
   const externalBytes = Buffer.from(`${JSON.stringify(catalogWithDocument("external-winner"), null, 2)}\n`, "utf8")
-  const barrier = installTargetTempOpenBarrier(reportPath)
+  const barrier = await installTargetTempOpenBarrier(reportPath)
 
   try {
     const pendingReport = validateAndWriteTraceabilityGateReport({
@@ -218,7 +218,7 @@ test("commit-time CAS preserves an external update made while the candidate temp
   const initial = await writeTraceabilityCatalog({ workspaceRoot, catalog: catalogWithDocument("initial") })
   assert.equal(initial.status, "ok")
   const externalBytes = Buffer.from(`${JSON.stringify(catalogWithDocument("external-winner"), null, 2)}\n`, "utf8")
-  const barrier = installTargetTempOpenBarrier(catalogPath)
+  const barrier = await installTargetTempOpenBarrier(catalogPath)
 
   try {
     const pendingWrite = writeTraceabilityCatalog({
@@ -251,7 +251,7 @@ test("commit-time CAS treats a missing catalog that appears while the candidate 
   assert.equal(initial.status, "ok")
   assert.equal(initial.revision, null)
   const externalBytes = Buffer.from(`${JSON.stringify(catalogWithDocument("external-create"), null, 2)}\n`, "utf8")
-  const barrier = installTargetTempOpenBarrier(catalogPath)
+  const barrier = await installTargetTempOpenBarrier(catalogPath)
 
   try {
     const pendingWrite = writeTraceabilityCatalog({
@@ -586,9 +586,9 @@ function installPathIoBarrier(targetPath) {
   }
 }
 
-function installTargetTempOpenBarrier(targetPath) {
+async function installTargetTempOpenBarrier(targetPath) {
   const originalOpen = fs.open
-  const expectedDirectory = normalizePhysicalPath(path.dirname(targetPath))
+  const expectedDirectory = normalizePhysicalPath(await resolvePotentialPhysicalPath(path.dirname(targetPath)))
   const tempPrefix = `.${path.basename(targetPath)}.`
   let enteredResolve
   let releaseResolve
@@ -614,6 +614,22 @@ function installTargetTempOpenBarrier(targetPath) {
     waitUntilEntered: () => entered,
     release: () => releaseResolve(),
     restore: () => { fs.open = originalOpen }
+  }
+}
+
+async function resolvePotentialPhysicalPath(value) {
+  const suffix = []
+  let current = path.resolve(value)
+  while (true) {
+    try {
+      return path.join(await fs.realpath(current), ...suffix)
+    } catch (error) {
+      if (!error || error.code !== "ENOENT") throw error
+      const parent = path.dirname(current)
+      if (parent === current) throw error
+      suffix.unshift(path.basename(current))
+      current = parent
+    }
   }
 }
 
