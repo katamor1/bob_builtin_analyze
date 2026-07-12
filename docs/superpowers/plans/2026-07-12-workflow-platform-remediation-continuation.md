@@ -206,13 +206,15 @@
 - Consumes: Tasks 1-7.
 - Produces: deterministic approve, reject, missing-artifact, and invalid-definition parity evidence plus a current gap list for Contract v2, reproducible runtime, and operator UX.
 
-- [ ] Add deterministic fixtures that do not depend on wall-clock timing, random run IDs, network, or an installed IBM Bob instance.
-- [ ] Run approve E2E, reject/missing-artifact E2E, and invalid-definition parity independently.
-- [ ] Run `npm.cmd test`, architecture/source/schema/dependency policies, package, package policy, and `git diff --check`.
-- [ ] Perform a broad whole-branch review and fix every Critical/Important finding.
-- [ ] Re-audit the Contract v2, reproducible-runtime, and operator-UX plans against the new tree before continuing those phases.
-- [ ] Commit `test: close workflow platform P0 regressions`.
+- [x] Add deterministic fixtures that do not depend on wall-clock timing, random run IDs, network, or an installed IBM Bob instance.
+- [x] Run approve E2E, reject/missing-artifact E2E, and invalid-definition parity independently.
+- [x] Run `npm.cmd test`, architecture/source/schema/dependency policies, package, package policy, and `git diff --check`.
+- [x] Perform a broad whole-branch review and fix every Critical/Important finding.
+- [x] Re-audit the Contract v2, reproducible-runtime, and operator-UX plans against the new tree before continuing those phases.
+- [x] Commit `test: close workflow platform P0 regressions`.
 
 **Task 8 verification note:** This Windows host enters periodic high-load states that make fixed wall-clock tests non-deterministic. Per operator direction, a full-equivalent PASS may be assembled from a broad run plus isolated green reruns when every test has green evidence against unchanged relevant source. Preserve the raw broad-run failures and the cumulative mapping in release evidence rather than relabeling an individual failing command as green.
 
 **Task 8 review debt:** Recheck Operation Hub artifact payload/open physical containment during the whole-branch review. The lexical-only open behavior predates Task 7, so it was excluded from Task 7's diff verdict but remains relevant to the Phase 0 workspace-boundary acceptance criteria.
+
+**Task 8 completion note (2026-07-12):** Phase 0 code closure is recorded in `5c9744f8` and the final independent-review hardening commit `0105c92a`. Current `workflow-register` full suite is 654/654, package/policy gates pass, and the final whole-branch verdict is Critical 0 / Important 0. Detailed raw/cumulative evidence, VSIX hashes, remaining Phase 1 work, and external release blockers are in `docs/release-evidence/workflow-platform-remediation-2026-07-12.md`.
