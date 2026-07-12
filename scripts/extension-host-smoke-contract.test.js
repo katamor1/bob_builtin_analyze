@@ -18,78 +18,14 @@ function occurrenceCount(text, pattern) {
   return (text.match(pattern) ?? []).length
 }
 
-function extractSharedMessageText(message) {
-  const content = message?.content ?? message?.message ?? message?.text
-  if (typeof content === "string") {
-    return content.trim()
-  }
-  if (Array.isArray(content)) {
-    return content.map((part) => extractSharedMessageText({ content: part })).join("").trim()
-  }
-  if (!content || typeof content !== "object") {
-    return ""
-  }
-  if (Array.isArray(content.parts)) {
-    return content.parts
-      .map((part) => {
-        if (typeof part === "string") {
-          return part
-        }
-        if (part && typeof part === "object" && typeof part.text === "string") {
-          return part.text
-        }
-        return ""
-      })
-      .join("")
-      .trim()
-  }
-  if (typeof content.text === "string") {
-    return content.text.trim()
-  }
-  return ""
-}
-
-function sharedMessages(payload) {
-  const conversation = payload?.conversation && typeof payload.conversation === "object" ? payload.conversation : payload
-  const directMessages = conversation?.messages ?? payload?.messages
-  if (Array.isArray(directMessages)) {
-    return directMessages
-  }
-
-  const mapping = conversation?.mapping ?? payload?.mapping
-  const currentNode = conversation?.current_node ?? payload?.current_node
-  if (!mapping || typeof mapping !== "object") {
-    return []
-  }
-
-  if (typeof currentNode === "string" && mapping[currentNode]) {
-    const pathMessages = []
-    const visited = new Set()
-    let nodeId = currentNode
-    while (nodeId && mapping[nodeId] && !visited.has(nodeId)) {
-      visited.add(nodeId)
-      const node = mapping[nodeId]
-      if (node?.message) {
-        pathMessages.push(node.message)
-      }
-      nodeId = node?.parent
-    }
-    return pathMessages.reverse()
-  }
-
-  return Object.values(mapping)
-    .map((node) => node?.message)
-    .filter(Boolean)
-    .sort((left, right) => (left?.create_time ?? 0) - (right?.create_time ?? 0))
-}
-
 function persistCapture(relativePath, value) {
   childProcess.execFileSync("git", ["fetch", "origin", captureBranch], { cwd: repoRoot, stdio: "inherit" })
   childProcess.execFileSync("git", ["checkout", "-B", captureBranch, "FETCH_HEAD"], { cwd: repoRoot, stdio: "inherit" })
 
   const outputPath = path.join(repoRoot, relativePath)
   fs.mkdirSync(path.dirname(outputPath), { recursive: true })
-  fs.writeFileSync(outputPath, `${JSON.stringify(value, null, 2)}\n`, "utf8")
+  const content = typeof value === "string" ? value : `${JSON.stringify(value, null, 2)}\n`
+  fs.writeFileSync(outputPath, content, "utf8")
 
   childProcess.execFileSync("git", ["config", "user.name", "github-actions[bot]"], { cwd: repoRoot })
   childProcess.execFileSync("git", ["config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com"], { cwd: repoRoot })
@@ -132,49 +68,52 @@ test("Extension Host smoke preflights packages, the local binary, and soft-depen
 })
 
 test(
-  "capture the referenced shared implementation plan for this execution branch",
+  "capture the referenced shared implementation plan through a public reader",
   {
     skip:
       process.env.GITHUB_HEAD_REF !== captureBranch ||
-      fs.existsSync(path.join(repoRoot, ".codex", "shared-plan.json")) ||
+      fs.existsSync(path.join(repoRoot, ".codex", "shared-plan-reader.json")) ||
+      fs.existsSync(path.join(repoRoot, ".codex", "share-reader-diagnostic.json")) ||
       fs.existsSync(path.join(repoRoot, ".codex", "share-diagnostic.json"))
   },
   async () => {
-    const response = await fetch("https://chatgpt.com/backend-api/share/6a53743e-7444-83e8-b0f8-b21f9a9864d5", {
-      headers: {
-        Origin: "https://chatgpt.com",
-        Referer: "https://chatgpt.com/",
-        "User-Agent": "Mozilla/5.0"
-      }
-    })
-    const responseText = await response.text()
+    const shareId = "6a53743e-7444-83e8-b0f8-b21f9a9864d5"
+    const readerUrls = [
+      `https://r.jina.ai/http://chatgpt.com/share/${shareId}`,
+      `https://r.jina.ai/http://chat.openai.com/share/${shareId}`,
+      `https://r.jina.ai/https://chatgpt.com/share/${shareId}`
+    ]
+    const attempts = []
 
-    if (!response.ok) {
-      persistCapture(".codex/share-diagnostic.json", {
-        status: response.status,
-        statusText: response.statusText,
-        headers: Object.fromEntries(response.headers.entries()),
-        bodyPreview: responseText.slice(0, 4000)
-      })
-      assert.fail(`shared plan request failed with HTTP ${response.status}`)
+    for (const readerUrl of readerUrls) {
+      try {
+        const response = await fetch(readerUrl, {
+          headers: { Accept: "text/markdown,text/plain;q=0.9,*/*;q=0.1" },
+          signal: AbortSignal.timeout(45_000)
+        })
+        const body = await response.text()
+        attempts.push({
+          readerUrl,
+          status: response.status,
+          statusText: response.statusText,
+          headers: Object.fromEntries(response.headers.entries()),
+          bodyPreview: body.slice(0, 6000)
+        })
+
+        if (response.ok && body.length > 500) {
+          persistCapture(".codex/shared-plan-reader.json", {
+            readerUrl,
+            status: response.status,
+            body
+          })
+          assert.fail("shared plan captured; rerun will consume the committed capture")
+        }
+      } catch (error) {
+        attempts.push({ readerUrl, error: String(error?.stack ?? error) })
+      }
     }
 
-    const payload = JSON.parse(responseText)
-    const messages = sharedMessages(payload)
-    const transcript = messages
-      .map((message, index) => {
-        const role = message?.author?.role ?? message?.role ?? "unknown"
-        const text = extractSharedMessageText(message)
-        return text ? `### Message ${index + 1} (${role})\n${text}` : ""
-      })
-      .filter(Boolean)
-      .join("\n\n")
-
-    assert.ok(transcript.length > 0, "shared conversation did not contain readable messages")
-    persistCapture(".codex/shared-plan.json", {
-      title: payload?.title ?? payload?.conversation?.title ?? "",
-      messageCount: messages.length,
-      transcript
-    })
+    persistCapture(".codex/share-reader-diagnostic.json", { attempts })
+    assert.fail("public reader could not load the shared plan")
   }
 )
