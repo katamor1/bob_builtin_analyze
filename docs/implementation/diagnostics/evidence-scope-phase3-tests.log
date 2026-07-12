@@ -1,0 +1,46 @@
+TAP version 13
+# Subtest: preprocessReview emits the evidence scope budget report and manifest handoff
+ok 1 - preprocessReview emits the evidence scope budget report and manifest handoff
+  ---
+  duration_ms: 268.059259
+  type: 'test'
+  ...
+# Subtest: buildReviewPackage removes a stale context budget report when no current artifact is supplied
+ok 2 - buildReviewPackage removes a stale context budget report when no current artifact is supplied
+  ---
+  duration_ms: 12.056315
+  type: 'test'
+  ...
+# Subtest: project rule pack loader reads bounded workspace-local bytes without modifying the source
+ok 3 - project rule pack loader reads bounded workspace-local bytes without modifying the source
+  ---
+  duration_ms: 104.768548
+  type: 'test'
+  ...
+# Subtest: project rule pack loader rejects path escape and unsupported schema versions
+ok 4 - project rule pack loader rejects path escape and unsupported schema versions
+  ---
+  duration_ms: 80.872391
+  type: 'test'
+  ...
+# Subtest: project rules remain authoritative when inline rules reuse an id
+ok 5 - project rules remain authoritative when inline rules reuse an id
+  ---
+  duration_ms: 12.255126
+  type: 'test'
+  ...
+# Subtest: preprocessReview records rule pack provenance and changes stale input hash when only pack bytes change
+ok 6 - preprocessReview records rule pack provenance and changes stale input hash when only pack bytes change
+  ---
+  duration_ms: 283.937322
+  type: 'test'
+  ...
+1..6
+# tests 6
+# suites 0
+# pass 6
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 648.810692
