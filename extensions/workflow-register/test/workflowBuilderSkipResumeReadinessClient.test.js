@@ -59,6 +59,10 @@ function deliver(harness, message) {
   for (const listener of harness.windowListeners.message || []) listener({ data: message })
 }
 
+function plain(value) {
+  return JSON.parse(JSON.stringify(value))
+}
+
 test("stale preview responses are ignored after the model changes", () => {
   const harness = clientHarness()
   harness.evaluate("renderSkipResumeReadiness()")
@@ -128,7 +132,7 @@ test("successful apply replaces the model and immediately requests a fresh previ
     }
   })
 
-  assert.deepEqual(harness.context.model, appliedModel)
+  assert.deepEqual(plain(harness.context.model), appliedModel)
   assert.equal(harness.previewRequestCount(), 1)
   assert.equal(harness.posted.at(-1).type, "previewSkipResumeReadiness")
   assert.deepEqual(harness.posted.at(-1).model, appliedModel)
