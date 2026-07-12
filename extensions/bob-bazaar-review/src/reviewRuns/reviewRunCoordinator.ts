@@ -176,7 +176,9 @@ export async function recordTriageCompleted(
   triagePath: string,
   now = new Date().toISOString()
 ): Promise<ReviewRunContext> {
-  return mutateReviewRun(context, async (latest) => {
+  const persisted = await readReviewRun(context.workspaceRoot, context.campaignId, context.reviewId)
+  const mutationContext = persisted.phases.triage.status === "completed" ? persisted : context
+  return mutateReviewRun(mutationContext, async (latest) => {
     const triageYamlPath = toWorkspaceRelativeArtifactPath(latest.workspaceRoot, triagePath)
     if (latest.phases.triage.status === "completed") {
       return clearReviewRunIssues({
