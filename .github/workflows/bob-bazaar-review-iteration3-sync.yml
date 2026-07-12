@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 jobs:
-  diagnose-merge:
+  merge-and-verify:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
@@ -20,22 +20,120 @@ jobs:
         with:
           ref: agent/bob-bazaar-review-review-run-v3-iteration3
           fetch-depth: 0
-      - name: Record merge conflicts with main
+
+      - name: Merge main and preserve Iteration 3 test contracts
         shell: bash
         run: |
-          set +e
+          set -euo pipefail
           git fetch origin main
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git show HEAD:extensions/bob-bazaar-review/docs/real-machine-test-spec-ja.md > /tmp/iteration3-real-machine.md
+          git show HEAD:extensions/bob-bazaar-review/docs/unit-test-spec-ja.md > /tmp/iteration3-unit-test.md
+
+          set +e
           git merge --no-commit --no-ff origin/main
-          status=$?
-          mkdir -p .github/diagnostics
-          if [ "$status" -eq 0 ]; then
-            printf 'clean\n' > .github/diagnostics/bob-bazaar-review-iteration3-conflicts.txt
-          else
-            git diff --name-only --diff-filter=U > .github/diagnostics/bob-bazaar-review-iteration3-conflicts.txt
+          merge_status=$?
+          set -e
+          if [ "$merge_status" -ne 0 ]; then
+            mapfile -t conflicts < <(git diff --name-only --diff-filter=U)
+            expected=(
+              "extensions/bob-bazaar-review/docs/real-machine-test-spec-ja.md"
+              "extensions/bob-bazaar-review/docs/unit-test-spec-ja.md"
+            )
+            if [ "${conflicts[*]}" != "${expected[*]}" ]; then
+              printf 'Unexpected conflicts:\n%s\n' "${conflicts[*]}"
+              exit 1
+            fi
+
+            git checkout --theirs extensions/bob-bazaar-review/docs/real-machine-test-spec-ja.md
+            git checkout --theirs extensions/bob-bazaar-review/docs/unit-test-spec-ja.md
+
+            python - <<'PY'
+          from pathlib import Path
+
+          real_path = Path("extensions/bob-bazaar-review/docs/real-machine-test-spec-ja.md")
+          real_main = real_path.read_text(encoding="utf-8")
+          real_iter3 = Path("/tmp/iteration3-real-machine.md").read_text(encoding="utf-8")
+          real_start = "### 6.7 Review Run Wizard v3 Iteration 3 Campaign Dashboard"
+          real_end = "## 7. 実機テスト結果記録テンプレート"
+          if real_start not in real_main:
+              section = real_iter3[real_iter3.index(real_start):real_iter3.index(real_end)].rstrip() + "\n\n"
+              real_main = real_main.replace(real_end, section + real_end, 1)
+          acceptance_marker = "- legacy recoveryが確認付きかつ非破壊である。"
+          if "- Campaign Dashboardのpending、rate、rule / target mode trend" not in real_main:
+              real_main = real_main.replace(
+                  acceptance_marker,
+                  acceptance_marker + "\n- Campaign Dashboardのpending、rate、rule / target mode trend、warning、3形式exportがsource artifactと一致する。\n- Dashboard refresh / exportが既存review evidenceを変更しない。",
+                  1,
+              )
+          real_main = real_main.replace(
+              "| P1 | 中断再開、summary failure retry、legacy recovery、workflow provider、MCP、multi-root。 |",
+              "| P1 | 中断再開、summary failure retry、legacy recovery、Campaign Dashboard、workflow provider、MCP、multi-root。 |",
+              1,
+          )
+          real_path.write_text(real_main, encoding="utf-8")
+
+          unit_path = Path("extensions/bob-bazaar-review/docs/unit-test-spec-ja.md")
+          unit_main = unit_path.read_text(encoding="utf-8")
+          unit_iter3 = Path("/tmp/iteration3-unit-test.md").read_text(encoding="utf-8")
+          unit_start = "### BZR-UT-049 Campaign Dashboard: overviewとrateを集計する"
+          unit_end = "## 4.1 実テスト対応表"
+          if unit_start not in unit_main:
+              section = unit_iter3[unit_iter3.index(unit_start):unit_iter3.index(unit_end)].rstrip() + "\n\n"
+              unit_main = unit_main.replace(unit_end, section + unit_end, 1)
+          table_marker = "| docs / source layout contracts | BZR-UT-036 |"
+          dashboard_row = "| Campaign Dashboard aggregation / loader / export / GUI | BZR-UT-049〜052 | `test/campaignDashboardCore.test.js`, `test/campaignDashboard.test.js`, `test/campaignDashboardExport.test.js`, `test/campaignDashboardGui.test.js`, `test/guiFirstSurfaces.test.js` |"
+          if dashboard_row not in unit_main:
+              unit_main = unit_main.replace(table_marker, dashboard_row + "\n" + table_marker, 1)
+          completion_marker = "- Review Runの再開、metrics、decision validation、finalize retry、legacy recoveryが回帰テストで守られる。"
+          if "- Campaign Dashboardのrate、trend、warning、export、Webview境界" not in unit_main:
+              unit_main = unit_main.replace(
+                  completion_marker,
+                  completion_marker + "\n- Campaign Dashboardのrate、trend、warning、export、Webview境界が回帰テストで守られる。",
+                  1,
+              )
+          unit_path.write_text(unit_main, encoding="utf-8")
+          PY
+
+            git add extensions/bob-bazaar-review/docs/real-machine-test-spec-ja.md \
+              extensions/bob-bazaar-review/docs/unit-test-spec-ja.md
           fi
-          git merge --abort 2>/dev/null || true
-          git add .github/diagnostics/bob-bazaar-review-iteration3-conflicts.txt
-          git commit -m "ci: record Iteration 3 merge conflicts with main"
+
+          rm -f .github/diagnostics/bob-bazaar-review-iteration3-conflicts.txt
+          git rm -f .github/workflows/bob-bazaar-review-iteration3-sync.yml
+          git add -A
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: extensions/bob-bazaar-review/package-lock.json
+
+      - name: Install dependencies
+        working-directory: extensions/bob-bazaar-review
+        run: npm ci
+
+      - name: Full bob-bazaar-review gate
+        working-directory: extensions/bob-bazaar-review
+        shell: bash
+        run: |
+          npm test
+          npm run dependency:policy
+          npm run architecture:policy
+          npm run source:policy
+          npm run unused:report
+          npm run unused:policy
+          npm run artifact:policy
+          npm run audit:prod
+          npm run package
+          npm run package:policy
+          npm run package:metrics
+
+      - name: Commit and push synchronized Iteration 3
+        shell: bash
+        run: |
+          git commit -m "merge: synchronize Campaign Dashboard with main"
           git push origin HEAD:agent/bob-bazaar-review-review-run-v3-iteration3
