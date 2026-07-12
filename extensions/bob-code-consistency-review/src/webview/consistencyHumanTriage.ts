@@ -9,16 +9,10 @@ import {
   renderConsistencyHumanTriageHtml,
   type ConsistencyHumanTriageModel
 } from "./consistencyHumanTriageHtml"
-
-type HumanTriageAction = "generateTriage" | "saveDecisions" | "openResultCapture"
-
-export interface HumanTriageMessage {
-  type: "consistencyHumanTriage.action"
-  action: HumanTriageAction
-  sourceSha256?: string
-  decisionRevision?: number
-  items?: unknown[]
-}
+import {
+  parseHumanTriageMessage,
+  type HumanTriageMessage
+} from "./consistencyHumanTriageMessage"
 
 export function openConsistencyHumanTriageGui(context: vscode.ExtensionContext): void {
   const panel = vscode.window.createWebviewPanel("bobCodeConsistencyHumanTriage", "Code Consistency Human Triage", vscode.ViewColumn.One, {
@@ -108,44 +102,10 @@ class ConsistencyHumanTriageController {
   }
 }
 
-export function parseHumanTriageMessage(message: unknown): HumanTriageMessage | undefined {
-  if (!message || typeof message !== "object") return undefined
-  const candidate = message as Record<string, unknown>
-  if (candidate.type !== "consistencyHumanTriage.action") return undefined
-  if (!isHumanTriageAction(candidate.action)) return undefined
-  const parsed: HumanTriageMessage = {
-    type: "consistencyHumanTriage.action",
-    action: candidate.action
-  }
-  if (candidate.action !== "saveDecisions") return parsed
-  if (typeof candidate.sourceSha256 !== "string" || !candidate.sourceSha256.trim()) return undefined
-  if (!Number.isInteger(candidate.decisionRevision) || Number(candidate.decisionRevision) < 0) return undefined
-  if (!Array.isArray(candidate.items) || !hasUniquePostedSourceIds(candidate.items)) return undefined
-  parsed.sourceSha256 = candidate.sourceSha256
-  parsed.decisionRevision = Number(candidate.decisionRevision)
-  parsed.items = candidate.items
-  return parsed
-}
-
 async function requireWorkspaceRoot(): Promise<string> {
   const root = await resolveBobWorkspaceRoot({ allowPick: true, title: "Bob コード整合 triage workspace を選択" })
   if (!root) throw new Error("先にワークスペースフォルダーを開いてください。")
   return root
-}
-
-function hasUniquePostedSourceIds(items: unknown[]): boolean {
-  const seen = new Set<string>()
-  for (const value of items) {
-    if (!value || typeof value !== "object" || Array.isArray(value)) return false
-    const sourceId = (value as Record<string, unknown>).source_id
-    if (typeof sourceId !== "string" || !sourceId.trim() || seen.has(sourceId)) return false
-    seen.add(sourceId)
-  }
-  return true
-}
-
-function isHumanTriageAction(value: unknown): value is HumanTriageAction {
-  return value === "generateTriage" || value === "saveDecisions" || value === "openResultCapture"
 }
 
 function describeResult(result: unknown): string {
