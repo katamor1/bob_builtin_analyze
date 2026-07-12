@@ -1,6 +1,6 @@
 # Bob Code Consistency Review Workspace v2 機能追加・改善企画
 
-- ステータス: Proposed（設計レビュー待ち）
+- ステータス: Phase 1 implemented（Triage Integrity）
 - 作成日: 2026-07-11
 - 対象リポジトリ: `katamor1/bob_builtin_analyze`
 - 対象拡張機能: `extensions/bob-code-consistency-review`

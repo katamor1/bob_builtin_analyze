@@ -378,3 +378,20 @@
 | EXT-UT-REM-004 | Windows path | drive、UNC、device、drive-relative、dot、traversal、control-character path を拒否する。 |
 | EXT-UT-REM-005 | processing limits | manifest/runtime の範囲が一致し、極端値を clamp し、UTF-8 byte 上限を守る。 |
 | EXT-UT-REM-006 | workflow contracts | 全 workflow を動的探索し、未知 provider / command、strict warning、mirror drift を検出する。 |
+
+<!-- TRIAGE-INTEGRITY-2026-07-12 -->
+## 2026-07-12 Human Triage Integrity 単体テスト契約
+
+| ID | 観点 | 期待結果 | 実テスト |
+| --- | --- | --- | --- |
+| CCR-UT-055 | source snapshot | `triage-source/v1`がBob outputのfinding / question contextとexact hashを保持し、重複IDを拒否する。 | `test/humanTriageIntegrity.test.js` |
+| CCR-UT-056 | keyed decisions | posted順序に依存せず`source_id`へdecisionが紐づく。 | `test/humanTriageIntegrity.test.js` |
+| CCR-UT-057 | field preservation | disk上の未知top-level fieldとnested follow-up fieldを保持し、browser由来の未知fieldは採用しない。 | `test/humanTriageIntegrity.test.js`, `test/humanTriageBoundaries.test.js` |
+| CCR-UT-058 | decision validation | decision別必須field、severity enum、unknown decision、unknown source IDを拒否する。 | `test/humanTriageIntegrity.test.js` |
+| CCR-UT-059 | optimistic locking | stale source hashとstale decision revisionを安定したerror codeで拒否する。 | `test/humanTriageIntegrity.test.js` |
+| CCR-UT-060 | projection classification | accepted、rejected、investigation、question、follow-upがdecisionに従って別成果物へ出る。 | `test/humanTriageIntegrity.test.js`, `test/reviewOutputTriage.test.js` |
+| CCR-UT-061 | transaction rollback | staged YAML failure時に既存fileを維持し、staging directoryを残さない。 | `test/humanTriageBoundaries.test.js` |
+| CCR-UT-062 | legacy migration | matching IDだけを移行し、unmatched IDをreportし、legacy resultをbackupする。 | `test/humanTriageIntegrity.test.js` |
+| CCR-UT-063 | Webview boundary | untriaged state、lock token、source context、editable decision field、action/message whitelistを検証する。 | `test/guiFirstSurfaces.test.js`, `test/humanTriageBoundaries.test.js` |
+
+Windowsではtemporary directoryが8.3短縮名と長形式名で表現される場合がある。CAS test barrierとbackup directoryのassertionはlexical stringではなくphysical identityまたは対象basenameで比較する。

@@ -206,6 +206,8 @@ jobs:
         env:
           SMOKE_EXTENSION_ID: local.bob-code-consistency-review
           SMOKE_COMMANDS: bobCodeConsistency.openReviewWizard,bobCodeConsistency.preprocess
+          SMOKE_EXTRA_FILES: ../../scripts/triage-integrity-extension-host.test.js
+          SMOKE_WORKSPACE_FOLDER: test/fixtures/triage-operator-workspace
         run: |
           node ../../scripts/extension-host-smoke.test.js --write-config
           xvfb-run -a ./node_modules/.bin/vscode-test
@@ -221,12 +223,18 @@ jobs:
           - extension: workflow-register
             extension_id: local.workflow-register
             smoke_commands: workflowRegister.reload,workflowRegister.runWorkflow
+            extra_test_files: ""
+            workspace_folder: ""
           - extension: bob-bazaar-review
             extension_id: local.bob-bazaar-review
             smoke_commands: bobBazaar.openReviewGui,bobBazaar.reviewRevision
+            extra_test_files: ""
+            workspace_folder: ""
           - extension: bob-code-consistency-review
             extension_id: local.bob-code-consistency-review
             smoke_commands: bobCodeConsistency.openReviewWizard,bobCodeConsistency.preprocess
+            extra_test_files: "../../scripts/triage-integrity-extension-host.test.js"
+            workspace_folder: "test/fixtures/triage-operator-workspace"
 
     defaults:
       run:
@@ -272,6 +280,8 @@ jobs:
         env:
           SMOKE_EXTENSION_ID: ${{ matrix.extension_id }}
           SMOKE_COMMANDS: ${{ matrix.smoke_commands }}
+          SMOKE_EXTRA_FILES: ${{ matrix.extra_test_files }}
+          SMOKE_WORKSPACE_FOLDER: ${{ matrix.workspace_folder }}
         run: |
           node ../../scripts/extension-host-smoke.test.js --write-config
           & .\node_modules\.bin\vscode-test.cmd

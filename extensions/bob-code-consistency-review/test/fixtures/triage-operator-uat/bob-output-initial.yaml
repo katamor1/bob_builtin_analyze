@@ -1,0 +1,35 @@
+schema_version: 1
+review_summary:
+  review_id: CCR-UAT-001
+  package_id: package-initial
+  target_range: main..feature/triage-uat
+  result_type: pre_review
+  final_approval: not_performed
+  scope_statement: Deterministic Human Triage UAT fixture before source regeneration.
+findings:
+  - id: PRE-001
+    category: risk
+    severity: high
+    confidence: medium
+    summary: Timeout branch may return success instead of an error.
+    evidence:
+      - evidence_id: SRC-0001
+        type: code
+        ref: src/sample.ts:10-20
+    reason: The changed branch joins the normal-success path.
+    impact: A caller may treat a timed-out operation as completed.
+    recommended_action: Confirm the timeout requirement and correct the branch if needed.
+    human_check: Compare the implementation with the approved timeout requirement.
+questions:
+  - id: Q-001
+    category: owner-decision
+    summary: Confirm whether timeout handling is in the current change scope.
+    reason: The ticket and detailed design do not identify the same owner.
+    evidence:
+      - evidence_id: TICKET-0001
+        type: ticket
+        ref: ISSUE-CCR-UAT-1
+    suggested_owner: design-owner
+    suggested_action: Ask the design owner before formal review.
+coverage_notes: []
+rejected_or_uncertain: []
