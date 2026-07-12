@@ -24,6 +24,11 @@
 - `real-machine-test-spec-ja.md`  
   VS Code / IBM Bob / Bob Workflow UI / Webview / Template Customization Studio / Explorer view / Status Bar / multi-root workspace を含めた実機テスト仕様書です。
 
+## Release evidence
+
+- [`workflow-reproducible-runtime-phase4-2026-07-12.md`](../../../docs/release-evidence/workflow-reproducible-runtime-phase4-2026-07-12.md)  
+  Phase 2〜4のevent、journal、lease、CAS、runner復旧、hardening review、検証ゲートを記録します。
+
 ## 運用・検討メモ
 
 - `workflow-authoring-guide.md`  
