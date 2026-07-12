@@ -36,45 +36,40 @@ jobs:
 
           ;(async () => {
             const root = fs.mkdtempSync(path.join(os.tmpdir(), "phase4-path-probe-"))
-            const results = {
-              platform: process.platform,
-              node: process.version,
-              tmpdir: os.tmpdir(),
-              root,
-              pathResolve: path.resolve(root),
-              realpathSync: fs.realpathSync(root),
-              realpathSyncNative: fs.realpathSync.native(root),
-              realpathSyncNamespaced: fs.realpathSync(path.toNamespacedPath(root)),
-              realpathSyncNativeNamespaced: fs.realpathSync.native(path.toNamespacedPath(root)),
-              promisesRealpath: await fsp.realpath(root),
-              callbackRealpath: await util.promisify(fs.realpath)(root),
-              callbackRealpathNative: await util.promisify(fs.realpath.native)(root)
+            const results = { platform: process.platform, node: process.version, tmpdir: os.tmpdir(), root }
+            const syncProbe = (name, operation) => {
+              try { results[name] = operation() } catch (error) { results[`${name}Error`] = String(error?.stack ?? error) }
             }
-            try {
-              results.cmdFull = cp.execFileSync(process.env.ComSpec, ["/d", "/s", "/c", `for %I in ("${root}") do @echo %~fI`], { encoding: "utf8" }).trim()
-            } catch (error) {
-              results.cmdFullError = String(error)
+            const asyncProbe = async (name, operation) => {
+              try { results[name] = await operation() } catch (error) { results[`${name}Error`] = String(error?.stack ?? error) }
             }
-            try {
-              results.powershellFullName = cp.execFileSync("powershell.exe", ["-NoProfile", "-Command", `(Get-Item -LiteralPath '${root.replaceAll("'", "''")}').FullName`], { encoding: "utf8" }).trim()
-            } catch (error) {
-              results.powershellFullNameError = String(error)
+            syncProbe("pathResolve", () => path.resolve(root))
+            syncProbe("realpathSync", () => fs.realpathSync(root))
+            syncProbe("realpathSyncNative", () => fs.realpathSync.native(root))
+            syncProbe("realpathSyncNamespaced", () => fs.realpathSync(path.toNamespacedPath(root)))
+            syncProbe("realpathSyncNativeNamespaced", () => fs.realpathSync.native(path.toNamespacedPath(root)))
+            await asyncProbe("promisesRealpath", () => fsp.realpath(root))
+            await asyncProbe("callbackRealpath", () => util.promisify(fs.realpath)(root))
+            if (typeof fs.realpath.native === "function") {
+              await asyncProbe("callbackRealpathNative", () => util.promisify(fs.realpath.native)(root))
+            } else {
+              results.callbackRealpathNativeError = "fs.realpath.native is unavailable"
             }
-            try {
-              results.powershellResolvePath = cp.execFileSync("powershell.exe", ["-NoProfile", "-Command", `(Resolve-Path -LiteralPath '${root.replaceAll("'", "''")}').ProviderPath`], { encoding: "utf8" }).trim()
-            } catch (error) {
-              results.powershellResolvePathError = String(error)
-            }
+            syncProbe("cmdFull", () => cp.execFileSync(process.env.ComSpec, ["/d", "/s", "/c", `for %I in ("${root}") do @echo %~fI`], { encoding: "utf8" }).trim())
+            syncProbe("powershellFullName", () => cp.execFileSync("powershell.exe", ["-NoProfile", "-Command", `(Get-Item -LiteralPath '${root.replaceAll("'", "''")}').FullName`], { encoding: "utf8" }).trim())
+            syncProbe("powershellResolvePath", () => cp.execFileSync("powershell.exe", ["-NoProfile", "-Command", `(Resolve-Path -LiteralPath '${root.replaceAll("'", "''")}').ProviderPath`], { encoding: "utf8" }).trim())
             fs.writeFileSync("path-probe.json", `${JSON.stringify(results, null, 2)}\n`, "utf8")
             console.log(JSON.stringify(results, null, 2))
           })().catch((error) => {
+            fs.writeFileSync("path-probe.json", `${JSON.stringify({ fatal: String(error?.stack ?? error) }, null, 2)}\n`, "utf8")
             console.error(error)
-            process.exitCode = 1
           })
           '@ | Set-Content -Path path-probe.cjs -Encoding utf8
           node path-probe.cjs
+          exit 0
 
       - name: Upload path probe
+        if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: phase4-windows-path-probe
