@@ -12,11 +12,11 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   diagnose:
-    name: Windows traceability path fix verification
+    name: Windows traceability barrier diagnostic
     runs-on: windows-latest
     timeout-minutes: 20
 
@@ -43,7 +43,7 @@ jobs:
       - name: Compile
         run: npm run compile
 
-      - name: Apply basename-scoped CAS barrier fix
+      - name: Instrument basename-scoped CAS barrier
         shell: pwsh
         run: |
           @'
@@ -55,25 +55,34 @@ jobs:
           const conditionLine = '      normalizePhysicalPath(path.dirname(candidate)) === expectedDirectory &&\n'
           if (text.includes(directoryLine)) text = text.replace(directoryLine, "")
           if (text.includes(conditionLine)) text = text.replace(conditionLine, "")
-          if (text.includes("expectedDirectory")) {
-            throw new Error("expectedDirectory remains after CAS barrier patch")
+          const candidateLine = '    const candidate = typeof args[0] === "string" ? args[0] : undefined\n'
+          const debugLine = '    console.error("CAS_OPEN", JSON.stringify(candidate), JSON.stringify(candidate ? path.basename(candidate) : ""), JSON.stringify(tempPrefix))\n'
+          if (!text.includes(debugLine)) {
+            if (!text.includes(candidateLine)) throw new Error("CAS candidate line not found")
+            text = text.replace(candidateLine, candidateLine + debugLine)
           }
           fs.writeFileSync(filePath, text)
           '@ | node
 
-      - name: Run traceability CAS suite
-        run: node --test test/traceabilityCatalogStore.test.js
-
-      - name: Commit verified Windows path fix
-        working-directory: .
+      - name: Run traceability CAS suite and capture evidence
         shell: pwsh
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add extensions/bob-code-consistency-review/test/traceabilityCatalogStore.test.js
-          if (git diff --cached --quiet) {
-            Write-Host "Windows CAS barrier fix is already committed."
-            exit 0
-          }
-          git commit -m "test: make traceability CAS barrier path-agnostic"
-          git push origin HEAD:${{ github.event.pull_request.head.ref }}
+          $log = Join-Path $env:RUNNER_TEMP "traceability-cas-windows.log"
+          $patched = Join-Path $env:RUNNER_TEMP "traceabilityCatalogStore.patched.test.js"
+          Copy-Item test\traceabilityCatalogStore.test.js $patched
+          & node --test test/traceabilityCatalogStore.test.js *> $log
+          $status = $LASTEXITCODE
+          Write-Host "Unit test exit code: $status"
+          Get-Content $log -Tail 420
+          exit $status
+
+      - name: Upload diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: traceability-cas-barrier-diagnostic
+          path: |
+            ${{ runner.temp }}/traceability-cas-windows.log
+            ${{ runner.temp }}/traceabilityCatalogStore.patched.test.js
+          if-no-files-found: error
+          retention-days: 3
