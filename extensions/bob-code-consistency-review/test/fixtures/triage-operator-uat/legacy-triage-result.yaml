@@ -1,0 +1,20 @@
+schema_version: 1
+review_id: CCR-UAT-001
+triaged_by: legacy-operator
+triaged_at: "2026-07-12T13:00:00.000Z"
+items:
+  - source_id: PRE-001
+    source_type: finding
+    decision: accepted
+    final_severity: high
+    owner: legacy-owner
+    reason: Legacy decision retained for migration verification.
+    review_comment: Confirm the timeout behavior in formal review.
+    follow_up:
+      required: true
+      action: Fix the timeout implementation.
+      due: "2026-07-20"
+  - source_id: OLD-999
+    source_type: finding
+    decision: rejected
+    reason: This source ID is intentionally absent from the current Bob output.
