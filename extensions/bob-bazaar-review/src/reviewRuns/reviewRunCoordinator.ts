@@ -2,6 +2,10 @@ import * as fs from "node:fs/promises"
 import * as path from "node:path"
 import { writeReviewPacketArtifact } from "../records/reviewRecordStore"
 import {
+  createReviewRunRecordArtifact,
+  createReviewRunSummaryArtifacts
+} from "./reviewRunFinalize"
+import {
   completeBobReviewTimer,
   completeHumanTriageTimer,
   correctReviewRunMetrics,
@@ -17,12 +21,18 @@ import {
 } from "./reviewRunPaths"
 import type { CreateReviewRunContextInput } from "./reviewRunState"
 import {
+  advanceReviewRun,
+  appendReviewRunIssue,
   clearReviewRunIssues,
   createReviewRunContext,
   setReviewRunPhaseProgress
 } from "./reviewRunState"
 import { readReviewRun, writeReviewRun } from "./reviewRunStore"
-import type { ReviewRunCommandInput, ReviewRunContext } from "./reviewRunTypes"
+import type {
+  ReviewRunCommandInput,
+  ReviewRunContext,
+  ReviewRunTrackedPhase
+} from "./reviewRunTypes"
 
 const mutationQueues = new Map<string, Promise<void>>()
 
@@ -33,6 +43,13 @@ export interface ReviewRunCaptureResult {
   jsonPath?: string
   markdownPath?: string
   metadataPath?: string
+}
+
+export interface ReviewRunFinalizeResult {
+  context: ReviewRunContext
+  recordPath: string
+  summaryJsonPath: string
+  summaryMarkdownPath: string
 }
 
 export async function startReviewRun(input: CreateReviewRunContextInput): Promise<ReviewRunContext> {
@@ -191,6 +208,68 @@ export async function correctActiveReviewRunMetrics(
   }))
 }
 
+export async function finalizeReviewRun(
+  context: ReviewRunContext,
+  now = new Date().toISOString()
+): Promise<ReviewRunFinalizeResult> {
+  if (context.phases.triage.status !== "completed") {
+    throw new Error("triage phase must be completed before Review Run finalization")
+  }
+
+  let current = context
+  let recordPath = ""
+  try {
+    current = await mutateReviewRun(current, async (latest) => {
+      if (latest.phases.triage.status !== "completed") {
+        throw new Error("triage phase must be completed before Review Run finalization")
+      }
+      const result = await createReviewRunRecordArtifact(latest)
+      recordPath = result.recordPath
+      let next = setReviewRunPhaseProgress(latest, {
+        trackedPhase: "record",
+        status: "completed",
+        artifacts: { recordYamlPath: toWorkspaceRelativeArtifactPath(latest.workspaceRoot, result.recordPath) },
+        now
+      })
+      next = setReviewRunPhaseProgress(next, {
+        trackedPhase: "summary",
+        status: "in_progress",
+        now
+      })
+      return clearReviewRunIssues(next, "record")
+    })
+  } catch (error) {
+    await recordReviewRunPhaseFailure(context, "record", error, now).catch(() => undefined)
+    throw error
+  }
+
+  let summaryJsonPath = ""
+  let summaryMarkdownPath = ""
+  try {
+    current = await mutateReviewRun(current, async (latest) => {
+      const result = await createReviewRunSummaryArtifacts(latest)
+      summaryJsonPath = result.summaryJsonPath
+      summaryMarkdownPath = result.summaryMarkdownPath
+      let next = setReviewRunPhaseProgress(latest, {
+        trackedPhase: "summary",
+        status: "completed",
+        artifacts: {
+          summaryJsonPath: toWorkspaceRelativeArtifactPath(latest.workspaceRoot, result.summaryJsonPath),
+          summaryMarkdownPath: toWorkspaceRelativeArtifactPath(latest.workspaceRoot, result.summaryMarkdownPath)
+        },
+        now
+      })
+      next = clearReviewRunIssues(next, "summary")
+      return advanceReviewRun(next, { phase: "completed", now })
+    })
+  } catch (error) {
+    await recordReviewRunPhaseFailure(current, "summary", error, now).catch(() => undefined)
+    throw error
+  }
+
+  return { context: current, recordPath, summaryJsonPath, summaryMarkdownPath }
+}
+
 export async function loadReviewRun(input: ReviewRunCommandInput): Promise<ReviewRunContext> {
   return readReviewRun(input.workspaceRoot, input.campaignId, input.reviewId)
 }
@@ -251,6 +330,30 @@ export function toWorkspaceRelativeArtifactPath(workspaceRoot: string, filePath:
     throw new Error(`Artifact path is outside Review Run workspace: ${filePath}`)
   }
   return relative.split(path.sep).join("/")
+}
+
+async function recordReviewRunPhaseFailure(
+  context: ReviewRunContext,
+  phase: Extract<ReviewRunTrackedPhase, "record" | "summary">,
+  error: unknown,
+  now: string
+): Promise<ReviewRunContext> {
+  const message = error instanceof Error ? error.message : String(error)
+  return mutateReviewRun(context, async (latest) => {
+    let next = setReviewRunPhaseProgress(latest, {
+      trackedPhase: phase,
+      status: "failed",
+      issue: message,
+      now
+    })
+    next = clearReviewRunIssues(next, phase)
+    return appendReviewRunIssue(next, {
+      phase,
+      message,
+      retryable: true,
+      recordedAt: now
+    })
+  })
 }
 
 async function mutateReviewRun(
