@@ -10,13 +10,15 @@
 | Branch | `agent/task-snapshot-import-preview-p1-2-20260712` |
 | Pull request | #88 |
 | Final code head | `784864813169492709edd2536d9236fbb2f00d17` |
+| Documentation gate head | `c7db2e9d2be63a744cb55397a6e5d452289246a1` |
 | Focused preview / apply / report / projection tests | PASS |
 | Focused final diagnostic | run `29206130109`: compile 0 / 7 passed / 0 failed |
 | Final code matrix | `extensions-quality` run `29206419912`: all 7 jobs success |
-| Workflow contracts | run `29206419896`: success |
-| Review scaffold | run `29206419897`: success |
+| Documentation-tail matrix | `extensions-quality` run `29206741706`: all 7 jobs success |
+| Documentation-tail workflow contracts | run `29206741679`: success |
+| Documentation-tail review scaffold | run `29206741682`: success |
 | Whole-diff review | Critical 0 / Important 0 |
-| Merge gate | **GO after the documentation-only tail completes without new code findings** |
+| Merge gate | **GO** |
 
 ## 2. Delivered behavior
 
@@ -94,7 +96,7 @@ Final code head `784864813169492709edd2536d9236fbb2f00d17`に対する`extension
 
 両OSの`workflow-register`はunit、dependency / architecture / source policy、package、VSIX policy、Extension Host smokeまで完走した。Linuxではschema policy、unused report、production auditも成功した。
 
-同じheadの`workflow-contracts` run `29206419896`と`code-consistency-review-scaffold` run `29206419897`も成功した。
+Documentation gate head `c7db2e9d2be63a744cb55397a6e5d452289246a1`に対するrun `29206741706`でも同じ7ジョブがすべて成功した。Workflow contracts run `29206741679`とreview scaffold run `29206741682`も成功した。
 
 ## 5. Transaction and concurrency contract
 
@@ -135,7 +137,6 @@ reload run / workflow
 - P1-3 Reused / Skipped状態の統一表示は次の実装単位。
 - P1-4 Detached Held Run recovery assistantは後続。
 - 実IBM Bob、実Bazaar、multi-root、distribution signingは製品配布UATで確認する。
-- Documentation-only tailのActions完了後にPR本文を同期し、ready化／mergeする。
 
 ## 9. Cleanup
 
