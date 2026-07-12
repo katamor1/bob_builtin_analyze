@@ -1,23 +1,21 @@
 name: Phase 5 checkpoint diagnostic
 
 on:
-  push:
-    branches:
-      - codex/evidence-scope-phase5-checkpoint-20260712
+  pull_request:
+    paths:
+      - "extensions/bob-code-consistency-review/**"
+      - "extensions/workflow-register/**"
+      - ".github/workflows/phase5-checkpoint-diagnostic.yml"
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   diagnose:
-    if: github.actor != 'github-actions[bot]'
     runs-on: windows-2025
     steps:
-      - name: Checkout branch
+      - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-        with:
-          ref: codex/evidence-scope-phase5-checkpoint-20260712
-          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -34,12 +32,11 @@ jobs:
           npm ci
           Pop-Location
 
-      - name: Capture failing unit boundaries
+      - name: Capture unit boundaries
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Continue'
-          $diagnostic = Join-Path $PWD 'docs/implementation/diagnostics'
-          New-Item -ItemType Directory -Force -Path $diagnostic | Out-Null
+          $diagnostic = $env:RUNNER_TEMP
 
           Push-Location extensions/bob-code-consistency-review
           & npm run compile 2>&1 | Set-Content -Encoding utf8 (Join-Path $diagnostic 'phase5-windows-compile.log')
@@ -63,11 +60,15 @@ jobs:
           ) | Set-Content -Encoding ascii (Join-Path $diagnostic 'exit-codes.txt')
           exit 0
 
-      - name: Commit diagnostic evidence
-        shell: pwsh
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add docs/implementation/diagnostics
-          git commit -m 'ci: record phase 5 checkpoint diagnostics'
-          git push origin HEAD:codex/evidence-scope-phase5-checkpoint-20260712
+      - name: Upload diagnostic
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: phase5-checkpoint-diagnostic
+          path: |
+            ${{ runner.temp }}\phase5-windows-compile.log
+            ${{ runner.temp }}\phase5-windows-focused.log
+            ${{ runner.temp }}\phase5-windows-full.log
+            ${{ runner.temp }}\workflow-register-windows.log
+            ${{ runner.temp }}\exit-codes.txt
+          if-no-files-found: error
+          retention-days: 1
