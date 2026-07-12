@@ -70,8 +70,9 @@ Core APIで`selectedArtifactIds`を省略すると、previewで初期選択さ�
 - Focused final diagnostic: run `29206130109`, 7 passed / 0 failed, compile status 0。
 - Final code head: `784864813169492709edd2536d9236fbb2f00d17`。
 - Final code matrix: `extensions-quality` run `29206419912`, all 7 jobs success。
-- Workflow contracts: run `29206419896`, success。
-- Review scaffold: run `29206419897`, success。
+- Documentation gate head: `c7db2e9d2be63a744cb55397a6e5d452289246a1`。
+- Documentation gate matrix: `extensions-quality` run `29206741706`, all 7 jobs success。
+- Documentation workflow contracts / review scaffold: `29206741679` / `29206741682`, success。
 
 ## Final result
 
@@ -80,4 +81,4 @@ Core APIで`selectedArtifactIds`を省略すると、previewで初期選択さ�
 | Critical | 0 |
 | Important | 0 |
 
-Code, cross-platform CI, package, VSIX, and Extension Host gates are GO. Documentation-only tail must complete without introducing a new finding before the PR is marked ready and merged.
+Code, review, cross-platform CI, package, VSIX, Extension Host, workflow-contract, and documentation gates are GO. Product release remains separately gated by real IBM Bob、Bazaar、multi-root、and distribution-signing UAT.
