@@ -2,7 +2,7 @@
   "schema_version": 1,
   "artifact": "bob-evidence-scope-phase3",
   "hash_algorithm": "sha256",
-  "source_commit": "2564d4b04058d9e08316e4c44d8e3c00249646d3",
+  "source_commit": "e6d0a5867b679481b70acd1f850431f04906b7dd",
   "files": [
     {
       "path": "docs/superpowers/plans/2026-07-12-bob-evidence-scope-phase3.md",
