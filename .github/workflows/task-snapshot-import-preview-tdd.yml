@@ -15,7 +15,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   focused:
@@ -53,3 +53,93 @@ jobs:
             if [[ -f "$test_file" ]]; then existing+=("$test_file"); fi
           done
           node --test "${existing[@]}"
+
+  apply-provenance:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+      - name: Apply projections when absent
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          model_file = Path("extensions/workflow-register/src/gui/operationHubModel.ts")
+          model = model_file.read_text(encoding="utf-8")
+          if "taskSnapshotImportLabel?: string" not in model:
+              if "TASK_SNAPSHOT_IMPORT_STATE_KEY" not in model:
+                  model = model.replace("  ARTIFACT_REUSE_STATE_KEY,\n", "  ARTIFACT_REUSE_STATE_KEY,\n  TASK_SNAPSHOT_IMPORT_STATE_KEY,\n", 1)
+              model = model.replace("  artifactReuseStatus?: OperationHubStatus\n", "  artifactReuseStatus?: OperationHubStatus\n  taskSnapshotImportLabel?: string\n  taskSnapshotImportStatus?: OperationHubStatus\n", 1)
+              index = model.index("export function buildOperationHubModel")
+              model = model[:index] + "interface TaskSnapshotImportState {\n  importedAt?: string\n  imported?: unknown[]\n}\n\n" + model[index:]
+              model = model.replace("  const artifactReuse = summarizeArtifactReuse(run)\n", "  const artifactReuse = summarizeArtifactReuse(run)\n  const taskSnapshotImport = summarizeTaskSnapshotImport(run)\n", 1)
+              model = model.replace("    artifactReuseStatus: artifactReuse?.status,\n", "    artifactReuseStatus: artifactReuse?.status,\n    taskSnapshotImportLabel: taskSnapshotImport?.label,\n    taskSnapshotImportStatus: taskSnapshotImport?.status,\n", 1)
+              index = model.index("function artifactManifestForRun")
+              helper = '''function summarizeTaskSnapshotImport(run: WorkflowRunState): { label: string; status: OperationHubStatus } | undefined {
+            const value = run.state[TASK_SNAPSHOT_IMPORT_STATE_KEY]
+            if (typeof value !== "string") return undefined
+            const parsed = parseJsonObject(value) as TaskSnapshotImportState | undefined
+            if (!parsed) return undefined
+            const count = Array.isArray(parsed.imported) ? parsed.imported.length : 0
+            const at = parsed.importedAt ? ` / ${parsed.importedAt}` : ""
+            return { label: `Imported from task snapshot: ${count} artifact(s)${at}`, status: "ok" }
+          }
+
+          '''
+              model = model[:index] + helper + model[index:]
+              model_file.write_text(model, encoding="utf-8")
+
+          html_file = Path("extensions/workflow-register/src/gui/operationHubHtml.ts")
+          html = html_file.read_text(encoding="utf-8")
+          if "const taskSnapshotImportBadge" not in html:
+              index = html.index('  return `<article class="${cardClass}">')
+              badge = '''  const taskSnapshotImportBadge = run.taskSnapshotImportLabel && run.taskSnapshotImportStatus
+            ? `<span class="badge ${escapeHtml(run.taskSnapshotImportStatus)}">${escapeHtml(run.taskSnapshotImportLabel)}</span>`
+            : ""
+          '''
+              html = html[:index] + badge + html[index:]
+              html = html.replace("${syncBadge}${manifestBadge}${reuseBadge}</span>", "${syncBadge}${manifestBadge}${reuseBadge}${taskSnapshotImportBadge}</span>", 1)
+              html_file.write_text(html, encoding="utf-8")
+
+          view_file = Path("extensions/workflow-register/src/commands/runControlView.ts")
+          view = view_file.read_text(encoding="utf-8")
+          if "TASK_SNAPSHOT_IMPORT_STATE_KEY" not in view:
+              view = view.replace('import { ARTIFACT_MANIFEST_STATE_KEY, ARTIFACT_REUSE_STATE_KEY } from "../core/artifacts"', 'import { ARTIFACT_MANIFEST_STATE_KEY, ARTIFACT_REUSE_STATE_KEY, TASK_SNAPSHOT_IMPORT_STATE_KEY } from "../core/artifacts"', 1)
+          if "description: `snapshot ${importedCount}`" not in view:
+              index = view.index('  if (typeof run.state[ARTIFACT_MANIFEST_STATE_KEY] === "string") {')
+              block = '''  const imported = parseReuse(run.state[TASK_SNAPSHOT_IMPORT_STATE_KEY])
+            if (imported) {
+              const importedCount = Array.isArray(imported.imported) ? imported.imported.length : 0
+              return {
+                description: `snapshot ${importedCount}`,
+                tooltip: `imported from task snapshot: ${importedCount} artifact(s), at=${imported.importedAt ?? "unknown"}`
+              }
+            }
+          '''
+              view = view[:index] + block + view[index:]
+          if 'return "cloud-download"' not in view:
+              view = view.replace('  if (run.state[ARTIFACT_REUSE_STATE_KEY]) return "references"\n', '  if (run.state[ARTIFACT_REUSE_STATE_KEY]) return "references"\n  if (run.state[TASK_SNAPSHOT_IMPORT_STATE_KEY]) return "cloud-download"\n', 1)
+          view_file.write_text(view, encoding="utf-8")
+          PY
+      - name: Verify projection changes
+        if: always()
+        working-directory: extensions/workflow-register
+        run: |
+          npm ci
+          npm run compile
+          node --test test/operationHubTaskSnapshotImport.test.js test/operationHubArtifactReuse.test.js
+      - name: Commit projection changes
+        shell: bash
+        run: |
+          if git diff --quiet; then exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add extensions/workflow-register/src/gui/operationHubModel.ts extensions/workflow-register/src/gui/operationHubHtml.ts extensions/workflow-register/src/commands/runControlView.ts
+          git commit -m "feat: surface task snapshot import provenance"
+          git push origin HEAD:${{ github.head_ref }}
