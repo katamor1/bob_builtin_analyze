@@ -24,6 +24,7 @@ interface SharedRunLoadResult {
 }
 
 const inFlightRunLoads = new Map<string, Promise<SharedRunLoadResult>>()
+const explicitRunTargetByInputs = new WeakMap<object, string>()
 
 export interface RecoverableRunLookupOptions {
   executionMode?: "full" | "singleStep"
@@ -61,7 +62,7 @@ export class FileRunStateStore implements RunStateStore {
   async createRun(workflow: CoreWorkflowDefinition, inputs: Record<string, unknown>): Promise<WorkflowRunState> {
     const createdAt = this.now()
     const runId = await this.nextRunId(workflow.name, createdAt)
-    return {
+    const run: WorkflowRunState = {
       schemaVersion: CURRENT_WORKFLOW_RUN_STATE_SCHEMA_VERSION,
       runId,
       workflowId: workflow.id,
@@ -83,6 +84,8 @@ export class FileRunStateStore implements RunStateStore {
       createdAt,
       updatedAt: createdAt
     }
+    rememberExplicitRunTarget(run)
+    return run
   }
 
   async saveRun(run: WorkflowRunState): Promise<void> {
@@ -92,6 +95,7 @@ export class FileRunStateStore implements RunStateStore {
     await writeContainedRunFile(this.workspaceRoot, run.runId, serializeRun(persisted))
     run.schemaVersion = CURRENT_WORKFLOW_RUN_STATE_SCHEMA_VERSION
     run.updatedAt = updatedAt
+    rememberExplicitRunTarget(run)
   }
 
   async loadRun(runId: string): Promise<WorkflowRunState | undefined> {
@@ -106,6 +110,7 @@ export class FileRunStateStore implements RunStateStore {
       } else if (result.run) {
         this.clearTransientLoadDiagnostic(runId)
       }
+      if (result.run) rememberExplicitRunTarget(result.run)
       return result.run
     } catch (error) {
       this.recordInvalidLoad(runId, error)
@@ -159,6 +164,14 @@ export class FileRunStateStore implements RunStateStore {
       && workflowDefinitionMatches(run, workflow)
       && stableJson(run.inputs) === expectedInputs
     ))
+    const explicitRunId = explicitRunTargetByInputs.get(inputs)
+    if (explicitRunId) {
+      const explicitRun = matchingRuns.find((run) => run.runId === explicitRunId)
+      if (explicitRun) {
+        assertWorkflowRunStateWritable(explicitRun)
+        return isRecoverableRun(explicitRun, workflow, expectedInputs, options) ? explicitRun : undefined
+      }
+    }
     const recoverable = matchingRuns.find((run) => isRecoverableRun(run, workflow, expectedInputs, options))
     if (recoverable) return recoverable
     if (options.executionMode === "singleStep") {
@@ -291,6 +304,12 @@ function isRecoverableRun(run: WorkflowRunState, workflow: CoreWorkflowDefinitio
     return run.steps.slice(0, reviewOrHeldGateIndex).every((step) => step.status === "completed")
   }
   return run.steps.slice(0, stepIndex).every((step) => step.status === "completed")
+}
+
+function rememberExplicitRunTarget(run: WorkflowRunState): void {
+  if (run.inputs && typeof run.inputs === "object" && !Array.isArray(run.inputs)) {
+    explicitRunTargetByInputs.set(run.inputs, run.runId)
+  }
 }
 
 function serializeRun(run: WorkflowRunState): string {
