@@ -9,12 +9,14 @@
 | Component | `extensions/workflow-register` |
 | Branch | `agent/task-snapshot-import-preview-p1-2-20260712` |
 | Pull request | #88 |
-| Implementation / cleanup head | `9df2ef12139ebeb9dbee5487c8ff8cb3ba0be39f` |
+| Final code head | `784864813169492709edd2536d9236fbb2f00d17` |
 | Focused preview / apply / report / projection tests | PASS |
-| Linux full workflow-register gate | PASS on run `29206130088` |
-| Final cross-platform matrix | pending on evidence tail |
+| Focused final diagnostic | run `29206130109`: compile 0 / 7 passed / 0 failed |
+| Final code matrix | `extensions-quality` run `29206419912`: all 7 jobs success |
+| Workflow contracts | run `29206419896`: success |
+| Review scaffold | run `29206419897`: success |
 | Whole-diff review | Critical 0 / Important 0 |
-| Merge gate | **NO-GO until final evidence-tail matrix is green** |
+| Merge gate | **GO after the documentation-only tail completes without new code findings** |
 
 ## 2. Delivered behavior
 
@@ -24,6 +26,8 @@
 - Snapshotの`truncated`、omitted message数、`[REDACTED]` markerの可能性を表示する。
 - 既存fileが異なる場合、既存SHA-256とサイズ上限付きdiffを表示する。
 - Truncated、redacted、既存file変更、既存state keyは初期選択しない。
+- Selection未指定のcore callerもdefault-safe candidateだけを自動importする。
+- Review済みのunsafe candidateはartifact IDを明示選択した場合だけ救済できる。
 - QuickPickによるartifact単位のselective applyを提供する。
 - 既存fileの上書きはmodal confirmationを必須にする。
 - Previewとapplyは同じplannerを使用し、preview digest mismatchをtransaction開始前に拒否する。
@@ -69,7 +73,30 @@ Whole-diff reviewで、snapshot diff内のbacktick runがMarkdown fenceを閉じ
 - Fenceはdiff内の最長backtick runより1文字長く生成する。
 - Focused diagnostic run `29206130109`: compile 0、7 tests passed、0 failed。
 
-## 4. Transaction and concurrency contract
+### Safe implicit defaults
+
+Reviewで、selectionを省略したcore callerがtruncated/redacted candidateまで暗黙importし得る境界を検出した。
+
+- Final code head: `784864813169492709edd2536d9236fbb2f00d17`
+- Selection未指定時は`defaultSelected === true`のcandidateだけを対象にする。
+- Safe candidateが0件ならfile、manifest、run stateを変更しない。
+- Explicit selectionではreview済みtruncated candidateをimportできる。
+- `workflowTaskSnapshotImportSafeDefaults.test.js`で両契約を固定した。
+
+## 4. Full quality gates
+
+Final code head `784864813169492709edd2536d9236fbb2f00d17`に対する`extensions-quality` run `29206419912`は、次の7ジョブをすべて成功させた。
+
+- Linux / Windows `workflow-register`
+- Linux / Windows `bob-code-consistency-review`
+- Linux / Windows `bob-bazaar-review`
+- Extension source metrics
+
+両OSの`workflow-register`はunit、dependency / architecture / source policy、package、VSIX policy、Extension Host smokeまで完走した。Linuxではschema policy、unused report、production auditも成功した。
+
+同じheadの`workflow-contracts` run `29206419896`と`code-consistency-review-scaffold` run `29206419897`も成功した。
+
+## 5. Transaction and concurrency contract
 
 Previewと利用者の選択中はrun execution leaseを保持しない。選択後に次を行う。
 
@@ -86,7 +113,7 @@ reload run / workflow
 
 `writeWorkspaceFilesAtomically()`とrun-state rollbackを維持する。空選択、digest mismatch、上書き未確認、unsafe path、transaction failureでは部分commitしない。
 
-## 5. Security and privacy
+## 6. Security and privacy
 
 - Preview readはphysical workspace containmentを通す。
 - Apply writeは既存workspace transactionのcontainment、symlink/junction拒否、rollbackを維持する。
@@ -94,21 +121,22 @@ reload run / workflow
 - UI reportではdiffだけをsize boundし、Markdown fenceを内容に応じて拡張する。
 - Operation Hub / Runs Viewは件数と日時だけを表示し、snapshot本文を表示しない。
 
-## 6. Compatibility
+## 7. Compatibility
 
 - Command ID `workflowRegister.importArtifactsFromTaskSnapshots`を維持する。
 - Artifact manifest `workflow-register/artifact-manifest/v1`を維持する。
-- `workflow.taskSnapshotImport/v1` provenanceを維持する。
-- Core APIでselectionを省略する既存callerは、従来どおり利用可能candidateをimportする。
+- `workflow-register/task-snapshot-import/v1` provenanceを維持する。
+- Selection省略時はdefault-safe candidateだけを自動importする。
+- Unsafe candidateを救済するcallerはpreview後に`selectedArtifactIds`を明示する。
 - Task snapshotは再開の正本ではなく、import後のartifact fileとmanifestが正本である。
 
-## 7. Residual and external gates
+## 8. Residual and external gates
 
 - P1-3 Reused / Skipped状態の統一表示は次の実装単位。
 - P1-4 Detached Held Run recovery assistantは後続。
 - 実IBM Bob、実Bazaar、multi-root、distribution signingは製品配布UATで確認する。
-- Final evidence-tailのUbuntu / Windows matrix、package、VSIX policy、Extension Host smokeがgreenになるまでmergeしない。
+- Documentation-only tailのActions完了後にPR本文を同期し、ready化／mergeする。
 
-## 8. Cleanup
+## 9. Cleanup
 
-TDD、command mutation、provenance mutation、full-log diagnosticに使ったtemporary workflowsは最終PR diffから削除した。最終差分はproduction code、tests、design/plan、operator document、release/review evidenceだけに限定する。
+TDD、command mutation、provenance mutation、safe-default mutation、full-log diagnosticに使ったtemporary workflowsは最終PR diffから削除した。最終差分はproduction code、tests、design/plan、operator document、release/review evidenceだけに限定する。
