@@ -1,2 +1,2 @@
 This file exists only to trigger pull-request verification for PR #75's current source tree.
-Verification round: run-lock contention GREEN and Windows aliases.
+Verification round: finalize documentation and remove temporary CI assets.
