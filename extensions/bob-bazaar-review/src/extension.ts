@@ -3,6 +3,7 @@ import { reviewRange, reviewRevision } from "./bazaar/bazaarReviewCommands"
 import { captureReviewResult, saveReviewResultFromClipboard } from "./projectRules/resultCapture"
 import { validateActiveReviewResultJson } from "./projectRules/reviewResultValidationCommand"
 import { registerReviewRecordCommands } from "./records/reviewRecordCommands"
+import type { ReviewRunCommandInput } from "./reviewRuns/reviewRunTypes"
 import { openBazaarHumanTriageGui } from "./ui/humanTriageGui"
 import { openBazaarResultCaptureGui } from "./ui/resultCaptureGui"
 import { openBazaarReviewGui } from "./ui/reviewGui"
@@ -22,8 +23,14 @@ import { configureMcp, initProjectRules } from "./workspace/workspaceCommands"
 export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.commands.registerCommand("bobBazaar.openReviewGui", () => openBazaarReviewGui(context)),
-    vscode.commands.registerCommand("bobBazaar.openResultCaptureGui", () => openBazaarResultCaptureGui(context)),
-    vscode.commands.registerCommand("bobBazaar.openHumanTriageGui", () => openBazaarHumanTriageGui(context)),
+    vscode.commands.registerCommand(
+      "bobBazaar.openResultCaptureGui",
+      (input?: ReviewRunCommandInput) => openBazaarResultCaptureGui(context, input)
+    ),
+    vscode.commands.registerCommand(
+      "bobBazaar.openHumanTriageGui",
+      (input?: ReviewRunCommandInput) => openBazaarHumanTriageGui(context, input)
+    ),
     vscode.commands.registerCommand("bobBazaar.collectReviewContext", () => collectReviewContext()),
     vscode.commands.registerCommand("bobBazaar.loadReviewRules", () => loadReviewRules()),
     vscode.commands.registerCommand(
