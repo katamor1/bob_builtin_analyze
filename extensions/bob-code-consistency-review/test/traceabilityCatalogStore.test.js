@@ -231,6 +231,161 @@ test("physical catalog aliases share one CAS queue while the target is missing",
   assert.equal(results.find((result) => result.status === "error").code, "stale_revision")
 })
 
+test("a file-symlink catalog alias writes the physical target without forking CAS state", async (t) => {
+  const workspaceRoot = await makeWorkspace()
+  const directWrite = await writeTraceabilityCatalog({
+    workspaceRoot,
+    catalog: catalogWithDocument("initial")
+  })
+  assert.equal(directWrite.status, "ok")
+  const directPath = path.join(workspaceRoot, DEFAULT_TRACEABILITY_CATALOG_PATH)
+  const aliasRelativePath = ".custom/catalog-file-alias.json"
+  const aliasPath = path.join(workspaceRoot, aliasRelativePath)
+  await fs.mkdir(path.dirname(aliasPath), { recursive: true })
+  try {
+    await fs.symlink(directPath, aliasPath, "file")
+  } catch (error) {
+    if (["EPERM", "EACCES", "ENOTSUP", "UNKNOWN"].includes(error.code)) {
+      t.skip(`file symlink unavailable: ${error.code}`)
+      return
+    }
+    throw error
+  }
+  const aliasReader = await readTraceabilityCatalog({ workspaceRoot, catalogPath: aliasRelativePath })
+  const directReader = await readTraceabilityCatalog({ workspaceRoot })
+  assert.equal(aliasReader.status, "ok")
+  assert.equal(directReader.status, "ok")
+  assert.equal(aliasReader.revision, directReader.revision)
+
+  const aliasWinner = await writeTraceabilityCatalog({
+    workspaceRoot,
+    catalogPath: aliasRelativePath,
+    catalog: catalogWithDocument("alias-winner"),
+    backupExisting: true,
+    expectedRevision: aliasReader.revision
+  })
+  const directLoser = await writeTraceabilityCatalog({
+    workspaceRoot,
+    catalog: catalogWithDocument("direct-stale"),
+    backupExisting: true,
+    expectedRevision: directReader.revision
+  })
+
+  assert.equal(aliasWinner.status, "ok")
+  assert.equal(aliasWinner.catalogPath, aliasPath)
+  assert.equal(directLoser.status, "error")
+  assert.equal(directLoser.code, "stale_revision")
+  assert.equal((await fs.lstat(aliasPath)).isSymbolicLink(), true)
+  assert.equal(normalizePhysicalPath(await fs.realpath(aliasPath)), normalizePhysicalPath(await fs.realpath(directPath)))
+  const aliasBytes = await fs.readFile(aliasPath)
+  const directBytes = await fs.readFile(directPath)
+  assert.deepEqual(aliasBytes, directBytes)
+  assert.equal(JSON.parse(aliasBytes.toString("utf8")).documents[0].document_id, "alias-winner")
+  assert.equal(path.dirname(aliasWinner.backupPath), path.dirname(directPath))
+  assert.equal(JSON.parse(await fs.readFile(aliasWinner.backupPath, "utf8")).documents[0].document_id, "initial")
+  const physicalBackups = (await fs.readdir(path.dirname(directPath))).filter((name) => name.includes("traceability-catalog.json.bak-"))
+  assert.equal(physicalBackups.length, 1)
+})
+
+test("standalone catalog reads reject a file alias retargeted outside after lexical validation", async (t) => {
+  const workspaceRoot = await makeWorkspace()
+  const directPath = path.join(workspaceRoot, DEFAULT_TRACEABILITY_CATALOG_PATH)
+  const initial = await writeTraceabilityCatalog({ workspaceRoot, catalog: catalogWithDocument("inside") })
+  assert.equal(initial.status, "ok")
+
+  const aliasRelativePath = ".custom/read-race-catalog.json"
+  const aliasPath = path.join(workspaceRoot, aliasRelativePath)
+  if (!await createCatalogFileAlias(t, directPath, aliasPath)) return
+  const outsideRoot = await fs.mkdtemp(path.join(os.tmpdir(), "bob-trace-store-outside-read-"))
+  const outsidePath = path.join(outsideRoot, "victim.json")
+  const outsideBytes = Buffer.from(`${JSON.stringify(catalogWithDocument("outside-victim"), null, 2)}\n`, "utf8")
+  await fs.writeFile(outsidePath, outsideBytes)
+
+  const barrier = installPathIoBarrier(aliasPath)
+  try {
+    const pendingRead = readTraceabilityCatalog({ workspaceRoot, catalogPath: aliasRelativePath })
+    await barrier.waitUntilEntered()
+    await retargetCatalogFileAlias(aliasPath, outsidePath)
+    barrier.release()
+
+    await assert.rejects(pendingRead, /outside workspace|target changed/i)
+    assert.deepEqual(await fs.readFile(outsidePath), outsideBytes)
+  } finally {
+    barrier.release()
+    barrier.restore()
+  }
+})
+
+test("catalog writes reject a file alias retargeted outside after lexical validation", async (t) => {
+  const workspaceRoot = await makeWorkspace()
+  const directPath = path.join(workspaceRoot, DEFAULT_TRACEABILITY_CATALOG_PATH)
+  const initial = await writeTraceabilityCatalog({ workspaceRoot, catalog: catalogWithDocument("inside") })
+  assert.equal(initial.status, "ok")
+
+  const aliasRelativePath = ".custom/write-race-catalog.json"
+  const aliasPath = path.join(workspaceRoot, aliasRelativePath)
+  if (!await createCatalogFileAlias(t, directPath, aliasPath)) return
+  const outsideRoot = await fs.mkdtemp(path.join(os.tmpdir(), "bob-trace-store-outside-write-"))
+  const outsidePath = path.join(outsideRoot, "victim.json")
+  const outsideBytes = Buffer.from(`${JSON.stringify(catalogWithDocument("outside-victim"), null, 2)}\n`, "utf8")
+  await fs.writeFile(outsidePath, outsideBytes)
+
+  const barrier = installPathIoBarrier(aliasPath)
+  try {
+    const pendingWrite = writeTraceabilityCatalog({
+      workspaceRoot,
+      catalogPath: aliasRelativePath,
+      catalog: catalogWithDocument("must-not-escape"),
+      expectedRevision: initial.revision
+    })
+    await barrier.waitUntilEntered()
+    await retargetCatalogFileAlias(aliasPath, outsidePath)
+    barrier.release()
+
+    await assert.rejects(pendingWrite, /outside workspace|target changed/i)
+    assert.deepEqual(await fs.readFile(outsidePath), outsideBytes)
+  } finally {
+    barrier.release()
+    barrier.restore()
+  }
+})
+
+test("catalog reads reject aliases that already resolve outside the physical workspace", async (t) => {
+  const workspaceRoot = await makeWorkspace()
+  const outsideRoot = await fs.mkdtemp(path.join(os.tmpdir(), "bob-trace-store-outside-alias-"))
+  const outsidePath = path.join(outsideRoot, "catalog.json")
+  await fs.writeFile(outsidePath, `${JSON.stringify(catalogWithDocument("outside"), null, 2)}\n`, "utf8")
+  const aliasRelativePath = ".custom/outside-catalog.json"
+  const aliasPath = path.join(workspaceRoot, aliasRelativePath)
+  if (!await createCatalogFileAlias(t, outsidePath, aliasPath)) return
+
+  await assert.rejects(
+    readTraceabilityCatalog({ workspaceRoot, catalogPath: aliasRelativePath }),
+    /resolves outside workspace/i
+  )
+})
+
+test("catalog reads and writes reject dangling file aliases", async (t) => {
+  const workspaceRoot = await makeWorkspace()
+  const aliasRelativePath = ".custom/dangling-catalog.json"
+  const aliasPath = path.join(workspaceRoot, aliasRelativePath)
+  const missingTarget = path.join(workspaceRoot, ".bob-trace", "missing-catalog.json")
+  if (!await createCatalogFileAlias(t, missingTarget, aliasPath)) return
+
+  await assert.rejects(
+    readTraceabilityCatalog({ workspaceRoot, catalogPath: aliasRelativePath }),
+    /dangling symbolic link/i
+  )
+  await assert.rejects(
+    writeTraceabilityCatalog({
+      workspaceRoot,
+      catalogPath: aliasRelativePath,
+      catalog: catalogWithDocument("must-not-write")
+    }),
+    /dangling symbolic link/i
+  )
+})
+
 function catalogWithDocument(documentId) {
   return {
     schema_version: 1,
@@ -260,4 +415,57 @@ async function createCatalogDirectoryAlias(t, workspaceRoot) {
     throw error
   }
   return ".custom/catalog-alias/traceability-catalog.json"
+}
+
+async function createCatalogFileAlias(t, targetPath, aliasPath) {
+  await fs.mkdir(path.dirname(aliasPath), { recursive: true })
+  try {
+    await fs.symlink(targetPath, aliasPath, "file")
+  } catch (error) {
+    if (["EPERM", "EACCES", "ENOTSUP", "UNKNOWN"].includes(error.code)) {
+      t.skip(`file symlink unavailable: ${error.code}`)
+      return false
+    }
+    throw error
+  }
+  return true
+}
+
+async function retargetCatalogFileAlias(aliasPath, targetPath) {
+  await fs.unlink(aliasPath)
+  await fs.symlink(targetPath, aliasPath, "file")
+}
+
+function installPathIoBarrier(targetPath) {
+  const originalRealpath = fs.realpath
+  const originalReadFile = fs.readFile
+  let enteredResolve
+  let releaseResolve
+  let triggered = false
+  const entered = new Promise((resolve) => { enteredResolve = resolve })
+  const released = new Promise((resolve) => { releaseResolve = resolve })
+  const intercept = async (original, args) => {
+    const candidate = typeof args[0] === "string" ? normalizePhysicalPath(args[0]) : undefined
+    if (!triggered && candidate === normalizePhysicalPath(targetPath)) {
+      triggered = true
+      enteredResolve()
+      await released
+    }
+    return Reflect.apply(original, fs, args)
+  }
+  fs.realpath = (...args) => intercept(originalRealpath, args)
+  fs.readFile = (...args) => intercept(originalReadFile, args)
+  return {
+    waitUntilEntered: () => entered,
+    release: () => releaseResolve(),
+    restore: () => {
+      fs.realpath = originalRealpath
+      fs.readFile = originalReadFile
+    }
+  }
+}
+
+function normalizePhysicalPath(value) {
+  const resolved = path.resolve(value)
+  return process.platform === "win32" ? resolved.toLowerCase() : resolved
 }

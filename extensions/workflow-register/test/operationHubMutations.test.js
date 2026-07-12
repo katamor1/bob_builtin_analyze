@@ -82,7 +82,14 @@ function markerRoot(root) {
 function runCommandHarness(t) {
   const rootA = tempRunRoot(t)
   const rootB = tempRunRoot(t)
-  const state = { engineRoots: [], runStoreCalls: 0, messages: [], workflowIds: [] }
+  const state = {
+    engineRoots: [],
+    runStoreCalls: 0,
+    messages: [],
+    workflowIds: [],
+    savedRuns: [],
+    coordinateGateDecision: (_workspaceRoot, _runId, _kind, operation) => operation()
+  }
   const vscode = {
     window: {
       showErrorMessage: async (message) => { state.messages.push(message) },
@@ -109,7 +116,8 @@ function runCommandHarness(t) {
       return {
         listRuns: async () => [fixture.run],
         loadRun: async () => fixture.run,
-        saveRun: async () => undefined
+        createRun: async () => ({ ...fixture.run, runId: "seeded-run", state: {}, inputs: {} }),
+        saveRun: async (run) => { state.savedRuns.push(run) }
       }
     },
     createEngine: (root) => {
@@ -119,6 +127,7 @@ function runCommandHarness(t) {
           state.workflowIds.push(selectedWorkflow.id)
           return { ...rootB.run, status: "running" }
         },
+        resumeRun: async () => ({ ...rootB.run, runId: "seeded-run", status: "running" }),
         retryCurrentStep: async () => ({ ...rootB.run, status: "reviewing" })
       }
     }
@@ -135,13 +144,12 @@ function runCommandHarness(t) {
       rebind: () => undefined,
       acceptPending: () => true
     },
-    coordinateGateDecision: (_workspaceRoot, _runId, _kind, operation) => operation()
+    coordinateGateDecision: (...args) => state.coordinateGateDecision(...args)
   })
   return { rootA, rootB, service, state }
 }
 
-function providerHarness(t) {
-  const run = tempRunRoot(t)
+function providerHarness(t, run = tempRunRoot(t)) {
   const state = {
     commands: [],
     errors: [],
@@ -168,6 +176,38 @@ function providerHarness(t) {
   const provider = new OperationHubProvider({ api: { listWorkflows: () => [] }, extensionUri: {} })
   t.after(() => provider.dispose())
   return { provider, run, state }
+}
+
+function replaceRunDirectoryWithExternalAlias(t, fixture) {
+  const externalRoot = fs.mkdtempSync(path.join(os.tmpdir(), "workflow-register-external-run-"))
+  const externalRunFile = path.join(externalRoot, "run.json")
+  const externalControlFile = path.join(externalRoot, "control.json")
+  const bytes = `${JSON.stringify(fixture.run)}\n`
+  const controlBytes = `${JSON.stringify({ runId: fixture.runId, mode: "external-control" })}\n`
+  fs.rmSync(path.dirname(fixture.runFile), { recursive: true, force: true })
+  fs.writeFileSync(externalRunFile, bytes)
+  fs.writeFileSync(externalControlFile, controlBytes)
+  try {
+    fs.symlinkSync(
+      externalRoot,
+      path.dirname(fixture.runFile),
+      process.platform === "win32" ? "junction" : "dir"
+    )
+  } catch (error) {
+    fs.rmSync(externalRoot, { recursive: true, force: true })
+    if (["EPERM", "EACCES", "ENOTSUP", "UNKNOWN"].includes(error.code)) {
+      t.skip(`directory alias unavailable: ${error.code}`)
+      return undefined
+    }
+    throw error
+  }
+  t.after(() => fs.rmSync(externalRoot, { recursive: true, force: true }))
+  fixture.revision = `sha256:${crypto.createHash("sha256").update(bytes).digest("hex")}`
+  fixture.externalRunFile = externalRunFile
+  fixture.externalControlFile = externalControlFile
+  fixture.externalRunBytes = bytes
+  fixture.externalControlBytes = controlBytes
+  return fixture
 }
 
 function mutationMessage(run, overrides = {}) {
@@ -253,6 +293,33 @@ test("Operation Hub host serializes different mutations for the same root and ru
   assert.deepEqual(order, ["accept:start", "accept:end", "next:start"])
 })
 
+test("Operation Hub host keeps different revisions distinct while serializing the same action and target", async () => {
+  const coordinator = new OperationHubMutationCoordinator()
+  const releaseFirst = deferred()
+  const firstStarted = deferred()
+  const order = []
+  const first = coordinator.coordinate(runIdentity({ expectedRevision: "sha256:revision-a" }), async () => {
+    order.push("revision-a:start")
+    firstStarted.resolve()
+    await releaseFirst.promise
+    order.push("revision-a:end")
+    return "revision-a"
+  })
+  await firstStarted.promise
+  const second = coordinator.coordinate(runIdentity({ expectedRevision: "sha256:revision-b" }), async () => {
+    order.push("revision-b:revalidate")
+    throw new Error("stale revision-b")
+  })
+
+  assert.notStrictEqual(second, first)
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.deepEqual(order, ["revision-a:start"])
+  releaseFirst.resolve()
+  assert.equal(await first, "revision-a")
+  await assert.rejects(second, /stale revision-b/)
+  assert.deepEqual(order, ["revision-a:start", "revision-a:end", "revision-b:revalidate"])
+})
+
 test("Operation Hub host lets equal run ids in different roots proceed independently", async () => {
   const coordinator = new OperationHubMutationCoordinator()
   const releaseA = deferred()
@@ -321,6 +388,35 @@ test("Operation Hub provider coordinates duplicate structured run mutations befo
   assert.deepEqual(state.errors, [])
 })
 
+test("Operation Hub provider does not coalesce the same action when expected revisions differ", async (t) => {
+  const { provider, run, state } = providerHarness(t)
+  const release = deferred()
+  const started = deferred()
+  state.executeCommand = async () => {
+    started.resolve()
+    await release.promise
+    fs.writeFileSync(run.runFile, `${JSON.stringify({
+      ...run.run,
+      state: { winner: "first-mutation" }
+    })}\n`)
+    return { status: "retried" }
+  }
+
+  const first = provider.handleMessage(mutationMessage(run))
+  await started.promise
+  const staleRevision = `sha256:${"b".repeat(64)}`
+  const second = provider.handleMessage(mutationMessage(run, { expectedRevision: staleRevision }))
+  await new Promise((resolve) => setTimeout(resolve, 100))
+  assert.equal(state.commands.length, 1)
+
+  release.resolve()
+  await Promise.all([first, second])
+
+  assert.equal(state.commands.length, 1)
+  assert.equal(state.errors.length, 1)
+  assert.match(state.errors[0], /run 'shared-run'.*(表示後|revision)/i)
+})
+
 test("Operation Hub provider rejects a stale run revision before command dispatch", async (t) => {
   const { provider, run, state } = providerHarness(t)
   fs.writeFileSync(run.runFile, `${JSON.stringify({
@@ -350,6 +446,39 @@ test("Operation Hub provider rejects a Webview root that is not a current worksp
     [...state.errors, ...state.warnings].some((message) => /workspace|refresh|更新|再読込/i.test(message)),
     `expected workspace diagnostic, got ${JSON.stringify({ errors: state.errors, warnings: state.warnings })}`
   )
+})
+
+test("Operation Hub provider rejects a run-directory alias that resolves outside the trusted workspace", async (t) => {
+  const run = replaceRunDirectoryWithExternalAlias(t, tempRunRoot(t))
+  if (!run) return
+  const { provider, state } = providerHarness(t, run)
+
+  await provider.handleMessage(mutationMessage(run))
+
+  assert.equal(state.commands.length, 0)
+  assert.ok(state.errors.some((message) => /workspace|outside|refresh|更新|再読込/i.test(message)))
+  assert.equal(fs.readFileSync(run.externalRunFile, "utf8"), run.externalRunBytes)
+  assert.equal(fs.readFileSync(run.externalControlFile, "utf8"), run.externalControlBytes)
+})
+
+test("Operation Hub model rejects a run-directory alias swapped in after safe run listing", async (t) => {
+  const run = tempRunRoot(t)
+  const { provider } = providerHarness(t, run)
+  const { FileRunStateStore } = require("../out/core/runStateStore")
+  const originalListRuns = FileRunStateStore.prototype.listRuns
+  let escaped
+  FileRunStateStore.prototype.listRuns = async function listThenSwapRunDirectory() {
+    const listed = await originalListRuns.call(this)
+    escaped = replaceRunDirectoryWithExternalAlias(t, run)
+    return listed
+  }
+  t.after(() => { FileRunStateStore.prototype.listRuns = originalListRuns })
+
+  await assert.rejects(provider.loadModel(), /workspace|outside|symlink|junction|alias|再読込/i)
+
+  if (!escaped) return
+  assert.equal(fs.readFileSync(escaped.externalRunFile, "utf8"), escaped.externalRunBytes)
+  assert.equal(fs.readFileSync(escaped.externalControlFile, "utf8"), escaped.externalControlBytes)
 })
 
 test("workflow run commands route a structured Operation Hub target to its exact root", async (t) => {
@@ -385,6 +514,101 @@ test("workflow run commands reject stale structured revisions before run-store o
   )
   assert.equal(state.runStoreCalls, 0)
   assert.equal(state.engineRoots.length, 0)
+})
+
+test("workflow run commands revalidate a structured revision inside the mutation queue", async (t) => {
+  const { rootB, service, state } = runCommandHarness(t)
+  const externalWinner = {
+    ...rootB.run,
+    state: { winner: "external-after-selection" },
+    updatedAt: "2026-07-12T02:00:00.000Z"
+  }
+  const winnerBytes = `${JSON.stringify(externalWinner)}\n`
+  state.coordinateGateDecision = async (_workspaceRoot, _runId, _kind, operation) => {
+    fs.writeFileSync(rootB.runFile, winnerBytes)
+    return operation()
+  }
+
+  await assert.rejects(
+    service.retryCurrentStep({
+      source: "operationHub",
+      workspaceRoot: rootB.root,
+      runId: rootB.runId,
+      expectedRevision: rootB.revision
+    }),
+    /refresh|更新|revision|表示後/i
+  )
+
+  assert.equal(state.runStoreCalls, 0)
+  assert.equal(state.engineRoots.length, 0)
+  assert.equal(fs.readFileSync(rootB.runFile, "utf8"), winnerBytes)
+})
+
+test("workflow run commands reject an outside run-directory alias before run-store or engine access", async (t) => {
+  const { rootB, service, state } = runCommandHarness(t)
+  const escaped = replaceRunDirectoryWithExternalAlias(t, rootB)
+  if (!escaped) return
+
+  await assert.rejects(
+    service.retryCurrentStep({
+      source: "operationHub",
+      workspaceRoot: escaped.root,
+      runId: escaped.runId,
+      expectedRevision: escaped.revision
+    }),
+    /workspace|outside|refresh|更新|再読込/i
+  )
+
+  assert.equal(state.runStoreCalls, 0)
+  assert.equal(state.engineRoots.length, 0)
+  assert.equal(fs.readFileSync(escaped.externalRunFile, "utf8"), escaped.externalRunBytes)
+  assert.equal(fs.readFileSync(escaped.externalControlFile, "utf8"), escaped.externalControlBytes)
+})
+
+test("workflow artifact start rejects an external artifacts-directory alias", async (t) => {
+  const { rootB, service, state } = runCommandHarness(t)
+  const runDirectory = path.dirname(rootB.runFile)
+  const outsideRoot = fs.mkdtempSync(path.join(os.tmpdir(), "workflow-register-external-artifacts-"))
+  const manifestFile = path.join(outsideRoot, "manifest.json")
+  const manifestBytes = `${JSON.stringify({
+    schemaVersion: "workflow-register/artifact-manifest/v1",
+    workflowId: "workflow-register.target",
+    runId: rootB.runId,
+    inputsHash: `sha256:${crypto.createHash("sha256").update("{}").digest("hex")}`,
+    createdAt: "2026-07-12T00:00:00.000Z",
+    updatedAt: "2026-07-12T00:00:00.000Z",
+    artifacts: []
+  })}\n`
+  fs.writeFileSync(manifestFile, manifestBytes)
+  try {
+    fs.symlinkSync(
+      outsideRoot,
+      path.join(runDirectory, "artifacts"),
+      process.platform === "win32" ? "junction" : "dir"
+    )
+  } catch (error) {
+    fs.rmSync(outsideRoot, { recursive: true, force: true })
+    if (["EPERM", "EACCES", "ENOTSUP", "UNKNOWN"].includes(error.code)) {
+      t.skip(`directory alias unavailable: ${error.code}`)
+      return
+    }
+    throw error
+  }
+  t.after(() => fs.rmSync(outsideRoot, { recursive: true, force: true }))
+
+  await assert.rejects(
+    service.startFromStepWithArtifacts("workflow-register.target", "step", {
+      source: "operationHub",
+      workspaceRoot: rootB.root,
+      runId: rootB.runId,
+      expectedRevision: rootB.revision
+    }, {}),
+    /workspace|outside|symlink|junction|alias|direct/i
+  )
+
+  assert.equal(state.savedRuns.length, 0)
+  assert.equal(state.engineRoots.length, 0)
+  assert.equal(fs.readFileSync(manifestFile, "utf8"), manifestBytes)
 })
 
 test("workflow run commands treat a structured workflow target as identity rather than a workflow id object", async (t) => {

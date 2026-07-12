@@ -385,3 +385,46 @@ test("Bob runner and Operation Hub command reconciliation await async Todo proje
   assert.match(runner, /const sync = await bobTaskSyncRegistry\.reconcileRun/)
   assert.match(commands, /const sync = await bobTaskSyncRegistry\.reconcileRun/)
 })
+
+test("Operation Hub review acceptance revalidates revision inside the acceptance queue", async (t) => {
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "workflow-register-review-revision-"))
+  t.after(() => fs.rmSync(workspaceRoot, { recursive: true, force: true }))
+  fs.mkdirSync(path.join(workspaceRoot, ".bob"), { recursive: true })
+  const { FileRunStateStore } = require("../out/core/runStateStore")
+  const { readOperationHubRunSnapshot } = require("../out/operationHubMutationTarget")
+  const runStore = new FileRunStateStore({ workspaceRoot })
+  const run = await runStore.createRun(reviewingWorkflow(), {})
+  run.status = "reviewing"
+  run.currentStep = "review"
+  run.steps[0].status = "reviewing"
+  await runStore.saveRun(run)
+  const selected = await readOperationHubRunSnapshot(workspaceRoot, run.runId)
+  const runFile = path.join(workspaceRoot, ".bob", "workflows", "runs", run.runId, "run.json")
+  const externalWinner = {
+    ...selected.run,
+    state: { winner: "external-after-selection" },
+    updatedAt: "2026-07-12T02:00:00.000Z"
+  }
+  const winnerBytes = `${JSON.stringify(externalWinner, null, 2)}\n`
+  const options = {
+    showMarkdownReport: async () => undefined,
+    coordinateReviewAcceptance: async (_root, _runId, operation) => {
+      fs.writeFileSync(runFile, winnerBytes)
+      return operation()
+    },
+    acceptBobWorkflowGate: () => "missing"
+  }
+  const { acceptCurrentStep } = loadStepReview(workspaceRoot)
+
+  await assert.rejects(
+    acceptCurrentStep(options, {
+      source: "operationHub",
+      workspaceRoot,
+      runId: run.runId,
+      expectedRevision: selected.revision
+    }, { silent: true }),
+    /refresh|更新|revision|表示後/i
+  )
+
+  assert.equal(fs.readFileSync(runFile, "utf8"), winnerBytes)
+})

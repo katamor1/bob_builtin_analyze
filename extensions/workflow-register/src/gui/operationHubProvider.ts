@@ -3,6 +3,7 @@ import * as path from "path"
 import * as vscode from "vscode"
 import type { CoreWorkflowDefinition, WorkflowRunState } from "../core/model"
 import { FileRunStateStore } from "../core/runStateStore"
+import { readContainedRunFile } from "../core/runtime/runStatePath"
 import { fallbackWorkspaceRootCandidates, findWorkflowRootCandidates, MarkerRootCandidate } from "../core/workspaceRoots"
 import { renderOperationHubHtml } from "./operationHubHtml"
 import {
@@ -257,7 +258,8 @@ export class OperationHubProvider implements vscode.WebviewViewProvider, vscode.
         actionId: message.action,
         workspaceRoot,
         targetKind,
-        targetId
+        targetId,
+        expectedRevision: targetKind === "run" ? message.expectedRevision : undefined
       },
       expectedRevision: message.expectedRevision
     }
@@ -524,12 +526,15 @@ async function loadRunSnapshot(
   workspaceRoot: string,
   runId: string
 ): Promise<{ run: WorkflowRunState; revision: string } | undefined> {
-  const runFile = path.join(workspaceRoot, ".bob", "workflows", "runs", runId, "run.json")
   try {
-    const bytes = await fs.readFile(runFile)
+    const snapshot = await readContainedRunFile(workspaceRoot, runId)
+    const run = JSON.parse(snapshot.bytes.toString("utf8")) as WorkflowRunState
+    if (run.runId !== runId) {
+      throw refreshRequired(`run '${runId}' の識別子が変更されました。`)
+    }
     return {
-      run: JSON.parse(bytes.toString("utf8")) as WorkflowRunState,
-      revision: operationHubContentRevision(bytes)
+      run,
+      revision: operationHubContentRevision(snapshot.bytes)
     }
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined

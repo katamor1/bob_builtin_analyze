@@ -7,6 +7,7 @@ export interface OperationHubMutationIdentity {
   workspaceRoot: string
   targetKind: OperationHubMutationTargetKind
   targetId: string
+  expectedRevision?: string
 }
 
 export class OperationHubMutationCoordinator {
@@ -46,7 +47,8 @@ function mutationOperationKey(identity: OperationHubMutationIdentity): string {
     identity.actionId,
     identity.workspaceRoot,
     identity.targetKind,
-    identity.targetId
+    identity.targetId,
+    identity.expectedRevision
   ])
 }
 

@@ -4,6 +4,7 @@ import { FileRunStateStore } from "../core/runStateStore"
 import { fallbackWorkspaceRootCandidates, findWorkflowRootCandidates, MarkerRootCandidate } from "../core/workspaceRoots"
 import { findRunSelection, listRunSelections, pickRunSelection, RunSelection } from "../workflowRunSelection"
 import {
+  assertOperationHubRunRevision,
   isOperationHubRunMutationTarget,
   OperationHubRunMutationTarget,
   validateOperationHubRunMutationTarget
@@ -110,6 +111,9 @@ async function requestPause(runArg: RunCommandArg, mode: RunPauseMode, reason: s
     const message = `Workflow run cannot be paused: ${run.runId} (${run.status})`
     await vscode.window.showWarningMessage(message)
     return message
+  }
+  if (isOperationHubRunMutationTarget(runArg)) {
+    await assertOperationHubRunRevision(selection.root, selection.runId, runArg.expectedRevision)
   }
   const control = await createControlStore(selection.root).requestPause({
     runId: selection.runId,

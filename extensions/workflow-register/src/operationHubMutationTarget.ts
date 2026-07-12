@@ -2,6 +2,7 @@ import { createHash } from "crypto"
 import * as fs from "fs/promises"
 import * as path from "path"
 import type { WorkflowRunState } from "./core/model"
+import { assertSafeWorkflowRunId, readContainedRunFile } from "./core/runtime/runStatePath"
 
 export interface OperationHubRunMutationTarget {
   source: "operationHub"
@@ -74,12 +75,10 @@ export async function readOperationHubRunSnapshot(
   workspaceRoot: string,
   runId: string
 ): Promise<OperationHubRunSnapshot> {
-  assertSafeRunId(runId)
-  const runFile = path.resolve(workspaceRoot, ".bob", "workflows", "runs", runId, "run.json")
-  if (!isContainedPath(workspaceRoot, runFile)) throw refreshRequired("run target が workspace 外です。")
   let bytes: Uint8Array
   try {
-    bytes = await fs.readFile(runFile)
+    assertSafeWorkflowRunId(runId)
+    bytes = (await readContainedRunFile(workspaceRoot, runId)).bytes
   } catch {
     throw refreshRequired(`run '${runId}' を再読込できません。`)
   }
@@ -99,11 +98,21 @@ export async function validateOperationHubRunMutationTarget(
 ): Promise<{ workspaceRoot: string; snapshot: OperationHubRunSnapshot }> {
   if (!target.expectedRevision.trim()) throw refreshRequired("run revision が指定されていません。")
   const workspaceRoot = await canonicalOperationHubWorkspaceRoot(target.workspaceRoot, candidateRoots)
-  const snapshot = await readOperationHubRunSnapshot(workspaceRoot, target.runId)
-  if (snapshot.revision !== target.expectedRevision) {
-    throw refreshRequired(`run '${target.runId}' は表示後に更新されました。`)
-  }
+  const snapshot = await assertOperationHubRunRevision(workspaceRoot, target.runId, target.expectedRevision)
   return { workspaceRoot, snapshot }
+}
+
+export async function assertOperationHubRunRevision(
+  workspaceRoot: string,
+  runId: string,
+  expectedRevision: string
+): Promise<OperationHubRunSnapshot> {
+  if (!expectedRevision.trim()) throw refreshRequired("run revision が指定されていません。")
+  const snapshot = await readOperationHubRunSnapshot(workspaceRoot, runId)
+  if (snapshot.revision !== expectedRevision) {
+    throw refreshRequired(`run '${runId}' は表示後に更新されました。`)
+  }
+  return snapshot
 }
 
 export function operationHubContentRevision(bytes: Uint8Array | string): string {
@@ -114,19 +123,8 @@ export function refreshRequired(reason: string): OperationHubRefreshRequiredErro
   return new OperationHubRefreshRequiredError(reason)
 }
 
-function assertSafeRunId(runId: string): void {
-  if (!runId.trim() || runId.includes("/") || runId.includes("\\") || runId === "." || runId === "..") {
-    throw refreshRequired("run target が不正です。")
-  }
-}
-
 function sameCanonicalPath(left: string, right: string): boolean {
   return process.platform === "win32"
     ? left.toLocaleLowerCase() === right.toLocaleLowerCase()
     : left === right
-}
-
-function isContainedPath(root: string, target: string): boolean {
-  const relative = path.relative(path.resolve(root), path.resolve(target))
-  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative))
 }

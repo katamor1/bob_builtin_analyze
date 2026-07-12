@@ -19,8 +19,10 @@ import { formatBranchingDiagnostics } from "./core/runDiagnostics"
 import { pendingReviewTransitionStepId } from "./core/engine/runState"
 import { FileRunControlStore } from "./core/runControlStore"
 import { FileTaskSnapshotStore } from "./core/taskSnapshots"
+import { readContainedRunArtifactManifest } from "./core/runtime/runStatePath"
 import type { MarkerRootCandidate } from "./core/workspaceRoots"
 import {
+  assertOperationHubRunRevision,
   canonicalOperationHubWorkspaceRoot,
   isOperationHubRunMutationTarget,
   isOperationHubWorkflowMutationTarget,
@@ -177,6 +179,10 @@ export class WorkflowRunCommandService {
       root = validated.workspaceRoot
     }
 
+    if (sourceTarget) {
+      await assertOperationHubRunRevision(root, sourceTarget.runId, sourceTarget.expectedRevision)
+    }
+
     const source = await this.pickArtifactSourceRun(root, workflow, resolvedInputs, sourceRunId)
     if (!source) {
       const message = sourceRunId
@@ -270,6 +276,9 @@ export class WorkflowRunCommandService {
       const message = runId ? `Workflow run not found: ${runId}` : "No workflow run selected."
       if (runId) await vscode.window.showWarningMessage(message)
       return message
+    }
+    if (isOperationHubRunMutationTarget(runArg)) {
+      await assertOperationHubRunRevision(selection.root, selection.runId, runArg.expectedRevision)
     }
     const runStore = this.options.runtimeFactory.createRunStore(selection.root)
     const run = selection.run ?? await runStore.loadRun(selection.runId)
@@ -479,7 +488,12 @@ export class WorkflowRunCommandService {
       selection.runId,
       mode === "resume" ? "run-resume" : "run-retry",
       () => (
-        this.resumeOrRetryRunOnce(mode, selection.root, selection.runId)
+        this.resumeOrRetryRunOnce(
+          mode,
+          selection.root,
+          selection.runId,
+          isOperationHubRunMutationTarget(runArg) ? runArg.expectedRevision : undefined
+        )
       )
     )
   }
@@ -487,8 +501,10 @@ export class WorkflowRunCommandService {
   private async resumeOrRetryRunOnce(
     mode: "resume" | "retry",
     root: string,
-    runId: string
+    runId: string,
+    expectedRevision?: string
   ): Promise<unknown> {
+    if (expectedRevision) await assertOperationHubRunRevision(root, runId, expectedRevision)
     const runStore = this.options.runtimeFactory.createRunStore(root)
     const run = await runStore.loadRun(runId)
     if (!run) throw new Error(`Workflow run not found: ${runId}`)
@@ -681,8 +697,8 @@ async function loadArtifactManifest(root: string, run: WorkflowRunState): Promis
   const fromState = parseWorkflowArtifactManifest(run.state["workflow.artifactManifest"])
   if (fromState) return fromState
   try {
-    const file = path.join(root, ".bob", "workflows", "runs", run.runId, "artifacts", "manifest.json")
-    return parseWorkflowArtifactManifest(await fs.readFile(file, "utf8"))
+    const snapshot = await readContainedRunArtifactManifest(root, run.runId)
+    return parseWorkflowArtifactManifest(snapshot.bytes.toString("utf8"))
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined
     throw error

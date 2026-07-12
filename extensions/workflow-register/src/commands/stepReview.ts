@@ -9,6 +9,7 @@ import { fallbackWorkspaceRootCandidates, findWorkflowRootCandidates, MarkerRoot
 import { reviewTaskRegistry } from "../reviewTaskRegistry"
 import type { BobWorkflowGateAcceptResult } from "../bobWorkflowGateRegistry"
 import {
+  assertOperationHubRunRevision,
   isOperationHubRunMutationTarget,
   OperationHubRunMutationTarget,
   readOperationHubRunSnapshot,
@@ -86,10 +87,25 @@ async function acceptReviewedStep(options: StepReviewCommandOptions, runArg?: Re
       ? await findRunSelection(runId)
       : await pickRunSelection("Accept reviewed workflow step", (run) => run.status === "reviewing")
   if (!selection) return runId ? `Workflow run not found or not waiting for review: ${runId}` : "No reviewing workflow run selected."
-  return options.coordinateReviewAcceptance(selection.root, selection.runId, () => acceptReviewedStepOnce(options, selection.root, selection.runId))
+  return options.coordinateReviewAcceptance(
+    selection.root,
+    selection.runId,
+    () => acceptReviewedStepOnce(
+      options,
+      selection.root,
+      selection.runId,
+      isOperationHubRunMutationTarget(runArg) ? runArg.expectedRevision : undefined
+    )
+  )
 }
 
-async function acceptReviewedStepOnce(options: StepReviewCommandOptions, workspaceRoot: string, runId: string): Promise<AcceptedStepResult | string> {
+async function acceptReviewedStepOnce(
+  options: StepReviewCommandOptions,
+  workspaceRoot: string,
+  runId: string,
+  expectedRevision?: string
+): Promise<AcceptedStepResult | string> {
+  if (expectedRevision) await assertOperationHubRunRevision(workspaceRoot, runId, expectedRevision)
   const runStore = new FileRunStateStore({ workspaceRoot })
   const run = await runStore.loadRun(runId)
   if (!run) return `Workflow run not found: ${runId}`

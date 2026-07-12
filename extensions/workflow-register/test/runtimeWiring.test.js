@@ -372,8 +372,13 @@ test("standalone next-step commands reuse the Bob review task agent provider", (
     "selection.root,",
     "selection.runId,",
     'mode === "resume" ? "run-resume" : "run-retry",',
-    "this.resumeOrRetryRunOnce(mode, selection.root, selection.runId)",
+    "this.resumeOrRetryRunOnce(",
+    "mode,",
+    "selection.root,",
+    "selection.runId,",
+    "isOperationHubRunMutationTarget(runArg) ? runArg.expectedRevision : undefined",
     "private async resumeOrRetryRunOnce(",
+    "if (expectedRevision) await assertOperationHubRunRevision(root, runId, expectedRevision)",
     "const agentProvider = reviewTaskRegistry.agentProviderForRun(run.runId, workflow)",
     "const engine = this.options.runtimeFactory.createEngine(root, agentProvider)",
     "mode === \"resume\" ? \"operation-hub-resume\" : \"operation-hub-retry\""
@@ -446,7 +451,17 @@ test("WorkflowRegisterService owns and exposes Bob review gates and acceptance c
   assert.match(extension, /coordinateReviewAcceptance: \(workspaceRoot, runId, operation\) => service\.coordinateReviewAcceptance\(workspaceRoot, runId, operation\)/)
   assert.match(authoring, /acceptBobWorkflowGate: api\.acceptBobWorkflowGate/)
   assert.match(authoring, /coordinateReviewAcceptance: api\.coordinateReviewAcceptance/)
-  assert.match(stepReview, /options\.coordinateReviewAcceptance\(selection\.root, selection\.runId, \(\) => acceptReviewedStepOnce\(options, selection\.root, selection\.runId\)\)/)
+  assert.match(stepReview, orderedPattern(
+    "options.coordinateReviewAcceptance(",
+    "selection.root,",
+    "selection.runId,",
+    "() => acceptReviewedStepOnce(",
+    "options,",
+    "selection.root,",
+    "selection.runId,",
+    "isOperationHubRunMutationTarget(runArg) ? runArg.expectedRevision : undefined"
+  ))
+  assert.match(stepReview, /if \(expectedRevision\) await assertOperationHubRunRevision\(workspaceRoot, runId, expectedRevision\)/)
   assert.doesNotMatch(stepReview, /reviewAcceptancesInFlight/)
 })
 

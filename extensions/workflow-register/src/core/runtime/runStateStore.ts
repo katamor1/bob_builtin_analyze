@@ -1,7 +1,10 @@
-import * as fs from "fs/promises"
-import * as path from "path"
 import { randomUUID } from "crypto"
 import { CoreWorkflowDefinition, WorkflowRunState } from "../model"
+import {
+  listContainedRunIds,
+  readContainedRunFile,
+  writeContainedRunFile
+} from "./runStatePath"
 
 const RECOVERABLE_RUN_STATUSES = new Set(["running", "paused", "checkpoint", "reviewing", "held"])
 
@@ -64,15 +67,17 @@ export class FileRunStateStore implements RunStateStore {
   }
 
   async saveRun(run: WorkflowRunState): Promise<void> {
-    run.updatedAt = this.now()
-    const file = this.runFile(run.runId)
-    await fs.mkdir(path.dirname(file), { recursive: true })
-    await atomicWriteFile(file, `${JSON.stringify(run, null, 2)}\n`)
+    const updatedAt = this.now()
+    await writeContainedRunFile(this.workspaceRoot, run.runId, `${JSON.stringify({ ...run, updatedAt }, null, 2)}\n`)
+    run.updatedAt = updatedAt
   }
 
   async loadRun(runId: string): Promise<WorkflowRunState | undefined> {
     try {
-      return JSON.parse(await fs.readFile(this.runFile(runId), "utf8")) as WorkflowRunState
+      const snapshot = await readContainedRunFile(this.workspaceRoot, runId)
+      const run = JSON.parse(snapshot.bytes.toString("utf8")) as WorkflowRunState
+      if (run.runId !== runId) throw new Error(`Workflow run id mismatch: expected '${runId}', got '${run.runId}'.`)
+      return run
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code
       if (code === "ENOENT") return undefined
@@ -81,15 +86,7 @@ export class FileRunStateStore implements RunStateStore {
   }
 
   async listRuns(): Promise<WorkflowRunState[]> {
-    const root = this.runsRoot()
-    let entries: string[]
-    try {
-      entries = await fs.readdir(root)
-    } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code
-      if (code === "ENOENT") return []
-      throw error
-    }
+    const entries = await listContainedRunIds(this.workspaceRoot)
     const runs = await Promise.all(entries.map((entry) => this.loadRun(entry)))
     return runs
       .filter((run): run is WorkflowRunState => Boolean(run))
@@ -107,51 +104,21 @@ export class FileRunStateStore implements RunStateStore {
     const base = `${stamp}-${sanitize(workflowName)}`
     for (let index = 0; index < 10; index += 1) {
       const candidate = `${base}-${randomUUID().replace(/-/g, "").slice(0, 12)}`
-      if (!await exists(this.runFile(candidate))) return candidate
+      if (!await runFileExists(this.workspaceRoot, candidate)) return candidate
     }
     throw new Error(`Could not allocate unique workflow run id for '${workflowName}'.`)
   }
 
-  private runsRoot(): string {
-    return path.join(this.workspaceRoot, ".bob", "workflows", "runs")
-  }
-
-  private runFile(runId: string): string {
-    return path.join(this.runsRoot(), runId, "run.json")
-  }
 }
 
-async function atomicWriteFile(file: string, content: string): Promise<void> {
-  const tempFile = `${file}.${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}.tmp`
+async function runFileExists(workspaceRoot: string, runId: string): Promise<boolean> {
   try {
-    await fs.writeFile(tempFile, content, "utf8")
-    await renameWithTransientRetry(tempFile, file)
+    await readContainedRunFile(workspaceRoot, runId)
+    return true
   } catch (error) {
-    await fs.rm(tempFile, { force: true }).catch(() => undefined)
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false
     throw error
   }
-}
-
-async function renameWithTransientRetry(source: string, target: string): Promise<void> {
-  const delaysMs = [10, 50, 100]
-  for (let attempt = 0; ; attempt += 1) {
-    try {
-      await fs.rename(source, target)
-      return
-    } catch (error) {
-      if (!isTransientRenameError(error) || attempt >= delaysMs.length) throw error
-      await sleep(delaysMs[attempt])
-    }
-  }
-}
-
-function isTransientRenameError(error: unknown): boolean {
-  const code = (error as NodeJS.ErrnoException).code
-  return code === "EPERM" || code === "EACCES" || code === "EBUSY"
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 function workflowDefinitionMatches(run: WorkflowRunState, workflow: CoreWorkflowDefinition): boolean {
@@ -190,15 +157,6 @@ function canonicalJson(value: unknown): unknown {
       .filter((key) => (value as Record<string, unknown>)[key] !== undefined)
       .map((key) => [key, canonicalJson((value as Record<string, unknown>)[key])])
   )
-}
-
-async function exists(file: string): Promise<boolean> {
-  try {
-    await fs.access(file)
-    return true
-  } catch {
-    return false
-  }
 }
 
 function sanitize(value: string): string {

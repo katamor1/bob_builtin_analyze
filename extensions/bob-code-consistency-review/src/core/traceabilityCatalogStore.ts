@@ -1,7 +1,8 @@
 import { createHash, randomUUID } from "node:crypto"
 import * as fs from "node:fs/promises"
+import type { FileHandle } from "node:fs/promises"
 import * as path from "node:path"
-import { resolveWorkspacePathForKind } from "./fileSystem"
+import { isInsidePath, resolveWorkspacePathForKind } from "./fileSystem"
 import { decodeTextBuffer } from "./textEncoding"
 import { renderTraceabilityGateReport, validateTraceabilityCatalog, type TraceabilityCatalog, type TraceabilityItem, type TraceabilityValidationReport } from "./traceabilityCatalog"
 
@@ -22,13 +23,30 @@ export type ValidateAndWriteTraceabilityGateReportResult =
 
 const catalogPathTails = new Map<string, Promise<void>>()
 
+type FileIdentity = { dev: bigint; ino: bigint }
+
+type PhysicalTarget = {
+  workspacePhysicalRoot: string
+  logicalPath: string
+  physicalPath: string
+}
+
+type ParentGuard = {
+  workspacePhysicalRoot: string
+  physicalPath: string
+  identity: FileIdentity
+}
+
 export async function readTraceabilityCatalog(input: {
   workspaceRoot: string
   catalogPath?: string
   textEncoding?: string
 }): Promise<ReadTraceabilityCatalogResult> {
+  const workspacePhysicalRoot = await resolveWorkspacePhysicalRoot(input.workspaceRoot)
   const catalogPath = resolveCatalogPath(input.workspaceRoot, input.catalogPath)
-  return readCatalogSnapshot(catalogPath, input.textEncoding)
+  return withCatalogPathLock(workspacePhysicalRoot, catalogPath, async (target) => (
+    readCatalogSnapshot(target, input.textEncoding, catalogPath)
+  ))
 }
 
 export async function writeTraceabilityCatalog(input: {
@@ -38,10 +56,11 @@ export async function writeTraceabilityCatalog(input: {
   backupExisting?: boolean
   expectedRevision?: string | null
 }): Promise<WriteTraceabilityCatalogResult> {
+  const workspacePhysicalRoot = await resolveWorkspacePhysicalRoot(input.workspaceRoot)
   const catalogPath = resolveCatalogPath(input.workspaceRoot, input.catalogPath)
-  return withCatalogPathLock(catalogPath, async () => {
+  return withCatalogPathLock(workspacePhysicalRoot, catalogPath, async (target) => {
     try {
-      const existingBytes = await readOptionalFile(catalogPath)
+      const existingBytes = await readOptionalFile(target)
       const currentRevision = existingBytes ? contentRevision(existingBytes) : null
       if (input.expectedRevision !== undefined && input.expectedRevision !== currentRevision) {
         return staleCatalogWrite(catalogPath, input.expectedRevision, currentRevision)
@@ -49,11 +68,12 @@ export async function writeTraceabilityCatalog(input: {
 
       let backupPath: string | undefined
       if (input.backupExisting && existingBytes) {
-        backupPath = uniqueBackupPath(catalogPath)
-        await fs.writeFile(backupPath, existingBytes)
+        const parentGuard = await ensureParentGuard(target)
+        backupPath = uniqueBackupPath(target.physicalPath)
+        await writeNewFile(backupPath, existingBytes, parentGuard)
       }
       const bytes = Buffer.from(`${JSON.stringify(normalizeCatalog(input.catalog), null, 2)}\n`, "utf8")
-      await atomicReplaceFile(catalogPath, bytes)
+      await atomicReplaceFile(target, bytes)
       return { status: "ok", catalogPath, backupPath, revision: contentRevision(bytes) }
     } catch (error) {
       return {
@@ -72,10 +92,11 @@ export async function validateAndWriteTraceabilityGateReport(input: {
   textEncoding?: string
   expectedRevision?: string | null
 }): Promise<ValidateAndWriteTraceabilityGateReportResult> {
+  const workspacePhysicalRoot = await resolveWorkspacePhysicalRoot(input.workspaceRoot)
   const catalogPath = resolveCatalogPath(input.workspaceRoot, input.catalogPath)
   const reportPath = resolveWorkspacePathForKind(input.workspaceRoot, input.reportPath ?? DEFAULT_TRACEABILITY_GATE_REPORT_PATH, "traceability-gate-report")
-  return withCatalogPathLock(catalogPath, async () => {
-    const read = await readCatalogSnapshot(catalogPath, input.textEncoding)
+  return withCatalogPathLock(workspacePhysicalRoot, catalogPath, async (target) => {
+    const read = await readCatalogSnapshot(target, input.textEncoding, catalogPath)
     if (read.status === "error") return { status: "error", catalogPath, reportPath, errors: read.errors }
     if (input.expectedRevision !== undefined && input.expectedRevision !== read.revision) {
       return {
@@ -90,7 +111,8 @@ export async function validateAndWriteTraceabilityGateReport(input: {
     const report = validateTraceabilityCatalog(read.catalog)
     const markdown = renderTraceabilityGateReport(report)
     try {
-      await atomicReplaceFile(reportPath, Buffer.from(markdown, "utf8"))
+      const reportTarget = await resolvePhysicalTarget(workspacePhysicalRoot, reportPath)
+      await atomicReplaceFile(reportTarget, Buffer.from(markdown, "utf8"))
       return { status: "ok", catalogPath, reportPath, report, markdown, revision: read.revision }
     } catch (error) {
       return {
@@ -153,10 +175,14 @@ function timestampForFileName(date: Date): string {
   return date.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z")
 }
 
-async function readCatalogSnapshot(catalogPath: string, textEncoding = "utf8"): Promise<ReadTraceabilityCatalogResult> {
+async function readCatalogSnapshot(
+  target: PhysicalTarget,
+  textEncoding = "utf8",
+  catalogPath = target.logicalPath
+): Promise<ReadTraceabilityCatalogResult> {
   let bytes: Buffer | undefined
   try {
-    bytes = await readOptionalFile(catalogPath)
+    bytes = await readOptionalFile(target)
   } catch (error) {
     return {
       status: "error",
@@ -185,12 +211,24 @@ async function readCatalogSnapshot(catalogPath: string, textEncoding = "utf8"): 
   }
 }
 
-async function readOptionalFile(filePath: string): Promise<Buffer | undefined> {
+async function readOptionalFile(target: PhysicalTarget): Promise<Buffer | undefined> {
+  await validatePhysicalTarget(target)
+  let handle: FileHandle
   try {
-    return await fs.readFile(filePath)
+    handle = await fs.open(target.physicalPath, "r")
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      await validatePhysicalTarget(target)
+      return undefined
+    }
     throw error
+  }
+  try {
+    await validatePhysicalTarget(target)
+    await assertOpenHandleIdentity(handle, target.physicalPath, target.workspacePhysicalRoot)
+    return await handle.readFile()
+  } finally {
+    await handle.close()
   }
 }
 
@@ -202,22 +240,30 @@ function uniqueBackupPath(catalogPath: string): string {
   return `${catalogPath}.bak-${timestampForFileName(new Date())}-${randomUUID().replace(/-/g, "").slice(0, 12)}`
 }
 
-async function atomicReplaceFile(filePath: string, bytes: Uint8Array): Promise<void> {
-  await fs.mkdir(path.dirname(filePath), { recursive: true })
-  const tempPath = path.join(path.dirname(filePath), `.${path.basename(filePath)}.${process.pid}.${randomUUID()}.tmp`)
+async function atomicReplaceFile(target: PhysicalTarget, bytes: Uint8Array): Promise<void> {
+  const parentGuard = await ensureParentGuard(target)
+  const tempPath = path.join(parentGuard.physicalPath, `.${path.basename(target.physicalPath)}.${process.pid}.${randomUUID()}.tmp`)
   try {
-    await fs.writeFile(tempPath, bytes)
-    await renameWithTransientRetry(tempPath, filePath)
+    await writeNewFile(tempPath, bytes, parentGuard)
+    await renameWithTransientRetry(tempPath, target.physicalPath, async () => {
+      await validateParentGuard(parentGuard)
+      await validatePhysicalTarget(target)
+      await assertPhysicalPathMatches(target.workspacePhysicalRoot, tempPath, tempPath)
+    })
+    await validatePhysicalTarget(target)
   } catch (error) {
-    await fs.rm(tempPath, { force: true }).catch(() => undefined)
+    await removeGuardedFile(tempPath, parentGuard)
     throw error
   }
 }
 
-async function renameWithTransientRetry(source: string, target: string): Promise<void> {
+async function renameWithTransientRetry(source: string, target: string, validate: () => Promise<void>): Promise<void> {
   const delaysMs = [10, 50, 100]
   for (let attempt = 0; ; attempt += 1) {
     try {
+      // Node has no portable openat/renameat2 API. Revalidate immediately before
+      // every rename attempt; only the final check-to-rename scheduler gap remains.
+      await validate()
       await fs.rename(source, target)
       return
     } catch (error) {
@@ -228,10 +274,18 @@ async function renameWithTransientRetry(source: string, target: string): Promise
   }
 }
 
-async function withCatalogPathLock<T>(catalogPath: string, operation: () => Promise<T>): Promise<T> {
-  const key = await canonicalLockKey(catalogPath)
+async function withCatalogPathLock<T>(
+  workspacePhysicalRoot: string,
+  catalogPath: string,
+  operation: (target: PhysicalTarget) => Promise<T>
+): Promise<T> {
+  const initialTarget = await resolvePhysicalTarget(workspacePhysicalRoot, catalogPath)
+  const key = normalizeLockKey(initialTarget.physicalPath)
   const prior = catalogPathTails.get(key) ?? Promise.resolve()
-  const owner = prior.then(operation, operation)
+  const owner = prior.then(
+    async () => operation(await reacquirePhysicalTarget(initialTarget)),
+    async () => operation(await reacquirePhysicalTarget(initialTarget))
+  )
   const tail = owner.then(() => undefined, () => undefined)
   catalogPathTails.set(key, tail)
   void tail.then(() => {
@@ -240,23 +294,163 @@ async function withCatalogPathLock<T>(catalogPath: string, operation: () => Prom
   return owner
 }
 
-async function canonicalLockKey(catalogPath: string): Promise<string> {
-  const resolved = path.resolve(catalogPath)
+async function resolveWorkspacePhysicalRoot(workspaceRoot: string): Promise<string> {
+  const physicalRoot = await fs.realpath(path.resolve(workspaceRoot))
+  const stats = await fs.stat(physicalRoot)
+  if (!stats.isDirectory()) throw new Error(`traceability workspace root is not a directory: ${workspaceRoot}`)
+  return physicalRoot
+}
+
+async function resolvePhysicalTarget(workspacePhysicalRoot: string, logicalPath: string): Promise<PhysicalTarget> {
+  return {
+    workspacePhysicalRoot,
+    logicalPath,
+    physicalPath: await resolvePhysicalTargetPath(workspacePhysicalRoot, logicalPath)
+  }
+}
+
+async function reacquirePhysicalTarget(initial: PhysicalTarget): Promise<PhysicalTarget> {
+  const current = await resolvePhysicalTarget(initial.workspacePhysicalRoot, initial.logicalPath)
+  if (!samePhysicalPath(current.physicalPath, initial.physicalPath)) {
+    throw new Error(`traceability catalog target changed during operation: ${initial.logicalPath}`)
+  }
+  await validatePhysicalTarget(current)
+  return current
+}
+
+async function resolvePhysicalTargetPath(workspacePhysicalRoot: string, targetPath: string): Promise<string> {
+  const resolved = path.resolve(targetPath)
   let current = resolved
   const missingSuffix: string[] = []
   while (true) {
     try {
       const realAncestor = await fs.realpath(current)
-      return normalizeLockKey(path.resolve(realAncestor, ...missingSuffix))
+      const physicalPath = path.resolve(realAncestor, ...missingSuffix)
+      assertInsidePhysicalWorkspace(workspacePhysicalRoot, physicalPath, targetPath)
+      return physicalPath
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code
       if (code !== "ENOENT" && code !== "ENOTDIR") throw error
+      try {
+        const stats = await fs.lstat(current)
+        if (stats.isSymbolicLink()) {
+          throw new Error(`traceability catalog target is a dangling symbolic link: ${targetPath}`)
+        }
+      } catch (lstatError) {
+        const lstatCode = (lstatError as NodeJS.ErrnoException).code
+        if (lstatCode !== "ENOENT" && lstatCode !== "ENOTDIR") throw lstatError
+      }
       const parent = path.dirname(current)
-      if (parent === current) return normalizeLockKey(resolved)
+      if (parent === current) {
+        assertInsidePhysicalWorkspace(workspacePhysicalRoot, resolved, targetPath)
+        return resolved
+      }
       missingSuffix.unshift(path.basename(current))
       current = parent
     }
   }
+}
+
+async function validatePhysicalTarget(target: PhysicalTarget): Promise<void> {
+  await assertPhysicalPathMatches(target.workspacePhysicalRoot, target.physicalPath, target.physicalPath)
+}
+
+async function assertPhysicalPathMatches(workspacePhysicalRoot: string, targetPath: string, expectedPath: string): Promise<void> {
+  const current = await resolvePhysicalTargetPath(workspacePhysicalRoot, targetPath)
+  if (!samePhysicalPath(current, expectedPath)) {
+    throw new Error(`traceability catalog target changed during operation: ${targetPath}`)
+  }
+}
+
+function assertInsidePhysicalWorkspace(workspacePhysicalRoot: string, targetPath: string, logicalPath: string): void {
+  if (!isInsidePath(workspacePhysicalRoot, targetPath)) {
+    throw new Error(`traceability catalog target resolves outside workspace: ${logicalPath}`)
+  }
+}
+
+async function ensureParentGuard(target: PhysicalTarget): Promise<ParentGuard> {
+  await validatePhysicalTarget(target)
+  const parentPath = path.dirname(target.physicalPath)
+  await assertPhysicalPathMatches(target.workspacePhysicalRoot, parentPath, parentPath)
+  await fs.mkdir(parentPath, { recursive: true })
+  const physicalParent = await fs.realpath(parentPath)
+  assertInsidePhysicalWorkspace(target.workspacePhysicalRoot, physicalParent, parentPath)
+  if (!samePhysicalPath(physicalParent, parentPath)) {
+    throw new Error(`traceability catalog parent changed during operation: ${parentPath}`)
+  }
+  const identity = identityFromStats(await fs.stat(parentPath, { bigint: true }))
+  const guard = { workspacePhysicalRoot: target.workspacePhysicalRoot, physicalPath: parentPath, identity }
+  await validateParentGuard(guard)
+  return guard
+}
+
+async function validateParentGuard(guard: ParentGuard): Promise<void> {
+  const physicalParent = await fs.realpath(guard.physicalPath)
+  assertInsidePhysicalWorkspace(guard.workspacePhysicalRoot, physicalParent, guard.physicalPath)
+  if (!samePhysicalPath(physicalParent, guard.physicalPath)) {
+    throw new Error(`traceability catalog parent changed during operation: ${guard.physicalPath}`)
+  }
+  const currentIdentity = identityFromStats(await fs.stat(guard.physicalPath, { bigint: true }))
+  if (!sameFileIdentity(currentIdentity, guard.identity)) {
+    throw new Error(`traceability catalog parent identity changed during operation: ${guard.physicalPath}`)
+  }
+}
+
+async function writeNewFile(filePath: string, bytes: Uint8Array, parentGuard: ParentGuard): Promise<void> {
+  if (!samePhysicalPath(path.dirname(filePath), parentGuard.physicalPath)) {
+    throw new Error(`traceability catalog output parent mismatch: ${filePath}`)
+  }
+  await validateParentGuard(parentGuard)
+  let handle: FileHandle | undefined
+  try {
+    handle = await fs.open(filePath, "wx")
+    await validateParentGuard(parentGuard)
+    await assertOpenHandleIdentity(handle, filePath, parentGuard.workspacePhysicalRoot)
+    await handle.writeFile(bytes)
+  } catch (error) {
+    if (handle) await handle.close().catch(() => undefined)
+    await removeGuardedFile(filePath, parentGuard)
+    throw error
+  } finally {
+    if (handle) await handle.close().catch(() => undefined)
+  }
+}
+
+async function removeGuardedFile(filePath: string, parentGuard: ParentGuard): Promise<void> {
+  try {
+    await validateParentGuard(parentGuard)
+    await assertPhysicalPathMatches(parentGuard.workspacePhysicalRoot, filePath, filePath)
+    await fs.rm(filePath, { force: true })
+  } catch {
+    // Never follow an unverified cleanup path after a failed guarded write.
+  }
+}
+
+async function assertOpenHandleIdentity(handle: FileHandle, filePath: string, workspacePhysicalRoot: string): Promise<void> {
+  const physicalPath = await fs.realpath(filePath)
+  assertInsidePhysicalWorkspace(workspacePhysicalRoot, physicalPath, filePath)
+  if (!samePhysicalPath(physicalPath, filePath)) {
+    throw new Error(`traceability catalog target changed during open: ${filePath}`)
+  }
+  const [handleIdentity, pathIdentity] = await Promise.all([
+    handle.stat({ bigint: true }).then(identityFromStats),
+    fs.stat(filePath, { bigint: true }).then(identityFromStats)
+  ])
+  if (!sameFileIdentity(handleIdentity, pathIdentity)) {
+    throw new Error(`traceability catalog target identity changed during open: ${filePath}`)
+  }
+}
+
+function identityFromStats(stats: { dev: bigint; ino: bigint }): FileIdentity {
+  return { dev: stats.dev, ino: stats.ino }
+}
+
+function sameFileIdentity(left: FileIdentity, right: FileIdentity): boolean {
+  return left.dev === right.dev && left.ino === right.ino
+}
+
+function samePhysicalPath(left: string, right: string): boolean {
+  return normalizeLockKey(left) === normalizeLockKey(right)
 }
 
 function normalizeLockKey(value: string): string {
