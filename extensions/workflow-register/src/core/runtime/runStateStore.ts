@@ -1,5 +1,15 @@
 import { randomUUID } from "crypto"
-import { CoreWorkflowDefinition, WorkflowRunState } from "../model"
+import type { CoreWorkflowDefinition, WorkflowRunState } from "../model"
+import { normalizeWorkspaceRootIdentity } from "../../workspaceRootIdentity"
+import {
+  CURRENT_WORKFLOW_RUN_STATE_SCHEMA_VERSION,
+  assertWorkflowRunStateWritable,
+  decodeWorkflowRunState,
+  isCurrentWorkflowRunState,
+  prepareWorkflowRunStateForWrite
+} from "./runStateCodec"
+import type { RunStateLoadDiagnostic } from "./runStateCodec"
+import { ensureContainedRunStateMigrationBackup } from "./runStateMigrationBackup"
 import {
   listContainedRunIds,
   readContainedRunFile,
@@ -7,6 +17,13 @@ import {
 } from "./runStatePath"
 
 const RECOVERABLE_RUN_STATUSES = new Set(["running", "paused", "checkpoint", "reviewing", "held"])
+
+interface SharedRunLoadResult {
+  run?: WorkflowRunState
+  diagnostic?: RunStateLoadDiagnostic
+}
+
+const inFlightRunLoads = new Map<string, Promise<SharedRunLoadResult>>()
 
 export interface RecoverableRunLookupOptions {
   executionMode?: "full" | "singleStep"
@@ -33,6 +50,7 @@ export class FileRunStateStore implements RunStateStore {
   readonly workspaceRoot: string
   private readonly now: () => string
   private readonly engineVersion?: string
+  private readonly loadDiagnostics = new Map<string, RunStateLoadDiagnostic>()
 
   constructor(options: FileRunStateStoreOptions) {
     this.workspaceRoot = options.workspaceRoot
@@ -44,6 +62,7 @@ export class FileRunStateStore implements RunStateStore {
     const createdAt = this.now()
     const runId = await this.nextRunId(workflow.name, createdAt)
     return {
+      schemaVersion: CURRENT_WORKFLOW_RUN_STATE_SCHEMA_VERSION,
       runId,
       workflowId: workflow.id,
       workflowName: workflow.name,
@@ -67,36 +86,131 @@ export class FileRunStateStore implements RunStateStore {
   }
 
   async saveRun(run: WorkflowRunState): Promise<void> {
+    const prepared = prepareWorkflowRunStateForWrite(run)
     const updatedAt = this.now()
-    await writeContainedRunFile(this.workspaceRoot, run.runId, `${JSON.stringify({ ...run, updatedAt }, null, 2)}\n`)
+    const persisted = { ...prepared, updatedAt }
+    await writeContainedRunFile(this.workspaceRoot, run.runId, serializeRun(persisted))
+    run.schemaVersion = CURRENT_WORKFLOW_RUN_STATE_SCHEMA_VERSION
     run.updatedAt = updatedAt
   }
 
   async loadRun(runId: string): Promise<WorkflowRunState | undefined> {
     try {
-      const snapshot = await readContainedRunFile(this.workspaceRoot, runId)
-      const run = JSON.parse(snapshot.bytes.toString("utf8")) as WorkflowRunState
-      if (run.runId !== runId) throw new Error(`Workflow run id mismatch: expected '${runId}', got '${run.runId}'.`)
-      return run
+      const result = await coordinateRunLoad(
+        this.workspaceRoot,
+        runId,
+        () => this.loadRunShared(runId)
+      )
+      if (result.diagnostic) {
+        this.setLoadDiagnostic(result.diagnostic)
+      } else if (result.run) {
+        this.clearTransientLoadDiagnostic(runId)
+      }
+      return result.run
     } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code
-      if (code === "ENOENT") return undefined
+      this.recordInvalidLoad(runId, error)
       throw error
     }
   }
 
   async listRuns(): Promise<WorkflowRunState[]> {
     const entries = await listContainedRunIds(this.workspaceRoot)
-    const runs = await Promise.all(entries.map((entry) => this.loadRun(entry)))
+    const entrySet = new Set(entries)
+    for (const runId of this.loadDiagnostics.keys()) {
+      if (!entrySet.has(runId)) this.loadDiagnostics.delete(runId)
+    }
+    const runs = await Promise.all(entries.map(async (entry) => {
+      try {
+        const run = await this.loadRun(entry)
+        if (!run) {
+          this.recordInvalidLoad(entry, new Error(`Workflow run '${entry}' is missing run.json.`))
+        }
+        return run
+      } catch {
+        return undefined
+      }
+    }))
     return runs
       .filter((run): run is WorkflowRunState => Boolean(run))
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
   }
 
+  getLoadDiagnostics(): RunStateLoadDiagnostic[] {
+    const severityOrder: Record<RunStateLoadDiagnostic["severity"], number> = {
+      error: 0,
+      warning: 1,
+      info: 2
+    }
+    return [...this.loadDiagnostics.values()]
+      .map((diagnostic) => ({ ...diagnostic }))
+      .sort((left, right) =>
+        compareText(left.runId, right.runId)
+        || severityOrder[left.severity] - severityOrder[right.severity]
+        || compareText(left.code, right.code)
+        || compareText(left.message, right.message)
+      )
+  }
+
   async findRecoverableRun(workflow: CoreWorkflowDefinition, inputs: Record<string, unknown>, options: RecoverableRunLookupOptions = {}): Promise<WorkflowRunState | undefined> {
     const expectedInputs = stableJson(inputs)
     const runs = await this.listRuns()
-    return runs.find((run) => isRecoverableRun(run, workflow, expectedInputs, options))
+    const matchingRuns = runs.filter((run) => (
+      run.workflowId === workflow.id
+      && workflowDefinitionMatches(run, workflow)
+      && stableJson(run.inputs) === expectedInputs
+    ))
+    const recoverable = matchingRuns.find((run) => isRecoverableRun(run, workflow, expectedInputs, options))
+    if (recoverable) return recoverable
+    if (options.executionMode === "singleStep") {
+      const readOnly = matchingRuns.find((run) => !isCurrentWorkflowRunState(run))
+      if (readOnly) assertWorkflowRunStateWritable(readOnly)
+    }
+    return undefined
+  }
+
+  private async loadRunShared(runId: string): Promise<SharedRunLoadResult> {
+    let snapshot: Awaited<ReturnType<typeof readContainedRunFile>>
+    try {
+      snapshot = await readContainedRunFile(this.workspaceRoot, runId)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return {}
+      throw error
+    }
+
+    const text = snapshot.bytes.toString("utf8")
+    let value: unknown
+    try {
+      value = JSON.parse(text)
+    } catch (error) {
+      throw new Error(`Workflow run '${runId}' contains invalid JSON: ${formatError(error)}`)
+    }
+
+    const decoded = decodeWorkflowRunState(value, runId)
+    if (decoded.migrated) {
+      await ensureContainedRunStateMigrationBackup(this.workspaceRoot, runId, text)
+      await writeContainedRunFile(this.workspaceRoot, runId, serializeRun(decoded.run))
+      return {
+        run: decoded.run,
+        diagnostic: {
+          runId,
+          severity: "info",
+          code: "migrated",
+          message: decoded.diagnostics[0]
+        }
+      }
+    }
+    if (decoded.readOnly) {
+      return {
+        run: decoded.run,
+        diagnostic: {
+          runId,
+          severity: "warning",
+          code: "read-only",
+          message: decoded.diagnostics[0]
+        }
+      }
+    }
+    return { run: decoded.run }
   }
 
   private async nextRunId(workflowName: string, createdAt: string): Promise<string> {
@@ -109,6 +223,40 @@ export class FileRunStateStore implements RunStateStore {
     throw new Error(`Could not allocate unique workflow run id for '${workflowName}'.`)
   }
 
+  private setLoadDiagnostic(diagnostic: RunStateLoadDiagnostic): void {
+    this.loadDiagnostics.set(diagnostic.runId, diagnostic)
+  }
+
+  private recordInvalidLoad(runId: string, error: unknown): void {
+    this.setLoadDiagnostic({
+      runId,
+      severity: "error",
+      code: "invalid",
+      message: formatError(error)
+    })
+  }
+
+  private clearTransientLoadDiagnostic(runId: string): void {
+    const existing = this.loadDiagnostics.get(runId)
+    if (existing && existing.code !== "migrated") this.loadDiagnostics.delete(runId)
+  }
+}
+
+function coordinateRunLoad(
+  workspaceRoot: string,
+  runId: string,
+  operation: () => Promise<SharedRunLoadResult>
+): Promise<SharedRunLoadResult> {
+  const key = JSON.stringify([normalizeWorkspaceRootIdentity(workspaceRoot), runId])
+  const existing = inFlightRunLoads.get(key)
+  if (existing) return existing
+
+  let coordinated!: Promise<SharedRunLoadResult>
+  coordinated = Promise.resolve().then(operation).finally(() => {
+    if (inFlightRunLoads.get(key) === coordinated) inFlightRunLoads.delete(key)
+  })
+  inFlightRunLoads.set(key, coordinated)
+  return coordinated
 }
 
 async function runFileExists(workspaceRoot: string, runId: string): Promise<boolean> {
@@ -128,6 +276,7 @@ function workflowDefinitionMatches(run: WorkflowRunState, workflow: CoreWorkflow
 }
 
 function isRecoverableRun(run: WorkflowRunState, workflow: CoreWorkflowDefinition, expectedInputs: string, options: RecoverableRunLookupOptions): boolean {
+  if (!isCurrentWorkflowRunState(run)) return false
   if (run.workflowId !== workflow.id) return false
   if (!workflowDefinitionMatches(run, workflow)) return false
   if (stableJson(run.inputs) !== expectedInputs) return false
@@ -142,6 +291,10 @@ function isRecoverableRun(run: WorkflowRunState, workflow: CoreWorkflowDefinitio
     return run.steps.slice(0, reviewOrHeldGateIndex).every((step) => step.status === "completed")
   }
   return run.steps.slice(0, stepIndex).every((step) => step.status === "completed")
+}
+
+function serializeRun(run: WorkflowRunState): string {
+  return `${JSON.stringify(run, null, 2)}\n`
 }
 
 function stableJson(value: unknown): string {
@@ -161,4 +314,12 @@ function canonicalJson(value: unknown): unknown {
 
 function sanitize(value: string): string {
   return value.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "workflow"
+}
+
+function compareText(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0
+}
+
+function formatError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
 }

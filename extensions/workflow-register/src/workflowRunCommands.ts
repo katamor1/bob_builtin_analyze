@@ -16,6 +16,7 @@ import {
 } from "./core/artifacts"
 import type { CoreWorkflowDefinition, WorkflowRunState } from "./core/model"
 import { formatBranchingDiagnostics } from "./core/runDiagnostics"
+import { assertWorkflowRunStateWritable, isWorkflowRunStateWritable } from "./core/runStateStore"
 import { pendingReviewTransitionStepId } from "./core/engine/runState"
 import {
   coordinateWorkflowRunExecution,
@@ -605,6 +606,10 @@ export class WorkflowRunCommandService {
     const candidates: ArtifactSourceRunSelection[] = []
     for (const run of runs) {
       if (sourceRunId && run.runId !== sourceRunId) continue
+      if (!isWorkflowRunStateWritable(run)) {
+        if (sourceRunId) assertWorkflowRunStateWritable(run)
+        continue
+      }
       const manifest = await loadArtifactManifest(root, run)
       if (!manifest) continue
       const issues = validateWorkflowArtifactManifest({ manifest, workflow, inputs })
