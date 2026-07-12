@@ -3,23 +3,55 @@ name: workflow-contracts
 on:
   pull_request:
     paths:
-      - "extensions/workflow-register/**"
-      - "extensions/bob-bazaar-review/templates/**/WORKFLOW.md"
-      - "extensions/bob-code-consistency-review/templates/**/WORKFLOW.md"
-      - ".bob/workflows/bazaar-project-rule-review/WORKFLOW.md"
-      - ".bob/workflows/code-consistency-review/WORKFLOW.md"
+      - ".bob/workflows/**/WORKFLOW.md"
+      - ".bob/template-library/**/WORKFLOW.md"
+      - "extensions/workflow-register/samples/**/WORKFLOW.md"
+      - "extensions/**/templates/**/WORKFLOW.md"
+      - "docs/workflows/**/WORKFLOW.md"
+      - "docs/workflows/action-provider-contracts.json"
+      - ".bob/process/process-catalog.yaml"
+      - "extensions/workflow-register/src/core/actionRegistry.ts"
+      - "extensions/workflow-register/src/core/mechanicalChecks/actionProvider.ts"
+      - "extensions/workflow-register/src/core/engine/preflight.ts"
+      - "extensions/workflow-register/src/core/workflowCompiler.ts"
+      - "extensions/workflow-register/src/core/workflowValidator.ts"
+      - "extensions/workflow-register/test/workflowContractFiles.test.js"
+      - "extensions/workflow-register/test/processWorkflowContracts.test.js"
+      - "extensions/bob-bazaar-review/src/workflow/workflowProviders.ts"
+      - "extensions/bob-code-consistency-review/src/workflowProviderRegistration.ts"
+      - "extensions/workflow-register/package.json"
+      - "extensions/bob-bazaar-review/package.json"
+      - "extensions/bob-code-consistency-review/package.json"
       - ".github/workflows/workflow-contracts.yml"
   push:
     branches:
       - main
     paths:
-      - "extensions/workflow-register/**"
-      - "extensions/bob-bazaar-review/templates/**/WORKFLOW.md"
-      - "extensions/bob-code-consistency-review/templates/**/WORKFLOW.md"
-      - ".bob/workflows/bazaar-project-rule-review/WORKFLOW.md"
-      - ".bob/workflows/code-consistency-review/WORKFLOW.md"
+      - ".bob/workflows/**/WORKFLOW.md"
+      - ".bob/template-library/**/WORKFLOW.md"
+      - "extensions/workflow-register/samples/**/WORKFLOW.md"
+      - "extensions/**/templates/**/WORKFLOW.md"
+      - "docs/workflows/**/WORKFLOW.md"
+      - "docs/workflows/action-provider-contracts.json"
+      - ".bob/process/process-catalog.yaml"
+      - "extensions/workflow-register/src/core/actionRegistry.ts"
+      - "extensions/workflow-register/src/core/mechanicalChecks/actionProvider.ts"
+      - "extensions/workflow-register/src/core/engine/preflight.ts"
+      - "extensions/workflow-register/src/core/workflowCompiler.ts"
+      - "extensions/workflow-register/src/core/workflowValidator.ts"
+      - "extensions/workflow-register/test/workflowContractFiles.test.js"
+      - "extensions/workflow-register/test/processWorkflowContracts.test.js"
+      - "extensions/bob-bazaar-review/src/workflow/workflowProviders.ts"
+      - "extensions/bob-code-consistency-review/src/workflowProviderRegistration.ts"
+      - "extensions/workflow-register/package.json"
+      - "extensions/bob-bazaar-review/package.json"
+      - "extensions/bob-code-consistency-review/package.json"
       - ".github/workflows/workflow-contracts.yml"
   workflow_dispatch:
+
+concurrency:
+  group: workflow-contracts-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   validate:
@@ -32,20 +64,40 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
           cache: npm
           cache-dependency-path: extensions/workflow-register/package-lock.json
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --silent
 
       - name: Compile
-        run: npm run compile
+        run: npm run compile --silent
 
       - name: Validate workflow contracts
-        run: node --test test/workflowContractFiles.test.js
+        shell: bash
+        run: |
+          set +e
+          node --test test/workflowContractFiles.test.js test/processWorkflowContracts.test.js > "$RUNNER_TEMP/workflow-contracts.log" 2>&1
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            echo "Workflow contract validation failed. Relevant output:"
+            grep -n -B 45 -A 160 -E "not ok|AssertionError|Unsupported action provider|uncontributed command|error:" "$RUNNER_TEMP/workflow-contracts.log" || tail -n 240 "$RUNNER_TEMP/workflow-contracts.log"
+          else
+            tail -n 20 "$RUNNER_TEMP/workflow-contracts.log"
+          fi
+          exit "$status"
+
+      - name: Upload failed contract log
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: workflow-contracts-failure
+          path: ${{ runner.temp }}/workflow-contracts.log
+          if-no-files-found: error
+          retention-days: 3

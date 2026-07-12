@@ -2,7 +2,7 @@
 
 ## 1. 目的
 
-本書は `extensions/bob-bazaar-review` の単体テスト仕様を定義する。対象は Bazaar CLI wrapper、文字コード、workspace 解決、review packet、workflow-register bridge、project rules、review-result capture、MCP server、review record / triage / summary、Review Run、直接レビュー command である。
+本書は `extensions/bob-bazaar-review` の単体テスト仕様を定義する。対象は Bazaar CLI wrapper、文字コード、workspace 解決、review packet、workflow-register bridge、project rules、review-result capture、MCP server、review record / triage / summary、直接レビュー command である。
 
 ## 2. テスト実行方式
 
@@ -27,7 +27,6 @@
 | `projectChecklist` | `rules[]` と category を持つ checklist JSON。 |
 | `reviewResultValid` | schema に合う review-result JSON。 |
 | `reviewResultInvalid` | required field または evidence 条件に違反する JSON。 |
-| `reviewRunV1` | `bazaar-review-run/v1` のtarget、phase、artifact、metricsを持つReview Run。 |
 | `mcpRequest` | `initialize`、`tools/list`、`tools/call` の JSON-RPC request。 |
 
 ## 4. テスト項目
@@ -303,7 +302,7 @@
 | workflow bridge / provider / step completion | BZR-UT-018〜021、035〜036 | `test/workflowBridge.test.js`, `test/workflowProviderRegistration.test.js`, `test/workflowStepCompletion.test.js`, `test/workflowTemplate.test.js` |
 | project rules / capture / validation / result store | BZR-UT-022〜031、041 | `test/projectRulesPath.test.js`, `test/resultCaptureCore.test.js`, `test/reviewResultsStore.test.js`, `test/mcpServerVersion.test.js` |
 | MCP server / write tools / allowed roots | BZR-UT-032〜034、037〜038 | `test/mcpWriteTools.test.js`, `test/mcpAllowedRoots.test.js`, `test/mcpRequestLimit.test.js`, `test/mcpSourceLayout.test.js` |
-| review record / triage / campaign summary | BZR-UT-039〜040、045 | `test/reviewRecordsCore.test.js`, `test/reviewRecordCommands.test.js`, `test/reviewTriageDecision.test.js`, `test/phase1RecordTemplates.test.js` |
+| review record / triage / campaign summary | BZR-UT-039〜040、045 | `test/reviewRecordsCore.test.js`, `test/reviewRecordCommands.test.js`, `test/phase1RecordTemplates.test.js` |
 | Review Run progress / metrics / stale write / finalize | BZR-UT-042〜046 | `test/reviewRunState.test.js`, `test/reviewRunMetrics.test.js`, `test/reviewRunStore.test.js`, `test/reviewRunFinalize.test.js` |
 | Review Run resume / legacy recovery / GUI contract | BZR-UT-047〜048 | `test/reviewRunResume.test.js`, `test/reviewRunRecovery.test.js`, `test/guiFirstSurfaces.test.js` |
 | Campaign Dashboard aggregation / loader / export / GUI | BZR-UT-049〜052 | `test/campaignDashboardCore.test.js`, `test/campaignDashboard.test.js`, `test/campaignDashboardExport.test.js`, `test/campaignDashboardGui.test.js`, `test/guiFirstSurfaces.test.js` |
@@ -326,3 +325,15 @@
 - readonly 境界、path validation、workspace 分離、result 保存が回帰テストで守られる。
 - Review Runの再開、metrics、decision validation、finalize retry、legacy recoveryが回帰テストで守られる。
 - Campaign Dashboardのrate、trend、warning、export、Webview境界が回帰テストで守られる。
+
+<!-- REMEDIATION-2026-07-11 -->
+## 2026-07-11 追加単体テスト契約
+
+| ID | 観点 | 期待結果 |
+| --- | --- | --- |
+| EXT-UT-REM-001 | soft dependency | companion extension 不在でも通常 command が利用でき、後から有効化すると provider 登録が回復する。 |
+| EXT-UT-REM-002 | provider ownership | 同一 ID の別所有元登録を拒否し、disposable 後は再登録できる。古い disposable は新登録を削除しない。 |
+| EXT-UT-REM-003 | external process | timeout、cancel、buffer exceed、非許可 exit code を分類し、子プロセスを終了する。 |
+| EXT-UT-REM-004 | Windows path | drive、UNC、device、drive-relative、dot、traversal、control-character path を拒否する。 |
+| EXT-UT-REM-005 | processing limits | manifest/runtime の範囲が一致し、極端値を clamp し、UTF-8 byte 上限を守る。 |
+| EXT-UT-REM-006 | workflow contracts | 全 workflow を動的探索し、未知 provider / command、strict warning、mirror drift を検出する。 |

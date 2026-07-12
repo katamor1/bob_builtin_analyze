@@ -12,7 +12,8 @@ test("traceability commands carry text encoding into catalog and review-input fl
   assert.match(source, /applyAiTraceabilityDraft\(\{ workspaceRoot, catalogPath, text, textEncoding \}\)/)
   assert.match(source, /validateAndWriteTraceabilityGateReport\(\{ workspaceRoot, catalogPath, reportPath, textEncoding \}\)/)
   assert.match(source, /const limits = \{/)
-  assert.match(source, /preprocessReview\(\{ workspaceRoot, inputPath, outDir, diffFixturePath, bzrPath, textEncoding, limits, workflowRunId \}\)/)
+  // The process boundary must carry encoding, bounded limits, timeout, and cancellation as one contract.
+  assert.match(source, /preprocessReview\(\{[\s\S]*textEncoding,[\s\S]*limits,[\s\S]*workflowRunId,[\s\S]*commandTimeoutMs,[\s\S]*abortSignal: controller\.signal[\s\S]*\}\)/)
 })
 
 test("traceability commands reuse review metadata and focus options from shared helpers", () => {
@@ -21,4 +22,18 @@ test("traceability commands reuse review metadata and focus options from shared 
   assert.match(source, /import \{ collectReviewMetadata \} from "\.\/reviewInputWizard"/)
   assert.match(source, /reviewFocusOption\(record\) \?\? \["requirement-code-consistency", "design-code-consistency", "test-gap"\]/)
   assert.match(source, /writeReviewInputFromDraft\(\{[\s\S]*strictPaths: booleanOption\(record, "strictPaths"\) \?\? true[\s\S]*\}\)/)
+})
+
+test("traceability gate reports stay on the catalog revision that triggered them", () => {
+  const commandSource = readSourceSet(["traceabilityCommands.ts"])
+  const wizardSource = readSourceSet(["webview/consistencyReviewWizard.ts"])
+
+  assert.match(
+    commandSource,
+    /validateAndWriteTraceabilityGateReport\(\{[\s\S]*expectedRevision: result\.revision[\s\S]*\}\)/
+  )
+  assert.match(
+    wizardSource,
+    /validateAndWriteTraceabilityGateReport\(\{ \.\.\.input, expectedRevision: read\.revision \}\)/
+  )
 })
