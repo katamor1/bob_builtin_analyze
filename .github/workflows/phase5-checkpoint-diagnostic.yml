@@ -1,0 +1,95 @@
+name: Phase 5 checkpoint diagnostic
+
+on:
+  push:
+    branches:
+      - codex/evidence-scope-phase5-checkpoint-20260712
+
+permissions:
+  contents: read
+
+jobs:
+  windows-bob-code-consistency:
+    runs-on: windows-2025
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: extensions/bob-code-consistency-review/package-lock.json
+
+      - name: Install dependencies
+        working-directory: extensions/bob-code-consistency-review
+        run: npm ci
+
+      - name: Capture focused Phase 5 tests
+        working-directory: extensions/bob-code-consistency-review
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          npm run compile *> "$env:RUNNER_TEMP\phase5-windows-compile.log"
+          node --test test/repositorySymbolIndexProducer.test.js *> "$env:RUNNER_TEMP\phase5-windows-focused.log"
+          $LASTEXITCODE | Out-File -Encoding ascii "$env:RUNNER_TEMP\phase5-windows-focused.exit-code"
+          exit 0
+
+      - name: Capture complete tests
+        working-directory: extensions/bob-code-consistency-review
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          npm test *> "$env:RUNNER_TEMP\phase5-windows-full.log"
+          $LASTEXITCODE | Out-File -Encoding ascii "$env:RUNNER_TEMP\phase5-windows-full.exit-code"
+          exit 0
+
+      - name: Upload Windows diagnostic
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: phase5-windows-diagnostic
+          path: |
+            ${{ runner.temp }}\phase5-windows-compile.log
+            ${{ runner.temp }}\phase5-windows-focused.log
+            ${{ runner.temp }}\phase5-windows-focused.exit-code
+            ${{ runner.temp }}\phase5-windows-full.log
+            ${{ runner.temp }}\phase5-windows-full.exit-code
+          if-no-files-found: error
+          retention-days: 1
+
+  linux-workflow-register:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: extensions/workflow-register/package-lock.json
+
+      - name: Install dependencies
+        working-directory: extensions/workflow-register
+        run: npm ci
+
+      - name: Capture workflow-register tests
+        working-directory: extensions/workflow-register
+        shell: bash
+        run: |
+          set +e
+          npm test > "$RUNNER_TEMP/workflow-register-linux.log" 2>&1
+          printf '%s\n' "$?" > "$RUNNER_TEMP/workflow-register-linux.exit-code"
+          exit 0
+
+      - name: Upload workflow-register diagnostic
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: phase5-workflow-register-linux-diagnostic
+          path: |
+            ${{ runner.temp }}/workflow-register-linux.log
+            ${{ runner.temp }}/workflow-register-linux.exit-code
+          if-no-files-found: error
+          retention-days: 1
