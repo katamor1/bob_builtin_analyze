@@ -6,6 +6,7 @@ import {
   type WorkflowArtifactManifest
 } from "../core/artifacts"
 import type { CoreWorkflowDefinition, WorkflowRunState } from "../core/model"
+import { isWorkflowRunStateWritable } from "../core/runStateStore"
 
 export const OPERATION_HUB_ALLOWED_ACTIONS = [
   "refresh",
@@ -305,6 +306,7 @@ function buildWorkflowCatalog(workflows: OperationHubWorkflowInput[]): Operation
 function actionsForRun(root: string, run: WorkflowRunState, hasReusableArtifacts: boolean, revision?: string): OperationHubAction[] {
   const target = { runId: run.runId, workspaceRoot: root, expectedRevision: revision }
   const inspect = { id: "inspectRunControl", label: "詳細", commandId: "workflowRegister.inspectRunControl", ...target } as const
+  if (!isWorkflowRunStateWritable(run)) return [inspect]
   const startFromArtifacts = hasReusableArtifacts
     ? {
       id: "startFromArtifacts",
