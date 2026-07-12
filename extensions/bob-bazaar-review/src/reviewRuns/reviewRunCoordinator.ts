@@ -1,5 +1,7 @@
+import * as fs from "node:fs/promises"
 import * as path from "node:path"
 import { writeReviewPacketArtifact } from "../records/reviewRecordStore"
+import { reviewRunDirectory, validateReviewRunSegment } from "./reviewRunPaths"
 import type { CreateReviewRunContextInput } from "./reviewRunState"
 import { advanceReviewRun, createReviewRunContext } from "./reviewRunState"
 import { readReviewRun, writeReviewRun } from "./reviewRunStore"
@@ -15,9 +17,19 @@ export interface ReviewRunCaptureResult {
 }
 
 export async function startReviewRun(input: CreateReviewRunContextInput): Promise<ReviewRunContext> {
-  const context = createReviewRunContext(input)
-  await writeReviewRun(context)
-  return context
+  const reserved = await reserveReviewRunIdentity(
+    input.workspaceRoot,
+    input.campaignId,
+    input.reviewId
+  )
+  const context = createReviewRunContext({ ...input, reviewId: reserved.reviewId })
+  try {
+    await writeReviewRun(context)
+    return context
+  } catch (error) {
+    await removeReservedDirectoryIfEmpty(reserved.directory)
+    throw error
+  }
 }
 
 export async function recordReviewPacket(context: ReviewRunContext, packetText: string): Promise<ReviewRunContext> {
@@ -109,4 +121,46 @@ export function toWorkspaceRelativeArtifactPath(workspaceRoot: string, filePath:
 
 function isAbsolutePath(value: string): boolean {
   return path.isAbsolute(value) || /^[A-Za-z]:[\\/]/.test(value) || value.startsWith("/")
+}
+
+async function reserveReviewRunIdentity(
+  workspaceRoot: string,
+  campaignId: string,
+  requestedReviewId: string
+): Promise<{ reviewId: string; directory: string }> {
+  const safeRequestedReviewId = validateReviewRunSegment(requestedReviewId, "reviewId")
+  const firstDirectory = reviewRunDirectory(workspaceRoot, campaignId, safeRequestedReviewId)
+  await fs.mkdir(path.dirname(firstDirectory), { recursive: true })
+
+  for (let index = 1; index <= 999; index += 1) {
+    const reviewId = index === 1
+      ? safeRequestedReviewId
+      : validateReviewRunSegment(
+        `${safeRequestedReviewId}-${String(index).padStart(2, "0")}`,
+        "reviewId"
+      )
+    const directory = reviewRunDirectory(workspaceRoot, campaignId, reviewId)
+    try {
+      await fs.mkdir(directory)
+      return { reviewId, directory }
+    } catch (error) {
+      if (isNodeError(error) && error.code === "EEXIST") continue
+      throw error
+    }
+  }
+
+  throw new Error(`Could not allocate a unique Review Run id for ${safeRequestedReviewId}`)
+}
+
+async function removeReservedDirectoryIfEmpty(directory: string): Promise<void> {
+  try {
+    await fs.rmdir(directory)
+  } catch (error) {
+    if (isNodeError(error) && (error.code === "ENOENT" || error.code === "ENOTEMPTY" || error.code === "EEXIST")) return
+    throw error
+  }
+}
+
+function isNodeError(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && "code" in error
 }
