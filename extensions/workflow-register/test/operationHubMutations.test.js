@@ -153,6 +153,7 @@ function providerHarness(t, run = tempRunRoot(t)) {
   const state = {
     commands: [],
     errors: [],
+    openedDocuments: [],
     warnings: [],
     executeCommand: async () => undefined
   }
@@ -164,8 +165,12 @@ function providerHarness(t, run = tempRunRoot(t)) {
       }
     },
     extensions: { getExtension: () => undefined },
+    Uri: {
+      file: (filePath) => ({ fsPath: path.resolve(filePath) })
+    },
     window: {
       showErrorMessage: async (message) => { state.errors.push(message) },
+      showTextDocument: async (uri, options) => { state.openedDocuments.push({ uri, options }) },
       showWarningMessage: async (message) => { state.warnings.push(message) }
     },
     workspace: {
@@ -218,6 +223,27 @@ function mutationMessage(run, overrides = {}) {
     runId: run.runId,
     expectedRevision: run.revision,
     ...overrides
+  }
+}
+
+function openArtifactMessage(artifactPath) {
+  return {
+    type: "operationHub.action",
+    action: "openArtifact",
+    artifactPath
+  }
+}
+
+function createDirectoryAlias(t, target, alias) {
+  try {
+    fs.symlinkSync(target, alias, process.platform === "win32" ? "junction" : "dir")
+    return true
+  } catch (error) {
+    if (["EPERM", "EACCES", "ENOTSUP", "UNKNOWN"].includes(error.code)) {
+      t.skip(`directory alias unavailable: ${error.code}`)
+      return false
+    }
+    throw error
   }
 }
 
@@ -459,6 +485,42 @@ test("Operation Hub provider rejects a run-directory alias that resolves outside
   assert.ok(state.errors.some((message) => /workspace|outside|refresh|更新|再読込/i.test(message)))
   assert.equal(fs.readFileSync(run.externalRunFile, "utf8"), run.externalRunBytes)
   assert.equal(fs.readFileSync(run.externalControlFile, "utf8"), run.externalControlBytes)
+})
+
+test("Operation Hub openArtifact rejects a workspace-local alias that resolves outside", async (t) => {
+  const { provider, run, state } = providerHarness(t)
+  const outsideRoot = fs.mkdtempSync(path.join(os.tmpdir(), "workflow-register-open-artifact-outside-"))
+  const outsideArtifact = path.join(outsideRoot, "outside.md")
+  const outsideBytes = "outside artifact must stay unopened\n"
+  fs.writeFileSync(outsideArtifact, outsideBytes)
+  t.after(() => fs.rmSync(outsideRoot, { recursive: true, force: true }))
+  const aliasDirectory = path.join(run.root, ".bob", "outside-artifact-alias")
+  if (!createDirectoryAlias(t, outsideRoot, aliasDirectory)) return
+
+  await provider.handleMessage(openArtifactMessage(path.join(aliasDirectory, "outside.md")))
+
+  assert.deepEqual(state.openedDocuments, [])
+  assert.deepEqual(state.errors, ["Bob Operation Hub: workspace 外の成果物は開けません。"])
+  assert.equal(fs.readFileSync(outsideArtifact, "utf8"), outsideBytes)
+})
+
+test("Operation Hub openArtifact opens the verified physical URI for an in-workspace alias", async (t) => {
+  const { provider, run, state } = providerHarness(t)
+  const physicalDirectory = path.join(run.root, ".bob", "physical-artifacts")
+  const physicalArtifact = path.join(physicalDirectory, "inside.md")
+  fs.mkdirSync(physicalDirectory, { recursive: true })
+  fs.writeFileSync(physicalArtifact, "inside artifact\n")
+  const aliasDirectory = path.join(run.root, ".bob", "inside-artifact-alias")
+  if (!createDirectoryAlias(t, physicalDirectory, aliasDirectory)) return
+  const aliasArtifact = path.join(aliasDirectory, "inside.md")
+
+  await provider.handleMessage(openArtifactMessage(aliasArtifact))
+
+  assert.deepEqual(state.errors, [])
+  assert.deepEqual(state.openedDocuments, [{
+    uri: { fsPath: fs.realpathSync(aliasArtifact) },
+    options: { preview: false }
+  }])
 })
 
 test("Operation Hub model rejects a run-directory alias swapped in after safe run listing", async (t) => {

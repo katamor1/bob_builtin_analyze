@@ -384,11 +384,8 @@ export class OperationHubProvider implements vscode.WebviewViewProvider, vscode.
   private async openArtifact(artifactPath?: string): Promise<void> {
     if (!artifactPath) throw new Error("artifact path が指定されていません。")
     const roots = (await workflowRootCandidates(vscode.workspace.workspaceFolders ?? [])).map((candidate) => candidate.root)
-    const resolved = path.resolve(artifactPath)
-    if (!roots.some((root) => isContainedPath(root, resolved))) {
-      throw new Error("workspace 外の成果物は開けません。")
-    }
-    await vscode.window.showTextDocument(vscode.Uri.file(resolved), { preview: false })
+    const physicalArtifactPath = await resolveContainedArtifactPath(roots, artifactPath)
+    await vscode.window.showTextDocument(vscode.Uri.file(physicalArtifactPath), { preview: false })
   }
 
   private applyOpenInput(input: unknown): OperationHubOpenInput | undefined {
@@ -546,6 +543,20 @@ async function loadRunSnapshot(
 function isContainedPath(root: string, target: string): boolean {
   const relative = path.relative(path.resolve(root), path.resolve(target))
   return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative))
+}
+
+async function resolveContainedArtifactPath(roots: readonly string[], artifactPath: string): Promise<string> {
+  const resolved = path.resolve(artifactPath)
+  const matchingRoots = roots.filter((root) => isContainedPath(root, resolved))
+  if (matchingRoots.length === 0) throw new Error("workspace 外の成果物は開けません。")
+  const [physicalTarget, ...physicalRoots] = await Promise.all([
+    fs.realpath(resolved),
+    ...matchingRoots.map((root) => fs.realpath(path.resolve(root)))
+  ])
+  if (!physicalRoots.some((root) => isContainedPath(root, physicalTarget))) {
+    throw new Error("workspace 外の成果物は開けません。")
+  }
+  return physicalTarget
 }
 
 function refreshTimestamp(): string {
