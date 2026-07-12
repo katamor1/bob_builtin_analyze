@@ -78,6 +78,17 @@ test("report includes source, target, checksum, truncation and existing-file dif
   assert.doesNotMatch(report, /new draft\s*$/)
 })
 
+test("report chooses a code fence longer than any backtick run in snapshot diff", () => {
+  const { formatTaskSnapshotImportPreviewReport } = require("../out/taskSnapshotImportReport")
+  const value = preview()
+  value.candidates[0].diff = "--- existing\n+++ snapshot\n-plain\n+```ts\n+const secret = true\n+```\n"
+  const report = formatTaskSnapshotImportPreviewReport({ preview: value, run, workflow }).join("\n")
+  const opening = report.match(/\n(`{4,})diff\n/)
+  assert.ok(opening, report)
+  assert.match(report, new RegExp(`\\n${opening[1]}\\n`))
+  assert.match(report, /\+```ts/)
+})
+
 test("selection items preserve default selection and overwrite requirements", () => {
   const { taskSnapshotImportSelectionItems } = require("../out/taskSnapshotImportReport")
   const items = taskSnapshotImportSelectionItems(preview())
