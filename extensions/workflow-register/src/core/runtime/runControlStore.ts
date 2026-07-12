@@ -1,4 +1,5 @@
-import { assertWorkflowRunStateWritable, FileRunStateStore } from "../runStateStore"
+import { assertWorkflowRunStateWritable } from "./runStateCodec"
+import { FileRunStateStore } from "./runStateStore"
 import { readContainedRunFile, writeContainedRunFile } from "./runStatePath"
 
 export type RunPauseMode = "afterCurrentStep" | "beforeNextAiCall"
