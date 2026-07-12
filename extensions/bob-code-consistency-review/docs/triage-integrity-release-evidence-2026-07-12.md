@@ -4,7 +4,7 @@
 - ブランチ: `agent/bob-code-consistency-review-triage-integrity`
 - Pull Request: `#74`
 - 記録日: 2026-07-12
-- 状態: automated core and operator gates complete / IBM Bob integration UAT pending
+- 状態: automated core and operator gates complete / IBM Bob UAT kit committed / execution pending
 
 ## 実装範囲
 
@@ -111,6 +111,35 @@ npm run package:policy
 
 二画面の競合は、同一source hash / revisionを保持した二つのsave attemptとしてdomain contractを再現している。二つのpanelを目視操作するUI確認はmanual gateに残す。
 
+## IBM Bob UAT kit
+
+実IBM Bob環境でだけ確認できる残件を、同じ入力・同じ判定・同じ証跡形式で実施できるようにした。
+
+追加した成果物:
+
+- `docs/triage-integrity-ibm-bob-uat-runbook-ja.md`
+  - Bob Workflow UI E2E、Bob agent result handoff、MCP、Webview visual / keyboard、二画面競合、Console確認を手順化した。
+- `docs/triage-integrity-ibm-bob-uat-evidence-template.md`
+  - version、commit、testcase、artifact hash、conflict、migration、MCP、Console、sign-offを記録するtemplateを定義した。
+- `test/fixtures/triage-operator-uat/bob-output-initial.yaml`
+  - generate / save / reopen / revision conflict用のdeterministic input。
+- `test/fixtures/triage-operator-uat/bob-output-regenerated.yaml`
+  - 同じreview IDでsource hashを変えるsource conflict用input。
+- `test/fixtures/triage-operator-uat/legacy-triage-result.yaml`
+  - matching `PRE-001`とunmatched `OLD-999`を含むmigration input。
+- `test/fixtures/triage-operator-uat/README.md`
+  - copy手順とvalidation対象外である制約を記録した。
+
+fixtureはHuman Triageのoperator UAT専用で、任意のreview-packageの`evidence-index.json`とは対応しない。Bob output validationを含むE2Eでは、同一workspaceで生成したreview-packageとBob agent outputを使用する。
+
+実施後はevidence templateを次へcopyして記入し、PR branchへcommitする。
+
+```text
+docs/release-evidence/triage-integrity-ibm-bob-uat-YYYY-MM-DD.md
+```
+
+現時点ではkitの準備まで完了しており、実IBM Bob環境での結果やsign-offは記録していない。未実施項目をpassとして扱わない。
+
 ## 手動UAT残件
 
 実IBM Bob環境でのみ確認可能な範囲をrelease-candidate gateとして残す。
@@ -121,6 +150,8 @@ npm run package:policy
 4. 二つのHuman Triage panelを使った視覚的競合表示
 5. Webview layout、focus、keyboard操作、operator向け文言
 6. Developer Tools Console全体のwarning / exception確認
+7. 日付入りUAT evidenceのcommit
+8. Operator / reviewer / release owner sign-off
 
 ## 関連文書
 
@@ -128,7 +159,9 @@ npm run package:policy
 - `docs/superpowers/plans/2026-07-12-bob-code-consistency-review-triage-operator-extension-host.md`
 - `docs/superpowers/specs/2026-07-11-bob-code-consistency-review-workspace-v2-design.md`
 - `extensions/bob-code-consistency-review/docs/triage-operator-extension-host-test-spec-ja.md`
+- `extensions/bob-code-consistency-review/docs/triage-integrity-ibm-bob-uat-runbook-ja.md`
+- `extensions/bob-code-consistency-review/docs/triage-integrity-ibm-bob-uat-evidence-template.md`
 
 ## 判定
 
-Phase 1のコード、単体・package gate、Ubuntu / Windows Extension Host operator gate、設計・運用文書の同期は完了した。IBM Bob本体、workflow UI、MCP、visual operator UATが完了するまではrelease可とは判定せず、Pull Requestはdraftで維持する。
+Phase 1のコード、単体・package gate、Ubuntu / Windows Extension Host operator gate、設計・運用文書、IBM Bob UAT kitの準備は完了した。IBM Bob本体、workflow UI、MCP、visual operator UATとsign-offが完了するまではrelease可とは判定せず、Pull Requestはdraftで維持する。
