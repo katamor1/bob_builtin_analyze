@@ -20,8 +20,8 @@ export async function writeReviewRun(context: ReviewRunContext): Promise<string>
     path.dirname(filePath),
     `.review-run.${process.pid}.${randomBytes(6).toString("hex")}.tmp`
   )
-  await fs.writeFile(temporaryPath, `${JSON.stringify(context, null, 2)}\n`, "utf8")
   try {
+    await fs.writeFile(temporaryPath, `${JSON.stringify(context, null, 2)}\n`, "utf8")
     await replaceFile(temporaryPath, filePath)
   } catch (error) {
     await fs.rm(temporaryPath, { force: true })
