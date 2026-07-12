@@ -1,6 +1,9 @@
 name: Export evidence scope workspace
 
 on:
+  pull_request:
+    paths:
+      - .github/workflows/export-evidence-scope-current.yml
   push:
     branches:
       - codex/execute-shared-plan-6a53743e
