@@ -151,6 +151,64 @@ test("repository index merge expands external caller callee type global and test
   assert.equal(second.scopeFingerprint, first.scopeFingerprint)
 })
 
+test("repository index maps unstable analysis ids to the unique stable symbol identity", () => {
+  const analysis = analysisFixture()
+  analysis.changedSymbols[0].id = "FUNC-0001"
+
+  const repositoryIndex = {
+    id: "stable-index",
+    sourceRevision: "f".repeat(40),
+    sourcePath: ".bob/evidence-scope/repository-symbol-index.json",
+    contentHash: `sha256:${"2".repeat(64)}`,
+    symbolCount: 2,
+    edgeCount: 1,
+    symbols: [
+      { id: "stable:api", name: "api", path: "src/api-current.ts", kind: "function", language: "typescript", estimatedTokens: 10, riskTags: [] },
+      { id: "fn:caller", name: "caller", path: "src/caller.ts", kind: "function", language: "typescript", estimatedTokens: 10, riskTags: [] }
+    ],
+    dependencyEdges: [
+      { from: "fn:caller", to: "stable:api", kind: "calls", resolution: "resolved", reason: "external caller" }
+    ]
+  }
+
+  const result = buildReviewEvidenceScope(analysis, undefined, {
+    tokenBudget: 1000,
+    maxDependencyDepth: 1,
+    rules: [],
+    repositoryIndex
+  })
+
+  assert.deepEqual(result.selectedCode.map((item) => [item.id, item.priority]), [
+    ["stable:api", "required"],
+    ["fn:caller", "high"]
+  ])
+  assert.equal(result.warnings.length, 0)
+})
+
+test("current analysis call edges resolve against repository symbols and replace index duplicates", () => {
+  const analysis = analysisFixture()
+  analysis.callGraph.push({
+    from: "api",
+    to: "externalCallee",
+    confidence: "high",
+    reason: "current analysis resolved external callee"
+  })
+  const repositoryIndex = externalImpactIndex("e".repeat(40))
+
+  const result = buildReviewEvidenceScope(analysis, undefined, {
+    changedSymbolIds: ["fn:api"],
+    tokenBudget: 5000,
+    maxDependencyDepth: 1,
+    rules: [],
+    repositoryIndex
+  })
+
+  const externalCallee = result.selectedCode.find((item) => item.id === "fn:external-callee")
+  assert.ok(externalCallee)
+  assert.ok(externalCallee.reasons.some((reason) => reason.includes("current analysis resolved external callee")))
+  assert.ok(externalCallee.reasons.every((reason) => !reason.includes("api invokes external callee")))
+})
+
 test("preprocessReview records repository index provenance and changes stale input hash when only index bytes change", async () => {
   const workspace = createMultiLanguageGitReviewWorkspace()
   const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: workspace, encoding: "utf8" }).trim()
