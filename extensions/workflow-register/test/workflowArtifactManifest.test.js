@@ -6,7 +6,7 @@ const path = require("node:path")
 const { test } = require("node:test")
 
 function tempDir() {
-  return fs.mkdtempSync(path.join(os.tmpdir(), "workflow-register-artifacts-"))
+  return fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "workflow-register-artifacts-")))
 }
 
 function sha256(value) {

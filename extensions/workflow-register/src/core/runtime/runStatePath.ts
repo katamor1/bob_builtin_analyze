@@ -134,6 +134,7 @@ export async function listContainedRunIds(workspaceRoot: string): Promise<string
       if (!entry) break
       if (entry.isFile() && isOwnedRunTempFile(entry.name)) continue
       assertSafeWorkflowRunId(entry.name)
+      await directDirectoryChain(root, [...RUNS_ROOT_SEGMENTS, entry.name], false)
       entries.push(entry.name)
     }
     await assertDirectoryIdentity(runsRoot, "Workflow runs directory")

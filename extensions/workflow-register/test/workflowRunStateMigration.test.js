@@ -147,21 +147,23 @@ test("future run-state versions load read-only and are excluded from recovery", 
   const bytes = `${JSON.stringify(future, null, 2)}\n`
   await writeRunDocument(root, future.runId, bytes)
   const store = new FileRunStateStore({ workspaceRoot: root })
+  const expectedDiagnostic = {
+    runId: future.runId,
+    severity: "warning",
+    code: "read-only",
+    message: `Workflow run state schemaVersion 'workflow-register/run-state/v2' is newer than supported '${CURRENT_WORKFLOW_RUN_STATE_SCHEMA_VERSION}' and was loaded read-only.`
+  }
 
   const loaded = await store.loadRun(future.runId)
   assert.equal(loaded.schemaVersion, "workflow-register/run-state/v2")
   await assert.rejects(store.saveRun(loaded), /read-only schemaVersion/)
   assert.equal(fs.readFileSync(runFile(root, future.runId), "utf8"), bytes)
+  assert.deepEqual(store.getLoadDiagnostics(), [expectedDiagnostic])
   assert.equal(
     await store.findRecoverableRun(workflow(), { revision: "abc123" }),
     undefined
   )
-  assert.deepEqual(store.getLoadDiagnostics(), [{
-    runId: future.runId,
-    severity: "warning",
-    code: "read-only",
-    message: `Workflow run state schemaVersion 'workflow-register/run-state/v2' is newer than supported '${CURRENT_WORKFLOW_RUN_STATE_SCHEMA_VERSION}' and was loaded read-only.`
-  }])
+  assert.deepEqual(store.getLoadDiagnostics(), [expectedDiagnostic])
 })
 
 test("workflow engine rejects a future run before clearing pause state", async (t) => {

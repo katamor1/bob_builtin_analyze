@@ -142,6 +142,7 @@ export class FileRunStateStore implements RunStateStore {
   }
 
   async saveRun(run: WorkflowRunState): Promise<void> {
+    assertWorkflowRunStateWritable(run)
     try {
       await this.withRunLock(run.runId, async () => {
         await this.recoverPendingJournalOwned(run.runId)

@@ -139,7 +139,18 @@ async function acquireWorkflowRunLock(
     }
     if (await createRunDurabilityFile(workspaceRoot, runId, "run.lock.json", serializeWorkflowRunLock(owner))) return owner
 
-    const snapshot = await readRunDurabilityFile(workspaceRoot, runId, "run.lock.json")
+    let snapshot: Awaited<ReturnType<typeof readRunDurabilityFile>>
+    try {
+      snapshot = await readRunDurabilityFile(workspaceRoot, runId, "run.lock.json")
+    } catch (error) {
+      if (!isTransientLockReadError(error)) throw error
+      const elapsed = Date.now() - startedAt
+      if (elapsed >= options.timeoutMs) {
+        throw new Error(`Workflow run '${runId}' is busy or locked by another process. The lock changed while its heartbeat was being refreshed.`)
+      }
+      await options.sleep(Math.min(options.pollMs, Math.max(1, options.timeoutMs - elapsed)))
+      continue
+    }
     if (!snapshot) continue
     const inspection = inspectExistingLock(snapshot.bytes, snapshot.mtimeMs, runId, options)
     if (inspection.reclaim) {
@@ -272,6 +283,13 @@ function nonNegative(value: number | undefined, fallback: number, label: string)
     throw new Error(`Workflow run lock option '${label}' must be a non-negative finite number.`)
   }
   return selected
+}
+
+function isTransientLockReadError(error: unknown): boolean {
+  const code = (error as NodeJS.ErrnoException).code
+  if (code === "ENOENT" || code === "ENOTDIR") return true
+  const message = formatError(error)
+  return /durability file 'run\.lock\.json' changed while (it was being read|its path was being verified)/i.test(message)
 }
 
 function requiredRecord(value: unknown, label: string): Record<string, unknown> {

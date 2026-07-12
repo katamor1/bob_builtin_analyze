@@ -5,7 +5,7 @@ const path = require("node:path")
 const { test } = require("node:test")
 
 function tempDir() {
-  return fs.mkdtempSync(path.join(os.tmpdir(), "workflow-register-recovery-"))
+  return fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "workflow-register-recovery-")))
 }
 
 function sampleWorkflow() {
@@ -71,13 +71,17 @@ test("file run state store retries transient rename failures while saving run st
   await runStore.saveRun(run)
 
   const originalRename = fsPromises.rename
-  let renameCalls = 0
+  const runFile = path.join(workspaceRoot, ".bob", "workflows", "runs", run.runId, "run.json")
+  let runRenameCalls = 0
   fsPromises.rename = async (...args) => {
-    renameCalls += 1
-    if (renameCalls === 1) {
-      const error = new Error("transient rename failure")
-      error.code = "EPERM"
-      throw error
+    const target = path.resolve(String(args[1]))
+    if (target === path.resolve(runFile)) {
+      runRenameCalls += 1
+      if (runRenameCalls === 1) {
+        const error = new Error("transient rename failure")
+        error.code = "EPERM"
+        throw error
+      }
     }
     return originalRename(...args)
   }
@@ -89,7 +93,7 @@ test("file run state store retries transient rename failures while saving run st
     fsPromises.rename = originalRename
   }
 
-  assert.equal(renameCalls, 2)
+  assert.equal(runRenameCalls, 2)
   assert.equal((await runStore.loadRun(run.runId)).status, "paused")
 })
 
