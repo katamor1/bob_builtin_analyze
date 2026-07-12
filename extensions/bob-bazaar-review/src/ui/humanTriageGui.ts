@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto"
+import * as fs from "node:fs/promises"
 import * as path from "node:path"
 import * as vscode from "vscode"
 import {
@@ -9,14 +10,19 @@ import {
   validateReviewTriageCommand
 } from "../records/reviewRecordCommands"
 import type { ReviewRecordCommandInput } from "../records/reviewRecordCommands"
+import { resolveWorkspaceRelativePath } from "../records/reviewRecordPaths"
 import { readTriage, writeTriage } from "../records/reviewRecordStore"
 import { summarizeTriageItems, validateTriage } from "../records/reviewTriage"
 import type { ReviewTriage, TriageDecision, TriageItem } from "../records/reviewRecordTypes"
 import {
+  correctActiveReviewRunMetrics,
+  finalizeReviewRun,
   loadReviewRun,
+  recordTriageCompleted,
   recordTriageDraft,
   validateReviewRunCommandInput
 } from "../reviewRuns/reviewRunCoordinator"
+import { secondsToMinutes, type ReviewRunMetricCorrection } from "../reviewRuns/reviewRunMetrics"
 import type { ReviewRunCommandInput, ReviewRunContext } from "../reviewRuns/reviewRunTypes"
 import { renderHumanTriageHtml, type HumanTriageGuiModel } from "./humanTriageGuiHtml"
 
@@ -27,6 +33,8 @@ type HumanTriageAction =
   | "createRecord"
   | "generateSummary"
   | "saveDecisions"
+  | "saveMetrics"
+  | "finalizeReviewRun"
 
 interface HumanTriageMessage {
   type: "bazaarHumanTriage.action"
@@ -34,6 +42,9 @@ interface HumanTriageMessage {
   campaignId?: string
   reviewId?: string
   reviewResultJsonPath?: string
+  baselineReviewMinutes?: number
+  bobReviewMinutes?: number
+  humanTriageMinutes?: number
   items?: unknown[]
 }
 
@@ -47,7 +58,7 @@ export function openBazaarHumanTriageGui(
   })
   const controller = new BazaarHumanTriageGuiController(context, panel, reviewRunInput)
   context.subscriptions.push(panel.webview.onDidReceiveMessage((message) => controller.handleMessage(message)))
-  controller.render()
+  void controller.initialize()
 }
 
 class BazaarHumanTriageGuiController {
@@ -60,6 +71,22 @@ class BazaarHumanTriageGuiController {
     private readonly reviewRunInput?: ReviewRunCommandInput
   ) {
     this.model = defaultModel(reviewRunInput)
+  }
+
+  async initialize(): Promise<void> {
+    try {
+      const reviewRun = await this.resolveReviewRun()
+      if (reviewRun) {
+        await this.renderReviewRun(reviewRun)
+      } else {
+        this.render()
+      }
+    } catch (error) {
+      this.render({
+        ...this.model,
+        issues: [error instanceof Error ? error.message : String(error)]
+      })
+    }
   }
 
   render(model: HumanTriageGuiModel = this.model): void {
@@ -96,7 +123,27 @@ class BazaarHumanTriageGuiController {
         const result = await generateReviewCampaignSummary(input)
         this.post({ ok: true, message: `summary を生成しました:\n${result.markdownPath}` })
       } else if (message.action === "saveDecisions") {
-        await this.saveDecisions(input, message.items ?? [])
+        const saved = await this.saveDecisions(input, message.items ?? [])
+        if (saved) this.post({ ok: true, message: "triage decisionを保存し、Review Runのtriage phaseを完了しました。" })
+      } else if (message.action === "saveMetrics") {
+        await this.saveMetrics(message)
+        this.post({ ok: true, message: "Review Run metricsを保存しました。" })
+      } else if (message.action === "finalizeReviewRun") {
+        const saved = await this.saveDecisions(input, message.items ?? [], false)
+        if (!saved) return
+        await this.applyMetrics(message)
+        const reviewRun = requiredReviewRun(this.activeReviewRun)
+        const result = await finalizeReviewRun(reviewRun)
+        this.activeReviewRun = result.context
+        await this.renderReviewRun(result.context, [], this.model.items)
+        this.post({
+          ok: true,
+          message: [
+            "Review Runを完了しました。",
+            `record: ${result.recordPath}`,
+            `summary: ${result.summaryMarkdownPath}`
+          ].join("\n")
+        })
       }
     } catch (error) {
       this.post({ error: true, message: error instanceof Error ? error.message : String(error) })
@@ -127,51 +174,127 @@ class BazaarHumanTriageGuiController {
   }
 
   private async reloadTriage(input: ReviewRecordCommandInput, triagePath: string, issues: string[]): Promise<void> {
-    const triage = await readTriage(required(input.workspaceRoot, "workspaceRoot"), required(input.campaignId, "campaignId"), required(input.reviewId, "reviewId"))
+    const workspaceRoot = required(input.workspaceRoot, "workspaceRoot")
+    const campaignId = required(input.campaignId, "campaignId")
+    const reviewId = required(input.reviewId, "reviewId")
+    const triage = await readTriage(workspaceRoot, campaignId, reviewId)
+    if (this.activeReviewRun) {
+      await this.renderReviewRun(this.activeReviewRun, issues, triage.items, triagePath)
+      return
+    }
     this.render({
-      campaignId: required(input.campaignId, "campaignId"),
-      reviewId: required(input.reviewId, "reviewId"),
-      reviewResultJsonPath: input.reviewResultJsonPath ?? `.bob/review/results/${input.reviewId}.json`,
+      campaignId,
+      reviewId,
+      reviewResultJsonPath: input.reviewResultJsonPath ?? `.bob/review/results/${reviewId}.json`,
       triagePath,
-      reviewRunBound: Boolean(this.reviewRunInput),
+      reviewRunBound: false,
       issues,
       items: triage.items
     })
   }
 
-  private async saveDecisions(input: ReviewRecordCommandInput, rawItems: unknown[]): Promise<void> {
+  private async saveDecisions(
+    input: ReviewRecordCommandInput,
+    rawItems: unknown[],
+    renderResult = true
+  ): Promise<boolean> {
     const workspaceRoot = required(input.workspaceRoot, "workspaceRoot")
     const campaignId = required(input.campaignId, "campaignId")
     const reviewId = required(input.reviewId, "reviewId")
     const current = await readTriage(workspaceRoot, campaignId, reviewId)
+    const reviewResultPath = input.reviewResultJsonPath ?? `.bob/review/results/${reviewId}.json`
+    const reviewResult = JSON.parse(
+      await fs.readFile(resolveWorkspaceRelativePath(workspaceRoot, reviewResultPath), "utf8")
+    )
     const items = rawItems.map(normalizePostedItem)
     const next: ReviewTriage = {
       ...current,
       items,
       summary: summarizeTriageItems(items)
     }
-    const issues = validateTriage(next)
+    const issues = validateTriage(next, reviewResult)
+    const triagePath = path.join(workspaceRoot, ".bob-review-records", "campaigns", campaignId, "records", reviewId, "triage.yaml")
     if (issues.length > 0) {
+      if (this.activeReviewRun) {
+        await this.renderReviewRun(this.activeReviewRun, issues, items, triagePath)
+      } else {
+        this.render({
+          campaignId,
+          reviewId,
+          reviewResultJsonPath: reviewResultPath,
+          triagePath,
+          reviewRunBound: false,
+          issues,
+          items
+        })
+      }
+      return false
+    }
+
+    const writtenPath = await writeTriage(workspaceRoot, campaignId, reviewId, next)
+    if (this.activeReviewRun) {
+      this.activeReviewRun = await recordTriageCompleted(this.activeReviewRun, writtenPath)
+      if (renderResult) await this.renderReviewRun(this.activeReviewRun, [], next.items, writtenPath)
+    } else if (renderResult) {
       this.render({
         campaignId,
         reviewId,
-        reviewResultJsonPath: input.reviewResultJsonPath ?? `.bob/review/results/${reviewId}.json`,
-        triagePath: path.join(workspaceRoot, ".bob-review-records", "campaigns", campaignId, "records", reviewId, "triage.yaml"),
-        reviewRunBound: Boolean(this.reviewRunInput),
-        issues,
-        items
+        reviewResultJsonPath: reviewResultPath,
+        triagePath: writtenPath,
+        reviewRunBound: false,
+        issues: [],
+        items: next.items
       })
-      return
     }
-    const triagePath = await writeTriage(workspaceRoot, campaignId, reviewId, next)
+    return true
+  }
+
+  private async saveMetrics(message: HumanTriageMessage): Promise<void> {
+    await this.applyMetrics(message)
+    await this.renderReviewRun(requiredReviewRun(this.activeReviewRun), [], this.model.items)
+  }
+
+  private async applyMetrics(message: HumanTriageMessage): Promise<void> {
+    const reviewRun = requiredReviewRun(await this.resolveReviewRun())
+    const correction: ReviewRunMetricCorrection = {}
+    if (message.baselineReviewMinutes !== undefined) correction.baselineReviewMinutes = message.baselineReviewMinutes
+    if (message.bobReviewMinutes !== undefined) correction.bobReviewMinutes = message.bobReviewMinutes
+    if (message.humanTriageMinutes !== undefined) correction.humanTriageMinutes = message.humanTriageMinutes
+    this.activeReviewRun = await correctActiveReviewRunMetrics(reviewRun, correction)
+  }
+
+  private async renderReviewRun(
+    reviewRun: ReviewRunContext,
+    issues: string[] = [],
+    items?: TriageItem[],
+    triagePath?: string
+  ): Promise<void> {
+    let triageItems = items
+    if (!triageItems && reviewRun.artifacts.triageYamlPath) {
+      try {
+        triageItems = (await readTriage(reviewRun.workspaceRoot, reviewRun.campaignId, reviewRun.reviewId)).items
+      } catch {
+        triageItems = []
+      }
+    }
     this.render({
-      campaignId,
-      reviewId,
-      reviewResultJsonPath: input.reviewResultJsonPath ?? `.bob/review/results/${reviewId}.json`,
-      triagePath,
-      reviewRunBound: Boolean(this.reviewRunInput),
-      issues: [],
-      items: next.items
+      campaignId: reviewRun.campaignId,
+      reviewId: reviewRun.reviewId,
+      reviewResultJsonPath: reviewRun.artifacts.reviewResultJsonPath ?? `.bob/review/results/${reviewRun.reviewId}.json`,
+      triagePath: triagePath ?? reviewRun.artifacts.triageYamlPath,
+      reviewRunBound: true,
+      reviewRunStatus: reviewRun.status,
+      phaseStatuses: Object.fromEntries(
+        Object.entries(reviewRun.phases).map(([phase, progress]) => [phase, progress.status])
+      ),
+      baselineReviewMinutes: reviewRun.metrics.baselineReviewMinutes,
+      bobReviewMinutes: secondsToMinutes(reviewRun.metrics.bobReviewSeconds),
+      humanTriageMinutes: secondsToMinutes(reviewRun.metrics.humanTriageSeconds),
+      recordPath: reviewRun.artifacts.recordYamlPath,
+      summaryMarkdownPath: reviewRun.artifacts.summaryMarkdownPath,
+      canFinalize: reviewRun.phases.triage.status === "completed" && reviewRun.status !== "completed",
+      issues: [...issues, ...reviewRun.issues.map((issue) => `${issue.phase}: ${issue.message}`)],
+      items: triageItems ?? []
     })
   }
 
@@ -203,6 +326,9 @@ function parseHumanTriageMessage(message: unknown): HumanTriageMessage | undefin
     campaignId: typeof candidate.campaignId === "string" ? candidate.campaignId : undefined,
     reviewId: typeof candidate.reviewId === "string" ? candidate.reviewId : undefined,
     reviewResultJsonPath: typeof candidate.reviewResultJsonPath === "string" ? candidate.reviewResultJsonPath : undefined,
+    baselineReviewMinutes: optionalNumber(candidate.baselineReviewMinutes),
+    bobReviewMinutes: optionalNumber(candidate.bobReviewMinutes),
+    humanTriageMinutes: optionalNumber(candidate.humanTriageMinutes),
     items: Array.isArray(candidate.items) ? candidate.items : undefined
   }
 }
@@ -228,7 +354,9 @@ function isHumanTriageAction(value: unknown): value is HumanTriageAction {
     value === "validateTriage" ||
     value === "createRecord" ||
     value === "generateSummary" ||
-    value === "saveDecisions"
+    value === "saveDecisions" ||
+    value === "saveMetrics" ||
+    value === "finalizeReviewRun"
 }
 
 async function resolveWorkspaceRoot(): Promise<string> {
@@ -261,4 +389,13 @@ function requiredDecision(value: unknown): TriageDecision {
 
 function stringOrUndefined(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined
+}
+
+function optionalNumber(value: unknown): number | undefined {
+  return typeof value === "number" ? value : undefined
+}
+
+function requiredReviewRun(value: ReviewRunContext | undefined): ReviewRunContext {
+  if (!value) throw new Error("Active Review Run is required")
+  return value
 }
