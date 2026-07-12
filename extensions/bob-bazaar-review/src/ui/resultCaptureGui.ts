@@ -2,6 +2,13 @@ import { randomBytes } from "node:crypto"
 import * as vscode from "vscode"
 import { captureReviewResult } from "../projectRules/resultCapture"
 import type { CaptureReviewResultResult } from "../projectRules/resultCapture"
+import {
+  loadReviewRun,
+  recordReviewResult,
+  reviewRunCommandInput,
+  validateReviewRunCommandInput
+} from "../reviewRuns/reviewRunCoordinator"
+import type { ReviewRunCommandInput, ReviewRunContext } from "../reviewRuns/reviewRunTypes"
 import { renderResultCaptureHtml } from "./resultCaptureGuiHtml"
 
 type ResultCaptureAction = "captureCandidates" | "captureManual" | "validateActive" | "openTriage"
@@ -12,21 +19,30 @@ interface ResultCaptureMessage {
   text?: string
 }
 
-export function openBazaarResultCaptureGui(context: vscode.ExtensionContext): void {
+export function openBazaarResultCaptureGui(
+  context: vscode.ExtensionContext,
+  reviewRunInput?: ReviewRunCommandInput
+): void {
   const panel = vscode.window.createWebviewPanel("bobBazaarResultCapture", "Bazaar Result Capture", vscode.ViewColumn.One, {
     enableScripts: true,
     retainContextWhenHidden: true
   })
-  const controller = new BazaarResultCaptureGuiController(panel)
+  const controller = new BazaarResultCaptureGuiController(panel, reviewRunInput)
   context.subscriptions.push(panel.webview.onDidReceiveMessage((message) => controller.handleMessage(message)))
   panel.webview.html = renderResultCaptureHtml({
     cspSource: panel.webview.cspSource,
-    nonce: randomBytes(16).toString("base64")
+    nonce: randomBytes(16).toString("base64"),
+    reviewRun: reviewRunInput
   })
 }
 
 class BazaarResultCaptureGuiController {
-  constructor(private readonly panel: vscode.WebviewPanel) {}
+  private activeReviewRun?: ReviewRunContext
+
+  constructor(
+    private readonly panel: vscode.WebviewPanel,
+    private readonly reviewRunInput?: ReviewRunCommandInput
+  ) {}
 
   async handleMessage(rawMessage: unknown): Promise<void> {
     const message = parseResultCaptureMessage(rawMessage)
@@ -36,15 +52,15 @@ class BazaarResultCaptureGuiController {
     }
     try {
       if (message.action === "captureCandidates") {
-        this.postResult(await captureReviewResult())
+        await this.capture()
       } else if (message.action === "captureManual") {
         if (!message.text?.trim()) throw new Error("Bob 出力 JSON を貼り付けてください。")
-        this.postResult(await captureReviewResult(message.text))
+        await this.capture(message.text)
       } else if (message.action === "validateActive") {
         await vscode.commands.executeCommand("bobBazaar.validateReviewResultJson")
         this.post({ ok: true, message: "開いている review-result JSON を検証しました。" })
       } else if (message.action === "openTriage") {
-        await vscode.commands.executeCommand("bobBazaar.openHumanTriageGui")
+        await this.openTriage()
         this.post({ ok: true, message: "Human Triage を開きました。" })
       }
     } catch (error) {
@@ -52,7 +68,16 @@ class BazaarResultCaptureGuiController {
     }
   }
 
-  private postResult(result: CaptureReviewResultResult): void {
+  private async capture(inputText?: string): Promise<void> {
+    const reviewRun = await this.resolveReviewRun()
+    const result = await captureReviewResult(inputText, {
+      workspaceRoot: reviewRun?.workspaceRoot,
+      expectedReviewId: reviewRun?.reviewId
+    })
+    await this.postResult(result, reviewRun)
+  }
+
+  private async postResult(result: CaptureReviewResultResult, reviewRun?: ReviewRunContext): Promise<void> {
     if (result.status !== "ok") {
       this.post({
         error: true,
@@ -63,14 +88,40 @@ class BazaarResultCaptureGuiController {
       })
       return
     }
+
+    if (reviewRun) {
+      this.activeReviewRun = await recordReviewResult(reviewRun, result)
+    }
     this.post({
       ok: true,
       message: [
         `保存しました: ${result.reviewId}`,
         result.jsonPath ? `JSON: ${result.jsonPath}` : undefined,
-        result.markdownPath ? `Markdown: ${result.markdownPath}` : undefined
+        result.markdownPath ? `Markdown: ${result.markdownPath}` : undefined,
+        this.activeReviewRun ? `Review Run phase: ${this.activeReviewRun.phase}` : undefined
       ].filter(Boolean).join("\n")
     })
+    if (this.activeReviewRun) await this.openTriage()
+  }
+
+  private async openTriage(): Promise<void> {
+    const reviewRun = await this.resolveReviewRun()
+    if (reviewRun) {
+      await vscode.commands.executeCommand("bobBazaar.openHumanTriageGui", reviewRunCommandInput(reviewRun))
+      return
+    }
+    await vscode.commands.executeCommand("bobBazaar.openHumanTriageGui")
+  }
+
+  private async resolveReviewRun(): Promise<ReviewRunContext | undefined> {
+    if (this.activeReviewRun) return this.activeReviewRun
+    if (!this.reviewRunInput) return undefined
+    const validatedInput = await validateReviewRunCommandInput(
+      this.reviewRunInput,
+      (vscode.workspace.workspaceFolders ?? []).map((folder) => folder.uri.fsPath)
+    )
+    this.activeReviewRun = await loadReviewRun(validatedInput)
+    return this.activeReviewRun
   }
 
   private post(message: Record<string, unknown>): void {

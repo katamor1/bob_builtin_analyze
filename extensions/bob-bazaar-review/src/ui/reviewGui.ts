@@ -16,10 +16,25 @@ import {
   validateTargetRequest
 } from "../bazaar/reviewTarget"
 import type { TargetRequest } from "../bazaar/reviewTarget"
+import {
+  buildReviewRunMetadataSection,
+  recordReviewPacket,
+  reviewRunCommandInput,
+  startReviewRun
+} from "../reviewRuns/reviewRunCoordinator"
+import { buildReviewId } from "../reviewRuns/reviewRunState"
+import type { ReviewRunContext } from "../reviewRuns/reviewRunTypes"
 import { completeCurrentWorkflowStepAfterGuiAction } from "../workflow/workflowStepCompletion"
 import { resolveBazaarWorkspaceFolder, resolveBobWorkspaceFolder } from "../workspace/workspaceResolver"
 import { renderHtml } from "./reviewGuiHtml"
 import type { BazaarReviewInitialTarget } from "./reviewGuiTypes"
+
+const DEFAULT_CAMPAIGN_ID = "phase1-bazaar-review-uat-001"
+
+interface ReviewRunSelection {
+  campaignId: string
+  reviewId?: string
+}
 
 export function openBazaarReviewGui(context: vscode.ExtensionContext, initialTarget?: BazaarReviewInitialTarget): void {
   const panel = vscode.window.createWebviewPanel("bobBazaarReviewGui", "Bazaar レビュー", vscode.ViewColumn.One, {
@@ -33,6 +48,7 @@ export function openBazaarReviewGui(context: vscode.ExtensionContext, initialTar
 class BazaarReviewGuiController {
   private bazaarWorkspaceFolder?: vscode.WorkspaceFolder
   private bobWorkspaceFolder?: vscode.WorkspaceFolder
+  private activeReviewRun?: ReviewRunContext
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -52,12 +68,20 @@ class BazaarReviewGuiController {
       else if (message?.type === "selectWorkspace") await this.selectWorkspace()
       else if (message?.type === "initializeBobWorkspace") await this.initializeBobWorkspace()
       else if (message?.type === "loadTarget") await this.loadTarget(parseTargetRequest(message))
-      else if (message?.type === "reviewTarget") await this.reviewTarget(parseTargetRequest(message))
-      else if (message?.type === "openResultCapture") await vscode.commands.executeCommand("bobBazaar.openResultCaptureGui")
-      else if (message?.type === "openHumanTriage") await vscode.commands.executeCommand("bobBazaar.openHumanTriageGui")
+      else if (message?.type === "reviewTarget") await this.reviewTarget(parseTargetRequest(message), parseReviewRunSelection(message))
+      else if (message?.type === "openResultCapture") await this.openReviewRunCommand("bobBazaar.openResultCaptureGui")
+      else if (message?.type === "openHumanTriage") await this.openReviewRunCommand("bobBazaar.openHumanTriageGui")
     } catch (error: any) {
       this.post({ type: "error", message: error?.message ?? String(error) })
     }
+  }
+
+  private async openReviewRunCommand(command: string): Promise<void> {
+    if (this.activeReviewRun) {
+      await vscode.commands.executeCommand(command, reviewRunCommandInput(this.activeReviewRun))
+      return
+    }
+    await vscode.commands.executeCommand(command)
   }
 
   private async postWorkspaceState(): Promise<void> {
@@ -130,10 +154,19 @@ class BazaarReviewGuiController {
       includeAddedFiles: false,
       maxAddedFileContentBytes: getMaxAddedFileContentBytes()
     })
-    this.post({ type: "targetInfo", info: prepared.info })
+    this.post({
+      type: "targetInfo",
+      info: prepared.info,
+      suggestedReviewId: buildReviewId({
+        mode: prepared.info.mode,
+        revision: prepared.info.revision,
+        baseRevision: prepared.info.baseRevision,
+        targetRevision: prepared.info.targetRevision
+      })
+    })
   }
 
-  private async reviewTarget(request: TargetRequest): Promise<void> {
+  private async reviewTarget(request: TargetRequest, selection: ReviewRunSelection): Promise<void> {
     const bazaarFolder = await this.requireBazaarWorkspaceFolder()
     const bobFolder = request.withProjectRules ? await this.requireBobWorkspaceFolder() : undefined
     validateTargetRequest(request)
@@ -146,13 +179,33 @@ class BazaarReviewGuiController {
       }
     }
 
-    this.post({ type: "loading", message: "レビュー packet を作成して Bob コンテキストへ追加しています..." })
+    this.post({ type: "loading", message: "Review Runを作成し、レビュー packet を Bob コンテキストへ追加しています..." })
     const prepared = await prepareTarget(makeBazaarClient(), bazaarFolder.uri.fsPath, request, {
       includeAddedFiles: true,
       maxAddedFileContentBytes: getMaxAddedFileContentBytes()
     })
+    const runWorkspaceFolder = this.bobWorkspaceFolder ?? bobFolder ?? bazaarFolder
+    const reviewId = selection.reviewId ?? buildReviewId({
+      mode: prepared.info.mode,
+      revision: prepared.info.revision,
+      baseRevision: prepared.info.baseRevision,
+      targetRevision: prepared.info.targetRevision
+    })
+    let reviewRun = await startReviewRun({
+      workspaceRoot: runWorkspaceFolder.uri.fsPath,
+      campaignId: selection.campaignId,
+      reviewId,
+      target: {
+        mode: prepared.info.mode,
+        repositoryRoot: prepared.root,
+        revision: prepared.info.revision,
+        baseRevision: prepared.info.baseRevision,
+        targetRevision: prepared.info.targetRevision
+      }
+    })
     const projectRulesSection = request.withProjectRules && bobFolder ? await buildProjectRulesSectionForWorkspace(bobFolder.uri.fsPath) : undefined
     const extraSections = [
+      buildReviewRunMetadataSection(reviewRun),
       buildTargetMetadataSection(prepared.info),
       prepared.addedFilesSection,
       projectRulesSection
@@ -168,6 +221,8 @@ class BazaarReviewGuiController {
       maxDiffBytes: getMaxDiffBytes(),
       extraSections
     })
+    reviewRun = await recordReviewPacket(reviewRun, packet)
+    this.activeReviewRun = reviewRun
 
     const doc = await vscode.workspace.openTextDocument({ language: "markdown", content: packet })
     await vscode.window.showTextDocument(doc, { preview: false })
@@ -202,7 +257,13 @@ class BazaarReviewGuiController {
       packetBytes: Buffer.byteLength(packet, "utf8"),
       bobContextAvailable: addResult !== "skipped",
       bobContextAdded: addResult === "added",
-      workflowStepCompleted
+      workflowStepCompleted,
+      reviewRun: {
+        campaignId: reviewRun.campaignId,
+        reviewId: reviewRun.reviewId,
+        phase: reviewRun.phase,
+        reviewPacketPath: reviewRun.artifacts.reviewPacketPath
+      }
     })
   }
 
@@ -227,6 +288,22 @@ class BazaarReviewGuiController {
   private post(message: any): void {
     void this.panel.webview.postMessage(message)
   }
+}
+
+function parseReviewRunSelection(message: any): ReviewRunSelection {
+  return {
+    campaignId: textOrDefault(message?.campaignId, DEFAULT_CAMPAIGN_ID),
+    reviewId: textOrUndefined(message?.reviewId)
+  }
+}
+
+function textOrDefault(value: unknown, fallback: string): string {
+  return textOrUndefined(value) ?? fallback
+}
+
+function textOrUndefined(value: unknown): string | undefined {
+  const text = typeof value === "string" ? value.trim() : ""
+  return text || undefined
 }
 
 function makeBazaarClient(): BazaarClient {

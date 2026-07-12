@@ -136,9 +136,16 @@ function validateChecklistCompletion(result: ReviewResult, options: CaptureRevie
 
 function validateProjectContract(result: ReviewResult, options: CaptureReviewResultOptions): ValidationIssue[] {
   return [
+    ...validateExpectedReviewId(result, options.expectedReviewId),
     ...validateExpectedRuleIds(result, options.expectedRuleIds),
     ...validateReviewResultSchema(result, options.reviewResultSchema)
   ]
+}
+
+function validateExpectedReviewId(result: ReviewResult, expectedReviewId: string | undefined): ValidationIssue[] {
+  const expected = expectedReviewId?.trim()
+  if (!expected || result.review_id === expected) return []
+  return [{ path: "$.review_id", message: `expected ${expected}, got ${result.review_id}` }]
 }
 
 function validateExpectedRuleIds(result: ReviewResult, expectedRuleIds: string[] | undefined): ValidationIssue[] {

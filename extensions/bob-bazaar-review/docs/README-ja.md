@@ -6,7 +6,7 @@
 
 `bob-bazaar-review` は、Bazaar 差分レビュー、project rules、review-result 保存、MCP 連携、Phase 1 review record 管理を提供する実行可能な VS Code 拡張です。
 
-リファクタリング後は、`workflow-register` 連携を `src/workflow/`、直接レビュー command と Bazaar packet 生成を `src/bazaar/`、active editor の review-result JSON 検証を `src/projectRules/`、Bob 拡張連携を `src/bob/`、GUI を `src/ui/`、workspace 初期化と root 解決を `src/workspace/`、MCP server を `src/mcp/`、review record / triage / summary を `src/records/` に分離しています。
+リファクタリング後は、`workflow-register` 連携を `src/workflow/`、直接レビュー command と Bazaar packet 生成を `src/bazaar/`、active editor の review-result JSON 検証を `src/projectRules/`、Bob 拡張連携を `src/bob/`、GUI を `src/ui/`、workspace 初期化と root 解決を `src/workspace/`、MCP server を `src/mcp/`、review record / triage / summary を `src/records/` に分離しています。Review Run Wizard v3 Iteration 1 では、`src/reviewRuns/` がReview GUI、Result Capture、Human Triage間の永続化されたrun contextを管理します。
 
 ## 設計書
 
@@ -15,6 +15,15 @@
 
 - `detailed-design-ja.md`  
   実装モジュール、VS Code command、workspace 解決、BazaarClient、GUI、直接レビュー command、MCP server、workflow-register bridge、project rules、review-result capture、review record、multi-root 動作、テスト観点を整理した詳細設計書です。
+
+- `review-run-v3-iteration1-ja.md`  
+  Review Run Wizard v3 Iteration 1 のrun schema、artifact配置、ID/path安全性、Review GUIからResult Capture・Human Triageへのhandoff、互換性、テスト、UATをまとめた実装仕様書です。
+
+- `review-run-id-allocation-ja.md`  
+  同一campaign内で既存・legacy・並行Review Runを上書きしない、`-02`以降のcollision-safe ID予約契約をまとめています。
+
+- `review-run-command-boundary-ja.md`  
+  Result Capture / Human Triage command引数のopen workspace境界、ID再検証、workspace外root拒否をまとめています。
 
 ## テスト仕様書
 

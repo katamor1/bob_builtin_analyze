@@ -29,6 +29,7 @@ export interface CandidateText {
 export interface CaptureReviewResultOptions {
   expectedChecklistItems?: number
   expectedRuleIds?: string[]
+  expectedReviewId?: string
   reviewResultSchema?: unknown
   checklistVersion?: string
   project?: string

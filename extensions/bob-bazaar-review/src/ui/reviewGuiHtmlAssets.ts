@@ -100,15 +100,26 @@ export const REVIEW_GUI_STYLE = `
 export const REVIEW_GUI_BODY = `
   <h1>Bob Bazaar レビュー</h1>
   <div class="card">
-    <h2>Wizard v2</h2>
+    <h2>Wizard v3 / Review Run</h2>
     <div class="wizard" aria-label="Bazaar review wizard steps">
-      <div class="wizard-step"><strong>campaign</strong><div class="small">実績 campaign / record の準備</div></div>
+      <div class="wizard-step"><strong>campaign</strong><div class="small">Review Run の保存先を選択</div></div>
       <div class="wizard-step"><strong>target</strong><div class="small">revision / range / working tree を選択</div></div>
       <div class="wizard-step"><strong>rules</strong><div class="small">project rules と readonly MCP 状態を確認</div></div>
-      <div class="wizard-step"><strong>result capture</strong><div class="small">Bob 出力を検証して保存</div></div>
-      <div class="wizard-step"><strong>human triage</strong><div class="small">finding の採否判断を記録</div></div>
+      <div class="wizard-step"><strong>result capture</strong><div class="small">同じ review_id で Bob 出力を検証・保存</div></div>
+      <div class="wizard-step"><strong>human triage</strong><div class="small">同じ Review Run で finding の採否を記録</div></div>
       <div class="wizard-step"><strong>summary</strong><div class="small">campaign summary へ集計</div></div>
     </div>
+    <div class="row" style="margin-top:12px">
+      <div class="field">
+        <label class="small" for="campaignId">campaign_id</label>
+        <input id="campaignId" type="text" value="phase1-bazaar-review-uat-001" />
+      </div>
+      <div class="field">
+        <label class="small" for="reviewId">review_id（対象取得後に自動提案）</label>
+        <input id="reviewId" type="text" placeholder="bazaar-r125-project-rule-review" />
+      </div>
+    </div>
+    <div id="runState" class="small">Review Run はまだ開始されていません。</div>
     <div class="row" style="margin-top:12px">
       <button class="secondary" id="openResultCapture">Result Capture を開く</button>
       <button class="secondary" id="openHumanTriage">Human Triage を開く</button>
@@ -157,7 +168,7 @@ export const REVIEW_GUI_BODY = `
   </div>
   <div class="row">
     <button id="load">対象情報を取得</button>
-    <button id="review" disabled>レビューして Bob に追加</button>
+    <button id="review" disabled>Review Run を開始して Bob に追加</button>
   </div>
   <label>
     <input id="withProjectRules" type="checkbox" checked />
@@ -198,6 +209,7 @@ export function renderReviewGuiScript(nonce: string, initialTargetJson: string):
     const initialTarget = ${initialTargetJson}
     let loaded = false
     let bobInitialized = false
+    let reviewIdManuallyEdited = false
 
     $("selectWorkspace").onclick = () => vscode.postMessage({ type: "selectWorkspace" })
     $("initializeBob").onclick = () => vscode.postMessage({ type: "initializeBobWorkspace" })
@@ -207,11 +219,17 @@ export function renderReviewGuiScript(nonce: string, initialTargetJson: string):
       updateMode()
       clearLoaded()
     }
+    $("campaignId").oninput = () => updateReviewButton()
+    $("reviewId").oninput = () => {
+      reviewIdManuallyEdited = Boolean($("reviewId").value.trim())
+      updateReviewButton()
+    }
     $("load").onclick = () => loadTarget()
     $("review").onclick = () => {
       vscode.postMessage({
         type: "reviewTarget",
         ...collectTarget(),
+        ...collectReviewRun(),
         withProjectRules: $("withProjectRules").checked
       })
     }
@@ -221,6 +239,13 @@ export function renderReviewGuiScript(nonce: string, initialTargetJson: string):
       $(id).oninput = () => clearLoaded()
       $(id).onkeydown = (event) => {
         if (event.key === "Enter") loadTarget()
+      }
+    }
+
+    function collectReviewRun() {
+      return {
+        campaignId: $("campaignId").value.trim(),
+        reviewId: $("reviewId").value.trim()
       }
     }
 
@@ -259,11 +284,13 @@ export function renderReviewGuiScript(nonce: string, initialTargetJson: string):
 
     function clearLoaded() {
       loaded = false
+      if (!reviewIdManuallyEdited) $("reviewId").value = ""
       updateReviewButton()
     }
 
     function updateReviewButton() {
-      $("review").disabled = !loaded || ($("withProjectRules").checked && !bobInitialized)
+      const hasRunIdentity = Boolean($("campaignId").value.trim() && $("reviewId").value.trim())
+      $("review").disabled = !loaded || !hasRunIdentity || ($("withProjectRules").checked && !bobInitialized)
     }
 
     function setStatus(text, error = false, ok = false) {
@@ -300,7 +327,6 @@ export function renderReviewGuiScript(nonce: string, initialTargetJson: string):
     function renderInfo(info) {
       loaded = true
       $("info").classList.remove("hidden")
-      updateReviewButton()
       $("infoMode").textContent = info.mode || ""
       $("infoTarget").textContent = info.targetLabel || ""
       $("infoRevision").textContent = info.revision || info.targetRevision || ""
@@ -316,6 +342,21 @@ export function renderReviewGuiScript(nonce: string, initialTargetJson: string):
         item.textContent = entry.status + ": " + entry.path
         $("infoFiles").appendChild(item)
       }
+      updateReviewButton()
+    }
+
+    function applySuggestedReviewId(reviewId) {
+      if (!reviewIdManuallyEdited && reviewId) $("reviewId").value = reviewId
+      updateReviewButton()
+    }
+
+    function renderReviewRun(run) {
+      if (!run) return
+      $("campaignId").value = run.campaignId || $("campaignId").value
+      $("reviewId").value = run.reviewId || $("reviewId").value
+      reviewIdManuallyEdited = true
+      $("runState").textContent = "Review Run: " + run.campaignId + " / " + run.reviewId + " / phase=" + run.phase + " / packet=" + (run.reviewPacketPath || "未保存")
+      updateReviewButton()
     }
 
     function renderWorkspaceState(message) {
@@ -336,10 +377,12 @@ export function renderReviewGuiScript(nonce: string, initialTargetJson: string):
       } else if (message.type === "loading") {
         setStatus(message.message)
       } else if (message.type === "targetInfo") {
+        applySuggestedReviewId(message.suggestedReviewId)
         renderInfo(message.info)
         setStatus("対象情報を取得しました", false, true)
       } else if (message.type === "reviewAdded") {
         renderInfo(message.info)
+        renderReviewRun(message.reviewRun)
         renderReviewAddedStatus(message)
       } else if (message.type === "error") {
         setStatus(message.message || "エラー", true)
@@ -356,7 +399,7 @@ export function renderReviewGuiScript(nonce: string, initialTargetJson: string):
         ? " 現在のワークフローステップも完了しました。"
         : ""
       setStatus(
-        "レビュー packet を作成し、" + contextText + "。packet bytes: " + message.packetBytes + stepText,
+        "Review Run と packet を保存し、" + contextText + "。packet bytes: " + message.packetBytes + stepText,
         false,
         true
       )
