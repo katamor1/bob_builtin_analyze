@@ -1,0 +1,5161 @@
+
+> workflow-register@0.1.0 test
+> npm run compile && node --test test/*.test.js
+
+
+> workflow-register@0.1.0 compile
+> tsc -p ./
+
+TAP version 13
+# Subtest: registration store removes manually disposed entries and does not dispose them twice
+ok 1 - registration store removes manually disposed entries and does not dispose them twice
+  ---
+  duration_ms: 3.0954
+  type: 'test'
+  ...
+# Subtest: registration store disposes all remaining entries even when one disposal throws
+ok 2 - registration store disposes all remaining entries even when one disposal throws
+  ---
+  duration_ms: 0.8724
+  type: 'test'
+  ...
+# Subtest: registration store rejects and disposes entries tracked after shutdown
+ok 3 - registration store rejects and disposes entries tracked after shutdown
+  ---
+  duration_ms: 0.3932
+  type: 'test'
+  ...
+# Subtest: default action registry exposes a VS Code command provider
+ok 4 - default action registry exposes a VS Code command provider
+  ---
+  duration_ms: 5.2311
+  type: 'test'
+  ...
+# Subtest: default action registry rejects missing VS Code command ids
+ok 5 - default action registry rejects missing VS Code command ids
+  ---
+  duration_ms: 0.6648
+  type: 'test'
+  ...
+# Subtest: default action registry injects workflowRoot into Bob command inputs
+ok 6 - default action registry injects workflowRoot into Bob command inputs
+  ---
+  duration_ms: 0.5705
+  type: 'test'
+  ...
+# Subtest: default action registry injects workflowRoot into Bob code consistency command inputs
+ok 7 - default action registry injects workflowRoot into Bob code consistency command inputs
+  ---
+  duration_ms: 0.5335
+  type: 'test'
+  ...
+# Subtest: default action registry keeps explicit Bob command workspaceRoot
+ok 8 - default action registry keeps explicit Bob command workspaceRoot
+  ---
+  duration_ms: 0.5002
+  type: 'test'
+  ...
+# Subtest: default action registry blocks VS Code commands in untrusted workspaces
+ok 9 - default action registry blocks VS Code commands in untrusted workspaces
+  ---
+  duration_ms: 0.411
+  type: 'test'
+  ...
+# Subtest: action registry executes registered providers and rejects unknown providers
+ok 10 - action registry executes registered providers and rejects unknown providers
+  ---
+  duration_ms: 0.4137
+  type: 'test'
+  ...
+# Subtest: action registry rejects duplicate ids and preserves the original owner
+ok 11 - action registry rejects duplicate ids and preserves the original owner
+  ---
+  duration_ms: 1.0245
+  type: 'test'
+  ...
+# Subtest: action provider registration disposable removes only its own registration
+ok 12 - action provider registration disposable removes only its own registration
+  ---
+  duration_ms: 0.7858
+  type: 'test'
+  ...
+# Subtest: direct, live Bob, and Operation Hub share one rendered agent step prompt
+ok 13 - direct, live Bob, and Operation Hub share one rendered agent step prompt
+  ---
+  duration_ms: 5796.5117
+  type: 'test'
+  ...
+# Subtest: agent step prompt includes only the current workflow step and requested state
+ok 14 - agent step prompt includes only the current workflow step and requested state
+  ---
+  duration_ms: 5.735
+  type: 'test'
+  ...
+# Subtest: agent step prompt escapes workflow state as data-only content
+ok 15 - agent step prompt escapes workflow state as data-only content
+  ---
+  duration_ms: 0.4933
+  type: 'test'
+  ...
+# Subtest: agent step prompt treats identical workflow and Bazaar roots as resolved roles
+ok 16 - agent step prompt treats identical workflow and Bazaar roots as resolved roles
+  ---
+  duration_ms: 0.6078
+  type: 'test'
+  ...
+# Subtest: subagent result extraction accepts Bob result objects and strings
+ok 17 - subagent result extraction accepts Bob result objects and strings
+  ---
+  duration_ms: 0.3186
+  type: 'test'
+  ...
+# Subtest: Bazaar workflow template lets AI-agent steps complete themselves
+ok 18 - Bazaar workflow template lets AI-agent steps complete themselves
+  ---
+  duration_ms: 233.787
+  type: 'test'
+  ...
+# Subtest: workflow action contract docs describe workflow-register public API and execution inputs
+ok 19 - workflow action contract docs describe workflow-register public API and execution inputs
+  ---
+  duration_ms: 2.1696
+  type: 'test'
+  ...
+# Subtest: artifact metadata contract docs define additive cross-extension metadata
+ok 20 - artifact metadata contract docs define additive cross-extension metadata
+  ---
+  duration_ms: 0.4309
+  type: 'test'
+  ...
+# Subtest: workflow-register README is synchronized with the split runtime and task snapshot defaults
+ok 21 - workflow-register README is synchronized with the split runtime and task snapshot defaults
+  ---
+  duration_ms: 0.7462
+  type: 'test'
+  ...
+# Subtest: workflow-register docs cover template customization studio and snapshot defaults
+ok 22 - workflow-register docs cover template customization studio and snapshot defaults
+  ---
+  duration_ms: 3.0797
+  type: 'test'
+  ...
+# Subtest: Bob runner remains pending when the engine returns held
+not ok 23 - Bob runner remains pending when the engine returns held
+  ---
+  duration_ms: 1155.8176
+  type: 'test'
+  location: 'D:\\a\\bob_builtin_analyze\\bob_builtin_analyze\\extensions\\workflow-register\\test\\bobGateLifecycle.test.js:307:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly deep-equal:
+    + actual - expected
+    
+      {
+        executionMode: 'singleStep',
+        ownerStepId: 'collect',
+        runId: '20260712T202436Z-bob-held-28035fce6810',
+        status: 'held',
+        stepId: 'collect',
+    +   workspaceRoot: 'C:\\Users\\runneradmin\\AppData\\Local\\Temp\\workflow-register-bob-held-xQnOpx'
+    -   workspaceRoot: 'C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\workflow-register-bob-held-xQnOpx'
+      }
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    workspaceRoot: 'C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\workflow-register-bob-held-xQnOpx'
+    runId: '20260712T202436Z-bob-held-28035fce6810'
+    stepId: 'collect'
+    ownerStepId: 'collect'
+    status: 'held'
+    executionMode: 'singleStep'
+  actual:
+    workspaceRoot: 'C:\\Users\\runneradmin\\AppData\\Local\\Temp\\workflow-register-bob-held-xQnOpx'
+    runId: '20260712T202436Z-bob-held-28035fce6810'
+    stepId: 'collect'
+    ownerStepId: 'collect'
+    status: 'held'
+    executionMode: 'singleStep'
+  operator: 'deepStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (D:\a\bob_builtin_analyze\bob_builtin_analyze\extensions\workflow-register\test\bobGateLifecycle.test.js:328:12)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:296:3)
+  ...
+# Subtest: Bob runner remains pending at a branch checkpoint
+ok 24 - Bob runner remains pending at a branch checkpoint
+  ---
+  duration_ms: 1392.8424
+  type: 'test'
+  ...
+# Subtest: Bob runner keeps the completed owner step pending when a pause points at the next step
+not ok 25 - Bob runner keeps the completed owner step pending when a pause points at the next step
+  ---
+  duration_ms: 1684.921
+  type: 'test'
+  location: 'D:\\a\\bob_builtin_analyze\\bob_builtin_analyze\\extensions\\workflow-register\\test\\bobGateLifecycle.test.js:378:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly deep-equal:
+    + actual - expected
+    
+      {
+        executionMode: 'singleStep',
+        ownerStepId: 'first',
+        runId: '20260712T202438Z-bob-paused-b3feb5d3762a',
+        status: 'paused',
+        stepId: 'second',
+    +   workspaceRoot: 'C:\\Users\\runneradmin\\AppData\\Local\\Temp\\workflow-register-bob-paused-7s1InL'
+    -   workspaceRoot: 'C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\workflow-register-bob-paused-7s1InL'
+      }
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    workspaceRoot: 'C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\workflow-register-bob-paused-7s1InL'
+    runId: '20260712T202438Z-bob-paused-b3feb5d3762a'
+    stepId: 'second'
+    ownerStepId: 'first'
+    status: 'paused'
+    executionMode: 'singleStep'
+  actual:
+    workspaceRoot: 'C:\\Users\\runneradmin\\AppData\\Local\\Temp\\workflow-register-bob-paused-7s1InL'
+    runId: '20260712T202438Z-bob-paused-b3feb5d3762a'
+    stepId: 'second'
+    ownerStepId: 'first'
+    status: 'paused'
+    executionMode: 'singleStep'
+  operator: 'deepStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (D:\a\bob_builtin_analyze\bob_builtin_analyze\extensions\workflow-register\test\bobGateLifecycle.test.js:406:12)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: StepRuntime manual hold remains the only pending primitive for a manual Bob step
+ok 26 - StepRuntime manual hold remains the only pending primitive for a manual Bob step
+  ---
+  duration_ms: 1380.9496
+  type: 'test'
+  ...
+# Subtest: full fallback manual completion keeps its wrapper Todo pending until later providers finish
+ok 27 - full fallback manual completion keeps its wrapper Todo pending until later providers finish
+  ---
+  duration_ms: 1925.4464
+  type: 'test'
+  ...
+# Subtest: full fallback after-step pause releases its completed owner before the wrapper continues
+not ok 28 - full fallback after-step pause releases its completed owner before the wrapper continues
+  ---
+  duration_ms: 1468.1995
+  type: 'test'
+  location: 'D:\\a\\bob_builtin_analyze\\bob_builtin_analyze\\extensions\\workflow-register\\test\\bobGateLifecycle.test.js:489:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly deep-equal:
+    + actual - expected
+    
+      {
+        executionMode: 'full',
+        ownerStepId: 'source',
+        runId: '20260712T202443Z-bob-full-pause-4a1fc87aba7e',
+        status: 'paused',
+        stepId: 'target',
+    +   workspaceRoot: 'C:\\Users\\runneradmin\\AppData\\Local\\Temp\\workflow-register-bob-full-pause-WONxK2'
+    -   workspaceRoot: 'C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\workflow-register-bob-full-pause-WONxK2'
+      }
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    workspaceRoot: 'C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\workflow-register-bob-full-pause-WONxK2'
+    runId: '20260712T202443Z-bob-full-pause-4a1fc87aba7e'
+    stepId: 'target'
+    ownerStepId: 'source'
+    status: 'paused'
+    executionMode: 'full'
+  actual:
+    workspaceRoot: 'C:\\Users\\runneradmin\\AppData\\Local\\Temp\\workflow-register-bob-full-pause-WONxK2'
+    runId: '20260712T202443Z-bob-full-pause-4a1fc87aba7e'
+    stepId: 'target'
+    ownerStepId: 'source'
+    status: 'paused'
+    executionMode: 'full'
+  operator: 'deepStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (D:\a\bob_builtin_analyze\bob_builtin_analyze\extensions\workflow-register\test\bobGateLifecycle.test.js:530:12)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: full Bob wrapper owns continuation after structured accept-and-next and executes the next step once
+not ok 29 - full Bob wrapper owns continuation after structured accept-and-next and executes the next step once
+  ---
+  duration_ms: 2227.8184
+  type: 'test'
+  location: 'D:\\a\\bob_builtin_analyze\\bob_builtin_analyze\\extensions\\workflow-register\\test\\bobGateLifecycle.test.js:561:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly deep-equal:
+    + actual - expected
+    
+      {
+        executionMode: 'full',
+        ownerStepId: 'second',
+        runId: '20260712T202445Z-bob-fallback-review-2d863d96e35c',
+        status: 'reviewing',
+        stepId: 'second',
+    +   workspaceRoot: 'C:\\Users\\runneradmin\\AppData\\Local\\Temp\\workflow-register-bob-fallback-review-FcU5mb'
+    -   workspaceRoot: 'C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\workflow-register-bob-fallback-review-FcU5mb'
+      }
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    workspaceRoot: 'C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\workflow-register-bob-fallback-review-FcU5mb'
+    runId: '20260712T202445Z-bob-fallback-review-2d863d96e35c'
+    stepId: 'second'
+    ownerStepId: 'second'
+    status: 'reviewing'
+    executionMode: 'full'
+  actual:
+    workspaceRoot: 'C:\\Users\\runneradmin\\AppData\\Local\\Temp\\workflow-register-bob-fallback-review-FcU5mb'
+    runId: '20260712T202445Z-bob-fallback-review-2d863d96e35c'
+    stepId: 'second'
+    ownerStepId: 'second'
+    status: 'reviewing'
+    executionMode: 'full'
+  operator: 'deepStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (D:\a\bob_builtin_analyze\bob_builtin_analyze\extensions\workflow-register\test\bobGateLifecycle.test.js:609:12)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: full Bob wrapper shares physical root identity with Operation Hub through a workspace alias
+not ok 30 - full Bob wrapper shares physical root identity with Operation Hub through a workspace alias
+  ---
+  duration_ms: 2189.1445
+  type: 'test'
+  location: 'D:\\a\\bob_builtin_analyze\\bob_builtin_analyze\\extensions\\workflow-register\\test\\bobGateLifecycle.test.js:633:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly deep-equal:
+    + actual - expected
+    
+      {
+        executionMode: 'full',
+        ownerStepId: 'second',
+        runId: '20260712T202447Z-bob-root-alias-185313ba9a2b',
+        status: 'reviewing',
+        stepId: 'second',
+    +   workspaceRoot: 'C:\\Users\\runneradmin\\AppData\\Local\\Temp\\workflow-register-bob-root-alias-g11MNb\\physical'
+    -   workspaceRoot: 'C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\workflow-register-bob-root-alias-g11MNb\\physical'
+      }
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    workspaceRoot: 'C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\workflow-register-bob-root-alias-g11MNb\\physical'
+    runId: '20260712T202447Z-bob-root-alias-185313ba9a2b'
+    stepId: 'second'
+    ownerStepId: 'second'
+    status: 'reviewing'
+    executionMode: 'full'
+  actual:
+    workspaceRoot: 'C:\\Users\\runneradmin\\AppData\\Local\\Temp\\workflow-register-bob-root-alias-g11MNb\\physical'
+    runId: '20260712T202447Z-bob-root-alias-185313ba9a2b'
+    stepId: 'second'
+    ownerStepId: 'second'
+    status: 'reviewing'
+    executionMode: 'full'
+  operator: 'deepStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (D:\a\bob_builtin_analyze\bob_builtin_analyze\extensions\workflow-register\test\bobGateLifecycle.test.js:676:12)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: single-step Bob execution keeps structured accept-and-next dispatch and executes the next provider once
+ok 31 - single-step Bob execution keeps structured accept-and-next dispatch and executes the next provider once
+  ---
+  duration_ms: 2296.5715
+  type: 'test'
+  ...
+# Subtest: full fallback wrapper does not project internal transition completion into its single Bob Todo
+ok 32 - full fallback wrapper does not project internal transition completion into its single Bob Todo
+  ---
+  duration_ms: 2342.8269
+  type: 'test'
+  ...
+# Subtest: single-step explicit transition still projects one completed Bob Todo and stops at the target
+ok 33 - single-step explicit transition still projects one completed Bob Todo and stops at the target
+  ---
+  duration_ms: 1442.1702
+  type: 'test'
+  ...
+# Subtest: run-next command fails fast when its command step awaits a same-run retry and releases later mutations
+not ok 34 - run-next command fails fast when its command step awaits a same-run retry and releases later mutations
+  ---
+  duration_ms: 1289.0499
+  type: 'test'
+  location: 'D:\\a\\bob_builtin_analyze\\bob_builtin_analyze\\extensions\\workflow-register\\test\\bobGateLifecycle.test.js:866:1'
+  failureType: 'testCodeFailure'
+  error: 'timed-out-self-wait'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    Timeout.<anonymous> (D:\a\bob_builtin_analyze\bob_builtin_analyze\extensions\workflow-register\test\bobGateLifecycle.test.js:896:41)
+    listOnTimeout (node:internal/timers:585:17)
+    process.processTimers (node:internal/timers:521:7)
+  ...
+# Subtest: duplicate retry commands rebind one live Promise and resolve it only after durable completion
+ok 35 - duplicate retry commands rebind one live Promise and resolve it only after durable completion
+  ---
+  duration_ms: 742.9424
+  type: 'test'
+  ...
+# Subtest: live held resume executes only the Bob-visible owner step
+ok 36 - live held resume executes only the Bob-visible owner step
+  ---
+  duration_ms: 1787.0246
+  type: 'test'
+  ...
+# Subtest: checkpoint approval is single-flight, durable before accept, and leaves next-step execution to Bob
+ok 37 - checkpoint approval is single-flight, durable before accept, and leaves next-step execution to Bob
+  ---
+  duration_ms: 740.2899
+  type: 'test'
+  ...
+# Subtest: checkpoint abort durably fails the run before rejecting the live gate with a stable error
+ok 38 - checkpoint abort durably fails the run before rejecting the live gate with a stable error
+  ---
+  duration_ms: 518.6326
+  type: 'test'
+  ...
+# Subtest: sequential checkpoint approval reuses one durable decision and rejects a later abort
+ok 39 - sequential checkpoint approval reuses one durable decision and rejects a later abort
+  ---
+  duration_ms: 958.6365
+  type: 'test'
+  ...
+# Subtest: sequential checkpoint abort reuses one durable decision and rejects a later approval
+ok 40 - sequential checkpoint abort reuses one durable decision and rejects a later approval
+  ---
+  duration_ms: 889.8061
+  type: 'test'
+  ...
+# Subtest: concurrent checkpoint approval then abort waits for persistence and rejects the abort
+ok 41 - concurrent checkpoint approval then abort waits for persistence and rejects the abort
+  ---
+  duration_ms: 869.0042
+  type: 'test'
+  ...
+# Subtest: concurrent checkpoint abort then approval waits for persistence and rejects the approval
+ok 42 - concurrent checkpoint abort then approval waits for persistence and rejects the approval
+  ---
+  duration_ms: 908.1359
+  type: 'test'
+  ...
+# Subtest: live pause resume releases a completed owner without running the next step
+ok 43 - live pause resume releases a completed owner without running the next step
+  ---
+  duration_ms: 743.1515
+  type: 'test'
+  ...
+# Subtest: pause resume keeps the standalone engine path when there is no live Bob gate
+ok 44 - pause resume keeps the standalone engine path when there is no live Bob gate
+  ---
+  duration_ms: 613.9346
+  type: 'test'
+  ...
+# Subtest: resumePausedRun delegates before clearing pause state so the service owns the decision
+ok 45 - resumePausedRun delegates before clearing pause state so the service owns the decision
+  ---
+  duration_ms: 712.5076
+  type: 'test'
+  ...
+# Subtest: disposing the service-owned registry rejects held, checkpoint, and paused gates
+ok 46 - disposing the service-owned registry rejects held, checkpoint, and paused gates
+  ---
+  duration_ms: 3.1993
+  type: 'test'
+  ...
+# Subtest: task snapshot import fails fast while the run is executing and preserves the owner state
+ok 47 - task snapshot import fails fast while the run is executing and preserves the owner state
+  ---
+  duration_ms: 551.5385
+  type: 'test'
+  ...
+# Subtest: completeStepByKey completes only the targeted active step
+ok 48 - completeStepByKey completes only the targeted active step
+  ---
+  duration_ms: 47.3146
+  type: 'test'
+  ...
+# Subtest: completeStepByKey returns a clear message when the active key is gone
+ok 49 - completeStepByKey returns a clear message when the active key is gone
+  ---
+  duration_ms: 1.5693
+  type: 'test'
+  ...
+# Subtest: completeStepByKeyResult returns structured success for the targeted active step
+ok 50 - completeStepByKeyResult returns structured success for the targeted active step
+  ---
+  duration_ms: 1.0664
+  type: 'test'
+  ...
+# Subtest: completeStepByKeyResult refuses expected run and step mismatches
+ok 51 - completeStepByKeyResult refuses expected run and step mismatches
+  ---
+  duration_ms: 1.5951
+  type: 'test'
+  ...
+# Subtest: getActiveStep returns the active step for panel rendering without exposing the full list
+ok 52 - getActiveStep returns the active step for panel rendering without exposing the full list
+  ---
+  duration_ms: 1.1024
+  type: 'test'
+  ...
+# Subtest: completedPrefixIndex returns the contiguous completed prefix
+ok 53 - completedPrefixIndex returns the contiguous completed prefix
+  ---
+  duration_ms: 2.6867
+  type: 'test'
+  ...
+# Subtest: reconcileBobTaskSync advances a live Bob task to the JSON completed prefix
+ok 54 - reconcileBobTaskSync advances a live Bob task to the JSON completed prefix
+  ---
+  duration_ms: 13.6899
+  type: 'test'
+  ...
+# Subtest: reconcileBobTaskSync waits for async Bob task completion before updating projection
+ok 55 - reconcileBobTaskSync waits for async Bob task completion before updating projection
+  ---
+  duration_ms: 3.3974
+  type: 'test'
+  ...
+# Subtest: reconcileBobTaskSync trusts task export projection over a stale stored projection
+ok 56 - reconcileBobTaskSync trusts task export projection over a stale stored projection
+  ---
+  duration_ms: 3.6257
+  type: 'test'
+  ...
+# Subtest: reconcileBobTaskSync reports repairFailed when task export projection does not advance
+ok 57 - reconcileBobTaskSync reports repairFailed when task export projection does not advance
+  ---
+  duration_ms: 1.8508
+  type: 'test'
+  ...
+# Subtest: reconcileBobTaskSync records taskUnavailable without a live task
+ok 58 - reconcileBobTaskSync records taskUnavailable without a live task
+  ---
+  duration_ms: 0.2654
+  type: 'test'
+  ...
+# Subtest: reconcileBobTaskSync does not rewind Bob Todo projection on retry
+ok 59 - reconcileBobTaskSync does not rewind Bob Todo projection on retry
+  ---
+  duration_ms: 0.3671
+  type: 'test'
+  ...
+# Subtest: reconcileBobTaskSync can record an already-applied manual completion
+ok 60 - reconcileBobTaskSync can record an already-applied manual completion
+  ---
+  duration_ms: 0.2197
+  type: 'test'
+  ...
+# Subtest: Bob workflow factory renders engine steps when stepExecution mode is engineSteps
+ok 61 - Bob workflow factory renders engine steps when stepExecution mode is engineSteps
+  ---
+  duration_ms: 2.2825
+  type: 'test'
+  ...
+# Subtest: Bob workflow factory keeps legacy Todo step mode when stepExecution mode is todo
+ok 62 - Bob workflow factory keeps legacy Todo step mode when stepExecution mode is todo
+  ---
+  duration_ms: 0.4571
+  type: 'test'
+  ...
+# Subtest: waitForDecision keeps one pending Promise until the gate is accepted
+ok 63 - waitForDecision keeps one pending Promise until the gate is accepted
+  ---
+  duration_ms: 4.8505
+  type: 'test'
+  ...
+# Subtest: acceptWithMetadata atomically returns the live full-wrapper gate decision
+ok 64 - acceptWithMetadata atomically returns the live full-wrapper gate decision
+  ---
+  duration_ms: 1.6631
+  type: 'test'
+  ...
+# Subtest: a workspace alias accepts the gate registered for its physical root
+ok 65 - a workspace alias accepts the gate registered for its physical root
+  ---
+  duration_ms: 6.3708
+  type: 'test'
+  ...
+# Subtest: acceptWithMetadata returns the exact accepted gate when the run has multiple pending gates
+ok 66 - acceptWithMetadata returns the exact accepted gate when the run has multiple pending gates
+  ---
+  duration_ms: 2.2072
+  type: 'test'
+  ...
+# Subtest: abort rejects a pending gate and ignores stale decisions
+ok 67 - abort rejects a pending gate and ignores stale decisions
+  ---
+  duration_ms: 1.1737
+  type: 'test'
+  ...
+# Subtest: dispose rejects every pending gate and is idempotent
+ok 68 - dispose rejects every pending gate and is idempotent
+  ---
+  duration_ms: 1.8711
+  type: 'test'
+  ...
+# Subtest: a later wait starts a fresh lifecycle for the same run and step
+ok 69 - a later wait starts a fresh lifecycle for the same run and step
+  ---
+  duration_ms: 1.2666
+  type: 'test'
+  ...
+# Subtest: review acceptance coordinators isolate identical workspace and run keys per service
+ok 70 - review acceptance coordinators isolate identical workspace and run keys per service
+  ---
+  duration_ms: 4.2705
+  type: 'test'
+  ...
+# Subtest: review acceptance coordinator single-flights workspace aliases
+ok 71 - review acceptance coordinator single-flights workspace aliases
+  ---
+  duration_ms: 3.9728
+  type: 'test'
+  ...
+# Subtest: a different coordinator operation waits for a failed owner before running
+ok 72 - a different coordinator operation waits for a failed owner before running
+  ---
+  duration_ms: 17.3085
+  type: 'test'
+  ...
+# Subtest: review acceptance coordination rejects same-run reentrancy instead of self-waiting
+ok 73 - review acceptance coordination rejects same-run reentrancy instead of self-waiting
+  ---
+  duration_ms: 1.4054
+  type: 'test'
+  ...
+# Subtest: review acceptance coordination rejects indirect ancestor-run reentrancy
+ok 74 - review acceptance coordination rejects indirect ancestor-run reentrancy
+  ---
+  duration_ms: 1.1453
+  type: 'test'
+  ...
+# Subtest: a live gate keeps its Bob-visible owner while the durable gate step is rebound
+ok 75 - a live gate keeps its Bob-visible owner while the durable gate step is rebound
+  ---
+  duration_ms: 1.8019
+  type: 'test'
+  ...
+# Subtest: abortPending rejects a rebound gate with the stable terminal reason
+ok 76 - abortPending rejects a rebound gate with the stable terminal reason
+  ---
+  duration_ms: 2.9135
+  type: 'test'
+  ...
+# Subtest: identical run and owner ids stay isolated across workspace roots
+ok 77 - identical run and owner ids stay isolated across workspace roots
+  ---
+  duration_ms: 3.6935
+  type: 'test'
+  ...
+# Subtest: engine step UI first step message does not create a duplicate Bob todo list
+ok 78 - engine step UI first step message does not create a duplicate Bob todo list
+  ---
+  duration_ms: 2.8987
+  type: 'test'
+  ...
+# Subtest: plain workflow start message still includes workflow todos when not using engine step UI
+ok 79 - plain workflow start message still includes workflow todos when not using engine step UI
+  ---
+  duration_ms: 0.5618
+  type: 'test'
+  ...
+# Subtest: command result truncation uses UTF-8 byte length
+ok 80 - command result truncation uses UTF-8 byte length
+  ---
+  duration_ms: 1.1785
+  type: 'test'
+  ...
+# Subtest: workflow state and command result are isolated as data-only prompt content
+ok 81 - workflow state and command result are isolated as data-only prompt content
+  ---
+  duration_ms: 0.7347
+  type: 'test'
+  ...
+# Subtest: workflow control block directs operators to the Operation Hub without command links
+ok 82 - workflow control block directs operators to the Operation Hub without command links
+  ---
+  duration_ms: 0.8799
+  type: 'test'
+  ...
+# Subtest: Command Palette display names use English Bob category before the colon
+ok 83 - Command Palette display names use English Bob category before the colon
+  ---
+  duration_ms: 4.499
+  type: 'test'
+  ...
+# Subtest: extension-local docs document the Command Palette display-name policy
+ok 84 - extension-local docs document the Command Palette display-name policy
+  ---
+  duration_ms: 0.3947
+  type: 'test'
+  ...
+# Subtest: command workflow AI provider calls command with design payload and validates output
+ok 85 - command workflow AI provider calls command with design payload and validates output
+  ---
+  duration_ms: 2.1785
+  type: 'test'
+  ...
+# Subtest: command workflow AI provider rejects invalid design output
+ok 86 - command workflow AI provider rejects invalid design output
+  ---
+  duration_ms: 1.6099
+  type: 'test'
+  ...
+# Subtest: command workflow AI provider validates repair and explain outputs
+ok 87 - command workflow AI provider validates repair and explain outputs
+  ---
+  duration_ms: 1.0678
+  type: 'test'
+  ...
+# Subtest: configured workflow AI provider falls back to mock when command is empty
+ok 88 - configured workflow AI provider falls back to mock when command is empty
+  ---
+  duration_ms: 0.9749
+  type: 'test'
+  ...
+# Subtest: configured workflow AI provider uses command provider when command is set
+ok 89 - configured workflow AI provider uses command provider when command is set
+  ---
+  duration_ms: 0.5349
+  type: 'test'
+  ...
+# Subtest: workflow schema exports document compatibility and runtime boundaries
+ok 90 - workflow schema exports document compatibility and runtime boundaries
+  ---
+  duration_ms: 2.8807
+  type: 'test'
+  ...
+# Subtest: process schema exports document schema-version and human-gate contracts
+ok 91 - process schema exports document schema-version and human-gate contracts
+  ---
+  duration_ms: 0.6602
+  type: 'test'
+  ...
+# Subtest: workflow-register dependency policy requires a committed lockfile and local release scripts
+ok 92 - workflow-register dependency policy requires a committed lockfile and local release scripts
+  ---
+  duration_ms: 7.465
+  type: 'test'
+  ...
+# Subtest: workflow-register README documents generated artifacts, package budget, dependencies, CLI, and trust boundary
+ok 93 - workflow-register README documents generated artifacts, package budget, dependencies, CLI, and trust boundary
+  ---
+  duration_ms: 1.0085
+  type: 'test'
+  ...
+# Subtest: workflow-register source does not use global Object title augmentation
+ok 94 - workflow-register source does not use global Object title augmentation
+  ---
+  duration_ms: 6.8901
+  type: 'test'
+  ...
+# Subtest: import cycle policy accepts acyclic relative TypeScript imports
+ok 95 - import cycle policy accepts acyclic relative TypeScript imports
+  ---
+  duration_ms: 333.6125
+  type: 'test'
+  ...
+# Subtest: import cycle policy rejects circular relative TypeScript imports
+ok 96 - import cycle policy rejects circular relative TypeScript imports
+  ---
+  duration_ms: 345.7607
+  type: 'test'
+  ...
+# Subtest: collectWorkflowInputsWithResolver uses defaults without prompting
+ok 97 - collectWorkflowInputsWithResolver uses defaults without prompting
+  ---
+  duration_ms: 4.6021
+  type: 'test'
+  ...
+# Subtest: collectWorkflowInputsWithResolver treats empty optional defaults as resolved
+ok 98 - collectWorkflowInputsWithResolver treats empty optional defaults as resolved
+  ---
+  duration_ms: 0.3429
+  type: 'test'
+  ...
+# Subtest: collectWorkflowInputsWithResolver does not re-prompt skipped optional inputs
+ok 99 - collectWorkflowInputsWithResolver does not re-prompt skipped optional inputs
+  ---
+  duration_ms: 0.8896
+  type: 'test'
+  ...
+# Subtest: collectWorkflowInputsWithResolver still cancels missing required input
+ok 100 - collectWorkflowInputsWithResolver still cancels missing required input
+  ---
+  duration_ms: 0.4342
+  type: 'test'
+  ...
+# Subtest: manual step view model renders userAction templates and active metadata
+ok 101 - manual step view model renders userAction templates and active metadata
+  ---
+  duration_ms: 3.1758
+  type: 'test'
+  ...
+# Subtest: manual step view model falls back to prompt and default button label
+ok 102 - manual step view model falls back to prompt and default button label
+  ---
+  duration_ms: 0.207
+  type: 'test'
+  ...
+# Subtest: manual step html escapes workflow content and posts active key completion
+ok 103 - manual step html escapes workflow content and posts active key completion
+  ---
+  duration_ms: 0.6868
+  type: 'test'
+  ...
+# Subtest: manual step html is read-only when active task handle is missing
+ok 104 - manual step html is read-only when active task handle is missing
+  ---
+  duration_ms: 0.2764
+  type: 'test'
+  ...
+# Subtest: manual step html shows a completed footer after panel completion
+ok 105 - manual step html shows a completed footer after panel completion
+  ---
+  duration_ms: 0.2082
+  type: 'test'
+  ...
+# Subtest: manual step controller uses host-owned confirmation and cancels when rejected
+ok 106 - manual step controller uses host-owned confirmation and cancels when rejected
+  ---
+  duration_ms: 0.9572
+  type: 'test'
+  ...
+# Subtest: manual step controller sends expected run and step and uses structured success
+ok 107 - manual step controller sends expected run and step and uses structured success
+  ---
+  duration_ms: 0.5733
+  type: 'test'
+  ...
+# Subtest: manual step controller rejects mismatched active keys before completion
+ok 108 - manual step controller rejects mismatched active keys before completion
+  ---
+  duration_ms: 0.4152
+  type: 'test'
+  ...
+# Subtest: manual step controller disposes its panel and listeners exactly once
+ok 109 - manual step controller disposes its panel and listeners exactly once
+  ---
+  duration_ms: 4.6908
+  type: 'test'
+  ...
+# Subtest: default action registry exposes workflowRegister.runMechanicalChecks
+ok 110 - default action registry exposes workflowRegister.runMechanicalChecks
+  ---
+  duration_ms: 140.1676
+  type: 'test'
+  ...
+# Subtest: workflow command step stores mechanical check resultKey without Bob
+ok 111 - workflow command step stores mechanical check resultKey without Bob
+  ---
+  duration_ms: 1493.9725
+  type: 'test'
+  ...
+# Subtest: mechanical check config accepts safe profiles, checks, paths, and regex parser
+ok 112 - mechanical check config accepts safe profiles, checks, paths, and regex parser
+  ---
+  duration_ms: 2.841
+  type: 'test'
+  ...
+# Subtest: mechanical check config accepts SARIF and CSV parser definitions
+ok 113 - mechanical check config accepts SARIF and CSV parser definitions
+  ---
+  duration_ms: 0.607
+  type: 'test'
+  ...
+# Subtest: mechanical check config accepts delta evidence, identity columns, and new finding threshold
+ok 114 - mechanical check config accepts delta evidence, identity columns, and new finding threshold
+  ---
+  duration_ms: 0.4149
+  type: 'test'
+  ...
+# Subtest: mechanical check config rejects unsupported parser input values
+ok 115 - mechanical check config rejects unsupported parser input values
+  ---
+  duration_ms: 0.4225
+  type: 'test'
+  ...
+# Subtest: mechanical check config parses YAML into the normalized config shape
+ok 116 - mechanical check config parses YAML into the normalized config shape
+  ---
+  duration_ms: 6.2621
+  type: 'test'
+  ...
+# Subtest: mechanical check config rejects duplicate ids and unknown profile check references
+ok 117 - mechanical check config rejects duplicate ids and unknown profile check references
+  ---
+  duration_ms: 0.787
+  type: 'test'
+  ...
+# Subtest: mechanical check config rejects unsupported runners, parser types, and unsafe paths
+ok 118 - mechanical check config rejects unsupported runners, parser types, and unsafe paths
+  ---
+  duration_ms: 0.6019
+  type: 'test'
+  ...
+# Subtest: mechanical check parser keeps regex warning and error counts from process output and evidence
+ok 119 - mechanical check parser keeps regex warning and error counts from process output and evidence
+  ---
+  duration_ms: 27.806
+  type: 'test'
+  ...
+# Subtest: mechanical check parser normalizes unique SARIF results from evidence
+ok 120 - mechanical check parser normalizes unique SARIF results from evidence
+  ---
+  duration_ms: 14.7799
+  type: 'test'
+  ...
+# Subtest: mechanical check parser reports malformed SARIF as blocked parse result
+ok 121 - mechanical check parser reports malformed SARIF as blocked parse result
+  ---
+  duration_ms: 11.8117
+  type: 'test'
+  ...
+# Subtest: mechanical check parser normalizes CSV findings with custom columns and quoted values
+ok 122 - mechanical check parser normalizes CSV findings with custom columns and quoted values
+  ---
+  duration_ms: 15.6141
+  type: 'test'
+  ...
+# Subtest: mechanical check parser reports only target findings absent from baseline evidence
+ok 123 - mechanical check parser reports only target findings absent from baseline evidence
+  ---
+  duration_ms: 12.8026
+  type: 'test'
+  ...
+# Subtest: mechanical check parser excludes configured known IDs and fingerprints from new findings
+ok 124 - mechanical check parser excludes configured known IDs and fingerprints from new findings
+  ---
+  duration_ms: 11.8522
+  type: 'test'
+  ...
+# Subtest: mechanical check runner executes node checks and writes profile and evidence artifacts
+ok 125 - mechanical check runner executes node checks and writes profile and evidence artifacts
+  ---
+  duration_ms: 112.5962
+  type: 'test'
+  ...
+# Subtest: mechanical check runner maps regex pass-condition violations to failed or warning
+ok 126 - mechanical check runner maps regex pass-condition violations to failed or warning
+  ---
+  duration_ms: 172.7367
+  type: 'test'
+  ...
+# Subtest: mechanical check runner writes normalized parser findings into check results
+ok 127 - mechanical check runner writes normalized parser findings into check results
+  ---
+  duration_ms: 103.3551
+  type: 'test'
+  ...
+# Subtest: mechanical check runner applies known IDs file and max new findings gate
+ok 128 - mechanical check runner applies known IDs file and max new findings gate
+  ---
+  duration_ms: 106.2165
+  type: 'test'
+  ...
+# Subtest: mechanical check runner reports missing regex evidence as blocked
+ok 129 - mechanical check runner reports missing regex evidence as blocked
+  ---
+  duration_ms: 89.8785
+  type: 'test'
+  ...
+# Subtest: mechanical check runner reports missing scripts and timeouts as blocked
+ok 130 - mechanical check runner reports missing scripts and timeouts as blocked
+  ---
+  duration_ms: 83.9197
+  type: 'test'
+  ...
+# Subtest: package manifest command ids are readable
+ok 131 - package manifest command ids are readable
+  ---
+  duration_ms: 2.7747
+  type: 'test'
+  ...
+# Subtest: package contributes the Operation Hub command and Explorer view
+ok 132 - package contributes the Operation Hub command and Explorer view
+  ---
+  duration_ms: 3.3867
+  type: 'test'
+  ...
+# Subtest: Operation Hub title actions refresh the compact hub and open the wide panel
+ok 133 - Operation Hub title actions refresh the compact hub and open the wide panel
+  ---
+  duration_ms: 1.7114
+  type: 'test'
+  ...
+# Subtest: Operation Hub model builds home setup catalog and run monitor sections
+ok 134 - Operation Hub model builds home setup catalog and run monitor sections
+  ---
+  duration_ms: 32.0453
+  type: 'test'
+  ...
+# Subtest: Operation Hub offers the next-step action for idle running workflow runs
+ok 135 - Operation Hub offers the next-step action for idle running workflow runs
+  ---
+  duration_ms: 0.3213
+  type: 'test'
+  ...
+# Subtest: Operation Hub focused run is pinned first and marked for operator action
+ok 136 - Operation Hub focused run is pinned first and marked for operator action
+  ---
+  duration_ms: 0.3475
+  type: 'test'
+  ...
+# Subtest: Operation Hub run focus keeps workspace identity when run ids collide
+ok 137 - Operation Hub run focus keeps workspace identity when run ids collide
+  ---
+  duration_ms: 0.5384
+  type: 'test'
+  ...
+# Subtest: Operation Hub html uses nonce protected scripts and data-action buttons
+ok 138 - Operation Hub html uses nonce protected scripts and data-action buttons
+  ---
+  duration_ms: 1.4023
+  type: 'test'
+  ...
+# Subtest: Operation Hub html supports compact and panel layouts
+ok 139 - Operation Hub html supports compact and panel layouts
+  ---
+  duration_ms: 0.8693
+  type: 'test'
+  ...
+# Subtest: Operation Hub html exposes the latest refresh time
+ok 140 - Operation Hub html exposes the latest refresh time
+  ---
+  duration_ms: 0.5143
+  type: 'test'
+  ...
+# Subtest: Operation Hub html highlights the focused run
+ok 141 - Operation Hub html highlights the focused run
+  ---
+  duration_ms: 0.8021
+  type: 'test'
+  ...
+# Subtest: Operation Hub provider routes accept-and-run-next with the run id
+ok 142 - Operation Hub provider routes accept-and-run-next with the run id
+  ---
+  duration_ms: 0.4602
+  type: 'test'
+  ...
+# Subtest: Operation Hub provider accepts run focus arguments from the open command
+ok 143 - Operation Hub provider accepts run focus arguments from the open command
+  ---
+  duration_ms: 0.7549
+  type: 'test'
+  ...
+# Subtest: Operation Hub next-step execution passes an AgentProvider into the standalone engine
+ok 144 - Operation Hub next-step execution passes an AgentProvider into the standalone engine
+  ---
+  duration_ms: 2.5163
+  type: 'test'
+  ...
+# Subtest: Operation Hub retry and resume execution reuses the run-scoped Bob AgentProvider
+ok 145 - Operation Hub retry and resume execution reuses the run-scoped Bob AgentProvider
+  ---
+  duration_ms: 0.4789
+  type: 'test'
+  ...
+# Subtest: Operation Hub model exposes start-from-artifacts action for runs with a manifest
+ok 146 - Operation Hub model exposes start-from-artifacts action for runs with a manifest
+  ---
+  duration_ms: 42.284
+  type: 'test'
+  ...
+# Subtest: Operation Hub model summarizes artifact reuse provenance
+ok 147 - Operation Hub model summarizes artifact reuse provenance
+  ---
+  duration_ms: 0.9863
+  type: 'test'
+  ...
+# Subtest: Operation Hub provider routes start-from-artifacts with workflow id and source run id
+ok 148 - Operation Hub provider routes start-from-artifacts with workflow id and source run id
+  ---
+  duration_ms: 0.6643
+  type: 'test'
+  ...
+# Subtest: Operation Hub locks action buttons until the hub refreshes
+ok 149 - Operation Hub locks action buttons until the hub refreshes
+  ---
+  duration_ms: 1.6556
+  type: 'test'
+  ...
+# Subtest: Operation Hub refreshes Run Monitor when run state files change
+ok 150 - Operation Hub refreshes Run Monitor when run state files change
+  ---
+  duration_ms: 0.6335
+  type: 'test'
+  ...
+# Subtest: Operation Hub schedules follow-up refreshes after action commands start
+ok 151 - Operation Hub schedules follow-up refreshes after action commands start
+  ---
+  duration_ms: 1.8598
+  type: 'test'
+  ...
+# Subtest: Operation Hub host shares one promise and underlying mutation for identical actions
+ok 152 - Operation Hub host shares one promise and underlying mutation for identical actions
+  ---
+  duration_ms: 2.901
+  type: 'test'
+  ...
+# Subtest: Operation Hub host serializes different mutations for the same root and run
+ok 153 - Operation Hub host serializes different mutations for the same root and run
+  ---
+  duration_ms: 12.5384
+  type: 'test'
+  ...
+# Subtest: Operation Hub host keeps different revisions distinct while serializing the same action and target
+ok 154 - Operation Hub host keeps different revisions distinct while serializing the same action and target
+  ---
+  duration_ms: 1.7006
+  type: 'test'
+  ...
+# Subtest: Operation Hub host lets equal run ids in different roots proceed independently
+ok 155 - Operation Hub host lets equal run ids in different roots proceed independently
+  ---
+  duration_ms: 0.6087
+  type: 'test'
+  ...
+# Subtest: Operation Hub host releases a failed mutation so it can be retried
+ok 156 - Operation Hub host releases a failed mutation so it can be retried
+  ---
+  duration_ms: 0.4726
+  type: 'test'
+  ...
+# Subtest: Operation Hub provider coordinates duplicate structured run mutations before command dispatch
+not ok 157 - Operation Hub provider coordinates duplicate structured run mutations before command dispatch
+  ---
+  duration_ms: 62.3744
+  type: 'test'
+  location: 'D:\\a\\bob_builtin_analyze\\bob_builtin_analyze\\extensions\\workflow-register\\test\\operationHubMutations.test.js:402:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly deep-equal:
+    + actual - expected
+    
+      [
+        'workflowRegister.retryCurrentStep',
+        {
+          expectedRevision: 'sha256:ba5aebb0df7fc7abb9d2527053b2177fbee7ddc89b81dcbba5454c82e5a9f715',
+          runId: 'shared-run',
+          source: 'operationHub',
+    +     workspaceRoot: 'C:\\Users\\runneradmin\\AppData\\Local\\Temp\\workflow-register-operation-hub-JyMBuf'
+    -     workspaceRoot: 'C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\workflow-register-operation-hub-JyMBuf'
+        }
+      ]
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    0: 'workflowRegister.retryCurrentStep'
+    1:
+      source: 'operationHub'
+      workspaceRoot: 'C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\workflow-register-operation-hub-JyMBuf'
+      runId: 'shared-run'
+      expectedRevision: 'sha256:ba5aebb0df7fc7abb9d2527053b2177fbee7ddc89b81dcbba5454c82e5a9f715'
+  actual:
+    0: 'workflowRegister.retryCurrentStep'
+    1:
+      source: 'operationHub'
+      workspaceRoot: 'C:\\Users\\runneradmin\\AppData\\Local\\Temp\\workflow-register-operation-hub-JyMBuf'
+      runId: 'shared-run'
+      expectedRevision: 'sha256:ba5aebb0df7fc7abb9d2527053b2177fbee7ddc89b81dcbba5454c82e5a9f715'
+  operator: 'deepStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (D:\a\bob_builtin_analyze\bob_builtin_analyze\extensions\workflow-register\test\operationHubMutations.test.js:416:10)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: Operation Hub provider does not coalesce the same action when expected revisions differ
+ok 158 - Operation Hub provider does not coalesce the same action when expected revisions differ
+  ---
+  duration_ms: 126.3087
+  type: 'test'
+  ...
+# Subtest: Operation Hub provider rejects a stale run revision before command dispatch
+ok 159 - Operation Hub provider rejects a stale run revision before command dispatch
+  ---
+  duration_ms: 15.9976
+  type: 'test'
+  ...
+# Subtest: Operation Hub provider rejects a Webview root that is not a current workspace candidate
+ok 160 - Operation Hub provider rejects a Webview root that is not a current workspace candidate
+  ---
+  duration_ms: 11.2386
+  type: 'test'
+  ...
+# Subtest: Operation Hub provider rejects a run-directory alias that resolves outside the trusted workspace
+ok 161 - Operation Hub provider rejects a run-directory alias that resolves outside the trusted workspace
+  ---
+  duration_ms: 46.0429
+  type: 'test'
+  ...
+# Subtest: Operation Hub openArtifact rejects a workspace-local alias that resolves outside
+ok 162 - Operation Hub openArtifact rejects a workspace-local alias that resolves outside
+  ---
+  duration_ms: 10.9667
+  type: 'test'
+  ...
+# Subtest: Operation Hub openArtifact opens the verified physical URI for an in-workspace alias
+not ok 163 - Operation Hub openArtifact opens the verified physical URI for an in-workspace alias
+  ---
+  duration_ms: 34.9296
+  type: 'test'
+  location: 'D:\\a\\bob_builtin_analyze\\bob_builtin_analyze\\extensions\\workflow-register\\test\\operationHubMutations.test.js:522:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly deep-equal:
+    + actual - expected
+    
+      [
+        {
+          options: {
+            preview: false
+          },
+          uri: {
+    +       fsPath: 'C:\\Users\\runneradmin\\AppData\\Local\\Temp\\workflow-register-operation-hub-XWMx36\\.bob\\physical-artifacts\\inside.md'
+    -       fsPath: 'C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\workflow-register-operation-hub-XWMx36\\.bob\\physical-artifacts\\inside.md'
+          }
+        }
+      ]
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    0:
+      uri:
+        fsPath: 'C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\workflow-register-operation-hub-XWMx36\\.bob\\physical-artifacts\\inside.md'
+      options:
+        preview: false
+  actual:
+    0:
+      uri:
+        fsPath: 'C:\\Users\\runneradmin\\AppData\\Local\\Temp\\workflow-register-operation-hub-XWMx36\\.bob\\physical-artifacts\\inside.md'
+      options:
+        preview: false
+  operator: 'deepStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (D:\a\bob_builtin_analyze\bob_builtin_analyze\extensions\workflow-register\test\operationHubMutations.test.js:535:10)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: Operation Hub model rejects a run-directory alias swapped in after safe run listing
+ok 164 - Operation Hub model rejects a run-directory alias swapped in after safe run listing
+  ---
+  duration_ms: 275.5217
+  type: 'test'
+  ...
+# Subtest: workflow run commands route a structured Operation Hub target to its exact root
+not ok 165 - workflow run commands route a structured Operation Hub target to its exact root
+  ---
+  duration_ms: 55.1773
+  type: 'test'
+  location: 'D:\\a\\bob_builtin_analyze\\bob_builtin_analyze\\extensions\\workflow-register\\test\\operationHubMutations.test.js:561:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly deep-equal:
+    + actual - expected
+    
+      [
+    +   'C:\\Users\\runneradmin\\AppData\\Local\\Temp\\workflow-register-operation-hub-hJnU4s'
+    -   'C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\workflow-register-operation-hub-hJnU4s'
+      ]
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    0: 'C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\workflow-register-operation-hub-hJnU4s'
+  actual:
+    0: 'C:\\Users\\runneradmin\\AppData\\Local\\Temp\\workflow-register-operation-hub-hJnU4s'
+  operator: 'deepStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (D:\a\bob_builtin_analyze\bob_builtin_analyze\extensions\workflow-register\test\operationHubMutations.test.js:572:10)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: workflow run commands reject stale structured revisions before run-store or engine access
+ok 166 - workflow run commands reject stale structured revisions before run-store or engine access
+  ---
+  duration_ms: 24.1822
+  type: 'test'
+  ...
+# Subtest: workflow run commands revalidate a structured revision inside the mutation queue
+ok 167 - workflow run commands revalidate a structured revision inside the mutation queue
+  ---
+  duration_ms: 18.2675
+  type: 'test'
+  ...
+# Subtest: workflow run commands reject an outside run-directory alias before run-store or engine access
+ok 168 - workflow run commands reject an outside run-directory alias before run-store or engine access
+  ---
+  duration_ms: 21.2125
+  type: 'test'
+  ...
+# Subtest: workflow artifact start rejects an external artifacts-directory alias
+ok 169 - workflow artifact start rejects an external artifacts-directory alias
+  ---
+  duration_ms: 26.7385
+  type: 'test'
+  ...
+# Subtest: workflow artifact hydration rejects a manifest entry through an external junction
+ok 170 - workflow artifact hydration rejects a manifest entry through an external junction
+  ---
+  duration_ms: 28.3894
+  type: 'test'
+  ...
+# Subtest: workflow run commands treat a structured workflow target as identity rather than a workflow id object
+not ok 171 - workflow run commands treat a structured workflow target as identity rather than a workflow id object
+  ---
+  duration_ms: 13.229
+  type: 'test'
+  location: 'D:\\a\\bob_builtin_analyze\\bob_builtin_analyze\\extensions\\workflow-register\\test\\operationHubMutations.test.js:750:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly deep-equal:
+    + actual - expected
+    
+      [
+    +   'C:\\Users\\runneradmin\\AppData\\Local\\Temp\\workflow-register-operation-hub-gEMvDh'
+    -   'C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\workflow-register-operation-hub-gEMvDh'
+      ]
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    0: 'C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\workflow-register-operation-hub-gEMvDh'
+  actual:
+    0: 'C:\\Users\\runneradmin\\AppData\\Local\\Temp\\workflow-register-operation-hub-gEMvDh'
+  operator: 'deepStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (D:\a\bob_builtin_analyze\bob_builtin_analyze\extensions\workflow-register\test\operationHubMutations.test.js:760:10)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: Operation Hub model and HTML carry the host revision and root on run mutation buttons
+ok 172 - Operation Hub model and HTML carry the host revision and root on run mutation buttons
+  ---
+  duration_ms: 3.7203
+  type: 'test'
+  ...
+# Subtest: Operation Hub accept-and-run-next leaves continuation to a live full Bob wrapper only
+ok 173 - Operation Hub accept-and-run-next leaves continuation to a live full Bob wrapper only
+  ---
+  duration_ms: 3.0438
+  type: 'test'
+  ...
+# Subtest: review acceptance skips Todo completion for a live gate and awaits only the stale-gate fallback
+ok 174 - review acceptance skips Todo completion for a live gate and awaits only the stale-gate fallback
+  ---
+  duration_ms: 2.1053
+  type: 'test'
+  ...
+# Subtest: concurrent review acceptance never falls back after the live gate was already settled
+ok 175 - concurrent review acceptance never falls back after the live gate was already settled
+  ---
+  duration_ms: 1298.2942
+  type: 'test'
+  ...
+# Subtest: concurrent review acceptance after an aborted live gate shares exactly one legacy reconciliation
+ok 176 - concurrent review acceptance after an aborted live gate shares exactly one legacy reconciliation
+  ---
+  duration_ms: 828.1627
+  type: 'test'
+  ...
+# Subtest: concurrent review acceptance without a live gate shares exactly one legacy reconciliation
+ok 177 - concurrent review acceptance without a live gate shares exactly one legacy reconciliation
+  ---
+  duration_ms: 660.0917
+  type: 'test'
+  ...
+# Subtest: review acceptance without a live gate reconciles only the matching workspace task
+ok 178 - review acceptance without a live gate reconciles only the matching workspace task
+  ---
+  duration_ms: 909.8665
+  type: 'test'
+  ...
+# Subtest: failed single-flight review acceptance is removed so a later retry can proceed
+ok 179 - failed single-flight review acceptance is removed so a later retry can proceed
+  ---
+  duration_ms: 726.6071
+  type: 'test'
+  ...
+# Subtest: a caller arriving after durable acceptance joins the in-flight reconciliation
+ok 180 - a caller arriving after durable acceptance joins the in-flight reconciliation
+  ---
+  duration_ms: 769.9995
+  type: 'test'
+  ...
+# Subtest: Bob runner and Operation Hub command reconciliation await async Todo projection
+ok 181 - Bob runner and Operation Hub command reconciliation await async Todo projection
+  ---
+  duration_ms: 0.8262
+  type: 'test'
+  ...
+# Subtest: Operation Hub review acceptance revalidates revision inside the acceptance queue
+ok 182 - Operation Hub review acceptance revalidates revision inside the acceptance queue
+  ---
+  duration_ms: 321.6836
+  type: 'test'
+  ...
+# Subtest: tracked Phase 3 process catalog validates every required workflow
+ok 183 - tracked Phase 3 process catalog validates every required workflow
+  ---
+  duration_ms: 17.041
+  type: 'test'
+  ...
+# Subtest: process catalog rejects duplicate workflow names and unsafe paths
+ok 184 - process catalog rejects duplicate workflow names and unsafe paths
+  ---
+  duration_ms: 0.8565
+  type: 'test'
+  ...
+# Subtest: process command metadata is activated, contributed, and registered
+ok 185 - process command metadata is activated, contributed, and registered
+  ---
+  duration_ms: 3.4955
+  type: 'test'
+  ...
+# Subtest: process and template command registrations resolve workspace root from command input
+ok 186 - process and template command registrations resolve workspace root from command input
+  ---
+  duration_ms: 0.5652
+  type: 'test'
+  ...
+# Subtest: process command handlers validate catalog/input, collect evidence, write records, and summarize campaign metrics
+ok 187 - process command handlers validate catalog/input, collect evidence, write records, and summarize campaign metrics
+  ---
+  duration_ms: 80.3249
+  type: 'test'
+  ...
+# Subtest: writeProcessRecordCommand normalizes manual approval decisions before validation
+ok 188 - writeProcessRecordCommand normalizes manual approval decisions before validation
+  ---
+  duration_ms: 17.9306
+  type: 'test'
+  ...
+# Subtest: writeProcessRecordCommand rejects a completed record with a required rejected gate before writing
+ok 189 - writeProcessRecordCommand rejects a completed record with a required rejected gate before writing
+  ---
+  duration_ms: 34.5861
+  type: 'test'
+  ...
+# Subtest: writeProcessRecordCommand permits non-completed audit records with a required rejected gate
+ok 190 - writeProcessRecordCommand permits non-completed audit records with a required rejected gate
+  ---
+  duration_ms: 34.8388
+  type: 'test'
+  ...
+# Subtest: writeProcessRecordCommand rechecks a completed record review artifact immediately before writing
+ok 191 - writeProcessRecordCommand rechecks a completed record review artifact immediately before writing
+  ---
+  duration_ms: 39.8085
+  type: 'test'
+  ...
+# Subtest: process workflow docs expose UAT, rollout, metrics, and sandbox launcher assets
+ok 192 - process workflow docs expose UAT, rollout, metrics, and sandbox launcher assets
+  ---
+  duration_ms: 2.8453
+  type: 'test'
+  ...
+# Subtest: mini process sandbox input validates against the Phase 3 input helper
+ok 193 - mini process sandbox input validates against the Phase 3 input helper
+  ---
+  duration_ms: 20.3917
+  type: 'test'
+  ...
+# Subtest: process input validates safe workspace-relative files and Bazaar no-aliases intent
+ok 194 - process input validates safe workspace-relative files and Bazaar no-aliases intent
+  ---
+  duration_ms: 11.7146
+  type: 'test'
+  ...
+# Subtest: process input rejects absolute paths, parent traversal, destructive VCS intent, and symlink escapes
+ok 195 - process input rejects absolute paths, parent traversal, destructive VCS intent, and symlink escapes
+  ---
+  duration_ms: 30.7039
+  type: 'test'
+  ...
+# Subtest: process review result validates evidence references and checklist summary counts
+ok 196 - process review result validates evidence references and checklist summary counts
+  ---
+  duration_ms: 1.8583
+  type: 'test'
+  ...
+# Subtest: process record store writes campaign records, backs up replacements, and summarizes metrics
+ok 197 - process record store writes campaign records, backs up replacements, and summarizes metrics
+  ---
+  duration_ms: 31.8395
+  type: 'test'
+  ...
+# Subtest: process catalog enumerates the authoritative 14 workflow definitions
+ok 198 - process catalog enumerates the authoritative 14 workflow definitions
+  ---
+  duration_ms: 2.6171
+  type: 'test'
+  ...
+# Subtest: specialized workflow contract CI runs and watches the process catalog contract
+ok 199 - specialized workflow contract CI runs and watches the process catalog contract
+  ---
+  duration_ms: 0.6796
+  type: 'test'
+  ...
+# Subtest: process-code-doc-investigation terminates at human-gate unless explicitly approved
+ok 200 - process-code-doc-investigation terminates at human-gate unless explicitly approved
+  ---
+  duration_ms: 18.1436
+  type: 'test'
+  ...
+# Subtest: process-qa-intake-analysis terminates at human-gate unless explicitly approved
+ok 201 - process-qa-intake-analysis terminates at human-gate unless explicitly approved
+  ---
+  duration_ms: 7.6661
+  type: 'test'
+  ...
+# Subtest: process-external-spec-design terminates at human-gate unless explicitly approved
+ok 202 - process-external-spec-design terminates at human-gate unless explicitly approved
+  ---
+  duration_ms: 7.1184
+  type: 'test'
+  ...
+# Subtest: process-external-spec-review terminates at human-gate unless explicitly approved
+ok 203 - process-external-spec-review terminates at human-gate unless explicitly approved
+  ---
+  duration_ms: 3.2673
+  type: 'test'
+  ...
+# Subtest: process-internal-spec-design terminates at human-gate unless explicitly approved
+ok 204 - process-internal-spec-design terminates at human-gate unless explicitly approved
+  ---
+  duration_ms: 2.9411
+  type: 'test'
+  ...
+# Subtest: process-internal-spec-review terminates at human-gate unless explicitly approved
+ok 205 - process-internal-spec-review terminates at human-gate unless explicitly approved
+  ---
+  duration_ms: 4.9572
+  type: 'test'
+  ...
+# Subtest: process-coding-plan terminates at human-gate unless explicitly approved
+ok 206 - process-coding-plan terminates at human-gate unless explicitly approved
+  ---
+  duration_ms: 4.8282
+  type: 'test'
+  ...
+# Subtest: process-code-precheck terminates at human-gate unless explicitly approved
+ok 207 - process-code-precheck terminates at human-gate unless explicitly approved
+  ---
+  duration_ms: 2.8206
+  type: 'test'
+  ...
+# Subtest: process-unit-test-design terminates at human-gate unless explicitly approved
+ok 208 - process-unit-test-design terminates at human-gate unless explicitly approved
+  ---
+  duration_ms: 3.2683
+  type: 'test'
+  ...
+# Subtest: process-unit-test-execution-review terminates at human-gate unless explicitly approved
+ok 209 - process-unit-test-execution-review terminates at human-gate unless explicitly approved
+  ---
+  duration_ms: 2.3109
+  type: 'test'
+  ...
+# Subtest: process-functional-test-design terminates at human-gate unless explicitly approved
+ok 210 - process-functional-test-design terminates at human-gate unless explicitly approved
+  ---
+  duration_ms: 1.5317
+  type: 'test'
+  ...
+# Subtest: process-functional-test-execution-review terminates at human-gate unless explicitly approved
+ok 211 - process-functional-test-execution-review terminates at human-gate unless explicitly approved
+  ---
+  duration_ms: 0.9401
+  type: 'test'
+  ...
+# Subtest: process-integration-test-design terminates at human-gate unless explicitly approved
+ok 212 - process-integration-test-design terminates at human-gate unless explicitly approved
+  ---
+  duration_ms: 0.8026
+  type: 'test'
+  ...
+# Subtest: process-common-review terminates at human-gate unless explicitly approved
+ok 213 - process-common-review terminates at human-gate unless explicitly approved
+  ---
+  duration_ms: 0.8848
+  type: 'test'
+  ...
+# Subtest: catalog process workflows branch deterministically on human decisions
+    # Subtest: process-code-doc-investigation
+        # Subtest: approve
+        ok 1 - approve
+          ---
+          duration_ms: 515.2422
+          type: 'test'
+          ...
+        # Subtest: reject
+        ok 2 - reject
+          ---
+          duration_ms: 97.5624
+          type: 'test'
+          ...
+        # Subtest: missing decision
+        ok 3 - missing decision
+          ---
+          duration_ms: 94.03
+          type: 'test'
+          ...
+        # Subtest: unknown decision
+        ok 4 - unknown decision
+          ---
+          duration_ms: 110.8987
+          type: 'test'
+          ...
+        1..4
+    ok 1 - process-code-doc-investigation
+      ---
+      duration_ms: 819.6431
+      type: 'test'
+      ...
+    # Subtest: process-qa-intake-analysis
+        # Subtest: approve
+        ok 1 - approve
+          ---
+          duration_ms: 415.1549
+          type: 'test'
+          ...
+        # Subtest: reject
+        ok 2 - reject
+          ---
+          duration_ms: 95.3639
+          type: 'test'
+          ...
+        # Subtest: missing decision
+        ok 3 - missing decision
+          ---
+          duration_ms: 122.2915
+          type: 'test'
+          ...
+        # Subtest: unknown decision
+        ok 4 - unknown decision
+          ---
+          duration_ms: 109.606
+          type: 'test'
+          ...
+        1..4
+    ok 2 - process-qa-intake-analysis
+      ---
+      duration_ms: 743.8577
+      type: 'test'
+      ...
+    # Subtest: process-external-spec-design
+        # Subtest: approve
+        ok 1 - approve
+          ---
+          duration_ms: 403.8873
+          type: 'test'
+          ...
+        # Subtest: reject
+        ok 2 - reject
+          ---
+          duration_ms: 109.4938
+          type: 'test'
+          ...
+        # Subtest: missing decision
+        ok 3 - missing decision
+          ---
+          duration_ms: 121.4295
+          type: 'test'
+          ...
+        # Subtest: unknown decision
+        ok 4 - unknown decision
+          ---
+          duration_ms: 125.5183
+          type: 'test'
+          ...
+        1..4
+    ok 3 - process-external-spec-design
+      ---
+      duration_ms: 760.9534
+      type: 'test'
+      ...
+    # Subtest: process-external-spec-review
+        # Subtest: approve
+        ok 1 - approve
+          ---
+          duration_ms: 378.606
+          type: 'test'
+          ...
+        # Subtest: reject
+        ok 2 - reject
+          ---
+          duration_ms: 114.1876
+          type: 'test'
+          ...
+        # Subtest: missing decision
+        ok 3 - missing decision
+          ---
+          duration_ms: 95.0069
+          type: 'test'
+          ...
+        # Subtest: unknown decision
+        ok 4 - unknown decision
+          ---
+          duration_ms: 111.8541
+          type: 'test'
+          ...
+        1..4
+    ok 4 - process-external-spec-review
+      ---
+      duration_ms: 700.4205
+      type: 'test'
+      ...
+    # Subtest: process-internal-spec-design
+        # Subtest: approve
+        ok 1 - approve
+          ---
+          duration_ms: 374.3219
+          type: 'test'
+          ...
+        # Subtest: reject
+        ok 2 - reject
+          ---
+          duration_ms: 115.3893
+          type: 'test'
+          ...
+        # Subtest: missing decision
+        ok 3 - missing decision
+          ---
+          duration_ms: 110.9156
+          type: 'test'
+          ...
+        # Subtest: unknown decision
+        ok 4 - unknown decision
+          ---
+          duration_ms: 110.1565
+          type: 'test'
+          ...
+        1..4
+    ok 5 - process-internal-spec-design
+      ---
+      duration_ms: 711.5923
+      type: 'test'
+      ...
+    # Subtest: process-internal-spec-review
+        # Subtest: approve
+        ok 1 - approve
+          ---
+          duration_ms: 408.4369
+          type: 'test'
+          ...
+        # Subtest: reject
+        ok 2 - reject
+          ---
+          duration_ms: 99.3689
+          type: 'test'
+          ...
+        # Subtest: missing decision
+        ok 3 - missing decision
+          ---
+          duration_ms: 110.7859
+          type: 'test'
+          ...
+        # Subtest: unknown decision
+        ok 4 - unknown decision
+          ---
+          duration_ms: 101.473
+          type: 'test'
+          ...
+        1..4
+    ok 6 - process-internal-spec-review
+      ---
+      duration_ms: 720.7693
+      type: 'test'
+      ...
+    # Subtest: process-coding-plan
+        # Subtest: approve
+        ok 1 - approve
+          ---
+          duration_ms: 406.3508
+          type: 'test'
+          ...
+        # Subtest: reject
+        ok 2 - reject
+          ---
+          duration_ms: 82.0658
+          type: 'test'
+          ...
+        # Subtest: missing decision
+        ok 3 - missing decision
+          ---
+          duration_ms: 81.3538
+          type: 'test'
+          ...
+        # Subtest: unknown decision
+        ok 4 - unknown decision
+          ---
+          duration_ms: 90.2086
+          type: 'test'
+          ...
+        1..4
+    ok 7 - process-coding-plan
+      ---
+      duration_ms: 661.3357
+      type: 'test'
+      ...
+    # Subtest: process-code-precheck
+        # Subtest: approve
+        ok 1 - approve
+          ---
+          duration_ms: 354.7193
+          type: 'test'
+          ...
+        # Subtest: reject
+        ok 2 - reject
+          ---
+          duration_ms: 89.2486
+          type: 'test'
+          ...
+        # Subtest: missing decision
+        ok 3 - missing decision
+          ---
+          duration_ms: 94.9827
+          type: 'test'
+          ...
+        # Subtest: unknown decision
+        ok 4 - unknown decision
+          ---
+          duration_ms: 78.8746
+          type: 'test'
+          ...
+        1..4
+    ok 8 - process-code-precheck
+      ---
+      duration_ms: 618.4242
+      type: 'test'
+      ...
+    # Subtest: process-unit-test-design
+        # Subtest: approve
+        ok 1 - approve
+          ---
+          duration_ms: 441.6679
+          type: 'test'
+          ...
+        # Subtest: reject
+        ok 2 - reject
+          ---
+          duration_ms: 98.1489
+          type: 'test'
+          ...
+        # Subtest: missing decision
+        ok 3 - missing decision
+          ---
+          duration_ms: 94.949
+          type: 'test'
+          ...
+        # Subtest: unknown decision
+        ok 4 - unknown decision
+          ---
+          duration_ms: 79.2419
+          type: 'test'
+          ...
+        1..4
+    ok 9 - process-unit-test-design
+      ---
+      duration_ms: 714.8228
+      type: 'test'
+      ...
+    # Subtest: process-unit-test-execution-review
+        # Subtest: approve
+        ok 1 - approve
+          ---
+          duration_ms: 388.0428
+          type: 'test'
+          ...
+        # Subtest: reject
+        ok 2 - reject
+          ---
+          duration_ms: 93.8402
+          type: 'test'
+          ...
+        # Subtest: missing decision
+        ok 3 - missing decision
+          ---
+          duration_ms: 105.4888
+          type: 'test'
+          ...
+        # Subtest: unknown decision
+        ok 4 - unknown decision
+          ---
+          duration_ms: 80.2292
+          type: 'test'
+          ...
+        1..4
+    ok 10 - process-unit-test-execution-review
+      ---
+      duration_ms: 668.3983
+      type: 'test'
+      ...
+    # Subtest: process-functional-test-design
+        # Subtest: approve
+        ok 1 - approve
+          ---
+          duration_ms: 369.3141
+          type: 'test'
+          ...
+        # Subtest: reject
+        ok 2 - reject
+          ---
+          duration_ms: 121.3618
+          type: 'test'
+          ...
+        # Subtest: missing decision
+        ok 3 - missing decision
+          ---
+          duration_ms: 69.3018
+          type: 'test'
+          ...
+        # Subtest: unknown decision
+        ok 4 - unknown decision
+          ---
+          duration_ms: 89.8169
+          type: 'test'
+          ...
+        1..4
+    ok 11 - process-functional-test-design
+      ---
+      duration_ms: 650.5267
+      type: 'test'
+      ...
+    # Subtest: process-functional-test-execution-review
+        # Subtest: approve
+        ok 1 - approve
+          ---
+          duration_ms: 391.9005
+          type: 'test'
+          ...
+        # Subtest: reject
+        ok 2 - reject
+          ---
+          duration_ms: 120.0752
+          type: 'test'
+          ...
+        # Subtest: missing decision
+        ok 3 - missing decision
+          ---
+          duration_ms: 136.6511
+          type: 'test'
+          ...
+        # Subtest: unknown decision
+        ok 4 - unknown decision
+          ---
+          duration_ms: 95.5213
+          type: 'test'
+          ...
+        1..4
+    ok 12 - process-functional-test-execution-review
+      ---
+      duration_ms: 744.9903
+      type: 'test'
+      ...
+    # Subtest: process-integration-test-design
+        # Subtest: approve
+        ok 1 - approve
+          ---
+          duration_ms: 400.4317
+          type: 'test'
+          ...
+        # Subtest: reject
+        ok 2 - reject
+          ---
+          duration_ms: 81.3574
+          type: 'test'
+          ...
+        # Subtest: missing decision
+        ok 3 - missing decision
+          ---
+          duration_ms: 104.4096
+          type: 'test'
+          ...
+        # Subtest: unknown decision
+        ok 4 - unknown decision
+          ---
+          duration_ms: 113.0009
+          type: 'test'
+          ...
+        1..4
+    ok 13 - process-integration-test-design
+      ---
+      duration_ms: 700.032
+      type: 'test'
+      ...
+    # Subtest: process-common-review
+        # Subtest: approve
+        ok 1 - approve
+          ---
+          duration_ms: 383.1117
+          type: 'test'
+          ...
+        # Subtest: reject
+        ok 2 - reject
+          ---
+          duration_ms: 96.9803
+          type: 'test'
+          ...
+        # Subtest: missing decision
+        ok 3 - missing decision
+          ---
+          duration_ms: 105.3951
+          type: 'test'
+          ...
+        # Subtest: unknown decision
+        ok 4 - unknown decision
+          ---
+          duration_ms: 100.7179
+          type: 'test'
+          ...
+        1..4
+    ok 14 - process-common-review
+      ---
+      duration_ms: 687.0282
+      type: 'test'
+      ...
+    1..14
+ok 214 - catalog process workflows branch deterministically on human decisions
+  ---
+  duration_ms: 9905.2308
+  type: 'test'
+  ...
+# Subtest: workflow engine preserves provider-written canonical process artifacts
+ok 215 - workflow engine preserves provider-written canonical process artifacts
+  ---
+  duration_ms: 2769.6698
+  type: 'test'
+  ...
+# Subtest: workflow engine rejects invalid provider artifact metadata
+    # Subtest: invalid workflow metadata shape
+    ok 1 - invalid workflow metadata shape
+      ---
+      duration_ms: 903.4433
+      type: 'test'
+      ...
+    # Subtest: invalid artifacts shape
+    ok 2 - invalid artifacts shape
+      ---
+      duration_ms: 888.2263
+      type: 'test'
+      ...
+    # Subtest: missing id
+    ok 3 - missing id
+      ---
+      duration_ms: 928.9875
+      type: 'test'
+      ...
+    # Subtest: missing path
+    ok 4 - missing path
+      ---
+      duration_ms: 938.2723
+      type: 'test'
+      ...
+    # Subtest: invalid ownership
+    ok 5 - invalid ownership
+      ---
+      duration_ms: 929.6574
+      type: 'test'
+      ...
+    # Subtest: duplicate id
+    ok 6 - duplicate id
+      ---
+      duration_ms: 930.4656
+      type: 'test'
+      ...
+    # Subtest: duplicate workflow declaration
+    ok 7 - duplicate workflow declaration
+      ---
+      duration_ms: 866.2983
+      type: 'test'
+      ...
+    # Subtest: undeclared id
+    ok 8 - undeclared id
+      ---
+      duration_ms: 972.5628
+      type: 'test'
+      ...
+    # Subtest: wrong producing step
+    ok 9 - wrong producing step
+      ---
+      duration_ms: 901.5577
+      type: 'test'
+      ...
+    # Subtest: path mismatch
+    ok 10 - path mismatch
+      ---
+      duration_ms: 936.3876
+      type: 'test'
+      ...
+    # Subtest: workspace escape
+    ok 11 - workspace escape
+      ---
+      duration_ms: 944.9833
+      type: 'test'
+      ...
+    # Subtest: missing provider file
+    ok 12 - missing provider file
+      ---
+      duration_ms: 928.5741
+      type: 'test'
+      ...
+    1..12
+ok 216 - workflow engine rejects invalid provider artifact metadata
+  ---
+  duration_ms: 11073.273
+  type: 'test'
+  ...
+# Subtest: staged command state renders provider artifact paths before atomic commit
+ok 217 - staged command state renders provider artifact paths before atomic commit
+  ---
+  duration_ms: 1196.8263
+  type: 'test'
+  ...
+# Subtest: provider artifact containment rejects a symlink before reading its outside target
+ok 218 - provider artifact containment rejects a symlink before reading its outside target
+  ---
+  duration_ms: 1003.735
+  type: 'test'
+  ...
+# Subtest: provider artifact validation rejects replacement between containment and open
+not ok 219 - provider artifact validation rejects replacement between containment and open
+  ---
+  duration_ms: 1559.5203
+  type: 'test'
+  location: 'D:\\a\\bob_builtin_analyze\\bob_builtin_analyze\\extensions\\workflow-register\\test\\processWorkflowEngineArtifacts.test.js:370:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    the test must replace the validated file immediately before open
+    
+    false !== true
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (D:\a\bob_builtin_analyze\bob_builtin_analyze\extensions\workflow-register\test\processWorkflowEngineArtifacts.test.js:461:10)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: metadata-free providers retain engine-owned artifact writes
+ok 220 - metadata-free providers retain engine-owned artifact writes
+  ---
+  duration_ms: 1655.8213
+  type: 'test'
+  ...
+# Subtest: Phase 3 process workflow templates parse cleanly and enforce command guardrails
+ok 221 - Phase 3 process workflow templates parse cleanly and enforce command guardrails
+  ---
+  duration_ms: 90.741
+  type: 'test'
+  ...
+# Subtest: Bob registration deactivates the previous source before replacing workflows
+ok 222 - Bob registration deactivates the previous source before replacing workflows
+  ---
+  duration_ms: 2.3749
+  type: 'test'
+  ...
+# Subtest: Bob registration treats a false registerWorkflow return as failed
+ok 223 - Bob registration treats a false registerWorkflow return as failed
+  ---
+  duration_ms: 1.7457
+  type: 'test'
+  ...
+# Subtest: workflow reload re-registers current workflows and clears Bob context when none remain
+ok 224 - workflow reload re-registers current workflows and clears Bob context when none remain
+  ---
+  duration_ms: 1.9763
+  type: 'test'
+  ...
+# Subtest: workflow service removes manually disposed action providers from its lifecycle store
+ok 225 - workflow service removes manually disposed action providers from its lifecycle store
+  ---
+  duration_ms: 2.0375
+  type: 'test'
+  ...
+# Subtest: workflow service closes the manual step panel during deactivation
+ok 226 - workflow service closes the manual step panel during deactivation
+  ---
+  duration_ms: 1.4235
+  type: 'test'
+  ...
+# Subtest: runAgent result handoff executes the result command through an action registry
+ok 227 - runAgent result handoff executes the result command through an action registry
+  ---
+  duration_ms: 33.8877
+  type: 'test'
+  ...
+# Subtest: result handoff trims generated artifact text before passing it to providers
+ok 228 - result handoff trims generated artifact text before passing it to providers
+  ---
+  duration_ms: 0.472
+  type: 'test'
+  ...
+# Subtest: result handoff can recover missing artifact text from a resolver
+ok 229 - result handoff can recover missing artifact text from a resolver
+  ---
+  duration_ms: 0.5809
+  type: 'test'
+  ...
+# Subtest: result handoff preserves a legacy executeCommand fallback through action registry
+ok 230 - result handoff preserves a legacy executeCommand fallback through action registry
+  ---
+  duration_ms: 0.7325
+  type: 'test'
+  ...
+# Subtest: result handoff is skipped when captureResult is not enabled
+ok 231 - result handoff is skipped when captureResult is not enabled
+  ---
+  duration_ms: 0.3159
+  type: 'test'
+  ...
+# Subtest: missing result command providers are reported as action failures
+ok 232 - missing result command providers are reported as action failures
+  ---
+  duration_ms: 0.3288
+  type: 'test'
+  ...
+# Subtest: result handoff fails when the result command reports validation failure
+ok 233 - result handoff fails when the result command reports validation failure
+  ---
+  duration_ms: 0.5873
+  type: 'test'
+  ...
+# Subtest: last assistant extraction reads only assistant messages after the step start index
+ok 234 - last assistant extraction reads only assistant messages after the step start index
+  ---
+  duration_ms: 0.2885
+  type: 'test'
+  ...
+# Subtest: result sink registry writes command and file sinks with allowlist enforcement
+ok 235 - result sink registry writes command and file sinks with allowlist enforcement
+  ---
+  duration_ms: 12.5685
+  type: 'test'
+  ...
+# Subtest: result sink registry blocks command and file sinks in untrusted workspaces
+ok 236 - result sink registry blocks command and file sinks in untrusted workspaces
+  ---
+  duration_ms: 1.4437
+  type: 'test'
+  ...
+# Subtest: ReviewTaskRegistry keeps identical run and step ids isolated by workspace root
+ok 237 - ReviewTaskRegistry keeps identical run and step ids isolated by workspace root
+  ---
+  duration_ms: 4.4597
+  type: 'test'
+  ...
+# Subtest: ReviewTaskRegistry normalizes equivalent workspace roots
+ok 238 - ReviewTaskRegistry normalizes equivalent workspace roots
+  ---
+  duration_ms: 0.9615
+  type: 'test'
+  ...
+# Subtest: ReviewTaskRegistry treats a workspace alias and its physical root as one identity
+ok 239 - ReviewTaskRegistry treats a workspace alias and its physical root as one identity
+  ---
+  duration_ms: 7.6476
+  type: 'test'
+  ...
+# Subtest: ReviewTaskRegistry selects the agent provider by workspace root
+ok 240 - ReviewTaskRegistry selects the agent provider by workspace root
+  ---
+  duration_ms: 2.0588
+  type: 'test'
+  ...
+# Subtest: ReviewTaskRegistry completes the matching Bob review task once
+ok 241 - ReviewTaskRegistry completes the matching Bob review task once
+  ---
+  duration_ms: 0.6065
+  type: 'test'
+  ...
+# Subtest: ReviewTaskRegistry leaves other review tasks active
+ok 242 - ReviewTaskRegistry leaves other review tasks active
+  ---
+  duration_ms: 0.9538
+  type: 'test'
+  ...
+# Subtest: ReviewTaskRegistry can advance later Operation Hub-driven steps from the run task
+ok 243 - ReviewTaskRegistry can advance later Operation Hub-driven steps from the run task
+  ---
+  duration_ms: 0.6708
+  type: 'test'
+  ...
+# Subtest: ReviewTaskRegistry exposes the reviewed Bob task as an agent provider for later steps
+ok 244 - ReviewTaskRegistry exposes the reviewed Bob task as an agent provider for later steps
+  ---
+  duration_ms: 1.6472
+  type: 'test'
+  ...
+# Subtest: ReviewTaskRegistry keeps the Bob subagent method bound to its task
+ok 245 - ReviewTaskRegistry keeps the Bob subagent method bound to its task
+  ---
+  duration_ms: 1.1592
+  type: 'test'
+  ...
+# Subtest: ReviewTaskRegistry is a no-op when Bob cannot mark a step complete
+ok 246 - ReviewTaskRegistry is a no-op when Bob cannot mark a step complete
+  ---
+  duration_ms: 0.7201
+  type: 'test'
+  ...
+# Subtest: FileRunControlStore rejects unsafe run ids instead of normalizing them
+ok 247 - FileRunControlStore rejects unsafe run ids instead of normalizing them
+  ---
+  duration_ms: 10.9532
+  type: 'test'
+  ...
+# Subtest: FileRunControlStore rejects an external run-directory alias without changing external files
+ok 248 - FileRunControlStore rejects an external run-directory alias without changing external files
+  ---
+  duration_ms: 21.1953
+  type: 'test'
+  ...
+# Subtest: FileRunControlStore rejects a run-directory alias outside the canonical runs root but inside the workspace
+ok 249 - FileRunControlStore rejects a run-directory alias outside the canonical runs root but inside the workspace
+  ---
+  duration_ms: 10.5008
+  type: 'test'
+  ...
+# Subtest: FileRunStateStore rejects unsafe run-id path segments
+ok 250 - FileRunStateStore rejects unsafe run-id path segments
+  ---
+  duration_ms: 13.508
+  type: 'test'
+  ...
+# Subtest: FileRunStateStore rejects outside run-directory aliases for load and list
+not ok 251 - FileRunStateStore rejects outside run-directory aliases for load and list
+  ---
+  duration_ms: 19.2843
+  type: 'test'
+  location: 'D:\\a\\bob_builtin_analyze\\bob_builtin_analyze\\extensions\\workflow-register\\test\\runStateStorePathBoundary.test.js:66:1'
+  failureType: 'testCodeFailure'
+  error: 'Missing expected rejection.'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  operator: 'rejects'
+  stack: |-
+    async TestContext.<anonymous> (D:\a\bob_builtin_analyze\bob_builtin_analyze\extensions\workflow-register\test\runStateStorePathBoundary.test.js:73:3)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: FileRunStateStore rejects outside run-directory aliases before save side effects
+ok 252 - FileRunStateStore rejects outside run-directory aliases before save side effects
+  ---
+  duration_ms: 16.6377
+  type: 'test'
+  ...
+# Subtest: FileRunStateStore rejects a run-directory alias even when its target stays inside the workspace
+ok 253 - FileRunStateStore rejects a run-directory alias even when its target stays inside the workspace
+  ---
+  duration_ms: 11.7554
+  type: 'test'
+  ...
+# Subtest: FileRunStateStore rejects a dangling run.json file symlink
+ok 254 - FileRunStateStore rejects a dangling run.json file symlink
+  ---
+  duration_ms: 92.6264
+  type: 'test'
+  ...
+# Subtest: FileRunStateStore revalidates the run directory after temp creation and before rename
+ok 255 - FileRunStateStore revalidates the run directory after temp creation and before rename
+  ---
+  duration_ms: 409.1473
+  type: 'test'
+  ...
+# Subtest: FileRunStateStore list ignores only owned atomic temp files in the runs root
+ok 256 - FileRunStateStore list ignores only owned atomic temp files in the runs root
+  ---
+  duration_ms: 222.154
+  type: 'test'
+  ...
+# Subtest: FileRunStateStore retries a contained atomic replacement detected between open and read
+not ok 257 - FileRunStateStore retries a contained atomic replacement detected between open and read
+  ---
+  duration_ms: 238.0578
+  type: 'test'
+  location: 'D:\\a\\bob_builtin_analyze\\bob_builtin_analyze\\extensions\\workflow-register\\test\\runStateStorePathBoundary.test.js:192:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    + actual - expected
+    
+    + 'initial'
+    - 'replacement'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'replacement'
+  actual: 'initial'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (D:\a\bob_builtin_analyze\bob_builtin_analyze\extensions\workflow-register\test\runStateStorePathBoundary.test.js:212:10)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: completeStep command can be called silently by companion extensions
+ok 258 - completeStep command can be called silently by companion extensions
+  ---
+  duration_ms: 8.7479
+  type: 'test'
+  ...
+# Subtest: activation schedules delayed workflow reload retries after Bob finishes startup
+ok 259 - activation schedules delayed workflow reload retries after Bob finishes startup
+  ---
+  duration_ms: 1.2401
+  type: 'test'
+  ...
+# Subtest: standalone workflow launcher wires an AgentProvider through API or configured command
+ok 260 - standalone workflow launcher wires an AgentProvider through API or configured command
+  ---
+  duration_ms: 3.5876
+  type: 'test'
+  ...
+# Subtest: runtime entry points and default providers check Workspace Trust
+ok 261 - runtime entry points and default providers check Workspace Trust
+  ---
+  duration_ms: 2.6355
+  type: 'test'
+  ...
+# Subtest: standalone workflow launcher uses the shared input resolver for conditional prompts
+ok 262 - standalone workflow launcher uses the shared input resolver for conditional prompts
+  ---
+  duration_ms: 3.6761
+  type: 'test'
+  ...
+# Subtest: manual completion results are wired through Bob and standalone engine paths
+ok 263 - manual completion results are wired through Bob and standalone engine paths
+  ---
+  duration_ms: 1.6675
+  type: 'test'
+  ...
+# Subtest: Bob workflow Todo execution delegates to the shared WorkflowEngine runner
+ok 264 - Bob workflow Todo execution delegates to the shared WorkflowEngine runner
+  ---
+  duration_ms: 1.0895
+  type: 'test'
+  ...
+# Subtest: Bob workflow runner surfaces step review gates without failing the run
+ok 265 - Bob workflow runner surfaces step review gates without failing the run
+  ---
+  duration_ms: 0.3457
+  type: 'test'
+  ...
+# Subtest: Bob workflow runner remains pending at review until its registry accepts the gate
+ok 266 - Bob workflow runner remains pending at review until its registry accepts the gate
+  ---
+  duration_ms: 1359.7148
+  type: 'test'
+  ...
+# Subtest: Bob workflow runner aborts a registered review gate when a terminal review hook fails
+ok 267 - Bob workflow runner aborts a registered review gate when a terminal review hook fails
+  ---
+  duration_ms: 1008.8747
+  type: 'test'
+  ...
+# Subtest: Bob workflow runner opens Operation Hub when user action is required
+ok 268 - Bob workflow runner opens Operation Hub when user action is required
+  ---
+  duration_ms: 0.3769
+  type: 'test'
+  ...
+# Subtest: review-gated Bob tasks use live gate acceptance before Todo-sync fallback
+ok 269 - review-gated Bob tasks use live gate acceptance before Todo-sync fallback
+  ---
+  duration_ms: 0.4903
+  type: 'test'
+  ...
+# Subtest: Operation Hub live gate owns Bob advancement while stale gates keep Todo-sync fallback
+ok 270 - Operation Hub live gate owns Bob advancement while stale gates keep Todo-sync fallback
+  ---
+  duration_ms: 0.6383
+  type: 'test'
+  ...
+# Subtest: standalone next-step commands reuse the Bob review task agent provider
+ok 271 - standalone next-step commands reuse the Bob review task agent provider
+  ---
+  duration_ms: 4.008
+  type: 'test'
+  ...
+# Subtest: Bob workflow result recovery is scoped to messages after the current step starts
+ok 272 - Bob workflow result recovery is scoped to messages after the current step starts
+  ---
+  duration_ms: 0.2698
+  type: 'test'
+  ...
+# Subtest: Engine preflight checks Bazaar repositories across multi-root workspaces
+ok 273 - Engine preflight checks Bazaar repositories across multi-root workspaces
+  ---
+  duration_ms: 0.4932
+  type: 'test'
+  ...
+# Subtest: Bob adapter resolves workflow inputs and passes them to command providers
+ok 274 - Bob adapter resolves workflow inputs and passes them to command providers
+  ---
+  duration_ms: 2.7054
+  type: 'test'
+  ...
+# Subtest: WorkflowRegisterService owns and exposes Bob review gates and acceptance coordination
+ok 275 - WorkflowRegisterService owns and exposes Bob review gates and acceptance coordination
+  ---
+  duration_ms: 1.266
+  type: 'test'
+  ...
+# Subtest: WorkflowRegisterService disposes pending gates before source deactivation
+ok 276 - WorkflowRegisterService disposes pending gates before source deactivation
+  ---
+  duration_ms: 0.2779
+  type: 'test'
+  ...
+# Subtest: Bob adapter keeps task inputs, run id, and state wired into the runner
+ok 277 - Bob adapter keeps task inputs, run id, and state wired into the runner
+  ---
+  duration_ms: 3.1632
+  type: 'test'
+  ...
+# Subtest: Bob workflow chat messages include bounded workflow root context
+ok 278 - Bob workflow chat messages include bounded workflow root context
+  ---
+  duration_ms: 1.1783
+  type: 'test'
+  ...
+# Subtest: Bob adapter applies guardrails to Todo, result, and legacy top-level commands
+ok 279 - Bob adapter applies guardrails to Todo, result, and legacy top-level commands
+  ---
+  duration_ms: 1.4142
+  type: 'test'
+  ...
+# Subtest: Bob manual completion opens a panel without bypassing the held completion path
+ok 280 - Bob manual completion opens a panel without bypassing the held completion path
+  ---
+  duration_ms: 1.1776
+  type: 'test'
+  ...
+# Subtest: core workflow model types are split by responsibility with model.ts kept as a compatibility shim
+ok 281 - core workflow model types are split by responsibility with model.ts kept as a compatibility shim
+  ---
+  duration_ms: 3.1211
+  type: 'test'
+  ...
+# Subtest: core parser uses a single directory barrel as its public import boundary
+ok 282 - core parser uses a single directory barrel as its public import boundary
+  ---
+  duration_ms: 0.7264
+  type: 'test'
+  ...
+# Subtest: workflow run command orchestration is split out of WorkflowRegisterService
+ok 283 - workflow run command orchestration is split out of WorkflowRegisterService
+  ---
+  duration_ms: 1.2423
+  type: 'test'
+  ...
+# Subtest: core stage directories own schema, runtime, authoring, and snapshot implementations
+ok 284 - core stage directories own schema, runtime, authoring, and snapshot implementations
+  ---
+  duration_ms: 3.1681
+  type: 'test'
+  ...
+# Subtest: post-accept 次のステップを実行 preserves the selected workspace identity
+ok 285 - post-accept 次のステップを実行 preserves the selected workspace identity
+  ---
+  duration_ms: 1258.254
+  type: 'test'
+  ...
+# Subtest: post-accept Operation Hub を開く preserves the selected workspace identity
+ok 286 - post-accept Operation Hub を開く preserves the selected workspace identity
+  ---
+  duration_ms: 893.3688
+  type: 'test'
+  ...
+# Subtest: StepRuntime completes the active step only when expected run and step match
+ok 287 - StepRuntime completes the active step only when expected run and step match
+  ---
+  duration_ms: 51.1613
+  type: 'test'
+  ...
+# Subtest: StepRuntime refuses to complete a step when the expected run does not match
+ok 288 - StepRuntime refuses to complete a step when the expected run does not match
+  ---
+  duration_ms: 1.594
+  type: 'test'
+  ...
+# Subtest: StepRuntime refuses to complete a step when the expected step does not match
+ok 289 - StepRuntime refuses to complete a step when the expected step does not match
+  ---
+  duration_ms: 0.7736
+  type: 'test'
+  ...
+# Subtest: StepRuntime applies completion state updates only after the expected step matches
+ok 290 - StepRuntime applies completion state updates only after the expected step matches
+  ---
+  duration_ms: 2.6665
+  type: 'test'
+  ...
+# Subtest: StepRuntime rejects reserved workflow state updates before completing a step
+ok 291 - StepRuntime rejects reserved workflow state updates before completing a step
+  ---
+  duration_ms: 2.3596
+  type: 'test'
+  ...
+# Subtest: StepRuntime does not apply completion state updates when the expected step mismatches
+ok 292 - StepRuntime does not apply completion state updates when the expected step mismatches
+  ---
+  duration_ms: 0.759
+  type: 'test'
+  ...
+# Subtest: StepRuntime collects structured manual form and approval values through a prompt provider
+ok 293 - StepRuntime collects structured manual form and approval values through a prompt provider
+  ---
+  duration_ms: 1.2131
+  type: 'test'
+  ...
+# Subtest: file task snapshot store writes snapshots, latest.json, and summaries
+ok 294 - file task snapshot store writes snapshots, latest.json, and summaries
+  ---
+  duration_ms: 106.8614
+  type: 'test'
+  ...
+# Subtest: file task snapshot store truncates oversized messages and prunes old snapshots
+ok 295 - file task snapshot store truncates oversized messages and prunes old snapshots
+  ---
+  duration_ms: 183.5585
+  type: 'test'
+  ...
+# Subtest: file task snapshot store redacts secret-like values before saving snapshots
+ok 296 - file task snapshot store redacts secret-like values before saving snapshots
+  ---
+  duration_ms: 66.8824
+  type: 'test'
+  ...
+# Subtest: file task snapshot store keeps workflow runs ignored idempotently
+ok 297 - file task snapshot store keeps workflow runs ignored idempotently
+  ---
+  duration_ms: 91.2159
+  type: 'test'
+  ...
+# Subtest: file task snapshot store rejects an external task-snapshots directory alias
+ok 298 - file task snapshot store rejects an external task-snapshots directory alias
+  ---
+  duration_ms: 13.537
+  type: 'test'
+  ...
+# Subtest: file task snapshot store does not read external snapshot file aliases
+ok 299 - file task snapshot store does not read external snapshot file aliases
+  ---
+  duration_ms: 24.183
+  type: 'test'
+  ...
+# Subtest: template command metadata is activated, contributed, and registered
+ok 300 - template command metadata is activated, contributed, and registered
+  ---
+  duration_ms: 3.3161
+  type: 'test'
+  ...
+# Subtest: template customization studio command metadata is activated, contributed, and registered
+ok 301 - template customization studio command metadata is activated, contributed, and registered
+  ---
+  duration_ms: 1.8366
+  type: 'test'
+  ...
+# Subtest: template commands validate, generate workflow, and write readiness reports
+ok 302 - template commands validate, generate workflow, and write readiness reports
+  ---
+  duration_ms: 144.4847
+  type: 'test'
+  ...
+# Subtest: readiness fails for workspace escape and missing checklist, and warns when UAT evidence is absent
+ok 303 - readiness fails for workspace escape and missing checklist, and warns when UAT evidence is absent
+  ---
+  duration_ms: 150.5459
+  type: 'test'
+  ...
+# Subtest: template customization studio lists the tracked standard template and builds VCS-aware defaults
+ok 304 - template customization studio lists the tracked standard template and builds VCS-aware defaults
+  ---
+  duration_ms: 36.2503
+  type: 'test'
+  ...
+# Subtest: template customization studio html exposes only allowed customization fields
+ok 305 - template customization studio html exposes only allowed customization fields
+  ---
+  duration_ms: 13.335
+  type: 'test'
+  ...
+# Subtest: template customization studio html preserves editable input default types
+ok 306 - template customization studio html preserves editable input default types
+  ---
+  duration_ms: 11.6678
+  type: 'test'
+  ...
+# Subtest: template customization studio html escapes initial JSON inside script tags
+ok 307 - template customization studio html escapes initial JSON inside script tags
+  ---
+  duration_ms: 0.4174
+  type: 'test'
+  ...
+# Subtest: tracked standard template required files exist in the repository
+ok 308 - tracked standard template required files exist in the repository
+  ---
+  duration_ms: 9.8716
+  type: 'test'
+  ...
+# Subtest: template customization studio refreshes template library from listTemplates responses
+ok 309 - template customization studio refreshes template library from listTemplates responses
+  ---
+  duration_ms: 13.3964
+  type: 'test'
+  ...
+# Subtest: template customization studio readiness html exposes status score checks and next actions
+ok 310 - template customization studio readiness html exposes status score checks and next actions
+  ---
+  duration_ms: 12.251
+  type: 'test'
+  ...
+# Subtest: template customization studio previews and generates a valid workflow with template metadata
+ok 311 - template customization studio previews and generates a valid workflow with template metadata
+  ---
+  duration_ms: 100.0995
+  type: 'test'
+  ...
+# Subtest: template customization studio applies Bazaar prompt supplement only for Bazaar profiles
+ok 312 - template customization studio applies Bazaar prompt supplement only for Bazaar profiles
+  ---
+  duration_ms: 25.5119
+  type: 'test'
+  ...
+# Subtest: template customization studio rejects invalid profile choices and unsafe paths before writing
+ok 313 - template customization studio rejects invalid profile choices and unsafe paths before writing
+  ---
+  duration_ms: 18.0315
+  type: 'test'
+  ...
+# Subtest: template customization studio backs up existing generated files before overwriting
+ok 314 - template customization studio backs up existing generated files before overwriting
+  ---
+  duration_ms: 48.1852
+  type: 'test'
+  ...
+# Subtest: template customization studio rejects generated writes through symlink escapes
+ok 315 - template customization studio rejects generated writes through symlink escapes
+  ---
+  duration_ms: 13.6568
+  type: 'test'
+  ...
+# Subtest: template customization studio panel wires preview generation and diff host messages
+ok 316 - template customization studio panel wires preview generation and diff host messages
+  ---
+  duration_ms: 0.6725
+  type: 'test'
+  ...
+# Subtest: template customization studio validates profile and customization and writes readiness reports
+ok 317 - template customization studio validates profile and customization and writes readiness reports
+  ---
+  duration_ms: 33.648
+  type: 'test'
+  ...
+# Subtest: template customization studio readiness warns when UAT evidence is absent
+ok 318 - template customization studio readiness warns when UAT evidence is absent
+  ---
+  duration_ms: 37.4585
+  type: 'test'
+  ...
+# Subtest: template customization studio panel wires validation readiness and report actions
+ok 319 - template customization studio panel wires validation readiness and report actions
+  ---
+  duration_ms: 0.7017
+  type: 'test'
+  ...
+# Subtest: standard process-code-precheck template library is tracked and parses cleanly
+ok 320 - standard process-code-precheck template library is tracked and parses cleanly
+  ---
+  duration_ms: 29.7803
+  type: 'test'
+  ...
+# Subtest: generator applies allowed customization and preserves locked command and sink surfaces
+ok 321 - generator applies allowed customization and preserves locked command and sink surfaces
+  ---
+  duration_ms: 23.9431
+  type: 'test'
+  ...
+# Subtest: generator rejects base template hash mismatch and unknown input defaults
+ok 322 - generator rejects base template hash mismatch and unknown input defaults
+  ---
+  duration_ms: 6.4879
+  type: 'test'
+  ...
+# Subtest: template metadata schema versions are exposed through tracked json schemas
+ok 323 - template metadata schema versions are exposed through tracked json schemas
+  ---
+  duration_ms: 3.0632
+  type: 'test'
+  ...
+# Subtest: workflow template validator accepts locked core metadata and rejects unsafe paths
+ok 324 - workflow template validator accepts locked core metadata and rejects unsafe paths
+  ---
+  duration_ms: 1.1296
+  type: 'test'
+  ...
+# Subtest: project profile validator rejects unsupported language, vcs, and workspace escape
+ok 325 - project profile validator rejects unsupported language, vcs, and workspace escape
+  ---
+  duration_ms: 0.7692
+  type: 'test'
+  ...
+# Subtest: project profile validator requires Bazaar no-aliases and human gate
+ok 326 - project profile validator requires Bazaar no-aliases and human gate
+  ---
+  duration_ms: 0.3298
+  type: 'test'
+  ...
+# Subtest: workflow customization validator rejects forbidden core overrides and unsafe output paths
+ok 327 - workflow customization validator rejects forbidden core overrides and unsafe output paths
+  ---
+  duration_ms: 0.8945
+  type: 'test'
+  ...
+# Subtest: command agent provider forwards engine input to a configured command
+ok 328 - command agent provider forwards engine input to a configured command
+  ---
+  duration_ms: 3.3415
+  type: 'test'
+  ...
+# Subtest: command agent provider is absent without a configured command
+ok 329 - command agent provider is absent without a configured command
+  ---
+  duration_ms: 0.2907
+  type: 'test'
+  ...
+# Subtest: command agent provider rejects unsupported command return values
+ok 330 - command agent provider rejects unsupported command return values
+  ---
+  duration_ms: 0.7415
+  type: 'test'
+  ...
+# Subtest: mock workflow AI provider chooses deterministic templates from goals
+ok 331 - mock workflow AI provider chooses deterministic templates from goals
+  ---
+  duration_ms: 1.7788
+  type: 'test'
+  ...
+# Subtest: mock workflow AI design output still passes through builder validation
+ok 332 - mock workflow AI design output still passes through builder validation
+  ---
+  duration_ms: 36.5797
+  type: 'test'
+  ...
+# Subtest: AI provider invalid draft is stopped by the builder safety gate
+ok 333 - AI provider invalid draft is stopped by the builder safety gate
+  ---
+  duration_ms: 0.9006
+  type: 'test'
+  ...
+# Subtest: mock workflow AI repair proposal is report-only by default
+ok 334 - mock workflow AI repair proposal is report-only by default
+  ---
+  duration_ms: 1.5612
+  type: 'test'
+  ...
+# Subtest: mock workflow AI explanations include repair targets and likely fixes
+ok 335 - mock workflow AI explanations include repair targets and likely fixes
+  ---
+  duration_ms: 0.8795
+  type: 'test'
+  ...
+# Subtest: AI design output validator accepts minimal valid drafts
+ok 336 - AI design output validator accepts minimal valid drafts
+  ---
+  duration_ms: 3.2203
+  type: 'test'
+  ...
+# Subtest: AI design output validator rejects malformed drafts
+ok 337 - AI design output validator rejects malformed drafts
+  ---
+  duration_ms: 0.3039
+  type: 'test'
+  ...
+# Subtest: AI repair output validator accepts report-only and replacement proposals
+ok 338 - AI repair output validator accepts report-only and replacement proposals
+  ---
+  duration_ms: 0.401
+  type: 'test'
+  ...
+# Subtest: AI repair output validator rejects invalid field types
+ok 339 - AI repair output validator rejects invalid field types
+  ---
+  duration_ms: 0.3617
+  type: 'test'
+  ...
+# Subtest: AI explanation output validator accepts valid items
+ok 340 - AI explanation output validator accepts valid items
+  ---
+  duration_ms: 0.4061
+  type: 'test'
+  ...
+# Subtest: AI explanation output validator rejects malformed items
+ok 341 - AI explanation output validator rejects malformed items
+  ---
+  duration_ms: 0.3501
+  type: 'test'
+  ...
+# Subtest: artifact hydration restores required state and records provenance
+ok 342 - artifact hydration restores required state and records provenance
+  ---
+  duration_ms: 10.3898
+  type: 'test'
+  ...
+# Subtest: artifact hydration rejects unsafe paths and checksum mismatches
+ok 343 - artifact hydration rejects unsafe paths and checksum mismatches
+  ---
+  duration_ms: 0.9704
+  type: 'test'
+  ...
+# Subtest: workflow engine writes a manifest for produced workflow artifacts
+ok 344 - workflow engine writes a manifest for produced workflow artifacts
+  ---
+  duration_ms: 1753.9567
+  type: 'test'
+  ...
+# Subtest: failed manifest sink does not commit manifest state
+ok 345 - failed manifest sink does not commit manifest state
+  ---
+  duration_ms: 1563.5416
+  type: 'test'
+  ...
+# Subtest: artifact manifest transaction restores an existing artifact when manifest commit fails
+not ok 346 - artifact manifest transaction restores an existing artifact when manifest commit fails
+  ---
+  duration_ms: 2897.0506
+  type: 'test'
+  location: 'D:\\a\\bob_builtin_analyze\\bob_builtin_analyze\\extensions\\workflow-register\\test\\workflowArtifactManifest.test.js:148:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    false !== true
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (D:\a\bob_builtin_analyze\bob_builtin_analyze\extensions\workflow-register\test\workflowArtifactManifest.test.js:204:10)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: artifact transaction rolls files and in-memory state back when durable run save fails
+ok 347 - artifact transaction rolls files and in-memory state back when durable run save fails
+  ---
+  duration_ms: 9895.6352
+  type: 'test'
+  ...
+# Subtest: artifact transaction falls back to a registered legacy file sink
+ok 348 - artifact transaction falls back to a registered legacy file sink
+  ---
+  duration_ms: 3666.0075
+  type: 'test'
+  ...
+# Subtest: legacy file transaction commits state only after every file handler succeeds
+ok 349 - legacy file transaction commits state only after every file handler succeeds
+  ---
+  duration_ms: 0.9297
+  type: 'test'
+  ...
+# Subtest: seedWorkflowRunFromArtifacts marks prior steps completed and stores reuse provenance
+ok 350 - seedWorkflowRunFromArtifacts marks prior steps completed and stores reuse provenance
+  ---
+  duration_ms: 4.8649
+  type: 'test'
+  ...
+# Subtest: seedWorkflowRunFromArtifacts rejects missing prior produced state
+ok 351 - seedWorkflowRunFromArtifacts rejects missing prior produced state
+  ---
+  duration_ms: 1.3569
+  type: 'test'
+  ...
+# Subtest: all workflow scaffold templates validate
+ok 352 - all workflow scaffold templates validate
+  ---
+  duration_ms: 37.9158
+  type: 'test'
+  ...
+# Subtest: semantic validator rejects duplicate step ids
+ok 353 - semantic validator rejects duplicate step ids
+  ---
+  duration_ms: 1.8679
+  type: 'test'
+  ...
+# Subtest: semantic validator rejects unknown includeState keys
+ok 354 - semantic validator rejects unknown includeState keys
+  ---
+  duration_ms: 0.8744
+  type: 'test'
+  ...
+# Subtest: semantic validator warns about deprecated bare template placeholders
+ok 355 - semantic validator warns about deprecated bare template placeholders
+  ---
+  duration_ms: 2.0195
+  type: 'test'
+  ...
+# Subtest: public JSON schema mirrors runtime schema shape
+ok 356 - public JSON schema mirrors runtime schema shape
+  ---
+  duration_ms: 4.2219
+  type: 'test'
+  ...
+# Subtest: serializes requires, preflight, completion, approval guardrails, and markdown body
+ok 357 - serializes requires, preflight, completion, approval guardrails, and markdown body
+  ---
+  duration_ms: 32.1857
+  type: 'test'
+  ...
+# Subtest: quotes approval conditions with comparison expressions
+ok 358 - quotes approval conditions with comparison expressions
+  ---
+  duration_ms: 2.6542
+  type: 'test'
+  ...
+# Subtest: validation rejects unsupported approval guardrail expressions
+ok 359 - validation rejects unsupported approval guardrail expressions
+  ---
+  duration_ms: 2.1908
+  type: 'test'
+  ...
+# Subtest: loads advanced sections, approval guardrails, and markdown body back into the authoring model
+ok 360 - loads advanced sections, approval guardrails, and markdown body back into the authoring model
+  ---
+  duration_ms: 9.1287
+  type: 'test'
+  ...
+# Subtest: serializes and loads branching transitions and structured manual steps
+ok 361 - serializes and loads branching transitions and structured manual steps
+  ---
+  duration_ms: 8.6395
+  type: 'test'
+  ...
+# Subtest: loads workflow-register/v1 markdown into an authoring model
+ok 362 - loads workflow-register/v1 markdown into an authoring model
+  ---
+  duration_ms: 23.0317
+  type: 'test'
+  ...
+# Subtest: loader preserves GUI-unmanaged front matter on serialization
+ok 363 - loader preserves GUI-unmanaged front matter on serialization
+  ---
+  duration_ms: 9.0794
+  type: 'test'
+  ...
+# Subtest: loader rejects legacy workflow markdown for GUI editing
+ok 364 - loader rejects legacy workflow markdown for GUI editing
+  ---
+  duration_ms: 1.3326
+  type: 'test'
+  ...
+# Subtest: GUI editor can load and revalidate current traceability and branching workflows
+ok 365 - GUI editor can load and revalidate current traceability and branching workflows
+  ---
+  duration_ms: 52.0238
+  type: 'test'
+  ...
+# Subtest: reference analysis accepts a valid command-to-agent handoff
+ok 366 - reference analysis accepts a valid command-to-agent handoff
+  ---
+  duration_ms: 3.0787
+  type: 'test'
+  ...
+# Subtest: reference analysis reports unknown includeState keys
+ok 367 - reference analysis reports unknown includeState keys
+  ---
+  duration_ms: 1.35
+  type: 'test'
+  ...
+# Subtest: reference analysis reports forward includeState after an unsafe move
+ok 368 - reference analysis reports forward includeState after an unsafe move
+  ---
+  duration_ms: 0.6037
+  type: 'test'
+  ...
+# Subtest: removal impact reports includeState consumers and produced artifacts
+ok 369 - removal impact reports includeState consumers and produced artifacts
+  ---
+  duration_ms: 0.8059
+  type: 'test'
+  ...
+# Subtest: reference analysis reports unknown artifact producers
+ok 370 - reference analysis reports unknown artifact producers
+  ---
+  duration_ms: 0.3349
+  type: 'test'
+  ...
+# Subtest: serializes a simple-agent authoring model into a valid workflow
+ok 371 - serializes a simple-agent authoring model into a valid workflow
+  ---
+  duration_ms: 27.098
+  type: 'test'
+  ...
+# Subtest: serializes workflow names to OS-compatible path segments
+ok 372 - serializes workflow names to OS-compatible path segments
+  ---
+  duration_ms: 5.3457
+  type: 'test'
+  ...
+# Subtest: serializes an artifact-output authoring model with result handoff
+ok 373 - serializes an artifact-output authoring model with result handoff
+  ---
+  duration_ms: 5.6664
+  type: 'test'
+  ...
+# Subtest: serializes command-then-agent with a state handoff
+ok 374 - serializes command-then-agent with a state handoff
+  ---
+  duration_ms: 2.4805
+  type: 'test'
+  ...
+# Subtest: serializes input-driven-agent with select options
+ok 375 - serializes input-driven-agent with select options
+  ---
+  duration_ms: 3.2238
+  type: 'test'
+  ...
+# Subtest: validator rejects includeState references without a matching resultKey
+ok 376 - validator rejects includeState references without a matching resultKey
+  ---
+  duration_ms: 1.8538
+  type: 'test'
+  ...
+# Subtest: validator rejects select inputs without options
+ok 377 - validator rejects select inputs without options
+  ---
+  duration_ms: 1.3825
+  type: 'test'
+  ...
+# Subtest: step draft validation blocks command step without provider
+ok 378 - step draft validation blocks command step without provider
+  ---
+  duration_ms: 3.8134
+  type: 'test'
+  ...
+# Subtest: step draft validation warns when command sends an unbounded result
+ok 379 - step draft validation warns when command sends an unbounded result
+  ---
+  duration_ms: 0.8527
+  type: 'test'
+  ...
+# Subtest: step draft validation blocks stateRequired without includeState
+ok 380 - step draft validation blocks stateRequired without includeState
+  ---
+  duration_ms: 0.4504
+  type: 'test'
+  ...
+# Subtest: manual step draft validation accepts userAction message without prompt
+ok 381 - manual step draft validation accepts userAction message without prompt
+  ---
+  duration_ms: 0.6894
+  type: 'test'
+  ...
+# Subtest: manual step draft validation warns about missing and risky userAction settings
+ok 382 - manual step draft validation warns about missing and risky userAction settings
+  ---
+  duration_ms: 0.5338
+  type: 'test'
+  ...
+# Subtest: manual step draft validation warns when neither prompt nor userAction message exists
+ok 383 - manual step draft validation warns when neither prompt nor userAction message exists
+  ---
+  duration_ms: 0.3701
+  type: 'test'
+  ...
+# Subtest: step draft validation detects resultKey downstream impact
+ok 384 - step draft validation detects resultKey downstream impact
+  ---
+  duration_ms: 0.6489
+  type: 'test'
+  ...
+# Subtest: step draft validation rejects reserved workflow result keys
+ok 385 - step draft validation rejects reserved workflow result keys
+  ---
+  duration_ms: 0.6292
+  type: 'test'
+  ...
+# Subtest: step draft validation detects artifact producer impact
+ok 386 - step draft validation detects artifact producer impact
+  ---
+  duration_ms: 1.5862
+  type: 'test'
+  ...
+# Subtest: step draft repair updates artifact producers when step id changes
+ok 387 - step draft repair updates artifact producers when step id changes
+  ---
+  duration_ms: 2.6884
+  type: 'test'
+  ...
+# Subtest: step draft repair updates includeState and result stateKey when resultKey changes
+ok 388 - step draft repair updates includeState and result stateKey when resultKey changes
+  ---
+  duration_ms: 0.4969
+  type: 'test'
+  ...
+# Subtest: authoring serializer writes manual step userAction and validates the result
+ok 389 - authoring serializer writes manual step userAction and validates the result
+  ---
+  duration_ms: 22.0441
+  type: 'test'
+  ...
+# Subtest: authoring loader preserves userAction on a manual step
+ok 390 - authoring loader preserves userAction on a manual step
+  ---
+  duration_ms: 2.6511
+  type: 'test'
+  ...
+# Subtest: manual-checklist template includes userAction guidance
+ok 391 - manual-checklist template includes userAction guidance
+  ---
+  duration_ms: 0.4345
+  type: 'test'
+  ...
+# Subtest: v1 parser accepts branching transitions and structured manual steps
+ok 392 - v1 parser accepts branching transitions and structured manual steps
+  ---
+  duration_ms: 20.5242
+  type: 'test'
+  ...
+# Subtest: validator rejects invalid branching references and unsafe back transitions
+ok 393 - validator rejects invalid branching references and unsafe back transitions
+  ---
+  duration_ms: 3.0492
+  type: 'test'
+  ...
+# Subtest: validator rejects reserved workflow result key prefixes
+ok 394 - validator rejects reserved workflow result key prefixes
+  ---
+  duration_ms: 3.0016
+  type: 'test'
+  ...
+# Subtest: validator rejects loop transitions that do not target the loop entry step
+ok 395 - validator rejects loop transitions that do not target the loop entry step
+  ---
+  duration_ms: 2.0993
+  type: 'test'
+  ...
+# Subtest: validator rejects transition conditions that read state produced only by a later step
+ok 396 - validator rejects transition conditions that read state produced only by a later step
+  ---
+  duration_ms: 1.6181
+  type: 'test'
+  ...
+# Subtest: workflow engine loops backward in full mode and reruns the reset range
+ok 397 - workflow engine loops backward in full mode and reruns the reset range
+  ---
+  duration_ms: 16345.5923
+  type: 'test'
+  ...
+# Subtest: workflow engine applies backward transition without continuing in single-step mode
+ok 398 - workflow engine applies backward transition without continuing in single-step mode
+  ---
+  duration_ms: 9008.628
+  type: 'test'
+  ...
+# Subtest: workflow engine applies reviewed step transitions before running the accepted next step
+ok 399 - workflow engine applies reviewed step transitions before running the accepted next step
+  ---
+  duration_ms: 12960.0068
+  type: 'test'
+  ...
+# Subtest: workflow engine stops at a checkpoint when a loop exceeds its allowed count
+ok 400 - workflow engine stops at a checkpoint when a loop exceeds its allowed count
+  ---
+  duration_ms: 6123.2362
+  type: 'test'
+  ...
+# Subtest: workflow engine approves and aborts branch checkpoints explicitly
+ok 401 - workflow engine approves and aborts branch checkpoints explicitly
+  ---
+  duration_ms: 7924.0258
+  type: 'test'
+  ...
+# Subtest: workflow engine stores structured manual form values in workflow state
+ok 402 - workflow engine stores structured manual form values in workflow state
+  ---
+  duration_ms: 1333.5161
+  type: 'test'
+  ...
+# Subtest: workflow engine rejects reserved manual result keys before prompting
+ok 403 - workflow engine rejects reserved manual result keys before prompting
+  ---
+  duration_ms: 776.494
+  type: 'test'
+  ...
+# Subtest: workflow engine stores manual approval decisions and applies reject transitions
+ok 404 - workflow engine stores manual approval decisions and applies reject transitions
+  ---
+  duration_ms: 2604.2656
+  type: 'test'
+  ...
+# Subtest: step draft script exposes transaction controls and validation hooks
+ok 405 - step draft script exposes transaction controls and validation hooks
+  ---
+  duration_ms: 2.1069
+  type: 'test'
+  ...
+# Subtest: step draft repair script exposes apply with reference updates
+ok 406 - step draft repair script exposes apply with reference updates
+  ---
+  duration_ms: 0.5021
+  type: 'test'
+  ...
+# Subtest: workflow builder html includes step draft scripts before help decoration
+ok 407 - workflow builder html includes step draft scripts before help decoration
+  ---
+  duration_ms: 4.4333
+  type: 'test'
+  ...
+# Subtest: Builder cancel leaves the existing target, backups, documents, and reload untouched
+ok 408 - Builder cancel leaves the existing target, backups, documents, and reload untouched
+  ---
+  duration_ms: 53.3277
+  type: 'test'
+  ...
+# Subtest: Builder confirmation backs up the exact old bytes before overwriting and reloading
+ok 409 - Builder confirmation backs up the exact old bytes before overwriting and reloading
+  ---
+  duration_ms: 316.1841
+  type: 'test'
+  ...
+# Subtest: Builder rejects an external edit against originalText before backup, overwrite, or reload
+ok 410 - Builder rejects an external edit against originalText before backup, overwrite, or reload
+  ---
+  duration_ms: 13.2752
+  type: 'test'
+  ...
+# Subtest: Builder preserves a target created while the missing-target Create confirmation is open
+ok 411 - Builder preserves a target created while the missing-target Create confirmation is open
+  ---
+  duration_ms: 195.9012
+  type: 'test'
+  ...
+# Subtest: Builder creates the target when it is still missing after Create confirmation
+ok 412 - Builder creates the target when it is still missing after Create confirmation
+  ---
+  duration_ms: 10.536
+  type: 'test'
+  ...
+# Subtest: Builder revalidates original bytes after a blocked backup and preserves the external winner
+ok 413 - Builder revalidates original bytes after a blocked backup and preserves the external winner
+  ---
+  duration_ms: 562.6929
+  type: 'test'
+  ...
+# Subtest: Builder serializes concurrent save messages for the same target
+ok 414 - Builder serializes concurrent save messages for the same target
+  ---
+  duration_ms: 65.2559
+  type: 'test'
+  ...
+# Subtest: Builder aborts a queued save when the panel switches sessions before the operation starts
+ok 415 - Builder aborts a queued save when the panel switches sessions before the operation starts
+  ---
+  duration_ms: 26.8871
+  type: 'test'
+  ...
+# Subtest: Builder rolls back a backup and aborts when the panel switches sessions during backup
+ok 416 - Builder rolls back a backup and aborts when the panel switches sessions during backup
+  ---
+  duration_ms: 32.8241
+  type: 'test'
+  ...
+# Subtest: Builder reloads a committed save without sending stale UI when the panel switches sessions during target write
+ok 417 - Builder reloads a committed save without sending stale UI when the panel switches sessions during target write
+  ---
+  duration_ms: 135.7168
+  type: 'test'
+  ...
+# Subtest: Builder retains two exclusively-created backups for successful saves in the same second
+ok 418 - Builder retains two exclusively-created backups for successful saves in the same second
+  ---
+  duration_ms: 90.0495
+  type: 'test'
+  ...
+# Subtest: Builder advances its originalText baseline only after each successful save
+ok 419 - Builder advances its originalText baseline only after each successful save
+  ---
+  duration_ms: 22.1329
+  type: 'test'
+  ...
+# Subtest: Builder inactive tabs preserve all inputs and advanced sections through actual preview and save payloads
+ok 420 - Builder inactive tabs preserve all inputs and advanced sections through actual preview and save payloads
+  ---
+  duration_ms: 23.1956
+  type: 'test'
+  ...
+# Subtest: Builder roundtrip does not broaden v1 nested input schema
+ok 421 - Builder roundtrip does not broaden v1 nested input schema
+  ---
+  duration_ms: 3.1153
+  type: 'test'
+  ...
+# Subtest: workflow builder html includes split style and client script output
+ok 422 - workflow builder html includes split style and client script output
+  ---
+  duration_ms: 6.612
+  type: 'test'
+  ...
+# Subtest: workflow builder split modules expose approval, markdown body, help, and guided navigation pieces
+ok 423 - workflow builder split modules expose approval, markdown body, help, and guided navigation pieces
+  ---
+  duration_ms: 0.9139
+  type: 'test'
+  ...
+# Subtest: workflow builder help id registry exposes known ids
+ok 424 - workflow builder help id registry exposes known ids
+  ---
+  duration_ms: 0.3927
+  type: 'test'
+  ...
+# Subtest: workflow builder help catalog covers high priority Japanese help entries
+ok 425 - workflow builder help catalog covers high priority Japanese help entries
+  ---
+  duration_ms: 1.112
+  type: 'test'
+  ...
+# Subtest: workflow builder layout keeps help visible while lower fields scroll
+ok 426 - workflow builder layout keeps help visible while lower fields scroll
+  ---
+  duration_ms: 0.4001
+  type: 'test'
+  ...
+# Subtest: workflow builder help decorates directly added step detail nodes
+ok 427 - workflow builder help decorates directly added step detail nodes
+  ---
+  duration_ms: 8.2658
+  type: 'test'
+  ...
+# Subtest: workflow builder help resolves current select after detail rerender
+ok 428 - workflow builder help resolves current select after detail rerender
+  ---
+  duration_ms: 4.1994
+  type: 'test'
+  ...
+# Subtest: checkpoint approval and abort acquire the run lease before inspecting state
+ok 429 - checkpoint approval and abort acquire the run lease before inspecting state
+  ---
+  duration_ms: 10.7213
+  type: 'test'
+  ...
+# Subtest: registration rejects a schema-valid workflow with duplicate step ids before adaptation
+ok 430 - registration rejects a schema-valid workflow with duplicate step ids before adaptation
+  ---
+  duration_ms: 408.3273
+  type: 'test'
+  ...
+# Subtest: mixed registration adapts and registers only valid workflow documents
+ok 431 - mixed registration adapts and registers only valid workflow documents
+  ---
+  duration_ms: 51.8011
+  type: 'test'
+  ...
+# Subtest: workspace validation compiles the same nested marker-root document set as registration
+ok 432 - workspace validation compiles the same nested marker-root document set as registration
+  ---
+  duration_ms: 38.9531
+  type: 'test'
+  ...
+# Subtest: explicit current and workspace validation match strict registration diagnostics for warning-only workflows
+ok 433 - explicit current and workspace validation match strict registration diagnostics for warning-only workflows
+  ---
+  duration_ms: 16.5507
+  type: 'test'
+  ...
+# Subtest: CI workflow contract paths include the canonical compiler source
+ok 434 - CI workflow contract paths include the canonical compiler source
+  ---
+  duration_ms: 0.774
+  type: 'test'
+  ...
+# Subtest: formatted parser diagnostics include their file path exactly once
+    # Subtest: missing front matter
+    ok 1 - missing front matter
+      ---
+      duration_ms: 0.7721
+      type: 'test'
+      ...
+    # Subtest: invalid YAML syntax
+    ok 2 - invalid YAML syntax
+      ---
+      duration_ms: 1.2372
+      type: 'test'
+      ...
+    # Subtest: schema failure
+    ok 3 - schema failure
+      ---
+      duration_ms: 0.4188
+      type: 'test'
+      ...
+    # Subtest: parser warning
+    ok 4 - parser warning
+      ---
+      duration_ms: 0.7352
+      type: 'test'
+      ...
+    # Subtest: parser info
+    ok 5 - parser info
+      ---
+      duration_ms: 0.404
+      type: 'test'
+      ...
+    1..5
+ok 435 - formatted parser diagnostics include their file path exactly once
+  ---
+  duration_ms: 5.2196
+  type: 'test'
+  ...
+# Subtest: parser diagnostic normalization preserves matching path text inside the message body
+ok 436 - parser diagnostic normalization preserves matching path text inside the message body
+  ---
+  duration_ms: 0.7343
+  type: 'test'
+  ...
+# Subtest: workflow compiler owns parse, semantic, strict, catalog, and diagnostic parity
+ok 437 - workflow compiler owns parse, semantic, strict, catalog, and diagnostic parity
+  ---
+  duration_ms: 15.0945
+  type: 'test'
+  ...
+# Subtest: cross-document duplicate workflow ids remain qualified outside the document compiler
+ok 438 - cross-document duplicate workflow ids remain qualified outside the document compiler
+  ---
+  duration_ms: 1.4212
+  type: 'test'
+  ...
+# Subtest: all repository workflow contracts are discovered and strict-clean
+ok 439 - all repository workflow contracts are discovered and strict-clean
+  ---
+  duration_ms: 140.9714
+  type: 'test'
+  ...
+# Subtest: integration workflow templates match their workspace mirrors
+ok 440 - integration workflow templates match their workspace mirrors
+  ---
+  duration_ms: 1.6249
+  type: 'test'
+  ...
+# Subtest: canonical provider catalog exactly matches extension registration sources
+ok 441 - canonical provider catalog exactly matches extension registration sources
+  ---
+  duration_ms: 5.7271
+  type: 'test'
+  ...
+# Subtest: provider catalog has stable owners, unique ids, and no implicit implementation ids
+ok 442 - provider catalog has stable owners, unique ids, and no implicit implementation ids
+  ---
+  duration_ms: 1.0626
+  type: 'test'
+  ...
+# Subtest: sample external command allowlist is path-scoped and guardrail-declared
+ok 443 - sample external command allowlist is path-scoped and guardrail-declared
+  ---
+  duration_ms: 4.5372
+  type: 'test'
+  ...
+# Subtest: result step prompt and includeState are accepted as Bob runtime fields
+ok 444 - result step prompt and includeState are accepted as Bob runtime fields
+  ---
+  duration_ms: 0.9764
+  type: 'test'
+  ...
+# Subtest: step messages allow result steps to use their result definition without a prompt
+ok 445 - step messages allow result steps to use their result definition without a prompt
+  ---
+  duration_ms: 0.5432
+  type: 'test'
+  ...
+# Subtest: Bob registration uses the workflow compiler as the only parsed workflow source
+ok 446 - Bob registration uses the workflow compiler as the only parsed workflow source
+  ---
+  duration_ms: 1.9029
+  type: 'test'
+  ...
+# Subtest: workflow definition loading separates discovery, adapter, and diagnostics responsibilities
+ok 447 - workflow definition loading separates discovery, adapter, and diagnostics responsibilities
+  ---
+  duration_ms: 1.2502
+  type: 'test'
+  ...
+# Subtest: workflow definition loading blocks strict compiler diagnostics before registration
+ok 448 - workflow definition loading blocks strict compiler diagnostics before registration
+  ---
+  duration_ms: 0.4452
+  type: 'test'
+  ...
+# Subtest: workflow design builder generates a valid input-driven workflow
+ok 449 - workflow design builder generates a valid input-driven workflow
+  ---
+  duration_ms: 17.7546
+  type: 'test'
+  ...
+# Subtest: workflow design builder chooses artifact-output for artifact drafts
+ok 450 - workflow design builder chooses artifact-output for artifact drafts
+  ---
+  duration_ms: 0.1905
+  type: 'test'
+  ...
+# Subtest: workflow design draft validation rejects invalid select input
+ok 451 - workflow design draft validation rejects invalid select input
+  ---
+  duration_ms: 0.2481
+  type: 'test'
+  ...
+# Subtest: workflow design builder refuses invalid drafts before writing workflow markdown
+ok 452 - workflow design builder refuses invalid drafts before writing workflow markdown
+  ---
+  duration_ms: 0.3319
+  type: 'test'
+  ...
+# Subtest: workflow repair context maps diagnostics to likely fixes
+ok 453 - workflow repair context maps diagnostics to likely fixes
+  ---
+  duration_ms: 1.4287
+  type: 'test'
+  ...
+# Subtest: workflow document path accepts only immediate .bob workflow WORKFLOW.md files
+ok 454 - workflow document path accepts only immediate .bob workflow WORKFLOW.md files
+  ---
+  duration_ms: 3.9216
+  type: 'test'
+  ...
+# Subtest: workflow document path validator accepts only workspace-local workflow documents
+ok 455 - workflow document path validator accepts only workspace-local workflow documents
+  ---
+  duration_ms: 17.6827
+  type: 'test'
+  ...
+# Subtest: workflow document path validator rejects symlink escapes when the platform allows them
+ok 456 - workflow document path validator rejects symlink escapes when the platform allows them
+  ---
+  duration_ms: 7.0566
+  type: 'test'
+  ...
+# Subtest: workflow engine runs command and file-result steps without Bob and persists run state
+ok 457 - workflow engine runs command and file-result steps without Bob and persists run state
+  ---
+  duration_ms: 7787.8392
+  type: 'test'
+  ...
+# Subtest: workflow engine requires command id allowlist for VS Code command steps
+ok 458 - workflow engine requires command id allowlist for VS Code command steps
+  ---
+  duration_ms: 2756.671
+  type: 'test'
+  ...
+# Subtest: workflow engine allows listed VS Code command ids
+ok 459 - workflow engine allows listed VS Code command ids
+  ---
+  duration_ms: 3253.1717
+  type: 'test'
+  ...
+# Subtest: workflow engine denies listed VS Code command ids
+ok 460 - workflow engine denies listed VS Code command ids
+  ---
+  duration_ms: 1960.6236
+  type: 'test'
+  ...
+# Subtest: workflow engine holds matching command approval guardrails before executing the action
+ok 461 - workflow engine holds matching command approval guardrails before executing the action
+  ---
+  duration_ms: 3465.4237
+  type: 'test'
+  ...
+# Subtest: workflow engine rejects reserved workflow result keys before executing command steps
+ok 462 - workflow engine rejects reserved workflow result keys before executing command steps
+  ---
+  duration_ms: 2147.5626
+  type: 'test'
+  ...
+# Subtest: workflow engine runs an approval-held command only after explicit approval resume
+ok 463 - workflow engine runs an approval-held command only after explicit approval resume
+  ---
+  duration_ms: 3400.5675
+  type: 'test'
+  ...
+# Subtest: workflow engine requires fresh approval when a branch reruns a command with different args
+ok 464 - workflow engine requires fresh approval when a branch reruns a command with different args
+  ---
+  duration_ms: 12588.1439
+  type: 'test'
+  ...
+# Subtest: workflow engine fails command steps when providers return structured error results
+ok 465 - workflow engine fails command steps when providers return structured error results
+  ---
+  duration_ms: 1383.419
+  type: 'test'
+  ...
+# Subtest: workflow engine runs agent steps through an AgentProvider and can hand off the agent text
+ok 466 - workflow engine runs agent steps through an AgentProvider and can hand off the agent text
+  ---
+  duration_ms: 1279.0125
+  type: 'test'
+  ...
+# Subtest: workflow engine can replace agent result state with command sink artifact text
+ok 467 - workflow engine can replace agent result state with command sink artifact text
+  ---
+  duration_ms: 1229.6351
+  type: 'test'
+  ...
+# Subtest: workflow engine rejects invalid input values before running steps
+ok 468 - workflow engine rejects invalid input values before running steps
+  ---
+  duration_ms: 1595.7603
+  type: 'test'
+  ...
+# Subtest: workflow engine records result-source failures in run state
+ok 469 - workflow engine records result-source failures in run state
+  ---
+  duration_ms: 2098.0865
+  type: 'test'
+  ...
+# Subtest: workflow engine validates requiredWhen inputs and select options
+ok 470 - workflow engine validates requiredWhen inputs and select options
+  ---
+  duration_ms: 3953.4753
+  type: 'test'
+  ...
+# Subtest: workflow engine enforces preflight checks, guardrails, and artifact writes
+ok 471 - workflow engine enforces preflight checks, guardrails, and artifact writes
+  ---
+  duration_ms: 2552.7868
+  type: 'test'
+  ...
+# Subtest: workflow engine resolves artifact path placeholders from inputs and JSON state
+ok 472 - workflow engine resolves artifact path placeholders from inputs and JSON state
+  ---
+  duration_ms: 1849.4818
+  type: 'test'
+  ...
+# Subtest: workflow engine resolves explicit JSON state placeholders deterministically
+ok 473 - workflow engine resolves explicit JSON state placeholders deterministically
+  ---
+  duration_ms: 9675.8916
+  type: 'test'
+  ...
+# Subtest: workflow engine fails denied or non-allowlisted command steps before executing them
+ok 474 - workflow engine fails denied or non-allowlisted command steps before executing them
+  ---
+  duration_ms: 2699.4905
+  type: 'test'
+  ...
+# Subtest: shared guardrails helper validates allowed and denied commands
+ok 475 - shared guardrails helper validates allowed and denied commands
+  ---
+  duration_ms: 1.3542
+  type: 'test'
+  ...
+# Subtest: workflow engine helper loads core modules
+ok 476 - workflow engine helper loads core modules
+  ---
+  duration_ms: 0.9404
+  type: 'test'
+  ...
+# Subtest: workflow engine provides default preflight checks from FileRunStateStore
+ok 477 - workflow engine provides default preflight checks from FileRunStateStore
+  ---
+  duration_ms: 2344.5509
+  type: 'test'
+  ...
+# Subtest: workflow engine rejects preflight file paths outside the workspace
+ok 478 - workflow engine rejects preflight file paths outside the workspace
+  ---
+  duration_ms: 745.8321
+  type: 'test'
+  ...
+# Subtest: evaluatePreflight rejects escaped preflight files before calling fileExists
+ok 479 - evaluatePreflight rejects escaped preflight files before calling fileExists
+  ---
+  duration_ms: 0.9389
+  type: 'test'
+  ...
+# Subtest: workflow engine holds manual steps and resumes them
+ok 480 - workflow engine holds manual steps and resumes them
+  ---
+  duration_ms: 1965.5018
+  type: 'test'
+  ...
+# Subtest: workflow engine pauses successful single-step execution for step review
+ok 481 - workflow engine pauses successful single-step execution for step review
+  ---
+  duration_ms: 1137.7365
+  type: 'test'
+  ...
+# Subtest: retrying a reviewing step archives the rejected attempt state
+ok 482 - retrying a reviewing step archives the rejected attempt state
+  ---
+  duration_ms: 2301.1568
+  type: 'test'
+  ...
+# Subtest: workflow engine manual completion controller can complete a held step in single-step mode
+ok 483 - workflow engine manual completion controller can complete a held step in single-step mode
+  ---
+  duration_ms: 938.1956
+  type: 'test'
+  ...
+# Subtest: workflow engine can execute a single requested step and leave the run recoverable
+ok 484 - workflow engine can execute a single requested step and leave the run recoverable
+  ---
+  duration_ms: 2331.029
+  type: 'test'
+  ...
+# Subtest: workflow engine blocks the next ordered single step while the previous step is reviewing
+ok 485 - workflow engine blocks the next ordered single step while the previous step is reviewing
+  ---
+  duration_ms: 1847.9951
+  type: 'test'
+  ...
+# Subtest: workflow engine does not bypass reviewing steps with allowOutOfOrder
+ok 486 - workflow engine does not bypass reviewing steps with allowOutOfOrder
+  ---
+  duration_ms: 1213.8488
+  type: 'test'
+  ...
+# Subtest: workflow engine recovers a legacy failed next-step attempt blocked by step review
+ok 487 - workflow engine recovers a legacy failed next-step attempt blocked by step review
+  ---
+  duration_ms: 1298.377
+  type: 'test'
+  ...
+# Subtest: workflow engine rejects out-of-order single-step execution by default
+ok 488 - workflow engine rejects out-of-order single-step execution by default
+  ---
+  duration_ms: 473.5226
+  type: 'test'
+  ...
+# Subtest: workflow engine can explicitly allow out-of-order single-step execution
+ok 489 - workflow engine can explicitly allow out-of-order single-step execution
+  ---
+  duration_ms: 954.4949
+  type: 'test'
+  ...
+# Subtest: input collector prompts conditionally relevant inputs in order
+ok 490 - input collector prompts conditionally relevant inputs in order
+  ---
+  duration_ms: 6.356
+  type: 'test'
+  ...
+# Subtest: input collector cancels when required input is cancelled
+ok 491 - input collector cancels when required input is cancelled
+  ---
+  duration_ms: 0.3167
+  type: 'test'
+  ...
+# Subtest: input resolver handles requiredWhen
+ok 492 - input resolver handles requiredWhen
+  ---
+  duration_ms: 4.834
+  type: 'test'
+  ...
+# Subtest: v1 workflow parser accepts inputs, execution contract metadata, typed steps, and result sinks
+ok 493 - v1 workflow parser accepts inputs, execution contract metadata, typed steps, and result sinks
+  ---
+  duration_ms: 25.4127
+  type: 'test'
+  ...
+# Subtest: local code consistency workflow fixture is clean for strict registration
+ok 494 - local code consistency workflow fixture is clean for strict registration
+  ---
+  duration_ms: 5.6444
+  type: 'test'
+  ...
+# Subtest: local packaged code consistency template fixture keeps traceability workflow contract
+ok 495 - local packaged code consistency template fixture keeps traceability workflow contract
+  ---
+  duration_ms: 3.8111
+  type: 'test'
+  ...
+# Subtest: legacy workflow parser records a definition hash
+ok 496 - legacy workflow parser records a definition hash
+  ---
+  duration_ms: 2.3374
+  type: 'test'
+  ...
+# Subtest: v1 workflow parser reports schema validation errors
+ok 497 - v1 workflow parser reports schema validation errors
+  ---
+  duration_ms: 0.8233
+  type: 'test'
+  ...
+# Subtest: file-bound skip resume metadata is opt-in and strict-clean when artifacts match result keys
+ok 498 - file-bound skip resume metadata is opt-in and strict-clean when artifacts match result keys
+  ---
+  duration_ms: 1.5572
+  type: 'test'
+  ...
+# Subtest: file-bound skip resume flags reusable result keys without matching artifacts
+ok 499 - file-bound skip resume flags reusable result keys without matching artifacts
+  ---
+  duration_ms: 2.5656
+  type: 'test'
+  ...
+# Subtest: P0 approve keeps Bob pending until durable acceptance and resolves exactly once
+not ok 500 - P0 approve keeps Bob pending until durable acceptance and resolves exactly once
+  ---
+  duration_ms: 1398.5122
+  type: 'test'
+  location: 'D:\\a\\bob_builtin_analyze\\bob_builtin_analyze\\extensions\\workflow-register\\test\\workflowPlatformP0E2e.test.js:364:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly deep-equal:
+    + actual - expected
+    
+      {
+        executionMode: 'singleStep',
+        ownerStepId: 'collect',
+        runId: 'p0-approve-run',
+        status: 'reviewing',
+        stepId: 'collect',
+    +   workspaceRoot: 'C:\\Users\\runneradmin\\AppData\\Local\\Temp\\workflow-platform-p0-approve-ymSsDS'
+    -   workspaceRoot: 'C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\workflow-platform-p0-approve-ymSsDS'
+      }
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    workspaceRoot: 'C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\workflow-platform-p0-approve-ymSsDS'
+    runId: 'p0-approve-run'
+    stepId: 'collect'
+    ownerStepId: 'collect'
+    status: 'reviewing'
+    executionMode: 'singleStep'
+  actual:
+    workspaceRoot: 'C:\\Users\\runneradmin\\AppData\\Local\\Temp\\workflow-platform-p0-approve-ymSsDS'
+    runId: 'p0-approve-run'
+    stepId: 'collect'
+    ownerStepId: 'collect'
+    status: 'reviewing'
+    executionMode: 'singleStep'
+  operator: 'deepStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (D:\a\bob_builtin_analyze\bob_builtin_analyze\extensions\workflow-register\test\workflowPlatformP0E2e.test.js:404:10)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:296:3)
+  ...
+# Subtest: P0 reject terminates before record and campaign-summary side effects
+ok 501 - P0 reject terminates before record and campaign-summary side effects
+  ---
+  duration_ms: 90.8614
+  type: 'test'
+  ...
+# Subtest: P0 missing provider artifact fails without committing state or hooks
+ok 502 - P0 missing provider artifact fails without committing state or hooks
+  ---
+  duration_ms: 78.0447
+  type: 'test'
+  ...
+# Subtest: P0 invalid definition has validation-registration diagnostic parity
+ok 503 - P0 invalid definition has validation-registration diagnostic parity
+  ---
+  duration_ms: 27.2458
+  type: 'test'
+  ...
+# Subtest: P0 Operation Hub runNextStep uses the standalone rendered prompt
+not ok 504 - P0 Operation Hub runNextStep uses the standalone rendered prompt
+  ---
+  duration_ms: 370.4955
+  type: 'test'
+  location: 'D:\\a\\bob_builtin_analyze\\bob_builtin_analyze\\extensions\\workflow-register\\test\\workflowPlatformP0E2e.test.js:745:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Bob Operation Hub: Expected values to be strictly equal:
+    + actual - expected
+    
+    + 'C:\\Users\\runneradmin\\AppData\\Local\\Temp\\workflow-platform-p0-operation-hub-mZhp4d'
+    - 'C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\workflow-platform-p0-operation-hub-mZhp4d'
+    
+    
+    1 !== 0
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 0
+  actual: 1
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (D:\a\bob_builtin_analyze\bob_builtin_analyze\extensions\workflow-register\test\workflowPlatformP0E2e.test.js:872:10)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: package entry points at the compiled authoring wrapper
+ok 505 - package entry points at the compiled authoring wrapper
+  ---
+  duration_ms: 5.1744
+  type: 'test'
+  ...
+# Subtest: package exposes workflow authoring commands
+ok 506 - package exposes workflow authoring commands
+  ---
+  duration_ms: 1.6304
+  type: 'test'
+  ...
+# Subtest: workflow authoring wrapper wires a configurable AI provider command
+ok 507 - workflow authoring wrapper wires a configurable AI provider command
+  ---
+  duration_ms: 1.0121
+  type: 'test'
+  ...
+# Subtest: package contributes standalone workflow launcher commands without a hard Bob dependency
+ok 508 - package contributes standalone workflow launcher commands without a hard Bob dependency
+  ---
+  duration_ms: 2.7948
+  type: 'test'
+  ...
+# Subtest: authoring wrapper delegates accept-and-run-next to the core next-step command without duplicate registration
+ok 509 - authoring wrapper delegates accept-and-run-next to the core next-step command without duplicate registration
+  ---
+  duration_ms: 0.6525
+  type: 'test'
+  ...
+# Subtest: accept-only review command tells operators the next step is not started
+ok 510 - accept-only review command tells operators the next step is not started
+  ---
+  duration_ms: 0.5343
+  type: 'test'
+  ...
+# Subtest: package exposes task snapshot retention settings
+ok 511 - package exposes task snapshot retention settings
+  ---
+  duration_ms: 0.464
+  type: 'test'
+  ...
+# Subtest: package and extension wire the manual step panel command
+ok 512 - package and extension wire the manual step panel command
+  ---
+  duration_ms: 1.306
+  type: 'test'
+  ...
+# Subtest: workflow-register does not silently use the first workspace folder in multi-root paths
+ok 513 - workflow-register does not silently use the first workspace folder in multi-root paths
+  ---
+  duration_ms: 2.2012
+  type: 'test'
+  ...
+# Subtest: workflow authoring write paths enforce WORKFLOW.md document boundaries
+ok 514 - workflow authoring write paths enforce WORKFLOW.md document boundaries
+  ---
+  duration_ms: 1.2386
+  type: 'test'
+  ...
+# Subtest: workspace workflow validation uses strict diagnostics
+ok 515 - workspace workflow validation uses strict diagnostics
+  ---
+  duration_ms: 0.4901
+  type: 'test'
+  ...
+# Subtest: runtime dependencies are not excluded from VSIX packaging
+ok 516 - runtime dependencies are not excluded from VSIX packaging
+  ---
+  duration_ms: 1.2178
+  type: 'test'
+  ...
+# Subtest: workflow replacement helper builds stable backup paths
+ok 517 - workflow replacement helper builds stable backup paths
+  ---
+  duration_ms: 4.0046
+  type: 'test'
+  ...
+# Subtest: workflow replacement helper sanitizes fallback workflow names
+ok 518 - workflow replacement helper sanitizes fallback workflow names
+  ---
+  duration_ms: 0.3614
+  type: 'test'
+  ...
+# Subtest: workflow replacement candidate allows valid replacement markdown
+ok 519 - workflow replacement candidate allows valid replacement markdown
+  ---
+  duration_ms: 15.4974
+  type: 'test'
+  ...
+# Subtest: workflow replacement candidate blocks invalid replacement markdown
+ok 520 - workflow replacement candidate blocks invalid replacement markdown
+  ---
+  duration_ms: 0.3671
+  type: 'test'
+  ...
+# Subtest: pause requests remain writable while another process-equivalent execution lease is active
+ok 521 - pause requests remain writable while another process-equivalent execution lease is active
+  ---
+  duration_ms: 467.1622
+  type: 'test'
+  ...
+# Subtest: a stale run loaded in another process cannot overwrite the winning commit
+ok 522 - a stale run loaded in another process cannot overwrite the winning commit
+  ---
+  duration_ms: 628.5955
+  type: 'test'
+  ...
+# Subtest: run diagnostics expose event, journal and lease evidence without state values
+ok 523 - run diagnostics expose event, journal and lease evidence without state values
+  ---
+  duration_ms: 2.1522
+  type: 'test'
+  ...
+# Subtest: durability path creates, replaces, appends and conditionally removes direct files
+ok 524 - durability path creates, replaces, appends and conditionally removes direct files
+  ---
+  duration_ms: 213.6325
+  type: 'test'
+  ...
+# Subtest: durability path rejects a symlink file target
+ok 525 - durability path rejects a symlink file target
+  ---
+  duration_ms: 18.5408
+  type: 'test'
+  ...
+# Subtest: durability path rejects a run-directory alias outside the workspace
+ok 526 - durability path rejects a run-directory alias outside the workspace
+  ---
+  duration_ms: 13.2921
+  type: 'test'
+  ...
+# Subtest: store commits run state with an immutable event and clears operational files
+ok 527 - store commits run state with an immutable event and clears operational files
+  ---
+  duration_ms: 395.9184
+  type: 'test'
+  ...
+# Subtest: store recovers each injected crash point without duplicate events
+    # Subtest: afterJournal
+    ok 1 - afterJournal
+      ---
+      duration_ms: 470.3274
+      type: 'test'
+      ...
+    # Subtest: afterRun
+    ok 2 - afterRun
+      ---
+      duration_ms: 455.404
+      type: 'test'
+      ...
+    # Subtest: afterEvent
+    ok 3 - afterEvent
+      ---
+      duration_ms: 419.9652
+      type: 'test'
+      ...
+    1..3
+ok 528 - store recovers each injected crash point without duplicate events
+  ---
+  duration_ms: 1347.9289
+  type: 'test'
+  ...
+# Subtest: stale loaded state cannot overwrite a newer committed revision
+ok 529 - stale loaded state cannot overwrite a newer committed revision
+  ---
+  duration_ms: 462.8503
+  type: 'test'
+  ...
+# Subtest: unversioned migration is backup-first, journaled, and emits one migration event
+ok 530 - unversioned migration is backup-first, journaled, and emits one migration event
+  ---
+  duration_ms: 158.695
+  type: 'test'
+  ...
+# Subtest: event builder creates deterministic full-snapshot hash chain entries
+ok 531 - event builder creates deterministic full-snapshot hash chain entries
+  ---
+  duration_ms: 2.7396
+  type: 'test'
+  ...
+# Subtest: event parser validates sequence, hashes, ids, snapshots and final newline
+    # Subtest: truncated final line
+    ok 1 - truncated final line
+      ---
+      duration_ms: 0.6703
+      type: 'test'
+      ...
+    # Subtest: blank line
+    ok 2 - blank line
+      ---
+      duration_ms: 0.2696
+      type: 'test'
+      ...
+    # Subtest: sequence
+    ok 3 - sequence
+      ---
+      duration_ms: 0.1566
+      type: 'test'
+      ...
+    # Subtest: duplicate id
+    ok 4 - duplicate id
+      ---
+      duration_ms: 0.5686
+      type: 'test'
+      ...
+    # Subtest: run id
+    ok 5 - run id
+      ---
+      duration_ms: 0.1809
+      type: 'test'
+      ...
+    # Subtest: snapshot
+    ok 6 - snapshot
+      ---
+      duration_ms: 0.2995
+      type: 'test'
+      ...
+    # Subtest: future schema
+    ok 7 - future schema
+      ---
+      duration_ms: 0.3082
+      type: 'test'
+      ...
+    1..7
+ok 532 - event parser validates sequence, hashes, ids, snapshots and final newline
+  ---
+  duration_ms: 6.9279
+  type: 'test'
+  ...
+# Subtest: event append is idempotent by event hash and preserves a valid chain
+ok 533 - event append is idempotent by event hash and preserves a valid chain
+  ---
+  duration_ms: 74.108
+  type: 'test'
+  ...
+# Subtest: run execution coordination is same-run single-flight and remains isolated by run and workspace
+ok 534 - run execution coordination is same-run single-flight and remains isolated by run and workspace
+  ---
+  duration_ms: 26.3956
+  type: 'test'
+  ...
+# Subtest: run execution coordination treats a workspace alias as the same physical root
+ok 535 - run execution coordination treats a workspace alias as the same physical root
+  ---
+  duration_ms: 6.9864
+  type: 'test'
+  ...
+# Subtest: run execution coordination rejects same-run reentrancy instead of self-waiting
+ok 536 - run execution coordination rejects same-run reentrancy instead of self-waiting
+  ---
+  duration_ms: 6.7684
+  type: 'test'
+  ...
+# Subtest: run execution coordination rejects an indirect run cycle instead of self-waiting
+ok 537 - run execution coordination rejects an indirect run cycle instead of self-waiting
+  ---
+  duration_ms: 2.0495
+  type: 'test'
+  ...
+# Subtest: journal parser validates run and event hash agreement
+    # Subtest: schema
+    ok 1 - schema
+      ---
+      duration_ms: 2.2822
+      type: 'test'
+      ...
+    # Subtest: run id
+    ok 2 - run id
+      ---
+      duration_ms: 0.2644
+      type: 'test'
+      ...
+    # Subtest: next run id
+    ok 3 - next run id
+      ---
+      duration_ms: 0.2076
+      type: 'test'
+      ...
+    # Subtest: next run hash
+    ok 4 - next run hash
+      ---
+      duration_ms: 0.4227
+      type: 'test'
+      ...
+    # Subtest: event run hash
+    ok 5 - event run hash
+      ---
+      duration_ms: 0.3879
+      type: 'test'
+      ...
+    # Subtest: event head
+    ok 6 - event head
+      ---
+      duration_ms: 0.249
+      type: 'test'
+      ...
+    1..6
+ok 538 - journal parser validates run and event hash agreement
+  ---
+  duration_ms: 15.3087
+  type: 'test'
+  ...
+# Subtest: journal recovery completes every crash point exactly once
+    # Subtest: journal-only
+    ok 1 - journal-only
+      ---
+      duration_ms: 131.8828
+      type: 'test'
+      ...
+    # Subtest: run-written
+    ok 2 - run-written
+      ---
+      duration_ms: 94.5645
+      type: 'test'
+      ...
+    # Subtest: event-written
+    ok 3 - event-written
+      ---
+      duration_ms: 87.0689
+      type: 'test'
+      ...
+    1..3
+ok 539 - journal recovery completes every crash point exactly once
+  ---
+  duration_ms: 314.9942
+  type: 'test'
+  ...
+# Subtest: journal recovery preserves evidence on materialized and event-head conflicts
+ok 540 - journal recovery preserves evidence on materialized and event-head conflicts
+  ---
+  duration_ms: 73.6067
+  type: 'test'
+  ...
+# Subtest: lock parser validates the persisted owner contract
+    # Subtest: schema
+    ok 1 - schema
+      ---
+      duration_ms: 2.2854
+      type: 'test'
+      ...
+    # Subtest: run id
+    ok 2 - run id
+      ---
+      duration_ms: 0.2844
+      type: 'test'
+      ...
+    # Subtest: token
+    ok 3 - token
+      ---
+      duration_ms: 0.2474
+      type: 'test'
+      ...
+    # Subtest: pid
+    ok 4 - pid
+      ---
+      duration_ms: 0.2659
+      type: 'test'
+      ...
+    # Subtest: heartbeat
+    ok 5 - heartbeat
+      ---
+      duration_ms: 0.23
+      type: 'test'
+      ...
+    1..5
+ok 541 - lock parser validates the persisted owner contract
+  ---
+  duration_ms: 12.9237
+  type: 'test'
+  ...
+# Subtest: same-run callers serialize while different runs and roots remain independent
+not ok 542 - same-run callers serialize while different runs and roots remain independent
+  ---
+  duration_ms: 149.6686
+  type: 'test'
+  location: 'D:\\a\\bob_builtin_analyze\\bob_builtin_analyze\\extensions\\workflow-register\\test\\workflowRunLock.test.js:61:1'
+  failureType: 'testCodeFailure'
+  error: "ENOENT: no such file or directory, realpath 'C:\\Users\\runneradmin\\AppData\\Local\\Temp\\workflow-lock-FM3zpA\\.bob\\workflows\\runs\\run-1\\run.lock.json'"
+  code: 'ENOENT'
+  stack: |-
+    async Object.realpath (node:internal/fs/promises:1179:10)
+    async directRegularFile (D:\a\bob_builtin_analyze\bob_builtin_analyze\extensions\workflow-register\out\core\runtime\runDurabilityPath.js:271:22)
+    async readRunDurabilityFile (D:\a\bob_builtin_analyze\bob_builtin_analyze\extensions\workflow-register\out\core\runtime\runDurabilityPath.js:74:25)
+    async acquireWorkflowRunLock (D:\a\bob_builtin_analyze\bob_builtin_analyze\extensions\workflow-register\out\core\runtime\runLock.js:131:26)
+    async withWorkflowRunLock (D:\a\bob_builtin_analyze\bob_builtin_analyze\extensions\workflow-register\out\core\runtime\runLock.js:55:19)
+    async Promise.all (index 1)
+    async TestContext.<anonymous> (D:\a\bob_builtin_analyze\bob_builtin_analyze\extensions\workflow-register\test\workflowRunLock.test.js:83:3)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: same async chain re-enters one lock without deadlock
+ok 543 - same async chain re-enters one lock without deadlock
+  ---
+  duration_ms: 45.2341
+  type: 'test'
+  ...
+# Subtest: a child process prevents a second process from acquiring an active lease
+ok 544 - a child process prevents a second process from acquiring an active lease
+  ---
+  duration_ms: 266.6156
+  type: 'test'
+  ...
+# Subtest: stale ownership is reclaimed only under the documented rules
+    # Subtest: dead same-host pid
+    ok 1 - dead same-host pid
+      ---
+      duration_ms: 110.3493
+      type: 'test'
+      ...
+    # Subtest: live same-host pid
+    ok 2 - live same-host pid
+      ---
+      duration_ms: 77.8393
+      type: 'test'
+      ...
+    # Subtest: stale foreign host
+    ok 3 - stale foreign host
+      ---
+      duration_ms: 91.8344
+      type: 'test'
+      ...
+    1..3
+ok 545 - stale ownership is reclaimed only under the documented rules
+  ---
+  duration_ms: 281.6986
+  type: 'test'
+  ...
+# Subtest: malformed recent locks are preserved while malformed stale locks are reclaimable
+    # Subtest: recent
+    ok 1 - recent
+      ---
+      duration_ms: 95.237
+      type: 'test'
+      ...
+    # Subtest: stale
+    ok 2 - stale
+      ---
+      duration_ms: 109.6632
+      type: 'test'
+      ...
+    1..2
+ok 546 - malformed recent locks are preserved while malformed stale locks are reclaimable
+  ---
+  duration_ms: 205.583
+  type: 'test'
+  ...
+# Subtest: release never deletes a replacement owner token
+ok 547 - release never deletes a replacement owner token
+  ---
+  duration_ms: 67.3481
+  type: 'test'
+  ...
+# Subtest: file run state store allocates unique run ids before runs are saved
+ok 548 - file run state store allocates unique run ids before runs are saved
+  ---
+  duration_ms: 98.6549
+  type: 'test'
+  ...
+# Subtest: file run state store retries transient rename failures while saving run state
+not ok 549 - file run state store retries transient rename failures while saving run state
+  ---
+  duration_ms: 454.8113
+  type: 'test'
+  location: 'D:\\a\\bob_builtin_analyze\\bob_builtin_analyze\\extensions\\workflow-register\\test\\workflowRunRecovery.test.js:63:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    3 !== 2
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 2
+  actual: 3
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (D:\a\bob_builtin_analyze\bob_builtin_analyze\extensions\workflow-register\test\workflowRunRecovery.test.js:92:10)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: workflow engine resumes a recoverable run with the same serialized inputs and state
+ok 550 - workflow engine resumes a recoverable run with the same serialized inputs and state
+  ---
+  duration_ms: 1202.5112
+  type: 'test'
+  ...
+# Subtest: command presentation hook failure does not replay a successful provider
+ok 551 - command presentation hook failure does not replay a successful provider
+  ---
+  duration_ms: 982.1924
+  type: 'test'
+  ...
+# Subtest: same-run recovery cannot continue past a durable provider phase from two executors
+ok 552 - same-run recovery cannot continue past a durable provider phase from two executors
+  ---
+  duration_ms: 2727.8967
+  type: 'test'
+  ...
+# Subtest: queued runWorkflow captures terminal drift even when the run store aliases state objects
+ok 553 - queued runWorkflow captures terminal drift even when the run store aliases state objects
+  ---
+  duration_ms: 132.3731
+  type: 'test'
+  ...
+# Subtest: queued resumeRun treats a newly failed run as terminal
+ok 554 - queued resumeRun treats a newly failed run as terminal
+  ---
+  duration_ms: 520.8702
+  type: 'test'
+  ...
+# Subtest: queued resumeRun treats a newly completed run as terminal
+ok 555 - queued resumeRun treats a newly completed run as terminal
+  ---
+  duration_ms: 670.4321
+  type: 'test'
+  ...
+# Subtest: completing a held command clears its durable provider phase
+ok 556 - completing a held command clears its durable provider phase
+  ---
+  duration_ms: 862.0501
+  type: 'test'
+  ...
+# Subtest: workflow run recovery does not reuse a cache for different inputs
+ok 557 - workflow run recovery does not reuse a cache for different inputs
+  ---
+  duration_ms: 1237.2644
+  type: 'test'
+  ...
+# Subtest: single-step retry reuses a failed current step with prior workflow state
+ok 558 - single-step retry reuses a failed current step with prior workflow state
+  ---
+  duration_ms: 994.2397
+  type: 'test'
+  ...
+# Subtest: single-step later step without recoverable state fails before running the agent
+ok 559 - single-step later step without recoverable state fails before running the agent
+  ---
+  duration_ms: 396.3464
+  type: 'test'
+  ...
+# Subtest: retrying an agent handoff failure can reuse recovered text without rerunning the agent
+ok 560 - retrying an agent handoff failure can reuse recovered text without rerunning the agent
+  ---
+  duration_ms: 638.4168
+  type: 'test'
+  ...
+# Subtest: retrying a failed agent step reruns the agent instead of recovering stale assistant text
+ok 561 - retrying a failed agent step reruns the agent instead of recovering stale assistant text
+  ---
+  duration_ms: 639.5991
+  type: 'test'
+  ...
+# Subtest: run-state codec migrates an unversioned historical document in memory
+ok 562 - run-state codec migrates an unversioned historical document in memory
+  ---
+  duration_ms: 2.908
+  type: 'test'
+  ...
+# Subtest: run-state codec accepts current v1 without migration
+ok 563 - run-state codec accepts current v1 without migration
+  ---
+  duration_ms: 0.4817
+  type: 'test'
+  ...
+# Subtest: future run-state versions are inspectable and read-only
+ok 564 - future run-state versions are inspectable and read-only
+  ---
+  duration_ms: 0.9305
+  type: 'test'
+  ...
+# Subtest: run-state writable boundary accepts only omitted and current versions
+ok 565 - run-state writable boundary accepts only omitted and current versions
+  ---
+  duration_ms: 2.6348
+  type: 'test'
+  ...
+# Subtest: write preparation normalizes only an omitted version
+ok 566 - write preparation normalizes only an omitted version
+  ---
+  duration_ms: 0.9913
+  type: 'test'
+  ...
+# Subtest: run-state codec rejects malformed schema discriminators
+    # Subtest: foreign schema family
+    ok 1 - foreign schema family
+      ---
+      duration_ms: 0.54
+      type: 'test'
+      ...
+    # Subtest: zero version
+    ok 2 - zero version
+      ---
+      duration_ms: 0.4044
+      type: 'test'
+      ...
+    # Subtest: number
+    ok 3 - number
+      ---
+      duration_ms: 0.4097
+      type: 'test'
+      ...
+    # Subtest: null
+    ok 4 - null
+      ---
+      duration_ms: 0.5055
+      type: 'test'
+      ...
+    # Subtest: object
+    ok 5 - object
+      ---
+      duration_ms: 0.4408
+      type: 'test'
+      ...
+    1..5
+ok 567 - run-state codec rejects malformed schema discriminators
+  ---
+  duration_ms: 4.6064
+  type: 'test'
+  ...
+# Subtest: run-state codec validates the stable inspectable core
+    # Subtest: non-object document
+    ok 1 - non-object document
+      ---
+      duration_ms: 0.4091
+      type: 'test'
+      ...
+    # Subtest: missing workflow id
+    ok 2 - missing workflow id
+      ---
+      duration_ms: 0.3043
+      type: 'test'
+      ...
+    # Subtest: invalid run status
+    ok 3 - invalid run status
+      ---
+      duration_ms: 0.1349
+      type: 'test'
+      ...
+    # Subtest: invalid inputs
+    ok 4 - invalid inputs
+      ---
+      duration_ms: 0.1967
+      type: 'test'
+      ...
+    # Subtest: invalid state value
+    ok 5 - invalid state value
+      ---
+      duration_ms: 0.1379
+      type: 'test'
+      ...
+    # Subtest: invalid steps
+    ok 6 - invalid steps
+      ---
+      duration_ms: 0.1918
+      type: 'test'
+      ...
+    # Subtest: invalid step type
+    ok 7 - invalid step type
+      ---
+      duration_ms: 0.2227
+      type: 'test'
+      ...
+    # Subtest: invalid step status
+    ok 8 - invalid step status
+      ---
+      duration_ms: 0.1257
+      type: 'test'
+      ...
+    1..8
+ok 568 - run-state codec validates the stable inspectable core
+  ---
+  duration_ms: 3.4809
+  type: 'test'
+  ...
+# Subtest: run-state codec rejects a run id that disagrees with its directory
+ok 569 - run-state codec rejects a run id that disagrees with its directory
+  ---
+  duration_ms: 1.5986
+  type: 'test'
+  ...
+# Subtest: concurrent store instances share one in-process migration
+ok 570 - concurrent store instances share one in-process migration
+  ---
+  duration_ms: 248.1916
+  type: 'test'
+  ...
+# Subtest: run diagnostics show current and future run-state access modes
+ok 571 - run diagnostics show current and future run-state access modes
+  ---
+  duration_ms: 2.5231
+  type: 'test'
+  ...
+# Subtest: run diagnostics include isolated run document diagnostics
+ok 572 - run diagnostics include isolated run document diagnostics
+  ---
+  duration_ms: 0.7386
+  type: 'test'
+  ...
+# Subtest: new and saved workflow runs persist the current run-state schema
+ok 573 - new and saved workflow runs persist the current run-state schema
+  ---
+  duration_ms: 287.5485
+  type: 'test'
+  ...
+# Subtest: loading an unversioned run backs up exact bytes and migrates without changing updatedAt
+ok 574 - loading an unversioned run backs up exact bytes and migrates without changing updatedAt
+  ---
+  duration_ms: 195.8983
+  type: 'test'
+  ...
+# Subtest: a matching backup resumes migration while a conflicting backup blocks replacement
+ok 575 - a matching backup resumes migration while a conflicting backup blocks replacement
+  ---
+  duration_ms: 281.2983
+  type: 'test'
+  ...
+# Subtest: future run-state versions load read-only and are excluded from recovery
+ok 576 - future run-state versions load read-only and are excluded from recovery
+  ---
+  duration_ms: 73.6716
+  type: 'test'
+  ...
+# Subtest: workflow engine rejects a future run before clearing pause state
+ok 577 - workflow engine rejects a future run before clearing pause state
+  ---
+  duration_ms: 121.4454
+  type: 'test'
+  ...
+# Subtest: listRuns isolates malformed and missing run documents with stable diagnostics
+ok 578 - listRuns isolates malformed and missing run documents with stable diagnostics
+  ---
+  duration_ms: 87.4961
+  type: 'test'
+  ...
+# Subtest: migration I/O ENOENT is reported instead of being mistaken for a missing run
+ok 579 - migration I/O ENOENT is reported instead of being mistaken for a missing run
+  ---
+  duration_ms: 79.7868
+  type: 'test'
+  ...
+# Subtest: migration backup preserves exact historical run bytes and is idempotent
+not ok 580 - migration backup preserves exact historical run bytes and is idempotent
+  ---
+  duration_ms: 47.6032
+  type: 'test'
+  location: 'D:\\a\\bob_builtin_analyze\\bob_builtin_analyze\\extensions\\workflow-register\\test\\workflowRunStateMigrationPath.test.js:29:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    + actual - expected
+    
+    + 'C:\\Users\\runneradmin\\AppData\\Local\\Temp\\workflow-run-migration-path-cT5K09\\.bob\\workflows\\runs\\20260712T000000Z-history-000000000001\\run-state-v0.backup.json'
+    - 'C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\workflow-run-migration-path-cT5K09\\.bob\\workflows\\runs\\20260712T000000Z-history-000000000001\\run-state-v0.backup.json'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\workflow-run-migration-path-cT5K09\\.bob\\workflows\\runs\\20260712T000000Z-history-000000000001\\run-state-v0.backup.json'
+  actual: 'C:\\Users\\runneradmin\\AppData\\Local\\Temp\\workflow-run-migration-path-cT5K09\\.bob\\workflows\\runs\\20260712T000000Z-history-000000000001\\run-state-v0.backup.json'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (D:\a\bob_builtin_analyze\bob_builtin_analyze\extensions\workflow-register\test\workflowRunStateMigrationPath.test.js:41:10)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:296:3)
+  ...
+# Subtest: migration backup refuses to overwrite conflicting historical bytes
+ok 581 - migration backup refuses to overwrite conflicting historical bytes
+  ---
+  duration_ms: 33.0358
+  type: 'test'
+  ...
+# Subtest: migration backup rejects a symlink target instead of following it
+ok 582 - migration backup rejects a symlink target instead of following it
+  ---
+  duration_ms: 16.4677
+  type: 'test'
+  ...
+# Subtest: migration backup removes its owned temp file when temp identity verification fails
+not ok 583 - migration backup removes its owned temp file when temp identity verification fails
+  ---
+  duration_ms: 26.076
+  type: 'test'
+  location: 'D:\\a\\bob_builtin_analyze\\bob_builtin_analyze\\extensions\\workflow-register\\test\\workflowRunStateMigrationPath.test.js:91:1'
+  failureType: 'testCodeFailure'
+  error: 'Missing expected rejection.'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  operator: 'rejects'
+  stack: |-
+    async TestContext.<anonymous> (D:\a\bob_builtin_analyze\bob_builtin_analyze\extensions\workflow-register\test\workflowRunStateMigrationPath.test.js:115:5)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: startFromStepWithArtifacts rejects a future run-state source before creating a target run
+ok 584 - startFromStepWithArtifacts rejects a future run-state source before creating a target run
+  ---
+  duration_ms: 103.9364
+  type: 'test'
+  ...
+# Subtest: Operation Hub exposes only non-mutating run detail for a future run-state version
+ok 585 - Operation Hub exposes only non-mutating run detail for a future run-state version
+  ---
+  duration_ms: 33.8913
+  type: 'test'
+  ...
+# Subtest: runNextStep rejects an explicit future run even when a matching current run exists
+ok 586 - runNextStep rejects an explicit future run even when a matching current run exists
+  ---
+  duration_ms: 167.3777
+  type: 'test'
+  ...
+# Subtest: pause command rejects a future run before writing control.json
+ok 587 - pause command rejects a future run before writing control.json
+  ---
+  duration_ms: 42.3776
+  type: 'test'
+  ...
+# Subtest: pause command still writes control state for a current v1 run
+ok 588 - pause command still writes control state for a current v1 run
+  ---
+  duration_ms: 123.3677
+  type: 'test'
+  ...
+# Subtest: Runs View presents future run-state versions as read-only without mutation context
+ok 589 - Runs View presents future run-state versions as read-only without mutation context
+  ---
+  duration_ms: 32.7265
+  type: 'test'
+  ...
+# Subtest: single-step recovery returns a current run even when newer future evidence also matches
+ok 590 - single-step recovery returns a current run even when newer future evidence also matches
+  ---
+  duration_ms: 62.7699
+  type: 'test'
+  ...
+# Subtest: single-step recovery preserves an explicitly loaded future run target
+ok 591 - single-step recovery preserves an explicitly loaded future run target
+  ---
+  duration_ms: 38.7532
+  type: 'test'
+  ...
+# Subtest: workflow engine renders input placeholders into agent prompts
+ok 592 - workflow engine renders input placeholders into agent prompts
+  ---
+  duration_ms: 1038.4627
+  type: 'test'
+  ...
+# Subtest: workflow engine fails before execution when required files are missing
+ok 593 - workflow engine fails before execution when required files are missing
+  ---
+  duration_ms: 456.5205
+  type: 'test'
+  ...
+# Subtest: workflow engine writes agent output through a file result sink
+ok 594 - workflow engine writes agent output through a file result sink
+  ---
+  duration_ms: 1251.4061
+  type: 'test'
+  ...
+# Subtest: workflow run diagnostics include failed step and suggested fix
+ok 595 - workflow run diagnostics include failed step and suggested fix
+  ---
+  duration_ms: 1.2708
+  type: 'test'
+  ...
+# Subtest: workflow run diagnostics include task snapshot evidence and mismatch warnings
+ok 596 - workflow run diagnostics include task snapshot evidence and mismatch warnings
+  ---
+  duration_ms: 0.348
+  type: 'test'
+  ...
+# Subtest: workflow run diagnostics include branch loops, checkpoint, and history
+ok 597 - workflow run diagnostics include branch loops, checkpoint, and history
+  ---
+  duration_ms: 0.3216
+  type: 'test'
+  ...
+# Subtest: review-gated step execution sample workflow validates
+ok 598 - review-gated step execution sample workflow validates
+  ---
+  duration_ms: 16.7512
+  type: 'test'
+  ...
+# Subtest: step-back branching approval sample workflow validates
+ok 599 - step-back branching approval sample workflow validates
+  ---
+  duration_ms: 3.0426
+  type: 'test'
+  ...
+# Subtest: mechanical checks precheck sample workflow and profile validate
+ok 600 - mechanical checks precheck sample workflow and profile validate
+  ---
+  duration_ms: 6.3039
+  type: 'test'
+  ...
+# Subtest: mechanical checks parser pilot sample workflow, profile, and fixtures run
+ok 601 - mechanical checks parser pilot sample workflow, profile, and fixtures run
+  ---
+  duration_ms: 393.8488
+  type: 'test'
+  ...
+# Subtest: omitted and explicit legacy schema versions remain compatible
+    # Subtest: omitted
+    ok 1 - omitted
+      ---
+      duration_ms: 9.7579
+      type: 'test'
+      ...
+    # Subtest: explicit legacy
+    ok 2 - explicit legacy
+      ---
+      duration_ms: 1.201
+      type: 'test'
+      ...
+    1..2
+ok 602 - omitted and explicit legacy schema versions remain compatible
+  ---
+  duration_ms: 203.8325
+  type: 'test'
+  ...
+# Subtest: unsupported schema version strings fail closed instead of using the legacy parser
+    # Subtest: future version
+    ok 1 - future version
+      ---
+      duration_ms: 2.0013
+      type: 'test'
+      ...
+    # Subtest: case typo
+    ok 2 - case typo
+      ---
+      duration_ms: 0.345
+      type: 'test'
+      ...
+    # Subtest: escaped control text
+    ok 3 - escaped control text
+      ---
+      duration_ms: 0.5208
+      type: 'test'
+      ...
+    1..3
+ok 603 - unsupported schema version strings fail closed instead of using the legacy parser
+  ---
+  duration_ms: 3.972
+  type: 'test'
+  ...
+# Subtest: non-string schema version values fail closed
+    # Subtest: number
+    ok 1 - number
+      ---
+      duration_ms: 0.6873
+      type: 'test'
+      ...
+    # Subtest: boolean
+    ok 2 - boolean
+      ---
+      duration_ms: 0.5901
+      type: 'test'
+      ...
+    # Subtest: null
+    ok 3 - null
+      ---
+      duration_ms: 0.5527
+      type: 'test'
+      ...
+    # Subtest: sequence
+    ok 4 - sequence
+      ---
+      duration_ms: 0.6816
+      type: 'test'
+      ...
+    # Subtest: mapping
+    ok 5 - mapping
+      ---
+      duration_ms: 0.4571
+      type: 'test'
+      ...
+    1..5
+ok 604 - non-string schema version values fail closed
+  ---
+  duration_ms: 4.3483
+  type: 'test'
+  ...
+# Subtest: unsupported schema versions fail identically before loading or registration
+ok 605 - unsupported schema versions fail identically before loading or registration
+  ---
+  duration_ms: 49.3214
+  type: 'test'
+  ...
+# Subtest: schema version resolver routes only omitted, legacy, and v1 values
+ok 606 - schema version resolver routes only omitted, legacy, and v1 values
+  ---
+  duration_ms: 1.5553
+  type: 'test'
+  ...
+# Subtest: schema version resolver does not normalize unsupported strings
+ok 607 - schema version resolver does not normalize unsupported strings
+  ---
+  duration_ms: 0.6617
+  type: 'test'
+  ...
+# Subtest: schema version resolver rejects every non-string explicit value
+ok 608 - schema version resolver rejects every non-string explicit value
+  ---
+  duration_ms: 0.3925
+  type: 'test'
+  ...
+# Subtest: task snapshot import writes artifacts and creates a manifest
+ok 609 - task snapshot import writes artifacts and creates a manifest
+  ---
+  duration_ms: 18.2038
+  type: 'test'
+  ...
+# Subtest: task snapshot import falls back to taskExport text and does not overwrite state by default
+ok 610 - task snapshot import falls back to taskExport text and does not overwrite state by default
+  ---
+  duration_ms: 1.4346
+  type: 'test'
+  ...
+# Subtest: task snapshot import does not commit state when the manifest write fails
+ok 611 - task snapshot import does not commit state when the manifest write fails
+  ---
+  duration_ms: 1.7394
+  type: 'test'
+  ...
+# Subtest: task snapshot import restores an existing artifact and manifest when batch commit fails
+not ok 612 - task snapshot import restores an existing artifact and manifest when batch commit fails
+  ---
+  duration_ms: 73.846
+  type: 'test'
+  location: 'D:\\a\\bob_builtin_analyze\\bob_builtin_analyze\\extensions\\workflow-register\\test\\workflowTaskSnapshotArtifactImport.test.js:169:1'
+  failureType: 'testCodeFailure'
+  error: 'Missing expected rejection.'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  operator: 'rejects'
+  stack: |-
+    async TestContext.<anonymous> (D:\a\bob_builtin_analyze\bob_builtin_analyze\extensions\workflow-register\test\workflowTaskSnapshotArtifactImport.test.js:226:5)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: task snapshot import rolls files and in-memory state back when durable run save fails
+ok 613 - task snapshot import rolls files and in-memory state back when durable run save fails
+  ---
+  duration_ms: 54.5376
+  type: 'test'
+  ...
+# Subtest: task snapshot import durably restores prior state when run save reports failure after replacement
+ok 614 - task snapshot import durably restores prior state when run save reports failure after replacement
+  ---
+  duration_ms: 526.279
+  type: 'test'
+  ...
+# Subtest: v1 workflow parser accepts manual step userAction metadata
+ok 615 - v1 workflow parser accepts manual step userAction metadata
+  ---
+  duration_ms: 14.8893
+  type: 'test'
+  ...
+# Subtest: v1 workflow schema still rejects unknown userAction properties
+ok 616 - v1 workflow schema still rejects unknown userAction properties
+  ---
+  duration_ms: 1.1565
+  type: 'test'
+  ...
+# Subtest: v1 workflow parser keeps workflows without userAction backward compatible
+ok 617 - v1 workflow parser keeps workflows without userAction backward compatible
+  ---
+  duration_ms: 0.7486
+  type: 'test'
+  ...
+# Subtest: workspace file transaction restores old artifact and manifest bytes when manifest commit fails
+not ok 618 - workspace file transaction restores old artifact and manifest bytes when manifest commit fails
+  ---
+  duration_ms: 56.3733
+  type: 'test'
+  location: 'D:\\a\\bob_builtin_analyze\\bob_builtin_analyze\\extensions\\workflow-register\\test\\workspaceFileTransaction.test.js:14:1'
+  failureType: 'testCodeFailure'
+  error: 'Missing expected rejection.'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  operator: 'rejects'
+  stack: |-
+    async TestContext.<anonymous> (D:\a\bob_builtin_analyze\bob_builtin_analyze\extensions\workflow-register\test\workspaceFileTransaction.test.js:36:5)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:296:3)
+  ...
+# Subtest: workspace file transaction removes a partially staged temporary file
+ok 619 - workspace file transaction removes a partially staged temporary file
+  ---
+  duration_ms: 13.1498
+  type: 'test'
+  ...
+# Subtest: workspace file transaction rejects a junction that escapes the physical workspace root
+ok 620 - workspace file transaction rejects a junction that escapes the physical workspace root
+  ---
+  duration_ms: 8.3673
+  type: 'test'
+  ...
+# Subtest: workspace file transaction rejects duplicate physical targets through a junction alias
+ok 621 - workspace file transaction rejects duplicate physical targets through a junction alias
+  ---
+  duration_ms: 15.3262
+  type: 'test'
+  ...
+# Subtest: workspace file transaction rejects a parent swapped to an outside junction before staging
+ok 622 - workspace file transaction rejects a parent swapped to an outside junction before staging
+  ---
+  duration_ms: 15.5054
+  type: 'test'
+  ...
+# Subtest: workspace file transaction serializes one physical root so a failed rollback cannot overwrite a later commit
+ok 623 - workspace file transaction serializes one physical root so a failed rollback cannot overwrite a later commit
+  ---
+  duration_ms: 284.8968
+  type: 'test'
+  ...
+# Subtest: workflow root resolver prefers direct .bob folders over immediate child candidates
+ok 624 - workflow root resolver prefers direct .bob folders over immediate child candidates
+  ---
+  duration_ms: 10.0779
+  type: 'test'
+  ...
+# Subtest: workflow root resolver finds immediate child .bob folders when no direct marker exists
+ok 625 - workflow root resolver finds immediate child .bob folders when no direct marker exists
+  ---
+  duration_ms: 4.0747
+  type: 'test'
+  ...
+# Subtest: workflow root resolver exposes top folder fallbacks when no .bob marker exists
+ok 626 - workflow root resolver exposes top folder fallbacks when no .bob marker exists
+  ---
+  duration_ms: 18.9805
+  type: 'test'
+  ...
+# Subtest: workflow root picker prompts when multiple .bob candidates exist
+ok 627 - workflow root picker prompts when multiple .bob candidates exist
+  ---
+  duration_ms: 5.1859
+  type: 'test'
+  ...
+# Subtest: workflowRootFromFile resolves the owning .bob root for a workflow file
+ok 628 - workflowRootFromFile resolves the owning .bob root for a workflow file
+  ---
+  duration_ms: 4.815
+  type: 'test'
+  ...
+1..628
+# tests 767
+# suites 0
+# pass 745
+# fail 22
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 101155.32

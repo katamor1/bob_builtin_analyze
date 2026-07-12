@@ -1,0 +1,64 @@
+TAP version 13
+# Subtest: repository index producer emits deterministic stable symbols and repository relationships
+ok 1 - repository index producer emits deterministic stable symbols and repository relationships
+  ---
+  duration_ms: 2414.4531
+  type: 'test'
+  ...
+# Subtest: repository index cache rebuilds changed files, drops deleted files, and re-resolves cached references
+ok 2 - repository index cache rebuilds changed files, drops deleted files, and re-resolves cached references
+  ---
+  duration_ms: 9387.8655
+  type: 'test'
+  ...
+# Subtest: repository index cache invalidates all fragments when producer options change
+ok 3 - repository index cache invalidates all fragments when producer options change
+  ---
+  duration_ms: 1609.1212
+  type: 'test'
+  ...
+# Subtest: repository index producer ignores corrupt cache and rebuilds from immutable git blobs
+ok 4 - repository index producer ignores corrupt cache and rebuilds from immutable git blobs
+  ---
+  duration_ms: 1027.7158
+  type: 'test'
+  ...
+# Subtest: repository index producer rejects stale or dirty revisions and unsafe output paths
+ok 5 - repository index producer rejects stale or dirty revisions and unsafe output paths
+  ---
+  duration_ms: 1013.6635
+  type: 'test'
+  ...
+# Subtest: repository index producer enforces file-count, per-file, and aggregate byte limits
+ok 6 - repository index producer enforces file-count, per-file, and aggregate byte limits
+  ---
+  duration_ms: 970.5228
+  type: 'test'
+  ...
+# Subtest: preprocess build mode produces and immediately consumes a cached repository index
+ok 7 - preprocess build mode produces and immediately consumes a cached repository index
+  ---
+  duration_ms: 2423.244
+  type: 'test'
+  ...
+# Subtest: repository index producer supports a nested git root while keeping generated files workspace-local
+ok 8 - repository index producer supports a nested git root while keeping generated files workspace-local
+  ---
+  duration_ms: 606.2355
+  type: 'test'
+  ...
+# Subtest: repository index producer is part of the explicit evidence-scope public surface
+ok 9 - repository index producer is part of the explicit evidence-scope public surface
+  ---
+  duration_ms: 1.7833
+  type: 'test'
+  ...
+1..9
+# tests 9
+# suites 0
+# pass 9
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 19749.1139

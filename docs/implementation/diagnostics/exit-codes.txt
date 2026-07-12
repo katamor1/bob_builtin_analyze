@@ -1,0 +1,4 @@
+phase5_compile=0
+phase5_focused=0
+phase5_full=1
+workflow_register=1
