@@ -50,7 +50,7 @@ jobs:
           const fs = require("node:fs")
           const path = require("node:path")
           const filePath = path.join(process.cwd(), "test", "traceabilityCatalogStore.test.js")
-          let text = fs.readFileSync(filePath, "utf8")
+          let text = fs.readFileSync(filePath, "utf8").replace(/\r\n/g, "\n")
           if (!text.includes('const fsSync = require("node:fs")')) {
             text = text.replace(
               'const assert = require("node:assert/strict")\n',
