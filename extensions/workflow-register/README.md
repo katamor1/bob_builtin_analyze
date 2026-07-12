@@ -98,6 +98,7 @@ steps:
 | `guardrails` | 許可コマンド、禁止コマンド、承認メッセージ。 |
 | `stepExecution` | Bob UI で full / Todo / engine `steps[]` のどれを visible step として表示するか、singleStep の順序制約を制御する。 |
 | `stepReview` | 各 step 後のレビュー停止、承認、再試行、attempt 保存を制御する。 |
+| `runControl` | 経過時間、agent 呼び出し数、ローカル時刻による安全な自動 Pause 制限を定義する。 |
 | `branching` | step 成功後の条件分岐と、過去 step へ戻る loop / checkpoint 上限を定義する。 |
 | `artifacts` | 生成成果物の宣言。 |
 | `completion` | 完了時の要約、成果物表示、結果検証。 |
@@ -486,3 +487,25 @@ npm run package:policy
 - Workflow providers are owner-scoped, reject duplicate IDs, and are disposed with the extension lifecycle.
 - Git and Bazaar subprocesses have bounded output, hard timeouts, cancellation, and process-tree termination.
 - Release validation runs on both Ubuntu and Windows, while IBM Bob UI/MCP checks remain a release-candidate real-machine gate.
+
+## 決定的な自動 Pause 制限
+
+長時間または無人の workflow は、実行中の agent / command を強制終了せず、次の安全な checkpoint で自動的に `paused` にできます。
+
+```yaml
+runControl:
+  limits:
+    maxRunMinutes: 45
+    maxAgentStepsPerRun: 6
+    pauseAtLocalTime: "18:00"
+    timezone: "Asia/Tokyo"
+```
+
+- `maxRunMinutes` は run の `createdAt` からの経過時間で判定します。
+- `maxAgentStepsPerRun` は archived attempt と開始済み agent attempt を数え、次の agent 呼び出し前で停止します。
+- `pauseAtLocalTime` は `timezone` の IANA timezone で判定し、日付をまたいでも到達済み cutoff を解除しません。
+- workflow と workspace の policy は独立して評価し、決定的な順序で最初に到達した制限を停止理由にします。
+- 手動 Pause は常に優先されます。自動 Pause から再開するときだけ、15 / 30 / 60 分の期限付き override を選択でき、理由と操作者を `control.json` に記録します。
+- `Bob Workflow: 中断・再開状態を確認` と Run Diagnostics で、kind、source、checkpoint、limit、observed value、override を確認できます。
+
+Workspace setting では `workflowRegister.runControl.maxRunMinutes`、`maxAgentStepsPerRun`、`pauseAtLocalTime`、`timezone` を使用します。数値 `0` と空の時刻は無効を表します。

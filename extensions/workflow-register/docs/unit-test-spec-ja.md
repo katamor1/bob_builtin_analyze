@@ -253,3 +253,12 @@
 | EXT-UT-REM-004 | Windows path | drive、UNC、device、drive-relative、dot、traversal、control-character path を拒否する。 |
 | EXT-UT-REM-005 | processing limits | manifest/runtime の範囲が一致し、極端値を clamp し、UTF-8 byte 上限を守る。 |
 | EXT-UT-REM-006 | workflow contracts | 全 workflow を動的探索し、未知 provider / command、strict warning、mirror drift を検出する。 |
+
+## 自動 Pause 制限テスト
+
+- schema / parser: 正常値、未知フィールド、0以下、小数 agent 上限、`HH:mm`、IANA timezone を検証する。
+- evaluator: 境界直前・境界一致・境界超過、attempt 集計、policy tie-break、override 有効期限、timezone と日付跨ぎを固定時計で検証する。
+- engine: preflight / next step / next agent call 前の graceful pause、manual precedence、構造化 state 保存を検証する。
+- runtime wiring: standalone と Bob runner が同じ workspace policy を受け取ることを検証する。
+- diagnostics / command: automatic pause と override の全 provenance、Operation Hub revision check、cancel 経路を検証する。
+- durability: heartbeat による lock file の原子的置換を transient contention として扱い、最終的に busy / locked を返すことを決定的に再現する。

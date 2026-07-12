@@ -299,3 +299,9 @@ activation return value として次の API を公開する。
 - review processing limit は manifest と runtime で同じ最小・既定・最大値を持つ。UTF-8 切り詰め後の suffix を含めても byte 上限を超えないこと。
 - repository 内の全 WORKFLOW.md を strict validation し、provider、preflight、nested command ID、template mirror の契約ずれを CI で拒否する。
 - Ubuntu と Windows の両方で compile、unit test、VSIX package、package policy を確認する。IBM Bob 実環境の UI / task / MCP は release candidate 実機ゲートで確認する。
+
+## 決定的な自動 Pause
+
+`runControl.limits` は、provider 固有の cancel API に依存せず、既存の安全な engine checkpoint で run を `paused` にする。対象は経過時間、agent 呼び出し数、IANA timezone 上のローカル時刻である。実行中の agent / command / process / Bob subagent は強制停止しない。
+
+workflow policy と workspace policy は同じ純粋 evaluator で独立評価する。手動 Pause request を先に確認し、期限付き override は自動制限だけを抑止する。実行状態は `run.json`、操作者制御と override は `control.json` を正本とする。
