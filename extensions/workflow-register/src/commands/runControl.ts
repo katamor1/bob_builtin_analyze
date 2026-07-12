@@ -9,6 +9,7 @@ import {
   OperationHubRunMutationTarget,
   validateOperationHubRunMutationTarget
 } from "../operationHubMutationTarget"
+import { prepareAutomaticPauseResume } from "./automaticPauseResumeUi"
 
 interface RunControlCommandOptions {
   showMarkdownReport: (title: string, summary: string, lines: string[]) => Promise<void>
@@ -52,6 +53,12 @@ export async function resumePausedRun(_options: RunControlCommandOptions, runArg
     await vscode.window.showWarningMessage(message)
     return message
   }
+  const prepared = await prepareAutomaticPauseResume({
+    workspaceRoot: selection.root,
+    run,
+    expectedRevision: isOperationHubRunMutationTarget(runArg) ? runArg.expectedRevision : undefined
+  })
+  if (!prepared) return "Automatic pause resume cancelled."
   return vscode.commands.executeCommand(
     "workflowRegister.resumeRun",
     isOperationHubRunMutationTarget(runArg)
@@ -83,6 +90,8 @@ export async function inspectRunControl(options: RunControlCommandOptions, runAr
     `- requestedBy: ${control?.requestedBy ?? "none"}`,
     `- mode: ${control?.mode ?? "none"}`,
     `- clearedAt: ${control?.clearedAt ?? "none"}`,
+    `- automaticOverrideExpiresAt: ${control?.automaticPauseOverride?.expiresAt ?? "none"}`,
+    `- automaticOverrideReason: ${control?.automaticPauseOverride?.reason ?? "none"}`,
     `- workflow.pause: ${run?.state["workflow.pause"] ?? "none"}`
   ]
   await options.showMarkdownReport("Workflow Run Control", `${selection.runId}: ${run?.status ?? "unknown"}`, lines)
