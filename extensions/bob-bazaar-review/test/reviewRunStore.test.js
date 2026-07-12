@@ -52,3 +52,12 @@ test("rejects review run identity mismatches", async () => {
   await fs.writeFile(filePath, JSON.stringify({ ...run, reviewId: "other-review" }), "utf8")
   await assert.rejects(() => readReviewRun(workspaceRoot, run.campaignId, run.reviewId), /does not match/)
 })
+
+test("removes its temporary file when replacement fails", async () => {
+  const { workspaceRoot, run } = await makeRun()
+  const filePath = reviewRunJsonPath(workspaceRoot, run.campaignId, run.reviewId)
+  await fs.mkdir(filePath, { recursive: true })
+  await assert.rejects(() => writeReviewRun(run))
+  const files = await fs.readdir(path.dirname(filePath))
+  assert.deepEqual(files, ["review-run.json"])
+})
