@@ -38,6 +38,7 @@ RED commit では既存の dependency、architecture、source、unused、audit�
 - source bytes が読み込み前後で同一
 - source path を POSIX 形式の workspace-relative path として保持
 - SHA-256 が exact source bytes と一致
+- configured `maxBytes` より大きい pack を `maxDocumentBytes` diagnostic で拒否
 - `../outside.yaml` を拒否
 - `schema_version: 2` を拒否
 - schema error に source path を含める
@@ -121,7 +122,7 @@ checksum manifest で byte size と SHA-256 の一致を確認する。
 
 - workspace boundary と realpath/symlink boundary を既存 path helper で強制
 - read-only file handle
-- `maxDocumentBytes` の read 前後検査
+- `maxDocumentBytes` の read 前後検査と oversize regression test
 - exact raw bytes の SHA-256
 - raw rule-pack body 非出力
 - no credential storage
@@ -129,4 +130,4 @@ checksum manifest で byte size と SHA-256 の一致を確認する。
 
 ## Temporary artifacts
 
-一時 manifest/diagnostic workflow と raw diagnostic log は final branch から削除する。永続成果物は implementation record、verification record、domain contract、plan、schema、source、tests、checksum manifest のみとする。
+一時 manifest/diagnostic workflow と raw diagnostic log は final branch から削除した。永続成果物は implementation record、verification record、domain contract、plan、schema、source、tests、checksum manifest のみである。
