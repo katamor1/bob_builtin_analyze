@@ -56,10 +56,13 @@ export function coordinateWorkflowRunExecution<T>(
   operationKey: string,
   operation: () => Promise<T>
 ): Promise<T> {
-  return coordinator.coordinate(runStoreScope(runStore), runId, operationKey, async () => {
-    const run = await runStore.loadRun(runId)
-    if (run) assertWorkflowRunStateWritable(run)
-    return operation()
+  return coordinator.coordinate(runStoreScope(runStore), runId, operationKey, () => {
+    const execute = async () => {
+      const run = await runStore.loadRun(runId)
+      if (run) assertWorkflowRunStateWritable(run)
+      return operation()
+    }
+    return runStore.withRunLock ? runStore.withRunLock(runId, execute) : execute()
   })
 }
 
