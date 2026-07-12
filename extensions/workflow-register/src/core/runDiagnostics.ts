@@ -1,4 +1,5 @@
 import type { RunStepState, WorkflowRunState } from "./model"
+import type { RunControlState } from "./runControlStore"
 import { CURRENT_WORKFLOW_RUN_STATE_SCHEMA_VERSION } from "./runtime/runStateCodec"
 import type { RunStateLoadDiagnostic } from "./runtime/runStateCodec"
 import type { TaskSnapshotSummary } from "./taskSnapshots"
@@ -20,13 +21,15 @@ export interface WorkflowRunDiagnosticOptions {
   snapshotsByRunId?: Record<string, TaskSnapshotSummary[]>
   runDocumentDiagnostics?: RunStateLoadDiagnostic[]
   durabilityByRunId?: Record<string, WorkflowRunDurabilitySummary>
+  controlsByRunId?: Record<string, RunControlState | undefined>
 }
 
 export function buildWorkflowRunDiagnosticReport(runs: WorkflowRunState[], options: WorkflowRunDiagnosticOptions = {}): WorkflowRunDiagnosticReport {
   const lines = runs.length === 0 ? ["- No workflow runs were found."] : runs.flatMap((run) => [
     ...formatWorkflowRunDiagnostics(run, {
       snapshots: options.snapshotsByRunId?.[run.runId] ?? [],
-      durability: options.durabilityByRunId?.[run.runId]
+      durability: options.durabilityByRunId?.[run.runId],
+      control: options.controlsByRunId?.[run.runId]
     }),
     ""
   ])
@@ -57,7 +60,7 @@ export function buildWorkflowRunDiagnosticReport(runs: WorkflowRunState[], optio
 
 export function formatWorkflowRunDiagnostics(
   run: WorkflowRunState,
-  options: { snapshots?: TaskSnapshotSummary[]; durability?: WorkflowRunDurabilitySummary } = {}
+  options: { snapshots?: TaskSnapshotSummary[]; durability?: WorkflowRunDurabilitySummary; control?: RunControlState } = {}
 ): string[] {
   const schemaVersion = run.schemaVersion ?? "unversioned"
   const lines = [
@@ -89,7 +92,7 @@ export function formatWorkflowRunDiagnostics(
     if (hint) lines.push(`- suggested fix: ${hint}`)
   }
   if (run.state["workflow.definitionMismatch"]) lines.push(`- workflow definition mismatch: ${run.state["workflow.definitionMismatch"]}`)
-  if (run.state["workflow.pause"]) lines.push("", "Pause:", ...formatJsonState(run.state["workflow.pause"]))
+  appendPauseDiagnostics(lines, run.state["workflow.pause"], options.control)
   const problemStep = currentProblemStep(run)
   if (problemStep) {
     lines.push("", "Current attention step:", `- id: ${problemStep.id}`, `- title: ${problemStep.title}`, `- type: ${problemStep.type}`, `- status: ${problemStep.status}`, `- current attempt: ${problemStep.attempt ?? 1}`, `- archived attempts: ${problemStep.attempts?.length ?? 0}`)
@@ -177,6 +180,70 @@ export function workflowRunFailureHint(error: string): string | undefined {
 function currentProblemStep(run: WorkflowRunState): RunStepState | undefined {
   return run.steps.find((step) => step.id === run.currentStep && (step.status === "failed" || step.status === "held" || step.status === "reviewing"))
     ?? run.steps.find((step) => step.status === "failed" || step.status === "held" || step.status === "reviewing")
+}
+
+function appendPauseDiagnostics(
+  lines: string[],
+  value: string | undefined,
+  control: RunControlState | undefined
+): void {
+  if (value) {
+    const parsed = parseJsonRecord(value)
+    if (parsed?.schemaVersion === "workflow-register/automatic-pause/v1") {
+      lines.push(
+        "",
+        "Automatic pause:",
+        `- kind: ${String(parsed.kind ?? "unknown")}`,
+        `- source: ${String(parsed.source ?? "unknown")}`,
+        `- checkpoint: ${String(parsed.checkpoint ?? "unknown")}`,
+        `- next step: ${String(parsed.nextStepId ?? "none")}`,
+        `- detected: ${String(parsed.detectedAt ?? "unknown")}`
+      )
+      appendRecordFields(lines, "limit", parsed.limit)
+      appendRecordFields(lines, "observed", parsed.observed)
+    } else {
+      lines.push("", "Pause:", ...formatJsonState(value))
+    }
+  }
+
+  const override = control?.automaticPauseOverride
+  if (!override) return
+  lines.push(
+    "",
+    "Automatic pause override:",
+    `- schema: ${override.schemaVersion}`,
+    `- requested by: ${override.requestedBy}`,
+    `- created: ${override.createdAt}`,
+    `- expires: ${override.expiresAt}`,
+    `- reason: ${override.reason}`
+  )
+}
+
+function appendRecordFields(lines: string[], prefix: string, value: unknown): void {
+  if (!isRecord(value)) return
+  for (const key of Object.keys(value).sort()) {
+    lines.push(`- ${prefix}.${key}: ${formatDiagnosticValue(value[key])}`)
+  }
+}
+
+function parseJsonRecord(value: string): Record<string, unknown> | undefined {
+  try {
+    const parsed = JSON.parse(value)
+    return isRecord(parsed) ? parsed : undefined
+  } catch {
+    return undefined
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value))
+}
+
+function formatDiagnosticValue(value: unknown): string {
+  if (typeof value === "string") return value
+  if (typeof value === "number" || typeof value === "boolean") return String(value)
+  if (value === null) return "null"
+  return JSON.stringify(value) ?? String(value)
 }
 
 function formatJsonState(value: string): string[] {
