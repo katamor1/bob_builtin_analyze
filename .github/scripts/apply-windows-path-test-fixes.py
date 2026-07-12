@@ -84,9 +84,30 @@ old_function = '''function installTargetTempOpenBarrier(targetPath) {
 '''
 new_function = '''async function installTargetTempOpenBarrier(targetPath) {
   const originalOpen = fs.open
-  const expectedDirectory = normalizePhysicalPath(await fs.realpath(path.dirname(targetPath)))
+  const expectedDirectory = normalizePhysicalPath(await resolvePotentialPhysicalPath(path.dirname(targetPath)))
 '''
 if trace.count(old_function) != 1:
     raise SystemExit(f"{trace_path}: temp-open barrier function anchor mismatch")
-trace_path.write_text(trace.replace(old_function, new_function), encoding="utf-8")
+trace = trace.replace(old_function, new_function)
+physical_helper = '''async function resolvePotentialPhysicalPath(value) {
+  const suffix = []
+  let current = path.resolve(value)
+  while (true) {
+    try {
+      return path.join(await fs.realpath(current), ...suffix)
+    } catch (error) {
+      if (!error || error.code !== "ENOENT") throw error
+      const parent = path.dirname(current)
+      if (parent === current) throw error
+      suffix.unshift(path.basename(current))
+      current = parent
+    }
+  }
+}
+
+'''
+normalize_anchor = "function normalizePhysicalPath(value) {"
+if trace.count(normalize_anchor) != 1:
+    raise SystemExit(f"{trace_path}: normalize helper anchor mismatch")
+trace_path.write_text(trace.replace(normalize_anchor, physical_helper + normalize_anchor), encoding="utf-8")
 print(f"Updated {call_count} traceability barrier call site(s).")
