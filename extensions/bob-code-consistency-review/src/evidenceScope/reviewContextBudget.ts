@@ -8,14 +8,20 @@ import {
   type ContextBudgetArtifact
 } from "./contextBudgetArtifact"
 import { parseProjectRules } from "./projectRuleConfig"
+import {
+  loadProjectRulePack,
+  mergeProjectRules
+} from "./projectRulePackLoader"
 import { buildReviewEvidenceScope } from "./reviewEvidenceAdapter"
 
 export type ReviewContextBudgetInput = {
+  workspaceRoot: string
   reviewInput: ReviewInput
   diff: DiffSummary
   documents: DocumentExtractionResult
   codeAnalysis: CodeAnalysisResult
   limits: ReviewProcessingLimits
+  textEncoding?: string
 }
 
 export type ReviewContextBudgetResult = {
@@ -24,26 +30,43 @@ export type ReviewContextBudgetResult = {
 }
 
 const TOKEN_ESTIMATION_POLICY = "ceil(text.length / 4); budget=floor(maxBobInputBytes / 4)"
-const RULE_CONFIG_SOURCE = "review-input.bob_options.evidence_scope_rules"
+const INLINE_RULE_CONFIG_SOURCE = "review-input.bob_options.evidence_scope_rules"
 
-export function buildReviewContextBudget(input: ReviewContextBudgetInput): ReviewContextBudgetResult {
-  const rawRules = input.reviewInput.bob_options?.evidence_scope_rules
-  const parsedRules = parseProjectRules(rawRules)
+export async function buildReviewContextBudget(
+  input: ReviewContextBudgetInput
+): Promise<ReviewContextBudgetResult> {
+  const rawInlineRules = input.reviewInput.bob_options?.evidence_scope_rules
+  const parsedInlineRules = parseProjectRules(rawInlineRules)
+  const loadedRulePack = await loadProjectRulePack({
+    workspaceRoot: input.workspaceRoot,
+    rulePackPath: input.reviewInput.bob_options?.evidence_scope_rule_pack_path,
+    maxBytes: input.limits.maxDocumentBytes,
+    textEncoding: input.textEncoding
+  })
+  const mergedRules = mergeProjectRules(loadedRulePack?.rules ?? [], parsedInlineRules.rules)
   const scope = buildReviewEvidenceScope(input.codeAnalysis, input.documents, {
     tokenBudget: Math.max(1, Math.floor(input.limits.maxBobInputBytes / 4)),
     maxDependencyDepth: input.reviewInput.analysis_options?.max_call_depth ?? 1,
-    rules: parsedRules.rules,
+    rules: mergedRules.rules,
     documentKeywords: reviewDocumentKeywords(input.reviewInput),
     includeLowPriority: input.reviewInput.bob_options?.evidence_scope_include_low_priority === true
   })
-  const warnings = [...new Set([...parsedRules.warnings, ...scope.warnings])].sort()
+  const warnings = [
+    ...new Set([
+      ...parsedInlineRules.warnings,
+      ...mergedRules.warnings,
+      ...scope.warnings
+    ])
+  ].sort()
   const artifact = createContextBudgetArtifact(
     { ...scope, warnings },
     {
       base: input.diff.base,
       head: input.diff.head,
       tokenEstimation: TOKEN_ESTIMATION_POLICY,
-      ruleSource: rawRules === undefined ? "none" : RULE_CONFIG_SOURCE
+      ruleSource: loadedRulePack?.sourcePath
+        ?? (rawInlineRules === undefined ? "none" : INLINE_RULE_CONFIG_SOURCE),
+      ...(loadedRulePack ? { rulePack: loadedRulePack } : {})
     }
   )
 
