@@ -15,6 +15,27 @@ import {
   readContainedRunFile,
   writeContainedRunFile
 } from "./runStatePath"
+import {
+  appendWorkflowRunEvent,
+  buildWorkflowRunEvent,
+  hashWorkflowRunBytes,
+  readWorkflowRunEventLog,
+  serializeWorkflowRunState
+} from "./runEventLog"
+import type { WorkflowRunEventKind } from "./runEventLog"
+import {
+  buildWorkflowRunJournal,
+  recoverWorkflowRunJournal,
+  serializeWorkflowRunJournal,
+  writeWorkflowRunJournal
+} from "./runStateJournal"
+import {
+  readRunDurabilityFile,
+  removeRunDurabilityFile,
+  syncRunMaterializedFile
+} from "./runDurabilityPath"
+import { withWorkflowRunLock } from "./runLock"
+import type { WorkflowRunLockOptions } from "./runLock"
 
 const RECOVERABLE_RUN_STATUSES = new Set(["running", "paused", "checkpoint", "reviewing", "held"])
 
@@ -24,6 +45,7 @@ interface SharedRunLoadResult {
 }
 
 const inFlightRunLoads = new Map<string, Promise<SharedRunLoadResult>>()
+const runRevisionByObject = new WeakMap<object, string | "missing">()
 const explicitRunTargetByInputs = new WeakMap<object, string>()
 
 export interface RecoverableRunLookupOptions {
@@ -39,24 +61,37 @@ export interface RunStateStore {
   loadRun: (runId: string) => Promise<WorkflowRunState | undefined>
   listRuns: () => Promise<WorkflowRunState[]>
   findRecoverableRun?: (workflow: CoreWorkflowDefinition, inputs: Record<string, unknown>, options?: RecoverableRunLookupOptions) => Promise<WorkflowRunState | undefined>
+  withRunLock?: <T>(runId: string, operation: () => Promise<T>) => Promise<T>
 }
+
+export type WorkflowRunDurabilityFaultStage = "afterJournal" | "afterRun" | "afterEvent"
 
 export interface FileRunStateStoreOptions {
   workspaceRoot: string
   now?: () => string
   engineVersion?: string
+  lockOptions?: WorkflowRunLockOptions
+  durabilityFault?: (stage: WorkflowRunDurabilityFaultStage) => void | Promise<void>
 }
 
 export class FileRunStateStore implements RunStateStore {
   readonly workspaceRoot: string
   private readonly now: () => string
   private readonly engineVersion?: string
+  private readonly lockOptions?: WorkflowRunLockOptions
+  private readonly durabilityFault?: FileRunStateStoreOptions["durabilityFault"]
   private readonly loadDiagnostics = new Map<string, RunStateLoadDiagnostic>()
 
   constructor(options: FileRunStateStoreOptions) {
     this.workspaceRoot = options.workspaceRoot
     this.now = options.now ?? (() => new Date().toISOString())
     this.engineVersion = options.engineVersion
+    this.lockOptions = options.lockOptions
+    this.durabilityFault = options.durabilityFault
+  }
+
+  async withRunLock<T>(runId: string, operation: () => Promise<T>): Promise<T> {
+    return withWorkflowRunLock(this.workspaceRoot, runId, operation, this.lockOptions)
   }
 
   async createRun(workflow: CoreWorkflowDefinition, inputs: Record<string, unknown>): Promise<WorkflowRunState> {
@@ -84,22 +119,39 @@ export class FileRunStateStore implements RunStateStore {
       createdAt,
       updatedAt: createdAt
     }
+    runRevisionByObject.set(run, "missing")
     rememberExplicitRunTarget(run)
     return run
   }
 
   async saveRun(run: WorkflowRunState): Promise<void> {
-    const prepared = prepareWorkflowRunStateForWrite(run)
-    const updatedAt = this.now()
-    const persisted = { ...prepared, updatedAt }
-    await writeContainedRunFile(this.workspaceRoot, run.runId, serializeRun(persisted))
-    run.schemaVersion = CURRENT_WORKFLOW_RUN_STATE_SCHEMA_VERSION
-    run.updatedAt = updatedAt
-    rememberExplicitRunTarget(run)
+    await this.withRunLock(run.runId, async () => {
+      await this.recoverPendingJournalOwned(run.runId)
+      const currentBytes = await readRunBytes(this.workspaceRoot, run.runId)
+      const currentHash = currentBytes ? hashWorkflowRunBytes(currentBytes) : undefined
+      const expectedRevision = runRevisionByObject.get(run)
+      if (expectedRevision === "missing") {
+        if (currentHash !== undefined) {
+          throw new Error(`Workflow run '${run.runId}' changed since it was created; stale revision cannot be written.`)
+        }
+      } else if (typeof expectedRevision === "string" && expectedRevision !== currentHash) {
+        throw new Error(`Workflow run '${run.runId}' changed since it was loaded; stale revision cannot be written.`)
+      }
+      const next = prepareWorkflowRunStateForWrite(structuredClone(run))
+      next.updatedAt = this.now()
+      const kind: WorkflowRunEventKind = currentBytes ? "run.updated" : "run.created"
+      const committedHash = await this.commitSnapshotOwned(run.runId, next, currentBytes, kind, next.updatedAt)
+      run.schemaVersion = CURRENT_WORKFLOW_RUN_STATE_SCHEMA_VERSION
+      run.updatedAt = next.updatedAt
+      runRevisionByObject.set(run, committedHash)
+      rememberExplicitRunTarget(run)
+    })
   }
 
   async loadRun(runId: string): Promise<WorkflowRunState | undefined> {
     try {
+      const pending = await readRunDurabilityFile(this.workspaceRoot, runId, "run-state.journal.json")
+      if (pending) await this.withRunLock(runId, () => this.recoverPendingJournalOwned(runId))
       const result = await coordinateRunLoad(
         this.workspaceRoot,
         runId,
@@ -127,9 +179,7 @@ export class FileRunStateStore implements RunStateStore {
     const runs = await Promise.all(entries.map(async (entry) => {
       try {
         const run = await this.loadRun(entry)
-        if (!run) {
-          this.recordInvalidLoad(entry, new Error(`Workflow run '${entry}' is missing run.json.`))
-        }
+        if (!run) this.recordInvalidLoad(entry, new Error(`Workflow run '${entry}' is missing run.json.`))
         return run
       } catch {
         return undefined
@@ -189,7 +239,6 @@ export class FileRunStateStore implements RunStateStore {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return {}
       throw error
     }
-
     const text = snapshot.bytes.toString("utf8")
     let value: unknown
     try {
@@ -197,13 +246,11 @@ export class FileRunStateStore implements RunStateStore {
     } catch (error) {
       throw new Error(`Workflow run '${runId}' contains invalid JSON: ${formatError(error)}`)
     }
-
     const decoded = decodeWorkflowRunState(value, runId)
     if (decoded.migrated) {
-      await ensureContainedRunStateMigrationBackup(this.workspaceRoot, runId, text)
-      await writeContainedRunFile(this.workspaceRoot, runId, serializeRun(decoded.run))
+      const migrated = await this.migrateRun(runId)
       return {
-        run: decoded.run,
+        run: migrated,
         diagnostic: {
           runId,
           severity: "info",
@@ -213,6 +260,7 @@ export class FileRunStateStore implements RunStateStore {
       }
     }
     if (decoded.readOnly) {
+      rememberLoadedRevision(decoded.run, snapshot.bytes)
       return {
         run: decoded.run,
         diagnostic: {
@@ -223,7 +271,79 @@ export class FileRunStateStore implements RunStateStore {
         }
       }
     }
+    rememberLoadedRevision(decoded.run, snapshot.bytes)
     return { run: decoded.run }
+  }
+
+  private async migrateRun(runId: string): Promise<WorkflowRunState> {
+    return this.withRunLock(runId, async () => {
+      await this.recoverPendingJournalOwned(runId)
+      const snapshot = await readContainedRunFile(this.workspaceRoot, runId)
+      const text = snapshot.bytes.toString("utf8")
+      const decoded = decodeWorkflowRunState(JSON.parse(text), runId)
+      if (!decoded.migrated) {
+        rememberLoadedRevision(decoded.run, snapshot.bytes)
+        return decoded.run
+      }
+      await ensureContainedRunStateMigrationBackup(this.workspaceRoot, runId, text)
+      const committedHash = await this.commitSnapshotOwned(runId, decoded.run, snapshot.bytes, "run.migrated", this.now())
+      runRevisionByObject.set(decoded.run, committedHash)
+      rememberExplicitRunTarget(decoded.run)
+      this.setLoadDiagnostic({ runId, severity: "info", code: "migrated", message: decoded.diagnostics[0] })
+      return decoded.run
+    })
+  }
+
+  private async recoverPendingJournalOwned(runId: string): Promise<void> {
+    const result = await recoverWorkflowRunJournal({
+      workspaceRoot: this.workspaceRoot,
+      runId,
+      readRunBytes: () => readRunBytes(this.workspaceRoot, runId),
+      writeRunText: (content) => writeContainedRunFile(this.workspaceRoot, runId, content),
+      syncRunFile: () => syncRunMaterializedFile(this.workspaceRoot, runId)
+    })
+    if (result.recovered) this.clearTransientLoadDiagnostic(runId)
+  }
+
+  private async commitSnapshotOwned(
+    runId: string,
+    nextRun: WorkflowRunState,
+    previousBytes: Buffer | undefined,
+    kind: WorkflowRunEventKind,
+    occurredAt: string
+  ): Promise<string> {
+    const previousRunHash = previousBytes ? hashWorkflowRunBytes(previousBytes) : undefined
+    const eventState = await readWorkflowRunEventLog(this.workspaceRoot, runId)
+    if (eventState.head && eventState.head.runHash !== previousRunHash) {
+      throw new Error(`Workflow run '${runId}' event log head does not match the materialized run revision.`)
+    }
+    const nextEvent = buildWorkflowRunEvent({
+      run: nextRun,
+      kind,
+      occurredAt,
+      previousEvent: eventState.head,
+      previousRunHash
+    })
+    const journal = buildWorkflowRunJournal({
+      transactionId: randomUUID(),
+      runId,
+      createdAt: occurredAt,
+      previousRunHash,
+      previousEventHash: eventState.head?.hash,
+      nextRun,
+      nextEvent
+    })
+    const journalBytes = Buffer.from(serializeWorkflowRunJournal(journal), "utf8")
+    await writeWorkflowRunJournal(this.workspaceRoot, runId, journal)
+    await this.durabilityFault?.("afterJournal")
+    await writeContainedRunFile(this.workspaceRoot, runId, serializeWorkflowRunState(nextRun))
+    await syncRunMaterializedFile(this.workspaceRoot, runId)
+    await this.durabilityFault?.("afterRun")
+    await appendWorkflowRunEvent(this.workspaceRoot, runId, nextEvent)
+    await this.durabilityFault?.("afterEvent")
+    const removed = await removeRunDurabilityFile(this.workspaceRoot, runId, "run-state.journal.json", journalBytes)
+    if (!removed) throw new Error(`Workflow run '${runId}' journal changed before commit cleanup.`)
+    return nextEvent.runHash
   }
 
   private async nextRunId(workflowName: string, createdAt: string): Promise<string> {
@@ -231,7 +351,7 @@ export class FileRunStateStore implements RunStateStore {
     const base = `${stamp}-${sanitize(workflowName)}`
     for (let index = 0; index < 10; index += 1) {
       const candidate = `${base}-${randomUUID().replace(/-/g, "").slice(0, 12)}`
-      if (!await runFileExists(this.workspaceRoot, candidate)) return candidate
+      if (!await optionalReadRun(this.workspaceRoot, candidate)) return candidate
     }
     throw new Error(`Could not allocate unique workflow run id for '${workflowName}'.`)
   }
@@ -263,7 +383,6 @@ function coordinateRunLoad(
   const key = JSON.stringify([normalizeWorkspaceRootIdentity(workspaceRoot), runId])
   const existing = inFlightRunLoads.get(key)
   if (existing) return existing
-
   let coordinated!: Promise<SharedRunLoadResult>
   coordinated = Promise.resolve().then(operation).finally(() => {
     if (inFlightRunLoads.get(key) === coordinated) inFlightRunLoads.delete(key)
@@ -272,13 +391,27 @@ function coordinateRunLoad(
   return coordinated
 }
 
-async function runFileExists(workspaceRoot: string, runId: string): Promise<boolean> {
+async function optionalReadRun(workspaceRoot: string, runId: string): Promise<Awaited<ReturnType<typeof readContainedRunFile>> | undefined> {
   try {
-    await readContainedRunFile(workspaceRoot, runId)
-    return true
+    return await readContainedRunFile(workspaceRoot, runId)
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined
     throw error
+  }
+}
+
+async function readRunBytes(workspaceRoot: string, runId: string): Promise<Buffer | undefined> {
+  return (await optionalReadRun(workspaceRoot, runId))?.bytes
+}
+
+function rememberLoadedRevision(run: WorkflowRunState, bytes: Buffer): void {
+  runRevisionByObject.set(run, hashWorkflowRunBytes(bytes))
+  rememberExplicitRunTarget(run)
+}
+
+function rememberExplicitRunTarget(run: WorkflowRunState): void {
+  if (run.inputs && typeof run.inputs === "object" && !Array.isArray(run.inputs)) {
+    explicitRunTargetByInputs.set(run.inputs, run.runId)
   }
 }
 
@@ -304,16 +437,6 @@ function isRecoverableRun(run: WorkflowRunState, workflow: CoreWorkflowDefinitio
     return run.steps.slice(0, reviewOrHeldGateIndex).every((step) => step.status === "completed")
   }
   return run.steps.slice(0, stepIndex).every((step) => step.status === "completed")
-}
-
-function rememberExplicitRunTarget(run: WorkflowRunState): void {
-  if (run.inputs && typeof run.inputs === "object" && !Array.isArray(run.inputs)) {
-    explicitRunTargetByInputs.set(run.inputs, run.runId)
-  }
-}
-
-function serializeRun(run: WorkflowRunState): string {
-  return `${JSON.stringify(run, null, 2)}\n`
 }
 
 function stableJson(value: unknown): string {
