@@ -114,11 +114,13 @@ workspace 外へ解決される path は保存しない。
 
 - 空文字
 - `.` / `..`
-- `/` / `\`
+- Windowsで禁止される文字: `<`, `>`, `:`, `"`, `/`, `\`, `|`, `?`, `*`
 - 制御文字
 - Windows 予約名: `CON`, `PRN`, `AUX`, `NUL`, `COM1`..`COM9`, `LPT1`..`LPT9`
 - 末尾の dot
 - 末尾の space
+
+Review Runのdirectory、`review-run.json`、`review-packet.md`を読み書きする前に、workspaceから対象までの既存path segmentを`lstat`と`realpath`で確認する。途中にsymlinkまたはjunctionがある場合や、realpath解決後にworkspace外となる場合は拒否する。
 
 Review GUI はtargetからreview IDを提案する。
 
@@ -130,14 +132,18 @@ Review GUI はtargetからreview IDを提案する。
 
 利用者は提案値を変更できるが、host側で再検証する。
 
+同じcampaignでrecord directoryが既に存在する場合は上書きせず、`-02`、`-03`以降のsuffixをatomic directory予約で割り当てる。詳細は`review-run-id-allocation-ja.md`を参照する。
+
 ## 5. 保存方式
 
 `review-run.json` は次の順で保存する。
 
-1. record directory を作成する。
-2. 同じdirectory内の一時ファイルへUTF-8 JSONを書き込む。
-3. 一時ファイルを `review-run.json` へrenameする。
-4. 失敗時は所有する一時ファイルを削除する。
+1. workspaceからrecord directoryまでの既存pathにsymlink/junction escapeがないことを確認する。
+2. record directory を作成する。
+3. 作成後のrealpathがworkspace内であることを再確認する。
+4. 同じdirectory内の一時ファイルへUTF-8 JSONを書き込む。
+5. 一時ファイルを `review-run.json` へrenameする。
+6. 失敗時は所有する一時ファイルを削除する。
 
 Windowsで既存fileへのrenameが拒否された場合のみ、既存destinationを削除してrenameを再試行する。
 
@@ -162,13 +168,14 @@ Windowsで既存fileへのrenameが拒否された場合のみ、既存destinati
 `Review Run を開始して Bob に追加` は次を行う。
 
 1. targetを再取得する。
-2. `ReviewRunContext`を`target` phaseで保存する。
-3. packetへReview Run metadataを追加する。
-4. packetを`review-packet.md`へ保存する。
-5. runを`packet` phaseへ更新する。
-6. Markdown documentを開く。
-7. IBM Bobが利用可能ならBob contextへ追加する。
-8. workflow step連携を従来通り実行する。
+2. collision-safeな実review IDを予約する。
+3. `ReviewRunContext`を`target` phaseで保存する。
+4. packetへReview Run metadataを追加する。
+5. packetを`review-packet.md`へ保存する。
+6. runを`packet` phaseへ更新する。
+7. Markdown documentを開く。
+8. IBM Bobが利用可能ならBob contextへ追加する。
+9. workflow step連携を従来通り実行する。
 
 packetには次の契約を含める。
 
@@ -196,21 +203,22 @@ interface ReviewRunCommandInput {
 
 Review Run bound modeでは次を行う。
 
-1. persisted `review-run.json`を読み直す。
-2. active Review Runの`workspaceRoot`をcapture保存先に使う。
-3. Bob出力を既存validatorで検証する。
-4. captured `review_id`とactive Review Runの`reviewId`を比較する。
-5. 一致時だけresult artifact pathをrunへ保存する。
-6. runを`result` phaseへ更新する。
-7. 同じReview Run引数でHuman Triageを開く。
+1. command引数の`workspaceRoot`がopen workspace内であることとIDの安全性を確認する。
+2. persisted `review-run.json`を読み直す。
+3. active Review Runの`workspaceRoot`をcapture保存先に使う。
+4. Bob出力を既存validatorで検証し、`expectedReviewId`としてactive Review Runの`reviewId`を渡す。
+5. captured `review_id`が不一致なら、JSON / Markdown / metadataを保存せずvalidation errorを返す。
+6. 一致時だけreview-result artifactsを保存し、そのpathをrunへ保存する。
+7. runを`result` phaseへ更新する。
+8. 同じReview Run引数でHuman Triageを開く。
 
-captured `review_id`が一致しない場合は、暗黙補正や自動renameを行わずエラーにする。
+captured `review_id`が一致しない場合は、暗黙補正、自動rename、別ID artifactの保存を行わない。保存後の関連付け処理でも同じIDを再確認する。
 
 ## 8. Human Triage
 
 `bobBazaar.openHumanTriageGui` も引数なしのstandalone modeを維持する。
 
-Review Run bound modeでは次の値をread-only表示する。
+Review Run bound modeでは、command引数のworkspace境界とIDを再検証した後、次の値をread-only表示する。
 
 - `campaign_id`
 - `review_id`
@@ -243,7 +251,10 @@ Review Run bound modeでは次の値をread-only表示する。
 
 - `reviewRunPaths.test.js`
   - safe path生成
-  - traversal / separator / reserved name拒否
+  - traversal / Windows禁止文字 / reserved name拒否
+- `reviewRunSymlink.test.js`
+  - symlink/junction経由のcampaign path拒否
+  - workspace外artifact未生成
 - `reviewRunState.test.js`
   - context作成
   - immutable phase更新
@@ -262,10 +273,21 @@ Review Run bound modeでは次の値をread-only表示する。
   - result path保存
   - triage path保存
   - workspace escape拒否
+  - collision suffix割り当て
+  - legacy directory保護
+  - concurrent startの一意性
+- `reviewRunCommandInput.test.js`
+  - open workspace境界
+  - dot-prefixed child許可
+  - parent traversal拒否
+- `reviewRunExpectedReviewId.test.js`
+  - mismatchをartifact保存前に拒否
+  - match時のartifact保存
 - `guiFirstSurfaces.test.js`
   - Wizard v3表示
   - command context handoff
   - Result Capture active run表示
+  - `expectedReviewId` wiring
   - Human Triage read-only identity
   - CSP / inline handler回帰
 
@@ -293,7 +315,8 @@ Review Run bound modeでは次の値をread-only表示する。
 
 合格条件:
 
-- review-result自体のvalidation結果とは別に、Review Run mismatchが表示される。
+- `$.review_id`に期待IDと実IDを示すvalidation errorが表示される。
+- 不一致IDのJSON / Markdown / metadata artifactを保存しない。
 - active Review Runは`packet` phaseのままになる。
 - 別IDのartifactをactive runへ関連付けない。
 
