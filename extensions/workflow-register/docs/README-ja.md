@@ -13,6 +13,9 @@
 - `run-state-schema-v1-ja.md`  
   `run.json` の schema version、historical v0 migration、exact-byte backup、future-version read-only protection、invalid document isolationを定義します。
 
+- `reproducible-runtime-phase4-ja.md`  
+  immutable event log、crash journal、fsync、cross-process lease、stale-write protection、`control.json` の独立signal契約、運用診断と復旧手順を定義します。
+
 ## テスト仕様書
 
 - `unit-test-spec-ja.md`  
