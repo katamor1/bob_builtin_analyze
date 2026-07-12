@@ -24,6 +24,8 @@ jobs:
         run: |
           set +e
           git fetch origin main
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git config merge.conflictStyle diff3
           git merge --no-commit --no-ff origin/main > "$RUNNER_TEMP/merge-output.txt" 2>&1
           status=$?
