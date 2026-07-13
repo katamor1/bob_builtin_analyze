@@ -12,6 +12,14 @@ const { workflowRunCleanupLeasePresent } = require("../out/core/runtime/runClean
 const { withWorkflowRunLock } = require("../out/core/runtime/runLock")
 const { FileRunStateStore } = require("../out/core/runStateStore")
 
+async function cleanupPlan(root, runId) {
+  const snapshot = await require("../out/core/runtime/runRetentionInventory").inspectWorkflowRunRetentionInventory(root)
+  return require("../out/core/retention/runRetention").planWorkflowRunCleanup(snapshot.inventory, {
+    now: "2026-07-13T03:00:00.000Z",
+    selectedRunIds: [runId]
+  })
+}
+
 function loadProviderWithVscode(vscode) {
   const originalLoad = Module._load
   Module._load = function patchedLoad(request, parent, isMain) {
@@ -923,6 +931,7 @@ test("workflow artifact source lock remains held through durable target provenan
   const { rootB, service, state, workflow } = runCommandHarness(t)
   configureArtifactWorkflow(workflow, rootB.root)
   const source = writeArtifactSourceRun(rootB.root, rootB.runId, workflow)
+  const sourceCleanupPlan = await cleanupPlan(rootB.root, source.runId)
   const targetSaved = deferred()
   const releaseTargetSave = deferred()
   state.afterTargetSave = async ({ run }) => {
@@ -935,7 +944,7 @@ test("workflow artifact source lock remains held through durable target provenan
   await withTimeout(targetSaved.promise, "durable target provenance save")
   const cleanupOutcome = await settle(withTimeout(applyWorkflowRunCleanupTransaction({
     workspaceRoot: rootB.root,
-    candidates: [{ runId: source.runId, revision: source.revision }],
+    expectedPlan: sourceCleanupPlan,
     transactionId: "source-lock-through-target-save"
   }), "source cleanup rejection"))
   let barrierError
@@ -966,6 +975,7 @@ test("workflow artifact source selected during cleanup cannot commit target prov
   const source = writeArtifactSourceRun(rootB.root, rootB.runId, workflow, "selected")
   const alternative = writeArtifactSourceRun(rootB.root, "alternative-source", workflow, "alternative")
   state.additionalRuns.push(alternative)
+  const sourceCleanupPlan = await cleanupPlan(rootB.root, source.runId)
   const quickPickReady = deferred()
   const returnSelection = deferred()
   state.showQuickPick = async (items, options) => {
@@ -987,7 +997,7 @@ test("workflow artifact source selected during cleanup cannot commit target prov
   const cleanupSourceDirectory = path.join(cleanupRoot, path.relative(rootB.root, source.runDirectory))
   const cleanup = settle(withTimeout(applyWorkflowRunCleanupTransaction({
     workspaceRoot: cleanupRoot,
-    candidates: [{ runId: source.runId, revision: source.revision }],
+    expectedPlan: sourceCleanupPlan,
     transactionId: "cleanup-selected-artifact-source",
     fsOps: cleanupFsOpsWithMoveBarrier(cleanupSourceDirectory, cleanupAtMove, allowCleanupMove)
   }), "cleanup-selected source transaction"))
@@ -1012,12 +1022,13 @@ test("workflow artifact source cleanup completed before locking does not recreat
   const { rootB, service, state, workflow } = runCommandHarness(t)
   configureArtifactWorkflow(workflow, rootB.root)
   const source = writeArtifactSourceRun(rootB.root, rootB.runId, workflow)
+  const sourceCleanupPlan = await cleanupPlan(rootB.root, source.runId)
   let cleanupOutcome
   state.beforeRunLock = async ({ runId }) => {
     if (cleanupOutcome || runId !== source.runId) return
     cleanupOutcome = await settle(withTimeout(applyWorkflowRunCleanupTransaction({
       workspaceRoot: rootB.root,
-      candidates: [{ runId: source.runId, revision: source.revision }],
+      expectedPlan: sourceCleanupPlan,
       transactionId: "cleanup-complete-before-source-lock"
     }), "cleanup-complete source transaction"))
     if (cleanupOutcome.status === "rejected") {

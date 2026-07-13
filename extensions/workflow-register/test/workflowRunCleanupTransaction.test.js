@@ -73,18 +73,30 @@ async function createRun(runsRoot, runId, extra = {}) {
   return { directory, revision: eventModules().hashWorkflowRunBytes(bytes) }
 }
 
+test("cleanup transaction rejects a non-empty candidate-only destructive request", async (t) => {
+  const { root, runsRoot } = await workspace(t)
+  const run = await createRun(runsRoot, "candidate-only")
+  const { applyWorkflowRunCleanupTransaction } = transactionModules()
+
+  await assert.rejects(applyWorkflowRunCleanupTransaction({
+    workspaceRoot: root,
+    candidates: [{ runId: "candidate-only", revision: run.revision }],
+    transactionId: "tx-candidate-only"
+  }), /verified expected cleanup plan is required/i)
+
+  assert.equal((await fs.stat(run.directory)).isDirectory(), true)
+})
+
 test("cleanup transaction quarantines every candidate before deleting the transaction directory", async (t) => {
   const { root, runsRoot } = await workspace(t)
   const a = await createRun(runsRoot, "run-a")
   const b = await createRun(runsRoot, "run-b")
+  const plan = await cleanupPlan(root)
   const { applyWorkflowRunCleanupTransaction } = transactionModules()
 
   const result = await applyWorkflowRunCleanupTransaction({
     workspaceRoot: root,
-    candidates: [
-      { runId: "run-b", revision: b.revision },
-      { runId: "run-a", revision: a.revision }
-    ],
+    expectedPlan: plan,
     transactionId: "tx-success"
   })
 
@@ -94,10 +106,43 @@ test("cleanup transaction quarantines every candidate before deleting the transa
   await assert.rejects(fs.stat(result.quarantinePath), { code: "ENOENT" })
 })
 
+test("cleanup transaction performs one workspace inventory and bounded candidate-only rescans", async (t) => {
+  const { root, runsRoot } = await workspace(t)
+  const runIds = ["scan-a", "scan-b", "scan-c"]
+  for (const runId of runIds) await createRun(runsRoot, runId)
+  const plan = await cleanupPlan(root)
+  const originalOpendir = fs.opendir
+  const scanCounts = new Map()
+  let applying
+  try {
+    fs.opendir = async (directory, ...args) => {
+      const resolved = path.resolve(directory)
+      scanCounts.set(resolved, (scanCounts.get(resolved) ?? 0) + 1)
+      return originalOpendir(directory, ...args)
+    }
+    const { applyWorkflowRunCleanupTransaction } = transactionModules()
+    applying = applyWorkflowRunCleanupTransaction({
+      workspaceRoot: root,
+      expectedPlan: plan,
+      transactionId: "tx-bounded-scans"
+    })
+    await applying
+  } finally {
+    await applying?.catch(() => undefined)
+    fs.opendir = originalOpendir
+  }
+
+  assert.equal(scanCounts.get(path.resolve(runsRoot)), 1)
+  for (const runId of runIds) {
+    assert.equal(scanCounts.get(path.resolve(runsRoot, runId)), 3)
+  }
+})
+
 test("cleanup transaction rolls prior moves back when a later rename fails", async (t) => {
   const { root, runsRoot } = await workspace(t)
   const a = await createRun(runsRoot, "run-a")
   const b = await createRun(runsRoot, "run-b")
+  const plan = await cleanupPlan(root)
   let sourceMoveCount = 0
   const fsOps = {
     mkdir: fs.mkdir,
@@ -115,10 +160,7 @@ test("cleanup transaction rolls prior moves back when a later rename fails", asy
 
   await assert.rejects(applyWorkflowRunCleanupTransaction({
     workspaceRoot: root,
-    candidates: [
-      { runId: "run-a", revision: a.revision },
-      { runId: "run-b", revision: b.revision }
-    ],
+    expectedPlan: plan,
     transactionId: "tx-rollback",
     fsOps
   }), /injected second rename failure/)
@@ -127,25 +169,18 @@ test("cleanup transaction rolls prior moves back when a later rename fails", asy
   assert.equal((await fs.stat(b.directory)).isDirectory(), true)
 })
 
-test("cleanup transaction refuses locks, journals, stale revisions, unsafe IDs and linked directories", async (t) => {
+test("cleanup transaction refuses a stale run revision from a verified plan", async (t) => {
   const { root, runsRoot } = await workspace(t)
-  const locked = await createRun(runsRoot, "locked", { "run.lock.json": "{}" })
-  const journaled = await createRun(runsRoot, "journaled", { "run-state.journal.json": "{}" })
   const changed = await createRun(runsRoot, "changed")
+  const plan = await cleanupPlan(root)
   const { applyWorkflowRunCleanupTransaction } = transactionModules()
 
-  await assert.rejects(applyWorkflowRunCleanupTransaction({ workspaceRoot: root, candidates: [{ runId: "locked", revision: locked.revision }], transactionId: "tx-lock" }), /execution lock/i)
-  await assert.rejects(applyWorkflowRunCleanupTransaction({ workspaceRoot: root, candidates: [{ runId: "journaled", revision: journaled.revision }], transactionId: "tx-journal" }), /pending journal/i)
   await fs.appendFile(path.join(changed.directory, "run.json"), " ")
-  await assert.rejects(applyWorkflowRunCleanupTransaction({ workspaceRoot: root, candidates: [{ runId: "changed", revision: changed.revision }], transactionId: "tx-revision" }), /changed after cleanup preview/i)
-  await assert.rejects(applyWorkflowRunCleanupTransaction({ workspaceRoot: root, candidates: [{ runId: "../escape", revision: "sha256:x" }], transactionId: "tx-unsafe" }), /unsupported|unsafe/i)
-
-  if (process.platform !== "win32") {
-    const external = await fs.mkdtemp(path.join(os.tmpdir(), "workflow-cleanup-external-"))
-    t.after(() => fs.rm(external, { recursive: true, force: true }))
-    await fs.symlink(external, path.join(runsRoot, "linked"), "dir")
-    await assert.rejects(applyWorkflowRunCleanupTransaction({ workspaceRoot: root, candidates: [{ runId: "linked", revision: "sha256:x" }], transactionId: "tx-linked" }), /direct directory|symlink|junction/i)
-  }
+  await assert.rejects(applyWorkflowRunCleanupTransaction({
+    workspaceRoot: root,
+    expectedPlan: plan,
+    transactionId: "tx-revision"
+  }), /inventory changed after preview|cleanup plan changed/i)
 })
 
 test("cleanup transaction revalidates the complete physical tree after all leases and before any rename", async (t) => {
@@ -177,7 +212,6 @@ test("cleanup transaction revalidates the complete physical tree after all lease
   const { applyWorkflowRunCleanupTransaction } = transactionModules()
   const applying = applyWorkflowRunCleanupTransaction({
     workspaceRoot: root,
-    candidates: [{ runId: "late-linked", revision: run.revision }],
     expectedPlan: plan,
     transactionId: "tx-late-linked",
     fsOps
@@ -289,6 +323,7 @@ for (const scenario of [
 test("cleanup transaction keeps a concurrently-created quarantine sibling without a pre-read", async (t) => {
   const { root, runsRoot } = await workspace(t)
   const run = await createRun(runsRoot, "sibling-run")
+  const plan = await cleanupPlan(root)
   const quarantineBase = path.join(root, ".bob", "workflows", "run-cleanup-quarantine")
   const sibling = path.join(quarantineBase, "concurrent-sibling")
   let baseRmdirCalls = 0
@@ -310,7 +345,7 @@ test("cleanup transaction keeps a concurrently-created quarantine sibling withou
 
   const result = await applyWorkflowRunCleanupTransaction({
     workspaceRoot: root,
-    candidates: [{ runId: "sibling-run", revision: run.revision }],
+    expectedPlan: plan,
     transactionId: "tx-concurrent-sibling",
     fsOps
   })
@@ -359,6 +394,50 @@ test("cleanup transaction rejects a run directory identity swap at the rename bo
   assert.equal((await fs.stat(run.directory)).isDirectory(), true)
 })
 
+test("cleanup transaction does not commit or purge a replacement moved by a rename-time source swap", async (t) => {
+  const { root, runsRoot } = await workspace(t)
+  const run = await createRun(runsRoot, "rename-time-swap")
+  const plan = await cleanupPlan(root)
+  const transactionId = "tx-rename-time-swap"
+  const quarantinePath = path.join(root, ".bob", "workflows", "run-cleanup-quarantine", transactionId)
+  const quarantined = path.join(quarantinePath, "rename-time-swap")
+  const parkedOriginal = path.join(root, "parked-rename-time-swap")
+  let swapped = false
+  const fsOps = {
+    rename: async (source, target) => {
+      if (!swapped && path.resolve(source) === path.resolve(run.directory)) {
+        swapped = true
+        await fs.rename(source, parkedOriginal)
+        await fs.mkdir(source)
+        await fs.writeFile(path.join(source, "replacement.txt"), "must remain quarantined")
+      }
+      return fs.rename(source, target)
+    }
+  }
+  const transaction = transactionModules()
+
+  await assert.rejects(transaction.applyWorkflowRunCleanupTransaction({
+    workspaceRoot: root,
+    expectedPlan: plan,
+    transactionId,
+    fsOps
+  }), (error) => {
+    assert.ok(error instanceof transaction.WorkflowRunCleanupIncompleteError)
+    assert.equal(error.phase, "rollback")
+    assert.deepEqual(error.committedRunIds, [])
+    assert.deepEqual(error.residualRunIds, ["rename-time-swap"])
+    assert.equal(error.retainedQuarantinePath, quarantinePath)
+    assert.equal(error.reclaimedBytes, 0)
+    assert.match(error.message, /directory identity|changed before quarantine/i)
+    return true
+  })
+
+  assert.equal(swapped, true)
+  assert.equal((await fs.stat(parkedOriginal)).isDirectory(), true)
+  assert.equal(await fs.readFile(path.join(quarantined, "replacement.txt"), "utf8"), "must remain quarantined")
+  await assert.rejects(fs.stat(run.directory), { code: "ENOENT" })
+})
+
 test("cleanup transaction exposes committed runs and retained quarantine when purge fails", async (t) => {
   const { root, runsRoot } = await workspace(t)
   await createRun(runsRoot, "purge-a")
@@ -399,6 +478,46 @@ test("cleanup transaction exposes committed runs and retained quarantine when pu
   await assert.rejects(fs.stat(path.join(runsRoot, "purge-b")), { code: "ENOENT" })
   assert.equal((await fs.stat(path.join(quarantinePath, "purge-a"))).isDirectory(), true)
   assert.equal((await fs.stat(path.join(quarantinePath, "purge-b"))).isDirectory(), true)
+})
+
+test("cleanup transaction reports the retained quarantine parent when parent cleanup fails after purge", async (t) => {
+  const { root, runsRoot } = await workspace(t)
+  await createRun(runsRoot, "parent-cleanup")
+  const plan = await cleanupPlan(root)
+  const transactionId = "tx-parent-cleanup-failure"
+  const quarantineBase = path.join(root, ".bob", "workflows", "run-cleanup-quarantine")
+  const quarantinePath = path.join(quarantineBase, transactionId)
+  const fsOps = {
+    rmdir: async (directory, ...args) => {
+      if (path.resolve(directory) === path.resolve(quarantineBase)) {
+        const error = new Error("injected quarantine parent cleanup failure")
+        error.code = "EACCES"
+        throw error
+      }
+      return fs.rmdir(directory, ...args)
+    }
+  }
+  const transaction = transactionModules()
+
+  await assert.rejects(transaction.applyWorkflowRunCleanupTransaction({
+    workspaceRoot: root,
+    expectedPlan: plan,
+    transactionId,
+    fsOps
+  }), (error) => {
+    assert.ok(error instanceof transaction.WorkflowRunCleanupIncompleteError)
+    assert.equal(error.phase, "parent-cleanup")
+    assert.deepEqual(error.committedRunIds, ["parent-cleanup"])
+    assert.deepEqual(error.residualRunIds, [])
+    assert.equal(error.retainedQuarantinePath, quarantineBase)
+    assert.equal(error.reclaimedBytes, 0)
+    assert.match(error.message, /injected quarantine parent cleanup failure/)
+    return true
+  })
+
+  await assert.rejects(fs.stat(path.join(runsRoot, "parent-cleanup")), { code: "ENOENT" })
+  await assert.rejects(fs.stat(quarantinePath), { code: "ENOENT" })
+  assert.equal((await fs.stat(quarantineBase)).isDirectory(), true)
 })
 
 test("cleanup transaction exposes residual committed runs when rollback fails", async (t) => {

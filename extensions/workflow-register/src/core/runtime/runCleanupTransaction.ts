@@ -11,10 +11,14 @@ import {
 import { hashWorkflowRunBytes } from "./runEventLog"
 import { readRunDurabilityFile } from "./runDurabilityPath"
 import { withWorkflowRunCleanupLeases } from "./runCleanupLease"
-import { inspectWorkflowRunRetentionInventory } from "./runRetentionInventory"
+import {
+  inspectWorkflowRunRetentionCandidatePhysicalEvidence,
+  inspectWorkflowRunRetentionInventory,
+  type WorkflowRunRetentionCandidatePhysicalEvidence
+} from "./runRetentionInventory"
 import { assertSafeWorkflowRunId, readContainedRunFile } from "./runStatePath"
 
-export interface WorkflowRunCleanupCandidate {
+interface WorkflowRunCleanupCandidate {
   runId: string
   revision: string
 }
@@ -25,7 +29,7 @@ export interface WorkflowRunCleanupTransactionResult {
   quarantinePath: string
 }
 
-export type WorkflowRunCleanupIncompletePhase = "purge" | "rollback"
+export type WorkflowRunCleanupIncompletePhase = "parent-cleanup" | "purge" | "rollback"
 
 export class WorkflowRunCleanupIncompleteError extends Error {
   readonly phase: WorkflowRunCleanupIncompletePhase
@@ -73,19 +77,25 @@ const DEFAULT_FS: WorkflowRunCleanupFileSystem = {
 
 export async function applyWorkflowRunCleanupTransaction(input: {
   workspaceRoot: string
-  candidates?: readonly WorkflowRunCleanupCandidate[]
-  expectedPlan?: WorkflowRunCleanupPlan
+  expectedPlan: WorkflowRunCleanupPlan
   transactionId?: string
   fsOps?: Partial<WorkflowRunCleanupFileSystem>
 }): Promise<WorkflowRunCleanupTransactionResult> {
-  const candidates = resolveCandidates(input.candidates, input.expectedPlan)
+  if (!input.expectedPlan) {
+    throw new Error("A verified expected cleanup plan is required for a non-empty workflow run cleanup transaction.")
+  }
+  const candidates = resolveCandidates(input.expectedPlan)
   const transactionId = safeSegment(input.transactionId ?? `cleanup-${randomUUID()}`, "transaction id")
   const fsOps: WorkflowRunCleanupFileSystem = { ...DEFAULT_FS, ...input.fsOps }
   if (candidates.length === 0) return { removedRunIds: [], transactionId, quarantinePath: "" }
 
   return withWorkflowRunCleanupLeases(input.workspaceRoot, candidates.map((candidate) => candidate.runId), async () => {
+    const root = await fsOps.realpath(path.resolve(input.workspaceRoot))
+    const workflowsRoot = await ensureDirectoryChain(fsOps, root, [".bob", "workflows"], false)
+    const runsRoot = path.join(workflowsRoot, "runs")
+    await assertDirectDirectory(fsOps, runsRoot, root, "Workflow runs directory")
     const preflight = await inspectWorkflowRunRetentionInventory(input.workspaceRoot)
-    if (input.expectedPlan) assertExpectedPlanUnchanged(input.expectedPlan, preflight.inventory)
+    assertExpectedPlanUnchanged(input.expectedPlan, preflight.inventory)
     const expectedEvidence = new Map<string, WorkflowRunRetentionInventoryItem>()
     for (const candidate of candidates) {
       const item = findCandidateEvidence(preflight.inventory, candidate.runId)
@@ -93,10 +103,6 @@ export async function applyWorkflowRunCleanupTransaction(input: {
       expectedEvidence.set(candidate.runId, item)
     }
 
-    const root = await fsOps.realpath(path.resolve(input.workspaceRoot))
-    const workflowsRoot = await ensureDirectoryChain(fsOps, root, [".bob", "workflows"], false)
-    const runsRoot = path.join(workflowsRoot, "runs")
-    await assertDirectDirectory(fsOps, runsRoot, root, "Workflow runs directory")
     const quarantineBase = path.join(workflowsRoot, "run-cleanup-quarantine")
     await mkdirIfNeeded(fsOps, quarantineBase)
     await assertDirectDirectory(fsOps, quarantineBase, root, "Workflow cleanup quarantine directory")
@@ -104,23 +110,24 @@ export async function applyWorkflowRunCleanupTransaction(input: {
     await fsOps.mkdir(quarantinePath)
     await assertDirectDirectory(fsOps, quarantinePath, root, "Workflow cleanup quarantine transaction")
 
-    const moved: Array<{ runId: string; source: string; target: string }> = []
+    const moved: Array<{ runId: string; source: string; target: string; identityVerified: boolean }> = []
     try {
       for (const candidate of candidates) {
-        const boundary = await inspectWorkflowRunRetentionInventory(input.workspaceRoot)
-        const currentEvidence = findCandidateEvidence(boundary.inventory, candidate.runId)
-        assertCandidateEvidence(currentEvidence, boundary.referenceGraphComplete, candidate, expectedEvidence.get(candidate.runId))
+        const expected = expectedEvidence.get(candidate.runId)
+        if (!expected) throw new Error(`Workflow run '${candidate.runId}' has no locked cleanup evidence.`)
+        const boundary = await inspectWorkflowRunRetentionCandidatePhysicalEvidence(input.workspaceRoot, candidate.runId)
+        assertCandidatePhysicalEvidence(boundary, candidate, expected)
         await assertCandidateUnchanged(input.workspaceRoot, candidate)
         const source = path.join(runsRoot, candidate.runId)
         const target = path.join(quarantinePath, candidate.runId)
-        const expected = expectedEvidence.get(candidate.runId)
-        await assertDirectDirectory(fsOps, source, root, `Workflow run '${candidate.runId}' directory`, expected?.directoryIdentity ?? undefined)
-        const finalBoundary = await inspectWorkflowRunRetentionInventory(input.workspaceRoot)
-        const finalEvidence = findCandidateEvidence(finalBoundary.inventory, candidate.runId)
-        assertCandidateEvidence(finalEvidence, finalBoundary.referenceGraphComplete, candidate, expected)
+        await assertDirectDirectory(fsOps, source, root, `Workflow run '${candidate.runId}' directory`, expected.directoryIdentity ?? undefined)
+        const finalBoundary = await inspectWorkflowRunRetentionCandidatePhysicalEvidence(input.workspaceRoot, candidate.runId)
+        assertCandidatePhysicalEvidence(finalBoundary, candidate, expected)
         await fsOps.rename(source, target)
-        moved.push({ runId: candidate.runId, source, target })
-        await assertDirectDirectory(fsOps, target, root, `Workflow run '${candidate.runId}' quarantined directory`, expected?.directoryIdentity ?? undefined)
+        const movedEntry = { runId: candidate.runId, source, target, identityVerified: false }
+        moved.push(movedEntry)
+        await assertDirectDirectory(fsOps, target, root, `Workflow run '${candidate.runId}' quarantined directory`, expected.directoryIdentity ?? undefined)
+        movedEntry.identityVerified = true
       }
     } catch (error) {
       const rollbackErrors: string[] = []
@@ -138,9 +145,13 @@ export async function applyWorkflowRunCleanupTransaction(input: {
       }
       if (rollbackErrors.length > 0) {
         const residualRunIds = await findResidualRunIds(fsOps, moved)
+        const residualSet = new Set(residualRunIds)
+        const committedRunIds = moved
+          .filter((entry) => entry.identityVerified && residualSet.has(entry.runId))
+          .map((entry) => entry.runId)
         throw new WorkflowRunCleanupIncompleteError({
           phase: "rollback",
-          committedRunIds: residualRunIds,
+          committedRunIds,
           residualRunIds,
           retainedQuarantinePath: quarantinePath,
           cause: error,
@@ -166,7 +177,20 @@ export async function applyWorkflowRunCleanupTransaction(input: {
         message: `Workflow run cleanup committed ${committedRunIds.length} run(s), but quarantine purge failed (${formatError(error)}). Quarantine retained at ${quarantinePath}`
       })
     }
-    await removeIfEmpty(fsOps, quarantineBase)
+    try {
+      await removeIfEmpty(fsOps, quarantineBase)
+    } catch (error) {
+      const retainedQuarantinePath = await retainedPathIfPresent(fsOps, quarantineBase)
+      const committedRunIds = moved.map((entry) => entry.runId)
+      throw new WorkflowRunCleanupIncompleteError({
+        phase: "parent-cleanup",
+        committedRunIds,
+        residualRunIds: [],
+        retainedQuarantinePath,
+        cause: error,
+        message: `Workflow run cleanup committed ${committedRunIds.length} run(s), but quarantine parent cleanup failed (${formatError(error)}).${retainedQuarantinePath ? ` Quarantine parent retained at ${retainedQuarantinePath}` : ""}`
+      })
+    }
     return { removedRunIds: moved.map((entry) => entry.runId), transactionId, quarantinePath }
   })
 }
@@ -257,6 +281,15 @@ async function findResidualRunIds(
   return residual
 }
 
+async function retainedPathIfPresent(fsOps: WorkflowRunCleanupFileSystem, target: string): Promise<string> {
+  try {
+    await fsOps.lstat(target)
+    return target
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "ENOENT" ? "" : target
+  }
+}
+
 async function assertMissingRollbackDestination(
   fsOps: WorkflowRunCleanupFileSystem,
   destination: string,
@@ -280,24 +313,12 @@ async function removeIfEmpty(fsOps: WorkflowRunCleanupFileSystem, directory: str
   }
 }
 
-function resolveCandidates(
-  supplied: readonly WorkflowRunCleanupCandidate[] | undefined,
-  expectedPlan: WorkflowRunCleanupPlan | undefined
-): WorkflowRunCleanupCandidate[] {
-  const candidates = normalizeCandidates(supplied ?? expectedPlan?.decisions
-    .filter((decision) => decision.action === "delete")
-    .map((decision) => ({ runId: decision.runId, revision: decision.revision }))
-    ?? [])
-  if (!expectedPlan) return candidates
+function resolveCandidates(expectedPlan: WorkflowRunCleanupPlan): WorkflowRunCleanupCandidate[] {
   if (!verifyWorkflowRunCleanupPlan(expectedPlan)) throw new Error("Workflow run cleanup plan digest is invalid.")
-  const planned = expectedPlan.decisions
+  return normalizeCandidates(expectedPlan.decisions
     .filter((decision) => decision.action === "delete")
     .map((decision) => ({ runId: decision.runId, revision: decision.revision }))
-    .sort((left, right) => left.runId.localeCompare(right.runId))
-  if (JSON.stringify(candidates) !== JSON.stringify(planned)) {
-    throw new Error("Workflow run cleanup candidates do not exactly match the expected cleanup plan.")
-  }
-  return candidates
+  )
 }
 
 function assertExpectedPlanUnchanged(
@@ -325,8 +346,7 @@ function findCandidateEvidence(
 function assertCandidateEvidence(
   item: WorkflowRunRetentionInventoryItem,
   referenceGraphComplete: boolean,
-  candidate: WorkflowRunCleanupCandidate,
-  expected?: WorkflowRunRetentionInventoryItem
+  candidate: WorkflowRunCleanupCandidate
 ): void {
   if (item.revision !== candidate.revision) throw new Error(`Workflow run '${candidate.runId}' changed after cleanup preview.`)
   if (item.lockPresent) throw new Error(`Workflow run '${candidate.runId}' has an execution lock.`)
@@ -343,26 +363,33 @@ function assertCandidateEvidence(
   if (item.pinned || item.readOnly || item.recoverable || (item.status !== "completed" && item.status !== "failed")) {
     throw new Error(`Workflow run '${candidate.runId}' is not eligible for cleanup.`)
   }
-  if (expected && !sameCandidateEvidence(expected, item)) {
-    throw new Error(`Workflow run '${candidate.runId}' physical tree or retention evidence changed before quarantine rename.`)
-  }
 }
 
-function sameCandidateEvidence(
+function assertCandidatePhysicalEvidence(
+  item: WorkflowRunRetentionCandidatePhysicalEvidence,
+  candidate: WorkflowRunCleanupCandidate,
   expected: WorkflowRunRetentionInventoryItem,
-  current: WorkflowRunRetentionInventoryItem
-): boolean {
-  return expected.revision === current.revision
-    && expected.retentionRevision === current.retentionRevision
-    && expected.treeFingerprint === current.treeFingerprint
-    && expected.bytes === current.bytes
-    && expected.measurementComplete === current.measurementComplete
-    && expected.referenceGraphComplete === current.referenceGraphComplete
-    && expected.lockPresent === current.lockPresent
-    && expected.journalPending === current.journalPending
-    && expected.pathContained === current.pathContained
-    && JSON.stringify(expected.directoryIdentity) === JSON.stringify(current.directoryIdentity)
-    && JSON.stringify(expected.referencedBy) === JSON.stringify(current.referencedBy)
+): void {
+  if (item.runId !== candidate.runId || item.revision !== candidate.revision) {
+    throw new Error(`Workflow run '${candidate.runId}' changed after cleanup preview.`)
+  }
+  if (item.lockPresent) throw new Error(`Workflow run '${candidate.runId}' has an execution lock.`)
+  if (item.journalPending) throw new Error(`Workflow run '${candidate.runId}' has a pending journal.`)
+  if (!item.measurementComplete || !item.pathContained || !item.directoryIdentity) {
+    throw new Error(`Workflow run '${candidate.runId}' physical tree measurement is incomplete or unsafe.`)
+  }
+  const unchanged = expected.revision === item.revision
+    && expected.retentionRevision === item.retentionRevision
+    && expected.treeFingerprint === item.treeFingerprint
+    && expected.bytes === item.bytes
+    && expected.measurementComplete === item.measurementComplete
+    && expected.lockPresent === item.lockPresent
+    && expected.journalPending === item.journalPending
+    && expected.pathContained === item.pathContained
+    && JSON.stringify(expected.directoryIdentity) === JSON.stringify(item.directoryIdentity)
+  if (!unchanged) {
+    throw new Error(`Workflow run '${candidate.runId}' physical tree or retention evidence changed before quarantine rename.`)
+  }
 }
 
 function safeSegment(value: string, label: string): string {

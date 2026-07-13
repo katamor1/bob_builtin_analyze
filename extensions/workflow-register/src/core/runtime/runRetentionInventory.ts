@@ -40,6 +40,19 @@ export interface WorkflowRunRetentionInventorySnapshot {
   referenceGraphComplete: boolean
 }
 
+export interface WorkflowRunRetentionCandidatePhysicalEvidence {
+  runId: string
+  bytes: number
+  revision: string
+  retentionRevision: string
+  journalPending: boolean
+  lockPresent: boolean
+  pathContained: boolean
+  measurementComplete: boolean
+  directoryIdentity: WorkflowRunDirectoryIdentity | null
+  treeFingerprint: string
+}
+
 interface InternalInventoryEntry {
   rawEntryName: string
   run?: WorkflowRunState
@@ -164,6 +177,55 @@ export async function inspectWorkflowRunRetentionInventory(
     referenceGraphComplete
   })).sort((left, right) => left.updatedAt.localeCompare(right.updatedAt) || compareText(left.runId, right.runId))
   return { inventory, referenceGraphComplete }
+}
+
+export async function inspectWorkflowRunRetentionCandidatePhysicalEvidence(
+  workspaceRoot: string,
+  runId: string,
+  requestedLimits: Partial<WorkflowRunRetentionInventoryLimits> = {}
+): Promise<WorkflowRunRetentionCandidatePhysicalEvidence> {
+  assertSafeWorkflowRunId(runId)
+  const budget = createScanBudget(requestedLimits)
+  const root = await fs.realpath(path.resolve(workspaceRoot))
+  const runsRoot = path.join(root, ...RUNS_ROOT_SEGMENTS)
+  let rootStat: BigIntStats
+  try {
+    rootStat = await fs.lstat(runsRoot, { bigint: true })
+  } catch (error) {
+    throw new Error("Workflow runs directory is missing or unreadable during cleanup revalidation.", { cause: error })
+  }
+  if (rootStat.isSymbolicLink() || !rootStat.isDirectory() || !(await isDirectContainedPath(root, runsRoot))) {
+    throw new Error("Workflow runs directory is unsafe during cleanup revalidation.")
+  }
+
+  const directory = path.join(runsRoot, runId)
+  let directoryStat: BigIntStats
+  try {
+    directoryStat = await fs.lstat(directory, { bigint: true })
+  } catch (error) {
+    throw new Error(`Workflow run '${runId}' directory is missing or unreadable during cleanup revalidation.`, { cause: error })
+  }
+  if (directoryStat.isSymbolicLink() || !directoryStat.isDirectory() || !(await isDirectContainedPath(root, directory))) {
+    throw new Error(`Workflow run '${runId}' directory is unsafe during cleanup revalidation.`)
+  }
+
+  const entry = await inspectRunDirectory(root, directory, runId, directoryStat, budget)
+  if (!(await sameDirectDirectory(root, runsRoot, rootStat))) {
+    throw new Error("Workflow runs directory changed during cleanup revalidation.")
+  }
+  const item = entry.item
+  return {
+    runId: item.runId,
+    bytes: item.bytes,
+    revision: item.revision,
+    retentionRevision: item.retentionRevision,
+    journalPending: item.journalPending,
+    lockPresent: item.lockPresent,
+    pathContained: item.pathContained,
+    measurementComplete: item.measurementComplete,
+    directoryIdentity: item.directoryIdentity,
+    treeFingerprint: item.treeFingerprint
+  }
 }
 
 async function inspectRunDirectory(

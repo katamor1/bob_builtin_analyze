@@ -101,6 +101,14 @@ async function writeRun(root, runId, overrides = {}) {
   return { run, directory }
 }
 
+async function cleanupPlan(root, runIds) {
+  const snapshot = await inventoryModules().inspectWorkflowRunRetentionInventory(root)
+  return plannerModules().planWorkflowRunCleanup(snapshot.inventory, {
+    now: "2026-07-13T03:00:00.000Z",
+    selectedRunIds: runIds
+  })
+}
+
 async function optionalBytes(filePath) {
   try {
     return await fs.readFile(filePath)
@@ -195,31 +203,31 @@ test("apply rejects a cleanup plan whose physical evidence changes after cleanup
   const releaseApply = deferred()
   const originalRealpath = fs.realpath
   let stopped = false
-  fs.realpath = async (target, ...args) => {
-    if (!stopped) {
-      const [leasePresent, ownerPresent] = await Promise.all([
-        fs.access(leaseFile).then(() => true, () => false),
-        fs.access(guardOwner).then(() => true, () => false)
-      ])
-      if (leasePresent && ownerPresent) {
-        stopped = true
-        leasesHeld.resolve()
-        await releaseApply.promise
-      }
-    }
-    return originalRealpath(target, ...args)
-  }
-
-  const applying = service.apply(plan)
+  let applying
   try {
+    fs.realpath = async (target, ...args) => {
+      if (!stopped) {
+        const [leasePresent, ownerPresent] = await Promise.all([
+          fs.access(leaseFile).then(() => true, () => false),
+          fs.access(guardOwner).then(() => true, () => false)
+        ])
+        if (leasePresent && ownerPresent) {
+          stopped = true
+          leasesHeld.resolve()
+          await releaseApply.promise
+        }
+      }
+      return originalRealpath(target, ...args)
+    }
+
+    applying = service.apply(plan)
     await withTimeout(leasesHeld.promise, "cleanup leases held")
     await fs.writeFile(path.join(run.directory, "late-artifact.bin"), "changed after outer preview")
-  } finally {
     releaseApply.resolve()
-  }
-  try {
     await assert.rejects(applying, /cleanup plan changed|inventory changed|physical tree|evidence changed/i)
   } finally {
+    releaseApply.resolve()
+    await applying?.catch(() => undefined)
     fs.realpath = originalRealpath
   }
 
@@ -318,8 +326,7 @@ test("cleanup lease acquired first prevents pin metadata mutation", async (t) =>
     updatedAt: "2026-07-13T00:00:00.000Z"
   }, null, 2)}\n`
   await fs.writeFile(retentionFile, originalRetention)
-  const runBytes = await fs.readFile(path.join(directory, "run.json"))
-  const revision = `sha256:${crypto.createHash("sha256").update(runBytes).digest("hex")}`
+  const plan = await cleanupPlan(root, ["cleanup-first-run"])
   const cleanupAtMove = deferred()
   const allowCleanupMove = deferred()
   const fsOps = {
@@ -339,7 +346,7 @@ test("cleanup lease acquired first prevents pin metadata mutation", async (t) =>
   const { applyWorkflowRunCleanupTransaction } = cleanupModules()
   const cleanup = withTimeout(applyWorkflowRunCleanupTransaction({
     workspaceRoot: root,
-    candidates: [{ runId: "cleanup-first-run", revision }],
+    expectedPlan: plan,
     transactionId: "cleanup-first-pin",
     fsOps
   }), "cleanup-first transaction")
@@ -388,12 +395,11 @@ test("cleanup lease acquired first prevents pin metadata mutation", async (t) =>
 test("cleanup completed before a stale pin starts does not recreate the run directory", async (t) => {
   const root = await workspace(t)
   const { directory } = await writeRun(root, "cleanup-complete-pin-run")
-  const runBytes = await fs.readFile(path.join(directory, "run.json"))
-  const revision = `sha256:${crypto.createHash("sha256").update(runBytes).digest("hex")}`
+  const plan = await cleanupPlan(root, ["cleanup-complete-pin-run"])
   const { applyWorkflowRunCleanupTransaction } = cleanupModules()
   const cleanupOutcome = await settle(withTimeout(applyWorkflowRunCleanupTransaction({
     workspaceRoot: root,
-    candidates: [{ runId: "cleanup-complete-pin-run", revision }],
+    expectedPlan: plan,
     transactionId: "cleanup-complete-before-pin"
   }), "cleanup-complete pin transaction"))
   if (cleanupOutcome.status === "rejected") {
@@ -415,8 +421,7 @@ test("cleanup completed before a stale pin starts does not recreate the run dire
 test("pin metadata committed first keeps cleanup out until the run lock releases", async (t) => {
   const root = await workspace(t)
   const { directory } = await writeRun(root, "pin-first-run")
-  const runBytes = await fs.readFile(path.join(directory, "run.json"))
-  const revision = `sha256:${crypto.createHash("sha256").update(runBytes).digest("hex")}`
+  const plan = await cleanupPlan(root, ["pin-first-run"])
   const retentionFile = path.join(directory, "retention.json")
   const committed = deferred()
   const releasePin = deferred()
@@ -438,7 +443,7 @@ test("pin metadata committed first keeps cleanup out until the run lock releases
     await withTimeout(committed.promise, "pin metadata commit")
     cleanupOutcome = await settle(withTimeout(applyWorkflowRunCleanupTransaction({
       workspaceRoot: root,
-      candidates: [{ runId: "pin-first-run", revision }],
+      expectedPlan: plan,
       transactionId: "pin-first-cleanup"
     }), "pin-first cleanup"))
   } finally {
