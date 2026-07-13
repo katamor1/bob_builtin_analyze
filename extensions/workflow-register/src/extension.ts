@@ -155,7 +155,11 @@ export function activate(context: vscode.ExtensionContext): WorkflowRegisterApi 
     abortBranchCheckpoint: (runId) => service.abortBranchCheckpoint(runId),
     inspectBranching: (runId) => service.inspectBranching(runId)
   }
-  const operationHub = new OperationHubProvider({ api, extensionUri: context.extensionUri })
+  const operationHub = new OperationHubProvider({
+    api,
+    extensionUri: context.extensionUri,
+    activeSteps: () => service.listActiveSteps()
+  })
   context.subscriptions.push(
     service,
     operationHub,
