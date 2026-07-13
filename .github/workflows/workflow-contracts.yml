@@ -48,6 +48,7 @@ on:
       - "extensions/bob-code-consistency-review/package.json"
       - ".github/workflows/workflow-contracts.yml"
   workflow_dispatch:
+  # Manual dispatch is retained for explicit post-evidence contract verification.
 
 concurrency:
   group: workflow-contracts-${{ github.event.pull_request.number || github.ref }}
