@@ -438,16 +438,64 @@ test("cleanup transaction does not commit or purge a replacement moved by a rena
   await assert.rejects(fs.stat(run.directory), { code: "ENOENT" })
 })
 
-test("cleanup transaction exposes committed runs and retained quarantine when purge fails", async (t) => {
+test("cleanup transaction preserves every target when an earlier quarantine tree changes while a later candidate moves", async (t) => {
+  const { root, runsRoot } = await workspace(t)
+  const a = await createRun(runsRoot, "purge-race-a")
+  const b = await createRun(runsRoot, "purge-race-b")
+  const plan = await cleanupPlan(root)
+  const transactionId = "tx-purge-race"
+  const quarantinePath = path.join(root, ".bob", "workflows", "run-cleanup-quarantine", transactionId)
+  const quarantinedA = path.join(quarantinePath, "purge-race-a")
+  const quarantinedB = path.join(quarantinePath, "purge-race-b")
+  const unverifiedFile = path.join(quarantinedA, "unverified-replacement.txt")
+  let changedAfterFirstVerification = false
+  const fsOps = {
+    rename: async (source, target) => {
+      const result = await fs.rename(source, target)
+      if (path.resolve(source) === path.resolve(b.directory)) {
+        await fs.writeFile(unverifiedFile, "must not be purged")
+        changedAfterFirstVerification = true
+      }
+      return result
+    }
+  }
+  const transaction = transactionModules()
+
+  await assert.rejects(transaction.applyWorkflowRunCleanupTransaction({
+    workspaceRoot: root,
+    expectedPlan: plan,
+    transactionId,
+    fsOps
+  }), (error) => {
+    assert.ok(error instanceof transaction.WorkflowRunCleanupIncompleteError)
+    assert.equal(error.phase, "purge")
+    assert.deepEqual(error.committedRunIds, ["purge-race-a", "purge-race-b"])
+    assert.deepEqual(error.residualRunIds, ["purge-race-a", "purge-race-b"])
+    assert.equal(error.retainedQuarantinePath, quarantinePath)
+    assert.equal(error.reclaimedBytes, 0)
+    assert.match(error.message, /physical tree|evidence changed/i)
+    return true
+  })
+
+  assert.equal(changedAfterFirstVerification, true)
+  assert.equal(await fs.readFile(unverifiedFile, "utf8"), "must not be purged")
+  assert.equal((await fs.stat(quarantinedB)).isDirectory(), true)
+  await assert.rejects(fs.stat(a.directory), { code: "ENOENT" })
+  await assert.rejects(fs.stat(b.directory), { code: "ENOENT" })
+})
+
+test("cleanup transaction reports exact residual targets when a later candidate purge fails", async (t) => {
   const { root, runsRoot } = await workspace(t)
   await createRun(runsRoot, "purge-a")
   await createRun(runsRoot, "purge-b")
   const plan = await cleanupPlan(root)
   const transactionId = "tx-purge-failure"
   const quarantinePath = path.join(root, ".bob", "workflows", "run-cleanup-quarantine", transactionId)
+  const quarantinedA = path.join(quarantinePath, "purge-a")
+  const quarantinedB = path.join(quarantinePath, "purge-b")
   const fsOps = {
     rm: async (target, options) => {
-      if (path.resolve(target) === path.resolve(quarantinePath) && options?.recursive && options.force === false) {
+      if (path.resolve(target) === path.resolve(quarantinedB) && options?.recursive && options.force === false) {
         const error = new Error("injected quarantine purge failure")
         error.code = "EIO"
         throw error
@@ -467,7 +515,7 @@ test("cleanup transaction exposes committed runs and retained quarantine when pu
     assert.ok(error instanceof transaction.WorkflowRunCleanupIncompleteError)
     assert.equal(error.phase, "purge")
     assert.deepEqual(error.committedRunIds, ["purge-a", "purge-b"])
-    assert.deepEqual(error.residualRunIds, ["purge-a", "purge-b"])
+    assert.deepEqual(error.residualRunIds, ["purge-b"])
     assert.equal(error.retainedQuarantinePath, quarantinePath)
     assert.equal(error.reclaimedBytes, 0)
     assert.match(error.message, /injected quarantine purge failure/)
@@ -476,8 +524,46 @@ test("cleanup transaction exposes committed runs and retained quarantine when pu
 
   await assert.rejects(fs.stat(path.join(runsRoot, "purge-a")), { code: "ENOENT" })
   await assert.rejects(fs.stat(path.join(runsRoot, "purge-b")), { code: "ENOENT" })
-  assert.equal((await fs.stat(path.join(quarantinePath, "purge-a"))).isDirectory(), true)
-  assert.equal((await fs.stat(path.join(quarantinePath, "purge-b"))).isDirectory(), true)
+  await assert.rejects(fs.stat(quarantinedA), { code: "ENOENT" })
+  assert.equal((await fs.stat(quarantinedB)).isDirectory(), true)
+})
+
+test("cleanup transaction preserves an unexpected quarantine sibling and reports an incomplete purge", async (t) => {
+  const { root, runsRoot } = await workspace(t)
+  const run = await createRun(runsRoot, "unexpected-sibling")
+  const plan = await cleanupPlan(root)
+  const transactionId = "tx-unexpected-sibling"
+  const quarantinePath = path.join(root, ".bob", "workflows", "run-cleanup-quarantine", transactionId)
+  const sibling = path.join(quarantinePath, "unverified-sibling.txt")
+  const fsOps = {
+    rename: async (source, target) => {
+      const result = await fs.rename(source, target)
+      if (path.resolve(source) === path.resolve(run.directory)) {
+        await fs.writeFile(sibling, "must not be recursively purged")
+      }
+      return result
+    }
+  }
+  const transaction = transactionModules()
+
+  await assert.rejects(transaction.applyWorkflowRunCleanupTransaction({
+    workspaceRoot: root,
+    expectedPlan: plan,
+    transactionId,
+    fsOps
+  }), (error) => {
+    assert.ok(error instanceof transaction.WorkflowRunCleanupIncompleteError)
+    assert.equal(error.phase, "purge")
+    assert.deepEqual(error.committedRunIds, ["unexpected-sibling"])
+    assert.deepEqual(error.residualRunIds, [])
+    assert.equal(error.retainedQuarantinePath, quarantinePath)
+    assert.equal(error.reclaimedBytes, 0)
+    assert.match(error.message, /directory|not empty|ENOTEMPTY/i)
+    return true
+  })
+
+  assert.equal(await fs.readFile(sibling, "utf8"), "must not be recursively purged")
+  await assert.rejects(fs.stat(run.directory), { code: "ENOENT" })
 })
 
 test("cleanup transaction reports the retained quarantine parent when parent cleanup fails after purge", async (t) => {

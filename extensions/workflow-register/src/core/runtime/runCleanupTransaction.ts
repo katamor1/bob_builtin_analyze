@@ -13,6 +13,7 @@ import { readRunDurabilityFile } from "./runDurabilityPath"
 import { withWorkflowRunCleanupLeases } from "./runCleanupLease"
 import {
   inspectWorkflowRunRetentionCandidatePhysicalEvidence,
+  inspectWorkflowRunRetentionDirectoryPhysicalEvidence,
   inspectWorkflowRunRetentionInventory,
   type WorkflowRunRetentionCandidatePhysicalEvidence
 } from "./runRetentionInventory"
@@ -123,6 +124,8 @@ export async function applyWorkflowRunCleanupTransaction(input: {
         await assertDirectDirectory(fsOps, source, root, `Workflow run '${candidate.runId}' directory`, expected.directoryIdentity ?? undefined)
         const finalBoundary = await inspectWorkflowRunRetentionCandidatePhysicalEvidence(input.workspaceRoot, candidate.runId)
         assertCandidatePhysicalEvidence(finalBoundary, candidate, expected)
+        // Node does not provide an identity-conditional rename. The target identity
+        // check immediately after rename detects a source swap without purging it.
         await fsOps.rename(source, target)
         const movedEntry = { runId: candidate.runId, source, target, identityVerified: false }
         moved.push(movedEntry)
@@ -158,23 +161,56 @@ export async function applyWorkflowRunCleanupTransaction(input: {
           message: `Workflow run cleanup failed (${formatError(error)}); rollback failed: ${rollbackErrors.join("; ")}. Quarantine preserved at ${quarantinePath}`
         })
       }
-      await fsOps.rm(quarantinePath, { recursive: true, force: true }).catch(() => undefined)
+      try {
+        await fsOps.rmdir(quarantinePath)
+      } catch (cleanupError) {
+        throw new WorkflowRunCleanupIncompleteError({
+          phase: "rollback",
+          committedRunIds: [],
+          residualRunIds: [],
+          retainedQuarantinePath: await retainedPathIfPresent(fsOps, quarantinePath),
+          cause: error,
+          message: `Workflow run cleanup failed (${formatError(error)}); rollback completed, but quarantine cleanup failed (${formatError(cleanupError)}). Quarantine preserved at ${quarantinePath}`
+        })
+      }
       await removeIfEmpty(fsOps, quarantineBase)
       throw error
     }
 
     try {
-      await fsOps.rm(quarantinePath, { recursive: true, force: false })
+      for (const entry of moved) {
+        const expected = expectedEvidence.get(entry.runId)
+        if (!expected) throw new Error(`Workflow run '${entry.runId}' has no locked cleanup evidence before purge.`)
+        const evidence = await inspectWorkflowRunRetentionDirectoryPhysicalEvidence(
+          input.workspaceRoot,
+          entry.target,
+          entry.runId
+        )
+        assertCandidatePhysicalEvidence(evidence, { runId: entry.runId, revision: expected.revision }, expected)
+        await assertDirectDirectory(
+          fsOps,
+          entry.target,
+          root,
+          `Workflow run '${entry.runId}' purge target`,
+          expected.directoryIdentity ?? undefined
+        )
+        // Node has no handle-relative, identity-conditional recursive remove.
+        // Cleanup leases exclude coordinated writers; a direct OS actor still has
+        // an unavoidable narrow race between this final check and fs.rm.
+        await fsOps.rm(entry.target, { recursive: true, force: false })
+      }
+      await fsOps.rmdir(quarantinePath)
     } catch (error) {
       const committedRunIds = moved.map((entry) => entry.runId)
       const residualRunIds = await findResidualRunIds(fsOps, moved)
+      const retainedQuarantinePath = await retainedPathIfPresent(fsOps, quarantinePath)
       throw new WorkflowRunCleanupIncompleteError({
         phase: "purge",
         committedRunIds,
         residualRunIds,
-        retainedQuarantinePath: quarantinePath,
+        retainedQuarantinePath,
         cause: error,
-        message: `Workflow run cleanup committed ${committedRunIds.length} run(s), but quarantine purge failed (${formatError(error)}). Quarantine retained at ${quarantinePath}`
+        message: `Workflow run cleanup committed ${committedRunIds.length} run(s), but quarantine purge failed (${formatError(error)}).${retainedQuarantinePath ? ` Quarantine retained at ${retainedQuarantinePath}` : ""}`
       })
     }
     try {

@@ -18,7 +18,8 @@ const RECOVERABLE_STATUSES = new Set<WorkflowRunRetentionStatus>(["running", "pa
 const CAPTURED_FILES = new Set(["run.json", "retention.json"])
 const PROVENANCE_SCHEMAS = new Map([
   ["workflow.artifactReuse", "workflow-register/artifact-reuse/v1"],
-  ["workflow.artifactHydration", "workflow-register/artifact-hydration/v1"]
+  ["workflow.artifactHydration", "workflow-register/artifact-hydration/v1"],
+  ["workflow.taskSnapshotImport", "workflow-register/task-snapshot-import/v1"]
 ])
 
 export interface WorkflowRunRetentionInventoryLimits {
@@ -199,6 +200,34 @@ export async function inspectWorkflowRunRetentionCandidatePhysicalEvidence(
   }
 
   const directory = path.join(runsRoot, runId)
+  const evidence = await inspectPhysicalDirectory(root, directory, runId, budget)
+  if (!(await sameDirectDirectory(root, runsRoot, rootStat))) {
+    throw new Error("Workflow runs directory changed during cleanup revalidation.")
+  }
+  return evidence
+}
+
+export async function inspectWorkflowRunRetentionDirectoryPhysicalEvidence(
+  workspaceRoot: string,
+  directory: string,
+  runId: string,
+  requestedLimits: Partial<WorkflowRunRetentionInventoryLimits> = {}
+): Promise<WorkflowRunRetentionCandidatePhysicalEvidence> {
+  assertSafeWorkflowRunId(runId)
+  const root = await fs.realpath(path.resolve(workspaceRoot))
+  const target = path.resolve(directory)
+  if (!isContained(root, target)) {
+    throw new Error(`Workflow run '${runId}' cleanup evidence path escapes the workflow workspace.`)
+  }
+  return inspectPhysicalDirectory(root, target, runId, createScanBudget(requestedLimits))
+}
+
+async function inspectPhysicalDirectory(
+  root: string,
+  directory: string,
+  runId: string,
+  budget: InventoryScanBudget
+): Promise<WorkflowRunRetentionCandidatePhysicalEvidence> {
   let directoryStat: BigIntStats
   try {
     directoryStat = await fs.lstat(directory, { bigint: true })
@@ -208,12 +237,7 @@ export async function inspectWorkflowRunRetentionCandidatePhysicalEvidence(
   if (directoryStat.isSymbolicLink() || !directoryStat.isDirectory() || !(await isDirectContainedPath(root, directory))) {
     throw new Error(`Workflow run '${runId}' directory is unsafe during cleanup revalidation.`)
   }
-
-  const entry = await inspectRunDirectory(root, directory, runId, directoryStat, budget)
-  if (!(await sameDirectDirectory(root, runsRoot, rootStat))) {
-    throw new Error("Workflow runs directory changed during cleanup revalidation.")
-  }
-  const item = entry.item
+  const item = (await inspectRunDirectory(root, directory, runId, directoryStat, budget)).item
   return {
     runId: item.runId,
     bytes: item.bytes,
@@ -415,7 +439,10 @@ async function walkDirectDirectory(
   accumulator: TreeAccumulator,
   budget: InventoryScanBudget
 ): Promise<void> {
-  if (!recordFingerprint(accumulator, budget, ["directory", segments, stableStatRecord(directoryStat)])) return
+  const directoryRecord = segments.length === 0
+    ? { ...identityFromStat(directoryStat), mode: directoryStat.mode.toString() }
+    : stableStatRecord(directoryStat)
+  if (!recordFingerprint(accumulator, budget, ["directory", segments, directoryRecord])) return
   const listing = await readBoundedDirectoryEntries(directory, budget)
   if (!listing.complete) {
     accumulator.complete = false
@@ -561,8 +588,10 @@ async function stableDirectFileMetadata(
 function collectSourceRunReferences(runs: readonly WorkflowRunState[]): Map<string, string[]> {
   const references = new Map<string, Set<string>>()
   for (const run of runs) {
-    for (const raw of Object.values(run.state)) {
-      for (const sourceRunId of sourceRunIdsFromValue(raw)) {
+    for (const [stateKey, expectedSchema] of PROVENANCE_SCHEMAS) {
+      const raw = run.state[stateKey]
+      if (raw === undefined) continue
+      for (const sourceRunId of storedProvenanceSourceRunIds(stateKey, raw, expectedSchema) ?? []) {
         if (sourceRunId === run.runId) continue
         const referrers = references.get(sourceRunId) ?? new Set<string>()
         referrers.add(run.runId)
@@ -573,51 +602,41 @@ function collectSourceRunReferences(runs: readonly WorkflowRunState[]): Map<stri
   return new Map([...references].map(([runId, referrers]) => [runId, [...referrers].sort(compareText)]))
 }
 
-function sourceRunIdsFromValue(value: string): string[] {
-  let parsed: unknown
+function storedProvenanceSourceRunIds(
+  stateKey: string,
+  raw: string,
+  expectedSchema: string
+): string[] | undefined {
+  let value: unknown
   try {
-    parsed = JSON.parse(value)
+    value = JSON.parse(raw)
   } catch {
-    return []
+    return undefined
   }
-  const output = new Set<string>()
-  const visit = (current: unknown, depth: number, seen: Set<unknown>): void => {
-    if (!current || typeof current !== "object" || depth > 8 || seen.has(current)) return
-    seen.add(current)
-    if (Array.isArray(current)) {
-      current.forEach((item) => visit(item, depth + 1, seen))
-      return
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined
+  const record = value as Record<string, unknown>
+  if (record.schemaVersion !== expectedSchema || typeof record.sourceRunId !== "string" || !isSafeRunId(record.sourceRunId)) {
+    return undefined
+  }
+  const sourceRunIds = new Set([record.sourceRunId])
+  if (stateKey === "workflow.artifactHydration") {
+    if (!Array.isArray(record.hydrated)) return undefined
+    for (const rawEntry of record.hydrated) {
+      if (!rawEntry || typeof rawEntry !== "object" || Array.isArray(rawEntry)) return undefined
+      const sourceRunId = (rawEntry as Record<string, unknown>).sourceRunId
+      if (typeof sourceRunId !== "string" || !isSafeRunId(sourceRunId)) return undefined
+      sourceRunIds.add(sourceRunId)
     }
-    const record = current as Record<string, unknown>
-    if (typeof record.sourceRunId === "string" && isSafeRunId(record.sourceRunId)) output.add(record.sourceRunId)
-    Object.values(record).forEach((item) => visit(item, depth + 1, seen))
   }
-  visit(parsed, 0, new Set())
-  return [...output]
+  if (stateKey === "workflow.taskSnapshotImport" && !Array.isArray(record.imported)) return undefined
+  return [...sourceRunIds]
 }
 
 function storedProvenanceComplete(run: WorkflowRunState): boolean {
   for (const [stateKey, expectedSchema] of PROVENANCE_SCHEMAS) {
     const raw = run.state[stateKey]
     if (raw === undefined) continue
-    let value: unknown
-    try {
-      value = JSON.parse(raw)
-    } catch {
-      return false
-    }
-    if (!value || typeof value !== "object" || Array.isArray(value)) return false
-    const record = value as Record<string, unknown>
-    if (record.schemaVersion !== expectedSchema || typeof record.sourceRunId !== "string" || !isSafeRunId(record.sourceRunId)) {
-      return false
-    }
-    if (stateKey !== "workflow.artifactHydration") continue
-    if (!Array.isArray(record.hydrated)) return false
-    for (const rawEntry of record.hydrated) {
-      if (!rawEntry || typeof rawEntry !== "object" || Array.isArray(rawEntry)) return false
-      const sourceRunId = (rawEntry as Record<string, unknown>).sourceRunId
-      if (typeof sourceRunId !== "string" || !isSafeRunId(sourceRunId)) return false
-    }
+    if (!storedProvenanceSourceRunIds(stateKey, raw, expectedSchema)) return false
   }
   return true
 }

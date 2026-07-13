@@ -969,7 +969,7 @@ test("workflow artifact source lock remains held through durable target provenan
   assert.equal(commandOutcome.status, "fulfilled")
 })
 
-test("workflow artifact source selected during cleanup cannot commit target provenance", async (t) => {
+test("authoritative provenance cannot commit after cleanup full inventory reaches the source rename barrier", async (t) => {
   const { rootB, service, state, workflow } = runCommandHarness(t)
   configureArtifactWorkflow(workflow, rootB.root)
   const source = writeArtifactSourceRun(rootB.root, rootB.runId, workflow, "selected")

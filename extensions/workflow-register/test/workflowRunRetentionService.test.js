@@ -174,6 +174,93 @@ test("inventory protects referenced source runs and malformed pin sidecars", asy
   assert.match(plan.decisions.find((item) => item.runId === "target-run").blockers.join(" "), /pinned/)
 })
 
+test("arbitrary result JSON with a nested sourceRunId is not an authoritative run reference", async (t) => {
+  const root = await workspace(t)
+  await writeRun(root, "result-source")
+  await writeRun(root, "result-writer", {
+    state: {
+      "step.result": JSON.stringify({ result: { sourceRunId: "result-source" } })
+    }
+  })
+  const { WorkflowRunRetentionService } = modules()
+  const service = new WorkflowRunRetentionService({ workspaceRoot: root, now: () => "2026-07-13T03:00:00.000Z" })
+
+  const inspection = await service.inspect()
+  const source = inspection.inventory.find((item) => item.runId === "result-source")
+  const plan = await service.preview({ completedDays: 1 })
+
+  assert.equal(inspection.referenceGraphComplete, true)
+  assert.deepEqual(source.referencedBy, [])
+  assert.equal(plan.candidateRunIds.includes("result-source"), true)
+})
+
+for (const provenance of [
+  {
+    name: "artifact reuse",
+    key: "workflow.artifactReuse",
+    value: {
+      schemaVersion: "workflow-register/artifact-reuse/v1",
+      sourceRunId: "authoritative-source"
+    }
+  },
+  {
+    name: "artifact hydration",
+    key: "workflow.artifactHydration",
+    value: {
+      schemaVersion: "workflow-register/artifact-hydration/v1",
+      sourceRunId: "authoritative-source",
+      hydrated: [{ sourceRunId: "authoritative-source" }]
+    }
+  },
+  {
+    name: "task snapshot import",
+    key: "workflow.taskSnapshotImport",
+    value: {
+      schemaVersion: "workflow-register/task-snapshot-import/v1",
+      sourceRunId: "authoritative-source",
+      imported: []
+    }
+  }
+]) {
+  test(`${provenance.name} state is an authoritative run reference`, async (t) => {
+    const root = await workspace(t)
+    await writeRun(root, "authoritative-source")
+    await writeRun(root, `authoritative-${provenance.name.replace(/ /g, "-")}`, {
+      state: { [provenance.key]: JSON.stringify(provenance.value) }
+    })
+    const { WorkflowRunRetentionService } = modules()
+    const service = new WorkflowRunRetentionService({ workspaceRoot: root, now: () => "2026-07-13T03:00:00.000Z" })
+
+    const inspection = await service.inspect()
+    const source = inspection.inventory.find((item) => item.runId === "authoritative-source")
+
+    assert.equal(inspection.referenceGraphComplete, true)
+    assert.deepEqual(source.referencedBy, [`authoritative-${provenance.name.replace(/ /g, "-")}`])
+  })
+}
+
+test("an invalid task snapshot provenance schema makes the authoritative graph incomplete", async (t) => {
+  const root = await workspace(t)
+  await writeRun(root, "invalid-task-snapshot-source")
+  await writeRun(root, "invalid-task-snapshot-writer", {
+    state: {
+      "workflow.taskSnapshotImport": JSON.stringify({
+        schemaVersion: "workflow-register/task-snapshot-import/v2",
+        sourceRunId: "invalid-task-snapshot-source",
+        imported: []
+      })
+    }
+  })
+  const { WorkflowRunRetentionService } = modules()
+  const service = new WorkflowRunRetentionService({ workspaceRoot: root, now: () => "2026-07-13T03:00:00.000Z" })
+
+  const inspection = await service.inspect()
+  const plan = await service.preview({ completedDays: 1 })
+
+  assert.equal(inspection.referenceGraphComplete, false)
+  assert.deepEqual(plan.candidateRunIds, [])
+})
+
 test("pin sidecar is independent from run.json and stale preview is rejected", async (t) => {
   const root = await workspace(t)
   const { directory } = await writeRun(root, "old-run")
