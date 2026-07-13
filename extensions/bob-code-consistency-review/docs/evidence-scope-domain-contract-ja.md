@@ -237,3 +237,14 @@ Phase 3 は次を行いません。
 - repository-wide persistent symbol index
 - producer 横断 artifact ledger
 - stale artifact の ledger 伝播
+
+
+## Repository index producer と Artifact Ledger（Phase 5–Final）
+
+Phase 5 は immutable Git blob から repository-symbol-index v1 を生成する built-in producer と、source body を含まない file-fragment cache を追加します。`repository_symbol_index_mode: build` の場合、producer は tracked blob の object ID と option identity で fragment を再利用し、全 fragment の reference を毎回再リンクした後、同じ preprocessing 内で Phase 4 consumer に再検証させます。
+
+Final phase は `.bob-review/artifact-ledger.json` に repository index、project rule pack、review package の metadata-only dependency graph を保存します。record は stable ID、kind、producer、workspace-relative path、exact SHA-256、input hash、source revision、dependency IDs、`fresh|stale|missing` status、stable stale reason のみを保持します。raw source、raw diff、document text、rule-pack/index/package body、credential、environment value は保存しません。
+
+`preprocessReview` は二段階 checkpoint を実行します。上流 checkpoint は package 生成前に index/rule-pack の変更または消失を記録し、旧 review package へ stale state を伝播します。package 生成に失敗してもその stale state は残ります。final checkpoint は package 成功後に managed output の canonical exact-byte hash と manifest と共有する input hash を記録し、現在の package を fresh に戻します。
+
+公開 API は `produceRepositorySymbolIndex`、`reconcileArtifactLedger`、`loadArtifactLedger`、`writeArtifactLedger`、`updateArtifactLedger` と関連型を明示 export します。consume-only、index 未設定、external producer、Bazaar review の既存契約は維持します。

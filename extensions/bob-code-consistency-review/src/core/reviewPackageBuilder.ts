@@ -140,12 +140,7 @@ function buildManifest(
     `  workflow_run_id: ${yamlScalar(workflowRunId ?? "")}`,
     `  source_vcs: ${yamlScalar(diff.vcs ?? "git")}`,
     `  source_revision: ${yamlScalar(sourceRevision(diff))}`,
-    `  input_hash: ${sha256Prefixed({
-      reviewInput,
-      diff: diffHashInput(diff),
-      rulePackHash: rulePack?.content_hash ?? "",
-      symbolIndexHash: symbolIndex?.content_hash ?? ""
-    })}`,
+    `  input_hash: ${computeReviewPackageInputHash(reviewInput, diff, contextBudgetArtifact)}`,
     "  contains_sensitive_context: true",
     "  human_review_required: true",
     "repository:",
@@ -186,6 +181,63 @@ function buildManifest(
     ...packageWarnings.map((warning) => `  - ${JSON.stringify(warning)}`),
     ""
   ].filter((line): line is string => line !== undefined).join("\n")
+}
+
+export function computeReviewPackageInputHash(
+  reviewInput: ReviewInput,
+  diff: DiffSummary,
+  contextBudgetArtifact: ContextBudgetArtifact | undefined
+): string {
+  return sha256Prefixed({
+    reviewInput,
+    diff: diffHashInput(diff),
+    rulePackHash: contextBudgetArtifact?.rule_pack?.content_hash ?? "",
+    symbolIndexHash: contextBudgetArtifact?.symbol_index?.content_hash ?? ""
+  })
+}
+
+export async function computeManagedReviewPackageContentHash(outDir: string): Promise<string> {
+  const files: Array<{ relativePath: string; absolutePath: string }> = []
+  for (const managedPath of MANAGED_PACKAGE_OUTPUTS) {
+    await collectManagedFiles(outDir, managedPath, files)
+  }
+  files.sort((left, right) => left.relativePath.localeCompare(right.relativePath))
+  const hash = createHash("sha256")
+  for (const file of files) {
+    const bytes = await fs.readFile(file.absolutePath)
+    hash.update(file.relativePath)
+    hash.update("\0")
+    hash.update(String(bytes.length))
+    hash.update("\0")
+    hash.update(bytes)
+    hash.update("\0")
+  }
+  return `sha256:${hash.digest("hex")}`
+}
+
+async function collectManagedFiles(
+  outDir: string,
+  relativePath: string,
+  target: Array<{ relativePath: string; absolutePath: string }>
+): Promise<void> {
+  const absolutePath = path.join(outDir, ...relativePath.split("/"))
+  let stat
+  try {
+    stat = await fs.lstat(absolutePath)
+  } catch (error) {
+    if (error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === "ENOENT") return
+    throw error
+  }
+  if (stat.isSymbolicLink()) throw new Error(`managed review package output must not be a symbolic link: ${relativePath}`)
+  if (stat.isFile()) {
+    target.push({ relativePath, absolutePath })
+    return
+  }
+  if (!stat.isDirectory()) throw new Error(`managed review package output has unsupported file type: ${relativePath}`)
+  const entries = await fs.readdir(absolutePath, { withFileTypes: true })
+  for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+    await collectManagedFiles(outDir, `${relativePath}/${entry.name}`, target)
+  }
 }
 
 function sourceRevision(diff: DiffSummary): string {

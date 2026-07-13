@@ -1,6 +1,6 @@
 # Bob Evidence Scope Phase 4 Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Consume a versioned workspace-local repository symbol/reference index so evidence scope can include caller, callee, type, global, and test impact outside changed files, with strict freshness and provenance contracts.
 
@@ -36,11 +36,11 @@
 - Requires: `buildReviewEvidenceScope(..., { repositoryIndex })`.
 - Requires: report `symbol_index` and manifest repository-index provenance.
 
-- [ ] **Step 1: Write the bounded read-only loader test**
+- [x] **Step 1: Write the bounded read-only loader test**
 
 Create a temporary workspace index, read source bytes before and after loading, and assert normalized source path, ID, source revision, SHA-256, symbol/edge counts, normalized symbols, and unchanged source bytes.
 
-- [ ] **Step 2: Write validation-boundary tests**
+- [x] **Step 2: Write validation-boundary tests**
 
 Assert rejection of:
 
@@ -58,15 +58,15 @@ await assert.rejects(
 
 Also assert rejection of a stale source revision, duplicate symbol ID, duplicate canonical edge, and resolved edge whose target is absent.
 
-- [ ] **Step 3: Write deterministic merge and external-impact tests**
+- [x] **Step 3: Write deterministic merge and external-impact tests**
 
 Build an analysis graph with changed `fn:api`. Supply an index containing external caller, callee, type, global, and test symbols plus edges. Assert all five appear as direct high-priority code scope and that reversing index arrays does not change the report. Include an index copy of `fn:api` and assert current analysis wins.
 
-- [ ] **Step 4: Write the pipeline provenance/stale-hash test**
+- [x] **Step 4: Write the pipeline provenance/stale-hash test**
 
 Use `createMultiLanguageGitReviewWorkspace()`, resolve its head SHA, create `.bob/evidence-scope/repository-symbol-index.json`, add the configured path under `analysis_options`, and run `preprocessReview`. Assert report and manifest provenance, external selected code, no raw index body, and a changed report hash plus manifest input hash when only index bytes change.
 
-- [ ] **Step 5: Verify RED**
+- [x] **Step 5: Verify RED**
 
 Run:
 
@@ -91,19 +91,19 @@ Expected: FAIL because the repository-index loader/adapter and pipeline integrat
 - Produces: `RepositorySymbolIndexProvenance` and `LoadedRepositorySymbolIndex`.
 - Consumes existing `ScopeSymbol` and `DependencyEdge` domain types.
 
-- [ ] **Step 1: Add byte-identical runtime and documentation schemas**
+- [x] **Step 1: Add byte-identical runtime and documentation schemas**
 
 Require `schema_version: 1`, index ID/source revision, symbols, and edges. Bound symbol and edge counts. Keep edge kind open, but require resolved edges to have `to` and unknown edges to have `target_hint`.
 
-- [ ] **Step 2: Implement bounded read-only loading**
+- [x] **Step 2: Implement bounded read-only loading**
 
 Normalize with `normalizeChangedFilePathStrict`, resolve with `resolveWorkspacePathStrict`, require `.json`, open with mode `r`, check size before and after reading, reject concurrent size changes, and hash the exact `Buffer`.
 
-- [ ] **Step 3: Validate freshness and graph semantics**
+- [x] **Step 3: Validate freshness and graph semantics**
 
 Require the index revision to match `expectedSourceRevision`. Reject duplicate symbols, malformed symbol paths, duplicate canonical edges, unknown edge sources, and dangling resolved targets. Normalize risk tags and add `test-impact` for test symbols.
 
-- [ ] **Step 4: Export the public API explicitly**
+- [x] **Step 4: Export the public API explicitly**
 
 Add named exports and types only; do not introduce `export *`.
 
@@ -118,19 +118,19 @@ Add named exports and types only; do not introduce `export *`.
 - Produces: `mergeRepositoryScopeData(analysisSymbols, analysisEdges, repositoryIndex)`.
 - `ReviewEvidenceScopeOptions` gains `repositoryIndex?: LoadedRepositorySymbolIndex`.
 
-- [ ] **Step 1: Merge symbols deterministically**
+- [x] **Step 1: Merge symbols deterministically**
 
 Load index symbols first, then replace matching IDs with current analysis symbols. Sort by stable ID.
 
-- [ ] **Step 2: Merge edges deterministically**
+- [x] **Step 2: Merge edges deterministically**
 
 Canonicalize by `from`, `to`, kind, and resolution. Load index edges first, then replace duplicates with current analysis edges. Sort by canonical identity and reason.
 
-- [ ] **Step 3: Run the existing scope engine on merged data**
+- [x] **Step 3: Run the existing scope engine on merged data**
 
 Keep changed-symbol seeds from current analysis. Preserve existing bounded breadth-first expansion, unknown impact, rule selection, document evidence, and token budget behavior.
 
-- [ ] **Step 4: Verify focused GREEN**
+- [x] **Step 4: Verify focused GREEN**
 
 Run:
 
@@ -155,15 +155,15 @@ Expected: all focused tests pass.
 - `ContextBudgetArtifact` gains optional `symbol_index` provenance.
 - Manifest gains repository-index path, ID, revision, hash, symbol count, and edge count.
 
-- [ ] **Step 1: Admit the optional index configuration**
+- [x] **Step 1: Admit the optional index configuration**
 
 Add a non-empty `.json` path to both review-input schemas and the TypeScript review input type.
 
-- [ ] **Step 2: Load before scope selection**
+- [x] **Step 2: Load before scope selection**
 
 In `buildReviewContextBudget`, load the index with workspace root, `diff.head`, encoding, and `maxDocumentBytes`; pass it to `buildReviewEvidenceScope`.
 
-- [ ] **Step 3: Serialize report provenance**
+- [x] **Step 3: Serialize report provenance**
 
 Add:
 
@@ -181,11 +181,11 @@ Add:
 }
 ```
 
-- [ ] **Step 4: Connect manifest and stale input hash**
+- [x] **Step 4: Connect manifest and stale input hash**
 
 Write repository-index fields under `inputs`. Include `symbol_index.content_hash` in the deterministic input-hash payload. Use an empty string when no index is configured.
 
-- [ ] **Step 5: Verify all regression and package gates**
+- [x] **Step 5: Verify all regression and package gates**
 
 Run:
 
@@ -215,19 +215,19 @@ Expected: every command exits `0`.
 **Interfaces:**
 - Produces reviewable architecture, TDD, security, CI, and checksum evidence.
 
-- [ ] **Step 1: Record behavior and boundaries**
+- [x] **Step 1: Record behavior and boundaries**
 
 Document configuration, schema, producer/consumer separation, read-only loading, freshness rejection, graph validation, merge precedence, provenance, stale hashing, and non-goals.
 
-- [ ] **Step 2: Record RED and GREEN evidence**
+- [x] **Step 2: Record RED and GREEN evidence**
 
 Include test-only commit SHA, expected RED failure, final test count, policy/package results, Linux/Windows CI, and any transient CI investigation.
 
-- [ ] **Step 3: Generate the SHA-256 manifest**
+- [x] **Step 3: Generate the SHA-256 manifest**
 
 Record each Phase 4 source, schema, test, spec, plan, and documentation file with bytes and SHA-256. Runtime/documentation schema mirrors must have identical hashes.
 
-- [ ] **Step 4: Commit and update PR #72**
+- [x] **Step 4: Commit and update PR #72**
 
 Commit all Phase 4 artifacts to `codex/execute-shared-plan-6a53743e`, keep the PR draft, update its title/body, and preserve the branch for the next phase.
 
