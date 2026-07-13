@@ -123,9 +123,9 @@ jobs:
                 `${step.stepId}: ${step.runStatus}`,
                 `completionSource=${step.completion}`,
                 `skippedByArtifactReuse=${step.skippedByArtifactReuse ? "yes" : "no"}`,
-                step.sourceRunId ? `sourceRun=${step.sourceRunId}` : undefined,
                 step.artifactIds.length > 0 ? `artifacts=${step.artifactIds.join(",")}` : undefined,
                 step.hydratedStateKeys.length > 0 ? `hydratedKeys=${step.hydratedStateKeys.join(",")}` : undefined,
+                step.sourceRunId ? `sourceRun=${step.sourceRunId}` : undefined,
                 step.importedFromTaskSnapshot ? "taskSnapshotImport=yes" : undefined
               ].filter((value): value is string => Boolean(value))
               lines.push(`  - ${fields.join("; ")}`)
