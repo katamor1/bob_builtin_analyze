@@ -2,6 +2,7 @@ import { randomUUID } from "crypto"
 import * as fs from "fs/promises"
 import * as os from "os"
 import * as path from "path"
+import { readRunDurabilityFile } from "./runDurabilityPath"
 import { assertSafeWorkflowRunId } from "./runStatePath"
 
 export const CURRENT_WORKFLOW_RUN_CLEANUP_LEASE_SCHEMA_VERSION = "workflow-register/run-cleanup-lease/v1" as const
@@ -22,6 +23,7 @@ export interface WorkflowRunCleanupLeaseOptions {
   hostname?: string
   processAlive?: (pid: number) => boolean
   staleMs?: number
+  heartbeatMs?: number
 }
 
 interface CleanupLeaseLocations {
@@ -36,8 +38,8 @@ interface CleanupLeaseSnapshot {
   ino: bigint
 }
 
-const RUNS_ROOT_SEGMENTS = [".bob", "workflows", "runs"] as const
-const CLEANUP_LEASE_DIRECTORY = ".cleanup-leases"
+const WORKFLOWS_ROOT_SEGMENTS = [".bob", "workflows"] as const
+const CLEANUP_LEASE_DIRECTORY = "run-cleanup-leases"
 
 export async function workflowRunCleanupLeasePresent(workspaceRoot: string, runId: string): Promise<boolean> {
   assertSafeWorkflowRunId(runId)
@@ -66,17 +68,42 @@ export async function withWorkflowRunCleanupLeases<T>(
   const locations = await cleanupLeaseLocations(workspaceRoot, true)
   if (!locations) throw new Error("Workflow cleanup lease directory is unavailable.")
   const leases: Array<{ file: string; lease: WorkflowRunCleanupLeaseV1 }> = []
+  let heartbeatError: unknown
+  let heartbeatRunning = false
+  let heartbeatChain: Promise<void> = Promise.resolve()
+  let heartbeatTimer: ReturnType<typeof setInterval> | undefined
+  const startHeartbeat = () => {
+    if (heartbeatTimer || resolved.heartbeatMs === 0) return
+    heartbeatTimer = setInterval(() => {
+      if (heartbeatError || heartbeatRunning) return
+      heartbeatRunning = true
+      heartbeatChain = refreshCleanupLeases(leases, locations.root, resolved)
+        .catch((error) => { heartbeatError = error })
+        .finally(() => { heartbeatRunning = false })
+    }, resolved.heartbeatMs)
+    heartbeatTimer.unref?.()
+  }
   let result!: T
   let operationError: unknown
   try {
     for (const runId of uniqueRunIds) {
       const acquired = await acquireCleanupLease(locations, runId, resolved)
       leases.push(acquired)
+      startHeartbeat()
+    }
+    for (const runId of uniqueRunIds) {
+      if (await readRunDurabilityFile(locations.root, runId, "run.lock.json")) {
+        throw new Error(`Workflow run '${runId}' has an active execution lock and cannot be cleaned up.`)
+      }
     }
     result = await operation()
   } catch (error) {
     operationError = error
   }
+
+  if (heartbeatTimer) clearInterval(heartbeatTimer)
+  await heartbeatChain
+  if (!operationError && heartbeatError) operationError = heartbeatError
 
   const releaseErrors: string[] = []
   for (const entry of [...leases].reverse()) {
@@ -102,6 +129,7 @@ interface ResolvedCleanupLeaseOptions {
   hostname: string
   processAlive: (pid: number) => boolean
   staleMs: number
+  heartbeatMs: number
 }
 
 async function acquireCleanupLease(
@@ -169,7 +197,8 @@ function inspectExistingLease(
     if (options.processAlive(lease.pid)) return { reclaim: false, message: `Owned by live pid ${lease.pid} on ${lease.hostname}.` }
     return { reclaim: true, message: `Reclaiming cleanup lease from dead pid ${lease.pid} on ${lease.hostname}.` }
   }
-  const ageMs = Math.max(0, options.now().getTime() - Date.parse(lease.heartbeatAt))
+  const heartbeatTimeMs = Math.max(Date.parse(lease.heartbeatAt), snapshot.mtimeMs)
+  const ageMs = Math.max(0, options.now().getTime() - heartbeatTimeMs)
   return {
     reclaim: ageMs > options.staleMs,
     message: ageMs > options.staleMs
@@ -209,6 +238,44 @@ async function releaseCleanupLease(file: string, root: string, expected: Workflo
   }
 }
 
+async function refreshCleanupLeases(
+  leases: ReadonlyArray<{ file: string; lease: WorkflowRunCleanupLeaseV1 }>,
+  root: string,
+  options: ResolvedCleanupLeaseOptions
+): Promise<void> {
+  for (const entry of leases) {
+    await refreshCleanupLease(entry.file, root, entry.lease, options)
+  }
+}
+
+async function refreshCleanupLease(
+  file: string,
+  root: string,
+  expected: WorkflowRunCleanupLeaseV1,
+  options: ResolvedCleanupLeaseOptions
+): Promise<void> {
+  const heartbeatAt = options.now()
+  const snapshot = await readCleanupLeaseSnapshot(file, root, expected.runId)
+  const current = parseCleanupLease(JSON.parse(snapshot.bytes.toString("utf8")), expected.runId)
+  if (current.token !== expected.token) throw new Error(`Workflow run '${expected.runId}' cleanup lease ownership changed.`)
+  const handle = await fs.open(file, "r+")
+  try {
+    const stat = await handle.stat({ bigint: true })
+    if (!stat.isFile() || stat.dev !== snapshot.dev || stat.ino !== snapshot.ino) {
+      throw new Error(`Workflow run '${expected.runId}' cleanup lease changed before heartbeat.`)
+    }
+    await handle.utimes(heartbeatAt, heartbeatAt)
+    await handle.sync()
+  } finally {
+    await handle.close()
+  }
+  const refreshed = await readCleanupLeaseSnapshot(file, root, expected.runId)
+  const persisted = parseCleanupLease(JSON.parse(refreshed.bytes.toString("utf8")), expected.runId)
+  if (refreshed.dev !== snapshot.dev || refreshed.ino !== snapshot.ino || persisted.token !== expected.token) {
+    throw new Error(`Workflow run '${expected.runId}' cleanup lease ownership changed during heartbeat.`)
+  }
+}
+
 async function removeUnchangedCleanupLease(
   file: string,
   root: string,
@@ -222,7 +289,12 @@ async function removeUnchangedCleanupLease(
     if (isMissing(error)) return false
     throw error
   }
-  if (current.dev !== expected.dev || current.ino !== expected.ino || !current.bytes.equals(expected.bytes)) return false
+  if (
+    current.dev !== expected.dev
+    || current.ino !== expected.ino
+    || current.mtimeMs !== expected.mtimeMs
+    || !current.bytes.equals(expected.bytes)
+  ) return false
   await fs.rm(file)
   return true
 }
@@ -247,7 +319,7 @@ async function readCleanupLeaseSnapshot(file: string, root: string, runId: strin
 async function cleanupLeaseLocations(workspaceRoot: string, create: boolean): Promise<CleanupLeaseLocations | undefined> {
   const root = await fs.realpath(path.resolve(workspaceRoot))
   let current = root
-  for (const segment of RUNS_ROOT_SEGMENTS) {
+  for (const segment of WORKFLOWS_ROOT_SEGMENTS) {
     current = path.join(current, segment)
     if (create) await mkdirIfNeeded(current)
     try {
@@ -300,12 +372,15 @@ function leaseFile(directory: string, runId: string): string {
 function resolveOptions(options: WorkflowRunCleanupLeaseOptions): ResolvedCleanupLeaseOptions {
   const staleMs = options.staleMs ?? 30_000
   if (!Number.isFinite(staleMs) || staleMs < 0) throw new Error("Workflow cleanup lease staleMs must be non-negative.")
+  const heartbeatMs = options.heartbeatMs ?? 5_000
+  if (!Number.isFinite(heartbeatMs) || heartbeatMs < 0) throw new Error("Workflow cleanup lease heartbeatMs must be non-negative.")
   return {
     now: options.now ?? (() => new Date()),
     token: options.token ?? randomUUID,
     hostname: options.hostname ?? os.hostname(),
     processAlive: options.processAlive ?? defaultProcessAlive,
-    staleMs
+    staleMs,
+    heartbeatMs
   }
 }
 

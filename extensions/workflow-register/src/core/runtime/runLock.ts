@@ -9,6 +9,7 @@ import {
   removeRunDurabilityFile,
   replaceRunDurabilityFile
 } from "./runDurabilityPath"
+import { workflowRunCleanupLeasePresent } from "./runCleanupLease"
 
 export const CURRENT_WORKFLOW_RUN_LOCK_SCHEMA_VERSION = "workflow-register/run-lock/v1" as const
 
@@ -139,21 +140,29 @@ async function acquireWorkflowRunLock(
     }
     let contentionMessage = "Lock metadata changed while it was being inspected."
     try {
-      if (await createRunDurabilityFile(workspaceRoot, runId, "run.lock.json", serializeWorkflowRunLock(owner))) return owner
-
-      const snapshot = await readRunDurabilityFile(workspaceRoot, runId, "run.lock.json")
-      if (!snapshot) continue
-      const inspection = inspectExistingLock(snapshot.bytes, snapshot.mtimeMs, runId, options)
-      contentionMessage = inspection.message
-      if (inspection.reclaim) {
-        const removed = await removeRunDurabilityFile(workspaceRoot, runId, "run.lock.json", snapshot.bytes)
-        if (removed) {
-          try {
-            options.onReclaimed?.(inspection.message)
-          } catch (error) {
-            console.warn("Workflow run lock reclamation callback failed.", error)
+      if (await workflowRunCleanupLeasePresent(workspaceRoot, runId)) {
+        contentionMessage = `Workflow run '${runId}' is reserved by a cleanup operation.`
+      } else if (await createRunDurabilityFile(workspaceRoot, runId, "run.lock.json", serializeWorkflowRunLock(owner))) {
+        if (!await workflowRunCleanupLeasePresent(workspaceRoot, runId)) return owner
+        const removed = await releaseWorkflowRunLock(workspaceRoot, runId, owner)
+        contentionMessage = removed
+          ? `Workflow run '${runId}' became reserved by a cleanup operation while its lock was being acquired.`
+          : `Workflow run '${runId}' became reserved by a cleanup operation and the created lock changed ownership before release.`
+      } else {
+        const snapshot = await readRunDurabilityFile(workspaceRoot, runId, "run.lock.json")
+        if (!snapshot) continue
+        const inspection = inspectExistingLock(snapshot.bytes, snapshot.mtimeMs, runId, options)
+        contentionMessage = inspection.message
+        if (inspection.reclaim) {
+          const removed = await removeRunDurabilityFile(workspaceRoot, runId, "run.lock.json", snapshot.bytes)
+          if (removed) {
+            try {
+              options.onReclaimed?.(inspection.message)
+            } catch (error) {
+              console.warn("Workflow run lock reclamation callback failed.", error)
+            }
+            continue
           }
-          continue
         }
       }
     } catch (error) {

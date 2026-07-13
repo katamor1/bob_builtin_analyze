@@ -12,13 +12,71 @@ function lockModules() {
   return require("../out/core/runtime/runLock")
 }
 
-async function workspace(t) {
+function runStateModules() {
+  return require("../out/core/runtime/runStatePath")
+}
+
+function deferred() {
+  let resolve
+  const promise = new Promise((done) => { resolve = done })
+  return { promise, resolve }
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function eventually(predicate, message, timeoutMs = 3_000) {
+  const deadline = Date.now() + timeoutMs
+  let lastError
+  while (Date.now() < deadline) {
+    try {
+      if (await predicate()) return
+    } catch (error) {
+      lastError = error
+    }
+    await delay(10)
+  }
+  throw new Error(`${message}${lastError ? ` (${lastError.message})` : ""}`)
+}
+
+async function workspace(t, runIds = ["run-a"]) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "workflow-cleanup-lease-"))
   t.after(() => fs.rm(root, { recursive: true, force: true }))
-  await fs.mkdir(path.join(root, ".bob", "workflows", "runs", "run-a"), { recursive: true })
-  await fs.writeFile(path.join(root, ".bob", "workflows", "runs", "run-a", "run.json"), "{}")
+  for (const runId of runIds) {
+    await fs.mkdir(path.join(root, ".bob", "workflows", "runs", runId), { recursive: true })
+    await fs.writeFile(path.join(root, ".bob", "workflows", "runs", runId, "run.json"), "{}")
+  }
   return root
 }
+
+test("cleanup leases live outside workflow run enumeration", async (t) => {
+  const root = await workspace(t)
+  const { withWorkflowRunCleanupLeases, workflowRunCleanupLeasePresent } = leaseModules()
+  const { listContainedRunIds } = runStateModules()
+  let releaseOwner
+  const hold = new Promise((resolve) => { releaseOwner = resolve })
+  let entered
+  const enteredPromise = new Promise((resolve) => { entered = resolve })
+  const owner = withWorkflowRunCleanupLeases(root, ["run-a"], async () => {
+    entered()
+    await hold
+  }, { token: () => "location-token", hostname: "test-host" })
+
+  await enteredPromise
+  try {
+    assert.deepEqual(await listContainedRunIds(root), ["run-a"])
+    assert.equal(await workflowRunCleanupLeasePresent(root, "run-a"), true)
+    const persisted = JSON.parse(await fs.readFile(
+      path.join(root, ".bob", "workflows", "run-cleanup-leases", "run-a.json"),
+      "utf8"
+    ))
+    assert.equal(persisted.runId, "run-a")
+  } finally {
+    releaseOwner()
+    await owner
+  }
+})
 
 test("cleanup lease is exclusive and removed after the owner operation", async (t) => {
   const root = await workspace(t)
@@ -47,7 +105,7 @@ test("cleanup lease is exclusive and removed after the owner operation", async (
 test("cleanup lease safely reclaims a stale dead-owner lease", async (t) => {
   const root = await workspace(t)
   const { withWorkflowRunCleanupLeases } = leaseModules()
-  const directory = path.join(root, ".bob", "workflows", "runs", ".cleanup-leases")
+  const directory = path.join(root, ".bob", "workflows", "run-cleanup-leases")
   await fs.mkdir(directory)
   await fs.writeFile(path.join(directory, "run-a.json"), JSON.stringify({
     schemaVersion: "workflow-register/run-cleanup-lease/v1",
@@ -69,29 +127,379 @@ test("cleanup lease safely reclaims a stale dead-owner lease", async (t) => {
   assert.equal(result, "recovered")
 })
 
-test("workflow execution lock waits for cleanup lease and fails closed on timeout", async (t) => {
+test("stale reclaim preserves a lease whose heartbeat advances during verification", async (t) => {
+  const root = await workspace(t)
+  const { withWorkflowRunCleanupLeases } = leaseModules()
+  const leaseFile = path.join(root, ".bob", "workflows", "run-cleanup-leases", "run-a.json")
+  await fs.mkdir(path.dirname(leaseFile))
+  await fs.writeFile(leaseFile, JSON.stringify({
+    schemaVersion: "workflow-register/run-cleanup-lease/v1",
+    runId: "run-a",
+    token: "original-owner",
+    pid: 999999,
+    hostname: "owner-host",
+    createdAt: "2026-07-13T00:00:00.000Z",
+    heartbeatAt: "2026-07-13T00:00:00.000Z"
+  }))
+  const staleAt = new Date("2026-07-13T00:00:00.000Z")
+  const refreshedAt = new Date("2026-07-13T05:00:00.000Z")
+  await fs.utimes(leaseFile, staleAt, staleAt)
+
+  const originalOpen = fs.open
+  const verificationRead = deferred()
+  const continueRead = deferred()
+  let readCount = 0
+  fs.open = async (...args) => {
+    if (String(args[0]) === leaseFile && args[1] === "r") {
+      readCount += 1
+      if (readCount === 2) {
+        const handle = await originalOpen(...args)
+        verificationRead.resolve()
+        await continueRead.promise
+        return handle
+      }
+    }
+    return originalOpen(...args)
+  }
+
+  const contender = withWorkflowRunCleanupLeases(root, ["run-a"], async () => "must-not-run", {
+    token: () => "contender",
+    hostname: "contender-host",
+    now: () => refreshedAt,
+    staleMs: 1_000,
+    heartbeatMs: 0
+  })
+  try {
+    await Promise.race([
+      verificationRead.promise,
+      delay(3_000).then(() => { throw new Error("Stale reclaim did not reach its verification read.") })
+    ])
+    await fs.utimes(leaseFile, refreshedAt, refreshedAt)
+    continueRead.resolve()
+    await assert.rejects(contender, /reserved by a cleanup operation|cleanup lease/i)
+    const persisted = JSON.parse(await fs.readFile(leaseFile, "utf8"))
+    assert.equal(persisted.token, "original-owner")
+  } finally {
+    continueRead.resolve()
+    await contender.catch(() => undefined)
+    fs.open = originalOpen
+  }
+})
+
+test("cleanup lease heartbeat prevents foreign-host reclaim and stops after success", async (t) => {
+  const root = await workspace(t)
+  const { withWorkflowRunCleanupLeases, workflowRunCleanupLeasePresent } = leaseModules()
+  const leaseFile = path.join(root, ".bob", "workflows", "run-cleanup-leases", "run-a.json")
+  const entered = deferred()
+  const releaseOwner = deferred()
+  let nowMs = Date.parse("2026-07-13T00:00:00.000Z")
+  let nowCalls = 0
+  const owner = withWorkflowRunCleanupLeases(root, ["run-a"], async () => {
+    entered.resolve()
+    await releaseOwner.promise
+    return "done"
+  }, {
+    token: () => "heartbeat-owner",
+    hostname: "owner-host",
+    now: () => {
+      nowCalls += 1
+      return new Date(nowMs)
+    },
+    staleMs: 100,
+    heartbeatMs: 10
+  })
+
+  await entered.promise
+  const initialMtimeMs = (await fs.stat(leaseFile)).mtimeMs
+  nowMs += 60_000
+  let ownerCompleted = false
+  try {
+    await eventually(async () => {
+      JSON.parse(await fs.readFile(leaseFile, "utf8"))
+      return (await fs.stat(leaseFile)).mtimeMs !== initialMtimeMs
+    }, "Cleanup lease heartbeat did not advance while the operation was held.")
+    await assert.rejects(
+      withWorkflowRunCleanupLeases(root, ["run-a"], async () => "must-not-run", {
+        token: () => "contender",
+        hostname: "contender-host",
+        now: () => new Date(nowMs + 10),
+        staleMs: 100,
+        heartbeatMs: 0
+      }),
+      /reserved by a cleanup operation|cleanup lease/i
+    )
+    releaseOwner.resolve()
+    assert.equal(await owner, "done")
+    ownerCompleted = true
+    const callsAfterRelease = nowCalls
+    await delay(75)
+    assert.equal(nowCalls, callsAfterRelease)
+    assert.equal(await workflowRunCleanupLeasePresent(root, "run-a"), false)
+  } finally {
+    releaseOwner.resolve()
+    if (!ownerCompleted) await owner.catch(() => undefined)
+  }
+})
+
+test("cleanup lease heartbeat timer stops when the operation throws", async (t) => {
+  const root = await workspace(t)
+  const { withWorkflowRunCleanupLeases, workflowRunCleanupLeasePresent } = leaseModules()
+  const leaseFile = path.join(root, ".bob", "workflows", "run-cleanup-leases", "run-a.json")
+  const entered = deferred()
+  const failOperation = deferred()
+  let nowMs = Date.parse("2026-07-13T00:00:00.000Z")
+  let nowCalls = 0
+  const owner = withWorkflowRunCleanupLeases(root, ["run-a"], async () => {
+    entered.resolve()
+    await failOperation.promise
+    throw new Error("cleanup operation failed")
+  }, {
+    token: () => "heartbeat-error-owner",
+    hostname: "owner-host",
+    now: () => {
+      nowCalls += 1
+      return new Date(nowMs)
+    },
+    heartbeatMs: 10
+  })
+
+  await entered.promise
+  const initialMtimeMs = (await fs.stat(leaseFile)).mtimeMs
+  nowMs += 60_000
+  let ownerSettled = false
+  try {
+    await eventually(async () => {
+      JSON.parse(await fs.readFile(leaseFile, "utf8"))
+      return (await fs.stat(leaseFile)).mtimeMs !== initialMtimeMs
+    }, "Cleanup lease heartbeat did not advance before the operation error.")
+    failOperation.resolve()
+    await assert.rejects(owner, /cleanup operation failed/)
+    ownerSettled = true
+    const callsAfterRelease = nowCalls
+    await delay(75)
+    assert.equal(nowCalls, callsAfterRelease)
+    assert.equal(await workflowRunCleanupLeasePresent(root, "run-a"), false)
+  } finally {
+    failOperation.resolve()
+    if (!ownerSettled) await owner.catch(() => undefined)
+  }
+})
+
+test("cleanup heartbeat never overwrites a replacement owner", async (t) => {
+  const root = await workspace(t)
+  const { withWorkflowRunCleanupLeases } = leaseModules()
+  const leaseFile = path.join(root, ".bob", "workflows", "run-cleanup-leases", "run-a.json")
+  const entered = deferred()
+  const releaseOwner = deferred()
+  const mutationReady = deferred()
+  const continueMutation = deferred()
+  const mutationReturned = deferred()
+  const originalOpen = fs.open
+  const originalRename = fs.rename
+  let heartbeatPhase = false
+  let mutationIntercepted = false
+
+  fs.open = async (...args) => {
+    const handle = await originalOpen(...args)
+    if (heartbeatPhase && path.resolve(String(args[0])) === path.resolve(leaseFile)) {
+      const originalUtimes = handle.utimes.bind(handle)
+      handle.utimes = async (...utimesArgs) => {
+        if (!mutationIntercepted) {
+          mutationIntercepted = true
+          mutationReady.resolve()
+          await continueMutation.promise
+        }
+        try {
+          return await originalUtimes(...utimesArgs)
+        } finally {
+          mutationReturned.resolve()
+        }
+      }
+    }
+    return handle
+  }
+  fs.rename = async (source, target) => {
+    if (
+      heartbeatPhase
+      && !mutationIntercepted
+      && path.resolve(String(target)) === path.resolve(leaseFile)
+    ) {
+      mutationIntercepted = true
+      mutationReady.resolve()
+      await continueMutation.promise
+      try {
+        return await originalRename(source, target)
+      } finally {
+        mutationReturned.resolve()
+      }
+    }
+    return originalRename(source, target)
+  }
+
+  const owner = withWorkflowRunCleanupLeases(root, ["run-a"], async () => {
+    entered.resolve()
+    await releaseOwner.promise
+  }, {
+    token: () => "original-owner",
+    hostname: "owner-host",
+    heartbeatMs: 10
+  })
+
+  try {
+    await entered.promise
+    heartbeatPhase = true
+    await Promise.race([
+      mutationReady.promise,
+      delay(3_000).then(() => { throw new Error("Heartbeat mutation did not reach the test barrier.") })
+    ])
+    await fs.rm(leaseFile)
+    await fs.writeFile(leaseFile, `${JSON.stringify({
+      schemaVersion: "workflow-register/run-cleanup-lease/v1",
+      runId: "run-a",
+      token: "replacement-owner",
+      pid: process.pid,
+      hostname: "replacement-host",
+      createdAt: new Date().toISOString(),
+      heartbeatAt: new Date().toISOString()
+    }, null, 2)}\n`)
+    continueMutation.resolve()
+    await mutationReturned.promise
+    heartbeatPhase = false
+    releaseOwner.resolve()
+    await assert.rejects(owner, /ownership changed|lease release/i)
+    const persisted = JSON.parse(await fs.readFile(leaseFile, "utf8"))
+    assert.equal(persisted.token, "replacement-owner")
+  } finally {
+    heartbeatPhase = false
+    continueMutation.resolve()
+    releaseOwner.resolve()
+    await owner.catch(() => undefined)
+    fs.open = originalOpen
+    fs.rename = originalRename
+  }
+})
+
+test("cleanup-first interleaving excludes the workflow execution critical section", async (t) => {
   const root = await workspace(t)
   const { withWorkflowRunCleanupLeases } = leaseModules()
   const { withWorkflowRunLock } = lockModules()
+  const entries = []
   let releaseOwner
   const hold = new Promise((resolve) => { releaseOwner = resolve })
   let entered
   const enteredPromise = new Promise((resolve) => { entered = resolve })
   const cleanup = withWorkflowRunCleanupLeases(root, ["run-a"], async () => {
+    entries.push("cleanup")
     entered()
     await hold
-  }, { token: () => "cleanup-token", hostname: "test-host" })
+  }, { token: () => "cleanup-token", hostname: "test-host", heartbeatMs: 0 })
 
   await enteredPromise
-  await assert.rejects(
-    withWorkflowRunLock(root, "run-a", async () => "must-not-run", {
-      timeoutMs: 10,
-      pollMs: 1,
-      heartbeatMs: 0,
-      sleep: async () => undefined
-    }),
-    /cleanup|reserved|busy/i
+  try {
+    await assert.rejects(
+      withWorkflowRunLock(root, "run-a", async () => {
+        entries.push("run")
+        return "must-not-run"
+      }, {
+        timeoutMs: 30,
+        pollMs: 2,
+        heartbeatMs: 0
+      }),
+      /cleanup|reserved|busy/i
+    )
+    assert.deepEqual(entries, ["cleanup"])
+  } finally {
+    releaseOwner()
+    await cleanup
+  }
+})
+
+test("run-lock-first interleaving rejects cleanup and releases every acquired lease", async (t) => {
+  const root = await workspace(t, ["run-a", "run-b"])
+  const { withWorkflowRunCleanupLeases, workflowRunCleanupLeasePresent } = leaseModules()
+  const { withWorkflowRunLock } = lockModules()
+  const lockEntered = deferred()
+  const releaseLock = deferred()
+  const entries = []
+  const owner = withWorkflowRunLock(root, "run-b", async () => {
+    entries.push("run")
+    lockEntered.resolve()
+    await releaseLock.promise
+  }, { timeoutMs: 500, heartbeatMs: 0 })
+
+  await lockEntered.promise
+  try {
+    await assert.rejects(
+      withWorkflowRunCleanupLeases(root, ["run-b", "run-a"], async () => {
+        entries.push("cleanup")
+      }, { token: () => "cleanup-token", hostname: "test-host", heartbeatMs: 0 }),
+      /execution lock|run lock|locked|busy/i
+    )
+    assert.deepEqual(entries, ["run"])
+    assert.equal(await workflowRunCleanupLeasePresent(root, "run-a"), false)
+    assert.equal(await workflowRunCleanupLeasePresent(root, "run-b"), false)
+  } finally {
+    releaseLock.resolve()
+    await owner
+  }
+})
+
+test("simultaneous cleanup and run-lock interleaving enters at most one critical section", async (t) => {
+  const root = await workspace(t)
+  const { withWorkflowRunCleanupLeases } = leaseModules()
+  const { withWorkflowRunLock } = lockModules()
+  const start = deferred()
+  const firstEntry = deferred()
+  const secondEntry = deferred()
+  const releaseCriticalSection = deferred()
+  const entries = []
+  const enter = async (kind) => {
+    entries.push(kind)
+    if (entries.length === 1) firstEntry.resolve(kind)
+    else secondEntry.resolve(kind)
+    await releaseCriticalSection.promise
+    return kind
+  }
+  const settle = (operation) => operation.then(
+    (value) => ({ status: "fulfilled", value }),
+    (reason) => ({ status: "rejected", reason })
   )
-  releaseOwner()
-  await cleanup
+  const cleanup = settle(start.promise.then(() => withWorkflowRunCleanupLeases(
+    root,
+    ["run-a"],
+    () => enter("cleanup"),
+    { token: () => "cleanup-token", hostname: "test-host", heartbeatMs: 0 }
+  )))
+  const run = settle(start.promise.then(() => withWorkflowRunLock(
+    root,
+    "run-a",
+    () => enter("run"),
+    { timeoutMs: 60, pollMs: 2, heartbeatMs: 0 }
+  )))
+
+  start.resolve()
+  const allOutcomes = Promise.all([cleanup, run])
+  try {
+    const launch = await Promise.race([
+      firstEntry.promise.then((kind) => ({ type: "entry", kind })),
+      allOutcomes.then((outcomes) => ({ type: "settled", outcomes }))
+    ])
+    if (launch.type === "settled") {
+      assert.equal(entries.length, 0)
+      assert.equal(launch.outcomes.filter(({ status }) => status === "fulfilled").length, 0)
+    } else {
+      const other = launch.kind === "cleanup" ? run : cleanup
+      const exclusion = await Promise.race([
+        other.then((outcome) => ({ type: "other-settled", outcome })),
+        secondEntry.promise.then((kind) => ({ type: "second-entry", kind }))
+      ])
+      assert.equal(exclusion.type, "other-settled", `critical sections entered: ${entries.join(", ")}`)
+      assert.equal(exclusion.outcome.status, "rejected")
+      assert.equal(entries.length, 1)
+    }
+  } finally {
+    releaseCriticalSection.resolve()
+  }
+  const outcomes = await allOutcomes
+  assert.ok(outcomes.filter(({ status }) => status === "fulfilled").length <= 1)
 })

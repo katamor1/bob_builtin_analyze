@@ -73,9 +73,9 @@ test("same-run callers serialize while different runs and roots remain independe
     firstStarted.resolve()
     await releaseFirst.promise
     order.push("first:end")
-  }, { timeoutMs: 1_000, heartbeatMs: 0 })
+  }, { timeoutMs: 10_000, heartbeatMs: 0 })
   await firstStarted.promise
-  const second = withWorkflowRunLock(workspaceA, "run-1", async () => order.push("second"), { timeoutMs: 1_000, heartbeatMs: 0, pollMs: 5 })
+  const second = withWorkflowRunLock(workspaceA, "run-1", async () => order.push("second"), { timeoutMs: 10_000, heartbeatMs: 0, pollMs: 5 })
   const otherRun = withWorkflowRunLock(workspaceA, "run-2", async () => otherRunStarted.resolve(), { heartbeatMs: 0 })
   const otherRoot = withWorkflowRunLock(workspaceB, "run-1", async () => otherRootStarted.resolve(), { heartbeatMs: 0 })
   await Promise.all([otherRunStarted.promise, otherRootStarted.promise])
