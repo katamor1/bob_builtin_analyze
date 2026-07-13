@@ -22,6 +22,7 @@ on:
       - ".bob/workflows/code-consistency-review/WORKFLOW.md"
       - ".github/workflows/code-consistency-review-scaffold.yml"
   workflow_dispatch:
+  # Manual dispatch is retained for explicit post-evidence scaffold verification.
 
 concurrency:
   group: code-consistency-review-scaffold-${{ github.event.pull_request.number || github.ref }}

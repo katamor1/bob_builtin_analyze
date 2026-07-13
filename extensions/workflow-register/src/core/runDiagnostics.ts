@@ -1,4 +1,5 @@
 import type { RunStepState, WorkflowRunState } from "./model"
+import { projectWorkflowRunProvenance, type WorkflowRunProvenanceProjection } from "./runProvenance"
 import type { RunControlState } from "./runControlStore"
 import { CURRENT_WORKFLOW_RUN_STATE_SCHEMA_VERSION } from "./runtime/runStateCodec"
 import type { RunStateLoadDiagnostic } from "./runtime/runStateCodec"
@@ -93,6 +94,8 @@ export function formatWorkflowRunDiagnostics(
   }
   if (run.state["workflow.definitionMismatch"]) lines.push(`- workflow definition mismatch: ${run.state["workflow.definitionMismatch"]}`)
   appendPauseDiagnostics(lines, run.state["workflow.pause"], options.control)
+  const provenanceLines = formatWorkflowProvenanceDiagnostics(projectWorkflowRunProvenance(run))
+  if (provenanceLines.length > 0) lines.push("", ...provenanceLines)
   const problemStep = currentProblemStep(run)
   if (problemStep) {
     lines.push("", "Current attention step:", `- id: ${problemStep.id}`, `- title: ${problemStep.title}`, `- type: ${problemStep.type}`, `- status: ${problemStep.status}`, `- current attempt: ${problemStep.attempt ?? 1}`, `- archived attempts: ${problemStep.attempts?.length ?? 0}`)
@@ -115,6 +118,47 @@ export function formatWorkflowRunDiagnostics(
     appendAttemptSummaries(lines, step)
   }
   appendTaskSnapshots(lines, run, options.snapshots ?? [])
+  return lines
+}
+
+export function formatWorkflowProvenanceDiagnostics(provenance: WorkflowRunProvenanceProjection): string[] {
+  const verifiedArtifacts = Array.from(new Set(provenance.steps
+    .filter((step) => step.artifactVerified)
+    .flatMap((step) => step.artifactIds)))
+  const hasProvenance = Boolean(
+    provenance.sourceRunId
+    || provenance.startStepId
+    || provenance.reusedStepIds.length > 0
+    || provenance.hydratedStateKeys.length > 0
+    || provenance.artifactIds.length > 0
+    || provenance.taskSnapshotImportCount > 0
+    || provenance.definitionMismatchAllowed
+  )
+  if (!hasProvenance) return []
+
+  const lines = ["Workflow provenance:"]
+  if (provenance.sourceRunId) lines.push(`- reused from run: ${provenance.sourceRunId}`)
+  if (provenance.startStepId) lines.push(`- start step: ${provenance.startStepId}`)
+  if (provenance.reusedStepIds.length > 0) lines.push(`- reused steps: ${provenance.reusedStepIds.join(", ")}`)
+  if (provenance.hydratedStateKeys.length > 0) lines.push(`- hydrated state keys: ${provenance.hydratedStateKeys.join(", ")}`)
+  if (verifiedArtifacts.length > 0) lines.push(`- verified artifacts: ${verifiedArtifacts.join(", ")}`)
+  if (provenance.taskSnapshotImportCount > 0) {
+    lines.push(`- imported from task snapshot: ${provenance.taskSnapshotImportCount} artifact(s)${provenance.taskSnapshotImportedAt ? ` at ${provenance.taskSnapshotImportedAt}` : ""}`)
+  }
+  lines.push(`- definition mismatch allowed: ${provenance.definitionMismatchAllowed ? "yes" : "no"}`)
+  lines.push("- step completion sources:")
+  for (const step of provenance.steps) {
+    const fields = [
+      `${step.stepId}: ${step.runStatus}`,
+      `completionSource=${step.completion}`,
+      `skippedByArtifactReuse=${step.skippedByArtifactReuse ? "yes" : "no"}`,
+      step.artifactIds.length > 0 ? `artifacts=${step.artifactIds.join(",")}` : undefined,
+      step.hydratedStateKeys.length > 0 ? `hydratedKeys=${step.hydratedStateKeys.join(",")}` : undefined,
+      step.sourceRunId ? `sourceRun=${step.sourceRunId}` : undefined,
+      step.importedFromTaskSnapshot ? "taskSnapshotImport=yes" : undefined
+    ].filter((value): value is string => Boolean(value))
+    lines.push(`  - ${fields.join("; ")}`)
+  }
   return lines
 }
 
