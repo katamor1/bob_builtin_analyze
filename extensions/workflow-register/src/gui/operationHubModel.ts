@@ -6,6 +6,7 @@ import {
   parseWorkflowArtifactManifest,
   type WorkflowArtifactManifest
 } from "../core/artifacts"
+import type { HeldRunRecoveryAssessment } from "../core/heldRunRecovery"
 import type { CoreWorkflowDefinition, WorkflowRunState } from "../core/model"
 import { projectWorkflowRunProvenance, type WorkflowStepProvenanceProjection } from "../core/runProvenance"
 import { isWorkflowRunStateWritable } from "../core/runStateStore"
@@ -20,6 +21,8 @@ export const OPERATION_HUB_ALLOWED_ACTIONS = [
   "openConsistencyWizard",
   "runWorkflow",
   "startFromArtifacts",
+  "recoverDetachedHeldRun",
+  "importTaskSnapshotArtifacts",
   "resumeRun",
   "retryCurrentStep",
   "acceptCurrentStep",
@@ -80,6 +83,7 @@ export interface OperationHubRunInput {
   root: string
   run: WorkflowRunState
   revision?: string
+  heldRecovery?: HeldRunRecoveryAssessment
 }
 
 export interface OperationHubHomeModel {
@@ -140,6 +144,10 @@ export interface OperationHubRunSummary {
   artifactReuseStatus?: OperationHubStatus
   taskSnapshotImportLabel?: string
   taskSnapshotImportStatus?: OperationHubStatus
+  heldRecoveryKind?: HeldRunRecoveryAssessment["kind"]
+  heldRecoveryTitle?: string
+  heldRecoveryExplanation?: string
+  heldRecoveryBlockers: string[]
   stepProvenance?: OperationHubStepProvenanceSummary[]
   stepProvenanceOmittedCount: number
   completedStepCount: number
@@ -178,7 +186,8 @@ export function buildOperationHubModel(input: OperationHubModelInput): Operation
       item.run,
       input.focusedRunId,
       item.revision,
-      input.focusedWorkspaceRoot
+      input.focusedWorkspaceRoot,
+      item.heldRecovery
     ))
     .sort((a, b) => Number(b.focused) - Number(a.focused) || b.updatedAt.localeCompare(a.updatedAt))
     .slice(0, 20)
@@ -202,7 +211,8 @@ export function summarizeRunForHub(
   run: WorkflowRunState,
   focusedRunId?: string,
   revision?: string,
-  focusedWorkspaceRoot?: string
+  focusedWorkspaceRoot?: string,
+  heldRecovery?: HeldRunRecoveryAssessment
 ): OperationHubRunSummary {
   const currentStep = run.steps.find((step) => step.id === run.currentStep)
   const completedStepCount = run.steps.filter((step) => step.status === "completed").length
@@ -227,6 +237,10 @@ export function summarizeRunForHub(
     artifactReuseStatus: artifactReuse?.status,
     taskSnapshotImportLabel: taskSnapshotImport?.label,
     taskSnapshotImportStatus: taskSnapshotImport?.status,
+    heldRecoveryKind: heldRecovery?.kind,
+    heldRecoveryTitle: heldRecovery?.title,
+    heldRecoveryExplanation: heldRecovery?.explanation,
+    heldRecoveryBlockers: heldRecovery?.blockers.slice(0, 5) ?? [],
     stepProvenance,
     stepProvenanceOmittedCount: Math.max(0, provenance.steps.length - stepProvenance.length),
     completedStepCount,
@@ -236,7 +250,7 @@ export function summarizeRunForHub(
     focused: run.runId === focusedRunId && (
       !focusedWorkspaceRoot || sameWorkspaceRoot(root, focusedWorkspaceRoot)
     ),
-    primaryActions: actionsForRun(root, run, Boolean(manifest?.artifacts.length), revision),
+    primaryActions: actionsForRun(root, run, Boolean(manifest?.artifacts.length), revision, heldRecovery),
     artifacts: artifactsForRun(root, run, manifest)
   }
 }
@@ -331,7 +345,7 @@ function buildWorkflowCatalog(workflows: OperationHubWorkflowInput[]): Operation
     .sort((a, b) => `${a.category}:${a.label}`.localeCompare(`${b.category}:${b.label}`, "ja"))
 }
 
-function actionsForRun(root: string, run: WorkflowRunState, hasReusableArtifacts: boolean, revision?: string): OperationHubAction[] {
+function actionsForRun(root: string, run: WorkflowRunState, hasReusableArtifacts: boolean, revision?: string, heldRecovery?: HeldRunRecoveryAssessment): OperationHubAction[] {
   const target = { runId: run.runId, workspaceRoot: root, expectedRevision: revision }
   const inspect = { id: "inspectRunControl", label: "詳細", commandId: "workflowRegister.inspectRunControl", ...target } as const
   if (!isWorkflowRunStateWritable(run)) return [inspect]
@@ -355,11 +369,7 @@ function actionsForRun(root: string, run: WorkflowRunState, hasReusableArtifacts
         inspect
       ])
     case "held":
-      return withReuse([
-        { id: "openManualStepPanel", label: "手順を開く", commandId: "workflowRegister.openManualStepPanel", ...target, variant: "primary" },
-        { id: "runNextStep", label: "次へ", commandId: "workflowRegister.runNextStep", ...target },
-        inspect
-      ])
+      return actionsForHeldRun(run, target, inspect, startFromArtifacts, heldRecovery)
     case "paused":
       return withReuse([
         { id: "resumeRun", label: "再開", commandId: "workflowRegister.resumePausedRun", ...target, variant: "primary" },
@@ -384,6 +394,36 @@ function actionsForRun(root: string, run: WorkflowRunState, hasReusableArtifacts
     default:
       return withReuse([inspect])
   }
+}
+
+function actionsForHeldRun(
+  run: WorkflowRunState,
+  target: { runId: string; workspaceRoot: string; expectedRevision?: string },
+  inspect: OperationHubAction,
+  startFromArtifacts: OperationHubAction | undefined,
+  heldRecovery: HeldRunRecoveryAssessment | undefined
+): OperationHubAction[] {
+  let primary: OperationHubAction
+  switch (heldRecovery?.primaryAction.id) {
+    case "open-manual-step":
+      primary = { id: "openManualStepPanel", label: "手動ステップを完了", commandId: "workflowRegister.openManualStepPanel", ...target, variant: "primary" }
+      break
+    case "resume-saved-state":
+      primary = { id: "recoverDetachedHeldRun", label: "保存済み状態から再開", commandId: "workflowRegister.recoverDetachedHeldRun", ...target, variant: "primary" }
+      break
+    case "review-artifacts":
+      primary = startFromArtifacts
+        ? { ...startFromArtifacts, label: "成果物を確認して途中再開", variant: "primary" }
+        : { ...inspect, label: "復旧診断を開く", variant: "primary" }
+      break
+    case "review-task-snapshot":
+      primary = { id: "importTaskSnapshotArtifacts", label: "Task Snapshotを確認", commandId: "workflowRegister.importArtifactsFromTaskSnapshots", ...target, variant: "primary" }
+      break
+    default:
+      primary = { ...inspect, label: "復旧診断を開く", variant: "primary" }
+      break
+  }
+  return primary.id === "inspectRunControl" ? [primary] : [primary, inspect]
 }
 
 function artifactsForRun(root: string, run: WorkflowRunState, manifest?: WorkflowArtifactManifest): OperationHubArtifactSummary[] {

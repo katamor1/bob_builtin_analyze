@@ -1,6 +1,10 @@
 import * as fs from "fs/promises"
 import * as path from "path"
 import * as vscode from "vscode"
+import { ARTIFACT_MANIFEST_STATE_KEY, parseWorkflowArtifactManifest } from "../core/artifacts"
+import { classifyHeldRunRecovery } from "../core/heldRunRecovery"
+import { FileTaskSnapshotStore } from "../core/taskSnapshots"
+import { reviewTaskRegistry } from "../reviewTaskRegistry"
 import type { CoreWorkflowDefinition, WorkflowRunState } from "../core/model"
 import { FileRunStateStore } from "../core/runStateStore"
 import { readContainedRunFile } from "../core/runtime/runStatePath"
@@ -59,6 +63,8 @@ const ACTION_COMMANDS: Partial<Record<OperationHubActionId, string>> = {
   openConsistencyWizard: "bobCodeConsistency.openReviewWizard",
   runWorkflow: "workflowRegister.runWorkflow",
   startFromArtifacts: "workflowRegister.startFromStepWithArtifacts",
+  recoverDetachedHeldRun: "workflowRegister.recoverDetachedHeldRun",
+  importTaskSnapshotArtifacts: "workflowRegister.importArtifactsFromTaskSnapshots",
   resumeRun: "workflowRegister.resumePausedRun",
   retryCurrentStep: "workflowRegister.retryCurrentStep",
   acceptCurrentStep: "workflowRegister.acceptCurrentStep",
@@ -76,6 +82,8 @@ const RUN_ID_ACTIONS: readonly OperationHubActionId[] = [
   "acceptAndRunNextStep",
   "runNextStep",
   "openManualStepPanel",
+  "recoverDetachedHeldRun",
+  "importTaskSnapshotArtifacts",
   "pauseCurrentRun",
   "inspectRunControl",
   "openRunControl"
@@ -311,13 +319,31 @@ export class OperationHubProvider implements vscode.WebviewViewProvider, vscode.
       this.focusedWorkspaceRoot,
       roots.map((candidate) => candidate.root)
     )
+    const workflows = this.options.api.listWorkflows()
+    const workflowsById = new Map(workflows.map((workflow) => [workflow.id, workflow]))
     const runs = await Promise.all(roots.map(async (candidate) => {
       const store = new FileRunStateStore({ workspaceRoot: candidate.root })
+      const taskSnapshotStore = new FileTaskSnapshotStore({ workspaceRoot: candidate.root })
       const runStates = await store.listRuns()
       const snapshots = await Promise.all(runStates.map((run) => loadRunSnapshot(candidate.root, run.runId)))
-      return snapshots
+      return Promise.all(snapshots
         .filter((snapshot): snapshot is NonNullable<typeof snapshot> => Boolean(snapshot))
-        .map((snapshot) => ({ root: candidate.root, run: snapshot.run, revision: snapshot.revision }))
+        .map(async (snapshot) => {
+          const run = snapshot.run
+          const workflow = workflowsById.get(run.workflowId)
+          const taskSnapshots = run.status === "held"
+            ? await taskSnapshotStore.listSnapshots(run.runId).catch(() => [])
+            : []
+          const heldRecovery = classifyHeldRunRecovery({
+            run,
+            workflow,
+            liveTaskAvailable: Boolean(reviewTaskRegistry.taskForRun(candidate.root, run.runId)),
+            activeManualStepAvailable: Boolean(reviewTaskRegistry.taskForStep(candidate.root, run.runId, run.currentStep)),
+            artifactManifestAvailable: Boolean(parseWorkflowArtifactManifest(run.state[ARTIFACT_MANIFEST_STATE_KEY])),
+            taskSnapshotAvailable: taskSnapshots.some((item) => item.stepId === run.currentStep)
+          })
+          return { root: candidate.root, run, revision: snapshot.revision, heldRecovery }
+        }))
     }))
     return buildOperationHubModel({
       workspaceName: folders.length === 0 ? "No workspace" : folders.map((folder) => folder.name).join(", "),
@@ -328,7 +354,7 @@ export class OperationHubProvider implements vscode.WebviewViewProvider, vscode.
         extensionStatus("local.bob-code-consistency-review", "Bob Code Consistency Review")
       ],
       setup: await setupState(roots),
-      workflows: this.options.api.listWorkflows(),
+      workflows,
       runs: runs.flat(),
       focusedRunId: this.focusedRunId,
       focusedWorkspaceRoot
