@@ -705,6 +705,7 @@ export class WorkflowRunCommandService {
     }
     const workflow = this.options.coreWorkflows.get(run.workflowId)
     if (!workflow) throw new Error(`Workflow definition is not loaded: ${run.workflowId}`)
+    const liveGate = this.options.gateRegistry.pendingForRun(root, runId)
     if (mode === "resume" && run.status === "held") {
       const assessment = await this.assessHeldRunRecovery(root, run, workflow)
       if (assessment.kind === "connected") {
@@ -719,13 +720,14 @@ export class WorkflowRunCommandService {
           return run
         }
       }
-      const message = assessment.kind === "detached-resumable"
-        ? `Current held run is detached. Use workflowRegister.recoverDetachedHeldRun after reviewing the recovery preview: ${run.runId}`
-        : `Current held run requires '${assessment.primaryAction.label}' before it can resume: ${run.runId}`
-      await vscode.window.showWarningMessage(message)
-      return message
+      if (!liveGate) {
+        const message = assessment.kind === "detached-resumable"
+          ? `Current held run is detached. Use workflowRegister.recoverDetachedHeldRun after reviewing the recovery preview: ${run.runId}`
+          : `Current held run requires '${assessment.primaryAction.label}' before it can resume: ${run.runId}`
+        await vscode.window.showWarningMessage(message)
+        return message
+      }
     }
-    const liveGate = this.options.gateRegistry.pendingForRun(root, runId)
     if (mode === "resume" && run.status === "paused" && liveGate?.status === "paused" && ownerStepCompleted(run, liveGate)) {
       await new FileRunControlStore({ workspaceRoot: root }).clearPause(runId)
       run.status = "running"
