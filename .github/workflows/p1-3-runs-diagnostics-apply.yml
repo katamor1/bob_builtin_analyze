@@ -1,0 +1,166 @@
+name: p1-3-runs-diagnostics-apply
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/p1-3-runs-diagnostics-apply.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Apply Runs View and diagnostics provenance adapters
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          view_path = Path("extensions/workflow-register/src/commands/runControlView.ts")
+          view = view_path.read_text(encoding="utf-8")
+          import_anchor = 'import type { WorkflowRunState } from "../core/model"\n'
+          import_line = 'import { projectWorkflowRunProvenance, type WorkflowRunProvenanceProjection } from "../core/runProvenance"\n'
+          if import_line not in view:
+              if import_anchor not in view:
+                  raise SystemExit("runControlView import anchor missing")
+              view = view.replace(import_anchor, import_anchor + import_line, 1)
+
+          artifact_anchor = '    const artifactStatus = artifactStatusForRun(item.run)\n'
+          provenance_line = '    const provenance = projectWorkflowRunProvenance(item.run)\n'
+          if provenance_line not in view:
+              if artifact_anchor not in view:
+                  raise SystemExit("runControlView artifact anchor missing")
+              view = view.replace(artifact_anchor, artifact_anchor + provenance_line, 1)
+
+          tooltip_anchor = '      artifactStatus.tooltip,\n'
+          tooltip_line = '      ...runProvenanceTooltip(provenance),\n'
+          if tooltip_line not in view:
+              if tooltip_anchor not in view:
+                  raise SystemExit("runControlView tooltip anchor missing")
+              view = view.replace(tooltip_anchor, tooltip_anchor + tooltip_line, 1)
+
+          helper_anchor = 'function artifactStatusForRun(run: WorkflowRunState): { description?: string; tooltip?: string } {\n'
+          helper = '''function runProvenanceTooltip(provenance: WorkflowRunProvenanceProjection): string[] {
+            const verifiedArtifacts = Array.from(new Set(provenance.steps
+              .filter((step) => step.artifactVerified)
+              .flatMap((step) => step.artifactIds)))
+            return [
+              provenance.reusedStepIds.length > 0 ? `reused steps: ${provenance.reusedStepIds.join(", ")}` : undefined,
+              provenance.sourceRunId ? `source run: ${provenance.sourceRunId}` : undefined,
+              provenance.startStepId ? `reuse start step: ${provenance.startStepId}` : undefined,
+              provenance.hydratedStateKeys.length > 0 ? `hydrated state keys: ${provenance.hydratedStateKeys.join(", ")}` : undefined,
+              verifiedArtifacts.length > 0 ? `verified artifacts: ${verifiedArtifacts.join(", ")}` : undefined,
+              provenance.taskSnapshotImportCount > 0 ? `task snapshot imports: ${provenance.taskSnapshotImportCount}` : undefined,
+              provenance.definitionMismatchAllowed ? "definition mismatch allowed: yes" : undefined
+            ].filter((value): value is string => Boolean(value))
+          }
+
+          '''
+          if "function runProvenanceTooltip" not in view:
+              if helper_anchor not in view:
+                  raise SystemExit("runControlView helper anchor missing")
+              view = view.replace(helper_anchor, helper + helper_anchor, 1)
+          view_path.write_text(view, encoding="utf-8")
+
+          diagnostics_path = Path("extensions/workflow-register/src/core/runDiagnostics.ts")
+          diagnostics = diagnostics_path.read_text(encoding="utf-8")
+          diagnostics_import_anchor = 'import type { RunStepState, WorkflowRunState } from "./model"\n'
+          diagnostics_import = 'import { projectWorkflowRunProvenance, type WorkflowRunProvenanceProjection } from "./runProvenance"\n'
+          if diagnostics_import not in diagnostics:
+              if diagnostics_import_anchor not in diagnostics:
+                  raise SystemExit("runDiagnostics import anchor missing")
+              diagnostics = diagnostics.replace(diagnostics_import_anchor, diagnostics_import_anchor + diagnostics_import, 1)
+
+          pause_anchor = '  appendPauseDiagnostics(lines, run.state["workflow.pause"], options.control)\n'
+          provenance_block = '''  const provenanceLines = formatWorkflowProvenanceDiagnostics(projectWorkflowRunProvenance(run))
+            if (provenanceLines.length > 0) lines.push("", ...provenanceLines)
+          '''
+          if "const provenanceLines = formatWorkflowProvenanceDiagnostics" not in diagnostics:
+              if pause_anchor not in diagnostics:
+                  raise SystemExit("runDiagnostics pause anchor missing")
+              diagnostics = diagnostics.replace(pause_anchor, pause_anchor + provenance_block, 1)
+
+          function_anchor = 'export function formatBranchingDiagnostics(run: WorkflowRunState): string[] {\n'
+          function_text = '''export function formatWorkflowProvenanceDiagnostics(provenance: WorkflowRunProvenanceProjection): string[] {
+            const verifiedArtifacts = Array.from(new Set(provenance.steps
+              .filter((step) => step.artifactVerified)
+              .flatMap((step) => step.artifactIds)))
+            const hasProvenance = Boolean(
+              provenance.sourceRunId
+              || provenance.startStepId
+              || provenance.reusedStepIds.length > 0
+              || provenance.hydratedStateKeys.length > 0
+              || provenance.artifactIds.length > 0
+              || provenance.taskSnapshotImportCount > 0
+              || provenance.definitionMismatchAllowed
+            )
+            if (!hasProvenance) return []
+
+            const lines = ["Workflow provenance:"]
+            if (provenance.sourceRunId) lines.push(`- reused from run: ${provenance.sourceRunId}`)
+            if (provenance.startStepId) lines.push(`- start step: ${provenance.startStepId}`)
+            if (provenance.reusedStepIds.length > 0) lines.push(`- reused steps: ${provenance.reusedStepIds.join(", ")}`)
+            if (provenance.hydratedStateKeys.length > 0) lines.push(`- hydrated state keys: ${provenance.hydratedStateKeys.join(", ")}`)
+            if (verifiedArtifacts.length > 0) lines.push(`- verified artifacts: ${verifiedArtifacts.join(", ")}`)
+            if (provenance.taskSnapshotImportCount > 0) {
+              lines.push(`- imported from task snapshot: ${provenance.taskSnapshotImportCount} artifact(s)${provenance.taskSnapshotImportedAt ? ` at ${provenance.taskSnapshotImportedAt}` : ""}`)
+            }
+            lines.push(`- definition mismatch allowed: ${provenance.definitionMismatchAllowed ? "yes" : "no"}`)
+            lines.push("- step completion sources:")
+            for (const step of provenance.steps) {
+              const fields = [
+                `${step.stepId}: ${step.runStatus}`,
+                `completionSource=${step.completion}`,
+                `skippedByArtifactReuse=${step.skippedByArtifactReuse ? "yes" : "no"}`,
+                step.sourceRunId ? `sourceRun=${step.sourceRunId}` : undefined,
+                step.artifactIds.length > 0 ? `artifacts=${step.artifactIds.join(",")}` : undefined,
+                step.hydratedStateKeys.length > 0 ? `hydratedKeys=${step.hydratedStateKeys.join(",")}` : undefined,
+                step.importedFromTaskSnapshot ? "taskSnapshotImport=yes" : undefined
+              ].filter((value): value is string => Boolean(value))
+              lines.push(`  - ${fields.join("; ")}`)
+            }
+            return lines
+          }
+
+          '''
+          if "export function formatWorkflowProvenanceDiagnostics" not in diagnostics:
+              if function_anchor not in diagnostics:
+                  raise SystemExit("runDiagnostics function anchor missing")
+              diagnostics = diagnostics.replace(function_anchor, function_text + function_anchor, 1)
+          diagnostics_path.write_text(diagnostics, encoding="utf-8")
+          PY
+
+      - name: Verify focused contracts
+        working-directory: extensions/workflow-register
+        run: |
+          npm ci
+          npm run compile
+          node --test \
+            test/workflowRunProvenance.test.js \
+            test/runControlViewReuseProvenance.test.js \
+            test/workflowRunProvenanceDiagnostics.test.js \
+            test/workflowRunDiagnostics.test.js \
+            test/workflowRunStateReadOnlyView.test.js \
+            test/operationHubStepProvenance.test.js
+
+      - name: Commit verified implementation
+        shell: bash
+        run: |
+          rm .github/workflows/p1-3-runs-diagnostics-apply.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "feat: expose reuse provenance in run diagnostics"
+          git push origin HEAD:${{ github.head_ref }}
