@@ -86,7 +86,7 @@ test("dedicated recovery command preserves preview-confirm-gate-lease-reclassify
   assert.notEqual(start, -1)
   const body = source.slice(start, source.indexOf("\n  async ", start + 10))
   const preview = body.indexOf("buildHeldRunRecoveryPreview")
-  const confirmation = body.indexOf("showWarningMessage")
+  const confirmation = body.indexOf("const accepted = await vscode.window.showWarningMessage", preview)
   const gate = body.indexOf('"held-recovery"')
   const lease = body.indexOf('"recoverDetachedHeldRun"')
   const secondClassification = body.lastIndexOf("assessHeldRunRecovery")
