@@ -23,7 +23,6 @@ export interface WorkflowRunCleanupLeaseOptions {
   hostname?: string
   processAlive?: (pid: number) => boolean
   staleMs?: number
-  heartbeatMs?: number
 }
 
 interface CleanupLeaseLocations {
@@ -38,13 +37,41 @@ interface CleanupLeaseSnapshot {
   ino: bigint
 }
 
+interface FileIdentity {
+  dev: bigint
+  ino: bigint
+}
+
+interface CleanupLeaseGuard {
+  directory: string
+  ownerFile: string
+  dev: bigint
+  ino: bigint
+}
+
+interface OwnedCleanupLease {
+  file: string
+  guard: CleanupLeaseGuard
+  lease: WorkflowRunCleanupLeaseV1
+}
+
 const WORKFLOWS_ROOT_SEGMENTS = [".bob", "workflows"] as const
 const CLEANUP_LEASE_DIRECTORY = "run-cleanup-leases"
+const CLEANUP_GUARD_SUFFIX = ".guard"
+const CLEANUP_GUARD_OWNER_FILE = "owner.json"
+const DEFAULT_CLEANUP_HEARTBEAT_MS = 5_000
 
 export async function workflowRunCleanupLeasePresent(workspaceRoot: string, runId: string): Promise<boolean> {
   assertSafeWorkflowRunId(runId)
   const locations = await cleanupLeaseLocations(workspaceRoot, false)
   if (!locations) return false
+  const guard = guardDirectory(locations.directory, runId)
+  try {
+    await assertDirectDirectory(guard, locations.root, `Workflow run '${runId}' cleanup guard`)
+    return true
+  } catch (error) {
+    if (!isMissing(error)) throw error
+  }
   const file = leaseFile(locations.directory, runId)
   try {
     await readCleanupLeaseSnapshot(file, locations.root, runId)
@@ -67,13 +94,13 @@ export async function withWorkflowRunCleanupLeases<T>(
   const resolved = resolveOptions(options)
   const locations = await cleanupLeaseLocations(workspaceRoot, true)
   if (!locations) throw new Error("Workflow cleanup lease directory is unavailable.")
-  const leases: Array<{ file: string; lease: WorkflowRunCleanupLeaseV1 }> = []
+  const leases: OwnedCleanupLease[] = []
   let heartbeatError: unknown
   let heartbeatRunning = false
   let heartbeatChain: Promise<void> = Promise.resolve()
   let heartbeatTimer: ReturnType<typeof setInterval> | undefined
   const startHeartbeat = () => {
-    if (heartbeatTimer || resolved.heartbeatMs === 0) return
+    if (heartbeatTimer) return
     heartbeatTimer = setInterval(() => {
       if (heartbeatError || heartbeatRunning) return
       heartbeatRunning = true
@@ -108,7 +135,7 @@ export async function withWorkflowRunCleanupLeases<T>(
   const releaseErrors: string[] = []
   for (const entry of [...leases].reverse()) {
     try {
-      await releaseCleanupLease(entry.file, locations.root, entry.lease)
+      await releaseCleanupLease(entry, locations.root)
     } catch (error) {
       releaseErrors.push(`${entry.lease.runId}: ${formatError(error)}`)
     }
@@ -136,44 +163,53 @@ async function acquireCleanupLease(
   locations: CleanupLeaseLocations,
   runId: string,
   options: ResolvedCleanupLeaseOptions
-): Promise<{ file: string; lease: WorkflowRunCleanupLeaseV1 }> {
+): Promise<OwnedCleanupLease> {
   const file = leaseFile(locations.directory, runId)
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    const now = options.now()
-    const lease: WorkflowRunCleanupLeaseV1 = {
-      schemaVersion: CURRENT_WORKFLOW_RUN_CLEANUP_LEASE_SCHEMA_VERSION,
-      runId,
-      token: boundedToken(options.token(), "token"),
-      pid: process.pid,
-      hostname: boundedToken(options.hostname, "hostname"),
-      createdAt: now.toISOString(),
-      heartbeatAt: now.toISOString()
-    }
-    try {
-      const handle = await fs.open(file, "wx", 0o600)
-      try {
-        await handle.writeFile(`${JSON.stringify(lease, null, 2)}\n`, "utf8")
-        await handle.sync()
-      } finally {
-        await handle.close()
-      }
-      await readCleanupLeaseSnapshot(file, locations.root, runId)
-      return { file, lease }
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error
-    }
-
-    const snapshot = await readCleanupLeaseSnapshot(file, locations.root, runId)
-    const inspection = inspectExistingLease(snapshot, runId, options)
-    if (!inspection.reclaim) {
-      throw new Error(`Workflow run '${runId}' is reserved by a cleanup operation. ${inspection.message}`)
-    }
-    if (!await removeUnchangedCleanupLease(file, locations.root, runId, snapshot)) {
-      if (attempt < 2) continue
-      throw new Error(`Workflow run '${runId}' cleanup lease changed while stale ownership was being reclaimed.`)
-    }
+  const now = options.now()
+  const lease: WorkflowRunCleanupLeaseV1 = {
+    schemaVersion: CURRENT_WORKFLOW_RUN_CLEANUP_LEASE_SCHEMA_VERSION,
+    runId,
+    token: boundedToken(options.token(), "token"),
+    pid: process.pid,
+    hostname: boundedToken(options.hostname, "hostname"),
+    createdAt: now.toISOString(),
+    heartbeatAt: now.toISOString()
   }
-  throw new Error(`Workflow run '${runId}' cleanup lease could not be acquired.`)
+  const guard = await acquireCleanupGuard(locations, lease)
+  let ownsMetadata = false
+  try {
+    let snapshot: CleanupLeaseSnapshot | undefined
+    try {
+      snapshot = await readCleanupLeaseSnapshot(file, locations.root, runId)
+    } catch (error) {
+      if (!isMissing(error)) throw error
+    }
+    if (snapshot) {
+      const inspection = inspectExistingLease(snapshot, runId, options)
+      if (!inspection.reclaim) {
+        throw new Error(`Workflow run '${runId}' is reserved by a cleanup operation. ${inspection.message}`)
+      }
+      if (!await removeLegacyCleanupLeaseWhileGuarded(file, locations.root, runId, snapshot, guard, lease)) {
+        throw new Error(`Workflow run '${runId}' cleanup lease changed while stale legacy ownership was being reclaimed.`)
+      }
+    }
+    await verifyCleanupGuard(guard, locations.root, lease)
+    await writeCleanupLeaseFile(file, lease)
+    ownsMetadata = true
+    const persisted = await readCleanupLeaseSnapshot(file, locations.root, runId)
+    const current = parseCleanupLease(JSON.parse(persisted.bytes.toString("utf8")), runId)
+    if (current.token !== lease.token) throw new Error(`Workflow run '${runId}' cleanup lease ownership changed during creation.`)
+    await verifyCleanupGuard(guard, locations.root, lease)
+    return { file, guard, lease }
+  } catch (error) {
+    try {
+      if (ownsMetadata) await releaseCleanupLease({ file, guard, lease }, locations.root)
+      else await releaseCleanupGuard(guard, locations.root, lease)
+    } catch (releaseError) {
+      throw new Error(`Workflow run '${runId}' cleanup lease acquisition failed (${formatError(error)}); guard release also failed: ${formatError(releaseError)}`)
+    }
+    throw error
+  }
 }
 
 function inspectExistingLease(
@@ -229,32 +265,95 @@ function parseCleanupLease(value: unknown, expectedRunId: string): WorkflowRunCl
   }
 }
 
-async function releaseCleanupLease(file: string, root: string, expected: WorkflowRunCleanupLeaseV1): Promise<void> {
-  const snapshot = await readCleanupLeaseSnapshot(file, root, expected.runId)
-  const current = parseCleanupLease(JSON.parse(snapshot.bytes.toString("utf8")), expected.runId)
-  if (current.token !== expected.token) throw new Error(`Workflow run '${expected.runId}' cleanup lease ownership changed.`)
-  if (!await removeUnchangedCleanupLease(file, root, expected.runId, snapshot)) {
-    throw new Error(`Workflow run '${expected.runId}' cleanup lease changed before release.`)
+async function acquireCleanupGuard(
+  locations: CleanupLeaseLocations,
+  lease: WorkflowRunCleanupLeaseV1
+): Promise<CleanupLeaseGuard> {
+  const directory = guardDirectory(locations.directory, lease.runId)
+  try {
+    await fs.mkdir(directory, { mode: 0o700 })
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error
+    await assertDirectDirectory(directory, locations.root, `Workflow run '${lease.runId}' cleanup guard`)
+    throw new Error(`Workflow run '${lease.runId}' is reserved by a cleanup operation. An authoritative cleanup guard is present.`)
+  }
+
+  const ownerFile = path.join(directory, CLEANUP_GUARD_OWNER_FILE)
+  await writeCleanupLeaseFile(ownerFile, lease)
+  const identity = await assertDirectDirectory(directory, locations.root, `Workflow run '${lease.runId}' cleanup guard`)
+  const guard = { directory, ownerFile, ...identity }
+  await verifyCleanupGuard(guard, locations.root, lease)
+  return guard
+}
+
+async function verifyCleanupGuard(
+  guard: CleanupLeaseGuard,
+  root: string,
+  expected: WorkflowRunCleanupLeaseV1
+): Promise<void> {
+  const before = await assertDirectDirectory(guard.directory, root, `Workflow run '${expected.runId}' cleanup guard`)
+  if (!sameIdentity(before, guard)) throw new Error(`Workflow run '${expected.runId}' cleanup guard ownership changed.`)
+  const snapshot = await readCleanupLeaseSnapshot(guard.ownerFile, root, expected.runId)
+  const owner = parseCleanupLease(JSON.parse(snapshot.bytes.toString("utf8")), expected.runId)
+  if (owner.token !== expected.token) throw new Error(`Workflow run '${expected.runId}' cleanup guard ownership changed.`)
+  const after = await assertDirectDirectory(guard.directory, root, `Workflow run '${expected.runId}' cleanup guard`)
+  if (!sameIdentity(after, guard)) throw new Error(`Workflow run '${expected.runId}' cleanup guard ownership changed.`)
+}
+
+async function releaseCleanupGuard(
+  guard: CleanupLeaseGuard,
+  root: string,
+  expected: WorkflowRunCleanupLeaseV1
+): Promise<void> {
+  await verifyCleanupGuard(guard, root, expected)
+  const entries = await fs.readdir(guard.directory)
+  if (entries.length !== 1 || entries[0] !== CLEANUP_GUARD_OWNER_FILE) {
+    throw new Error(`Workflow run '${expected.runId}' cleanup guard contains unexpected entries and was preserved.`)
+  }
+  await fs.rm(guard.ownerFile)
+  await fs.rmdir(guard.directory)
+}
+
+async function writeCleanupLeaseFile(file: string, lease: WorkflowRunCleanupLeaseV1): Promise<void> {
+  const handle = await fs.open(file, "wx", 0o600)
+  try {
+    await handle.writeFile(`${JSON.stringify(lease, null, 2)}\n`, "utf8")
+    await handle.sync()
+  } finally {
+    await handle.close()
   }
 }
 
+async function releaseCleanupLease(entry: OwnedCleanupLease, root: string): Promise<void> {
+  const { file, guard, lease: expected } = entry
+  await verifyCleanupGuard(guard, root, expected)
+  const snapshot = await readCleanupLeaseSnapshot(file, root, expected.runId)
+  const current = parseCleanupLease(JSON.parse(snapshot.bytes.toString("utf8")), expected.runId)
+  if (current.token !== expected.token) throw new Error(`Workflow run '${expected.runId}' cleanup lease ownership changed.`)
+  await verifyCleanupGuard(guard, root, expected)
+  await fs.rm(file)
+  await verifyCleanupGuard(guard, root, expected)
+  await releaseCleanupGuard(guard, root, expected)
+}
+
 async function refreshCleanupLeases(
-  leases: ReadonlyArray<{ file: string; lease: WorkflowRunCleanupLeaseV1 }>,
+  leases: ReadonlyArray<OwnedCleanupLease>,
   root: string,
   options: ResolvedCleanupLeaseOptions
 ): Promise<void> {
   for (const entry of leases) {
-    await refreshCleanupLease(entry.file, root, entry.lease, options)
+    await refreshCleanupLease(entry, root, options)
   }
 }
 
 async function refreshCleanupLease(
-  file: string,
+  entry: OwnedCleanupLease,
   root: string,
-  expected: WorkflowRunCleanupLeaseV1,
   options: ResolvedCleanupLeaseOptions
 ): Promise<void> {
+  const { file, guard, lease: expected } = entry
   const heartbeatAt = options.now()
+  await verifyCleanupGuard(guard, root, expected)
   const snapshot = await readCleanupLeaseSnapshot(file, root, expected.runId)
   const current = parseCleanupLease(JSON.parse(snapshot.bytes.toString("utf8")), expected.runId)
   if (current.token !== expected.token) throw new Error(`Workflow run '${expected.runId}' cleanup lease ownership changed.`)
@@ -274,14 +373,18 @@ async function refreshCleanupLease(
   if (refreshed.dev !== snapshot.dev || refreshed.ino !== snapshot.ino || persisted.token !== expected.token) {
     throw new Error(`Workflow run '${expected.runId}' cleanup lease ownership changed during heartbeat.`)
   }
+  await verifyCleanupGuard(guard, root, expected)
 }
 
-async function removeUnchangedCleanupLease(
+async function removeLegacyCleanupLeaseWhileGuarded(
   file: string,
   root: string,
   runId: string,
-  expected: CleanupLeaseSnapshot
+  expected: CleanupLeaseSnapshot,
+  guard: CleanupLeaseGuard,
+  owner: WorkflowRunCleanupLeaseV1
 ): Promise<boolean> {
+  await verifyCleanupGuard(guard, root, owner)
   let current: CleanupLeaseSnapshot
   try {
     current = await readCleanupLeaseSnapshot(file, root, runId)
@@ -295,7 +398,14 @@ async function removeUnchangedCleanupLease(
     || current.mtimeMs !== expected.mtimeMs
     || !current.bytes.equals(expected.bytes)
   ) return false
-  await fs.rm(file)
+  await verifyCleanupGuard(guard, root, owner)
+  try {
+    await fs.rm(file)
+  } catch (error) {
+    if (isMissing(error)) return false
+    throw error
+  }
+  await verifyCleanupGuard(guard, root, owner)
   return true
 }
 
@@ -357,23 +467,29 @@ async function removeLeaseDirectoryIfEmpty(directory: string): Promise<void> {
   }
 }
 
-async function assertDirectDirectory(file: string, root: string, label: string): Promise<void> {
-  const stat = await fs.lstat(file)
-  if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error(`${label} must be a direct directory.`)
+async function assertDirectDirectory(file: string, root: string, label: string): Promise<FileIdentity> {
+  const before = await fs.lstat(file, { bigint: true })
+  if (!before.isDirectory() || before.isSymbolicLink()) throw new Error(`${label} must be a direct directory.`)
   const physical = await fs.realpath(file)
   assertContained(root, physical, label)
   if (!samePath(file, physical)) throw new Error(`${label} must not be an alias or junction.`)
+  const after = await fs.lstat(file, { bigint: true })
+  if (!after.isDirectory() || !sameIdentity(before, after)) throw new Error(`${label} changed while it was being verified.`)
+  return { dev: after.dev, ino: after.ino }
 }
 
 function leaseFile(directory: string, runId: string): string {
   return path.join(directory, `${runId}.json`)
 }
 
+function guardDirectory(directory: string, runId: string): string {
+  return path.join(directory, `${runId}${CLEANUP_GUARD_SUFFIX}`)
+}
+
 function resolveOptions(options: WorkflowRunCleanupLeaseOptions): ResolvedCleanupLeaseOptions {
   const staleMs = options.staleMs ?? 30_000
   if (!Number.isFinite(staleMs) || staleMs < 0) throw new Error("Workflow cleanup lease staleMs must be non-negative.")
-  const heartbeatMs = options.heartbeatMs ?? 5_000
-  if (!Number.isFinite(heartbeatMs) || heartbeatMs < 0) throw new Error("Workflow cleanup lease heartbeatMs must be non-negative.")
+  const heartbeatMs = Math.max(1, Math.min(DEFAULT_CLEANUP_HEARTBEAT_MS, Math.floor(staleMs / 3)))
   return {
     now: options.now ?? (() => new Date()),
     token: options.token ?? randomUUID,
@@ -415,6 +531,10 @@ function assertContained(root: string, target: string, label: string): void {
 function samePath(left: string, right: string): boolean {
   const normalize = (value: string) => process.platform === "win32" ? path.resolve(value).toLowerCase() : path.resolve(value)
   return normalize(left) === normalize(right)
+}
+
+function sameIdentity(left: FileIdentity, right: FileIdentity): boolean {
+  return left.dev === right.dev && left.ino === right.ino
 }
 
 function isMissing(error: unknown): boolean {

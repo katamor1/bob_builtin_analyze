@@ -22,6 +22,13 @@ function deferred() {
   return { promise, resolve }
 }
 
+function settle(operation) {
+  return operation.then(
+    (value) => ({ status: "fulfilled", value }),
+    (reason) => ({ status: "rejected", reason })
+  )
+}
+
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
@@ -127,6 +134,69 @@ test("cleanup lease safely reclaims a stale dead-owner lease", async (t) => {
   assert.equal(result, "recovered")
 })
 
+test("an orphan cleanup guard fails closed and is never reclaimed automatically", async (t) => {
+  const root = await workspace(t)
+  const { withWorkflowRunCleanupLeases, workflowRunCleanupLeasePresent } = leaseModules()
+  const guardDirectory = path.join(root, ".bob", "workflows", "run-cleanup-leases", "run-a.guard")
+  await fs.mkdir(guardDirectory, { recursive: true })
+  await fs.writeFile(path.join(guardDirectory, "owner.json"), `${JSON.stringify({
+    schemaVersion: "workflow-register/run-cleanup-lease/v1",
+    runId: "run-a",
+    token: "orphan-owner",
+    pid: 999999,
+    hostname: "test-host",
+    createdAt: "2026-07-13T00:00:00.000Z",
+    heartbeatAt: "2026-07-13T00:00:00.000Z"
+  }, null, 2)}\n`)
+
+  let entered = false
+  await assert.rejects(
+    withWorkflowRunCleanupLeases(root, ["run-a"], async () => { entered = true }, {
+      token: () => "contender",
+      hostname: "test-host",
+      processAlive: () => false,
+      now: () => new Date("2026-07-13T05:00:00.000Z"),
+      staleMs: 1
+    }),
+    /reserved by a cleanup operation|cleanup guard|cleanup lease/i
+  )
+  assert.equal(entered, false)
+  assert.equal(await workflowRunCleanupLeasePresent(root, "run-a"), true)
+  assert.equal(JSON.parse(await fs.readFile(path.join(guardDirectory, "owner.json"), "utf8")).token, "orphan-owner")
+})
+
+test("cleanup release removes owned JSON before its guard and never mutates the run afterward", async (t) => {
+  const root = await workspace(t)
+  const { withWorkflowRunCleanupLeases, workflowRunCleanupLeasePresent } = leaseModules()
+  const leaseFile = path.join(root, ".bob", "workflows", "run-cleanup-leases", "run-a.json")
+  const guardDirectory = path.join(root, ".bob", "workflows", "run-cleanup-leases", "run-a.guard")
+  const originalRmdir = fs.rmdir
+  const guardRemoval = deferred()
+  let guardRemoved = false
+  fs.rmdir = async (target, ...args) => {
+    if (path.resolve(String(target)) === path.resolve(guardDirectory)) {
+      await assert.rejects(fs.access(leaseFile), { code: "ENOENT" })
+      guardRemoval.resolve()
+      const result = await originalRmdir(target, ...args)
+      guardRemoved = true
+      return result
+    }
+    return originalRmdir(target, ...args)
+  }
+
+  try {
+    await withWorkflowRunCleanupLeases(root, ["run-a"], async () => {
+      assert.equal((await fs.stat(guardDirectory)).isDirectory(), true)
+      assert.equal(JSON.parse(await fs.readFile(leaseFile, "utf8")).token, "release-owner")
+    }, { token: () => "release-owner", hostname: "test-host" })
+    await guardRemoval.promise
+    assert.equal(guardRemoved, true)
+    assert.equal(await workflowRunCleanupLeasePresent(root, "run-a"), false)
+  } finally {
+    fs.rmdir = originalRmdir
+  }
+})
+
 test("stale reclaim preserves a lease whose heartbeat advances during verification", async (t) => {
   const root = await workspace(t)
   const { withWorkflowRunCleanupLeases } = leaseModules()
@@ -166,8 +236,7 @@ test("stale reclaim preserves a lease whose heartbeat advances during verificati
     token: () => "contender",
     hostname: "contender-host",
     now: () => refreshedAt,
-    staleMs: 1_000,
-    heartbeatMs: 0
+    staleMs: 1_000
   })
   try {
     await Promise.race([
@@ -183,6 +252,85 @@ test("stale reclaim preserves a lease whose heartbeat advances during verificati
     continueRead.resolve()
     await contender.catch(() => undefined)
     fs.open = originalOpen
+  }
+})
+
+test("a guarded stale reclaim cannot delete a replacement owner after verification", async (t) => {
+  const root = await workspace(t)
+  const { withWorkflowRunCleanupLeases } = leaseModules()
+  const leaseFile = path.join(root, ".bob", "workflows", "run-cleanup-leases", "run-a.json")
+  await fs.mkdir(path.dirname(leaseFile))
+  await fs.writeFile(leaseFile, `${JSON.stringify({
+    schemaVersion: "workflow-register/run-cleanup-lease/v1",
+    runId: "run-a",
+    token: "legacy-stale-owner",
+    pid: 999999,
+    hostname: "test-host",
+    createdAt: "2026-07-13T00:00:00.000Z",
+    heartbeatAt: "2026-07-13T00:00:00.000Z"
+  }, null, 2)}\n`)
+
+  const originalRm = fs.rm
+  const removalVerified = deferred()
+  const continueRemoval = deferred()
+  const replacementEntered = deferred()
+  const contenderEntered = deferred()
+  const releaseReplacement = deferred()
+  let intercepted = false
+  const entries = []
+  fs.rm = async (target, ...args) => {
+    if (!intercepted && path.resolve(String(target)) === path.resolve(leaseFile)) {
+      intercepted = true
+      removalVerified.resolve()
+      await continueRemoval.promise
+    }
+    return originalRm(target, ...args)
+  }
+
+  const contender = settle(withWorkflowRunCleanupLeases(root, ["run-a"], async () => {
+    entries.push("contender")
+    contenderEntered.resolve()
+  }, {
+    token: () => "contender",
+    hostname: "test-host",
+    processAlive: () => false,
+    now: () => new Date("2026-07-13T05:00:00.000Z"),
+    staleMs: 1_000
+  }))
+  let replacement
+  try {
+    await Promise.race([
+      removalVerified.promise,
+      delay(3_000).then(() => { throw new Error("Stale reclaim did not reach its post-verification removal barrier.") })
+    ])
+    await originalRm(leaseFile)
+    replacement = settle(withWorkflowRunCleanupLeases(root, ["run-a"], async () => {
+      entries.push("replacement")
+      replacementEntered.resolve()
+      await releaseReplacement.promise
+    }, { token: () => "replacement", hostname: "test-host" }))
+
+    const replacementLaunch = await Promise.race([
+      replacementEntered.promise.then(() => "entered"),
+      replacement.then((outcome) => outcome.status)
+    ])
+    continueRemoval.resolve()
+    if (replacementLaunch === "entered") {
+      const unsafe = await Promise.race([
+        contenderEntered.promise.then(() => "second-entry"),
+        contender.then(() => "contender-settled")
+      ])
+      assert.notEqual(unsafe, "second-entry", `critical sections entered: ${entries.join(", ")}`)
+    } else {
+      assert.equal(replacementLaunch, "rejected")
+      await contender
+    }
+    assert.ok(entries.length <= 1, `critical sections entered: ${entries.join(", ")}`)
+  } finally {
+    continueRemoval.resolve()
+    releaseReplacement.resolve()
+    await Promise.all([contender, replacement ?? Promise.resolve()])
+    fs.rm = originalRm
   }
 })
 
@@ -205,8 +353,7 @@ test("cleanup lease heartbeat prevents foreign-host reclaim and stops after succ
       nowCalls += 1
       return new Date(nowMs)
     },
-    staleMs: 100,
-    heartbeatMs: 10
+    staleMs: 60
   })
 
   await entered.promise
@@ -223,8 +370,7 @@ test("cleanup lease heartbeat prevents foreign-host reclaim and stops after succ
         token: () => "contender",
         hostname: "contender-host",
         now: () => new Date(nowMs + 10),
-        staleMs: 100,
-        heartbeatMs: 0
+        staleMs: 60
       }),
       /reserved by a cleanup operation|cleanup lease/i
     )
@@ -260,7 +406,7 @@ test("cleanup lease heartbeat timer stops when the operation throws", async (t) 
       nowCalls += 1
       return new Date(nowMs)
     },
-    heartbeatMs: 10
+    staleMs: 60
   })
 
   await entered.promise
@@ -342,7 +488,7 @@ test("cleanup heartbeat never overwrites a replacement owner", async (t) => {
   }, {
     token: () => "original-owner",
     hostname: "owner-host",
-    heartbeatMs: 10
+    staleMs: 60
   })
 
   try {
@@ -392,7 +538,7 @@ test("cleanup-first interleaving excludes the workflow execution critical sectio
     entries.push("cleanup")
     entered()
     await hold
-  }, { token: () => "cleanup-token", hostname: "test-host", heartbeatMs: 0 })
+  }, { token: () => "cleanup-token", hostname: "test-host" })
 
   await enteredPromise
   try {
@@ -432,7 +578,7 @@ test("run-lock-first interleaving rejects cleanup and releases every acquired le
     await assert.rejects(
       withWorkflowRunCleanupLeases(root, ["run-b", "run-a"], async () => {
         entries.push("cleanup")
-      }, { token: () => "cleanup-token", hostname: "test-host", heartbeatMs: 0 }),
+      }, { token: () => "cleanup-token", hostname: "test-host" }),
       /execution lock|run lock|locked|busy/i
     )
     assert.deepEqual(entries, ["run"])
@@ -444,62 +590,92 @@ test("run-lock-first interleaving rejects cleanup and releases every acquired le
   }
 })
 
-test("simultaneous cleanup and run-lock interleaving enters at most one critical section", async (t) => {
+test("crossed cleanup and run-lock handshake enters at most one critical section", async (t) => {
   const root = await workspace(t)
   const { withWorkflowRunCleanupLeases } = leaseModules()
   const { withWorkflowRunLock } = lockModules()
-  const start = deferred()
-  const firstEntry = deferred()
-  const secondEntry = deferred()
-  const releaseCriticalSection = deferred()
-  const entries = []
-  const enter = async (kind) => {
-    entries.push(kind)
-    if (entries.length === 1) firstEntry.resolve(kind)
-    else secondEntry.resolve(kind)
-    await releaseCriticalSection.promise
-    return kind
-  }
-  const settle = (operation) => operation.then(
-    (value) => ({ status: "fulfilled", value }),
-    (reason) => ({ status: "rejected", reason })
-  )
-  const cleanup = settle(start.promise.then(() => withWorkflowRunCleanupLeases(
-    root,
-    ["run-a"],
-    () => enter("cleanup"),
-    { token: () => "cleanup-token", hostname: "test-host", heartbeatMs: 0 }
-  )))
-  const run = settle(start.promise.then(() => withWorkflowRunLock(
-    root,
-    "run-a",
-    () => enter("run"),
-    { timeoutMs: 60, pollMs: 2, heartbeatMs: 0 }
-  )))
+  const leaseDirectory = path.join(root, ".bob", "workflows", "run-cleanup-leases")
+  const leaseFile = path.join(leaseDirectory, "run-a.json")
+  const guardDirectory = path.join(leaseDirectory, "run-a.guard")
+  const runLockFile = path.join(root, ".bob", "workflows", "runs", "run-a", "run.lock.json")
+  await fs.mkdir(leaseDirectory)
 
-  start.resolve()
-  const allOutcomes = Promise.all([cleanup, run])
-  try {
-    const launch = await Promise.race([
-      firstEntry.promise.then((kind) => ({ type: "entry", kind })),
-      allOutcomes.then((outcomes) => ({ type: "settled", outcomes }))
-    ])
-    if (launch.type === "settled") {
-      assert.equal(entries.length, 0)
-      assert.equal(launch.outcomes.filter(({ status }) => status === "fulfilled").length, 0)
-    } else {
-      const other = launch.kind === "cleanup" ? run : cleanup
-      const exclusion = await Promise.race([
-        other.then((outcome) => ({ type: "other-settled", outcome })),
-        secondEntry.promise.then((kind) => ({ type: "second-entry", kind }))
-      ])
-      assert.equal(exclusion.type, "other-settled", `critical sections entered: ${entries.join(", ")}`)
-      assert.equal(exclusion.outcome.status, "rejected")
-      assert.equal(entries.length, 1)
+  const runPrecheckObserved = deferred()
+  const allowRunCreate = deferred()
+  const cleanupLockCheckObserved = deferred()
+  const allowCleanupEntry = deferred()
+  const runPostcheckObserved = deferred()
+  const allowRunRetreat = deferred()
+  const cleanupEntered = deferred()
+  const releaseCleanup = deferred()
+  const originalLstat = fs.lstat
+  let phase = "run-precheck"
+  fs.lstat = async (target, ...args) => {
+    const resolvedTarget = path.resolve(String(target))
+    if (phase === "run-precheck" && resolvedTarget === path.resolve(leaseFile)) {
+      try {
+        return await originalLstat(target, ...args)
+      } catch (error) {
+        runPrecheckObserved.resolve()
+        await allowRunCreate.promise
+        throw error
+      }
     }
-  } finally {
-    releaseCriticalSection.resolve()
+    if (phase === "cleanup-lock-check" && resolvedTarget === path.resolve(runLockFile)) {
+      try {
+        return await originalLstat(target, ...args)
+      } catch (error) {
+        cleanupLockCheckObserved.resolve()
+        await allowCleanupEntry.promise
+        throw error
+      }
+    }
+    if (
+      phase === "run-postcheck"
+      && (resolvedTarget === path.resolve(guardDirectory) || resolvedTarget === path.resolve(leaseFile))
+    ) {
+      const stat = await originalLstat(target, ...args)
+      runPostcheckObserved.resolve()
+      await allowRunRetreat.promise
+      return stat
+    }
+    return originalLstat(target, ...args)
   }
-  const outcomes = await allOutcomes
-  assert.ok(outcomes.filter(({ status }) => status === "fulfilled").length <= 1)
+
+  const entries = []
+  const run = settle(withWorkflowRunLock(root, "run-a", async () => {
+    entries.push("run")
+  }, { timeoutMs: 100, pollMs: 2, heartbeatMs: 0 }))
+  let cleanup
+  try {
+    await runPrecheckObserved.promise
+    phase = "cleanup-lock-check"
+    cleanup = settle(withWorkflowRunCleanupLeases(root, ["run-a"], async () => {
+      entries.push("cleanup")
+      cleanupEntered.resolve()
+      await releaseCleanup.promise
+    }, { token: () => "cleanup-token", hostname: "test-host" }))
+    await cleanupLockCheckObserved.promise
+
+    phase = "run-postcheck"
+    allowRunCreate.resolve()
+    await runPostcheckObserved.promise
+    allowCleanupEntry.resolve()
+    await cleanupEntered.promise
+    phase = "released"
+    allowRunRetreat.resolve()
+
+    const runOutcome = await run
+    assert.equal(runOutcome.status, "rejected")
+    assert.ok(entries.length <= 1, `critical sections entered: ${entries.join(", ")}`)
+    assert.deepEqual(entries, ["cleanup"])
+  } finally {
+    phase = "released"
+    allowRunCreate.resolve()
+    allowCleanupEntry.resolve()
+    allowRunRetreat.resolve()
+    releaseCleanup.resolve()
+    await Promise.all([run, cleanup ?? Promise.resolve()])
+    fs.lstat = originalLstat
+  }
 })
