@@ -1,4 +1,4 @@
-import { createHash } from "crypto"
+import { createHash, type Hash } from "crypto"
 import { constants, type BigIntStats } from "fs"
 import * as fs from "fs/promises"
 import * as path from "path"
@@ -21,6 +21,20 @@ const PROVENANCE_SCHEMAS = new Map([
   ["workflow.artifactHydration", "workflow-register/artifact-hydration/v1"]
 ])
 
+export interface WorkflowRunRetentionInventoryLimits {
+  maxDepth: number
+  maxEntries: number
+  maxMetadataCaptureBytes: number
+  maxFingerprintBytes: number
+}
+
+export const WORKFLOW_RUN_RETENTION_INVENTORY_LIMITS: Readonly<WorkflowRunRetentionInventoryLimits> = Object.freeze({
+  maxDepth: 32,
+  maxEntries: 10_000,
+  maxMetadataCaptureBytes: 8 * 1024 * 1024,
+  maxFingerprintBytes: 4 * 1024 * 1024
+})
+
 export interface WorkflowRunRetentionInventorySnapshot {
   inventory: WorkflowRunRetentionInventoryItem[]
   referenceGraphComplete: boolean
@@ -37,28 +51,50 @@ interface PhysicalTreeMeasurement {
   bytes: number
   complete: boolean
   treeFingerprint: string
-  captures: Map<string, Buffer>
+  captures: Map<string, StableFileCapture>
   topLevelEntries: Set<string>
 }
 
 interface TreeAccumulator {
   bytes: number
   complete: boolean
-  records: unknown[]
-  captures: Map<string, Buffer>
+  fingerprint: Hash
+  fingerprintStopped: boolean
+  captures: Map<string, StableFileCapture>
   topLevelEntries: Set<string>
 }
 
-interface DirectFileRead {
+interface StableFileCapture {
+  content: Buffer
+  stable: boolean
+}
+
+interface CapturedFileRead {
   bytes: number
   complete: boolean
-  contentHash: string
-  captured?: Buffer
+  capture?: StableFileCapture
+}
+
+interface InventoryScanBudget {
+  readonly limits: WorkflowRunRetentionInventoryLimits
+  entries: number
+  metadataCaptureBytes: number
+  fingerprintBytes: number
+  entryLimitReached: boolean
+  metadataCaptureLimitReached: boolean
+  fingerprintLimitReached: boolean
+}
+
+interface BoundedDirectoryEntries {
+  names: string[]
+  complete: boolean
 }
 
 export async function inspectWorkflowRunRetentionInventory(
-  workspaceRoot: string
+  workspaceRoot: string,
+  requestedLimits: Partial<WorkflowRunRetentionInventoryLimits> = {}
 ): Promise<WorkflowRunRetentionInventorySnapshot> {
+  const budget = createScanBudget(requestedLimits)
   const root = await fs.realpath(path.resolve(workspaceRoot))
   const runsRoot = path.join(root, ...RUNS_ROOT_SEGMENTS)
   let rootStat: BigIntStats
@@ -67,24 +103,22 @@ export async function inspectWorkflowRunRetentionInventory(
   } catch (error) {
     if (isMissingPathError(error)) {
       if (await missingRunsRootIsSafe(root)) return { inventory: [], referenceGraphComplete: true }
-      return unsafeRootSnapshot(runsRoot, root, undefined)
+      return unsafeRootSnapshot(runsRoot, root, undefined, budget)
     }
-    return unsafeRootSnapshot(runsRoot, root, undefined)
+    return unsafeRootSnapshot(runsRoot, root, undefined, budget)
   }
 
   if (rootStat.isSymbolicLink() || !rootStat.isDirectory() || !(await isDirectContainedPath(root, runsRoot))) {
-    return unsafeRootSnapshot(runsRoot, root, rootStat)
+    return unsafeRootSnapshot(runsRoot, root, rootStat, budget)
   }
 
-  let names: string[]
-  try {
-    names = (await fs.readdir(runsRoot)).sort(compareText)
-  } catch {
-    return unsafeRootSnapshot(runsRoot, root, rootStat)
+  const rootEntries = await readBoundedDirectoryEntries(runsRoot, budget)
+  if (!rootEntries.complete && rootEntries.names.length === 0 && !budget.entryLimitReached) {
+    return unsafeRootSnapshot(runsRoot, root, rootStat, budget)
   }
 
   const entries: InternalInventoryEntry[] = []
-  for (const rawEntryName of names) {
+  for (const rawEntryName of rootEntries.names) {
     const entryPath = path.join(runsRoot, rawEntryName)
     let entryStat: BigIntStats | undefined
     try {
@@ -99,14 +133,18 @@ export async function inspectWorkflowRunRetentionInventory(
       && !entryStat.isSymbolicLink()
       && await isDirectContainedPath(root, entryPath)
     ) {
-      entries.push(await inspectRunDirectory(root, entryPath, rawEntryName, entryStat))
+      entries.push(await inspectRunDirectory(root, entryPath, rawEntryName, entryStat, budget))
       continue
     }
-    entries.push(await inspectUnsafeEntry(root, entryPath, rawEntryName, entryStat))
+    entries.push(await inspectUnsafeEntry(root, entryPath, rawEntryName, entryStat, budget))
+  }
+
+  if (!rootEntries.complete) {
+    entries.push(unsafeInventoryEntry("inventory-truncated", emptyUnsafeMeasurement("inventory-truncated"), undefined))
   }
 
   const rootStable = await sameDirectDirectory(root, runsRoot, rootStat)
-  if (!rootStable) {
+  if (!rootStable || !rootEntries.complete) {
     for (const entry of entries) {
       entry.item.measurementComplete = false
       entry.item.pathContained = false
@@ -115,7 +153,10 @@ export async function inspectWorkflowRunRetentionInventory(
     if (entries.length === 0) entries.push(unsafeInventoryEntry("runs-root-changed", emptyUnsafeMeasurement("runs-root-changed"), rootStat))
   }
 
-  const referenceGraphComplete = rootStable && entries.every((entry) => entry.provenanceComplete)
+  resolveSyntheticRunIdCollisions(entries)
+  const referenceGraphComplete = rootStable
+    && rootEntries.complete
+    && entries.every((entry) => entry.provenanceComplete)
   const references = collectSourceRunReferences(entries.flatMap((entry) => entry.run ? [entry.run] : []))
   const inventory = entries.map((entry) => ({
     ...entry.item,
@@ -129,9 +170,10 @@ async function inspectRunDirectory(
   root: string,
   directory: string,
   runId: string,
-  directoryStat: BigIntStats
+  directoryStat: BigIntStats,
+  budget: InventoryScanBudget
 ): Promise<InternalInventoryEntry> {
-  const measurement = await measureDirectDirectoryTree(root, directory, directoryStat)
+  const measurement = await measureDirectDirectoryTree(root, directory, directoryStat, budget)
   const rawRun = measurement.captures.get("run.json")
   const rawRetention = measurement.captures.get("retention.json")
   const runEntryPresent = measurement.topLevelEntries.has("run.json")
@@ -141,9 +183,9 @@ async function inspectRunDirectory(
   let status: WorkflowRunRetentionStatus = "unknown"
   let updatedAt = timestampFromStat(directoryStat)
   let readOnly = true
-  if (rawRun) {
+  if (rawRun?.content) {
     try {
-      const decoded = decodeWorkflowRunState(JSON.parse(rawRun.toString("utf8")), runId)
+      const decoded = decodeWorkflowRunState(JSON.parse(rawRun.content.toString("utf8")), runId)
       if (!Number.isFinite(Date.parse(decoded.run.updatedAt))) throw new Error("invalid timestamp")
       run = decoded.run
       inspectionStatus = decoded.readOnly ? "future" : decoded.migrated ? "legacy" : "valid"
@@ -157,15 +199,19 @@ async function inspectRunDirectory(
   }
 
   let pinned = false
-  if (rawRetention) {
-    const decoded = decodeWorkflowRunRetentionMetadata(rawRetention.toString("utf8"))
+  if (rawRetention?.content) {
+    const decoded = decodeWorkflowRunRetentionMetadata(rawRetention.content.toString("utf8"))
     pinned = decoded.status === "valid" ? decoded.metadata.pinned : true
   } else if (retentionEntryPresent) {
     pinned = true
   }
 
-  const revision = rawRun ? hashBytes(rawRun) : hashText(`missing-run.json\0${measurement.treeFingerprint}`)
-  const retentionRevision = rawRetention ? hashBytes(rawRetention) : retentionEntryPresent ? "unsafe" : "missing"
+  const revision = rawRun?.stable
+    ? hashBytes(rawRun.content)
+    : hashText(`${rawRun ? "unstable" : "missing"}-run.json\0${measurement.treeFingerprint}`)
+  const retentionRevision = rawRetention?.stable
+    ? hashBytes(rawRetention.content)
+    : retentionEntryPresent ? "unstable" : "missing"
   const journalPending = measurement.topLevelEntries.has("run-state.journal.json")
   const item: WorkflowRunRetentionInventoryItem = {
     runId,
@@ -188,6 +234,9 @@ async function inspectRunDirectory(
     treeFingerprint: measurement.treeFingerprint
   }
   const provenanceComplete = run !== undefined
+    && !readOnly
+    && measurement.complete
+    && rawRun?.stable === true
     && !journalPending
     && storedProvenanceComplete(run)
   return {
@@ -202,7 +251,8 @@ async function inspectUnsafeEntry(
   root: string,
   entryPath: string,
   rawEntryName: string,
-  entryStat: BigIntStats
+  entryStat: BigIntStats,
+  budget: InventoryScanBudget
 ): Promise<InternalInventoryEntry> {
   let measurement: PhysicalTreeMeasurement
   if (
@@ -210,17 +260,17 @@ async function inspectUnsafeEntry(
     && !entryStat.isSymbolicLink()
     && await isDirectContainedPath(root, entryPath)
   ) {
-    measurement = await measureDirectDirectoryTree(root, entryPath, entryStat)
+    measurement = await measureDirectDirectoryTree(root, entryPath, entryStat, budget)
   } else if (
     entryStat.isFile()
     && !entryStat.isSymbolicLink()
     && await isDirectContainedPath(root, entryPath)
   ) {
-    const direct = await readDirectFile(root, entryPath, entryStat, false)
+    const stable = await stableDirectFileMetadata(root, entryPath, entryStat)
     measurement = {
-      bytes: direct.bytes,
-      complete: direct.complete,
-      treeFingerprint: hashText(stableJson(["file", identityFromStat(entryStat), direct.bytes, direct.contentHash, direct.complete])),
+      bytes: safeStatSize(entryStat),
+      complete: stable,
+      treeFingerprint: hashText(stableJson(["file", stableStatRecord(entryStat), stable])),
       captures: new Map(),
       topLevelEntries: new Set()
     }
@@ -233,10 +283,11 @@ async function inspectUnsafeEntry(
 async function unsafeRootSnapshot(
   runsRoot: string,
   root: string,
-  rootStat: BigIntStats | undefined
+  rootStat: BigIntStats | undefined,
+  budget: InventoryScanBudget
 ): Promise<WorkflowRunRetentionInventorySnapshot> {
   let entry: InternalInventoryEntry
-  if (rootStat) entry = await inspectUnsafeEntry(root, runsRoot, "runs-root", rootStat)
+  if (rootStat) entry = await inspectUnsafeEntry(root, runsRoot, "runs-root", rootStat, budget)
   else entry = unsafeInventoryEntry("runs-root", emptyUnsafeMeasurement("runs-root"), undefined)
   entry.item.referenceGraphComplete = false
   return { inventory: [entry.item], referenceGraphComplete: false }
@@ -273,20 +324,22 @@ function unsafeInventoryEntry(
 async function measureDirectDirectoryTree(
   root: string,
   directory: string,
-  directoryStat: BigIntStats
+  directoryStat: BigIntStats,
+  budget: InventoryScanBudget
 ): Promise<PhysicalTreeMeasurement> {
   const accumulator: TreeAccumulator = {
     bytes: 0,
     complete: true,
-    records: [],
+    fingerprint: createHash("sha256"),
+    fingerprintStopped: false,
     captures: new Map(),
     topLevelEntries: new Set()
   }
-  await walkDirectDirectory(root, directory, directoryStat, [], accumulator)
+  await walkDirectDirectory(root, directory, directoryStat, [], accumulator, budget)
   return {
     bytes: accumulator.bytes,
     complete: accumulator.complete,
-    treeFingerprint: hashText(stableJson(accumulator.records)),
+    treeFingerprint: `sha256:${accumulator.fingerprint.digest("hex")}`,
     captures: accumulator.captures,
     topLevelEntries: accumulator.topLevelEntries
   }
@@ -297,18 +350,17 @@ async function walkDirectDirectory(
   directory: string,
   directoryStat: BigIntStats,
   segments: string[],
-  accumulator: TreeAccumulator
+  accumulator: TreeAccumulator,
+  budget: InventoryScanBudget
 ): Promise<void> {
-  accumulator.records.push(["directory", segments, identityFromStat(directoryStat)])
-  let names: string[]
-  try {
-    names = (await fs.readdir(directory)).sort(compareText)
-  } catch {
+  if (!recordFingerprint(accumulator, budget, ["directory", segments, stableStatRecord(directoryStat)])) return
+  const listing = await readBoundedDirectoryEntries(directory, budget)
+  if (!listing.complete) {
     accumulator.complete = false
-    accumulator.records.push(["directory-unreadable", segments])
-    return
+    recordFingerprint(accumulator, budget, ["directory-truncated-or-unreadable", segments])
   }
-  for (const name of names) {
+  for (const name of listing.names) {
+    if (accumulator.fingerprintStopped) break
     const childSegments = [...segments, name]
     if (segments.length === 0) accumulator.topLevelEntries.add(name)
     const target = path.join(directory, name)
@@ -317,94 +369,130 @@ async function walkDirectDirectory(
       stat = await fs.lstat(target, { bigint: true })
     } catch {
       accumulator.complete = false
-      accumulator.records.push(["entry-unreadable", childSegments])
+      recordFingerprint(accumulator, budget, ["entry-unreadable", childSegments])
       continue
     }
     if (stat.isSymbolicLink()) {
       accumulator.complete = false
-      accumulator.records.push(["symlink", childSegments, identityFromStat(stat)])
+      recordFingerprint(accumulator, budget, ["symlink", childSegments, stableStatRecord(stat)])
       continue
     }
     if (stat.isDirectory()) {
       if (!(await isDirectContainedPath(root, target))) {
         accumulator.complete = false
-        accumulator.records.push(["directory-alias", childSegments, identityFromStat(stat)])
+        recordFingerprint(accumulator, budget, ["directory-alias", childSegments, stableStatRecord(stat)])
         continue
       }
-      await walkDirectDirectory(root, target, stat, childSegments, accumulator)
-      if (!(await sameDirectDirectory(root, target, stat))) accumulator.complete = false
+      if (childSegments.length > budget.limits.maxDepth) {
+        accumulator.complete = false
+        recordFingerprint(accumulator, budget, ["depth-limit", childSegments, stableStatRecord(stat)])
+        continue
+      }
+      await walkDirectDirectory(root, target, stat, childSegments, accumulator, budget)
       continue
     }
     if (stat.isFile()) {
+      const fileBytes = safeStatSize(stat)
+      accumulator.bytes = safeAdd(accumulator.bytes, fileBytes)
       if (!(await isDirectContainedPath(root, target))) {
         accumulator.complete = false
-        accumulator.records.push(["file-alias", childSegments, identityFromStat(stat), safeStatSize(stat)])
+        recordFingerprint(accumulator, budget, ["file-alias", childSegments, stableStatRecord(stat)])
         continue
       }
       const capture = segments.length === 0 && CAPTURED_FILES.has(name)
-      const direct = await readDirectFile(root, target, stat, capture)
-      accumulator.bytes = safeAdd(accumulator.bytes, direct.bytes)
+      const metadataStable = await stableDirectFileMetadata(root, target, stat)
+      if (!metadataStable) accumulator.complete = false
+      if (!recordFingerprint(accumulator, budget, ["file", childSegments, stableStatRecord(stat), metadataStable])) continue
+      if (!capture) continue
+      const direct = await readCapturedFile(root, target, stat, budget)
       if (!direct.complete) accumulator.complete = false
-      accumulator.records.push([
-        "file",
+      if (direct.capture) accumulator.captures.set(name, direct.capture)
+      recordFingerprint(accumulator, budget, [
+        "capture",
         childSegments,
-        identityFromStat(stat),
-        direct.bytes,
-        direct.contentHash,
-        direct.complete
+        direct.complete && direct.capture?.stable
+          ? hashBytes(direct.capture.content)
+          : "unstable"
       ])
-      if (capture && direct.captured) accumulator.captures.set(name, direct.captured)
       continue
     }
     accumulator.complete = false
-    accumulator.records.push(["unsupported", childSegments, identityFromStat(stat)])
+    recordFingerprint(accumulator, budget, ["unsupported", childSegments, stableStatRecord(stat)])
   }
-  if (!(await sameDirectDirectory(root, directory, directoryStat))) accumulator.complete = false
+  if (!(await sameDirectDirectory(root, directory, directoryStat))) {
+    accumulator.complete = false
+    recordFingerprint(accumulator, budget, ["directory-changed", segments])
+  }
 }
 
-async function readDirectFile(
+async function readCapturedFile(
   root: string,
   filePath: string,
   initialStat: BigIntStats,
-  capture: boolean
-): Promise<DirectFileRead> {
+  budget: InventoryScanBudget
+): Promise<CapturedFileRead> {
   const fallbackBytes = safeStatSize(initialStat)
+  const remainingCaptureBytes = budget.limits.maxMetadataCaptureBytes - budget.metadataCaptureBytes
+  if (initialStat.size < 0n || initialStat.size > BigInt(remainingCaptureBytes)) {
+    budget.metadataCaptureLimitReached = true
+    return { bytes: fallbackBytes, complete: false }
+  }
+  const expectedBytes = Number(initialStat.size)
+  budget.metadataCaptureBytes += expectedBytes
   const noFollow = typeof constants.O_NOFOLLOW === "number" ? constants.O_NOFOLLOW : 0
   let handle: Awaited<ReturnType<typeof fs.open>> | undefined
   try {
     handle = await fs.open(filePath, constants.O_RDONLY | noFollow)
     const handleStat = await handle.stat({ bigint: true })
     if (!handleStat.isFile() || !sameStableVersion(initialStat, handleStat)) {
-      return { bytes: fallbackBytes, complete: false, contentHash: hashText("identity-changed") }
+      return { bytes: fallbackBytes, complete: false }
     }
-    const contentHash = createHash("sha256")
     const chunks: Buffer[] = []
     let bytes = 0
-    const buffer = Buffer.allocUnsafe(64 * 1024)
-    while (true) {
-      const { bytesRead } = await handle.read(buffer, 0, buffer.length, null)
-      if (bytesRead === 0) break
+    const buffer = Buffer.allocUnsafe(Math.min(64 * 1024, Math.max(expectedBytes, 1)))
+    while (bytes < expectedBytes) {
+      const length = Math.min(buffer.length, expectedBytes - bytes)
+      const { bytesRead } = await handle.read(buffer, 0, length, bytes)
+      if (bytesRead <= 0) break
       const chunk = buffer.subarray(0, bytesRead)
-      contentHash.update(chunk)
-      if (capture) chunks.push(Buffer.from(chunk))
+      chunks.push(Buffer.from(chunk))
       bytes = safeAdd(bytes, bytesRead)
     }
+    const finalHandleStat = await handle.stat({ bigint: true })
     const current = await fs.lstat(filePath, { bigint: true })
-    const complete = current.isFile()
+    const complete = bytes === expectedBytes
+      && finalHandleStat.isFile()
+      && sameStableVersion(initialStat, finalHandleStat)
+      && current.isFile()
       && !current.isSymbolicLink()
       && sameStableVersion(initialStat, current)
-      && BigInt(bytes) === initialStat.size
       && await isDirectContainedPath(root, filePath)
+    const content = bytes === expectedBytes ? Buffer.concat(chunks, expectedBytes) : Buffer.concat(chunks)
     return {
-      bytes,
+      bytes: fallbackBytes,
       complete,
-      contentHash: `sha256:${contentHash.digest("hex")}`,
-      captured: capture ? Buffer.concat(chunks) : undefined
+      capture: bytes === expectedBytes ? { content, stable: complete } : undefined
     }
   } catch {
-    return { bytes: fallbackBytes, complete: false, contentHash: hashText("unreadable") }
+    return { bytes: fallbackBytes, complete: false }
   } finally {
     await handle?.close().catch(() => undefined)
+  }
+}
+
+async function stableDirectFileMetadata(
+  root: string,
+  filePath: string,
+  initialStat: BigIntStats
+): Promise<boolean> {
+  try {
+    const current = await fs.lstat(filePath, { bigint: true })
+    return current.isFile()
+      && !current.isSymbolicLink()
+      && sameStableVersion(initialStat, current)
+      && await isDirectContainedPath(root, filePath)
+  } catch {
+    return false
   }
 }
 
@@ -501,6 +589,108 @@ function safeDisplayId(rawEntryName: string): string {
   const label = Array.from(printable || "unnamed").slice(0, 64).join("")
   const suffix = createHash("sha256").update(rawEntryName).digest("hex").slice(0, 12)
   return `unsafe-entry-${label}-${suffix}`
+}
+
+function resolveSyntheticRunIdCollisions(entries: InternalInventoryEntry[]): void {
+  const used = new Set(entries
+    .filter((entry) => entry.item.inspectionStatus !== "unsafe")
+    .map((entry) => entry.item.runId))
+  const unsafeEntries = entries
+    .filter((entry) => entry.item.inspectionStatus === "unsafe")
+    .sort((left, right) => compareText(left.rawEntryName, right.rawEntryName))
+  for (const entry of unsafeEntries) {
+    const base = entry.item.runId
+    let resolved = base
+    for (let attempt = 1; used.has(resolved); attempt += 1) {
+      const suffix = `-${attempt}`
+      resolved = `${base.slice(0, 256 - suffix.length)}${suffix}`
+    }
+    entry.item.runId = resolved
+    used.add(resolved)
+  }
+}
+
+function createScanBudget(requested: Partial<WorkflowRunRetentionInventoryLimits>): InventoryScanBudget {
+  const limit = (name: keyof WorkflowRunRetentionInventoryLimits): number => {
+    const hardLimit = WORKFLOW_RUN_RETENTION_INVENTORY_LIMITS[name]
+    const value = requested[name]
+    if (value === undefined) return hardLimit
+    if (!Number.isSafeInteger(value) || value < 0) throw new RangeError(`${name} must be a non-negative safe integer`)
+    return Math.min(value, hardLimit)
+  }
+  return {
+    limits: {
+      maxDepth: limit("maxDepth"),
+      maxEntries: limit("maxEntries"),
+      maxMetadataCaptureBytes: limit("maxMetadataCaptureBytes"),
+      maxFingerprintBytes: limit("maxFingerprintBytes")
+    },
+    entries: 0,
+    metadataCaptureBytes: 0,
+    fingerprintBytes: 0,
+    entryLimitReached: false,
+    metadataCaptureLimitReached: false,
+    fingerprintLimitReached: false
+  }
+}
+
+async function readBoundedDirectoryEntries(
+  directory: string,
+  budget: InventoryScanBudget
+): Promise<BoundedDirectoryEntries> {
+  let handle: Awaited<ReturnType<typeof fs.opendir>> | undefined
+  const names: string[] = []
+  try {
+    handle = await fs.opendir(directory)
+    while (true) {
+      const entry = await handle.read()
+      if (!entry) return { names: names.sort(compareText), complete: true }
+      if (budget.entries >= budget.limits.maxEntries) {
+        budget.entryLimitReached = true
+        return { names: names.sort(compareText), complete: false }
+      }
+      budget.entries += 1
+      names.push(entry.name)
+    }
+  } catch {
+    return { names: names.sort(compareText), complete: false }
+  } finally {
+    await handle?.close().catch(() => undefined)
+  }
+}
+
+function recordFingerprint(
+  accumulator: TreeAccumulator,
+  budget: InventoryScanBudget,
+  record: unknown
+): boolean {
+  if (accumulator.fingerprintStopped) return false
+  const payload = Buffer.from(stableJson(record), "utf8")
+  const prefix = Buffer.from(`${payload.length}:`, "ascii")
+  const recordBytes = prefix.length + payload.length
+  const remaining = budget.limits.maxFingerprintBytes - budget.fingerprintBytes
+  if (budget.fingerprintLimitReached || recordBytes > remaining) {
+    budget.fingerprintLimitReached = true
+    accumulator.fingerprintStopped = true
+    accumulator.complete = false
+    accumulator.fingerprint.update("inventory:fingerprint-limit")
+    return false
+  }
+  budget.fingerprintBytes += recordBytes
+  accumulator.fingerprint.update(prefix)
+  accumulator.fingerprint.update(payload)
+  return true
+}
+
+function stableStatRecord(stat: BigIntStats): Record<string, string> {
+  return {
+    dev: stat.dev.toString(),
+    ino: stat.ino.toString(),
+    size: stat.size.toString(),
+    mtimeNs: stat.mtimeNs.toString(),
+    ctimeNs: stat.ctimeNs.toString(),
+    mode: stat.mode.toString()
+  }
 }
 
 async function isDirectContainedPath(root: string, target: string): Promise<boolean> {

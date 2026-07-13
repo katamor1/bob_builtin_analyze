@@ -9,6 +9,14 @@ function modules() {
   return require("../out/core/runtime/runRetentionService")
 }
 
+function inventoryModules() {
+  return require("../out/core/runtime/runRetentionInventory")
+}
+
+function plannerModules() {
+  return require("../out/core/retention/runRetention")
+}
+
 function cleanupModules() {
   return require("../out/core/runtime/runCleanupTransaction")
 }
@@ -537,6 +545,120 @@ test("malformed stored provenance makes the reference graph incomplete without l
   assert.equal(JSON.stringify(inspection).includes("PROVENANCE_BODY_SECRET"), false)
 })
 
+test("a future run makes the whole provenance graph incomplete even when its unknown state has no visible reference", async (t) => {
+  const root = await workspace(t)
+  await writeRun(root, "future-source")
+  await writeRun(root, "future-referrer", {
+    schemaVersion: "workflow-register/run-state/v2",
+    state: { "workflow.futureProvenance": "opaque-future-format" }
+  })
+  const { WorkflowRunRetentionService } = modules()
+  const service = new WorkflowRunRetentionService({ workspaceRoot: root, now: () => "2026-07-13T03:00:00.000Z" })
+
+  const inspection = await service.inspect()
+  const plan = plannerModules().planWorkflowRunCleanup(inspection.inventory, {
+    now: "2026-07-13T03:00:00.000Z",
+    completedDays: 1
+  })
+
+  assert.equal(inspection.referenceGraphComplete, false)
+  assert.deepEqual(plan.candidateRunIds, [])
+  assert.match(
+    plan.decisions.find((decision) => decision.runId === "future-source").blockers.join(" "),
+    /reference-graph-incomplete/
+  )
+})
+
+for (const mutation of ["run", "directory"]) {
+  test(`${mutation} mutation during inventory makes a decoded referrer fail the whole graph closed`, async (t) => {
+    const root = await workspace(t)
+    await writeRun(root, `${mutation}-source-a`)
+    await writeRun(root, `${mutation}-source-b`)
+    const target = await writeRun(root, `${mutation}-target`, {
+      state: {
+        "workflow.artifactReuse": JSON.stringify({
+          schemaVersion: "workflow-register/artifact-reuse/v1",
+          sourceRunId: `${mutation}-source-a`,
+          sourceWorkflowId: "retention.test",
+          startStepId: "collect",
+          reusedStepIds: ["collect"],
+          hydratedKeys: [],
+          createdAt: "2026-07-13T00:00:00.000Z"
+        })
+      }
+    })
+    const runFile = path.join(target.directory, "run.json")
+    let mutated = false
+    const restore = []
+    if (mutation === "run") {
+      const originalOpen = fs.open
+      fs.open = async (targetPath, ...args) => {
+        const handle = await originalOpen(targetPath, ...args)
+        if (path.resolve(String(targetPath)) !== path.resolve(runFile)) return handle
+        const originalRead = handle.read.bind(handle)
+        handle.read = async (...readArgs) => {
+          const result = await originalRead(...readArgs)
+          if (!mutated && result.bytesRead > 0) {
+            mutated = true
+            const changed = {
+              ...target.run,
+              state: {
+                "workflow.artifactReuse": JSON.stringify({
+                  schemaVersion: "workflow-register/artifact-reuse/v1",
+                  sourceRunId: `${mutation}-source-b`,
+                  sourceWorkflowId: "retention.test",
+                  startStepId: "collect",
+                  reusedStepIds: ["collect"],
+                  hydratedKeys: [],
+                  createdAt: "2026-07-13T00:00:00.000Z"
+                })
+              }
+            }
+            await fs.writeFile(runFile, `${JSON.stringify(changed, null, 2)}\n`)
+            const future = new Date(Date.now() + 5_000)
+            await fs.utimes(runFile, future, future)
+          }
+          return result
+        }
+        return handle
+      }
+      restore.push(() => { fs.open = originalOpen })
+    } else {
+      const originalLstat = fs.lstat
+      fs.lstat = async (targetPath, ...args) => {
+        if (!mutated && path.resolve(String(targetPath)) === path.resolve(runFile)) {
+          mutated = true
+          await fs.writeFile(path.join(target.directory, "late-entry.bin"), "late")
+          const future = new Date(Date.now() + 5_000)
+          await fs.utimes(target.directory, future, future)
+        }
+        return originalLstat(targetPath, ...args)
+      }
+      restore.push(() => { fs.lstat = originalLstat })
+    }
+
+    let inspection
+    try {
+      inspection = await new (modules().WorkflowRunRetentionService)({ workspaceRoot: root }).inspect()
+    } finally {
+      restore.reverse().forEach((callback) => callback())
+    }
+    const plan = plannerModules().planWorkflowRunCleanup(inspection.inventory, {
+      now: "2026-07-13T03:00:00.000Z",
+      completedDays: 1
+    })
+
+    assert.equal(mutated, true)
+    assert.equal(inspection.inventory.find((item) => item.runId === `${mutation}-target`).measurementComplete, false)
+    assert.equal(inspection.referenceGraphComplete, false)
+    assert.deepEqual(plan.candidateRunIds, [])
+    assert.match(
+      plan.decisions.find((decision) => decision.runId === `${mutation}-source-b`).blockers.join(" "),
+      /reference-graph-incomplete/
+    )
+  })
+}
+
 test("physical inventory counts invalid missing future and unknown entries and blocks all cleanup", async (t) => {
   const root = await workspace(t)
   const runsRoot = path.join(root, ".bob", "workflows", "runs")
@@ -649,28 +771,28 @@ test("inventory never follows an external directory alias and keeps known contai
   assert.match(plan.decisions[0].blockers.join(" "), /measurement-incomplete|path-not-contained/)
 })
 
-test("inventory fails closed when the physical runs root changes during enumeration", async (t) => {
+test("inventory fails closed when the physical runs root changes during inventory", async (t) => {
   const root = await workspace(t)
   await writeRun(root, "enumerated-run")
   const runsRoot = path.join(root, ".bob", "workflows", "runs")
-  const originalReaddir = fs.readdir
+  const enumeratedRun = path.join(runsRoot, "enumerated-run")
+  const originalLstat = fs.lstat
   let changed = false
-  fs.readdir = async (target, ...args) => {
-    const entries = await originalReaddir(target, ...args)
-    if (!changed && path.resolve(String(target)) === path.resolve(runsRoot)) {
+  fs.lstat = async (target, ...args) => {
+    if (!changed && path.resolve(String(target)) === path.resolve(enumeratedRun)) {
       changed = true
       await writeRun(root, "late-run")
       const future = new Date(Date.now() + 5_000)
       await fs.utimes(runsRoot, future, future)
     }
-    return entries
+    return originalLstat(target, ...args)
   }
   let inspection
   try {
     const { WorkflowRunRetentionService } = modules()
     inspection = await new WorkflowRunRetentionService({ workspaceRoot: root }).inspect()
   } finally {
-    fs.readdir = originalReaddir
+    fs.lstat = originalLstat
   }
 
   assert.equal(changed, true)
@@ -718,4 +840,198 @@ test("a missing runs root behind an aliased parent remains fail closed", async (
   assert.equal(inspection.referenceGraphComplete, false)
   assert.equal(inspection.summary.runCount, 1)
   assert.equal(inspection.inventory[0].inspectionStatus, "unsafe")
+})
+
+test("inventory depth limit counts only known files and fails closed", async (t) => {
+  const root = await workspace(t)
+  const run = await writeRun(root, "depth-limit")
+  const first = path.join(run.directory, "first")
+  const second = path.join(first, "second")
+  await fs.mkdir(second, { recursive: true })
+  const hidden = path.join(second, "hidden.bin")
+  await fs.writeFile(hidden, "must-not-be-scanned")
+  const { inspectWorkflowRunRetentionInventory, WORKFLOW_RUN_RETENTION_INVENTORY_LIMITS } = inventoryModules()
+  assert.deepEqual(WORKFLOW_RUN_RETENTION_INVENTORY_LIMITS, {
+    maxDepth: 32,
+    maxEntries: 10_000,
+    maxMetadataCaptureBytes: 8 * 1024 * 1024,
+    maxFingerprintBytes: 4 * 1024 * 1024
+  })
+
+  const snapshot = await inspectWorkflowRunRetentionInventory(root, {
+    ...WORKFLOW_RUN_RETENTION_INVENTORY_LIMITS,
+    maxDepth: 1
+  })
+  const item = snapshot.inventory.find((entry) => entry.runId === run.run.runId)
+  const runBytes = (await fs.stat(path.join(run.directory, "run.json"))).size
+
+  assert.equal(snapshot.referenceGraphComplete, false)
+  assert.equal(item.measurementComplete, false)
+  assert.equal(item.bytes, runBytes)
+})
+
+test("inventory entry limit stops after known entries and fails closed", async (t) => {
+  const root = await workspace(t)
+  const run = await writeRun(root, "entry-limit")
+  await fs.writeFile(path.join(run.directory, "a.bin"), "known-a")
+  await fs.writeFile(path.join(run.directory, "z.bin"), "unknown-z")
+  const { inspectWorkflowRunRetentionInventory, WORKFLOW_RUN_RETENTION_INVENTORY_LIMITS } = inventoryModules()
+  assert.ok(WORKFLOW_RUN_RETENTION_INVENTORY_LIMITS.maxEntries > 3)
+
+  const snapshot = await inspectWorkflowRunRetentionInventory(root, {
+    ...WORKFLOW_RUN_RETENTION_INVENTORY_LIMITS,
+    maxEntries: 3
+  })
+  const item = snapshot.inventory.find((entry) => entry.runId === run.run.runId)
+  const knownBytes = await sumFileSizes([
+    path.join(run.directory, "a.bin"),
+    path.join(run.directory, "run.json")
+  ])
+
+  assert.equal(snapshot.referenceGraphComplete, false)
+  assert.equal(item.measurementComplete, false)
+  assert.equal(item.bytes, knownBytes)
+})
+
+test("metadata capture budget refuses an oversized run document without opening it", async (t) => {
+  const root = await workspace(t)
+  const run = await writeRun(root, "capture-limit", { state: { padding: "x".repeat(1_024) } })
+  const runFile = path.join(run.directory, "run.json")
+  const originalOpen = fs.open
+  let runOpened = false
+  fs.open = async (targetPath, ...args) => {
+    if (path.resolve(String(targetPath)) === path.resolve(runFile)) runOpened = true
+    return originalOpen(targetPath, ...args)
+  }
+  const { inspectWorkflowRunRetentionInventory, WORKFLOW_RUN_RETENTION_INVENTORY_LIMITS } = inventoryModules()
+  assert.ok(WORKFLOW_RUN_RETENTION_INVENTORY_LIMITS.maxMetadataCaptureBytes > 64)
+  let snapshot
+  try {
+    snapshot = await inspectWorkflowRunRetentionInventory(root, {
+      ...WORKFLOW_RUN_RETENTION_INVENTORY_LIMITS,
+      maxMetadataCaptureBytes: 64
+    })
+  } finally {
+    fs.open = originalOpen
+  }
+  const item = snapshot.inventory.find((entry) => entry.runId === run.run.runId)
+
+  assert.equal(runOpened, false)
+  assert.equal(item.bytes, (await fs.stat(runFile)).size)
+  assert.equal(item.measurementComplete, false)
+  assert.equal(snapshot.referenceGraphComplete, false)
+})
+
+test("fingerprint byte budget is deterministic and fails closed", async (t) => {
+  const root = await workspace(t)
+  const run = await writeRun(root, "fingerprint-limit")
+  await fs.writeFile(path.join(run.directory, "artifact.bin"), "artifact")
+  const { inspectWorkflowRunRetentionInventory, WORKFLOW_RUN_RETENTION_INVENTORY_LIMITS } = inventoryModules()
+  assert.ok(WORKFLOW_RUN_RETENTION_INVENTORY_LIMITS.maxFingerprintBytes > 96)
+  const limits = { ...WORKFLOW_RUN_RETENTION_INVENTORY_LIMITS, maxFingerprintBytes: 96 }
+
+  const first = await inspectWorkflowRunRetentionInventory(root, limits)
+  const second = await inspectWorkflowRunRetentionInventory(root, limits)
+  const firstItem = first.inventory.find((entry) => entry.runId === run.run.runId)
+  const secondItem = second.inventory.find((entry) => entry.runId === run.run.runId)
+
+  assert.equal(first.referenceGraphComplete, false)
+  assert.equal(firstItem.measurementComplete, false)
+  assert.equal(firstItem.treeFingerprint, secondItem.treeFingerprint)
+  assert.equal(firstItem.bytes, secondItem.bytes)
+})
+
+test("inventory reads a growing run document only up to its initial bounded size", async (t) => {
+  const root = await workspace(t)
+  const run = await writeRun(root, "growing-run")
+  const runFile = path.join(run.directory, "run.json")
+  const originalOpen = fs.open
+  let readCalls = 0
+  let appendCount = 0
+  fs.open = async (targetPath, ...args) => {
+    const handle = await originalOpen(targetPath, ...args)
+    if (path.resolve(String(targetPath)) !== path.resolve(runFile)) return handle
+    const originalRead = handle.read.bind(handle)
+    handle.read = async (...readArgs) => {
+      const result = await originalRead(...readArgs)
+      readCalls += 1
+      if (result.bytesRead > 0 && appendCount < 5) {
+        appendCount += 1
+        await fs.appendFile(runFile, " ")
+      }
+      return result
+    }
+    return handle
+  }
+  let snapshot
+  try {
+    snapshot = await inventoryModules().inspectWorkflowRunRetentionInventory(root)
+  } finally {
+    fs.open = originalOpen
+  }
+  const item = snapshot.inventory.find((entry) => entry.runId === run.run.runId)
+
+  assert.equal(appendCount > 0, true)
+  assert.ok(readCalls <= 2, `expected bounded reads, got ${readCalls}`)
+  assert.equal(item.measurementComplete, false)
+  assert.equal(snapshot.referenceGraphComplete, false)
+})
+
+test("inventory fingerprints ordinary artifacts from stable metadata without opening their contents", async (t) => {
+  const root = await workspace(t)
+  const run = await writeRun(root, "metadata-fingerprint")
+  const artifact = path.join(run.directory, "artifact.bin")
+  await fs.writeFile(artifact, "artifact body must not be read")
+  const originalOpen = fs.open
+  let artifactOpened = false
+  fs.open = async (targetPath, ...args) => {
+    if (path.resolve(String(targetPath)) === path.resolve(artifact)) artifactOpened = true
+    return originalOpen(targetPath, ...args)
+  }
+  let first
+  let second
+  try {
+    first = await inventoryModules().inspectWorkflowRunRetentionInventory(root)
+    second = await inventoryModules().inspectWorkflowRunRetentionInventory(root)
+  } finally {
+    fs.open = originalOpen
+  }
+  const firstItem = first.inventory.find((entry) => entry.runId === run.run.runId)
+  const secondItem = second.inventory.find((entry) => entry.runId === run.run.runId)
+
+  assert.equal(artifactOpened, false)
+  assert.equal(firstItem.measurementComplete, true)
+  assert.equal(firstItem.treeFingerprint, secondItem.treeFingerprint)
+  const future = new Date(Date.now() + 5_000)
+  await fs.utimes(artifact, future, future)
+  const changed = await inventoryModules().inspectWorkflowRunRetentionInventory(root)
+  assert.notEqual(changed.inventory.find((entry) => entry.runId === run.run.runId).treeFingerprint, firstItem.treeFingerprint)
+})
+
+test("unsafe synthetic ids resolve deterministically around a colliding real run id", async (t) => {
+  const root = await workspace(t)
+  const runsRoot = path.join(root, ".bob", "workflows", "runs")
+  await fs.writeFile(path.join(runsRoot, "unsafe name"), "unsafe")
+  const { WorkflowRunRetentionService } = modules()
+  const service = new WorkflowRunRetentionService({ workspaceRoot: root, now: () => "2026-07-13T03:00:00.000Z" })
+  const initial = await service.inspect()
+  const syntheticId = initial.inventory.find((entry) => entry.inspectionStatus === "unsafe").runId
+  await writeRun(root, syntheticId)
+
+  const first = await service.inspect()
+  const second = await service.inspect()
+  const ids = first.inventory.map((entry) => entry.runId)
+  const unsafe = first.inventory.find((entry) => entry.inspectionStatus === "unsafe")
+  const real = first.inventory.find((entry) => entry.inspectionStatus !== "unsafe" && entry.runId === syntheticId)
+
+  assert.equal(new Set(ids).size, ids.length)
+  assert.ok(real)
+  assert.notEqual(unsafe.runId, real.runId)
+  assert.equal(unsafe.runId, second.inventory.find((entry) => entry.inspectionStatus === "unsafe").runId)
+  const plan = plannerModules().planWorkflowRunCleanup(first.inventory, {
+    now: "2026-07-13T03:00:00.000Z",
+    completedDays: 1
+  })
+  assert.deepEqual(plan.candidateRunIds, [])
+  assert.equal(plan.decisions.find((decision) => decision.runId === unsafe.runId).action, "keep")
 })
