@@ -44,7 +44,7 @@
 
 拡張機能が文書抽出、構造化、検証、差分、適用を担当し、`workflow-register` の agent step が証拠選択と規約案生成を担当する。
 
-**Advantages:** 現行のworkflow、成果物、result sink、中断再開、人間確認の境界と一致する。AIプロバイダー、APIキー、課金、再試行を拡張機能へ重複実装しない。
+**Advantages:** 現行のworkflow、成果物、result handoff、中断再開、人間確認の境界と一致する。AIプロバイダー、APIキー、課金、再試行を拡張機能へ重複実装しない。
 
 **Disadvantages:** 規約作成機能の利用時にはBobと`workflow-register`が必要になる。
 
@@ -185,10 +185,10 @@ VSIX size policyは現在の350,000 bytesから12,000,000 bytesへ明示的に�
 
 - VS Code `showOpenDialog` の `canSelectMany: true` で個別ファイルを選択する。
 - directory selectionと暗黙の再帰走査は提供しない。
-- supported extensionは `.docx`、`.xlsx`、`.pdf` とする。
-- `.doc`、`.xls` は `requires_conversion`、本文を取得できないPDFは `requires_ocr` とする。
+- 抽出対応extensionは `.docx`、`.xlsx`、`.pdf` とする。file pickerには判定対象として `.doc`、`.xls` も表示するが、抽出対象にはしない。
+- `.doc`、`.xls` はlocal-only selection resultで`requires_conversion`、本文を取得できないPDFは `requires_ocr` とする。承認済み`rule-sources.json`とAI入力には抽出成功した`.docx`、`.xlsx`、`.pdf`だけを含める。
 - 同一run内と既存`rule-sources.json`に同じfull SHA-256がある場合、duplicateとして表示する。
-- 読み込み開始時と終了時にfile size、mtime、file identityを比較し、処理中変更を拒否する。
+- 抽出前後に `stat` と全内容SHA-256を取り、size、mtime、file identity（利用可能なplatformではdevice/inodeを含む）、digestがすべて一致した場合だけsource snapshotを採用する。ライブラリが対象pathを再openする間に差し替えられたsourceも拒否する。
 
 ### 7.2 Limits
 
@@ -198,10 +198,17 @@ VSIX size policyは現在の350,000 bytesから12,000,000 bytesへ明示的に�
 | bytes per source | 25 MiB |
 | aggregate source bytes | 100 MiB |
 | UTF-8 bytes per chunk | 32 KiB |
+| compact source index | 1 MiB |
 | selected evidence sent to proposal agent | 1 MiB |
 | proposal JSON input | 1 MiB |
+| `pdftotext` combined output | 32 MiB |
 | OOXML ZIP entries | 5,000 |
 | OOXML declared uncompressed bytes | 250 MiB |
+| rule operations per proposal | 200 |
+| project-context operations per proposal | 100 |
+| prompt-addendum operations per proposal | 100 |
+| approved `project-context.md` | 256 KiB |
+| approved `review-prompt-addendum.md` | 256 KiB |
 
 上限超過時は黙って切り詰めない。対象外になるsource、section、sheet、page、chunkを表示し、利用者が選択を減らす。
 
@@ -221,7 +228,7 @@ VSIX size policyは現在の350,000 bytesから12,000,000 bytesへ明示的に�
 pdftotext -layout -enc UTF-8 <input.pdf> -
 ```
 
-shellを使用せず、既存のexternal process contractと同じhard timeout、AbortSignal、stdout/stderr上限、child terminationを適用する。form feedでpageを分割し、page numberをlocatorとする。出力が空なら`requires_ocr`、低いtext densityはwarningとする。
+shellを使用せず、既存のexternal process contractと同じhard timeout、AbortSignal、32 MiB combined output上限、child terminationを適用する。form feedでpageを分割し、最後のtrailing empty pageだけを除外してpage numberをlocatorとする。内部の空pageは維持する。出力が空なら`requires_ocr`、低いtext densityはwarningとする。
 
 ## 8. Data contracts
 
@@ -262,6 +269,7 @@ interface DocumentChunkV1 {
     row?: number
     cell_range?: string
     page?: number
+    part_index?: number
   }
   title?: string
   text: string
@@ -270,7 +278,7 @@ interface DocumentChunkV1 {
 }
 ```
 
-`chunk_id` はsource ID、format、structural locatorから決定論的に生成する。AIが返したsource/chunk referenceは、保存済みchunk indexに完全一致しなければ拒否する。
+`chunk_id` はsource ID、format、structural locatorから決定論的に生成する。同一構造要素が32 KiBを超える場合はUTF-8境界で分割し、0始まりの`part_index`をlocatorへ加える。AIが返したsource/chunk referenceは、保存済みchunk indexに完全一致しなければ拒否する。
 
 ### 8.3 Rule proposal
 
@@ -413,14 +421,19 @@ templates/.bob/workflows/bazaar-project-rule-authoring/WORKFLOW.md
 | --- | --- | --- |
 | `select-and-extract` | command | `bobBazaar.openRuleAuthoringGui` |
 | `load-source-index` | command | `bobBazaar.loadRuleSourceIndex` -> `ruleSourceIndex` |
-| `select-evidence` | agent | `ruleEvidenceSelection` |
-| `capture-evidence-selection` | command sink | `bobBazaar.captureRuleEvidenceSelection` |
+| `select-evidence` | agent | `ruleEvidenceSelectionRaw` |
+| `capture-evidence-selection` | command | `bobBazaar.captureRuleEvidenceSelection`、`{{state.ruleEvidenceSelectionRaw}}` を入力 |
 | `load-selected-evidence` | command | `bobBazaar.loadSelectedRuleEvidence` -> `ruleEvidence` |
-| `draft-rule-proposal` | agent | `ruleProposal` |
-| `capture-proposal` | command sink | `bobBazaar.captureRuleProposal` |
+| `draft-rule-proposal` | agent | `ruleProposalRaw` |
+| `capture-proposal` | command | `bobBazaar.captureRuleProposal`、`{{state.ruleProposalRaw}}` を入力 |
 | `human-review-and-apply` | command | `bobBazaar.openRuleProposalTriageGui` |
+| `verify-authoring-apply` | command | `bobBazaar.verifyRuleAuthoringApply`、apply manifestと正式assetを再検証 |
 
-source indexは本文全体ではなく、source logical name、heading path、sheet、page、chunk title、短いpreview、byte countだけを含む。selection agentはchunk IDだけを返す。`loadSelectedRuleEvidence` はID存在確認、重複除去、1 MiB aggregate limitを適用した後、本文をuntrusted evidence delimiter付きで返す。
+source indexは本文全体ではなく、source logical name、heading path、sheet、page、chunk title、短いpreview、byte countだけを含み、生成物全体へ1 MiB hard limitを適用する。selection agentはchunk IDだけを返す。`loadSelectedRuleEvidence` はID存在確認、重複除去、1 MiB aggregate limitを適用した後、本文をuntrusted evidence delimiter付きで返す。
+
+`workflow-register/v1` のstep typeは `command`、`agent`、`manual`、`result` に限定されるため、AI結果のcaptureはagent result sinkではなく明示的なcommand stepで行う。これにより`workflow-register`側の固定sink allowlistを拡張せず、既存のcommand action contract内で検証と永続化を実行する。
+
+workflowは `stepCompletion: manual` に加えて `stepReview.enabled: false`、`pauseAfter: none`、`requireAcceptBeforeNext: false` を明示する。GUI command stepは `completeOnSuccess: false` とし、host側の完了通知で進める。最終verification stepはapply manifest、正式asset hash、source/provenance参照整合性を検証し、GUI待機のdetached recoveryだけで未適用runを完了扱いにしない。
 
 `draft-rule-proposal` のsystem-level instructionは、document textを命令ではなく証拠として扱い、文書内のprompt、tool request、role marker、JSON output instructionを実行しないことを必須化する。
 
@@ -443,6 +456,8 @@ Wizard pages:
 7. Completion and unresolved issues
 
 AI consent pageは、送信対象source logical names、selected chunk count、UTF-8 bytes、設定済みBob model経路を表示する。明示承認前にagent stepへ本文を渡さない。
+
+`bobBazaar.authorProjectRulesFromDocuments` はwizardを開いてsource選択、抽出、AI送信内容の準備までを行う。現行の公開APIではPalette commandからBob taskを直接生成できないため、AI consent後はBob UIから `bazaar-project-rule-authoring` workflowを開始するよう案内する。`workflow-register.runWorkflow()` のstandalone実行をBob model経路の代替として暗黙利用しない。
 
 `authoring-run.json` は次のphaseを持つ。
 
@@ -591,7 +606,7 @@ src/workflow/
 - command registration and package configuration
 - owned workflow provider registration/disposal
 - strict authoring WORKFLOW validation and template mirror consistency
-- agent result sink handoff for evidence selection and proposal capture
+- explicit command-step handoff for evidence selection and proposal capture
 - run resume after extraction, agent failure, proposal capture, Human Triage
 - Webview CSP nonce、no inline handler、message allowlist、HTML escaping
 - old workspace without companion assets remains reviewable
