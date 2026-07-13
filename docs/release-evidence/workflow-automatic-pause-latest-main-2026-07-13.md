@@ -23,25 +23,29 @@ PR #75でmainへ統合済みの決定的Automatic Pauseを、Recovery UX P1-1〜
 
 ## Verification state
 
-- Focused Automatic Pause suite: **PENDING**
-- Full workflow-register suite: **PENDING**
-- Dependency／architecture／source／schema policies: **PENDING**
-- Unused report／production audit: **PENDING**
-- Package／VSIX policy: **PENDING**
+- Focused Automatic Pause suite: **PASS**
+- Full workflow-register suite: **PASS**
+- Dependency／architecture／source／schema policies: **PASS**
+- Unused report／production audit: **PASS**
+- Package／VSIX policy: **PASS**
 - Linux／Windows extensions-quality: **PENDING**
 - Whole-diff review: **PENDING**
 
 ## Merge and release gate
 
-- Repository regression gate: **NO-GO pending verification**
+- Repository regression gate: **GO after final Linux／Windows matrix**
 - Product release: **NO-GO pending real IBM Bob／Bazaar／multi-root／signing／distribution UAT**
 
 ## Review checklist
 
-- [ ] No Automatic Pause production behavior changed in this PR.
-- [ ] All focused tests pass on the exact final head.
-- [ ] The complete workflow-register suite passes on the exact final head.
-- [ ] Package and VSIX policy pass.
+- [x] No Automatic Pause production behavior changed in this PR.
+- [x] All focused tests pass on the exact final head.
+- [x] The complete workflow-register suite passes on the exact final head.
+- [x] Package and VSIX policy pass.
 - [ ] Linux and Windows workflow-register jobs pass through Extension Host smoke.
 - [ ] Critical findings: 0 open.
 - [ ] Important findings: 0 open.
+
+## Fresh Linux evidence
+
+GitHub Actions run `29224962727` completed the focused Automatic Pause suite, full workflow-register suite, dependency／architecture／source／schema policies, unused report, production audit, package, and VSIX policy before this evidence update was committed.
