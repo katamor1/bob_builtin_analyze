@@ -4,10 +4,12 @@ import * as fs from "fs/promises"
 import * as os from "os"
 import * as path from "path"
 import {
+  RunDurabilityDirectoryMissingError,
   createRunDurabilityFile,
   readRunDurabilityFile,
   removeRunDurabilityFile,
-  replaceRunDurabilityFile
+  replaceRunDurabilityFile,
+  runDurabilityDirectoryPresent
 } from "./runDurabilityPath"
 import { workflowRunCleanupLeasePresent } from "./runCleanupLease"
 
@@ -50,7 +52,8 @@ export async function withWorkflowRunLock<T>(
   if (active?.has(key)) return operation()
 
   const resolved = resolveOptions(options)
-  const owner = await acquireWorkflowRunLock(physicalRoot, runId, resolved)
+  const runDirectoryExistedAtEntry = await runDurabilityDirectoryPresent(physicalRoot, runId)
+  const owner = await acquireWorkflowRunLock(physicalRoot, runId, resolved, runDirectoryExistedAtEntry)
   const chain = new Set(active)
   chain.add(key)
   let heartbeatError: unknown
@@ -124,7 +127,8 @@ interface ResolvedWorkflowRunLockOptions {
 async function acquireWorkflowRunLock(
   workspaceRoot: string,
   runId: string,
-  options: ResolvedWorkflowRunLockOptions
+  options: ResolvedWorkflowRunLockOptions,
+  runDirectoryExistedAtEntry: boolean
 ): Promise<WorkflowRunLockV1> {
   const startedAt = Date.now()
   while (true) {
@@ -142,7 +146,13 @@ async function acquireWorkflowRunLock(
     try {
       if (await workflowRunCleanupLeasePresent(workspaceRoot, runId)) {
         contentionMessage = `Workflow run '${runId}' is reserved by a cleanup operation.`
-      } else if (await createRunDurabilityFile(workspaceRoot, runId, "run.lock.json", serializeWorkflowRunLock(owner))) {
+      } else if (await createRunDurabilityFile(
+        workspaceRoot,
+        runId,
+        "run.lock.json",
+        serializeWorkflowRunLock(owner),
+        { createRunDirectory: !runDirectoryExistedAtEntry }
+      )) {
         if (!await workflowRunCleanupLeasePresent(workspaceRoot, runId)) return owner
         const removed = await releaseWorkflowRunLock(workspaceRoot, runId, owner)
         contentionMessage = removed
@@ -166,6 +176,9 @@ async function acquireWorkflowRunLock(
         }
       }
     } catch (error) {
+      if (error instanceof RunDurabilityDirectoryMissingError) {
+        throw new Error(`Workflow run '${runId}' disappeared while its execution lock was being acquired.`)
+      }
       if (!isTransientLockContention(error, runId)) throw error
       contentionMessage = `Lock metadata changed while it was being inspected (${formatError(error)}).`
     }

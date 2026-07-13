@@ -13,6 +13,19 @@ export interface RunDurabilityFileSnapshot {
   mtimeMs: number
 }
 
+export interface CreateRunDurabilityFileOptions {
+  createRunDirectory?: boolean
+}
+
+export class RunDurabilityDirectoryMissingError extends Error {
+  readonly code = "ENOENT"
+
+  constructor(runId: string) {
+    super(`Workflow run '${runId}' directory disappeared before durability file creation.`)
+    this.name = "RunDurabilityDirectoryMissingError"
+  }
+}
+
 type FileIdentity = {
   dev: bigint
   ino: bigint
@@ -116,14 +129,22 @@ export async function createRunDurabilityFile(
   workspaceRoot: string,
   runId: string,
   fileName: RunDurabilityFileName,
-  content: string
+  content: string,
+  options: CreateRunDurabilityFileOptions = {}
 ): Promise<boolean> {
   assertRunDurabilityFileName(fileName)
   assertSafeWorkflowRunId(runId)
   const root = await canonicalWorkspaceRoot(workspaceRoot)
-  const runDirectory = await directDirectoryChain(root, [...RUNS_ROOT_SEGMENTS, runId], true)
+  const createRunDirectory = options.createRunDirectory !== false
+  let runDirectory: DirectDirectory
+  try {
+    runDirectory = await directDirectoryChain(root, [...RUNS_ROOT_SEGMENTS, runId], createRunDirectory)
+    await assertDirectoryIdentity(runDirectory, `Workflow run '${runId}' directory`)
+  } catch (error) {
+    if (!createRunDirectory && isMissingPathError(error)) throw new RunDurabilityDirectoryMissingError(runId)
+    throw error
+  }
   const filePath = path.join(runDirectory.path, fileName)
-  await assertDirectoryIdentity(runDirectory, `Workflow run '${runId}' directory`)
   const noFollow = typeof constants.O_NOFOLLOW === "number" ? constants.O_NOFOLLOW : 0
   let handle: Awaited<ReturnType<typeof fs.open>>
   try {
@@ -133,6 +154,7 @@ export async function createRunDurabilityFile(
       await directRegularFile(filePath, root, durabilityLabel(runId, fileName))
       return false
     }
+    if (!createRunDirectory && isMissingPathError(error)) throw new RunDurabilityDirectoryMissingError(runId)
     throw error
   }
   try {
@@ -148,6 +170,18 @@ export async function createRunDurabilityFile(
   }
   await syncDirectory(runDirectory.path)
   return true
+}
+
+export async function runDurabilityDirectoryPresent(workspaceRoot: string, runId: string): Promise<boolean> {
+  assertSafeWorkflowRunId(runId)
+  const root = await canonicalWorkspaceRoot(workspaceRoot)
+  try {
+    await directDirectoryChain(root, [...RUNS_ROOT_SEGMENTS, runId], false)
+    return true
+  } catch (error) {
+    if (isMissingPathError(error)) return false
+    throw error
+  }
 }
 
 export async function appendRunDurabilityFile(

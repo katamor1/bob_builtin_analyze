@@ -17,6 +17,14 @@ function pathModules() {
   return require("../out/core/runtime/runStatePath")
 }
 
+function storeModules() {
+  return require("../out/core/runStateStore")
+}
+
+function durabilityModules() {
+  return require("../out/core/runtime/runDurabilityPath")
+}
+
 function deferred() {
   let resolve
   const promise = new Promise((done) => { resolve = done })
@@ -30,8 +38,12 @@ function settle(operation) {
   )
 }
 
-function delay(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms))
+function withTimeout(promise, label, timeoutMs = 10_000) {
+  let timer
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`Timed out waiting for ${label} after ${timeoutMs}ms.`)), timeoutMs)
+  })
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer))
 }
 
 async function workspace(t) {
@@ -128,6 +140,40 @@ test("pin sidecar is independent from run.json and stale preview is rejected", a
   assert.equal((await fs.stat(directory)).isDirectory(), true)
 })
 
+test("setPinned recovers a pending journal inside its owned run lock", async (t) => {
+  const root = await workspace(t)
+  const { directory, run } = await writeRun(root, "journal-pin-run")
+  const { FileRunStateStore } = storeModules()
+  const crashing = new FileRunStateStore({
+    workspaceRoot: root,
+    now: () => "2026-07-13T00:30:00.000Z",
+    lockOptions: { heartbeatMs: 0, timeoutMs: 2_000 },
+    durabilityFault: (stage) => {
+      if (stage === "afterJournal") throw new Error("crash:afterJournal")
+    }
+  })
+  const pending = await withTimeout(crashing.loadRun(run.runId), "pending-journal source load")
+  pending.state.recoveredByPin = "journal-value"
+  await assert.rejects(
+    withTimeout(crashing.saveRun(pending), "pending-journal crash injection"),
+    /crash:afterJournal/
+  )
+  const journalFile = path.join(directory, "run-state.journal.json")
+  assert.equal((await fs.stat(journalFile)).isFile(), true)
+
+  const { WorkflowRunRetentionService } = modules()
+  const service = new WorkflowRunRetentionService({ workspaceRoot: root, now: () => "2026-07-13T01:00:00.000Z" })
+  await withTimeout(service.setPinned(run.runId, true, "recover before pin"), "pending-journal pin")
+
+  const recovered = await withTimeout(
+    new FileRunStateStore({ workspaceRoot: root, lockOptions: { heartbeatMs: 0, timeoutMs: 2_000 } }).loadRun(run.runId),
+    "recovered run load"
+  )
+  assert.equal(recovered.state.recoveredByPin, "journal-value")
+  assert.equal(JSON.parse(await fs.readFile(path.join(directory, "retention.json"), "utf8")).pinned, true)
+  await assert.rejects(fs.access(journalFile), { code: "ENOENT" })
+})
+
 test("cleanup lease acquired first prevents pin metadata mutation", async (t) => {
   const root = await workspace(t)
   const { directory } = await writeRun(root, "cleanup-first-run")
@@ -149,7 +195,7 @@ test("cleanup lease acquired first prevents pin metadata mutation", async (t) =>
     rename: async (source, target) => {
       if (path.resolve(String(source)) === path.resolve(directory)) {
         cleanupAtMove.resolve()
-        await allowCleanupMove.promise
+        await withTimeout(allowCleanupMove.promise, "cleanup move release")
       }
       return fs.rename(source, target)
     },
@@ -157,28 +203,39 @@ test("cleanup lease acquired first prevents pin metadata mutation", async (t) =>
     readdir: fs.readdir
   }
   const { applyWorkflowRunCleanupTransaction } = cleanupModules()
-  const cleanup = applyWorkflowRunCleanupTransaction({
+  const cleanup = withTimeout(applyWorkflowRunCleanupTransaction({
     workspaceRoot: root,
     candidates: [{ runId: "cleanup-first-run", revision }],
     transactionId: "cleanup-first-pin",
     fsOps
-  })
-  await cleanupAtMove.promise
+  }), "cleanup-first transaction")
+  await withTimeout(cleanupAtMove.promise, "cleanup move barrier")
 
   const { WorkflowRunRetentionService } = modules()
   const service = new WorkflowRunRetentionService({ workspaceRoot: root, now: () => "2026-07-13T01:00:00.000Z" })
-  const pin = settle(service.setPinned("cleanup-first-run", true, "must not commit"))
+  const durability = durabilityModules()
+  const originalDirectoryPresent = durability.runDurabilityDirectoryPresent
+  const pinDirectoryObserved = deferred()
+  durability.runDurabilityDirectoryPresent = async (...args) => {
+    const present = await originalDirectoryPresent(...args)
+    if (args[1] === "cleanup-first-run") pinDirectoryObserved.resolve(present)
+    return present
+  }
+  let pin
   let barrierError
   try {
-    const first = await Promise.race([
-      pin.then((outcome) => ({ kind: "settled", outcome })),
-      delay(100).then(() => ({ kind: "pending" }))
-    ])
-    assert.equal(first.kind, "pending", "pin mutation must wait behind the cleanup lease")
+    pin = settle(withTimeout(service.setPinned("cleanup-first-run", true, "must not commit"), "cleanup-first pin"))
+    const first = await withTimeout(Promise.race([
+      pinDirectoryObserved.promise.then((present) => ({ kind: "directory", present })),
+      pin.then((outcome) => ({ kind: "settled", outcome }))
+    ]), "pin lock entry")
+    assert.equal(first.kind, "directory", "pin must enter lock acquisition while the run still exists")
+    assert.equal(first.present, true)
     assert.equal(await fs.readFile(retentionFile, "utf8"), originalRetention)
   } catch (error) {
     barrierError = error
   } finally {
+    durability.runDurabilityDirectoryPresent = originalDirectoryPresent
     allowCleanupMove.resolve()
   }
 
@@ -191,6 +248,7 @@ test("cleanup lease acquired first prevents pin metadata mutation", async (t) =>
   assert.equal(pinOutcome.status, "rejected")
   await assert.rejects(fs.access(retentionFile), { code: "ENOENT" })
   await assert.rejects(fs.access(path.join(directory, "run.json")), { code: "ENOENT" })
+  await assert.rejects(fs.access(directory), { code: "ENOENT" })
 })
 
 test("pin metadata committed first keeps cleanup out until the run lock releases", async (t) => {
@@ -206,22 +264,22 @@ test("pin metadata committed first keeps cleanup out until the run lock releases
     const result = await originalRename(source, target)
     if (path.resolve(String(target)) === path.resolve(retentionFile)) {
       committed.resolve()
-      await releasePin.promise
+      await withTimeout(releasePin.promise, "pin metadata release")
     }
     return result
   }
   const { WorkflowRunRetentionService } = modules()
   const { applyWorkflowRunCleanupTransaction } = cleanupModules()
   const service = new WorkflowRunRetentionService({ workspaceRoot: root, now: () => "2026-07-13T02:00:00.000Z" })
-  const pin = settle(service.setPinned("pin-first-run", true, "pin wins"))
+  const pin = settle(withTimeout(service.setPinned("pin-first-run", true, "pin wins"), "pin-first mutation"))
   let cleanupOutcome
   try {
-    await committed.promise
-    cleanupOutcome = await settle(applyWorkflowRunCleanupTransaction({
+    await withTimeout(committed.promise, "pin metadata commit")
+    cleanupOutcome = await settle(withTimeout(applyWorkflowRunCleanupTransaction({
       workspaceRoot: root,
       candidates: [{ runId: "pin-first-run", revision }],
       transactionId: "pin-first-cleanup"
-    }))
+    }), "pin-first cleanup"))
   } finally {
     releasePin.resolve()
     fs.rename = originalRename

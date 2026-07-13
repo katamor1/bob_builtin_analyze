@@ -13,6 +13,7 @@ const {
   withWorkflowRunLock
 } = require("../out/core/runtime/runLock.js")
 const runDurabilityPath = require("../out/core/runtime/runDurabilityPath.js")
+const { withWorkflowRunCleanupLeases } = require("../out/core/runtime/runCleanupLease.js")
 const {
   readRunDurabilityFile,
   replaceRunDurabilityFile
@@ -28,6 +29,14 @@ function deferred() {
   let resolve
   const promise = new Promise((done) => { resolve = done })
   return { promise, resolve }
+}
+
+function withTimeout(promise, label, timeoutMs = 5_000) {
+  let timer
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`Timed out waiting for ${label} after ${timeoutMs}ms.`)), timeoutMs)
+  })
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer))
 }
 
 function owner(overrides = {}) {
@@ -71,10 +80,10 @@ test("same-run callers serialize while different runs and roots remain independe
   const first = withWorkflowRunLock(workspaceA, "run-1", async () => {
     order.push("first:start")
     firstStarted.resolve()
-    await releaseFirst.promise
+    await withTimeout(releaseFirst.promise, "first run lock release")
     order.push("first:end")
   }, { timeoutMs: 10_000, heartbeatMs: 0 })
-  await firstStarted.promise
+  await withTimeout(firstStarted.promise, "first run lock start")
   const second = withWorkflowRunLock(workspaceA, "run-1", async () => order.push("second"), { timeoutMs: 10_000, heartbeatMs: 0, pollMs: 5 })
   const otherRun = withWorkflowRunLock(workspaceA, "run-2", async () => otherRunStarted.resolve(), { heartbeatMs: 0 })
   const otherRoot = withWorkflowRunLock(workspaceB, "run-1", async () => otherRootStarted.resolve(), { heartbeatMs: 0 })
@@ -91,9 +100,9 @@ test("lock acquisition retries when the owner file disappears before inspection"
   const releaseFirst = deferred()
   const first = withWorkflowRunLock(workspace, "run-1", async () => {
     firstStarted.resolve()
-    await releaseFirst.promise
+    await withTimeout(releaseFirst.promise, "injected lock owner release")
   }, { timeoutMs: 1_000, heartbeatMs: 0 })
-  await firstStarted.promise
+  await withTimeout(firstStarted.promise, "injected lock owner start")
 
   const originalRead = runDurabilityPath.readRunDurabilityFile
   const readInjected = deferred()
@@ -115,7 +124,7 @@ test("lock acquisition retries when the owner file disappears before inspection"
       heartbeatMs: 0,
       pollMs: 5
     })
-    await readInjected.promise
+    await withTimeout(readInjected.promise, "injected lock read")
     releaseFirst.resolve()
     assert.equal(await second, "second")
     assert.equal(injected, true)
@@ -134,12 +143,65 @@ test("same async chain re-enters one lock without deadlock", async (t) => {
   assert.equal(result, "nested")
 })
 
+test("a waiting lock for an existing run does not recreate its directory after cleanup removes it", async (t) => {
+  const workspace = root(t)
+  const runDirectory = path.join(workspace, ".bob", "workflows", "runs", "run-1")
+  await fsp.mkdir(runDirectory, { recursive: true })
+  await fsp.writeFile(path.join(runDirectory, "run.json"), "{}\n")
+  const cleanupEntered = deferred()
+  const releaseCleanup = deferred()
+  const contentionObserved = deferred()
+  const retryLock = deferred()
+
+  const cleanup = withTimeout(withWorkflowRunCleanupLeases(workspace, ["run-1"], async () => {
+    cleanupEntered.resolve()
+    await withTimeout(releaseCleanup.promise, "cleanup release")
+    await fsp.rm(runDirectory, { recursive: true })
+  }), "cleanup lease operation")
+  await withTimeout(cleanupEntered.promise, "cleanup lease acquisition")
+
+  let firstSleep = true
+  let operationRan = false
+  const contender = withTimeout(withWorkflowRunLock(workspace, "run-1", async () => {
+    operationRan = true
+  }, {
+    timeoutMs: 1_000,
+    pollMs: 5,
+    heartbeatMs: 0,
+    sleep: async () => {
+      if (!firstSleep) return new Promise((resolve) => setImmediate(resolve))
+      firstSleep = false
+      contentionObserved.resolve()
+      await withTimeout(retryLock.promise, "lock retry release")
+    }
+  }), "vanished-run lock rejection")
+  await withTimeout(contentionObserved.promise, "cleanup contention observation")
+  releaseCleanup.resolve()
+  await cleanup
+  retryLock.resolve()
+
+  await assert.rejects(contender, /disappeared while its execution lock was being acquired/i)
+  assert.equal(operationRan, false)
+  await assert.rejects(fsp.access(runDirectory), { code: "ENOENT" })
+})
+
+test("a lock for a genuinely new run id still creates its run directory", async (t) => {
+  const workspace = root(t)
+  const runDirectory = path.join(workspace, ".bob", "workflows", "runs", "new-run")
+  await withTimeout(withWorkflowRunLock(workspace, "new-run", async () => {
+    assert.equal((await fsp.stat(runDirectory)).isDirectory(), true)
+    assert.ok(await readRunDurabilityFile(workspace, "new-run", "run.lock.json"))
+  }, { timeoutMs: 1_000, heartbeatMs: 0 }), "new-run lock")
+  assert.equal((await fsp.stat(runDirectory)).isDirectory(), true)
+  assert.equal(await readRunDurabilityFile(workspace, "new-run", "run.lock.json"), undefined)
+})
+
 test("a child process prevents a second process from acquiring an active lease", async (t) => {
   const workspace = root(t)
   const fixture = path.join(__dirname, "fixtures", "run-lock-holder.js")
   const child = spawn(process.execPath, [fixture, workspace, "run-1"], { stdio: ["pipe", "pipe", "pipe"] })
   t.after(() => child.kill())
-  await new Promise((resolve, reject) => {
+  await withTimeout(new Promise((resolve, reject) => {
     let output = ""
     child.stdout.setEncoding("utf8")
     child.stdout.on("data", (chunk) => {
@@ -147,13 +209,13 @@ test("a child process prevents a second process from acquiring an active lease",
       if (output.includes("READY\n")) resolve()
     })
     child.once("exit", (code) => reject(new Error(`lock holder exited early: ${code}`)))
-  })
+  }), "child lock holder readiness")
   await assert.rejects(
     withWorkflowRunLock(workspace, "run-1", async () => undefined, { timeoutMs: 75, pollMs: 5, heartbeatMs: 0 }),
     /busy|locked by/i
   )
   child.stdin.end("\n")
-  assert.equal(await new Promise((resolve) => child.once("exit", resolve)), 0)
+  assert.equal(await withTimeout(new Promise((resolve) => child.once("exit", resolve)), "child lock holder exit"), 0)
 })
 
 test("stale ownership is reclaimed only under the documented rules", async (t) => {

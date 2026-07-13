@@ -8,7 +8,9 @@ const { test } = require("node:test")
 
 const { OperationHubMutationCoordinator } = require("../out/gui/operationHubMutationCoordinator")
 const { applyWorkflowRunCleanupTransaction } = require("../out/core/runtime/runCleanupTransaction")
+const { workflowRunCleanupLeasePresent } = require("../out/core/runtime/runCleanupLease")
 const { withWorkflowRunLock } = require("../out/core/runtime/runLock")
+const { FileRunStateStore } = require("../out/core/runStateStore")
 
 function loadProviderWithVscode(vscode) {
   const originalLoad = Module._load
@@ -88,6 +90,8 @@ function runCommandHarness(t) {
     additionalRuns: [],
     afterTargetSave: async () => undefined,
     beforeRunLock: async () => undefined,
+    durableLockedLoads: false,
+    durableStores: new Map(),
     engineRoots: [],
     runStoreCalls: 0,
     messages: [],
@@ -119,6 +123,17 @@ function runCommandHarness(t) {
     createRunStore: (root) => {
       state.runStoreCalls += 1
       const fixture = root === rootA.root ? rootA : rootB
+      let durableStore
+      if (state.durableLockedLoads) {
+        durableStore = state.durableStores.get(root)
+        if (!durableStore) {
+          durableStore = new FileRunStateStore({
+            workspaceRoot: root,
+            lockOptions: { timeoutMs: 2_000, pollMs: 5, heartbeatMs: 0 }
+          })
+          state.durableStores.set(root, durableStore)
+        }
+      }
       return {
         listRuns: async () => [
           JSON.parse(fs.readFileSync(fixture.runFile, "utf8")),
@@ -127,6 +142,7 @@ function runCommandHarness(t) {
           ))
         ],
         loadRun: async (runId) => {
+          if (durableStore) return durableStore.loadRun(runId)
           const candidate = [fixture, ...state.additionalRuns].find((entry) => entry.root === root && entry.runId === runId)
           if (!candidate || !fs.existsSync(candidate.runFile)) return undefined
           return JSON.parse(fs.readFileSync(candidate.runFile, "utf8"))
@@ -156,8 +172,9 @@ function runCommandHarness(t) {
         },
         withRunLock: async (runId, operation) => {
           await state.beforeRunLock({ root, runId })
+          if (durableStore) return durableStore.withRunLock(runId, operation)
           return withWorkflowRunLock(root, runId, operation, {
-            timeoutMs: 300,
+            timeoutMs: 2_000,
             pollMs: 5,
             heartbeatMs: 0
           })
@@ -272,7 +289,7 @@ function cleanupFsOpsWithMoveBarrier(sourceDirectory, entered, release) {
     rename: async (source, target) => {
       if (path.resolve(String(source)) === path.resolve(sourceDirectory)) {
         entered.resolve()
-        await release.promise
+        await withTimeout(release.promise, "cleanup move release")
       }
       return fs.promises.rename(source, target)
     },
@@ -396,8 +413,12 @@ function settle(operation) {
   )
 }
 
-function delay(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms))
+function withTimeout(promise, label, timeoutMs = 10_000) {
+  let timer
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`Timed out waiting for ${label} after ${timeoutMs}ms.`)), timeoutMs)
+  })
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer))
 }
 
 function runIdentity(overrides = {}) {
@@ -419,7 +440,7 @@ test("Operation Hub host shares one promise and underlying mutation for identica
   const operation = async () => {
     calls += 1
     started.resolve()
-    await release.promise
+    await withTimeout(release.promise, "shared mutation release")
     return result
   }
 
@@ -427,7 +448,7 @@ test("Operation Hub host shares one promise and underlying mutation for identica
   const duplicate = coordinator.coordinate(runIdentity(), operation)
 
   assert.strictEqual(duplicate, first)
-  await started.promise
+  await withTimeout(started.promise, "shared mutation start")
   assert.equal(calls, 1)
   release.resolve()
   const [firstResult, duplicateResult] = await Promise.all([first, duplicate])
@@ -445,11 +466,11 @@ test("Operation Hub host serializes different mutations for the same root and ru
   const first = coordinator.coordinate(runIdentity({ actionId: "acceptCurrentStep" }), async () => {
     order.push("accept:start")
     firstStarted.resolve()
-    await releaseFirst.promise
+    await withTimeout(releaseFirst.promise, "first queued mutation release")
     order.push("accept:end")
     return "accepted"
   })
-  await firstStarted.promise
+  await withTimeout(firstStarted.promise, "first queued mutation start")
   const second = coordinator.coordinate(runIdentity({ actionId: "runNextStep" }), async () => {
     order.push("next:start")
     return "next"
@@ -470,11 +491,11 @@ test("Operation Hub host keeps different revisions distinct while serializing th
   const first = coordinator.coordinate(runIdentity({ expectedRevision: "sha256:revision-a" }), async () => {
     order.push("revision-a:start")
     firstStarted.resolve()
-    await releaseFirst.promise
+    await withTimeout(releaseFirst.promise, "first cross-action mutation release")
     order.push("revision-a:end")
     return "revision-a"
   })
-  await firstStarted.promise
+  await withTimeout(firstStarted.promise, "first cross-action mutation start")
   const second = coordinator.coordinate(runIdentity({ expectedRevision: "sha256:revision-b" }), async () => {
     order.push("revision-b:revalidate")
     throw new Error("stale revision-b")
@@ -498,12 +519,12 @@ test("Operation Hub host lets equal run ids in different roots proceed independe
 
   const first = coordinator.coordinate(runIdentity({ workspaceRoot: "C:\\workspace-a" }), async () => {
     startedA.resolve()
-    await releaseA.promise
+    await withTimeout(releaseA.promise, "workspace A mutation release")
     return "a"
   })
   const second = coordinator.coordinate(runIdentity({ workspaceRoot: "C:\\workspace-b" }), async () => {
     startedB.resolve()
-    await releaseB.promise
+    await withTimeout(releaseB.promise, "workspace B mutation release")
     return "b"
   })
 
@@ -533,13 +554,13 @@ test("Operation Hub provider coordinates duplicate structured run mutations befo
   const started = deferred()
   state.executeCommand = async () => {
     started.resolve()
-    await release.promise
+    await withTimeout(release.promise, "failed owner release")
     return { status: "retried" }
   }
 
   const first = provider.handleMessage(mutationMessage(run))
   const duplicate = provider.handleMessage(mutationMessage(run))
-  await started.promise
+  await withTimeout(started.promise, "failed owner start")
   assert.equal(state.commands.length, 1)
   assert.deepEqual(state.commands[0], [
     "workflowRegister.retryCurrentStep",
@@ -563,7 +584,7 @@ test("Operation Hub provider does not coalesce the same action when expected rev
   const started = deferred()
   state.executeCommand = async () => {
     started.resolve()
-    await release.promise
+    await withTimeout(release.promise, "first provider mutation release")
     fs.writeFileSync(run.runFile, `${JSON.stringify({
       ...run.run,
       state: { winner: "first-mutation" }
@@ -572,10 +593,13 @@ test("Operation Hub provider does not coalesce the same action when expected rev
   }
 
   const first = provider.handleMessage(mutationMessage(run))
-  await started.promise
+  await withTimeout(started.promise, "first provider mutation start")
   const staleRevision = `sha256:${"b".repeat(64)}`
+  let secondSettled = false
   const second = provider.handleMessage(mutationMessage(run, { expectedRevision: staleRevision }))
-  await new Promise((resolve) => setTimeout(resolve, 100))
+    .finally(() => { secondSettled = true })
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(secondSettled, false)
   assert.equal(state.commands.length, 1)
 
   release.resolve()
@@ -884,16 +908,16 @@ test("workflow artifact source lock remains held through durable target provenan
   state.afterTargetSave = async ({ run }) => {
     if (run.runId !== "seeded-run") return
     targetSaved.resolve()
-    await releaseTargetSave.promise
+    await withTimeout(releaseTargetSave.promise, "target provenance save release")
   }
 
-  const command = settle(service.startFromStepWithArtifacts(workflow.id, "step", source.runId, {}))
-  await targetSaved.promise
-  const cleanupOutcome = await settle(applyWorkflowRunCleanupTransaction({
+  const command = settle(withTimeout(service.startFromStepWithArtifacts(workflow.id, "step", source.runId, {}), "artifact source command"))
+  await withTimeout(targetSaved.promise, "durable target provenance save")
+  const cleanupOutcome = await settle(withTimeout(applyWorkflowRunCleanupTransaction({
     workspaceRoot: rootB.root,
     candidates: [{ runId: source.runId, revision: source.revision }],
     transactionId: "source-lock-through-target-save"
-  }))
+  }), "source cleanup rejection"))
   let barrierError
   try {
     assert.equal(cleanupOutcome.status, "rejected")
@@ -927,40 +951,73 @@ test("workflow artifact source selected during cleanup cannot commit target prov
   state.showQuickPick = async (items, options) => {
     if (!String(options?.title).startsWith("Artifact source run:")) return items[0]
     quickPickReady.resolve()
-    await returnSelection.promise
+    await withTimeout(returnSelection.promise, "artifact source selection release")
     return items.find((item) => item.candidate.run.runId === source.runId)
   }
-  const targetSaved = deferred()
+  let targetSaved = false
   state.afterTargetSave = async ({ run }) => {
-    if (run.runId === "seeded-run") targetSaved.resolve()
+    if (run.runId === "seeded-run") targetSaved = true
   }
 
-  const command = settle(service.startFromStepWithArtifacts(workflow.id, "step", undefined, {}))
-  await quickPickReady.promise
+  const command = settle(withTimeout(service.startFromStepWithArtifacts(workflow.id, "step", undefined, {}), "cleanup-selected source command"))
+  await withTimeout(quickPickReady.promise, "artifact source quick pick")
   const cleanupAtMove = deferred()
   const allowCleanupMove = deferred()
-  const cleanup = settle(applyWorkflowRunCleanupTransaction({
+  const cleanup = settle(withTimeout(applyWorkflowRunCleanupTransaction({
     workspaceRoot: rootB.root,
     candidates: [{ runId: source.runId, revision: source.revision }],
     transactionId: "cleanup-selected-artifact-source",
     fsOps: cleanupFsOpsWithMoveBarrier(source.runDirectory, cleanupAtMove, allowCleanupMove)
-  }))
-  await cleanupAtMove.promise
+  }), "cleanup-selected source transaction"))
+  await withTimeout(cleanupAtMove.promise, "cleanup-selected move barrier")
+  assert.equal(await workflowRunCleanupLeasePresent(rootB.root, source.runId), true)
   returnSelection.resolve()
-  const saveRace = await Promise.race([
-    targetSaved.promise.then(() => "saved"),
-    delay(100).then(() => "blocked")
-  ])
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(targetSaved, false, "target save must remain unsettled behind the cleanup lease")
+  assert.equal(state.savedRuns.length, 0, "target provenance must not save while cleanup owns the source lease")
   allowCleanupMove.resolve()
   const [cleanupOutcome, commandOutcome] = await Promise.all([cleanup, command])
 
-  assert.equal(saveRace, "blocked", "target provenance must not save while cleanup owns the source lease")
   assert.equal(state.savedRuns.length, 0)
   assert.equal(commandOutcome.status, "rejected")
   if (cleanupOutcome.status === "rejected") {
     assert.match(String(cleanupOutcome.reason), /EISDIR|path is a directory/i)
   }
   assert.equal(fs.existsSync(path.join(rootB.root, ".bob", "workflows", "runs", "seeded-run", "run.json")), false)
+})
+
+test("workflow artifact source reuse recovers a pending journal inside the owned source lock", async (t) => {
+  const { rootB, service, state, workflow } = runCommandHarness(t)
+  configureArtifactWorkflow(workflow, rootB.root)
+  const source = writeArtifactSourceRun(rootB.root, rootB.runId, workflow)
+  const crashing = new FileRunStateStore({
+    workspaceRoot: rootB.root,
+    now: () => source.run.updatedAt,
+    lockOptions: { timeoutMs: 2_000, pollMs: 5, heartbeatMs: 0 },
+    durabilityFault: (stage) => {
+      if (stage === "afterJournal") throw new Error("crash:afterJournal")
+    }
+  })
+  const pending = await withTimeout(crashing.loadRun(source.runId), "artifact source crash load")
+  await assert.rejects(
+    withTimeout(crashing.saveRun(pending), "artifact source crash injection"),
+    /crash:afterJournal/
+  )
+  const journalFile = path.join(source.runDirectory, "run-state.journal.json")
+  assert.equal(fs.statSync(journalFile).isFile(), true)
+  state.durableLockedLoads = true
+
+  const result = await withTimeout(
+    service.startFromStepWithArtifacts(workflow.id, "step", source.runId, {}),
+    "pending-journal artifact source reuse"
+  )
+
+  assert.equal(result.status, "running")
+  assert.match(state.messages.join("\n"), /reused 1 step\(s\) from shared-run/i)
+  assert.equal(state.savedRuns.length, 1)
+  assert.equal(fs.existsSync(journalFile), false)
+  const reuse = JSON.parse(state.savedRuns[0].state["workflow.artifactReuse"])
+  assert.equal(reuse.sourceRunId, source.runId)
 })
 
 test("workflow artifact source state and expected revision are reopened under the source lock", async (t) => {
