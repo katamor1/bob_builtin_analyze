@@ -1,6 +1,7 @@
 import * as vscode from "vscode"
 import { ARTIFACT_MANIFEST_STATE_KEY, ARTIFACT_REUSE_STATE_KEY, TASK_SNAPSHOT_IMPORT_STATE_KEY } from "../core/artifacts"
 import type { WorkflowRunState } from "../core/model"
+import { projectWorkflowRunProvenance, type WorkflowRunProvenanceProjection } from "../core/runProvenance"
 import { FileRunStateStore, isWorkflowRunStateWritable } from "../core/runStateStore"
 import { fallbackWorkspaceRootCandidates, findWorkflowRootCandidates } from "../core/workspaceRoots"
 import type { MarkerRootCandidate } from "../core/workspaceRoots"
@@ -40,6 +41,7 @@ export class WorkflowRunControlView implements vscode.Disposable, vscode.TreeDat
 
   getTreeItem(item: RunViewItem): vscode.TreeItem {
     const artifactStatus = artifactStatusForRun(item.run)
+    const provenance = projectWorkflowRunProvenance(item.run)
     const writable = isWorkflowRunStateWritable(item.run)
     const treeItem = new vscode.TreeItem(item.run.runId, vscode.TreeItemCollapsibleState.None)
     treeItem.description = [
@@ -56,6 +58,7 @@ export class WorkflowRunControlView implements vscode.Disposable, vscode.TreeDat
       writable ? undefined : "run state access: read-only",
       `currentStep: ${item.run.currentStep ?? "none"}`,
       artifactStatus.tooltip,
+      ...runProvenanceTooltip(provenance),
       `root: ${item.root}`,
       `updatedAt: ${item.run.updatedAt}`
     ].filter(Boolean).join("\n")
@@ -110,6 +113,21 @@ export class WorkflowRunControlView implements vscode.Disposable, vscode.TreeDat
       ? reused > 0 ? `No active Bob workflow runs; ${reused} run(s) reused artifacts${readOnly > 0 ? `; ${readOnly} read-only run(s)` : ""}` : `No active Bob workflow runs${readOnly > 0 ? `; ${readOnly} read-only run(s)` : ""}`
       : `Active Bob workflow runs: ${running} running, ${paused} paused, ${reviewing} reviewing, ${held} held${reused > 0 ? `; ${reused} reused artifact run(s)` : ""}${readOnly > 0 ? `; ${readOnly} read-only run(s)` : ""}`
   }
+}
+
+function runProvenanceTooltip(provenance: WorkflowRunProvenanceProjection): string[] {
+  const verifiedArtifacts = Array.from(new Set(provenance.steps
+    .filter((step) => step.artifactVerified)
+    .flatMap((step) => step.artifactIds)))
+  return [
+    provenance.reusedStepIds.length > 0 ? `reused steps: ${provenance.reusedStepIds.join(", ")}` : undefined,
+    provenance.sourceRunId ? `source run: ${provenance.sourceRunId}` : undefined,
+    provenance.startStepId ? `reuse start step: ${provenance.startStepId}` : undefined,
+    provenance.hydratedStateKeys.length > 0 ? `hydrated state keys: ${provenance.hydratedStateKeys.join(", ")}` : undefined,
+    verifiedArtifacts.length > 0 ? `verified artifacts: ${verifiedArtifacts.join(", ")}` : undefined,
+    provenance.taskSnapshotImportCount > 0 ? `task snapshot imports: ${provenance.taskSnapshotImportCount}` : undefined,
+    provenance.definitionMismatchAllowed ? "definition mismatch allowed: yes" : undefined
+  ].filter((value): value is string => Boolean(value))
 }
 
 function artifactStatusForRun(run: WorkflowRunState): { description?: string; tooltip?: string } {
