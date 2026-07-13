@@ -214,6 +214,10 @@ export class WorkflowRegisterService implements vscode.Disposable {
     return this.runCommands.resumeRun(runArg)
   }
 
+  async recoverDetachedHeldRun(runArg?: RunCommandArg): Promise<unknown> {
+    return this.runCommands.recoverDetachedHeldRun(runArg)
+  }
+
   async retryCurrentStep(runArg?: RunCommandArg): Promise<unknown> {
     return this.runCommands.retryCurrentStep(runArg)
   }

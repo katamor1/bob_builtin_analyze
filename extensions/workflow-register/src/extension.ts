@@ -187,6 +187,7 @@ export function activate(context: vscode.ExtensionContext): WorkflowRegisterApi 
     vscode.commands.registerCommand("workflowRegister.openManualStepPanel", (runArg?: unknown) => service.openManualStepPanel(runArg as Parameters<WorkflowRegisterService["openManualStepPanel"]>[0])),
     vscode.commands.registerCommand("workflowRegister.inspectRuns", () => service.inspectRuns()),
     vscode.commands.registerCommand("workflowRegister.resumeRun", (runArg?: RunCommandArg) => service.resumeRun(runArg)),
+    vscode.commands.registerCommand("workflowRegister.recoverDetachedHeldRun", (runArg?: RunCommandArg) => service.recoverDetachedHeldRun(runArg)),
     vscode.commands.registerCommand("workflowRegister.retryCurrentStep", (runArg?: RunCommandArg) => service.retryCurrentStep(runArg)),
     vscode.commands.registerCommand("workflowRegister.approveBranchCheckpoint", (runId?: string) => service.approveBranchCheckpoint(runId)),
     vscode.commands.registerCommand("workflowRegister.abortBranchCheckpoint", (runId?: string) => service.abortBranchCheckpoint(runId)),

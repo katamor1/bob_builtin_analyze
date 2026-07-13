@@ -51,6 +51,54 @@ export interface ClassifyHeldRunRecoveryInput {
   taskSnapshotAvailable: boolean
 }
 
+export const HELD_RECOVERY_STATE_KEY = "workflow.heldRecovery"
+
+export interface HeldRunRecoveryProvenanceV1 {
+  schemaVersion: "workflow-register/held-recovery/v1"
+  kind: "saved-state"
+  runId: string
+  stepId: string
+  nextStepId?: string
+  recoveredAt: string
+  source: "operation-hub"
+}
+
+export interface CreateHeldRunRecoveryProvenanceInput {
+  runId: string
+  stepId: string
+  nextStepId?: string
+  recoveredAt: string
+  source: "operation-hub"
+}
+
+export function createHeldRunRecoveryProvenance(input: CreateHeldRunRecoveryProvenanceInput): HeldRunRecoveryProvenanceV1 {
+  return {
+    schemaVersion: "workflow-register/held-recovery/v1",
+    kind: "saved-state",
+    runId: input.runId,
+    stepId: input.stepId,
+    nextStepId: input.nextStepId,
+    recoveredAt: input.recoveredAt,
+    source: input.source
+  }
+}
+
+export function buildHeldRunRecoveryPreview(
+  run: WorkflowRunState,
+  assessment: HeldRunRecoveryAssessment
+): string[] {
+  const stateKeys = Object.keys(run.state).sort()
+  return [
+    `- runId: ${run.runId}`,
+    `- workflow: ${run.workflowId}`,
+    `- current status: ${run.status}`,
+    `- held step to complete: ${assessment.stepId ?? "none"}`,
+    `- next step: ${assessment.nextStepId ?? "workflow completion"}`,
+    `- persisted state keys: ${stateKeys.length > 0 ? stateKeys.join(", ") : "none"}`,
+    "- state values, form values, snapshot text and artifact text are not shown."
+  ]
+}
+
 const ACTIONS: Record<HeldRunRecoveryActionId, HeldRunRecoveryAction> = {
   none: { id: "none", label: "No recovery action" },
   "open-manual-step": { id: "open-manual-step", label: "Open manual step" },
