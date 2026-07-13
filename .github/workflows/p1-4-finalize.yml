@@ -1,0 +1,168 @@
+name: p1-4-finalize
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/p1-4-finalize.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Reconcile latest main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git merge --no-edit origin/main
+
+      - name: Apply runtime-evidence hardening
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          service_path = Path("extensions/workflow-register/src/workflowRegisterService.ts")
+          service = service_path.read_text(encoding="utf-8")
+          service_anchor = '''  async inspectActiveSteps(): Promise<void> {
+'''
+          service_method = '''  listActiveSteps() {
+    return this.stepRuntime.list()
+  }
+
+'''
+          if '  listActiveSteps() {' not in service:
+              assert service_anchor in service
+              service = service.replace(service_anchor, service_method + service_anchor, 1)
+          service_path.write_text(service, encoding="utf-8")
+
+          extension_path = Path("extensions/workflow-register/src/extension.ts")
+          extension = extension_path.read_text(encoding="utf-8")
+          old_provider = '  const operationHub = new OperationHubProvider({ api, extensionUri: context.extensionUri })\n'
+          new_provider = '  const operationHub = new OperationHubProvider({ api, extensionUri: context.extensionUri, activeSteps: () => service.listActiveSteps() })\n'
+          if old_provider in extension:
+              extension = extension.replace(old_provider, new_provider, 1)
+          else:
+              assert new_provider in extension
+          extension_path.write_text(extension, encoding="utf-8")
+
+          provider_path = Path("extensions/workflow-register/src/gui/operationHubProvider.ts")
+          provider = provider_path.read_text(encoding="utf-8")
+          model_import = 'import type { CoreWorkflowDefinition, WorkflowRunState } from "../core/model"\n'
+          active_import = 'import type { ActiveStep } from "../bobWorkflowTypes"\n'
+          if active_import not in provider:
+              assert model_import in provider
+              provider = provider.replace(model_import, active_import + model_import, 1)
+
+          old_artifact_import = 'import { ARTIFACT_MANIFEST_STATE_KEY, parseWorkflowArtifactManifest } from "../core/artifacts"\n'
+          new_artifact_import = 'import { ARTIFACT_MANIFEST_STATE_KEY, parseWorkflowArtifactManifest, validateWorkflowArtifactManifest } from "../core/artifacts"\n'
+          if old_artifact_import in provider:
+              provider = provider.replace(old_artifact_import, new_artifact_import, 1)
+          else:
+              assert new_artifact_import in provider
+
+          options_anchor = '''interface OperationHubProviderOptions {
+  api: OperationHubWorkflowApi
+  extensionUri: vscode.Uri
+}
+'''
+          options_text = '''interface OperationHubProviderOptions {
+  api: OperationHubWorkflowApi
+  extensionUri: vscode.Uri
+  activeSteps?: () => readonly ActiveStep[]
+}
+'''
+          if options_anchor in provider:
+              provider = provider.replace(options_anchor, options_text, 1)
+          else:
+              assert options_text in provider
+
+          old_evidence = '''          const heldRecovery = classifyHeldRunRecovery({
+            run,
+            workflow,
+            liveTaskAvailable: Boolean(reviewTaskRegistry.taskForRun(candidate.root, run.runId)),
+            activeManualStepAvailable: Boolean(reviewTaskRegistry.taskForStep(candidate.root, run.runId, run.currentStep)),
+            artifactManifestAvailable: Boolean(parseWorkflowArtifactManifest(run.state[ARTIFACT_MANIFEST_STATE_KEY])),
+            taskSnapshotAvailable: taskSnapshots.some((item) => item.stepId === run.currentStep)
+          })
+'''
+          new_evidence = '''          const manifest = parseWorkflowArtifactManifest(run.state[ARTIFACT_MANIFEST_STATE_KEY])
+          const artifactManifestAvailable = Boolean(
+            workflow
+            && manifest
+            && !validateWorkflowArtifactManifest({ manifest, workflow, inputs: run.inputs })
+              .some((issue) => issue.severity === "error")
+          )
+          const activeManualStepAvailable = (this.options.activeSteps?.() ?? []).some((active) => (
+            active.runId === run.runId
+            && active.workflowId === run.workflowId
+            && active.stepId === run.currentStep
+          ))
+          const taskSnapshotAvailable = taskSnapshots.some((snapshot) => (
+            snapshot.stepId === run.currentStep
+            && snapshot.workflowId === run.workflowId
+            && (!snapshot.workflowDefinitionHash || !workflow?.definitionHash || snapshot.workflowDefinitionHash === workflow.definitionHash)
+          ))
+          const heldRecovery = classifyHeldRunRecovery({
+            run,
+            workflow,
+            liveTaskAvailable: Boolean(reviewTaskRegistry.taskForRun(candidate.root, run.runId)),
+            activeManualStepAvailable,
+            artifactManifestAvailable,
+            taskSnapshotAvailable
+          })
+'''
+          if old_evidence in provider:
+              provider = provider.replace(old_evidence, new_evidence, 1)
+          else:
+              assert new_evidence in provider
+          provider_path.write_text(provider, encoding="utf-8")
+          PY
+
+      - name: Verify focused and full contracts
+        working-directory: extensions/workflow-register
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --silent
+          npm run compile --silent
+          node --test \
+            test/heldRunRecoveryClassifier.test.js \
+            test/operationHubHeldRecovery.test.js \
+            test/operationHub.test.js \
+            test/operationHubMutations.test.js \
+            test/detachedHeldRecoveryCommand.test.js \
+            test/heldRecoveryDiagnostics.test.js \
+            test/workflowEngineGuardedResume.test.js
+          npm test --silent
+          npm run dependency:policy --silent
+          npm run architecture:policy --silent
+          npm run source:policy --silent
+          npm run schema:policy --silent
+          npm run package --silent
+          npm run package:policy --silent
+
+      - name: Commit verified finalization
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f \
+            .github/workflows/p1-4-evidence-hardening.yml \
+            .github/workflows/p1-4-finalize.yml
+          git add -A
+          git diff --cached --check
+          git commit -m "fix: finalize detached held recovery evidence"
+          git push origin HEAD:${{ github.head_ref }}
