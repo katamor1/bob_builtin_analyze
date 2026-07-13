@@ -15,6 +15,13 @@ import {
   type TaskSnapshotArtifactImportIssue,
   type WorkflowArtifactManifest
 } from "./core/artifacts"
+import {
+  buildHeldRunRecoveryPreview,
+  classifyHeldRunRecovery,
+  createHeldRunRecoveryProvenance,
+  HELD_RECOVERY_STATE_KEY,
+  type HeldRunRecoveryAssessment
+} from "./core/heldRunRecovery"
 import type { CoreWorkflowDefinition, WorkflowRunState } from "./core/model"
 import { formatBranchingDiagnostics } from "./core/runDiagnostics"
 import { assertWorkflowRunStateWritable, isWorkflowRunStateWritable } from "./core/runStateStore"
@@ -507,6 +514,93 @@ export class WorkflowRunCommandService {
     return this.resumeOrRetryRun("resume", runArg)
   }
 
+  async recoverDetachedHeldRun(runArg?: RunCommandArg): Promise<unknown> {
+    const trustError = await requireTrustedWorkspace("recover detached held workflow run")
+    if (trustError) return trustError
+    await this.ensureWorkflowsLoaded()
+    const roots = await this.options.workflowRootCandidates()
+    const runId = resolveRunId(runArg)
+    const selection = await this.selectRunArgument(runArg, roots)
+    if (!selection) {
+      const message = runId ? `Workflow run not found: ${runId}` : "No workflow run selected."
+      await vscode.window.showWarningMessage(message)
+      return message
+    }
+    if (workflowRunExecutionActiveForWorkspace(selection.root, selection.runId)) {
+      throw new Error(`Cannot recover a detached held run while workflow execution is active: ${selection.runId}`)
+    }
+
+    const expectedRevision = isOperationHubRunMutationTarget(runArg) ? runArg.expectedRevision : undefined
+    if (expectedRevision) await assertOperationHubRunRevision(selection.root, selection.runId, expectedRevision)
+    const runStore = this.options.runtimeFactory.createRunStore(selection.root)
+    const previewRun = await runStore.loadRun(selection.runId)
+    if (!previewRun) throw new Error(`Workflow run not found: ${selection.runId}`)
+    const previewWorkflow = this.options.coreWorkflows.get(previewRun.workflowId)
+    const previewAssessment = await this.assessHeldRunRecovery(selection.root, previewRun, previewWorkflow)
+    if (previewAssessment.kind !== "detached-resumable") {
+      const message = `Held run recovery is now '${previewAssessment.kind}'. Refresh Operation Hub and use '${previewAssessment.primaryAction.label}'.`
+      await vscode.window.showWarningMessage(message)
+      return previewAssessment
+    }
+
+    await showMarkdownReport(
+      "Detached Held Run Recovery Preview",
+      "Review the persisted metadata before explicitly completing the detached held step.",
+      buildHeldRunRecoveryPreview(previewRun, previewAssessment)
+    )
+    const confirmLabel = "保存済み状態から再開"
+    const accepted = await vscode.window.showWarningMessage(
+      `Held step '${previewAssessment.stepId ?? "unknown"}' will be completed from persisted state. Continue?`,
+      { modal: true },
+      confirmLabel
+    )
+    if (accepted !== confirmLabel) return "Detached held run recovery cancelled."
+
+    return this.options.coordinateGateDecision(
+      selection.root,
+      selection.runId,
+      "held-recovery",
+      async () => {
+        if (expectedRevision) await assertOperationHubRunRevision(selection.root, selection.runId, expectedRevision)
+        const currentRun = await runStore.loadRun(selection.runId)
+        if (!currentRun) throw new Error(`Workflow run not found: ${selection.runId}`)
+        const workflow = this.options.coreWorkflows.get(currentRun.workflowId)
+        if (!workflow) throw new Error(`Workflow definition is not loaded: ${currentRun.workflowId}`)
+        const agentProvider = reviewTaskRegistry.agentProviderForRun(selection.root, currentRun.runId, workflow)
+        const engine = this.options.runtimeFactory.createEngine(selection.root, agentProvider)
+        let validatedAssessment: HeldRunRecoveryAssessment | undefined
+        const result = await engine.resumeRunGuarded(
+          selection.runId,
+          { workflow, completeHeldStep: true, executionMode: "singleStep" },
+          {
+            beforeResume: async (freshRun) => {
+              const freshAssessment = await this.assessHeldRunRecovery(selection.root, freshRun, workflow)
+              if (freshAssessment.kind !== "detached-resumable") {
+                throw new Error(`Held run recovery classification changed to '${freshAssessment.kind}'; refresh Operation Hub before retrying.`)
+              }
+              if (!freshAssessment.stepId) throw new Error("Detached held run has no recoverable held step.")
+              validatedAssessment = freshAssessment
+            },
+            afterResume: (resumedRun) => {
+              const assessment = validatedAssessment
+              if (!assessment?.stepId) throw new Error("Detached held recovery validation was not retained.")
+              resumedRun.state[HELD_RECOVERY_STATE_KEY] = JSON.stringify(createHeldRunRecoveryProvenance({
+                runId: resumedRun.runId,
+                stepId: assessment.stepId,
+                nextStepId: assessment.nextStepId,
+                recoveredAt: new Date().toISOString(),
+                source: "operation-hub"
+              }))
+            }
+          }
+        )
+        await this.reconcileBobTask(selection.root, result, workflow, "operation-hub-resume")
+        await vscode.window.showInformationMessage(`Detached held run recovered: ${result.runId}`)
+        return result
+      }
+    )
+  }
+
   async retryCurrentStep(runArg?: RunCommandArg): Promise<unknown> {
     return this.resumeOrRetryRun("retry", runArg)
   }
@@ -612,6 +706,28 @@ export class WorkflowRunCommandService {
     const workflow = this.options.coreWorkflows.get(run.workflowId)
     if (!workflow) throw new Error(`Workflow definition is not loaded: ${run.workflowId}`)
     const liveGate = this.options.gateRegistry.pendingForRun(root, runId)
+    if (mode === "resume" && run.status === "held") {
+      const assessment = await this.assessHeldRunRecovery(root, run, workflow)
+      if (assessment.kind === "connected") {
+        const step = workflow.engineSteps.find((candidate) => candidate.id === assessment.stepId)
+        if (step) {
+          const active = this.options.activeSteps().find((candidate) => (
+            candidate.runId === run.runId
+            && candidate.workflowId === run.workflowId
+            && candidate.stepId === step.id
+          ))
+          await this.options.showManualStepPanel({ workflow, run, step, active })
+          return run
+        }
+      }
+      if (!liveGate) {
+        const message = assessment.kind === "detached-resumable"
+          ? `Current held run is detached. Use workflowRegister.recoverDetachedHeldRun after reviewing the recovery preview: ${run.runId}`
+          : `Current held run requires '${assessment.primaryAction.label}' before it can resume: ${run.runId}`
+        await vscode.window.showWarningMessage(message)
+        return message
+      }
+    }
     if (mode === "resume" && run.status === "paused" && liveGate?.status === "paused" && ownerStepCompleted(run, liveGate)) {
       await new FileRunControlStore({ workspaceRoot: root }).clearPause(runId)
       run.status = "running"
@@ -657,6 +773,40 @@ export class WorkflowRunCommandService {
       return
     }
     this.options.gateRegistry.rebind(root, run.runId, { stepId, status: run.status })
+  }
+
+  private async assessHeldRunRecovery(
+    root: string,
+    run: WorkflowRunState,
+    workflow: CoreWorkflowDefinition | undefined
+  ): Promise<HeldRunRecoveryAssessment> {
+    const manifest = workflow ? await loadArtifactManifest(root, run).catch(() => undefined) : undefined
+    const artifactManifestAvailable = Boolean(
+      workflow
+      && manifest
+      && !validateWorkflowArtifactManifest({ manifest, workflow, inputs: run.inputs })
+        .some((issue) => issue.severity === "error")
+    )
+    const snapshots = run.status === "held"
+      ? await new FileTaskSnapshotStore({ workspaceRoot: root }).listSnapshots(run.runId).catch(() => [])
+      : []
+    const activeManualStepAvailable = this.options.activeSteps().some((candidate) => (
+      candidate.runId === run.runId
+      && candidate.workflowId === run.workflowId
+      && candidate.stepId === run.currentStep
+    )) || Boolean(reviewTaskRegistry.taskForStep(root, run.runId, run.currentStep))
+    return classifyHeldRunRecovery({
+      run,
+      workflow,
+      liveTaskAvailable: Boolean(reviewTaskRegistry.taskForRun(root, run.runId)),
+      activeManualStepAvailable,
+      artifactManifestAvailable,
+      taskSnapshotAvailable: snapshots.some((snapshot) => (
+        snapshot.stepId === run.currentStep
+        && snapshot.workflowId === run.workflowId
+        && (!snapshot.workflowDefinitionHash || !workflow?.definitionHash || snapshot.workflowDefinitionHash === workflow.definitionHash)
+      ))
+    })
   }
 
   private async pickArtifactSourceRun(

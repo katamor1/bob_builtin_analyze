@@ -119,6 +119,10 @@ export class WorkflowRegisterService implements vscode.Disposable {
     await showMarkdownReport("Bob Workflow Register", this.lastResult.summary, this.lastResult.lines)
   }
 
+  listActiveSteps() {
+    return this.stepRuntime.list()
+  }
+
   async inspectActiveSteps(): Promise<void> {
     const steps = this.stepRuntime.list()
     const lines = steps.length === 0
@@ -212,6 +216,10 @@ export class WorkflowRegisterService implements vscode.Disposable {
 
   async resumeRun(runArg?: RunCommandArg): Promise<unknown> {
     return this.runCommands.resumeRun(runArg)
+  }
+
+  async recoverDetachedHeldRun(runArg?: RunCommandArg): Promise<unknown> {
+    return this.runCommands.recoverDetachedHeldRun(runArg)
   }
 
   async retryCurrentStep(runArg?: RunCommandArg): Promise<unknown> {

@@ -7,6 +7,7 @@ export type ReviewAcceptanceOperationKind =
   | "run-retry"
   | "run-next"
   | "artifact-import"
+  | "held-recovery"
   | "checkpoint-approve"
   | "checkpoint-abort"
 

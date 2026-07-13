@@ -72,6 +72,7 @@ export function renderOperationHubHtml(input: RenderOperationHubHtmlInput): stri
     .progress { margin-top: 6px; height: 6px; border: 1px solid var(--vscode-panel-border); background: var(--vscode-editor-background); }
     .progress span { display: block; height: 100%; background: var(--vscode-progressBar-background); }
     .artifact { display: flex; justify-content: space-between; align-items: center; gap: 6px; border-top: 1px solid var(--vscode-panel-border); padding-top: 6px; margin-top: 6px; }
+    .held-recovery { margin-top: 8px; padding: 8px; border-left: 3px solid var(--vscode-editorWarning-foreground); background: var(--vscode-textBlockQuote-background); }
     .step-list { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
   .step-provenance { border-left: 2px solid var(--vscode-panel-border); padding-left: 7px; }
   .step-provenance.reused { border-left-color: var(--vscode-testing-iconPassed); }
@@ -229,9 +230,22 @@ function renderRun(run: OperationHubRunSummary): string {
     <div class="progress" aria-label="progress"><span style="width:${percent}%"></span></div>
     <div class="muted">${run.completedStepCount}/${run.totalStepCount} step / updated ${escapeHtml(run.updatedAt)}</div>
     ${renderStepProvenanceList(run)}
+    ${renderHeldRecovery(run)}
     <div class="actions">${run.primaryActions.map(renderActionButton).join("")}</div>
     ${run.artifacts.map(renderArtifact).join("")}
   </article>`
+}
+
+function renderHeldRecovery(run: OperationHubRunSummary): string {
+  if (run.status !== "held" || !run.heldRecoveryKind) return ""
+  const blockers = run.heldRecoveryBlockers.length > 0
+    ? `<ul>${run.heldRecoveryBlockers.map((blocker) => `<li>${escapeHtml(blocker)}</li>`).join("")}</ul>`
+    : ""
+  return `<div class="held-recovery">
+    <strong>${escapeHtml(run.heldRecoveryTitle ?? "Held run recovery")}</strong>
+    <div class="muted">${escapeHtml(run.heldRecoveryExplanation ?? "")}</div>
+    ${blockers}
+  </div>`
 }
 
 function renderStepProvenanceList(run: OperationHubRunSummary): string {

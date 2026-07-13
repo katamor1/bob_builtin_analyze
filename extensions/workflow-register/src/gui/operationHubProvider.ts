@@ -1,6 +1,11 @@
 import * as fs from "fs/promises"
 import * as path from "path"
 import * as vscode from "vscode"
+import { ARTIFACT_MANIFEST_STATE_KEY, parseWorkflowArtifactManifest, validateWorkflowArtifactManifest } from "../core/artifacts"
+import { classifyHeldRunRecovery } from "../core/heldRunRecovery"
+import { FileTaskSnapshotStore } from "../core/taskSnapshots"
+import { reviewTaskRegistry } from "../reviewTaskRegistry"
+import type { ActiveStep } from "../bobWorkflowTypes"
 import type { CoreWorkflowDefinition, WorkflowRunState } from "../core/model"
 import { FileRunStateStore } from "../core/runStateStore"
 import { readContainedRunFile } from "../core/runtime/runStatePath"
@@ -32,6 +37,7 @@ interface OperationHubWorkflowApi {
 interface OperationHubProviderOptions {
   api: OperationHubWorkflowApi
   extensionUri: vscode.Uri
+  activeSteps?: () => readonly ActiveStep[]
 }
 
 interface OperationHubMessage {
@@ -59,6 +65,8 @@ const ACTION_COMMANDS: Partial<Record<OperationHubActionId, string>> = {
   openConsistencyWizard: "bobCodeConsistency.openReviewWizard",
   runWorkflow: "workflowRegister.runWorkflow",
   startFromArtifacts: "workflowRegister.startFromStepWithArtifacts",
+  recoverDetachedHeldRun: "workflowRegister.recoverDetachedHeldRun",
+  importTaskSnapshotArtifacts: "workflowRegister.importArtifactsFromTaskSnapshots",
   resumeRun: "workflowRegister.resumePausedRun",
   retryCurrentStep: "workflowRegister.retryCurrentStep",
   acceptCurrentStep: "workflowRegister.acceptCurrentStep",
@@ -76,6 +84,8 @@ const RUN_ID_ACTIONS: readonly OperationHubActionId[] = [
   "acceptAndRunNextStep",
   "runNextStep",
   "openManualStepPanel",
+  "recoverDetachedHeldRun",
+  "importTaskSnapshotArtifacts",
   "pauseCurrentRun",
   "inspectRunControl",
   "openRunControl"
@@ -83,6 +93,7 @@ const RUN_ID_ACTIONS: readonly OperationHubActionId[] = [
 
 const MUTATING_RUN_ACTIONS: readonly OperationHubActionId[] = [
   "startFromArtifacts",
+  "recoverDetachedHeldRun",
   "resumeRun",
   "retryCurrentStep",
   "acceptCurrentStep",
@@ -311,13 +322,48 @@ export class OperationHubProvider implements vscode.WebviewViewProvider, vscode.
       this.focusedWorkspaceRoot,
       roots.map((candidate) => candidate.root)
     )
+    const workflows = this.options.api.listWorkflows()
+    const workflowsById = new Map(workflows.map((workflow) => [workflow.id, workflow]))
     const runs = await Promise.all(roots.map(async (candidate) => {
       const store = new FileRunStateStore({ workspaceRoot: candidate.root })
+      const taskSnapshotStore = new FileTaskSnapshotStore({ workspaceRoot: candidate.root })
       const runStates = await store.listRuns()
       const snapshots = await Promise.all(runStates.map((run) => loadRunSnapshot(candidate.root, run.runId)))
-      return snapshots
+      return Promise.all(snapshots
         .filter((snapshot): snapshot is NonNullable<typeof snapshot> => Boolean(snapshot))
-        .map((snapshot) => ({ root: candidate.root, run: snapshot.run, revision: snapshot.revision }))
+        .map(async (snapshot) => {
+          const run = snapshot.run
+          const workflow = workflowsById.get(run.workflowId)
+          const taskSnapshots = run.status === "held"
+            ? await taskSnapshotStore.listSnapshots(run.runId).catch(() => [])
+            : []
+          const manifest = parseWorkflowArtifactManifest(run.state[ARTIFACT_MANIFEST_STATE_KEY])
+          const artifactManifestAvailable = Boolean(
+            workflow
+            && manifest
+            && !validateWorkflowArtifactManifest({ manifest, workflow, inputs: run.inputs })
+              .some((issue) => issue.severity === "error")
+          )
+          const activeManualStepAvailable = (this.options.activeSteps?.() ?? []).some((active) => (
+            active.runId === run.runId
+            && active.workflowId === run.workflowId
+            && active.stepId === run.currentStep
+          ))
+          const taskSnapshotAvailable = taskSnapshots.some((snapshot) => (
+            snapshot.stepId === run.currentStep
+            && snapshot.workflowId === run.workflowId
+            && (!snapshot.workflowDefinitionHash || !workflow?.definitionHash || snapshot.workflowDefinitionHash === workflow.definitionHash)
+          ))
+          const heldRecovery = classifyHeldRunRecovery({
+            run,
+            workflow,
+            liveTaskAvailable: Boolean(reviewTaskRegistry.taskForRun(candidate.root, run.runId)),
+            activeManualStepAvailable,
+            artifactManifestAvailable,
+            taskSnapshotAvailable
+          })
+          return { root: candidate.root, run, revision: snapshot.revision, heldRecovery }
+        }))
     }))
     return buildOperationHubModel({
       workspaceName: folders.length === 0 ? "No workspace" : folders.map((folder) => folder.name).join(", "),
@@ -328,7 +374,7 @@ export class OperationHubProvider implements vscode.WebviewViewProvider, vscode.
         extensionStatus("local.bob-code-consistency-review", "Bob Code Consistency Review")
       ],
       setup: await setupState(roots),
-      workflows: this.options.api.listWorkflows(),
+      workflows,
       runs: runs.flat(),
       focusedRunId: this.focusedRunId,
       focusedWorkspaceRoot
@@ -575,7 +621,6 @@ async function loadRunSnapshot(
     throw error
   }
 }
-
 
 function isContainedPath(root: string, target: string): boolean {
   const relative = path.relative(path.resolve(root), path.resolve(target))

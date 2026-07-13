@@ -132,6 +132,7 @@ export function formatWorkflowProvenanceDiagnostics(provenance: WorkflowRunProve
     || provenance.hydratedStateKeys.length > 0
     || provenance.artifactIds.length > 0
     || provenance.taskSnapshotImportCount > 0
+    || provenance.heldRecovery
     || provenance.definitionMismatchAllowed
   )
   if (!hasProvenance) return []
@@ -144,6 +145,17 @@ export function formatWorkflowProvenanceDiagnostics(provenance: WorkflowRunProve
   if (verifiedArtifacts.length > 0) lines.push(`- verified artifacts: ${verifiedArtifacts.join(", ")}`)
   if (provenance.taskSnapshotImportCount > 0) {
     lines.push(`- imported from task snapshot: ${provenance.taskSnapshotImportCount} artifact(s)${provenance.taskSnapshotImportedAt ? ` at ${provenance.taskSnapshotImportedAt}` : ""}`)
+  }
+  if (provenance.heldRecovery) {
+    lines.push(
+      "",
+      "Held run recovery:",
+      `- kind: ${provenance.heldRecovery.kind}`,
+      `- step: ${provenance.heldRecovery.stepId}`,
+      `- next step: ${provenance.heldRecovery.nextStepId ?? "workflow completion"}`,
+      `- recovered: ${provenance.heldRecovery.recoveredAt}`,
+      `- source: ${provenance.heldRecovery.source}`
+    )
   }
   lines.push(`- definition mismatch allowed: ${provenance.definitionMismatchAllowed ? "yes" : "no"}`)
   lines.push("- step completion sources:")

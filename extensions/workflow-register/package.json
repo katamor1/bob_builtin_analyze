@@ -34,6 +34,7 @@
     "onCommand:workflowRegister.importArtifactsFromTaskSnapshots",
     "onCommand:workflowRegister.inspectRuns",
     "onCommand:workflowRegister.resumeRun",
+    "onCommand:workflowRegister.recoverDetachedHeldRun",
     "onCommand:workflowRegister.retryCurrentStep",
     "onCommand:workflowRegister.acceptCurrentStep",
     "onCommand:workflowRegister.runNextStep",
@@ -145,6 +146,11 @@
       {
         "command": "workflowRegister.resumeRun",
         "title": "実行を再開",
+        "category": "Bob Workflow"
+      },
+      {
+        "command": "workflowRegister.recoverDetachedHeldRun",
+        "title": "切断された手動ステップを復旧",
         "category": "Bob Workflow"
       },
       {

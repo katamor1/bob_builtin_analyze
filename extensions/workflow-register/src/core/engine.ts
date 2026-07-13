@@ -218,9 +218,40 @@ export class WorkflowEngine {
     )
   }
 
+  async resumeRunGuarded(
+    runId: string,
+    options: ResumeRunOptions,
+    hooks: {
+      beforeResume: (run: WorkflowRunState) => Promise<void> | void
+      afterResume?: (run: WorkflowRunState) => Promise<void> | void
+    }
+  ): Promise<WorkflowRunState> {
+    return coordinateWorkflowRunExecution(
+      this.runStore,
+      runId,
+      `${resumeRunOperationKey(options)}:guarded`,
+      async () => {
+        const run = await this.runStore.loadRun(runId)
+        if (!run) throw new Error(`Workflow run not found: ${runId}`)
+        await hooks.beforeResume(run)
+        const result = await this.resumeLoadedRunOwned(run, options)
+        if (hooks.afterResume) {
+          await hooks.afterResume(result)
+          await this.runStore.saveRun(result)
+        }
+        return result
+      }
+    )
+  }
+
   private async resumeRunOwned(runId: string, options: ResumeRunOptions): Promise<WorkflowRunState> {
     const run = await this.runStore.loadRun(runId)
     if (!run) throw new Error(`Workflow run not found: ${runId}`)
+    return this.resumeLoadedRunOwned(run, options)
+  }
+
+  private async resumeLoadedRunOwned(run: WorkflowRunState, options: ResumeRunOptions): Promise<WorkflowRunState> {
+    const runId = run.runId
     if (run.status === "completed" || run.status === "failed") return run
     if (run.status === "checkpoint") throw new Error("Workflow run is waiting at a branch checkpoint. Approve or abort the checkpoint before resuming.")
     if (run.status === "reviewing") throw new Error("Workflow run is waiting for step review. Accept the current step or retry it before resuming.")
