@@ -1,0 +1,127 @@
+name: p1-4-evidence-hardening
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/p1-4-evidence-hardening.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Apply recovery eligibility and evidence hardening
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          classifier_path = Path("extensions/workflow-register/src/core/heldRunRecovery.ts")
+          classifier = classifier_path.read_text(encoding="utf-8")
+          old_state = '''  const missingRequiredStateKeys = workflowStep\n    ? requiredStateKeysMissing(workflowStep, run.state)\n    : []\n  const definitionCompatible = Boolean(workflow && definitionMatches(run, workflow) && stepOrderMatches(run, workflow))\n'''
+          new_state = '''  const currentIndex = workflowStep ? workflow?.engineSteps.findIndex((step) => step.id === workflowStep.id) ?? -1 : -1\n  const nextWorkflowStep = currentIndex >= 0 ? workflow?.engineSteps[currentIndex + 1] : undefined\n  const missingRequiredStateKeys = uniqueStrings([\n    ...(workflowStep ? requiredStateKeysMissing(workflowStep, run.state) : []),\n    ...(nextWorkflowStep ? requiredStateKeysMissing(nextWorkflowStep, run.state) : [])\n  ])\n  const definitionCompatible = Boolean(workflow && definitionMatches(run, workflow) && stepOrderMatches(run, workflow))\n'''
+          assert old_state in classifier
+          classifier = classifier.replace(old_state, new_state, 1)
+          blocker_anchor = '''  if (missingRequiredStateKeys.length > 0) {\n    blockers.push(`Required workflow state is missing: ${missingRequiredStateKeys.join(", ")}.`)\n  }\n'''
+          blocker_text = '''  if (missingRequiredStateKeys.length > 0) {\n    blockers.push(`Required workflow state is missing: ${missingRequiredStateKeys.join(", ")}.`)\n  }\n  if (workflowStep?.type === "manual") blockers.push(...manualCompletionBlockers(workflowStep, run.state))\n'''
+          assert blocker_anchor in classifier
+          classifier = classifier.replace(blocker_anchor, blocker_text, 1)
+          helper_anchor = 'function requiredStateKeysMissing(step: EngineStep, state: Record<string, string>): string[] {\n'
+          helpers = '''function manualCompletionBlockers(\n  step: Extract<EngineStep, { type: "manual" }>,\n  state: Record<string, string>\n): string[] {\n  const blockers: string[] = []\n  if (step.form?.resultKey) {\n    const raw = state[step.form.resultKey]\n    const value = raw === undefined ? undefined : parseStateValue(raw)\n    if (!value || typeof value !== "object" || Array.isArray(value)) {\n      blockers.push(`Persisted manual form result '${step.form.resultKey}' is unavailable.`)\n    } else {\n      const record = value as Record<string, unknown>\n      for (const field of step.form.fields.filter((candidate) => candidate.required)) {\n        if (!manualFieldValuePresent(record[field.id])) {\n          blockers.push(`Required manual form field '${field.id}' is unavailable in '${step.form.resultKey}'.`)\n        }\n      }\n    }\n  }\n  if (step.approval?.resultKey) {\n    const raw = state[step.approval.resultKey]\n    const value = raw === undefined ? undefined : parseStateValue(raw)\n    const decision = value && typeof value === "object" && !Array.isArray(value)\n      ? (value as Record<string, unknown>).decision\n      : undefined\n    if (decision !== "approved" && decision !== "rejected") {\n      blockers.push(`Persisted manual approval result '${step.approval.resultKey}' is unavailable.`)\n    }\n  }\n  return blockers\n}\n\nfunction parseStateValue(value: string): unknown {\n  try {\n    return JSON.parse(value)\n  } catch {\n    return value\n  }\n}\n\nfunction manualFieldValuePresent(value: unknown): boolean {\n  if (value === undefined || value === null) return false\n  if (typeof value === "string") return value.trim().length > 0\n  return true\n}\n\nfunction uniqueStrings(values: readonly string[]): string[] {\n  return Array.from(new Set(values.filter((value) => value.trim().length > 0)))\n}\n\n'''
+          assert helper_anchor in classifier
+          classifier = classifier.replace(helper_anchor, helpers + helper_anchor, 1)
+          classifier_path.write_text(classifier, encoding="utf-8")
+
+          service_path = Path("extensions/workflow-register/src/workflowRegisterService.ts")
+          service = service_path.read_text(encoding="utf-8")
+          service_anchor = '''  async inspectActiveSteps(): Promise<void> {\n'''
+          service_method = '''  listActiveSteps() {\n    return this.stepRuntime.list()\n  }\n\n'''
+          if '  listActiveSteps() {' not in service:
+              assert service_anchor in service
+              service = service.replace(service_anchor, service_method + service_anchor, 1)
+          service_path.write_text(service, encoding="utf-8")
+
+          extension_path = Path("extensions/workflow-register/src/extension.ts")
+          extension = extension_path.read_text(encoding="utf-8")
+          old_provider = '  const operationHub = new OperationHubProvider({ api, extensionUri: context.extensionUri })\n'
+          new_provider = '  const operationHub = new OperationHubProvider({ api, extensionUri: context.extensionUri, activeSteps: () => service.listActiveSteps() })\n'
+          assert old_provider in extension
+          extension = extension.replace(old_provider, new_provider, 1)
+          extension_path.write_text(extension, encoding="utf-8")
+
+          provider_path = Path("extensions/workflow-register/src/gui/operationHubProvider.ts")
+          provider = provider_path.read_text(encoding="utf-8")
+          model_import = 'import type { CoreWorkflowDefinition, WorkflowRunState } from "../core/model"\n'
+          active_import = 'import type { ActiveStep } from "../bobWorkflowTypes"\n'
+          if active_import not in provider:
+              assert model_import in provider
+              provider = provider.replace(model_import, active_import + model_import, 1)
+          provider = provider.replace('import { ARTIFACT_MANIFEST_STATE_KEY, parseWorkflowArtifactManifest } from "../core/artifacts"\n', 'import { ARTIFACT_MANIFEST_STATE_KEY, parseWorkflowArtifactManifest, validateWorkflowArtifactManifest } from "../core/artifacts"\n', 1)
+          options_anchor = '''interface OperationHubProviderOptions {\n  api: OperationHubWorkflowApi\n  extensionUri: vscode.Uri\n}\n'''
+          options_text = '''interface OperationHubProviderOptions {\n  api: OperationHubWorkflowApi\n  extensionUri: vscode.Uri\n  activeSteps?: () => readonly ActiveStep[]\n}\n'''
+          assert options_anchor in provider
+          provider = provider.replace(options_anchor, options_text, 1)
+          old_evidence = '''          const heldRecovery = classifyHeldRunRecovery({\n            run,\n            workflow,\n            liveTaskAvailable: Boolean(reviewTaskRegistry.taskForRun(candidate.root, run.runId)),\n            activeManualStepAvailable: Boolean(reviewTaskRegistry.taskForStep(candidate.root, run.runId, run.currentStep)),\n            artifactManifestAvailable: Boolean(parseWorkflowArtifactManifest(run.state[ARTIFACT_MANIFEST_STATE_KEY])),\n            taskSnapshotAvailable: taskSnapshots.some((item) => item.stepId === run.currentStep)\n          })\n'''
+          new_evidence = '''          const manifest = parseWorkflowArtifactManifest(run.state[ARTIFACT_MANIFEST_STATE_KEY])\n          const artifactManifestAvailable = Boolean(\n            workflow\n            && manifest\n            && !validateWorkflowArtifactManifest({ manifest, workflow, inputs: run.inputs })\n              .some((issue) => issue.severity === "error")\n          )\n          const activeManualStepAvailable = (this.options.activeSteps?.() ?? []).some((active) => (\n            active.runId === run.runId\n            && active.workflowId === run.workflowId\n            && active.stepId === run.currentStep\n          ))\n          const taskSnapshotAvailable = taskSnapshots.some((snapshot) => (\n            snapshot.stepId === run.currentStep\n            && snapshot.workflowId === run.workflowId\n            && (!snapshot.workflowDefinitionHash || !workflow?.definitionHash || snapshot.workflowDefinitionHash === workflow.definitionHash)\n          ))\n          const heldRecovery = classifyHeldRunRecovery({\n            run,\n            workflow,\n            liveTaskAvailable: Boolean(reviewTaskRegistry.taskForRun(candidate.root, run.runId)),\n            activeManualStepAvailable,\n            artifactManifestAvailable,\n            taskSnapshotAvailable\n          })\n'''
+          assert old_evidence in provider
+          provider = provider.replace(old_evidence, new_evidence, 1)
+          provider_path.write_text(provider, encoding="utf-8")
+          PY
+
+      - name: Verify focused contracts
+        id: focused
+        working-directory: extensions/workflow-register
+        shell: bash
+        run: |
+          set +e
+          npm ci --silent > "$RUNNER_TEMP/p1-4-evidence.log" 2>&1
+          status=$?
+          if [ "$status" -eq 0 ]; then npm run compile --silent >> "$RUNNER_TEMP/p1-4-evidence.log" 2>&1; status=$?; fi
+          if [ "$status" -eq 0 ]; then
+            node --test \
+              test/heldRunRecoveryClassifier.test.js \
+              test/operationHubHeldRecovery.test.js \
+              test/operationHub.test.js \
+              test/operationHubMutations.test.js \
+              test/detachedHeldRecoveryCommand.test.js \
+              test/workflowEngineGuardedResume.test.js >> "$RUNNER_TEMP/p1-4-evidence.log" 2>&1
+            status=$?
+          fi
+          if [ "$status" -ne 0 ]; then
+            grep -n -B 40 -A 140 -E "not ok|AssertionError|error TS|Error:" "$RUNNER_TEMP/p1-4-evidence.log" || tail -n 260 "$RUNNER_TEMP/p1-4-evidence.log"
+          else
+            tail -n 40 "$RUNNER_TEMP/p1-4-evidence.log"
+          fi
+          exit "$status"
+
+      - name: Upload focused failure log
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: p1-4-evidence-focused-log
+          path: ${{ runner.temp }}/p1-4-evidence.log
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Commit verified hardening
+        if: success()
+        shell: bash
+        run: |
+          rm .github/workflows/p1-4-evidence-hardening.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "fix: harden detached held recovery evidence"
+          git push origin HEAD:${{ github.head_ref }}
