@@ -19,6 +19,12 @@ function item(runId, overrides = {}) {
     journalPending: false,
     lockPresent: false,
     pathContained: true,
+    inspectionStatus: "valid",
+    measurementComplete: true,
+    referenceGraphComplete: true,
+    retentionRevision: "missing",
+    directoryIdentity: { dev: "1", ino: "2" },
+    treeFingerprint: `sha256:tree-${runId}`,
     ...overrides
   }
 }
@@ -37,7 +43,8 @@ test("cleanup planner excludes active, recoverable, referenced, pinned, read-onl
     item("readonly", { readOnly: true }),
     item("journal", { journalPending: true }),
     item("locked", { lockPresent: true }),
-    item("unsafe", { pathContained: false })
+    item("unsafe", { pathContained: false }),
+    item("identity", { directoryIdentity: null })
   ], { now: "2026-07-13T00:00:00.000Z", completedDays: 1 })
 
   assert.deepEqual(plan.candidateRunIds, [])
@@ -50,6 +57,7 @@ test("cleanup planner excludes active, recoverable, referenced, pinned, read-onl
   assert.match(byId.journal.blockers.join(" "), /journal-pending/)
   assert.match(byId.locked.blockers.join(" "), /execution-lock-present/)
   assert.match(byId.unsafe.blockers.join(" "), /path-not-contained/)
+  assert.match(byId.identity.blockers.join(" "), /directory-identity-unavailable/)
 })
 
 test("cleanup planner deterministically combines age, count and storage criteria", () => {
@@ -90,6 +98,28 @@ test("explicit selection remains preview-bound and protected runs stay excluded"
   assert.match(plan.decisions.find((item) => item.runId === "selected-pinned").blockers.join(" "), /pinned/)
 })
 
+test("an incomplete provenance graph blocks every cleanup candidate", () => {
+  const { planWorkflowRunCleanup } = modules()
+  const plan = planWorkflowRunCleanup([
+    item("otherwise-eligible", { referenceGraphComplete: false }),
+    item("unreadable-entry", {
+      status: "unknown",
+      inspectionStatus: "invalid",
+      referenceGraphComplete: false,
+      pathContained: false
+    })
+  ], {
+    now: "2026-07-13T00:00:00.000Z",
+    completedDays: 1
+  })
+
+  assert.deepEqual(plan.candidateRunIds, [])
+  assert.match(
+    plan.decisions.find((decision) => decision.runId === "otherwise-eligible").blockers.join(" "),
+    /reference-graph-incomplete/
+  )
+})
+
 test("cleanup plan digest detects tampering and invalid policies are rejected", () => {
   const { planWorkflowRunCleanup, verifyWorkflowRunCleanupPlan } = modules()
   const plan = planWorkflowRunCleanup([item("old")], {
@@ -99,6 +129,12 @@ test("cleanup plan digest detects tampering and invalid policies are rejected", 
   const tampered = structuredClone(plan)
   tampered.decisions[0].action = "keep"
   assert.equal(verifyWorkflowRunCleanupPlan(tampered), false)
+  const treeTampered = structuredClone(plan)
+  treeTampered.decisions[0].treeFingerprint = "sha256:changed-tree"
+  assert.equal(verifyWorkflowRunCleanupPlan(treeTampered), false)
+  assert.equal(plan.decisions[0].retentionRevision, "missing")
+  assert.deepEqual(plan.decisions[0].directoryIdentity, { dev: "1", ino: "2" })
+  assert.equal(plan.decisions[0].treeFingerprint, "sha256:tree-old")
   assert.throws(() => planWorkflowRunCleanup([], { now: "invalid", completedDays: 1 }), /timestamp/i)
   assert.throws(() => planWorkflowRunCleanup([], { now: "2026-07-13T00:00:00.000Z" }), /criterion/i)
   assert.throws(() => planWorkflowRunCleanup([item("duplicate"), item("duplicate")], { now: "2026-07-13T00:00:00.000Z", completedDays: 1 }), /Duplicate/i)

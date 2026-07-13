@@ -8,7 +8,8 @@ export async function inspectWorkflowRunStorage(input?: unknown): Promise<unknow
   const root = await selectWorkflowRoot(workspaceRootFromInput(input), "Workflow Run Storage")
   if (!root) return "No workflow workspace selected."
   const service = new WorkflowRunRetentionService({ workspaceRoot: root })
-  const [summary, inventory] = await Promise.all([service.summarize(), service.inventory()])
+  const inspection = await service.inspect()
+  const { summary, inventory } = inspection
   const lines = [
     `- workspace: ${root}`,
     `- runs: ${summary.runCount}`,
@@ -18,9 +19,13 @@ export async function inspectWorkflowRunStorage(input?: unknown): Promise<unknow
     `- pinned: ${summary.pinnedRunCount}`,
     `- referenced sources: ${summary.referencedRunCount}`,
     `- read-only: ${summary.readOnlyRunCount}`,
+    `- unknown: ${summary.unknownRunCount}`,
+    `- blocked: ${summary.blockedRunCount}`,
+    `- incomplete measurements: ${summary.measurementIncompleteRunCount}`,
+    `- reference graph: ${summary.referenceGraphComplete ? "complete" : "incomplete"}`,
     "",
     "Runs:",
-    ...inventory.map((item) => `- ${item.runId}: ${item.status}; ${formatBytes(item.bytes)}; updated=${item.updatedAt}; pinned=${item.pinned ? "yes" : "no"}; referencedBy=${item.referencedBy.join(",") || "none"}; lock=${item.lockPresent ? "yes" : "no"}; journal=${item.journalPending ? "yes" : "no"}`)
+    ...inventory.map((item) => `- ${item.runId}: ${item.status}; inspection=${item.inspectionStatus}; ${formatBytes(item.bytes)}; measurement=${item.measurementComplete ? "complete" : "incomplete"}; updated=${item.updatedAt}; pinned=${item.pinned ? "yes" : "no"}; referencedBy=${item.referencedBy.join(",") || "none"}; lock=${item.lockPresent ? "yes" : "no"}; journal=${item.journalPending ? "yes" : "no"}`)
   ]
   await showMarkdownReport("Workflow Run Storage", `${summary.runCount} run(s); ${formatBytes(summary.totalBytes)}.`, lines)
   return summary

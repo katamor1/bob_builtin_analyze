@@ -3,9 +3,17 @@ import type { RunStatus } from "../model"
 
 export const CURRENT_WORKFLOW_RUN_CLEANUP_PLAN_SCHEMA_VERSION = "workflow-register/run-cleanup-plan/v1" as const
 
+export type WorkflowRunRetentionStatus = RunStatus | "unknown"
+export type WorkflowRunRetentionInspectionStatus = "valid" | "legacy" | "future" | "invalid" | "missing" | "unsafe"
+
+export interface WorkflowRunDirectoryIdentity {
+  dev: string
+  ino: string
+}
+
 export interface WorkflowRunRetentionInventoryItem {
   runId: string
-  status: RunStatus
+  status: WorkflowRunRetentionStatus
   updatedAt: string
   bytes: number
   revision: string
@@ -16,6 +24,12 @@ export interface WorkflowRunRetentionInventoryItem {
   journalPending: boolean
   lockPresent: boolean
   pathContained: boolean
+  inspectionStatus: WorkflowRunRetentionInspectionStatus
+  measurementComplete: boolean
+  referenceGraphComplete: boolean
+  retentionRevision: string
+  directoryIdentity: WorkflowRunDirectoryIdentity | null
+  treeFingerprint: string
 }
 
 export interface WorkflowRunRetentionPolicy {
@@ -28,10 +42,14 @@ export interface WorkflowRunRetentionPolicy {
 
 export interface WorkflowRunCleanupDecision {
   runId: string
-  status: RunStatus
+  status: WorkflowRunRetentionStatus
   updatedAt: string
   bytes: number
   revision: string
+  retentionRevision: string
+  directoryIdentity: WorkflowRunDirectoryIdentity | null
+  treeFingerprint: string
+  measurementComplete: boolean
   action: "keep" | "delete"
   reasons: string[]
   blockers: string[]
@@ -48,8 +66,8 @@ export interface WorkflowRunCleanupPlan {
   digest: string
 }
 
-const ACTIVE_STATUSES = new Set<RunStatus>(["running", "paused", "checkpoint", "reviewing", "held"])
-const TERMINAL_STATUSES = new Set<RunStatus>(["completed", "failed"])
+const ACTIVE_STATUSES = new Set<WorkflowRunRetentionStatus>(["running", "paused", "checkpoint", "reviewing", "held"])
+const TERMINAL_STATUSES = new Set<WorkflowRunRetentionStatus>(["completed", "failed"])
 const DAY_MS = 24 * 60 * 60 * 1000
 
 export function planWorkflowRunCleanup(
@@ -109,6 +127,10 @@ export function planWorkflowRunCleanup(
       updatedAt: item.updatedAt,
       bytes: item.bytes,
       revision: item.revision,
+      retentionRevision: item.retentionRevision,
+      directoryIdentity: item.directoryIdentity,
+      treeFingerprint: item.treeFingerprint,
+      measurementComplete: item.measurementComplete,
       action: itemBlockers.length === 0 && itemReasons.length > 0 ? "delete" : "keep",
       reasons: itemReasons,
       blockers: itemBlockers
@@ -158,9 +180,15 @@ function normalizeInventoryItem(item: WorkflowRunRetentionInventoryItem): Workfl
   if (!Number.isFinite(Date.parse(item.updatedAt))) throw new Error(`Workflow run '${item.runId}' has an invalid updatedAt timestamp.`)
   if (!Number.isFinite(item.bytes) || item.bytes < 0) throw new Error(`Workflow run '${item.runId}' has invalid byte size.`)
   if (!item.revision) throw new Error(`Workflow run '${item.runId}' has no revision.`)
+  if (!item.retentionRevision) throw new Error(`Workflow run '${item.runId}' has no retention revision.`)
+  if (!item.treeFingerprint) throw new Error(`Workflow run '${item.runId}' has no physical tree fingerprint.`)
+  if (item.directoryIdentity && (!/^\d+$/.test(item.directoryIdentity.dev) || !/^\d+$/.test(item.directoryIdentity.ino))) {
+    throw new Error(`Workflow run '${item.runId}' has an invalid directory identity.`)
+  }
   return {
     ...item,
     bytes: Math.floor(item.bytes),
+    directoryIdentity: item.directoryIdentity ? { ...item.directoryIdentity } : null,
     referencedBy: uniqueStrings(item.referencedBy).sort()
   }
 }
@@ -175,6 +203,13 @@ function blockersFor(item: WorkflowRunRetentionInventoryItem): string[] {
   if (item.readOnly) blockers.push("read-only")
   if (item.journalPending) blockers.push("journal-pending")
   if (item.lockPresent) blockers.push("execution-lock-present")
+  if (item.inspectionStatus === "future") blockers.push("future-run-state")
+  if (item.inspectionStatus === "invalid") blockers.push("run-state-invalid")
+  if (item.inspectionStatus === "missing") blockers.push("run-state-missing")
+  if (item.inspectionStatus === "unsafe") blockers.push("unsafe-inventory-entry")
+  if (!item.measurementComplete) blockers.push("measurement-incomplete")
+  if (!item.referenceGraphComplete) blockers.push("reference-graph-incomplete")
+  if (!item.directoryIdentity) blockers.push("directory-identity-unavailable")
   if (!item.pathContained) blockers.push("path-not-contained")
   return uniqueStrings(blockers).sort()
 }
