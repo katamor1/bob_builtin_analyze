@@ -88,6 +88,17 @@ Run Diagnosticsと共通provenance projectorはこのmetadataを表示します�
 
 復旧経路がartifactまたはsnapshotへ変わった場合は、Operation Hubをrefreshして新しいprimary actionを使用します。
 
+## 検証基準
+
+- classifier、Operation Hub、dedicated command、diagnostics、engine guardのfocused suite。
+- complete `workflow-register` test suite。
+- dependency、architecture、source、schema policy。
+- package、VSIX policy、Extension Host smoke。
+- Ubuntu／Windowsの通常`extensions-quality` matrix。
+- `workflow-contracts`。
+
+一時的なmutation／diagnostic workflowは最終差分へ残しません。
+
 ## 製品リリースUAT
 
 コード／CIとは別に、製品配布前に次を実機確認します。
