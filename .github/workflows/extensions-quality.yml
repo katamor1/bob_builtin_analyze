@@ -41,60 +41,14 @@ jobs:
           set -euo pipefail
           git fetch origin main
           python - <<'PY'
+          import base64
           from pathlib import Path
-
+          old_b64 = "ICAgIGNvbnN0IHdvcmtmbG93ID0gdGhpcy5vcHRpb25zLmNvcmVXb3JrZmxvd3MuZ2V0KHJ1bi53b3JrZmxvd0lkKQogICAgaWYgKCF3b3JrZmxvdykgdGhyb3cgbmV3IEVycm9yKGBXb3JrZmxvdyBkZWZpbml0aW9uIGlzIG5vdCBsb2FkZWQ6ICR7cnVuLndvcmtmbG93SWR9YCkKICAgIGlmIChtb2RlID09PSAicmVzdW1lIiAmJiBydW4uc3RhdHVzID09PSAiaGVsZCIpIHsKICAgICAgY29uc3QgYXNzZXNzbWVudCA9IGF3YWl0IHRoaXMuYXNzZXNzSGVsZFJ1blJlY292ZXJ5KHJvb3QsIHJ1biwgd29ya2Zsb3cpCiAgICAgIGlmIChhc3Nlc3NtZW50LmtpbmQgPT09ICJjb25uZWN0ZWQiKSB7CiAgICAgICAgY29uc3Qgc3RlcCA9IHdvcmtmbG93LmVuZ2luZVN0ZXBzLmZpbmQoKGNhbmRpZGF0ZSkgPT4gY2FuZGlkYXRlLmlkID09PSBhc3Nlc3NtZW50LnN0ZXBJZCkKICAgICAgICBpZiAoc3RlcCkgewogICAgICAgICAgY29uc3QgYWN0aXZlID0gdGhpcy5vcHRpb25zLmFjdGl2ZVN0ZXBzKCkuZmluZCgoY2FuZGlkYXRlKSA9PiAoCiAgICAgICAgICAgIGNhbmRpZGF0ZS5ydW5JZCA9PT0gcnVuLnJ1bklkCiAgICAgICAgICAgICYmIGNhbmRpZGF0ZS53b3JrZmxvd0lkID09PSBydW4ud29ya2Zsb3dJZAogICAgICAgICAgICAmJiBjYW5kaWRhdGUuc3RlcElkID09PSBzdGVwLmlkCiAgICAgICAgICApKQogICAgICAgICAgYXdhaXQgdGhpcy5vcHRpb25zLnNob3dNYW51YWxTdGVwUGFuZWwoeyB3b3JrZmxvdywgcnVuLCBzdGVwLCBhY3RpdmUgfSkKICAgICAgICAgIHJldHVybiBydW4KICAgICAgICB9CiAgICAgIH0KICAgICAgY29uc3QgbWVzc2FnZSA9IGFzc2Vzc21lbnQua2luZCA9PT0gImRldGFjaGVkLXJlc3VtYWJsZSIKICAgICAgICA/IGBDdXJyZW50IGhlbGQgcnVuIGlzIGRldGFjaGVkLiBVc2Ugd29ya2Zsb3dSZWdpc3Rlci5yZWNvdmVyRGV0YWNoZWRIZWxkUnVuIGFmdGVyIHJldmlld2luZyB0aGUgcmVjb3ZlcnkgcHJldmlldzogJHtydW4ucnVuSWR9YAogICAgICAgIDogYEN1cnJlbnQgaGVsZCBydW4gcmVxdWlyZXMgJyR7YXNzZXNzbWVudC5wcmltYXJ5QWN0aW9uLmxhYmVsfScgYmVmb3JlIGl0IGNhbiByZXN1bWU6ICR7cnVuLnJ1bklkfWAKICAgICAgYXdhaXQgdnNjb2RlLndpbmRvdy5zaG93V2FybmluZ01lc3NhZ2UobWVzc2FnZSkKICAgICAgcmV0dXJuIG1lc3NhZ2UKICAgIH0KICAgIGNvbnN0IGxpdmVHYXRlID0gdGhpcy5vcHRpb25zLmdhdGVSZWdpc3RyeS5wZW5kaW5nRm9yUnVuKHJvb3QsIHJ1bklkKQo="
+          new_b64 = "ICAgIGNvbnN0IHdvcmtmbG93ID0gdGhpcy5vcHRpb25zLmNvcmVXb3JrZmxvd3MuZ2V0KHJ1bi53b3JrZmxvd0lkKQogICAgaWYgKCF3b3JrZmxvdykgdGhyb3cgbmV3IEVycm9yKGBXb3JrZmxvdyBkZWZpbml0aW9uIGlzIG5vdCBsb2FkZWQ6ICR7cnVuLndvcmtmbG93SWR9YCkKICAgIGNvbnN0IGxpdmVHYXRlID0gdGhpcy5vcHRpb25zLmdhdGVSZWdpc3RyeS5wZW5kaW5nRm9yUnVuKHJvb3QsIHJ1bklkKQogICAgaWYgKG1vZGUgPT09ICJyZXN1bWUiICYmIHJ1bi5zdGF0dXMgPT09ICJoZWxkIikgewogICAgICBjb25zdCBhc3Nlc3NtZW50ID0gYXdhaXQgdGhpcy5hc3Nlc3NIZWxkUnVuUmVjb3Zlcnkocm9vdCwgcnVuLCB3b3JrZmxvdykKICAgICAgaWYgKGFzc2Vzc21lbnQua2luZCA9PT0gImNvbm5lY3RlZCIpIHsKICAgICAgICBjb25zdCBzdGVwID0gd29ya2Zsb3cuZW5naW5lU3RlcHMuZmluZCgoY2FuZGlkYXRlKSA9PiBjYW5kaWRhdGUuaWQgPT09IGFzc2Vzc21lbnQuc3RlcElkKQogICAgICAgIGlmIChzdGVwKSB7CiAgICAgICAgICBjb25zdCBhY3RpdmUgPSB0aGlzLm9wdGlvbnMuYWN0aXZlU3RlcHMoKS5maW5kKChjYW5kaWRhdGUpID0+ICgKICAgICAgICAgICAgY2FuZGlkYXRlLnJ1bklkID09PSBydW4ucnVuSWQKICAgICAgICAgICAgJiYgY2FuZGlkYXRlLndvcmtmbG93SWQgPT09IHJ1bi53b3JrZmxvd0lkCiAgICAgICAgICAgICYmIGNhbmRpZGF0ZS5zdGVwSWQgPT09IHN0ZXAuaWQKICAgICAgICAgICkpCiAgICAgICAgICBhd2FpdCB0aGlzLm9wdGlvbnMuc2hvd01hbnVhbFN0ZXBQYW5lbCh7IHdvcmtmbG93LCBydW4sIHN0ZXAsIGFjdGl2ZSB9KQogICAgICAgICAgcmV0dXJuIHJ1bgogICAgICAgIH0KICAgICAgfQogICAgICBpZiAoIWxpdmVHYXRlKSB7CiAgICAgICAgY29uc3QgbWVzc2FnZSA9IGFzc2Vzc21lbnQua2luZCA9PT0gImRldGFjaGVkLXJlc3VtYWJsZSIKICAgICAgICAgID8gYEN1cnJlbnQgaGVsZCBydW4gaXMgZGV0YWNoZWQuIFVzZSB3b3JrZmxvd1JlZ2lzdGVyLnJlY292ZXJEZXRhY2hlZEhlbGRSdW4gYWZ0ZXIgcmV2aWV3aW5nIHRoZSByZWNvdmVyeSBwcmV2aWV3OiAke3J1bi5ydW5JZH1gCiAgICAgICAgICA6IGBDdXJyZW50IGhlbGQgcnVuIHJlcXVpcmVzICcke2Fzc2Vzc21lbnQucHJpbWFyeUFjdGlvbi5sYWJlbH0nIGJlZm9yZSBpdCBjYW4gcmVzdW1lOiAke3J1bi5ydW5JZH1gCiAgICAgICAgYXdhaXQgdnNjb2RlLndpbmRvdy5zaG93V2FybmluZ01lc3NhZ2UobWVzc2FnZSkKICAgICAgICByZXR1cm4gbWVzc2FnZQogICAgICB9CiAgICB9Cg=="
           path = Path("extensions/workflow-register/src/workflowRunCommands.ts")
           text = path.read_text(encoding="utf-8")
-          old = '''    const workflow = this.options.coreWorkflows.get(run.workflowId)
-    if (!workflow) throw new Error(`Workflow definition is not loaded: ${run.workflowId}`)
-    if (mode === "resume" && run.status === "held") {
-      const assessment = await this.assessHeldRunRecovery(root, run, workflow)
-      if (assessment.kind === "connected") {
-        const step = workflow.engineSteps.find((candidate) => candidate.id === assessment.stepId)
-        if (step) {
-          const active = this.options.activeSteps().find((candidate) => (
-            candidate.runId === run.runId
-            && candidate.workflowId === run.workflowId
-            && candidate.stepId === step.id
-          ))
-          await this.options.showManualStepPanel({ workflow, run, step, active })
-          return run
-        }
-      }
-      const message = assessment.kind === "detached-resumable"
-        ? `Current held run is detached. Use workflowRegister.recoverDetachedHeldRun after reviewing the recovery preview: ${run.runId}`
-        : `Current held run requires '${assessment.primaryAction.label}' before it can resume: ${run.runId}`
-      await vscode.window.showWarningMessage(message)
-      return message
-    }
-    const liveGate = this.options.gateRegistry.pendingForRun(root, runId)
-'''
-          new = '''    const workflow = this.options.coreWorkflows.get(run.workflowId)
-    if (!workflow) throw new Error(`Workflow definition is not loaded: ${run.workflowId}`)
-    const liveGate = this.options.gateRegistry.pendingForRun(root, runId)
-    if (mode === "resume" && run.status === "held") {
-      const assessment = await this.assessHeldRunRecovery(root, run, workflow)
-      if (assessment.kind === "connected") {
-        const step = workflow.engineSteps.find((candidate) => candidate.id === assessment.stepId)
-        if (step) {
-          const active = this.options.activeSteps().find((candidate) => (
-            candidate.runId === run.runId
-            && candidate.workflowId === run.workflowId
-            && candidate.stepId === step.id
-          ))
-          await this.options.showManualStepPanel({ workflow, run, step, active })
-          return run
-        }
-      }
-      if (!liveGate) {
-        const message = assessment.kind === "detached-resumable"
-          ? `Current held run is detached. Use workflowRegister.recoverDetachedHeldRun after reviewing the recovery preview: ${run.runId}`
-          : `Current held run requires '${assessment.primaryAction.label}' before it can resume: ${run.runId}`
-        await vscode.window.showWarningMessage(message)
-        return message
-      }
-    }
-'''
+          old = base64.b64decode(old_b64).decode("utf-8")
+          new = base64.b64decode(new_b64).decode("utf-8")
           if old not in text:
               raise SystemExit("live held resume anchor not found")
           path.write_text(text.replace(old, new, 1), encoding="utf-8")
