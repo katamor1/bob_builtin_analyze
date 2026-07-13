@@ -120,7 +120,8 @@
     "watch": "tsc -watch -p ./",
     "vscode:prepublish": "npm run compile",
     "package": "vsce package",
-    "package:policy": "node scripts/check-vsix-policy.js --max-bytes 350000",
+    "package:policy": "node scripts/check-vsix-policy.js --max-bytes 12000000",
+    "package:smoke": "node --test test/package/ruleAuthoringPackageSmoke.test.js",
     "package:metrics": "node scripts/report-vsix-metrics.js ."
   },
   "devDependencies": {
@@ -134,7 +135,11 @@
     "typescript": "^5.4.5"
   },
   "dependencies": {
-    "js-yaml": "^4.1.0"
+    "ajv": "^8.17.1",
+    "cheerio": "^1.0.0",
+    "js-yaml": "^4.1.0",
+    "mammoth": "^1.8.0",
+    "read-excel-file": "^9.2.0"
   },
   "knip": {
     "entry": [

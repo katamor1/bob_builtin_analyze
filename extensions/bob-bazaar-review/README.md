@@ -333,6 +333,7 @@ npm run audit:prod
 npm test
 npm run package
 npm run package:policy
+npm run package:smoke
 npm run package:metrics
 ```
 
@@ -358,7 +359,9 @@ review-result、packet、triage、record、Review Runにはレビュー対象や
 
 ### VSIX サイズ
 
-`npm run package:policy`はVSIXの上限を`350000` bytesとして検証します。`out/**/*.map`と開発用`docs/**`はVSIXへ同梱しません。
+`npm run package:policy`はVSIXの上限を`12000000` bytesとして検証し、`npm run package:smoke`はpackage生成後のruntime entryを検証します。`out/**/*.map`と開発用`docs/**`はVSIXへ同梱しません。
+
+実行時依存は`ajv`、`cheerio`、`js-yaml`、`mammoth`、`read-excel-file`です。VSIXには各packageの実行用JavaScript / JSONとtransitive dependencyを含め、tests、docs、source maps、型宣言は含めません。
 
 ### 暗黙依存
 
