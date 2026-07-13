@@ -237,10 +237,13 @@ function renderRun(run: OperationHubRunSummary): string {
 function renderStepProvenanceList(run: OperationHubRunSummary): string {
   const steps = run.stepProvenance ?? []
   if (steps.length === 0) return ""
+  const omitted = run.stepProvenanceOmittedCount > 0
+    ? `<div class="muted">${run.stepProvenanceOmittedCount} more step(s); see Run Diagnostics</div>`
+    : ""
   return `<div class="step-list">${steps.map((step) => `<div class="step-provenance${step.reused ? " reused" : ""}">
     <div class="step-heading"><code>${escapeHtml(step.stepId)} · ${escapeHtml(step.title)}</code><span class="badge ${step.reused ? "ok" : "info"}">${escapeHtml(step.completionLabel)}</span></div>
     ${step.detail ? `<div class="muted">${escapeHtml(step.detail)}</div>` : ""}
-  </div>`).join("")}</div>`
+  </div>`).join("")}${omitted}</div>`
 }
 
 function renderArtifact(artifact: OperationHubArtifactSummary): string {

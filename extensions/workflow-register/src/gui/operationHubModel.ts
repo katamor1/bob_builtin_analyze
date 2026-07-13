@@ -141,6 +141,7 @@ export interface OperationHubRunSummary {
   taskSnapshotImportLabel?: string
   taskSnapshotImportStatus?: OperationHubStatus
   stepProvenance?: OperationHubStepProvenanceSummary[]
+  stepProvenanceOmittedCount: number
   completedStepCount: number
   totalStepCount: number
   updatedAt: string
@@ -210,6 +211,7 @@ export function summarizeRunForHub(
   const artifactReuse = summarizeArtifactReuse(run)
   const taskSnapshotImport = summarizeTaskSnapshotImport(run)
   const provenance = projectWorkflowRunProvenance(run)
+  const stepProvenance = provenance.steps.slice(0, 8).map(toOperationHubStepProvenance)
   return {
     runId: run.runId,
     workflowId: run.workflowId,
@@ -225,7 +227,8 @@ export function summarizeRunForHub(
     artifactReuseStatus: artifactReuse?.status,
     taskSnapshotImportLabel: taskSnapshotImport?.label,
     taskSnapshotImportStatus: taskSnapshotImport?.status,
-    stepProvenance: provenance.steps.map(toOperationHubStepProvenance),
+    stepProvenance,
+    stepProvenanceOmittedCount: Math.max(0, provenance.steps.length - stepProvenance.length),
     completedStepCount,
     totalStepCount: run.steps.length,
     updatedAt: run.updatedAt,

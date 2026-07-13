@@ -223,22 +223,29 @@ function recordFromUnknown(value: unknown): Record<string, unknown> | undefined 
 }
 
 function stringArray(value: unknown): string[] {
-  return Array.isArray(value) ? unique(value.filter(isNonEmptyString)) : []
+  return Array.isArray(value) ? unique(value.filter(isMetadataString)) : []
 }
 
 function optionalString(value: unknown): string | undefined {
-  return isNonEmptyString(value) ? value : undefined
+  return isMetadataString(value) ? value : undefined
 }
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0
 }
 
+function isMetadataString(value: unknown): value is string {
+  return typeof value === "string"
+    && value.trim().length > 0
+    && value.length <= 256
+    && !/[\u0000-\u001f\u007f]/.test(value)
+}
+
 function unique(values: readonly string[]): string[] {
   const seen = new Set<string>()
   const result: string[] = []
   for (const value of values) {
-    if (!isNonEmptyString(value) || seen.has(value)) continue
+    if (!isMetadataString(value) || seen.has(value)) continue
     seen.add(value)
     result.push(value)
   }
