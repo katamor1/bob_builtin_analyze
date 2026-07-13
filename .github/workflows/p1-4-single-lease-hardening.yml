@@ -1,0 +1,100 @@
+name: p1-4-single-lease-hardening
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/p1-4-single-lease-hardening.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Apply single-lease guarded resume
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          engine_path = Path("extensions/workflow-register/src/core/engine.ts")
+          engine = engine_path.read_text(encoding="utf-8")
+          resume_anchor = '''  async resumeRun(runId: string, options: ResumeRunOptions): Promise<WorkflowRunState> {\n    return coordinateWorkflowRunExecution(\n      this.runStore,\n      runId,\n      resumeRunOperationKey(options),\n      () => this.resumeRunOwned(runId, options)\n    )\n  }\n\n  private async resumeRunOwned(runId: string, options: ResumeRunOptions): Promise<WorkflowRunState> {\n    const run = await this.runStore.loadRun(runId)\n    if (!run) throw new Error(`Workflow run not found: ${runId}`)\n'''
+          resume_replacement = '''  async resumeRun(runId: string, options: ResumeRunOptions): Promise<WorkflowRunState> {\n    return coordinateWorkflowRunExecution(\n      this.runStore,\n      runId,\n      resumeRunOperationKey(options),\n      () => this.resumeRunOwned(runId, options)\n    )\n  }\n\n  async resumeRunGuarded(\n    runId: string,\n    options: ResumeRunOptions,\n    hooks: {\n      beforeResume: (run: WorkflowRunState) => Promise<void> | void\n      afterResume?: (run: WorkflowRunState) => Promise<void> | void\n    }\n  ): Promise<WorkflowRunState> {\n    return coordinateWorkflowRunExecution(\n      this.runStore,\n      runId,\n      `${resumeRunOperationKey(options)}:guarded`,\n      async () => {\n        const run = await this.runStore.loadRun(runId)\n        if (!run) throw new Error(`Workflow run not found: ${runId}`)\n        await hooks.beforeResume(run)\n        const result = await this.resumeLoadedRunOwned(run, options)\n        if (hooks.afterResume) {\n          await hooks.afterResume(result)\n          await this.runStore.saveRun(result)\n        }\n        return result\n      }\n    )\n  }\n\n  private async resumeRunOwned(runId: string, options: ResumeRunOptions): Promise<WorkflowRunState> {\n    const run = await this.runStore.loadRun(runId)\n    if (!run) throw new Error(`Workflow run not found: ${runId}`)\n    return this.resumeLoadedRunOwned(run, options)\n  }\n\n  private async resumeLoadedRunOwned(run: WorkflowRunState, options: ResumeRunOptions): Promise<WorkflowRunState> {\n    const runId = run.runId\n'''
+          assert resume_anchor in engine
+          engine = engine.replace(resume_anchor, resume_replacement, 1)
+          engine_path.write_text(engine, encoding="utf-8")
+
+          commands_path = Path("extensions/workflow-register/src/workflowRunCommands.ts")
+          commands = commands_path.read_text(encoding="utf-8")
+          old_block = '''      () => coordinateWorkflowRunExecution(runStore, selection.runId, "recoverDetachedHeldRun", async () => {\n        if (expectedRevision) await assertOperationHubRunRevision(selection.root, selection.runId, expectedRevision)\n        const freshRun = await runStore.loadRun(selection.runId)\n        if (!freshRun) throw new Error(`Workflow run not found: ${selection.runId}`)\n        const workflow = this.options.coreWorkflows.get(freshRun.workflowId)\n        if (!workflow) throw new Error(`Workflow definition is not loaded: ${freshRun.workflowId}`)\n        const freshAssessment = await this.assessHeldRunRecovery(selection.root, freshRun, workflow)\n        if (freshAssessment.kind !== "detached-resumable") {\n          throw new Error(`Held run recovery classification changed to '${freshAssessment.kind}'; refresh Operation Hub before retrying.`)\n        }\n        const heldStepId = freshAssessment.stepId\n        if (!heldStepId) throw new Error("Detached held run has no recoverable held step.")\n        const agentProvider = reviewTaskRegistry.agentProviderForRun(selection.root, freshRun.runId, workflow)\n        const engine = this.options.runtimeFactory.createEngine(selection.root, agentProvider)\n        const result = await engine.resumeRun(selection.runId, {\n          workflow,\n          completeHeldStep: true,\n          executionMode: "singleStep"\n        })\n        result.state[HELD_RECOVERY_STATE_KEY] = JSON.stringify(createHeldRunRecoveryProvenance({\n          runId: result.runId,\n          stepId: heldStepId,\n          nextStepId: freshAssessment.nextStepId,\n          recoveredAt: new Date().toISOString(),\n          source: "operation-hub"\n        }))\n        await this.reconcileBobTask(selection.root, result, workflow, "operation-hub-resume")\n        await vscode.window.showInformationMessage(`Detached held run recovered: ${result.runId}`)\n        return result\n      })\n'''
+          new_block = '''      async () => {\n        if (expectedRevision) await assertOperationHubRunRevision(selection.root, selection.runId, expectedRevision)\n        const currentRun = await runStore.loadRun(selection.runId)\n        if (!currentRun) throw new Error(`Workflow run not found: ${selection.runId}`)\n        const workflow = this.options.coreWorkflows.get(currentRun.workflowId)\n        if (!workflow) throw new Error(`Workflow definition is not loaded: ${currentRun.workflowId}`)\n        const agentProvider = reviewTaskRegistry.agentProviderForRun(selection.root, currentRun.runId, workflow)\n        const engine = this.options.runtimeFactory.createEngine(selection.root, agentProvider)\n        let validatedAssessment: HeldRunRecoveryAssessment | undefined\n        const result = await engine.resumeRunGuarded(\n          selection.runId,\n          { workflow, completeHeldStep: true, executionMode: "singleStep" },\n          {\n            beforeResume: async (freshRun) => {\n              const freshAssessment = await this.assessHeldRunRecovery(selection.root, freshRun, workflow)\n              if (freshAssessment.kind !== "detached-resumable") {\n                throw new Error(`Held run recovery classification changed to '${freshAssessment.kind}'; refresh Operation Hub before retrying.`)\n              }\n              if (!freshAssessment.stepId) throw new Error("Detached held run has no recoverable held step.")\n              validatedAssessment = freshAssessment\n            },\n            afterResume: (resumedRun) => {\n              const assessment = validatedAssessment\n              if (!assessment?.stepId) throw new Error("Detached held recovery validation was not retained.")\n              resumedRun.state[HELD_RECOVERY_STATE_KEY] = JSON.stringify(createHeldRunRecoveryProvenance({\n                runId: resumedRun.runId,\n                stepId: assessment.stepId,\n                nextStepId: assessment.nextStepId,\n                recoveredAt: new Date().toISOString(),\n                source: "operation-hub"\n              }))\n            }\n          }\n        )\n        await this.reconcileBobTask(selection.root, result, workflow, "operation-hub-resume")\n        await vscode.window.showInformationMessage(`Detached held run recovered: ${result.runId}`)\n        return result\n      }\n'''
+          assert old_block in commands
+          commands = commands.replace(old_block, new_block, 1)
+          commands_path.write_text(commands, encoding="utf-8")
+
+          test_path = Path("extensions/workflow-register/test/detachedHeldRecoveryCommand.test.js")
+          test = test_path.read_text(encoding="utf-8")
+          test = test.replace('  const lease = body.indexOf(\'"recoverDetachedHeldRun"\')\n', '  const guardedResume = body.indexOf("resumeRunGuarded")\n')
+          test = test.replace('  assert.ok(lease > gate)\n  assert.ok(secondClassification > lease)\n', '  assert.ok(guardedResume > gate)\n  assert.ok(secondClassification > guardedResume)\n')
+          test = test.replace('  assert.ok(provenance > resume)\n', '  assert.ok(provenance > secondClassification)\n')
+          test = test.replace('  assert.match(body, /executionMode: "singleStep"/)\n', '  assert.match(body, /executionMode: "singleStep"/)\n  assert.doesNotMatch(body, /coordinateWorkflowRunExecution\(runStore, selection\.runId, "recoverDetachedHeldRun"/)\n')
+          test_path.write_text(test, encoding="utf-8")
+          PY
+
+      - name: Verify focused contracts
+        id: focused
+        working-directory: extensions/workflow-register
+        shell: bash
+        run: |
+          set +e
+          npm ci --silent > "$RUNNER_TEMP/p1-4-single-lease.log" 2>&1
+          status=$?
+          if [ "$status" -eq 0 ]; then npm run compile --silent >> "$RUNNER_TEMP/p1-4-single-lease.log" 2>&1; status=$?; fi
+          if [ "$status" -eq 0 ]; then
+            node --test \
+              test/workflowEngineGuardedResume.test.js \
+              test/detachedHeldRecoveryCommand.test.js \
+              test/heldRunRecoveryClassifier.test.js \
+              test/heldRecoveryDiagnostics.test.js \
+              test/workflowRunRecovery.test.js \
+              test/workflowRunExecutionCoordinator.test.js >> "$RUNNER_TEMP/p1-4-single-lease.log" 2>&1
+            status=$?
+          fi
+          if [ "$status" -ne 0 ]; then
+            grep -n -B 40 -A 140 -E "not ok|AssertionError|error TS|Error:" "$RUNNER_TEMP/p1-4-single-lease.log" || tail -n 260 "$RUNNER_TEMP/p1-4-single-lease.log"
+          else
+            tail -n 40 "$RUNNER_TEMP/p1-4-single-lease.log"
+          fi
+          exit "$status"
+
+      - name: Upload focused failure log
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: p1-4-single-lease-focused-log
+          path: ${{ runner.temp }}/p1-4-single-lease.log
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Commit verified hardening
+        if: success()
+        shell: bash
+        run: |
+          rm .github/workflows/p1-4-single-lease-hardening.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "fix: keep held recovery in one execution lease"
+          git push origin HEAD:${{ github.head_ref }}
