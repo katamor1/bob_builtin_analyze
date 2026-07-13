@@ -121,7 +121,7 @@ test("Operation Hub provider gathers compatible runtime evidence", () => {
   const extension = readSrc("extension.ts")
   assert.match(provider, /classifyHeldRunRecovery/)
   assert.match(provider, /reviewTaskRegistry\.taskForRun/)
-  assert.match(provider, /this\.options\.activeSteps\(\)/)
+  assert.match(provider, /this\.options\.activeSteps\?\.\(\)/)
   assert.doesNotMatch(provider, /activeManualStepAvailable: Boolean\(reviewTaskRegistry\.taskForStep/)
   assert.match(provider, /validateWorkflowArtifactManifest/)
   assert.match(provider, /snapshot\.workflowId === run\.workflowId/)
