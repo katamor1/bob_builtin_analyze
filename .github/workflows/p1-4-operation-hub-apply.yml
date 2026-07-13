@@ -101,20 +101,46 @@ jobs:
           PY
 
       - name: Verify focused contracts
+        id: focused
         working-directory: extensions/workflow-register
+        shell: bash
         run: |
-          npm ci --silent
-          npm run compile --silent
-          node --test \
-            test/heldRunRecoveryClassifier.test.js \
-            test/operationHubHeldRecovery.test.js \
-            test/operationHubArtifactReuse.test.js \
-            test/operationHubStepProvenance.test.js \
-            test/operationHubTodoSync.test.js \
-            test/operationHub.test.js \
-            test/operationHubMutations.test.js
+          set +e
+          npm ci --silent > "$RUNNER_TEMP/p1-4-focused.log" 2>&1
+          status=$?
+          if [ "$status" -eq 0 ]; then
+            npm run compile --silent >> "$RUNNER_TEMP/p1-4-focused.log" 2>&1
+            status=$?
+          fi
+          if [ "$status" -eq 0 ]; then
+            node --test \
+              test/heldRunRecoveryClassifier.test.js \
+              test/operationHubHeldRecovery.test.js \
+              test/operationHubArtifactReuse.test.js \
+              test/operationHubStepProvenance.test.js \
+              test/operationHubTodoSync.test.js \
+              test/operationHub.test.js \
+              test/operationHubMutations.test.js >> "$RUNNER_TEMP/p1-4-focused.log" 2>&1
+            status=$?
+          fi
+          if [ "$status" -ne 0 ]; then
+            grep -n -B 30 -A 100 -E "not ok|AssertionError|error TS|Error:" "$RUNNER_TEMP/p1-4-focused.log" || tail -n 180 "$RUNNER_TEMP/p1-4-focused.log"
+          else
+            tail -n 30 "$RUNNER_TEMP/p1-4-focused.log"
+          fi
+          exit "$status"
+
+      - name: Upload focused failure log
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: p1-4-operation-hub-focused-log
+          path: ${{ runner.temp }}/p1-4-focused.log
+          if-no-files-found: error
+          retention-days: 3
 
       - name: Commit verified implementation
+        if: success()
         shell: bash
         run: |
           rm .github/workflows/p1-4-operation-hub-apply.yml
