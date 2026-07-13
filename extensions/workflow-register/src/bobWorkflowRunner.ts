@@ -29,6 +29,7 @@ import type {
   WorkflowRunState
 } from "./core/model"
 import type { ResultSinkRegistry } from "./core/resultSinkRegistry"
+import { projectWorkflowRunProvenance, workflowRunProvenanceControlLines } from "./core/runProvenance"
 import type { RunControlStore } from "./core/runControlStore"
 import type { RunStateStore } from "./core/runStateStore"
 import {
@@ -344,7 +345,8 @@ export class BobWorkflowEngineRunner {
         stepId: step?.id,
         status: run.status,
         currentStep: run.currentStep,
-        includeResume
+        includeResume,
+        provenanceLines: workflowRunProvenanceControlLines(projectWorkflowRunProvenance(run))
       }), "user")
     }
     const reconcileBobTodo = async (workflow: CoreWorkflowDefinition, run: WorkflowRunState, step: EngineStep | undefined, alreadyApplied: boolean) => {

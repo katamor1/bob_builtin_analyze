@@ -16,6 +16,7 @@ export interface WorkflowControlBlockInput {
   status?: string
   currentStep?: string
   includeResume?: boolean
+  provenanceLines?: readonly string[]
 }
 
 export function buildWorkflowControlBlock(input: WorkflowControlBlockInput): string {
@@ -35,6 +36,11 @@ export function buildWorkflowControlBlock(input: WorkflowControlBlockInput): str
     "- 状態に応じて「承認して次へ」「再試行」「再開」「手順を開く」「詳細」を選択してください。"
   ]
   if (input.includeResume) lines.push("- 一時停止中の run は Run Monitor の「再開」から続行してください。")
+  const provenanceLines = (input.provenanceLines ?? [])
+  .map((line) => line.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim())
+  .filter((line) => line.length > 0)
+  .slice(0, 12)
+  if (provenanceLines.length > 0) lines.push("", "Workflow provenance:", ...provenanceLines.map((line) => `- ${line}`))
   lines.push(
     "</workflow_controls>",
     "",

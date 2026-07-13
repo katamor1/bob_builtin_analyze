@@ -116,6 +116,40 @@ export function projectWorkflowRunProvenance(run: WorkflowRunState): WorkflowRun
   }
 }
 
+export function workflowRunProvenanceControlLines(
+  provenance: WorkflowRunProvenanceProjection,
+  maxItems = 20
+): string[] {
+  const limit = Math.max(1, Math.min(50, Math.floor(maxItems)))
+  const verifiedArtifacts = unique(provenance.steps
+    .filter((step) => step.artifactVerified)
+    .flatMap((step) => step.artifactIds))
+  const lines = [
+    provenance.sourceRunId ? `Reused from run: ${safeControlToken(provenance.sourceRunId)}` : undefined,
+    provenance.startStepId ? `Reuse start step: ${safeControlToken(provenance.startStepId)}` : undefined,
+    boundedControlList("Reused steps", provenance.reusedStepIds, limit),
+    boundedControlList("Verified artifacts", verifiedArtifacts, limit),
+    boundedControlList("Hydrated state keys", provenance.hydratedStateKeys, limit),
+    provenance.taskSnapshotImportCount > 0
+      ? `Imported from task snapshot: ${provenance.taskSnapshotImportCount} artifact(s)`
+      : undefined,
+    provenance.definitionMismatchAllowed ? "Definition mismatch allowed: yes" : undefined
+  ]
+  return lines.filter((value): value is string => Boolean(value))
+}
+
+function boundedControlList(label: string, values: readonly string[], limit: number): string | undefined {
+  const safeValues = unique(values.map(safeControlToken).filter(isNonEmptyString))
+  if (safeValues.length === 0) return undefined
+  const shown = safeValues.slice(0, limit)
+  const remaining = safeValues.length - shown.length
+  return `${label}: ${shown.join(", ")}${remaining > 0 ? ` (+${remaining} more)` : ""}`
+}
+
+function safeControlToken(value: string): string {
+  return value.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, 160)
+}
+
 function parseArtifactReuse(value: unknown): ArtifactReuseRecordLike | undefined {
   const record = parseRecord(value)
   if (!record) return undefined
