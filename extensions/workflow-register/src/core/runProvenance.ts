@@ -7,6 +7,7 @@ import {
 import {
   TASK_SNAPSHOT_IMPORT_STATE_KEY
 } from "./artifacts/taskSnapshotImport"
+import { HELD_RECOVERY_STATE_KEY } from "./heldRunRecovery"
 import type { RunStepState, WorkflowRunState } from "./model"
 
 export type WorkflowStepCompletionSource = "normal" | "reused" | "not-completed"
@@ -24,6 +25,15 @@ export interface WorkflowStepProvenanceProjection {
   importedFromTaskSnapshot: boolean
 }
 
+export interface WorkflowHeldRecoveryProjection {
+  kind: "saved-state"
+  runId: string
+  stepId: string
+  nextStepId?: string
+  recoveredAt: string
+  source: "operation-hub"
+}
+
 export interface WorkflowRunProvenanceProjection {
   sourceRunId?: string
   startStepId?: string
@@ -33,6 +43,7 @@ export interface WorkflowRunProvenanceProjection {
   definitionMismatchAllowed: boolean
   taskSnapshotImportCount: number
   taskSnapshotImportedAt?: string
+  heldRecovery?: WorkflowHeldRecoveryProjection
   steps: WorkflowStepProvenanceProjection[]
 }
 
@@ -70,6 +81,7 @@ export function projectWorkflowRunProvenance(run: WorkflowRunState): WorkflowRun
   const reuse = parseArtifactReuse(run.state[ARTIFACT_REUSE_STATE_KEY])
   const hydration = parseArtifactHydration(run.state[ARTIFACT_HYDRATION_STATE_KEY])
   const taskSnapshotImport = parseTaskSnapshotImport(run.state[TASK_SNAPSHOT_IMPORT_STATE_KEY])
+  const heldRecovery = parseHeldRecovery(run.state[HELD_RECOVERY_STATE_KEY], run.runId)
   const reusedStepIds = unique(reuse?.reusedStepIds ?? [])
   const reusedStepSet = new Set(reusedStepIds)
   const hydrationEntries = hydration?.hydrated ?? []
@@ -91,6 +103,7 @@ export function projectWorkflowRunProvenance(run: WorkflowRunState): WorkflowRun
     definitionMismatchAllowed: Boolean(parseRecord(run.state["workflow.definitionMismatch"])),
     taskSnapshotImportCount: snapshotEntries.length,
     taskSnapshotImportedAt: taskSnapshotImport?.importedAt,
+    heldRecovery,
     steps: run.steps.map((step) => {
       const reused = reusedStepSet.has(step.id)
       const stepHydration = hydrationEntries.filter((entry) => entry.producedBy === step.id)
@@ -204,6 +217,26 @@ function parseTaskSnapshotImport(value: unknown): TaskSnapshotImportRecordLike |
   return {
     importedAt: optionalString(record.importedAt),
     imported: entries
+  }
+}
+
+function parseHeldRecovery(value: unknown, expectedRunId: string): WorkflowHeldRecoveryProjection | undefined {
+  const record = parseRecord(value)
+  if (!record) return undefined
+  if (record.schemaVersion !== "workflow-register/held-recovery/v1") return undefined
+  if (record.kind !== "saved-state" || record.source !== "operation-hub") return undefined
+  const runId = optionalString(record.runId)
+  const stepId = optionalString(record.stepId)
+  const nextStepId = optionalString(record.nextStepId)
+  const recoveredAt = optionalString(record.recoveredAt)
+  if (!runId || runId !== expectedRunId || !stepId || !recoveredAt) return undefined
+  return {
+    kind: "saved-state",
+    runId,
+    stepId,
+    nextStepId,
+    recoveredAt,
+    source: "operation-hub"
   }
 }
 
