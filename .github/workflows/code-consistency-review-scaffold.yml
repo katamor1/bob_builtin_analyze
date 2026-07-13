@@ -107,5 +107,3 @@ jobs:
 
       - name: VSIX policy
         run: npm run package:policy
-
-# P1-3 final verification trigger
