@@ -72,6 +72,10 @@ export function renderOperationHubHtml(input: RenderOperationHubHtmlInput): stri
     .progress { margin-top: 6px; height: 6px; border: 1px solid var(--vscode-panel-border); background: var(--vscode-editor-background); }
     .progress span { display: block; height: 100%; background: var(--vscode-progressBar-background); }
     .artifact { display: flex; justify-content: space-between; align-items: center; gap: 6px; border-top: 1px solid var(--vscode-panel-border); padding-top: 6px; margin-top: 6px; }
+    .step-list { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+  .step-provenance { border-left: 2px solid var(--vscode-panel-border); padding-left: 7px; }
+  .step-provenance.reused { border-left-color: var(--vscode-testing-iconPassed); }
+  .step-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
     code { font-family: var(--vscode-editor-font-family); font-size: 11px; overflow-wrap: anywhere; }
     @media (max-width: 760px) {
       .panel-shell { grid-template-columns: 1fr; }
@@ -224,9 +228,19 @@ function renderRun(run: OperationHubRunSummary): string {
     <div class="muted"><span class="run-badges">${syncBadge}${manifestBadge}${reuseBadge}${taskSnapshotImportBadge}</span></div>
     <div class="progress" aria-label="progress"><span style="width:${percent}%"></span></div>
     <div class="muted">${run.completedStepCount}/${run.totalStepCount} step / updated ${escapeHtml(run.updatedAt)}</div>
+    ${renderStepProvenanceList(run)}
     <div class="actions">${run.primaryActions.map(renderActionButton).join("")}</div>
     ${run.artifacts.map(renderArtifact).join("")}
   </article>`
+}
+
+function renderStepProvenanceList(run: OperationHubRunSummary): string {
+  const steps = run.stepProvenance ?? []
+  if (steps.length === 0) return ""
+  return `<div class="step-list">${steps.map((step) => `<div class="step-provenance${step.reused ? " reused" : ""}">
+    <div class="step-heading"><code>${escapeHtml(step.stepId)} · ${escapeHtml(step.title)}</code><span class="badge ${step.reused ? "ok" : "info"}">${escapeHtml(step.completionLabel)}</span></div>
+    ${step.detail ? `<div class="muted">${escapeHtml(step.detail)}</div>` : ""}
+  </div>`).join("")}</div>`
 }
 
 function renderArtifact(artifact: OperationHubArtifactSummary): string {

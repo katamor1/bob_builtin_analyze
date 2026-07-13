@@ -7,6 +7,7 @@ import {
   type WorkflowArtifactManifest
 } from "../core/artifacts"
 import type { CoreWorkflowDefinition, WorkflowRunState } from "../core/model"
+import { projectWorkflowRunProvenance, type WorkflowStepProvenanceProjection } from "../core/runProvenance"
 import { isWorkflowRunStateWritable } from "../core/runStateStore"
 
 export const OPERATION_HUB_ALLOWED_ACTIONS = [
@@ -114,6 +115,16 @@ export interface OperationHubArtifactSummary {
   action: OperationHubAction
 }
 
+export interface OperationHubStepProvenanceSummary {
+  stepId: string
+  title: string
+  status: string
+  completionLabel: string
+  detail: string
+  reused: boolean
+}
+
+
 export interface OperationHubRunSummary {
   runId: string
   workflowId: string
@@ -129,6 +140,7 @@ export interface OperationHubRunSummary {
   artifactReuseStatus?: OperationHubStatus
   taskSnapshotImportLabel?: string
   taskSnapshotImportStatus?: OperationHubStatus
+  stepProvenance?: OperationHubStepProvenanceSummary[]
   completedStepCount: number
   totalStepCount: number
   updatedAt: string
@@ -197,6 +209,7 @@ export function summarizeRunForHub(
   const manifest = artifactManifestForRun(run)
   const artifactReuse = summarizeArtifactReuse(run)
   const taskSnapshotImport = summarizeTaskSnapshotImport(run)
+  const provenance = projectWorkflowRunProvenance(run)
   return {
     runId: run.runId,
     workflowId: run.workflowId,
@@ -212,6 +225,7 @@ export function summarizeRunForHub(
     artifactReuseStatus: artifactReuse?.status,
     taskSnapshotImportLabel: taskSnapshotImport?.label,
     taskSnapshotImportStatus: taskSnapshotImport?.status,
+    stepProvenance: provenance.steps.map(toOperationHubStepProvenance),
     completedStepCount,
     totalStepCount: run.steps.length,
     updatedAt: run.updatedAt,
@@ -411,10 +425,35 @@ function looksLikeArtifactPath(value: string): boolean {
   return /^\.bob[/-]/i.test(trimmed) || /^\.bob-/i.test(trimmed) || /\.(md|json|ya?ml|txt|csv|html)$/i.test(trimmed) || path.isAbsolute(trimmed)
 }
 
+function toOperationHubStepProvenance(step: WorkflowStepProvenanceProjection): OperationHubStepProvenanceSummary {
+  const completionLabel = step.completion === "reused"
+    ? "Reused"
+    : step.runStatus === "completed"
+      ? "Completed"
+      : step.runStatus.charAt(0).toUpperCase() + step.runStatus.slice(1)
+  const detail = [
+    step.skippedByArtifactReuse ? "Skipped by artifact reuse" : undefined,
+    step.sourceRunId ? `from ${step.sourceRunId}` : undefined,
+    step.artifactVerified ? "Artifact verified" : undefined,
+    step.importedFromTaskSnapshot ? "Imported from task snapshot" : undefined,
+    step.artifactIds.length > 0 ? `artifacts ${step.artifactIds.join(", ")}` : undefined,
+    step.hydratedStateKeys.length > 0 ? `hydrated ${step.hydratedStateKeys.join(", ")}` : undefined
+  ].filter((value): value is string => Boolean(value)).join(" · ")
+  return {
+    stepId: step.stepId,
+    title: step.title,
+    status: step.runStatus,
+    completionLabel,
+    detail,
+    reused: step.completion === "reused"
+  }
+}
+
 function summarizeBobTaskSync(run: WorkflowRunState): { label: string; status: OperationHubStatus } {
   const sync = run.bobTaskSync
   const status = sync?.drift?.status ?? "unknown"
   const through = sync?.completedThroughStepId ? ` / through ${sync.completedThroughStepId}` : ""
+  if (status === "synced" && sync?.liveTaskAvailable === false) return { label: `Bob Todo: saved projection only; live task unavailable${through}`, status: "warning" }
   switch (status) {
     case "synced":
       return { label: `Bob Todo: synced${through}`, status: "ok" }
