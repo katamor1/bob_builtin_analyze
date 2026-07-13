@@ -104,6 +104,7 @@ test("dedicated recovery command preserves preview-confirm-gate-guarded-resume b
   assert.match(body, /completeHeldStep: true/)
   assert.match(body, /executionMode: "singleStep"/)
   assert.doesNotMatch(body, /coordinateWorkflowRunExecution\(runStore, selection\.runId, "recoverDetachedHeldRun"/)
+  assert.doesNotMatch(body, /coordinateWorkflowRunExecution\(runStore, selection\.runId, "recoverDetachedHeldRun"/)
 })
 
 test("ordinary resume guards held runs before completeHeldStep", () => {

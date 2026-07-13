@@ -560,36 +560,44 @@ export class WorkflowRunCommandService {
       selection.root,
       selection.runId,
       "held-recovery",
-      () => coordinateWorkflowRunExecution(runStore, selection.runId, "recoverDetachedHeldRun", async () => {
+      async () => {
         if (expectedRevision) await assertOperationHubRunRevision(selection.root, selection.runId, expectedRevision)
-        const freshRun = await runStore.loadRun(selection.runId)
-        if (!freshRun) throw new Error(`Workflow run not found: ${selection.runId}`)
-        const workflow = this.options.coreWorkflows.get(freshRun.workflowId)
-        if (!workflow) throw new Error(`Workflow definition is not loaded: ${freshRun.workflowId}`)
-        const freshAssessment = await this.assessHeldRunRecovery(selection.root, freshRun, workflow)
-        if (freshAssessment.kind !== "detached-resumable") {
-          throw new Error(`Held run recovery classification changed to '${freshAssessment.kind}'; refresh Operation Hub before retrying.`)
-        }
-        const heldStepId = freshAssessment.stepId
-        if (!heldStepId) throw new Error("Detached held run has no recoverable held step.")
-        const agentProvider = reviewTaskRegistry.agentProviderForRun(selection.root, freshRun.runId, workflow)
+        const currentRun = await runStore.loadRun(selection.runId)
+        if (!currentRun) throw new Error(`Workflow run not found: ${selection.runId}`)
+        const workflow = this.options.coreWorkflows.get(currentRun.workflowId)
+        if (!workflow) throw new Error(`Workflow definition is not loaded: ${currentRun.workflowId}`)
+        const agentProvider = reviewTaskRegistry.agentProviderForRun(selection.root, currentRun.runId, workflow)
         const engine = this.options.runtimeFactory.createEngine(selection.root, agentProvider)
-        const result = await engine.resumeRun(selection.runId, {
-          workflow,
-          completeHeldStep: true,
-          executionMode: "singleStep"
-        })
-        result.state[HELD_RECOVERY_STATE_KEY] = JSON.stringify(createHeldRunRecoveryProvenance({
-          runId: result.runId,
-          stepId: heldStepId,
-          nextStepId: freshAssessment.nextStepId,
-          recoveredAt: new Date().toISOString(),
-          source: "operation-hub"
-        }))
+        let validatedAssessment: HeldRunRecoveryAssessment | undefined
+        const result = await engine.resumeRunGuarded(
+          selection.runId,
+          { workflow, completeHeldStep: true, executionMode: "singleStep" },
+          {
+            beforeResume: async (freshRun) => {
+              const freshAssessment = await this.assessHeldRunRecovery(selection.root, freshRun, workflow)
+              if (freshAssessment.kind !== "detached-resumable") {
+                throw new Error(`Held run recovery classification changed to '${freshAssessment.kind}'; refresh Operation Hub before retrying.`)
+              }
+              if (!freshAssessment.stepId) throw new Error("Detached held run has no recoverable held step.")
+              validatedAssessment = freshAssessment
+            },
+            afterResume: (resumedRun) => {
+              const assessment = validatedAssessment
+              if (!assessment?.stepId) throw new Error("Detached held recovery validation was not retained.")
+              resumedRun.state[HELD_RECOVERY_STATE_KEY] = JSON.stringify(createHeldRunRecoveryProvenance({
+                runId: resumedRun.runId,
+                stepId: assessment.stepId,
+                nextStepId: assessment.nextStepId,
+                recoveredAt: new Date().toISOString(),
+                source: "operation-hub"
+              }))
+            }
+          }
+        )
         await this.reconcileBobTask(selection.root, result, workflow, "operation-hub-resume")
         await vscode.window.showInformationMessage(`Detached held run recovered: ${result.runId}`)
         return result
-      })
+      }
     )
   }
 
