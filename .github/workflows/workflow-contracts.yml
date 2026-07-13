@@ -101,3 +101,5 @@ jobs:
           path: ${{ runner.temp }}/workflow-contracts.log
           if-no-files-found: error
           retention-days: 3
+
+# P1-3 final verification trigger
