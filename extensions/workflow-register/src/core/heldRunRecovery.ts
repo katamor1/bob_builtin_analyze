@@ -116,9 +116,16 @@ export function classifyHeldRunRecovery(input: ClassifyHeldRunRecoveryInput): He
   const workflowStep = run.currentStep
     ? workflow?.engineSteps.find((step) => step.id === run.currentStep)
     : undefined
-  const missingRequiredStateKeys = workflowStep
-    ? requiredStateKeysMissing(workflowStep, run.state)
-    : []
+  const workflowCurrentIndex = workflowStep
+    ? workflow?.engineSteps.findIndex((step) => step.id === workflowStep.id) ?? -1
+    : -1
+  const nextWorkflowStep = workflowCurrentIndex >= 0
+    ? workflow?.engineSteps[workflowCurrentIndex + 1]
+    : undefined
+  const missingRequiredStateKeys = uniqueStrings([
+    ...(workflowStep ? requiredStateKeysMissing(workflowStep, run.state) : []),
+    ...(nextWorkflowStep ? requiredStateKeysMissing(nextWorkflowStep, run.state) : [])
+  ])
   const definitionCompatible = Boolean(workflow && definitionMatches(run, workflow) && stepOrderMatches(run, workflow))
   const evidence: HeldRunRecoveryEvidence = {
     liveTaskAvailable: input.liveTaskAvailable,
@@ -162,6 +169,7 @@ export function classifyHeldRunRecovery(input: ClassifyHeldRunRecoveryInput): He
   if (missingRequiredStateKeys.length > 0) {
     blockers.push(`Required workflow state is missing: ${missingRequiredStateKeys.join(", ")}.`)
   }
+  if (workflowStep?.type === "manual") blockers.push(...manualCompletionBlockers(workflowStep, run.state))
 
   if (blockers.length > 0) {
     if (input.artifactManifestAvailable) {
@@ -246,6 +254,56 @@ function stepOrderMatches(run: WorkflowRunState, workflow: CoreWorkflowDefinitio
     if (run.steps[index]?.id !== workflow.engineSteps[index]?.id) return false
   }
   return true
+}
+
+function manualCompletionBlockers(
+  step: Extract<EngineStep, { type: "manual" }>,
+  state: Record<string, string>
+): string[] {
+  const blockers: string[] = []
+  if (step.form?.resultKey) {
+    const raw = state[step.form.resultKey]
+    const value = raw === undefined ? undefined : parseStateValue(raw)
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      blockers.push(`Persisted manual form result '${step.form.resultKey}' is unavailable.`)
+    } else {
+      const record = value as Record<string, unknown>
+      for (const field of step.form.fields.filter((candidate) => candidate.required)) {
+        if (!manualFieldValuePresent(record[field.id])) {
+          blockers.push(`Required manual form field '${field.id}' is unavailable in '${step.form.resultKey}'.`)
+        }
+      }
+    }
+  }
+  if (step.approval?.resultKey) {
+    const raw = state[step.approval.resultKey]
+    const value = raw === undefined ? undefined : parseStateValue(raw)
+    const decision = value && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>).decision
+      : undefined
+    if (decision !== "approved" && decision !== "rejected") {
+      blockers.push(`Persisted manual approval result '${step.approval.resultKey}' is unavailable.`)
+    }
+  }
+  return blockers
+}
+
+function parseStateValue(value: string): unknown {
+  try {
+    return JSON.parse(value)
+  } catch {
+    return value
+  }
+}
+
+function manualFieldValuePresent(value: unknown): boolean {
+  if (value === undefined || value === null) return false
+  if (typeof value === "string") return value.trim().length > 0
+  return true
+}
+
+function uniqueStrings(values: readonly string[]): string[] {
+  return Array.from(new Set(values.filter((value) => value.trim().length > 0)))
 }
 
 function requiredStateKeysMissing(step: EngineStep, state: Record<string, string>): string[] {
