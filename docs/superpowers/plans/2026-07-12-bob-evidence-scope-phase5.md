@@ -102,7 +102,7 @@ Current-branch recovery RED checkpoint: `28b00c634a367540eb6ddd3a500cb5a4fdb2875
 - [x] VSIX package and policy.
 - [x] Review cache trust, Git immutability, path confinement, Windows replace behavior, and privacy.
 - [x] Write design, implementation, and verification checkpoint artifacts.
-- [ ] Refresh the domain contract and SHA-256 manifest after the final artifact-ledger phase.
+- [x] Refresh the domain contract and SHA-256 manifest after the final artifact-ledger phase.
 - [x] Commit Phase 5 implementation and checkpoint evidence to the draft PR branch.
-- [ ] Verify final GitHub Actions Linux/Windows matrix.
-- [ ] Synchronize PR title/body with Phase 5 results.
+- [x] Verify final GitHub Actions Linux/Windows matrix.
+- [x] Synchronize PR title/body with Phase 5 results.

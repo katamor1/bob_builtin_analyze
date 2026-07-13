@@ -1,6 +1,6 @@
 # Bob Evidence Scope Phase 6 Artifact Ledger Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Add a bounded persistent artifact ledger that records producer/review artifacts, dependency lineage, and stale-state propagation, then complete and verify the full `bob-evidence-scope` plan.
 
@@ -32,11 +32,11 @@
 - Consumes: `reconcileArtifactLedger(previous, input)`.
 - Produces required behavior for `ArtifactLedger`, `ArtifactObservation`, statuses, and stale reasons.
 
-- [ ] Write a failing test where changing the repository-index hash marks an unobserved dependent package stale.
-- [ ] Write a failing test where observing the rebuilt package in the same reconciliation keeps it fresh.
-- [ ] Write failing tests for missing upstream, source revision change, deterministic ordering, duplicate/self dependency, and no-body metadata shape.
-- [ ] Run `npm run compile && node --test test/artifactLedger.test.js`; verify failure because the ledger module does not exist.
-- [ ] Commit the RED contract.
+- [x] Write a failing test where changing the repository-index hash marks an unobserved dependent package stale.
+- [x] Write a failing test where observing the rebuilt package in the same reconciliation keeps it fresh.
+- [x] Write failing tests for missing upstream, source revision change, deterministic ordering, duplicate/self dependency, and no-body metadata shape.
+- [x] Run `npm run compile && node --test test/artifactLedger.test.js`; verify failure because the ledger module does not exist.
+- [x] Commit the RED contract.
 
 ### Task 2: Implement the pure ledger model and bounded persistence
 
@@ -49,13 +49,13 @@
 - Produces: `reconcileArtifactLedger`, `loadArtifactLedger`, `writeArtifactLedger`, `updateArtifactLedger`.
 - Produces: `ArtifactLedger`, `ArtifactLedgerRecord`, `ArtifactObservation`, `ArtifactLedgerUpdateResult`.
 
-- [ ] Add the `artifact-ledger` workspace path policy.
-- [ ] Implement strict normalization, bounds, deterministic fixed-point stale propagation, and synthetic missing records.
-- [ ] Implement bounded read with recoverable corrupt-ledger warnings.
-- [ ] Implement atomic canonical JSON write.
-- [ ] Add explicit public exports.
-- [ ] Run focused tests and verify GREEN.
-- [ ] Commit and push this independently reviewable engine.
+- [x] Add the `artifact-ledger` workspace path policy.
+- [x] Implement strict normalization, bounds, deterministic fixed-point stale propagation, and synthetic missing records.
+- [x] Implement bounded read with recoverable corrupt-ledger warnings.
+- [x] Implement atomic canonical JSON write.
+- [x] Add explicit public exports.
+- [x] Run focused tests and verify GREEN.
+- [x] Commit and push this independently reviewable engine.
 
 ### Task 3: Share package input/content hashing
 
@@ -67,12 +67,12 @@
 - Produces: `computeReviewPackageInputHash(reviewInput, diff, contextBudgetArtifact)`.
 - Produces: `computeManagedReviewPackageContentHash(outDir)`.
 
-- [ ] Add failing tests proving manifest and ledger use the same input hash.
-- [ ] Add a failing test for canonical managed-package byte hashing.
-- [ ] Refactor `buildManifest` to call the shared input-hash helper without changing manifest output semantics.
-- [ ] Implement managed-output hashing without including user files or the ledger.
-- [ ] Run focused and existing package freshness/privacy tests.
-- [ ] Commit and push the hashing boundary.
+- [x] Add failing tests proving manifest and ledger use the same input hash.
+- [x] Add a failing test for canonical managed-package byte hashing.
+- [x] Refactor `buildManifest` to call the shared input-hash helper without changing manifest output semantics.
+- [x] Implement managed-output hashing without including user files or the ledger.
+- [x] Run focused and existing package freshness/privacy tests.
+- [x] Commit and push the hashing boundary.
 
 ### Task 4: Integrate two ledger checkpoints into preprocessing
 
@@ -86,13 +86,13 @@
 - Final observation is `review-package:<review-id>` and depends on current upstream IDs.
 - `PreprocessResult.artifactLedger` reports path and fresh/stale/missing counts.
 
-- [ ] Add a failing integration test for ledger creation and lineage.
-- [ ] Add a failing checkpoint test showing an upstream-only update persists a stale prior package.
-- [ ] Write the upstream checkpoint before package generation.
-- [ ] Write the final checkpoint after package hashing.
-- [ ] Merge ledger warnings into deterministic pipeline warnings and summary.
-- [ ] Verify build, consume, and no-index modes.
-- [ ] Commit and push the pipeline integration.
+- [x] Add a failing integration test for ledger creation and lineage.
+- [x] Add a failing checkpoint test showing an upstream-only update persists a stale prior package.
+- [x] Write the upstream checkpoint before package generation.
+- [x] Write the final checkpoint after package hashing.
+- [x] Merge ledger warnings into deterministic pipeline warnings and summary.
+- [x] Verify build, consume, and no-index modes.
+- [x] Commit and push the pipeline integration.
 
 ### Task 5: Complete documentation and final evidence
 
@@ -107,13 +107,13 @@
 **Interfaces:**
 - Produces durable architecture, security, stale-state, TDD, CI, and checksum evidence.
 
-- [ ] Document schema, states, two-checkpoint flow, privacy, recovery, and non-goals.
-- [ ] Record RED/GREEN commits and focused/full test evidence.
-- [ ] Run `npm test`, all policy/audit/package gates, and `git diff --check`.
-- [ ] Generate a byte-size/SHA-256 manifest covering spec, plan, docs, source, and tests.
-- [ ] Mark all plan checkboxes complete.
-- [ ] Commit and push final evidence.
-- [ ] Verify final Linux/Windows GitHub Actions, remove temporary workflows/artifacts, and update PR #72.
+- [x] Document schema, states, two-checkpoint flow, privacy, recovery, and non-goals.
+- [x] Record RED/GREEN commits and focused/full test evidence.
+- [x] Run `npm test`, all policy/audit/package gates, and `git diff --check`.
+- [x] Generate a byte-size/SHA-256 manifest covering spec, plan, docs, source, and tests.
+- [x] Mark all plan checkboxes complete.
+- [x] Commit and push final evidence.
+- [x] Verify final Linux/Windows GitHub Actions, remove temporary workflows/artifacts, and update PR #72.
 
 ## Self-review
 

@@ -104,3 +104,12 @@ Phase 5 record checkpoint:
 ```
 
 bot-authored implementation commit の pull-request workflow は GitHub により `action_required` となり jobs が作成されなかった。これは test failure ではない。この人間 authored verification update を正式 Linux/Windows matrix の trigger とし、run IDs と結論は完了後に PR #72 および最終 Phase 6 verification recordへ同期する。
+
+
+## Authoritative remote matrix
+
+- verified source head: `3abc4473637fd000b7940b0007e7e4ed45ba27ae`
+- `code-consistency-review-scaffold` run `29209078322`: `success`
+- `extensions-quality` run `29209078319`: `success`
+- Linux and Windows `bob-code-consistency-review` completed through Extension Host smoke.
+- Linux and Windows `workflow-register` and `bob-bazaar-review` completed through Extension Host smoke.
