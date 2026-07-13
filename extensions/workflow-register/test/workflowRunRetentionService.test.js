@@ -54,11 +54,30 @@ function withTimeout(promise, label, timeoutMs = 10_000) {
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer))
 }
 
+function alternateWindowsPathCase(filePath) {
+  const resolved = path.resolve(filePath)
+  if (process.platform !== "win32") return resolved
+  const lowerCaseIndex = resolved.search(/[a-z]/)
+  if (lowerCaseIndex >= 0) {
+    return `${resolved.slice(0, lowerCaseIndex)}${resolved[lowerCaseIndex].toUpperCase()}${resolved.slice(lowerCaseIndex + 1)}`
+  }
+  return `${resolved[0].toLowerCase()}${resolved.slice(1)}`
+}
+
+function samePath(left, right) {
+  const resolvedLeft = path.resolve(String(left))
+  const resolvedRight = path.resolve(String(right))
+  if (process.platform === "win32") {
+    return resolvedLeft.toLowerCase() === resolvedRight.toLowerCase()
+  }
+  return resolvedLeft === resolvedRight
+}
+
 async function workspace(t) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "workflow-retention-service-"))
   t.after(() => fs.rm(root, { recursive: true, force: true }))
   await fs.mkdir(path.join(root, ".bob", "workflows", "runs"), { recursive: true })
-  return root
+  return alternateWindowsPathCase(root)
 }
 
 async function writeRun(root, runId, overrides = {}) {
@@ -215,7 +234,7 @@ test("cleanup lease acquired first prevents pin metadata mutation", async (t) =>
     lstat: fs.lstat,
     realpath: fs.realpath,
     rename: async (source, target) => {
-      if (path.resolve(String(source)) === path.resolve(directory)) {
+      if (samePath(source, directory)) {
         cleanupAtMove.resolve()
         await withTimeout(allowCleanupMove.promise, "cleanup move release")
       }
@@ -311,7 +330,7 @@ test("pin metadata committed first keeps cleanup out until the run lock releases
   const originalRename = fs.rename
   fs.rename = async (source, target) => {
     const result = await originalRename(source, target)
-    if (path.resolve(String(target)) === path.resolve(retentionFile)) {
+    if (samePath(target, retentionFile)) {
       committed.resolve()
       await withTimeout(releasePin.promise, "pin metadata release")
     }
@@ -356,7 +375,7 @@ test("contained retention read rejects a parent directory swapped to an outside 
   let swapped = false
   let escaped
   fs.lstat = async (target, ...args) => {
-    if (!swapped && path.resolve(String(target)) === path.resolve(retentionFile)) {
+    if (!swapped && samePath(target, retentionFile)) {
       swapped = true
       escaped = await replaceRunDirectoryWithExternalAlias(t, directory, {
         "run.json": await fs.readFile(path.join(directory, "run.json")),
@@ -594,7 +613,7 @@ for (const mutation of ["run", "directory"]) {
       const originalOpen = fs.open
       fs.open = async (targetPath, ...args) => {
         const handle = await originalOpen(targetPath, ...args)
-        if (path.resolve(String(targetPath)) !== path.resolve(runFile)) return handle
+        if (!samePath(targetPath, runFile)) return handle
         const originalRead = handle.read.bind(handle)
         handle.read = async (...readArgs) => {
           const result = await originalRead(...readArgs)
@@ -626,7 +645,7 @@ for (const mutation of ["run", "directory"]) {
     } else {
       const originalLstat = fs.lstat
       fs.lstat = async (targetPath, ...args) => {
-        if (!mutated && path.resolve(String(targetPath)) === path.resolve(runFile)) {
+        if (!mutated && samePath(targetPath, runFile)) {
           mutated = true
           await fs.writeFile(path.join(target.directory, "late-entry.bin"), "late")
           const future = new Date(Date.now() + 5_000)
@@ -779,7 +798,7 @@ test("inventory fails closed when the physical runs root changes during inventor
   const originalLstat = fs.lstat
   let changed = false
   fs.lstat = async (target, ...args) => {
-    if (!changed && path.resolve(String(target)) === path.resolve(enumeratedRun)) {
+    if (!changed && samePath(target, enumeratedRun)) {
       changed = true
       await writeRun(root, "late-run")
       const future = new Date(Date.now() + 5_000)
@@ -900,7 +919,7 @@ test("metadata capture budget refuses an oversized run document without opening 
   const originalOpen = fs.open
   let runOpened = false
   fs.open = async (targetPath, ...args) => {
-    if (path.resolve(String(targetPath)) === path.resolve(runFile)) runOpened = true
+    if (samePath(targetPath, runFile)) runOpened = true
     return originalOpen(targetPath, ...args)
   }
   const { inspectWorkflowRunRetentionInventory, WORKFLOW_RUN_RETENTION_INVENTORY_LIMITS } = inventoryModules()
@@ -950,7 +969,7 @@ test("inventory reads a growing run document only up to its initial bounded size
   let appendCount = 0
   fs.open = async (targetPath, ...args) => {
     const handle = await originalOpen(targetPath, ...args)
-    if (path.resolve(String(targetPath)) !== path.resolve(runFile)) return handle
+    if (!samePath(targetPath, runFile)) return handle
     const originalRead = handle.read.bind(handle)
     handle.read = async (...readArgs) => {
       const result = await originalRead(...readArgs)
@@ -985,7 +1004,7 @@ test("inventory fingerprints ordinary artifacts from stable metadata without ope
   const originalOpen = fs.open
   let artifactOpened = false
   fs.open = async (targetPath, ...args) => {
-    if (path.resolve(String(targetPath)) === path.resolve(artifact)) artifactOpened = true
+    if (samePath(targetPath, artifact)) artifactOpened = true
     return originalOpen(targetPath, ...args)
   }
   let first

@@ -211,6 +211,25 @@ function runCommandHarness(t) {
   return { rootA, rootB, service, state, workflow }
 }
 
+function alternateWindowsPathCase(filePath) {
+  const resolved = path.resolve(filePath)
+  if (process.platform !== "win32") return resolved
+  const lowerCaseIndex = resolved.search(/[a-z]/)
+  if (lowerCaseIndex >= 0) {
+    return `${resolved.slice(0, lowerCaseIndex)}${resolved[lowerCaseIndex].toUpperCase()}${resolved.slice(lowerCaseIndex + 1)}`
+  }
+  return `${resolved[0].toLowerCase()}${resolved.slice(1)}`
+}
+
+function samePath(left, right) {
+  const resolvedLeft = path.resolve(String(left))
+  const resolvedRight = path.resolve(String(right))
+  if (process.platform === "win32") {
+    return resolvedLeft.toLowerCase() === resolvedRight.toLowerCase()
+  }
+  return resolvedLeft === resolvedRight
+}
+
 function configureArtifactWorkflow(workflow, root) {
   workflow.workflowRoot = root
   workflow.schemaVersion = "workflow-register/v1"
@@ -288,7 +307,7 @@ function cleanupFsOpsWithMoveBarrier(sourceDirectory, entered, release) {
     lstat: fs.promises.lstat,
     realpath: fs.promises.realpath,
     rename: async (source, target) => {
-      if (path.resolve(String(source)) === path.resolve(sourceDirectory)) {
+      if (samePath(source, sourceDirectory)) {
         entered.resolve()
         await withTimeout(release.promise, "cleanup move release")
       }
@@ -964,11 +983,13 @@ test("workflow artifact source selected during cleanup cannot commit target prov
   await withTimeout(quickPickReady.promise, "artifact source quick pick")
   const cleanupAtMove = deferred()
   const allowCleanupMove = deferred()
+  const cleanupRoot = alternateWindowsPathCase(rootB.root)
+  const cleanupSourceDirectory = path.join(cleanupRoot, path.relative(rootB.root, source.runDirectory))
   const cleanup = settle(withTimeout(applyWorkflowRunCleanupTransaction({
-    workspaceRoot: rootB.root,
+    workspaceRoot: cleanupRoot,
     candidates: [{ runId: source.runId, revision: source.revision }],
     transactionId: "cleanup-selected-artifact-source",
-    fsOps: cleanupFsOpsWithMoveBarrier(source.runDirectory, cleanupAtMove, allowCleanupMove)
+    fsOps: cleanupFsOpsWithMoveBarrier(cleanupSourceDirectory, cleanupAtMove, allowCleanupMove)
   }), "cleanup-selected source transaction"))
   await withTimeout(cleanupAtMove.promise, "cleanup-selected move barrier")
   assert.equal(await workflowRunCleanupLeasePresent(rootB.root, source.runId), true)

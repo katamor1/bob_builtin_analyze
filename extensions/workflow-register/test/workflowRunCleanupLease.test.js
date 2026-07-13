@@ -33,6 +33,25 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+function alternateWindowsPathCase(filePath) {
+  const resolved = path.resolve(filePath)
+  if (process.platform !== "win32") return resolved
+  const lowerCaseIndex = resolved.search(/[a-z]/)
+  if (lowerCaseIndex >= 0) {
+    return `${resolved.slice(0, lowerCaseIndex)}${resolved[lowerCaseIndex].toUpperCase()}${resolved.slice(lowerCaseIndex + 1)}`
+  }
+  return `${resolved[0].toLowerCase()}${resolved.slice(1)}`
+}
+
+function samePath(left, right) {
+  const resolvedLeft = path.resolve(String(left))
+  const resolvedRight = path.resolve(String(right))
+  if (process.platform === "win32") {
+    return resolvedLeft.toLowerCase() === resolvedRight.toLowerCase()
+  }
+  return resolvedLeft === resolvedRight
+}
+
 async function eventually(predicate, message, timeoutMs = 3_000) {
   const deadline = Date.now() + timeoutMs
   let lastError
@@ -54,7 +73,7 @@ async function workspace(t, runIds = ["run-a"]) {
     await fs.mkdir(path.join(root, ".bob", "workflows", "runs", runId), { recursive: true })
     await fs.writeFile(path.join(root, ".bob", "workflows", "runs", runId, "run.json"), "{}")
   }
-  return root
+  return alternateWindowsPathCase(root)
 }
 
 test("cleanup leases live outside workflow run enumeration", async (t) => {
@@ -174,7 +193,7 @@ test("cleanup release removes owned JSON before its guard and never mutates the 
   const guardRemoval = deferred()
   let guardRemoved = false
   fs.rmdir = async (target, ...args) => {
-    if (path.resolve(String(target)) === path.resolve(guardDirectory)) {
+    if (samePath(target, guardDirectory)) {
       await assert.rejects(fs.access(leaseFile), { code: "ENOENT" })
       guardRemoval.resolve()
       const result = await originalRmdir(target, ...args)
@@ -220,7 +239,7 @@ test("stale reclaim preserves a lease whose heartbeat advances during verificati
   const continueRead = deferred()
   let readCount = 0
   fs.open = async (...args) => {
-    if (String(args[0]) === leaseFile && args[1] === "r") {
+    if (samePath(args[0], leaseFile) && args[1] === "r") {
       readCount += 1
       if (readCount === 2) {
         const handle = await originalOpen(...args)
@@ -279,7 +298,7 @@ test("a guarded stale reclaim cannot delete a replacement owner after verificati
   let intercepted = false
   const entries = []
   fs.rm = async (target, ...args) => {
-    if (!intercepted && path.resolve(String(target)) === path.resolve(leaseFile)) {
+    if (!intercepted && samePath(target, leaseFile)) {
       intercepted = true
       removalVerified.resolve()
       await continueRemoval.promise
@@ -447,7 +466,7 @@ test("cleanup heartbeat never overwrites a replacement owner", async (t) => {
 
   fs.open = async (...args) => {
     const handle = await originalOpen(...args)
-    if (heartbeatPhase && path.resolve(String(args[0])) === path.resolve(leaseFile)) {
+    if (heartbeatPhase && samePath(args[0], leaseFile)) {
       const originalUtimes = handle.utimes.bind(handle)
       handle.utimes = async (...utimesArgs) => {
         if (!mutationIntercepted) {
@@ -468,7 +487,7 @@ test("cleanup heartbeat never overwrites a replacement owner", async (t) => {
     if (
       heartbeatPhase
       && !mutationIntercepted
-      && path.resolve(String(target)) === path.resolve(leaseFile)
+      && samePath(target, leaseFile)
     ) {
       mutationIntercepted = true
       mutationReady.resolve()
@@ -611,8 +630,7 @@ test("crossed cleanup and run-lock handshake enters at most one critical section
   const originalLstat = fs.lstat
   let phase = "run-precheck"
   fs.lstat = async (target, ...args) => {
-    const resolvedTarget = path.resolve(String(target))
-    if (phase === "run-precheck" && resolvedTarget === path.resolve(leaseFile)) {
+    if (phase === "run-precheck" && samePath(target, leaseFile)) {
       try {
         return await originalLstat(target, ...args)
       } catch (error) {
@@ -621,7 +639,7 @@ test("crossed cleanup and run-lock handshake enters at most one critical section
         throw error
       }
     }
-    if (phase === "cleanup-lock-check" && resolvedTarget === path.resolve(runLockFile)) {
+    if (phase === "cleanup-lock-check" && samePath(target, runLockFile)) {
       try {
         return await originalLstat(target, ...args)
       } catch (error) {
@@ -632,7 +650,7 @@ test("crossed cleanup and run-lock handshake enters at most one critical section
     }
     if (
       phase === "run-postcheck"
-      && (resolvedTarget === path.resolve(guardDirectory) || resolvedTarget === path.resolve(leaseFile))
+      && (samePath(target, guardDirectory) || samePath(target, leaseFile))
     ) {
       const stat = await originalLstat(target, ...args)
       runPostcheckObserved.resolve()
