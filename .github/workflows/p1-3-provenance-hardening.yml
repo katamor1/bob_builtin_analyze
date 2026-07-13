@@ -1,0 +1,146 @@
+name: p1-3-provenance-hardening
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/p1-3-provenance-hardening.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Apply metadata sanitization and display bounds
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          provenance_path = Path("extensions/workflow-register/src/core/runProvenance.ts")
+          provenance = provenance_path.read_text(encoding="utf-8")
+          provenance = provenance.replace(
+            'function stringArray(value: unknown): string[] {\n  return Array.isArray(value) ? unique(value.filter(isNonEmptyString)) : []\n}\n\nfunction optionalString(value: unknown): string | undefined {\n  return isNonEmptyString(value) ? value : undefined\n}\n',
+            'function stringArray(value: unknown): string[] {\n  return Array.isArray(value) ? unique(value.filter(isMetadataString)) : []\n}\n\nfunction optionalString(value: unknown): string | undefined {\n  return isMetadataString(value) ? value : undefined\n}\n',
+            1
+          )
+          unique_old = '''function unique(values: readonly string[]): string[] {
+            const seen = new Set<string>()
+            const result: string[] = []
+            for (const value of values) {
+              if (!isNonEmptyString(value) || seen.has(value)) continue
+              seen.add(value)
+              result.push(value)
+            }
+            return result
+          }
+          '''
+          unique_new = '''function isMetadataString(value: unknown): value is string {
+            return typeof value === "string"
+              && value.trim().length > 0
+              && value.length <= 256
+              && !/[\\u0000-\\u001f\\u007f]/.test(value)
+          }
+
+          function unique(values: readonly string[]): string[] {
+            const seen = new Set<string>()
+            const result: string[] = []
+            for (const value of values) {
+              if (!isMetadataString(value) || seen.has(value)) continue
+              seen.add(value)
+              result.push(value)
+            }
+            return result
+          }
+          '''
+          if unique_old not in provenance:
+              raise SystemExit("runProvenance unique anchor missing")
+          provenance = provenance.replace(unique_old, unique_new, 1)
+          provenance_path.write_text(provenance, encoding="utf-8")
+
+          model_path = Path("extensions/workflow-register/src/gui/operationHubModel.ts")
+          model = model_path.read_text(encoding="utf-8")
+          field_anchor = '  stepProvenance?: OperationHubStepProvenanceSummary[]\n'
+          omitted_field = '  stepProvenanceOmittedCount: number\n'
+          if omitted_field not in model:
+              if field_anchor not in model:
+                  raise SystemExit("Operation Hub provenance field anchor missing")
+              model = model.replace(field_anchor, field_anchor + omitted_field, 1)
+
+          provenance_anchor = '  const provenance = projectWorkflowRunProvenance(run)\n'
+          bounded_lines = '  const stepProvenance = provenance.steps.slice(0, 8).map(toOperationHubStepProvenance)\n'
+          if bounded_lines not in model:
+              if provenance_anchor not in model:
+                  raise SystemExit("Operation Hub provenance const anchor missing")
+              model = model.replace(provenance_anchor, provenance_anchor + bounded_lines, 1)
+
+          model = model.replace(
+            '    stepProvenance: provenance.steps.map(toOperationHubStepProvenance),\n',
+            '    stepProvenance,\n    stepProvenanceOmittedCount: Math.max(0, provenance.steps.length - stepProvenance.length),\n',
+            1
+          )
+          model_path.write_text(model, encoding="utf-8")
+
+          html_path = Path("extensions/workflow-register/src/gui/operationHubHtml.ts")
+          html = html_path.read_text(encoding="utf-8")
+          old = '''function renderStepProvenanceList(run: OperationHubRunSummary): string {
+            const steps = run.stepProvenance ?? []
+            if (steps.length === 0) return ""
+            return `<div class="step-list">${steps.map((step) => `<div class="step-provenance${step.reused ? " reused" : ""}">
+              <div class="step-heading"><code>${escapeHtml(step.stepId)} · ${escapeHtml(step.title)}</code><span class="badge ${step.reused ? "ok" : "info"}">${escapeHtml(step.completionLabel)}</span></div>
+              ${step.detail ? `<div class="muted">${escapeHtml(step.detail)}</div>` : ""}
+            </div>`).join("")}</div>`
+          }
+          '''
+          new = '''function renderStepProvenanceList(run: OperationHubRunSummary): string {
+            const steps = run.stepProvenance ?? []
+            if (steps.length === 0) return ""
+            const omitted = run.stepProvenanceOmittedCount > 0
+              ? `<div class="muted">${run.stepProvenanceOmittedCount} more step(s); see Run Diagnostics</div>`
+              : ""
+            return `<div class="step-list">${steps.map((step) => `<div class="step-provenance${step.reused ? " reused" : ""}">
+              <div class="step-heading"><code>${escapeHtml(step.stepId)} · ${escapeHtml(step.title)}</code><span class="badge ${step.reused ? "ok" : "info"}">${escapeHtml(step.completionLabel)}</span></div>
+              ${step.detail ? `<div class="muted">${escapeHtml(step.detail)}</div>` : ""}
+            </div>`).join("")}${omitted}</div>`
+          }
+          '''
+          if old not in html:
+              raise SystemExit("Operation Hub render helper anchor missing")
+          html = html.replace(old, new, 1)
+          html_path.write_text(html, encoding="utf-8")
+          PY
+
+      - name: Verify focused contracts
+        working-directory: extensions/workflow-register
+        run: |
+          npm ci
+          npm run compile
+          node --test \
+            test/workflowRunProvenance.test.js \
+            test/workflowRunProvenanceSanitization.test.js \
+            test/operationHubStepProvenance.test.js \
+            test/operationHubStepProvenanceBound.test.js \
+            test/runControlViewReuseProvenance.test.js \
+            test/workflowRunProvenanceDiagnostics.test.js \
+            test/bobWorkflowReuseProvenance.test.js
+
+      - name: Commit verified hardening
+        shell: bash
+        run: |
+          rm .github/workflows/p1-3-provenance-hardening.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "fix: bound and sanitize reuse provenance"
+          git push origin HEAD:${{ github.head_ref }}
