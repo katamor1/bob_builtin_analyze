@@ -116,10 +116,16 @@ test("blocked held run exposes diagnostics as its only primary action", () => {
   assert.deepEqual(item.heldRecoveryBlockers, ["Required workflow state is missing: context."])
 })
 
-test("Operation Hub provider gathers live task, manual-step and snapshot evidence", () => {
-  const source = readSrc("gui", "operationHubProvider.ts")
-  assert.match(source, /classifyHeldRunRecovery/)
-  assert.match(source, /reviewTaskRegistry\.taskForRun/)
-  assert.match(source, /reviewTaskRegistry\.taskForStep/)
-  assert.match(source, /FileTaskSnapshotStore/)
+test("Operation Hub provider gathers compatible runtime evidence", () => {
+  const provider = readSrc("gui", "operationHubProvider.ts")
+  const extension = readSrc("extension.ts")
+  assert.match(provider, /classifyHeldRunRecovery/)
+  assert.match(provider, /reviewTaskRegistry\.taskForRun/)
+  assert.match(provider, /this\.options\.activeSteps\(\)/)
+  assert.doesNotMatch(provider, /activeManualStepAvailable: Boolean\(reviewTaskRegistry\.taskForStep/)
+  assert.match(provider, /validateWorkflowArtifactManifest/)
+  assert.match(provider, /snapshot\.workflowId === run\.workflowId/)
+  assert.match(provider, /snapshot\.workflowDefinitionHash/)
+  assert.match(provider, /FileTaskSnapshotStore/)
+  assert.match(extension, /activeSteps: \(\) => service\.listActiveSteps\(\)/)
 })
