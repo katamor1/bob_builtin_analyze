@@ -120,6 +120,7 @@ GitHub checkpoint must contain only the six new modules and five tests, then be 
 - Modify: `extensions/bob-bazaar-review/package-lock.json`
 - Modify: `extensions/bob-bazaar-review/.vscodeignore`
 - Modify: `extensions/bob-bazaar-review/scripts/check-vsix-policy.js`
+- Modify: `extensions/bob-bazaar-review/README.md`
 - Modify: `extensions/bob-bazaar-review/test/dependencyPolicy.test.js`
 - Create: `extensions/bob-bazaar-review/test/helpers/storedZipFixture.js`
 - Create: `extensions/bob-bazaar-review/test/ruleOoxmlPreflight.test.js`
@@ -143,7 +144,7 @@ cd extensions/bob-bazaar-review
 npm install --save ajv@^8.17.1 cheerio@^1.0.0 mammoth@^1.8.0 read-excel-file@^9.2.0
 ```
 
-Then change `package:policy` to `--max-bytes 12000000`, keep high production audit blocking, and change `.vscodeignore` to retain production runtime JS/JSON across direct and transitive dependency trees while excluding dependency docs、tests、maps、TypeScript declarations、examples。Extend `check-vsix-policy.js` so package verification requires the metadata and load entry of each installed production dependency tree, not only `out/extension.js`。
+Then change `package:policy` to `--max-bytes 12000000`, keep high production audit blocking, and change `.vscodeignore` to retain production runtime JS/JSON across direct and transitive dependency trees while excluding dependency docs、tests、maps、TypeScript declarations、examples。Extend `check-vsix-policy.js` so package verification requires the metadata and load entry of each installed production dependency tree, not only `out/extension.js`。Update the README package budget and runtime-dependency list in the same checkpoint so the existing dynamic documentation contract remains true; Task 11 adds the complete operator workflow later。
 
 - [ ] **Step 3: Write failing ZIP fixture tests**
 
