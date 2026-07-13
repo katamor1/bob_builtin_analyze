@@ -1,0 +1,59 @@
+name: p1-6-retention-red
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/p1-6-retention-red.yml"
+      - "extensions/workflow-register/test/workflowRunRetention*.test.js"
+      - "extensions/workflow-register/test/workflowRunCleanup*.test.js"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  expected-red:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: extensions/workflow-register/package-lock.json
+      - name: Install and compile baseline
+        working-directory: extensions/workflow-register
+        run: |
+          npm ci --silent
+          npm run compile --silent
+      - name: Require missing-module RED
+        id: red
+        working-directory: extensions/workflow-register
+        shell: bash
+        run: |
+          set +e
+          node --test \
+            test/workflowRunRetentionPlanner.test.js \
+            test/workflowRunRetentionMetadata.test.js \
+            test/workflowRunCleanupLease.test.js \
+            test/workflowRunCleanupTransaction.test.js \
+            test/workflowRunRetentionService.test.js \
+            test/workflowRunRetentionCommands.test.js \
+            > "$RUNNER_TEMP/p1-6-red.log" 2>&1
+          status=$?
+          cat "$RUNNER_TEMP/p1-6-red.log"
+          if [ "$status" -eq 0 ]; then
+            echo "P1-6 tests unexpectedly passed before production modules existed." >&2
+            exit 1
+          fi
+          grep -Eq "Cannot find module.*(runRetention|runRetentionMetadata|runCleanupLease|runCleanupTransaction|runRetentionService)|ENOENT.*runRetention" "$RUNNER_TEMP/p1-6-red.log"
+      - name: Upload RED evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: p1-6-retention-red
+          path: ${{ runner.temp }}/p1-6-red.log
+          if-no-files-found: error
+          retention-days: 7
