@@ -89,7 +89,18 @@ test("artifact and snapshot recovery select their corresponding primary actions"
     inputsHash: "sha256:ignored",
     createdAt: "2026-07-13T00:00:00.000Z",
     updatedAt: "2026-07-13T00:00:00.000Z",
-    artifacts: []
+    artifacts: [
+      {
+        id: "context",
+        stateKey: "context",
+        producedBy: "collect",
+        path: ".bob/workflows/runs/run-held/artifacts/collect/context.txt",
+        sha256: "sha256:context",
+        bytes: 12,
+        source: "workflow-artifact",
+        updatedAt: "2026-07-13T00:00:00.000Z"
+      }
+    ]
   })
   const artifact = summary(recovery("detached-artifact-recoverable", "review-artifacts"), {
     "workflow.artifactManifest": manifest
