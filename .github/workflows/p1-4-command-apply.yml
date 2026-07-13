@@ -1,0 +1,157 @@
+name: p1-4-command-apply
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/p1-4-command-apply.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Apply detached held recovery command
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          core_path = Path("extensions/workflow-register/src/core/heldRunRecovery.ts")
+          core = core_path.read_text(encoding="utf-8")
+          anchor = 'const ACTIONS: Record<HeldRunRecoveryActionId, HeldRunRecoveryAction> = {\n'
+          addition = '''export const HELD_RECOVERY_STATE_KEY = "workflow.heldRecovery"\n\nexport interface HeldRunRecoveryProvenanceV1 {\n  schemaVersion: "workflow-register/held-recovery/v1"\n  kind: "saved-state"\n  runId: string\n  stepId: string\n  nextStepId?: string\n  recoveredAt: string\n  source: "operation-hub"\n}\n\nexport interface CreateHeldRunRecoveryProvenanceInput {\n  runId: string\n  stepId: string\n  nextStepId?: string\n  recoveredAt: string\n  source: "operation-hub"\n}\n\nexport function createHeldRunRecoveryProvenance(input: CreateHeldRunRecoveryProvenanceInput): HeldRunRecoveryProvenanceV1 {\n  return {\n    schemaVersion: "workflow-register/held-recovery/v1",\n    kind: "saved-state",\n    runId: input.runId,\n    stepId: input.stepId,\n    nextStepId: input.nextStepId,\n    recoveredAt: input.recoveredAt,\n    source: input.source\n  }\n}\n\nexport function buildHeldRunRecoveryPreview(\n  run: WorkflowRunState,\n  assessment: HeldRunRecoveryAssessment\n): string[] {\n  const stateKeys = Object.keys(run.state).sort()\n  return [\n    `- runId: ${run.runId}`,\n    `- workflow: ${run.workflowId}`,\n    `- current status: ${run.status}`,\n    `- held step to complete: ${assessment.stepId ?? "none"}`,\n    `- next step: ${assessment.nextStepId ?? "workflow completion"}`,\n    `- persisted state keys: ${stateKeys.length > 0 ? stateKeys.join(", ") : "none"}`,\n    "- state values, form values, snapshot text and artifact text are not shown."\n  ]\n}\n\n'''
+          if 'HELD_RECOVERY_STATE_KEY' not in core:
+              assert anchor in core
+              core = core.replace(anchor, addition + anchor, 1)
+          core_path.write_text(core, encoding="utf-8")
+
+          coordinator_path = Path("extensions/workflow-register/src/reviewAcceptanceCoordinator.ts")
+          coordinator = coordinator_path.read_text(encoding="utf-8")
+          if '| "held-recovery"' not in coordinator:
+              coordinator = coordinator.replace('  | "artifact-import"\n', '  | "artifact-import"\n  | "held-recovery"\n', 1)
+          coordinator_path.write_text(coordinator, encoding="utf-8")
+
+          commands_path = Path("extensions/workflow-register/src/workflowRunCommands.ts")
+          commands = commands_path.read_text(encoding="utf-8")
+          import_anchor = 'import type { CoreWorkflowDefinition, WorkflowRunState } from "./core/model"\n'
+          import_text = '''import {\n  buildHeldRunRecoveryPreview,\n  classifyHeldRunRecovery,\n  createHeldRunRecoveryProvenance,\n  HELD_RECOVERY_STATE_KEY,\n  type HeldRunRecoveryAssessment\n} from "./core/heldRunRecovery"\n'''
+          if 'HELD_RECOVERY_STATE_KEY' not in commands:
+              assert import_anchor in commands
+              commands = commands.replace(import_anchor, import_text + import_anchor, 1)
+
+          method_anchor = '''  async retryCurrentStep(runArg?: RunCommandArg): Promise<unknown> {\n    return this.resumeOrRetryRun("retry", runArg)\n  }\n'''
+          method = '''  async recoverDetachedHeldRun(runArg?: RunCommandArg): Promise<unknown> {\n    const trustError = await requireTrustedWorkspace("recover detached held workflow run")\n    if (trustError) return trustError\n    await this.ensureWorkflowsLoaded()\n    const roots = await this.options.workflowRootCandidates()\n    const runId = resolveRunId(runArg)\n    const selection = await this.selectRunArgument(runArg, roots)\n    if (!selection) {\n      const message = runId ? `Workflow run not found: ${runId}` : "No workflow run selected."\n      await vscode.window.showWarningMessage(message)\n      return message\n    }\n    if (workflowRunExecutionActiveForWorkspace(selection.root, selection.runId)) {\n      throw new Error(`Cannot recover a detached held run while workflow execution is active: ${selection.runId}`)\n    }\n\n    const expectedRevision = isOperationHubRunMutationTarget(runArg) ? runArg.expectedRevision : undefined\n    if (expectedRevision) await assertOperationHubRunRevision(selection.root, selection.runId, expectedRevision)\n    const runStore = this.options.runtimeFactory.createRunStore(selection.root)\n    const previewRun = await runStore.loadRun(selection.runId)\n    if (!previewRun) throw new Error(`Workflow run not found: ${selection.runId}`)\n    const previewWorkflow = this.options.coreWorkflows.get(previewRun.workflowId)\n    const previewAssessment = await this.assessHeldRunRecovery(selection.root, previewRun, previewWorkflow)\n    if (previewAssessment.kind !== "detached-resumable") {\n      const message = `Held run recovery is now '${previewAssessment.kind}'. Refresh Operation Hub and use '${previewAssessment.primaryAction.label}'.`\n      await vscode.window.showWarningMessage(message)\n      return previewAssessment\n    }\n\n    await showMarkdownReport(\n      "Detached Held Run Recovery Preview",\n      "Review the persisted metadata before explicitly completing the detached held step.",\n      buildHeldRunRecoveryPreview(previewRun, previewAssessment)\n    )\n    const confirmLabel = "保存済み状態から再開"\n    const accepted = await vscode.window.showWarningMessage(\n      `Held step '${previewAssessment.stepId ?? "unknown"}' will be completed from persisted state. Continue?`,\n      { modal: true },\n      confirmLabel\n    )\n    if (accepted !== confirmLabel) return "Detached held run recovery cancelled."\n\n    return this.options.coordinateGateDecision(\n      selection.root,\n      selection.runId,\n      "held-recovery",\n      () => coordinateWorkflowRunExecution(runStore, selection.runId, "recoverDetachedHeldRun", async () => {\n        if (expectedRevision) await assertOperationHubRunRevision(selection.root, selection.runId, expectedRevision)\n        const freshRun = await runStore.loadRun(selection.runId)\n        if (!freshRun) throw new Error(`Workflow run not found: ${selection.runId}`)\n        const workflow = this.options.coreWorkflows.get(freshRun.workflowId)\n        if (!workflow) throw new Error(`Workflow definition is not loaded: ${freshRun.workflowId}`)\n        const freshAssessment = await this.assessHeldRunRecovery(selection.root, freshRun, workflow)\n        if (freshAssessment.kind !== "detached-resumable") {\n          throw new Error(`Held run recovery classification changed to '${freshAssessment.kind}'; refresh Operation Hub before retrying.`)\n        }\n        const heldStepId = freshAssessment.stepId\n        if (!heldStepId) throw new Error("Detached held run has no recoverable held step.")\n        const agentProvider = reviewTaskRegistry.agentProviderForRun(selection.root, freshRun.runId, workflow)\n        const engine = this.options.runtimeFactory.createEngine(selection.root, agentProvider)\n        const result = await engine.resumeRun(selection.runId, {\n          workflow,\n          completeHeldStep: true,\n          executionMode: "singleStep"\n        })\n        result.state[HELD_RECOVERY_STATE_KEY] = JSON.stringify(createHeldRunRecoveryProvenance({\n          runId: result.runId,\n          stepId: heldStepId,\n          nextStepId: freshAssessment.nextStepId,\n          recoveredAt: new Date().toISOString(),\n          source: "operation-hub"\n        }))\n        await this.reconcileBobTask(selection.root, result, workflow, "operation-hub-resume")\n        await vscode.window.showInformationMessage(`Detached held run recovered: ${result.runId}`)\n        return result\n      })\n    )\n  }\n\n'''
+          if 'async recoverDetachedHeldRun' not in commands:
+              assert method_anchor in commands
+              commands = commands.replace(method_anchor, method + method_anchor, 1)
+
+          guard_anchor = '''    const workflow = this.options.coreWorkflows.get(run.workflowId)\n    if (!workflow) throw new Error(`Workflow definition is not loaded: ${run.workflowId}`)\n    const liveGate = this.options.gateRegistry.pendingForRun(root, runId)\n'''
+          guard = '''    const workflow = this.options.coreWorkflows.get(run.workflowId)\n    if (!workflow) throw new Error(`Workflow definition is not loaded: ${run.workflowId}`)\n    if (mode === "resume" && run.status === "held") {\n      const assessment = await this.assessHeldRunRecovery(root, run, workflow)\n      if (assessment.kind === "connected") {\n        const step = workflow.engineSteps.find((candidate) => candidate.id === assessment.stepId)\n        if (step) {\n          const active = this.options.activeSteps().find((candidate) => (\n            candidate.runId === run.runId\n            && candidate.workflowId === run.workflowId\n            && candidate.stepId === step.id\n          ))\n          await this.options.showManualStepPanel({ workflow, run, step, active })\n          return run\n        }\n      }\n      const message = assessment.kind === "detached-resumable"\n        ? `Current held run is detached. Use workflowRegister.recoverDetachedHeldRun after reviewing the recovery preview: ${run.runId}`\n        : `Current held run requires '${assessment.primaryAction.label}' before it can resume: ${run.runId}`\n      await vscode.window.showWarningMessage(message)\n      return message\n    }\n    const liveGate = this.options.gateRegistry.pendingForRun(root, runId)\n'''
+          if 'Use workflowRegister.recoverDetachedHeldRun' not in commands:
+              assert guard_anchor in commands
+              commands = commands.replace(guard_anchor, guard, 1)
+
+          assess_anchor = '''  private async pickArtifactSourceRun(\n'''
+          assess = '''  private async assessHeldRunRecovery(\n    root: string,\n    run: WorkflowRunState,\n    workflow: CoreWorkflowDefinition | undefined\n  ): Promise<HeldRunRecoveryAssessment> {\n    const manifest = workflow ? await loadArtifactManifest(root, run).catch(() => undefined) : undefined\n    const artifactManifestAvailable = Boolean(\n      workflow\n      && manifest\n      && !validateWorkflowArtifactManifest({ manifest, workflow, inputs: run.inputs })\n        .some((issue) => issue.severity === "error")\n    )\n    const snapshots = run.status === "held"\n      ? await new FileTaskSnapshotStore({ workspaceRoot: root }).listSnapshots(run.runId).catch(() => [])\n      : []\n    const activeManualStepAvailable = this.options.activeSteps().some((candidate) => (\n      candidate.runId === run.runId\n      && candidate.workflowId === run.workflowId\n      && candidate.stepId === run.currentStep\n    )) || Boolean(reviewTaskRegistry.taskForStep(root, run.runId, run.currentStep))\n    return classifyHeldRunRecovery({\n      run,\n      workflow,\n      liveTaskAvailable: Boolean(reviewTaskRegistry.taskForRun(root, run.runId)),\n      activeManualStepAvailable,\n      artifactManifestAvailable,\n      taskSnapshotAvailable: snapshots.some((snapshot) => snapshot.stepId === run.currentStep)\n    })\n  }\n\n'''
+          if 'private async assessHeldRunRecovery' not in commands:
+              assert assess_anchor in commands
+              commands = commands.replace(assess_anchor, assess + assess_anchor, 1)
+          commands_path.write_text(commands, encoding="utf-8")
+
+          service_path = Path("extensions/workflow-register/src/workflowRegisterService.ts")
+          service = service_path.read_text(encoding="utf-8")
+          service_anchor = '''  async retryCurrentStep(runArg?: RunCommandArg): Promise<unknown> {\n    return this.runCommands.retryCurrentStep(runArg)\n  }\n'''
+          service_method = '''  async recoverDetachedHeldRun(runArg?: RunCommandArg): Promise<unknown> {\n    return this.runCommands.recoverDetachedHeldRun(runArg)\n  }\n\n'''
+          if 'async recoverDetachedHeldRun' not in service:
+              assert service_anchor in service
+              service = service.replace(service_anchor, service_method + service_anchor, 1)
+          service_path.write_text(service, encoding="utf-8")
+
+          extension_path = Path("extensions/workflow-register/src/extension.ts")
+          extension = extension_path.read_text(encoding="utf-8")
+          extension_anchor = '    vscode.commands.registerCommand("workflowRegister.resumeRun", (runArg?: RunCommandArg) => service.resumeRun(runArg)),\n'
+          extension_line = '    vscode.commands.registerCommand("workflowRegister.recoverDetachedHeldRun", (runArg?: RunCommandArg) => service.recoverDetachedHeldRun(runArg)),\n'
+          if extension_line not in extension:
+              assert extension_anchor in extension
+              extension = extension.replace(extension_anchor, extension_anchor + extension_line, 1)
+          extension_path.write_text(extension, encoding="utf-8")
+
+          package_path = Path("extensions/workflow-register/package.json")
+          package = json.loads(package_path.read_text(encoding="utf-8"))
+          activation = "onCommand:workflowRegister.recoverDetachedHeldRun"
+          if activation not in package["activationEvents"]:
+              index = package["activationEvents"].index("onCommand:workflowRegister.resumeRun") + 1
+              package["activationEvents"].insert(index, activation)
+          command_id = "workflowRegister.recoverDetachedHeldRun"
+          if not any(item.get("command") == command_id for item in package["contributes"]["commands"]):
+              commands_list = package["contributes"]["commands"]
+              index = next(i for i, item in enumerate(commands_list) if item.get("command") == "workflowRegister.resumeRun") + 1
+              commands_list.insert(index, {
+                  "command": command_id,
+                  "title": "切断された手動ステップを復旧",
+                  "category": "Bob Workflow"
+              })
+          package_path.write_text(json.dumps(package, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+          PY
+
+      - name: Verify focused contracts
+        id: focused
+        working-directory: extensions/workflow-register
+        shell: bash
+        run: |
+          set +e
+          npm ci --silent > "$RUNNER_TEMP/p1-4-command.log" 2>&1
+          status=$?
+          if [ "$status" -eq 0 ]; then
+            npm run compile --silent >> "$RUNNER_TEMP/p1-4-command.log" 2>&1
+            status=$?
+          fi
+          if [ "$status" -eq 0 ]; then
+            node --test \
+              test/heldRunRecoveryClassifier.test.js \
+              test/operationHubHeldRecovery.test.js \
+              test/detachedHeldRecoveryCommand.test.js \
+              test/workflowRunRecovery.test.js \
+              test/reviewAcceptanceCoordinator.test.js \
+              test/runtimeWiring.test.js >> "$RUNNER_TEMP/p1-4-command.log" 2>&1
+            status=$?
+          fi
+          if [ "$status" -ne 0 ]; then
+            grep -n -B 35 -A 120 -E "not ok|AssertionError|error TS|Error:" "$RUNNER_TEMP/p1-4-command.log" || tail -n 220 "$RUNNER_TEMP/p1-4-command.log"
+          else
+            tail -n 35 "$RUNNER_TEMP/p1-4-command.log"
+          fi
+          exit "$status"
+
+      - name: Upload focused failure log
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: p1-4-command-focused-log
+          path: ${{ runner.temp }}/p1-4-command.log
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Commit verified implementation
+        if: success()
+        shell: bash
+        run: |
+          rm .github/workflows/p1-4-command-apply.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "feat: recover detached held runs explicitly"
+          git push origin HEAD:${{ github.head_ref }}
