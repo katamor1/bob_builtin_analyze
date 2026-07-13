@@ -181,6 +181,99 @@ test("pin sidecar is independent from run.json and stale preview is rejected", a
   assert.equal((await fs.stat(directory)).isDirectory(), true)
 })
 
+test("apply rejects a cleanup plan whose physical evidence changes after cleanup leases are held", async (t) => {
+  const root = await workspace(t)
+  const run = await writeRun(root, "leased-plan-change")
+  const { WorkflowRunRetentionService } = modules()
+  const service = new WorkflowRunRetentionService({ workspaceRoot: root, now: () => "2026-07-13T03:00:00.000Z" })
+  const plan = await service.preview({ completedDays: 1 })
+  assert.deepEqual(plan.candidateRunIds, ["leased-plan-change"])
+  const leaseDirectory = path.join(root, ".bob", "workflows", "run-cleanup-leases")
+  const leaseFile = path.join(leaseDirectory, "leased-plan-change.json")
+  const guardOwner = path.join(leaseDirectory, "leased-plan-change.guard", "owner.json")
+  const leasesHeld = deferred()
+  const releaseApply = deferred()
+  const originalRealpath = fs.realpath
+  let stopped = false
+  fs.realpath = async (target, ...args) => {
+    if (!stopped) {
+      const [leasePresent, ownerPresent] = await Promise.all([
+        fs.access(leaseFile).then(() => true, () => false),
+        fs.access(guardOwner).then(() => true, () => false)
+      ])
+      if (leasePresent && ownerPresent) {
+        stopped = true
+        leasesHeld.resolve()
+        await releaseApply.promise
+      }
+    }
+    return originalRealpath(target, ...args)
+  }
+
+  const applying = service.apply(plan)
+  try {
+    await withTimeout(leasesHeld.promise, "cleanup leases held")
+    await fs.writeFile(path.join(run.directory, "late-artifact.bin"), "changed after outer preview")
+  } finally {
+    releaseApply.resolve()
+  }
+  try {
+    await assert.rejects(applying, /cleanup plan changed|inventory changed|physical tree|evidence changed/i)
+  } finally {
+    fs.realpath = originalRealpath
+  }
+
+  assert.equal((await fs.stat(run.directory)).isDirectory(), true)
+})
+
+test("apply propagates incomplete purge state without reporting reclaimed bytes", async (t) => {
+  const root = await workspace(t)
+  const run = await writeRun(root, "purge-contract-run")
+  const { WorkflowRunRetentionService } = modules()
+  const service = new WorkflowRunRetentionService({ workspaceRoot: root, now: () => "2026-07-13T03:00:00.000Z" })
+  const plan = await service.preview({ completedDays: 1 })
+  const cleanup = cleanupModules()
+  const failure = new cleanup.WorkflowRunCleanupIncompleteError({
+    phase: "purge",
+    committedRunIds: ["purge-contract-run"],
+    residualRunIds: ["purge-contract-run"],
+    retainedQuarantinePath: path.join(root, ".bob", "workflows", "run-cleanup-quarantine", "retained"),
+    cause: new Error("injected purge failure"),
+    message: "injected purge failure"
+  })
+  const originalApply = cleanup.applyWorkflowRunCleanupTransaction
+  cleanup.applyWorkflowRunCleanupTransaction = async () => { throw failure }
+  try {
+    await assert.rejects(service.apply(plan), (error) => {
+      assert.equal(error, failure)
+      assert.equal(error.reclaimedBytes, 0)
+      assert.deepEqual(error.committedRunIds, ["purge-contract-run"])
+      return true
+    })
+  } finally {
+    cleanup.applyWorkflowRunCleanupTransaction = originalApply
+  }
+
+  assert.equal((await fs.stat(run.directory)).isDirectory(), true)
+})
+
+test("apply reports bytes only after the planned quarantine is completely purged", async (t) => {
+  const root = await workspace(t)
+  const run = await writeRun(root, "purged-run")
+  await fs.writeFile(path.join(run.directory, "artifact.bin"), "purged artifact bytes")
+  const { WorkflowRunRetentionService } = modules()
+  const service = new WorkflowRunRetentionService({ workspaceRoot: root, now: () => "2026-07-13T03:00:00.000Z" })
+  const plan = await service.preview({ completedDays: 1 })
+  assert.deepEqual(plan.candidateRunIds, ["purged-run"])
+
+  const result = await service.apply(plan)
+
+  assert.deepEqual(result.removedRunIds, ["purged-run"])
+  assert.equal(result.reclaimedBytes, plan.reclaimBytes)
+  assert.match(result.transactionId, /^cleanup-/)
+  await assert.rejects(fs.stat(run.directory), { code: "ENOENT" })
+})
+
 test("setPinned recovers a pending journal inside its owned run lock", async (t) => {
   const root = await workspace(t)
   const { directory, run } = await writeRun(root, "journal-pin-run")

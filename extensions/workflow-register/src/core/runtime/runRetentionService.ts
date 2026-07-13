@@ -83,21 +83,16 @@ export class WorkflowRunRetentionService {
 
   async apply(plan: WorkflowRunCleanupPlan): Promise<{ removedRunIds: string[]; reclaimedBytes: number; transactionId?: string }> {
     if (!verifyWorkflowRunCleanupPlan(plan)) throw new Error("Workflow run cleanup plan digest is invalid.")
-    const refreshed = planWorkflowRunCleanup((await this.inspect()).inventory, plan.policy)
-    if (refreshed.digest !== plan.digest) throw new Error("Workflow run cleanup inventory changed after preview; refresh and retry.")
-    const candidates = refreshed.decisions
-      .filter((decision) => decision.action === "delete")
-      .map((decision) => ({ runId: decision.runId, revision: decision.revision }))
-    if (candidates.length === 0) return { removedRunIds: [], reclaimedBytes: 0 }
+    if (plan.candidateRunIds.length === 0) return { removedRunIds: [], reclaimedBytes: 0 }
     const transaction = await applyWorkflowRunCleanupTransaction({
       workspaceRoot: this.workspaceRoot,
-      candidates,
+      expectedPlan: plan,
       transactionId: `cleanup-${randomUUID()}`
     })
     const removed = new Set(transaction.removedRunIds)
     return {
       removedRunIds: transaction.removedRunIds,
-      reclaimedBytes: refreshed.decisions.filter((decision) => removed.has(decision.runId)).reduce((sum, decision) => sum + decision.bytes, 0),
+      reclaimedBytes: plan.decisions.filter((decision) => removed.has(decision.runId)).reduce((sum, decision) => sum + decision.bytes, 0),
       transactionId: transaction.transactionId
     }
   }
