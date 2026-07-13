@@ -127,5 +127,10 @@ test("Operation Hub provider gathers compatible runtime evidence", () => {
   assert.match(provider, /snapshot\.workflowId === run\.workflowId/)
   assert.match(provider, /snapshot\.workflowDefinitionHash/)
   assert.match(provider, /FileTaskSnapshotStore/)
+  const mutationActions = provider.slice(
+    provider.indexOf("const MUTATING_RUN_ACTIONS"),
+    provider.indexOf("const MUTATING_WORKFLOW_ACTIONS")
+  )
+  assert.match(mutationActions, /"recoverDetachedHeldRun"/)
   assert.match(extension, /activeSteps: \(\) => service\.listActiveSteps\(\)/)
 })

@@ -801,7 +801,11 @@ export class WorkflowRunCommandService {
       liveTaskAvailable: Boolean(reviewTaskRegistry.taskForRun(root, run.runId)),
       activeManualStepAvailable,
       artifactManifestAvailable,
-      taskSnapshotAvailable: snapshots.some((snapshot) => snapshot.stepId === run.currentStep)
+      taskSnapshotAvailable: snapshots.some((snapshot) => (
+        snapshot.stepId === run.currentStep
+        && snapshot.workflowId === run.workflowId
+        && (!snapshot.workflowDefinitionHash || !workflow?.definitionHash || snapshot.workflowDefinitionHash === workflow.definitionHash)
+      ))
     })
   }
 

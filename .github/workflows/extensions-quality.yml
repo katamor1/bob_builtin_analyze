@@ -4,109 +4,342 @@ on:
   pull_request:
     paths:
       - "extensions/workflow-register/**"
+      - "extensions/bob-bazaar-review/**"
+      - "extensions/bob-code-consistency-review/**"
+      - "scripts/*.js"
       - ".github/workflows/extensions-quality.yml"
-
-permissions:
-  contents: write
+  push:
+    branches:
+      - main
+    paths:
+      - "extensions/workflow-register/**"
+      - "extensions/bob-bazaar-review/**"
+      - "extensions/bob-code-consistency-review/**"
+      - "scripts/*.js"
+      - ".github/workflows/extensions-quality.yml"
+  workflow_dispatch:
 
 concurrency:
   group: extensions-quality-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  p1-4-final-contracts:
-    name: P1-4 final mutation and evidence contracts
-    if: github.event.pull_request.head.repo.full_name == github.repository
+  workflow-register:
+    name: workflow-register
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+
     defaults:
       run:
         working-directory: extensions/workflow-register
+
     steps:
-      - name: Checkout feature branch
+      - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-        with:
-          ref: ${{ github.head_ref }}
-          fetch-depth: 0
+
       - name: Setup Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
           cache: npm
           cache-dependency-path: extensions/workflow-register/package-lock.json
-      - name: Apply final contracts and regressions
-        working-directory: .
-        shell: bash
-        run: |
-          set -euo pipefail
-          git fetch origin main
-          python - <<'PY'
-          import base64
-          from pathlib import Path
 
-          replacements = [
-            (
-              "extensions/workflow-register/src/gui/operationHubProvider.ts",
-              "Y29uc3QgTVVUQVRJTkdfUlVOX0FDVElPTlM6IHJlYWRvbmx5IE9wZXJhdGlvbkh1YkFjdGlvbklkW10gPSBbCiAgInN0YXJ0RnJvbUFydGlmYWN0cyIsCiAgInJlc3VtZVJ1biIsCg==",
-              "Y29uc3QgTVVUQVRJTkdfUlVOX0FDVElPTlM6IHJlYWRvbmx5IE9wZXJhdGlvbkh1YkFjdGlvbklkW10gPSBbCiAgInN0YXJ0RnJvbUFydGlmYWN0cyIsCiAgInJlY292ZXJEZXRhY2hlZEhlbGRSdW4iLAogICJyZXN1bWVSdW4iLAo="
-            ),
-            (
-              "extensions/workflow-register/src/workflowRunCommands.ts",
-              "ICAgICAgdGFza1NuYXBzaG90QXZhaWxhYmxlOiBzbmFwc2hvdHMuc29tZSgoc25hcHNob3QpID0+IHNuYXBzaG90LnN0ZXBJZCA9PT0gcnVuLmN1cnJlbnRTdGVwKQo=",
-              "ICAgICAgdGFza1NuYXBzaG90QXZhaWxhYmxlOiBzbmFwc2hvdHMuc29tZSgoc25hcHNob3QpID0+ICgKICAgICAgICBzbmFwc2hvdC5zdGVwSWQgPT09IHJ1bi5jdXJyZW50U3RlcAogICAgICAgICYmIHNuYXBzaG90LndvcmtmbG93SWQgPT09IHJ1bi53b3JrZmxvd0lkCiAgICAgICAgJiYgKCFzbmFwc2hvdC53b3JrZmxvd0RlZmluaXRpb25IYXNoIHx8ICF3b3JrZmxvdz8uZGVmaW5pdGlvbkhhc2ggfHwgc25hcHNob3Qud29ya2Zsb3dEZWZpbml0aW9uSGFzaCA9PT0gd29ya2Zsb3cuZGVmaW5pdGlvbkhhc2gpCiAgICAgICkpCg=="
-            ),
-            (
-              "extensions/workflow-register/test/operationHubHeldRecovery.test.js",
-              "ICBhc3NlcnQubWF0Y2gocHJvdmlkZXIsIC9GaWxlVGFza1NuYXBzaG90U3RvcmUvKQogIGFzc2VydC5tYXRjaChleHRlbnNpb24sIC9hY3RpdmVTdGVwczogXChcKSA9PiBzZXJ2aWNlXC5saXN0QWN0aXZlU3RlcHNcKFwpLykKfSkK",
-              "ICBhc3NlcnQubWF0Y2gocHJvdmlkZXIsIC9GaWxlVGFza1NuYXBzaG90U3RvcmUvKQogIGNvbnN0IG11dGF0aW9uQWN0aW9ucyA9IHByb3ZpZGVyLnNsaWNlKAogICAgcHJvdmlkZXIuaW5kZXhPZigiY29uc3QgTVVUQVRJTkdfUlVOX0FDVElPTlMiKSwKICAgIHByb3ZpZGVyLmluZGV4T2YoImNvbnN0IE1VVEFUSU5HX1dPUktGTE9XX0FDVElPTlMiKQogICkKICBhc3NlcnQubWF0Y2gobXV0YXRpb25BY3Rpb25zLCAvInJlY292ZXJEZXRhY2hlZEhlbGRSdW4iLykKICBhc3NlcnQubWF0Y2goZXh0ZW5zaW9uLCAvYWN0aXZlU3RlcHM6IFwoXCkgPT4gc2VydmljZVwubGlzdEFjdGl2ZVN0ZXBzXChcKS8pCn0pCg=="
-            ),
-            (
-              "extensions/workflow-register/test/detachedHeldRecoveryCommand.test.js",
-              "ICBhc3NlcnQuZG9lc05vdE1hdGNoKGJvZHksIC9jb29yZGluYXRlV29ya2Zsb3dSdW5FeGVjdXRpb25cKHJ1blN0b3JlLCBzZWxlY3Rpb25cLnJ1bklkLCAicmVjb3ZlckRldGFjaGVkSGVsZFJ1biIvKQp9KQo=",
-              "ICBhc3NlcnQuZG9lc05vdE1hdGNoKGJvZHksIC9jb29yZGluYXRlV29ya2Zsb3dSdW5FeGVjdXRpb25cKHJ1blN0b3JlLCBzZWxlY3Rpb25cLnJ1bklkLCAicmVjb3ZlckRldGFjaGVkSGVsZFJ1biIvKQogIGFzc2VydC5tYXRjaChzb3VyY2UsIC9zbmFwc2hvdFwud29ya2Zsb3dJZCA9PT0gcnVuXC53b3JrZmxvd0lkLykKICBhc3NlcnQubWF0Y2goc291cmNlLCAvc25hcHNob3RcLndvcmtmbG93RGVmaW5pdGlvbkhhc2gvKQp9KQo="
-            )
-          ]
-          for file_name, old_b64, new_b64 in replacements:
-              path = Path(file_name)
-              text = path.read_text(encoding="utf-8")
-              old = base64.b64decode(old_b64).decode("utf-8")
-              new = base64.b64decode(new_b64).decode("utf-8")
-              if old not in text:
-                  raise SystemExit(f"replacement anchor not found: {file_name}")
-              path.write_text(text.replace(old, new, 1), encoding="utf-8")
-          PY
+      - name: Verify Extension Host smoke contract
+        run: node --test ../../scripts/extension-host-smoke-contract.test.js
+
       - name: Install dependencies
-        run: npm ci --silent
-      - name: Verify focused and full suites
-        shell: bash
+        run: npm ci
+
+      - name: Dependency policy
+        run: npm run dependency:policy
+
+      - name: Architecture policy
+        run: npm run architecture:policy
+
+      - name: Source policy
+        run: npm run source:policy
+
+      - name: Schema policy
+        run: npm run schema:policy
+
+      - name: Unused dependency report
+        run: npm run unused:report
+
+      - name: Production dependency audit
+        run: npm run audit:prod
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Package
+        run: npm run package
+
+      - name: VSIX policy
+        run: npm run package:policy
+
+      - name: Install pinned local VS Code test runtime
+        run: npm install --no-save --package-lock=false --ignore-scripts --audit=false --fund=false @vscode/test-cli@0.0.12 @vscode/test-electron@2.5.2
+
+      - name: Extension Host smoke
+        env:
+          SMOKE_EXTENSION_ID: local.workflow-register
+          SMOKE_COMMANDS: workflowRegister.reload,workflowRegister.runWorkflow
         run: |
-          set -euo pipefail
-          npm run compile --silent
-          node --test \
-            test/bobGateLifecycle.test.js \
-            test/heldRunRecoveryClassifier.test.js \
-            test/operationHubHeldRecovery.test.js \
-            test/operationHub.test.js \
-            test/operationHubMutations.test.js \
-            test/detachedHeldRecoveryCommand.test.js \
-            test/heldRecoveryDiagnostics.test.js \
-            test/workflowEngineGuardedResume.test.js
-          npm test --silent
-          npm run dependency:policy --silent
-          npm run architecture:policy --silent
-          npm run source:policy --silent
-          npm run schema:policy --silent
-          npm run package --silent
-          npm run package:policy --silent
-      - name: Restore standard CI and publish verified final contracts
-        working-directory: .
-        shell: bash
+          node ../../scripts/extension-host-smoke.test.js --write-config
+          xvfb-run -a ./node_modules/.bin/vscode-test
+
+  bob-bazaar-review:
+    name: bob-bazaar-review
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: extensions/bob-bazaar-review
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: extensions/bob-bazaar-review/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Dependency policy
+        run: npm run dependency:policy
+
+      - name: Architecture policy
+        run: npm run architecture:policy
+
+      - name: Source policy
+        run: npm run source:policy
+
+      - name: Unused dependency report
+        run: npm run unused:report
+
+      - name: Unused dependency policy
+        run: npm run unused:policy
+
+      - name: Artifact size policy
+        run: npm run artifact:policy
+
+      - name: Production dependency audit
+        run: npm run audit:prod
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Package
+        run: npm run package
+
+      - name: VSIX policy
+        run: npm run package:policy
+
+      - name: VSIX metrics
+        run: npm run package:metrics
+
+      - name: Install pinned local VS Code test runtime
+        run: npm install --no-save --package-lock=false --ignore-scripts --audit=false --fund=false @vscode/test-cli@0.0.12 @vscode/test-electron@2.5.2
+
+      - name: Extension Host smoke
+        env:
+          SMOKE_EXTENSION_ID: local.bob-bazaar-review
+          SMOKE_COMMANDS: bobBazaar.openReviewGui,bobBazaar.reviewRevision
         run: |
-          set -euo pipefail
-          git show origin/main:.github/workflows/extensions-quality.yml > .github/workflows/extensions-quality.yml
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git diff --cached --check
-          git commit -m "fix: finalize detached held recovery contracts"
-          git push origin HEAD:${{ github.head_ref }}
+          node ../../scripts/extension-host-smoke.test.js --write-config
+          xvfb-run -a ./node_modules/.bin/vscode-test
+
+  bob-code-consistency-review:
+    name: bob-code-consistency-review
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: extensions/bob-code-consistency-review
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: extensions/bob-code-consistency-review/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Dependency policy
+        run: npm run dependency:policy
+
+      - name: Architecture policy
+        run: npm run architecture:policy
+
+      - name: Source policy
+        run: npm run source:policy
+
+      - name: Unused dependency report
+        run: npm run unused:report
+
+      - name: Production dependency audit
+        run: npm run audit:prod
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Package
+        run: npm run package
+
+      - name: VSIX policy
+        run: npm run package:policy
+
+      - name: Install pinned local VS Code test runtime
+        run: npm install --no-save --package-lock=false --ignore-scripts --audit=false --fund=false @vscode/test-cli@0.0.12 @vscode/test-electron@2.5.2
+
+      - name: Extension Host smoke
+        env:
+          SMOKE_EXTENSION_ID: local.bob-code-consistency-review
+          SMOKE_COMMANDS: bobCodeConsistency.openReviewWizard,bobCodeConsistency.preprocess
+          SMOKE_EXTRA_FILES: ../../scripts/triage-integrity-extension-host.test.js
+          SMOKE_WORKSPACE_FOLDER: test/fixtures/triage-operator-workspace
+        run: |
+          node ../../scripts/extension-host-smoke.test.js --write-config
+          xvfb-run -a ./node_modules/.bin/vscode-test
+
+  windows-smoke:
+    name: Windows / ${{ matrix.extension }}
+    runs-on: windows-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - extension: workflow-register
+            extension_id: local.workflow-register
+            smoke_commands: workflowRegister.reload,workflowRegister.runWorkflow
+            extra_test_files: ""
+            workspace_folder: ""
+          - extension: bob-bazaar-review
+            extension_id: local.bob-bazaar-review
+            smoke_commands: bobBazaar.openReviewGui,bobBazaar.reviewRevision
+            extra_test_files: ""
+            workspace_folder: ""
+          - extension: bob-code-consistency-review
+            extension_id: local.bob-code-consistency-review
+            smoke_commands: bobCodeConsistency.openReviewWizard,bobCodeConsistency.preprocess
+            extra_test_files: "../../scripts/triage-integrity-extension-host.test.js"
+            workspace_folder: "test/fixtures/triage-operator-workspace"
+
+    defaults:
+      run:
+        working-directory: extensions/${{ matrix.extension }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: extensions/${{ matrix.extension }}/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Dependency policy
+        run: npm run dependency:policy
+
+      - name: Architecture policy
+        run: npm run architecture:policy
+
+      - name: Source policy
+        run: npm run source:policy
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Package
+        run: npm run package
+
+      - name: VSIX policy
+        run: npm run package:policy
+
+      - name: Install pinned local VS Code test runtime
+        run: npm install --no-save --package-lock=false --ignore-scripts --audit=false --fund=false @vscode/test-cli@0.0.12 @vscode/test-electron@2.5.2
+
+      - name: Extension Host smoke
+        shell: pwsh
+        env:
+          SMOKE_EXTENSION_ID: ${{ matrix.extension_id }}
+          SMOKE_COMMANDS: ${{ matrix.smoke_commands }}
+          SMOKE_EXTRA_FILES: ${{ matrix.extra_test_files }}
+          SMOKE_WORKSPACE_FOLDER: ${{ matrix.workspace_folder }}
+        run: |
+          node ../../scripts/extension-host-smoke.test.js --write-config
+          & .\node_modules\.bin\vscode-test.cmd
+
+  extension-metrics:
+    name: Extension source metrics
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+
+      - name: Generate extension metrics
+        run: node scripts/report-extension-metrics.js --output extension-metrics.md
+
+      - name: Add metrics to job summary
+        shell: bash
+        run: cat extension-metrics.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Comment extension metrics on pull request
+        continue-on-error: true
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        with:
+          script: |
+            const fs = require("node:fs");
+            const marker = "<!-- bob-extension-metrics -->";
+            const body = `${marker}\n${fs.readFileSync("extension-metrics.md", "utf8")}`;
+            const issue_number = context.payload.pull_request.number;
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number
+            });
+            const previous = comments.data.find((comment) =>
+              comment.user?.type === "Bot" && comment.body?.includes(marker)
+            );
+            if (previous) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: previous.id,
+                body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number,
+                body
+              });
+            }

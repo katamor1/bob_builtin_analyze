@@ -93,6 +93,7 @@ const RUN_ID_ACTIONS: readonly OperationHubActionId[] = [
 
 const MUTATING_RUN_ACTIONS: readonly OperationHubActionId[] = [
   "startFromArtifacts",
+  "recoverDetachedHeldRun",
   "resumeRun",
   "retryCurrentStep",
   "acceptCurrentStep",
