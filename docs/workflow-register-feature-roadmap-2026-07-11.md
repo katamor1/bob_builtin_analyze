@@ -226,6 +226,8 @@ Task snapshot から artifact を生成する前に、利用者が抽出元、�
 
 ### P1-3. Reused / Skipped 状態を一貫表示する
 
+**実行状況（2026-07-13）:** Draft PR #90で実装済み。共通projector、Operation Hub、Runs View、Run Diagnostics、Bob chat control、metadata sanitization、表示上限のfocused testはGREEN。最終Ubuntu／Windows matrixとmergeは継続中。
+
 **Issue title**
 
 ```text

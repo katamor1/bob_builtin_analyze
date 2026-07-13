@@ -1,6 +1,8 @@
 # Workflow Reused / Skipped Provenance P1-3 Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+**実行状況（2026-07-13）:** Task 1〜5 implemented and focused GREEN. Task 6 final cross-platform verification pending.
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Surface artifact-reused and skipped workflow steps consistently without changing persisted run or step status schemas.
 
@@ -30,7 +32,7 @@
 - Consumes: `WorkflowRunState`, `RunStepState`, existing state keys `workflow.artifactReuse`, `workflow.artifactHydration`, `workflow.taskSnapshotImport`, `workflow.definitionMismatch`.
 - Produces: `projectWorkflowRunProvenance(run): WorkflowRunProvenanceProjection`.
 
-- [ ] **Step 1: Add failing projection tests**
+- [x] **Step 1: Add failing projection tests**
 
 Cover:
 
@@ -45,7 +47,7 @@ assert.equal(projection.sourceRunId, "source-run")
 
 Also cover malformed JSON, duplicate IDs, unknown step IDs, task snapshot import and definition mismatch.
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 Run:
 
@@ -57,11 +59,11 @@ node --test test/workflowRunProvenance.test.js
 
 Expected: compile or test failure because `out/core/runProvenance` does not exist.
 
-- [ ] **Step 3: Implement minimal projector**
+- [x] **Step 3: Implement minimal projector**
 
 Use deterministic de-duplication and no body-text fields. A hydration record marks only its `producedBy` step as artifact-verified.
 
-- [ ] **Step 4: Verify GREEN**
+- [x] **Step 4: Verify GREEN**
 
 ```bash
 npm run compile
@@ -70,7 +72,7 @@ node --test test/workflowRunProvenance.test.js
 
 Expected: all tests pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add extensions/workflow-register/src/core/runProvenance.ts extensions/workflow-register/test/workflowRunProvenance.test.js
@@ -89,29 +91,29 @@ git commit -m "feat: project workflow reuse provenance"
 - Consumes: `projectWorkflowRunProvenance(run)`.
 - Produces: `OperationHubStepProvenanceSummary[]` on each run card.
 
-- [ ] **Step 1: Add RED tests**
+- [x] **Step 1: Add RED tests**
 
 Assert that the reused `collect` step is rendered separately from a normal completed step and includes source run, artifact ID and hydrated key. Assert that `bobTaskSync.drift.status="synced"` with `liveTaskAvailable=false` renders warning copy instead of an OK synced badge.
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 ```bash
 npm run compile
 node --test test/operationHubArtifactReuse.test.js test/operationHubTodoSync.test.js
 ```
 
-- [ ] **Step 3: Add model and HTML fields**
+- [x] **Step 3: Add model and HTML fields**
 
 Add a bounded list of step summaries to `OperationHubRunSummary`. Render IDs and metadata only; no state values. Preserve existing run-level badges and action ordering.
 
-- [ ] **Step 4: Verify GREEN**
+- [x] **Step 4: Verify GREEN**
 
 ```bash
 npm run compile
 node --test test/operationHubArtifactReuse.test.js test/operationHubTodoSync.test.js
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add extensions/workflow-register/src/gui/operationHubModel.ts extensions/workflow-register/src/gui/operationHubHtml.ts extensions/workflow-register/test/operationHubArtifactReuse.test.js extensions/workflow-register/test/operationHubTodoSync.test.js
@@ -130,29 +132,29 @@ git commit -m "feat: show reused steps in Operation Hub"
 - Consumes: the shared provenance projection.
 - Produces: stable tooltip and diagnostic lines.
 
-- [ ] **Step 1: Add RED tests**
+- [x] **Step 1: Add RED tests**
 
 Assert Runs View tooltip includes reused step IDs, source run, hydrated keys and artifact IDs. Assert diagnostics include `completionSource=reused`, `skippedByArtifactReuse=yes` and do not include hydrated values.
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 ```bash
 npm run compile
 node --test test/runControlViewReuseProvenance.test.js test/workflowRunProvenanceDiagnostics.test.js
 ```
 
-- [ ] **Step 3: Implement adapters**
+- [x] **Step 3: Implement adapters**
 
 Keep tree descriptions compact. Add a `Workflow provenance:` diagnostics section before generic state-key listing.
 
-- [ ] **Step 4: Verify GREEN and existing diagnostics**
+- [x] **Step 4: Verify GREEN and existing diagnostics**
 
 ```bash
 npm run compile
 node --test test/runControlViewReuseProvenance.test.js test/workflowRunProvenanceDiagnostics.test.js test/workflowRunDiagnostics.test.js
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add extensions/workflow-register/src/commands/runControlView.ts extensions/workflow-register/src/core/runDiagnostics.ts extensions/workflow-register/test/runControlViewReuseProvenance.test.js extensions/workflow-register/test/workflowRunProvenanceDiagnostics.test.js
@@ -171,29 +173,29 @@ git commit -m "feat: expose reuse provenance in run diagnostics"
 - Extends `WorkflowControlBlockInput` with `provenanceLines?: readonly string[]`.
 - Bob runner derives lines from the shared projection.
 
-- [ ] **Step 1: Add RED tests**
+- [x] **Step 1: Add RED tests**
 
 Assert the control block contains source run, reused step IDs, verified artifact IDs and hydrated key names. Assert it omits a supplied artifact body string.
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 ```bash
 npm run compile
 node --test test/bobWorkflowMessages.test.js test/bobWorkflowReuseProvenance.test.js
 ```
 
-- [ ] **Step 3: Implement bounded control lines**
+- [x] **Step 3: Implement bounded control lines**
 
 Pass at most 20 step IDs, 20 key IDs and 20 artifact IDs. Do not mutate Bob Todo statuses or run state.
 
-- [ ] **Step 4: Verify GREEN**
+- [x] **Step 4: Verify GREEN**
 
 ```bash
 npm run compile
 node --test test/bobWorkflowMessages.test.js test/bobWorkflowReuseProvenance.test.js test/bobTaskSync.test.js
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add extensions/workflow-register/src/bobWorkflowMessages.ts extensions/workflow-register/src/bobWorkflowRunner.ts extensions/workflow-register/test/bobWorkflowMessages.test.js extensions/workflow-register/test/bobWorkflowReuseProvenance.test.js
@@ -208,11 +210,11 @@ git commit -m "feat: include reuse provenance in Bob controls"
 - Create: `docs/release-evidence/workflow-reuse-provenance-p1-3-review-2026-07-12.md`
 - Modify: `docs/workflow-register-feature-roadmap-2026-07-11.md`
 
-- [ ] Document the authoritative data, display locations, malformed-record behavior and Bob Todo limitation.
-- [ ] Update roadmap P1-3 status without marking external UAT complete.
-- [ ] Record RED/GREEN commit SHAs and Actions run IDs.
-- [ ] Run whole-diff review and require Critical 0 / Important 0.
-- [ ] Commit docs and evidence.
+- [x] Document the authoritative data, display locations, malformed-record behavior and Bob Todo limitation.
+- [x] Update roadmap P1-3 status without marking external UAT complete.
+- [x] Record RED/GREEN commit SHAs and Actions run IDs.
+- [x] Run whole-diff review and require Critical 0 / Important 0.
+- [x] Commit docs and evidence.
 
 ### Task 6: Full verification and integration
 
