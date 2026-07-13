@@ -170,13 +170,14 @@ function runCommandHarness(t) {
           state.savedRuns.push(structuredClone(run))
           await state.afterTargetSave({ root, run, targetFile })
         },
-        withRunLock: async (runId, operation) => {
+        withRunLock: async (runId, operation, lockOptions = {}) => {
           await state.beforeRunLock({ root, runId })
-          if (durableStore) return durableStore.withRunLock(runId, operation)
+          if (durableStore) return durableStore.withRunLock(runId, operation, lockOptions)
           return withWorkflowRunLock(root, runId, operation, {
             timeoutMs: 2_000,
             pollMs: 5,
-            heartbeatMs: 0
+            heartbeatMs: 0,
+            ...lockOptions
           })
         }
       }
@@ -984,6 +985,36 @@ test("workflow artifact source selected during cleanup cannot commit target prov
     assert.match(String(cleanupOutcome.reason), /EISDIR|path is a directory/i)
   }
   assert.equal(fs.existsSync(path.join(rootB.root, ".bob", "workflows", "runs", "seeded-run", "run.json")), false)
+})
+
+test("workflow artifact source cleanup completed before locking does not recreate the source directory", async (t) => {
+  const { rootB, service, state, workflow } = runCommandHarness(t)
+  configureArtifactWorkflow(workflow, rootB.root)
+  const source = writeArtifactSourceRun(rootB.root, rootB.runId, workflow)
+  let cleanupOutcome
+  state.beforeRunLock = async ({ runId }) => {
+    if (cleanupOutcome || runId !== source.runId) return
+    cleanupOutcome = await settle(withTimeout(applyWorkflowRunCleanupTransaction({
+      workspaceRoot: rootB.root,
+      candidates: [{ runId: source.runId, revision: source.revision }],
+      transactionId: "cleanup-complete-before-source-lock"
+    }), "cleanup-complete source transaction"))
+    if (cleanupOutcome.status === "rejected") {
+      assert.match(String(cleanupOutcome.reason), /EISDIR|path is a directory/i)
+    }
+    assert.equal(fs.existsSync(source.runDirectory), false)
+  }
+
+  const commandOutcome = await settle(withTimeout(
+    service.startFromStepWithArtifacts(workflow.id, "step", source.runId, {}),
+    "cleanup-complete source reuse"
+  ))
+
+  assert.ok(cleanupOutcome, "source locking must reach the cleanup-complete barrier")
+  assert.equal(commandOutcome.status, "rejected")
+  assert.equal(state.savedRuns.length, 0)
+  assert.equal(fs.existsSync(source.runDirectory), false)
+  assert.equal(fs.existsSync(path.join(rootB.root, ".bob", "workflows", "runs", "seeded-run")), false)
 })
 
 test("workflow artifact source reuse recovers a pending journal inside the owned source lock", async (t) => {

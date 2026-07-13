@@ -251,6 +251,33 @@ test("cleanup lease acquired first prevents pin metadata mutation", async (t) =>
   await assert.rejects(fs.access(directory), { code: "ENOENT" })
 })
 
+test("cleanup completed before a stale pin starts does not recreate the run directory", async (t) => {
+  const root = await workspace(t)
+  const { directory } = await writeRun(root, "cleanup-complete-pin-run")
+  const runBytes = await fs.readFile(path.join(directory, "run.json"))
+  const revision = `sha256:${crypto.createHash("sha256").update(runBytes).digest("hex")}`
+  const { applyWorkflowRunCleanupTransaction } = cleanupModules()
+  const cleanupOutcome = await settle(withTimeout(applyWorkflowRunCleanupTransaction({
+    workspaceRoot: root,
+    candidates: [{ runId: "cleanup-complete-pin-run", revision }],
+    transactionId: "cleanup-complete-before-pin"
+  }), "cleanup-complete pin transaction"))
+  if (cleanupOutcome.status === "rejected") {
+    assert.match(String(cleanupOutcome.reason), /EISDIR|path is a directory/i)
+  }
+  await assert.rejects(fs.access(directory), { code: "ENOENT" })
+
+  const { WorkflowRunRetentionService } = modules()
+  const service = new WorkflowRunRetentionService({ workspaceRoot: root, now: () => "2026-07-13T01:30:00.000Z" })
+  const pinOutcome = await settle(withTimeout(
+    service.setPinned("cleanup-complete-pin-run", true, "stale pin must fail closed"),
+    "cleanup-complete stale pin"
+  ))
+
+  assert.equal(pinOutcome.status, "rejected")
+  await assert.rejects(fs.access(directory), { code: "ENOENT" })
+})
+
 test("pin metadata committed first keeps cleanup out until the run lock releases", async (t) => {
   const root = await workspace(t)
   const { directory } = await writeRun(root, "pin-first-run")

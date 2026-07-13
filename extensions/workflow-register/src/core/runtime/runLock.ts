@@ -26,6 +26,7 @@ export interface WorkflowRunLockV1 {
 }
 
 export interface WorkflowRunLockOptions {
+  requireExistingRunDirectory?: boolean
   timeoutMs?: number
   staleMs?: number
   heartbeatMs?: number
@@ -53,7 +54,13 @@ export async function withWorkflowRunLock<T>(
 
   const resolved = resolveOptions(options)
   const runDirectoryExistedAtEntry = await runDurabilityDirectoryPresent(physicalRoot, runId)
-  const owner = await acquireWorkflowRunLock(physicalRoot, runId, resolved, runDirectoryExistedAtEntry)
+  const owner = await acquireWorkflowRunLock(
+    physicalRoot,
+    runId,
+    resolved,
+    runDirectoryExistedAtEntry,
+    options.requireExistingRunDirectory === true
+  )
   const chain = new Set(active)
   chain.add(key)
   let heartbeatError: unknown
@@ -128,7 +135,8 @@ async function acquireWorkflowRunLock(
   workspaceRoot: string,
   runId: string,
   options: ResolvedWorkflowRunLockOptions,
-  runDirectoryExistedAtEntry: boolean
+  runDirectoryExistedAtEntry: boolean,
+  requireExistingRunDirectory: boolean
 ): Promise<WorkflowRunLockV1> {
   const startedAt = Date.now()
   while (true) {
@@ -151,7 +159,7 @@ async function acquireWorkflowRunLock(
         runId,
         "run.lock.json",
         serializeWorkflowRunLock(owner),
-        { createRunDirectory: !runDirectoryExistedAtEntry }
+        { createRunDirectory: !requireExistingRunDirectory && !runDirectoryExistedAtEntry }
       )) {
         if (!await workflowRunCleanupLeasePresent(workspaceRoot, runId)) return owner
         const removed = await releaseWorkflowRunLock(workspaceRoot, runId, owner)

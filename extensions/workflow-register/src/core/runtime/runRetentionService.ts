@@ -124,7 +124,7 @@ export class WorkflowRunRetentionService {
         serializeWorkflowRunRetentionMetadata(metadata),
         RETENTION_FILE
       )
-    })
+    }, { requireExistingRunDirectory: true })
   }
 }
 

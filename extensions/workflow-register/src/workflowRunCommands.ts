@@ -272,7 +272,7 @@ export class WorkflowRunCommandService {
         reusedStepIds: seededRun.reusedStepIds,
         sourceRunId: lockedSourceRun.runId
       }
-    })
+    }, { requireExistingRunDirectory: true })
     if (!prepared.ok) {
       await vscode.window.showErrorMessage(prepared.message)
       return prepared.message
