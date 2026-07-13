@@ -1,10 +1,11 @@
 import * as fs from "fs/promises"
 import * as path from "path"
 import * as vscode from "vscode"
-import { ARTIFACT_MANIFEST_STATE_KEY, parseWorkflowArtifactManifest } from "../core/artifacts"
+import { ARTIFACT_MANIFEST_STATE_KEY, parseWorkflowArtifactManifest, validateWorkflowArtifactManifest } from "../core/artifacts"
 import { classifyHeldRunRecovery } from "../core/heldRunRecovery"
 import { FileTaskSnapshotStore } from "../core/taskSnapshots"
 import { reviewTaskRegistry } from "../reviewTaskRegistry"
+import type { ActiveStep } from "../bobWorkflowTypes"
 import type { CoreWorkflowDefinition, WorkflowRunState } from "../core/model"
 import { FileRunStateStore } from "../core/runStateStore"
 import { readContainedRunFile } from "../core/runtime/runStatePath"
@@ -36,6 +37,7 @@ interface OperationHubWorkflowApi {
 interface OperationHubProviderOptions {
   api: OperationHubWorkflowApi
   extensionUri: vscode.Uri
+  activeSteps?: () => readonly ActiveStep[]
 }
 
 interface OperationHubMessage {
@@ -334,13 +336,30 @@ export class OperationHubProvider implements vscode.WebviewViewProvider, vscode.
           const taskSnapshots = run.status === "held"
             ? await taskSnapshotStore.listSnapshots(run.runId).catch(() => [])
             : []
+          const manifest = parseWorkflowArtifactManifest(run.state[ARTIFACT_MANIFEST_STATE_KEY])
+          const artifactManifestAvailable = Boolean(
+            workflow
+            && manifest
+            && !validateWorkflowArtifactManifest({ manifest, workflow, inputs: run.inputs })
+              .some((issue) => issue.severity === "error")
+          )
+          const activeManualStepAvailable = (this.options.activeSteps?.() ?? []).some((active) => (
+            active.runId === run.runId
+            && active.workflowId === run.workflowId
+            && active.stepId === run.currentStep
+          ))
+          const taskSnapshotAvailable = taskSnapshots.some((snapshot) => (
+            snapshot.stepId === run.currentStep
+            && snapshot.workflowId === run.workflowId
+            && (!snapshot.workflowDefinitionHash || !workflow?.definitionHash || snapshot.workflowDefinitionHash === workflow.definitionHash)
+          ))
           const heldRecovery = classifyHeldRunRecovery({
             run,
             workflow,
             liveTaskAvailable: Boolean(reviewTaskRegistry.taskForRun(candidate.root, run.runId)),
-            activeManualStepAvailable: Boolean(reviewTaskRegistry.taskForStep(candidate.root, run.runId, run.currentStep)),
-            artifactManifestAvailable: Boolean(parseWorkflowArtifactManifest(run.state[ARTIFACT_MANIFEST_STATE_KEY])),
-            taskSnapshotAvailable: taskSnapshots.some((item) => item.stepId === run.currentStep)
+            activeManualStepAvailable,
+            artifactManifestAvailable,
+            taskSnapshotAvailable
           })
           return { root: candidate.root, run, revision: snapshot.revision, heldRecovery }
         }))
@@ -601,7 +620,6 @@ async function loadRunSnapshot(
     throw error
   }
 }
-
 
 function isContainedPath(root: string, target: string): boolean {
   const relative = path.relative(path.resolve(root), path.resolve(target))
