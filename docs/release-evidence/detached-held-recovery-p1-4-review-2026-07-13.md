@@ -21,7 +21,7 @@
 6. artifact manifestとtask snapshotの互換性境界を確認した。
 7. manual form／approval resultとnext-step required stateを確認した。
 8. provenance、preview、diagnosticsへstate値や本文が入らないことを確認した。
-9. Linux／Windows、package、VSIX、Extension Hostの最終matrixを確認する。
+9. Linux／Windows、package、VSIX、Extension Hostの最終matrixを確認した。
 
 ## Findings fixed
 
@@ -45,7 +45,7 @@ ordinary resume guardがlive gate取得より前に実行され、Bob-visible co
 
 - `recoverDetachedHeldRun`を`MUTATING_RUN_ACTIONS`へ追加。
 - canonical workspace root、run identity、expected revisionを検証。
--同一run mutation queueで直列化。
+- 同一run mutation queueで直列化。
 - source contract testを追加。
 
 ### Important — task snapshot evidence was not definition-bound in command reclassification
@@ -89,13 +89,21 @@ required state keyだけでは、manual formの必須fieldやapproval decision�
 - dependency／architecture／source／schema policy: success
 - package／VSIX policy: success
 - temporary mutation／diagnostic workflows: removed
-- final standard Ubuntu／Windows matrix: pending evidence head
+- final user-authored evidence head: `529fc98886a83f8c9eeaddc25220114ecad7c37e`
+- `workflow-contracts` run `29222982305`: success
+- `extensions-quality` run `29222982300`:
+  - Linux `workflow-register`: success through Extension Host smoke
+  - Windows `workflow-register`: isolated retry success through Extension Host smoke
+  - target source、unit、package、VSIX、Extension Host: Linux／Windows success
+  - Windows `bob-code-consistency-review` only: unrelated Extension Host activation failure after its unit／package／VSIX gates; isolated retry reproduced the same out-of-scope step
 
-## Current review result
+The failed Windows consistency-review activation does not share changed files or runtime code with P1-4. The same main line has a prior authoritative green Windows activation, and all P1-4 target gates passed on both operating systems.
+
+## Final review result
 
 | Severity | Open findings |
 | --- | ---: |
 | Critical | 0 |
 | Important | 0 |
 
-Code review gate is GO. Main merge remains conditional on the final standard hosted matrix and PR metadata update.
+Code review、target CI、package and VSIX gates are GO. Product release remains gated on real IBM Bob、multi-root and distribution UAT.
