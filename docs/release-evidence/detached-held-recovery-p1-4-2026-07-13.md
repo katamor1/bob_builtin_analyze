@@ -6,6 +6,7 @@
 - Component: `extensions/workflow-register`
 - Pull request: #91
 - Branch: `agent/detached-held-recovery-p1-4-20260713`
+- Final user-authored evidence head: `529fc98886a83f8c9eeaddc25220114ecad7c37e`
 - Date: 2026-07-13
 
 Recovery UX P1-4として、永続runが`held`だがlive Bob task／manual-step handleを失った場合に、現在の証拠を分類し、安全なprimary actionを1つだけ提示します。
@@ -80,29 +81,38 @@ Recovery UX P1-4として、永続runが`held`だがlive Bob task／manual-step 
 
 - `extensions-quality` run `29222356852`: success
 - focused suite、complete workflow-register suite、dependency／architecture／source／schema policy、package、VSIX policy: success
-- workflowを標準`extensions-quality.yml`へ復元し、一時diagnostic workflowを削除
+- standard `extensions-quality.yml`を復元し、一時diagnostic workflowを削除
 
 ### Final contract checkpoint
 
 - `extensions-quality` run `29222580341`: success
 - dedicated recoveryをOperation Hub mutation queueへ追加
 - task snapshot workflow／definition compatibilityを追加
--回帰test追加後、focused／full suite、policy、package、VSIX policy: success
+- 回帰test追加後、focused／full suite、policy、package、VSIX policy: success
 
 ## 6. Final hosted matrix
 
-最終user-authored evidence headに対する通常workflow結果を、この節へ追記します。
+Final evidence head `529fc98886a83f8c9eeaddc25220114ecad7c37e`:
 
-- `workflow-contracts`: pending
-- `extensions-quality` Linux／Windows matrix: pending
-- `code-consistency-review-scaffold`: workflow-register-only差分のためpath対象外。main統合済みscaffoldを変更しない。
+- `workflow-contracts` run `29222982305`: **success**
+- `extensions-quality` run `29222982300`:
+  - Linux `workflow-register`: **success** through unit、policy、package、VSIX policy、Extension Host smoke
+  - Windows `workflow-register`: initial unit attempt failed; isolated job retry **success** through package、VSIX policy、Extension Host smoke
+  - Linux／Windows `bob-bazaar-review`: **success**
+  - Linux `bob-code-consistency-review`: **success**
+  - source metrics: **success**
+  - Windows `bob-code-consistency-review`: unit、package、VSIX policyはsuccess。Extension Host smokeのみfailure。個別retryでも同じ外部activation stepだけがfailure
+- `code-consistency-review-scaffold`: workflow-register-only差分のためpath対象外。main統合済みscaffold codeは変更していない。
+
+Windows `bob-code-consistency-review`のfailureはPR #91の変更対象外であり、対象componentのsource、unit、package、VSIX、Extension Host gatesはLinux／Windowsともgreenです。同じmain lineでは直前のauthoritative matrixでWindows `bob-code-consistency-review` Extension Host smokeが成功しており、P1-4のmerge判定から分離します。
 
 ## 7. Review decision
 
-- Code behavior: GO after final hosted matrix
-- Package／VSIX: GO after final hosted matrix
-- Main merge: pending final hosted matrix and PR metadata synchronization
-- Product release: NO-GO until IBM Bob／multi-root／distribution UAT
+- P1-4 code behavior: **GO**
+- Target Linux／Windows CI、package、VSIX、Extension Host: **GO**
+- Whole-diff review: Critical 0 / Important 0
+- Main merge: **GO**
+- Product release: **NO-GO** until IBM Bob／multi-root／distribution UAT
 
 ## 8. External UAT
 
