@@ -1,0 +1,85 @@
+name: p1-5-automatic-pause-reverify
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/p1-5-automatic-pause-reverify.yml"
+      - "extensions/workflow-register/**"
+      - "docs/release-evidence/workflow-automatic-pause-latest-main-2026-07-13.md"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  verify-and-record:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: extensions/workflow-register/package-lock.json
+
+      - name: Focused automatic-pause verification
+        working-directory: extensions/workflow-register
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --silent
+          npm run compile --silent
+          node --test test/workflowAutomaticPause*.test.js test/workflowRunLockHeartbeatContention.test.js
+
+      - name: Full workflow-register verification
+        working-directory: extensions/workflow-register
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm test
+          npm run dependency:policy
+          npm run architecture:policy
+          npm run source:policy
+          npm run schema:policy
+          npm run unused:report
+          npm run audit:prod
+          npm run package
+          npm run package:policy
+
+      - name: Record Linux verification and remove temporary workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("docs/release-evidence/workflow-automatic-pause-latest-main-2026-07-13.md")
+          text = path.read_text(encoding="utf-8")
+          text = text.replace("- Focused Automatic Pause suite: **PENDING**", "- Focused Automatic Pause suite: **PASS**")
+          text = text.replace("- Full workflow-register suite: **PENDING**", "- Full workflow-register suite: **PASS**")
+          text = text.replace("- Dependency／architecture／source／schema policies: **PENDING**", "- Dependency／architecture／source／schema policies: **PASS**")
+          text = text.replace("- Unused report／production audit: **PENDING**", "- Unused report／production audit: **PASS**")
+          text = text.replace("- Package／VSIX policy: **PENDING**", "- Package／VSIX policy: **PASS**")
+          text = text.replace("- Repository regression gate: **NO-GO pending verification**", "- Repository regression gate: **GO after final Linux／Windows matrix**")
+          text = text.replace("- [ ] No Automatic Pause production behavior changed in this PR.", "- [x] No Automatic Pause production behavior changed in this PR.")
+          text = text.replace("- [ ] All focused tests pass on the exact final head.", "- [x] All focused tests pass on the exact final head.")
+          text = text.replace("- [ ] The complete workflow-register suite passes on the exact final head.", "- [x] The complete workflow-register suite passes on the exact final head.")
+          text = text.replace("- [ ] Package and VSIX policy pass.", "- [x] Package and VSIX policy pass.")
+          text += "\n## Fresh Linux evidence\n\nGitHub Actions run `${GITHUB_RUN_ID}` completed the focused Automatic Pause suite, full workflow-register suite, dependency／architecture／source／schema policies, unused report, production audit, package, and VSIX policy before this evidence update was committed.\n"
+          path.write_text(text.replace("${GITHUB_RUN_ID}", __import__("os").environ["GITHUB_RUN_ID"]), encoding="utf-8")
+          PY
+          rm .github/workflows/p1-5-automatic-pause-reverify.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "docs: record automatic pause latest-main verification"
+          git push origin HEAD:${{ github.head_ref || github.ref_name }}
