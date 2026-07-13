@@ -1,0 +1,258 @@
+name: p1-6-retention-apply
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/p1-6-retention-apply.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: extensions/workflow-register/package-lock.json
+
+      - name: Wire retention boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          lease_path = Path("extensions/workflow-register/src/core/runtime/runCleanupLease.ts")
+          lease = lease_path.read_text(encoding="utf-8")
+          lease = lease.replace(
+              'const RUNS_ROOT_SEGMENTS = [".bob", "workflows", "runs"] as const\nconst CLEANUP_LEASE_DIRECTORY = ".cleanup-leases"',
+              'const WORKFLOWS_ROOT_SEGMENTS = [".bob", "workflows"] as const\nconst CLEANUP_LEASE_DIRECTORY = "run-cleanup-leases"'
+          )
+          lease = lease.replace('for (const segment of RUNS_ROOT_SEGMENTS)', 'for (const segment of WORKFLOWS_ROOT_SEGMENTS)')
+          lease_path.write_text(lease, encoding="utf-8")
+
+          lease_test_path = Path("extensions/workflow-register/test/workflowRunCleanupLease.test.js")
+          lease_test = lease_test_path.read_text(encoding="utf-8")
+          lease_test = lease_test.replace(
+              'path.join(root, ".bob", "workflows", "runs", ".cleanup-leases")',
+              'path.join(root, ".bob", "workflows", "run-cleanup-leases")'
+          )
+          lease_test_path.write_text(lease_test, encoding="utf-8")
+
+          lock_path = Path("extensions/workflow-register/src/core/runtime/runLock.ts")
+          lock = lock_path.read_text(encoding="utf-8")
+          import_anchor = 'import {\n  createRunDurabilityFile,\n  readRunDurabilityFile,\n  removeRunDurabilityFile,\n  replaceRunDurabilityFile\n} from "./runDurabilityPath"\n'
+          lease_import = 'import { workflowRunCleanupLeasePresent } from "./runCleanupLease"\n'
+          if lease_import not in lock:
+              assert import_anchor in lock
+              lock = lock.replace(import_anchor, import_anchor + lease_import, 1)
+          old = '''    let contentionMessage = "Lock metadata changed while it was being inspected."
+    try {
+      if (await createRunDurabilityFile(workspaceRoot, runId, "run.lock.json", serializeWorkflowRunLock(owner))) return owner
+
+      const snapshot = await readRunDurabilityFile(workspaceRoot, runId, "run.lock.json")
+      if (!snapshot) continue
+      const inspection = inspectExistingLock(snapshot.bytes, snapshot.mtimeMs, runId, options)
+      contentionMessage = inspection.message
+      if (inspection.reclaim) {
+        const removed = await removeRunDurabilityFile(workspaceRoot, runId, "run.lock.json", snapshot.bytes)
+        if (removed) {
+          try {
+            options.onReclaimed?.(inspection.message)
+          } catch (error) {
+            console.warn("Workflow run lock reclamation callback failed.", error)
+          }
+          continue
+        }
+      }
+    } catch (error) {
+      if (!isTransientLockContention(error, runId)) throw error
+      contentionMessage = `Lock metadata changed while it was being inspected (${formatError(error)}).`
+    }
+'''
+          new = '''    let contentionMessage = "Lock metadata changed while it was being inspected."
+    try {
+      if (await workflowRunCleanupLeasePresent(workspaceRoot, runId)) {
+        contentionMessage = "Reserved by a workflow run cleanup operation."
+      } else {
+        if (await createRunDurabilityFile(workspaceRoot, runId, "run.lock.json", serializeWorkflowRunLock(owner))) return owner
+
+        const snapshot = await readRunDurabilityFile(workspaceRoot, runId, "run.lock.json")
+        if (!snapshot) continue
+        const inspection = inspectExistingLock(snapshot.bytes, snapshot.mtimeMs, runId, options)
+        contentionMessage = inspection.message
+        if (inspection.reclaim) {
+          const removed = await removeRunDurabilityFile(workspaceRoot, runId, "run.lock.json", snapshot.bytes)
+          if (removed) {
+            try {
+              options.onReclaimed?.(inspection.message)
+            } catch (error) {
+              console.warn("Workflow run lock reclamation callback failed.", error)
+            }
+            continue
+          }
+        }
+      }
+    } catch (error) {
+      if (!isTransientLockContention(error, runId)) throw error
+      contentionMessage = `Lock or cleanup lease metadata changed while it was being inspected (${formatError(error)}).`
+    }
+'''
+          assert old in lock
+          lock = lock.replace(old, new, 1)
+          lock_path.write_text(lock, encoding="utf-8")
+
+          extension_path = Path("extensions/workflow-register/src/extensionWithAuthoring.ts")
+          extension = extension_path.read_text(encoding="utf-8")
+          import_line = '''import {
+  cleanupCompletedWorkflowRuns,
+  deleteSelectedWorkflowRuns,
+  inspectWorkflowRunStorage,
+  pinWorkflowRun,
+  previewWorkflowRunCleanup,
+  unpinWorkflowRun
+} from "./commands/runRetention"
+'''
+          anchor = 'import { WorkflowRunControlView } from "./commands/runControlView"\n'
+          if import_line not in extension:
+              assert anchor in extension
+              extension = extension.replace(anchor, anchor + import_line, 1)
+          registration_anchor = '    vscode.commands.registerCommand("workflowRegister.refreshRunsView", () => runControlView.refresh()),\n'
+          registrations = '''    vscode.commands.registerCommand("workflowRegister.inspectRunStorage", inspectWorkflowRunStorage),
+    vscode.commands.registerCommand("workflowRegister.previewRunCleanup", previewWorkflowRunCleanup),
+    vscode.commands.registerCommand("workflowRegister.cleanupCompletedRuns", cleanupCompletedWorkflowRuns),
+    vscode.commands.registerCommand("workflowRegister.deleteSelectedRuns", deleteSelectedWorkflowRuns),
+    vscode.commands.registerCommand("workflowRegister.pinRun", pinWorkflowRun),
+    vscode.commands.registerCommand("workflowRegister.unpinRun", unpinWorkflowRun),
+'''
+          if 'workflowRegister.inspectRunStorage' not in extension:
+              assert registration_anchor in extension
+              extension = extension.replace(registration_anchor, registration_anchor + registrations, 1)
+          extension_path.write_text(extension, encoding="utf-8")
+
+          package_path = Path("extensions/workflow-register/package.json")
+          package = json.loads(package_path.read_text(encoding="utf-8"))
+          commands = [
+              ("workflowRegister.inspectRunStorage", "Run storage を確認"),
+              ("workflowRegister.previewRunCleanup", "Run cleanup をプレビュー"),
+              ("workflowRegister.cleanupCompletedRuns", "完了 Run をcleanup"),
+              ("workflowRegister.deleteSelectedRuns", "選択した Run を削除"),
+              ("workflowRegister.pinRun", "Workflow Run をPin"),
+              ("workflowRegister.unpinRun", "Workflow Run のPinを解除"),
+          ]
+          for command, title in commands:
+              event = f"onCommand:{command}"
+              if event not in package["activationEvents"]:
+                  package["activationEvents"].append(event)
+              if not any(item.get("command") == command for item in package["contributes"]["commands"]):
+                  package["contributes"]["commands"].append({"command": command, "title": title, "category": "Bob Workflow"})
+          properties = package["contributes"]["configuration"]["properties"]
+          properties.update({
+              "workflowRegister.runs.retention.enabled": {
+                  "type": "boolean",
+                  "default": False,
+                  "description": "将来のautomatic run cleanup opt-in。P1-6ではautomatic deletionを実行しません。"
+              },
+              "workflowRegister.runs.retention.completedDays": {
+                  "type": "number",
+                  "default": 30,
+                  "minimum": 0,
+                  "description": "cleanup previewでterminal runを古いと判定する日数。"
+              },
+              "workflowRegister.runs.retention.maxCompletedRuns": {
+                  "type": "integer",
+                  "default": 100,
+                  "minimum": 0,
+                  "description": "保持するterminal run件数。"
+              },
+              "workflowRegister.runs.retention.maxTotalBytes": {
+                  "type": "integer",
+                  "default": 524288000,
+                  "minimum": 0,
+                  "description": "workflow run storageの目標最大byte数。"
+              }
+          })
+          palette = package["contributes"]["menus"]["commandPalette"]
+          for command, _ in commands:
+              if not any(item.get("command") == command for item in palette):
+                  palette.append({"command": command})
+          package_path.write_text(json.dumps(package, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+          PY
+
+      - name: Focused P1-6 verification
+        id: focused
+        working-directory: extensions/workflow-register
+        shell: bash
+        run: |
+          set +e
+          npm ci --silent > "$RUNNER_TEMP/p1-6-apply.log" 2>&1
+          status=$?
+          if [ "$status" -eq 0 ]; then npm run compile --silent >> "$RUNNER_TEMP/p1-6-apply.log" 2>&1; status=$?; fi
+          if [ "$status" -eq 0 ]; then
+            node --test \
+              test/workflowRunRetentionPlanner.test.js \
+              test/workflowRunRetentionMetadata.test.js \
+              test/workflowRunCleanupLease.test.js \
+              test/workflowRunCleanupTransaction.test.js \
+              test/workflowRunRetentionService.test.js \
+              test/workflowRunRetentionCommands.test.js \
+              test/workflowRunLock*.test.js \
+              >> "$RUNNER_TEMP/p1-6-apply.log" 2>&1
+            status=$?
+          fi
+          if [ "$status" -ne 0 ]; then
+            grep -n -B 50 -A 180 -E "not ok|AssertionError|error TS|Error:" "$RUNNER_TEMP/p1-6-apply.log" || tail -n 300 "$RUNNER_TEMP/p1-6-apply.log"
+          else
+            tail -n 60 "$RUNNER_TEMP/p1-6-apply.log"
+          fi
+          exit "$status"
+
+      - name: Upload focused failure log
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: p1-6-retention-apply-log
+          path: ${{ runner.temp }}/p1-6-apply.log
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Full workflow-register gate
+        working-directory: extensions/workflow-register
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm test
+          npm run dependency:policy
+          npm run architecture:policy
+          npm run source:policy
+          npm run schema:policy
+          npm run unused:report
+          npm run audit:prod
+          npm run package
+          npm run package:policy
+
+      - name: Commit verified implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/p1-6-retention-red.yml .github/workflows/p1-6-retention-apply.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "feat: wire workflow run retention cleanup"
+          git push origin HEAD:${{ github.head_ref || github.ref_name }}
