@@ -10,6 +10,7 @@ import {
   parseWorkflowArtifactManifest,
   previewArtifactsFromTaskSnapshots,
   seedWorkflowRunFromArtifacts,
+  stableJson,
   stateKeysProducedBeforeStep,
   validateWorkflowArtifactManifest,
   type TaskSnapshotArtifactImportIssue,
@@ -208,38 +209,79 @@ export class WorkflowRunCommandService {
     }
 
     const runStore = this.options.runtimeFactory.createRunStore(root)
-    const seeded = await runStore.createRun(workflow, resolvedInputs)
-    seeded.currentStep = step.id
-    const stateKeys = stateKeysProducedBeforeStep(workflow, step.id)
-    const hydration = await hydrateWorkflowStateFromArtifacts({
-      workflow,
-      run: seeded,
-      manifest: source.manifest,
-      stateKeys,
-      readFile: (relativePath) => readPhysicallyContainedWorkspaceFile(root, relativePath)
-    })
-    if (!hydration.ok) {
-      const message = `Workflow artifact hydration failed: ${hydration.issues.map((issue) => issue.message).join("; ")}`
-      await vscode.window.showErrorMessage(message)
-      return message
-    }
+    if (!runStore.withRunLock) throw new Error("Workflow run store does not support source-run locking.")
+    const prepared = await runStore.withRunLock(source.run.runId, async () => {
+      if (sourceTarget) {
+        await assertOperationHubRunRevision(root, source.run.runId, sourceTarget.expectedRevision)
+      }
+      const lockedSourceRun = await runStore.loadRun(source.run.runId)
+      if (!lockedSourceRun) throw new Error(`Workflow artifact source run disappeared after selection: ${source.run.runId}`)
+      assertWorkflowRunStateWritable(lockedSourceRun)
+      assertArtifactSourceRunCompatible(lockedSourceRun, workflow)
+      if (stableJson(lockedSourceRun) !== stableJson(source.run)) {
+        throw new Error(`Workflow artifact source run changed after selection: ${source.run.runId}`)
+      }
+      const lockedManifest = await loadArtifactManifest(root, lockedSourceRun)
+      if (!lockedManifest) throw new Error(`Workflow artifact source manifest disappeared after selection: ${source.run.runId}`)
+      if (lockedManifest.runId !== lockedSourceRun.runId) {
+        throw new Error(`Workflow artifact source manifest runId changed after selection: ${lockedManifest.runId}`)
+      }
+      const manifestIssues = validateWorkflowArtifactManifest({
+        manifest: lockedManifest,
+        workflow,
+        inputs: resolvedInputs
+      })
+      if (manifestIssues.some((issue) => issue.severity === "error")) {
+        throw new Error(`Workflow artifact source manifest is no longer compatible: ${manifestIssues.map((issue) => issue.message).join("; ")}`)
+      }
+      if (stableJson(lockedManifest) !== stableJson(source.manifest)) {
+        throw new Error(`Workflow artifact source manifest changed after selection: ${source.run.runId}`)
+      }
 
-    const seededRun = seedWorkflowRunFromArtifacts({
-      workflow,
-      run: seeded,
-      manifest: source.manifest,
-      startStepId: step.id,
-      hydratedKeys: hydration.hydratedKeys
+      const seeded = await runStore.createRun(workflow, resolvedInputs)
+      seeded.currentStep = step.id
+      const stateKeys = stateKeysProducedBeforeStep(workflow, step.id)
+      const hydration = await hydrateWorkflowStateFromArtifacts({
+        workflow,
+        run: seeded,
+        manifest: lockedManifest,
+        stateKeys,
+        readFile: (relativePath) => readPhysicallyContainedWorkspaceFile(root, relativePath)
+      })
+      if (!hydration.ok) {
+        return {
+          ok: false as const,
+          message: `Workflow artifact hydration failed: ${hydration.issues.map((issue) => issue.message).join("; ")}`
+        }
+      }
+
+      const seededRun = seedWorkflowRunFromArtifacts({
+        workflow,
+        run: seeded,
+        manifest: lockedManifest,
+        startStepId: step.id,
+        hydratedKeys: hydration.hydratedKeys
+      })
+      if (!seededRun.ok) {
+        return { ok: false as const, message: seededRun.error ?? "Workflow artifact run seeding failed." }
+      }
+      await runStore.saveRun(seeded)
+      return {
+        ok: true as const,
+        seeded,
+        reusedStepIds: seededRun.reusedStepIds,
+        sourceRunId: lockedSourceRun.runId
+      }
     })
-    if (!seededRun.ok) {
-      const message = seededRun.error ?? "Workflow artifact run seeding failed."
-      await vscode.window.showErrorMessage(message)
-      return message
+    if (!prepared.ok) {
+      await vscode.window.showErrorMessage(prepared.message)
+      return prepared.message
     }
-    await runStore.saveRun(seeded)
     const engine = this.options.runtimeFactory.createEngine(root)
-    const result = await engine.resumeRun(seeded.runId, { workflow })
-    await vscode.window.showInformationMessage(`Workflow run ${result.status}: ${result.runId}; reused ${seededRun.reusedStepIds.length} step(s) from ${source.run.runId}`)
+    const result = await engine.resumeRun(prepared.seeded.runId, { workflow })
+    await vscode.window.showInformationMessage(
+      `Workflow run ${result.status}: ${result.runId}; reused ${prepared.reusedStepIds.length} step(s) from ${prepared.sourceRunId}`
+    )
     return result
   }
 
@@ -954,6 +996,19 @@ async function loadArtifactManifest(root: string, run: WorkflowRunState): Promis
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined
     throw error
+  }
+}
+
+function assertArtifactSourceRunCompatible(run: WorkflowRunState, workflow: CoreWorkflowDefinition): void {
+  if (run.workflowId !== workflow.id) {
+    throw new Error(`Workflow artifact source run '${run.runId}' belongs to workflow '${run.workflowId}', not '${workflow.id}'.`)
+  }
+  if (
+    run.workflowDefinitionHash
+    && workflow.definitionHash
+    && run.workflowDefinitionHash !== workflow.definitionHash
+  ) {
+    throw new Error(`Workflow artifact source run '${run.runId}' uses a different workflow definition.`)
   }
 }
 

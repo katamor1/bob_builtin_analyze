@@ -8,7 +8,7 @@ export interface ContainedRunFileSnapshot {
   filePath: string
 }
 
-export type ContainedRunFileName = "run.json" | "control.json"
+export type ContainedRunFileName = "run.json" | "control.json" | "retention.json"
 
 type FileIdentity = {
   dev: bigint
@@ -419,7 +419,7 @@ function isOwnedRunTempFile(fileName: string): boolean {
 }
 
 function assertContainedRunFileName(fileName: string): asserts fileName is ContainedRunFileName {
-  if (fileName !== "run.json" && fileName !== "control.json") {
+  if (fileName !== "run.json" && fileName !== "control.json" && fileName !== "retention.json") {
     throw new Error(`Workflow run file name is not supported: ${fileName}`)
   }
 }

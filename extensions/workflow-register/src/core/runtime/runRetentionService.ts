@@ -19,7 +19,7 @@ import { applyWorkflowRunCleanupTransaction } from "./runCleanupTransaction"
 import { hashWorkflowRunBytes } from "./runEventLog"
 import { readRunDurabilityFile } from "./runDurabilityPath"
 import { FileRunStateStore } from "./runStateStore"
-import { assertSafeWorkflowRunId, readContainedRunFile } from "./runStatePath"
+import { assertSafeWorkflowRunId, readContainedRunFile, writeContainedRunFile } from "./runStatePath"
 
 const RECOVERABLE_STATUSES = new Set(["running", "paused", "checkpoint", "reviewing", "held"])
 const RETENTION_FILE = "retention.json"
@@ -114,10 +114,17 @@ export class WorkflowRunRetentionService {
 
   async setPinned(runId: string, pinned: boolean, note?: string): Promise<void> {
     assertSafeWorkflowRunId(runId)
-    const run = await this.runStore.loadRun(runId)
-    if (!run) throw new Error(`Workflow run not found: ${runId}`)
-    const metadata = createWorkflowRunRetentionMetadata({ pinned, updatedAt: this.now(), note })
-    await writeRetentionSidecar(this.workspaceRoot, runId, serializeWorkflowRunRetentionMetadata(metadata))
+    await this.runStore.withRunLock(runId, async () => {
+      const run = await this.runStore.loadRun(runId)
+      if (!run) throw new Error(`Workflow run not found: ${runId}`)
+      const metadata = createWorkflowRunRetentionMetadata({ pinned, updatedAt: this.now(), note })
+      await writeContainedRunFile(
+        this.workspaceRoot,
+        runId,
+        serializeWorkflowRunRetentionMetadata(metadata),
+        RETENTION_FILE
+      )
+    })
   }
 }
 
@@ -160,47 +167,14 @@ function sourceRunIdsFromValue(value: string): string[] {
 }
 
 async function readRetentionSidecar(workspaceRoot: string, runId: string): Promise<{ pinned: boolean }> {
-  const file = await retentionFilePath(workspaceRoot, runId)
   try {
-    const stat = await fs.lstat(file)
-    if (!stat.isFile() || stat.isSymbolicLink()) return { pinned: true }
-    const decoded = decodeWorkflowRunRetentionMetadata(await fs.readFile(file, "utf8"))
+    const snapshot = await readContainedRunFile(workspaceRoot, runId, RETENTION_FILE)
+    const decoded = decodeWorkflowRunRetentionMetadata(snapshot.bytes.toString("utf8"))
     return decoded.status === "valid" ? { pinned: decoded.metadata.pinned } : { pinned: true }
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return { pinned: false }
     return { pinned: true }
   }
-}
-
-async function writeRetentionSidecar(workspaceRoot: string, runId: string, content: string): Promise<void> {
-  const file = await retentionFilePath(workspaceRoot, runId)
-  const directory = path.dirname(file)
-  const temp = path.join(directory, `.${RETENTION_FILE}.${process.pid}.${randomUUID()}.tmp`)
-  try {
-    const handle = await fs.open(temp, "wx", 0o600)
-    try {
-      await handle.writeFile(content, "utf8")
-      await handle.sync()
-    } finally {
-      await handle.close()
-    }
-    const existing = await fs.lstat(file).catch((error) => {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined
-      throw error
-    })
-    if (existing?.isSymbolicLink()) throw new Error(`Workflow run '${runId}' retention metadata must not be a symlink.`)
-    await fs.rename(temp, file)
-  } finally {
-    await fs.rm(temp, { force: true }).catch(() => undefined)
-  }
-}
-
-async function retentionFilePath(workspaceRoot: string, runId: string): Promise<string> {
-  assertSafeWorkflowRunId(runId)
-  const root = await fs.realpath(path.resolve(workspaceRoot))
-  const runDirectory = path.join(root, ".bob", "workflows", "runs", runId)
-  await assertDirectDirectory(runDirectory, root, `Workflow run '${runId}' directory`)
-  return path.join(runDirectory, RETENTION_FILE)
 }
 
 async function measureRunDirectory(workspaceRoot: string, runId: string): Promise<{ bytes: number; contained: boolean }> {
