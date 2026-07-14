@@ -1,4 +1,5 @@
 import { splitDocumentChunk } from "../documentChunk"
+import { DEFAULT_RULE_AUTHORING_LIMITS } from "../ruleAuthoringLimits"
 import type { DocumentChunkV1, RuleSourceExtractionStatus } from "../ruleAuthoringTypes"
 
 type ExcelFileModule = typeof import("read-excel-file/node")
@@ -15,7 +16,7 @@ export interface XlsxExtractionResult {
   extractor: { id: string; version: string }
 }
 
-const XLSX_EXTRACTOR = Object.freeze({ id: "read-excel-file", version: "9.2.0" })
+const XLSX_EXTRACTOR = Object.freeze({ id: "xlsx-read-excel-rows", version: "1" })
 
 let excelFileModulePromise: Promise<ExcelFileModule> | undefined
 
@@ -23,6 +24,11 @@ export async function extractXlsx(
   filePath: string,
   context: XlsxExtractionContext
 ): Promise<XlsxExtractionResult> {
+  const maxChunkBytes = boundedPositiveLimit(
+    context.maxChunkBytes,
+    DEFAULT_RULE_AUTHORING_LIMITS.maxChunkBytes,
+    "XLSX chunk byte limit"
+  )
   const readExcelFile = await loadExcelFile()
   const workbook = await readExcelFile.default(filePath)
   const chunks: DocumentChunkV1[] = []
@@ -50,7 +56,7 @@ export async function extractXlsx(
         },
         title: sheet.sheet,
         text
-      }, context.maxChunkBytes))
+      }, maxChunkBytes))
     }
   }
 
@@ -60,6 +66,11 @@ export async function extractXlsx(
     warnings: [],
     extractor: { ...XLSX_EXTRACTOR }
   }
+}
+
+function boundedPositiveLimit(value: number, ceiling: number, label: string): number {
+  if (!Number.isSafeInteger(value) || value <= 0) throw new Error(`${label} must be a positive safe integer`)
+  return Math.min(value, ceiling)
 }
 
 function isNonEmptyCell(value: unknown): boolean {

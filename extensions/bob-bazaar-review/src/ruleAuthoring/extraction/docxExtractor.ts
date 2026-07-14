@@ -1,4 +1,5 @@
 import { splitDocumentChunk } from "../documentChunk"
+import { DEFAULT_RULE_AUTHORING_LIMITS } from "../ruleAuthoringLimits"
 import type { DocumentChunkV1, RuleSourceExtractionStatus } from "../ruleAuthoringTypes"
 
 type CheerioAPI = import("cheerio").CheerioAPI
@@ -17,7 +18,7 @@ export interface DocxExtractionResult {
   extractor: { id: string; version: string }
 }
 
-const DOCX_EXTRACTOR = Object.freeze({ id: "mammoth", version: "1.8.0" })
+const DOCX_EXTRACTOR = Object.freeze({ id: "docx-mammoth-html", version: "1" })
 
 let cheerioModulePromise: Promise<CheerioModule> | undefined
 let mammothModulePromise: Promise<MammothModule> | undefined
@@ -26,6 +27,11 @@ export async function extractDocx(
   filePath: string,
   context: DocxExtractionContext
 ): Promise<DocxExtractionResult> {
+  const maxChunkBytes = boundedPositiveLimit(
+    context.maxChunkBytes,
+    DEFAULT_RULE_AUTHORING_LIMITS.maxChunkBytes,
+    "DOCX chunk byte limit"
+  )
   const [mammoth, cheerio] = await Promise.all([loadMammoth(), loadCheerio()])
   const conversion = await mammoth.convertToHtml(
     { path: filePath },
@@ -59,7 +65,7 @@ export async function extractDocx(
         locator: { heading_path: compactHeadingPath(headingPath), block_index: blockIndex },
         title: text,
         text
-      }, context.maxChunkBytes))
+      }, maxChunkBytes))
       return
     }
 
@@ -79,7 +85,7 @@ export async function extractDocx(
         },
         title: headingPath.at(-1),
         text
-      }, context.maxChunkBytes))
+      }, maxChunkBytes))
       return
     }
 
@@ -97,7 +103,7 @@ export async function extractDocx(
         locator: { heading_path: compactHeadingPath(headingPath), block_index: blockIndex },
         title: headingPath.at(-1),
         text: items.join("\n")
-      }, context.maxChunkBytes))
+      }, maxChunkBytes))
       return
     }
 
@@ -113,7 +119,7 @@ export async function extractDocx(
         locator: { heading_path: compactHeadingPath(headingPath), block_index: blockIndex },
         title: headingPath.at(-1),
         text
-      }, context.maxChunkBytes))
+      }, maxChunkBytes))
     }
   })
 
@@ -124,6 +130,11 @@ export async function extractDocx(
     warnings: warningCodes,
     extractor: { ...DOCX_EXTRACTOR }
   }
+}
+
+function boundedPositiveLimit(value: number, ceiling: number, label: string): number {
+  if (!Number.isSafeInteger(value) || value <= 0) throw new Error(`${label} must be a positive safe integer`)
+  return Math.min(value, ceiling)
 }
 
 function tableText($: CheerioAPI, table: unknown): string {

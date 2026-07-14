@@ -5,6 +5,7 @@ const path = require("node:path")
 const { test } = require("node:test")
 
 const { extractXlsx } = require("../out/ruleAuthoring/extraction/xlsxExtractor")
+const { DEFAULT_RULE_AUTHORING_LIMITS } = require("../out/ruleAuthoring/ruleAuthoringLimits")
 const { createXlsxFixture } = require("./helpers/ruleDocumentFixtures")
 
 async function fixtureFile(t, bytes) {
@@ -38,7 +39,7 @@ test("extractXlsx locates the minimum/maximum non-empty cells and uses saved for
     maxChunkBytes: 32 * 1024
   })
 
-  assert.deepEqual(result.extractor, { id: "read-excel-file", version: "9.2.0" })
+  assert.deepEqual(result.extractor, { id: "xlsx-read-excel-rows", version: "1" })
   assert.equal(result.status, "success")
   assert.equal(result.chunks[0].locator.cell_range, "B1:D1")
   assert.equal(result.chunks[0].text, "beta\t\tdelta")
@@ -60,4 +61,17 @@ test("extractXlsx splits an oversized row without losing its row/range locator",
   assert.deepEqual(parts.map((chunk) => chunk.locator.part_index), [0, 1])
   assert.ok(parts.every((chunk) => chunk.locator.cell_range === "A5:A5"))
   assert.equal(parts.map((chunk) => chunk.text).join(""), longCell)
+})
+
+test("extractXlsx clamps a caller-raised chunk limit to the approved 32 KiB ceiling", async (t) => {
+  const longCell = "z".repeat(DEFAULT_RULE_AUTHORING_LIMITS.maxChunkBytes + 1)
+  const filePath = await fixtureFile(t, createXlsxFixture({ longCell }))
+  const result = await extractXlsx(filePath, {
+    sourceId: "src-abcdef012345",
+    maxChunkBytes: DEFAULT_RULE_AUTHORING_LIMITS.maxChunkBytes * 4
+  })
+  const parts = result.chunks.filter((chunk) => chunk.locator.sheet === "Second" && chunk.locator.row === 5)
+
+  assert.equal(parts.length, 2)
+  assert.ok(parts.every((chunk) => Buffer.byteLength(chunk.text, "utf8") <= DEFAULT_RULE_AUTHORING_LIMITS.maxChunkBytes))
 })

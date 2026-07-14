@@ -70,11 +70,15 @@ export interface RuleDocumentBatchResult {
   diagnostics: RuleDocumentDiagnostic[]
 }
 
-interface PreparedRequest {
+interface FingerprintedRequest {
   request: RuleDocumentExtractionRequest
   absolutePath: string
   logicalName: string
   fingerprint: SourceFingerprint
+}
+
+interface PreparedRequest extends FingerprintedRequest {
+  mediaType: LocalDocumentMediaType
 }
 
 interface ExtractionContext {
@@ -99,7 +103,7 @@ async function extractRuleDocumentWithContext(
   const absolutePath = path.resolve(request.filePath)
   const logicalName = request.logicalName ?? path.basename(absolutePath)
   assertLogicalName(logicalName)
-  const mediaType = classifyExtension(logicalName)
+  const mediaType = classifySelectedPath(absolutePath, logicalName)
   const before = context.beforeFingerprint ?? await fingerprintSource(absolutePath)
   const byteSize = fingerprintByteSize(before)
   if (byteSize > limits.maxSourceBytes) {
@@ -162,28 +166,33 @@ export async function extractRuleDocuments(
   limits: RuleAuthoringLimits = DEFAULT_RULE_AUTHORING_LIMITS
 ): Promise<RuleDocumentBatchResult> {
   if (existingManifest) assertCanonicalExistingManifest(existingManifest)
-  if (requests.length > limits.maxSourceFiles) {
-    throw new Error(`Rule source file count exceeds the ${limits.maxSourceFiles}-file limit`)
+  const effectiveLimits = boundedRuleAuthoringLimits(limits)
+  if (requests.length > effectiveLimits.maxSourceFiles) {
+    throw new Error(`Rule source file count exceeds the ${effectiveLimits.maxSourceFiles}-file limit`)
   }
 
-  const prepared = await Promise.all(requests.map(async (request): Promise<PreparedRequest> => {
+  const fingerprinted = await Promise.all(requests.map(async (request): Promise<FingerprintedRequest> => {
     const absolutePath = path.resolve(request.filePath)
     const logicalName = request.logicalName ?? path.basename(absolutePath)
     assertLogicalName(logicalName)
     const fingerprint = await fingerprintSource(absolutePath)
     const byteSize = fingerprintByteSize(fingerprint)
-    if (byteSize > limits.maxSourceBytes) {
-      throw new Error(`Rule source exceeds the ${limits.maxSourceBytes}-byte per-source limit`)
+    if (byteSize > effectiveLimits.maxSourceBytes) {
+      throw new Error(`Rule source exceeds the ${effectiveLimits.maxSourceBytes}-byte per-source limit`)
     }
     return { request, absolutePath, logicalName, fingerprint }
   }))
-  const aggregateBytes = prepared.reduce(
+  const aggregateBytes = fingerprinted.reduce(
     (total, item) => total + fingerprintByteSize(item.fingerprint),
     0
   )
-  if (!Number.isSafeInteger(aggregateBytes) || aggregateBytes > limits.maxAggregateSourceBytes) {
-    throw new Error(`Rule source aggregate bytes exceed the ${limits.maxAggregateSourceBytes}-byte limit`)
+  if (!Number.isSafeInteger(aggregateBytes) || aggregateBytes > effectiveLimits.maxAggregateSourceBytes) {
+    throw new Error(`Rule source aggregate bytes exceed the ${effectiveLimits.maxAggregateSourceBytes}-byte limit`)
   }
+  const prepared: PreparedRequest[] = fingerprinted.map((item) => ({
+    ...item,
+    mediaType: classifySelectedPath(item.absolutePath, item.logicalName)
+  }))
 
   const existingByHash = new Map(
     (existingManifest?.sources ?? []).map((source) => [source.sha256, source] as const)
@@ -197,7 +206,6 @@ export async function extractRuleDocuments(
 
   const canonical: PreparedRequest[] = []
   const duplicates: RuleDocumentDuplicate[] = []
-  const duplicatePaths = new Set<string>()
   for (const [sha256, unsortedGroup] of groups) {
     const group = [...unsortedGroup].sort(comparePrepared)
     const existing = existingByHash.get(sha256)
@@ -209,7 +217,7 @@ export async function extractRuleDocuments(
           reason: "duplicate_existing_manifest",
           duplicate_of: existing.source_id
         })
-        duplicatePaths.add(item.absolutePath)
+        if (isLegacyMediaType(item.mediaType)) canonical.push(item)
       }
       continue
     }
@@ -221,7 +229,7 @@ export async function extractRuleDocuments(
         reason: "duplicate_in_run",
         duplicate_of: group[0].logicalName
       })
-      duplicatePaths.add(item.absolutePath)
+      if (isLegacyMediaType(item.mediaType)) canonical.push(item)
     }
   }
   canonical.sort(comparePrepared)
@@ -240,7 +248,7 @@ export async function extractRuleDocuments(
       filePath: item.absolutePath,
       logicalName: item.logicalName
     }, {
-      limits,
+      limits: effectiveLimits,
       sourceId,
       beforeFingerprint: item.fingerprint
     }))
@@ -274,7 +282,7 @@ export async function extractRuleDocuments(
       logicalName: item.logicalName,
       absolutePath: item.absolutePath,
       sha256: item.fingerprint.sha256,
-      status: duplicatePaths.has(item.absolutePath) ? "duplicate" : (document?.status ?? "duplicate")
+      status: document?.status ?? "duplicate"
     }
   })
   const diagnostics = documents.flatMap((document) => document.warnings.map((code) => ({
@@ -300,6 +308,20 @@ function classifyExtension(logicalName: string): LocalDocumentMediaType {
   if (extension === ".doc") return "doc"
   if (extension === ".xls") return "xls"
   throw new Error(`Unsupported rule document extension: ${extension || "none"}`)
+}
+
+function classifySelectedPath(absolutePath: string, logicalName: string): LocalDocumentMediaType {
+  const selectedExtension = path.extname(path.basename(absolutePath)).toLowerCase()
+  const logicalExtension = path.extname(logicalName).toLowerCase()
+  const mediaType = classifyExtension(path.basename(absolutePath))
+  if (logicalExtension !== selectedExtension) {
+    throw new Error("Rule document logical name extension must match the selected path extension")
+  }
+  return mediaType
+}
+
+function isLegacyMediaType(mediaType: LocalDocumentMediaType): mediaType is "doc" | "xls" {
+  return mediaType === "doc" || mediaType === "xls"
 }
 
 function assertLogicalName(logicalName: string): void {
@@ -340,4 +362,29 @@ function assertCanonicalExistingManifest(manifest: RuleSourceManifestV1): void {
   } catch {
     throw new Error("Existing rule source manifest is not canonical")
   }
+}
+
+function boundedRuleAuthoringLimits(limits: RuleAuthoringLimits): RuleAuthoringLimits {
+  return {
+    maxSourceFiles: boundedLimit(limits.maxSourceFiles, DEFAULT_RULE_AUTHORING_LIMITS.maxSourceFiles, "maxSourceFiles"),
+    maxSourceBytes: boundedLimit(limits.maxSourceBytes, DEFAULT_RULE_AUTHORING_LIMITS.maxSourceBytes, "maxSourceBytes"),
+    maxAggregateSourceBytes: boundedLimit(limits.maxAggregateSourceBytes, DEFAULT_RULE_AUTHORING_LIMITS.maxAggregateSourceBytes, "maxAggregateSourceBytes"),
+    maxChunkBytes: boundedLimit(limits.maxChunkBytes, DEFAULT_RULE_AUTHORING_LIMITS.maxChunkBytes, "maxChunkBytes"),
+    maxSourceIndexBytes: boundedLimit(limits.maxSourceIndexBytes, DEFAULT_RULE_AUTHORING_LIMITS.maxSourceIndexBytes, "maxSourceIndexBytes"),
+    maxSelectedEvidenceBytes: boundedLimit(limits.maxSelectedEvidenceBytes, DEFAULT_RULE_AUTHORING_LIMITS.maxSelectedEvidenceBytes, "maxSelectedEvidenceBytes"),
+    maxProposalBytes: boundedLimit(limits.maxProposalBytes, DEFAULT_RULE_AUTHORING_LIMITS.maxProposalBytes, "maxProposalBytes"),
+    maxPdfOutputBytes: boundedLimit(limits.maxPdfOutputBytes, DEFAULT_RULE_AUTHORING_LIMITS.maxPdfOutputBytes, "maxPdfOutputBytes"),
+    maxOoxmlEntries: boundedLimit(limits.maxOoxmlEntries, DEFAULT_RULE_AUTHORING_LIMITS.maxOoxmlEntries, "maxOoxmlEntries"),
+    maxOoxmlDeclaredUncompressedBytes: boundedLimit(limits.maxOoxmlDeclaredUncompressedBytes, DEFAULT_RULE_AUTHORING_LIMITS.maxOoxmlDeclaredUncompressedBytes, "maxOoxmlDeclaredUncompressedBytes"),
+    maxRuleOperations: boundedLimit(limits.maxRuleOperations, DEFAULT_RULE_AUTHORING_LIMITS.maxRuleOperations, "maxRuleOperations"),
+    maxProjectContextOperations: boundedLimit(limits.maxProjectContextOperations, DEFAULT_RULE_AUTHORING_LIMITS.maxProjectContextOperations, "maxProjectContextOperations"),
+    maxPromptAddendumOperations: boundedLimit(limits.maxPromptAddendumOperations, DEFAULT_RULE_AUTHORING_LIMITS.maxPromptAddendumOperations, "maxPromptAddendumOperations"),
+    maxProjectContextBytes: boundedLimit(limits.maxProjectContextBytes, DEFAULT_RULE_AUTHORING_LIMITS.maxProjectContextBytes, "maxProjectContextBytes"),
+    maxPromptAddendumBytes: boundedLimit(limits.maxPromptAddendumBytes, DEFAULT_RULE_AUTHORING_LIMITS.maxPromptAddendumBytes, "maxPromptAddendumBytes")
+  }
+}
+
+function boundedLimit(value: number, ceiling: number, label: string): number {
+  if (!Number.isSafeInteger(value) || value < 0) throw new Error(`${label} must be a non-negative safe integer`)
+  return Math.min(value, ceiling)
 }

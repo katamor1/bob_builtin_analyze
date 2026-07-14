@@ -5,6 +5,7 @@ import {
   type ExternalProcessResult
 } from "../../bazaar/externalProcessRunner"
 import { splitDocumentChunk } from "../documentChunk"
+import { DEFAULT_RULE_AUTHORING_LIMITS } from "../ruleAuthoringLimits"
 import type { DocumentChunkV1, RuleSourceExtractionStatus } from "../ruleAuthoringTypes"
 
 export type PdfProcessRunner = (options: ExternalProcessOptions) => Promise<ExternalProcessResult>
@@ -29,9 +30,7 @@ export interface PdfExtractionResult {
 export const PDF_LOW_TEXT_DENSITY_CHARACTERS = 32
 
 const DEFAULT_PDF_TIMEOUT_MS = 120_000
-const DEFAULT_PDF_OUTPUT_BYTES = 32 * 1024 * 1024
-const DEFAULT_CHUNK_BYTES = 32 * 1024
-const PDF_EXTRACTOR = Object.freeze({ id: "pdftotext", version: "external" })
+const PDF_EXTRACTOR = Object.freeze({ id: "pdf-pdftotext-layout", version: "1" })
 
 export async function extractPdf(
   filePath: string,
@@ -39,13 +38,23 @@ export async function extractPdf(
 ): Promise<PdfExtractionResult> {
   const absolutePath = path.resolve(filePath)
   const runner = options.runner ?? runExternalProcess
+  const maxOutputBytes = boundedPositiveLimit(
+    options.maxOutputBytes ?? DEFAULT_RULE_AUTHORING_LIMITS.maxPdfOutputBytes,
+    DEFAULT_RULE_AUTHORING_LIMITS.maxPdfOutputBytes,
+    "PDF output byte limit"
+  )
+  const maxChunkBytes = boundedPositiveLimit(
+    options.maxChunkBytes ?? DEFAULT_RULE_AUTHORING_LIMITS.maxChunkBytes,
+    DEFAULT_RULE_AUTHORING_LIMITS.maxChunkBytes,
+    "PDF chunk byte limit"
+  )
   let result: ExternalProcessResult
   try {
     result = await runner({
       command: options.command ?? "pdftotext",
       args: ["-layout", "-enc", "UTF-8", absolutePath, "-"],
       cwd: path.dirname(absolutePath),
-      maxBufferBytes: options.maxOutputBytes ?? DEFAULT_PDF_OUTPUT_BYTES,
+      maxBufferBytes: maxOutputBytes,
       timeoutMs: options.timeoutMs ?? DEFAULT_PDF_TIMEOUT_MS,
       allowedExitCodes: [0],
       signal: options.signal
@@ -72,7 +81,7 @@ export async function extractPdf(
     locator: { page: index + 1 },
     text,
     flags: text.trim().length === 0 ? ["empty_page"] : []
-  }, options.maxChunkBytes ?? DEFAULT_CHUNK_BYTES))
+  }, maxChunkBytes))
   const nonWhitespaceCharacters = pages.join("").replace(/\s/g, "").length
   const warnings = nonWhitespaceCharacters < PDF_LOW_TEXT_DENSITY_CHARACTERS
     ? ["low_text_density"]
@@ -84,6 +93,11 @@ export async function extractPdf(
     warnings,
     extractor: { ...PDF_EXTRACTOR }
   }
+}
+
+function boundedPositiveLimit(value: number, ceiling: number, label: string): number {
+  if (!Number.isSafeInteger(value) || value <= 0) throw new Error(`${label} must be a positive safe integer`)
+  return Math.min(value, ceiling)
 }
 
 function blockedPdfResult(warning: string): PdfExtractionResult {

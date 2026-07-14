@@ -5,6 +5,7 @@ const path = require("node:path")
 const { test } = require("node:test")
 
 const { extractDocx } = require("../out/ruleAuthoring/extraction/docxExtractor")
+const { DEFAULT_RULE_AUTHORING_LIMITS } = require("../out/ruleAuthoring/ruleAuthoringLimits")
 const { createDocxFixture } = require("./helpers/ruleDocumentFixtures")
 
 async function fixtureFile(t, bytes) {
@@ -49,7 +50,7 @@ test("extractDocx emits bounded Mammoth/image warning codes and omits image byte
   })
 
   assert.equal(result.status, "partial")
-  assert.deepEqual(result.extractor, { id: "mammoth", version: "1.8.0" })
+  assert.deepEqual(result.extractor, { id: "docx-mammoth-html", version: "1" })
   assert.ok(result.warnings.includes("mammoth_warning"))
   assert.ok(result.warnings.includes("image_omitted"))
   assert.doesNotMatch(result.chunks.map((chunk) => chunk.text).join("\n"), /data:image|89504e47/i)
@@ -69,4 +70,17 @@ test("extractDocx applies the UTF-8 chunk limit and assigns ordered part_index l
   assert.deepEqual(parts.map((chunk) => chunk.locator.part_index), [0, 1])
   assert.equal(parts.map((chunk) => chunk.text).join(""), longParagraph)
   assert.ok(parts.every((chunk) => Buffer.byteLength(chunk.text, "utf8") <= 32 * 1024))
+})
+
+test("extractDocx clamps a caller-raised chunk limit to the approved 32 KiB ceiling", async (t) => {
+  const longParagraph = "z".repeat(DEFAULT_RULE_AUTHORING_LIMITS.maxChunkBytes + 1)
+  const filePath = await fixtureFile(t, createDocxFixture({ longParagraph }))
+  const result = await extractDocx(filePath, {
+    sourceId: "src-0123456789ab",
+    maxChunkBytes: DEFAULT_RULE_AUTHORING_LIMITS.maxChunkBytes * 4
+  })
+  const parts = result.chunks.filter((chunk) => chunk.text.includes("z"))
+
+  assert.equal(parts.length, 2)
+  assert.ok(parts.every((chunk) => Buffer.byteLength(chunk.text, "utf8") <= DEFAULT_RULE_AUTHORING_LIMITS.maxChunkBytes))
 })

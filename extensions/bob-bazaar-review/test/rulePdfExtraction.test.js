@@ -3,6 +3,7 @@ const path = require("node:path")
 const { test } = require("node:test")
 
 const { ExternalProcessError } = require("../out/bazaar/externalProcessRunner")
+const { DEFAULT_RULE_AUTHORING_LIMITS } = require("../out/ruleAuthoring/ruleAuthoringLimits")
 const {
   extractPdf,
   PDF_LOW_TEXT_DENSITY_CHARACTERS
@@ -35,7 +36,7 @@ test("extractPdf invokes the bounded runner with the fixed argument array and no
   assert.equal(captured.maxBufferBytes, 32 * 1024 * 1024)
   assert.deepEqual(captured.allowedExitCodes, [0])
   assert.equal(Object.hasOwn(captured, "shell"), false)
-  assert.deepEqual(result.extractor, { id: "pdftotext", version: "external" })
+  assert.deepEqual(result.extractor, { id: "pdf-pdftotext-layout", version: "1" })
 })
 
 test("extractPdf preserves interior blank pages and removes only the final trailing blank page", async () => {
@@ -48,6 +49,31 @@ test("extractPdf preserves interior blank pages and removes only the final trail
   assert.deepEqual(result.chunks.map((chunk) => chunk.locator.page), [1, 2, 3])
   assert.deepEqual(result.chunks.map((chunk) => chunk.text), ["first", "", "third"])
   assert.deepEqual(result.chunks[1].flags, ["empty_page"])
+})
+
+test("extractPdf clamps raised output/chunk limits while preserving lower caller limits", async () => {
+  const oversizedPage = "z".repeat(DEFAULT_RULE_AUTHORING_LIMITS.maxChunkBytes + 1)
+  const captures = []
+  const raised = await extractPdf("raised.pdf", options(async (runnerOptions) => {
+    captures.push(runnerOptions)
+    return { stdout: Buffer.from(oversizedPage), stderr: Buffer.alloc(0), exitCode: 0 }
+  }, {
+    maxOutputBytes: DEFAULT_RULE_AUTHORING_LIMITS.maxPdfOutputBytes * 2,
+    maxChunkBytes: DEFAULT_RULE_AUTHORING_LIMITS.maxChunkBytes * 2
+  }))
+  const lowered = await extractPdf("lowered.pdf", options(async (runnerOptions) => {
+    captures.push(runnerOptions)
+    return { stdout: Buffer.from("123456789"), stderr: Buffer.alloc(0), exitCode: 0 }
+  }, {
+    maxOutputBytes: 1024,
+    maxChunkBytes: 8
+  }))
+
+  assert.equal(captures[0].maxBufferBytes, DEFAULT_RULE_AUTHORING_LIMITS.maxPdfOutputBytes)
+  assert.equal(raised.chunks.length, 2)
+  assert.ok(raised.chunks.every((chunk) => Buffer.byteLength(chunk.text, "utf8") <= DEFAULT_RULE_AUTHORING_LIMITS.maxChunkBytes))
+  assert.equal(captures[1].maxBufferBytes, 1024)
+  assert.deepEqual(lowered.chunks.map((chunk) => chunk.text), ["12345678", "9"])
 })
 
 test("extractPdf classifies empty output as requires_ocr and flags low-density text", async () => {

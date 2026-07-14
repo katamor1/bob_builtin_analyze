@@ -60,6 +60,34 @@ test("extractRuleDocument rejects unsupported extensions without echoing an abso
   )
 })
 
+test("extractRuleDocument rejects a logical name whose extension relabels the selected path", async (t) => {
+  const directory = await temporaryDirectory(t)
+  const legacyPath = path.join(directory, "actual.doc")
+  const pdfPath = path.join(directory, "actual.pdf")
+  await fs.writeFile(legacyPath, "legacy bytes")
+  await fs.writeFile(pdfPath, "pdf bytes")
+  let pdfRunnerCalled = false
+
+  await assert.rejects(
+    () => extractRuleDocument({
+      filePath: legacyPath,
+      logicalName: "relabeled.pdf",
+      pdf: {
+        runner: async () => {
+          pdfRunnerCalled = true
+          return { stdout: Buffer.from("must not run"), stderr: Buffer.alloc(0), exitCode: 0 }
+        }
+      }
+    }),
+    /logical name.*extension.*selected path|extension.*match/i
+  )
+  await assert.rejects(
+    () => extractRuleDocument({ filePath: pdfPath, logicalName: "relabeled.doc" }),
+    /logical name.*extension.*selected path|extension.*match/i
+  )
+  assert.equal(pdfRunnerCalled, false)
+})
+
 test("extractRuleDocument enforces the default 25 MiB per-source limit before dispatch", async (t) => {
   const directory = await temporaryDirectory(t)
   const filePath = path.join(directory, "too-large.pdf")
@@ -127,6 +155,53 @@ test("extractRuleDocuments rejects file-count and aggregate-byte overflow before
   )
 })
 
+test("extractRuleDocuments clamps caller-raised file, source, and aggregate byte ceilings", async (t) => {
+  const directory = await temporaryDirectory(t)
+  const raisedLimits = {
+    ...DEFAULT_RULE_AUTHORING_LIMITS,
+    maxSourceFiles: DEFAULT_RULE_AUTHORING_LIMITS.maxSourceFiles + 100,
+    maxSourceBytes: DEFAULT_RULE_AUTHORING_LIMITS.maxSourceBytes * 4,
+    maxAggregateSourceBytes: DEFAULT_RULE_AUTHORING_LIMITS.maxAggregateSourceBytes * 4
+  }
+
+  await assert.rejects(
+    () => extractRuleDocuments(
+      Array.from({ length: DEFAULT_RULE_AUTHORING_LIMITS.maxSourceFiles + 1 }, (_, index) => ({
+        filePath: path.join(directory, `missing-${index}.doc`)
+      })),
+      undefined,
+      raisedLimits
+    ),
+    /file.*limit/i
+  )
+
+  const oversizedPath = path.join(directory, "oversized.pdf")
+  await fs.writeFile(oversizedPath, "")
+  await fs.truncate(oversizedPath, DEFAULT_RULE_AUTHORING_LIMITS.maxSourceBytes + 1)
+  await assert.rejects(
+    () => extractRuleDocuments([{ filePath: oversizedPath }], undefined, raisedLimits),
+    /per-source limit/i
+  )
+
+  const aggregateSource = path.join(directory, "aggregate-0.doc")
+  await fs.writeFile(aggregateSource, "")
+  await fs.truncate(aggregateSource, 20 * 1024 * 1024 + 1)
+  const aggregatePaths = [aggregateSource]
+  for (let index = 1; index < 5; index += 1) {
+    const hardLink = path.join(directory, `aggregate-${index}.doc`)
+    await fs.link(aggregateSource, hardLink)
+    aggregatePaths.push(hardLink)
+  }
+  await assert.rejects(
+    () => extractRuleDocuments(
+      aggregatePaths.map((filePath) => ({ filePath })),
+      undefined,
+      raisedLimits
+    ),
+    /aggregate.*limit/i
+  )
+})
+
 test("extractRuleDocument discards a snapshot changed while the format adapter runs", async (t) => {
   const directory = await temporaryDirectory(t)
   const filePath = path.join(directory, "changing.pdf")
@@ -167,7 +242,7 @@ test("extractRuleDocuments reports full-hash duplicates within the run and again
       sha256: existingHash,
       byte_size: 14,
       extraction_status: "success",
-      extractor: { id: "pdftotext", version: "external" },
+      extractor: { id: "pdf-pdftotext-layout", version: "1" },
       warnings: []
     }]
   }
@@ -202,7 +277,7 @@ test("extractRuleDocuments rejects a non-canonical existing manifest before dupl
       sha256,
       byte_size: 14,
       extraction_status: "success",
-      extractor: { id: "pdftotext", version: "external" },
+      extractor: { id: "pdf-pdftotext-layout", version: "1" },
       warnings: []
     }]
   }
@@ -214,5 +289,59 @@ test("extractRuleDocuments rejects a non-canonical existing manifest before dupl
       assert.doesNotMatch(error.message, /private|source-id/)
       return true
     }
+  )
+})
+
+test("extractRuleDocuments classifies duplicate legacy Office requests as requires_conversion", async (t) => {
+  const directory = await temporaryDirectory(t)
+  const first = path.join(directory, "first.doc")
+  const second = path.join(directory, "second.doc")
+  await fs.writeFile(first, "identical legacy bytes")
+  await fs.writeFile(second, "identical legacy bytes")
+
+  const result = await extractRuleDocuments(
+    [{ filePath: second }, { filePath: first }],
+    undefined,
+    DEFAULT_RULE_AUTHORING_LIMITS
+  )
+
+  assert.equal(result.duplicates.length, 1)
+  assert.equal(result.duplicates[0].reason, "duplicate_in_run")
+  assert.deepEqual(result.documents.map((document) => document.status), [
+    "requires_conversion",
+    "requires_conversion"
+  ])
+  assert.deepEqual(result.localSourceMappings.map((mapping) => mapping.status), [
+    "requires_conversion",
+    "requires_conversion"
+  ])
+  assert.deepEqual(result.manifest.sources, [])
+  assert.deepEqual(result.aiChunks, [])
+})
+
+test("extractRuleDocuments classifies unsupported selected paths before existing-manifest deduplication", async (t) => {
+  const directory = await temporaryDirectory(t)
+  const filePath = path.join(directory, "unsupported.txt")
+  const bytes = Buffer.from("approved bytes")
+  await fs.writeFile(filePath, bytes)
+  const sha256 = createHash("sha256").update(bytes).digest("hex")
+  const existingManifest = {
+    schema_version: "bob-bazaar-review/rule-sources/v1",
+    generated_at: "2026-07-14T00:00:00.000Z",
+    sources: [{
+      source_id: `src-${sha256.slice(0, 12)}`,
+      logical_name: "approved.pdf",
+      media_type: "pdf",
+      sha256,
+      byte_size: bytes.length,
+      extraction_status: "success",
+      extractor: { id: "pdf-layout-adapter", version: "1" },
+      warnings: []
+    }]
+  }
+
+  await assert.rejects(
+    () => extractRuleDocuments([{ filePath }], existingManifest, DEFAULT_RULE_AUTHORING_LIMITS),
+    /unsupported.*extension/i
   )
 })
