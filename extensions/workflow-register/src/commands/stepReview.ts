@@ -5,6 +5,7 @@ import { bobTaskSyncRegistry } from "../bobTaskSync"
 import { FileRunStateStore } from "../core/runStateStore"
 import { RunStepState, WorkflowRunState } from "../core/model"
 import { pendingReviewTransitionStepId } from "../core/engine/runState"
+import { coordinateWorkflowRunExecution } from "../core/engine/runExecutionCoordinator"
 import { fallbackWorkspaceRootCandidates, findWorkflowRootCandidates, MarkerRootCandidate } from "../core/workspaceRoots"
 import { reviewTaskRegistry } from "../reviewTaskRegistry"
 import type { BobWorkflowGateAcceptance, BobWorkflowGateAcceptResult } from "../bobWorkflowGateRegistry"
@@ -109,37 +110,39 @@ async function acceptReviewedStepOnce(
   runId: string,
   expectedRevision?: string
 ): Promise<AcceptedStepResult | string> {
-  if (expectedRevision) await assertOperationHubRunRevision(workspaceRoot, runId, expectedRevision)
   const runStore = new FileRunStateStore({ workspaceRoot })
-  const run = await runStore.loadRun(runId)
-  if (!run) return `Workflow run not found: ${runId}`
-  const acceptedStepId = run.currentStep
-  const accepted = acceptReviewingStep(run)
-  await runStore.saveRun(accepted)
-  const gateAcceptance: BobWorkflowGateAcceptance = acceptedStepId
-    ? options.acceptBobWorkflowGateWithMetadata?.(workspaceRoot, accepted.runId, acceptedStepId)
-      ?? { result: options.acceptBobWorkflowGate(workspaceRoot, accepted.runId, acceptedStepId) }
-    : { result: "missing" }
-  const gateDecision = gateAcceptance.result
-  const acceptedViaLiveGate = gateDecision === "accepted" || gateDecision === "alreadyAccepted"
-  const continuationOwnedByBob = acceptedViaLiveGate && gateAcceptance.gate?.executionMode === "full"
-  let completedViaBobTask = acceptedViaLiveGate
-  if (gateDecision === "missing" || gateDecision === "aborted") {
-    const sync = await bobTaskSyncRegistry.reconcileRun(workspaceRoot, accepted, undefined, {
-      reason: "review-accepted",
-      task: reviewTaskRegistry.taskForStep(workspaceRoot, accepted.runId, acceptedStepId)
-        ?? reviewTaskRegistry.taskForRun(workspaceRoot, accepted.runId)
-    })
+  return coordinateWorkflowRunExecution(runStore, runId, "review-accept", async () => {
+    if (expectedRevision) await assertOperationHubRunRevision(workspaceRoot, runId, expectedRevision)
+    const run = await runStore.loadRun(runId)
+    if (!run) return `Workflow run not found: ${runId}`
+    const acceptedStepId = run.currentStep
+    const accepted = acceptReviewingStep(run)
     await runStore.saveRun(accepted)
-    completedViaBobTask = sync.status === "synced" && sync.appliedStepCount > 0
-  }
-  const message = pendingReviewTransitionStepId(accepted)
-    ? `Accepted step; pending transition will run from ${accepted.currentStep}: ${accepted.runId}`
-    : accepted.status === "completed"
-    ? `Accepted final step and completed workflow run: ${accepted.runId}`
-    : `Accepted step; next step is ${accepted.currentStep}: ${accepted.runId}`
-  const snapshot = await readOperationHubRunSnapshot(workspaceRoot, accepted.runId)
-  return { run: accepted, message, completedViaBobTask, continuationOwnedByBob, workspaceRoot, revision: snapshot.revision }
+    const gateAcceptance: BobWorkflowGateAcceptance = acceptedStepId
+      ? options.acceptBobWorkflowGateWithMetadata?.(workspaceRoot, accepted.runId, acceptedStepId)
+        ?? { result: options.acceptBobWorkflowGate(workspaceRoot, accepted.runId, acceptedStepId) }
+      : { result: "missing" }
+    const gateDecision = gateAcceptance.result
+    const acceptedViaLiveGate = gateDecision === "accepted" || gateDecision === "alreadyAccepted"
+    const continuationOwnedByBob = acceptedViaLiveGate && gateAcceptance.gate?.executionMode === "full"
+    let completedViaBobTask = acceptedViaLiveGate
+    if (gateDecision === "missing" || gateDecision === "aborted") {
+      const sync = await bobTaskSyncRegistry.reconcileRun(workspaceRoot, accepted, undefined, {
+        reason: "review-accepted",
+        task: reviewTaskRegistry.taskForStep(workspaceRoot, accepted.runId, acceptedStepId)
+          ?? reviewTaskRegistry.taskForRun(workspaceRoot, accepted.runId)
+      })
+      await runStore.saveRun(accepted)
+      completedViaBobTask = sync.status === "synced" && sync.appliedStepCount > 0
+    }
+    const message = pendingReviewTransitionStepId(accepted)
+      ? `Accepted step; pending transition will run from ${accepted.currentStep}: ${accepted.runId}`
+      : accepted.status === "completed"
+      ? `Accepted final step and completed workflow run: ${accepted.runId}`
+      : `Accepted step; next step is ${accepted.currentStep}: ${accepted.runId}`
+    const snapshot = await readOperationHubRunSnapshot(workspaceRoot, accepted.runId)
+    return { run: accepted, message, completedViaBobTask, continuationOwnedByBob, workspaceRoot, revision: snapshot.revision }
+  })
 }
 
 async function showAcceptedStepMessage(

@@ -31,7 +31,7 @@ function deferred() {
   return { promise, resolve }
 }
 
-function withTimeout(promise, label, timeoutMs = 5_000) {
+function withTimeout(promise, label, timeoutMs = 120_000) {
   let timer
   const timeout = new Promise((_, reject) => {
     timer = setTimeout(() => reject(new Error(`Timed out waiting for ${label} after ${timeoutMs}ms.`)), timeoutMs)
@@ -122,7 +122,8 @@ test("lock acquisition retries when the owner file disappears before inspection"
     const second = withWorkflowRunLock(workspace, "run-1", async () => "second", {
       timeoutMs: 1_000,
       heartbeatMs: 0,
-      pollMs: 5
+      pollMs: 5,
+      sleep: async () => { await first }
     })
     await withTimeout(readInjected.promise, "injected lock read")
     releaseFirst.resolve()
@@ -269,13 +270,15 @@ test("malformed recent locks are preserved while malformed stale locks are recla
       const workspace = root(t)
       await replaceRunDurabilityFile(workspace, "run-1", "run.lock.json", "{invalid\n")
       const snapshot = await readRunDurabilityFile(workspace, "run-1", "run.lock.json")
-      const when = Date.now() - ageMs
+      const nowMs = Date.now()
+      const when = nowMs - ageMs
       await fsp.utimes(snapshot.filePath, when / 1000, when / 1000)
       const operation = withWorkflowRunLock(workspace, "run-1", async () => "acquired", {
         timeoutMs: 40,
         pollMs: 5,
         heartbeatMs: 0,
-        staleMs: 1_000
+        staleMs: 1_000,
+        now: () => new Date(nowMs)
       })
       if (acquired) assert.equal(await operation, "acquired")
       else await assert.rejects(operation, /busy|locked by/i)

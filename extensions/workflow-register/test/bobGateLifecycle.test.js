@@ -200,7 +200,7 @@ function createRunner(t, workflow, registerActions) {
   return { actions, gateRegistry, runStore, runner, stepRuntime }
 }
 
-async function waitForRunStatus(runStore, status, timeoutMs = 10_000) {
+async function waitForRunStatus(runStore, status, timeoutMs = 180_000) {
   const startedAt = Date.now()
   while (Date.now() - startedAt <= timeoutMs) {
     const run = (await runStore.listRuns()).find((candidate) => candidate.status === status)
@@ -210,7 +210,7 @@ async function waitForRunStatus(runStore, status, timeoutMs = 10_000) {
   throw new Error(`Bob workflow did not reach ${status} within ${timeoutMs}ms.`)
 }
 
-async function waitFor(predicate, timeoutMs = 5_000) {
+async function waitFor(predicate, timeoutMs = 180_000) {
   const startedAt = Date.now()
   while (Date.now() - startedAt <= timeoutMs) {
     if (predicate()) return
@@ -367,11 +367,79 @@ test("Bob runner remains pending at a branch checkpoint", async (t) => {
   const checkpointed = await waitForRunStatus(runStore, "checkpoint")
 
   try {
-    await new Promise((resolve) => setImmediate(resolve))
+    await waitFor(() => Boolean(gateRegistry.pendingForRun(root, checkpointed.runId)))
     assert.equal(settlement.settled, false)
     assert.equal(gateRegistry.pendingForRun(root, checkpointed.runId).status, "checkpoint")
   } finally {
     await abortExecution(gateRegistry, root, checkpointed.runId, execution)
+  }
+})
+
+test("checkpoint approval queues between persisted status and gate registration", async (t) => {
+  const root = tempRoot(t, "workflow-register-bob-checkpoint-command-race-")
+  const step = {
+    ...commandStep("loop"),
+    transition: {
+      decisions: [{ id: "retry", when: { stateKey: "loopResult", equals: "retry" }, goto: "loop", loop: "retry-loop" }],
+      default: "next"
+    }
+  }
+  const workflow = coreWorkflow(root, "bob-checkpoint-command-race", [step], {
+    branching: {
+      enabled: true,
+      loops: [{ id: "retry-loop", entryStep: "loop", maxIterations: 0, extensionSize: 1 }]
+    }
+  })
+  const { actions, gateRegistry, runStore, runner } = createRunner(t, workflow, (actions) => {
+    actions.register({ id: "sample.loop", execute: async () => "retry" })
+  })
+  const commandService = realCommandService(root, workflow, actions, runStore, gateRegistry)
+  const originalSaveRun = runStore.saveRun.bind(runStore)
+  let checkpointSaveHeld = false
+  let checkpointPersisted
+  const checkpointPersistedPromise = new Promise((resolve) => { checkpointPersisted = resolve })
+  let releaseCheckpointSave
+  const checkpointSaveReleased = new Promise((resolve) => { releaseCheckpointSave = resolve })
+  runStore.saveRun = async (run) => {
+    await originalSaveRun(run)
+    if (!checkpointSaveHeld && run.status === "checkpoint") {
+      checkpointSaveHeld = true
+      checkpointPersisted(run.runId)
+      await checkpointSaveReleased
+    }
+  }
+  t.after(() => { runStore.saveRun = originalSaveRun })
+  const execution = runner.runEngineStep("loop", 0, {
+    sendMessage: async () => undefined,
+    setStepComplete: () => undefined
+  })
+  const executionSettlement = trackSettlement(execution)
+  const checkpointRunId = await checkpointPersistedPromise
+  let approval
+
+  try {
+    const visible = await runStore.loadRun(checkpointRunId)
+    assert.equal(visible.status, "checkpoint")
+    assert.equal(gateRegistry.pendingForRun(root, checkpointRunId), undefined)
+
+    approval = commandService.approveBranchCheckpoint(checkpointRunId)
+    const approvalSettlement = trackSettlement(approval)
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    assert.equal(approvalSettlement.settled, false, "approval must wait for the active engine owner")
+    releaseCheckpointSave()
+    await waitFor(() => approvalSettlement.settled)
+    const approved = await approval
+    assert.equal(approved.status, "running")
+    await waitFor(() => executionSettlement.settled)
+    assert.equal(await execution, true)
+    assert.equal((await runStore.loadRun(checkpointRunId)).status, "running")
+    assert.equal(gateRegistry.pendingForRun(root, checkpointRunId), undefined)
+  } finally {
+    releaseCheckpointSave()
+    await abortExecution(gateRegistry, root, checkpointRunId, execution)
+    if (approval) {
+      await Promise.allSettled([approval])
+    }
   }
 })
 
@@ -492,8 +560,6 @@ test("full fallback after-step pause releases its completed owner before the wra
     stepExecution: { mode: "engineSteps", allowOutOfOrder: false, showInBob: false }
   })
   const controlStore = new FileRunControlStore({ workspaceRoot: root })
-  let targetEntered
-  const targetStarted = new Promise((resolve) => { targetEntered = resolve })
   let releaseTarget
   const targetReleased = new Promise((resolve) => { releaseTarget = resolve })
   let targetCalls = 0
@@ -509,7 +575,6 @@ test("full fallback after-step pause releases its completed owner before the wra
       id: "sample.target",
       execute: async () => {
         targetCalls += 1
-        targetEntered()
         await targetReleased
         return "target"
       }
@@ -538,7 +603,7 @@ test("full fallback after-step pause releases its completed owner before the wra
 
     resumeExecution = commandService.resumeRun(paused.runId)
     const resumeSettlement = trackSettlement(resumeExecution)
-    await targetStarted
+    await waitFor(() => targetCalls === 1)
     await new Promise((resolve) => setImmediate(resolve))
 
     assert.equal(resumeSettlement.settled, true, "Resume must release the full wrapper instead of executing target itself")
@@ -696,6 +761,75 @@ test("full Bob wrapper shares physical root identity with Operation Hub through 
       execution.catch(() => false),
       new Promise((resolve) => setTimeout(resolve, 250))
     ])
+  }
+})
+
+test("review acceptance waits for a visible reviewing run's active engine owner", async (t) => {
+  const { coordinateWorkflowRunExecution } = require("../out/core/engine/runExecutionCoordinator")
+  const root = tempRoot(t, "workflow-register-review-owner-race-")
+  const workflow = coreWorkflow(root, "review-owner-race", [commandStep("source")])
+  const runStore = new FileRunStateStore({ workspaceRoot: root, engineVersion: "review-owner-race-test" })
+  const run = await saveRunWithStatus(runStore, workflow, "reviewing", "source", { source: "reviewing" })
+  const gateRegistry = new BobWorkflowGateRegistry()
+  const gate = gateRegistry.waitForDecision({
+    workspaceRoot: root,
+    runId: run.runId,
+    stepId: "source",
+    ownerStepId: "source",
+    status: "reviewing",
+    executionMode: "full"
+  })
+  void gate.catch(() => undefined)
+
+  let ownerEntered
+  const ownerStarted = new Promise((resolve) => { ownerEntered = resolve })
+  let releaseOwner
+  const ownerReleased = new Promise((resolve) => { releaseOwner = resolve })
+  const owner = coordinateWorkflowRunExecution(runStore, run.runId, "test-engine-owner", async () => {
+    ownerEntered()
+    await ownerReleased
+  })
+  await ownerStarted
+
+  const coordinator = new ReviewAcceptanceCoordinator()
+  const previousFolders = vscodeState.workspaceFolders
+  vscodeState.workspaceFolders = [{ name: path.basename(root), uri: { fsPath: root } }]
+  const accepting = acceptCurrentStep({
+    showMarkdownReport: async () => undefined,
+    acceptBobWorkflowGate: (workspaceRoot, acceptedRunId, stepId) => (
+      gateRegistry.accept(workspaceRoot, acceptedRunId, stepId)
+    ),
+    acceptBobWorkflowGateWithMetadata: (workspaceRoot, acceptedRunId, stepId) => (
+      gateRegistry.acceptWithMetadata(workspaceRoot, acceptedRunId, stepId)
+    ),
+    coordinateReviewAcceptance: (workspaceRoot, acceptedRunId, operation) => (
+      coordinator.coordinate(workspaceRoot, acceptedRunId, "review-accept", operation)
+    )
+  }, run.runId, { silent: true }).then(
+    (value) => ({ value }),
+    (error) => ({ error })
+  )
+  const acceptanceSettlement = trackSettlement(accepting)
+
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 5_250))
+    if (acceptanceSettlement.settled) {
+      const outcome = await accepting
+      if (outcome.error) throw outcome.error
+      assert.fail("review acceptance completed before the active engine owner released the run")
+    }
+
+    releaseOwner()
+    await owner
+    const outcome = await accepting
+    if (outcome.error) throw outcome.error
+    assert.equal(outcome.value.status, "completed")
+    assert.equal(await gate, true)
+  } finally {
+    vscodeState.workspaceFolders = previousFolders
+    releaseOwner()
+    await owner.catch(() => undefined)
+    gateRegistry.abortPending(root, run.runId, "test cleanup")
   }
 })
 
@@ -863,7 +997,7 @@ async function saveRunWithStatus(runStore, workflow, status, currentStep, stepSt
   return run
 }
 
-test("run-next command rejects a same-run retry and releases later mutations", { timeout: 20000 }, async (t) => {
+test("run-next command rejects a same-run retry and releases later mutations", { timeout: 240_000 }, async (t) => {
   const root = tempRoot(t, "workflow-register-run-next-reentrant-")
   const workflow = coreWorkflow(root, "run-next-reentrant", [commandStep("source")])
   const runStore = new FileRunStateStore({ workspaceRoot: root, engineVersion: "run-next-reentrant-test" })

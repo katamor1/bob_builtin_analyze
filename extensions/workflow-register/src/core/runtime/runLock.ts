@@ -64,13 +64,13 @@ export async function withWorkflowRunLock<T>(
   const chain = new Set(active)
   chain.add(key)
   let heartbeatError: unknown
-  let heartbeatChain: Promise<void> = Promise.resolve()
+  let heartbeatInFlight: Promise<void> | undefined
   const timer = resolved.heartbeatMs > 0
     ? setInterval(() => {
-      if (heartbeatError) return
-      heartbeatChain = heartbeatChain
-        .then(() => refreshWorkflowRunLock(physicalRoot, runId, owner, resolved))
+      if (heartbeatError || heartbeatInFlight) return
+      heartbeatInFlight = refreshWorkflowRunLock(physicalRoot, runId, owner, resolved)
         .catch((error) => { heartbeatError = error })
+        .finally(() => { heartbeatInFlight = undefined })
     }, resolved.heartbeatMs)
     : undefined
   timer?.unref?.()
@@ -83,7 +83,7 @@ export async function withWorkflowRunLock<T>(
     operationError = error
   } finally {
     if (timer) clearInterval(timer)
-    await heartbeatChain
+    await heartbeatInFlight
     await releaseWorkflowRunLock(physicalRoot, runId, owner)
   }
   if (operationError) throw operationError
@@ -281,6 +281,7 @@ function isTransientLockContention(error: unknown, runId: string): boolean {
     && (
       message.includes("changed while its path was being verified")
       || message.includes("changed while it was being read")
+      || message.includes("physical identity does not match its direct file path")
     )
 }
 

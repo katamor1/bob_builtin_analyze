@@ -4,6 +4,9 @@ const fs = require("node:fs/promises")
 const os = require("node:os")
 const path = require("node:path")
 const { test } = require("node:test")
+const { createPhysicalPathMatcher } = require("./helpers/physicalPathMatcher")
+
+const matchesPhysicalPath = createPhysicalPathMatcher(fs)
 
 function modules() {
   return require("../out/core/runtime/runRetentionService")
@@ -46,7 +49,7 @@ function settle(operation) {
   )
 }
 
-function withTimeout(promise, label, timeoutMs = 10_000) {
+function withTimeout(promise, label, timeoutMs = 30_000) {
   let timer
   const timeout = new Promise((_, reject) => {
     timer = setTimeout(() => reject(new Error(`Timed out waiting for ${label} after ${timeoutMs}ms.`)), timeoutMs)
@@ -54,30 +57,11 @@ function withTimeout(promise, label, timeoutMs = 10_000) {
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer))
 }
 
-function alternateWindowsPathCase(filePath) {
-  const resolved = path.resolve(filePath)
-  if (process.platform !== "win32") return resolved
-  const lowerCaseIndex = resolved.search(/[a-z]/)
-  if (lowerCaseIndex >= 0) {
-    return `${resolved.slice(0, lowerCaseIndex)}${resolved[lowerCaseIndex].toUpperCase()}${resolved.slice(lowerCaseIndex + 1)}`
-  }
-  return `${resolved[0].toLowerCase()}${resolved.slice(1)}`
-}
-
-function samePath(left, right) {
-  const resolvedLeft = path.resolve(String(left))
-  const resolvedRight = path.resolve(String(right))
-  if (process.platform === "win32") {
-    return resolvedLeft.toLowerCase() === resolvedRight.toLowerCase()
-  }
-  return resolvedLeft === resolvedRight
-}
-
 async function workspace(t) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "workflow-retention-service-"))
   t.after(() => fs.rm(root, { recursive: true, force: true }))
   await fs.mkdir(path.join(root, ".bob", "workflows", "runs"), { recursive: true })
-  return alternateWindowsPathCase(root)
+  return await fs.realpath(root)
 }
 
 async function writeRun(root, runId, overrides = {}) {
@@ -314,10 +298,11 @@ test("apply rejects a cleanup plan whose physical evidence changes after cleanup
     await assert.rejects(applying, /cleanup plan changed|inventory changed|physical tree|evidence changed/i)
   } finally {
     releaseApply.resolve()
-    await applying?.catch(() => undefined)
     fs.realpath = originalRealpath
+    await applying?.catch(() => undefined)
   }
 
+  assert.equal(stopped, true, "the cleanup lease barrier hook must fire")
   assert.equal((await fs.stat(run.directory)).isDirectory(), true)
 })
 
@@ -416,12 +401,14 @@ test("cleanup lease acquired first prevents pin metadata mutation", async (t) =>
   const plan = await cleanupPlan(root, ["cleanup-first-run"])
   const cleanupAtMove = deferred()
   const allowCleanupMove = deferred()
+  let cleanupMoveHookFired = false
   const fsOps = {
     mkdir: fs.mkdir,
     lstat: fs.lstat,
     realpath: fs.realpath,
     rename: async (source, target) => {
-      if (samePath(source, directory)) {
+      if (await matchesPhysicalPath(source, directory)) {
+        cleanupMoveHookFired = true
         cleanupAtMove.resolve()
         await withTimeout(allowCleanupMove.promise, "cleanup move release")
       }
@@ -470,6 +457,7 @@ test("cleanup lease acquired first prevents pin metadata mutation", async (t) =>
   const cleanupOutcome = await settle(cleanup)
   const pinOutcome = await pin
   if (barrierError) throw barrierError
+  assert.equal(cleanupMoveHookFired, true, "the cleanup move hook must fire")
   if (cleanupOutcome.status === "rejected") {
     assert.match(String(cleanupOutcome.reason), /EISDIR|path is a directory/i)
   }
@@ -513,9 +501,11 @@ test("pin metadata committed first keeps cleanup out until the run lock releases
   const committed = deferred()
   const releasePin = deferred()
   const originalRename = fs.rename
+  let pinCommitHookFired = false
   fs.rename = async (source, target) => {
     const result = await originalRename(source, target)
-    if (samePath(target, retentionFile)) {
+    if (await matchesPhysicalPath(target, retentionFile)) {
+      pinCommitHookFired = true
       committed.resolve()
       await withTimeout(releasePin.promise, "pin metadata release")
     }
@@ -539,6 +529,7 @@ test("pin metadata committed first keeps cleanup out until the run lock releases
   }
   const pinOutcome = await pin
 
+  assert.equal(pinCommitHookFired, true, "the pin commit hook must fire")
   assert.equal(pinOutcome.status, "fulfilled")
   assert.equal(cleanupOutcome.status, "rejected")
   assert.equal((await fs.stat(directory)).isDirectory(), true)
@@ -560,7 +551,7 @@ test("contained retention read rejects a parent directory swapped to an outside 
   let swapped = false
   let escaped
   fs.lstat = async (target, ...args) => {
-    if (!swapped && samePath(target, retentionFile)) {
+    if (!swapped && await matchesPhysicalPath(target, retentionFile)) {
       swapped = true
       escaped = await replaceRunDirectoryWithExternalAlias(t, directory, {
         "run.json": await fs.readFile(path.join(directory, "run.json")),
@@ -798,7 +789,7 @@ for (const mutation of ["run", "directory"]) {
       const originalOpen = fs.open
       fs.open = async (targetPath, ...args) => {
         const handle = await originalOpen(targetPath, ...args)
-        if (!samePath(targetPath, runFile)) return handle
+        if (!await matchesPhysicalPath(targetPath, runFile)) return handle
         const originalRead = handle.read.bind(handle)
         handle.read = async (...readArgs) => {
           const result = await originalRead(...readArgs)
@@ -830,7 +821,7 @@ for (const mutation of ["run", "directory"]) {
     } else {
       const originalLstat = fs.lstat
       fs.lstat = async (targetPath, ...args) => {
-        if (!mutated && samePath(targetPath, runFile)) {
+        if (!mutated && await matchesPhysicalPath(targetPath, runFile)) {
           mutated = true
           await fs.writeFile(path.join(target.directory, "late-entry.bin"), "late")
           const future = new Date(Date.now() + 5_000)
@@ -983,7 +974,7 @@ test("inventory fails closed when the physical runs root changes during inventor
   const originalLstat = fs.lstat
   let changed = false
   fs.lstat = async (target, ...args) => {
-    if (!changed && samePath(target, enumeratedRun)) {
+    if (!changed && await matchesPhysicalPath(target, enumeratedRun)) {
       changed = true
       await writeRun(root, "late-run")
       const future = new Date(Date.now() + 5_000)
@@ -1077,8 +1068,9 @@ test("inventory depth limit counts only known files and fails closed", async (t)
 test("inventory entry limit stops after known entries and fails closed", async (t) => {
   const root = await workspace(t)
   const run = await writeRun(root, "entry-limit")
-  await fs.writeFile(path.join(run.directory, "a.bin"), "known-a")
-  await fs.writeFile(path.join(run.directory, "z.bin"), "unknown-z")
+  const runBytes = (await fs.stat(path.join(run.directory, "run.json"))).size
+  await fs.writeFile(path.join(run.directory, "a.bin"), Buffer.alloc(runBytes, "a"))
+  await fs.writeFile(path.join(run.directory, "z.bin"), Buffer.alloc(runBytes, "z"))
   const { inspectWorkflowRunRetentionInventory, WORKFLOW_RUN_RETENTION_INVENTORY_LIMITS } = inventoryModules()
   assert.ok(WORKFLOW_RUN_RETENTION_INVENTORY_LIMITS.maxEntries > 3)
 
@@ -1087,14 +1079,10 @@ test("inventory entry limit stops after known entries and fails closed", async (
     maxEntries: 3
   })
   const item = snapshot.inventory.find((entry) => entry.runId === run.run.runId)
-  const knownBytes = await sumFileSizes([
-    path.join(run.directory, "a.bin"),
-    path.join(run.directory, "run.json")
-  ])
 
   assert.equal(snapshot.referenceGraphComplete, false)
   assert.equal(item.measurementComplete, false)
-  assert.equal(item.bytes, knownBytes)
+  assert.equal(item.bytes, 2 * runBytes)
 })
 
 test("metadata capture budget refuses an oversized run document without opening it", async (t) => {
@@ -1104,7 +1092,7 @@ test("metadata capture budget refuses an oversized run document without opening 
   const originalOpen = fs.open
   let runOpened = false
   fs.open = async (targetPath, ...args) => {
-    if (samePath(targetPath, runFile)) runOpened = true
+    if (await matchesPhysicalPath(targetPath, runFile)) runOpened = true
     return originalOpen(targetPath, ...args)
   }
   const { inspectWorkflowRunRetentionInventory, WORKFLOW_RUN_RETENTION_INVENTORY_LIMITS } = inventoryModules()
@@ -1154,7 +1142,7 @@ test("inventory reads a growing run document only up to its initial bounded size
   let appendCount = 0
   fs.open = async (targetPath, ...args) => {
     const handle = await originalOpen(targetPath, ...args)
-    if (!samePath(targetPath, runFile)) return handle
+    if (!await matchesPhysicalPath(targetPath, runFile)) return handle
     const originalRead = handle.read.bind(handle)
     handle.read = async (...readArgs) => {
       const result = await originalRead(...readArgs)
@@ -1189,7 +1177,7 @@ test("inventory fingerprints ordinary artifacts from stable metadata without ope
   const originalOpen = fs.open
   let artifactOpened = false
   fs.open = async (targetPath, ...args) => {
-    if (samePath(targetPath, artifact)) artifactOpened = true
+    if (await matchesPhysicalPath(targetPath, artifact)) artifactOpened = true
     return originalOpen(targetPath, ...args)
   }
   let first

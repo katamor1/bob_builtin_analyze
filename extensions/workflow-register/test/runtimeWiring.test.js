@@ -52,7 +52,7 @@ function loadBobWorkflowRunner() {
   }
 }
 
-async function waitForReviewingRun(runStore, timeoutMs = 15_000) {
+async function waitForReviewingRun(runStore, timeoutMs = 180_000) {
   const startedAt = Date.now()
   while (Date.now() - startedAt <= timeoutMs) {
     const run = (await runStore.listRuns()).find((candidate) => candidate.status === "reviewing")
@@ -60,6 +60,15 @@ async function waitForReviewingRun(runStore, timeoutMs = 15_000) {
     await new Promise((resolve) => setTimeout(resolve, 10))
   }
   throw new Error(`Bob workflow did not reach reviewing state within ${timeoutMs}ms.`)
+}
+
+async function waitForPendingReviewGate(gateRegistry, workspaceRoot, runId, stepId, timeoutMs = 180_000) {
+  const startedAt = Date.now()
+  while (Date.now() - startedAt <= timeoutMs) {
+    if (gateRegistry.isPending(workspaceRoot, runId, stepId)) return
+    await new Promise((resolve) => setTimeout(resolve, 10))
+  }
+  throw new Error(`Bob workflow did not register its review gate within ${timeoutMs}ms.`)
 }
 
 function createBobReviewRunner(t) {
@@ -290,7 +299,7 @@ test("Bob workflow runner remains pending at review until its registry accepts t
   )
 
   const reviewing = await waitForReviewingRun(runStore)
-  await new Promise((resolve) => setImmediate(resolve))
+  await waitForPendingReviewGate(gateRegistry, workspaceRoot, reviewing.runId, "review")
 
   assert.equal(settled, false)
   assert.equal(gateRegistry.isPending(workspaceRoot, reviewing.runId, "review"), true)

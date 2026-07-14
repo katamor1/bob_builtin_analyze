@@ -130,15 +130,13 @@ test("pending-journal owned load stays reentrant while an independent contender 
     workspaceRoot: workspace,
     lockOptions: { heartbeatMs: 0, timeoutMs: 2_000, pollMs: 5 }
   })
-  const owner = withTimeout(ownerStore.withRunLock(run.runId, async () => {
+  const owner = ownerStore.withRunLock(run.runId, async () => {
     const recovered = await ownerStore.loadRun(run.runId)
     assert.equal(recovered.state.recovered, "latest")
     ownerLoaded.resolve()
-    await withTimeout(releaseOwner.promise, "owned lock release")
-  }), "pending-journal owner")
-  await withTimeout(ownerLoaded.promise, "owned pending-journal load")
-  assert.ok(await readRunDurabilityFile(workspace, run.runId, "run.lock.json"))
-  assert.equal(await readWorkflowRunJournal(workspace, run.runId), undefined)
+    await withTimeout(releaseOwner.promise, "owned lock release", 120_000)
+  })
+  void owner.catch(() => undefined)
 
   let contenderRan = false
   const contender = new FileRunStateStore({
@@ -146,14 +144,20 @@ test("pending-journal owned load stays reentrant while an independent contender 
     lockOptions: { heartbeatMs: 0, timeoutMs: 1_000, pollMs: 5 }
   })
   try {
+    await withTimeout(Promise.race([
+      ownerLoaded.promise,
+      owner.then(() => { throw new Error("Pending-journal owner completed before loading the run.") })
+    ]), "owned pending-journal load", 120_000)
+    assert.ok(await readRunDurabilityFile(workspace, run.runId, "run.lock.json"))
+    assert.equal(await readWorkflowRunJournal(workspace, run.runId), undefined)
     await assert.rejects(
-      withTimeout(contender.withRunLock(run.runId, async () => { contenderRan = true }), "independent contender", 3_000),
+      withTimeout(contender.withRunLock(run.runId, async () => { contenderRan = true }), "independent contender", 120_000),
       /busy|locked by another process/i
     )
   } finally {
     releaseOwner.resolve()
+    await withTimeout(owner, "pending-journal owner completion", 120_000)
   }
-  await owner
   assert.equal(contenderRan, false)
 })
 

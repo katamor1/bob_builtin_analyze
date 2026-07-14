@@ -3,6 +3,9 @@ const fs = require("node:fs/promises")
 const os = require("node:os")
 const path = require("node:path")
 const { test } = require("node:test")
+const { createPhysicalPathMatcher } = require("./helpers/physicalPathMatcher")
+
+const matchesPhysicalPath = createPhysicalPathMatcher(fs)
 
 function leaseModules() {
   return require("../out/core/runtime/runCleanupLease")
@@ -33,23 +36,12 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-function alternateWindowsPathCase(filePath) {
-  const resolved = path.resolve(filePath)
-  if (process.platform !== "win32") return resolved
-  const lowerCaseIndex = resolved.search(/[a-z]/)
-  if (lowerCaseIndex >= 0) {
-    return `${resolved.slice(0, lowerCaseIndex)}${resolved[lowerCaseIndex].toUpperCase()}${resolved.slice(lowerCaseIndex + 1)}`
-  }
-  return `${resolved[0].toLowerCase()}${resolved.slice(1)}`
-}
-
-function samePath(left, right) {
-  const resolvedLeft = path.resolve(String(left))
-  const resolvedRight = path.resolve(String(right))
-  if (process.platform === "win32") {
-    return resolvedLeft.toLowerCase() === resolvedRight.toLowerCase()
-  }
-  return resolvedLeft === resolvedRight
+function withTimeout(promise, label, timeoutMs = 30_000) {
+  let timer
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs)
+  })
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer))
 }
 
 async function eventually(predicate, message, timeoutMs = 3_000) {
@@ -73,7 +65,7 @@ async function workspace(t, runIds = ["run-a"]) {
     await fs.mkdir(path.join(root, ".bob", "workflows", "runs", runId), { recursive: true })
     await fs.writeFile(path.join(root, ".bob", "workflows", "runs", runId, "run.json"), "{}")
   }
-  return alternateWindowsPathCase(root)
+  return await fs.realpath(root)
 }
 
 test("cleanup leases live outside workflow run enumeration", async (t) => {
@@ -193,7 +185,7 @@ test("cleanup release removes owned JSON before its guard and never mutates the 
   const guardRemoval = deferred()
   let guardRemoved = false
   fs.rmdir = async (target, ...args) => {
-    if (samePath(target, guardDirectory)) {
+    if (await matchesPhysicalPath(target, guardDirectory)) {
       await assert.rejects(fs.access(leaseFile), { code: "ENOENT" })
       guardRemoval.resolve()
       const result = await originalRmdir(target, ...args)
@@ -208,7 +200,7 @@ test("cleanup release removes owned JSON before its guard and never mutates the 
       assert.equal((await fs.stat(guardDirectory)).isDirectory(), true)
       assert.equal(JSON.parse(await fs.readFile(leaseFile, "utf8")).token, "release-owner")
     }, { token: () => "release-owner", hostname: "test-host" })
-    await guardRemoval.promise
+    await withTimeout(guardRemoval.promise, "cleanup guard removal hook")
     assert.equal(guardRemoved, true)
     assert.equal(await workflowRunCleanupLeasePresent(root, "run-a"), false)
   } finally {
@@ -239,7 +231,7 @@ test("stale reclaim preserves a lease whose heartbeat advances during verificati
   const continueRead = deferred()
   let readCount = 0
   fs.open = async (...args) => {
-    if (samePath(args[0], leaseFile) && args[1] === "r") {
+    if (await matchesPhysicalPath(args[0], leaseFile) && args[1] === "r") {
       readCount += 1
       if (readCount === 2) {
         const handle = await originalOpen(...args)
@@ -258,10 +250,7 @@ test("stale reclaim preserves a lease whose heartbeat advances during verificati
     staleMs: 1_000
   })
   try {
-    await Promise.race([
-      verificationRead.promise,
-      delay(3_000).then(() => { throw new Error("Stale reclaim did not reach its verification read.") })
-    ])
+    await withTimeout(verificationRead.promise, "stale reclaim verification read")
     await fs.utimes(leaseFile, refreshedAt, refreshedAt)
     continueRead.resolve()
     await assert.rejects(contender, /reserved by a cleanup operation|cleanup lease/i)
@@ -269,9 +258,10 @@ test("stale reclaim preserves a lease whose heartbeat advances during verificati
     assert.equal(persisted.token, "original-owner")
   } finally {
     continueRead.resolve()
-    await contender.catch(() => undefined)
     fs.open = originalOpen
+    await contender.catch(() => undefined)
   }
+  assert.ok(readCount >= 2, "the stale verification read hook must fire")
 })
 
 test("a guarded stale reclaim cannot delete a replacement owner after verification", async (t) => {
@@ -298,7 +288,7 @@ test("a guarded stale reclaim cannot delete a replacement owner after verificati
   let intercepted = false
   const entries = []
   fs.rm = async (target, ...args) => {
-    if (!intercepted && samePath(target, leaseFile)) {
+    if (!intercepted && await matchesPhysicalPath(target, leaseFile)) {
       intercepted = true
       removalVerified.resolve()
       await continueRemoval.promise
@@ -318,10 +308,7 @@ test("a guarded stale reclaim cannot delete a replacement owner after verificati
   }))
   let replacement
   try {
-    await Promise.race([
-      removalVerified.promise,
-      delay(3_000).then(() => { throw new Error("Stale reclaim did not reach its post-verification removal barrier.") })
-    ])
+    await withTimeout(removalVerified.promise, "stale reclaim post-verification removal hook")
     await originalRm(leaseFile)
     replacement = settle(withWorkflowRunCleanupLeases(root, ["run-a"], async () => {
       entries.push("replacement")
@@ -348,9 +335,10 @@ test("a guarded stale reclaim cannot delete a replacement owner after verificati
   } finally {
     continueRemoval.resolve()
     releaseReplacement.resolve()
-    await Promise.all([contender, replacement ?? Promise.resolve()])
     fs.rm = originalRm
+    await Promise.all([contender, replacement ?? Promise.resolve()])
   }
+  assert.equal(intercepted, true, "the guarded stale removal hook must fire")
 })
 
 test("cleanup lease heartbeat prevents foreign-host reclaim and stops after success", async (t) => {
@@ -466,7 +454,7 @@ test("cleanup heartbeat never overwrites a replacement owner", async (t) => {
 
   fs.open = async (...args) => {
     const handle = await originalOpen(...args)
-    if (heartbeatPhase && samePath(args[0], leaseFile)) {
+    if (heartbeatPhase && await matchesPhysicalPath(args[0], leaseFile)) {
       const originalUtimes = handle.utimes.bind(handle)
       handle.utimes = async (...utimesArgs) => {
         if (!mutationIntercepted) {
@@ -487,7 +475,7 @@ test("cleanup heartbeat never overwrites a replacement owner", async (t) => {
     if (
       heartbeatPhase
       && !mutationIntercepted
-      && samePath(target, leaseFile)
+      && await matchesPhysicalPath(target, leaseFile)
     ) {
       mutationIntercepted = true
       mutationReady.resolve()
@@ -513,10 +501,7 @@ test("cleanup heartbeat never overwrites a replacement owner", async (t) => {
   try {
     await entered.promise
     heartbeatPhase = true
-    await Promise.race([
-      mutationReady.promise,
-      delay(3_000).then(() => { throw new Error("Heartbeat mutation did not reach the test barrier.") })
-    ])
+    await withTimeout(mutationReady.promise, "heartbeat mutation hook")
     await fs.rm(leaseFile)
     await fs.writeFile(leaseFile, `${JSON.stringify({
       schemaVersion: "workflow-register/run-cleanup-lease/v1",
@@ -528,7 +513,7 @@ test("cleanup heartbeat never overwrites a replacement owner", async (t) => {
       heartbeatAt: new Date().toISOString()
     }, null, 2)}\n`)
     continueMutation.resolve()
-    await mutationReturned.promise
+    await withTimeout(mutationReturned.promise, "heartbeat mutation return")
     heartbeatPhase = false
     releaseOwner.resolve()
     await assert.rejects(owner, /ownership changed|lease release/i)
@@ -538,10 +523,11 @@ test("cleanup heartbeat never overwrites a replacement owner", async (t) => {
     heartbeatPhase = false
     continueMutation.resolve()
     releaseOwner.resolve()
-    await owner.catch(() => undefined)
     fs.open = originalOpen
     fs.rename = originalRename
+    await owner.catch(() => undefined)
   }
+  assert.equal(mutationIntercepted, true, "the heartbeat mutation hook must fire")
 })
 
 test("cleanup-first interleaving excludes the workflow execution critical section", async (t) => {
@@ -629,20 +615,25 @@ test("crossed cleanup and run-lock handshake enters at most one critical section
   const releaseCleanup = deferred()
   const originalLstat = fs.lstat
   let phase = "run-precheck"
+  let runPrecheckHookFired = false
+  let cleanupLockHookFired = false
+  let runPostcheckHookFired = false
   fs.lstat = async (target, ...args) => {
-    if (phase === "run-precheck" && samePath(target, leaseFile)) {
+    if (phase === "run-precheck" && await matchesPhysicalPath(target, leaseFile)) {
       try {
         return await originalLstat(target, ...args)
       } catch (error) {
+        runPrecheckHookFired = true
         runPrecheckObserved.resolve()
         await allowRunCreate.promise
         throw error
       }
     }
-    if (phase === "cleanup-lock-check" && samePath(target, runLockFile)) {
+    if (phase === "cleanup-lock-check" && await matchesPhysicalPath(target, runLockFile)) {
       try {
         return await originalLstat(target, ...args)
       } catch (error) {
+        cleanupLockHookFired = true
         cleanupLockCheckObserved.resolve()
         await allowCleanupEntry.promise
         throw error
@@ -650,9 +641,10 @@ test("crossed cleanup and run-lock handshake enters at most one critical section
     }
     if (
       phase === "run-postcheck"
-      && (samePath(target, guardDirectory) || samePath(target, leaseFile))
+      && (await matchesPhysicalPath(target, guardDirectory) || await matchesPhysicalPath(target, leaseFile))
     ) {
       const stat = await originalLstat(target, ...args)
+      runPostcheckHookFired = true
       runPostcheckObserved.resolve()
       await allowRunRetreat.promise
       return stat
@@ -666,20 +658,20 @@ test("crossed cleanup and run-lock handshake enters at most one critical section
   }, { timeoutMs: 100, pollMs: 2, heartbeatMs: 0 }))
   let cleanup
   try {
-    await runPrecheckObserved.promise
+    await withTimeout(runPrecheckObserved.promise, "run-lock cleanup precheck hook")
     phase = "cleanup-lock-check"
     cleanup = settle(withWorkflowRunCleanupLeases(root, ["run-a"], async () => {
       entries.push("cleanup")
       cleanupEntered.resolve()
       await releaseCleanup.promise
     }, { token: () => "cleanup-token", hostname: "test-host" }))
-    await cleanupLockCheckObserved.promise
+    await withTimeout(cleanupLockCheckObserved.promise, "cleanup run-lock check hook")
 
     phase = "run-postcheck"
     allowRunCreate.resolve()
-    await runPostcheckObserved.promise
+    await withTimeout(runPostcheckObserved.promise, "run-lock cleanup postcheck hook")
     allowCleanupEntry.resolve()
-    await cleanupEntered.promise
+    await withTimeout(cleanupEntered.promise, "cleanup critical-section entry")
     phase = "released"
     allowRunRetreat.resolve()
 
@@ -693,7 +685,10 @@ test("crossed cleanup and run-lock handshake enters at most one critical section
     allowCleanupEntry.resolve()
     allowRunRetreat.resolve()
     releaseCleanup.resolve()
-    await Promise.all([run, cleanup ?? Promise.resolve()])
     fs.lstat = originalLstat
+    await Promise.all([run, cleanup ?? Promise.resolve()])
   }
+  assert.equal(runPrecheckHookFired, true, "the run precheck hook must fire")
+  assert.equal(cleanupLockHookFired, true, "the cleanup lock hook must fire")
+  assert.equal(runPostcheckHookFired, true, "the run postcheck hook must fire")
 })

@@ -137,7 +137,11 @@ test("FileRunStateStore rejects a dangling run.json file symlink", async (t) => 
 
 test("FileRunStateStore revalidates the run directory after temp creation and before rename", async (t) => {
   const workspaceRoot = await makeWorkspace()
-  const store = new FileRunStateStore({ workspaceRoot, now: () => "2026-07-12T01:00:00.000Z" })
+  const store = new FileRunStateStore({
+    workspaceRoot,
+    now: () => "2026-07-12T01:00:00.000Z",
+    lockOptions: { heartbeatMs: 0 }
+  })
   await store.saveRun(runState("run-1"))
   const runDirectory = path.join(workspaceRoot, ".bob", "workflows", "runs", "run-1")
   const parkedDirectory = path.join(workspaceRoot, ".bob", "workflows", "runs", "run-1-parked")
