@@ -49,6 +49,7 @@ test("rule authoring paths are absolute and contained by the workspace", () => {
 test("rule authoring IDs accept stable run and source identifiers", () => {
   assert.equal(validateRuleAuthoringId("run-20260714-001", "runId"), "run-20260714-001")
   assert.equal(validateRuleAuthoringId("src-0123456789ab", "sourceId"), "src-0123456789ab")
+  assert.equal(validateRuleAuthoringId("a".repeat(255), "runId"), "a".repeat(255))
   assert.equal(RULE_AUTHORING_SCHEMA_VERSION, "bob-bazaar-review/rule-authoring-run/v1")
 })
 
@@ -70,6 +71,10 @@ test("rule authoring IDs reject traversal and unsafe cross-platform path segment
     "a\"b",
     "CON",
     "con.txt",
+    "COM¹",
+    "LPT².txt",
+    "a".repeat(256),
+    "é".repeat(128),
     " name",
     "name.",
     "name ",

@@ -1,8 +1,9 @@
 import * as path from "node:path"
 
-const WINDOWS_RESERVED_NAME = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/i
+const WINDOWS_RESERVED_NAME = /^(con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])(?:\..*)?$/i
 const CONTROL_CHARACTER = /[\u0000-\u001f\u007f]/
 const WINDOWS_FORBIDDEN_CHARACTER = /[<>:"/\\|?*]/
+const MAX_PATH_SEGMENT_BYTES = 255
 
 export interface RuleAuthoringPaths {
   reviewDirectory: string
@@ -31,6 +32,9 @@ export function validateRuleAuthoringId(value: string, fieldName: string): strin
   const normalized = value.trim()
   if (!normalized) throw new Error(`${fieldName} is required`)
   if (normalized !== value) throw new Error(`${fieldName} must not have surrounding whitespace`)
+  if (Buffer.byteLength(normalized, "utf8") > MAX_PATH_SEGMENT_BYTES) {
+    throw new Error(`${fieldName} must not exceed the portable path segment byte limit`)
+  }
   if (normalized === "." || normalized === "..") throw new Error(`${fieldName} must be a safe path segment`)
   if (WINDOWS_FORBIDDEN_CHARACTER.test(normalized)) {
     throw new Error(`${fieldName} must not contain Windows-forbidden characters`)

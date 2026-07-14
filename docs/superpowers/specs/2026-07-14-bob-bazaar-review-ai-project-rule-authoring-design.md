@@ -535,9 +535,18 @@ Windows filesystemでは複数ファイルの単一atomic transactionを作れ�
 - archive entry pathはabsolute、drive-relative、UNC、device path、`..` segment、control characterを拒否する。
 - PDF processはshell-free、bounded、abortableとする。
 - document textはuntrusted evidenceであり、文書中の命令をworkflow instructionとして扱わない。
+- evidence frameは本文と衝突しないboundaryを決定論的に選び、本文中のdelimiter風文字列でframeを終了できないようにする。
+- shareable previewのpath redactionはhost OSに依存せず、POSIX root path、Windows drive-qualified path、slash/backslash UNC、file URIを対象にする。bounded scannerはraw authorityがありbackslashを含まないHTTP(S) URLのscheme・authority・path（IPv6と国際化URLを含む）を保持し、query・fragmentをlocal pathとして再走査する。nested HTTP(S)は深さ4、全体1,024 tokenを上限とし、超過時はfail closedでlocal pathとして扱う。Unicode letter/numberと直前のbase letter/numberに属するcombining markのslash区切り、および明示allowlistに含むforward-slashのstatus pairは通常文として保持する一方、symbol直後・URL query/fragment内・backslashのpathは伏字化する。raw display fieldは32 KiB、heading pathは64要素を上限とする。artifact pathはaggregate 1,024 bytes、各segment 255 bytesを上限とし、drive-relative、alternate data stream、Windows予約名・禁止文字・末尾dot/spaceを含む非portableなWindows構文を全platformで拒否する。
 - AI送信前にsource namesとbyte countを表示し、明示承認を必要とする。
 - extensionは独自network clientを追加せず、Bob/workflow-registerの設定済みmodel routeだけを使う。
 - project-owned assetの変更は利用者の通常のGit/Bazaar運用へ委ね、authoring機能自身はcommit、push、pullを実行しない。
+- authoring run、lock、closure、artifact pathは固定byte上限を持ち、JSONは上限+1 byteのbounded read後にだけparseする。
+- source index/evidenceは最終byte上限だけでなく、そこへ収まり得るsource/chunk/item件数とselected text累積byteを処理前またはstream中に制限する。
+- run lock directoryはstreaming走査し、owner、generation、closure、全entryの処理件数を固定上限で停止する。
+- run lockの自動dead-owner回収は同一host/PID namespace fingerprint内だけで行う。Linuxはboot IDとPID namespaceを使用し、Windows/macOSはhostnameとnon-internal MAC集合をhash化する。利用可能なMACがない場合はextension-host固有scopeへ退避する。異なるfingerprintはfail closedとし、自動closeしない。同一hostnameとMAC集合を意図的に複製した複数hostで同じworkspaceを同時利用する構成は対象外とする。
+- 同一namespaceでdead ownerのPIDが別processへ再利用された場合は安全側にliveとみなし、そのPIDが終了するまで自動回収を遅延させる。
+- 複数processによる異なるrunの初期作成では、共有ancestorの`mkdir`が`EEXIST`になった場合に作成後の実体を再検証し、symlink/non-directoryへ置換された競合だけを拒否する。
+- 静的なsymlink/junctionと通常I/O中に観測できるidentity変更は拒否する。同一userの別processが最終identity確認とpath-based filesystem operationの間だけ親directoryを差し替えて復元する攻撃は、Node coreにhandle-relative open/renameがないためtrusted-workspace境界の外とする。
 
 ## 16. Module boundaries
 
