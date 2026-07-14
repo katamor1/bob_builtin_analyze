@@ -312,6 +312,42 @@ test("matches bounded Unicode custom rule IDs without treating them as path segm
   assert.equal(result.valid, true)
 })
 
+test("rejects rule targets that claim another stable namespace or malformed PRJ IDs", () => {
+  for (const targetRuleId of ["CTX-0001", "PRM-0001", "PRJ-10000", "PRJ-malformed"]) {
+    const proposal = validProposal()
+    proposal.operations[1].target_rule_id = targetRuleId
+    assertInvalid(validate(proposal), "schema_invalid")
+  }
+})
+
+test("rejects checklist context IDs that claim reserved stable prefixes", () => {
+  for (const existingRuleId of ["CTX-0001", "PRM-0001", "PRJ-10000", "PRJ-malformed"]) {
+    assert.throws(
+      () => validate(validProposal(), validationContext({
+        existingRuleIds: ["PRJ-0001", "PRJ-0002", existingRuleId]
+      })),
+      /context/i
+    )
+  }
+})
+
+test("accepts the full PRJ range and genuine legacy rule IDs", () => {
+  for (const targetRuleId of [
+    "PRJ-0001",
+    "PRJ-9999",
+    "RT-001",
+    "IF-001",
+    "規約/外部I/F #1"
+  ]) {
+    const proposal = validProposal()
+    proposal.operations[1].target_rule_id = targetRuleId
+    const result = validate(proposal, validationContext({
+      existingRuleIds: [targetRuleId, "PRJ-0002"]
+    }))
+    assert.equal(result.valid, true, targetRuleId)
+  }
+})
+
 test("enforces both managed Markdown operation matrices and target namespaces", () => {
   for (const field of ["project_context_operations", "prompt_addendum_operations"]) {
     const invalidCases = [

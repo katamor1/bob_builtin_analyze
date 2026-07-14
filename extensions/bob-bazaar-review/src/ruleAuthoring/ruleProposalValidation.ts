@@ -4,6 +4,7 @@ import {
   ProposedMarkdownOperationV1,
   RuleProposalConflictV1,
   RuleProposalOperationV1,
+  EXISTING_RULE_ID_PATTERN,
   RULE_PROPOSAL_SCHEMA_LIMITS,
   RuleProposalSchemaError,
   RuleProposalSourceRefV1,
@@ -14,7 +15,7 @@ import {
 const SHA256_PATTERN = /^[a-f0-9]{64}$/
 const SOURCE_ID_PATTERN = /^src-[a-f0-9]{12,64}$/
 const CHUNK_ID_PATTERN = /^chunk-[a-f0-9]{64}$/
-const RULE_ID_PATTERN = /^(?!PRJ-0000$)[^\u0000-\u001f\u007f-\u009f]{1,128}$/u
+const RULE_ID_PATTERN = new RegExp(EXISTING_RULE_ID_PATTERN, "u")
 const CONTEXT_ID_PATTERN = /^CTX-(?!0000$)[0-9]{4}$/
 const PROMPT_ID_PATTERN = /^PRM-(?!0000$)[0-9]{4}$/
 const DISALLOWED_MARKDOWN_CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/

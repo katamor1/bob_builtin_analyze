@@ -88,7 +88,8 @@ const SOURCE_ID_PATTERN = "^src-[a-f0-9]{12,64}$"
 const CHUNK_ID_PATTERN = "^chunk-[a-f0-9]{64}$"
 const SHA256_PATTERN = "^[a-f0-9]{64}$"
 const RUN_ID_PATTERN = "^[^\\u0000-\\u001f\\u007f]{1,255}$"
-const EXISTING_RULE_ID_PATTERN = "^(?!PRJ-0000$)[^\\u0000-\\u001f\\u007f-\\u009f]+$"
+export const EXISTING_RULE_ID_PATTERN =
+  "^(?![\\s\\S]*[\\u0000-\\u001f\\u007f-\\u009f])(?:PRJ-(?!0000$)[0-9]{4}|(?!\\s*(?:PRJ|CTX|PRM)-)[\\s\\S]{1,128})$"
 const MAX_AFFECTED_CANDIDATES =
   DEFAULT_RULE_AUTHORING_LIMITS.maxRuleOperations +
   DEFAULT_RULE_AUTHORING_LIMITS.maxProjectContextOperations +
