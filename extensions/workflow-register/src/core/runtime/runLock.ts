@@ -1,6 +1,5 @@
 import { AsyncLocalStorage } from "async_hooks"
 import { randomUUID } from "crypto"
-import * as fs from "fs/promises"
 import * as os from "os"
 import * as path from "path"
 import {
@@ -8,10 +7,14 @@ import {
   createRunDurabilityFile,
   readRunDurabilityFile,
   removeRunDurabilityFile,
-  replaceRunDurabilityFile,
-  runDurabilityDirectoryPresent
+  runDurabilityDirectoryPresent,
+  touchRunDurabilityFileMtime
 } from "./runDurabilityPath"
 import { workflowRunCleanupLeasePresent } from "./runCleanupLease"
+import {
+  resolveWorkflowRunWorkspaceRoot,
+  withWorkflowRunWorkspaceRootBinding
+} from "./workflowRunWorkspaceRootBinding"
 
 export const CURRENT_WORKFLOW_RUN_LOCK_SCHEMA_VERSION = "workflow-register/run-lock/v1" as const
 
@@ -47,7 +50,7 @@ export async function withWorkflowRunLock<T>(
   operation: () => Promise<T>,
   options: WorkflowRunLockOptions = {}
 ): Promise<T> {
-  const physicalRoot = await fs.realpath(path.resolve(workspaceRoot))
+  const physicalRoot = await resolveWorkflowRunWorkspaceRoot(workspaceRoot)
   const key = JSON.stringify([normalizePhysicalRoot(physicalRoot), runId])
   const active = activeLocks.getStore()
   if (active?.has(key)) return operation()
@@ -65,26 +68,47 @@ export async function withWorkflowRunLock<T>(
   chain.add(key)
   let heartbeatError: unknown
   let heartbeatInFlight: Promise<void> | undefined
+  let heartbeatPending = false
+  let stopping = false
+  const startHeartbeat = (): void => {
+    if (heartbeatError || stopping) return
+    if (heartbeatInFlight) {
+      heartbeatPending = true
+      return
+    }
+    heartbeatInFlight = (async () => {
+      do {
+        heartbeatPending = false
+        await refreshWorkflowRunLock(physicalRoot, runId, owner, resolved)
+      } while (heartbeatPending && !stopping)
+    })()
+      .catch((error) => { heartbeatError = error })
+      .finally(() => {
+        heartbeatInFlight = undefined
+        if (heartbeatPending && !stopping && !heartbeatError) startHeartbeat()
+      })
+  }
   const timer = resolved.heartbeatMs > 0
-    ? setInterval(() => {
-      if (heartbeatError || heartbeatInFlight) return
-      heartbeatInFlight = refreshWorkflowRunLock(physicalRoot, runId, owner, resolved)
-        .catch((error) => { heartbeatError = error })
-        .finally(() => { heartbeatInFlight = undefined })
-    }, resolved.heartbeatMs)
+    ? setInterval(startHeartbeat, resolved.heartbeatMs)
     : undefined
   timer?.unref?.()
 
   let result!: T
   let operationError: unknown
   try {
-    result = await activeLocks.run(chain, operation)
+    result = await activeLocks.run(chain, () => (
+      withWorkflowRunWorkspaceRootBinding(workspaceRoot, physicalRoot, operation)
+    ))
   } catch (error) {
     operationError = error
   } finally {
+    stopping = true
     if (timer) clearInterval(timer)
     await heartbeatInFlight
-    await releaseWorkflowRunLock(physicalRoot, runId, owner)
+    const released = await releaseWorkflowRunLock(physicalRoot, runId, owner)
+    if (!released && !heartbeatError) {
+      heartbeatError = new Error(`Workflow run '${runId}' lock ownership changed before release.`)
+    }
   }
   if (operationError) throw operationError
   if (heartbeatError) throw heartbeatError
@@ -205,24 +229,13 @@ async function refreshWorkflowRunLock(
   owner: WorkflowRunLockV1,
   options: ResolvedWorkflowRunLockOptions
 ): Promise<void> {
-  const snapshot = await readRunDurabilityFile(workspaceRoot, runId, "run.lock.json")
-  if (!snapshot) throw new Error(`Workflow run '${runId}' lock disappeared while the run was active.`)
-  let current: WorkflowRunLockV1
-  try {
-    current = parseWorkflowRunLock(JSON.parse(snapshot.bytes.toString("utf8")), runId)
-  } catch (error) {
-    throw new Error(`Workflow run '${runId}' lock became invalid while the run was active: ${formatError(error)}`)
-  }
-  if (current.token !== owner.token) throw new Error(`Workflow run '${runId}' lock ownership changed while the run was active.`)
-  const next: WorkflowRunLockV1 = { ...current, heartbeatAt: options.now().toISOString() }
-  await replaceRunDurabilityFile(
+  await touchRunDurabilityFileMtime(
     workspaceRoot,
     runId,
     "run.lock.json",
-    serializeWorkflowRunLock(next),
-    snapshot.bytes
+    Buffer.from(serializeWorkflowRunLock(owner), "utf8"),
+    options.now
   )
-  owner.heartbeatAt = next.heartbeatAt
 }
 
 async function releaseWorkflowRunLock(workspaceRoot: string, runId: string, owner: WorkflowRunLockV1): Promise<boolean> {
@@ -264,7 +277,11 @@ function inspectExistingLock(
     return { reclaim: true, message: `Reclaimed lock from dead pid ${lock.pid} on ${lock.hostname}.` }
   }
 
-  const heartbeatAgeMs = Math.max(0, options.now().getTime() - Date.parse(lock.heartbeatAt))
+  // The owner refreshes mtime without rewriting its token-bearing bytes. A process
+  // stalled longer than staleMs can still be reclaimed; no lease can prevent an
+  // arbitrary event-loop or machine stall without an external fencing service.
+  const lastHeartbeatMs = Math.max(Date.parse(lock.heartbeatAt), mtimeMs)
+  const heartbeatAgeMs = Math.max(0, options.now().getTime() - lastHeartbeatMs)
   return {
     reclaim: heartbeatAgeMs > options.staleMs,
     message: heartbeatAgeMs > options.staleMs

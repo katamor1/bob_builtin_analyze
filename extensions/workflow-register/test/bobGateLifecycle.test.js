@@ -200,7 +200,7 @@ function createRunner(t, workflow, registerActions) {
   return { actions, gateRegistry, runStore, runner, stepRuntime }
 }
 
-async function waitForRunStatus(runStore, status, timeoutMs = 180_000) {
+async function waitForRunStatus(runStore, status, timeoutMs = 10_000) {
   const startedAt = Date.now()
   while (Date.now() - startedAt <= timeoutMs) {
     const run = (await runStore.listRuns()).find((candidate) => candidate.status === status)
@@ -210,7 +210,7 @@ async function waitForRunStatus(runStore, status, timeoutMs = 180_000) {
   throw new Error(`Bob workflow did not reach ${status} within ${timeoutMs}ms.`)
 }
 
-async function waitFor(predicate, timeoutMs = 180_000) {
+async function waitFor(predicate, timeoutMs = 5_000) {
   const startedAt = Date.now()
   while (Date.now() - startedAt <= timeoutMs) {
     if (predicate()) return
@@ -997,7 +997,7 @@ async function saveRunWithStatus(runStore, workflow, status, currentStep, stepSt
   return run
 }
 
-test("run-next command rejects a same-run retry and releases later mutations", { timeout: 240_000 }, async (t) => {
+test("run-next command rejects a same-run retry and releases later mutations", { timeout: 20_000 }, async (t) => {
   const root = tempRoot(t, "workflow-register-run-next-reentrant-")
   const workflow = coreWorkflow(root, "run-next-reentrant", [commandStep("source")])
   const runStore = new FileRunStateStore({ workspaceRoot: root, engineVersion: "run-next-reentrant-test" })

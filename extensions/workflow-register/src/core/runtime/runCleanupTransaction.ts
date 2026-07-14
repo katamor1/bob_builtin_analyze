@@ -11,6 +11,7 @@ import {
 import { hashWorkflowRunBytes } from "./runEventLog"
 import { readRunDurabilityFile } from "./runDurabilityPath"
 import { withWorkflowRunCleanupLeases } from "./runCleanupLease"
+import { resolveWorkflowRunWorkspaceRoot } from "./workflowRunWorkspaceRootBinding"
 import {
   inspectWorkflowRunRetentionCandidatePhysicalEvidence,
   inspectWorkflowRunRetentionDirectoryPhysicalEvidence,
@@ -91,7 +92,8 @@ export async function applyWorkflowRunCleanupTransaction(input: {
   if (candidates.length === 0) return { removedRunIds: [], transactionId, quarantinePath: "" }
 
   return withWorkflowRunCleanupLeases(input.workspaceRoot, candidates.map((candidate) => candidate.runId), async () => {
-    const root = await fsOps.realpath(path.resolve(input.workspaceRoot))
+    const boundRoot = await resolveWorkflowRunWorkspaceRoot(input.workspaceRoot, fsOps.realpath)
+    const root = await fsOps.realpath(boundRoot)
     const workflowsRoot = await ensureDirectoryChain(fsOps, root, [".bob", "workflows"], false)
     const runsRoot = path.join(workflowsRoot, "runs")
     await assertDirectDirectory(fsOps, runsRoot, root, "Workflow runs directory")

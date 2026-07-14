@@ -1,9 +1,14 @@
 import { randomUUID } from "crypto"
+import { constants } from "fs"
 import * as fs from "fs/promises"
 import * as os from "os"
 import * as path from "path"
 import { readRunDurabilityFile } from "./runDurabilityPath"
 import { assertSafeWorkflowRunId } from "./runStatePath"
+import {
+  resolveWorkflowRunWorkspaceRoot,
+  withWorkflowRunWorkspaceRootBinding
+} from "./workflowRunWorkspaceRootBinding"
 
 export const CURRENT_WORKFLOW_RUN_CLEANUP_LEASE_SCHEMA_VERSION = "workflow-register/run-cleanup-lease/v1" as const
 
@@ -35,6 +40,7 @@ interface CleanupLeaseSnapshot {
   mtimeMs: number
   dev: bigint
   ino: bigint
+  nlink: bigint
 }
 
 interface FileIdentity {
@@ -123,7 +129,7 @@ export async function withWorkflowRunCleanupLeases<T>(
         throw new Error(`Workflow run '${runId}' has an active execution lock and cannot be cleaned up.`)
       }
     }
-    result = await operation()
+    result = await withWorkflowRunWorkspaceRootBinding(workspaceRoot, locations.root, operation)
   } catch (error) {
     operationError = error
   }
@@ -317,8 +323,10 @@ async function releaseCleanupGuard(
 async function writeCleanupLeaseFile(file: string, lease: WorkflowRunCleanupLeaseV1): Promise<void> {
   const handle = await fs.open(file, "wx", 0o600)
   try {
+    assertSingleLinkedRegularFile(await handle.stat({ bigint: true }), `Workflow run '${lease.runId}' cleanup lease`)
     await handle.writeFile(`${JSON.stringify(lease, null, 2)}\n`, "utf8")
     await handle.sync()
+    assertSingleLinkedRegularFile(await handle.stat({ bigint: true }), `Workflow run '${lease.runId}' cleanup lease`)
   } finally {
     await handle.close()
   }
@@ -357,10 +365,12 @@ async function refreshCleanupLease(
   const snapshot = await readCleanupLeaseSnapshot(file, root, expected.runId)
   const current = parseCleanupLease(JSON.parse(snapshot.bytes.toString("utf8")), expected.runId)
   if (current.token !== expected.token) throw new Error(`Workflow run '${expected.runId}' cleanup lease ownership changed.`)
-  const handle = await fs.open(file, "r+")
+  const noFollow = typeof constants.O_NOFOLLOW === "number" ? constants.O_NOFOLLOW : 0
+  const handle = await fs.open(file, constants.O_RDWR | noFollow)
   try {
     const stat = await handle.stat({ bigint: true })
-    if (!stat.isFile() || stat.dev !== snapshot.dev || stat.ino !== snapshot.ino) {
+    assertSingleLinkedRegularFile(stat, `Workflow run '${expected.runId}' cleanup lease`)
+    if (stat.dev !== snapshot.dev || stat.ino !== snapshot.ino || stat.nlink !== snapshot.nlink) {
       throw new Error(`Workflow run '${expected.runId}' cleanup lease changed before heartbeat.`)
     }
     await handle.utimes(heartbeatAt, heartbeatAt)
@@ -370,7 +380,12 @@ async function refreshCleanupLease(
   }
   const refreshed = await readCleanupLeaseSnapshot(file, root, expected.runId)
   const persisted = parseCleanupLease(JSON.parse(refreshed.bytes.toString("utf8")), expected.runId)
-  if (refreshed.dev !== snapshot.dev || refreshed.ino !== snapshot.ino || persisted.token !== expected.token) {
+  if (
+    refreshed.dev !== snapshot.dev
+    || refreshed.ino !== snapshot.ino
+    || refreshed.nlink !== snapshot.nlink
+    || persisted.token !== expected.token
+  ) {
     throw new Error(`Workflow run '${expected.runId}' cleanup lease ownership changed during heartbeat.`)
   }
   await verifyCleanupGuard(guard, root, expected)
@@ -395,6 +410,7 @@ async function removeLegacyCleanupLeaseWhileGuarded(
   if (
     current.dev !== expected.dev
     || current.ino !== expected.ino
+    || current.nlink !== expected.nlink
     || current.mtimeMs !== expected.mtimeMs
     || !current.bytes.equals(expected.bytes)
   ) return false
@@ -412,22 +428,41 @@ async function removeLegacyCleanupLeaseWhileGuarded(
 async function readCleanupLeaseSnapshot(file: string, root: string, runId: string): Promise<CleanupLeaseSnapshot> {
   const before = await fs.lstat(file, { bigint: true })
   if (!before.isFile() || before.isSymbolicLink()) throw new Error(`Workflow run '${runId}' cleanup lease must be a direct regular file.`)
+  assertSingleLinkedRegularFile(before, `Workflow run '${runId}' cleanup lease`)
   const physical = await fs.realpath(file)
   assertContained(root, physical, `Workflow run '${runId}' cleanup lease`)
   if (!samePath(file, physical)) throw new Error(`Workflow run '${runId}' cleanup lease must not be a file alias.`)
-  const handle = await fs.open(file, "r")
+  const noFollow = typeof constants.O_NOFOLLOW === "number" ? constants.O_NOFOLLOW : 0
+  const handle = await fs.open(file, constants.O_RDONLY | noFollow)
   try {
     const stat = await handle.stat({ bigint: true })
-    if (!stat.isFile() || stat.dev !== before.dev || stat.ino !== before.ino) throw new Error(`Workflow run '${runId}' cleanup lease changed while opened.`)
-    const numeric = await handle.stat()
-    return { bytes: await handle.readFile(), mtimeMs: numeric.mtimeMs, dev: stat.dev, ino: stat.ino }
+    assertSingleLinkedRegularFile(stat, `Workflow run '${runId}' cleanup lease`)
+    if (stat.dev !== before.dev || stat.ino !== before.ino || stat.nlink !== before.nlink) {
+      throw new Error(`Workflow run '${runId}' cleanup lease changed while opened.`)
+    }
+    const bytes = await handle.readFile()
+    const read = await handle.stat({ bigint: true })
+    assertSingleLinkedRegularFile(read, `Workflow run '${runId}' cleanup lease`)
+    const after = await fs.lstat(file, { bigint: true })
+    assertSingleLinkedRegularFile(after, `Workflow run '${runId}' cleanup lease`)
+    if (
+      read.dev !== stat.dev || read.ino !== stat.ino || read.nlink !== stat.nlink
+      || after.dev !== read.dev || after.ino !== read.ino || after.nlink !== read.nlink
+    ) throw new Error(`Workflow run '${runId}' cleanup lease changed while read.`)
+    return {
+      bytes,
+      mtimeMs: Number(read.mtimeNs) / 1_000_000,
+      dev: read.dev,
+      ino: read.ino,
+      nlink: read.nlink
+    }
   } finally {
     await handle.close()
   }
 }
 
 async function cleanupLeaseLocations(workspaceRoot: string, create: boolean): Promise<CleanupLeaseLocations | undefined> {
-  const root = await fs.realpath(path.resolve(workspaceRoot))
+  const root = await resolveWorkflowRunWorkspaceRoot(workspaceRoot)
   let current = root
   for (const segment of WORKFLOWS_ROOT_SEGMENTS) {
     current = path.join(current, segment)
@@ -535,6 +570,14 @@ function samePath(left: string, right: string): boolean {
 
 function sameIdentity(left: FileIdentity, right: FileIdentity): boolean {
   return left.dev === right.dev && left.ino === right.ino
+}
+
+function assertSingleLinkedRegularFile(
+  stat: { isFile(): boolean; nlink: bigint },
+  label: string
+): void {
+  if (!stat.isFile()) throw new Error(`${label} must be a regular file.`)
+  if (stat.nlink !== 1n) throw new Error(`${label} must have a single link and must not be hard-linked.`)
 }
 
 function isMissing(error: unknown): boolean {

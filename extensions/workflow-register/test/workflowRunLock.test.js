@@ -16,8 +16,10 @@ const runDurabilityPath = require("../out/core/runtime/runDurabilityPath.js")
 const { withWorkflowRunCleanupLeases } = require("../out/core/runtime/runCleanupLease.js")
 const {
   readRunDurabilityFile,
+  appendRunDurabilityFile,
   replaceRunDurabilityFile
 } = runDurabilityPath
+const { writeContainedRunFile } = require("../out/core/runtime/runStatePath.js")
 
 function root(t) {
   const value = fs.mkdtempSync(path.join(os.tmpdir(), "workflow-lock-"))
@@ -31,7 +33,7 @@ function deferred() {
   return { promise, resolve }
 }
 
-function withTimeout(promise, label, timeoutMs = 120_000) {
+function withTimeout(promise, label, timeoutMs = 5_000) {
   let timer
   const timeout = new Promise((_, reject) => {
     timer = setTimeout(() => reject(new Error(`Timed out waiting for ${label} after ${timeoutMs}ms.`)), timeoutMs)
@@ -101,7 +103,7 @@ test("lock acquisition retries when the owner file disappears before inspection"
   const first = withWorkflowRunLock(workspace, "run-1", async () => {
     firstStarted.resolve()
     await withTimeout(releaseFirst.promise, "injected lock owner release")
-  }, { timeoutMs: 1_000, heartbeatMs: 0 })
+  }, { timeoutMs: 5_000, heartbeatMs: 0 })
   await withTimeout(firstStarted.promise, "injected lock owner start")
 
   const originalRead = runDurabilityPath.readRunDurabilityFile
@@ -120,10 +122,9 @@ test("lock acquisition retries when the owner file disappears before inspection"
 
   try {
     const second = withWorkflowRunLock(workspace, "run-1", async () => "second", {
-      timeoutMs: 1_000,
+      timeoutMs: 5_000,
       heartbeatMs: 0,
-      pollMs: 5,
-      sleep: async () => { await first }
+      pollMs: 5
     })
     await withTimeout(readInjected.promise, "injected lock read")
     releaseFirst.resolve()
@@ -142,6 +143,44 @@ test("same async chain re-enters one lock without deadlock", async (t) => {
     withWorkflowRunLock(workspace, "run-1", async () => "nested", { timeoutMs: 10, heartbeatMs: 0 })
   ), { timeoutMs: 10, heartbeatMs: 0 })
   assert.equal(result, "nested")
+})
+
+test("same-chain alias retarget keeps nested lock and run writes on the acquired physical root", async (t) => {
+  const physicalA = root(t)
+  const physicalB = root(t)
+  const aliasContainer = root(t)
+  const workspaceAlias = path.join(aliasContainer, "workspace-alias")
+  const aliasType = process.platform === "win32" ? "junction" : "dir"
+  try {
+    await fsp.symlink(physicalA, workspaceAlias, aliasType)
+  } catch (error) {
+    if (["EPERM", "EACCES", "ENOTSUP"].includes(error.code)) return t.skip(error.code)
+    throw error
+  }
+
+  const runA = path.join(physicalA, ".bob", "workflows", "runs", "run-1")
+  const runB = path.join(physicalB, ".bob", "workflows", "runs", "run-1")
+  await withWorkflowRunLock(workspaceAlias, "run-1", async () => {
+    await fsp.rm(workspaceAlias, { force: true })
+    await fsp.symlink(physicalB, workspaceAlias, aliasType)
+
+    await withWorkflowRunLock(workspaceAlias, "run-1", async () => {
+      await writeContainedRunFile(workspaceAlias, "run-1", "{\"root\":\"A\"}\n")
+      await appendRunDurabilityFile(workspaceAlias, "run-1", "events.ndjson", "{\"event\":\"A\"}\n")
+    }, { timeoutMs: 25, heartbeatMs: 0 })
+
+    assert.equal(await fsp.readFile(path.join(runA, "run.json"), "utf8"), "{\"root\":\"A\"}\n")
+    assert.equal(await fsp.readFile(path.join(runA, "events.ndjson"), "utf8"), "{\"event\":\"A\"}\n")
+    await assert.rejects(fsp.access(runB), { code: "ENOENT" })
+  }, { timeoutMs: 5_000, heartbeatMs: 0 })
+
+  await withWorkflowRunLock(workspaceAlias, "run-2", async () => {
+    await writeContainedRunFile(workspaceAlias, "run-2", "{\"root\":\"B\"}\n")
+  }, { timeoutMs: 1_000, heartbeatMs: 0 })
+  assert.equal(
+    await fsp.readFile(path.join(physicalB, ".bob", "workflows", "runs", "run-2", "run.json"), "utf8"),
+    "{\"root\":\"B\"}\n"
+  )
 })
 
 test("a waiting lock for an existing run does not recreate its directory after cleanup removes it", async (t) => {
@@ -224,23 +263,30 @@ test("stale ownership is reclaimed only under the documented rules", async (t) =
     {
       name: "dead same-host pid",
       lock: owner(),
-      mtime: Date.now(),
+      mtime: Date.parse("2026-07-12T00:01:00.000Z"),
       options: { processAlive: () => false },
       acquired: true
     },
     {
       name: "live same-host pid",
       lock: owner(),
-      mtime: Date.now() - 60_000,
+      mtime: Date.parse("2026-07-12T00:00:00.000Z"),
       options: { processAlive: () => true },
       acquired: false
     },
     {
       name: "stale foreign host",
       lock: owner({ hostname: "other-host" }),
-      mtime: Date.now() - 60_000,
+      mtime: Date.parse("2026-07-12T00:00:00.000Z"),
       options: { processAlive: () => false },
       acquired: true
+    },
+    {
+      name: "fresh mtime preserves a foreign owner while its JSON heartbeat is stale",
+      lock: owner({ hostname: "other-host" }),
+      mtime: Date.parse("2026-07-12T00:01:00.000Z"),
+      options: { processAlive: () => false },
+      acquired: false
     }
   ]
   for (const item of cases) {
@@ -286,12 +332,15 @@ test("malformed recent locks are preserved while malformed stale locks are recla
   }
 })
 
-test("release never deletes a replacement owner token", async (t) => {
+test("release rejects a formerly successful operation after lock ownership is replaced", async (t) => {
   const workspace = root(t)
-  await withWorkflowRunLock(workspace, "run-1", async () => {
-    const replacement = owner({ token: "replacement-token", pid: process.pid, heartbeatAt: new Date().toISOString() })
-    await replaceRunDurabilityFile(workspace, "run-1", "run.lock.json", serializeWorkflowRunLock(replacement))
-  }, { heartbeatMs: 0 })
+  await assert.rejects(
+    withWorkflowRunLock(workspace, "run-1", async () => {
+      const replacement = owner({ token: "replacement-token", pid: process.pid, heartbeatAt: new Date().toISOString() })
+      await replaceRunDurabilityFile(workspace, "run-1", "run.lock.json", serializeWorkflowRunLock(replacement))
+    }, { heartbeatMs: 0 }),
+    /ownership changed|no longer owns|release/i
+  )
   const remaining = await readRunDurabilityFile(workspace, "run-1", "run.lock.json")
   assert.equal(parseWorkflowRunLock(JSON.parse(remaining.bytes.toString("utf8")), "run-1").token, "replacement-token")
 })

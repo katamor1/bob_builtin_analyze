@@ -134,7 +134,7 @@ test("pending-journal owned load stays reentrant while an independent contender 
     const recovered = await ownerStore.loadRun(run.runId)
     assert.equal(recovered.state.recovered, "latest")
     ownerLoaded.resolve()
-    await withTimeout(releaseOwner.promise, "owned lock release", 120_000)
+    await withTimeout(releaseOwner.promise, "owned lock release", 30_000)
   })
   void owner.catch(() => undefined)
 
@@ -147,16 +147,16 @@ test("pending-journal owned load stays reentrant while an independent contender 
     await withTimeout(Promise.race([
       ownerLoaded.promise,
       owner.then(() => { throw new Error("Pending-journal owner completed before loading the run.") })
-    ]), "owned pending-journal load", 120_000)
+    ]), "owned pending-journal load", 30_000)
     assert.ok(await readRunDurabilityFile(workspace, run.runId, "run.lock.json"))
     assert.equal(await readWorkflowRunJournal(workspace, run.runId), undefined)
     await assert.rejects(
-      withTimeout(contender.withRunLock(run.runId, async () => { contenderRan = true }), "independent contender", 120_000),
+      withTimeout(contender.withRunLock(run.runId, async () => { contenderRan = true }), "independent contender", 30_000),
       /busy|locked by another process/i
     )
   } finally {
     releaseOwner.resolve()
-    await withTimeout(owner, "pending-journal owner completion", 120_000)
+    await withTimeout(owner, "pending-journal owner completion", 30_000)
   }
   assert.equal(contenderRan, false)
 })

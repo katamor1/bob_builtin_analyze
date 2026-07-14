@@ -39,6 +39,7 @@ test("migration backup preserves exact historical run bytes and is idempotent", 
 
   assert.equal(snapshot.bytes.toString("utf8"), historical)
   assert.equal(snapshot.filePath, path.join(runDirectory(root, runId), "run-state-v0.backup.json"))
+  assert.equal((await fsp.lstat(snapshot.filePath)).nlink, 1)
 })
 
 test("migration backup refuses to overwrite conflicting historical bytes", async (t) => {
@@ -86,6 +87,32 @@ test("migration backup rejects a symlink target instead of following it", async 
     /must be a direct regular file and not a symlink/
   )
   assert.equal(fs.readFileSync(outsideFile, "utf8"), "outside\n")
+})
+
+test("migration backup rejects a pre-existing hard-linked target", async (t) => {
+  const root = tempRoot()
+  const outside = tempRoot()
+  t.after(() => {
+    fs.rmSync(root, { recursive: true, force: true })
+    fs.rmSync(outside, { recursive: true, force: true })
+  })
+  const runId = "20260712T000000Z-hardlink-000000000005"
+  await prepareRunDirectory(root, runId)
+  const outsideFile = path.join(outside, "outside.json")
+  const backupPath = path.join(runDirectory(root, runId), "run-state-v0.backup.json")
+  fs.writeFileSync(outsideFile, "historical\n", "utf8")
+  try {
+    await fsp.link(outsideFile, backupPath)
+  } catch (error) {
+    if (["EPERM", "EACCES", "ENOTSUP", "EXDEV"].includes(error.code)) return t.skip(error.code)
+    throw error
+  }
+
+  await assert.rejects(
+    ensureContainedRunStateMigrationBackup(root, runId, "historical\n"),
+    /hard.?link|link count|single link/i
+  )
+  assert.equal(fs.readFileSync(outsideFile, "utf8"), "historical\n")
 })
 
 test("migration backup removes its owned temp file when temp identity verification fails", async (t) => {

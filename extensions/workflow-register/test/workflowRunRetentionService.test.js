@@ -966,6 +966,67 @@ test("inventory never follows an external directory alias and keeps known contai
   assert.match(plan.decisions[0].blockers.join(" "), /measurement-incomplete|path-not-contained/)
 })
 
+test("inventory counts but never opens hard-linked run metadata or artifacts and blocks cleanup", async (t) => {
+  const root = await workspace(t)
+  const hardRun = await writeRun(root, "hardlinked-run")
+  const hardArtifact = await writeRun(root, "hardlinked-artifact")
+  const outside = await fs.mkdtemp(path.join(os.tmpdir(), "workflow-retention-hardlink-"))
+  t.after(() => fs.rm(outside, { recursive: true, force: true }))
+  const sharedRun = path.join(outside, "shared-run.json")
+  const sharedArtifact = path.join(outside, "shared-artifact.bin")
+  const hardRunPath = path.join(hardRun.directory, "run.json")
+  const hardArtifactPath = path.join(hardArtifact.directory, "artifact.bin")
+  await fs.rename(hardRunPath, sharedRun)
+  await fs.writeFile(sharedArtifact, "external artifact body must not be opened")
+  try {
+    await fs.link(sharedRun, hardRunPath)
+    await fs.link(sharedArtifact, hardArtifactPath)
+  } catch (error) {
+    if (["EPERM", "EACCES", "ENOTSUP", "EXDEV"].includes(error.code)) return t.skip(error.code)
+    throw error
+  }
+
+  const originalOpen = fs.open
+  let hardLinkedContentOpened = false
+  fs.open = async (target, ...args) => {
+    const resolved = path.resolve(String(target))
+    if (resolved === path.resolve(hardRunPath) || resolved === path.resolve(hardArtifactPath)) {
+      hardLinkedContentOpened = true
+    }
+    return originalOpen(target, ...args)
+  }
+  let snapshot
+  try {
+    snapshot = await inventoryModules().inspectWorkflowRunRetentionInventory(root)
+  } finally {
+    fs.open = originalOpen
+  }
+
+  const runItem = snapshot.inventory.find((item) => item.runId === "hardlinked-run")
+  const artifactItem = snapshot.inventory.find((item) => item.runId === "hardlinked-artifact")
+  assert.equal(hardLinkedContentOpened, false)
+  assert.equal(runItem.bytes, (await fs.stat(hardRunPath)).size)
+  assert.equal(
+    artifactItem.bytes,
+    (await fs.stat(path.join(hardArtifact.directory, "run.json"))).size + (await fs.stat(hardArtifactPath)).size
+  )
+  for (const item of [runItem, artifactItem]) {
+    assert.equal(item.measurementComplete, false)
+    assert.equal(item.pathContained, false)
+  }
+  const plan = plannerModules().planWorkflowRunCleanup(snapshot.inventory, {
+    now: "2026-07-13T03:00:00.000Z",
+    completedDays: 1
+  })
+  assert.deepEqual(plan.candidateRunIds, [])
+  for (const runId of ["hardlinked-run", "hardlinked-artifact"]) {
+    assert.match(
+      plan.decisions.find((decision) => decision.runId === runId).blockers.join(" "),
+      /measurement-incomplete|path-not-contained/
+    )
+  }
+})
+
 test("inventory fails closed when the physical runs root changes during inventory", async (t) => {
   const root = await workspace(t)
   await writeRun(root, "enumerated-run")

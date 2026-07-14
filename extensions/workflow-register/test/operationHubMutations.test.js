@@ -1062,7 +1062,7 @@ test("workflow artifact source reuse recovers a pending journal inside the owned
   const result = await withTimeout(
     service.startFromStepWithArtifacts(workflow.id, "step", source.runId, {}),
     "pending-journal artifact source reuse",
-    120_000
+    30_000
   )
 
   assert.equal(result.status, "running")

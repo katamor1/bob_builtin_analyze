@@ -3,6 +3,10 @@ import { constants } from "fs"
 import * as fs from "fs/promises"
 import * as path from "path"
 import { assertSafeWorkflowRunId } from "./runStatePath"
+import {
+  resolveWorkflowRunWorkspaceRoot,
+  workflowRunWorkspaceRootBinding
+} from "./workflowRunWorkspaceRootBinding"
 
 export type RunDurabilityFileName = "events.ndjson" | "run-state.journal.json" | "run.lock.json"
 export type RunMaterializedFileName = "run.json" | "control.json"
@@ -44,6 +48,7 @@ type DirectDirectory = FileIdentity & {
 type StableFileState = FileIdentity & {
   ctimeNs: bigint
   mtimeNs: bigint
+  nlink: bigint
   size: bigint
 }
 
@@ -77,7 +82,83 @@ export async function readRunDurabilityFile(
   const filePath = path.join(runDirectory.path, fileName)
   const snapshot = await readDirectRegularFile(filePath, runDirectory, durabilityLabel(runId, fileName))
   if (!snapshot) return undefined
+  await assertDirectoryIdentity(runDirectory, `Workflow run '${runId}' directory`)
   return { bytes: snapshot.bytes, filePath: snapshot.filePath, mtimeMs: snapshot.mtimeMs }
+}
+
+export async function touchRunDurabilityFileMtime(
+  workspaceRoot: string,
+  runId: string,
+  fileName: Extract<RunDurabilityFileName, "run.lock.json">,
+  expectedBytes: Buffer,
+  now: () => Date = () => new Date()
+): Promise<number> {
+  assertRunDurabilityFileName(fileName)
+  assertSafeWorkflowRunId(runId)
+  const root = await canonicalWorkspaceRoot(workspaceRoot)
+  let runDirectory: DirectDirectory
+  try {
+    runDirectory = await directDirectoryChain(root, [...RUNS_ROOT_SEGMENTS, runId], false)
+  } catch (error) {
+    if (isMissingPathError(error)) throw new Error(`${durabilityLabel(runId, fileName)} disappeared before its heartbeat touch.`)
+    throw error
+  }
+  const label = durabilityLabel(runId, fileName)
+  const filePath = path.join(runDirectory.path, fileName)
+  const before = await readDirectRegularFile(filePath, runDirectory, label)
+  if (!before || !before.bytes.equals(expectedBytes)) {
+    throw new Error(`${label} ownership changed before its heartbeat touch.`)
+  }
+
+  const noFollow = typeof constants.O_NOFOLLOW === "number" ? constants.O_NOFOLLOW : 0
+  await assertDirectoryIdentity(runDirectory, `Workflow run '${runId}' directory`)
+  const handle = await fs.open(filePath, constants.O_RDWR | noFollow)
+  try {
+    const opened = await handle.stat({ bigint: true })
+    assertSingleLinkedRegularFile(opened, label)
+    const openedTarget = await directRegularFile(filePath, runDirectory, label)
+    if (!sameIdentity(before.identity, opened) || !sameIdentity(opened, openedTarget)) {
+      throw new Error(`${label} ownership changed while it was opened for heartbeat touch.`)
+    }
+    const openedStable = stableFileState(opened)
+    const openedBytes = await readHandleBytes(handle, opened.size)
+    const read = await handle.stat({ bigint: true })
+    assertSingleLinkedRegularFile(read, label)
+    const readTarget = await directRegularFile(filePath, runDirectory, label)
+    if (
+      !openedBytes.equals(expectedBytes)
+      || !sameIdentity(opened, read)
+      || !sameIdentity(read, readTarget)
+      || !sameStableFileState(openedStable, stableFileState(read))
+    ) {
+      throw new Error(`${label} ownership changed while it was verified for heartbeat touch.`)
+    }
+
+    await assertDirectoryIdentity(runDirectory, `Workflow run '${runId}' directory`)
+    const touchedAt = now()
+    if (!(touchedAt instanceof Date) || !Number.isFinite(touchedAt.getTime())) {
+      throw new Error("Workflow run lock heartbeat time must be a valid Date.")
+    }
+    await handle.utimes(touchedAt, touchedAt)
+    await handle.sync()
+
+    const touched = await handle.stat({ bigint: true })
+    assertSingleLinkedRegularFile(touched, label)
+    const touchedBytes = await readHandleBytes(handle, touched.size)
+    const touchedTarget = await directRegularFile(filePath, runDirectory, label)
+    if (
+      !sameIdentity(opened, touched)
+      || !sameIdentity(touched, touchedTarget)
+      || touched.size !== opened.size
+      || !touchedBytes.equals(expectedBytes)
+    ) {
+      throw new Error(`${label} ownership changed during heartbeat touch.`)
+    }
+    await assertDirectoryIdentity(runDirectory, `Workflow run '${runId}' directory`)
+    return Number(touched.mtimeNs) / 1_000_000
+  } finally {
+    await handle.close()
+  }
 }
 
 export async function replaceRunDurabilityFile(
@@ -116,15 +197,15 @@ export async function replaceRunDurabilityFile(
     await assertDirectoryIdentity(runDirectory, `Workflow run '${runId}' directory`)
     const handle = await fs.open(tempPath, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL, 0o600)
     try {
+      assertSingleLinkedRegularFile(await handle.stat({ bigint: true }), `${durabilityLabel(runId, fileName)} temporary file`)
       await handle.writeFile(content, { encoding: "utf8" })
       await handle.sync()
       const stat = await handle.stat({ bigint: true })
-      if (!stat.isFile()) throw new Error(`${durabilityLabel(runId, fileName)} temporary path is not a regular file.`)
+      assertSingleLinkedRegularFile(stat, `${durabilityLabel(runId, fileName)} temporary file`)
       tempIdentity = { dev: stat.dev, ino: stat.ino }
     } finally {
       await handle.close()
     }
-    await assertTargetUnchanged(runDirectory, filePath, original, expectedBytes, runId, fileName)
     await renameWithRetry(tempPath, filePath, async () => {
       await assertTargetUnchanged(runDirectory, filePath, original, expectedBytes, runId, fileName)
       const currentTemp = await directRegularFile(tempPath, runDirectory, `${durabilityLabel(runId, fileName)} temporary file`)
@@ -134,6 +215,7 @@ export async function replaceRunDurabilityFile(
     })
     const written = await directRegularFile(filePath, runDirectory, durabilityLabel(runId, fileName))
     if (!sameIdentity(tempIdentity, written)) throw new Error(`${durabilityLabel(runId, fileName)} changed during atomic replacement.`)
+    await assertDirectoryIdentity(runDirectory, `Workflow run '${runId}' directory`)
     await syncDirectFile(filePath, runDirectory, durabilityLabel(runId, fileName))
     await syncDirectory(runDirectory, `Workflow run '${runId}' directory`)
   } finally {
@@ -155,7 +237,6 @@ export async function createRunDurabilityFile(
   let runDirectory: DirectDirectory
   try {
     runDirectory = await directDirectoryChain(root, [...RUNS_ROOT_SEGMENTS, runId], createRunDirectory)
-    await assertDirectoryIdentity(runDirectory, `Workflow run '${runId}' directory`)
   } catch (error) {
     if (!createRunDirectory && isMissingPathError(error)) throw new RunDurabilityDirectoryMissingError(runId)
     throw error
@@ -163,6 +244,7 @@ export async function createRunDurabilityFile(
   const filePath = path.join(runDirectory.path, fileName)
   const noFollow = typeof constants.O_NOFOLLOW === "number" ? constants.O_NOFOLLOW : 0
   let handle: Awaited<ReturnType<typeof fs.open>>
+  await assertDirectoryIdentity(runDirectory, `Workflow run '${runId}' directory`)
   try {
     handle = await fs.open(filePath, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | noFollow, 0o600)
   } catch (error) {
@@ -174,11 +256,13 @@ export async function createRunDurabilityFile(
     throw error
   }
   try {
+    assertSingleLinkedRegularFile(await handle.stat({ bigint: true }), durabilityLabel(runId, fileName))
     await handle.writeFile(content, { encoding: "utf8" })
     await handle.sync()
     const handleStat = await handle.stat({ bigint: true })
     const target = await directRegularFile(filePath, runDirectory, durabilityLabel(runId, fileName))
-    if (!handleStat.isFile() || !sameIdentity(handleStat, target)) {
+    assertSingleLinkedRegularFile(handleStat, durabilityLabel(runId, fileName))
+    if (!sameIdentity(handleStat, target)) {
       throw new Error(`${durabilityLabel(runId, fileName)} changed during exclusive creation.`)
     }
   } finally {
@@ -213,11 +297,13 @@ export async function appendRunDurabilityFile(
   const filePath = path.join(runDirectory.path, fileName)
   const existing = await optionalDirectRegularFile(filePath, runDirectory, durabilityLabel(runId, fileName))
   const noFollow = typeof constants.O_NOFOLLOW === "number" ? constants.O_NOFOLLOW : 0
+  await assertDirectoryIdentity(runDirectory, `Workflow run '${runId}' directory`)
   const handle = await fs.open(filePath, constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT | noFollow, 0o600)
   try {
     const handleStat = await handle.stat({ bigint: true })
+    assertSingleLinkedRegularFile(handleStat, durabilityLabel(runId, fileName))
     const target = await directRegularFile(filePath, runDirectory, durabilityLabel(runId, fileName))
-    if (!handleStat.isFile() || !sameIdentity(handleStat, target)) {
+    if (!sameIdentity(handleStat, target)) {
       throw new Error(`${durabilityLabel(runId, fileName)} changed while it was opened for append.`)
     }
     if (existing && !sameIdentity(existing, target)) {
@@ -226,8 +312,9 @@ export async function appendRunDurabilityFile(
     await handle.write(content, undefined, "utf8")
     await handle.sync()
     const appendedHandleStat = await handle.stat({ bigint: true })
+    assertSingleLinkedRegularFile(appendedHandleStat, durabilityLabel(runId, fileName))
     const appendedTarget = await directRegularFile(filePath, runDirectory, durabilityLabel(runId, fileName))
-    if (!appendedHandleStat.isFile() || !sameIdentity(handleStat, appendedHandleStat) || !sameIdentity(appendedHandleStat, appendedTarget)) {
+    if (!sameIdentity(handleStat, appendedHandleStat) || !sameIdentity(appendedHandleStat, appendedTarget)) {
       throw new Error(`${durabilityLabel(runId, fileName)} changed during append.`)
     }
   } finally {
@@ -291,31 +378,31 @@ function assertRunDurabilityFileName(fileName: string): asserts fileName is RunD
 async function canonicalWorkspaceRoot(workspaceRoot: string): Promise<DirectDirectory> {
   if (!workspaceRoot.trim()) throw new Error("Workflow workspace root is empty.")
   const lexicalPath = path.resolve(workspaceRoot)
-  const before = await fs.stat(lexicalPath, { bigint: true })
+  const boundRoot = workflowRunWorkspaceRootBinding(lexicalPath)
+  const verificationPath = boundRoot ?? lexicalPath
+  const before = await fs.stat(verificationPath, { bigint: true })
   if (!before.isDirectory()) throw new Error("Workflow workspace root must be a directory.")
-  const physicalPath = await fs.realpath(lexicalPath)
+  const physicalPath = await resolveWorkflowRunWorkspaceRoot(lexicalPath)
   const physical = await fs.lstat(physicalPath, { bigint: true })
   if (physical.isSymbolicLink() || !physical.isDirectory() || !sameIdentity(before, physical)) {
     throw new Error("Workflow workspace root physical identity does not match its requested path.")
   }
-  const after = await fs.stat(lexicalPath, { bigint: true })
+  const after = await fs.stat(verificationPath, { bigint: true })
   if (!after.isDirectory() || !sameIdentity(before, after)) {
     throw new Error("Workflow workspace root changed while its physical identity was being verified.")
   }
   const entry = { path: physicalPath, dev: physical.dev, ino: physical.ino }
-  const workspaceBinding = { path: lexicalPath, dev: physical.dev, ino: physical.ino }
+  const workspaceBinding = { path: verificationPath, dev: physical.dev, ino: physical.ino }
   const root = { ...entry, chain: [entry], workspaceRoot: workspaceBinding }
-  await assertDirectoryIdentity(root, "Workflow workspace root")
   return root
 }
 
 async function directDirectoryChain(root: DirectDirectory, segments: readonly string[], create: boolean): Promise<DirectDirectory> {
   let identity = root
-  await assertDirectoryIdentity(identity, "Workflow workspace root")
   for (const segment of segments) {
     const current = path.join(identity.path, segment)
     if (create) {
-      await assertDirectoryIdentity(identity, `Workflow run directory parent for '${segment}'`)
+      await assertDirectoryEntryIdentity(identity, `Workflow run directory parent for '${segment}'`)
       try {
         await fs.mkdir(current)
       } catch (error) {
@@ -324,11 +411,11 @@ async function directDirectoryChain(root: DirectDirectory, segments: readonly st
     }
     identity = await directDirectory(current, identity, `Workflow run directory '${segment}'`)
   }
+  await assertDirectoryIdentity(identity, "Workflow run directory chain")
   return identity
 }
 
 async function directDirectory(filePath: string, parent: DirectDirectory, label: string): Promise<DirectDirectory> {
-  await assertDirectoryIdentity(parent, `${label} parent`)
   const before = await fs.lstat(filePath, { bigint: true })
   if (before.isSymbolicLink() || !before.isDirectory()) {
     throw new Error(`${label} must be a direct directory and not a symlink or junction.`)
@@ -344,27 +431,29 @@ async function directDirectory(filePath: string, parent: DirectDirectory, label:
   }
   const after = await fs.lstat(filePath, { bigint: true })
   if (!after.isDirectory() || !sameIdentity(before, after)) throw new Error(`${label} changed while its path was being verified.`)
-  await assertDirectoryIdentity(parent, `${label} parent`)
   const entry = { path: filePath, dev: after.dev, ino: after.ino }
   return { ...entry, chain: [...parent.chain, entry], workspaceRoot: parent.workspaceRoot }
 }
 
 async function directRegularFile(filePath: string, directory: DirectDirectory, label: string): Promise<FileIdentity> {
-  await assertDirectoryIdentity(directory, `${label} parent directory`)
+  await assertDirectoryEntryIdentity(directory, `${label} parent directory`)
   const before = await fs.lstat(filePath, { bigint: true })
   if (before.isSymbolicLink() || !before.isFile()) throw new Error(`${label} must be a direct regular file and not a symlink.`)
+  assertSingleLinkedRegularFile(before, label)
   const physical = await fs.realpath(filePath)
   const physicalStat = await fs.lstat(physical, { bigint: true })
   if (physicalStat.isSymbolicLink() || !physicalStat.isFile() || !sameIdentity(before, physicalStat)) {
     throw new Error(`${label} physical identity does not match its direct file path.`)
   }
+  assertSingleLinkedRegularFile(physicalStat, label)
   const physicalParent = await fs.lstat(path.dirname(physical), { bigint: true })
   if (!physicalParent.isDirectory() || !sameIdentity(directory, physicalParent)) {
     throw new Error(`${label} physical parent identity does not match the verified run directory.`)
   }
   const after = await fs.lstat(filePath, { bigint: true })
   if (!after.isFile() || !sameIdentity(before, after)) throw new Error(`${label} changed while its path was being verified.`)
-  await assertDirectoryIdentity(directory, `${label} parent directory`)
+  assertSingleLinkedRegularFile(after, label)
+  await assertDirectoryEntryIdentity(directory, `${label} parent directory`)
   return { dev: after.dev, ino: after.ino }
 }
 
@@ -389,18 +478,19 @@ async function readDirectRegularFile(
   let snapshot: DirectFileSnapshot
   try {
     const opened = await handle.stat({ bigint: true })
+    assertSingleLinkedRegularFile(opened, label)
     const current = await directRegularFile(filePath, directory, label)
-    if (!opened.isFile() || !sameIdentity(identity, opened) || !sameIdentity(opened, current)) {
+    if (!sameIdentity(identity, opened) || !sameIdentity(opened, current)) {
       throw new Error(`${label} changed while it was being read.`)
     }
     const openedStable = stableFileState(opened)
     const bytes = await handle.readFile()
     const read = await handle.stat({ bigint: true })
+    assertSingleLinkedRegularFile(read, label)
     const readTarget = await directRegularFile(filePath, directory, label)
     const readStable = stableFileState(read)
     if (
-      !read.isFile()
-      || !sameIdentity(opened, read)
+      !sameIdentity(opened, read)
       || !sameIdentity(read, readTarget)
       || !sameStableFileState(openedStable, readStable)
       || BigInt(bytes.byteLength) !== read.size
@@ -417,12 +507,37 @@ async function readDirectRegularFile(
   } finally {
     await handle.close()
   }
-  await assertDirectoryIdentity(directory, `${label} parent directory`)
   return snapshot
 }
 
+async function readHandleBytes(
+  handle: Awaited<ReturnType<typeof fs.open>>,
+  size: bigint
+): Promise<Buffer> {
+  if (size > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error("Workflow run durability file is too large to verify safely.")
+  const bytes = Buffer.alloc(Number(size))
+  let offset = 0
+  while (offset < bytes.length) {
+    const { bytesRead } = await handle.read(bytes, offset, bytes.length - offset, offset)
+    if (bytesRead === 0) break
+    offset += bytesRead
+  }
+  if (offset !== bytes.length) throw new Error("Workflow run durability file changed size while it was being verified.")
+  return bytes
+}
+
+async function assertDirectoryEntryIdentity(directory: DirectDirectory, label: string): Promise<void> {
+  const current = await fs.lstat(directory.path, { bigint: true })
+  if (current.isSymbolicLink() || !current.isDirectory() || !sameIdentity(directory, current)) {
+    throw new Error(`${label} changed identity in the verified workflow directory chain.`)
+  }
+}
+
 async function assertDirectoryIdentity(directory: DirectDirectory, label: string): Promise<void> {
-  await assertWorkspaceRootIdentity(directory.workspaceRoot, label)
+  const workspaceBefore = await fs.stat(directory.workspaceRoot.path, { bigint: true })
+  if (!workspaceBefore.isDirectory() || !sameIdentity(directory.workspaceRoot, workspaceBefore)) {
+    throw new Error(`${label} workspace root binding changed identity during workflow durability I/O.`)
+  }
   for (let index = 0; index < directory.chain.length; index += 1) {
     const expected = directory.chain[index]
     const before = await fs.lstat(expected.path, { bigint: true })
@@ -446,21 +561,8 @@ async function assertDirectoryIdentity(directory: DirectDirectory, label: string
       throw new Error(`${label} changed while the verified workflow directory chain was being checked.`)
     }
   }
-  await assertWorkspaceRootIdentity(directory.workspaceRoot, label)
-}
-
-async function assertWorkspaceRootIdentity(workspaceRoot: DirectoryIdentity, label: string): Promise<void> {
-  const before = await fs.stat(workspaceRoot.path, { bigint: true })
-  if (!before.isDirectory() || !sameIdentity(workspaceRoot, before)) {
-    throw new Error(`${label} workspace root binding changed identity during workflow durability I/O.`)
-  }
-  const physical = await fs.realpath(workspaceRoot.path)
-  const physicalStat = await fs.lstat(physical, { bigint: true })
-  if (physicalStat.isSymbolicLink() || !physicalStat.isDirectory() || !sameIdentity(workspaceRoot, physicalStat)) {
-    throw new Error(`${label} workspace root binding changed physical identity during workflow durability I/O.`)
-  }
-  const after = await fs.stat(workspaceRoot.path, { bigint: true })
-  if (!after.isDirectory() || !sameIdentity(before, after) || !sameIdentity(workspaceRoot, after)) {
+  const workspaceAfter = await fs.stat(directory.workspaceRoot.path, { bigint: true })
+  if (!workspaceAfter.isDirectory() || !sameIdentity(workspaceBefore, workspaceAfter) || !sameIdentity(directory.workspaceRoot, workspaceAfter)) {
     throw new Error(`${label} workspace root binding changed while it was being verified.`)
   }
 }
@@ -493,14 +595,16 @@ async function syncDirectFile(filePath: string, directory: DirectDirectory, labe
   const handle = await fs.open(filePath, constants.O_RDWR | noFollow)
   try {
     const opened = await handle.stat({ bigint: true })
+    assertSingleLinkedRegularFile(opened, label)
     const current = await directRegularFile(filePath, directory, label)
-    if (!opened.isFile() || !sameIdentity(expected, opened) || !sameIdentity(opened, current)) {
+    if (!sameIdentity(expected, opened) || !sameIdentity(opened, current)) {
       throw new Error(`${label} changed while it was opened for durability sync.`)
     }
     await handle.sync()
     const synced = await handle.stat({ bigint: true })
+    assertSingleLinkedRegularFile(synced, label)
     const after = await directRegularFile(filePath, directory, label)
-    if (!synced.isFile() || !sameIdentity(opened, synced) || !sameIdentity(synced, after)) {
+    if (!sameIdentity(opened, synced) || !sameIdentity(synced, after)) {
       throw new Error(`${label} changed during durability sync.`)
     }
   } finally {
@@ -509,7 +613,6 @@ async function syncDirectFile(filePath: string, directory: DirectDirectory, labe
 }
 
 async function syncDirectory(directory: DirectDirectory, label: string): Promise<void> {
-  await assertDirectoryIdentity(directory, label)
   const noFollow = typeof constants.O_NOFOLLOW === "number" ? constants.O_NOFOLLOW : 0
   let handle: Awaited<ReturnType<typeof fs.open>> | undefined
   try {
@@ -538,7 +641,6 @@ async function syncDirectory(directory: DirectDirectory, label: string): Promise
   } finally {
     await handle.close()
   }
-  await assertDirectoryIdentity(directory, label)
 }
 
 async function renameWithRetry(source: string, target: string, beforeRename: () => Promise<void>): Promise<void> {
@@ -579,6 +681,7 @@ function stableFileState(stat: StableFileState): StableFileState {
     dev: stat.dev,
     ino: stat.ino,
     mtimeNs: stat.mtimeNs,
+    nlink: stat.nlink,
     size: stat.size
   }
 }
@@ -588,6 +691,15 @@ function sameStableFileState(left: StableFileState, right: StableFileState): boo
     && left.size === right.size
     && left.mtimeNs === right.mtimeNs
     && left.ctimeNs === right.ctimeNs
+    && left.nlink === right.nlink
+}
+
+function assertSingleLinkedRegularFile(
+  stat: { isFile(): boolean; nlink: bigint },
+  label: string
+): void {
+  if (!stat.isFile()) throw new Error(`${label} must be a regular file.`)
+  if (stat.nlink !== 1n) throw new Error(`${label} must have a single link and must not be hard-linked.`)
 }
 
 function isUnsupportedDirectorySyncError(error: unknown): boolean {

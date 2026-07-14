@@ -63,6 +63,27 @@ test("FileRunStateStore rejects unsafe run-id path segments", async () => {
   }
 })
 
+test("FileRunStateStore rejects a hard-linked run document", async (t) => {
+  const workspaceRoot = await makeWorkspace()
+  t.after(() => fs.rm(workspaceRoot, { recursive: true, force: true }))
+  const runId = "hard-linked-run"
+  const runDirectory = path.join(workspaceRoot, ".bob", "workflows", "runs", runId)
+  const outsideRoot = await fs.mkdtemp(path.join(os.tmpdir(), "workflow-run-store-hardlink-"))
+  t.after(() => fs.rm(outsideRoot, { recursive: true, force: true }))
+  const outsideFile = path.join(outsideRoot, "shared-run.json")
+  await fs.mkdir(runDirectory, { recursive: true })
+  await fs.writeFile(outsideFile, `${JSON.stringify(runState(runId), null, 2)}\n`)
+  try {
+    await fs.link(outsideFile, path.join(runDirectory, "run.json"))
+  } catch (error) {
+    if (["EPERM", "EACCES", "ENOTSUP", "EXDEV"].includes(error.code)) return t.skip(error.code)
+    throw error
+  }
+
+  const store = new FileRunStateStore({ workspaceRoot })
+  await assert.rejects(store.loadRun(runId), /hard.?link|link count|single link/i)
+})
+
 test("FileRunStateStore rejects outside run-directory aliases for load and list", async (t) => {
   const workspaceRoot = await makeWorkspace()
   const escaped = await outsideRunAlias(t, workspaceRoot)
@@ -149,24 +170,33 @@ test("FileRunStateStore revalidates the run directory after temp creation and be
   const outsideRunFile = path.join(outsideRoot, "run.json")
   const outsideBytes = `${JSON.stringify(runState("run-1", "outside"), null, 2)}\n`
   await fs.writeFile(outsideRunFile, outsideBytes, "utf8")
+  const originalOpen = fs.open
   const originalWriteFile = fs.writeFile
+  const runsRoot = path.join(workspaceRoot, ".bob", "workflows", "runs")
   let swapped = false
-  fs.writeFile = async function swapParentAfterTemp(file, data, options) {
-    const result = await originalWriteFile.call(this, file, data, options)
-    if (!swapped && String(file).endsWith(".tmp")) {
-      swapped = true
-      await fs.rename(runDirectory, parkedDirectory)
-      await fs.symlink(
-        outsideRoot,
-        runDirectory,
-        process.platform === "win32" ? "junction" : "dir"
-      )
-      await originalWriteFile.call(this, path.join(outsideRoot, path.basename(String(file))), data, options)
+  fs.open = async function swapParentAfterTemp(file, ...args) {
+    const handle = await originalOpen.call(this, file, ...args)
+    if (path.dirname(String(file)) === runsRoot && String(file).endsWith(".tmp")) {
+      const originalHandleWriteFile = handle.writeFile.bind(handle)
+      handle.writeFile = async (data, options) => {
+        const result = await originalHandleWriteFile(data, options)
+        if (!swapped) {
+          swapped = true
+          await fs.rename(runDirectory, parkedDirectory)
+          await fs.symlink(
+            outsideRoot,
+            runDirectory,
+            process.platform === "win32" ? "junction" : "dir"
+          )
+          await originalWriteFile.call(fs, path.join(outsideRoot, path.basename(String(file))), data, options)
+        }
+        return result
+      }
     }
-    return result
+    return handle
   }
   t.after(async () => {
-    fs.writeFile = originalWriteFile
+    fs.open = originalOpen
     await fs.rm(outsideRoot, { recursive: true, force: true })
   })
 

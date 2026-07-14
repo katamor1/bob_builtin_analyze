@@ -23,6 +23,33 @@ function root(t) {
   return value
 }
 
+async function countDurabilityMetadataCalls(operation) {
+  const originals = new Map()
+  let calls = 0
+  for (const method of ["stat", "lstat", "realpath", "open"]) {
+    const original = fsp[method]
+    originals.set(method, original)
+    fsp[method] = async (...args) => {
+      calls += 1
+      const result = await original(...args)
+      if (method === "open") {
+        const originalHandleStat = result.stat.bind(result)
+        result.stat = async (...statArgs) => {
+          calls += 1
+          return originalHandleStat(...statArgs)
+        }
+      }
+      return result
+    }
+  }
+  try {
+    await operation()
+    return calls
+  } finally {
+    for (const [method, original] of originals) fsp[method] = original
+  }
+}
+
 test("durability path creates, replaces, appends and conditionally removes direct files", async (t) => {
   const workspace = root(t)
   assert.equal(await createRunDurabilityFile(workspace, "run-1", "run.lock.json", "owner\n"), true)
@@ -77,6 +104,30 @@ test("durability path rejects a run-directory alias outside the workspace", asyn
     throw error
   }
   await assert.rejects(replaceRunDurabilityFile(workspace, "run-1", "run-state.journal.json", "journal\n"), /workspace|outside|symlink|junction|alias|direct/i)
+})
+
+test("durability operations stay within the verified-chain metadata call budget", async (t) => {
+  const workspace = root(t)
+  const runDirectory = path.join(workspace, ".bob", "workflows", "runs", "run-1")
+  const lockFile = path.join(runDirectory, "run.lock.json")
+  await fsp.mkdir(runDirectory, { recursive: true })
+  await fsp.writeFile(lockFile, "owner\n")
+  const expected = Buffer.from("owner\n")
+
+  const readCalls = await countDurabilityMetadataCalls(async () => {
+    const snapshot = await readRunDurabilityFile(workspace, "run-1", "run.lock.json")
+    assert.equal(snapshot.bytes.toString("utf8"), "owner\n")
+  })
+  const replaceCalls = await countDurabilityMetadataCalls(async () => {
+    await replaceRunDurabilityFile(workspace, "run-1", "run.lock.json", "next-owner\n", expected)
+  })
+
+  t.diagnostic(`durability metadata calls: read=${readCalls}, replace=${replaceCalls}`)
+  assert.deepEqual(
+    { readWithinBudget: readCalls <= 180, replaceWithinBudget: replaceCalls <= 650 },
+    { readWithinBudget: true, replaceWithinBudget: true },
+    `durability metadata calls: read=${readCalls}, replace=${replaceCalls}`
+  )
 })
 
 test("durability path rejects an aliased parent directory in the verified chain", async (t) => {
@@ -205,6 +256,28 @@ test("durability path rejects a durability file whose realpath resolves to a dif
     fsp.realpath = originalRealpath
   }
   assert.equal(redirected, true, "the test must redirect the durability file realpath")
+  assert.equal(await fsp.readFile(outsideFile, "utf8"), "outside\n")
+})
+
+test("durability append rejects an external hard-linked target before changing shared bytes", async (t) => {
+  const workspace = root(t)
+  const outside = root(t)
+  const runDir = path.join(workspace, ".bob", "workflows", "runs", "run-1")
+  await fsp.mkdir(runDir, { recursive: true })
+  const outsideFile = path.join(outside, "outside.ndjson")
+  const eventsFile = path.join(runDir, "events.ndjson")
+  await fsp.writeFile(outsideFile, "outside\n")
+  try {
+    await fsp.link(outsideFile, eventsFile)
+  } catch (error) {
+    if (["EPERM", "EACCES", "ENOTSUP", "EXDEV"].includes(error.code)) return t.skip(error.code)
+    throw error
+  }
+
+  await assert.rejects(
+    appendRunDurabilityFile(workspace, "run-1", "events.ndjson", "must-not-append\n"),
+    /hard.?link|link count|single link/i
+  )
   assert.equal(await fsp.readFile(outsideFile, "utf8"), "outside\n")
 })
 

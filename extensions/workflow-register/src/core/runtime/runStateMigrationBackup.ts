@@ -4,6 +4,7 @@ import * as fs from "fs/promises"
 import * as path from "path"
 import { assertSafeWorkflowRunId } from "./runStatePath"
 import type { ContainedRunFileSnapshot } from "./runStatePath"
+import { resolveWorkflowRunWorkspaceRoot } from "./workflowRunWorkspaceRootBinding"
 
 export const RUN_STATE_V0_BACKUP_FILE_NAME = "run-state-v0.backup.json" as const
 
@@ -56,7 +57,15 @@ export async function ensureContainedRunStateMigrationBackup(
   try {
     await assertDirectoryIdentity(runsRoot, "Workflow runs directory")
     await assertDirectoryIdentity(runDirectory, `Workflow run '${runId}' directory`)
-    await fs.writeFile(tempPath, content, { encoding: "utf8", flag: "wx" })
+    const tempHandle = await fs.open(tempPath, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL, 0o600)
+    try {
+      assertSingleLinkedRegularFile(await tempHandle.stat({ bigint: true }), `Workflow run '${runId}' migration backup temporary file`)
+      await tempHandle.writeFile(content, { encoding: "utf8" })
+      await tempHandle.sync()
+      assertSingleLinkedRegularFile(await tempHandle.stat({ bigint: true }), `Workflow run '${runId}' migration backup temporary file`)
+    } finally {
+      await tempHandle.close()
+    }
     tempIdentity = await directRegularFile(
       tempPath,
       root,
@@ -85,13 +94,17 @@ export async function ensureContainedRunStateMigrationBackup(
       return
     }
 
-    const targetIdentity = await directRegularFile(
-      backupPath,
-      root,
-      `Workflow run '${runId}' migration backup`
-    )
-    if (!sameIdentity(tempIdentity, targetIdentity)) {
+    const [linkedTemp, linkedTarget] = await Promise.all([
+      linkedPublicationFile(tempPath, root, `Workflow run '${runId}' migration backup temporary file`),
+      linkedPublicationFile(backupPath, root, `Workflow run '${runId}' migration backup`)
+    ])
+    if (!sameIdentity(tempIdentity, linkedTemp) || !sameIdentity(linkedTemp, linkedTarget)) {
       throw new Error(`Workflow run '${runId}' migration backup changed during create-once publication.`)
+    }
+    await fs.rm(tempPath)
+    const targetIdentity = await directRegularFile(backupPath, root, `Workflow run '${runId}' migration backup`)
+    if (!sameIdentity(tempIdentity, targetIdentity)) {
+      throw new Error(`Workflow run '${runId}' migration backup changed while finalizing create-once publication.`)
     }
     await assertDirectoryIdentity(runsRoot, "Workflow runs directory")
     await assertDirectoryIdentity(runDirectory, `Workflow run '${runId}' directory`)
@@ -126,11 +139,19 @@ async function readDirectRegularFile(root: string, filePath: string, label: stri
   const handle = await fs.open(filePath, constants.O_RDONLY | noFollow)
   try {
     const handleStat = await handle.stat({ bigint: true })
+    assertSingleLinkedRegularFile(handleStat, label)
     const after = await directRegularFile(filePath, root, label)
-    if (!handleStat.isFile() || !sameIdentity(before, handleStat) || !sameIdentity(handleStat, after)) {
+    if (!sameIdentity(before, handleStat) || !sameIdentity(handleStat, after)) {
       throw new Error(`${label} changed while it was being read.`)
     }
-    return await handle.readFile()
+    const bytes = await handle.readFile()
+    const readStat = await handle.stat({ bigint: true })
+    assertSingleLinkedRegularFile(readStat, label)
+    const readTarget = await directRegularFile(filePath, root, label)
+    if (!sameIdentity(handleStat, readStat) || !sameIdentity(readStat, readTarget)) {
+      throw new Error(`${label} changed while it was being read.`)
+    }
+    return bytes
   } finally {
     await handle.close()
   }
@@ -168,6 +189,7 @@ async function directRegularFile(filePath: string, root: string, label: string):
   if (before.isSymbolicLink() || !before.isFile()) {
     throw new Error(`${label} must be a direct regular file and not a symlink.`)
   }
+  assertSingleLinkedRegularFile(before, label)
   const physicalPath = await fs.realpath(filePath)
   assertPhysicalContainment(root, physicalPath, label)
   if (!sameCanonicalPath(filePath, physicalPath)) {
@@ -177,7 +199,19 @@ async function directRegularFile(filePath: string, root: string, label: string):
   if (!after.isFile() || !sameIdentity(before, after)) {
     throw new Error(`${label} changed while its path was being verified.`)
   }
+  assertSingleLinkedRegularFile(after, label)
   return { dev: after.dev, ino: after.ino }
+}
+
+async function linkedPublicationFile(filePath: string, root: string, label: string): Promise<FileIdentity> {
+  const stat = await fs.lstat(filePath, { bigint: true })
+  if (stat.isSymbolicLink() || !stat.isFile() || stat.nlink !== 2n) {
+    throw new Error(`${label} must have exactly two links during create-once publication.`)
+  }
+  const physicalPath = await fs.realpath(filePath)
+  assertPhysicalContainment(root, physicalPath, label)
+  if (!sameCanonicalPath(filePath, physicalPath)) throw new Error(`${label} must not use a file alias.`)
+  return { dev: stat.dev, ino: stat.ino }
 }
 
 async function optionalDirectRegularFile(
@@ -214,8 +248,7 @@ async function directoryStillMatches(directory: DirectDirectory): Promise<boolea
 }
 
 async function canonicalWorkspaceRoot(workspaceRoot: string): Promise<string> {
-  if (!workspaceRoot.trim()) throw new Error("Workflow workspace root is empty.")
-  return fs.realpath(path.resolve(workspaceRoot))
+  return resolveWorkflowRunWorkspaceRoot(workspaceRoot)
 }
 
 function assertPhysicalContainment(root: string, target: string, label: string): void {
@@ -227,6 +260,14 @@ function assertPhysicalContainment(root: string, target: string, label: string):
 
 function sameIdentity(left: FileIdentity, right: FileIdentity): boolean {
   return left.dev === right.dev && left.ino === right.ino
+}
+
+function assertSingleLinkedRegularFile(
+  stat: { isFile(): boolean; nlink: bigint },
+  label: string
+): void {
+  if (!stat.isFile()) throw new Error(`${label} must be a regular file.`)
+  if (stat.nlink !== 1n) throw new Error(`${label} must have a single link and must not be hard-linked.`)
 }
 
 function sameCanonicalPath(left: string, right: string): boolean {

@@ -1,4 +1,5 @@
 const assert = require("node:assert/strict")
+const { constants } = require("node:fs")
 const fs = require("node:fs/promises")
 const os = require("node:os")
 const path = require("node:path")
@@ -120,6 +121,41 @@ test("cleanup lease is exclusive and removed after the owner operation", async (
   assert.equal(await workflowRunCleanupLeasePresent(root, "run-a"), false)
 })
 
+test("cleanup requested through a retargeted alias observes the outer physical-root execution lock", async (t) => {
+  const physicalA = await workspace(t)
+  const physicalB = await workspace(t)
+  const aliasContainer = await fs.mkdtemp(path.join(os.tmpdir(), "workflow-cleanup-alias-"))
+  t.after(() => fs.rm(aliasContainer, { recursive: true, force: true }))
+  const workspaceAlias = path.join(aliasContainer, "workspace-alias")
+  const aliasType = process.platform === "win32" ? "junction" : "dir"
+  try {
+    await fs.symlink(physicalA, workspaceAlias, aliasType)
+  } catch (error) {
+    if (["EPERM", "EACCES", "ENOTSUP"].includes(error.code)) return t.skip(error.code)
+    throw error
+  }
+
+  const { withWorkflowRunCleanupLeases } = leaseModules()
+  const { withWorkflowRunLock } = lockModules()
+  let cleanupCallbackRan = false
+  await withWorkflowRunLock(workspaceAlias, "run-a", async () => {
+    await fs.rm(workspaceAlias, { force: true })
+    await fs.symlink(physicalB, workspaceAlias, aliasType)
+    await assert.rejects(
+      withWorkflowRunCleanupLeases(workspaceAlias, ["run-a"], async () => {
+        cleanupCallbackRan = true
+      }, { token: () => "must-not-acquire", hostname: "test-host" }),
+      /active execution lock/i
+    )
+  }, { timeoutMs: 1_000, heartbeatMs: 0 })
+
+  assert.equal(cleanupCallbackRan, false)
+  await assert.rejects(
+    fs.access(path.join(physicalB, ".bob", "workflows", "run-cleanup-leases")),
+    { code: "ENOENT" }
+  )
+})
+
 test("cleanup lease safely reclaims a stale dead-owner lease", async (t) => {
   const root = await workspace(t)
   const { withWorkflowRunCleanupLeases } = leaseModules()
@@ -231,7 +267,9 @@ test("stale reclaim preserves a lease whose heartbeat advances during verificati
   const continueRead = deferred()
   let readCount = 0
   fs.open = async (...args) => {
-    if (await matchesPhysicalPath(args[0], leaseFile) && args[1] === "r") {
+    const readOnly = args[1] === "r"
+      || (typeof args[1] === "number" && (args[1] & (constants.O_WRONLY | constants.O_RDWR)) === 0)
+    if (await matchesPhysicalPath(args[0], leaseFile) && readOnly) {
       readCount += 1
       if (readCount === 2) {
         const handle = await originalOpen(...args)
@@ -437,6 +475,42 @@ test("cleanup lease heartbeat timer stops when the operation throws", async (t) 
     if (!ownerSettled) await owner.catch(() => undefined)
   }
 })
+
+for (const hardLinkTarget of ["lease", "owner"]) {
+  test(`cleanup rejects a hard-linked ${hardLinkTarget} file without touching external mtime`, async (t) => {
+    const root = await workspace(t)
+    const { withWorkflowRunCleanupLeases } = leaseModules()
+    const leaseDirectory = path.join(root, ".bob", "workflows", "run-cleanup-leases")
+    const target = hardLinkTarget === "lease"
+      ? path.join(leaseDirectory, "run-a.json")
+      : path.join(leaseDirectory, "run-a.guard", "owner.json")
+    const outside = await fs.mkdtemp(path.join(os.tmpdir(), "workflow-cleanup-hardlink-"))
+    t.after(() => fs.rm(outside, { recursive: true, force: true }))
+    const external = path.join(outside, `${hardLinkTarget}.json`)
+    const oldTime = new Date("2020-01-02T03:04:05.000Z")
+
+    const owner = withWorkflowRunCleanupLeases(root, ["run-a"], async () => {
+      const bytes = await fs.readFile(target)
+      await fs.rm(target)
+      await fs.writeFile(external, bytes)
+      await fs.utimes(external, oldTime, oldTime)
+      try {
+        await fs.link(external, target)
+      } catch (error) {
+        if (["EPERM", "EACCES", "ENOTSUP", "EXDEV"].includes(error.code)) return t.skip(error.code)
+        throw error
+      }
+      await delay(450)
+    }, {
+      token: () => `hardlink-${hardLinkTarget}`,
+      hostname: "test-host",
+      staleMs: 600
+    })
+
+    await assert.rejects(owner, /hard.?link|link count|single link/i)
+    assert.equal((await fs.stat(external)).mtimeMs, oldTime.getTime())
+  })
+}
 
 test("cleanup heartbeat never overwrites a replacement owner", async (t) => {
   const root = await workspace(t)

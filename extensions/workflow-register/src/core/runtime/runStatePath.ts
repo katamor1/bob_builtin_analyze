@@ -2,6 +2,7 @@ import { randomUUID } from "crypto"
 import { constants } from "fs"
 import * as fs from "fs/promises"
 import * as path from "path"
+import { resolveWorkflowRunWorkspaceRoot } from "./workflowRunWorkspaceRootBinding"
 
 export interface ContainedRunFileSnapshot {
   bytes: Buffer
@@ -95,11 +96,19 @@ async function readContainedRunPath(
       const preOpen = await directRegularFile(runFile, root, label)
       handle = await fs.open(runFile, constants.O_RDONLY | noFollow)
       const handleStat = await handle.stat({ bigint: true })
+      assertSingleLinkedRegularFile(handleStat, label)
       const postOpen = await directRegularFile(runFile, root, label)
-      if (!handleStat.isFile() || !sameIdentity(preOpen, handleStat) || !sameIdentity(handleStat, postOpen)) {
+      if (!sameIdentity(preOpen, handleStat) || !sameIdentity(handleStat, postOpen)) {
         throw new RunPathChangedError(`Workflow run '${runId}' changed while its path was being verified.`)
       }
-      return { bytes: await handle.readFile(), filePath: runFile }
+      const bytes = await handle.readFile()
+      const readStat = await handle.stat({ bigint: true })
+      assertSingleLinkedRegularFile(readStat, label)
+      const readTarget = await directRegularFile(runFile, root, label)
+      if (!sameIdentity(handleStat, readStat) || !sameIdentity(readStat, readTarget)) {
+        throw new RunPathChangedError(`Workflow run '${runId}' changed while it was being read.`)
+      }
+      return { bytes, filePath: runFile }
     } catch (error) {
       if (attempt < 4 && (error instanceof RunPathChangedError || isMissingPathError(error))) {
         await new Promise((resolve) => setTimeout(resolve, 5))
@@ -204,8 +213,9 @@ async function writeContainedRunPath(
 ): Promise<void> {
   assertSafeWorkflowRunId(runId)
   const root = await canonicalWorkspaceRoot(workspaceRoot)
-  const runsRoot = await directDirectoryChain(root, [...RUNS_ROOT_SEGMENTS], true)
   const runDirectory = await directDirectoryChain(root, [...RUNS_ROOT_SEGMENTS, runId, ...relativeDirectorySegments], true)
+  const runsRootPath = path.join(root, ...RUNS_ROOT_SEGMENTS)
+  const runsRoot = await directDirectory(runsRootPath, root, "Workflow runs directory")
   const runFile = path.join(runDirectory.path, fileName)
   const originalTarget = await optionalDirectRegularFile(runFile, root, `Workflow run '${runId}' ${fileName}`)
   const tempFile = path.join(runsRoot.path, `.${runId}.${process.pid}.${randomUUID()}.tmp`)
@@ -213,9 +223,16 @@ async function writeContainedRunPath(
   try {
     await assertDirectoryIdentity(runsRoot, "Workflow runs directory")
     await assertDirectoryIdentity(runDirectory, `Workflow run '${runId}' directory`)
-    await fs.writeFile(tempFile, content, { encoding: "utf8", flag: "wx" })
+    const tempHandle = await fs.open(tempFile, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL, 0o600)
+    try {
+      assertSingleLinkedRegularFile(await tempHandle.stat({ bigint: true }), `Workflow run '${runId}' ${fileName} temporary file`)
+      await tempHandle.writeFile(content, { encoding: "utf8" })
+      await tempHandle.sync()
+      assertSingleLinkedRegularFile(await tempHandle.stat({ bigint: true }), `Workflow run '${runId}' ${fileName} temporary file`)
+    } finally {
+      await tempHandle.close()
+    }
     tempIdentity = await directRegularFile(tempFile, root, `Workflow run '${runId}' ${fileName} temporary file`)
-    await assertWriteDestinationUnchanged(root, runsRoot, runDirectory, runFile, originalTarget, runId, fileName)
     await renameWithTransientRetry(tempFile, runFile, async () => {
       await assertWriteDestinationUnchanged(root, runsRoot, runDirectory, runFile, originalTarget, runId, fileName)
       const currentTemp = await directRegularFile(tempFile, root, `Workflow run '${runId}' ${fileName} temporary file`)
@@ -298,6 +315,7 @@ async function directRegularFile(filePath: string, root: string, label: string):
   if (before.isSymbolicLink() || !before.isFile()) {
     throw new Error(`${label} must be a direct regular file and not a symlink.`)
   }
+  assertSingleLinkedRegularFile(before, label)
   const physicalPath = await fs.realpath(filePath)
   assertPhysicalContainment(root, physicalPath, label)
   if (!sameCanonicalPath(filePath, physicalPath)) {
@@ -307,6 +325,7 @@ async function directRegularFile(filePath: string, root: string, label: string):
   if (!after.isFile() || !sameIdentity(before, after)) {
     throw new RunPathChangedError(`${label} changed while its path was being verified.`)
   }
+  assertSingleLinkedRegularFile(after, label)
   return { dev: after.dev, ino: after.ino }
 }
 
@@ -363,8 +382,7 @@ async function listDirectDirectoryEntries(directory: DirectDirectory, label: str
 }
 
 async function canonicalWorkspaceRoot(workspaceRoot: string): Promise<string> {
-  if (!workspaceRoot.trim()) throw new Error("Workflow workspace root is empty.")
-  return fs.realpath(path.resolve(workspaceRoot))
+  return resolveWorkflowRunWorkspaceRoot(workspaceRoot)
 }
 
 async function renameWithTransientRetry(
@@ -387,6 +405,14 @@ async function renameWithTransientRetry(
 
 function sameIdentity(left: FileIdentity, right: FileIdentity): boolean {
   return left.dev === right.dev && left.ino === right.ino
+}
+
+function assertSingleLinkedRegularFile(
+  stat: { isFile(): boolean; nlink: bigint },
+  label: string
+): void {
+  if (!stat.isFile()) throw new Error(`${label} must be a regular file.`)
+  if (stat.nlink !== 1n) throw new Error(`${label} must have a single link and must not be hard-linked.`)
 }
 
 function sameCanonicalPath(left: string, right: string): boolean {

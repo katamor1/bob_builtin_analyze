@@ -12,6 +12,7 @@ import type {
 import { decodeWorkflowRunRetentionMetadata } from "../retention/runRetentionMetadata"
 import { decodeWorkflowRunState } from "./runStateCodec"
 import { assertSafeWorkflowRunId } from "./runStatePath"
+import { resolveWorkflowRunWorkspaceRoot } from "./workflowRunWorkspaceRootBinding"
 
 const RUNS_ROOT_SEGMENTS = [".bob", "workflows", "runs"] as const
 const RECOVERABLE_STATUSES = new Set<WorkflowRunRetentionStatus>(["running", "paused", "checkpoint", "reviewing", "held"])
@@ -109,7 +110,7 @@ export async function inspectWorkflowRunRetentionInventory(
   requestedLimits: Partial<WorkflowRunRetentionInventoryLimits> = {}
 ): Promise<WorkflowRunRetentionInventorySnapshot> {
   const budget = createScanBudget(requestedLimits)
-  const root = await fs.realpath(path.resolve(workspaceRoot))
+  const root = await resolveWorkflowRunWorkspaceRoot(workspaceRoot)
   const runsRoot = path.join(root, ...RUNS_ROOT_SEGMENTS)
   let rootStat: BigIntStats
   try {
@@ -187,7 +188,7 @@ export async function inspectWorkflowRunRetentionCandidatePhysicalEvidence(
 ): Promise<WorkflowRunRetentionCandidatePhysicalEvidence> {
   assertSafeWorkflowRunId(runId)
   const budget = createScanBudget(requestedLimits)
-  const root = await fs.realpath(path.resolve(workspaceRoot))
+  const root = await resolveWorkflowRunWorkspaceRoot(workspaceRoot)
   const runsRoot = path.join(root, ...RUNS_ROOT_SEGMENTS)
   let rootStat: BigIntStats
   try {
@@ -214,7 +215,7 @@ export async function inspectWorkflowRunRetentionDirectoryPhysicalEvidence(
   requestedLimits: Partial<WorkflowRunRetentionInventoryLimits> = {}
 ): Promise<WorkflowRunRetentionCandidatePhysicalEvidence> {
   assertSafeWorkflowRunId(runId)
-  const root = await fs.realpath(path.resolve(workspaceRoot))
+  const root = await resolveWorkflowRunWorkspaceRoot(workspaceRoot)
   const target = path.resolve(directory)
   if (!isContained(root, target)) {
     throw new Error(`Workflow run '${runId}' cleanup evidence path escapes the workflow workspace.`)
@@ -483,6 +484,11 @@ async function walkDirectDirectory(
     if (stat.isFile()) {
       const fileBytes = safeStatSize(stat)
       accumulator.bytes = safeAdd(accumulator.bytes, fileBytes)
+      if (stat.nlink !== 1n) {
+        accumulator.complete = false
+        recordFingerprint(accumulator, budget, ["hard-linked-file", childSegments, stableStatRecord(stat)])
+        continue
+      }
       if (!(await isDirectContainedPath(root, target))) {
         accumulator.complete = false
         recordFingerprint(accumulator, budget, ["file-alias", childSegments, stableStatRecord(stat)])
@@ -521,6 +527,7 @@ async function readCapturedFile(
   budget: InventoryScanBudget
 ): Promise<CapturedFileRead> {
   const fallbackBytes = safeStatSize(initialStat)
+  if (initialStat.nlink !== 1n) return { bytes: fallbackBytes, complete: false }
   const remainingCaptureBytes = budget.limits.maxMetadataCaptureBytes - budget.metadataCaptureBytes
   if (initialStat.size < 0n || initialStat.size > BigInt(remainingCaptureBytes)) {
     budget.metadataCaptureLimitReached = true
@@ -533,7 +540,7 @@ async function readCapturedFile(
   try {
     handle = await fs.open(filePath, constants.O_RDONLY | noFollow)
     const handleStat = await handle.stat({ bigint: true })
-    if (!handleStat.isFile() || !sameStableVersion(initialStat, handleStat)) {
+    if (!handleStat.isFile() || handleStat.nlink !== 1n || !sameStableVersion(initialStat, handleStat)) {
       return { bytes: fallbackBytes, complete: false }
     }
     const chunks: Buffer[] = []
@@ -554,6 +561,7 @@ async function readCapturedFile(
       && sameStableVersion(initialStat, finalHandleStat)
       && current.isFile()
       && !current.isSymbolicLink()
+      && current.nlink === 1n
       && sameStableVersion(initialStat, current)
       && await isDirectContainedPath(root, filePath)
     const content = bytes === expectedBytes ? Buffer.concat(chunks, expectedBytes) : Buffer.concat(chunks)
@@ -578,6 +586,8 @@ async function stableDirectFileMetadata(
     const current = await fs.lstat(filePath, { bigint: true })
     return current.isFile()
       && !current.isSymbolicLink()
+      && initialStat.nlink === 1n
+      && current.nlink === 1n
       && sameStableVersion(initialStat, current)
       && await isDirectContainedPath(root, filePath)
   } catch {
@@ -767,6 +777,7 @@ function stableStatRecord(stat: BigIntStats): Record<string, string> {
   return {
     dev: stat.dev.toString(),
     ino: stat.ino.toString(),
+    nlink: stat.nlink.toString(),
     size: stat.size.toString(),
     mtimeNs: stat.mtimeNs.toString(),
     ctimeNs: stat.ctimeNs.toString(),
@@ -823,6 +834,7 @@ function sameStableVersion(left: BigIntStats, right: BigIntStats): boolean {
     && left.size === right.size
     && left.mtimeNs === right.mtimeNs
     && left.ctimeNs === right.ctimeNs
+    && left.nlink === right.nlink
 }
 
 function safeStatSize(stat: BigIntStats): number {
