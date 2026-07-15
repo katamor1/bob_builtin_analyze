@@ -55,7 +55,7 @@ test("bob-bazaar-review declares the exact rule authoring production dependencie
   assert.deepEqual(packageJson.dependencies, {
     ajv: "^8.17.1",
     cheerio: "^1.0.0",
-    "js-yaml": "^4.1.0",
+    "js-yaml": "^4.3.0",
     mammoth: "^1.8.0",
     "read-excel-file": "^9.2.0"
   })
@@ -95,11 +95,31 @@ test("bob-bazaar-review dependency policy requires a committed lockfile and loca
   assert.equal(packageJson.devDependencies["ts-prune"], "^0.10.3")
 
   const yamlRuntimeSource = fs.readFileSync(path.join(extensionRoot, "src", "records", "reviewRecordYaml.ts"), "utf8")
+  const proposalRuntimeSource = fs.readFileSync(
+    path.join(extensionRoot, "src", "ruleAuthoring", "ruleProposalSchema.ts"),
+    "utf8"
+  )
+  const docxRuntimeSource = fs.readFileSync(
+    path.join(extensionRoot, "src", "ruleAuthoring", "extraction", "docxExtractor.ts"),
+    "utf8"
+  )
+  const xlsxRuntimeSource = fs.readFileSync(
+    path.join(extensionRoot, "src", "ruleAuthoring", "extraction", "xlsxExtractor.ts"),
+    "utf8"
+  )
   assert.match(yamlRuntimeSource, /from "js-yaml"/, "review record runtime must keep the js-yaml import")
+  assert.match(proposalRuntimeSource, /require\("ajv"\)/, "proposal validation must keep the lazy Ajv load")
+  assert.match(docxRuntimeSource, /import\("cheerio"\)/, "DOCX extraction must keep the lazy Cheerio load")
+  assert.match(docxRuntimeSource, /import\("mammoth"\)/, "DOCX extraction must keep the lazy Mammoth load")
+  assert.match(
+    xlsxRuntimeSource,
+    /import\("read-excel-file\/node"\)/,
+    "XLSX extraction must keep the lazy read-excel-file load"
+  )
   assert.deepEqual(
     packageJson.knip?.ignoreDependencies,
-    ["js-yaml"],
-    "Knip must document its js-yaml false positive while depcheck and the source contract verify runtime use"
+    ["ajv", "cheerio", "js-yaml", "mammoth", "read-excel-file"],
+    "Knip exceptions must be an exact reviewed set whose runtime loads are verified above and by depcheck"
   )
 
   const lock = JSON.parse(fs.readFileSync(lockPath, "utf8"))

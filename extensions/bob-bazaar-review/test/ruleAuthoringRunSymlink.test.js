@@ -98,7 +98,8 @@ test("rejects a restored parent swap when rename did not install the synced temp
   if (!await supportsDirectoryLinks(t, workspaceRoot, outside)) return
   const run = await createRuleAuthoringRun({ workspaceRoot, runId: "run-rename-swap" })
   const paths = getRuleAuthoringPaths(workspaceRoot, run.runId)
-  const next = { ...run, warnings: ["source.should_not_install"], updatedAt: "2026-07-14T23:59:59.000Z" }
+  const nextUpdatedAt = new Date(Date.parse(run.updatedAt) + 1_000).toISOString()
+  const next = { ...run, warnings: ["source.should_not_install"], updatedAt: nextUpdatedAt }
   await fs.writeFile(path.join(outside, "authoring-run.json"), "outside original\n", "utf8")
 
   const exit = await runParentSwapWriter(paths, outside, next, run.updatedAt)

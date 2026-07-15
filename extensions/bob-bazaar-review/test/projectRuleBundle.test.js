@@ -189,5 +189,13 @@ test("renders optional approved bundle sections through one bounded shared rende
   assert.match(section, /### project-context\.md[\s\S]*Architecture context/)
   assert.match(section, /### review-prompt-addendum\.md[\s\S]*Check rollback paths/)
   const legacy = buildProjectRulesSection({ checklist: fixture.checklist, schema: fixture.schema })
-  assert.match(section, new RegExp(legacy.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")))
+  assert.match(section, /### checklist\.json[\s\S]*RT-001/)
+  assert.match(section, /### review-result\.schema\.json[\s\S]*review_id/)
+  assert.ok(section.lastIndexOf("### Output contract") > section.lastIndexOf("### review-prompt-addendum.md"))
+  assert.equal(buildProjectRulesSectionFromBundle({
+    ...bundle,
+    projectContext: "",
+    reviewPromptAddendum: "",
+    provenanceSummary: undefined
+  }, PROJECT_RULE_BUNDLE_LIMITS), legacy)
 })

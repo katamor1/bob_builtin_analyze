@@ -21,6 +21,7 @@ bzr --no-aliases <command>
 - revision / revision range / working treeの差分を取得する。
 - Bobへ渡すMarkdown review packetを作る。
 - `.bob/review/checklist.json`と`.bob/review/review-result.schema.json`を使う。
+- workspace外の`.docx`、`.xlsx`、text PDFからAI規約候補を作り、Human Triage後にproject-owned review assetへ選択適用する。
 - `workflow-register`のaction providerを提供する。
 - Bobのreview-result JSONを検証し、JSON / Markdown / metadataとして保存する。
 - packet、result、Human Triage、record、summary、所要時間をReview Runとして追跡する。
@@ -37,12 +38,24 @@ bzr --no-aliases <command>
 - `IBM.bob-code`がなければMarkdown document作成で安全に停止する。
 - `workflow-register`があれば同梱workflow `bazaar-project-rule-review`から実行できる。
 - `workflow-register`がなくてもGUIとCommand Paletteは利用できる。
+- 資料からの規約作成では、抽出とpreviewは拡張機能が担い、AI stepはIBM Bobと`workflow-register`の設定済みmodel routeを使う。
 
 推奨導入順:
 
 1. `bob-bazaar-review`
 2. `IBM.bob-code`（Bob context連携時）
 3. `workflow-register`（workflow連携時）
+
+## Word・Excel・PDFからプロジェクト規約を作成
+
+Command Paletteの`bobBazaar.authorProjectRulesFromDocuments`は、外部資料の個別選択、決定論的抽出、source scope、AI送信前の明示同意までをGUIで行います。AI consent後はBob UIから`bazaar-project-rule-authoring` workflowを開始します。Palette commandからBob taskを直接自動起動するAPIは使用しません。
+
+対応形式は`.docx`、`.xlsx`、text抽出可能な`.pdf`です。`.doc` / `.xls`は変換が必要、image-only PDFはOCRが必要としてAI対象から除外します。PDF抽出は設定`bobBazaar.ruleAuthoring.pdfToTextPath`で指定するPoppler `pdftotext`を使用します。
+
+候補はAI出力から正式assetへ直接書きません。規約単位のHuman Triage、apply preview、journal / backup付きtransaction、rollback、最終hash / provenance検証を必須にします。詳細は次を参照してください。
+
+- `docs/project-rule-authoring.md`
+- `docs/project-rule-authoring-windows-uat.md`
 
 ## 標準Review Runフロー
 
@@ -73,6 +86,7 @@ VS Codeを閉じた後は、Review GUIの未完了Review Run一覧から続き�
 | クリップボードから保存 | `bobBazaar.saveReviewResultFromClipboard` | clipboardだけを入力にする。 |
 | Bob MCPを設定 | `bobBazaar.configureMcp` | `.bob/mcp.json`を更新する。 |
 | プロジェクト規約を初期化 | `bobBazaar.initProjectRules` | `.bob/review`を作る。 |
+| Word・Excel・PDFからプロジェクト規約を作成 | `bobBazaar.authorProjectRulesFromDocuments` | source選択、抽出preview、AI consent、Human Triageへの導線を開く。 |
 | 1リビジョンをレビュー | `bobBazaar.reviewRevision` | `log -r`と`diff -c`からpacketを作る。 |
 | リビジョン範囲をレビュー | `bobBazaar.reviewRange` | `diff -r BASE..TARGET`からpacketを作る。 |
 | 規約付き1リビジョン | `bobBazaar.reviewRevisionWithProjectRules` | packetへproject rulesを追加する。 |
@@ -278,6 +292,8 @@ Project rules tools:
 - `project_rules_init`: 既定では非公開。`BOB_BAZAAR_ENABLE_WRITE_TOOLS=1`時だけ公開。
 - `project_rules_get_checklist`
 - `project_rules_get_schema`
+- `project_rules_get_context`
+- `project_rules_get_provenance`
 - `project_rules_validate_review_result`
 - `project_rules_render_markdown`
 
@@ -292,10 +308,11 @@ Bazaar / result toolは`BOB_BAZAAR_ALLOWED_ROOTS`内だけを受け付けます�
 | `src/projectRules/reviewResultValidationCommand.ts` | Active editorのreview-result検証とMarkdown report |
 | `src/workflow/workflowRegisterBridge.ts` | workflow-register API、action input、capture option変換 |
 | `src/projectRules/` | checklist、schema、result検証 |
+| `src/ruleAuthoring/` | 文書抽出、source/evidence/proposal契約、run store、apply transaction、approved bundle |
 | `src/reviewRuns/` | state、store、metrics、resume、finalize、recovery、coordinator |
 | `src/dashboard/` | campaign evidence集計、rate / trend、JSON / Markdown / CSV export |
-| `src/ui/` | Review GUI、Result Capture、Human Triage、Campaign Dashboard |
-| `src/workflow/` | workflow-register bridge |
+| `src/ui/` | Review GUI、Result Capture、Human Triage、Campaign Dashboard、規約作成wizard / proposal triage |
+| `src/workflow/` | workflow-register bridge、review / rule authoring action adapter |
 | `src/workspace/` | workspace rootと`.bob`初期化 |
 | `src/records/` | record、triage、summary |
 | `src/mcp/` | readonly MCP server |
@@ -313,6 +330,12 @@ Command IDとworkflow provider IDは変更しません。
 | `bobBazaar.maxAddedFileContentBytes` | `262144` |
 | `bobBazaar.projectRules.checklistPath` | `.bob/review/checklist.json` |
 | `bobBazaar.projectRules.schemaPath` | `.bob/review/review-result.schema.json` |
+| `bobBazaar.ruleAuthoring.pdfToTextPath` | `pdftotext` |
+| `bobBazaar.ruleAuthoring.maxSourceFiles` | `20` |
+| `bobBazaar.ruleAuthoring.maxSourceBytes` | `26214400` |
+| `bobBazaar.ruleAuthoring.maxAggregateSourceBytes` | `104857600` |
+| `bobBazaar.ruleAuthoring.maxChunkBytes` | `32768` |
+| `bobBazaar.ruleAuthoring.maxSelectedEvidenceBytes` | `1048576` |
 
 ## ビルドと検証
 
@@ -350,6 +373,9 @@ code --install-extension bob-bazaar-review-0.3.0.vsix
 - WebviewはCSP nonceとhost側action allowlistを使う。
 - MCPはreadonlyを既定にする。
 - Human Triage gateを維持する。
+- 規約原本を`.bob`へコピーせず、AI送信前にsource名、chunk数、UTF-8 byte数の明示同意を要求する。
+- `.bob/review/rule-authoring/**`の抽出本文、raw AI出力、backup、run-local stateは既定でGit対象外にする。
+- checklist、context、addendum、source manifest、provenanceだけをproject-owned approved assetとしてreviewする。
 
 ## 保守・配布ポリシー
 
@@ -382,6 +408,8 @@ review-result、packet、triage、record、Review Runにはレビュー対象や
 - `docs/unit-test-spec-ja.md`
 - `docs/real-machine-test-spec-ja.md`
 - `docs/workflow-authoring-guide-ja.md`
+- `docs/project-rule-authoring.md`
+- `docs/project-rule-authoring-windows-uat.md`
 
 <!-- REMEDIATION-2026-07-11 -->
 ## Integration and process safety

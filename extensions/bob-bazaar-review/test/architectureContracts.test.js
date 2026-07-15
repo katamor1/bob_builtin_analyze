@@ -92,3 +92,28 @@ test("bob-bazaar-review metadata version uses the package version source", () =>
   assert.doesNotMatch(mcpServer, /0\.3\.0/)
   assert.doesNotMatch(resultCaptureArtifacts, /producer_version: "0\.3\.0"/)
 })
+
+test("project rule authoring docs describe the implemented module and provider boundaries", () => {
+  const guide = fs.readFileSync(path.join(extensionRoot, "docs", "project-rule-authoring.md"), "utf8")
+
+  for (const modulePath of [
+    "src/ruleAuthoring/ruleBundle.ts",
+    "src/ruleAuthoring/ruleApplyTransaction.ts",
+    "src/ui/ruleAuthoringGui.ts",
+    "src/ui/ruleProposalTriageGui.ts",
+    "src/workflow/ruleAuthoringWorkflowActions.ts"
+  ]) {
+    assert.ok(guide.includes(modulePath), `authoring guide must document ${modulePath}`)
+  }
+  for (const providerId of [
+    "bobBazaar.openRuleAuthoringGui",
+    "bobBazaar.loadRuleSourceIndex",
+    "bobBazaar.captureRuleEvidenceSelection",
+    "bobBazaar.loadSelectedRuleEvidence",
+    "bobBazaar.captureRuleProposal",
+    "bobBazaar.openRuleProposalTriageGui",
+    "bobBazaar.verifyRuleAuthoringApply"
+  ]) {
+    assert.ok(guide.includes(providerId), `authoring guide must document ${providerId}`)
+  }
+})

@@ -123,9 +123,14 @@ export function buildProjectRulesSectionFromBundle(
     checklist: bundle.checklist,
     schema: bundle.reviewResultSchema
   })
-  return additions.length > 0
-    ? `${legacySection}\n\n${additions.join("\n\n")}`
-    : legacySection
+  if (additions.length === 0) return legacySection
+
+  const outputContractMarker = "\n\n### Output contract"
+  const outputContractIndex = legacySection.indexOf(outputContractMarker)
+  if (outputContractIndex < 0) throw new Error("Project rules output contract marker is unavailable")
+  const beforeOutputContract = legacySection.slice(0, outputContractIndex)
+  const outputContract = legacySection.slice(outputContractIndex + 2)
+  return `${beforeOutputContract}\n\n${additions.join("\n\n")}\n\n${outputContract}`
 }
 
 function effectiveLimit(configured: number, hardLimit: number, label: string): number {
