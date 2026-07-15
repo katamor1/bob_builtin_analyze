@@ -294,10 +294,11 @@ test("cleanup release removes owned JSON before its guard and never mutates the 
   }
 })
 
-test("new cleanup guard is removed when its first identity check fails transiently", async (t) => {
+test("new cleanup guard is preserved when its first identity check cannot exclude replacement", async (t) => {
   const root = await workspace(t)
   const { withWorkflowRunCleanupLeases } = leaseModules()
   const guardDirectory = path.join(root, ".bob", "workflows", "run-cleanup-leases", "run-a.guard")
+  const displacedGuard = path.join(root, ".bob", "workflows", "run-cleanup-leases", "run-a.displaced.guard")
   const primaryError = Object.assign(new Error("GUARD_FIRST_IDENTITY_SENTINEL"), { code: "EIO" })
   const originalLstat = fs.lstat
   let injected = false
@@ -307,6 +308,8 @@ test("new cleanup guard is removed when its first identity check fails transient
       : path.resolve(String(value))
     if (!injected && normalize(target) === normalize(guardDirectory)) {
       injected = true
+      await fs.rename(guardDirectory, displacedGuard)
+      await fs.mkdir(guardDirectory)
       throw primaryError
     }
     return originalLstat(target, ...args)
@@ -325,11 +328,71 @@ test("new cleanup guard is removed when its first identity check fails transient
 
   assert.equal(injected, true)
   assert.strictEqual(observedError, primaryError)
-  await assert.rejects(fs.access(guardDirectory), { code: "ENOENT" })
-  assert.equal(await withWorkflowRunCleanupLeases(root, ["run-a"], async () => "retried", {
-    token: () => "first-identity-retry",
-    hostname: "test-host"
-  }), "retried")
+  assert.equal((await fs.stat(guardDirectory)).isDirectory(), true)
+  assert.equal((await fs.stat(displacedGuard)).isDirectory(), true)
+  await assert.rejects(
+    withWorkflowRunCleanupLeases(root, ["run-a"], async () => "must-not-run", {
+      token: () => "first-identity-retry",
+      hostname: "test-host"
+    }),
+    /authoritative cleanup guard is present/i
+  )
+})
+
+test("cleanup guard rollback preserves a replacement swapped in after an empty listing", async (t) => {
+  const root = await workspace(t)
+  const { withWorkflowRunCleanupLeases } = leaseModules()
+  const leaseDirectory = path.join(root, ".bob", "workflows", "run-cleanup-leases")
+  const guardDirectory = path.join(leaseDirectory, "run-a.guard")
+  const displacedGuard = path.join(leaseDirectory, "run-a.displaced.guard")
+  const ownerFile = path.join(guardDirectory, "owner.json")
+  const primaryError = Object.assign(new Error("GUARD_PUBLICATION_PRIMARY_SENTINEL"), { code: "EIO" })
+  const originalOpen = fs.open
+  const originalReaddir = fs.readdir
+  let publicationFailed = false
+  let listingSwapped = false
+  fs.open = async (file, ...args) => {
+    const handle = await originalOpen(file, ...args)
+    if (!publicationFailed && await matchesPhysicalPath(file, ownerFile)) {
+      const originalSync = handle.sync.bind(handle)
+      handle.sync = async (...syncArgs) => {
+        await originalSync(...syncArgs)
+        publicationFailed = true
+        throw primaryError
+      }
+    }
+    return handle
+  }
+  fs.readdir = async (directory, ...args) => {
+    const entries = await originalReaddir(directory, ...args)
+    const normalize = (value) => process.platform === "win32"
+      ? path.resolve(String(value)).toLowerCase()
+      : path.resolve(String(value))
+    if (publicationFailed && !listingSwapped && normalize(directory) === normalize(guardDirectory)) {
+      listingSwapped = true
+      await fs.rename(guardDirectory, displacedGuard)
+      await fs.mkdir(guardDirectory)
+    }
+    return entries
+  }
+
+  let observedError
+  try {
+    await withWorkflowRunCleanupLeases(root, ["run-a"], async () => {
+      assert.fail("cleanup callback must not run after guard publication failure")
+    }, { token: () => "listing-swap-owner", hostname: "test-host" })
+  } catch (error) {
+    observedError = error
+  } finally {
+    fs.readdir = originalReaddir
+    fs.open = originalOpen
+  }
+
+  assert.equal(listingSwapped, true)
+  assert.strictEqual(observedError, primaryError)
+  assert.match(observedError.message, /guard acquisition rollback also failed.*changed after rollback inspection/i)
+  assert.equal((await fs.stat(guardDirectory)).isDirectory(), true)
+  assert.equal((await fs.stat(displacedGuard)).isDirectory(), true)
 })
 
 for (const publication of ["guard owner", "lease metadata"]) {
@@ -401,7 +464,7 @@ test("failed lease publication preserves an identity-changed replacement and its
   const replacementBytes = `${JSON.stringify({
     schemaVersion: "workflow-register/run-cleanup-lease/v1",
     runId: "run-a",
-    token: "replacement-owner",
+    token: "original-publication-owner",
     pid: process.pid,
     hostname: "replacement-host",
     createdAt: "2026-07-13T00:00:00.000Z",
@@ -445,7 +508,7 @@ test("failed lease publication preserves an identity-changed replacement and its
 
   assert.strictEqual(observedError, primaryError)
   assert.match(observedError.message, /publication cleanup also failed.*identity changed/i)
-  assert.match(observedError.message, /acquisition rollback also failed.*changed ownership/i)
+  assert.match(observedError.message, /acquisition rollback also failed.*publication remains.*guard.*preserved/i)
   assert.equal(observedError.suppressedErrors.length, 2)
   assert.equal(replacementRmAttempts, 0)
   assert.equal(await fs.readFile(leaseFile, "utf8"), replacementBytes)

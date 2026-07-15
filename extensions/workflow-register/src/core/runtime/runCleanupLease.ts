@@ -339,11 +339,8 @@ async function acquireCleanupGuard(
     await verifyCleanupGuard(guard, locations.root, lease)
     return guard
   } catch (error) {
+    if (!guard) throw error
     try {
-      if (!guard) {
-        const identity = await assertDirectDirectory(directory, locations.root, `Workflow run '${lease.runId}' cleanup guard rollback`)
-        guard = { directory, ownerFile, ...identity }
-      }
       await rollbackNewCleanupGuard(guard, locations.root, lease)
     } catch (rollbackError) {
       throw appendSuppressedFailureContext(
@@ -380,7 +377,10 @@ async function releaseCleanupGuard(
   if (entries.length !== 1 || entries[0] !== CLEANUP_GUARD_OWNER_FILE) {
     throw new Error(`Workflow run '${expected.runId}' cleanup guard contains unexpected entries and was preserved.`)
   }
+  await verifyCleanupGuard(guard, root, expected)
   await fs.rm(guard.ownerFile)
+  const after = await assertDirectDirectory(guard.directory, root, `Workflow run '${expected.runId}' cleanup guard release`)
+  if (!sameIdentity(after, guard)) throw new Error(`Workflow run '${expected.runId}' cleanup guard changed before directory release.`)
   await fs.rmdir(guard.directory)
 }
 
@@ -393,6 +393,8 @@ async function rollbackNewCleanupGuard(
   if (!sameIdentity(current, guard)) throw new Error(`Workflow run '${expected.runId}' cleanup guard changed before acquisition rollback.`)
   const entries = await fs.readdir(guard.directory)
   if (entries.length === 0) {
+    const afterListing = await assertDirectDirectory(guard.directory, root, `Workflow run '${expected.runId}' cleanup guard rollback`)
+    if (!sameIdentity(afterListing, guard)) throw new Error(`Workflow run '${expected.runId}' cleanup guard changed after rollback inspection.`)
     await fs.rmdir(guard.directory)
     return
   }
@@ -409,9 +411,8 @@ async function releaseFailedCleanupLeasePublication(
   root: string,
   expected: WorkflowRunCleanupLeaseV1
 ): Promise<void> {
-  let snapshot: CleanupLeaseSnapshot
   try {
-    snapshot = await readCleanupLeaseSnapshot(file, root, expected.runId)
+    await fs.lstat(file)
   } catch (error) {
     if (isMissing(error)) {
       await releaseCleanupGuard(guard, root, expected)
@@ -419,11 +420,7 @@ async function releaseFailedCleanupLeasePublication(
     }
     throw error
   }
-  const current = parseCleanupLease(JSON.parse(snapshot.bytes.toString("utf8")), expected.runId)
-  if (current.token !== expected.token) {
-    throw new Error(`Workflow run '${expected.runId}' cleanup lease publication changed ownership before acquisition rollback.`)
-  }
-  await releaseCleanupLease({ file, guard, lease: expected }, root)
+  throw new Error(`Workflow run '${expected.runId}' cleanup lease publication remains after failed publication; its authoritative guard was preserved.`)
 }
 
 async function removeOwnedCleanupLeasePublication(
