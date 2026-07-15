@@ -1,0 +1,116 @@
+name: fix-pr97-windows-gui-lock-fixtures
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/fix-pr97-windows-gui-lock-fixtures.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  fix-and-verify:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: codex/bazaar-ai-project-rule-authoring
+          fetch-depth: 0
+
+      - name: Make Windows test fixtures match filesystem contracts
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+          import re
+
+          gui_test = Path("extensions/bob-bazaar-review/test/ruleAuthoringGui.test.js")
+          gui_text = gui_test.read_text(encoding="utf-8")
+          old_artifacts = '''          artifacts: {
+            sourceManifest: path.relative(root, path.join(generation, "source-manifest.json")),
+            documentChunks: path.relative(root, path.join(generation, "document-chunks.jsonl")),
+            sourceScope: path.relative(root, path.join(generation, "source-scope.json"))
+          },
+          '''
+          new_artifacts = '''          artifacts: {
+            sourceManifest: path.relative(root, path.join(generation, "source-manifest.json")).split(path.sep).join("/"),
+            documentChunks: path.relative(root, path.join(generation, "document-chunks.jsonl")).split(path.sep).join("/"),
+            sourceScope: path.relative(root, path.join(generation, "source-scope.json")).split(path.sep).join("/")
+          },
+          '''
+          if gui_text.count(old_artifacts) != 1:
+              raise SystemExit("GUI artifact fixture block did not match exactly once")
+          gui_test.write_text(gui_text.replace(old_artifacts, new_artifacts), encoding="utf-8", newline="\n")
+
+          run_store_test = Path("extensions/bob-bazaar-review/test/ruleAuthoringRunStore.test.js")
+          run_store_text = run_store_test.read_text(encoding="utf-8")
+          replacement = '''async function seedExhaustedDirectoryLock(lockDirectory) {
+            await fs.mkdir(lockDirectory, { recursive: true })
+            const seedShardCount = 32
+            const ownerToken = "a".repeat(32)
+            const lockRecord = `${JSON.stringify({
+              schema_version: "bob-bazaar-review/run-lock/v1",
+              pid: process.pid,
+              token: ownerToken,
+              scope_id: "f".repeat(64),
+              created_at: "2026-07-14T08:00:00.000Z"
+            })}\n`
+            const closureRecord = `${JSON.stringify({
+              schema_version: "bob-bazaar-review/run-lock-closed/v1",
+              generation: 10_000,
+              owner_token: ownerToken
+            })}\n`
+            const lockSeeds = Array.from({ length: seedShardCount }, (_, index) => (
+              path.join(lockDirectory, `.lock-seed-${String(index + 1).padStart(2, "0")}`)
+            ))
+            const closureSeeds = Array.from({ length: seedShardCount }, (_, index) => (
+              path.join(lockDirectory, `.closure-seed-${String(index + 1).padStart(2, "0")}`)
+            ))
+            await Promise.all([
+              ...lockSeeds.map((seed) => fs.writeFile(seed, lockRecord, "utf8")),
+              ...closureSeeds.map((seed) => fs.writeFile(seed, closureRecord, "utf8"))
+            ])
+            for (let start = 1; start <= 10_000; start += 200) {
+              await Promise.all(Array.from({ length: Math.min(200, 10_001 - start) }, async (_, offset) => {
+                const generationNumber = start + offset
+                const generation = String(generationNumber).padStart(12, "0")
+                const shard = (generationNumber - 1) % seedShardCount
+                await fs.link(lockSeeds[shard], path.join(lockDirectory, `.authoring-run.lock.${generation}`))
+                await fs.link(closureSeeds[shard], path.join(lockDirectory, `.authoring-run.lock.${generation}.closed`))
+              }))
+            }
+          }
+          '''
+          pattern = re.compile(
+              r'async function seedExhaustedDirectoryLock\(lockDirectory\) \{.*?\n\}\n\n(?=async function waitForRecoveryMode)',
+              re.DOTALL,
+          )
+          run_store_text, count = pattern.subn(replacement + "\n", run_store_text)
+          if count != 1:
+              raise SystemExit(f"seedExhaustedDirectoryLock block matched {count} times")
+          run_store_test.write_text(run_store_text, encoding="utf-8", newline="\n")
+          '@ | python -
+
+          git diff --check
+          git diff -- extensions/bob-bazaar-review/test/ruleAuthoringGui.test.js extensions/bob-bazaar-review/test/ruleAuthoringRunStore.test.js
+
+      - name: Verify focused Windows GUI and rotating-lock suites
+        shell: pwsh
+        working-directory: extensions/bob-bazaar-review
+        run: |
+          npm ci
+          npm run compile
+          node --test test/ruleAuthoringGui.test.js test/ruleAuthoringRunStore.test.js
+
+      - name: Commit and push fixture fixes
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add extensions/bob-bazaar-review/test/ruleAuthoringGui.test.js extensions/bob-bazaar-review/test/ruleAuthoringRunStore.test.js
+          git commit -m "test: harden Windows rule authoring fixtures"
+          git push origin HEAD:codex/bazaar-ai-project-rule-authoring
+          gh api --method DELETE "repos/$env:GITHUB_REPOSITORY/git/refs/heads/$env:GITHUB_HEAD_REF"
