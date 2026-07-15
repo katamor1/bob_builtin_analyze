@@ -964,7 +964,7 @@ function validateRuleProvenanceEntry(value: unknown): asserts value is RuleProve
     !isCanonicalTimestamp(value.first_applied_at) ||
     !isCanonicalTimestamp(value.last_applied_at) ||
     compareText(value.first_applied_at, value.last_applied_at) > 0 ||
-    !isSafeRunId(value.last_run_id)
+    !isValidRuleAuthoringId(value.last_run_id)
   ) {
     throw new Error("Approved rule provenance is malformed")
   }
@@ -990,7 +990,7 @@ function validateMarkdownProvenanceEntry(value: unknown): asserts value is RuleP
     !isLifecycle(value.lifecycle) ||
     !Array.isArray(value.source_refs) ||
     !isCanonicalTimestamp(value.last_applied_at) ||
-    !isSafeRunId(value.last_run_id)
+    !isValidRuleAuthoringId(value.last_run_id)
   ) {
     throw new Error("Approved rule provenance is malformed")
   }
@@ -1364,11 +1364,13 @@ function isLifecycle(value: unknown): value is "active" | "retired" {
   return value === "active" || value === "retired"
 }
 
-function isSafeRunId(value: unknown): value is string {
-  return typeof value === "string" &&
-    value.length > 0 &&
-    Buffer.byteLength(value, "utf8") <= 255 &&
-    !CONTROL_CHARACTER.test(value)
+function isValidRuleAuthoringId(value: unknown): value is string {
+  if (typeof value !== "string") return false
+  try {
+    return validateRuleAuthoringId(value, "runId") === value
+  } catch {
+    return false
+  }
 }
 
 function validateConflictResolutionShape(value: unknown): void {

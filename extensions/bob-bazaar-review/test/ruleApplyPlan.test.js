@@ -764,3 +764,55 @@ test("rejects unknown fields at every rule-provenance level", () => {
     )
   }
 })
+
+test("rejects path-shaped provenance run IDs while preserving valid Unicode run and custom rule IDs", () => {
+  const evidence = evidenceFixture()
+  const provenance = {
+    schema_version: "bob-bazaar-review/rule-provenance/v1",
+    updated_at: "2026-07-14T00:00:00.000Z",
+    rules: [{
+      rule_id: "custom/security:input",
+      lifecycle: "retired",
+      source_refs: [],
+      first_applied_at: "2026-07-10T00:00:00.000Z",
+      last_applied_at: "2026-07-14T00:00:00.000Z",
+      last_run_id: "規約 適用"
+    }],
+    markdown_sections: [{
+      asset: "project-context",
+      section_id: "CTX-0009",
+      lifecycle: "retired",
+      source_refs: [],
+      last_applied_at: "2026-07-14T00:00:00.000Z",
+      last_run_id: "規約 適用"
+    }]
+  }
+  const build = (currentProvenance) => {
+    const current = bundle({ ruleProvenance: present(jsonBytes(currentProvenance)) })
+    const proposal = proposalFor(current, {
+      operations: [],
+      conflicts: [],
+      project_context_operations: [],
+      prompt_addendum_operations: []
+    })
+    return buildRuleApplyPlan(current, proposal, {
+      schema_version: "bob-bazaar-review/proposal-decisions/v1",
+      run_id: RUN_ID,
+      decisions: {}
+    }, evidence)
+  }
+
+  const accepted = parseTarget(build(provenance), "rule_provenance")
+  assert.equal(accepted.rules[0].rule_id, "custom/security:input")
+  assert.equal(accepted.rules[0].last_run_id, "規約 適用")
+  assert.equal(accepted.markdown_sections[0].last_run_id, "規約 適用")
+
+  for (const [label, mutate] of [
+    ["POSIX absolute path", (value) => { value.rules[0].last_run_id = "/home/alice/private/rules.docx" }],
+    ["Windows absolute path", (value) => { value.markdown_sections[0].last_run_id = "C:\\Users\\Alice\\rules.docx" }]
+  ]) {
+    const unsafe = structuredClone(provenance)
+    mutate(unsafe)
+    assert.throws(() => build(unsafe), /approved rule provenance.*malformed/i, label)
+  }
+})
