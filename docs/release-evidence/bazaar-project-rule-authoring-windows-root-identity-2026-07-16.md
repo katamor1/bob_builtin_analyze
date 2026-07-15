@@ -82,6 +82,53 @@ Commit `365ec50d690d8604e66fcd9a1e17f3d1738d50a6` normalizes the synthetic fixtu
   - `node --test test/ruleAuthoringArtifactStore.test.js`: success
   - feature-branch commit and push: success
 
+## GUI restart and lock-history fixture failures
+
+### RED evidence
+
+- Workflow: `extensions-quality`
+- Run: `29458611140`
+- Job: `87497198349` (`Windows / bob-bazaar-review`)
+- Failing suites:
+  - `test/ruleAuthoringGui.test.js`
+  - `test/ruleAuthoringRunStore.test.js`
+- Representative failures:
+  - `default resume adapter restores fresh and invalidated runs before choose and extract`
+  - `never retries a rotating callback when a nested lock reaches its own limit`
+- Focused follow-up run `29459361811`, job `87499422476`, also exposed:
+  - `caps closure history entries before snapshot validation work becomes unbounded`
+
+### Root cause
+
+1. The GUI restart fixture created three synthetic artifact pointers with raw `path.relative()` output, repeating the Windows separator mismatch already fixed in the artifact-store fixture.
+2. Two lock-boundary fixtures created more than 1,024 hard links from a single source inode. NTFS rejected the test setup before the production generation-limit and closure-limit guards could run.
+
+These failures were limited to synthetic test data. Production artifact persistence already uses POSIX-relative paths, and production lock files are separate immutable records rather than thousands of aliases to one inode.
+
+### Fix
+
+Commit `9383ab6ecf8acf7153fb546124d1b13b2e53e2c1`:
+
+- normalizes the GUI restart fixture's three artifact pointers to `/` separators;
+- distributes the 10,000-generation exhausted-lock fixture over 32 physically distinct lock seeds and 32 physically distinct closure seeds;
+- copies the initial closure record into 32 distinct seed files before creating the closure-history cap fixture;
+- preserves the exact 10,000-generation and 10,001-closure boundary conditions.
+
+The production validator, directory-entry limits, lock generation limits, and callback behavior are unchanged.
+
+### GREEN evidence
+
+- Workflow: `fix-pr97-windows-gui-lock-fixtures`
+- Run: `29459562775`
+- Job: `87500000856` (`fix-and-verify`)
+- Runner: Windows Server 2025
+- Verification:
+  - patch marker and `git diff --check`: success
+  - `npm ci`: success
+  - TypeScript compile: success
+  - `node --test test/ruleAuthoringGui.test.js test/ruleAuthoringRunStore.test.js`: success
+  - feature-branch commit and push: success
+
 ## Remaining gate
 
 This evidence covers repository Windows regressions only. Microsoft Office documents, Poppler, IBM Bob, workflow-register integration, visual Human Triage, and signed distribution remain in the separate Windows UAT / product-release gate.
