@@ -313,10 +313,9 @@ export async function createRunDurabilityFile(
     closeError = error
   }
   if (operationFailed || closeFailed) {
-    const primaryError = operationFailed ? operationError : closeError
-    const secondaryFailures: ExclusiveCreateSecondaryFailure[] = []
+    const safetyFailures: ExclusiveCreateSecondaryFailure[] = []
     if (identityProbeFailed) {
-      secondaryFailures.push({
+      safetyFailures.push({
         detail: `exclusive creation safety identity recovery also failed: ${formatError(identityProbeError)}`,
         error: identityProbeError
       })
@@ -325,35 +324,62 @@ export async function createRunDurabilityFile(
       try {
         await removeFailedExclusiveCreation(runDirectory, filePath, createdIdentity, runId, fileName)
       } catch (error) {
-        secondaryFailures.push({
+        safetyFailures.push({
           detail: `exclusive creation cleanup also failed: ${formatError(error)}`,
           error
         })
       }
     }
-    if (operationFailed && closeFailed) {
-      secondaryFailures.push({
+    if (operationFailed) {
+      if (closeFailed) {
+        safetyFailures.push({
+          detail: `exclusive creation handle close also failed: ${formatError(closeError)}`,
+          error: closeError
+        })
+      }
+      throw appendExclusiveCreateFailureContext(operationError, safetyFailures)
+    }
+    if (safetyFailures.length > 0) {
+      const [primarySafetyFailure, ...remainingSafetyFailures] = safetyFailures
+      remainingSafetyFailures.push({
         detail: `exclusive creation handle close also failed: ${formatError(closeError)}`,
         error: closeError
       })
+      throw appendExclusiveCreateFailureContext(primarySafetyFailure.error, remainingSafetyFailures)
     }
-    throw appendExclusiveCreateFailureContext(primaryError, secondaryFailures)
+    throw closeError
   }
-  try {
-    await syncDirectory(runDirectory, `Workflow run '${runId}' directory`)
-  } catch (error) {
-    const secondaryFailures: ExclusiveCreateSecondaryFailure[] = []
+  const directorySync = await settleDirectorySync(runDirectory, `Workflow run '${runId}' directory`)
+  if (directorySync.operationFailed || directorySync.closeFailed) {
+    let cleanupFailure: ExclusiveCreateSecondaryFailure | undefined
     if (createdIdentity) {
       try {
         await removeFailedExclusiveCreation(runDirectory, filePath, createdIdentity, runId, fileName)
       } catch (cleanupError) {
-        secondaryFailures.push({
+        cleanupFailure = {
           detail: `exclusive creation cleanup also failed: ${formatError(cleanupError)}`,
           error: cleanupError
-        })
+        }
       }
     }
-    throw appendExclusiveCreateFailureContext(error, secondaryFailures)
+    if (directorySync.operationFailed) {
+      const secondaryFailures: ExclusiveCreateSecondaryFailure[] = []
+      if (cleanupFailure) secondaryFailures.push(cleanupFailure)
+      if (directorySync.closeFailed) {
+        secondaryFailures.push({
+          detail: `directory sync handle close also failed: ${formatError(directorySync.closeError)}`,
+          error: directorySync.closeError
+        })
+      }
+      throw appendExclusiveCreateFailureContext(directorySync.operationError, secondaryFailures)
+    }
+    if (cleanupFailure) {
+      throw appendExclusiveCreateFailureContext(cleanupFailure.error, [{
+        detail: `directory sync handle close also failed: ${formatError(directorySync.closeError)}`,
+        error: directorySync.closeError
+      }])
+    }
+    throw directorySync.closeError
   }
   return true
 }
@@ -717,16 +743,31 @@ async function syncDirectFile(filePath: string, directory: DirectDirectory, labe
   }
 }
 
-async function syncDirectory(directory: DirectDirectory, label: string): Promise<void> {
+type DirectorySyncOutcome = {
+  closeError?: unknown
+  closeFailed: boolean
+  operationError?: unknown
+  operationFailed: boolean
+}
+
+async function settleDirectorySync(directory: DirectDirectory, label: string): Promise<DirectorySyncOutcome> {
   const noFollow = typeof constants.O_NOFOLLOW === "number" ? constants.O_NOFOLLOW : 0
   let handle: Awaited<ReturnType<typeof fs.open>> | undefined
   try {
     handle = await fs.open(directory.path, constants.O_RDONLY | noFollow)
   } catch (error) {
-    if (!isUnsupportedDirectorySyncError(error)) throw error
-    await assertDirectoryIdentity(directory, label)
-    return
+    if (!isUnsupportedDirectorySyncError(error)) {
+      return { closeFailed: false, operationError: error, operationFailed: true }
+    }
+    try {
+      await assertDirectoryIdentity(directory, label)
+      return { closeFailed: false, operationFailed: false }
+    } catch (identityError) {
+      return { closeFailed: false, operationError: identityError, operationFailed: true }
+    }
   }
+  let operationFailed = false
+  let operationError: unknown
   try {
     const opened = await handle.stat({ bigint: true })
     if (!opened.isDirectory() || !sameIdentity(directory, opened)) {
@@ -743,9 +784,28 @@ async function syncDirectory(directory: DirectDirectory, label: string): Promise
       throw new Error(`${label} changed during directory durability sync.`)
     }
     await assertDirectoryIdentity(directory, label)
-  } finally {
-    await handle.close()
+  } catch (error) {
+    operationFailed = true
+    operationError = error
   }
+  let closeFailed = false
+  let closeError: unknown
+  try {
+    await handle.close()
+  } catch (error) {
+    closeFailed = true
+    closeError = error
+  }
+  return { closeError, closeFailed, operationError, operationFailed }
+}
+
+async function syncDirectory(directory: DirectDirectory, label: string): Promise<void> {
+  const outcome = await settleDirectorySync(directory, label)
+  if (outcome.operationFailed) {
+    if (outcome.closeFailed) addSuppressedErrors(outcome.operationError, [outcome.closeError])
+    throw outcome.operationError
+  }
+  if (outcome.closeFailed) throw outcome.closeError
 }
 
 async function renameWithRetry(source: string, target: string, beforeRename: () => Promise<void>): Promise<void> {
