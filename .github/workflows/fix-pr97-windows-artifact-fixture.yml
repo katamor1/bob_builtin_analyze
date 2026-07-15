@@ -1,0 +1,71 @@
+name: fix-pr97-windows-artifact-fixture
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/fix-pr97-windows-artifact-fixture.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  fix-and-verify:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: codex/bazaar-ai-project-rule-authoring
+          fetch-depth: 0
+
+      - name: Normalize synthetic artifact pointers to the persisted contract
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+
+          test_file = Path("extensions/bob-bazaar-review/test/ruleAuthoringArtifactStore.test.js")
+          text = test_file.read_text(encoding="utf-8")
+          old = '''function artifactPointer(root, runId, basename, generationByte = "1") {
+            const paths = getRuleAuthoringPaths(root, runId)
+            return path.relative(
+              root,
+              path.join(paths.generationsDirectory, `gen-${generationByte.repeat(32)}`, basename)
+            )
+          }
+          '''
+          new = '''function artifactPointer(root, runId, basename, generationByte = "1") {
+            const paths = getRuleAuthoringPaths(root, runId)
+            return path.relative(
+              root,
+              path.join(paths.generationsDirectory, `gen-${generationByte.repeat(32)}`, basename)
+            ).split(path.sep).join("/")
+          }
+          '''
+          if text.count(old) != 1:
+              raise SystemExit("artifactPointer source block did not match exactly once")
+          test_file.write_text(text.replace(old, new), encoding="utf-8", newline="\n")
+          '@ | python -
+
+          git diff --check
+          git diff -- extensions/bob-bazaar-review/test/ruleAuthoringArtifactStore.test.js
+
+      - name: Verify focused Windows artifact-store suite
+        shell: pwsh
+        working-directory: extensions/bob-bazaar-review
+        run: |
+          npm ci
+          npm run compile
+          node --test test/ruleAuthoringArtifactStore.test.js
+
+      - name: Commit and push fixture fix
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add extensions/bob-bazaar-review/test/ruleAuthoringArtifactStore.test.js
+          git commit -m "test: normalize Windows artifact pointers"
+          git push origin HEAD:codex/bazaar-ai-project-rule-authoring
+          gh api --method DELETE "repos/$env:GITHUB_REPOSITORY/git/refs/heads/$env:GITHUB_HEAD_REF"
