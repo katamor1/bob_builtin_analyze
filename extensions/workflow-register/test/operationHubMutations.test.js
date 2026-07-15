@@ -5,8 +5,23 @@ const Module = require("node:module")
 const os = require("node:os")
 const path = require("node:path")
 const { test } = require("node:test")
+const { createPhysicalPathMatcher } = require("./helpers/physicalPathMatcher")
 
 const { OperationHubMutationCoordinator } = require("../out/gui/operationHubMutationCoordinator")
+const { applyWorkflowRunCleanupTransaction } = require("../out/core/runtime/runCleanupTransaction")
+const { workflowRunCleanupLeasePresent } = require("../out/core/runtime/runCleanupLease")
+
+const matchesPhysicalPath = createPhysicalPathMatcher(fs.promises)
+const { withWorkflowRunLock } = require("../out/core/runtime/runLock")
+const { FileRunStateStore } = require("../out/core/runStateStore")
+
+async function cleanupPlan(root, runId) {
+  const snapshot = await require("../out/core/runtime/runRetentionInventory").inspectWorkflowRunRetentionInventory(root)
+  return require("../out/core/retention/runRetention").planWorkflowRunCleanup(snapshot.inventory, {
+    now: "2026-07-13T03:00:00.000Z",
+    selectedRunIds: [runId]
+  })
+}
 
 function loadProviderWithVscode(vscode) {
   const originalLoad = Module._load
@@ -83,9 +98,15 @@ function runCommandHarness(t) {
   const rootA = tempRunRoot(t)
   const rootB = tempRunRoot(t)
   const state = {
+    additionalRuns: [],
+    afterTargetSave: async () => undefined,
+    beforeRunLock: async () => undefined,
+    durableLockedLoads: false,
+    durableStores: new Map(),
     engineRoots: [],
     runStoreCalls: 0,
     messages: [],
+    showQuickPick: async (items) => items[0],
     workflowIds: [],
     savedRuns: [],
     coordinateGateDecision: (_workspaceRoot, _runId, _kind, operation) => operation()
@@ -94,7 +115,7 @@ function runCommandHarness(t) {
     window: {
       showErrorMessage: async (message) => { state.messages.push(message) },
       showInformationMessage: async (message) => { state.messages.push(message) },
-      showQuickPick: async (items) => items[0],
+      showQuickPick: async (items, options) => state.showQuickPick(items, options),
       showWarningMessage: async (message) => { state.messages.push(message) }
     },
     workspace: { isTrusted: true }
@@ -113,9 +134,30 @@ function runCommandHarness(t) {
     createRunStore: (root) => {
       state.runStoreCalls += 1
       const fixture = root === rootA.root ? rootA : rootB
+      let durableStore
+      if (state.durableLockedLoads) {
+        durableStore = state.durableStores.get(root)
+        if (!durableStore) {
+          durableStore = new FileRunStateStore({
+            workspaceRoot: root,
+            lockOptions: { timeoutMs: 2_000, pollMs: 5, heartbeatMs: 0 }
+          })
+          state.durableStores.set(root, durableStore)
+        }
+      }
       return {
-        listRuns: async () => [fixture.run],
-        loadRun: async () => fixture.run,
+        listRuns: async () => [
+          JSON.parse(fs.readFileSync(fixture.runFile, "utf8")),
+          ...state.additionalRuns.filter((candidate) => candidate.root === root).map((candidate) => (
+            JSON.parse(fs.readFileSync(candidate.runFile, "utf8"))
+          ))
+        ],
+        loadRun: async (runId) => {
+          if (durableStore) return durableStore.loadRun(runId)
+          const candidate = [fixture, ...state.additionalRuns].find((entry) => entry.root === root && entry.runId === runId)
+          if (!candidate || !fs.existsSync(candidate.runFile)) return undefined
+          return JSON.parse(fs.readFileSync(candidate.runFile, "utf8"))
+        },
         createRun: async (selectedWorkflow, inputs) => ({
           ...fixture.run,
           runId: "seeded-run",
@@ -132,7 +174,23 @@ function runCommandHarness(t) {
             status: "pending"
           }))
         }),
-        saveRun: async (run) => { state.savedRuns.push(run) }
+        saveRun: async (run) => {
+          const targetFile = path.join(root, ".bob", "workflows", "runs", run.runId, "run.json")
+          fs.mkdirSync(path.dirname(targetFile), { recursive: true })
+          fs.writeFileSync(targetFile, `${JSON.stringify(run)}\n`)
+          state.savedRuns.push(structuredClone(run))
+          await state.afterTargetSave({ root, run, targetFile })
+        },
+        withRunLock: async (runId, operation, lockOptions = {}) => {
+          await state.beforeRunLock({ root, runId })
+          if (durableStore) return durableStore.withRunLock(runId, operation, lockOptions)
+          return withWorkflowRunLock(root, runId, operation, {
+            timeoutMs: 2_000,
+            pollMs: 5,
+            heartbeatMs: 0,
+            ...lockOptions
+          })
+        }
       }
     },
     createEngine: (root) => {
@@ -162,6 +220,95 @@ function runCommandHarness(t) {
     coordinateGateDecision: (...args) => state.coordinateGateDecision(...args)
   })
   return { rootA, rootB, service, state, workflow }
+}
+
+function configureArtifactWorkflow(workflow, root) {
+  workflow.workflowRoot = root
+  workflow.schemaVersion = "workflow-register/v1"
+  workflow.definitionHash = "artifact-definition-v1"
+  workflow.engineSteps = [
+    { id: "collect", title: "Collect", type: "agent", prompt: "Collect", resultKey: "context" },
+    { id: "step", title: "Step", type: "command" }
+  ]
+  workflow.artifacts = [{ id: "context", producedBy: "collect", path: "context.txt" }]
+}
+
+function writeArtifactSourceRun(root, runId, workflow, marker = "source") {
+  const runDirectory = path.join(root, ".bob", "workflows", "runs", runId)
+  const runFile = path.join(runDirectory, "run.json")
+  const artifactDirectory = path.join(runDirectory, "artifacts")
+  const artifactPath = path.join(artifactDirectory, "context.txt")
+  const relativeArtifactPath = path.relative(root, artifactPath).replace(/\\/g, "/")
+  const artifactText = `${marker} artifact`
+  const timestamp = "2026-07-12T01:00:00.000Z"
+  const run = {
+    schemaVersion: "workflow-register/run-state/v1",
+    runId,
+    workflowId: workflow.id,
+    workflowName: workflow.name,
+    workflowSchemaVersion: workflow.schemaVersion,
+    workflowDefinitionHash: workflow.definitionHash,
+    status: "completed",
+    inputs: {},
+    state: { marker },
+    steps: [
+      { id: "collect", title: "Collect", type: "agent", status: "completed" },
+      { id: "step", title: "Step", type: "command", status: "pending" }
+    ],
+    createdAt: timestamp,
+    updatedAt: timestamp
+  }
+  const runBytes = `${JSON.stringify(run)}\n`
+  const manifest = {
+    schemaVersion: "workflow-register/artifact-manifest/v1",
+    workflowId: workflow.id,
+    workflowDefinitionHash: workflow.definitionHash,
+    runId,
+    inputsHash: `sha256:${crypto.createHash("sha256").update("{}").digest("hex")}`,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    artifacts: [{
+      id: "context",
+      stateKey: "context",
+      producedBy: "collect",
+      path: relativeArtifactPath,
+      sha256: crypto.createHash("sha256").update(artifactText).digest("hex"),
+      bytes: Buffer.byteLength(artifactText, "utf8"),
+      source: "workflow-artifact",
+      updatedAt: timestamp
+    }]
+  }
+  fs.mkdirSync(artifactDirectory, { recursive: true })
+  fs.writeFileSync(runFile, runBytes)
+  fs.writeFileSync(artifactPath, artifactText)
+  fs.writeFileSync(path.join(artifactDirectory, "manifest.json"), `${JSON.stringify(manifest)}\n`)
+  return {
+    root,
+    runId,
+    run,
+    runDirectory,
+    runFile,
+    manifestFile: path.join(artifactDirectory, "manifest.json"),
+    revision: `sha256:${crypto.createHash("sha256").update(runBytes).digest("hex")}`
+  }
+}
+
+function cleanupFsOpsWithMoveBarrier(sourceDirectory, entered, release, onMatch) {
+  return {
+    mkdir: fs.promises.mkdir,
+    lstat: fs.promises.lstat,
+    realpath: fs.promises.realpath,
+    rename: async (source, target) => {
+      if (await matchesPhysicalPath(source, sourceDirectory)) {
+        onMatch?.()
+        entered.resolve()
+        await withTimeout(release.promise, "cleanup move release")
+      }
+      return fs.promises.rename(source, target)
+    },
+    rm: fs.promises.rm,
+    readdir: fs.promises.readdir
+  }
 }
 
 function providerHarness(t, run = tempRunRoot(t)) {
@@ -272,6 +419,21 @@ function deferred() {
   return { promise, resolve, reject }
 }
 
+function settle(operation) {
+  return operation.then(
+    (value) => ({ status: "fulfilled", value }),
+    (reason) => ({ status: "rejected", reason })
+  )
+}
+
+function withTimeout(promise, label, timeoutMs = 30_000) {
+  let timer
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`Timed out waiting for ${label} after ${timeoutMs}ms.`)), timeoutMs)
+  })
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer))
+}
+
 function runIdentity(overrides = {}) {
   return {
     actionId: "retryCurrentStep",
@@ -291,7 +453,7 @@ test("Operation Hub host shares one promise and underlying mutation for identica
   const operation = async () => {
     calls += 1
     started.resolve()
-    await release.promise
+    await withTimeout(release.promise, "shared mutation release")
     return result
   }
 
@@ -299,7 +461,7 @@ test("Operation Hub host shares one promise and underlying mutation for identica
   const duplicate = coordinator.coordinate(runIdentity(), operation)
 
   assert.strictEqual(duplicate, first)
-  await started.promise
+  await withTimeout(started.promise, "shared mutation start")
   assert.equal(calls, 1)
   release.resolve()
   const [firstResult, duplicateResult] = await Promise.all([first, duplicate])
@@ -317,11 +479,11 @@ test("Operation Hub host serializes different mutations for the same root and ru
   const first = coordinator.coordinate(runIdentity({ actionId: "acceptCurrentStep" }), async () => {
     order.push("accept:start")
     firstStarted.resolve()
-    await releaseFirst.promise
+    await withTimeout(releaseFirst.promise, "first queued mutation release")
     order.push("accept:end")
     return "accepted"
   })
-  await firstStarted.promise
+  await withTimeout(firstStarted.promise, "first queued mutation start")
   const second = coordinator.coordinate(runIdentity({ actionId: "runNextStep" }), async () => {
     order.push("next:start")
     return "next"
@@ -342,11 +504,11 @@ test("Operation Hub host keeps different revisions distinct while serializing th
   const first = coordinator.coordinate(runIdentity({ expectedRevision: "sha256:revision-a" }), async () => {
     order.push("revision-a:start")
     firstStarted.resolve()
-    await releaseFirst.promise
+    await withTimeout(releaseFirst.promise, "first cross-action mutation release")
     order.push("revision-a:end")
     return "revision-a"
   })
-  await firstStarted.promise
+  await withTimeout(firstStarted.promise, "first cross-action mutation start")
   const second = coordinator.coordinate(runIdentity({ expectedRevision: "sha256:revision-b" }), async () => {
     order.push("revision-b:revalidate")
     throw new Error("stale revision-b")
@@ -370,12 +532,12 @@ test("Operation Hub host lets equal run ids in different roots proceed independe
 
   const first = coordinator.coordinate(runIdentity({ workspaceRoot: "C:\\workspace-a" }), async () => {
     startedA.resolve()
-    await releaseA.promise
+    await withTimeout(releaseA.promise, "workspace A mutation release")
     return "a"
   })
   const second = coordinator.coordinate(runIdentity({ workspaceRoot: "C:\\workspace-b" }), async () => {
     startedB.resolve()
-    await releaseB.promise
+    await withTimeout(releaseB.promise, "workspace B mutation release")
     return "b"
   })
 
@@ -405,13 +567,13 @@ test("Operation Hub provider coordinates duplicate structured run mutations befo
   const started = deferred()
   state.executeCommand = async () => {
     started.resolve()
-    await release.promise
+    await withTimeout(release.promise, "failed owner release")
     return { status: "retried" }
   }
 
   const first = provider.handleMessage(mutationMessage(run))
   const duplicate = provider.handleMessage(mutationMessage(run))
-  await started.promise
+  await withTimeout(started.promise, "failed owner start")
   assert.equal(state.commands.length, 1)
   assert.deepEqual(state.commands[0], [
     "workflowRegister.retryCurrentStep",
@@ -435,7 +597,7 @@ test("Operation Hub provider does not coalesce the same action when expected rev
   const started = deferred()
   state.executeCommand = async () => {
     started.resolve()
-    await release.promise
+    await withTimeout(release.promise, "first provider mutation release")
     fs.writeFileSync(run.runFile, `${JSON.stringify({
       ...run.run,
       state: { winner: "first-mutation" }
@@ -444,10 +606,13 @@ test("Operation Hub provider does not coalesce the same action when expected rev
   }
 
   const first = provider.handleMessage(mutationMessage(run))
-  await started.promise
+  await withTimeout(started.promise, "first provider mutation start")
   const staleRevision = `sha256:${"b".repeat(64)}`
+  let secondSettled = false
   const second = provider.handleMessage(mutationMessage(run, { expectedRevision: staleRevision }))
-  await new Promise((resolve) => setTimeout(resolve, 100))
+    .finally(() => { secondSettled = true })
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(secondSettled, false)
   assert.equal(state.commands.length, 1)
 
   release.resolve()
@@ -743,6 +908,232 @@ test("workflow artifact hydration rejects a manifest entry through an external j
   }, {})
   assert.match(String(result), /workspace|outside|junction|alias|physical/i)
 
+  assert.equal(state.savedRuns.length, 0)
+  assert.equal(state.engineRoots.length, 0)
+})
+
+test("workflow artifact source lock remains held through durable target provenance save", async (t) => {
+  const { rootB, service, state, workflow } = runCommandHarness(t)
+  configureArtifactWorkflow(workflow, rootB.root)
+  const source = writeArtifactSourceRun(rootB.root, rootB.runId, workflow)
+  const sourceCleanupPlan = await cleanupPlan(rootB.root, source.runId)
+  const targetSaved = deferred()
+  const releaseTargetSave = deferred()
+  state.afterTargetSave = async ({ run }) => {
+    if (run.runId !== "seeded-run") return
+    targetSaved.resolve()
+    await withTimeout(releaseTargetSave.promise, "target provenance save release")
+  }
+
+  const command = settle(withTimeout(service.startFromStepWithArtifacts(workflow.id, "step", source.runId, {}), "artifact source command"))
+  await withTimeout(targetSaved.promise, "durable target provenance save")
+  const cleanupOutcome = await settle(withTimeout(applyWorkflowRunCleanupTransaction({
+    workspaceRoot: rootB.root,
+    expectedPlan: sourceCleanupPlan,
+    transactionId: "source-lock-through-target-save"
+  }), "source cleanup rejection"))
+  let barrierError
+  try {
+    assert.equal(cleanupOutcome.status, "rejected")
+    assert.equal(fs.statSync(source.runDirectory).isDirectory(), true)
+    assert.match(String(cleanupOutcome.reason), /execution lock|run lock|locked|busy/i)
+    const target = JSON.parse(fs.readFileSync(
+      path.join(rootB.root, ".bob", "workflows", "runs", "seeded-run", "run.json"),
+      "utf8"
+    ))
+    assert.equal(JSON.parse(target.state["workflow.artifactReuse"]).sourceRunId, source.runId)
+    assert.equal(JSON.parse(target.state["workflow.artifactHydration"]).sourceRunId, source.runId)
+    assert.equal(state.engineRoots.length, 0, "source lock should be released only after save and before engine start")
+  } catch (error) {
+    barrierError = error
+  } finally {
+    releaseTargetSave.resolve()
+  }
+  const commandOutcome = await command
+  if (barrierError) throw barrierError
+  assert.equal(commandOutcome.status, "fulfilled")
+})
+
+test("authoritative provenance cannot commit after cleanup full inventory reaches the source rename barrier", async (t) => {
+  const { rootB, service, state, workflow } = runCommandHarness(t)
+  configureArtifactWorkflow(workflow, rootB.root)
+  const source = writeArtifactSourceRun(rootB.root, rootB.runId, workflow, "selected")
+  const alternative = writeArtifactSourceRun(rootB.root, "alternative-source", workflow, "alternative")
+  state.additionalRuns.push(alternative)
+  const sourceCleanupPlan = await cleanupPlan(rootB.root, source.runId)
+  const quickPickReady = deferred()
+  const returnSelection = deferred()
+  state.showQuickPick = async (items, options) => {
+    if (!String(options?.title).startsWith("Artifact source run:")) return items[0]
+    quickPickReady.resolve()
+    await withTimeout(returnSelection.promise, "artifact source selection release")
+    return items.find((item) => item.candidate.run.runId === source.runId)
+  }
+  let targetSaved = false
+  state.afterTargetSave = async ({ run }) => {
+    if (run.runId === "seeded-run") targetSaved = true
+  }
+
+  const command = settle(withTimeout(service.startFromStepWithArtifacts(workflow.id, "step", undefined, {}), "cleanup-selected source command"))
+  await withTimeout(quickPickReady.promise, "artifact source quick pick")
+  const cleanupAtMove = deferred()
+  const allowCleanupMove = deferred()
+  let cleanupMoveHookFired = false
+  const cleanupRoot = rootB.root
+  const cleanupSourceDirectory = source.runDirectory
+  const cleanup = settle(withTimeout(applyWorkflowRunCleanupTransaction({
+    workspaceRoot: cleanupRoot,
+    expectedPlan: sourceCleanupPlan,
+    transactionId: "cleanup-selected-artifact-source",
+    fsOps: cleanupFsOpsWithMoveBarrier(cleanupSourceDirectory, cleanupAtMove, allowCleanupMove, () => {
+      cleanupMoveHookFired = true
+    })
+  }), "cleanup-selected source transaction"))
+  await withTimeout(cleanupAtMove.promise, "cleanup-selected move barrier")
+  assert.equal(cleanupMoveHookFired, true, "the cleanup source move hook must fire")
+  assert.equal(await workflowRunCleanupLeasePresent(rootB.root, source.runId), true)
+  returnSelection.resolve()
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(targetSaved, false, "target save must remain unsettled behind the cleanup lease")
+  assert.equal(state.savedRuns.length, 0, "target provenance must not save while cleanup owns the source lease")
+  allowCleanupMove.resolve()
+  const [cleanupOutcome, commandOutcome] = await Promise.all([cleanup, command])
+
+  assert.equal(state.savedRuns.length, 0)
+  assert.equal(commandOutcome.status, "rejected")
+  if (cleanupOutcome.status === "rejected") {
+    assert.match(String(cleanupOutcome.reason), /EISDIR|path is a directory/i)
+  }
+  assert.equal(fs.existsSync(path.join(rootB.root, ".bob", "workflows", "runs", "seeded-run", "run.json")), false)
+})
+
+test("workflow artifact source cleanup completed before locking does not recreate the source directory", async (t) => {
+  const { rootB, service, state, workflow } = runCommandHarness(t)
+  configureArtifactWorkflow(workflow, rootB.root)
+  const source = writeArtifactSourceRun(rootB.root, rootB.runId, workflow)
+  const sourceCleanupPlan = await cleanupPlan(rootB.root, source.runId)
+  let cleanupOutcome
+  state.beforeRunLock = async ({ runId }) => {
+    if (cleanupOutcome || runId !== source.runId) return
+    cleanupOutcome = await settle(withTimeout(applyWorkflowRunCleanupTransaction({
+      workspaceRoot: rootB.root,
+      expectedPlan: sourceCleanupPlan,
+      transactionId: "cleanup-complete-before-source-lock"
+    }), "cleanup-complete source transaction"))
+    if (cleanupOutcome.status === "rejected") {
+      assert.match(String(cleanupOutcome.reason), /EISDIR|path is a directory/i)
+    }
+    assert.equal(fs.existsSync(source.runDirectory), false)
+  }
+
+  const commandOutcome = await settle(withTimeout(
+    service.startFromStepWithArtifacts(workflow.id, "step", source.runId, {}),
+    "cleanup-complete source reuse"
+  ))
+
+  assert.ok(cleanupOutcome, "source locking must reach the cleanup-complete barrier")
+  assert.equal(commandOutcome.status, "rejected")
+  assert.equal(state.savedRuns.length, 0)
+  assert.equal(fs.existsSync(source.runDirectory), false)
+  assert.equal(fs.existsSync(path.join(rootB.root, ".bob", "workflows", "runs", "seeded-run")), false)
+})
+
+test("workflow artifact source reuse recovers a pending journal inside the owned source lock", async (t) => {
+  const { rootB, service, state, workflow } = runCommandHarness(t)
+  configureArtifactWorkflow(workflow, rootB.root)
+  const source = writeArtifactSourceRun(rootB.root, rootB.runId, workflow)
+  const crashing = new FileRunStateStore({
+    workspaceRoot: rootB.root,
+    now: () => source.run.updatedAt,
+    lockOptions: { timeoutMs: 2_000, pollMs: 5, heartbeatMs: 0 },
+    durabilityFault: (stage) => {
+      if (stage === "afterJournal") throw new Error("crash:afterJournal")
+    }
+  })
+  const pending = await withTimeout(crashing.loadRun(source.runId), "artifact source crash load")
+  await assert.rejects(
+    withTimeout(crashing.saveRun(pending), "artifact source crash injection"),
+    /crash:afterJournal/
+  )
+  const journalFile = path.join(source.runDirectory, "run-state.journal.json")
+  assert.equal(fs.statSync(journalFile).isFile(), true)
+  state.durableLockedLoads = true
+
+  const result = await withTimeout(
+    service.startFromStepWithArtifacts(workflow.id, "step", source.runId, {}),
+    "pending-journal artifact source reuse",
+    30_000
+  )
+
+  assert.equal(result.status, "running")
+  assert.match(state.messages.join("\n"), /reused 1 step\(s\) from shared-run/i)
+  assert.equal(state.savedRuns.length, 1)
+  assert.equal(fs.existsSync(journalFile), false)
+  const reuse = JSON.parse(state.savedRuns[0].state["workflow.artifactReuse"])
+  assert.equal(reuse.sourceRunId, source.runId)
+})
+
+test("workflow artifact source state and expected revision are reopened under the source lock", async (t) => {
+  const { rootB, service, state, workflow } = runCommandHarness(t)
+  configureArtifactWorkflow(workflow, rootB.root)
+  const source = writeArtifactSourceRun(rootB.root, rootB.runId, workflow)
+  let changed = false
+  state.beforeRunLock = async ({ runId }) => {
+    if (changed || runId !== source.runId) return
+    changed = true
+    const replacement = { ...source.run, state: { marker: "changed-after-selection" } }
+    fs.writeFileSync(source.runFile, `${JSON.stringify(replacement)}\n`)
+  }
+
+  const outcome = await settle(service.startFromStepWithArtifacts(workflow.id, "step", {
+    source: "operationHub",
+    workspaceRoot: rootB.root,
+    runId: source.runId,
+    expectedRevision: source.revision
+  }, {}))
+
+  assert.equal(changed, true, "the selected source must enter its normal run-lock seam")
+  assert.equal(outcome.status, "rejected")
+  assert.match(String(outcome.reason), /revision|refresh|updated|changed|再読込|更新/i)
+  assert.equal(state.savedRuns.length, 0)
+  assert.equal(state.engineRoots.length, 0)
+})
+
+test("workflow artifact source read-only state is revalidated under the source lock", async (t) => {
+  const { rootB, service, state, workflow } = runCommandHarness(t)
+  configureArtifactWorkflow(workflow, rootB.root)
+  const source = writeArtifactSourceRun(rootB.root, rootB.runId, workflow)
+  state.beforeRunLock = async ({ runId }) => {
+    if (runId !== source.runId) return
+    fs.writeFileSync(source.runFile, `${JSON.stringify({
+      ...source.run,
+      schemaVersion: "workflow-register/run-state/v99"
+    })}\n`)
+  }
+
+  const outcome = await settle(service.startFromStepWithArtifacts(workflow.id, "step", source.runId, {}))
+
+  assert.equal(outcome.status, "rejected")
+  assert.match(String(outcome.reason), /read-only|schemaVersion|cannot be written/i)
+  assert.equal(state.savedRuns.length, 0)
+  assert.equal(state.engineRoots.length, 0)
+})
+
+test("workflow artifact manifest changes after selection are rejected under the source lock", async (t) => {
+  const { rootB, service, state, workflow } = runCommandHarness(t)
+  configureArtifactWorkflow(workflow, rootB.root)
+  const source = writeArtifactSourceRun(rootB.root, rootB.runId, workflow)
+  state.beforeRunLock = async ({ runId }) => {
+    if (runId !== source.runId) return
+    const changed = JSON.parse(fs.readFileSync(source.manifestFile, "utf8"))
+    changed.updatedAt = "2026-07-12T02:00:00.000Z"
+    fs.writeFileSync(source.manifestFile, `${JSON.stringify(changed)}\n`)
+  }
+
+  const outcome = await settle(service.startFromStepWithArtifacts(workflow.id, "step", source.runId, {}))
+
+  assert.equal(outcome.status, "rejected")
+  assert.match(String(outcome.reason), /manifest.*changed|changed.*manifest/i)
   assert.equal(state.savedRuns.length, 0)
   assert.equal(state.engineRoots.length, 0)
 })

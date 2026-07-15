@@ -32,6 +32,20 @@ function clock(...values) {
   return () => values[Math.min(index++, values.length - 1)]
 }
 
+function deferred() {
+  let resolve
+  const promise = new Promise((done) => { resolve = done })
+  return { promise, resolve }
+}
+
+function withTimeout(promise, label, timeoutMs = 10_000) {
+  let timer
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`Timed out waiting for ${label} after ${timeoutMs}ms.`)), timeoutMs)
+  })
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer))
+}
+
 test("store commits run state with an immutable event and clears operational files", async (t) => {
   const workspace = root(t)
   const store = new FileRunStateStore({
@@ -86,6 +100,65 @@ test("store recovers each injected crash point without duplicate events", async 
       assert.equal(await readWorkflowRunJournal(workspace, run.runId), undefined)
     })
   }
+})
+
+test("pending-journal owned load stays reentrant while an independent contender observes the filesystem lock", async (t) => {
+  const workspace = root(t)
+  const base = new FileRunStateStore({
+    workspaceRoot: workspace,
+    now: clock("2026-07-12T00:00:00.000Z", "2026-07-12T00:01:00.000Z"),
+    lockOptions: { heartbeatMs: 0, timeoutMs: 2_000 }
+  })
+  const run = await base.createRun(workflow(), {})
+  await base.saveRun(run)
+  const crashing = new FileRunStateStore({
+    workspaceRoot: workspace,
+    now: () => "2026-07-12T00:02:00.000Z",
+    lockOptions: { heartbeatMs: 0, timeoutMs: 2_000 },
+    durabilityFault: (stage) => {
+      if (stage === "afterJournal") throw new Error("crash:afterJournal")
+    }
+  })
+  const pending = await crashing.loadRun(run.runId)
+  pending.state.recovered = "latest"
+  await assert.rejects(crashing.saveRun(pending), /crash:afterJournal/)
+  assert.ok(await readWorkflowRunJournal(workspace, run.runId))
+
+  const ownerLoaded = deferred()
+  const releaseOwner = deferred()
+  const ownerStore = new FileRunStateStore({
+    workspaceRoot: workspace,
+    lockOptions: { heartbeatMs: 0, timeoutMs: 2_000, pollMs: 5 }
+  })
+  const owner = ownerStore.withRunLock(run.runId, async () => {
+    const recovered = await ownerStore.loadRun(run.runId)
+    assert.equal(recovered.state.recovered, "latest")
+    ownerLoaded.resolve()
+    await withTimeout(releaseOwner.promise, "owned lock release", 30_000)
+  })
+  void owner.catch(() => undefined)
+
+  let contenderRan = false
+  const contender = new FileRunStateStore({
+    workspaceRoot: workspace,
+    lockOptions: { heartbeatMs: 0, timeoutMs: 1_000, pollMs: 5 }
+  })
+  try {
+    await withTimeout(Promise.race([
+      ownerLoaded.promise,
+      owner.then(() => { throw new Error("Pending-journal owner completed before loading the run.") })
+    ]), "owned pending-journal load", 30_000)
+    assert.ok(await readRunDurabilityFile(workspace, run.runId, "run.lock.json"))
+    assert.equal(await readWorkflowRunJournal(workspace, run.runId), undefined)
+    await assert.rejects(
+      withTimeout(contender.withRunLock(run.runId, async () => { contenderRan = true }), "independent contender", 30_000),
+      /busy|locked by another process/i
+    )
+  } finally {
+    releaseOwner.resolve()
+    await withTimeout(owner, "pending-journal owner completion", 30_000)
+  }
+  assert.equal(contenderRan, false)
 })
 
 test("stale loaded state cannot overwrite a newer committed revision", async (t) => {

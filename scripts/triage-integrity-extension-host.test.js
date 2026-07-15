@@ -18,6 +18,10 @@ const EXTENSION_ID = "local.bob-code-consistency-review"
 const BOB_OUTPUT_PATH = ".bob-review/bob-output/bob-output.yaml"
 const TRIAGE_PATH = ".bob-review/human-triage"
 const REVIEW_PACKAGE_PATH = ".bob-review/review-package"
+const HUMAN_TRIAGE_TAB_LABEL = "Code Consistency Human Triage"
+const HUMAN_TRIAGE_VIEW_TYPE = "bobCodeConsistencyHumanTriage"
+const TAB_STATE_TIMEOUT_MS = 5_000
+const TAB_STATE_POLL_INTERVAL_MS = 50
 const temporaryRoots = []
 
 describe("Human Triage operator Extension Host flows", function () {
@@ -190,12 +194,83 @@ async function executeTriage(workspaceRoot) {
 }
 
 async function openAndCloseHumanTriage() {
+  const readinessUri = vscode.Uri.file(path.join(operatorWorkspaceRoot(), "README.md"))
+  const readinessDocument = await vscode.workspace.openTextDocument(readinessUri)
+  assert.equal(readinessDocument.isUntitled, false, "workbench readiness must use the fixture README")
+  assert.equal(readinessDocument.isDirty, false, "workbench readiness must not dirty the fixture README")
+  await vscode.window.showTextDocument(readinessDocument, {
+    viewColumn: vscode.ViewColumn.One,
+    preview: false,
+    preserveFocus: false
+  })
+  await waitForTabSelection(
+    () => vscode.window.tabGroups.all.length > 0 ? findTabForUri(readinessUri) : undefined,
+    "the fixture README editor to materialize the editor workbench"
+  )
+  assert.ok(vscode.window.tabGroups.all.length > 0, "editor workbench must expose at least one tab group")
+
   await vscode.commands.executeCommand("bobCodeConsistency.openHumanTriageGui")
-  await delay(500)
-  const activeTab = vscode.window.tabGroups.activeTabGroup.activeTab
-  assert.equal(activeTab?.label, "Code Consistency Human Triage")
-  await vscode.commands.executeCommand("workbench.action.closeActiveEditor")
-  await delay(100)
+  const targetTab = await waitForTabSelection(
+    () => {
+      const activeTab = vscode.window.tabGroups.activeTabGroup.activeTab
+      return isHumanTriageWebviewTab(activeTab) ? activeTab : undefined
+    },
+    `active Webview tab ${JSON.stringify(HUMAN_TRIAGE_TAB_LABEL)} to appear`
+  )
+  const closed = await vscode.window.tabGroups.close(targetTab)
+  assert.equal(closed, true, `failed to close Webview tab ${JSON.stringify(HUMAN_TRIAGE_TAB_LABEL)}`)
+  await waitForTabSelection(
+    () => {
+      const remainingTabs = vscode.window.tabGroups.all.flatMap((group) => group.tabs)
+      const targetIsOpen = remainingTabs.some((tab) => tab === targetTab || isHumanTriageWebviewTab(tab))
+      return targetIsOpen ? undefined : findTabForUri(readinessUri)
+    },
+    `Webview tab ${JSON.stringify(HUMAN_TRIAGE_TAB_LABEL)} to disappear while the fixture README remains open`
+  )
+}
+
+function isHumanTriageWebviewTab(tab) {
+  const viewType = tab?.input?.viewType
+  return tab?.label === HUMAN_TRIAGE_TAB_LABEL &&
+    (viewType === HUMAN_TRIAGE_VIEW_TYPE || viewType === `mainThreadWebview-${HUMAN_TRIAGE_VIEW_TYPE}`)
+}
+
+function findTabForUri(uri) {
+  const expected = uri.toString()
+  return vscode.window.tabGroups.all
+    .flatMap((group) => group.tabs)
+    .find((tab) => tab.input?.uri?.toString() === expected)
+}
+
+async function waitForTabSelection(selectTab, description) {
+  const deadline = Date.now() + TAB_STATE_TIMEOUT_MS
+  while (true) {
+    const selectedTab = selectTab()
+    if (selectedTab !== undefined) return selectedTab
+
+    const remaining = deadline - Date.now()
+    if (remaining <= 0) {
+      throw new Error(
+        `Timed out after ${TAB_STATE_TIMEOUT_MS}ms waiting for ${description}; ${describeTabState()}`
+      )
+    }
+    await delay(Math.min(TAB_STATE_POLL_INTERVAL_MS, remaining))
+  }
+}
+
+function describeTabState() {
+  const groups = vscode.window.tabGroups.all
+  const activeLabel = vscode.window.tabGroups.activeTabGroup.activeTab?.label
+  const visibleLabels = groups
+    .map((group) => group.activeTab?.label)
+    .filter((label) => typeof label === "string")
+  const openLabels = groups.flatMap((group) => group.tabs.map((tab) => tab.label))
+  const openInputs = groups.flatMap((group) => group.tabs.map((tab) => ({
+    label: tab.label,
+    inputType: tab.input?.constructor?.name ?? null,
+    viewType: tab.input?.viewType ?? null
+  })))
+  return `active=${JSON.stringify(activeLabel ?? null)}, visible=${JSON.stringify(visibleLabels)}, open=${JSON.stringify(openLabels)}, inputs=${JSON.stringify(openInputs)}`
 }
 
 function createTemporaryWorkspace(label) {

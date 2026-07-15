@@ -226,7 +226,7 @@ Task snapshot から artifact を生成する前に、利用者が抽出元、�
 
 ### P1-3. Reused / Skipped 状態を一貫表示する
 
-**実行状況（2026-07-13）:** Draft PR #90で実装済み。共通projector、Operation Hub、Runs View、Run Diagnostics、Bob chat control、metadata sanitization、表示上限のfocused testはGREEN。最終Ubuntu／Windows matrixとmergeは継続中。
+**実行状況（2026-07-16）:** PR #90をsquash merge済み（`c140c290`）。共通projector、Operation Hub、Runs View、Run Diagnostics、Bob chat control、metadata sanitization、表示上限をmainへ統合した。実IBM Bobとmulti-rootのProduct Release UATは継続する。
 
 **Issue title**
 
@@ -267,6 +267,8 @@ Task snapshot から artifact を生成する前に、利用者が抽出元、�
 
 ### P1-4. Detached Held Run の復旧アシスタントを追加する
 
+**実行状況（2026-07-16）:** PR #91をsquash merge済み（`829be5f9`）。`run.json`正本の分類、root/revision-bound preview/apply、single-flight mutation、metadata-only provenanceをmainへ統合した。実IBM Bob、multi-root、配布UATは継続する。
+
 **Issue title**
 
 ```text
@@ -304,7 +306,7 @@ Task snapshot から artifact を生成する前に、利用者が抽出元、�
 
 ### P1-5. 決定的な自動 Pause 制限を追加する
 
-**実行状況（2026-07-12）:** Issue #73 / draft PR #75 で実装済み。focused / full suite、Ubuntu / Windows、package、VSIX policy、Extension Host smoke は GREEN。実 IBM Bob / Bazaar / multi-root は外部ゲートとして継続する。
+**実行状況（2026-07-16）:** PR #75を2-parent merge済み（`d78dec21`）。その後のworkflow platform remediationをPR #92でsquash merge済み（`f35e7e79`）。Focused/full suite、Ubuntu/Windows、package、VSIX policy、Extension Host smokeを統合済みだが、実IBM Bob/Bazaar/multi-rootはProduct Release外部ゲートとして継続する。
 
 **Issue title**
 
@@ -355,6 +357,8 @@ workflow 側と workspace setting 側の両方に値がある場合は、より�
 
 ### P1-6. Run 保存期間・容量・プライバシー管理を追加する
 
+**実行状況（2026-07-16）:** PR #93で実装・最終検証中。6つのmanual command、4設定、physical inventory、pin、cleanup lease/owner guard、quarantine transaction、root-first multi-root、metadata-only reportを実装済み。Migration safety/error-precedence fix `7d6e38d1`（34/34、final targeted review Critical 0 / Important 0 / Minor 0）とWindows path-test portability fix `31e09ee9`を含む。PR #93のexact-final-head Linux/Windows/policy/package/reviewがGREENになりsquash mergeを確認するまではintegration NO-GOとする。Main統合後もProduct Releaseは実IBM Bob/Bazaar、multi-root、ReFS/AV、signing/distribution/rollback UAT完了までNO-GOとする。
+
 **Issue title**
 
 ```text
@@ -372,12 +376,16 @@ workflow 側と workspace setting 側の両方に値がある場合は、より�
 }
 ```
 
-#### コマンド案
+#### 手動コマンド
 
-- `Bob Workflow: Run保存容量を確認`
-- `Bob Workflow: Run整理をプレビュー`
-- `Bob Workflow: 選択したRunを削除`
-- `Bob Workflow: 完了Runを整理`
+- `workflowRegister.inspectRunStorage` — `Bob Workflow: 実行ストレージを確認`
+- `workflowRegister.previewRunCleanup` — `Bob Workflow: 実行クリーンアップをプレビュー`
+- `workflowRegister.cleanupCompletedRuns` — `Bob Workflow: 完了済み実行をクリーンアップ`
+- `workflowRegister.deleteSelectedRuns` — `Bob Workflow: 選択した実行を削除`
+- `workflowRegister.pinRun` — `Bob Workflow: 実行を保持`
+- `workflowRegister.unpinRun` — `Bob Workflow: 実行の保持を解除`
+
+6コマンドは手動実行専用で、startup/timerによる自動削除は行わない。`workflowRegister.runs.retention.enabled=false`は将来自動化用の予約値であり、manual commandを無効化しない。Inspect/previewはuntrusted workspaceでもread-only、cleanup/delete/pin/unpinはtrustを必須とする。Multi-rootではrootを先に選び、そのroot内のrunだけを対象にする。
 
 #### 自動削除禁止対象
 
@@ -397,6 +405,9 @@ workflow 側と workspace setting 側の両方に値がある場合は、より�
 - symlink / workspace 外 path を拒否する。
 - manifest や reuse provenance の参照関係を考慮する。
 - 初期値は自動削除無効とする。
+- Cleanup leaseは`.bob/workflows/run-cleanup-leases/<runId>.json`、owner guardは`.bob/workflows/run-cleanup-leases/<runId>.guard/owner.json`、quarantineは`.bob/workflows/run-cleanup-quarantine/<txId>/<runId>`に保存する。
+- Cross-process migration crash pairは自動回復せず、operatorがtemp/backupの`dev`、`ino`、`nlink`、exact bytes、no-alias、publisher停止を証明するまで保全する。
+- Preview、diagnostics、release evidenceはmetadata-onlyとし、task/artifact/snapshot/state本文を含めない。
 
 ## Milestone 3 — `workflow-register/v0.5.0-platform-hardening`
 

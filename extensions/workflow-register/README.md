@@ -336,6 +336,12 @@ steps:
 | `Bob Workflow: 分岐状態を確認` | loop count、checkpoint、分岐履歴を表示する。 |
 | `Bob Workflow: 現在のステップをGUIで編集` | current step の定義を GUI Builder で開く。 |
 | `Bob Workflow: 診断を確認` | run state と task snapshot の診断を確認する。 |
+| `Bob Workflow: 実行ストレージを確認` | run件数、物理使用量、status、blockerをmetadata-onlyで確認する。 |
+| `Bob Workflow: 実行クリーンアップをプレビュー` | retention policyによる対象/除外理由とplan digestをread-onlyで確認する。 |
+| `Bob Workflow: 完了済み実行をクリーンアップ` | previewとmodal確認後、同じplanを再検証してterminal runを整理する。 |
+| `Bob Workflow: 選択した実行を削除` | rootを先に選び、選択したrunのうちplannerが許可したものだけを整理する。 |
+| `Bob Workflow: 実行を保持` | 既存runへpin metadataと任意noteを設定する。 |
+| `Bob Workflow: 実行の保持を解除` | 既存runのpinを解除する。 |
 | `Bob Workflow: 実行中ステップを確認` | 手動完了待ち active step を確認する。 |
 | `Bob Workflow: 手動操作ステップを開く` | held run または active manual step の手動操作ページを開く。 |
 | `Bob Workflow: 現在のステップを完了` | 現在の手動ステップを完了する。 |
@@ -344,6 +350,10 @@ steps:
 Task snapshot は `.bob/workflows/runs/<runId>/task-snapshots/` に保存され、既定では Bob chat messages を含めません。
 保存前に secret らしい文字列は best-effort で redaction され、snapshot 保存時は `.bob/workflows/runs/` がワークスペース直下の `.gitignore` に冪等に追加されます。
 chat messages まで診断に残したい場合だけ、`workflowRegister.taskSnapshots.includeMessages` を明示的に有効化してください。
+
+Run retentionの6コマンドは手動実行専用です。起動時やtimerでrunを自動削除しません。`workflowRegister.runs.retention.enabled=false`は将来自動化用の予約値で、`false`でも手動コマンドは利用できます。`実行ストレージを確認`と`実行クリーンアップをプレビュー`はuntrusted workspaceでもread-onlyで利用でき、cleanup/delete/pin/unpinはworkspace root探索やfilesystem accessより前にtrustを要求します。
+
+Cleanupは`run.json`を正本とし、active/recoverable/referenced/pinned/read-only/locked/journaled/physical-unsafe runを除外します。Apply前にfresh inventoryからplan digestとrevisionを再検証し、cleanup leaseとowner guardを取得してから`.bob/workflows/run-cleanup-quarantine/<txId>/<runId>`へrenameします。Multi-rootではrootを先に選び、同じrun IDをroot間で混同しません。保存path、rollback、manual recovery、privacyの詳細は[`docs/workflow-run-retention-ja.md`](https://github.com/katamor1/bob_builtin_analyze/blob/main/extensions/workflow-register/docs/workflow-run-retention-ja.md)を参照してください。
 
 ## AI 補助
 
@@ -406,6 +416,10 @@ AI プロバイダーは `workflowRegister.aiProviderCommand` で指定します
 | `workflowRegister.taskSnapshots.maxPerRun` | `50` | 1 run に保持する snapshot 数。 |
 | `workflowRegister.taskSnapshots.includeMessages` | `false` | 既定では Bob chat messages を含めません。診断に必要な場合だけ明示的に有効化する。 |
 | `workflowRegister.taskSnapshots.pruneOnSave` | `true` | snapshot 保存時に古い snapshot を削除する。 |
+| `workflowRegister.runs.retention.enabled` | `false` | 将来自動化用の予約値。現在の手動retention commandはこの値に関係なく利用できる。 |
+| `workflowRegister.runs.retention.completedDays` | `30` | 完了からこの日数を超えたterminal runを手動cleanup候補にする。 |
+| `workflowRegister.runs.retention.maxCompletedRuns` | `100` | 保持するterminal run（`completed`と`failed`）合計数の目安。超過分のeligible runを手動cleanup候補にする。 |
+| `workflowRegister.runs.retention.maxTotalBytes` | `524288000` | Run storage総byte上限の目安。超過分を手動cleanup候補にする。 |
 
 ## ビルド
 
@@ -468,6 +482,8 @@ npm run package:policy
 
 ワークフロー定義、実行状態、task snapshot は開いている workspace の `.bob` 配下だけを対象にします。信頼できない workspace では、外部コマンドを実行する command step、result sink、AI provider command の利用範囲を確認してから実行してください。
 
+Run retentionでは、`inspectRunStorage`と`previewRunCleanup`だけがuntrusted workspaceでread-only利用可能です。`cleanupCompletedRuns`、`deleteSelectedRuns`、`pinRun`、`unpinRun`はtrustが確立するまでroot discovery、run selection、service construction、filesystem accessを開始しません。
+
 ## 関連ドキュメント
 
 以下はソースリポジトリ上の関連ドキュメントです。VSIX には同梱しません。
@@ -476,6 +492,7 @@ npm run package:policy
 - `docs/detailed-design-ja.md`
 - `docs/workflow-authoring-guide.md`
 - `docs/bob-task-export-recovery-plan-ja.md`
+- `docs/workflow-run-retention-ja.md`
 - `extensions/bob-bazaar-review/README.md`
 - `extensions/bob-code-consistency-review/README.md`
 - `extensions/README.md`

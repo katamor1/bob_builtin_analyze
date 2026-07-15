@@ -30,6 +30,14 @@ import {
   pauseCurrentRun,
   resumePausedRun
 } from "./commands/runControl"
+import {
+  cleanupCompletedWorkflowRuns,
+  deleteSelectedWorkflowRuns,
+  inspectWorkflowRunStorage,
+  pinWorkflowRun,
+  previewWorkflowRunCleanup,
+  unpinWorkflowRun
+} from "./commands/runRetention"
 import { WorkflowRunControlView } from "./commands/runControlView"
 import {
   acceptAndRunNextStep,
@@ -113,6 +121,12 @@ export function activate(context: vscode.ExtensionContext): WorkflowRegisterApi 
       (uri?: vscode.Uri) => editWorkflowInBuilder({ sourceId: sourceId(), extensionUri: context.extensionUri }, uri)
     ),
     vscode.commands.registerCommand("workflowRegister.inspectRunDiagnostics", () => inspectRunDiagnostics({ showMarkdownReport })),
+    vscode.commands.registerCommand("workflowRegister.inspectRunStorage", (input) => inspectWorkflowRunStorage(input)),
+    vscode.commands.registerCommand("workflowRegister.previewRunCleanup", (input) => previewWorkflowRunCleanup(input)),
+    vscode.commands.registerCommand("workflowRegister.cleanupCompletedRuns", (input) => cleanupCompletedWorkflowRuns(input)),
+    vscode.commands.registerCommand("workflowRegister.deleteSelectedRuns", (input) => deleteSelectedWorkflowRuns(input)),
+    vscode.commands.registerCommand("workflowRegister.pinRun", (input) => pinWorkflowRun(input)),
+    vscode.commands.registerCommand("workflowRegister.unpinRun", (input) => unpinWorkflowRun(input)),
     vscode.commands.registerCommand("workflowRegister.acceptCurrentStep", (runArg?: string | OperationHubRunMutationTarget) => acceptCurrentStep(stepReviewOptions, runArg)),
     vscode.commands.registerCommand("workflowRegister.acceptAndRunNextStep", (runArg?: string | OperationHubRunMutationTarget) => acceptAndRunNextStep(stepReviewOptions, runArg)),
     vscode.commands.registerCommand("workflowRegister.inspectCurrentStep", (runId?: string) => inspectCurrentStep(stepReviewOptions, runId)),

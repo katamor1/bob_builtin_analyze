@@ -66,7 +66,11 @@ export interface RunStateStore {
   loadRun: (runId: string) => Promise<WorkflowRunState | undefined>
   listRuns: () => Promise<WorkflowRunState[]>
   findRecoverableRun?: (workflow: CoreWorkflowDefinition, inputs: Record<string, unknown>, options?: RecoverableRunLookupOptions) => Promise<WorkflowRunState | undefined>
-  withRunLock?: <T>(runId: string, operation: () => Promise<T>) => Promise<T>
+  withRunLock?: <T>(runId: string, operation: () => Promise<T>, options?: RunStateLockOptions) => Promise<T>
+}
+
+export interface RunStateLockOptions {
+  requireExistingRunDirectory?: boolean
 }
 
 export type WorkflowRunDurabilityFaultStage = "afterJournal" | "afterRun" | "afterEvent"
@@ -95,10 +99,11 @@ export class FileRunStateStore implements RunStateStore {
     this.durabilityFault = options.durabilityFault
   }
 
-  async withRunLock<T>(runId: string, operation: () => Promise<T>): Promise<T> {
+  async withRunLock<T>(runId: string, operation: () => Promise<T>, options: RunStateLockOptions = {}): Promise<T> {
     const configuredReclaimed = this.lockOptions?.onReclaimed
     return withWorkflowRunLock(this.workspaceRoot, runId, operation, {
       ...this.lockOptions,
+      ...options,
       onReclaimed: (message) => {
         this.setLoadDiagnostic({
           runId,

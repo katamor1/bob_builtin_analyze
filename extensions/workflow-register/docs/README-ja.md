@@ -19,6 +19,9 @@
 - `reproducible-runtime-phase4-windows-ja.md`  
   Windowsの8.3 short path、native realpath、heartbeat中のlock replacement、Windows回帰testの追加契約を定義します。
 
+- `workflow-run-retention-ja.md`
+  6つの手動retention command、4設定、trust split、root-first multi-root、protected run、cleanup lease/owner guard/quarantine、operator recovery、migration crash pair、metadata-only evidenceを定義する運用ガイドです。
+
 ## テスト仕様書
 
 - `unit-test-spec-ja.md`  
@@ -34,6 +37,12 @@
 
 - [`workflow-reproducible-runtime-phase4-windows-2026-07-12.md`](../../../docs/release-evidence/workflow-reproducible-runtime-phase4-windows-2026-07-12.md)  
   Windows root identity、lock retry、Linux / Windows final matrix、release decisionを記録します。
+
+- [`workflow-run-retention-p1-6-2026-07-13.md`](../../../docs/release-evidence/workflow-run-retention-p1-6-2026-07-13.md)
+  P1-6のdelivered behavior、安全契約、local/hosted gates、VSIX情報、integration GOとProduct Release NO-GOを記録します。
+
+- [`workflow-run-retention-p1-6-review-2026-07-13.md`](../../../docs/release-evidence/workflow-run-retention-p1-6-review-2026-07-13.md)
+  P1-6のreview scope、修正finding、invariant、final whole-diff review結果を記録します。
 
 ## 運用・検討メモ
 

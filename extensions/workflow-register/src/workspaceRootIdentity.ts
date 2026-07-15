@@ -1,10 +1,10 @@
-import * as fs from "fs"
 import * as path from "path"
+import { resolveWorkflowRunWorkspaceRootSync } from "./core/runtime/workflowRunWorkspaceRootBinding"
 
 export function resolveWorkspaceRootIdentity(workspaceRoot: string): string {
   const resolved = path.resolve(workspaceRoot)
   try {
-    return fs.realpathSync.native(resolved)
+    return resolveWorkflowRunWorkspaceRootSync(resolved)
   } catch {
     return resolved
   }

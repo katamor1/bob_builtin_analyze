@@ -1,14 +1,22 @@
 import { AsyncLocalStorage } from "async_hooks"
 import { randomUUID } from "crypto"
-import * as fs from "fs/promises"
 import * as os from "os"
 import * as path from "path"
 import {
+  RunDurabilityDirectoryMissingError,
   createRunDurabilityFile,
   readRunDurabilityFile,
   removeRunDurabilityFile,
-  replaceRunDurabilityFile
+  runDurabilityDirectoryPresent,
+  touchRunDurabilityFileMtime
 } from "./runDurabilityPath"
+import { workflowRunCleanupLeasePresent } from "./runCleanupLease"
+import {
+  createWorkflowRunWorkspaceRootScope,
+  resolveWorkflowRunWorkspaceRoot,
+  type WorkflowRunWorkspaceRootScopeToken,
+  withWorkflowRunWorkspaceRootBinding
+} from "./workflowRunWorkspaceRootBinding"
 
 export const CURRENT_WORKFLOW_RUN_LOCK_SCHEMA_VERSION = "workflow-register/run-lock/v1" as const
 
@@ -23,6 +31,7 @@ export interface WorkflowRunLockV1 {
 }
 
 export interface WorkflowRunLockOptions {
+  requireExistingRunDirectory?: boolean
   timeoutMs?: number
   staleMs?: number
   heartbeatMs?: number
@@ -35,49 +44,134 @@ export interface WorkflowRunLockOptions {
   onReclaimed?: (message: string) => void
 }
 
-const activeLocks = new AsyncLocalStorage<ReadonlySet<string>>()
+interface ActiveWorkflowRunLock {
+  scope: WorkflowRunWorkspaceRootScopeToken
+  pending: Set<Promise<unknown>>
+}
 
-export async function withWorkflowRunLock<T>(
+const activeLocks = new AsyncLocalStorage<ReadonlyMap<string, ActiveWorkflowRunLock>>()
+
+export function withWorkflowRunLock<T>(
   workspaceRoot: string,
   runId: string,
   operation: () => Promise<T>,
   options: WorkflowRunLockOptions = {}
 ): Promise<T> {
-  const physicalRoot = await fs.realpath(path.resolve(workspaceRoot))
+  let invocation!: Promise<T>
+  invocation = executeWorkflowRunLock(workspaceRoot, runId, operation, options, (active) => {
+    trackReentrantOperation(active, invocation)
+  })
+  return invocation
+}
+
+async function executeWorkflowRunLock<T>(
+  workspaceRoot: string,
+  runId: string,
+  operation: () => Promise<T>,
+  options: WorkflowRunLockOptions,
+  registerReentrant: (active: ActiveWorkflowRunLock) => void
+): Promise<T> {
+  const physicalRoot = await resolveWorkflowRunWorkspaceRoot(workspaceRoot)
   const key = JSON.stringify([normalizePhysicalRoot(physicalRoot), runId])
   const active = activeLocks.getStore()
-  if (active?.has(key)) return operation()
+  const activeOwner = active?.get(key)
+  if (activeOwner?.scope.isActive()) {
+    registerReentrant(activeOwner)
+    return withWorkflowRunWorkspaceRootBinding(workspaceRoot, physicalRoot, activeOwner.scope, operation)
+  }
 
   const resolved = resolveOptions(options)
-  const owner = await acquireWorkflowRunLock(physicalRoot, runId, resolved)
-  const chain = new Set(active)
-  chain.add(key)
+  const runDirectoryExistedAtEntry = await runDurabilityDirectoryPresent(physicalRoot, runId)
+  const owner = await acquireWorkflowRunLock(
+    physicalRoot,
+    runId,
+    resolved,
+    runDirectoryExistedAtEntry,
+    options.requireExistingRunDirectory === true
+  )
+  const scope = createWorkflowRunWorkspaceRootScope()
+  const chain = new Map(
+    [...(active ?? [])].filter(([, candidate]) => candidate.scope.isActive())
+  )
+  const lockContext: ActiveWorkflowRunLock = {
+    scope: scope.token,
+    pending: new Set()
+  }
+  chain.set(key, lockContext)
   let heartbeatError: unknown
-  let heartbeatChain: Promise<void> = Promise.resolve()
+  let heartbeatInFlight: Promise<void> | undefined
+  let heartbeatPending = false
+  let stopping = false
+  const startHeartbeat = (): void => {
+    if (heartbeatError || stopping) return
+    if (heartbeatInFlight) {
+      heartbeatPending = true
+      return
+    }
+    heartbeatInFlight = (async () => {
+      do {
+        heartbeatPending = false
+        await refreshWorkflowRunLock(physicalRoot, runId, owner, resolved)
+      } while (heartbeatPending && !stopping)
+    })()
+      .catch((error) => { heartbeatError = error })
+      .finally(() => {
+        heartbeatInFlight = undefined
+        if (heartbeatPending && !stopping && !heartbeatError) startHeartbeat()
+      })
+  }
   const timer = resolved.heartbeatMs > 0
-    ? setInterval(() => {
-      if (heartbeatError) return
-      heartbeatChain = heartbeatChain
-        .then(() => refreshWorkflowRunLock(physicalRoot, runId, owner, resolved))
-        .catch((error) => { heartbeatError = error })
-    }, resolved.heartbeatMs)
+    ? setInterval(startHeartbeat, resolved.heartbeatMs)
     : undefined
   timer?.unref?.()
 
   let result!: T
   let operationError: unknown
+  let releaseError: unknown
   try {
-    result = await activeLocks.run(chain, operation)
+    result = await activeLocks.run(chain, () => (
+      withWorkflowRunWorkspaceRootBinding(workspaceRoot, physicalRoot, scope.token, operation)
+    ))
   } catch (error) {
     operationError = error
   } finally {
+    await drainReentrantOperations(lockContext)
+    scope.revoke()
+    stopping = true
     if (timer) clearInterval(timer)
-    await heartbeatChain
-    await releaseWorkflowRunLock(physicalRoot, runId, owner)
+    await heartbeatInFlight
+    try {
+      const released = await releaseWorkflowRunLock(physicalRoot, runId, owner)
+      if (!released) releaseError = new Error(`Workflow run '${runId}' lock ownership changed before release.`)
+    } catch (error) {
+      releaseError = error
+    }
   }
-  if (operationError) throw operationError
-  if (heartbeatError) throw heartbeatError
+  if (operationError) {
+    if (heartbeatError) appendSuppressedError(operationError, heartbeatError, "lock heartbeat also failed")
+    if (releaseError) appendSuppressedError(operationError, releaseError, "lock release also failed")
+    throw operationError
+  }
+  if (heartbeatError) {
+    if (releaseError) appendSuppressedError(heartbeatError, releaseError, "lock release also failed")
+    throw heartbeatError
+  }
+  if (releaseError) throw releaseError
   return result
+}
+
+function trackReentrantOperation(active: ActiveWorkflowRunLock, operation: Promise<unknown>): void {
+  active.pending.add(operation)
+  void operation.then(
+    () => { active.pending.delete(operation) },
+    () => { active.pending.delete(operation) }
+  )
+}
+
+async function drainReentrantOperations(active: ActiveWorkflowRunLock): Promise<void> {
+  while (active.pending.size > 0) {
+    await Promise.allSettled([...active.pending])
+  }
 }
 
 export function parseWorkflowRunLock(value: unknown, expectedRunId: string): WorkflowRunLockV1 {
@@ -123,7 +217,9 @@ interface ResolvedWorkflowRunLockOptions {
 async function acquireWorkflowRunLock(
   workspaceRoot: string,
   runId: string,
-  options: ResolvedWorkflowRunLockOptions
+  options: ResolvedWorkflowRunLockOptions,
+  runDirectoryExistedAtEntry: boolean,
+  requireExistingRunDirectory: boolean
 ): Promise<WorkflowRunLockV1> {
   const startedAt = Date.now()
   while (true) {
@@ -139,24 +235,56 @@ async function acquireWorkflowRunLock(
     }
     let contentionMessage = "Lock metadata changed while it was being inspected."
     try {
-      if (await createRunDurabilityFile(workspaceRoot, runId, "run.lock.json", serializeWorkflowRunLock(owner))) return owner
-
-      const snapshot = await readRunDurabilityFile(workspaceRoot, runId, "run.lock.json")
-      if (!snapshot) continue
-      const inspection = inspectExistingLock(snapshot.bytes, snapshot.mtimeMs, runId, options)
-      contentionMessage = inspection.message
-      if (inspection.reclaim) {
-        const removed = await removeRunDurabilityFile(workspaceRoot, runId, "run.lock.json", snapshot.bytes)
-        if (removed) {
+      if (await workflowRunCleanupLeasePresent(workspaceRoot, runId)) {
+        contentionMessage = `Workflow run '${runId}' is reserved by a cleanup operation.`
+      } else if (await createRunDurabilityFile(
+        workspaceRoot,
+        runId,
+        "run.lock.json",
+        serializeWorkflowRunLock(owner),
+        { createRunDirectory: !requireExistingRunDirectory && !runDirectoryExistedAtEntry }
+      )) {
+        let cleanupLeasePresent: boolean
+        try {
+          cleanupLeasePresent = await workflowRunCleanupLeasePresent(workspaceRoot, runId)
+        } catch (error) {
+          let releaseError: unknown
           try {
-            options.onReclaimed?.(inspection.message)
-          } catch (error) {
-            console.warn("Workflow run lock reclamation callback failed.", error)
+            if (!await releaseWorkflowRunLock(workspaceRoot, runId, owner)) {
+              releaseError = new Error(`Workflow run '${runId}' created lock changed ownership before error cleanup.`)
+            }
+          } catch (cleanupError) {
+            releaseError = cleanupError
           }
-          continue
+          if (releaseError) appendSuppressedError(error, releaseError, "created lock release also failed")
+          throw error
+        }
+        if (!cleanupLeasePresent) return owner
+        const removed = await releaseWorkflowRunLock(workspaceRoot, runId, owner)
+        contentionMessage = removed
+          ? `Workflow run '${runId}' became reserved by a cleanup operation while its lock was being acquired.`
+          : `Workflow run '${runId}' became reserved by a cleanup operation and the created lock changed ownership before release.`
+      } else {
+        const snapshot = await readRunDurabilityFile(workspaceRoot, runId, "run.lock.json")
+        if (!snapshot) continue
+        const inspection = inspectExistingLock(snapshot.bytes, snapshot.mtimeMs, runId, options)
+        contentionMessage = inspection.message
+        if (inspection.reclaim) {
+          const removed = await removeRunDurabilityFile(workspaceRoot, runId, "run.lock.json", snapshot.bytes)
+          if (removed) {
+            try {
+              options.onReclaimed?.(inspection.message)
+            } catch (error) {
+              console.warn("Workflow run lock reclamation callback failed.", error)
+            }
+            continue
+          }
         }
       }
     } catch (error) {
+      if (error instanceof RunDurabilityDirectoryMissingError) {
+        throw new Error(`Workflow run '${runId}' disappeared while its execution lock was being acquired.`)
+      }
       if (!isTransientLockContention(error, runId)) throw error
       contentionMessage = `Lock metadata changed while it was being inspected (${formatError(error)}).`
     }
@@ -175,24 +303,13 @@ async function refreshWorkflowRunLock(
   owner: WorkflowRunLockV1,
   options: ResolvedWorkflowRunLockOptions
 ): Promise<void> {
-  const snapshot = await readRunDurabilityFile(workspaceRoot, runId, "run.lock.json")
-  if (!snapshot) throw new Error(`Workflow run '${runId}' lock disappeared while the run was active.`)
-  let current: WorkflowRunLockV1
-  try {
-    current = parseWorkflowRunLock(JSON.parse(snapshot.bytes.toString("utf8")), runId)
-  } catch (error) {
-    throw new Error(`Workflow run '${runId}' lock became invalid while the run was active: ${formatError(error)}`)
-  }
-  if (current.token !== owner.token) throw new Error(`Workflow run '${runId}' lock ownership changed while the run was active.`)
-  const next: WorkflowRunLockV1 = { ...current, heartbeatAt: options.now().toISOString() }
-  await replaceRunDurabilityFile(
+  await touchRunDurabilityFileMtime(
     workspaceRoot,
     runId,
     "run.lock.json",
-    serializeWorkflowRunLock(next),
-    snapshot.bytes
+    Buffer.from(serializeWorkflowRunLock(owner), "utf8"),
+    options.now
   )
-  owner.heartbeatAt = next.heartbeatAt
 }
 
 async function releaseWorkflowRunLock(workspaceRoot: string, runId: string, owner: WorkflowRunLockV1): Promise<boolean> {
@@ -206,6 +323,30 @@ async function releaseWorkflowRunLock(workspaceRoot: string, runId: string, owne
   }
   if (current.token !== owner.token) return false
   return removeRunDurabilityFile(workspaceRoot, runId, "run.lock.json", snapshot.bytes)
+}
+
+function appendSuppressedError(primary: unknown, secondary: unknown, label: string): void {
+  if ((typeof primary === "object" && primary !== null) || typeof primary === "function") {
+    try {
+      const existing = Reflect.get(primary, "suppressedErrors")
+      const suppressedErrors = Object.freeze(Array.isArray(existing) ? [...existing, secondary] : [secondary])
+      Object.defineProperty(primary, "suppressedErrors", {
+        value: suppressedErrors,
+        configurable: true,
+        enumerable: false,
+        writable: false
+      })
+    } catch {
+      // A frozen or host-provided primary error must still retain precedence.
+    }
+  }
+  if (primary instanceof Error) {
+    try {
+      primary.message = `${primary.message}; ${label} (${formatError(secondary)})`
+    } catch {
+      // Message decoration is diagnostic-only and must never replace the primary error.
+    }
+  }
 }
 
 function inspectExistingLock(
@@ -234,7 +375,11 @@ function inspectExistingLock(
     return { reclaim: true, message: `Reclaimed lock from dead pid ${lock.pid} on ${lock.hostname}.` }
   }
 
-  const heartbeatAgeMs = Math.max(0, options.now().getTime() - Date.parse(lock.heartbeatAt))
+  // The owner refreshes mtime without rewriting its token-bearing bytes. A process
+  // stalled longer than staleMs can still be reclaimed; no lease can prevent an
+  // arbitrary event-loop or machine stall without an external fencing service.
+  const lastHeartbeatMs = Math.max(Date.parse(lock.heartbeatAt), mtimeMs)
+  const heartbeatAgeMs = Math.max(0, options.now().getTime() - lastHeartbeatMs)
   return {
     reclaim: heartbeatAgeMs > options.staleMs,
     message: heartbeatAgeMs > options.staleMs
@@ -251,6 +396,7 @@ function isTransientLockContention(error: unknown, runId: string): boolean {
     && (
       message.includes("changed while its path was being verified")
       || message.includes("changed while it was being read")
+      || message.includes("physical identity does not match its direct file path")
     )
 }
 
