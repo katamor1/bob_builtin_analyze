@@ -20,6 +20,10 @@ function runStateModules() {
   return require("../out/core/runtime/runStatePath")
 }
 
+function rootBindingModules() {
+  return require("../out/core/runtime/workflowRunWorkspaceRootBinding")
+}
+
 function deferred() {
   let resolve
   const promise = new Promise((done) => { resolve = done })
@@ -153,6 +157,52 @@ test("cleanup requested through a retargeted alias observes the outer physical-r
   await assert.rejects(
     fs.access(path.join(physicalB, ".bob", "workflows", "run-cleanup-leases")),
     { code: "ENOENT" }
+  )
+})
+
+test("detached cleanup descendants cannot retain a released root binding", async (t) => {
+  const physicalA = await workspace(t)
+  const physicalB = await workspace(t)
+  const aliasContainer = await fs.mkdtemp(path.join(os.tmpdir(), "workflow-cleanup-detached-alias-"))
+  t.after(() => fs.rm(aliasContainer, { recursive: true, force: true }))
+  const workspaceAlias = path.join(aliasContainer, "workspace-alias")
+  const aliasType = process.platform === "win32" ? "junction" : "dir"
+  try {
+    await fs.symlink(physicalA, workspaceAlias, aliasType)
+  } catch (error) {
+    if (["EPERM", "EACCES", "ENOTSUP"].includes(error.code)) return t.skip(error.code)
+    throw error
+  }
+
+  const { withWorkflowRunCleanupLeases } = leaseModules()
+  const { writeContainedRunFile } = runStateModules()
+  const { resolveWorkflowRunWorkspaceRoot } = rootBindingModules()
+  const startDetached = deferred()
+  let detachedResolvedRoot
+  let detachedOperation
+
+  await withWorkflowRunCleanupLeases(workspaceAlias, ["run-a"], async () => {
+    detachedOperation = (async () => {
+      await startDetached.promise
+      detachedResolvedRoot = await resolveWorkflowRunWorkspaceRoot(workspaceAlias)
+      await writeContainedRunFile(workspaceAlias, "run-a", "{\"root\":\"B\"}\n")
+    })()
+    void detachedOperation.catch(() => undefined)
+  }, { token: () => "detached-cleanup", hostname: "test-host" })
+
+  await fs.rm(workspaceAlias, { force: true })
+  await fs.symlink(physicalB, workspaceAlias, aliasType)
+  startDetached.resolve()
+  await detachedOperation
+
+  assert.equal(
+    process.platform === "win32" ? detachedResolvedRoot.toLowerCase() : detachedResolvedRoot,
+    process.platform === "win32" ? physicalB.toLowerCase() : physicalB
+  )
+  assert.equal(await fs.readFile(path.join(physicalA, ".bob", "workflows", "runs", "run-a", "run.json"), "utf8"), "{}")
+  assert.equal(
+    await fs.readFile(path.join(physicalB, ".bob", "workflows", "runs", "run-a", "run.json"), "utf8"),
+    "{\"root\":\"B\"}\n"
   )
 })
 

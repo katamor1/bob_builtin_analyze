@@ -534,23 +534,76 @@ test("full fallback manual completion keeps its wrapper Todo pending until later
     setStepComplete: () => { wrapperTodoCompletions += 1 }
   })
   const settlement = trackSettlement(execution)
+  let providerTransitionTimer
+  let completionTimer
 
   try {
     await waitFor(() => stepRuntime.list().length === 1)
     const active = stepRuntime.list()[0]
     assert.match(await stepRuntime.completeStepByKey(active.key), /Completed:/)
-    await followupStarted
+
+    // The old bare await could let the worker exit with a pending Promise. A
+    // referenced 20s transition bound tolerates parallel-test I/O without
+    // restoring the former 120-240s windows that masked genuine stalls.
+    try {
+      const followupOutcome = await Promise.race([
+        followupStarted.then(() => "provider-started"),
+        execution.then(
+          () => "execution-completed",
+          (error) => { throw error }
+        ),
+        new Promise((_, reject) => {
+          providerTransitionTimer = setTimeout(() => {
+            reject(new Error("Full fallback followup provider did not start within 20000ms."))
+          }, 20_000)
+          providerTransitionTimer.ref()
+        })
+      ])
+      assert.equal(
+        followupOutcome,
+        "provider-started",
+        "Full fallback execution completed before the followup provider started."
+      )
+    } finally {
+      clearTimeout(providerTransitionTimer)
+    }
 
     assert.equal(wrapperTodoCompletions, 0, "an internal manual step must not complete the full wrapper Todo")
     assert.equal(settlement.settled, false)
     assert.equal(followupCalls, 1)
 
     releaseFollowup()
-    assert.equal(await execution, true)
+    let completion
+    try {
+      completion = await Promise.race([
+        execution,
+        new Promise((_, reject) => {
+          completionTimer = setTimeout(() => {
+            reject(new Error("Full fallback execution did not settle within 5000ms after followup release."))
+          }, 5_000)
+          completionTimer.ref()
+        })
+      ])
+    } finally {
+      clearTimeout(completionTimer)
+    }
+    assert.equal(completion, true)
     assert.equal(wrapperTodoCompletions, 0)
   } finally {
     releaseFollowup()
-    await execution.catch(() => undefined)
+    let cleanupTimer
+    try {
+      const cleanupSettled = await Promise.race([
+        execution.then(() => true, () => true),
+        new Promise((resolve) => {
+          cleanupTimer = setTimeout(() => resolve(false), 5_000)
+          cleanupTimer.ref()
+        })
+      ])
+      if (!cleanupSettled) void execution.catch(() => undefined)
+    } finally {
+      clearTimeout(cleanupTimer)
+    }
   }
 })
 

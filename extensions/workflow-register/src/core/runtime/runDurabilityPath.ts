@@ -440,21 +440,38 @@ async function directRegularFile(filePath: string, directory: DirectDirectory, l
   const before = await fs.lstat(filePath, { bigint: true })
   if (before.isSymbolicLink() || !before.isFile()) throw new Error(`${label} must be a direct regular file and not a symlink.`)
   assertSingleLinkedRegularFile(before, label)
-  const physical = await fs.realpath(filePath)
-  const physicalStat = await fs.lstat(physical, { bigint: true })
-  if (physicalStat.isSymbolicLink() || !physicalStat.isFile() || !sameIdentity(before, physicalStat)) {
-    throw new Error(`${label} physical identity does not match its direct file path.`)
-  }
-  assertSingleLinkedRegularFile(physicalStat, label)
-  const physicalParent = await fs.lstat(path.dirname(physical), { bigint: true })
-  if (!physicalParent.isDirectory() || !sameIdentity(directory, physicalParent)) {
-    throw new Error(`${label} physical parent identity does not match the verified run directory.`)
+  try {
+    const physical = await fs.realpath(filePath)
+    const physicalStat = await fs.lstat(physical, { bigint: true })
+    if (physicalStat.isSymbolicLink() || !physicalStat.isFile() || !sameIdentity(before, physicalStat)) {
+      throw new Error(`${label} physical identity does not match its direct file path.`)
+    }
+    assertSingleLinkedRegularFile(physicalStat, label)
+    const physicalParent = await fs.lstat(path.dirname(physical), { bigint: true })
+    if (!physicalParent.isDirectory() || !sameIdentity(directory, physicalParent)) {
+      throw new Error(`${label} physical parent identity does not match the verified run directory.`)
+    }
+  } catch (error) {
+    if (await directRegularFilePathChanged(filePath, before)) {
+      throw new Error(`${label} changed while its path was being verified.`)
+    }
+    throw error
   }
   const after = await fs.lstat(filePath, { bigint: true })
   if (!after.isFile() || !sameIdentity(before, after)) throw new Error(`${label} changed while its path was being verified.`)
   assertSingleLinkedRegularFile(after, label)
   await assertDirectoryEntryIdentity(directory, `${label} parent directory`)
   return { dev: after.dev, ino: after.ino }
+}
+
+async function directRegularFilePathChanged(filePath: string, expected: FileIdentity): Promise<boolean> {
+  try {
+    const current = await fs.lstat(filePath, { bigint: true })
+    return current.isSymbolicLink() || !current.isFile() || !sameIdentity(current, expected)
+  } catch (error) {
+    if (isMissingPathError(error)) return true
+    throw error
+  }
 }
 
 async function optionalDirectRegularFile(filePath: string, directory: DirectDirectory, label: string): Promise<FileIdentity | undefined> {
@@ -478,6 +495,7 @@ async function readDirectRegularFile(
   let snapshot: DirectFileSnapshot
   try {
     const opened = await handle.stat({ bigint: true })
+    if (opened.nlink === 0n) throw new Error(`${label} changed while it was being read.`)
     assertSingleLinkedRegularFile(opened, label)
     const current = await directRegularFile(filePath, directory, label)
     if (!sameIdentity(identity, opened) || !sameIdentity(opened, current)) {
@@ -486,6 +504,7 @@ async function readDirectRegularFile(
     const openedStable = stableFileState(opened)
     const bytes = await handle.readFile()
     const read = await handle.stat({ bigint: true })
+    if (read.nlink === 0n) throw new Error(`${label} changed while it was being read.`)
     assertSingleLinkedRegularFile(read, label)
     const readTarget = await directRegularFile(filePath, directory, label)
     const readStable = stableFileState(read)

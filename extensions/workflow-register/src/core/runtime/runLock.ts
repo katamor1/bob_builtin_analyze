@@ -12,7 +12,9 @@ import {
 } from "./runDurabilityPath"
 import { workflowRunCleanupLeasePresent } from "./runCleanupLease"
 import {
+  createWorkflowRunWorkspaceRootScope,
   resolveWorkflowRunWorkspaceRoot,
+  type WorkflowRunWorkspaceRootScopeToken,
   withWorkflowRunWorkspaceRootBinding
 } from "./workflowRunWorkspaceRootBinding"
 
@@ -42,7 +44,7 @@ export interface WorkflowRunLockOptions {
   onReclaimed?: (message: string) => void
 }
 
-const activeLocks = new AsyncLocalStorage<ReadonlySet<string>>()
+const activeLocks = new AsyncLocalStorage<ReadonlyMap<string, WorkflowRunWorkspaceRootScopeToken>>()
 
 export async function withWorkflowRunLock<T>(
   workspaceRoot: string,
@@ -53,7 +55,10 @@ export async function withWorkflowRunLock<T>(
   const physicalRoot = await resolveWorkflowRunWorkspaceRoot(workspaceRoot)
   const key = JSON.stringify([normalizePhysicalRoot(physicalRoot), runId])
   const active = activeLocks.getStore()
-  if (active?.has(key)) return operation()
+  const activeScope = active?.get(key)
+  if (activeScope?.isActive()) {
+    return withWorkflowRunWorkspaceRootBinding(workspaceRoot, physicalRoot, activeScope, operation)
+  }
 
   const resolved = resolveOptions(options)
   const runDirectoryExistedAtEntry = await runDurabilityDirectoryPresent(physicalRoot, runId)
@@ -64,8 +69,11 @@ export async function withWorkflowRunLock<T>(
     runDirectoryExistedAtEntry,
     options.requireExistingRunDirectory === true
   )
-  const chain = new Set(active)
-  chain.add(key)
+  const scope = createWorkflowRunWorkspaceRootScope()
+  const chain = new Map(
+    [...(active ?? [])].filter(([, candidate]) => candidate.isActive())
+  )
+  chain.set(key, scope.token)
   let heartbeatError: unknown
   let heartbeatInFlight: Promise<void> | undefined
   let heartbeatPending = false
@@ -97,11 +105,12 @@ export async function withWorkflowRunLock<T>(
   let operationError: unknown
   try {
     result = await activeLocks.run(chain, () => (
-      withWorkflowRunWorkspaceRootBinding(workspaceRoot, physicalRoot, operation)
+      withWorkflowRunWorkspaceRootBinding(workspaceRoot, physicalRoot, scope.token, operation)
     ))
   } catch (error) {
     operationError = error
   } finally {
+    scope.revoke()
     stopping = true
     if (timer) clearInterval(timer)
     await heartbeatInFlight

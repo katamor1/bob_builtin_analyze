@@ -6,6 +6,7 @@ import * as path from "path"
 import { readRunDurabilityFile } from "./runDurabilityPath"
 import { assertSafeWorkflowRunId } from "./runStatePath"
 import {
+  createWorkflowRunWorkspaceRootScope,
   resolveWorkflowRunWorkspaceRoot,
   withWorkflowRunWorkspaceRootBinding
 } from "./workflowRunWorkspaceRootBinding"
@@ -129,7 +130,12 @@ export async function withWorkflowRunCleanupLeases<T>(
         throw new Error(`Workflow run '${runId}' has an active execution lock and cannot be cleaned up.`)
       }
     }
-    result = await withWorkflowRunWorkspaceRootBinding(workspaceRoot, locations.root, operation)
+    const scope = createWorkflowRunWorkspaceRootScope()
+    try {
+      result = await withWorkflowRunWorkspaceRootBinding(workspaceRoot, locations.root, scope.token, operation)
+    } finally {
+      scope.revoke()
+    }
   } catch (error) {
     operationError = error
   }

@@ -14,6 +14,7 @@ const {
 } = require("../out/core/runtime/runLock.js")
 const runDurabilityPath = require("../out/core/runtime/runDurabilityPath.js")
 const { withWorkflowRunCleanupLeases } = require("../out/core/runtime/runCleanupLease.js")
+const { resolveWorkflowRunWorkspaceRoot } = require("../out/core/runtime/workflowRunWorkspaceRootBinding.js")
 const {
   readRunDurabilityFile,
   appendRunDurabilityFile,
@@ -137,6 +138,87 @@ test("lock acquisition retries when the owner file disappears before inspection"
   }
 })
 
+test("lock acquisition retries when a removed Windows inode becomes inaccessible by physical path", async (t) => {
+  const workspace = root(t)
+  const currentOwner = owner({ pid: process.pid, token: "physical-delete-owner" })
+  await replaceRunDurabilityFile(workspace, "run-1", "run.lock.json", serializeWorkflowRunLock(currentOwner))
+  const lockPath = (await readRunDurabilityFile(workspace, "run-1", "run.lock.json")).filePath
+  const deletedPath = path.join(path.parse(workspace).root, "$Extend", "$Deleted", "injected-lock-inode")
+  const originalRealpath = fsp.realpath
+  const originalLstat = fsp.lstat
+  let injected = false
+  const normalized = (value) => process.platform === "win32"
+    ? path.resolve(String(value)).toLowerCase()
+    : path.resolve(String(value))
+
+  fsp.realpath = async (target, ...args) => {
+    const physical = await originalRealpath(target, ...args)
+    if (!injected && normalized(target) === normalized(lockPath)) {
+      injected = true
+      await fsp.rm(lockPath)
+      return deletedPath
+    }
+    return physical
+  }
+  fsp.lstat = async (target, ...args) => {
+    if (normalized(target) === normalized(deletedPath)) {
+      const error = new Error(`EPERM: operation not permitted, lstat '${deletedPath}'`)
+      error.code = "EPERM"
+      error.path = deletedPath
+      error.syscall = "lstat"
+      throw error
+    }
+    return originalLstat(target, ...args)
+  }
+
+  try {
+    assert.equal(await withWorkflowRunLock(workspace, "run-1", async () => "acquired", {
+      timeoutMs: 1_000,
+      pollMs: 5,
+      heartbeatMs: 0
+    }), "acquired")
+  } finally {
+    fsp.realpath = originalRealpath
+    fsp.lstat = originalLstat
+  }
+  assert.equal(injected, true)
+})
+
+test("lock acquisition retries when the owner unlinks an already-open inspection handle", async (t) => {
+  const workspace = root(t)
+  const currentOwner = owner({ pid: process.pid, token: "open-delete-owner" })
+  await replaceRunDurabilityFile(workspace, "run-1", "run.lock.json", serializeWorkflowRunLock(currentOwner))
+  const lockPath = (await readRunDurabilityFile(workspace, "run-1", "run.lock.json")).filePath
+  const originalOpen = fsp.open
+  let injected = false
+  const normalized = (value) => process.platform === "win32"
+    ? path.resolve(String(value)).toLowerCase()
+    : path.resolve(String(value))
+
+  fsp.open = async (target, flags, ...args) => {
+    const handle = await originalOpen(target, flags, ...args)
+    const numericFlags = typeof flags === "number" ? flags : -1
+    const readOnly = numericFlags >= 0
+      && (numericFlags & (fs.constants.O_WRONLY | fs.constants.O_RDWR | fs.constants.O_CREAT)) === 0
+    if (!injected && readOnly && normalized(target) === normalized(lockPath)) {
+      injected = true
+      await fsp.rm(lockPath)
+    }
+    return handle
+  }
+
+  try {
+    assert.equal(await withWorkflowRunLock(workspace, "run-1", async () => "acquired", {
+      timeoutMs: 1_000,
+      pollMs: 5,
+      heartbeatMs: 0
+    }), "acquired")
+  } finally {
+    fsp.open = originalOpen
+  }
+  assert.equal(injected, true)
+})
+
 test("same async chain re-enters one lock without deadlock", async (t) => {
   const workspace = root(t)
   const result = await withWorkflowRunLock(workspace, "run-1", () => (
@@ -181,6 +263,103 @@ test("same-chain alias retarget keeps nested lock and run writes on the acquired
     await fsp.readFile(path.join(physicalB, ".bob", "workflows", "runs", "run-2", "run.json"), "utf8"),
     "{\"root\":\"B\"}\n"
   )
+})
+
+test("active reentry binds a second lexical alias to the acquired physical root", async (t) => {
+  const physicalA = root(t)
+  const physicalB = root(t)
+  const aliasContainer = root(t)
+  const firstAlias = path.join(aliasContainer, "workspace-alias-1")
+  const secondAlias = path.join(aliasContainer, "workspace-alias-2")
+  const aliasType = process.platform === "win32" ? "junction" : "dir"
+  try {
+    await fsp.symlink(physicalA, firstAlias, aliasType)
+    await fsp.symlink(physicalA, secondAlias, aliasType)
+  } catch (error) {
+    if (["EPERM", "EACCES", "ENOTSUP"].includes(error.code)) return t.skip(error.code)
+    throw error
+  }
+
+  const runA = path.join(physicalA, ".bob", "workflows", "runs", "run-1")
+  const runB = path.join(physicalB, ".bob", "workflows", "runs", "run-1")
+  await withWorkflowRunLock(firstAlias, "run-1", async () => {
+    await withWorkflowRunLock(secondAlias, "run-1", async () => {
+      await fsp.rm(secondAlias, { force: true })
+      await fsp.symlink(physicalB, secondAlias, aliasType)
+      await writeContainedRunFile(secondAlias, "run-1", "{\"root\":\"A\"}\n")
+      await appendRunDurabilityFile(secondAlias, "run-1", "events.ndjson", "{\"event\":\"A\"}\n")
+    }, { timeoutMs: 25, heartbeatMs: 0 })
+
+    assert.equal(await fsp.readFile(path.join(runA, "run.json"), "utf8"), "{\"root\":\"A\"}\n")
+    assert.equal(await fsp.readFile(path.join(runA, "events.ndjson"), "utf8"), "{\"event\":\"A\"}\n")
+    await assert.rejects(fsp.access(runB), { code: "ENOENT" })
+  }, { timeoutMs: 5_000, heartbeatMs: 0 })
+
+  await withWorkflowRunLock(secondAlias, "run-2", async () => {
+    await writeContainedRunFile(secondAlias, "run-2", "{\"root\":\"B\"}\n")
+  }, { timeoutMs: 1_000, heartbeatMs: 0 })
+  assert.equal(
+    await fsp.readFile(path.join(physicalB, ".bob", "workflows", "runs", "run-2", "run.json"), "utf8"),
+    "{\"root\":\"B\"}\n"
+  )
+})
+
+test("detached descendants cannot reuse a released lock or its stale root binding", async (t) => {
+  const physicalA = root(t)
+  const physicalB = root(t)
+  const aliasContainer = root(t)
+  const workspaceAlias = path.join(aliasContainer, "workspace-alias")
+  const aliasType = process.platform === "win32" ? "junction" : "dir"
+  try {
+    await fsp.symlink(physicalA, workspaceAlias, aliasType)
+  } catch (error) {
+    if (["EPERM", "EACCES", "ENOTSUP"].includes(error.code)) return t.skip(error.code)
+    throw error
+  }
+
+  const startDetached = deferred()
+  let detachedAttempt
+  let detachedResolvedRoot
+  let detachedCallbackRan = false
+  await withWorkflowRunLock(workspaceAlias, "run-1", async () => {
+    detachedAttempt = (async () => {
+      await startDetached.promise
+      detachedResolvedRoot = await resolveWorkflowRunWorkspaceRoot(workspaceAlias)
+      return withWorkflowRunLock(workspaceAlias, "run-1", async () => {
+        detachedCallbackRan = true
+        await writeContainedRunFile(workspaceAlias, "run-1", "{\"detached\":true}\n")
+      }, { timeoutMs: 0, heartbeatMs: 0 })
+    })()
+    void detachedAttempt.catch(() => undefined)
+  }, { timeoutMs: 1_000, heartbeatMs: 0 })
+
+  await fsp.rm(workspaceAlias, { force: true })
+  await fsp.symlink(physicalB, workspaceAlias, aliasType)
+
+  const holderEntered = deferred()
+  const releaseHolder = deferred()
+  const holder = withWorkflowRunLock(workspaceAlias, "run-1", async () => {
+    holderEntered.resolve()
+    await releaseHolder.promise
+  }, { timeoutMs: 1_000, heartbeatMs: 0 })
+  await holderEntered.promise
+
+  try {
+    startDetached.resolve()
+    await assert.rejects(detachedAttempt, /busy|locked by/i)
+    assert.equal(detachedCallbackRan, false)
+    assert.equal(
+      process.platform === "win32" ? detachedResolvedRoot.toLowerCase() : detachedResolvedRoot,
+      process.platform === "win32" ? physicalB.toLowerCase() : physicalB
+    )
+    await assert.rejects(
+      fsp.access(path.join(physicalA, ".bob", "workflows", "runs", "run-1", "run.json")),
+      { code: "ENOENT" }
+    )
+  } finally {
+    releaseHolder.resolve()
+    await holder
+  }
 })
 
 test("a waiting lock for an existing run does not recreate its directory after cleanup removes it", async (t) => {
