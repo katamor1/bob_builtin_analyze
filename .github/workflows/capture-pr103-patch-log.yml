@@ -1,0 +1,64 @@
+name: capture-pr103-patch-log
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/capture-pr103-patch-log.yml"
+
+permissions:
+  actions: read
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Extract applied-patch log
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          RUN_ID: "29459017107"
+          JOB_ID: "87498398250"
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          branch="$GITHUB_HEAD_REF"
+          gh run view "$RUN_ID" --repo "$repo" --job "$JOB_ID" --log > /tmp/job.log
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          raw = Path('/tmp/job.log').read_text(encoding='utf-8', errors='replace')
+          ansi = re.compile(r'\x1b\[[0-9;]*[A-Za-z]')
+          lines = [ansi.sub('', line) for line in raw.splitlines()]
+          patterns = re.compile(
+              r'diff --git|^[-+]\s*sourceManifest:|^[-+]\s*documentChunks:|^[-+]\s*sourceScope:|'
+              r'seedShardCount|lockSeeds|closureSeeds|\.lock-seed-|\.closure-seed-|'
+              r'Make Windows test fixtures|Verify focused Windows',
+              re.IGNORECASE,
+          )
+          indexes = [i for i, line in enumerate(lines) if patterns.search(line)]
+          selected = set()
+          for index in indexes:
+              selected.update(range(max(0, index - 3), min(len(lines), index + 12)))
+          output = []
+          previous = None
+          for index in sorted(selected):
+              if previous is not None and index > previous + 1:
+                  output.append('...')
+              output.append(lines[index])
+              previous = index
+          Path('/tmp/patch-log.txt').write_text('\n'.join(output) or 'No patch markers found.', encoding='utf-8')
+          PY
+          {
+            echo "## PR #103 applied-patch log"
+            echo
+            echo '```text'
+            cat /tmp/patch-log.txt
+            echo '```'
+          } > /tmp/comment.md
+          gh pr comment "$PR_NUMBER" --repo "$repo" --body-file /tmp/comment.md
+          gh api --method DELETE "repos/$repo/git/refs/heads/$branch"
