@@ -30,3 +30,30 @@ test("physical path matcher uses leaf semantics and captured physical parent ide
     fs.lstat = originalLstat
   }
 })
+
+test("physical path matcher follows a lexical parent alias without trusting its spelling", async (t) => {
+  const physicalA = await fs.mkdtemp(path.join(os.tmpdir(), "physical-path-matcher-a-"))
+  const physicalB = await fs.mkdtemp(path.join(os.tmpdir(), "physical-path-matcher-b-"))
+  const aliasContainer = await fs.mkdtemp(path.join(os.tmpdir(), "physical-path-matcher-alias-"))
+  const parentAlias = path.join(aliasContainer, "parent-alias")
+  const aliasType = process.platform === "win32" ? "junction" : "dir"
+  t.after(() => fs.rm(physicalA, { recursive: true, force: true }))
+  t.after(() => fs.rm(physicalB, { recursive: true, force: true }))
+  t.after(() => fs.rm(aliasContainer, { recursive: true, force: true }))
+
+  try {
+    await fs.symlink(physicalA, parentAlias, aliasType)
+  } catch (error) {
+    if (["EPERM", "EACCES", "ENOTSUP"].includes(error.code)) return t.skip(error.code)
+    throw error
+  }
+
+  const matches = createPhysicalPathMatcher(fs)
+  const aliasedLeaf = path.join(parentAlias, "owner.json")
+  const physicalLeaf = path.join(physicalA, "owner.json")
+  assert.equal(await matches(aliasedLeaf, physicalLeaf), true)
+
+  await fs.rm(parentAlias, { force: true })
+  await fs.symlink(physicalB, parentAlias, aliasType)
+  assert.equal(await matches(aliasedLeaf, physicalLeaf), false)
+})

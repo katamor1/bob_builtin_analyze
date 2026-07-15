@@ -4,6 +4,10 @@ const os = require("node:os")
 const path = require("node:path")
 const { test } = require("node:test")
 
+const { createPhysicalPathMatcher } = require("./helpers/physicalPathMatcher")
+
+const matchesPhysicalPath = createPhysicalPathMatcher(fs)
+
 function transactionModules() {
   return require("../out/core/runtime/runCleanupTransaction")
 }
@@ -113,11 +117,18 @@ test("cleanup transaction performs one workspace inventory and bounded candidate
   const plan = await cleanupPlan(root)
   const originalOpendir = fs.opendir
   const scanCounts = new Map()
+  const scanPaths = [runsRoot, ...runIds.map((runId) => path.join(runsRoot, runId))]
   let applying
   try {
     fs.opendir = async (directory, ...args) => {
-      const resolved = path.resolve(directory)
-      scanCounts.set(resolved, (scanCounts.get(resolved) ?? 0) + 1)
+      let logicalPath = String(directory)
+      for (const scanPath of scanPaths) {
+        if (await matchesPhysicalPath(directory, scanPath)) {
+          logicalPath = scanPath
+          break
+        }
+      }
+      scanCounts.set(logicalPath, (scanCounts.get(logicalPath) ?? 0) + 1)
       return originalOpendir(directory, ...args)
     }
     const { applyWorkflowRunCleanupTransaction } = transactionModules()
@@ -132,9 +143,9 @@ test("cleanup transaction performs one workspace inventory and bounded candidate
     fs.opendir = originalOpendir
   }
 
-  assert.equal(scanCounts.get(path.resolve(runsRoot)), 1)
+  assert.equal(scanCounts.get(runsRoot), 1)
   for (const runId of runIds) {
-    assert.equal(scanCounts.get(path.resolve(runsRoot, runId)), 3)
+    assert.equal(scanCounts.get(path.join(runsRoot, runId)), 3)
   }
 })
 
@@ -151,7 +162,8 @@ test("cleanup transaction rolls prior moves back when a later rename fails", asy
     rm: fs.rm,
     readdir: fs.readdir,
     rename: async (source, target) => {
-      const sourceMove = path.dirname(source) === runsRoot && /^run-/.test(path.basename(source))
+      const sourceMove = await matchesPhysicalPath(path.dirname(source), runsRoot)
+        && /^run-/.test(path.basename(source))
       if (sourceMove && ++sourceMoveCount === 2) throw new Error("injected second rename failure")
       return fs.rename(source, target)
     }
@@ -197,7 +209,7 @@ test("cleanup transaction revalidates the complete physical tree after all lease
   const fsOps = {
     realpath: async (target) => {
       const resolved = await fs.realpath(target)
-      if (!rootResolved && path.resolve(target) === path.resolve(root)) {
+      if (!rootResolved && await matchesPhysicalPath(target, root)) {
         rootResolved = true
         enteredLockedOperation.resolve()
         await releaseLockedOperation.promise
@@ -205,7 +217,7 @@ test("cleanup transaction revalidates the complete physical tree after all lease
       return resolved
     },
     rename: async (source, target) => {
-      if (path.dirname(source) === runsRoot) sourceRenames += 1
+      if (await matchesPhysicalPath(path.dirname(source), runsRoot)) sourceRenames += 1
       return fs.rename(source, target)
     }
   }
@@ -287,7 +299,7 @@ for (const scenario of [
     const fsOps = {
       realpath: async (target) => {
         const resolved = await fs.realpath(target)
-        if (!rootResolved && path.resolve(target) === path.resolve(root)) {
+        if (!rootResolved && await matchesPhysicalPath(target, root)) {
           rootResolved = true
           enteredLockedOperation.resolve()
           await releaseLockedOperation.promise
@@ -295,7 +307,7 @@ for (const scenario of [
         return resolved
       },
       rename: async (source, target) => {
-        if (path.dirname(source) === runsRoot) sourceRenames += 1
+        if (await matchesPhysicalPath(path.dirname(source), runsRoot)) sourceRenames += 1
         return fs.rename(source, target)
       }
     }
@@ -330,11 +342,11 @@ test("cleanup transaction keeps a concurrently-created quarantine sibling withou
   let baseReaddirCalls = 0
   const fsOps = {
     readdir: async (directory, ...args) => {
-      if (path.resolve(directory) === path.resolve(quarantineBase)) baseReaddirCalls += 1
+      if (await matchesPhysicalPath(directory, quarantineBase)) baseReaddirCalls += 1
       return fs.readdir(directory, ...args)
     },
     rmdir: async (directory, ...args) => {
-      if (path.resolve(directory) === path.resolve(quarantineBase)) {
+      if (await matchesPhysicalPath(directory, quarantineBase)) {
         baseRmdirCalls += 1
         await fs.mkdir(sibling)
       }
@@ -366,7 +378,7 @@ test("cleanup transaction rejects a run directory identity swap at the rename bo
   let cleanupRenames = 0
   const fsOps = {
     lstat: async (target, ...args) => {
-      if (!swapped && path.resolve(target) === path.resolve(run.directory)) {
+      if (!swapped && await matchesPhysicalPath(target, run.directory)) {
         swapped = true
         await fs.rename(run.directory, parkedOriginal)
         await fs.mkdir(run.directory)
@@ -375,7 +387,7 @@ test("cleanup transaction rejects a run directory identity swap at the rename bo
       return fs.lstat(target, ...args)
     },
     rename: async (source, target) => {
-      if (path.resolve(source) === path.resolve(run.directory)) cleanupRenames += 1
+      if (await matchesPhysicalPath(source, run.directory)) cleanupRenames += 1
       return fs.rename(source, target)
     }
   }
@@ -405,7 +417,7 @@ test("cleanup transaction does not commit or purge a replacement moved by a rena
   let swapped = false
   const fsOps = {
     rename: async (source, target) => {
-      if (!swapped && path.resolve(source) === path.resolve(run.directory)) {
+      if (!swapped && await matchesPhysicalPath(source, run.directory)) {
         swapped = true
         await fs.rename(source, parkedOriginal)
         await fs.mkdir(source)
@@ -415,6 +427,7 @@ test("cleanup transaction does not commit or purge a replacement moved by a rena
     }
   }
   const transaction = transactionModules()
+  let cleanupError
 
   await assert.rejects(transaction.applyWorkflowRunCleanupTransaction({
     workspaceRoot: root,
@@ -422,15 +435,16 @@ test("cleanup transaction does not commit or purge a replacement moved by a rena
     transactionId,
     fsOps
   }), (error) => {
+    cleanupError = error
     assert.ok(error instanceof transaction.WorkflowRunCleanupIncompleteError)
     assert.equal(error.phase, "rollback")
     assert.deepEqual(error.committedRunIds, [])
     assert.deepEqual(error.residualRunIds, ["rename-time-swap"])
-    assert.equal(error.retainedQuarantinePath, quarantinePath)
     assert.equal(error.reclaimedBytes, 0)
     assert.match(error.message, /directory identity|changed before quarantine/i)
     return true
   })
+  assert.equal(await matchesPhysicalPath(cleanupError.retainedQuarantinePath, quarantinePath), true)
 
   assert.equal(swapped, true)
   assert.equal((await fs.stat(parkedOriginal)).isDirectory(), true)
@@ -452,7 +466,7 @@ test("cleanup transaction preserves every target when an earlier quarantine tree
   const fsOps = {
     rename: async (source, target) => {
       const result = await fs.rename(source, target)
-      if (path.resolve(source) === path.resolve(b.directory)) {
+      if (await matchesPhysicalPath(source, b.directory)) {
         await fs.writeFile(unverifiedFile, "must not be purged")
         changedAfterFirstVerification = true
       }
@@ -460,6 +474,7 @@ test("cleanup transaction preserves every target when an earlier quarantine tree
     }
   }
   const transaction = transactionModules()
+  let cleanupError
 
   await assert.rejects(transaction.applyWorkflowRunCleanupTransaction({
     workspaceRoot: root,
@@ -467,15 +482,16 @@ test("cleanup transaction preserves every target when an earlier quarantine tree
     transactionId,
     fsOps
   }), (error) => {
+    cleanupError = error
     assert.ok(error instanceof transaction.WorkflowRunCleanupIncompleteError)
     assert.equal(error.phase, "purge")
     assert.deepEqual(error.committedRunIds, ["purge-race-a", "purge-race-b"])
     assert.deepEqual(error.residualRunIds, ["purge-race-a", "purge-race-b"])
-    assert.equal(error.retainedQuarantinePath, quarantinePath)
     assert.equal(error.reclaimedBytes, 0)
     assert.match(error.message, /physical tree|evidence changed/i)
     return true
   })
+  assert.equal(await matchesPhysicalPath(cleanupError.retainedQuarantinePath, quarantinePath), true)
 
   assert.equal(changedAfterFirstVerification, true)
   assert.equal(await fs.readFile(unverifiedFile, "utf8"), "must not be purged")
@@ -495,7 +511,7 @@ test("cleanup transaction reports exact residual targets when a later candidate 
   const quarantinedB = path.join(quarantinePath, "purge-b")
   const fsOps = {
     rm: async (target, options) => {
-      if (path.resolve(target) === path.resolve(quarantinedB) && options?.recursive && options.force === false) {
+      if (await matchesPhysicalPath(target, quarantinedB) && options?.recursive && options.force === false) {
         const error = new Error("injected quarantine purge failure")
         error.code = "EIO"
         throw error
@@ -504,6 +520,7 @@ test("cleanup transaction reports exact residual targets when a later candidate 
     }
   }
   const transaction = transactionModules()
+  let cleanupError
 
   await assert.rejects(transaction.applyWorkflowRunCleanupTransaction({
     workspaceRoot: root,
@@ -511,16 +528,17 @@ test("cleanup transaction reports exact residual targets when a later candidate 
     transactionId,
     fsOps
   }), (error) => {
+    cleanupError = error
     assert.equal(typeof transaction.WorkflowRunCleanupIncompleteError, "function")
     assert.ok(error instanceof transaction.WorkflowRunCleanupIncompleteError)
     assert.equal(error.phase, "purge")
     assert.deepEqual(error.committedRunIds, ["purge-a", "purge-b"])
     assert.deepEqual(error.residualRunIds, ["purge-b"])
-    assert.equal(error.retainedQuarantinePath, quarantinePath)
     assert.equal(error.reclaimedBytes, 0)
     assert.match(error.message, /injected quarantine purge failure/)
     return true
   })
+  assert.equal(await matchesPhysicalPath(cleanupError.retainedQuarantinePath, quarantinePath), true)
 
   await assert.rejects(fs.stat(path.join(runsRoot, "purge-a")), { code: "ENOENT" })
   await assert.rejects(fs.stat(path.join(runsRoot, "purge-b")), { code: "ENOENT" })
@@ -538,13 +556,14 @@ test("cleanup transaction preserves an unexpected quarantine sibling and reports
   const fsOps = {
     rename: async (source, target) => {
       const result = await fs.rename(source, target)
-      if (path.resolve(source) === path.resolve(run.directory)) {
+      if (await matchesPhysicalPath(source, run.directory)) {
         await fs.writeFile(sibling, "must not be recursively purged")
       }
       return result
     }
   }
   const transaction = transactionModules()
+  let cleanupError
 
   await assert.rejects(transaction.applyWorkflowRunCleanupTransaction({
     workspaceRoot: root,
@@ -552,15 +571,16 @@ test("cleanup transaction preserves an unexpected quarantine sibling and reports
     transactionId,
     fsOps
   }), (error) => {
+    cleanupError = error
     assert.ok(error instanceof transaction.WorkflowRunCleanupIncompleteError)
     assert.equal(error.phase, "purge")
     assert.deepEqual(error.committedRunIds, ["unexpected-sibling"])
     assert.deepEqual(error.residualRunIds, [])
-    assert.equal(error.retainedQuarantinePath, quarantinePath)
     assert.equal(error.reclaimedBytes, 0)
     assert.match(error.message, /directory|not empty|ENOTEMPTY/i)
     return true
   })
+  assert.equal(await matchesPhysicalPath(cleanupError.retainedQuarantinePath, quarantinePath), true)
 
   assert.equal(await fs.readFile(sibling, "utf8"), "must not be recursively purged")
   await assert.rejects(fs.stat(run.directory), { code: "ENOENT" })
@@ -575,7 +595,7 @@ test("cleanup transaction reports the retained quarantine parent when parent cle
   const quarantinePath = path.join(quarantineBase, transactionId)
   const fsOps = {
     rmdir: async (directory, ...args) => {
-      if (path.resolve(directory) === path.resolve(quarantineBase)) {
+      if (await matchesPhysicalPath(directory, quarantineBase)) {
         const error = new Error("injected quarantine parent cleanup failure")
         error.code = "EACCES"
         throw error
@@ -584,6 +604,7 @@ test("cleanup transaction reports the retained quarantine parent when parent cle
     }
   }
   const transaction = transactionModules()
+  let cleanupError
 
   await assert.rejects(transaction.applyWorkflowRunCleanupTransaction({
     workspaceRoot: root,
@@ -591,15 +612,16 @@ test("cleanup transaction reports the retained quarantine parent when parent cle
     transactionId,
     fsOps
   }), (error) => {
+    cleanupError = error
     assert.ok(error instanceof transaction.WorkflowRunCleanupIncompleteError)
     assert.equal(error.phase, "parent-cleanup")
     assert.deepEqual(error.committedRunIds, ["parent-cleanup"])
     assert.deepEqual(error.residualRunIds, [])
-    assert.equal(error.retainedQuarantinePath, quarantineBase)
     assert.equal(error.reclaimedBytes, 0)
     assert.match(error.message, /injected quarantine parent cleanup failure/)
     return true
   })
+  assert.equal(await matchesPhysicalPath(cleanupError.retainedQuarantinePath, quarantineBase), true)
 
   await assert.rejects(fs.stat(path.join(runsRoot, "parent-cleanup")), { code: "ENOENT" })
   await assert.rejects(fs.stat(quarantinePath), { code: "ENOENT" })
@@ -618,14 +640,15 @@ test("cleanup transaction exposes residual committed runs when rollback fails", 
   const sourceB = path.join(runsRoot, "rollback-b")
   const fsOps = {
     rename: async (source, target) => {
-      if (path.resolve(source) === path.resolve(sourceB)) throw new Error("injected second candidate failure")
-      if (path.resolve(source) === path.resolve(quarantinedA) && path.resolve(target) === path.resolve(sourceA)) {
+      if (await matchesPhysicalPath(source, sourceB)) throw new Error("injected second candidate failure")
+      if (await matchesPhysicalPath(source, quarantinedA) && await matchesPhysicalPath(target, sourceA)) {
         throw new Error("injected rollback failure")
       }
       return fs.rename(source, target)
     }
   }
   const transaction = transactionModules()
+  let cleanupError
 
   await assert.rejects(transaction.applyWorkflowRunCleanupTransaction({
     workspaceRoot: root,
@@ -633,16 +656,17 @@ test("cleanup transaction exposes residual committed runs when rollback fails", 
     transactionId,
     fsOps
   }), (error) => {
+    cleanupError = error
     assert.ok(error instanceof transaction.WorkflowRunCleanupIncompleteError)
     assert.equal(error.phase, "rollback")
     assert.deepEqual(error.committedRunIds, ["rollback-a"])
     assert.deepEqual(error.residualRunIds, ["rollback-a"])
-    assert.equal(error.retainedQuarantinePath, quarantinePath)
     assert.equal(error.reclaimedBytes, 0)
     assert.match(error.message, /injected second candidate failure/)
     assert.match(error.message, /injected rollback failure/)
     return true
   })
+  assert.equal(await matchesPhysicalPath(cleanupError.retainedQuarantinePath, quarantinePath), true)
 
   await assert.rejects(fs.stat(sourceA), { code: "ENOENT" })
   assert.equal((await fs.stat(sourceB)).isDirectory(), true)
@@ -663,7 +687,7 @@ test("cleanup transaction validates quarantined identity before a rollback renam
   let replaced = false
   const fsOps = {
     rename: async (source, target) => {
-      if (path.resolve(source) === path.resolve(sourceB)) {
+      if (await matchesPhysicalPath(source, sourceB)) {
         replaced = true
         await fs.rename(quarantinedA, parkedA)
         await fs.mkdir(quarantinedA)
@@ -674,6 +698,7 @@ test("cleanup transaction validates quarantined identity before a rollback renam
     }
   }
   const transaction = transactionModules()
+  let cleanupError
 
   await assert.rejects(transaction.applyWorkflowRunCleanupTransaction({
     workspaceRoot: root,
@@ -681,15 +706,16 @@ test("cleanup transaction validates quarantined identity before a rollback renam
     transactionId,
     fsOps
   }), (error) => {
+    cleanupError = error
     assert.ok(error instanceof transaction.WorkflowRunCleanupIncompleteError)
     assert.equal(error.phase, "rollback")
     assert.deepEqual(error.committedRunIds, ["rollback-identity-a"])
     assert.deepEqual(error.residualRunIds, ["rollback-identity-a"])
-    assert.equal(error.retainedQuarantinePath, quarantinePath)
     assert.equal(error.reclaimedBytes, 0)
     assert.match(error.message, /directory identity|changed before quarantine/i)
     return true
   })
+  assert.equal(await matchesPhysicalPath(cleanupError.retainedQuarantinePath, quarantinePath), true)
 
   assert.equal(replaced, true)
   await assert.rejects(fs.stat(sourceA), { code: "ENOENT" })
@@ -712,10 +738,10 @@ test("cleanup transaction rolls earlier moves back in reverse when a later candi
     rename: async (source, target) => {
       const sourceParent = path.dirname(source)
       const runId = path.basename(source)
-      if (path.resolve(sourceParent) === path.resolve(runsRoot)) renameOrder.push(`forward:${runId}`)
-      if (path.resolve(sourceParent) === path.resolve(quarantinePath)) renameOrder.push(`rollback:${runId}`)
+      if (await matchesPhysicalPath(sourceParent, runsRoot)) renameOrder.push(`forward:${runId}`)
+      if (await matchesPhysicalPath(sourceParent, quarantinePath)) renameOrder.push(`rollback:${runId}`)
       const result = await fs.rename(source, target)
-      if (!mutated && path.resolve(source) === path.resolve(path.join(runsRoot, "late-b"))) {
+      if (!mutated && await matchesPhysicalPath(source, path.join(runsRoot, "late-b"))) {
         mutated = true
         await fs.writeFile(path.join(runsRoot, "late-c", "late.bin"), "changed after earlier moves")
       }

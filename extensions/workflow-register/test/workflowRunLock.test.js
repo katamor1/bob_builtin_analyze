@@ -23,7 +23,7 @@ const {
 const { writeContainedRunFile } = require("../out/core/runtime/runStatePath.js")
 
 function root(t) {
-  const value = fs.mkdtempSync(path.join(os.tmpdir(), "workflow-lock-"))
+  const value = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "workflow-lock-")))
   t.after(() => fs.rmSync(value, { recursive: true, force: true }))
   return value
 }

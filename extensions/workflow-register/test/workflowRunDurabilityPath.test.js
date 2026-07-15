@@ -206,11 +206,12 @@ test("durability path accepts Windows namespaced realpath spelling for the same 
   await fsp.mkdir(runDirectory, { recursive: true })
   await fsp.writeFile(lockFile, "owner\n")
   const originalRealpath = fsp.realpath
+  const workspacePhysical = await originalRealpath(workspace)
   let namespacedDescendants = 0
   try {
     fsp.realpath = async (target, ...args) => {
       const physical = await originalRealpath(target, ...args)
-      const relative = path.relative(workspace, physical)
+      const relative = path.relative(workspacePhysical, physical)
       if (relative === ".bob" || relative.startsWith(`.bob${path.sep}`)) {
         namespacedDescendants += 1
         return path.toNamespacedPath(physical)
