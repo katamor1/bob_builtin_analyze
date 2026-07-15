@@ -4,7 +4,7 @@
 
 **Goal:** Add preview-first, reference-aware, pinned, transaction-safe cleanup for persisted workflow runs.
 
-**Architecture:** A pure planner consumes a physically verified inventory and emits a digest-bound cleanup plan. A service rebuilds inventory before apply. Cleanup leases exclude new executions while a quarantine transaction performs all-or-nothing run-directory removal. VS Code commands are thin adapters.
+**Architecture:** A pure planner consumes a physically verified inventory and emits a digest-bound cleanup plan. A service rebuilds inventory before apply. Cleanup leases exclude new executions while a quarantine transaction stages all candidates before purge. Rename failures attempt reverse rollback; rollback or purge failures return typed incomplete state and preserve residual quarantine instead of claiming complete removal. VS Code commands are thin adapters.
 
 **Tech Stack:** TypeScript, Node.js test runner, VS Code API, existing run state codec, durability files, locks, artifact provenance and workspace-root helpers.
 
@@ -12,7 +12,7 @@
 
 - Tasks 1–6 are implemented on PR #93. Public behavior remains six manual commands, four settings, `run.json` authority, no startup/timer cleanup, no new runtime dependency, and no run-state schema change.
 - Windows CI path-spelling remediation is committed at `31e09ee9` with production code unchanged. The deterministic junction/8.3 reproduction moved from 21 failures to 71/71, and the final five-file focused set passed 100/100.
-- Migration publication/error-precedence remediation is committed at `9df3ddec`. The migration file passed 32/32 and the durability metadata budget passed 1/1 (`read=100`, `replace=298`).
+- Migration publication/error-precedence remediation is complete at `7d6e38d1`. A follow-up direct-reader finding after `9df3ddec` was fixed with two matching-backup regressions; the migration file passed 34/34, the durability metadata budget passed 1/1 (`read=100`, `replace=298`), and final targeted review `12a5d90d..7d6e38d1` reported Critical 0 / Important 0 / Minor 0.
 - Operator documentation and release/review evidence are prepared by Task 7, but RC/final local gates, VSIX evidence, exact-head hosted CI, whole-diff review, squash merge, and cleanup remain open until their real results are recorded.
 - Integration remains NO-GO until PR #93 is merged and verified on `origin/main`. Product Release remains NO-GO until real IBM Bob/Bazaar, multi-root, ReFS/AV, signing/distribution/rollback/operator-recovery UAT.
 

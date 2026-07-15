@@ -29,7 +29,7 @@
 
 ### Important — linked publication ownership was recorded after fallible checks
 
-`fs.link`が成功しても、後続metadata check前にownership flagが立たず、failure時にowner bytesのbackupを残し得ました。
+`fs.link`が成功しても、後続metadata check前にownership flagが立たず、failure時にowned publication bytesを持つbackupを残し得ました。
 
 Disposition at `9df3ddec`:
 
@@ -47,6 +47,17 @@ Disposition at `9df3ddec`:
 - Operation/identity、byte/domain safety、cleanup `rm`、verification close、cleanup path close、owner closeを別々にsettle。
 - `cleanup rm > close-only`を固定し、全handle settle後にerrorを選択。
 - Verification-close + rollback-rmとEEXIST cleanup-closeの実file regressionを追加。
+
+### Important — matching-backup direct-reader close-only failure could mask cleanup removal
+
+最初の修正後も、EEXISTとraced-existingのmatching-backup branchはpublic direct readerのraw close-only errorをprimary failureとして扱っていました。その後にowned temp cleanup `rm`が失敗しても、低優先度のdirect-reader close errorが観測されました。
+
+Disposition at `7d6e38d1`:
+
+- Matching-backup readをinternal validated direct-reader pathへ通し、exact-byte validationとclose-only outcomeを別々にsettle。
+- Successful direct-reader close-only failureをlinked verification close-only failureと同じ低優先度に分類。
+- EEXIST/raced-existingの2 real-filesystem regressionで、owned-temp cleanup `rm`がdirect-reader close-only errorより優先されることを確認。
+- Migration file 34/34、compile、metadata budgetをGREENにし、`12a5d90d..7d6e38d1`のfinal targeted independent reviewでCritical 0 / Important 0 / Minor 0を確認。
 
 ### Windows CI 21 failures — test path spelling portability
 
@@ -80,13 +91,13 @@ Disposition at `31e09ee9`:
 | --- | --- | --- | --- |
 | Windows portability spec | `4d100cda..31e09ee9` | Spec compliant | C0 / I0 / M0 |
 | Windows portability quality | `4d100cda..31e09ee9` | Approved | C0 / I0 / M0 |
-| Migration initial aggregate | `8adc7cf0..7a7ef937` | Changes requested | C0 / I2 / M0; fixed at `9df3ddec` |
-| Migration fix read-only quality | `31e09ee9..9df3ddec` | Approved | C0 / I0 / M0 |
-| Migration fresh independent re-review | `31e09ee9..9df3ddec` | **PENDING coordinator record** | **PENDING** |
-| Documentation/spec review | Documentation commit | **PENDING** | **PENDING** |
+| Migration initial aggregate | `8adc7cf0..7a7ef937` | Changes requested | C0 / I2 / M0; first remediation at `9df3ddec` |
+| Migration follow-up intake | Matching-backup direct-reader paths at `9df3ddec` | Changes requested | C0 / I1 / M0; fixed at `7d6e38d1` |
+| Migration final targeted re-review | `12a5d90d..7d6e38d1` | Approved | C0 / I0 / M0 |
+| Documentation/spec initial review | `12a5d90d` | Changes requested; fact corrections applied, re-review pending | C0 / I3 / M2 |
 | Whole-diff review | `f35e7e79..final-head` | **PENDING** | **PENDING** |
 
-Minor findings currently recorded: none. A final Minor must be fixed or carry a documented non-blocking disposition before merge.
+Initial docs reviewのImportant 3件（migration evidence、owner guard guarantee、partial-purge contract）とMinor 2件（PR #75 merge type、`maxCompletedRuns` terminal scope）は本fact-correctionで修正した。Open findingsはre-reviewで確定する。Final Minorは修正するか、non-blocking dispositionをmerge前に記録する。
 
 ## 6. Final verification record
 
@@ -102,7 +113,7 @@ Minor findings currently recorded: none. A final Minor must be fixed or carry a 
 ## 7. Current decision
 
 - Scoped Windows portability review: **GO**。
-- Scoped migration fix review: local read-only quality **GO**; fresh independent coordinator gate **PENDING**。
+- Migration remediation review: final targeted independent review **GO** (Critical 0 / Important 0 / Minor 0)。
 - Documentation review: **PENDING**。
 - Whole-diff review: **PENDING**。
 - PR #93 main merge: **NO-GO until pending gates are GREEN**。

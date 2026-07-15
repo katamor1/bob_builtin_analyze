@@ -275,13 +275,13 @@ workflowRegister.unpinRun
 
 `inspectRunStorage`と`previewRunCleanup`はuntrusted workspaceでもread-onlyで動作する。`cleanupCompletedRuns`、`deleteSelectedRuns`、`pinRun`、`unpinRun`はroot discovery、UI selection、service construction、filesystem accessより前に`requireTrustedWorkspace()`を通す。Multi-rootではroot selectionをrun selectionより先に行い、同じrun IDをroot間で共有しない。
 
-Retention設定は`enabled=false`、`completedDays=30`、`maxCompletedRuns=100`、`maxTotalBytes=524288000`を既定値とする。`enabled`は将来の自動cleanup用予約値で、manual commandの可否には使わない。Startup/timer/background cleanupは実装しない。
+Retention設定は`enabled=false`、`completedDays=30`、`maxCompletedRuns=100`、`maxTotalBytes=524288000`を既定値とする。`maxCompletedRuns`は名前にかかわらずterminal statusの`completed`と`failed`を合算し、上限超過分のeligible terminal runを候補にする。`enabled`は将来の自動cleanup用予約値で、manual commandの可否には使わない。Startup/timer/background cleanupは実装しない。
 
 ### 11A.2 Inventory、planner、apply binding
 
 `runRetentionInventory.ts`はdirect physical run treeをbounded scanし、run revision、retention revision、directory identity、bounded tree fingerprint、measurement completeness、reference graph completenessを収集する。Symlink/junctionをfollowせず、hard-linked fileはbytesを計上しても本文を開かず、runをunsafeとしてcleanup対象外にする。
 
-`runRetention.ts`のpure plannerはage、completed count、total bytes、selected run IDからstable decisionとSHA-256 digestを生成する。次をblockerとして保持する。
+`runRetention.ts`のpure plannerはage、terminal (`completed` / `failed`) count、total bytes、selected run IDからstable decisionとSHA-256 digestを生成する。次をblockerとして保持する。
 
 - Active/recoverable status: `running`、`paused`、`checkpoint`、`reviewing`、`held`
 - Artifact reuse、hydration、task-snapshot importから参照されるsource run
@@ -302,7 +302,7 @@ Retention設定は`enabled=false`、`completedDays=30`、`maxCompletedRuns=100`�
 
 Run ID順にatomic guard-directory `mkdir`でowner guardを取得し、guard ownerとlease JSONに同じcleanup lease v1 tokenを保存する。Normal executionはrun lock取得前にcleanup guard/leaseを確認する。Cleanupはlease取得後にexecution lock、journal、revision、directory identityを再検証する。
 
-Heartbeatとreleaseはguard directoryの`dev`/`ino`、owner bytes/token、lease fileの`dev`/`ino`/`nlink`を再検証する。通常releaseは`<runId>.json`、`owner.json`、`<runId>.guard`の順である。Orphan/new-protocol guardは自動reclaimしない。Owner不一致、unexpected entry、alias/hard link、recent/uncertain ownerはfail-closedで保全する。手動復旧もこのowner-checked順を再現しなければならない。
+Heartbeatとreleaseはacquisition時に保持したguard directoryの`dev`/`ino`を再検証し、現在のdirect single-linked `owner.json`をcleanup lease v1としてdecodeし、run IDとtokenを照合する。各readはdirect regular file、`nlink=1`、containment/no-alias、path/handle identityを検査するが、acquisition時のowner bytesまたはowner-file `dev`/`ino`をlifetime全体へ固定しない。Lease JSONもcurrent tokenを照合し、heartbeatではそのoperation内のsnapshotとopen handleの`dev`/`ino`/`nlink`を比較する。通常releaseは`<runId>.json`、`owner.json`、`<runId>.guard`の順である。Orphan/new-protocol guardは自動reclaimしない。Owner token不一致、guard identity変更、unexpected entry、alias/hard link、recent/uncertain ownerはfail-closedで保全する。手動復旧もこのowner-checked順を再現しなければならない。
 
 ### 11A.4 Quarantine transaction
 

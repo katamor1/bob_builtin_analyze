@@ -9,7 +9,7 @@
 | Pull request | #93 |
 | Branch | `agent/workflow-run-retention-p1-6-20260713` |
 | Merge base | `f35e7e79b3133f639b80aa9e4b3a5b00fe3b09cc` |
-| Documentation checkpoint | `9df3ddec`以後。RC headはTask 5で確定する。 |
+| Latest migration implementation checkpoint | `7d6e38d1`。RC headはTask 5で確定する。 |
 | Integration decision | **NO-GO until RC/final-head gates are recorded below** |
 | Product Release decision | **NO-GO** |
 
@@ -93,16 +93,17 @@ Owner guardの通常解放順はlease JSON、`owner.json`、guard directoryで�
 - Five-file focused suite: 100/100 PASS、fail 0、cancelled 0。
 - Independent spec/quality review: Critical 0 / Important 0 / Minor 0。
 
-### Migration publication precedence — `9df3ddec`
+### Migration publication precedence — `9df3ddec` / `7d6e38d1`
 
 - 最初のreview intake: Critical 0 / Important 2 / Minor 0。
 - Successful `fs.link`直後にownershipを記録し、以降のmetadata/byte failureでowner-handle-checked rollbackを実行。
 - Error priorityをoperation/identity、byte/domain safety、cleanup `rm`、verification/cleanup handle close、owner closeの順に固定。
 - Verification close + rollback `rm`、EEXIST cleanup-handle close、post-link metadata EIOの実file regressionを追加。
+- 後続reviewで、EEXIST/raced-existing matching-backupのdirect-reader close-only errorがowned-temp cleanup `rm`をmaskするImportant 1件を検出。`7d6e38d1`でdirect readのexact-byte validationとclose-only outcomeを分離し、cleanup `rm`を優先する2 regressionを追加。
 - Compile: PASS。
-- Migration test file: 32/32 PASS、fail 0、cancelled 0。
+- Migration test file: 34/34 PASS、fail 0、cancelled 0。
 - Durability metadata budget: 1/1 PASS、`read=100`、`replace=298`。
-- Scoped read-only quality review: Critical 0 / Important 0 / Minor 0。Coordinatorのfinal whole-diff gateはTask 6で別途記録する。
+- Final targeted independent review (`12a5d90d..7d6e38d1`): Critical 0 / Important 0 / Minor 0。Coordinatorのwhole-diff gateはTask 6で別途記録する。
 
 ## 6. Final local verification record
 
@@ -154,9 +155,9 @@ RC matrixがGREENになった後、このevidence fileへRC run IDs、local fina
 
 | Gate | Status |
 | --- | --- |
-| Migration remediation review | Scoped fix review GREEN。Final independent package resultは**PENDING**。 |
+| Migration remediation review | `12a5d90d..7d6e38d1` final targeted review: Critical 0 / Important 0 / Minor 0。 |
 | Windows portability review | Critical 0 / Important 0 / Minor 0。 |
-| Docs/spec review | **PENDING** |
+| Docs/spec review | Initial `12a5d90d` review: C0 / I3 / M2。Fact corrections applied; re-review **PENDING**。 |
 | Whole diff `f35e7e79..final-head` | **PENDING** |
 | Temporary diagnostic/mutation workflow absent | **PENDING final diff check** |
 | Exact-final-head all 7 `extensions-quality` jobs | **PENDING** |

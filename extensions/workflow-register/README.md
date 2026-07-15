@@ -418,7 +418,7 @@ AI プロバイダーは `workflowRegister.aiProviderCommand` で指定します
 | `workflowRegister.taskSnapshots.pruneOnSave` | `true` | snapshot 保存時に古い snapshot を削除する。 |
 | `workflowRegister.runs.retention.enabled` | `false` | 将来自動化用の予約値。現在の手動retention commandはこの値に関係なく利用できる。 |
 | `workflowRegister.runs.retention.completedDays` | `30` | 完了からこの日数を超えたterminal runを手動cleanup候補にする。 |
-| `workflowRegister.runs.retention.maxCompletedRuns` | `100` | 保持するcompleted run数の目安。超過分を手動cleanup候補にする。 |
+| `workflowRegister.runs.retention.maxCompletedRuns` | `100` | 保持するterminal run（`completed`と`failed`）合計数の目安。超過分のeligible runを手動cleanup候補にする。 |
 | `workflowRegister.runs.retention.maxTotalBytes` | `524288000` | Run storage総byte上限の目安。超過分を手動cleanup候補にする。 |
 
 ## ビルド

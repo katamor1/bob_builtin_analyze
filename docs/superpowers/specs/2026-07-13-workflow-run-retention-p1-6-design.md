@@ -78,7 +78,7 @@ Execution lockだけの事後確認ではTOCTOUが残るため、cleanup専用�
 - cleanup applyは候補runのowner guardをrun ID順にatomic `mkdir`し、同じowner tokenのlease JSONをexclusive createする
 - normal workflow executionはrun lock取得前にcleanup leaseを確認し、存在中は待機／busy errorにする
 - cleanupはlease取得後に`run.lock.json`、journal、revision、physical directoryを再確認する
-- cleanup終了時はsuccess／failureを問わず所有token、guard directory identity、owner bytesを再検証し、lease JSON、`owner.json`、空guard directoryの順で解放する
+- cleanup終了時はsuccess／failureを問わず、acquisition時に保持したguard directory identityと、現在のdirect single-linked `owner.json`からdecodeしたrun ID／所有tokenを再検証し、lease JSON、`owner.json`、空guard directoryの順で解放する。`owner.json`のreadはdirect regular file、`nlink=1`、containment/no-alias、path/handle identityを検査するが、acquisition時のowner bytesまたはowner-file identityをlifetime全体へ固定する契約ではない
 - new-protocol orphan guardは自動reclaimしない。手動復旧は全writer停止、direct contained path、`dev`／`ino`／`nlink=1`、owner/lease token/bytes、heartbeat停止を確認した後、同じ解放順を再現する
 
 ## Quarantine transaction

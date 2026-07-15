@@ -25,7 +25,7 @@ P1-6 の6コマンドはすべて手動実行専用です。拡張機能の起�
 | --- | ---: | --- |
 | `workflowRegister.runs.retention.enabled` | `false` | 将来自動化用の予約値。手動コマンドの利用可否には使わない。 |
 | `workflowRegister.runs.retention.completedDays` | `30` | 完了から指定日数を超えたterminal runを候補にする。 |
-| `workflowRegister.runs.retention.maxCompletedRuns` | `100` | completed runの保持数を超えた古いrunを候補にする。 |
+| `workflowRegister.runs.retention.maxCompletedRuns` | `100` | Terminal run（`completed`と`failed`）の合計保持数を超えた古いeligible runを候補にする。 |
 | `workflowRegister.runs.retention.maxTotalBytes` | `524288000` | run storage全体のbyte目安を超えた場合に候補を追加する。 |
 
 `completedDays`、`maxCompletedRuns`、`maxTotalBytes` はcleanup候補を決めるpolicyです。候補になっても、保護条件に該当するrunは削除されません。

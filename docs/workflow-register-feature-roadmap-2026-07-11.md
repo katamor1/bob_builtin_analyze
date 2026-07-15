@@ -306,7 +306,7 @@ Task snapshot から artifact を生成する前に、利用者が抽出元、�
 
 ### P1-5. 決定的な自動 Pause 制限を追加する
 
-**実行状況（2026-07-16）:** PR #75をsquash merge済み（`d78dec21`）。その後のworkflow platform remediationをPR #92でsquash merge済み（`f35e7e79`）。Focused/full suite、Ubuntu/Windows、package、VSIX policy、Extension Host smokeを統合済みだが、実IBM Bob/Bazaar/multi-rootはProduct Release外部ゲートとして継続する。
+**実行状況（2026-07-16）:** PR #75を2-parent merge済み（`d78dec21`）。その後のworkflow platform remediationをPR #92でsquash merge済み（`f35e7e79`）。Focused/full suite、Ubuntu/Windows、package、VSIX policy、Extension Host smokeを統合済みだが、実IBM Bob/Bazaar/multi-rootはProduct Release外部ゲートとして継続する。
 
 **Issue title**
 
@@ -357,7 +357,7 @@ workflow 側と workspace setting 側の両方に値がある場合は、より�
 
 ### P1-6. Run 保存期間・容量・プライバシー管理を追加する
 
-**実行状況（2026-07-16）:** PR #93で実装・最終検証中。6つのmanual command、4設定、physical inventory、pin、cleanup lease/owner guard、quarantine transaction、root-first multi-root、metadata-only reportを実装済み。Migration safety fix `9df3ddec`とWindows path-test portability fix `31e09ee9`を含む。PR #93のexact-final-head Linux/Windows/policy/package/reviewがGREENになりsquash mergeを確認するまではintegration NO-GOとする。Main統合後もProduct Releaseは実IBM Bob/Bazaar、multi-root、ReFS/AV、signing/distribution/rollback UAT完了までNO-GOとする。
+**実行状況（2026-07-16）:** PR #93で実装・最終検証中。6つのmanual command、4設定、physical inventory、pin、cleanup lease/owner guard、quarantine transaction、root-first multi-root、metadata-only reportを実装済み。Migration safety/error-precedence fix `7d6e38d1`（34/34、final targeted review Critical 0 / Important 0 / Minor 0）とWindows path-test portability fix `31e09ee9`を含む。PR #93のexact-final-head Linux/Windows/policy/package/reviewがGREENになりsquash mergeを確認するまではintegration NO-GOとする。Main統合後もProduct Releaseは実IBM Bob/Bazaar、multi-root、ReFS/AV、signing/distribution/rollback UAT完了までNO-GOとする。
 
 **Issue title**
 
