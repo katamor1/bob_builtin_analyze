@@ -136,10 +136,12 @@ function assertRetentionActivationSafety(retentionSource, extensionSource) {
   )
   assert.deepEqual(sourceFile.parseDiagnostics, [])
   const usesByHandler = new Map([...destructiveCommandHandlers.values()].map((handler) => [handler, []]))
+  const usesByCommandId = new Map([...destructiveCommandHandlers.keys()].map((commandId) => [commandId, []]))
   const visit = (node) => {
     if (ts.isIdentifier(node) && usesByHandler.has(node.text) && !ts.isImportSpecifier(node.parent)) {
       usesByHandler.get(node.text).push(node)
     }
+    if (ts.isStringLiteral(node) && usesByCommandId.has(node.text)) usesByCommandId.get(node.text).push(node)
     ts.forEachChild(node, visit)
   }
   visit(sourceFile)
@@ -169,6 +171,9 @@ function assertRetentionActivationSafety(retentionSource, extensionSource) {
     )
     assert.ok(ts.isStringLiteral(registration.arguments[0]), `${handler} command id must be a string literal`)
     assert.equal(registration.arguments[0].text, commandId, `${handler} must be registered for ${commandId}`)
+    const commandIdUses = usesByCommandId.get(commandId)
+    assert.equal(commandIdUses.length, 1, `${commandId} must appear exactly once and only as its registered command callback id`)
+    assert.strictEqual(commandIdUses[0], registration.arguments[0], `${commandId} must appear only as its registered command callback id`)
   }
 }
 
@@ -308,12 +313,18 @@ test("retention activation safety rejects direct and scheduled destructive handl
     "  const api = activateCore(context)",
     "  const api = activateCore(context)\n  setTimeout(pinWorkflowRun, 0)"
   )
+  const scheduledCommandDispatch = extension.replace(
+    "  const api = activateCore(context)",
+    "  const api = activateCore(context)\n  setTimeout(() => vscode.commands.executeCommand(\"workflowRegister.cleanupCompletedRuns\"), 0)"
+  )
   assert.notEqual(direct, extension)
   assert.notEqual(scheduled, extension)
   assert.notEqual(scheduledReference, extension)
+  assert.notEqual(scheduledCommandDispatch, extension)
   assert.throws(() => assertRetentionActivationSafety(source, direct), /registered command callback/)
   assert.throws(() => assertRetentionActivationSafety(source, scheduled), /registered command callback/)
   assert.throws(() => assertRetentionActivationSafety(source, scheduledReference), /registered command callback/)
+  assert.throws(() => assertRetentionActivationSafety(source, scheduledCommandDispatch), /registered command callback/)
 })
 
 test("extension contributes, registers and disposes every exact retention handler", () => {
