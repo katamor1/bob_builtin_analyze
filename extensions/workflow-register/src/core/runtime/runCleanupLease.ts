@@ -222,6 +222,7 @@ async function acquireCleanupLease(
   }
   const guard = await acquireCleanupGuard(locations, lease)
   let ownsMetadata = false
+  let metadataPublicationStarted = false
   try {
     let snapshot: CleanupLeaseSnapshot | undefined
     try {
@@ -239,6 +240,7 @@ async function acquireCleanupLease(
       }
     }
     await verifyCleanupGuard(guard, locations.root, lease)
+    metadataPublicationStarted = true
     await writeCleanupLeaseFile(file, lease)
     ownsMetadata = true
     const persisted = await readCleanupLeaseSnapshot(file, locations.root, runId)
@@ -249,9 +251,14 @@ async function acquireCleanupLease(
   } catch (error) {
     try {
       if (ownsMetadata) await releaseCleanupLease({ file, guard, lease }, locations.root)
+      else if (metadataPublicationStarted) await releaseFailedCleanupLeasePublication(file, guard, locations.root, lease)
       else await releaseCleanupGuard(guard, locations.root, lease)
     } catch (releaseError) {
-      throw new Error(`Workflow run '${runId}' cleanup lease acquisition failed (${formatError(error)}); guard release also failed: ${formatError(releaseError)}`)
+      throw appendSuppressedFailureContext(
+        error,
+        `cleanup lease acquisition rollback also failed: ${formatError(releaseError)}`,
+        [releaseError]
+      )
     }
     throw error
   }
@@ -324,11 +331,29 @@ async function acquireCleanupGuard(
   }
 
   const ownerFile = path.join(directory, CLEANUP_GUARD_OWNER_FILE)
-  await writeCleanupLeaseFile(ownerFile, lease)
-  const identity = await assertDirectDirectory(directory, locations.root, `Workflow run '${lease.runId}' cleanup guard`)
-  const guard = { directory, ownerFile, ...identity }
-  await verifyCleanupGuard(guard, locations.root, lease)
-  return guard
+  let guard: CleanupLeaseGuard | undefined
+  try {
+    const identity = await assertDirectDirectory(directory, locations.root, `Workflow run '${lease.runId}' cleanup guard`)
+    guard = { directory, ownerFile, ...identity }
+    await writeCleanupLeaseFile(ownerFile, lease)
+    await verifyCleanupGuard(guard, locations.root, lease)
+    return guard
+  } catch (error) {
+    try {
+      if (!guard) {
+        const identity = await assertDirectDirectory(directory, locations.root, `Workflow run '${lease.runId}' cleanup guard rollback`)
+        guard = { directory, ownerFile, ...identity }
+      }
+      await rollbackNewCleanupGuard(guard, locations.root, lease)
+    } catch (rollbackError) {
+      throw appendSuppressedFailureContext(
+        error,
+        `cleanup guard acquisition rollback also failed: ${formatError(rollbackError)}`,
+        [rollbackError]
+      )
+    }
+    throw error
+  }
 }
 
 async function verifyCleanupGuard(
@@ -359,16 +384,188 @@ async function releaseCleanupGuard(
   await fs.rmdir(guard.directory)
 }
 
-async function writeCleanupLeaseFile(file: string, lease: WorkflowRunCleanupLeaseV1): Promise<void> {
-  const handle = await fs.open(file, "wx", 0o600)
+async function rollbackNewCleanupGuard(
+  guard: CleanupLeaseGuard,
+  root: string,
+  expected: WorkflowRunCleanupLeaseV1
+): Promise<void> {
+  const current = await assertDirectDirectory(guard.directory, root, `Workflow run '${expected.runId}' cleanup guard rollback`)
+  if (!sameIdentity(current, guard)) throw new Error(`Workflow run '${expected.runId}' cleanup guard changed before acquisition rollback.`)
+  const entries = await fs.readdir(guard.directory)
+  if (entries.length === 0) {
+    await fs.rmdir(guard.directory)
+    return
+  }
+  if (entries.length === 1 && entries[0] === CLEANUP_GUARD_OWNER_FILE) {
+    await releaseCleanupGuard(guard, root, expected)
+    return
+  }
+  throw new Error(`Workflow run '${expected.runId}' cleanup guard contains unexpected entries and was preserved after acquisition failure.`)
+}
+
+async function releaseFailedCleanupLeasePublication(
+  file: string,
+  guard: CleanupLeaseGuard,
+  root: string,
+  expected: WorkflowRunCleanupLeaseV1
+): Promise<void> {
+  let snapshot: CleanupLeaseSnapshot
   try {
-    assertSingleLinkedRegularFile(await handle.stat({ bigint: true }), `Workflow run '${lease.runId}' cleanup lease`)
+    snapshot = await readCleanupLeaseSnapshot(file, root, expected.runId)
+  } catch (error) {
+    if (isMissing(error)) {
+      await releaseCleanupGuard(guard, root, expected)
+      return
+    }
+    throw error
+  }
+  const current = parseCleanupLease(JSON.parse(snapshot.bytes.toString("utf8")), expected.runId)
+  if (current.token !== expected.token) {
+    throw new Error(`Workflow run '${expected.runId}' cleanup lease publication changed ownership before acquisition rollback.`)
+  }
+  await releaseCleanupLease({ file, guard, lease: expected }, root)
+}
+
+async function removeOwnedCleanupLeasePublication(
+  file: string,
+  expected: FileIdentity,
+  runId: string
+): Promise<void> {
+  let before: Awaited<ReturnType<typeof fs.lstat>>
+  try {
+    before = await fs.lstat(file, { bigint: true })
+  } catch (error) {
+    if (isMissing(error)) return
+    throw error
+  }
+  if (before.isSymbolicLink()) throw new Error(`Workflow run '${runId}' cleanup lease publication became a symlink and was preserved.`)
+  assertSingleLinkedRegularFile(before, `Workflow run '${runId}' cleanup lease publication rollback`)
+  if (!sameIdentity(before, expected)) throw new Error(`Workflow run '${runId}' cleanup lease publication identity changed and was preserved.`)
+  const physical = await fs.realpath(file)
+  if (!samePath(file, physical)) throw new Error(`Workflow run '${runId}' cleanup lease publication became an alias and was preserved.`)
+  const physicalStat = await fs.lstat(physical, { bigint: true })
+  assertSingleLinkedRegularFile(physicalStat, `Workflow run '${runId}' cleanup lease publication rollback`)
+  if (!sameIdentity(physicalStat, expected)) throw new Error(`Workflow run '${runId}' cleanup lease publication physical identity changed and was preserved.`)
+  await fs.rm(file)
+}
+
+async function runHandleOperationWithClosePriority<T>(
+  handle: Awaited<ReturnType<typeof fs.open>>,
+  operation: () => Promise<T>,
+  label: string
+): Promise<T> {
+  let result!: T
+  let operationError: unknown
+  let operationFailed = false
+  try {
+    result = await operation()
+  } catch (error) {
+    operationError = error
+    operationFailed = true
+  }
+  let closeError: unknown
+  let closeFailed = false
+  try {
+    await handle.close()
+  } catch (error) {
+    closeError = error
+    closeFailed = true
+  }
+  if (operationFailed) {
+    if (closeFailed) throw appendSuppressedFailureContext(
+      operationError,
+      `${label} close also failed: ${formatError(closeError)}`,
+      [closeError]
+    )
+    throw operationError
+  }
+  if (closeFailed) throw closeError
+  return result
+}
+
+async function writeCleanupLeaseFile(file: string, lease: WorkflowRunCleanupLeaseV1): Promise<void> {
+  let handle: Awaited<ReturnType<typeof fs.open>> | undefined
+  let createdIdentity: FileIdentity | undefined
+  let operationError: unknown
+  let operationFailed = false
+  try {
+    handle = await fs.open(file, "wx", 0o600)
+    const opened = await handle.stat({ bigint: true })
+    assertSingleLinkedRegularFile(opened, `Workflow run '${lease.runId}' cleanup lease`)
+    createdIdentity = { dev: opened.dev, ino: opened.ino }
     await handle.writeFile(`${JSON.stringify(lease, null, 2)}\n`, "utf8")
     await handle.sync()
-    assertSingleLinkedRegularFile(await handle.stat({ bigint: true }), `Workflow run '${lease.runId}' cleanup lease`)
-  } finally {
-    await handle.close()
+    const written = await handle.stat({ bigint: true })
+    assertSingleLinkedRegularFile(written, `Workflow run '${lease.runId}' cleanup lease`)
+    if (!sameIdentity(createdIdentity, written)) throw new Error(`Workflow run '${lease.runId}' cleanup lease changed during publication.`)
+  } catch (error) {
+    operationError = error
+    operationFailed = true
   }
+
+  let identityProbeError: unknown
+  if (operationFailed && handle && !createdIdentity) {
+    try {
+      const opened = await handle.stat({ bigint: true })
+      assertSingleLinkedRegularFile(opened, `Workflow run '${lease.runId}' cleanup lease`)
+      createdIdentity = { dev: opened.dev, ino: opened.ino }
+    } catch (error) {
+      identityProbeError = error
+    }
+  }
+
+  let closeError: unknown
+  let closeFailed = false
+  if (handle) {
+    try {
+      await handle.close()
+    } catch (error) {
+      closeError = error
+      closeFailed = true
+    }
+  }
+
+  if (!operationFailed && !closeFailed) return
+
+  let cleanupError: unknown
+  let cleanupFailed = false
+  if (handle) {
+    if (createdIdentity) {
+      try {
+        await removeOwnedCleanupLeasePublication(file, createdIdentity, lease.runId)
+      } catch (error) {
+        cleanupError = error
+        cleanupFailed = true
+      }
+    } else {
+      cleanupError = identityProbeError ?? new Error(`Workflow run '${lease.runId}' cleanup lease publication identity could not be verified for rollback.`)
+      cleanupFailed = true
+    }
+  }
+
+  if (operationFailed) {
+    let primary = operationError
+    if (cleanupFailed) primary = appendSuppressedFailureContext(
+      primary,
+      `publication cleanup also failed: ${formatError(cleanupError)}`,
+      [cleanupError]
+    )
+    if (closeFailed) primary = appendSuppressedFailureContext(
+      primary,
+      `handle close also failed: ${formatError(closeError)}`,
+      [closeError]
+    )
+    throw primary
+  }
+  if (cleanupFailed) {
+    if (closeFailed) throw appendSuppressedFailureContext(
+      cleanupError,
+      `handle close also failed: ${formatError(closeError)}`,
+      [closeError]
+    )
+    throw cleanupError
+  }
+  throw closeError
 }
 
 async function releaseCleanupLease(entry: OwnedCleanupLease, root: string): Promise<void> {
@@ -406,7 +603,7 @@ async function refreshCleanupLease(
   if (current.token !== expected.token) throw new Error(`Workflow run '${expected.runId}' cleanup lease ownership changed.`)
   const noFollow = typeof constants.O_NOFOLLOW === "number" ? constants.O_NOFOLLOW : 0
   const handle = await fs.open(file, constants.O_RDWR | noFollow)
-  try {
+  await runHandleOperationWithClosePriority(handle, async () => {
     const stat = await handle.stat({ bigint: true })
     assertSingleLinkedRegularFile(stat, `Workflow run '${expected.runId}' cleanup lease`)
     if (stat.dev !== snapshot.dev || stat.ino !== snapshot.ino || stat.nlink !== snapshot.nlink) {
@@ -414,9 +611,7 @@ async function refreshCleanupLease(
     }
     await handle.utimes(heartbeatAt, heartbeatAt)
     await handle.sync()
-  } finally {
-    await handle.close()
-  }
+  }, `Workflow run '${expected.runId}' cleanup lease heartbeat handle`)
   const refreshed = await readCleanupLeaseSnapshot(file, root, expected.runId)
   const persisted = parseCleanupLease(JSON.parse(refreshed.bytes.toString("utf8")), expected.runId)
   if (
@@ -473,7 +668,7 @@ async function readCleanupLeaseSnapshot(file: string, root: string, runId: strin
   if (!samePath(file, physical)) throw new Error(`Workflow run '${runId}' cleanup lease must not be a file alias.`)
   const noFollow = typeof constants.O_NOFOLLOW === "number" ? constants.O_NOFOLLOW : 0
   const handle = await fs.open(file, constants.O_RDONLY | noFollow)
-  try {
+  return runHandleOperationWithClosePriority(handle, async () => {
     const stat = await handle.stat({ bigint: true })
     assertSingleLinkedRegularFile(stat, `Workflow run '${runId}' cleanup lease`)
     if (stat.dev !== before.dev || stat.ino !== before.ino || stat.nlink !== before.nlink) {
@@ -495,9 +690,7 @@ async function readCleanupLeaseSnapshot(file: string, root: string, runId: strin
       ino: read.ino,
       nlink: read.nlink
     }
-  } finally {
-    await handle.close()
-  }
+  }, `Workflow run '${runId}' cleanup lease read handle`)
 }
 
 async function cleanupLeaseLocations(workspaceRoot: string, create: boolean): Promise<CleanupLeaseLocations | undefined> {

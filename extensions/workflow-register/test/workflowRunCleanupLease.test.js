@@ -294,6 +294,261 @@ test("cleanup release removes owned JSON before its guard and never mutates the 
   }
 })
 
+test("new cleanup guard is removed when its first identity check fails transiently", async (t) => {
+  const root = await workspace(t)
+  const { withWorkflowRunCleanupLeases } = leaseModules()
+  const guardDirectory = path.join(root, ".bob", "workflows", "run-cleanup-leases", "run-a.guard")
+  const primaryError = Object.assign(new Error("GUARD_FIRST_IDENTITY_SENTINEL"), { code: "EIO" })
+  const originalLstat = fs.lstat
+  let injected = false
+  fs.lstat = async (target, ...args) => {
+    const normalize = (value) => process.platform === "win32"
+      ? path.resolve(String(value)).toLowerCase()
+      : path.resolve(String(value))
+    if (!injected && normalize(target) === normalize(guardDirectory)) {
+      injected = true
+      throw primaryError
+    }
+    return originalLstat(target, ...args)
+  }
+
+  let observedError
+  try {
+    await withWorkflowRunCleanupLeases(root, ["run-a"], async () => {
+      assert.fail("cleanup callback must not run after guard identity failure")
+    }, { token: () => "first-identity-owner", hostname: "test-host" })
+  } catch (error) {
+    observedError = error
+  } finally {
+    fs.lstat = originalLstat
+  }
+
+  assert.equal(injected, true)
+  assert.strictEqual(observedError, primaryError)
+  await assert.rejects(fs.access(guardDirectory), { code: "ENOENT" })
+  assert.equal(await withWorkflowRunCleanupLeases(root, ["run-a"], async () => "retried", {
+    token: () => "first-identity-retry",
+    hostname: "test-host"
+  }), "retried")
+})
+
+for (const publication of ["guard owner", "lease metadata"]) {
+  test(`${publication} publication failure removes only its newly-owned cleanup artifacts`, async (t) => {
+    const root = await workspace(t)
+    const { withWorkflowRunCleanupLeases, workflowRunCleanupLeasePresent } = leaseModules()
+    const leaseDirectory = path.join(root, ".bob", "workflows", "run-cleanup-leases")
+    const leaseFile = path.join(leaseDirectory, "run-a.json")
+    const guardDirectory = path.join(leaseDirectory, "run-a.guard")
+    const ownerFile = path.join(guardDirectory, "owner.json")
+    const target = publication === "guard owner" ? ownerFile : leaseFile
+    const primaryError = Object.assign(new Error(`${publication.toUpperCase().replaceAll(" ", "_")}_SYNC_SENTINEL`), { code: "EIO" })
+    const closeError = Object.assign(new Error(`${publication.toUpperCase().replaceAll(" ", "_")}_CLOSE_SENTINEL`), { code: "EIO" })
+    const originalOpen = fs.open
+    let wrapped = false
+    let injected = false
+    fs.open = async (file, ...args) => {
+      const handle = await originalOpen(file, ...args)
+      if (!wrapped && await matchesPhysicalPath(file, target)) {
+        wrapped = true
+        const originalSync = handle.sync.bind(handle)
+        const originalClose = handle.close.bind(handle)
+        handle.sync = async (...syncArgs) => {
+          const result = await originalSync(...syncArgs)
+          injected = true
+          throw primaryError
+        }
+        handle.close = async () => {
+          await originalClose()
+          throw closeError
+        }
+      }
+      return handle
+    }
+
+    let observedError
+    try {
+      await withWorkflowRunCleanupLeases(root, ["run-a"], async () => {
+        assert.fail("cleanup callback must not run after publication failure")
+      }, { token: () => "publication-owner", hostname: "test-host" })
+    } catch (error) {
+      observedError = error
+    } finally {
+      fs.open = originalOpen
+    }
+
+    assert.equal(injected, true)
+    assert.strictEqual(observedError, primaryError)
+    assert.match(observedError.message, /close also failed/i)
+    assert.deepEqual(observedError.suppressedErrors, [closeError])
+    assert.equal(await workflowRunCleanupLeasePresent(root, "run-a"), false)
+    await assert.rejects(fs.access(leaseFile), { code: "ENOENT" })
+    await assert.rejects(fs.access(guardDirectory), { code: "ENOENT" })
+
+    assert.equal(await withWorkflowRunCleanupLeases(root, ["run-a"], async () => "retried", {
+      token: () => "retry-owner",
+      hostname: "test-host"
+    }), "retried")
+  })
+}
+
+test("failed lease publication preserves an identity-changed replacement and its authoritative guard", async (t) => {
+  const root = await workspace(t)
+  const { withWorkflowRunCleanupLeases, workflowRunCleanupLeasePresent } = leaseModules()
+  const leaseDirectory = path.join(root, ".bob", "workflows", "run-cleanup-leases")
+  const leaseFile = path.join(leaseDirectory, "run-a.json")
+  const guardDirectory = path.join(leaseDirectory, "run-a.guard")
+  const displacedFile = path.join(leaseDirectory, "run-a.displaced.json")
+  const replacementBytes = `${JSON.stringify({
+    schemaVersion: "workflow-register/run-cleanup-lease/v1",
+    runId: "run-a",
+    token: "replacement-owner",
+    pid: process.pid,
+    hostname: "replacement-host",
+    createdAt: "2026-07-13T00:00:00.000Z",
+    heartbeatAt: "2026-07-13T00:00:00.000Z"
+  })}\n`
+  const primaryError = Object.assign(new Error("LEASE_PUBLICATION_PRIMARY_SENTINEL"), { code: "EIO" })
+  const originalOpen = fs.open
+  const originalRm = fs.rm
+  let wrapped = false
+  let replacementRmAttempts = 0
+  fs.open = async (file, ...args) => {
+    const handle = await originalOpen(file, ...args)
+    if (!wrapped && await matchesPhysicalPath(file, leaseFile)) {
+      wrapped = true
+      const originalSync = handle.sync.bind(handle)
+      handle.sync = async (...syncArgs) => {
+        await originalSync(...syncArgs)
+        await fs.rename(leaseFile, displacedFile)
+        await fs.writeFile(leaseFile, replacementBytes)
+        throw primaryError
+      }
+    }
+    return handle
+  }
+  fs.rm = async (target, ...args) => {
+    if (await matchesPhysicalPath(target, leaseFile)) replacementRmAttempts += 1
+    return originalRm(target, ...args)
+  }
+
+  let observedError
+  try {
+    await withWorkflowRunCleanupLeases(root, ["run-a"], async () => {
+      assert.fail("cleanup callback must not run after publication replacement")
+    }, { token: () => "original-publication-owner", hostname: "test-host" })
+  } catch (error) {
+    observedError = error
+  } finally {
+    fs.rm = originalRm
+    fs.open = originalOpen
+  }
+
+  assert.strictEqual(observedError, primaryError)
+  assert.match(observedError.message, /publication cleanup also failed.*identity changed/i)
+  assert.match(observedError.message, /acquisition rollback also failed.*changed ownership/i)
+  assert.equal(observedError.suppressedErrors.length, 2)
+  assert.equal(replacementRmAttempts, 0)
+  assert.equal(await fs.readFile(leaseFile, "utf8"), replacementBytes)
+  assert.equal((await fs.stat(displacedFile)).isFile(), true)
+  assert.equal((await fs.stat(guardDirectory)).isDirectory(), true)
+  assert.equal(await workflowRunCleanupLeasePresent(root, "run-a"), true)
+})
+
+test("cleanup lease reader keeps its primary error when handle close also fails", async (t) => {
+  const root = await workspace(t)
+  const { workflowRunCleanupLeasePresent } = leaseModules()
+  const leaseDirectory = path.join(root, ".bob", "workflows", "run-cleanup-leases")
+  const leaseFile = path.join(leaseDirectory, "run-a.json")
+  await fs.mkdir(leaseDirectory)
+  await fs.writeFile(leaseFile, `${JSON.stringify({
+    schemaVersion: "workflow-register/run-cleanup-lease/v1",
+    runId: "run-a",
+    token: "reader-owner",
+    pid: process.pid,
+    hostname: "test-host",
+    createdAt: "2026-07-13T00:00:00.000Z",
+    heartbeatAt: "2026-07-13T00:00:00.000Z"
+  })}\n`)
+  const primaryError = Object.assign(new Error("LEASE_READ_PRIMARY_SENTINEL"), { code: "EIO" })
+  const closeError = Object.assign(new Error("LEASE_CLOSE_SENTINEL"), { code: "EIO" })
+  const originalOpen = fs.open
+  let wrapped = false
+  fs.open = async (file, ...args) => {
+    const handle = await originalOpen(file, ...args)
+    if (!wrapped && await matchesPhysicalPath(file, leaseFile)) {
+      wrapped = true
+      const originalClose = handle.close.bind(handle)
+      handle.readFile = async () => { throw primaryError }
+      handle.close = async () => {
+        await originalClose()
+        throw closeError
+      }
+    }
+    return handle
+  }
+
+  let observedError
+  try {
+    await workflowRunCleanupLeasePresent(root, "run-a")
+  } catch (error) {
+    observedError = error
+  } finally {
+    fs.open = originalOpen
+  }
+
+  assert.strictEqual(observedError, primaryError)
+  assert.match(observedError.message, /close also failed/i)
+  assert.deepEqual(observedError.suppressedErrors, [closeError])
+  assert.equal(await fs.readFile(leaseFile, "utf8").then((value) => value.includes("reader-owner")), true)
+})
+
+test("cleanup lease heartbeat keeps its primary error when handle close also fails", async (t) => {
+  const root = await workspace(t)
+  const { withWorkflowRunCleanupLeases } = leaseModules()
+  const leaseFile = path.join(root, ".bob", "workflows", "run-cleanup-leases", "run-a.json")
+  const primaryError = Object.assign(new Error("LEASE_HEARTBEAT_PRIMARY_SENTINEL"), { code: "EIO" })
+  const closeError = Object.assign(new Error("LEASE_HEARTBEAT_CLOSE_SENTINEL"), { code: "EIO" })
+  const originalOpen = fs.open
+  const heartbeatInjected = deferred()
+  let wrapped = false
+  fs.open = async (file, flags, ...args) => {
+    const handle = await originalOpen(file, flags, ...args)
+    if (!wrapped && typeof flags === "number" && (flags & constants.O_RDWR) === constants.O_RDWR
+      && await matchesPhysicalPath(file, leaseFile)) {
+      wrapped = true
+      const originalClose = handle.close.bind(handle)
+      handle.utimes = async () => {
+        heartbeatInjected.resolve()
+        throw primaryError
+      }
+      handle.close = async () => {
+        await originalClose()
+        throw closeError
+      }
+    }
+    return handle
+  }
+
+  let observedError
+  try {
+    await withTimeout(withWorkflowRunCleanupLeases(root, ["run-a"], async () => {
+      await heartbeatInjected.promise
+    }, {
+      token: () => "heartbeat-priority-owner",
+      hostname: "test-host",
+      staleMs: 30
+    }), "cleanup lease heartbeat priority")
+  } catch (error) {
+    observedError = error
+  } finally {
+    fs.open = originalOpen
+  }
+
+  assert.strictEqual(observedError, primaryError)
+  assert.match(observedError.message, /close also failed/i)
+  assert.deepEqual(observedError.suppressedErrors, [closeError])
+})
+
 test("cleanup operation error keeps priority when lease parent cleanup also fails", async (t) => {
   const root = await workspace(t)
   const { withWorkflowRunCleanupLeases } = leaseModules()
