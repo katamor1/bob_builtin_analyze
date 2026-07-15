@@ -1,0 +1,858 @@
+const assert = require("node:assert/strict")
+const { createHash } = require("node:crypto")
+const fs = require("node:fs/promises")
+const Module = require("node:module")
+const os = require("node:os")
+const path = require("node:path")
+const { test } = require("node:test")
+
+const GUI_MODULE = path.join(__dirname, "..", "out", "ui", "ruleProposalTriageGui.js")
+const RUN_ID = "authoring-run-triage"
+const SOURCE_ID = `src-${"a".repeat(12)}`
+const CHUNK_ID = `chunk-${"b".repeat(64)}`
+const PRIVATE_PATH = "/private/rules/engineering-policy.docx"
+const RAW_PROPOSAL = "RAW AI RESPONSE including /private/rules/engineering-policy.docx and secret-token"
+const REVIEWED_AT = "2026-07-15T03:04:05.000Z"
+
+function proposalFixture() {
+  const rule = (title) => ({
+    category: "security",
+    title,
+    description: "Validate <untrusted> input & retain evidence.",
+    severity_on_fail: "error",
+    applies_when: ["changed_file_matches:**/*.ts"],
+    evidence_required: true,
+    review_hint: "Inspect validation boundaries."
+  })
+  return {
+    schema_version: "bob-bazaar-review/rule-proposal/v1",
+    run_id: RUN_ID,
+    base: {
+      checklist_sha256: "1".repeat(64),
+      project_context_sha256: "2".repeat(64),
+      prompt_addendum_sha256: "3".repeat(64)
+    },
+    operations: [
+      {
+        candidate_id: "candidate-add",
+        operation: "add",
+        target_rule_id: null,
+        rule: rule("AI <script>alert(1)</script> & add"),
+        source_refs: [{ source_id: SOURCE_ID, chunk_id: CHUNK_ID }],
+        confidence: "high",
+        rationale: "AI rationale <unsafe>",
+        conflict_ids: ["conflict-blocking"]
+      },
+      {
+        candidate_id: "candidate-update",
+        operation: "update",
+        target_rule_id: "PRJ-0001",
+        rule: rule("Update an existing rule"),
+        source_refs: [{ source_id: SOURCE_ID, chunk_id: CHUNK_ID }],
+        confidence: "medium",
+        rationale: "Update rationale",
+        conflict_ids: []
+      },
+      {
+        candidate_id: "candidate-retire",
+        operation: "retire",
+        target_rule_id: "PRJ-0002",
+        rule: null,
+        source_refs: [{ source_id: SOURCE_ID, chunk_id: CHUNK_ID }],
+        confidence: "low",
+        rationale: "Retire rationale",
+        conflict_ids: []
+      }
+    ],
+    conflicts: [{
+      conflict_id: "conflict-blocking",
+      summary: "Blocking <conflict>",
+      blocking: true,
+      source_refs: [{ source_id: SOURCE_ID, chunk_id: CHUNK_ID }],
+      affected_candidate_ids: ["candidate-add"],
+      alternatives: [{
+        alternative_id: "alternative-a",
+        description: "Prefer documented behavior",
+        source_refs: [{ source_id: SOURCE_ID, chunk_id: CHUNK_ID }]
+      }]
+    }],
+    project_context_operations: [{
+      candidate_id: "candidate-context",
+      operation: "add",
+      target_section_id: null,
+      heading: "Service <context>",
+      markdown: "Approved context proposal.",
+      source_refs: [{ source_id: SOURCE_ID, chunk_id: CHUNK_ID }],
+      confidence: "high",
+      rationale: "Context rationale",
+      conflict_ids: []
+    }],
+    prompt_addendum_operations: [{
+      candidate_id: "candidate-prompt",
+      operation: "add",
+      target_section_id: null,
+      heading: "Prompt checks",
+      markdown: "Review authentication changes.",
+      source_refs: [{ source_id: SOURCE_ID, chunk_id: CHUNK_ID }],
+      confidence: "high",
+      rationale: "Prompt rationale",
+      conflict_ids: []
+    }]
+  }
+}
+
+function emptyOverlay() {
+  return {
+    schema_version: "bob-bazaar-review/proposal-decisions/v1",
+    run_id: RUN_ID,
+    decisions: {}
+  }
+}
+
+function triageState() {
+  return {
+    run: {
+      workspaceRoot: "/workspace/acme",
+      runId: RUN_ID,
+      updatedAt: "2026-07-15T03:00:00.000Z"
+    },
+    proposal: proposalFixture(),
+    decisions: emptyOverlay(),
+    bundle: {},
+    evidence: {
+      sourceManifest: {
+        schema_version: "bob-bazaar-review/rule-sources/v1",
+        generated_at: "2026-07-15T02:00:00.000Z",
+        sources: [{ source_id: SOURCE_ID, logical_name: "engineering-policy.docx" }]
+      },
+      selection: {
+        schema_version: "bob-bazaar-review/rule-evidence-selection/v1",
+        selected_chunks: [{ source_id: SOURCE_ID, chunk_id: CHUNK_ID, text_sha256: "c".repeat(64) }]
+      },
+      chunks: [{
+        source_id: SOURCE_ID,
+        chunk_id: CHUNK_ID,
+        locator: { heading_path: ["Security"], block_index: 7 },
+        text: "PRIVATE DOCUMENT BODY",
+        text_sha256: "c".repeat(64)
+      }]
+    }
+  }
+}
+
+function renderModel(overrides = {}) {
+  return {
+    cspSource: "vscode-resource:",
+    runId: RUN_ID,
+    groups: [
+      {
+        asset: "rule",
+        label: "Checklist rules",
+        operations: [
+          {
+            candidateId: "candidate-add",
+            operation: "add",
+            targetId: null,
+            title: "AI <script>alert(1)</script> & add",
+            severity: "error",
+            confidence: "high",
+            rationale: "AI rationale <unsafe>",
+            sourceCount: 1,
+            sourceLocators: ["engineering-policy.docx · heading Security · block 7"],
+            blockingConflictIds: ["conflict-blocking"],
+            decision: "pending",
+            rejectReason: ""
+          },
+          {
+            candidateId: "candidate-update",
+            operation: "update",
+            targetId: "PRJ-0001",
+            title: "Update an existing rule",
+            severity: "error",
+            confidence: "medium",
+            rationale: "Update rationale",
+            sourceCount: 1,
+            sourceLocators: ["engineering-policy.docx · heading Security · block 7"],
+            blockingConflictIds: [],
+            decision: "accept",
+            rejectReason: "",
+            existingSummary: "Existing approved <rule>",
+            proposedSummary: "Proposed replacement <rule>",
+            editRule: {
+              category: "human-security",
+              title: "Human <edited> title",
+              description: "Human </textarea><script>alert('edit')</script> /project/settings.json",
+              severityOnFail: "warning",
+              appliesWhen: ["changed_file_matches:**/*.tsx", "diff_contains:auth"],
+              evidenceRequired: true,
+              reviewHint: "Review <carefully>"
+            }
+          },
+          {
+            candidateId: "candidate-retire",
+            operation: "retire",
+            targetId: "PRJ-0002",
+            title: "PRJ-0002",
+            severity: "",
+            confidence: "low",
+            rationale: "Retire rationale",
+            sourceCount: 1,
+            sourceLocators: ["engineering-policy.docx · heading Security · block 7"],
+            blockingConflictIds: [],
+            decision: "reject",
+            rejectReason: "Superseded"
+          }
+        ]
+      },
+      { asset: "project_context", label: "Project context", operations: [] },
+      { asset: "prompt_addendum", label: "Review prompt addendum", operations: [] }
+    ],
+    conflicts: [{
+      conflictId: "conflict-blocking",
+      summary: "Blocking <conflict>",
+      blocking: true,
+      alternatives: [{ alternativeId: "alternative-a", description: "Prefer documented behavior" }]
+    }],
+    decisionsComplete: false,
+    canPreview: false,
+    canApply: false,
+    staleWarning: "",
+    status: "A decision is required for every candidate.",
+    recovery: [],
+    preview: undefined,
+    transaction: undefined,
+    absolutePath: PRIVATE_PATH,
+    rawProposal: RAW_PROPOSAL,
+    ...overrides
+  }
+}
+
+function createFakeVscode(options = {}) {
+  const panels = []
+  const warningCalls = []
+  const informationCalls = []
+  const errorCalls = []
+  const openedDocuments = []
+  const warningResponses = [...(options.warningResponses ?? [])]
+  const vscode = {
+    ViewColumn: { One: 1 },
+    window: {
+      createWebviewPanel(viewType, title, column, panelOptions) {
+        const messageListeners = []
+        const disposeListeners = []
+        const posts = []
+        const htmlHistory = []
+        const webview = {
+          cspSource: "vscode-resource:",
+          postMessage: async (value) => { posts.push(structuredClone(value)); return true },
+          onDidReceiveMessage(listener) { messageListeners.push(listener); return { dispose() {} } }
+        }
+        Object.defineProperty(webview, "html", {
+          get: () => htmlHistory.at(-1) ?? "",
+          set: (value) => htmlHistory.push(String(value))
+        })
+        const panel = {
+          viewType,
+          title,
+          column,
+          panelOptions,
+          webview,
+          posts,
+          htmlHistory,
+          onDidDispose(listener) { disposeListeners.push(listener); return { dispose() {} } },
+          async emitMessage(message) {
+            for (const listener of messageListeners) await Promise.resolve(listener(structuredClone(message)))
+            await turn()
+          },
+          dispose() {
+            if (this.disposed) return
+            this.disposed = true
+            for (const listener of disposeListeners) listener()
+          }
+        }
+        panels.push(panel)
+        return panel
+      },
+      showWarningMessage: async (message, modalOptions, ...items) => {
+        warningCalls.push({ message: String(message), options: structuredClone(modalOptions), items })
+        return warningResponses.shift()
+      },
+      showInformationMessage: async (message) => { informationCalls.push(String(message)) },
+      showErrorMessage: async (message) => { errorCalls.push(String(message)) },
+      showTextDocument: async (document) => { openedDocuments.push(document); return {} }
+    },
+    workspace: {
+      workspaceFolders: [{ uri: { fsPath: "/workspace/acme" }, name: "acme", index: 0 }],
+      openTextDocument: async (options) => ({ ...structuredClone(options), uri: { scheme: "untitled" } })
+    }
+  }
+  return { vscode, panels, warningCalls, informationCalls, errorCalls, openedDocuments }
+}
+
+function loadGui(vscode) {
+  const originalLoad = Module._load
+  delete require.cache[GUI_MODULE]
+  Module._load = function load(request, parent, isMain) {
+    if (request === "vscode") return vscode
+    return originalLoad.call(this, request, parent, isMain)
+  }
+  try {
+    return require(GUI_MODULE)
+  } finally {
+    Module._load = originalLoad
+  }
+}
+
+function hostDependencies(overrides = {}) {
+  const state = triageState()
+  const calls = []
+  const renderedModels = []
+  let planGeneration = 0
+  return {
+    state,
+    calls,
+    renderedModels,
+    dependencies: {
+      createNonce: () => "triage-nonce",
+      now: () => REVIEWED_AT,
+      newTransactionId: () => "txn-triage-1",
+      renderRuleProposalTriageGuiHtml: (model, nonce) => {
+        renderedModels.push({ model: structuredClone(model), nonce })
+        return "<!doctype html><html><body>triage</body></html>"
+      },
+      findIncompleteRuleApplyTransactions: async () => {
+        calls.push(["findIncomplete"])
+        return []
+      },
+      recoverCommittedRuleAuthoringApply: async () => {
+        calls.push(["recoverCommitted"])
+        return undefined
+      },
+      loadRuleProposalTriageState: async () => {
+        calls.push(["loadState"])
+        return structuredClone(state)
+      },
+      persistRuleProposalDecisions: async (_state, decisions) => {
+        calls.push(["persistDecisions", structuredClone(decisions)])
+        state.decisions = structuredClone(decisions)
+        return structuredClone(state)
+      },
+      buildRuleApplyPlan: (_bundle, _proposal, decisions) => {
+        planGeneration += 1
+        calls.push(["buildPlan", structuredClone(decisions), planGeneration])
+        return {
+          schema_version: "bob-bazaar-review/rule-apply-plan/v1",
+          run_id: RUN_ID,
+          targets: [],
+          decisions: [],
+          retirements: [],
+          generation: planGeneration
+        }
+      },
+      persistRuleApplyPreview: async (_state, decisions, plan) => {
+        calls.push(["persistPreview", structuredClone(decisions), plan.generation])
+        return structuredClone(state)
+      },
+      executeRuleApplyTransaction: async (plan, options) => {
+        calls.push(["execute", plan.generation, structuredClone(options)])
+        return {
+          schema_version: "bob-bazaar-review/apply-manifest/v1",
+          transaction_id: options.transactionId,
+          run_id: RUN_ID,
+          status: "committed",
+          committed_at: options.now,
+          backup_directory: ".bob/review/rule-authoring/backups/txn-triage-1",
+          targets: [],
+          decisions: [],
+          retirements: []
+        }
+      },
+      persistRuleApplyCompletion: async (_state, _decisions, _plan, manifest) => {
+        calls.push(["persistCompletion", structuredClone(manifest)])
+        return { ...state.run, currentPhase: "completed" }
+      },
+      recoverRuleApplyTransaction: async (_root, transactionId, request) => {
+        calls.push(["recover", transactionId, structuredClone(request)])
+        return { status: "rolled_back" }
+      },
+      ...overrides
+    }
+  }
+}
+
+async function startHost(fake, fixture) {
+  const gui = loadGui(fake.vscode)
+  const host = gui.createRuleProposalTriageGuiHost(fixture.dependencies)
+  const promise = host.openRuleProposalTriageGui({ subscriptions: [] }, {
+    workspaceRoot: "/workspace/acme",
+    runId: RUN_ID
+  })
+  await turn()
+  return { gui, promise, panel: fake.panels.at(-1) }
+}
+
+async function turn() {
+  await new Promise((resolve) => setImmediate(resolve))
+}
+
+function sha256(value) {
+  return createHash("sha256").update(value).digest("hex")
+}
+
+async function temporaryWorkspace(t) {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "bob-rule-triage-store-"))
+  t.after(() => fs.rm(root, { recursive: true, force: true }))
+  return root
+}
+
+test("renders grouped add/update/retire operations, safe locators, required decisions, and blocking conflicts", () => {
+  const { renderRuleProposalTriageGuiHtml } = require("../out/ui/ruleProposalTriageGuiHtml")
+  const html = renderRuleProposalTriageGuiHtml(renderModel(), "nonce-<triage>")
+
+  assert.match(html, /Content-Security-Policy/)
+  assert.match(html, /default-src 'none'/)
+  assert.match(html, /script-src 'nonce-nonce-&lt;triage&gt;'/)
+  for (const tag of html.match(/<script\b[^>]*>/gi) ?? []) assert.match(tag, /nonce="nonce-&lt;triage&gt;"/)
+  assert.doesNotMatch(html, /\son[a-z]+\s*=/i)
+
+  assert.match(html, /Checklist rules/)
+  assert.match(html, />add</i)
+  assert.match(html, />update</i)
+  assert.match(html, />retire</i)
+  assert.match(html, /PRJ-0001/)
+  assert.match(html, /PRJ-0002/)
+  assert.match(html, /1 source/i)
+  assert.match(html, /engineering-policy\.docx · heading Security · block 7/)
+  assert.match(html, /blocking/i)
+  assert.match(html, /conflict-blocking/)
+  assert.match(html, /Existing approved &lt;rule&gt;/)
+  assert.match(html, /Proposed replacement &lt;rule&gt;/)
+  assert.match(html, /data-edit-field="category" value="human-security"/)
+  assert.match(html, /data-edit-field="title" value="Human &lt;edited&gt; title"/)
+  assert.match(html, /data-edit-field="description">Human &lt;\/textarea&gt;&lt;script&gt;alert\(&#39;edit&#39;\)&lt;\/script&gt; \/project\/settings\.json<\/textarea>/)
+  assert.match(html, /<option value="warning" selected>warning<\/option>/)
+  assert.match(html, /data-edit-field="appliesWhen">changed_file_matches:\*\*\/\*\.tsx\ndiff_contains:auth<\/textarea>/)
+  assert.match(html, /data-edit-field="evidenceRequired" checked/)
+  assert.match(html, /data-edit-field="reviewHint">Review &lt;carefully&gt;<\/textarea>/)
+  assert.doesNotMatch(html, /<script>alert\('edit'\)<\/script>/)
+  assert.match(html, /decision[^<]*(?:required|pending)|(?:required|pending)[^<]*decision/i)
+  assert.match(html, /data-action="previewApply"[^>]*disabled/)
+  assert.match(html, /data-action="applyApproved"[^>]*disabled/)
+
+  assert.match(html, /AI &lt;script&gt;alert\(1\)&lt;\/script&gt; &amp; add/)
+  assert.doesNotMatch(html, /<script>alert\(1\)<\/script>/)
+  assert.doesNotMatch(html, /\/private\/rules/)
+  assert.doesNotMatch(html, /RAW AI RESPONSE/)
+  assert.doesNotMatch(html, /secret-token/)
+
+  const longMarkdown = [
+    "Start </textarea><script>alert('markdown')</script>",
+    "x".repeat(9_000),
+    "END-OF-EDITABLE-MARKDOWN"
+  ].join("\n")
+  const longEditModel = renderModel()
+  longEditModel.groups[1].operations = [{
+    candidateId: "candidate-context-long",
+    operation: "add",
+    targetId: null,
+    title: "Long context",
+    severity: "",
+    confidence: "high",
+    rationale: "Long editable body",
+    sourceCount: 1,
+    sourceLocators: ["engineering-policy.docx · heading Context"],
+    blockingConflictIds: [],
+    decision: "edit",
+    rejectReason: "",
+    editHeading: "Human <context>",
+    editMarkdown: longMarkdown
+  }]
+  const longEditHtml = renderRuleProposalTriageGuiHtml(longEditModel, "nonce-long-edit")
+  assert.match(longEditHtml, /data-edit-field="heading" value="Human &lt;context&gt;"/)
+  assert.match(longEditHtml, /Start &lt;\/textarea&gt;&lt;script&gt;alert\(&#39;markdown&#39;\)&lt;\/script&gt;/)
+  assert.match(longEditHtml, /END-OF-EDITABLE-MARKDOWN/)
+  assert.doesNotMatch(longEditHtml, /<script>alert\('markdown'\)<\/script>/)
+
+  const hostileCsp = renderRuleProposalTriageGuiHtml(renderModel({
+    cspSource: "vscode-resource:; img-src https://attacker.invalid"
+  }), "nonce-csp")
+  assert.doesNotMatch(hostileCsp, /attacker\.invalid/)
+  assert.match(hostileCsp, /style-src vscode-resource: 'unsafe-inline'/)
+})
+
+test("accepts only exact operation-ID Webview messages and never accepts a path or command ID", () => {
+  const fake = createFakeVscode()
+  const { RULE_PROPOSAL_TRIAGE_MESSAGE_TYPES, parseRuleProposalTriageMessage } = loadGui(fake.vscode)
+  assert.deepEqual([...RULE_PROPOSAL_TRIAGE_MESSAGE_TYPES], [
+    "setDecision",
+    "editRule",
+    "resolveConflict",
+    "openEvidence",
+    "previewApply",
+    "applyApproved",
+    "recoverTransaction",
+    "close"
+  ])
+
+  const editedRule = proposalFixture().operations[0].rule
+  const accepted = [
+    { type: "setDecision", candidateId: "candidate-add", decision: "accept" },
+    { type: "setDecision", candidateId: "candidate-update", decision: "reject", rejectReason: "duplicate" },
+    { type: "editRule", candidateId: "candidate-add", rule: editedRule },
+    { type: "editRule", candidateId: "candidate-context", markdown: { heading: "Context", markdown: "Body" } },
+    { type: "resolveConflict", candidateId: "candidate-add", conflictId: "conflict-blocking", alternativeId: "alternative-a" },
+    { type: "openEvidence", candidateId: "candidate-add", sourceRefIndex: 0 },
+    { type: "previewApply" },
+    { type: "applyApproved" },
+    { type: "recoverTransaction", transactionId: "txn-triage-1", action: "rollback" },
+    { type: "close" }
+  ]
+  for (const message of accepted) assert.deepEqual(parseRuleProposalTriageMessage(message), message)
+
+  for (const rejected of [
+    { type: "previewApply", targetPath: ".bob/review/checklist.json" },
+    { type: "applyApproved", command: "workbench.action.terminal.new" },
+    { type: "setDecision", candidateId: PRIVATE_PATH, decision: "accept" },
+    { type: "setDecision", candidateId: "candidate-add", decision: "maybe" },
+    { type: "editRule", candidateId: "candidate-add", rule: { ...editedRule, targetPath: PRIVATE_PATH } },
+    { type: "openEvidence", candidateId: "candidate-add", sourceRefIndex: -1 },
+    { type: "recoverTransaction", transactionId: "../txn", action: "rollback" },
+    { type: "recoverTransaction", transactionId: "txn-triage-1", action: "resume", targetPath: PRIVATE_PATH },
+    { type: "close", extra: true }
+  ]) assert.equal(parseRuleProposalTriageMessage(rejected), undefined)
+})
+
+test("re-parses a stored validated proposal and persists decisions in a separate immutable generation", async (t) => {
+  const root = await temporaryWorkspace(t)
+  const { buildDocumentChunkId } = require("../out/ruleAuthoring/documentChunk")
+  const { resolveRuleAuthoringArtifactPath } = require("../out/ruleAuthoring/ruleAuthoringArtifactStore")
+  const {
+    commitRuleAuthoringArtifactGeneration,
+    createRuleAuthoringRun
+  } = require("../out/ruleAuthoring/ruleAuthoringRunStore")
+  const gui = require("../out/ui/ruleProposalTriageGui")
+  const sourceSha = "a".repeat(64)
+  const sourceId = `src-${sourceSha.slice(0, 12)}`
+  const locator = { page: 2 }
+  const chunkId = buildDocumentChunkId(sourceId, "pdf", "page", locator)
+  const text = "Stored private evidence body"
+  const textSha = sha256(text)
+  const storedProposal = proposalFixture()
+  storedProposal.run_id = RUN_ID
+  for (const operation of [
+    ...storedProposal.operations,
+    ...storedProposal.project_context_operations,
+    ...storedProposal.prompt_addendum_operations
+  ]) operation.source_refs = [{ source_id: sourceId, chunk_id: chunkId }]
+  for (const conflict of storedProposal.conflicts) {
+    conflict.source_refs = [{ source_id: sourceId, chunk_id: chunkId }]
+    for (const alternative of conflict.alternatives) {
+      alternative.source_refs = [{ source_id: sourceId, chunk_id: chunkId }]
+    }
+  }
+  const rawText = `${RAW_PROPOSAL}\n${JSON.stringify(storedProposal)}`
+  const initial = await createRuleAuthoringRun({
+    workspaceRoot: root,
+    runId: RUN_ID,
+    now: "2026-07-15T02:00:00.000Z"
+  })
+  const sourceManifest = {
+    schema_version: "bob-bazaar-review/rule-sources/v1",
+    generated_at: "2026-07-15T02:00:01.000Z",
+    sources: [{
+      source_id: sourceId,
+      logical_name: "policy.pdf",
+      media_type: "pdf",
+      sha256: sourceSha,
+      byte_size: 42,
+      extraction_status: "success",
+      extractor: { id: "fixture", version: "1" },
+      warnings: []
+    }]
+  }
+  const chunk = {
+    schema_version: "bob-bazaar-review/document-chunk/v1",
+    chunk_id: chunkId,
+    source_id: sourceId,
+    kind: "page",
+    locator,
+    title: "Policy",
+    text,
+    text_sha256: textSha,
+    flags: []
+  }
+  const selection = {
+    schema_version: "bob-bazaar-review/rule-evidence-selection/v1",
+    selected_chunks: [{ source_id: sourceId, chunk_id: chunkId, text_sha256: textSha }]
+  }
+  const proposalValidation = gui.createRuleProposalValidationArtifact(storedProposal, {
+    runId: RUN_ID,
+    base: {
+      checklistSha256: storedProposal.base.checklist_sha256,
+      projectContextSha256: storedProposal.base.project_context_sha256,
+      promptAddendumSha256: storedProposal.base.prompt_addendum_sha256
+    },
+    existingRuleIds: ["PRJ-0001", "PRJ-0002"],
+    existingProjectContextSectionIds: [],
+    existingPromptAddendumSectionIds: [],
+    selectedEvidence: [{ source_id: sourceId, chunk_id: chunkId }]
+  }, "2026-07-15T02:00:02.000Z")
+  const seeded = await commitRuleAuthoringArtifactGeneration({
+    workspaceRoot: root,
+    runId: RUN_ID,
+    expectedUpdatedAt: initial.updatedAt,
+    files: {
+      sourceManifest: `${JSON.stringify(sourceManifest)}\n`,
+      documentChunks: `${JSON.stringify(chunk)}\n`,
+      evidenceSelection: `${JSON.stringify(selection)}\n`,
+      ruleProposalRaw: rawText,
+      ruleProposal: `${JSON.stringify(storedProposal)}\n`,
+      proposalValidation: `${JSON.stringify(proposalValidation)}\n`
+    },
+    buildNextRun: (run, artifacts) => ({
+      ...run,
+      currentPhase: "human_review",
+      phases: Object.fromEntries(Object.keys(run.phases).map((phase) => [phase,
+        ["sources", "extraction", "evidence_selection", "proposal"].includes(phase)
+          ? { status: "completed", startedAt: run.createdAt, completedAt: "2026-07-15T02:00:02.000Z" }
+          : phase === "human_review"
+            ? { status: "in_progress", startedAt: "2026-07-15T02:00:02.000Z" }
+            : { status: "not_started" }
+      ])),
+      artifacts,
+      updatedAt: "2026-07-15T02:00:02.000Z"
+    })
+  })
+
+  const loaded = await gui.loadRuleProposalTriageState({ workspaceRoot: root, runId: RUN_ID })
+  assert.deepEqual(loaded.proposal, storedProposal)
+  const rawPointer = seeded.artifacts.ruleProposalRaw
+  const proposalPointer = seeded.artifacts.ruleProposal
+  const rawPath = resolveRuleAuthoringArtifactPath(seeded, "ruleProposalRaw")
+  const proposalPath = resolveRuleAuthoringArtifactPath(seeded, "ruleProposal")
+  const rawBefore = await fs.readFile(rawPath)
+  const proposalBefore = await fs.readFile(proposalPath)
+
+  const next = await gui.persistRuleProposalDecisions(loaded, {
+    schema_version: "bob-bazaar-review/proposal-decisions/v1",
+    run_id: RUN_ID,
+    decisions: {
+      "candidate-retire": {
+        decision: "reject",
+        reject_reason: "Keep this rule",
+        reviewed_at: REVIEWED_AT
+      }
+    }
+  })
+
+  assert.equal(next.run.artifacts.ruleProposalRaw, rawPointer)
+  assert.equal(next.run.artifacts.ruleProposal, proposalPointer)
+  assert.notEqual(next.run.artifacts.proposalDecisions, proposalPointer)
+  assert.notEqual(path.dirname(resolveRuleAuthoringArtifactPath(next.run, "proposalDecisions")), path.dirname(proposalPath))
+  assert.deepEqual(await fs.readFile(rawPath), rawBefore)
+  assert.deepEqual(await fs.readFile(proposalPath), proposalBefore)
+
+  await fs.unlink(rawPath)
+  const reloaded = await gui.loadRuleProposalTriageState({ workspaceRoot: root, runId: RUN_ID })
+  assert.equal(reloaded.decisions.decisions["candidate-retire"].decision, "reject")
+
+  const validationPath = resolveRuleAuthoringArtifactPath(next.run, "proposalValidation")
+  await fs.writeFile(validationPath, `${JSON.stringify({ valid: true })}\n`)
+  await assert.rejects(
+    gui.loadRuleProposalTriageState({ workspaceRoot: root, runId: RUN_ID }),
+    /valid validation record/i
+  )
+})
+
+test("persists a separate decision overlay, validates edits in the host, regenerates preview, and applies only after modal confirmation", async () => {
+  const fake = createFakeVscode({ warningResponses: [undefined, "Apply approved project rules"] })
+  const fixture = hostDependencies()
+  const proposalBefore = JSON.stringify(fixture.state.proposal)
+  const { promise, panel } = await startHost(fake, fixture)
+  assert.ok(panel)
+
+  await panel.emitMessage({ type: "openEvidence", candidateId: "candidate-add", sourceRefIndex: 0 })
+  assert.equal(fake.openedDocuments.length, 1)
+  assert.match(fake.openedDocuments[0].content, /PRIVATE DOCUMENT BODY/)
+  assert.doesNotMatch(fake.openedDocuments[0].content, /\/private\/rules/)
+
+  await panel.emitMessage({
+    type: "editRule",
+    candidateId: "candidate-add",
+    rule: { ...proposalFixture().operations[0].rule, severity_on_fail: "critical" }
+  })
+  assert.equal(fixture.calls.filter(([name]) => name === "persistDecisions").length, 0)
+
+  const acceptedIds = ["candidate-add", "candidate-update", "candidate-prompt"]
+  for (const candidateId of acceptedIds) {
+    await panel.emitMessage({ type: "setDecision", candidateId, decision: "accept" })
+  }
+  await panel.emitMessage({
+    type: "editRule",
+    candidateId: "candidate-update",
+    rule: {
+      ...proposalFixture().operations[1].rule,
+      category: "human-security",
+      title: "Human-edited title",
+      description: "Human-edited description.",
+      severity_on_fail: "warning",
+      applies_when: ["diff_contains:authorization"],
+      evidence_required: false,
+      review_hint: "Human review hint."
+    }
+  })
+  const editedRuleModel = fixture.renderedModels.at(-1).model.groups[0].operations
+    .find(({ candidateId }) => candidateId === "candidate-update")
+  assert.equal(editedRuleModel.title, "Human-edited title")
+  assert.deepEqual(editedRuleModel.editRule, {
+    category: "human-security",
+    title: "Human-edited title",
+    description: "Human-edited description.",
+    severityOnFail: "warning",
+    appliesWhen: ["diff_contains:authorization"],
+    evidenceRequired: false,
+    reviewHint: "Human review hint."
+  })
+  assert.match(editedRuleModel.proposedSummary, /Human-edited description/)
+  await panel.emitMessage({
+    type: "setDecision",
+    candidateId: "candidate-retire",
+    decision: "reject",
+    rejectReason: "Still required"
+  })
+  await panel.emitMessage({
+    type: "editRule",
+    candidateId: "candidate-context",
+    markdown: { heading: "Human context", markdown: "Human-approved context body." }
+  })
+  const editedMarkdownModel = fixture.renderedModels.at(-1).model.groups[1].operations
+    .find(({ candidateId }) => candidateId === "candidate-context")
+  assert.equal(editedMarkdownModel.title, "Human context")
+  assert.equal(editedMarkdownModel.editHeading, "Human context")
+  assert.equal(editedMarkdownModel.editMarkdown, "Human-approved context body.")
+  assert.match(editedMarkdownModel.proposedSummary, /Human-approved context body/)
+
+  assert.equal(fixture.renderedModels.at(-1).model.decisionsComplete, false)
+  assert.equal(fixture.renderedModels.at(-1).model.canPreview, false)
+  await panel.emitMessage({
+    type: "resolveConflict",
+    candidateId: "candidate-add",
+    conflictId: "conflict-blocking",
+    alternativeId: "alternative-a"
+  })
+  assert.equal(fixture.renderedModels.at(-1).model.decisionsComplete, true)
+  assert.equal(fixture.renderedModels.at(-1).model.canPreview, true)
+
+  await panel.emitMessage({ type: "previewApply" })
+  const firstPlan = fixture.calls.find(([name]) => name === "buildPlan")
+  assert.ok(firstPlan)
+  assert.equal(firstPlan[1].decisions["candidate-add"].decision, "accept")
+  assert.equal(firstPlan[1].decisions["candidate-add"].conflict_resolutions["conflict-blocking"], "alternative-a")
+  assert.equal(firstPlan[1].decisions["candidate-update"].decision, "edit")
+  assert.equal(firstPlan[1].decisions["candidate-update"].edited_rule.title, "Human-edited title")
+  assert.equal(firstPlan[1].decisions["candidate-context"].decision, "edit")
+  assert.equal(firstPlan[1].decisions["candidate-context"].edited_markdown.heading, "Human context")
+  assert.equal(firstPlan[1].decisions["candidate-retire"].decision, "reject")
+  assert.equal(firstPlan[1].decisions["candidate-retire"].reject_reason, "Still required")
+
+  await panel.emitMessage({ type: "applyApproved" })
+  assert.equal(fixture.calls.filter(([name]) => name === "execute").length, 0, "dismissed modal must not apply")
+  await panel.emitMessage({ type: "applyApproved" })
+
+  const builds = fixture.calls.filter(([name]) => name === "buildPlan")
+  assert.equal(builds.length, 2, "apply must regenerate and revalidate the preview")
+  assert.equal(fixture.calls.filter(([name]) => name === "execute").length, 1)
+  assert.equal(fixture.calls.find(([name]) => name === "execute")[1], 2)
+  assert.deepEqual(fake.warningCalls.map(({ options }) => options), [{ modal: true }, { modal: true }])
+  assert.equal(JSON.stringify(fixture.state.proposal), proposalBefore, "raw validated proposal must remain immutable")
+
+  const result = await promise
+  assert.deepEqual(result, { status: "applied", runId: RUN_ID, transactionId: "txn-triage-1" })
+  const finalModel = fixture.renderedModels.at(-1).model
+  assert.equal(finalModel.transaction.status, "committed")
+  assert.equal(finalModel.transaction.transactionId, "txn-triage-1")
+  assert.doesNotMatch(JSON.stringify(fixture.renderedModels), /PRIVATE DOCUMENT BODY|RAW AI RESPONSE|\/private\/rules/)
+
+  const reopened = await startHost(fake, fixture)
+  const reopenedRule = fixture.renderedModels.at(-1).model.groups[0].operations
+    .find(({ candidateId }) => candidateId === "candidate-update")
+  const reopenedMarkdown = fixture.renderedModels.at(-1).model.groups[1].operations
+    .find(({ candidateId }) => candidateId === "candidate-context")
+  assert.equal(reopenedRule.editRule.title, "Human-edited title")
+  assert.equal(reopenedRule.editRule.description, "Human-edited description.")
+  assert.equal(reopenedMarkdown.editHeading, "Human context")
+  assert.equal(reopenedMarkdown.editMarkdown, "Human-approved context body.")
+  await reopened.panel.emitMessage({ type: "close" })
+  assert.deepEqual(await reopened.promise, { status: "closed", runId: RUN_ID })
+})
+
+test("maps a stale current bundle to a safe warning and never starts a transaction", async () => {
+  const fake = createFakeVscode()
+  const fixture = hostDependencies({
+    buildRuleApplyPlan: () => {
+      throw new Error(`stale_pre_image: ${PRIVATE_PATH} ${RAW_PROPOSAL}`)
+    }
+  })
+  const { promise, panel } = await startHost(fake, fixture)
+  for (const candidateId of [
+    "candidate-add",
+    "candidate-update",
+    "candidate-retire",
+    "candidate-context",
+    "candidate-prompt"
+  ]) {
+    await panel.emitMessage({
+      type: "setDecision",
+      candidateId,
+      decision: candidateId === "candidate-add" ? "reject" : "accept"
+    })
+  }
+  await panel.emitMessage({ type: "previewApply" })
+
+  const model = fixture.renderedModels.at(-1).model
+  assert.match(model.staleWarning, /approved rule bundle changed/i)
+  assert.equal(fixture.calls.filter(([name]) => name === "execute").length, 0)
+  assert.doesNotMatch(JSON.stringify(model), /\/private\/rules|RAW AI RESPONSE|secret-token/)
+
+  await panel.emitMessage({ type: "close" })
+  assert.deepEqual(await promise, { status: "closed", runId: RUN_ID })
+})
+
+test("blocks normal resume until an incomplete transaction is rolled back", async () => {
+  let incomplete = [{ transaction_id: "txn-incomplete", run_id: RUN_ID, status: "rollback_failed" }]
+  const fake = createFakeVscode()
+  const fixture = hostDependencies({
+    findIncompleteRuleApplyTransactions: async () => {
+      fixture.calls.push(["findIncomplete"])
+      return structuredClone(incomplete)
+    },
+    recoverRuleApplyTransaction: async (_root, transactionId, request) => {
+      fixture.calls.push(["recover", transactionId, structuredClone(request)])
+      incomplete = []
+      return { status: "rolled_back" }
+    }
+  })
+  const { promise, panel } = await startHost(fake, fixture)
+
+  assert.ok(panel)
+  assert.deepEqual(fixture.calls.map(([name]) => name), ["recoverCommitted", "findIncomplete"])
+  assert.equal(fixture.renderedModels.at(-1).model.recovery.length, 1)
+  await panel.emitMessage({
+    type: "recoverTransaction",
+    transactionId: "txn-incomplete",
+    action: "rollback"
+  })
+
+  assert.deepEqual(fixture.calls.map(([name]) => name), [
+    "recoverCommitted",
+    "findIncomplete",
+    "recover",
+    "recoverCommitted",
+    "findIncomplete",
+    "loadState"
+  ])
+  assert.equal(fixture.renderedModels.at(-1).model.groups[0].operations.length, 3)
+
+  await panel.emitMessage({ type: "close" })
+  assert.deepEqual(await promise, { status: "closed", runId: RUN_ID })
+})
