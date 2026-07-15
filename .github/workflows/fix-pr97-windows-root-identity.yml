@@ -1,0 +1,107 @@
+name: fix-pr97-windows-root-identity
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/fix-pr97-windows-root-identity.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  fix-and-verify:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: codex/bazaar-ai-project-rule-authoring
+          fetch-depth: 0
+
+      - name: Apply identity-based workspace-root verification
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+
+          source = Path("extensions/bob-bazaar-review/src/ruleAuthoring/ruleApplyTransaction.ts")
+          text = source.read_text(encoding="utf-8")
+
+          old_assert = '''async function assertWorkspaceRoot(workspaceRoot: string): Promise<void> {
+            const stats = await lstatOptional(workspaceRoot)
+            if (!stats || stats.isSymbolicLink() || !stats.isDirectory()) {
+              throw new RuleApplyTransactionError("unsafe_path")
+            }
+            const physical = await fs.realpath(workspaceRoot)
+            if (!samePhysicalPath(physical, workspaceRoot)) {
+              throw new RuleApplyTransactionError("unsafe_path")
+            }
+          }
+          '''
+          new_assert = '''async function assertWorkspaceRoot(workspaceRoot: string): Promise<void> {
+            const before = await lstatOptional(workspaceRoot)
+            if (!before || before.isSymbolicLink() || !before.isDirectory()) {
+              throw new RuleApplyTransactionError("unsafe_path")
+            }
+            const physicalPath = await fs.realpath(workspaceRoot)
+            const physical = await lstatOptional(physicalPath)
+            if (
+              !physical ||
+              physical.isSymbolicLink() ||
+              !physical.isDirectory() ||
+              !sameIdentity(before, physical)
+            ) {
+              throw new RuleApplyTransactionError("unsafe_path")
+            }
+            const after = await lstatOptional(workspaceRoot)
+            if (
+              !after ||
+              after.isSymbolicLink() ||
+              !after.isDirectory() ||
+              !sameIdentity(before, after)
+            ) {
+              throw new RuleApplyTransactionError("unsafe_path")
+            }
+          }
+          '''
+          old_comparison = '''function samePhysicalPath(left: string, right: string): boolean {
+            const normalizedLeft = path.resolve(left)
+            const normalizedRight = path.resolve(right)
+            return process.platform === "win32"
+              ? normalizedLeft.toLowerCase() === normalizedRight.toLowerCase()
+              : normalizedLeft === normalizedRight
+          }
+          
+          '''
+
+          if text.count(old_assert) != 1:
+              raise SystemExit("assertWorkspaceRoot source block did not match exactly once")
+          if text.count(old_comparison) != 1:
+              raise SystemExit("samePhysicalPath source block did not match exactly once")
+
+          text = text.replace(old_assert, new_assert).replace(old_comparison, "")
+          source.write_text(text, encoding="utf-8", newline="\n")
+          '@ | python -
+
+          git diff --check
+          git diff -- extensions/bob-bazaar-review/src/ruleAuthoring/ruleApplyTransaction.ts
+
+      - name: Verify focused Windows recovery suite
+        shell: pwsh
+        working-directory: extensions/bob-bazaar-review
+        run: |
+          npm ci
+          npm run compile
+          node --test test/ruleApplyRecovery.test.js
+
+      - name: Commit and push feature fix
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add extensions/bob-bazaar-review/src/ruleAuthoring/ruleApplyTransaction.ts
+          git commit -m "fix: verify Windows workspace roots by identity"
+          git push origin HEAD:codex/bazaar-ai-project-rule-authoring
+          gh api --method DELETE "repos/$env:GITHUB_REPOSITORY/git/refs/heads/$env:GITHUB_HEAD_REF"
