@@ -1,7 +1,7 @@
 import * as path from "node:path"
 
 const WINDOWS_RESERVED_NAME = /^(con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])(?:\..*)?$/i
-const CONTROL_CHARACTER = /[\u0000-\u001f\u007f]/
+const CONTROL_CHARACTER = /[\u0000-\u001f\u007f-\u009f]/
 const WINDOWS_FORBIDDEN_CHARACTER = /[<>:"/\\|?*]/
 const MAX_PATH_SEGMENT_BYTES = 255
 

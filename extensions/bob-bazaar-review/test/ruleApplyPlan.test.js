@@ -809,7 +809,9 @@ test("rejects path-shaped provenance run IDs while preserving valid Unicode run 
 
   for (const [label, mutate] of [
     ["POSIX absolute path", (value) => { value.rules[0].last_run_id = "/home/alice/private/rules.docx" }],
-    ["Windows absolute path", (value) => { value.markdown_sections[0].last_run_id = "C:\\Users\\Alice\\rules.docx" }]
+    ["Windows absolute path", (value) => { value.markdown_sections[0].last_run_id = "C:\\Users\\Alice\\rules.docx" }],
+    ["rule-entry C1 control", (value) => { value.rules[0].last_run_id = "run\u0085private" }],
+    ["Markdown-entry C1 control", (value) => { value.markdown_sections[0].last_run_id = "run\u009fprivate" }]
   ]) {
     const unsafe = structuredClone(provenance)
     mutate(unsafe)

@@ -79,7 +79,10 @@ test("rule authoring IDs reject traversal and unsafe cross-platform path segment
     "name.",
     "name ",
     "a\u0000b",
-    "a\u007fb"
+    "a\u007fb",
+    "run\u0080private",
+    "run\u0085private",
+    "run\u009fprivate"
   ]) {
     assert.throws(() => validateRuleAuthoringId(value, "runId"), /runId/)
   }
