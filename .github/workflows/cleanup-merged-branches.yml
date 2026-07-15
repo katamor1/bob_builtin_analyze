@@ -1,0 +1,94 @@
+name: cleanup-merged-branches
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches:
+      - main
+    paths:
+      - ".github/workflows/cleanup-merged-branches.yml"
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  cleanup:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Delete merged pull-request branches
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          repo="$GITHUB_REPOSITORY"
+          cleanup_branch="$GITHUB_HEAD_REF"
+          default_branch="$(gh api "repos/$repo" --jq '.default_branch')"
+
+          mapfile -t open_heads < <(
+            gh api --paginate "repos/$repo/pulls?state=open&per_page=100" \
+              --jq '.[] | select(.head.repo != null and .head.repo.full_name == .base.repo.full_name) | .head.ref'
+          )
+          mapfile -t open_bases < <(
+            gh api --paginate "repos/$repo/pulls?state=open&per_page=100" \
+              --jq '.[].base.ref'
+          )
+          mapfile -t protected_branches < <(
+            gh api --paginate "repos/$repo/branches?per_page=100" \
+              --jq '.[] | select(.protected == true) | .name'
+          )
+          mapfile -t existing_branches < <(
+            gh api --paginate "repos/$repo/branches?per_page=100" \
+              --jq '.[].name'
+          )
+          mapfile -t merged_heads < <(
+            gh api --paginate "repos/$repo/pulls?state=closed&per_page=100" \
+              --jq '.[] | select(.merged_at != null and .head.repo != null and .head.repo.full_name == .base.repo.full_name) | .head.ref' \
+              | sort -u
+          )
+
+          declare -A keep=()
+          keep["$default_branch"]=1
+          keep["$cleanup_branch"]=1
+          for branch in "${open_heads[@]}" "${open_bases[@]}" "${protected_branches[@]}"; do
+            if [[ -n "$branch" ]]; then
+              keep["$branch"]=1
+            fi
+          done
+
+          declare -A existing=()
+          for branch in "${existing_branches[@]}"; do
+            existing["$branch"]=1
+          done
+
+          deleted=()
+          skipped=()
+          for branch in "${merged_heads[@]}"; do
+            if [[ -z "${existing[$branch]:-}" ]]; then
+              continue
+            fi
+            if [[ -n "${keep[$branch]:-}" ]]; then
+              skipped+=("$branch")
+              continue
+            fi
+
+            echo "::notice::Deleting merged branch $branch"
+            gh api --method DELETE "repos/$repo/git/refs/heads/$branch"
+            deleted+=("$branch")
+          done
+
+          echo "Deleted ${#deleted[@]} merged branches."
+          if ((${#deleted[@]} > 0)); then
+            printf '%s\n' "${deleted[@]}" | sort
+          fi
+
+          if ((${#skipped[@]} > 0)); then
+            echo "Protected or active branches retained:"
+            printf '%s\n' "${skipped[@]}" | sort
+          fi
+
+          echo "::notice::Deleting temporary cleanup branch $cleanup_branch"
+          gh api --method DELETE "repos/$repo/git/refs/heads/$cleanup_branch"
