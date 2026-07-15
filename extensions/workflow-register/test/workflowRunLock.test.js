@@ -13,7 +13,8 @@ const {
   withWorkflowRunLock
 } = require("../out/core/runtime/runLock.js")
 const runDurabilityPath = require("../out/core/runtime/runDurabilityPath.js")
-const { withWorkflowRunCleanupLeases } = require("../out/core/runtime/runCleanupLease.js")
+const cleanupLeaseModules = require("../out/core/runtime/runCleanupLease.js")
+const { withWorkflowRunCleanupLeases } = cleanupLeaseModules
 const { resolveWorkflowRunWorkspaceRoot } = require("../out/core/runtime/workflowRunWorkspaceRootBinding.js")
 const {
   readRunDurabilityFile,
@@ -716,4 +717,112 @@ test("release rejects a formerly successful operation after lock ownership is re
   )
   const remaining = await readRunDurabilityFile(workspace, "run-1", "run.lock.json")
   assert.equal(parseWorkflowRunLock(JSON.parse(remaining.bytes.toString("utf8")), "run-1").token, "replacement-token")
+})
+
+test("operation error keeps priority when lock release also fails", async (t) => {
+  const workspace = root(t)
+  const lockPath = path.join(workspace, ".bob", "workflows", "runs", "run-1", "run.lock.json")
+  const primaryError = new Error("LOCK_OPERATION_SENTINEL")
+  const releaseError = Object.assign(new Error("LOCK_RELEASE_SENTINEL"), { code: "EIO" })
+  const originalOpen = fsp.open
+  let operationFinished = false
+  let releaseReadAttempts = 0
+  fsp.open = async (target, ...args) => {
+    if (operationFinished && path.resolve(String(target)) === path.resolve(lockPath)) {
+      releaseReadAttempts += 1
+      throw releaseError
+    }
+    return originalOpen(target, ...args)
+  }
+
+  let observedError
+  try {
+    await withWorkflowRunLock(workspace, "run-1", async () => {
+      operationFinished = true
+      throw primaryError
+    }, { heartbeatMs: 0, token: () => "release-failure-owner" })
+  } catch (error) {
+    observedError = error
+  } finally {
+    fsp.open = originalOpen
+  }
+
+  assert.strictEqual(observedError, primaryError)
+  assert.match(observedError.message, /LOCK_OPERATION_SENTINEL/)
+  assert.match(observedError.message, /lock release also failed.*LOCK_RELEASE_SENTINEL/i)
+  assert.deepEqual(observedError.suppressedErrors, [releaseError])
+  assert.equal(releaseReadAttempts, 1)
+  const remaining = await readRunDurabilityFile(workspace, "run-1", "run.lock.json")
+  assert.equal(parseWorkflowRunLock(JSON.parse(remaining.bytes.toString("utf8")), "run-1").token, "release-failure-owner")
+})
+
+test("post-create cleanup lease check failure releases the newly-owned lock", async (t) => {
+  const workspace = root(t)
+  const primaryError = Object.assign(new Error("POST_CREATE_LEASE_CHECK_SENTINEL"), { code: "EIO" })
+  const originalLeasePresent = cleanupLeaseModules.workflowRunCleanupLeasePresent
+  let leaseChecks = 0
+  cleanupLeaseModules.workflowRunCleanupLeasePresent = async () => {
+    leaseChecks += 1
+    if (leaseChecks === 1) return false
+    throw primaryError
+  }
+
+  let observedError
+  try {
+    await withWorkflowRunLock(workspace, "run-1", async () => undefined, {
+      heartbeatMs: 0,
+      token: () => "postcheck-owner"
+    })
+  } catch (error) {
+    observedError = error
+  } finally {
+    cleanupLeaseModules.workflowRunCleanupLeasePresent = originalLeasePresent
+  }
+
+  assert.strictEqual(observedError, primaryError)
+  assert.equal(leaseChecks, 2)
+  assert.equal(await readRunDurabilityFile(workspace, "run-1", "run.lock.json"), undefined)
+})
+
+test("post-create cleanup lease check keeps priority when owned-lock release fails", async (t) => {
+  const workspace = root(t)
+  const lockPath = path.join(workspace, ".bob", "workflows", "runs", "run-1", "run.lock.json")
+  const primaryError = Object.assign(new Error("POST_CREATE_LEASE_CHECK_SENTINEL"), { code: "EIO" })
+  const releaseError = Object.assign(new Error("POST_CREATE_RELEASE_SENTINEL"), { code: "EIO" })
+  const originalLeasePresent = cleanupLeaseModules.workflowRunCleanupLeasePresent
+  const originalOpen = fsp.open
+  let leaseChecks = 0
+  let releaseReadAttempts = 0
+  cleanupLeaseModules.workflowRunCleanupLeasePresent = async () => {
+    leaseChecks += 1
+    if (leaseChecks === 1) return false
+    throw primaryError
+  }
+  fsp.open = async (target, ...args) => {
+    if (leaseChecks >= 2 && path.resolve(String(target)) === path.resolve(lockPath)) {
+      releaseReadAttempts += 1
+      throw releaseError
+    }
+    return originalOpen(target, ...args)
+  }
+
+  let observedError
+  try {
+    await withWorkflowRunLock(workspace, "run-1", async () => undefined, {
+      heartbeatMs: 0,
+      token: () => "postcheck-release-failure-owner"
+    })
+  } catch (error) {
+    observedError = error
+  } finally {
+    fsp.open = originalOpen
+    cleanupLeaseModules.workflowRunCleanupLeasePresent = originalLeasePresent
+  }
+
+  assert.strictEqual(observedError, primaryError)
+  assert.match(observedError.message, /created lock release also failed.*POST_CREATE_RELEASE_SENTINEL/i)
+  assert.deepEqual(observedError.suppressedErrors, [releaseError])
+  assert.equal(releaseReadAttempts, 1)
+  const remaining = await readRunDurabilityFile(workspace, "run-1", "run.lock.json")
+  assert.equal(parseWorkflowRunLock(JSON.parse(remaining.bytes.toString("utf8")), "run-1").token, "postcheck-release-failure-owner")
 })

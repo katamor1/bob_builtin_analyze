@@ -127,6 +127,7 @@ async function executeWorkflowRunLock<T>(
 
   let result!: T
   let operationError: unknown
+  let releaseError: unknown
   try {
     result = await activeLocks.run(chain, () => (
       withWorkflowRunWorkspaceRootBinding(workspaceRoot, physicalRoot, scope.token, operation)
@@ -139,13 +140,23 @@ async function executeWorkflowRunLock<T>(
     stopping = true
     if (timer) clearInterval(timer)
     await heartbeatInFlight
-    const released = await releaseWorkflowRunLock(physicalRoot, runId, owner)
-    if (!released && !heartbeatError) {
-      heartbeatError = new Error(`Workflow run '${runId}' lock ownership changed before release.`)
+    try {
+      const released = await releaseWorkflowRunLock(physicalRoot, runId, owner)
+      if (!released) releaseError = new Error(`Workflow run '${runId}' lock ownership changed before release.`)
+    } catch (error) {
+      releaseError = error
     }
   }
-  if (operationError) throw operationError
-  if (heartbeatError) throw heartbeatError
+  if (operationError) {
+    if (heartbeatError) appendSuppressedError(operationError, heartbeatError, "lock heartbeat also failed")
+    if (releaseError) appendSuppressedError(operationError, releaseError, "lock release also failed")
+    throw operationError
+  }
+  if (heartbeatError) {
+    if (releaseError) appendSuppressedError(heartbeatError, releaseError, "lock release also failed")
+    throw heartbeatError
+  }
+  if (releaseError) throw releaseError
   return result
 }
 
@@ -233,7 +244,22 @@ async function acquireWorkflowRunLock(
         serializeWorkflowRunLock(owner),
         { createRunDirectory: !requireExistingRunDirectory && !runDirectoryExistedAtEntry }
       )) {
-        if (!await workflowRunCleanupLeasePresent(workspaceRoot, runId)) return owner
+        let cleanupLeasePresent: boolean
+        try {
+          cleanupLeasePresent = await workflowRunCleanupLeasePresent(workspaceRoot, runId)
+        } catch (error) {
+          let releaseError: unknown
+          try {
+            if (!await releaseWorkflowRunLock(workspaceRoot, runId, owner)) {
+              releaseError = new Error(`Workflow run '${runId}' created lock changed ownership before error cleanup.`)
+            }
+          } catch (cleanupError) {
+            releaseError = cleanupError
+          }
+          if (releaseError) appendSuppressedError(error, releaseError, "created lock release also failed")
+          throw error
+        }
+        if (!cleanupLeasePresent) return owner
         const removed = await releaseWorkflowRunLock(workspaceRoot, runId, owner)
         contentionMessage = removed
           ? `Workflow run '${runId}' became reserved by a cleanup operation while its lock was being acquired.`
@@ -297,6 +323,30 @@ async function releaseWorkflowRunLock(workspaceRoot: string, runId: string, owne
   }
   if (current.token !== owner.token) return false
   return removeRunDurabilityFile(workspaceRoot, runId, "run.lock.json", snapshot.bytes)
+}
+
+function appendSuppressedError(primary: unknown, secondary: unknown, label: string): void {
+  if ((typeof primary === "object" && primary !== null) || typeof primary === "function") {
+    try {
+      const existing = Reflect.get(primary, "suppressedErrors")
+      const suppressedErrors = Object.freeze(Array.isArray(existing) ? [...existing, secondary] : [secondary])
+      Object.defineProperty(primary, "suppressedErrors", {
+        value: suppressedErrors,
+        configurable: true,
+        enumerable: false,
+        writable: false
+      })
+    } catch {
+      // A frozen or host-provided primary error must still retain precedence.
+    }
+  }
+  if (primary instanceof Error) {
+    try {
+      primary.message = `${primary.message}; ${label} (${formatError(secondary)})`
+    } catch {
+      // Message decoration is diagnostic-only and must never replace the primary error.
+    }
+  }
 }
 
 function inspectExistingLock(
