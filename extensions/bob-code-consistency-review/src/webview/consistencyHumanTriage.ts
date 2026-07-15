@@ -14,52 +14,71 @@ import {
   type HumanTriageMessage
 } from "./consistencyHumanTriageMessage"
 
-export function openConsistencyHumanTriageGui(context: vscode.ExtensionContext): void {
+export async function openConsistencyHumanTriageGui(context: vscode.ExtensionContext): Promise<void> {
   const panel = vscode.window.createWebviewPanel("bobCodeConsistencyHumanTriage", "Code Consistency Human Triage", vscode.ViewColumn.One, {
     enableScripts: true,
     retainContextWhenHidden: true
   })
   const controller = new ConsistencyHumanTriageController(panel)
-  context.subscriptions.push(panel.webview.onDidReceiveMessage((message) => controller.handleMessage(message)))
-  void controller.initialize()
+  context.subscriptions.push(
+    panel.onDidDispose(() => controller.dispose()),
+    panel.webview.onDidReceiveMessage((message) => {
+      void controller.handleMessage(message).catch(reportHumanTriageControllerError)
+    })
+  )
+  await controller.initialize()
 }
 
 class ConsistencyHumanTriageController {
+  private disposed = false
   private workspaceRoot = ""
   private model?: ConsistencyHumanTriageModel
 
   constructor(private readonly panel: vscode.WebviewPanel) {}
 
+  dispose(): void {
+    this.disposed = true
+  }
+
   async initialize(): Promise<void> {
-    this.workspaceRoot = await requireWorkspaceRoot()
-    this.model = await this.loadModel([])
+    const workspaceRoot = await requireWorkspaceRoot()
+    if (this.disposed) return
+    this.workspaceRoot = workspaceRoot
+    const model = await this.loadModel([])
+    if (this.disposed) return
+    this.model = model
     this.render()
   }
 
   async handleMessage(rawMessage: unknown): Promise<void> {
+    if (this.disposed) return
     const message = parseHumanTriageMessage(rawMessage)
     if (!message) {
-      this.post({ error: true, message: "不正な画面操作を拒否しました。" })
+      await this.post({ error: true, message: "不正な画面操作を拒否しました。" })
       return
     }
     try {
       if (message.action === "generateTriage") {
         const result = await runTriage({ workspaceRoot: this.workspaceRoot })
-        this.model = await this.loadModel([describeResult(result)])
+        if (this.disposed) return
+        const model = await this.loadModel([describeResult(result)])
+        if (this.disposed) return
+        this.model = model
         this.render()
       } else if (message.action === "saveDecisions") {
         await this.saveDecisions(message)
       } else if (message.action === "openResultCapture") {
         await vscode.commands.executeCommand("bobCodeConsistency.openResultCaptureGui")
-        this.post({ ok: true, message: "Result Capture を開きました。" })
+        await this.post({ ok: true, message: "Result Capture を開きました。" })
       }
     } catch (error) {
-      this.post({ error: true, message: error instanceof Error ? error.message : String(error) })
+      if (this.disposed) throw error
+      await this.post({ error: true, message: error instanceof Error ? error.message : String(error) })
     }
   }
 
   private render(): void {
-    if (!this.model) return
+    if (this.disposed || !this.model) return
     this.panel.webview.html = renderConsistencyHumanTriageHtml({
       cspSource: this.panel.webview.cspSource,
       nonce: nonce(),
@@ -83,6 +102,7 @@ class ConsistencyHumanTriageController {
   }
 
   private async saveDecisions(message: HumanTriageMessage): Promise<void> {
+    if (this.disposed) return
     if (!message.sourceSha256 || !Number.isInteger(message.decisionRevision) || !message.items) {
       throw new Error("triage save token が不足しています。画面を再読込してください。")
     }
@@ -93,13 +113,30 @@ class ConsistencyHumanTriageController {
       expectedDecisionRevision: message.decisionRevision as number,
       items: message.items
     })
-    this.model = await this.loadModel(["triage decision と生成成果物を保存しました。"])
+    if (this.disposed) return
+    const model = await this.loadModel(["triage decision と生成成果物を保存しました。"])
+    if (this.disposed) return
+    this.model = model
     this.render()
   }
 
-  private post(message: Record<string, unknown>): void {
-    void this.panel.webview.postMessage(message)
+  private async post(message: Record<string, unknown>): Promise<void> {
+    if (this.disposed) return
+    try {
+      await this.panel.webview.postMessage(message)
+    } catch (error) {
+      if (this.disposed && isDisposedWebviewError(error)) return
+      throw error
+    }
   }
+}
+
+function isDisposedWebviewError(error: unknown): boolean {
+  return error instanceof Error && error.message === "Webview is disposed"
+}
+
+function reportHumanTriageControllerError(error: unknown): void {
+  console.error("Human Triage Webview task failed:", error)
 }
 
 async function requireWorkspaceRoot(): Promise<string> {
