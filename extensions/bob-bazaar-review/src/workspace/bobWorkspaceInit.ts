@@ -1,3 +1,4 @@
+import { constants as fsConstants } from "node:fs"
 import * as fs from "node:fs/promises"
 import * as path from "node:path"
 import * as vscode from "vscode"
@@ -9,6 +10,10 @@ export interface BobWorkspaceStatus {
   missing: string[]
   present: string[]
   bobDir: string
+}
+
+export interface RuleAuthoringWorkspaceStatus extends BobWorkspaceStatus {
+  authoringDir: string
 }
 
 const REQUIRED_FILES = [
@@ -23,8 +28,21 @@ const REQUIRED_FILES = [
 ]
 
 const REFRESHABLE_TEMPLATE_FILES = [
-  ".bob/workflows/bazaar-project-rule-review/WORKFLOW.md"
+  ".bob/workflows/bazaar-project-rule-review/WORKFLOW.md",
+  ".bob/workflows/bazaar-project-rule-authoring/WORKFLOW.md"
 ]
+
+const RULE_AUTHORING_FILES = [
+  ".bob/review/project-context.md",
+  ".bob/review/review-prompt-addendum.md",
+  ".bob/review/rule-sources.json",
+  ".bob/review/rule-provenance.json",
+  ".bob/review/rule-authoring/.gitignore",
+  ".bob/workflows/bazaar-project-rule-authoring/WORKFLOW.md"
+]
+
+const REVIEW_WORKFLOW_TITLE = "Bazaar プロジェクト規約レビュー"
+const RULE_AUTHORING_WORKFLOW_TITLE = "資料からプロジェクト規約を作成"
 
 export async function getBobWorkspaceStatus(workspaceFolder: vscode.WorkspaceFolder, serverName = "bazaar"): Promise<BobWorkspaceStatus> {
   const root = workspaceFolder.uri.fsPath
@@ -42,7 +60,7 @@ export async function getBobWorkspaceStatus(workspaceFolder: vscode.WorkspaceFol
 
   const workflowPath = path.join(root, ".bob", "workflows", "bazaar-project-rule-review", "WORKFLOW.md")
   if (await exists(workflowPath)) {
-    const staleReason = await workflowTemplateStaleReason(workflowPath)
+    const staleReason = await workflowTemplateStaleReason(workflowPath, REVIEW_WORKFLOW_TITLE)
     if (staleReason && !missing.includes(".bob/workflows/bazaar-project-rule-review/WORKFLOW.md")) {
       missing.push(`.bob/workflows/bazaar-project-rule-review/WORKFLOW.md#${staleReason}`)
     }
@@ -61,6 +79,36 @@ export async function getBobWorkspaceStatus(workspaceFolder: vscode.WorkspaceFol
     missing,
     present,
     bobDir: path.join(root, ".bob")
+  }
+}
+
+export async function getRuleAuthoringWorkspaceStatus(
+  workspaceFolder: vscode.WorkspaceFolder
+): Promise<RuleAuthoringWorkspaceStatus> {
+  const root = workspaceFolder.uri.fsPath
+  const missing: string[] = []
+  const present: string[] = []
+  for (const relative of RULE_AUTHORING_FILES) {
+    if (await exists(path.join(root, relative))) present.push(relative)
+    else missing.push(relative)
+  }
+  const workflowRelative = ".bob/workflows/bazaar-project-rule-authoring/WORKFLOW.md"
+  const workflowPath = path.join(root, workflowRelative)
+  if (await exists(workflowPath)) {
+    const staleReason = await workflowTemplateStaleReason(
+      workflowPath,
+      RULE_AUTHORING_WORKFLOW_TITLE
+    )
+    if (staleReason && !missing.includes(workflowRelative)) {
+      missing.push(`${workflowRelative}#${staleReason}`)
+    }
+  }
+  return {
+    initialized: missing.length === 0,
+    missing,
+    present,
+    bobDir: path.join(root, ".bob"),
+    authoringDir: path.join(root, ".bob", "review", "rule-authoring")
   }
 }
 
@@ -90,6 +138,29 @@ export async function initializeBobWorkspaceFromTemplates(options: {
   return getBobWorkspaceStatus(options.workspaceFolder, options.serverName)
 }
 
+export async function initializeRuleAuthoringWorkspaceFromTemplates(options: {
+  context: vscode.ExtensionContext
+  workspaceFolder: vscode.WorkspaceFolder
+  confirmWorkflowRefresh?: TemplateRefreshOptions["confirmOverwrite"]
+}): Promise<RuleAuthoringWorkspaceStatus> {
+  const root = options.workspaceFolder.uri.fsPath
+  const templateRoot = options.context.asAbsolutePath(path.join("templates", ".bob"))
+  for (const relative of RULE_AUTHORING_FILES) {
+    const source = path.join(templateRoot, relative.replace(/^\.bob[\\/]/, ""))
+    const target = path.join(root, relative)
+    await copyFileMissingOnly(source, target)
+  }
+  const workflowRelative = ".bob/workflows/bazaar-project-rule-authoring/WORKFLOW.md"
+  const workflowSource = path.join(templateRoot, workflowRelative.replace(/^\.bob[\\/]/, ""))
+  const workflowTarget = path.join(root, workflowRelative)
+  if (await exists(workflowSource)) {
+    await refreshTemplateFile(workflowSource, workflowTarget, {
+      confirmOverwrite: options.confirmWorkflowRefresh ?? confirmTemplateRefresh
+    })
+  }
+  return getRuleAuthoringWorkspaceStatus(options.workspaceFolder)
+}
+
 async function copyDirectoryMissingOnly(sourceDir: string, targetDir: string, skipBasenames: Set<string>): Promise<void> {
   await fs.mkdir(targetDir, { recursive: true })
   const entries = await fs.readdir(sourceDir, { withFileTypes: true })
@@ -101,11 +172,18 @@ async function copyDirectoryMissingOnly(sourceDir: string, targetDir: string, sk
     if (entry.isDirectory()) {
       await copyDirectoryMissingOnly(sourcePath, targetPath, skipBasenames)
     } else if (entry.isFile()) {
-      if (!(await exists(targetPath))) {
-        await fs.mkdir(path.dirname(targetPath), { recursive: true })
-        await fs.copyFile(sourcePath, targetPath)
-      }
+      await copyFileMissingOnly(sourcePath, targetPath)
     }
+  }
+}
+
+async function copyFileMissingOnly(sourcePath: string, targetPath: string): Promise<void> {
+  if (!await exists(sourcePath) || await exists(targetPath)) return
+  await fs.mkdir(path.dirname(targetPath), { recursive: true })
+  try {
+    await fs.copyFile(sourcePath, targetPath, fsConstants.COPYFILE_EXCL)
+  } catch (error) {
+    if (!isNodeError(error) || error.code !== "EEXIST") throw error
   }
 }
 
@@ -142,12 +220,15 @@ function renderTemplateRefreshPreviewMarkdown(preview: TemplateRefreshPreview): 
   ].join("\n")
 }
 
-async function workflowTemplateStaleReason(workflowPath: string): Promise<string | undefined> {
+async function workflowTemplateStaleReason(
+  workflowPath: string,
+  expectedTitle: string
+): Promise<string | undefined> {
   try {
     const text = await fs.readFile(workflowPath, "utf8")
     if (/^workspaceRequired:\s*true\s*$/m.test(text)) return "workspaceRequired-true"
     if (!/^workspaceRequired:\s*false\s*$/m.test(text)) return "workspaceRequired-missing"
-    if (!/title:\s*Bazaar プロジェクト規約レビュー/.test(text)) return "template-stale"
+    if (!text.includes(`title: ${expectedTitle}`)) return "template-stale"
     return undefined
   } catch {
     return undefined
@@ -171,4 +252,8 @@ async function mcpContainsServer(mcpPath: string, serverName: string): Promise<b
   } catch {
     return false
   }
+}
+
+function isNodeError(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && "code" in error
 }

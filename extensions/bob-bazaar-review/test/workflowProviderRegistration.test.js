@@ -24,6 +24,23 @@ test("Bazaar companion extension has no required companion extension dependency"
   assert.match(source, /execute: \(input\) => loadReviewRules\(input\)/)
   assert.match(source, /id: "bobBazaar\.captureReviewResult"/)
   assert.match(source, /execute: \(input\) => captureReviewResult\(firstStringArg\(input\.args\), captureOptionsFromCommandArgs\(\[input\]\)\)/)
+  for (const providerId of [
+    "openRuleAuthoringGui",
+    "loadRuleSourceIndex",
+    "captureRuleEvidenceSelection",
+    "loadSelectedRuleEvidence",
+    "captureRuleProposal",
+    "openRuleProposalTriageGui",
+    "verifyRuleAuthoringApply"
+  ]) {
+    assert.match(source, new RegExp(`id: "bobBazaar\\.${providerId}"`))
+  }
+  assert.match(source, /openRuleAuthoringGui\(context, \{[\s\S]*workspaceRoot: stringInput\(input\.workflowRoot\)[\s\S]*runId: stringInput\(input\.runId\)[\s\S]*stepId: stringInput\(input\.stepId\)/)
+  assert.match(source, /if \(result\.status !== "confirmed"\)[\s\S]*return result\.authoringSession/)
+  assert.match(source, /resolveRuleAuthoringWorkflowTarget\(input\)/)
+  assert.match(source, /openRuleProposalTriageGui\(context, \{[\s\S]*workspaceRoot: target\.workspaceRoot,[\s\S]*runId: target\.runId/)
+  assert.match(source, /if \(result\.status !== "applied"\)[\s\S]*const completed = await completeCurrentWorkflowStepAfterGuiAction/)
+  assert.match(source, /if \(!completed\)[\s\S]*could not complete its workflow step/)
 })
 
 test("Bazaar capture command accepts workflow context appended by result sinks", () => {
@@ -118,6 +135,42 @@ test("Bazaar load-rules workflow result exposes project rule ids and schema to r
   assert.match(source, /const ruleIds = checklist\.rules\.map\(\(rule\) => rule\.id\)/)
   assert.match(source, /ruleIds,/)
   assert.match(source, /reviewResultSchema: schema/)
+})
+
+test("rule authoring public command and bounded host configuration are contributed without standalone workflow execution", () => {
+  const packageJson = readJson("package.json")
+  const source = readSourceSet([
+    "extension.ts",
+    "workspace/workspaceCommands.ts",
+    "ui/ruleAuthoringGui.ts",
+    "workflow/workflowProviders.ts"
+  ])
+  const commandId = "bobBazaar.authorProjectRulesFromDocuments"
+  assert.ok(packageJson.activationEvents.includes(`onCommand:${commandId}`))
+  assert.ok(packageJson.contributes.commands.some(({ command }) => command === commandId))
+  assert.ok(packageJson.contributes.menus.commandPalette.some(({ command }) => command === commandId))
+  assert.match(source, /authorProjectRulesFromDocuments\(context\)/)
+  assert.match(source, /initializeRuleAuthoringWorkspaceFromTemplates/)
+  assert.match(source, /openRuleAuthoringGui\(context, \{/)
+  assert.match(source, /bazaar-project-rule-authoring/)
+  assert.doesNotMatch(source, /runWorkflow\s*\(/)
+
+  const expected = {
+    pdfToTextPath: "pdftotext",
+    maxSourceFiles: 20,
+    maxSourceBytes: 26214400,
+    maxAggregateSourceBytes: 104857600,
+    maxChunkBytes: 32768,
+    maxSelectedEvidenceBytes: 1048576
+  }
+  for (const [key, value] of Object.entries(expected)) {
+    const setting = packageJson.contributes.configuration.properties[`bobBazaar.ruleAuthoring.${key}`]
+    assert.ok(setting, `missing rule authoring configuration ${key}`)
+    assert.equal(setting.default, value)
+  }
+  assert.match(source, /Math\.min\(value as number, ceiling\)/)
+  assert.match(source, /Math\.min\(candidate, DEFAULT_RULE_AUTHORING_LIMITS\[key\]\)/)
+  assert.match(source, /pdfToTextPath: configuration\.pdfToTextPath/)
 })
 
 function assertWorkflowProvider(workflow, stepId, provider, sendResult, required, completeOnSuccess) {

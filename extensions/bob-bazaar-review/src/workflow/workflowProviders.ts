@@ -1,20 +1,29 @@
 import * as vscode from "vscode"
 import { captureReviewResult } from "../projectRules/resultCapture"
 import { openBazaarReviewGui } from "../ui/reviewGui"
+import { openRuleAuthoringGui } from "../ui/ruleAuthoringGui"
+import { openRuleProposalTriageGui } from "../ui/ruleProposalTriageGui"
+import { getRuleAuthoringHostConfiguration } from "../workspace/workspaceCommands"
 import {
   startRetryRegistrationController,
   type RegistrationAttemptResult
 } from "./retryRegistrationController"
 import { collectReviewContext, loadReviewRules } from "./workflowActions"
 import {
+  createRuleAuthoringWorkflowActions,
+  resolveRuleAuthoringWorkflowTarget
+} from "./ruleAuthoringWorkflowActions"
+import {
   captureOptionsFromCommandArgs,
   firstStringArg,
   getWorkflowRegisterApi,
   initialTargetFromWorkflowInputs,
+  stringInput,
   WORKFLOW_REGISTER_EXTENSION_ID,
   type WorkflowActionProvider,
   type WorkflowRegisterApi
 } from "./workflowRegisterBridge"
+import { completeCurrentWorkflowStepAfterGuiAction } from "./workflowStepCompletion"
 
 const WORKFLOW_PROVIDER_RETRY_DELAYS_MS = [1000, 3000, 10000]
 const BAZAAR_PROVIDER_SOURCE_ID = "local.bob-bazaar-review"
@@ -63,11 +72,79 @@ async function registerWorkflowProviders(
       id: "bobBazaar.captureReviewResult",
       execute: (input) => captureReviewResult(firstStringArg(input.args), captureOptionsFromCommandArgs([input]))
     })
+    registerOwnedProvider(api, registrations, {
+      id: "bobBazaar.openRuleAuthoringGui",
+      execute: async (input) => {
+        const configuration = getRuleAuthoringHostConfiguration()
+        const result = await openRuleAuthoringGui(context, {
+          workspaceRoot: stringInput(input.workflowRoot),
+          runId: stringInput(input.runId),
+          stepId: stringInput(input.stepId),
+          limits: configuration.limits,
+          pdfToTextPath: configuration.pdfToTextPath
+        })
+        if (result.status !== "confirmed") {
+          throw new Error(`Rule authoring source selection did not complete: ${result.status}`)
+        }
+        return result.authoringSession
+      }
+    })
+    registerOwnedProvider(api, registrations, {
+      id: "bobBazaar.loadRuleSourceIndex",
+      execute: (input) => configuredRuleAuthoringActions().loadRuleSourceIndex(input)
+    })
+    registerOwnedProvider(api, registrations, {
+      id: "bobBazaar.captureRuleEvidenceSelection",
+      execute: (input) => configuredRuleAuthoringActions().captureRuleEvidenceSelection(input)
+    })
+    registerOwnedProvider(api, registrations, {
+      id: "bobBazaar.loadSelectedRuleEvidence",
+      execute: (input) => configuredRuleAuthoringActions().loadSelectedRuleEvidence(input)
+    })
+    registerOwnedProvider(api, registrations, {
+      id: "bobBazaar.captureRuleProposal",
+      execute: (input) => configuredRuleAuthoringActions().captureRuleProposal(input)
+    })
+    registerOwnedProvider(api, registrations, {
+      id: "bobBazaar.openRuleProposalTriageGui",
+      execute: async (input) => {
+        const target = await resolveRuleAuthoringWorkflowTarget(input)
+        const result = await openRuleProposalTriageGui(context, {
+          workspaceRoot: target.workspaceRoot,
+          runId: target.runId
+        })
+        if (result.status !== "applied") {
+          throw new Error("Rule authoring proposal triage closed before apply")
+        }
+        const completed = await completeCurrentWorkflowStepAfterGuiAction({
+          executeCommand: (command, ...args) => vscode.commands.executeCommand(command, ...args),
+          showWarningMessage: (message) => vscode.window.showWarningMessage(message)
+        }, {
+          runId: target.workflowRunId,
+          stepId: stringInput(input.stepId)
+        })
+        if (!completed) {
+          throw new Error("Applied rule authoring proposal could not complete its workflow step")
+        }
+        return result
+      }
+    })
+    registerOwnedProvider(api, registrations, {
+      id: "bobBazaar.verifyRuleAuthoringApply",
+      execute: (input) => configuredRuleAuthoringActions().verifyRuleAuthoringApply(input)
+    })
     return { registered: true, registrations, api }
   } catch (error) {
     disposeRegistrations(registrations)
     throw error
   }
+}
+
+function configuredRuleAuthoringActions() {
+  const configured = getRuleAuthoringHostConfiguration()
+  return createRuleAuthoringWorkflowActions({
+    maxSelectedEvidenceBytes: configured.limits.maxSelectedEvidenceBytes
+  })
 }
 
 function registerOwnedProvider(

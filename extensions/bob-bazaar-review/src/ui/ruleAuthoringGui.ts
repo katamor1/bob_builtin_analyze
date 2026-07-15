@@ -21,7 +21,10 @@ import {
   type RuleAuthoringExtractionState,
   type RuleAuthoringResumeSource
 } from "../ruleAuthoring/ruleAuthoringArtifactStore"
-import { DEFAULT_RULE_AUTHORING_LIMITS } from "../ruleAuthoring/ruleAuthoringLimits"
+import {
+  DEFAULT_RULE_AUTHORING_LIMITS,
+  type RuleAuthoringLimits
+} from "../ruleAuthoring/ruleAuthoringLimits"
 import { validateRuleAuthoringId } from "../ruleAuthoring/ruleAuthoringPaths"
 import {
   createRuleAuthoringRun,
@@ -75,7 +78,6 @@ const CHUNK_ID = /^chunk-[a-f0-9]{64}$/
 const SHA256 = /^[a-f0-9]{64}$/
 const SAFE_WARNING_CODE = /^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)+$/
 const CONTROL_CHARACTER = /[\u0000-\u001f\u007f-\u009f]/
-const MAX_AI_PAYLOAD_BYTES = DEFAULT_RULE_AUTHORING_LIMITS.maxSelectedEvidenceBytes
 const MAX_REMOTE_WARNINGS = 100
 const MAX_MODEL_CHUNKS = Math.floor(DEFAULT_RULE_AUTHORING_LIMITS.maxSourceIndexBytes / 128)
 const APPROVE_EXCLUSION = "Exclude and continue"
@@ -100,6 +102,8 @@ export interface RuleAuthoringGuiInitial {
   bobExtensionAvailable?: boolean
   runId?: string
   stepId?: string
+  limits?: RuleAuthoringLimits
+  pdfToTextPath?: string
 }
 
 export interface RuleAuthoringResumeState {
@@ -132,7 +136,7 @@ export interface RuleAuthoringGuiDependencies {
   extractRuleDocuments: (
     requests: readonly RuleDocumentExtractionRequest[],
     existingManifest: RuleSourceManifestV1 | undefined,
-    limits: typeof DEFAULT_RULE_AUTHORING_LIMITS
+    limits: RuleAuthoringLimits
   ) => Promise<RuleDocumentBatchResult>
   persistRuleAuthoringExtraction: (
     input: PersistRuleAuthoringExtractionInput
@@ -287,6 +291,8 @@ async function openWithDependencies(
       throw new Error("Workflow run and step IDs must be supplied together")
     }
     const workspace = resolveWorkspace(initial.workspaceRoot)
+    const limits = boundedRuleAuthoringGuiLimits(initial.limits)
+    const pdfToTextPath = boundedPdfToTextPath(initial.pdfToTextPath)
 
     const transactions = await dependencies.findIncompleteRuleApplyTransactions(workspace.workspaceRoot)
     if (transactions.length > 0) {
@@ -340,6 +346,8 @@ async function openWithDependencies(
         bobExtensionAvailable: initial.bobExtensionAvailable ?? detectBobExtension(),
         workflowRunId,
         workflowStepId,
+        limits,
+        pdfToTextPath,
         resumableRuns,
         activeRun,
         settle
@@ -385,6 +393,8 @@ interface ControllerInput {
   bobExtensionAvailable: boolean
   workflowRunId?: string
   workflowStepId?: string
+  limits: RuleAuthoringLimits
+  pdfToTextPath: string
   resumableRuns: RuleAuthoringRunV1[]
   activeRun?: RuleAuthoringRunV1
   settle: (result: RuleAuthoringGuiResult, closePanel?: boolean) => void
@@ -529,7 +539,11 @@ class RuleAuthoringGuiController {
     })
     if (!selected || this.disposed) return
     try {
-      const validated = await validateSelectedUris(selected, () => `selected-${randomBytes(16).toString("hex")}`)
+      const validated = await validateSelectedUris(
+        selected,
+        () => `selected-${randomBytes(16).toString("hex")}`,
+        this.input.limits
+      )
       if (this.disposed) return
       if (this.hasPersistedExtraction) await this.invalidateExtraction()
       if (this.disposed) return
@@ -583,7 +597,7 @@ class RuleAuthoringGuiController {
     const generation = ++this.operationGeneration
     let selected: SelectedSource[]
     try {
-      selected = await revalidateSelectedSources(this.selectedSources)
+      selected = await revalidateSelectedSources(this.selectedSources, this.input.limits)
     } catch (error) {
       if (!this.operationIsCurrent(generation)) return
       this.clearExtractionMemory()
@@ -598,7 +612,8 @@ class RuleAuthoringGuiController {
 
     const requests = selected.map((source): RuleDocumentExtractionRequest => ({
       filePath: source.uri.fsPath,
-      logicalName: source.logicalName
+      logicalName: source.logicalName,
+      pdf: { command: this.input.pdfToTextPath }
     }))
     const existingManifest = await this.input.dependencies.loadApprovedRuleSourceManifest(
       this.input.workspace.workspaceRoot
@@ -607,7 +622,7 @@ class RuleAuthoringGuiController {
     const batch = await this.input.dependencies.extractRuleDocuments(
       requests,
       existingManifest,
-      DEFAULT_RULE_AUTHORING_LIMITS
+      this.input.limits
     )
     if (!this.operationIsCurrent(generation)) return
 
@@ -838,14 +853,14 @@ class RuleAuthoringGuiController {
       selectedChunkCount += 1
       if (!Number.isSafeInteger(utf8Bytes + chunk.utf8Bytes)) {
         overflow = true
-        utf8Bytes = MAX_AI_PAYLOAD_BYTES + 1
+        utf8Bytes = this.input.limits.maxSelectedEvidenceBytes + 1
         break
       }
       utf8Bytes += chunk.utf8Bytes
       if (chunk.logicalName) {
         logicalNamesBySource.set(chunk.sourceId, sanitizeRemoteSafeText(chunk.logicalName, 255))
       }
-      if (utf8Bytes > MAX_AI_PAYLOAD_BYTES) overflow = true
+      if (utf8Bytes > this.input.limits.maxSelectedEvidenceBytes) overflow = true
     }
     return {
       logicalNames: [...logicalNamesBySource.values()].sort(compareText),
@@ -866,7 +881,7 @@ class RuleAuthoringGuiController {
       payload.selectedChunkCount > 0 &&
       payload.utf8Bytes > 0 &&
       !payload.overflow &&
-      payload.utf8Bytes <= MAX_AI_PAYLOAD_BYTES
+      payload.utf8Bytes <= this.input.limits.maxSelectedEvidenceBytes
     )
   }
 
@@ -881,11 +896,12 @@ class RuleAuthoringGuiController {
 
 async function validateSelectedUris(
   uris: readonly vscode.Uri[],
-  nextSelectedId: () => string
+  nextSelectedId: () => string,
+  limits: RuleAuthoringLimits
 ): Promise<SelectedSource[]> {
   if (uris.length === 0) throw new SafeSelectionError("Select at least one source file.")
-  if (uris.length > DEFAULT_RULE_AUTHORING_LIMITS.maxSourceFiles) {
-    throw new SafeSelectionError(`Source file count exceeds the ${DEFAULT_RULE_AUTHORING_LIMITS.maxSourceFiles}-file limit.`)
+  if (uris.length > limits.maxSourceFiles) {
+    throw new SafeSelectionError(`Source file count exceeds the ${limits.maxSourceFiles}-file limit.`)
   }
   const selected: SelectedSource[] = []
   const paths = new Set<string>()
@@ -906,10 +922,10 @@ async function validateSelectedUris(
       throw new SafeSelectionError("Only regular source files can be selected.")
     }
     if (!Number.isSafeInteger(stat.size) || stat.size < 0) throw new SafeSelectionError("A selected source has an invalid byte size.")
-    if (stat.size > DEFAULT_RULE_AUTHORING_LIMITS.maxSourceBytes) perSourceOverflow = true
+    if (stat.size > limits.maxSourceBytes) perSourceOverflow = true
     aggregateBytes += stat.size
-    if (!Number.isSafeInteger(aggregateBytes) || aggregateBytes > DEFAULT_RULE_AUTHORING_LIMITS.maxAggregateSourceBytes) {
-      throw new SafeSelectionError("Selected source aggregate bytes exceed the 100 MiB limit.")
+    if (!Number.isSafeInteger(aggregateBytes) || aggregateBytes > limits.maxAggregateSourceBytes) {
+      throw new SafeSelectionError(`Selected source aggregate bytes exceed the ${limits.maxAggregateSourceBytes}-byte limit.`)
     }
     const selectedId = nextSelectedId()
     if (!SELECTED_ID.test(selectedId)) throw new Error("Selected source ID is invalid")
@@ -921,13 +937,22 @@ async function validateSelectedUris(
       byteSize: stat.size
     })
   }
-  if (perSourceOverflow) throw new SafeSelectionError("A selected source exceeds the 25 MiB per-file limit.")
+  if (perSourceOverflow) {
+    throw new SafeSelectionError(`A selected source exceeds the ${limits.maxSourceBytes}-byte per-file limit.`)
+  }
   return selected
 }
 
-async function revalidateSelectedSources(sources: readonly SelectedSource[]): Promise<SelectedSource[]> {
+async function revalidateSelectedSources(
+  sources: readonly SelectedSource[],
+  limits: RuleAuthoringLimits
+): Promise<SelectedSource[]> {
   let index = 0
-  const validated = await validateSelectedUris(sources.map((source) => source.uri), () => sources[index++]?.selectedId ?? "")
+  const validated = await validateSelectedUris(
+    sources.map((source) => source.uri),
+    () => sources[index++]?.selectedId ?? "",
+    limits
+  )
   for (const [sourceIndex, source] of sources.entries()) {
     const current = validated[sourceIndex]
     if (
@@ -1177,6 +1202,27 @@ function validateActiveRun(run: RuleAuthoringRunV1, workspaceRoot: string): void
   requireGeneralId(run.runId, "authoring run ID")
   if (run.workflowRunId !== undefined) requireGeneralId(run.workflowRunId, "workflow run ID")
   if (typeof run.updatedAt !== "string" || Number.isNaN(Date.parse(run.updatedAt))) throw new Error("Run revision is invalid")
+}
+
+function boundedRuleAuthoringGuiLimits(value: RuleAuthoringLimits | undefined): RuleAuthoringLimits {
+  if (value === undefined) return { ...DEFAULT_RULE_AUTHORING_LIMITS }
+  const output = {} as RuleAuthoringLimits
+  for (const key of Object.keys(DEFAULT_RULE_AUTHORING_LIMITS) as Array<keyof RuleAuthoringLimits>) {
+    const candidate = value[key]
+    if (!Number.isSafeInteger(candidate) || candidate <= 0) {
+      throw new Error(`Rule authoring ${key} configuration must be a positive safe integer`)
+    }
+    output[key] = Math.min(candidate, DEFAULT_RULE_AUTHORING_LIMITS[key])
+  }
+  return output
+}
+
+function boundedPdfToTextPath(value: string | undefined): string {
+  const candidate = value === undefined ? "pdftotext" : value.trim()
+  if (!candidate || Buffer.byteLength(candidate, "utf8") > 4096 || CONTROL_CHARACTER.test(candidate)) {
+    throw new Error("Rule authoring pdftotext path configuration is invalid")
+  }
+  return candidate
 }
 
 function resolveWorkspace(explicitRoot: string | undefined): WorkspaceSelection {
