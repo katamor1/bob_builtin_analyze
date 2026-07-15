@@ -870,9 +870,9 @@ test("default resume adapter restores fresh and invalidated runs before choose a
         const withExtraction = {
           ...run,
           artifacts: {
-            sourceManifest: path.relative(root, path.join(generation, "source-manifest.json")),
-            documentChunks: path.relative(root, path.join(generation, "document-chunks.jsonl")),
-            sourceScope: path.relative(root, path.join(generation, "source-scope.json"))
+            sourceManifest: path.relative(root, path.join(generation, "source-manifest.json")).split(path.sep).join("/"),
+            documentChunks: path.relative(root, path.join(generation, "document-chunks.jsonl")).split(path.sep).join("/"),
+            sourceScope: path.relative(root, path.join(generation, "source-scope.json")).split(path.sep).join("/")
           },
           updatedAt: new Date(Date.parse(run.updatedAt) + 1).toISOString()
         }

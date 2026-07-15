@@ -934,11 +934,17 @@ test("caps closure history entries before snapshot validation work becomes unbou
   })
   const paths = getRuleAuthoringPaths(root, run.runId)
   const source = path.join(paths.runDirectory, ".authoring-run.lock.000000000001.closed")
+  const closureSeedCount = 32
+  const closureSeeds = Array.from({ length: closureSeedCount }, (_, index) => (
+    path.join(paths.runDirectory, `.closure-work-seed-${String(index + 1).padStart(2, "0")}`)
+  ))
+  await Promise.all(closureSeeds.map((seed) => fs.copyFile(source, seed)))
   for (let start = 2; start <= 10_001; start += 200) {
     await Promise.all(Array.from({ length: Math.min(200, 10_002 - start) }, (_, offset) => {
       const generation = start + offset
+      const shard = (generation - 2) % closureSeedCount
       return fs.link(
-        source,
+        closureSeeds[shard],
         path.join(paths.runDirectory, `.authoring-run.lock.${String(generation).padStart(12, "0")}.closed`)
       )
     }))
@@ -1493,26 +1499,37 @@ function startHoldingRotatingLockProcess(root, lockDirectory, readyPath, maxGene
 
 async function seedExhaustedDirectoryLock(lockDirectory) {
   await fs.mkdir(lockDirectory, { recursive: true })
-  const lockSeed = path.join(lockDirectory, ".lock-seed")
-  const closureSeed = path.join(lockDirectory, ".closure-seed")
+  const seedShardCount = 32
   const ownerToken = "a".repeat(32)
-  await fs.writeFile(lockSeed, `${JSON.stringify({
+  const lockRecord = `${JSON.stringify({
     schema_version: "bob-bazaar-review/run-lock/v1",
     pid: process.pid,
     token: ownerToken,
     scope_id: "f".repeat(64),
     created_at: "2026-07-14T08:00:00.000Z"
-  })}\n`, "utf8")
-  await fs.writeFile(closureSeed, `${JSON.stringify({
+  })}\n`
+  const closureRecord = `${JSON.stringify({
     schema_version: "bob-bazaar-review/run-lock-closed/v1",
     generation: 10_000,
     owner_token: ownerToken
-  })}\n`, "utf8")
+  })}\n`
+  const lockSeeds = Array.from({ length: seedShardCount }, (_, index) => (
+    path.join(lockDirectory, `.lock-seed-${String(index + 1).padStart(2, "0")}`)
+  ))
+  const closureSeeds = Array.from({ length: seedShardCount }, (_, index) => (
+    path.join(lockDirectory, `.closure-seed-${String(index + 1).padStart(2, "0")}`)
+  ))
+  await Promise.all([
+    ...lockSeeds.map((seed) => fs.writeFile(seed, lockRecord, "utf8")),
+    ...closureSeeds.map((seed) => fs.writeFile(seed, closureRecord, "utf8"))
+  ])
   for (let start = 1; start <= 10_000; start += 200) {
     await Promise.all(Array.from({ length: Math.min(200, 10_001 - start) }, async (_, offset) => {
-      const generation = String(start + offset).padStart(12, "0")
-      await fs.link(lockSeed, path.join(lockDirectory, `.authoring-run.lock.${generation}`))
-      await fs.link(closureSeed, path.join(lockDirectory, `.authoring-run.lock.${generation}.closed`))
+      const generationNumber = start + offset
+      const generation = String(generationNumber).padStart(12, "0")
+      const shard = (generationNumber - 1) % seedShardCount
+      await fs.link(lockSeeds[shard], path.join(lockDirectory, `.authoring-run.lock.${generation}`))
+      await fs.link(closureSeeds[shard], path.join(lockDirectory, `.authoring-run.lock.${generation}.closed`))
     }))
   }
 }
