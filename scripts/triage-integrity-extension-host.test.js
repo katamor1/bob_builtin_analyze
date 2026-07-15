@@ -194,15 +194,38 @@ async function executeTriage(workspaceRoot) {
 }
 
 async function openAndCloseHumanTriage() {
+  const readinessUri = vscode.Uri.file(path.join(operatorWorkspaceRoot(), "README.md"))
+  const readinessDocument = await vscode.workspace.openTextDocument(readinessUri)
+  assert.equal(readinessDocument.isUntitled, false, "workbench readiness must use the fixture README")
+  assert.equal(readinessDocument.isDirty, false, "workbench readiness must not dirty the fixture README")
+  await vscode.window.showTextDocument(readinessDocument, {
+    viewColumn: vscode.ViewColumn.One,
+    preview: false,
+    preserveFocus: false
+  })
+  await waitForTabSelection(
+    () => vscode.window.tabGroups.all.length > 0 ? findTabForUri(readinessUri) : undefined,
+    "the fixture README editor to materialize the editor workbench"
+  )
+  assert.ok(vscode.window.tabGroups.all.length > 0, "editor workbench must expose at least one tab group")
+
   await vscode.commands.executeCommand("bobCodeConsistency.openHumanTriageGui")
-  await waitForTabCondition(
-    () => isHumanTriageWebviewTab(vscode.window.tabGroups.activeTabGroup.activeTab),
+  const targetTab = await waitForTabSelection(
+    () => {
+      const activeTab = vscode.window.tabGroups.activeTabGroup.activeTab
+      return isHumanTriageWebviewTab(activeTab) ? activeTab : undefined
+    },
     `active Webview tab ${JSON.stringify(HUMAN_TRIAGE_TAB_LABEL)} to appear`
   )
-  await vscode.commands.executeCommand("workbench.action.closeActiveEditor")
-  await waitForTabCondition(
-    () => vscode.window.tabGroups.all.every((group) => group.tabs.every((tab) => !isHumanTriageWebviewTab(tab))),
-    `Webview tab ${JSON.stringify(HUMAN_TRIAGE_TAB_LABEL)} to disappear after close`
+  const closed = await vscode.window.tabGroups.close(targetTab)
+  assert.equal(closed, true, `failed to close Webview tab ${JSON.stringify(HUMAN_TRIAGE_TAB_LABEL)}`)
+  await waitForTabSelection(
+    () => {
+      const remainingTabs = vscode.window.tabGroups.all.flatMap((group) => group.tabs)
+      const targetIsOpen = remainingTabs.some((tab) => tab === targetTab || isHumanTriageWebviewTab(tab))
+      return targetIsOpen ? undefined : findTabForUri(readinessUri)
+    },
+    `Webview tab ${JSON.stringify(HUMAN_TRIAGE_TAB_LABEL)} to disappear while the fixture README remains open`
   )
 }
 
@@ -212,10 +235,18 @@ function isHumanTriageWebviewTab(tab) {
     (viewType === HUMAN_TRIAGE_VIEW_TYPE || viewType === `mainThreadWebview-${HUMAN_TRIAGE_VIEW_TYPE}`)
 }
 
-async function waitForTabCondition(condition, description) {
+function findTabForUri(uri) {
+  const expected = uri.toString()
+  return vscode.window.tabGroups.all
+    .flatMap((group) => group.tabs)
+    .find((tab) => tab.input?.uri?.toString() === expected)
+}
+
+async function waitForTabSelection(selectTab, description) {
   const deadline = Date.now() + TAB_STATE_TIMEOUT_MS
   while (true) {
-    if (condition()) return
+    const selectedTab = selectTab()
+    if (selectedTab !== undefined) return selectedTab
 
     const remaining = deadline - Date.now()
     if (remaining <= 0) {
