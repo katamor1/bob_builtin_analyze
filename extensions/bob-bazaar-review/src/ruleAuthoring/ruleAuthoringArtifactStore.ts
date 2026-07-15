@@ -135,6 +135,18 @@ export interface RuleAuthoringSourceScopeV1 {
   confirmed_at?: string
 }
 
+type ScopeDuplicateMetadata = NonNullable<RuleAuthoringScopeSourceV1["duplicate"]>
+
+interface PendingDuplicateMetadata {
+  logicalName: string
+  sha256: string
+  reason: RuleDocumentDuplicate["reason"]
+  duplicateOf: string
+  scopeMetadata: ScopeDuplicateMetadata
+}
+
+type DuplicateMetadataPool = Map<string, PendingDuplicateMetadata[]>
+
 export interface RuleAuthoringResumeSource {
   selectedId: string
   sourceId?: string
@@ -617,9 +629,7 @@ function createInitialScope(
     }
     return source
   })
-  if ([...duplicatePool.values()].some((records) => records.length > 0)) {
-    throw new Error("Rule authoring duplicate metadata has leftover multiplicity")
-  }
+  validateLegacyInformationalDuplicates(duplicatePool, input.selectedSources, mappings)
   const scope: RuleAuthoringSourceScopeV1 = {
     schema_version: SCOPE_SCHEMA,
     run_id: input.runId,
@@ -948,23 +958,23 @@ function extractionState(
 }
 
 function consumeDuplicateMetadata(
-  pool: Map<string, RuleAuthoringScopeSourceV1["duplicate"][]>,
+  pool: DuplicateMetadataPool,
   logicalName: string,
   sha: string
 ): RuleAuthoringScopeSourceV1["duplicate"] {
   const records = pool.get(duplicateKey(logicalName, sha))
   const duplicate = records?.shift()
   if (!duplicate) throw new Error("Rule authoring duplicate metadata is missing for selected multiplicity")
-  return duplicate
+  return duplicate.scopeMetadata
 }
 
 function createDuplicateMetadataPool(
   value: readonly RuleDocumentDuplicate[]
-): Map<string, RuleAuthoringScopeSourceV1["duplicate"][]> {
+): DuplicateMetadataPool {
   if (!Array.isArray(value) || value.length > DEFAULT_RULE_AUTHORING_LIMITS.maxSourceFiles) {
     throw new Error("Rule authoring duplicate metadata count is invalid")
   }
-  const pool = new Map<string, RuleAuthoringScopeSourceV1["duplicate"][]>()
+  const pool: DuplicateMetadataPool = new Map()
   for (const record of value) {
     if (
       !isPlainObject(record) ||
@@ -982,12 +992,109 @@ function createDuplicateMetadataPool(
     const key = duplicateKey(logicalName, sha)
     const records = pool.get(key) ?? []
     records.push({
+      logicalName,
+      sha256: sha,
       reason: record.reason,
-      duplicate_of: sanitizeRemoteSafeText(record.duplicate_of, 255)
+      duplicateOf: record.duplicate_of,
+      scopeMetadata: {
+        reason: record.reason,
+        duplicate_of: sanitizeRemoteSafeText(record.duplicate_of, 255)
+      }
     })
     pool.set(key, records)
   }
   return pool
+}
+
+function validateLegacyInformationalDuplicates(
+  pool: DuplicateMetadataPool,
+  selectedSources: readonly SelectedRuleAuthoringSource[],
+  mappings: ReadonlyMap<string, LocalSourceMapping>
+): void {
+  const leftovers = [...pool.values()].flat()
+  if (leftovers.length === 0) return
+
+  const selectedBySha = new Map<string, Array<{
+    absolutePath: string
+    logicalName: string
+    mediaType: string
+    status: ScopeSourceStatus
+  }>>()
+  for (const selected of selectedSources) {
+    const absolutePath = requireAbsolutePath(selected.absolutePath)
+    const mapping = mappings.get(absolutePath)
+    if (!mapping) throw new Error("Rule authoring selected source mapping is missing")
+    const sha = requireSha256(mapping.sha256)
+    const group = selectedBySha.get(sha) ?? []
+    group.push({
+      absolutePath,
+      logicalName: requireLogicalName(selected.logicalName),
+      mediaType: requireMediaType(selected.mediaType),
+      status: requireScopeStatus(mapping.status)
+    })
+    selectedBySha.set(sha, group)
+  }
+
+  const leftoversBySha = new Map<string, PendingDuplicateMetadata[]>()
+  for (const record of leftovers) {
+    const records = leftoversBySha.get(record.sha256) ?? []
+    records.push(record)
+    leftoversBySha.set(record.sha256, records)
+  }
+
+  for (const [sha, records] of leftoversBySha) {
+    const selected = selectedBySha.get(sha) ?? []
+    const producerOrder = [...selected].sort((left, right) => (
+      left.logicalName.localeCompare(right.logicalName) ||
+      left.absolutePath.localeCompare(right.absolutePath)
+    ))
+    const legacySelections = producerOrder.filter((source) => (
+      source.status === "requires_conversion" &&
+      (source.mediaType === "doc" || source.mediaType === "xls")
+    ))
+    if (legacySelections.length === 0) {
+      throw new Error("Rule authoring duplicate metadata has a non-legacy leftover")
+    }
+    const reasons = new Set(records.map((record) => record.reason))
+    if (reasons.size !== 1) {
+      throw new Error("Rule authoring legacy duplicate metadata has mixed producer reasons")
+    }
+    const reason = records[0].reason
+    const canonical = producerOrder[0]
+    const canonicalIsLegacy = legacySelections.includes(canonical)
+    const expectedSelections = reason === "duplicate_in_run" && canonicalIsLegacy
+      ? legacySelections.filter((source) => source !== canonical)
+      : legacySelections
+    if (
+      records.length !== expectedSelections.length ||
+      !sameStringMultiset(
+        records.map((record) => record.logicalName),
+        expectedSelections.map((source) => source.logicalName)
+      )
+    ) {
+      throw new Error("Rule authoring legacy duplicate metadata has invalid producer multiplicity")
+    }
+    if (reason === "duplicate_in_run") {
+      const canonicalName = canonical?.logicalName
+      if (!canonicalName || records.some((record) => record.duplicateOf !== canonicalName)) {
+        throw new Error("Rule authoring legacy duplicate metadata has invalid in-run provenance")
+      }
+    } else if (records.some((record) => !sourceIdMatchesSha(record.duplicateOf, sha))) {
+      throw new Error("Rule authoring legacy duplicate metadata has invalid existing-source provenance")
+    }
+  }
+}
+
+function sameStringMultiset(left: readonly string[], right: readonly string[]): boolean {
+  if (left.length !== right.length) return false
+  const compare = (first: string, second: string): number => first < second ? -1 : first > second ? 1 : 0
+  const sortedLeft = [...left].sort(compare)
+  const sortedRight = [...right].sort(compare)
+  return sortedLeft.every((value, index) => value === sortedRight[index])
+}
+
+function sourceIdMatchesSha(value: string, sha: string): boolean {
+  return SOURCE_ID.test(value) && sha.startsWith(value.slice("src-".length))
 }
 
 function duplicateKey(logicalName: string, sha: string): string {

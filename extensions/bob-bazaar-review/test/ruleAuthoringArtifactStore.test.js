@@ -6,6 +6,8 @@ const path = require("node:path")
 const { test } = require("node:test")
 
 const { buildDocumentChunkId } = require("../out/ruleAuthoring/documentChunk")
+const { extractRuleDocuments } = require("../out/ruleAuthoring/extraction/documentExtractor")
+const { createDocxFixture } = require("./helpers/ruleDocumentFixtures")
 const { getRuleAuthoringPaths } = require("../out/ruleAuthoring/ruleAuthoringPaths")
 const {
   createRuleAuthoringRun,
@@ -224,6 +226,86 @@ function duplicateMultiplicityFixture(root, mode) {
       })),
       diagnostics: []
     }
+  }
+}
+
+async function legacyDuplicateFixture(root, extension, mode) {
+  const logicalName = `legacy.${extension}`
+  const bytes = Buffer.from(`identical legacy ${extension} bytes`)
+  const sha = sha256(bytes.toString("utf8"))
+  const count = mode === "existing" ? 2 : 3
+  const selectedSources = []
+  const requests = []
+  for (let index = 0; index < count; index += 1) {
+    const directory = path.join(root, `legacy-${extension}-${index + 1}`)
+    const absolutePath = path.join(directory, logicalName)
+    await fs.mkdir(directory, { recursive: true })
+    await fs.writeFile(absolutePath, bytes)
+    selectedSources.push({
+      selectedId: `selected-${String(index + 1).repeat(32)}`,
+      absolutePath,
+      logicalName,
+      mediaType: extension,
+      byteSize: bytes.length
+    })
+    requests.push({ filePath: absolutePath, logicalName })
+  }
+  const existingManifest = mode === "existing" ? {
+    schema_version: "bob-bazaar-review/rule-sources/v1",
+    generated_at: "2026-07-15T00:00:00.000Z",
+    sources: [{
+      source_id: `src-${sha.slice(0, 12)}`,
+      logical_name: "approved.pdf",
+      media_type: "pdf",
+      sha256: sha,
+      byte_size: bytes.length,
+      extraction_status: "success",
+      extractor: { id: "fixture", version: "1" },
+      warnings: []
+    }]
+  } : undefined
+  const batch = await extractRuleDocuments(requests, existingManifest)
+  return {
+    batch,
+    selectedSources,
+    exclusionApprovals: selectedSources.map((source) => ({
+      selectedId: source.selectedId,
+      approved: true
+    }))
+  }
+}
+
+async function mixedModernLegacyFixture(root, canonicalKind) {
+  const names = canonicalKind === "modern"
+    ? ["a.docx", "b.doc"]
+    : ["a.doc", "b.doc", "c.docx"]
+  const bytes = createDocxFixture()
+  const selectedSources = []
+  const requests = []
+  for (const [index, logicalName] of names.entries()) {
+    const directory = path.join(root, `mixed-${canonicalKind}-${index + 1}`)
+    const absolutePath = path.join(directory, logicalName)
+    await fs.mkdir(directory, { recursive: true })
+    await fs.writeFile(absolutePath, bytes)
+    selectedSources.push({
+      selectedId: `selected-${String(index + 1).repeat(32)}`,
+      absolutePath,
+      logicalName,
+      mediaType: path.extname(logicalName).slice(1),
+      byteSize: bytes.length
+    })
+    requests.push({ filePath: absolutePath, logicalName })
+  }
+  const batch = await extractRuleDocuments(requests, undefined)
+  return {
+    batch,
+    selectedSources,
+    exclusionApprovals: selectedSources
+      .filter((source) => {
+        const mapping = batch.localSourceMappings.find((candidate) => candidate.absolutePath === source.absolutePath)
+        return mapping?.status !== "success"
+      })
+      .map((source) => ({ selectedId: source.selectedId, approved: true }))
   }
 }
 
@@ -555,6 +637,141 @@ test("duplicate scope metadata consumes identical records one-for-one", async (t
       exclusionApprovals: fixture.exclusionApprovals
     }), /duplicate.*leftover|multiplicity|ambiguous/i)
   })
+})
+
+test("real legacy Office duplicate batches persist conversion scope with producer multiplicity", async (t) => {
+  const store = artifactStore()
+
+  for (const extension of ["doc", "xls"]) {
+    for (const mode of ["in_run", "existing"]) {
+      await t.test(`${extension} ${mode}`, async (t) => {
+        const root = await workspace(t)
+        const fixture = await legacyDuplicateFixture(root, extension, mode)
+        const expectedDuplicates = mode === "existing"
+          ? fixture.selectedSources.length
+          : fixture.selectedSources.length - 1
+        assert.equal(fixture.batch.duplicates.length, expectedDuplicates)
+        assert.ok(fixture.batch.duplicates.every((record) => (
+          record.reason === (mode === "existing" ? "duplicate_existing_manifest" : "duplicate_in_run")
+        )))
+        assert.deepEqual(
+          fixture.batch.localSourceMappings.map((mapping) => mapping.status),
+          fixture.selectedSources.map(() => "requires_conversion")
+        )
+        assert.deepEqual(
+          fixture.batch.documents.map((document) => document.status),
+          fixture.selectedSources.map(() => "requires_conversion")
+        )
+
+        const run = await createRuleAuthoringRun({
+          workspaceRoot: root,
+          runId: `legacy-${extension}-${mode}`
+        })
+        const persisted = await store.persistRuleAuthoringExtraction({
+          workspaceRoot: root,
+          runId: run.runId,
+          run,
+          batch: fixture.batch,
+          selectedSources: fixture.selectedSources,
+          exclusionApprovals: fixture.exclusionApprovals
+        })
+
+        assert.deepEqual(
+          persisted.scope.sources.map((source) => source.extraction_status),
+          fixture.selectedSources.map(() => "requires_conversion")
+        )
+        assert.ok(persisted.scope.sources.every((source) => (
+          source.duplicate === null &&
+          source.source_id === undefined &&
+          source.exclusion_approved
+        )))
+        const resumed = await store.resumeRuleAuthoringExtraction(
+          await readRuleAuthoringRun(getRuleAuthoringPaths(root, run.runId))
+        )
+        assert.deepEqual(
+          resumed.sources.map((source) => [source.extractionStatus, source.exclusionApproved]),
+          fixture.selectedSources.map(() => ["requires_conversion", true])
+        )
+      })
+    }
+  }
+})
+
+test("real mixed modern and legacy duplicate batches account for only legacy informational records", async (t) => {
+  const store = artifactStore()
+
+  for (const canonicalKind of ["modern", "legacy"]) {
+    await t.test(`${canonicalKind} canonical`, async (t) => {
+      const root = await workspace(t)
+      const fixture = await mixedModernLegacyFixture(root, canonicalKind)
+      const expectedStatuses = canonicalKind === "modern"
+        ? ["partial", "requires_conversion"]
+        : ["requires_conversion", "requires_conversion", "duplicate"]
+      assert.deepEqual(
+        fixture.selectedSources.map((source) => (
+          fixture.batch.localSourceMappings.find((mapping) => mapping.absolutePath === source.absolutePath)?.status
+        )),
+        expectedStatuses
+      )
+      assert.equal(fixture.batch.duplicates.length, canonicalKind === "modern" ? 1 : 2)
+
+      const run = await createRuleAuthoringRun({
+        workspaceRoot: root,
+        runId: `mixed-${canonicalKind}-canonical`
+      })
+      const persisted = await store.persistRuleAuthoringExtraction({
+        workspaceRoot: root,
+        runId: run.runId,
+        run,
+        batch: fixture.batch,
+        selectedSources: fixture.selectedSources,
+        exclusionApprovals: fixture.exclusionApprovals
+      })
+
+      assert.deepEqual(
+        persisted.scope.sources.map((source) => source.extraction_status),
+        expectedStatuses
+      )
+      assert.equal(
+        persisted.scope.sources.filter((source) => source.duplicate !== null).length,
+        canonicalKind === "modern" ? 0 : 1
+      )
+      assert.ok(persisted.scope.sources
+        .filter((source) => source.extraction_status === "requires_conversion")
+        .every((source) => source.duplicate === null && source.exclusion_approved))
+    })
+  }
+})
+
+test("legacy informational duplicate validation rejects malformed and wrong multiplicity", async (t) => {
+  const store = artifactStore()
+  const mutations = [
+    ["malformed", (batch) => { batch.duplicates[0].duplicate_of = "" }],
+    ["mixed reasons", (batch) => { batch.duplicates[0].reason = "duplicate_existing_manifest" }],
+    ["excess", (batch) => { batch.duplicates.push(structuredClone(batch.duplicates[0])) }],
+    ["missing", (batch) => { batch.duplicates.pop() }]
+  ]
+
+  for (const [label, mutate] of mutations) {
+    await t.test(label, async (t) => {
+      const root = await workspace(t)
+      const fixture = await legacyDuplicateFixture(root, "doc", "in_run")
+      mutate(fixture.batch)
+      const run = await createRuleAuthoringRun({
+        workspaceRoot: root,
+        runId: `legacy-invalid-${label.replaceAll(" ", "-")}`
+      })
+
+      await assert.rejects(store.persistRuleAuthoringExtraction({
+        workspaceRoot: root,
+        runId: run.runId,
+        run,
+        batch: fixture.batch,
+        selectedSources: fixture.selectedSources,
+        exclusionApprovals: fixture.exclusionApprovals
+      }), /duplicate.*(?:metadata|multiplicity|producer|legacy)/i)
+    })
+  }
 })
 
 test("stale concurrent artifact writers cannot mutate the generation referenced by the winner", async (t) => {
