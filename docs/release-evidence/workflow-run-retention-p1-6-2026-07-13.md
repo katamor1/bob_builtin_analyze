@@ -19,7 +19,7 @@ P1-6は、保存済みworkflow runの件数/容量をread-onlyで確認し、ope
 
 - `run.json`を正本とするpure deterministic cleanup planner。
 - `retention.json` sidecarによるpin/unpin。Malformed/future sidecarはfail-safeでpinned扱い。
-- Age、completed count、total bytes、selected run IDによるpolicy。
+- Age、terminal run count（completed/failed）、total bytes、selected run IDによるpolicy。
 - Active/recoverable/referenced/pinned/read-only/locked/journaled/physical-unsafe runの保護。
 - Bounded physical inventory、directory identity、tree fingerprint、reference-graph completeness、revision/digest binding。
 - Cleanup leaseとexecution lockの相互排他。
