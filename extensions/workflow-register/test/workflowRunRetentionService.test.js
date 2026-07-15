@@ -102,6 +102,17 @@ async function optionalBytes(filePath) {
   }
 }
 
+function isOwnedRunTempPath(target, runsRoot, runId) {
+  const candidate = path.resolve(String(target))
+  const expectedParent = path.resolve(runsRoot)
+  const sameParent = process.platform === "win32"
+    ? path.dirname(candidate).toLocaleLowerCase() === expectedParent.toLocaleLowerCase()
+    : path.dirname(candidate) === expectedParent
+  return sameParent
+    && path.basename(candidate).startsWith(`.${runId}.`)
+    && path.basename(candidate).endsWith(".tmp")
+}
+
 async function sumFileSizes(filePaths) {
   const stats = await Promise.all(filePaths.map((filePath) => fs.stat(filePath)))
   return stats.reduce((sum, stat) => sum + stat.size, 0)
@@ -624,6 +635,185 @@ test("contained retention write rejects a parent swap without mutating the outsi
   assert.equal(outcome.status, "rejected")
   assert.match(String(outcome.reason), /workspace|outside|symlink|junction|alias|direct|changed|identity/i)
   assert.equal(await fs.readFile(path.join(escaped.outsideRoot, "retention.json"), "utf8"), externalRetention)
+})
+
+test("contained run temp write preserves its primary error over cleanup and close failures", async (t) => {
+  const root = await workspace(t)
+  const runId = "temp-error-priority"
+  await writeRun(root, runId)
+  const runsRoot = path.join(root, ".bob", "workflows", "runs")
+  const primaryError = Object.assign(new Error("RUN_TEMP_WRITE_PRIMARY_SENTINEL"), { code: "EIO" })
+  const cleanupError = Object.assign(new Error("RUN_TEMP_CLEANUP_SENTINEL"), { code: "EACCES" })
+  const closeError = Object.assign(new Error("RUN_TEMP_CLOSE_SENTINEL"), { code: "EIO" })
+  const originalOpen = fs.open
+  const originalRm = fs.rm
+  let tempFile
+  let cleanupAttempts = 0
+  let underlyingHandleClosed = false
+  try {
+    fs.open = async (target, ...args) => {
+      const handle = await originalOpen(target, ...args)
+      if (!isOwnedRunTempPath(target, runsRoot, runId)) return handle
+      tempFile = path.resolve(String(target))
+      const originalWriteFile = handle.writeFile.bind(handle)
+      handle.writeFile = async (...writeArgs) => {
+        await originalWriteFile(...writeArgs)
+        throw primaryError
+      }
+      const originalClose = handle.close.bind(handle)
+      handle.close = async (...closeArgs) => {
+        const result = await originalClose(...closeArgs)
+        underlyingHandleClosed = true
+        throw closeError
+      }
+      return handle
+    }
+    fs.rm = async (target, ...args) => {
+      if (isOwnedRunTempPath(target, runsRoot, runId)) {
+        cleanupAttempts += 1
+        throw cleanupError
+      }
+      return originalRm(target, ...args)
+    }
+
+    let observedError
+    await assert.rejects(
+      pathModules().writeContainedRunFile(root, runId, "replacement\n", "retention.json"),
+      (error) => {
+        observedError = error
+        return true
+      }
+    )
+    assert.strictEqual(observedError, primaryError)
+    assert.deepEqual(observedError.suppressedErrors, [cleanupError, closeError])
+    const descriptor = Object.getOwnPropertyDescriptor(observedError, "suppressedErrors")
+    assert.equal(descriptor?.enumerable, false)
+    assert.equal(descriptor?.writable, false)
+    assert.equal(Object.isFrozen(observedError.suppressedErrors), true)
+  } finally {
+    fs.open = originalOpen
+    fs.rm = originalRm
+  }
+
+  assert.equal(underlyingHandleClosed, true, "the real temp handle must settle before cleanup")
+  assert.equal(cleanupAttempts, 1)
+  assert.equal(await fs.readFile(tempFile, "utf8"), "replacement\n")
+  await assert.rejects(fs.access(path.join(root, ".bob", "workflows", "runs", runId, "retention.json")), { code: "ENOENT" })
+})
+
+test("contained run temp write prioritizes cleanup failure over a close-only failure", async (t) => {
+  const root = await workspace(t)
+  const runId = "temp-close-priority"
+  await writeRun(root, runId)
+  const runsRoot = path.join(root, ".bob", "workflows", "runs")
+  const cleanupError = Object.assign(new Error("RUN_TEMP_CLEANUP_PRIMARY_SENTINEL"), { code: "EACCES" })
+  const closeError = Object.assign(new Error("RUN_TEMP_CLOSE_SECONDARY_SENTINEL"), { code: "EIO" })
+  const originalOpen = fs.open
+  const originalRm = fs.rm
+  let tempFile
+  let cleanupAttempts = 0
+  let underlyingHandleClosed = false
+  try {
+    fs.open = async (target, ...args) => {
+      const handle = await originalOpen(target, ...args)
+      if (!isOwnedRunTempPath(target, runsRoot, runId)) return handle
+      tempFile = path.resolve(String(target))
+      const originalClose = handle.close.bind(handle)
+      handle.close = async (...closeArgs) => {
+        const result = await originalClose(...closeArgs)
+        underlyingHandleClosed = true
+        throw closeError
+      }
+      return handle
+    }
+    fs.rm = async (target, ...args) => {
+      if (isOwnedRunTempPath(target, runsRoot, runId)) {
+        cleanupAttempts += 1
+        throw cleanupError
+      }
+      return originalRm(target, ...args)
+    }
+
+    let observedError
+    await assert.rejects(
+      pathModules().writeContainedRunFile(root, runId, "replacement\n", "retention.json"),
+      (error) => {
+        observedError = error
+        return true
+      }
+    )
+    assert.strictEqual(observedError, cleanupError)
+    assert.deepEqual(observedError.suppressedErrors, [closeError])
+    const descriptor = Object.getOwnPropertyDescriptor(observedError, "suppressedErrors")
+    assert.equal(descriptor?.enumerable, false)
+    assert.equal(descriptor?.writable, false)
+    assert.equal(Object.isFrozen(observedError.suppressedErrors), true)
+  } finally {
+    fs.open = originalOpen
+    fs.rm = originalRm
+  }
+
+  assert.equal(underlyingHandleClosed, true, "the real temp handle must settle before cleanup")
+  assert.equal(cleanupAttempts, 1)
+  assert.equal(await fs.readFile(tempFile, "utf8"), "replacement\n")
+})
+
+test("contained run temp failure cleanup preserves an identity-changed replacement", async (t) => {
+  const root = await workspace(t)
+  const runId = "temp-replacement-guard"
+  await writeRun(root, runId)
+  const runsRoot = path.join(root, ".bob", "workflows", "runs")
+  const primaryError = Object.assign(new Error("RUN_TEMP_REPLACEMENT_PRIMARY_SENTINEL"), { code: "EIO" })
+  const originalOpen = fs.open
+  const originalRm = fs.rm
+  let tempFile
+  let displacedFile
+  let replacementInstalled = false
+  let removalAttempts = 0
+  try {
+    fs.open = async (target, ...args) => {
+      const handle = await originalOpen(target, ...args)
+      if (!isOwnedRunTempPath(target, runsRoot, runId)) return handle
+      tempFile = path.resolve(String(target))
+      displacedFile = `${tempFile}.displaced`
+      const originalSync = handle.sync.bind(handle)
+      handle.sync = async (...syncArgs) => {
+        await originalSync(...syncArgs)
+        throw primaryError
+      }
+      const originalClose = handle.close.bind(handle)
+      handle.close = async (...closeArgs) => {
+        const result = await originalClose(...closeArgs)
+        await fs.rename(tempFile, displacedFile)
+        await fs.writeFile(tempFile, "replacement-owner\n")
+        replacementInstalled = true
+        return result
+      }
+      return handle
+    }
+    fs.rm = async (target, ...args) => {
+      if (isOwnedRunTempPath(target, runsRoot, runId)) removalAttempts += 1
+      return originalRm(target, ...args)
+    }
+
+    let observedError
+    await assert.rejects(
+      pathModules().writeContainedRunFile(root, runId, "original-owner\n", "retention.json"),
+      (error) => {
+        observedError = error
+        return true
+      }
+    )
+    assert.strictEqual(observedError, primaryError)
+  } finally {
+    fs.open = originalOpen
+    fs.rm = originalRm
+  }
+
+  assert.equal(replacementInstalled, true, "the close hook must install the replacement before cleanup")
+  assert.equal(removalAttempts, 0, "an identity-changed temp path must never be passed to removal")
+  assert.equal(await fs.readFile(tempFile, "utf8"), "replacement-owner\n")
+  assert.equal(await fs.readFile(displacedFile, "utf8"), "original-owner\n")
 })
 
 test("storage summary reports counts and bytes without body values", async (t) => {

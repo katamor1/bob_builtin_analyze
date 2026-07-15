@@ -220,22 +220,60 @@ async function writeContainedRunPath(
   const originalTarget = await optionalDirectRegularFile(runFile, root, `Workflow run '${runId}' ${fileName}`)
   const tempFile = path.join(runsRoot.path, `.${runId}.${process.pid}.${randomUUID()}.tmp`)
   let tempIdentity: FileIdentity | undefined
+  const tempLabel = `Workflow run '${runId}' ${fileName} temporary file`
+  await assertDirectoryIdentity(runsRoot, "Workflow runs directory")
+  await assertDirectoryIdentity(runDirectory, `Workflow run '${runId}' directory`)
+  const tempHandle = await fs.open(tempFile, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL, 0o600)
+  let operationFailed = false
+  let operationError: unknown
   try {
-    await assertDirectoryIdentity(runsRoot, "Workflow runs directory")
-    await assertDirectoryIdentity(runDirectory, `Workflow run '${runId}' directory`)
-    const tempHandle = await fs.open(tempFile, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL, 0o600)
+    const created = await tempHandle.stat({ bigint: true })
+    assertSingleLinkedRegularFile(created, tempLabel)
+    tempIdentity = { dev: created.dev, ino: created.ino }
+    await tempHandle.writeFile(content, { encoding: "utf8" })
+    await tempHandle.sync()
+    const written = await tempHandle.stat({ bigint: true })
+    assertSingleLinkedRegularFile(written, tempLabel)
+    if (!sameIdentity(tempIdentity, written)) throw new Error(`${tempLabel} changed while it was being written.`)
+  } catch (error) {
+    operationFailed = true
+    operationError = error
+  }
+  const safetyErrors: unknown[] = []
+  if (operationFailed && !tempIdentity) {
     try {
-      assertSingleLinkedRegularFile(await tempHandle.stat({ bigint: true }), `Workflow run '${runId}' ${fileName} temporary file`)
-      await tempHandle.writeFile(content, { encoding: "utf8" })
-      await tempHandle.sync()
-      assertSingleLinkedRegularFile(await tempHandle.stat({ bigint: true }), `Workflow run '${runId}' ${fileName} temporary file`)
-    } finally {
-      await tempHandle.close()
+      const recovered = await tempHandle.stat({ bigint: true })
+      assertSingleLinkedRegularFile(recovered, tempLabel)
+      tempIdentity = { dev: recovered.dev, ino: recovered.ino }
+    } catch (error) {
+      safetyErrors.push(error)
     }
-    tempIdentity = await directRegularFile(tempFile, root, `Workflow run '${runId}' ${fileName} temporary file`)
+  }
+  let closeFailed = false
+  let closeError: unknown
+  try {
+    await tempHandle.close()
+  } catch (error) {
+    closeFailed = true
+    closeError = error
+  }
+  if (operationFailed || closeFailed) {
+    if (tempIdentity) {
+      try {
+        await removeOwnedRunTempFile(root, runsRoot, tempFile, tempIdentity, tempLabel)
+      } catch (error) {
+        safetyErrors.push(error)
+      }
+    }
+    throwPrioritizedTempWriteFailure(operationFailed, operationError, safetyErrors, closeFailed, closeError)
+  }
+
+  try {
+    const currentTemp = await directRegularFileInDirectory(tempFile, root, runsRoot, tempLabel)
+    if (!sameIdentity(tempIdentity!, currentTemp)) throw new Error(`${tempLabel} changed after its handle was closed.`)
     await renameWithTransientRetry(tempFile, runFile, async () => {
       await assertWriteDestinationUnchanged(root, runsRoot, runDirectory, runFile, originalTarget, runId, fileName)
-      const currentTemp = await directRegularFile(tempFile, root, `Workflow run '${runId}' ${fileName} temporary file`)
+      const currentTemp = await directRegularFileInDirectory(tempFile, root, runsRoot, tempLabel)
       if (!sameIdentity(tempIdentity!, currentTemp)) {
         throw new Error(`Workflow run '${runId}' temporary file changed before rename.`)
       }
@@ -243,11 +281,15 @@ async function writeContainedRunPath(
     await assertDirectoryIdentity(runsRoot, "Workflow runs directory")
     await assertDirectoryIdentity(runDirectory, `Workflow run '${runId}' directory`)
     const writtenTarget = await directRegularFile(runFile, root, `Workflow run '${runId}' ${fileName}`)
-    if (!sameIdentity(tempIdentity, writtenTarget)) {
+    if (!sameIdentity(tempIdentity!, writtenTarget)) {
       throw new Error(`Workflow run '${runId}' changed during atomic replacement.`)
     }
   } catch (error) {
-    if (await directoryStillMatches(runsRoot)) await fs.rm(tempFile, { force: true }).catch(() => undefined)
+    try {
+      await removeOwnedRunTempFile(root, runsRoot, tempFile, tempIdentity!, tempLabel)
+    } catch (cleanupError) {
+      addSuppressedErrors(error, [cleanupError])
+    }
     throw error
   }
 }
@@ -329,6 +371,28 @@ async function directRegularFile(filePath: string, root: string, label: string):
   return { dev: after.dev, ino: after.ino }
 }
 
+async function directRegularFileInDirectory(
+  filePath: string,
+  root: string,
+  directory: DirectDirectory,
+  label: string
+): Promise<FileIdentity> {
+  if (!sameCanonicalPath(path.dirname(filePath), directory.path)) {
+    throw new Error(`${label} does not have the verified workflow runs directory as its direct parent.`)
+  }
+  await assertDirectoryIdentity(directory, `${label} parent directory`)
+  const before = await directRegularFile(filePath, root, label)
+  const physicalPath = await fs.realpath(filePath)
+  const physicalParent = await fs.lstat(path.dirname(physicalPath), { bigint: true })
+  if (!physicalParent.isDirectory() || sameIdentity(directory, physicalParent) === false) {
+    throw new Error(`${label} physical parent identity does not match the verified workflow runs directory.`)
+  }
+  const after = await directRegularFile(filePath, root, label)
+  if (!sameIdentity(before, after)) throw new RunPathChangedError(`${label} changed while its direct parent was being verified.`)
+  await assertDirectoryIdentity(directory, `${label} parent directory`)
+  return after
+}
+
 async function optionalDirectRegularFile(
   filePath: string,
   root: string,
@@ -353,13 +417,26 @@ async function assertDirectoryIdentity(directory: DirectDirectory, label: string
   }
 }
 
-async function directoryStillMatches(directory: DirectDirectory): Promise<boolean> {
+async function removeOwnedRunTempFile(
+  root: string,
+  runsRoot: DirectDirectory,
+  tempFile: string,
+  expected: FileIdentity,
+  label: string
+): Promise<void> {
+  let current: FileIdentity
   try {
-    await assertDirectoryIdentity(directory, "Workflow run directory")
-    return true
-  } catch {
-    return false
+    current = await directRegularFileInDirectory(tempFile, root, runsRoot, label)
+  } catch (error) {
+    if (isMissingPathError(error)) return
+    throw error
   }
+  if (!sameIdentity(expected, current)) return
+  const rechecked = await directRegularFileInDirectory(tempFile, root, runsRoot, label)
+  if (!sameIdentity(expected, rechecked)) return
+  await assertDirectoryIdentity(runsRoot, `${label} parent directory`)
+  await fs.rm(tempFile)
+  await assertDirectoryIdentity(runsRoot, `${label} parent directory`)
 }
 
 async function listDirectDirectoryEntries(directory: DirectDirectory, label: string): Promise<string[]> {
@@ -400,6 +477,41 @@ async function renameWithTransientRetry(
       if (!isTransientRenameError(error) || attempt >= delaysMs.length) throw error
       await new Promise((resolve) => setTimeout(resolve, delaysMs[attempt]))
     }
+  }
+}
+
+function throwPrioritizedTempWriteFailure(
+  operationFailed: boolean,
+  operationError: unknown,
+  safetyErrors: readonly unknown[],
+  closeFailed: boolean,
+  closeError: unknown
+): never {
+  if (operationFailed) {
+    addSuppressedErrors(operationError, [...safetyErrors, ...(closeFailed ? [closeError] : [])])
+    throw operationError
+  }
+  if (safetyErrors.length > 0) {
+    const [primarySafetyError, ...remainingSafetyErrors] = safetyErrors
+    addSuppressedErrors(primarySafetyError, [...remainingSafetyErrors, ...(closeFailed ? [closeError] : [])])
+    throw primarySafetyError
+  }
+  throw closeError
+}
+
+function addSuppressedErrors(primary: unknown, suppressedErrors: readonly unknown[]): void {
+  if (suppressedErrors.length === 0) return
+  if ((typeof primary !== "object" || primary === null) && typeof primary !== "function") return
+  try {
+    const existing = Reflect.get(primary, "suppressedErrors")
+    Object.defineProperty(primary, "suppressedErrors", {
+      configurable: true,
+      enumerable: false,
+      value: Object.freeze(Array.isArray(existing) ? [...existing, ...suppressedErrors] : [...suppressedErrors]),
+      writable: false
+    })
+  } catch {
+    // Suppression metadata is best-effort and must never replace the primary error.
   }
 }
 
