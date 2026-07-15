@@ -353,7 +353,7 @@ chat messages まで診断に残したい場合だけ、`workflowRegister.taskSn
 
 Run retentionの6コマンドは手動実行専用です。起動時やtimerでrunを自動削除しません。`workflowRegister.runs.retention.enabled=false`は将来自動化用の予約値で、`false`でも手動コマンドは利用できます。`実行ストレージを確認`と`実行クリーンアップをプレビュー`はuntrusted workspaceでもread-onlyで利用でき、cleanup/delete/pin/unpinはworkspace root探索やfilesystem accessより前にtrustを要求します。
 
-Cleanupは`run.json`を正本とし、active/recoverable/referenced/pinned/read-only/locked/journaled/physical-unsafe runを除外します。Apply前にfresh inventoryからplan digestとrevisionを再検証し、cleanup leaseとowner guardを取得してから`.bob/workflows/run-cleanup-quarantine/<txId>/<runId>`へrenameします。Multi-rootではrootを先に選び、同じrun IDをroot間で混同しません。保存path、rollback、manual recovery、privacyの詳細は[`docs/workflow-run-retention-ja.md`](docs/workflow-run-retention-ja.md)を参照してください。
+Cleanupは`run.json`を正本とし、active/recoverable/referenced/pinned/read-only/locked/journaled/physical-unsafe runを除外します。Apply前にfresh inventoryからplan digestとrevisionを再検証し、cleanup leaseとowner guardを取得してから`.bob/workflows/run-cleanup-quarantine/<txId>/<runId>`へrenameします。Multi-rootではrootを先に選び、同じrun IDをroot間で混同しません。保存path、rollback、manual recovery、privacyの詳細は[`docs/workflow-run-retention-ja.md`](https://github.com/katamor1/bob_builtin_analyze/blob/main/extensions/workflow-register/docs/workflow-run-retention-ja.md)を参照してください。
 
 ## AI 補助
 
