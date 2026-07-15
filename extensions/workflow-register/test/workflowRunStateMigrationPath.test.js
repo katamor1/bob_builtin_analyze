@@ -1150,3 +1150,215 @@ test("migration publication surfaces owner close failure after successful public
     []
   )
 })
+
+test("migration EEXIST cleanup removal error outranks owner close failure", async (t) => {
+  const root = tempRoot()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const runId = "20260712T000000Z-cleanup-before-close-000000000020"
+  const historical = "cleanup-before-close-history\n"
+  await prepareRunDirectory(root, runId)
+  const rootRunsDirectory = runsDirectory(root)
+  const backupPath = path.join(runDirectory(root, runId), "run-state-v0.backup.json")
+  const originalOpen = fsp.open
+  const originalLink = fsp.link
+  const originalRm = fsp.rm
+  let ownerHandle
+  let closeOwnerForTestCleanup
+  let linkRaceCreated = false
+  let cleanupRmAttempted = false
+  let closeAttempted = false
+
+  fsp.open = async (target, ...args) => {
+    const handle = await originalOpen(target, ...args)
+    const resolved = path.resolve(String(target))
+    const isOwnedTemp = path.dirname(resolved) === path.resolve(rootRunsDirectory)
+      && path.basename(resolved).startsWith(`.${runId}.`)
+      && path.basename(resolved).endsWith(".tmp")
+    if (!ownerHandle && isOwnedTemp) {
+      ownerHandle = handle
+      const realClose = handle.close.bind(handle)
+      closeOwnerForTestCleanup = realClose
+      Object.defineProperty(handle, "close", {
+        configurable: true,
+        value: async () => {
+          closeAttempted = true
+          await realClose()
+          const error = new Error("simulated cleanup precedence close failure")
+          error.code = "EIO"
+          throw error
+        }
+      })
+    }
+    return handle
+  }
+  fsp.link = async (_existingPath, newPath) => {
+    if (!linkRaceCreated && samePath(newPath, backupPath)) {
+      linkRaceCreated = true
+      await fsp.writeFile(backupPath, historical, "utf8")
+      const error = new Error("simulated matching backup EEXIST")
+      error.code = "EEXIST"
+      throw error
+    }
+    return originalLink(_existingPath, newPath)
+  }
+  fsp.rm = async (target, ...args) => {
+    const resolved = path.resolve(String(target))
+    const isOwnedTemp = path.dirname(resolved) === path.resolve(rootRunsDirectory)
+      && path.basename(resolved).startsWith(`.${runId}.`)
+      && path.basename(resolved).endsWith(".tmp")
+    if (!cleanupRmAttempted && isOwnedTemp) {
+      cleanupRmAttempted = true
+      const error = new Error("simulated owned temp cleanup EIO")
+      error.code = "EIO"
+      throw error
+    }
+    return originalRm(target, ...args)
+  }
+
+  let observedError
+  try {
+    observedError = await ensureContainedRunStateMigrationBackup(root, runId, historical)
+      .then(() => undefined, (error) => error)
+  } finally {
+    fsp.open = originalOpen
+    fsp.link = originalLink
+    fsp.rm = originalRm
+    if (ownerHandle && !closeAttempted) await closeOwnerForTestCleanup()
+  }
+
+  assert.ok(observedError)
+  assert.match(observedError.message, /simulated owned temp cleanup EIO/)
+  assert.doesNotMatch(observedError.message, /simulated cleanup precedence close failure/)
+  assert.equal(linkRaceCreated, true)
+  assert.equal(cleanupRmAttempted, true)
+  assert.equal(closeAttempted, true)
+  assert.equal(await fsp.readFile(backupPath, "utf8"), historical)
+  assert.equal((await fsp.lstat(backupPath)).nlink, 1)
+  const [ownedTempName] = (await fsp.readdir(rootRunsDirectory))
+    .filter((name) => name.startsWith(`.${runId}.`) && name.endsWith(".tmp"))
+  assert.ok(ownedTempName)
+  const ownedTempPath = path.join(rootRunsDirectory, ownedTempName)
+  assert.equal(await fsp.readFile(ownedTempPath, "utf8"), historical)
+  assert.equal((await fsp.lstat(ownedTempPath)).nlink, 1)
+  await fsp.rm(ownedTempPath)
+})
+
+test("linked publication verification preserves primary stat error when verification close fails", async (t) => {
+  const root = tempRoot()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const runId = "20260712T000000Z-verification-close-000000000021"
+  const historical = "verification-close-history\n"
+  await prepareRunDirectory(root, runId)
+  const rootRunsDirectory = runsDirectory(root)
+  const backupPath = path.join(runDirectory(root, runId), "run-state-v0.backup.json")
+  const originalOpen = fsp.open
+  let verificationHandle
+  let closeVerificationForTestCleanup
+  let primaryStatInjected = false
+  let verificationCloseAttempted = false
+
+  fsp.open = async (target, ...args) => {
+    const handle = await originalOpen(target, ...args)
+    if (!verificationHandle && samePath(target, backupPath)) {
+      verificationHandle = handle
+      const realStat = handle.stat.bind(handle)
+      const realClose = handle.close.bind(handle)
+      closeVerificationForTestCleanup = realClose
+      Object.defineProperty(handle, "stat", {
+        configurable: true,
+        value: async (...statArgs) => {
+          if (!primaryStatInjected) {
+            primaryStatInjected = true
+            const error = new Error("simulated verification handle primary stat failure")
+            error.code = "EIO"
+            throw error
+          }
+          return realStat(...statArgs)
+        }
+      })
+      Object.defineProperty(handle, "close", {
+        configurable: true,
+        value: async () => {
+          verificationCloseAttempted = true
+          await realClose()
+          const error = new Error("simulated verification handle close failure")
+          error.code = "EIO"
+          throw error
+        }
+      })
+    }
+    return handle
+  }
+
+  let observedError
+  try {
+    observedError = await ensureContainedRunStateMigrationBackup(root, runId, historical)
+      .then(() => undefined, (error) => error)
+  } finally {
+    fsp.open = originalOpen
+    if (verificationHandle && !verificationCloseAttempted) await closeVerificationForTestCleanup()
+  }
+
+  assert.ok(observedError)
+  assert.match(observedError.message, /simulated verification handle primary stat failure/)
+  assert.doesNotMatch(observedError.message, /simulated verification handle close failure/)
+  assert.equal(primaryStatInjected, true)
+  assert.equal(verificationCloseAttempted, true)
+  await assert.rejects(fsp.access(backupPath), { code: "ENOENT" })
+  assert.deepEqual(
+    (await fsp.readdir(rootRunsDirectory)).filter((name) => name.startsWith(`.${runId}.`) && name.endsWith(".tmp")),
+    []
+  )
+})
+
+test("linked publication verification surfaces close failure after a successful read", async (t) => {
+  const root = tempRoot()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const runId = "20260712T000000Z-verification-close-success-000000000022"
+  const historical = "verification-close-success-history\n"
+  await prepareRunDirectory(root, runId)
+  const rootRunsDirectory = runsDirectory(root)
+  const backupPath = path.join(runDirectory(root, runId), "run-state-v0.backup.json")
+  const originalOpen = fsp.open
+  let verificationHandle
+  let closeVerificationForTestCleanup
+  let verificationCloseAttempted = false
+
+  fsp.open = async (target, ...args) => {
+    const handle = await originalOpen(target, ...args)
+    if (!verificationHandle && samePath(target, backupPath)) {
+      verificationHandle = handle
+      const realClose = handle.close.bind(handle)
+      closeVerificationForTestCleanup = realClose
+      Object.defineProperty(handle, "close", {
+        configurable: true,
+        value: async () => {
+          verificationCloseAttempted = true
+          await realClose()
+          const error = new Error("simulated successful verification close failure")
+          error.code = "EIO"
+          throw error
+        }
+      })
+    }
+    return handle
+  }
+
+  let observedError
+  try {
+    observedError = await ensureContainedRunStateMigrationBackup(root, runId, historical)
+      .then(() => undefined, (error) => error)
+  } finally {
+    fsp.open = originalOpen
+    if (verificationHandle && !verificationCloseAttempted) await closeVerificationForTestCleanup()
+  }
+
+  assert.ok(observedError)
+  assert.match(observedError.message, /simulated successful verification close failure/)
+  assert.equal(verificationCloseAttempted, true)
+  await assert.rejects(fsp.access(backupPath), { code: "ENOENT" })
+  assert.deepEqual(
+    (await fsp.readdir(rootRunsDirectory)).filter((name) => name.startsWith(`.${runId}.`) && name.endsWith(".tmp")),
+    []
+  )
+})

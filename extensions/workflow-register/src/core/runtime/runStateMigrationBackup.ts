@@ -361,7 +361,7 @@ async function readLinkedPublicationFile(
     throw new Error(`${label} changed before publication content verification.`)
   }
   const handle = await fs.open(filePath, constants.O_RDONLY | noFollow)
-  try {
+  return withHandleClosePrecedence(handle, async () => {
     const opened = await handle.stat({ bigint: true })
     if (!opened.isFile() || !sameIdentity(opened, expected) || opened.nlink !== expected.nlink) {
       throw new Error(`${label} changed while publication content verification opened it.`)
@@ -379,8 +379,25 @@ async function readLinkedPublicationFile(
       throw new Error(`${label} changed while publication content verification read it.`)
     }
     return bytes
+  })
+}
+
+async function withHandleClosePrecedence<T>(
+  handle: Awaited<ReturnType<typeof fs.open>>,
+  operation: () => Promise<T>
+): Promise<T> {
+  let operationFailure: CapturedFailure = { failed: false }
+  try {
+    return await operation()
+  } catch (error) {
+    operationFailure = { failed: true, error }
+    throw error
   } finally {
-    await handle.close()
+    try {
+      await handle.close()
+    } catch (error) {
+      if (!operationFailure.failed) throw error
+    }
   }
 }
 
@@ -425,55 +442,62 @@ async function removeDirectFileOwnedByHandle(
   const noFollow = typeof constants.O_NOFOLLOW === "number" ? constants.O_NOFOLLOW : 0
   let pathHandle: Awaited<ReturnType<typeof fs.open>> | undefined
   try {
-    const ownerBefore = await ownerHandle.stat({ bigint: true })
-    if (!ownerBefore.isFile()) return false
-    const before = await fs.lstat(filePath, { bigint: true })
-    if (
-      before.isSymbolicLink()
-      || !before.isFile()
-      || !sameIdentity(before, ownerBefore)
-      || before.nlink !== ownerBefore.nlink
-    ) return false
-    const physicalBefore = await fs.realpath(filePath)
-    assertPhysicalContainment(root, physicalBefore, filePath)
-    if (!sameCanonicalPath(filePath, physicalBefore)) return false
+    try {
+      const ownerBefore = await ownerHandle.stat({ bigint: true })
+      if (!ownerBefore.isFile()) return false
+      const before = await fs.lstat(filePath, { bigint: true })
+      if (
+        before.isSymbolicLink()
+        || !before.isFile()
+        || !sameIdentity(before, ownerBefore)
+        || before.nlink !== ownerBefore.nlink
+      ) return false
+      const physicalBefore = await fs.realpath(filePath)
+      assertPhysicalContainment(root, physicalBefore, filePath)
+      if (!sameCanonicalPath(filePath, physicalBefore)) return false
 
-    pathHandle = await fs.open(filePath, constants.O_RDONLY | noFollow)
-    const opened = await pathHandle.stat({ bigint: true })
-    const ownerOpened = await ownerHandle.stat({ bigint: true })
-    if (
-      !opened.isFile()
-      || !ownerOpened.isFile()
-      || !sameIdentity(ownerBefore, ownerOpened)
-      || !sameIdentity(ownerOpened, opened)
-      || ownerOpened.nlink !== opened.nlink
-    ) return false
+      pathHandle = await fs.open(filePath, constants.O_RDONLY | noFollow)
+      const opened = await pathHandle.stat({ bigint: true })
+      const ownerOpened = await ownerHandle.stat({ bigint: true })
+      if (
+        !opened.isFile()
+        || !ownerOpened.isFile()
+        || !sameIdentity(ownerBefore, ownerOpened)
+        || !sameIdentity(ownerOpened, opened)
+        || ownerOpened.nlink !== opened.nlink
+      ) return false
 
-    const after = await fs.lstat(filePath, { bigint: true })
-    if (
-      after.isSymbolicLink()
-      || !after.isFile()
-      || !sameIdentity(before, after)
-      || !sameIdentity(after, opened)
-      || after.nlink !== opened.nlink
-    ) {
+      const after = await fs.lstat(filePath, { bigint: true })
+      if (
+        after.isSymbolicLink()
+        || !after.isFile()
+        || !sameIdentity(before, after)
+        || !sameIdentity(after, opened)
+        || after.nlink !== opened.nlink
+      ) {
+        return false
+      }
+      const physicalAfter = await fs.realpath(filePath)
+      assertPhysicalContainment(root, physicalAfter, filePath)
+      if (!sameCanonicalPath(filePath, physicalAfter)) return false
+      const ownerAfter = await ownerHandle.stat({ bigint: true })
+      if (
+        !ownerAfter.isFile()
+        || !sameIdentity(ownerOpened, ownerAfter)
+        || !sameIdentity(ownerAfter, after)
+        || ownerAfter.nlink !== after.nlink
+      ) return false
+    } catch {
       return false
     }
-    const physicalAfter = await fs.realpath(filePath)
-    assertPhysicalContainment(root, physicalAfter, filePath)
-    if (!sameCanonicalPath(filePath, physicalAfter)) return false
-    const ownerAfter = await ownerHandle.stat({ bigint: true })
-    if (
-      !ownerAfter.isFile()
-      || !sameIdentity(ownerOpened, ownerAfter)
-      || !sameIdentity(ownerAfter, after)
-      || ownerAfter.nlink !== after.nlink
-    ) return false
 
-    await fs.rm(filePath)
-    return true
-  } catch {
-    return false
+    try {
+      await fs.rm(filePath)
+      return true
+    } catch (error) {
+      if (isMissingPathError(error)) return false
+      throw error
+    }
   } finally {
     if (pathHandle) {
       try {
