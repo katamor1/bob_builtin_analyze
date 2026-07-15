@@ -18,6 +18,10 @@ const EXTENSION_ID = "local.bob-code-consistency-review"
 const BOB_OUTPUT_PATH = ".bob-review/bob-output/bob-output.yaml"
 const TRIAGE_PATH = ".bob-review/human-triage"
 const REVIEW_PACKAGE_PATH = ".bob-review/review-package"
+const HUMAN_TRIAGE_TAB_LABEL = "Code Consistency Human Triage"
+const HUMAN_TRIAGE_VIEW_TYPE = "bobCodeConsistencyHumanTriage"
+const TAB_STATE_TIMEOUT_MS = 5_000
+const TAB_STATE_POLL_INTERVAL_MS = 50
 const temporaryRoots = []
 
 describe("Human Triage operator Extension Host flows", function () {
@@ -191,11 +195,51 @@ async function executeTriage(workspaceRoot) {
 
 async function openAndCloseHumanTriage() {
   await vscode.commands.executeCommand("bobCodeConsistency.openHumanTriageGui")
-  await delay(500)
-  const activeTab = vscode.window.tabGroups.activeTabGroup.activeTab
-  assert.equal(activeTab?.label, "Code Consistency Human Triage")
+  await waitForTabCondition(
+    () => isHumanTriageWebviewTab(vscode.window.tabGroups.activeTabGroup.activeTab),
+    `active Webview tab ${JSON.stringify(HUMAN_TRIAGE_TAB_LABEL)} to appear`
+  )
   await vscode.commands.executeCommand("workbench.action.closeActiveEditor")
-  await delay(100)
+  await waitForTabCondition(
+    () => vscode.window.tabGroups.all.every((group) => group.tabs.every((tab) => !isHumanTriageWebviewTab(tab))),
+    `Webview tab ${JSON.stringify(HUMAN_TRIAGE_TAB_LABEL)} to disappear after close`
+  )
+}
+
+function isHumanTriageWebviewTab(tab) {
+  const viewType = tab?.input?.viewType
+  return tab?.label === HUMAN_TRIAGE_TAB_LABEL &&
+    (viewType === HUMAN_TRIAGE_VIEW_TYPE || viewType === `mainThreadWebview-${HUMAN_TRIAGE_VIEW_TYPE}`)
+}
+
+async function waitForTabCondition(condition, description) {
+  const deadline = Date.now() + TAB_STATE_TIMEOUT_MS
+  while (true) {
+    if (condition()) return
+
+    const remaining = deadline - Date.now()
+    if (remaining <= 0) {
+      throw new Error(
+        `Timed out after ${TAB_STATE_TIMEOUT_MS}ms waiting for ${description}; ${describeTabState()}`
+      )
+    }
+    await delay(Math.min(TAB_STATE_POLL_INTERVAL_MS, remaining))
+  }
+}
+
+function describeTabState() {
+  const groups = vscode.window.tabGroups.all
+  const activeLabel = vscode.window.tabGroups.activeTabGroup.activeTab?.label
+  const visibleLabels = groups
+    .map((group) => group.activeTab?.label)
+    .filter((label) => typeof label === "string")
+  const openLabels = groups.flatMap((group) => group.tabs.map((tab) => tab.label))
+  const openInputs = groups.flatMap((group) => group.tabs.map((tab) => ({
+    label: tab.label,
+    inputType: tab.input?.constructor?.name ?? null,
+    viewType: tab.input?.viewType ?? null
+  })))
+  return `active=${JSON.stringify(activeLabel ?? null)}, visible=${JSON.stringify(visibleLabels)}, open=${JSON.stringify(openLabels)}, inputs=${JSON.stringify(openInputs)}`
 }
 
 function createTemporaryWorkspace(label) {
