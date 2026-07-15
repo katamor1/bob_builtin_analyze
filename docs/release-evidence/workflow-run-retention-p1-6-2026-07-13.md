@@ -9,7 +9,7 @@
 | Pull request | #93 |
 | Branch | `agent/workflow-run-retention-p1-6-20260713` |
 | Merge base | `f35e7e79b3133f639b80aa9e4b3a5b00fe3b09cc` |
-| RC head | `fdc0efe8b9c44e7bab10131eb0b070ef6cd91664` |
+| RC head | `d0ac5199d11f8d08254710cb5821e79571fd41b4` |
 | Integration decision | **GO for evidence-tail progression**。PR mergeはexact-final-head gate完了まで保留。 |
 | Product Release decision | **NO-GO** |
 
@@ -114,13 +114,22 @@ Owner guardの通常解放順はlease JSON、`owner.json`、guard directoryで�
 - `fdc0efe8`でrun-state temp writeのoperation / temp cleanup / close優先順位を固定した。
 - Merge base `f35e7e79..fdc0efe8`の独立quality reviewとsafety/spec reviewはともにCritical 0 / Important 0 / Minor 0。Safety/spec verdictは`SPEC_COMPLIANT`。
 
+### Evidence-head Webview lifecycle gate closure — `72d603e8..d0ac5199`
+
+- 最初のevidence-only head `72d603e8`の`extensions-quality` run `29449191252`では、Windows `bob-code-consistency-review` job `87467205739`だけが失敗し、実Extension Hostのopen/reopen中に`Error: Webview is disposed`が2件未処理になった。他の6 jobsと`workflow-contracts` run `29449191256`はSUCCESSだった。
+- このfailureの修正でproduction codeが変わったためRC/evidence cycleを再開した。これはrun IDを追記するだけの自己参照更新ではなく、新しいfix-RCを検証して固定するためのsecond evidence tailである。
+- Root causeは`openConsistencyHumanTriageGui`が`controller.initialize()`をawaitせず、panel disposal後も非同期load/render/postが継続できたことだった。`d0ac5199`でcommandをasync化してinitializeをawaitし、disposalをlatchし、各非同期境界で再確認し、disposed由来のpost rejectionだけを限定的に抑止した。Dispose後の非disposal action errorは引き続き報告する。
+- Delayed initialize、pending post、deferred action rejectionの3 regressionをREDからGREENにし、fresh compileと隣接lifecycle/external-process 12/12、scaffold typecheck/unit 6/6/smoke、実VS Code 1.106.1 Extension Host 4/4（open/reopen未処理rejection 0）を確認した。
+- Bob-code full suiteは高負荷ローカル環境で257/258となり、唯一のfailureは既存external-process wall-clock判定3,095ms `< 3,000ms`だった。同一fileは単独で2回9/9 PASSし、timeoutは変更していない。Exact-RC-head hosted Linux/Windows jobsを正式なfull-suite証拠とする。
+- `d0ac5199`の独立quality reviewはApproved、独立safety/spec reviewは`SPEC_COMPLIANT`。両reviewともCritical 0 / Important 0 / Minor 0で、retention subtreeは`72d603e8`からbyte-identical、temporary diagnostic/mutation workflowはない。
+
 ## 6. Final local verification record
 
-この節はRC head `fdc0efe8b9c44e7bab10131eb0b070ef6cd91664`で取得した結果です。Local full-suiteは外部Node process 164件の負荷下で完走せず、再抽出で識別したfailureは既存`bobGateLifecycle`の5s/10s observer 3件でした。計画どおり同一headのhosted Linux/Windows unit test成功を正式なfull-suite証拠とします。
+この節のworkflow-register local/package結果はworkflow-register RC `fdc0efe8b9c44e7bab10131eb0b070ef6cd91664`で取得したものです。後続`d0ac5199`はbob-code Webview lifecycleだけを変更し、workflow-register subtreeを変更していません。Local full-suiteは外部Node process 164件の負荷下で完走せず、再抽出で識別したfailureは既存`bobGateLifecycle`の5s/10s observer 3件でした。計画どおり同一workflow-register RCのhosted Linux/Windows unit test成功を正式なfull-suite証拠とします。
 
 | Gate | Final result | Evidence |
 | --- | --- | --- |
-| RC head SHA | **PASS** | `fdc0efe8b9c44e7bab10131eb0b070ef6cd91664` |
+| Workflow-register RC SHA | **PASS** | `fdc0efe8b9c44e7bab10131eb0b070ef6cd91664`。Final RC `d0ac5199`でsubtree変更なし。 |
 | `npm.cmd run compile` | **PASS** | exit 0。UTC `2026-07-15T20:27:26.3348310Z`–`2026-07-15T20:27:35.0011452Z` |
 | Five-file path/migration focus | **PASS** | 117/117 pass、fail 0、cancelled 0 |
 | Five-file retention focus | **PASS** | 98/98 pass、fail 0、cancelled 0 |
@@ -150,18 +159,19 @@ Owner guardの通常解放順はlease JSON、`owner.json`、guard directoryで�
 
 | Workflow / job | Run ID | Job ID | Result |
 | --- | ---: | ---: | --- |
-| `extensions-quality` RC | `29447947887` | — | **SUCCESS** |
-| Extension source metrics | `29447947887` | `87463009652` | **SUCCESS** |
-| Linux `workflow-register` | `29447947887` | `87463009667` | **SUCCESS** |
-| Linux `bob-code` | `29447947887` | `87463009671` | **SUCCESS** |
-| Windows `bob-bazaar` | `29447947887` | `87463009696` | **SUCCESS** |
-| Windows `bob-code` | `29447947887` | `87463009709` | **SUCCESS** |
-| Linux `bob-bazaar` | `29447947887` | `87463009719` | **SUCCESS** |
-| Windows `workflow-register` | `29447947887` | `87463009758` | **SUCCESS** |
-| `workflow-contracts` RC | `29447947919` | `87463008567` | **SUCCESS** |
-| `code-consistency-review-scaffold` | — | — | **N/A**。変更pathがfilter対象外。 |
+| `extensions-quality` RC | `29450926916` | — | **SUCCESS** |
+| Extension source metrics | `29450926916` | `87472910626` | **SUCCESS** |
+| Linux `bob-bazaar` | `29450926916` | `87472910630` | **SUCCESS** |
+| Windows `bob-bazaar` | `29450926916` | `87472910634` | **SUCCESS** |
+| Linux `workflow-register` | `29450926916` | `87472910644` | **SUCCESS** |
+| Windows `bob-code` | `29450926916` | `87472910645` | **SUCCESS** |
+| Windows `workflow-register` | `29450926916` | `87472910649` | **SUCCESS** |
+| Linux `bob-code` | `29450926916` | `87472910652` | **SUCCESS** |
+| `workflow-contracts` RC | `29450926870` | `87472910328` | **SUCCESS** |
+| `code-consistency-review-scaffold` / Validate scaffold | `29450927100` | `87472911336` | **SUCCESS** |
+| `code-consistency-review-scaffold` / Validate VS Code extension | `29450927100` | `87472911366` | **SUCCESS** |
 
-RC matrixはexact RC headでGREENです。Workflow差分は`extensions-quality`の恒久的なsmoke追加だけで、temporary diagnostic/mutation workflowはありません。このevidence fileをevidence-only commitにした後のexact-final-head run IDsは、自己参照commitを避けるためPR本文へ記録し、このfileを再変更しません。
+Final RC `d0ac5199`のmatrixは全GREENです。Bob-code path変更により`code-consistency-review-scaffold`も適用対象となり、両jobが成功しました。Workflow差分は`extensions-quality`の恒久的なsmoke追加だけで、temporary diagnostic/mutation workflowはありません。このsecond evidence-only commit後のexact-final-head run IDsは、自己参照commitを避けるためPR本文へ記録し、このfileを再変更しません。
 
 ## 8. Review and merge decision
 
@@ -170,12 +180,14 @@ RC matrixはexact RC headでGREENです。Workflow差分は`extensions-quality`�
 | Migration remediation review | `12a5d90d..7d6e38d1` final targeted review: Critical 0 / Important 0 / Minor 0。 |
 | Windows portability review | Critical 0 / Important 0 / Minor 0。 |
 | Docs/spec review | Initial `12a5d90d` review: C0 / I3 / M2。Fact corrections後のfinal re-review: Critical 0 / Important 0 / Minor 0。 |
-| Whole diff `f35e7e79..fdc0efe8` | Quality: Approved C0 / I0 / M0。Safety/spec: `SPEC_COMPLIANT` C0 / I0 / M0。 |
+| Whole diff `f35e7e79..d0ac5199` | Quality: Approved C0 / I0 / M0。Safety/spec: `SPEC_COMPLIANT` C0 / I0 / M0。 |
 | Temporary diagnostic/mutation workflow absent | **PASS**。恒久的smoke追加以外なし。 |
-| RC all 7 `extensions-quality` jobs | **SUCCESS** (`29447947887`) |
-| RC `workflow-contracts` | **SUCCESS** (`29447947919`) |
+| RC all 7 `extensions-quality` jobs | **SUCCESS** (`29450926916`) |
+| RC `workflow-contracts` | **SUCCESS** (`29450926870`) |
+| RC `code-consistency-review-scaffold` | **SUCCESS** (`29450927100`、2/2 jobs) |
 | Evidence-only exact-final-head all 7 `extensions-quality` jobs | **PENDING** |
 | Evidence-only exact-final-head `workflow-contracts` | **PENDING** |
+| Evidence-only exact-final-head `code-consistency-review-scaffold` | **PENDING** |
 | PR #93 squash merge | **PENDING** |
 
 Current integration decision: **GO for RC/evidence-tail progression**。Evidence-only commit後のexact-final-head CI、final review/PR本文更新を完了するまでPR mergeはNO-GOです。Product Release remains NO-GO after merge.

@@ -87,6 +87,20 @@ Disposition:
 - `fdc0efe8`: run-state temp writeのoperation > temp cleanup > close優先順位を固定した。
 - Merge base `f35e7e79..fdc0efe8`の独立quality reviewはApproved、独立safety/spec reviewは`SPEC_COMPLIANT`。両reviewともCritical 0 / Important 0 / Minor 0で、temporary diagnostic/mutation workflowも検出されなかった。
 
+### Evidence-head Windows Webview lifecycle failure
+
+最初のevidence-only head `72d603e8`の`extensions-quality` run `29449191252`では、Windows `bob-code-consistency-review` job `87467205739`だけが失敗した。実Extension Hostのopen/reopen scenarioで`Error: Webview is disposed`が2件未処理になり、他の6 jobsと`workflow-contracts` run `29449191256`は成功していたため、外部runner障害としてrerunせずproduction raceとして修正した。Production codeが変わったためRC/evidence cycleを再開しており、run IDだけを追記する自己参照更新ではない。
+
+Disposition at `d0ac5199`:
+
+- `openConsistencyHumanTriageGui`は`controller.initialize()`をawaitする。Controllerはpanel disposalをlatchし、model load/render/action/postの各非同期境界で再確認する。
+- Disposal後の`postMessage`が返すexact disposed errorだけを抑止し、非disposal action errorはlistener task boundaryで報告する。
+- Delayed initialize、pending post、deferred action rejectionの3 deterministic regressionをREDからGREENにした。
+- Fresh compileと隣接lifecycle/external-process 12/12、scaffold typecheck/unit 6/6/smoke、実VS Code 1.106.1 Extension Host 4/4（open/reopen未処理rejection 0）を確認した。
+- Bob-code full suiteは高負荷ローカル環境で257/258。唯一のfailureは既存external-process wall-clock判定3,095ms `< 3,000ms`で、同一fileは単独2回9/9 PASS。timeoutは変更していない。
+- Final RC `d0ac5199`の`extensions-quality` run `29450926916`は全7 jobs SUCCESS、`workflow-contracts` run `29450926870`はSUCCESS、適用対象になった`code-consistency-review-scaffold` run `29450927100`は2/2 jobs SUCCESS。
+- `72d603e8..d0ac5199`の独立quality reviewはApproved、独立safety/spec reviewは`SPEC_COMPLIANT`。Critical 0 / Important 0 / Minor 0。Retention subtreeはbyte-identicalでtemporary diagnostic/mutation workflowはない。
+
 ## 4. Required invariants
 
 - Six commandはmanual-only。Startup/timer/background auto-deleteなし。
@@ -111,8 +125,10 @@ Disposition:
 | Migration final targeted re-review | `12a5d90d..7d6e38d1` | Approved | C0 / I0 / M0 |
 | Documentation/spec initial review | `12a5d90d` | Changes requested; fact corrections applied | C0 / I3 / M2 |
 | Documentation/spec final re-review | Corrected RC documentation | Approved | C0 / I0 / M0 |
-| Whole-diff quality review | `f35e7e79..fdc0efe8` | Approved | C0 / I0 / M0 |
-| Whole-diff safety/spec review | `f35e7e79..fdc0efe8` | `SPEC_COMPLIANT` | C0 / I0 / M0 |
+| Webview lifecycle quality review | `72d603e8..d0ac5199` | Approved | C0 / I0 / M0 |
+| Webview lifecycle safety/spec review | `72d603e8..d0ac5199` | `SPEC_COMPLIANT` | C0 / I0 / M0 |
+| Whole-diff quality review | `f35e7e79..d0ac5199` | Approved | C0 / I0 / M0 |
+| Whole-diff safety/spec review | `f35e7e79..d0ac5199` | `SPEC_COMPLIANT` | C0 / I0 / M0 |
 
 Initial docs reviewのImportant 3件（migration evidence、owner guard guarantee、partial-purge contract）とMinor 2件（PR #75 merge type、`maxCompletedRuns` terminal scope）はfact-correctionで修正し、final re-reviewでopen finding 0を確認した。
 
@@ -123,7 +139,8 @@ Initial docs reviewのImportant 3件（migration evidence、owner guard guarante
 | RC local gates | **PASS**。Compile exit 0、path/migration 117/117、retention 98/98、policies/package/diff check GREEN。Local full attemptsは外部Node process 164件下で1084/1085（fail 1）と1082/1085（fail 3）、cancelled 0。再抽出で識別したfailureは既存`bobGateLifecycle`の5s/10s observer 3件。timeoutは変更していない。 |
 | Exact-RC-head hosted full-suite authority | **PASS**。Linux 1084 pass / fail 0 / cancelled 0 / skipped 1、Windows 1085/1085 pass / fail 0 / cancelled 0。 |
 | VSIX SHA-256/bytes/UTC/entry count | **PASS**。`5b61c00526f5f9064f011ee500ccd0f0c2a49538dcb82ac7d6be07ff7e0bf4f7` / 1,032,305 / `2026-07-15T20:26:31.2539661Z` / 810。 |
-| RC Linux/Windows matrix | **PASS**。`extensions-quality` run `29447947887`全7 jobs SUCCESS、`workflow-contracts` run `29447947919` SUCCESS。 |
+| Bob-code Webview lifecycle local validation | **PASS**。Fresh compile、focused 12/12、scaffold unit 6/6、実Extension Host 4/4、open/reopen未処理rejection 0。Fullは高負荷下257/258で既存wall-clock 1件のみ、同file単独2回9/9。 |
+| Final RC Linux/Windows/scaffold matrix | **PASS**。`extensions-quality` run `29450926916`全7 jobs SUCCESS、`workflow-contracts` run `29450926870` SUCCESS、`code-consistency-review-scaffold` run `29450927100` 2/2 jobs SUCCESS。 |
 | Evidence-tail exact-final-head matrix | **PENDING after evidence-only commit** |
 | Temporary diagnostic/mutation workflow search | **PASS**。恒久的な`extensions-quality` smoke追加以外なし。 |
 | PR body final run IDs/review result | **PENDING after exact-final-head CI** |
@@ -133,9 +150,9 @@ Initial docs reviewのImportant 3件（migration evidence、owner guard guarante
 - Scoped Windows portability review: **GO**。
 - Migration remediation review: final targeted independent review **GO** (Critical 0 / Important 0 / Minor 0)。
 - Documentation review: **GO** (Critical 0 / Important 0 / Minor 0)。
-- RC whole-diff review: **GO**。Quality Approved、safety/spec `SPEC_COMPLIANT`、Critical 0 / Important 0 / Minor 0。
+- RC whole-diff review through `d0ac5199`: **GO**。Quality Approved、safety/spec `SPEC_COMPLIANT`、Critical 0 / Important 0 / Minor 0。
 - RC/evidence-tail progression: **GO**。
 - PR #93 main merge: **NO-GO** until evidence-only exact-final-head CI、final review、PR本文更新がGREEN。
 - Product Release: **NO-GO** until real IBM Bob/Bazaar、multi-root、ReFS/AV、signing/distribution/rollback/operator-recovery UAT。
 
-Exact-final-head run IDsとfinal review resultはPR本文へ記録し、evidence-only commit後にこのfileを再変更しません。
+Exact-final-head run IDsとfinal review resultはPR本文へ記録し、このsecond evidence-only commit後にこのfileを再変更しません。
