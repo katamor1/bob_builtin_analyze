@@ -142,7 +142,7 @@ function artifactPointer(root, runId, basename, generationByte = "1") {
   return path.relative(
     root,
     path.join(paths.generationsDirectory, `gen-${generationByte.repeat(32)}`, basename)
-  )
+  ).split(path.sep).join("/")
 }
 
 async function writeArtifacts(run, artifacts) {
