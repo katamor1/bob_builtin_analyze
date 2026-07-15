@@ -20,6 +20,22 @@ type CapturedFailure =
   | { failed: false }
   | { failed: true; error: unknown }
 
+type CapturedResult<T> =
+  | { failed: false; value: T }
+  | { failed: true; error: unknown }
+
+interface SettledHandleOperation<T> {
+  operation: CapturedResult<T>
+  closeFailure: CapturedFailure
+}
+
+interface LinkedPublicationRead {
+  filePath: string
+  root: string
+  expected: FileIdentity & { nlink: bigint }
+  label: string
+}
+
 type DirectDirectory = FileIdentity & {
   path: string
 }
@@ -130,33 +146,43 @@ async function ensureContainedRunStateMigrationBackupUnlocked(
       throw new Error(`Workflow run '${runId}' migration backup changed during create-once publication.`)
     }
     const expectedBytes = Buffer.from(content, "utf8")
-    const [linkedTempBytes, linkedTargetBytes] = await Promise.all([
-      readLinkedPublicationFile(
-        tempPath,
-        root,
-        linkedTemp,
-        `Workflow run '${runId}' migration backup temporary file`
-      ),
-      readLinkedPublicationFile(
-        backupPath,
-        root,
-        linkedTarget,
-        `Workflow run '${runId}' migration backup`
-      )
-    ])
-    if (!linkedTempBytes.equals(expectedBytes) || !linkedTargetBytes.equals(expectedBytes)) {
-      throw new Error(`Workflow run '${runId}' migration backup publication bytes changed before create-once publication was finalized.`)
-    }
-    await fs.rm(tempPath)
-    const finalizedBytes = await readLinkedPublicationFile(
-      backupPath,
-      root,
-      { dev: linkedTemp.dev, ino: linkedTemp.ino, nlink: 1n },
-      `Workflow run '${runId}' migration backup`
+    await readAndValidateLinkedPublicationFiles(
+      [
+        {
+          filePath: tempPath,
+          root,
+          expected: linkedTemp,
+          label: `Workflow run '${runId}' migration backup temporary file`
+        },
+        {
+          filePath: backupPath,
+          root,
+          expected: linkedTarget,
+          label: `Workflow run '${runId}' migration backup`
+        }
+      ],
+      ([linkedTempBytes, linkedTargetBytes]) => {
+        if (!linkedTempBytes.equals(expectedBytes) || !linkedTargetBytes.equals(expectedBytes)) {
+          throw new Error(`Workflow run '${runId}' migration backup publication bytes changed before create-once publication was finalized.`)
+        }
+      }
     )
-    if (!finalizedBytes.equals(expectedBytes)) {
-      throw new Error(`Workflow run '${runId}' migration backup publication bytes changed while finalizing create-once publication.`)
-    }
+    await fs.rm(tempPath)
+    await readAndValidateLinkedPublicationFiles(
+      [
+        {
+          filePath: backupPath,
+          root,
+          expected: { dev: linkedTemp.dev, ino: linkedTemp.ino, nlink: 1n },
+          label: `Workflow run '${runId}' migration backup`
+        }
+      ],
+      ([finalizedBytes]) => {
+        if (!finalizedBytes.equals(expectedBytes)) {
+          throw new Error(`Workflow run '${runId}' migration backup publication bytes changed while finalizing create-once publication.`)
+        }
+      }
+    )
     await assertDirectoryIdentity(runsRoot, "Workflow runs directory")
     await assertDirectoryIdentity(runDirectory, `Workflow run '${runId}' directory`)
     publicationSucceeded = true
@@ -230,15 +256,29 @@ async function assertNoInterruptedRunStateMigrationPublication(
   }
 
   const expectedBytes = Buffer.from(content, "utf8")
-  const [candidateBytes, backupBytes] = await Promise.all([
-    readLinkedPublicationFile(tempPath, root, candidate, `Workflow run '${runId}' recovery temporary file`),
-    readLinkedPublicationFile(backupPath, root, backup, `Workflow run '${runId}' migration backup`)
-  ])
-  if (!candidateBytes.equals(expectedBytes) || !backupBytes.equals(expectedBytes)) {
-    throw new Error(`Workflow run '${runId}' interrupted migration publication does not match the expected historical bytes.`)
-  }
-  throw new Error(
-    `Workflow run '${runId}' interrupted migration publication owner pid ${candidateName.pid} cannot be proven stopped across process visibility domains; automatic recovery is disabled and both links were preserved.`
+  return await readAndValidateLinkedPublicationFiles(
+    [
+      {
+        filePath: tempPath,
+        root,
+        expected: candidate,
+        label: `Workflow run '${runId}' recovery temporary file`
+      },
+      {
+        filePath: backupPath,
+        root,
+        expected: backup,
+        label: `Workflow run '${runId}' migration backup`
+      }
+    ],
+    ([candidateBytes, backupBytes]) => {
+      if (!candidateBytes.equals(expectedBytes) || !backupBytes.equals(expectedBytes)) {
+        throw new Error(`Workflow run '${runId}' interrupted migration publication does not match the expected historical bytes.`)
+      }
+      throw new Error(
+        `Workflow run '${runId}' interrupted migration publication owner pid ${candidateName.pid} cannot be proven stopped across process visibility domains; automatic recovery is disabled and both links were preserved.`
+      )
+    }
   )
 }
 
@@ -264,7 +304,7 @@ async function readDirectRegularFile(root: string, filePath: string, label: stri
   const noFollow = typeof constants.O_NOFOLLOW === "number" ? constants.O_NOFOLLOW : 0
   const before = await directRegularFile(filePath, root, label)
   const handle = await fs.open(filePath, constants.O_RDONLY | noFollow)
-  try {
+  return withHandleClosePrecedence(handle, async () => {
     const handleStat = await handle.stat({ bigint: true })
     assertSingleLinkedRegularFile(handleStat, label)
     const after = await directRegularFile(filePath, root, label)
@@ -279,9 +319,7 @@ async function readDirectRegularFile(root: string, filePath: string, label: stri
       throw new Error(`${label} changed while it was being read.`)
     }
     return bytes
-  } finally {
-    await handle.close()
-  }
+  })
 }
 
 async function directDirectoryChain(root: string, segments: readonly string[]): Promise<DirectDirectory> {
@@ -349,56 +387,88 @@ async function linkedPublicationFile(
   return { dev: after.dev, ino: after.ino, nlink: after.nlink }
 }
 
-async function readLinkedPublicationFile(
-  filePath: string,
-  root: string,
-  expected: FileIdentity & { nlink: bigint },
-  label: string
-): Promise<Buffer> {
-  const noFollow = typeof constants.O_NOFOLLOW === "number" ? constants.O_NOFOLLOW : 0
-  const before = await linkedPublicationFile(filePath, root, label)
-  if (!sameIdentity(before, expected) || before.nlink !== expected.nlink) {
-    throw new Error(`${label} changed before publication content verification.`)
+async function readAndValidateLinkedPublicationFiles<T>(
+  reads: readonly LinkedPublicationRead[],
+  validate: (bytes: readonly Buffer[]) => T
+): Promise<T> {
+  const outcomes = await Promise.all(reads.map((read) => settleLinkedPublicationFileRead(read)))
+  const bytes: Buffer[] = []
+  for (const outcome of outcomes) {
+    if (outcome.operation.failed) throw outcome.operation.error
+    bytes.push(outcome.operation.value)
   }
-  const handle = await fs.open(filePath, constants.O_RDONLY | noFollow)
-  return withHandleClosePrecedence(handle, async () => {
-    const opened = await handle.stat({ bigint: true })
-    if (!opened.isFile() || !sameIdentity(opened, expected) || opened.nlink !== expected.nlink) {
-      throw new Error(`${label} changed while publication content verification opened it.`)
+  const result = validate(bytes)
+  for (const outcome of outcomes) {
+    if (outcome.closeFailure.failed) throw outcome.closeFailure.error
+  }
+  return result
+}
+
+async function settleLinkedPublicationFileRead(
+  read: LinkedPublicationRead
+): Promise<SettledHandleOperation<Buffer>> {
+  const { filePath, root, expected, label } = read
+  const noFollow = typeof constants.O_NOFOLLOW === "number" ? constants.O_NOFOLLOW : 0
+  try {
+    const before = await linkedPublicationFile(filePath, root, label)
+    if (!sameIdentity(before, expected) || before.nlink !== expected.nlink) {
+      throw new Error(`${label} changed before publication content verification.`)
     }
-    const bytes = await handle.readFile()
-    const read = await handle.stat({ bigint: true })
-    const after = await linkedPublicationFile(filePath, root, label)
-    if (
-      !read.isFile()
-      || !sameIdentity(read, expected)
-      || read.nlink !== expected.nlink
-      || !sameIdentity(after, expected)
-      || after.nlink !== expected.nlink
-    ) {
-      throw new Error(`${label} changed while publication content verification read it.`)
+    const handle = await fs.open(filePath, constants.O_RDONLY | noFollow)
+    return await settleHandleOperation(handle, async () => {
+      const opened = await handle.stat({ bigint: true })
+      if (!opened.isFile() || !sameIdentity(opened, expected) || opened.nlink !== expected.nlink) {
+        throw new Error(`${label} changed while publication content verification opened it.`)
+      }
+      const bytes = await handle.readFile()
+      const readStat = await handle.stat({ bigint: true })
+      const after = await linkedPublicationFile(filePath, root, label)
+      if (
+        !readStat.isFile()
+        || !sameIdentity(readStat, expected)
+        || readStat.nlink !== expected.nlink
+        || !sameIdentity(after, expected)
+        || after.nlink !== expected.nlink
+      ) {
+        throw new Error(`${label} changed while publication content verification read it.`)
+      }
+      return bytes
+    })
+  } catch (error) {
+    return {
+      operation: { failed: true, error },
+      closeFailure: { failed: false }
     }
-    return bytes
-  })
+  }
 }
 
 async function withHandleClosePrecedence<T>(
   handle: Awaited<ReturnType<typeof fs.open>>,
   operation: () => Promise<T>
 ): Promise<T> {
-  let operationFailure: CapturedFailure = { failed: false }
+  const outcome = await settleHandleOperation(handle, operation)
+  if (outcome.operation.failed) throw outcome.operation.error
+  if (outcome.closeFailure.failed) throw outcome.closeFailure.error
+  return outcome.operation.value
+}
+
+async function settleHandleOperation<T>(
+  handle: Awaited<ReturnType<typeof fs.open>>,
+  operation: () => Promise<T>
+): Promise<SettledHandleOperation<T>> {
+  let operationResult: CapturedResult<T>
+  let closeFailure: CapturedFailure = { failed: false }
   try {
-    return await operation()
+    operationResult = { failed: false, value: await operation() }
   } catch (error) {
-    operationFailure = { failed: true, error }
-    throw error
-  } finally {
-    try {
-      await handle.close()
-    } catch (error) {
-      if (!operationFailure.failed) throw error
-    }
+    operationResult = { failed: true, error }
   }
+  try {
+    await handle.close()
+  } catch (error) {
+    closeFailure = { failed: true, error }
+  }
+  return { operation: operationResult, closeFailure }
 }
 
 async function optionalDirectRegularFile(

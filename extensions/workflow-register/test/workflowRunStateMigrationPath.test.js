@@ -42,6 +42,12 @@ function strictRecoveryTempPath(root, runId, suffix, pid = 4242) {
   )
 }
 
+function deferred() {
+  let resolve
+  const promise = new Promise((settle) => { resolve = settle })
+  return { promise, resolve }
+}
+
 test("migration backup preserves exact historical run bytes and is idempotent", async (t) => {
   const root = tempRoot()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
@@ -1361,4 +1367,358 @@ test("linked publication verification surfaces close failure after a successful 
     (await fsp.readdir(rootRunsDirectory)).filter((name) => name.startsWith(`.${runId}.`) && name.endsWith(".tmp")),
     []
   )
+})
+
+test("aggregate linked verification waits for a peer primary error before cleanup", async (t) => {
+  const root = tempRoot()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const runId = "20260712T000000Z-aggregate-peer-primary-000000000023"
+  const historical = "aggregate-peer-primary-history\n"
+  await prepareRunDirectory(root, runId)
+  const rootRunsDirectory = runsDirectory(root)
+  const backupPath = path.join(runDirectory(root, runId), "run-state-v0.backup.json")
+  const originalOpen = fsp.open
+  const originalRm = fsp.rm
+  const tempCloseSignalled = deferred()
+  const backupStatEntered = deferred()
+  const releaseBackupPrimary = deferred()
+  const backupCloseCompleted = deferred()
+  let ownerHandle
+  let tempVerificationHandle
+  let backupVerificationHandle
+  let closeTempVerificationForTestCleanup
+  let closeBackupVerificationForTestCleanup
+  let tempVerificationClosed = false
+  let backupPrimaryCompleted = false
+  let backupVerificationClosed = false
+  let cleanupStarted = false
+  let cleanupStartedBeforeBackupClosed = false
+
+  fsp.open = async (target, ...args) => {
+    const handle = await originalOpen(target, ...args)
+    const resolved = path.resolve(String(target))
+    const isOwnedTemp = path.dirname(resolved) === path.resolve(rootRunsDirectory)
+      && path.basename(resolved).startsWith(`.${runId}.`)
+      && path.basename(resolved).endsWith(".tmp")
+    if (isOwnedTemp && !ownerHandle) {
+      ownerHandle = handle
+    } else if (isOwnedTemp && !tempVerificationHandle) {
+      tempVerificationHandle = handle
+      const realClose = handle.close.bind(handle)
+      closeTempVerificationForTestCleanup = realClose
+      Object.defineProperty(handle, "close", {
+        configurable: true,
+        value: async () => {
+          await realClose()
+          tempVerificationClosed = true
+          tempCloseSignalled.resolve()
+          const error = new Error("simulated aggregate temp verification close failure")
+          error.code = "EIO"
+          throw error
+        }
+      })
+    } else if (samePath(target, backupPath) && !backupVerificationHandle) {
+      backupVerificationHandle = handle
+      const realStat = handle.stat.bind(handle)
+      const realClose = handle.close.bind(handle)
+      closeBackupVerificationForTestCleanup = realClose
+      Object.defineProperty(handle, "stat", {
+        configurable: true,
+        value: async (...statArgs) => {
+          if (!backupPrimaryCompleted) {
+            backupStatEntered.resolve()
+            await releaseBackupPrimary.promise
+            backupPrimaryCompleted = true
+            const error = new Error("simulated aggregate backup primary stat failure")
+            error.code = "EIO"
+            throw error
+          }
+          return realStat(...statArgs)
+        }
+      })
+      Object.defineProperty(handle, "close", {
+        configurable: true,
+        value: async () => {
+          await realClose()
+          backupVerificationClosed = true
+          backupCloseCompleted.resolve()
+        }
+      })
+    }
+    return handle
+  }
+  fsp.rm = async (target, ...args) => {
+    const resolved = path.resolve(String(target))
+    const isOwnedTemp = path.dirname(resolved) === path.resolve(rootRunsDirectory)
+      && path.basename(resolved).startsWith(`.${runId}.`)
+      && path.basename(resolved).endsWith(".tmp")
+    if (!cleanupStarted && (isOwnedTemp || samePath(target, backupPath))) {
+      cleanupStarted = true
+      cleanupStartedBeforeBackupClosed = !backupVerificationClosed
+    }
+    return originalRm(target, ...args)
+  }
+
+  let observedError
+  try {
+    const ensurePromise = ensureContainedRunStateMigrationBackup(root, runId, historical)
+      .then(() => undefined, (error) => error)
+    await Promise.all([tempCloseSignalled.promise, backupStatEntered.promise])
+    releaseBackupPrimary.resolve()
+    await backupCloseCompleted.promise
+    observedError = await ensurePromise
+  } finally {
+    releaseBackupPrimary.resolve()
+    fsp.open = originalOpen
+    fsp.rm = originalRm
+    if (tempVerificationHandle && !tempVerificationClosed) await closeTempVerificationForTestCleanup()
+    if (backupVerificationHandle && !backupVerificationClosed) await closeBackupVerificationForTestCleanup()
+  }
+
+  assert.ok(observedError)
+  assert.match(observedError.message, /simulated aggregate backup primary stat failure/)
+  assert.doesNotMatch(observedError.message, /simulated aggregate temp verification close failure/)
+  assert.equal(backupPrimaryCompleted, true)
+  assert.equal(tempVerificationClosed, true)
+  assert.equal(backupVerificationClosed, true)
+  assert.equal(cleanupStarted, true)
+  assert.equal(cleanupStartedBeforeBackupClosed, false)
+  await assert.rejects(fsp.access(backupPath), { code: "ENOENT" })
+  assert.deepEqual(
+    (await fsp.readdir(rootRunsDirectory)).filter((name) => name.startsWith(`.${runId}.`) && name.endsWith(".tmp")),
+    []
+  )
+})
+
+test("aggregate linked byte-integrity error outranks verification close failure", async (t) => {
+  const root = tempRoot()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const runId = "20260712T000000Z-aggregate-bytes-before-close-000000000024"
+  const historical = "aggregate-bytes-before-close-history\n"
+  await prepareRunDirectory(root, runId)
+  const rootRunsDirectory = runsDirectory(root)
+  const backupPath = path.join(runDirectory(root, runId), "run-state-v0.backup.json")
+  const originalOpen = fsp.open
+  const originalLink = fsp.link
+  const tempVerificationCloseCompleted = deferred()
+  const backupVerificationCloseCompleted = deferred()
+  let ownerHandle
+  let tempVerificationHandle
+  let backupVerificationHandle
+  let closeTempVerificationForTestCleanup
+  let closeBackupVerificationForTestCleanup
+  let tempVerificationClosed = false
+  let backupVerificationClosed = false
+  let bytesMutated = false
+
+  fsp.open = async (target, ...args) => {
+    const handle = await originalOpen(target, ...args)
+    const resolved = path.resolve(String(target))
+    const isOwnedTemp = path.dirname(resolved) === path.resolve(rootRunsDirectory)
+      && path.basename(resolved).startsWith(`.${runId}.`)
+      && path.basename(resolved).endsWith(".tmp")
+    if (isOwnedTemp && !ownerHandle) {
+      ownerHandle = handle
+    } else if (isOwnedTemp && !tempVerificationHandle) {
+      tempVerificationHandle = handle
+      const realClose = handle.close.bind(handle)
+      closeTempVerificationForTestCleanup = realClose
+      Object.defineProperty(handle, "close", {
+        configurable: true,
+        value: async () => {
+          await realClose()
+          tempVerificationClosed = true
+          tempVerificationCloseCompleted.resolve()
+        }
+      })
+    } else if (samePath(target, backupPath) && !backupVerificationHandle) {
+      backupVerificationHandle = handle
+      const realClose = handle.close.bind(handle)
+      closeBackupVerificationForTestCleanup = realClose
+      Object.defineProperty(handle, "close", {
+        configurable: true,
+        value: async () => {
+          await realClose()
+          backupVerificationClosed = true
+          backupVerificationCloseCompleted.resolve()
+          const error = new Error("simulated aggregate byte verification close failure")
+          error.code = "EIO"
+          throw error
+        }
+      })
+    }
+    return handle
+  }
+  fsp.link = async (existingPath, newPath) => {
+    if (!bytesMutated && samePath(newPath, backupPath)) {
+      bytesMutated = true
+      const handle = await originalOpen(existingPath, "r+")
+      try {
+        await handle.truncate(0)
+        await handle.writeFile("aggregate-attacker-bytes\n", "utf8")
+        await handle.sync()
+      } finally {
+        await handle.close()
+      }
+    }
+    return originalLink(existingPath, newPath)
+  }
+
+  let observedError
+  try {
+    const ensurePromise = ensureContainedRunStateMigrationBackup(root, runId, historical)
+      .then(() => undefined, (error) => error)
+    await Promise.all([
+      tempVerificationCloseCompleted.promise,
+      backupVerificationCloseCompleted.promise
+    ])
+    observedError = await ensurePromise
+  } finally {
+    fsp.open = originalOpen
+    fsp.link = originalLink
+    if (tempVerificationHandle && !tempVerificationClosed) await closeTempVerificationForTestCleanup()
+    if (backupVerificationHandle && !backupVerificationClosed) await closeBackupVerificationForTestCleanup()
+  }
+
+  assert.ok(observedError)
+  assert.match(observedError.message, /publication bytes changed before create-once publication was finalized/i)
+  assert.doesNotMatch(observedError.message, /simulated aggregate byte verification close failure/)
+  assert.equal(bytesMutated, true)
+  assert.equal(tempVerificationClosed, true)
+  assert.equal(backupVerificationClosed, true)
+  await assert.rejects(fsp.access(backupPath), { code: "ENOENT" })
+  assert.deepEqual(
+    (await fsp.readdir(rootRunsDirectory)).filter((name) => name.startsWith(`.${runId}.`) && name.endsWith(".tmp")),
+    []
+  )
+})
+
+test("direct migration backup read preserves a primary stat error over close failure", async (t) => {
+  const root = tempRoot()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const runId = "20260712T000000Z-direct-read-before-close-000000000025"
+  const historical = "direct-read-before-close-history\n"
+  await prepareRunDirectory(root, runId)
+  await ensureContainedRunStateMigrationBackup(root, runId, historical)
+  const backupPath = path.join(runDirectory(root, runId), "run-state-v0.backup.json")
+  const originalOpen = fsp.open
+  let directReadHandle
+  let closeDirectReadForTestCleanup
+  let primaryStatInjected = false
+  let directReadCloseAttempted = false
+
+  fsp.open = async (target, ...args) => {
+    const handle = await originalOpen(target, ...args)
+    if (!directReadHandle && samePath(target, backupPath)) {
+      directReadHandle = handle
+      const realStat = handle.stat.bind(handle)
+      const realClose = handle.close.bind(handle)
+      closeDirectReadForTestCleanup = realClose
+      Object.defineProperty(handle, "stat", {
+        configurable: true,
+        value: async (...statArgs) => {
+          if (!primaryStatInjected) {
+            primaryStatInjected = true
+            const error = new Error("simulated direct read primary stat failure")
+            error.code = "EIO"
+            throw error
+          }
+          return realStat(...statArgs)
+        }
+      })
+      Object.defineProperty(handle, "close", {
+        configurable: true,
+        value: async () => {
+          directReadCloseAttempted = true
+          await realClose()
+          const error = new Error("simulated direct read close masking failure")
+          error.code = "EIO"
+          throw error
+        }
+      })
+    }
+    return handle
+  }
+
+  let observedError
+  try {
+    observedError = await readContainedRunStateMigrationBackup(root, runId)
+      .then(() => undefined, (error) => error)
+  } finally {
+    fsp.open = originalOpen
+    if (directReadHandle && !directReadCloseAttempted) await closeDirectReadForTestCleanup()
+  }
+
+  assert.ok(observedError)
+  assert.match(observedError.message, /simulated direct read primary stat failure/)
+  assert.doesNotMatch(observedError.message, /simulated direct read close masking failure/)
+  assert.equal(primaryStatInjected, true)
+  assert.equal(directReadCloseAttempted, true)
+  assert.equal(await fsp.readFile(backupPath, "utf8"), historical)
+})
+
+test("interrupted aggregate verification safety error outranks close failure", async (t) => {
+  const root = tempRoot()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const runId = "20260712T000000Z-interrupted-safety-before-close-000000000026"
+  const historical = "interrupted-safety-before-close-history\n"
+  await prepareRunDirectory(root, runId)
+  const tempPath = strictRecoveryTempPath(root, runId, 7)
+  const backupPath = path.join(runDirectory(root, runId), "run-state-v0.backup.json")
+  await fsp.writeFile(tempPath, historical)
+  await fsp.link(tempPath, backupPath)
+  const originalOpen = fsp.open
+  let tempVerificationClosed = false
+  let backupVerificationClosed = false
+
+  fsp.open = async (target, ...args) => {
+    const handle = await originalOpen(target, ...args)
+    if (samePath(target, tempPath)) {
+      const realClose = handle.close.bind(handle)
+      Object.defineProperty(handle, "close", {
+        configurable: true,
+        value: async () => {
+          await realClose()
+          tempVerificationClosed = true
+        }
+      })
+    } else if (samePath(target, backupPath)) {
+      const realClose = handle.close.bind(handle)
+      Object.defineProperty(handle, "close", {
+        configurable: true,
+        value: async () => {
+          await realClose()
+          backupVerificationClosed = true
+          const error = new Error("simulated interrupted aggregate close failure")
+          error.code = "EIO"
+          throw error
+        }
+      })
+    }
+    return handle
+  }
+
+  let observedError
+  try {
+    observedError = await ensureContainedRunStateMigrationBackup(root, runId, historical)
+      .then(() => undefined, (error) => error)
+  } finally {
+    fsp.open = originalOpen
+  }
+
+  assert.ok(observedError)
+  assert.match(observedError.message, /cannot be proven stopped|automatic recovery is disabled/i)
+  assert.doesNotMatch(observedError.message, /simulated interrupted aggregate close failure/)
+  assert.equal(tempVerificationClosed, true)
+  assert.equal(backupVerificationClosed, true)
+  const [tempStat, backupStat] = await Promise.all([
+    fsp.lstat(tempPath, { bigint: true }),
+    fsp.lstat(backupPath, { bigint: true })
+  ])
+  assert.equal(tempStat.dev, backupStat.dev)
+  assert.equal(tempStat.ino, backupStat.ino)
+  assert.equal(tempStat.nlink, 2n)
+  assert.equal(backupStat.nlink, 2n)
+  assert.equal(await fsp.readFile(tempPath, "utf8"), historical)
+  assert.equal(await fsp.readFile(backupPath, "utf8"), historical)
 })
