@@ -944,6 +944,42 @@ test("holds workflow completion through extraction and completes with session me
   assertNoPrivateSource(panel.posts)
 })
 
+test("passes the exact extraction base manifest into artifact persistence", async () => {
+  const existingManifest = {
+    schema_version: "bob-bazaar-review/rule-sources/v1",
+    generated_at: "2026-07-15T00:00:00.000Z",
+    sources: [{
+      source_id: `src-${"b".repeat(12)}`,
+      logical_name: "approved.pdf",
+      media_type: "pdf",
+      sha256: "b".repeat(64),
+      byte_size: 17,
+      extraction_status: "success",
+      extractor: { id: "fixture", version: "1" },
+      warnings: []
+    }]
+  }
+  const fake = createFakeVscode({ pickerResults: [[fileUri(PRIVATE_DOCX)]] })
+  const fixture = hostDependencies({
+    loadApprovedRuleSourceManifest: async () => existingManifest,
+    extractRuleDocuments: async (requests, extractionBase) => {
+      assert.strictEqual(extractionBase, existingManifest)
+      return successBatch({
+        logicalName: path.basename(requests[0].filePath),
+        localPath: requests[0].filePath
+      })
+    }
+  })
+  const { resultPromise, panel } = await startHost(fake, fixture)
+
+  await panel.emitMessage({ type: "chooseSources" })
+  await panel.emitMessage({ type: "extractSources" })
+
+  assert.deepEqual(fixture.persistenceCalls[0].existingManifest, existingManifest)
+  await panel.emitMessage({ type: "cancelRun" })
+  assert.equal((await resultPromise).status, "cancelled")
+})
+
 test("keeps run IDs Unicode-compatible while source and chunk IDs retain strict ASCII/hash schemas", () => {
   const fake = createFakeVscode()
   const { parseRuleAuthoringGuiMessage } = loadRuleAuthoringGui(fake.vscode)

@@ -621,6 +621,7 @@ class RuleAuthoringGuiController {
       runId: currentRun.runId,
       run: currentRun,
       batch,
+      existingManifest,
       selectedSources: selected.map((source) => ({
         selectedId: source.selectedId,
         absolutePath: source.uri.fsPath,

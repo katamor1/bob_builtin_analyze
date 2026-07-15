@@ -171,6 +171,7 @@ export interface PersistRuleAuthoringExtractionInput {
   runId: string
   run: RuleAuthoringRunV1
   batch: RuleDocumentBatchResult
+  existingManifest: RuleSourceManifestV1 | undefined
   selectedSources: readonly SelectedRuleAuthoringSource[]
   exclusionApprovals: readonly { selectedId: string; approved: boolean }[]
 }
@@ -236,11 +237,17 @@ export async function loadApprovedRuleSourceManifest(
 export async function persistRuleAuthoringExtraction(
   input: PersistRuleAuthoringExtractionInput
 ): Promise<RuleAuthoringExtractionState> {
+  if (!Object.prototype.hasOwnProperty.call(input, "existingManifest")) {
+    throw new Error("Rule authoring extraction base manifest property is required")
+  }
   validateRunInput(input.run, input.workspaceRoot, input.runId)
   assertExtractionCanChange(input.run)
+  const existingManifest = input.existingManifest === undefined
+    ? undefined
+    : canonicalExistingManifest(input.existingManifest)
   const manifest = canonicalManifest(input.batch.manifest)
   const chunks = canonicalChunks(manifest, input.batch.aiChunks)
-  const scope = createInitialScope(input, manifest, chunks)
+  const scope = createInitialScope(input, manifest, chunks, existingManifest)
   const manifestText = serializeJson(manifest)
   const chunksText = serializeChunks(chunks)
   const scopeText = serializeJson(scope)
@@ -536,7 +543,8 @@ function extractionArtifactLifecycle(run: RuleAuthoringRunV1): "empty" | "persis
 function createInitialScope(
   input: PersistRuleAuthoringExtractionInput,
   manifest: RuleSourceManifestV1,
-  chunks: readonly DocumentChunkV1[]
+  chunks: readonly DocumentChunkV1[],
+  existingManifest: RuleSourceManifestV1 | undefined
 ): RuleAuthoringSourceScopeV1 {
   if (
     !Array.isArray(input.selectedSources) ||
@@ -584,6 +592,12 @@ function createInitialScope(
   }
   const manifestByHash = new Map(manifest.sources.map((source) => [source.sha256, source]))
   const duplicatePool = createDuplicateMetadataPool(input.batch.duplicates)
+  validateCompleteDuplicateMetadata(
+    duplicatePool,
+    input.selectedSources,
+    mappings,
+    existingManifest
+  )
 
   const sources = input.selectedSources.map((selected): RuleAuthoringScopeSourceV1 => {
     const absolutePath = requireAbsolutePath(selected.absolutePath)
@@ -700,6 +714,14 @@ function canonicalManifest(input: RuleSourceManifestV1): RuleSourceManifestV1 {
     throw new Error("Rule source manifest is not canonical")
   }
   return structuredClone(input)
+}
+
+function canonicalExistingManifest(input: RuleSourceManifestV1): RuleSourceManifestV1 {
+  try {
+    return canonicalManifest(input)
+  } catch {
+    throw new Error("Existing rule source manifest is not canonical")
+  }
 }
 
 function canonicalChunks(
@@ -1004,6 +1026,82 @@ function createDuplicateMetadataPool(
     pool.set(key, records)
   }
   return pool
+}
+
+function validateCompleteDuplicateMetadata(
+  pool: DuplicateMetadataPool,
+  selectedSources: readonly SelectedRuleAuthoringSource[],
+  mappings: ReadonlyMap<string, LocalSourceMapping>,
+  existingManifest: RuleSourceManifestV1 | undefined
+): void {
+  const selectedBySha = new Map<string, Array<{
+    absolutePath: string
+    logicalName: string
+  }>>()
+  for (const selected of selectedSources) {
+    const absolutePath = requireAbsolutePath(selected.absolutePath)
+    const mapping = mappings.get(absolutePath)
+    if (!mapping) throw new Error("Rule authoring selected source mapping is missing")
+    const logicalName = requireLogicalName(selected.logicalName)
+    if (mapping.logicalName !== logicalName) {
+      throw new Error("Rule authoring selected source mapping changed its logical name")
+    }
+    const sha = requireSha256(mapping.sha256)
+    const group = selectedBySha.get(sha) ?? []
+    group.push({ absolutePath, logicalName })
+    selectedBySha.set(sha, group)
+  }
+
+  const existingBySha = new Map(
+    (existingManifest?.sources ?? []).map((source) => [source.sha256, source] as const)
+  )
+  const expected: Array<Pick<PendingDuplicateMetadata, "logicalName" | "sha256" | "reason" | "duplicateOf">> = []
+  for (const [sha, selected] of selectedBySha) {
+    const producerOrder = [...selected].sort((left, right) => (
+      left.logicalName.localeCompare(right.logicalName) ||
+      left.absolutePath.localeCompare(right.absolutePath)
+    ))
+    const existing = existingBySha.get(sha)
+    if (existing) {
+      for (const source of producerOrder) {
+        expected.push({
+          logicalName: source.logicalName,
+          sha256: sha,
+          reason: "duplicate_existing_manifest",
+          duplicateOf: existing.source_id
+        })
+      }
+      continue
+    }
+    const canonical = producerOrder[0]
+    for (const source of producerOrder.slice(1)) {
+      expected.push({
+        logicalName: source.logicalName,
+        sha256: sha,
+        reason: "duplicate_in_run",
+        duplicateOf: canonical.logicalName
+      })
+    }
+  }
+
+  const actual = [...pool.values()].flat()
+  if (!sameStringMultiset(
+    actual.map(duplicateMetadataIdentity),
+    expected.map(duplicateMetadataIdentity)
+  )) {
+    throw new Error("Rule authoring duplicate metadata does not match its extraction base multiplicity")
+  }
+}
+
+function duplicateMetadataIdentity(
+  record: Pick<PendingDuplicateMetadata, "logicalName" | "sha256" | "reason" | "duplicateOf">
+): string {
+  return JSON.stringify([
+    record.logicalName,
+    record.sha256,
+    record.reason,
+    record.duplicateOf
+  ])
 }
 
 function validateLegacyInformationalDuplicates(

@@ -67,6 +67,7 @@ function extractionFixture(root, options = {}) {
     }]
   }
   return {
+    existingManifest: undefined,
     selectedSources: [
       {
         selectedId: "selected-11111111111111111111111111111111",
@@ -178,7 +179,22 @@ function duplicateMultiplicityFixture(root, mode) {
   const canonical = canonicalChunk(sourceId, "canonical policy")
   const hasCanonical = mode === "in_run"
   const duplicateCount = hasCanonical ? count - 1 : count
+  const existingManifest = hasCanonical ? undefined : {
+    schema_version: "bob-bazaar-review/rule-sources/v1",
+    generated_at: "2026-07-15T00:00:00.000Z",
+    sources: [{
+      source_id: sourceId,
+      logical_name: "approved.pdf",
+      media_type: "pdf",
+      sha256: sourceHash,
+      byte_size: 42,
+      extraction_status: "success",
+      extractor: { id: "fixture", version: "1" },
+      warnings: []
+    }]
+  }
   return {
+    existingManifest,
     selectedSources,
     exclusionApprovals: selectedSources.slice(hasCanonical ? 1 : 0).map((source) => ({
       selectedId: source.selectedId,
@@ -229,11 +245,11 @@ function duplicateMultiplicityFixture(root, mode) {
   }
 }
 
-async function legacyDuplicateFixture(root, extension, mode) {
+async function legacyDuplicateFixture(root, extension, mode, requestedCount) {
   const logicalName = `legacy.${extension}`
   const bytes = Buffer.from(`identical legacy ${extension} bytes`)
   const sha = sha256(bytes.toString("utf8"))
-  const count = mode === "existing" ? 2 : 3
+  const count = requestedCount ?? (mode === "existing" ? 2 : 3)
   const selectedSources = []
   const requests = []
   for (let index = 0; index < count; index += 1) {
@@ -267,6 +283,7 @@ async function legacyDuplicateFixture(root, extension, mode) {
   const batch = await extractRuleDocuments(requests, existingManifest)
   return {
     batch,
+    existingManifest,
     selectedSources,
     exclusionApprovals: selectedSources.map((source) => ({
       selectedId: source.selectedId,
@@ -299,6 +316,7 @@ async function mixedModernLegacyFixture(root, canonicalKind) {
   const batch = await extractRuleDocuments(requests, undefined)
   return {
     batch,
+    existingManifest: undefined,
     selectedSources,
     exclusionApprovals: selectedSources
       .filter((source) => {
@@ -383,6 +401,7 @@ test("default artifact adapters persist consent scope, resume exact selection, a
     run,
     runId: run.runId,
     batch: fixture.batch,
+    existingManifest: fixture.existingManifest,
     selectedSources: fixture.selectedSources,
     exclusionApprovals: fixture.exclusionApprovals
   })
@@ -486,6 +505,7 @@ test("confirmed handoff exposes only selected sanitizer-backed source metadata",
         runId: run.runId,
         run,
         batch: fixture.batch,
+        existingManifest: fixture.existingManifest,
         selectedSources: fixture.selectedSources,
         exclusionApprovals: fixture.exclusionApprovals
       })
@@ -527,6 +547,7 @@ test("same-basename source outcomes remain bound to stable selected IDs instead 
     runId: run.runId,
     run,
     batch: fixture.batch,
+    existingManifest: fixture.existingManifest,
     selectedSources: fixture.selectedSources,
     exclusionApprovals: fixture.exclusionApprovals
   })
@@ -572,6 +593,7 @@ test("a duplicate selection retains pathless approval metadata without borrowing
     runId: run.runId,
     run,
     batch: fixture.batch,
+    existingManifest: fixture.existingManifest,
     selectedSources: fixture.selectedSources,
     exclusionApprovals: fixture.exclusionApprovals
   })
@@ -595,6 +617,7 @@ test("duplicate scope metadata consumes identical records one-for-one", async (t
         runId: run.runId,
         run,
         batch: fixture.batch,
+        existingManifest: fixture.existingManifest,
         selectedSources: fixture.selectedSources,
         exclusionApprovals: fixture.exclusionApprovals
       })
@@ -617,6 +640,7 @@ test("duplicate scope metadata consumes identical records one-for-one", async (t
       runId: run.runId,
       run,
       batch: fixture.batch,
+      existingManifest: fixture.existingManifest,
       selectedSources: fixture.selectedSources,
       exclusionApprovals: fixture.exclusionApprovals
     }), /duplicate.*missing|multiplicity/i)
@@ -633,6 +657,7 @@ test("duplicate scope metadata consumes identical records one-for-one", async (t
       runId: run.runId,
       run,
       batch: fixture.batch,
+      existingManifest: fixture.existingManifest,
       selectedSources: fixture.selectedSources,
       exclusionApprovals: fixture.exclusionApprovals
     }), /duplicate.*leftover|multiplicity|ambiguous/i)
@@ -672,6 +697,7 @@ test("real legacy Office duplicate batches persist conversion scope with produce
           runId: run.runId,
           run,
           batch: fixture.batch,
+          existingManifest: fixture.existingManifest,
           selectedSources: fixture.selectedSources,
           exclusionApprovals: fixture.exclusionApprovals
         })
@@ -724,6 +750,7 @@ test("real mixed modern and legacy duplicate batches account for only legacy inf
         runId: run.runId,
         run,
         batch: fixture.batch,
+        existingManifest: fixture.existingManifest,
         selectedSources: fixture.selectedSources,
         exclusionApprovals: fixture.exclusionApprovals
       })
@@ -767,11 +794,145 @@ test("legacy informational duplicate validation rejects malformed and wrong mult
         runId: run.runId,
         run,
         batch: fixture.batch,
+        existingManifest: fixture.existingManifest,
         selectedSources: fixture.selectedSources,
         exclusionApprovals: fixture.exclusionApprovals
       }), /duplicate.*(?:metadata|multiplicity|producer|legacy)/i)
     })
   }
+})
+
+test("complete extractor duplicate metadata is required before path-bound consumption", async (t) => {
+  const store = artifactStore()
+
+  await t.test("in-run legacy group with its only record removed", async (t) => {
+    const root = await workspace(t)
+    const fixture = await legacyDuplicateFixture(root, "doc", "in_run", 2)
+    assert.equal(fixture.batch.duplicates.length, 1)
+    fixture.batch.duplicates = []
+    const run = await createRuleAuthoringRun({ workspaceRoot: root, runId: "missing-all-in-run" })
+
+    await assert.rejects(store.persistRuleAuthoringExtraction({
+      workspaceRoot: root,
+      runId: run.runId,
+      run,
+      batch: fixture.batch,
+      existingManifest: fixture.existingManifest,
+      selectedSources: fixture.selectedSources,
+      exclusionApprovals: fixture.exclusionApprovals
+    }), /duplicate.*(?:missing|batch|multiplicity|base|context)/i)
+  })
+
+  await t.test("existing-manifest legacy group with every record removed", async (t) => {
+    const root = await workspace(t)
+    const fixture = await legacyDuplicateFixture(root, "xls", "existing")
+    assert.equal(fixture.batch.duplicates.length, fixture.selectedSources.length)
+    fixture.batch.duplicates = []
+    const run = await createRuleAuthoringRun({ workspaceRoot: root, runId: "missing-all-existing" })
+
+    await assert.rejects(store.persistRuleAuthoringExtraction({
+      workspaceRoot: root,
+      runId: run.runId,
+      run,
+      batch: fixture.batch,
+      existingManifest: fixture.existingManifest,
+      selectedSources: fixture.selectedSources,
+      exclusionApprovals: fixture.exclusionApprovals
+    }), /duplicate.*(?:missing|batch|multiplicity|base|context)/i)
+  })
+
+  await t.test("mixed modern and legacy group with its only informational record removed", async (t) => {
+    const root = await workspace(t)
+    const fixture = await mixedModernLegacyFixture(root, "modern")
+    assert.equal(fixture.batch.duplicates.length, 1)
+    fixture.batch.duplicates = []
+    const run = await createRuleAuthoringRun({ workspaceRoot: root, runId: "missing-all-mixed" })
+
+    await assert.rejects(store.persistRuleAuthoringExtraction({
+      workspaceRoot: root,
+      runId: run.runId,
+      run,
+      batch: fixture.batch,
+      existingManifest: fixture.existingManifest,
+      selectedSources: fixture.selectedSources,
+      exclusionApprovals: fixture.exclusionApprovals
+    }), /duplicate.*(?:missing|batch|multiplicity|base|context)/i)
+  })
+
+  await t.test("consumed modern duplicate cannot hide a missing legacy record", async (t) => {
+    const root = await workspace(t)
+    const fixture = await mixedModernLegacyFixture(root, "legacy")
+    assert.deepEqual(
+      fixture.batch.duplicates.map((record) => record.logical_name),
+      ["b.doc", "c.docx"]
+    )
+    fixture.batch.duplicates = fixture.batch.duplicates.filter((record) => record.logical_name === "c.docx")
+    const run = await createRuleAuthoringRun({ workspaceRoot: root, runId: "missing-legacy-after-consume" })
+
+    await assert.rejects(store.persistRuleAuthoringExtraction({
+      workspaceRoot: root,
+      runId: run.runId,
+      run,
+      batch: fixture.batch,
+      existingManifest: fixture.existingManifest,
+      selectedSources: fixture.selectedSources,
+      exclusionApprovals: fixture.exclusionApprovals
+    }), /duplicate.*(?:missing|batch|multiplicity|base|context)/i)
+  })
+
+  await t.test("existing-manifest claim without its extraction base context", async (t) => {
+    const root = await workspace(t)
+    const fixture = await legacyDuplicateFixture(root, "doc", "existing")
+    const run = await createRuleAuthoringRun({ workspaceRoot: root, runId: "existing-without-base" })
+
+    await assert.rejects(store.persistRuleAuthoringExtraction({
+      workspaceRoot: root,
+      runId: run.runId,
+      run,
+      batch: fixture.batch,
+      existingManifest: undefined,
+      selectedSources: fixture.selectedSources,
+      exclusionApprovals: fixture.exclusionApprovals
+    }), /duplicate.*(?:missing|batch|multiplicity|base|context|existing)/i)
+  })
+})
+
+test("artifact persistence requires one canonical extraction base property", async (t) => {
+  await t.test("property is omitted", async (t) => {
+    const root = await workspace(t)
+    const run = await createRuleAuthoringRun({ workspaceRoot: root, runId: "omitted-extraction-base" })
+    const fixture = extractionFixture(root)
+
+    await assert.rejects(artifactStore().persistRuleAuthoringExtraction({
+      workspaceRoot: root,
+      runId: run.runId,
+      run,
+      batch: fixture.batch,
+      selectedSources: fixture.selectedSources,
+      exclusionApprovals: fixture.exclusionApprovals
+    }), /(?:extraction|duplicate).*(?:base|context|manifest|required)/i)
+  })
+
+  await t.test("property contains a noncanonical manifest", async (t) => {
+    const root = await workspace(t)
+    const run = await createRuleAuthoringRun({ workspaceRoot: root, runId: "noncanonical-extraction-base" })
+    const fixture = extractionFixture(root)
+
+    await assert.rejects(artifactStore().persistRuleAuthoringExtraction({
+      workspaceRoot: root,
+      runId: run.runId,
+      run,
+      batch: fixture.batch,
+      existingManifest: {
+        schema_version: "bob-bazaar-review/rule-sources/v1",
+        generated_at: "2026-07-15T00:00:00.000Z",
+        sources: [],
+        unexpected: true
+      },
+      selectedSources: fixture.selectedSources,
+      exclusionApprovals: fixture.exclusionApprovals
+    }), /manifest.*canonical|canonical.*manifest/i)
+  })
 })
 
 test("stale concurrent artifact writers cannot mutate the generation referenced by the winner", async (t) => {
@@ -784,6 +945,7 @@ test("stale concurrent artifact writers cannot mutate the generation referenced 
     runId: run.runId,
     run,
     batch: fixture.batch,
+    existingManifest: fixture.existingManifest,
     selectedSources: fixture.selectedSources,
     exclusionApprovals: fixture.exclusionApprovals
   })
@@ -817,6 +979,7 @@ test("missing or tampered pathless scope metadata fails closed", async (t) => {
       runId: run.runId,
       run,
       batch: fixture.batch,
+      existingManifest: fixture.existingManifest,
       selectedSources: fixture.selectedSources,
       exclusionApprovals: fixture.exclusionApprovals
     })
@@ -833,6 +996,7 @@ test("missing or tampered pathless scope metadata fails closed", async (t) => {
       runId: run.runId,
       run,
       batch: fixture.batch,
+      existingManifest: fixture.existingManifest,
       selectedSources: fixture.selectedSources,
       exclusionApprovals: fixture.exclusionApprovals
     })
@@ -853,6 +1017,7 @@ test("missing or tampered pathless scope metadata fails closed", async (t) => {
       runId: run.runId,
       run,
       batch: fixture.batch,
+      existingManifest: fixture.existingManifest,
       selectedSources: fixture.selectedSources,
       exclusionApprovals: fixture.exclusionApprovals
     })
@@ -887,6 +1052,7 @@ test("initial source-index overflow remains recoverable by deselecting chunks", 
     runId: run.runId,
     run,
     batch: fixture.batch,
+    existingManifest: fixture.existingManifest,
     selectedSources: fixture.selectedSources,
     exclusionApprovals: fixture.exclusionApprovals
   })
