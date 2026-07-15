@@ -175,7 +175,11 @@ export async function applyWorkflowRunCleanupTransaction(input: {
           message: `Workflow run cleanup failed (${formatError(error)}); rollback completed, but quarantine cleanup failed (${formatError(cleanupError)}). Quarantine preserved at ${quarantinePath}`
         })
       }
-      await removeIfEmpty(fsOps, quarantineBase)
+      try {
+        await removeIfEmpty(fsOps, quarantineBase)
+      } catch (cleanupError) {
+        appendSuppressedError(error, cleanupError, "quarantine parent cleanup also failed")
+      }
       throw error
     }
 
@@ -348,6 +352,30 @@ async function removeIfEmpty(fsOps: WorkflowRunCleanupFileSystem, directory: str
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code
     if (code !== "ENOENT" && code !== "ENOTEMPTY") throw error
+  }
+}
+
+function appendSuppressedError(primary: unknown, secondary: unknown, label: string): void {
+  if ((typeof primary === "object" && primary !== null) || typeof primary === "function") {
+    try {
+      const existing = Reflect.get(primary, "suppressedErrors")
+      const suppressedErrors = Object.freeze(Array.isArray(existing) ? [...existing, secondary] : [secondary])
+      Object.defineProperty(primary, "suppressedErrors", {
+        value: suppressedErrors,
+        configurable: true,
+        enumerable: false,
+        writable: false
+      })
+    } catch {
+      // A frozen or host-provided primary error must still retain precedence.
+    }
+  }
+  if (primary instanceof Error) {
+    try {
+      primary.message = `${primary.message}; ${label} (${formatError(secondary)})`
+    } catch {
+      // Message decoration is diagnostic-only and must never replace the primary error.
+    }
   }
 }
 

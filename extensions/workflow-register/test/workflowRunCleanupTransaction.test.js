@@ -181,6 +181,49 @@ test("cleanup transaction rolls prior moves back when a later rename fails", asy
   assert.equal((await fs.stat(b.directory)).isDirectory(), true)
 })
 
+test("rollback keeps the candidate failure primary when optional quarantine parent cleanup also fails", async (t) => {
+  const { root, runsRoot } = await workspace(t)
+  const a = await createRun(runsRoot, "primary-a")
+  const b = await createRun(runsRoot, "primary-b")
+  const plan = await cleanupPlan(root)
+  const transactionId = "tx-primary-parent-cleanup"
+  const quarantineBase = path.join(root, ".bob", "workflows", "run-cleanup-quarantine")
+  const quarantinePath = path.join(quarantineBase, transactionId)
+  const primaryError = Object.assign(new Error("PRIMARY_RENAME_SENTINEL"), { code: "EIO" })
+  const parentCleanupError = Object.assign(new Error("PARENT_CLEANUP_SENTINEL"), { code: "EACCES" })
+  let sourceMoveCount = 0
+  const fsOps = {
+    rename: async (source, target) => {
+      const sourceMove = await matchesPhysicalPath(path.dirname(source), runsRoot)
+      if (sourceMove && ++sourceMoveCount === 2) throw primaryError
+      return fs.rename(source, target)
+    },
+    rmdir: async (directory, ...args) => {
+      if (await matchesPhysicalPath(directory, quarantineBase)) throw parentCleanupError
+      return fs.rmdir(directory, ...args)
+    }
+  }
+  const { applyWorkflowRunCleanupTransaction } = transactionModules()
+
+  await assert.rejects(applyWorkflowRunCleanupTransaction({
+    workspaceRoot: root,
+    expectedPlan: plan,
+    transactionId,
+    fsOps
+  }), (error) => {
+    assert.strictEqual(error, primaryError)
+    assert.match(error.message, /PRIMARY_RENAME_SENTINEL/)
+    assert.match(error.message, /quarantine parent cleanup also failed.*PARENT_CLEANUP_SENTINEL/i)
+    assert.deepEqual(error.suppressedErrors, [parentCleanupError])
+    return true
+  })
+
+  assert.equal((await fs.stat(a.directory)).isDirectory(), true)
+  assert.equal((await fs.stat(b.directory)).isDirectory(), true)
+  await assert.rejects(fs.stat(quarantinePath), { code: "ENOENT" })
+  assert.equal((await fs.stat(quarantineBase)).isDirectory(), true)
+})
+
 test("cleanup transaction refuses a stale run revision from a verified plan", async (t) => {
   const { root, runsRoot } = await workspace(t)
   const changed = await createRun(runsRoot, "changed")
