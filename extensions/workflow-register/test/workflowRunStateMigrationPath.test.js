@@ -447,12 +447,13 @@ test("migration backup removes its owned temp file when temp identity verificati
   )
 })
 
-test("migration backup rolls back a publication whose temp inode was replaced before link", async (t) => {
+test("migration backup rejects and preserves a foreign temp inode replacement before link", async (t) => {
   const root = tempRoot()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   const runId = "20260712T000000Z-link-swap-000000000006"
   const historical = "historical\n"
   await prepareRunDirectory(root, runId)
+  const rootRunsDirectory = runsDirectory(root)
   const backupPath = path.join(runDirectory(root, runId), "run-state-v0.backup.json")
   const originalLink = fsp.link
   let injected = false
@@ -477,7 +478,22 @@ test("migration backup rolls back a publication whose temp inode was replaced be
   }
 
   assert.equal(injected, true)
-  await assert.rejects(fsp.access(backupPath), { code: "ENOENT" })
+  const [foreignTempName] = (await fsp.readdir(rootRunsDirectory))
+    .filter((name) => name.startsWith(`.${runId}.`) && name.endsWith(".tmp"))
+  assert.ok(foreignTempName)
+  const foreignTempPath = path.join(rootRunsDirectory, foreignTempName)
+  assert.equal(await fsp.readFile(foreignTempPath, "utf8"), "attacker\n")
+  assert.equal(await fsp.readFile(backupPath, "utf8"), "attacker\n")
+  const [foreignTempStat, foreignBackupStat] = await Promise.all([
+    fsp.lstat(foreignTempPath, { bigint: true }),
+    fsp.lstat(backupPath, { bigint: true })
+  ])
+  assert.equal(foreignTempStat.dev, foreignBackupStat.dev)
+  assert.equal(foreignTempStat.ino, foreignBackupStat.ino)
+  assert.equal(foreignTempStat.nlink, 2n)
+  assert.equal(foreignBackupStat.nlink, 2n)
+  await fsp.rm(backupPath)
+  await fsp.rm(foreignTempPath)
   await ensureContainedRunStateMigrationBackup(root, runId, historical)
   assert.equal(await fsp.readFile(backupPath, "utf8"), historical)
   assert.equal((await fsp.lstat(backupPath)).nlink, 1)
@@ -521,6 +537,63 @@ test("migration backup rolls back a publication whose temp bytes changed in-plac
     )
   } finally {
     fsp.link = originalLink
+  }
+
+  assert.equal(injected, true)
+  await assert.rejects(fsp.access(backupPath), { code: "ENOENT" })
+  assert.deepEqual(
+    (await fsp.readdir(rootRunsDirectory)).filter((name) => name.startsWith(`.${runId}.`) && name.endsWith(".tmp")),
+    []
+  )
+  await ensureContainedRunStateMigrationBackup(root, runId, historical)
+  assert.equal(await fsp.readFile(backupPath, "utf8"), historical)
+  assert.equal((await fsp.lstat(backupPath)).nlink, 1)
+})
+
+test("migration backup rejects in-place target byte mutation after temp unlink", async (t) => {
+  const root = tempRoot()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const runId = "20260712T000000Z-post-unlink-byte-swap-000000000017"
+  const historical = "post-unlink-history\n"
+  await prepareRunDirectory(root, runId)
+  const rootRunsDirectory = runsDirectory(root)
+  const backupPath = path.join(runDirectory(root, runId), "run-state-v0.backup.json")
+  const originalRm = fsp.rm
+  let injected = false
+
+  fsp.rm = async (target, ...args) => {
+    const resolved = path.resolve(String(target))
+    const isOwnedTemp = path.dirname(resolved) === path.resolve(rootRunsDirectory)
+      && path.basename(resolved).startsWith(`.${runId}.`)
+      && path.basename(resolved).endsWith(".tmp")
+    if (!injected && isOwnedTemp) {
+      injected = true
+      const result = await originalRm(target, ...args)
+      const before = await fsp.lstat(backupPath, { bigint: true })
+      const handle = await fsp.open(backupPath, "r+")
+      try {
+        await handle.truncate(0)
+        await handle.writeFile("attacker-after-unlink\n", "utf8")
+        await handle.sync()
+      } finally {
+        await handle.close()
+      }
+      const after = await fsp.lstat(backupPath, { bigint: true })
+      assert.equal(after.dev, before.dev)
+      assert.equal(after.ino, before.ino)
+      assert.equal(after.nlink, 1n)
+      return result
+    }
+    return originalRm(target, ...args)
+  }
+
+  try {
+    await assert.rejects(
+      ensureContainedRunStateMigrationBackup(root, runId, historical),
+      /publication.*bytes|content verification/i
+    )
+  } finally {
+    fsp.rm = originalRm
   }
 
   assert.equal(injected, true)
@@ -853,6 +926,95 @@ test("migration rollback never deletes a replacement backup inode", async (t) =>
   assert.equal((await fsp.lstat(backupPath)).nlink, 1)
   assert.deepEqual(
     (await fsp.readdir(runsDirectory(root))).filter((name) => name.startsWith(`.${runId}.`) && name.endsWith(".tmp")),
+    []
+  )
+})
+
+test("migration rollback retains the owner handle while preserving a foreign replacement", async (t) => {
+  const root = tempRoot()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const runId = "20260712T000000Z-retained-owner-000000000016"
+  const historical = "retained-owner-history\n"
+  const replacement = "foreign-replacement\n"
+  await prepareRunDirectory(root, runId)
+  const rootRunsDirectory = runsDirectory(root)
+  const backupPath = path.join(runDirectory(root, runId), "run-state-v0.backup.json")
+  const originalOpen = fsp.open
+  const originalRm = fsp.rm
+  const originalLstat = fsp.lstat
+  let ownerHandle
+  let injected = false
+  let cleanupObserved = false
+  let ownerOpenDuringCleanup = false
+  let ownerOpenAfterOperation = true
+
+  const isOwnerHandleOpen = async () => {
+    assert.ok(ownerHandle, "the publication must expose its owned temporary handle")
+    try {
+      await ownerHandle.stat({ bigint: true })
+      return true
+    } catch (error) {
+      if (error.code === "EBADF") return false
+      throw error
+    }
+  }
+
+  fsp.open = async (target, ...args) => {
+    const handle = await originalOpen(target, ...args)
+    const resolved = path.resolve(String(target))
+    const isOwnedTemp = path.dirname(resolved) === path.resolve(rootRunsDirectory)
+      && path.basename(resolved).startsWith(`.${runId}.`)
+      && path.basename(resolved).endsWith(".tmp")
+    if (!ownerHandle && isOwnedTemp) ownerHandle = handle
+    return handle
+  }
+  fsp.rm = async (target, ...args) => {
+    const resolved = path.resolve(String(target))
+    const isOwnedTemp = path.dirname(resolved) === path.resolve(rootRunsDirectory)
+      && path.basename(resolved).startsWith(`.${runId}.`)
+      && path.basename(resolved).endsWith(".tmp")
+    if (!injected && isOwnedTemp) {
+      injected = true
+      await originalRm(target, ...args)
+      await originalRm(backupPath)
+      await fsp.writeFile(backupPath, replacement, "utf8")
+      const error = new Error("simulated retained-owner rollback failure")
+      error.code = "EIO"
+      throw error
+    }
+    return originalRm(target, ...args)
+  }
+  fsp.lstat = async (target, ...args) => {
+    if (injected && samePath(target, backupPath)) {
+      cleanupObserved = true
+      ownerOpenDuringCleanup = await isOwnerHandleOpen()
+    }
+    return originalLstat(target, ...args)
+  }
+
+  try {
+    await assert.rejects(
+      ensureContainedRunStateMigrationBackup(root, runId, historical),
+      /simulated retained-owner rollback failure/
+    )
+  } finally {
+    fsp.open = originalOpen
+    fsp.rm = originalRm
+    fsp.lstat = originalLstat
+    if (ownerHandle) {
+      ownerOpenAfterOperation = await isOwnerHandleOpen()
+      if (ownerOpenAfterOperation) await ownerHandle.close()
+    }
+  }
+
+  assert.equal(injected, true)
+  assert.equal(cleanupObserved, true)
+  assert.equal(ownerOpenDuringCleanup, true)
+  assert.equal(ownerOpenAfterOperation, false)
+  assert.equal(await fsp.readFile(backupPath, "utf8"), replacement)
+  assert.equal((await fsp.lstat(backupPath)).nlink, 1)
+  assert.deepEqual(
+    (await fsp.readdir(rootRunsDirectory)).filter((name) => name.startsWith(`.${runId}.`) && name.endsWith(".tmp")),
     []
   )
 })

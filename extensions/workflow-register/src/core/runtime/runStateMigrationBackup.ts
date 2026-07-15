@@ -66,24 +66,21 @@ async function ensureContainedRunStateMigrationBackupUnlocked(
   const runDirectory = await directDirectoryChain(root, [...RUNS_ROOT_SEGMENTS, runId])
   const backupPath = path.join(runDirectory.path, RUN_STATE_V0_BACKUP_FILE_NAME)
   const tempPath = path.join(runsRoot.path, `.${runId}.${process.pid}.${randomUUID()}.tmp`)
+  let tempHandle: Awaited<ReturnType<typeof fs.open>> | undefined
   let tempIdentity: FileIdentity | undefined
-  let publishedIdentity: FileIdentity | undefined
+  let publicationLinked = false
   let publicationSucceeded = false
 
   try {
     await assertDirectoryIdentity(runsRoot, "Workflow runs directory")
     await assertDirectoryIdentity(runDirectory, `Workflow run '${runId}' directory`)
-    const tempHandle = await fs.open(tempPath, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL, 0o600)
-    try {
-      assertSingleLinkedRegularFile(await tempHandle.stat({ bigint: true }), `Workflow run '${runId}' migration backup temporary file`)
-      await tempHandle.writeFile(content, { encoding: "utf8" })
-      await tempHandle.sync()
-      const written = await tempHandle.stat({ bigint: true })
-      assertSingleLinkedRegularFile(written, `Workflow run '${runId}' migration backup temporary file`)
-      tempIdentity = { dev: written.dev, ino: written.ino }
-    } finally {
-      await tempHandle.close()
-    }
+    tempHandle = await fs.open(tempPath, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL, 0o600)
+    assertSingleLinkedRegularFile(await tempHandle.stat({ bigint: true }), `Workflow run '${runId}' migration backup temporary file`)
+    await tempHandle.writeFile(content, { encoding: "utf8" })
+    await tempHandle.sync()
+    const written = await tempHandle.stat({ bigint: true })
+    assertSingleLinkedRegularFile(written, `Workflow run '${runId}' migration backup temporary file`)
+    tempIdentity = { dev: written.dev, ino: written.ino }
     const verifiedTempIdentity = await directRegularFile(
       tempPath,
       root,
@@ -120,7 +117,7 @@ async function ensureContainedRunStateMigrationBackupUnlocked(
       linkedPublicationFile(tempPath, root, `Workflow run '${runId}' migration backup temporary file`),
       linkedPublicationFile(backupPath, root, `Workflow run '${runId}' migration backup`)
     ])
-    if (sameIdentity(linkedTemp, linkedTarget)) publishedIdentity = linkedTarget
+    if (sameIdentity(linkedTemp, linkedTarget)) publicationLinked = true
     if (linkedTemp.nlink !== 2n || linkedTarget.nlink !== 2n) {
       throw new Error(`Workflow run '${runId}' migration backup must have exactly two links during create-once publication.`)
     }
@@ -159,12 +156,15 @@ async function ensureContainedRunStateMigrationBackupUnlocked(
     await assertDirectoryIdentity(runDirectory, `Workflow run '${runId}' directory`)
     publicationSucceeded = true
   } finally {
-    if (await directoryStillMatches(runsRoot)) {
-      if (publishedIdentity && !publicationSucceeded && await directoryStillMatches(runDirectory)) {
-        await removeDirectFileIfIdentityMatches(backupPath, root, publishedIdentity)
+    try {
+      if (tempHandle && await directoryStillMatches(runsRoot)) {
+        if (publicationLinked && !publicationSucceeded && await directoryStillMatches(runDirectory)) {
+          await removeDirectFileOwnedByHandle(backupPath, root, tempHandle)
+        }
+        await removeDirectFileOwnedByHandle(tempPath, root, tempHandle)
       }
-      const ownedTempIdentity = publishedIdentity ?? tempIdentity
-      if (ownedTempIdentity) await removeDirectFileIfIdentityMatches(tempPath, root, ownedTempIdentity)
+    } finally {
+      if (tempHandle) await tempHandle.close()
     }
   }
 }
@@ -398,38 +398,71 @@ async function directoryStillMatches(directory: DirectDirectory): Promise<boolea
   }
 }
 
-async function removeDirectFileIfIdentityMatches(
+async function removeDirectFileOwnedByHandle(
   filePath: string,
   root: string,
-  expected: FileIdentity,
-  expectedNlink?: bigint
+  ownerHandle: Awaited<ReturnType<typeof fs.open>>
 ): Promise<boolean> {
+  const noFollow = typeof constants.O_NOFOLLOW === "number" ? constants.O_NOFOLLOW : 0
+  let pathHandle: Awaited<ReturnType<typeof fs.open>> | undefined
   try {
+    const ownerBefore = await ownerHandle.stat({ bigint: true })
+    if (!ownerBefore.isFile()) return false
     const before = await fs.lstat(filePath, { bigint: true })
     if (
       before.isSymbolicLink()
       || !before.isFile()
-      || !sameIdentity(before, expected)
-      || (expectedNlink !== undefined && before.nlink !== expectedNlink)
+      || !sameIdentity(before, ownerBefore)
+      || before.nlink !== ownerBefore.nlink
     ) return false
-    const physicalPath = await fs.realpath(filePath)
-    assertPhysicalContainment(root, physicalPath, filePath)
-    if (!sameCanonicalPath(filePath, physicalPath)) return false
+    const physicalBefore = await fs.realpath(filePath)
+    assertPhysicalContainment(root, physicalBefore, filePath)
+    if (!sameCanonicalPath(filePath, physicalBefore)) return false
+
+    pathHandle = await fs.open(filePath, constants.O_RDONLY | noFollow)
+    const opened = await pathHandle.stat({ bigint: true })
+    const ownerOpened = await ownerHandle.stat({ bigint: true })
+    if (
+      !opened.isFile()
+      || !ownerOpened.isFile()
+      || !sameIdentity(ownerBefore, ownerOpened)
+      || !sameIdentity(ownerOpened, opened)
+      || ownerOpened.nlink !== opened.nlink
+    ) return false
+
     const after = await fs.lstat(filePath, { bigint: true })
     if (
       after.isSymbolicLink()
       || !after.isFile()
       || !sameIdentity(before, after)
-      || !sameIdentity(after, expected)
-      || (expectedNlink !== undefined && after.nlink !== expectedNlink)
+      || !sameIdentity(after, opened)
+      || after.nlink !== opened.nlink
     ) {
       return false
     }
+    const physicalAfter = await fs.realpath(filePath)
+    assertPhysicalContainment(root, physicalAfter, filePath)
+    if (!sameCanonicalPath(filePath, physicalAfter)) return false
+    const ownerAfter = await ownerHandle.stat({ bigint: true })
+    if (
+      !ownerAfter.isFile()
+      || !sameIdentity(ownerOpened, ownerAfter)
+      || !sameIdentity(ownerAfter, after)
+      || ownerAfter.nlink !== after.nlink
+    ) return false
+
     await fs.rm(filePath)
     return true
-  } catch (error) {
-    if (isMissingPathError(error)) return false
+  } catch {
     return false
+  } finally {
+    if (pathHandle) {
+      try {
+        await pathHandle.close()
+      } catch {
+        // Cleanup is best-effort and must not replace the publication result.
+      }
+    }
   }
 }
 
