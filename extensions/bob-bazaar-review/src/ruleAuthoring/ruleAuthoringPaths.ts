@@ -12,8 +12,17 @@ export interface RuleAuthoringPaths {
   runsDirectory: string
   runDirectory: string
   authoringRunPath: string
+  generationsDirectory: string
+  backupsDirectory: string
+  transactionsDirectory: string
+}
+
+export interface RuleAuthoringGenerationPaths {
+  generationId: string
+  generationDirectory: string
   sourceManifestPath: string
   documentChunksPath: string
+  sourceScopePath: string
   sourceIndexPath: string
   evidenceSelectionPath: string
   selectedEvidencePath: string
@@ -23,9 +32,9 @@ export interface RuleAuthoringPaths {
   proposalDecisionsPath: string
   applyPreviewPath: string
   applyManifestPath: string
-  backupsDirectory: string
-  transactionsDirectory: string
 }
+
+const ARTIFACT_GENERATION_ID = /^gen-[a-f0-9]{32}$/
 
 export function validateRuleAuthoringId(value: string, fieldName: string): string {
   if (/[. ]$/.test(value)) throw new Error(`${fieldName} must not end with a dot or space`)
@@ -59,18 +68,34 @@ export function getRuleAuthoringPaths(workspaceRoot: string, runId: string): Rul
     runsDirectory,
     runDirectory,
     authoringRunPath: path.join(runDirectory, "authoring-run.json"),
-    sourceManifestPath: path.join(runDirectory, "source-manifest.json"),
-    documentChunksPath: path.join(runDirectory, "document-chunks.jsonl"),
-    sourceIndexPath: path.join(runDirectory, "source-index.json"),
-    evidenceSelectionPath: path.join(runDirectory, "evidence-selection.json"),
-    selectedEvidencePath: path.join(runDirectory, "selected-evidence.md"),
-    ruleProposalRawPath: path.join(runDirectory, "rule-proposal.raw.txt"),
-    ruleProposalPath: path.join(runDirectory, "rule-proposal.json"),
-    proposalValidationPath: path.join(runDirectory, "proposal-validation.json"),
-    proposalDecisionsPath: path.join(runDirectory, "proposal-decisions.json"),
-    applyPreviewPath: path.join(runDirectory, "apply-preview.json"),
-    applyManifestPath: path.join(runDirectory, "apply-manifest.json"),
+    generationsDirectory: path.join(runDirectory, "generations"),
     backupsDirectory: path.join(authoringDirectory, "backups"),
     transactionsDirectory: path.join(authoringDirectory, "transactions")
+  }
+}
+
+export function getRuleAuthoringGenerationPaths(
+  paths: RuleAuthoringPaths,
+  generationId: string
+): RuleAuthoringGenerationPaths {
+  if (!ARTIFACT_GENERATION_ID.test(generationId)) {
+    throw new Error("Rule authoring artifact generation ID is invalid")
+  }
+  const generationDirectory = path.join(paths.generationsDirectory, generationId)
+  return {
+    generationId,
+    generationDirectory,
+    sourceManifestPath: path.join(generationDirectory, "source-manifest.json"),
+    documentChunksPath: path.join(generationDirectory, "document-chunks.jsonl"),
+    sourceScopePath: path.join(generationDirectory, "source-scope.json"),
+    sourceIndexPath: path.join(generationDirectory, "source-index.json"),
+    evidenceSelectionPath: path.join(generationDirectory, "evidence-selection.json"),
+    selectedEvidencePath: path.join(generationDirectory, "selected-evidence.md"),
+    ruleProposalRawPath: path.join(generationDirectory, "rule-proposal.raw.txt"),
+    ruleProposalPath: path.join(generationDirectory, "rule-proposal.json"),
+    proposalValidationPath: path.join(generationDirectory, "proposal-validation.json"),
+    proposalDecisionsPath: path.join(generationDirectory, "proposal-decisions.json"),
+    applyPreviewPath: path.join(generationDirectory, "apply-preview.json"),
+    applyManifestPath: path.join(generationDirectory, "apply-manifest.json")
   }
 }

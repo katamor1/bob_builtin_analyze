@@ -220,10 +220,10 @@ function renderSourceGuidance(source: RuleAuthoringGuiSourceModel): string {
     return `<div class="guidance">OCR required: this PDF appears image-only. Run OCR and select a text-searchable PDF.</div>`
   }
   if (source.extractionStatus === "partial") {
-    return `<div class="guidance">Partial extraction: review and approve the excluded portions before AI consent.</div>`
+    return `<div class="guidance">Partial extraction: extracted chunks remain included; unavailable or failed portions are excluded. Review and approve that exclusion before AI consent.</div>`
   }
   if (source.extractionStatus === "blocked" || source.extractionStatus === "failed") {
-    return `<div class="guidance">Extraction is blocked. This source must be excluded or replaced.</div>`
+    return `<div class="guidance">Extraction is blocked. This source is fully excluded and must be replaced to include it.</div>`
   }
   return ""
 }
@@ -287,14 +287,14 @@ function allowlistedModel(input: RuleAuthoringGuiModel): SafeRuleAuthoringGuiMod
   const utf8Bytes = safeNonNegativeInteger(payload.utf8Bytes)
   return {
     cspSource: safeCspSource(input?.cspSource),
-    phase: boundedText(input?.phase, 64),
+    phase: sanitizeRemoteSafeText(input?.phase, 64),
     environment: {
-      workspaceName: boundedText(environment.workspaceName, 255),
+      workspaceName: sanitizeRemoteSafeText(environment.workspaceName, 255),
       workspaceReady: environment.workspaceReady === true,
       bobExtensionAvailable: environment.bobExtensionAvailable === true,
-      configuredBobModelRoute: boundedText(environment.configuredBobModelRoute, 512)
+      configuredBobModelRoute: sanitizeRemoteSafeText(environment.configuredBobModelRoute, 512)
     },
-    runId: safeId(input?.runId) ?? "",
+    runId: safeGeneralId(input?.runId) ?? "",
     resumableRuns: Array.isArray(input?.resumableRuns)
       ? input.resumableRuns.slice(0, 100).map(allowlistedRun).filter(isPresent)
       : [],
@@ -308,53 +308,53 @@ function allowlistedModel(input: RuleAuthoringGuiModel): SafeRuleAuthoringGuiMod
       utf8Bytes
     },
     warnings: Array.isArray(input?.warnings)
-      ? input.warnings.slice(0, 100).map((warning) => boundedText(warning, 512))
+      ? input.warnings.slice(0, 100).map((warning) => sanitizeRemoteSafeText(warning, 512))
       : [],
     scopeOverflow: input?.scopeOverflow === true || utf8Bytes > MAX_AI_PAYLOAD_BYTES,
     exclusionsApproved: input?.exclusionsApproved === true,
     canConfirmAiPayload: input?.canConfirmAiPayload === true,
-    status: boundedText(input?.status, 512)
+    status: sanitizeRemoteSafeText(input?.status, 512)
   }
 }
 
 function allowlistedRun(value: unknown): RuleAuthoringGuiResumableRunModel | undefined {
   if (!isRecord(value)) return undefined
-  const runId = safeId(value.runId)
+  const runId = safeGeneralId(value.runId)
   if (!runId) return undefined
   return {
     runId,
-    phase: boundedText(value.phase, 64),
-    updatedAt: boundedText(value.updatedAt, 64)
+    phase: sanitizeRemoteSafeText(value.phase, 64),
+    updatedAt: sanitizeRemoteSafeText(value.updatedAt, 64)
   }
 }
 
 function allowlistedSource(value: unknown): RuleAuthoringGuiSourceModel | undefined {
   if (!isRecord(value)) return undefined
-  const sourceId = safeId(value.sourceId)
+  const sourceId = safeSourceId(value.sourceId)
   const logicalName = boundedLogicalName(value.logicalName)
   if (!sourceId || !logicalName) return undefined
   return {
     sourceId,
     logicalName,
-    mediaType: boundedText(value.mediaType, 32),
+    mediaType: sanitizeRemoteSafeText(value.mediaType, 32),
     byteSize: safeNonNegativeInteger(value.byteSize),
-    extractionStatus: boundedText(value.extractionStatus, 64),
+    extractionStatus: sanitizeRemoteSafeText(value.extractionStatus, 64),
     warnings: Array.isArray(value.warnings)
-      ? value.warnings.slice(0, 100).map((warning) => boundedText(warning, 128))
+      ? value.warnings.slice(0, 100).map((warning) => sanitizeRemoteSafeText(warning, 128))
       : []
   }
 }
 
 function allowlistedChunk(value: unknown): RuleAuthoringGuiChunkModel | undefined {
   if (!isRecord(value)) return undefined
-  const chunkId = safeId(value.chunkId)
-  const sourceId = safeId(value.sourceId)
+  const chunkId = safeChunkId(value.chunkId)
+  const sourceId = safeSourceId(value.sourceId)
   if (!chunkId || !sourceId) return undefined
   return {
     chunkId,
     sourceId,
-    title: boundedText(value.title, 240),
-    locator: boundedText(value.locator, 240),
+    title: sanitizeRemoteSafeText(value.title, 240),
+    locator: sanitizeRemoteSafeText(value.locator, 240),
     utf8Bytes: safeNonNegativeInteger(value.utf8Bytes),
     included: value.included === true
   }
@@ -365,16 +365,30 @@ function safeCspSource(value: unknown): string {
   return /^[A-Za-z0-9+.:/_-]+$/.test(candidate) ? candidate : "vscode-resource:"
 }
 
-function safeId(value: unknown): string | undefined {
-  if (typeof value !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$/.test(value)) return undefined
-  return value
+function safeGeneralId(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined
+  try {
+    return validateRuleAuthoringId(value, "id")
+  } catch {
+    return undefined
+  }
+}
+
+function safeSourceId(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined
+  return /^(?:selected-[a-f0-9]{32}|src-[a-f0-9]{12,64})$/.test(value) ? value : undefined
+}
+
+function safeChunkId(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined
+  return /^chunk-[a-f0-9]{64}$/.test(value) ? value : undefined
 }
 
 function boundedLogicalName(value: unknown): string | undefined {
-  if (typeof value !== "string" || value.includes("/") || value.includes("\\") || /[\u0000-\u001f\u007f]/.test(value)) {
+  if (typeof value !== "string" || value.includes("/") || value.includes("\\") || /[\u0000-\u001f\u007f-\u009f]/.test(value)) {
     return undefined
   }
-  const bounded = boundedText(value, 255)
+  const bounded = sanitizeRemoteSafeText(value, 255)
   return bounded || undefined
 }
 
@@ -412,3 +426,5 @@ function escapeHtml(value: unknown): string {
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;")
 }
+import { sanitizeRemoteSafeText } from "../ruleAuthoring/remoteSafeText"
+import { validateRuleAuthoringId } from "../ruleAuthoring/ruleAuthoringPaths"

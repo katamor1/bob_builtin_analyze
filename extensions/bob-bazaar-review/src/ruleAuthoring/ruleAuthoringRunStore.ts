@@ -4,6 +4,7 @@ import * as fs from "node:fs/promises"
 import { hostname, networkInterfaces } from "node:os"
 import * as path from "node:path"
 import { getRuleAuthoringPaths, RuleAuthoringPaths, validateRuleAuthoringId } from "./ruleAuthoringPaths"
+import { DEFAULT_RULE_AUTHORING_LIMITS } from "./ruleAuthoringLimits"
 import {
   RULE_AUTHORING_SCHEMA_VERSION,
   RuleAuthoringPhase,
@@ -30,6 +31,7 @@ const PHASE_STATUSES = new Set<RuleAuthoringPhaseStatus>([
 const ARTIFACT_KEYS = [
   "sourceManifest",
   "documentChunks",
+  "sourceScope",
   "sourceIndex",
   "evidenceSelection",
   "selectedEvidence",
@@ -40,6 +42,20 @@ const ARTIFACT_KEYS = [
   "applyPreview",
   "applyManifest"
 ] as const
+const ARTIFACT_BASENAMES: Record<typeof ARTIFACT_KEYS[number], string> = {
+  sourceManifest: "source-manifest.json",
+  documentChunks: "document-chunks.jsonl",
+  sourceScope: "source-scope.json",
+  sourceIndex: "source-index.json",
+  evidenceSelection: "evidence-selection.json",
+  selectedEvidence: "selected-evidence.md",
+  ruleProposalRaw: "rule-proposal.raw.txt",
+  ruleProposal: "rule-proposal.json",
+  proposalValidation: "proposal-validation.json",
+  proposalDecisions: "proposal-decisions.json",
+  applyPreview: "apply-preview.json",
+  applyManifest: "apply-manifest.json"
+}
 const TOP_LEVEL_REQUIRED_KEYS = [
   "schemaVersion",
   "workspaceRoot",
@@ -53,7 +69,7 @@ const TOP_LEVEL_REQUIRED_KEYS = [
   "updatedAt"
 ] as const
 const SAFE_CODE = /^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)+$/
-const CONTROL_CHARACTER = /[\u0000-\u001f\u007f]/
+const CONTROL_CHARACTER = /[\u0000-\u001f\u007f-\u009f]/
 const WINDOWS_RESERVED_ARTIFACT_SEGMENT = /^(con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])(?:\..*)?$/i
 const WINDOWS_FORBIDDEN_ARTIFACT_CHARACTER = /[<>:"|?*]/
 const MAX_CODES = 100
@@ -61,6 +77,7 @@ const MAX_CODE_BYTES = 128
 const MAX_ARTIFACT_PATH_BYTES = 1024
 const MAX_ARTIFACT_PATH_SEGMENT_BYTES = 255
 const MAX_RUN_FILE_BYTES = 1024 * 1024
+const MAX_SOURCE_SCOPE_BYTES = 4 * 1024 * 1024
 const MAX_RUN_LOCK_RECORD_BYTES = 4096
 const IGNORE_CONTENT = "/*\n!/.gitignore\n"
 const RUN_WRITE_LOCKS = new Map<string, Promise<void>>()
@@ -122,6 +139,18 @@ export interface CreateRuleAuthoringRunInput {
   runId: string
   workflowRunId?: string
   now?: string
+}
+
+export interface CommitRuleAuthoringArtifactGenerationInput {
+  workspaceRoot: string
+  runId: string
+  expectedUpdatedAt: string
+  files: Partial<Record<RuleAuthoringArtifactKey, string>>
+  removeArtifactKeys?: readonly RuleAuthoringArtifactKey[]
+  buildNextRun: (
+    current: RuleAuthoringRunV1,
+    artifacts: RuleAuthoringArtifacts
+  ) => RuleAuthoringRunV1
 }
 
 export async function withRuleAuthoringDirectoryLock<T>(
@@ -262,6 +291,71 @@ export async function writeRuleAuthoringRun(
   })
 }
 
+export async function commitRuleAuthoringArtifactGeneration(
+  input: CommitRuleAuthoringArtifactGenerationInput
+): Promise<RuleAuthoringRunV1> {
+  const workspaceRoot = path.resolve(input.workspaceRoot)
+  const runId = validateRuleAuthoringId(input.runId, "runId")
+  const expectedUpdatedAt = canonicalTimestamp(input.expectedUpdatedAt, "expectedUpdatedAt")
+  const files = validatedArtifactGenerationFiles(input.files)
+  const removals = validatedArtifactKeyList(input.removeArtifactKeys ?? [])
+  const paths = getRuleAuthoringPaths(workspaceRoot, runId)
+
+  return withRunWriteLock(paths.authoringRunPath, async () => {
+    await ensureSafeDirectoryChain(workspaceRoot, paths.runDirectory)
+    await ensureMissingOnlyIgnoreFile(workspaceRoot, paths.authoringDirectory)
+    return withInterprocessRunLock(paths, async () => {
+      if (!await pathExists(paths.authoringRunPath)) throw new Error("Rule authoring run does not exist")
+      const current = await readRuleAuthoringRun(paths)
+      if (current.updatedAt !== expectedUpdatedAt) {
+        throw new Error("Rule authoring run changed since it was loaded")
+      }
+
+      const generationId = `gen-${randomBytes(16).toString("hex")}`
+      await ensureSafeDirectoryChain(workspaceRoot, paths.generationsDirectory)
+      const generationDirectory = path.join(paths.generationsDirectory, generationId)
+      await fs.mkdir(generationDirectory, { mode: 0o700 })
+      await assertExistingDirectoryChain(workspaceRoot, generationDirectory)
+      const generationIdentity = await directoryIdentity(generationDirectory)
+      const nextArtifacts: RuleAuthoringArtifacts = { ...current.artifacts }
+
+      for (const key of removals) delete nextArtifacts[key]
+      for (const [key, content] of files) {
+        await assertDirectoryIdentity(generationDirectory, generationIdentity)
+        const artifactPath = path.join(generationDirectory, ARTIFACT_BASENAMES[key])
+        let handle: fs.FileHandle | undefined
+        try {
+          handle = await fs.open(artifactPath, "wx", 0o600)
+          await handle.writeFile(content, "utf8")
+          await handle.sync()
+          const writtenIdentity = fileIdentityFromStats(await handle.stat())
+          await handle.close()
+          handle = undefined
+          const installedIdentity = await regularFileIdentity(artifactPath)
+          if (!installedIdentity || !sameIdentity(writtenIdentity, installedIdentity)) {
+            throw new Error("Rule authoring artifact generation changed while it was written")
+          }
+        } finally {
+          await handle?.close().catch(() => undefined)
+        }
+        nextArtifacts[key] = path.relative(workspaceRoot, artifactPath).split(path.sep).join("/")
+      }
+      await syncDirectoryIfSupported(generationDirectory)
+      await syncDirectoryIfSupported(paths.generationsDirectory)
+      await assertDirectoryIdentity(generationDirectory, generationIdentity)
+
+      const next = cloneRun(input.buildNextRun(cloneRun(current), { ...nextArtifacts }))
+      assertRuleAuthoringRun(next)
+      if (!sameArtifacts(next.artifacts, nextArtifacts)) {
+        throw new Error("Rule authoring generation callback changed authoritative artifact pointers")
+      }
+      assertRunTransition(current, next)
+      await writeRunFile(next, paths, current)
+      return cloneRun(next)
+    })
+  })
+}
+
 export async function listIncompleteRuleAuthoringRuns(
   workspaceRoot: string
 ): Promise<RuleAuthoringRunV1[]> {
@@ -366,6 +460,63 @@ function assertArtifacts(value: unknown): asserts value is RuleAuthoringArtifact
   }
 }
 
+function validatedArtifactGenerationFiles(
+  value: Partial<Record<RuleAuthoringArtifactKey, string>>
+): Array<[RuleAuthoringArtifactKey, string]> {
+  if (!isPlainObject(value)) throw new Error("Rule authoring generation files are invalid")
+  const allowed = new Set<string>(ARTIFACT_KEYS)
+  const entries: Array<[RuleAuthoringArtifactKey, string]> = []
+  for (const [rawKey, content] of Object.entries(value)) {
+    if (!allowed.has(rawKey) || typeof content !== "string") {
+      throw new Error("Rule authoring generation files are invalid")
+    }
+    const key = rawKey as RuleAuthoringArtifactKey
+    if (Buffer.byteLength(content, "utf8") > artifactByteLimit(key)) {
+      throw new Error(`Rule authoring ${key} artifact exceeds its byte limit`)
+    }
+    entries.push([key, content])
+  }
+  if (entries.length === 0) throw new Error("Rule authoring generation requires at least one artifact")
+  return entries.sort(([left], [right]) => ARTIFACT_KEYS.indexOf(left) - ARTIFACT_KEYS.indexOf(right))
+}
+
+function validatedArtifactKeyList(value: readonly RuleAuthoringArtifactKey[]): RuleAuthoringArtifactKey[] {
+  if (!Array.isArray(value)) throw new Error("Rule authoring artifact removal list is invalid")
+  const allowed = new Set<string>(ARTIFACT_KEYS)
+  const seen = new Set<string>()
+  return value.map((key) => {
+    if (typeof key !== "string" || !allowed.has(key) || seen.has(key)) {
+      throw new Error("Rule authoring artifact removal list is invalid")
+    }
+    seen.add(key)
+    return key as RuleAuthoringArtifactKey
+  })
+}
+
+function artifactByteLimit(key: RuleAuthoringArtifactKey): number {
+  switch (key) {
+    case "sourceManifest":
+    case "sourceIndex":
+      return DEFAULT_RULE_AUTHORING_LIMITS.maxSourceIndexBytes
+    case "documentChunks":
+      return DEFAULT_RULE_AUTHORING_LIMITS.maxAggregateSourceBytes
+    case "sourceScope":
+      return MAX_SOURCE_SCOPE_BYTES
+    case "evidenceSelection":
+    case "selectedEvidence":
+      return DEFAULT_RULE_AUTHORING_LIMITS.maxSelectedEvidenceBytes
+    default:
+      return DEFAULT_RULE_AUTHORING_LIMITS.maxProposalBytes
+  }
+}
+
+function sameArtifacts(left: RuleAuthoringArtifacts, right: RuleAuthoringArtifacts): boolean {
+  const normalize = (value: RuleAuthoringArtifacts): Array<[string, string]> => (
+    Object.entries(value).sort(([leftKey], [rightKey]) => leftKey.localeCompare(rightKey)) as Array<[string, string]>
+  )
+  return JSON.stringify(normalize(left)) === JSON.stringify(normalize(right))
+}
+
 function assertIssues(value: unknown): asserts value is RuleAuthoringRunIssue[] {
   if (!Array.isArray(value) || value.length > MAX_CODES) throw strictSchemaError()
   for (const issue of value) {
@@ -398,6 +549,12 @@ function assertRunTransition(previous: RuleAuthoringRunV1, next: RuleAuthoringRu
     throw new Error("Rule authoring run identity cannot change")
   }
   if (previous.createdAt !== next.createdAt) throw new Error("Rule authoring run createdAt cannot change")
+  if (
+    previous.workflowRunId !== undefined &&
+    next.workflowRunId !== previous.workflowRunId
+  ) {
+    throw new Error("Rule authoring workflow binding is immutable")
+  }
   if (Date.parse(next.updatedAt) <= Date.parse(previous.updatedAt)) {
     throw new Error("Rule authoring run updatedAt must advance")
   }
@@ -453,6 +610,7 @@ async function writeRunFile(
       throw new Error("Rule authoring run changed during atomic replacement")
     }
     await fs.rename(temporaryPath, paths.authoringRunPath)
+    await syncDirectoryIfSupported(paths.runDirectory)
     await assertDirectoryIdentity(paths.runDirectory, runDirectoryIdentity)
     const installedIdentity = await assertSafeRegularFile(run.workspaceRoot, paths.authoringRunPath)
     if (!sameIdentity(temporaryIdentity, installedIdentity)) {
@@ -464,6 +622,20 @@ async function writeRunFile(
       await fs.rm(temporaryPath, { force: true }).catch(() => undefined)
     }
     throw error
+  }
+}
+
+async function syncDirectoryIfSupported(directory: string): Promise<void> {
+  let handle: fs.FileHandle | undefined
+  try {
+    handle = await fs.open(directory, fsConstants.O_RDONLY)
+    await handle.sync()
+  } catch (error) {
+    if (!isNodeError(error) || !["EINVAL", "ENOTSUP", "EISDIR", "EPERM"].includes(error.code ?? "")) {
+      throw error
+    }
+  } finally {
+    await handle?.close().catch(() => undefined)
   }
 }
 

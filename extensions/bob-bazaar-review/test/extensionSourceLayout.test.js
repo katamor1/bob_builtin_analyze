@@ -45,6 +45,17 @@ test("review GUI modules live under the ui source boundary", () => {
   assert.match(readSrc("ui", "reviewGuiHtml.ts"), /from "\.\/reviewGuiHtmlAssets"/)
 })
 
+test("rule authoring UI delegates all filesystem persistence and trusted reads to the domain artifact store", () => {
+  const guiSource = readSrc("ui", "ruleAuthoringGui.ts")
+  assert.doesNotMatch(guiSource, /from "node:fs(?:\/promises)?"/)
+  assert.doesNotMatch(guiSource, /\bfs\.(?:open|readFile|writeFile|rename|rm|mkdir|lstat|realpath)\b/)
+  assert.match(guiSource, /from "\.\.\/ruleAuthoring\/ruleAuthoringArtifactStore"/)
+
+  const storePath = path.join(extensionRoot, "src", "ruleAuthoring", "ruleAuthoringArtifactStore.ts")
+  assert.ok(fs.existsSync(storePath), "the VS Code-independent artifact store must own run artifact I/O")
+  assert.doesNotMatch(fs.readFileSync(storePath, "utf8"), /from "vscode"/)
+})
+
 test("workflow integration modules live under the workflow source boundary", () => {
   for (const fileName of [
     "workflowActions.ts",

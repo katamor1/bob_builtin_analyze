@@ -151,17 +151,20 @@ AIは原本ファイルや任意パスへ直接アクセスしない。拡張機
       runs/
         <run-id>/
           authoring-run.json
-          source-manifest.json
-          document-chunks.jsonl
-          source-index.json
-          evidence-selection.json
-          selected-evidence.md
-          rule-proposal.raw.txt
-          rule-proposal.json
-          proposal-validation.json
-          proposal-decisions.json
-          apply-preview.json
-          apply-manifest.json
+          generations/
+            gen-<32hex>/
+              source-manifest.json
+              document-chunks.jsonl
+              source-scope.json
+              source-index.json
+              evidence-selection.json
+              selected-evidence.md
+              rule-proposal.raw.txt
+              rule-proposal.json
+              proposal-validation.json
+              proposal-decisions.json
+              apply-preview.json
+              apply-manifest.json
       backups/
         <transaction-id>/
       transactions/
@@ -170,6 +173,8 @@ AIは原本ファイルや任意パスへ直接アクセスしない。拡張機
 ```
 
 `source-locations.local.json`、抽出本文、raw AI response、backup、transaction stagingは既定でGit対象外にする。承認済みproject-owned assetsと、絶対パスおよび本文を含まないprovenance/apply metadataだけをremote共有対象とする。
+
+各artifact generationはimmutableとし、`authoring-run.json` のartifact pointerをauthoritativeな参照とする。新しいgenerationの全fileをdurableに書き終えた後、run storeと同じlock/CAS境界でpointerをatomicに更新する。consumerはrun-root直下のbasenameを組み立てず、共有artifact resolverでpointerのcontainmentとcanonical basenameを検証する。
 
 管理対象の `.bob/review/rule-authoring/.gitignore` はauthoring directory配下を既定除外し、`.gitignore` 自身だけを追跡可能にする。remote共有が必要な承認済み情報は、ignored run directoryではなくproject-owned `rule-sources.json` と `rule-provenance.json` へ投影する。
 

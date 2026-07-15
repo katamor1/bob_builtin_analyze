@@ -113,6 +113,24 @@ test("buildRuleSourceIndex emits bounded metadata instead of full source text", 
   assert.match(indexed.preview, /\[REDACTED_(?:PATH|SECRET)\]/)
 })
 
+test("buildRuleSourceIndex sanitizes logical names at the shared remote-safe boundary", async (t) => {
+  const cases = [
+    ["C:private.pdf", "[REDACTED_PATH]"],
+    ["api_key=supersecret.pdf", "api_key=[REDACTED_SECRET]"]
+  ]
+
+  for (const [rawName, expectedName] of cases) {
+    await t.test(rawName, () => {
+      const manifestSource = source("a", rawName)
+      const inputChunk = chunk(manifestSource.source_id, `logical-name-${rawName}`, "Policy")
+      const index = buildRuleSourceIndex(manifest([manifestSource]), [inputChunk], ONE_MIB)
+
+      assert.equal(index.sources[0].logical_name, expectedName)
+      assert.equal(JSON.stringify(index).includes(rawName), false)
+    })
+  }
+})
+
 test("buildRuleSourceIndex redacts Windows slash paths, UNC forms, and root files", () => {
   const manifestSource = source("8", "rules.pdf")
   const sensitivePaths = [
@@ -464,4 +482,30 @@ test("buildRuleSourceIndex bounds raw display fields before redaction", () => {
       /chunk|display field|heading/i
     )
   }
+})
+
+test("shared remote-safe text sanitizer covers portable path forms and preserves public HTTP URLs", () => {
+  const { sanitizeRemoteSafeText } = require("../out/ruleAuthoring/remoteSafeText")
+  const privateForms = [
+    "/home/alice/private/model",
+    "C:\\Users\\Alice\\private\\model",
+    "C:private\\model",
+    "\\\\server\\share\\private\\model",
+    "\\\\?\\C:\\private\\model",
+    "\\\\.\\pipe\\private-model",
+    "file:/home/alice/private/model",
+    "file:///home/alice/private/model",
+    "query?source=/home/alice/private/model"
+  ]
+  const publicUrl = "https://example.com/public/rules"
+  const publicWithPrivateQuery = "https://example.com/public/rules?source=/home/alice/private/model"
+  const sanitized = sanitizeRemoteSafeText(
+    `${publicUrl} ${publicWithPrivateQuery} ${privateForms.join(" ")}`,
+    4096
+  )
+
+  assert.match(sanitized, /https:\/\/example\.com\/public\/rules/)
+  for (const value of privateForms) assert.equal(sanitized.includes(value), false, `leaked ${value}`)
+  assert.doesNotMatch(sanitized, /source=\/home\/alice\/private\/model/)
+  assert.match(sanitized, /\[REDACTED_PATH\]/)
 })

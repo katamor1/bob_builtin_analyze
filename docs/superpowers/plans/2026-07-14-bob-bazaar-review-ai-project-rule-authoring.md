@@ -540,7 +540,9 @@ Commit message: `feat: triage and apply authored project rules`
 
 - [ ] **Step 1: Write failing workflow action tests**
 
-Cover workflow/run identity resolution, exact artifact paths, idempotent resume, invalid raw JSON, unknown chunk IDs, 1 MiB boundaries, proposal capture validation, `{ status: "error", issues }` failure shape, `$workflow.artifacts`, and final apply verification.
+Cover workflow/run identity resolution, exact generation-backed artifact paths, idempotent resume, invalid raw JSON, unknown chunk IDs, 1 MiB boundaries, proposal capture validation, `{ status: "error", issues }` failure shape, `$workflow.artifacts`, and final apply verification.
+
+Every action must resolve artifacts from the authoritative `authoring-run.json` pointers through the shared rule-authoring artifact resolver. It must not hardcode files directly below `runs/<run-id>` or reconstruct generation paths from basenames.
 
 The first GUI command returns `authoringSession` containing the stable `run_id`. Every later provider resolves that same run only from `state.authoringSession` plus workflow context and rejects a mismatched caller-supplied ID.
 

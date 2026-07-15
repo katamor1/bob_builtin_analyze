@@ -3,6 +3,7 @@ const path = require("node:path")
 const { test } = require("node:test")
 
 const {
+  getRuleAuthoringGenerationPaths,
   getRuleAuthoringPaths,
   validateRuleAuthoringId
 } = require("../out/ruleAuthoring/ruleAuthoringPaths")
@@ -24,17 +25,7 @@ test("rule authoring paths are absolute and contained by the workspace", () => {
     runsDirectory,
     runDirectory,
     authoringRunPath: path.join(runDirectory, "authoring-run.json"),
-    sourceManifestPath: path.join(runDirectory, "source-manifest.json"),
-    documentChunksPath: path.join(runDirectory, "document-chunks.jsonl"),
-    sourceIndexPath: path.join(runDirectory, "source-index.json"),
-    evidenceSelectionPath: path.join(runDirectory, "evidence-selection.json"),
-    selectedEvidencePath: path.join(runDirectory, "selected-evidence.md"),
-    ruleProposalRawPath: path.join(runDirectory, "rule-proposal.raw.txt"),
-    ruleProposalPath: path.join(runDirectory, "rule-proposal.json"),
-    proposalValidationPath: path.join(runDirectory, "proposal-validation.json"),
-    proposalDecisionsPath: path.join(runDirectory, "proposal-decisions.json"),
-    applyPreviewPath: path.join(runDirectory, "apply-preview.json"),
-    applyManifestPath: path.join(runDirectory, "apply-manifest.json"),
+    generationsDirectory: path.join(runDirectory, "generations"),
     backupsDirectory: path.join(authoringDirectory, "backups"),
     transactionsDirectory: path.join(authoringDirectory, "transactions")
   })
@@ -44,6 +35,13 @@ test("rule authoring paths are absolute and contained by the workspace", () => {
     assert.equal(path.isAbsolute(artifactPath), true)
     assert.equal(relative === ".." || relative.startsWith(`..${path.sep}`), false)
   }
+
+  const generation = getRuleAuthoringGenerationPaths(paths, `gen-${"a".repeat(32)}`)
+  assert.equal(generation.sourceManifestPath, path.join(paths.generationsDirectory, generation.generationId, "source-manifest.json"))
+  assert.equal(generation.documentChunksPath, path.join(paths.generationsDirectory, generation.generationId, "document-chunks.jsonl"))
+  assert.equal(generation.sourceScopePath, path.join(paths.generationsDirectory, generation.generationId, "source-scope.json"))
+  assert.equal(generation.sourceIndexPath, path.join(paths.generationsDirectory, generation.generationId, "source-index.json"))
+  assert.equal(Object.hasOwn(paths, "sourceIndexPath"), false)
 })
 
 test("rule authoring IDs accept stable run and source identifiers", () => {
