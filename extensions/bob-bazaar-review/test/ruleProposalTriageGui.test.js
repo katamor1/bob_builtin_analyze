@@ -625,6 +625,7 @@ test("re-parses a stored validated proposal and persists decisions in a separate
   })
 
   const loaded = await gui.loadRuleProposalTriageState({ workspaceRoot: root, runId: RUN_ID })
+  const staleWindow = await gui.loadRuleProposalTriageState({ workspaceRoot: root, runId: RUN_ID })
   assert.deepEqual(loaded.proposal, storedProposal)
   const rawPointer = seeded.artifacts.ruleProposalRaw
   const proposalPointer = seeded.artifacts.ruleProposal
@@ -651,6 +652,71 @@ test("re-parses a stored validated proposal and persists decisions in a separate
   assert.notEqual(path.dirname(resolveRuleAuthoringArtifactPath(next.run, "proposalDecisions")), path.dirname(proposalPath))
   assert.deepEqual(await fs.readFile(rawPath), rawBefore)
   assert.deepEqual(await fs.readFile(proposalPath), proposalBefore)
+
+  await assert.rejects(
+    gui.persistRuleProposalDecisions(staleWindow, {
+      schema_version: "bob-bazaar-review/proposal-decisions/v1",
+      run_id: RUN_ID,
+      decisions: {
+        "candidate-retire": {
+          decision: "accept",
+          reviewed_at: "2026-07-15T03:04:06.000Z"
+        }
+      }
+    }),
+    /changed since it was loaded|while Human Triage was open/i
+  )
+  const afterStaleDecision = await gui.loadRuleProposalTriageState({ workspaceRoot: root, runId: RUN_ID })
+  assert.equal(afterStaleDecision.decisions.decisions["candidate-retire"].decision, "reject")
+
+  const completeOverlay = {
+    schema_version: "bob-bazaar-review/proposal-decisions/v1",
+    run_id: RUN_ID,
+    decisions: Object.fromEntries([
+      "candidate-add",
+      "candidate-update",
+      "candidate-retire",
+      "candidate-context",
+      "candidate-prompt"
+    ].map((candidateId) => [candidateId, {
+      decision: candidateId === "candidate-retire" ? "reject" : "accept",
+      reviewed_at: "2026-07-15T03:04:07.000Z",
+      ...(candidateId === "candidate-add"
+        ? { conflict_resolutions: { "conflict-blocking": "alternative-a" } }
+        : {})
+    }]))
+  }
+  const decisionState = await gui.persistRuleProposalDecisions(afterStaleDecision, completeOverlay)
+  const previewWindowA = await gui.loadRuleProposalTriageState({ workspaceRoot: root, runId: RUN_ID })
+  const previewWindowB = await gui.loadRuleProposalTriageState({ workspaceRoot: root, runId: RUN_ID })
+  const targetSpecs = [
+    ["checklist", ".bob/review/checklist.json"],
+    ["project_context", ".bob/review/project-context.md"],
+    ["prompt_addendum", ".bob/review/review-prompt-addendum.md"],
+    ["rule_sources", ".bob/review/rule-sources.json"],
+    ["rule_provenance", ".bob/review/rule-provenance.json"]
+  ]
+  const previewPlan = {
+    schema_version: "bob-bazaar-review/rule-apply-plan/v1",
+    run_id: RUN_ID,
+    targets: targetSpecs.map(([asset, targetPath]) => ({
+      asset,
+      path: targetPath,
+      expected_pre_image: { state: "missing" },
+      post_image_sha256: "d".repeat(64),
+      bytes: Buffer.alloc(0)
+    })),
+    decisions: [],
+    retirements: []
+  }
+  const previewA = await gui.persistRuleApplyPreview(previewWindowA, completeOverlay, previewPlan)
+  await assert.rejects(
+    gui.persistRuleApplyPreview(previewWindowB, completeOverlay, previewPlan),
+    /changed since it was loaded|while Human Triage was open/i
+  )
+  const afterStalePreview = await gui.loadRuleProposalTriageState({ workspaceRoot: root, runId: RUN_ID })
+  assert.equal(afterStalePreview.run.artifacts.applyPreview, previewA.run.artifacts.applyPreview)
+  assert.equal(afterStalePreview.run.artifacts.proposalDecisions, decisionState.run.artifacts.proposalDecisions)
 
   await fs.unlink(rawPath)
   const reloaded = await gui.loadRuleProposalTriageState({ workspaceRoot: root, runId: RUN_ID })
@@ -816,6 +882,73 @@ test("maps a stale current bundle to a safe warning and never starts a transacti
 
   await panel.emitMessage({ type: "close" })
   assert.deepEqual(await promise, { status: "closed", runId: RUN_ID })
+})
+
+test("does not expose unpersisted decision, edit, or conflict state after persistence failure", async (t) => {
+  await t.test("decision", async () => {
+    const fake = createFakeVscode()
+    const fixture = hostDependencies({
+      persistRuleProposalDecisions: async () => { throw new Error("Rule authoring run changed since it was loaded") }
+    })
+    const { promise, panel } = await startHost(fake, fixture)
+    await panel.emitMessage({ type: "setDecision", candidateId: "candidate-add", decision: "accept" })
+    const operation = fixture.renderedModels.at(-1).model.groups[0].operations
+      .find(({ candidateId }) => candidateId === "candidate-add")
+    assert.equal(operation.decision, "pending")
+    await panel.emitMessage({ type: "close" })
+    assert.deepEqual(await promise, { status: "closed", runId: RUN_ID })
+  })
+
+  await t.test("edit", async () => {
+    const fake = createFakeVscode()
+    const fixture = hostDependencies({
+      persistRuleProposalDecisions: async () => { throw new Error("Rule authoring run changed since it was loaded") }
+    })
+    const { promise, panel } = await startHost(fake, fixture)
+    await panel.emitMessage({
+      type: "editRule",
+      candidateId: "candidate-update",
+      rule: { ...proposalFixture().operations[1].rule, title: "Unpersisted title" }
+    })
+    const operation = fixture.renderedModels.at(-1).model.groups[0].operations
+      .find(({ candidateId }) => candidateId === "candidate-update")
+    assert.equal(operation.decision, "pending")
+    assert.equal(operation.title, "Update an existing rule")
+    await panel.emitMessage({ type: "close" })
+    assert.deepEqual(await promise, { status: "closed", runId: RUN_ID })
+  })
+
+  await t.test("conflict", async () => {
+    const fake = createFakeVscode()
+    const fixture = hostDependencies({
+      persistRuleProposalDecisions: async () => { throw new Error("Rule authoring run changed since it was loaded") }
+    })
+    fixture.state.decisions = {
+      schema_version: "bob-bazaar-review/proposal-decisions/v1",
+      run_id: RUN_ID,
+      decisions: Object.fromEntries([
+        "candidate-add",
+        "candidate-update",
+        "candidate-retire",
+        "candidate-context",
+        "candidate-prompt"
+      ].map((candidateId) => [candidateId, {
+        decision: "accept",
+        reviewed_at: REVIEWED_AT
+      }]))
+    }
+    const { promise, panel } = await startHost(fake, fixture)
+    assert.equal(fixture.renderedModels.at(-1).model.decisionsComplete, false)
+    await panel.emitMessage({
+      type: "resolveConflict",
+      candidateId: "candidate-add",
+      conflictId: "conflict-blocking",
+      alternativeId: "alternative-a"
+    })
+    assert.equal(fixture.renderedModels.at(-1).model.decisionsComplete, false)
+    await panel.emitMessage({ type: "close" })
+    assert.deepEqual(await promise, { status: "closed", runId: RUN_ID })
+  })
 })
 
 test("blocks normal resume until an incomplete transaction is rolled back", async () => {

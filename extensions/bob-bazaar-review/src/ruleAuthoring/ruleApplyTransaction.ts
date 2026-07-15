@@ -3,6 +3,7 @@ import { constants as fsConstants, Stats } from "node:fs"
 import * as fs from "node:fs/promises"
 import * as path from "node:path"
 import { getProjectRulesPaths } from "../projectRules/io"
+import { DEFAULT_RULE_AUTHORING_LIMITS } from "./ruleAuthoringLimits"
 import { getRuleAuthoringPaths, validateRuleAuthoringId } from "./ruleAuthoringPaths"
 import { withRuleAuthoringDirectoryLock } from "./ruleAuthoringRunStore"
 import {
@@ -103,6 +104,11 @@ export interface ApplyManifestV1 {
   readonly retirements: RuleApplyRetirementV1[]
 }
 
+export interface ValidatedRuleApplyMetadata {
+  readonly decisions: RuleApplyDecisionRecordV1[]
+  readonly retirements: RuleApplyRetirementV1[]
+}
+
 export interface IncompleteRuleApplyTransactionV1 {
   readonly transaction_id: string
   readonly run_id: string
@@ -166,13 +172,292 @@ const TARGET_SPECS: ReadonlyArray<readonly [RuleApplyAsset, string]> = [
   ["rule_provenance", ".bob/review/rule-provenance.json"]
 ]
 const SHA256_PATTERN = /^[a-f0-9]{64}$/
+const SOURCE_ID_PATTERN = /^src-[a-f0-9]{12,64}$/
+const CHUNK_ID_PATTERN = /^chunk-[a-f0-9]{64}$/
+const CANDIDATE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/
 const SAFE_CODE = /^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)+$/
 const CANONICAL_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/
+const CONTROL_CHARACTER = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/
+const ANY_CONTROL_CHARACTER = /[\u0000-\u001f\u007f-\u009f]/
 const MAX_PLAN_TARGET_BYTES = 16 * 1024 * 1024
 const MAX_JOURNAL_BYTES = 16 * 1024 * 1024
 const MAX_MANIFEST_BYTES = 16 * 1024 * 1024
 const MAX_TRANSACTION_ENTRIES = 10_000
+const MAX_METADATA_RECORDS =
+  DEFAULT_RULE_AUTHORING_LIMITS.maxRuleOperations +
+  DEFAULT_RULE_AUTHORING_LIMITS.maxProjectContextOperations +
+  DEFAULT_RULE_AUTHORING_LIMITS.maxPromptAddendumOperations
+const MAX_METADATA_SOURCE_REFS = 64
+const MAX_METADATA_CONFLICT_RESOLUTIONS = 200
 const WORKSPACE_MUTEXES = new Set<string>()
+
+export function validateRuleApplyMetadata(
+  decisionsValue: unknown,
+  retirementsValue: unknown
+): ValidatedRuleApplyMetadata {
+  if (
+    !Array.isArray(decisionsValue) ||
+    decisionsValue.length > MAX_METADATA_RECORDS ||
+    !Array.isArray(retirementsValue) ||
+    retirementsValue.length > MAX_METADATA_RECORDS
+  ) {
+    throw new Error("Rule apply decision or retirement metadata is malformed")
+  }
+  const decisions = decisionsValue.map(validateDecisionMetadataRecord)
+  const decisionByCandidate = new Map<string, RuleApplyDecisionRecordV1>()
+  for (const decision of decisions) {
+    if (decisionByCandidate.has(decision.candidate_id)) {
+      throw new Error("Rule apply decision metadata contains a duplicate candidate")
+    }
+    decisionByCandidate.set(decision.candidate_id, decision)
+  }
+  const retirements = retirementsValue.map(validateRetirementMetadataRecord)
+  const retirementCandidates = new Set<string>()
+  for (const retirement of retirements) {
+    if (retirementCandidates.has(retirement.candidate_id)) {
+      throw new Error("Rule apply retirement metadata contains a duplicate candidate")
+    }
+    retirementCandidates.add(retirement.candidate_id)
+    const decision = decisionByCandidate.get(retirement.candidate_id)
+    if (
+      !decision ||
+      decision.operation !== "retire" ||
+      decision.decision === "reject" ||
+      decision.target_asset !== retirement.target_asset ||
+      decision.target_id !== retirement.target_id ||
+      decision.decision !== retirement.decision ||
+      decision.reviewed_at !== retirement.reviewed_at ||
+      stableMetadataJson(decision.source_refs) !== stableMetadataJson(retirement.source_refs)
+    ) {
+      throw new Error("Rule apply retirement metadata does not match its decision")
+    }
+  }
+  const expectedRetirements = decisions.filter(({ operation, decision }) =>
+    operation === "retire" && decision !== "reject")
+  if (
+    retirements.length !== expectedRetirements.length ||
+    expectedRetirements.some(({ candidate_id }) => !retirementCandidates.has(candidate_id))
+  ) {
+    throw new Error("Rule apply retirement metadata is incomplete")
+  }
+  const output = {
+    decisions: structuredClone(decisions),
+    retirements: structuredClone(retirements)
+  }
+  assertMetadataSerializable(output)
+  return output
+}
+
+export function ruleApplyMetadataEquals(
+  leftDecisions: unknown,
+  leftRetirements: unknown,
+  rightDecisions: unknown,
+  rightRetirements: unknown
+): boolean {
+  try {
+    const left = validateRuleApplyMetadata(leftDecisions, leftRetirements)
+    const right = validateRuleApplyMetadata(rightDecisions, rightRetirements)
+    return stableMetadataJson(left) === stableMetadataJson(right)
+  } catch {
+    return false
+  }
+}
+
+function validateDecisionMetadataRecord(value: unknown): RuleApplyDecisionRecordV1 {
+  if (
+    !isPlainObject(value) ||
+    !hasExactKeys(value, [
+      "candidate_id",
+      "target_asset",
+      "operation",
+      "decision",
+      "target_id",
+      "reviewed_at",
+      "source_refs",
+      "conflict_resolutions"
+    ]) ||
+    !CANDIDATE_ID_PATTERN.test(String(value.candidate_id)) ||
+    !isRuleApplyTargetAsset(value.target_asset) ||
+    (value.operation !== "add" && value.operation !== "update" && value.operation !== "retire") ||
+    (value.decision !== "accept" && value.decision !== "reject" && value.decision !== "edit") ||
+    !isCanonicalTimestamp(value.reviewed_at) ||
+    !isPlainObject(value.conflict_resolutions)
+  ) {
+    throw new Error("Rule apply decision metadata is malformed")
+  }
+  if (
+    (value.operation === "retire" && value.decision === "edit") ||
+    (value.operation === "add" && value.decision === "reject" && value.target_id !== null) ||
+    (!(value.operation === "add" && value.decision === "reject") &&
+      !isMetadataTargetId(value.target_id, value.target_asset))
+  ) {
+    throw new Error("Rule apply decision target metadata is malformed")
+  }
+  const sourceRefs = validateDecisionSourceRefs(value.source_refs)
+  if (
+    (value.decision === "reject" && sourceRefs.length !== 0) ||
+    (value.decision !== "reject" && sourceRefs.length === 0)
+  ) {
+    throw new Error("Rule apply decision source metadata is malformed")
+  }
+  const conflicts = Object.entries(value.conflict_resolutions)
+  if (
+    conflicts.length > MAX_METADATA_CONFLICT_RESOLUTIONS ||
+    conflicts.some(([conflictId, alternativeId]) =>
+      !CANDIDATE_ID_PATTERN.test(conflictId) ||
+      typeof alternativeId !== "string" ||
+      !CANDIDATE_ID_PATTERN.test(alternativeId))
+  ) {
+    throw new Error("Rule apply decision conflict metadata is malformed")
+  }
+  return {
+    candidate_id: value.candidate_id,
+    target_asset: value.target_asset,
+    operation: value.operation,
+    decision: value.decision,
+    target_id: value.target_id,
+    reviewed_at: value.reviewed_at,
+    source_refs: sourceRefs,
+    conflict_resolutions: Object.fromEntries(conflicts.sort(([left], [right]) => compareText(left, right)))
+  }
+}
+
+function validateRetirementMetadataRecord(value: unknown): RuleApplyRetirementV1 {
+  if (
+    !isPlainObject(value) ||
+    !hasExactKeys(value, [
+      "candidate_id",
+      "target_asset",
+      "target_id",
+      "decision",
+      "reviewed_at",
+      "source_refs",
+      "previous"
+    ]) ||
+    !CANDIDATE_ID_PATTERN.test(String(value.candidate_id)) ||
+    !isRuleApplyTargetAsset(value.target_asset) ||
+    !isMetadataTargetId(value.target_id, value.target_asset) ||
+    (value.decision !== "accept" && value.decision !== "edit") ||
+    !isCanonicalTimestamp(value.reviewed_at)
+  ) {
+    throw new Error("Rule apply retirement metadata is malformed")
+  }
+  const sourceRefs = validateDecisionSourceRefs(value.source_refs)
+  if (sourceRefs.length === 0) throw new Error("Rule apply retirement source metadata is malformed")
+  const previous = validateRetirementPrevious(value.previous, value.target_asset, value.target_id)
+  return {
+    candidate_id: value.candidate_id,
+    target_asset: value.target_asset,
+    target_id: value.target_id,
+    decision: value.decision,
+    reviewed_at: value.reviewed_at,
+    source_refs: sourceRefs,
+    previous
+  }
+}
+
+function validateDecisionSourceRefs(value: unknown): Array<{ source_id: string; chunk_id: string }> {
+  if (!Array.isArray(value) || value.length > MAX_METADATA_SOURCE_REFS) {
+    throw new Error("Rule apply source reference metadata is malformed")
+  }
+  const seen = new Set<string>()
+  return value.map((ref) => {
+    if (
+      !isPlainObject(ref) ||
+      !hasExactKeys(ref, ["source_id", "chunk_id"]) ||
+      !SOURCE_ID_PATTERN.test(String(ref.source_id)) ||
+      !CHUNK_ID_PATTERN.test(String(ref.chunk_id))
+    ) {
+      throw new Error("Rule apply source reference metadata is malformed")
+    }
+    const key = `${ref.source_id}\u0000${ref.chunk_id}`
+    if (seen.has(key)) throw new Error("Rule apply source reference metadata contains a duplicate")
+    seen.add(key)
+    return { source_id: ref.source_id, chunk_id: ref.chunk_id }
+  })
+}
+
+function validateRetirementPrevious(
+  value: unknown,
+  asset: RuleApplyDecisionRecordV1["target_asset"],
+  targetId: string
+): RuleApplyRetirementV1["previous"] {
+  if (!isPlainObject(value)) throw new Error("Rule apply retirement previous value is malformed")
+  if (asset !== "rule") {
+    if (
+      !hasExactKeys(value, ["heading", "markdown"]) ||
+      !boundedMetadataString(value.heading, 512, true) ||
+      typeof value.markdown !== "string" ||
+      CONTROL_CHARACTER.test(value.markdown) ||
+      Buffer.byteLength(value.markdown, "utf8") > DEFAULT_RULE_AUTHORING_LIMITS.maxProjectContextBytes
+    ) {
+      throw new Error("Rule apply retirement previous Markdown is malformed")
+    }
+    return { heading: value.heading, markdown: value.markdown }
+  }
+  const allowed = [
+    "id",
+    "category",
+    "title",
+    "description",
+    "severity_on_fail",
+    "applies_when",
+    "evidence_required",
+    "review_hint"
+  ]
+  const required = ["id", "category", "title", "description", "severity_on_fail"]
+  if (
+    Object.keys(value).some((key) => !allowed.includes(key)) ||
+    required.some((key) => !Object.prototype.hasOwnProperty.call(value, key)) ||
+    value.id !== targetId ||
+    !boundedMetadataString(value.category, 256, true) ||
+    !boundedMetadataString(value.title, 512, true) ||
+    !boundedMetadataString(value.description, 8_192, true) ||
+    (value.severity_on_fail !== "error" && value.severity_on_fail !== "warning" &&
+      value.severity_on_fail !== "info") ||
+    (value.applies_when !== undefined && (
+      !Array.isArray(value.applies_when) ||
+      value.applies_when.length > 32 ||
+      value.applies_when.some((item: unknown) =>
+        !boundedMetadataString(item, 1_024, false) || ANY_CONTROL_CHARACTER.test(item))
+    )) ||
+    (value.evidence_required !== undefined && typeof value.evidence_required !== "boolean") ||
+    (value.review_hint !== undefined && !boundedMetadataString(value.review_hint, 4_096, false))
+  ) {
+    throw new Error("Rule apply retirement previous rule is malformed")
+  }
+  return structuredClone(value) as RuleApplyRetirementV1["previous"]
+}
+
+function isRuleApplyTargetAsset(value: unknown): value is RuleApplyDecisionRecordV1["target_asset"] {
+  return value === "rule" || value === "project_context" || value === "prompt_addendum"
+}
+
+function isMetadataTargetId(
+  value: unknown,
+  asset: RuleApplyDecisionRecordV1["target_asset"]
+): value is string {
+  if (!boundedMetadataString(value, 128, true) || ANY_CONTROL_CHARACTER.test(value)) return false
+  if (asset === "project_context") return /^CTX-(?!0000$)[0-9]{4}$/.test(value)
+  if (asset === "prompt_addendum") return /^PRM-(?!0000$)[0-9]{4}$/.test(value)
+  return /^PRJ-(?!0000$)[0-9]{4}$/.test(value) || !/^\s*(?:PRJ|CTX|PRM)-/.test(value)
+}
+
+function boundedMetadataString(value: unknown, maxBytes: number, nonEmpty: boolean): value is string {
+  return typeof value === "string" &&
+    (!nonEmpty || value.length > 0) &&
+    !CONTROL_CHARACTER.test(value) &&
+    Buffer.byteLength(value, "utf8") <= maxBytes
+}
+
+function stableMetadataJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableMetadataJson).join(",")}]`
+  if (isPlainObject(value)) {
+    return `{${Object.keys(value).sort(compareText).map((key) =>
+      `${JSON.stringify(key)}:${stableMetadataJson(value[key])}`).join(",")}}`
+  }
+  return JSON.stringify(value)
+}
 
 export async function executeRuleApplyTransaction(
   planInput: RuleApplyPlan,
@@ -754,13 +1039,17 @@ function validatePlan(input: RuleApplyPlan): ValidatedTransactionPlan {
       bytes
     }
   })
-  assertMetadataSerializable(input.decisions)
-  assertMetadataSerializable(input.retirements)
+  let metadata: ValidatedRuleApplyMetadata
+  try {
+    metadata = validateRuleApplyMetadata(input.decisions, input.retirements)
+  } catch {
+    throw new RuleApplyTransactionError("invalid_plan")
+  }
   return {
     runId: input.run_id,
     targets,
-    decisions: structuredClone(input.decisions),
-    retirements: structuredClone(input.retirements)
+    decisions: metadata.decisions,
+    retirements: metadata.retirements
   }
 }
 
@@ -1229,8 +1518,13 @@ function validateJournal(
       throw new RuleApplyTransactionError("unsafe_journal")
     }
   }
-  assertMetadataSerializable(value.decisions)
-  assertMetadataSerializable(value.retirements)
+  try {
+    const metadata = validateRuleApplyMetadata(value.decisions, value.retirements)
+    value.decisions = metadata.decisions
+    value.retirements = metadata.retirements
+  } catch {
+    throw new RuleApplyTransactionError("unsafe_journal")
+  }
   if (value.status === "committed" && value.targets.some(({ state }) => state !== "replaced")) {
     throw new RuleApplyTransactionError("unsafe_journal")
   }
@@ -1284,13 +1578,20 @@ async function readManifest(
       throw new RuleApplyTransactionError("unsafe_journal")
     }
   }
-  if (
-    JSON.stringify(parsed.decisions) !== JSON.stringify(journal.decisions) ||
-    JSON.stringify(parsed.retirements) !== JSON.stringify(journal.retirements)
-  ) {
+  if (!ruleApplyMetadataEquals(
+    parsed.decisions,
+    parsed.retirements,
+    journal.decisions,
+    journal.retirements
+  )) {
     throw new RuleApplyTransactionError("unsafe_journal")
   }
-  return parsed as unknown as ApplyManifestV1
+  const metadata = validateRuleApplyMetadata(parsed.decisions, parsed.retirements)
+  return {
+    ...structuredClone(parsed),
+    decisions: metadata.decisions,
+    retirements: metadata.retirements
+  } as unknown as ApplyManifestV1
 }
 
 async function emit(
@@ -1417,6 +1718,12 @@ function samePhysicalPath(left: string, right: string): boolean {
 
 function isPlainObject(value: unknown): value is Record<string, any> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+function hasExactKeys(value: object, expected: readonly string[]): boolean {
+  const actual = Object.keys(value).sort(compareText)
+  const sorted = [...expected].sort(compareText)
+  return actual.length === sorted.length && actual.every((key, index) => key === sorted[index])
 }
 
 function isNodeError(value: unknown): value is NodeJS.ErrnoException {

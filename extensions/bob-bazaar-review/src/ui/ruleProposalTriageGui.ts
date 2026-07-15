@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto"
-import { constants as fsConstants } from "node:fs"
+import { constants as fsConstants, type BigIntStats } from "node:fs"
 import * as fs from "node:fs/promises"
 import * as path from "node:path"
 import type * as vscode from "vscode"
@@ -23,6 +23,8 @@ import {
   executeRuleApplyTransaction,
   findIncompleteRuleApplyTransactions,
   recoverRuleApplyTransaction,
+  ruleApplyMetadataEquals,
+  validateRuleApplyMetadata,
   type ApplyManifestV1,
   type IncompleteRuleApplyTransactionV1,
   type RuleApplyRecoveryRequest
@@ -131,6 +133,7 @@ interface StoredApplyPreviewV1 {
   generated_at: string
   targets: Array<{
     asset: string
+    path: string
     expected_pre_image: unknown
     post_image_sha256: string
   }>
@@ -138,6 +141,15 @@ interface StoredApplyPreviewV1 {
     accepted: number
     edited: number
     rejected: number
+  }
+  binding: {
+    proposal_artifact: string
+    proposal_sha256: string
+    proposal_validation_artifact: string
+    proposal_validation_sha256: string
+    proposal_decisions_artifact: string
+    proposal_decisions_sha256: string
+    plan_metadata_sha256: string
   }
 }
 
@@ -468,8 +480,10 @@ async function openWithDependencies(
                   reject_reason: message.rejectReason,
                   conflict_resolutions: conflictResolutions
                 })
-            decisions = withDecision(decisions, message.candidateId, nextDecision)
-            state = await dependencies.persistRuleProposalDecisions(state, decisions)
+            const nextDecisions = withDecision(decisions, message.candidateId, nextDecision)
+            const persistedState = await dependencies.persistRuleProposalDecisions(state, nextDecisions)
+            state = persistedState
+            decisions = nextDecisions
             preview = undefined
             staleWarning = ""
             status = "Human Triage decision saved."
@@ -489,12 +503,13 @@ async function openWithDependencies(
                 ? undefined
                 : structuredClone(previous.conflict_resolutions)
             }
+            let nextDecisions: RuleProposalDecisionsV1
             if (isRuleOperation(operation)) {
               if (!("rule" in message)) {
                 throw new SafeTriageError("This candidate requires a rule edit.")
               }
               assertEditedRuleAgainstProposal(state.proposal, operation, message.rule)
-              decisions = withDecision(decisions, message.candidateId, compactDecision({
+              nextDecisions = withDecision(decisions, message.candidateId, compactDecision({
                 ...common,
                 edited_rule: structuredClone(message.rule)
               }))
@@ -503,12 +518,14 @@ async function openWithDependencies(
                 throw new SafeTriageError("This candidate requires a Markdown edit.")
               }
               assertEditedMarkdownAgainstProposal(state.proposal, operation, message.markdown)
-              decisions = withDecision(decisions, message.candidateId, compactDecision({
+              nextDecisions = withDecision(decisions, message.candidateId, compactDecision({
                 ...common,
                 edited_markdown: structuredClone(message.markdown)
               }))
             }
-            state = await dependencies.persistRuleProposalDecisions(state, decisions)
+            const persistedState = await dependencies.persistRuleProposalDecisions(state, nextDecisions)
+            state = persistedState
+            decisions = nextDecisions
             preview = undefined
             staleWarning = ""
             status = "Human edit validated and saved."
@@ -534,12 +551,14 @@ async function openWithDependencies(
               ...(current.conflict_resolutions ?? {}),
               [message.conflictId]: message.alternativeId
             }
-            decisions = withDecision(decisions, message.candidateId, {
+            const nextDecisions = withDecision(decisions, message.candidateId, {
               ...structuredClone(current),
               reviewed_at: canonicalNow(dependencies.now()),
               conflict_resolutions: resolutions
             })
-            state = await dependencies.persistRuleProposalDecisions(state, decisions)
+            const persistedState = await dependencies.persistRuleProposalDecisions(state, nextDecisions)
+            state = persistedState
+            decisions = nextDecisions
             preview = undefined
             status = "Conflict resolution saved."
             render()
@@ -767,13 +786,12 @@ export async function persistRuleApplyPreview(
   assertPlanMatchesState(plan, state)
   const current = await currentMatchingRun(state)
   const generatedAt = timestampAfter(current.updatedAt)
-  const storedPreview = storedPreviewFromPlan(plan, decisions, generatedAt)
+  const storedPreview = await storedPreviewFromPlan(current, state.proposal, plan, decisions, generatedAt)
   const next = await commitRuleAuthoringArtifactGeneration({
     workspaceRoot: current.workspaceRoot,
     runId: current.runId,
     expectedUpdatedAt: current.updatedAt,
     files: {
-      proposalDecisions: serializeJson(decisions),
       applyPreview: serializeJson(storedPreview)
     },
     buildNextRun: (run, artifacts) => ({
@@ -795,15 +813,13 @@ export async function persistRuleApplyCompletion(
   assertPlanMatchesState(plan, state)
   assertManifestMatchesPlan(manifest, plan)
   const current = await currentMatchingRun(state)
+  await assertStoredApplyBinding(current, plan)
   const completionAt = timestampAfter(current.updatedAt, manifest.committed_at)
-  const preview = storedPreviewFromPlan(plan, decisions, manifest.committed_at)
   return commitRuleAuthoringArtifactGeneration({
     workspaceRoot: current.workspaceRoot,
     runId: current.runId,
     expectedUpdatedAt: current.updatedAt,
     files: {
-      proposalDecisions: serializeJson(decisions),
-      applyPreview: serializeJson(preview),
       applyManifest: serializeJson(manifest)
     },
     buildNextRun: (run, artifacts) => completedRun(run, artifacts, completionAt)
@@ -847,12 +863,15 @@ export async function recoverCommittedRuleAuthoringApply(
   const run = await readRuleAuthoringRun(getRuleAuthoringPaths(input.workspaceRoot, input.runId))
   if (run.currentPhase === "completed" || run.artifacts.applyManifest !== undefined) return undefined
   if (run.currentPhase !== "human_review" && run.currentPhase !== "apply") return undefined
-  const committed = await findCommittedTransactionManifest(run)
-  if (!committed) return undefined
-  if (run.artifacts.proposalDecisions === undefined || run.artifacts.applyPreview === undefined) {
-    throw new Error("Committed apply cannot be attached without its persisted decisions and preview")
+  let committed: ApplyManifestV1 | undefined
+  try {
+    committed = await findCommittedTransactionManifest(run)
+    if (!committed) return undefined
+    await assertStoredApplyBinding(run, committed)
+    await verifyCommittedManifestForRun(run, committed)
+  } catch {
+    throw new Error("Committed apply binding validation failed")
   }
-  await verifyCommittedManifestForRun(run, committed)
   const completionAt = timestampAfter(run.updatedAt, committed.committed_at)
   await commitRuleAuthoringArtifactGeneration({
     workspaceRoot: run.workspaceRoot,
@@ -965,9 +984,16 @@ async function findCommittedTransactionManifest(
     if (
       journal.schema_version !== RULE_APPLY_TRANSACTION_SCHEMA_VERSION ||
       journal.transaction_id !== entry.name ||
-      !Array.isArray(journal.targets)
+      !Array.isArray(journal.targets) ||
+      !Array.isArray(journal.decisions) ||
+      !Array.isArray(journal.retirements)
     ) {
       throw new Error("Committed apply transaction journal is malformed")
+    }
+    try {
+      validateRuleApplyMetadata(journal.decisions, journal.retirements)
+    } catch {
+      throw new Error("Committed apply transaction journal decision or retirement metadata is malformed")
     }
     const manifestBytes = await readWorkspaceFileBounded(
       run.workspaceRoot,
@@ -980,8 +1006,16 @@ async function findCommittedTransactionManifest(
       parseJsonObject(decodeUtf8(manifestBytes, "Apply manifest"), "Apply manifest"),
       run.runId
     )
-    if (manifest.transaction_id !== entry.name ||
-      !journalTargetsMatchManifest(journal.targets, manifest)) {
+    if (
+      manifest.transaction_id !== entry.name ||
+      !journalTargetsMatchManifest(journal.targets, manifest) ||
+      !ruleApplyMetadataEquals(
+        journal.decisions,
+        journal.retirements,
+        manifest.decisions,
+        manifest.retirements
+      )
+    ) {
       throw new Error("Committed apply transaction does not match its manifest")
     }
     matches.push(manifest)
@@ -1251,11 +1285,20 @@ function previewModel(
   }
 }
 
-function storedPreviewFromPlan(
+async function storedPreviewFromPlan(
+  run: RuleAuthoringRunV1,
+  proposal: RuleProposalV1,
   plan: RuleApplyPlan,
   decisions: RuleProposalDecisionsV1,
   generatedAt: string
-): StoredApplyPreviewV1 {
+): Promise<StoredApplyPreviewV1> {
+  const artifacts = await loadBoundHumanReviewArtifacts(run)
+  if (
+    stableJson(artifacts.proposal) !== stableJson(proposal) ||
+    stableJson(artifacts.decisions) !== stableJson(decisions)
+  ) {
+    throw new Error("Stored Human Triage artifacts changed before apply preview persistence")
+  }
   const summary = previewModel(plan, decisions, generatedAt)
   return {
     schema_version: RULE_APPLY_PREVIEW_SCHEMA_VERSION,
@@ -1263,6 +1306,7 @@ function storedPreviewFromPlan(
     generated_at: generatedAt,
     targets: plan.targets.map((target) => ({
       asset: target.asset,
+      path: target.path,
       expected_pre_image: structuredClone(target.expected_pre_image),
       post_image_sha256: target.post_image_sha256
     })),
@@ -1270,8 +1314,203 @@ function storedPreviewFromPlan(
       accepted: summary.acceptedCount,
       edited: summary.editedCount,
       rejected: summary.rejectedCount
+    },
+    binding: {
+      proposal_artifact: requiredArtifactPointer(run, "ruleProposal"),
+      proposal_sha256: canonicalValueSha256(artifacts.proposal),
+      proposal_validation_artifact: requiredArtifactPointer(run, "proposalValidation"),
+      proposal_validation_sha256: canonicalValueSha256(artifacts.validation),
+      proposal_decisions_artifact: requiredArtifactPointer(run, "proposalDecisions"),
+      proposal_decisions_sha256: canonicalValueSha256(artifacts.decisions),
+      plan_metadata_sha256: planMetadataSha256(plan)
     }
   }
+}
+
+async function assertStoredApplyBinding(
+  run: RuleAuthoringRunV1,
+  plan: Pick<RuleApplyPlan, "run_id" | "targets" | "decisions" | "retirements"> |
+    Pick<ApplyManifestV1, "run_id" | "targets" | "decisions" | "retirements">
+): Promise<void> {
+  const artifacts = await loadBoundHumanReviewArtifacts(run)
+  const preview = parseStoredApplyPreview(
+    parseJsonObject(
+      await readResolvedArtifact(run, "applyPreview", DEFAULT_RULE_AUTHORING_LIMITS.maxProposalBytes),
+      "Apply preview"
+    ),
+    run,
+    artifacts.decisions
+  )
+  const expectedTargets = canonicalPlanTargets(plan.targets)
+  if (
+    preview.binding.proposal_sha256 !== canonicalValueSha256(artifacts.proposal) ||
+    preview.binding.proposal_validation_sha256 !== canonicalValueSha256(artifacts.validation) ||
+    preview.binding.proposal_decisions_sha256 !== canonicalValueSha256(artifacts.decisions) ||
+    preview.binding.plan_metadata_sha256 !== planMetadataSha256(plan) ||
+    stableJson(preview.targets) !== stableJson(expectedTargets)
+  ) {
+    throw new Error("Committed apply binding does not match its Human Triage artifacts")
+  }
+}
+
+async function loadBoundHumanReviewArtifacts(run: RuleAuthoringRunV1): Promise<{
+  proposal: RuleProposalV1
+  validation: Record<string, unknown>
+  decisions: RuleProposalDecisionsV1
+}> {
+  requiredArtifactPointer(run, "ruleProposal")
+  requiredArtifactPointer(run, "proposalValidation")
+  requiredArtifactPointer(run, "proposalDecisions")
+  const proposalValue = parseJsonObject(
+    await readResolvedArtifact(run, "ruleProposal", DEFAULT_RULE_AUTHORING_LIMITS.maxProposalBytes),
+    "Stored rule proposal"
+  )
+  const schema = validateRuleProposalSchema(proposalValue)
+  if (!schema.valid || schema.proposal.run_id !== run.runId) {
+    throw new Error("Committed apply binding proposal is malformed")
+  }
+  const selection = parseJsonObject(
+    await readResolvedArtifact(run, "evidenceSelection", DEFAULT_RULE_AUTHORING_LIMITS.maxSelectedEvidenceBytes),
+    "Evidence selection"
+  ) as unknown as RuleApplyEvidence["selection"]
+  const validation = parseJsonObject(
+    await readResolvedArtifact(run, "proposalValidation", DEFAULT_RULE_AUTHORING_LIMITS.maxProposalBytes),
+    "Proposal validation"
+  )
+  const context = assertStoredProposalValidation(validation, schema.proposal, selection)
+  const semantic = parseAndValidateRuleProposal(JSON.stringify(schema.proposal), context)
+  if (!semantic.valid) throw new Error("Committed apply binding proposal validation is invalid")
+  const decisions = validateDecisionOverlayForPersistence(
+    parseJsonObject(
+      await readResolvedArtifact(run, "proposalDecisions", DEFAULT_RULE_AUTHORING_LIMITS.maxProposalBytes),
+      "Proposal decisions"
+    ) as unknown as RuleProposalDecisionsV1,
+    semantic.proposal,
+    true
+  )
+  return { proposal: semantic.proposal, validation, decisions }
+}
+
+function parseStoredApplyPreview(
+  value: unknown,
+  run: RuleAuthoringRunV1,
+  decisions: RuleProposalDecisionsV1
+): StoredApplyPreviewV1 {
+  if (
+    !isPlainObject(value) ||
+    !hasOnlyKeys(value, [
+      "schema_version",
+      "run_id",
+      "generated_at",
+      "targets",
+      "decision_summary",
+      "binding"
+    ]) ||
+    value.schema_version !== RULE_APPLY_PREVIEW_SCHEMA_VERSION ||
+    value.run_id !== run.runId ||
+    !isCanonicalTimestamp(value.generated_at) ||
+    !Array.isArray(value.targets) ||
+    value.targets.length !== TARGET_SPECS.length ||
+    !isPlainObject(value.decision_summary) ||
+    !hasOnlyKeys(value.decision_summary, ["accepted", "edited", "rejected"]) ||
+    !isPlainObject(value.binding) ||
+    !hasOnlyKeys(value.binding, [
+      "proposal_artifact",
+      "proposal_sha256",
+      "proposal_validation_artifact",
+      "proposal_validation_sha256",
+      "proposal_decisions_artifact",
+      "proposal_decisions_sha256",
+      "plan_metadata_sha256"
+    ])
+  ) {
+    throw new Error("Committed apply binding preview is malformed")
+  }
+  for (const [index, target] of value.targets.entries()) {
+    const [asset, targetPath] = TARGET_SPECS[index]
+    if (
+      !isPlainObject(target) ||
+      !hasOnlyKeys(target, ["asset", "path", "expected_pre_image", "post_image_sha256"]) ||
+      target.asset !== asset ||
+      target.path !== targetPath ||
+      !isExpectedPreImage(target.expected_pre_image) ||
+      !SHA256.test(String(target.post_image_sha256))
+    ) throw new Error("Committed apply binding preview target is malformed")
+  }
+  const values = Object.values(decisions.decisions)
+  const expectedSummary = {
+    accepted: values.filter(({ decision }) => decision === "accept").length,
+    edited: values.filter(({ decision }) => decision === "edit").length,
+    rejected: values.filter(({ decision }) => decision === "reject").length
+  }
+  if (
+    !Object.values(value.decision_summary).every((item) =>
+      Number.isSafeInteger(item) && Number(item) >= 0 && Number(item) <= 400) ||
+    stableJson(value.decision_summary) !== stableJson(expectedSummary) ||
+    value.binding.proposal_artifact !== requiredArtifactPointer(run, "ruleProposal") ||
+    value.binding.proposal_validation_artifact !== requiredArtifactPointer(run, "proposalValidation") ||
+    value.binding.proposal_decisions_artifact !== requiredArtifactPointer(run, "proposalDecisions") ||
+    !SHA256.test(String(value.binding.proposal_sha256)) ||
+    !SHA256.test(String(value.binding.proposal_validation_sha256)) ||
+    !SHA256.test(String(value.binding.proposal_decisions_sha256)) ||
+    !SHA256.test(String(value.binding.plan_metadata_sha256))
+  ) {
+    throw new Error("Committed apply binding preview does not match its artifact pointers")
+  }
+  return structuredClone(value) as unknown as StoredApplyPreviewV1
+}
+
+function requiredArtifactPointer(
+  run: RuleAuthoringRunV1,
+  key: "ruleProposal" | "proposalValidation" | "proposalDecisions" | "applyPreview"
+): string {
+  const value = run.artifacts[key]
+  if (value === undefined) throw new Error(`Committed apply binding ${key} artifact is missing`)
+  return value
+}
+
+function planMetadataSha256(
+  value: Pick<RuleApplyPlan, "run_id" | "targets" | "decisions" | "retirements"> |
+    Pick<ApplyManifestV1, "run_id" | "targets" | "decisions" | "retirements">
+): string {
+  const metadata = validateRuleApplyMetadata(value.decisions, value.retirements)
+  return canonicalValueSha256({
+    schema_version: "bob-bazaar-review/rule-apply-plan-metadata/v1",
+    run_id: value.run_id,
+    targets: canonicalPlanTargets(value.targets),
+    decisions: metadata.decisions,
+    retirements: metadata.retirements
+  })
+}
+
+function canonicalPlanTargets(
+  targets: readonly {
+    asset: string
+    path: string
+    expected_pre_image: unknown
+    post_image_sha256: string
+  }[]
+): StoredApplyPreviewV1["targets"] {
+  if (targets.length !== TARGET_SPECS.length) throw new Error("Apply plan target metadata is malformed")
+  return targets.map((target, index) => {
+    const [asset, targetPath] = TARGET_SPECS[index]
+    if (
+      target.asset !== asset ||
+      target.path !== targetPath ||
+      !isExpectedPreImage(target.expected_pre_image) ||
+      !SHA256.test(String(target.post_image_sha256))
+    ) throw new Error("Apply plan target metadata is malformed")
+    return {
+      asset,
+      path: targetPath,
+      expected_pre_image: structuredClone(target.expected_pre_image),
+      post_image_sha256: target.post_image_sha256
+    }
+  })
+}
+
+function canonicalValueSha256(value: unknown): string {
+  return sha256(Buffer.from(stableJson(value), "utf8"))
 }
 
 function assertStoredProposalValidation(
@@ -1452,9 +1691,17 @@ async function currentMatchingRun(state: RuleProposalTriageState): Promise<RuleA
   const current = await readRuleAuthoringRun(
     getRuleAuthoringPaths(state.run.workspaceRoot, state.run.runId)
   )
-  for (const key of ["ruleProposal", "proposalValidation"] as const) {
+  if (current.updatedAt !== state.run.updatedAt) {
+    throw new Error("Rule authoring run changed since it was loaded")
+  }
+  for (const key of [
+    "ruleProposal",
+    "proposalValidation",
+    "proposalDecisions",
+    "applyPreview"
+  ] as const) {
     if (current.artifacts[key] !== state.run.artifacts[key]) {
-      throw new Error("Stored validated proposal changed while Human Triage was open")
+      throw new Error("Stored Human Triage artifacts changed while Human Triage was open")
     }
   }
   if (current.currentPhase === "completed") {
@@ -1504,16 +1751,27 @@ async function readWorkspaceFileBounded(
   await assertSafeParentChain(workspaceRoot, path.dirname(filePath))
   let handle: fs.FileHandle | undefined
   try {
+    const beforePath = await fs.lstat(filePath, { bigint: true })
+    if (beforePath.isSymbolicLink() || !beforePath.isFile() || beforePath.size > BigInt(maxBytes)) {
+      throw new Error("Rule authoring file is not a bounded regular file")
+    }
     handle = await fs.open(filePath, fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0))
-    const before = await handle.stat()
-    if (!before.isFile() || before.size > maxBytes) throw new Error("Rule authoring file exceeds its byte limit")
+    const before = await handle.stat({ bigint: true })
+    if (
+      !before.isFile() ||
+      before.size > BigInt(maxBytes) ||
+      !sameBoundedReadIdentity(beforePath, before)
+    ) throw new Error("Rule authoring file changed before it was read")
     const bytes = await handle.readFile()
-    const after = await handle.stat()
+    const after = await handle.stat({ bigint: true })
+    const afterPath = await fs.lstat(filePath, { bigint: true })
     if (
       bytes.byteLength > maxBytes ||
-      before.dev !== after.dev ||
-      before.ino !== after.ino ||
-      before.size !== after.size
+      afterPath.isSymbolicLink() ||
+      !afterPath.isFile() ||
+      after.size !== BigInt(bytes.byteLength) ||
+      !sameBoundedReadIdentity(before, after) ||
+      !sameBoundedReadIdentity(after, afterPath)
     ) {
       throw new Error("Rule authoring file changed while it was read")
     }
@@ -1525,6 +1783,15 @@ async function readWorkspaceFileBounded(
   } finally {
     await handle?.close().catch(() => undefined)
   }
+}
+
+function sameBoundedReadIdentity(left: BigIntStats, right: BigIntStats): boolean {
+  return left.dev === right.dev &&
+    left.ino === right.ino &&
+    left.mode === right.mode &&
+    left.size === right.size &&
+    left.mtimeNs === right.mtimeNs &&
+    left.ctimeNs === right.ctimeNs
 }
 
 async function assertSafeParentChain(workspaceRoot: string, directory: string): Promise<void> {
@@ -1589,7 +1856,17 @@ function validateApplyManifest(value: unknown, runId: string): ApplyManifestV1 {
       throw new Error("Rule authoring committed apply manifest target is malformed")
     }
   }
-  return structuredClone(value) as unknown as ApplyManifestV1
+  let metadata
+  try {
+    metadata = validateRuleApplyMetadata(value.decisions, value.retirements)
+  } catch {
+    throw new Error("Rule authoring committed apply manifest decision or retirement metadata is malformed")
+  }
+  return {
+    ...structuredClone(value),
+    decisions: metadata.decisions,
+    retirements: metadata.retirements
+  } as unknown as ApplyManifestV1
 }
 
 function verifyApprovedReferences(
@@ -1745,8 +2022,23 @@ function verifyCurrentRunProvenanceAgainstChunks(
   for (const decision of manifest.decisions) {
     if (decision.decision === "reject") continue
     for (const ref of decision.source_refs as unknown as readonly unknown[]) {
-      assertAuthoritativeProvenanceRef(ref, authoritative)
+      assertAuthoritativeDecisionRef(ref, authoritative)
     }
+  }
+}
+
+function assertAuthoritativeDecisionRef(
+  value: unknown,
+  chunks: ReadonlyMap<string, { locator: unknown; textSha256: string }>
+): void {
+  if (
+    !isPlainObject(value) ||
+    !hasOnlyKeys(value, ["source_id", "chunk_id"]) ||
+    typeof value.source_id !== "string" ||
+    typeof value.chunk_id !== "string" ||
+    !chunks.has(`${value.source_id}\u0000${value.chunk_id}`)
+  ) {
+    throw new Error("Rule apply decision source reference is not authoritative")
   }
 }
 
@@ -1951,7 +2243,14 @@ function assertManifestMatchesPlan(manifest: ApplyManifestV1, plan: RuleApplyPla
     manifest.targets.some((target, index) =>
       target.asset !== plan.targets[index].asset ||
       target.path !== plan.targets[index].path ||
-      target.post_image_sha256 !== plan.targets[index].post_image_sha256)
+      target.post_image_sha256 !== plan.targets[index].post_image_sha256 ||
+      stableJson(target.expected_pre_image) !== stableJson(plan.targets[index].expected_pre_image)) ||
+    !ruleApplyMetadataEquals(
+      manifest.decisions,
+      manifest.retirements,
+      plan.decisions,
+      plan.retirements
+    )
   ) {
     throw new Error("Committed apply manifest does not match the validated apply plan")
   }

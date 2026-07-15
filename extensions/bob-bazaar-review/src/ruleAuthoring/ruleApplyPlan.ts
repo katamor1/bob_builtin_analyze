@@ -1040,13 +1040,29 @@ function valueBeforeOperation(
   if (entry.operation.operation === "add") return null
   const targetId = requireAssignedId(entry)
   if (entry.targetAsset === "rule") {
-    return structuredClone(requiredValue(current.checklist.rules.find(({ id }) => id === targetId)))
+    return copyRetirementRule(
+      requiredValue(current.checklist.rules.find(({ id }) => id === targetId))
+    )
   }
   const sections = entry.targetAsset === "project_context"
     ? current.projectContext.sections
     : current.promptAddendum.sections
   const section = requiredValue(sections.find(({ id }) => id === targetId))
   return { heading: section.heading, markdown: section.markdown }
+}
+
+function copyRetirementRule(value: ProjectRule): ProjectRule {
+  const output: ProjectRule = {
+    id: value.id,
+    category: value.category,
+    title: value.title,
+    description: value.description,
+    severity_on_fail: value.severity_on_fail
+  }
+  if (value.applies_when !== undefined) output.applies_when = [...value.applies_when]
+  if (value.evidence_required !== undefined) output.evidence_required = value.evidence_required
+  if (value.review_hint !== undefined) output.review_hint = value.review_hint
+  return output
 }
 
 function normalizeSourceRefs(

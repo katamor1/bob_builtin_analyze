@@ -128,7 +128,14 @@ function bundle(overrides = {}) {
     project: "sample",
     rules: [
       { id: "PRJ-0001", ...rule({ title: "Existing update target" }) },
-      { id: "PRJ-0003", ...rule({ title: "Existing retire target" }) }
+      {
+        id: "PRJ-0003",
+        ...rule({
+          title: "Existing retire target",
+          description: "First retirement line.\nSecond retirement line."
+        }),
+        absolute_path: "/private/legacy-policy.docx"
+      }
     ]
   })
   const projectContextBytes = Buffer.from([
@@ -333,6 +340,8 @@ test("materializes selective decisions with stable IDs, preserved manual Markdow
   }])
   assert.equal(first.retirements[0].target_id, "PRJ-0003")
   assert.equal(first.retirements[0].previous.title, "Existing retire target")
+  assert.equal(first.retirements[0].previous.description, "First retirement line.\nSecond retirement line.")
+  assert.equal(first.retirements[0].previous.absolute_path, undefined)
 
   assert.deepEqual(current, before.bundle)
   assert.deepEqual(proposal, before.proposal)
