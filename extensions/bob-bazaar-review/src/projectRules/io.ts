@@ -8,6 +8,10 @@ export interface ProjectRulesPaths {
   reviewDir: string
   checklistPath: string
   schemaPath: string
+  contextPath: string
+  addendumPath: string
+  sourcesPath: string
+  provenancePath: string
 }
 
 const ALLOW_EXTERNAL_REVIEW_RULES_ENV = "BOB_BAZAAR_ALLOW_EXTERNAL_REVIEW_RULES"
@@ -17,7 +21,11 @@ export function getProjectRulesPaths(workspaceRoot: string): ProjectRulesPaths {
   return {
     reviewDir,
     checklistPath: path.join(reviewDir, "checklist.json"),
-    schemaPath: path.join(reviewDir, "review-result.schema.json")
+    schemaPath: path.join(reviewDir, "review-result.schema.json"),
+    contextPath: path.join(reviewDir, "project-context.md"),
+    addendumPath: path.join(reviewDir, "review-prompt-addendum.md"),
+    sourcesPath: path.join(reviewDir, "rule-sources.json"),
+    provenancePath: path.join(reviewDir, "rule-provenance.json")
   }
 }
 
@@ -132,4 +140,3 @@ function assertChecklist(value: any, filePath: string): asserts value is Project
     }
   }
 }
-
