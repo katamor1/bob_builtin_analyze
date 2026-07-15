@@ -127,10 +127,33 @@ async function ensureContainedRunStateMigrationBackupUnlocked(
     if (!sameIdentity(tempIdentity, linkedTemp) || !sameIdentity(linkedTemp, linkedTarget)) {
       throw new Error(`Workflow run '${runId}' migration backup changed during create-once publication.`)
     }
+    const expectedBytes = Buffer.from(content, "utf8")
+    const [linkedTempBytes, linkedTargetBytes] = await Promise.all([
+      readLinkedPublicationFile(
+        tempPath,
+        root,
+        linkedTemp,
+        `Workflow run '${runId}' migration backup temporary file`
+      ),
+      readLinkedPublicationFile(
+        backupPath,
+        root,
+        linkedTarget,
+        `Workflow run '${runId}' migration backup`
+      )
+    ])
+    if (!linkedTempBytes.equals(expectedBytes) || !linkedTargetBytes.equals(expectedBytes)) {
+      throw new Error(`Workflow run '${runId}' migration backup publication bytes changed before create-once publication was finalized.`)
+    }
     await fs.rm(tempPath)
-    const targetIdentity = await directRegularFile(backupPath, root, `Workflow run '${runId}' migration backup`)
-    if (!sameIdentity(tempIdentity, targetIdentity)) {
-      throw new Error(`Workflow run '${runId}' migration backup changed while finalizing create-once publication.`)
+    const finalizedBytes = await readLinkedPublicationFile(
+      backupPath,
+      root,
+      { dev: linkedTemp.dev, ino: linkedTemp.ino, nlink: 1n },
+      `Workflow run '${runId}' migration backup`
+    )
+    if (!finalizedBytes.equals(expectedBytes)) {
+      throw new Error(`Workflow run '${runId}' migration backup publication bytes changed while finalizing create-once publication.`)
     }
     await assertDirectoryIdentity(runsRoot, "Workflow runs directory")
     await assertDirectoryIdentity(runDirectory, `Workflow run '${runId}' directory`)
@@ -316,13 +339,13 @@ async function readLinkedPublicationFile(
   const noFollow = typeof constants.O_NOFOLLOW === "number" ? constants.O_NOFOLLOW : 0
   const before = await linkedPublicationFile(filePath, root, label)
   if (!sameIdentity(before, expected) || before.nlink !== expected.nlink) {
-    throw new Error(`${label} changed before interrupted publication recovery.`)
+    throw new Error(`${label} changed before publication content verification.`)
   }
   const handle = await fs.open(filePath, constants.O_RDONLY | noFollow)
   try {
     const opened = await handle.stat({ bigint: true })
     if (!opened.isFile() || !sameIdentity(opened, expected) || opened.nlink !== expected.nlink) {
-      throw new Error(`${label} changed while interrupted publication recovery opened it.`)
+      throw new Error(`${label} changed while publication content verification opened it.`)
     }
     const bytes = await handle.readFile()
     const read = await handle.stat({ bigint: true })
@@ -334,7 +357,7 @@ async function readLinkedPublicationFile(
       || !sameIdentity(after, expected)
       || after.nlink !== expected.nlink
     ) {
-      throw new Error(`${label} changed while interrupted publication recovery read it.`)
+      throw new Error(`${label} changed while publication content verification read it.`)
     }
     return bytes
   } finally {

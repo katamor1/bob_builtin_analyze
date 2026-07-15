@@ -483,6 +483,57 @@ test("migration backup rolls back a publication whose temp inode was replaced be
   assert.equal((await fsp.lstat(backupPath)).nlink, 1)
 })
 
+test("migration backup rolls back a publication whose temp bytes changed in-place before link", async (t) => {
+  const root = tempRoot()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const runId = "20260712T000000Z-link-byte-swap-000000000015"
+  const historical = "historical-byte-publication\n"
+  await prepareRunDirectory(root, runId)
+  const rootRunsDirectory = runsDirectory(root)
+  const backupPath = path.join(runDirectory(root, runId), "run-state-v0.backup.json")
+  const originalLink = fsp.link
+  let injected = false
+
+  fsp.link = async (existingPath, newPath) => {
+    const isPublication = path.resolve(String(newPath)) === path.resolve(backupPath)
+    if (!injected && isPublication) {
+      injected = true
+      const before = await fsp.lstat(existingPath, { bigint: true })
+      const handle = await fsp.open(existingPath, "r+")
+      try {
+        await handle.truncate(0)
+        await handle.writeFile("attacker\n", "utf8")
+        await handle.sync()
+      } finally {
+        await handle.close()
+      }
+      const after = await fsp.lstat(existingPath, { bigint: true })
+      assert.equal(after.dev, before.dev)
+      assert.equal(after.ino, before.ino)
+    }
+    return originalLink(existingPath, newPath)
+  }
+
+  try {
+    await assert.rejects(
+      ensureContainedRunStateMigrationBackup(root, runId, historical),
+      /publication.*bytes|historical bytes|content changed/i
+    )
+  } finally {
+    fsp.link = originalLink
+  }
+
+  assert.equal(injected, true)
+  await assert.rejects(fsp.access(backupPath), { code: "ENOENT" })
+  assert.deepEqual(
+    (await fsp.readdir(rootRunsDirectory)).filter((name) => name.startsWith(`.${runId}.`) && name.endsWith(".tmp")),
+    []
+  )
+  await ensureContainedRunStateMigrationBackup(root, runId, historical)
+  assert.equal(await fsp.readFile(backupPath, "utf8"), historical)
+  assert.equal((await fsp.lstat(backupPath)).nlink, 1)
+})
+
 test("migration backup rolls back workspace links after a third external link appears", async (t) => {
   const root = tempRoot()
   const outside = tempRoot()
