@@ -50,7 +50,8 @@ jobs:
 
           run_store_test = Path("extensions/bob-bazaar-review/test/ruleAuthoringRunStore.test.js")
           run_store_text = run_store_test.read_text(encoding="utf-8")
-          replacement = r'''async function seedExhaustedDirectoryLock(lockDirectory) {
+
+          exhausted_replacement = r'''async function seedExhaustedDirectoryLock(lockDirectory) {
             await fs.mkdir(lockDirectory, { recursive: true })
             const seedShardCount = 32
             const ownerToken = "a".repeat(32)
@@ -87,13 +88,46 @@ jobs:
             }
           }
           '''
-          pattern = re.compile(
+          exhausted_pattern = re.compile(
               r'async function seedExhaustedDirectoryLock\(lockDirectory\) \{.*?\n\}\n\n(?=async function waitForRecoveryMode)',
               re.DOTALL,
           )
-          run_store_text, count = pattern.subn(lambda _: replacement + "\n", run_store_text)
-          if count != 1:
-              raise SystemExit(f"seedExhaustedDirectoryLock block matched {count} times")
+          run_store_text, exhausted_count = exhausted_pattern.subn(
+              lambda _: exhausted_replacement + "\n",
+              run_store_text,
+          )
+          if exhausted_count != 1:
+              raise SystemExit(f"seedExhaustedDirectoryLock block matched {exhausted_count} times")
+
+          closure_cap_replacement = r'''  const source = path.join(paths.runDirectory, ".authoring-run.lock.000000000001.closed")
+            const closureSeedCount = 32
+            const closureSeeds = Array.from({ length: closureSeedCount }, (_, index) => (
+              path.join(paths.runDirectory, `.closure-work-seed-${String(index + 1).padStart(2, "0")}`)
+            ))
+            await Promise.all(closureSeeds.map((seed) => fs.copyFile(source, seed)))
+            for (let start = 2; start <= 10_001; start += 200) {
+              await Promise.all(Array.from({ length: Math.min(200, 10_002 - start) }, (_, offset) => {
+                const generation = start + offset
+                const shard = (generation - 2) % closureSeedCount
+                return fs.link(
+                  closureSeeds[shard],
+                  path.join(paths.runDirectory, `.authoring-run.lock.${String(generation).padStart(12, "0")}.closed`)
+                )
+              }))
+            }
+          '''
+          closure_cap_pattern = re.compile(
+              r'  const source = path\.join\(paths\.runDirectory, "\.authoring-run\.lock\.000000000001\.closed"\)\n'
+              r'  for \(let start = 2; start <= 10_001; start \+= 200\) \{.*?\n  \}\n',
+              re.DOTALL,
+          )
+          run_store_text, closure_cap_count = closure_cap_pattern.subn(
+              lambda _: closure_cap_replacement,
+              run_store_text,
+          )
+          if closure_cap_count != 1:
+              raise SystemExit(f"closure history fixture block matched {closure_cap_count} times")
+
           run_store_test.write_text(run_store_text, encoding="utf-8", newline="\n")
           '@ | python -
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -105,6 +139,9 @@ jobs:
           }
           if ($lockText -notmatch 'const seedShardCount = 32') {
             throw "Rotating-lock seed sharding was not installed"
+          }
+          if ($lockText -notmatch 'const closureSeedCount = 32') {
+            throw "Closure-history seed sharding was not installed"
           }
           if ($lockText -match 'const lockSeed = path\.join\(lockDirectory, "\.lock-seed"\)') {
             throw "Legacy single-seed lock fixture is still present"
