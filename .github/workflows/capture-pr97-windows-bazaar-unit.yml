@@ -1,0 +1,73 @@
+name: capture-pr97-windows-bazaar-unit
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/capture-pr97-windows-bazaar-unit.yml"
+
+permissions:
+  actions: read
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Extract failed Windows unit-test evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          RUN_ID: "29457533366"
+          JOB_ID: "87493923022"
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          diagnostic_branch="$GITHUB_HEAD_REF"
+
+          gh run view "$RUN_ID" --repo "$repo" --job "$JOB_ID" --log > /tmp/job.log
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          raw = Path('/tmp/job.log').read_text(encoding='utf-8', errors='replace')
+          ansi = re.compile(r'\x1b\[[0-9;]*[A-Za-z]')
+          lines = [ansi.sub('', line) for line in raw.splitlines()]
+          pattern = re.compile(
+              r'not ok|AssertionError|ERR_ASSERTION|failureType|error:|stack:|expected:|actual:|'
+              r'npm error|Process completed with exit code|failed|failures',
+              re.IGNORECASE,
+          )
+          indexes = [i for i, line in enumerate(lines) if pattern.search(line)]
+          selected = set()
+          for index in indexes:
+              selected.update(range(max(0, index - 8), min(len(lines), index + 24)))
+          ordered = sorted(selected)
+          chunks = []
+          previous = None
+          for index in ordered:
+              if previous is not None and index > previous + 1:
+                  chunks.append('...')
+              chunks.append(lines[index])
+              previous = index
+          text = '\n'.join(chunks)
+          if len(text) > 45000:
+              text = text[:45000] + '\n... [truncated]'
+          Path('/tmp/failure.txt').write_text(text or 'No matching failure lines found.', encoding='utf-8')
+          PY
+
+          {
+            echo "## PR #97 Windows / bob-bazaar-review failure evidence"
+            echo
+            echo "Run: \`$RUN_ID\`, job: \`$JOB_ID\`"
+            echo
+            echo '```text'
+            cat /tmp/failure.txt
+            echo '```'
+          } > /tmp/comment.md
+
+          gh pr comment "$PR_NUMBER" --repo "$repo" --body-file /tmp/comment.md
+          gh api --method DELETE "repos/$repo/git/refs/heads/$diagnostic_branch"
