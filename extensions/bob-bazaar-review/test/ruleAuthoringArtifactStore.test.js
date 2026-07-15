@@ -9,7 +9,8 @@ const { buildDocumentChunkId } = require("../out/ruleAuthoring/documentChunk")
 const { getRuleAuthoringPaths } = require("../out/ruleAuthoring/ruleAuthoringPaths")
 const {
   createRuleAuthoringRun,
-  readRuleAuthoringRun
+  readRuleAuthoringRun,
+  writeRuleAuthoringRun
 } = require("../out/ruleAuthoring/ruleAuthoringRunStore")
 
 function artifactStore() {
@@ -133,6 +134,158 @@ function extractionFixture(root, options = {}) {
   }
 }
 
+function artifactPointer(root, runId, basename, generationByte = "1") {
+  const paths = getRuleAuthoringPaths(root, runId)
+  return path.relative(
+    root,
+    path.join(paths.generationsDirectory, `gen-${generationByte.repeat(32)}`, basename)
+  )
+}
+
+async function writeArtifacts(run, artifacts) {
+  const next = {
+    ...run,
+    artifacts,
+    updatedAt: new Date(Date.parse(run.updatedAt) + 1).toISOString()
+  }
+  await writeRuleAuthoringRun(next, run.updatedAt)
+  return next
+}
+
+function renameFixtureSources(fixture, logicalName) {
+  for (const source of fixture.selectedSources) source.logicalName = logicalName
+  for (const source of fixture.batch.manifest.sources) source.logical_name = logicalName
+  for (const document of fixture.batch.documents) document.logicalName = logicalName
+  for (const mapping of fixture.batch.localSourceMappings) mapping.logicalName = logicalName
+  for (const diagnostic of fixture.batch.diagnostics) diagnostic.logical_name = logicalName
+  return fixture
+}
+
+function duplicateMultiplicityFixture(root, mode) {
+  const logicalName = "policy.pdf"
+  const sourceHash = "a".repeat(64)
+  const sourceId = `src-${sourceHash.slice(0, 12)}`
+  const count = mode === "existing" ? 2 : 3
+  const selectedSources = Array.from({ length: count }, (_, index) => ({
+    selectedId: `selected-${String(index + 1).repeat(32)}`,
+    absolutePath: path.join(root, String(index + 1), logicalName),
+    logicalName,
+    mediaType: "pdf",
+    byteSize: 42
+  }))
+  const canonical = canonicalChunk(sourceId, "canonical policy")
+  const hasCanonical = mode === "in_run"
+  const duplicateCount = hasCanonical ? count - 1 : count
+  return {
+    selectedSources,
+    exclusionApprovals: selectedSources.slice(hasCanonical ? 1 : 0).map((source) => ({
+      selectedId: source.selectedId,
+      approved: true
+    })),
+    batch: {
+      manifest: {
+        schema_version: "bob-bazaar-review/rule-sources/v1",
+        generated_at: "2026-07-15T00:00:00.000Z",
+        sources: hasCanonical ? [{
+          source_id: sourceId,
+          logical_name: logicalName,
+          media_type: "pdf",
+          sha256: sourceHash,
+          byte_size: 42,
+          extraction_status: "success",
+          extractor: { id: "fixture", version: "1" },
+          warnings: []
+        }] : []
+      },
+      documents: hasCanonical ? [{
+        logicalName,
+        mediaType: "pdf",
+        byteSize: 42,
+        sha256: sourceHash,
+        status: "success",
+        warnings: [],
+        extractor: { id: "fixture", version: "1" },
+        chunks: [canonical],
+        shareable: true,
+        localPath: selectedSources[0].absolutePath
+      }] : [],
+      aiChunks: hasCanonical ? [canonical] : [],
+      localSourceMappings: selectedSources.map((source, index) => ({
+        logicalName,
+        absolutePath: source.absolutePath,
+        sha256: sourceHash,
+        status: hasCanonical && index === 0 ? "success" : "duplicate"
+      })),
+      duplicates: Array.from({ length: duplicateCount }, () => ({
+        logical_name: logicalName,
+        sha256: sourceHash,
+        reason: hasCanonical ? "duplicate_in_run" : "duplicate_existing_manifest",
+        duplicate_of: hasCanonical ? logicalName : sourceId
+      })),
+      diagnostics: []
+    }
+  }
+}
+
+test("resume treats a pointer-free run as empty but rejects inconsistent artifact lifecycles", async (t) => {
+  const store = artifactStore()
+
+  await t.test("fresh run", async (t) => {
+    const root = await workspace(t)
+    const run = await createRuleAuthoringRun({ workspaceRoot: root, runId: "fresh-resume" })
+    const resumed = await store.resumeRuleAuthoringExtraction(run)
+
+    assert.deepEqual(resumed, {
+      run,
+      sources: [],
+      chunks: [],
+      includedChunkIds: []
+    })
+  })
+
+  await t.test("invalidated run after restart", async (t) => {
+    const root = await workspace(t)
+    const run = await createRuleAuthoringRun({ workspaceRoot: root, runId: "invalidated-resume" })
+    const withExtraction = await writeArtifacts(run, {
+      sourceManifest: artifactPointer(root, run.runId, "source-manifest.json"),
+      documentChunks: artifactPointer(root, run.runId, "document-chunks.jsonl"),
+      sourceScope: artifactPointer(root, run.runId, "source-scope.json")
+    })
+    const invalidated = await store.invalidateRuleAuthoringExtraction({ run: withExtraction })
+    const restarted = await readRuleAuthoringRun(getRuleAuthoringPaths(root, run.runId))
+    assert.equal(restarted.updatedAt, invalidated.updatedAt)
+
+    const resumed = await store.resumeRuleAuthoringExtraction(restarted)
+    assert.deepEqual(resumed.sources, [])
+    assert.deepEqual(resumed.chunks, [])
+    assert.deepEqual(resumed.includedChunkIds, [])
+    assert.equal(Object.hasOwn(resumed, "scope"), false)
+  })
+
+  await t.test("partial Task 7 pointer set", async (t) => {
+    const root = await workspace(t)
+    const run = await createRuleAuthoringRun({ workspaceRoot: root, runId: "partial-pointer-resume" })
+    const partial = await writeArtifacts(run, {
+      sourceManifest: artifactPointer(root, run.runId, "source-manifest.json")
+    })
+
+    await assert.rejects(store.resumeRuleAuthoringExtraction(partial), /partial|inconsistent.*artifact/i)
+  })
+
+  await t.test("downstream pointer without Task 7 scope", async (t) => {
+    const root = await workspace(t)
+    const run = await createRuleAuthoringRun({ workspaceRoot: root, runId: "downstream-only-resume" })
+    const downstreamOnly = await writeArtifacts(run, {
+      evidenceSelection: artifactPointer(root, run.runId, "evidence-selection.json")
+    })
+
+    await assert.rejects(
+      store.resumeRuleAuthoringExtraction(downstreamOnly),
+      /downstream.*without.*extraction|inconsistent.*artifact/i
+    )
+  })
+})
+
 test("default artifact adapters persist consent scope, resume exact selection, and publish only the confirmed filtered index", async (t) => {
   const root = await workspace(t)
   const run = await createRuleAuthoringRun({
@@ -221,9 +374,7 @@ test("default artifact adapters persist consent scope, resume exact selection, a
     workspaceRoot: root,
     runId: run.runId
   })
-  assert.equal(handoff.scope.confirmed, true)
-  assert.equal(handoff.scope.selected_chunk_count, confirmed.summary.selectedChunkCount)
-  assert.equal(handoff.scope.selected_text_utf8_bytes, confirmed.summary.utf8Bytes)
+  assert.deepEqual(Object.keys(handoff).sort(), ["chunks", "index", "run", "summary"])
   assert.deepEqual(handoff.index.sources.map((source) => source.logical_name), confirmed.summary.logicalNames)
   assert.deepEqual(
     handoff.index.sources.flatMap((source) => source.chunks.map((chunk) => chunk.chunk_id)),
@@ -234,6 +385,53 @@ test("default artifact adapters persist consent scope, resume exact selection, a
     [fixture.batch.aiChunks[0].chunk_id],
     "the downstream handoff must not expose deselected canonical chunks"
   )
+})
+
+test("confirmed handoff exposes only selected sanitizer-backed source metadata", async (t) => {
+  const cases = [
+    ["api_key=supersecret.pdf", "api_key=[REDACTED_SECRET]"],
+    ["C:private.pdf", "[REDACTED_PATH]"]
+  ]
+
+  for (const [rawName, safeName] of cases) {
+    await t.test(rawName, async (t) => {
+      const root = await workspace(t)
+      const run = await createRuleAuthoringRun({ workspaceRoot: root, runId: `safe-handoff-${safeName.length}` })
+      const fixture = renameFixtureSources(extractionFixture(root), rawName)
+      const store = artifactStore()
+      const extracted = await store.persistRuleAuthoringExtraction({
+        workspaceRoot: root,
+        runId: run.runId,
+        run,
+        batch: fixture.batch,
+        selectedSources: fixture.selectedSources,
+        exclusionApprovals: fixture.exclusionApprovals
+      })
+      const confirmed = await store.confirmRuleAuthoringScope({
+        run: extracted.run,
+        expectedSummary: {
+          logicalNames: [safeName],
+          selectedChunkCount: 2,
+          utf8Bytes: fixture.batch.aiChunks.reduce(
+            (total, chunk) => total + Buffer.byteLength(chunk.text, "utf8"),
+            0
+          )
+        }
+      })
+      assert.equal(confirmed.status, "confirmed")
+
+      const handoff = await store.loadConfirmedRuleAuthoringHandoff({
+        workspaceRoot: root,
+        runId: run.runId
+      })
+      assert.deepEqual(Object.keys(handoff).sort(), ["chunks", "index", "run", "summary"])
+      assert.deepEqual(handoff.index.sources.map((source) => source.logical_name), [safeName])
+      assert.deepEqual(handoff.summary.logicalNames, [safeName])
+      assert.equal(JSON.stringify(handoff).includes(rawName), false)
+      assert.equal(Object.hasOwn(handoff, "scope"), false)
+      assert.equal(Object.hasOwn(handoff, "manifest"), false)
+    })
+  }
 })
 
 test("same-basename source outcomes remain bound to stable selected IDs instead of basename", async (t) => {
@@ -300,6 +498,63 @@ test("a duplicate selection retains pathless approval metadata without borrowing
   assert.equal(result.scope.sources[1].source_id, undefined)
   assert.equal(result.scope.sources[1].extraction_status, "duplicate")
   assert.equal(result.scope.sources[1].exclusion_approved, true)
+})
+
+test("duplicate scope metadata consumes identical records one-for-one", async (t) => {
+  const store = artifactStore()
+
+  for (const [mode, expectedCount] of [["existing", 2], ["in_run", 2]]) {
+    await t.test(`${mode} multiplicity`, async (t) => {
+      const root = await workspace(t)
+      const run = await createRuleAuthoringRun({ workspaceRoot: root, runId: `duplicates-${mode}` })
+      const fixture = duplicateMultiplicityFixture(root, mode)
+      const result = await store.persistRuleAuthoringExtraction({
+        workspaceRoot: root,
+        runId: run.runId,
+        run,
+        batch: fixture.batch,
+        selectedSources: fixture.selectedSources,
+        exclusionApprovals: fixture.exclusionApprovals
+      })
+
+      assert.equal(result.scope.sources.filter((source) => source.extraction_status === "duplicate").length, expectedCount)
+      assert.ok(result.scope.sources
+        .filter((source) => source.extraction_status === "duplicate")
+        .every((source) => source.duplicate !== null && source.exclusion_approved))
+    })
+  }
+
+  await t.test("missing record", async (t) => {
+    const root = await workspace(t)
+    const run = await createRuleAuthoringRun({ workspaceRoot: root, runId: "duplicates-missing" })
+    const fixture = duplicateMultiplicityFixture(root, "existing")
+    fixture.batch.duplicates.pop()
+
+    await assert.rejects(store.persistRuleAuthoringExtraction({
+      workspaceRoot: root,
+      runId: run.runId,
+      run,
+      batch: fixture.batch,
+      selectedSources: fixture.selectedSources,
+      exclusionApprovals: fixture.exclusionApprovals
+    }), /duplicate.*missing|multiplicity/i)
+  })
+
+  await t.test("leftover record", async (t) => {
+    const root = await workspace(t)
+    const run = await createRuleAuthoringRun({ workspaceRoot: root, runId: "duplicates-leftover" })
+    const fixture = duplicateMultiplicityFixture(root, "existing")
+    fixture.batch.duplicates.push(structuredClone(fixture.batch.duplicates[0]))
+
+    await assert.rejects(store.persistRuleAuthoringExtraction({
+      workspaceRoot: root,
+      runId: run.runId,
+      run,
+      batch: fixture.batch,
+      selectedSources: fixture.selectedSources,
+      exclusionApprovals: fixture.exclusionApprovals
+    }), /duplicate.*leftover|multiplicity|ambiguous/i)
+  })
 })
 
 test("stale concurrent artifact writers cannot mutate the generation referenced by the winner", async (t) => {

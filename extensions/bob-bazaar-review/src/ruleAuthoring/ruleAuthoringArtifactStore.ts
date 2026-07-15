@@ -148,7 +148,7 @@ export interface RuleAuthoringResumeSource {
 
 export interface RuleAuthoringExtractionState {
   run: RuleAuthoringRunV1
-  scope: RuleAuthoringSourceScopeV1
+  scope?: RuleAuthoringSourceScopeV1
   sources: RuleAuthoringResumeSource[]
   chunks: DocumentChunkV1[]
   includedChunkIds: string[]
@@ -173,7 +173,6 @@ export type ConfirmRuleAuthoringScopeResult =
   | {
       status: "confirmed"
       run: RuleAuthoringRunV1
-      scope: RuleAuthoringSourceScopeV1
       summary: RuleAuthoringPayloadSummary
     }
   | {
@@ -183,9 +182,7 @@ export type ConfirmRuleAuthoringScopeResult =
 
 export interface ConfirmedRuleAuthoringHandoff {
   run: RuleAuthoringRunV1
-  scope: RuleAuthoringSourceScopeV1
   index: RuleSourceIndexV1
-  manifest: RuleSourceManifestV1
   chunks: DocumentChunkV1[]
   summary: RuleAuthoringPayloadSummary
 }
@@ -260,6 +257,10 @@ export async function persistRuleAuthoringExtraction(
 export async function resumeRuleAuthoringExtraction(
   run: RuleAuthoringRunV1
 ): Promise<RuleAuthoringExtractionState> {
+  const current = await readMatchingRuleAuthoringRun(run)
+  if (extractionArtifactLifecycle(current) === "empty") {
+    return { run: current, sources: [], chunks: [], includedChunkIds: [] }
+  }
   const state = await loadCanonicalExtractionState(run)
   return extractionState(state.run, state.scope, state.chunks)
 }
@@ -306,7 +307,6 @@ export async function confirmRuleAuthoringScope(input: {
     return {
       status: "confirmed",
       run: handoff.run,
-      scope: handoff.scope,
       summary: handoff.summary
     }
   }
@@ -362,7 +362,7 @@ export async function confirmRuleAuthoringScope(input: {
       updatedAt: timestampAfter(current.updatedAt)
     })
   })
-  return { status: "confirmed", run: nextRun, scope, summary }
+  return { status: "confirmed", run: nextRun, summary }
 }
 
 export async function loadConfirmedRuleAuthoringHandoff(input: {
@@ -426,10 +426,10 @@ export function resolveRuleAuthoringArtifactPath(
 }
 
 async function loadCanonicalExtractionState(runInput: RuleAuthoringRunV1): Promise<CanonicalExtractionState> {
-  validateRunInput(runInput, runInput.workspaceRoot, runInput.runId)
-  const paths = getRuleAuthoringPaths(runInput.workspaceRoot, runInput.runId)
-  const run = await readRuleAuthoringRun(paths)
-  if (run.updatedAt !== runInput.updatedAt) throw new Error("Rule authoring run changed since it was loaded")
+  const run = await readMatchingRuleAuthoringRun(runInput)
+  if (extractionArtifactLifecycle(run) === "empty") {
+    throw new Error("Rule authoring run has no persisted extraction scope")
+  }
   const manifestPath = resolveRuleAuthoringArtifactPath(run, "sourceManifest")
   const chunksPath = resolveRuleAuthoringArtifactPath(run, "documentChunks")
   const scopePath = resolveRuleAuthoringArtifactPath(run, "sourceScope")
@@ -492,12 +492,33 @@ async function validateConfirmedHandoff(
   }
   return {
     run: state.run,
-    scope: state.scope,
     index: expected,
-    manifest: filteredManifest,
     chunks: selected,
     summary
   }
+}
+
+async function readMatchingRuleAuthoringRun(runInput: RuleAuthoringRunV1): Promise<RuleAuthoringRunV1> {
+  validateRunInput(runInput, runInput.workspaceRoot, runInput.runId)
+  const paths = getRuleAuthoringPaths(runInput.workspaceRoot, runInput.runId)
+  const run = await readRuleAuthoringRun(paths)
+  if (run.updatedAt !== runInput.updatedAt) throw new Error("Rule authoring run changed since it was loaded")
+  return run
+}
+
+function extractionArtifactLifecycle(run: RuleAuthoringRunV1): "empty" | "persisted" {
+  const presentTask7 = TASK7_ARTIFACT_KEYS.filter((key) => run.artifacts[key] !== undefined)
+  if (presentTask7.length === 0) {
+    if (DOWNSTREAM_ARTIFACT_KEYS.some((key) => run.artifacts[key] !== undefined)) {
+      throw new Error("Rule authoring run has downstream artifacts without a persisted extraction scope")
+    }
+    return "empty"
+  }
+  const required = ["sourceManifest", "documentChunks", "sourceScope"] as const
+  if (required.some((key) => run.artifacts[key] === undefined)) {
+    throw new Error("Rule authoring run has a partial or inconsistent extraction artifact set")
+  }
+  return "persisted"
 }
 
 function createInitialScope(
@@ -550,6 +571,7 @@ function createInitialScope(
     documents.set(absolutePath, document)
   }
   const manifestByHash = new Map(manifest.sources.map((source) => [source.sha256, source]))
+  const duplicatePool = createDuplicateMetadataPool(input.batch.duplicates)
 
   const sources = input.selectedSources.map((selected): RuleAuthoringScopeSourceV1 => {
     const absolutePath = requireAbsolutePath(selected.absolutePath)
@@ -572,7 +594,9 @@ function createInitialScope(
     } else if (status !== "duplicate") {
       throw new Error("Rule authoring extraction result is missing for a selected source")
     }
-    const duplicate = status === "duplicate" ? duplicateMetadata(input.batch.duplicates, selected.logicalName, sha) : null
+    const duplicate = status === "duplicate"
+      ? consumeDuplicateMetadata(duplicatePool, selected.logicalName, sha)
+      : null
     const exclusionRequired = status !== "success"
     const source: RuleAuthoringScopeSourceV1 = {
       selected_id: selected.selectedId,
@@ -593,6 +617,9 @@ function createInitialScope(
     }
     return source
   })
+  if ([...duplicatePool.values()].some((records) => records.length > 0)) {
+    throw new Error("Rule authoring duplicate metadata has leftover multiplicity")
+  }
   const scope: RuleAuthoringSourceScopeV1 = {
     schema_version: SCOPE_SCHEMA,
     run_id: input.runId,
@@ -920,17 +947,51 @@ function extractionState(
   }
 }
 
-function duplicateMetadata(
-  duplicates: readonly RuleDocumentDuplicate[],
+function consumeDuplicateMetadata(
+  pool: Map<string, RuleAuthoringScopeSourceV1["duplicate"][]>,
   logicalName: string,
   sha: string
 ): RuleAuthoringScopeSourceV1["duplicate"] {
-  const matches = duplicates.filter((duplicate) => duplicate.logical_name === logicalName && duplicate.sha256 === sha)
-  if (matches.length !== 1) throw new Error("Rule authoring duplicate metadata is missing or ambiguous")
-  return {
-    reason: matches[0].reason,
-    duplicate_of: sanitizeRemoteSafeText(matches[0].duplicate_of, 255)
+  const records = pool.get(duplicateKey(logicalName, sha))
+  const duplicate = records?.shift()
+  if (!duplicate) throw new Error("Rule authoring duplicate metadata is missing for selected multiplicity")
+  return duplicate
+}
+
+function createDuplicateMetadataPool(
+  value: readonly RuleDocumentDuplicate[]
+): Map<string, RuleAuthoringScopeSourceV1["duplicate"][]> {
+  if (!Array.isArray(value) || value.length > DEFAULT_RULE_AUTHORING_LIMITS.maxSourceFiles) {
+    throw new Error("Rule authoring duplicate metadata count is invalid")
   }
+  const pool = new Map<string, RuleAuthoringScopeSourceV1["duplicate"][]>()
+  for (const record of value) {
+    if (
+      !isPlainObject(record) ||
+      !hasExactKeys(record, ["logical_name", "sha256", "reason", "duplicate_of"]) ||
+      (record.reason !== "duplicate_in_run" && record.reason !== "duplicate_existing_manifest") ||
+      typeof record.duplicate_of !== "string" ||
+      !record.duplicate_of ||
+      Buffer.byteLength(record.duplicate_of, "utf8") > 4096 ||
+      CONTROL_CHARACTER.test(record.duplicate_of)
+    ) {
+      throw new Error("Rule authoring duplicate metadata is invalid")
+    }
+    const logicalName = requireLogicalName(record.logical_name)
+    const sha = requireSha256(record.sha256)
+    const key = duplicateKey(logicalName, sha)
+    const records = pool.get(key) ?? []
+    records.push({
+      reason: record.reason,
+      duplicate_of: sanitizeRemoteSafeText(record.duplicate_of, 255)
+    })
+    pool.set(key, records)
+  }
+  return pool
+}
+
+function duplicateKey(logicalName: string, sha: string): string {
+  return JSON.stringify([logicalName, sha])
 }
 
 function parseDuplicateMetadata(value: unknown): RuleAuthoringScopeSourceV1["duplicate"] {

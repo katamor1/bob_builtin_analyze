@@ -347,6 +347,11 @@ async function openWithDependencies(
 
       let messageQueue: Promise<void> = Promise.resolve()
       const messageDisposable = panel!.webview.onDidReceiveMessage((rawMessage) => {
+        const parsed = parseRuleAuthoringGuiMessage(rawMessage)
+        if (parsed?.type === "cancelRun") {
+          controller!.handlePriorityCancel()
+          return Promise.resolve()
+        }
         messageQueue = messageQueue
           .then(() => controller!.handleMessage(rawMessage))
           .catch(async () => {
@@ -413,6 +418,12 @@ class RuleAuthoringGuiController {
 
   isDisposed(): boolean {
     return this.disposed
+  }
+
+  handlePriorityCancel(): void {
+    if (this.disposed) return
+    this.dispose()
+    this.input.panel.dispose()
   }
 
   dispose(): void {

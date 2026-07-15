@@ -1,5 +1,7 @@
 const assert = require("node:assert/strict")
+const fs = require("node:fs/promises")
 const Module = require("node:module")
+const os = require("node:os")
 const path = require("node:path")
 const { test } = require("node:test")
 
@@ -177,6 +179,7 @@ function createFakeVscode(options = {}) {
   const commandCalls = []
   const pickerResults = [...(options.pickerResults ?? [])]
   const sourceSizes = new Map(options.sourceSizes ?? [])
+  const workspaceRoot = options.workspaceRoot ?? WORKSPACE_ROOT
 
   function createWebviewPanel(viewType, title, column, panelOptions) {
     const messageListeners = []
@@ -220,6 +223,11 @@ function createFakeVscode(options = {}) {
       dispose() {
         if (this.disposed) return
         this.disposed = true
+        if (!options.deferDisposeCallbacks) this.flushDisposeCallbacks()
+      },
+      flushDisposeCallbacks() {
+        if (this.disposeCallbacksDelivered) return
+        this.disposeCallbacksDelivered = true
         for (const listener of disposeListeners) listener()
       }
     }
@@ -257,7 +265,7 @@ function createFakeVscode(options = {}) {
       }
     },
     workspace: {
-      workspaceFolders: [{ uri: fileUri(WORKSPACE_ROOT), name: "acme-project", index: 0 }],
+      workspaceFolders: [{ uri: fileUri(workspaceRoot), name: path.basename(workspaceRoot), index: 0 }],
       fs: {
         stat: async (uri) => ({
           type: 1,
@@ -346,6 +354,7 @@ function hostDependencies(overrides = {}) {
       persistenceCalls.push(structuredClone(input))
       return {
         run: ruleRun({
+          workspaceRoot: input.workspaceRoot,
           runId: input.runId,
           currentPhase: "evidence_selection",
           artifacts: {
@@ -435,6 +444,12 @@ function assertNoPrivateSource(value) {
 
 async function turn() {
   await new Promise((resolve) => setImmediate(resolve))
+}
+
+async function temporaryWorkspace(t) {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "bob-rule-gui-"))
+  t.after(() => fs.rm(root, { recursive: true, force: true }))
+  return root
 }
 
 function deferred() {
@@ -836,6 +851,60 @@ test("offers incomplete runs after restart and resumes only the selected run ID"
   await resultPromise
 })
 
+test("default resume adapter restores fresh and invalidated runs before choose and extract", async (t) => {
+  const {
+    createRuleAuthoringRun,
+    readRuleAuthoringRun,
+    writeRuleAuthoringRun
+  } = require("../out/ruleAuthoring/ruleAuthoringRunStore")
+  const { getRuleAuthoringPaths } = require("../out/ruleAuthoring/ruleAuthoringPaths")
+  const { invalidateRuleAuthoringExtraction } = require("../out/ruleAuthoring/ruleAuthoringArtifactStore")
+
+  for (const lifecycle of ["fresh", "invalidated"]) {
+    await t.test(lifecycle, async (t) => {
+      const root = await temporaryWorkspace(t)
+      let run = await createRuleAuthoringRun({ workspaceRoot: root, runId: `${lifecycle}-restart` })
+      if (lifecycle === "invalidated") {
+        const paths = getRuleAuthoringPaths(root, run.runId)
+        const generation = path.join(paths.generationsDirectory, `gen-${"1".repeat(32)}`)
+        const withExtraction = {
+          ...run,
+          artifacts: {
+            sourceManifest: path.relative(root, path.join(generation, "source-manifest.json")),
+            documentChunks: path.relative(root, path.join(generation, "document-chunks.jsonl")),
+            sourceScope: path.relative(root, path.join(generation, "source-scope.json"))
+          },
+          updatedAt: new Date(Date.parse(run.updatedAt) + 1).toISOString()
+        }
+        await writeRuleAuthoringRun(withExtraction, run.updatedAt)
+        run = await invalidateRuleAuthoringExtraction({ run: withExtraction })
+      }
+      const restarted = await readRuleAuthoringRun(getRuleAuthoringPaths(root, run.runId))
+      const selectedPath = path.join(root, "selected", "policy.docx")
+      const fake = createFakeVscode({
+        workspaceRoot: root,
+        pickerResults: [[fileUri(selectedPath)]]
+      })
+      const fixture = hostDependencies({
+        listIncompleteRuleAuthoringRuns: async () => [restarted]
+      })
+      delete fixture.dependencies.resumeRuleAuthoringRun
+      const { resultPromise, panel } = await startHost(fake, fixture, { workspaceRoot: root })
+
+      await panel.emitMessage({ type: "resumeRun", runId: restarted.runId })
+      assert.deepEqual(lastModel(fixture).sources, [])
+      assert.deepEqual(lastModel(fixture).chunks, [])
+      await panel.emitMessage({ type: "chooseSources" })
+      await panel.emitMessage({ type: "extractSources" })
+
+      assert.equal(fixture.extractionCalls.length, 1)
+      assert.equal(fixture.persistenceCalls.length, 1)
+      await panel.emitMessage({ type: "cancelRun" })
+      assert.equal((await resultPromise).status, "cancelled")
+    })
+  }
+})
+
 test("holds workflow completion through extraction and completes with session metadata only after explicit AI consent", async () => {
   const fake = createFakeVscode({ pickerResults: [[fileUri(PRIVATE_DOCX)]] })
   const fixture = hostDependencies()
@@ -1190,6 +1259,85 @@ test("disposal while canonical confirmation is pending prevents workflow complet
   assert.equal((await resultPromise).status, "cancelled")
   await turn()
   assert.equal(fixture.completionCalls.length, 0)
+})
+
+test("exact cancelRun preempts a pending canonical confirmation before workflow completion", async () => {
+  const confirmation = deferred()
+  const fake = createFakeVscode({
+    pickerResults: [[fileUri(PRIVATE_DOCX)]],
+    deferDisposeCallbacks: true
+  })
+  const fixture = hostDependencies({
+    confirmRuleAuthoringScope: async (input) => {
+      fixture.confirmationCalls.push(structuredClone(input))
+      return confirmation.promise
+    }
+  })
+  const { resultPromise, panel } = await startHost(fake, fixture, {
+    runId: "workflow-priority-cancel",
+    stepId: "select-and-extract"
+  })
+  await panel.emitMessage({ type: "chooseSources" })
+  await panel.emitMessage({ type: "extractSources" })
+  panel.emitMessageWithoutWaiting({ type: "confirmAiPayload" })
+  await turn()
+  assert.equal(fixture.confirmationCalls.length, 1)
+
+  let result
+  void resultPromise.then((value) => { result = value })
+  panel.emitMessageWithoutWaiting({ type: "cancelRun" })
+  await turn()
+  const cancelledBeforeConfirmationSettled = result?.status === "cancelled"
+
+  confirmation.resolve({
+    status: "confirmed",
+    run: ruleRun({ currentPhase: "evidence_selection" }),
+    summary: {
+      logicalNames: ["engineering-policy.docx"],
+      selectedChunkCount: 1,
+      utf8Bytes: Buffer.byteLength(PRIVATE_RAW_TEXT, "utf8")
+    }
+  })
+  await turn()
+  const completionStartedBeforeDisposeDelivery = fixture.completionCalls.length > 0
+  panel.flushDisposeCallbacks()
+  const finalResult = await resultPromise
+  await turn()
+
+  assert.equal(cancelledBeforeConfirmationSettled, true)
+  assert.equal(completionStartedBeforeDisposeDelivery, false)
+  assert.equal(finalResult.status, "cancelled")
+  assert.equal(fixture.completionCalls.length, 0)
+})
+
+test("exact cancelRun waits for an external workflow completion that already started", async () => {
+  const completion = deferred()
+  const fake = createFakeVscode({ pickerResults: [[fileUri(PRIVATE_DOCX)]] })
+  const fixture = hostDependencies({
+    completeCurrentWorkflowStepAfterGuiAction: async (_deps, metadata) => {
+      fixture.completionCalls.push(structuredClone(metadata))
+      return completion.promise
+    }
+  })
+  const { resultPromise, panel } = await startHost(fake, fixture, {
+    runId: "workflow-cancel-after-completion",
+    stepId: "select-and-extract"
+  })
+  await panel.emitMessage({ type: "chooseSources" })
+  await panel.emitMessage({ type: "extractSources" })
+  panel.emitMessageWithoutWaiting({ type: "confirmAiPayload" })
+  await turn()
+  await turn()
+  assert.equal(fixture.completionCalls.length, 1)
+
+  panel.emitMessageWithoutWaiting({ type: "cancelRun" })
+  let settled = false
+  void resultPromise.then(() => { settled = true })
+  await turn()
+  assert.equal(settled, false)
+
+  completion.resolve(true)
+  assert.equal((await resultPromise).status, "confirmed")
 })
 
 test("canonical confirmation overflow leaves the panel open and does not complete the workflow", async () => {
