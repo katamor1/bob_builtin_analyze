@@ -113,6 +113,9 @@ export async function touchRunDurabilityFileMtime(
   const noFollow = typeof constants.O_NOFOLLOW === "number" ? constants.O_NOFOLLOW : 0
   await assertDirectoryIdentity(runDirectory, `Workflow run '${runId}' directory`)
   const handle = await fs.open(filePath, constants.O_RDWR | noFollow)
+  let touchedMtimeMs: number | undefined
+  let operationFailed = false
+  let operationError: unknown
   try {
     const opened = await handle.stat({ bigint: true })
     assertSingleLinkedRegularFile(opened, label)
@@ -155,10 +158,25 @@ export async function touchRunDurabilityFileMtime(
       throw new Error(`${label} ownership changed during heartbeat touch.`)
     }
     await assertDirectoryIdentity(runDirectory, `Workflow run '${runId}' directory`)
-    return Number(touched.mtimeNs) / 1_000_000
-  } finally {
-    await handle.close()
+    touchedMtimeMs = Number(touched.mtimeNs) / 1_000_000
+  } catch (error) {
+    operationFailed = true
+    operationError = error
   }
+  let closeFailed = false
+  let closeError: unknown
+  try {
+    await handle.close()
+  } catch (error) {
+    closeFailed = true
+    closeError = error
+  }
+  if (operationFailed) {
+    if (closeFailed) addSuppressedErrors(operationError, [closeError])
+    throw operationError
+  }
+  if (closeFailed) throw closeError
+  return touchedMtimeMs!
 }
 
 export async function replaceRunDurabilityFile(
@@ -274,6 +292,18 @@ export async function createRunDurabilityFile(
     operationFailed = true
     operationError = error
   }
+  let identityProbeFailed = false
+  let identityProbeError: unknown
+  if (operationFailed && !createdIdentity) {
+    try {
+      const recovered = await handle.stat({ bigint: true })
+      assertSingleLinkedRegularFile(recovered, durabilityLabel(runId, fileName))
+      createdIdentity = { dev: recovered.dev, ino: recovered.ino }
+    } catch (error) {
+      identityProbeFailed = true
+      identityProbeError = error
+    }
+  }
   let closeFailed = false
   let closeError: unknown
   try {
@@ -285,10 +315,10 @@ export async function createRunDurabilityFile(
   if (operationFailed || closeFailed) {
     const primaryError = operationFailed ? operationError : closeError
     const secondaryFailures: ExclusiveCreateSecondaryFailure[] = []
-    if (operationFailed && closeFailed) {
+    if (identityProbeFailed) {
       secondaryFailures.push({
-        detail: `exclusive creation handle close also failed: ${formatError(closeError)}`,
-        error: closeError
+        detail: `exclusive creation safety identity recovery also failed: ${formatError(identityProbeError)}`,
+        error: identityProbeError
       })
     }
     if (createdIdentity) {
@@ -300,6 +330,12 @@ export async function createRunDurabilityFile(
           error
         })
       }
+    }
+    if (operationFailed && closeFailed) {
+      secondaryFailures.push({
+        detail: `exclusive creation handle close also failed: ${formatError(closeError)}`,
+        error: closeError
+      })
     }
     throw appendExclusiveCreateFailureContext(primaryError, secondaryFailures)
   }

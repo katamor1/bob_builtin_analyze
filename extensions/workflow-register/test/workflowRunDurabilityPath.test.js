@@ -14,7 +14,8 @@ const {
   readRunDurabilityFile,
   removeRunDurabilityFile,
   replaceRunDurabilityFile,
-  syncRunMaterializedFile
+  syncRunMaterializedFile,
+  touchRunDurabilityFileMtime
 } = require("../out/core/runtime/runDurabilityPath.js")
 
 function root(t) {
@@ -135,6 +136,56 @@ test("exclusive durability creation removes its owned file after a primary sync 
   )
 })
 
+test("exclusive durability creation recovers owned identity after its first handle stat fails", async (t) => {
+  const workspace = root(t)
+  const runDirectory = path.join(workspace, ".bob", "workflows", "runs", "run-1")
+  const lockFile = path.join(runDirectory, "run.lock.json")
+  const primaryError = Object.assign(new Error("CREATE_FIRST_STAT_PRIMARY_SENTINEL"), { code: "EIO" })
+  const originalOpen = fsp.open
+  let createdHandleStatCalls = 0
+  let createdHandleSettled = false
+  try {
+    fsp.open = async (target, ...args) => {
+      const handle = await originalOpen(target, ...args)
+      if (!await matchesPhysicalPath(target, lockFile)) return handle
+      const originalStat = handle.stat.bind(handle)
+      handle.stat = async (...statArgs) => {
+        const result = await originalStat(...statArgs)
+        createdHandleStatCalls += 1
+        if (createdHandleStatCalls === 1) throw primaryError
+        return result
+      }
+      const originalClose = handle.close.bind(handle)
+      handle.close = async (...closeArgs) => {
+        try {
+          return await originalClose(...closeArgs)
+        } finally {
+          createdHandleSettled = true
+        }
+      }
+      return handle
+    }
+
+    let observedError
+    await assert.rejects(
+      createRunDurabilityFile(workspace, "run-1", "run.lock.json", "owner\n"),
+      (error) => {
+        observedError = error
+        return true
+      }
+    )
+    assert.strictEqual(observedError, primaryError)
+    assert.equal(observedError.message, "CREATE_FIRST_STAT_PRIMARY_SENTINEL")
+  } finally {
+    fsp.open = originalOpen
+  }
+
+  assert.equal(createdHandleStatCalls >= 2, true, "cleanup must retry the handle identity probe")
+  assert.equal(createdHandleSettled, true)
+  await assert.rejects(fsp.access(lockFile), { code: "ENOENT" })
+  assert.equal(await createRunDurabilityFile(workspace, "run-1", "run.lock.json", "retry-owner\n"), true)
+})
+
 test("exclusive durability creation preserves the primary error over close and cleanup failures", async (t) => {
   const workspace = root(t)
   const runDirectory = path.join(workspace, ".bob", "workflows", "runs", "run-1")
@@ -191,9 +242,9 @@ test("exclusive durability creation preserves the primary error over close and c
     )
     assert.strictEqual(observedError, primaryError)
     assert.match(observedError.message, /CREATE_PRIMARY_SENTINEL/)
-    assert.match(observedError.message, /exclusive creation handle close also failed.*CREATE_CLOSE_SENTINEL/i)
     assert.match(observedError.message, /exclusive creation cleanup also failed.*CREATE_CLEANUP_SENTINEL/i)
-    assert.deepEqual(observedError.suppressedErrors, [closeError, cleanupError])
+    assert.match(observedError.message, /exclusive creation handle close also failed.*CREATE_CLOSE_SENTINEL/i)
+    assert.deepEqual(observedError.suppressedErrors, [cleanupError, closeError])
     assert.equal(Object.getOwnPropertyDescriptor(observedError, "suppressedErrors")?.enumerable, false)
     assert.equal(Object.isFrozen(observedError.suppressedErrors), true)
   } finally {
@@ -268,6 +319,99 @@ test("exclusive durability failure cleanup never removes an identity-changed rep
   assert.equal(removalAttempts, 0, "an identity-changed target must never be passed to removal")
   assert.equal(await fsp.readFile(lockFile, "utf8"), "replacement-owner\n")
   assert.equal(await fsp.readFile(displacedFile, "utf8"), "original-owner\n")
+})
+
+test("durability touch preserves its exact primary error when handle close also fails", async (t) => {
+  const workspace = root(t)
+  const runDirectory = path.join(workspace, ".bob", "workflows", "runs", "run-1")
+  const lockFile = path.join(runDirectory, "run.lock.json")
+  const expectedBytes = Buffer.from("owner\n")
+  await createRunDurabilityFile(workspace, "run-1", "run.lock.json", expectedBytes.toString("utf8"))
+  const primaryError = Object.assign(new Error("TOUCH_PRIMARY_SENTINEL"), { code: "EIO" })
+  const closeError = Object.assign(new Error("TOUCH_CLOSE_SENTINEL"), { code: "EIO" })
+  const originalOpen = fsp.open
+  let touchHandles = 0
+  let settledTouchHandles = 0
+  try {
+    fsp.open = async (target, ...args) => {
+      const handle = await originalOpen(target, ...args)
+      const flags = Number(args[0])
+      if (!await matchesPhysicalPath(target, lockFile) || (flags & 3) !== fs.constants.O_RDWR) return handle
+      touchHandles += 1
+      handle.utimes = async () => {
+        throw primaryError
+      }
+      const originalClose = handle.close.bind(handle)
+      handle.close = async (...closeArgs) => {
+        const result = await originalClose(...closeArgs)
+        settledTouchHandles += 1
+        throw closeError
+      }
+      return handle
+    }
+
+    let observedError
+    await assert.rejects(
+      touchRunDurabilityFileMtime(workspace, "run-1", "run.lock.json", expectedBytes),
+      (error) => {
+        observedError = error
+        return true
+      }
+    )
+    assert.strictEqual(observedError, primaryError)
+    assert.equal(observedError.message, "TOUCH_PRIMARY_SENTINEL")
+    assert.deepEqual(observedError.suppressedErrors, [closeError])
+    assert.equal(Object.getOwnPropertyDescriptor(observedError, "suppressedErrors")?.enumerable, false)
+    assert.equal(Object.isFrozen(observedError.suppressedErrors), true)
+  } finally {
+    fsp.open = originalOpen
+  }
+
+  assert.equal(touchHandles, 1)
+  assert.equal(settledTouchHandles, 1, "the underlying touch handle must settle before rejection")
+})
+
+test("durability touch surfaces a close-only failure after the handle settles", async (t) => {
+  const workspace = root(t)
+  const runDirectory = path.join(workspace, ".bob", "workflows", "runs", "run-1")
+  const lockFile = path.join(runDirectory, "run.lock.json")
+  const expectedBytes = Buffer.from("owner\n")
+  await createRunDurabilityFile(workspace, "run-1", "run.lock.json", expectedBytes.toString("utf8"))
+  const closeError = Object.assign(new Error("TOUCH_CLOSE_ONLY_SENTINEL"), { code: "EIO" })
+  const originalOpen = fsp.open
+  let touchHandles = 0
+  let settledTouchHandles = 0
+  try {
+    fsp.open = async (target, ...args) => {
+      const handle = await originalOpen(target, ...args)
+      const flags = Number(args[0])
+      if (!await matchesPhysicalPath(target, lockFile) || (flags & 3) !== fs.constants.O_RDWR) return handle
+      touchHandles += 1
+      const originalClose = handle.close.bind(handle)
+      handle.close = async (...closeArgs) => {
+        const result = await originalClose(...closeArgs)
+        settledTouchHandles += 1
+        throw closeError
+      }
+      return handle
+    }
+
+    let observedError
+    await assert.rejects(
+      touchRunDurabilityFileMtime(workspace, "run-1", "run.lock.json", expectedBytes),
+      (error) => {
+        observedError = error
+        return true
+      }
+    )
+    assert.strictEqual(observedError, closeError)
+    assert.equal(observedError.message, "TOUCH_CLOSE_ONLY_SENTINEL")
+  } finally {
+    fsp.open = originalOpen
+  }
+
+  assert.equal(touchHandles, 1)
+  assert.equal(settledTouchHandles, 1, "the underlying touch handle must settle before its close failure surfaces")
 })
 
 test("durability path rejects a symlink file target", async (t) => {
