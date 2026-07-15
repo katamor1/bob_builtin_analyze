@@ -719,16 +719,26 @@ async function readWorkspaceFileBounded(
   let handle: fs.FileHandle | undefined
   try {
     const directoryBefore = await safeDirectoryIdentity(workspaceRoot, directory)
-    const rootReal = await fs.realpath(workspaceRoot)
-    const targetReal = await fs.realpath(filePath)
-    assertContained(rootReal, targetReal)
-    if (path.resolve(targetReal) !== filePath) {
-      throw new Error("Rule authoring file path contains a symbolic link")
-    }
-    const beforePath = await fs.lstat(filePath, { bigint: true })
-    if (beforePath.isSymbolicLink() || !beforePath.isFile() || beforePath.size > BigInt(maxBytes)) {
-      throw new Error("Rule authoring file is not a bounded regular file")
-    }
+const [rootReal, targetReal] = await Promise.all([
+  fs.realpath(workspaceRoot),
+  fs.realpath(filePath)
+])
+assertContained(rootReal, targetReal)
+const beforePath = await fs.lstat(filePath, { bigint: true })
+if (beforePath.isSymbolicLink()) {
+  throw new Error("Rule authoring file path contains a symbolic link")
+}
+if (!beforePath.isFile() || beforePath.size > BigInt(maxBytes)) {
+  throw new Error("Rule authoring file is not a bounded regular file")
+}
+const physicalPath = await fs.lstat(targetReal, { bigint: true })
+if (
+  physicalPath.isSymbolicLink() ||
+  !physicalPath.isFile() ||
+  !sameFileIdentity(beforePath, physicalPath)
+) {
+  throw new Error("Rule authoring file path contains a symbolic link")
+}
     handle = await fs.open(filePath, fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0))
     const before = await handle.stat({ bigint: true })
     if (!before.isFile() || !sameFileIdentity(beforePath, before)) {
