@@ -108,6 +108,20 @@ function evidenceFixture() {
   }
 }
 
+function approvedSource(index) {
+  const hash = `${index.toString(16).padStart(2, "0")}${"0".repeat(62)}`
+  return {
+    source_id: `src-${hash.slice(0, 12)}`,
+    logical_name: `approved-${index}.docx`,
+    media_type: "docx",
+    sha256: hash,
+    byte_size: index + 1,
+    extraction_status: "success",
+    extractor: { id: "mammoth", version: "1.8.0" },
+    warnings: []
+  }
+}
+
 function bundle(overrides = {}) {
   const checklistBytes = jsonBytes({
     version: "1",
@@ -540,4 +554,213 @@ test("recomputes chunk identity when a merged source uses an extended collision 
     source_id: mergedSourceId,
     chunk_id: expectedChunk.chunk_id
   }])
+})
+
+test("reserves retired provenance IDs when allocating every stable namespace", () => {
+  const current = bundle({
+    ruleProvenance: present(jsonBytes({
+      schema_version: "bob-bazaar-review/rule-provenance/v1",
+      updated_at: "2026-07-14T00:00:00.000Z",
+      rules: [{
+        rule_id: "PRJ-0009",
+        lifecycle: "retired",
+        source_refs: [],
+        first_applied_at: "2026-07-10T00:00:00.000Z",
+        last_applied_at: "2026-07-14T00:00:00.000Z",
+        last_run_id: "run-retired-rule"
+      }],
+      markdown_sections: [
+        {
+          asset: "project-context",
+          section_id: "CTX-0009",
+          lifecycle: "retired",
+          source_refs: [],
+          last_applied_at: "2026-07-14T00:00:00.000Z",
+          last_run_id: "run-retired-context"
+        },
+        {
+          asset: "review-prompt-addendum",
+          section_id: "PRM-0009",
+          lifecycle: "retired",
+          source_refs: [],
+          last_applied_at: "2026-07-14T00:00:00.000Z",
+          last_run_id: "run-retired-prompt"
+        }
+      ]
+    }))
+  })
+  const proposal = proposalFor(current, {
+    operations: [ruleOperation("rule-add", "add", null, rule({ title: "After retirement" }))],
+    conflicts: [],
+    project_context_operations: [
+      markdownOperation("context-add", "add", null, "After retirement", "Context body.")
+    ],
+    prompt_addendum_operations: [
+      markdownOperation("prompt-add", "add", null, "After retirement", "Prompt body.")
+    ]
+  })
+
+  const plan = buildRuleApplyPlan(current, proposal, {
+    schema_version: "bob-bazaar-review/proposal-decisions/v1",
+    run_id: RUN_ID,
+    decisions: {
+      "rule-add": { decision: "accept", reviewed_at: REVIEWED_AT },
+      "context-add": { decision: "accept", reviewed_at: REVIEWED_AT },
+      "prompt-add": { decision: "accept", reviewed_at: REVIEWED_AT }
+    }
+  }, evidenceFixture())
+
+  assert.equal(parseTarget(plan, "checklist").rules.at(-1).id, "PRJ-0010")
+  assert.match(Buffer.from(target(plan, "project_context").bytes).toString("utf8"), /CTX-0010/)
+  assert.match(Buffer.from(target(plan, "prompt_addendum").bytes).toString("utf8"), /PRM-0010/)
+})
+
+test("keeps a cumulative approved source manifest readable across a 20-to-21 transition", () => {
+  const evidence = evidenceFixture()
+  const current = bundle({
+    ruleSources: present(jsonBytes({
+      schema_version: "bob-bazaar-review/rule-sources/v1",
+      generated_at: "2026-07-14T00:00:00.000Z",
+      sources: Array.from({ length: 20 }, (_, index) => approvedSource(index))
+    }))
+  })
+  const proposal = proposalFor(current, {
+    operations: [ruleOperation("rule-add", "add", null, rule({ title: "Twenty-first source" }))],
+    conflicts: [],
+    project_context_operations: [],
+    prompt_addendum_operations: []
+  })
+  const first = buildRuleApplyPlan(current, proposal, {
+    schema_version: "bob-bazaar-review/proposal-decisions/v1",
+    run_id: RUN_ID,
+    decisions: { "rule-add": { decision: "accept", reviewed_at: REVIEWED_AT } }
+  }, evidence)
+  assert.equal(parseTarget(first, "rule_sources").sources.length, 21)
+
+  const nextBundle = {
+    checklist: present(target(first, "checklist").bytes),
+    projectContext: present(target(first, "project_context").bytes),
+    promptAddendum: present(target(first, "prompt_addendum").bytes),
+    ruleSources: present(target(first, "rule_sources").bytes),
+    ruleProvenance: present(target(first, "rule_provenance").bytes)
+  }
+  const nextProposal = proposalFor(nextBundle, {
+    operations: [],
+    conflicts: [],
+    project_context_operations: [],
+    prompt_addendum_operations: []
+  })
+  const second = buildRuleApplyPlan(nextBundle, nextProposal, {
+    schema_version: "bob-bazaar-review/proposal-decisions/v1",
+    run_id: RUN_ID,
+    decisions: {}
+  }, evidence)
+
+  assert.equal(parseTarget(second, "rule_sources").sources.length, 21)
+})
+
+test("rejects unknown and non-remote-safe fields at every rule-source manifest level", () => {
+  const evidence = evidenceFixture()
+  const variants = [
+    (manifest) => { manifest.absolute_path = "/private/source.docx" },
+    (manifest) => { manifest.sources[0].raw_text = "private source body" },
+    (manifest) => { manifest.sources[0].extractor.absolute_path = "/private/extractor" },
+    (manifest) => { manifest.sources[0].logical_name = "wrong-extension.pdf" }
+  ]
+
+  for (const mutate of variants) {
+    const manifest = structuredClone(evidence.sourceManifest)
+    mutate(manifest)
+    const current = bundle({ ruleSources: present(jsonBytes(manifest)) })
+    const proposal = proposalFor(current, {
+      operations: [],
+      conflicts: [],
+      project_context_operations: [],
+      prompt_addendum_operations: []
+    })
+    assert.throws(
+      () => buildRuleApplyPlan(current, proposal, {
+        schema_version: "bob-bazaar-review/proposal-decisions/v1",
+        run_id: RUN_ID,
+        decisions: {}
+      }, evidence),
+      /rule source manifest.*malformed/i
+    )
+  }
+
+  const unsafeEvidence = evidenceFixture()
+  unsafeEvidence.sourceManifest.sources[0].raw_text = "private source body"
+  const current = bundle()
+  const proposal = proposalFor(current, {
+    operations: [ruleOperation("rule-add", "add", null, rule({ title: "Unsafe evidence" }))],
+    conflicts: [],
+    project_context_operations: [],
+    prompt_addendum_operations: []
+  })
+  assert.throws(
+    () => buildRuleApplyPlan(current, proposal, {
+      schema_version: "bob-bazaar-review/proposal-decisions/v1",
+      run_id: RUN_ID,
+      decisions: { "rule-add": { decision: "accept", reviewed_at: REVIEWED_AT } }
+    }, unsafeEvidence),
+    /rule source manifest.*malformed/i
+  )
+})
+
+test("rejects unknown fields at every rule-provenance level", () => {
+  const evidence = evidenceFixture()
+  const base = {
+    schema_version: "bob-bazaar-review/rule-provenance/v1",
+    updated_at: "2026-07-14T00:00:00.000Z",
+    rules: [{
+      rule_id: "PRJ-0001",
+      lifecycle: "active",
+      source_refs: [{
+        source_id: SOURCE_ID,
+        chunk_id: evidence.chunk.chunk_id,
+        locator: evidence.chunk.locator,
+        text_sha256: evidence.chunk.text_sha256
+      }],
+      first_applied_at: "2026-07-10T00:00:00.000Z",
+      last_applied_at: "2026-07-14T00:00:00.000Z",
+      last_run_id: "run-existing-rule"
+    }],
+    markdown_sections: [{
+      asset: "project-context",
+      section_id: "CTX-0002",
+      lifecycle: "active",
+      source_refs: [],
+      last_applied_at: "2026-07-14T00:00:00.000Z",
+      last_run_id: "run-existing-context"
+    }]
+  }
+  const variants = [
+    (provenance) => { provenance.raw_text = "private source body" },
+    (provenance) => { provenance.rules[0].absolute_path = "/private/source.docx" },
+    (provenance) => { provenance.rules[0].source_refs[0].raw_text = "private source body" },
+    (provenance) => { provenance.markdown_sections[0].absolute_path = "/private/source.docx" }
+  ]
+
+  for (const mutate of variants) {
+    const provenance = structuredClone(base)
+    mutate(provenance)
+    const current = bundle({
+      ruleSources: present(jsonBytes(evidence.sourceManifest)),
+      ruleProvenance: present(jsonBytes(provenance))
+    })
+    const proposal = proposalFor(current, {
+      operations: [],
+      conflicts: [],
+      project_context_operations: [],
+      prompt_addendum_operations: []
+    })
+    assert.throws(
+      () => buildRuleApplyPlan(current, proposal, {
+        schema_version: "bob-bazaar-review/proposal-decisions/v1",
+        run_id: RUN_ID,
+        decisions: {}
+      }, evidence),
+      /approved rule provenance.*malformed|source reference.*malformed/i
+    )
+  }
 })

@@ -1,10 +1,10 @@
 import { createHash, randomBytes } from "node:crypto"
 import { constants as fsConstants, Stats } from "node:fs"
 import * as fs from "node:fs/promises"
-import { hostname } from "node:os"
 import * as path from "node:path"
 import { getProjectRulesPaths } from "../projectRules/io"
 import { getRuleAuthoringPaths, validateRuleAuthoringId } from "./ruleAuthoringPaths"
+import { withRuleAuthoringDirectoryLock } from "./ruleAuthoringRunStore"
 import {
   RULE_APPLY_PLAN_SCHEMA_VERSION,
   RuleApplyAsset,
@@ -155,16 +155,7 @@ interface TransactionPaths {
   readonly stagingDirectory: string
   readonly journalPath: string
   readonly manifestPath: string
-  readonly mutexDirectory: string
-  readonly mutexOwnerPath: string
-}
-
-interface WorkspaceMutexOwnerV1 {
-  readonly schema_version: "bob-bazaar-review/apply-mutex/v1"
-  readonly pid: number
-  readonly host: string
-  readonly token: string
-  readonly transaction_id: string
+  readonly applyLockDirectory: string
 }
 
 const TARGET_SPECS: ReadonlyArray<readonly [RuleApplyAsset, string]> = [
@@ -176,7 +167,6 @@ const TARGET_SPECS: ReadonlyArray<readonly [RuleApplyAsset, string]> = [
 ]
 const SHA256_PATTERN = /^[a-f0-9]{64}$/
 const SAFE_CODE = /^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)+$/
-const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/
 const CANONICAL_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/
 const MAX_PLAN_TARGET_BYTES = 16 * 1024 * 1024
 const MAX_JOURNAL_BYTES = 16 * 1024 * 1024
@@ -197,6 +187,7 @@ export async function executeRuleApplyTransaction(
   return withWorkspaceMutex(paths, transactionId, async () => {
     await assertWorkspaceRoot(paths.workspaceRoot)
     await assertTransactionDoesNotExist(paths)
+    await assertNoIncompleteRuleApplyTransactions(paths.workspaceRoot, transactionId)
     await ensureSafeDirectoryChain(paths.workspaceRoot, paths.stagingDirectory)
     await ensureSafeDirectoryChain(paths.workspaceRoot, paths.backupDirectory)
     await assertAllTargetPathsSafe(paths.workspaceRoot)
@@ -400,6 +391,7 @@ async function verifyOrResumeTargets(
   faultInjector?: RuleApplyFaultInjector
 ): Promise<void> {
   for (const [index, target] of journal.targets.entries()) {
+    await verifyTargetArtifacts(paths, target)
     if (target.state === "restored") {
       throw new RuleApplyTransactionError("recovery_incomplete", {
         transactionId: journal.transaction_id,
@@ -488,6 +480,7 @@ async function commitTransaction(
 ): Promise<ApplyManifestV1> {
   for (const target of journal.targets) {
     if (target.state !== "replaced") throw new RuleApplyTransactionError("recovery_incomplete")
+    await verifyTargetArtifacts(paths, target)
     await assertLivePostImage(paths.workspaceRoot, target)
   }
   await emit(faultInjector, {
@@ -556,7 +549,11 @@ async function rollbackTransaction(
     const target = journal.targets[index]
     if (target.state === "restored") continue
     try {
-      const liveState = await classifyLiveTarget(paths.workspaceRoot, target)
+      const liveState = await classifyLiveTarget(
+        paths.workspaceRoot,
+        target,
+        target.state === "prepared" ? "pre" : "post"
+      )
       if (target.state === "prepared" && liveState === "pre") continue
       if (target.state === "prepared" && liveState === "other") {
         if (failOnPreparedDivergence) restoreFailed = true
@@ -617,7 +614,8 @@ async function classifyLiveTarget(
   target: Pick<
     RuleApplyTransactionTargetV1,
     "asset" | "expected_pre_image" | "post_image_sha256"
-  >
+  >,
+  equalImagePreference: "pre" | "post" = "post"
 ): Promise<"pre" | "post" | "other"> {
   const targetPath = targetAbsolutePath(workspaceRoot, target.asset)
   const stats = await lstatOptional(targetPath)
@@ -630,11 +628,48 @@ async function classifyLiveTarget(
     "unsafe_path"
   )
   const hash = sha256(bytes)
-  if (hash === target.post_image_sha256) return "post"
-  if (target.expected_pre_image.state === "present" && hash === target.expected_pre_image.sha256) {
-    return "pre"
-  }
+  const matchesPost = hash === target.post_image_sha256
+  const matchesPre = target.expected_pre_image.state === "present" &&
+    hash === target.expected_pre_image.sha256
+  if (matchesPost && matchesPre) return equalImagePreference
+  if (matchesPost) return "post"
+  if (matchesPre) return "pre"
   return "other"
+}
+
+async function verifyTargetArtifacts(
+  paths: TransactionPaths,
+  target: RuleApplyTransactionTargetV1
+): Promise<void> {
+  await assertRecoveryArtifactHash(
+    paths.workspaceRoot,
+    absoluteWorkspacePath(paths.workspaceRoot, target.staging_path),
+    target.post_image_sha256
+  )
+  if (target.expected_pre_image.state === "present") {
+    await assertRecoveryArtifactHash(
+      paths.workspaceRoot,
+      absoluteWorkspacePath(paths.workspaceRoot, requiredString(target.backup_path)),
+      target.expected_pre_image.sha256
+    )
+  }
+}
+
+async function assertRecoveryArtifactHash(
+  workspaceRoot: string,
+  filePath: string,
+  expectedHash: string
+): Promise<void> {
+  const stats = await lstatOptional(filePath)
+  if (!stats) throw new RuleApplyTransactionError("recovery_incomplete")
+  if (stats.isSymbolicLink() || !stats.isFile()) throw new RuleApplyTransactionError("unsafe_path")
+  const bytes = await readRegularFileBounded(
+    workspaceRoot,
+    filePath,
+    MAX_PLAN_TARGET_BYTES,
+    "recovery_incomplete"
+  )
+  if (sha256(bytes) !== expectedHash) throw new RuleApplyTransactionError("recovery_incomplete")
 }
 
 async function restoreOneTarget(
@@ -785,8 +820,7 @@ function transactionPaths(workspaceRoot: string, transactionId: string): Transac
     stagingDirectory: path.join(transactionDirectory, "staging"),
     journalPath: path.join(transactionDirectory, "transaction-journal.json"),
     manifestPath: path.join(transactionDirectory, "apply-manifest.json"),
-    mutexDirectory: path.join(authoring.authoringDirectory, ".apply-mutex"),
-    mutexOwnerPath: path.join(authoring.authoringDirectory, ".apply-mutex", "owner.json")
+    applyLockDirectory: path.join(authoring.authoringDirectory, ".apply-lock")
   }
 }
 
@@ -833,106 +867,21 @@ async function withWorkspaceMutex<T>(
     throw new RuleApplyTransactionError("workspace_busy", { transactionId })
   }
   WORKSPACE_MUTEXES.add(mutexKey)
-  let acquired = false
   try {
     await assertWorkspaceRoot(paths.workspaceRoot)
-    await ensureSafeDirectoryChain(paths.workspaceRoot, paths.authoringDirectory)
-    await acquireInterprocessMutex(paths, transactionId)
-    acquired = true
-    return await work()
-  } finally {
-    if (acquired) await releaseInterprocessMutex(paths)
-    WORKSPACE_MUTEXES.delete(mutexKey)
-  }
-}
-
-async function acquireInterprocessMutex(
-  paths: TransactionPaths,
-  transactionId: string
-): Promise<void> {
-  for (let attempt = 0; attempt < 2; attempt += 1) {
+    await ensureSafeDirectoryChain(paths.workspaceRoot, paths.applyLockDirectory)
     try {
-      await fs.mkdir(paths.mutexDirectory)
-      const owner: WorkspaceMutexOwnerV1 = {
-        schema_version: "bob-bazaar-review/apply-mutex/v1",
-        pid: process.pid,
-        host: hostname(),
-        token: randomBytes(16).toString("hex"),
-        transaction_id: transactionId
-      }
-      await atomicWriteJson(paths.workspaceRoot, paths.mutexOwnerPath, owner)
-      return
+      return await withRuleAuthoringDirectoryLock(
+        paths.workspaceRoot,
+        paths.applyLockDirectory,
+        work
+      )
     } catch (error) {
-      if (!isNodeError(error) || error.code !== "EEXIST") {
-        if (isNodeError(error) && error.code === "ELOOP") {
-          throw new RuleApplyTransactionError("unsafe_path")
-        }
-        throw new RuleApplyTransactionError("filesystem_failure")
-      }
-      if (attempt === 0 && await reclaimDeadMutex(paths)) continue
+      if (error instanceof RuleApplyTransactionError) throw error
       throw new RuleApplyTransactionError("workspace_busy", { transactionId })
     }
-  }
-  throw new RuleApplyTransactionError("workspace_busy", { transactionId })
-}
-
-async function reclaimDeadMutex(paths: TransactionPaths): Promise<boolean> {
-  const stats = await lstatOptional(paths.mutexDirectory)
-  if (!stats) return true
-  if (stats.isSymbolicLink() || !stats.isDirectory()) throw new RuleApplyTransactionError("unsafe_path")
-  const entries = await fs.readdir(paths.mutexDirectory)
-  if (entries.length === 0) {
-    await fs.rmdir(paths.mutexDirectory)
-    return true
-  }
-  if (entries.length !== 1 || entries[0] !== "owner.json") return false
-  let owner: WorkspaceMutexOwnerV1
-  try {
-    owner = JSON.parse((await readRegularFileBounded(
-      paths.workspaceRoot,
-      paths.mutexOwnerPath,
-      4096,
-      "unsafe_path"
-    )).toString("utf8")) as WorkspaceMutexOwnerV1
-  } catch {
-    return false
-  }
-  if (
-    !isPlainObject(owner) ||
-    owner.schema_version !== "bob-bazaar-review/apply-mutex/v1" ||
-    !Number.isSafeInteger(owner.pid) ||
-    owner.pid <= 0 ||
-    owner.host !== hostname() ||
-    typeof owner.token !== "string" ||
-    !/^[a-f0-9]{32}$/.test(owner.token)
-  ) {
-    return false
-  }
-  if (isPidAlive(owner.pid)) return false
-  await fs.unlink(paths.mutexOwnerPath)
-  await fs.rmdir(paths.mutexDirectory)
-  return true
-}
-
-async function releaseInterprocessMutex(paths: TransactionPaths): Promise<void> {
-  try {
-    await fs.unlink(paths.mutexOwnerPath)
-  } catch (error) {
-    if (!isNodeError(error) || error.code !== "ENOENT") return
-  }
-  try {
-    await fs.rmdir(paths.mutexDirectory)
-  } catch {
-    // A retained lock fails closed on the next acquisition.
-  }
-}
-
-function isPidAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0)
-    return true
-  } catch (error) {
-    return isNodeError(error) && error.code === "EPERM"
+  } finally {
+    WORKSPACE_MUTEXES.delete(mutexKey)
   }
 }
 
@@ -957,6 +906,16 @@ async function assertTransactionDoesNotExist(paths: TransactionPaths): Promise<v
   }
 }
 
+async function assertNoIncompleteRuleApplyTransactions(
+  workspaceRoot: string,
+  transactionId: string
+): Promise<void> {
+  const incomplete = await findIncompleteRuleApplyTransactions(workspaceRoot)
+  if (incomplete.some((transaction) => transaction.transaction_id !== transactionId)) {
+    throw new RuleApplyTransactionError("recovery_incomplete", { transactionId })
+  }
+}
+
 async function assertAllTargetPathsSafe(workspaceRoot: string): Promise<void> {
   for (const [asset] of TARGET_SPECS) {
     const target = targetAbsolutePath(workspaceRoot, asset)
@@ -978,10 +937,19 @@ async function ensureSafeDirectoryChain(workspaceRoot: string, targetDirectory: 
     current = path.join(current, segment)
     let stats = await lstatOptional(current)
     if (!stats) {
+      let created = false
       try {
         await fs.mkdir(current)
+        created = true
       } catch (error) {
         if (!isNodeError(error) || error.code !== "EEXIST") {
+          throw new RuleApplyTransactionError("filesystem_failure")
+        }
+      }
+      if (created) {
+        try {
+          await fsyncDirectory(path.dirname(current))
+        } catch {
           throw new RuleApplyTransactionError("filesystem_failure")
         }
       }
@@ -1230,7 +1198,7 @@ function validateJournal(
     !isPlainObject(value) ||
     value.schema_version !== RULE_APPLY_TRANSACTION_SCHEMA_VERSION ||
     value.transaction_id !== path.basename(paths.transactionDirectory) ||
-    !SAFE_ID.test(String(value.run_id)) ||
+    !isValidRuleAuthoringId(value.run_id) ||
     !isTransactionStatus(value.status) ||
     !isCanonicalTimestamp(value.created_at) ||
     !isCanonicalTimestamp(value.updated_at) ||
@@ -1393,6 +1361,15 @@ function isCanonicalTimestamp(value: unknown): value is string {
     CANONICAL_TIMESTAMP.test(value) &&
     !Number.isNaN(Date.parse(value)) &&
     new Date(value).toISOString() === value
+}
+
+function isValidRuleAuthoringId(value: unknown): value is string {
+  if (typeof value !== "string") return false
+  try {
+    return validateRuleAuthoringId(value, "runId") === value
+  } catch {
+    return false
+  }
 }
 
 function isOptionalSafeCode(value: unknown): boolean {

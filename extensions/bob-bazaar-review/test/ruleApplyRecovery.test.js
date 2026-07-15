@@ -32,14 +32,18 @@ async function workspace(t) {
   return root
 }
 
-async function seedCommittedTransaction(root, transactionId) {
+async function seedCommittedTransaction(root, transactionId, options = {}) {
+  const noOpAssets = new Set(options.noOpAssets ?? [])
+  const runId = options.runId ?? "run-recovery-tests"
   await fs.mkdir(path.join(root, ".bob", "review"), { recursive: true })
   const originals = new Map()
   const replacements = new Map()
   const targets = []
   for (const [asset, relativePath] of TARGETS) {
     const before = Buffer.from(`recovery-before:${asset}\n`, "utf8")
-    const after = Buffer.from(`recovery-after:${asset}\n`, "utf8")
+    const after = noOpAssets.has(asset)
+      ? Buffer.from(before)
+      : Buffer.from(`recovery-after:${asset}\n`, "utf8")
     originals.set(asset, before)
     replacements.set(asset, after)
     await fs.writeFile(path.join(root, ...relativePath.split("/")), before)
@@ -53,7 +57,7 @@ async function seedCommittedTransaction(root, transactionId) {
   }
   const plan = {
     schema_version: RULE_APPLY_PLAN_SCHEMA_VERSION,
-    run_id: "run-recovery-tests",
+    run_id: runId,
     targets,
     decisions: [],
     retirements: []
@@ -199,6 +203,100 @@ test("restart rollback detects a replace that completed before its journal trans
   await assertAllTargets(root, originals)
 })
 
+test("prepared all-no-op rollback treats matching bytes as pre-images without artifacts", async (t) => {
+  const root = await workspace(t)
+  const transactionId = "txn-noop-prepared-rollback"
+  const { originals } = await seedCommittedTransaction(root, transactionId, {
+    noOpAssets: TARGETS.map(([asset]) => asset)
+  })
+  await makeIncomplete(root, transactionId, 0)
+  await fs.rm(path.join(transactionDirectory(root, transactionId), "staging"), {
+    recursive: true,
+    force: true
+  })
+  await fs.rm(path.join(root, ".bob", "review", "rule-authoring", "backups", transactionId), {
+    recursive: true,
+    force: true
+  })
+
+  const recovered = await recoverRuleApplyTransaction(root, transactionId, {
+    action: "rollback",
+    now: RECOVERED_AT
+  })
+
+  assert.equal(recovered.status, "rolled_back")
+  assert.deepEqual(recovered.targets.map(({ state }) => state), Array(5).fill("prepared"))
+  await assertAllTargets(root, originals)
+})
+
+test("prepared all-no-op resume requires complete staging and backup artifacts", async (t) => {
+  for (const missingArtifact of ["staging", "backup"]) {
+    const root = await workspace(t)
+    const transactionId = `txn-noop-partial-${missingArtifact}`
+    const { originals } = await seedCommittedTransaction(root, transactionId, {
+      noOpAssets: TARGETS.map(([asset]) => asset)
+    })
+    const journal = await makeIncomplete(root, transactionId, 0)
+    const relativePath = missingArtifact === "staging"
+      ? journal.targets[0].staging_path
+      : journal.targets[0].backup_path
+    await fs.rm(path.join(root, ...relativePath.split("/")))
+
+    await assert.rejects(
+      recoverRuleApplyTransaction(root, transactionId, {
+        action: "resume",
+        now: RECOVERED_AT
+      }),
+      (error) => error.code === "recovery_incomplete"
+    )
+    assert.equal((await readJournal(root, transactionId)).status, "rolled_back")
+    await assertAllTargets(root, originals)
+  }
+})
+
+test("mixed no-op rollback leaves an unchanged prepared target in the pre-image state", async (t) => {
+  const root = await workspace(t)
+  const transactionId = "txn-mixed-noop-rollback"
+  const noOpAsset = TARGETS[0][0]
+  const { originals } = await seedCommittedTransaction(root, transactionId, {
+    noOpAssets: [noOpAsset]
+  })
+  await makeIncomplete(root, transactionId, 0)
+  for (const [asset] of TARGETS.slice(2)) await setTarget(root, asset, originals.get(asset))
+
+  const recovered = await recoverRuleApplyTransaction(root, transactionId, {
+    action: "rollback",
+    now: RECOVERED_AT
+  })
+
+  assert.equal(recovered.status, "rolled_back")
+  assert.deepEqual(recovered.targets.map(({ state }) => state), [
+    "prepared",
+    "restored",
+    "prepared",
+    "prepared",
+    "prepared"
+  ])
+  await assertAllTargets(root, originals)
+})
+
+test("commit recovery verifies staging artifacts even for already replaced targets", async (t) => {
+  const root = await workspace(t)
+  const transactionId = "txn-replaced-missing-stage"
+  const { originals } = await seedCommittedTransaction(root, transactionId)
+  const journal = await makeIncomplete(root, transactionId, TARGETS.length)
+  await fs.rm(path.join(root, ...journal.targets[0].staging_path.split("/")))
+
+  await assert.rejects(
+    recoverRuleApplyTransaction(root, transactionId, {
+      action: "resume",
+      now: RECOVERED_AT
+    }),
+    (error) => error.code === "recovery_incomplete"
+  )
+  await assertAllTargets(root, originals)
+})
+
 test("restart rollback fails closed when a prepared target matches neither image", async (t) => {
   const root = await workspace(t)
   const transactionId = "txn-restart-divergent-target"
@@ -314,4 +412,21 @@ test("validated recovery rejects a journal that tries to redirect a target path"
     (error) => error.code === "unsafe_journal"
   )
   assert.equal(await fs.readFile(external, "utf8"), "external content\n")
+})
+
+test("execute discovery and recovery preserve a valid Unicode run ID with an internal space", async (t) => {
+  const root = await workspace(t)
+  const transactionId = "txn-unicode-run-id"
+  const runId = "規約 適用"
+
+  await seedCommittedTransaction(root, transactionId, { runId })
+  assert.deepEqual(await findIncompleteRuleApplyTransactions(root), [])
+
+  const manifest = await recoverRuleApplyTransaction(root, transactionId, {
+    action: "resume",
+    now: RECOVERED_AT
+  })
+  assert.equal(manifest.status, "committed")
+  assert.equal(manifest.run_id, runId)
+  assert.equal((await readJournal(root, transactionId)).run_id, runId)
 })

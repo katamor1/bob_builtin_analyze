@@ -146,6 +146,48 @@ test("journals, backs up, atomically replaces, verifies, and commits all five ta
   }
 })
 
+test("fsyncs each newly created transaction-directory entry before creating the next", async (t) => {
+  const root = await workspace(t)
+  const { plan } = await createPlan(root)
+  const originalMkdir = fs.mkdir
+  const originalOpen = fs.open
+  const events = []
+  fs.mkdir = async (directory, ...args) => {
+    const result = await originalMkdir(directory, ...args)
+    if (path.resolve(String(directory)).startsWith(`${root}${path.sep}`)) {
+      events.push({ operation: "mkdir", path: path.resolve(String(directory)) })
+    }
+    return result
+  }
+  fs.open = async (target, ...args) => {
+    const handle = await originalOpen(target, ...args)
+    if ((await handle.stat()).isDirectory()) {
+      const originalSync = handle.sync.bind(handle)
+      handle.sync = async () => {
+        events.push({ operation: "sync", path: path.resolve(String(target)) })
+        return originalSync()
+      }
+    }
+    return handle
+  }
+  t.after(() => {
+    fs.mkdir = originalMkdir
+    fs.open = originalOpen
+  })
+
+  await executeRuleApplyTransaction(plan, options(root, "txn-directory-fsync"))
+
+  const creations = events.filter(({ operation }) => operation === "mkdir")
+  assert.ok(creations.length >= 5)
+  for (const creation of creations) {
+    const index = events.indexOf(creation)
+    assert.deepEqual(events[index + 1], {
+      operation: "sync",
+      path: path.dirname(creation.path)
+    }, creation.path)
+  }
+})
+
 test("a failure before the first replace rolls back without changing any target", async (t) => {
   const root = await workspace(t)
   const { plan, originals } = await createPlan(root)
@@ -258,6 +300,44 @@ test("a rollback failure is retained in the journal while other targets continue
   assert.doesNotMatch(JSON.stringify(journal), /backup bytes/)
 })
 
+test("an incomplete rollback-failed transaction blocks every new transaction ID", async (t) => {
+  const root = await workspace(t)
+  const first = await createPlan(root)
+
+  await assert.rejects(executeRuleApplyTransaction(first.plan, options(
+    root,
+    "txn-incomplete-seed",
+    (event) => {
+      if (event.operation === "replace_target" && event.index === 2) throw new Error("forward")
+      if (event.operation === "restore_target" && event.asset === "project_context") {
+        throw new Error("retain one replaced target")
+      }
+    }
+  )), (error) => error.code === "rollback_failed")
+
+  const second = await createPlan(root)
+  await assert.rejects(
+    executeRuleApplyTransaction(second.plan, options(root, "txn-must-not-start")),
+    (error) => error.code === "recovery_incomplete"
+  )
+  await assertTargetBytes(root, second.originals)
+  await assert.rejects(
+    fs.access(transactionDirectory(root, "txn-must-not-start")),
+    (error) => error.code === "ENOENT"
+  )
+})
+
+test("terminal transaction journals do not block a later transaction ID", async (t) => {
+  const root = await workspace(t)
+  const first = await createPlan(root)
+  await executeRuleApplyTransaction(first.plan, options(root, "txn-terminal-first"))
+
+  const second = await createPlan(root)
+  const manifest = await executeRuleApplyTransaction(second.plan, options(root, "txn-terminal-second"))
+  assert.equal(manifest.status, "committed")
+  await assertTargetBytes(root, second.replacements)
+})
+
 test("a failure after all replaces but before commit restores every target", async (t) => {
   const root = await workspace(t)
   const { plan, originals } = await createPlan(root)
@@ -320,6 +400,34 @@ test("holds a workspace-wide mutex across transaction IDs", async (t) => {
 
   release.resolve()
   await firstExecution
+})
+
+test("a foreign-scope live apply generation blocks without modifying targets", async (t) => {
+  const root = await workspace(t)
+  const { plan, originals } = await createPlan(root)
+  const lockDirectory = path.join(root, ".bob", "review", "rule-authoring", ".apply-lock")
+  await fs.mkdir(lockDirectory, { recursive: true })
+  await fs.writeFile(
+    path.join(lockDirectory, ".authoring-run.lock.000000000001"),
+    `${JSON.stringify({
+      schema_version: "bob-bazaar-review/run-lock/v1",
+      pid: process.pid,
+      token: "a".repeat(32),
+      scope_id: "f".repeat(64),
+      created_at: NOW
+    })}\n`,
+    "utf8"
+  )
+
+  await assert.rejects(
+    executeRuleApplyTransaction(plan, options(root, "txn-foreign-apply-lock")),
+    (error) => {
+      assert.equal(error.code, "workspace_busy")
+      assert.doesNotMatch(error.message, /process scope|\.authoring-run/)
+      return true
+    }
+  )
+  await assertTargetBytes(root, originals)
 })
 
 test("rejects a symlinked approved target without modifying its referent", async (t) => {

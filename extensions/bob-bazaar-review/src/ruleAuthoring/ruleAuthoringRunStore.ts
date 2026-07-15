@@ -124,6 +124,19 @@ export interface CreateRuleAuthoringRunInput {
   now?: string
 }
 
+export async function withRuleAuthoringDirectoryLock<T>(
+  workspaceRootInput: string,
+  lockDirectoryInput: string,
+  action: () => Promise<T>
+): Promise<T> {
+  const workspaceRoot = path.resolve(workspaceRootInput)
+  const lockDirectory = path.resolve(lockDirectoryInput)
+  assertLexicallyContained(workspaceRoot, lockDirectory)
+  await ensureSafeDirectoryChain(workspaceRoot, lockDirectory)
+  await assertExistingDirectoryChain(workspaceRoot, lockDirectory)
+  return withRunWriteLock(lockDirectory, () => withInterprocessDirectoryLock(lockDirectory, action))
+}
+
 export async function createRuleAuthoringRun(
   input: CreateRuleAuthoringRunInput
 ): Promise<RuleAuthoringRunV1> {
@@ -707,12 +720,19 @@ async function withInterprocessRunLock<T>(
   paths: RuleAuthoringPaths,
   action: () => Promise<T>
 ): Promise<T> {
-  await cleanupAbandonedRunLockOwners(paths.runDirectory)
-  const owner = await createRunLockOwner(paths.runDirectory)
+  return withInterprocessDirectoryLock(paths.runDirectory, action)
+}
+
+async function withInterprocessDirectoryLock<T>(
+  lockDirectory: string,
+  action: () => Promise<T>
+): Promise<T> {
+  await cleanupAbandonedRunLockOwners(lockDirectory)
+  const owner = await createRunLockOwner(lockDirectory)
   let acquired: RunLockGeneration | undefined
   try {
     for (let attempt = 0; attempt < RUN_LOCK_RETRY_COUNT; attempt += 1) {
-      acquired = await tryAcquireRunLockGeneration(paths.runDirectory, owner)
+      acquired = await tryAcquireRunLockGeneration(lockDirectory, owner)
       if (acquired) break
       if (attempt === RUN_LOCK_RETRY_COUNT - 1) {
         throw new Error("Rule authoring run is busy in another process")
@@ -735,7 +755,7 @@ async function withInterprocessRunLock<T>(
     }
     let releaseError: unknown
     try {
-      await closeRunLockGeneration(paths.runDirectory, acquired, owner.record)
+      await closeRunLockGeneration(lockDirectory, acquired, owner.record)
       acquired = undefined
     } catch (error) {
       releaseError = error
@@ -748,7 +768,7 @@ async function withInterprocessRunLock<T>(
     return result
   } finally {
     if (acquired) {
-      await closeRunLockGeneration(paths.runDirectory, acquired, owner.record)
+      await closeRunLockGeneration(lockDirectory, acquired, owner.record)
     }
     await fs.rm(owner.ownerPath, { force: true })
   }

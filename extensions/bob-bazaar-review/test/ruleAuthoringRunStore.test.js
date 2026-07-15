@@ -10,6 +10,7 @@ const {
   createRuleAuthoringRun,
   listIncompleteRuleAuthoringRuns,
   readRuleAuthoringRun,
+  withRuleAuthoringDirectoryLock,
   writeRuleAuthoringRun
 } = require("../out/ruleAuthoring/ruleAuthoringRunStore")
 
@@ -18,6 +19,19 @@ async function workspace(t) {
   t.after(() => fs.rm(root, { recursive: true, force: true }))
   return root
 }
+
+test("exposes the hardened generation protocol as a reusable directory lock", async (t) => {
+  const root = await workspace(t)
+  const lockDirectory = path.join(root, ".bob", "review", "rule-authoring", ".contract-lock")
+
+  const result = await withRuleAuthoringDirectoryLock(root, lockDirectory, async () => "locked")
+
+  assert.equal(result, "locked")
+  const entries = await fs.readdir(lockDirectory)
+  assert.ok(entries.includes(".authoring-run.lock.000000000001"))
+  assert.ok(entries.includes(".authoring-run.lock.000000000001.closed"))
+  assert.equal(entries.some((name) => name.startsWith(".authoring-run.lock-owner.")), false)
+})
 
 test("creates a resumable run atomically and installs missing-only ignore rules", async (t) => {
   const root = await workspace(t)

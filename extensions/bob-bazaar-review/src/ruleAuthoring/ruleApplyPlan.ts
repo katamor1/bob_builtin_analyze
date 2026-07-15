@@ -220,6 +220,8 @@ const REMOTE_SAFE_WARNING = /^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)+$/
 const CANONICAL_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/
 const CONTROL_CHARACTER = /[\u0000-\u001f\u007f-\u009f]/
 const MAX_REJECT_REASON_BYTES = 8_192
+const MAX_APPROVED_RULE_SOURCE_COUNT = 4_096
+const MAX_APPROVED_RULE_SOURCE_MANIFEST_BYTES = 4 * 1024 * 1024
 const EMPTY_BYTES = Buffer.alloc(0)
 const EMPTY_MANIFEST_TIMESTAMP = "1970-01-01T00:00:00.000Z"
 const TARGET_PATHS: ReadonlyArray<readonly [RuleApplyAsset, string]> = [
@@ -260,19 +262,32 @@ export function buildRuleApplyPlan(
     validatedEffectiveProposal.operations,
     decisions,
     allocateRuleIds,
-    current.checklist.rules.map(({ id }) => id)
+    uniqueStrings([
+      ...current.checklist.rules.map(({ id }) => id),
+      ...current.provenance.rules.map(({ rule_id }) => rule_id)
+    ])
   )
   const assignedContextIds = allocateAcceptedAddIds(
     validatedEffectiveProposal.project_context_operations,
     decisions,
     allocateContextSectionIds,
-    current.projectContext.sections.map(({ id }) => id)
+    uniqueStrings([
+      ...current.projectContext.sections.map(({ id }) => id),
+      ...current.provenance.markdown_sections
+        .filter(({ asset }) => asset === "project-context")
+        .map(({ section_id }) => section_id)
+    ])
   )
   const assignedPromptIds = allocateAcceptedAddIds(
     validatedEffectiveProposal.prompt_addendum_operations,
     decisions,
     allocatePromptSectionIds,
-    current.promptAddendum.sections.map(({ id }) => id)
+    uniqueStrings([
+      ...current.promptAddendum.sections.map(({ id }) => id),
+      ...current.provenance.markdown_sections
+        .filter(({ asset }) => asset === "review-prompt-addendum")
+        .map(({ section_id }) => section_id)
+    ])
   )
 
   const operations = collectEffectiveOperations(
@@ -301,12 +316,16 @@ export function buildRuleApplyPlan(
     mergedSources,
     provenanceChunks
   )
+  const ruleSourcesBytes = serializeStableJson(mergedSources.manifest)
+  if (ruleSourcesBytes.byteLength > MAX_APPROVED_RULE_SOURCE_MANIFEST_BYTES) {
+    throw new Error("Approved rule source manifest exceeds its byte limit")
+  }
 
   const outputBytes = new Map<RuleApplyAsset, Buffer>([
     ["checklist", serializeStableJson(checklist)],
     ["project_context", Buffer.from(projectContextText, "utf8")],
     ["prompt_addendum", Buffer.from(promptAddendumText, "utf8")],
-    ["rule_sources", serializeStableJson(mergedSources.manifest)],
+    ["rule_sources", ruleSourcesBytes],
     ["rule_provenance", serializeStableJson(provenanceResult.provenance)]
   ])
   const inputAssets = assetMap(bundle)
@@ -619,15 +638,15 @@ function mergeRuleSources(
   evidence: RuleSourceManifestV1,
   operations: readonly EffectiveOperation[]
 ): MergedSources {
-  validateSourceManifest(current)
-  validateSourceManifest(evidence)
+  validateSourceManifest(current, MAX_APPROVED_RULE_SOURCE_COUNT)
+  validateSourceManifest(evidence, DEFAULT_RULE_AUTHORING_LIMITS.maxSourceFiles)
   const referencedEvidenceIds = new Set<string>()
   for (const entry of operations) {
     if (entry.decision.decision === "reject") continue
     for (const sourceRef of entry.operation.source_refs) referencedEvidenceIds.add(sourceRef.source_id)
   }
 
-  const sources = current.sources.map((source) => structuredClone(source))
+  const sources = current.sources.map((source) => copySourceManifestEntry(source))
   const existingById = new Map(sources.map((source) => [source.source_id, source]))
   const existingByHash = new Map(sources.map((source) => [source.sha256, source]))
   const evidenceById = new Map(evidence.sources.map((source) => [source.source_id, source]))
@@ -645,7 +664,7 @@ function mergeRuleSources(
       continue
     }
     const assignedSourceId = allocateMergedSourceId(source.sha256, source.source_id, existingById)
-    const copied = { ...structuredClone(source), source_id: assignedSourceId }
+    const copied = copySourceManifestEntry(source, assignedSourceId)
     sources.push(copied)
     existingById.set(assignedSourceId, copied)
     existingByHash.set(copied.sha256, copied)
@@ -653,14 +672,16 @@ function mergeRuleSources(
     added = true
   }
 
+  const manifest: RuleSourceManifestV1 = {
+    schema_version: "bob-bazaar-review/rule-sources/v1",
+    generated_at: added
+      ? maxTimestamp(current.generated_at, evidence.generated_at)
+      : current.generated_at,
+    sources: sources.sort((left, right) => compareText(left.source_id, right.source_id))
+  }
+  validateSourceManifest(manifest, MAX_APPROVED_RULE_SOURCE_COUNT)
   return {
-    manifest: {
-      schema_version: "bob-bazaar-review/rule-sources/v1",
-      generated_at: added
-        ? maxTimestamp(current.generated_at, evidence.generated_at)
-        : current.generated_at,
-      sources: sources.sort((left, right) => compareText(left.source_id, right.source_id))
-    },
+    manifest,
     sourceIdMap
   }
 }
@@ -811,7 +832,7 @@ function validateEvidence(evidence: RuleApplyEvidence): void {
   if (!isPlainObject(evidence) || !Array.isArray(evidence.chunks)) {
     throw new Error("Apply evidence is malformed")
   }
-  validateSourceManifest(evidence.sourceManifest)
+  validateSourceManifest(evidence.sourceManifest, DEFAULT_RULE_AUTHORING_LIMITS.maxSourceFiles)
   loadSelectedEvidence(
     evidence.selection,
     evidence.chunks,
@@ -834,13 +855,14 @@ function validateEvidence(evidence: RuleApplyEvidence): void {
   }
 }
 
-function validateSourceManifest(value: RuleSourceManifestV1): void {
+function validateSourceManifest(value: RuleSourceManifestV1, maxSourceCount: number): void {
   if (
     !isPlainObject(value) ||
+    !hasExactKeys(value, ["schema_version", "generated_at", "sources"]) ||
     value.schema_version !== "bob-bazaar-review/rule-sources/v1" ||
     !isCanonicalTimestamp(value.generated_at) ||
     !Array.isArray(value.sources) ||
-    value.sources.length > DEFAULT_RULE_AUTHORING_LIMITS.maxSourceFiles
+    value.sources.length > maxSourceCount
   ) {
     throw new Error("Rule source manifest is malformed")
   }
@@ -849,6 +871,16 @@ function validateSourceManifest(value: RuleSourceManifestV1): void {
   for (const source of value.sources) {
     if (
       !isPlainObject(source) ||
+      !hasExactKeys(source, [
+        "source_id",
+        "logical_name",
+        "media_type",
+        "sha256",
+        "byte_size",
+        "extraction_status",
+        "extractor",
+        "warnings"
+      ]) ||
       !SOURCE_ID_PATTERN.test(source.source_id) ||
       !SHA256_PATTERN.test(source.sha256) ||
       !source.sha256.startsWith(source.source_id.slice(4)) ||
@@ -856,6 +888,7 @@ function validateSourceManifest(value: RuleSourceManifestV1): void {
       hashes.has(source.sha256) ||
       typeof source.logical_name !== "string" ||
       source.logical_name.length === 0 ||
+      source.logical_name.trim() !== source.logical_name ||
       source.logical_name.includes("/") ||
       source.logical_name.includes("\\") ||
       CONTROL_CHARACTER.test(source.logical_name) ||
@@ -863,8 +896,10 @@ function validateSourceManifest(value: RuleSourceManifestV1): void {
       !Number.isSafeInteger(source.byte_size) ||
       source.byte_size < 0 ||
       !["docx", "xlsx", "pdf"].includes(source.media_type) ||
+      !source.logical_name.toLowerCase().endsWith(`.${source.media_type}`) ||
       !["success", "partial", "blocked", "requires_conversion", "requires_ocr"].includes(source.extraction_status) ||
       !isPlainObject(source.extractor) ||
+      !hasExactKeys(source.extractor, ["id", "version"]) ||
       typeof source.extractor.id !== "string" ||
       !REMOTE_SAFE_TOKEN.test(source.extractor.id) ||
       Buffer.byteLength(source.extractor.id, "utf8") > 128 ||
@@ -887,8 +922,11 @@ function validateSourceManifest(value: RuleSourceManifestV1): void {
 }
 
 function parseSourceManifest(bytes: Uint8Array): RuleSourceManifestV1 {
+  if (bytes.byteLength > MAX_APPROVED_RULE_SOURCE_MANIFEST_BYTES) {
+    throw new Error("Approved rule source manifest exceeds its byte limit")
+  }
   const parsed = parseJsonBytes(bytes, "Approved rule source manifest")
-  validateSourceManifest(parsed as RuleSourceManifestV1)
+  validateSourceManifest(parsed as RuleSourceManifestV1, MAX_APPROVED_RULE_SOURCE_COUNT)
   return structuredClone(parsed as RuleSourceManifestV1)
 }
 
@@ -896,6 +934,7 @@ function parseProvenance(bytes: Uint8Array): RuleProvenanceV1 {
   const parsed = parseJsonBytes(bytes, "Approved rule provenance")
   if (
     !isPlainObject(parsed) ||
+    !hasExactKeys(parsed, ["schema_version", "updated_at", "rules", "markdown_sections"]) ||
     parsed.schema_version !== RULE_PROVENANCE_SCHEMA_VERSION ||
     !isCanonicalTimestamp(parsed.updated_at) ||
     !Array.isArray(parsed.rules) ||
@@ -911,6 +950,14 @@ function parseProvenance(bytes: Uint8Array): RuleProvenanceV1 {
 function validateRuleProvenanceEntry(value: unknown): asserts value is RuleProvenanceRuleEntryV1 {
   if (
     !isPlainObject(value) ||
+    !hasExactKeys(value, [
+      "rule_id",
+      "lifecycle",
+      "source_refs",
+      "first_applied_at",
+      "last_applied_at",
+      "last_run_id"
+    ]) ||
     !isSafeTargetId(value.rule_id, "rule") ||
     !isLifecycle(value.lifecycle) ||
     !Array.isArray(value.source_refs) ||
@@ -927,6 +974,14 @@ function validateRuleProvenanceEntry(value: unknown): asserts value is RuleProve
 function validateMarkdownProvenanceEntry(value: unknown): asserts value is RuleProvenanceMarkdownEntryV1 {
   if (
     !isPlainObject(value) ||
+    !hasExactKeys(value, [
+      "asset",
+      "section_id",
+      "lifecycle",
+      "source_refs",
+      "last_applied_at",
+      "last_run_id"
+    ]) ||
     (value.asset !== "project-context" && value.asset !== "review-prompt-addendum") ||
     !isSafeTargetId(
       value.section_id,
@@ -1012,6 +1067,7 @@ function validateProvenanceSourceRefs(value: readonly unknown[]): void {
   for (const ref of value) {
     if (
       !isPlainObject(ref) ||
+      !hasExactKeys(ref, ["source_id", "chunk_id", "locator", "text_sha256"]) ||
       !SOURCE_ID_PATTERN.test(String(ref.source_id)) ||
       !CHUNK_ID_PATTERN.test(String(ref.chunk_id)) ||
       !SHA256_PATTERN.test(String(ref.text_sha256)) ||
@@ -1174,6 +1230,22 @@ function emptyProvenance(): RuleProvenanceV1 {
   }
 }
 
+function copySourceManifestEntry(
+  source: RuleSourceManifestV1["sources"][number],
+  sourceId = source.source_id
+): RuleSourceManifestV1["sources"][number] {
+  return {
+    source_id: sourceId,
+    logical_name: source.logical_name,
+    media_type: source.media_type,
+    sha256: source.sha256,
+    byte_size: source.byte_size,
+    extraction_status: source.extraction_status,
+    extractor: { id: source.extractor.id, version: source.extractor.version },
+    warnings: [...source.warnings]
+  }
+}
+
 function allocateMergedSourceId(
   sha: string,
   preferredId: string,
@@ -1328,6 +1400,10 @@ function compareText(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0
 }
 
+function uniqueStrings(values: readonly string[]): string[] {
+  return [...new Set(values)]
+}
+
 function requiredMapValue<K, V>(map: ReadonlyMap<K, V>, key: K): V {
   const value = map.get(key)
   if (value === undefined) throw new Error("Required validated apply-planning value is unavailable")
@@ -1336,4 +1412,10 @@ function requiredMapValue<K, V>(map: ReadonlyMap<K, V>, key: K): V {
 
 function isPlainObject(value: unknown): value is Record<string, any> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+function hasExactKeys(value: object, expectedKeys: readonly string[]): boolean {
+  const actual = Object.keys(value).sort(compareText)
+  const expected = [...expectedKeys].sort(compareText)
+  return actual.length === expected.length && actual.every((key, index) => key === expected[index])
 }
