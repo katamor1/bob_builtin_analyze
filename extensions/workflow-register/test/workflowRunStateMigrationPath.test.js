@@ -1018,3 +1018,135 @@ test("migration rollback retains the owner handle while preserving a foreign rep
     []
   )
 })
+
+test("migration publication preserves a primary integrity error when owner close also fails", async (t) => {
+  const root = tempRoot()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const runId = "20260712T000000Z-primary-before-close-000000000018"
+  const historical = "primary-before-close-history\n"
+  await prepareRunDirectory(root, runId)
+  const rootRunsDirectory = runsDirectory(root)
+  const backupPath = path.join(runDirectory(root, runId), "run-state-v0.backup.json")
+  const originalOpen = fsp.open
+  const originalLink = fsp.link
+  let ownerHandle
+  let closeOwnerForTestCleanup
+  let closeAttempted = false
+  let mutated = false
+
+  fsp.open = async (target, ...args) => {
+    const handle = await originalOpen(target, ...args)
+    const resolved = path.resolve(String(target))
+    const isOwnedTemp = path.dirname(resolved) === path.resolve(rootRunsDirectory)
+      && path.basename(resolved).startsWith(`.${runId}.`)
+      && path.basename(resolved).endsWith(".tmp")
+    if (!ownerHandle && isOwnedTemp) {
+      ownerHandle = handle
+      const realClose = handle.close.bind(handle)
+      closeOwnerForTestCleanup = realClose
+      Object.defineProperty(handle, "close", {
+        configurable: true,
+        value: async () => {
+          closeAttempted = true
+          await realClose()
+          const error = new Error("simulated owner close masking failure")
+          error.code = "EIO"
+          throw error
+        }
+      })
+    }
+    return handle
+  }
+  fsp.link = async (existingPath, newPath) => {
+    if (!mutated && samePath(newPath, backupPath)) {
+      mutated = true
+      const handle = await originalOpen(existingPath, "r+")
+      try {
+        await handle.truncate(0)
+        await handle.writeFile("attacker-before-close\n", "utf8")
+        await handle.sync()
+      } finally {
+        await handle.close()
+      }
+    }
+    return originalLink(existingPath, newPath)
+  }
+
+  let observedError
+  try {
+    observedError = await ensureContainedRunStateMigrationBackup(root, runId, historical)
+      .then(() => undefined, (error) => error)
+  } finally {
+    fsp.open = originalOpen
+    fsp.link = originalLink
+    if (ownerHandle && !closeAttempted) await closeOwnerForTestCleanup()
+  }
+
+  assert.ok(observedError)
+  assert.match(observedError.message, /publication bytes changed before create-once publication was finalized/i)
+  assert.doesNotMatch(observedError.message, /simulated owner close masking failure/i)
+  assert.equal(mutated, true)
+  assert.equal(closeAttempted, true)
+  await assert.rejects(fsp.access(backupPath), { code: "ENOENT" })
+  assert.deepEqual(
+    (await fsp.readdir(rootRunsDirectory)).filter((name) => name.startsWith(`.${runId}.`) && name.endsWith(".tmp")),
+    []
+  )
+})
+
+test("migration publication surfaces owner close failure after successful publication", async (t) => {
+  const root = tempRoot()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const runId = "20260712T000000Z-successful-close-000000000019"
+  const historical = "successful-close-history\n"
+  await prepareRunDirectory(root, runId)
+  const rootRunsDirectory = runsDirectory(root)
+  const backupPath = path.join(runDirectory(root, runId), "run-state-v0.backup.json")
+  const originalOpen = fsp.open
+  let ownerHandle
+  let closeOwnerForTestCleanup
+  let closeAttempted = false
+
+  fsp.open = async (target, ...args) => {
+    const handle = await originalOpen(target, ...args)
+    const resolved = path.resolve(String(target))
+    const isOwnedTemp = path.dirname(resolved) === path.resolve(rootRunsDirectory)
+      && path.basename(resolved).startsWith(`.${runId}.`)
+      && path.basename(resolved).endsWith(".tmp")
+    if (!ownerHandle && isOwnedTemp) {
+      ownerHandle = handle
+      const realClose = handle.close.bind(handle)
+      closeOwnerForTestCleanup = realClose
+      Object.defineProperty(handle, "close", {
+        configurable: true,
+        value: async () => {
+          closeAttempted = true
+          await realClose()
+          const error = new Error("simulated successful publication close failure")
+          error.code = "EIO"
+          throw error
+        }
+      })
+    }
+    return handle
+  }
+
+  let observedError
+  try {
+    observedError = await ensureContainedRunStateMigrationBackup(root, runId, historical)
+      .then(() => undefined, (error) => error)
+  } finally {
+    fsp.open = originalOpen
+    if (ownerHandle && !closeAttempted) await closeOwnerForTestCleanup()
+  }
+
+  assert.ok(observedError)
+  assert.match(observedError.message, /simulated successful publication close failure/)
+  assert.equal(closeAttempted, true)
+  assert.equal(await fsp.readFile(backupPath, "utf8"), historical)
+  assert.equal((await fsp.lstat(backupPath)).nlink, 1)
+  assert.deepEqual(
+    (await fsp.readdir(rootRunsDirectory)).filter((name) => name.startsWith(`.${runId}.`) && name.endsWith(".tmp")),
+    []
+  )
+})

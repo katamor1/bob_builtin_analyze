@@ -16,6 +16,10 @@ type FileIdentity = {
   ino: bigint
 }
 
+type CapturedFailure =
+  | { failed: false }
+  | { failed: true; error: unknown }
+
 type DirectDirectory = FileIdentity & {
   path: string
 }
@@ -70,6 +74,7 @@ async function ensureContainedRunStateMigrationBackupUnlocked(
   let tempIdentity: FileIdentity | undefined
   let publicationLinked = false
   let publicationSucceeded = false
+  let operationFailure: CapturedFailure = { failed: false }
 
   try {
     await assertDirectoryIdentity(runsRoot, "Workflow runs directory")
@@ -155,7 +160,12 @@ async function ensureContainedRunStateMigrationBackupUnlocked(
     await assertDirectoryIdentity(runsRoot, "Workflow runs directory")
     await assertDirectoryIdentity(runDirectory, `Workflow run '${runId}' directory`)
     publicationSucceeded = true
+  } catch (error) {
+    operationFailure = { failed: true, error }
+    throw error
   } finally {
+    let cleanupFailure: CapturedFailure = { failed: false }
+    let closeFailure: CapturedFailure = { failed: false }
     try {
       if (tempHandle && await directoryStillMatches(runsRoot)) {
         if (publicationLinked && !publicationSucceeded && await directoryStillMatches(runDirectory)) {
@@ -163,8 +173,17 @@ async function ensureContainedRunStateMigrationBackupUnlocked(
         }
         await removeDirectFileOwnedByHandle(tempPath, root, tempHandle)
       }
-    } finally {
+    } catch (error) {
+      cleanupFailure = { failed: true, error }
+    }
+    try {
       if (tempHandle) await tempHandle.close()
+    } catch (error) {
+      closeFailure = { failed: true, error }
+    }
+    if (!operationFailure.failed) {
+      if (cleanupFailure.failed) throw cleanupFailure.error
+      if (closeFailure.failed) throw closeFailure.error
     }
   }
 }
