@@ -27,25 +27,30 @@ jobs:
 
           gui_test = Path("extensions/bob-bazaar-review/test/ruleAuthoringGui.test.js")
           gui_text = gui_test.read_text(encoding="utf-8")
-          old_artifacts = '''          artifacts: {
-            sourceManifest: path.relative(root, path.join(generation, "source-manifest.json")),
-            documentChunks: path.relative(root, path.join(generation, "document-chunks.jsonl")),
-            sourceScope: path.relative(root, path.join(generation, "source-scope.json"))
-          },
-          '''
-          new_artifacts = '''          artifacts: {
-            sourceManifest: path.relative(root, path.join(generation, "source-manifest.json")).split(path.sep).join("/"),
-            documentChunks: path.relative(root, path.join(generation, "document-chunks.jsonl")).split(path.sep).join("/"),
-            sourceScope: path.relative(root, path.join(generation, "source-scope.json")).split(path.sep).join("/")
-          },
-          '''
-          if gui_text.count(old_artifacts) != 1:
-              raise SystemExit("GUI artifact fixture block did not match exactly once")
-          gui_test.write_text(gui_text.replace(old_artifacts, new_artifacts), encoding="utf-8", newline="\n")
+          gui_replacements = [
+              (
+                  'path.relative(root, path.join(generation, "source-manifest.json"))',
+                  'path.relative(root, path.join(generation, "source-manifest.json")).split(path.sep).join("/")',
+              ),
+              (
+                  'path.relative(root, path.join(generation, "document-chunks.jsonl"))',
+                  'path.relative(root, path.join(generation, "document-chunks.jsonl")).split(path.sep).join("/")',
+              ),
+              (
+                  'path.relative(root, path.join(generation, "source-scope.json"))',
+                  'path.relative(root, path.join(generation, "source-scope.json")).split(path.sep).join("/")',
+              ),
+          ]
+          for old, new in gui_replacements:
+              count = gui_text.count(old)
+              if count != 1:
+                  raise SystemExit(f"GUI artifact expression matched {count} times: {old}")
+              gui_text = gui_text.replace(old, new)
+          gui_test.write_text(gui_text, encoding="utf-8", newline="\n")
 
           run_store_test = Path("extensions/bob-bazaar-review/test/ruleAuthoringRunStore.test.js")
           run_store_text = run_store_test.read_text(encoding="utf-8")
-          replacement = '''async function seedExhaustedDirectoryLock(lockDirectory) {
+          replacement = r'''async function seedExhaustedDirectoryLock(lockDirectory) {
             await fs.mkdir(lockDirectory, { recursive: true })
             const seedShardCount = 32
             const ownerToken = "a".repeat(32)
@@ -86,14 +91,29 @@ jobs:
               r'async function seedExhaustedDirectoryLock\(lockDirectory\) \{.*?\n\}\n\n(?=async function waitForRecoveryMode)',
               re.DOTALL,
           )
-          run_store_text, count = pattern.subn(replacement + "\n", run_store_text)
+          run_store_text, count = pattern.subn(lambda _: replacement + "\n", run_store_text)
           if count != 1:
               raise SystemExit(f"seedExhaustedDirectoryLock block matched {count} times")
           run_store_test.write_text(run_store_text, encoding="utf-8", newline="\n")
           '@ | python -
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          $guiText = Get-Content "extensions/bob-bazaar-review/test/ruleAuthoringGui.test.js" -Raw
+          $lockText = Get-Content "extensions/bob-bazaar-review/test/ruleAuthoringRunStore.test.js" -Raw
+          if (($guiText | Select-String -Pattern '\.split\(path\.sep\)\.join\("/"\)' -AllMatches).Matches.Count -lt 3) {
+            throw "GUI artifact pointer normalization was not installed"
+          }
+          if ($lockText -notmatch 'const seedShardCount = 32') {
+            throw "Rotating-lock seed sharding was not installed"
+          }
+          if ($lockText -match 'const lockSeed = path\.join\(lockDirectory, "\.lock-seed"\)') {
+            throw "Legacy single-seed lock fixture is still present"
+          }
 
           git diff --check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           git diff -- extensions/bob-bazaar-review/test/ruleAuthoringGui.test.js extensions/bob-bazaar-review/test/ruleAuthoringRunStore.test.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Verify focused Windows GUI and rotating-lock suites
         shell: pwsh
