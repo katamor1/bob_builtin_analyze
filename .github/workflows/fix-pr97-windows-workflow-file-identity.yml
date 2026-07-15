@@ -1,0 +1,100 @@
+name: fix-pr97-windows-workflow-file-identity
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/fix-pr97-windows-workflow-file-identity.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  fix-and-verify:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: codex/bazaar-ai-project-rule-authoring
+          fetch-depth: 0
+
+      - name: Verify resolved files by physical identity
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+
+          source = Path("extensions/bob-bazaar-review/src/workflow/ruleAuthoringWorkflowActions.ts")
+          text = source.read_text(encoding="utf-8")
+          old = '''    const directoryBefore = await safeDirectoryIdentity(workspaceRoot, directory)
+            const rootReal = await fs.realpath(workspaceRoot)
+            const targetReal = await fs.realpath(filePath)
+            assertContained(rootReal, targetReal)
+            if (path.resolve(targetReal) !== filePath) {
+              throw new Error("Rule authoring file path contains a symbolic link")
+            }
+            const beforePath = await fs.lstat(filePath, { bigint: true })
+            if (beforePath.isSymbolicLink() || !beforePath.isFile() || beforePath.size > BigInt(maxBytes)) {
+              throw new Error("Rule authoring file is not a bounded regular file")
+            }
+          '''
+          new = '''    const directoryBefore = await safeDirectoryIdentity(workspaceRoot, directory)
+            const [rootReal, targetReal] = await Promise.all([
+              fs.realpath(workspaceRoot),
+              fs.realpath(filePath)
+            ])
+            assertContained(rootReal, targetReal)
+            const beforePath = await fs.lstat(filePath, { bigint: true })
+            if (beforePath.isSymbolicLink()) {
+              throw new Error("Rule authoring file path contains a symbolic link")
+            }
+            if (!beforePath.isFile() || beforePath.size > BigInt(maxBytes)) {
+              throw new Error("Rule authoring file is not a bounded regular file")
+            }
+            const physicalPath = await fs.lstat(targetReal, { bigint: true })
+            if (
+              physicalPath.isSymbolicLink() ||
+              !physicalPath.isFile() ||
+              !sameFileIdentity(beforePath, physicalPath)
+            ) {
+              throw new Error("Rule authoring file path contains a symbolic link")
+            }
+          '''
+          count = text.count(old)
+          if count != 1:
+              raise SystemExit(f"readWorkspaceFileBounded path block matched {count} times")
+          source.write_text(text.replace(old, new), encoding="utf-8", newline="\n")
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          $sourceText = Get-Content "extensions/bob-bazaar-review/src/workflow/ruleAuthoringWorkflowActions.ts" -Raw
+          if ($sourceText -match 'path\.resolve\(targetReal\) !== filePath') {
+            throw "Legacy textual realpath comparison is still present"
+          }
+          if ($sourceText -notmatch 'const physicalPath = await fs\.lstat\(targetReal') {
+            throw "Physical file identity verification was not installed"
+          }
+          git diff --check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git diff -- extensions/bob-bazaar-review/src/workflow/ruleAuthoringWorkflowActions.ts
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Verify focused Windows workflow-action suite
+        shell: pwsh
+        working-directory: extensions/bob-bazaar-review
+        run: |
+          npm ci
+          npm run compile
+          node --test test/ruleAuthoringWorkflowActions.test.js
+
+      - name: Commit and push identity fix
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add extensions/bob-bazaar-review/src/workflow/ruleAuthoringWorkflowActions.ts
+          git commit -m "fix: verify workflow artifacts by file identity"
+          git push origin HEAD:codex/bazaar-ai-project-rule-authoring
+          gh api --method DELETE "repos/$env:GITHUB_REPOSITORY/git/refs/heads/$env:GITHUB_HEAD_REF"
