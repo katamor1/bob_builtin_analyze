@@ -48,6 +48,117 @@ function deferred() {
   return { promise, resolve }
 }
 
+async function assertMatchingBackupDirectCloseCleanupPrecedence(t, raceMode) {
+  const root = tempRoot()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const runId = raceMode === "eexist"
+    ? "20260712T000000Z-eexist-direct-close-000000000030"
+    : "20260712T000000Z-raced-direct-close-000000000031"
+  const historical = `${raceMode}-direct-close-history\n`
+  await prepareRunDirectory(root, runId)
+  const rootRunsDirectory = runsDirectory(root)
+  const backupPath = path.join(runDirectory(root, runId), "run-state-v0.backup.json")
+  const originalOpen = fsp.open
+  const originalLink = fsp.link
+  const originalLstat = fsp.lstat
+  const originalRm = fsp.rm
+  let matchingBackupCreated = false
+  let racedExistingInjected = false
+  let linkEexistInjected = false
+  let backupLstatCalls = 0
+  let directReadHandle
+  let closeDirectReadForTestCleanup
+  let directReadCloseAttempted = false
+  let cleanupRmAttempted = false
+
+  const createMatchingBackup = async () => {
+    await fsp.writeFile(backupPath, historical, "utf8")
+    matchingBackupCreated = true
+  }
+
+  fsp.open = async (target, ...args) => {
+    const handle = await originalOpen(target, ...args)
+    if (matchingBackupCreated && !directReadHandle && samePath(target, backupPath)) {
+      directReadHandle = handle
+      const realClose = handle.close.bind(handle)
+      closeDirectReadForTestCleanup = realClose
+      Object.defineProperty(handle, "close", {
+        configurable: true,
+        value: async () => {
+          directReadCloseAttempted = true
+          await realClose()
+          const error = new Error(`simulated ${raceMode} matching backup direct read close-only EIO`)
+          error.code = "EIO"
+          throw error
+        }
+      })
+    }
+    return handle
+  }
+  fsp.lstat = async (target, ...args) => {
+    if (samePath(target, backupPath)) {
+      backupLstatCalls += 1
+      if (raceMode === "raced-existing" && !matchingBackupCreated && backupLstatCalls === 3) {
+        await createMatchingBackup()
+        racedExistingInjected = true
+      }
+    }
+    return originalLstat(target, ...args)
+  }
+  fsp.link = async (existingPath, newPath) => {
+    if (raceMode === "eexist" && !matchingBackupCreated && samePath(newPath, backupPath)) {
+      await createMatchingBackup()
+      linkEexistInjected = true
+      const error = new Error("simulated matching backup EEXIST before direct close")
+      error.code = "EEXIST"
+      throw error
+    }
+    return originalLink(existingPath, newPath)
+  }
+  fsp.rm = async (target, ...args) => {
+    const resolved = path.resolve(String(target))
+    const isOwnedTemp = path.dirname(resolved) === path.resolve(rootRunsDirectory)
+      && path.basename(resolved).startsWith(`.${runId}.`)
+      && path.basename(resolved).endsWith(".tmp")
+    if (!cleanupRmAttempted && isOwnedTemp) {
+      cleanupRmAttempted = true
+      const error = new Error(`simulated ${raceMode} owned temp cleanup rm EIO`)
+      error.code = "EIO"
+      throw error
+    }
+    return originalRm(target, ...args)
+  }
+
+  let observedError
+  try {
+    observedError = await ensureContainedRunStateMigrationBackup(root, runId, historical)
+      .then(() => undefined, (error) => error)
+  } finally {
+    fsp.open = originalOpen
+    fsp.link = originalLink
+    fsp.lstat = originalLstat
+    fsp.rm = originalRm
+    if (directReadHandle && !directReadCloseAttempted) await closeDirectReadForTestCleanup()
+  }
+
+  assert.ok(observedError)
+  assert.match(observedError.message, new RegExp(`simulated ${raceMode} owned temp cleanup rm EIO`))
+  assert.doesNotMatch(observedError.message, new RegExp(`simulated ${raceMode} matching backup direct read close-only EIO`))
+  assert.equal(matchingBackupCreated, true)
+  assert.equal(racedExistingInjected, raceMode === "raced-existing")
+  assert.equal(linkEexistInjected, raceMode === "eexist")
+  assert.equal(directReadCloseAttempted, true)
+  assert.equal(cleanupRmAttempted, true)
+  assert.equal(await fsp.readFile(backupPath, "utf8"), historical)
+  assert.equal((await fsp.lstat(backupPath)).nlink, 1)
+  const [ownedTempName] = (await fsp.readdir(rootRunsDirectory))
+    .filter((name) => name.startsWith(`.${runId}.`) && name.endsWith(".tmp"))
+  assert.ok(ownedTempName)
+  const ownedTempPath = path.join(rootRunsDirectory, ownedTempName)
+  assert.equal(await fsp.readFile(ownedTempPath, "utf8"), historical)
+  assert.equal((await fsp.lstat(ownedTempPath)).nlink, 1)
+}
+
 test("migration backup preserves exact historical run bytes and is idempotent", async (t) => {
   const root = tempRoot()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
@@ -1314,6 +1425,14 @@ test("migration EEXIST cleanup removal error outranks owner close failure", asyn
   assert.equal(await fsp.readFile(ownedTempPath, "utf8"), historical)
   assert.equal((await fsp.lstat(ownedTempPath)).nlink, 1)
   await fsp.rm(ownedTempPath)
+})
+
+test("migration EEXIST matching backup cleanup rm outranks direct read close-only failure", async (t) => {
+  await assertMatchingBackupDirectCloseCleanupPrecedence(t, "eexist")
+})
+
+test("migration raced-existing matching backup cleanup rm outranks direct read close-only failure", async (t) => {
+  await assertMatchingBackupDirectCloseCleanupPrecedence(t, "raced-existing")
 })
 
 test("migration EEXIST success surfaces cleanup path verification close failure", async (t) => {

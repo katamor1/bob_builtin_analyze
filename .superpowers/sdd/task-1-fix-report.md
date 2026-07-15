@@ -2,10 +2,10 @@
 
 ## Status
 
-Implementation and verification are complete. The two Important findings in
-`task-1-final-review-report.md` were reproduced with failing regressions and
-fixed without changing timeout values or files outside the requested source,
-test, and this report.
+Implementation and verification are complete. The original two Important
+findings and the later matching-backup direct-reader close-precedence finding
+were reproduced with failing regressions and fixed without changing timeout
+values or files outside the requested source, test, and this report.
 
 ## Requirements sources
 
@@ -104,6 +104,26 @@ Pre-fix result: 1 test, 0 passed, 1 failed. The regression failed at
 `assert.ok(observedError)` because the close rejection was swallowed and the
 operation resolved successfully.
 
+### Follow-up: matching-backup direct-reader close plus owned-temp cleanup rm
+
+A subsequent independent review found that the EEXIST and raced-existing
+matching-backup branches still used the public direct reader's raw close error.
+After a successful matching read, that close-only EIO was recorded as
+`operationFailure` and masked a later owned-temp cleanup `fs.rm` EIO.
+
+Two regressions use real matching backups and owned temp files. One creates the
+backup in the `fs.link` EEXIST boundary; the other creates it at the third
+backup `lstat`, which is the raced-existing probe. Both perform the real direct
+reader close before returning close-only EIO and then inject a distinct cleanup
+`rm` EIO.
+
+```powershell
+node --test --test-name-pattern="matching backup cleanup rm outranks direct read close-only failure" test/workflowRunStateMigrationPath.test.js
+```
+
+Pre-fix result: 2 tests, 0 passed, 2 failed. Both observed their direct-reader
+close-only EIO instead of the expected owned-temp cleanup `rm` EIO.
+
 ## Implementation
 
 ### `runStateMigrationBackup.ts`
@@ -115,6 +135,12 @@ operation resolved successfully.
   checks, preserving any foreign replacement.
 - Captured linked-publication close-only failures separately from primary
   operation/identity and byte/domain-safety failures.
+- Routed matching-backup reads through an internal validated direct-reader path
+  without changing the exported read API. The already-settled operation value
+  is checked for exact matching bytes before its close-only outcome is selected.
+- Classified successful direct-reader close-only failures together with linked
+  verification close-only failures so EEXIST and raced-existing cleanup `rm`
+  failures can outrank them.
 - Selected outer failures after cleanup as primary > cleanup `rm` > linked
   verification close > cleanup path-verification close > owner close.
 - Changed `removeDirectFileOwnedByHandle(...)` to settle removal and path-handle
@@ -147,6 +173,7 @@ Each regression passed individually after its minimal production fix:
 - I1: 1 passed, 0 failed
 - I2a: 1 passed, 0 failed
 - I2b: 1 passed, 0 failed
+- follow-up EEXIST/raced-existing direct-reader precedence: 2 passed, 0 failed
 
 ## Final verification
 
@@ -164,7 +191,7 @@ Final result after all production changes: exit 0.
 node --test test/workflowRunStateMigrationPath.test.js
 ```
 
-Fresh result: 32 tests, 32 passed, 0 failed, 0 skipped.
+Fresh follow-up result: 34 tests, 34 passed, 0 failed, 0 skipped.
 
 ### Metadata budget
 
@@ -209,20 +236,28 @@ including this report is recorded before commit.
 - Confirmed no timeout value was changed.
 - Confirmed code/test changes are limited to the two requested migration files.
 
-## Read-only quality review
+## Review history
 
-An independent read-only reviewer re-read both requirement files, the complete
-production diff, the new regressions, and the relevant surrounding code.
+An initial read-only reviewer re-read both requirement files, the complete
+production diff, the original three regressions, and the relevant surrounding
+code. It reported Ready=yes with Critical 0 / Important 0 / Minor 0, but a later
+final independent review reproduced one remaining Important finding in the
+EEXIST matching-backup direct-reader close path. The same defect also applied to
+the raced-existing branch.
+
+That follow-up finding is the direct-reader remediation and two RED/GREEN
+regressions documented above. No claim from the earlier zero-finding review is
+used as final approval evidence.
+
+A new targeted read-only review then inspected only the follow-up production
+and test diff, explicitly tracing operation+close, bytes+close, cleanup-rm+close,
+and public-reader cases in both matching-backup branches:
 
 - Ready: yes
 - Critical: 0
 - Important: 0
 - Minor: 0
-- Recommendation: approve the two-file remediation as-is
-
-The reviewer independently confirmed the I1 ownership timing, I2a cleanup-rm
-precedence, I2b cleanup path-close propagation, retained owner-handle checks,
-explicit residual-pair assertions, and the required close-last ordering.
+- Findings: none
 
 ## Concerns
 

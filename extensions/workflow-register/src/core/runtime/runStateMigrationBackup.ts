@@ -48,6 +48,15 @@ export async function readContainedRunStateMigrationBackup(
   workspaceRoot: string,
   runId: string
 ): Promise<ContainedRunFileSnapshot> {
+  return readContainedRunStateMigrationBackupWithValidation(workspaceRoot, runId)
+}
+
+async function readContainedRunStateMigrationBackupWithValidation(
+  workspaceRoot: string,
+  runId: string,
+  validateBytes?: (bytes: Buffer) => void,
+  captureCloseFailure?: (error: unknown) => void
+): Promise<ContainedRunFileSnapshot> {
   assertSafeWorkflowRunId(runId)
   const root = await canonicalWorkspaceRoot(workspaceRoot)
   const runDirectory = await directDirectoryChain(root, [...RUNS_ROOT_SEGMENTS, runId])
@@ -55,7 +64,9 @@ export async function readContainedRunStateMigrationBackup(
   const bytes = await readDirectRegularFile(
     root,
     filePath,
-    `Workflow run '${runId}' migration backup`
+    `Workflow run '${runId}' migration backup`,
+    validateBytes,
+    captureCloseFailure
   )
   return { bytes, filePath }
 }
@@ -79,11 +90,12 @@ async function ensureContainedRunStateMigrationBackupUnlocked(
   content: string
 ): Promise<void> {
   await assertNoInterruptedRunStateMigrationPublication(workspaceRoot, runId, content)
-  const existing = await optionalReadContainedRunStateMigrationBackup(workspaceRoot, runId)
-  if (existing) {
-    assertMatchingBackup(runId, existing.bytes, content)
-    return
-  }
+  const existing = await optionalReadContainedRunStateMigrationBackup(
+    workspaceRoot,
+    runId,
+    (bytes) => assertMatchingBackup(runId, bytes, content)
+  )
+  if (existing) return
 
   const root = await canonicalWorkspaceRoot(workspaceRoot)
   const runsRoot = await directDirectoryChain(root, [...RUNS_ROOT_SEGMENTS])
@@ -95,9 +107,9 @@ async function ensureContainedRunStateMigrationBackupUnlocked(
   let publicationLinkCreated = false
   let publicationSucceeded = false
   let operationFailure: CapturedFailure = { failed: false }
-  let verificationCloseFailure: CapturedFailure = { failed: false }
-  const captureVerificationCloseFailure = (error: unknown): void => {
-    verificationCloseFailure = { failed: true, error }
+  let closeOnlyFailure: CapturedFailure = { failed: false }
+  const captureCloseOnlyFailure = (error: unknown): void => {
+    closeOnlyFailure = { failed: true, error }
   }
 
   try {
@@ -126,8 +138,12 @@ async function ensureContainedRunStateMigrationBackupUnlocked(
       `Workflow run '${runId}' migration backup`
     )
     if (raced) {
-      const snapshot = await readContainedRunStateMigrationBackup(workspaceRoot, runId)
-      assertMatchingBackup(runId, snapshot.bytes, content)
+      await readContainedRunStateMigrationBackupWithValidation(
+        workspaceRoot,
+        runId,
+        (bytes) => assertMatchingBackup(runId, bytes, content),
+        captureCloseOnlyFailure
+      )
       return
     }
 
@@ -138,8 +154,12 @@ async function ensureContainedRunStateMigrationBackupUnlocked(
       publicationLinkCreated = true
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error
-      const snapshot = await readContainedRunStateMigrationBackup(workspaceRoot, runId)
-      assertMatchingBackup(runId, snapshot.bytes, content)
+      await readContainedRunStateMigrationBackupWithValidation(
+        workspaceRoot,
+        runId,
+        (bytes) => assertMatchingBackup(runId, bytes, content),
+        captureCloseOnlyFailure
+      )
       return
     }
 
@@ -174,7 +194,7 @@ async function ensureContainedRunStateMigrationBackupUnlocked(
           throw new Error(`Workflow run '${runId}' migration backup publication bytes changed before create-once publication was finalized.`)
         }
       },
-      captureVerificationCloseFailure
+      captureCloseOnlyFailure
     )
     await fs.rm(tempPath)
     await readAndValidateLinkedPublicationFiles(
@@ -191,13 +211,13 @@ async function ensureContainedRunStateMigrationBackupUnlocked(
           throw new Error(`Workflow run '${runId}' migration backup publication bytes changed while finalizing create-once publication.`)
         }
       },
-      captureVerificationCloseFailure
+      captureCloseOnlyFailure
     )
     await assertDirectoryIdentity(runsRoot, "Workflow runs directory")
     await assertDirectoryIdentity(runDirectory, `Workflow run '${runId}' directory`)
     publicationSucceeded = true
   } catch (error) {
-    if (!verificationCloseFailure.failed) operationFailure = { failed: true, error }
+    if (!closeOnlyFailure.failed) operationFailure = { failed: true, error }
     throw error
   } finally {
     let cleanupFailure: CapturedFailure = { failed: false }
@@ -226,7 +246,7 @@ async function ensureContainedRunStateMigrationBackupUnlocked(
     }
     if (!operationFailure.failed) {
       if (cleanupFailure.failed) throw cleanupFailure.error
-      throwIfCapturedFailure(verificationCloseFailure)
+      throwIfCapturedFailure(closeOnlyFailure)
       throwIfCapturedFailure(cleanupPathCloseFailure)
       if (closeFailure.failed) throw closeFailure.error
     }
@@ -303,10 +323,17 @@ async function assertNoInterruptedRunStateMigrationPublication(
 
 async function optionalReadContainedRunStateMigrationBackup(
   workspaceRoot: string,
-  runId: string
+  runId: string,
+  validateBytes?: (bytes: Buffer) => void,
+  captureCloseFailure?: (error: unknown) => void
 ): Promise<ContainedRunFileSnapshot | undefined> {
   try {
-    return await readContainedRunStateMigrationBackup(workspaceRoot, runId)
+    return await readContainedRunStateMigrationBackupWithValidation(
+      workspaceRoot,
+      runId,
+      validateBytes,
+      captureCloseFailure
+    )
   } catch (error) {
     if (isMissingPathError(error)) return undefined
     throw error
@@ -319,7 +346,13 @@ function assertMatchingBackup(runId: string, bytes: Buffer, content: string): vo
   }
 }
 
-async function readDirectRegularFile(root: string, filePath: string, label: string): Promise<Buffer> {
+async function readDirectRegularFile(
+  root: string,
+  filePath: string,
+  label: string,
+  validate?: (bytes: Buffer) => void,
+  captureCloseFailure?: (error: unknown) => void
+): Promise<Buffer> {
   const noFollow = typeof constants.O_NOFOLLOW === "number" ? constants.O_NOFOLLOW : 0
   const before = await directRegularFile(filePath, root, label)
   const handle = await fs.open(filePath, constants.O_RDONLY | noFollow)
@@ -338,7 +371,7 @@ async function readDirectRegularFile(root: string, filePath: string, label: stri
       throw new Error(`${label} changed while it was being read.`)
     }
     return bytes
-  })
+  }, validate, captureCloseFailure)
 }
 
 async function directDirectoryChain(root: string, segments: readonly string[]): Promise<DirectDirectory> {
@@ -467,12 +500,19 @@ async function settleLinkedPublicationFileRead(
 
 async function withHandleClosePrecedence<T>(
   handle: Awaited<ReturnType<typeof fs.open>>,
-  operation: () => Promise<T>
+  operation: () => Promise<T>,
+  validate?: (value: T) => void,
+  captureCloseFailure?: (error: unknown) => void
 ): Promise<T> {
   const outcome = await settleHandleOperation(handle, operation)
   if (outcome.operation.failed) throw outcome.operation.error
-  if (outcome.closeFailure.failed) throw outcome.closeFailure.error
-  return outcome.operation.value
+  const value = outcome.operation.value
+  validate?.(value)
+  if (outcome.closeFailure.failed) {
+    captureCloseFailure?.(outcome.closeFailure.error)
+    throw outcome.closeFailure.error
+  }
+  return value
 }
 
 function throwIfCapturedFailure(failure: CapturedFailure): void {
