@@ -3,6 +3,7 @@ const fs = require("node:fs")
 const Module = require("node:module")
 const path = require("node:path")
 const { test } = require("node:test")
+const ts = require("typescript")
 const { readSrc } = require("./helpers/sourceReader")
 
 const root = path.resolve(__dirname, "..")
@@ -17,6 +18,12 @@ const commandIds = [
 const commandHandlers = new Map([
   ["workflowRegister.inspectRunStorage", "inspectWorkflowRunStorage"],
   ["workflowRegister.previewRunCleanup", "previewWorkflowRunCleanup"],
+  ["workflowRegister.cleanupCompletedRuns", "cleanupCompletedWorkflowRuns"],
+  ["workflowRegister.deleteSelectedRuns", "deleteSelectedWorkflowRuns"],
+  ["workflowRegister.pinRun", "pinWorkflowRun"],
+  ["workflowRegister.unpinRun", "unpinWorkflowRun"]
+])
+const destructiveCommandHandlers = new Map([
   ["workflowRegister.cleanupCompletedRuns", "cleanupCompletedWorkflowRuns"],
   ["workflowRegister.deleteSelectedRuns", "deleteSelectedWorkflowRuns"],
   ["workflowRegister.pinRun", "pinWorkflowRun"],
@@ -81,8 +88,198 @@ function emptyPlan() {
   }
 }
 
+function destructiveCommandPlan() {
+  return {
+    createdAt: "2026-07-15T00:00:00.000Z",
+    candidateRunIds: ["eligible-run"],
+    totalBytes: 4096,
+    reclaimBytes: 2048,
+    digest: "non-empty-plan",
+    decisions: [{
+      runId: "eligible-run",
+      action: "delete",
+      status: "completed",
+      bytes: 2048,
+      reasons: ["completedDays"],
+      blockers: []
+    }]
+  }
+}
+
+function expectedCleanupReport(workspaceRoot) {
+  return {
+    title: "Workflow Run Cleanup Preview",
+    summary: "1 eligible run(s); reclaim 2.0 KiB.",
+    lines: [
+      `- workspace: ${workspaceRoot}`,
+      "- created: 2026-07-15T00:00:00.000Z",
+      "- candidates: 1",
+      "- total bytes: 4.0 KiB",
+      "- reclaim bytes: 2.0 KiB",
+      "- digest: non-empty-plan",
+      "",
+      "Decisions:",
+      "- eligible-run: delete; status=completed; bytes=2.0 KiB; reasons=completedDays; blockers=none"
+    ]
+  }
+}
+
+function assertRetentionActivationSafety(retentionSource, extensionSource) {
+  assert.doesNotMatch(retentionSource, /setInterval|setTimeout|onStartupFinished/)
+  assert.doesNotMatch(retentionSource, /get<[^>]+>\("enabled"|runs\.retention\.enabled/)
+  const sourceFile = ts.createSourceFile(
+    "extensionWithAuthoring.ts",
+    extensionSource,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS
+  )
+  assert.deepEqual(sourceFile.parseDiagnostics, [])
+  const usesByHandler = new Map([...destructiveCommandHandlers.values()].map((handler) => [handler, []]))
+  const visit = (node) => {
+    if (ts.isIdentifier(node) && usesByHandler.has(node.text) && !ts.isImportSpecifier(node.parent)) {
+      usesByHandler.get(node.text).push(node)
+    }
+    ts.forEachChild(node, visit)
+  }
+  visit(sourceFile)
+
+  for (const [commandId, handler] of destructiveCommandHandlers) {
+    const uses = usesByHandler.get(handler)
+    assert.equal(uses.length, 1, `${handler} must execute exactly once and only as its registered command callback`)
+    const call = uses[0].parent
+    assert.ok(
+      ts.isCallExpression(call) && call.expression === uses[0],
+      `${handler} must execute only as its registered command callback`
+    )
+    let callback = call.parent
+    while (callback && !ts.isArrowFunction(callback) && !ts.isFunctionExpression(callback)) callback = callback.parent
+    assert.ok(callback, `${handler} must execute only as its registered command callback`)
+    const registration = callback.parent
+    assert.ok(
+      ts.isCallExpression(registration)
+        && registration.arguments[1] === callback
+        && ts.isPropertyAccessExpression(registration.expression)
+        && registration.expression.name.text === "registerCommand"
+        && ts.isPropertyAccessExpression(registration.expression.expression)
+        && registration.expression.expression.name.text === "commands"
+        && ts.isIdentifier(registration.expression.expression.expression)
+        && registration.expression.expression.expression.text === "vscode",
+      `${handler} must execute only as its registered command callback`
+    )
+    assert.ok(ts.isStringLiteral(registration.arguments[0]), `${handler} command id must be a string literal`)
+    assert.equal(registration.arguments[0].text, commandId, `${handler} must be registered for ${commandId}`)
+  }
+}
+
+function assertRetentionSmokeCoverage(workflow) {
+  const lines = workflow.split(/\r?\n/)
+  const linuxStart = lines.findIndex((line) => line === "  workflow-register:")
+  const linuxEnd = lines.findIndex((line, index) => index > linuxStart && line === "  bob-bazaar-review:")
+  const windowsStart = lines.findIndex((line) => line === "          - extension: workflow-register")
+  const windowsEnd = lines.findIndex((line, index) => index > windowsStart && line === "          - extension: bob-bazaar-review")
+  assert.notEqual(linuxStart, -1, "Linux workflow-register job must exist")
+  assert.notEqual(linuxEnd, -1, "Linux workflow-register job must have a bounded section")
+  assert.notEqual(windowsStart, -1, "Windows workflow-register matrix entry must exist")
+  assert.notEqual(windowsEnd, -1, "Windows workflow-register matrix entry must have a bounded section")
+  const linuxSmoke = lines.slice(linuxStart, linuxEnd)
+    .find((line) => line.trimStart().startsWith("SMOKE_COMMANDS:"))
+  const windowsSmoke = lines.slice(windowsStart, windowsEnd)
+    .find((line) => line.trimStart().startsWith("smoke_commands:"))
+  assert.ok(linuxSmoke, "Linux smoke list must exist")
+  assert.ok(windowsSmoke, "Windows smoke list must exist")
+  for (const id of commandIds) {
+    assert.equal(linuxSmoke.split(id).length - 1, 1, `${id} must appear exactly once in the Linux smoke list`)
+    assert.equal(windowsSmoke.split(id).length - 1, 1, `${id} must appear exactly once in the Windows smoke list`)
+  }
+}
+
+async function exerciseDestructiveCommand(commandName, accepted) {
+  const workspaceRoot = path.resolve(`retention-confirmation-${commandName}`)
+  const plan = destructiveCommandPlan()
+  assert.equal(plan.candidateRunIds.length > 0, true, "destructive confirmation fixture must use a non-empty plan")
+  const events = []
+  const reports = []
+  const modalCalls = []
+  const applyPlans = []
+  const previewPlans = []
+  const inventory = [{
+    runId: "eligible-run",
+    status: "completed",
+    bytes: 2048,
+    updatedAt: "2026-07-14T00:00:00.000Z",
+    pinned: false,
+    referencedBy: []
+  }]
+  const vscode = {
+    workspace: {
+      workspaceFolders: [{ name: "workspace", uri: { fsPath: workspaceRoot } }],
+      getConfiguration: () => ({ get: (_key, fallback) => fallback })
+    },
+    window: {
+      showQuickPick: async (items) => items,
+      showWarningMessage: async (...args) => {
+        events.push("modal")
+        modalCalls.push(args)
+        return accepted ? "削除" : undefined
+      },
+      showInformationMessage: async () => undefined
+    }
+  }
+  class RetentionServiceStub {
+    constructor({ workspaceRoot: selectedRoot }) {
+      assert.equal(selectedRoot, workspaceRoot)
+    }
+
+    async inventory() {
+      return inventory
+    }
+
+    async preview() {
+      events.push("preview")
+      previewPlans.push(plan)
+      return plan
+    }
+
+    async apply(receivedPlan) {
+      events.push("apply")
+      applyPlans.push(receivedPlan)
+      return { removedRunIds: ["eligible-run"], reclaimedBytes: 2048, transactionId: "cleanup-1" }
+    }
+  }
+  const commands = loadRetentionCommands({
+    vscode,
+    RetentionService: RetentionServiceStub,
+    workspaceRoots: {
+      findWorkflowRootCandidates: async () => [{ name: "workspace", root: workspaceRoot }],
+      fallbackWorkspaceRootCandidates: () => [{ name: "workspace", root: workspaceRoot }]
+    },
+    reports: {
+      showMarkdownReport: async (title, summary, lines) => {
+        events.push("report-start")
+        reports.push({ title, summary, lines })
+        await new Promise((resolve) => setImmediate(resolve))
+        events.push("report")
+      }
+    }
+  })
+
+  const result = await commands[commandName]({ workspaceRoot })
+  return { applyPlans, events, modalCalls, plan, previewPlans, reports, result, workspaceRoot }
+}
+
+function assertPreviewThenModal(outcome) {
+  assert.deepEqual(outcome.reports, [expectedCleanupReport(outcome.workspaceRoot)])
+  assert.equal(outcome.previewPlans.length, 1)
+  assert.equal(outcome.modalCalls.length, 1)
+  assert.deepEqual(outcome.modalCalls[0].slice(1), [{ modal: true }, "削除"])
+  assert.ok(outcome.events.indexOf("preview") < outcome.events.indexOf("report"))
+  assert.ok(outcome.events.indexOf("report") < outcome.events.indexOf("modal"))
+}
+
 test("retention command adapter exposes preview-first explicit operations without automatic scheduling", () => {
   const source = readSrc("commands", "runRetention.ts")
+  const extension = readSrc("extensionWithAuthoring.ts")
   assert.match(source, /export async function inspectWorkflowRunStorage/)
   assert.match(source, /export async function previewWorkflowRunCleanup/)
   assert.match(source, /export async function cleanupCompletedWorkflowRuns/)
@@ -91,8 +288,32 @@ test("retention command adapter exposes preview-first explicit operations withou
   assert.match(source, /export async function unpinWorkflowRun/)
   assert.match(source, /showMarkdownReport/)
   assert.match(source, /showWarningMessage[\s\S]*modal: true/)
-  assert.doesNotMatch(source, /setInterval|setTimeout|onStartupFinished/)
-  assert.doesNotMatch(source, /get<[^>]+>\("enabled"|runs\.retention\.enabled/)
+  assertRetentionActivationSafety(source, extension)
+})
+
+test("retention activation safety rejects direct and scheduled destructive handler execution", () => {
+  const source = readSrc("commands", "runRetention.ts")
+  const extension = readSrc("extensionWithAuthoring.ts")
+  assert.equal(JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")).activationEvents.includes("onStartupFinished"), true)
+
+  const direct = extension.replace(
+    "  const api = activateCore(context)",
+    "  const api = activateCore(context)\n  cleanupCompletedWorkflowRuns(undefined)"
+  )
+  const scheduled = extension.replace(
+    "  const api = activateCore(context)",
+    "  const api = activateCore(context)\n  setTimeout(() => deleteSelectedWorkflowRuns(undefined), 0)"
+  )
+  const scheduledReference = extension.replace(
+    "  const api = activateCore(context)",
+    "  const api = activateCore(context)\n  setTimeout(pinWorkflowRun, 0)"
+  )
+  assert.notEqual(direct, extension)
+  assert.notEqual(scheduled, extension)
+  assert.notEqual(scheduledReference, extension)
+  assert.throws(() => assertRetentionActivationSafety(source, direct), /registered command callback/)
+  assert.throws(() => assertRetentionActivationSafety(source, scheduled), /registered command callback/)
+  assert.throws(() => assertRetentionActivationSafety(source, scheduledReference), /registered command callback/)
 })
 
 test("extension contributes, registers and disposes every exact retention handler", () => {
@@ -138,8 +359,43 @@ test("retention settings are disabled by default and bounded", () => {
 
 test("Linux and Windows extension-host smoke cover every retention command", () => {
   const workflow = fs.readFileSync(path.join(root, "..", "..", ".github", "workflows", "extensions-quality.yml"), "utf8")
-  for (const id of commandIds) {
-    assert.equal(workflow.split(id).length - 1, 2, `${id} must be smoked once on Linux and once on Windows`)
+  assertRetentionSmokeCoverage(workflow)
+})
+
+test("retention smoke coverage rejects Linux duplicates that are absent from Windows", () => {
+  const workflow = fs.readFileSync(path.join(root, "..", "..", ".github", "workflows", "extensions-quality.yml"), "utf8")
+  const id = "workflowRegister.cleanupCompletedRuns"
+  const lines = workflow.split(/\r?\n/)
+  const linuxIndex = lines.findIndex((line) => line.includes("SMOKE_COMMANDS:") && line.includes(id))
+  const windowsIndex = lines.findIndex((line) => line.includes("smoke_commands:") && line.includes(id))
+  assert.notEqual(linuxIndex, -1)
+  assert.notEqual(windowsIndex, -1)
+  lines[linuxIndex] = `${lines[linuxIndex]},${id}`
+  lines[windowsIndex] = lines[windowsIndex].replace(`,${id}`, "")
+  assert.throws(() => assertRetentionSmokeCoverage(lines.join("\n")), /Linux smoke list|Windows smoke list/)
+})
+
+test("destructive retention commands preview before modal cancellation or exact-plan apply", async (t) => {
+  for (const commandName of ["cleanupCompletedWorkflowRuns", "deleteSelectedWorkflowRuns"]) {
+    for (const accepted of [false, true]) {
+      await t.test(`${commandName} ${accepted ? "accept" : "cancel"}`, async () => {
+        const outcome = await exerciseDestructiveCommand(commandName, accepted)
+        assertPreviewThenModal(outcome)
+        if (!accepted) {
+          assert.equal(outcome.applyPlans.length, 0)
+          assert.equal(outcome.result, "Workflow run cleanup cancelled.")
+          return
+        }
+        assert.ok(outcome.events.indexOf("modal") < outcome.events.indexOf("apply"))
+        assert.equal(outcome.applyPlans.length, 1)
+        assert.strictEqual(outcome.applyPlans[0], outcome.previewPlans[0])
+        assert.deepEqual(outcome.result, {
+          removedRunIds: ["eligible-run"],
+          reclaimedBytes: 2048,
+          transactionId: "cleanup-1"
+        })
+      })
+    }
   }
 })
 
