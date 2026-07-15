@@ -144,21 +144,54 @@ export async function withWorkflowRunCleanupLeases<T>(
   await heartbeatChain
   if (!operationError && heartbeatError) operationError = heartbeatError
 
-  const releaseErrors: string[] = []
+  const releaseErrors: Array<{ runId: string; error: unknown }> = []
   for (const entry of [...leases].reverse()) {
     try {
       await releaseCleanupLease(entry, locations.root)
     } catch (error) {
-      releaseErrors.push(`${entry.lease.runId}: ${formatError(error)}`)
+      releaseErrors.push({ runId: entry.lease.runId, error })
     }
   }
-  await removeLeaseDirectoryIfEmpty(locations.directory)
-
-  if (operationError && releaseErrors.length > 0) {
-    throw new Error(`Workflow cleanup operation failed (${formatError(operationError)}); lease release also failed: ${releaseErrors.join("; ")}`)
+  let parentCleanupError: unknown
+  let parentCleanupFailed = false
+  try {
+    await removeLeaseDirectoryIfEmpty(locations.directory)
+  } catch (error) {
+    parentCleanupError = error
+    parentCleanupFailed = true
   }
-  if (operationError) throw operationError
-  if (releaseErrors.length > 0) throw new Error(`Workflow cleanup lease release failed: ${releaseErrors.join("; ")}`)
+
+  const releaseDetails = releaseErrors
+    .map((failure) => `${failure.runId}: ${formatError(failure.error)}`)
+    .join("; ")
+  const parentCleanupDetails = parentCleanupFailed
+    ? `lease parent cleanup also failed: ${formatError(parentCleanupError)}`
+    : ""
+  if (operationError) {
+    const secondaryDetails: string[] = []
+    const suppressedErrors: unknown[] = []
+    if (releaseErrors.length > 0) {
+      secondaryDetails.push(`lease release also failed: ${releaseDetails}`)
+      suppressedErrors.push(...releaseErrors.map((failure) => failure.error))
+    }
+    if (parentCleanupFailed) {
+      secondaryDetails.push(parentCleanupDetails)
+      suppressedErrors.push(parentCleanupError)
+    }
+    if (secondaryDetails.length > 0) {
+      throw appendSuppressedFailureContext(operationError, secondaryDetails.join("; "), suppressedErrors)
+    }
+    throw operationError
+  }
+  if (releaseErrors.length > 0) {
+    const releaseError = new Error(`Workflow cleanup lease release failed: ${releaseDetails}`, { cause: releaseErrors[0].error })
+    addSuppressedErrors(releaseError, releaseErrors.map((failure) => failure.error))
+    if (parentCleanupFailed) {
+      throw appendSuppressedFailureContext(releaseError, parentCleanupDetails, [parentCleanupError])
+    }
+    throw releaseError
+  }
+  if (parentCleanupFailed) throw parentCleanupError
   return result
 }
 
@@ -593,4 +626,38 @@ function isMissing(error: unknown): boolean {
 
 function formatError(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
+}
+
+function appendSuppressedFailureContext(
+  primary: unknown,
+  detail: string,
+  suppressedErrors: readonly unknown[]
+): unknown {
+  if (!(primary instanceof Error)) {
+    const wrapped = new Error(`Workflow cleanup operation failed (${formatError(primary)}); ${detail}`, { cause: primary })
+    addSuppressedErrors(wrapped, suppressedErrors)
+    return wrapped
+  }
+  try {
+    primary.message = `${primary.message}; ${detail}`
+  } catch {
+    // Context is best-effort; never let annotation replace the primary failure.
+  }
+  addSuppressedErrors(primary, suppressedErrors)
+  return primary
+}
+
+function addSuppressedErrors(primary: Error, suppressedErrors: readonly unknown[]): void {
+  try {
+    const current = (primary as Error & { suppressedErrors?: unknown }).suppressedErrors
+    const existing = Array.isArray(current) ? current : []
+    Object.defineProperty(primary, "suppressedErrors", {
+      configurable: true,
+      enumerable: false,
+      value: Object.freeze([...existing, ...suppressedErrors]),
+      writable: false
+    })
+  } catch {
+    // Suppression metadata is best-effort; never let annotation replace the primary failure.
+  }
 }

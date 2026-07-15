@@ -294,6 +294,204 @@ test("cleanup release removes owned JSON before its guard and never mutates the 
   }
 })
 
+test("cleanup operation error keeps priority when lease parent cleanup also fails", async (t) => {
+  const root = await workspace(t)
+  const { withWorkflowRunCleanupLeases } = leaseModules()
+  const { WorkflowRunCleanupIncompleteError } = require("../out/core/runtime/runCleanupTransaction")
+  const leaseDirectory = path.join(root, ".bob", "workflows", "run-cleanup-leases")
+  const leaseFile = path.join(leaseDirectory, "run-a.json")
+  const guardDirectory = path.join(leaseDirectory, "run-a.guard")
+  const originalRmdir = fs.rmdir
+  const parentCleanupError = Object.assign(new Error("PARENT_CLEANUP_SENTINEL"), { code: "EIO" })
+  const primaryError = new WorkflowRunCleanupIncompleteError({
+    phase: "rollback",
+    committedRunIds: ["committed-run"],
+    residualRunIds: ["residual-run"],
+    retainedQuarantinePath: "retained-quarantine",
+    cause: new Error("PRIMARY_CAUSE_SENTINEL"),
+    message: "PRIMARY_OPERATION_SENTINEL"
+  })
+  let parentCleanupAttempts = 0
+  fs.rmdir = async (target, ...args) => {
+    if (await matchesPhysicalPath(target, leaseDirectory)) {
+      parentCleanupAttempts += 1
+      throw parentCleanupError
+    }
+    return originalRmdir(target, ...args)
+  }
+
+  let observedError
+  try {
+    await withWorkflowRunCleanupLeases(root, ["run-a"], async () => {
+      throw primaryError
+    }, { token: () => "primary-owner", hostname: "test-host" })
+  } catch (error) {
+    observedError = error
+  } finally {
+    fs.rmdir = originalRmdir
+  }
+
+  assert.strictEqual(observedError, primaryError)
+  assert.equal(observedError instanceof WorkflowRunCleanupIncompleteError, true)
+  assert.equal(observedError.phase, "rollback")
+  assert.deepEqual(observedError.committedRunIds, ["committed-run"])
+  assert.deepEqual(observedError.residualRunIds, ["residual-run"])
+  assert.equal(observedError.retainedQuarantinePath, "retained-quarantine")
+  assert.match(observedError.message, /PRIMARY_OPERATION_SENTINEL/)
+  assert.match(observedError.message, /lease parent cleanup also failed.*PARENT_CLEANUP_SENTINEL/i)
+  assert.deepEqual(observedError.suppressedErrors, [parentCleanupError])
+  assert.equal(Object.getOwnPropertyDescriptor(observedError, "suppressedErrors")?.enumerable, false)
+  assert.equal(Object.isFrozen(observedError.suppressedErrors), true)
+  assert.equal(parentCleanupAttempts, 1)
+  await assert.rejects(fs.access(leaseFile), { code: "ENOENT" })
+  await assert.rejects(fs.access(guardDirectory), { code: "ENOENT" })
+  assert.equal((await fs.stat(leaseDirectory)).isDirectory(), true)
+})
+
+test("lease parent cleanup failure is surfaced after a successful operation", async (t) => {
+  const root = await workspace(t)
+  const { withWorkflowRunCleanupLeases } = leaseModules()
+  const leaseDirectory = path.join(root, ".bob", "workflows", "run-cleanup-leases")
+  const originalRmdir = fs.rmdir
+  const parentCleanupError = Object.assign(new Error("PARENT_CLEANUP_SENTINEL"), { code: "EIO" })
+  let parentCleanupAttempts = 0
+  fs.rmdir = async (target, ...args) => {
+    if (await matchesPhysicalPath(target, leaseDirectory)) {
+      parentCleanupAttempts += 1
+      throw parentCleanupError
+    }
+    return originalRmdir(target, ...args)
+  }
+
+  let observedError
+  try {
+    await withWorkflowRunCleanupLeases(root, ["run-a"], async () => "completed", {
+      token: () => "success-owner",
+      hostname: "test-host"
+    })
+  } catch (error) {
+    observedError = error
+  } finally {
+    fs.rmdir = originalRmdir
+  }
+
+  assert.strictEqual(observedError, parentCleanupError)
+  assert.equal(parentCleanupAttempts, 1)
+  assert.equal((await fs.stat(leaseDirectory)).isDirectory(), true)
+})
+
+test("lease release error keeps priority when parent cleanup also fails after every release settles", async (t) => {
+  const root = await workspace(t, ["run-a", "run-b"])
+  const { withWorkflowRunCleanupLeases } = leaseModules()
+  const leaseDirectory = path.join(root, ".bob", "workflows", "run-cleanup-leases")
+  const failedGuardDirectory = path.join(leaseDirectory, "run-b.guard")
+  const originalRmdir = fs.rmdir
+  const releaseError = Object.assign(new Error("LEASE_RELEASE_SENTINEL"), { code: "EIO" })
+  const parentCleanupError = Object.assign(new Error("PARENT_CLEANUP_SENTINEL"), { code: "EIO" })
+  let releaseFailureInjected = 0
+  let parentCleanupAttempts = 0
+  fs.rmdir = async (target, ...args) => {
+    if (await matchesPhysicalPath(target, failedGuardDirectory)) {
+      releaseFailureInjected += 1
+      await originalRmdir(target, ...args)
+      throw releaseError
+    }
+    if (await matchesPhysicalPath(target, leaseDirectory)) {
+      parentCleanupAttempts += 1
+      throw parentCleanupError
+    }
+    return originalRmdir(target, ...args)
+  }
+
+  let observedError
+  try {
+    await withWorkflowRunCleanupLeases(root, ["run-b", "run-a"], async () => "completed", {
+      token: () => "release-owner",
+      hostname: "test-host"
+    })
+  } catch (error) {
+    observedError = error
+  } finally {
+    fs.rmdir = originalRmdir
+  }
+
+  assert.match(observedError?.message ?? "", /lease release failed.*run-b.*LEASE_RELEASE_SENTINEL/i)
+  assert.match(observedError?.message ?? "", /lease parent cleanup also failed.*PARENT_CLEANUP_SENTINEL/i)
+  assert.deepEqual(observedError?.suppressedErrors, [releaseError, parentCleanupError])
+  assert.equal(Object.getOwnPropertyDescriptor(observedError, "suppressedErrors")?.enumerable, false)
+  assert.equal(Object.isFrozen(observedError?.suppressedErrors), true)
+  assert.equal(releaseFailureInjected, 1)
+  assert.equal(parentCleanupAttempts, 1)
+  for (const runId of ["run-a", "run-b"]) {
+    await assert.rejects(fs.access(path.join(leaseDirectory, `${runId}.json`)), { code: "ENOENT" })
+    await assert.rejects(fs.access(path.join(leaseDirectory, `${runId}.guard`)), { code: "ENOENT" })
+  }
+  assert.equal((await fs.stat(leaseDirectory)).isDirectory(), true)
+})
+
+test("typed cleanup operation error survives release and parent cleanup failures", async (t) => {
+  const root = await workspace(t)
+  const { withWorkflowRunCleanupLeases } = leaseModules()
+  const { WorkflowRunCleanupIncompleteError } = require("../out/core/runtime/runCleanupTransaction")
+  const leaseDirectory = path.join(root, ".bob", "workflows", "run-cleanup-leases")
+  const leaseFile = path.join(leaseDirectory, "run-a.json")
+  const guardDirectory = path.join(leaseDirectory, "run-a.guard")
+  const originalRmdir = fs.rmdir
+  const releaseError = Object.assign(new Error("LEASE_RELEASE_SENTINEL"), { code: "EIO" })
+  const parentCleanupError = Object.assign(new Error("PARENT_CLEANUP_SENTINEL"), { code: "EIO" })
+  const primaryError = new WorkflowRunCleanupIncompleteError({
+    phase: "purge",
+    committedRunIds: ["run-a"],
+    residualRunIds: ["run-a"],
+    retainedQuarantinePath: "retained-quarantine",
+    cause: new Error("PRIMARY_CAUSE_SENTINEL"),
+    message: "PRIMARY_OPERATION_SENTINEL"
+  })
+  let releaseFailureInjected = 0
+  let parentCleanupAttempts = 0
+  fs.rmdir = async (target, ...args) => {
+    if (await matchesPhysicalPath(target, guardDirectory)) {
+      releaseFailureInjected += 1
+      await originalRmdir(target, ...args)
+      throw releaseError
+    }
+    if (await matchesPhysicalPath(target, leaseDirectory)) {
+      parentCleanupAttempts += 1
+      throw parentCleanupError
+    }
+    return originalRmdir(target, ...args)
+  }
+
+  let observedError
+  try {
+    await withWorkflowRunCleanupLeases(root, ["run-a"], async () => {
+      throw primaryError
+    }, { token: () => "typed-owner", hostname: "test-host" })
+  } catch (error) {
+    observedError = error
+  } finally {
+    fs.rmdir = originalRmdir
+  }
+
+  assert.strictEqual(observedError, primaryError)
+  assert.equal(observedError instanceof WorkflowRunCleanupIncompleteError, true)
+  assert.equal(observedError.phase, "purge")
+  assert.deepEqual(observedError.committedRunIds, ["run-a"])
+  assert.deepEqual(observedError.residualRunIds, ["run-a"])
+  assert.equal(observedError.retainedQuarantinePath, "retained-quarantine")
+  assert.match(observedError.message, /PRIMARY_OPERATION_SENTINEL/)
+  assert.match(observedError.message, /lease release also failed.*run-a.*LEASE_RELEASE_SENTINEL/i)
+  assert.match(observedError.message, /lease parent cleanup also failed.*PARENT_CLEANUP_SENTINEL/i)
+  assert.deepEqual(observedError.suppressedErrors, [releaseError, parentCleanupError])
+  assert.equal(Object.getOwnPropertyDescriptor(observedError, "suppressedErrors")?.enumerable, false)
+  assert.equal(Object.isFrozen(observedError.suppressedErrors), true)
+  assert.equal(releaseFailureInjected, 1)
+  assert.equal(parentCleanupAttempts, 1)
+  await assert.rejects(fs.access(leaseFile), { code: "ENOENT" })
+  await assert.rejects(fs.access(guardDirectory), { code: "ENOENT" })
+  assert.equal((await fs.stat(leaseDirectory)).isDirectory(), true)
+})
+
 test("stale reclaim preserves a lease whose heartbeat advances during verification", async (t) => {
   const root = await workspace(t)
   const { withWorkflowRunCleanupLeases } = leaseModules()
