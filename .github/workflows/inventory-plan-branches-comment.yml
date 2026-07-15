@@ -1,0 +1,85 @@
+name: inventory-plan-branches-comment
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/inventory-plan-branches-comment.yml"
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+          show-progress: false
+
+      - name: Post branch inventory
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          repo="$GITHUB_REPOSITORY"
+          inventory_branch="$GITHUB_HEAD_REF"
+          default_branch="$(gh api "repos/$repo" --jq '.default_branch')"
+          git fetch --quiet --prune origin '+refs/heads/*:refs/remotes/origin/*'
+          gh api --paginate "repos/$repo/branches?per_page=100" --jq '.[].name' | sort -u > /tmp/branches.txt
+
+          report=/tmp/inventory.md
+          unmerged=/tmp/unmerged.txt
+          contained=/tmp/contained.txt
+          : > "$unmerged"
+          : > "$contained"
+
+          while IFS= read -r branch; do
+            [[ -n "$branch" ]] || continue
+            [[ "$branch" == "$default_branch" ]] && continue
+            [[ "$branch" == "$inventory_branch" ]] && continue
+            git show-ref --verify --quiet "refs/remotes/origin/$branch" || continue
+
+            read -r behind ahead < <(git rev-list --left-right --count "origin/$default_branch...origin/$branch")
+            changed_count="$(git diff --name-only "origin/$default_branch...origin/$branch" | wc -l | tr -d ' ')"
+            plan_count="$(git diff --name-only "origin/$default_branch...origin/$branch" -- docs/superpowers/plans | wc -l | tr -d ' ')"
+            spec_count="$(git diff --name-only "origin/$default_branch...origin/$branch" -- docs/superpowers/specs | wc -l | tr -d ' ')"
+            plan_files="$(git diff --name-only "origin/$default_branch...origin/$branch" -- docs/superpowers/plans docs/superpowers/specs | head -n 8 | paste -sd ', ' -)"
+            [[ -n "$plan_files" ]] || plan_files="-"
+            subject="$(git log -1 --format=%s "origin/$branch" | tr '|' '/')"
+            prs="$(gh pr list --repo "$repo" --state all --head "$branch" --limit 20 \
+              --json number,state,isDraft,mergedAt,title,baseRefName \
+              --jq 'map("#\(.number) \(.state) draft=\(.isDraft) merged=\(.mergedAt // "-") base=\(.baseRefName) — \(.title)") | join("; ")')"
+            [[ -n "$prs" ]] || prs="no PR"
+
+            entry="- \`$branch\` — ahead **$ahead**, behind **$behind**, changed **$changed_count**, plans **$plan_count**, specs **$spec_count**\n  - latest: $subject\n  - PR: $prs\n  - plan/spec files: $plan_files"
+
+            if git merge-base --is-ancestor "origin/$branch" "origin/$default_branch"; then
+              printf '%b\n' "$entry" >> "$contained"
+            else
+              printf '%b\n' "$entry" >> "$unmerged"
+            fi
+          done < /tmp/branches.txt
+
+          {
+            echo "## Remaining branch inventory"
+            echo
+            echo "Default branch: \`$default_branch\` at \`$(git rev-parse "origin/$default_branch")\`"
+            echo
+            echo "### Not contained in main"
+            echo
+            if [[ -s "$unmerged" ]]; then cat "$unmerged"; else echo "None"; fi
+            echo
+            echo "### Already contained in main but still present"
+            echo
+            if [[ -s "$contained" ]]; then cat "$contained"; else echo "None"; fi
+          } > "$report"
+
+          gh pr comment "$PR_NUMBER" --repo "$repo" --body-file "$report"
+          gh api --method DELETE "repos/$repo/git/refs/heads/$inventory_branch"
