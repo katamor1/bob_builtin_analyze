@@ -26,12 +26,18 @@ import {
   recoverRuleApplyTransaction,
   ruleApplyMetadataEquals,
   validateRuleApplyMetadata,
+  withRuleApplyWorkspaceLock,
   type ApplyManifestV1,
   type IncompleteRuleApplyTransactionV1,
-  type RuleApplyRecoveryRequest
+  type RuleApplyRecoveryRequest,
+  type RuleApplyWorkspaceLockToken
 } from "../ruleAuthoring/ruleApplyTransaction"
 import { resolveRuleAuthoringArtifactPath } from "../ruleAuthoring/ruleAuthoringArtifactStore"
 import { DEFAULT_RULE_AUTHORING_LIMITS } from "../ruleAuthoring/ruleAuthoringLimits"
+import {
+  hasUtf8ByteLength,
+  RULE_AUTHORING_TEXT_BYTE_LIMITS
+} from "../ruleAuthoring/ruleAuthoringTextLimits"
 import { getRuleAuthoringPaths, validateRuleAuthoringId } from "../ruleAuthoring/ruleAuthoringPaths"
 import {
   commitRuleAuthoringArtifactGeneration,
@@ -184,33 +190,40 @@ export interface RuleProposalTriageGuiDependencies {
   findIncompleteRuleApplyTransactions: (
     workspaceRoot: string
   ) => Promise<readonly IncompleteRuleApplyTransactionV1[]>
+  withRuleApplyWorkspaceLock: typeof withRuleApplyWorkspaceLock
   recoverCommittedRuleAuthoringApply: (
-    input: RuleProposalTriageInput
+    input: RuleProposalTriageInput,
+    workspaceLockToken?: RuleApplyWorkspaceLockToken
   ) => Promise<RuleAuthoringCommittedRecoveryResult | undefined>
   loadRuleProposalTriageState: (input: RuleProposalTriageInput) => Promise<RuleProposalTriageState>
   persistRuleProposalDecisions: (
     state: RuleProposalTriageState,
-    decisions: RuleProposalDecisionsV1
+    decisions: RuleProposalDecisionsV1,
+    workspaceLockToken?: RuleApplyWorkspaceLockToken
   ) => Promise<RuleProposalTriageState>
   buildRuleApplyPlan: typeof buildRuleApplyPlan
   persistRuleApplyPreview: (
     state: RuleProposalTriageState,
     decisions: RuleProposalDecisionsV1,
-    plan: RuleApplyPlan
+    plan: RuleApplyPlan,
+    workspaceLockToken?: RuleApplyWorkspaceLockToken
   ) => Promise<RuleProposalTriageState>
   validateDisplayedRuleApplyPreview: (
     state: RuleProposalTriageState,
-    plan: RuleApplyPlan
+    plan: RuleApplyPlan,
+    workspaceLockToken?: RuleApplyWorkspaceLockToken
   ) => Promise<void>
   executeRuleApplyTransaction: typeof executeRuleApplyTransaction
   persistRuleApplyCompletion: (
     state: RuleProposalTriageState,
     decisions: RuleProposalDecisionsV1,
     plan: RuleApplyPlan,
-    manifest: ApplyManifestV1
+    manifest: ApplyManifestV1,
+    workspaceLockToken?: RuleApplyWorkspaceLockToken
   ) => Promise<RuleAuthoringRunV1>
   invalidateRuleApplyPreview: (
-    input: RuleProposalTriageInput
+    input: RuleProposalTriageInput,
+    workspaceLockToken?: RuleApplyWorkspaceLockToken
   ) => Promise<RuleAuthoringRunV1>
   recoverRuleApplyTransaction: (
     workspaceRoot: string,
@@ -232,9 +245,10 @@ const CHUNK_ID = /^chunk-[a-f0-9]{64}$/
 const SHA256 = /^[a-f0-9]{64}$/
 const CANONICAL_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/
 const CONTROL_CHARACTER = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/
-const MAX_REJECT_REASON_CHARACTERS = 8_192
+const ANY_CONTROL_CHARACTER = /[\u0000-\u001f\u007f-\u009f]/
 const MAX_ARTIFACT_BYTES = 16 * 1024 * 1024
 const MAX_TRANSACTION_ENTRIES = 10_000
+const MAX_DOCUMENT_CHUNKS = Math.floor(DEFAULT_RULE_AUTHORING_LIMITS.maxSourceIndexBytes / 128)
 const MAX_COMPARISON_DOCUMENT_BYTES = (2 * DEFAULT_RULE_AUTHORING_LIMITS.maxProposalBytes) + 65_536
 const APPLY_CONFIRMATION = "Apply approved project rules"
 const TARGET_SPECS = Object.freeze([
@@ -349,6 +363,7 @@ export function createRuleProposalTriageGuiHost(
     newTransactionId: () => `txn-${randomBytes(16).toString("hex")}`,
     renderRuleProposalTriageGuiHtml,
     findIncompleteRuleApplyTransactions,
+    withRuleApplyWorkspaceLock,
     recoverCommittedRuleAuthoringApply,
     loadRuleProposalTriageState,
     persistRuleProposalDecisions,
@@ -482,36 +497,51 @@ async function openWithDependencies(
       panel.webview.html = dependencies.renderRuleProposalTriageGuiHtml(model, nonce)
     }
     const refreshAfterRecovery = async (): Promise<void> => {
-      const committed = await dependencies.recoverCommittedRuleAuthoringApply(input)
-      if (committed) {
-        recovery = []
-        state = undefined
-        transaction = {
-          transactionId: committed.transactionId,
-          status: "committed",
-          targetCount: TARGET_SPECS.length
+      const recoveredResult = await dependencies.withRuleApplyWorkspaceLock<
+        Extract<RuleAuthoringDecisionResult, { status: "applied" }> | undefined
+      >(
+        input.workspaceRoot,
+        input.runId,
+        async (workspaceLockToken) => {
+          recovery = await dependencies.findIncompleteRuleApplyTransactions(input.workspaceRoot)
+          if (recovery.length > 0) {
+            state = undefined
+            preview = undefined
+            displayedPreviewDigest = undefined
+            status = "Transaction recovery is required before proposal triage can resume."
+            render()
+            return undefined
+          }
+          const committed = await dependencies.recoverCommittedRuleAuthoringApply(
+            input,
+            workspaceLockToken
+          )
+          if (committed) {
+            recovery = []
+            state = undefined
+            transaction = {
+              transactionId: committed.transactionId,
+              status: "committed",
+              targetCount: TARGET_SPECS.length
+            }
+            status = "Recovered a committed apply after interrupted completion persistence."
+            render()
+            return {
+              status: "applied",
+              runId: committed.runId,
+              transactionId: committed.transactionId
+            } as const
+          }
+          state = await dependencies.loadRuleProposalTriageState(input)
+          decisions = cloneDecisions(state.decisions)
+          preview = undefined
+          displayedPreviewDigest = undefined
+          status = "Review every proposal candidate before previewing apply."
+          render()
+          return undefined
         }
-        status = "Recovered a committed apply after interrupted completion persistence."
-        render()
-        finish({
-          status: "applied",
-          runId: committed.runId,
-          transactionId: committed.transactionId
-        })
-        return
-      }
-      recovery = await dependencies.findIncompleteRuleApplyTransactions(input.workspaceRoot)
-      if (recovery.length === 0) {
-        state = await dependencies.loadRuleProposalTriageState(input)
-        decisions = cloneDecisions(state.decisions)
-        preview = undefined
-        displayedPreviewDigest = undefined
-        status = "Review every proposal candidate before previewing apply."
-      } else {
-        state = undefined
-        status = "Transaction recovery is required before proposal triage can resume."
-      }
-      render()
+      )
+      if (recoveredResult) finish(recoveredResult)
     }
 
     panel.onDidDispose(() => finish({ status: "closed", runId: input.runId }))
@@ -520,7 +550,15 @@ async function openWithDependencies(
       const message = parseRuleProposalTriageMessage(rawMessage)
       if (!message) {
         if (isPlainObject(rawMessage) && rawMessage.type === "editRule") {
-          status = "The editable value is invalid or exceeds its Unicode character limit."
+          status = "The editable value is invalid or exceeds its UTF-8 byte limit."
+          render()
+          void vscodeApi.window.showErrorMessage(status)
+        } else if (
+          isPlainObject(rawMessage) &&
+          rawMessage.type === "setDecision" &&
+          rawMessage.decision === "reject"
+        ) {
+          status = "The rejection reason is invalid or exceeds the 8,192-byte UTF-8 limit."
           render()
           void vscodeApi.window.showErrorMessage(status)
         }
@@ -536,12 +574,47 @@ async function openWithDependencies(
           }
           if (message.type === "recoverTransaction") {
             const current = recovery.find(({ transaction_id }) => transaction_id === message.transactionId)
-            if (!current) return
-            const recovered = await dependencies.recoverRuleApplyTransaction(
-              input.workspaceRoot,
-              current.transaction_id,
-              { action: message.action, now: canonicalNow(dependencies.now()) }
-            )
+            if (!current || message.action !== current.recovery_action) return
+            let recovered: Awaited<ReturnType<typeof recoverRuleApplyTransaction>>
+            try {
+              recovered = await dependencies.withRuleApplyWorkspaceLock(
+                input.workspaceRoot,
+                current.transaction_id,
+                async (workspaceLockToken) => {
+                  const result = await dependencies.recoverRuleApplyTransaction(
+                    input.workspaceRoot,
+                    current.transaction_id,
+                    {
+                      action: message.action,
+                      now: canonicalNow(dependencies.now()),
+                      workspaceLockToken
+                    }
+                  )
+                  if (result.status !== "committed") {
+                    await dependencies.invalidateRuleApplyPreview({
+                      workspaceRoot: input.workspaceRoot,
+                      runId: current.run_id
+                    }, workspaceLockToken)
+                  } else {
+                    const completed = await dependencies.recoverCommittedRuleAuthoringApply({
+                      workspaceRoot: input.workspaceRoot,
+                      runId: current.run_id
+                    }, workspaceLockToken)
+                    if (
+                      !completed ||
+                      completed.runId !== current.run_id ||
+                      completed.transactionId !== current.transaction_id
+                    ) {
+                      throw new Error("Committed apply completion recovery did not attach its owning run")
+                    }
+                  }
+                  return result
+                }
+              )
+            } catch (error) {
+              await refreshAfterRecovery()
+              throw error
+            }
             transaction = {
               transactionId: current.transaction_id,
               status: recovered.status === "committed" ? "committed" : "rolled_back",
@@ -549,10 +622,9 @@ async function openWithDependencies(
                 ? recovered.targets.length
                 : 0
             }
-            status = "The incomplete transaction was rolled back."
-            if (recovered.status !== "committed") {
-              await dependencies.invalidateRuleApplyPreview(input)
-            }
+            status = recovered.status === "committed"
+              ? "The durable apply commit was completed safely."
+              : "The incomplete transaction was rolled back."
             await refreshAfterRecovery()
             return
           }
@@ -747,55 +819,138 @@ async function openWithDependencies(
             APPLY_CONFIRMATION
           )
           if (confirmation !== APPLY_CONFIRMATION) return
-          const confirmedPrepared = await prepareFreshApply(
-            dependencies,
-            input,
-            prepared.state,
-            prepared.decisions
-          )
-          const confirmedDigest = planMetadataSha256(confirmedPrepared.plan)
-          if (confirmedDigest !== displayedPreviewDigest) {
-            state = await dependencies.persistRuleApplyPreview(
-              confirmedPrepared.state,
-              confirmedPrepared.decisions,
-              confirmedPrepared.plan
+          let transactionAttempted = false
+          let finalOutcome:
+            | {
+                readonly kind: "changed"
+                readonly state: RuleProposalTriageState
+                readonly decisions: RuleProposalDecisionsV1
+                readonly plan: RuleApplyPlan
+                readonly digest: string
+                readonly now: string
+              }
+            | {
+                readonly kind: "recovered"
+                readonly recovery: RuleAuthoringCommittedRecoveryResult
+              }
+            | {
+                readonly kind: "committed"
+                readonly state: RuleProposalTriageState
+                readonly decisions: RuleProposalDecisionsV1
+                readonly plan: RuleApplyPlan
+                readonly digest: string
+                readonly now: string
+                readonly manifest: ApplyManifestV1
+              }
+          try {
+            finalOutcome = await dependencies.withRuleApplyWorkspaceLock(
+              input.workspaceRoot,
+              input.runId,
+              async (workspaceLockToken) => {
+                const recovered = await dependencies.recoverCommittedRuleAuthoringApply(
+                  input,
+                  workspaceLockToken
+                )
+                if (recovered) return { kind: "recovered" as const, recovery: recovered }
+                const confirmedPrepared = await prepareFreshApply(
+                  dependencies,
+                  input,
+                  prepared.state,
+                  prepared.decisions
+                )
+                const confirmedDigest = planMetadataSha256(confirmedPrepared.plan)
+                const now = canonicalNow(dependencies.now())
+                if (confirmedDigest !== displayedPreviewDigest) {
+                  const persistedState = await dependencies.persistRuleApplyPreview(
+                    confirmedPrepared.state,
+                    confirmedPrepared.decisions,
+                    confirmedPrepared.plan,
+                    workspaceLockToken
+                  )
+                  return {
+                    kind: "changed" as const,
+                    state: persistedState,
+                    decisions: confirmedPrepared.decisions,
+                    plan: confirmedPrepared.plan,
+                    digest: confirmedDigest,
+                    now
+                  }
+                }
+                await dependencies.validateDisplayedRuleApplyPreview(
+                  confirmedPrepared.state,
+                  confirmedPrepared.plan,
+                  workspaceLockToken
+                )
+                const transactionId = validateRuleAuthoringId(
+                  dependencies.newTransactionId(),
+                  "transactionId"
+                )
+                transactionAttempted = true
+                let manifest: ApplyManifestV1
+                try {
+                  manifest = await dependencies.executeRuleApplyTransaction(confirmedPrepared.plan, {
+                    workspaceRoot: input.workspaceRoot,
+                    transactionId,
+                    now,
+                    workspaceLockToken
+                  })
+                } catch (error) {
+                  if (isPlainObject(error) && error.status === "rolled_back") {
+                    await dependencies.invalidateRuleApplyPreview(input, workspaceLockToken)
+                  }
+                  throw error
+                }
+                await dependencies.persistRuleApplyCompletion(
+                  confirmedPrepared.state,
+                  confirmedPrepared.decisions,
+                  confirmedPrepared.plan,
+                  manifest,
+                  workspaceLockToken
+                )
+                return {
+                  kind: "committed" as const,
+                  state: confirmedPrepared.state,
+                  decisions: confirmedPrepared.decisions,
+                  plan: confirmedPrepared.plan,
+                  digest: confirmedDigest,
+                  now,
+                  manifest
+                }
+              }
             )
-            decisions = confirmedPrepared.decisions
-            preview = previewModel(
-              confirmedPrepared.plan,
-              decisions,
-              canonicalNow(dependencies.now())
-            )
-            displayedPreviewDigest = confirmedDigest
+          } catch (error) {
+            if (transactionAttempted) {
+              await refreshAfterRecovery()
+              if (settled) return
+            }
+            throw error
+          }
+          if (finalOutcome.kind === "recovered") {
+            transaction = {
+              transactionId: finalOutcome.recovery.transactionId,
+              status: "committed",
+              targetCount: TARGET_SPECS.length
+            }
+            status = "Recovered a committed apply before starting another transaction."
+            render()
+            finish({
+              status: "applied",
+              runId: finalOutcome.recovery.runId,
+              transactionId: finalOutcome.recovery.transactionId
+            })
+            return
+          }
+          state = finalOutcome.state
+          decisions = finalOutcome.decisions
+          preview = previewModel(finalOutcome.plan, decisions, finalOutcome.now)
+          displayedPreviewDigest = finalOutcome.digest
+          if (finalOutcome.kind === "changed") {
             staleWarning = ""
             status = "The apply plan changed during confirmation. Inspect the regenerated preview before applying."
             render()
             return
           }
-          await dependencies.validateDisplayedRuleApplyPreview(
-            confirmedPrepared.state,
-            confirmedPrepared.plan
-          )
-          state = confirmedPrepared.state
-          decisions = confirmedPrepared.decisions
-          const transactionId = validateRuleAuthoringId(
-            dependencies.newTransactionId(),
-            "transactionId"
-          )
-          const now = canonicalNow(dependencies.now())
-          const manifest = await dependencies.executeRuleApplyTransaction(confirmedPrepared.plan, {
-            workspaceRoot: input.workspaceRoot,
-            transactionId,
-            now
-          })
-          await dependencies.persistRuleApplyCompletion(
-            state,
-            decisions,
-            confirmedPrepared.plan,
-            manifest
-          )
-          preview = previewModel(confirmedPrepared.plan, decisions, now)
-          displayedPreviewDigest = confirmedDigest
+          const manifest = finalOutcome.manifest
           transaction = {
             transactionId: manifest.transaction_id,
             status: "committed",
@@ -932,170 +1087,244 @@ export async function loadRuleProposalTriageState(
 
 export async function persistRuleProposalDecisions(
   state: RuleProposalTriageState,
-  decisionsValue: RuleProposalDecisionsV1
+  decisionsValue: RuleProposalDecisionsV1,
+  workspaceLockToken?: RuleApplyWorkspaceLockToken
 ): Promise<RuleProposalTriageState> {
-  const decisions = validateDecisionOverlayForPersistence(decisionsValue, state.proposal, false)
-  const current = await currentMatchingRun(state)
-  const next = await commitRuleAuthoringArtifactGeneration({
-    workspaceRoot: current.workspaceRoot,
-    runId: current.runId,
-    expectedUpdatedAt: current.updatedAt,
-    files: { proposalDecisions: serializeJson(decisions) },
-    removeArtifactKeys: current.artifacts.applyPreview === undefined ? [] : ["applyPreview"],
-    buildNextRun: (run, artifacts) => ({
-      ...run,
-      artifacts,
-      updatedAt: timestampAfter(run.updatedAt)
-    })
-  })
-  return { ...state, run: next, decisions }
+  return withRuleApplyWorkspaceLock(
+    state.run.workspaceRoot,
+    state.run.runId,
+    async () => {
+      const decisions = validateDecisionOverlayForPersistence(decisionsValue, state.proposal, false)
+      const current = await currentMatchingRun(state)
+      await assertRuleApplyMutationAllowed(current)
+      const next = await commitRuleAuthoringArtifactGeneration({
+        workspaceRoot: current.workspaceRoot,
+        runId: current.runId,
+        expectedUpdatedAt: current.updatedAt,
+        files: { proposalDecisions: serializeJson(decisions) },
+        removeArtifactKeys: current.artifacts.applyPreview === undefined ? [] : ["applyPreview"],
+        buildNextRun: (run, artifacts) => ({
+          ...run,
+          artifacts,
+          updatedAt: timestampAfter(run.updatedAt)
+        })
+      })
+      return { ...state, run: next, decisions }
+    },
+    workspaceLockToken
+  )
 }
 
 export async function persistRuleApplyPreview(
   state: RuleProposalTriageState,
   decisionsValue: RuleProposalDecisionsV1,
-  plan: RuleApplyPlan
+  plan: RuleApplyPlan,
+  workspaceLockToken?: RuleApplyWorkspaceLockToken
 ): Promise<RuleProposalTriageState> {
-  const decisions = validateDecisionOverlayForPersistence(decisionsValue, state.proposal, true)
-  assertPlanMatchesState(plan, state)
-  const current = await currentMatchingRun(state)
-  const generatedAt = timestampAfter(current.updatedAt)
-  const storedPreview = await storedPreviewFromPlan(current, state.proposal, plan, decisions, generatedAt)
-  const next = await commitRuleAuthoringArtifactGeneration({
-    workspaceRoot: current.workspaceRoot,
-    runId: current.runId,
-    expectedUpdatedAt: current.updatedAt,
-    files: {
-      applyPreview: serializeJson(storedPreview)
+  return withRuleApplyWorkspaceLock(
+    state.run.workspaceRoot,
+    state.run.runId,
+    async () => {
+      const decisions = validateDecisionOverlayForPersistence(decisionsValue, state.proposal, true)
+      assertPlanMatchesState(plan, state)
+      const current = await currentMatchingRun(state)
+      await assertRuleApplyMutationAllowed(current)
+      const generatedAt = timestampAfter(current.updatedAt)
+      const storedPreview = await storedPreviewFromPlan(current, state.proposal, plan, decisions, generatedAt)
+      const next = await commitRuleAuthoringArtifactGeneration({
+        workspaceRoot: current.workspaceRoot,
+        runId: current.runId,
+        expectedUpdatedAt: current.updatedAt,
+        files: {
+          applyPreview: serializeJson(storedPreview)
+        },
+        buildNextRun: (run, artifacts) => ({
+          ...applyInProgressRun(run, generatedAt),
+          artifacts
+        })
+      })
+      return { ...state, run: next, decisions }
     },
-    buildNextRun: (run, artifacts) => ({
-      ...applyInProgressRun(run, generatedAt),
-      artifacts
-    })
-  })
-  return { ...state, run: next, decisions }
+    workspaceLockToken
+  )
 }
 
 export async function persistRuleApplyCompletion(
   state: RuleProposalTriageState,
   decisionsValue: RuleProposalDecisionsV1,
   plan: RuleApplyPlan,
-  manifest: ApplyManifestV1
+  manifest: ApplyManifestV1,
+  workspaceLockToken?: RuleApplyWorkspaceLockToken
 ): Promise<RuleAuthoringRunV1> {
-  const decisions = validateDecisionOverlayForPersistence(decisionsValue, state.proposal, true)
-  assertPlanMatchesState(plan, state)
-  assertManifestMatchesPlan(manifest, plan)
-  const current = await currentMatchingRun(state)
-  await assertStoredApplyBinding(current, plan)
-  const completionAt = timestampAfter(current.updatedAt, manifest.committed_at)
-  return commitRuleAuthoringArtifactGeneration({
-    workspaceRoot: current.workspaceRoot,
-    runId: current.runId,
-    expectedUpdatedAt: current.updatedAt,
-    files: {
-      applyManifest: serializeJson(manifest)
+  return withRuleApplyWorkspaceLock(
+    state.run.workspaceRoot,
+    state.run.runId,
+    async () => {
+      const decisions = validateDecisionOverlayForPersistence(decisionsValue, state.proposal, true)
+      assertPlanMatchesState(plan, state)
+      assertManifestMatchesPlan(manifest, plan)
+      const current = await currentMatchingRun(state)
+      await assertStoredApplyBinding(current, plan)
+      const completionAt = timestampAfter(current.updatedAt, manifest.committed_at)
+      return commitRuleAuthoringArtifactGeneration({
+        workspaceRoot: current.workspaceRoot,
+        runId: current.runId,
+        expectedUpdatedAt: current.updatedAt,
+        files: {
+          applyManifest: serializeJson(manifest)
+        },
+        buildNextRun: (run, artifacts) => completedRun(run, artifacts, completionAt)
+      })
     },
-    buildNextRun: (run, artifacts) => completedRun(run, artifacts, completionAt)
-  })
+    workspaceLockToken
+  )
 }
 
 export async function validateDisplayedRuleApplyPreview(
   state: RuleProposalTriageState,
-  plan: RuleApplyPlan
+  plan: RuleApplyPlan,
+  workspaceLockToken?: RuleApplyWorkspaceLockToken
 ): Promise<void> {
-  assertPlanMatchesState(plan, state)
-  await assertStoredApplyBinding(state.run, plan)
+  await withRuleApplyWorkspaceLock(
+    state.run.workspaceRoot,
+    state.run.runId,
+    async () => {
+      assertPlanMatchesState(plan, state)
+      await assertStoredApplyBinding(state.run, plan)
+    },
+    workspaceLockToken
+  )
 }
 
 export async function invalidateRuleApplyPreview(
-  inputValue: RuleProposalTriageInput
+  inputValue: RuleProposalTriageInput,
+  workspaceLockToken?: RuleApplyWorkspaceLockToken
 ): Promise<RuleAuthoringRunV1> {
-  const state = await loadRuleProposalTriageState(normalizeTriageInput(inputValue))
-  if (state.run.currentPhase !== "apply" || state.run.phases.apply.status !== "in_progress") {
-    throw new Error("Rule authoring apply preview can only be invalidated while apply is in progress")
-  }
-  if (state.run.artifacts.applyPreview === undefined) return state.run
-  return (await persistRuleProposalDecisions(state, state.decisions)).run
+  const input = normalizeTriageInput(inputValue)
+  return withRuleApplyWorkspaceLock(
+    input.workspaceRoot,
+    input.runId,
+    async (activeToken) => {
+      const state = await loadRuleProposalTriageState(input)
+      if (state.run.currentPhase !== "apply" || state.run.phases.apply.status !== "in_progress") {
+        throw new Error("Rule authoring apply preview can only be invalidated while apply is in progress")
+      }
+      if (state.run.artifacts.applyPreview === undefined) return state.run
+      return (await persistRuleProposalDecisions(state, state.decisions, activeToken)).run
+    },
+    workspaceLockToken
+  )
 }
 
 export async function verifyRuleAuthoringApply(
   inputValue: RuleProposalTriageInput
 ): Promise<RuleAuthoringApplyVerificationResult> {
   const input = normalizeTriageInput(inputValue)
-  let run = await readRuleAuthoringRun(getRuleAuthoringPaths(input.workspaceRoot, input.runId))
-  if (run.currentPhase !== "completed") {
-    await recoverCommittedRuleAuthoringApply(input)
-    run = await readRuleAuthoringRun(getRuleAuthoringPaths(input.workspaceRoot, input.runId))
-  }
-  if (run.currentPhase !== "completed" || run.phases.completed.status !== "completed") {
-    throw new Error("Rule authoring run phase is not completed")
-  }
-  if (run.artifacts.applyManifest === undefined) {
-    throw new Error("Rule authoring apply manifest artifact is missing")
-  }
-  const manifestRaw = await readResolvedArtifact(
-    run,
-    "applyManifest",
-    DEFAULT_RULE_AUTHORING_LIMITS.maxProposalBytes
-  )
-  const manifest = validateApplyManifest(parseJsonObject(manifestRaw, "Apply manifest"), run.runId)
-  await verifyCommittedManifestForRun(run, manifest)
-  return {
-    status: "verified",
-    runId: run.runId,
-    transactionId: manifest.transaction_id,
-    targetCount: manifest.targets.length
-  }
+  return withRuleApplyWorkspaceLock(input.workspaceRoot, input.runId, async (workspaceLockToken) => {
+    let run = await readRuleAuthoringRun(getRuleAuthoringPaths(input.workspaceRoot, input.runId))
+    if (run.currentPhase !== "completed") {
+      await recoverCommittedRuleAuthoringApply(input, workspaceLockToken)
+      run = await readRuleAuthoringRun(getRuleAuthoringPaths(input.workspaceRoot, input.runId))
+    }
+    if (run.currentPhase !== "completed" || run.phases.completed.status !== "completed") {
+      throw new Error("Rule authoring run phase is not completed")
+    }
+    if (run.artifacts.applyManifest === undefined) {
+      throw new Error("Rule authoring apply manifest artifact is missing")
+    }
+    const manifestRaw = await readResolvedArtifact(
+      run,
+      "applyManifest",
+      DEFAULT_RULE_AUTHORING_LIMITS.maxProposalBytes
+    )
+    const manifest = validateApplyManifest(parseJsonObject(manifestRaw, "Apply manifest"), run.runId)
+    await verifyCommittedManifestForRun(run, manifest)
+    return {
+      status: "verified" as const,
+      runId: run.runId,
+      transactionId: manifest.transaction_id,
+      targetCount: manifest.targets.length
+    }
+  })
 }
 
 export async function recoverCommittedRuleAuthoringApply(
-  inputValue: RuleProposalTriageInput
+  inputValue: RuleProposalTriageInput,
+  workspaceLockToken?: RuleApplyWorkspaceLockToken
 ): Promise<RuleAuthoringCommittedRecoveryResult | undefined> {
   const input = normalizeTriageInput(inputValue)
-  const run = await readRuleAuthoringRun(getRuleAuthoringPaths(input.workspaceRoot, input.runId))
-  if (run.currentPhase === "completed" || run.artifacts.applyManifest !== undefined) return undefined
-  if (run.currentPhase !== "apply" || run.phases.apply.status !== "in_progress") return undefined
-  let committed: ApplyManifestV1 | undefined
-  try {
-    committed = await findCommittedTransactionManifest(run)
-    if (!committed) return undefined
-    await assertStoredApplyBinding(run, committed)
-    await verifyCommittedManifestForRun(run, committed)
-  } catch {
-    throw new Error("Committed apply binding validation failed")
-  }
-  const completionAt = timestampAfter(run.updatedAt, committed.committed_at)
-  await commitRuleAuthoringArtifactGeneration({
-    workspaceRoot: run.workspaceRoot,
-    runId: run.runId,
-    expectedUpdatedAt: run.updatedAt,
-    files: { applyManifest: serializeJson(committed) },
-    buildNextRun: (current, artifacts) => completedRun(current, artifacts, completionAt)
-  })
-  return {
-    status: "recovered",
-    runId: run.runId,
-    transactionId: committed.transaction_id
-  }
+  return withRuleApplyWorkspaceLock(
+    input.workspaceRoot,
+    input.runId,
+    async () => {
+      if ((await findIncompleteRuleApplyTransactions(input.workspaceRoot)).length > 0) {
+        throw new Error("Incomplete rule apply transaction requires recovery")
+      }
+      const run = await readRuleAuthoringRun(getRuleAuthoringPaths(input.workspaceRoot, input.runId))
+      const pending = await findPendingCommittedTransactionManifests(input.workspaceRoot)
+      if (pending.some(({ run_id }) => run_id !== run.runId)) {
+        throw new Error("Another authoring run has a committed apply that requires completion recovery")
+      }
+      if (run.currentPhase === "completed") {
+        if (run.phases.completed.status !== "completed" || run.artifacts.applyManifest === undefined) {
+          throw new Error("Completed rule authoring apply metadata is incomplete")
+        }
+        const manifest = validateApplyManifest(parseJsonObject(
+          await readResolvedArtifact(
+            run,
+            "applyManifest",
+            DEFAULT_RULE_AUTHORING_LIMITS.maxProposalBytes
+          ),
+          "Apply manifest"
+        ), run.runId)
+        await verifyCommittedManifestForRun(run, manifest)
+        return {
+          status: "recovered" as const,
+          runId: run.runId,
+          transactionId: manifest.transaction_id
+        }
+      }
+      if (run.artifacts.applyManifest !== undefined) {
+        throw new Error("Rule authoring run phase is not completed but an apply manifest is attached")
+      }
+      const committed = pending.find(({ run_id }) => run_id === run.runId)
+      if (run.currentPhase !== "apply" || run.phases.apply.status !== "in_progress") {
+        if (committed) {
+          throw new Error("Committed apply run state requires explicit recovery")
+        }
+        return undefined
+      }
+      try {
+        if (!committed) return undefined
+        await assertStoredApplyBinding(run, committed)
+        await verifyCommittedManifestForRun(run, committed)
+      } catch {
+        throw new Error("Committed apply binding validation failed")
+      }
+      const completionAt = timestampAfter(run.updatedAt, committed.committed_at)
+      await commitRuleAuthoringArtifactGeneration({
+        workspaceRoot: run.workspaceRoot,
+        runId: run.runId,
+        expectedUpdatedAt: run.updatedAt,
+        files: { applyManifest: serializeJson(committed) },
+        buildNextRun: (current, artifacts) => completedRun(current, artifacts, completionAt)
+      })
+      return {
+        status: "recovered" as const,
+        runId: run.runId,
+        transactionId: committed.transaction_id
+      }
+    },
+    workspaceLockToken
+  )
 }
 
 async function verifyCommittedManifestForRun(
   run: RuleAuthoringRunV1,
   manifest: ApplyManifestV1
 ): Promise<void> {
-  const bindingKeys = [
-    "ruleProposal",
-    "proposalValidation",
-    "proposalDecisions",
-    "applyPreview"
-  ] as const
-  const bindingCount = bindingKeys.filter((key) => run.artifacts[key] !== undefined).length
-  if (bindingCount !== 0) {
-    if (bindingCount !== bindingKeys.length) {
-      throw new Error("Completed Human Triage apply binding is incomplete")
-    }
-    await assertStoredApplyBinding(run, manifest)
-  }
+  requiredEvidenceArtifactPointer(run, "evidenceSelection")
+  await assertStoredApplyBinding(run, manifest)
   const verifiedBytes = new Map<string, Buffer>()
   for (const [index, [asset, relativePath]] of TARGET_SPECS.entries()) {
     const target = manifest.targets[index]
@@ -1141,23 +1370,14 @@ async function verifyCommittedManifestForRun(
     "documentChunks",
     DEFAULT_RULE_AUTHORING_LIMITS.maxAggregateSourceBytes
   ))
-  const authoritativeSelection = run.artifacts.evidenceSelection === undefined
-    ? {
-        schema_version: "bob-bazaar-review/rule-evidence-selection/v1" as const,
-        selected_chunks: authoritativeChunks.map(({ source_id, chunk_id, text_sha256 }) => ({
-          source_id,
-          chunk_id,
-          text_sha256
-        }))
-      }
-    : parseJsonObject(
-        await readResolvedArtifact(
-          run,
-          "evidenceSelection",
-          DEFAULT_RULE_AUTHORING_LIMITS.maxSelectedEvidenceBytes
-        ),
-        "Authoritative evidence selection"
-      ) as unknown as RuleApplyEvidence["selection"]
+  const authoritativeSelection = parseJsonObject(
+    await readResolvedArtifact(
+      run,
+      "evidenceSelection",
+      DEFAULT_RULE_AUTHORING_LIMITS.maxSelectedEvidenceBytes
+    ),
+    "Authoritative evidence selection"
+  ) as unknown as RuleApplyEvidence["selection"]
   validateRuleApplyEvidence({
     sourceManifest: authoritativeSourceManifest,
     chunks: authoritativeChunks,
@@ -1171,23 +1391,78 @@ async function verifyCommittedManifestForRun(
     authoritativeSourceManifest,
     authoritativeChunks
   )
+  await assertVerifiedTargetSnapshotCurrent(run, manifest, verifiedBytes)
 }
 
-async function findCommittedTransactionManifest(
-  run: RuleAuthoringRunV1
-): Promise<ApplyManifestV1 | undefined> {
-  const paths = getRuleAuthoringPaths(run.workspaceRoot, run.runId)
+async function assertVerifiedTargetSnapshotCurrent(
+  run: RuleAuthoringRunV1,
+  manifest: ApplyManifestV1,
+  verifiedBytes: ReadonlyMap<string, Buffer>
+): Promise<void> {
+  for (const [index, [asset, relativePath]] of TARGET_SPECS.entries()) {
+    let current: Buffer
+    try {
+      current = await readWorkspaceFileBounded(
+        run.workspaceRoot,
+        path.join(run.workspaceRoot, ...relativePath.split("/")),
+        MAX_ARTIFACT_BYTES,
+        false
+      ) as Buffer
+    } catch {
+      throw new Error("Rule authoring target snapshot changed during verification")
+    }
+    if (
+      sha256(current) !== manifest.targets[index].post_image_sha256 ||
+      !current.equals(requiredBytes(verifiedBytes, asset))
+    ) {
+      throw new Error("Rule authoring target snapshot changed during verification")
+    }
+  }
+}
+
+async function findPendingCommittedTransactionManifests(
+  workspaceRoot: string
+): Promise<ApplyManifestV1[]> {
+  const pending: ApplyManifestV1[] = []
+  for (const manifest of await findCommittedTransactionManifests(workspaceRoot)) {
+    const run = await readRuleAuthoringRun(getRuleAuthoringPaths(workspaceRoot, manifest.run_id))
+    if (run.currentPhase !== "completed") {
+      pending.push(manifest)
+      continue
+    }
+    if (run.phases.completed.status !== "completed" || run.artifacts.applyManifest === undefined) {
+      throw new Error("Completed rule authoring apply metadata is incomplete")
+    }
+    const attached = validateApplyManifest(parseJsonObject(
+      await readResolvedArtifact(
+        run,
+        "applyManifest",
+        DEFAULT_RULE_AUTHORING_LIMITS.maxProposalBytes
+      ),
+      "Attached apply manifest"
+    ), run.runId)
+    if (stableJson(attached) !== stableJson(manifest)) {
+      throw new Error("Committed apply binding does not match the completed transaction")
+    }
+  }
+  return pending
+}
+
+async function findCommittedTransactionManifests(
+  workspaceRoot: string
+): Promise<ApplyManifestV1[]> {
+  const paths = getRuleAuthoringPaths(workspaceRoot, "transaction-probe")
   let stats
   try {
     stats = await fs.lstat(paths.transactionsDirectory)
   } catch (error) {
-    if (isNodeError(error) && error.code === "ENOENT") return undefined
+    if (isNodeError(error) && error.code === "ENOENT") return []
     throw error
   }
   if (stats.isSymbolicLink() || !stats.isDirectory()) {
     throw new Error("Rule authoring transaction directory is unsafe")
   }
-  await assertSafeParentChain(run.workspaceRoot, paths.transactionsDirectory)
+  await assertSafeParentChain(workspaceRoot, paths.transactionsDirectory)
   const entries = await fs.readdir(paths.transactionsDirectory, { withFileTypes: true })
   if (entries.length > MAX_TRANSACTION_ENTRIES) {
     throw new Error("Rule authoring transaction count exceeds its limit")
@@ -1197,7 +1472,7 @@ async function findCommittedTransactionManifest(
     if (!entry.isDirectory() || entry.isSymbolicLink() || !isPortableId(entry.name)) continue
     const directory = path.join(paths.transactionsDirectory, entry.name)
     const journalBytes = await readWorkspaceFileBounded(
-      run.workspaceRoot,
+      workspaceRoot,
       path.join(directory, "transaction-journal.json"),
       MAX_ARTIFACT_BYTES,
       true
@@ -1207,10 +1482,11 @@ async function findCommittedTransactionManifest(
       decodeUtf8(journalBytes, "Apply transaction journal"),
       "Apply transaction journal"
     )
-    if (journal.run_id !== run.runId || journal.status !== "committed") continue
+    if (journal.status !== "committed") continue
     if (
       journal.schema_version !== RULE_APPLY_TRANSACTION_SCHEMA_VERSION ||
       journal.transaction_id !== entry.name ||
+      typeof journal.run_id !== "string" ||
       !Array.isArray(journal.targets) ||
       !Array.isArray(journal.decisions) ||
       !Array.isArray(journal.retirements)
@@ -1218,21 +1494,47 @@ async function findCommittedTransactionManifest(
       throw new Error("Committed apply transaction journal is malformed")
     }
     try {
+      validateRuleAuthoringId(journal.run_id, "runId")
+    } catch {
+      throw new Error("Committed apply transaction run ID is malformed")
+    }
+    try {
       validateRuleApplyMetadata(journal.decisions, journal.retirements)
     } catch {
       throw new Error("Committed apply transaction journal decision or retirement metadata is malformed")
     }
     const manifestBytes = await readWorkspaceFileBounded(
-      run.workspaceRoot,
+      workspaceRoot,
       path.join(directory, "apply-manifest.json"),
       DEFAULT_RULE_AUTHORING_LIMITS.maxProposalBytes,
       true
     )
-    if (!manifestBytes) throw new Error("Committed apply transaction manifest is missing")
-    const manifest = validateApplyManifest(
-      parseJsonObject(decodeUtf8(manifestBytes, "Apply manifest"), "Apply manifest"),
-      run.runId
-    )
+    let manifest: ApplyManifestV1
+    if (manifestBytes) {
+      manifest = validateApplyManifest(
+        parseJsonObject(decodeUtf8(manifestBytes, "Apply manifest"), "Apply manifest"),
+        journal.run_id
+      )
+    } else {
+      const completedRun = await readRuleAuthoringRun(
+        getRuleAuthoringPaths(workspaceRoot, journal.run_id)
+      )
+      if (
+        completedRun.currentPhase !== "completed" ||
+        completedRun.phases.completed.status !== "completed" ||
+        completedRun.artifacts.applyManifest === undefined
+      ) {
+        throw new Error("Committed apply transaction manifest is missing")
+      }
+      manifest = validateApplyManifest(parseJsonObject(
+        await readResolvedArtifact(
+          completedRun,
+          "applyManifest",
+          DEFAULT_RULE_AUTHORING_LIMITS.maxProposalBytes
+        ),
+        "Attached apply manifest"
+      ), journal.run_id)
+    }
     if (
       manifest.transaction_id !== entry.name ||
       !journalTargetsMatchManifest(journal.targets, manifest) ||
@@ -1243,14 +1545,18 @@ async function findCommittedTransactionManifest(
         manifest.retirements
       )
     ) {
-      throw new Error("Committed apply transaction does not match its manifest")
+      throw new Error("Committed apply binding does not match its transaction manifest")
     }
     matches.push(manifest)
   }
-  if (matches.length > 1) {
+  const counts = new Map<string, number>()
+  for (const { run_id } of matches) counts.set(run_id, (counts.get(run_id) ?? 0) + 1)
+  if ([...counts.values()].some((count) => count > 1)) {
     throw new Error("Multiple committed apply transactions require explicit recovery")
   }
-  return matches[0]
+  return matches.sort((left, right) => left.transaction_id < right.transaction_id
+    ? -1
+    : left.transaction_id > right.transaction_id ? 1 : 0)
 }
 
 function journalTargetsMatchManifest(
@@ -1323,7 +1629,8 @@ function buildRuleProposalTriageModel(
     status,
     recovery: recovery.map((item) => ({
       transactionId: item.transaction_id,
-      status: item.status
+      status: item.status,
+      recoveryAction: item.recovery_action
     })),
     preview,
     transaction
@@ -1346,7 +1653,11 @@ function recoveryModel(
     canApply: false,
     staleWarning: "",
     status,
-    recovery: recovery.map((item) => ({ transactionId: item.transaction_id, status: item.status }))
+    recovery: recovery.map((item) => ({
+      transactionId: item.transaction_id,
+      status: item.status,
+      recoveryAction: item.recovery_action
+    }))
   }
 }
 
@@ -1535,15 +1846,19 @@ function buildFullComparisonDocument(
     "## Existing approved",
     "",
     "<<<BOB_EXISTING_COMPARISON>>>",
-    existing,
+    labelComparisonPayload("EXISTING", existing),
     "<<<END_BOB_EXISTING_COMPARISON>>>",
     "",
     "## Proposed",
     "",
     "<<<BOB_PROPOSED_COMPARISON>>>",
-    proposed,
+    labelComparisonPayload("PROPOSED", proposed),
     "<<<END_BOB_PROPOSED_COMPARISON>>>"
   ].join("\n")
+}
+
+function labelComparisonPayload(label: "EXISTING" | "PROPOSED", value: string): string {
+  return value.replace(/\r\n|\r/g, "\n").replace(/^/gm, `${label} | `)
 }
 
 function fullExistingOperationValue(
@@ -2091,6 +2406,15 @@ async function currentMatchingRun(state: RuleProposalTriageState): Promise<RuleA
   return current
 }
 
+async function assertRuleApplyMutationAllowed(run: RuleAuthoringRunV1): Promise<void> {
+  if ((await findIncompleteRuleApplyTransactions(run.workspaceRoot)).length > 0) {
+    throw new Error("Transaction recovery is required before changing Human Triage artifacts")
+  }
+  if ((await findPendingCommittedTransactionManifests(run.workspaceRoot)).length > 0) {
+    throw new Error("Committed apply completion recovery is required before changing Human Triage artifacts")
+  }
+}
+
 async function loadCurrentRuleApplyBundle(workspaceRoot: string): Promise<RuleApplyBundle> {
   const paths = getProjectRulesPaths(workspaceRoot)
   const load = async (filePath: string): Promise<RuleApplyBundle["checklist"]> => {
@@ -2444,12 +2768,30 @@ function stableJson(value: unknown): string {
   return JSON.stringify(value)
 }
 
-function parseDocumentChunks(raw: string): DocumentChunkV1[] {
-  if (raw.length === 0) return []
-  return raw.split(/\r?\n/).filter((line) => line.length > 0).map((line) => {
-    const parsed = parseJsonObject(line, "Document chunk")
-    return parsed as unknown as DocumentChunkV1
+export function parseDocumentChunks(raw: string): DocumentChunkV1[] {
+  let count = 0
+  forEachDocumentChunkLine(raw, () => {
+    count += 1
+    if (count > MAX_DOCUMENT_CHUNKS) {
+      throw new Error("Document chunk count exceeds its limit")
+    }
   })
+  const chunks: DocumentChunkV1[] = []
+  forEachDocumentChunkLine(raw, (line) => {
+    chunks.push(parseJsonObject(line, "Document chunk") as unknown as DocumentChunkV1)
+  })
+  return chunks
+}
+
+function forEachDocumentChunkLine(raw: string, visit: (line: string) => void): void {
+  let start = 0
+  for (let index = 0; index <= raw.length; index += 1) {
+    if (index !== raw.length && raw.charCodeAt(index) !== 0x0a) continue
+    let end = index
+    if (end > start && raw.charCodeAt(end - 1) === 0x0d) end -= 1
+    if (end > start) visit(raw.slice(start, end))
+    start = index + 1
+  }
 }
 
 function parseJsonObject(raw: string, label: string): Record<string, unknown> {
@@ -2561,17 +2903,17 @@ function isRuleEdit(value: unknown): value is RuleProposalRuleV1 {
       "evidence_required",
       "review_hint"
     ]) ||
-    !boundedNonEmpty(value.category, 256) ||
-    !boundedNonEmpty(value.title, 512) ||
-    !boundedNonEmpty(value.description, 8_192) ||
+    !hasUtf8ByteLength(value.category, RULE_AUTHORING_TEXT_BYTE_LIMITS.category, { nonEmpty: true }) ||
+    !hasUtf8ByteLength(value.title, RULE_AUTHORING_TEXT_BYTE_LIMITS.title, { nonEmpty: true }) ||
+    !hasUtf8ByteLength(value.description, RULE_AUTHORING_TEXT_BYTE_LIMITS.description, { nonEmpty: true }) ||
     (value.severity_on_fail !== "error" && value.severity_on_fail !== "warning" &&
       value.severity_on_fail !== "info") ||
     !Array.isArray(value.applies_when) ||
     value.applies_when.length > 32 ||
-    value.applies_when.some((item) => typeof item !== "string" || unicodeLength(item) > 1_024) ||
+    value.applies_when.some((item) =>
+      !hasUtf8ByteLength(item, RULE_AUTHORING_TEXT_BYTE_LIMITS.appliesWhen)) ||
     typeof value.evidence_required !== "boolean" ||
-    typeof value.review_hint !== "string" ||
-    unicodeLength(value.review_hint) > 4_096
+    !hasUtf8ByteLength(value.review_hint, RULE_AUTHORING_TEXT_BYTE_LIMITS.reviewHint)
   ) return false
   return !containsDisallowedControl(value)
 }
@@ -2579,28 +2921,18 @@ function isRuleEdit(value: unknown): value is RuleProposalRuleV1 {
 function isEditedMarkdown(value: unknown): value is RuleApplyEditedMarkdown {
   return isPlainObject(value) &&
     hasOnlyKeys(value, ["heading", "markdown"]) &&
-    boundedNonEmpty(value.heading, 512) &&
+    hasUtf8ByteLength(value.heading, RULE_AUTHORING_TEXT_BYTE_LIMITS.markdownHeading, { nonEmpty: true }) &&
     value.heading.trim().length > 0 &&
     !/[\r\n]/.test(value.heading) &&
     !/bob-managed-section/i.test(value.heading) &&
-    typeof value.markdown === "string" &&
-    unicodeLength(value.markdown) <= DEFAULT_RULE_AUTHORING_LIMITS.maxProjectContextBytes &&
+    hasUtf8ByteLength(value.markdown, RULE_AUTHORING_TEXT_BYTE_LIMITS.managedMarkdown) &&
     !/bob-managed-section/i.test(value.markdown) &&
     !containsDisallowedControl(value)
 }
 
 function isRejectReason(value: unknown): value is string {
-  return typeof value === "string" &&
-    !CONTROL_CHARACTER.test(value) &&
-    unicodeLength(value) <= MAX_REJECT_REASON_CHARACTERS
-}
-
-function boundedNonEmpty(value: unknown, maxCharacters: number): value is string {
-  return typeof value === "string" && unicodeLength(value) > 0 && unicodeLength(value) <= maxCharacters
-}
-
-function unicodeLength(value: string): number {
-  return [...value].length
+  return hasUtf8ByteLength(value, RULE_AUTHORING_TEXT_BYTE_LIMITS.rejectReason) &&
+    !ANY_CONTROL_CHARACTER.test(value)
 }
 
 function containsDisallowedControl(value: unknown): boolean {

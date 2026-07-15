@@ -14,12 +14,13 @@ const {
   readRuleAuthoringRun,
   writeRuleAuthoringRun
 } = require("../out/ruleAuthoring/ruleAuthoringRunStore")
-const { buildDocumentChunkId, splitDocumentChunk } = require("../out/ruleAuthoring/documentChunk")
+const { splitDocumentChunk } = require("../out/ruleAuthoring/documentChunk")
 const { buildRuleApplyPlan } = require("../out/ruleAuthoring/ruleApplyPlan")
 const {
   executeRuleApplyTransaction,
   ruleApplyMetadataEquals,
-  validateRuleApplyMetadata
+  validateRuleApplyMetadata,
+  withRuleApplyWorkspaceLock
 } = require("../out/ruleAuthoring/ruleApplyTransaction")
 const { resolveRuleAuthoringArtifactPath } = require("../out/ruleAuthoring/ruleAuthoringArtifactStore")
 const {
@@ -53,10 +54,58 @@ function json(value) {
   return Buffer.from(`${JSON.stringify(value, null, 2)}\n`, "utf8")
 }
 
+function stableJson(value) {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`
+  if (value !== null && typeof value === "object") {
+    return `{${Object.keys(value).sort().map((key) =>
+      `${JSON.stringify(key)}:${stableJson(value[key])}`).join(",")}}`
+  }
+  return JSON.stringify(value)
+}
+
+function manifestPlanDigest(manifest) {
+  const metadata = validateRuleApplyMetadata(manifest.decisions, manifest.retirements)
+  return sha256(Buffer.from(stableJson({
+    schema_version: "bob-bazaar-review/rule-apply-plan-metadata/v1",
+    run_id: manifest.run_id,
+    targets: manifest.targets.map(({ asset, path: targetPath, expected_pre_image, post_image_sha256 }) => ({
+      asset,
+      path: targetPath,
+      expected_pre_image,
+      post_image_sha256
+    })),
+    decisions: metadata.decisions,
+    retirements: metadata.retirements
+  }), "utf8"))
+}
+
+async function rebindStoredPreviewToManifest(fixture, manifest) {
+  const previewPath = resolveRuleAuthoringArtifactPath(fixture.run, "applyPreview")
+  const preview = JSON.parse(await fs.readFile(previewPath, "utf8"))
+  preview.targets = manifest.targets.map(({
+    asset,
+    path: targetPath,
+    expected_pre_image,
+    post_image_sha256
+  }) => ({ asset, path: targetPath, expected_pre_image, post_image_sha256 }))
+  preview.binding.plan_metadata_sha256 = manifestPlanDigest(manifest)
+  await fs.writeFile(previewPath, `${JSON.stringify(preview, null, 2)}\n`)
+}
+
 async function workspace(t) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "bob-authoring-completion-"))
   t.after(() => fs.rm(root, { recursive: true, force: true }))
   return root
+}
+
+function deferred() {
+  let resolve
+  let reject
+  const promise = new Promise((onResolve, onReject) => {
+    resolve = onResolve
+    reject = onReject
+  })
+  return { promise, resolve, reject }
 }
 
 function completedRun(current) {
@@ -71,177 +120,6 @@ function completedRun(current) {
     phases,
     updatedAt: NOW
   }
-}
-
-async function committedFixture(t, options = {}) {
-  const root = await workspace(t)
-  const sourceId = `src-${"a".repeat(12)}`
-  const locator = { page: 2 }
-  const chunkId = buildDocumentChunkId(sourceId, "pdf", "page", locator)
-  const chunkText = "Authoritative completion evidence"
-  const sourceManifest = {
-    schema_version: "bob-bazaar-review/rule-sources/v1",
-    generated_at: NOW,
-    sources: options.withProvenance === false ? [] : [{
-      source_id: sourceId,
-      logical_name: "policy.pdf",
-      media_type: "pdf",
-      sha256: "a".repeat(64),
-      byte_size: 100,
-      extraction_status: "success",
-      extractor: { id: "pdftotext", version: "1" },
-      warnings: []
-    }]
-  }
-  const provenance = {
-    schema_version: "bob-bazaar-review/rule-provenance/v1",
-    updated_at: NOW,
-    rules: options.withProvenance === false ? [] : [{
-      rule_id: "PRJ-0001",
-      lifecycle: "active",
-      source_refs: [{
-        source_id: sourceId,
-        chunk_id: chunkId,
-        locator,
-        text_sha256: sha256(Buffer.from(chunkText, "utf8"))
-      }],
-      first_applied_at: NOW,
-      last_applied_at: NOW,
-      last_run_id: RUN_ID
-    }],
-    markdown_sections: []
-  }
-  const bytes = new Map([
-    ["checklist", json({
-      version: "1",
-      project: "completion-test",
-      rules: options.withProvenance === false ? [] : [{
-        id: "PRJ-0001",
-        category: "security",
-        title: "Validate input",
-        description: "Validate input at trust boundaries.",
-        severity_on_fail: "error",
-        applies_when: [],
-        evidence_required: true,
-        review_hint: "Inspect boundary validation."
-      }]
-    })],
-    ["project_context", Buffer.from("", "utf8")],
-    ["prompt_addendum", Buffer.from("", "utf8")],
-    ["rule_sources", json(sourceManifest)],
-    ["rule_provenance", json(provenance)]
-  ])
-  await fs.mkdir(path.join(root, ".bob", "review"), { recursive: true })
-  for (const [asset, relativePath] of TARGETS) {
-    await fs.writeFile(path.join(root, ...relativePath.split("/")), bytes.get(asset))
-  }
-  const manifest = {
-    schema_version: "bob-bazaar-review/apply-manifest/v1",
-    transaction_id: "txn-completion",
-    run_id: RUN_ID,
-    status: "committed",
-    committed_at: NOW,
-    backup_directory: ".bob/review/rule-authoring/backups/txn-completion",
-    targets: TARGETS.map(([asset, targetPath]) => ({
-      asset,
-      path: targetPath,
-      expected_pre_image: { state: "missing" },
-      post_image_sha256: sha256(bytes.get(asset)),
-      state: "replaced"
-    })),
-    decisions: [],
-    retirements: []
-  }
-  const run = await createRuleAuthoringRun({
-    workspaceRoot: root,
-    runId: RUN_ID,
-    now: "2026-07-15T04:00:00.000Z"
-  })
-  const commonArtifactFiles = {
-    sourceManifest: `${JSON.stringify(sourceManifest, null, 2)}\n`,
-    documentChunks: `${JSON.stringify({
-      schema_version: "bob-bazaar-review/document-chunk/v1",
-      chunk_id: chunkId,
-      source_id: sourceId,
-      kind: "page",
-      locator,
-      title: "Policy",
-      text: chunkText,
-      text_sha256: sha256(Buffer.from(chunkText, "utf8")),
-      flags: []
-    })}\n`
-  }
-  const next = await commitRuleAuthoringArtifactGeneration({
-    workspaceRoot: root,
-    runId: RUN_ID,
-    expectedUpdatedAt: run.updatedAt,
-    files: options.stranded
-      ? {
-          ...commonArtifactFiles,
-          proposalDecisions: `${JSON.stringify({
-            schema_version: "bob-bazaar-review/proposal-decisions/v1",
-            run_id: RUN_ID,
-            decisions: {}
-          })}\n`,
-          applyPreview: `${JSON.stringify({
-            schema_version: "bob-bazaar-review/apply-preview/v1",
-            run_id: RUN_ID,
-            generated_at: NOW,
-            targets: manifest.targets,
-            decision_summary: { accepted: 0, edited: 0, rejected: 0 }
-          })}\n`
-        }
-      : { ...commonArtifactFiles, applyManifest: `${JSON.stringify(manifest, null, 2)}\n` },
-    buildNextRun: (current, artifacts) => options.stranded
-      ? {
-          ...current,
-          currentPhase: "apply",
-          phases: Object.fromEntries(Object.keys(current.phases).map((phase) => [phase,
-            ["sources", "extraction", "evidence_selection", "proposal", "human_review"].includes(phase)
-              ? { status: "completed", startedAt: current.createdAt, completedAt: NOW }
-              : phase === "apply"
-                ? { status: "in_progress", startedAt: NOW }
-                : { status: "not_started" }
-          ])),
-          artifacts,
-          updatedAt: NOW
-        }
-      : { ...completedRun(current), artifacts }
-  })
-  if (options.stranded) {
-    const transactionDirectory = path.join(
-      root,
-      ".bob",
-      "review",
-      "rule-authoring",
-      "transactions",
-      manifest.transaction_id
-    )
-    await fs.mkdir(transactionDirectory, { recursive: true })
-    await fs.writeFile(
-      path.join(transactionDirectory, "apply-manifest.json"),
-      `${JSON.stringify(manifest, null, 2)}\n`
-    )
-    await fs.writeFile(
-      path.join(transactionDirectory, "transaction-journal.json"),
-      `${JSON.stringify({
-        schema_version: "bob-bazaar-review/rule-apply-transaction/v1",
-        transaction_id: manifest.transaction_id,
-        run_id: RUN_ID,
-        status: "committed",
-        created_at: NOW,
-        updated_at: NOW,
-        targets: manifest.targets.map((target) => ({
-          ...target,
-          backup_path: null,
-          staging_path: `.bob/review/rule-authoring/transactions/${manifest.transaction_id}/staging/${target.asset}.stage`
-        })),
-        decisions: [],
-        retirements: []
-      }, null, 2)}\n`
-    )
-  }
-  return { root, run: next, manifest, bytes, sourceId, chunkId }
 }
 
 async function realAcceptedApplyFixture(t, options = {}) {
@@ -396,15 +274,38 @@ async function realAcceptedApplyFixture(t, options = {}) {
   assert.equal(state.run.currentPhase, "apply")
   assert.equal(state.run.phases.human_review.status, "completed")
   assert.equal(state.run.phases.apply.status, "in_progress")
-  const manifest = await executeRuleApplyTransaction(plan, {
-    workspaceRoot: root,
-    transactionId: "txn-real-accept",
-    now: "2026-07-15T05:00:03.000Z"
-  })
-  if (options.complete !== false) {
-    await persistRuleApplyCompletion(state, overlay, plan, manifest)
+  let manifest
+  if (options.execute !== false) {
+    manifest = await executeRuleApplyTransaction(plan, {
+      workspaceRoot: root,
+      transactionId: "txn-real-accept",
+      now: "2026-07-15T05:00:03.000Z"
+    })
+    if (options.complete !== false) {
+      await persistRuleApplyCompletion(state, overlay, plan, manifest)
+    }
   }
-  return { root, state, proposal, proposalValidation, overlay, plan, manifest, sourceId, chunk }
+  const bytes = new Map()
+  if (options.execute !== false) {
+    for (const [asset, relativePath] of TARGETS) {
+      bytes.set(asset, await fs.readFile(path.join(root, ...relativePath.split("/"))))
+    }
+  }
+  const run = await readRuleAuthoringRun(getRuleAuthoringPaths(root, RUN_ID))
+  return {
+    root,
+    run,
+    state,
+    proposal,
+    proposalValidation,
+    overlay,
+    plan,
+    manifest,
+    sourceId,
+    chunk,
+    chunkId: chunk.chunk_id,
+    bytes
+  }
 }
 
 function loadGuiWithFsPromises(fsOverride) {
@@ -425,13 +326,13 @@ function loadGuiWithFsPromises(fsOverride) {
 }
 
 test("verifies only the authoritative committed manifest, all current post-images, provenance references, and completed phase", async (t) => {
-  const fixture = await committedFixture(t)
+  const fixture = await realAcceptedApplyFixture(t)
   const result = await verifyRuleAuthoringApply({ workspaceRoot: fixture.root, runId: RUN_ID })
 
   assert.deepEqual(result, {
     status: "verified",
     runId: RUN_ID,
-    transactionId: "txn-completion",
+    transactionId: "txn-real-accept",
     targetCount: 5
   })
 
@@ -448,6 +349,18 @@ test("re-attaches a committed transaction when completion persistence was interr
   const fixture = await realAcceptedApplyFixture(t, { complete: false })
   assert.equal(fixture.state.run.currentPhase, "apply")
   assert.equal(fixture.state.run.artifacts.applyManifest, undefined)
+
+  const changedDecisions = structuredClone(fixture.overlay)
+  changedDecisions.decisions["candidate-real-accept"] = {
+    decision: "reject",
+    reject_reason: "Do not replace a durably committed decision",
+    reviewed_at: "2026-07-15T05:00:03.500Z"
+  }
+  await assert.rejects(
+    persistRuleProposalDecisions(fixture.state, changedDecisions),
+    /committed apply completion recovery is required/i,
+    "durably committed targets must freeze Human Triage artifacts until completion recovery"
+  )
 
   const recovered = await recoverCommittedRuleAuthoringApply({
     workspaceRoot: fixture.root,
@@ -479,6 +392,161 @@ test("re-attaches a committed transaction when completion persistence was interr
   )
 })
 
+test("a pending committed apply freezes every other authoring run until its completion is recovered", async (t) => {
+  const fixture = await realAcceptedApplyFixture(t, { complete: false })
+  const otherRunId = "authoring-completion-other"
+  const otherRun = await createRuleAuthoringRun({
+    workspaceRoot: fixture.root,
+    runId: otherRunId,
+    now: "2026-07-15T05:00:04.000Z"
+  })
+
+  const otherState = {
+    ...structuredClone(fixture.state),
+    run: otherRun,
+    proposal: { ...structuredClone(fixture.proposal), run_id: otherRunId }
+  }
+  const otherDecisions = {
+    ...structuredClone(fixture.overlay),
+    run_id: otherRunId
+  }
+  await assert.rejects(
+    persistRuleProposalDecisions(otherState, otherDecisions),
+    /committed apply completion recovery is required/i
+  )
+  assert.deepEqual(
+    await readRuleAuthoringRun(getRuleAuthoringPaths(fixture.root, otherRunId)),
+    otherRun,
+    "a foreign pending commit must freeze decision artifacts before their run-store CAS"
+  )
+
+  await assert.rejects(
+    recoverCommittedRuleAuthoringApply({ workspaceRoot: fixture.root, runId: otherRunId }),
+    /another authoring run.*completion recovery/i
+  )
+  for (const [asset, relativePath] of TARGETS) {
+    assert.deepEqual(
+      await fs.readFile(path.join(fixture.root, ...relativePath.split("/"))),
+      fixture.bytes.get(asset),
+      asset
+    )
+  }
+
+  assert.equal((await recoverCommittedRuleAuthoringApply({
+    workspaceRoot: fixture.root,
+    runId: RUN_ID
+  })).status, "recovered")
+  await fs.unlink(path.join(
+    fixture.root,
+    ".bob",
+    "review",
+    "rule-authoring",
+    "transactions",
+    fixture.manifest.transaction_id,
+    "apply-manifest.json"
+  ))
+  assert.equal(
+    await recoverCommittedRuleAuthoringApply({ workspaceRoot: fixture.root, runId: otherRunId }),
+    undefined,
+    "an attached historical commit must not freeze later authoring runs"
+  )
+})
+
+test("completed apply recovery is idempotent for GUI re-entry", async (t) => {
+  const fixture = await realAcceptedApplyFixture(t)
+  assert.deepEqual(await recoverCommittedRuleAuthoringApply({
+    workspaceRoot: fixture.root,
+    runId: RUN_ID
+  }), {
+    status: "recovered",
+    runId: RUN_ID,
+    transactionId: fixture.manifest.transaction_id
+  })
+})
+
+test("verification refuses to run outside the workspace snapshot while the apply lock is held", async (t) => {
+  const fixture = await realAcceptedApplyFixture(t)
+  await withRuleApplyWorkspaceLock(
+    fixture.root,
+    "verification-lock-holder",
+    async () => {
+      await assert.rejects(
+        verifyRuleAuthoringApply({ workspaceRoot: fixture.root, runId: RUN_ID }),
+        (error) => error.code === "workspace_busy"
+      )
+    }
+  )
+  assert.equal(
+    (await verifyRuleAuthoringApply({ workspaceRoot: fixture.root, runId: RUN_ID })).status,
+    "verified"
+  )
+})
+
+test("the final binding check, transaction, and completion share one workspace lock", async (t) => {
+  const fixture = await realAcceptedApplyFixture(t, { execute: false })
+  const validated = deferred()
+  const release = deferred()
+  const decisionPointer = fixture.state.run.artifacts.proposalDecisions
+  let committedManifest
+
+  const apply = withRuleApplyWorkspaceLock(
+    fixture.root,
+    RUN_ID,
+    async (workspaceLockToken) => {
+      const currentState = await loadRuleProposalTriageState({
+        workspaceRoot: fixture.root,
+        runId: RUN_ID
+      })
+      const currentPlan = buildRuleApplyPlan(
+        currentState.bundle,
+        currentState.proposal,
+        currentState.decisions,
+        currentState.evidence
+      )
+      await validateDisplayedRuleApplyPreview(currentState, currentPlan, workspaceLockToken)
+      validated.resolve()
+      await release.promise
+      committedManifest = await executeRuleApplyTransaction(currentPlan, {
+        workspaceRoot: fixture.root,
+        transactionId: "txn-final-lock",
+        now: "2026-07-15T05:00:03.000Z",
+        workspaceLockToken
+      })
+      await persistRuleApplyCompletion(
+        currentState,
+        currentState.decisions,
+        currentPlan,
+        committedManifest,
+        workspaceLockToken
+      )
+    }
+  )
+
+  await validated.promise
+  const changedDecisions = structuredClone(fixture.overlay)
+  changedDecisions.decisions["candidate-real-accept"] = {
+    decision: "reject",
+    reject_reason: "Concurrent second-window mutation",
+    reviewed_at: "2026-07-15T05:00:03.500Z"
+  }
+  await assert.rejects(
+    persistRuleProposalDecisions(fixture.state, changedDecisions),
+    (error) => error.code === "workspace_busy"
+  )
+  release.resolve()
+  await apply
+
+  const completed = await readRuleAuthoringRun(getRuleAuthoringPaths(fixture.root, RUN_ID))
+  assert.equal(completed.currentPhase, "completed")
+  assert.equal(completed.artifacts.proposalDecisions, decisionPointer)
+  assert.equal(completed.artifacts.applyManifest !== undefined, true)
+  assert.equal(committedManifest.status, "committed")
+  assert.equal(
+    (await verifyRuleAuthoringApply({ workspaceRoot: fixture.root, runId: RUN_ID })).status,
+    "verified"
+  )
+})
+
 test("fails closed when the authoritative apply manifest is missing even if a run-root decoy exists", async (t) => {
   const root = await workspace(t)
   const run = await createRuleAuthoringRun({
@@ -498,7 +566,7 @@ test("fails closed when the authoritative apply manifest is missing even if a ru
 })
 
 test("rejects a committed hash-valid bundle with dangling source provenance", async (t) => {
-  const fixture = await committedFixture(t, { withProvenance: false })
+  const fixture = await realAcceptedApplyFixture(t)
   const provenancePath = path.join(fixture.root, ".bob", "review", "rule-provenance.json")
   const dangling = {
     schema_version: "bob-bazaar-review/rule-provenance/v1",
@@ -507,8 +575,8 @@ test("rejects a committed hash-valid bundle with dangling source provenance", as
       rule_id: "PRJ-9999",
       lifecycle: "retired",
       source_refs: [{
-        source_id: fixture.sourceId,
-        chunk_id: fixture.chunkId,
+        source_id: `src-${"d".repeat(12)}`,
+        chunk_id: `chunk-${"e".repeat(64)}`,
         locator: { page: 9 },
         text_sha256: "d".repeat(64)
       }],
@@ -527,6 +595,7 @@ test("rejects a committed hash-valid bundle with dangling source provenance", as
   const manifest = JSON.parse(await fs.readFile(absoluteManifestPath, "utf8"))
   manifest.targets.find(({ asset }) => asset === "rule_provenance").post_image_sha256 = sha256(danglingBytes)
   await fs.writeFile(absoluteManifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
+  await rebindStoredPreviewToManifest(fixture, manifest)
 
   await assert.rejects(
     verifyRuleAuthoringApply({ workspaceRoot: fixture.root, runId: RUN_ID }),
@@ -535,7 +604,7 @@ test("rejects a committed hash-valid bundle with dangling source provenance", as
 })
 
 test("rejects provenance locator or text hashes that differ from authoritative document chunks", async (t) => {
-  const fixture = await committedFixture(t)
+  const fixture = await realAcceptedApplyFixture(t)
   const provenancePath = path.join(fixture.root, ".bob", "review", "rule-provenance.json")
   const provenance = JSON.parse(await fs.readFile(provenancePath, "utf8"))
   provenance.rules[0].source_refs[0].locator = { page: 999 }
@@ -550,6 +619,7 @@ test("rejects provenance locator or text hashes that differ from authoritative d
   const manifest = JSON.parse(await fs.readFile(absoluteManifestPath, "utf8"))
   manifest.targets.find(({ asset }) => asset === "rule_provenance").post_image_sha256 = sha256(tamperedBytes)
   await fs.writeFile(absoluteManifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
+  await rebindStoredPreviewToManifest(fixture, manifest)
 
   await assert.rejects(
     verifyRuleAuthoringApply({ workspaceRoot: fixture.root, runId: RUN_ID }),
@@ -558,16 +628,16 @@ test("rejects provenance locator or text hashes that differ from authoritative d
 })
 
 test("rejects a committed manifest while the authoring run is not completed", async (t) => {
-  const fixture = await committedFixture(t)
+  const fixture = await realAcceptedApplyFixture(t)
   const notComplete = {
     ...fixture.run,
     currentPhase: "apply",
     phases: {
       ...fixture.run.phases,
-      apply: { status: "in_progress", startedAt: NOW },
+      apply: { status: "in_progress", startedAt: "2026-07-15T05:00:03.000Z" },
       completed: { status: "not_started" }
     },
-    updatedAt: "2026-07-15T04:05:07.000Z"
+    updatedAt: "2026-07-15T05:00:04.000Z"
   }
   // The run store deliberately prevents phase rollback, so this fixture writes
   // the otherwise schema-valid interrupted state directly.
@@ -631,6 +701,48 @@ test("binds proposal validation to exact evidence artifact pointers, digests, an
   }])
   for (const key of ["source_manifest", "document_chunks", "evidence_selection"]) {
     assert.match(validation.evidence_binding[key].sha256, /^[a-f0-9]{64}$/)
+  }
+})
+
+test("completion verification never bypasses missing apply-binding or evidence artifacts", async (t) => {
+  const cases = [
+    [
+      "all Human Triage binding pointers",
+      ["ruleProposal", "proposalValidation", "proposalDecisions", "applyPreview"],
+      /Committed apply binding ruleProposal artifact is missing/i
+    ],
+    [
+      "one Human Triage binding pointer",
+      ["applyPreview"],
+      /Rule authoring applyPreview artifact is missing/i
+    ],
+    [
+      "the authoritative evidence selection",
+      ["evidenceSelection"],
+      /Rule proposal validation evidenceSelection artifact is missing/i
+    ]
+  ]
+
+  for (const [label, removedArtifacts, expectedError] of cases) {
+    await t.test(label, async (st) => {
+      const fixture = await realAcceptedApplyFixture(st)
+      const run = await readRuleAuthoringRun(getRuleAuthoringPaths(fixture.root, RUN_ID))
+      const artifacts = { ...run.artifacts }
+      for (const artifact of removedArtifacts) delete artifacts[artifact]
+      await fs.writeFile(
+        getRuleAuthoringPaths(fixture.root, RUN_ID).authoringRunPath,
+        `${JSON.stringify({
+          ...run,
+          artifacts,
+          updatedAt: "2026-07-15T05:00:04.000Z"
+        }, null, 2)}\n`
+      )
+
+      await assert.rejects(
+        verifyRuleAuthoringApply({ workspaceRoot: fixture.root, runId: RUN_ID }),
+        expectedError
+      )
+    })
   }
 })
 
@@ -905,7 +1017,7 @@ test("strictly rejects malformed or duplicate manifest decision and retirement r
 })
 
 test("bounded verification rejects a final symlink even if open follows it", async (t) => {
-  const fixture = await committedFixture(t, { withProvenance: false })
+  const fixture = await realAcceptedApplyFixture(t)
   const target = path.join(fixture.root, ".bob", "review", "checklist.json")
   const linked = path.join(fixture.root, "same-checklist.json")
   await fs.writeFile(linked, fixture.bytes.get("checklist"))
@@ -924,8 +1036,32 @@ test("bounded verification rejects a final symlink even if open follows it", asy
   )
 })
 
+test("verification rejects an earlier target changed while a later target is being read", async (t) => {
+  const fixture = await realAcceptedApplyFixture(t)
+  const checklist = path.join(fixture.root, ".bob", "review", "checklist.json")
+  const lastTarget = path.join(fixture.root, ".bob", "review", "rule-provenance.json")
+  let mutated = false
+  const gui = loadGuiWithFsPromises({
+    ...fs,
+    open: async (file, flags, ...rest) => {
+      const handle = await fs.open(file, flags, ...rest)
+      if (!mutated && path.resolve(String(file)) === lastTarget) {
+        mutated = true
+        const original = fixture.bytes.get("checklist")
+        await fs.writeFile(checklist, Buffer.alloc(original.byteLength, 0x20))
+      }
+      return handle
+    }
+  })
+
+  await assert.rejects(
+    gui.verifyRuleAuthoringApply({ workspaceRoot: fixture.root, runId: RUN_ID }),
+    /post-image verification failed|snapshot changed/i
+  )
+})
+
 test("bounded verification rejects a target renamed after its file handle opens", async (t) => {
-  const fixture = await committedFixture(t, { withProvenance: false })
+  const fixture = await realAcceptedApplyFixture(t)
   const target = path.join(fixture.root, ".bob", "review", "checklist.json")
   let swapped = false
   const gui = loadGuiWithFsPromises({
@@ -948,7 +1084,7 @@ test("bounded verification rejects a target renamed after its file handle opens"
 })
 
 test("bounded verification rejects same-inode mutation after bytes are read", async (t) => {
-  const fixture = await committedFixture(t, { withProvenance: false })
+  const fixture = await realAcceptedApplyFixture(t)
   const target = path.join(fixture.root, ".bob", "review", "checklist.json")
   let mutated = false
   const gui = loadGuiWithFsPromises({

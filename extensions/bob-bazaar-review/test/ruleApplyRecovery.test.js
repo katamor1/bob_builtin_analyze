@@ -126,7 +126,8 @@ test("finds incomplete transactions by validated ID and restart rollback is idem
   assert.deepEqual(incomplete, [{
     transaction_id: transactionId,
     run_id: "run-recovery-tests",
-    status: "applying"
+    status: "applying",
+    recovery_action: "rollback"
   }])
   assert.doesNotMatch(JSON.stringify(incomplete), new RegExp(root.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")))
 
@@ -343,24 +344,116 @@ test("restart resume preserves a manifest written before the committed journal t
   assert.equal((await readJournal(root, transactionId)).status, "committed")
 })
 
-test("restart rollback removes a manifest written before the committed journal transition", async (t) => {
+test("a durable manifest wins over a rollback request before the committed journal transition", async (t) => {
   const root = await workspace(t)
   const transactionId = "txn-restart-manifest-rollback"
-  const { originals } = await seedCommittedTransaction(root, transactionId)
+  const { replacements } = await seedCommittedTransaction(root, transactionId)
+  const manifestPath = path.join(transactionDirectory(root, transactionId), "apply-manifest.json")
+  const originalManifestBytes = await fs.readFile(manifestPath)
   const journal = await readJournal(root, transactionId)
   journal.status = "applying"
   journal.updated_at = CREATED_AT
   await writeJournal(root, transactionId, journal)
-  const manifest = path.join(transactionDirectory(root, transactionId), "apply-manifest.json")
+
+  assert.deepEqual(await findIncompleteRuleApplyTransactions(root), [{
+    transaction_id: transactionId,
+    run_id: "run-recovery-tests",
+    status: "applying",
+    recovery_action: "resume"
+  }])
 
   const recovered = await recoverRuleApplyTransaction(root, transactionId, {
     action: "rollback",
     now: RECOVERED_AT
   })
 
-  assert.equal(recovered.status, "rolled_back")
-  await assert.rejects(fs.access(manifest), (error) => error.code === "ENOENT")
-  await assertAllTargets(root, originals)
+  assert.equal(recovered.status, "committed")
+  assert.deepEqual(await fs.readFile(manifestPath), originalManifestBytes)
+  assert.equal((await readJournal(root, transactionId)).status, "committed")
+  await assertAllTargets(root, replacements)
+})
+
+test("malformed durable manifests fail closed for rollback and resume without changing files", async (t) => {
+  const variants = [
+    ["invalid-json", () => Buffer.from("{not-json\n", "utf8")],
+    ["unknown-top", (manifest) => Buffer.from(`${JSON.stringify({ ...manifest, unexpected: true })}\n`)],
+    ["unknown-target", (manifest) => {
+      manifest.targets[0].unexpected = true
+      return Buffer.from(`${JSON.stringify(manifest)}\n`)
+    }],
+    ["hash-mismatch", (manifest) => {
+      manifest.targets[0].post_image_sha256 = "0".repeat(64)
+      return Buffer.from(`${JSON.stringify(manifest)}\n`)
+    }],
+    ["run-mismatch", (manifest) => {
+      manifest.run_id = "another-run"
+      return Buffer.from(`${JSON.stringify(manifest)}\n`)
+    }],
+    ["metadata-mismatch", (manifest) => {
+      manifest.decisions = [{
+        candidate_id: "candidate-manifest-only",
+        target_asset: "rule",
+        operation: "add",
+        decision: "reject",
+        target_id: null,
+        reviewed_at: CREATED_AT,
+        source_refs: [],
+        conflict_resolutions: {}
+      }]
+      return Buffer.from(`${JSON.stringify(manifest)}\n`)
+    }]
+  ]
+
+  for (const [name, mutate] of variants) {
+    await t.test(name, async (t) => {
+      const root = await workspace(t)
+      const transactionId = `txn-malformed-${name}`
+      const { replacements } = await seedCommittedTransaction(root, transactionId)
+      const manifestPath = path.join(transactionDirectory(root, transactionId), "apply-manifest.json")
+      const manifest = JSON.parse(await fs.readFile(manifestPath, "utf8"))
+      const journal = await readJournal(root, transactionId)
+      journal.status = "applying"
+      journal.updated_at = CREATED_AT
+      await writeJournal(root, transactionId, journal)
+      await fs.writeFile(manifestPath, mutate(manifest))
+      const journalBytes = await fs.readFile(journalPath(root, transactionId))
+      const manifestBytes = await fs.readFile(manifestPath)
+
+      for (const action of ["rollback", "resume"]) {
+        await assert.rejects(
+          recoverRuleApplyTransaction(root, transactionId, { action, now: RECOVERED_AT }),
+          (error) => error.code === "unsafe_journal"
+        )
+        assert.deepEqual(await fs.readFile(journalPath(root, transactionId)), journalBytes)
+        assert.deepEqual(await fs.readFile(manifestPath), manifestBytes)
+        await assertAllTargets(root, replacements)
+      }
+    })
+  }
+})
+
+test("a durable manifest with a divergent live post-image never rolls back automatically", async (t) => {
+  const root = await workspace(t)
+  const transactionId = "txn-manifest-live-divergence"
+  const { originals } = await seedCommittedTransaction(root, transactionId)
+  const manifestPath = path.join(transactionDirectory(root, transactionId), "apply-manifest.json")
+  const journal = await readJournal(root, transactionId)
+  journal.status = "applying"
+  journal.updated_at = CREATED_AT
+  await writeJournal(root, transactionId, journal)
+  await setTarget(root, "checklist", Buffer.from("third-party post-commit bytes\n", "utf8"))
+  const journalBytes = await fs.readFile(journalPath(root, transactionId))
+  const manifestBytes = await fs.readFile(manifestPath)
+  const divergentBytes = await fs.readFile(path.join(root, ...TARGETS[0][1].split("/")))
+
+  await assert.rejects(
+    recoverRuleApplyTransaction(root, transactionId, { action: "rollback", now: RECOVERED_AT }),
+    (error) => error.code === "filesystem_failure"
+  )
+  assert.deepEqual(await fs.readFile(journalPath(root, transactionId)), journalBytes)
+  assert.deepEqual(await fs.readFile(manifestPath), manifestBytes)
+  assert.deepEqual(await fs.readFile(path.join(root, ...TARGETS[0][1].split("/"))), divergentBytes)
+  assert.notDeepEqual(divergentBytes, originals.get("checklist"))
 })
 
 test("recovery refuses an arbitrary transaction path before reading outside the fixed directory", async (t) => {

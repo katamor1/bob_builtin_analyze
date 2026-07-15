@@ -1,6 +1,10 @@
 import { DEFAULT_RULE_AUTHORING_LIMITS } from "./ruleAuthoringLimits"
 import { validateRuleAuthoringId } from "./ruleAuthoringPaths"
 import {
+  hasUtf8ByteLength,
+  RULE_AUTHORING_TEXT_BYTE_LIMITS
+} from "./ruleAuthoringTextLimits"
+import {
   ProposedMarkdownOperationV1,
   RuleProposalConflictV1,
   RuleProposalOperationV1,
@@ -229,7 +233,10 @@ function validateOperations(
     registerCandidate(operation, path, candidates, issues)
     validateRuleOperation(operation, path, context.existingRuleIds, ruleTargets, issues)
     validateSourceRefs(operation.source_refs, `${path}/source_refs`, diagnosticOperationId(path), context, issues)
-    if (operation.rule) validateAppliesWhen(operation, path, issues)
+    if (operation.rule) {
+      validateAppliesWhen(operation, path, issues)
+      validateRuleTextByteLimits(operation, path, issues)
+    }
   }
   for (const [index, operation] of proposal.project_context_operations.entries()) {
     const path = `/project_context_operations/${index}`
@@ -394,6 +401,50 @@ function validateAppliesWhen(
   }
 }
 
+function validateRuleTextByteLimits(
+  operation: RuleProposalOperationV1,
+  path: string,
+  issues: IssueCollector
+): void {
+  const rule = operation.rule
+  if (!rule) return
+  const operationId = diagnosticOperationId(path)
+  const fields: ReadonlyArray<[string, unknown, number, boolean]> = [
+    ["category", rule.category, RULE_AUTHORING_TEXT_BYTE_LIMITS.category, true],
+    ["title", rule.title, RULE_AUTHORING_TEXT_BYTE_LIMITS.title, true],
+    ["description", rule.description, RULE_AUTHORING_TEXT_BYTE_LIMITS.description, true],
+    ["review_hint", rule.review_hint, RULE_AUTHORING_TEXT_BYTE_LIMITS.reviewHint, false]
+  ]
+  for (const [field, value, maxBytes, nonEmpty] of fields) {
+    if (!hasUtf8ByteLength(value, maxBytes, { nonEmpty })) {
+      issues.add(
+        `${path}/rule/${field}`,
+        "text_byte_limit",
+        "Rule text exceeds its UTF-8 byte limit.",
+        operationId
+      )
+    }
+    if (typeof value === "string" && DISALLOWED_MARKDOWN_CONTROL.test(value)) {
+      issues.add(
+        `${path}/rule/${field}`,
+        "control_character",
+        "Rule text contains a disallowed control character.",
+        operationId
+      )
+    }
+  }
+  for (const [index, condition] of rule.applies_when.entries()) {
+    if (!hasUtf8ByteLength(condition, RULE_AUTHORING_TEXT_BYTE_LIMITS.appliesWhen)) {
+      issues.add(
+        `${path}/rule/applies_when/${index}`,
+        "text_byte_limit",
+        "Rule applicability text exceeds its UTF-8 byte limit.",
+        operationId
+      )
+    }
+  }
+}
+
 function validateManagedMarkdownText(
   operation: ProposedMarkdownOperationV1,
   path: string,
@@ -405,6 +456,17 @@ function validateManagedMarkdownText(
     ["markdown", operation.markdown]
   ] as const) {
     if (value === null) continue
+    const maxBytes = field === "heading"
+      ? RULE_AUTHORING_TEXT_BYTE_LIMITS.markdownHeading
+      : RULE_AUTHORING_TEXT_BYTE_LIMITS.managedMarkdown
+    if (!hasUtf8ByteLength(value, maxBytes, { nonEmpty: field === "heading" })) {
+      issues.add(
+        `${path}/${field}`,
+        "text_byte_limit",
+        "Managed Markdown text exceeds its UTF-8 byte limit.",
+        operationId
+      )
+    }
     if (field === "heading" && /[\r\n]/.test(value)) {
       issues.add(
         `${path}/${field}`,

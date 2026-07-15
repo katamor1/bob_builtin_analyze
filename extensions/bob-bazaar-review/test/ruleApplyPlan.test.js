@@ -470,6 +470,106 @@ test("hard-fails context and addendum above 256 KiB without returning truncated 
   }
 })
 
+test("uses UTF-8 byte ceilings for rejection reasons and every persisted edit field", () => {
+  const current = bundle()
+  const proposal = proposalFor(current)
+  const exactRejectReason = "😀".repeat(2_048)
+  const exactDescription = "😀".repeat(2_048)
+  const exactHeading = "😀".repeat(128)
+
+  assert.doesNotThrow(() => buildRuleApplyPlan(current, proposal, decisions({
+    "rule-update": {
+      decision: "edit",
+      reviewed_at: REVIEWED_AT,
+      edited_rule: rule({ description: exactDescription })
+    },
+    "prompt-add": {
+      decision: "reject",
+      reviewed_at: REVIEWED_AT,
+      reject_reason: exactRejectReason
+    },
+    "context-update": {
+      decision: "edit",
+      reviewed_at: REVIEWED_AT,
+      edited_markdown: { heading: exactHeading, markdown: "Body" }
+    }
+  }), evidenceFixture()))
+
+  for (const overlay of [
+    decisions({
+      "prompt-add": {
+        decision: "reject",
+        reviewed_at: REVIEWED_AT,
+        reject_reason: `${exactRejectReason}😀`
+      }
+    }),
+    decisions({
+      "rule-update": {
+        decision: "edit",
+        reviewed_at: REVIEWED_AT,
+        edited_rule: rule({ description: `${exactDescription}😀` })
+      }
+    }),
+    decisions({
+      "context-update": {
+        decision: "edit",
+        reviewed_at: REVIEWED_AT,
+        edited_markdown: { heading: `${exactHeading}😀`, markdown: "Body" }
+      }
+    })
+  ]) {
+    assert.throws(
+      () => buildRuleApplyPlan(current, proposal, overlay, evidenceFixture()),
+      /byte|malformed|validation/i
+    )
+  }
+})
+
+test("a multibyte rule approved in one run remains valid retirement metadata in the next run", () => {
+  const firstBundle = bundle()
+  const multibyteRule = rule({
+    category: "界".repeat(85),
+    title: "😀".repeat(128),
+    description: "😀".repeat(2_048),
+    applies_when: [`diff_contains:${"界".repeat(336)}`],
+    review_hint: "😀".repeat(1_024)
+  })
+  const firstProposal = proposalFor(firstBundle, {
+    operations: [ruleOperation("rule-add-multibyte", "add", null, multibyteRule)],
+    conflicts: [],
+    project_context_operations: [],
+    prompt_addendum_operations: []
+  })
+  const firstPlan = buildRuleApplyPlan(firstBundle, firstProposal, {
+    schema_version: "bob-bazaar-review/proposal-decisions/v1",
+    run_id: RUN_ID,
+    decisions: { "rule-add-multibyte": { decision: "accept", reviewed_at: REVIEWED_AT } }
+  }, evidenceFixture())
+  const secondBundle = {
+    checklist: present(target(firstPlan, "checklist").bytes),
+    projectContext: present(target(firstPlan, "project_context").bytes),
+    promptAddendum: present(target(firstPlan, "prompt_addendum").bytes),
+    ruleSources: present(target(firstPlan, "rule_sources").bytes),
+    ruleProvenance: present(target(firstPlan, "rule_provenance").bytes)
+  }
+  const addedId = parseTarget(firstPlan, "checklist").rules.at(-1).id
+  const secondProposal = proposalFor(secondBundle, {
+    operations: [ruleOperation("rule-retire-multibyte", "retire", addedId, null)],
+    conflicts: [],
+    project_context_operations: [],
+    prompt_addendum_operations: []
+  })
+  const secondPlan = buildRuleApplyPlan(secondBundle, secondProposal, {
+    schema_version: "bob-bazaar-review/proposal-decisions/v1",
+    run_id: RUN_ID,
+    decisions: { "rule-retire-multibyte": { decision: "accept", reviewed_at: REVIEWED_AT } }
+  }, evidenceFixture())
+  const { validateRuleApplyMetadata } = require("../out/ruleAuthoring/ruleApplyTransaction")
+
+  assert.equal(secondPlan.retirements[0].previous.description, multibyteRule.description)
+  assert.doesNotThrow(() => validateRuleApplyMetadata(secondPlan.decisions, secondPlan.retirements))
+})
+
 test("rejects a stale proposal base before materializing any target", () => {
   const current = bundle()
   const proposal = proposalFor(current)

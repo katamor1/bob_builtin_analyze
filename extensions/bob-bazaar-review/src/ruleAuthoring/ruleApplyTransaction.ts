@@ -5,7 +5,8 @@ import * as path from "node:path"
 import { getProjectRulesPaths } from "../projectRules/io"
 import { DEFAULT_RULE_AUTHORING_LIMITS } from "./ruleAuthoringLimits"
 import { getRuleAuthoringPaths, validateRuleAuthoringId } from "./ruleAuthoringPaths"
-import { withRuleAuthoringDirectoryLock } from "./ruleAuthoringRunStore"
+import { RULE_AUTHORING_TEXT_BYTE_LIMITS } from "./ruleAuthoringTextLimits"
+import { withRuleAuthoringRotatingDirectoryLock } from "./ruleAuthoringRunStore"
 import {
   RULE_APPLY_PLAN_SCHEMA_VERSION,
   RuleApplyAsset,
@@ -36,6 +37,7 @@ export type RuleApplyFaultOperation =
   | "replace_target"
   | "restore_target"
   | "commit_manifest"
+  | "manifest_persisted"
 
 export interface RuleApplyFaultEvent {
   readonly operation: RuleApplyFaultOperation
@@ -47,17 +49,25 @@ export interface RuleApplyFaultEvent {
 
 export type RuleApplyFaultInjector = (event: RuleApplyFaultEvent) => void | Promise<void>
 
+const RULE_APPLY_WORKSPACE_LOCK_TOKEN: unique symbol = Symbol("ruleApplyWorkspaceLockToken")
+
+export interface RuleApplyWorkspaceLockToken {
+  readonly [RULE_APPLY_WORKSPACE_LOCK_TOKEN]: true
+}
+
 export interface ExecuteRuleApplyTransactionOptions {
   readonly workspaceRoot: string
   readonly transactionId: string
   readonly now: string
   readonly faultInjector?: RuleApplyFaultInjector
+  readonly workspaceLockToken?: RuleApplyWorkspaceLockToken
 }
 
 export interface RuleApplyRecoveryRequest {
   readonly action: "rollback" | "resume"
   readonly now: string
   readonly faultInjector?: RuleApplyFaultInjector
+  readonly workspaceLockToken?: RuleApplyWorkspaceLockToken
 }
 
 export interface RuleApplyTransactionTargetV1 {
@@ -113,6 +123,7 @@ export interface IncompleteRuleApplyTransactionV1 {
   readonly transaction_id: string
   readonly run_id: string
   readonly status: Exclude<RuleApplyTransactionStatus, "committed" | "rolled_back">
+  readonly recovery_action: "rollback" | "resume"
 }
 
 export type RuleApplyTransactionErrorCode =
@@ -164,6 +175,15 @@ interface TransactionPaths {
   readonly applyLockDirectory: string
 }
 
+class RuleApplyPostCommitError extends Error {
+  readonly manifest: ApplyManifestV1
+
+  constructor(manifest: ApplyManifestV1) {
+    super("Project-rule transaction completion journal could not be confirmed.")
+    this.manifest = manifest
+  }
+}
+
 const TARGET_SPECS: ReadonlyArray<readonly [RuleApplyAsset, string]> = [
   ["checklist", ".bob/review/checklist.json"],
   ["project_context", ".bob/review/project-context.md"],
@@ -190,6 +210,13 @@ const MAX_METADATA_RECORDS =
 const MAX_METADATA_SOURCE_REFS = 64
 const MAX_METADATA_CONFLICT_RESOLUTIONS = 200
 const WORKSPACE_MUTEXES = new Set<string>()
+interface WorkspaceLockTokenState {
+  readonly workspaceRoot: string
+  accepting: boolean
+  inFlight: number
+  readonly drainWaiters: Array<() => void>
+}
+const WORKSPACE_LOCK_TOKENS = new WeakMap<RuleApplyWorkspaceLockToken, WorkspaceLockTokenState>()
 
 export function validateRuleApplyMetadata(
   decisionsValue: unknown,
@@ -276,7 +303,8 @@ function validateDecisionMetadataRecord(value: unknown): RuleApplyDecisionRecord
       "source_refs",
       "conflict_resolutions"
     ]) ||
-    !CANDIDATE_ID_PATTERN.test(String(value.candidate_id)) ||
+    typeof value.candidate_id !== "string" ||
+    !CANDIDATE_ID_PATTERN.test(value.candidate_id) ||
     !isRuleApplyTargetAsset(value.target_asset) ||
     (value.operation !== "add" && value.operation !== "update" && value.operation !== "retire") ||
     (value.decision !== "accept" && value.decision !== "reject" && value.decision !== "edit") ||
@@ -334,7 +362,8 @@ function validateRetirementMetadataRecord(value: unknown): RuleApplyRetirementV1
       "source_refs",
       "previous"
     ]) ||
-    !CANDIDATE_ID_PATTERN.test(String(value.candidate_id)) ||
+    typeof value.candidate_id !== "string" ||
+    !CANDIDATE_ID_PATTERN.test(value.candidate_id) ||
     !isRuleApplyTargetAsset(value.target_asset) ||
     !isMetadataTargetId(value.target_id, value.target_asset) ||
     (value.decision !== "accept" && value.decision !== "edit") ||
@@ -365,8 +394,10 @@ function validateDecisionSourceRefs(value: unknown): Array<{ source_id: string; 
     if (
       !isPlainObject(ref) ||
       !hasExactKeys(ref, ["source_id", "chunk_id"]) ||
-      !SOURCE_ID_PATTERN.test(String(ref.source_id)) ||
-      !CHUNK_ID_PATTERN.test(String(ref.chunk_id))
+      typeof ref.source_id !== "string" ||
+      typeof ref.chunk_id !== "string" ||
+      !SOURCE_ID_PATTERN.test(ref.source_id) ||
+      !CHUNK_ID_PATTERN.test(ref.chunk_id)
     ) {
       throw new Error("Rule apply source reference metadata is malformed")
     }
@@ -386,7 +417,7 @@ function validateRetirementPrevious(
   if (asset !== "rule") {
     if (
       !hasExactKeys(value, ["heading", "markdown"]) ||
-      !boundedMetadataString(value.heading, 512, true) ||
+      !boundedMetadataString(value.heading, RULE_AUTHORING_TEXT_BYTE_LIMITS.markdownHeading, true) ||
       typeof value.markdown !== "string" ||
       CONTROL_CHARACTER.test(value.markdown) ||
       Buffer.byteLength(value.markdown, "utf8") > DEFAULT_RULE_AUTHORING_LIMITS.maxProjectContextBytes
@@ -410,19 +441,21 @@ function validateRetirementPrevious(
     Object.keys(value).some((key) => !allowed.includes(key)) ||
     required.some((key) => !Object.prototype.hasOwnProperty.call(value, key)) ||
     value.id !== targetId ||
-    !boundedMetadataString(value.category, 256, true) ||
-    !boundedMetadataString(value.title, 512, true) ||
-    !boundedMetadataString(value.description, 8_192, true) ||
+    !boundedMetadataString(value.category, RULE_AUTHORING_TEXT_BYTE_LIMITS.category, true) ||
+    !boundedMetadataString(value.title, RULE_AUTHORING_TEXT_BYTE_LIMITS.title, true) ||
+    !boundedMetadataString(value.description, RULE_AUTHORING_TEXT_BYTE_LIMITS.description, true) ||
     (value.severity_on_fail !== "error" && value.severity_on_fail !== "warning" &&
       value.severity_on_fail !== "info") ||
     (value.applies_when !== undefined && (
       !Array.isArray(value.applies_when) ||
       value.applies_when.length > 32 ||
       value.applies_when.some((item: unknown) =>
-        !boundedMetadataString(item, 1_024, false) || ANY_CONTROL_CHARACTER.test(item))
+        !boundedMetadataString(item, RULE_AUTHORING_TEXT_BYTE_LIMITS.appliesWhen, false) ||
+        ANY_CONTROL_CHARACTER.test(item))
     )) ||
     (value.evidence_required !== undefined && typeof value.evidence_required !== "boolean") ||
-    (value.review_hint !== undefined && !boundedMetadataString(value.review_hint, 4_096, false))
+    (value.review_hint !== undefined &&
+      !boundedMetadataString(value.review_hint, RULE_AUTHORING_TEXT_BYTE_LIMITS.reviewHint, false))
   ) {
     throw new Error("Rule apply retirement previous rule is malformed")
   }
@@ -469,7 +502,7 @@ export async function executeRuleApplyTransaction(
   const now = requireCanonicalTimestamp(options?.now, "transaction timestamp")
   const paths = transactionPaths(workspaceRoot, transactionId)
 
-  return withWorkspaceMutex(paths, transactionId, async () => {
+  const executeUnderWorkspaceLock = async (): Promise<ApplyManifestV1> => {
     await assertWorkspaceRoot(paths.workspaceRoot)
     await assertTransactionDoesNotExist(paths)
     await assertNoIncompleteRuleApplyTransactions(paths.workspaceRoot, transactionId)
@@ -491,6 +524,18 @@ export async function executeRuleApplyTransaction(
       await replacePreparedTargets(paths, journal, options.faultInjector)
       return await commitTransaction(paths, journal, now, options.faultInjector)
     } catch (error) {
+      if (error instanceof RuleApplyPostCommitError) {
+        throw new RuleApplyTransactionError("filesystem_failure", {
+          transactionId,
+          status: "committed"
+        })
+      }
+      if (await readExistingManifestCommitBoundary(paths, journal)) {
+        throw new RuleApplyTransactionError("filesystem_failure", {
+          transactionId,
+          status: "committed"
+        })
+      }
       const code = failureCode(error)
       journal.error_code = code
       journal.updated_at = now
@@ -500,7 +545,18 @@ export async function executeRuleApplyTransaction(
         { transactionId, status: rollbackStatus }
       )
     }
-  })
+  }
+  const token = options?.workspaceLockToken
+  if (token !== undefined) {
+    return withActiveWorkspaceLockToken(token, workspaceRoot, transactionId, executeUnderWorkspaceLock)
+  }
+  return withRuleApplyWorkspaceLock(workspaceRoot, transactionId, (workspaceLockToken) =>
+    withActiveWorkspaceLockToken(
+      workspaceLockToken,
+      workspaceRoot,
+      transactionId,
+      executeUnderWorkspaceLock
+    ))
 }
 
 export async function findIncompleteRuleApplyTransactions(
@@ -535,7 +591,8 @@ export async function findIncompleteRuleApplyTransactions(
     incomplete.push({
       transaction_id: journal.transaction_id,
       run_id: journal.run_id,
-      status: journal.status
+      status: journal.status,
+      recovery_action: await lstatOptional(childPaths.manifestPath) ? "resume" : "rollback"
     })
   }
   return incomplete.sort((left, right) => compareText(left.transaction_id, right.transaction_id))
@@ -551,14 +608,19 @@ export async function recoverRuleApplyTransaction(
   const request = validateRecoveryRequest(requestInput)
   const paths = transactionPaths(workspaceRoot, transactionId)
 
-  return withWorkspaceMutex(paths, transactionId, async () => {
+  const recoverUnderWorkspaceLock = async (): Promise<RuleApplyTransactionJournalV1 | ApplyManifestV1> => {
     await assertWorkspaceRoot(workspaceRoot)
     const journal = await readJournal(paths)
+    if (journal.status === "committed") return readManifest(paths, journal)
+    const committedBoundary = await commitExistingManifestIfPresent(
+      paths,
+      journal,
+      request.now,
+      request.faultInjector
+    )
+    if (committedBoundary) return committedBoundary
     if (request.action === "rollback") {
       if (journal.status === "rolled_back") return journal
-      if (journal.status === "committed") {
-        throw new RuleApplyTransactionError("recovery_incomplete", { transactionId, status: journal.status })
-      }
       journal.error_code = journal.error_code ?? "recovery_requested"
       const status = await rollbackTransaction(paths, journal, request.now, request.faultInjector, true)
       if (status === "rollback_failed") {
@@ -567,7 +629,6 @@ export async function recoverRuleApplyTransaction(
       return journal
     }
 
-    if (journal.status === "committed") return readManifest(paths, journal)
     if (journal.status === "rolled_back" || journal.status === "rolling_back" || journal.status === "rollback_failed") {
       throw new RuleApplyTransactionError("recovery_incomplete", { transactionId, status: journal.status })
     }
@@ -586,6 +647,18 @@ export async function recoverRuleApplyTransaction(
       if (existingManifest) return existingManifest
       return await commitTransaction(paths, journal, request.now, request.faultInjector)
     } catch (error) {
+      if (error instanceof RuleApplyPostCommitError) {
+        throw new RuleApplyTransactionError("filesystem_failure", {
+          transactionId,
+          status: "committed"
+        })
+      }
+      if (await readExistingManifestCommitBoundary(paths, journal)) {
+        throw new RuleApplyTransactionError("filesystem_failure", {
+          transactionId,
+          status: "committed"
+        })
+      }
       journal.error_code = failureCode(error)
       const status = await rollbackTransaction(paths, journal, request.now, request.faultInjector, true)
       throw new RuleApplyTransactionError(
@@ -593,7 +666,18 @@ export async function recoverRuleApplyTransaction(
         { transactionId, status }
       )
     }
-  })
+  }
+  const token = request.workspaceLockToken
+  if (token !== undefined) {
+    return withActiveWorkspaceLockToken(token, workspaceRoot, transactionId, recoverUnderWorkspaceLock)
+  }
+  return withRuleApplyWorkspaceLock(workspaceRoot, transactionId, (workspaceLockToken) =>
+    withActiveWorkspaceLockToken(
+      workspaceLockToken,
+      workspaceRoot,
+      transactionId,
+      recoverUnderWorkspaceLock
+    ))
 }
 
 function createJournal(
@@ -711,15 +795,44 @@ async function commitExistingManifestIfPresent(
   now: string,
   faultInjector?: RuleApplyFaultInjector
 ): Promise<ApplyManifestV1 | undefined> {
-  const stats = await lstatOptional(paths.manifestPath)
-  if (!stats) return undefined
-  if (stats.isSymbolicLink() || !stats.isFile()) throw new RuleApplyTransactionError("unsafe_journal")
-  const manifest = await readManifest(paths, journal)
+  const manifest = await readExistingManifestCommitBoundary(paths, journal)
+  if (!manifest) return undefined
   journal.status = "committed"
   journal.updated_at = now
   delete journal.error_code
   delete journal.rollback_error_code
-  await writeJournal(paths, journal, faultInjector)
+  try {
+    await writeJournal(paths, journal, faultInjector)
+  } catch {
+    try {
+      const persisted = await readJournal(paths)
+      if (
+        persisted.status === "committed" &&
+        persisted.transaction_id === manifest.transaction_id &&
+        persisted.run_id === manifest.run_id
+      ) return manifest
+      await writeJournal(paths, journal)
+    } catch {
+      throw new RuleApplyPostCommitError(manifest)
+    }
+  }
+  return manifest
+}
+
+async function readExistingManifestCommitBoundary(
+  paths: TransactionPaths,
+  journal: RuleApplyTransactionJournalV1
+): Promise<ApplyManifestV1 | undefined> {
+  const stats = await lstatOptional(paths.manifestPath)
+  if (!stats) return undefined
+  if (stats.isSymbolicLink() || !stats.isFile()) throw new RuleApplyTransactionError("unsafe_journal")
+  const manifest = await readManifest(paths, journal)
+  if (journal.targets.some(({ state }) => state !== "replaced")) {
+    throw new RuleApplyTransactionError("unsafe_journal")
+  }
+  for (const target of journal.targets) {
+    await assertLivePostImage(paths.workspaceRoot, target)
+  }
   return manifest
 }
 
@@ -775,11 +888,30 @@ async function commitTransaction(
   })
   const manifest = manifestFromJournal(journal, now)
   await atomicWriteJson(paths.workspaceRoot, paths.manifestPath, manifest)
+  await emit(faultInjector, {
+    operation: "manifest_persisted",
+    transactionId: journal.transaction_id,
+    status: journal.status
+  })
   journal.status = "committed"
   journal.updated_at = now
   delete journal.error_code
   delete journal.rollback_error_code
-  await writeJournal(paths, journal, faultInjector)
+  try {
+    await writeJournal(paths, journal, faultInjector)
+  } catch {
+    try {
+      const persisted = await readJournal(paths)
+      if (
+        persisted.status === "committed" &&
+        persisted.transaction_id === manifest.transaction_id &&
+        persisted.run_id === manifest.run_id
+      ) return manifest
+      await writeJournal(paths, journal)
+    } catch {
+      throw new RuleApplyPostCommitError(manifest)
+    }
+  }
   return manifest
 }
 
@@ -813,6 +945,12 @@ async function rollbackTransaction(
   faultInjector?: RuleApplyFaultInjector,
   failOnPreparedDivergence = false
 ): Promise<"rolled_back" | "rollback_failed"> {
+  if (await lstatOptional(paths.manifestPath)) {
+    throw new RuleApplyTransactionError("recovery_incomplete", {
+      transactionId: journal.transaction_id,
+      status: journal.status
+    })
+  }
   journal.status = "rolling_back"
   journal.updated_at = now
   let journalWriteFailed = false
@@ -820,13 +958,6 @@ async function rollbackTransaction(
     await writeJournal(paths, journal, faultInjector)
   } catch {
     journalWriteFailed = true
-  }
-
-  let manifestCleanupFailed = false
-  try {
-    await removeUncommittedManifest(paths)
-  } catch {
-    manifestCleanupFailed = true
   }
 
   let restoreFailed = false
@@ -869,7 +1000,7 @@ async function rollbackTransaction(
     }
   }
 
-  const failed = manifestCleanupFailed || restoreFailed || journalWriteFailed ||
+  const failed = restoreFailed || journalWriteFailed ||
     journal.targets.some(({ state }) => state === "replaced")
   journal.status = failed ? "rollback_failed" : "rolled_back"
   journal.updated_at = now
@@ -882,16 +1013,6 @@ async function rollbackTransaction(
     journal.rollback_error_code = "filesystem_failure"
   }
   return journal.status
-}
-
-async function removeUncommittedManifest(paths: TransactionPaths): Promise<void> {
-  const stats = await lstatOptional(paths.manifestPath)
-  if (!stats) return
-  if (stats.isSymbolicLink() || !stats.isFile()) throw new RuleApplyTransactionError("unsafe_journal")
-  await assertExistingDirectoryChain(paths.workspaceRoot, path.dirname(paths.manifestPath))
-  await fs.unlink(paths.manifestPath)
-  await fsyncDirectory(path.dirname(paths.manifestPath))
-  if (await lstatOptional(paths.manifestPath)) throw new RuleApplyTransactionError("filesystem_failure")
 }
 
 async function classifyLiveTarget(
@@ -1017,7 +1138,8 @@ function validatePlan(input: RuleApplyPlan): ValidatedTransactionPlan {
       target.asset !== expectedAsset ||
       target.path !== expectedPath ||
       !isExpectedPreImage(target.expected_pre_image) ||
-      !SHA256_PATTERN.test(String(target.post_image_sha256)) ||
+      typeof target.post_image_sha256 !== "string" ||
+      !SHA256_PATTERN.test(target.post_image_sha256) ||
       !(target.bytes instanceof Uint8Array)
     ) {
       throw new RuleApplyTransactionError("invalid_plan")
@@ -1079,7 +1201,8 @@ function validateRecoveryRequest(value: RuleApplyRecoveryRequest): RuleApplyReco
   return {
     action: value.action,
     now: requireCanonicalTimestamp(value.now, "recovery timestamp"),
-    faultInjector: value.faultInjector
+    faultInjector: value.faultInjector,
+    workspaceLockToken: value.workspaceLockToken
   }
 }
 
@@ -1156,21 +1279,96 @@ async function withWorkspaceMutex<T>(
     throw new RuleApplyTransactionError("workspace_busy", { transactionId })
   }
   WORKSPACE_MUTEXES.add(mutexKey)
+  let outcome: { readonly ok: true; readonly value: T } |
+    { readonly ok: false; readonly error: unknown } | undefined
+  let lockFailure: unknown
   try {
     await assertWorkspaceRoot(paths.workspaceRoot)
     await ensureSafeDirectoryChain(paths.workspaceRoot, paths.applyLockDirectory)
     try {
-      return await withRuleAuthoringDirectoryLock(
+      await withRuleAuthoringRotatingDirectoryLock(
         paths.workspaceRoot,
         paths.applyLockDirectory,
-        work
+        async () => {
+          try {
+            outcome = { ok: true, value: await work() }
+          } catch (error) {
+            outcome = { ok: false, error }
+          }
+        }
       )
     } catch (error) {
-      if (error instanceof RuleApplyTransactionError) throw error
-      throw new RuleApplyTransactionError("workspace_busy", { transactionId })
+      lockFailure = error
     }
   } finally {
     WORKSPACE_MUTEXES.delete(mutexKey)
+  }
+  if (outcome?.ok === false) throw outcome.error
+  if (lockFailure !== undefined || outcome === undefined) {
+    throw new RuleApplyTransactionError("workspace_busy", { transactionId })
+  }
+  return outcome.value
+}
+
+export async function withRuleApplyWorkspaceLock<T>(
+  workspaceRootInput: string,
+  operationIdInput: string,
+  action: (workspaceLockToken: RuleApplyWorkspaceLockToken) => Promise<T> | T,
+  existingToken?: RuleApplyWorkspaceLockToken
+): Promise<T> {
+  const workspaceRoot = validateWorkspaceRoot(workspaceRootInput)
+  const operationId = validateTransactionId(operationIdInput)
+  if (typeof action !== "function") {
+    throw new RuleApplyTransactionError("workspace_busy", { transactionId: operationId })
+  }
+  if (existingToken !== undefined) {
+    return withActiveWorkspaceLockToken(existingToken, workspaceRoot, operationId, () =>
+      Promise.resolve(action(existingToken)))
+  }
+  const paths = transactionPaths(workspaceRoot, "transaction-probe")
+  return withWorkspaceMutex(paths, operationId, async () => {
+    const token = Object.freeze({
+      [RULE_APPLY_WORKSPACE_LOCK_TOKEN]: true as const
+    }) as RuleApplyWorkspaceLockToken
+    const state: WorkspaceLockTokenState = {
+      workspaceRoot,
+      accepting: true,
+      inFlight: 0,
+      drainWaiters: []
+    }
+    WORKSPACE_LOCK_TOKENS.set(token, state)
+    try {
+      return await action(token)
+    } finally {
+      state.accepting = false
+      if (state.inFlight > 0) {
+        await new Promise<void>((resolve) => state.drainWaiters.push(resolve))
+      }
+      WORKSPACE_LOCK_TOKENS.delete(token)
+    }
+  })
+}
+
+async function withActiveWorkspaceLockToken<T>(
+  token: RuleApplyWorkspaceLockToken,
+  workspaceRoot: string,
+  operationId: string,
+  action: () => Promise<T>
+): Promise<T> {
+  const state = typeof token === "object" && token !== null
+    ? WORKSPACE_LOCK_TOKENS.get(token)
+    : undefined
+  if (!state || !state.accepting || state.workspaceRoot !== workspaceRoot) {
+    throw new RuleApplyTransactionError("workspace_busy", { transactionId: operationId })
+  }
+  state.inFlight += 1
+  try {
+    return await action()
+  } finally {
+    state.inFlight -= 1
+    if (!state.accepting && state.inFlight === 0) {
+      for (const resolve of state.drainWaiters.splice(0)) resolve()
+    }
   }
 }
 
@@ -1510,7 +1708,8 @@ function validateJournal(
       target.asset !== asset ||
       target.path !== targetPath ||
       !isExpectedPreImage(target.expected_pre_image) ||
-      !SHA256_PATTERN.test(String(target.post_image_sha256)) ||
+      typeof target.post_image_sha256 !== "string" ||
+      !SHA256_PATTERN.test(target.post_image_sha256) ||
       !isTargetStatus(target.state) ||
       target.backup_path !== expectedBackup ||
       target.staging_path !== stagingRelativePath(value.transaction_id, asset)
@@ -1552,6 +1751,17 @@ async function readManifest(
   }
   if (
     !isPlainObject(parsed) ||
+    !hasExactKeys(parsed, [
+      "schema_version",
+      "transaction_id",
+      "run_id",
+      "status",
+      "committed_at",
+      "backup_directory",
+      "targets",
+      "decisions",
+      "retirements"
+    ]) ||
     parsed.schema_version !== APPLY_MANIFEST_SCHEMA_VERSION ||
     parsed.transaction_id !== journal.transaction_id ||
     parsed.run_id !== journal.run_id ||
@@ -1569,6 +1779,13 @@ async function readManifest(
     const expected = journal.targets[index]
     if (
       !isPlainObject(target) ||
+      !hasExactKeys(target, [
+        "asset",
+        "path",
+        "expected_pre_image",
+        "post_image_sha256",
+        "state"
+      ]) ||
       target.asset !== expected.asset ||
       target.path !== expected.path ||
       target.state !== "replaced" ||

@@ -9,7 +9,10 @@ const {
   RULE_APPLY_PLAN_SCHEMA_VERSION
 } = require("../out/ruleAuthoring/ruleApplyPlan")
 const {
-  executeRuleApplyTransaction
+  executeRuleApplyTransaction,
+  recoverRuleApplyTransaction,
+  validateRuleApplyMetadata,
+  withRuleApplyWorkspaceLock
 } = require("../out/ruleAuthoring/ruleApplyTransaction")
 
 const TARGETS = Object.freeze([
@@ -356,6 +359,83 @@ test("a failure after all replaces but before commit restores every target", asy
   assert.deepEqual(journal.targets.map(({ state }) => state), Array(5).fill("restored"))
 })
 
+test("an error reported after the committed journal is durable never rolls back committed targets", async (t) => {
+  const root = await workspace(t)
+  const { plan, replacements } = await createPlan(root)
+  const transactionId = "txn-durable-commit-error"
+
+  const manifest = await executeRuleApplyTransaction(plan, options(root, transactionId, (event) => {
+    if (event.operation === "journal_persisted" && event.status === "committed") {
+      throw new Error("failure after durable commit")
+    }
+  }))
+
+  assert.equal(manifest.status, "committed")
+  await assertTargetBytes(root, replacements)
+  assert.equal((await readJournal(root, transactionId)).status, "committed")
+  assert.deepEqual(
+    JSON.parse(await fs.readFile(
+      path.join(transactionDirectory(root, transactionId), "apply-manifest.json"),
+      "utf8"
+    )),
+    manifest
+  )
+})
+
+test("a fault after the manifest is durable never rolls back and restart recovery heals the journal", async (t) => {
+  const root = await workspace(t)
+  const { plan, replacements } = await createPlan(root)
+  const transactionId = "txn-durable-manifest-error"
+
+  await assert.rejects(
+    executeRuleApplyTransaction(plan, options(root, transactionId, (event) => {
+      if (event.operation === "manifest_persisted") throw new Error("simulated process stop")
+    })),
+    (error) => error.code === "filesystem_failure" && error.status === "committed"
+  )
+  await assertTargetBytes(root, replacements)
+  assert.equal((await readJournal(root, transactionId)).status, "applying")
+
+  const recovered = await recoverRuleApplyTransaction(root, transactionId, {
+    action: "rollback",
+    now: "2026-07-15T02:03:05.000Z"
+  })
+  assert.equal(recovered.status, "committed")
+  assert.equal((await readJournal(root, transactionId)).status, "committed")
+  await assertTargetBytes(root, replacements)
+})
+
+test("metadata identifier and hash regexes never coerce numeric scalars", () => {
+  const sourceRef = {
+    source_id: `src-${"a".repeat(12)}`,
+    chunk_id: `chunk-${"b".repeat(64)}`
+  }
+  const decision = {
+    candidate_id: "7",
+    target_asset: "rule",
+    operation: "update",
+    decision: "accept",
+    target_id: "PRJ-0001",
+    reviewed_at: NOW,
+    source_refs: [sourceRef],
+    conflict_resolutions: {}
+  }
+  assert.doesNotThrow(() => validateRuleApplyMetadata([decision], []))
+
+  for (const mutate of [
+    (value) => { value.candidate_id = 7 },
+    (value) => { value.source_refs[0].source_id = Number(`1${"0".repeat(11)}`) },
+    (value) => { value.source_refs[0].chunk_id = Number(`1${"0".repeat(63)}`) }
+  ]) {
+    const malformed = structuredClone(decision)
+    mutate(malformed)
+    assert.throws(
+      () => validateRuleApplyMetadata([malformed], []),
+      /metadata.*malformed/i
+    )
+  }
+})
+
 test("re-hashes each live pre-image immediately before replace and rejects stale bytes", async (t) => {
   const root = await workspace(t)
   const { plan, originals } = await createPlan(root)
@@ -400,6 +480,99 @@ test("holds a workspace-wide mutex across transaction IDs", async (t) => {
 
   release.resolve()
   await firstExecution
+})
+
+test("an outer workspace lock token spans final validation and transaction execution", async (t) => {
+  const root = await workspace(t)
+  const first = await createPlan(root)
+  const locked = deferred()
+  const release = deferred()
+  let capturedToken
+
+  const outer = withRuleApplyWorkspaceLock(root, "run-final-apply", async (workspaceLockToken) => {
+    capturedToken = workspaceLockToken
+    locked.resolve()
+    await release.promise
+    return executeRuleApplyTransaction(first.plan, {
+      ...options(root, "txn-outer-lock"),
+      workspaceLockToken
+    })
+  })
+  await locked.promise
+
+  const competing = await createPlan(root)
+  await assert.rejects(
+    executeRuleApplyTransaction(competing.plan, options(root, "txn-competing-lock")),
+    (error) => error.code === "workspace_busy"
+  )
+  release.resolve()
+  const manifest = await outer
+  assert.equal(manifest.status, "committed")
+
+  const next = await createPlan(root)
+  await assert.rejects(
+    executeRuleApplyTransaction(next.plan, {
+      ...options(root, "txn-expired-token"),
+      workspaceLockToken: capturedToken
+    }),
+    (error) => error.code === "workspace_busy"
+  )
+})
+
+test("an outer workspace lock drains an unawaited token participant before release", async (t) => {
+  const root = await workspace(t)
+  const { plan } = await createPlan(root)
+  const started = deferred()
+  const release = deferred()
+  let execution
+  let outerSettled = false
+
+  const outer = withRuleApplyWorkspaceLock(root, "run-drain-apply", (workspaceLockToken) => {
+    execution = executeRuleApplyTransaction(plan, {
+      ...options(root, "txn-drained-lock", async (event) => {
+        if (event.operation === "replace_target" && event.index === 0) {
+          started.resolve()
+          await release.promise
+        }
+      }),
+      workspaceLockToken
+    })
+  }).finally(() => { outerSettled = true })
+
+  await started.promise
+  assert.equal(outerSettled, false)
+  release.resolve()
+  await execution
+  await outer
+  assert.equal(outerSettled, true)
+})
+
+test("workspace lock tokens are opaque, workspace-bound, and preserve callback errors", async (t) => {
+  const firstRoot = await workspace(t)
+  const secondRoot = await workspace(t)
+  const second = await createPlan(secondRoot)
+  const sentinel = new Error("preserve-final-apply-cas-error")
+
+  await assert.rejects(
+    withRuleApplyWorkspaceLock(firstRoot, "run-callback-error", async () => { throw sentinel }),
+    (error) => error === sentinel
+  )
+  await assert.rejects(
+    executeRuleApplyTransaction(second.plan, {
+      ...options(secondRoot, "txn-forged-token"),
+      workspaceLockToken: { testLock: true }
+    }),
+    (error) => error.code === "workspace_busy"
+  )
+  await withRuleApplyWorkspaceLock(firstRoot, "run-wrong-workspace", async (workspaceLockToken) => {
+    await assert.rejects(
+      executeRuleApplyTransaction(second.plan, {
+        ...options(secondRoot, "txn-wrong-workspace"),
+        workspaceLockToken
+      }),
+      (error) => error.code === "workspace_busy"
+    )
+  })
 })
 
 test("a foreign-scope live apply generation blocks without modifying targets", async (t) => {

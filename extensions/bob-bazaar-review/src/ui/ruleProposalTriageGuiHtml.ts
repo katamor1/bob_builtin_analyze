@@ -1,4 +1,8 @@
 import { sanitizeRemoteSafeText } from "../ruleAuthoring/remoteSafeText"
+import {
+  hasUtf8ByteLength,
+  RULE_AUTHORING_TEXT_BYTE_LIMITS
+} from "../ruleAuthoring/ruleAuthoringTextLimits"
 
 export type RuleProposalTriageAssetModel = "rule" | "project_context" | "prompt_addendum"
 export type RuleProposalTriageDecisionModel = "pending" | "accept" | "reject" | "edit"
@@ -58,6 +62,7 @@ export interface RuleProposalTriageConflictModel {
 export interface RuleProposalTriageRecoveryModel {
   transactionId: string
   status: string
+  recoveryAction: "rollback" | "resume"
 }
 
 export interface RuleProposalTriagePreviewModel {
@@ -104,7 +109,6 @@ const MAX_SOURCE_LOCATORS = 64
 const CSP_SOURCE = /^[A-Za-z0-9+.:/_-]+$/
 const EDITABLE_CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/
 const MANAGED_MARKER = /bob-managed-section/i
-const MAX_EDITABLE_MARKDOWN_CHARACTERS = 256 * 1024
 
 export function renderRuleProposalTriageGuiHtml(
   model: RuleProposalTriageGuiModel,
@@ -250,7 +254,7 @@ export function renderRuleProposalTriageGuiHtml(
         vscode.postMessage({
           type,
           transactionId: button.dataset.transactionId,
-          action: 'rollback'
+          action: button.dataset.recoveryAction === 'resume' ? 'resume' : 'rollback'
         });
         return;
       }
@@ -368,8 +372,8 @@ function renderConflicts(conflicts: readonly RuleProposalTriageConflictModel[]):
 function renderRecovery(recovery: readonly RuleProposalTriageRecoveryModel[]): string {
   if (recovery.length === 0) return ""
   return `<section class="card"><h2>Transaction recovery required</h2>
-    <div class="warning">Preview and apply remain blocked until every incomplete transaction is rolled back.</div>
-    ${recovery.map((item) => `<div class="operation row"><div><code>${escapeHtml(item.transactionId)}</code> · ${escapeHtml(item.status)}</div><button type="button" data-action="recoverTransaction" data-transaction-id="${escapeHtml(item.transactionId)}">Rollback</button></div>`).join("")}
+    <div class="warning">Preview and apply remain blocked until every incomplete transaction is safely recovered.</div>
+    ${recovery.map((item) => `<div class="operation row"><div><code>${escapeHtml(item.transactionId)}</code> · ${escapeHtml(item.status)}</div><button type="button" data-action="recoverTransaction" data-transaction-id="${escapeHtml(item.transactionId)}" data-recovery-action="${item.recoveryAction}">${item.recoveryAction === "resume" ? "Complete commit" : "Rollback"}</button></div>`).join("")}
   </section>`
 }
 
@@ -405,7 +409,8 @@ function allowlistedModel(model: RuleProposalTriageGuiModel): SafeRuleProposalTr
   })) : []
   const recovery = Array.isArray(model?.recovery) ? model.recovery.slice(0, 100).map((item) => ({
     transactionId: display(item?.transactionId, SHORT_DISPLAY_BYTES),
-    status: display(item?.status, SHORT_DISPLAY_BYTES)
+    status: display(item?.status, SHORT_DISPLAY_BYTES),
+    recoveryAction: item?.recoveryAction === "resume" ? "resume" as const : "rollback" as const
   })) : []
   return {
     cspSource: safeCspSource(model?.cspSource),
@@ -454,10 +459,12 @@ function allowlistedOperation(value: RuleProposalTriageOperationModel): RuleProp
     editRule: allowlistedRuleEdit(value?.editRule),
     editHeading: value?.editHeading === undefined
       ? undefined
-      : editableText(value.editHeading, 512, { nonEmpty: true, singleLine: true, forbidMarker: true }),
+      : editableText(value.editHeading, RULE_AUTHORING_TEXT_BYTE_LIMITS.markdownHeading,
+        { nonEmpty: true, singleLine: true, forbidMarker: true }),
     editMarkdown: value?.editMarkdown === undefined
       ? undefined
-      : editableText(value.editMarkdown, MAX_EDITABLE_MARKDOWN_CHARACTERS, { forbidMarker: true })
+      : editableText(value.editMarkdown, RULE_AUTHORING_TEXT_BYTE_LIMITS.managedMarkdown,
+        { forbidMarker: true })
   }
 }
 
@@ -477,38 +484,34 @@ function allowlistedRuleEdit(
     throw new Error("Rule proposal editable evidence requirement is invalid")
   }
   return {
-    category: editableText(value.category, 256, { nonEmpty: true }),
-    title: editableText(value.title, 512, { nonEmpty: true }),
-    description: editableText(value.description, 8_192, { nonEmpty: true }),
+    category: editableText(value.category, RULE_AUTHORING_TEXT_BYTE_LIMITS.category, { nonEmpty: true }),
+    title: editableText(value.title, RULE_AUTHORING_TEXT_BYTE_LIMITS.title, { nonEmpty: true }),
+    description: editableText(value.description, RULE_AUTHORING_TEXT_BYTE_LIMITS.description,
+      { nonEmpty: true }),
     severityOnFail: value.severityOnFail,
     appliesWhen: value.appliesWhen.map((item) => inertRuleCondition(item)),
     evidenceRequired: value.evidenceRequired,
-    reviewHint: editableText(value.reviewHint, 4_096)
+    reviewHint: editableText(value.reviewHint, RULE_AUTHORING_TEXT_BYTE_LIMITS.reviewHint)
   }
 }
 
 function inertRuleCondition(value: unknown): string {
-  return editableText(value, 1_024, { singleLine: true })
+  return editableText(value, RULE_AUTHORING_TEXT_BYTE_LIMITS.appliesWhen, { singleLine: true })
 }
 
 function editableText(
   value: unknown,
-  maxCharacters: number,
+  maxBytes: number,
   options: { nonEmpty?: boolean; singleLine?: boolean; forbidMarker?: boolean } = {}
 ): string {
   if (
-    typeof value !== "string" ||
-    unicodeLength(value) > maxCharacters ||
+    !hasUtf8ByteLength(value, maxBytes) ||
     EDITABLE_CONTROL.test(value) ||
     (options.nonEmpty === true && value.length === 0) ||
     (options.singleLine === true && /[\r\n]/.test(value)) ||
     (options.forbidMarker === true && MANAGED_MARKER.test(value))
   ) throw new Error("Rule proposal editable value is invalid")
   return value
-}
-
-function unicodeLength(value: string): number {
-  return [...value].length
 }
 
 function allowlistedPreview(value: RuleProposalTriagePreviewModel | undefined): RuleProposalTriagePreviewModel | undefined {

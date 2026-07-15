@@ -94,8 +94,17 @@ const RUN_LOCK_CLOSED_PATTERN = /^\.authoring-run\.lock\.(\d{12})\.closed$/
 const RUN_LOCK_OWNER_PATTERN = /^\.authoring-run\.lock-owner\.([a-f0-9]{64})\.(\d+)\.([a-f0-9]{32})\.owner$/
 const RUN_LOCK_OWNER_PREFIX = ".authoring-run.lock-owner."
 const MAX_RUN_LOCK_GENERATIONS = 10_000
+const DIRECTORY_LOCK_EPOCH_WIDTH = 8
+const DIRECTORY_LOCK_EPOCH_PREFIX = ".authoring-run.lock-epoch."
+const DIRECTORY_LOCK_EPOCH_PATTERN = /^\.authoring-run\.lock-epoch\.(\d{8})$/
+const DIRECTORY_LOCK_EPOCH_SEAL_BASENAME = ".authoring-run.lock-epoch.sealed"
+const DIRECTORY_LOCK_EPOCH_CONFIG_BASENAME = ".authoring-run.lock-epoch.config"
+const DIRECTORY_LOCK_EPOCH_CONFIG_SCHEMA_VERSION = "bob-bazaar-review/directory-lock-epoch-config/v1" as const
+const MAX_DIRECTORY_LOCK_EPOCH_CONFIG_BYTES = 4096
+const MAX_DIRECTORY_LOCK_EPOCHS = 10_000
 const MAX_RUN_LOCK_OWNER_FILES = 256
 const MAX_RUN_DIRECTORY_ENTRIES = (MAX_RUN_LOCK_GENERATIONS * 2) + MAX_RUN_LOCK_OWNER_FILES + 128
+const MAX_ROTATING_LOCK_ROOT_ENTRIES = MAX_RUN_DIRECTORY_ENTRIES + MAX_DIRECTORY_LOCK_EPOCHS + 2
 const NON_ZERO_MAC_ADDRESS = /^(?!00:00:00:00:00:00$)[a-f0-9]{2}(?::[a-f0-9]{2}){5}$/
 const RUN_LOCK_SCOPE_ID = currentRunLockScopeId()
 
@@ -164,6 +173,56 @@ export async function withRuleAuthoringDirectoryLock<T>(
   await ensureSafeDirectoryChain(workspaceRoot, lockDirectory)
   await assertExistingDirectoryChain(workspaceRoot, lockDirectory)
   return withRunWriteLock(lockDirectory, () => withInterprocessDirectoryLock(lockDirectory, action))
+}
+
+export interface RuleAuthoringRotatingDirectoryLockOptions {
+  maxGenerationsPerEpoch?: number
+}
+
+export async function withRuleAuthoringRotatingDirectoryLock<T>(
+  workspaceRootInput: string,
+  lockDirectoryInput: string,
+  action: () => Promise<T>,
+  options: RuleAuthoringRotatingDirectoryLockOptions = {}
+): Promise<T> {
+  const workspaceRoot = path.resolve(workspaceRootInput)
+  const lockDirectory = path.resolve(lockDirectoryInput)
+  const maxGenerationsPerEpoch = options.maxGenerationsPerEpoch ?? MAX_RUN_LOCK_GENERATIONS
+  if (
+    !Number.isSafeInteger(maxGenerationsPerEpoch) ||
+    maxGenerationsPerEpoch < 1 ||
+    maxGenerationsPerEpoch > MAX_RUN_LOCK_GENERATIONS
+  ) {
+    throw new Error("Rule authoring directory lock epoch limit is invalid")
+  }
+  assertLexicallyContained(workspaceRoot, lockDirectory)
+  await ensureSafeDirectoryChain(workspaceRoot, lockDirectory)
+  await assertExistingDirectoryChain(workspaceRoot, lockDirectory)
+  return withRunWriteLock(lockDirectory, async () => {
+    await ensureDirectoryLockEpochConfig(lockDirectory, maxGenerationsPerEpoch)
+    for (let attempt = 0; attempt < RUN_LOCK_RETRY_COUNT; attempt += 1) {
+      const epochDirectory = await selectDirectoryLockEpoch(
+        workspaceRoot,
+        lockDirectory,
+        maxGenerationsPerEpoch
+      )
+      const generationLimitToken = {}
+      try {
+        return await withInterprocessDirectoryLock(
+          epochDirectory,
+          action,
+          maxGenerationsPerEpoch,
+          generationLimitToken
+        )
+      } catch (error) {
+        if (
+          !(error instanceof RunLockGenerationLimitError) ||
+          error.acquisitionToken !== generationLimitToken
+        ) throw error
+      }
+    }
+    throw new Error("Rule authoring directory lock could not select a writable epoch")
+  })
 }
 
 export async function createRuleAuthoringRun(
@@ -895,16 +954,253 @@ async function withInterprocessRunLock<T>(
   return withInterprocessDirectoryLock(paths.runDirectory, action)
 }
 
+interface DirectoryLockEpoch {
+  epoch: number
+  directory: string
+}
+
+async function selectDirectoryLockEpoch(
+  workspaceRoot: string,
+  lockDirectory: string,
+  maxGenerationsPerEpoch: number
+): Promise<string> {
+  for (let attempt = 0; attempt < RUN_LOCK_RETRY_COUNT; attempt += 1) {
+    const epochs = await readDirectoryLockEpochs(
+      workspaceRoot,
+      lockDirectory,
+      maxGenerationsPerEpoch
+    )
+    const current = epochs.at(-1)?.directory ?? lockDirectory
+    await assertExistingDirectoryChain(workspaceRoot, current)
+    const generations = await readRunLockGenerations(current)
+    if (generations.length < maxGenerationsPerEpoch) return current
+    if (generations.length > maxGenerationsPerEpoch) {
+      throw new Error("Rule authoring directory lock epoch exceeds its generation limit")
+    }
+
+    const latest = generations.at(-1)
+    if (!latest) throw new Error("Rule authoring directory lock epoch is invalid")
+    if (!await pathExists(latest.closedPath)) {
+      const record = await readRunLockRecord(latest.lockPath)
+      if (record.scope_id !== RUN_LOCK_SCOPE_ID) {
+        throw new Error("Rule authoring run lock belongs to another process scope")
+      }
+      if (isProcessAlive(record.pid)) {
+        if (attempt === RUN_LOCK_RETRY_COUNT - 1) {
+          throw new Error("Rule authoring run is busy in another process")
+        }
+        await delay(RUN_LOCK_RETRY_DELAY_MS)
+        continue
+      }
+      await closeRunLockGeneration(current, latest, record)
+    } else {
+      const record = await readRunLockRecord(latest.lockPath)
+      await assertClosedRunLockRecord(latest, record)
+    }
+    const finalRecord = await readRunLockRecord(latest.lockPath)
+    await sealDirectoryLockEpoch(current, latest, finalRecord)
+
+    const nextEpoch = (epochs.at(-1)?.epoch ?? 0) + 1
+    if (nextEpoch > MAX_DIRECTORY_LOCK_EPOCHS) {
+      throw new Error("Rule authoring directory lock epoch limit was reached")
+    }
+    const nextDirectory = directoryLockEpochPath(lockDirectory, nextEpoch)
+    try {
+      await fs.mkdir(nextDirectory)
+    } catch (error) {
+      if (!isNodeError(error) || error.code !== "EEXIST") throw error
+    }
+    await assertExistingDirectoryChain(workspaceRoot, nextDirectory)
+    await syncDirectoryIfSupported(lockDirectory)
+    return nextDirectory
+  }
+  throw new Error("Rule authoring run is busy in another process")
+}
+
+async function readDirectoryLockEpochs(
+  workspaceRoot: string,
+  lockDirectory: string,
+  maxGenerationsPerEpoch: number
+): Promise<DirectoryLockEpoch[]> {
+  const epochs = new Set<number>()
+  let directoryEntries = 0
+  const directory = await fs.opendir(lockDirectory)
+  for await (const entry of directory) {
+    directoryEntries += 1
+    if (directoryEntries > MAX_ROTATING_LOCK_ROOT_ENTRIES) {
+      throw new Error("Rule authoring directory lock entry limit was reached")
+    }
+    if (!entry.name.startsWith(DIRECTORY_LOCK_EPOCH_PREFIX)) continue
+    if (
+      entry.name === DIRECTORY_LOCK_EPOCH_SEAL_BASENAME ||
+      entry.name === DIRECTORY_LOCK_EPOCH_CONFIG_BASENAME
+    ) continue
+    const match = DIRECTORY_LOCK_EPOCH_PATTERN.exec(entry.name)
+    if (!match || entry.isSymbolicLink() || !entry.isDirectory()) {
+      throw new Error("Rule authoring directory lock epoch must be a trusted directory")
+    }
+    const epoch = Number(match[1])
+    if (epoch < 1 || epoch > MAX_DIRECTORY_LOCK_EPOCHS) {
+      throw new Error("Rule authoring directory lock epoch is out of range")
+    }
+    epochs.add(epoch)
+    if (epochs.size > MAX_DIRECTORY_LOCK_EPOCHS) {
+      throw new Error("Rule authoring directory lock epoch limit was reached")
+    }
+  }
+  const ordered = [...epochs].sort((left, right) => left - right)
+  for (const [index, epoch] of ordered.entries()) {
+    if (epoch !== index + 1) {
+      throw new Error("Rule authoring directory lock epochs must be contiguous")
+    }
+  }
+  const result = ordered.map((epoch) => ({
+    epoch,
+    directory: directoryLockEpochPath(lockDirectory, epoch)
+  }))
+  for (const epoch of result) {
+    await assertExistingDirectoryChain(workspaceRoot, epoch.directory)
+    const previousDirectory = epoch.epoch === 1
+      ? lockDirectory
+      : directoryLockEpochPath(lockDirectory, epoch.epoch - 1)
+    await assertDirectoryLockEpochSealed(previousDirectory, maxGenerationsPerEpoch)
+  }
+  return result
+}
+
+function directoryLockEpochPath(lockDirectory: string, epoch: number): string {
+  return path.join(
+    lockDirectory,
+    `${DIRECTORY_LOCK_EPOCH_PREFIX}${String(epoch).padStart(DIRECTORY_LOCK_EPOCH_WIDTH, "0")}`
+  )
+}
+
+async function sealDirectoryLockEpoch(
+  epochDirectory: string,
+  latest: RunLockGeneration,
+  record: RunLockOwner["record"]
+): Promise<void> {
+  await assertClosedRunLockRecord(latest, record)
+  const sealPath = path.join(epochDirectory, DIRECTORY_LOCK_EPOCH_SEAL_BASENAME)
+  try {
+    await fs.link(latest.closedPath, sealPath)
+  } catch (error) {
+    if (!isNodeError(error) || error.code !== "EEXIST") throw error
+  }
+  await assertDirectoryLockSealMatchesClosure(sealPath, latest.closedPath)
+  await syncDirectoryIfSupported(epochDirectory)
+}
+
+async function assertDirectoryLockEpochSealed(
+  epochDirectory: string,
+  maxGenerationsPerEpoch: number
+): Promise<void> {
+  const finalLockPath = runLockGenerationPath(epochDirectory, maxGenerationsPerEpoch)
+  const finalGeneration: RunLockGeneration = {
+    generation: maxGenerationsPerEpoch,
+    lockPath: finalLockPath,
+    closedPath: `${finalLockPath}.closed`
+  }
+  const record = await readRunLockRecord(finalGeneration.lockPath)
+  await assertClosedRunLockRecord(finalGeneration, record)
+  await assertDirectoryLockSealMatchesClosure(
+    path.join(epochDirectory, DIRECTORY_LOCK_EPOCH_SEAL_BASENAME),
+    finalGeneration.closedPath
+  )
+}
+
+async function assertDirectoryLockSealMatchesClosure(
+  sealPath: string,
+  closedPath: string
+): Promise<void> {
+  const [sealIdentity, closedIdentity] = await Promise.all([
+    regularFileIdentity(sealPath),
+    regularFileIdentity(closedPath)
+  ])
+  if (!sealIdentity || !closedIdentity || !sameIdentity(sealIdentity, closedIdentity)) {
+    throw new Error("Rule authoring directory lock epoch seal is invalid")
+  }
+}
+
+async function ensureDirectoryLockEpochConfig(
+  lockDirectory: string,
+  maxGenerationsPerEpoch: number
+): Promise<void> {
+  const configPath = path.join(lockDirectory, DIRECTORY_LOCK_EPOCH_CONFIG_BASENAME)
+  const temporaryPath = path.join(
+    lockDirectory,
+    `.authoring-run.lock-config.${process.pid}.${randomBytes(8).toString("hex")}.tmp`
+  )
+  const config = {
+    schema_version: DIRECTORY_LOCK_EPOCH_CONFIG_SCHEMA_VERSION,
+    max_generations_per_epoch: maxGenerationsPerEpoch
+  }
+  let handle: fs.FileHandle | undefined
+  try {
+    handle = await fs.open(temporaryPath, "wx", 0o600)
+    await handle.writeFile(`${JSON.stringify(config)}\n`, "utf8")
+    await handle.sync()
+    await handle.close()
+    handle = undefined
+    try {
+      await fs.link(temporaryPath, configPath)
+    } catch (error) {
+      if (!isNodeError(error) || error.code !== "EEXIST") throw error
+    }
+    await syncDirectoryIfSupported(lockDirectory)
+  } finally {
+    await handle?.close().catch(() => undefined)
+    await fs.rm(temporaryPath, { force: true }).catch(() => undefined)
+  }
+
+  let parsed: unknown
+  try {
+    const configHandle = await fs.open(
+      configPath,
+      fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0)
+    )
+    try {
+      parsed = JSON.parse(await readBoundedUtf8(
+        configHandle,
+        MAX_DIRECTORY_LOCK_EPOCH_CONFIG_BYTES,
+        "Rule authoring directory lock epoch config"
+      ))
+    } finally {
+      await configHandle.close()
+    }
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      throw new Error("Rule authoring directory lock epoch config is invalid")
+    }
+    throw error
+  }
+  if (
+    !isPlainObject(parsed) ||
+    !hasExactKeys(parsed, ["schema_version", "max_generations_per_epoch"]) ||
+    parsed.schema_version !== DIRECTORY_LOCK_EPOCH_CONFIG_SCHEMA_VERSION ||
+    parsed.max_generations_per_epoch !== maxGenerationsPerEpoch
+  ) {
+    throw new Error("Rule authoring directory lock epoch config is invalid")
+  }
+}
+
 async function withInterprocessDirectoryLock<T>(
   lockDirectory: string,
-  action: () => Promise<T>
+  action: () => Promise<T>,
+  maxGenerations: number = MAX_RUN_LOCK_GENERATIONS,
+  generationLimitToken: object = {}
 ): Promise<T> {
   await cleanupAbandonedRunLockOwners(lockDirectory)
   const owner = await createRunLockOwner(lockDirectory)
   let acquired: RunLockGeneration | undefined
   try {
     for (let attempt = 0; attempt < RUN_LOCK_RETRY_COUNT; attempt += 1) {
-      acquired = await tryAcquireRunLockGeneration(lockDirectory, owner)
+      acquired = await tryAcquireRunLockGeneration(
+        lockDirectory,
+        owner,
+        maxGenerations,
+        generationLimitToken
+      )
       if (acquired) break
       if (attempt === RUN_LOCK_RETRY_COUNT - 1) {
         throw new Error("Rule authoring run is busy in another process")
@@ -1043,7 +1339,9 @@ interface RunLockGeneration {
 
 async function tryAcquireRunLockGeneration(
   runDirectory: string,
-  owner: RunLockOwner
+  owner: RunLockOwner,
+  maxGenerations: number = MAX_RUN_LOCK_GENERATIONS,
+  generationLimitToken: object = {}
 ): Promise<RunLockGeneration | undefined> {
   const generations = await readRunLockGenerations(runDirectory)
   let nextGeneration = 1
@@ -1062,8 +1360,8 @@ async function tryAcquireRunLockGeneration(
       nextGeneration = latest.generation + 1
     }
   }
-  if (nextGeneration > MAX_RUN_LOCK_GENERATIONS) {
-    throw new Error("Rule authoring run lock generation limit was reached")
+  if (nextGeneration > maxGenerations) {
+    throw new RunLockGenerationLimitError(generationLimitToken)
   }
 
   const lockPath = runLockGenerationPath(runDirectory, nextGeneration)
@@ -1087,6 +1385,15 @@ async function tryAcquireRunLockGeneration(
 }
 
 class RetryableRunLockSnapshotError extends Error {}
+
+class RunLockGenerationLimitError extends Error {
+  readonly acquisitionToken: object
+
+  constructor(acquisitionToken: object) {
+    super("Rule authoring run lock generation limit was reached")
+    this.acquisitionToken = acquisitionToken
+  }
+}
 
 async function readRunLockGenerations(runDirectory: string): Promise<RunLockGeneration[]> {
   for (let attempt = 0; ; attempt += 1) {

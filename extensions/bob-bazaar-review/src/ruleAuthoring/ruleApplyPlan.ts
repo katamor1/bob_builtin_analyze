@@ -12,6 +12,7 @@ import {
 } from "./managedMarkdownSections"
 import { DEFAULT_RULE_AUTHORING_LIMITS } from "./ruleAuthoringLimits"
 import { validateRuleAuthoringId } from "./ruleAuthoringPaths"
+import { RULE_AUTHORING_TEXT_BYTE_LIMITS } from "./ruleAuthoringTextLimits"
 import { DocumentChunkV1, RuleSourceManifestV1 } from "./ruleAuthoringTypes"
 import {
   allocateContextSectionIds,
@@ -219,7 +220,6 @@ const REMOTE_SAFE_TOKEN = /^[A-Za-z0-9][A-Za-z0-9._+-]*$/
 const REMOTE_SAFE_WARNING = /^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)+$/
 const CANONICAL_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/
 const CONTROL_CHARACTER = /[\u0000-\u001f\u007f-\u009f]/
-const MAX_REJECT_REASON_BYTES = 8_192
 const MAX_APPROVED_RULE_SOURCE_COUNT = 4_096
 const MAX_APPROVED_RULE_SOURCE_MANIFEST_BYTES = 4 * 1024 * 1024
 const MAX_EVIDENCE_CHUNKS = Math.floor(DEFAULT_RULE_AUTHORING_LIMITS.maxSourceIndexBytes / 128)
@@ -452,7 +452,7 @@ function validateCandidateDecision(
       (
         typeof value.reject_reason !== "string" ||
         CONTROL_CHARACTER.test(value.reject_reason) ||
-        Buffer.byteLength(value.reject_reason, "utf8") > MAX_REJECT_REASON_BYTES
+        Buffer.byteLength(value.reject_reason, "utf8") > RULE_AUTHORING_TEXT_BYTE_LIMITS.rejectReason
       )
     ) {
       throw new Error("Proposal rejection reason is malformed")

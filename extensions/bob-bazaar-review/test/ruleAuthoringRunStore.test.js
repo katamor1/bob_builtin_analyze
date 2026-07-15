@@ -11,6 +11,7 @@ const {
   listIncompleteRuleAuthoringRuns,
   readRuleAuthoringRun,
   withRuleAuthoringDirectoryLock,
+  withRuleAuthoringRotatingDirectoryLock,
   writeRuleAuthoringRun
 } = require("../out/ruleAuthoring/ruleAuthoringRunStore")
 
@@ -31,6 +32,233 @@ test("exposes the hardened generation protocol as a reusable directory lock", as
   assert.ok(entries.includes(".authoring-run.lock.000000000001"))
   assert.ok(entries.includes(".authoring-run.lock.000000000001.closed"))
   assert.equal(entries.some((name) => name.startsWith(".authoring-run.lock-owner.")), false)
+})
+
+test("rotates a reusable directory lock without exhausting or overlapping epochs", async (t) => {
+  const root = await workspace(t)
+  const lockDirectory = path.join(root, ".bob", "review", "rule-authoring", ".rotating-lock")
+  let active = 0
+  let maximumActive = 0
+
+  const results = await Promise.all(Array.from({ length: 5 }, (_, index) => (
+    withRuleAuthoringRotatingDirectoryLock(
+      root,
+      lockDirectory,
+      async () => {
+        active += 1
+        maximumActive = Math.max(maximumActive, active)
+        await new Promise((resolve) => setTimeout(resolve, 2))
+        active -= 1
+        return index
+      },
+      { maxGenerationsPerEpoch: 2 }
+    )
+  )))
+
+  assert.deepEqual(results, [0, 1, 2, 3, 4])
+  assert.equal(maximumActive, 1)
+  assert.deepEqual(
+    (await fs.readdir(lockDirectory)).filter((name) => name.startsWith(".authoring-run.lock.")),
+    [
+      ".authoring-run.lock.000000000001",
+      ".authoring-run.lock.000000000001.closed",
+      ".authoring-run.lock.000000000002",
+      ".authoring-run.lock.000000000002.closed"
+    ]
+  )
+  for (const [epoch, generationCount] of [[1, 2], [2, 1]]) {
+    const epochDirectory = path.join(
+      lockDirectory,
+      `.authoring-run.lock-epoch.${String(epoch).padStart(8, "0")}`
+    )
+    const entries = await fs.readdir(epochDirectory)
+    assert.equal(entries.filter((name) => /^\.authoring-run\.lock\.\d{12}$/.test(name)).length, generationCount)
+    assert.equal(entries.filter((name) => /^\.authoring-run\.lock\.\d{12}\.closed$/.test(name)).length, generationCount)
+  }
+})
+
+test("keeps rotating directory lock exclusion across process and epoch boundaries", async (t) => {
+  const root = await workspace(t)
+  const lockDirectory = path.join(root, ".bob", "review", "rule-authoring", ".process-rotating-lock")
+  const witnessPath = path.join(root, "rotating-lock-witness")
+  await withRuleAuthoringRotatingDirectoryLock(
+    root,
+    lockDirectory,
+    async () => undefined,
+    { maxGenerationsPerEpoch: 2 }
+  )
+
+  const children = Array.from({ length: 5 }, () => runRotatingLockProcess(
+    root,
+    lockDirectory,
+    witnessPath,
+    2
+  ))
+  const results = await Promise.all(children.map(({ result }) => result))
+
+  for (const result of results) assert.equal(result.code, 0, result.stderr)
+  assert.equal(await fs.lstat(witnessPath).then(() => true, () => false), false)
+  assert.deepEqual(
+    (await fs.readdir(lockDirectory))
+      .filter((name) => /^\.authoring-run\.lock-epoch\.\d{8}$/.test(name))
+      .sort(),
+    [
+      ".authoring-run.lock-epoch.00000001",
+      ".authoring-run.lock-epoch.00000002"
+    ]
+  )
+})
+
+test("recovers a killed final-generation owner into the next epoch", async (t) => {
+  const root = await workspace(t)
+  const lockDirectory = path.join(root, ".bob", "review", "rule-authoring", ".killed-rotating-lock")
+  const readyPath = path.join(root, "final-generation-ready")
+  const witnessPath = path.join(root, "recovered-rotating-lock-witness")
+  await withRuleAuthoringRotatingDirectoryLock(
+    root,
+    lockDirectory,
+    async () => undefined,
+    { maxGenerationsPerEpoch: 2 }
+  )
+  const holder = startHoldingRotatingLockProcess(root, lockDirectory, readyPath, 2)
+  t.after(() => {
+    if (holder.child.exitCode === null) holder.child.kill("SIGKILL")
+  })
+  await waitForPath(readyPath)
+  holder.child.kill("SIGKILL")
+  const holderResult = await holder.result
+  assert.equal(holderResult.signal, "SIGKILL", holderResult.stderr)
+
+  const recovery = runRotatingLockProcess(root, lockDirectory, witnessPath, 2)
+  const recoveryResult = await recovery.result
+  assert.equal(recoveryResult.code, 0, recoveryResult.stderr)
+  await fs.access(path.join(lockDirectory, ".authoring-run.lock.000000000002.closed"))
+  await fs.access(path.join(lockDirectory, ".authoring-run.lock-epoch.sealed"))
+  await fs.access(path.join(
+    lockDirectory,
+    ".authoring-run.lock-epoch.00000001",
+    ".authoring-run.lock.000000000001.closed"
+  ))
+})
+
+test("rejects an unsealed rotating epoch and an incompatible epoch limit", async (t) => {
+  const root = await workspace(t)
+  const lockDirectory = path.join(root, ".bob", "review", "rule-authoring", ".sealed-rotating-lock")
+  let entered = false
+  await withRuleAuthoringRotatingDirectoryLock(
+    root,
+    lockDirectory,
+    async () => undefined,
+    { maxGenerationsPerEpoch: 2 }
+  )
+  await fs.mkdir(path.join(lockDirectory, ".authoring-run.lock-epoch.00000001"))
+
+  await assert.rejects(
+    withRuleAuthoringRotatingDirectoryLock(
+      root,
+      lockDirectory,
+      async () => { entered = true },
+      { maxGenerationsPerEpoch: 2 }
+    )
+  )
+  assert.equal(entered, false)
+  await assert.rejects(
+    withRuleAuthoringRotatingDirectoryLock(
+      root,
+      lockDirectory,
+      async () => { entered = true },
+      { maxGenerationsPerEpoch: 3 }
+    ),
+    /epoch config is invalid/
+  )
+  assert.equal(entered, false)
+})
+
+test("never retries a rotating callback when a nested lock reaches its own limit", async (t) => {
+  const root = await workspace(t)
+  const outerDirectory = path.join(root, ".bob", "review", "rule-authoring", ".outer-rotating-lock")
+  const exhaustedDirectory = path.join(root, ".bob", "review", "rule-authoring", ".exhausted-lock")
+  await seedExhaustedDirectoryLock(exhaustedDirectory)
+  const repeated = new Error("rotating callback was invoked twice")
+  let invocations = 0
+  let observed
+
+  try {
+    await withRuleAuthoringRotatingDirectoryLock(
+      root,
+      outerDirectory,
+      async () => {
+        invocations += 1
+        if (invocations > 1) throw repeated
+        return withRuleAuthoringDirectoryLock(root, exhaustedDirectory, async () => undefined)
+      },
+      { maxGenerationsPerEpoch: 1 }
+    )
+  } catch (error) {
+    observed = error
+  }
+
+  assert.notEqual(observed, repeated)
+  assert.match(observed?.message ?? "", /generation limit was reached/)
+  assert.equal(invocations, 1)
+})
+
+test("recovers a sealed epoch transition and rejects a replaced seal", async (t) => {
+  const root = await workspace(t)
+  const lockDirectory = path.join(root, ".bob", "review", "rule-authoring", ".seal-recovery-lock")
+  const lock = (action = async () => undefined) => withRuleAuthoringRotatingDirectoryLock(
+    root,
+    lockDirectory,
+    action,
+    { maxGenerationsPerEpoch: 2 }
+  )
+  await lock()
+  await lock()
+
+  const closurePath = path.join(lockDirectory, ".authoring-run.lock.000000000002.closed")
+  const sealPath = path.join(lockDirectory, ".authoring-run.lock-epoch.sealed")
+  await fs.link(closurePath, sealPath)
+  assert.equal(await lock(async () => "recovered"), "recovered")
+
+  const emptyRoot = await workspace(t)
+  const emptyDirectory = path.join(emptyRoot, ".bob", "review", "rule-authoring", ".empty-epoch-lock")
+  const emptyLock = (action = async () => undefined) => withRuleAuthoringRotatingDirectoryLock(
+    emptyRoot,
+    emptyDirectory,
+    action,
+    { maxGenerationsPerEpoch: 2 }
+  )
+  await emptyLock()
+  await emptyLock()
+  await fs.link(
+    path.join(emptyDirectory, ".authoring-run.lock.000000000002.closed"),
+    path.join(emptyDirectory, ".authoring-run.lock-epoch.sealed")
+  )
+  await fs.mkdir(path.join(emptyDirectory, ".authoring-run.lock-epoch.00000001"))
+  assert.equal(await emptyLock(async () => "empty epoch recovered"), "empty epoch recovered")
+
+  const tamperedRoot = await workspace(t)
+  const tamperedDirectory = path.join(
+    tamperedRoot,
+    ".bob",
+    "review",
+    "rule-authoring",
+    ".tampered-seal-lock"
+  )
+  const tamperedLock = () => withRuleAuthoringRotatingDirectoryLock(
+    tamperedRoot,
+    tamperedDirectory,
+    async () => undefined,
+    { maxGenerationsPerEpoch: 2 }
+  )
+  await tamperedLock()
+  await tamperedLock()
+  await fs.writeFile(
+    path.join(tamperedDirectory, ".authoring-run.lock-epoch.sealed"),
+    "not the final closure\n",
+    "utf8"
+  )
+  await assert.rejects(tamperedLock(), /epoch seal is invalid/)
 })
 
 test("creates a resumable run atomically and installs missing-only ignore rules", async (t) => {
@@ -1174,6 +1402,119 @@ function runReaddirGlitchWriterProcess(run, expectedUpdatedAt, runDirectory, omi
     child.on("error", reject)
     child.on("close", (code) => resolve({ code, stdout, stderr }))
   })
+}
+
+function runRotatingLockProcess(root, lockDirectory, witnessPath, maxGenerationsPerEpoch) {
+  const script = [
+    "const fs = require('node:fs/promises')",
+    "const store = require(process.env.STORE_PATH)",
+    "store.withRuleAuthoringRotatingDirectoryLock(",
+    "  process.env.ROOT,",
+    "  process.env.LOCK_DIRECTORY,",
+    "  async () => {",
+    "    let witness",
+    "    try {",
+    "      witness = await fs.open(process.env.WITNESS_PATH, 'wx', 0o600)",
+    "    } catch (error) {",
+    "      if (error && error.code === 'EEXIST') throw new Error('rotating lock callbacks overlapped')",
+    "      throw error",
+    "    }",
+    "    try { await new Promise((resolve) => setTimeout(resolve, 20)) }",
+    "    finally {",
+    "      await witness.close()",
+    "      await fs.rm(process.env.WITNESS_PATH, { force: true })",
+    "    }",
+    "  },",
+    "  { maxGenerationsPerEpoch: Number(process.env.MAX_GENERATIONS) }",
+    ")",
+    "  .catch((error) => { process.stderr.write(error.stack || error.message); process.exitCode = 2 })"
+  ].join("\n")
+  const child = spawn(process.execPath, ["-e", script], {
+    cwd: __dirname,
+    env: {
+      ...process.env,
+      STORE_PATH: require.resolve("../out/ruleAuthoring/ruleAuthoringRunStore"),
+      ROOT: root,
+      LOCK_DIRECTORY: lockDirectory,
+      WITNESS_PATH: witnessPath,
+      MAX_GENERATIONS: String(maxGenerationsPerEpoch)
+    },
+    stdio: ["ignore", "pipe", "pipe"]
+  })
+  const result = new Promise((resolve, reject) => {
+    let stdout = ""
+    let stderr = ""
+    child.stdout.on("data", (chunk) => { stdout += chunk })
+    child.stderr.on("data", (chunk) => { stderr += chunk })
+    child.on("error", reject)
+    child.on("close", (code) => resolve({ code, stdout, stderr }))
+  })
+  return { child, result }
+}
+
+function startHoldingRotatingLockProcess(root, lockDirectory, readyPath, maxGenerationsPerEpoch) {
+  const script = [
+    "const fs = require('node:fs/promises')",
+    "const store = require(process.env.STORE_PATH)",
+    "store.withRuleAuthoringRotatingDirectoryLock(",
+    "  process.env.ROOT,",
+    "  process.env.LOCK_DIRECTORY,",
+    "  async () => {",
+    "    await fs.writeFile(process.env.READY_PATH, 'ready', 'utf8')",
+    "    setInterval(() => {}, 1_000)",
+    "    await new Promise(() => {})",
+    "  },",
+    "  { maxGenerationsPerEpoch: Number(process.env.MAX_GENERATIONS) }",
+    ")",
+    "  .catch((error) => { process.stderr.write(error.stack || error.message); process.exitCode = 2 })"
+  ].join("\n")
+  const child = spawn(process.execPath, ["-e", script], {
+    cwd: __dirname,
+    env: {
+      ...process.env,
+      STORE_PATH: require.resolve("../out/ruleAuthoring/ruleAuthoringRunStore"),
+      ROOT: root,
+      LOCK_DIRECTORY: lockDirectory,
+      READY_PATH: readyPath,
+      MAX_GENERATIONS: String(maxGenerationsPerEpoch)
+    },
+    stdio: ["ignore", "pipe", "pipe"]
+  })
+  const result = new Promise((resolve, reject) => {
+    let stdout = ""
+    let stderr = ""
+    child.stdout.on("data", (chunk) => { stdout += chunk })
+    child.stderr.on("data", (chunk) => { stderr += chunk })
+    child.on("error", reject)
+    child.on("close", (code, signal) => resolve({ code, signal, stdout, stderr }))
+  })
+  return { child, result }
+}
+
+async function seedExhaustedDirectoryLock(lockDirectory) {
+  await fs.mkdir(lockDirectory, { recursive: true })
+  const lockSeed = path.join(lockDirectory, ".lock-seed")
+  const closureSeed = path.join(lockDirectory, ".closure-seed")
+  const ownerToken = "a".repeat(32)
+  await fs.writeFile(lockSeed, `${JSON.stringify({
+    schema_version: "bob-bazaar-review/run-lock/v1",
+    pid: process.pid,
+    token: ownerToken,
+    scope_id: "f".repeat(64),
+    created_at: "2026-07-14T08:00:00.000Z"
+  })}\n`, "utf8")
+  await fs.writeFile(closureSeed, `${JSON.stringify({
+    schema_version: "bob-bazaar-review/run-lock-closed/v1",
+    generation: 10_000,
+    owner_token: ownerToken
+  })}\n`, "utf8")
+  for (let start = 1; start <= 10_000; start += 200) {
+    await Promise.all(Array.from({ length: Math.min(200, 10_001 - start) }, async (_, offset) => {
+      const generation = String(start + offset).padStart(12, "0")
+      await fs.link(lockSeed, path.join(lockDirectory, `.authoring-run.lock.${generation}`))
+      await fs.link(closureSeed, path.join(lockDirectory, `.authoring-run.lock.${generation}.closed`))
+    }))
+  }
 }
 
 async function waitForRecoveryMode(firstChild, secondChild, legacyReadyPaths, generationReadyPaths) {

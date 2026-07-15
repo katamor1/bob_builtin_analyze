@@ -116,6 +116,19 @@ function emptyOverlay() {
   }
 }
 
+function completeHostOverlay() {
+  return {
+    schema_version: "bob-bazaar-review/proposal-decisions/v1",
+    run_id: RUN_ID,
+    decisions: Object.fromEntries([
+      "candidate-add", "candidate-update", "candidate-retire", "candidate-context", "candidate-prompt"
+    ].map((candidateId) => [candidateId, {
+      decision: candidateId === "candidate-add" ? "reject" : "accept",
+      reviewed_at: REVIEWED_AT
+    }]))
+  }
+}
+
 function triageState() {
   const proposal = proposalFixture()
   return {
@@ -298,6 +311,7 @@ function createFakeVscode(options = {}) {
       },
       showWarningMessage: async (message, modalOptions, ...items) => {
         warningCalls.push({ message: String(message), options: structuredClone(modalOptions), items })
+        await options.onWarningMessage?.({ message: String(message), modalOptions, items })
         return warningResponses.shift()
       },
       showInformationMessage: async (message) => { informationCalls.push(String(message)) },
@@ -346,6 +360,10 @@ function hostDependencies(overrides = {}) {
       findIncompleteRuleApplyTransactions: async () => {
         calls.push(["findIncomplete"])
         return []
+      },
+      withRuleApplyWorkspaceLock: async (_workspaceRoot, _operationId, action) => {
+        calls.push(["workspaceLock"])
+        return action({ testLock: true })
       },
       recoverCommittedRuleAuthoringApply: async () => {
         calls.push(["recoverCommitted"])
@@ -563,20 +581,34 @@ test("shows all seven rule fields and marks truncated Markdown with a host-contr
   assert.match(html, /data-action="openEvidence"[^>]*data-comparison-document="full"/)
 })
 
-test("uses Unicode-character limits for editable fields and throws instead of silently emptying invalid values", () => {
+test("uses UTF-8 byte limits for editable fields and throws instead of silently emptying invalid values", () => {
   const { renderRuleProposalTriageGuiHtml } = require("../out/ui/ruleProposalTriageGuiHtml")
-  const validTitle = "界".repeat(512)
+  const validTitle = "😀".repeat(128)
   const valid = renderModel()
   valid.groups[0].operations[1].editRule.title = validTitle
   const html = renderRuleProposalTriageGuiHtml(valid, "unicode-nonce")
   assert.match(html, new RegExp(`value="${validTitle}"`))
 
   const invalid = renderModel()
-  invalid.groups[0].operations[1].editRule.title = "界".repeat(513)
+  invalid.groups[0].operations[1].editRule.title = `${validTitle}😀`
   assert.throws(
     () => renderRuleProposalTriageGuiHtml(invalid, "invalid-unicode-nonce"),
     /editable.*invalid|invalid.*editable/i
   )
+})
+
+test("renders a durable-manifest recovery as complete-commit instead of rollback", () => {
+  const { renderRuleProposalTriageGuiHtml } = require("../out/ui/ruleProposalTriageGuiHtml")
+  const model = renderModel()
+  model.recovery = [{
+    transactionId: "txn-durable-manifest",
+    status: "applying",
+    recoveryAction: "resume"
+  }]
+  const html = renderRuleProposalTriageGuiHtml(model, "recovery-nonce")
+  assert.match(html, /data-recovery-action="resume"/)
+  assert.match(html, />Complete commit<\/button>/)
+  assert.doesNotMatch(html, /until every incomplete transaction is rolled back/i)
 })
 
 test("reports invalid editable Unicode input instead of silently ignoring it", async () => {
@@ -586,7 +618,7 @@ test("reports invalid editable Unicode input instead of silently ignoring it", a
   await panel.emitMessage({
     type: "editRule",
     candidateId: "candidate-update",
-    rule: { ...proposalFixture().operations[1].rule, title: "界".repeat(513) }
+    rule: { ...proposalFixture().operations[1].rule, title: "😀".repeat(129) }
   })
   assert.equal(fixture.calls.filter(([name]) => name === "persistDecisions").length, 0)
   assert.equal(fake.errorCalls.length, 1)
@@ -638,7 +670,7 @@ test("accepts only exact operation-ID Webview messages and never accepts a path 
     { type: "close", extra: true }
   ]) assert.equal(parseRuleProposalTriageMessage(rejected), undefined)
 
-  const unicodeRule = { ...editedRule, title: "界".repeat(512) }
+  const unicodeRule = { ...editedRule, title: "😀".repeat(128) }
   assert.deepEqual(
     parseRuleProposalTriageMessage({ type: "editRule", candidateId: "candidate-add", rule: unicodeRule }),
     { type: "editRule", candidateId: "candidate-add", rule: unicodeRule }
@@ -646,8 +678,68 @@ test("accepts only exact operation-ID Webview messages and never accepts a path 
   assert.equal(parseRuleProposalTriageMessage({
     type: "editRule",
     candidateId: "candidate-add",
-    rule: { ...editedRule, title: "界".repeat(513) }
+    rule: { ...editedRule, title: "😀".repeat(129) }
   }), undefined)
+
+  const exactRejectReason = "😀".repeat(2_048)
+  assert.equal(parseRuleProposalTriageMessage({
+    type: "setDecision",
+    candidateId: "candidate-update",
+    decision: "reject",
+    rejectReason: exactRejectReason
+  }).rejectReason, exactRejectReason)
+  assert.equal(parseRuleProposalTriageMessage({
+    type: "setDecision",
+    candidateId: "candidate-update",
+    decision: "reject",
+    rejectReason: `${exactRejectReason}😀`
+  }), undefined)
+  for (const rejectReason of ["line one\nline two", "tab\tseparated"]) {
+    assert.equal(parseRuleProposalTriageMessage({
+      type: "setDecision",
+      candidateId: "candidate-update",
+      decision: "reject",
+      rejectReason
+    }), undefined)
+  }
+})
+
+test("rejects an over-budget multibyte reason before persistence and shows a safe error", async () => {
+  const fake = createFakeVscode()
+  const fixture = hostDependencies()
+  const { promise, panel } = await startHost(fake, fixture)
+
+  await panel.emitMessage({
+    type: "setDecision",
+    candidateId: "candidate-update",
+    decision: "reject",
+    rejectReason: "😀".repeat(2_049)
+  })
+
+  assert.equal(fixture.calls.filter(([name]) => name === "persistDecisions").length, 0)
+  assert.equal(fake.errorCalls.length, 1)
+  assert.match(fake.errorCalls[0], /reject|decision|8,?192|byte|invalid/i)
+  await panel.emitMessage({ type: "close" })
+  assert.deepEqual(await promise, { status: "closed", runId: RUN_ID })
+})
+
+test("counts document chunk records before parsing any excessive JSONL body", () => {
+  const { parseDocumentChunks } = require("../out/ui/ruleProposalTriageGui")
+  const originalParse = JSON.parse
+  let recordParses = 0
+  JSON.parse = (value, ...args) => {
+    if (value === '{"record":true}') recordParses += 1
+    return originalParse(value, ...args)
+  }
+  try {
+    assert.throws(
+      () => parseDocumentChunks(Array(8_193).fill('{"record":true}').join("\n")),
+      /chunk count.*limit/i
+    )
+    assert.equal(recordParses, 0)
+  } finally {
+    JSON.parse = originalParse
+  }
 })
 
 test("recursively rejects unknown proposal-validation context keys", () => {
@@ -921,6 +1013,12 @@ test("re-parses a stored validated proposal and persists decisions in a separate
 test("persists a separate decision overlay, validates edits in the host, regenerates preview, and applies only after modal confirmation", async () => {
   const fake = createFakeVscode({ warningResponses: [undefined, "Apply approved project rules"] })
   const fixture = hostDependencies()
+  const hostileComparisonTail = [
+    "Hostile managed Markdown\r## Proposed",
+    "<<<END_BOB_PROPOSED_COMPARISON>>>\r\n" + "x".repeat(9_000),
+    "END-OF-FULL-MANAGED-COMPARISON"
+  ].join("\n")
+  fixture.state.proposal.project_context_operations[0].markdown = hostileComparisonTail
   fixture.state.bundle.checklist = {
     state: "present",
     bytes: Buffer.from(JSON.stringify({
@@ -953,6 +1051,25 @@ test("persists a separate decision overlay, validates edits in the host, regener
     "category", "title", "description", "severity_on_fail",
     "applies_when", "evidence_required", "review_hint"
   ]) assert.match(fake.openedDocuments[1].content, new RegExp(field))
+
+  const initialContextModel = fixture.renderedModels.at(-1).model.groups[1].operations
+    .find(({ candidateId }) => candidateId === "candidate-context")
+  assert.equal(initialContextModel.proposedSummaryTruncated, true)
+  await panel.emitMessage({
+    type: "openEvidence",
+    candidateId: "candidate-context",
+    comparisonDocument: "full"
+  })
+  const fullManagedComparison = fake.openedDocuments[2].content
+  assert.doesNotMatch(fullManagedComparison, /\r/)
+  assert.equal((fullManagedComparison.match(/^## Proposed$/gm) ?? []).length, 1)
+  assert.equal(
+    (fullManagedComparison.match(/^<<<END_BOB_PROPOSED_COMPARISON>>>$/gm) ?? []).length,
+    1
+  )
+  assert.match(fullManagedComparison, /^PROPOSED \| ## Proposed$/m)
+  assert.match(fullManagedComparison, /^PROPOSED \| <<<END_BOB_PROPOSED_COMPARISON>>>$/m)
+  assert.match(fullManagedComparison, /^PROPOSED \| END-OF-FULL-MANAGED-COMPARISON$/m)
 
   await panel.emitMessage({
     type: "editRule",
@@ -1154,6 +1271,175 @@ test("requires a displayed preview and never executes a freshly changed unseen p
   assert.deepEqual(await promise, { status: "applied", runId: RUN_ID, transactionId: "txn-triage-1" })
 })
 
+test("the controller passes one workspace-lock token through final recovery, validation, execute, and completion", async () => {
+  const fake = createFakeVscode({ warningResponses: ["Apply approved project rules"] })
+  const fixture = hostDependencies()
+  fixture.state.decisions = completeHostOverlay()
+  const observed = {
+    recover: [],
+    validate: [],
+    execute: [],
+    complete: []
+  }
+  const originalRecover = fixture.dependencies.recoverCommittedRuleAuthoringApply
+  fixture.dependencies.recoverCommittedRuleAuthoringApply = async (...args) => {
+    observed.recover.push(args[1])
+    return originalRecover(...args)
+  }
+  const originalValidate = fixture.dependencies.validateDisplayedRuleApplyPreview
+  fixture.dependencies.validateDisplayedRuleApplyPreview = async (...args) => {
+    observed.validate.push(args[2])
+    return originalValidate(...args)
+  }
+  const originalExecute = fixture.dependencies.executeRuleApplyTransaction
+  fixture.dependencies.executeRuleApplyTransaction = async (...args) => {
+    observed.execute.push(args[1].workspaceLockToken)
+    return originalExecute(...args)
+  }
+  const originalComplete = fixture.dependencies.persistRuleApplyCompletion
+  fixture.dependencies.persistRuleApplyCompletion = async (...args) => {
+    observed.complete.push(args[4])
+    return originalComplete(...args)
+  }
+
+  const { promise, panel } = await startHost(fake, fixture)
+  await panel.emitMessage({ type: "previewApply" })
+  await panel.emitMessage({ type: "applyApproved" })
+  assert.equal((await promise).status, "applied")
+
+  const finalToken = observed.execute.at(-1)
+  assert.ok(finalToken)
+  assert.equal(observed.recover.at(-1), finalToken)
+  assert.equal(observed.validate.at(-1), finalToken)
+  assert.equal(observed.complete.at(-1), finalToken)
+})
+
+test("requires another explicit apply when the authoritative bundle changes inside the modal", async () => {
+  let postImage = "a".repeat(64)
+  const fake = createFakeVscode({
+    warningResponses: ["Apply approved project rules"],
+    onWarningMessage: () => { postImage = "b".repeat(64) }
+  })
+  let generation = 0
+  const fixture = hostDependencies({
+    buildRuleApplyPlan: (_bundle, _proposal, decisions) => {
+      generation += 1
+      fixture.calls.push(["buildPlan", structuredClone(decisions), generation])
+      return {
+        schema_version: "bob-bazaar-review/rule-apply-plan/v1",
+        run_id: RUN_ID,
+        targets: HOST_TARGETS.map(([asset, targetPath]) => ({
+          asset,
+          path: targetPath,
+          expected_pre_image: { state: "missing" },
+          post_image_sha256: postImage,
+          bytes: Buffer.alloc(0)
+        })),
+        decisions: [],
+        retirements: [],
+        generation
+      }
+    }
+  })
+  fixture.state.decisions = {
+    schema_version: "bob-bazaar-review/proposal-decisions/v1",
+    run_id: RUN_ID,
+    decisions: Object.fromEntries([
+      "candidate-add", "candidate-update", "candidate-retire", "candidate-context", "candidate-prompt"
+    ].map((candidateId) => [candidateId, {
+      decision: candidateId === "candidate-add" ? "reject" : "accept",
+      reviewed_at: REVIEWED_AT
+    }]))
+  }
+  const { promise, panel } = await startHost(fake, fixture)
+
+  await panel.emitMessage({ type: "previewApply" })
+  const displayedDigest = fixture.renderedModels.at(-1).model.preview.planDigest
+  await panel.emitMessage({ type: "applyApproved" })
+
+  assert.equal(fake.warningCalls.length, 1, "the first two plan reads are stable through the modal")
+  assert.equal(fixture.calls.filter(([name]) => name === "execute").length, 0)
+  assert.notEqual(fixture.renderedModels.at(-1).model.preview.planDigest, displayedDigest)
+  assert.match(fixture.renderedModels.at(-1).model.status, /changed during confirmation|inspect.*preview/i)
+  assert.equal(fixture.renderedModels.at(-1).model.canApply, true)
+
+  await panel.emitMessage({ type: "close" })
+  assert.deepEqual(await promise, { status: "closed", runId: RUN_ID })
+})
+
+test("a rolled-back apply invalidates the preview before normal triage resumes", async () => {
+  const fake = createFakeVscode({ warningResponses: ["Apply approved project rules"] })
+  const transactionError = Object.assign(new Error("rolled back safely"), {
+    code: "filesystem_failure",
+    status: "rolled_back"
+  })
+  const fixture = hostDependencies({
+    executeRuleApplyTransaction: async () => {
+      fixture.calls.push(["execute"])
+      throw transactionError
+    },
+    invalidateRuleApplyPreview: async (input) => {
+      fixture.calls.push(["invalidatePreview", structuredClone(input)])
+      return fixture.state.run
+    }
+  })
+  fixture.state.decisions = completeHostOverlay()
+  const { promise, panel } = await startHost(fake, fixture)
+
+  await panel.emitMessage({ type: "previewApply" })
+  assert.equal(fixture.renderedModels.at(-1).model.canApply, true)
+  await panel.emitMessage({ type: "applyApproved" })
+
+  assert.equal(fixture.calls.filter(([name]) => name === "execute").length, 1)
+  assert.equal(fixture.calls.filter(([name]) => name === "invalidatePreview").length, 1)
+  assert.equal(fixture.renderedModels.at(-1).model.canApply, false)
+  assert.equal(fixture.renderedModels.at(-1).model.recovery.length, 0)
+  await panel.emitMessage({ type: "close" })
+  assert.deepEqual(await promise, { status: "closed", runId: RUN_ID })
+})
+
+test("a rollback-failed apply stays open in recovery-only state", async () => {
+  const fake = createFakeVscode({ warningResponses: ["Apply approved project rules"] })
+  let incomplete = []
+  const transactionError = Object.assign(new Error("rollback requires recovery"), {
+    code: "rollback_failed",
+    status: "rollback_failed"
+  })
+  const fixture = hostDependencies({
+    findIncompleteRuleApplyTransactions: async () => {
+      fixture.calls.push(["findIncomplete"])
+      return structuredClone(incomplete)
+    },
+    executeRuleApplyTransaction: async () => {
+      fixture.calls.push(["execute"])
+      incomplete = [{
+        transaction_id: "txn-triage-1",
+        run_id: RUN_ID,
+        status: "rollback_failed",
+        recovery_action: "rollback"
+      }]
+      throw transactionError
+    }
+  })
+  fixture.state.decisions = completeHostOverlay()
+  const { promise, panel } = await startHost(fake, fixture)
+
+  await panel.emitMessage({ type: "previewApply" })
+  await panel.emitMessage({ type: "applyApproved" })
+
+  const model = fixture.renderedModels.at(-1).model
+  assert.equal(fixture.calls.filter(([name]) => name === "execute").length, 1)
+  assert.equal(model.groups.length, 0)
+  assert.deepEqual(model.recovery, [{
+    transactionId: "txn-triage-1",
+    status: "rollback_failed",
+    recoveryAction: "rollback"
+  }])
+  assert.equal(model.canApply, false)
+  await panel.emitMessage({ type: "close" })
+  assert.deepEqual(await promise, { status: "closed", runId: RUN_ID })
+})
+
 test("maps a stale current bundle to a safe warning and never starts a transaction", async () => {
   const fake = createFakeVscode()
   const fixture = hostDependencies({
@@ -1254,7 +1540,13 @@ test("does not expose unpersisted decision, edit, or conflict state after persis
 })
 
 test("blocks normal resume until an incomplete transaction is rolled back", async () => {
-  let incomplete = [{ transaction_id: "txn-incomplete", run_id: RUN_ID, status: "rollback_failed" }]
+  const transactionRunId = "authoring-run-from-another-panel"
+  let incomplete = [{
+    transaction_id: "txn-incomplete",
+    run_id: transactionRunId,
+    status: "rollback_failed",
+    recovery_action: "rollback"
+  }]
   const fake = createFakeVscode()
   const fixture = hostDependencies({
     findIncompleteRuleApplyTransactions: async () => {
@@ -1266,15 +1558,15 @@ test("blocks normal resume until an incomplete transaction is rolled back", asyn
       incomplete = []
       return { status: "rolled_back" }
     },
-    invalidateRuleApplyPreview: async () => {
-      fixture.calls.push(["invalidatePreview"])
+    invalidateRuleApplyPreview: async (input) => {
+      fixture.calls.push(["invalidatePreview", structuredClone(input)])
       delete fixture.state.run.artifacts?.applyPreview
     }
   })
   const { promise, panel } = await startHost(fake, fixture)
 
   assert.ok(panel)
-  assert.deepEqual(fixture.calls.map(([name]) => name), ["recoverCommitted", "findIncomplete"])
+  assert.deepEqual(fixture.calls.map(([name]) => name), ["workspaceLock", "findIncomplete"])
   assert.equal(fixture.renderedModels.at(-1).model.recovery.length, 1)
   await panel.emitMessage({
     type: "recoverTransaction",
@@ -1283,17 +1575,141 @@ test("blocks normal resume until an incomplete transaction is rolled back", asyn
   })
 
   assert.deepEqual(fixture.calls.map(([name]) => name), [
-    "recoverCommitted",
+    "workspaceLock",
     "findIncomplete",
+    "workspaceLock",
     "recover",
     "invalidatePreview",
-    "recoverCommitted",
+    "workspaceLock",
     "findIncomplete",
+    "recoverCommitted",
     "loadState"
   ])
   assert.equal(fixture.renderedModels.at(-1).model.groups[0].operations.length, 3)
   assert.equal(fixture.renderedModels.at(-1).model.canApply, false)
+  assert.deepEqual(
+    fixture.calls.find(([name]) => name === "invalidatePreview")[1],
+    { workspaceRoot: "/workspace/acme", runId: transactionRunId },
+    "rollback must invalidate the transaction run rather than the currently open panel run"
+  )
 
   await panel.emitMessage({ type: "close" })
   assert.deepEqual(await promise, { status: "closed", runId: RUN_ID })
+})
+
+test("only the advertised resume action can complete a durable manifest recovery", async () => {
+  let incomplete = [{
+    transaction_id: "txn-durable-manifest",
+    run_id: RUN_ID,
+    status: "applying",
+    recovery_action: "resume"
+  }]
+  const fake = createFakeVscode()
+  const fixture = hostDependencies({
+    findIncompleteRuleApplyTransactions: async () => structuredClone(incomplete),
+    recoverRuleApplyTransaction: async (_root, transactionId, request) => {
+      fixture.calls.push(["recover", transactionId, structuredClone(request)])
+      incomplete = []
+      return { status: "committed", targets: [] }
+    },
+    recoverCommittedRuleAuthoringApply: async () => ({
+      status: "recovered",
+      runId: RUN_ID,
+      transactionId: "txn-durable-manifest"
+    })
+  })
+  const { promise, panel } = await startHost(fake, fixture)
+
+  await panel.emitMessage({
+    type: "recoverTransaction",
+    transactionId: "txn-durable-manifest",
+    action: "rollback"
+  })
+  assert.equal(fixture.calls.filter(([name]) => name === "recover").length, 0)
+
+  await panel.emitMessage({
+    type: "recoverTransaction",
+    transactionId: "txn-durable-manifest",
+    action: "resume"
+  })
+  assert.equal(fixture.calls.filter(([name]) => name === "recover").length, 1)
+  assert.equal(fixture.calls.filter(([name]) => name === "invalidatePreview").length, 0)
+  assert.deepEqual(await promise, {
+    status: "applied",
+    runId: RUN_ID,
+    transactionId: "txn-durable-manifest"
+  })
+})
+
+test("completes the owning run before a cross-run durable recovery disappears", async () => {
+  const transactionRunId = "authoring-run-durable-owner"
+  let incomplete = [{
+    transaction_id: "txn-cross-run-durable",
+    run_id: transactionRunId,
+    status: "applying",
+    recovery_action: "resume"
+  }]
+  let transactionToken
+  let completionToken
+  const completionInputs = []
+  const fake = createFakeVscode()
+  const fixture = hostDependencies({
+    findIncompleteRuleApplyTransactions: async () => structuredClone(incomplete),
+    recoverRuleApplyTransaction: async (_root, _transactionId, request) => {
+      transactionToken = request.workspaceLockToken
+      incomplete = []
+      return { status: "committed", targets: [] }
+    },
+    recoverCommittedRuleAuthoringApply: async (input, workspaceLockToken) => {
+      completionInputs.push(structuredClone(input))
+      if (input.runId !== transactionRunId) return undefined
+      completionToken = workspaceLockToken
+      return {
+        status: "recovered",
+        runId: transactionRunId,
+        transactionId: "txn-cross-run-durable"
+      }
+    }
+  })
+  const { promise, panel } = await startHost(fake, fixture)
+
+  await panel.emitMessage({
+    type: "recoverTransaction",
+    transactionId: "txn-cross-run-durable",
+    action: "resume"
+  })
+
+  assert.deepEqual(completionInputs, [
+    { workspaceRoot: "/workspace/acme", runId: transactionRunId },
+    { workspaceRoot: "/workspace/acme", runId: RUN_ID }
+  ])
+  assert.equal(completionToken, transactionToken)
+  assert.equal(fixture.calls.filter(([name]) => name === "loadState").length, 1)
+
+  await panel.emitMessage({ type: "close" })
+  assert.deepEqual(await promise, { status: "closed", runId: RUN_ID })
+})
+
+test("a recovered GUI result is not observable until the real workspace lock is released", async (t) => {
+  const root = await temporaryWorkspace(t)
+  const fake = createFakeVscode()
+  const fixture = hostDependencies({
+    withRuleApplyWorkspaceLock: require("../out/ruleAuthoring/ruleApplyTransaction")
+      .withRuleApplyWorkspaceLock,
+    recoverCommittedRuleAuthoringApply: async () => ({
+      status: "recovered",
+      runId: RUN_ID,
+      transactionId: "txn-recovered-before-result"
+    })
+  })
+  const gui = loadGui(fake.vscode)
+  const host = gui.createRuleProposalTriageGuiHost(fixture.dependencies)
+  const result = await host.openRuleProposalTriageGui({ subscriptions: [] }, {
+    workspaceRoot: root,
+    runId: RUN_ID
+  })
+
+  assert.equal(result.status, "applied")
+  assert.equal(await require("../out/ruleAuthoring/ruleApplyTransaction")
+    .withRuleApplyWorkspaceLock(root, "post-recovery-probe", async () => "released"), "released")
 })

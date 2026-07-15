@@ -423,6 +423,18 @@ test("validates applies_when as bounded inert data", () => {
   }
 })
 
+test("rejects GUI-incompatible controls in every proposed rule text field", () => {
+  for (const field of ["category", "title", "description", "review_hint"]) {
+    const proposal = validProposal()
+    proposal.operations[0].rule[field] = `safe-prefix\u0085unsafe-${field}`
+    assertInvalid(validate(proposal), "control_character")
+  }
+
+  const multilineDescription = validProposal()
+  multilineDescription.operations[0].rule.description = "first line\nsecond line\twith detail"
+  assert.equal(validate(multilineDescription).valid, true)
+})
+
 test("rejects controls and managed marker text in proposed Markdown", () => {
   for (const [field, value, code] of [
     ["heading", "unsafe\u0000heading", "control_character"],
