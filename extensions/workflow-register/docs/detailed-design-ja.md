@@ -256,6 +256,74 @@ v1 schema の主な制約は次の通り。
 
 `FileRunStateStore.saveRun()` は一時ファイルに JSON を書き込み、rename する atomic write で保存する。`findRecoverableRun()` は workflow ID、definition hash、workflow file、canonical inputs が一致する継続可能 run を返す。recoverable status には `checkpoint` も含めるが、engine は通常 resume ではなく専用 checkpoint command の対象として扱う。
 
+## 11A. Workflow Run Retention / Cleanup
+
+### 11A.1 Authority と公開surface
+
+`run.json`をstatus、updatedAt、provenanceの正本とし、run-state schemaは変更しない。Pinはrun directory内の`retention.json` sidecar（`workflow-register/run-retention/v1`）に保存する。Malformed/future sidecarはfail-safeでpinnedとして扱う。
+
+公開commandは次の6つで、すべてmanual-onlyである。
+
+```text
+workflowRegister.inspectRunStorage
+workflowRegister.previewRunCleanup
+workflowRegister.cleanupCompletedRuns
+workflowRegister.deleteSelectedRuns
+workflowRegister.pinRun
+workflowRegister.unpinRun
+```
+
+`inspectRunStorage`と`previewRunCleanup`はuntrusted workspaceでもread-onlyで動作する。`cleanupCompletedRuns`、`deleteSelectedRuns`、`pinRun`、`unpinRun`はroot discovery、UI selection、service construction、filesystem accessより前に`requireTrustedWorkspace()`を通す。Multi-rootではroot selectionをrun selectionより先に行い、同じrun IDをroot間で共有しない。
+
+Retention設定は`enabled=false`、`completedDays=30`、`maxCompletedRuns=100`、`maxTotalBytes=524288000`を既定値とする。`enabled`は将来の自動cleanup用予約値で、manual commandの可否には使わない。Startup/timer/background cleanupは実装しない。
+
+### 11A.2 Inventory、planner、apply binding
+
+`runRetentionInventory.ts`はdirect physical run treeをbounded scanし、run revision、retention revision、directory identity、bounded tree fingerprint、measurement completeness、reference graph completenessを収集する。Symlink/junctionをfollowせず、hard-linked fileはbytesを計上しても本文を開かず、runをunsafeとしてcleanup対象外にする。
+
+`runRetention.ts`のpure plannerはage、completed count、total bytes、selected run IDからstable decisionとSHA-256 digestを生成する。次をblockerとして保持する。
+
+- Active/recoverable status: `running`、`paused`、`checkpoint`、`reviewing`、`held`
+- Artifact reuse、hydration、task-snapshot importから参照されるsource run
+- Pinned、future/read-only、unknown、invalid/missing、measurement/reference incomplete
+- Execution lock、pending journal
+- Symlink/junction/hard link/workspace escape/identity changeなどphysical safety不明
+
+`WorkflowRunRetentionService.apply()`はfresh inventoryから同一policyでplanを再構築し、digestとevidence revisionの一致を要求する。明示選択も同じplannerを通り、protected runを迂回しない。
+
+### 11A.3 Cleanup lease と owner guard
+
+保存場所はruns列挙の外に固定する。
+
+```text
+<workflowRoot>/.bob/workflows/run-cleanup-leases/<runId>.json
+<workflowRoot>/.bob/workflows/run-cleanup-leases/<runId>.guard/owner.json
+```
+
+Run ID順にatomic guard-directory `mkdir`でowner guardを取得し、guard ownerとlease JSONに同じcleanup lease v1 tokenを保存する。Normal executionはrun lock取得前にcleanup guard/leaseを確認する。Cleanupはlease取得後にexecution lock、journal、revision、directory identityを再検証する。
+
+Heartbeatとreleaseはguard directoryの`dev`/`ino`、owner bytes/token、lease fileの`dev`/`ino`/`nlink`を再検証する。通常releaseは`<runId>.json`、`owner.json`、`<runId>.guard`の順である。Orphan/new-protocol guardは自動reclaimしない。Owner不一致、unexpected entry、alias/hard link、recent/uncertain ownerはfail-closedで保全する。手動復旧もこのowner-checked順を再現しなければならない。
+
+### 11A.4 Quarantine transaction
+
+```text
+<workflowRoot>/.bob/workflows/run-cleanup-quarantine/<txId>/<runId>
+```
+
+全候補のlease/evidence再検証後、run directoryをtransaction directoryへ順にrenameする。途中rename失敗は移動済みentryを逆順でruns rootへ戻す。全rename成功後、各quarantine entryを再検証して1件ずつpurgeし、最後に空のtransaction/base directoryを削除する。
+
+Rollback、purge、parent cleanupが失敗した場合は`WorkflowRunCleanupIncompleteError`へ`phase`、`committedRunIds`、`residualRunIds`、`retainedQuarantinePath`を保存し、quarantineを削除しない。Node.jsにはidentity-conditional rename/recursive removeがないため、cooperative writerはleaseで排除し、filesystem call直前までidentityを再検証するが、非協調OS actorに対する最終verify-to-call raceは既知の境界として残る。
+
+### 11A.5 Migration publication crash pair
+
+Historical v0 backupは`run-state-v0.backup.json`へcreate-once hard-link publicationする。Tempはruns rootの`.<runId>.<pid>.<uuid>.tmp`である。Initial publicationとrollbackは、operation/identity、byte/domain safety、cleanup `rm`、verification/cleanup handle close、owner closeの順でerrorを選択し、全verification handleのoperation/close settlement後にcleanupへ進む。
+
+Tempとbackupが同一`dev`/`ino`、各`nlink=2`、同一historical bytesのcross-process crash pairとして残っても、自動recoverしない。PID visibilityだけでは別host/container/namespaceのpublisher停止を証明できないためである。Operatorはno-alias、direct containment、exactly one valid temp、`dev`/`ino`/`nlink`、exact bytes、publisher停止を証明した場合だけtemp linkを外し、その直後にbackupの同一identity、`nlink=1`、exact bytesを再確認する。
+
+### 11A.6 Privacy
+
+Inspect/preview/diagnostics/evidenceはrun ID、status、inspection status、bytes、timestamp、blocker、digest/revision、path/identity、件数だけを出力する。Task、artifact、snapshot、state、Bob message本文は出力しない。
+
 ## 12. Run Control Store / Pause
 
 保存場所:
@@ -362,6 +430,9 @@ AI provider は `workflowRegister.aiProviderCommand` で指定する。未設定
 | runControlView | TreeItem、contextValue、icon、Status Bar 集計、refresh。 |
 | taskSnapshots | save、latest、size truncation、includeMessages、prune、findLatest。 |
 | taskSnapshotRecovery | snapshot からの latest assistant text 復旧。 |
+| run retention | pure planner、pin sidecar、physical inventory、reference graph、preview/apply digest、trust split、root-first multi-root、manual-only dispatch。 |
+| cleanup lease / transaction | owner guard、execution exclusion、heartbeat/release、rollback/purge、quarantine residual、symlink/junction/hard-link/alias拒否。 |
+| migration backup | create-once publication、exact bytes、crash-pair preservation、error precedence、all-handle settlement、operator-only recovery。 |
 | resultHandoff | latest assistant text、args 互換、validation failure。 |
 | BobWorkflowFactory | Bob workflow object と step array の構築。 |
 | BobWorkflowMessages | step message、command result、state block の生成。 |
@@ -381,6 +452,8 @@ AI provider は `workflowRegister.aiProviderCommand` で指定する。未設定
 - `RunStateStore` の recoverable 判定を変更した場合は singleStep 継続と resume / retry を確認する。
 - `RunControlState` を変更した場合は `runControl.ts`、`runPause.ts`、Run Control View、単体テスト、実機テストを更新する。
 - `TaskSnapshotPayload` を変更した場合は run diagnostics、snapshot pruning、復帰候補利用を更新する。
+- Retention policy、inventory evidence、lease/guard、quarantineを変更した場合はmanual-only/trust/multi-root/privacy契約、operator recovery、Linux/Windows physical-path testsを同期する。
+- Migration backup publicationを変更した場合は`dev`/`ino`/`nlink`/bytes/no-alias、primary/cleanup/close優先順位、cross-process crash-pair保全を同期する。
 - active step の永続化を検討する場合も、Bob task object や Promise は保存しない。
 
 <!-- REMEDIATION-2026-07-11 -->

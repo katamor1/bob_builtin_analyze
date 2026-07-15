@@ -439,6 +439,70 @@ Pause smoke test.
 | 手順 | 1. `Bob Workflow: テンプレートカスタマイズ Studio` を実行する。<br>2. 標準テンプレートを選択し、`targetLanguage`、`vcs.type`、phase artifact root、input default を編集する。<br>3. Preview / Diff / Readiness を確認する。<br>4. Generate を実行する。<br>5. 既存生成物がある状態で再度 Generate を実行する。 |
 | 期待結果 | 候補は template metadata と一致し、number / boolean / null defaults が保持される。Bazaar profile だけ `bzr --no-aliases` prompt supplement を持ち、Git profile には混入しない。workspace 外または symlink escape の生成先は拒否される。既存 profile / customization / workflow は backup 後に上書きされる。 |
 
+### WR-RT-037 Run storage inspect / cleanup preview
+
+| 項目 | 内容 |
+| --- | --- |
+| 目的 | Retention inventoryとcleanup planが副作用なし、metadata-onlyで表示されることを確認する。 |
+| 手順 | 1. Completed/failed、active、pinned、referenced、journal/lockありのfixture runを用意する。<br>2. `Bob Workflow: 実行ストレージを確認`を実行する。<br>3. `Bob Workflow: 実行クリーンアップをプレビュー`を実行する。<br>4. 実行前後のrun tree、mtime、file hashを比較する。 |
+| 期待結果 | 件数、byte数、status、inspection status、candidate/blocker、digestだけが表示される。Task/artifact/snapshot/state/Bob message本文を含まない。Read-only commandによりfile/directoryが作成・更新・削除されない。 |
+
+### WR-RT-038 Workspace trust split
+
+| 項目 | 内容 |
+| --- | --- |
+| 目的 | Read-onlyとdestructive retention commandのtrust境界を確認する。 |
+| 手順 | 1. Workspaceをuntrustedで開く。<br>2. Inspect/previewを実行する。<br>3. Cleanup/delete/pin/unpinをそれぞれ実行する。<br>4. Trust後に同じ操作を再試行する。 |
+| 期待結果 | Untrustedでもinspect/previewはread-onlyで利用できる。Cleanup/delete/pin/unpinはroot discovery、run selection、service construction、filesystem access前に拒否される。Trust後だけmutation flowへ進む。 |
+
+### WR-RT-039 Multi-root root-first selection
+
+| 項目 | 内容 |
+| --- | --- |
+| 目的 | 同一run IDを持つ2つのrootが混同されないことを確認する。 |
+| 手順 | 1. 2 rootのそれぞれに同じrun ID、異なるstatus/bytes/pinを用意する。<br>2. Inspect、preview、delete selected、pin/unpinを実行する。<br>3. 毎回root選択後にrun選択が出ることを確認する。 |
+| 期待結果 | 選択rootのinventory、digest、pin、lease、quarantineだけを使用する。他rootの同一run IDにread/write/deleteを行わない。 |
+
+### WR-RT-040 Preview/apply binding と protected runs
+
+| 項目 | 内容 |
+| --- | --- |
+| 目的 | Preview後のstale changeが拒否され、protected runが明示選択でも削除されないことを確認する。 |
+| 手順 | 1. Terminal candidateとactive/recoverable/referenced/pinned/locked/journaled fixtureを用意する。<br>2. Previewを取得する。<br>3. Candidateの`run.json`または`retention.json`を別processで更新しapplyする。<br>4. Fresh previewから変更のないterminal candidateをapplyする。 |
+| 期待結果 | Stale digest/revisionはmutation前に拒否される。Protected runはcandidateにならない。Fresh planとmodal確認後だけeligible runがquarantine経由で削除される。 |
+
+### WR-RT-041 Cleanup lease / owner guard recovery
+
+| 項目 | 内容 |
+| --- | --- |
+| 目的 | Cleanup/execution排他とorphan guardのfail-closed/manual recoveryを確認する。 |
+| 手順 | 1. Test workspaceでcleanup中に`.bob/workflows/run-cleanup-leases/<runId>.json`と`<runId>.guard/owner.json`を確認する。<br>2. 同じrunのworkflow executionを開始する。<br>3. Offline fixtureでorphan guardを作り、新しいcleanupを試す。<br>4. 運用ガイドに従い、全writer停止、path/identity/nlink/bytes/token確認後、lease JSON、owner JSON、空guard directoryの順で復旧する。 |
+| 期待結果 | Cleanup中のexecutionは開始しない。Orphan guardは自動reclaimされない。Owner/token/identity不明、unexpected entry、alias/hard linkでは復旧を停止する。正しい順序の手動復旧後だけfresh previewを取得できる。 |
+
+### WR-RT-042 Quarantine rollback / residual recovery
+
+| 項目 | 内容 |
+| --- | --- |
+| 目的 | Rename/rollback/purge failureでtransaction evidenceとresidual directoryが保全されることを確認する。 |
+| 手順 | 1. Test-only failure injectionまたはoffline fixtureで2件目rename、rollback、purge、parent cleanupの各failureを再現する。<br>2. `.bob/workflows/run-cleanup-quarantine/<txId>/<runId>`とtyped errorを確認する。<br>3. `phase`、`committedRunIds`、`residualRunIds`、`retainedQuarantinePath`に従って復旧する。 |
+| 期待結果 | Rename失敗は移動済みentryを逆順rollbackする。Rollback/purgeを完了できなければquarantineを保全し、成功表示しない。Source/target両側存在、identity不一致、記録外entryは手動処理を停止する。 |
+
+### WR-RT-043 Migration crash-pair operator recovery
+
+| 項目 | 内容 |
+| --- | --- |
+| 目的 | Cross-process migration crash pairが自動回復されず、厳密なoperator-only手順だけが許可されることを確認する。 |
+| 手順 | 1. Production workspaceではなく隔離したoffline copyに`.<runId>.<pid>.<uuid>.tmp`と`<runId>/run-state-v0.backup.json`の同一inode 2-link fixtureを用意する。<br>2. Migration/readを実行する。<br>3. No-alias、direct containment、候補1件、同一`dev`/`ino`、双方`nlink=2`、exact historical bytes、publisher停止を記録する。<br>4. Temp linkだけを外し、backupの同一identity、`nlink=1`、exact bytesを再確認する。 |
+| 期待結果 | PIDが不在でも拡張機能は両linkを保全してerrorにする。条件が1つでも不明ならoperatorも変更しない。条件を全て証明した場合だけtemp unlink後のsingle-link backupを利用できる。 |
+
+### WR-RT-044 Retention settings / manual-only behavior
+
+| 項目 | 内容 |
+| --- | --- |
+| 目的 | 4設定の既定値と`enabled`予約契約、自動削除なしを確認する。 |
+| 手順 | 1. 既定値`false/30/100/524288000`を確認する。<br>2. `enabled=false`で6commandを実行する。<br>3. Extension activation、window reload、一定時間待機後のrun treeを比較する。<br>4. `enabled=true`でもactivation/reload/timerによる削除がないことを確認する。 |
+| 期待結果 | `enabled`値に関係なくmanual commandが利用できる。Startup/timer/background deleteが発生しない。Policy値はmanual preview candidateだけに反映される。 |
+
 ## 7. 実機テスト結果記録テンプレート
 
 | 項目 | 記入欄 |
@@ -463,6 +527,8 @@ Pause smoke test.
 - Bob UI 実行と standalone 実行で run state の矛盾がない。
 - Explorer view / Status Bar / Diagnostics / GUI Builder / Template Customization Studio が実機上で操作可能である。
 - failed / held / reviewing / paused の復旧導線が Command Palette から利用できる。
+- WR-RT-037からWR-RT-044のretention/trust/multi-root/transaction/operator-recovery契約が合格する。
+- Preview、diagnostics、evidenceにtask/artifact/snapshot/state本文が含まれない。
 - Developer Tools Console に未処理例外が残らない。
 
 ## 9. 回帰確認の優先度
@@ -470,8 +536,8 @@ Pause smoke test.
 | 優先度 | 対象 |
 | --- | --- |
 | P0 | 起動、workflow 登録、Bob UI full、singleStep、manual completion、run.json 保存。 |
-| P1 | step review、pause / resume、Run Control View、task snapshot、result handoff。 |
-| P2 | GUI Builder、Template Customization Studio、AI authoring、multi-root、snapshot pruning / maxBytes。 |
+| P1 | step review、pause / resume、Run Control View、task snapshot、result handoff、retention preview/apply、trust split、cleanup lease/guard/quarantine、migration crash-pair preservation。 |
+| P2 | GUI Builder、Template Customization Studio、AI authoring、multi-root、snapshot pruning / maxBytes、operator recovery UAT。 |
 | P3 | sourceId / sourceName 設定、duplicate ID、OS 差分確認。 |
 
 <!-- REMEDIATION-2026-07-11 -->
@@ -483,6 +549,8 @@ Pause smoke test.
 4. multi-root workspace で Bob root と VCS root が混同されないこと。
 5. IBM Bob 実環境で workflow source、step review、result handoff、MCP、Webview の代表 smoke を実施し、結果を release evidence に保存すること。
 6. workflow-contracts CI が repository 内の全対象 WORKFLOW.md を検証し成功していること。
+7. RetentionのLinux/Windows full suite、package/VSIX policy、whole-diff reviewがexact final headで成功していること。
+8. Main mergeをProduct Release承認とみなさず、実IBM Bob/Bazaar、same-run-ID multi-root、ReFS/AV、署名/配布/rollback、guard/quarantine/crash-pair recoveryをNO-GO条件としてrelease evidenceへ残すこと。
 
 ## 自動 Pause 実機確認
 

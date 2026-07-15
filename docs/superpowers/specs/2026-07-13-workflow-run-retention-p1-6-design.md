@@ -71,13 +71,15 @@ Noteは任意、最大256文字、制御文字不可。Malformed／future sideca
 Execution lockだけの事後確認ではTOCTOUが残るため、cleanup専用のcross-process leaseを追加する。
 
 ```text
-.bob/workflows/runs/.cleanup-leases/<runId>.json
+.bob/workflows/run-cleanup-leases/<runId>.json
+.bob/workflows/run-cleanup-leases/<runId>.guard/owner.json
 ```
 
-- cleanup applyは候補runのleaseをrun ID順にexclusive createする
+- cleanup applyは候補runのowner guardをrun ID順にatomic `mkdir`し、同じowner tokenのlease JSONをexclusive createする
 - normal workflow executionはrun lock取得前にcleanup leaseを確認し、存在中は待機／busy errorにする
 - cleanupはlease取得後に`run.lock.json`、journal、revision、physical directoryを再確認する
-- cleanup終了時はsuccess／failureを問わず所有token一致でleaseを解放する
+- cleanup終了時はsuccess／failureを問わず所有token、guard directory identity、owner bytesを再検証し、lease JSON、`owner.json`、空guard directoryの順で解放する
+- new-protocol orphan guardは自動reclaimしない。手動復旧は全writer停止、direct contained path、`dev`／`ino`／`nlink=1`、owner/lease token/bytes、heartbeat停止を確認した後、同じ解放順を再現する
 
 ## Quarantine transaction
 
@@ -88,11 +90,11 @@ plan digest検証
 → digest一致
 → cleanup lease取得
 → lock／journal／revision／path再確認
-→ 全候補を.cleanup-quarantine/<transactionId>/へrename
+→ 全候補を.bob/workflows/run-cleanup-quarantine/<transactionId>/へrename
 → 全rename成功後にquarantine削除
 ```
 
-途中rename失敗時は移動済みdirectoryを逆順で元へ戻す。Rollbackも失敗した場合はquarantineを保全し、複合errorを返す。
+Quarantineの正確なentry pathは`.bob/workflows/run-cleanup-quarantine/<transactionId>/<runId>`である。途中rename失敗時は移動済みdirectoryを逆順で元へ戻す。Rollback、purge、parent cleanupが失敗した場合は`phase`、`committedRunIds`、`residualRunIds`、`retainedQuarantinePath`を含むtyped errorを返し、quarantineを保全する。Operatorはsource/targetの存在とidentityを1件ずつ照合し、rollback phaseは逆順restore、purge phaseは既purgeとresidualを区別し、空になったtransaction/base directoryだけを内側から削除する。
 
 ## Commands
 
@@ -104,6 +106,8 @@ plan digest検証
 - `workflowRegister.unpinRun`
 
 PreviewはMarkdownのみ。Applyは同じplannerで再previewし、modal confirmation後に実行する。初期設定ではautomatic cleanupを無効にし、P1-6ではtimer／startup deletionを実装しない。
+
+Inspect/previewはuntrusted workspaceでもread-onlyとする。Cleanup/delete/pin/unpinはworkspace root discovery、run selection、service construction、filesystem accessより前にtrustを要求する。Multi-rootではroot selectionをrun selectionより先に行い、同じrun IDを別root間で混同しない。
 
 ## Settings
 
@@ -125,6 +129,7 @@ PreviewはMarkdownのみ。Applyは同じplannerで再previewし、modal confirm
 - previewとevidenceへinput／state／artifact／snapshot／Bob message本文を出さない
 - plan applyはdigestとrun revisionの両方を検証する
 - no new runtime dependency
+- cross-process migration crash pairは自動回復しない。Operatorがexactly one `.<runId>.<pid>.<uuid>.tmp`と`<runId>/run-state-v0.backup.json`についてdirect contained/no-alias、同一`dev`/`ino`、双方`nlink=2`、exact historical bytes、publisher停止を証明した場合だけtemp linkを外し、backupの同一identity、`nlink=1`、exact bytesを再確認する
 
 ## Compatibility
 
@@ -136,3 +141,5 @@ PreviewはMarkdownのみ。Applyは同じplannerで再previewし、modal confirm
 ## External UAT
 
 Large real workspaces、Windows antivirus／indexer rename contention、multi-root duplicate run IDs、実IBM Bob／Bazaar、signed VSIX installation／rollbackは外部release gateとする。
+
+ReFSのfile identity/link-count、cleanup lease/owner guard/quarantineのmanual recovery、migration crash-pair operator recovery、distribution/upgrade/rollbackもProduct ReleaseのNO-GO条件とする。Main mergeはintegration GOでありProduct Release承認ではない。P2-1 Dry RunとP1-7 layer policyは次期目標として分離する。

@@ -8,6 +8,14 @@
 
 **Tech Stack:** TypeScript, Node.js test runner, VS Code API, existing run state codec, durability files, locks, artifact provenance and workspace-root helpers.
 
+## Delivery status (2026-07-16)
+
+- Tasks 1–6 are implemented on PR #93. Public behavior remains six manual commands, four settings, `run.json` authority, no startup/timer cleanup, no new runtime dependency, and no run-state schema change.
+- Windows CI path-spelling remediation is committed at `31e09ee9` with production code unchanged. The deterministic junction/8.3 reproduction moved from 21 failures to 71/71, and the final five-file focused set passed 100/100.
+- Migration publication/error-precedence remediation is committed at `9df3ddec`. The migration file passed 32/32 and the durability metadata budget passed 1/1 (`read=100`, `replace=298`).
+- Operator documentation and release/review evidence are prepared by Task 7, but RC/final local gates, VSIX evidence, exact-head hosted CI, whole-diff review, squash merge, and cleanup remain open until their real results are recorded.
+- Integration remains NO-GO until PR #93 is merged and verified on `origin/main`. Product Release remains NO-GO until real IBM Bob/Bazaar, multi-root, ReFS/AV, signing/distribution/rollback/operator-recovery UAT.
+
 ## Global constraints
 
 - `run.json` remains authoritative; no run-state schema change.
@@ -107,10 +115,18 @@
 - Create: `docs/release-evidence/workflow-run-retention-p1-6-review-2026-07-13.md`
 - Modify: `docs/workflow-register-feature-roadmap-2026-07-11.md`
 
-- [ ] Document policy, blockers, pin, lease, quarantine, rollback and external UAT.
+- [x] Document policy, blockers, pin, lease, owner guard, quarantine, rollback, migration crash-pair recovery, privacy and external UAT.
 - [ ] Run focused tests, compile, full suite, all policies, audit, package, VSIX policy and `git diff --check`.
 - [ ] Run exact-final-head Linux／Windows `extensions-quality`.
 - [ ] Run `workflow-contracts` and `code-consistency-review-scaffold` when relevant.
 - [ ] Whole-diff review: Critical 0 / Important 0.
 - [ ] Remove temporary verification workflows.
 - [ ] Update PR body, mark ready and squash merge.
+
+Evidence order:
+
+1. Push the code + operator-doc RC and require Linux/Windows RC CI GREEN.
+2. Record RC run IDs, local gates, VSIX SHA-256/bytes/UTC/entry count, and review result in the release evidence files.
+3. Push one evidence-only commit and rerun exact-final-head CI.
+4. Record final-head run IDs and final review result in the PR body only; do not create a self-referential evidence commit.
+5. After GitHub reports `mergedAt` and a merge commit on `origin/main`, remove only the clean PR worktree and local feature branch. Do not delete the remote branch without explicit authorization.
