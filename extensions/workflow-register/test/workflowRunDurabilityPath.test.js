@@ -75,6 +75,201 @@ test("durability path creates, replaces, appends and conditionally removes direc
   assert.equal(await readRunDurabilityFile(workspace, "run-1", "run.lock.json"), undefined)
 })
 
+test("exclusive durability creation removes its owned file after a primary sync failure", async (t) => {
+  const workspace = root(t)
+  const runDirectory = path.join(workspace, ".bob", "workflows", "runs", "run-1")
+  const lockFile = path.join(runDirectory, "run.lock.json")
+  const primaryError = Object.assign(new Error("CREATE_SYNC_PRIMARY_SENTINEL"), { code: "EIO" })
+  const originalOpen = fsp.open
+  const openedHandles = new Set()
+  const settledHandles = new Set()
+  let syncFailureInjected = 0
+  try {
+    fsp.open = async (target, ...args) => {
+      const handle = await originalOpen(target, ...args)
+      openedHandles.add(handle)
+      const originalClose = handle.close.bind(handle)
+      handle.close = async (...closeArgs) => {
+        try {
+          return await originalClose(...closeArgs)
+        } finally {
+          settledHandles.add(handle)
+        }
+      }
+      if (await matchesPhysicalPath(target, lockFile)) {
+        const originalSync = handle.sync.bind(handle)
+        handle.sync = async (...syncArgs) => {
+          const result = await originalSync(...syncArgs)
+          if (syncFailureInjected === 0) {
+            syncFailureInjected += 1
+            throw primaryError
+          }
+          return result
+        }
+      }
+      return handle
+    }
+
+    let observedError
+    await assert.rejects(
+      createRunDurabilityFile(workspace, "run-1", "run.lock.json", "owner\n"),
+      (error) => {
+        observedError = error
+        return true
+      }
+    )
+    assert.strictEqual(observedError, primaryError)
+    assert.equal(observedError.message, "CREATE_SYNC_PRIMARY_SENTINEL")
+  } finally {
+    fsp.open = originalOpen
+  }
+
+  assert.equal(syncFailureInjected, 1, "the real file handle sync hook must fail once")
+  assert.equal(openedHandles.size > 0, true)
+  assert.deepEqual(settledHandles, openedHandles, "every opened file and directory handle must settle before rejection")
+  await assert.rejects(fsp.access(lockFile), { code: "ENOENT" })
+  assert.equal(
+    await createRunDurabilityFile(workspace, "run-1", "run.lock.json", "retry-owner\n"),
+    true,
+    "the same process must be able to retry after the failed exclusive create"
+  )
+})
+
+test("exclusive durability creation preserves the primary error over close and cleanup failures", async (t) => {
+  const workspace = root(t)
+  const runDirectory = path.join(workspace, ".bob", "workflows", "runs", "run-1")
+  const lockFile = path.join(runDirectory, "run.lock.json")
+  const primaryError = Object.assign(new Error("CREATE_PRIMARY_SENTINEL"), { code: "EIO" })
+  const closeError = Object.assign(new Error("CREATE_CLOSE_SENTINEL"), { code: "EIO" })
+  const cleanupError = Object.assign(new Error("CREATE_CLEANUP_SENTINEL"), { code: "EACCES" })
+  const originalOpen = fsp.open
+  const originalRm = fsp.rm
+  let syncFailureInjected = 0
+  let closeFailureInjected = 0
+  let cleanupAttempts = 0
+  let createdHandleSettled = false
+  try {
+    fsp.open = async (target, ...args) => {
+      const handle = await originalOpen(target, ...args)
+      if (!await matchesPhysicalPath(target, lockFile)) return handle
+      const originalSync = handle.sync.bind(handle)
+      handle.sync = async (...syncArgs) => {
+        const result = await originalSync(...syncArgs)
+        if (syncFailureInjected === 0) {
+          syncFailureInjected += 1
+          throw primaryError
+        }
+        return result
+      }
+      const originalClose = handle.close.bind(handle)
+      handle.close = async (...closeArgs) => {
+        const result = await originalClose(...closeArgs)
+        createdHandleSettled = true
+        if (closeFailureInjected === 0) {
+          closeFailureInjected += 1
+          throw closeError
+        }
+        return result
+      }
+      return handle
+    }
+    fsp.rm = async (target, ...args) => {
+      if (await matchesPhysicalPath(target, lockFile)) {
+        cleanupAttempts += 1
+        throw cleanupError
+      }
+      return originalRm(target, ...args)
+    }
+
+    let observedError
+    await assert.rejects(
+      createRunDurabilityFile(workspace, "run-1", "run.lock.json", "owner\n"),
+      (error) => {
+        observedError = error
+        return true
+      }
+    )
+    assert.strictEqual(observedError, primaryError)
+    assert.match(observedError.message, /CREATE_PRIMARY_SENTINEL/)
+    assert.match(observedError.message, /exclusive creation handle close also failed.*CREATE_CLOSE_SENTINEL/i)
+    assert.match(observedError.message, /exclusive creation cleanup also failed.*CREATE_CLEANUP_SENTINEL/i)
+    assert.deepEqual(observedError.suppressedErrors, [closeError, cleanupError])
+    assert.equal(Object.getOwnPropertyDescriptor(observedError, "suppressedErrors")?.enumerable, false)
+    assert.equal(Object.isFrozen(observedError.suppressedErrors), true)
+  } finally {
+    fsp.open = originalOpen
+    fsp.rm = originalRm
+  }
+
+  assert.equal(syncFailureInjected, 1)
+  assert.equal(closeFailureInjected, 1)
+  assert.equal(createdHandleSettled, true, "the underlying exclusive-create handle must be closed before cleanup")
+  assert.equal(cleanupAttempts, 1)
+  assert.equal(await fsp.readFile(lockFile, "utf8"), "owner\n")
+})
+
+test("exclusive durability failure cleanup never removes an identity-changed replacement", async (t) => {
+  const workspace = root(t)
+  const runDirectory = path.join(workspace, ".bob", "workflows", "runs", "run-1")
+  const lockFile = path.join(runDirectory, "run.lock.json")
+  const displacedFile = path.join(runDirectory, "run.lock.displaced.json")
+  const primaryError = Object.assign(new Error("CREATE_RACE_PRIMARY_SENTINEL"), { code: "EIO" })
+  const originalOpen = fsp.open
+  const originalLstat = fsp.lstat
+  const originalRm = fsp.rm
+  let syncFailureInjected = 0
+  let replacementInstalled = 0
+  let removalAttempts = 0
+  try {
+    fsp.open = async (target, ...args) => {
+      const handle = await originalOpen(target, ...args)
+      if (!await matchesPhysicalPath(target, lockFile)) return handle
+      const originalSync = handle.sync.bind(handle)
+      handle.sync = async (...syncArgs) => {
+        const result = await originalSync(...syncArgs)
+        if (syncFailureInjected === 0) {
+          syncFailureInjected += 1
+          throw primaryError
+        }
+        return result
+      }
+      return handle
+    }
+    fsp.lstat = async (target, ...args) => {
+      if (replacementInstalled === 0 && await matchesPhysicalPath(target, lockFile)) {
+        replacementInstalled += 1
+        await fsp.rename(lockFile, displacedFile)
+        await fsp.writeFile(lockFile, "replacement-owner\n")
+      }
+      return originalLstat(target, ...args)
+    }
+    fsp.rm = async (target, ...args) => {
+      if (await matchesPhysicalPath(target, lockFile)) removalAttempts += 1
+      return originalRm(target, ...args)
+    }
+
+    let observedError
+    await assert.rejects(
+      createRunDurabilityFile(workspace, "run-1", "run.lock.json", "original-owner\n"),
+      (error) => {
+        observedError = error
+        return true
+      }
+    )
+    assert.strictEqual(observedError, primaryError)
+  } finally {
+    fsp.open = originalOpen
+    fsp.lstat = originalLstat
+    fsp.rm = originalRm
+  }
+
+  assert.equal(syncFailureInjected, 1)
+  assert.equal(replacementInstalled, 1, "the cleanup identity-check hook must install a replacement")
+  assert.equal(removalAttempts, 0, "an identity-changed target must never be passed to removal")
+  assert.equal(await fsp.readFile(lockFile, "utf8"), "replacement-owner\n")
+  assert.equal(await fsp.readFile(displacedFile, "utf8"), "original-owner\n")
+})
+
 test("durability path rejects a symlink file target", async (t) => {
   const workspace = root(t)
   const outside = root(t)

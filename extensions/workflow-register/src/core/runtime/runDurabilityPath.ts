@@ -255,8 +255,13 @@ export async function createRunDurabilityFile(
     if (!createRunDirectory && isMissingPathError(error)) throw new RunDurabilityDirectoryMissingError(runId)
     throw error
   }
+  let createdIdentity: FileIdentity | undefined
+  let operationFailed = false
+  let operationError: unknown
   try {
-    assertSingleLinkedRegularFile(await handle.stat({ bigint: true }), durabilityLabel(runId, fileName))
+    const created = await handle.stat({ bigint: true })
+    assertSingleLinkedRegularFile(created, durabilityLabel(runId, fileName))
+    createdIdentity = { dev: created.dev, ino: created.ino }
     await handle.writeFile(content, { encoding: "utf8" })
     await handle.sync()
     const handleStat = await handle.stat({ bigint: true })
@@ -265,10 +270,55 @@ export async function createRunDurabilityFile(
     if (!sameIdentity(handleStat, target)) {
       throw new Error(`${durabilityLabel(runId, fileName)} changed during exclusive creation.`)
     }
-  } finally {
-    await handle.close()
+  } catch (error) {
+    operationFailed = true
+    operationError = error
   }
-  await syncDirectory(runDirectory, `Workflow run '${runId}' directory`)
+  let closeFailed = false
+  let closeError: unknown
+  try {
+    await handle.close()
+  } catch (error) {
+    closeFailed = true
+    closeError = error
+  }
+  if (operationFailed || closeFailed) {
+    const primaryError = operationFailed ? operationError : closeError
+    const secondaryFailures: ExclusiveCreateSecondaryFailure[] = []
+    if (operationFailed && closeFailed) {
+      secondaryFailures.push({
+        detail: `exclusive creation handle close also failed: ${formatError(closeError)}`,
+        error: closeError
+      })
+    }
+    if (createdIdentity) {
+      try {
+        await removeFailedExclusiveCreation(runDirectory, filePath, createdIdentity, runId, fileName)
+      } catch (error) {
+        secondaryFailures.push({
+          detail: `exclusive creation cleanup also failed: ${formatError(error)}`,
+          error
+        })
+      }
+    }
+    throw appendExclusiveCreateFailureContext(primaryError, secondaryFailures)
+  }
+  try {
+    await syncDirectory(runDirectory, `Workflow run '${runId}' directory`)
+  } catch (error) {
+    const secondaryFailures: ExclusiveCreateSecondaryFailure[] = []
+    if (createdIdentity) {
+      try {
+        await removeFailedExclusiveCreation(runDirectory, filePath, createdIdentity, runId, fileName)
+      } catch (cleanupError) {
+        secondaryFailures.push({
+          detail: `exclusive creation cleanup also failed: ${formatError(cleanupError)}`,
+          error: cleanupError
+        })
+      }
+    }
+    throw appendExclusiveCreateFailureContext(error, secondaryFailures)
+  }
   return true
 }
 
@@ -684,6 +734,71 @@ async function directoryStillMatches(directory: DirectDirectory): Promise<boolea
   } catch {
     return false
   }
+}
+
+type ExclusiveCreateSecondaryFailure = {
+  detail: string
+  error: unknown
+}
+
+async function removeFailedExclusiveCreation(
+  directory: DirectDirectory,
+  filePath: string,
+  createdIdentity: FileIdentity,
+  runId: string,
+  fileName: RunDurabilityFileName
+): Promise<void> {
+  const label = durabilityLabel(runId, fileName)
+  await assertDirectoryIdentity(directory, `Workflow run '${runId}' directory`)
+  let current: FileIdentity
+  try {
+    current = await directRegularFile(filePath, directory, label)
+  } catch (error) {
+    if (isMissingPathError(error)) return
+    throw error
+  }
+  if (!sameIdentity(createdIdentity, current)) return
+  const rechecked = await directRegularFile(filePath, directory, label)
+  if (!sameIdentity(createdIdentity, rechecked)) return
+  await assertDirectoryIdentity(directory, `Workflow run '${runId}' directory`)
+  await fs.rm(filePath)
+  await assertDirectoryIdentity(directory, `Workflow run '${runId}' directory`)
+  await syncDirectory(directory, `Workflow run '${runId}' directory`)
+}
+
+function appendExclusiveCreateFailureContext(
+  primary: unknown,
+  secondaryFailures: readonly ExclusiveCreateSecondaryFailure[]
+): unknown {
+  if (secondaryFailures.length === 0) return primary
+  if (primary instanceof Error) {
+    try {
+      primary.message = `${primary.message}; ${secondaryFailures.map((failure) => failure.detail).join("; ")}`
+    } catch {
+      // Failure context is best-effort; annotation must never replace the primary error.
+    }
+  }
+  addSuppressedErrors(primary, secondaryFailures.map((failure) => failure.error))
+  return primary
+}
+
+function addSuppressedErrors(primary: unknown, suppressedErrors: readonly unknown[]): void {
+  if ((typeof primary !== "object" || primary === null) && typeof primary !== "function") return
+  try {
+    const existing = Reflect.get(primary, "suppressedErrors")
+    Object.defineProperty(primary, "suppressedErrors", {
+      configurable: true,
+      enumerable: false,
+      value: Object.freeze(Array.isArray(existing) ? [...existing, ...suppressedErrors] : [...suppressedErrors]),
+      writable: false
+    })
+  } catch {
+    // Suppression metadata is best-effort; annotation must never replace the primary error.
+  }
+}
+
+function formatError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
 }
 
 function durabilityLabel(runId: string, fileName: string): string {
