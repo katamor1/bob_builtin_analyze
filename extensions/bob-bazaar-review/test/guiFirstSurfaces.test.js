@@ -166,3 +166,57 @@ test("Campaign Dashboard command is registered and Review GUI opens it with fixe
   assert.match(reviewSource, /campaignId/)
   assert.doesNotMatch(html, /onclick=/)
 })
+
+test("project rule authoring is a GUI-first environment, source-scope, and AI-consent surface", () => {
+  const { renderRuleAuthoringGuiHtml } = require("../out/ui/ruleAuthoringGuiHtml")
+  const html = renderRuleAuthoringGuiHtml({
+    cspSource: "vscode-resource:",
+    phase: "sources",
+    environment: {
+      workspaceName: "project-one",
+      workspaceReady: true,
+      bobExtensionAvailable: true,
+      configuredBobModelRoute: "Configured Bob workflow model"
+    },
+    runId: "authoring-run-1",
+    resumableRuns: [],
+    sources: [{
+      sourceId: "selected-1",
+      logicalName: "engineering-policy.docx",
+      mediaType: "docx",
+      byteSize: 1024,
+      extractionStatus: "success",
+      warnings: []
+    }],
+    chunks: [{
+      chunkId: "chunk-1",
+      sourceId: "src-aaaaaaaaaaaa",
+      title: "Engineering policy",
+      locator: "Heading: Engineering",
+      utf8Bytes: 128,
+      included: true
+    }],
+    aiPayload: {
+      logicalNames: ["engineering-policy.docx"],
+      selectedChunkCount: 1,
+      utf8Bytes: 128
+    },
+    warnings: [],
+    scopeOverflow: false,
+    exclusionsApproved: true,
+    canConfirmAiPayload: true,
+    status: "Ready for explicit AI consent"
+  }, "nonce-rule-authoring")
+
+  assert.match(html, /Environment/i)
+  assert.match(html, /Source Selection/i)
+  assert.match(html, /Extraction (?:Preview|Scope)/i)
+  assert.match(html, /AI (?:Payload|Consent)/i)
+  assert.match(html, /Configured Bob workflow model/)
+  assert.match(html, /engineering-policy\.docx/)
+  assert.match(html, /data-action="chooseSources"/)
+  assert.match(html, /data-action="extractSources"/)
+  assert.match(html, /data-action="confirmAiPayload"/)
+  assert.match(html, /nonce-rule-authoring/)
+  assert.doesNotMatch(html, /onclick=/)
+})
