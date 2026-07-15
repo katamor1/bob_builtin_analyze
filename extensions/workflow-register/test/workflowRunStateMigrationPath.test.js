@@ -936,6 +936,73 @@ test("migration rollback never deletes a replacement backup inode", async (t) =>
   )
 })
 
+test("migration rolls back a linked owner when first backup metadata verification fails", async (t) => {
+  const root = tempRoot()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const runId = "20260712T000000Z-post-link-metadata-000000000027"
+  const historical = "post-link-metadata-history\n"
+  await prepareRunDirectory(root, runId)
+  const rootRunsDirectory = runsDirectory(root)
+  const backupPath = path.join(runDirectory(root, runId), "run-state-v0.backup.json")
+  const originalOpen = fsp.open
+  const originalLink = fsp.link
+  const originalLstat = fsp.lstat
+  let linked = false
+  let bytesMutated = false
+  let metadataFailureInjected = false
+
+  fsp.link = async (existingPath, newPath) => {
+    await originalLink(existingPath, newPath)
+    if (!linked && samePath(newPath, backupPath)) {
+      linked = true
+      const mutationHandle = await originalOpen(existingPath, "r+")
+      try {
+        await mutationHandle.truncate(0)
+        await mutationHandle.writeFile("attacker-post-link\n", "utf8")
+        await mutationHandle.sync()
+        bytesMutated = true
+      } finally {
+        await mutationHandle.close()
+      }
+    }
+  }
+  fsp.lstat = async (target, ...args) => {
+    if (linked && !metadataFailureInjected && samePath(target, backupPath)) {
+      metadataFailureInjected = true
+      const error = new Error("simulated first post-link backup metadata EIO")
+      error.code = "EIO"
+      throw error
+    }
+    return originalLstat(target, ...args)
+  }
+
+  let observedError
+  try {
+    observedError = await ensureContainedRunStateMigrationBackup(root, runId, historical)
+      .then(() => undefined, (error) => error)
+  } finally {
+    fsp.open = originalOpen
+    fsp.link = originalLink
+    fsp.lstat = originalLstat
+  }
+
+  assert.ok(observedError)
+  assert.match(observedError.message, /simulated first post-link backup metadata EIO/)
+  assert.equal(observedError.code, "EIO")
+  assert.equal(linked, true)
+  assert.equal(bytesMutated, true)
+  assert.equal(metadataFailureInjected, true)
+  await assert.rejects(fsp.access(backupPath), { code: "ENOENT" })
+  assert.deepEqual(
+    (await fsp.readdir(rootRunsDirectory)).filter((name) => name.startsWith(`.${runId}.`) && name.endsWith(".tmp")),
+    []
+  )
+
+  await ensureContainedRunStateMigrationBackup(root, runId, historical)
+  assert.equal(await fsp.readFile(backupPath, "utf8"), historical)
+  assert.equal((await fsp.lstat(backupPath)).nlink, 1)
+})
+
 test("migration rollback retains the owner handle while preserving a foreign replacement", async (t) => {
   const root = tempRoot()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
@@ -1249,6 +1316,82 @@ test("migration EEXIST cleanup removal error outranks owner close failure", asyn
   await fsp.rm(ownedTempPath)
 })
 
+test("migration EEXIST success surfaces cleanup path verification close failure", async (t) => {
+  const root = tempRoot()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const runId = "20260712T000000Z-cleanup-path-close-000000000029"
+  const historical = "cleanup-path-close-history\n"
+  await prepareRunDirectory(root, runId)
+  const rootRunsDirectory = runsDirectory(root)
+  const backupPath = path.join(runDirectory(root, runId), "run-state-v0.backup.json")
+  const originalOpen = fsp.open
+  const originalLink = fsp.link
+  let linkRaceCreated = false
+  let ownedTempOpenCount = 0
+  let cleanupPathHandle
+  let closeCleanupPathForTestCleanup
+  let cleanupPathCloseAttempted = false
+
+  fsp.open = async (target, ...args) => {
+    const handle = await originalOpen(target, ...args)
+    const resolved = path.resolve(String(target))
+    const isOwnedTemp = path.dirname(resolved) === path.resolve(rootRunsDirectory)
+      && path.basename(resolved).startsWith(`.${runId}.`)
+      && path.basename(resolved).endsWith(".tmp")
+    if (isOwnedTemp) {
+      ownedTempOpenCount += 1
+      if (ownedTempOpenCount === 2) {
+        cleanupPathHandle = handle
+        const realClose = handle.close.bind(handle)
+        closeCleanupPathForTestCleanup = realClose
+        Object.defineProperty(handle, "close", {
+          configurable: true,
+          value: async () => {
+            cleanupPathCloseAttempted = true
+            await realClose()
+            const error = new Error("simulated cleanup path verification close EIO")
+            error.code = "EIO"
+            throw error
+          }
+        })
+      }
+    }
+    return handle
+  }
+  fsp.link = async (existingPath, newPath) => {
+    if (!linkRaceCreated && samePath(newPath, backupPath)) {
+      linkRaceCreated = true
+      await fsp.writeFile(backupPath, historical, "utf8")
+      const error = new Error("simulated matching backup EEXIST for cleanup close")
+      error.code = "EEXIST"
+      throw error
+    }
+    return originalLink(existingPath, newPath)
+  }
+
+  let observedError
+  try {
+    observedError = await ensureContainedRunStateMigrationBackup(root, runId, historical)
+      .then(() => undefined, (error) => error)
+  } finally {
+    fsp.open = originalOpen
+    fsp.link = originalLink
+    if (cleanupPathHandle && !cleanupPathCloseAttempted) await closeCleanupPathForTestCleanup()
+  }
+
+  assert.ok(observedError)
+  assert.match(observedError.message, /simulated cleanup path verification close EIO/)
+  assert.equal(linkRaceCreated, true)
+  assert.equal(ownedTempOpenCount, 2)
+  assert.equal(cleanupPathCloseAttempted, true)
+  assert.equal(await fsp.readFile(backupPath, "utf8"), historical)
+  assert.equal((await fsp.lstat(backupPath)).nlink, 1)
+  assert.deepEqual(
+    (await fsp.readdir(rootRunsDirectory)).filter((name) => name.startsWith(`.${runId}.`) && name.endsWith(".tmp")),
+    []
+  )
+})
+
 test("linked publication verification preserves primary stat error when verification close fails", async (t) => {
   const root = tempRoot()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
@@ -1367,6 +1510,81 @@ test("linked publication verification surfaces close failure after a successful 
     (await fsp.readdir(rootRunsDirectory)).filter((name) => name.startsWith(`.${runId}.`) && name.endsWith(".tmp")),
     []
   )
+})
+
+test("migration rollback cleanup error outranks linked verification close-only failure", async (t) => {
+  const root = tempRoot()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const runId = "20260712T000000Z-verification-cleanup-000000000028"
+  const historical = "verification-cleanup-history\n"
+  await prepareRunDirectory(root, runId)
+  const rootRunsDirectory = runsDirectory(root)
+  const backupPath = path.join(runDirectory(root, runId), "run-state-v0.backup.json")
+  const originalOpen = fsp.open
+  const originalRm = fsp.rm
+  let verificationHandle
+  let closeVerificationForTestCleanup
+  let verificationCloseAttempted = false
+  let cleanupRmAttempted = false
+
+  fsp.open = async (target, ...args) => {
+    const handle = await originalOpen(target, ...args)
+    if (!verificationHandle && samePath(target, backupPath)) {
+      verificationHandle = handle
+      const realClose = handle.close.bind(handle)
+      closeVerificationForTestCleanup = realClose
+      Object.defineProperty(handle, "close", {
+        configurable: true,
+        value: async () => {
+          verificationCloseAttempted = true
+          await realClose()
+          const error = new Error("simulated linked verification close-only EIO")
+          error.code = "EIO"
+          throw error
+        }
+      })
+    }
+    return handle
+  }
+  fsp.rm = async (target, ...args) => {
+    if (!cleanupRmAttempted && samePath(target, backupPath)) {
+      cleanupRmAttempted = true
+      const error = new Error("simulated rollback cleanup rm EIO")
+      error.code = "EIO"
+      throw error
+    }
+    return originalRm(target, ...args)
+  }
+
+  let observedError
+  try {
+    observedError = await ensureContainedRunStateMigrationBackup(root, runId, historical)
+      .then(() => undefined, (error) => error)
+  } finally {
+    fsp.open = originalOpen
+    fsp.rm = originalRm
+    if (verificationHandle && !verificationCloseAttempted) await closeVerificationForTestCleanup()
+  }
+
+  assert.ok(observedError)
+  assert.match(observedError.message, /simulated rollback cleanup rm EIO/)
+  assert.doesNotMatch(observedError.message, /simulated linked verification close-only EIO/)
+  assert.equal(verificationCloseAttempted, true)
+  assert.equal(cleanupRmAttempted, true)
+  const [ownedTempName] = (await fsp.readdir(rootRunsDirectory))
+    .filter((name) => name.startsWith(`.${runId}.`) && name.endsWith(".tmp"))
+  assert.ok(ownedTempName)
+  const ownedTempPath = path.join(rootRunsDirectory, ownedTempName)
+  const [tempStat, backupStat] = await Promise.all([
+    fsp.lstat(ownedTempPath, { bigint: true }),
+    fsp.lstat(backupPath, { bigint: true })
+  ])
+  assert.equal(tempStat.dev, backupStat.dev)
+  assert.equal(tempStat.ino, backupStat.ino)
+  assert.equal(tempStat.nlink, 2n)
+  assert.equal(backupStat.nlink, 2n)
+  assert.equal(await fsp.readFile(ownedTempPath, "utf8"), historical)
+  assert.equal(await fsp.readFile(backupPath, "utf8"), historical)
 })
 
 test("aggregate linked verification waits for a peer primary error before cleanup", async (t) => {

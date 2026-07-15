@@ -29,6 +29,10 @@ interface SettledHandleOperation<T> {
   closeFailure: CapturedFailure
 }
 
+interface CleanupPathSettlement {
+  closeFailure: CapturedFailure
+}
+
 interface LinkedPublicationRead {
   filePath: string
   root: string
@@ -88,9 +92,13 @@ async function ensureContainedRunStateMigrationBackupUnlocked(
   const tempPath = path.join(runsRoot.path, `.${runId}.${process.pid}.${randomUUID()}.tmp`)
   let tempHandle: Awaited<ReturnType<typeof fs.open>> | undefined
   let tempIdentity: FileIdentity | undefined
-  let publicationLinked = false
+  let publicationLinkCreated = false
   let publicationSucceeded = false
   let operationFailure: CapturedFailure = { failed: false }
+  let verificationCloseFailure: CapturedFailure = { failed: false }
+  const captureVerificationCloseFailure = (error: unknown): void => {
+    verificationCloseFailure = { failed: true, error }
+  }
 
   try {
     await assertDirectoryIdentity(runsRoot, "Workflow runs directory")
@@ -127,6 +135,7 @@ async function ensureContainedRunStateMigrationBackupUnlocked(
     await assertDirectoryIdentity(runDirectory, `Workflow run '${runId}' directory`)
     try {
       await fs.link(tempPath, backupPath)
+      publicationLinkCreated = true
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error
       const snapshot = await readContainedRunStateMigrationBackup(workspaceRoot, runId)
@@ -138,7 +147,6 @@ async function ensureContainedRunStateMigrationBackupUnlocked(
       linkedPublicationFile(tempPath, root, `Workflow run '${runId}' migration backup temporary file`),
       linkedPublicationFile(backupPath, root, `Workflow run '${runId}' migration backup`)
     ])
-    if (sameIdentity(linkedTemp, linkedTarget)) publicationLinked = true
     if (linkedTemp.nlink !== 2n || linkedTarget.nlink !== 2n) {
       throw new Error(`Workflow run '${runId}' migration backup must have exactly two links during create-once publication.`)
     }
@@ -165,7 +173,8 @@ async function ensureContainedRunStateMigrationBackupUnlocked(
         if (!linkedTempBytes.equals(expectedBytes) || !linkedTargetBytes.equals(expectedBytes)) {
           throw new Error(`Workflow run '${runId}' migration backup publication bytes changed before create-once publication was finalized.`)
         }
-      }
+      },
+      captureVerificationCloseFailure
     )
     await fs.rm(tempPath)
     await readAndValidateLinkedPublicationFiles(
@@ -181,23 +190,31 @@ async function ensureContainedRunStateMigrationBackupUnlocked(
         if (!finalizedBytes.equals(expectedBytes)) {
           throw new Error(`Workflow run '${runId}' migration backup publication bytes changed while finalizing create-once publication.`)
         }
-      }
+      },
+      captureVerificationCloseFailure
     )
     await assertDirectoryIdentity(runsRoot, "Workflow runs directory")
     await assertDirectoryIdentity(runDirectory, `Workflow run '${runId}' directory`)
     publicationSucceeded = true
   } catch (error) {
-    operationFailure = { failed: true, error }
+    if (!verificationCloseFailure.failed) operationFailure = { failed: true, error }
     throw error
   } finally {
     let cleanupFailure: CapturedFailure = { failed: false }
+    let cleanupPathCloseFailure: CapturedFailure = { failed: false }
     let closeFailure: CapturedFailure = { failed: false }
     try {
       if (tempHandle && await directoryStillMatches(runsRoot)) {
-        if (publicationLinked && !publicationSucceeded && await directoryStillMatches(runDirectory)) {
-          await removeDirectFileOwnedByHandle(backupPath, root, tempHandle)
+        if (publicationLinkCreated && !publicationSucceeded && await directoryStillMatches(runDirectory)) {
+          const backupCleanup = await removeDirectFileOwnedByHandle(backupPath, root, tempHandle)
+          if (!cleanupPathCloseFailure.failed && backupCleanup.closeFailure.failed) {
+            cleanupPathCloseFailure = backupCleanup.closeFailure
+          }
         }
-        await removeDirectFileOwnedByHandle(tempPath, root, tempHandle)
+        const tempCleanup = await removeDirectFileOwnedByHandle(tempPath, root, tempHandle)
+        if (!cleanupPathCloseFailure.failed && tempCleanup.closeFailure.failed) {
+          cleanupPathCloseFailure = tempCleanup.closeFailure
+        }
       }
     } catch (error) {
       cleanupFailure = { failed: true, error }
@@ -209,6 +226,8 @@ async function ensureContainedRunStateMigrationBackupUnlocked(
     }
     if (!operationFailure.failed) {
       if (cleanupFailure.failed) throw cleanupFailure.error
+      throwIfCapturedFailure(verificationCloseFailure)
+      throwIfCapturedFailure(cleanupPathCloseFailure)
       if (closeFailure.failed) throw closeFailure.error
     }
   }
@@ -389,7 +408,8 @@ async function linkedPublicationFile(
 
 async function readAndValidateLinkedPublicationFiles<T>(
   reads: readonly LinkedPublicationRead[],
-  validate: (bytes: readonly Buffer[]) => T
+  validate: (bytes: readonly Buffer[]) => T,
+  captureCloseFailure?: (error: unknown) => void
 ): Promise<T> {
   const outcomes = await Promise.all(reads.map((read) => settleLinkedPublicationFileRead(read)))
   const bytes: Buffer[] = []
@@ -399,7 +419,10 @@ async function readAndValidateLinkedPublicationFiles<T>(
   }
   const result = validate(bytes)
   for (const outcome of outcomes) {
-    if (outcome.closeFailure.failed) throw outcome.closeFailure.error
+    if (outcome.closeFailure.failed) {
+      captureCloseFailure?.(outcome.closeFailure.error)
+      throw outcome.closeFailure.error
+    }
   }
   return result
 }
@@ -450,6 +473,10 @@ async function withHandleClosePrecedence<T>(
   if (outcome.operation.failed) throw outcome.operation.error
   if (outcome.closeFailure.failed) throw outcome.closeFailure.error
   return outcome.operation.value
+}
+
+function throwIfCapturedFailure(failure: CapturedFailure): void {
+  if (failure.failed) throw failure.error
 }
 
 async function settleHandleOperation<T>(
@@ -508,23 +535,23 @@ async function removeDirectFileOwnedByHandle(
   filePath: string,
   root: string,
   ownerHandle: Awaited<ReturnType<typeof fs.open>>
-): Promise<boolean> {
+): Promise<CleanupPathSettlement> {
   const noFollow = typeof constants.O_NOFOLLOW === "number" ? constants.O_NOFOLLOW : 0
   let pathHandle: Awaited<ReturnType<typeof fs.open>> | undefined
-  try {
+  const removeOwnedPath = async (): Promise<void> => {
     try {
       const ownerBefore = await ownerHandle.stat({ bigint: true })
-      if (!ownerBefore.isFile()) return false
+      if (!ownerBefore.isFile()) return
       const before = await fs.lstat(filePath, { bigint: true })
       if (
         before.isSymbolicLink()
         || !before.isFile()
         || !sameIdentity(before, ownerBefore)
         || before.nlink !== ownerBefore.nlink
-      ) return false
+      ) return
       const physicalBefore = await fs.realpath(filePath)
       assertPhysicalContainment(root, physicalBefore, filePath)
-      if (!sameCanonicalPath(filePath, physicalBefore)) return false
+      if (!sameCanonicalPath(filePath, physicalBefore)) return
 
       pathHandle = await fs.open(filePath, constants.O_RDONLY | noFollow)
       const opened = await pathHandle.stat({ bigint: true })
@@ -535,7 +562,7 @@ async function removeDirectFileOwnedByHandle(
         || !sameIdentity(ownerBefore, ownerOpened)
         || !sameIdentity(ownerOpened, opened)
         || ownerOpened.nlink !== opened.nlink
-      ) return false
+      ) return
 
       const after = await fs.lstat(filePath, { bigint: true })
       if (
@@ -544,39 +571,43 @@ async function removeDirectFileOwnedByHandle(
         || !sameIdentity(before, after)
         || !sameIdentity(after, opened)
         || after.nlink !== opened.nlink
-      ) {
-        return false
-      }
+      ) return
       const physicalAfter = await fs.realpath(filePath)
       assertPhysicalContainment(root, physicalAfter, filePath)
-      if (!sameCanonicalPath(filePath, physicalAfter)) return false
+      if (!sameCanonicalPath(filePath, physicalAfter)) return
       const ownerAfter = await ownerHandle.stat({ bigint: true })
       if (
         !ownerAfter.isFile()
         || !sameIdentity(ownerOpened, ownerAfter)
         || !sameIdentity(ownerAfter, after)
         || ownerAfter.nlink !== after.nlink
-      ) return false
+      ) return
     } catch {
-      return false
+      return
     }
 
     try {
       await fs.rm(filePath)
-      return true
     } catch (error) {
-      if (isMissingPathError(error)) return false
+      if (isMissingPathError(error)) return
       throw error
     }
-  } finally {
-    if (pathHandle) {
-      try {
-        await pathHandle.close()
-      } catch {
-        // Cleanup is best-effort and must not replace the publication result.
-      }
-    }
   }
+
+  let removalFailure: CapturedFailure = { failed: false }
+  try {
+    await removeOwnedPath()
+  } catch (error) {
+    removalFailure = { failed: true, error }
+  }
+  let closeFailure: CapturedFailure = { failed: false }
+  try {
+    if (pathHandle) await pathHandle.close()
+  } catch (error) {
+    closeFailure = { failed: true, error }
+  }
+  throwIfCapturedFailure(removalFailure)
+  return { closeFailure }
 }
 
 interface OwnedMigrationTemp {
