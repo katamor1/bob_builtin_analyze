@@ -43,6 +43,10 @@ export const PROJECT_RULES_INIT_INPUT_SCHEMA = objectSchema({
   cwd: stringProp("Workspace root")
 }, ["cwd"])
 
+export const PROJECT_RULES_BUNDLE_INPUT_SCHEMA = objectSchema({
+  cwd: stringProp("Workspace root containing the approved .bob/review assets")
+}, ["cwd"])
+
 export const PROJECT_RULES_OPTIONAL_PATH_INPUT_SCHEMA = objectSchema({
   cwd: stringProp("Workspace root"),
   path: optionalStringProp("Optional checklist path, workspace-relative or absolute")

@@ -13,8 +13,11 @@ import {
 } from "../bazaar/reviewTarget"
 import { isBobCodeExtensionAvailable } from "../bob/bobCodeExtension"
 import { addMarkdownPacketToBobContext } from "../bob/bobContext"
-import { loadProjectChecklistRequired, loadReviewResultSchemaRequired } from "../projectRules/io"
-import { buildProjectRulesSection } from "../projectRules/packet"
+import { buildProjectRulesSectionFromBundle } from "../projectRules/packet"
+import {
+  loadProjectRuleBundle,
+  PROJECT_RULE_BUNDLE_LIMITS
+} from "../ruleAuthoring/ruleBundle"
 import {
   buildReviewRunMetadataSection,
   loadReviewRun,
@@ -501,11 +504,11 @@ function getMaxAddedFileContentBytes(): number {
 
 async function buildProjectRulesSectionForWorkspace(workspaceRoot: string): Promise<string> {
   const config = vscode.workspace.getConfiguration("bobBazaar")
-  const [checklist, schema] = await Promise.all([
-    loadProjectChecklistRequired(workspaceRoot, config.get<string>("projectRules.checklistPath", ".bob/review/checklist.json")),
-    loadReviewResultSchemaRequired(workspaceRoot, config.get<string>("projectRules.schemaPath", ".bob/review/review-result.schema.json"))
-  ])
-  return buildProjectRulesSection({ checklist, schema })
+  const bundle = await loadProjectRuleBundle(workspaceRoot, {
+    checklistPath: config.get<string>("projectRules.checklistPath", ".bob/review/checklist.json"),
+    schemaPath: config.get<string>("projectRules.schemaPath", ".bob/review/review-result.schema.json")
+  })
+  return buildProjectRulesSectionFromBundle(bundle, PROJECT_RULE_BUNDLE_LIMITS)
 }
 
 async function addPacketToBobContext(uri: vscode.Uri, packet: string) {

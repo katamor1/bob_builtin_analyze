@@ -1,5 +1,10 @@
 import { ProjectChecklist } from "./types"
 import { fencedCodeBlock } from "../bazaar/markdownFence"
+import type {
+  ProjectRuleBundle,
+  ProjectRuleBundleLimits
+} from "../ruleAuthoring/ruleBundle"
+import { PROJECT_RULE_BUNDLE_LIMITS } from "../ruleAuthoring/ruleBundle"
 
 export interface ProjectRulesPacketOptions {
   checklist: ProjectChecklist
@@ -51,4 +56,93 @@ export function buildProjectRulesSection(options: ProjectRulesPacketOptions): st
     "- `not_applicable`: the rule clearly does not apply to this change.",
     "- `blocked`: a required tool, file, revision, or checklist cannot be loaded."
   ].join("\n")
+}
+
+/** Render every approved stable rule asset through the same bounded packet contract. */
+export function buildProjectRulesSectionFromBundle(
+  bundle: ProjectRuleBundle,
+  limits: ProjectRuleBundleLimits
+): string {
+  assertTextWithinLimit(
+    serializeJsonForPacket(bundle.checklist, "Project checklist"),
+    effectiveLimit(limits.maxChecklistBytes, PROJECT_RULE_BUNDLE_LIMITS.maxChecklistBytes, "checklist"),
+    "Project checklist"
+  )
+  assertTextWithinLimit(
+    serializeJsonForPacket(bundle.reviewResultSchema, "Review result schema"),
+    effectiveLimit(limits.maxReviewResultSchemaBytes, PROJECT_RULE_BUNDLE_LIMITS.maxReviewResultSchemaBytes, "review result schema"),
+    "Review result schema"
+  )
+
+  const additions: string[] = []
+  if (bundle.projectContext.length > 0) {
+    assertTextWithinLimit(
+      bundle.projectContext,
+      effectiveLimit(limits.maxOptionalMarkdownBytes, PROJECT_RULE_BUNDLE_LIMITS.maxOptionalMarkdownBytes, "optional Markdown"),
+      "Project context"
+    )
+    additions.push([
+      "### project-context.md",
+      "",
+      "Use this approved project context when it is relevant to a checklist decision.",
+      "",
+      fencedCodeBlock("markdown", bundle.projectContext)
+    ].join("\n"))
+  }
+  if (bundle.reviewPromptAddendum.length > 0) {
+    assertTextWithinLimit(
+      bundle.reviewPromptAddendum,
+      effectiveLimit(limits.maxOptionalMarkdownBytes, PROJECT_RULE_BUNDLE_LIMITS.maxOptionalMarkdownBytes, "optional Markdown"),
+      "Review prompt addendum"
+    )
+    additions.push([
+      "### review-prompt-addendum.md",
+      "",
+      "Apply these approved additional review instructions together with the checklist.",
+      "",
+      fencedCodeBlock("markdown", bundle.reviewPromptAddendum)
+    ].join("\n"))
+  }
+  if (bundle.provenanceSummary !== undefined) {
+    const serialized = JSON.stringify(bundle.provenanceSummary, null, 2)
+    assertTextWithinLimit(
+      serialized,
+      effectiveLimit(limits.maxProvenanceSummaryBytes, PROJECT_RULE_BUNDLE_LIMITS.maxProvenanceSummaryBytes, "provenance summary"),
+      "Approved rule provenance summary"
+    )
+    additions.push([
+      "### rule provenance summary",
+      "",
+      "This summary contains source metadata only; it is not a substitute for review evidence.",
+      "",
+      fencedCodeBlock("json", serialized)
+    ].join("\n"))
+  }
+
+  const legacySection = buildProjectRulesSection({
+    checklist: bundle.checklist,
+    schema: bundle.reviewResultSchema
+  })
+  return additions.length > 0
+    ? `${legacySection}\n\n${additions.join("\n\n")}`
+    : legacySection
+}
+
+function effectiveLimit(configured: number, hardLimit: number, label: string): number {
+  if (!Number.isSafeInteger(configured) || configured < 0) {
+    throw new Error(`${label} byte limit must be a non-negative safe integer`)
+  }
+  return Math.min(configured, hardLimit)
+}
+
+function assertTextWithinLimit(value: string, limit: number, label: string): void {
+  if (Buffer.byteLength(value, "utf8") > limit) {
+    throw new Error(`${label} exceeds its byte limit`)
+  }
+}
+
+function serializeJsonForPacket(value: unknown, label: string): string {
+  const serialized = JSON.stringify(value, null, 2)
+  if (serialized === undefined) throw new Error(`${label} is not JSON serializable`)
+  return serialized
 }

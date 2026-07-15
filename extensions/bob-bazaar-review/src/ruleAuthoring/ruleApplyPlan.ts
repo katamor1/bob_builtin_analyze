@@ -246,7 +246,7 @@ export function buildRuleApplyPlan(
     throw new Error("Proposal run identity is invalid")
   }
   const current = parseCurrentBundle(bundle)
-  validateProvenanceIntegrity(current.provenance, current.sources, {
+  validateApprovedRuleProvenanceIntegrity(current.provenance, current.sources, {
     rules: new Set(current.checklist.rules.map(({ id }) => id)),
     projectContext: new Set(current.projectContext.sections.map(({ id }) => id)),
     promptAddendum: new Set(current.promptAddendum.sections.map(({ id }) => id))
@@ -366,10 +366,10 @@ function parseCurrentBundle(bundle: RuleApplyBundle): ParsedCurrentBundle {
     projectContext: parseManagedMarkdown(projectContextText, "CTX"),
     promptAddendum: parseManagedMarkdown(promptAddendumText, "PRM"),
     sources: bundle.ruleSources.state === "present"
-      ? parseSourceManifest(bundle.ruleSources.bytes)
+      ? parseApprovedRuleSourceManifest(bundle.ruleSources.bytes)
       : emptySourceManifest(),
     provenance: bundle.ruleProvenance.state === "present"
-      ? parseProvenance(bundle.ruleProvenance.bytes)
+      ? parseApprovedRuleProvenance(bundle.ruleProvenance.bytes)
       : emptyProvenance()
   }
 }
@@ -761,7 +761,7 @@ function buildProvenance(
   }
   const finalContext = parseManagedMarkdown(projectContextText, "CTX")
   const finalPrompt = parseManagedMarkdown(promptAddendumText, "PRM")
-  validateProvenanceIntegrity(provenance, mergedSources.manifest, {
+  validateApprovedRuleProvenanceIntegrity(provenance, mergedSources.manifest, {
     rules: new Set(checklist.rules.map(({ id }) => id)),
     projectContext: new Set(finalContext.sections.map(({ id }) => id)),
     promptAddendum: new Set(finalPrompt.sections.map(({ id }) => id))
@@ -972,7 +972,7 @@ function validateSourceManifest(value: RuleSourceManifestV1, maxSourceCount: num
   }
 }
 
-function parseSourceManifest(bytes: Uint8Array): RuleSourceManifestV1 {
+export function parseApprovedRuleSourceManifest(bytes: Uint8Array): RuleSourceManifestV1 {
   if (bytes.byteLength > MAX_APPROVED_RULE_SOURCE_MANIFEST_BYTES) {
     throw new Error("Approved rule source manifest exceeds its byte limit")
   }
@@ -981,7 +981,7 @@ function parseSourceManifest(bytes: Uint8Array): RuleSourceManifestV1 {
   return structuredClone(parsed as RuleSourceManifestV1)
 }
 
-function parseProvenance(bytes: Uint8Array): RuleProvenanceV1 {
+export function parseApprovedRuleProvenance(bytes: Uint8Array): RuleProvenanceV1 {
   const parsed = parseJsonBytes(bytes, "Approved rule provenance")
   if (
     !isPlainObject(parsed) ||
@@ -1048,7 +1048,7 @@ function validateMarkdownProvenanceEntry(value: unknown): asserts value is RuleP
   validateProvenanceSourceRefs(value.source_refs)
 }
 
-function validateProvenanceIntegrity(
+export function validateApprovedRuleProvenanceIntegrity(
   provenance: RuleProvenanceV1,
   sources: RuleSourceManifestV1,
   targets?: FinalTargetIds

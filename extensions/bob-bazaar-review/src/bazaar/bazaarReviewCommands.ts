@@ -3,8 +3,11 @@ import { BazaarClient } from "./bazaar"
 import { isBobCodeExtensionAvailable } from "../bob/bobCodeExtension"
 import { addMarkdownPacketToBobContext } from "../bob/bobContext"
 import { resolveBzrPath } from "./bzrPathTrust"
-import { loadProjectChecklistRequired, loadReviewResultSchemaRequired } from "../projectRules/io"
-import { buildProjectRulesSection } from "../projectRules/packet"
+import { buildProjectRulesSectionFromBundle } from "../projectRules/packet"
+import {
+  loadProjectRuleBundle,
+  PROJECT_RULE_BUNDLE_LIMITS
+} from "../ruleAuthoring/ruleBundle"
 import { buildReviewPacket } from "./reviewPacket"
 import { clampMaxAddedFileContentBytes, clampMaxDiffBytes, maxBufferForDiffBytes } from "./reviewLimits"
 import { buildTargetMetadataSection, prepareTarget } from "./reviewTarget"
@@ -110,11 +113,8 @@ async function buildProjectRulesSectionForWorkspace(workspaceRoot: string): Prom
   const config = vscode.workspace.getConfiguration("bobBazaar")
   const checklistPath = config.get<string>("projectRules.checklistPath", ".bob/review/checklist.json")
   const schemaPath = config.get<string>("projectRules.schemaPath", ".bob/review/review-result.schema.json")
-  const [checklist, schema] = await Promise.all([
-    loadProjectChecklistRequired(workspaceRoot, checklistPath),
-    loadReviewResultSchemaRequired(workspaceRoot, schemaPath)
-  ])
-  return buildProjectRulesSection({ checklist, schema })
+  const bundle = await loadProjectRuleBundle(workspaceRoot, { checklistPath, schemaPath })
+  return buildProjectRulesSectionFromBundle(bundle, PROJECT_RULE_BUNDLE_LIMITS)
 }
 
 function makeBazaarClient(signal?: AbortSignal): BazaarClient {

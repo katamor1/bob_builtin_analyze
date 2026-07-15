@@ -41,9 +41,7 @@ export async function loadProjectChecklist(workspaceRoot: string, explicitPath?:
   const checklistPath = explicitPath ? resolveWorkspacePath(workspaceRoot, explicitPath) : getProjectRulesPaths(workspaceRoot).checklistPath
   try {
     const raw = await readJsonText(checklistPath)
-    const parsed = JSON.parse(raw)
-    assertChecklist(parsed, checklistPath)
-    return parsed
+    return parseProjectChecklistJson(raw, checklistPath)
   } catch (error: any) {
     if (error?.code === "ENOENT") {
       return DEFAULT_CHECKLIST
@@ -56,9 +54,7 @@ export async function loadProjectChecklistRequired(workspaceRoot: string, explic
   const checklistPath = explicitPath ? resolveWorkspacePath(workspaceRoot, explicitPath) : getProjectRulesPaths(workspaceRoot).checklistPath
   try {
     const raw = await readJsonText(checklistPath)
-    const parsed = JSON.parse(raw)
-    assertChecklist(parsed, checklistPath)
-    return parsed
+    return parseProjectChecklistJson(raw, checklistPath)
   } catch (error: any) {
     if (error?.code === "ENOENT") {
       throw new Error(`Project checklist file not found: ${checklistPath}。プロジェクト review checklist ファイルが見つかりません。`)
@@ -103,6 +99,13 @@ export function resolveWorkspacePath(workspaceRoot: string, maybeRelativePath: s
     throw new Error(`Project review rule path escapes the workspace: ${maybeRelativePath}。プロジェクト review rule のパスがワークスペース外を指しています。外部パスを明示的に許可する場合は ${ALLOW_EXTERNAL_REVIEW_RULES_ENV}=1 を設定してください。`)
   }
   return target
+}
+
+/** Parse checklist JSON that was read through a caller-owned bounded I/O path. */
+export function parseProjectChecklistJson(raw: string, filePath: string): ProjectChecklist {
+  const parsed: unknown = JSON.parse(raw)
+  assertChecklist(parsed, filePath)
+  return parsed
 }
 
 function isWorkspaceEscapingPath(relativePath: string): boolean {

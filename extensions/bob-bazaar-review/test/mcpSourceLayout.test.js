@@ -26,6 +26,9 @@ test("MCP server separates JSON-RPC plumbing from Bazaar and project-rules tool 
 
   const projectRulesToolsSource = readMcpSource("projectRulesTools.ts")
   assert.match(projectRulesToolsSource, /from "\.\.\/projectRules\//)
+  assert.match(projectRulesToolsSource, /project_rules_get_context/)
+  assert.match(projectRulesToolsSource, /project_rules_get_provenance/)
+  assert.match(projectRulesToolsSource, /loadProjectRuleBundle/)
 })
 
 test("MCP tool contracts keep input and output types separate from tool implementations", () => {

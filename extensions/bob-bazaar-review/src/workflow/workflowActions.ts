@@ -1,9 +1,14 @@
 import * as vscode from "vscode"
 import {
-  loadProjectChecklistRequired,
-  loadReviewResultSchemaRequired
-} from "../projectRules/io"
+  buildProjectRulesSectionFromBundle
+} from "../projectRules/packet"
 import { reviewPacketRepositoryRootFromState, selectReviewPacketText } from "../bazaar/reviewPacketSelection"
+import {
+  loadProjectRuleBundle,
+  PROJECT_RULE_BUNDLE_LIMITS,
+  type ProjectRuleBundleBaseHashes,
+  type ProjectRuleProvenanceSummary
+} from "../ruleAuthoring/ruleBundle"
 import { BazaarReviewContextResult, buildReviewContextResult } from "./workflowBridge"
 import {
   firstStringArg,
@@ -36,6 +41,16 @@ interface ReviewRulesBridgeResult {
   categories: string[]
   /** project 用に読み込んだ review result JSON schema。 */
   reviewResultSchema: unknown
+  /** 承認済みの任意 project context。未作成なら空文字列。 */
+  projectContext: string
+  /** 承認済みの任意 review prompt addendum。未作成なら空文字列。 */
+  reviewPromptAddendum: string
+  /** 文書本文を含まない承認済み provenance metadata。 */
+  provenanceSummary?: ProjectRuleProvenanceSummary
+  /** 読み込み時点の stable asset SHA-256。 */
+  baseHashes: ProjectRuleBundleBaseHashes
+  /** command、GUI と同一の bounded renderer が生成した rule section。 */
+  projectRulesSection: string
   /** review result JSON schema の top-level key 一覧。 */
   schemaTopLevelKeys: string[]
   /** command と workflow output にそのまま出せる人間向け summary。 */
@@ -79,10 +94,10 @@ export async function loadReviewRules(input?: WorkflowActionExecutionInput): Pro
   const config = vscode.workspace.getConfiguration("bobBazaar")
   const checklistPath = config.get<string>("projectRules.checklistPath", ".bob/review/checklist.json")
   const schemaPath = config.get<string>("projectRules.schemaPath", ".bob/review/review-result.schema.json")
-  const [checklist, schema] = await Promise.all([
-    loadProjectChecklistRequired(folder.uri.fsPath, checklistPath),
-    loadReviewResultSchemaRequired(folder.uri.fsPath, schemaPath)
-  ])
+  const bundle = await loadProjectRuleBundle(folder.uri.fsPath, { checklistPath, schemaPath })
+  const checklist = bundle.checklist
+  const schema = bundle.reviewResultSchema
+  const projectRulesSection = buildProjectRulesSectionFromBundle(bundle, PROJECT_RULE_BUNDLE_LIMITS)
   const categories = Array.from(new Set(checklist.rules.map((rule) => rule.category))).sort()
   const ruleIds = checklist.rules.map((rule) => rule.id)
   const schemaTopLevelKeys = schema && typeof schema === "object" ? Object.keys(schema).sort() : []
@@ -96,6 +111,11 @@ export async function loadReviewRules(input?: WorkflowActionExecutionInput): Pro
     ruleIds,
     categories,
     reviewResultSchema: schema,
+    projectContext: bundle.projectContext,
+    reviewPromptAddendum: bundle.reviewPromptAddendum,
+    provenanceSummary: bundle.provenanceSummary,
+    baseHashes: bundle.baseHashes,
+    projectRulesSection,
     schemaTopLevelKeys,
     summary: `プロジェクトレビュー規約 ${checklist.rules.length} 件を ${categories.length} カテゴリから読み込みました。レビュー結果 schema も利用できます。`
   }

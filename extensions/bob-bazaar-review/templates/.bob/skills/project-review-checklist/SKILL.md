@@ -16,6 +16,13 @@ Bobは通常の不具合レビューに加えて、`.bob/review/checklist.json` 
 6. Markdown `[x]` チェックリストは表示用であり、正本はJSONとする。
 7. 変更を勝手に修正しない。レビューと指摘に徹する。
 
+## Approved companion asset policy
+
+- 任意の `project-context.md` または `review-prompt-addendum.md` が存在する場合だけ、読み取り専用 MCP tool `project_rules_get_context` で取得してレビュー判断に使用する。
+- 任意の `rule-sources.json` または `rule-provenance.json` が存在する場合だけ、読み取り専用 MCP tool `project_rules_get_provenance` で文書本文を含まない provenance metadata を取得できる。
+- companion asset が存在しない旧ワークスペースは正常であり、checklist と schema だけでレビューを続ける。
+- `.bob/review/rule-authoring/**` は無視対象の実行時 artifact であり、抽出済み資料本文を含み得るため絶対に読まない（never read）。MCP tool を利用できない場合も、このディレクトリを代替入力にしてはいけない。
+
 ## Bazaar command policy
 
 AIチャット、Skill、workflow、追加調査で Bazaar CLI を直接使う場合、必ず `bzr --no-aliases <command>` 形式で実行する。`--no-aliases` を付けない `bzr <command>` の使用は100%禁止する。
