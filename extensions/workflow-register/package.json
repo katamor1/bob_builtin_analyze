@@ -476,7 +476,7 @@
           "type": "integer",
           "default": 100,
           "minimum": 0,
-          "description": "保持する completed run 数の目安。超過分を手動 cleanup preview の候補にします。"
+          "description": "保持する terminal run（completed / failed）数の目安。超過分を手動 cleanup preview の候補にします。"
         },
         "workflowRegister.runs.retention.maxTotalBytes": {
           "type": "integer",

@@ -357,6 +357,10 @@ test("retention settings are disabled by default and bounded", () => {
   assert.equal(properties["workflowRegister.runs.retention.completedDays"].default, 30)
   assert.equal(properties["workflowRegister.runs.retention.maxCompletedRuns"].type, "integer")
   assert.equal(properties["workflowRegister.runs.retention.maxCompletedRuns"].default, 100)
+  assert.match(
+    properties["workflowRegister.runs.retention.maxCompletedRuns"].description,
+    /terminal run.*completed.*failed/
+  )
   assert.equal(properties["workflowRegister.runs.retention.maxTotalBytes"].type, "integer")
   assert.equal(properties["workflowRegister.runs.retention.maxTotalBytes"].default, 524288000)
   for (const key of [
