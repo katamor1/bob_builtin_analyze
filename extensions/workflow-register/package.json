@@ -52,6 +52,12 @@
     "onCommand:workflowRegister.refreshRunsView",
     "onCommand:workflowRegister.openCurrentStepInBuilder",
     "onCommand:workflowRegister.inspectRunDiagnostics",
+    "onCommand:workflowRegister.inspectRunStorage",
+    "onCommand:workflowRegister.previewRunCleanup",
+    "onCommand:workflowRegister.cleanupCompletedRuns",
+    "onCommand:workflowRegister.deleteSelectedRuns",
+    "onCommand:workflowRegister.pinRun",
+    "onCommand:workflowRegister.unpinRun",
     "onCommand:workflowRegister.designWorkflowWithAi",
     "onCommand:workflowRegister.improveWorkflowWithAi",
     "onCommand:workflowRegister.explainWorkflowDiagnostics",
@@ -236,6 +242,36 @@
       {
         "command": "workflowRegister.inspectRunDiagnostics",
         "title": "診断を確認",
+        "category": "Bob Workflow"
+      },
+      {
+        "command": "workflowRegister.inspectRunStorage",
+        "title": "実行ストレージを確認",
+        "category": "Bob Workflow"
+      },
+      {
+        "command": "workflowRegister.previewRunCleanup",
+        "title": "実行クリーンアップをプレビュー",
+        "category": "Bob Workflow"
+      },
+      {
+        "command": "workflowRegister.cleanupCompletedRuns",
+        "title": "完了済み実行をクリーンアップ",
+        "category": "Bob Workflow"
+      },
+      {
+        "command": "workflowRegister.deleteSelectedRuns",
+        "title": "選択した実行を削除",
+        "category": "Bob Workflow"
+      },
+      {
+        "command": "workflowRegister.pinRun",
+        "title": "実行を保持",
+        "category": "Bob Workflow"
+      },
+      {
+        "command": "workflowRegister.unpinRun",
+        "title": "実行の保持を解除",
         "category": "Bob Workflow"
       },
       {
@@ -424,6 +460,29 @@
           "type": "string",
           "default": "Asia/Tokyo",
           "description": "pauseAtLocalTime の判定に使う IANA timezone。"
+        },
+        "workflowRegister.runs.retention.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "将来の自動 run cleanup を許可する予約設定。現在の手動 retention command はこの値に関係なく利用できます。"
+        },
+        "workflowRegister.runs.retention.completedDays": {
+          "type": "number",
+          "default": 30,
+          "minimum": 0,
+          "description": "完了からこの日数を超えた terminal run を手動 cleanup preview の候補にします。"
+        },
+        "workflowRegister.runs.retention.maxCompletedRuns": {
+          "type": "integer",
+          "default": 100,
+          "minimum": 0,
+          "description": "保持する completed run 数の目安。超過分を手動 cleanup preview の候補にします。"
+        },
+        "workflowRegister.runs.retention.maxTotalBytes": {
+          "type": "integer",
+          "default": 524288000,
+          "minimum": 0,
+          "description": "run storage の総 byte 上限の目安。超過分を手動 cleanup preview の候補にします。"
         }
       }
     },
@@ -545,6 +604,24 @@
         },
         {
           "command": "workflowRegister.editWorkflowInBuilder"
+        },
+        {
+          "command": "workflowRegister.inspectRunStorage"
+        },
+        {
+          "command": "workflowRegister.previewRunCleanup"
+        },
+        {
+          "command": "workflowRegister.cleanupCompletedRuns"
+        },
+        {
+          "command": "workflowRegister.deleteSelectedRuns"
+        },
+        {
+          "command": "workflowRegister.pinRun"
+        },
+        {
+          "command": "workflowRegister.unpinRun"
         },
         {
           "command": "bobProcess.validateCatalog"

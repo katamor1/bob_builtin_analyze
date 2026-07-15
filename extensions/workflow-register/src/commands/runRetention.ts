@@ -3,6 +3,7 @@ import type { WorkflowRunCleanupPlan, WorkflowRunRetentionPolicy } from "../core
 import { WorkflowRunRetentionService } from "../core/runtime/runRetentionService"
 import { fallbackWorkspaceRootCandidates, findWorkflowRootCandidates } from "../core/workspaceRoots"
 import { showMarkdownReport } from "../reports"
+import { requireTrustedWorkspace } from "../workspaceTrust"
 
 export async function inspectWorkflowRunStorage(input?: unknown): Promise<unknown> {
   const root = await selectWorkflowRoot(workspaceRootFromInput(input), "Workflow Run Storage")
@@ -40,6 +41,8 @@ export async function previewWorkflowRunCleanup(input?: unknown): Promise<Workfl
 }
 
 export async function cleanupCompletedWorkflowRuns(input?: unknown): Promise<unknown> {
+  const trustError = await requireTrustedWorkspace("clean up completed workflow runs")
+  if (trustError) return trustError
   const root = await selectWorkflowRoot(workspaceRootFromInput(input), "Apply Workflow Run Cleanup")
   if (!root) return "No workflow workspace selected."
   const service = new WorkflowRunRetentionService({ workspaceRoot: root })
@@ -47,6 +50,8 @@ export async function cleanupCompletedWorkflowRuns(input?: unknown): Promise<unk
 }
 
 export async function deleteSelectedWorkflowRuns(input?: unknown): Promise<unknown> {
+  const trustError = await requireTrustedWorkspace("delete selected workflow runs")
+  if (trustError) return trustError
   const root = await selectWorkflowRoot(workspaceRootFromInput(input), "Delete Selected Workflow Runs")
   if (!root) return "No workflow workspace selected."
   const service = new WorkflowRunRetentionService({ workspaceRoot: root })
@@ -69,10 +74,14 @@ export async function deleteSelectedWorkflowRuns(input?: unknown): Promise<unkno
 }
 
 export async function pinWorkflowRun(input?: unknown): Promise<unknown> {
+  const trustError = await requireTrustedWorkspace("pin workflow run")
+  if (trustError) return trustError
   return setWorkflowRunPinned(input, true)
 }
 
 export async function unpinWorkflowRun(input?: unknown): Promise<unknown> {
+  const trustError = await requireTrustedWorkspace("unpin workflow run")
+  if (trustError) return trustError
   return setWorkflowRunPinned(input, false)
 }
 

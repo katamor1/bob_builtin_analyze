@@ -82,7 +82,7 @@ jobs:
       - name: Extension Host smoke
         env:
           SMOKE_EXTENSION_ID: local.workflow-register
-          SMOKE_COMMANDS: workflowRegister.reload,workflowRegister.runWorkflow
+          SMOKE_COMMANDS: workflowRegister.reload,workflowRegister.runWorkflow,workflowRegister.inspectRunStorage,workflowRegister.previewRunCleanup,workflowRegister.cleanupCompletedRuns,workflowRegister.deleteSelectedRuns,workflowRegister.pinRun,workflowRegister.unpinRun
         run: |
           node ../../scripts/extension-host-smoke.test.js --write-config
           xvfb-run -a ./node_modules/.bin/vscode-test
@@ -222,7 +222,7 @@ jobs:
         include:
           - extension: workflow-register
             extension_id: local.workflow-register
-            smoke_commands: workflowRegister.reload,workflowRegister.runWorkflow
+            smoke_commands: workflowRegister.reload,workflowRegister.runWorkflow,workflowRegister.inspectRunStorage,workflowRegister.previewRunCleanup,workflowRegister.cleanupCompletedRuns,workflowRegister.deleteSelectedRuns,workflowRegister.pinRun,workflowRegister.unpinRun
             extra_test_files: ""
             workspace_folder: ""
           - extension: bob-bazaar-review
