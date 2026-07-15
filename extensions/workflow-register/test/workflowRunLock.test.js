@@ -97,6 +97,152 @@ test("same-run callers serialize while different runs and roots remain independe
   assert.deepEqual(order, ["first:start", "first:end", "second"])
 })
 
+test("outer owner drains an entered reentrant call before a new owner can enter", async (t) => {
+  const workspace = root(t)
+  const innerEntered = deferred()
+  const releaseInner = deferred()
+  const outerCallbackReturned = deferred()
+  const contenderEntered = deferred()
+  const releaseContender = deferred()
+  const contentionObserved = deferred()
+  const retryLock = deferred()
+  const order = []
+  let inner
+  let outer
+  let contender
+
+  try {
+    outer = withWorkflowRunLock(workspace, "run-1", async () => {
+      order.push("outer:start")
+      inner = withWorkflowRunLock(workspace, "run-1", async () => {
+        order.push("inner:start")
+        innerEntered.resolve()
+        await releaseInner.promise
+        order.push("inner:end")
+      }, { timeoutMs: 10_000, heartbeatMs: 0 })
+      void inner.catch(() => undefined)
+      await innerEntered.promise
+      order.push("outer:return")
+      outerCallbackReturned.resolve()
+    }, { timeoutMs: 60_000, heartbeatMs: 0 })
+    void outer.catch(() => undefined)
+    await outerCallbackReturned.promise
+
+    contender = withWorkflowRunLock(workspace, "run-1", async () => {
+      order.push("contender:start")
+      contenderEntered.resolve()
+      await releaseContender.promise
+    }, {
+      timeoutMs: 60_000,
+      heartbeatMs: 0,
+      pollMs: 5,
+      sleep: async () => {
+        contentionObserved.resolve()
+        await retryLock.promise
+      }
+    })
+    void contender.catch(() => undefined)
+
+    await contentionObserved.promise
+    assert.deepEqual(order, ["outer:start", "inner:start", "outer:return"])
+
+    releaseInner.resolve()
+    await Promise.all([outer, inner])
+    retryLock.resolve()
+    await contenderEntered.promise
+    releaseContender.resolve()
+    await contender
+    assert.deepEqual(order, ["outer:start", "inner:start", "outer:return", "inner:end", "contender:start"])
+  } finally {
+    releaseInner.resolve()
+    retryLock.resolve()
+    releaseContender.resolve()
+    await Promise.allSettled([inner, outer, contender].filter(Boolean))
+  }
+})
+
+test("a reentrant failure caught by its caller does not reject the outer owner", async (t) => {
+  const workspace = root(t)
+
+  const result = await withWorkflowRunLock(workspace, "run-1", async () => {
+    await assert.rejects(
+      withWorkflowRunLock(workspace, "run-1", async () => {
+        throw new Error("expected nested failure")
+      }, { timeoutMs: 10_000, heartbeatMs: 0 }),
+      /expected nested failure/
+    )
+    return "outer-success"
+  }, { timeoutMs: 10_000, heartbeatMs: 0 })
+
+  assert.equal(result, "outer-success")
+})
+
+test("a detached reentrant rejection settles before release without changing the outer result", async (t) => {
+  const workspace = root(t)
+  const innerEntered = deferred()
+  const releaseInner = deferred()
+  const outerCallbackReturned = deferred()
+  const contenderEntered = deferred()
+  const releaseContender = deferred()
+  const contentionObserved = deferred()
+  const retryLock = deferred()
+  const order = []
+  let inner
+  let outer
+  let contender
+
+  try {
+    outer = withWorkflowRunLock(workspace, "run-1", async () => {
+      inner = withWorkflowRunLock(workspace, "run-1", async () => {
+        order.push("inner:start")
+        innerEntered.resolve()
+        await releaseInner.promise
+        order.push("inner:reject")
+        throw new Error("detached nested failure")
+      }, { timeoutMs: 10_000, heartbeatMs: 0 })
+      void inner.catch(() => undefined)
+      await innerEntered.promise
+      order.push("outer:return")
+      outerCallbackReturned.resolve()
+      return "outer-success"
+    }, { timeoutMs: 60_000, heartbeatMs: 0 })
+    void outer.catch(() => undefined)
+    await outerCallbackReturned.promise
+
+    contender = withWorkflowRunLock(workspace, "run-1", async () => {
+      order.push("contender:start")
+      contenderEntered.resolve()
+      await releaseContender.promise
+    }, {
+      timeoutMs: 60_000,
+      heartbeatMs: 0,
+      pollMs: 5,
+      sleep: async () => {
+        contentionObserved.resolve()
+        await retryLock.promise
+      }
+    })
+    void contender.catch(() => undefined)
+
+    await contentionObserved.promise
+    assert.deepEqual(order, ["inner:start", "outer:return"])
+
+    releaseInner.resolve()
+    await assert.rejects(inner, /detached nested failure/)
+    assert.equal(await outer, "outer-success")
+    retryLock.resolve()
+    await contenderEntered.promise
+    releaseContender.resolve()
+    await contender
+    assert.deepEqual(order, ["inner:start", "outer:return", "inner:reject", "contender:start"])
+  } finally {
+    releaseInner.resolve()
+    retryLock.resolve()
+    releaseContender.resolve()
+    await Promise.allSettled([inner, outer, contender].filter(Boolean))
+  }
+})
+
 test("lock acquisition retries when the owner file disappears before inspection", async (t) => {
   const workspace = root(t)
   const firstStarted = deferred()
@@ -302,6 +448,54 @@ test("active reentry binds a second lexical alias to the acquired physical root"
     await fsp.readFile(path.join(physicalB, ".bob", "workflows", "runs", "run-2", "run.json"), "utf8"),
     "{\"root\":\"B\"}\n"
   )
+})
+
+test("nested root binding falls back to its active ancestor after child scope revocation", async (t) => {
+  const physicalA = root(t)
+  const physicalB = root(t)
+  const aliasContainer = root(t)
+  const workspaceAlias = path.join(aliasContainer, "workspace-alias")
+  const aliasType = process.platform === "win32" ? "junction" : "dir"
+  try {
+    await fsp.symlink(physicalA, workspaceAlias, aliasType)
+  } catch (error) {
+    if (["EPERM", "EACCES", "ENOTSUP"].includes(error.code)) return t.skip(error.code)
+    throw error
+  }
+
+  const startDetached = deferred()
+  let detached
+  let detachedResolvedRoot
+  await withWorkflowRunLock(workspaceAlias, "run-1", async () => {
+    await withWorkflowRunLock(workspaceAlias, "run-2", async () => {
+      detached = (async () => {
+        await startDetached.promise
+        detachedResolvedRoot = await resolveWorkflowRunWorkspaceRoot(workspaceAlias)
+        await withWorkflowRunLock(workspaceAlias, "run-1", async () => {
+          await writeContainedRunFile(workspaceAlias, "run-1", "{\"root\":\"A\"}\n")
+        }, { timeoutMs: 1_000, heartbeatMs: 0 })
+      })()
+      void detached.catch(() => undefined)
+    }, { timeoutMs: 1_000, heartbeatMs: 0 })
+
+    await fsp.rm(workspaceAlias, { force: true })
+    await fsp.symlink(physicalB, workspaceAlias, aliasType)
+    startDetached.resolve()
+    await detached
+
+    assert.equal(
+      process.platform === "win32" ? detachedResolvedRoot.toLowerCase() : detachedResolvedRoot,
+      process.platform === "win32" ? physicalA.toLowerCase() : physicalA
+    )
+    assert.equal(
+      await fsp.readFile(path.join(physicalA, ".bob", "workflows", "runs", "run-1", "run.json"), "utf8"),
+      "{\"root\":\"A\"}\n"
+    )
+    await assert.rejects(
+      fsp.access(path.join(physicalB, ".bob", "workflows", "runs", "run-1")),
+      { code: "ENOENT" }
+    )
+  }, { timeoutMs: 5_000, heartbeatMs: 0 })
 })
 
 test("detached descendants cannot reuse a released lock or its stale root binding", async (t) => {

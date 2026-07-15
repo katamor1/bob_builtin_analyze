@@ -9,6 +9,7 @@ import { resolveWorkflowRunWorkspaceRoot } from "./workflowRunWorkspaceRootBindi
 export const RUN_STATE_V0_BACKUP_FILE_NAME = "run-state-v0.backup.json" as const
 
 const RUNS_ROOT_SEGMENTS = [".bob", "workflows", "runs"] as const
+const migrationBackupQueues = new Map<string, Promise<void>>()
 
 type FileIdentity = {
   dev: bigint
@@ -41,7 +42,19 @@ export async function ensureContainedRunStateMigrationBackup(
   content: string
 ): Promise<void> {
   assertSafeWorkflowRunId(runId)
-  await recoverInterruptedRunStateMigrationBackup(workspaceRoot, runId, content)
+  const physicalRoot = await canonicalWorkspaceRoot(workspaceRoot)
+  const rootIdentity = await directDirectoryChain(physicalRoot, [])
+  return withSerializedMigrationBackup(workspaceRoot, physicalRoot, rootIdentity, runId, () => (
+    ensureContainedRunStateMigrationBackupUnlocked(physicalRoot, runId, content)
+  ))
+}
+
+async function ensureContainedRunStateMigrationBackupUnlocked(
+  workspaceRoot: string,
+  runId: string,
+  content: string
+): Promise<void> {
+  await assertNoInterruptedRunStateMigrationPublication(workspaceRoot, runId, content)
   const existing = await optionalReadContainedRunStateMigrationBackup(workspaceRoot, runId)
   if (existing) {
     assertMatchingBackup(runId, existing.bytes, content)
@@ -133,7 +146,7 @@ export async function ensureContainedRunStateMigrationBackup(
   }
 }
 
-async function recoverInterruptedRunStateMigrationBackup(
+async function assertNoInterruptedRunStateMigrationPublication(
   workspaceRoot: string,
   runId: string,
   content: string
@@ -157,15 +170,15 @@ async function recoverInterruptedRunStateMigrationBackup(
   await assertDirectoryIdentity(runsRoot, "Workflow runs directory")
   await assertDirectoryIdentity(runDirectory, `Workflow run '${runId}' directory`)
   const candidateNames = (await fs.readdir(runsRoot.path, { withFileTypes: true }))
-    .map((entry) => entry.name)
-    .filter((name) => isExactOwnedMigrationTempName(runId, name))
+    .map((entry) => parseOwnedMigrationTempName(runId, entry.name))
+    .filter((candidate): candidate is OwnedMigrationTemp => candidate !== undefined)
   if (candidateNames.length !== 1) {
     throw new Error(
       `Workflow run '${runId}' hard-linked migration backup requires exactly one owned temporary file for safe recovery.`
     )
   }
-
-  const tempPath = path.join(runsRoot.path, candidateNames[0])
+  const [candidateName] = candidateNames
+  const tempPath = path.join(runsRoot.path, candidateName.name)
   const [candidate, backup] = await Promise.all([
     linkedPublicationFile(tempPath, root, `Workflow run '${runId}' recovery temporary file`),
     linkedPublicationFile(backupPath, root, `Workflow run '${runId}' migration backup`)
@@ -182,24 +195,9 @@ async function recoverInterruptedRunStateMigrationBackup(
   if (!candidateBytes.equals(expectedBytes) || !backupBytes.equals(expectedBytes)) {
     throw new Error(`Workflow run '${runId}' interrupted migration publication does not match the expected historical bytes.`)
   }
-
-  await assertDirectoryIdentity(runsRoot, "Workflow runs directory")
-  await assertDirectoryIdentity(runDirectory, `Workflow run '${runId}' directory`)
-  if (!await removeDirectFileIfIdentityMatches(tempPath, root, candidate, 2n)) {
-    throw new Error(`Workflow run '${runId}' recovery temporary file changed before it could be removed.`)
-  }
-
-  const finalIdentity = await directRegularFile(backupPath, root, `Workflow run '${runId}' migration backup`)
-  if (!sameIdentity(finalIdentity, backup)) {
-    throw new Error(`Workflow run '${runId}' migration backup changed while interrupted publication was recovered.`)
-  }
-  const finalBytes = await readDirectRegularFile(root, backupPath, `Workflow run '${runId}' migration backup`)
-  if (!finalBytes.equals(expectedBytes)) {
-    throw new Error(`Workflow run '${runId}' migration backup changed while interrupted publication was recovered.`)
-  }
-  await assertDirectoryIdentity(runsRoot, "Workflow runs directory")
-  await assertDirectoryIdentity(runDirectory, `Workflow run '${runId}' directory`)
-  return true
+  throw new Error(
+    `Workflow run '${runId}' interrupted migration publication owner pid ${candidateName.pid} cannot be proven stopped across process visibility domains; automatic recovery is disabled and both links were preserved.`
+  )
 }
 
 async function optionalReadContainedRunStateMigrationBackup(
@@ -412,17 +410,60 @@ async function removeDirectFileIfIdentityMatches(
   }
 }
 
-function isExactOwnedMigrationTempName(runId: string, name: string): boolean {
+interface OwnedMigrationTemp {
+  name: string
+  pid: number
+}
+
+function parseOwnedMigrationTempName(runId: string, name: string): OwnedMigrationTemp | undefined {
   const prefix = `.${runId}.`
   const suffix = ".tmp"
-  if (!name.startsWith(prefix) || !name.endsWith(suffix)) return false
+  if (!name.startsWith(prefix) || !name.endsWith(suffix)) return undefined
   const owner = name.slice(prefix.length, -suffix.length)
   const separator = owner.indexOf(".")
-  if (separator < 1 || separator === owner.length - 1) return false
-  const pid = owner.slice(0, separator)
+  if (separator < 1 || separator === owner.length - 1) return undefined
+  const pidText = owner.slice(0, separator)
   const token = owner.slice(separator + 1)
-  return /^[1-9]\d*$/.test(pid)
-    && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(token)
+  const pid = Number(pidText)
+  if (
+    !/^[1-9]\d*$/.test(pidText)
+    || !Number.isSafeInteger(pid)
+    || pid < 1
+    || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(token)
+  ) return undefined
+  return { name, pid }
+}
+
+async function withSerializedMigrationBackup<T>(
+  requestedWorkspaceRoot: string,
+  physicalRoot: string,
+  expectedRoot: FileIdentity,
+  runId: string,
+  operation: () => Promise<T>
+): Promise<T> {
+  const keyRoot = process.platform === "win32"
+    ? path.resolve(physicalRoot).toLowerCase()
+    : path.resolve(physicalRoot)
+  const key = JSON.stringify([keyRoot, runId])
+  const previous = migrationBackupQueues.get(key)
+  let release!: () => void
+  const current = new Promise<void>((resolve) => { release = resolve })
+  migrationBackupQueues.set(key, current)
+  if (previous) await previous
+  try {
+    const reboundRoot = await canonicalWorkspaceRoot(requestedWorkspaceRoot)
+    if (!sameCanonicalPath(reboundRoot, physicalRoot)) {
+      throw new Error(`Workflow run '${runId}' workspace root binding changed while migration backup waited for serialization.`)
+    }
+    const currentRoot = await directDirectoryChain(physicalRoot, [])
+    if (!sameIdentity(currentRoot, expectedRoot)) {
+      throw new Error(`Workflow run '${runId}' workspace root identity changed while migration backup waited for serialization.`)
+    }
+    return await operation()
+  } finally {
+    release()
+    if (migrationBackupQueues.get(key) === current) migrationBackupQueues.delete(key)
+  }
 }
 
 async function canonicalWorkspaceRoot(workspaceRoot: string): Promise<string> {

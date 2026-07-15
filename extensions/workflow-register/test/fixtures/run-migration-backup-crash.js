@@ -8,7 +8,10 @@ fsp.link = async (existingPath, newPath) => {
   await originalLink(existingPath, newPath)
   if (String(newPath).endsWith("run-state-v0.backup.json")) {
     process.stdout.write("LINKED\n")
-    await new Promise(() => undefined)
+    await new Promise(() => {
+      const keepAlive = setInterval(() => undefined, 1_000)
+      keepAlive.ref()
+    })
   }
 }
 

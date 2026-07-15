@@ -17,7 +17,7 @@ interface RootBinding {
   scope: WorkflowRunWorkspaceRootScopeToken
 }
 
-type RootBindings = ReadonlyMap<string, RootBinding>
+type RootBindings = ReadonlyMap<string, readonly RootBinding[]>
 
 const bindings = new AsyncLocalStorage<RootBindings>()
 
@@ -61,23 +61,29 @@ export function withWorkflowRunWorkspaceRootBinding<T>(
   const key = normalizeRequestedRoot(requestedWorkspaceRoot)
   const physicalRoot = path.resolve(acquiredPhysicalRoot)
   const current = bindings.getStore()
-  const existing = current?.get(key)
-  if (existing?.scope.isActive()) {
+  const existing = activeBinding(key)
+  if (existing) {
     if (!sameRoot(existing.physicalRoot, physicalRoot)) {
       throw new Error("Workflow workspace root binding changed inside one async operation.")
     }
     if (existing.scope === scope) return operation()
   }
-  const next = new Map(
-    [...(current ?? [])].filter(([, binding]) => binding.scope.isActive())
-  )
-  next.set(key, { physicalRoot, scope })
+  const next = new Map<string, readonly RootBinding[]>()
+  for (const [boundKey, stack] of current ?? []) {
+    const active = stack.filter((binding) => binding.scope.isActive())
+    if (active.length > 0) next.set(boundKey, active)
+  }
+  next.set(key, [...(next.get(key) ?? []), { physicalRoot, scope }])
   return bindings.run(next, operation)
 }
 
 function activeBinding(key: string): RootBinding | undefined {
-  const binding = bindings.getStore()?.get(key)
-  return binding?.scope.isActive() ? binding : undefined
+  const stack = bindings.getStore()?.get(key)
+  for (let index = (stack?.length ?? 0) - 1; index >= 0; index -= 1) {
+    const binding = stack?.[index]
+    if (binding?.scope.isActive()) return binding
+  }
+  return undefined
 }
 
 function requestedRoot(workspaceRoot: string): string {

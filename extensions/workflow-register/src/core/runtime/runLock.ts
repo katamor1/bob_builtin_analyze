@@ -44,20 +44,40 @@ export interface WorkflowRunLockOptions {
   onReclaimed?: (message: string) => void
 }
 
-const activeLocks = new AsyncLocalStorage<ReadonlyMap<string, WorkflowRunWorkspaceRootScopeToken>>()
+interface ActiveWorkflowRunLock {
+  scope: WorkflowRunWorkspaceRootScopeToken
+  pending: Set<Promise<unknown>>
+}
 
-export async function withWorkflowRunLock<T>(
+const activeLocks = new AsyncLocalStorage<ReadonlyMap<string, ActiveWorkflowRunLock>>()
+
+export function withWorkflowRunLock<T>(
   workspaceRoot: string,
   runId: string,
   operation: () => Promise<T>,
   options: WorkflowRunLockOptions = {}
 ): Promise<T> {
+  let invocation!: Promise<T>
+  invocation = executeWorkflowRunLock(workspaceRoot, runId, operation, options, (active) => {
+    trackReentrantOperation(active, invocation)
+  })
+  return invocation
+}
+
+async function executeWorkflowRunLock<T>(
+  workspaceRoot: string,
+  runId: string,
+  operation: () => Promise<T>,
+  options: WorkflowRunLockOptions,
+  registerReentrant: (active: ActiveWorkflowRunLock) => void
+): Promise<T> {
   const physicalRoot = await resolveWorkflowRunWorkspaceRoot(workspaceRoot)
   const key = JSON.stringify([normalizePhysicalRoot(physicalRoot), runId])
   const active = activeLocks.getStore()
-  const activeScope = active?.get(key)
-  if (activeScope?.isActive()) {
-    return withWorkflowRunWorkspaceRootBinding(workspaceRoot, physicalRoot, activeScope, operation)
+  const activeOwner = active?.get(key)
+  if (activeOwner?.scope.isActive()) {
+    registerReentrant(activeOwner)
+    return withWorkflowRunWorkspaceRootBinding(workspaceRoot, physicalRoot, activeOwner.scope, operation)
   }
 
   const resolved = resolveOptions(options)
@@ -71,9 +91,13 @@ export async function withWorkflowRunLock<T>(
   )
   const scope = createWorkflowRunWorkspaceRootScope()
   const chain = new Map(
-    [...(active ?? [])].filter(([, candidate]) => candidate.isActive())
+    [...(active ?? [])].filter(([, candidate]) => candidate.scope.isActive())
   )
-  chain.set(key, scope.token)
+  const lockContext: ActiveWorkflowRunLock = {
+    scope: scope.token,
+    pending: new Set()
+  }
+  chain.set(key, lockContext)
   let heartbeatError: unknown
   let heartbeatInFlight: Promise<void> | undefined
   let heartbeatPending = false
@@ -110,6 +134,7 @@ export async function withWorkflowRunLock<T>(
   } catch (error) {
     operationError = error
   } finally {
+    await drainReentrantOperations(lockContext)
     scope.revoke()
     stopping = true
     if (timer) clearInterval(timer)
@@ -122,6 +147,20 @@ export async function withWorkflowRunLock<T>(
   if (operationError) throw operationError
   if (heartbeatError) throw heartbeatError
   return result
+}
+
+function trackReentrantOperation(active: ActiveWorkflowRunLock, operation: Promise<unknown>): void {
+  active.pending.add(operation)
+  void operation.then(
+    () => { active.pending.delete(operation) },
+    () => { active.pending.delete(operation) }
+  )
+}
+
+async function drainReentrantOperations(active: ActiveWorkflowRunLock): Promise<void> {
+  while (active.pending.size > 0) {
+    await Promise.allSettled([...active.pending])
+  }
 }
 
 export function parseWorkflowRunLock(value: unknown, expectedRunId: string): WorkflowRunLockV1 {

@@ -23,14 +23,22 @@ function runDirectory(root, runId) {
   return path.join(runsDirectory(root), runId)
 }
 
+function samePath(left, right) {
+  const resolvedLeft = path.resolve(String(left))
+  const resolvedRight = path.resolve(String(right))
+  return process.platform === "win32"
+    ? resolvedLeft.toLowerCase() === resolvedRight.toLowerCase()
+    : resolvedLeft === resolvedRight
+}
+
 async function prepareRunDirectory(root, runId) {
   await fsp.mkdir(runDirectory(root, runId), { recursive: true })
 }
 
-function strictRecoveryTempPath(root, runId, suffix) {
+function strictRecoveryTempPath(root, runId, suffix, pid = 4242) {
   return path.join(
     runsDirectory(root),
-    `.${runId}.4242.00000000-0000-4000-8000-${String(suffix).padStart(12, "0")}.tmp`
+    `.${runId}.${pid}.00000000-0000-4000-8000-${String(suffix).padStart(12, "0")}.tmp`
   )
 }
 
@@ -48,6 +56,279 @@ test("migration backup preserves exact historical run bytes and is idempotent", 
   assert.equal(snapshot.bytes.toString("utf8"), historical)
   assert.equal(snapshot.filePath, path.join(runDirectory(root, runId), "run-state-v0.backup.json"))
   assert.equal((await fsp.lstat(snapshot.filePath)).nlink, 1)
+})
+
+test("concurrent migration backup calls serialize a live create-once publication across lexical aliases", async (t) => {
+  const root = tempRoot()
+  const aliasContainer = tempRoot()
+  t.after(() => {
+    fs.rmSync(aliasContainer, { recursive: true, force: true })
+    fs.rmSync(root, { recursive: true, force: true })
+  })
+  const runId = "20260712T000000Z-live-publication-000000000014"
+  const historical = "live-publication-history\n"
+  const workspaceAlias = path.join(aliasContainer, "workspace-alias")
+  const aliasType = process.platform === "win32" ? "junction" : "dir"
+  try {
+    await fsp.symlink(root, workspaceAlias, aliasType)
+  } catch (error) {
+    if (["EPERM", "EACCES", "ENOTSUP"].includes(error.code)) return t.skip(error.code)
+    throw error
+  }
+  await prepareRunDirectory(root, runId)
+  const backupPath = path.join(runDirectory(root, runId), "run-state-v0.backup.json")
+  const originalRm = fsp.rm
+  const originalLstat = fsp.lstat
+  const originalRealpath = fsp.realpath
+  let releaseFirstRemoval
+  const firstRemovalReleased = new Promise((resolve) => { releaseFirstRemoval = resolve })
+  let firstRemovalEntered
+  const firstRemovalStarted = new Promise((resolve) => { firstRemovalEntered = resolve })
+  let secondRootCaptured
+  const secondRootCapture = new Promise((resolve) => { secondRootCaptured = resolve })
+  let ownedTempRemovalCalls = 0
+  let secondRootStatCalls = 0
+  let aliasRealpathCalls = 0
+  let secondStarted = false
+  let secondSettled = false
+  let first
+  let second
+
+  fsp.rm = async (target, ...args) => {
+    const name = path.basename(String(target))
+    if (name.startsWith(`.${runId}.`) && name.endsWith(".tmp")) {
+      ownedTempRemovalCalls += 1
+      if (ownedTempRemovalCalls === 1) {
+        firstRemovalEntered()
+        await firstRemovalReleased
+      }
+    }
+    return originalRm(target, ...args)
+  }
+  fsp.lstat = async (target, ...args) => {
+    const result = await originalLstat(target, ...args)
+    if (secondStarted && samePath(target, root)) {
+      secondRootStatCalls += 1
+      if (secondRootStatCalls === 2) secondRootCaptured()
+    }
+    return result
+  }
+  fsp.realpath = async (target, ...args) => {
+    if (secondStarted && samePath(target, workspaceAlias)) aliasRealpathCalls += 1
+    return originalRealpath(target, ...args)
+  }
+
+  try {
+    first = ensureContainedRunStateMigrationBackup(root, runId, historical)
+    await firstRemovalStarted
+    secondStarted = true
+    second = ensureContainedRunStateMigrationBackup(workspaceAlias, runId, historical)
+    void second.finally(() => { secondSettled = true }).catch(() => undefined)
+    await secondRootCapture
+    await new Promise((resolve) => setImmediate(resolve))
+    assert.equal(secondRootStatCalls, 2, "the waiter must capture its initial physical root before the owner is released")
+    assert.equal(aliasRealpathCalls, 1, "the waiter must not revalidate its requested alias before the active owner completes")
+    assert.equal(secondSettled, false, "the waiter must remain queued behind the active publication")
+
+    releaseFirstRemoval()
+    assert.deepEqual(await Promise.allSettled([first, second]), [
+      { status: "fulfilled", value: undefined },
+      { status: "fulfilled", value: undefined }
+    ])
+    assert.equal(aliasRealpathCalls, 2, "the waiter must revalidate its requested alias after leaving the queue")
+  } finally {
+    releaseFirstRemoval()
+    fsp.rm = originalRm
+    fsp.lstat = originalLstat
+    fsp.realpath = originalRealpath
+    await Promise.allSettled([first, second].filter(Boolean))
+  }
+
+  assert.equal(await fsp.readFile(backupPath, "utf8"), historical)
+  assert.equal((await fsp.lstat(backupPath)).nlink, 1)
+  assert.deepEqual(
+    (await fsp.readdir(runsDirectory(root))).filter((name) => name.startsWith(`.${runId}.`) && name.endsWith(".tmp")),
+    []
+  )
+})
+
+test("queued migration backup rejects an alias retarget before touching the new workspace", async (t) => {
+  const physicalA = tempRoot()
+  const physicalB = tempRoot()
+  const aliasContainer = tempRoot()
+  const workspaceAlias = path.join(aliasContainer, "workspace-alias")
+  const aliasType = process.platform === "win32" ? "junction" : "dir"
+  t.after(() => {
+    fs.rmSync(aliasContainer, { recursive: true, force: true })
+    fs.rmSync(physicalA, { recursive: true, force: true })
+    fs.rmSync(physicalB, { recursive: true, force: true })
+  })
+  try {
+    await fsp.symlink(physicalA, workspaceAlias, aliasType)
+  } catch (error) {
+    if (["EPERM", "EACCES", "ENOTSUP"].includes(error.code)) return t.skip(error.code)
+    throw error
+  }
+
+  const runId = "20260712T000000Z-queued-alias-retarget-000000000016"
+  const historical = "queued-alias-retarget-history\n"
+  await prepareRunDirectory(physicalA, runId)
+  const backupPathA = path.join(runDirectory(physicalA, runId), "run-state-v0.backup.json")
+  const originalRm = fsp.rm
+  const originalLstat = fsp.lstat
+  let releaseFirstRemoval
+  const firstRemovalReleased = new Promise((resolve) => { releaseFirstRemoval = resolve })
+  let firstRemovalEntered
+  const firstRemovalStarted = new Promise((resolve) => { firstRemovalEntered = resolve })
+  let secondRootCaptured
+  const secondRootCapture = new Promise((resolve) => { secondRootCaptured = resolve })
+  let secondStarted = false
+  let secondRootStatCalls = 0
+  let first
+  let second
+
+  fsp.rm = async (target, ...args) => {
+    const name = path.basename(String(target))
+    if (name.startsWith(`.${runId}.`) && name.endsWith(".tmp")) {
+      firstRemovalEntered()
+      await firstRemovalReleased
+    }
+    return originalRm(target, ...args)
+  }
+  fsp.lstat = async (target, ...args) => {
+    const result = await originalLstat(target, ...args)
+    if (secondStarted && samePath(target, physicalA)) {
+      secondRootStatCalls += 1
+      if (secondRootStatCalls === 2) secondRootCaptured()
+    }
+    return result
+  }
+
+  try {
+    first = ensureContainedRunStateMigrationBackup(physicalA, runId, historical)
+    await firstRemovalStarted
+    secondStarted = true
+    second = ensureContainedRunStateMigrationBackup(workspaceAlias, runId, historical)
+    void second.catch(() => undefined)
+    await secondRootCapture
+    await new Promise((resolve) => setImmediate(resolve))
+
+    await fsp.rm(workspaceAlias, { force: true })
+    await fsp.symlink(physicalB, workspaceAlias, aliasType)
+    releaseFirstRemoval()
+
+    await first
+    await assert.rejects(second, /workspace root binding changed while migration backup waited/i)
+  } finally {
+    releaseFirstRemoval()
+    fsp.rm = originalRm
+    fsp.lstat = originalLstat
+    await Promise.allSettled([first, second].filter(Boolean))
+  }
+
+  assert.equal(await fsp.readFile(backupPathA, "utf8"), historical)
+  assert.equal((await fsp.lstat(backupPathA)).nlink, 1)
+  await assert.rejects(fsp.access(path.join(physicalB, ".bob")), { code: "ENOENT" })
+})
+
+test("queued migration backup rejects a replaced physical root before publication", async (t) => {
+  const physicalRoot = tempRoot()
+  const movedRoot = `${physicalRoot}-original`
+  const aliasContainer = tempRoot()
+  const workspaceAlias = path.join(aliasContainer, "workspace-alias")
+  const aliasType = process.platform === "win32" ? "junction" : "dir"
+  t.after(() => {
+    fs.rmSync(aliasContainer, { recursive: true, force: true })
+    fs.rmSync(physicalRoot, { recursive: true, force: true })
+    fs.rmSync(movedRoot, { recursive: true, force: true })
+  })
+  try {
+    await fsp.symlink(physicalRoot, workspaceAlias, aliasType)
+  } catch (error) {
+    if (["EPERM", "EACCES", "ENOTSUP"].includes(error.code)) return t.skip(error.code)
+    throw error
+  }
+
+  const runId = "20260712T000000Z-queued-root-replace-000000000017"
+  const historical = "queued-root-replace-history\n"
+  await prepareRunDirectory(physicalRoot, runId)
+  const originalRm = fsp.rm
+  const originalLstat = fsp.lstat
+  const originalRealpath = fsp.realpath
+  let releaseFirstRemoval
+  const firstRemovalReleased = new Promise((resolve) => { releaseFirstRemoval = resolve })
+  let firstRemovalEntered
+  const firstRemovalStarted = new Promise((resolve) => { firstRemovalEntered = resolve })
+  let secondRootCaptured
+  const secondRootCapture = new Promise((resolve) => { secondRootCaptured = resolve })
+  let revalidationEntered
+  const revalidationStart = new Promise((resolve) => { revalidationEntered = resolve })
+  let allowRevalidation
+  const revalidationAllowed = new Promise((resolve) => { allowRevalidation = resolve })
+  let secondStarted = false
+  let secondRootStatCalls = 0
+  let aliasRealpathCalls = 0
+  let first
+  let second
+
+  fsp.rm = async (target, ...args) => {
+    const name = path.basename(String(target))
+    if (name.startsWith(`.${runId}.`) && name.endsWith(".tmp")) {
+      firstRemovalEntered()
+      await firstRemovalReleased
+    }
+    return originalRm(target, ...args)
+  }
+  fsp.lstat = async (target, ...args) => {
+    const result = await originalLstat(target, ...args)
+    if (secondStarted && samePath(target, physicalRoot)) {
+      secondRootStatCalls += 1
+      if (secondRootStatCalls === 2) secondRootCaptured()
+    }
+    return result
+  }
+  fsp.realpath = async (target, ...args) => {
+    const resolved = await originalRealpath(target, ...args)
+    if (secondStarted && samePath(target, workspaceAlias)) {
+      aliasRealpathCalls += 1
+      if (aliasRealpathCalls === 2) {
+        revalidationEntered()
+        await revalidationAllowed
+      }
+    }
+    return resolved
+  }
+
+  try {
+    first = ensureContainedRunStateMigrationBackup(physicalRoot, runId, historical)
+    await firstRemovalStarted
+    secondStarted = true
+    second = ensureContainedRunStateMigrationBackup(workspaceAlias, runId, historical)
+    void second.catch(() => undefined)
+    await secondRootCapture
+    await new Promise((resolve) => setImmediate(resolve))
+
+    releaseFirstRemoval()
+    await first
+    await revalidationStart
+    await fsp.rename(physicalRoot, movedRoot)
+    await fsp.mkdir(physicalRoot)
+    allowRevalidation()
+
+    await assert.rejects(second, /workspace root identity changed while migration backup waited/i)
+  } finally {
+    releaseFirstRemoval()
+    allowRevalidation()
+    fsp.rm = originalRm
+    fsp.lstat = originalLstat
+    fsp.realpath = originalRealpath
+    await Promise.allSettled([first, second].filter(Boolean))
+  }
+
+  const movedBackupPath = path.join(runDirectory(movedRoot, runId), "run-state-v0.backup.json")
+  assert.equal(await fsp.readFile(movedBackupPath, "utf8"), historical)
+  assert.equal((await fsp.lstat(movedBackupPath)).nlink, 1)
+  await assert.rejects(fsp.access(path.join(physicalRoot, ".bob")), { code: "ENOENT" })
 })
 
 test("migration backup refuses to overwrite conflicting historical bytes", async (t) => {
@@ -244,7 +525,7 @@ test("migration backup rolls back workspace links after a third external link ap
   assert.equal((await fsp.lstat(externalPath)).nlink, 1)
 })
 
-test("migration backup recovers one exact owned temp left by a post-link process crash", async (t) => {
+test("migration backup preserves an exact post-link crash pair for manual recovery", async (t) => {
   const root = tempRoot()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   const runId = "20260712T000000Z-crash-recovery-000000000008"
@@ -277,10 +558,6 @@ test("migration backup recovers one exact owned temp left by a post-link process
     })
   })
 
-  const childExit = new Promise((resolve) => child.once("exit", resolve))
-  child.kill()
-  await childExit
-
   const candidatePattern = new RegExp(
     `^\\.${runId}\\.\\d+\\.[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\\.tmp$`,
     "i"
@@ -301,11 +578,74 @@ test("migration backup recovers one exact owned temp left by a post-link process
   assert.equal(await fsp.readFile(tempPath, "utf8"), historical)
   assert.equal(await fsp.readFile(backupPath, "utf8"), historical)
 
-  await ensureContainedRunStateMigrationBackup(root, runId, historical)
-
-  await assert.rejects(fsp.access(tempPath), { code: "ENOENT" })
+  await assert.rejects(
+    ensureContainedRunStateMigrationBackup(root, runId, historical),
+    /cannot be proven stopped|automatic recovery is disabled/i
+  )
+  const [liveTempStat, liveBackupStat] = await Promise.all([
+    fsp.lstat(tempPath, { bigint: true }),
+    fsp.lstat(backupPath, { bigint: true })
+  ])
+  assert.equal(liveTempStat.dev, tempStat.dev)
+  assert.equal(liveTempStat.ino, tempStat.ino)
+  assert.equal(liveBackupStat.dev, backupStat.dev)
+  assert.equal(liveBackupStat.ino, backupStat.ino)
+  assert.equal(liveTempStat.nlink, 2n)
+  assert.equal(liveBackupStat.nlink, 2n)
+  assert.equal(await fsp.readFile(tempPath, "utf8"), historical)
   assert.equal(await fsp.readFile(backupPath, "utf8"), historical)
-  assert.equal((await fsp.lstat(backupPath)).nlink, 1)
+
+  const childExit = new Promise((resolve) => child.once("exit", resolve))
+  child.kill()
+  await childExit
+
+  await assert.rejects(
+    ensureContainedRunStateMigrationBackup(root, runId, historical),
+    /cannot be proven stopped|automatic recovery is disabled/i
+  )
+  const [stoppedTempStat, stoppedBackupStat] = await Promise.all([
+    fsp.lstat(tempPath, { bigint: true }),
+    fsp.lstat(backupPath, { bigint: true })
+  ])
+  assert.equal(stoppedTempStat.dev, tempStat.dev)
+  assert.equal(stoppedTempStat.ino, tempStat.ino)
+  assert.equal(stoppedBackupStat.dev, backupStat.dev)
+  assert.equal(stoppedBackupStat.ino, backupStat.ino)
+  assert.equal(stoppedTempStat.nlink, 2n)
+  assert.equal(stoppedBackupStat.nlink, 2n)
+  assert.equal(await fsp.readFile(tempPath, "utf8"), historical)
+  assert.equal(await fsp.readFile(backupPath, "utf8"), historical)
+})
+
+test("migration recovery preserves a matching crash pair with a locally absent pid", async (t) => {
+  const root = tempRoot()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const runId = "20260712T000000Z-unknown-owner-000000000015"
+  const historical = "unknown-owner-history\n"
+  const unknownPid = 2_000_000_000
+  await prepareRunDirectory(root, runId)
+  const tempPath = strictRecoveryTempPath(root, runId, 6, unknownPid)
+  const backupPath = path.join(runDirectory(root, runId), "run-state-v0.backup.json")
+  await fsp.writeFile(tempPath, historical)
+  await fsp.link(tempPath, backupPath)
+  const before = await fsp.lstat(tempPath, { bigint: true })
+  await assert.rejects(
+    ensureContainedRunStateMigrationBackup(root, runId, historical),
+    /cannot be proven stopped|automatic recovery is disabled/i
+  )
+
+  const [tempStat, backupStat] = await Promise.all([
+    fsp.lstat(tempPath, { bigint: true }),
+    fsp.lstat(backupPath, { bigint: true })
+  ])
+  assert.equal(tempStat.dev, before.dev)
+  assert.equal(tempStat.ino, before.ino)
+  assert.equal(backupStat.dev, before.dev)
+  assert.equal(backupStat.ino, before.ino)
+  assert.equal(tempStat.nlink, 2n)
+  assert.equal(backupStat.nlink, 2n)
+  assert.equal(await fsp.readFile(tempPath, "utf8"), historical)
+  assert.equal(await fsp.readFile(backupPath, "utf8"), historical)
 })
 
 test("migration recovery preserves an ambiguous set of exact owned temp candidates", async (t) => {
