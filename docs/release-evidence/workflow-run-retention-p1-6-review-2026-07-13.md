@@ -72,6 +72,21 @@ Disposition at `31e09ee9`:
 - Production code変更なし。決定的再現21/21 failureからGREEN 71/71、final five-file 100/100。
 - Independent spec/quality review: Critical 0 / Important 0 / Minor 0。
 
+### RC whole-diff follow-up — contract alignment and failure precedence
+
+RC前のwhole-diff reviewで検出したcontract mismatchとFileHandle/cleanup failure precedenceを、`4ecdc3ae..fdc0efe8`で閉じた。
+
+Disposition:
+
+- `578a32da` / `312e6846`: `maxCompletedRuns`の対象をterminal run（completed/failed）へ統一し、setting、test、operator-facing文書を同じ契約へ揃えた。
+- `7bf3bffa`: cleanup transactionのrename/identity failureをoptional quarantine-parent cleanupより優先し、suppressed outcomeを保持した。
+- `a0fd08f6`: cleanup lease operation > release > parent cleanupの順序を固定した。
+- `b2412edc`: workflow lock operation > heartbeat > releaseの順序と、create後lease-check failure時のowned-lock cleanupを固定した。
+- `c9ac8825` / `8df76a9f` / `96b4665e`: durability create/touch/directory-syncのoperation、identity/safety cleanup、closeを全settleし、replacementやunsafe aliasを削除しないことを固定した。
+- `21265742` / `4d2650d0`: cleanup lease/owner guard publication失敗のrollback、same-token replacement、first-probe replacement、listing後retargetをidentity-boundかつfail-closedにした。
+- `fdc0efe8`: run-state temp writeのoperation > temp cleanup > close優先順位を固定した。
+- Merge base `f35e7e79..fdc0efe8`の独立quality reviewはApproved、独立safety/spec reviewは`SPEC_COMPLIANT`。両reviewともCritical 0 / Important 0 / Minor 0で、temporary diagnostic/mutation workflowも検出されなかった。
+
 ## 4. Required invariants
 
 - Six commandはmanual-only。Startup/timer/background auto-deleteなし。
@@ -94,29 +109,33 @@ Disposition at `31e09ee9`:
 | Migration initial aggregate | `8adc7cf0..7a7ef937` | Changes requested | C0 / I2 / M0; first remediation at `9df3ddec` |
 | Migration follow-up intake | Matching-backup direct-reader paths at `9df3ddec` | Changes requested | C0 / I1 / M0; fixed at `7d6e38d1` |
 | Migration final targeted re-review | `12a5d90d..7d6e38d1` | Approved | C0 / I0 / M0 |
-| Documentation/spec initial review | `12a5d90d` | Changes requested; fact corrections applied, re-review pending | C0 / I3 / M2 |
-| Whole-diff review | `f35e7e79..final-head` | **PENDING** | **PENDING** |
+| Documentation/spec initial review | `12a5d90d` | Changes requested; fact corrections applied | C0 / I3 / M2 |
+| Documentation/spec final re-review | Corrected RC documentation | Approved | C0 / I0 / M0 |
+| Whole-diff quality review | `f35e7e79..fdc0efe8` | Approved | C0 / I0 / M0 |
+| Whole-diff safety/spec review | `f35e7e79..fdc0efe8` | `SPEC_COMPLIANT` | C0 / I0 / M0 |
 
-Initial docs reviewのImportant 3件（migration evidence、owner guard guarantee、partial-purge contract）とMinor 2件（PR #75 merge type、`maxCompletedRuns` terminal scope）は本fact-correctionで修正した。Open findingsはre-reviewで確定する。Final Minorは修正するか、non-blocking dispositionをmerge前に記録する。
+Initial docs reviewのImportant 3件（migration evidence、owner guard guarantee、partial-purge contract）とMinor 2件（PR #75 merge type、`maxCompletedRuns` terminal scope）はfact-correctionで修正し、final re-reviewでopen finding 0を確認した。
 
 ## 6. Final verification record
 
 | Evidence | Status |
 | --- | --- |
-| Final local gates | **PENDING Task 5** |
-| VSIX SHA-256/bytes/UTC/entry count | **PENDING Task 5** |
-| RC Linux/Windows matrix | **PENDING Task 5** |
-| Evidence-tail exact-final-head matrix | **PENDING Task 5** |
-| Temporary diagnostic/mutation workflow search | **PENDING final diff** |
-| PR body final run IDs/review result | **PENDING Task 6** |
+| RC local gates | **PASS**。Compile exit 0、path/migration 117/117、retention 98/98、policies/package/diff check GREEN。Local full attemptsは外部Node process 164件下で1084/1085（fail 1）と1082/1085（fail 3）、cancelled 0。再抽出で識別したfailureは既存`bobGateLifecycle`の5s/10s observer 3件。timeoutは変更していない。 |
+| Exact-RC-head hosted full-suite authority | **PASS**。Linux 1084 pass / fail 0 / cancelled 0 / skipped 1、Windows 1085/1085 pass / fail 0 / cancelled 0。 |
+| VSIX SHA-256/bytes/UTC/entry count | **PASS**。`5b61c00526f5f9064f011ee500ccd0f0c2a49538dcb82ac7d6be07ff7e0bf4f7` / 1,032,305 / `2026-07-15T20:26:31.2539661Z` / 810。 |
+| RC Linux/Windows matrix | **PASS**。`extensions-quality` run `29447947887`全7 jobs SUCCESS、`workflow-contracts` run `29447947919` SUCCESS。 |
+| Evidence-tail exact-final-head matrix | **PENDING after evidence-only commit** |
+| Temporary diagnostic/mutation workflow search | **PASS**。恒久的な`extensions-quality` smoke追加以外なし。 |
+| PR body final run IDs/review result | **PENDING after exact-final-head CI** |
 
 ## 7. Current decision
 
 - Scoped Windows portability review: **GO**。
 - Migration remediation review: final targeted independent review **GO** (Critical 0 / Important 0 / Minor 0)。
-- Documentation review: **PENDING**。
-- Whole-diff review: **PENDING**。
-- PR #93 main merge: **NO-GO until pending gates are GREEN**。
+- Documentation review: **GO** (Critical 0 / Important 0 / Minor 0)。
+- RC whole-diff review: **GO**。Quality Approved、safety/spec `SPEC_COMPLIANT`、Critical 0 / Important 0 / Minor 0。
+- RC/evidence-tail progression: **GO**。
+- PR #93 main merge: **NO-GO** until evidence-only exact-final-head CI、final review、PR本文更新がGREEN。
 - Product Release: **NO-GO** until real IBM Bob/Bazaar、multi-root、ReFS/AV、signing/distribution/rollback/operator-recovery UAT。
 
 Exact-final-head run IDsとfinal review resultはPR本文へ記録し、evidence-only commit後にこのfileを再変更しません。

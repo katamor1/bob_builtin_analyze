@@ -9,8 +9,8 @@
 | Pull request | #93 |
 | Branch | `agent/workflow-run-retention-p1-6-20260713` |
 | Merge base | `f35e7e79b3133f639b80aa9e4b3a5b00fe3b09cc` |
-| Latest migration implementation checkpoint | `7d6e38d1`。RC headはTask 5で確定する。 |
-| Integration decision | **NO-GO until RC/final-head gates are recorded below** |
+| RC head | `fdc0efe8b9c44e7bab10131eb0b070ef6cd91664` |
+| Integration decision | **GO for evidence-tail progression**。PR mergeはexact-final-head gate完了まで保留。 |
 | Product Release decision | **NO-GO** |
 
 P1-6は、保存済みworkflow runの件数/容量をread-onlyで確認し、operatorが明示確認したterminal runだけをpreview-first、reference-aware、pin-aware、transaction-safeに整理します。
@@ -103,53 +103,65 @@ Owner guardの通常解放順はlease JSON、`owner.json`、guard directoryで�
 - Compile: PASS。
 - Migration test file: 34/34 PASS、fail 0、cancelled 0。
 - Durability metadata budget: 1/1 PASS、`read=100`、`replace=298`。
-- Final targeted independent review (`12a5d90d..7d6e38d1`): Critical 0 / Important 0 / Minor 0。Coordinatorのwhole-diff gateはTask 6で別途記録する。
+- Final targeted independent review (`12a5d90d..7d6e38d1`): Critical 0 / Important 0 / Minor 0。
+
+### RC contract and error-precedence closure — `4ecdc3ae..fdc0efe8`
+
+- `578a32da`でretention settingの件数契約をterminal run（completed/failed）へ統一し、`312e6846`でoperator-facing文書表現を同じ契約へ揃えた。
+- `7bf3bffa`、`a0fd08f6`、`b2412edc`でcleanup transaction、cleanup lease、workflow lockのprimary operation / safety cleanup / handle close優先順位を固定した。
+- `c9ac8825`、`8df76a9f`、`96b4665e`でdurability file作成、identity validation、cleanup、closeの全経路をsettleし、operation > identity/safety cleanup > closeを固定した。
+- `21265742`、`4d2650d0`でcleanup lease/owner guardの失敗publication rollback、replacement guard、same-token foreign replacement、listing後retargetをfail-closedにした。
+- `fdc0efe8`でrun-state temp writeのoperation / temp cleanup / close優先順位を固定した。
+- Merge base `f35e7e79..fdc0efe8`の独立quality reviewとsafety/spec reviewはともにCritical 0 / Important 0 / Minor 0。Safety/spec verdictは`SPEC_COMPLIANT`。
 
 ## 6. Final local verification record
 
-この節の`PENDING`は、文書checkpoint時点で未実施のTask 5を明示する欄です。成功値やrun IDを推測して記入してはいけません。
+この節はRC head `fdc0efe8b9c44e7bab10131eb0b070ef6cd91664`で取得した結果です。Local full-suiteは外部Node process 164件の負荷下で完走せず、再抽出で識別したfailureは既存`bobGateLifecycle`の5s/10s observer 3件でした。計画どおり同一headのhosted Linux/Windows unit test成功を正式なfull-suite証拠とします。
 
 | Gate | Final result | Evidence |
 | --- | --- | --- |
-| RC head SHA | **PENDING** | Code + operator docs確定後に記入 |
-| `npm.cmd run compile` | **PENDING** | exit code / UTC |
-| Five-file path/migration focus | **PENDING** | pass/fail/cancelled |
-| Five-file retention focus | **PENDING** | pass/fail/cancelled |
-| `npm.cmd test` | **PENDING** | pass/fail/cancelled、またはexact-head hosted authority |
-| `dependency:policy` | **PENDING** | exit code |
-| `architecture:policy` | **PENDING** | exit code |
-| `source:policy` | **PENDING** | exit code |
-| `schema:policy` | **PENDING** | exit code |
-| `unused:report` | **PENDING** | exit code / advisory |
-| `audit:prod` | **PENDING** | exit code / advisory |
-| `package` | **PENDING** | exit code |
-| `package:policy` | **PENDING** | max `1200000` bytes |
-| `git diff --check f35e7e79..RC_HEAD` | **PENDING** | exit code |
-| RC worktree | **PENDING** | clean status |
+| RC head SHA | **PASS** | `fdc0efe8b9c44e7bab10131eb0b070ef6cd91664` |
+| `npm.cmd run compile` | **PASS** | exit 0。UTC `2026-07-15T20:27:26.3348310Z`–`2026-07-15T20:27:35.0011452Z` |
+| Five-file path/migration focus | **PASS** | 117/117 pass、fail 0、cancelled 0 |
+| Five-file retention focus | **PASS** | 98/98 pass、fail 0、cancelled 0 |
+| `npm.cmd test` | **PASS by exact-head hosted authority** | Local attempt 1: 1084/1085 pass、fail 1、cancelled 0。Attempt 2: 1082/1085 pass、fail 3、cancelled 0（識別したfailureは既存`bobGateLifecycle` observer 3件、external Node process 164件）。Hosted Linux: 1084 pass、fail 0、cancelled 0、skipped 1。Hosted Windows: 1085/1085 pass、fail 0、cancelled 0。 |
+| `dependency:policy` | **PASS** | exit 0、3/3 |
+| `architecture:policy` | **PASS** | exit 0、216 files |
+| `source:policy` | **PASS** | exit 0、216 files |
+| `schema:policy` | **PASS** | exit 0、5/5 |
+| `unused:report` | **PASS** | exit 0、advisory |
+| `audit:prod` | **PASS** | exit 0、production vulnerabilities 0 |
+| `package` | **PASS** | exit 0、VSIX生成成功 |
+| `package:policy` | **PASS** | 1,032,305 bytes / max 1,200,000 bytes |
+| `git diff --check f35e7e79..RC_HEAD` | **PASS** | exit 0 |
+| RC worktree | **PASS** | verification完了時clean |
 
 ### VSIX artifact
 
 | Field | Value |
 | --- | --- |
-| File | **PENDING** |
-| SHA-256 | **PENDING** |
-| Bytes | **PENDING** |
-| Generated at UTC | **PENDING** |
-| ZIP entry count | **PENDING** |
+| File | `workflow-register-0.1.0.vsix` |
+| SHA-256 | `5b61c00526f5f9064f011ee500ccd0f0c2a49538dcb82ac7d6be07ff7e0bf4f7` |
+| Bytes | 1,032,305 |
+| Generated at UTC | `2026-07-15T20:26:31.2539661Z` |
+| ZIP entry count | 810 |
 
 ## 7. Hosted RC matrix
 
 | Workflow / job | Run ID | Job ID | Result |
 | --- | ---: | ---: | --- |
-| `extensions-quality` RC | **PENDING** | — | **PENDING** |
-| Linux `workflow-register` | — | **PENDING** | **PENDING** |
-| Windows `workflow-register` | — | **PENDING** | **PENDING** |
-| Linux/Windows other extension jobs | — | **PENDING** | **PENDING** |
-| Extension source metrics | — | **PENDING** | **PENDING** |
-| `workflow-contracts` RC | **PENDING** | — | **PENDING** |
-| `code-consistency-review-scaffold` | — | — | **PENDING path applicability** |
+| `extensions-quality` RC | `29447947887` | — | **SUCCESS** |
+| Extension source metrics | `29447947887` | `87463009652` | **SUCCESS** |
+| Linux `workflow-register` | `29447947887` | `87463009667` | **SUCCESS** |
+| Linux `bob-code` | `29447947887` | `87463009671` | **SUCCESS** |
+| Windows `bob-bazaar` | `29447947887` | `87463009696` | **SUCCESS** |
+| Windows `bob-code` | `29447947887` | `87463009709` | **SUCCESS** |
+| Linux `bob-bazaar` | `29447947887` | `87463009719` | **SUCCESS** |
+| Windows `workflow-register` | `29447947887` | `87463009758` | **SUCCESS** |
+| `workflow-contracts` RC | `29447947919` | `87463008567` | **SUCCESS** |
+| `code-consistency-review-scaffold` | — | — | **N/A**。変更pathがfilter対象外。 |
 
-RC matrixがGREENになった後、このevidence fileへRC run IDs、local final results、VSIX artifact、review resultを記録してevidence-only commitを作ります。そのcommit後のexact-final-head run IDsは自己参照commitを避けるためPR本文へ記録し、このfileを再変更しません。
+RC matrixはexact RC headでGREENです。Workflow差分は`extensions-quality`の恒久的なsmoke追加だけで、temporary diagnostic/mutation workflowはありません。このevidence fileをevidence-only commitにした後のexact-final-head run IDsは、自己参照commitを避けるためPR本文へ記録し、このfileを再変更しません。
 
 ## 8. Review and merge decision
 
@@ -157,14 +169,16 @@ RC matrixがGREENになった後、このevidence fileへRC run IDs、local fina
 | --- | --- |
 | Migration remediation review | `12a5d90d..7d6e38d1` final targeted review: Critical 0 / Important 0 / Minor 0。 |
 | Windows portability review | Critical 0 / Important 0 / Minor 0。 |
-| Docs/spec review | Initial `12a5d90d` review: C0 / I3 / M2。Fact corrections applied; re-review **PENDING**。 |
-| Whole diff `f35e7e79..final-head` | **PENDING** |
-| Temporary diagnostic/mutation workflow absent | **PENDING final diff check** |
-| Exact-final-head all 7 `extensions-quality` jobs | **PENDING** |
-| Exact-final-head `workflow-contracts` | **PENDING** |
+| Docs/spec review | Initial `12a5d90d` review: C0 / I3 / M2。Fact corrections後のfinal re-review: Critical 0 / Important 0 / Minor 0。 |
+| Whole diff `f35e7e79..fdc0efe8` | Quality: Approved C0 / I0 / M0。Safety/spec: `SPEC_COMPLIANT` C0 / I0 / M0。 |
+| Temporary diagnostic/mutation workflow absent | **PASS**。恒久的smoke追加以外なし。 |
+| RC all 7 `extensions-quality` jobs | **SUCCESS** (`29447947887`) |
+| RC `workflow-contracts` | **SUCCESS** (`29447947919`) |
+| Evidence-only exact-final-head all 7 `extensions-quality` jobs | **PENDING** |
+| Evidence-only exact-final-head `workflow-contracts` | **PENDING** |
 | PR #93 squash merge | **PENDING** |
 
-Current integration decision: **NO-GO** until every pending final gate is closed. After exact-final-head CI and whole-diff review are GREEN, integration may become GO. Product Release remains NO-GO after merge.
+Current integration decision: **GO for RC/evidence-tail progression**。Evidence-only commit後のexact-final-head CI、final review/PR本文更新を完了するまでPR mergeはNO-GOです。Product Release remains NO-GO after merge.
 
 ## 9. Deferred Product Release UAT
 
