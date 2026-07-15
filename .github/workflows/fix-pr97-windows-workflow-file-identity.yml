@@ -26,44 +26,49 @@ jobs:
 
           source = Path("extensions/bob-bazaar-review/src/workflow/ruleAuthoringWorkflowActions.ts")
           text = source.read_text(encoding="utf-8")
-          old = '''    const directoryBefore = await safeDirectoryIdentity(workspaceRoot, directory)
-            const rootReal = await fs.realpath(workspaceRoot)
-            const targetReal = await fs.realpath(filePath)
-            assertContained(rootReal, targetReal)
-            if (path.resolve(targetReal) !== filePath) {
-              throw new Error("Rule authoring file path contains a symbolic link")
-            }
-            const beforePath = await fs.lstat(filePath, { bigint: true })
-            if (beforePath.isSymbolicLink() || !beforePath.isFile() || beforePath.size > BigInt(maxBytes)) {
-              throw new Error("Rule authoring file is not a bounded regular file")
-            }
+          start_marker = "    const directoryBefore = await safeDirectoryIdentity(workspaceRoot, directory)\n"
+          end_marker = "    handle = await fs.open(filePath, fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0))\n"
+          if text.count(start_marker) != 1:
+              raise SystemExit(f"directory identity marker matched {text.count(start_marker)} times")
+          start = text.index(start_marker)
+          try:
+              end = text.index(end_marker, start)
+          except ValueError as error:
+              raise SystemExit("file-open marker was not found after the directory identity marker") from error
+          old_segment = text[start:end]
+          required_old_fragments = [
+              "const rootReal = await fs.realpath(workspaceRoot)",
+              "const targetReal = await fs.realpath(filePath)",
+              "path.resolve(targetReal) !== filePath",
+              "beforePath.isSymbolicLink() || !beforePath.isFile()",
+          ]
+          missing = [fragment for fragment in required_old_fragments if fragment not in old_segment]
+          if missing:
+              raise SystemExit(f"readWorkspaceFileBounded segment is not the expected pre-fix form: {missing}")
+
+          new_segment = '''    const directoryBefore = await safeDirectoryIdentity(workspaceRoot, directory)
+          const [rootReal, targetReal] = await Promise.all([
+            fs.realpath(workspaceRoot),
+            fs.realpath(filePath)
+          ])
+          assertContained(rootReal, targetReal)
+          const beforePath = await fs.lstat(filePath, { bigint: true })
+          if (beforePath.isSymbolicLink()) {
+            throw new Error("Rule authoring file path contains a symbolic link")
+          }
+          if (!beforePath.isFile() || beforePath.size > BigInt(maxBytes)) {
+            throw new Error("Rule authoring file is not a bounded regular file")
+          }
+          const physicalPath = await fs.lstat(targetReal, { bigint: true })
+          if (
+            physicalPath.isSymbolicLink() ||
+            !physicalPath.isFile() ||
+            !sameFileIdentity(beforePath, physicalPath)
+          ) {
+            throw new Error("Rule authoring file path contains a symbolic link")
+          }
           '''
-          new = '''    const directoryBefore = await safeDirectoryIdentity(workspaceRoot, directory)
-            const [rootReal, targetReal] = await Promise.all([
-              fs.realpath(workspaceRoot),
-              fs.realpath(filePath)
-            ])
-            assertContained(rootReal, targetReal)
-            const beforePath = await fs.lstat(filePath, { bigint: true })
-            if (beforePath.isSymbolicLink()) {
-              throw new Error("Rule authoring file path contains a symbolic link")
-            }
-            if (!beforePath.isFile() || beforePath.size > BigInt(maxBytes)) {
-              throw new Error("Rule authoring file is not a bounded regular file")
-            }
-            const physicalPath = await fs.lstat(targetReal, { bigint: true })
-            if (
-              physicalPath.isSymbolicLink() ||
-              !physicalPath.isFile() ||
-              !sameFileIdentity(beforePath, physicalPath)
-            ) {
-              throw new Error("Rule authoring file path contains a symbolic link")
-            }
-          '''
-          count = text.count(old)
-          if count != 1:
-              raise SystemExit(f"readWorkspaceFileBounded path block matched {count} times")
-          source.write_text(text.replace(old, new), encoding="utf-8", newline="\n")
+          source.write_text(text[:start] + new_segment + text[end:], encoding="utf-8", newline="\n")
           '@ | python -
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
