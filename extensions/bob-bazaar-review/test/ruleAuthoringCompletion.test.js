@@ -29,6 +29,7 @@ const {
   persistRuleApplyPreview,
   persistRuleProposalDecisions,
   recoverCommittedRuleAuthoringApply,
+  validateDisplayedRuleApplyPreview,
   verifyRuleAuthoringApply
 } = require("../out/ui/ruleProposalTriageGui")
 
@@ -326,24 +327,40 @@ async function realAcceptedApplyFixture(t, options = {}) {
     existingPromptAddendumSectionIds: [],
     selectedEvidence: [{ source_id: sourceId, chunk_id: chunk.chunk_id }]
   }
-  const proposalValidation = createRuleProposalValidationArtifact(
-    proposal,
-    validationContext,
-    "2026-07-15T05:00:01.000Z"
-  )
   const initial = await createRuleAuthoringRun({
     workspaceRoot: root,
     runId: RUN_ID,
     now: "2026-07-15T05:00:00.000Z"
   })
-  await commitRuleAuthoringArtifactGeneration({
+  const evidenceRun = await commitRuleAuthoringArtifactGeneration({
     workspaceRoot: root,
     runId: RUN_ID,
     expectedUpdatedAt: initial.updatedAt,
     files: {
       sourceManifest: `${JSON.stringify(sourceManifest)}\n`,
       documentChunks: `${JSON.stringify(chunk)}\n`,
-      evidenceSelection: `${JSON.stringify(evidenceSelection)}\n`,
+      evidenceSelection: `${JSON.stringify(evidenceSelection)}\n`
+    },
+    buildNextRun: (run, artifacts) => ({
+      ...run,
+      artifacts,
+      updatedAt: "2026-07-15T05:00:00.500Z"
+    })
+  })
+  const proposalValidation = createRuleProposalValidationArtifact(
+    proposal,
+    validationContext,
+    "2026-07-15T05:00:01.000Z",
+    {
+      run: evidenceRun,
+      evidence: { sourceManifest, chunks: [chunk], selection: evidenceSelection }
+    }
+  )
+  await commitRuleAuthoringArtifactGeneration({
+    workspaceRoot: root,
+    runId: RUN_ID,
+    expectedUpdatedAt: evidenceRun.updatedAt,
+    files: {
       ruleProposal: `${JSON.stringify(proposal)}\n`,
       proposalValidation: `${JSON.stringify(proposalValidation)}\n`
     },
@@ -376,6 +393,9 @@ async function realAcceptedApplyFixture(t, options = {}) {
   state = await persistRuleProposalDecisions(state, overlay)
   const plan = buildRuleApplyPlan(state.bundle, state.proposal, overlay, state.evidence)
   state = await persistRuleApplyPreview(state, overlay, plan)
+  assert.equal(state.run.currentPhase, "apply")
+  assert.equal(state.run.phases.human_review.status, "completed")
+  assert.equal(state.run.phases.apply.status, "in_progress")
   const manifest = await executeRuleApplyTransaction(plan, {
     workspaceRoot: root,
     transactionId: "txn-real-accept",
@@ -426,7 +446,7 @@ test("verifies only the authoritative committed manifest, all current post-image
 
 test("re-attaches a committed transaction when completion persistence was interrupted", async (t) => {
   const fixture = await realAcceptedApplyFixture(t, { complete: false })
-  assert.equal(fixture.state.run.currentPhase, "human_review")
+  assert.equal(fixture.state.run.currentPhase, "apply")
   assert.equal(fixture.state.run.artifacts.applyManifest, undefined)
 
   const recovered = await recoverCommittedRuleAuthoringApply({
@@ -580,6 +600,95 @@ test("real accepted proposal plan commits, persists completion, and verifies ID-
       targetCount: 5
     }
   )
+  const completed = await readRuleAuthoringRun(getRuleAuthoringPaths(fixture.root, RUN_ID))
+  assert.equal(completed.phases.apply.status, "completed")
+  assert.equal(completed.phases.completed.status, "completed")
+})
+
+test("binds proposal validation to exact evidence artifact pointers, digests, and selected text identities", async (t) => {
+  const fixture = await realAcceptedApplyFixture(t)
+  const validationPath = resolveRuleAuthoringArtifactPath(fixture.state.run, "proposalValidation")
+  const validation = JSON.parse(await fs.readFile(validationPath, "utf8"))
+  assert.deepEqual(Object.keys(validation.evidence_binding).sort(), [
+    "document_chunks", "evidence_selection", "selected_evidence", "source_manifest"
+  ])
+  assert.equal(
+    validation.evidence_binding.source_manifest.artifact,
+    fixture.state.run.artifacts.sourceManifest
+  )
+  assert.equal(
+    validation.evidence_binding.document_chunks.artifact,
+    fixture.state.run.artifacts.documentChunks
+  )
+  assert.equal(
+    validation.evidence_binding.evidence_selection.artifact,
+    fixture.state.run.artifacts.evidenceSelection
+  )
+  assert.deepEqual(validation.evidence_binding.selected_evidence, [{
+    source_id: fixture.sourceId,
+    chunk_id: fixture.chunk.chunk_id,
+    text_sha256: fixture.chunk.text_sha256
+  }])
+  for (const key of ["source_manifest", "document_chunks", "evidence_selection"]) {
+    assert.match(validation.evidence_binding[key].sha256, /^[a-f0-9]{64}$/)
+  }
+})
+
+test("strictly rejects malformed or version-mismatched evidence during load", async (t) => {
+  const cases = [
+    ["source manifest exact keys", "sourceManifest", (value) => { value.extra = true }],
+    ["document chunk text SHA", "documentChunks", (value) => { value.text += " tampered" }],
+    ["document chunk deterministic ID", "documentChunks", (value) => { value.locator.block_index = 99 }],
+    ["evidence selection exact keys", "evidenceSelection", (value) => { value.extra = true }],
+    ["selected text SHA", "evidenceSelection", (value) => {
+      value.selected_chunks[0].text_sha256 = "f".repeat(64)
+    }],
+    ["validation evidence pointer", "proposalValidation", (value) => {
+      value.evidence_binding.source_manifest.artifact = "generations/gen-decoy/source-manifest.json"
+    }]
+  ]
+  for (const [label, artifactKey, mutate] of cases) {
+    await t.test(label, async (st) => {
+      const fixture = await realAcceptedApplyFixture(st)
+      const artifactPath = resolveRuleAuthoringArtifactPath(fixture.state.run, artifactKey)
+      const raw = await fs.readFile(artifactPath, "utf8")
+      const value = artifactKey === "documentChunks"
+        ? JSON.parse(raw.trim().split(/\r?\n/)[0])
+        : JSON.parse(raw)
+      mutate(value)
+      await fs.writeFile(artifactPath, `${JSON.stringify(value)}\n`)
+      await assert.rejects(
+        loadRuleProposalTriageState({ workspaceRoot: fixture.root, runId: RUN_ID }),
+        /evidence|source manifest|document chunk|validation/i
+      )
+    })
+  }
+})
+
+test("completion verification recomputes authoritative chunk text SHA", async (t) => {
+  const fixture = await realAcceptedApplyFixture(t)
+  const chunkPath = resolveRuleAuthoringArtifactPath(fixture.state.run, "documentChunks")
+  const chunk = JSON.parse((await fs.readFile(chunkPath, "utf8")).trim())
+  chunk.text = `${chunk.text} undetected-tail`
+  await fs.writeFile(chunkPath, `${JSON.stringify(chunk)}\n`)
+
+  await assert.rejects(
+    verifyRuleAuthoringApply({ workspaceRoot: fixture.root, runId: RUN_ID }),
+    /document chunk|text.*sha|authoritative evidence/i
+  )
+})
+
+test("completion verification revalidates the proposal evidence-version binding", async (t) => {
+  const fixture = await realAcceptedApplyFixture(t)
+  const validationPath = resolveRuleAuthoringArtifactPath(fixture.state.run, "proposalValidation")
+  const validation = JSON.parse(await fs.readFile(validationPath, "utf8"))
+  validation.evidence_binding.evidence_selection.sha256 = "f".repeat(64)
+  await fs.writeFile(validationPath, `${JSON.stringify(validation)}\n`)
+
+  await assert.rejects(
+    verifyRuleAuthoringApply({ workspaceRoot: fixture.root, runId: RUN_ID }),
+    /binding|selected evidence|validation/i
+  )
 })
 
 test("committed recovery is bound to exact proposal, validation, overlay, preview, plan, and journal metadata", async (t) => {
@@ -629,6 +738,11 @@ test("committed recovery is bound to exact proposal, validation, overlay, previe
       const fixture = await realAcceptedApplyFixture(st, { complete: false })
       await mutate(fixture)
       if (label === "apply preview plan digest") {
+        await assert.rejects(
+          validateDisplayedRuleApplyPreview(fixture.state, fixture.plan),
+          /committed apply binding/i,
+          "the displayed preview binding must fail before another transaction can start"
+        )
         await assert.rejects(
           persistRuleApplyCompletion(
             fixture.state,

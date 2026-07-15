@@ -222,6 +222,7 @@ const CONTROL_CHARACTER = /[\u0000-\u001f\u007f-\u009f]/
 const MAX_REJECT_REASON_BYTES = 8_192
 const MAX_APPROVED_RULE_SOURCE_COUNT = 4_096
 const MAX_APPROVED_RULE_SOURCE_MANIFEST_BYTES = 4 * 1024 * 1024
+const MAX_EVIDENCE_CHUNKS = Math.floor(DEFAULT_RULE_AUTHORING_LIMITS.maxSourceIndexBytes / 128)
 const EMPTY_BYTES = Buffer.alloc(0)
 const EMPTY_MANIFEST_TIMESTAMP = "1970-01-01T00:00:00.000Z"
 const TARGET_PATHS: ReadonlyArray<readonly [RuleApplyAsset, string]> = [
@@ -250,7 +251,7 @@ export function buildRuleApplyPlan(
     projectContext: new Set(current.projectContext.sections.map(({ id }) => id)),
     promptAddendum: new Set(current.promptAddendum.sections.map(({ id }) => id))
   })
-  validateEvidence(evidence)
+  validateRuleApplyEvidence(evidence)
 
   const proposal = validateProposalForApply(proposalInput, current, bundle, evidence)
   const decisions = validateDecisionOverlay(decisionsInput, proposal)
@@ -828,18 +829,63 @@ function buildDecisionRecords(
   }))
 }
 
-function validateEvidence(evidence: RuleApplyEvidence): void {
+export function validateRuleApplyEvidence(evidence: RuleApplyEvidence): void {
   if (!isPlainObject(evidence) || !Array.isArray(evidence.chunks)) {
     throw new Error("Apply evidence is malformed")
   }
   validateSourceManifest(evidence.sourceManifest, DEFAULT_RULE_AUTHORING_LIMITS.maxSourceFiles)
+  if (evidence.chunks.length > MAX_EVIDENCE_CHUNKS) {
+    throw new Error("Document chunk count exceeds its limit")
+  }
+  const sources = new Map(evidence.sourceManifest.sources.map((source) => [source.source_id, source]))
+  const chunks = new Map<string, DocumentChunkV1>()
+  for (const chunk of evidence.chunks) {
+    if (!isPlainObject(chunk)) throw new Error("Document chunk is malformed")
+    const expectedKeys = chunk.title === undefined
+      ? ["schema_version", "chunk_id", "source_id", "kind", "locator", "text", "text_sha256", "flags"]
+      : ["schema_version", "chunk_id", "source_id", "kind", "locator", "title", "text", "text_sha256", "flags"]
+    const source = sources.get(String(chunk.source_id))
+    if (
+      !hasExactKeys(chunk, expectedKeys) ||
+      chunk.schema_version !== "bob-bazaar-review/document-chunk/v1" ||
+      !CHUNK_ID_PATTERN.test(String(chunk.chunk_id)) ||
+      !source ||
+      !isDocumentChunkKind(chunk.kind) ||
+      !isPlainObject(chunk.locator) ||
+      typeof chunk.text !== "string" ||
+      Buffer.byteLength(chunk.text, "utf8") > DEFAULT_RULE_AUTHORING_LIMITS.maxChunkBytes ||
+      !SHA256_PATTERN.test(String(chunk.text_sha256)) ||
+      sha256(Buffer.from(chunk.text, "utf8")) !== chunk.text_sha256 ||
+      (chunk.title !== undefined && (
+        typeof chunk.title !== "string" ||
+        Buffer.byteLength(chunk.title, "utf8") > DEFAULT_RULE_AUTHORING_LIMITS.maxChunkBytes ||
+        CONTROL_CHARACTER.test(chunk.title)
+      )) ||
+      !Array.isArray(chunk.flags) ||
+      chunk.flags.length > 100 ||
+      chunk.flags.some((flag: unknown) =>
+        typeof flag !== "string" ||
+        Buffer.byteLength(flag, "utf8") > 128 ||
+        CONTROL_CHARACTER.test(flag)
+      ) ||
+      chunks.has(chunk.chunk_id)
+    ) {
+      throw new Error("Document chunk is malformed")
+    }
+    validateLocator(chunk.locator)
+    if (
+      buildDocumentChunkId(source.source_id, source.media_type, chunk.kind, chunk.locator) !==
+      chunk.chunk_id
+    ) {
+      throw new Error("Document chunk deterministic identity is invalid")
+    }
+    chunks.set(chunk.chunk_id, structuredClone(chunk) as DocumentChunkV1)
+  }
   loadSelectedEvidence(
     evidence.selection,
     evidence.chunks,
     DEFAULT_RULE_AUTHORING_LIMITS.maxSelectedEvidenceBytes
   )
-  const sources = new Map(evidence.sourceManifest.sources.map((source) => [source.source_id, source]))
-  const chunks = new Map(evidence.chunks.map((chunk) => [chunk.chunk_id, chunk]))
   for (const item of evidence.selection.selected_chunks) {
     const source = sources.get(item.source_id)
     const chunk = chunks.get(item.chunk_id)
@@ -853,6 +899,11 @@ function validateEvidence(evidence: RuleApplyEvidence): void {
     }
     validateLocator(chunk.locator as Record<string, unknown>)
   }
+}
+
+function isDocumentChunkKind(value: unknown): value is DocumentChunkV1["kind"] {
+  return value === "heading" || value === "paragraph" || value === "list" ||
+    value === "table" || value === "row" || value === "page"
 }
 
 function validateSourceManifest(value: RuleSourceManifestV1, maxSourceCount: number): void {
@@ -1117,7 +1168,11 @@ function validateLocator(locator: Record<string, unknown>): void {
     (
       !Array.isArray(locator.heading_path) ||
       locator.heading_path.length > 64 ||
-      locator.heading_path.some((part) => typeof part !== "string" || CONTROL_CHARACTER.test(part))
+      locator.heading_path.some((part) =>
+        typeof part !== "string" ||
+        Buffer.byteLength(part, "utf8") > DEFAULT_RULE_AUTHORING_LIMITS.maxChunkBytes ||
+        CONTROL_CHARACTER.test(part)
+      )
     )
   ) {
     throw new Error("Approved rule provenance locator is malformed")
@@ -1130,7 +1185,11 @@ function validateLocator(locator: Record<string, unknown>): void {
   }
   for (const key of ["sheet", "cell_range"]) {
     const value = locator[key]
-    if (value !== undefined && (typeof value !== "string" || CONTROL_CHARACTER.test(value))) {
+    if (value !== undefined && (
+      typeof value !== "string" ||
+      Buffer.byteLength(value, "utf8") > DEFAULT_RULE_AUTHORING_LIMITS.maxChunkBytes ||
+      CONTROL_CHARACTER.test(value)
+    )) {
       throw new Error("Approved rule provenance locator is malformed")
     }
   }

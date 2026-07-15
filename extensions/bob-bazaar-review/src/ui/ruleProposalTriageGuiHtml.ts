@@ -28,6 +28,9 @@ export interface RuleProposalTriageOperationModel {
   rejectReason: string
   existingSummary?: string
   proposedSummary?: string
+  existingSummaryTruncated?: boolean
+  proposedSummaryTruncated?: boolean
+  comparisonAvailable?: boolean
   editRule?: RuleProposalTriageRuleEditModel
   editHeading?: string
   editMarkdown?: string
@@ -63,6 +66,7 @@ export interface RuleProposalTriagePreviewModel {
   editedCount: number
   rejectedCount: number
   generatedAt: string
+  planDigest: string
 }
 
 export interface RuleProposalTriageTransactionModel {
@@ -100,7 +104,7 @@ const MAX_SOURCE_LOCATORS = 64
 const CSP_SOURCE = /^[A-Za-z0-9+.:/_-]+$/
 const EDITABLE_CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/
 const MANAGED_MARKER = /bob-managed-section/i
-const MAX_EDITABLE_MARKDOWN_BYTES = 256 * 1024
+const MAX_EDITABLE_MARKDOWN_CHARACTERS = 256 * 1024
 
 export function renderRuleProposalTriageGuiHtml(
   model: RuleProposalTriageGuiModel,
@@ -227,6 +231,14 @@ export function renderRuleProposalTriageGuiHtml(
         return;
       }
       if (type === 'openEvidence') {
+        if (button.dataset.comparisonDocument === 'full') {
+          vscode.postMessage({
+            type,
+            candidateId: button.dataset.candidateId,
+            comparisonDocument: 'full'
+          });
+          return;
+        }
         vscode.postMessage({
           type,
           candidateId: button.dataset.candidateId,
@@ -302,8 +314,9 @@ function renderComparison(operation: RuleProposalTriageOperationModel): string {
   if (!operation.existingSummary && !operation.proposedSummary) return ""
   return `<details class="comparison">
     <summary>Inspect existing versus proposed</summary>
-    <div><strong>Existing approved</strong><pre>${escapeHtml(operation.existingSummary ?? "Unavailable")}</pre></div>
-    <div><strong>Proposed</strong><pre>${escapeHtml(operation.proposedSummary ?? "Unavailable")}</pre></div>
+    <div><strong>Existing approved</strong>${operation.existingSummaryTruncated ? ` <span class="warning">(truncated)</span>` : ""}<pre>${escapeHtml(operation.existingSummary ?? "Unavailable")}</pre></div>
+    <div><strong>Proposed</strong>${operation.proposedSummaryTruncated ? ` <span class="warning">(truncated)</span>` : ""}<pre>${escapeHtml(operation.proposedSummary ?? "Unavailable")}</pre></div>
+    ${operation.comparisonAvailable ? `<button type="button" class="secondary" data-action="openEvidence" data-candidate-id="${escapeHtml(operation.candidateId)}" data-comparison-document="full">Open full comparison</button>` : ""}
   </details>`
 }
 
@@ -362,7 +375,7 @@ function renderRecovery(recovery: readonly RuleProposalTriageRecoveryModel[]): s
 
 function renderPreview(preview: RuleProposalTriagePreviewModel | undefined): string {
   if (!preview) return `<div class="muted">No apply preview has been generated.</div>`
-  return `<div class="muted">Preview ${escapeHtml(preview.generatedAt)} · ${escapeHtml(preview.targetCount)} targets · ${escapeHtml(preview.acceptedCount)} accepted · ${escapeHtml(preview.editedCount)} edited · ${escapeHtml(preview.rejectedCount)} rejected</div>`
+  return `<div class="muted">Preview ${escapeHtml(preview.generatedAt)} · ${escapeHtml(preview.targetCount)} targets · ${escapeHtml(preview.acceptedCount)} accepted · ${escapeHtml(preview.editedCount)} edited · ${escapeHtml(preview.rejectedCount)} rejected · plan <code>${escapeHtml(preview.planDigest)}</code></div>`
 }
 
 function renderTransaction(transaction: RuleProposalTriageTransactionModel | undefined): string {
@@ -435,13 +448,16 @@ function allowlistedOperation(value: RuleProposalTriageOperationModel): RuleProp
     proposedSummary: value?.proposedSummary === undefined
       ? undefined
       : display(value.proposedSummary, DISPLAY_BYTES),
+    existingSummaryTruncated: value?.existingSummaryTruncated === true,
+    proposedSummaryTruncated: value?.proposedSummaryTruncated === true,
+    comparisonAvailable: value?.comparisonAvailable === true,
     editRule: allowlistedRuleEdit(value?.editRule),
     editHeading: value?.editHeading === undefined
       ? undefined
       : editableText(value.editHeading, 512, { nonEmpty: true, singleLine: true, forbidMarker: true }),
     editMarkdown: value?.editMarkdown === undefined
       ? undefined
-      : editableText(value.editMarkdown, MAX_EDITABLE_MARKDOWN_BYTES, { forbidMarker: true })
+      : editableText(value.editMarkdown, MAX_EDITABLE_MARKDOWN_CHARACTERS, { forbidMarker: true })
   }
 }
 
@@ -449,17 +465,24 @@ function allowlistedRuleEdit(
   value: RuleProposalTriageRuleEditModel | undefined
 ): RuleProposalTriageRuleEditModel | undefined {
   if (!value) return undefined
+  if (
+    value.severityOnFail !== "error" &&
+    value.severityOnFail !== "warning" &&
+    value.severityOnFail !== "info"
+  ) throw new Error("Rule proposal editable severity is invalid")
+  if (!Array.isArray(value.appliesWhen) || value.appliesWhen.length > 32) {
+    throw new Error("Rule proposal editable applicability is invalid")
+  }
+  if (typeof value.evidenceRequired !== "boolean") {
+    throw new Error("Rule proposal editable evidence requirement is invalid")
+  }
   return {
     category: editableText(value.category, 256, { nonEmpty: true }),
     title: editableText(value.title, 512, { nonEmpty: true }),
     description: editableText(value.description, 8_192, { nonEmpty: true }),
-    severityOnFail: value.severityOnFail === "warning" || value.severityOnFail === "info"
-      ? value.severityOnFail
-      : "error",
-    appliesWhen: Array.isArray(value.appliesWhen)
-      ? value.appliesWhen.slice(0, 32).map((item) => inertRuleCondition(item))
-      : [],
-    evidenceRequired: value.evidenceRequired === true,
+    severityOnFail: value.severityOnFail,
+    appliesWhen: value.appliesWhen.map((item) => inertRuleCondition(item)),
+    evidenceRequired: value.evidenceRequired,
     reviewHint: editableText(value.reviewHint, 4_096)
   }
 }
@@ -470,28 +493,36 @@ function inertRuleCondition(value: unknown): string {
 
 function editableText(
   value: unknown,
-  maxBytes: number,
+  maxCharacters: number,
   options: { nonEmpty?: boolean; singleLine?: boolean; forbidMarker?: boolean } = {}
 ): string {
   if (
     typeof value !== "string" ||
-    Buffer.byteLength(value, "utf8") > maxBytes ||
+    unicodeLength(value) > maxCharacters ||
     EDITABLE_CONTROL.test(value) ||
     (options.nonEmpty === true && value.length === 0) ||
     (options.singleLine === true && /[\r\n]/.test(value)) ||
     (options.forbidMarker === true && MANAGED_MARKER.test(value))
-  ) return ""
+  ) throw new Error("Rule proposal editable value is invalid")
   return value
+}
+
+function unicodeLength(value: string): number {
+  return [...value].length
 }
 
 function allowlistedPreview(value: RuleProposalTriagePreviewModel | undefined): RuleProposalTriagePreviewModel | undefined {
   if (!value) return undefined
+  if (typeof value.planDigest !== "string" || !/^[a-f0-9]{64}$/.test(value.planDigest)) {
+    throw new Error("Rule proposal apply preview digest is invalid")
+  }
   return {
     targetCount: safeCount(value.targetCount),
     acceptedCount: safeCount(value.acceptedCount),
     editedCount: safeCount(value.editedCount),
     rejectedCount: safeCount(value.rejectedCount),
-    generatedAt: display(value.generatedAt, SHORT_DISPLAY_BYTES)
+    generatedAt: display(value.generatedAt, SHORT_DISPLAY_BYTES),
+    planDigest: value.planDigest
   }
 }
 

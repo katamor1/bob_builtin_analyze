@@ -13,6 +13,13 @@ const CHUNK_ID = `chunk-${"b".repeat(64)}`
 const PRIVATE_PATH = "/private/rules/engineering-policy.docx"
 const RAW_PROPOSAL = "RAW AI RESPONSE including /private/rules/engineering-policy.docx and secret-token"
 const REVIEWED_AT = "2026-07-15T03:04:05.000Z"
+const HOST_TARGETS = Object.freeze([
+  ["checklist", ".bob/review/checklist.json"],
+  ["project_context", ".bob/review/project-context.md"],
+  ["prompt_addendum", ".bob/review/review-prompt-addendum.md"],
+  ["rule_sources", ".bob/review/rule-sources.json"],
+  ["rule_provenance", ".bob/review/rule-provenance.json"]
+])
 
 function proposalFixture() {
   const rule = (title) => ({
@@ -110,13 +117,26 @@ function emptyOverlay() {
 }
 
 function triageState() {
+  const proposal = proposalFixture()
   return {
     run: {
       workspaceRoot: "/workspace/acme",
       runId: RUN_ID,
       updatedAt: "2026-07-15T03:00:00.000Z"
     },
-    proposal: proposalFixture(),
+    proposal,
+    validationContext: {
+      runId: RUN_ID,
+      base: {
+        checklistSha256: proposal.base.checklist_sha256,
+        projectContextSha256: proposal.base.project_context_sha256,
+        promptAddendumSha256: proposal.base.prompt_addendum_sha256
+      },
+      existingRuleIds: ["PRJ-0001", "PRJ-0002"],
+      existingProjectContextSectionIds: [],
+      existingPromptAddendumSectionIds: [],
+      selectedEvidence: [{ source_id: SOURCE_ID, chunk_id: CHUNK_ID }]
+    },
     decisions: emptyOverlay(),
     bundle: {},
     evidence: {
@@ -178,6 +198,9 @@ function renderModel(overrides = {}) {
             rejectReason: "",
             existingSummary: "Existing approved <rule>",
             proposedSummary: "Proposed replacement <rule>",
+            existingSummaryTruncated: false,
+            proposedSummaryTruncated: false,
+            comparisonAvailable: true,
             editRule: {
               category: "human-security",
               title: "Human <edited> title",
@@ -343,7 +366,13 @@ function hostDependencies(overrides = {}) {
         return {
           schema_version: "bob-bazaar-review/rule-apply-plan/v1",
           run_id: RUN_ID,
-          targets: [],
+          targets: HOST_TARGETS.map(([asset, targetPath]) => ({
+            asset,
+            path: targetPath,
+            expected_pre_image: { state: "missing" },
+            post_image_sha256: "d".repeat(64),
+            bytes: Buffer.alloc(0)
+          })),
           decisions: [],
           retirements: [],
           generation: planGeneration
@@ -352,6 +381,9 @@ function hostDependencies(overrides = {}) {
       persistRuleApplyPreview: async (_state, decisions, plan) => {
         calls.push(["persistPreview", structuredClone(decisions), plan.generation])
         return structuredClone(state)
+      },
+      validateDisplayedRuleApplyPreview: async (_state, plan) => {
+        calls.push(["validateDisplayedPreview", plan.generation])
       },
       executeRuleApplyTransaction: async (plan, options) => {
         calls.push(["execute", plan.generation, structuredClone(options)])
@@ -362,7 +394,13 @@ function hostDependencies(overrides = {}) {
           status: "committed",
           committed_at: options.now,
           backup_directory: ".bob/review/rule-authoring/backups/txn-triage-1",
-          targets: [],
+          targets: plan.targets.map((target) => ({
+            asset: target.asset,
+            path: target.path,
+            expected_pre_image: target.expected_pre_image,
+            post_image_sha256: target.post_image_sha256,
+            state: "replaced"
+          })),
           decisions: [],
           retirements: []
         }
@@ -427,6 +465,7 @@ test("renders grouped add/update/retire operations, safe locators, required deci
   assert.match(html, /conflict-blocking/)
   assert.match(html, /Existing approved &lt;rule&gt;/)
   assert.match(html, /Proposed replacement &lt;rule&gt;/)
+  assert.match(html, /data-comparison-document="full"/)
   assert.match(html, /data-edit-field="category" value="human-security"/)
   assert.match(html, /data-edit-field="title" value="Human &lt;edited&gt; title"/)
   assert.match(html, /data-edit-field="description">Human &lt;\/textarea&gt;&lt;script&gt;alert\(&#39;edit&#39;\)&lt;\/script&gt; \/project\/settings\.json<\/textarea>/)
@@ -480,6 +519,82 @@ test("renders grouped add/update/retire operations, safe locators, required deci
   assert.match(hostileCsp, /style-src vscode-resource: 'unsafe-inline'/)
 })
 
+test("shows all seven rule fields and marks truncated Markdown with a host-controlled full comparison", () => {
+  const { renderRuleProposalTriageGuiHtml } = require("../out/ui/ruleProposalTriageGuiHtml")
+  const model = renderModel()
+  model.groups[0].operations[1].existingSummary = [
+    "category: security",
+    "title: Existing title",
+    "description: Existing description",
+    "severity_on_fail: warning",
+    "applies_when: diff_contains:auth",
+    "evidence_required: true",
+    "review_hint: Inspect auth"
+  ].join("\n")
+  model.groups[1].operations = [{
+    candidateId: "candidate-context-long",
+    operation: "update",
+    targetId: "CTX-0001",
+    title: "Long context",
+    severity: "",
+    confidence: "high",
+    rationale: "Compare the full managed section",
+    sourceCount: 1,
+    sourceLocators: ["policy.docx · heading Context"],
+    blockingConflictIds: [],
+    decision: "accept",
+    rejectReason: "",
+    existingSummary: "x".repeat(8_000) + "…",
+    proposedSummary: "y".repeat(8_000) + "…",
+    existingSummaryTruncated: true,
+    proposedSummaryTruncated: true,
+    comparisonAvailable: true,
+    editHeading: "Long context",
+    editMarkdown: "Full body"
+  }]
+
+  const html = renderRuleProposalTriageGuiHtml(model, "comparison-nonce")
+  for (const field of [
+    "category", "title", "description", "severity_on_fail",
+    "applies_when", "evidence_required", "review_hint"
+  ]) assert.match(html, new RegExp(field))
+  assert.match(html, /truncated/i)
+  assert.match(html, /Open full comparison/i)
+  assert.match(html, /data-action="openEvidence"[^>]*data-comparison-document="full"/)
+})
+
+test("uses Unicode-character limits for editable fields and throws instead of silently emptying invalid values", () => {
+  const { renderRuleProposalTriageGuiHtml } = require("../out/ui/ruleProposalTriageGuiHtml")
+  const validTitle = "界".repeat(512)
+  const valid = renderModel()
+  valid.groups[0].operations[1].editRule.title = validTitle
+  const html = renderRuleProposalTriageGuiHtml(valid, "unicode-nonce")
+  assert.match(html, new RegExp(`value="${validTitle}"`))
+
+  const invalid = renderModel()
+  invalid.groups[0].operations[1].editRule.title = "界".repeat(513)
+  assert.throws(
+    () => renderRuleProposalTriageGuiHtml(invalid, "invalid-unicode-nonce"),
+    /editable.*invalid|invalid.*editable/i
+  )
+})
+
+test("reports invalid editable Unicode input instead of silently ignoring it", async () => {
+  const fake = createFakeVscode()
+  const fixture = hostDependencies()
+  const { promise, panel } = await startHost(fake, fixture)
+  await panel.emitMessage({
+    type: "editRule",
+    candidateId: "candidate-update",
+    rule: { ...proposalFixture().operations[1].rule, title: "界".repeat(513) }
+  })
+  assert.equal(fixture.calls.filter(([name]) => name === "persistDecisions").length, 0)
+  assert.equal(fake.errorCalls.length, 1)
+  assert.match(fake.errorCalls[0], /editable.*invalid|invalid.*editable/i)
+  await panel.emitMessage({ type: "close" })
+  assert.deepEqual(await promise, { status: "closed", runId: RUN_ID })
+})
+
 test("accepts only exact operation-ID Webview messages and never accepts a path or command ID", () => {
   const fake = createFakeVscode()
   const { RULE_PROPOSAL_TRIAGE_MESSAGE_TYPES, parseRuleProposalTriageMessage } = loadGui(fake.vscode)
@@ -502,6 +617,7 @@ test("accepts only exact operation-ID Webview messages and never accepts a path 
     { type: "editRule", candidateId: "candidate-context", markdown: { heading: "Context", markdown: "Body" } },
     { type: "resolveConflict", candidateId: "candidate-add", conflictId: "conflict-blocking", alternativeId: "alternative-a" },
     { type: "openEvidence", candidateId: "candidate-add", sourceRefIndex: 0 },
+    { type: "openEvidence", candidateId: "candidate-update", comparisonDocument: "full" },
     { type: "previewApply" },
     { type: "applyApproved" },
     { type: "recoverTransaction", transactionId: "txn-triage-1", action: "rollback" },
@@ -516,10 +632,43 @@ test("accepts only exact operation-ID Webview messages and never accepts a path 
     { type: "setDecision", candidateId: "candidate-add", decision: "maybe" },
     { type: "editRule", candidateId: "candidate-add", rule: { ...editedRule, targetPath: PRIVATE_PATH } },
     { type: "openEvidence", candidateId: "candidate-add", sourceRefIndex: -1 },
+    { type: "openEvidence", candidateId: "candidate-update", comparisonDocument: "full", targetPath: PRIVATE_PATH },
     { type: "recoverTransaction", transactionId: "../txn", action: "rollback" },
     { type: "recoverTransaction", transactionId: "txn-triage-1", action: "resume", targetPath: PRIVATE_PATH },
     { type: "close", extra: true }
   ]) assert.equal(parseRuleProposalTriageMessage(rejected), undefined)
+
+  const unicodeRule = { ...editedRule, title: "界".repeat(512) }
+  assert.deepEqual(
+    parseRuleProposalTriageMessage({ type: "editRule", candidateId: "candidate-add", rule: unicodeRule }),
+    { type: "editRule", candidateId: "candidate-add", rule: unicodeRule }
+  )
+  assert.equal(parseRuleProposalTriageMessage({
+    type: "editRule",
+    candidateId: "candidate-add",
+    rule: { ...editedRule, title: "界".repeat(513) }
+  }), undefined)
+})
+
+test("recursively rejects unknown proposal-validation context keys", () => {
+  const { parseAndValidateRuleProposal } = require("../out/ruleAuthoring/ruleProposalValidation")
+  const state = triageState()
+  for (const context of [
+    { ...structuredClone(state.validationContext), unknown: true },
+    {
+      ...structuredClone(state.validationContext),
+      base: { ...state.validationContext.base, unknown: true }
+    },
+    {
+      ...structuredClone(state.validationContext),
+      selectedEvidence: [{ ...state.validationContext.selectedEvidence[0], unknown: true }]
+    }
+  ]) {
+    assert.throws(
+      () => parseAndValidateRuleProposal(JSON.stringify(state.proposal), context),
+      /validation context is invalid/i
+    )
+  }
 })
 
 test("re-parses a stored validated proposal and persists decisions in a separate immutable generation", async (t) => {
@@ -585,7 +734,7 @@ test("re-parses a stored validated proposal and persists decisions in a separate
     schema_version: "bob-bazaar-review/rule-evidence-selection/v1",
     selected_chunks: [{ source_id: sourceId, chunk_id: chunkId, text_sha256: textSha }]
   }
-  const proposalValidation = gui.createRuleProposalValidationArtifact(storedProposal, {
+  const validationContext = {
     runId: RUN_ID,
     base: {
       checklistSha256: storedProposal.base.checklist_sha256,
@@ -596,15 +745,36 @@ test("re-parses a stored validated proposal and persists decisions in a separate
     existingProjectContextSectionIds: [],
     existingPromptAddendumSectionIds: [],
     selectedEvidence: [{ source_id: sourceId, chunk_id: chunkId }]
-  }, "2026-07-15T02:00:02.000Z")
-  const seeded = await commitRuleAuthoringArtifactGeneration({
+  }
+  const evidenceRun = await commitRuleAuthoringArtifactGeneration({
     workspaceRoot: root,
     runId: RUN_ID,
     expectedUpdatedAt: initial.updatedAt,
     files: {
       sourceManifest: `${JSON.stringify(sourceManifest)}\n`,
       documentChunks: `${JSON.stringify(chunk)}\n`,
-      evidenceSelection: `${JSON.stringify(selection)}\n`,
+      evidenceSelection: `${JSON.stringify(selection)}\n`
+    },
+    buildNextRun: (run, artifacts) => ({
+      ...run,
+      artifacts,
+      updatedAt: "2026-07-15T02:00:01.000Z"
+    })
+  })
+  const proposalValidation = gui.createRuleProposalValidationArtifact(
+    storedProposal,
+    validationContext,
+    "2026-07-15T02:00:02.000Z",
+    {
+      run: evidenceRun,
+      evidence: { sourceManifest, chunks: [chunk], selection }
+    }
+  )
+  const seeded = await commitRuleAuthoringArtifactGeneration({
+    workspaceRoot: root,
+    runId: RUN_ID,
+    expectedUpdatedAt: evidenceRun.updatedAt,
+    files: {
       ruleProposalRaw: rawText,
       ruleProposal: `${JSON.stringify(storedProposal)}\n`,
       proposalValidation: `${JSON.stringify(proposalValidation)}\n`
@@ -710,6 +880,9 @@ test("re-parses a stored validated proposal and persists decisions in a separate
     retirements: []
   }
   const previewA = await gui.persistRuleApplyPreview(previewWindowA, completeOverlay, previewPlan)
+  assert.equal(previewA.run.currentPhase, "apply")
+  assert.equal(previewA.run.phases.human_review.status, "completed")
+  assert.equal(previewA.run.phases.apply.status, "in_progress")
   await assert.rejects(
     gui.persistRuleApplyPreview(previewWindowB, completeOverlay, previewPlan),
     /changed since it was loaded|while Human Triage was open/i
@@ -717,6 +890,21 @@ test("re-parses a stored validated proposal and persists decisions in a separate
   const afterStalePreview = await gui.loadRuleProposalTriageState({ workspaceRoot: root, runId: RUN_ID })
   assert.equal(afterStalePreview.run.artifacts.applyPreview, previewA.run.artifacts.applyPreview)
   assert.equal(afterStalePreview.run.artifacts.proposalDecisions, decisionState.run.artifacts.proposalDecisions)
+  const invalidatedRun = await gui.invalidateRuleApplyPreview({ workspaceRoot: root, runId: RUN_ID })
+  assert.equal(invalidatedRun.currentPhase, "apply")
+  assert.equal(invalidatedRun.phases.apply.status, "in_progress")
+  assert.equal(invalidatedRun.artifacts.applyPreview, undefined)
+  const afterInvalidation = await gui.loadRuleProposalTriageState({ workspaceRoot: root, runId: RUN_ID })
+
+  const revisedOverlay = structuredClone(completeOverlay)
+  revisedOverlay.decisions["candidate-update"] = {
+    decision: "reject",
+    reviewed_at: "2026-07-15T03:04:08.000Z"
+  }
+  const resumedReview = await gui.persistRuleProposalDecisions(afterInvalidation, revisedOverlay)
+  assert.equal(resumedReview.run.currentPhase, "apply", "apply phase must not move backwards")
+  assert.equal(resumedReview.run.phases.apply.status, "in_progress")
+  assert.equal(resumedReview.run.artifacts.applyPreview, undefined, "changed decisions invalidate reviewed preview")
 
   await fs.unlink(rawPath)
   const reloaded = await gui.loadRuleProposalTriageState({ workspaceRoot: root, runId: RUN_ID })
@@ -733,6 +921,17 @@ test("re-parses a stored validated proposal and persists decisions in a separate
 test("persists a separate decision overlay, validates edits in the host, regenerates preview, and applies only after modal confirmation", async () => {
   const fake = createFakeVscode({ warningResponses: [undefined, "Apply approved project rules"] })
   const fixture = hostDependencies()
+  fixture.state.bundle.checklist = {
+    state: "present",
+    bytes: Buffer.from(JSON.stringify({
+      version: "1",
+      project: "triage",
+      rules: [
+        { id: "PRJ-0001", ...proposalFixture().operations[1].rule },
+        { id: "PRJ-0002", ...proposalFixture().operations[1].rule }
+      ]
+    }), "utf8")
+  }
   const proposalBefore = JSON.stringify(fixture.state.proposal)
   const { promise, panel } = await startHost(fake, fixture)
   assert.ok(panel)
@@ -743,11 +942,38 @@ test("persists a separate decision overlay, validates edits in the host, regener
   assert.doesNotMatch(fake.openedDocuments[0].content, /\/private\/rules/)
 
   await panel.emitMessage({
+    type: "openEvidence",
+    candidateId: "candidate-update",
+    comparisonDocument: "full"
+  })
+  assert.equal(fake.openedDocuments.length, 2)
+  assert.match(fake.openedDocuments[1].content, /Existing approved/i)
+  assert.match(fake.openedDocuments[1].content, /Proposed/i)
+  for (const field of [
+    "category", "title", "description", "severity_on_fail",
+    "applies_when", "evidence_required", "review_hint"
+  ]) assert.match(fake.openedDocuments[1].content, new RegExp(field))
+
+  await panel.emitMessage({
     type: "editRule",
     candidateId: "candidate-add",
     rule: { ...proposalFixture().operations[0].rule, severity_on_fail: "critical" }
   })
   assert.equal(fixture.calls.filter(([name]) => name === "persistDecisions").length, 0)
+
+  await panel.emitMessage({
+    type: "editRule",
+    candidateId: "candidate-update",
+    rule: {
+      ...proposalFixture().operations[1].rule,
+      applies_when: ["execute:rm -rf workspace"]
+    }
+  })
+  assert.equal(
+    fixture.calls.filter(([name]) => name === "persistDecisions").length,
+    0,
+    "schema-valid but semantically inert-invalid conditions must not persist"
+  )
 
   const acceptedIds = ["candidate-add", "candidate-update", "candidate-prompt"]
   for (const candidateId of acceptedIds) {
@@ -780,6 +1006,13 @@ test("persists a separate decision overlay, validates edits in the host, regener
     reviewHint: "Human review hint."
   })
   assert.match(editedRuleModel.proposedSummary, /Human-edited description/)
+  for (const field of [
+    "category", "title", "description", "severity_on_fail",
+    "applies_when", "evidence_required", "review_hint"
+  ]) {
+    assert.match(editedRuleModel.existingSummary, new RegExp(field))
+    assert.match(editedRuleModel.proposedSummary, new RegExp(field))
+  }
   await panel.emitMessage({
     type: "setDecision",
     candidateId: "candidate-retire",
@@ -808,8 +1041,10 @@ test("persists a separate decision overlay, validates edits in the host, regener
   })
   assert.equal(fixture.renderedModels.at(-1).model.decisionsComplete, true)
   assert.equal(fixture.renderedModels.at(-1).model.canPreview, true)
+  assert.equal(fixture.renderedModels.at(-1).model.canApply, false)
 
   await panel.emitMessage({ type: "previewApply" })
+  assert.equal(fixture.renderedModels.at(-1).model.canApply, true)
   const firstPlan = fixture.calls.find(([name]) => name === "buildPlan")
   assert.ok(firstPlan)
   assert.equal(firstPlan[1].decisions["candidate-add"].decision, "accept")
@@ -826,9 +1061,9 @@ test("persists a separate decision overlay, validates edits in the host, regener
   await panel.emitMessage({ type: "applyApproved" })
 
   const builds = fixture.calls.filter(([name]) => name === "buildPlan")
-  assert.equal(builds.length, 2, "apply must regenerate and revalidate the preview")
+  assert.equal(builds.length, 4, "apply must revalidate before confirmation and immediately before execution")
   assert.equal(fixture.calls.filter(([name]) => name === "execute").length, 1)
-  assert.equal(fixture.calls.find(([name]) => name === "execute")[1], 2)
+  assert.equal(fixture.calls.find(([name]) => name === "execute")[1], 4)
   assert.deepEqual(fake.warningCalls.map(({ options }) => options), [{ modal: true }, { modal: true }])
   assert.equal(JSON.stringify(fixture.state.proposal), proposalBefore, "raw validated proposal must remain immutable")
 
@@ -850,6 +1085,73 @@ test("persists a separate decision overlay, validates edits in the host, regener
   assert.equal(reopenedMarkdown.editMarkdown, "Human-approved context body.")
   await reopened.panel.emitMessage({ type: "close" })
   assert.deepEqual(await reopened.promise, { status: "closed", runId: RUN_ID })
+})
+
+test("requires a displayed preview and never executes a freshly changed unseen plan", async () => {
+  const fake = createFakeVscode({ warningResponses: ["Apply approved project rules"] })
+  let generation = 0
+  const fixture = hostDependencies({
+    buildRuleApplyPlan: (_bundle, _proposal, decisions) => {
+      generation += 1
+      const postImage = generation === 1 ? "a".repeat(64) : "b".repeat(64)
+      fixture.calls.push(["buildPlan", structuredClone(decisions), generation])
+      return {
+        schema_version: "bob-bazaar-review/rule-apply-plan/v1",
+        run_id: RUN_ID,
+        targets: HOST_TARGETS.map(([asset, targetPath]) => ({
+          asset,
+          path: targetPath,
+          expected_pre_image: { state: "missing" },
+          post_image_sha256: postImage,
+          bytes: Buffer.alloc(0)
+        })),
+        decisions: [],
+        retirements: [],
+        generation
+      }
+    }
+  })
+  fixture.state.decisions = {
+    schema_version: "bob-bazaar-review/proposal-decisions/v1",
+    run_id: RUN_ID,
+    decisions: Object.fromEntries([
+      "candidate-add", "candidate-update", "candidate-retire", "candidate-context", "candidate-prompt"
+    ].map((candidateId) => [candidateId, {
+      decision: candidateId === "candidate-add" ? "reject" : "accept",
+      reviewed_at: REVIEWED_AT
+    }]))
+  }
+  const { promise, panel } = await startHost(fake, fixture)
+
+  assert.equal(fixture.renderedModels.at(-1).model.canApply, false)
+  await panel.emitMessage({ type: "applyApproved" })
+  assert.equal(fake.warningCalls.length, 0)
+  assert.equal(fixture.calls.filter(([name]) => name === "execute").length, 0)
+
+  await panel.emitMessage({ type: "previewApply" })
+  assert.equal(fixture.renderedModels.at(-1).model.canApply, true)
+  const displayedDigest = fixture.renderedModels.at(-1).model.preview.planDigest
+  assert.match(displayedDigest, /^[a-f0-9]{64}$/)
+  await panel.emitMessage({ type: "applyApproved" })
+  assert.equal(fake.warningCalls.length, 0, "changed plan must be displayed before confirmation")
+  assert.equal(fixture.calls.filter(([name]) => name === "execute").length, 0)
+  assert.match(fixture.renderedModels.at(-1).model.status, /changed|review.*preview/i)
+  assert.notEqual(fixture.renderedModels.at(-1).model.preview.planDigest, displayedDigest)
+
+  await panel.emitMessage({ type: "applyApproved" })
+  assert.equal(fake.warningCalls.length, 1)
+  assert.equal(fixture.calls.filter(([name]) => name === "execute").length, 1)
+  assert.equal(fixture.calls.find(([name]) => name === "execute")[1], 4)
+  assert.deepEqual(
+    fixture.calls.filter(([name]) => name === "validateDisplayedPreview"),
+    [["validateDisplayedPreview", 3], ["validateDisplayedPreview", 4]],
+    "the stable displayed plan is rebound before confirmation and immediately before execution"
+  )
+  assert.ok(
+    fixture.calls.findIndex(([name]) => name === "validateDisplayedPreview") <
+      fixture.calls.findIndex(([name]) => name === "execute")
+  )
+  assert.deepEqual(await promise, { status: "applied", runId: RUN_ID, transactionId: "txn-triage-1" })
 })
 
 test("maps a stale current bundle to a safe warning and never starts a transaction", async () => {
@@ -963,6 +1265,10 @@ test("blocks normal resume until an incomplete transaction is rolled back", asyn
       fixture.calls.push(["recover", transactionId, structuredClone(request)])
       incomplete = []
       return { status: "rolled_back" }
+    },
+    invalidateRuleApplyPreview: async () => {
+      fixture.calls.push(["invalidatePreview"])
+      delete fixture.state.run.artifacts?.applyPreview
     }
   })
   const { promise, panel } = await startHost(fake, fixture)
@@ -980,11 +1286,13 @@ test("blocks normal resume until an incomplete transaction is rolled back", asyn
     "recoverCommitted",
     "findIncomplete",
     "recover",
+    "invalidatePreview",
     "recoverCommitted",
     "findIncomplete",
     "loadState"
   ])
   assert.equal(fixture.renderedModels.at(-1).model.groups[0].operations.length, 3)
+  assert.equal(fixture.renderedModels.at(-1).model.canApply, false)
 
   await panel.emitMessage({ type: "close" })
   assert.deepEqual(await promise, { status: "closed", runId: RUN_ID })

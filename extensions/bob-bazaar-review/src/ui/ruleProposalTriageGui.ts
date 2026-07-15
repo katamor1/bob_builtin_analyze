@@ -10,6 +10,7 @@ import { sanitizeRemoteSafeText } from "../ruleAuthoring/remoteSafeText"
 import {
   buildRuleApplyPlan,
   RULE_PROPOSAL_DECISIONS_SCHEMA_VERSION,
+  validateRuleApplyEvidence,
   type RuleApplyBundle,
   type RuleApplyCandidateDecision,
   type RuleApplyEditedMarkdown,
@@ -82,6 +83,7 @@ export type RuleProposalTriageMessage =
   | { type: "editRule"; candidateId: string; markdown: RuleApplyEditedMarkdown }
   | { type: "resolveConflict"; candidateId: string; conflictId: string; alternativeId: string }
   | { type: "openEvidence"; candidateId: string; sourceRefIndex: number }
+  | { type: "openEvidence"; candidateId: string; comparisonDocument: "full" }
   | { type: "previewApply" }
   | { type: "applyApproved" }
   | { type: "recoverTransaction"; transactionId: string; action: "rollback" | "resume" }
@@ -112,6 +114,7 @@ export interface RuleAuthoringCommittedRecoveryResult {
 export interface RuleProposalTriageState {
   run: RuleAuthoringRunV1
   proposal: RuleProposalV1
+  validationContext: RuleProposalValidationContext
   decisions: RuleProposalDecisionsV1
   bundle: RuleApplyBundle
   evidence: RuleApplyEvidence
@@ -125,6 +128,26 @@ export interface StoredProposalValidationV1 {
   validated_at: string
   proposal_sha256: string
   validation_context: RuleProposalValidationContext
+  evidence_binding: {
+    source_manifest: StoredEvidenceArtifactBinding
+    document_chunks: StoredEvidenceArtifactBinding
+    evidence_selection: StoredEvidenceArtifactBinding
+    selected_evidence: Array<{
+      source_id: string
+      chunk_id: string
+      text_sha256: string
+    }>
+  }
+}
+
+interface StoredEvidenceArtifactBinding {
+  artifact: string
+  sha256: string
+}
+
+export interface RuleProposalValidationEvidenceInput {
+  run: Pick<RuleAuthoringRunV1, "runId" | "artifacts">
+  evidence: RuleApplyEvidence
 }
 
 interface StoredApplyPreviewV1 {
@@ -175,12 +198,19 @@ export interface RuleProposalTriageGuiDependencies {
     decisions: RuleProposalDecisionsV1,
     plan: RuleApplyPlan
   ) => Promise<RuleProposalTriageState>
+  validateDisplayedRuleApplyPreview: (
+    state: RuleProposalTriageState,
+    plan: RuleApplyPlan
+  ) => Promise<void>
   executeRuleApplyTransaction: typeof executeRuleApplyTransaction
   persistRuleApplyCompletion: (
     state: RuleProposalTriageState,
     decisions: RuleProposalDecisionsV1,
     plan: RuleApplyPlan,
     manifest: ApplyManifestV1
+  ) => Promise<RuleAuthoringRunV1>
+  invalidateRuleApplyPreview: (
+    input: RuleProposalTriageInput
   ) => Promise<RuleAuthoringRunV1>
   recoverRuleApplyTransaction: (
     workspaceRoot: string,
@@ -202,9 +232,10 @@ const CHUNK_ID = /^chunk-[a-f0-9]{64}$/
 const SHA256 = /^[a-f0-9]{64}$/
 const CANONICAL_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/
 const CONTROL_CHARACTER = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/
-const MAX_REJECT_REASON_BYTES = 8_192
+const MAX_REJECT_REASON_CHARACTERS = 8_192
 const MAX_ARTIFACT_BYTES = 16 * 1024 * 1024
 const MAX_TRANSACTION_ENTRIES = 10_000
+const MAX_COMPARISON_DOCUMENT_BYTES = (2 * DEFAULT_RULE_AUTHORING_LIMITS.maxProposalBytes) + 65_536
 const APPLY_CONFIRMATION = "Apply approved project rules"
 const TARGET_SPECS = Object.freeze([
   ["checklist", ".bob/review/checklist.json"],
@@ -283,6 +314,18 @@ export function parseRuleProposalTriageMessage(value: unknown): RuleProposalTria
       sourceRefIndex: Number(value.sourceRefIndex)
     }
   }
+  if (
+    value.type === "openEvidence" &&
+    hasOnlyKeys(value, ["type", "candidateId", "comparisonDocument"]) &&
+    isCandidateId(value.candidateId) &&
+    value.comparisonDocument === "full"
+  ) {
+    return {
+      type: "openEvidence",
+      candidateId: value.candidateId,
+      comparisonDocument: "full"
+    }
+  }
   if (value.type === "previewApply" && hasOnlyKeys(value, ["type"])) return { type: "previewApply" }
   if (value.type === "applyApproved" && hasOnlyKeys(value, ["type"])) return { type: "applyApproved" }
   if (
@@ -311,8 +354,10 @@ export function createRuleProposalTriageGuiHost(
     persistRuleProposalDecisions,
     buildRuleApplyPlan,
     persistRuleApplyPreview,
+    validateDisplayedRuleApplyPreview,
     executeRuleApplyTransaction,
     persistRuleApplyCompletion,
+    invalidateRuleApplyPreview,
     recoverRuleApplyTransaction,
     ...overrides
   }
@@ -331,11 +376,33 @@ export function openRuleProposalTriageGui(
 export function createRuleProposalValidationArtifact(
   proposal: RuleProposalV1,
   context: RuleProposalValidationContext,
-  validatedAt: string
+  validatedAt: string,
+  evidenceInput: RuleProposalValidationEvidenceInput
 ): StoredProposalValidationV1 {
   const timestamp = canonicalNow(validatedAt)
   const result = parseAndValidateRuleProposal(JSON.stringify(proposal), context)
   if (!result.valid) throw new Error("Rule proposal cannot be recorded as validated")
+  if (
+    !isPlainObject(evidenceInput) ||
+    !isPlainObject(evidenceInput.run) ||
+    evidenceInput.run.runId !== proposal.run_id ||
+    !isPlainObject(evidenceInput.run.artifacts) ||
+    !isPlainObject(evidenceInput.evidence)
+  ) {
+    throw new Error("Rule proposal validation evidence binding is malformed")
+  }
+  validateRuleApplyEvidence(evidenceInput.evidence)
+  const selectedEvidence = evidenceInput.evidence.selection.selected_chunks.map((item) => ({
+    source_id: item.source_id,
+    chunk_id: item.chunk_id,
+    text_sha256: item.text_sha256
+  }))
+  if (stableJson(context.selectedEvidence) !== stableJson(selectedEvidence.map(({ source_id, chunk_id }) => ({
+    source_id,
+    chunk_id
+  })))) {
+    throw new Error("Rule proposal validation context is not bound to selected evidence")
+  }
   return {
     schema_version: RULE_PROPOSAL_VALIDATION_ARTIFACT_SCHEMA_VERSION,
     run_id: proposal.run_id,
@@ -343,7 +410,22 @@ export function createRuleProposalValidationArtifact(
     issues: [],
     validated_at: timestamp,
     proposal_sha256: sha256(Buffer.from(JSON.stringify(result.proposal), "utf8")),
-    validation_context: structuredClone(context)
+    validation_context: structuredClone(context),
+    evidence_binding: {
+      source_manifest: {
+        artifact: requiredEvidenceArtifactPointer(evidenceInput.run, "sourceManifest"),
+        sha256: canonicalValueSha256(evidenceInput.evidence.sourceManifest)
+      },
+      document_chunks: {
+        artifact: requiredEvidenceArtifactPointer(evidenceInput.run, "documentChunks"),
+        sha256: canonicalValueSha256(evidenceInput.evidence.chunks)
+      },
+      evidence_selection: {
+        artifact: requiredEvidenceArtifactPointer(evidenceInput.run, "evidenceSelection"),
+        sha256: canonicalValueSha256(evidenceInput.evidence.selection)
+      },
+      selected_evidence: selectedEvidence
+    }
   }
 }
 
@@ -366,6 +448,7 @@ async function openWithDependencies(
   let decisions = emptyDecisionOverlay(input.runId)
   let recovery: readonly IncompleteRuleApplyTransactionV1[] = []
   let preview: RuleProposalTriagePreviewModel | undefined
+  let displayedPreviewDigest: string | undefined
   let transaction: RuleProposalTriageTransactionModel | undefined
   let staleWarning = ""
   let status = "Loading the validated proposal."
@@ -421,6 +504,8 @@ async function openWithDependencies(
       if (recovery.length === 0) {
         state = await dependencies.loadRuleProposalTriageState(input)
         decisions = cloneDecisions(state.decisions)
+        preview = undefined
+        displayedPreviewDigest = undefined
         status = "Review every proposal candidate before previewing apply."
       } else {
         state = undefined
@@ -433,7 +518,14 @@ async function openWithDependencies(
     panel.webview.onDidReceiveMessage((rawMessage) => {
       if (busy || settled) return
       const message = parseRuleProposalTriageMessage(rawMessage)
-      if (!message) return
+      if (!message) {
+        if (isPlainObject(rawMessage) && rawMessage.type === "editRule") {
+          status = "The editable value is invalid or exceeds its Unicode character limit."
+          render()
+          void vscodeApi.window.showErrorMessage(status)
+        }
+        return
+      }
       busy = true
       void (async () => {
         try {
@@ -458,6 +550,9 @@ async function openWithDependencies(
                 : 0
             }
             status = "The incomplete transaction was rolled back."
+            if (recovered.status !== "committed") {
+              await dependencies.invalidateRuleApplyPreview(input)
+            }
             await refreshAfterRecovery()
             return
           }
@@ -485,6 +580,7 @@ async function openWithDependencies(
             state = persistedState
             decisions = nextDecisions
             preview = undefined
+            displayedPreviewDigest = undefined
             staleWarning = ""
             status = "Human Triage decision saved."
             render()
@@ -508,7 +604,12 @@ async function openWithDependencies(
               if (!("rule" in message)) {
                 throw new SafeTriageError("This candidate requires a rule edit.")
               }
-              assertEditedRuleAgainstProposal(state.proposal, operation, message.rule)
+              assertEditedRuleAgainstProposal(
+                state.proposal,
+                state.validationContext,
+                operation,
+                message.rule
+              )
               nextDecisions = withDecision(decisions, message.candidateId, compactDecision({
                 ...common,
                 edited_rule: structuredClone(message.rule)
@@ -517,7 +618,12 @@ async function openWithDependencies(
               if (!("markdown" in message)) {
                 throw new SafeTriageError("This candidate requires a Markdown edit.")
               }
-              assertEditedMarkdownAgainstProposal(state.proposal, operation, message.markdown)
+              assertEditedMarkdownAgainstProposal(
+                state.proposal,
+                state.validationContext,
+                operation,
+                message.markdown
+              )
               nextDecisions = withDecision(decisions, message.candidateId, compactDecision({
                 ...common,
                 edited_markdown: structuredClone(message.markdown)
@@ -527,6 +633,7 @@ async function openWithDependencies(
             state = persistedState
             decisions = nextDecisions
             preview = undefined
+            displayedPreviewDigest = undefined
             staleWarning = ""
             status = "Human edit validated and saved."
             render()
@@ -560,12 +667,25 @@ async function openWithDependencies(
             state = persistedState
             decisions = nextDecisions
             preview = undefined
+            displayedPreviewDigest = undefined
             status = "Conflict resolution saved."
             render()
             return
           }
           if (message.type === "openEvidence") {
             const operation = requireOperation(state.proposal, message.candidateId)
+            if ("comparisonDocument" in message) {
+              const content = buildFullComparisonDocument(state, decisions, operation)
+              if (Buffer.byteLength(content, "utf8") > MAX_COMPARISON_DOCUMENT_BYTES) {
+                throw new SafeTriageError("The full comparison exceeds the approved display limit.")
+              }
+              const document = await vscodeApi.workspace.openTextDocument({
+                language: "markdown",
+                content
+              })
+              await vscodeApi.window.showTextDocument(document, { preview: true })
+              return
+            }
             const sourceRef = operation.source_refs[message.sourceRefIndex]
             if (!sourceRef) throw new SafeTriageError("The evidence reference is unavailable.")
             const evidence = resolveEvidenceRecord(state.evidence, sourceRef)
@@ -595,30 +715,75 @@ async function openWithDependencies(
             )
             decisions = prepared.decisions
             preview = previewModel(prepared.plan, decisions, canonicalNow(dependencies.now()))
+            displayedPreviewDigest = planMetadataSha256(prepared.plan)
             staleWarning = ""
             status = "Apply preview regenerated from the current approved bundle."
             render()
             return
           }
+          if (!preview || !displayedPreviewDigest) {
+            throw new SafeTriageError("Generate and inspect an apply preview before applying approved operations.")
+          }
+          const prepared = await prepareFreshApply(dependencies, input, state, decisions)
+          const freshDigest = planMetadataSha256(prepared.plan)
+          if (freshDigest !== displayedPreviewDigest) {
+            state = await dependencies.persistRuleApplyPreview(
+              prepared.state,
+              prepared.decisions,
+              prepared.plan
+            )
+            decisions = prepared.decisions
+            preview = previewModel(prepared.plan, decisions, canonicalNow(dependencies.now()))
+            displayedPreviewDigest = freshDigest
+            staleWarning = ""
+            status = "The apply plan changed. Inspect the regenerated preview before applying."
+            render()
+            return
+          }
+          await dependencies.validateDisplayedRuleApplyPreview(prepared.state, prepared.plan)
           const confirmation = await vscodeApi.window.showWarningMessage(
             "Apply the accepted and human-edited project rule operations to all approved assets?",
             { modal: true },
             APPLY_CONFIRMATION
           )
           if (confirmation !== APPLY_CONFIRMATION) return
-          const prepared = await prepareFreshApply(dependencies, input, state, decisions)
-          state = await dependencies.persistRuleApplyPreview(
+          const confirmedPrepared = await prepareFreshApply(
+            dependencies,
+            input,
             prepared.state,
-            prepared.decisions,
-            prepared.plan
+            prepared.decisions
           )
-          decisions = prepared.decisions
+          const confirmedDigest = planMetadataSha256(confirmedPrepared.plan)
+          if (confirmedDigest !== displayedPreviewDigest) {
+            state = await dependencies.persistRuleApplyPreview(
+              confirmedPrepared.state,
+              confirmedPrepared.decisions,
+              confirmedPrepared.plan
+            )
+            decisions = confirmedPrepared.decisions
+            preview = previewModel(
+              confirmedPrepared.plan,
+              decisions,
+              canonicalNow(dependencies.now())
+            )
+            displayedPreviewDigest = confirmedDigest
+            staleWarning = ""
+            status = "The apply plan changed during confirmation. Inspect the regenerated preview before applying."
+            render()
+            return
+          }
+          await dependencies.validateDisplayedRuleApplyPreview(
+            confirmedPrepared.state,
+            confirmedPrepared.plan
+          )
+          state = confirmedPrepared.state
+          decisions = confirmedPrepared.decisions
           const transactionId = validateRuleAuthoringId(
             dependencies.newTransactionId(),
             "transactionId"
           )
           const now = canonicalNow(dependencies.now())
-          const manifest = await dependencies.executeRuleApplyTransaction(prepared.plan, {
+          const manifest = await dependencies.executeRuleApplyTransaction(confirmedPrepared.plan, {
             workspaceRoot: input.workspaceRoot,
             transactionId,
             now
@@ -626,10 +791,11 @@ async function openWithDependencies(
           await dependencies.persistRuleApplyCompletion(
             state,
             decisions,
-            prepared.plan,
+            confirmedPrepared.plan,
             manifest
           )
-          preview = previewModel(prepared.plan, decisions, now)
+          preview = previewModel(confirmedPrepared.plan, decisions, now)
+          displayedPreviewDigest = confirmedDigest
           transaction = {
             transactionId: manifest.transaction_id,
             status: "committed",
@@ -729,10 +895,13 @@ export async function loadRuleProposalTriageState(
   const sourceManifest = parseJsonObject(sourceManifestRaw, "Rule source manifest") as unknown as RuleSourceManifestV1
   const chunks = parseDocumentChunks(chunksRaw)
   const selection = parseJsonObject(selectionRaw, "Evidence selection") as unknown as RuleApplyEvidence["selection"]
+  const evidence: RuleApplyEvidence = { sourceManifest, selection, chunks }
+  validateRuleApplyEvidence(evidence)
   const validationContext = assertStoredProposalValidation(
     parseJsonObject(validationRaw, "Proposal validation"),
     schema.proposal,
-    selection
+    run,
+    evidence
   )
   const semantic = parseAndValidateRuleProposal(JSON.stringify(schema.proposal), validationContext)
   if (!semantic.valid) {
@@ -740,8 +909,6 @@ export async function loadRuleProposalTriageState(
       `${code}@${issuePath}`).join(",")
     throw new Error(`Stored rule proposal is not semantically valid (${codes})`)
   }
-  const evidence: RuleApplyEvidence = { sourceManifest, selection, chunks }
-
   const decisionRaw = run.artifacts.proposalDecisions === undefined
     ? undefined
     : await readResolvedArtifact(
@@ -753,7 +920,14 @@ export async function loadRuleProposalTriageState(
     ? emptyDecisionOverlay(input.runId)
     : parseStoredDecisions(decisionRaw, semantic.proposal)
   const bundle = await loadCurrentRuleApplyBundle(input.workspaceRoot)
-  return { run, proposal: semantic.proposal, decisions, bundle, evidence }
+  return {
+    run,
+    proposal: semantic.proposal,
+    validationContext,
+    decisions,
+    bundle,
+    evidence
+  }
 }
 
 export async function persistRuleProposalDecisions(
@@ -795,9 +969,8 @@ export async function persistRuleApplyPreview(
       applyPreview: serializeJson(storedPreview)
     },
     buildNextRun: (run, artifacts) => ({
-      ...run,
-      artifacts,
-      updatedAt: generatedAt
+      ...applyInProgressRun(run, generatedAt),
+      artifacts
     })
   })
   return { ...state, run: next, decisions }
@@ -824,6 +997,25 @@ export async function persistRuleApplyCompletion(
     },
     buildNextRun: (run, artifacts) => completedRun(run, artifacts, completionAt)
   })
+}
+
+export async function validateDisplayedRuleApplyPreview(
+  state: RuleProposalTriageState,
+  plan: RuleApplyPlan
+): Promise<void> {
+  assertPlanMatchesState(plan, state)
+  await assertStoredApplyBinding(state.run, plan)
+}
+
+export async function invalidateRuleApplyPreview(
+  inputValue: RuleProposalTriageInput
+): Promise<RuleAuthoringRunV1> {
+  const state = await loadRuleProposalTriageState(normalizeTriageInput(inputValue))
+  if (state.run.currentPhase !== "apply" || state.run.phases.apply.status !== "in_progress") {
+    throw new Error("Rule authoring apply preview can only be invalidated while apply is in progress")
+  }
+  if (state.run.artifacts.applyPreview === undefined) return state.run
+  return (await persistRuleProposalDecisions(state, state.decisions)).run
 }
 
 export async function verifyRuleAuthoringApply(
@@ -862,7 +1054,7 @@ export async function recoverCommittedRuleAuthoringApply(
   const input = normalizeTriageInput(inputValue)
   const run = await readRuleAuthoringRun(getRuleAuthoringPaths(input.workspaceRoot, input.runId))
   if (run.currentPhase === "completed" || run.artifacts.applyManifest !== undefined) return undefined
-  if (run.currentPhase !== "human_review" && run.currentPhase !== "apply") return undefined
+  if (run.currentPhase !== "apply" || run.phases.apply.status !== "in_progress") return undefined
   let committed: ApplyManifestV1 | undefined
   try {
     committed = await findCommittedTransactionManifest(run)
@@ -891,6 +1083,19 @@ async function verifyCommittedManifestForRun(
   run: RuleAuthoringRunV1,
   manifest: ApplyManifestV1
 ): Promise<void> {
+  const bindingKeys = [
+    "ruleProposal",
+    "proposalValidation",
+    "proposalDecisions",
+    "applyPreview"
+  ] as const
+  const bindingCount = bindingKeys.filter((key) => run.artifacts[key] !== undefined).length
+  if (bindingCount !== 0) {
+    if (bindingCount !== bindingKeys.length) {
+      throw new Error("Completed Human Triage apply binding is incomplete")
+    }
+    await assertStoredApplyBinding(run, manifest)
+  }
   const verifiedBytes = new Map<string, Buffer>()
   for (const [index, [asset, relativePath]] of TARGET_SPECS.entries()) {
     const target = manifest.targets[index]
@@ -936,6 +1141,28 @@ async function verifyCommittedManifestForRun(
     "documentChunks",
     DEFAULT_RULE_AUTHORING_LIMITS.maxAggregateSourceBytes
   ))
+  const authoritativeSelection = run.artifacts.evidenceSelection === undefined
+    ? {
+        schema_version: "bob-bazaar-review/rule-evidence-selection/v1" as const,
+        selected_chunks: authoritativeChunks.map(({ source_id, chunk_id, text_sha256 }) => ({
+          source_id,
+          chunk_id,
+          text_sha256
+        }))
+      }
+    : parseJsonObject(
+        await readResolvedArtifact(
+          run,
+          "evidenceSelection",
+          DEFAULT_RULE_AUTHORING_LIMITS.maxSelectedEvidenceBytes
+        ),
+        "Authoritative evidence selection"
+      ) as unknown as RuleApplyEvidence["selection"]
+  validateRuleApplyEvidence({
+    sourceManifest: authoritativeSourceManifest,
+    chunks: authoritativeChunks,
+    selection: authoritativeSelection
+  })
   verifyCurrentRunProvenanceAgainstChunks(
     run.runId,
     manifest,
@@ -1091,7 +1318,7 @@ function buildRuleProposalTriageModel(
     conflicts,
     decisionsComplete,
     canPreview: decisionsComplete && recovery.length === 0,
-    canApply: decisionsComplete && recovery.length === 0,
+    canApply: decisionsComplete && recovery.length === 0 && preview !== undefined,
     staleWarning,
     status,
     recovery: recovery.map((item) => ({
@@ -1143,6 +1370,8 @@ function operationModel(
         ? { heading: operation.heading, markdown: operation.markdown }
         : undefined
     : undefined
+  const existingSummary = existingOperationSummary(state.bundle, operation, asset)
+  const proposedSummary = proposedOperationSummary(operation, effectiveRule, effectiveMarkdown)
   return {
     candidateId: operation.candidate_id,
     operation: operation.operation,
@@ -1161,8 +1390,11 @@ function operationModel(
     blockingConflictIds: operation.conflict_ids.filter((id) => conflictById.get(id)?.blocking),
     decision: decision?.decision ?? "pending",
     rejectReason: decision?.decision === "reject" ? safeDisplay(decision.reject_reason ?? "", 8_192) : "",
-    existingSummary: existingOperationSummary(state.bundle, operation, asset),
-    proposedSummary: proposedOperationSummary(operation, effectiveRule, effectiveMarkdown),
+    existingSummary: existingSummary.text,
+    proposedSummary: proposedSummary.text,
+    existingSummaryTruncated: existingSummary.truncated,
+    proposedSummaryTruncated: proposedSummary.truncated,
+    comparisonAvailable: true,
     editRule: effectiveRule === null || effectiveRule === undefined
       ? undefined
       : {
@@ -1211,7 +1443,110 @@ function resolveEvidenceRecord(evidence: RuleApplyEvidence, ref: RuleProposalSou
   return { source: { ...source, logical_name: logicalName }, chunk, locator: safeDisplay(parts.join(" · "), 8_192) }
 }
 
+interface OperationComparisonSummary {
+  text: string
+  truncated: boolean
+}
+
 function existingOperationSummary(
+  bundle: RuleApplyBundle,
+  operation: RuleProposalOperationV1 | ProposedMarkdownOperationV1,
+  asset: "rule" | "project_context" | "prompt_addendum"
+): OperationComparisonSummary {
+  return comparisonSummary(fullExistingOperationValue(bundle, operation, asset))
+}
+
+function proposedOperationSummary(
+  operation: RuleProposalOperationV1 | ProposedMarkdownOperationV1,
+  effectiveRule: RuleProposalRuleV1 | null | undefined,
+  effectiveMarkdown: RuleApplyEditedMarkdown | undefined
+): OperationComparisonSummary {
+  if (operation.operation === "retire") return comparisonSummary("Retire the existing approved item.")
+  if (isRuleOperation(operation)) {
+    return comparisonSummary(effectiveRule
+      ? approvedRuleSummary(effectiveRule)
+      : "Proposed rule is unavailable.")
+  }
+  return comparisonSummary(effectiveMarkdown
+    ? `${effectiveMarkdown.heading}\n${effectiveMarkdown.markdown}`
+    : "Proposed section is unavailable.")
+}
+
+function approvedRuleSummary(rule: Record<string, unknown> | RuleProposalRuleV1): string {
+  const value = {
+    category: typeof rule.category === "string" ? rule.category : "",
+    title: typeof rule.title === "string" ? rule.title : "",
+    description: typeof rule.description === "string" ? rule.description : "",
+    severity_on_fail: typeof rule.severity_on_fail === "string" ? rule.severity_on_fail : "",
+    applies_when: Array.isArray(rule.applies_when)
+      ? rule.applies_when.filter((item): item is string => typeof item === "string")
+      : [],
+    evidence_required: rule.evidence_required === true,
+    review_hint: typeof rule.review_hint === "string" ? rule.review_hint : ""
+  }
+  return JSON.stringify(value, null, 2)
+}
+
+function comparisonSummary(value: string): OperationComparisonSummary {
+  return {
+    text: safeDisplay(value, 8_192),
+    truncated: Buffer.byteLength(value, "utf8") > 8_192
+  }
+}
+
+function buildFullComparisonDocument(
+  state: RuleProposalTriageState,
+  decisions: RuleProposalDecisionsV1,
+  operation: RuleProposalOperationV1 | ProposedMarkdownOperationV1
+): string {
+  const decision = decisions.decisions[operation.candidate_id]
+  const effectiveRule = isRuleOperation(operation)
+    ? decision?.decision === "edit" && "edited_rule" in decision
+      ? decision.edited_rule
+      : operation.rule
+    : undefined
+  const effectiveMarkdown = !isRuleOperation(operation)
+    ? decision?.decision === "edit" && "edited_markdown" in decision
+      ? decision.edited_markdown
+      : operation.heading !== null && operation.markdown !== null
+        ? { heading: operation.heading, markdown: operation.markdown }
+        : undefined
+    : undefined
+  const asset = isRuleOperation(operation)
+    ? "rule"
+    : state.proposal.project_context_operations.some(({ candidate_id }) =>
+        candidate_id === operation.candidate_id)
+      ? "project_context"
+      : "prompt_addendum"
+  const existing = fullExistingOperationValue(state.bundle, operation, asset)
+  const proposed = operation.operation === "retire"
+    ? "Retire the existing approved item."
+    : isRuleOperation(operation)
+      ? effectiveRule ? approvedRuleSummary(effectiveRule) : "Proposed rule is unavailable."
+      : effectiveMarkdown
+        ? `${effectiveMarkdown.heading}\n${effectiveMarkdown.markdown}`
+        : "Proposed section is unavailable."
+  return [
+    "# Full existing-versus-proposed comparison",
+    "",
+    `Candidate: ${operation.candidate_id}`,
+    `Operation: ${operation.operation}`,
+    "",
+    "## Existing approved",
+    "",
+    "<<<BOB_EXISTING_COMPARISON>>>",
+    existing,
+    "<<<END_BOB_EXISTING_COMPARISON>>>",
+    "",
+    "## Proposed",
+    "",
+    "<<<BOB_PROPOSED_COMPARISON>>>",
+    proposed,
+    "<<<END_BOB_PROPOSED_COMPARISON>>>"
+  ].join("\n")
+}
+
+function fullExistingOperationValue(
   bundle: RuleApplyBundle,
   operation: RuleProposalOperationV1 | ProposedMarkdownOperationV1,
   asset: "rule" | "project_context" | "prompt_addendum"
@@ -1219,9 +1554,8 @@ function existingOperationSummary(
   if (operation.operation === "add") return "No existing approved item (new addition)."
   try {
     if (asset === "rule" && isRuleOperation(operation)) {
-      const current = bundle?.checklist
-      if (current?.state !== "present") return "Existing approved rule is unavailable."
-      const parsed = JSON.parse(decodeUtf8(current.bytes, "Approved checklist")) as unknown
+      if (bundle.checklist?.state !== "present") return "Existing approved rule is unavailable."
+      const parsed = JSON.parse(decodeUtf8(bundle.checklist.bytes, "Approved checklist")) as unknown
       if (!isPlainObject(parsed) || !Array.isArray(parsed.rules)) {
         return "Existing approved rule is unavailable."
       }
@@ -1230,13 +1564,13 @@ function existingOperationSummary(
       return rule ? approvedRuleSummary(rule) : "Existing approved rule is unavailable."
     }
     if (!isRuleOperation(operation)) {
-      const current = asset === "project_context" ? bundle?.projectContext : bundle?.promptAddendum
+      const current = asset === "project_context" ? bundle.projectContext : bundle.promptAddendum
       if (current?.state !== "present") return "Existing approved section is unavailable."
       const kind = asset === "project_context" ? "CTX" : "PRM"
       const parsed = parseManagedMarkdown(decodeUtf8(current.bytes, "Approved managed Markdown"), kind)
       const section = parsed.sections.find(({ id }) => id === operation.target_section_id)
       return section
-        ? safeDisplay(`${section.heading}\n${section.markdown}`, 8_192)
+        ? `${section.heading}\n${section.markdown}`
         : "Existing approved section is unavailable."
     }
   } catch {
@@ -1245,29 +1579,6 @@ function existingOperationSummary(
       : "Existing approved section is unavailable."
   }
   return "Existing approved item is unavailable."
-}
-
-function proposedOperationSummary(
-  operation: RuleProposalOperationV1 | ProposedMarkdownOperationV1,
-  effectiveRule: RuleProposalRuleV1 | null | undefined,
-  effectiveMarkdown: RuleApplyEditedMarkdown | undefined
-): string {
-  if (operation.operation === "retire") return "Retire the existing approved item."
-  if (isRuleOperation(operation)) {
-    return effectiveRule
-      ? approvedRuleSummary(effectiveRule)
-      : "Proposed rule is unavailable."
-  }
-  return effectiveMarkdown
-    ? safeDisplay(`${effectiveMarkdown.heading}\n${effectiveMarkdown.markdown}`, 8_192)
-    : "Proposed section is unavailable."
-}
-
-function approvedRuleSummary(rule: Record<string, unknown> | RuleProposalRuleV1): string {
-  const title = typeof rule.title === "string" ? rule.title : "Untitled rule"
-  const severity = typeof rule.severity_on_fail === "string" ? rule.severity_on_fail : "unknown"
-  const description = typeof rule.description === "string" ? rule.description : ""
-  return safeDisplay(`${title}\nSeverity: ${severity}\n${description}`, 8_192)
 }
 
 function previewModel(
@@ -1281,7 +1592,8 @@ function previewModel(
     acceptedCount: values.filter(({ decision }) => decision === "accept").length,
     editedCount: values.filter(({ decision }) => decision === "edit").length,
     rejectedCount: values.filter(({ decision }) => decision === "reject").length,
-    generatedAt
+    generatedAt,
+    planDigest: planMetadataSha256(plan)
   }
 }
 
@@ -1373,11 +1685,22 @@ async function loadBoundHumanReviewArtifacts(run: RuleAuthoringRunV1): Promise<{
     await readResolvedArtifact(run, "evidenceSelection", DEFAULT_RULE_AUTHORING_LIMITS.maxSelectedEvidenceBytes),
     "Evidence selection"
   ) as unknown as RuleApplyEvidence["selection"]
+  const sourceManifest = parseJsonObject(
+    await readResolvedArtifact(run, "sourceManifest", DEFAULT_RULE_AUTHORING_LIMITS.maxSourceIndexBytes),
+    "Rule source manifest"
+  ) as unknown as RuleSourceManifestV1
+  const chunks = parseDocumentChunks(await readResolvedArtifact(
+    run,
+    "documentChunks",
+    DEFAULT_RULE_AUTHORING_LIMITS.maxAggregateSourceBytes
+  ))
+  const evidence: RuleApplyEvidence = { sourceManifest, selection, chunks }
+  validateRuleApplyEvidence(evidence)
   const validation = parseJsonObject(
     await readResolvedArtifact(run, "proposalValidation", DEFAULT_RULE_AUTHORING_LIMITS.maxProposalBytes),
     "Proposal validation"
   )
-  const context = assertStoredProposalValidation(validation, schema.proposal, selection)
+  const context = assertStoredProposalValidation(validation, schema.proposal, run, evidence)
   const semantic = parseAndValidateRuleProposal(JSON.stringify(schema.proposal), context)
   if (!semantic.valid) throw new Error("Committed apply binding proposal validation is invalid")
   const decisions = validateDecisionOverlayForPersistence(
@@ -1516,7 +1839,8 @@ function canonicalValueSha256(value: unknown): string {
 function assertStoredProposalValidation(
   value: unknown,
   proposal: RuleProposalV1,
-  selection: RuleApplyEvidence["selection"]
+  run: Pick<RuleAuthoringRunV1, "runId" | "artifacts">,
+  evidence: RuleApplyEvidence
 ): RuleProposalValidationContext {
   if (
     !isPlainObject(value) ||
@@ -1527,7 +1851,8 @@ function assertStoredProposalValidation(
       "issues",
       "validated_at",
       "proposal_sha256",
-      "validation_context"
+      "validation_context",
+      "evidence_binding"
     ]) ||
     value.schema_version !== RULE_PROPOSAL_VALIDATION_ARTIFACT_SCHEMA_VERSION ||
     value.run_id !== proposal.run_id ||
@@ -1537,23 +1862,72 @@ function assertStoredProposalValidation(
     !isCanonicalTimestamp(value.validated_at) ||
     value.proposal_sha256 !== sha256(Buffer.from(JSON.stringify(proposal), "utf8")) ||
     !isPlainObject(value.validation_context) ||
-    !isPlainObject(selection) ||
-    !Array.isArray(selection.selected_chunks)
+    !isPlainObject(value.evidence_binding) ||
+    !hasOnlyKeys(value.evidence_binding, [
+      "source_manifest",
+      "document_chunks",
+      "evidence_selection",
+      "selected_evidence"
+    ]) ||
+    !Array.isArray(value.evidence_binding.selected_evidence)
   ) {
     throw new Error("Stored rule proposal does not have a valid validation record")
   }
   const context = structuredClone(value.validation_context) as unknown as RuleProposalValidationContext
-  const expectedEvidence = selection.selected_chunks.map((item) => ({
+  const expectedEvidence = evidence.selection.selected_chunks.map((item) => ({
     source_id: item.source_id,
     chunk_id: item.chunk_id
   }))
+  const expectedSelectedEvidence = evidence.selection.selected_chunks.map((item) => ({
+    source_id: item.source_id,
+    chunk_id: item.chunk_id,
+    text_sha256: item.text_sha256
+  }))
+  const binding = value.evidence_binding
   if (
     context.runId !== proposal.run_id ||
-    JSON.stringify(context.selectedEvidence) !== JSON.stringify(expectedEvidence)
+    stableJson(context.selectedEvidence) !== stableJson(expectedEvidence) ||
+    !storedEvidenceBindingMatches(
+      binding.source_manifest,
+      requiredEvidenceArtifactPointer(run, "sourceManifest"),
+      evidence.sourceManifest
+    ) ||
+    !storedEvidenceBindingMatches(
+      binding.document_chunks,
+      requiredEvidenceArtifactPointer(run, "documentChunks"),
+      evidence.chunks
+    ) ||
+    !storedEvidenceBindingMatches(
+      binding.evidence_selection,
+      requiredEvidenceArtifactPointer(run, "evidenceSelection"),
+      evidence.selection
+    ) ||
+    stableJson(binding.selected_evidence) !== stableJson(expectedSelectedEvidence)
   ) {
     throw new Error("Stored rule proposal validation context is not bound to selected evidence")
   }
+  parseAndValidateRuleProposal(JSON.stringify(proposal), context)
   return context
+}
+
+function storedEvidenceBindingMatches(
+  value: unknown,
+  artifact: string,
+  evidenceValue: unknown
+): boolean {
+  return isPlainObject(value) &&
+    hasOnlyKeys(value, ["artifact", "sha256"]) &&
+    value.artifact === artifact &&
+    value.sha256 === canonicalValueSha256(evidenceValue)
+}
+
+function requiredEvidenceArtifactPointer(
+  run: Pick<RuleAuthoringRunV1, "artifacts">,
+  key: "sourceManifest" | "documentChunks" | "evidenceSelection"
+): string {
+  const value = run.artifacts[key]
+  if (value === undefined) throw new Error(`Rule proposal validation ${key} artifact is missing`)
+  return value
 }
 
 function parseStoredDecisions(raw: string, proposal: RuleProposalV1): RuleProposalDecisionsV1 {
@@ -1652,6 +2026,7 @@ function assertDecisionShape(
 
 function assertEditedRuleAgainstProposal(
   proposal: RuleProposalV1,
+  validationContext: RuleProposalValidationContext,
   operation: RuleProposalOperationV1,
   editedRule: RuleProposalRuleV1
 ): void {
@@ -1659,12 +2034,15 @@ function assertEditedRuleAgainstProposal(
   const target = candidate.operations.find(({ candidate_id }) => candidate_id === operation.candidate_id)
   if (!target) throw new SafeTriageError("The stored proposal operation is unavailable.")
   target.rule = structuredClone(editedRule)
-  const result = validateRuleProposalSchema(candidate)
-  if (!result.valid) throw new SafeTriageError("The edited rule does not match the validated rule contract.")
+  const result = parseAndValidateRuleProposal(JSON.stringify(candidate), validationContext)
+  if (!result.valid) {
+    throw new SafeTriageError("The edited rule does not match the validated semantic rule contract.")
+  }
 }
 
 function assertEditedMarkdownAgainstProposal(
   proposal: RuleProposalV1,
+  validationContext: RuleProposalValidationContext,
   operation: ProposedMarkdownOperationV1,
   editedMarkdown: RuleApplyEditedMarkdown
 ): void {
@@ -1676,7 +2054,7 @@ function assertEditedMarkdownAgainstProposal(
   if (!target) throw new SafeTriageError("The stored proposal operation is unavailable.")
   target.heading = editedMarkdown.heading
   target.markdown = editedMarkdown.markdown
-  const result = validateRuleProposalSchema(candidate)
+  const result = parseAndValidateRuleProposal(JSON.stringify(candidate), validationContext)
   if (
     !result.valid ||
     editedMarkdown.heading.trim().length === 0 ||
@@ -2190,10 +2568,10 @@ function isRuleEdit(value: unknown): value is RuleProposalRuleV1 {
       value.severity_on_fail !== "info") ||
     !Array.isArray(value.applies_when) ||
     value.applies_when.length > 32 ||
-    value.applies_when.some((item) => typeof item !== "string" || Buffer.byteLength(item, "utf8") > 1_024) ||
+    value.applies_when.some((item) => typeof item !== "string" || unicodeLength(item) > 1_024) ||
     typeof value.evidence_required !== "boolean" ||
     typeof value.review_hint !== "string" ||
-    Buffer.byteLength(value.review_hint, "utf8") > 4_096
+    unicodeLength(value.review_hint) > 4_096
   ) return false
   return !containsDisallowedControl(value)
 }
@@ -2206,7 +2584,7 @@ function isEditedMarkdown(value: unknown): value is RuleApplyEditedMarkdown {
     !/[\r\n]/.test(value.heading) &&
     !/bob-managed-section/i.test(value.heading) &&
     typeof value.markdown === "string" &&
-    Buffer.byteLength(value.markdown, "utf8") <= DEFAULT_RULE_AUTHORING_LIMITS.maxProjectContextBytes &&
+    unicodeLength(value.markdown) <= DEFAULT_RULE_AUTHORING_LIMITS.maxProjectContextBytes &&
     !/bob-managed-section/i.test(value.markdown) &&
     !containsDisallowedControl(value)
 }
@@ -2214,11 +2592,15 @@ function isEditedMarkdown(value: unknown): value is RuleApplyEditedMarkdown {
 function isRejectReason(value: unknown): value is string {
   return typeof value === "string" &&
     !CONTROL_CHARACTER.test(value) &&
-    Buffer.byteLength(value, "utf8") <= MAX_REJECT_REASON_BYTES
+    unicodeLength(value) <= MAX_REJECT_REASON_CHARACTERS
 }
 
-function boundedNonEmpty(value: unknown, maxBytes: number): value is string {
-  return typeof value === "string" && value.length > 0 && Buffer.byteLength(value, "utf8") <= maxBytes
+function boundedNonEmpty(value: unknown, maxCharacters: number): value is string {
+  return typeof value === "string" && unicodeLength(value) > 0 && unicodeLength(value) <= maxCharacters
+}
+
+function unicodeLength(value: string): number {
+  return [...value].length
 }
 
 function containsDisallowedControl(value: unknown): boolean {
@@ -2303,21 +2685,52 @@ function completedRun(
   artifacts: RuleAuthoringRunV1["artifacts"],
   completionAt: string
 ): RuleAuthoringRunV1 {
+  if (run.currentPhase !== "apply" || run.phases.apply.status !== "in_progress") {
+    throw new Error("Rule authoring apply phase is not in progress")
+  }
   return {
     ...run,
     currentPhase: "completed",
-    phases: Object.fromEntries(Object.entries(run.phases).map(([phase, progress]) => [
-      phase,
-      progress.status === "skipped"
-        ? structuredClone(progress)
-        : {
-            status: "completed",
-            startedAt: progress.startedAt ?? completionAt,
-            completedAt: progress.completedAt ?? completionAt
-          }
-    ])) as RuleAuthoringRunV1["phases"],
+    phases: {
+      ...structuredClone(run.phases),
+      apply: {
+        status: "completed",
+        startedAt: run.phases.apply.startedAt ?? completionAt,
+        completedAt: completionAt
+      },
+      completed: {
+        status: "completed",
+        startedAt: completionAt,
+        completedAt: completionAt
+      }
+    },
     artifacts,
     updatedAt: completionAt
+  }
+}
+
+function applyInProgressRun(run: RuleAuthoringRunV1, updatedAt: string): RuleAuthoringRunV1 {
+  if (run.currentPhase !== "human_review" && run.currentPhase !== "apply") {
+    throw new Error("Rule authoring run cannot enter apply from its current phase")
+  }
+  const phases = structuredClone(run.phases)
+  if (run.currentPhase === "human_review") {
+    phases.human_review = {
+      status: "completed",
+      startedAt: run.phases.human_review.startedAt ?? updatedAt,
+      completedAt: updatedAt
+    }
+  }
+  phases.apply = {
+    status: "in_progress",
+    startedAt: run.phases.apply.startedAt ?? updatedAt
+  }
+  phases.completed = { status: "not_started" }
+  return {
+    ...run,
+    currentPhase: "apply",
+    phases,
+    updatedAt
   }
 }
 

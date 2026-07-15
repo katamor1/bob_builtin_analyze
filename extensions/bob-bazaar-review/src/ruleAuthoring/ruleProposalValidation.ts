@@ -565,7 +565,17 @@ function validateSourceRefs(
 }
 
 function validateContext(context: RuleProposalValidationContext): ValidatedContext {
-  if (!isPlainObject(context)) throw invalidContext()
+  if (
+    !isPlainObject(context) ||
+    !hasExactKeys(context, [
+      "runId",
+      "base",
+      "existingRuleIds",
+      "existingProjectContextSectionIds",
+      "existingPromptAddendumSectionIds",
+      "selectedEvidence"
+    ])
+  ) throw invalidContext()
 
   try {
     if (typeof context.runId !== "string") throw invalidContext()
@@ -573,7 +583,14 @@ function validateContext(context: RuleProposalValidationContext): ValidatedConte
   } catch {
     throw invalidContext()
   }
-  if (!isPlainObject(context.base)) throw invalidContext()
+  if (
+    !isPlainObject(context.base) ||
+    !hasExactKeys(context.base, [
+      "checklistSha256",
+      "projectContextSha256",
+      "promptAddendumSha256"
+    ])
+  ) throw invalidContext()
   const hashes = [
     context.base.checklistSha256,
     context.base.projectContextSha256,
@@ -599,6 +616,7 @@ function validateContext(context: RuleProposalValidationContext): ValidatedConte
   for (const ref of context.selectedEvidence) {
     if (
       !isPlainObject(ref) ||
+      !hasExactKeys(ref, ["source_id", "chunk_id"]) ||
       typeof ref.source_id !== "string" ||
       typeof ref.chunk_id !== "string" ||
       !SOURCE_ID_PATTERN.test(ref.source_id) ||
@@ -705,4 +723,9 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return false
   const prototype = Object.getPrototypeOf(value)
   return prototype === Object.prototype || prototype === null
+}
+
+function hasExactKeys(value: object, expected: readonly string[]): boolean {
+  const keys = Object.keys(value)
+  return keys.length === expected.length && expected.every((key) => keys.includes(key))
 }
