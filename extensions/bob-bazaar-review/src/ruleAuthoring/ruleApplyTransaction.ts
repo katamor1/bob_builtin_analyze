@@ -1373,12 +1373,27 @@ async function withActiveWorkspaceLockToken<T>(
 }
 
 async function assertWorkspaceRoot(workspaceRoot: string): Promise<void> {
-  const stats = await lstatOptional(workspaceRoot)
-  if (!stats || stats.isSymbolicLink() || !stats.isDirectory()) {
+  const before = await lstatOptional(workspaceRoot)
+  if (!before || before.isSymbolicLink() || !before.isDirectory()) {
     throw new RuleApplyTransactionError("unsafe_path")
   }
-  const physical = await fs.realpath(workspaceRoot)
-  if (!samePhysicalPath(physical, workspaceRoot)) {
+  const physicalPath = await fs.realpath(workspaceRoot)
+  const physical = await lstatOptional(physicalPath)
+  if (
+    !physical ||
+    physical.isSymbolicLink() ||
+    !physical.isDirectory() ||
+    !sameIdentity(before, physical)
+  ) {
+    throw new RuleApplyTransactionError("unsafe_path")
+  }
+  const after = await lstatOptional(workspaceRoot)
+  if (
+    !after ||
+    after.isSymbolicLink() ||
+    !after.isDirectory() ||
+    !sameIdentity(before, after)
+  ) {
     throw new RuleApplyTransactionError("unsafe_path")
   }
 }
@@ -1923,14 +1938,6 @@ function sha256(value: Uint8Array): string {
 
 function compareText(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0
-}
-
-function samePhysicalPath(left: string, right: string): boolean {
-  const normalizedLeft = path.resolve(left)
-  const normalizedRight = path.resolve(right)
-  return process.platform === "win32"
-    ? normalizedLeft.toLowerCase() === normalizedRight.toLowerCase()
-    : normalizedLeft === normalizedRight
 }
 
 function isPlainObject(value: unknown): value is Record<string, any> {
