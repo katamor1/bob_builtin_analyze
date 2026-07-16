@@ -1,0 +1,48 @@
+name: SDD Apply Patches
+
+on:
+  push:
+    branches:
+      - agent/japanese-gui-copy-review
+    paths:
+      - .sdd/patches/*.patch
+
+permissions:
+  contents: write
+
+jobs:
+  apply-patches:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+
+      - name: Apply queued patches
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          mapfile -d '' patches < <(find .sdd/patches -maxdepth 1 -type f -name '*.patch' -print0 2>/dev/null | sort -z)
+          if [ "${#patches[@]}" -eq 0 ]; then
+            echo "No queued patches."
+            exit 0
+          fi
+
+          for patch in "${patches[@]}"; do
+            message="$(sed -n '1s/^# SDD-COMMIT: //p' "$patch")"
+            if [ -z "$message" ]; then
+              echo "Missing SDD commit message header: $patch" >&2
+              exit 1
+            fi
+            tail -n +2 "$patch" > /tmp/sdd.patch
+            git apply --index --whitespace=nowarn /tmp/sdd.patch
+            git rm "$patch"
+            git commit -m "$message"
+          done
+
+          git push origin "HEAD:${GITHUB_REF_NAME}"
