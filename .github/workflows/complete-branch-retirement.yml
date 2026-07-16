@@ -1,0 +1,43 @@
+name: complete-branch-retirement
+
+on:
+  pull_request:
+    paths:
+      - "scripts/complete-branch-retirement-rescue.sh"
+      - ".github/workflows/complete-branch-retirement.yml"
+
+permissions:
+  actions: write
+  contents: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: complete-branch-retirement
+  cancel-in-progress: false
+
+jobs:
+  complete:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+    steps:
+      - name: Checkout completion branch
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: |
+            extensions/workflow-register/package-lock.json
+            extensions/bob-code-consistency-review/package-lock.json
+            extensions/bob-bazaar-review/package-lock.json
+      - name: Complete, execute, and verify branch retirement
+        shell: bash
+        run: bash scripts/complete-branch-retirement-rescue.sh
