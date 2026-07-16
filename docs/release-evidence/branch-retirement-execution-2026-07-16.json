@@ -1,0 +1,58 @@
+{
+  "schemaVersion": "bob-builtin-analyze/branch-retirement-execution/v1",
+  "repository": "katamor1/bob_builtin_analyze",
+  "generatedAt": "2026-07-16T11:29:40Z",
+  "workflowRunId": 29494601324,
+  "workflowJobId": 87608478763,
+  "sourceHeadSha": "87701ac1db59ba3f5320b4d32c49378b81a8d3cc",
+  "mode": "apply",
+  "status": "success",
+  "mainShaBefore": "d912e4edbc969bfae961ca7e8fbef92ace93d798",
+  "mainShaAfter": "d912e4edbc969bfae961ca7e8fbef92ace93d798",
+  "planned": [
+    "diagnostic/p1-1-windows-flake-20260712",
+    "diagnostic/phase4-windows-20260712",
+    "agent/workflow-automatic-pause-ci-verification-20260712",
+    "agent/repository-symbol-index-producer-contracts-red-20260712",
+    "agent/workflow-recovery-ux-p1-builder-readiness-20260712",
+    "agent/workflow-reproducible-runtime-phase4-20260712",
+    "agent/bob-evidence-scope-phase5-20260712",
+    "codex/evidence-scope-phase5-checkpoint-20260712",
+    "agent/bob-bazaar-review-review-run-v3-dashboard",
+    "codex/bazaar-ai-project-rule-authoring",
+    "codex/execute-shared-plan-6a53743e",
+    "integration/bazaar-campaign-dashboard-20260716",
+    "plan/retire-intentionally-unintegrated-20260716"
+  ],
+  "deleted": [
+    "diagnostic/p1-1-windows-flake-20260712",
+    "diagnostic/phase4-windows-20260712",
+    "agent/workflow-automatic-pause-ci-verification-20260712",
+    "agent/repository-symbol-index-producer-contracts-red-20260712",
+    "agent/workflow-recovery-ux-p1-builder-readiness-20260712",
+    "agent/workflow-reproducible-runtime-phase4-20260712",
+    "agent/bob-evidence-scope-phase5-20260712",
+    "codex/evidence-scope-phase5-checkpoint-20260712",
+    "agent/bob-bazaar-review-review-run-v3-dashboard",
+    "codex/bazaar-ai-project-rule-authoring",
+    "codex/execute-shared-plan-6a53743e",
+    "integration/bazaar-campaign-dashboard-20260716",
+    "plan/retire-intentionally-unintegrated-20260716"
+  ],
+  "remaining": [],
+  "alreadyAbsent": [
+    "automation/fix-pr97-windows-portable-tests-20260716",
+    "agent/workflow-run-retention-p1-6-20260713"
+  ],
+  "atomic": true,
+  "forceWithLease": true,
+  "sequentialFallback": false,
+  "mainProtected": false,
+  "mainProtectionSubstitute": "Exact non-pattern allowlist, explicit default-branch and execution-branch exclusion, a force-with-lease for every exact ref, one atomic push, and pre/post main-SHA invariance.",
+  "postExecutionVerification": {
+    "mainUnchanged": true,
+    "allPlannedRefsAbsent": true,
+    "method": "workflow post-delete ls-remote plus independent GitHub connector ref lookups",
+    "openPullRequestPreserved": 120
+  }
+}

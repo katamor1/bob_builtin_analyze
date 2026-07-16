@@ -1,0 +1,171 @@
+{
+  "schemaVersion": "bob-builtin-analyze/branch-retirement-map/v1",
+  "repository": "katamor1/bob_builtin_analyze",
+  "baselineMain": "d912e4edbc969bfae961ca7e8fbef92ace93d798",
+  "entries": [
+    {
+      "branch": "diagnostic/p1-1-windows-flake-20260712",
+      "expectedDisposition": "diagnostic-only",
+      "expectedSha": "7db481f97243060f6f68cccb219d9720cc5fc8cd",
+      "replacementPullRequests": [82],
+      "requiredMainPaths": [
+        "extensions/workflow-register/src/core/authoring/workflowSkipResumeReadiness.ts",
+        "extensions/workflow-register/src/webview/workflowBuilderSkipResumeReadinessScript.ts"
+      ],
+      "forbiddenMainPaths": [".github/workflows/p1-1-windows-flake-log.yml"]
+    },
+    {
+      "branch": "diagnostic/phase4-windows-20260712",
+      "expectedDisposition": "diagnostic-only",
+      "expectedSha": "5db1f71676736add1a7d45d199c707f57291bfe2",
+      "replacementPullRequests": [77],
+      "requiredMainPaths": [
+        "extensions/workflow-register/src/core/runtime/runStateJournal.ts",
+        "extensions/workflow-register/src/core/runtime/runControlStore.ts"
+      ],
+      "forbiddenMainPaths": [".github/workflows/phase4-complete-pr77-v2.yml"]
+    },
+    {
+      "branch": "agent/workflow-automatic-pause-ci-verification-20260712",
+      "expectedDisposition": "diagnostic-only",
+      "expectedSha": "a2f71784acbb9d860caa1a9851c91e66bea6507e",
+      "replacementPullRequests": [75, 92],
+      "requiredMainPaths": [
+        "docs/superpowers/plans/2026-07-12-workflow-automatic-pause-limits.md",
+        "extensions/workflow-register/src/core/runtime/runControlStore.ts"
+      ],
+      "forbiddenMainPaths": ["extensions/workflow-register/test/fixtures/automatic-pause-ci-verification.txt"]
+    },
+    {
+      "branch": "automation/fix-pr97-windows-portable-tests-20260716",
+      "expectedDisposition": "temporary-automation",
+      "expectedSha": "fa3072bb16033f28af2b64aac1d589a55b7f7ba0",
+      "replacementPullRequests": [97],
+      "requiredMainPaths": ["docs/superpowers/plans/2026-07-16-bazaar-project-rule-authoring-repository-gate.md"],
+      "forbiddenMainPaths": [".github/workflows/fix-pr97-windows-portable-tests.yml"]
+    },
+    {
+      "branch": "agent/repository-symbol-index-producer-contracts-red-20260712",
+      "expectedDisposition": "superseded",
+      "expectedSha": "4c94f5ab8dcd79fff9a38b6c10c04f345d7a53ad",
+      "replacementPullRequests": [72],
+      "requiredMainPaths": [
+        "extensions/bob-code-consistency-review/src/evidenceScope/repositorySymbolIndexProducer.ts",
+        "extensions/bob-code-consistency-review/test/repositorySymbolIndexProducer.test.js"
+      ],
+      "forbiddenMainPaths": []
+    },
+    {
+      "branch": "agent/workflow-recovery-ux-p1-builder-readiness-20260712",
+      "expectedDisposition": "superseded",
+      "expectedSha": "81e19775f9ce17242a39c7868085c50bc8eb9240",
+      "replacementPullRequests": [82],
+      "requiredMainPaths": [
+        "docs/superpowers/plans/2026-07-12-workflow-builder-skip-resume-readiness.md",
+        "extensions/workflow-register/src/core/authoring/workflowSkipResumeReadiness.ts",
+        "extensions/workflow-register/src/webview/workflowBuilderSkipResumeReadinessScript.ts"
+      ],
+      "forbiddenMainPaths": [".github/workflows/pr81-focused-readiness.yml", ".github/workflows/pr81-source-bundle.yml"]
+    },
+    {
+      "branch": "agent/workflow-reproducible-runtime-phase4-20260712",
+      "expectedDisposition": "superseded",
+      "expectedSha": "38d62885a8b7249b1f2d3853f31a0abc999ca160",
+      "replacementPullRequests": [77],
+      "requiredMainPaths": [
+        "docs/release-evidence/workflow-reproducible-runtime-phase4-2026-07-12.md",
+        "extensions/workflow-register/src/core/runtime/runStateJournal.ts"
+      ],
+      "forbiddenMainPaths": []
+    },
+    {
+      "branch": "agent/bob-evidence-scope-phase5-20260712",
+      "expectedDisposition": "superseded",
+      "expectedSha": "7c1bca1321648fbcb57c658f9c1dd7db08a28368",
+      "replacementPullRequests": [72],
+      "requiredMainPaths": [
+        "docs/superpowers/plans/2026-07-12-bob-evidence-scope-phase5.md",
+        "extensions/bob-code-consistency-review/src/evidenceScope/repositorySymbolIndexProducer.ts",
+        "extensions/bob-code-consistency-review/src/evidenceScope/artifactLedger.ts"
+      ],
+      "forbiddenMainPaths": []
+    },
+    {
+      "branch": "codex/evidence-scope-phase5-checkpoint-20260712",
+      "expectedDisposition": "superseded",
+      "expectedSha": "c093a20b0dd8551191f76f02b472d92cf0b45af7",
+      "replacementPullRequests": [72],
+      "requiredMainPaths": [
+        "extensions/bob-code-consistency-review/src/evidenceScope/repositorySymbolIndexProducer.ts",
+        "extensions/bob-code-consistency-review/src/evidenceScope/artifactLedger.ts"
+      ],
+      "forbiddenMainPaths": [
+        "extensions/bob-code-consistency-review/docs/phase5-diagnostic-trigger.md",
+        ".github/workflows/phase5-checkpoint-diagnostic.yml"
+      ]
+    },
+    {
+      "branch": "agent/bob-bazaar-review-review-run-v3-dashboard",
+      "expectedDisposition": "superseded",
+      "expectedSha": "11a739c557004b88cae47663623638b5691c262c",
+      "replacementPullRequests": [83, 118],
+      "requiredMainPaths": [
+        "docs/superpowers/plans/2026-07-13-bob-bazaar-review-review-run-v3-iteration3-dashboard.md",
+        "extensions/bob-bazaar-review/src/dashboard/campaignDashboard.ts"
+      ],
+      "forbiddenMainPaths": []
+    },
+    {
+      "branch": "agent/workflow-run-retention-p1-6-20260713",
+      "expectedDisposition": "merged-source",
+      "expectedSha": "cb8290bb66c2c502515fab1e542071932c8c50c1",
+      "replacementPullRequests": [93],
+      "requiredMainPaths": ["docs/superpowers/plans/2026-07-13-workflow-run-retention-p1-6.md"],
+      "forbiddenMainPaths": []
+    },
+    {
+      "branch": "codex/bazaar-ai-project-rule-authoring",
+      "expectedDisposition": "merged-source",
+      "expectedSha": "6f3c92e8544b3ebeccab465a66825f8f4bee4518",
+      "replacementPullRequests": [97],
+      "requiredMainPaths": [
+        "docs/superpowers/plans/2026-07-14-bob-bazaar-review-ai-project-rule-authoring.md",
+        "extensions/bob-bazaar-review/src/ruleAuthoring/ruleAuthoringRunStore.ts"
+      ],
+      "forbiddenMainPaths": []
+    },
+    {
+      "branch": "codex/execute-shared-plan-6a53743e",
+      "expectedDisposition": "merged-source",
+      "expectedSha": "6691988538af68c8cf52b33937b07e9fc06d0d67",
+      "replacementPullRequests": [72],
+      "requiredMainPaths": [
+        "extensions/bob-code-consistency-review/src/evidenceScope/repositorySymbolIndexProducer.ts",
+        "extensions/bob-code-consistency-review/src/evidenceScope/artifactLedger.ts"
+      ],
+      "forbiddenMainPaths": [
+        ".github/phase4-finalizer-trigger.txt",
+        ".github/workflows/finalize-evidence-scope-phase4-records.yml"
+      ]
+    },
+    {
+      "branch": "integration/bazaar-campaign-dashboard-20260716",
+      "expectedDisposition": "merged-source",
+      "expectedSha": "f8d15d7bfd9d32718a4b0d7dbdc46d6752c69a14",
+      "replacementPullRequests": [118],
+      "requiredMainPaths": ["docs/superpowers/plans/2026-07-13-bob-bazaar-review-review-run-v3-iteration3-dashboard.md"],
+      "forbiddenMainPaths": []
+    },
+    {
+      "branch": "plan/retire-intentionally-unintegrated-20260716",
+      "expectedDisposition": "merged-source",
+      "expectedSha": "5a198784f83080a939f65c30a07a516781b40041",
+      "replacementPullRequests": [119],
+      "requiredMainPaths": [
+        "docs/superpowers/plans/2026-07-16-superseded-change-group-reconciliation.md",
+        "docs/superpowers/plans/2026-07-16-retire-superseded-remote-branches.md"
+      ],
+      "forbiddenMainPaths": []
+    }
+  ]
+}
