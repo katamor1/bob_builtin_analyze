@@ -141,6 +141,7 @@
 | `LAZY-01` | `extensions/bob-code-consistency-review` | DOCX/XLSX extraction dependencies are loaded only when those formats are processed, not during extension activation | done | `95074c6e` | RED `node --test test\heavyDependencyLoading.test.js`; `node --test test\documentExtraction.test.js test\pathBoundary.test.js test\reviewInputAiDraftProvider.test.js test\traceabilityAiDraftProvider.test.js test\heavyDependencyLoading.test.js`; `npm.cmd run architecture:policy`; `npm.cmd run dependency:policy`; `npm.cmd test`; `npm.cmd run package && npm.cmd run package:policy` |
 | `UNUSED-01` | `extensions/workflow-register`, `extensions/bob-bazaar-review`, `extensions/bob-code-consistency-review` | `knip` / `depcheck` / `ts-prune` run as report-only unused-code checks in local scripts and CI | done | `36c458f9` | RED `node --test test\dependencyPolicy.test.js` in each extension; `npm.cmd run unused:report` in each extension; `npm.cmd run dependency:policy`; `npm.cmd run architecture:policy`; `npm.cmd test`; `npm.cmd run package && npm.cmd run package:policy` in each extension |
 | `PROD-AUDIT-01` | `extensions/workflow-register`, `extensions/bob-bazaar-review`, `extensions/bob-code-consistency-review` | Production dependency audit has no high vulnerabilities; code consistency XLSX reading no longer depends on vulnerable `xlsx` | done | `36c458f9` | `npm.cmd run audit:prod -- --strict-ssl=false` in each extension; `extensions/bob-code-consistency-review`: RED `node --test test\dependencyPolicy.test.js test\heavyDependencyLoading.test.js`; `npm.cmd test`; `npm.cmd run package && npm.cmd run package:policy` |
+| `CI-BASELINE-01` | repository CI / three extensions | GitHub-hosted Ubuntu and Windows jobs receive runners and execute real quality, package, and Extension Host steps with bounded environment evidence | done | `069d5f8f` | PR #130; `extensions-quality` run `29505035151` 7/7、`workflow-contracts` run `29505035419` 1/1、scaffold run `29505035110` 2/2。代表job: Ubuntu `87643454480`、Windows `87643454500`。全10 jobでsteps非空、`Record CI baseline`成功。 |
 
 ## Completed commit index
 
@@ -211,6 +212,7 @@
 | `6d0c788c` | `EXT-MAINT-L`, `WFR-MAINT-L` | add export-star source policy, workflow schema policy, and extension metrics PR reporting |
 | `b2a18d78` | `CCR-MAINT-M` | split document extractors, C/C++ analyzer helpers, and review-input/workspace command modules |
 | `47d0f06f` | `WFR-MAINT-L` | split workflow-register core schema, runtime, authoring, and snapshot implementation modules into stage directories |
+| `069d5f8f` | `CI-BASELINE-01` | record bounded Ubuntu/Windows runner evidence and prove real CI steps |
 
 <!-- REMEDIATION-2026-07-11 -->
 ## 2026-07-11 three-extension remediation
@@ -221,6 +223,31 @@
 | REM-H02 | High | bob-bazaar-review, bob-code-consistency-review | bounded Git / Bazaar process execution with timeout, cancellation and kill | implemented | externalProcessRunner and wiring tests |
 | REM-M01 | Medium | bob-bazaar-review | cross-platform repository-relative path boundary | implemented | bazaarClient Windows / POSIX path tests |
 | REM-M02 | Medium | workflow-register and companion extensions | provider ownership, duplicate rejection and disposal | implemented | actionRegistry and provider registration tests |
-| REM-M03 | Medium | repository workflows | dynamic strict provider-aware workflow contract CI | in_progress | workflowContractFiles.test.js and workflow-contracts workflow |
-| REM-M04 | Medium | CI / release | Ubuntu and Windows quality matrix, IBM Bob release-candidate gate | in_progress | extensions-quality workflow and real-machine evidence |
+| REM-M03 | Medium | repository workflows | dynamic strict provider-aware workflow contract CI | done | `workflow-contracts` run `29505035419`、job `87643455440` が実step付きで成功 |
+| REM-M04 | Medium | CI / release | Ubuntu and Windows quality matrix, IBM Bob release-candidate gate | ci_done / product_uat_pending | `extensions-quality` run `29505035151` は7/7成功、Ubuntu／Windowsの3拡張Extension Host smokeは6/6成功。IBM Bob、実Bazaar、multi-rootのproduct UATは未実施 |
 | REM-M05 | Medium | bob-code-consistency-review | bounded manifest/runtime processing limits and byte-safe truncation | implemented | sizeLimits and limitsPolicy tests |
+
+### CI baseline freeze (2026-07-16)
+
+PR #68の旧runは、単一`echo` probeを含む全jobがrunner割当前に終了し、`steps: null`かつjob logなしだった。このためrepository code内のtest failureではなく、Actions利用条件またはGitHub-hosted runner許可側のrunner allocation blockerとして分類する。現在は同じGitHub-hosted runnerで実stepが完走しており、旧症状は再現しない。解除された個別の管理設定は観測できないため推測しない。
+
+- base commit: `f4f9d3308361333e02ab1af732706b7a9e5fc952`
+- implementation head: `069d5f8f33fd01b4d8eafbafe00c0d8424dcd0b7`
+- PR check merge commit: `4673b4931174de78a4f1bdd29d3c0a970f3dd088`
+- pull request: [#130](https://github.com/katamor1/bob_builtin_analyze/pull/130)
+- local contract evidence: `node --test scripts/ci-baseline-summary.test.js scripts/extension-host-smoke-contract.test.js` = 10 passed / 0 failed
+
+GitHubの`pull_request` runでは`GITHUB_SHA`がsource branch headではなくPR check用のsynthetic merge commitを示す。したがってsource implementation headと、runnerが実際にcheckout・検証したmerge commitを分けて記録する。両OSの環境証跡は同じcheck merge commitを報告した。
+
+| workflow | run | expected jobs | observed | real steps | result |
+| --- | --- | ---: | ---: | --- | --- |
+| extensions-quality | [29505035151](https://github.com/katamor1/bob_builtin_analyze/actions/runs/29505035151) | 7 | 7 | 7/7 non-empty、`Record CI baseline` 7/7 success | success |
+| workflow-contracts | [29505035419](https://github.com/katamor1/bob_builtin_analyze/actions/runs/29505035419) | 1 | 1 | 1/1 non-empty、job `87643455440` | success |
+| code-consistency-review-scaffold | [29505035110](https://github.com/katamor1/bob_builtin_analyze/actions/runs/29505035110) | 2 | 2 | 2/2 non-empty、jobs `87643454338` / `87643454358` | success |
+
+| environment | representative job | runner | operating system | runner image | Node.js | checked commit | result |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Ubuntu | [87643454480](https://github.com/katamor1/bob_builtin_analyze/actions/runs/29505035151/job/87643454480) | `2.335.1`, X64 | Ubuntu 24.04.4 LTS | `ubuntu-24.04` `20260714.240.1` | `v22.23.1` | `4673b4931174de78a4f1bdd29d3c0a970f3dd088` | success |
+| Windows | [87643454500](https://github.com/katamor1/bob_builtin_analyze/actions/runs/29505035151/job/87643454500) | `2.335.1`, X64 | Windows Server 2025 `10.0.26100` Datacenter | `windows-2025-vs2026` `20260714.173.1` | `v22.23.1` | `4673b4931174de78a4f1bdd29d3c0a970f3dd088` | success |
+
+Automated CIで閉じた範囲はworkflow contracts、Ubuntu／Windows quality matrix、package／policy、3拡張のExtension Host smokeである。IBM Bob実環境、実Bazaarのtimeout／cancel後child process残留、multi-rootでのBob root／VCS root分離、署名・配布・upgrade／rollbackはproduct UATとして未実施のまま維持する。
