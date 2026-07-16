@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - "tools/branch-retirement/bootstrap.tar.gz.b64"
+      - "tools/branch-retirement/bootstrap-chunks/**"
       - ".github/workflows/branch-retirement-bootstrap.yml"
 
 permissions:
@@ -41,7 +42,10 @@ jobs:
           node - <<'NODE'
           const fs = require("node:fs")
           const crypto = require("node:crypto")
-          const encoded = fs.readFileSync("tools/branch-retirement/bootstrap.tar.gz.b64", "utf8").trim()
+          const chunkDirectory = "tools/branch-retirement/bootstrap-chunks"
+          const chunks = fs.readdirSync(chunkDirectory).sort()
+          if (chunks.length !== 8 || chunks.some((name, index) => name !== `part-${String(index).padStart(2, "0")}`)) throw new Error(`unexpected bootstrap chunks: ${chunks.join(",")}`)
+          const encoded = chunks.map((name) => fs.readFileSync(`${chunkDirectory}/${name}`, "utf8")).join("")
           const bytes = Buffer.from(encoded, "base64")
           const hash = crypto.createHash("sha256").update(bytes).digest("hex")
           if (hash !== "861f416f7ff77c337c13ed740781cc5a21a80f8ef67df1365b6d9c7d3d3a483f") throw new Error(`bootstrap hash mismatch: ${hash}`)
@@ -93,7 +97,10 @@ jobs:
           node - <<'NODE'
           const fs = require("node:fs")
           const crypto = require("node:crypto")
-          const encoded = fs.readFileSync("tools/branch-retirement/bootstrap.tar.gz.b64", "utf8").trim()
+          const chunkDirectory = "tools/branch-retirement/bootstrap-chunks"
+          const chunks = fs.readdirSync(chunkDirectory).sort()
+          if (chunks.length !== 8 || chunks.some((name, index) => name !== `part-${String(index).padStart(2, "0")}`)) throw new Error(`unexpected bootstrap chunks: ${chunks.join(",")}`)
+          const encoded = chunks.map((name) => fs.readFileSync(`${chunkDirectory}/${name}`, "utf8")).join("")
           const bytes = Buffer.from(encoded, "base64")
           const hash = crypto.createHash("sha256").update(bytes).digest("hex")
           if (hash !== "861f416f7ff77c337c13ed740781cc5a21a80f8ef67df1365b6d9c7d3d3a483f") throw new Error(`bootstrap hash mismatch: ${hash}`)
@@ -129,6 +136,7 @@ jobs:
 
           rm .github/workflows/branch-retirement-bootstrap.yml
           rm tools/branch-retirement/bootstrap.tar.gz.b64
+          rm -rf tools/branch-retirement/bootstrap-chunks
           git add .
           git commit -m "feat: implement guarded branch retirement"
           git push origin "HEAD:${GITHUB_HEAD_REF}"
