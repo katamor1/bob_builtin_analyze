@@ -49,19 +49,25 @@ jobs:
 
           refresh_test = Path("extensions/bob-bazaar-review/test/templateRefresh.test.js")
           refresh_text = refresh_test.read_text(encoding="utf-8")
-          old_gitignore_assertion = r'''  assert.equal(
-            await fs.readFile(path.join(root, ".bob", "review", "rule-authoring", ".gitignore"), "utf8"),
-            "/*\n!/.gitignore\n"
-          )'''
-          new_gitignore_assertion = r'''  assert.equal(
+          start_marker = '  assert.equal(\n    await fs.readFile(path.join(root, ".bob", "review", "rule-authoring", ".gitignore"), "utf8"),\n'
+          end_marker = '  )\n\n  const contextPath = path.join(root, ".bob", "review", "project-context.md")\n'
+          if refresh_text.count(start_marker) != 1:
+              raise SystemExit(f"gitignore assertion start matched {refresh_text.count(start_marker)} times")
+          start = refresh_text.index(start_marker)
+          try:
+              end = refresh_text.index(end_marker, start)
+          except ValueError as error:
+              raise SystemExit("gitignore assertion end marker was not found") from error
+          new_gitignore_assertion = '''  assert.equal(
             (await fs.readFile(path.join(root, ".bob", "review", "rule-authoring", ".gitignore"), "utf8"))
               .replace(/\r\n/g, "\n"),
             "/*\n!/.gitignore\n"
-          )'''
-          if refresh_text.count(old_gitignore_assertion) != 1:
-              raise SystemExit(f"gitignore assertion matched {refresh_text.count(old_gitignore_assertion)} times")
+          )
+
+          const contextPath = path.join(root, ".bob", "review", "project-context.md")
+          '''
           refresh_test.write_text(
-              refresh_text.replace(old_gitignore_assertion, new_gitignore_assertion),
+              refresh_text[:start] + new_gitignore_assertion + refresh_text[end + len(end_marker):],
               encoding="utf-8",
               newline="\n",
           )
