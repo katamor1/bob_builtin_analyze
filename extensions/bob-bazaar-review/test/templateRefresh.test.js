@@ -144,11 +144,12 @@ test("authoring readiness is separate, missing-only, and refreshes only its mana
   assert.equal(await fs.readFile(path.join(root, ".bob", "review", "project-context.md"), "utf8"), "")
   assert.equal(await fs.readFile(path.join(root, ".bob", "review", "review-prompt-addendum.md"), "utf8"), "")
   assert.equal(
-    await fs.readFile(path.join(root, ".bob", "review", "rule-authoring", ".gitignore"), "utf8"),
-    "/*\n!/.gitignore\n"
-  )
+  (await fs.readFile(path.join(root, ".bob", "review", "rule-authoring", ".gitignore"), "utf8"))
+    .replace(/\r\n/g, "\n"),
+  "/*\n!/.gitignore\n"
+)
 
-  const contextPath = path.join(root, ".bob", "review", "project-context.md")
+const contextPath = path.join(root, ".bob", "review", "project-context.md")
   const authoringWorkflowPath = path.join(
     root,
     ".bob",

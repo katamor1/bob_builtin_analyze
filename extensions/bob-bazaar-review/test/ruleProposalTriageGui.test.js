@@ -8,6 +8,7 @@ const { test } = require("node:test")
 
 const GUI_MODULE = path.join(__dirname, "..", "out", "ui", "ruleProposalTriageGui.js")
 const RUN_ID = "authoring-run-triage"
+const WORKSPACE_ROOT = path.resolve("/workspace/acme")
 const SOURCE_ID = `src-${"a".repeat(12)}`
 const CHUNK_ID = `chunk-${"b".repeat(64)}`
 const PRIVATE_PATH = "/private/rules/engineering-policy.docx"
@@ -133,7 +134,7 @@ function triageState() {
   const proposal = proposalFixture()
   return {
     run: {
-      workspaceRoot: "/workspace/acme",
+      workspaceRoot: WORKSPACE_ROOT,
       runId: RUN_ID,
       updatedAt: "2026-07-15T03:00:00.000Z"
     },
@@ -319,7 +320,7 @@ function createFakeVscode(options = {}) {
       showTextDocument: async (document) => { openedDocuments.push(document); return {} }
     },
     workspace: {
-      workspaceFolders: [{ uri: { fsPath: "/workspace/acme" }, name: "acme", index: 0 }],
+      workspaceFolders: [{ uri: { fsPath: WORKSPACE_ROOT }, name: "acme", index: 0 }],
       openTextDocument: async (options) => ({ ...structuredClone(options), uri: { scheme: "untitled" } })
     }
   }
@@ -440,7 +441,7 @@ async function startHost(fake, fixture) {
   const gui = loadGui(fake.vscode)
   const host = gui.createRuleProposalTriageGuiHost(fixture.dependencies)
   const promise = host.openRuleProposalTriageGui({ subscriptions: [] }, {
-    workspaceRoot: "/workspace/acme",
+    workspaceRoot: WORKSPACE_ROOT,
     runId: RUN_ID
   })
   await turn()
@@ -1589,7 +1590,7 @@ test("blocks normal resume until an incomplete transaction is rolled back", asyn
   assert.equal(fixture.renderedModels.at(-1).model.canApply, false)
   assert.deepEqual(
     fixture.calls.find(([name]) => name === "invalidatePreview")[1],
-    { workspaceRoot: "/workspace/acme", runId: transactionRunId },
+    { workspaceRoot: WORKSPACE_ROOT, runId: transactionRunId },
     "rollback must invalidate the transaction run rather than the currently open panel run"
   )
 
@@ -1680,8 +1681,8 @@ test("completes the owning run before a cross-run durable recovery disappears", 
   })
 
   assert.deepEqual(completionInputs, [
-    { workspaceRoot: "/workspace/acme", runId: transactionRunId },
-    { workspaceRoot: "/workspace/acme", runId: RUN_ID }
+    { workspaceRoot: WORKSPACE_ROOT, runId: transactionRunId },
+    { workspaceRoot: WORKSPACE_ROOT, runId: RUN_ID }
   ])
   assert.equal(completionToken, transactionToken)
   assert.equal(fixture.calls.filter(([name]) => name === "loadState").length, 1)

@@ -23,7 +23,7 @@ const mirrorPath = path.join(
 )
 
 function parseWorkflow(text) {
-  const match = text.match(/^---\n([\s\S]*?)\n---(?:\n|$)/)
+  const match = text.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/)
   assert.ok(match, "WORKFLOW.md must contain YAML front matter")
   return yaml.load(match[1])
 }
