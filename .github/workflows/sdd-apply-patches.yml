@@ -29,27 +29,17 @@ jobs:
 
           ready=.sdd/patches/READY
           test -f "$ready"
-          mapfile -d '' patches < <(find .sdd/patches -maxdepth 1 -type f -name '*.patch' -print0 2>/dev/null | sort -z)
+          mapfile -d '' patches < <(find .sdd/patches -maxdepth 1 -type f -name '*.patch.gz.b64' -print0 2>/dev/null | sort -z)
           if [ "${#patches[@]}" -eq 0 ]; then
             echo "No queued patches." >&2
             exit 1
           fi
 
-          last_index=$((${#patches[@]} - 1))
-          for index in "${!patches[@]}"; do
-            patch="${patches[$index]}"
-            message="$(sed -n '1s/^# SDD-COMMIT: //p' "$patch")"
-            if [ -z "$message" ]; then
-              echo "Missing SDD commit message header: $patch" >&2
-              exit 1
-            fi
-            tail -n +2 "$patch" > /tmp/sdd.patch
-            git apply --index --whitespace=nowarn /tmp/sdd.patch
-            git rm "$patch"
-            if [ "$index" -eq "$last_index" ]; then
-              git rm "$ready"
-            fi
-            git commit -m "$message"
+          for patch in "${patches[@]}"; do
+            base64 --decode "$patch" | gzip --decompress > /tmp/sdd.patch
+            git am --3way /tmp/sdd.patch
           done
 
+          git rm "$ready" "${patches[@]}"
+          git commit -m "chore: clear applied SDD patch queue"
           git push origin "HEAD:${GITHUB_REF_NAME}"
