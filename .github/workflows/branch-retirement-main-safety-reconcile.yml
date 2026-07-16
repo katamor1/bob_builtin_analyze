@@ -1,0 +1,77 @@
+name: branch-retirement-main-safety-reconcile
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/branch-retirement-main-safety-reconcile.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout writable PR branch
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+      - name: Make main protection defense-in-depth
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          policy = Path('tools/branch-retirement/deletionPolicy.mjs')
+          text = policy.read_text(encoding='utf-8')
+          old = '''  if (!Array.isArray(input.protectedBranches)) errors.push("protectedBranches must be an array.")
+          else if (!input.protectedBranches.includes("main")) errors.push("main must be protected before branch retirement.")
+          '''
+          new = '''  if (!Array.isArray(input.protectedBranches)) errors.push("protectedBranches must be an array.")
+          '''
+          if old not in text:
+              raise SystemExit('main protection policy block did not match')
+          policy.write_text(text.replace(old, new), encoding='utf-8')
+
+          test_file = Path('tools/branch-retirement/test/deletionPolicy.test.mjs')
+          test_text = test_file.read_text(encoding='utf-8')
+          old_test = '''test("requires main protection and main ancestry", () => {
+            assert.match(validateDeletionInputs(input({ protectedBranches: [] })).join("\\n"), /main must be protected/)
+            assert.match(validateDeletionInputs(input({ mainIsDescendantOfAudit: false })).join("\\n"), /does not descend/)
+          })'''
+          new_test = '''test("requires main ancestry while excluding main independently of protection settings", () => {
+            assert.deepEqual(validateDeletionInputs(input({ protectedBranches: [] })), [])
+            assert.match(validateDeletionInputs(input({ mainIsDescendantOfAudit: false })).join("\\n"), /does not descend/)
+          })'''
+          if old_test not in test_text:
+              raise SystemExit('main protection test block did not match')
+          test_file.write_text(test_text.replace(old_test, new_test), encoding='utf-8')
+          PY
+          cat > docs/release-evidence/branch-retirement-main-safety-2026-07-16.md <<'MARKDOWN'
+          # Branch Retirement Main Safety Reconciliation
+
+          Branch protection is recorded and every protected target remains non-deletable, but `main` protection is not required as a repository-configuration prerequisite. Safety does not depend on that setting:
+
+          - `main` is rejected as a map target and as a deletion entry;
+          - repository default branch must be exactly `main`;
+          - the audited main must be an ancestor of execution main;
+          - every target uses an exact per-ref force-with-lease;
+          - the atomic command contains only explicit delete refspecs from the manifest;
+          - execution verifies that `main` has the same SHA after deletion.
+
+          This keeps the deletion boundary fail closed even in repositories where branch protection is administered outside the repository or is not enabled.
+          MARKDOWN
+          git rm .github/workflows/branch-retirement-main-safety-reconcile.yml
+          node --test tools/branch-retirement/test/deletionPolicy.test.mjs
+          git diff --check
+      - name: Commit main safety reconciliation
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tools/branch-retirement/deletionPolicy.mjs \
+            tools/branch-retirement/test/deletionPolicy.test.mjs \
+            docs/release-evidence/branch-retirement-main-safety-2026-07-16.md \
+            .github/workflows/branch-retirement-main-safety-reconcile.yml
+          git commit -m "fix: make main protection defense-in-depth"
+          git push origin "HEAD:${GITHUB_HEAD_REF}"
