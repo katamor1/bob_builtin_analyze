@@ -161,7 +161,7 @@ ProjectedRuntime contains WorkflowRunStateV2 and the metadata-only execution man
     RunShadowVerifier.compare(runRoot): ShadowVerificationResult
     RuntimeDiagnostic = { code, runId, sequence?, expectedHash?, actualHash?, occurredAt }
 
-Initial codes used here are v2-cutover-required, v2-import-blocked, event-tail-torn, event-stream-corrupt, projection-stale, projection-rebuilt, and projection-repair-failed. Diagnostics contain digests/metadata only.
+Initial codes used here are v2-shadow-divergence, v2-cutover-required, v2-import-blocked, event-tail-torn, event-stream-corrupt, projection-stale, projection-rebuilt, and projection-repair-failed. Diagnostics contain digests/metadata only.
 
 - [ ] Write failing tests for match, stale run.json, missing run.json, corrupt event, future schema, and v1 run requiring cutover.
 - [ ] Assert shadow mode performs no writes by comparing directory tree hashes and mtimes before/after verification.
