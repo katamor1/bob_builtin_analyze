@@ -1,0 +1,77 @@
+name: capture-pr112-focused-failure
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/capture-pr112-focused-failure.yml"
+
+permissions:
+  actions: read
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Extract focused TAP failures
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          RUN_ID: "29460972909"
+          JOB_ID: "87504129477"
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          branch="$GITHUB_HEAD_REF"
+          gh run view "$RUN_ID" --repo "$repo" --job "$JOB_ID" --log > /tmp/job.log
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          raw = Path('/tmp/job.log').read_text(encoding='utf-8', errors='replace')
+          ansi = re.compile(r'\x1b\[[0-9;]*[A-Za-z]')
+          lines = []
+          for original in raw.splitlines():
+              line = ansi.sub('', original)
+              parts = line.split('\t', 2)
+              lines.append(parts[2] if len(parts) == 3 else line)
+
+          output = ['## PR #112 focused Windows failures', '']
+          found = 0
+          for index, line in enumerate(lines):
+              match = re.search(r'not ok\s+\d+\s+-\s+(.+)$', line)
+              if not match:
+                  continue
+              found += 1
+              output.append(f'{found}. `{match.group(1).strip()}`')
+              for following in lines[index + 1:index + 70]:
+                  stripped = following.strip()
+                  if stripped.startswith('location:'):
+                      output.append(f'   - {stripped}')
+                  elif stripped.startswith('error:'):
+                      output.append(f'   - {stripped}')
+                  elif stripped.startswith('code:'):
+                      output.append(f'   - {stripped}')
+                  elif stripped.startswith('name:'):
+                      output.append(f'   - {stripped}')
+                  elif stripped.startswith('stack:'):
+                      output.append('   - stack follows')
+                  elif stripped.startswith(('SyntaxError:', 'AssertionError', 'ReferenceError:', 'TypeError:', 'Error:')):
+                      output.append(f'   - `{stripped}`')
+                  elif stripped.startswith(('at ', 'parseWorkflow', 'TestContext.')):
+                      output.append(f'     - `{stripped}`')
+                  if stripped == '...':
+                      break
+              output.append('')
+          if not found:
+              output.append('No `not ok` block found.')
+          for line in lines:
+              if re.match(r'^# (tests|pass|fail|duration_ms) ', line):
+                  output.append(f'`{line}`')
+          Path('/tmp/comment.md').write_text('\n'.join(output), encoding='utf-8')
+          PY
+          gh pr comment "$PR_NUMBER" --repo "$repo" --body-file /tmp/comment.md
+          gh api --method DELETE "repos/$repo/git/refs/heads/$branch"
