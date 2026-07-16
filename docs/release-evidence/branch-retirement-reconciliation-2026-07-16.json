@@ -1,0 +1,195 @@
+{
+  "schemaVersion": "bob-builtin-analyze/branch-retirement-audit/v1",
+  "repository": "katamor1/bob_builtin_analyze",
+  "generatedAt": "2026-07-16T11:29:40Z",
+  "workflowRunId": 29494601324,
+  "workflowJobId": 87608478763,
+  "sourceHeadSha": "87701ac1db59ba3f5320b4d32c49378b81a8d3cc",
+  "baselineMainSha": "d912e4edbc969bfae961ca7e8fbef92ace93d798",
+  "auditedMainSha": "d912e4edbc969bfae961ca7e8fbef92ace93d798",
+  "defaultBranch": "main",
+  "mainProtected": false,
+  "ready_for_deletion": true,
+  "blockedBranches": [],
+  "deletableBranches": [
+    "diagnostic/p1-1-windows-flake-20260712",
+    "diagnostic/phase4-windows-20260712",
+    "agent/workflow-automatic-pause-ci-verification-20260712",
+    "agent/repository-symbol-index-producer-contracts-red-20260712",
+    "agent/workflow-recovery-ux-p1-builder-readiness-20260712",
+    "agent/workflow-reproducible-runtime-phase4-20260712",
+    "agent/bob-evidence-scope-phase5-20260712",
+    "codex/evidence-scope-phase5-checkpoint-20260712",
+    "agent/bob-bazaar-review-review-run-v3-dashboard",
+    "codex/bazaar-ai-project-rule-authoring",
+    "codex/execute-shared-plan-6a53743e",
+    "integration/bazaar-campaign-dashboard-20260716",
+    "plan/retire-intentionally-unintegrated-20260716"
+  ],
+  "alreadyAbsentBranches": [
+    "automation/fix-pr97-windows-portable-tests-20260716",
+    "agent/workflow-run-retention-p1-6-20260713"
+  ],
+  "counts": {
+    "total": 15,
+    "deletable": 13,
+    "alreadyAbsent": 2,
+    "blocked": 0
+  },
+  "openPrRefs": [
+    "integration/retire-superseded-branches-20260716",
+    "main"
+  ],
+  "entries": [
+    {
+      "branch": "diagnostic/p1-1-windows-flake-20260712",
+      "expectedSha": "7db481f97243060f6f68cccb219d9720cc5fc8cd",
+      "remoteSha": "7db481f97243060f6f68cccb219d9720cc5fc8cd",
+      "expectedDisposition": "diagnostic-only",
+      "disposition": "diagnostic-only",
+      "deletable": true,
+      "replacementPullRequests": [82],
+      "blockers": []
+    },
+    {
+      "branch": "diagnostic/phase4-windows-20260712",
+      "expectedSha": "5db1f71676736add1a7d45d199c707f57291bfe2",
+      "remoteSha": "5db1f71676736add1a7d45d199c707f57291bfe2",
+      "expectedDisposition": "diagnostic-only",
+      "disposition": "diagnostic-only",
+      "deletable": true,
+      "replacementPullRequests": [77],
+      "blockers": []
+    },
+    {
+      "branch": "agent/workflow-automatic-pause-ci-verification-20260712",
+      "expectedSha": "a2f71784acbb9d860caa1a9851c91e66bea6507e",
+      "remoteSha": "a2f71784acbb9d860caa1a9851c91e66bea6507e",
+      "expectedDisposition": "diagnostic-only",
+      "disposition": "diagnostic-only",
+      "deletable": true,
+      "replacementPullRequests": [75, 92],
+      "blockers": []
+    },
+    {
+      "branch": "automation/fix-pr97-windows-portable-tests-20260716",
+      "expectedSha": "fa3072bb16033f28af2b64aac1d589a55b7f7ba0",
+      "remoteSha": null,
+      "expectedDisposition": "temporary-automation",
+      "disposition": "already-absent",
+      "deletable": false,
+      "replacementPullRequests": [97],
+      "blockers": []
+    },
+    {
+      "branch": "agent/repository-symbol-index-producer-contracts-red-20260712",
+      "expectedSha": "4c94f5ab8dcd79fff9a38b6c10c04f345d7a53ad",
+      "remoteSha": "4c94f5ab8dcd79fff9a38b6c10c04f345d7a53ad",
+      "expectedDisposition": "superseded",
+      "disposition": "superseded",
+      "deletable": true,
+      "replacementPullRequests": [72],
+      "blockers": []
+    },
+    {
+      "branch": "agent/workflow-recovery-ux-p1-builder-readiness-20260712",
+      "expectedSha": "81e19775f9ce17242a39c7868085c50bc8eb9240",
+      "remoteSha": "81e19775f9ce17242a39c7868085c50bc8eb9240",
+      "expectedDisposition": "superseded",
+      "disposition": "superseded",
+      "deletable": true,
+      "replacementPullRequests": [82],
+      "blockers": []
+    },
+    {
+      "branch": "agent/workflow-reproducible-runtime-phase4-20260712",
+      "expectedSha": "38d62885a8b7249b1f2d3853f31a0abc999ca160",
+      "remoteSha": "38d62885a8b7249b1f2d3853f31a0abc999ca160",
+      "expectedDisposition": "superseded",
+      "disposition": "superseded",
+      "deletable": true,
+      "replacementPullRequests": [77],
+      "blockers": []
+    },
+    {
+      "branch": "agent/bob-evidence-scope-phase5-20260712",
+      "expectedSha": "7c1bca1321648fbcb57c658f9c1dd7db08a28368",
+      "remoteSha": "7c1bca1321648fbcb57c658f9c1dd7db08a28368",
+      "expectedDisposition": "superseded",
+      "disposition": "superseded",
+      "deletable": true,
+      "replacementPullRequests": [72],
+      "blockers": []
+    },
+    {
+      "branch": "codex/evidence-scope-phase5-checkpoint-20260712",
+      "expectedSha": "c093a20b0dd8551191f76f02b472d92cf0b45af7",
+      "remoteSha": "c093a20b0dd8551191f76f02b472d92cf0b45af7",
+      "expectedDisposition": "superseded",
+      "disposition": "superseded",
+      "deletable": true,
+      "replacementPullRequests": [72],
+      "blockers": []
+    },
+    {
+      "branch": "agent/bob-bazaar-review-review-run-v3-dashboard",
+      "expectedSha": "11a739c557004b88cae47663623638b5691c262c",
+      "remoteSha": "11a739c557004b88cae47663623638b5691c262c",
+      "expectedDisposition": "superseded",
+      "disposition": "superseded",
+      "deletable": true,
+      "replacementPullRequests": [83, 118],
+      "blockers": []
+    },
+    {
+      "branch": "agent/workflow-run-retention-p1-6-20260713",
+      "expectedSha": "cb8290bb66c2c502515fab1e542071932c8c50c1",
+      "remoteSha": null,
+      "expectedDisposition": "merged-source",
+      "disposition": "already-absent",
+      "deletable": false,
+      "replacementPullRequests": [93],
+      "blockers": []
+    },
+    {
+      "branch": "codex/bazaar-ai-project-rule-authoring",
+      "expectedSha": "6f3c92e8544b3ebeccab465a66825f8f4bee4518",
+      "remoteSha": "6f3c92e8544b3ebeccab465a66825f8f4bee4518",
+      "expectedDisposition": "merged-source",
+      "disposition": "merged-source",
+      "deletable": true,
+      "replacementPullRequests": [97],
+      "blockers": []
+    },
+    {
+      "branch": "codex/execute-shared-plan-6a53743e",
+      "expectedSha": "6691988538af68c8cf52b33937b07e9fc06d0d67",
+      "remoteSha": "6691988538af68c8cf52b33937b07e9fc06d0d67",
+      "expectedDisposition": "merged-source",
+      "disposition": "merged-source",
+      "deletable": true,
+      "replacementPullRequests": [72],
+      "blockers": []
+    },
+    {
+      "branch": "integration/bazaar-campaign-dashboard-20260716",
+      "expectedSha": "f8d15d7bfd9d32718a4b0d7dbdc46d6752c69a14",
+      "remoteSha": "f8d15d7bfd9d32718a4b0d7dbdc46d6752c69a14",
+      "expectedDisposition": "merged-source",
+      "disposition": "merged-source",
+      "deletable": true,
+      "replacementPullRequests": [118],
+      "blockers": []
+    },
+    {
+      "branch": "plan/retire-intentionally-unintegrated-20260716",
+      "expectedSha": "5a198784f83080a939f65c30a07a516781b40041",
+      "remoteSha": "5a198784f83080a939f65c30a07a516781b40041",
+      "expectedDisposition": "merged-source",
+      "disposition": "merged-source",
+      "deletable": true,
+      "replacementPullRequests": [119],
+      "blockers": []
+    }
+  ]
+}
