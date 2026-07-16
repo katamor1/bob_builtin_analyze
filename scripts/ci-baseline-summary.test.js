@@ -2,6 +2,8 @@
 "use strict"
 
 const assert = require("node:assert/strict")
+const fs = require("node:fs")
+const path = require("node:path")
 const { test } = require("node:test")
 
 const {
@@ -20,6 +22,16 @@ const completeEnv = {
   ImageVersion: "20260714.240.1",
   GITHUB_STEP_SUMMARY: "summary.md",
   SECRET_TOKEN: "must-not-appear"
+}
+
+const repoRoot = path.resolve(__dirname, "..")
+
+function readRepoFile(...segments) {
+  return fs.readFileSync(path.join(repoRoot, ...segments), "utf8")
+}
+
+function occurrenceCount(text, pattern) {
+  return (text.match(pattern) ?? []).length
 }
 
 test("collectBaseline returns only the fixed evidence allowlist", () => {
@@ -87,4 +99,18 @@ test("emitBaseline succeeds without a step summary file", () => {
     appendFileSync: () => { appendCalls += 1 }
   })
   assert.equal(appendCalls, 0)
+})
+
+test("authoritative workflows record the CI baseline in every job definition", () => {
+  const quality = readRepoFile(".github", "workflows", "extensions-quality.yml")
+  const contracts = readRepoFile(".github", "workflows", "workflow-contracts.yml")
+  const scaffold = readRepoFile(".github", "workflows", "code-consistency-review-scaffold.yml")
+
+  assert.equal(occurrenceCount(quality, /run: node \.\.\/\.\.\/scripts\/ci-baseline-summary\.js/g), 4)
+  assert.equal(occurrenceCount(quality, /run: node scripts\/ci-baseline-summary\.js/g), 1)
+  assert.equal(occurrenceCount(contracts, /run: node \.\.\/\.\.\/scripts\/ci-baseline-summary\.js/g), 1)
+  assert.equal(occurrenceCount(scaffold, /run: node \.\.\/\.\.\/\.\.\/\.\.\/scripts\/ci-baseline-summary\.js/g), 1)
+  assert.equal(occurrenceCount(scaffold, /run: node \.\.\/\.\.\/scripts\/ci-baseline-summary\.js/g), 1)
+  assert.equal(occurrenceCount(contracts, /"scripts\/ci-baseline-summary\.js"/g), 2)
+  assert.equal(occurrenceCount(scaffold, /"scripts\/ci-baseline-summary\.js"/g), 2)
 })
