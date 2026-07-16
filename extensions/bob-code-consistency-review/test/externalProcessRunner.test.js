@@ -17,7 +17,9 @@ function runNode(script, options = {}) {
     args: ["-e", script],
     cwd,
     maxBufferBytes: 1024 * 1024,
-    timeoutMs: 2000,
+    // Keep non-timeout assertions independent from slow CI process scheduling.
+    // Timeout-specific tests override this value explicitly below.
+    timeoutMs: 10000,
     allowedExitCodes: [0],
     ...options
   })
@@ -41,8 +43,15 @@ test("external process runner terminates commands that exceed the hard timeout",
 })
 
 test("external process runner clamps timeouts below the safety minimum", async () => {
-  const result = await runNode("setTimeout(() => {}, 50)", { timeoutMs: 1 })
-  assert.equal(result.exitCode, 0)
+  await assert.rejects(
+    runNode("setInterval(() => {}, 1000)", { timeoutMs: 1 }),
+    (error) => {
+      assert.ok(error instanceof ExternalProcessError)
+      assert.equal(error.kind, "timeout")
+      assert.match(error.message, /timed out after 1000 ms/)
+      return true
+    }
+  )
 })
 
 test("external process runner propagates AbortSignal cancellation", async () => {
