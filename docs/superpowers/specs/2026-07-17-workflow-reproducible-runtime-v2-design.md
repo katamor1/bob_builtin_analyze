@@ -179,9 +179,13 @@ The logical envelope is:
 
 The event hash is SHA-256 over canonical JSON of every field except hash.
 
+Canonical JSON v1 preserves array order, sorts object keys by Unicode code-unit order, omits properties whose value is undefined, rejects non-finite numbers and non-JSON values, and emits UTF-8 JSON without insignificant whitespace. Event lines use that canonical form plus one newline. run.json and execution-manifest.json use JSON.stringify(value, null, 2) plus one newline, with every array already sorted by its contract-defined stable key.
+
 stateHash is SHA-256 over canonical state JSON. projectionHash is SHA-256 over the exact deterministic run.json bytes represented by state.
 
 For a v1-prefix cutover event, previousEventHash equals the verified v1 head hash. For a v2-native run genesis it is absent. No v1 event is valid after the first v2 event.
+
+previousStateHash is absent for run.created, run.imported, and stream.cutover because none of those events has a prior authoritative v2 state. Every later v2 event requires previousStateHash to equal the preceding v2 event stateHash. run.imported and stream.cutover evidence instead records sourceRunHash, optional sourceEventHash, source schema, canonical upgraded source-state hash, and importer version.
 
 Every event contains the complete post-state. Kind-specific evidence is still mandatory so that approval, side effects, artifacts, budgets, and lineage remain directly auditable without diffing arbitrary snapshots.
 
