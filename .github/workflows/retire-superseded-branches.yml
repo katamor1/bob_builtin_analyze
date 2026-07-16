@@ -41,19 +41,15 @@ jobs:
           test -z "$(git status --porcelain=v1)"
           test -f .github/retirement/branch-retirement-payload.b64
 
-      - name: Decode reviewed implementation payload
+      - name: Verify committed retirement implementation
         shell: bash
         run: |
           set -euo pipefail
-          payload_root="$RUNNER_TEMP/branch-retirement-payload"
-          rm -rf "$payload_root"
-          mkdir -p "$payload_root"
-          base64 --decode .github/retirement/branch-retirement-payload.b64 \
-            | tar -xzf - -C "$payload_root"
-          test -f "$payload_root/tools/branch-retirement/branch-retirement-map.json"
-          test -f "$payload_root/tools/branch-retirement/audit-branch-retirement.mjs"
-          test -f "$payload_root/tools/branch-retirement/delete-retired-branches.mjs"
-          echo "PAYLOAD_ROOT=$payload_root" >> "$GITHUB_ENV"
+          test -f tools/branch-retirement/branch-retirement-map.json
+          test -f tools/branch-retirement/audit-branch-retirement.mjs
+          test -f tools/branch-retirement/delete-retired-branches.mjs
+          test -f docs/release-evidence/workflow-builder-skip-resume-readiness-supersession-2026-07-16.md
+          echo "PAYLOAD_ROOT=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
 
       - name: Run branch-retirement unit tests
         shell: bash
@@ -150,10 +146,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p tools/branch-retirement docs/release-evidence
-          cp -R "$PAYLOAD_ROOT/tools/branch-retirement/." tools/branch-retirement/
-          cp "$PAYLOAD_ROOT/docs/release-evidence/workflow-builder-skip-resume-readiness-supersession-2026-07-16.md" \
-            docs/release-evidence/workflow-builder-skip-resume-readiness-supersession-2026-07-16.md
+          mkdir -p docs/release-evidence
           cp "$RUNNER_TEMP/branch-retirement-reconciliation.json" \
             docs/release-evidence/branch-retirement-reconciliation-2026-07-16.json
           cp "$RUNNER_TEMP/branch-retirement-reconciliation.md" \
