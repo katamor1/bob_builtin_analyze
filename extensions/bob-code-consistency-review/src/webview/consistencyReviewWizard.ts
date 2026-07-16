@@ -20,6 +20,7 @@ import { resolveBobWorkspaceRoot } from "../workspaceResolver"
 import { renderConsistencyReviewWizardHtml, type ConsistencyReviewWizardModel, type ConsistencyWizardPackageFile } from "./consistencyReviewWizardHtml"
 
 type ConsistencyWizardAction =
+  | "initializeWorkspace"
   | "createReviewInput"
   | "openTraceabilityPrep"
   | "createReviewInputFromTraceability"
@@ -48,6 +49,7 @@ class ConsistencyReviewWizardController {
   private workspaceRoot = ""
   private documents: ReviewInputDocumentCandidate[] = []
   private model?: ConsistencyReviewWizardModel
+  private initializingWorkspace = false
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -67,6 +69,10 @@ class ConsistencyReviewWizardController {
       return
     }
     try {
+      if (message.action === "initializeWorkspace") {
+        await this.initializeWorkspace()
+        return
+      }
       if (message.action === "createReviewInput") {
         await this.createReviewInput(message.draft ?? {})
       } else if (message.action === "openTraceabilityPrep") {
@@ -131,6 +137,31 @@ class ConsistencyReviewWizardController {
     }
   }
 
+  private async initializeWorkspace(): Promise<void> {
+    if (this.initializingWorkspace) {
+      this.post({ message: "初期化を実行中です。" })
+      return
+    }
+    this.initializingWorkspace = true
+    try {
+      const result = await vscode.commands.executeCommand(
+        "bobCodeConsistency.initializeWorkspace",
+        { workspaceRoot: this.workspaceRoot }
+      )
+      const nextModel = await this.buildModel([])
+      nextModel.status = nextModel.initialization.initialized
+        ? { tone: "ok", message: initializationSuccessMessage(result) }
+        : {
+            tone: "warning",
+            message: "初期化コマンド完了後もコード整合プレレビュー workflow を確認できませんでした。"
+          }
+      this.model = nextModel
+      this.render()
+    } finally {
+      this.initializingWorkspace = false
+    }
+  }
+
   private async createReviewInput(rawDraft: Record<string, unknown>): Promise<void> {
     const selectedPaths = stringArray(rawDraft.documentPaths)
     const selectedDocuments = selectedPaths.length > 0
@@ -169,6 +200,20 @@ class ConsistencyReviewWizardController {
   private post(message: Record<string, unknown>): void {
     void this.panel.webview.postMessage(message)
   }
+}
+
+function initializationSuccessMessage(result: unknown): string {
+  const fallback = ".bob ワークフローの初期化が完了しました。"
+  if (!result || typeof result !== "object") return fallback
+  const candidate = result as { message?: unknown; backupPath?: unknown }
+  const lines: string[] = []
+  if (typeof candidate.message === "string" && candidate.message.trim()) {
+    lines.push(candidate.message.trim())
+  }
+  if (typeof candidate.backupPath === "string" && candidate.backupPath.trim()) {
+    lines.push(`workflow backup: ${candidate.backupPath.trim()}`)
+  }
+  return lines.join("\n") || fallback
 }
 
 function parseConsistencyWizardMessage(message: unknown): ConsistencyWizardMessage | undefined {
@@ -241,7 +286,8 @@ function stripCandidateUiFields(candidate: ReviewInputDocumentCandidate) {
 }
 
 function isConsistencyWizardAction(value: unknown): value is ConsistencyWizardAction {
-  return value === "createReviewInput" ||
+  return value === "initializeWorkspace" ||
+    value === "createReviewInput" ||
     value === "openTraceabilityPrep" ||
     value === "createReviewInputFromTraceability" ||
     value === "validateTraceability" ||
