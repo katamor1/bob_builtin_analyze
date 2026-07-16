@@ -1,4 +1,4 @@
-import { spawn, type ChildProcessByStdio } from "node:child_process"
+import { spawn, type ChildProcess, type ChildProcessByStdio } from "node:child_process"
 import type { Readable } from "node:stream"
 
 type ExternalProcessChild = ChildProcessByStdio<null, Readable, Readable>
@@ -49,7 +49,7 @@ const PROCESS_TERMINATION_WAIT_MS = 2_000
 
 export function runExternalProcess(options: ExternalProcessOptions): Promise<ExternalProcessResult> {
   const maxBufferBytes = positiveInteger(options.maxBufferBytes, "maxBufferBytes")
-  const timeoutMs = boundedTimeout(options.timeoutMs)
+  const timeoutMs = normalizeExternalProcessTimeoutMs(options.timeoutMs)
   const allowedExitCodes = new Set(options.allowedExitCodes ?? [0])
 
   if (options.signal?.aborted) {
@@ -182,12 +182,104 @@ function positiveInteger(value: number, label: string): number {
   return Math.floor(value)
 }
 
-function boundedTimeout(value: number): number {
+export function normalizeExternalProcessTimeoutMs(value: number): number {
   const timeout = positiveInteger(value, "timeoutMs")
   return Math.max(MIN_EXTERNAL_PROCESS_TIMEOUT_MS, Math.min(MAX_EXTERNAL_PROCESS_TIMEOUT_MS, timeout))
 }
 
 function terminateProcessTree(child: ExternalProcessChild): Promise<void> {
+  return process.platform === "win32"
+    ? terminateWindowsProcessTree(child)
+    : terminatePosixProcessTree(child)
+}
+
+function terminateWindowsProcessTree(child: ExternalProcessChild): Promise<void> {
+  return new Promise((resolve) => {
+    let finished = false
+    let childFinished = child.exitCode !== null || child.signalCode !== null
+    let treeKillerFinished = false
+    let treeKillerSucceeded = false
+    let treeKiller: ChildProcess | undefined
+    let timeout: ReturnType<typeof setTimeout>
+
+    const finish = (): void => {
+      if (finished) return
+      finished = true
+      clearTimeout(timeout)
+      child.removeListener("exit", onChildFinished)
+      child.removeListener("close", onChildFinished)
+      treeKiller?.removeListener("error", onTreeKillerError)
+      treeKiller?.removeListener("close", onTreeKillerClose)
+      resolve()
+    }
+
+    const fallbackKillChild = (): void => {
+      try {
+        child.kill("SIGKILL")
+      } catch {
+        // Best effort: the process may already be gone.
+      }
+    }
+
+    const maybeFinish = (): void => {
+      if (treeKillerSucceeded || (treeKillerFinished && childFinished)) finish()
+    }
+
+    const onChildFinished = (): void => {
+      childFinished = true
+      maybeFinish()
+    }
+
+    const completeTreeKiller = (succeeded: boolean): void => {
+      if (treeKillerFinished) return
+      treeKillerFinished = true
+      treeKillerSucceeded = succeeded
+      if (!succeeded) fallbackKillChild()
+      maybeFinish()
+    }
+
+    const onTreeKillerError = (): void => completeTreeKiller(false)
+    const onTreeKillerClose = (code: number | null): void => completeTreeKiller(code === 0)
+
+    timeout = setTimeout(() => {
+      try {
+        treeKiller?.kill("SIGKILL")
+      } catch {
+        // Best effort: taskkill may already be gone.
+      }
+      fallbackKillChild()
+      finish()
+    }, PROCESS_TERMINATION_WAIT_MS)
+
+    child.once("exit", onChildFinished)
+    child.once("close", onChildFinished)
+
+    if (childFinished) {
+      finish()
+      return
+    }
+
+    const pid = child.pid
+    if (!pid) {
+      treeKillerFinished = true
+      fallbackKillChild()
+      return
+    }
+
+    try {
+      treeKiller = spawn("taskkill", ["/pid", String(pid), "/T", "/F"], {
+        windowsHide: true,
+        stdio: "ignore"
+      })
+      treeKiller.once("error", onTreeKillerError)
+      treeKiller.once("close", onTreeKillerClose)
+    } catch {
+      completeTreeKiller(false)
+    }
+  })
+}
+
+function terminatePosixProcessTree(child: ExternalProcessChild): Promise<void> {
   return new Promise((resolve) => {
     let finished = false
     let timeout: ReturnType<typeof setTimeout>
@@ -225,23 +317,6 @@ function terminateProcessTree(child: ExternalProcessChild): Promise<void> {
     const pid = child.pid
     if (!pid) {
       fallbackKill()
-      return
-    }
-
-    if (process.platform === "win32") {
-      try {
-        const killer = spawn("taskkill", ["/pid", String(pid), "/T", "/F"], {
-          windowsHide: true,
-          stdio: "ignore"
-        })
-        killer.once("error", fallbackKill)
-        killer.once("close", (code) => {
-          if (code !== 0) fallbackKill()
-          if (child.exitCode !== null || child.signalCode !== null) finish()
-        })
-      } catch {
-        fallbackKill()
-      }
       return
     }
 

@@ -30,14 +30,30 @@ export function startRetryRegistrationController<Api>(
   let retryIndex = 0
   const timers = new Set<ReturnType<typeof setTimeout>>()
 
+  const reportError = (error: unknown): void => {
+    try {
+      options.reportError(error)
+    } catch {
+      // Diagnostics must never interrupt provider rollback or deactivation.
+    }
+  }
+
   const clearRetryTimers = (): void => {
     for (const timer of timers) clearTimeout(timer)
     timers.clear()
   }
 
   const disposeRegistrations = (registrations: DisposableLike[]): void => {
-    for (const registration of [...registrations].reverse()) registration.dispose()
+    const errors: unknown[] = []
+    for (const registration of [...registrations].reverse()) {
+      try {
+        registration.dispose()
+      } catch (error) {
+        errors.push(error)
+      }
+    }
     registrations.length = 0
+    for (const error of errors) reportError(error)
   }
 
   const resetRegistration = (): void => {
@@ -72,7 +88,7 @@ export function startRetryRegistrationController<Api>(
     }
     if (result.api === undefined) {
       disposeRegistrations(result.registrations)
-      options.reportError(new Error("Provider registration succeeded without API identity."))
+      reportError(new Error("Provider registration succeeded without API identity."))
       scheduleRetry()
       return false
     }
@@ -93,7 +109,7 @@ export function startRetryRegistrationController<Api>(
     try {
       return await currentAttempt
     } catch (error) {
-      options.reportError(error)
+      reportError(error)
       if (!disposed && attemptGeneration === generation) scheduleRetry()
       return false
     } finally {
