@@ -24,7 +24,20 @@
 
 Extension Host smokeは最小拡張で`@vscode/test-cli@0.0.12`がproject rootから`@vscode/test-electron`を解決できず、activation前に失敗することを再現した。VSIX検査後にCLI `0.0.12`とElectron runtime `2.5.2`をproject rootへ一時導入し、両packageの明示preflight、project-local binary実行、`skipExtensionDependencies: true`、smoke contract testへ修正済みである。一時的なsmoke診断workflowは、重複jobとprivate repository minutes消費を避けるため削除した。
 
-provider controllerは両拡張ともstrict隔離compile後に6 tests passed / 0 failed、smoke harness contractは3 tests passed / 0 failedである。GitHub Actionsは最新付近でも全jobがrunner割当前に終了しており、最新headの全体CIと実機試験は未完了である。PRはdraftを維持し、CI／実機ゲートが閉じるまでmergeしない。
+2026-07-11時点では、provider controllerは両拡張ともstrict隔離compile後に6 tests passed / 0 failed、smoke harness contractは3 tests passed / 0 failedだった。当時のGitHub Actionsは全jobがrunner割当前に終了し、最新headの全体CIと実機試験は未完了だったため、PRはdraftを維持していた。現在のbaseline closureは次節を正本とする。
+
+## CI baseline closure（2026-07-16）
+
+CI baselineはmain `f4f9d3308361333e02ab1af732706b7a9e5fc952`で再確認し、次の項目を完了した。詳細なrun、job、log、ローカルコマンド、バージョン、VSIX SHA-256は[`docs/review-findings-tracking.md`](../../review-findings-tracking.md#2026-07-16-ci-baseline)を正本とする。
+
+- [x] step開始前に失敗した3 Actions runを分類し、check annotationからbilling / spending-limitを原因と確定する。
+- [x] `actionlint 1.7.12`で3 workflowを検査し、0 findingsを確認する。
+- [x] current mainの承認済み`workflow_dispatch` 3 runで、実stepとjob logを伴うsuccessを確認する。
+- [x] Node.js 22で4 packageの`npm ci`、全policy、unit、package、package policyをローカル実行する。
+- [x] commit SHA、ローカル／hosted OS、Node.js、npm、VS Code、IBM Bob versionをbaselineへ固定する。
+- [x] CI baseline証跡を`docs/review-findings-tracking.md`へ集約する。
+
+Repository CI gateに加え、実IBM Bob環境は2026-07-16のユーザー評価によりPASSとする。実Bazaar、multi-root、署名／配布は引き続き別ゲートとする。
 
 ---
 
@@ -45,7 +58,7 @@ provider controllerは両拡張ともstrict隔離compile後に6 tests passed / 0
 - [x] API generation、stale/late completion、部分登録rollbackをテストする。
 - [x] provider Disposableをcontrollerだけが所有し、二重disposeと旧世代subscription蓄積を防止する。
 - [x] controllerをstrict隔離compileし、6 tests passed / 0 failedを確認する。
-- [ ] 最新headで対象モジュール全体テストを再実行する。
+- [x] 最新headで対象モジュール全体テストを再実行する。
 
 ### Task 2: Provider Ownership, Duplicate Rejection, and Disposal
 
@@ -109,7 +122,7 @@ provider controllerは両拡張ともstrict隔離compile後に6 tests passed / 0
 - [x] action provider、preflight、nested `vscode.executeCommand` command IDをcatalogと照合する。
 - [x] templateとworkspace mirrorのdriftを検出する。
 - [x] sample固有の外部commandは、正確なfile pathとguardrail宣言の両方を満たす場合だけallowlistする。
-- [ ] 最新headで全workflow strict/provider-aware contract testを再実行する。
+- [x] 最新headで全workflow strict/provider-aware contract testを再実行する。
 
 ### Task 6: Windows/Extension Host Quality Gate and Documentation Sync
 
@@ -136,18 +149,18 @@ provider controllerは両拡張ともstrict隔離compile後に6 tests passed / 0
 - [x] smoke harness contractを局所実行し、3 tests passed / 0 failedを確認する。
 - [x] 一時`extension-host-smoke-diagnostic.yml`を削除し、本体workflowへ一本化する。
 - [x] release evidenceへ局所RED/GREENとrunner blockerを記録する。
-- [ ] GitHub runner復旧後、smoke contractと実Extension Host smokeを3拡張で完走する。
+- [x] GitHub runner復旧後、smoke contractと実Extension Host smokeを3拡張で完走する。
 
 ### Final Verification
 
-- [ ] `workflow-register`: dependency, architecture, source, schema, unit, package, package policy
-- [ ] `bob-bazaar-review`: dependency, architecture, source, unused, artifact, unit, package, package policy
-- [ ] `bob-code-consistency-review`: dependency, architecture, source, unit, package, package policy
-- [x] smoke harness contract test（局所3 passed / 0 failed）
-- [ ] 全workflow strict/provider-aware contract test
-- [ ] Windows/Ubuntu CI
-- [ ] VS Code Extension Host activation smoke
-- [ ] IBM Bob実環境のworkflow source、provider recovery、step review、result handoff、Webview smoke
+- [x] `workflow-register`: dependency, architecture, source, schema, unit, package, package policy
+- [x] `bob-bazaar-review`: dependency, architecture, source, unused, artifact, unit, package, package policy
+- [x] `bob-code-consistency-review`: dependency, architecture, source, unit, package, package policy
+- [x] smoke harness contract test（local 4 passed / 0 failed、hosted step success）
+- [x] 全workflow strict/provider-aware contract test
+- [x] Windows/Ubuntu CI
+- [x] VS Code Extension Host activation smoke
+- [x] IBM Bob実環境のworkflow source、provider recovery、step review、result handoff、Webview smoke（2026-07-16 user-attested PASS、`IBM.bob-code` 2.0.1）
 - [ ] 実Bazaar環境のtimeout/cancel後のchild process残留確認
 - [ ] multi-rootでBob rootとVCS rootの分離確認
 - [x] draft PRのcheck結果と未解決事項を報告する
