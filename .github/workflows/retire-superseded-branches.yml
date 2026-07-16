@@ -63,15 +63,44 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          set -euo pipefail
+          set -uo pipefail
+          set +e
           node "$PAYLOAD_ROOT/tools/branch-retirement/audit-branch-retirement.mjs" \
             --repository "$GITHUB_REPOSITORY" \
             --remote origin \
             --base main \
             --map "$PAYLOAD_ROOT/tools/branch-retirement/branch-retirement-map.json" \
             --json "$RUNNER_TEMP/branch-retirement-reconciliation.json" \
-            --markdown "$RUNNER_TEMP/branch-retirement-reconciliation.md"
+            --markdown "$RUNNER_TEMP/branch-retirement-reconciliation.md" \
+            2>&1 | tee "$RUNNER_TEMP/branch-retirement-audit.log"
+          audit_status=${PIPESTATUS[0]}
+          set -e
+
+          {
+            echo "## Branch retirement fresh audit"
+            echo
+            echo "Run: \`$GITHUB_RUN_ID\`"
+            echo
+            if [[ -f "$RUNNER_TEMP/branch-retirement-reconciliation.json" ]]; then
+              jq -r '"- ready_for_deletion: `\(.ready_for_deletion)`\n- mainProtected: `\(.mainProtected)`\n- deletable: `\(.counts.deletable)`\n- already absent: `\(.counts.alreadyAbsent)`\n- blocked: `\(.counts.blocked)`"' "$RUNNER_TEMP/branch-retirement-reconciliation.json"
+              echo
+              echo "### Blockers"
+              jq -r '.entries[] | select((.blockers | length) > 0) | "- `\(.branch)`: \(.blockers | join("; "))"' "$RUNNER_TEMP/branch-retirement-reconciliation.json"
+            else
+              echo "The audit did not produce a manifest."
+              echo
+              echo '```text'
+              tail -80 "$RUNNER_TEMP/branch-retirement-audit.log"
+              echo '```'
+            fi
+          } > "$RUNNER_TEMP/branch-retirement-audit-comment.md"
+          gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/branch-retirement-audit-comment.md"
+
+          if [[ $audit_status -ne 0 ]]; then
+            exit "$audit_status"
+          fi
           jq -e '.ready_for_deletion == true' "$RUNNER_TEMP/branch-retirement-reconciliation.json"
           jq -e '.blockedBranches | length == 0' "$RUNNER_TEMP/branch-retirement-reconciliation.json"
           jq -e '.mainProtected == true' "$RUNNER_TEMP/branch-retirement-reconciliation.json"
