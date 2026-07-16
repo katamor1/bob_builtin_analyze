@@ -55,16 +55,7 @@ export function evaluateRetirementEntry({
     requiredMainPaths: [...(entry.requiredMainPaths ?? [])],
     forbiddenMainPaths: [...(entry.forbiddenMainPaths ?? [])]
   }
-  if (remoteSha === undefined || remoteSha === null) {
-    return { ...base, disposition: 'already-absent', deletable: false, blockers: [] }
-  }
-
   const blockers = []
-  if (!SHA_PATTERN.test(remoteSha)) blockers.push('remote head is not a valid 40-character SHA')
-  if (remoteSha !== entry.expectedSha) blockers.push(`branch head moved from ${entry.expectedSha} to ${remoteSha}`)
-  if (openPrRefs.has(entry.branch)) blockers.push('branch is referenced by an open pull request')
-  if (protectedBranches.has(entry.branch)) blockers.push('branch is protected')
-
   for (const pr of entry.replacementPullRequests) {
     if (!mergedPullRequests.has(pr)) blockers.push(`replacement pull request #${pr} is not merged`)
   }
@@ -74,6 +65,20 @@ export function evaluateRetirementEntry({
   for (const forbidden of entry.forbiddenMainPaths ?? []) {
     if (mainPaths.has(forbidden)) blockers.push(`temporary or forbidden path remains on main: ${forbidden}`)
   }
+
+  if (remoteSha === undefined || remoteSha === null) {
+    return {
+      ...base,
+      disposition: blockers.length === 0 ? 'already-absent' : 'blocked-unique',
+      deletable: false,
+      blockers
+    }
+  }
+
+  if (!SHA_PATTERN.test(remoteSha)) blockers.push('remote head is not a valid 40-character SHA')
+  if (remoteSha !== entry.expectedSha) blockers.push(`branch head moved from ${entry.expectedSha} to ${remoteSha}`)
+  if (openPrRefs.has(entry.branch)) blockers.push('branch is referenced by an open pull request')
+  if (protectedBranches.has(entry.branch)) blockers.push('branch is protected')
 
   return {
     ...base,
