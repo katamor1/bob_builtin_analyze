@@ -1,0 +1,74 @@
+name: capture-pr97-windows-bazaar-final2
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/capture-pr97-windows-bazaar-final2.yml"
+
+permissions:
+  actions: read
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Extract Windows Bazaar TAP failures
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          RUN_ID: "29460255014"
+          JOB_ID: "87502048796"
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          branch="$GITHUB_HEAD_REF"
+          gh run view "$RUN_ID" --repo "$repo" --job "$JOB_ID" --log > /tmp/job.log
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          raw = Path('/tmp/job.log').read_text(encoding='utf-8', errors='replace')
+          ansi = re.compile(r'\x1b\[[0-9;]*[A-Za-z]')
+          lines = []
+          for original in raw.splitlines():
+              line = ansi.sub('', original)
+              parts = line.split('\t', 2)
+              lines.append(parts[2] if len(parts) == 3 else line)
+
+          starts = [i for i, line in enumerate(lines) if re.search(r'\bnot ok\b', line)]
+          output = []
+          seen = set()
+          for index in starts:
+              block = []
+              for line in lines[index:index + 80]:
+                  block.append(line)
+                  if line.strip() == '...':
+                      break
+              key = '\n'.join(block)
+              if key not in seen:
+                  seen.add(key)
+                  output.extend(block)
+                  output.append('')
+
+          summary = re.compile(r'^# (tests|pass|fail|duration_ms) |npm error|Process completed', re.IGNORECASE)
+          output.extend(line for line in lines if summary.search(line))
+          text = '\n'.join(output).strip() or 'No TAP failure block found.'
+          if len(text) > 60000:
+              text = text[:60000] + '\n... [truncated]'
+          Path('/tmp/failure.txt').write_text(text, encoding='utf-8')
+          PY
+          {
+            echo "## PR #97 Windows Bazaar failure after workflow identity fix"
+            echo
+            echo "Run: \`$RUN_ID\`, job: \`$JOB_ID\`"
+            echo
+            echo '```text'
+            cat /tmp/failure.txt
+            echo '```'
+          } > /tmp/comment.md
+          gh pr comment "$PR_NUMBER" --repo "$repo" --body-file /tmp/comment.md
+          gh api --method DELETE "repos/$repo/git/refs/heads/$branch"
