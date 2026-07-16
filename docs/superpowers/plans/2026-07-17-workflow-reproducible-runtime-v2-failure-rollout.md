@@ -174,7 +174,7 @@
 - Create: extensions/workflow-register/test/fixtures/reproducible-runtime/bob-sync/target.json
 - Create: extensions/workflow-register/test/fixtures/reproducible-runtime/bob-sync/observed.json
 - Modify: extensions/workflow-register/src/bobTaskSync.ts
-- Modify: extensions/workflow-register/src/operationHubTodoSync.ts
+- Modify: extensions/workflow-register/src/gui/operationHubHtml.ts
 - Modify: extensions/workflow-register/test/bobTaskSync.test.js
 - Modify: extensions/workflow-register/test/operationHubTodoSync.test.js
 
