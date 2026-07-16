@@ -1,0 +1,63 @@
+name: capture-pr112-patch-failure-2
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/capture-pr112-patch-failure-2.yml"
+
+permissions:
+  actions: read
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Extract second patch failure message
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          RUN_ID: "29460843188"
+          JOB_ID: "87503743964"
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          branch="$GITHUB_HEAD_REF"
+          gh run view "$RUN_ID" --repo "$repo" --job "$JOB_ID" --log > /tmp/job.log
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          raw = Path('/tmp/job.log').read_text(encoding='utf-8', errors='replace')
+          ansi = re.compile(r'\x1b\[[0-9;]*[A-Za-z]')
+          lines = []
+          for original in raw.splitlines():
+              line = ansi.sub('', original)
+              parts = line.split('\t', 2)
+              lines.append(parts[2] if len(parts) == 3 else line)
+          pattern = re.compile(r'matched|not installed|not found|SystemExit|Traceback|throw|Error:|Process completed', re.IGNORECASE)
+          indexes = [i for i, line in enumerate(lines) if pattern.search(line)]
+          selected = set()
+          for index in indexes:
+              selected.update(range(max(0, index - 3), min(len(lines), index + 9)))
+          output = []
+          previous = None
+          for index in sorted(selected):
+              if previous is not None and index > previous + 1:
+                  output.append('...')
+              output.append(lines[index])
+              previous = index
+          Path('/tmp/message.txt').write_text('\n'.join(output) or 'No patch failure marker found.', encoding='utf-8')
+          PY
+          {
+            echo "## PR #112 second patch failure"
+            echo
+            echo '```text'
+            cat /tmp/message.txt
+            echo '```'
+          } > /tmp/comment.md
+          gh pr comment "$PR_NUMBER" --repo "$repo" --body-file /tmp/comment.md
+          gh api --method DELETE "repos/$repo/git/refs/heads/$branch"
