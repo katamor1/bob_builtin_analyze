@@ -2,6 +2,19 @@ import * as fs from "node:fs/promises"
 import * as path from "node:path"
 import * as vscode from "vscode"
 
+export const CODE_CONSISTENCY_WORKFLOW_RELATIVE_PATH = path.join(
+  ".bob",
+  "workflows",
+  "code-consistency-review",
+  "WORKFLOW.md"
+)
+
+export interface CodeConsistencyWorkspaceInitializationStatus {
+  initialized: boolean
+  workflowPath: string
+  missing: string[]
+}
+
 export interface InitializeCodeConsistencyWorkspaceOptions {
   context: vscode.ExtensionContext
   workspaceRoot: string
@@ -27,7 +40,6 @@ type FileInitializationResult = {
   message: string
 }
 
-const WORKFLOW_RELATIVE_PATH = path.join(".bob", "workflows", "code-consistency-review", "WORKFLOW.md")
 const WORKFLOW_TEMPLATE_RELATIVE_PATH = path.join("templates", ".bob", "workflows", "code-consistency-review", "WORKFLOW.md")
 const REVIEW_INPUT_RELATIVE_PATH = "review-input.yaml"
 const REVIEW_PLACEHOLDER_DOCUMENT_RELATIVE_PATH = path.join("docs", "review-input-placeholder.md")
@@ -108,8 +120,27 @@ const REVIEW_PLACEHOLDER_DOCUMENT_TEMPLATE = `# review-input placeholder
 - 仮のテスト仕様 section です。実レビュー前に TC-* などの実 ID へ置き換えてください。
 `
 
+export async function getCodeConsistencyWorkspaceInitializationStatus(
+  workspaceRoot: string
+): Promise<CodeConsistencyWorkspaceInitializationStatus> {
+  const workflowPath = path.join(workspaceRoot, CODE_CONSISTENCY_WORKFLOW_RELATIVE_PATH)
+  let initialized = false
+  try {
+    initialized = (await fs.lstat(workflowPath)).isFile()
+  } catch {
+    initialized = false
+  }
+  return {
+    initialized,
+    workflowPath,
+    missing: initialized
+      ? []
+      : [path.relative(workspaceRoot, workflowPath).replace(/\\/g, "/")]
+  }
+}
+
 export async function initializeCodeConsistencyWorkspace(options: InitializeCodeConsistencyWorkspaceOptions): Promise<InitializeCodeConsistencyWorkspaceResult> {
-  const workflowPath = path.join(options.workspaceRoot, WORKFLOW_RELATIVE_PATH)
+  const workflowPath = path.join(options.workspaceRoot, CODE_CONSISTENCY_WORKFLOW_RELATIVE_PATH)
   const templatePath = options.context.asAbsolutePath(WORKFLOW_TEMPLATE_RELATIVE_PATH)
   const template = await fs.readFile(templatePath, "utf8")
   const workflowResult = await writeOrUpdateTemplateFile(workflowPath, template, {
