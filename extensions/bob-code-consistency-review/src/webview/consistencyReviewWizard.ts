@@ -15,6 +15,7 @@ import {
 import { resolveWorkspacePathStrict } from "../core/fileSystem"
 import { DEFAULT_TRACEABILITY_CATALOG_PATH, DEFAULT_TRACEABILITY_GATE_REPORT_PATH, readTraceabilityCatalog, validateAndWriteTraceabilityGateReport } from "../core/traceabilityCatalogStore"
 import type { TraceabilityCatalog, TraceabilityStatus } from "../core/traceabilityCatalog"
+import { getCodeConsistencyWorkspaceInitializationStatus } from "../workspaceInitializer"
 import { resolveBobWorkspaceRoot } from "../workspaceResolver"
 import { renderConsistencyReviewWizardHtml, type ConsistencyReviewWizardModel, type ConsistencyWizardPackageFile } from "./consistencyReviewWizardHtml"
 
@@ -109,6 +110,8 @@ class ConsistencyReviewWizardController {
       reportPath: config.get<string>("traceabilityGateReportPath", DEFAULT_TRACEABILITY_GATE_REPORT_PATH),
       textEncoding
     })
+    const warnings = [...discovery.warnings, ...extraWarnings]
+    const initialization = await getCodeConsistencyWorkspaceInitializationStatus(this.workspaceRoot)
     return {
       workspaceRoot: this.workspaceRoot,
       base: "HEAD~1",
@@ -119,7 +122,12 @@ class ConsistencyReviewWizardController {
       documents: this.documents,
       traceability,
       packagePreview: await listPackagePreview(this.workspaceRoot, config.get<string>("reviewPackagePath", ".bob-review/review-package")),
-      warnings: [...discovery.warnings, ...extraWarnings]
+      initialization,
+      warnings,
+      status: {
+        tone: warnings.length > 0 ? "warning" : "muted",
+        message: warnings.join("\n") || "未実行"
+      }
     }
   }
 
