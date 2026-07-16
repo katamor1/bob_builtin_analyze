@@ -1,0 +1,108 @@
+name: verify-branch-retirement-postmerge
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/verify-branch-retirement-postmerge.yml"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  ubuntu:
+    name: Ubuntu branch-retirement verification
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact verification head
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Verify tools and tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tools/branch-retirement/test/*.test.mjs
+          node --check tools/branch-retirement/audit-branch-retirement.mjs
+          node --check tools/branch-retirement/delete-retired-branches.mjs
+
+      - name: Verify main and retired refs
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected_main="f4f9d3308361333e02ab1af732706b7a9e5fc952"
+          actual_main="$(git ls-remote origin refs/heads/main | awk '{print $1}')"
+          if [[ "$actual_main" != "$expected_main" ]]; then
+            echo "main moved: expected $expected_main, got $actual_main" >&2
+            exit 1
+          fi
+
+          failed=0
+          while IFS= read -r branch; do
+            [[ -n "$branch" ]] || continue
+            if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
+              echo "Retired branch unexpectedly exists: $branch" >&2
+              failed=1
+            fi
+          done <<'EOF'
+          diagnostic/p1-1-windows-flake-20260712
+          diagnostic/phase4-windows-20260712
+          agent/workflow-automatic-pause-ci-verification-20260712
+          automation/fix-pr97-windows-portable-tests-20260716
+          agent/repository-symbol-index-producer-contracts-red-20260712
+          agent/workflow-recovery-ux-p1-builder-readiness-20260712
+          agent/workflow-reproducible-runtime-phase4-20260712
+          agent/bob-evidence-scope-phase5-20260712
+          codex/evidence-scope-phase5-checkpoint-20260712
+          agent/bob-bazaar-review-review-run-v3-dashboard
+          agent/workflow-run-retention-p1-6-20260713
+          codex/bazaar-ai-project-rule-authoring
+          codex/execute-shared-plan-6a53743e
+          integration/bazaar-campaign-dashboard-20260716
+          plan/retire-intentionally-unintegrated-20260716
+          integration/retire-superseded-branches-20260716
+          EOF
+          test "$failed" -eq 0
+
+  windows:
+    name: Windows branch-retirement verification
+    runs-on: windows-latest
+    steps:
+      - name: Checkout exact verification head
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Verify tools and tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $tests = Get-ChildItem "tools/branch-retirement/test/*.test.mjs" | ForEach-Object { $_.FullName }
+          node --test $tests
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --check tools/branch-retirement/audit-branch-retirement.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --check tools/branch-retirement/delete-retired-branches.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+  cleanup:
+    name: Remove temporary verification PR and branch
+    needs: [ubuntu, windows]
+    if: ${{ success() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Close PR and delete branch
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          set -euo pipefail
+          gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body "Post-merge branch-retirement verification passed on Ubuntu and Windows. Current main and all retired refs were verified. This temporary PR is being closed and its branch deleted."
+          gh pr close "$PR_NUMBER" --repo "$GITHUB_REPOSITORY"
+          encoded="$(jq -rn --arg value "$HEAD_REF" '$value | @uri')"
+          gh api --method DELETE "repos/$GITHUB_REPOSITORY/git/refs/heads/$encoded"
