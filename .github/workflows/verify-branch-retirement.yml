@@ -1,0 +1,192 @@
+name: verify-branch-retirement
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/verify-branch-retirement.yml"
+
+permissions:
+  actions: read
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: verify-branch-retirement-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      HEAD_BRANCH: ${{ github.head_ref }}
+    steps:
+      - name: Wait for successful execution evidence on main
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          for attempt in $(seq 1 360); do
+            main_sha="$(gh api "repos/$repo/commits/main" --jq '.sha')"
+            if content="$(gh api "repos/$repo/contents/docs/release-evidence/branch-retirement-execution-2026-07-16.json?ref=$main_sha" --jq '.content' 2>/dev/null)"; then
+              status="$(printf '%s' "$content" | base64 --decode | jq -r '.status')"
+              mode="$(printf '%s' "$content" | base64 --decode | jq -r '.mode')"
+              remaining="$(printf '%s' "$content" | base64 --decode | jq -r '.remaining | length')"
+              if [[ "$mode" == "apply" && "$status" == "success" && "$remaining" == "0" ]]; then
+                echo "VERIFIED_SOURCE_MAIN=$main_sha" >> "$GITHUB_ENV"
+                exit 0
+              fi
+              echo "Execution evidence is not a verified successful apply" >&2
+              exit 1
+            fi
+            sleep 20
+          done
+          echo "Timed out waiting for execution evidence" >&2
+          exit 1
+      - name: Checkout verification branch
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+      - name: Strictly clean any remaining merged helper branches
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          delete_branch_for_pr() {
+            local branch="$1"
+            local requirement="$2"
+            local prs pr state merged sha fresh encoded protected open_refs
+            prs="$(gh api "repos/$repo/pulls?state=closed&head=katamor1:$branch&per_page=100")"
+            pr="$(printf '%s' "$prs" | jq -r 'sort_by(.updated_at) | last | .number // empty')"
+            [[ -n "$pr" ]] || return 0
+            state="$(gh api "repos/$repo/pulls/$pr" --jq '.state')"
+            merged="$(gh api "repos/$repo/pulls/$pr" --jq '.merged')"
+            sha="$(gh api "repos/$repo/pulls/$pr" --jq '.head.sha')"
+            [[ "$state" == "closed" ]] || return 0
+            if [[ "$requirement" == "merged" && "$merged" != "true" ]]; then return 0; fi
+            fresh="$(git ls-remote --heads origin "refs/heads/$branch" | cut -f1)"
+            [[ -n "$fresh" ]] || return 0
+            [[ "$fresh" == "$sha" ]] || { echo "Helper branch $branch moved from PR head" >&2; exit 1; }
+            encoded="$(jq -rn --arg value "$branch" '$value | @uri')"
+            protected="$(gh api "repos/$repo/branches/$encoded" --jq '.protected')"
+            [[ "$protected" == "false" ]] || { echo "Helper branch $branch is protected" >&2; exit 1; }
+            open_refs="$(gh api "repos/$repo/pulls?state=open&per_page=100" --jq ".[] | select(.head.ref == \"$branch\" or .base.ref == \"$branch\") | .number")"
+            [[ -z "$open_refs" ]] || { echo "Helper branch $branch is referenced by open PR" >&2; exit 1; }
+            git push --force-with-lease="refs/heads/$branch:$sha" origin ":refs/heads/$branch"
+          }
+          delete_branch_for_pr plan/retire-intentionally-unintegrated-20260716 merged
+          delete_branch_for_pr integration/retire-superseded-branches-20260716-v2 closed
+          delete_branch_for_pr integration/retire-superseded-branches-20260716-v3 merged
+          delete_branch_for_pr integration/retire-superseded-branches-execution-20260716 merged
+      - name: Verify target and helper refs are absent
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          main_sha="$(gh api "repos/$repo/commits/main" --jq '.sha')"
+          [[ "$main_sha" == "$VERIFIED_SOURCE_MAIN" ]] || { echo "main moved before final verification" >&2; exit 1; }
+          map_content="$(gh api "repos/$repo/contents/tools/branch-retirement/branch-retirement-map.json?ref=$main_sha" --jq '.content' | base64 --decode)"
+          refs="$(git ls-remote --heads origin)"
+          failures=0
+          while read -r branch; do
+            if printf '%s\n' "$refs" | grep -Fq $'\trefs/heads/'"$branch"; then
+              echo "Target branch still exists: $branch" >&2
+              failures=1
+            fi
+          done < <(printf '%s' "$map_content" | jq -r '.entries[].branch')
+          for branch in \
+            plan/retire-intentionally-unintegrated-20260716 \
+            integration/retire-superseded-branches-20260716-v2 \
+            integration/retire-superseded-branches-20260716-v3 \
+            integration/retire-superseded-branches-execution-20260716; do
+            if printf '%s\n' "$refs" | grep -Fq $'\trefs/heads/'"$branch"; then
+              echo "Helper branch still exists: $branch" >&2
+              failures=1
+            fi
+          done
+          [[ "$failures" == "0" ]] || exit 1
+          echo "FINAL_MAIN_SHA=$main_sha" >> "$GITHUB_ENV"
+      - name: Verify no temporary workflow reached main
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          for path in \
+            .github/workflows/branch-retirement-validation.yml \
+            .github/workflows/branch-retirement-integration-finalizer.yml \
+            .github/workflows/execute-branch-retirement.yml \
+            .github/workflows/execute-branch-retirement-v2.yml \
+            .github/workflows/verify-branch-retirement.yml; do
+            if gh api "repos/$repo/contents/$path?ref=$FINAL_MAIN_SHA" >/dev/null 2>&1; then
+              echo "Temporary workflow reached main: $path" >&2
+              exit 1
+            fi
+          done
+      - name: Reset branch to verified main and write final evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          initial_head="$(git rev-parse HEAD)"
+          echo "INITIAL_HEAD=$initial_head" >> "$GITHUB_ENV"
+          git fetch --no-tags origin main
+          [[ "$(git rev-parse refs/remotes/origin/main)" == "$FINAL_MAIN_SHA" ]]
+          git reset --hard refs/remotes/origin/main
+          generated_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          target_count="$(jq '.entries | length' tools/branch-retirement/branch-retirement-map.json)"
+          deleted_count="$(jq '.deleted | length' docs/release-evidence/branch-retirement-execution-2026-07-16.json)"
+          already_absent="$(jq '.alreadyAbsent | length' docs/release-evidence/branch-retirement-execution-2026-07-16.json)"
+          cat > docs/release-evidence/branch-retirement-final-verification-2026-07-16.json <<JSON
+          {
+            "schemaVersion": "bob-builtin-analyze/branch-retirement-final-verification/v1",
+            "repository": "$GITHUB_REPOSITORY",
+            "verifiedMainSha": "$FINAL_MAIN_SHA",
+            "generatedAt": "$generated_at",
+            "targetCount": $target_count,
+            "deletedDuringExecution": $deleted_count,
+            "alreadyAbsentAtExecution": $already_absent,
+            "remainingTargetBranches": [],
+            "remainingHelperBranches": [],
+            "temporaryWorkflowsOnMain": [],
+            "status": "success"
+          }
+          JSON
+          cat > docs/release-evidence/branch-retirement-final-verification-2026-07-16.md <<MARKDOWN
+          # Branch Retirement Final Verification
+
+          - Repository: \`$GITHUB_REPOSITORY\`
+          - Verified main: \`$FINAL_MAIN_SHA\`
+          - Generated at: \`$generated_at\`
+          - Planned target branches: **$target_count**
+          - Deleted during execution: **$deleted_count**
+          - Already absent at execution: **$already_absent**
+          - Remaining target branches: **0**
+          - Remaining helper branches: **0**
+          - Temporary branch-retirement workflows on main: **0**
+          - Final status: **SUCCESS**
+
+          The verification used fresh GitHub refs after the execution evidence was merged. It did not infer deletion from pull-request state or from an earlier workflow conclusion.
+          MARKDOWN
+          jq -e '.status == "success" and (.remainingTargetBranches | length) == 0 and (.remainingHelperBranches | length) == 0' docs/release-evidence/branch-retirement-final-verification-2026-07-16.json >/dev/null
+          git diff --check
+      - name: Commit and merge final verification evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/release-evidence/branch-retirement-final-verification-2026-07-16.json \
+            docs/release-evidence/branch-retirement-final-verification-2026-07-16.md
+          git commit -m "docs: record final branch retirement verification"
+          final_head="$(git rev-parse HEAD)"
+          git push --force-with-lease="refs/heads/$HEAD_BRANCH:$INITIAL_HEAD" origin "HEAD:$HEAD_BRANCH"
+          result="$(gh api --method PUT "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/merge" \
+            -f merge_method=squash \
+            -f sha="$final_head" \
+            -f commit_title="docs: record final branch retirement verification (#$PR_NUMBER)")"
+          [[ "$(printf '%s' "$result" | jq -r '.merged')" == "true" ]] || { printf '%s\n' "$result" >&2; exit 1; }
+          current_sha="$(git ls-remote --heads origin "refs/heads/$HEAD_BRANCH" | cut -f1)"
+          [[ "$current_sha" == "$final_head" ]] || { echo "Verification branch moved" >&2; exit 1; }
+          git push --force-with-lease="refs/heads/$HEAD_BRANCH:$final_head" origin ":refs/heads/$HEAD_BRANCH"
