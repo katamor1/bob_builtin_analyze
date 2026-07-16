@@ -110,6 +110,9 @@ jobs:
           rm branch-retirement-bootstrap.tar.gz
           git fetch --no-tags origin main:refs/remotes/origin/main
 
+          audit_json="docs/release-evidence/branch-retirement-reconciliation-2026-07-16.json"
+          audit_markdown="docs/release-evidence/branch-retirement-reconciliation-2026-07-16.md"
+          rm -f "$audit_json" "$audit_markdown"
           set +e
           node tools/branch-retirement/audit-branch-retirement.mjs \
             --repository "$GITHUB_REPOSITORY" \
@@ -117,13 +120,20 @@ jobs:
             --base origin/main \
             --map tools/branch-retirement/branch-retirement-map.json \
             --reviewed-observations docs/release-evidence/branch-retirement-reviewed-observations-2026-07-16.json \
-            --json docs/release-evidence/branch-retirement-reconciliation-2026-07-16.json \
-            --markdown docs/release-evidence/branch-retirement-reconciliation-2026-07-16.md \
+            --json "$audit_json" \
+            --markdown "$audit_markdown" \
             --review-critical 0 \
             --review-important 0 \
-            --hosted-gates-passed
+            --hosted-gates-passed > /tmp/branch-retirement-audit.log 2>&1
           audit_code=$?
           set -e
+          cat /tmp/branch-retirement-audit.log
+
+          if [[ ! -f "$audit_json" || ! -f "$audit_markdown" ]]; then
+            tail_log="$(tail -n 60 /tmp/branch-retirement-audit.log)"
+            gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body "Live branch-retirement audit failed before durable evidence was written. Audit exit: \`$audit_code\`.\n\n\`\`\`text\n$tail_log\n\`\`\`"
+            exit "${audit_code:-1}"
+          fi
 
           git diff --check
           node - <<'NODE'
