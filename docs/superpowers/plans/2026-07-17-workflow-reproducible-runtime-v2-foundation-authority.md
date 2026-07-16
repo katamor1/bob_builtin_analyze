@@ -73,7 +73,7 @@ WorkflowRunStateV2 is a closed, versioned domain state. Volatile projection meta
 - [ ] Implement canonicalizeJsonV1 without localeCompare or JSON replacer side effects; recursively validate values before serialization.
 - [ ] Define WorkflowRunStateV2 and explicit v1-to-v2 upgrade functions in runStateV2.ts. Keep current WorkflowRunState readable until authority cutover is complete.
 - [ ] Add compile-time exhaustive checks for version and discriminated unions.
-- [ ] Re-run the focused test plus node --test test/workflowRunStateSchema.test.js if present, and confirm existing schema behavior remains green.
+- [ ] Re-run the focused test plus node --test test/workflowAuthoring.test.js, and confirm existing schema behavior remains green.
 - [ ] Commit with message feat: add canonical runtime state codec.
 
 ## Task 3: Add run-event/v2 and a mixed-version codec registry
@@ -153,7 +153,8 @@ ProjectedRuntime contains WorkflowRunStateV2 and the metadata-only execution man
 - Create: extensions/workflow-register/src/core/runtime/runtimeDiagnostics.ts
 - Create: extensions/workflow-register/test/reproducibleRuntimeShadow.test.js
 - Modify: extensions/workflow-register/src/core/runtime/runStateStore.ts
-- Modify: extensions/workflow-register/src/commands/runDiagnostics.ts
+- Modify: extensions/workflow-register/src/commands/inspectRunDiagnostics.ts
+- Modify: extensions/workflow-register/src/core/runDiagnostics.ts
 - Modify: extensions/workflow-register/src/workflowRuntimeFactory.ts
 
 **Interface:**
@@ -300,7 +301,7 @@ Commit order is durable journal → exact event append → exact projection repl
 - Create: extensions/workflow-register/test/fixtures/reproducible-runtime/future/run.json
 - Create: extensions/workflow-register/test/fixtures/reproducible-runtime/corrupt/run.json
 - Modify: extensions/workflow-register/src/core/runtime/runStateStore.ts
-- Modify: extensions/workflow-register/src/commands/runStorage.ts
+- Create: extensions/workflow-register/src/commands/runStorage.ts
 - Modify: extensions/workflow-register/src/extensionWithAuthoring.ts
 
 **Interface:**
