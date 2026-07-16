@@ -1,0 +1,131 @@
+name: branch-retirement-integration-finalizer-v2
+
+on:
+  pull_request:
+    paths:
+      - "tools/branch-retirement/**"
+      - "scripts/verify-branch-retirement-behaviors.js"
+      - "docs/release-evidence/**branch-retirement**"
+      - ".github/workflows/branch-retirement-validation.yml"
+      - ".github/workflows/branch-retirement-integration-finalizer.yml"
+      - ".github/workflows/branch-retirement-integration-finalizer-v2.yml"
+
+permissions:
+  actions: write
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: branch-retirement-integration-finalizer-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      HEAD_BRANCH: ${{ github.head_ref }}
+    steps:
+      - name: Wait for audited implementation commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          for attempt in $(seq 1 180); do
+            head_sha="$(gh api "repos/$repo/pulls/$PR_NUMBER" --jq '.head.sha')"
+            state="$(gh api "repos/$repo/pulls/$PR_NUMBER" --jq '.state')"
+            [[ "$state" == "open" ]] || { echo "PR is no longer open" >&2; exit 1; }
+            if content="$(gh api "repos/$repo/contents/docs/release-evidence/branch-retirement-reconciliation-2026-07-16.json?ref=$head_sha" --jq '.content' 2>/dev/null)"; then
+              ready="$(printf '%s' "$content" | base64 --decode | jq -r '.ready_for_deletion')"
+              blocked="$(printf '%s' "$content" | base64 --decode | jq -r '.blockedBranches | length')"
+              [[ "$ready" == "true" && "$blocked" == "0" ]] || { echo "Audit exists but is not deletion-ready" >&2; exit 1; }
+              echo "AUDITED_HEAD=$head_sha" >> "$GITHUB_ENV"
+              exit 0
+            fi
+            sleep 20
+          done
+          echo "Timed out waiting for audit evidence" >&2
+          exit 1
+      - name: Checkout latest writable PR branch
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+      - name: Remove all temporary branch-retirement workflows
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm -f --ignore-unmatch \
+            .github/workflows/branch-retirement-validation.yml \
+            .github/workflows/branch-retirement-integration-finalizer.yml \
+            .github/workflows/branch-retirement-integration-finalizer-v2.yml \
+            .github/workflows/branch-retirement-map-reconcile.yml \
+            .github/workflows/branch-retirement-diagnostic-scope-reconcile.yml
+          jq -e '.ready_for_deletion == true and (.blockedBranches | length == 0)' docs/release-evidence/branch-retirement-reconciliation-2026-07-16.json >/dev/null
+          node --test tools/branch-retirement/test/*.test.mjs
+          git diff --check
+      - name: Commit clean audited head
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if ! git diff --quiet; then
+            git commit -am "ci: remove temporary branch retirement workflows"
+            git push origin "HEAD:$HEAD_BRANCH"
+          fi
+          clean_head="$(git rev-parse HEAD)"
+          echo "CLEAN_HEAD=$clean_head" >> "$GITHUB_ENV"
+      - name: Dispatch official final-head gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          gh workflow run extensions-quality.yml --repo "$repo" --ref "$HEAD_BRANCH"
+          gh workflow run workflow-contracts.yml --repo "$repo" --ref "$HEAD_BRANCH"
+          gh workflow run code-consistency-review-scaffold.yml --repo "$repo" --ref "$HEAD_BRANCH"
+      - name: Wait for dispatched exact-head gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          required=(extensions-quality workflow-contracts code-consistency-review-scaffold)
+          for attempt in $(seq 1 300); do
+            current_head="$(gh api "repos/$repo/pulls/$PR_NUMBER" --jq '.head.sha')"
+            [[ "$current_head" == "$CLEAN_HEAD" ]] || { echo "PR head moved unexpectedly to $current_head" >&2; exit 1; }
+            runs="$(gh api "repos/$repo/actions/runs?head_sha=$CLEAN_HEAD&event=workflow_dispatch&per_page=100")"
+            complete=0
+            for name in "${required[@]}"; do
+              status="$(printf '%s' "$runs" | jq -r --arg name "$name" '[.workflow_runs[] | select(.name == $name)] | sort_by(.created_at) | last | .status // "missing"')"
+              conclusion="$(printf '%s' "$runs" | jq -r --arg name "$name" '[.workflow_runs[] | select(.name == $name)] | sort_by(.created_at) | last | .conclusion // ""')"
+              if [[ "$status" == "completed" ]]; then
+                [[ "$conclusion" == "success" ]] || { echo "$name concluded $conclusion" >&2; exit 1; }
+                complete=$((complete + 1))
+              fi
+            done
+            [[ "$complete" == "${#required[@]}" ]] && exit 0
+            sleep 20
+          done
+          echo "Timed out waiting for official final-head gates" >&2
+          exit 1
+      - name: Squash merge audited implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          current_head="$(gh api "repos/$repo/pulls/$PR_NUMBER" --jq '.head.sha')"
+          [[ "$current_head" == "$CLEAN_HEAD" ]] || { echo "PR head moved before merge" >&2; exit 1; }
+          result="$(gh api --method PUT "repos/$repo/pulls/$PR_NUMBER/merge" \
+            -f merge_method=squash \
+            -f sha="$CLEAN_HEAD" \
+            -f commit_title="feat: implement guarded superseded-branch retirement (#$PR_NUMBER)")"
+          [[ "$(printf '%s' "$result" | jq -r '.merged')" == "true" ]] || { printf '%s\n' "$result" >&2; exit 1; }
+      - name: Delete merged implementation branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          fresh="$(git ls-remote --heads origin "refs/heads/$HEAD_BRANCH" | cut -f1)"
+          [[ "$fresh" == "$CLEAN_HEAD" ]] || { echo "Implementation branch moved before cleanup" >&2; exit 1; }
+          git push --force-with-lease="refs/heads/$HEAD_BRANCH:$CLEAN_HEAD" origin ":refs/heads/$HEAD_BRANCH"
