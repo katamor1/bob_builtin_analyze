@@ -1,0 +1,110 @@
+name: fix-pr97-windows-portable-tests
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/fix-pr97-windows-portable-tests.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  fix-and-verify:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: codex/bazaar-ai-project-rule-authoring
+          fetch-depth: 0
+
+      - name: Make remaining tests portable across checkout and path conventions
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+
+          template_test = Path("extensions/bob-bazaar-review/test/ruleAuthoringWorkflowTemplate.test.js")
+          template_text = template_test.read_text(encoding="utf-8")
+          old_parser = r'const match = text.match(/^---\n([\s\S]*?)\n---(?:\n|$)/)'
+          new_parser = r'const match = text.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/)'
+          if template_text.count(old_parser) != 1:
+              raise SystemExit(f"workflow front-matter parser matched {template_text.count(old_parser)} times")
+          template_test.write_text(template_text.replace(old_parser, new_parser), encoding="utf-8", newline="\n")
+
+          triage_test = Path("extensions/bob-bazaar-review/test/ruleProposalTriageGui.test.js")
+          triage_text = triage_test.read_text(encoding="utf-8")
+          literal_count = triage_text.count('"/workspace/acme"')
+          if literal_count < 4:
+              raise SystemExit(f"expected at least four workspace fixture literals, found {literal_count}")
+          triage_text = triage_text.replace('"/workspace/acme"', 'WORKSPACE_ROOT')
+          run_marker = 'const RUN_ID = "authoring-run-triage"\n'
+          if triage_text.count(run_marker) != 1:
+              raise SystemExit(f"RUN_ID marker matched {triage_text.count(run_marker)} times")
+          triage_text = triage_text.replace(
+              run_marker,
+              run_marker + 'const WORKSPACE_ROOT = path.resolve("/workspace/acme")\n',
+          )
+          triage_test.write_text(triage_text, encoding="utf-8", newline="\n")
+
+          refresh_test = Path("extensions/bob-bazaar-review/test/templateRefresh.test.js")
+          refresh_text = refresh_test.read_text(encoding="utf-8")
+          old_gitignore_assertion = r'''  assert.equal(
+            await fs.readFile(path.join(root, ".bob", "review", "rule-authoring", ".gitignore"), "utf8"),
+            "/*\n!/.gitignore\n"
+          )'''
+          new_gitignore_assertion = r'''  assert.equal(
+            (await fs.readFile(path.join(root, ".bob", "review", "rule-authoring", ".gitignore"), "utf8"))
+              .replace(/\r\n/g, "\n"),
+            "/*\n!/.gitignore\n"
+          )'''
+          if refresh_text.count(old_gitignore_assertion) != 1:
+              raise SystemExit(f"gitignore assertion matched {refresh_text.count(old_gitignore_assertion)} times")
+          refresh_test.write_text(
+              refresh_text.replace(old_gitignore_assertion, new_gitignore_assertion),
+              encoding="utf-8",
+              newline="\n",
+          )
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          $templateText = Get-Content "extensions/bob-bazaar-review/test/ruleAuthoringWorkflowTemplate.test.js" -Raw
+          $triageText = Get-Content "extensions/bob-bazaar-review/test/ruleProposalTriageGui.test.js" -Raw
+          $refreshText = Get-Content "extensions/bob-bazaar-review/test/templateRefresh.test.js" -Raw
+          if ($templateText -notmatch '\^---\\r\?\\n') {
+            throw "CRLF-tolerant front-matter parser was not installed"
+          }
+          if ($triageText -notmatch 'const WORKSPACE_ROOT = path\.resolve\("/workspace/acme"\)') {
+            throw "Resolved workspace fixture constant was not installed"
+          }
+          if (($triageText | Select-String -Pattern 'workspaceRoot: "/workspace/acme"' -AllMatches).Matches.Count -ne 0) {
+            throw "Raw workspace expectation remains in the triage fixture"
+          }
+          if ($refreshText -notmatch '\.replace\(/\\r\\n/g, "\\n"\)') {
+            throw "Template line-ending normalization was not installed"
+          }
+
+          git diff --check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git diff -- extensions/bob-bazaar-review/test/ruleAuthoringWorkflowTemplate.test.js extensions/bob-bazaar-review/test/ruleProposalTriageGui.test.js extensions/bob-bazaar-review/test/templateRefresh.test.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Verify focused Windows portable-test suites
+        shell: pwsh
+        working-directory: extensions/bob-bazaar-review
+        run: |
+          npm ci
+          npm run compile
+          node --test test/ruleAuthoringWorkflowTemplate.test.js test/ruleProposalTriageGui.test.js test/templateRefresh.test.js
+
+      - name: Commit and push portable-test fixes
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add extensions/bob-bazaar-review/test/ruleAuthoringWorkflowTemplate.test.js extensions/bob-bazaar-review/test/ruleProposalTriageGui.test.js extensions/bob-bazaar-review/test/templateRefresh.test.js
+          git commit -m "test: make rule authoring Windows fixtures portable"
+          git push origin HEAD:codex/bazaar-ai-project-rule-authoring
+          gh api --method DELETE "repos/$env:GITHUB_REPOSITORY/git/refs/heads/$env:GITHUB_HEAD_REF"
