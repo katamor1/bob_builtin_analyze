@@ -1,0 +1,193 @@
+name: execute-branch-retirement-v2
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/execute-branch-retirement.yml"
+      - ".github/workflows/execute-branch-retirement-v2.yml"
+
+permissions:
+  actions: read
+  contents: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: execute-branch-retirement-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  execute:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      HEAD_BRANCH: ${{ github.head_ref }}
+    steps:
+      - name: Wait for deletion-ready manifest on main
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          for attempt in $(seq 1 360); do
+            default_branch="$(gh api "repos/$repo" --jq '.default_branch')"
+            [[ "$default_branch" == "main" ]] || { echo "Default branch changed to $default_branch" >&2; exit 1; }
+            main_sha="$(gh api "repos/$repo/commits/main" --jq '.sha')"
+            if content="$(gh api "repos/$repo/contents/docs/release-evidence/branch-retirement-reconciliation-2026-07-16.json?ref=$main_sha" --jq '.content' 2>/dev/null)"; then
+              ready="$(printf '%s' "$content" | base64 --decode | jq -r '.ready_for_deletion')"
+              blocked="$(printf '%s' "$content" | base64 --decode | jq -r '.blockedBranches | length')"
+              if [[ "$ready" == "true" && "$blocked" == "0" ]]; then
+                gh api "repos/$repo/contents/tools/branch-retirement/delete-retired-branches.mjs?ref=$main_sha" >/dev/null
+                echo "SOURCE_MAIN_SHA=$main_sha" >> "$GITHUB_ENV"
+                exit 0
+              fi
+              echo "Main audit is not deletion-ready" >&2
+              exit 1
+            fi
+            sleep 20
+          done
+          echo "Timed out waiting for deletion-ready main manifest" >&2
+          exit 1
+      - name: Checkout execution branch
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+      - name: Rebase execution worktree onto audited main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main
+          current_main="$(git rev-parse refs/remotes/origin/main)"
+          [[ "$current_main" == "$SOURCE_MAIN_SHA" ]] || { echo "main moved before execution: $SOURCE_MAIN_SHA -> $current_main" >&2; exit 1; }
+          initial_head="$(git rev-parse HEAD)"
+          echo "INITIAL_HEAD=$initial_head" >> "$GITHUB_ENV"
+          git reset --hard refs/remotes/origin/main
+          [[ "$(git branch --show-current)" == "$HEAD_BRANCH" ]]
+          test ! -e .github/workflows/execute-branch-retirement.yml
+          test ! -e .github/workflows/execute-branch-retirement-v2.yml
+      - name: Re-run policy tests and validate manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test tools/branch-retirement/test/*.test.mjs
+          jq -e '.ready_for_deletion == true and (.blockedBranches | length == 0)' docs/release-evidence/branch-retirement-reconciliation-2026-07-16.json >/dev/null
+          git diff --check
+      - name: Exact-SHA deletion dry-run
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/branch-retirement/delete-retired-branches.mjs \
+            --repository "$GITHUB_REPOSITORY" \
+            --remote origin \
+            --manifest docs/release-evidence/branch-retirement-reconciliation-2026-07-16.json \
+            --execution-json docs/release-evidence/branch-retirement-execution-2026-07-16.json \
+            --execution-markdown docs/release-evidence/branch-retirement-execution-2026-07-16.md \
+            --execution-branch "$HEAD_BRANCH" \
+            --dry-run
+          jq -e '.mode == "dry-run" and .status == "planned" and (.remaining | length) == (.requested | length)' docs/release-evidence/branch-retirement-execution-2026-07-16.json >/dev/null
+          cp docs/release-evidence/branch-retirement-execution-2026-07-16.json docs/release-evidence/branch-retirement-dry-run-2026-07-16.json
+          cp docs/release-evidence/branch-retirement-execution-2026-07-16.md docs/release-evidence/branch-retirement-dry-run-2026-07-16.md
+      - name: Apply atomic exact-SHA deletion
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/branch-retirement/delete-retired-branches.mjs \
+            --repository "$GITHUB_REPOSITORY" \
+            --remote origin \
+            --manifest docs/release-evidence/branch-retirement-reconciliation-2026-07-16.json \
+            --execution-json docs/release-evidence/branch-retirement-execution-2026-07-16.json \
+            --execution-markdown docs/release-evidence/branch-retirement-execution-2026-07-16.md \
+            --execution-branch "$HEAD_BRANCH" \
+            --apply \
+            --confirm-repository "$GITHUB_REPOSITORY"
+          jq -e '.mode == "apply" and .status == "success" and (.remaining | length) == 0' docs/release-evidence/branch-retirement-execution-2026-07-16.json >/dev/null
+      - name: Comment predecessor pull requests
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          jq -c '.entries[] | select(.sourcePullRequest != null)' tools/branch-retirement/branch-retirement-map.json | while read -r entry; do
+            branch="$(printf '%s' "$entry" | jq -r '.branch')"
+            pr="$(printf '%s' "$entry" | jq -r '.sourcePullRequest')"
+            replacements="$(printf '%s' "$entry" | jq -r '.replacementPullRequests | map("#" + tostring) | join(", ")')"
+            disposition="$(jq -r --arg branch "$branch" '.entries[] | select(.branch == $branch) | .disposition' docs/release-evidence/branch-retirement-reconciliation-2026-07-16.json)"
+            sha="$(jq -r --arg branch "$branch" '.entries[] | select(.branch == $branch) | .remoteSha // "already absent"' docs/release-evidence/branch-retirement-reconciliation-2026-07-16.json)"
+            marker="<!-- branch-retirement:$branch -->"
+            existing="$(gh api "repos/$repo/issues/$pr/comments?per_page=100" --jq ".[] | select(.body | contains(\"$marker\")) | .id" | head -1 || true)"
+            if [[ -z "$existing" ]]; then
+              gh pr comment "$pr" --repo "$repo" --body "$marker
+          Branch \`$branch\` was reconciled as \`$disposition\` at exact audited head \`$sha\` and retired after replacement evidence $replacements passed current-main Linux/Windows gates. Durable evidence: \`docs/release-evidence/branch-retirement-execution-2026-07-16.md\`."
+            fi
+          done
+      - name: Commit deletion evidence to execution branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/release-evidence/branch-retirement-dry-run-2026-07-16.json \
+            docs/release-evidence/branch-retirement-dry-run-2026-07-16.md \
+            docs/release-evidence/branch-retirement-execution-2026-07-16.json \
+            docs/release-evidence/branch-retirement-execution-2026-07-16.md
+          git diff --cached --check
+          git commit -m "docs: record exact-SHA branch retirement execution"
+          final_head="$(git rev-parse HEAD)"
+          git push --force-with-lease="refs/heads/$HEAD_BRANCH:$INITIAL_HEAD" origin "HEAD:$HEAD_BRANCH"
+          echo "FINAL_HEAD=$final_head" >> "$GITHUB_ENV"
+      - name: Merge execution evidence PR
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          for attempt in $(seq 1 60); do
+            current_head="$(gh api "repos/$repo/pulls/$PR_NUMBER" --jq '.head.sha')"
+            [[ "$current_head" == "$FINAL_HEAD" ]] || { echo "Execution PR head moved" >&2; exit 1; }
+            mergeable="$(gh api "repos/$repo/pulls/$PR_NUMBER" --jq '.mergeable')"
+            [[ "$mergeable" != "null" ]] && break
+            sleep 5
+          done
+          result="$(gh api --method PUT "repos/$repo/pulls/$PR_NUMBER/merge" \
+            -f merge_method=squash \
+            -f sha="$FINAL_HEAD" \
+            -f commit_title="docs: record exact-SHA branch retirement execution (#$PR_NUMBER)")"
+          [[ "$(printf '%s' "$result" | jq -r '.merged')" == "true" ]] || { printf '%s\n' "$result" >&2; exit 1; }
+      - name: Clean merged planning and execution branches
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          delete_pr_head() {
+            local pr="$1"
+            local required_state="$2"
+            local state merged branch sha fresh encoded protected open_refs
+            state="$(gh api "repos/$repo/pulls/$pr" --jq '.state')"
+            merged="$(gh api "repos/$repo/pulls/$pr" --jq '.merged')"
+            branch="$(gh api "repos/$repo/pulls/$pr" --jq '.head.ref')"
+            sha="$(gh api "repos/$repo/pulls/$pr" --jq '.head.sha')"
+            if [[ "$required_state" == "merged" ]]; then
+              [[ "$state" == "closed" && "$merged" == "true" ]] || return 0
+            else
+              [[ "$state" == "closed" ]] || return 0
+            fi
+            [[ "$branch" != "main" && "$branch" != "$HEAD_BRANCH" ]] || return 0
+            fresh="$(git ls-remote --heads origin "refs/heads/$branch" | cut -f1)"
+            [[ -n "$fresh" ]] || return 0
+            [[ "$fresh" == "$sha" ]] || { echo "Cleanup branch $branch moved" >&2; exit 1; }
+            encoded="$(jq -rn --arg value "$branch" '$value | @uri')"
+            protected="$(gh api "repos/$repo/branches/$encoded" --jq '.protected')"
+            [[ "$protected" == "false" ]] || { echo "Cleanup branch $branch is protected" >&2; exit 1; }
+            open_refs="$(gh api "repos/$repo/pulls?state=open&per_page=100" --jq ".[] | select(.head.ref == \"$branch\" or .base.ref == \"$branch\") | .number")"
+            [[ -z "$open_refs" ]] || { echo "Cleanup branch $branch is referenced by open PR $open_refs" >&2; exit 1; }
+            git push --force-with-lease="refs/heads/$branch:$sha" origin ":refs/heads/$branch"
+          }
+          delete_pr_head 119 merged
+          delete_pr_head 122 closed
+          current_sha="$(git ls-remote --heads origin "refs/heads/$HEAD_BRANCH" | cut -f1)"
+          [[ "$current_sha" == "$FINAL_HEAD" ]] || { echo "Execution branch moved before cleanup" >&2; exit 1; }
+          git push --force-with-lease="refs/heads/$HEAD_BRANCH:$FINAL_HEAD" origin ":refs/heads/$HEAD_BRANCH"
