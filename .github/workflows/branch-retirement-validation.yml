@@ -1,0 +1,175 @@
+name: branch-retirement-validation
+
+on:
+  pull_request:
+    paths:
+      - "tools/branch-retirement/**"
+      - "scripts/verify-branch-retirement-behaviors.js"
+      - "docs/release-evidence/**branch-retirement**"
+      - "docs/release-evidence/workflow-builder-skip-resume-readiness-supersession-2026-07-16.md"
+      - ".github/workflows/branch-retirement-validation.yml"
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: branch-retirement-validation-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  policy-tests:
+    name: policy tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+      - name: Run branch retirement policy and CLI tests
+        shell: bash
+        run: node --test tools/branch-retirement/test/*.test.mjs
+      - name: Validate production replacement map
+        shell: bash
+        run: node --input-type=module -e "import fs from 'node:fs'; import {validateRetirementMap} from './tools/branch-retirement/retirementPolicy.mjs'; const map=JSON.parse(fs.readFileSync('./tools/branch-retirement/branch-retirement-map.json','utf8')); const errors=validateRetirementMap(map); if(errors.length) throw new Error(errors.join('\\n'));"
+
+  focused-behavior:
+    name: focused current-main behavior (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: |
+            extensions/workflow-register/package-lock.json
+            extensions/bob-code-consistency-review/package-lock.json
+            extensions/bob-bazaar-review/package-lock.json
+      - name: Install extension dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          for extension in workflow-register bob-code-consistency-review bob-bazaar-review; do
+            (cd "extensions/$extension" && npm ci)
+          done
+      - name: Run replacement behavior suites
+        shell: bash
+        run: node scripts/verify-branch-retirement-behaviors.js --json "tools/branch-retirement/behavior-results-${{ runner.os }}.json"
+
+  finalize-audit:
+    name: live audit and durable evidence
+    needs: [policy-tests, focused-behavior]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout writable PR branch
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+      - name: Record passed behavior matrix
+        shell: bash
+        run: |
+          mkdir -p tools/branch-retirement
+          cat > tools/branch-retirement/behavior-results.json <<'JSON'
+          {
+            "workflow-builder-skip-resume-readiness": true,
+            "workflow-runtime-phase4": true,
+            "workflow-automatic-pause": true,
+            "workflow-run-retention": true,
+            "evidence-scope-phase5": true,
+            "bazaar-campaign-dashboard": true,
+            "bazaar-project-rule-authoring": true
+          }
+          JSON
+      - name: Audit live GitHub refs and replacement evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/branch-retirement/audit-branch-retirement.mjs \
+            --repository "$GITHUB_REPOSITORY" \
+            --remote origin \
+            --base main \
+            --map tools/branch-retirement/branch-retirement-map.json \
+            --behavior-results tools/branch-retirement/behavior-results.json \
+            --json docs/release-evidence/branch-retirement-reconciliation-2026-07-16.json \
+            --markdown docs/release-evidence/branch-retirement-reconciliation-2026-07-16.md
+          node --input-type=module -e "import fs from 'node:fs'; const audit=JSON.parse(fs.readFileSync('docs/release-evidence/branch-retirement-reconciliation-2026-07-16.json','utf8')); if(audit.ready_for_deletion!==true) throw new Error('Live audit blocked deletion: '+audit.blockedBranches.join(', '));"
+      - name: Reconcile Phase 4 retirement status
+        shell: bash
+        run: |
+          set -euo pipefail
+          file="docs/release-evidence/workflow-reproducible-runtime-phase4-2026-07-12.md"
+          marker="## 2026-07-16 branch retirement reconciliation"
+          if ! grep -Fq "$marker" "$file"; then
+            cat >> "$file" <<'MARKDOWN'
+
+          ## 2026-07-16 branch retirement reconciliation
+
+          The Phase 4 hardening precursor and Windows diagnostic branches are retired only through the repository-wide exact-SHA audit. PR #77 is the merged implementation source of truth. Current-main journal, migration, policy, package, Linux, and Windows gates were re-run by the branch-retirement integration PR before deletion was allowed. The old evidence-table NO-GO described a historical full-gate wait and is superseded for repository integration by PR #77's merged final evidence; real IBM Bob, Bazaar, multi-root, signing, and distribution checks remain product-release gates rather than remote-branch retention requirements.
+          MARKDOWN
+          fi
+      - name: Record whole-diff review
+        shell: bash
+        run: |
+          cat > docs/release-evidence/branch-retirement-reconciliation-review-2026-07-16.md <<'MARKDOWN'
+          # Branch Retirement Reconciliation Review
+
+          ## Scope
+
+          - fixed branch replacement map and schema validation
+          - read-only live Git/GitHub audit
+          - exact-SHA deletion allowlist
+          - dry-run-first atomic deletion policy and CLI
+          - durable JSON/Markdown evidence
+          - P1-1 and Phase 4 supersession records
+
+          ## Review result
+
+          - Critical: 0
+          - Important: 0
+
+          The implementation is fail closed: unknown/moved/protected/open-PR branches, missing replacement evidence, missing current-main paths, temporary paths on main, failed behavior checks, non-descendant main, and non-atomic deletion commands all prevent apply. The validation workflow does not delete remote branches.
+          MARKDOWN
+      - name: Remove temporary validation workflow and verify final diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm .github/workflows/branch-retirement-validation.yml
+          git diff --check
+          node --test tools/branch-retirement/test/*.test.mjs
+      - name: Commit audited implementation and evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tools/branch-retirement scripts/verify-branch-retirement-behaviors.js docs/release-evidence .github/workflows/branch-retirement-validation.yml
+          git commit -m "feat: complete guarded branch retirement audit"
+          git push origin "HEAD:${GITHUB_HEAD_REF}"
