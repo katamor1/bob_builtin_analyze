@@ -1,0 +1,209 @@
+name: verify-retirement-completion
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/verify-retirement-completion.yml"
+
+permissions:
+  actions: write
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  verify-finalize-and-self-clean:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      REPOSITORY: katamor1/bob_builtin_analyze
+      TARGET_PR: "120"
+      TARGET_BRANCH: integration/retire-superseded-branches-20260716
+      PLAN_BRANCH: plan/retire-intentionally-unintegrated-20260716
+      PLAN_BRANCH_SHA: 5a198784f83080a939f65c30a07a516781b40041
+      OWN_BRANCH: automation/verify-retirement-completion-20260716
+      OWN_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - name: Checkout immutable verifier head
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Verify verifier context
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "$REPOSITORY"
+          test "$GITHUB_HEAD_REF" = "$OWN_BRANCH"
+          test "$(git rev-parse HEAD)" = "$OWN_HEAD_SHA"
+          test "$(git ls-remote --heads origin "refs/heads/$OWN_BRANCH" | awk '{print $1}')" = "$OWN_HEAD_SHA"
+          test -z "$(git status --porcelain=v1)"
+
+      - name: Wait for or safely finalize PR 120
+        id: target
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          rerun_requested=0
+
+          content_exists() {
+            local path="$1" ref="$2"
+            gh api "repos/$REPOSITORY/contents/$path?ref=$ref" >/dev/null 2>&1
+          }
+
+          content_absent() {
+            local path="$1" ref="$2"
+            if gh api "repos/$REPOSITORY/contents/$path?ref=$ref" >/dev/null 2>&1; then
+              echo "Unexpected repository path at $ref: $path" >&2
+              return 1
+            fi
+          }
+
+          decode_content() {
+            local path="$1" ref="$2" output="$3"
+            gh api "repos/$REPOSITORY/contents/$path?ref=$ref" --jq '.content' | tr -d '\n' | base64 --decode > "$output"
+          }
+
+          for attempt in $(seq 1 72); do
+            pr_json="$RUNNER_TEMP/pr120.json"
+            gh api "repos/$REPOSITORY/pulls/$TARGET_PR" > "$pr_json"
+            if [[ "$(jq -r '.merged' "$pr_json")" == "true" ]]; then
+              break
+            fi
+
+            head_sha="$(jq -r '.head.sha' "$pr_json")"
+            head_ref="$(jq -r '.head.ref' "$pr_json")"
+            test "$head_ref" = "$TARGET_BRANCH"
+
+            if content_exists "docs/release-evidence/branch-retirement-execution-2026-07-16.json" "$head_sha"; then
+              decode_content "docs/release-evidence/branch-retirement-execution-2026-07-16.json" "$head_sha" "$RUNNER_TEMP/head-execution.json"
+              jq -e '.status == "success"' "$RUNNER_TEMP/head-execution.json"
+              jq -e '.remaining | length == 0' "$RUNNER_TEMP/head-execution.json"
+              content_absent ".github/workflows/retire-superseded-branches.yml" "$head_sha"
+              content_absent ".github/workflows/retire-superseded-branches-v2.yml" "$head_sha"
+              content_absent ".github/retirement/branch-retirement-payload.b64" "$head_sha"
+
+              gh api --method PUT "repos/$REPOSITORY/pulls/$TARGET_PR/merge" \
+                -f merge_method=squash \
+                -f sha="$head_sha" \
+                -f commit_title="chore: reconcile and retire superseded branches (#$TARGET_PR)" \
+                -f commit_message="Persist exact-SHA reconciliation, guarded deletion evidence, and reusable retirement tooling." \
+                > "$RUNNER_TEMP/direct-merge.json"
+              jq -e '.merged == true' "$RUNNER_TEMP/direct-merge.json"
+              continue
+            fi
+
+            runs_json="$RUNNER_TEMP/runs.json"
+            gh api "repos/$REPOSITORY/actions/runs?branch=$TARGET_BRANCH&event=pull_request&per_page=30" > "$runs_json"
+            latest="$(jq -c '[.workflow_runs[] | select(.name == "retire-superseded-branches-v2")] | sort_by(.created_at) | reverse | .[0] // empty' "$runs_json")"
+            if [[ -n "$latest" ]]; then
+              run_id="$(jq -r '.id' <<<"$latest")"
+              status="$(jq -r '.status' <<<"$latest")"
+              conclusion="$(jq -r '.conclusion // ""' <<<"$latest")"
+              if [[ "$status" == "completed" && "$conclusion" != "success" && "$rerun_requested" == "0" ]]; then
+                gh api --method POST "repos/$REPOSITORY/actions/runs/$run_id/rerun-failed-jobs" >/dev/null
+                rerun_requested=1
+              fi
+            fi
+            sleep 10
+          done
+
+          gh api "repos/$REPOSITORY/pulls/$TARGET_PR" > "$RUNNER_TEMP/final-pr120.json"
+          jq -e '.merged == true' "$RUNNER_TEMP/final-pr120.json"
+          echo "head_sha=$(jq -r '.head.sha' "$RUNNER_TEMP/final-pr120.json")" >> "$GITHUB_OUTPUT"
+          echo "merge_sha=$(jq -r '.merge_commit_sha' "$RUNNER_TEMP/final-pr120.json")" >> "$GITHUB_OUTPUT"
+
+      - name: Verify main evidence and retired refs
+        id: verify
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          fetch_content() {
+            local path="$1" output="$2"
+            gh api "repos/$REPOSITORY/contents/$path?ref=main" --jq '.content' | tr -d '\n' | base64 --decode > "$output"
+          }
+          assert_absent_main() {
+            local path="$1"
+            if gh api "repos/$REPOSITORY/contents/$path?ref=main" >/dev/null 2>&1; then
+              echo "Temporary path leaked to main: $path" >&2
+              exit 1
+            fi
+          }
+
+          fetch_content "docs/release-evidence/branch-retirement-execution-2026-07-16.json" "$RUNNER_TEMP/main-execution.json"
+          fetch_content "docs/release-evidence/branch-retirement-reconciliation-2026-07-16.json" "$RUNNER_TEMP/main-reconciliation.json"
+          jq -e '.status == "success"' "$RUNNER_TEMP/main-execution.json"
+          jq -e '.remaining | length == 0' "$RUNNER_TEMP/main-execution.json"
+          jq -e '.ready_for_deletion == true' "$RUNNER_TEMP/main-reconciliation.json"
+          jq -e '.blockedBranches | length == 0' "$RUNNER_TEMP/main-reconciliation.json"
+
+          assert_absent_main ".github/workflows/retire-superseded-branches.yml"
+          assert_absent_main ".github/workflows/retire-superseded-branches-v2.yml"
+          assert_absent_main ".github/retirement/branch-retirement-payload.b64"
+
+          while IFS= read -r branch; do
+            encoded="$(jq -rn --arg value "$branch" '$value | @uri')"
+            if gh api "repos/$REPOSITORY/git/ref/heads/$encoded" >/dev/null 2>&1; then
+              echo "Retirement target still exists: $branch" >&2
+              exit 1
+            fi
+          done < <(jq -r '.entries[] | select(.deletable == true or .disposition == "already-absent") | .branch' "$RUNNER_TEMP/main-reconciliation.json")
+
+          test "$(gh api "repos/$REPOSITORY" --jq '.default_branch')" = main
+          main_sha="$(gh api "repos/$REPOSITORY/git/ref/heads/main" --jq '.object.sha')"
+          echo "main_sha=$main_sha" >> "$GITHUB_OUTPUT"
+          echo "deleted=$(jq -r '.deleted | length' "$RUNNER_TEMP/main-execution.json")" >> "$GITHUB_OUTPUT"
+          echo "already_absent=$(jq -r '.alreadyAbsent | length' "$RUNNER_TEMP/main-execution.json")" >> "$GITHUB_OUTPUT"
+
+      - name: Remove merged plan and execution branches if still present
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          delete_exact_if_present() {
+            local branch="$1" expected="$2"
+            local actual
+            actual="$(git ls-remote --heads origin "refs/heads/$branch" | awk '{print $1}')"
+            if [[ -z "$actual" ]]; then
+              return 0
+            fi
+            test "$actual" = "$expected"
+            git push --force-with-lease="refs/heads/$branch:$expected" origin ":refs/heads/$branch"
+          }
+
+          delete_exact_if_present "$PLAN_BRANCH" "$PLAN_BRANCH_SHA"
+          delete_exact_if_present "$TARGET_BRANCH" "${{ steps.target.outputs.head_sha }}"
+          test -z "$(git ls-remote --heads origin "refs/heads/$PLAN_BRANCH")"
+          test -z "$(git ls-remote --heads origin "refs/heads/$TARGET_BRANCH")"
+
+      - name: Report success and self-clean verifier branch
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          current_pr="${{ github.event.pull_request.number }}"
+          cat > "$RUNNER_TEMP/final.md" <<EOF
+          ## Retirement completion verified
+
+          - PR #120: merged
+          - evidence main SHA: \`${{ steps.verify.outputs.main_sha }}\`
+          - deleted by guarded execution: \`${{ steps.verify.outputs.deleted }}\`
+          - already absent at execution: \`${{ steps.verify.outputs.already_absent }}\`
+          - remaining planned refs: \`0\`
+          - temporary workflow/payload paths on main: \`0\`
+          - plan and execution branches: removed
+          EOF
+          gh pr comment "$current_pr" --repo "$REPOSITORY" --body-file "$RUNNER_TEMP/final.md"
+          gh pr close "$current_pr" --repo "$REPOSITORY" --comment "Verification completed; this one-shot PR is intentionally not merged."
+          test "$(git ls-remote --heads origin "refs/heads/$OWN_BRANCH" | awk '{print $1}')" = "$OWN_HEAD_SHA"
+          git push --force-with-lease="refs/heads/$OWN_BRANCH:$OWN_HEAD_SHA" origin ":refs/heads/$OWN_BRANCH"
+          test -z "$(git ls-remote --heads origin "refs/heads/$OWN_BRANCH")"
