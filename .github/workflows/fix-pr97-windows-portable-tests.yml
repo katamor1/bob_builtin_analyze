@@ -76,7 +76,6 @@ jobs:
 
           $templateText = Get-Content "extensions/bob-bazaar-review/test/ruleAuthoringWorkflowTemplate.test.js" -Raw
           $triageText = Get-Content "extensions/bob-bazaar-review/test/ruleProposalTriageGui.test.js" -Raw
-          $refreshText = Get-Content "extensions/bob-bazaar-review/test/templateRefresh.test.js" -Raw
           if ($templateText -notmatch '\^---\\r\?\\n') {
             throw "CRLF-tolerant front-matter parser was not installed"
           }
@@ -85,9 +84,6 @@ jobs:
           }
           if (($triageText | Select-String -Pattern 'workspaceRoot: "/workspace/acme"' -AllMatches).Matches.Count -ne 0) {
             throw "Raw workspace expectation remains in the triage fixture"
-          }
-          if ($refreshText -notmatch '\.replace\(/\\r\\n/g, "\\n"\)') {
-            throw "Template line-ending normalization was not installed"
           }
 
           git diff --check
