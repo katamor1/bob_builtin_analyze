@@ -1,0 +1,47 @@
+name: cleanup-retirement-execution
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/cleanup-retirement-execution.yml"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete merged execution branch and this one-shot branch
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          CLEANUP_BRANCH: ${{ github.head_ref }}
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          expected_main="f4f9d3308361333e02ab1af732706b7a9e5fc952"
+          execution_branch="integration/retire-superseded-branches-20260716"
+          expected_execution="d908b2a408cf19f624aebbd57200af540c190022"
+
+          test "$(gh api "repos/$repo/commits/main" --jq '.sha')" = "$expected_main"
+          test "$(gh api "repos/$repo/pulls/120" --jq '.merged')" = "true"
+          test "$(gh api "repos/$repo/pulls/120" --jq '.merge_commit_sha')" = "$expected_main"
+
+          encoded_execution=$(jq -rn --arg value "$execution_branch" '$value | @uri')
+          test "$(gh api "repos/$repo/git/ref/heads/$encoded_execution" --jq '.object.sha')" = "$expected_execution"
+          gh api --method DELETE "repos/$repo/git/refs/heads/$encoded_execution"
+          if gh api "repos/$repo/git/ref/heads/$encoded_execution" >/dev/null 2>&1; then
+            echo "Execution branch still exists after deletion" >&2
+            exit 1
+          fi
+
+          test "$(gh api "repos/$repo/commits/main" --jq '.sha')" = "$expected_main"
+          gh pr comment "$PR_NUMBER" --repo "$repo" --body "PR #120 is merged at \`$expected_main\`. Deleted execution branch \`$execution_branch\` at exact head \`$expected_execution\`; \`main\` is unchanged. This one-shot cleanup branch is now deleting itself."
+
+          encoded_cleanup=$(jq -rn --arg value "$CLEANUP_BRANCH" '$value | @uri')
+          gh api --method DELETE "repos/$repo/git/refs/heads/$encoded_cleanup"
