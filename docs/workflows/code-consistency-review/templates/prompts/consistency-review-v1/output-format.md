@@ -1,5 +1,7 @@
-出力は YAML のみとしてください。
-説明文、前置き、まとめ文、Markdown コードフェンスを YAML の外に書かないでください。
+出力は厳密な JSON object のみとしてください。JSON は YAML 1.2 としても有効で、取り込み後に canonical YAML として保存されます。
+説明文、前置き、まとめ文、Markdown コードフェンスを JSON object の外に書かないでください。
+応答の先頭は `{`、末尾は `}` にしてください。
+文字列値はすべて JSON のダブルクォートで囲み、YAML の compact mapping、flow mapping、未引用 scalar は使用しないでください。
 
 必ず次のトップレベルキーだけを出力してください。
 
@@ -27,8 +29,8 @@ review_summary.result_type は必ず `pre_review`、review_summary.final_approva
 review_summary に title、finding_count、question_count、note などの追加キーを入れないでください。
 あなたは最終承認、マージ可否、リリース可否、品質保証上の合否を判断してはいけません。
 
-findings がない場合も、空配列 `findings: []` を出力してください。
-questions がない場合も、空配列 `questions: []` を出力してください。
+findings がない場合も、空配列 `"findings": []` を出力してください。
+questions がない場合も、空配列 `"questions": []` を出力してください。
 coverage_notes と rejected_or_uncertain も、該当がない場合は空配列にしてください。
 
 各 finding の id は `PRE-001`, `PRE-002` の形式にしてください。`FIND-001` は使用しないでください。
@@ -92,60 +94,85 @@ coverage_notes.type に使用できる値:
 - not_checked
 - out_of_scope
 
-次の YAML skeleton と同じキー構造、型、ID prefix を使ってください。
+次の JSON skeleton と同じキー構造、型、ID prefix を使ってください。
 値は review-package の内容に合わせて置き換えてください。
 
-```yaml
-schema_version: 1
-review_summary:
-  review_id: REVIEW-0001
-  package_id: PACKAGE-0001
-  target_range: main..feature/example
-  result_type: pre_review
-  final_approval: not_performed
-  scope_statement: 入力された review-package の範囲で確認したプレレビュー結果。
-  generated_at: "2026-06-30T00:00:00Z"
-  prompt_template_id: consistency-review-v1
-findings:
-  - id: PRE-001
-    category: requirement-code-consistency
-    severity: high
-    confidence: high
-    summary: 指摘の要約を書く。
-    evidence:
-      - evidence_id: REQ-0001
-        type: requirement
-        ref: REQ-123
-      - evidence_id: SRC-0001
-        type: code
-        ref: src/example.c:10-20
-    reason: 根拠に基づく理由を書く。
-    impact: 影響を書く。
-    recommended_action: 推奨アクションを書く。
-    human_check: 人間が確認すべき事項を書く。
-questions:
-  - id: Q-001
-    category: document-version
-    summary: 確認質問の要約を書く。
-    reason: 判断に不足している情報を書く。
-    evidence:
-      - evidence_id: REQ-0001
-        type: requirement
-        ref: REQ-123
-    suggested_owner: design_owner
-    suggested_action: 確認すべきアクションを書く。
-coverage_notes:
-  - id: COV-001
-    type: checked
-    summary: 入力範囲で確認した項目を書く。
-  - id: COV-002
-    type: out_of_scope
-    summary: review-input で対象外とされた項目を書く。
-rejected_or_uncertain:
-  - id: UNC-001
-    summary: finding として採用しなかった項目を書く。
-    reason: 採用しなかった理由、または判断不能な理由を書く。
-    next_action: 必要な次アクションを書く。
+```json
+{
+  "schema_version": 1,
+  "review_summary": {
+    "review_id": "REVIEW-0001",
+    "package_id": "PACKAGE-0001",
+    "target_range": "main..feature/example",
+    "result_type": "pre_review",
+    "final_approval": "not_performed",
+    "scope_statement": "入力された review-package の範囲で確認したプレレビュー結果。",
+    "generated_at": "2026-06-30T00:00:00Z",
+    "prompt_template_id": "consistency-review-v1"
+  },
+  "findings": [
+    {
+      "id": "PRE-001",
+      "category": "requirement-code-consistency",
+      "severity": "high",
+      "confidence": "high",
+      "summary": "指摘の要約を書く。",
+      "evidence": [
+        {
+          "evidence_id": "REQ-0001",
+          "type": "requirement",
+          "ref": "REQ-123"
+        },
+        {
+          "evidence_id": "SRC-0001",
+          "type": "code",
+          "ref": "src/example.c:10-20"
+        }
+      ],
+      "reason": "根拠に基づく理由を書く。",
+      "impact": "影響を書く。",
+      "recommended_action": "推奨アクションを書く。",
+      "human_check": "人間が確認すべき事項を書く。"
+    }
+  ],
+  "questions": [
+    {
+      "id": "Q-001",
+      "category": "document-version",
+      "summary": "確認質問の要約を書く。",
+      "reason": "判断に不足している情報を書く。",
+      "evidence": [
+        {
+          "evidence_id": "REQ-0001",
+          "type": "requirement",
+          "ref": "REQ-123"
+        }
+      ],
+      "suggested_owner": "design_owner",
+      "suggested_action": "確認すべきアクションを書く。"
+    }
+  ],
+  "coverage_notes": [
+    {
+      "id": "COV-001",
+      "type": "checked",
+      "summary": "入力範囲で確認した項目を書く。"
+    },
+    {
+      "id": "COV-002",
+      "type": "out_of_scope",
+      "summary": "review-input で対象外とされた項目を書く。"
+    }
+  ],
+  "rejected_or_uncertain": [
+    {
+      "id": "UNC-001",
+      "summary": "finding として採用しなかった項目を書く。",
+      "reason": "採用しなかった理由、または判断不能な理由を書く。",
+      "next_action": "必要な次アクションを書く。"
+    }
+  ]
+}
 ```
 
 上記 skeleton のキー以外を追加しないでください。

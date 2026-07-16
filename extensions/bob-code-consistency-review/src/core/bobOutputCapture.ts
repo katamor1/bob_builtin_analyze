@@ -3,7 +3,7 @@ import YAML from "yaml"
 import { pathExists, readTextFile, resolveWorkspacePathForKind, resolveWorkspacePathStrict, writeTextFile } from "./fileSystem"
 import { canonicalizeBobOutputWithReport, type CanonicalizationIssue, type EvidenceIndexItem, type EvidenceLookup } from "./bobOutputCanonicalizer"
 import { validateParsedBobOutput } from "./bobOutputValidator"
-import { extractSingleYamlDocumentText } from "./structuredTextExtractor"
+import { extractSingleJsonObjectText, extractSingleYamlDocumentText } from "./structuredTextExtractor"
 import type { ValidationReport } from "./validationTypes"
 
 export type CaptureBobOutputResult = {
@@ -93,7 +93,15 @@ async function resolveCaptureSource(input: CaptureBobOutputInput): Promise<Captu
 }
 
 export function extractYamlFromText(text: string): string | undefined {
-  return extractSingleYamlDocumentText(text, { label: "Bob output YAML text" })
+  const yaml = extractSingleYamlDocumentText(text, { label: "Bob output YAML text" })
+  if (yaml) return yaml
+  try {
+    const json = extractSingleJsonObjectText(text, { label: "Bob output JSON text" })
+    return /"schema_version"\s*:/.test(json) ? json : undefined
+  } catch (error) {
+    if (error instanceof Error && error.message === "no JSON candidate found") return undefined
+    throw error
+  }
 }
 
 function ensureTrailingNewline(text: string): string {
