@@ -1,0 +1,52 @@
+name: branch-retirement-diagnostic-scope-reconcile
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/branch-retirement-diagnostic-scope-reconcile.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout writable PR branch
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+      - name: Reconcile diagnostic path scopes
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          path = Path('tools/branch-retirement/branch-retirement-map.json')
+          data = json.loads(path.read_text(encoding='utf-8'))
+          expanded = {
+              'diagnostic/p1-1-windows-flake-20260712',
+              'agent/workflow-automatic-pause-ci-verification-20260712'
+          }
+          for entry in data['entries']:
+              if entry['branch'] in expanded:
+                  entry['allowedSourcePrPathPrefixes'] = [
+                      '.github/workflows/',
+                      'docs/release-evidence/',
+                      'docs/superpowers/',
+                      'extensions/workflow-register/'
+                  ]
+          path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
+          PY
+          git rm .github/workflows/branch-retirement-diagnostic-scope-reconcile.yml
+          node --test tools/branch-retirement/test/branch-retirement-map.test.mjs
+          git diff --check
+      - name: Commit diagnostic scope reconciliation
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tools/branch-retirement/branch-retirement-map.json .github/workflows/branch-retirement-diagnostic-scope-reconcile.yml
+          git commit -m "fix: reconcile stacked diagnostic source scopes"
+          git push origin "HEAD:${GITHUB_HEAD_REF}"
