@@ -23,7 +23,10 @@ export type ReviewContextBudgetInput = {
   codeAnalysis: CodeAnalysisResult
   limits: ReviewProcessingLimits
   textEncoding?: string
+  onUpstreamLoadFailure?: (kind: ReviewContextBudgetUpstreamKind) => Promise<void>
 }
+
+export type ReviewContextBudgetUpstreamKind = "project-rule-pack" | "repository-symbol-index"
 
 export type ReviewContextBudgetResult = {
   artifact: ContextBudgetArtifact
@@ -38,19 +41,27 @@ export async function buildReviewContextBudget(
 ): Promise<ReviewContextBudgetResult> {
   const rawInlineRules = input.reviewInput.bob_options?.evidence_scope_rules
   const parsedInlineRules = parseProjectRules(rawInlineRules)
-  const loadedRulePack = await loadProjectRulePack({
-    workspaceRoot: input.workspaceRoot,
-    rulePackPath: input.reviewInput.bob_options?.evidence_scope_rule_pack_path,
-    maxBytes: input.limits.maxDocumentBytes,
-    textEncoding: input.textEncoding
-  })
-  const repositoryIndex = await loadRepositorySymbolIndex({
-    workspaceRoot: input.workspaceRoot,
-    indexPath: input.reviewInput.analysis_options?.repository_symbol_index_path,
-    expectedSourceRevision: input.diff.head,
-    maxBytes: input.limits.maxDocumentBytes,
-    textEncoding: input.textEncoding
-  })
+  const loadedRulePack = await loadUpstreamWithFailureCheckpoint(
+    "project-rule-pack",
+    input.onUpstreamLoadFailure,
+    () => loadProjectRulePack({
+      workspaceRoot: input.workspaceRoot,
+      rulePackPath: input.reviewInput.bob_options?.evidence_scope_rule_pack_path,
+      maxBytes: input.limits.maxDocumentBytes,
+      textEncoding: input.textEncoding
+    })
+  )
+  const repositoryIndex = await loadUpstreamWithFailureCheckpoint(
+    "repository-symbol-index",
+    input.onUpstreamLoadFailure,
+    () => loadRepositorySymbolIndex({
+      workspaceRoot: input.workspaceRoot,
+      indexPath: input.reviewInput.analysis_options?.repository_symbol_index_path,
+      expectedSourceRevision: input.diff.head,
+      maxBytes: input.limits.maxDocumentBytes,
+      textEncoding: input.textEncoding
+    })
+  )
   const mergedRules = mergeProjectRules(loadedRulePack?.rules ?? [], parsedInlineRules.rules)
   const scope = buildReviewEvidenceScope(input.codeAnalysis, input.documents, {
     tokenBudget: Math.max(1, Math.floor(input.limits.maxBobInputBytes / 4)),
@@ -99,4 +110,32 @@ function tokenize(value: string): string[] {
     .toLowerCase()
     .split(/[^\p{L}\p{N}_-]+/u)
     .filter((term) => term.length >= 2)
+}
+
+async function loadUpstreamWithFailureCheckpoint<T>(
+  kind: ReviewContextBudgetUpstreamKind,
+  checkpoint: ReviewContextBudgetInput["onUpstreamLoadFailure"],
+  load: () => Promise<T>
+): Promise<T> {
+  try {
+    return await load()
+  } catch (loadError) {
+    if (checkpoint) {
+      try {
+        await checkpoint(kind)
+      } catch (checkpointError) {
+        attachCheckpointError(loadError, checkpointError)
+      }
+    }
+    throw loadError
+  }
+}
+
+function attachCheckpointError(loadError: unknown, checkpointError: unknown): void {
+  if (!(loadError instanceof Error)) return
+  Object.defineProperty(loadError, "artifactLedgerCheckpointError", {
+    configurable: true,
+    enumerable: false,
+    value: checkpointError
+  })
 }
