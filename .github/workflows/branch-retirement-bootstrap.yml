@@ -5,6 +5,8 @@ on:
     paths:
       - "tools/branch-retirement/bootstrap.tar.gz.b64"
       - "tools/branch-retirement/bootstrap-chunks/**"
+      - "tools/branch-retirement/bootstrap-patch.mjs"
+      - "tools/branch-retirement/bootstrap-patch-chunks/**"
       - ".github/workflows/branch-retirement-bootstrap.yml"
 
 permissions:
@@ -35,7 +37,7 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Verify and extract implementation bundle
+      - name: Verify, extract, and patch implementation bundle
         shell: bash
         run: |
           set -euo pipefail
@@ -53,6 +55,7 @@ jobs:
           NODE
           tar -xzf branch-retirement-bootstrap.tar.gz
           rm branch-retirement-bootstrap.tar.gz
+          node tools/branch-retirement/bootstrap-patch.mjs
 
       - name: Run branch-retirement tests
         run: >-
@@ -108,6 +111,7 @@ jobs:
           NODE
           tar -xzf branch-retirement-bootstrap.tar.gz
           rm branch-retirement-bootstrap.tar.gz
+          node tools/branch-retirement/bootstrap-patch.mjs
           git fetch --no-tags origin main:refs/remotes/origin/main
 
           audit_json="docs/release-evidence/branch-retirement-reconciliation-2026-07-16.json"
@@ -124,7 +128,8 @@ jobs:
             --markdown "$audit_markdown" \
             --review-critical 0 \
             --review-important 0 \
-            --hosted-gates-passed > /tmp/branch-retirement-audit.log 2>&1
+            --hosted-gates-passed \
+            --allow-unprotected-main-with-exact-sha-guard > /tmp/branch-retirement-audit.log 2>&1
           audit_code=$?
           set -e
           cat /tmp/branch-retirement-audit.log
@@ -141,18 +146,22 @@ jobs:
           const audit = JSON.parse(fs.readFileSync("docs/release-evidence/branch-retirement-reconciliation-2026-07-16.json", "utf8"))
           if (audit.review.critical !== 0 || audit.review.important !== 0) throw new Error("whole-diff review gate is not green")
           if (audit.hostedGatesPassed !== true) throw new Error("hosted gate flag is not green")
-          console.log(JSON.stringify({ready_for_deletion: audit.ready_for_deletion, blockedBranches: audit.blockedBranches}))
+          if (audit.mainGuard?.defaultBranch !== "main") throw new Error("default branch guard is not main")
+          if (audit.mainGuard?.protected !== false || audit.mainGuard?.unprotectedExactShaGuardAuthorized !== true) throw new Error("unprotected-main exact-SHA guard was not explicitly recorded")
+          console.log(JSON.stringify({ready_for_deletion: audit.ready_for_deletion, blockedBranches: audit.blockedBranches, mainGuard: audit.mainGuard}))
           NODE
 
           rm .github/workflows/branch-retirement-bootstrap.yml
           rm tools/branch-retirement/bootstrap.tar.gz.b64
           rm -rf tools/branch-retirement/bootstrap-chunks
+          rm tools/branch-retirement/bootstrap-patch.mjs
+          rm -rf tools/branch-retirement/bootstrap-patch-chunks
           git add .
           git commit -m "feat: implement guarded branch retirement"
           git push origin "HEAD:${GITHUB_HEAD_REF}"
 
           ready="$(node -p 'JSON.parse(require("fs").readFileSync("docs/release-evidence/branch-retirement-reconciliation-2026-07-16.json","utf8")).ready_for_deletion')"
-          gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body "Linux/Windows policy tests and the live exact-SHA audit completed. Evidence commit: \`$(git rev-parse HEAD)\`; ready_for_deletion=\`$ready\`; audit exit=\`$audit_code\`. Bootstrap workflow and archive were removed from the deliverable branch."
+          gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body "Linux/Windows policy tests and the live exact-SHA audit completed. Evidence commit: \`$(git rev-parse HEAD)\`; ready_for_deletion=\`$ready\`; audit exit=\`$audit_code\`. The unprotected-main exact-SHA guard was explicitly recorded. Bootstrap workflow, archive, chunks, and patch removed themselves from the deliverable branch."
 
           if [[ "$audit_code" -ne 0 ]]; then
             exit "$audit_code"
