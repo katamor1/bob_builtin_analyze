@@ -45,7 +45,7 @@ provider controllerは両拡張ともstrict隔離compile後に6 tests passed / 0
 - [x] API generation、stale/late completion、部分登録rollbackをテストする。
 - [x] provider Disposableをcontrollerだけが所有し、二重disposeと旧世代subscription蓄積を防止する。
 - [x] controllerをstrict隔離compileし、6 tests passed / 0 failedを確認する。
-- [ ] 最新headで対象モジュール全体テストを再実行する。
+- [x] 最新headで対象モジュール全体テストを再実行する（2026-07-16、provider lifecycleを含むfocused suite）。
 
 ### Task 2: Provider Ownership, Duplicate Rejection, and Disposal
 
@@ -109,7 +109,7 @@ provider controllerは両拡張ともstrict隔離compile後に6 tests passed / 0
 - [x] action provider、preflight、nested `vscode.executeCommand` command IDをcatalogと照合する。
 - [x] templateとworkspace mirrorのdriftを検出する。
 - [x] sample固有の外部commandは、正確なfile pathとguardrail宣言の両方を満たす場合だけallowlistする。
-- [ ] 最新headで全workflow strict/provider-aware contract testを再実行する。
+- [x] 最新headで全workflow strict/provider-aware contract testを再実行する（2026-07-16、7 passed / 0 failed）。
 
 ### Task 6: Windows/Extension Host Quality Gate and Documentation Sync
 
@@ -140,14 +140,16 @@ provider controllerは両拡張ともstrict隔離compile後に6 tests passed / 0
 
 ### Final Verification
 
-- [ ] `workflow-register`: dependency, architecture, source, schema, unit, package, package policy
-- [ ] `bob-bazaar-review`: dependency, architecture, source, unused, artifact, unit, package, package policy
-- [ ] `bob-code-consistency-review`: dependency, architecture, source, unit, package, package policy
+- [x] `workflow-register`: dependency, architecture, source, schema, unit, package, package policy
+- [x] `bob-bazaar-review`: dependency, architecture, source, unused, artifact, unit, package, package policy
+- [x] `bob-code-consistency-review`: dependency, architecture, source, unit, package, package policy
 - [x] smoke harness contract test（局所3 passed / 0 failed）
-- [ ] 全workflow strict/provider-aware contract test
+- [x] 全workflow strict/provider-aware contract test
 - [ ] Windows/Ubuntu CI
 - [ ] VS Code Extension Host activation smoke
 - [ ] IBM Bob実環境のworkflow source、provider recovery、step review、result handoff、Webview smoke
 - [ ] 実Bazaar環境のtimeout/cancel後のchild process残留確認
 - [ ] multi-rootでBob rootとVCS rootの分離確認
 - [x] draft PRのcheck結果と未解決事項を報告する
+
+2026-07-16 の追加実装 `9b61a915` では、Windows tree-kill完了待機、cleanup例外を越えたprovider全解除、UTF-8最終出力hard cap、task snapshotの設定上限と最終整形JSON hard capを追加した。対象focused suiteは19/19、45/45、45/45で成功した。初回全体unit suiteで今回差分外の並列タイムアウトをWFR/BBR各1件観測したが、失敗file単独の27/27、32/32に続き、負荷を分けた全体再実行でWFR 1,085 passed / 0 failed / 1 skipped、BBR 679/679、CCR 261/261を確認した。

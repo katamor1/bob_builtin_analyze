@@ -217,10 +217,23 @@
 
 | ID | Severity | Scope | Summary | Status | Verification |
 | --- | --- | --- | --- | --- | --- |
-| REM-H01 | High | bob-code-consistency-review | hard / soft dependency contract alignment and delayed provider recovery | implemented | soft-dependency and provider registration tests |
-| REM-H02 | High | bob-bazaar-review, bob-code-consistency-review | bounded Git / Bazaar process execution with timeout, cancellation and kill | implemented | externalProcessRunner and wiring tests |
-| REM-M01 | Medium | bob-bazaar-review | cross-platform repository-relative path boundary | implemented | bazaarClient Windows / POSIX path tests |
-| REM-M02 | Medium | workflow-register and companion extensions | provider ownership, duplicate rejection and disposal | implemented | actionRegistry and provider registration tests |
+| REM-H01 | High | bob-code-consistency-review | hard / soft dependency contract alignment and delayed provider recovery | verified_local | soft-dependency and provider registration tests |
+| REM-H02 | High | bob-bazaar-review, bob-code-consistency-review | bounded Git / Bazaar process execution with timeout, cancellation and kill | verified_local | externalProcessRunner and wiring tests |
+| REM-M01 | Medium | bob-bazaar-review | cross-platform repository-relative path boundary | verified_local | bazaarClient Windows / POSIX path tests |
+| REM-M02 | Medium | workflow-register and companion extensions | provider ownership, duplicate rejection and disposal | verified_local | actionRegistry and provider registration tests |
 | REM-M03 | Medium | repository workflows | dynamic strict provider-aware workflow contract CI | in_progress | workflowContractFiles.test.js and workflow-contracts workflow |
 | REM-M04 | Medium | CI / release | Ubuntu and Windows quality matrix, IBM Bob release-candidate gate | in_progress | extensions-quality workflow and real-machine evidence |
-| REM-M05 | Medium | bob-code-consistency-review | bounded manifest/runtime processing limits and byte-safe truncation | implemented | sizeLimits and limitsPolicy tests |
+| REM-M05 | Medium | bob-code-consistency-review | bounded manifest/runtime processing limits and byte-safe truncation | verified_local | sizeLimits and limitsPolicy tests |
+
+<!-- RELEASE-BLOCKERS-2026-07-16 -->
+## 2026-07-16 release blocker closure
+
+| ID | Scope | Contract | Status | Commit | Verification |
+| --- | --- | --- | --- | --- | --- |
+| REM-RB-01 | 3 extensions | lockfile、soft dependency、production audit、VSIX dependency/package policy | verified_local | `9b61a915` + existing policy | dependency policies、`npm audit --omit=dev` 0 vulnerabilities、3 VSIX policies |
+| REM-RB-02 | BBR / CCR | 1,000〜600,000 ms timeout、AbortSignal、bounded output、process-tree termination | verified_local | `9b61a915` | external process focused tests、Windows taskkill completion tests |
+| REM-RB-03 | BBR / CCR | cleanup例外と診断例外を越えてprovider / listenerを全解除 | verified_local | `9b61a915` | retry controller 8/8 in each extension |
+| REM-RB-04 | BBR / CCR | Windows absolute / drive-relative / UNC / device / traversal / control pathを実行前拒否 | verified_local | existing implementation + `9b61a915` verification | Bazaar client、VCS validation tests |
+| REM-RB-05 | WFR / BBR / CCR | manifest/runtime clamp、最終UTF-8出力、task snapshot整形JSONのhard cap | verified_local | `9b61a915` | WFR task snapshot、BBR review limit、CCR size limit tests |
+
+`verified_local` はコードとローカル回帰ゲートの完了を示す。Windows/Ubuntu CI、Extension Host、IBM Bob、実Bazaar、multi-rootのrelease-candidate gateは `REM-M04` として未完了のまま分離する。
