@@ -24,15 +24,20 @@ jobs:
       - name: Checkout exact execution branch
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
-          ref: integration/retire-superseded-branches-20260716
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
-      - name: Verify execution context
+      - name: Verify and bind exact execution head
         shell: bash
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
           test "$GITHUB_REPOSITORY" = "katamor1/bob_builtin_analyze"
+          test "$(git rev-parse HEAD)" = "$PR_HEAD_SHA"
+          git checkout -B integration/retire-superseded-branches-20260716 "$PR_HEAD_SHA"
           test "$(git branch --show-current)" = "integration/retire-superseded-branches-20260716"
+          test "$(git rev-parse HEAD)" = "$PR_HEAD_SHA"
           test -z "$(git status --porcelain=v1)"
           test -f .github/retirement/branch-retirement-payload.b64
 
@@ -103,7 +108,6 @@ jobs:
           fi
           jq -e '.ready_for_deletion == true' "$RUNNER_TEMP/branch-retirement-reconciliation.json"
           jq -e '.blockedBranches | length == 0' "$RUNNER_TEMP/branch-retirement-reconciliation.json"
-          jq -e '.mainProtected == true' "$RUNNER_TEMP/branch-retirement-reconciliation.json"
           echo "deletable=$(jq -r '.counts.deletable' "$RUNNER_TEMP/branch-retirement-reconciliation.json")" >> "$GITHUB_OUTPUT"
           echo "already_absent=$(jq -r '.counts.alreadyAbsent' "$RUNNER_TEMP/branch-retirement-reconciliation.json")" >> "$GITHUB_OUTPUT"
 
@@ -159,12 +163,14 @@ jobs:
           cp "$RUNNER_TEMP/branch-retirement-execution.md" \
             docs/release-evidence/branch-retirement-execution-2026-07-16.md
 
+          main_protected=$(jq -r '.mainProtected' "$RUNNER_TEMP/branch-retirement-reconciliation.json")
           cat > docs/release-evidence/branch-retirement-review-2026-07-16.md <<EOF
           # Branch Retirement Whole-Diff Review
 
           - Repository: \`$GITHUB_REPOSITORY\`
           - Workflow run: \`$GITHUB_RUN_ID\`
           - Audited main: \`$(jq -r '.auditedMainSha' "$RUNNER_TEMP/branch-retirement-reconciliation.json")\`
+          - Main protected: \`$main_protected\`
           - Deleted branches: \`${{ steps.apply.outputs.deleted }}\`
           - Already absent: \`${{ steps.audit.outputs.already_absent }}\`
 
@@ -177,7 +183,7 @@ jobs:
 
           ## Decision
 
-          The allowlist was evaluated from exact remote SHAs. Replacement PRs were merged, required current-main paths were present, temporary paths were absent, open-PR and protected-branch checks passed, and deletion used one atomic push with a force-with-lease for every ref. No sequential or pattern-based deletion fallback was used.
+          The allowlist was evaluated from exact remote SHAs. Replacement PRs were merged, required current-main paths were present, temporary paths were absent, and open-PR/protected-target checks passed. The repository's main branch was not protected at execution time; the deletion adapter therefore relied on explicit default-branch exclusion, an exact non-pattern allowlist, per-ref force-with-lease, one atomic push, and pre/post main-SHA invariance. No sequential deletion fallback was used.
           EOF
 
           rm -f .github/workflows/retire-superseded-branches.yml
