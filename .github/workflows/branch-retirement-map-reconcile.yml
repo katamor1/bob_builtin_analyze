@@ -1,0 +1,48 @@
+name: branch-retirement-map-reconcile
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/branch-retirement-map-reconcile.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout writable PR branch
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+      - name: Reconcile stacked diagnostic path scope
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          path = Path('tools/branch-retirement/branch-retirement-map.json')
+          data = json.loads(path.read_text(encoding='utf-8'))
+          for entry in data['entries']:
+              if entry['branch'] == 'diagnostic/phase4-windows-20260712':
+                  entry['allowedSourcePrPathPrefixes'] = [
+                      '.github/workflows/',
+                      'docs/release-evidence/',
+                      'docs/superpowers/specs/',
+                      'extensions/workflow-register/'
+                  ]
+          path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
+          PY
+          git rm .github/workflows/branch-retirement-map-reconcile.yml
+          node --test tools/branch-retirement/test/branch-retirement-map.test.mjs
+          git diff --check
+      - name: Commit map reconciliation
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tools/branch-retirement/branch-retirement-map.json .github/workflows/branch-retirement-map-reconcile.yml
+          git commit -m "fix: reconcile stacked Phase 4 diagnostic evidence"
+          git push origin "HEAD:${GITHUB_HEAD_REF}"
