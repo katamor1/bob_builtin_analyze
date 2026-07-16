@@ -129,6 +129,50 @@ The production validator, directory-entry limits, lock generation limits, and ca
   - `node --test test/ruleAuthoringGui.test.js test/ruleAuthoringRunStore.test.js`: success
   - feature-branch commit and push: success
 
+## Workflow artifact realpath identity failure
+
+### RED evidence
+
+- Workflow: `extensions-quality`
+- Run: `29459714800`
+- Job: `87500454361` (`Windows / bob-bazaar-review`)
+- Failing suite: `test/ruleAuthoringWorkflowActions.test.js`
+- Representative failures:
+  - `workflow actions resolve one state-bound authoring run and publish exact generation artifacts`
+  - `selected evidence accepts exactly 1 MiB and rejects the same payload below that boundary`
+  - `verification action delegates final apply validation and exposes the authoritative apply manifest`
+- Error: `Rule authoring file path contains a symbolic link`
+- Failure origin: `readWorkspaceFileBounded()`
+
+### Root cause
+
+The bounded artifact reader already checked every directory component with `lstat()`, rejected direct file symlinks, verified workspace containment through `realpath()`, opened the file with `O_NOFOLLOW` where supported, and compared pre-read / open-handle / post-read identity. One additional check compared `path.resolve(targetReal)` and the requested file path as text. On Windows, equivalent 8.3 and long-path spellings caused that textual comparison to reject a direct regular file.
+
+### Fix
+
+Commit `edd8718d9526d6baf040333d55469680b7ac3b5a` replaces the textual path comparison with physical file identity verification:
+
+1. resolve the physical workspace and target paths concurrently;
+2. preserve physical containment validation;
+3. reject a direct symlink at the requested path;
+4. require the requested path and physical target to be the same regular file by `dev`, `ino`, mode, size, mtime, and ctime;
+5. retain the existing open-handle and post-read race checks.
+
+The byte limit, UTF-8 validation, directory-chain safety, and missing-file behavior are unchanged.
+
+### GREEN evidence
+
+- Workflow: `fix-pr97-windows-workflow-file-identity`
+- Run: `29460142245`
+- Job: `87501709018` (`fix-and-verify`)
+- Runner: Windows Server 2025
+- Verification:
+  - patch marker and `git diff --check`: success
+  - `npm ci`: success
+  - TypeScript compile: success
+  - `node --test test/ruleAuthoringWorkflowActions.test.js`: success
+  - feature-branch commit and push: success
+
 ## Remaining gate
 
 This evidence covers repository Windows regressions only. Microsoft Office documents, Poppler, IBM Bob, workflow-register integration, visual Human Triage, and signed distribution remain in the separate Windows UAT / product-release gate.
