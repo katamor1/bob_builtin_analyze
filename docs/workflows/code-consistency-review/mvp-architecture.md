@@ -387,7 +387,7 @@ tool:
 
 analysis:
   max_code_context_lines: 80
-  max_call_depth: 2
+  max_call_depth: 1
   treat_unknown_as_warning: true
 
 documents:
