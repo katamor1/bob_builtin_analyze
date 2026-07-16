@@ -14,7 +14,7 @@
 - manifest projector は clock、OS API、VS Code API、provider registry、filesystem を replay 中に参照しない。必要情報は発生時 event evidence に記録する。
 - manifest は metadata/digest のみ。credential、prompt body、artifact body、raw provider payload、unrestricted assistant transcript を含めない。
 - approval actor は kind と stable actor ID を必須とする。hostname、display name、random ID を stable identity として推測しない。
-- approval reason は trim 後 non-empty。decision は approve または reject。
+- approval reason は trim 後 non-empty（non-empty reason）。decision は approve または reject。
 - approvalTargetDigest は compiled plan digest、artifact-set digest、attempt-diff digest、pending-action digest の canonical tuple から導出する。
 - action 実行直前に target を再計算し、一要素でも変われば approval-stale として停止する。
 - approval event が event head を進めるため、authorization は pre-approval head equality ではなく target digest を比較する。observedEventHeadHash は監査証拠として保持する。
@@ -274,7 +274,7 @@ The child genesis run.forked evidence contains parentRunId, parent event hash/se
 
 - Create: extensions/workflow-register/src/core/lineage/runLineageIndex.ts
 - Modify: extensions/workflow-register/src/bobTaskSync.ts
-- Modify: extensions/workflow-register/src/operationHubTodoSync.ts
+- Modify: extensions/workflow-register/src/gui/operationHubHtml.ts
 - Modify: extensions/workflow-register/src/gui/operationHubModel.ts
 - Modify: extensions/workflow-register/src/commands/runControlView.ts
 - Modify: extensions/workflow-register/test/reproducibleRuntimeLineage.test.js
