@@ -69,6 +69,82 @@ function normalizeMain(main) {
   return `extension/${main.replace(/^\.\//, "").replace(/\\/g, "/")}`
 }
 
+function normalizeExtensionEntry(extensionRoot, filePath) {
+  const relativePath = path.relative(extensionRoot, filePath).split(path.sep).join("/")
+  if (!relativePath || relativePath.startsWith("../") || path.isAbsolute(relativePath)) {
+    throw new Error(`Runtime dependency entry must stay inside the extension root: ${filePath}`)
+  }
+  return `extension/${relativePath}`
+}
+
+function collectExportTargets(value, targets = []) {
+  if (typeof value === "string") {
+    if (value.startsWith("./") && !value.includes("*") && !value.endsWith(".d.ts")) targets.push(value.slice(2))
+    return targets
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) collectExportTargets(item, targets)
+    return targets
+  }
+  if (value && typeof value === "object") {
+    for (const item of Object.values(value)) collectExportTargets(item, targets)
+  }
+  return targets
+}
+
+function runtimeLoadPaths(packageDirectory, packageJson) {
+  try {
+    return [require.resolve(packageDirectory)]
+  } catch (error) {
+    const exportTargets = [...new Set(collectExportTargets(packageJson.exports))]
+      .map((target) => path.join(packageDirectory, ...target.split("/")))
+      .filter((target) => fs.existsSync(target) && fs.statSync(target).isFile())
+    if (exportTargets.length === 0) {
+      const packageName = typeof packageJson.name === "string" ? packageJson.name : packageDirectory
+      throw new Error(`Could not resolve a runtime load entry for production dependency ${packageName}: ${error.message}`)
+    }
+    return exportTargets
+  }
+}
+
+function platformConstraintAllows(constraint, currentValue) {
+  const values = Array.isArray(constraint) ? constraint : typeof constraint === "string" ? [constraint] : []
+  if (values.length === 0) return true
+  const included = values.filter((value) => !value.startsWith("!"))
+  return (included.length === 0 || included.includes(currentValue)) && !values.includes(`!${currentValue}`)
+}
+
+function isLegitimatelyOmittedPlatformOptional(lockMetadata) {
+  return lockMetadata.optional === true && (
+    !platformConstraintAllows(lockMetadata.os, process.platform) ||
+    !platformConstraintAllows(lockMetadata.cpu, process.arch)
+  )
+}
+
+function requiredProductionDependencyEntries(extensionRoot) {
+  const lockPath = path.join(extensionRoot, "package-lock.json")
+  const lock = readJson(lockPath)
+  const requiredEntries = new Set()
+
+  for (const [packagePath, lockMetadata] of Object.entries(lock.packages ?? {})) {
+    if (!packagePath.startsWith("node_modules/") || lockMetadata.dev) continue
+    const packageDirectory = path.join(extensionRoot, ...packagePath.split("/"))
+    const packageJsonPath = path.join(packageDirectory, "package.json")
+    if (!fs.existsSync(packageJsonPath)) {
+      if (isLegitimatelyOmittedPlatformOptional(lockMetadata)) continue
+      throw new Error(`Missing installed production dependency metadata: ${packagePath}/package.json`)
+    }
+
+    requiredEntries.add(normalizeExtensionEntry(extensionRoot, packageJsonPath))
+    const packageJson = readJson(packageJsonPath)
+    for (const loadPath of runtimeLoadPaths(packageDirectory, packageJson)) {
+      requiredEntries.add(normalizeExtensionEntry(extensionRoot, loadPath))
+    }
+  }
+
+  return [...requiredEntries].sort()
+}
+
 function checkForbiddenEntries(entries) {
   const rules = [
     { pattern: /^extension\/src\//, reason: "source directory" },
@@ -115,7 +191,12 @@ function main() {
   }
 
   const mainEntry = normalizeMain(packageJson.main)
-  for (const requiredEntry of ["extension/package.json", mainEntry]) {
+  const requiredEntries = [
+    "extension/package.json",
+    mainEntry,
+    ...requiredProductionDependencyEntries(extensionRoot)
+  ]
+  for (const requiredEntry of requiredEntries) {
     if (!entryNames.has(requiredEntry)) {
       errors.push(`Missing required VSIX entry: ${requiredEntry}`)
     }
@@ -135,9 +216,13 @@ function main() {
   console.log(`VSIX policy OK: ${vsixName} (${stat.size} bytes, ${entries.length} entries)`)
 }
 
-try {
-  main()
-} catch (error) {
-  console.error(error instanceof Error ? error.message : String(error))
-  process.exit(1)
+if (require.main === module) {
+  try {
+    main()
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error))
+    process.exit(1)
+  }
 }
+
+module.exports = { requiredProductionDependencyEntries }

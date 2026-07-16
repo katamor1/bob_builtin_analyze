@@ -40,6 +40,10 @@ const integrationWorkflowPairs = [
     mirrorPath: ".bob/workflows/bazaar-project-rule-review/WORKFLOW.md"
   },
   {
+    templatePath: "extensions/bob-bazaar-review/templates/.bob/workflows/bazaar-project-rule-authoring/WORKFLOW.md",
+    mirrorPath: ".bob/workflows/bazaar-project-rule-authoring/WORKFLOW.md"
+  },
+  {
     templatePath: "extensions/bob-code-consistency-review/templates/.bob/workflows/code-consistency-review/WORKFLOW.md",
     mirrorPath: ".bob/workflows/code-consistency-review/WORKFLOW.md"
   }
@@ -50,9 +54,10 @@ test("all repository workflow contracts are discovered and strict-clean", () => 
   const providerIds = readActionProviderCatalogIds()
   const commandIds = discoverContributedCommandIds()
 
-  assert.ok(workflowPaths.length >= 21, `Expected at least 21 workflow contracts, found ${workflowPaths.length}`)
+  assert.ok(workflowPaths.length >= 22, `Expected at least 22 workflow contracts, found ${workflowPaths.length}`)
   assert.ok(workflowPaths.includes(".bob/workflows/process-coding-plan/WORKFLOW.md"))
   assert.ok(workflowPaths.includes(".bob/workflows/bazaar-project-rule-review/WORKFLOW.md"))
+  assert.ok(workflowPaths.includes(".bob/workflows/bazaar-project-rule-authoring/WORKFLOW.md"))
   assert.ok(workflowPaths.includes(".bob/workflows/code-consistency-review/WORKFLOW.md"))
   assert.ok(workflowPaths.includes(".bob/template-library/standard/process-code-precheck/WORKFLOW.md"))
 
@@ -84,6 +89,13 @@ test("canonical provider catalog exactly matches extension registration sources"
     "bobBazaar.collectReviewContext",
     "bobBazaar.loadReviewRules",
     "bobBazaar.captureReviewResult",
+    "bobBazaar.openRuleAuthoringGui",
+    "bobBazaar.loadRuleSourceIndex",
+    "bobBazaar.captureRuleEvidenceSelection",
+    "bobBazaar.loadSelectedRuleEvidence",
+    "bobBazaar.captureRuleProposal",
+    "bobBazaar.openRuleProposalTriageGui",
+    "bobBazaar.verifyRuleAuthoringApply",
     "bobCodeConsistency.preprocess",
     "bobCodeConsistency.captureBobOutput",
     "bobCodeConsistency.validateOutput",

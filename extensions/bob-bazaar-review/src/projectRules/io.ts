@@ -8,6 +8,10 @@ export interface ProjectRulesPaths {
   reviewDir: string
   checklistPath: string
   schemaPath: string
+  contextPath: string
+  addendumPath: string
+  sourcesPath: string
+  provenancePath: string
 }
 
 const ALLOW_EXTERNAL_REVIEW_RULES_ENV = "BOB_BAZAAR_ALLOW_EXTERNAL_REVIEW_RULES"
@@ -17,7 +21,11 @@ export function getProjectRulesPaths(workspaceRoot: string): ProjectRulesPaths {
   return {
     reviewDir,
     checklistPath: path.join(reviewDir, "checklist.json"),
-    schemaPath: path.join(reviewDir, "review-result.schema.json")
+    schemaPath: path.join(reviewDir, "review-result.schema.json"),
+    contextPath: path.join(reviewDir, "project-context.md"),
+    addendumPath: path.join(reviewDir, "review-prompt-addendum.md"),
+    sourcesPath: path.join(reviewDir, "rule-sources.json"),
+    provenancePath: path.join(reviewDir, "rule-provenance.json")
   }
 }
 
@@ -33,9 +41,7 @@ export async function loadProjectChecklist(workspaceRoot: string, explicitPath?:
   const checklistPath = explicitPath ? resolveWorkspacePath(workspaceRoot, explicitPath) : getProjectRulesPaths(workspaceRoot).checklistPath
   try {
     const raw = await readJsonText(checklistPath)
-    const parsed = JSON.parse(raw)
-    assertChecklist(parsed, checklistPath)
-    return parsed
+    return parseProjectChecklistJson(raw, checklistPath)
   } catch (error: any) {
     if (error?.code === "ENOENT") {
       return DEFAULT_CHECKLIST
@@ -48,9 +54,7 @@ export async function loadProjectChecklistRequired(workspaceRoot: string, explic
   const checklistPath = explicitPath ? resolveWorkspacePath(workspaceRoot, explicitPath) : getProjectRulesPaths(workspaceRoot).checklistPath
   try {
     const raw = await readJsonText(checklistPath)
-    const parsed = JSON.parse(raw)
-    assertChecklist(parsed, checklistPath)
-    return parsed
+    return parseProjectChecklistJson(raw, checklistPath)
   } catch (error: any) {
     if (error?.code === "ENOENT") {
       throw new Error(`Project checklist file not found: ${checklistPath}。プロジェクト review checklist ファイルが見つかりません。`)
@@ -97,6 +101,13 @@ export function resolveWorkspacePath(workspaceRoot: string, maybeRelativePath: s
   return target
 }
 
+/** Parse checklist JSON that was read through a caller-owned bounded I/O path. */
+export function parseProjectChecklistJson(raw: string, filePath: string): ProjectChecklist {
+  const parsed: unknown = JSON.parse(raw)
+  assertChecklist(parsed, filePath)
+  return parsed
+}
+
 function isWorkspaceEscapingPath(relativePath: string): boolean {
   return relativePath.startsWith("..") || path.isAbsolute(relativePath)
 }
@@ -132,4 +143,3 @@ function assertChecklist(value: any, filePath: string): asserts value is Project
     }
   }
 }
-

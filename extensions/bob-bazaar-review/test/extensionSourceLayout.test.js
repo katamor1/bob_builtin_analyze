@@ -45,6 +45,42 @@ test("review GUI modules live under the ui source boundary", () => {
   assert.match(readSrc("ui", "reviewGuiHtml.ts"), /from "\.\/reviewGuiHtmlAssets"/)
 })
 
+test("rule authoring UI delegates all filesystem persistence and trusted reads to the domain artifact store", () => {
+  const guiSource = readSrc("ui", "ruleAuthoringGui.ts")
+  assert.doesNotMatch(guiSource, /from "node:fs(?:\/promises)?"/)
+  assert.doesNotMatch(guiSource, /\bfs\.(?:open|readFile|writeFile|rename|rm|mkdir|lstat|realpath)\b/)
+  assert.match(guiSource, /from "\.\.\/ruleAuthoring\/ruleAuthoringArtifactStore"/)
+
+  const storePath = path.join(extensionRoot, "src", "ruleAuthoring", "ruleAuthoringArtifactStore.ts")
+  assert.ok(fs.existsSync(storePath), "the VS Code-independent artifact store must own run artifact I/O")
+  assert.doesNotMatch(fs.readFileSync(storePath, "utf8"), /from "vscode"/)
+})
+
+test("rule authoring domain, UI, and workflow modules stay in their ownership boundaries", () => {
+  const domainModules = [
+    "ruleAuthoring/ruleBundle.ts",
+    "ruleAuthoring/ruleApplyPlan.ts",
+    "ruleAuthoring/ruleApplyTransaction.ts",
+    "ruleAuthoring/ruleAuthoringRunStore.ts",
+    "ruleAuthoring/extraction/docxExtractor.ts",
+    "ruleAuthoring/extraction/xlsxExtractor.ts",
+    "ruleAuthoring/extraction/pdfExtractor.ts"
+  ]
+  for (const fileName of domainModules) {
+    const fullPath = path.join(extensionRoot, "src", fileName)
+    assert.ok(fs.existsSync(fullPath), `${fileName} must exist`)
+    assert.doesNotMatch(fs.readFileSync(fullPath, "utf8"), /from "vscode"/, `${fileName} must stay VS Code-independent`)
+  }
+
+  for (const fileName of ["ruleAuthoringGui.ts", "ruleProposalTriageGui.ts"]) {
+    assert.ok(fs.existsSync(path.join(extensionRoot, "src", "ui", fileName)), `ui/${fileName} must exist`)
+  }
+  assert.ok(
+    fs.existsSync(path.join(extensionRoot, "src", "workflow", "ruleAuthoringWorkflowActions.ts")),
+    "workflow/ruleAuthoringWorkflowActions.ts must own workflow adapters"
+  )
+})
+
 test("workflow integration modules live under the workflow source boundary", () => {
   for (const fileName of [
     "workflowActions.ts",

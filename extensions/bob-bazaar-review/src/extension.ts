@@ -14,7 +14,11 @@ import { openBazaarReviewGui } from "./ui/reviewGui"
 import { collectReviewContext, loadReviewRules } from "./workflow/workflowActions"
 import { registerWorkflowProvidersWithRetry } from "./workflow/workflowProviders"
 import { captureOptionsFromCommandArgs } from "./workflow/workflowRegisterBridge"
-import { configureMcp, initProjectRules } from "./workspace/workspaceCommands"
+import {
+  authorProjectRulesFromDocuments,
+  configureMcp,
+  initProjectRules
+} from "./workspace/workspaceCommands"
 
 /**
  * Bob Bazaar レビュー拡張を有効化し、VS Code command と workflow provider を登録する。
@@ -48,6 +52,10 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("bobBazaar.saveReviewResultFromClipboard", () => saveReviewResultFromClipboard()),
     vscode.commands.registerCommand("bobBazaar.configureMcp", () => configureMcp(context)),
     vscode.commands.registerCommand("bobBazaar.initProjectRules", () => initProjectRules()),
+    vscode.commands.registerCommand(
+      "bobBazaar.authorProjectRulesFromDocuments",
+      () => authorProjectRulesFromDocuments(context)
+    ),
     vscode.commands.registerCommand("bobBazaar.reviewRevision", () => reviewRevision(context, false)),
     vscode.commands.registerCommand("bobBazaar.reviewRange", () => reviewRange(context, false)),
     vscode.commands.registerCommand("bobBazaar.reviewRevisionWithProjectRules", () => reviewRevision(context, true)),

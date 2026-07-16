@@ -9,7 +9,14 @@
       "bobBazaar.openReviewGui",
       "bobBazaar.collectReviewContext",
       "bobBazaar.loadReviewRules",
-      "bobBazaar.captureReviewResult"
+      "bobBazaar.captureReviewResult",
+      "bobBazaar.openRuleAuthoringGui",
+      "bobBazaar.loadRuleSourceIndex",
+      "bobBazaar.captureRuleEvidenceSelection",
+      "bobBazaar.loadSelectedRuleEvidence",
+      "bobBazaar.captureRuleProposal",
+      "bobBazaar.openRuleProposalTriageGui",
+      "bobBazaar.verifyRuleAuthoringApply"
     ],
     "local.bob-code-consistency-review": [
       "bobCodeConsistency.initializeWorkspace",

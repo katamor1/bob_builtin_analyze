@@ -5,6 +5,10 @@ import { getLatestReviewResult, getReviewResult } from "../projectRules/reviewRe
 import { ReviewResult } from "../projectRules/types"
 import { validateReviewResultJson } from "../projectRules/validator"
 import {
+  loadProjectRuleBundle,
+  type ProjectRuleProvenanceSummary
+} from "../ruleAuthoring/ruleBundle"
+import {
   jsonText,
   optionalString,
   requiredString,
@@ -12,6 +16,7 @@ import {
 } from "./toolCommon"
 import {
   PROJECT_RULES_INIT_INPUT_SCHEMA,
+  PROJECT_RULES_BUNDLE_INPUT_SCHEMA,
   PROJECT_RULES_LATEST_RESULT_INPUT_SCHEMA,
   PROJECT_RULES_OPTIONAL_PATH_INPUT_SCHEMA,
   PROJECT_RULES_REVIEW_JSON_INPUT_SCHEMA,
@@ -39,6 +44,8 @@ const PROJECT_RULES_TOOL_NAMES = new Set([
   "project_rules_init",
   "project_rules_get_checklist",
   "project_rules_get_schema",
+  "project_rules_get_context",
+  "project_rules_get_provenance",
   "project_rules_validate_review_result",
   "project_rules_render_markdown",
   "project_rules_get_latest_review_result",
@@ -61,6 +68,16 @@ export function createProjectRulesToolDefinitions(): ToolDef[] {
       name: "project_rules_get_schema",
       description: "Return the review result JSON schema. Falls back to the built-in default schema when missing.",
       inputSchema: PROJECT_RULES_SCHEMA_PATH_INPUT_SCHEMA
+    },
+    {
+      name: "project_rules_get_context",
+      description: "Return bounded approved project context and review prompt addendum files when present.",
+      inputSchema: PROJECT_RULES_BUNDLE_INPUT_SCHEMA
+    },
+    {
+      name: "project_rules_get_provenance",
+      description: "Return bounded approved rule provenance metadata without extracted source document text.",
+      inputSchema: PROJECT_RULES_BUNDLE_INPUT_SCHEMA
     },
     {
       name: "project_rules_validate_review_result",
@@ -109,6 +126,21 @@ export async function callProjectRulesTool(
       return jsonText(await loadProjectChecklist(await requiredAllowedCwd(args, "cwd"), optionalString(args, "path")))
     case "project_rules_get_schema":
       return jsonText(await loadReviewResultSchema(await requiredAllowedCwd(args, "cwd"), optionalString(args, "path")))
+    case "project_rules_get_context": {
+      const bundle = await loadProjectRuleBundle(await requiredAllowedCwd(args, "cwd"))
+      return jsonText({
+        projectContext: bundle.projectContext,
+        reviewPromptAddendum: bundle.reviewPromptAddendum,
+        baseHashes: bundle.baseHashes
+      })
+    }
+    case "project_rules_get_provenance": {
+      const bundle = await loadProjectRuleBundle(await requiredAllowedCwd(args, "cwd"))
+      return jsonText({
+        provenanceSummary: bundle.provenanceSummary ?? emptyProvenanceSummary(),
+        baseHashes: bundle.baseHashes
+      })
+    }
     case "project_rules_validate_review_result":
       return jsonText(validateReviewResultJson(requiredString(args, "json")))
     case "project_rules_render_markdown": {
@@ -125,6 +157,17 @@ export async function callProjectRulesTool(
       return jsonText(await readStoredReviewResult(async () => getReviewResult(await requiredAllowedCwd(args, "cwd"), requiredString(args, "reviewId"))))
     default:
       throw new BazaarError(`Unknown Bazaar MCP tool: ${name}`)
+  }
+}
+
+function emptyProvenanceSummary(): ProjectRuleProvenanceSummary {
+  return {
+    schema_version: "bob-bazaar-review/project-rule-provenance-summary/v1",
+    source_manifest_generated_at: null,
+    provenance_updated_at: null,
+    sources: [],
+    rules: [],
+    markdown_sections: []
   }
 }
 
