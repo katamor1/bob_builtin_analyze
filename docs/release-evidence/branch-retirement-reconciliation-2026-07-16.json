@@ -1,0 +1,452 @@
+{
+  "schemaVersion": "bob-builtin-analyze/branch-retirement-audit/v1",
+  "repository": "katamor1/bob_builtin_analyze",
+  "auditedMainSha": "f4f9d3308361333e02ab1af732706b7a9e5fc952",
+  "mainGuard": {
+    "defaultBranch": "main",
+    "protected": false,
+    "protectionChecked": true,
+    "unprotectedExactShaGuardAuthorized": true
+  },
+  "generatedAt": "2026-07-16T12:23:19.298Z",
+  "ready_for_deletion": true,
+  "blockedBranches": [],
+  "review": {
+    "critical": 0,
+    "important": 0
+  },
+  "hostedGatesPassed": true,
+  "entries": [
+    {
+      "branch": "agent/workflow-recovery-ux-p1-builder-readiness-20260712",
+      "remoteHeadSha": null,
+      "expectedHeadSha": "81e19775f9ce17242a39c7868085c50bc8eb9240",
+      "expectedDisposition": "superseded",
+      "observedDisposition": "already-absent",
+      "replacementPullRequests": [
+        82
+      ],
+      "predecessorPullRequests": [
+        81
+      ],
+      "requiredMainPaths": {
+        "passed": true,
+        "missing": []
+      },
+      "forbiddenMainPaths": {
+        "passed": true,
+        "present": []
+      },
+      "behaviorChecks": {
+        "passed": true,
+        "checks": []
+      },
+      "openPullRequestReference": false,
+      "protected": false,
+      "uniqueUnintegratedFiles": [],
+      "deletable": false,
+      "safeToRetire": true,
+      "reasons": []
+    },
+    {
+      "branch": "diagnostic/p1-1-windows-flake-20260712",
+      "remoteHeadSha": null,
+      "expectedHeadSha": "7db481f97243060f6f68cccb219d9720cc5fc8cd",
+      "expectedDisposition": "diagnostic-only",
+      "observedDisposition": "already-absent",
+      "replacementPullRequests": [
+        82
+      ],
+      "predecessorPullRequests": [
+        87
+      ],
+      "requiredMainPaths": {
+        "passed": true,
+        "missing": []
+      },
+      "forbiddenMainPaths": {
+        "passed": true,
+        "present": []
+      },
+      "behaviorChecks": {
+        "passed": true,
+        "checks": []
+      },
+      "openPullRequestReference": false,
+      "protected": false,
+      "uniqueUnintegratedFiles": [],
+      "deletable": false,
+      "safeToRetire": true,
+      "reasons": []
+    },
+    {
+      "branch": "agent/bob-bazaar-review-review-run-v3-dashboard",
+      "remoteHeadSha": null,
+      "expectedHeadSha": "11a739c557004b88cae47663623638b5691c262c",
+      "expectedDisposition": "superseded",
+      "observedDisposition": "already-absent",
+      "replacementPullRequests": [
+        83,
+        97,
+        118
+      ],
+      "predecessorPullRequests": [
+        84
+      ],
+      "requiredMainPaths": {
+        "passed": true,
+        "missing": []
+      },
+      "forbiddenMainPaths": {
+        "passed": true,
+        "present": []
+      },
+      "behaviorChecks": {
+        "passed": true,
+        "checks": []
+      },
+      "openPullRequestReference": false,
+      "protected": false,
+      "uniqueUnintegratedFiles": [],
+      "deletable": false,
+      "safeToRetire": true,
+      "reasons": []
+    },
+    {
+      "branch": "agent/bob-evidence-scope-phase5-20260712",
+      "remoteHeadSha": null,
+      "expectedHeadSha": "7c1bca1321648fbcb57c658f9c1dd7db08a28368",
+      "expectedDisposition": "superseded",
+      "observedDisposition": "already-absent",
+      "replacementPullRequests": [
+        72
+      ],
+      "predecessorPullRequests": [],
+      "requiredMainPaths": {
+        "passed": true,
+        "missing": []
+      },
+      "forbiddenMainPaths": {
+        "passed": true,
+        "present": []
+      },
+      "behaviorChecks": {
+        "passed": true,
+        "checks": []
+      },
+      "openPullRequestReference": false,
+      "protected": false,
+      "uniqueUnintegratedFiles": [],
+      "deletable": false,
+      "safeToRetire": true,
+      "reasons": []
+    },
+    {
+      "branch": "agent/repository-symbol-index-producer-contracts-red-20260712",
+      "remoteHeadSha": null,
+      "expectedHeadSha": "4c94f5ab8dcd79fff9a38b6c10c04f345d7a53ad",
+      "expectedDisposition": "superseded",
+      "observedDisposition": "already-absent",
+      "replacementPullRequests": [
+        72
+      ],
+      "predecessorPullRequests": [],
+      "requiredMainPaths": {
+        "passed": true,
+        "missing": []
+      },
+      "forbiddenMainPaths": {
+        "passed": true,
+        "present": []
+      },
+      "behaviorChecks": {
+        "passed": true,
+        "checks": []
+      },
+      "openPullRequestReference": false,
+      "protected": false,
+      "uniqueUnintegratedFiles": [],
+      "deletable": false,
+      "safeToRetire": true,
+      "reasons": []
+    },
+    {
+      "branch": "codex/evidence-scope-phase5-checkpoint-20260712",
+      "remoteHeadSha": null,
+      "expectedHeadSha": "c093a20b0dd8551191f76f02b472d92cf0b45af7",
+      "expectedDisposition": "superseded",
+      "observedDisposition": "already-absent",
+      "replacementPullRequests": [
+        72
+      ],
+      "predecessorPullRequests": [
+        89
+      ],
+      "requiredMainPaths": {
+        "passed": true,
+        "missing": []
+      },
+      "forbiddenMainPaths": {
+        "passed": true,
+        "present": []
+      },
+      "behaviorChecks": {
+        "passed": true,
+        "checks": []
+      },
+      "openPullRequestReference": false,
+      "protected": false,
+      "uniqueUnintegratedFiles": [],
+      "deletable": false,
+      "safeToRetire": true,
+      "reasons": []
+    },
+    {
+      "branch": "codex/execute-shared-plan-6a53743e",
+      "remoteHeadSha": null,
+      "expectedHeadSha": "6691988538af68c8cf52b33937b07e9fc06d0d67",
+      "expectedDisposition": "merged-source",
+      "observedDisposition": "already-absent",
+      "replacementPullRequests": [
+        72
+      ],
+      "predecessorPullRequests": [
+        72
+      ],
+      "requiredMainPaths": {
+        "passed": true,
+        "missing": []
+      },
+      "forbiddenMainPaths": {
+        "passed": true,
+        "present": []
+      },
+      "behaviorChecks": {
+        "passed": true,
+        "checks": []
+      },
+      "openPullRequestReference": false,
+      "protected": false,
+      "uniqueUnintegratedFiles": [],
+      "deletable": false,
+      "safeToRetire": true,
+      "reasons": []
+    },
+    {
+      "branch": "agent/workflow-reproducible-runtime-phase4-20260712",
+      "remoteHeadSha": null,
+      "expectedHeadSha": "38d62885a8b7249b1f2d3853f31a0abc999ca160",
+      "expectedDisposition": "superseded",
+      "observedDisposition": "already-absent",
+      "replacementPullRequests": [
+        77
+      ],
+      "predecessorPullRequests": [],
+      "requiredMainPaths": {
+        "passed": true,
+        "missing": []
+      },
+      "forbiddenMainPaths": {
+        "passed": true,
+        "present": []
+      },
+      "behaviorChecks": {
+        "passed": true,
+        "checks": []
+      },
+      "openPullRequestReference": false,
+      "protected": false,
+      "uniqueUnintegratedFiles": [],
+      "deletable": false,
+      "safeToRetire": true,
+      "reasons": []
+    },
+    {
+      "branch": "diagnostic/phase4-windows-20260712",
+      "remoteHeadSha": null,
+      "expectedHeadSha": "5db1f71676736add1a7d45d199c707f57291bfe2",
+      "expectedDisposition": "diagnostic-only",
+      "observedDisposition": "already-absent",
+      "replacementPullRequests": [
+        77
+      ],
+      "predecessorPullRequests": [
+        78
+      ],
+      "requiredMainPaths": {
+        "passed": true,
+        "missing": []
+      },
+      "forbiddenMainPaths": {
+        "passed": true,
+        "present": []
+      },
+      "behaviorChecks": {
+        "passed": true,
+        "checks": []
+      },
+      "openPullRequestReference": false,
+      "protected": false,
+      "uniqueUnintegratedFiles": [],
+      "deletable": false,
+      "safeToRetire": true,
+      "reasons": []
+    },
+    {
+      "branch": "agent/workflow-automatic-pause-ci-verification-20260712",
+      "remoteHeadSha": null,
+      "expectedHeadSha": "a2f71784acbb9d860caa1a9851c91e66bea6507e",
+      "expectedDisposition": "diagnostic-only",
+      "observedDisposition": "already-absent",
+      "replacementPullRequests": [
+        75,
+        92
+      ],
+      "predecessorPullRequests": [
+        80
+      ],
+      "requiredMainPaths": {
+        "passed": true,
+        "missing": []
+      },
+      "forbiddenMainPaths": {
+        "passed": true,
+        "present": []
+      },
+      "behaviorChecks": {
+        "passed": true,
+        "checks": []
+      },
+      "openPullRequestReference": false,
+      "protected": false,
+      "uniqueUnintegratedFiles": [],
+      "deletable": false,
+      "safeToRetire": true,
+      "reasons": []
+    },
+    {
+      "branch": "agent/workflow-run-retention-p1-6-20260713",
+      "remoteHeadSha": null,
+      "expectedHeadSha": "cb8290bb66c2c502515fab1e542071932c8c50c1",
+      "expectedDisposition": "merged-source",
+      "observedDisposition": "already-absent",
+      "replacementPullRequests": [
+        93
+      ],
+      "predecessorPullRequests": [
+        93
+      ],
+      "requiredMainPaths": {
+        "passed": true,
+        "missing": []
+      },
+      "forbiddenMainPaths": {
+        "passed": true,
+        "present": []
+      },
+      "behaviorChecks": {
+        "passed": true,
+        "checks": []
+      },
+      "openPullRequestReference": false,
+      "protected": false,
+      "uniqueUnintegratedFiles": [],
+      "deletable": false,
+      "safeToRetire": true,
+      "reasons": []
+    },
+    {
+      "branch": "codex/bazaar-ai-project-rule-authoring",
+      "remoteHeadSha": null,
+      "expectedHeadSha": "6f3c92e8544b3ebeccab465a66825f8f4bee4518",
+      "expectedDisposition": "merged-source",
+      "observedDisposition": "already-absent",
+      "replacementPullRequests": [
+        97
+      ],
+      "predecessorPullRequests": [
+        97
+      ],
+      "requiredMainPaths": {
+        "passed": true,
+        "missing": []
+      },
+      "forbiddenMainPaths": {
+        "passed": true,
+        "present": []
+      },
+      "behaviorChecks": {
+        "passed": true,
+        "checks": []
+      },
+      "openPullRequestReference": false,
+      "protected": false,
+      "uniqueUnintegratedFiles": [],
+      "deletable": false,
+      "safeToRetire": true,
+      "reasons": []
+    },
+    {
+      "branch": "automation/fix-pr97-windows-portable-tests-20260716",
+      "remoteHeadSha": null,
+      "expectedHeadSha": "fa3072bb16033f28af2b64aac1d589a55b7f7ba0",
+      "expectedDisposition": "temporary-automation",
+      "observedDisposition": "already-absent",
+      "replacementPullRequests": [
+        97
+      ],
+      "predecessorPullRequests": [
+        112
+      ],
+      "requiredMainPaths": {
+        "passed": true,
+        "missing": []
+      },
+      "forbiddenMainPaths": {
+        "passed": true,
+        "present": []
+      },
+      "behaviorChecks": {
+        "passed": true,
+        "checks": []
+      },
+      "openPullRequestReference": false,
+      "protected": false,
+      "uniqueUnintegratedFiles": [],
+      "deletable": false,
+      "safeToRetire": true,
+      "reasons": []
+    },
+    {
+      "branch": "integration/bazaar-campaign-dashboard-20260716",
+      "remoteHeadSha": null,
+      "expectedHeadSha": "f8d15d7bfd9d32718a4b0d7dbdc46d6752c69a14",
+      "expectedDisposition": "merged-source",
+      "observedDisposition": "already-absent",
+      "replacementPullRequests": [
+        118
+      ],
+      "predecessorPullRequests": [
+        118
+      ],
+      "requiredMainPaths": {
+        "passed": true,
+        "missing": []
+      },
+      "forbiddenMainPaths": {
+        "passed": true,
+        "present": []
+      },
+      "behaviorChecks": {
+        "passed": true,
+        "checks": []
+      },
+      "openPullRequestReference": false,
+      "protected": false,
+      "uniqueUnintegratedFiles": [],
+      "deletable": false,
+      "safeToRetire": true,
+      "reasons": []
+    }
+  ]
+}

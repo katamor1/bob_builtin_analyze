@@ -1,0 +1,72 @@
+{
+  "schemaVersion": "bob-builtin-analyze/branch-retirement-comments/v1",
+  "repository": "katamor1/bob_builtin_analyze",
+  "comments": [
+    {
+      "pullRequest": 81,
+      "branch": "agent/workflow-recovery-ux-p1-builder-readiness-20260712",
+      "expectedHeadSha": "81e19775f9ce17242a39c7868085c50bc8eb9240",
+      "replacementPullRequests": [
+        82
+      ],
+      "body": "This branch is scheduled for guarded retirement under `docs/release-evidence/branch-retirement-reconciliation-2026-07-16.md`. Its durable replacement is #82. No unique product change is being discarded. Exact audited head: `81e19775f9ce17242a39c7868085c50bc8eb9240`. Deletion remains blocked until the manifest reaches `ready_for_deletion: true`."
+    },
+    {
+      "pullRequest": 87,
+      "branch": "diagnostic/p1-1-windows-flake-20260712",
+      "expectedHeadSha": "7db481f97243060f6f68cccb219d9720cc5fc8cd",
+      "replacementPullRequests": [
+        82
+      ],
+      "body": "This branch is scheduled for guarded retirement under `docs/release-evidence/branch-retirement-reconciliation-2026-07-16.md`. Its durable replacement is #82. No unique product change is being discarded. Exact audited head: `7db481f97243060f6f68cccb219d9720cc5fc8cd`. Deletion remains blocked until the manifest reaches `ready_for_deletion: true`."
+    },
+    {
+      "pullRequest": 84,
+      "branch": "agent/bob-bazaar-review-review-run-v3-dashboard",
+      "expectedHeadSha": "11a739c557004b88cae47663623638b5691c262c",
+      "replacementPullRequests": [
+        83,
+        97,
+        118
+      ],
+      "body": "This branch is scheduled for guarded retirement under `docs/release-evidence/branch-retirement-reconciliation-2026-07-16.md`. Its durable replacement is #83, #97, #118. No unique product change is being discarded. Exact audited head: `11a739c557004b88cae47663623638b5691c262c`. Deletion remains blocked until the manifest reaches `ready_for_deletion: true`."
+    },
+    {
+      "pullRequest": 89,
+      "branch": "codex/evidence-scope-phase5-checkpoint-20260712",
+      "expectedHeadSha": "c093a20b0dd8551191f76f02b472d92cf0b45af7",
+      "replacementPullRequests": [
+        72
+      ],
+      "body": "This branch is scheduled for guarded retirement under `docs/release-evidence/branch-retirement-reconciliation-2026-07-16.md`. Its durable replacement is #72. No unique product change is being discarded. Exact audited head: `c093a20b0dd8551191f76f02b472d92cf0b45af7`. Deletion remains blocked until the manifest reaches `ready_for_deletion: true`."
+    },
+    {
+      "pullRequest": 80,
+      "branch": "agent/workflow-automatic-pause-ci-verification-20260712",
+      "expectedHeadSha": "a2f71784acbb9d860caa1a9851c91e66bea6507e",
+      "replacementPullRequests": [
+        75,
+        92
+      ],
+      "body": "This branch is scheduled for guarded retirement under `docs/release-evidence/branch-retirement-reconciliation-2026-07-16.md`. Its durable replacement is #75, #92. No unique product change is being discarded. Exact audited head: `a2f71784acbb9d860caa1a9851c91e66bea6507e`. Deletion remains blocked until the manifest reaches `ready_for_deletion: true`."
+    },
+    {
+      "pullRequest": 78,
+      "branch": "diagnostic/phase4-windows-20260712",
+      "expectedHeadSha": "5db1f71676736add1a7d45d199c707f57291bfe2",
+      "replacementPullRequests": [
+        77
+      ],
+      "body": "This branch is scheduled for guarded retirement under `docs/release-evidence/branch-retirement-reconciliation-2026-07-16.md`. Its durable replacement is #77. No unique product change is being discarded. Exact audited head: `5db1f71676736add1a7d45d199c707f57291bfe2`. Deletion remains blocked until the manifest reaches `ready_for_deletion: true`."
+    },
+    {
+      "pullRequest": 112,
+      "branch": "automation/fix-pr97-windows-portable-tests-20260716",
+      "expectedHeadSha": "fa3072bb16033f28af2b64aac1d589a55b7f7ba0",
+      "replacementPullRequests": [
+        97
+      ],
+      "body": "This branch is scheduled for guarded retirement under `docs/release-evidence/branch-retirement-reconciliation-2026-07-16.md`. Its durable replacement is #97. No unique product change is being discarded. Exact audited head: `fa3072bb16033f28af2b64aac1d589a55b7f7ba0`. Deletion remains blocked until the manifest reaches `ready_for_deletion: true`."
+    }
+  ]
+}

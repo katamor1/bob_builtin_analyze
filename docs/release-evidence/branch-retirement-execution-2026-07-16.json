@@ -1,0 +1,132 @@
+{
+  "schemaVersion": "bob-builtin-analyze/branch-retirement-execution/v1",
+  "repository": "katamor1/bob_builtin_analyze",
+  "status": "blocked_before_dry_run",
+  "mainShaBefore": "d912e4edbc969bfae961ca7e8fbef92ace93d798",
+  "mainShaAfter": "d912e4edbc969bfae961ca7e8fbef92ace93d798",
+  "atomic": false,
+  "deleted": [],
+  "alreadyAbsent": [
+    {
+      "branch": "agent/workflow-run-retention-p1-6-20260713",
+      "expectedHeadSha": "cb8290bb66c2c502515fab1e542071932c8c50c1",
+      "replacementPullRequests": [
+        93
+      ]
+    },
+    {
+      "branch": "automation/fix-pr97-windows-portable-tests-20260716",
+      "expectedHeadSha": "fa3072bb16033f28af2b64aac1d589a55b7f7ba0",
+      "replacementPullRequests": [
+        97
+      ]
+    }
+  ],
+  "blocked": [
+    {
+      "branch": "agent/workflow-recovery-ux-p1-builder-readiness-20260712",
+      "expectedHeadSha": "81e19775f9ce17242a39c7868085c50bc8eb9240",
+      "reasons": [
+        "branch protection state was not independently verified"
+      ]
+    },
+    {
+      "branch": "diagnostic/p1-1-windows-flake-20260712",
+      "expectedHeadSha": "7db481f97243060f6f68cccb219d9720cc5fc8cd",
+      "reasons": [
+        "branch protection state was not independently verified"
+      ]
+    },
+    {
+      "branch": "agent/bob-bazaar-review-review-run-v3-dashboard",
+      "expectedHeadSha": "11a739c557004b88cae47663623638b5691c262c",
+      "reasons": [
+        "branch protection state was not independently verified"
+      ]
+    },
+    {
+      "branch": "agent/bob-evidence-scope-phase5-20260712",
+      "expectedHeadSha": "7c1bca1321648fbcb57c658f9c1dd7db08a28368",
+      "reasons": [
+        "branch protection state was not independently verified"
+      ]
+    },
+    {
+      "branch": "agent/repository-symbol-index-producer-contracts-red-20260712",
+      "expectedHeadSha": "4c94f5ab8dcd79fff9a38b6c10c04f345d7a53ad",
+      "reasons": [
+        "branch protection state was not independently verified"
+      ]
+    },
+    {
+      "branch": "codex/evidence-scope-phase5-checkpoint-20260712",
+      "expectedHeadSha": "c093a20b0dd8551191f76f02b472d92cf0b45af7",
+      "reasons": [
+        "branch protection state was not independently verified"
+      ]
+    },
+    {
+      "branch": "codex/execute-shared-plan-6a53743e",
+      "expectedHeadSha": "6691988538af68c8cf52b33937b07e9fc06d0d67",
+      "reasons": [
+        "branch protection state was not independently verified"
+      ]
+    },
+    {
+      "branch": "agent/workflow-reproducible-runtime-phase4-20260712",
+      "expectedHeadSha": "38d62885a8b7249b1f2d3853f31a0abc999ca160",
+      "reasons": [
+        "branch protection state was not independently verified"
+      ]
+    },
+    {
+      "branch": "diagnostic/phase4-windows-20260712",
+      "expectedHeadSha": "5db1f71676736add1a7d45d199c707f57291bfe2",
+      "reasons": [
+        "branch protection state was not independently verified"
+      ]
+    },
+    {
+      "branch": "agent/workflow-automatic-pause-ci-verification-20260712",
+      "expectedHeadSha": "a2f71784acbb9d860caa1a9851c91e66bea6507e",
+      "reasons": [
+        "branch protection state was not independently verified"
+      ]
+    },
+    {
+      "branch": "codex/bazaar-ai-project-rule-authoring",
+      "expectedHeadSha": "6f3c92e8544b3ebeccab465a66825f8f4bee4518",
+      "reasons": [
+        "branch protection state was not independently verified"
+      ]
+    },
+    {
+      "branch": "integration/bazaar-campaign-dashboard-20260716",
+      "expectedHeadSha": "f8d15d7bfd9d32718a4b0d7dbdc46d6752c69a14",
+      "reasons": [
+        "branch protection state was not independently verified"
+      ]
+    }
+  ],
+  "remainingOpenPullRequests": [],
+  "verification": {
+    "targetsAbsent": false,
+    "defaultBranchIsMain": true,
+    "mainUnchangedDuringDeletion": true,
+    "deletionCommandInvoked": false,
+    "forbiddenPathsAbsent": true,
+    "requiredPathsPresent": true,
+    "branchProtectionVerified": false,
+    "hostedGatesPassed": false,
+    "independentReviewAuthorized": false,
+    "currentMainWorkflowRuns": [],
+    "currentMainCombinedStatuses": []
+  },
+  "stopReasons": [
+    "Target branch protection flags could not be freshly enumerated with the currently exposed connector.",
+    "No write-capable GitHub action was exposed in this session, so an execution branch, PR comments, hosted workflow dispatch, and branch deletion could not be performed.",
+    "The audited main commit has no workflow runs or combined status checks for this branch-retirement implementation.",
+    "Fresh execution-branch hosted gates were not run.",
+    "Independent deletion authorization was not recorded."
+  ]
+}

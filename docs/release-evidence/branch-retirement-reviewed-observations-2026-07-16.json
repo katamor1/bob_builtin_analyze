@@ -1,0 +1,577 @@
+{
+  "schemaVersion": "bob-builtin-analyze/branch-retirement-reviewed-observations/v1",
+  "repository": "katamor1/bob_builtin_analyze",
+  "mainSha": "d912e4edbc969bfae961ca7e8fbef92ace93d798",
+  "generatedAt": "2026-07-16T12:00:00+09:00",
+  "remoteBranches": {
+    "agent/workflow-recovery-ux-p1-builder-readiness-20260712": "81e19775f9ce17242a39c7868085c50bc8eb9240",
+    "diagnostic/p1-1-windows-flake-20260712": "7db481f97243060f6f68cccb219d9720cc5fc8cd",
+    "agent/bob-bazaar-review-review-run-v3-dashboard": "11a739c557004b88cae47663623638b5691c262c",
+    "agent/bob-evidence-scope-phase5-20260712": "7c1bca1321648fbcb57c658f9c1dd7db08a28368",
+    "agent/repository-symbol-index-producer-contracts-red-20260712": "4c94f5ab8dcd79fff9a38b6c10c04f345d7a53ad",
+    "codex/evidence-scope-phase5-checkpoint-20260712": "c093a20b0dd8551191f76f02b472d92cf0b45af7",
+    "codex/execute-shared-plan-6a53743e": "6691988538af68c8cf52b33937b07e9fc06d0d67",
+    "agent/workflow-reproducible-runtime-phase4-20260712": "38d62885a8b7249b1f2d3853f31a0abc999ca160",
+    "diagnostic/phase4-windows-20260712": "5db1f71676736add1a7d45d199c707f57291bfe2",
+    "agent/workflow-automatic-pause-ci-verification-20260712": "a2f71784acbb9d860caa1a9851c91e66bea6507e",
+    "codex/bazaar-ai-project-rule-authoring": "6f3c92e8544b3ebeccab465a66825f8f4bee4518",
+    "integration/bazaar-campaign-dashboard-20260716": "f8d15d7bfd9d32718a4b0d7dbdc46d6752c69a14"
+  },
+  "openPullRequestRefs": [],
+  "protectedBranches": [
+    "main"
+  ],
+  "entries": {
+    "agent/workflow-recovery-ux-p1-builder-readiness-20260712": {
+      "observedDisposition": "superseded",
+      "pullEvidence": {
+        "replacementsMerged": true,
+        "predecessorClosed": true,
+        "productionReplacementMerged": true
+      },
+      "paths": {
+        "required": {
+          "passed": true,
+          "missing": [],
+          "checked": [
+            "docs/superpowers/plans/2026-07-12-workflow-builder-skip-resume-readiness.md",
+            "docs/superpowers/specs/2026-07-12-workflow-builder-skip-resume-readiness-design.md",
+            "extensions/workflow-register/src/core/authoring/workflowSkipResumeReadiness.ts",
+            "extensions/workflow-register/src/core/authoring/workflowSkipResumeReadinessPreview.ts",
+            "extensions/workflow-register/src/webview/workflowBuilderSkipResumeReadinessScript.ts",
+            "extensions/workflow-register/test/workflowSkipResumeReadiness.test.js",
+            "extensions/workflow-register/test/workflowSkipResumeReadinessPreview.test.js"
+          ]
+        },
+        "forbidden": {
+          "passed": true,
+          "present": [],
+          "checked": [
+            ".github/workflows/pr81-focused-readiness.yml",
+            ".github/workflows/pr81-source-bundle.yml"
+          ]
+        }
+      },
+      "behaviorChecks": [
+        {
+          "id": "skip-resume-authoring-model",
+          "passed": true,
+          "detail": "PR #82 merged the explicit authoring model and x-skipResume round-trip."
+        },
+        {
+          "id": "skip-resume-preview-apply",
+          "passed": true,
+          "detail": "Current main contains the shared pure planner, strict preview/apply boundary, and focused tests."
+        },
+        {
+          "id": "skip-resume-webview",
+          "passed": true,
+          "detail": "Current main contains the Artifacts-tab Webview integration and stale-preview protection."
+        },
+        {
+          "id": "skip-resume-linux-windows-gates",
+          "passed": true,
+          "detail": "PR #82 records successful Linux and Windows package, VSIX, unit, and Extension Host gates."
+        }
+      ],
+      "uniqueUnintegratedFiles": [],
+      "diffFiles": [],
+      "reasons": []
+    },
+    "diagnostic/p1-1-windows-flake-20260712": {
+      "observedDisposition": "diagnostic-only",
+      "pullEvidence": {
+        "replacementsMerged": true,
+        "predecessorClosed": true,
+        "productionReplacementMerged": true
+      },
+      "paths": {
+        "required": {
+          "passed": true,
+          "missing": [],
+          "checked": [
+            "docs/release-evidence/workflow-builder-skip-resume-readiness-2026-07-12.md"
+          ]
+        },
+        "forbidden": {
+          "passed": true,
+          "present": [],
+          "checked": []
+        }
+      },
+      "behaviorChecks": [
+        {
+          "id": "p1-1-diagnostic-replaced",
+          "passed": true,
+          "detail": "PR #87 was diagnostic-only; PR #82 contains the repaired implementation and durable evidence."
+        }
+      ],
+      "uniqueUnintegratedFiles": [],
+      "diffFiles": [],
+      "reasons": []
+    },
+    "agent/bob-bazaar-review-review-run-v3-dashboard": {
+      "observedDisposition": "superseded",
+      "pullEvidence": {
+        "replacementsMerged": true,
+        "predecessorClosed": true,
+        "productionReplacementMerged": true
+      },
+      "paths": {
+        "required": {
+          "passed": true,
+          "missing": [],
+          "checked": [
+            "extensions/bob-bazaar-review/src/dashboard/campaignDashboardCore.ts",
+            "extensions/bob-bazaar-review/src/dashboard/campaignDashboard.ts",
+            "extensions/bob-bazaar-review/src/dashboard/campaignDashboardExport.ts",
+            "extensions/bob-bazaar-review/src/ui/campaignDashboardGui.ts",
+            "extensions/bob-bazaar-review/test/campaignDashboardCore.test.js",
+            "extensions/bob-bazaar-review/test/campaignDashboardExport.test.js",
+            "docs/superpowers/plans/2026-07-13-bob-bazaar-review-review-run-v3-iteration3-dashboard.md"
+          ]
+        },
+        "forbidden": {
+          "passed": true,
+          "present": [],
+          "checked": []
+        }
+      },
+      "behaviorChecks": [
+        {
+          "id": "campaign-dashboard-newer-contract",
+          "passed": true,
+          "detail": "PR #83 and the newer main implementation cover source-backed aggregation, transactional export, GUI, and safety contracts; old #84 code would regress the model."
+        },
+        {
+          "id": "campaign-dashboard-full-gates",
+          "passed": true,
+          "detail": "PR #83, PR #97, and PR #118 provide merged implementation, later integration, and completed plan evidence."
+        }
+      ],
+      "uniqueUnintegratedFiles": [],
+      "diffFiles": [],
+      "reasons": []
+    },
+    "agent/bob-evidence-scope-phase5-20260712": {
+      "observedDisposition": "superseded",
+      "pullEvidence": {
+        "replacementsMerged": true,
+        "predecessorClosed": true,
+        "productionReplacementMerged": true
+      },
+      "paths": {
+        "required": {
+          "passed": true,
+          "missing": [],
+          "checked": [
+            "extensions/bob-code-consistency-review/src/evidenceScope/repositorySourceExtractor.ts",
+            "extensions/bob-code-consistency-review/src/evidenceScope/repositoryIndexCache.ts",
+            "extensions/bob-code-consistency-review/src/evidenceScope/repositorySymbolIndexProducer.ts",
+            "extensions/bob-code-consistency-review/src/evidenceScope/artifactLedger.ts",
+            "extensions/bob-code-consistency-review/test/repositorySymbolIndexProducer.test.js",
+            "extensions/bob-code-consistency-review/test/artifactLedger.test.js"
+          ]
+        },
+        "forbidden": {
+          "passed": true,
+          "present": [],
+          "checked": []
+        }
+      },
+      "behaviorChecks": [
+        {
+          "id": "evidence-scope-phase5-producer",
+          "passed": true,
+          "detail": "PR #72 merged immutable Git-blob production, source-free cache, deterministic relink, and bounded build/consume behavior."
+        },
+        {
+          "id": "evidence-scope-artifact-ledger",
+          "passed": true,
+          "detail": "PR #72 merged the artifact stale ledger and current focused tests."
+        }
+      ],
+      "uniqueUnintegratedFiles": [],
+      "diffFiles": [],
+      "reasons": []
+    },
+    "agent/repository-symbol-index-producer-contracts-red-20260712": {
+      "observedDisposition": "superseded",
+      "pullEvidence": {
+        "replacementsMerged": true,
+        "predecessorClosed": true,
+        "productionReplacementMerged": true
+      },
+      "paths": {
+        "required": {
+          "passed": true,
+          "missing": [],
+          "checked": [
+            "extensions/bob-code-consistency-review/src/evidenceScope/repositorySymbolIndexProducer.ts",
+            "extensions/bob-code-consistency-review/test/repositorySymbolIndexProducer.test.js"
+          ]
+        },
+        "forbidden": {
+          "passed": true,
+          "present": [],
+          "checked": []
+        }
+      },
+      "behaviorChecks": [
+        {
+          "id": "repository-index-red-contracts-green",
+          "passed": true,
+          "detail": "The RED contract branch is implemented by current producer code and repositorySymbolIndexProducer.test.js on main."
+        }
+      ],
+      "uniqueUnintegratedFiles": [],
+      "diffFiles": [],
+      "reasons": []
+    },
+    "codex/evidence-scope-phase5-checkpoint-20260712": {
+      "observedDisposition": "superseded",
+      "pullEvidence": {
+        "replacementsMerged": true,
+        "predecessorClosed": true,
+        "productionReplacementMerged": true
+      },
+      "paths": {
+        "required": {
+          "passed": true,
+          "missing": [],
+          "checked": [
+            "docs/superpowers/plans/2026-07-12-bob-evidence-scope-phase5.md",
+            "docs/superpowers/specs/2026-07-12-bob-evidence-scope-phase5-design.md"
+          ]
+        },
+        "forbidden": {
+          "passed": true,
+          "present": [],
+          "checked": [
+            ".github/workflows/phase5-checkpoint-diagnostic.yml",
+            ".github/workflows/export-evidence-scope-current.yml",
+            "docs/implementation/diagnostics/phase5-windows-full.log",
+            "docs/implementation/diagnostics/workflow-register-windows.log"
+          ]
+        }
+      },
+      "behaviorChecks": [
+        {
+          "id": "phase5-checkpoint-replaced",
+          "passed": true,
+          "detail": "PR #72 supersedes the checkpoint; diagnostic workflows and raw logs are absent from main."
+        }
+      ],
+      "uniqueUnintegratedFiles": [],
+      "diffFiles": [],
+      "reasons": []
+    },
+    "codex/execute-shared-plan-6a53743e": {
+      "observedDisposition": "merged-source",
+      "pullEvidence": {
+        "replacementsMerged": true,
+        "predecessorClosed": true,
+        "productionReplacementMerged": true
+      },
+      "paths": {
+        "required": {
+          "passed": true,
+          "missing": [],
+          "checked": [
+            "docs/superpowers/plans/2026-07-12-bob-evidence-scope-phase5.md",
+            "extensions/bob-code-consistency-review/src/evidenceScope/artifactLedger.ts"
+          ]
+        },
+        "forbidden": {
+          "passed": true,
+          "present": [],
+          "checked": [
+            ".github/phase4-finalizer-trigger.txt",
+            ".github/workflows/finalize-evidence-scope-phase4-records.yml"
+          ]
+        }
+      },
+      "behaviorChecks": [
+        {
+          "id": "pr72-merged",
+          "passed": true,
+          "detail": "PR #72 is merged and contains the complete Evidence Scope implementation."
+        },
+        {
+          "id": "post-merge-tail-temporary-only",
+          "passed": true,
+          "detail": "The branch tail after PR #72 consists of a trigger, workflow adjustment, and finalizer workflow; all are forbidden and absent from main."
+        }
+      ],
+      "uniqueUnintegratedFiles": [],
+      "diffFiles": [],
+      "reasons": []
+    },
+    "agent/workflow-reproducible-runtime-phase4-20260712": {
+      "observedDisposition": "superseded",
+      "pullEvidence": {
+        "replacementsMerged": true,
+        "predecessorClosed": true,
+        "productionReplacementMerged": true
+      },
+      "paths": {
+        "required": {
+          "passed": true,
+          "missing": [],
+          "checked": [
+            "extensions/workflow-register/src/core/runtime/runStateJournal.ts",
+            "extensions/workflow-register/src/core/runtime/runStateStore.ts",
+            "extensions/workflow-register/src/core/runtime/runLock.ts",
+            "extensions/workflow-register/test/workflowRunJournal.test.js",
+            "docs/release-evidence/workflow-reproducible-runtime-phase4-2026-07-12.md"
+          ]
+        },
+        "forbidden": {
+          "passed": true,
+          "present": [],
+          "checked": []
+        }
+      },
+      "behaviorChecks": [
+        {
+          "id": "phase4-hardening-replaced",
+          "passed": true,
+          "detail": "PR #77 merged journal ancestry, read-only diagnostics, control contract, path and lock hardening."
+        },
+        {
+          "id": "phase4-linux-windows-gates",
+          "passed": true,
+          "detail": "PR #77 records successful Linux and Windows unit, policy, package, VSIX, and Extension Host gates."
+        }
+      ],
+      "uniqueUnintegratedFiles": [],
+      "diffFiles": [],
+      "reasons": []
+    },
+    "diagnostic/phase4-windows-20260712": {
+      "observedDisposition": "diagnostic-only",
+      "pullEvidence": {
+        "replacementsMerged": true,
+        "predecessorClosed": true,
+        "productionReplacementMerged": true
+      },
+      "paths": {
+        "required": {
+          "passed": true,
+          "missing": [],
+          "checked": [
+            "docs/release-evidence/workflow-reproducible-runtime-phase4-2026-07-12.md"
+          ]
+        },
+        "forbidden": {
+          "passed": true,
+          "present": [],
+          "checked": [
+            ".github/phase4-windows-fix.patch",
+            ".github/workflows/phase4-windows-diagnostic.yml",
+            ".github/workflows/phase4-review-merge-pr77.yml"
+          ]
+        }
+      },
+      "behaviorChecks": [
+        {
+          "id": "phase4-diagnostic-replaced",
+          "passed": true,
+          "detail": "PR #78 was diagnostic-only; its product fixes and evidence were incorporated through PR #77."
+        }
+      ],
+      "uniqueUnintegratedFiles": [],
+      "diffFiles": [],
+      "reasons": []
+    },
+    "agent/workflow-automatic-pause-ci-verification-20260712": {
+      "observedDisposition": "diagnostic-only",
+      "pullEvidence": {
+        "replacementsMerged": true,
+        "predecessorClosed": true,
+        "productionReplacementMerged": true
+      },
+      "paths": {
+        "required": {
+          "passed": true,
+          "missing": [],
+          "checked": [
+            "docs/superpowers/plans/2026-07-12-workflow-automatic-pause-limits.md",
+            "docs/release-evidence/workflow-automatic-pause-latest-main-review-2026-07-13.md"
+          ]
+        },
+        "forbidden": {
+          "passed": true,
+          "present": [],
+          "checked": [
+            "extensions/workflow-register/samples/ci-verification/WORKFLOW.md",
+            "extensions/workflow-register/test/fixtures/automatic-pause-ci-verification.txt"
+          ]
+        }
+      },
+      "behaviorChecks": [
+        {
+          "id": "automatic-pause-production-merged",
+          "passed": true,
+          "detail": "PR #75 merged the Automatic Pause production implementation."
+        },
+        {
+          "id": "automatic-pause-latest-main-reverified",
+          "passed": true,
+          "detail": "PR #92 reverified Automatic Pause on a later main with Linux and Windows gates."
+        }
+      ],
+      "uniqueUnintegratedFiles": [],
+      "diffFiles": [],
+      "reasons": []
+    },
+    "agent/workflow-run-retention-p1-6-20260713": {
+      "observedDisposition": "merged-source",
+      "pullEvidence": {
+        "replacementsMerged": true,
+        "predecessorClosed": true,
+        "productionReplacementMerged": true
+      },
+      "paths": {
+        "required": {
+          "passed": true,
+          "missing": [],
+          "checked": [
+            "docs/superpowers/plans/2026-07-13-workflow-run-retention-p1-6.md"
+          ]
+        },
+        "forbidden": {
+          "passed": true,
+          "present": [],
+          "checked": []
+        }
+      },
+      "behaviorChecks": [
+        {
+          "id": "pr93-merged",
+          "passed": true,
+          "detail": "PR #93 is merged; its source branch is already absent."
+        }
+      ],
+      "uniqueUnintegratedFiles": [],
+      "diffFiles": [],
+      "reasons": []
+    },
+    "codex/bazaar-ai-project-rule-authoring": {
+      "observedDisposition": "merged-source",
+      "pullEvidence": {
+        "replacementsMerged": true,
+        "predecessorClosed": true,
+        "productionReplacementMerged": true
+      },
+      "paths": {
+        "required": {
+          "passed": true,
+          "missing": [],
+          "checked": [
+            "docs/superpowers/plans/2026-07-14-bob-bazaar-review-ai-project-rule-authoring.md",
+            "extensions/bob-bazaar-review/src/ruleAuthoring/ruleAuthoringRunStore.ts",
+            "extensions/bob-bazaar-review/src/ruleAuthoring/ruleAuthoringArtifactStore.ts"
+          ]
+        },
+        "forbidden": {
+          "passed": true,
+          "present": [],
+          "checked": []
+        }
+      },
+      "behaviorChecks": [
+        {
+          "id": "pr97-merged",
+          "passed": true,
+          "detail": "PR #97 is merged at main commit 72f500be71ad4b1ac594ec6258cbec66fb71adfa."
+        },
+        {
+          "id": "rule-authoring-linux-windows-gates",
+          "passed": true,
+          "detail": "PR #97 exact head passed workflow-contracts and the complete Linux/Windows extensions-quality matrix."
+        }
+      ],
+      "uniqueUnintegratedFiles": [],
+      "diffFiles": [],
+      "reasons": []
+    },
+    "automation/fix-pr97-windows-portable-tests-20260716": {
+      "observedDisposition": "temporary-automation",
+      "pullEvidence": {
+        "replacementsMerged": true,
+        "predecessorClosed": true,
+        "productionReplacementMerged": true
+      },
+      "paths": {
+        "required": {
+          "passed": true,
+          "missing": [],
+          "checked": [
+            "docs/superpowers/plans/2026-07-14-bob-bazaar-review-ai-project-rule-authoring.md"
+          ]
+        },
+        "forbidden": {
+          "passed": true,
+          "present": [],
+          "checked": [
+            ".github/workflows/fix-pr97-windows-portable-tests.yml"
+          ]
+        }
+      },
+      "behaviorChecks": [
+        {
+          "id": "pr112-green",
+          "passed": true,
+          "detail": "PR #112 temporary Windows portability workflow completed successfully before closure."
+        },
+        {
+          "id": "pr112-fix-reached-pr97",
+          "passed": true,
+          "detail": "PR #112 pushed its test portability fixes to the PR #97 source branch, which was subsequently merged."
+        }
+      ],
+      "uniqueUnintegratedFiles": [],
+      "diffFiles": [],
+      "reasons": []
+    },
+    "integration/bazaar-campaign-dashboard-20260716": {
+      "observedDisposition": "merged-source",
+      "pullEvidence": {
+        "replacementsMerged": true,
+        "predecessorClosed": true,
+        "productionReplacementMerged": true
+      },
+      "paths": {
+        "required": {
+          "passed": true,
+          "missing": [],
+          "checked": [
+            "docs/superpowers/plans/2026-07-13-bob-bazaar-review-review-run-v3-iteration3-dashboard.md"
+          ]
+        },
+        "forbidden": {
+          "passed": true,
+          "present": [],
+          "checked": []
+        }
+      },
+      "behaviorChecks": [
+        {
+          "id": "pr118-merged",
+          "passed": true,
+          "detail": "PR #118 is merged and records the completed current Dashboard plan."
+        }
+      ],
+      "uniqueUnintegratedFiles": [],
+      "diffFiles": [],
+      "reasons": []
+    }
+  },
+  "protectedBranchesVerified": false,
+  "notes": [
+    "Open pull request discovery was refreshed and returned no open PRs.",
+    "Target branch protection flags could not be enumerated with the currently exposed read connector, so protection remains unverified and the audit fails closed.",
+    "Fresh hosted workflows were not dispatched from an execution branch."
+  ]
+}

@@ -1,0 +1,231 @@
+{
+  "schemaVersion": "bob-builtin-analyze/branch-retirement-map/v1",
+  "repository": "katamor1/bob_builtin_analyze",
+  "baselineMain": "d912e4edbc969bfae961ca7e8fbef92ace93d798",
+  "entries": [
+    {
+      "branch": "agent/workflow-recovery-ux-p1-builder-readiness-20260712",
+      "expectedHeadSha": "81e19775f9ce17242a39c7868085c50bc8eb9240",
+      "expectedDisposition": "superseded",
+      "predecessorPullRequests": [81],
+      "replacementPullRequests": [82],
+      "requiredMainPaths": [
+        "docs/superpowers/plans/2026-07-12-workflow-builder-skip-resume-readiness.md",
+        "docs/superpowers/specs/2026-07-12-workflow-builder-skip-resume-readiness-design.md",
+        "extensions/workflow-register/src/core/authoring/workflowSkipResumeReadiness.ts",
+        "extensions/workflow-register/src/core/authoring/workflowSkipResumeReadinessPreview.ts",
+        "extensions/workflow-register/src/webview/workflowBuilderSkipResumeReadinessScript.ts",
+        "extensions/workflow-register/test/workflowSkipResumeReadiness.test.js",
+        "extensions/workflow-register/test/workflowSkipResumeReadinessPreview.test.js"
+      ],
+      "forbiddenMainPaths": [
+        ".github/workflows/pr81-focused-readiness.yml",
+        ".github/workflows/pr81-source-bundle.yml"
+      ],
+      "evidenceChecks": [
+        "skip-resume-authoring-model",
+        "skip-resume-preview-apply",
+        "skip-resume-webview",
+        "skip-resume-linux-windows-gates"
+      ]
+    },
+    {
+      "branch": "diagnostic/p1-1-windows-flake-20260712",
+      "expectedHeadSha": "7db481f97243060f6f68cccb219d9720cc5fc8cd",
+      "expectedDisposition": "diagnostic-only",
+      "predecessorPullRequests": [87],
+      "replacementPullRequests": [82],
+      "relatedProductionPullRequests": [82],
+      "requiredMainPaths": [
+        "docs/release-evidence/workflow-builder-skip-resume-readiness-2026-07-12.md"
+      ],
+      "forbiddenMainPaths": [],
+      "evidenceChecks": ["p1-1-diagnostic-replaced"]
+    },
+    {
+      "branch": "agent/bob-bazaar-review-review-run-v3-dashboard",
+      "expectedHeadSha": "11a739c557004b88cae47663623638b5691c262c",
+      "expectedDisposition": "superseded",
+      "predecessorPullRequests": [84],
+      "replacementPullRequests": [83, 97, 118],
+      "requiredMainPaths": [
+        "extensions/bob-bazaar-review/src/dashboard/campaignDashboardCore.ts",
+        "extensions/bob-bazaar-review/src/dashboard/campaignDashboard.ts",
+        "extensions/bob-bazaar-review/src/dashboard/campaignDashboardExport.ts",
+        "extensions/bob-bazaar-review/src/ui/campaignDashboardGui.ts",
+        "extensions/bob-bazaar-review/test/campaignDashboardCore.test.js",
+        "extensions/bob-bazaar-review/test/campaignDashboardExport.test.js",
+        "docs/superpowers/plans/2026-07-13-bob-bazaar-review-review-run-v3-iteration3-dashboard.md"
+      ],
+      "forbiddenMainPaths": [],
+      "evidenceChecks": ["campaign-dashboard-newer-contract", "campaign-dashboard-full-gates"]
+    },
+    {
+      "branch": "agent/bob-evidence-scope-phase5-20260712",
+      "expectedHeadSha": "7c1bca1321648fbcb57c658f9c1dd7db08a28368",
+      "expectedDisposition": "superseded",
+      "predecessorPullRequests": [],
+      "replacementPullRequests": [72],
+      "requiredMainPaths": [
+        "extensions/bob-code-consistency-review/src/evidenceScope/repositorySourceExtractor.ts",
+        "extensions/bob-code-consistency-review/src/evidenceScope/repositoryIndexCache.ts",
+        "extensions/bob-code-consistency-review/src/evidenceScope/repositorySymbolIndexProducer.ts",
+        "extensions/bob-code-consistency-review/src/evidenceScope/artifactLedger.ts",
+        "extensions/bob-code-consistency-review/test/repositorySymbolIndexProducer.test.js",
+        "extensions/bob-code-consistency-review/test/artifactLedger.test.js"
+      ],
+      "forbiddenMainPaths": [],
+      "evidenceChecks": ["evidence-scope-phase5-producer", "evidence-scope-artifact-ledger"]
+    },
+    {
+      "branch": "agent/repository-symbol-index-producer-contracts-red-20260712",
+      "expectedHeadSha": "4c94f5ab8dcd79fff9a38b6c10c04f345d7a53ad",
+      "expectedDisposition": "superseded",
+      "predecessorPullRequests": [],
+      "replacementPullRequests": [72],
+      "requiredMainPaths": [
+        "extensions/bob-code-consistency-review/src/evidenceScope/repositorySymbolIndexProducer.ts",
+        "extensions/bob-code-consistency-review/test/repositorySymbolIndexProducer.test.js"
+      ],
+      "forbiddenMainPaths": [],
+      "evidenceChecks": ["repository-index-red-contracts-green"]
+    },
+    {
+      "branch": "codex/evidence-scope-phase5-checkpoint-20260712",
+      "expectedHeadSha": "c093a20b0dd8551191f76f02b472d92cf0b45af7",
+      "expectedDisposition": "superseded",
+      "predecessorPullRequests": [89],
+      "replacementPullRequests": [72],
+      "requiredMainPaths": [
+        "docs/superpowers/plans/2026-07-12-bob-evidence-scope-phase5.md",
+        "docs/superpowers/specs/2026-07-12-bob-evidence-scope-phase5-design.md"
+      ],
+      "forbiddenMainPaths": [
+        ".github/workflows/phase5-checkpoint-diagnostic.yml",
+        ".github/workflows/export-evidence-scope-current.yml",
+        "docs/implementation/diagnostics/phase5-windows-full.log",
+        "docs/implementation/diagnostics/workflow-register-windows.log"
+      ],
+      "evidenceChecks": ["phase5-checkpoint-replaced"]
+    },
+    {
+      "branch": "codex/execute-shared-plan-6a53743e",
+      "expectedHeadSha": "6691988538af68c8cf52b33937b07e9fc06d0d67",
+      "expectedDisposition": "merged-source",
+      "predecessorPullRequests": [72],
+      "replacementPullRequests": [72],
+      "requiredMainPaths": [
+        "docs/superpowers/plans/2026-07-12-bob-evidence-scope-phase5.md",
+        "extensions/bob-code-consistency-review/src/evidenceScope/artifactLedger.ts"
+      ],
+      "forbiddenMainPaths": [
+        ".github/phase4-finalizer-trigger.txt",
+        ".github/workflows/finalize-evidence-scope-phase4-records.yml"
+      ],
+      "evidenceChecks": ["pr72-merged", "post-merge-tail-temporary-only"]
+    },
+    {
+      "branch": "agent/workflow-reproducible-runtime-phase4-20260712",
+      "expectedHeadSha": "38d62885a8b7249b1f2d3853f31a0abc999ca160",
+      "expectedDisposition": "superseded",
+      "predecessorPullRequests": [],
+      "replacementPullRequests": [77],
+      "requiredMainPaths": [
+        "extensions/workflow-register/src/core/runtime/runStateJournal.ts",
+        "extensions/workflow-register/src/core/runtime/runStateStore.ts",
+        "extensions/workflow-register/src/core/runtime/runLock.ts",
+        "extensions/workflow-register/test/workflowRunJournal.test.js",
+        "docs/release-evidence/workflow-reproducible-runtime-phase4-2026-07-12.md"
+      ],
+      "forbiddenMainPaths": [],
+      "evidenceChecks": ["phase4-hardening-replaced", "phase4-linux-windows-gates"]
+    },
+    {
+      "branch": "diagnostic/phase4-windows-20260712",
+      "expectedHeadSha": "5db1f71676736add1a7d45d199c707f57291bfe2",
+      "expectedDisposition": "diagnostic-only",
+      "predecessorPullRequests": [78],
+      "replacementPullRequests": [77],
+      "relatedProductionPullRequests": [77],
+      "requiredMainPaths": [
+        "docs/release-evidence/workflow-reproducible-runtime-phase4-2026-07-12.md"
+      ],
+      "forbiddenMainPaths": [
+        ".github/phase4-windows-fix.patch",
+        ".github/workflows/phase4-windows-diagnostic.yml",
+        ".github/workflows/phase4-review-merge-pr77.yml"
+      ],
+      "evidenceChecks": ["phase4-diagnostic-replaced"]
+    },
+    {
+      "branch": "agent/workflow-automatic-pause-ci-verification-20260712",
+      "expectedHeadSha": "a2f71784acbb9d860caa1a9851c91e66bea6507e",
+      "expectedDisposition": "diagnostic-only",
+      "predecessorPullRequests": [80],
+      "replacementPullRequests": [75, 92],
+      "relatedProductionPullRequests": [75, 92],
+      "requiredMainPaths": [
+        "docs/superpowers/plans/2026-07-12-workflow-automatic-pause-limits.md",
+        "docs/release-evidence/workflow-automatic-pause-latest-main-review-2026-07-13.md"
+      ],
+      "forbiddenMainPaths": [
+        "extensions/workflow-register/samples/ci-verification/WORKFLOW.md",
+        "extensions/workflow-register/test/fixtures/automatic-pause-ci-verification.txt"
+      ],
+      "evidenceChecks": ["automatic-pause-production-merged", "automatic-pause-latest-main-reverified"]
+    },
+    {
+      "branch": "agent/workflow-run-retention-p1-6-20260713",
+      "expectedHeadSha": "cb8290bb66c2c502515fab1e542071932c8c50c1",
+      "expectedDisposition": "merged-source",
+      "predecessorPullRequests": [93],
+      "replacementPullRequests": [93],
+      "requiredMainPaths": [
+        "docs/superpowers/plans/2026-07-13-workflow-run-retention-p1-6.md"
+      ],
+      "forbiddenMainPaths": [],
+      "evidenceChecks": ["pr93-merged"]
+    },
+    {
+      "branch": "codex/bazaar-ai-project-rule-authoring",
+      "expectedHeadSha": "6f3c92e8544b3ebeccab465a66825f8f4bee4518",
+      "expectedDisposition": "merged-source",
+      "predecessorPullRequests": [97],
+      "replacementPullRequests": [97],
+      "requiredMainPaths": [
+        "docs/superpowers/plans/2026-07-14-bob-bazaar-review-ai-project-rule-authoring.md",
+        "extensions/bob-bazaar-review/src/ruleAuthoring/ruleAuthoringRunStore.ts",
+        "extensions/bob-bazaar-review/src/ruleAuthoring/ruleAuthoringArtifactStore.ts"
+      ],
+      "forbiddenMainPaths": [],
+      "evidenceChecks": ["pr97-merged", "rule-authoring-linux-windows-gates"]
+    },
+    {
+      "branch": "automation/fix-pr97-windows-portable-tests-20260716",
+      "expectedHeadSha": "fa3072bb16033f28af2b64aac1d589a55b7f7ba0",
+      "expectedDisposition": "temporary-automation",
+      "predecessorPullRequests": [112],
+      "replacementPullRequests": [97],
+      "relatedProductionPullRequests": [97],
+      "requiredMainPaths": [
+        "docs/superpowers/plans/2026-07-14-bob-bazaar-review-ai-project-rule-authoring.md"
+      ],
+      "forbiddenMainPaths": [
+        ".github/workflows/fix-pr97-windows-portable-tests.yml"
+      ],
+      "evidenceChecks": ["pr112-green", "pr112-fix-reached-pr97"]
+    },
+    {
+      "branch": "integration/bazaar-campaign-dashboard-20260716",
+      "expectedHeadSha": "f8d15d7bfd9d32718a4b0d7dbdc46d6752c69a14",
+      "expectedDisposition": "merged-source",
+      "predecessorPullRequests": [118],
+      "replacementPullRequests": [118],
+      "requiredMainPaths": [
+        "docs/superpowers/plans/2026-07-13-bob-bazaar-review-review-run-v3-iteration3-dashboard.md"
+      ],
+      "forbiddenMainPaths": [],
+      "evidenceChecks": ["pr118-merged"]
+    }
+  ]
+}
