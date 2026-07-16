@@ -58,7 +58,7 @@ jobs:
               end = refresh_text.index(end_marker, start)
           except ValueError as error:
               raise SystemExit("gitignore assertion end marker was not found") from error
-          new_gitignore_assertion = '''  assert.equal(
+          new_gitignore_assertion = r'''  assert.equal(
             (await fs.readFile(path.join(root, ".bob", "review", "rule-authoring", ".gitignore"), "utf8"))
               .replace(/\r\n/g, "\n"),
             "/*\n!/.gitignore\n"
