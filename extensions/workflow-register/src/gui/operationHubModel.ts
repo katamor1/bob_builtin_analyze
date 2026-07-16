@@ -10,6 +10,7 @@ import type { HeldRunRecoveryAssessment } from "../core/heldRunRecovery"
 import type { CoreWorkflowDefinition, WorkflowRunState } from "../core/model"
 import { projectWorkflowRunProvenance, type WorkflowStepProvenanceProjection } from "../core/runProvenance"
 import { isWorkflowRunStateWritable } from "../core/runStateStore"
+import { workflowRunStatusLabel, workflowStepCompletionLabel } from "../ui/displayLabels"
 
 export const OPERATION_HUB_ALLOWED_ACTIONS = [
   "refresh",
@@ -231,7 +232,7 @@ export function summarizeRunForHub(
     currentStepLabel: currentStep ? `${currentStep.id}: ${currentStep.title}` : run.currentStep ?? "未選択",
     bobTaskSyncLabel: bobTaskSync.label,
     bobTaskSyncStatus: bobTaskSync.status,
-    artifactManifestLabel: manifest ? `Reusable artifacts: ${manifest.artifacts.length}` : undefined,
+    artifactManifestLabel: manifest ? `再利用できる成果物: ${manifest.artifacts.length}件` : undefined,
     artifactManifestStatus: manifest ? "ok" : undefined,
     artifactReuseLabel: artifactReuse?.label,
     artifactReuseStatus: artifactReuse?.status,
@@ -300,7 +301,7 @@ function buildSetupChecklist(setup: OperationHubSetupState, extensions: Operatio
     },
     {
       id: "runState",
-      label: "run state",
+      label: "実行状態",
       status: setup.runStatePresent ? "ok" : "info",
       message: setup.runStatePresent ? "実行履歴を検出しました。" : "まだ実行履歴はありません。"
     },
@@ -309,13 +310,13 @@ function buildSetupChecklist(setup: OperationHubSetupState, extensions: Operatio
       label: "Bazaar MCP",
       status: setup.mcpConfigPresent ? "ok" : "warning",
       message: setup.mcpConfigPresent ? ".bob/mcp.json を検出しました。" : "Bazaar 連携が必要な場合は MCP 設定を作成してください。",
-      action: setup.mcpConfigPresent ? undefined : { id: "openBazaarReview", label: "Bazaar GUI を開く", commandId: "bobBazaar.openReviewGui" }
+      action: setup.mcpConfigPresent ? undefined : { id: "openBazaarReview", label: "Bazaar レビューを開く", commandId: "bobBazaar.openReviewGui" }
     },
     {
       id: "traceability",
-      label: "traceability",
+      label: "トレーサビリティ",
       status: setup.traceabilityPresent ? "ok" : "info",
-      message: setup.traceabilityPresent ? "traceability sidecar を検出しました。" : "整合プレレビュー時に必要に応じて作成します。"
+      message: setup.traceabilityPresent ? "トレーサビリティ補助台帳を検出しました。" : "整合プレレビュー時に必要に応じて作成します。"
     }
   )
   return items
@@ -417,7 +418,7 @@ function actionsForHeldRun(
         : { ...inspect, label: "復旧診断を開く", variant: "primary" }
       break
     case "review-task-snapshot":
-      primary = { id: "importTaskSnapshotArtifacts", label: "Task Snapshotを確認", commandId: "workflowRegister.importArtifactsFromTaskSnapshots", ...target, variant: "primary" }
+      primary = { id: "importTaskSnapshotArtifacts", label: "保存済みタスクを確認", commandId: "workflowRegister.importArtifactsFromTaskSnapshots", ...target, variant: "primary" }
       break
     default:
       primary = { ...inspect, label: "復旧診断を開く", variant: "primary" }
@@ -469,18 +470,14 @@ function looksLikeArtifactPath(value: string): boolean {
 }
 
 function toOperationHubStepProvenance(step: WorkflowStepProvenanceProjection): OperationHubStepProvenanceSummary {
-  const completionLabel = step.completion === "reused"
-    ? "Reused"
-    : step.runStatus === "completed"
-      ? "Completed"
-      : step.runStatus.charAt(0).toUpperCase() + step.runStatus.slice(1)
+  const completionLabel = workflowStepCompletionLabel(step.completion, step.runStatus)
   const detail = [
-    step.skippedByArtifactReuse ? "Skipped by artifact reuse" : undefined,
-    step.sourceRunId ? `from ${step.sourceRunId}` : undefined,
-    step.artifactVerified ? "Artifact verified" : undefined,
-    step.importedFromTaskSnapshot ? "Imported from task snapshot" : undefined,
-    step.artifactIds.length > 0 ? `artifacts ${step.artifactIds.join(", ")}` : undefined,
-    step.hydratedStateKeys.length > 0 ? `hydrated ${step.hydratedStateKeys.join(", ")}` : undefined
+    step.skippedByArtifactReuse ? "成果物を再利用したため省略" : undefined,
+    step.sourceRunId ? `再利用元: ${step.sourceRunId}` : undefined,
+    step.artifactVerified ? "成果物を確認済み" : undefined,
+    step.importedFromTaskSnapshot ? "保存済みタスクから取り込み" : undefined,
+    step.artifactIds.length > 0 ? `成果物: ${step.artifactIds.join(", ")}` : undefined,
+    step.hydratedStateKeys.length > 0 ? `復元した状態キー: ${step.hydratedStateKeys.join(", ")}` : undefined
   ].filter((value): value is string => Boolean(value)).join(" · ")
   return {
     stepId: step.stepId,
@@ -495,21 +492,23 @@ function toOperationHubStepProvenance(step: WorkflowStepProvenanceProjection): O
 function summarizeBobTaskSync(run: WorkflowRunState): { label: string; status: OperationHubStatus } {
   const sync = run.bobTaskSync
   const status = sync?.drift?.status ?? "unknown"
-  const through = sync?.completedThroughStepId ? ` / through ${sync.completedThroughStepId}` : ""
-  if (status === "synced" && sync?.liveTaskAvailable === false) return { label: `Bob Todo: saved projection only; live task unavailable${through}`, status: "warning" }
+  const through = sync?.completedThroughStepId ? ` / 完了済み: ${sync.completedThroughStepId}` : ""
+  if (status === "synced" && sync?.liveTaskAvailable === false) {
+    return { label: `Bob Todo: 保存済みの進捗のみ（現在のタスクには接続できません）${through}`, status: "warning" }
+  }
   switch (status) {
     case "synced":
-      return { label: `Bob Todo: synced${through}`, status: "ok" }
+      return { label: `Bob Todo: 同期済み${through}`, status: "ok" }
     case "taskUnavailable":
-      return { label: "Bob Todo: repair pending; run.json is authoritative", status: "warning" }
+      return { label: "Bob Todo: 修復待ち（run.json を基準にします）", status: "warning" }
     case "requiresNewBobTask":
-      return { label: "Bob Todo: cannot rewind; start from run.json", status: "error" }
+      return { label: "Bob Todo: 巻き戻せません。run.json から新しいタスクを開始してください", status: "error" }
     case "repairFailed":
-      return { label: "Bob Todo: repair failed; run.json is authoritative", status: "error" }
+      return { label: "Bob Todo: 修復に失敗しました（run.json を基準にします）", status: "error" }
     case "repairPending":
-      return { label: "Bob Todo: repair pending", status: "warning" }
+      return { label: "Bob Todo: 修復待ち", status: "warning" }
     default:
-      return { label: "Bob Todo: not linked yet", status: "info" }
+      return { label: "Bob Todo: まだ関連付けられていません", status: "info" }
   }
 }
 
@@ -520,9 +519,9 @@ function summarizeArtifactReuse(run: WorkflowRunState): { label: string; status:
   if (!parsed) return undefined
   const reused = Array.isArray(parsed.reusedStepIds) ? parsed.reusedStepIds.length : 0
   const hydrated = Array.isArray(parsed.hydratedKeys) ? parsed.hydratedKeys.length : 0
-  const source = parsed.sourceRunId ? ` from ${parsed.sourceRunId}` : ""
-  const start = parsed.startStepId ? ` / start ${parsed.startStepId}` : ""
-  return { label: `Artifacts reused: ${reused} step(s), ${hydrated} state key(s)${source}${start}`, status: "ok" }
+  const source = parsed.sourceRunId ? ` / 再利用元: ${parsed.sourceRunId}` : ""
+  const start = parsed.startStepId ? ` / 開始ステップ: ${parsed.startStepId}` : ""
+  return { label: `成果物を再利用: ${reused}ステップ、状態キー ${hydrated}件${source}${start}`, status: "ok" }
 }
 
 function summarizeTaskSnapshotImport(run: WorkflowRunState): { label: string; status: OperationHubStatus } | undefined {
@@ -532,7 +531,7 @@ function summarizeTaskSnapshotImport(run: WorkflowRunState): { label: string; st
   if (!parsed) return undefined
   const count = Array.isArray(parsed.imported) ? parsed.imported.length : 0
   const at = parsed.importedAt ? ` / ${parsed.importedAt}` : ""
-  return { label: `Imported from task snapshot: ${count} artifact(s)${at}`, status: "ok" }
+  return { label: `保存済みタスクから取り込み: 成果物 ${count}件${at}`, status: "ok" }
 }
 
 function artifactManifestForRun(run: WorkflowRunState): WorkflowArtifactManifest | undefined {
@@ -550,15 +549,6 @@ function parseJsonObject(value: string): Record<string, unknown> | undefined {
 
 function statusLabel(run: WorkflowRunState): string {
   const current = run.currentStep ? run.steps.find((step) => step.id === run.currentStep) : undefined
-  if (run.status === "running" && current?.status === "pending") return "次ステップ実行待ち"
-  switch (run.status) {
-    case "running": return "実行中"
-    case "paused": return "一時停止"
-    case "checkpoint": return "分岐確認待ち"
-    case "reviewing": return "人間確認待ち"
-    case "held": return "手動操作待ち"
-    case "completed": return "完了"
-    case "failed": return "失敗"
-    default: return run.status
-  }
+  if (run.status === "running" && current?.status === "pending") return "次のステップを実行できます"
+  return workflowRunStatusLabel(run.status)
 }

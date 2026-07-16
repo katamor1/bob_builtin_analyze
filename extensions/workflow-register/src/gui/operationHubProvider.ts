@@ -191,7 +191,7 @@ export class OperationHubProvider implements vscode.WebviewViewProvider, vscode.
   private async handleMessage(rawMessage: unknown): Promise<void> {
     const message = parseOperationHubMessage(rawMessage)
     if (!message) {
-      void vscode.window.showWarningMessage("Bob Operation Hub: 不正な画面操作を拒否しました。")
+      void vscode.window.showWarningMessage("Bob 操作センター: 不正な画面操作を拒否しました。画面を更新してから再実行してください。")
       return
     }
     try {
@@ -221,9 +221,9 @@ export class OperationHubProvider implements vscode.WebviewViewProvider, vscode.
       await vscode.commands.executeCommand(command, ...commandArgsForAction(message))
       await this.refreshAll()
     } catch (error) {
-      void vscode.window.showErrorMessage(`Bob Operation Hub: ${error instanceof Error ? error.message : String(error)}`)
+      void vscode.window.showErrorMessage(`Bob 操作センター: ${error instanceof Error ? error.message : String(error)}`)
       await this.refreshAll().catch((refreshError) => {
-        console.warn("Bob Operation Hub refresh after action failure failed", refreshError)
+        console.warn("Bob 操作センターの操作失敗後の更新に失敗しました", refreshError)
       })
     }
   }
@@ -284,7 +284,7 @@ export class OperationHubProvider implements vscode.WebviewViewProvider, vscode.
     if (this.panel) return this.panel
     const panel = vscode.window.createWebviewPanel(
       "workflowRegister.operationHubPanel",
-      "Bob Operation Hub",
+      "Bob 操作センター",
       vscode.ViewColumn.One,
       {
         enableScripts: true,
@@ -366,12 +366,12 @@ export class OperationHubProvider implements vscode.WebviewViewProvider, vscode.
         }))
     }))
     return buildOperationHubModel({
-      workspaceName: folders.length === 0 ? "No workspace" : folders.map((folder) => folder.name).join(", "),
+      workspaceName: folders.length === 0 ? "ワークスペースが開かれていません" : folders.map((folder) => folder.name).join(", "),
       workspaceRoots: roots.map((candidate) => candidate.root),
       extensionStatus: [
         extensionStatus("IBM.bob-code", "IBM Bob"),
-        extensionStatus("local.bob-bazaar-review", "Bob Bazaar Review"),
-        extensionStatus("local.bob-code-consistency-review", "Bob Code Consistency Review")
+        extensionStatus("local.bob-bazaar-review", "Bob Bazaar レビュー"),
+        extensionStatus("local.bob-code-consistency-review", "Bob コード整合プレレビュー")
       ],
       setup: await setupState(roots),
       workflows,

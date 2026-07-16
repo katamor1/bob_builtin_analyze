@@ -82,11 +82,11 @@ test("Operation Hub distinguishes reused steps and traces verified artifacts", (
     stepId: "collect",
     title: "Collect",
     status: "completed",
-    completionLabel: "Reused",
-    detail: "Skipped by artifact reuse · from source-run · Artifact verified · artifacts context-artifact · hydrated context",
+    completionLabel: "再利用",
+    detail: "成果物を再利用したため省略 · 再利用元: source-run · 成果物を確認済み · 成果物: context-artifact · 復元した状態キー: context",
     reused: true
   })
-  assert.equal(run.stepProvenance[1].completionLabel, "Pending")
+  assert.equal(run.stepProvenance[1].completionLabel, "未開始")
   assert.equal(run.stepProvenance[1].reused, false)
 })
 
@@ -98,11 +98,11 @@ test("Operation Hub renders reused provenance and does not call a stored project
   const html = renderOperationHubHtml({ cspSource: "vscode-resource:", nonce: "nonce", model })
 
   assert.equal(run.bobTaskSyncStatus, "warning")
-  assert.match(run.bobTaskSyncLabel, /saved projection only/i)
-  assert.doesNotMatch(run.bobTaskSyncLabel, /^Bob Todo: synced/)
+  assert.match(run.bobTaskSyncLabel, /保存済みの進捗のみ/)
+  assert.doesNotMatch(run.bobTaskSyncLabel, /^Bob Todo: 同期済み$/)
   assert.match(html, /Collect/)
-  assert.match(html, /Reused/)
-  assert.match(html, /Skipped by artifact reuse/)
+  assert.match(html, /再利用/)
+  assert.match(html, /成果物を再利用したため省略/)
   assert.match(html, /context-artifact/)
   assert.match(html, /source-run/)
 })

@@ -21,7 +21,7 @@ test("package contributes the Operation Hub command and Explorer view", () => {
   assert.ok(
     packageJson.contributes.views.explorer.some((view) => (
       view.id === "workflowRegister.operationHub" &&
-      view.name === "Bob Operation Hub" &&
+      view.name === "Bob 操作センター" &&
       view.type === "webview"
     )),
     "Operation Hub explorer webview contribution"
@@ -130,7 +130,7 @@ test("Operation Hub model builds home setup catalog and run monitor sections", (
   assert.ok(model.setupChecklist.some((item) => item.id === "mcpConfig" && item.status === "warning"))
   assert.deepEqual(model.workflowCatalog.map((workflow) => workflow.id), ["qa.review"])
   assert.equal(model.workflowCatalog[0].requiredInputCount, 1)
-  assert.equal(model.runMonitor[0].statusLabel, "人間確認待ち")
+  assert.equal(model.runMonitor[0].statusLabel, "人による確認待ち")
   assert.ok(model.runMonitor[0].primaryActions.some((action) => (
     action.id === "acceptAndRunNextStep" &&
     action.commandId === "workflowRegister.acceptAndRunNextStep"
@@ -174,7 +174,7 @@ test("Operation Hub offers the next-step action for idle running workflow runs",
     ]
   })
 
-  assert.equal(model.runMonitor[0].statusLabel, "次ステップ実行待ち")
+  assert.equal(model.runMonitor[0].statusLabel, "次のステップを実行できます")
   assert.ok(model.runMonitor[0].primaryActions.some((action) => (
     action.id === "runNextStep" &&
     action.commandId === "workflowRegister.runNextStep" &&
@@ -299,10 +299,10 @@ test("Operation Hub html uses nonce protected scripts and data-action buttons", 
   const html = renderOperationHubHtml({ model, cspSource: "vscode-resource:", nonce: "nonce-123" })
 
   assert.match(html, /nonce-123/)
-  assert.match(html, /Bob Operation Hub/)
+  assert.match(html, /Bob 操作センター/)
   assert.match(html, /セットアップ/)
   assert.match(html, /ワークフロー一覧/)
-  assert.match(html, /Run Monitor/)
+  assert.match(html, /実行状況/)
   assert.match(html, /data-action="openWorkflowBuilder"/)
   assert.match(html, /data-action="openOperationHubPanel"/)
   assert.match(html, /広い画面で開く/)
@@ -465,4 +465,31 @@ test("Operation Hub provider accepts run focus arguments from the open command",
   assert.match(provider, /createWebviewPanel\(\s*"workflowRegister\.operationHubPanel"/)
   assert.match(provider, /retainContextWhenHidden: true/)
   assert.match(provider, /await this\.refreshAll\(\)/)
+})
+
+
+test("Operation Hub renders Japanese-first headings and empty state", () => {
+  const { renderOperationHubHtml } = require("../out/gui/operationHubHtml")
+  const html = renderOperationHubHtml({
+    cspSource: "vscode-resource:",
+    nonce: "nonce-japanese",
+    model: {
+      home: {
+        workspaceName: "sample-repo",
+        workspaceRoots: ["/repo"],
+        activeRunCount: 0,
+        workflowCount: 0,
+        recommendedActions: []
+      },
+      setupChecklist: [],
+      workflowCatalog: [],
+      runMonitor: []
+    },
+    layout: "panel"
+  })
+
+  assert.match(html, /Bob 操作センター/)
+  assert.match(html, /実行状況/)
+  assert.match(html, /実行中または最近の実行はありません/)
+  assert.doesNotMatch(html, /Run Monitor/)
 })

@@ -73,7 +73,7 @@ test("Operation Hub model exposes start-from-artifacts action for runs with a ma
   const run = model.runMonitor[0]
 
   assert.ok(OPERATION_HUB_ALLOWED_ACTIONS.includes("startFromArtifacts"))
-  assert.equal(run.artifactManifestLabel, "Reusable artifacts: 1")
+  assert.equal(run.artifactManifestLabel, "再利用できる成果物: 1件")
   assert.equal(run.artifacts[0].displayPath, ".bob/workflows/runs/source-run/artifacts/collect/context.txt")
   assert.ok(run.primaryActions.some((action) => (
     action.id === "startFromArtifacts" &&
@@ -121,7 +121,7 @@ test("Operation Hub model summarizes artifact reuse provenance", () => {
     ]
   })
 
-  assert.match(model.runMonitor[0].artifactReuseLabel, /Artifacts reused: 1 step\(s\), 1 state key\(s\)/)
+  assert.match(model.runMonitor[0].artifactReuseLabel, /成果物を再利用: 1ステップ、状態キー 1件/)
   assert.match(model.runMonitor[0].artifactReuseLabel, /source-run/)
   assert.match(model.runMonitor[0].artifactReuseLabel, /analyze/)
 })

@@ -51,6 +51,6 @@ test("Operation Hub bounds step provenance and reports omitted steps", () => {
 
   assert.equal(run.stepProvenance.length, 8)
   assert.equal(run.stepProvenanceOmittedCount, 7)
-  assert.match(html, /7 more step\(s\); see Run Diagnostics/)
+  assert.match(html, /ほか7ステップ。詳しくは実行診断を確認してください。/)
   assert.doesNotMatch(html, /step-9/)
 })
