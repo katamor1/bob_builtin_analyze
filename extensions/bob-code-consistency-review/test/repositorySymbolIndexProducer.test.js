@@ -1,5 +1,6 @@
 const assert = require("node:assert/strict")
 const { execFileSync } = require("node:child_process")
+const { createHash } = require("node:crypto")
 const fs = require("node:fs")
 const os = require("node:os")
 const path = require("node:path")
@@ -107,6 +108,46 @@ test("repository index cache omits unsafe source path literals and keeps referen
 
   const index = readJson(workspace, INDEX_PATH)
   assert.ok(index.edges.some((item) => item.from === "file:src/api.ts" && item.to === "file:src/helper.ts" && item.kind === "imports"))
+})
+
+test("repository index producer rejects legacy cache fragments that can retain source credentials", async () => {
+  const workspace = createProducerWorkspace()
+  const revision = head(workspace)
+  const { produceRepositorySymbolIndex } = producerApi()
+  const producerInput = {
+    workspaceRoot: workspace,
+    sourceRevision: revision,
+    indexPath: INDEX_PATH,
+    cachePath: CACHE_PATH
+  }
+
+  await produceRepositorySymbolIndex(producerInput)
+  const cacheFile = path.join(workspace, CACHE_PATH)
+  const legacyCache = JSON.parse(fs.readFileSync(cacheFile, "utf8"))
+  const apiFragment = legacyCache.files.find((item) => item.path === "src/api.ts").fragment
+  const legacyReference = apiFragment.references.find((item) => item.targetPath === "./helper")
+  assert.ok(legacyReference)
+  legacyReference.targetPath = "https://alice:SUPERSECRET@example.test/pkg.js"
+  legacyReference.reason = "source imports https://alice:SUPERSECRET@example.test/pkg.js"
+  legacyCache.producer.version = 1
+  legacyCache.producer.options_hash = legacyProducerOptionsHash()
+  fs.writeFileSync(cacheFile, `${JSON.stringify(legacyCache, null, 2)}\n`, "utf8")
+  assert.match(fs.readFileSync(cacheFile, "utf8"), /alice:SUPERSECRET@example\.test/u)
+
+  const rebuilt = await produceRepositorySymbolIndex(producerInput)
+
+  assert.equal(rebuilt.cacheStatus, "miss")
+  assert.equal(rebuilt.reusedFiles, 0)
+  assert.equal(rebuilt.rebuiltFiles, 3)
+  assert.deepEqual(rebuilt.warnings, ["repository index cache invalidated: producer identity or options changed"])
+  assert.doesNotMatch(fs.readFileSync(cacheFile, "utf8"), /alice|SUPERSECRET|example\.test/u)
+  assert.doesNotMatch(fs.readFileSync(path.join(workspace, INDEX_PATH), "utf8"), /alice|SUPERSECRET|example\.test/u)
+
+  const current = await produceRepositorySymbolIndex(producerInput)
+  assert.equal(current.cacheStatus, "hit")
+  assert.equal(current.reusedFiles, 3)
+  assert.equal(current.rebuiltFiles, 0)
+  assert.deepEqual(current.warnings, [])
 })
 
 test("atomic text replacement preserves an existing destination when retryable renames fail", async () => {
@@ -441,4 +482,18 @@ function readJson(workspace, relativePath) {
 
 function edgeIdentity(edge) {
   return `${edge.from}\u0000${edge.to ?? ""}\u0000${edge.kind}\u0000${edge.resolution}\u0000${edge.reason}\u0000${edge.target_hint ?? ""}`
+}
+
+function legacyProducerOptionsHash() {
+  const value = JSON.stringify({
+    producerId: "bob-repository-index-producer",
+    producerVersion: 1,
+    repositoryRoot: ".",
+    includeLanguages: [
+      "c", "cpp", "h", "hpp", "typescript", "javascript", "python", "csharp", "java", "go", "rust"
+    ].sort(),
+    textEncoding: "auto",
+    extractorPolicy: "bob-code-consistency-review/repository-index-producer-v1"
+  })
+  return `sha256:${createHash("sha256").update(value).digest("hex")}`
 }
