@@ -43,7 +43,7 @@
 ## 代表的な利用フロー
 
 1. Bob IDE / VS Code で対象ワークスペースを開く。
-2. `Bob Code Consistency Review: Review Wizard を開く` を実行する。コード整合プレビュー workflow が未配置の場合は、画面上部の `.bob を初期化` を選び、`.bob/workflows/code-consistency-review/WORKFLOW.md` と `review-input.yaml` の雛形を作成する。
+2. `Bob Code Consistency Review: Review Wizard を開く` を実行する。コード整合プレレビュー workflow が未配置の場合は、画面上部の `.bob を初期化` を選び、`.bob/workflows/code-consistency-review/WORKFLOW.md` と `review-input.yaml` の雛形を作成する。
 3. 文書 ID や工程間リンクを整理する場合は、traceability 系コマンドで sidecar catalog を作成し、人間が承認する。
 4. 手書きする代わりに `Bob Code Consistency Review: 対話式に review-input.yaml を作成` で、短いドラフトと候補選択から `review-input.yaml` を生成する。
 5. AI を使う場合は `Bob Code Consistency Review: AI draft 用プロンプトを作成` でプロンプトを作り、AI の JSON 応答を `Bob Code Consistency Review: AI draft JSON から review-input.yaml を生成` で取り込む。
