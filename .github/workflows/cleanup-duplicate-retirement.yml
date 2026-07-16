@@ -1,0 +1,64 @@
+name: cleanup-duplicate-retirement
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/cleanup-duplicate-retirement.yml"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  cleanup:
+    if: github.head_ref == 'automation/cleanup-duplicate-retirement-20260716'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SELF_PR: ${{ github.event.pull_request.number }}
+      SELF_REF: ${{ github.event.pull_request.head.ref }}
+      SELF_SHA: ${{ github.event.pull_request.head.sha }}
+      TARGET_PR: "122"
+      TARGET_REF: integration/retire-superseded-branches-20260716-v2
+      EXPECTED_TARGET_SHA: 93396b8fc684432ad8d1838d932b572c8531713a
+      COMPLETED_MERGE_SHA: f4f9d3308361333e02ab1af732706b7a9e5fc952
+    steps:
+      - name: Checkout exact cleanup head
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Atomically remove duplicate and cleanup refs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SELF_SHA"
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          git merge-base --is-ancestor "$COMPLETED_MERGE_SHA" refs/remotes/origin/main
+          test "$(gh api "repos/$GITHUB_REPOSITORY/pulls/120" --jq '.merged')" = "true"
+          test "$(gh api "repos/$GITHUB_REPOSITORY/pulls/$TARGET_PR" --jq '.state')" = "closed"
+          test "$(gh api "repos/$GITHUB_REPOSITORY/pulls/$TARGET_PR" --jq '.head.ref')" = "$TARGET_REF"
+          test "$(gh api "repos/$GITHUB_REPOSITORY/pulls/$TARGET_PR" --jq '.head.sha')" = "$EXPECTED_TARGET_SHA"
+
+          main_before="$(git rev-parse refs/remotes/origin/main)"
+          target_remote="$(git ls-remote --heads origin "refs/heads/$TARGET_REF" | cut -f1)"
+          self_remote="$(git ls-remote --heads origin "refs/heads/$SELF_REF" | cut -f1)"
+          test "$target_remote" = "$EXPECTED_TARGET_SHA"
+          test "$self_remote" = "$SELF_SHA"
+
+          gh pr comment "$TARGET_PR" --repo "$GITHUB_REPOSITORY" --body "The duplicate implementation branch is being removed with exact force-with-lease after PR #120 completed and merged the plan."
+          gh pr comment "$SELF_PR" --repo "$GITHUB_REPOSITORY" --body "Cleanup preflight passed. Closing this temporary PR and atomically deleting both the duplicate head and this cleanup head; no file from this PR will enter main."
+          gh pr close "$SELF_PR" --repo "$GITHUB_REPOSITORY"
+
+          git push --atomic \
+            --force-with-lease="refs/heads/$TARGET_REF:$EXPECTED_TARGET_SHA" \
+            --force-with-lease="refs/heads/$SELF_REF:$SELF_SHA" \
+            origin \
+            ":refs/heads/$TARGET_REF" \
+            ":refs/heads/$SELF_REF"
+
+          test -z "$(git ls-remote --heads origin "refs/heads/$TARGET_REF")"
+          test -z "$(git ls-remote --heads origin "refs/heads/$SELF_REF")"
+          main_after="$(git ls-remote --heads origin refs/heads/main | cut -f1)"
+          test "$main_after" = "$main_before"
