@@ -5,7 +5,7 @@ on:
     branches:
       - agent/japanese-gui-copy-review
     paths:
-      - .sdd/patches/*.patch
+      - .sdd/patches/READY
 
 permissions:
   contents: write
@@ -27,13 +27,17 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
+          ready=.sdd/patches/READY
+          test -f "$ready"
           mapfile -d '' patches < <(find .sdd/patches -maxdepth 1 -type f -name '*.patch' -print0 2>/dev/null | sort -z)
           if [ "${#patches[@]}" -eq 0 ]; then
-            echo "No queued patches."
-            exit 0
+            echo "No queued patches." >&2
+            exit 1
           fi
 
-          for patch in "${patches[@]}"; do
+          last_index=$((${#patches[@]} - 1))
+          for index in "${!patches[@]}"; do
+            patch="${patches[$index]}"
             message="$(sed -n '1s/^# SDD-COMMIT: //p' "$patch")"
             if [ -z "$message" ]; then
               echo "Missing SDD commit message header: $patch" >&2
@@ -42,6 +46,9 @@ jobs:
             tail -n +2 "$patch" > /tmp/sdd.patch
             git apply --index --whitespace=nowarn /tmp/sdd.patch
             git rm "$patch"
+            if [ "$index" -eq "$last_index" ]; then
+              git rm "$ready"
+            fi
             git commit -m "$message"
           done
 
