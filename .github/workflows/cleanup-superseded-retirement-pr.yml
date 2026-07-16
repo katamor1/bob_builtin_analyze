@@ -1,0 +1,41 @@
+name: cleanup-superseded-retirement-pr
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/cleanup-superseded-retirement-pr.yml"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  cleanup:
+    if: github.event.pull_request.number == 122 && github.head_ref == 'integration/retire-superseded-branches-20260716-v2'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      HEAD_REF: ${{ github.event.pull_request.head.ref }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - name: Checkout exact duplicate head
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Verify completed replacement and remove duplicate PR branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$HEAD_SHA"
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          git merge-base --is-ancestor f4f9d3308361333e02ab1af732706b7a9e5fc952 refs/remotes/origin/main
+          test "$(gh api "repos/$GITHUB_REPOSITORY/pulls/120" --jq '.merged')" = "true"
+          current="$(git ls-remote --heads origin "refs/heads/$HEAD_REF" | cut -f1)"
+          test "$current" = "$HEAD_SHA"
+
+          gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body "Closing this duplicate execution PR because PR #120 already completed the reviewed plan, atomically deleted the approved refs, verified remaining=0, and merged durable evidence as commit \`f4f9d3308361333e02ab1af732706b7a9e5fc952\`. This branch's temporary bootstrap artifacts were already removed; its Linux/Windows audit run succeeded, but no additional product or retirement change is needed."
+          gh pr close "$PR_NUMBER" --repo "$GITHUB_REPOSITORY"
+          git push --force-with-lease="refs/heads/$HEAD_REF:$HEAD_SHA" origin ":refs/heads/$HEAD_REF"
