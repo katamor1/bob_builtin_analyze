@@ -60,6 +60,16 @@ test('evaluates merged, absent, blocked, and protected branches fail-closed', ()
   assert.equal(absent.disposition, 'already-absent')
   assert.equal(absent.deletable, false)
 
+  const absentWithoutReplacement = evaluateRetirementEntry({
+    ...base,
+    remoteSha: undefined,
+    mergedPullRequests: new Set(),
+    mainPaths: new Set()
+  })
+  assert.equal(absentWithoutReplacement.disposition, 'blocked-unique')
+  assert.equal(absentWithoutReplacement.deletable, false)
+  assert.match(absentWithoutReplacement.blockers.join(' '), /replacement pull request|main path/i)
+
   const moved = evaluateRetirementEntry({ ...base, remoteSha: 'b'.repeat(40) })
   assert.equal(moved.disposition, 'blocked-unique')
   assert.equal(moved.deletable, false)
