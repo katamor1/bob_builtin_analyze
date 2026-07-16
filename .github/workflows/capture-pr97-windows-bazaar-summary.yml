@@ -1,0 +1,81 @@
+name: capture-pr97-windows-bazaar-summary
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/capture-pr97-windows-bazaar-summary.yml"
+
+permissions:
+  actions: read
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Summarize Windows Bazaar TAP failures
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          RUN_ID: "29460255014"
+          JOB_ID: "87502048796"
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          branch="$GITHUB_HEAD_REF"
+          gh run view "$RUN_ID" --repo "$repo" --job "$JOB_ID" --log > /tmp/job.log
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          raw = Path('/tmp/job.log').read_text(encoding='utf-8', errors='replace')
+          ansi = re.compile(r'\x1b\[[0-9;]*[A-Za-z]')
+          lines = []
+          for original in raw.splitlines():
+              line = ansi.sub('', original)
+              parts = line.split('\t', 2)
+              lines.append(parts[2] if len(parts) == 3 else line)
+
+          results = []
+          for index, line in enumerate(lines):
+              match = re.search(r'not ok\s+\d+\s+-\s+(.+)$', line)
+              if not match:
+                  continue
+              name = match.group(1).strip()
+              location = '-'
+              error = '-'
+              for following in lines[index + 1:index + 45]:
+                  stripped = following.strip()
+                  if stripped.startswith('location:') and location == '-':
+                      location = stripped.removeprefix('location:').strip().strip("'")
+                  if stripped.startswith('error:') and error == '-':
+                      remainder = stripped.removeprefix('error:').strip()
+                      if remainder and remainder != '|-':
+                          error = remainder.strip("'")
+                  elif error == '-' and stripped and not stripped.startswith((
+                      '---', 'duration_ms:', 'type:', 'location:', 'failureType:', 'code:',
+                      'name:', 'expected:', 'actual:', 'operator:', 'stack:'
+                  )):
+                      if 'error:' in following:
+                          error = following.split('error:', 1)[1].strip().strip("'") or error
+                  if stripped == '...':
+                      break
+              results.append((name, location, error))
+
+          summary = []
+          for line in lines:
+              if re.match(r'^# (tests|pass|fail|duration_ms) ', line):
+                  summary.append(line)
+          output = ['## Concise Windows Bazaar failures', '']
+          for number, (name, location, error) in enumerate(results, start=1):
+              output.append(f'{number}. `{name}`')
+              output.append(f'   - location: `{location}`')
+              output.append(f'   - error: `{error}`')
+          output.extend(['', '```text', *summary, '```'])
+          Path('/tmp/summary.md').write_text('\n'.join(output), encoding='utf-8')
+          PY
+          gh pr comment "$PR_NUMBER" --repo "$repo" --body-file /tmp/summary.md
+          gh api --method DELETE "repos/$repo/git/refs/heads/$branch"
