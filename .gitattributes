@@ -1,2 +1,5 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Reproducible Runtime characterization fixtures are reviewed as exact LF bytes.
+extensions/workflow-register/test/fixtures/reproducible-runtime/** text eol=lf
