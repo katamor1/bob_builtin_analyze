@@ -66,13 +66,13 @@ test("package contributions expose automatic pause settings with disabled defaul
     type: "number",
     default: 0,
     minimum: 0,
-    description: "次の安全な checkpoint で run を自動停止するまでの最大実行時間（分）。0 は無効。"
+    description: "次の安全な区切りで実行を自動停止するまでの最大時間（分）です。0 で無効になります。"
   })
   assert.deepEqual(properties["workflowRegister.runControl.maxAgentStepsPerRun"], {
     type: "integer",
     default: 0,
     minimum: 0,
-    description: "1 run で開始できる agent step 呼び出し回数の上限。0 は無効。"
+    description: "1回の実行で開始できる AI ステップの呼び出し回数上限です。0 で無効になります。"
   })
   assert.equal(properties["workflowRegister.runControl.pauseAtLocalTime"].default, "")
   assert.equal(properties["workflowRegister.runControl.timezone"].default, "Asia/Tokyo")

@@ -4,7 +4,7 @@ import type { WorkflowBuilderHelpEntry } from "./workflowBuilderHelpTypes"
 export const workflowBuilderHelpCatalog: Record<string, WorkflowBuilderHelpEntry> = {
   "tab.step": {
     id: "tab.step",
-    labelJa: "Step detail",
+    labelJa: "ステップ設定",
     fieldKey: "steps[]",
     summary: "選択中 step の種類、実行内容、前後の状態受け渡しを設定します。",
     effect: "ここで指定した内容が workflow の実行順序と Bob / command / manual / result の動作を決めます。",
@@ -12,7 +12,7 @@ export const workflowBuilderHelpCatalog: Record<string, WorkflowBuilderHelpEntry
   },
   "tab.inputs": {
     id: "tab.inputs",
-    labelJa: "Inputs",
+    labelJa: "入力項目",
     fieldKey: "inputs",
     summary: "ワークフロー開始前にユーザーへ入力してもらう値を定義します。",
     effect: "入力値は step の実行や action provider の引数として利用できます。",
@@ -20,49 +20,49 @@ export const workflowBuilderHelpCatalog: Record<string, WorkflowBuilderHelpEntry
   },
   "tab.requires": {
     id: "tab.requires",
-    labelJa: "Requires",
+    labelJa: "実行条件",
     fieldKey: "requires",
     summary: "このワークフローを実行するための前提条件を定義します。",
     effect: "workspace、Bob バージョン、必要ファイルなどを明示し、実行前の検証に使います。"
   },
   "tab.preflight": {
     id: "tab.preflight",
-    labelJa: "Preflight",
+    labelJa: "事前確認",
     fieldKey: "preflight",
     summary: "本処理に入る前の確認項目を定義します。",
     effect: "必須ファイルや初期化状態など、満たさないと危険な条件を早い段階で検出できます。"
   },
   "tab.artifacts": {
     id: "tab.artifacts",
-    labelJa: "Artifacts",
+    labelJa: "成果物",
     fieldKey: "artifacts",
     summary: "ワークフローが生成する成果物を定義します。",
     effect: "どの step がどのファイルやディレクトリを生成するかを Bob UI や完了処理から参照しやすくします。"
   },
   "tab.guardrails": {
     id: "tab.guardrails",
-    labelJa: "Guardrails",
+    labelJa: "安全制限",
     fieldKey: "guardrails",
     summary: "command 実行の許可、禁止、人間承認が必要な条件を定義します。",
     effect: "危険な command や外部出力を制御し、ワークフローの安全境界を明確にします。"
   },
   "tab.completion": {
     id: "tab.completion",
-    labelJa: "Completion",
+    labelJa: "完了時の処理",
     fieldKey: "completion",
     summary: "ワークフロー完了時の summary、成果物表示、結果検証を定義します。",
     effect: "完了後に人間が確認すべき情報や成果物をまとめやすくします。"
   },
   "tab.body": {
     id: "tab.body",
-    labelJa: "Markdown Body",
+    labelJa: "Markdown 本文",
     fieldKey: "WORKFLOW.md body",
     summary: "YAML front matter の後ろに出力される Markdown 本文を編集します。",
     effect: "Bob に渡す目的、手順、注意事項、レビュー観点などを構造化 YAML とは別に記述できます。"
   },
   "tab.preview": {
     id: "tab.preview",
-    labelJa: "Preview / Diagnostics",
+    labelJa: "プレビューと診断",
     fieldKey: "preview",
     summary: "生成される WORKFLOW.md と検証結果を確認します。",
     effect: "保存前に YAML / Markdown の全体像、参照切れ、validation error を確認できます。"
@@ -101,7 +101,7 @@ export const workflowBuilderHelpCatalog: Record<string, WorkflowBuilderHelpEntry
   },
   "step.id": {
     id: "step.id",
-    labelJa: "Step ID",
+    labelJa: "ステップ ID",
     fieldKey: "steps[].id",
     summary: "step を一意に識別する名前です。",
     effect: "artifacts.producedBy や診断メッセージから参照されます。",
@@ -109,7 +109,7 @@ export const workflowBuilderHelpCatalog: Record<string, WorkflowBuilderHelpEntry
   },
   "step.type": {
     id: "step.type",
-    labelJa: "Step 種別",
+    labelJa: "ステップ種別",
     fieldKey: "steps[].type",
     summary: "この step を Bob / command / manual / result のどの方式で実行するかを選びます。",
     effect: "選択した種別によって表示される設定項目と実行方法が変わります。",
@@ -122,14 +122,14 @@ export const workflowBuilderHelpCatalog: Record<string, WorkflowBuilderHelpEntry
   },
   "step.title": {
     id: "step.title",
-    labelJa: "Step 表示名",
+    labelJa: "ステップ表示名",
     fieldKey: "steps[].title",
     summary: "人間が読む step の名前です。",
     effect: "Bob UI や step 一覧で表示されます。"
   },
   "section.userAction": {
     id: "section.userAction",
-    labelJa: "User action",
+    labelJa: "実行時の案内",
     fieldKey: "steps[].userAction",
     summary: "手動操作ページに表示する利用者向け操作内容と完了ボタンを設定します。",
     effect: "manual step や手動完了待ち step で、人間が何を確認し、どのボタンで進めるかを GUI 上に出せます。"
@@ -166,21 +166,21 @@ export const workflowBuilderHelpCatalog: Record<string, WorkflowBuilderHelpEntry
   },
   "step.required": {
     id: "step.required",
-    labelJa: "必須 step",
+    labelJa: "必須ステップ",
     fieldKey: "steps[].required",
     summary: "この step を成功必須として扱うかを指定します。",
     effect: "重要な前処理、検証、成果物生成など、失敗時に続行すべきでない step で有効にします。"
   },
   "step.stateRequired": {
     id: "step.stateRequired",
-    labelJa: "State 必須",
+    labelJa: "前段状態を必須にする",
     fieldKey: "steps[].stateRequired",
     summary: "includeState で指定した前段結果が無い場合に実行しないことを示します。",
     effect: "前段の分析結果や生成物が必要な step で、誤って空の状態で進むことを防ぎます。"
   },
   "step.resultKey": {
     id: "step.resultKey",
-    labelJa: "結果名",
+    labelJa: "出力キー",
     fieldKey: "steps[].resultKey",
     summary: "この step の結果を workflow state に保存する名前です。",
     effect: "後続 step は includeState でこの名前を選ぶと、前の結果を参照できます。",
@@ -188,7 +188,7 @@ export const workflowBuilderHelpCatalog: Record<string, WorkflowBuilderHelpEntry
   },
   "step.includeState": {
     id: "step.includeState",
-    labelJa: "前段結果の取り込み",
+    labelJa: "前のステップから引き継ぐ値",
     fieldKey: "steps[].includeState",
     summary: "前の step が保存した resultKey を、この step に渡します。",
     effect: "AI step や command step が、前段の出力を根拠や入力として使えるようになります。",
@@ -196,14 +196,14 @@ export const workflowBuilderHelpCatalog: Record<string, WorkflowBuilderHelpEntry
   },
   "step.maxResultBytes": {
     id: "step.maxResultBytes",
-    labelJa: "結果サイズ上限",
+    labelJa: "出力上限",
     fieldKey: "steps[].maxResultBytes",
     summary: "step 結果として保持する最大バイト数です。",
     effect: "大きすぎる出力を state や Bob context に入れないように制限できます。"
   },
   "command.provider": {
     id: "command.provider",
-    labelJa: "Command provider",
+    labelJa: "実行プロバイダー",
     fieldKey: "steps[].action.provider",
     summary: "command step で呼び出す action provider です。",
     effect: "他拡張が workflow-register に登録した provider ID、または VS Code command 実行 provider を指定します。"
@@ -239,7 +239,7 @@ export const workflowBuilderHelpCatalog: Record<string, WorkflowBuilderHelpEntry
   },
   "result.source": {
     id: "result.source",
-    labelJa: "Result source",
+    labelJa: "保存する内容",
     fieldKey: "steps[].result.source",
     summary: "成果物へ書き出す元データを選びます。",
     effect: "state、固定文字列、agent 出力のどれを sink に渡すかが変わります。",
@@ -251,7 +251,7 @@ export const workflowBuilderHelpCatalog: Record<string, WorkflowBuilderHelpEntry
   },
   "result.stateKey": {
     id: "result.stateKey",
-    labelJa: "State key",
+    labelJa: "状態キー",
     fieldKey: "steps[].result.stateKey",
     summary: "書き出し元にする workflow state の resultKey です。",
     effect: "選択した前段結果を file sink などへ保存します。"

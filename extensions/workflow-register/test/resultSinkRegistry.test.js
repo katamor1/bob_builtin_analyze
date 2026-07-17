@@ -104,9 +104,9 @@ test("result sink registry blocks command and file sinks in untrusted workspaces
   })
 
   assert.equal(commandResult.ok, false)
-  assert.match(commandResult.error, /Workspace is not trusted/)
+  assert.match(commandResult.error, /ワークスペースは信頼されていません/)
   assert.equal(fileResult.ok, false)
-  assert.match(fileResult.error, /Workspace is not trusted/)
+  assert.match(fileResult.error, /ワークスペースは信頼されていません/)
   assert.equal(calls.length, 0)
   assert.equal(fs.existsSync(path.join(workspaceRoot, ".bob", "workflows", "runs", "run-1", "steps", "save.result.json")), false)
 })

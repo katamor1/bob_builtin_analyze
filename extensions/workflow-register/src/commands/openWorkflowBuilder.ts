@@ -8,9 +8,9 @@ export interface OpenWorkflowBuilderOptions {
 }
 
 export async function openWorkflowBuilder(options: OpenWorkflowBuilderOptions): Promise<void> {
-  const workflowRoot = await pickWorkflowRoot("Select workflow workspace")
+  const workflowRoot = await pickWorkflowRoot("ワークフローのワークスペースを選択")
   if (!workflowRoot) {
-    await vscode.window.showErrorMessage("No workspace folder is open.")
+    await vscode.window.showErrorMessage("ワークスペースフォルダーが開かれていません。フォルダーを開いてからもう一度実行してください。")
     return
   }
   WorkflowBuilderPanel.createOrShow({ extensionUri: options.extensionUri, workflowRoot, sourceId: options.sourceId })

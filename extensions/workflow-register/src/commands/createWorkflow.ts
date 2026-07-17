@@ -9,25 +9,25 @@ export interface CreateWorkflowCommandOptions {
 }
 
 export async function createWorkflowFromTemplate(options: CreateWorkflowCommandOptions): Promise<void> {
-  const workflowRoot = await pickWorkflowRoot("Select workflow workspace")
+  const workflowRoot = await pickWorkflowRoot("ワークフローのワークスペースを選択")
   if (!workflowRoot) {
-    await vscode.window.showErrorMessage("No workspace folder is open.")
+    await vscode.window.showErrorMessage("ワークスペースフォルダーが開かれていません。フォルダーを開いてからもう一度実行してください。")
     return
   }
-  const picked = await vscode.window.showQuickPick(workflowTemplates.map((template) => ({ label: template.label, description: template.id, detail: template.description, template })), { title: "Workflow Template" })
+  const picked = await vscode.window.showQuickPick(workflowTemplates.map((template) => ({ label: template.label, description: template.id, detail: template.description, template })), { title: "ワークフローテンプレート" })
   if (!picked) return
-  const rawName = await vscode.window.showInputBox({ title: "Workflow name", value: "new-workflow" })
+  const rawName = await vscode.window.showInputBox({ title: "ワークフロー名", value: "new-workflow" })
   if (rawName === undefined) return
   const name = normalizeWorkflowName(rawName)
-  const title = await vscode.window.showInputBox({ title: "Workflow title", value: titleFromName(name) })
+  const title = await vscode.window.showInputBox({ title: "ワークフローの表示名", value: titleFromName(name) })
   if (title === undefined) return
-  const description = await vscode.window.showInputBox({ title: "Workflow description", value: `Run ${title}.` })
+  const description = await vscode.window.showInputBox({ title: "ワークフローの説明", value: `${title} を実行します。` })
   if (description === undefined) return
 
   const markdown = createWorkflowMarkdown({ name, title, description, template: picked.template.id as WorkflowTemplateKind })
   const validation = validateWorkflowText({ sourceId: options.sourceId, filePath: `.bob/workflows/${name}/WORKFLOW.md`, text: markdown })
   if (!validation.ok) {
-    await options.showMarkdownReport("Generated Workflow Validation", "Generated workflow is invalid.", formatWorkflowDiagnostics(validation))
+    await options.showMarkdownReport("生成したワークフローの検証", "生成したワークフローに問題があります。診断結果を修正してください。", formatWorkflowDiagnostics(validation))
     return
   }
   const dir = vscode.Uri.joinPath(vscode.Uri.file(workflowRoot), ".bob", "workflows", name)
@@ -38,5 +38,5 @@ export async function createWorkflowFromTemplate(options: CreateWorkflowCommandO
 }
 
 function titleFromName(name: string): string {
-  return name.split(/[._-]+/).filter(Boolean).map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`).join(" ") || "New Workflow"
+  return name.split(/[._-]+/).filter(Boolean).map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`).join(" ") || "新しいワークフロー"
 }

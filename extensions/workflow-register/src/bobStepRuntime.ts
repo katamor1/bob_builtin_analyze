@@ -90,7 +90,7 @@ export class StepRuntime {
 
   async completeStepByKeyResult(key: string, options: StepCompletionExpectation = {}): Promise<StepCompletionResult> {
     const active = this.activeSteps.get(key)
-    if (!active) return { ok: false, message: `No active Bob workflow step for key: ${key}` }
+    if (!active) return { ok: false, message: `キー ${key} に対応する実行中の Bob ワークフローステップがありません。実行状況を更新してください。` }
     const mismatch = activeStepMismatch([active], options)
     if (mismatch) return { ok: false, message: mismatch }
     return this.completeStep(active, options)
@@ -98,13 +98,13 @@ export class StepRuntime {
 
   async completeCurrentStep(options: StepCompletionExpectation = {}): Promise<string> {
     const steps = this.list()
-    if (steps.length === 0) return "No active Bob workflow step."
+    if (steps.length === 0) return "実行中の Bob ワークフローステップがありません。実行状況を確認してください。"
     const active = hasExpectedStep(options)
       ? pickExpectedStep(steps, options)
       : await this.pickActiveStep(steps)
     const mismatch = activeStepMismatch(steps, options)
     if (mismatch) return mismatch
-    if (!active) return "No active Bob workflow step."
+    if (!active) return "実行中の Bob ワークフローステップがありません。実行状況を確認してください。"
     const result = await this.completeStep(active, options)
     return result.message
   }
@@ -117,7 +117,7 @@ export class StepRuntime {
     }
     const completion = await this.collectManualCompletion(active, options)
     if (!completion.completed) {
-      const message = completion.error ?? "Manual workflow step completion was cancelled."
+      const message = completion.error ?? "手動ステップの完了を中止しました。"
       await vscode.window.showWarningMessage(message)
       return { ok: false, message }
     }
@@ -128,7 +128,7 @@ export class StepRuntime {
     }
     const handoff = await captureHeldStepResult(active)
     if (!handoff.ok) {
-      const message = `Could not capture Bob workflow step result: ${handoff.error}`
+      const message = `Bob ワークフローステップの結果を取り込めませんでした。出力内容を確認してください。詳細: ${handoff.error}`
       await vscode.window.showErrorMessage(message)
       return { ok: false, message }
     }
@@ -137,7 +137,7 @@ export class StepRuntime {
     if (active.completeBobTask !== false) active.task.setStepComplete?.()
     active.resolve(completion)
     this.activeSteps.delete(active.key)
-    return { ok: true, message: `Completed: ${active.workflowLabel} / ${active.title}` }
+    return { ok: true, message: `完了しました: ${active.workflowLabel} / ${active.title}` }
   }
 
   private async collectManualCompletion(active: ActiveStep, options: StepCompletionExpectation): Promise<ManualCompletionResult> {
@@ -152,7 +152,7 @@ export class StepRuntime {
       state: active.state,
       previousFormValues: readPreviousFormValues(active, step)
     }))
-    if (!promptResult) return { completed: false, error: "Manual workflow step completion was cancelled." }
+    if (!promptResult) return { completed: false, error: "手動ステップの完了を中止しました。" }
     return {
       completed: true,
       stateUpdates,
@@ -169,7 +169,7 @@ export class StepRuntime {
         detail: `${step.workflowId} / ${step.stepId} / ${step.key}`,
         step
       })),
-      { placeHolder: "Select the Bob workflow step to complete" }
+      { placeHolder: "完了する Bob ワークフローステップを選択" }
     )
     return picked?.step
   }
@@ -205,7 +205,7 @@ function activeStepMismatch(steps: ActiveStep[], options: StepCompletionExpectat
   ].filter(Boolean).join(" ")
   const active = steps.map((step) => `runId=${step.runId} stepId=${step.stepId}`).join("; ")
   const suffix = matchingSteps.length > 1 ? `; matched ${matchingSteps.length} active steps` : ""
-  return `Active Bob workflow step mismatch: expected ${expected}; active ${active}.${suffix}`
+  return `対象の Bob ワークフローステップが一致しません。期待値: ${expected}; 実行中: ${active}.${suffix}`
 }
 
 function stepMatchesExpectation(step: ActiveStep, options: StepCompletionExpectation): boolean {

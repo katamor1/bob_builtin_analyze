@@ -32,9 +32,12 @@ async function promptForWorkflowInput(
 ): Promise<unknown> {
   const title = definition.title ?? key
   if (definition.type === "boolean") {
-    const picked = await vscode.window.showQuickPick(["true", "false"], { title })
+    const picked = await vscode.window.showQuickPick([
+      { label: "はい", value: true },
+      { label: "いいえ", value: false }
+    ], { title })
     if (picked === undefined && required) return undefined
-    return picked === undefined ? undefined : picked === "true"
+    return picked?.value
   }
   if (definition.type === "select") {
     return vscode.window.showQuickPick(definition.options ?? [], { title })

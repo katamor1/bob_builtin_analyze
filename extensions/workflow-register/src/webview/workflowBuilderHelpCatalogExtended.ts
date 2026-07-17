@@ -49,7 +49,7 @@ export const workflowBuilderExtendedHelpCatalog: Record<string, WorkflowBuilderH
   },
   "requires.workspace": {
     id: "requires.workspace",
-    labelJa: "workspace 必須",
+    labelJa: "ワークスペース必須",
     fieldKey: "requires.workspace",
     summary: "実行に VS Code workspace が必要かを示します。",
     effect: "true にすると、ファイル操作や .bob 配下成果物生成が前提であることを明示できます。"
@@ -71,7 +71,7 @@ export const workflowBuilderExtendedHelpCatalog: Record<string, WorkflowBuilderH
   },
   "preflight.id": {
     id: "preflight.id",
-    labelJa: "Preflight ID",
+    labelJa: "事前確認 ID",
     fieldKey: "preflight[].id",
     summary: "preflight check を識別する名前です。",
     effect: "診断や後続の説明で、どの事前確認かを示します。"
@@ -90,7 +90,7 @@ export const workflowBuilderExtendedHelpCatalog: Record<string, WorkflowBuilderH
   },
   "preflight.title": {
     id: "preflight.title",
-    labelJa: "Preflight 表示名",
+    labelJa: "事前確認の表示名",
     fieldKey: "preflight[].title",
     summary: "事前確認の人間向け名称です。",
     effect: "診断やレビュー時に内容を理解しやすくします。"
@@ -104,7 +104,7 @@ export const workflowBuilderExtendedHelpCatalog: Record<string, WorkflowBuilderH
   },
   "preflight.checks": {
     id: "preflight.checks",
-    labelJa: "Check ID",
+    labelJa: "確認 ID",
     fieldKey: "preflight[].checks",
     summary: "実行したい check の識別子です。",
     effect: "workflow 側で用意された事前確認処理を参照します。"
@@ -125,7 +125,7 @@ export const workflowBuilderExtendedHelpCatalog: Record<string, WorkflowBuilderH
   },
   "artifact.producedBy": {
     id: "artifact.producedBy",
-    labelJa: "生成元 step",
+    labelJa: "生成元ステップ",
     fieldKey: "artifacts[].producedBy",
     summary: "この成果物を生成する step の id です。",
     effect: "step と成果物の対応を明確にします。存在しない step を選ぶと参照エラーになります。"
@@ -139,7 +139,7 @@ export const workflowBuilderExtendedHelpCatalog: Record<string, WorkflowBuilderH
   },
   "guardrails.allowedCommands": {
     id: "guardrails.allowedCommands",
-    labelJa: "許可 command",
+    labelJa: "許可するコマンド",
     fieldKey: "guardrails.allowedCommands",
     summary: "実行を許可する command provider の一覧です。",
     effect: "空でなければ、ここにある command だけを許可する allow list として働きます。",
@@ -147,14 +147,14 @@ export const workflowBuilderExtendedHelpCatalog: Record<string, WorkflowBuilderH
   },
   "guardrails.deniedCommands": {
     id: "guardrails.deniedCommands",
-    labelJa: "禁止 command",
+    labelJa: "禁止するコマンド",
     fieldKey: "guardrails.deniedCommands",
     summary: "実行を禁止する command provider の一覧です。",
     effect: "shell 実行やワークスペース外書き込みなど、危険な操作を明示的に拒否できます。"
   },
   "guardrails.allowedCommandIds": {
     id: "guardrails.allowedCommandIds",
-    labelJa: "許可 VS Code command ID",
+    labelJa: "許可する VS Code コマンド ID",
     fieldKey: "guardrails.allowedCommandIds",
     summary: "vscode.executeCommand provider 経由で実行を許可する VS Code command ID の一覧です。",
     effect: "action.provider が vscode.executeCommand の command step では、args[0] がこの allow list に含まれている必要があります。",
@@ -162,7 +162,7 @@ export const workflowBuilderExtendedHelpCatalog: Record<string, WorkflowBuilderH
   },
   "guardrails.deniedCommandIds": {
     id: "guardrails.deniedCommandIds",
-    labelJa: "禁止 VS Code command ID",
+    labelJa: "禁止する VS Code コマンド ID",
     fieldKey: "guardrails.deniedCommandIds",
     summary: "vscode.executeCommand provider 経由で実行を禁止する VS Code command ID の一覧です。",
     effect: "安全境界として、特定の VS Code command ID を明示的に拒否できます。",
@@ -193,7 +193,7 @@ export const workflowBuilderExtendedHelpCatalog: Record<string, WorkflowBuilderH
   },
   "completion.summary": {
     id: "completion.summary",
-    labelJa: "完了 summary",
+    labelJa: "完了時の概要",
     fieldKey: "completion.summary",
     summary: "ワークフロー完了時に表示・生成する summary の方針です。",
     effect: "完了後にどのようなまとめを出すかを示します。"

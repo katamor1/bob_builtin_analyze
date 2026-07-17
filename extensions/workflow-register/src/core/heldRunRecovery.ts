@@ -89,23 +89,23 @@ export function buildHeldRunRecoveryPreview(
 ): string[] {
   const stateKeys = Object.keys(run.state).sort()
   return [
-    `- runId: ${run.runId}`,
-    `- workflow: ${run.workflowId}`,
-    `- current status: ${run.status}`,
-    `- held step to complete: ${assessment.stepId ?? "none"}`,
-    `- next step: ${assessment.nextStepId ?? "workflow completion"}`,
-    `- persisted state keys: ${stateKeys.length > 0 ? stateKeys.join(", ") : "none"}`,
-    "- state values, form values, snapshot text and artifact text are not shown."
+    `- 実行 ID（runId）: ${run.runId}`,
+    `- ワークフロー: ${run.workflowId}`,
+    `- 現在の状態: ${run.status}`,
+    `- 完了対象の手動待ちステップ: ${assessment.stepId ?? "なし"}`,
+    `- 次のステップ: ${assessment.nextStepId ?? "ワークフロー完了"}`,
+    `- 保存済み状態キー: ${stateKeys.length > 0 ? stateKeys.join(", ") : "なし"}`,
+    "- 状態値、フォーム入力値、保存済みタスクの本文、成果物本文は表示しません。"
   ]
 }
 
 const ACTIONS: Record<HeldRunRecoveryActionId, HeldRunRecoveryAction> = {
-  none: { id: "none", label: "No recovery action" },
-  "open-manual-step": { id: "open-manual-step", label: "Open manual step" },
-  "resume-saved-state": { id: "resume-saved-state", label: "Resume from saved state" },
-  "review-artifacts": { id: "review-artifacts", label: "Review reusable artifacts" },
-  "review-task-snapshot": { id: "review-task-snapshot", label: "Review task snapshot" },
-  "open-diagnostics": { id: "open-diagnostics", label: "Open diagnostics" }
+  none: { id: "none", label: "復旧操作はありません" },
+  "open-manual-step": { id: "open-manual-step", label: "手動ステップを開く" },
+  "resume-saved-state": { id: "resume-saved-state", label: "保存済み状態から再開" },
+  "review-artifacts": { id: "review-artifacts", label: "再利用できる成果物を確認" },
+  "review-task-snapshot": { id: "review-task-snapshot", label: "保存済みタスクを確認" },
+  "open-diagnostics": { id: "open-diagnostics", label: "実行診断を開く" }
 }
 
 export function classifyHeldRunRecovery(input: ClassifyHeldRunRecoveryInput): HeldRunRecoveryAssessment {
@@ -142,8 +142,8 @@ export function classifyHeldRunRecovery(input: ClassifyHeldRunRecoveryInput): He
       kind: "not-held",
       run,
       evidence,
-      title: "Run is not waiting at a held step",
-      explanation: "Detached held-step recovery is available only while the persisted run status is held.",
+      title: "この実行は手動操作待ちではありません",
+      explanation: "切断された手動ステップの復旧は、保存済みの実行状態が手動操作待ちの場合だけ利用できます。",
       primaryAction: ACTIONS.none
     })
   }
@@ -154,20 +154,20 @@ export function classifyHeldRunRecovery(input: ClassifyHeldRunRecoveryInput): He
       run,
       stepId: runStep.id,
       evidence,
-      title: "Held step is connected",
-      explanation: "A live Bob task or manual-step handle is available. Continue through the existing manual-step flow.",
+      title: "手動ステップに接続済みです",
+      explanation: "利用中の Bob タスクまたは手動ステップに接続できます。既存の手動ステップ画面から続行してください。",
       primaryAction: ACTIONS["open-manual-step"]
     })
   }
 
   const blockers: string[] = []
-  if (!workflow) blockers.push(`Workflow definition is not loaded for '${run.workflowId}'.`)
-  if (!runStep) blockers.push(`Current held step '${run.currentStep ?? "none"}' is missing from the persisted run.`)
-  if (workflow && !workflowStep) blockers.push(`Current held step '${run.currentStep ?? "none"}' is missing from the workflow definition.`)
-  if (workflow && !definitionMatches(run, workflow)) blockers.push("Workflow definition does not match the definition used by this run.")
-  if (workflow && !stepOrderMatches(run, workflow)) blockers.push("Workflow step order or identifiers are incompatible with the persisted run.")
+  if (!workflow) blockers.push(`ワークフロー定義が読み込まれていません: ${run.workflowId}`)
+  if (!runStep) blockers.push(`現在の手動操作待ちステップが保存済み実行にありません: ${run.currentStep ?? "なし"}`)
+  if (workflow && !workflowStep) blockers.push(`現在の手動操作待ちステップがワークフロー定義にありません: ${run.currentStep ?? "なし"}`)
+  if (workflow && !definitionMatches(run, workflow)) blockers.push("現在のワークフロー定義が、この実行で使用した定義と一致しません。")
+  if (workflow && !stepOrderMatches(run, workflow)) blockers.push("ワークフローのステップ順または識別子が、保存済み実行と一致しません。")
   if (missingRequiredStateKeys.length > 0) {
-    blockers.push(`Required workflow state is missing: ${missingRequiredStateKeys.join(", ")}.`)
+    blockers.push(`必要なワークフロー状態がありません: ${missingRequiredStateKeys.join(", ")}`)
   }
   if (workflowStep?.type === "manual") blockers.push(...manualCompletionBlockers(workflowStep, run.state))
 
@@ -179,8 +179,8 @@ export function classifyHeldRunRecovery(input: ClassifyHeldRunRecoveryInput): He
         stepId: runStep?.id,
         evidence,
         blockers,
-        title: "Held run requires artifact recovery",
-        explanation: "Direct saved-state recovery is blocked, but a reusable artifact manifest is available for review.",
+        title: "成果物を使った復旧が必要です",
+        explanation: "保存済み状態から直接再開できませんが、再利用できる成果物があります。内容を確認して復旧してください。",
         primaryAction: ACTIONS["review-artifacts"]
       })
     }
@@ -191,8 +191,8 @@ export function classifyHeldRunRecovery(input: ClassifyHeldRunRecoveryInput): He
         stepId: runStep?.id,
         evidence,
         blockers,
-        title: "Held run requires task-snapshot recovery",
-        explanation: "Direct saved-state recovery is blocked, but a task snapshot is available for preview and selective import.",
+        title: "保存済みタスクからの復旧が必要です",
+        explanation: "保存済み状態から直接再開できませんが、保存済みタスクを確認して必要な成果物だけ取り込めます。",
         primaryAction: ACTIONS["review-task-snapshot"]
       })
     }
@@ -202,8 +202,8 @@ export function classifyHeldRunRecovery(input: ClassifyHeldRunRecoveryInput): He
       stepId: runStep?.id,
       evidence,
       blockers,
-      title: "Held run recovery is blocked",
-      explanation: "The run cannot be resumed safely until the diagnostics are resolved or compatible recovery evidence is supplied.",
+      title: "中断した実行を安全に復旧できません",
+      explanation: "診断結果を解消するか、互換性のある復旧根拠を用意するまで安全に再開できません。",
       primaryAction: ACTIONS["open-diagnostics"]
     })
   }
@@ -216,8 +216,8 @@ export function classifyHeldRunRecovery(input: ClassifyHeldRunRecoveryInput): He
     stepId: runStep?.id,
     nextStepId,
     evidence,
-    title: "Held run can resume from saved state",
-    explanation: "The persisted definition, step order and required state are compatible. Explicit confirmation is required before completing the detached held step.",
+    title: "保存済み状態から再開できます",
+    explanation: "保存済みの定義、ステップ順、必要な状態に互換性があります。切断された手動ステップを完了する前に確認が必要です。",
     primaryAction: ACTIONS["resume-saved-state"]
   })
 }
@@ -265,12 +265,12 @@ function manualCompletionBlockers(
     const raw = state[step.form.resultKey]
     const value = raw === undefined ? undefined : parseStateValue(raw)
     if (!value || typeof value !== "object" || Array.isArray(value)) {
-      blockers.push(`Persisted manual form result '${step.form.resultKey}' is unavailable.`)
+      blockers.push(`保存済みの手動フォーム結果がありません: ${step.form.resultKey}`)
     } else {
       const record = value as Record<string, unknown>
       for (const field of step.form.fields.filter((candidate) => candidate.required)) {
         if (!manualFieldValuePresent(record[field.id])) {
-          blockers.push(`Required manual form field '${field.id}' is unavailable in '${step.form.resultKey}'.`)
+          blockers.push(`必須の手動フォーム項目がありません: ${field.id}（${step.form.resultKey}）`)
         }
       }
     }
@@ -282,7 +282,7 @@ function manualCompletionBlockers(
       ? (value as Record<string, unknown>).decision
       : undefined
     if (decision !== "approved" && decision !== "rejected") {
-      blockers.push(`Persisted manual approval result '${step.approval.resultKey}' is unavailable.`)
+      blockers.push(`保存済みの手動承認結果がありません: ${step.approval.resultKey}`)
     }
   }
   return blockers

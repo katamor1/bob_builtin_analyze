@@ -9,6 +9,7 @@ import { coordinateWorkflowRunExecution } from "../core/engine/runExecutionCoord
 import { fallbackWorkspaceRootCandidates, findWorkflowRootCandidates, MarkerRootCandidate } from "../core/workspaceRoots"
 import { reviewTaskRegistry } from "../reviewTaskRegistry"
 import type { BobWorkflowGateAcceptance, BobWorkflowGateAcceptResult } from "../bobWorkflowGateRegistry"
+import { workflowRunStatusLabel, workflowStepStatusLabel } from "../ui/displayLabels"
 import {
   assertOperationHubRunRevision,
   isOperationHubRunMutationTarget,
@@ -51,7 +52,7 @@ interface AcceptedStepResult {
 type ReviewRunArg = string | OperationHubRunMutationTarget | undefined
 
 const RUN_NEXT_STEP_LABEL = "次のステップを実行"
-const OPEN_OPERATION_HUB_LABEL = "Operation Hub を開く"
+const OPEN_OPERATION_HUB_LABEL = "操作センターを開く"
 
 export async function acceptCurrentStep(options: StepReviewCommandOptions, runArg?: ReviewRunArg, acceptOptions: AcceptOptions = {}): Promise<WorkflowRunState | string> {
   const accepted = await acceptReviewedStep(options, runArg)
@@ -76,7 +77,7 @@ export async function acceptAndRunNextStep(options: StepReviewCommandOptions, ru
     return accepted
   }
   if (accepted.run.status === "completed") {
-    const message = `Workflow run completed: ${accepted.run.runId}`
+    const message = `実行 ${accepted.run.runId} が完了しました。`
     await vscode.window.showInformationMessage(message)
     return accepted.run
   }
@@ -90,8 +91,8 @@ async function acceptReviewedStep(options: StepReviewCommandOptions, runArg?: Re
     ? await validateReviewRunTarget(runArg)
     : runId
       ? await findRunSelection(runId)
-      : await pickRunSelection("Accept reviewed workflow step", (run) => run.status === "reviewing")
-  if (!selection) return runId ? `Workflow run not found or not waiting for review: ${runId}` : "No reviewing workflow run selected."
+      : await pickRunSelection("確認待ちのステップを承認", (run) => run.status === "reviewing")
+  if (!selection) return runId ? `実行 ${runId} が見つからないか、確認待ちではありません。実行状況を確認してください。` : "確認待ちの実行が選択されていません。実行状況から対象を選択してください。"
   return options.coordinateReviewAcceptance(
     selection.root,
     selection.runId,
@@ -114,7 +115,7 @@ async function acceptReviewedStepOnce(
   return coordinateWorkflowRunExecution(runStore, runId, "review-accept", async () => {
     if (expectedRevision) await assertOperationHubRunRevision(workspaceRoot, runId, expectedRevision)
     const run = await runStore.loadRun(runId)
-    if (!run) return `Workflow run not found: ${runId}`
+    if (!run) return `実行 ${runId} が見つかりません。実行一覧を更新してから再度選択してください。`
     const acceptedStepId = run.currentStep
     const accepted = acceptReviewingStep(run)
     await runStore.saveRun(accepted)
@@ -136,10 +137,10 @@ async function acceptReviewedStepOnce(
       completedViaBobTask = sync.status === "synced" && sync.appliedStepCount > 0
     }
     const message = pendingReviewTransitionStepId(accepted)
-      ? `Accepted step; pending transition will run from ${accepted.currentStep}: ${accepted.runId}`
+      ? `ステップを承認しました。保留中の遷移を ${accepted.currentStep} から実行します: ${accepted.runId}`
       : accepted.status === "completed"
-      ? `Accepted final step and completed workflow run: ${accepted.runId}`
-      : `Accepted step; next step is ${accepted.currentStep}: ${accepted.runId}`
+      ? `最後のステップを承認し、ワークフロー実行を完了しました: ${accepted.runId}`
+      : `ステップを承認しました。次のステップは ${accepted.currentStep} です: ${accepted.runId}`
     const snapshot = await readOperationHubRunSnapshot(workspaceRoot, accepted.runId)
     return { run: accepted, message, completedViaBobTask, continuationOwnedByBob, workspaceRoot, revision: snapshot.revision }
   })
@@ -158,15 +159,15 @@ async function showAcceptedStepMessage(
     return
   }
   if (continuationOwnedByBob) {
-    await vscode.window.showInformationMessage(`${message}. Bob ワークフローが同じ run を続行します。`)
+    await vscode.window.showInformationMessage(`${message} Bob ワークフローが同じ実行を続行します。`)
     return
   }
   if (completedViaBobTask) {
-    await vscode.window.showInformationMessage(`${message}. Bob 側のステップ完了へ反映しました。`)
+    await vscode.window.showInformationMessage(`${message} Bob 側のステップ完了へ反映しました。`)
     return
   }
   const selected = await vscode.window.showInformationMessage(
-    `${message}. 次のステップはまだ開始されていません。`,
+    `${message} 次のステップはまだ開始されていません。`,
     RUN_NEXT_STEP_LABEL,
     OPEN_OPERATION_HUB_LABEL
   )
@@ -197,9 +198,9 @@ function operationHubTargetForAcceptedStep(accepted: AcceptedStepResult): Operat
 }
 
 export async function inspectCurrentStep(options: StepReviewCommandOptions, runId?: string): Promise<void> {
-  const selection = runId ? await findRunSelection(runId) : await pickRunSelection("Inspect workflow step")
+  const selection = runId ? await findRunSelection(runId) : await pickRunSelection("ワークフローステップを確認")
   if (!selection) {
-    await vscode.window.showWarningMessage(runId ? `Workflow run not found: ${runId}` : "No workflow run selected.")
+    await vscode.window.showWarningMessage(runId ? `実行 ${runId} が見つかりません。実行一覧を更新してから再度選択してください。` : "実行が選択されていません。実行一覧から対象を選択してください。")
     return
   }
   const run = selection.run
@@ -207,53 +208,53 @@ export async function inspectCurrentStep(options: StepReviewCommandOptions, runI
   const current = index >= 0 ? run.steps[index] : undefined
   linesForRun(run)
   const lines = [
-    `- runId: ${run.runId}`,
-    `- workflow: ${run.workflowId}`,
-    `- status: ${run.status}`,
-    `- currentStep: ${run.currentStep ?? "none"}`,
-    `- root: ${selection.root}`,
-    `- workflowFile: ${run.workflowFile ?? "none"}`,
-    `- workflowDefinitionHash: ${run.workflowDefinitionHash ?? "none"}`,
-    `- workflowDefinitionMismatch: ${run.state["workflow.definitionMismatch"] ?? "none"}`,
-    `- bobTaskSync: ${run.bobTaskSync?.drift?.status ?? "unknown"}; completedThrough=${run.bobTaskSync?.completedThroughStepId ?? "none"}`
+    `- 実行 ID（runId）: ${run.runId}`,
+    `- ワークフロー（workflow）: ${run.workflowId}`,
+    `- 状態（status）: ${workflowRunStatusLabel(run.status)}`,
+    `- 現在のステップ（currentStep）: ${run.currentStep ?? "なし"}`,
+    `- ワークスペース（root）: ${selection.root}`,
+    `- ワークフロー定義（workflowFile）: ${run.workflowFile ?? "なし"}`,
+    `- ワークフロー定義ハッシュ（workflowDefinitionHash）: ${run.workflowDefinitionHash ?? "なし"}`,
+    `- ワークフロー定義の差異（workflowDefinitionMismatch）: ${run.state["workflow.definitionMismatch"] ?? "なし"}`,
+    `- Bob タスク同期（bobTaskSync）: ${run.bobTaskSync?.drift?.status ?? "不明"}; 完了済みステップ（completedThrough）=${run.bobTaskSync?.completedThroughStepId ?? "なし"}`
   ]
   if (current) {
     lines.push(
-      `- currentStepStatus: ${current.status}`,
-      `- currentStepTitle: ${current.title}`,
-      `- currentAttempt: ${current.attempt ?? 1}`,
-      `- archivedAttempts: ${current.attempts?.length ?? 0}`
+      `- 現在のステップ状態（currentStepStatus）: ${workflowStepStatusLabel(current.status)}`,
+      `- 現在のステップ名（currentStepTitle）: ${current.title}`,
+      `- 現在の試行番号（currentAttempt）: ${current.attempt ?? 1}`,
+      `- 保存済みの試行数（archivedAttempts）: ${current.attempts?.length ?? 0}`
     )
   }
-  lines.push("", "## Current Step Attempts")
+  lines.push("", "## 現在のステップの試行履歴")
   appendAttemptLines(lines, current)
-  lines.push("", "## Steps")
+  lines.push("", "## ステップ")
   for (const [stepIndex, step] of run.steps.entries()) {
-    lines.push(`- ${stepIndex + 1}. ${step.id}: ${step.status}; title=${step.title}; attempt=${step.attempt ?? 1}; archivedAttempts=${step.attempts?.length ?? 0}; startedAt=${step.startedAt ?? "none"}; reviewStartedAt=${step.reviewStartedAt ?? "none"}; acceptedAt=${step.acceptedAt ?? "none"}; completedAt=${step.completedAt ?? "none"}; error=${step.error ?? "none"}`)
+    lines.push(`- ${stepIndex + 1}. ${step.id}: 状態=${workflowStepStatusLabel(step.status)}; ステップ名（title）=${step.title}; 試行番号（attempt）=${step.attempt ?? 1}; 保存済みの試行数（archivedAttempts）=${step.attempts?.length ?? 0}; 開始日時（startedAt）=${step.startedAt ?? "なし"}; 確認開始日時（reviewStartedAt）=${step.reviewStartedAt ?? "なし"}; 承認日時（acceptedAt）=${step.acceptedAt ?? "なし"}; 完了日時（completedAt）=${step.completedAt ?? "なし"}; エラー（error）=${step.error ?? "なし"}`)
   }
-  await options.showMarkdownReport("Workflow Step", `${run.runId}: ${run.status}`, lines)
+  await options.showMarkdownReport("ワークフローステップ", `${run.runId}: ${workflowRunStatusLabel(run.status)}`, lines)
 }
 
 export async function openCurrentStepInBuilder(options: StepReviewBuilderCommandOptions, runId?: string): Promise<void> {
-  const selection = runId ? await findRunSelection(runId) : await pickRunSelection("Open current workflow step in builder", (run) => Boolean(run.currentStep && run.workflowFile))
+  const selection = runId ? await findRunSelection(runId) : await pickRunSelection("現在のステップをワークフロー作成・編集で開く", (run) => Boolean(run.currentStep && run.workflowFile))
   if (!selection) {
-    await vscode.window.showWarningMessage(runId ? `Workflow run not found: ${runId}` : "No workflow run selected.")
+    await vscode.window.showWarningMessage(runId ? `実行 ${runId} が見つかりません。実行一覧を更新してから再度選択してください。` : "実行が選択されていません。実行一覧から対象を選択してください。")
     return
   }
   const run = selection.run
   if (!run.workflowFile) {
-    await vscode.window.showWarningMessage(`Workflow file is not recorded for run: ${run.runId}`)
+    await vscode.window.showWarningMessage(`実行 ${run.runId} にはワークフロー定義ファイルが記録されていません。実行診断を確認してください。`)
     return
   }
   await editWorkflowInBuilder({ sourceId: options.sourceId, extensionUri: options.extensionUri }, { uri: workflowFileUri(selection), focusStepId: run.currentStep })
 }
 
 function acceptReviewingStep(run: WorkflowRunState): WorkflowRunState {
-  if (run.status !== "reviewing") throw new Error(`Workflow run is not waiting for review: ${run.status}`)
+  if (run.status !== "reviewing") throw new Error(`実行は確認待ちではありません: ${workflowRunStatusLabel(run.status)}`)
   const currentIndex = run.currentStep ? run.steps.findIndex((step) => step.id === run.currentStep) : -1
-  if (currentIndex < 0) throw new Error(`Current step is not available: ${run.currentStep ?? "none"}`)
+  if (currentIndex < 0) throw new Error(`現在のステップが見つかりません: ${run.currentStep ?? "なし"}`)
   const current = run.steps[currentIndex]
-  if (current.status !== "reviewing") throw new Error(`Current step is not waiting for review: ${current.status}`)
+  if (current.status !== "reviewing") throw new Error(`現在のステップは確認待ちではありません: ${workflowStepStatusLabel(current.status)}`)
   const now = new Date().toISOString()
   current.status = "completed"
   current.acceptedAt = now
@@ -282,17 +283,17 @@ function acceptReviewingStep(run: WorkflowRunState): WorkflowRunState {
 
 function appendAttemptLines(lines: string[], step: RunStepState | undefined): void {
   if (!step) {
-    lines.push("- No current step.")
+    lines.push("- 現在のステップはありません。")
     return
   }
   const attempts = step.attempts ?? []
   if (attempts.length === 0) {
-    lines.push("- No archived attempts.")
+    lines.push("- 保存済みの試行履歴はありません。")
     return
   }
   for (const attempt of attempts) {
     const stateKeys = Object.keys(attempt.stateSnapshot ?? {}).sort()
-    lines.push(`- attempt ${attempt.attempt}: ${attempt.status}; createdAt=${attempt.createdAt}; startedAt=${attempt.startedAt ?? "none"}; reviewStartedAt=${attempt.reviewStartedAt ?? "none"}; completedAt=${attempt.completedAt ?? "none"}; stateKeys=${stateKeys.length === 0 ? "none" : stateKeys.join(",")}; error=${attempt.error ?? "none"}`)
+    lines.push(`- 試行 ${attempt.attempt}: 状態=${workflowStepStatusLabel(attempt.status)}; 作成日時（createdAt）=${attempt.createdAt}; 開始日時（startedAt）=${attempt.startedAt ?? "なし"}; 確認開始日時（reviewStartedAt）=${attempt.reviewStartedAt ?? "なし"}; 完了日時（completedAt）=${attempt.completedAt ?? "なし"}; 状態キー（stateKeys）=${stateKeys.length === 0 ? "なし" : stateKeys.join(",")}; エラー（error）=${attempt.error ?? "なし"}`)
   }
 }
 
@@ -306,8 +307,8 @@ async function pickRunSelection(title: string, predicate: (run: WorkflowRunState
   if (selections.length === 0) return undefined
   const picked = await vscode.window.showQuickPick(selections.map((selection) => ({
     label: selection.runId,
-    description: selection.run.status,
-    detail: `${selection.run.workflowId}; root=${selection.root}; currentStep=${selection.run.currentStep ?? "none"}`,
+    description: workflowRunStatusLabel(selection.run.status),
+    detail: `${selection.run.workflowId}; ワークスペース=${selection.root}; 現在のステップ=${selection.run.currentStep ?? "なし"}`,
     selection
   })), { title })
   return picked?.selection

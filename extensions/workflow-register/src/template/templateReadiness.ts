@@ -46,7 +46,7 @@ export async function checkTemplateReadiness(options: TemplateReadinessOptions):
   const customizationValidation = validateWorkflowCustomization(options.customization)
   checks.push(checkFromDiagnostics(
     "schemas",
-    "Template, project profile, and customization schemas",
+    "テンプレート・プロジェクト情報・調整内容の形式",
     [
       ...templateValidation.diagnostics,
       ...profileValidation.diagnostics,
@@ -68,7 +68,7 @@ export async function checkTemplateReadiness(options: TemplateReadinessOptions):
     baseWorkflowText: options.baseWorkflowText,
     customizationPath: options.customizationPath
   })
-  checks.push(checkFromDiagnostics("generation", "Generated workflow contract", generated.diagnostics))
+  checks.push(checkFromDiagnostics("generation", "生成したワークフローの契約", generated.diagnostics))
   if (!generated.ok) {
     return summarizeReadiness(checks)
   }
@@ -80,7 +80,7 @@ export async function checkTemplateReadiness(options: TemplateReadinessOptions):
   })
   checks.push(checkFromDiagnostics(
     "workflow-schema",
-    "Generated workflow validates as workflow-register/v1",
+    "生成したワークフローが workflow-register/v1 に適合",
     parsed.ok ? [] : parsed.diagnostics
   ))
 
@@ -89,9 +89,9 @@ export async function checkTemplateReadiness(options: TemplateReadinessOptions):
   if (!baseFields || !generatedFields) {
     checks.push({
       id: "front-matter",
-      title: "Workflow front matter can be inspected",
+      title: "ワークフローのフロントマターを確認可能",
       status: "fail",
-      diagnostics: ["base or generated workflow front matter is not readable"]
+      diagnostics: ["基準または生成済みワークフローのフロントマターを読み取れません"]
     })
     return summarizeReadiness(checks)
   }
@@ -109,21 +109,21 @@ export async function checkTemplateReadiness(options: TemplateReadinessOptions):
 
 export function renderReadinessMarkdown(readiness: TemplateReadiness): string {
   const lines = [
-    `# Template Readiness: ${readiness.status}`,
+    `# テンプレートの適用準備状況: ${readinessStatusLabel(readiness.status)}`,
     "",
-    `Score: ${readiness.score}`,
+    `スコア: ${readiness.score}`,
     "",
-    "## Checks"
+    "## 確認項目"
   ]
   for (const check of readiness.checks) {
-    lines.push(`- ${check.status}: ${check.id} - ${check.title}`)
+    lines.push(`- ${readinessStatusLabel(check.status)}: ${check.id} - ${check.title}`)
     for (const diagnostic of check.diagnostics) {
       lines.push(`  - ${diagnostic}`)
     }
   }
-  lines.push("", "## Next Actions")
+  lines.push("", "## 次の対応")
   if (readiness.nextActions.length === 0) {
-    lines.push("- None")
+    lines.push("- 次の対応はありません。")
   } else {
     for (const action of readiness.nextActions) lines.push(`- ${action}`)
   }
@@ -133,9 +133,9 @@ export function renderReadinessMarkdown(readiness: TemplateReadiness): string {
 function checkNaming(fields: Record<string, unknown>, customization: WorkflowCustomization): TemplateReadinessCheck {
   const diagnostics: string[] = []
   if (fields.name !== customization.workflowName) {
-    diagnostics.push(`generated workflow name must be ${customization.workflowName}`)
+    diagnostics.push(`生成したワークフロー名は ${customization.workflowName} である必要があります`)
   }
-  return checkFromDiagnostics("naming", "Workflow naming and target path", diagnostics)
+  return checkFromDiagnostics("naming", "ワークフロー名と保存先", diagnostics)
 }
 
 async function checkRequiredFiles(
@@ -150,24 +150,24 @@ async function checkRequiredFiles(
   for (const file of unique(files)) {
     const pathResult = validateWorkspaceRelativePath(file)
     if (!pathResult.ok) {
-      diagnostics.push(`required file has unsafe path: ${file} (${pathResult.reason})`)
+      diagnostics.push(`必要なファイルがワークスペース外を指す危険なパスです: ${file}（${pathResult.reason}）`)
       continue
     }
     try {
       await fs.stat(workspacePath(workspaceRoot, pathResult.path))
     } catch {
-      diagnostics.push(`required file is missing: ${pathResult.path}`)
+      diagnostics.push(`必要なファイルがありません: ${pathResult.path}`)
     }
   }
-  return checkFromDiagnostics("required-files", "Required template and checklist files exist", diagnostics)
+  return checkFromDiagnostics("required-files", "必要なテンプレート・チェックリストファイルの有無", diagnostics)
 }
 
 function checkGuardrails(baseFields: Record<string, unknown>, generatedFields: Record<string, unknown>): TemplateReadinessCheck {
   const diagnostics: string[] = []
   if (JSON.stringify(baseFields.guardrails ?? {}) !== JSON.stringify(generatedFields.guardrails ?? {})) {
-    diagnostics.push("guardrails changed during customization")
+    diagnostics.push("調整中に安全制限が変更されました")
   }
-  return checkFromDiagnostics("guardrails", "Guardrails remain locked", diagnostics)
+  return checkFromDiagnostics("guardrails", "安全制限が固定されていること", diagnostics)
 }
 
 function checkArtifactPaths(fields: Record<string, unknown>): TemplateReadinessCheck {
@@ -175,21 +175,21 @@ function checkArtifactPaths(fields: Record<string, unknown>): TemplateReadinessC
   for (const pathValue of collectArtifactPaths(fields)) {
     const pathResult = validateWorkspaceRelativePath(pathValue)
     if (!pathResult.ok) {
-      diagnostics.push(`artifact path is unsafe: ${pathValue} (${pathResult.reason})`)
+      diagnostics.push(`成果物のパスがワークスペース外を指しています: ${pathValue}（${pathResult.reason}）`)
     }
   }
-  return checkFromDiagnostics("artifact-paths", "Artifact paths stay workspace-relative", diagnostics)
+  return checkFromDiagnostics("artifact-paths", "成果物のパスがワークスペース相対であること", diagnostics)
 }
 
 function checkHumanGate(fields: Record<string, unknown>): TemplateReadinessCheck {
   const diagnostics: string[] = []
   const stepReview = isRecord(fields.stepReview) ? fields.stepReview : {}
-  if (stepReview.enabled !== true) diagnostics.push("stepReview.enabled must be true")
-  if (stepReview.requireAcceptBeforeNext !== true) diagnostics.push("stepReview.requireAcceptBeforeNext must be true")
+  if (stepReview.enabled !== true) diagnostics.push("stepReview.enabled は true である必要があります")
+  if (stepReview.requireAcceptBeforeNext !== true) diagnostics.push("stepReview.requireAcceptBeforeNext は true である必要があります")
   const steps = Array.isArray(fields.steps) ? fields.steps : []
   const hasHumanGate = steps.some((step) => isRecord(step) && step.type === "manual" && isRecord(step.approval))
-  if (!hasHumanGate) diagnostics.push("manual approval step is missing")
-  return checkFromDiagnostics("human-gate", "Human gate and step review are enforced", diagnostics)
+  if (!hasHumanGate) diagnostics.push("手動承認ステップがありません")
+  return checkFromDiagnostics("human-gate", "人による確認とステップレビューの有効化", diagnostics)
 }
 
 function checkTemplateMetadata(
@@ -210,28 +210,28 @@ function checkTemplateMetadata(
     customizationPath
   }
   for (const [key, value] of Object.entries(expected)) {
-    if (metadata[key] !== value) diagnostics.push(`x-bob-template.${key} must be ${value}`)
+    if (metadata[key] !== value) diagnostics.push(`x-bob-template.${key} は ${value} である必要があります`)
   }
   if (customization.baseTemplateHash !== baseTemplateHash) {
-    diagnostics.push(`customization.baseTemplateHash must be ${baseTemplateHash}`)
+    diagnostics.push(`customization.baseTemplateHash は ${baseTemplateHash} である必要があります`)
   }
-  return checkFromDiagnostics("template-metadata", "Template version and hash metadata are present", diagnostics)
+  return checkFromDiagnostics("template-metadata", "テンプレートのバージョン・ハッシュ情報の有無", diagnostics)
 }
 
 async function checkUatEvidence(workspaceRoot: string, projectProfile: ProjectProfile): Promise<TemplateReadinessCheck> {
   const evidencePath = projectProfile.paths.uatEvidencePath
   if (!evidencePath) {
-    return { id: "uat-evidence", title: "UAT evidence presence", status: "warning", diagnostics: ["UAT evidence path is not configured"] }
+    return { id: "uat-evidence", title: "UAT 証跡の有無", status: "warning", diagnostics: ["UAT 証跡のパスが設定されていません"] }
   }
   const pathResult = validateWorkspaceRelativePath(evidencePath)
   if (!pathResult.ok) {
-    return { id: "uat-evidence", title: "UAT evidence presence", status: "fail", diagnostics: [`UAT evidence path is unsafe: ${evidencePath} (${pathResult.reason})`] }
+    return { id: "uat-evidence", title: "UAT 証跡の有無", status: "fail", diagnostics: [`UAT 証跡のパスがワークスペース外を指しています: ${evidencePath}（${pathResult.reason}）`] }
   }
   try {
     await fs.stat(workspacePath(workspaceRoot, pathResult.path))
-    return { id: "uat-evidence", title: "UAT evidence presence", status: "pass", diagnostics: [] }
+    return { id: "uat-evidence", title: "UAT 証跡の有無", status: "pass", diagnostics: [] }
   } catch {
-    return { id: "uat-evidence", title: "UAT evidence presence", status: "warning", diagnostics: [`UAT evidence is not present: ${pathResult.path}`] }
+    return { id: "uat-evidence", title: "UAT 証跡の有無", status: "warning", diagnostics: [`UAT 証跡がありません: ${pathResult.path}`] }
   }
 }
 
@@ -277,6 +277,12 @@ function summarizeReadiness(checks: TemplateReadinessCheck[]): TemplateReadiness
     ? []
     : check.diagnostics.map((diagnostic) => `${check.id}: ${diagnostic}`))
   return { status, score, checks, nextActions }
+}
+
+function readinessStatusLabel(status: ReadinessStatus): string {
+  if (status === "pass") return "合格"
+  if (status === "warning") return "注意"
+  return "要対応"
 }
 
 function scoreForStatus(status: ReadinessStatus): number {

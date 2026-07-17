@@ -80,7 +80,7 @@ export function createDefaultActionRegistry(options?: DefaultActionRegistryOptio
       id: "vscode.executeCommand",
       sourceId: WORKFLOW_REGISTER_PROVIDER_SOURCE_ID,
       execute: (input) => {
-        requireWorkspaceTrust(options.isWorkspaceTrusted, "running VS Code commands")
+        requireWorkspaceTrust(options.isWorkspaceTrusted, "VS Code コマンドを実行")
         const args = argumentList(input.args)
         const command = args.shift()
         if (typeof command !== "string" || !command.trim()) {

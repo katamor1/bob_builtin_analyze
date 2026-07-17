@@ -2,7 +2,7 @@
 
 ## 1. 目的
 
-本書は `extensions/workflow-register` の単体テスト仕様を定義する。対象は現行 TypeScript 実装の parser、validator、engine、run state、run control、task snapshot、result handoff、Bob adapter helper、authoring helper、Template Customization Studio helper である。
+本書は `extensions/workflow-register` の単体テスト仕様を定義する。対象は現行 TypeScript 実装の parser、validator、engine、run state、run control、task snapshot、result handoff、Bob adapter helper、authoring helper、テンプレート調整 helper である。
 
 ## 2. テスト実行方式
 
@@ -233,7 +233,7 @@
 - ファイル保存系テストは Windows / POSIX path 差異を考慮する。
 - snapshot のサイズ制限、truncation、messages 省略は境界値を含める。
 - Webview / Status Bar / TreeDataProvider は VS Code API mock で表示値と command 登録を検証する。
-- Template Customization Studio は source regex だけでなく、model helper と生成結果の実ファイル I/O を検証する。
+- テンプレート調整 は source regex だけでなく、model helper と生成結果の実ファイル I/O を検証する。
 
 ## 6. 完了条件
 

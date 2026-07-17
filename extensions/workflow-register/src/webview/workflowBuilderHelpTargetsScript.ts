@@ -49,10 +49,10 @@ function sectionHelpIdForHeading(heading) {
   if (text === 'includeState') return 'section.includeState';
   if (text === 'Command') return 'section.command';
   if (text === 'Result') return 'section.result';
-  if (text === 'Result sinks') return 'section.resultSinks';
-  if (text === 'User action') return 'section.userAction';
-  if (text === 'Manual Form') return 'section.manualForm';
-  if (text === 'Manual Approval') return 'section.manualApproval';
+  if (text === '保存先') return 'section.resultSinks';
+  if (text === '実行時の案内') return 'section.userAction';
+  if (text === '入力フォーム') return 'section.manualForm';
+  if (text === '承認・差戻し') return 'section.manualApproval';
   if (text === 'Transition') return 'section.transition';
   if (text === 'Checkpoint') return 'section.branchCheckpoint';
   return undefined;

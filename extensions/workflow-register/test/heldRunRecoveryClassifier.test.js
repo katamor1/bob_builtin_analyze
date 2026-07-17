@@ -92,11 +92,11 @@ test("detached compatible held run with persisted form result can resume", () =>
 test("manual form result must exist and contain every required field", () => {
   const missing = classify({ run: heldRun({ state: { context: "captured" } }) })
   assert.equal(missing.kind, "blocked")
-  assert.match(missing.blockers.join("\n"), /manual form result 'decision'/i)
+  assert.match(missing.blockers.join("\n"), /保存済みの手動フォーム結果がありません: decision/)
 
   const incomplete = classify({ run: heldRun({ state: { context: "captured", decision: JSON.stringify({ notes: "" }) } }) })
   assert.equal(incomplete.kind, "blocked")
-  assert.match(incomplete.blockers.join("\n"), /required manual form field 'notes'/i)
+  assert.match(incomplete.blockers.join("\n"), /必須の手動フォーム項目がありません: notes/)
 })
 
 test("manual approval result must contain a persisted decision", () => {
@@ -114,7 +114,7 @@ test("manual approval result must contain a persisted decision", () => {
     run: heldRun({ state: { context: "captured" } })
   })
   assert.equal(missing.kind, "blocked")
-  assert.match(missing.blockers.join("\n"), /manual approval result 'approval'/i)
+  assert.match(missing.blockers.join("\n"), /保存済みの手動承認結果がありません: approval/)
 
   const available = classify({
     workflow: definition,
@@ -149,7 +149,7 @@ test("definition mismatch blocks direct resume but chooses artifacts when availa
   })
   assert.equal(result.kind, "detached-artifact-recoverable")
   assert.equal(result.primaryAction.id, "review-artifacts")
-  assert.match(result.blockers.join("\n"), /definition/i)
+  assert.match(result.blockers.join("\n"), /ワークフロー定義/)
 })
 
 test("missing required state chooses snapshot recovery when available", () => {
@@ -164,7 +164,7 @@ test("missing workflow is blocked when no recovery evidence exists", () => {
   const result = classify({ workflow: undefined })
   assert.equal(result.kind, "blocked")
   assert.equal(result.primaryAction.id, "open-diagnostics")
-  assert.match(result.blockers.join("\n"), /workflow definition/i)
+  assert.match(result.blockers.join("\n"), /ワークフロー定義/)
 })
 
 test("missing current held step is blocked", () => {
@@ -172,7 +172,7 @@ test("missing current held step is blocked", () => {
   const result = classify({ run })
   assert.equal(result.kind, "blocked")
   assert.equal(result.primaryAction.id, "open-diagnostics")
-  assert.match(result.blockers.join("\n"), /current held step/i)
+  assert.match(result.blockers.join("\n"), /現在の手動操作待ちステップ/)
 })
 
 test("classifier is pure", () => {

@@ -33,7 +33,7 @@ Workflow Builder の設定項目が増えたため、静的ヘルプパネルだ
 
 ## 2. Step type ごとの設定ガイド
 
-`Step detail` では選択中 step type に応じて、設定順を示す guide card を表示する。
+`ステップ設定` では選択中 step type に応じて、設定順を示す guide card を表示する。
 
 例:
 
@@ -65,13 +65,13 @@ reviewResultJson — レビュー結果JSON生成 / agent
 
 ## 4. Diagnostics から設定項目への誘導
 
-Preview / Diagnostics の診断や参照チェックに、関連設定へ移動する link を表示する。
+「プレビューと診断」の診断や参照チェックに、関連設定へ移動する link を表示する。
 
 例:
 
-- `includeState` の unknown / forward reference → Step detail の `includeState`。
+- `includeState` の unknown / forward reference → 「ステップ設定」の `includeState`。
 - `Artifact producedBy` の参照切れ → Artifacts の `producedBy`。
-- `resultKey` 関連 → Step detail の `resultKey`。
+- `resultKey` 関連 → 「ステップ設定」の `resultKey`。
 - `guardrails` 関連 → Guardrails。
 - `input options` 関連 → Inputs。
 

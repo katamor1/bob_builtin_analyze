@@ -13,7 +13,7 @@ export interface ExplainWorkflowDiagnosticsOptions {
 export async function explainWorkflowDiagnostics(options: ExplainWorkflowDiagnosticsOptions): Promise<void> {
   const editor = vscode.window.activeTextEditor
   if (!editor) {
-    await vscode.window.showErrorMessage("No active editor is open.")
+    await vscode.window.showErrorMessage("アクティブなエディターがありません。WORKFLOW.md を開いてからもう一度実行してください。")
     return
   }
   const filePath = vscode.workspace.asRelativePath(editor.document.uri, false)
@@ -23,8 +23,8 @@ export async function explainWorkflowDiagnostics(options: ExplainWorkflowDiagnos
   const explanation = await Promise.resolve(provider.explainDiagnostics({ filePath, repairContext: context }))
   const errorCount = validation.diagnostics.filter((item) => item.severity === "error").length
   const warningCount = validation.diagnostics.filter((item) => item.severity === "warning").length
-  await options.showMarkdownReport("Workflow Diagnostics Explained", `${errorCount} error(s); ${warningCount} warning(s). Provider: ${provider.id}.`, [
-    "## Diagnostics",
+  await options.showMarkdownReport("ワークフロー診断の説明", `エラー ${errorCount}件、警告 ${warningCount}件。プロバイダー: ${provider.id}。`, [
+    "## 診断結果",
     "",
     ...formatWorkflowDiagnostics(validation),
     "",

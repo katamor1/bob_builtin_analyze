@@ -498,7 +498,7 @@ test("StepRuntime manual hold remains the only pending primitive for a manual Bo
   const active = stepRuntime.list()[0]
 
   assert.equal(gateRegistry.isPending(root, active.runId, "manual"), false)
-  assert.match(await stepRuntime.completeStepByKey(active.key), /Completed:/)
+  assert.match(await stepRuntime.completeStepByKey(active.key), /完了しました:/)
   assert.equal(await execution, true)
   assert.equal(completed, 1)
 })
@@ -540,7 +540,7 @@ test("full fallback manual completion keeps its wrapper Todo pending until later
   try {
     await waitFor(() => stepRuntime.list().length === 1)
     const active = stepRuntime.list()[0]
-    assert.match(await stepRuntime.completeStepByKey(active.key), /Completed:/)
+    assert.match(await stepRuntime.completeStepByKey(active.key), /完了しました:/)
 
     // The old bare await could let the worker exit with a pending Promise. A
     // referenced 20s transition bound tolerates parallel-test I/O without
@@ -970,7 +970,7 @@ test("full fallback wrapper does not project internal transition completion into
     assert.deepEqual(commandCalls, ["first", "second"])
     assert.equal(vscodeState.informationMessages.length, 1)
     assert.equal(vscodeState.informationMessages[0].length, 1)
-    assert.match(vscodeState.informationMessages[0][0], /Bob ワークフローが同じ run を続行します。/)
+    assert.match(vscodeState.informationMessages[0][0], /Bob ワークフローが同じ実行を続行します。/)
 
     await acceptLiveReview(root, firstReview.runId, gateRegistry)
     assert.equal(await execution, true)

@@ -157,6 +157,11 @@ test("manual step html escapes workflow content and posts active key completion"
 
   const html = renderManualStepHtml({ cspSource: "vscode-resource:", nonce: "nonce-123", viewModel })
 
+  assert.match(html, /Bob 手動ステップ/)
+  assert.match(html, /ワークフロー:/)
+  assert.match(html, /実行 ID:/)
+  assert.match(html, /ステップ:/)
+  assert.match(html, /状態:/)
   assert.match(html, /Manual &lt;Action&gt;/)
   assert.match(html, /Read &lt;script&gt;alert\(1\)&lt;\/script&gt;/)
   assert.doesNotMatch(html, /<script>alert\(1\)<\/script>/)
@@ -178,7 +183,7 @@ test("manual step html is read-only when active task handle is missing", () => {
   const html = renderManualStepHtml({ cspSource: "vscode-resource:", nonce: "nonce-123", viewModel })
 
   assert.equal(viewModel.status, "heldWithoutActiveTask")
-  assert.match(html, /現在の Bob task への接続がありません/)
+  assert.match(html, /現在の Bob タスクには接続できません/)
   assert.doesNotMatch(html, /completeManualStep/)
 })
 
@@ -200,9 +205,10 @@ test("manual step html shows a completed footer after panel completion", () => {
 
   const html = renderManualStepHtml({ cspSource: "vscode-resource:", nonce: "nonce-123", viewModel })
 
-  assert.match(html, /この step は完了しました/)
-  assert.match(html, /Run Control View/)
-  assert.doesNotMatch(html, /現在の Bob task への接続がありません/)
+  assert.match(html, /このステップは完了しました/)
+  assert.match(html, /実行状況/)
+  assert.doesNotMatch(html, /Run Control View/)
+  assert.doesNotMatch(html, /現在の Bob タスクには接続できません/)
   assert.doesNotMatch(html, /completeManualStep/)
 })
 
@@ -238,9 +244,9 @@ test("manual step controller sends expected run and step and uses structured suc
     expectedStepId: "check-file"
   }])
   assert.deepEqual(harness.infos, ["任意の成功文言"])
-  assert.match(harness.panel.webview.html, /この step は完了しました/)
+  assert.match(harness.panel.webview.html, /このステップは完了しました/)
   assert.match(harness.panel.webview.html, /任意の成功文言/)
-  assert.doesNotMatch(harness.panel.webview.html, /現在の Bob task への接続がありません/)
+  assert.doesNotMatch(harness.panel.webview.html, /現在の Bob タスクには接続できません/)
 })
 
 test("manual step controller rejects mismatched active keys before completion", async () => {
@@ -251,6 +257,6 @@ test("manual step controller rejects mismatched active keys before completion", 
 
   assert.deepEqual(harness.warnings, [])
   assert.deepEqual(harness.completeRequests, [])
-  assert.match(harness.panel.webview.html, /Active Bob workflow step mismatch/)
+  assert.match(harness.panel.webview.html, /操作対象のステップが現在の実行状態と一致しません/)
   assert.match(harness.panel.webview.html, /wrong-key/)
 })

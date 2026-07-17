@@ -30,18 +30,18 @@ export function formatTaskSnapshotImportPreviewReport(input: {
   workflow: Pick<CoreWorkflowDefinition, "id" | "label">
 }): string[] {
   const lines = [
-    `- runId: ${input.run.runId}`,
-    `- run status: ${input.run.status}`,
-    `- workflow: ${input.workflow.label} (${input.workflow.id})`,
-    `- preview digest: ${input.preview.previewDigest}`,
-    `- candidates: ${input.preview.candidates.length}`,
+    `- 実行 ID（runId）: ${input.run.runId}`,
+    `- 実行状態: ${runStatusLabel(input.run.status)}`,
+    `- ワークフロー: ${input.workflow.label} (${input.workflow.id})`,
+    `- プレビュー識別子: ${input.preview.previewDigest}`,
+    `- 候補: ${input.preview.candidates.length}件`,
     "",
-    "The preview is read-only. Artifact files, manifest, and run state are changed only after selection and confirmation."
+    "プレビューは読み取り専用です。成果物ファイル、マニフェスト、実行状態は、選択と確認が完了した後にだけ変更されます。"
   ]
 
   for (const candidate of input.preview.candidates) lines.push(...formatCandidate(candidate))
   if (input.preview.issues.length > 0) {
-    lines.push("", "## Preview issues")
+    lines.push("", "## プレビューの確認事項")
     for (const issue of input.preview.issues) {
       const scope = issue.artifactId ? `${issue.artifactId}: ` : ""
       lines.push(`- ${issue.severity}: ${scope}${issue.message}`)
@@ -56,15 +56,15 @@ export function taskSnapshotImportSelectionItems(
   return preview.candidates.map((candidate) => ({
     artifactId: candidate.artifactId,
     label: `${candidate.artifactId} — ${candidate.stepTitle}`,
-    description: candidate.defaultSelected ? "selected by default" : "review required",
+    description: candidate.defaultSelected ? "既定で選択" : "確認が必要",
     detail: [
-      `step=${candidate.stepId}`,
-      `source=${candidate.extractionSource}`,
-      `path=${candidate.path}`,
-      `${candidate.bytes} bytes`,
-      candidate.existing.changed ? "overwrites changed file" : candidate.existing.exists ? "existing file unchanged" : "new file",
-      candidate.truncated ? "truncated" : undefined,
-      candidate.redactionPossible ? "redaction possible" : undefined
+      `ステップ=${candidate.stepId}`,
+      `抽出元=${candidate.extractionSource}`,
+      `保存先=${candidate.path}`,
+      `${candidate.bytes}バイト`,
+      candidate.existing.changed ? "変更済みファイルを上書き" : candidate.existing.exists ? "既存ファイルと同一" : "新規ファイル",
+      candidate.truncated ? "一部省略あり" : undefined,
+      candidate.redactionPossible ? "伏字の可能性あり" : undefined
     ].filter((value): value is string => Boolean(value)).join("; "),
     picked: candidate.defaultSelected,
     requiresOverwrite: candidate.existing.changed
@@ -94,32 +94,44 @@ export async function chooseTaskSnapshotImportSelection(input: {
 
 function formatCandidate(candidate: TaskSnapshotImportPreviewCandidate): string[] {
   const existing = candidate.existing.exists
-    ? candidate.existing.changed ? "changed existing file" : "existing file already matches"
-    : "new file"
+    ? candidate.existing.changed ? "変更済みの既存ファイル" : "既存ファイルと一致"
+    : "新規ファイル"
   const lines = [
     "",
     `## ${candidate.artifactId}`,
-    `- step: ${candidate.stepTitle} (${candidate.stepId})`,
-    `- state key: ${candidate.stateKey}`,
-    `- snapshot: ${candidate.snapshotCreatedAt}; reason=${candidate.snapshotReason}`,
-    `- extraction source: ${candidate.extractionSource}`,
-    `- target: ${candidate.path}`,
-    `- schema: ${candidate.schema ?? "unspecified"}`,
-    `- size: ${candidate.bytes} bytes`,
-    `- checksum: ${candidate.sha256}`,
-    `- truncated: ${candidate.truncated ? "yes" : "no"}`,
-    `- omitted messages: ${candidate.omittedMessageCount ?? 0}`,
-    `- redaction possible: ${candidate.redactionPossible ? "yes" : "no"}`,
-    `- target state: ${existing}`,
-    `- selected by default: ${candidate.defaultSelected ? "yes" : "no"}`
+    `- ステップ: ${candidate.stepTitle} (${candidate.stepId})`,
+    `- 状態キー: ${candidate.stateKey}`,
+    `- 保存済みタスク: ${candidate.snapshotCreatedAt}; 理由=${candidate.snapshotReason}`,
+    `- 抽出元: ${candidate.extractionSource}`,
+    `- 保存先: ${candidate.path}`,
+    `- スキーマ: ${candidate.schema ?? "未指定"}`,
+    `- サイズ: ${candidate.bytes}バイト`,
+    `- チェックサム: ${candidate.sha256}`,
+    `- 省略あり: ${candidate.truncated ? "はい" : "いいえ"}`,
+    `- 省略したメッセージ数: ${candidate.omittedMessageCount ?? 0}`,
+    `- 伏字の可能性: ${candidate.redactionPossible ? "あり" : "なし"}`,
+    `- 保存先の状態: ${existing}`,
+    `- 既定で選択: ${candidate.defaultSelected ? "はい" : "いいえ"}`
   ]
-  if (candidate.existing.sha256) lines.push(`- existing checksum: ${candidate.existing.sha256}`)
+  if (candidate.existing.sha256) lines.push(`- 既存ファイルのチェックサム: ${candidate.existing.sha256}`)
   for (const issue of candidate.issues) lines.push(`- ${issue.severity}: ${issue.message}`)
   if (candidate.diff) {
     const fence = markdownFenceFor(candidate.diff)
     lines.push("", `${fence}diff`, candidate.diff.trimEnd(), fence)
   }
   return lines
+}
+
+function runStatusLabel(value: string): string {
+  return {
+    running: "実行中",
+    paused: "一時停止",
+    checkpoint: "分岐確認待ち",
+    reviewing: "人による確認待ち",
+    held: "手動操作待ち",
+    completed: "完了",
+    failed: "失敗"
+  }[value] ?? `不明（${value}）`
 }
 
 function markdownFenceFor(value: string): string {

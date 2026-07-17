@@ -43,7 +43,7 @@ export class TemplateCustomizationStudioPanel {
     this.model = model
     this.panel = vscode.window.createWebviewPanel(
       "bobTemplateCustomizationStudio",
-      "Bob Workflow: テンプレートカスタマイズ Studio",
+      "テンプレート調整",
       vscode.ViewColumn.One,
       { enableScripts: true, retainContextWhenHidden: true }
     )
@@ -55,7 +55,7 @@ export class TemplateCustomizationStudioPanel {
   static async createOrShow(options: TemplateCustomizationStudioPanelOptions): Promise<TemplateCustomizationStudioPanel | undefined> {
     const library = await listTemplateLibrary(options.workspaceRoot)
     if (library.templates.length === 0) {
-      await vscode.window.showErrorMessage(`Template library is empty. ${library.diagnostics.join("; ")}`)
+      await vscode.window.showErrorMessage(`テンプレート一覧が空です。テンプレート定義を追加してからもう一度開いてください。${library.diagnostics.length > 0 ? ` 詳細: ${library.diagnostics.join("; ")}` : ""}`)
       return undefined
     }
     const model = createDefaultStudioModel(library.templates[0])
@@ -148,7 +148,7 @@ export class TemplateCustomizationStudioPanel {
     const result = await generateWorkflowFromStudioModel(this.options.workspaceRoot, model)
     if (result.status !== "ok") {
       await this.panel.webview.postMessage({ type: "previewResult", status: result.status, markdown: result.workflowMarkdown ?? "", diagnostics: result.diagnostics, filePath: result.relativePath ?? "" })
-      await vscode.window.showErrorMessage(`Workflow generation failed: ${result.diagnostics.join("; ")}`)
+      await vscode.window.showErrorMessage(`ワークフローを生成できませんでした。入力内容を修正してからもう一度実行してください。詳細: ${result.diagnostics.join("; ")}`)
       return
     }
     const workflowUri = workspaceUri(this.options.workspaceRoot, result.workflowPath)
@@ -163,7 +163,7 @@ export class TemplateCustomizationStudioPanel {
       backupPath: result.backupPath,
       diagnostics: result.diagnostics
     })
-    await vscode.window.showInformationMessage(`Generated ${result.workflowPath}`)
+    await vscode.window.showInformationMessage(`ワークフローを生成しました: ${result.workflowPath}`)
   }
 
   private async showDiff(model: TemplateCustomizationStudioModel): Promise<void> {
@@ -171,17 +171,17 @@ export class TemplateCustomizationStudioPanel {
     const result = await writeWorkflowDiffPreviewFromStudioModel(this.options.workspaceRoot, model)
     if (result.status !== "ok") {
       await this.panel.webview.postMessage({ type: "previewResult", status: result.status, markdown: result.workflowMarkdown ?? "", diagnostics: result.diagnostics, filePath: result.targetPath ?? "" })
-      await vscode.window.showErrorMessage(`Workflow preview failed: ${result.diagnostics.join("; ")}`)
+      await vscode.window.showErrorMessage(`ワークフローのプレビューを作成できませんでした。入力内容を修正してからもう一度実行してください。詳細: ${result.diagnostics.join("; ")}`)
       return
     }
     const targetUri = workspaceUri(this.options.workspaceRoot, result.targetPath)
     const previewUri = workspaceUri(this.options.workspaceRoot, result.previewPath)
     if (!(await exists(targetUri))) {
-      await vscode.window.showInformationMessage("既存 WORKFLOW.md がないため diff は開かず、preview ファイルだけを作成しました。")
+      await vscode.window.showInformationMessage("既存の WORKFLOW.md がないため差分表示は開かず、プレビューファイルだけを作成しました。")
       await this.panel.webview.postMessage({ type: "previewResult", status: "ok", markdown: result.workflowMarkdown, diagnostics: result.diagnostics, filePath: result.previewPath })
       return
     }
-    await vscode.commands.executeCommand("vscode.diff", targetUri, previewUri, `Template Studio Preview: ${result.targetPath}`)
+    await vscode.commands.executeCommand("vscode.diff", targetUri, previewUri, `テンプレート調整の差分: ${result.targetPath}`)
     await this.panel.webview.postMessage({ type: "previewResult", status: "ok", markdown: result.workflowMarkdown, diagnostics: result.diagnostics, filePath: result.previewPath })
   }
 
@@ -203,12 +203,12 @@ export class TemplateCustomizationStudioPanel {
 
   private async openReadinessReport(): Promise<void> {
     if (!this.lastReadinessMarkdownPath) {
-      await vscode.window.showInformationMessage("Readiness report is not available yet. Run readiness check first.")
+      await vscode.window.showInformationMessage("適用準備レポートはまだありません。先に「適用準備状況を確認」を実行してください。")
       return
     }
     const reportUri = workspaceUri(this.options.workspaceRoot, this.lastReadinessMarkdownPath)
     if (!(await exists(reportUri))) {
-      await vscode.window.showErrorMessage(`Readiness report is missing: ${this.lastReadinessMarkdownPath}`)
+      await vscode.window.showErrorMessage(`適用準備レポートが見つかりません: ${this.lastReadinessMarkdownPath}。適用準備状況をもう一度確認してください。`)
       return
     }
     await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(reportUri), { preview: false })

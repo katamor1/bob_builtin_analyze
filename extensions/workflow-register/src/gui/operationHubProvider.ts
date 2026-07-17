@@ -211,7 +211,7 @@ export class OperationHubProvider implements vscode.WebviewViewProvider, vscode.
       }
       const command = ACTION_COMMANDS[message.action]
       if (!command) {
-        throw new Error(`Unsupported Operation Hub action: ${message.action}`)
+        throw new Error(`未対応の操作です: ${message.action}`)
       }
       if (isMutationAction(message.action)) {
         await this.executeMutation(message, command)
@@ -221,7 +221,9 @@ export class OperationHubProvider implements vscode.WebviewViewProvider, vscode.
       await vscode.commands.executeCommand(command, ...commandArgsForAction(message))
       await this.refreshAll()
     } catch (error) {
-      void vscode.window.showErrorMessage(`Bob 操作センター: ${error instanceof Error ? error.message : String(error)}`)
+      const detail = error instanceof Error ? error.message : String(error)
+      const separator = /[。.!?！？]$/.test(detail) ? "" : "。"
+      void vscode.window.showErrorMessage(`Bob 操作センター: ${detail}${separator}画面を更新してから再実行してください。`)
       await this.refreshAll().catch((refreshError) => {
         console.warn("Bob 操作センターの操作失敗後の更新に失敗しました", refreshError)
       })

@@ -351,7 +351,7 @@ test("Builder cancel leaves the existing target, backups, documents, and reload 
 
 test("Builder confirmation backs up the exact old bytes before overwriting and reloading", async (t) => {
   const harness = createPanelHarness(t)
-  harness.state.warningResponses.push("Apply changes")
+  harness.state.warningResponses.push("変更を反映")
 
   await harness.send({ type: "save", model: editedModel(harness.model, "Confirmed description.") })
 
@@ -368,7 +368,7 @@ test("Builder rejects an external edit against originalText before backup, overw
   const harness = createPanelHarness(t)
   const externalText = harness.oldText.replace("Original workflow description.", "External winner description.")
   fs.writeFileSync(harness.target, externalText)
-  harness.state.warningResponses.push("Apply changes")
+  harness.state.warningResponses.push("変更を反映")
 
   await harness.send({ type: "save", model: editedModel(harness.model, "Stale builder description.") })
 
@@ -378,7 +378,7 @@ test("Builder rejects an external edit against originalText before backup, overw
   assert.deepEqual(harness.state.shownDocuments, [])
   assert.equal(harness.state.posted.some((message) => message.type === "saved"), false)
   assert.ok(
-    [...harness.state.errors, ...harness.state.warnings].some((message) => /refresh|reopen|再読込|更新/i.test(message)),
+    [...harness.state.errors, ...harness.state.warnings].some((message) => /refresh|reopen|再読込|再読み込み|開き直す|更新/i.test(message)),
     `expected refresh/reopen diagnostic, got ${JSON.stringify({ errors: harness.state.errors, warnings: harness.state.warnings })}`
   )
 })
@@ -389,7 +389,7 @@ test("Builder preserves a target created while the missing-target Create confirm
   const createPromptShown = deferred()
   const createDecision = deferred()
   harness.state.onWarningMessage = (message) => {
-    if (/no longer exists.*create/i.test(message)) createPromptShown.resolve()
+    if (/存在しません.*作成|no longer exists.*create/i.test(message)) createPromptShown.resolve()
   }
   harness.state.warningResponses.push(createDecision.promise)
 
@@ -397,7 +397,7 @@ test("Builder preserves a target created while the missing-target Create confirm
   await createPromptShown.promise
   const externalText = harness.oldText.replace("Original workflow description.", "External creator wins.")
   fs.writeFileSync(harness.target, externalText)
-  createDecision.resolve("Create")
+  createDecision.resolve("作成")
   await staleSave
 
   assert.equal(fs.readFileSync(harness.target, "utf8"), externalText)
@@ -407,12 +407,12 @@ test("Builder preserves a target created while the missing-target Create confirm
   assert.equal(harness.state.posted.some((message) => message.type === "saved"), false)
   assert.equal(harness.state.information.length, 0)
   assert.ok(
-    harness.state.warnings.some((message) => /refresh|reopen|再読込|更新/i.test(message)),
+    harness.state.warnings.some((message) => /refresh|reopen|再読込|再読み込み|開き直す|更新/i.test(message)),
     `expected refresh/reopen diagnostic, got ${JSON.stringify(harness.state.warnings)}`
   )
 
   fs.writeFileSync(harness.target, harness.oldText)
-  harness.state.warningResponses.push("Apply changes")
+  harness.state.warningResponses.push("変更を反映")
   await harness.send({ type: "save", model: editedModel(harness.model, "Fresh missing-target retry.") })
 
   assert.match(fs.readFileSync(harness.target, "utf8"), /description: Fresh missing-target retry\./)
@@ -423,7 +423,7 @@ test("Builder preserves a target created while the missing-target Create confirm
 test("Builder creates the target when it is still missing after Create confirmation", async (t) => {
   const harness = createPanelHarness(t)
   fs.unlinkSync(harness.target)
-  harness.state.warningResponses.push("Create")
+  harness.state.warningResponses.push("作成")
 
   await harness.send({ type: "save", model: editedModel(harness.model, "Confirmed missing-target create.") })
 
@@ -445,7 +445,7 @@ test("Builder revalidates original bytes after a blocked backup and preserves th
     backupStarted.resolve()
     await releaseBackup.promise
   }
-  harness.state.warningResponses.push("Apply changes")
+  harness.state.warningResponses.push("変更を反映")
 
   const staleSave = harness.send({ type: "save", model: editedModel(harness.model, "Stale builder description.") })
   await backupStarted.promise
@@ -460,12 +460,12 @@ test("Builder revalidates original bytes after a blocked backup and preserves th
   assert.equal(harness.state.posted.some((message) => message.type === "saved"), false)
   assert.equal(harness.state.information.length, 0)
   assert.ok(
-    harness.state.warnings.some((message) => /refresh|reopen|再読込|更新/i.test(message)),
+    harness.state.warnings.some((message) => /refresh|reopen|再読込|再読み込み|開き直す|更新/i.test(message)),
     `expected refresh/reopen diagnostic, got ${JSON.stringify(harness.state.warnings)}`
   )
 
   fs.writeFileSync(harness.target, harness.oldText)
-  harness.state.warningResponses.push("Apply changes")
+  harness.state.warningResponses.push("変更を反映")
   await harness.send({ type: "save", model: editedModel(harness.model, "Fresh retry description.") })
 
   assert.match(fs.readFileSync(harness.target, "utf8"), /description: Fresh retry description\./)
@@ -484,7 +484,7 @@ test("Builder serializes concurrent save messages for the same target", async (t
     backupStarted.resolve()
     await releaseBackup.promise
   }
-  harness.state.warningResponses.push("Apply changes", "Apply changes")
+  harness.state.warningResponses.push("変更を反映", "変更を反映")
 
   const firstSave = harness.send({ type: "save", model: editedModel(harness.model, "First concurrent description.") })
   await backupStarted.promise
@@ -503,7 +503,7 @@ test("Builder serializes concurrent save messages for the same target", async (t
 test("Builder aborts a queued save when the panel switches sessions before the operation starts", async (t) => {
   const harness = createPanelHarness(t)
   const sessionB = existingWorkflow(t, { description: "Session B original description." })
-  harness.state.warningResponses.push("Apply changes", "Apply changes")
+  harness.state.warningResponses.push("変更を反映", "変更を反映")
 
   const staleSessionASave = harness.send({ type: "save", model: editedModel(harness.model, "Stale session A description.") })
   harness.showFixture(sessionB)
@@ -539,7 +539,7 @@ test("Builder rolls back a backup and aborts when the panel switches sessions du
     backupStarted.resolve()
     await releaseBackup.promise
   }
-  harness.state.warningResponses.push("Apply changes", "Apply changes")
+  harness.state.warningResponses.push("変更を反映", "変更を反映")
 
   const staleSessionASave = harness.send({ type: "save", model: editedModel(harness.model, "Stale session A during backup.") })
   await backupStarted.promise
@@ -577,7 +577,7 @@ test("Builder reloads a committed save without sending stale UI when the panel s
     targetWriteStarted.resolve()
     await releaseTargetWrite.promise
   }
-  harness.state.warningResponses.push("Apply changes", "Apply changes")
+  harness.state.warningResponses.push("変更を反映", "変更を反映")
 
   const committedSessionASave = harness.send({ type: "save", model: editedModel(harness.model, "Committed session A description.") })
   await targetWriteStarted.promise
@@ -618,7 +618,7 @@ test("Builder retains two exclusively-created backups for successful saves in th
     }
   }
   t.after(() => { global.Date = RealDate })
-  harness.state.warningResponses.push("Apply changes", "Apply changes")
+  harness.state.warningResponses.push("変更を反映", "変更を反映")
   const firstModel = editedModel(harness.model, "First same-second description.")
   const secondModel = editedModel(harness.model, "Second same-second description.")
 
@@ -639,7 +639,7 @@ test("Builder retains two exclusively-created backups for successful saves in th
 
 test("Builder advances its originalText baseline only after each successful save", async (t) => {
   const harness = createPanelHarness(t)
-  harness.state.warningResponses.push("Apply changes", "Apply changes")
+  harness.state.warningResponses.push("変更を反映", "変更を反映")
 
   await harness.send({ type: "save", model: editedModel(harness.model, "First successful description.") })
   await harness.send({ type: "save", model: editedModel(harness.model, "Second successful description.") })

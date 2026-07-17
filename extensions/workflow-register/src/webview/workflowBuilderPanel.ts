@@ -197,14 +197,14 @@ export class WorkflowBuilderPanel {
     const rendered = serializeAuthoringModelToMarkdown(model)
     const targetUri = this.targetUri(rendered.filePath)
     if (this.options.mode !== "edit" || !(await exists(targetUri))) {
-      await vscode.window.showInformationMessage("Diff preview is available after opening an existing WORKFLOW.md in edit mode.")
+      await vscode.window.showInformationMessage("差分は、既存の WORKFLOW.md を編集モードで開いた場合に表示できます。")
       return
     }
     const previewDir = vscode.Uri.joinPath(vscode.Uri.file(this.options.workflowRoot), ".bob", "workflows", ".previews")
     await vscode.workspace.fs.createDirectory(previewDir)
     const previewUri = vscode.Uri.joinPath(previewDir, `workflow-builder-${timestamp()}.md`)
     await vscode.workspace.fs.writeFile(previewUri, new TextEncoder().encode(rendered.markdown))
-    await vscode.commands.executeCommand("vscode.diff", targetUri, previewUri, `Workflow Builder Preview: ${this.displayPathForUri(targetUri, rendered.filePath)}`)
+    await vscode.commands.executeCommand("vscode.diff", targetUri, previewUri, `ワークフロー編集プレビュー: ${this.displayPathForUri(targetUri, rendered.filePath)}`)
   }
 
   private async save(context: WorkflowBuilderSaveContext): Promise<void> {
@@ -213,20 +213,20 @@ export class WorkflowBuilderPanel {
     if (!this.isActiveSession(session)) return
     const savePathValidation = validateWorkflowDocumentPath({ workspaceRoot: options.workflowRoot, filePath: targetUri.fsPath })
     if (!savePathValidation.ok) {
-      await vscode.window.showErrorMessage(`GUI Builder can only save .bob/workflows/*/WORKFLOW.md inside the workflow workspace: ${savePathValidation.reason}`)
+      await vscode.window.showErrorMessage(`ワークフロー作成・編集では、ワークスペース内の .bob/workflows/*/WORKFLOW.md にのみ保存できます。保存先を確認してください: ${savePathValidation.reason}`)
       return
     }
     const validation = validateWorkflowText({ sourceId: options.sourceId, filePath: targetPath, text: rendered.markdown })
     if (!validation.ok) {
       await this.panel.webview.postMessage({ type: "previewResult", markdown: rendered.markdown, ok: false, diagnostics: formatWorkflowDiagnostics(validation), filePath: targetPath })
       if (!this.isActiveSession(session)) return
-      await vscode.window.showErrorMessage("Workflow validation failed. Fix errors before saving.")
+      await vscode.window.showErrorMessage("ワークフローの検証に失敗しました。エラーを修正してから、もう一度保存してください。")
       return
     }
     if (options.mode === "edit" && targetPath !== rendered.filePath) {
-      const proceed = await vscode.window.showWarningMessage(`The workflow name points to '${rendered.filePath}', but edit mode will update '${targetPath}'. Continue?`, { modal: true }, "Continue")
+      const proceed = await vscode.window.showWarningMessage(`ワークフロー名から計算した保存先は '${rendered.filePath}' ですが、編集モードでは '${targetPath}' を更新します。続行しますか？`, { modal: true }, "続行")
       if (!this.isActiveSession(session)) return
-      if (proceed !== "Continue") return
+      if (proceed !== "続行") return
     }
     const dir = vscode.Uri.file(path.dirname(targetUri.fsPath))
     await vscode.workspace.fs.createDirectory(dir)
@@ -235,8 +235,8 @@ export class WorkflowBuilderPanel {
     if (!this.isActiveSession(session)) return
     let backupUri: vscode.Uri | undefined
     if (targetExists) {
-      const label = options.mode === "edit" ? "Apply changes" : "Overwrite"
-      const overwrite = await vscode.window.showWarningMessage(`${targetPath} already exists. ${label} after creating a backup?`, { modal: true }, label)
+      const label = options.mode === "edit" ? "変更を反映" : "上書き"
+      const overwrite = await vscode.window.showWarningMessage(`${targetPath} は既に存在します。バックアップを作成してから「${label}」を実行しますか？`, { modal: true }, label)
       if (!this.isActiveSession(session)) return
       if (overwrite !== label) return
       const existingBytes = await vscode.workspace.fs.readFile(targetUri)
@@ -244,7 +244,7 @@ export class WorkflowBuilderPanel {
       if (options.mode === "edit" && session.originalText !== undefined) {
         const currentText = new TextDecoder().decode(existingBytes)
         if (currentText !== session.originalText) {
-          await vscode.window.showWarningMessage(`${targetPath} was changed outside this Builder. Reopen or refresh the workflow before saving again.`)
+          await vscode.window.showWarningMessage(`${targetPath} は画面外で変更されました。ワークフローを開き直すか再読み込みしてから、もう一度保存してください。`)
           return
         }
       }
@@ -261,7 +261,7 @@ export class WorkflowBuilderPanel {
           await deleteFileIfPresent(backupUri)
           return
         }
-        await vscode.window.showWarningMessage(`${targetPath} was changed outside this Builder while its backup was being created. Reopen or refresh the workflow before saving again.`)
+        await vscode.window.showWarningMessage(`${targetPath} はバックアップ作成中に画面外で変更されました。ワークフローを開き直すか再読み込みしてから、もう一度保存してください。`)
         return
       }
       if (!this.isActiveSession(session)) {
@@ -269,13 +269,13 @@ export class WorkflowBuilderPanel {
         return
       }
       if (!sameBytes(existingBytes, revalidatedBytes)) {
-        await vscode.window.showWarningMessage(`${targetPath} was changed outside this Builder while its backup was being created. Reopen or refresh the workflow before saving again.`)
+        await vscode.window.showWarningMessage(`${targetPath} はバックアップ作成中に画面外で変更されました。ワークフローを開き直すか再読み込みしてから、もう一度保存してください。`)
         return
       }
     } else if (options.mode === "edit") {
-      const create = await vscode.window.showWarningMessage(`${targetPath} no longer exists. Create it?`, { modal: true }, "Create")
+      const create = await vscode.window.showWarningMessage(`${targetPath} は存在しません。新しく作成しますか？`, { modal: true }, "作成")
       if (!this.isActiveSession(session)) return
-      if (create !== "Create") return
+      if (create !== "作成") return
       const targetAppeared = await exists(targetUri)
       if (!this.isActiveSession(session)) return
       if (targetAppeared) {
@@ -285,7 +285,7 @@ export class WorkflowBuilderPanel {
           // Any mutation after the confirming stat is still a conflict; the operator must retry from fresh state.
         }
         if (!this.isActiveSession(session)) return
-        await vscode.window.showWarningMessage(`${targetPath} was created outside this Builder while the Create confirmation was open. Reopen or refresh the workflow before saving again.`)
+        await vscode.window.showWarningMessage(`${targetPath} は作成確認中に画面外で作成されました。ワークフローを開き直すか再読み込みしてから、もう一度保存してください。`)
         return
       }
       // workspace.fs has no create-if-absent write. Keep this check adjacent to writeFile,
@@ -306,7 +306,7 @@ export class WorkflowBuilderPanel {
     if (!this.isActiveSession(session)) return
     await this.panel.webview.postMessage({ type: "saved", filePath: targetPath })
     if (!this.isActiveSession(session)) return
-    await vscode.window.showInformationMessage(`Saved ${targetPath}`)
+    await vscode.window.showInformationMessage(`${targetPath} を保存しました。`)
   }
 
   private isActiveSession(session: WorkflowBuilderSession): boolean {
@@ -318,7 +318,7 @@ export class WorkflowBuilderPanel {
   }
 
   private panelTitle(): string {
-    return this.options.mode === "edit" ? "Bob Workflow Builder: Edit" : "Bob Workflow Builder"
+    return this.options.mode === "edit" ? "Bob ワークフロー作成・編集: 編集" : "Bob ワークフロー作成・編集"
   }
 
   private targetUri(renderedFilePath: string, options: Readonly<WorkflowBuilderPanelOptions> = this.options): vscode.Uri {
@@ -339,8 +339,8 @@ export class WorkflowBuilderPanel {
       isEditMode,
       focusStepId: this.options.focusStepId,
       modeNote: isEditMode
-        ? "既存の <code>WORKFLOW.md</code> を読み込んで編集します。保存時は backup を作成してから上書きします。"
-        : "フォームで新しい <code>.bob/workflows/&lt;name&gt;/WORKFLOW.md</code> を作成します。参照関係は編集中に検出し、保存前にも既存 validator で確認します。",
+        ? "既存の <code>WORKFLOW.md</code> を読み込んで編集します。保存時はバックアップを作成してから上書きします。"
+        : "フォームで新しい <code>.bob/workflows/&lt;name&gt;/WORKFLOW.md</code> を作成します。参照関係は編集中に検出し、保存前にも既存の検証処理でも確認します。",
       nonce: getNonce(),
       templateOptions: workflowTemplates.map((template) => ({ id: template.id, label: template.label, description: template.description }))
     })

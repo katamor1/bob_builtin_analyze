@@ -16,11 +16,11 @@ export interface ImproveWorkflowWithAiOptions {
 export async function improveWorkflowWithAi(options: ImproveWorkflowWithAiOptions): Promise<void> {
   const editor = vscode.window.activeTextEditor
   if (!editor) {
-    await vscode.window.showErrorMessage("No active editor is open.")
+    await vscode.window.showErrorMessage("アクティブなエディターがありません。WORKFLOW.md を開いてからもう一度実行してください。")
     return
   }
   if (!isWorkflowDocumentPath(editor.document.uri.fsPath)) {
-    await vscode.window.showErrorMessage("Open a .bob/workflows/*/WORKFLOW.md file before running AI workflow repair.")
+    await vscode.window.showErrorMessage("AI による改善を実行する前に .bob/workflows/*/WORKFLOW.md を開いてください。")
     return
   }
   const filePath = workflowRelativePath(editor.document.uri)
@@ -30,7 +30,7 @@ export async function improveWorkflowWithAi(options: ImproveWorkflowWithAiOption
   const provider = options.provider ?? createMockWorkflowAiProvider()
   const proposal = await Promise.resolve(provider.improveWorkflow({ filePath, workflowText, repairContext: context }))
   const lines = [
-    "## Current validation",
+    "## 現在の検証結果",
     "",
     ...formatWorkflowDiagnostics(validation),
     "",
@@ -39,47 +39,47 @@ export async function improveWorkflowWithAi(options: ImproveWorkflowWithAiOption
     ...formatWorkflowRepairProposal(proposal)
   ]
   let summary = proposal.replacementMarkdown
-    ? "AI repair proposal includes replacement Markdown."
-    : "AI repair proposal does not include replacement Markdown; no files were modified."
+    ? "AI の改善案に置換用 Markdown が含まれています。"
+    : "AI の改善案に置換用 Markdown がないため、ファイルは変更していません。"
   if (proposal.replacementMarkdown) {
     const candidate = createWorkflowReplacementCandidate({ sourceId: options.sourceId, filePath, originalMarkdown: workflowText, replacementMarkdown: proposal.replacementMarkdown })
-    lines.push("", "## Replacement validation", "", ...formatWorkflowDiagnostics(candidate.validation), "", "## Replacement apply plan", "", `- canApply: ${candidate.canApply}`, `- backup: ${candidate.backupRelativePath}`)
+    lines.push("", "## 置換内容の検証", "", ...formatWorkflowDiagnostics(candidate.validation), "", "## 置換内容の反映計画", "", `- 反映可能（canApply）: ${candidate.canApply}`, `- バックアップ先（backup）: ${candidate.backupRelativePath}`)
     if (candidate.canApply) {
       const outcome = await previewAndMaybeApplyReplacement(editor.document.uri, candidate)
       summary = outcome
     } else {
-      summary = "AI repair proposal includes replacement Markdown, but it is invalid and was not previewed or applied."
+      summary = "AI の改善案に置換用 Markdown がありますが、検証に通らないためプレビューも反映もしていません。"
     }
   }
-  await options.showMarkdownReport("Improve Workflow With AI", `${summary} Provider: ${provider.id}.`, lines)
+  await options.showMarkdownReport("AI でワークフローを改善", `${summary} プロバイダー: ${provider.id}。`, lines)
 }
 
 async function previewAndMaybeApplyReplacement(originalUri: vscode.Uri, candidate: WorkflowReplacementCandidate): Promise<string> {
   const preview = await vscode.workspace.openTextDocument({ language: "markdown", content: candidate.replacementMarkdown })
   await vscode.window.showTextDocument(preview, { preview: false })
-  const workflowRoot = await pickWorkflowRootForUri(originalUri, "Select workflow workspace for replacement preview")
+  const workflowRoot = await pickWorkflowRootForUri(originalUri, "置換内容をプレビューするワークスペースを選択")
   if (workflowRoot) {
     const previewDir = vscode.Uri.joinPath(vscode.Uri.file(workflowRoot), ".bob", "workflows", ".previews", candidate.workflowName)
     const previewUri = vscode.Uri.joinPath(previewDir, previewFileNameForWorkflow(candidate.filePath, new Date()))
     await vscode.workspace.fs.createDirectory(previewDir)
     await vscode.workspace.fs.writeFile(previewUri, new TextEncoder().encode(candidate.replacementMarkdown))
-    await vscode.commands.executeCommand("vscode.diff", originalUri, previewUri, `Workflow replacement: ${candidate.workflowName}`)
+    await vscode.commands.executeCommand("vscode.diff", originalUri, previewUri, `ワークフロー置換: ${candidate.workflowName}`)
   }
   const picked = await vscode.window.showQuickPick([
-    { label: "Apply Replacement", description: "Create a backup, then overwrite WORKFLOW.md" },
-    { label: "Cancel", description: "Leave the current workflow unchanged" }
-  ], { title: "AI Workflow Replacement" })
-  if (picked?.label !== "Apply Replacement") return "AI repair replacement was previewed but not applied."
-  const confirmed = await vscode.window.showWarningMessage(`Apply AI replacement to ${candidate.filePath}? A backup will be written to ${candidate.backupRelativePath}.`, { modal: true }, "Apply Replacement")
-  if (confirmed !== "Apply Replacement") return "AI repair replacement was cancelled before apply."
+    { label: "置換内容を反映", description: "バックアップを作成してから WORKFLOW.md を上書き" },
+    { label: "中止", description: "現在のワークフローを変更しない" }
+  ], { title: "AI のワークフロー置換" })
+  if (picked?.label !== "置換内容を反映") return "AI の置換案をプレビューしましたが、反映していません。"
+  const confirmed = await vscode.window.showWarningMessage(`AI の置換案を ${candidate.filePath} に反映しますか？バックアップを ${candidate.backupRelativePath} に作成します。`, { modal: true }, "置換内容を反映")
+  if (confirmed !== "置換内容を反映") return "AI の置換案の反映を中止しました。"
   await writeBackupAndReplacement(originalUri, candidate)
-  return `AI repair replacement was applied. Backup: ${candidate.backupRelativePath}.`
+  return `AI の置換案を反映しました。バックアップ: ${candidate.backupRelativePath}。`
 }
 
 async function writeBackupAndReplacement(originalUri: vscode.Uri, candidate: WorkflowReplacementCandidate): Promise<void> {
-  if (!isWorkflowDocumentPath(originalUri.fsPath)) throw new Error("AI workflow repair can only overwrite .bob/workflows/*/WORKFLOW.md files.")
-  const workflowRoot = await pickWorkflowRootForUri(originalUri, "Select workflow workspace for replacement backup")
-  if (!workflowRoot) throw new Error("No workspace folder is open.")
+  if (!isWorkflowDocumentPath(originalUri.fsPath)) throw new Error("AI による改善で上書きできるのは .bob/workflows/*/WORKFLOW.md だけです。")
+  const workflowRoot = await pickWorkflowRootForUri(originalUri, "置換内容のバックアップ先ワークスペースを選択")
+  if (!workflowRoot) throw new Error("ワークスペースフォルダーが開かれていません。フォルダーを開いてからもう一度実行してください。")
   const parts = candidate.backupRelativePath.split("/").filter(Boolean)
   const backupUri = vscode.Uri.joinPath(vscode.Uri.file(workflowRoot), ...parts)
   const backupDir = vscode.Uri.joinPath(vscode.Uri.file(workflowRoot), ...parts.slice(0, -1))

@@ -2,36 +2,36 @@
 
 - 対象: GUI-00 から GUI-07
 - 対象拡張: `workflow-register`, `bob-bazaar-review`, `bob-code-consistency-review`
-- 前提: 主要操作は Command Palette ではなく Bob Operation Hub と各 GUI から開始する。既存 command は互換用に残す。
+- 前提: 主要操作は Command Palette ではなく Bob 操作センターと各 GUI から開始する。既存 command は互換用に残す。
 
 ## 1. 起動
 
 1. VS Code で対象 workspace を開く。
-2. Explorer の `Bob Operation Hub` を開く。
+2. Explorer の `Bob 操作センター` を開く。
 3. `セットアップ` で `.bob`, workflow, MCP, traceability の状態を確認する。
 4. 目的に応じて次の入口を使う。
 
 | 目的 | GUI 入口 |
 |---|---|
-| Bazaar レビュー | `Bob Operation Hub` > `Bazaar レビューを開始` |
-| 整合プレレビュー | `Bob Operation Hub` > `整合プレレビューを開始` |
-| workflow 実行 | `Bob Operation Hub` > `ワークフロー一覧` > `開始` |
-| 中断 run の再開 | `Bob Operation Hub` > `Run Monitor` |
-| Bob 出力取り込み | 各 Review GUI > `Result Capture` |
-| 採否判断 | 各 Review GUI > `Human Triage` |
+| Bazaar レビュー | `Bob 操作センター` > `Bazaar レビューを開始` |
+| 整合プレレビュー | `Bob 操作センター` > `整合プレレビューを開始` |
+| workflow 実行 | `Bob 操作センター` > `ワークフロー一覧` > `開始` |
+| 中断 run の再開 | `Bob 操作センター` > `実行状況` |
+| Bob 出力取り込み | 各レビュー画面 > `結果の取り込み` |
+| 採否判断 | 各レビュー画面 > `人による判定` |
 
 ## 2. Bazaar レビュー UAT
 
 対象: `bob-bazaar-review`
 
-1. `Bob Operation Hub` から `Bazaar レビューを開始` を押す。
-2. `Wizard v2` の手順を確認する。
+1. `Bob 操作センター` から `Bazaar レビューを開始` を押す。
+2. `レビュー手順` を確認する。
 3. Bazaar workspace を選択する。
 4. `1リビジョン`, `リビジョン範囲`, `TOPリビジョンと未コミット差分` のいずれかを選ぶ。
 5. `対象情報を取得` を押し、変更ファイル一覧が出ることを確認する。
 6. `レビューして Bob に追加` を押す。
-7. `Result Capture を開く` から Bob 出力 JSON を貼り付け、保存前 validation が走ることを確認する。
-8. `Human Triage を開く` から campaign / review_id を入力し、triage 雛形、decision 保存、summary 生成を確認する。
+7. `レビュー結果の取り込みを開く` から Bob 出力 JSON を貼り付け、保存前 validation が走ることを確認する。
+8. `人による判定を開く` から campaign / review_id を入力し、triage 雛形、decision 保存、summary 生成を確認する。
 
 合格条件:
 
@@ -44,15 +44,15 @@
 
 対象: `bob-code-consistency-review`
 
-1. `Bob Operation Hub` から `整合プレレビューを開始` を押す。
-2. `Consistency Review Wizard` で VCS、base/head、変更種別を確認する。
-3. `Evidence Picker` の文書候補を選ぶ。
-4. `Review Focus` を選ぶ。
-5. 必要に応じて `Traceability Prep を開く` で proposed item を承認する。
+1. `Bob 操作センター` から `整合プレレビューを開始` を押す。
+2. `整合プレレビューを開始` 画面で VCS、比較元／比較先、変更種別を確認する。
+3. `関連資料の選択` で文書候補を選ぶ。
+4. `確認観点` を選ぶ。
+5. 必要に応じて `トレーサビリティ確認を開く` で proposed item を承認する。
 6. `選択内容から review-input を生成` を押し、`review-input.yaml` が画面操作から生成されることを確認する。
 7. `Bob 用パッケージを作成` を押し、`Package Preview` が更新されることを確認する。
-8. `Result Capture` で Bob output YAML を貼り付け、schema / evidence ref validation を確認する。
-9. `Human Triage` で `triage-result.yaml` を生成し、finding / question の decision を保存する。
+8. `Bob 出力の取り込み` で Bob 出力（YAML） を貼り付け、schema / evidence ref validation を確認する。
+9. `指摘・確認事項の判定` で `triage-result.yaml` を生成し、finding / question の decision を保存する。
 
 合格条件:
 
@@ -61,13 +61,13 @@
 - evidence ref error がある Bob output は validation error になる。
 - `triage-result.yaml` に decision / owner / reason が保存される。
 
-## 4. Run Monitor UAT
+## 4. 実行状況 UAT
 
 対象: `workflow-register`
 
-1. `Bob Operation Hub` を開く。
+1. `Bob 操作センター` を開く。
 2. `ワークフロー一覧` から任意の workflow を開始する。
-3. 実行中または停止中 run が `Run Monitor` に表示されることを確認する。
+3. 実行中または停止中 run が `実行状況` に表示されることを確認する。
 4. 状態に応じて `承認して次へ`, `再試行`, `再開`, `手順を開く`, `詳細`, `成果物を開く` の表示を確認する。
 
 合格条件:

@@ -14,28 +14,28 @@ Object.assign(helpCatalog, {
   },
   'steps.addAgent': {
     id: 'steps.addAgent',
-    labelJa: 'AI step を追加',
+    labelJa: 'AI ステップを追加',
     fieldKey: 'steps[].type = agent',
     summary: 'Bob / agent に prompt を渡して処理させる step を追加します。',
     effect: '分析、要約、レビュー、文章生成など、AI に判断や文章化をさせる処理に使います。'
   },
   'steps.addCommand': {
     id: 'steps.addCommand',
-    labelJa: 'Command step を追加',
+    labelJa: 'コマンドステップを追加',
     fieldKey: 'steps[].type = command',
     summary: '拡張機能の action provider や VS Code command を実行する step を追加します。',
     effect: '差分収集、ファイル生成、検証、外部ツール連携など、AI ではなく拡張機能側で確実に行う処理に使います。'
   },
   'steps.addManual': {
     id: 'steps.addManual',
-    labelJa: 'Manual step を追加',
+    labelJa: '手動ステップを追加',
     fieldKey: 'steps[].type = manual',
     summary: '人間の確認完了を待つ step を追加します。',
     effect: '承認、目視確認、手動作業の完了待ちを workflow に含められます。'
   },
   'steps.addResult': {
     id: 'steps.addResult',
-    labelJa: 'Result step を追加',
+    labelJa: '保存ステップを追加',
     fieldKey: 'steps[].type = result',
     summary: '前段結果や固定テキストを成果物として保存する step を追加します。',
     effect: 'Bob の出力や command の結果を file sink などへ渡して、後で確認できる形にします。'
@@ -65,7 +65,7 @@ Object.assign(helpCatalog, {
   },
   'section.userAction': {
     id: 'section.userAction',
-    labelJa: 'User action セクション',
+    labelJa: '実行時の案内',
     fieldKey: 'steps[].userAction',
     summary: '手動操作ページに表示する内容と完了操作を設定します。',
     effect: 'manual step で workflow が停止したとき、専用ページから作業内容を確認して完了できます。'

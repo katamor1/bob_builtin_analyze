@@ -1,6 +1,7 @@
 import * as vscode from "vscode"
 import type { RunStateStore } from "./core/runStateStore"
 import type { MarkerRootCandidate } from "./core/workspaceRoots"
+import { workflowRunStatusLabel } from "./ui/displayLabels"
 
 export interface RunSelection {
   root: string
@@ -28,10 +29,10 @@ export async function pickRunSelection(
   if (selections.length === 0) return undefined
   const picked = await vscode.window.showQuickPick(selections.map((selection) => ({
     label: selection.runId,
-    description: selection.run?.status,
-    detail: `${selection.run?.workflowId}; root=${selection.root}; currentStep=${selection.run?.currentStep ?? "none"}`,
+    description: selection.run ? workflowRunStatusLabel(selection.run.status) : undefined,
+    detail: `${selection.run?.workflowId}; ワークスペース=${selection.root}; 現在のステップ=${selection.run?.currentStep ?? "なし"}`,
     selection
-  })), { title: "Workflow Run" })
+  })), { title: "ワークフロー実行" })
   return picked?.selection
 }
 

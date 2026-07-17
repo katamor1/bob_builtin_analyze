@@ -84,18 +84,18 @@
     "commands": [
       {
         "command": "workflowRegister.openOperationHub",
-        "title": "Operation Hub を開く",
+        "title": "操作センターを開く",
         "category": "Bob Workflow"
       },
       {
         "command": "workflowRegister.refreshOperationHub",
-        "title": "Operation Hub を更新",
+        "title": "操作センターを更新",
         "category": "Bob Workflow",
         "icon": "$(refresh)"
       },
       {
         "command": "workflowRegister.openOperationHubPanel",
-        "title": "Operation Hub を広く開く",
+        "title": "操作センターをパネルで開く",
         "category": "Bob Workflow",
         "icon": "$(layout)"
       },
@@ -141,7 +141,7 @@
       },
       {
         "command": "workflowRegister.importArtifactsFromTaskSnapshots",
-        "title": "Task Snapshot から成果物を取り込む",
+        "title": "保存済みタスクから成果物を取り込む",
         "category": "Bob Workflow"
       },
       {
@@ -191,22 +191,22 @@
       },
       {
         "command": "workflowRegister.pauseCurrentRun",
-        "title": "実行中 run を中断",
+        "title": "実行を一時停止",
         "category": "Bob Workflow"
       },
       {
         "command": "workflowRegister.pauseAfterCurrentStep",
-        "title": "現在ステップ後に中断",
+        "title": "現在のステップ後に一時停止",
         "category": "Bob Workflow"
       },
       {
         "command": "workflowRegister.pauseBeforeNextAiCall",
-        "title": "次のAI呼び出し前に中断",
+        "title": "次の AI 呼び出し前に一時停止",
         "category": "Bob Workflow"
       },
       {
         "command": "workflowRegister.resumePausedRun",
-        "title": "中断 run を再開",
+        "title": "一時停止した実行を再開",
         "category": "Bob Workflow"
       },
       {
@@ -246,17 +246,17 @@
       },
       {
         "command": "workflowRegister.inspectRunStorage",
-        "title": "実行ストレージを確認",
+        "title": "実行履歴の保存状況を確認",
         "category": "Bob Workflow"
       },
       {
         "command": "workflowRegister.previewRunCleanup",
-        "title": "実行クリーンアップをプレビュー",
+        "title": "実行履歴の削除候補を確認",
         "category": "Bob Workflow"
       },
       {
         "command": "workflowRegister.cleanupCompletedRuns",
-        "title": "完了済み実行をクリーンアップ",
+        "title": "完了済みの実行履歴を整理",
         "category": "Bob Workflow"
       },
       {
@@ -366,12 +366,12 @@
       },
       {
         "command": "bobTemplate.checkReadiness",
-        "title": "テンプレート Readiness を確認",
+        "title": "テンプレートの適用準備状況を確認",
         "category": "Bob Workflow"
       },
       {
         "command": "bobTemplate.openCustomizationStudio",
-        "title": "テンプレートカスタマイズ Studio",
+        "title": "テンプレート調整を開く",
         "category": "Bob Workflow"
       }
     ],
@@ -394,17 +394,17 @@
         "workflowRegister.sourceId": {
           "type": "string",
           "default": "workflow-register",
-          "description": "IBM Bob へワークフローを登録するときに使う source id。"
+          "description": "IBM Bob にワークフローを登録するときの内部識別子です。通常は変更しません。"
         },
         "workflowRegister.sourceName": {
           "type": "string",
           "default": "ワークフロー登録",
-          "description": "IBM Bob に表示される source name。"
+          "description": "IBM Bob に表示する登録元の名称です。"
         },
         "workflowRegister.agentCommand": {
           "type": "string",
           "default": "",
-          "description": "standalone workflow engine が agent step を実行するときに使う任意の VS Code command。AgentExecutionInput object を受け取り、text / result / output / content を含む text または object を返す必要があります。"
+          "description": "単独実行時に AI ステップを処理する任意の VS Code コマンド ID です。AgentExecutionInput を受け取り、text・result・output・content のいずれかを含む文字列またはオブジェクトを返す必要があります。"
         },
         "workflowRegister.aiProviderCommand": {
           "type": "string",
@@ -414,49 +414,49 @@
         "workflowRegister.taskSnapshots.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Bob UI 実行時に .bob/workflows/runs/<runId>/task-snapshots へ補助 snapshot を保存します。"
+          "description": "Bob UI での実行時に、復旧用の保存済みタスク情報を .bob/workflows/runs/<runId>/task-snapshots へ保存します。"
         },
         "workflowRegister.taskSnapshots.maxBytes": {
           "type": "number",
           "default": 262144,
           "minimum": 1024,
           "maximum": 1048576,
-          "description": "1 task snapshot JSON の最大サイズ。超過時は古い messages から省略します。"
+          "description": "保存済みタスク情報1件の最大サイズです。超過時は古いメッセージから省略します。"
         },
         "workflowRegister.taskSnapshots.maxPerRun": {
           "type": "number",
           "default": 50,
           "minimum": 1,
           "maximum": 500,
-          "description": "1 run に保持する snapshot 数。latest.json はこの数に含めません。"
+          "description": "1回の実行に保持する保存済みタスク情報の件数です。latest.json はこの件数に含めません。"
         },
         "workflowRegister.taskSnapshots.includeMessages": {
           "type": "boolean",
           "default": false,
-          "description": "task snapshot に Bob chat messages を含めます。必要な場合のみ明示的に有効化してください。無効時も metadata と lastAssistantText は redaction 後に保存対象です。"
+          "description": "保存済みタスク情報に Bob のチャットメッセージを含めます。必要な場合だけ明示的に有効化してください。無効時もメタデータと lastAssistantText は機密情報を除去して保存します。"
         },
         "workflowRegister.taskSnapshots.pruneOnSave": {
           "type": "boolean",
           "default": true,
-          "description": "snapshot 保存時に maxPerRun を超えた古い snapshot を削除します。"
+          "description": "保存時に上限件数を超えた古い保存済みタスク情報を整理します。"
         },
         "workflowRegister.runControl.maxRunMinutes": {
           "type": "number",
           "default": 0,
           "minimum": 0,
-          "description": "次の安全な checkpoint で run を自動停止するまでの最大実行時間（分）。0 は無効。"
+          "description": "次の安全な区切りで実行を自動停止するまでの最大時間（分）です。0 で無効になります。"
         },
         "workflowRegister.runControl.maxAgentStepsPerRun": {
           "type": "integer",
           "default": 0,
           "minimum": 0,
-          "description": "1 run で開始できる agent step 呼び出し回数の上限。0 は無効。"
+          "description": "1回の実行で開始できる AI ステップの呼び出し回数上限です。0 で無効になります。"
         },
         "workflowRegister.runControl.pauseAtLocalTime": {
           "type": "string",
           "default": "",
           "pattern": "^$|^(?:[01]\\d|2[0-3]):[0-5]\\d$",
-          "description": "指定したローカル時刻以降、新しい step を開始せず自動停止します。空文字は無効。"
+          "description": "指定したローカル時刻以降は新しいステップを開始せず、自動停止します。空文字で無効になります。"
         },
         "workflowRegister.runControl.timezone": {
           "type": "string",
@@ -466,25 +466,25 @@
         "workflowRegister.runs.retention.enabled": {
           "type": "boolean",
           "default": false,
-          "description": "将来の自動 run cleanup を許可する予約設定。現在の手動 retention command はこの値に関係なく利用できます。"
+          "description": "将来の実行履歴の自動整理を許可する予約設定です。現在の手動整理コマンドは、この値に関係なく利用できます。"
         },
         "workflowRegister.runs.retention.completedDays": {
           "type": "number",
           "default": 30,
           "minimum": 0,
-          "description": "完了からこの日数を超えた terminal run を手動 cleanup preview の候補にします。"
+          "description": "完了から指定日数を超えた終了済みの実行を、手動整理の候補にします。"
         },
         "workflowRegister.runs.retention.maxCompletedRuns": {
           "type": "integer",
           "default": 100,
           "minimum": 0,
-          "description": "保持する terminal run（completed / failed）数の目安。超過分を手動 cleanup preview の候補にします。"
+          "description": "保持する終了済みの実行（completed / failed）の件数目安です。超過分を手動整理の候補にします。"
         },
         "workflowRegister.runs.retention.maxTotalBytes": {
           "type": "integer",
           "default": 524288000,
           "minimum": 0,
-          "description": "run storage の総 byte 上限の目安。超過分を手動 cleanup preview の候補にします。"
+          "description": "実行履歴の保存容量上限（バイト）の目安です。超過分を手動整理の候補にします。"
         }
       }
     },

@@ -77,18 +77,18 @@ async function promptField(
   const value = await vscode.window.showInputBox({
     title: `${step.title}: ${title}`,
     value: typeof previousValue === "string" ? previousValue : undefined,
-    prompt: field.required ? "Required" : undefined
+    prompt: field.required ? "必須項目です。" : undefined
   })
   if (value === undefined) return undefined
   if (field.required && value.trim().length === 0) {
-    await vscode.window.showErrorMessage(`Manual field is required: ${title}`)
+    await vscode.window.showErrorMessage(`「${title}」は必須です。値を入力してからもう一度実行してください。`)
     return undefined
   }
   if (field.type === "number") {
     if (value.trim().length === 0) return ""
     const parsed = Number(value)
     if (!Number.isFinite(parsed)) {
-      await vscode.window.showErrorMessage(`Manual field must be a number: ${title}`)
+      await vscode.window.showErrorMessage(`「${title}」には数値を入力してください。入力内容を修正してからもう一度実行してください。`)
       return undefined
     }
     return parsed
@@ -103,16 +103,16 @@ async function collectApproval(
   if (!approval) return undefined
   const picked = await vscode.window.showQuickPick(
     [
-      { label: approval.approveLabel ?? "Approve", value: "approved" as const },
-      { label: approval.rejectLabel ?? "Reject", value: "rejected" as const }
+      { label: approval.approveLabel ?? "承認", value: "approved" as const },
+      { label: approval.rejectLabel ?? "却下", value: "rejected" as const }
     ],
     { title: step.title, placeHolder: approval.message }
   )
   if (!picked) return undefined
   if (picked.value === "approved") return { decision: "approved" }
   const reason = await vscode.window.showInputBox({
-    title: `${step.title}: ${approval.rejectLabel ?? "Reject"}`,
-    prompt: "Reject reason"
+    title: `${step.title}: ${approval.rejectLabel ?? "却下"}`,
+    prompt: "却下理由を入力してください。"
   })
   if (reason === undefined) return undefined
   return { decision: "rejected", reason }

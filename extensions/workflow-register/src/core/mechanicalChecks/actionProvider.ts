@@ -35,7 +35,7 @@ async function executeMechanicalChecksAction(
   input: ActionExecutionInput,
   options: MechanicalChecksActionProviderOptions
 ): Promise<MechanicalCheckProfileResult | Record<string, unknown>> {
-  requireWorkspaceTrust(options.isWorkspaceTrusted, "running mechanical checks")
+  requireWorkspaceTrust(options.isWorkspaceTrusted, "機械チェックを実行")
   const args = mechanicalCheckArgs(input.args)
   const profile = requireArg(args.profile, "profile")
   const workspaceRoot = requireArg(input.workflowRoot, "workflowRoot")

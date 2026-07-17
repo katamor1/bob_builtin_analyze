@@ -12,7 +12,7 @@ function commandPaletteCommands(packageJson) {
   return packageJson.contributes.commands.filter((command) => paletteIds.has(command.command))
 }
 
-test("Command Palette display names use English Bob category before the colon", () => {
+test("Command Palette display names use the approved Bob Workflow category before the colon", () => {
   const packageJson = readJson("package.json")
   const commands = commandPaletteCommands(packageJson)
   assert.ok(commands.length > 0, "commandPalette must expose commands")
@@ -23,8 +23,8 @@ test("Command Palette display names use English Bob category before the colon", 
 
     const displayName = `${command.category}: ${command.title}`
     const prefix = displayName.slice(0, displayName.indexOf(":"))
-    assert.ok(displayName.startsWith("Bob "), `${command.command} display name must start with Bob`)
-    assert.match(prefix, /^Bob [A-Za-z0-9 &/-]+$/, `${command.command} prefix before colon must be English`)
+    assert.equal(prefix, expectedCategory, `${command.command} prefix before colon`)
+    assert.ok(displayName.startsWith(`${expectedCategory}: `), `${command.command} display name must use the approved category`)
   }
 })
 
@@ -33,10 +33,10 @@ test("extension-local docs document the Command Palette display-name policy", ()
 
   for (const phrase of [
     "Command Palette 表示名ポリシー",
-    "`Bob <English area>: <日本語の操作名>`",
+    "`Bob Workflow: <日本語の操作名>`",
     "`category`",
     "`title`",
-    "コロンの手前"
+    "英語の機能領域名 `Bob Workflow`"
   ]) {
     assert.ok(readme.includes(phrase), `local docs must document: ${phrase}`)
   }

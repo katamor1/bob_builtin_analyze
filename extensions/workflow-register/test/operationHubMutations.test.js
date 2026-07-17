@@ -680,7 +680,7 @@ test("Operation Hub openArtifact rejects a workspace-local alias that resolves o
   await provider.handleMessage(openArtifactMessage(path.join(aliasDirectory, "outside.md")))
 
   assert.deepEqual(state.openedDocuments, [])
-  assert.deepEqual(state.errors, ["Bob 操作センター: workspace 外の成果物は開けません。"])
+  assert.deepEqual(state.errors, ["Bob 操作センター: workspace 外の成果物は開けません。画面を更新してから再実行してください。"])
   assert.equal(fs.readFileSync(outsideArtifact, "utf8"), outsideBytes)
 })
 
@@ -964,7 +964,7 @@ test("authoritative provenance cannot commit after cleanup full inventory reache
   const quickPickReady = deferred()
   const returnSelection = deferred()
   state.showQuickPick = async (items, options) => {
-    if (!String(options?.title).startsWith("Artifact source run:")) return items[0]
+    if (!String(options?.title).startsWith("成果物の再利用元を選択:")) return items[0]
     quickPickReady.resolve()
     await withTimeout(returnSelection.promise, "artifact source selection release")
     return items.find((item) => item.candidate.run.runId === source.runId)
@@ -1066,7 +1066,7 @@ test("workflow artifact source reuse recovers a pending journal inside the owned
   )
 
   assert.equal(result.status, "running")
-  assert.match(state.messages.join("\n"), /reused 1 step\(s\) from shared-run/i)
+  assert.match(state.messages.join("\n"), /shared-run から 1ステップを再利用しました/)
   assert.equal(state.savedRuns.length, 1)
   assert.equal(fs.existsSync(journalFile), false)
   const reuse = JSON.parse(state.savedRuns[0].state["workflow.artifactReuse"])
