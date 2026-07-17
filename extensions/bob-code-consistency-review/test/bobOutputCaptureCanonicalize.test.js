@@ -155,3 +155,38 @@ rejected_or_uncertain:
   assert.equal(saved.rejected_or_uncertain[0].id, "UNC-001")
   assert.match(saved.rejected_or_uncertain[0].summary, /Payment_CalculateLimit/)
 })
+
+test("captureBobOutput accepts a strict JSON object so colon-rich text cannot break YAML parsing", async () => {
+  const workspace = createAiVerificationMatrixWorkspace()
+  const packageDir = path.join(workspace, ".bob-review", "review-package")
+  await preprocessReview({ workspaceRoot: workspace, inputPath: path.join(workspace, "review-input.yaml"), outDir: ".bob-review/review-package" })
+
+  const bobOutputPath = path.join(workspace, ".bob-review", "bob-output", "bob-output.yaml")
+  const capture = await captureBobOutput({
+    workspaceRoot: workspace,
+    packageDir,
+    bobOutputPath: ".bob-review/bob-output/bob-output.yaml",
+    text: JSON.stringify({
+      schema_version: 1,
+      review_summary: {
+        review_id: "REVIEW-AI-MATRIX-001",
+        target_range: "main..feature/ai-verification-matrix",
+        result_type: "pre_review",
+        final_approval: "not_performed",
+        scope_statement: "確認観点: requirement-code-consistency",
+        generated_at: "2026-07-16T00:00:00Z",
+        prompt_template_id: "consistency-review-v1"
+      },
+      findings: [],
+      questions: [],
+      coverage_notes: [],
+      rejected_or_uncertain: []
+    }, null, 2)
+  })
+
+  assert.equal(capture.status, "ok")
+  const report = await validateBobOutput({ packageDir, bobOutputPath })
+  assert.deepEqual(report.errors, [])
+  const saved = YAML.parse(fs.readFileSync(bobOutputPath, "utf8"))
+  assert.equal(saved.review_summary.scope_statement, "確認観点: requirement-code-consistency")
+})
