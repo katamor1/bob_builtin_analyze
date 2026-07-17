@@ -29,26 +29,32 @@ jobs:
 
           ready=.sdd/patches/READY
           test -f "$ready"
-          mapfile -t prefixes < <(
-            find .sdd/patches -maxdepth 1 -type f -name '*.patch.gz.b64.part*' -print \
-              | sed -E 's/\.part[0-9]+$//' \
-              | sort -u
+          mapfile -t payloads < <(
+            find .sdd/patches -maxdepth 1 -type f \
+              \( -name '*.patch.gz.b64' -o -name '*.patch.gz.b64.part00' \) \
+              -print | sort
           )
-          if [ "${#prefixes[@]}" -eq 0 ]; then
-            echo "No queued patch parts." >&2
+          if [ "${#payloads[@]}" -eq 0 ]; then
+            echo "No queued patches." >&2
             exit 1
           fi
 
           cleanup=("$ready")
-          for prefix in "${prefixes[@]}"; do
-            mapfile -t parts < <(find .sdd/patches -maxdepth 1 -type f -path "${prefix}.part*" -print | sort)
-            if [ "${#parts[@]}" -eq 0 ]; then
-              echo "No parts found for $prefix" >&2
-              exit 1
+          for payload in "${payloads[@]}"; do
+            if [[ "$payload" == *.part00 ]]; then
+              prefix="${payload%.part00}"
+              mapfile -t parts < <(find .sdd/patches -maxdepth 1 -type f -path "${prefix}.part*" -print | sort)
+              if [ "${#parts[@]}" -eq 0 ]; then
+                echo "No parts found for $prefix" >&2
+                exit 1
+              fi
+              cat "${parts[@]}" | base64 --decode | gzip --decompress > /tmp/sdd.patch
+              cleanup+=("${parts[@]}")
+            else
+              base64 --decode "$payload" | gzip --decompress > /tmp/sdd.patch
+              cleanup+=("$payload")
             fi
-            cat "${parts[@]}" | base64 --decode | gzip --decompress > /tmp/sdd.patch
             git am --3way /tmp/sdd.patch
-            cleanup+=("${parts[@]}")
           done
 
           git rm "${cleanup[@]}"
