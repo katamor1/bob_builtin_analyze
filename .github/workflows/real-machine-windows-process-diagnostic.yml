@@ -1,0 +1,58 @@
+name: real-machine-windows-process-diagnostic
+
+on:
+  pull_request:
+    paths:
+      - "scripts/real-machine-test-environment.test.js"
+      - "tools/real-machine-test-environment/**"
+      - ".github/workflows/real-machine-windows-process-diagnostic.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: real-machine-windows-process-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows-process-contract:
+    name: Windows blocked-scenario process contract
+    runs-on: windows-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          show-progress: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+
+      - name: Run Windows process contract
+        id: process-contract
+        continue-on-error: true
+        shell: pwsh
+        env:
+          RUN_REAL_MACHINE_WINDOWS_PROCESS_TEST: "1"
+        run: |
+          $output = & node --test --test-name-pattern="missing VS Code CLI becomes blocked evidence on Windows" scripts/real-machine-test-environment.test.js 2>&1
+          $exitCode = $LASTEXITCODE
+          $output | Set-Content -LiteralPath windows-process-contract.log -Encoding utf8
+          $output | Write-Host
+          "exit_code=$exitCode" | Add-Content -LiteralPath windows-process-contract.log -Encoding utf8
+          exit $exitCode
+
+      - name: Upload Windows process contract log
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: windows-process-contract-log
+          path: windows-process-contract.log
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Propagate process contract failure
+        if: steps.process-contract.outcome == 'failure'
+        shell: pwsh
+        run: exit 1
