@@ -22,6 +22,7 @@ on:
       - "extensions/workflow-register/package.json"
       - "extensions/bob-bazaar-review/package.json"
       - "extensions/bob-code-consistency-review/package.json"
+      - "scripts/ci-baseline-summary.js"
       - ".github/workflows/workflow-contracts.yml"
   push:
     branches:
@@ -46,6 +47,7 @@ on:
       - "extensions/workflow-register/package.json"
       - "extensions/bob-bazaar-review/package.json"
       - "extensions/bob-code-consistency-review/package.json"
+      - "scripts/ci-baseline-summary.js"
       - ".github/workflows/workflow-contracts.yml"
   workflow_dispatch:
   # Manual dispatch is retained for explicit post-evidence contract verification.
@@ -73,6 +75,9 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: extensions/workflow-register/package-lock.json
+
+      - name: Record CI baseline
+        run: node ../../scripts/ci-baseline-summary.js
 
       - name: Install dependencies
         run: npm ci --silent

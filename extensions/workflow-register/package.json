@@ -420,12 +420,14 @@
           "type": "number",
           "default": 262144,
           "minimum": 1024,
+          "maximum": 1048576,
           "description": "1 task snapshot JSON の最大サイズ。超過時は古い messages から省略します。"
         },
         "workflowRegister.taskSnapshots.maxPerRun": {
           "type": "number",
           "default": 50,
           "minimum": 1,
+          "maximum": 500,
           "description": "1 run に保持する snapshot 数。latest.json はこの数に含めません。"
         },
         "workflowRegister.taskSnapshots.includeMessages": {

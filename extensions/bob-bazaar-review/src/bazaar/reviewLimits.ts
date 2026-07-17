@@ -35,16 +35,23 @@ export function truncateUtf8(value: string, maxBytes: number, label = "output"):
   const safeLimit = typeof maxBytes === "number" && Number.isFinite(maxBytes) ? Math.max(0, Math.floor(maxBytes)) : 0
   const originalBytes = Buffer.byteLength(value, "utf8")
   if (originalBytes <= safeLimit) return value
-  if (safeLimit <= 0) return `[TRUNCATED: ${label} limit is 0 bytes; original output was ${originalBytes} bytes]`
+  if (safeLimit <= 0) return ""
 
-  let low = 0
-  let high = value.length
-  while (low < high) {
-    const mid = Math.ceil((low + high) / 2)
-    if (Buffer.byteLength(value.slice(0, mid), "utf8") <= safeLimit) low = mid
-    else high = mid - 1
+  const notice = `\n\n[TRUNCATED: original ${label} output was ${originalBytes} bytes, limit is ${safeLimit} bytes]`
+  const boundedNotice = truncateUtf8Prefix(notice, safeLimit)
+  const prefixBudget = safeLimit - Buffer.byteLength(boundedNotice, "utf8")
+  return `${truncateUtf8Prefix(value, prefixBudget)}${boundedNotice}`
+}
+
+function truncateUtf8Prefix(value: string, maxBytes: number): string {
+  if (maxBytes <= 0) return ""
+  const result: string[] = []
+  let usedBytes = 0
+  for (const character of value) {
+    const characterBytes = Buffer.byteLength(character, "utf8")
+    if (usedBytes + characterBytes > maxBytes) break
+    result.push(character)
+    usedBytes += characterBytes
   }
-
-  const result = value.slice(0, low)
-  return `${result}\n\n[TRUNCATED: original ${label} output was ${originalBytes} bytes, limit is ${safeLimit} bytes]`
+  return result.join("")
 }

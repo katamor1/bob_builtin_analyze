@@ -1,0 +1,13 @@
+STATUS: COMPLETED
+PUBLISH_STATUS: DRAFT_PR_OPEN
+REPOSITORY: katamor1/bob_builtin_analyze
+BASE_BRANCH: main
+WORKING_BRANCH: agent/execute-shared-plan-verification
+PR_NUMBER: 133
+PR_URL: https://github.com/katamor1/bob_builtin_analyze/pull/133
+LOCAL_CODE_HEAD: d73f883b72a19d197c8a87a49cf3ca82980dcef5
+REMOTE_CODE_HEAD: b07313875501eb0b657d8b4805a5f278a8e98b4f
+FOCUSED_TESTS: 56 passed, 0 failed
+FULL_TESTS: 270 passed, 0 failed
+INDEPENDENT_REVIEW: PASS (0 Critical, 0 Important unresolved)
+CI_STATUS: PENDING

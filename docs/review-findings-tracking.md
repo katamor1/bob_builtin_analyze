@@ -1,6 +1,6 @@
 # Review findings tracking table
 
-更新日: 2026-07-16
+更新日: 2026-07-05
 
 この表は、`docs/` にある 2026-07-04 のレビュー結果文書から、後続修正で追跡する対象をまとめたものです。
 
@@ -141,6 +141,7 @@
 | `LAZY-01` | `extensions/bob-code-consistency-review` | DOCX/XLSX extraction dependencies are loaded only when those formats are processed, not during extension activation | done | `95074c6e` | RED `node --test test\heavyDependencyLoading.test.js`; `node --test test\documentExtraction.test.js test\pathBoundary.test.js test\reviewInputAiDraftProvider.test.js test\traceabilityAiDraftProvider.test.js test\heavyDependencyLoading.test.js`; `npm.cmd run architecture:policy`; `npm.cmd run dependency:policy`; `npm.cmd test`; `npm.cmd run package && npm.cmd run package:policy` |
 | `UNUSED-01` | `extensions/workflow-register`, `extensions/bob-bazaar-review`, `extensions/bob-code-consistency-review` | `knip` / `depcheck` / `ts-prune` run as report-only unused-code checks in local scripts and CI | done | `36c458f9` | RED `node --test test\dependencyPolicy.test.js` in each extension; `npm.cmd run unused:report` in each extension; `npm.cmd run dependency:policy`; `npm.cmd run architecture:policy`; `npm.cmd test`; `npm.cmd run package && npm.cmd run package:policy` in each extension |
 | `PROD-AUDIT-01` | `extensions/workflow-register`, `extensions/bob-bazaar-review`, `extensions/bob-code-consistency-review` | Production dependency audit has no high vulnerabilities; code consistency XLSX reading no longer depends on vulnerable `xlsx` | done | `36c458f9` | `npm.cmd run audit:prod -- --strict-ssl=false` in each extension; `extensions/bob-code-consistency-review`: RED `node --test test\dependencyPolicy.test.js test\heavyDependencyLoading.test.js`; `npm.cmd test`; `npm.cmd run package && npm.cmd run package:policy` |
+| `CI-BASELINE-01` | repository CI / three extensions | GitHub-hosted Ubuntu and Windows jobs receive runners and execute real quality, package, and Extension Host steps with bounded environment evidence | done | `069d5f8f` | PR #130; `extensions-quality` run `29505035151` 7/7、`workflow-contracts` run `29505035419` 1/1、scaffold run `29505035110` 2/2。代表job: Ubuntu `87643454480`、Windows `87643454500`。全10 jobでsteps非空、`Record CI baseline`成功。 |
 
 ## Completed commit index
 
@@ -211,6 +212,7 @@
 | `6d0c788c` | `EXT-MAINT-L`, `WFR-MAINT-L` | add export-star source policy, workflow schema policy, and extension metrics PR reporting |
 | `b2a18d78` | `CCR-MAINT-M` | split document extractors, C/C++ analyzer helpers, and review-input/workspace command modules |
 | `47d0f06f` | `WFR-MAINT-L` | split workflow-register core schema, runtime, authoring, and snapshot implementation modules into stage directories |
+| `069d5f8f` | `CI-BASELINE-01` | record bounded Ubuntu/Windows runner evidence and prove real CI steps |
 
 <!-- REMEDIATION-2026-07-11 -->
 ## 2026-07-11 three-extension remediation
@@ -221,98 +223,31 @@
 | REM-H02 | High | bob-bazaar-review, bob-code-consistency-review | bounded Git / Bazaar process execution with timeout, cancellation and kill | implemented | externalProcessRunner and wiring tests |
 | REM-M01 | Medium | bob-bazaar-review | cross-platform repository-relative path boundary | implemented | bazaarClient Windows / POSIX path tests |
 | REM-M02 | Medium | workflow-register and companion extensions | provider ownership, duplicate rejection and disposal | implemented | actionRegistry and provider registration tests |
-| REM-M03 | Medium | repository workflows | dynamic strict provider-aware workflow contract CI | done | current mainでlocal 23/23、`workflow-contracts` run `29502079066` success |
-| REM-M04 | Medium | CI / release | Ubuntu and Windows quality matrix, IBM Bob release-candidate gate | done | repository CI baselineはrun `29502077715`でsuccess。実IBM Bobは2026-07-16 user-attested PASS |
+| REM-M03 | Medium | repository workflows | dynamic strict provider-aware workflow contract CI | done | `workflow-contracts` run `29505035419`、job `87643455440` が実step付きで成功 |
+| REM-M04 | Medium | CI / release | Ubuntu and Windows quality matrix, IBM Bob release-candidate gate | ci_done / product_uat_pending | `extensions-quality` run `29505035151` は7/7成功、Ubuntu／Windowsの3拡張Extension Host smokeは6/6成功。IBM Bob、実Bazaar、multi-rootのproduct UATは未実施 |
 | REM-M05 | Medium | bob-code-consistency-review | bounded manifest/runtime processing limits and byte-safe truncation | implemented | sizeLimits and limitsPolicy tests |
 
-## 2026-07-16 CI baseline
+### CI baseline freeze (2026-07-16)
 
-### 完了チェック
+PR #68の旧runは、単一`echo` probeを含む全jobがrunner割当前に終了し、`steps: null`かつjob logなしだった。このためrepository code内のtest failureではなく、Actions利用条件またはGitHub-hosted runner許可側のrunner allocation blockerとして分類する。現在は同じGitHub-hosted runnerで実stepが完走しており、旧症状は再現しない。解除された個別の管理設定は観測できないため推測しない。
 
-- [x] step開始前に失敗した3 Actions runの原因を分類する。
-- [x] `actionlint`でworkflow構文を検査する。
-- [x] 実stepとjob logを持つ承認済みrunをcurrent mainで完走する。
-- [x] `npm ci`、各policy、unit test、package、package policyをローカル実行する。
-- [x] commit SHA、OS、Node.js、npm、VS Code、IBM Bob versionを記録する。
-- [x] baseline evidenceを本書へ集約する。
+- base commit: `f4f9d3308361333e02ab1af732706b7a9e5fc952`
+- implementation head: `069d5f8f33fd01b4d8eafbafe00c0d8424dcd0b7`
+- PR check merge commit: `4673b4931174de78a4f1bdd29d3c0a970f3dd088`
+- pull request: [#130](https://github.com/katamor1/bob_builtin_analyze/pull/130)
+- local contract evidence: `node --test scripts/ci-baseline-summary.test.js scripts/extension-host-smoke-contract.test.js` = 10 passed / 0 failed
 
-Repository CI baselineの判定は**PASS**とする。実IBM Bob環境も2026-07-16のユーザー評価により**PASS**とする。実Bazaar、multi-root、署名／配布はこのbaselineに含めず、Product Release UATの別ゲートとして残す。
+GitHubの`pull_request` runでは`GITHUB_SHA`がsource branch headではなくPR check用のsynthetic merge commitを示す。したがってsource implementation headと、runnerが実際にcheckout・検証したmerge commitを分けて記録する。両OSの環境証跡は同じcheck merge commitを報告した。
 
-### step開始前に失敗した3 runの原因分類
+| workflow | run | expected jobs | observed | real steps | result |
+| --- | --- | ---: | ---: | --- | --- |
+| extensions-quality | [29505035151](https://github.com/katamor1/bob_builtin_analyze/actions/runs/29505035151) | 7 | 7 | 7/7 non-empty、`Record CI baseline` 7/7 success | success |
+| workflow-contracts | [29505035419](https://github.com/katamor1/bob_builtin_analyze/actions/runs/29505035419) | 1 | 1 | 1/1 non-empty、job `87643455440` | success |
+| code-consistency-review-scaffold | [29505035110](https://github.com/katamor1/bob_builtin_analyze/actions/runs/29505035110) | 2 | 2 | 2/2 non-empty、jobs `87643454338` / `87643454358` | success |
 
-3 runは同一head `8626df1acb1d72a6afb6d149cf15bf2144f0ce52`、attempt 2である。合計10 jobのcheck annotationはすべて次の同一理由を返した。
+| environment | representative job | runner | operating system | runner image | Node.js | checked commit | result |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Ubuntu | [87643454480](https://github.com/katamor1/bob_builtin_analyze/actions/runs/29505035151/job/87643454480) | `2.335.1`, X64 | Ubuntu 24.04.4 LTS | `ubuntu-24.04` `20260714.240.1` | `v22.23.1` | `4673b4931174de78a4f1bdd29d3c0a970f3dd088` | success |
+| Windows | [87643454500](https://github.com/katamor1/bob_builtin_analyze/actions/runs/29505035151/job/87643454500) | `2.335.1`, X64 | Windows Server 2025 `10.0.26100` Datacenter | `windows-2025-vs2026` `20260714.173.1` | `v22.23.1` | `4673b4931174de78a4f1bdd29d3c0a970f3dd088` | success |
 
-> The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings
-
-| Workflow | Run | Job数 | 観測 | 分類 |
-| --- | --- | ---: | --- | --- |
-| `extensions-quality` | [29153144606](https://github.com/katamor1/bob_builtin_analyze/actions/runs/29153144606) | 7 | 全jobが`steps: null`、job logなし | billing / quota（payment / spending limit） |
-| `workflow-contracts` | [29153144643](https://github.com/katamor1/bob_builtin_analyze/actions/runs/29153144643) | 1 | `Strict workflow validation`がstep開始前failure | billing / quota（payment / spending limit） |
-| `code-consistency-review-scaffold` | [29153144613](https://github.com/katamor1/bob_builtin_analyze/actions/runs/29153144613) | 2 | 両jobがstep開始前failure | billing / quota（payment / spending limit） |
-
-`invalid workflow`は、workflowが解析され期待jobが生成されているため除外した。`actions disabled`と`approval required`は、runが`failure`まで遷移し、check annotationがbillingを直接指しているため除外した。
-
-### actionlint
-
-| 項目 | 証跡 |
-| --- | --- |
-| Version | `actionlint 1.7.12`、Go `1.26.1`、linux/amd64 |
-| 配布物 | official release `actionlint_1.7.12_linux_amd64.tar.gz` |
-| SHA-256 | `8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8`、公式`checksums.txt`と一致 |
-| Command | `actionlint -color=false .github/workflows/*.yml` |
-| Scope | `extensions-quality.yml`、`workflow-contracts.yml`、`code-consistency-review-scaffold.yml` |
-| Result | exit 0、0 findings |
-
-### baseline environment
-
-| 項目 | 値 | 根拠／範囲 |
-| --- | --- | --- |
-| Tested commit | `f4f9d3308361333e02ab1af732706b7a9e5fc952` | local checkoutと3 `workflow_dispatch` runのheadが一致 |
-| Local OS | Ubuntu `24.04.3 LTS`、kernel `6.12.47`、x86_64 | local policy／unit／package実行環境 |
-| Hosted Ubuntu | Ubuntu `24.04.4 LTS`、runner image `ubuntu-24.04` version `20260705.232.1` | `extensions-quality` job log |
-| Hosted Windows | Microsoft Windows Server 2025 `10.0.26100` Datacenter | Windows matrix job log |
-| Node.js / npm | Node.js `v22.23.1`、npm `10.9.8` | localとUbuntu／Windows job logで一致 |
-| VS Code | `1.106.1` | hosted Extension Hostがversionをvalidate／downloadし、3拡張すべてexit 0 |
-| VS Code test runtime | `@vscode/test-cli@0.0.12`、`@vscode/test-electron@2.5.2` | workflowのpinned local runtime step |
-| IBM Bob | `IBM.bob-code` `2.0.1` | `bob2/bob-code/package.json`。CI smokeは`skipExtensionDependencies: true`のためBob本体を起動しない。実IBM Bob環境は2026-07-16 user-attested PASS |
-
-### 実機評価
-
-| Gate | 判定 | 証跡属性 |
-| --- | --- | --- |
-| 実IBM Bob環境 | **PASS** | 2026-07-16のユーザー評価。対象versionは`IBM.bob-code` `2.0.1`。自動CI logではなくoperator attestationとして記録 |
-
-この評価により、マスタープランのIBM Bob実環境項目を完了とする。実Bazaarとmulti-rootは個別のPASS証跡がないため未完了のまま維持する。
-
-### ローカル検証
-
-4 package directoryでNode.js `v22.23.1`を使用して`npm ci`を実行し、すべてexit 0を確認した。3拡張の`audit:prod`はすべて`found 0 vulnerabilities`だった。
-
-| Scope | Policy／contract | Unit／smoke | Package／policy |
-| --- | --- | --- | --- |
-| `extensions/workflow-register` | dependency、architecture（216 TS files）、source（216 TS files）、schema 5/5、unused report、production audit、workflow contracts 23/23 | 全1085 testsを直列実行し1084 pass、1 skip、0 fail。smoke contract 4/4 | `workflow-register-0.1.0.vsix`、1,031,634 bytes、810 entries、budget 1,200,000 bytes以内 |
-| `extensions/bob-bazaar-review` | dependency 6/6、architecture（111 TS files）、source（111 TS files）、unused report／policy、artifact 20 files、production audit | 675/675 pass | `bob-bazaar-review-0.3.0.vsix`、3,740,845 bytes、1,819 entries、budget 12,000,000 bytes以内、metrics 31.2% |
-| `extensions/bob-code-consistency-review` | dependency 2/2、architecture（98 TS files）、source（98 TS files）、unused report、production audit | 258/258 pass | `bob-code-consistency-review-0.1.0.vsix`、3,694,166 bytes、1,912 entries、budget 11,000,000 bytes以内 |
-| `docs/workflows/code-consistency-review/scaffold` | typecheck | unit 6/6、preprocess／validate-output／triage smoke exit 0 | package scriptなし |
-
-`workflow-register`の既定並列`npm test`もローカル実行したが、この共有実行環境では毎回異なる5秒待機条件が負荷依存でtimeoutした。該当testはNode.js 22で単独3/3 passし、同一1085 testsの直列実行は0 failだった。さらに下記のhosted既定`npm test`はUbuntuで1084 pass／1 skip／0 fail、Windowsで1085 pass／0 failであるため、CI baselineではrepository regressionではなくローカル実行基盤の並列負荷制約として記録する。ローカルproxyが子process stderrへ注入するwarningは`NODE_NO_WARNINGS=1`で隔離した。
-
-### 承認済みcurrent-main runと実log
-
-3 runはいずれも`workflow_dispatch`、head `f4f9d3308361333e02ab1af732706b7a9e5fc952`、attempt 1で、jobに実stepとdecode可能なlogが存在する。
-
-| Workflow | Run／結果 | 実step／log evidence |
-| --- | --- | --- |
-| `extensions-quality` | [29502077715](https://github.com/katamor1/bob_builtin_analyze/actions/runs/29502077715)、success | Ubuntu: [workflow-register](https://github.com/katamor1/bob_builtin_analyze/actions/runs/29502077715/job/87633285630)、[bob-bazaar-review](https://github.com/katamor1/bob_builtin_analyze/actions/runs/29502077715/job/87633285583)、[bob-code-consistency-review](https://github.com/katamor1/bob_builtin_analyze/actions/runs/29502077715/job/87633285561)。Windows: [workflow-register](https://github.com/katamor1/bob_builtin_analyze/actions/runs/29502077715/job/87633285604)、[bob-bazaar-review](https://github.com/katamor1/bob_builtin_analyze/actions/runs/29502077715/job/87633285644)、[bob-code-consistency-review](https://github.com/katamor1/bob_builtin_analyze/actions/runs/29502077715/job/87633285608)。全6 job success、3拡張のExtension Host exit 0。`Extension source metrics`はPR専用条件のためexpected skip |
-| `workflow-contracts` | [29502079066](https://github.com/katamor1/bob_builtin_analyze/actions/runs/29502079066)、success | [Strict workflow validation](https://github.com/katamor1/bob_builtin_analyze/actions/runs/29502079066/job/87633292140): compile、23/23 contract tests、0 fail |
-| `code-consistency-review-scaffold` | [29502080739](https://github.com/katamor1/bob_builtin_analyze/actions/runs/29502080739)、success | [Validate VS Code extension](https://github.com/katamor1/bob_builtin_analyze/actions/runs/29502080739/job/87633295510): 258/258。 [Validate scaffold](https://github.com/katamor1/bob_builtin_analyze/actions/runs/29502080739/job/87633295523): typecheck、6/6、preprocess／validate-output／triage smoke |
-
-`extensions-quality`のUbuntu logは`workflow-register` 1085 tests（1084 pass、1 skip）、`bob-bazaar-review` 675/675、`bob-code-consistency-review` 258/258を記録する。Windows logはそれぞれ1085/1085、674 pass＋1 platform skip、258/258で、VSIX policyとVS Code `1.106.1` Extension Host smokeもすべて成功した。
-
-### ローカルVSIX digest
-
-| Artifact | Bytes | SHA-256 |
-| --- | ---: | --- |
-| `workflow-register-0.1.0.vsix` | 1,031,634 | `cf3e3f433670fcc9d32569c6d5b4e7b6463e1bf47ad37cdb2245d622660c842d` |
-| `bob-bazaar-review-0.3.0.vsix` | 3,740,845 | `fab27b706ccf8521070f29b0d101ade431eee95eac8ae3a79d240262d3ef8fba` |
-| `bob-code-consistency-review-0.1.0.vsix` | 3,694,166 | `4df0b7b4453ba7064a26a56822e748b8e19ce1bed88e3502331f384d8ddbe7ad` |
+Automated CIで閉じた範囲はworkflow contracts、Ubuntu／Windows quality matrix、package／policy、3拡張のExtension Host smokeである。IBM Bob実環境、実Bazaarのtimeout／cancel後child process残留、multi-rootでのBob root／VCS root分離、署名・配布・upgrade／rollbackはproduct UATとして未実施のまま維持する。

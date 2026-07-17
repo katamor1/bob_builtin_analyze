@@ -395,3 +395,14 @@
 | CCR-UT-063 | Webview boundary | untriaged state、lock token、source context、editable decision field、action/message whitelistを検証する。 | `test/guiFirstSurfaces.test.js`, `test/humanTriageBoundaries.test.js` |
 
 Windowsではtemporary directoryが8.3短縮名と長形式名で表現される場合がある。CAS test barrierとbackup directoryのassertionはlexical stringではなくphysical identityまたは対象basenameで比較する。
+
+<!-- RELEASE-BLOCKERS-2026-07-16 -->
+## 2026-07-16 release blocker 回帰契約
+
+| ID | 観点 | 期待結果 | 実テスト |
+| --- | --- | --- | --- |
+| CCR-UT-RB-001 | Windows tree kill | 親processが先にexitしても`taskkill /T /F`完了前にcancel結果をsettleしない。 | `test/windowsProcessTreeTermination.test.js` |
+| CCR-UT-RB-002 | timeout / cancel | 1,000〜600,000 ms clamp、AbortSignal、buffer budget、終了後settlementを維持する。 | `test/externalProcessRunner.test.js` |
+| CCR-UT-RB-003 | provider cleanup | 1 providerのdisposeまたはerror reporterが例外を投げても、全providerとchange listenerを解除する。 | `test/retryRegistrationController.test.js` |
+| CCR-UT-RB-004 | dependency lifecycle | soft dependency、API generation、stale / late registration rollback、source ownershipを固定する。 | `test/dependencyPolicy.test.js`, `test/workflowProviderRegistration.test.js` |
+| CCR-UT-RB-005 | path / resource cap | unsafe Git/Bazaar path/revisionを拒否し、manifest/runtime processing limitとUTF-8 budgetを一致させる。 | `test/vcsValidation.test.js`, `test/sizeLimits.test.js` |

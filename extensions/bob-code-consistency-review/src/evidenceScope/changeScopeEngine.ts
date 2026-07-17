@@ -19,7 +19,7 @@ const PRIORITY_BY_DEPTH: Record<number, ScopePriority> = {
 
 export function buildEvidenceScope(request: EvidenceScopeRequest): EvidenceScopeResult {
   const warnings: string[] = []
-  const symbolById = new Map(request.symbols.map((symbol) => [symbol.id, normalizeSymbol(symbol)]))
+  const symbolById = indexSymbolsById(request.symbols)
   const changedIds = [...new Set(request.changedSymbolIds)].sort()
   const candidates = expandCodeScope(changedIds, symbolById, request.dependencyEdges, request.maxDependencyDepth, warnings)
   const impactedSymbols = [...candidates.values()].map((candidate) => candidate.symbol)
@@ -61,6 +61,19 @@ export function buildEvidenceScope(request: EvidenceScopeRequest): EvidenceScope
     budgetReport,
     warnings: [...new Set(warnings)].sort()
   }
+}
+
+function indexSymbolsById(symbols: ScopeSymbol[]): Map<string, ScopeSymbol> {
+  const symbolById = new Map<string, ScopeSymbol>()
+  const duplicateIds = new Set<string>()
+  for (const symbol of symbols) {
+    if (symbolById.has(symbol.id)) duplicateIds.add(symbol.id)
+    else symbolById.set(symbol.id, normalizeSymbol(symbol))
+  }
+  if (duplicateIds.size > 0) {
+    throw new Error(`duplicate scope symbol ids: ${[...duplicateIds].sort().join(", ")}`)
+  }
+  return symbolById
 }
 
 type CodeCandidate = {

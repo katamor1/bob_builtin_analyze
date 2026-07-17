@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "phase": 6,
+  "alias_manifest": true,
+  "canonical_manifest": {
+    "path": "docs/implementation/bob-evidence-scope-final-artifact-ledger-manifest.json",
+    "bytes": 3178,
+    "sha256": "b0b7ea37bbdc42827a2e916ce2b47a3da336de7a210b4886fef347117f7e5fb8"
+  },
+  "canonical_implementation": {
+    "path": "docs/implementation/bob-evidence-scope-final-artifact-ledger-2026-07-12.md",
+    "bytes": 2092,
+    "sha256": "8241bce991a4e7686c2a042333847034fae8394f94b41d9bbcaf145c222eb5f0"
+  },
+  "canonical_verification": {
+    "path": "docs/implementation/bob-evidence-scope-final-artifact-ledger-verification-2026-07-12.md",
+    "bytes": 1186,
+    "sha256": "67e55c009213497224e11d83b7ca967a84bd34c695ed371cec02b767d27b9899"
+  }
+}

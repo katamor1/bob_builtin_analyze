@@ -77,6 +77,84 @@ test("file task snapshot store truncates oversized messages and prunes old snaps
   assert.equal(latest.lastAssistantText, "fresh output")
 })
 
+test("file task snapshot store hard-caps the final formatted JSON", async () => {
+  const {
+    DEFAULT_TASK_SNAPSHOT_BYTES,
+    DEFAULT_TASK_SNAPSHOTS_PER_RUN,
+    FileTaskSnapshotStore,
+    MAX_TASK_SNAPSHOT_BYTES,
+    MAX_TASK_SNAPSHOTS_PER_RUN,
+    MIN_TASK_SNAPSHOT_BYTES,
+    MIN_TASK_SNAPSHOTS_PER_RUN,
+    normalizeTaskSnapshotLimits
+  } = require("../out/core/taskSnapshots")
+
+  assert.equal(MAX_TASK_SNAPSHOT_BYTES, 1024 * 1024)
+  assert.equal(MAX_TASK_SNAPSHOTS_PER_RUN, 500)
+  assert.deepEqual(
+    normalizeTaskSnapshotLimits({
+      maxBytes: Number.MAX_SAFE_INTEGER,
+      maxPerRun: Number.MAX_SAFE_INTEGER
+    }),
+    {
+      maxBytes: MAX_TASK_SNAPSHOT_BYTES,
+      maxPerRun: MAX_TASK_SNAPSHOTS_PER_RUN
+    }
+  )
+  assert.deepEqual(
+    normalizeTaskSnapshotLimits({ maxBytes: Number.NaN, maxPerRun: -1 }),
+    {
+      maxBytes: DEFAULT_TASK_SNAPSHOT_BYTES,
+      maxPerRun: DEFAULT_TASK_SNAPSHOTS_PER_RUN
+    }
+  )
+  assert.deepEqual(
+    normalizeTaskSnapshotLimits({ maxBytes: 1, maxPerRun: 0.5 }),
+    {
+      maxBytes: MIN_TASK_SNAPSHOT_BYTES,
+      maxPerRun: MIN_TASK_SNAPSHOTS_PER_RUN
+    }
+  )
+  const packageJson = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "package.json"), "utf8"))
+  const properties = packageJson.contributes.configuration.properties
+  assert.equal(properties["workflowRegister.taskSnapshots.maxBytes"].maximum, MAX_TASK_SNAPSHOT_BYTES)
+  assert.equal(properties["workflowRegister.taskSnapshots.maxPerRun"].maximum, MAX_TASK_SNAPSHOTS_PER_RUN)
+  const workspaceRoot = tempDir()
+  const maxBytes = 1024
+  const store = new FileTaskSnapshotStore({
+    workspaceRoot,
+    now: () => "2026-06-30T00:00:00.000Z",
+    maxBytes,
+    includeMessages: true
+  })
+  const saved = await store.saveSnapshot(snapshot({
+    taskMetadata: { payload: "m".repeat(4096) },
+    messages: [{ role: "assistant", content: "c".repeat(4096) }],
+    taskExport: { payload: "e".repeat(4096) },
+    lastAssistantText: "a".repeat(4096),
+    handoff: { resultCommand: "capture", error: "h".repeat(4096) }
+  }))
+  const latestPath = path.join(
+    workspaceRoot,
+    ".bob",
+    "workflows",
+    "runs",
+    "run-1",
+    "task-snapshots",
+    "latest.json"
+  )
+  const savedBytes = fs.readFileSync(saved.path)
+  const latestBytes = fs.readFileSync(latestPath)
+  const latest = JSON.parse(latestBytes.toString("utf8"))
+
+  assert.ok(savedBytes.length <= maxBytes, `saved snapshot used ${savedBytes.length} bytes`)
+  assert.ok(latestBytes.length <= maxBytes, `latest snapshot used ${latestBytes.length} bytes`)
+  assert.equal(latest.truncated, true)
+  assert.equal(latest.runId, "run-1")
+  assert.equal(latest.workflowId, "workflow-register.snapshot")
+  assert.equal(latest.stepId, "collect")
+})
+
 test("file task snapshot store redacts secret-like values before saving snapshots", async () => {
   const { FileTaskSnapshotStore } = require("../out/core/taskSnapshots")
 

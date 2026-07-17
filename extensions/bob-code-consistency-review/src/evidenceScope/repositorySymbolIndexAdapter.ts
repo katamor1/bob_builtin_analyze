@@ -51,7 +51,7 @@ export function mergeRepositoryScopeData(
 
     const canonicalId = canonical?.id ?? analysisSymbol.id
     symbolIdMap.set(analysisSymbol.id, canonicalId)
-    symbolsById.set(canonicalId, mergeSymbols(canonical, analysisSymbol, canonicalId))
+    symbolsById.set(canonicalId, authoritativeAnalysisSymbol(analysisSymbol, canonicalId))
   }
 
   const remappedAnalysisEdges = analysisEdges.map((edge) => remapEdge(edge, symbolIdMap))
@@ -71,19 +71,14 @@ export function mergeRepositoryScopeData(
   }
 }
 
-function mergeSymbols(
-  repositorySymbol: ScopeSymbol | undefined,
+function authoritativeAnalysisSymbol(
   analysisSymbol: ScopeSymbol,
   canonicalId: string
 ): ScopeSymbol {
   return {
-    ...repositorySymbol,
     ...analysisSymbol,
     id: canonicalId,
-    riskTags: [...new Set([
-      ...(repositorySymbol?.riskTags ?? []),
-      ...(analysisSymbol.riskTags ?? [])
-    ])].sort()
+    riskTags: [...new Set(analysisSymbol.riskTags ?? [])].sort()
   }
 }
 

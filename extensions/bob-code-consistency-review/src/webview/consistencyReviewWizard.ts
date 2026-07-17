@@ -15,10 +15,12 @@ import {
 import { resolveWorkspacePathStrict } from "../core/fileSystem"
 import { DEFAULT_TRACEABILITY_CATALOG_PATH, DEFAULT_TRACEABILITY_GATE_REPORT_PATH, readTraceabilityCatalog, validateAndWriteTraceabilityGateReport } from "../core/traceabilityCatalogStore"
 import type { TraceabilityCatalog, TraceabilityStatus } from "../core/traceabilityCatalog"
+import { getCodeConsistencyWorkspaceInitializationStatus } from "../workspaceInitializer"
 import { resolveBobWorkspaceRoot } from "../workspaceResolver"
 import { renderConsistencyReviewWizardHtml, type ConsistencyReviewWizardModel, type ConsistencyWizardPackageFile } from "./consistencyReviewWizardHtml"
 
 type ConsistencyWizardAction =
+  | "initializeWorkspace"
   | "createReviewInput"
   | "openTraceabilityPrep"
   | "createReviewInputFromTraceability"
@@ -47,6 +49,7 @@ class ConsistencyReviewWizardController {
   private workspaceRoot = ""
   private documents: ReviewInputDocumentCandidate[] = []
   private model?: ConsistencyReviewWizardModel
+  private initializingWorkspace = false
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -66,6 +69,10 @@ class ConsistencyReviewWizardController {
       return
     }
     try {
+      if (message.action === "initializeWorkspace") {
+        await this.initializeWorkspace()
+        return
+      }
       if (message.action === "createReviewInput") {
         await this.createReviewInput(message.draft ?? {})
       } else if (message.action === "openTraceabilityPrep") {
@@ -109,6 +116,8 @@ class ConsistencyReviewWizardController {
       reportPath: config.get<string>("traceabilityGateReportPath", DEFAULT_TRACEABILITY_GATE_REPORT_PATH),
       textEncoding
     })
+    const warnings = [...discovery.warnings, ...extraWarnings]
+    const initialization = await getCodeConsistencyWorkspaceInitializationStatus(this.workspaceRoot)
     return {
       workspaceRoot: this.workspaceRoot,
       base: "HEAD~1",
@@ -119,7 +128,37 @@ class ConsistencyReviewWizardController {
       documents: this.documents,
       traceability,
       packagePreview: await listPackagePreview(this.workspaceRoot, config.get<string>("reviewPackagePath", ".bob-review/review-package")),
-      warnings: [...discovery.warnings, ...extraWarnings]
+      initialization,
+      warnings,
+      status: {
+        tone: warnings.length > 0 ? "warning" : "muted",
+        message: warnings.join("\n") || "未実行"
+      }
+    }
+  }
+
+  private async initializeWorkspace(): Promise<void> {
+    if (this.initializingWorkspace) {
+      this.post({ message: "初期化を実行中です。" })
+      return
+    }
+    this.initializingWorkspace = true
+    try {
+      const result = await vscode.commands.executeCommand(
+        "bobCodeConsistency.initializeWorkspace",
+        { workspaceRoot: this.workspaceRoot }
+      )
+      const nextModel = await this.buildModel([])
+      nextModel.status = nextModel.initialization.initialized
+        ? { tone: "ok", message: initializationSuccessMessage(result) }
+        : {
+            tone: "warning",
+            message: "初期化コマンド完了後もコード整合プレレビュー workflow を確認できませんでした。"
+          }
+      this.model = nextModel
+      this.render()
+    } finally {
+      this.initializingWorkspace = false
     }
   }
 
@@ -161,6 +200,20 @@ class ConsistencyReviewWizardController {
   private post(message: Record<string, unknown>): void {
     void this.panel.webview.postMessage(message)
   }
+}
+
+function initializationSuccessMessage(result: unknown): string {
+  const fallback = ".bob ワークフローの初期化が完了しました。"
+  if (!result || typeof result !== "object") return fallback
+  const candidate = result as { message?: unknown; backupPath?: unknown }
+  const lines: string[] = []
+  if (typeof candidate.message === "string" && candidate.message.trim()) {
+    lines.push(candidate.message.trim())
+  }
+  if (typeof candidate.backupPath === "string" && candidate.backupPath.trim()) {
+    lines.push(`workflow backup: ${candidate.backupPath.trim()}`)
+  }
+  return lines.join("\n") || fallback
 }
 
 function parseConsistencyWizardMessage(message: unknown): ConsistencyWizardMessage | undefined {
@@ -233,7 +286,8 @@ function stripCandidateUiFields(candidate: ReviewInputDocumentCandidate) {
 }
 
 function isConsistencyWizardAction(value: unknown): value is ConsistencyWizardAction {
-  return value === "createReviewInput" ||
+  return value === "initializeWorkspace" ||
+    value === "createReviewInput" ||
     value === "openTraceabilityPrep" ||
     value === "createReviewInputFromTraceability" ||
     value === "validateTraceability" ||

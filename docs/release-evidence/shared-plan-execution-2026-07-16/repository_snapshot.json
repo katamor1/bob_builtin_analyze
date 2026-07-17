@@ -1,0 +1,104 @@
+{
+  "schema_version": 1,
+  "captured_on": "2026-07-16",
+  "repository": {
+    "full_name": "katamor1/bob_builtin_analyze",
+    "remote": "https://github.com/katamor1/bob_builtin_analyze.git",
+    "default_branch": "main",
+    "baseline_main_sha": "f4f9d3308361333e02ab1af732706b7a9e5fc952",
+    "working_branch": "agent/execute-shared-plan-verification",
+    "code_head_sha": "d73f883b72a19d197c8a87a49cf3ca82980dcef5"
+  },
+  "source_plan": {
+    "share_url": "https://chatgpt.com/share/6a53743e-7444-83e8-b0f8-b21f9a9864d5",
+    "capture_commit": "d7d9aaa6de5572f477e88cdfe51a4fc0893f0f18",
+    "capture_path": ".codex/shared-plan.md"
+  },
+  "previous_execution": {
+    "date": "2026-07-12",
+    "status": "BLOCKED",
+    "publish_status": "NOT_PUBLISHED",
+    "source_plan_bytes": 0,
+    "repository_candidates": 0
+  },
+  "existing_implementation": {
+    "pull_request": 72,
+    "pull_request_url": "https://github.com/katamor1/bob_builtin_analyze/pull/72",
+    "merge_commit": "d275f911acf28d3924a52901de01328679aa8100",
+    "merge_is_ancestor_of_baseline": true,
+    "baseline_ahead_of_merge": 7,
+    "baseline_behind_merge": 0
+  },
+  "corrective_commits": [
+    {
+      "sha": "4937712b2e75eb49c7db20a7edc5488433a30430",
+      "subject": "fix: keep repository evidence source-free and atomic"
+    },
+    {
+      "sha": "9edd2b48b9378e0fc3fac6e55c69b51c0f3d6b29",
+      "subject": "fix: checkpoint missing evidence artifacts"
+    },
+    {
+      "sha": "dc5fcdef4bb73fcf0bdfd718fb03abaa71ba6233",
+      "subject": "fix: enforce evidence scope authority contracts"
+    },
+    {
+      "sha": "52eb75a3b3aa8ffbc3e05de463aceed51a73339f",
+      "subject": "test: make timeout clamp check scheduler-safe"
+    },
+    {
+      "sha": "d73f883b72a19d197c8a87a49cf3ca82980dcef5",
+      "subject": "fix: invalidate legacy repository caches"
+    }
+  ],
+  "diff": {
+    "base": "f4f9d3308361333e02ab1af732706b7a9e5fc952",
+    "head": "d73f883b72a19d197c8a87a49cf3ca82980dcef5",
+    "files_changed": 26,
+    "insertions": 702,
+    "deletions": 54
+  },
+  "verification": {
+    "node": "v24.14.0",
+    "npm": "11.9.0",
+    "focused_tests": {
+      "passed": 56,
+      "failed": 0
+    },
+    "full_tests": {
+      "passed": 270,
+      "failed": 0
+    },
+    "dependency_policy": {
+      "passed": 2,
+      "failed": 0
+    },
+    "architecture_policy": {
+      "typescript_files_checked": 98,
+      "violations": 0
+    },
+    "source_policy": {
+      "typescript_files_checked": 98,
+      "violations": 0
+    },
+    "unused_report_exit_code": 0,
+    "production_audit_vulnerabilities": 0,
+    "vsix": {
+      "bytes": 3695683,
+      "entries": 1912,
+      "sha256": "9e0a123df621c0b9322c613d0078fb853b0d67df8346ab41630634f9304781d4",
+      "max_policy_bytes": 11000000,
+      "policy_passed": true
+    }
+  },
+  "publication": {
+    "target_branch": "main",
+    "draft": true,
+    "pull_request": 133,
+    "pull_request_url": "https://github.com/katamor1/bob_builtin_analyze/pull/133",
+    "published_code_head_sha": "b07313875501eb0b657d8b4805a5f278a8e98b4f",
+    "remote_code_commits_ahead": 5,
+    "remote_code_commits_behind": 0,
+    "evidence_commit_included": true
+  }
+}

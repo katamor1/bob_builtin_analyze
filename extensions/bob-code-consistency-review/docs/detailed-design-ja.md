@@ -562,3 +562,12 @@ Bob output
 ### GUI trust boundary
 
 Webviewから受理するのはaction whitelist、lock token、`source_id`、decision fieldだけである。summary、category、original severity、confidence、evidence、Bob reason等はdisk上の`triage-source.yaml`を正とする。CSP nonce、HTML escape、inline `onclick`禁止を維持する。
+
+<!-- RELEASE-BLOCKERS-2026-07-16 -->
+## 2026-07-16 release blocker closure 詳細
+
+- `workflow-register`とIBM Bobはsoft dependencyであり、extension activationをhard dependencyで阻害しない。lockfile、production dependency、VSIX runtime contentsはdependency/package policyで検証する。
+- provider retry controllerはAPI identityとgenerationを保持し、stale / late / partial registrationをrollbackする。全Disposableを逆順に試行し、cleanup errorまたは診断callbackの例外で後続cleanupを中断しない。
+- Git / Bazaar process timeoutは1,000〜600,000 msへ正規化し、timeout、cancel、buffer超過を分類する。Windowsのcancel/timeoutは親process exitだけでは完了せず、`taskkill /T /F`完了または2秒の有限fallback後にsettleする。
+- VCS path/revisionはWindows separatorを安全なrepository-relative表現へ限定し、absolute、drive-relative、UNC、device、traversal、制御文字を実行前に拒否する。
+- review processing limitはmanifest/runtimeのmin/default/maxを一致させ、VCS buffer、document/diff/excerpt/workbook/Bob入力を有限budgetへ収める。

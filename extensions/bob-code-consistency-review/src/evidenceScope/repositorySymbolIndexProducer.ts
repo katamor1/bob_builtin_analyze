@@ -25,7 +25,7 @@ import {
 } from "./repositorySourceExtractor"
 
 const PRODUCER_ID = "bob-repository-index-producer"
-const PRODUCER_VERSION = 1
+const PRODUCER_VERSION = 2
 const GENERATOR_ID = "bob-code-consistency-review/repository-index-producer-v1"
 const DEFAULT_INDEX_ID = "bob-repository-index"
 const DEFAULT_MAX_FILES = 10_000

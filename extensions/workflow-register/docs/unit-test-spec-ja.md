@@ -262,3 +262,12 @@
 - runtime wiring: standalone と Bob runner が同じ workspace policy を受け取ることを検証する。
 - diagnostics / command: automatic pause と override の全 provenance、Operation Hub revision check、cancel 経路を検証する。
 - durability: heartbeat による lock file の原子的置換を transient contention として扱い、最終的に busy / locked を返すことを決定的に再現する。
+
+<!-- RELEASE-BLOCKERS-2026-07-16 -->
+## 2026-07-16 resource cap 回帰契約
+
+| ID | 観点 | 期待結果 | 実テスト |
+| --- | --- | --- | --- |
+| WR-UT-RC-001 | 設定値正規化 | 非有限値と0以下は既定値、下限未満は下限、上限超過は上限へ正規化する。manifest の `maximum` と runtime 定数が一致する。 | `test/taskSnapshots.test.js` |
+| WR-UT-RC-002 | 最終保存byte上限 | messages、task metadata、task export、assistant text、handoff error が大きくても、整形済み通常snapshotと`latest.json`が設定byte数以下になる。 | `test/taskSnapshots.test.js` |
+| WR-UT-RC-003 | 必須metadata保持 | truncation 後も schema version、run ID、workflow ID、step IDを保持し、必須metadataだけで収まらない場合は保存を拒否する。 | `test/taskSnapshots.test.js` |

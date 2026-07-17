@@ -40,7 +40,13 @@ test("consistency review wizard renders evidence picker traceability and package
       packagePreview: [
         { label: "bob-input.md", path: ".bob-review/review-package/bob-input.md" }
       ],
-      warnings: []
+      initialization: {
+        initialized: false,
+        workflowPath: "C:\\repo\\.bob\\workflows\\code-consistency-review\\WORKFLOW.md",
+        missing: [".bob/workflows/code-consistency-review/WORKFLOW.md"]
+      },
+      warnings: [],
+      status: { tone: "muted", message: "未実行" }
     }
   })
 
@@ -54,7 +60,41 @@ test("consistency review wizard renders evidence picker traceability and package
   assert.match(html, /data-action="openResultCapture"/)
   assert.match(html, /docs\/requirements\.md/)
   assert.match(html, /nonce-123/)
+  assert.match(html, /\.bob ワークフロー初期化: 未完了/)
+  assert.match(html, /data-action="initializeWorkspace"/)
+  assert.match(html, /\.bob\/workflows\/code-consistency-review\/WORKFLOW\.md/)
   assert.doesNotMatch(html, /onclick=/)
+})
+
+test("consistency review wizard hides workspace initialization card after initialization", () => {
+  const { renderConsistencyReviewWizardHtml } = require("../out/webview/consistencyReviewWizardHtml")
+  const html = renderConsistencyReviewWizardHtml({
+    cspSource: "vscode-resource:",
+    nonce: "nonce-123",
+    model: {
+      workspaceRoot: "C:\\repo",
+      base: "HEAD~1",
+      head: "HEAD",
+      vcs: "git",
+      changeType: "maintenance",
+      focus: ["requirement-code-consistency", "design-code-consistency"],
+      documents: [],
+      traceability: { proposed: 0, accepted: 0, rejected: 0, deprecated: 0, errors: 0, warnings: 0 },
+      packagePreview: [],
+      initialization: {
+        initialized: true,
+        workflowPath: "C:\\repo\\.bob\\workflows\\code-consistency-review\\WORKFLOW.md",
+        missing: []
+      },
+      warnings: [],
+      status: { tone: "ok", message: "初期化が完了しました" }
+    }
+  })
+
+  assert.doesNotMatch(html, /\.bob ワークフロー初期化: 未完了/)
+  assert.doesNotMatch(html, /data-action="initializeWorkspace"/)
+  assert.match(html, /初期化が完了しました/)
+  assert.match(html, /class="status ok"/)
 })
 
 test("code consistency result capture GUI exposes YAML validation before triage", () => {

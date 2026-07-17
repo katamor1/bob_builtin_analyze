@@ -43,7 +43,7 @@
 ## 代表的な利用フロー
 
 1. Bob IDE / VS Code で対象ワークスペースを開く。
-2. `Bob Code Consistency Review: .bob ワークフロー定義と review-input 雛形を初期化` を実行し、`.bob/workflows/.../WORKFLOW.md` と `review-input.yaml` の雛形を作成する。
+2. `Bob Code Consistency Review: Review Wizard を開く` を実行する。コード整合プレレビュー workflow が未配置の場合は、画面上部の `.bob を初期化` を選び、`.bob/workflows/code-consistency-review/WORKFLOW.md` と `review-input.yaml` の雛形を作成する。
 3. 文書 ID や工程間リンクを整理する場合は、traceability 系コマンドで sidecar catalog を作成し、人間が承認する。
 4. 手書きする代わりに `Bob Code Consistency Review: 対話式に review-input.yaml を作成` で、短いドラフトと候補選択から `review-input.yaml` を生成する。
 5. AI を使う場合は `Bob Code Consistency Review: AI draft 用プロンプトを作成` でプロンプトを作り、AI の JSON 応答を `Bob Code Consistency Review: AI draft JSON から review-input.yaml を生成` で取り込む。
@@ -94,6 +94,8 @@
 ## ワークスペース初期化
 
 `bobCodeConsistency.initializeWorkspace` は、ワークスペースに次のファイルを作成します。
+
+Consistency Review Wizard は `.bob/workflows/code-consistency-review/WORKFLOW.md` がない場合だけ初期化カードを表示します。ボタンは既存の `bobCodeConsistency.initializeWorkspace` を現在の workspace に対して実行します。初期化済み workspace で workflow を同梱 template へ更新する場合や復旧する場合は、従来どおり Command Palette から同じ command を実行できます。
 
 ```text
 .bob/
@@ -256,7 +258,7 @@ analysis_options:
   include_global_access: true
   include_struct_impact: true
   include_ledgers: true
-  max_call_depth: 2
+  max_call_depth: 1
   max_code_context_lines: 80
   language:
     - c
