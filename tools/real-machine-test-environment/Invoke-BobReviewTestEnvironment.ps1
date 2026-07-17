@@ -29,6 +29,12 @@ if ($OpenScenario -and (@($selected.id) -notcontains $OpenScenario)) {
 }
 
 if ($ValidateOnly) {
+  foreach ($validationScenario in $selected) {
+    if ($validationScenario.psobject.Properties.Name -contains "postSeed") {
+      $seedPath = Assert-RepositoryRelativePath $RepoRoot ([string]$validationScenario.postSeed) "$($validationScenario.id).postSeed" -MustExist
+      & $seedPath -ValidateOnly
+    }
+  }
   Write-Host "Manifest validation succeeded: $($manifest.scenarios.Count) scenarios; selected=$($selected.Count)"
   return
 }

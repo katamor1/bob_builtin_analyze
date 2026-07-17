@@ -165,3 +165,44 @@ test("runner records a missing command as blocked without invoking a launcher", 
   assert.equal(run.scenarios[0].launchTarget, null)
   fs.rmSync(outputRoot, { recursive: true, force: true })
 })
+
+test("Bazaar recovery scenario declares deterministic post-seed artifacts", () => {
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"))
+  const scenario = manifest.scenarios.find((entry) => entry.id === "bazaar-run-recovery")
+  assert.equal(scenario.postSeed, "tools/real-machine-test-environment/seeds/bazaar-run-recovery/Seed-BazaarRunRecovery.ps1")
+  assert.equal(fs.existsSync(path.join(repoRoot, scenario.postSeed)), true)
+  for (const pathValue of [
+    "bob-managed/.bob-review-records/campaigns/real-machine-recovery/records/resume-result-capture/review-run.json",
+    "bob-managed/.bob-review-records/campaigns/real-machine-recovery/records/resume-human-triage/review-run.json",
+    "bob-managed/.bob-review-records/campaigns/real-machine-recovery/records/resume-finalize/review-run.json",
+    "bob-managed/.bob-review-records/campaigns/real-machine-recovery/records/malformed-run-hidden/review-run.json",
+    "bob-managed/test-data/invalid/review-result-schema-error.json",
+    "bob-managed/test-data/invalid/review-result-id-mismatch.json"
+  ]) assert.ok(scenario.expectedArtifacts.includes(pathValue))
+})
+
+test("Bazaar recovery seed validates completed phase artifacts", () => {
+  const source = fs.readFileSync(path.join(toolRoot, "seeds", "bazaar-run-recovery", "Seed-BazaarRunRecovery.ps1"), "utf8")
+  for (const name of ["New-BazaarRecoverySeedPlan", "Assert-BazaarRecoverySeedPlan", "Write-BazaarRecoverySeedPlan"]) {
+    assert.match(source, new RegExp(`function ${name}`))
+  }
+  for (const fieldName of ["reviewPacketPath", "reviewResultJsonPath", "reviewResultMarkdownPath", "triageYamlPath"]) {
+    assert.match(source, new RegExp(fieldName))
+  }
+  assert.match(source, /throw "\$fieldName is required for completed \$phaseName phase"/)
+  assert.match(source, /Exactly three valid recovery review runs are required/)
+  assert.match(source, /Exactly one malformed run is required/)
+  assert.match(source, /Exactly two invalid review results are required/)
+  assert.match(source, /Bazaar recovery seed paths must be unique/)
+  assert.match(source, /Malformed Review Run must not parse as JSON/)
+  assert.match(source, /Invalid review result must remain isolated/)
+  assert.match(source, /Schema-error fixture must omit summary/)
+  assert.match(source, /ID-mismatch fixture payload must differ from its file name/)
+  assert.match(source, /Assert-NoReparsePointTraversal -Root \$ScenarioRoot -Target \$target/)
+})
+
+test("ValidateOnly invokes declared post-seeds without creating an output root", () => {
+  const runner = fs.readFileSync(path.join(toolRoot, "Invoke-BobReviewTestEnvironment.ps1"), "utf8")
+  assert.match(runner, /if \(\$ValidateOnly\) \{[\s\S]*& \$seedPath -ValidateOnly[\s\S]*Manifest validation succeeded/)
+  assert.match(runner, /if \(\$ValidateOnly\)[\s\S]*return[\s\S]*if \(-not \$OutputRoot\)/)
+})

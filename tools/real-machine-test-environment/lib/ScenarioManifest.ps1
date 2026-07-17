@@ -144,6 +144,9 @@ function Assert-ScenarioManifest {
       foreach ($artifactPath in @($scenario.expectedArtifacts)) {
         Assert-ScenarioRelativePath ([string]$artifactPath) "$scenarioId.expectedArtifacts" | Out-Null
       }
+      if ($scenario.psobject.Properties.Name -contains "postSeed") {
+        Assert-RepositoryRelativePath $RepoRoot ([string]$scenario.postSeed) "$scenarioId.postSeed" -MustExist | Out-Null
+      }
 
       $argumentNames = @($scenario.generator.arguments.psobject.Properties.Name)
       if ($launcher -like "*bazaar-project-rule-review*") {

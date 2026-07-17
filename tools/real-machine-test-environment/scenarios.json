@@ -100,8 +100,15 @@
       "expectedArtifacts": [
         "bob-bazaar-review.code-workspace",
         "bob-managed/.bob/workflows/bazaar-project-rule-review/WORKFLOW.md",
-        "bazaar-source/.bzr"
-      ]
+        "bazaar-source/.bzr",
+        "bob-managed/.bob-review-records/campaigns/real-machine-recovery/records/resume-result-capture/review-run.json",
+        "bob-managed/.bob-review-records/campaigns/real-machine-recovery/records/resume-human-triage/review-run.json",
+        "bob-managed/.bob-review-records/campaigns/real-machine-recovery/records/resume-finalize/review-run.json",
+        "bob-managed/.bob-review-records/campaigns/real-machine-recovery/records/malformed-run-hidden/review-run.json",
+        "bob-managed/test-data/invalid/review-result-schema-error.json",
+        "bob-managed/test-data/invalid/review-result-id-mismatch.json"
+      ],
+      "postSeed": "tools/real-machine-test-environment/seeds/bazaar-run-recovery/Seed-BazaarRunRecovery.ps1"
     },
     {
       "id": "consistency-ai-matrix",
