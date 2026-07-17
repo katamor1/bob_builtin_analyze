@@ -47,7 +47,7 @@ export async function openTraceabilityPrepWebview(
   let messageTail = Promise.resolve()
   const panel = vscode.window.createWebviewPanel(
     "bobCodeConsistencyTraceabilityPrep",
-    "Traceability Prep",
+    "トレーサビリティ確認",
     vscode.ViewColumn.One,
     {
       enableScripts: true,
@@ -73,7 +73,7 @@ export async function openTraceabilityPrepWebview(
       if (message.type === "restoreOriginalCatalog") {
         catalog = cloneCatalog(originalCatalog)
         await postTraceabilityPrepModel(panel, catalog)
-        await panel.webview.postMessage({ type: "info", message: "Opened catalog state restored. Save to write it to disk." })
+        await panel.webview.postMessage({ type: "info", message: "画面を開いた時点の内容に戻しました。ディスクへ反映するには「保存」を押してください。" })
         return
       }
       if (message.type === "save") {
@@ -162,7 +162,7 @@ function renderTraceabilityPrepHtml(cspSource: string, model: TraceabilityPrepMo
   content="default-src 'none'; style-src ${cspSource} ${inlineStyle}; ${scriptPolicy} 'nonce-${nonce}';"
 >
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Traceability Prep</title>
+<title>トレーサビリティ確認</title>
 <style>
 ${renderTraceabilityPrepStyles()}
 </style>
@@ -170,22 +170,22 @@ ${renderTraceabilityPrepStyles()}
 <body>
 <header>
   <div>
-    <h1>Traceability Prep</h1>
-    <div class="meta">sidecar catalog approval</div>
+    <h1>トレーサビリティ確認</h1>
+    <div class="meta">補助台帳の確認・承認</div>
   </div>
   <div class="headerActions">
-    <button id="restore-original-catalog" class="secondary">Rollback to Original</button>
-    <button id="save">Save</button>
+    <button id="restore-original-catalog" class="secondary">開いた時点に戻す</button>
+    <button id="save">保存</button>
   </div>
 </header>
 <div class="summary" id="summary"></div>
 <div class="tabs">
-  <div class="tab active" data-tab="domains">Domains</div>
-  <div class="tab" data-tab="items">Items</div>
-  <div class="tab" data-tab="links">Links</div>
-  <div class="tab" data-tab="decisions">Decisions</div>
-  <div class="tab" data-tab="gate">Gate Report</div>
-  <div class="tab" data-tab="preview">Review Input Preview</div>
+  <div class="tab active" data-tab="domains">分類</div>
+  <div class="tab" data-tab="items">項目</div>
+  <div class="tab" data-tab="links">関連</div>
+  <div class="tab" data-tab="decisions">判断</div>
+  <div class="tab" data-tab="gate">検証レポート</div>
+  <div class="tab" data-tab="preview">レビュー入力プレビュー</div>
 </div>
 <section id="content"></section>
 <div id="status" class="meta"></div>

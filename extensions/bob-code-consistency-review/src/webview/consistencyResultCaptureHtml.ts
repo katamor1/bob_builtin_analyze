@@ -10,7 +10,7 @@ export function renderConsistencyResultCaptureHtml(input: RenderConsistencyResul
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${escapeHtml(input.cspSource)} 'unsafe-inline'; script-src 'nonce-${escapeHtml(input.nonce)}';">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Code Consistency Result Capture</title>
+  <title>Bob 出力の取り込み</title>
   <style>
     body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); padding: 18px; }
     h1 { font-size: 20px; margin: 0 0 12px; }
@@ -27,20 +27,20 @@ export function renderConsistencyResultCaptureHtml(input: RenderConsistencyResul
   </style>
 </head>
 <body>
-  <h1>Result Capture</h1>
+  <h1>Bob 出力の取り込み</h1>
   <section class="card">
-    <h2>Bob output YAML</h2>
-    <div class="muted">保存前に bob-output schema と evidence-index 参照を検証します。</div>
-    <textarea id="manualText" aria-label="Bob output YAML"></textarea>
+    <h2>Bob 出力（YAML）</h2>
+    <div class="muted">保存前に YAML の形式と、根拠 ID の参照先を確認します。</div>
+    <textarea id="manualText" aria-label="Bob 出力（YAML）"></textarea>
     <div class="actions">
       <button type="button" data-action="captureManual">貼り付け内容を検証して保存</button>
-      <button type="button" class="secondary" data-action="captureClipboard">clipboard から取り込む</button>
-      <button type="button" class="secondary" data-action="validateOutput">保存済み YAML を検証</button>
-      <button type="button" class="secondary" data-action="openHumanTriage">Human Triage へ進む</button>
+      <button type="button" class="secondary" data-action="captureClipboard">クリップボードから取り込む</button>
+      <button type="button" class="secondary" data-action="validateOutput">保存済みの Bob 出力を検証</button>
+      <button type="button" class="secondary" data-action="openHumanTriage">人による判定へ進む</button>
     </div>
   </section>
   <section class="card">
-    <h2>検証結果</h2>
+    <h2>取り込み結果</h2>
     <div id="status" class="status muted">未実行</div>
   </section>
   <script nonce="${escapeHtml(input.nonce)}">

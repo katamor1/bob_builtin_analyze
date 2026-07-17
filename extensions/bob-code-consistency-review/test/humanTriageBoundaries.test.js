@@ -92,7 +92,7 @@ test("human triage HTML keeps suggested owner in source context instead of decis
     }
   })
 
-  assert.match(html, /suggested owner:<\/strong> design-owner/)
+  assert.match(html, /推奨担当者:<\/strong> design-owner/)
   assert.match(html, /data-field="owner" value=""/)
   assert.doesNotMatch(html, /data-field="owner" value="design-owner"/)
 })
