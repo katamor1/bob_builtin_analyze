@@ -82,3 +82,25 @@ test("checklist templates retain every expansion token", () => {
     for (const token of tokens) assert.match(source, new RegExp(`\\{\\{${token}\\}\\}`))
   }
 })
+
+
+test("runner exposes the approved validation interface", () => {
+  const runner = fs.readFileSync(path.join(toolRoot, "Invoke-BobReviewTestEnvironment.ps1"), "utf8")
+  const source = fs.readFileSync(path.join(toolRoot, "lib", "ScenarioManifest.ps1"), "utf8")
+  assert.match(runner, /\[switch\]\$ValidateOnly/)
+  assert.match(runner, /\[switch\]\$Open/)
+  assert.match(runner, /\[string\]\$OpenScenario/)
+  assert.match(runner, /\$selected = @\(Resolve-ScenarioSelection/)
+  assert.match(runner, /Manifest validation succeeded/)
+  assert.doesNotMatch(runner, /Invoke-Expression/)
+  for (const name of [
+    "Read-ScenarioManifest",
+    "Assert-ScenarioManifest",
+    "Resolve-ScenarioSelection",
+    "Assert-RepositoryRelativePath",
+    "Assert-ScenarioRelativePath",
+    "Test-PathInsideRoot"
+  ]) assert.match(source, new RegExp(`function ${name}`))
+  assert.match(source, /p0-p1 must list every scenario exactly once in manifest order/)
+  assert.match(source, /if \(\$fullPath -eq \$pathRoot\) \{ return \$fullPath \}/)
+})
