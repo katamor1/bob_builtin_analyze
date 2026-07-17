@@ -104,7 +104,7 @@ test("accept-only review command tells operators the next step is not started", 
   const stepReview = readSrc("commands", "stepReview.ts")
 
   assert.match(stepReview, /const RUN_NEXT_STEP_LABEL = "次のステップを実行"/)
-  assert.match(stepReview, /const OPEN_OPERATION_HUB_LABEL = "Operation Hub を開く"/)
+  assert.match(stepReview, /const OPEN_OPERATION_HUB_LABEL = "操作センターを開く"/)
   assert.match(stepReview, /次のステップはまだ開始されていません。/)
   assert.match(stepReview, /vscode\.commands\.executeCommand\("workflowRegister\.runNextStep", \{[\s\S]*workspaceRoot,[\s\S]*runId: accepted\.runId,[\s\S]*expectedRevision: revision/)
   assert.match(stepReview, /vscode\.commands\.executeCommand\("workflowRegister\.openOperationHub", \{[\s\S]*workspaceRoot,[\s\S]*runId: accepted\.runId,[\s\S]*stepId: accepted\.currentStep/)
@@ -180,7 +180,7 @@ test("workflow authoring write paths enforce WORKFLOW.md document boundaries", (
   const panel = readSrc("webview", "workflowBuilderPanel.ts")
 
   assert.match(improve, /isWorkflowDocumentPath\(editor\.document\.uri\.fsPath\)/)
-  assert.match(improve, /Open a \.bob\/workflows\/\*\/WORKFLOW\.md file/)
+  assert.match(improve, /\.bob\/workflows\/\*\/WORKFLOW\.md を開いてください/)
   assert.match(edit, /isWorkflowDocumentPath\(targetUri\.fsPath\)/)
   assert.match(panel, /validateWorkflowDocumentPath\(\{ workspaceRoot: options\.workflowRoot, filePath: targetUri\.fsPath \}\)/)
   assert.ok(panel.indexOf("validateWorkflowDocumentPath({ workspaceRoot: options.workflowRoot, filePath: targetUri.fsPath })") < panel.indexOf("workspace.fs.writeFile(targetUri"))

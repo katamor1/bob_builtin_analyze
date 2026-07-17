@@ -24,9 +24,9 @@ test("run diagnostics show current and future run-state access modes", () => {
 
   assert.ok(currentIndex >= 0)
   assert.ok(futureIndex >= 0)
-  assert.ok(report.lines.slice(currentIndex, futureIndex).includes(`- run state schema: ${CURRENT_WORKFLOW_RUN_STATE_SCHEMA_VERSION}`))
-  assert.ok(report.lines.slice(futureIndex).includes("- run state schema: workflow-register/run-state/v2"))
-  assert.ok(report.lines.slice(futureIndex).includes("- run state access: read-only"))
+  assert.ok(report.lines.slice(currentIndex, futureIndex).includes(`- 実行状態スキーマ: ${CURRENT_WORKFLOW_RUN_STATE_SCHEMA_VERSION}`))
+  assert.ok(report.lines.slice(futureIndex).includes("- 実行状態スキーマ: workflow-register/run-state/v2"))
+  assert.ok(report.lines.slice(futureIndex).includes("- 実行状態へのアクセス: 読み取り専用"))
 })
 
 test("run diagnostics include isolated run document diagnostics", () => {
@@ -48,8 +48,8 @@ test("run diagnostics include isolated run document diagnostics", () => {
     ]
   })
 
-  assert.ok(report.lines.includes("Run document diagnostics:"))
+  assert.ok(report.lines.includes("実行状態ファイルの診断:"))
   assert.ok(report.lines.includes(`- ${run.runId} [info/migrated]: Migrated unversioned workflow run state to '${CURRENT_WORKFLOW_RUN_STATE_SCHEMA_VERSION}'.`))
   assert.ok(report.lines.includes("- 20260712T000000Z-invalid-000000000003 [error/invalid]: Workflow run contains invalid JSON."))
-  assert.match(report.summary, /2 run document diagnostic\(s\)/)
+  assert.match(report.summary, /実行状態ファイルの診断 2件/)
 })

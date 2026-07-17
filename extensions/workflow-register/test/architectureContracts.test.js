@@ -60,7 +60,7 @@ test("workflow-register README is synchronized with the split runtime and task s
   assert.match(readme, /既定では Bob chat messages を含めません/)
 })
 
-test("workflow-register docs cover template customization studio and snapshot defaults", () => {
+test("workflow-register docs cover template customization and snapshot defaults", () => {
   const readme = fs.readFileSync(path.join(extensionRoot, "README.md"), "utf8")
   const basicDesign = fs.readFileSync(path.join(extensionRoot, "docs", "basic-design-ja.md"), "utf8")
   const detailedDesign = fs.readFileSync(path.join(extensionRoot, "docs", "detailed-design-ja.md"), "utf8")
@@ -74,7 +74,7 @@ test("workflow-register docs cover template customization studio and snapshot de
     ["unit test spec", unitTestSpec],
     ["real machine test spec", realMachineSpec]
   ]) {
-    assert.match(text, /Template Customization Studio|テンプレートカスタマイズ Studio/, `${name} must document Template Customization Studio`)
+    assert.match(text, /テンプレート調整/, `${name} must document テンプレート調整`)
   }
 
   assert.match(detailedDesign, /workflowRegister\.taskSnapshots\.includeMessages`\s*\|\s*`false`/)

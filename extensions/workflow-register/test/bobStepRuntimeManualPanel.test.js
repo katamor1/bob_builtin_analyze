@@ -59,7 +59,7 @@ test("completeStepByKey completes only the targeted active step", async () => {
 
   const message = await runtime.completeStepByKey(target.key)
 
-  assert.match(message, /Completed: Manual Workflow \/ Second/)
+  assert.match(message, /完了しました: Manual Workflow \/ Second/)
   assert.equal(first.completed(), false)
   assert.equal(second.completed(), true)
   assert.deepEqual(runtime.list().map((step) => step.stepId), ["first"])
@@ -71,7 +71,7 @@ test("completeStepByKey returns a clear message when the active key is gone", as
 
   const message = await runtime.completeStepByKey("missing-key")
 
-  assert.match(message, /No active Bob workflow step for key: missing-key/)
+  assert.match(message, /キー missing-key に対応する実行中の Bob ワークフローステップがありません/)
 })
 
 test("completeStepByKeyResult returns structured success for the targeted active step", async () => {
@@ -90,7 +90,7 @@ test("completeStepByKeyResult returns structured success for the targeted active
   })
 
   assert.equal(result.ok, true)
-  assert.match(result.message, /Completed: Manual Workflow \/ Second/)
+  assert.match(result.message, /完了しました: Manual Workflow \/ Second/)
   assert.equal(first.completed(), false)
   assert.equal(second.completed(), true)
   assert.deepEqual(runtime.list().map((step) => step.stepId), ["first"])
@@ -110,7 +110,7 @@ test("completeStepByKeyResult refuses expected run and step mismatches", async (
   })
 
   assert.equal(result.ok, false)
-  assert.match(result.message, /Active Bob workflow step mismatch/)
+  assert.match(result.message, /対象の Bob ワークフローステップが一致しません/)
   assert.equal(held.completed(), false)
   assert.deepEqual(runtime.list().map((step) => step.stepId), ["check"])
 })

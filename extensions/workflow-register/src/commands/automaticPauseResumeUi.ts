@@ -17,20 +17,20 @@ export async function prepareAutomaticPauseResume(input: {
 
   const picked = await vscode.window.showQuickPick(
     automaticPauseOverrideChoices.map((minutes) => ({
-      label: `${minutes} minutes`,
-      description: "Temporarily allow workflow execution",
-      detail: `Automatic pause: ${automaticPause.kind}`,
+      label: `${minutes}分`,
+      description: "一時的にワークフローの実行を許可",
+      detail: `自動一時停止: ${automaticPause.kind}`,
       minutes
     })),
-    { title: "Select Automatic Pause Override Duration" }
+    { title: "自動一時停止を一時解除する時間を選択" }
   )
   if (!picked) return false
 
   const reason = await vscode.window.showInputBox({
-    title: "Resume Automatically Paused Workflow",
-    prompt: `Reason for continuing for ${picked.minutes} minutes`,
-    placeHolder: "Describe why this run may continue temporarily.",
-    validateInput: (value) => value.trim() ? undefined : "Override reason is required."
+    title: "自動一時停止したワークフローを再開",
+    prompt: `${picked.minutes}分間、実行を続ける理由`,
+    placeHolder: "この実行を一時的に続けてよい理由を入力してください。",
+    validateInput: (value) => value.trim() ? undefined : "一時解除の理由を入力してください。"
   })
   if (!reason?.trim()) return false
 

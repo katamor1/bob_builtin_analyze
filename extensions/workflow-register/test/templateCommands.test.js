@@ -185,7 +185,7 @@ test("readiness fails for workspace escape and missing checklist, and warns when
   }, { workspaceRoot: missingChecklistRoot })
   assert.equal(missingChecklist.status, "ok", missingChecklist.diagnostics.join("\n"))
   assert.equal(missingChecklist.readiness.status, "fail")
-  assert.match(JSON.stringify(missingChecklist.readiness.checks), /required file is missing: \.bob\/process\/checklists\/alpha-code-precheck.yaml/)
+  assert.match(JSON.stringify(missingChecklist.readiness.checks), /必要なファイルがありません: \.bob\/process\/checklists\/alpha-code-precheck.yaml/)
 
   const noUatRoot = await commandWorkspace({ uatEvidence: false })
   const noUat = await checkReadinessCommand({
@@ -195,5 +195,5 @@ test("readiness fails for workspace escape and missing checklist, and warns when
   }, { workspaceRoot: noUatRoot })
   assert.equal(noUat.status, "ok", noUat.diagnostics.join("\n"))
   assert.equal(noUat.readiness.status, "warning")
-  assert.match(JSON.stringify(noUat.readiness.checks), /UAT evidence is not present/)
+  assert.match(JSON.stringify(noUat.readiness.checks), /UAT 証跡がありません/)
 })

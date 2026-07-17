@@ -20,19 +20,19 @@ export function renderTemplateCustomizationStudioHtml(options: RenderTemplateCus
 <meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${options.cspSource} 'unsafe-inline'; script-src 'nonce-${options.nonce}';">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Bob Template Customization Studio</title>
+<title>テンプレート調整</title>
 <style>
 ${renderTemplateCustomizationStudioStyles()}
 </style>
 </head>
 <body>
 <header>
-  <h1>Template Customization Studio</h1>
-  <div class="muted">標準テンプレートを選び、許可された project profile / customization 項目だけを編集します。Bazaar では <code>bzr --no-aliases</code> を前提にします。</div>
+  <h1>テンプレート調整</h1>
+  <div class="muted">標準テンプレートを選び、許可されたプロジェクト情報とワークフロー設定だけを編集します。Bazaar では <code>bzr --no-aliases</code> を前提にします。</div>
 </header>
 <main>
 <aside>
-  <h2>Template Library</h2>
+  <h2>テンプレート一覧</h2>
   <button class="secondary" data-action="refresh-library">再読み込み</button>
   <div id="templateList" class="template-list">
     ${renderTemplateList(options.templates, options.model.templatePath)}
@@ -40,17 +40,17 @@ ${renderTemplateCustomizationStudioStyles()}
 </aside>
 <section>
   <div class="tabs">
-    <button class="tab active" data-action="tab" data-tab="library">Template Library</button>
-    <button class="tab" data-action="tab" data-tab="customize">Customize</button>
-    <button class="tab" data-action="tab" data-tab="readiness">Readiness</button>
+    <button class="tab active" data-action="tab" data-tab="library">テンプレート一覧</button>
+    <button class="tab" data-action="tab" data-tab="customize">プロジェクト設定</button>
+    <button class="tab" data-action="tab" data-tab="readiness">適用準備状況</button>
   </div>
 
   <div class="tab-panel active" data-panel="library">
     <h2>${escapeHtml(options.model.title)}</h2>
     <div class="panel">
-      <div><strong>templateId</strong>: ${escapeHtml(options.model.templateId)}</div>
-      <div><strong>templateVersion</strong>: ${escapeHtml(options.model.templateVersion)}</div>
-      <div><strong>baseTemplateHash</strong>: ${escapeHtml(options.model.baseTemplateHash)}</div>
+      <div><strong>テンプレート ID（templateId）</strong>: ${escapeHtml(options.model.templateId)}</div>
+      <div><strong>テンプレート版（templateVersion）</strong>: ${escapeHtml(options.model.templateVersion)}</div>
+      <div><strong>基準テンプレートハッシュ（baseTemplateHash）</strong>: ${escapeHtml(options.model.baseTemplateHash)}</div>
       <div class="muted">${escapeHtml(options.model.description)}</div>
     </div>
   </div>
@@ -61,61 +61,61 @@ ${renderTemplateCustomizationStudioStyles()}
     <input id="templateVersion" type="hidden" value="${attribute(options.model.templateVersion)}">
     <input id="baseTemplateHash" type="hidden" value="${attribute(options.model.baseTemplateHash)}">
 
-    <h2>Project Profile</h2>
+    <h2>プロジェクト情報</h2>
     <div class="row">
-      <div><label for="projectId">projectId</label><input id="projectId" value="${attribute(options.model.projectId)}"></div>
-      <div><label for="displayName">displayName</label><input id="displayName" value="${attribute(options.model.displayName)}"></div>
+      <div><label for="projectId">プロジェクト ID（projectId）</label><input id="projectId" value="${attribute(options.model.projectId)}"></div>
+      <div><label for="displayName">表示名</label><input id="displayName" value="${attribute(options.model.displayName)}"></div>
     </div>
     <div class="row">
-      <div><label for="targetLanguage">targetLanguage</label>${renderSelect("targetLanguage", supportedLanguages, options.model.targetLanguage)}</div>
-      <div><label for="vcsType">vcs.type</label>${renderSelect("vcsType", supportedVcs, options.model.vcsType)}</div>
+      <div><label for="targetLanguage">対象言語</label>${renderSelect("targetLanguage", supportedLanguages, options.model.targetLanguage)}</div>
+      <div><label for="vcsType">バージョン管理方式</label>${renderSelect("vcsType", supportedVcs, options.model.vcsType)}</div>
     </div>
-    <label for="vcsRoot">vcs.root</label><input id="vcsRoot" value="${attribute(options.model.vcsRoot)}">
+    <label for="vcsRoot">バージョン管理のルート</label><input id="vcsRoot" value="${attribute(options.model.vcsRoot)}">
     <div class="muted">Bazaar / bzr の profile は <code>vcs.noAliases: true</code> を保存し、操作は <code>bzr --no-aliases</code> を使います。</div>
-    <label for="checklistPath">checklist path</label><input id="checklistPath" value="${attribute(options.model.checklistPath)}">
-    <label for="artifactOutputRoot">phase artifact root</label><input id="artifactOutputRoot" value="${attribute(options.model.artifactOutputRoot)}">
-    <label for="uatEvidencePath">UAT evidence path</label><input id="uatEvidencePath" value="${attribute(options.model.uatEvidencePath)}">
+    <label for="checklistPath">チェックリストのパス</label><input id="checklistPath" value="${attribute(options.model.checklistPath)}">
+    <label for="artifactOutputRoot">工程成果物の出力先</label><input id="artifactOutputRoot" value="${attribute(options.model.artifactOutputRoot)}">
+    <label for="uatEvidencePath">UAT 証跡のパス</label><input id="uatEvidencePath" value="${attribute(options.model.uatEvidencePath)}">
 
-    <h2>Workflow Customization</h2>
+    <h2>ワークフロー設定</h2>
     <div class="row">
-      <div><label for="workflowName">workflowName</label><input id="workflowName" value="${attribute(options.model.workflowName)}"></div>
-      <div><label for="workflowTitle">title</label><input id="workflowTitle" value="${attribute(options.model.title)}"></div>
+      <div><label for="workflowName">ワークフロー名</label><input id="workflowName" value="${attribute(options.model.workflowName)}"></div>
+      <div><label for="workflowTitle">表示名</label><input id="workflowTitle" value="${attribute(options.model.title)}"></div>
     </div>
-    <label for="workflowDescription">description</label><textarea id="workflowDescription">${escapeHtml(options.model.description)}</textarea>
-    <h3>input defaults</h3>
+    <label for="workflowDescription">説明</label><textarea id="workflowDescription">${escapeHtml(options.model.description)}</textarea>
+    <h3>入力項目の既定値</h3>
     <div class="input-defaults">
       ${renderInputDefaults(options.model.inputDefaults)}
     </div>
-    <label for="promptSupplement">prompt supplement</label><textarea id="promptSupplement">${escapeHtml(options.model.promptSupplement)}</textarea>
+    <label for="promptSupplement">Bob への補足指示</label><textarea id="promptSupplement">${escapeHtml(options.model.promptSupplement)}</textarea>
     <div class="row">
-      <div><label for="humanGate">human gate</label><input id="humanGate" value="required" disabled></div>
-      <div><label for="stepReviewPauseAfter">stepReview pauseAfter</label>${renderSelect("stepReviewPauseAfter", ["agentAndCommand", "everyStep", "none"], options.model.stepReviewPauseAfter)}</div>
+      <div><label for="humanGate">人による確認</label><input id="humanGate" value="required" disabled></div>
+      <div><label for="stepReviewPauseAfter">ステップ後の一時停止</label>${renderSelect("stepReviewPauseAfter", ["agentAndCommand", "everyStep", "none"], options.model.stepReviewPauseAfter)}</div>
     </div>
     <div class="action-row">
-      <button data-action="validate-profile">profile を検証</button>
-      <button data-action="validate-customization">customization を検証</button>
-      <button data-action="preview-workflow">preview</button>
-      <button data-action="show-workflow-diff" class="secondary">diff</button>
-      <button data-action="generate-workflow">workflow を生成</button>
+      <button data-action="validate-profile">プロジェクト情報を検証</button>
+      <button data-action="validate-customization">ワークフロー設定を検証</button>
+      <button data-action="preview-workflow">プレビュー</button>
+      <button data-action="show-workflow-diff" class="secondary">差分を表示</button>
+      <button data-action="generate-workflow">ワークフローを生成</button>
     </div>
   </div>
 
   <div class="tab-panel" data-panel="readiness">
-    <h2>Readiness</h2>
+    <h2>適用準備状況</h2>
     <div class="action-row">
-      <button data-action="check-readiness">readiness check</button>
-      <button data-action="open-readiness-report" class="secondary">report を開く</button>
+      <button data-action="check-readiness">適用準備状況を確認</button>
+      <button data-action="open-readiness-report" class="secondary">レポートを開く</button>
     </div>
-    <div id="readinessStatus" class="panel status">status: not checked</div>
-    <div id="readinessScore" class="panel">score: -</div>
-    <h3>checks</h3>
+    <div id="readinessStatus" class="panel status">状態: 未確認</div>
+    <div id="readinessScore" class="panel">スコア: -</div>
+    <h3>確認項目</h3>
     <div id="readinessChecks" class="panel"></div>
-    <h3>nextActions</h3>
+    <h3>次の対応</h3>
     <div id="readinessNextActions" class="panel"></div>
     <pre id="readinessOutput"></pre>
   </div>
 
-  <h2>Preview / Diagnostics</h2>
+  <h2>プレビューと診断</h2>
   <pre id="diagnosticsOutput">${escapeHtml((options.diagnostics ?? []).join("\n"))}</pre>
   <pre id="previewOutput"></pre>
 </section>
@@ -143,7 +143,7 @@ function renderTemplateList(templates: TemplateLibraryEntry[], selectedPath: str
 
 function renderInputDefaults(inputDefaults: Record<string, string | number | boolean | null>): string {
   const entries = Object.entries(inputDefaults)
-  if (entries.length === 0) return `<div class="muted">このテンプレートに既定値編集対象の input はありません。</div>`
+  if (entries.length === 0) return `<div class="muted">このテンプレートに編集できる入力項目の既定値はありません。</div>`
   return entries.map(([key, value]) => renderInputDefault(key, value)).join("")
 }
 

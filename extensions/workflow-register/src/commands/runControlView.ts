@@ -5,6 +5,7 @@ import { projectWorkflowRunProvenance, type WorkflowRunProvenanceProjection } fr
 import { FileRunStateStore, isWorkflowRunStateWritable } from "../core/runStateStore"
 import { fallbackWorkspaceRootCandidates, findWorkflowRootCandidates } from "../core/workspaceRoots"
 import type { MarkerRootCandidate } from "../core/workspaceRoots"
+import { workflowRunStatusLabel } from "../ui/displayLabels"
 
 interface RunViewItem {
   root: string
@@ -22,7 +23,7 @@ export class WorkflowRunControlView implements vscode.Disposable, vscode.TreeDat
   constructor() {
     this.statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100)
     this.statusBar.command = "workflowRegister.inspectRuns"
-    this.statusBar.tooltip = "Bob Workflow Runs"
+    this.statusBar.tooltip = "Bob ワークフロー実行"
     this.disposables.push(this.statusBar)
   }
 
@@ -45,28 +46,28 @@ export class WorkflowRunControlView implements vscode.Disposable, vscode.TreeDat
     const writable = isWorkflowRunStateWritable(item.run)
     const treeItem = new vscode.TreeItem(item.run.runId, vscode.TreeItemCollapsibleState.None)
     treeItem.description = [
-      item.run.status,
-      writable ? undefined : "read-only",
-      item.run.currentStep,
+      workflowRunStatusLabel(item.run.status),
+      writable ? undefined : "読み取り専用",
+      item.run.currentStep ? `現在のステップ: ${item.run.currentStep}` : undefined,
       artifactStatus.description
     ].filter(Boolean).join(" / ")
     treeItem.tooltip = [
-      `runId: ${item.run.runId}`,
-      `workflow: ${item.run.workflowId}`,
-      `status: ${item.run.status}`,
-      `run state schema: ${item.run.schemaVersion ?? "unversioned"}`,
-      writable ? undefined : "run state access: read-only",
-      `currentStep: ${item.run.currentStep ?? "none"}`,
+      `実行 ID: ${item.run.runId}`,
+      `ワークフロー: ${item.run.workflowId}`,
+      `状態: ${workflowRunStatusLabel(item.run.status)}`,
+      `実行状態スキーマ: ${item.run.schemaVersion ?? "未設定"}`,
+      writable ? undefined : "実行状態へのアクセス: 読み取り専用",
+      `現在のステップ: ${item.run.currentStep ?? "なし"}`,
       artifactStatus.tooltip,
       ...runProvenanceTooltip(provenance),
-      `root: ${item.root}`,
-      `updatedAt: ${item.run.updatedAt}`
+      `ワークスペース: ${item.root}`,
+      `更新日時: ${item.run.updatedAt}`
     ].filter(Boolean).join("\n")
     treeItem.iconPath = new vscode.ThemeIcon(writable ? iconForRun(item.run) : "lock")
     treeItem.contextValue = writable ? `workflowRun.${item.run.status}` : "workflowRun.readOnly"
     treeItem.command = {
       command: "workflowRegister.inspectRunControl",
-      title: "Inspect Run Control",
+      title: "実行の詳細を確認",
       arguments: [item.run.runId]
     }
     return treeItem
@@ -107,11 +108,11 @@ export class WorkflowRunControlView implements vscode.Disposable, vscode.TreeDat
     const reused = this.latestItems.filter((item) => Boolean(item.run.state[ARTIFACT_REUSE_STATE_KEY])).length
     const readOnly = this.latestItems.filter((item) => !isWorkflowRunStateWritable(item.run)).length
     this.statusBar.text = active.length === 0
-      ? reused > 0 ? `$(check) Bob Workflow / ${reused} reused${readOnly > 0 ? ` / ${readOnly} read-only` : ""}` : `$(check) Bob Workflow${readOnly > 0 ? ` / ${readOnly} read-only` : ""}`
-      : `$(debug-pause) Bob Workflow ${running}r/${paused}p/${reviewing}v/${held}h${reused > 0 ? `/${reused}u` : ""}${readOnly > 0 ? `/${readOnly}ro` : ""}`
+      ? `$(check) Bob ワークフロー${reused > 0 ? `／再利用 ${reused}` : ""}${readOnly > 0 ? `／読み取り専用 ${readOnly}` : ""}`
+      : `$(debug-pause) 実行中 ${running}／一時停止 ${paused}／確認待ち ${reviewing}／手動待ち ${held}${reused > 0 ? `／再利用 ${reused}` : ""}${readOnly > 0 ? `／読み取り専用 ${readOnly}` : ""}`
     this.statusBar.tooltip = active.length === 0
-      ? reused > 0 ? `No active Bob workflow runs; ${reused} run(s) reused artifacts${readOnly > 0 ? `; ${readOnly} read-only run(s)` : ""}` : `No active Bob workflow runs${readOnly > 0 ? `; ${readOnly} read-only run(s)` : ""}`
-      : `Active Bob workflow runs: ${running} running, ${paused} paused, ${reviewing} reviewing, ${held} held${reused > 0 ? `; ${reused} reused artifact run(s)` : ""}${readOnly > 0 ? `; ${readOnly} read-only run(s)` : ""}`
+      ? `Bob ワークフロー実行: 実行中の項目はありません${reused > 0 ? `。成果物を再利用した実行 ${reused}件` : ""}${readOnly > 0 ? `。読み取り専用 ${readOnly}件` : ""}`
+      : `Bob ワークフロー実行: 実行中 ${running}件、一時停止 ${paused}件、人による確認待ち ${reviewing}件、手動操作待ち ${held}件${reused > 0 ? `、成果物再利用 ${reused}件` : ""}${readOnly > 0 ? `、読み取り専用 ${readOnly}件` : ""}`
   }
 }
 
@@ -120,13 +121,13 @@ function runProvenanceTooltip(provenance: WorkflowRunProvenanceProjection): stri
     .filter((step) => step.artifactVerified)
     .flatMap((step) => step.artifactIds)))
   return [
-    provenance.reusedStepIds.length > 0 ? `reused steps: ${provenance.reusedStepIds.join(", ")}` : undefined,
-    provenance.sourceRunId ? `source run: ${provenance.sourceRunId}` : undefined,
-    provenance.startStepId ? `reuse start step: ${provenance.startStepId}` : undefined,
-    provenance.hydratedStateKeys.length > 0 ? `hydrated state keys: ${provenance.hydratedStateKeys.join(", ")}` : undefined,
-    verifiedArtifacts.length > 0 ? `verified artifacts: ${verifiedArtifacts.join(", ")}` : undefined,
-    provenance.taskSnapshotImportCount > 0 ? `task snapshot imports: ${provenance.taskSnapshotImportCount}` : undefined,
-    provenance.definitionMismatchAllowed ? "definition mismatch allowed: yes" : undefined
+    provenance.reusedStepIds.length > 0 ? `再利用したステップ: ${provenance.reusedStepIds.join(", ")}` : undefined,
+    provenance.sourceRunId ? `再利用元の実行: ${provenance.sourceRunId}` : undefined,
+    provenance.startStepId ? `再利用の開始ステップ: ${provenance.startStepId}` : undefined,
+    provenance.hydratedStateKeys.length > 0 ? `復元した状態キー: ${provenance.hydratedStateKeys.join(", ")}` : undefined,
+    verifiedArtifacts.length > 0 ? `確認済みの成果物: ${verifiedArtifacts.join(", ")}` : undefined,
+    provenance.taskSnapshotImportCount > 0 ? `保存済みタスクからの取り込み: ${provenance.taskSnapshotImportCount}件` : undefined,
+    provenance.definitionMismatchAllowed ? "定義の差異を許可: はい" : undefined
   ].filter((value): value is string => Boolean(value))
 }
 
@@ -136,22 +137,22 @@ function artifactStatusForRun(run: WorkflowRunState): { description?: string; to
     const reusedStepCount = Array.isArray(reuse.reusedStepIds) ? reuse.reusedStepIds.length : 0
     const hydratedKeyCount = Array.isArray(reuse.hydratedKeys) ? reuse.hydratedKeys.length : 0
     return {
-      description: `reused ${reusedStepCount}`,
-      tooltip: `artifact reuse: ${reusedStepCount} step(s), ${hydratedKeyCount} state key(s), source=${reuse.sourceRunId ?? "unknown"}, start=${reuse.startStepId ?? "unknown"}`
+      description: `再利用: ${reusedStepCount}ステップ`,
+      tooltip: `成果物の再利用: ${reusedStepCount}ステップ、状態キー ${hydratedKeyCount}件、再利用元=${reuse.sourceRunId ?? "不明"}、開始=${reuse.startStepId ?? "不明"}`
     }
   }
   const imported = parseReuse(run.state[TASK_SNAPSHOT_IMPORT_STATE_KEY])
   if (imported) {
     const importedCount = Array.isArray(imported.imported) ? imported.imported.length : 0
     return {
-      description: `snapshot ${importedCount}`,
-      tooltip: `imported from task snapshot: ${importedCount} artifact(s), at=${imported.importedAt ?? "unknown"}`
+      description: `保存済みタスクから取り込み: ${importedCount}件`,
+      tooltip: `保存済みタスクから取り込んだ成果物: ${importedCount}件、日時=${imported.importedAt ?? "不明"}`
     }
   }
   if (typeof run.state[ARTIFACT_MANIFEST_STATE_KEY] === "string") {
     return {
-      description: "artifacts",
-      tooltip: "artifact manifest is available for skip resume"
+      description: "再利用できる成果物あり",
+      tooltip: "途中再開に利用できる成果物一覧があります"
     }
   }
   return {}

@@ -1,7 +1,7 @@
 export type WorkspaceTrustCheck = () => boolean
 
 export function workspaceTrustError(action: string): string {
-  return `Workspace is not trusted. Trust this workspace before ${action}.`
+  return `ワークスペースは信頼されていません。「${action}」を実行する前に、このワークスペースを信頼してください。`
 }
 
 export function requireWorkspaceTrust(isWorkspaceTrusted: WorkspaceTrustCheck | undefined, action: string): void {

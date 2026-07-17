@@ -15,9 +15,9 @@ export interface InspectRunDiagnosticsOptions {
 }
 
 export async function inspectRunDiagnostics(options: InspectRunDiagnosticsOptions): Promise<void> {
-  const workspaceRoot = await pickWorkflowRoot("Select workflow workspace")
+  const workspaceRoot = await pickWorkflowRoot("ワークフローのワークスペースを選択")
   if (!workspaceRoot) {
-    await vscode.window.showErrorMessage("No workspace folder is open.")
+    await vscode.window.showErrorMessage("ワークスペースフォルダーが開かれていません。フォルダーを開いてからもう一度実行してください。")
     return
   }
   const store = new FileRunStateStore({ workspaceRoot })
@@ -35,7 +35,7 @@ export async function inspectRunDiagnostics(options: InspectRunDiagnosticsOption
         runId: run.runId,
         severity: "error",
         code: "invalid",
-        message: `Workflow run control could not be inspected: ${formatError(error)}`
+        message: `実行制御を確認できませんでした。実行状態ファイルを確認してください。詳細: ${formatError(error)}`
       })
     }
   }
@@ -52,7 +52,7 @@ export async function inspectRunDiagnostics(options: InspectRunDiagnosticsOption
       ...durabilityDiagnostics
     ])
   })
-  await options.showMarkdownReport(report.title, report.summary, report.lines)
+  await options.showMarkdownReport("実行診断", report.summary, report.lines)
 }
 
 async function inspectRunDurability(
@@ -89,7 +89,7 @@ async function inspectRunDurability(
       runId,
       severity: "error",
       code: "invalid",
-      message: `Workflow run durability files could not be inspected: ${formatError(error)}`
+      message: `実行の耐久性ファイルを確認できませんでした。実行履歴を確認してください。詳細: ${formatError(error)}`
     })
   }
 

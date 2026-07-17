@@ -11,6 +11,7 @@ import {
 } from "../operationHubMutationTarget"
 import { prepareAutomaticPauseResume } from "./automaticPauseResumeUi"
 import { buildRunControlReportLines } from "./runControlReport"
+import { workflowRunStatusLabel } from "../ui/displayLabels"
 
 interface RunControlCommandOptions {
   showMarkdownReport: (title: string, summary: string, lines: string[]) => Promise<void>
@@ -39,18 +40,18 @@ export async function resumePausedRun(_options: RunControlCommandOptions, runArg
       ? await findRunSelection(runId, roots, createRunStore)
       : await pickRunSelection(roots, createRunStore)
   if (!selection) {
-    const message = runId ? `Workflow run not found: ${runId}` : "No workflow run selected."
+    const message = runId ? `実行 ${runId} が見つかりません。実行一覧を更新してから再度選択してください。` : "実行が選択されていません。実行一覧から対象を選択してください。"
     await vscode.window.showWarningMessage(message)
     return message
   }
   const run = selection.run ?? await createRunStore(selection.root).loadRun(selection.runId)
   if (!run) {
-    const message = `Workflow run not found: ${selection.runId}`
+    const message = `実行 ${selection.runId} が見つかりません。実行一覧を更新してから再度選択してください。`
     await vscode.window.showWarningMessage(message)
     return message
   }
   if (run.status !== "paused") {
-    const message = `Workflow run is not paused: ${run.runId} (${run.status})`
+    const message = `実行 ${run.runId} は一時停止中ではありません（状態: ${workflowRunStatusLabel(run.status)}）。実行の詳細を確認してください。`
     await vscode.window.showWarningMessage(message)
     return message
   }
@@ -59,7 +60,7 @@ export async function resumePausedRun(_options: RunControlCommandOptions, runArg
     run,
     expectedRevision: isOperationHubRunMutationTarget(runArg) ? runArg.expectedRevision : undefined
   })
-  if (!prepared) return "Automatic pause resume cancelled."
+  if (!prepared) return "一時停止した実行の再開を中止しました。"
   return vscode.commands.executeCommand(
     "workflowRegister.resumeRun",
     isOperationHubRunMutationTarget(runArg)
@@ -76,7 +77,7 @@ export async function inspectRunControl(options: RunControlCommandOptions, runAr
     ? selections.find((item) => item.runId === runId)
     : await pickRunSelection(roots, createRunStore)
   if (!selection) {
-    await vscode.window.showWarningMessage(runId ? `Workflow run not found: ${runId}` : "No workflow run selected.")
+    await vscode.window.showWarningMessage(runId ? `実行 ${runId} が見つかりません。実行一覧を更新してから再度選択してください。` : "実行が選択されていません。実行一覧から対象を選択してください。")
     return
   }
   const control = await createControlStore(selection.root).loadControl(selection.runId)
@@ -87,7 +88,7 @@ export async function inspectRunControl(options: RunControlCommandOptions, runAr
     run,
     control
   })
-  await options.showMarkdownReport("Workflow Run Control", `${selection.runId}: ${run?.status ?? "unknown"}`, lines)
+  await options.showMarkdownReport("ワークフロー実行制御", `${selection.runId}: ${run ? workflowRunStatusLabel(run.status) : "不明"}`, lines)
 }
 
 async function requestPause(runArg: RunCommandArg, mode: RunPauseMode, reason: string): Promise<unknown> {
@@ -99,18 +100,18 @@ async function requestPause(runArg: RunCommandArg, mode: RunPauseMode, reason: s
       ? await findRunSelection(runId, roots, createRunStore)
       : await pickInterruptibleRun(roots)
   if (!selection) {
-    const message = runId ? `Workflow run not found: ${runId}` : "No running workflow run selected."
+    const message = runId ? `実行 ${runId} が見つかりません。実行一覧を更新してから再度選択してください。` : "一時停止する実行が選択されていません。実行一覧から対象を選択してください。"
     await vscode.window.showWarningMessage(message)
     return message
   }
   const run = selection.run ?? await createRunStore(selection.root).loadRun(selection.runId)
   if (!run) {
-    const message = `Workflow run not found: ${selection.runId}`
+    const message = `実行 ${selection.runId} が見つかりません。実行一覧を更新してから再度選択してください。`
     await vscode.window.showWarningMessage(message)
     return message
   }
   if (run.status === "completed" || run.status === "failed") {
-    const message = `Workflow run cannot be paused: ${run.runId} (${run.status})`
+    const message = `実行 ${run.runId} は状態が ${workflowRunStatusLabel(run.status)} のため一時停止できません。別の実行を選択してください。`
     await vscode.window.showWarningMessage(message)
     return message
   }
@@ -124,8 +125,8 @@ async function requestPause(runArg: RunCommandArg, mode: RunPauseMode, reason: s
     requestedBy: "user"
   })
   const message = run.status === "paused"
-    ? `Workflow run is already paused: ${selection.runId}`
-    : `Pause requested for workflow run ${selection.runId}. It will stop at the next checkpoint.`
+    ? `実行 ${selection.runId} は既に一時停止しています。`
+    : `実行 ${selection.runId} の一時停止を予約しました。次の安全な区切りで停止します。`
   await vscode.window.showInformationMessage(message)
   return control
 }
@@ -136,10 +137,10 @@ async function pickInterruptibleRun(roots: MarkerRootCandidate[]): Promise<RunSe
   if (selections.length === 0) return undefined
   const picked = await vscode.window.showQuickPick(selections.map((selection) => ({
     label: selection.runId,
-    description: selection.run?.status,
-    detail: `${selection.run?.workflowId}; root=${selection.root}; currentStep=${selection.run?.currentStep ?? "none"}`,
+    description: selection.run ? workflowRunStatusLabel(selection.run.status) : undefined,
+    detail: `${selection.run?.workflowId}; ワークスペース=${selection.root}; 現在のステップ=${selection.run?.currentStep ?? "なし"}`,
     selection
-  })), { title: "Pause Workflow Run" })
+  })), { title: "実行を一時停止" })
   return picked?.selection
 }
 

@@ -112,7 +112,7 @@ test("default action registry blocks VS Code commands in untrusted workspaces", 
   })
 
   assert.equal(result.ok, false)
-  assert.match(result.error, /Workspace is not trusted/)
+  assert.match(result.error, /ワークスペースは信頼されていません/)
   assert.equal(called, false)
 })
 

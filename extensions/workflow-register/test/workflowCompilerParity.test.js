@@ -341,7 +341,7 @@ test("workspace validation compiles the same nested marker-root document set as 
     text: validWorkflow,
     strict: true
   }))
-  assert.equal(reports[0].summary, "2 workflow file(s); 1 error(s); 0 warning(s).")
+  assert.equal(reports[0].summary, "ワークフローファイル 2件、エラー 1件、警告 0件。")
   assert.deepEqual(loaded.workflows.map((workflow) => workflow.id), ["workflow-register.valid-workflow"])
   assert.ok(loaded.diagnostics.some((line) => line.includes("Duplicate step id 'analyze'")))
 
@@ -417,13 +417,13 @@ test("explicit current and workspace validation match strict registration diagno
   assert.deepEqual(currentDiagnostics.get(warningPath), expected)
   assert.deepEqual(workspaceDiagnostics.get(warningPath), expected)
   assert.deepEqual(currentReports, [{
-    title: "Current Workflow Validation",
-    summary: "1 workflow file; 1 error(s); 0 warning(s).",
+    title: "現在のワークフローの検証",
+    summary: "ワークフローファイル1件、エラー 1件、警告 0件。",
     lines: expectedLines
   }])
   assert.deepEqual(workspaceReports, [{
-    title: "Workspace Workflow Validation",
-    summary: "1 workflow file(s); 1 error(s); 0 warning(s).",
+    title: "ワークスペースのワークフロー検証",
+    summary: "ワークフローファイル 1件、エラー 1件、警告 0件。",
     lines: expectedLines
   }])
   assert.deepEqual(loaded.workflows, [])

@@ -6,7 +6,7 @@ const path = require("node:path")
 const { test } = require("node:test")
 
 const RUN_NEXT_STEP_LABEL = "次のステップを実行"
-const OPEN_OPERATION_HUB_LABEL = "Operation Hub を開く"
+const OPEN_OPERATION_HUB_LABEL = "操作センターを開く"
 
 function reviewingRun(runId, updatedAt) {
   return {

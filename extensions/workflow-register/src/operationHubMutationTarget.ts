@@ -26,7 +26,7 @@ export class OperationHubRefreshRequiredError extends Error {
   readonly code = "operation_hub_refresh_required"
 
   constructor(reason: string) {
-    super(`${reason} Operation Hub を更新してから再実行してください。`)
+    super(`${reason} Bob 操作センターを更新してから再実行してください。`)
     this.name = "OperationHubRefreshRequiredError"
   }
 }

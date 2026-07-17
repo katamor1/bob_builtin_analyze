@@ -2,7 +2,7 @@
 
 ## 1. 文書の位置づけ
 
-本書は `extensions/workflow-register` 拡張機能の詳細設計を定義する。現在の実装に合わせ、Bob UI 実行、standalone 実行、中断・再開、step review、task snapshot、Run Control View、GUI Builder、Template Customization Studio、AI 補助、Help / docs 統合の責務を整理する。
+本書は `extensions/workflow-register` 拡張機能の詳細設計を定義する。現在の実装に合わせ、Bob UI 実行、standalone 実行、中断・再開、step review、task snapshot、Run Control View、ワークフロー作成・編集、テンプレート調整、AI 補助、Help / docs 統合の責務を整理する。
 
 ## 2. 実装構成
 
@@ -109,7 +109,7 @@ extensions/workflow-register/
 1. `extensionWithAuthoring.activate(context)` を呼ぶ。
 2. `activateCore(context)` を呼び、`WorkflowRegisterService` と core API を作る。
 3. core command を登録する。
-4. validation / diagnostics / GUI Builder / AI 補助 / step review / run control command を追加登録する。
+4. validation / diagnostics / ワークフロー作成・編集 / AI 補助 / step review / run control command を追加登録する。
 5. `WorkflowRunControlView` を作成し、Explorer view `workflowRegister.runs` と Status Bar を開始する。
 6. 既に開いている `WORKFLOW.md` を diagnostics 対象にする。
 7. `WorkflowRegisterService.reload()` を非同期で実行する。
@@ -136,7 +136,7 @@ extensions/workflow-register/
 | `workflowRegister.resumePausedRun` | paused run の pause request を clear し、`resumeRun` を呼ぶ。 |
 | `workflowRegister.inspectRunControl` | `control.json` と `workflow.pause` state を表示する。 |
 | `workflowRegister.refreshRunsView` | Explorer view `workflowRegister.runs` を更新する。 |
-| `workflowRegister.openCurrentStepInBuilder` | current step の workflow 定義を GUI Builder で開く。 |
+| `workflowRegister.openCurrentStepInBuilder` | current step の workflow 定義を ワークフロー作成・編集で開く。 |
 | `workflowRegister.inspectRunDiagnostics` | run state と task snapshot の診断を表示する。 |
 | `workflowRegister.inspectActiveSteps` | Bob UI の手動完了待ち active step を表示する。 |
 | `workflowRegister.openManualStepPanel` | held run または active manual step の手動操作 Webview を開く。 |
@@ -152,7 +152,7 @@ extensions/workflow-register/
 | `bobTemplate.validateCustomization` | customization YAML を検証する。 |
 | `bobTemplate.generateWorkflow` | template / profile / customization から workflow を生成し、既存ファイルを backup する。 |
 | `bobTemplate.checkReadiness` | checklist、UAT evidence、出力先などの readiness を検査する。 |
-| `bobTemplate.openCustomizationStudio` | Template Customization Studio Webview を開く。 |
+| `bobTemplate.openCustomizationStudio` | テンプレート調整 Webview を開く。 |
 | `workflowRegister.designWorkflowWithAi` | AI provider で新規 workflow draft を作る。 |
 | `workflowRegister.improveWorkflowWithAi` | AI provider で改善案を作り、preview / diff / backup 後に適用する。 |
 | `workflowRegister.explainWorkflowDiagnostics` | diagnostics を自然言語で説明する。 |
@@ -386,17 +386,17 @@ snapshot の `maxBytes` は 1,024〜1,048,576 bytes（既定 262,144 bytes）、
 
 `executeResultHandoff()` は agent step が出力した text を trim し、互換用 `args[0]` と `latestAssistantText` / `resultText` / `artifactText` に渡す。`file` sink は workspace root 配下のみ許可し、path escape を拒否する。`command` sink は action provider または VS Code command を呼び出す。
 
-## 17. GUI Builder / AI Authoring
+## 17. ワークフロー作成・編集 / AI Authoring
 
-GUI Builder の保存処理は、authoring model を Markdown 化し、検証し、error が無ければ既存ファイルを backup して `WORKFLOW.md` を書き込み、`workflowRegister.reload` を実行する。authoring model は `branching`、step `transition`、manual `form` / `approval` を保持し、Preview / Diagnostics / Save で parser と validator の同じ検査を通す。
+ワークフロー作成・編集 の保存処理は、authoring model を Markdown 化し、検証し、error が無ければ既存ファイルを backup して `WORKFLOW.md` を書き込み、`workflowRegister.reload` を実行する。authoring model は `branching`、step `transition`、manual `form` / `approval` を保持し、プレビューと診断 / Save で parser と validator の同じ検査を通す。
 
-Step detail は `User action` section を持ち、`steps[].userAction.message`、`completeLabel`、`confirmOnComplete`、`confirmMessage` を編集できる。manual step では `userAction.message` が無い場合に `prompt` へ fallback する。Builder preview は template 変数を未展開のまま表示し、保存前 validation は利用者向けメッセージ欠落、長すぎるボタン文言、確認文の既定 fallback、無効化される `command:` URI を warning / info として出す。
+ステップ設定 は `User action` section を持ち、`steps[].userAction.message`、`completeLabel`、`confirmOnComplete`、`confirmMessage` を編集できる。manual step では `userAction.message` が無い場合に `prompt` へ fallback する。Builder preview は template 変数を未展開のまま表示し、保存前 validation は利用者向けメッセージ欠落、長すぎるボタン文言、確認文の既定 fallback、無効化される `command:` URI を warning / info として出す。
 
 AI provider は `workflowRegister.aiProviderCommand` で指定する。未設定時は mock provider を使う。`improveWorkflowWithAi` は候補 Markdown を `.bob/workflows/.previews/...` に保存し、diff を表示し、明示確認後に backup を作成して適用する。
 
 ## 18. Diagnostics
 
-検証タイミングは、`validateCurrentWorkflow`、`validateWorkspaceWorkflows`、`WORKFLOW.md` 保存時、active editor 切替時、GUI Builder preview / save 時である。
+検証タイミングは、`validateCurrentWorkflow`、`validateWorkspaceWorkflows`、`WORKFLOW.md` 保存時、active editor 切替時、ワークフロー作成・編集 preview / save 時である。
 
 `inspectRunDiagnostics` は、run state と task snapshot summary を読み、run ID、status、current step、workflow hash、step 状態、attempt 件数、snapshot 件数、latest snapshot、handoff error、truncated、不一致 warning を表示する。分岐 run では branch history、loop count、pending checkpoint、reset attempt の有無も表示対象にする。
 
@@ -441,15 +441,15 @@ AI provider は `workflowRegister.aiProviderCommand` で指定する。未設定
 | BobTaskInputs | metadata / message からの input 抽出。 |
 | BobWorkflowEngineRunner | full / singleStep、task input 抽出、hooks、manual completion。 |
 | authoring | serializer、loader、reference analysis、Webview module。 |
-| Template Customization Studio | template metadata からの候補生成、typed input defaults、VCS別 prompt supplement、readiness、backup、workspace/symlink escape 拒否。 |
+| テンプレート調整 | template metadata からの候補生成、typed input defaults、VCS別 prompt supplement、readiness、backup、workspace/symlink escape 拒否。 |
 | 実機 | VS Code / IBM Bob / workspace / Webview / Explorer view / Status Bar を含む結合動作。 |
 
 詳細な単体テスト仕様は `unit-test-spec-ja.md`、実機テスト仕様は `real-machine-test-spec-ja.md` に定義する。
 
 ## 22. 変更時の注意点
 
-- `workflowV1Schema` を変更した場合は parser、validator、README、テンプレート、GUI Builder、テストを同期する。
-- Template Customization Studio の template metadata、project profile、customization schema を変更した場合は README、基本設計、詳細設計、単体テスト仕様、実機テスト仕様を同期する。
+- `workflowV1Schema` を変更した場合は parser、validator、README、テンプレート、ワークフロー作成・編集、テストを同期する。
+- テンプレート調整 の template metadata、project profile、customization schema を変更した場合は README、基本設計、詳細設計、単体テスト仕様、実機テスト仕様を同期する。
 - `WorkflowEngineOptions` または `WorkflowExecutionHooks` を変更した場合は Bob UI 実行系と standalone 実行系を確認する。
 - `RunStateStore` の recoverable 判定を変更した場合は singleStep 継続と resume / retry を確認する。
 - `RunControlState` を変更した場合は `runControl.ts`、`runPause.ts`、Run Control View、単体テスト、実機テストを更新する。

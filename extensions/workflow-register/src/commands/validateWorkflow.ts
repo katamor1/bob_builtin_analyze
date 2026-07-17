@@ -13,14 +13,14 @@ export interface ValidateWorkflowCommandOptions {
 export async function validateCurrentWorkflow(options: ValidateWorkflowCommandOptions): Promise<void> {
   const editor = vscode.window.activeTextEditor
   if (!editor) {
-    await vscode.window.showErrorMessage("No active editor is open.")
+    await vscode.window.showErrorMessage("アクティブなエディターがありません。WORKFLOW.md を開いてからもう一度実行してください。")
     return
   }
   const result = validateTextDocument(editor.document, options)
   const errors = result.diagnostics.filter((item) => item.severity === "error").length
   const warnings = result.diagnostics.filter((item) => item.severity === "warning").length
-  const summary = `1 workflow file; ${errors} error(s); ${warnings} warning(s).`
-  await options.showMarkdownReport("Current Workflow Validation", summary, formatWorkflowDiagnostics(result))
+  const summary = `ワークフローファイル1件、エラー ${errors}件、警告 ${warnings}件。`
+  await options.showMarkdownReport("現在のワークフローの検証", summary, formatWorkflowDiagnostics(result))
 }
 
 export async function validateWorkspaceWorkflows(options: ValidateWorkflowCommandOptions): Promise<void> {
@@ -37,7 +37,7 @@ export async function validateWorkspaceWorkflows(options: ValidateWorkflowComman
     warnings += result.diagnostics.filter((item) => item.severity === "warning").length
     lines.push(...formatWorkflowDiagnostics(result))
   }
-  await options.showMarkdownReport("Workspace Workflow Validation", `${discovered.files.length} workflow file(s); ${errors} error(s); ${warnings} warning(s).`, lines.length > 0 ? lines : ["- ok: No workflow diagnostics."])
+  await options.showMarkdownReport("ワークスペースのワークフロー検証", `ワークフローファイル ${discovered.files.length}件、エラー ${errors}件、警告 ${warnings}件。`, lines.length > 0 ? lines : ["- 問題は見つかりませんでした。"])
 }
 
 export function validateTextDocument(document: vscode.TextDocument, options: Pick<ValidateWorkflowCommandOptions, "sourceId" | "diagnostics">) {

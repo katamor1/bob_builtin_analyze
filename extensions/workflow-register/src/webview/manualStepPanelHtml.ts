@@ -17,7 +17,7 @@ export function renderManualStepHtml(input: RenderManualStepHtmlInput): string {
       if (button) {
         button.addEventListener('click', () => {
           button.disabled = true;
-          button.textContent = '処理中...';
+          button.textContent = '処理中…';
           vscode.postMessage({
             type: 'completeManualStep',
             activeKey: completion.activeKey
@@ -34,7 +34,7 @@ export function renderManualStepHtml(input: RenderManualStepHtmlInput): string {
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${escapeHtml(cspSource)}; style-src 'nonce-${escapeHtml(nonce)}'; script-src 'nonce-${escapeHtml(nonce)}';">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Bob Workflow Manual Step</title>
+  <title>Bob 手動ステップ</title>
   <style nonce="${escapeHtml(nonce)}">
     body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); margin: 0; min-height: 100vh; display: flex; flex-direction: column; }
     header { border-bottom: 1px solid var(--vscode-panel-border); padding: 14px 18px; }
@@ -52,26 +52,35 @@ export function renderManualStepHtml(input: RenderManualStepHtmlInput): string {
   </style>
 </head>
 <body>
-  <header><h1>Bob Workflow Manual Step</h1></header>
+  <header><h1>Bob 手動ステップ</h1></header>
   <main>
     <section class="metadata">
-      <div><strong>Workflow:</strong> ${escapeHtml(viewModel.workflowLabel)}</div>
-      <div><strong>Run ID:</strong> ${escapeHtml(viewModel.runId)}</div>
-      <div><strong>Step:</strong> ${escapeHtml(viewModel.stepId)} / ${escapeHtml(viewModel.stepTitle)}</div>
-      <div><strong>Status:</strong> ${escapeHtml(viewModel.status)}</div>
+      <div><strong>ワークフロー:</strong> ${escapeHtml(viewModel.workflowLabel)}</div>
+      <div><strong>実行 ID:</strong> ${escapeHtml(viewModel.runId)}</div>
+      <div><strong>ステップ:</strong> ${escapeHtml(viewModel.stepId)} / ${escapeHtml(viewModel.stepTitle)}</div>
+      <div><strong>状態:</strong> ${escapeHtml(manualStepStatusLabel(viewModel.status))}</div>
     </section>
     <h2>操作内容</h2>
     <section class="message">${escapeHtml(viewModel.message)}</section>
-    <h2>参考情報</h2>
+    <h2>参照情報</h2>
     <section class="metadata">
-      <div><strong>workflowFile:</strong> ${escapeHtml(viewModel.workflowFile ?? "none")}</div>
-      <div><strong>state keys:</strong> ${escapeHtml(viewModel.stateKeys.join(", ") || "none")}</div>
+      <div><strong>ワークフロー定義:</strong> ${escapeHtml(viewModel.workflowFile ?? "なし")}</div>
+      <div><strong>状態キー:</strong> ${escapeHtml(viewModel.stateKeys.join(", ") || "なし")}</div>
     </section>
   </main>
   <footer>${actionArea}</footer>
   ${script}
 </body>
 </html>`
+}
+
+function manualStepStatusLabel(status: ManualStepActionViewModel["status"]): string {
+  switch (status) {
+    case "active": return "操作待ち"
+    case "completed": return "完了"
+    case "error": return "エラー"
+    case "heldWithoutActiveTask": return "接続の復旧が必要"
+  }
 }
 
 function safeJson(value: unknown): string {
@@ -85,12 +94,12 @@ function safeJson(value: unknown): string {
 
 function readonlyActionHtml(viewModel: ManualStepActionViewModel): string {
   if (viewModel.status === "completed") {
-    return `<div class="readonly-message">${escapeHtml("この step は完了しました。Run Control View で workflow の次の状態を確認してください。")}</div>`
+    return `<div class="readonly-message">${escapeHtml("このステップは完了しました。実行状況でワークフローの次の状態を確認してください。")}</div>`
   }
   if (viewModel.status === "error") {
-    return `<div class="readonly-message">${escapeHtml("完了処理に失敗しました。操作内容のエラー表示を確認してください。")}</div>`
+    return `<div class="readonly-message">${escapeHtml("完了処理に失敗しました。表示されたエラーを確認し、必要な修正後にもう一度実行してください。")}</div>`
   }
-  return `<div class="readonly-message">${escapeHtml("この run は held ですが、現在の Bob task への接続がありません。VS Code の再起動などで active step handle が失われた可能性があります。Bob ワークフロー: 実行を再開 または Bob ワークフロー: 次のステップを実行 を使って復帰してください。")}</div>`
+  return `<div class="readonly-message">${escapeHtml("この実行は手動操作待ちですが、現在の Bob タスクには接続できません。操作センターの復旧操作を使用してください。")}</div>`
 }
 
 function escapeHtml(value: unknown): string {

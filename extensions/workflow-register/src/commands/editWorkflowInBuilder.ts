@@ -19,17 +19,17 @@ export async function editWorkflowInBuilder(options: EditWorkflowInBuilderOption
   const focusStepId = request instanceof vscode.Uri ? undefined : request?.focusStepId
   const targetUri = uri ?? vscode.window.activeTextEditor?.document.uri ?? await pickWorkflowFile()
   if (!targetUri) {
-    await vscode.window.showErrorMessage("Open or select a WORKFLOW.md file to edit in the GUI builder.")
+    await vscode.window.showErrorMessage("編集する WORKFLOW.md を開くか選択してください。")
     return
   }
   if (!isWorkflowDocumentPath(targetUri.fsPath)) {
-    await vscode.window.showErrorMessage("Open a .bob/workflows/*/WORKFLOW.md file to edit in the GUI builder.")
+    await vscode.window.showErrorMessage(".bob/workflows/*/WORKFLOW.md を開いてから、ワークフロー作成・編集を実行してください。")
     return
   }
 
-  const workflowRoot = await pickWorkflowRootForUri(targetUri, "Select workflow workspace")
+  const workflowRoot = await pickWorkflowRootForUri(targetUri, "ワークフローのワークスペースを選択")
   if (!workflowRoot) {
-    await vscode.window.showErrorMessage("No workspace folder is open.")
+    await vscode.window.showErrorMessage("ワークスペースフォルダーが開かれていません。フォルダーを開いてからもう一度実行してください。")
     return
   }
 
@@ -50,7 +50,7 @@ export async function editWorkflowInBuilder(options: EditWorkflowInBuilderOption
       focusStepId
     })
   } catch (error) {
-    await vscode.window.showErrorMessage(`Cannot edit workflow in GUI: ${error instanceof Error ? error.message : String(error)}`)
+    await vscode.window.showErrorMessage(`ワークフロー作成・編集で開けませんでした。WORKFLOW.md の内容を確認してください。詳細: ${error instanceof Error ? error.message : String(error)}`)
   }
 }
 
@@ -59,7 +59,7 @@ async function pickWorkflowFile(): Promise<vscode.Uri | undefined> {
     canSelectFiles: true,
     canSelectFolders: false,
     canSelectMany: false,
-    title: "Select WORKFLOW.md to edit",
+    title: "編集する WORKFLOW.md を選択",
     filters: { Markdown: ["md"] }
   })
   return picked?.[0]

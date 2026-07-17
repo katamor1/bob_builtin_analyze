@@ -123,8 +123,8 @@ test("workflow control block directs operators to the Operation Hub without comm
   })
 
   for (const message of [held, running, paused]) {
-    assert.match(message, /Bob Operation Hub/)
-    assert.match(message, /Run Monitor/)
+    assert.match(message, /Bob 操作センター/)
+    assert.match(message, /実行状況/)
     assert.match(message, /runId="run-/)
     assert.doesNotMatch(message, /command:/)
     assert.doesNotMatch(message, /workflowRegister\./)

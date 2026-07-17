@@ -28,8 +28,8 @@ test("task snapshot import command previews and selects before acquiring the exe
 test("task snapshot import command uses contained reads and modal overwrite confirmation", () => {
   const source = readSrc("workflowRunCommands.ts")
   assert.match(source, /readOptionalPhysicallyContainedWorkspaceFile/)
-  assert.match(source, /showMarkdownReport\(\s*"Task Snapshot Artifact Import Preview"/)
+  assert.match(source, /showMarkdownReport\(\s*"保存済みタスク成果物の取り込みプレビュー"/)
   assert.match(source, /canPickMany:\s*true/)
-  assert.match(source, /const confirm = "Import and overwrite"/)
+  assert.match(source, /const confirm = "取り込んで上書き"/)
   assert.match(source, /showWarningMessage\([\s\S]*\{ modal: true \},[\s\S]*confirm\s*\)/)
 })

@@ -83,8 +83,8 @@ test("Runs View presents future run-state versions as read-only without mutation
   const item = view.getTreeItem({ root: "/workspace", run: futureRun() })
 
   assert.equal(item.contextValue, "workflowRun.readOnly")
-  assert.match(item.description, /read-only/)
-  assert.match(item.tooltip, /run state schema: workflow-register\/run-state\/v2/)
+  assert.match(item.description, /読み取り専用/)
+  assert.match(item.tooltip, /実行状態スキーマ: workflow-register\/run-state\/v2/)
   assert.equal(item.iconPath.id, "lock")
   assert.equal(item.command.command, "workflowRegister.inspectRunControl")
   view.dispose()

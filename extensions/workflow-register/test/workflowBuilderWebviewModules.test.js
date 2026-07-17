@@ -28,10 +28,14 @@ test("workflow builder html includes split style and client script output", () =
   })
 
   assert.match(html, /nonce-123/)
-  assert.match(html, /Requires/)
-  assert.match(html, /Guardrails/)
+  assert.match(html, /Bob ワークフロー作成・編集/)
+  assert.match(html, /実行条件/)
+  assert.match(html, /安全制限/)
   assert.match(html, /data-tab="branching"/)
-  assert.match(html, /Markdown Body/)
+  assert.match(html, /Markdown 本文/)
+  assert.match(html, /プレビューと診断/)
+  assert.match(html, /ステップ設定/)
+  assert.doesNotMatch(html, /Bob Workflow Builder|Step detail|>Inputs<|>Requires<|>Preflight<|>Branching<|>Artifacts<|>Guardrails<|>Completion<|Markdown Body|Preview \/ Diagnostics/)
   assert.match(html, /requireApproval/)
   assert.match(html, /helpCatalog/)
   assert.match(html, /workflowHelpPanel/)
@@ -115,7 +119,7 @@ test("workflow builder help id registry exposes known ids", () => {
 })
 
 test("workflow builder help catalog covers high priority Japanese help entries", () => {
-  assert.equal(workflowBuilderHelpCatalog["step.type"].labelJa, "Step 種別")
+  assert.equal(workflowBuilderHelpCatalog["step.type"].labelJa, "ステップ種別")
   assert.match(workflowBuilderHelpCatalog["step.userAction.message"].summary, /手動操作ページ/)
   assert.equal(workflowBuilderHelpCatalog["preflight.failurePolicy"].options.stop.label, "stop")
   assert.match(workflowBuilderHelpCatalog["guardrails.allowedCommands"].summary, /許可/)

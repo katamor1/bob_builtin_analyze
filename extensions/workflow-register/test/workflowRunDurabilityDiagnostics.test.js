@@ -37,12 +37,12 @@ test("run diagnostics expose event, journal and lease evidence without state val
     }]
   })
 
-  assert.ok(report.lines.includes("Run durability:"))
-  assert.ok(report.lines.includes("- immutable events: 3"))
-  assert.ok(report.lines.includes(`- event head: sha256:${"a".repeat(64)}`))
-  assert.ok(report.lines.includes("- journal: none"))
-  assert.ok(report.lines.includes("- execution lease: present"))
+  assert.ok(report.lines.includes("実行データの耐久性:"))
+  assert.ok(report.lines.includes("- 不変イベント: 3"))
+  assert.ok(report.lines.includes(`- イベント先頭: sha256:${"a".repeat(64)}`))
+  assert.ok(report.lines.includes("- ジャーナル: なし"))
+  assert.ok(report.lines.includes("- 実行ロック: あり"))
   assert.ok(report.lines.includes("- run-1 [error/stale-write]: A stale writer was rejected."))
   assert.doesNotMatch(report.lines.join("\n"), /must-not-appear/)
-  assert.match(report.summary, /1 run durability record\(s\)/)
+  assert.match(report.summary, /耐久性情報 1件/)
 })

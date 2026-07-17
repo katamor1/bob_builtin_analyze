@@ -65,8 +65,8 @@ test("Operation Hub exposes task snapshot import provenance as a distinct badge"
 test("Runs View source projects task snapshot provenance into description, tooltip, and icon", () => {
   const source = readSrc("commands", "runControlView.ts")
   assert.match(source, /TASK_SNAPSHOT_IMPORT_STATE_KEY/)
-  assert.match(source, /imported from task snapshot/i)
-  assert.match(source, /snapshot \$\{importedCount\}/)
+  assert.match(source, /保存済みタスクから取り込んだ成果物/)
+  assert.match(source, /保存済みタスクから取り込み: \$\{importedCount\}件/)
   assert.match(source, /cloud-download|history/)
 })
 

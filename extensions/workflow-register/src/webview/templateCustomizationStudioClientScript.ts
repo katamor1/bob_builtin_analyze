@@ -114,7 +114,11 @@ function renderTemplateList(nextTemplates, selectedPath) {
 
 function renderDiagnostics(result) {
   const diagnostics = result && Array.isArray(result.diagnostics) ? result.diagnostics : [];
-  return diagnostics.length === 0 ? 'diagnostics: none' : diagnostics.join('\n');
+  return diagnostics.length === 0 ? '診断結果はありません。' : diagnostics.join('\n');
+}
+
+function readinessStatusLabel(status) {
+  return { pass: '合格', warning: '注意', fail: '要対応', error: 'エラー' }[status] || '不明（' + String(status || '') + '）';
 }
 
 function renderReadiness(readiness) {
@@ -123,18 +127,18 @@ function renderReadiness(readiness) {
   const statusNode = $('readinessStatus');
   if (statusNode) {
     statusNode.className = 'panel status ' + status;
-    statusNode.textContent = 'status: ' + status;
+    statusNode.textContent = '状態: ' + readinessStatusLabel(status);
   }
-  setText('readinessScore', 'score: ' + String(readiness.score));
+  setText('readinessScore', 'スコア: ' + String(readiness.score));
   const checks = Array.isArray(readiness.checks) ? readiness.checks : [];
   setText('readinessChecks', checks.map(function(check) {
     const diagnostics = Array.isArray(check.diagnostics) && check.diagnostics.length > 0
       ? ' - ' + check.diagnostics.join('; ')
       : '';
-    return check.status + ': ' + check.id + ' - ' + check.title + diagnostics;
+    return readinessStatusLabel(check.status) + ': ' + check.id + ' - ' + check.title + diagnostics;
   }).join('\n'));
   const nextActions = Array.isArray(readiness.nextActions) ? readiness.nextActions : [];
-  setText('readinessNextActions', nextActions.length === 0 ? 'None' : nextActions.join('\n'));
+  setText('readinessNextActions', nextActions.length === 0 ? '次の対応はありません。' : nextActions.join('\n'));
 }
 
 document.addEventListener('click', function(event) {

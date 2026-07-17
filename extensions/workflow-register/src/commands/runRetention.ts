@@ -6,140 +6,140 @@ import { showMarkdownReport } from "../reports"
 import { requireTrustedWorkspace } from "../workspaceTrust"
 
 export async function inspectWorkflowRunStorage(input?: unknown): Promise<unknown> {
-  const root = await selectWorkflowRoot(workspaceRootFromInput(input), "Workflow Run Storage")
-  if (!root) return "No workflow workspace selected."
+  const root = await selectWorkflowRoot(workspaceRootFromInput(input), "実行履歴の保存状況")
+  if (!root) return "ワークフローのワークスペースが選択されていません。対象のフォルダーを開いてから再実行してください。"
   const service = new WorkflowRunRetentionService({ workspaceRoot: root })
   const inspection = await service.inspect()
   const { summary, inventory } = inspection
   const lines = [
-    `- workspace: ${root}`,
-    `- runs: ${summary.runCount}`,
-    `- total bytes: ${formatBytes(summary.totalBytes)}`,
-    `- terminal: ${summary.terminalRunCount}`,
-    `- recoverable: ${summary.recoverableRunCount}`,
-    `- pinned: ${summary.pinnedRunCount}`,
-    `- referenced sources: ${summary.referencedRunCount}`,
-    `- read-only: ${summary.readOnlyRunCount}`,
-    `- unknown: ${summary.unknownRunCount}`,
-    `- blocked: ${summary.blockedRunCount}`,
-    `- incomplete measurements: ${summary.measurementIncompleteRunCount}`,
-    `- reference graph: ${summary.referenceGraphComplete ? "complete" : "incomplete"}`,
+    `- ワークスペース: ${root}`,
+    `- 実行履歴: ${summary.runCount}件`,
+    `- 合計サイズ: ${formatBytes(summary.totalBytes)}`,
+    `- 完了または失敗: ${summary.terminalRunCount}件`,
+    `- 復旧可能: ${summary.recoverableRunCount}件`,
+    `- 保護済み: ${summary.pinnedRunCount}件`,
+    `- 他の実行から参照中: ${summary.referencedRunCount}件`,
+    `- 読み取り専用: ${summary.readOnlyRunCount}件`,
+    `- 状態不明: ${summary.unknownRunCount}件`,
+    `- 整理対象外: ${summary.blockedRunCount}件`,
+    `- サイズ測定未完了: ${summary.measurementIncompleteRunCount}件`,
+    `- 参照関係: ${summary.referenceGraphComplete ? "確認済み" : "未確認あり"}`,
     "",
-    "Runs:",
-    ...inventory.map((item) => `- ${item.runId}: ${item.status}; inspection=${item.inspectionStatus}; ${formatBytes(item.bytes)}; measurement=${item.measurementComplete ? "complete" : "incomplete"}; updated=${item.updatedAt}; pinned=${item.pinned ? "yes" : "no"}; referencedBy=${item.referencedBy.join(",") || "none"}; lock=${item.lockPresent ? "yes" : "no"}; journal=${item.journalPending ? "yes" : "no"}`)
+    "実行履歴:",
+    ...inventory.map((item) => `- ${item.runId}: 状態=${item.status}; 確認=${item.inspectionStatus}; サイズ=${formatBytes(item.bytes)}; 測定=${item.measurementComplete ? "完了" : "未完了"}; 更新=${item.updatedAt}; 保護=${item.pinned ? "あり" : "なし"}; 参照元=${item.referencedBy.join(",") || "なし"}; ロック=${item.lockPresent ? "あり" : "なし"}; ジャーナル=${item.journalPending ? "あり" : "なし"}`)
   ]
-  await showMarkdownReport("Workflow Run Storage", `${summary.runCount} run(s); ${formatBytes(summary.totalBytes)}.`, lines)
+  await showMarkdownReport("実行履歴の保存状況", `${summary.runCount}件、合計 ${formatBytes(summary.totalBytes)}。`, lines)
   return summary
 }
 
 export async function previewWorkflowRunCleanup(input?: unknown): Promise<WorkflowRunCleanupPlan | string> {
-  const root = await selectWorkflowRoot(workspaceRootFromInput(input), "Preview Workflow Run Cleanup")
-  if (!root) return "No workflow workspace selected."
+  const root = await selectWorkflowRoot(workspaceRootFromInput(input), "実行履歴の削除候補")
+  if (!root) return "ワークフローのワークスペースが選択されていません。対象のフォルダーを開いてから再実行してください。"
   const plan = await new WorkflowRunRetentionService({ workspaceRoot: root }).preview(defaultPolicy())
   await showCleanupPreview(root, plan)
   return plan
 }
 
 export async function cleanupCompletedWorkflowRuns(input?: unknown): Promise<unknown> {
-  const trustError = await requireTrustedWorkspace("clean up completed workflow runs")
+  const trustError = await requireTrustedWorkspace("完了済みの実行履歴を整理")
   if (trustError) return trustError
-  const root = await selectWorkflowRoot(workspaceRootFromInput(input), "Apply Workflow Run Cleanup")
-  if (!root) return "No workflow workspace selected."
+  const root = await selectWorkflowRoot(workspaceRootFromInput(input), "完了済み実行履歴の整理")
+  if (!root) return "ワークフローのワークスペースが選択されていません。対象のフォルダーを開いてから再実行してください。"
   const service = new WorkflowRunRetentionService({ workspaceRoot: root })
   return confirmAndApply(root, service, await service.preview(defaultPolicy()))
 }
 
 export async function deleteSelectedWorkflowRuns(input?: unknown): Promise<unknown> {
-  const trustError = await requireTrustedWorkspace("delete selected workflow runs")
+  const trustError = await requireTrustedWorkspace("選択した実行履歴を削除")
   if (trustError) return trustError
-  const root = await selectWorkflowRoot(workspaceRootFromInput(input), "Delete Selected Workflow Runs")
-  if (!root) return "No workflow workspace selected."
+  const root = await selectWorkflowRoot(workspaceRootFromInput(input), "削除する実行履歴を選択")
+  if (!root) return "ワークフローのワークスペースが選択されていません。対象のフォルダーを開いてから再実行してください。"
   const service = new WorkflowRunRetentionService({ workspaceRoot: root })
   const inventory = await service.inventory()
   const picked = await vscode.window.showQuickPick(inventory.map((item) => ({
     label: item.runId,
-    description: item.status,
-    detail: `${formatBytes(item.bytes)} / updated=${item.updatedAt}${item.pinned ? " / pinned" : ""}${item.referencedBy.length > 0 ? ` / referenced by ${item.referencedBy.join(", ")}` : ""}`,
+    description: `状態: ${item.status}`,
+    detail: `${formatBytes(item.bytes)} / 更新=${item.updatedAt}${item.pinned ? " / 保護済み" : ""}${item.referencedBy.length > 0 ? ` / 参照元: ${item.referencedBy.join(", ")}` : ""}`,
     runId: item.runId
   })), {
-    title: "Select workflow runs for cleanup preview",
-    placeHolder: "Protected runs may be selected but remain excluded by the planner.",
+    title: "実行履歴の削除候補",
+    placeHolder: "保護中または参照中の実行を選んでも、削除対象からは自動的に除外されます。",
     canPickMany: true,
     matchOnDescription: true,
     matchOnDetail: true
   })
-  if (!picked || picked.length === 0) return "No workflow runs selected."
+  if (!picked || picked.length === 0) return "実行履歴が選択されていません。削除候補から対象を選択してください。"
   const plan = await service.preview({ selectedRunIds: picked.map((item) => item.runId) })
   return confirmAndApply(root, service, plan)
 }
 
 export async function pinWorkflowRun(input?: unknown): Promise<unknown> {
-  const trustError = await requireTrustedWorkspace("pin workflow run")
+  const trustError = await requireTrustedWorkspace("実行履歴を保護")
   if (trustError) return trustError
   return setWorkflowRunPinned(input, true)
 }
 
 export async function unpinWorkflowRun(input?: unknown): Promise<unknown> {
-  const trustError = await requireTrustedWorkspace("unpin workflow run")
+  const trustError = await requireTrustedWorkspace("実行履歴の保護を解除")
   if (trustError) return trustError
   return setWorkflowRunPinned(input, false)
 }
 
 async function setWorkflowRunPinned(input: unknown, pinned: boolean): Promise<unknown> {
   const parsed = parseRunTarget(input)
-  const root = await selectWorkflowRoot(parsed.workspaceRoot, pinned ? "Pin Workflow Run" : "Unpin Workflow Run")
-  if (!root) return "No workflow workspace selected."
+  const root = await selectWorkflowRoot(parsed.workspaceRoot, pinned ? "実行履歴を保護" : "実行履歴の保護を解除")
+  if (!root) return "ワークフローのワークスペースが選択されていません。対象のフォルダーを開いてから再実行してください。"
   const service = new WorkflowRunRetentionService({ workspaceRoot: root })
   const inventory = await service.inventory()
   const runId = parsed.runId ?? (await vscode.window.showQuickPick(inventory.map((item) => ({
     label: item.runId,
     description: item.status,
-    detail: `${formatBytes(item.bytes)}${item.pinned ? " / pinned" : ""}`,
+    detail: `${formatBytes(item.bytes)}${item.pinned ? " / 保護済み" : ""}`,
     runId: item.runId
-  })), { title: pinned ? "Pin Workflow Run" : "Unpin Workflow Run" }))?.runId
-  if (!runId) return "No workflow run selected."
+  })), { title: pinned ? "実行履歴を保護" : "実行履歴の保護を解除" }))?.runId
+  if (!runId) return "実行履歴が選択されていません。対象の実行履歴を選択してください。"
   const note = pinned ? await vscode.window.showInputBox({
-    title: "Pin note (optional)",
-    prompt: "Why should this run be retained?",
+    title: "保護する理由（任意）",
+    prompt: "この実行履歴を残す理由を入力してください。",
     validateInput: validateNote
   }) : undefined
-  if (pinned && note === undefined) return "Workflow run pin was cancelled."
+  if (pinned && note === undefined) return "実行履歴の保護を中止しました。"
   await service.setPinned(runId, pinned, note || undefined)
-  await vscode.window.showInformationMessage(`Workflow run ${pinned ? "pinned" : "unpinned"}: ${runId}`)
+  await vscode.window.showInformationMessage(`実行履歴 ${runId} の保護を${pinned ? "設定" : "解除"}しました。`)
   return { runId, pinned }
 }
 
 async function confirmAndApply(root: string, service: WorkflowRunRetentionService, plan: WorkflowRunCleanupPlan): Promise<unknown> {
   await showCleanupPreview(root, plan)
   if (plan.candidateRunIds.length === 0) {
-    await vscode.window.showInformationMessage("Workflow run cleanup: no eligible runs.")
+    await vscode.window.showInformationMessage("削除できる実行履歴はありません。保護状態や参照関係を確認してください。")
     return plan
   }
   const label = "削除"
   const accepted = await vscode.window.showWarningMessage(
-    `Delete ${plan.candidateRunIds.length} workflow run(s) and reclaim ${formatBytes(plan.reclaimBytes)}? Active, recoverable, referenced, pinned, read-only, locked, journaled and unsafe runs are excluded.`,
+    `実行履歴 ${plan.candidateRunIds.length}件を削除し、${formatBytes(plan.reclaimBytes)}を解放します。実行中、復旧可能、参照中、保護済み、読み取り専用、ロック中、書き込み未完了、安全性未確認の実行は除外されています。`,
     { modal: true },
     label
   )
-  if (accepted !== label) return "Workflow run cleanup cancelled."
+  if (accepted !== label) return "実行履歴の整理を中止しました。"
   const result = await service.apply(plan)
-  await vscode.window.showInformationMessage(`Workflow run cleanup removed ${result.removedRunIds.length} run(s); reclaimed ${formatBytes(result.reclaimedBytes)}.`)
+  await vscode.window.showInformationMessage(`実行履歴 ${result.removedRunIds.length}件を削除し、${formatBytes(result.reclaimedBytes)}を解放しました。`)
   return result
 }
 
 async function showCleanupPreview(root: string, plan: WorkflowRunCleanupPlan): Promise<void> {
   const lines = [
-    `- workspace: ${root}`,
-    `- created: ${plan.createdAt}`,
-    `- candidates: ${plan.candidateRunIds.length}`,
-    `- total bytes: ${formatBytes(plan.totalBytes)}`,
-    `- reclaim bytes: ${formatBytes(plan.reclaimBytes)}`,
-    `- digest: ${plan.digest}`,
+    `- ワークスペース: ${root}`,
+    `- 作成日時: ${plan.createdAt}`,
+    `- 削除候補: ${plan.candidateRunIds.length}件`,
+    `- 合計サイズ: ${formatBytes(plan.totalBytes)}`,
+    `- 解放予定: ${formatBytes(plan.reclaimBytes)}`,
+    `- 計画ダイジェスト: ${plan.digest}`,
     "",
-    "Decisions:",
-    ...plan.decisions.map((item) => `- ${item.runId}: ${item.action}; status=${item.status}; bytes=${formatBytes(item.bytes)}; reasons=${item.reasons.join(",") || "none"}; blockers=${item.blockers.join(",") || "none"}`)
+    "判定:",
+    ...plan.decisions.map((item) => `- ${item.runId}: ${item.action}; 状態=${item.status}; サイズ=${formatBytes(item.bytes)}; 理由=${item.reasons.join(",") || "なし"}; 除外理由=${item.blockers.join(",") || "なし"}`)
   ]
-  await showMarkdownReport("Workflow Run Cleanup Preview", `${plan.candidateRunIds.length} eligible run(s); reclaim ${formatBytes(plan.reclaimBytes)}.`, lines)
+  await showMarkdownReport("実行履歴の削除候補", `${plan.candidateRunIds.length}件を削除可能、${formatBytes(plan.reclaimBytes)}を解放予定。`, lines)
 }
 
 function defaultPolicy(): Omit<WorkflowRunRetentionPolicy, "now"> {
@@ -182,8 +182,8 @@ function workspaceRootFromInput(value: unknown): string | undefined {
 }
 
 function validateNote(value: string): string | undefined {
-  if (value.length > 256) return "Pin note must be at most 256 characters."
-  if (/[\u0000-\u001f\u007f]/.test(value)) return "Pin note cannot contain control characters."
+  if (value.length > 256) return "保護理由は256文字以内で入力してください。"
+  if (/[\u0000-\u001f\u007f]/.test(value)) return "保護理由に制御文字は使用できません。"
   return undefined
 }
 

@@ -70,13 +70,13 @@ test("Bob control block includes bounded reuse provenance without state values",
     provenanceLines: lines
   })
 
-  assert.match(message, /Workflow provenance:/)
-  assert.match(message, /Reused from run: source-run/)
-  assert.match(message, /Reused steps: collect/)
-  assert.match(message, /Verified artifacts: context-artifact/)
-  assert.match(message, /Hydrated state keys: context/)
-  assert.match(message, /Imported from task snapshot: 1 artifact/)
-  assert.match(message, /Definition mismatch allowed: yes/)
+  assert.match(message, /ワークフローの来歴:/)
+  assert.match(message, /再利用元の実行: source-run/)
+  assert.match(message, /再利用したステップ: collect/)
+  assert.match(message, /確認済みの成果物: context-artifact/)
+  assert.match(message, /復元した状態キー: context/)
+  assert.match(message, /保存済みタスクから取り込み: 1件/)
+  assert.match(message, /定義の差異を許可: はい/)
   assert.doesNotMatch(message, /secret hydrated body/)
   assert.doesNotMatch(message, /sha256:aaaaaaaa/)
 })
@@ -109,7 +109,7 @@ test("Bob provenance lists are bounded", () => {
 
   assert.match(output, /step-20/)
   assert.doesNotMatch(output, /step-21(?:,|$)/)
-  assert.match(output, /\(\+5 more\)/)
+  assert.match(output, /（ほか5件）/)
 })
 
 test("Bob runner derives control provenance from the persisted run", () => {

@@ -83,7 +83,7 @@ export class ManualStepPanelController implements DisposableLike {
     if (this.panel) return this.panel
     const panel = this.options.host.createWebviewPanel(
       "workflowRegister.manualStepPanel",
-      "Bob Workflow Manual Step",
+      "Bob 手動ステップ",
       this.options.host.activeViewColumn,
       { enableScripts: true }
     )
@@ -121,7 +121,7 @@ export class ManualStepPanelController implements DisposableLike {
       this.panel.webview.html = this.render(this.current, {
         activeKey: undefined,
         status: "error",
-        message: "現在完了できる active step がありません。Run Control View で状態を確認してください。"
+        message: "現在完了できるステップがありません。実行状況で状態を確認してください。"
       })
       return
     }
@@ -129,13 +129,13 @@ export class ManualStepPanelController implements DisposableLike {
       this.panel.webview.html = this.render(this.current, {
         activeKey: undefined,
         status: "error",
-        message: `Active Bob workflow step mismatch: expected activeKey=${currentViewModel.activeKey}; received activeKey=${message.activeKey}.`
+        message: `操作対象のステップが現在の実行状態と一致しません。実行状況を更新してからもう一度開いてください（expected activeKey=${currentViewModel.activeKey}; received activeKey=${message.activeKey}）。`
       })
       return
     }
     if (currentViewModel.confirmOnComplete) {
       const accepted = await this.options.host.showWarningMessage(
-        currentViewModel.confirmMessage || "この step を完了済みとして workflow を進めます。よろしいですか？",
+        currentViewModel.confirmMessage || "このステップを完了済みとしてワークフローを進めます。よろしいですか？",
         { modal: true },
         "完了"
       )

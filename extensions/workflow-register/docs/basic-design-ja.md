@@ -17,7 +17,7 @@ Bob 上でレビューや設計作業を定型化する場合、次の課題が�
 - AI 出力後に保存や検証だけ失敗した場合、Bob chat 側の出力を救済したい。
 - 長い workflow を checkpoint で中断し、後で再開したい。
 - Explorer view / Status Bar で run 状態を確認したい。
-- GUI Builder、Template Customization Studio、AI 補助、Diagnostics、Help を標準機能として運用したい。
+- ワークフロー作成・編集、テンプレート調整、AI 補助、Diagnostics、Help を標準機能として運用したい。
 - 他拡張が action provider / agent provider / result sink を後付けできるようにしたい。
 
 ## 3. スコープ
@@ -36,10 +36,10 @@ Bob 上でレビューや設計作業を定型化する場合、次の課題が�
 - task snapshot による Bob chat 文脈、metadata、last assistant text の補助保存。
 - `resumeRun` / `retryCurrentStep` / `runNextStep` / `acceptAndRunNextStep` による再開・段階実行。
 - result handoff、file / command result sink、artifact 出力。
-- Workflow Diagnostics、Run Diagnostics、Active Step 表示、Run Control 表示。
+- Workflow Diagnostics、実行診断、Active Step 表示、Run Control 表示。
 - Explorer view `workflowRegister.runs` と Status Bar による run 監視。
-- テンプレート作成、Template Customization Studio、AI 設計、AI 改善、診断説明。
-- Webview GUI Builder による新規作成と既存 v1 workflow 編集。
+- テンプレート作成、テンプレート調整、AI 設計、AI 改善、診断説明。
+- Webview ワークフロー作成・編集 による新規作成と既存 v1 workflow 編集。
 
 ### 3.2 対象外
 
@@ -58,7 +58,7 @@ Bob 上でレビューや設計作業を定型化する場合、次の課題が�
 | 開発者 | `.bob/workflows` に workflow を定義し、Bob UI または Command Palette から実行する。 |
 | レビュー担当者 | Bob Workflow UI の Todo / Step を進め、step review で結果を承認・再試行する。 |
 | 拡張機能開発者 | action provider、agent provider、result sink を登録する。 |
-| ワークフロー設計者 | テンプレート、Template Customization Studio、GUI Builder、AI 補助を使って `WORKFLOW.md` を作成・改善する。 |
+| ワークフロー設計者 | テンプレート、テンプレート調整、ワークフロー作成・編集、AI 補助を使って `WORKFLOW.md` を作成・改善する。 |
 | 保守担当者 | run state、run control、task snapshot、diagnostics、Explorer view を確認する。 |
 
 ## 5. 全体構成
@@ -88,7 +88,7 @@ VS Code Extension Host
 | コンポーネント | 主な責務 | 主なファイル |
 | --- | --- | --- |
 | Extension Entry | VS Code command 登録、Bob 連携、公開 API | `src/extension.ts` |
-| Authoring Entry | core activation に検証、AI 補助、GUI Builder、Run Control View を追加 | `src/extensionWithAuthoring.ts` |
+| Authoring Entry | core activation に検証、AI 補助、ワークフロー作成・編集、Run Control View を追加 | `src/extensionWithAuthoring.ts` |
 | WorkflowRegisterService | workflow 探索、Bob source 登録、run 操作、provider 管理 | `src/extension.ts` |
 | Bob API helper | Bob 拡張の取得、activation error 記録、source-like 変換 | `src/bobApi.ts` |
 | Report helper | attempt 実行、戻り値説明、Markdown report 表示 | `src/reports.ts` |
@@ -107,8 +107,8 @@ VS Code Extension Host
 | Action / Agent / Sink | command step、agent step、result / artifact 出力 | `src/core/actionRegistry.ts`, `src/core/agentProvider.ts`, `src/core/resultSinkRegistry.ts` |
 | Result Handoff | Bob assistant 出力を command sink へ渡す | `src/resultHandoff.ts` |
 | Workspace Roots | `.bob` root と workspace root の解決 | `src/core/workspaceRoots.ts` |
-| GUI Builder | Webview 作成、preview、diff、backup、save | `src/webview/*`, `src/core/workflowAuthoring*.ts` |
-| Template Customization Studio | 標準テンプレート選択、project profile / customization 編集、readiness 検査、backup 付き workflow 生成 | `src/template/*`, `src/webview/templateCustomizationStudio*.ts` |
+| ワークフロー作成・編集 | Webview 作成、preview、diff、backup、save | `src/webview/*`, `src/core/workflowAuthoring*.ts` |
+| テンプレート調整 | 標準テンプレート選択、project profile / customization 編集、readiness 検査、backup 付き workflow 生成 | `src/template/*`, `src/webview/templateCustomizationStudio*.ts` |
 | AI Authoring | workflow 設計、改善、diagnostics 説明 | `src/commands/*Ai.ts`, `src/core/workflowAiProviderFactory.ts` |
 | Diagnostics | workflow / run diagnostics の Markdown 表示と VS Code Diagnostics | `src/commands/*Diagnostics.ts`, `src/commands/validateWorkflow.ts` |
 
@@ -127,7 +127,7 @@ step 種別は次の4種類である。
 | `manual` | 人間の確認完了を待つ。 |
 | `result` | state / literal / agent 結果を result sink に渡す。 |
 
-`includeState` は前段 step の `resultKey`、manual `form.resultKey`、manual `approval.resultKey` を参照する。GUI Builder では参照切れ、前方参照、`artifact.producedBy` の不整合を即時警告する。
+`includeState` は前段 step の `resultKey`、manual `form.resultKey`、manual `approval.resultKey` を参照する。ワークフロー作成・編集では参照切れ、前方参照、`artifact.producedBy` の不整合を即時警告する。
 
 `branching` は step 成功後の決定的な遷移制御を定義する。各 step の `transition.decisions[]` は `run.state` の値を安全な比較条件で評価し、`next`、`end`、`fail`、または他 step への `goto` を選ぶ。過去 step への `goto` には `branching.loops[]` の `loop` 指定を必須とし、loop 回数が上限に達した場合は run を `checkpoint` にして専用 command でのみ続行または中止できる。
 
@@ -185,13 +185,13 @@ Bob task 側の chat 文脈は補助証跡として次に保存する。
 
 snapshot は `run.json` の代替ではなく、`lastAssistantText` の救済、handoff 失敗調査、run と Bob UI の不整合診断に使う。
 
-## 10. GUI Builder / AI 補助 / Diagnostics
+## 10. ワークフロー作成・編集 / AI 補助 / Diagnostics
 
-GUI Builder は template からの新規作成、既存 `workflow-register/v1` の編集、参照関係 warning、Preview、Diagnostics、Diff、backup 後 save を扱う。
+ワークフロー作成・編集 は template からの新規作成、既存 `workflow-register/v1` の編集、参照関係 warning、Preview、Diagnostics、Diff、backup 後 save を扱う。
 
 AI 補助は `workflowRegister.designWorkflowWithAi`、`workflowRegister.improveWorkflowWithAi`、`workflowRegister.explainWorkflowDiagnostics` で提供する。
 
-Diagnostics は `WORKFLOW.md` 保存時、active editor 切替時、検証 command、GUI preview / save 時に実行する。Run Diagnostics は `run.json` と task snapshot summary を読み、hash mismatch、step mismatch、handoff error、truncated 状態などを表示する。
+Diagnostics は `WORKFLOW.md` 保存時、active editor 切替時、検証 command、GUI preview / save 時に実行する。実行診断 は `run.json` と task snapshot summary を読み、hash mismatch、step mismatch、handoff error、truncated 状態などを表示する。
 
 ## 11. 他拡張との連携
 
@@ -272,7 +272,7 @@ activation return value として次の API を公開する。
 - result handoff の assistant 成果物渡しを検証する。
 - Bob workflow factory / messages / task input helper を検証する。
 - GUI authoring serializer / loader / reference analysis を検証する。
-- Template Customization Studio の template metadata 連動候補、typed defaults、prompt supplement、backup、workspace/symlink 境界を検証する。
+- テンプレート調整 の template metadata 連動候補、typed defaults、prompt supplement、backup、workspace/symlink 境界を検証する。
 - Run Control View の item 表示、context value、Status Bar 集計を検証する。
 - 実機では VS Code / IBM Bob / multi-root workspace / Bob UI step 実行 / Webview / Status Bar の結合動作を確認する。
 

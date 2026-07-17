@@ -118,7 +118,7 @@ test("ordinary resume guards held runs before completeHeldStep", () => {
   const completion = body.indexOf("completeHeldStep: true")
   assert.ok(heldGuard >= 0)
   assert.ok(completion > heldGuard)
-  assert.match(body, /recoverDetachedHeldRun/)
+  assert.match(body, /中断した実行を復旧/)
 })
 
 test("extension and package contribute detached held recovery command", () => {

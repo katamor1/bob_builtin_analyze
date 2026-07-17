@@ -156,7 +156,7 @@ Pause smoke test.
 | 項目 | 内容 |
 | --- | --- |
 | 目的 | 拡張起動時に `.bob/workflows` が読み込まれ、Bob に workflow source が登録されることを確認する。 |
-| 手順 | 1. テスト workspace を開く。<br>2. workflow-register を有効化する。<br>3. `Bob Workflow: 登録状態を確認` を実行する。<br>4. Bob Workflow UI を開く。 |
+| 手順 | 1. テスト workspace を開く。<br>2. workflow-register を有効化する。<br>3. `Bob ワークフロー: 登録状態を確認` を実行する。<br>4. Bob Workflow UI を開く。 |
 | 期待結果 | inspect report に workflow 一覧が表示される。Bob UI に `workflowRegister.sourceName` の source と workflow が表示される。 |
 
 ### WR-RT-002 WORKFLOW.md 保存時 diagnostics
@@ -164,7 +164,7 @@ Pause smoke test.
 | 項目 | 内容 |
 | --- | --- |
 | 目的 | `WORKFLOW.md` 保存時に diagnostics が更新されることを確認する。 |
-| 手順 | 1. valid workflow を開く。<br>2. `name` を空にして保存する。<br>3. Problems view と `Bob Workflow: 現在の定義を検証` を確認する。<br>4. `name` を戻して保存する。 |
+| 手順 | 1. valid workflow を開く。<br>2. `name` を空にして保存する。<br>3. Problems view と `Bob ワークフロー: 現在の定義を検証` を確認する。<br>4. `name` を戻して保存する。 |
 | 期待結果 | 不正時は Problems と Markdown report に error が出る。修正後は error が消える。 |
 
 ### WR-RT-003 reload command
@@ -204,7 +204,7 @@ Pause smoke test.
 | 項目 | 内容 |
 | --- | --- |
 | 目的 | Bob task なしの standalone 実行ができることを確認する。 |
-| 手順 | 1. `Bob Workflow: 実行` を実行する。<br>2. workflow を選択する。<br>3. 必要 input を入力する。 |
+| 手順 | 1. `Bob ワークフロー: 実行` を実行する。<br>2. workflow を選択する。<br>3. 必要 input を入力する。 |
 | 期待結果 | run.json が作成される。Bob chat は更新されない。結果 report または通知が表示される。 |
 
 ### WR-RT-008 standalone runWorkflowStep / runNextStep
@@ -212,7 +212,7 @@ Pause smoke test.
 | 項目 | 内容 |
 | --- | --- |
 | 目的 | Command Palette から step 単位実行と次 step 実行ができることを確認する。 |
-| 手順 | 1. `Bob Workflow: ステップを実行` を実行する。<br>2. 先頭 step を選択する。<br>3. `Bob Workflow: 次のステップを実行` を実行する。 |
+| 手順 | 1. `Bob ワークフロー: ステップを実行` を実行する。<br>2. 先頭 step を選択する。<br>3. `Bob ワークフロー: 次のステップを実行` を実行する。 |
 | 期待結果 | run は同じ runId で継続し、step status が順に進む。 |
 
 ### WR-RT-009 manual step 完了
@@ -220,7 +220,7 @@ Pause smoke test.
 | 項目 | 内容 |
 | --- | --- |
 | 目的 | Bob UI 実行中の manual step が `completeCurrentStep` で完了できることを確認する。 |
-| 手順 | 1. manual workflow を Bob UI から実行する。<br>2. run が `held` になることを確認する。<br>3. `Bob Workflow: 実行中ステップを確認` を実行する。<br>4. `Bob Workflow: 現在のステップを完了` を実行する。 |
+| 手順 | 1. manual workflow を Bob UI から実行する。<br>2. run が `held` になることを確認する。<br>3. `Bob ワークフロー: 実行中ステップを確認` を実行する。<br>4. `Bob ワークフロー: 現在のステップを完了` を実行する。 |
 | 期待結果 | active step が表示され、完了後に `task.setStepComplete()` 相当の挙動で Bob UI step が完了する。run は次 step へ進むか completed になる。 |
 
 ### WR-RT-010 held run の resume
@@ -228,7 +228,7 @@ Pause smoke test.
 | 項目 | 内容 |
 | --- | --- |
 | 目的 | held run を `resumeRun` で再開できることを確認する。 |
-| 手順 | 1. standalone または Bob UI で manual step を held にする。<br>2. `Bob Workflow: 実行を再開` を実行する。<br>3. `completeHeldStep` の挙動を確認する。 |
+| 手順 | 1. standalone または Bob UI で manual step を held にする。<br>2. `Bob ワークフロー: 実行を再開` を実行する。<br>3. `completeHeldStep` の挙動を確認する。 |
 | 期待結果 | held step が完了扱いになり、次 step から継続する。 |
 
 ### WR-RT-011 step review accept
@@ -236,7 +236,7 @@ Pause smoke test.
 | 項目 | 内容 |
 | --- | --- |
 | 目的 | step review で reviewing 停止し、承認できることを確認する。 |
-| 手順 | 1. `stepReview.pauseAfter: everyStep` workflow を実行する。<br>2. run が `reviewing` になることを確認する。<br>3. `Bob Workflow: 現在のステップ結果を承認` を実行する。 |
+| 手順 | 1. `stepReview.pauseAfter: everyStep` workflow を実行する。<br>2. run が `reviewing` になることを確認する。<br>3. `Bob ワークフロー: 現在のステップ結果を承認` を実行する。 |
 | 期待結果 | current step が `completed` になり、run は次 step を実行できる状態になる。 |
 
 ### WR-RT-012 step review retry
@@ -244,7 +244,7 @@ Pause smoke test.
 | 項目 | 内容 |
 | --- | --- |
 | 目的 | reviewing step を retry でき、attempt が保存されることを確認する。 |
-| 手順 | 1. reviewing run を作る。<br>2. `Bob Workflow: 現在のステップを再試行` を実行する。<br>3. run.json を確認する。 |
+| 手順 | 1. reviewing run を作る。<br>2. `Bob ワークフロー: 現在のステップを再試行` を実行する。<br>3. run.json を確認する。 |
 | 期待結果 | `steps[].attempts` に前回 attempt が保存され、current step が再実行される。 |
 
 ### WR-RT-013 acceptAndRunNextStep
@@ -252,7 +252,7 @@ Pause smoke test.
 | 項目 | 内容 |
 | --- | --- |
 | 目的 | 承認と次 step 実行を1操作で行えることを確認する。 |
-| 手順 | 1. reviewing run を作る。<br>2. `Bob Workflow: 承認して次のステップを実行` を実行する。 |
+| 手順 | 1. reviewing run を作る。<br>2. `Bob ワークフロー: 承認して次のステップを実行` を実行する。 |
 | 期待結果 | current step が completed になり、次 pending step が実行される。 |
 
 ### WR-RT-014 pauseAfterCurrentStep
@@ -260,7 +260,7 @@ Pause smoke test.
 | 項目 | 内容 |
 | --- | --- |
 | 目的 | run に pause request を保存し、checkpoint で paused になることを確認する。 |
-| 手順 | 1. 2 step 以上の workflow を実行する。<br>2. `Bob Workflow: 現在ステップ後に中断` を実行する。<br>3. current step を完了する。<br>4. run.json と control.json を確認する。 |
+| 手順 | 1. 2 step 以上の workflow を実行する。<br>2. `Bob ワークフロー: 現在ステップ後に中断` を実行する。<br>3. current step を完了する。<br>4. run.json と control.json を確認する。 |
 | 期待結果 | `control.json` に pause request が保存され、checkpoint 到達後 run status が `paused` になる。`workflow.pause` state に checkpoint が記録される。 |
 
 ### WR-RT-015 resumePausedRun
@@ -268,7 +268,7 @@ Pause smoke test.
 | 項目 | 内容 |
 | --- | --- |
 | 目的 | paused run の pause request を clear し、再開できることを確認する。 |
-| 手順 | 1. paused run を作る。<br>2. `Bob Workflow: 中断 run を再開` を実行する。<br>3. control.json と run.json を確認する。 |
+| 手順 | 1. paused run を作る。<br>2. `Bob ワークフロー: 中断 run を再開` を実行する。<br>3. control.json と run.json を確認する。 |
 | 期待結果 | `control.json.clearedAt` が保存され、run は `running` へ戻り、次 step から継続する。 |
 
 ### WR-RT-016 pauseBeforeNextAiCall
@@ -276,7 +276,7 @@ Pause smoke test.
 | 項目 | 内容 |
 | --- | --- |
 | 目的 | `pauseBeforeNextAiCall` command が control state と inspect report に反映されることを確認する。 |
-| 手順 | 1. 実行中 run を選択する。<br>2. `Bob Workflow: 次のAI呼び出し前に中断` を実行する。<br>3. `Bob Workflow: 中断・再開状態を確認` を実行する。 |
+| 手順 | 1. 実行中 run を選択する。<br>2. `Bob ワークフロー: 次のAI呼び出し前に中断` を実行する。<br>3. `Bob ワークフロー: 中断・再開状態を確認` を実行する。 |
 | 期待結果 | `control.json.mode` が `beforeNextAiCall` になり、inspect report に表示される。現行 engine では checkpoint 停止として扱われる。 |
 
 ### WR-RT-017 completed / failed run の pause 拒否
@@ -332,31 +332,31 @@ Pause smoke test.
 | 項目 | 内容 |
 | --- | --- |
 | 目的 | run diagnostics が run state と snapshot summary を表示することを確認する。 |
-| 手順 | 1. completed / failed / paused などの run を用意する。<br>2. `Bob Workflow: 診断を確認` を実行する。 |
+| 手順 | 1. completed / failed / paused などの run を用意する。<br>2. `Bob ワークフロー: 診断を確認` を実行する。 |
 | 期待結果 | run ID、status、current step、step 状態、snapshot 件数、latest snapshot、warning が Markdown report に表示される。 |
 
 ### WR-RT-024 Workflow Builder 新規作成
 
 | 項目 | 内容 |
 | --- | --- |
-| 目的 | GUI Builder で新規 workflow を作成し、保存・reload できることを確認する。 |
-| 手順 | 1. `Bob Workflow: GUI で作成` を実行する。<br>2. name、description、steps、Markdown Body を入力する。<br>3. Preview / Diagnostics / Save を実行する。 |
+| 目的 | ワークフロー作成・編集で新規 workflow を作成し、保存・reload できることを確認する。 |
+| 手順 | 1. `Bob ワークフロー: GUI で作成` を実行する。<br>2. name、description、steps、Markdown Body を入力する。<br>3. プレビューと診断 / Save を実行する。 |
 | 期待結果 | `WORKFLOW.md` が作成され、保存後に reload され、Bob UI に表示される。 |
 
 ### WR-RT-025 Workflow Builder 既存編集と backup
 
 | 項目 | 内容 |
 | --- | --- |
-| 目的 | 既存 v1 workflow を GUI Builder で編集し、backup 後に保存できることを確認する。 |
-| 手順 | 1. 既存 `WORKFLOW.md` を開く。<br>2. `Bob Workflow: GUI で編集` を実行する。<br>3. step title または body を変更して保存する。 |
+| 目的 | 既存 v1 workflow を ワークフロー作成・編集で編集し、backup 後に保存できることを確認する。 |
+| 手順 | 1. 既存 `WORKFLOW.md` を開く。<br>2. `Bob ワークフロー: GUI で編集` を実行する。<br>3. step title または body を変更して保存する。 |
 | 期待結果 | `WORKFLOW.backup-<timestamp>.md` が作成され、変更後 workflow が parse / reload される。 |
 
-### WR-RT-026 GUI Builder reference warning
+### WR-RT-026 ワークフロー作成・編集 reference warning
 
 | 項目 | 内容 |
 | --- | --- |
-| 目的 | GUI Builder が state / artifact 参照不整合を warning 表示することを確認する。 |
-| 手順 | 1. resultKey を参照する workflow を GUI Builder で開く。<br>2. producer step または resultKey を削除・変更する。 |
+| 目的 | ワークフロー作成・編集 が state / artifact 参照不整合を warning 表示することを確認する。 |
+| 手順 | 1. resultKey を参照する workflow を ワークフロー作成・編集で開く。<br>2. producer step または resultKey を削除・変更する。 |
 | 期待結果 | `includeState`、`stateKey`、`artifact.producedBy` の参照不整合 warning が表示される。 |
 
 ### WR-RT-027 validateWorkspaceWorkflows
@@ -364,7 +364,7 @@ Pause smoke test.
 | 項目 | 内容 |
 | --- | --- |
 | 目的 | workspace 内 workflow 一括検証が動作することを確認する。 |
-| 手順 | 1. valid workflow と invalid workflow を混在させる。<br>2. `Bob Workflow: ワークスペース定義を検証` を実行する。 |
+| 手順 | 1. valid workflow と invalid workflow を混在させる。<br>2. `Bob ワークフロー: ワークスペース定義を検証` を実行する。 |
 | 期待結果 | report に workflow ごとの error / warning が表示される。 |
 
 ### WR-RT-028 AI authoring command 未設定時
@@ -431,12 +431,12 @@ Pause smoke test.
 | 手順 | 1. singleStep で途中 run を作る。<br>2. VS Code window を reload する。<br>3. 同じ workflow / inputs で次 step を実行する。 |
 | 期待結果 | 同じ runId の run が再利用される。Bob task handle が必要な active step は復元対象外であることを確認する。 |
 
-### WR-RT-036 Template Customization Studio
+### WR-RT-036 テンプレート調整
 
 | 項目 | 内容 |
 | --- | --- |
-| 目的 | Template Customization Studio で標準テンプレートから workflow を生成し、安全な上書きと readiness を確認する。 |
-| 手順 | 1. `Bob Workflow: テンプレートカスタマイズ Studio` を実行する。<br>2. 標準テンプレートを選択し、`targetLanguage`、`vcs.type`、phase artifact root、input default を編集する。<br>3. Preview / Diff / Readiness を確認する。<br>4. Generate を実行する。<br>5. 既存生成物がある状態で再度 Generate を実行する。 |
+| 目的 | テンプレート調整で標準テンプレートから workflow を生成し、安全な上書きと readiness を確認する。 |
+| 手順 | 1. `Bob ワークフロー: テンプレート調整を開く` を実行する。<br>2. 標準テンプレートを選択し、`targetLanguage`、`vcs.type`、phase artifact root、input default を編集する。<br>3. Preview / Diff / Readiness を確認する。<br>4. Generate を実行する。<br>5. 既存生成物がある状態で再度 Generate を実行する。 |
 | 期待結果 | 候補は template metadata と一致し、number / boolean / null defaults が保持される。Bazaar profile だけ `bzr --no-aliases` prompt supplement を持ち、Git profile には混入しない。workspace 外または symlink escape の生成先は拒否される。既存 profile / customization / workflow は backup 後に上書きされる。 |
 
 ### WR-RT-037 Run storage inspect / cleanup preview
@@ -444,7 +444,7 @@ Pause smoke test.
 | 項目 | 内容 |
 | --- | --- |
 | 目的 | Retention inventoryとcleanup planが副作用なし、metadata-onlyで表示されることを確認する。 |
-| 手順 | 1. Completed/failed、active、pinned、referenced、journal/lockありのfixture runを用意する。<br>2. `Bob Workflow: 実行ストレージを確認`を実行する。<br>3. `Bob Workflow: 実行クリーンアップをプレビュー`を実行する。<br>4. 実行前後のrun tree、mtime、file hashを比較する。 |
+| 手順 | 1. Completed/failed、active、pinned、referenced、journal/lockありのfixture runを用意する。<br>2. `Bob ワークフロー: 実行ストレージを確認`を実行する。<br>3. `Bob ワークフロー: 実行クリーンアップをプレビュー`を実行する。<br>4. 実行前後のrun tree、mtime、file hashを比較する。 |
 | 期待結果 | 件数、byte数、status、inspection status、candidate/blocker、digestだけが表示される。Task/artifact/snapshot/state/Bob message本文を含まない。Read-only commandによりfile/directoryが作成・更新・削除されない。 |
 
 ### WR-RT-038 Workspace trust split
@@ -525,7 +525,7 @@ Pause smoke test.
 - WR-RT-001 から WR-RT-010 までの smoke / basic flow が合格する。
 - run state、run control、task snapshot が設計どおりの保存先に作成される。
 - Bob UI 実行と standalone 実行で run state の矛盾がない。
-- Explorer view / Status Bar / Diagnostics / GUI Builder / Template Customization Studio が実機上で操作可能である。
+- Explorer view / Status Bar / Diagnostics / ワークフロー作成・編集 / テンプレート調整 が実機上で操作可能である。
 - failed / held / reviewing / paused の復旧導線が Command Palette から利用できる。
 - WR-RT-037からWR-RT-044のretention/trust/multi-root/transaction/operator-recovery契約が合格する。
 - Preview、diagnostics、evidenceにtask/artifact/snapshot/state本文が含まれない。
@@ -537,7 +537,7 @@ Pause smoke test.
 | --- | --- |
 | P0 | 起動、workflow 登録、Bob UI full、singleStep、manual completion、run.json 保存。 |
 | P1 | step review、pause / resume、Run Control View、task snapshot、result handoff、retention preview/apply、trust split、cleanup lease/guard/quarantine、migration crash-pair preservation。 |
-| P2 | GUI Builder、Template Customization Studio、AI authoring、multi-root、snapshot pruning / maxBytes、operator recovery UAT。 |
+| P2 | ワークフロー作成・編集、テンプレート調整、AI authoring、multi-root、snapshot pruning / maxBytes、operator recovery UAT。 |
 | P3 | sourceId / sourceName 設定、duplicate ID、OS 差分確認。 |
 
 <!-- REMEDIATION-2026-07-11 -->
@@ -556,7 +556,7 @@ Pause smoke test.
 
 1. `maxRunMinutes`、`maxAgentStepsPerRun`、`pauseAtLocalTime` を個別に設定した workflow を IBM Bob から実行する。
 2. 実行中の agent / command が強制終了されず、次の安全な checkpoint で `paused` になることを確認する。
-3. Run Diagnostics と Run Control で kind、source、checkpoint、limit、observed、detectedAt を確認する。
+3. 実行診断 と Run Control で kind、source、checkpoint、limit、observed、detectedAt を確認する。
 4. 15 / 30 / 60 分 override を理由付きで設定し、期限内は自動制限だけが抑止されることを確認する。
 5. override 中に手動 Pause を要求し、手動要求が優先されることを確認する。
 6. VS Code 再起動、Bob task handle の再接続、multi-root workspace でも同一 run と正しい workspace root が選択されることを確認する。

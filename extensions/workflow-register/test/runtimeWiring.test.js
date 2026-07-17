@@ -213,9 +213,9 @@ test("runtime entry points and default providers check Workspace Trust", () => {
   const source = runtimeSource()
 
   assert.match(source, /import \{ requireTrustedWorkspace \} from "\.\/workspaceTrust"/)
-  assert.match(source, /async reload\(options: \{ showReport: boolean \}\): Promise<void> \{[\s\S]*requireTrustedWorkspace\("reload registration", \{ showWarning: options\.showReport \}\)/)
-  assert.match(source, /async runWorkflow\(workflowArg\?: WorkflowCommandArg, inputs: Record<string, unknown> = \{\}\): Promise<unknown> \{[\s\S]*requireTrustedWorkspace\("run workflow"\)/)
-  assert.match(source, /async runWorkflowStep\([\s\S]*requireTrustedWorkspace\("run workflow step"\)/)
+  assert.match(source, /async reload\(options: \{ showReport: boolean \}\): Promise<void> \{[\s\S]*requireTrustedWorkspace\("ワークフロー登録を再読み込み", \{ showWarning: options\.showReport \}\)/)
+  assert.match(source, /async runWorkflow\(workflowArg\?: WorkflowCommandArg, inputs: Record<string, unknown> = \{\}\): Promise<unknown> \{[\s\S]*requireTrustedWorkspace\("ワークフローを実行"\)/)
+  assert.match(source, /async runWorkflowStep\([\s\S]*requireTrustedWorkspace\("ワークフローステップを実行"\)/)
   assert.match(source, /isWorkspaceTrusted: \(\) => vscode\.workspace\.isTrusted/)
   assert.match(source, /requireTrustedCommandExecution\("write command result sink"\)/)
 })
@@ -281,7 +281,7 @@ test("Bob workflow runner surfaces step review gates without failing the run", (
   const source = readSrc("bobWorkflowRunner.ts")
 
   assert.match(source, /if \(\(run\.status === "reviewing" \|\| run\.status === "held"\) && run\.error\)/)
-  assert.match(source, /vscode\.window\.showWarningMessage\("ワークフローはユーザー操作待ちです。Operation Hub を開きました。"\)/)
+  assert.match(source, /vscode\.window\.showWarningMessage\("ワークフローはユーザー操作待ちです。Bob 操作センターを開きました。"\)/)
   assert.match(source, /run\.status === "held"/)
   assert.doesNotMatch(source, /Bob workflow step gate:/)
 })

@@ -53,12 +53,12 @@ test("run provenance projects held recovery metadata", () => {
 test("run diagnostics display held recovery metadata without state values", () => {
   const { formatWorkflowRunDiagnostics } = require("../out/core/runDiagnostics")
   const text = formatWorkflowRunDiagnostics(run(record())).join("\n")
-  assert.match(text, /Held run recovery:/)
-  assert.match(text, /kind: saved-state/)
-  assert.match(text, /step: approve/)
-  assert.match(text, /next step: publish/)
-  assert.match(text, /recovered: 2026-07-13T00:59:00.000Z/)
-  assert.match(text, /source: operation-hub/)
+  assert.match(text, /中断した実行の復旧:/)
+  assert.match(text, /種別: saved-state/)
+  assert.match(text, /ステップ: approve/)
+  assert.match(text, /次のステップ: publish/)
+  assert.match(text, /復旧日時: 2026-07-13T00:59:00.000Z/)
+  assert.match(text, /復旧元: operation-hub/)
   assert.doesNotMatch(text, /secret state value|private form value/)
 })
 

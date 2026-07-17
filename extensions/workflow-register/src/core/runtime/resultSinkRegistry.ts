@@ -86,7 +86,7 @@ export function createDefaultResultSinkRegistry(options: DefaultResultSinkRegist
 
   registry.register("command", async (sink, input) => {
     if (sink.type !== "command") return { ok: false, error: `Invalid command sink: ${sink.type}` }
-    requireWorkspaceTrust(options.isWorkspaceTrusted, "writing command result sink")
+    requireWorkspaceTrust(options.isWorkspaceTrusted, "コマンド結果を書き込む")
     if (!allowedCommandSinks.has(sink.command)) return { ok: false, error: `Unsupported result command: ${sink.command}` }
     const value = await Promise.resolve(options.executeCommand(sink.command, input.text, ...(sink.args ?? []), commandContext(input, options.workspaceRoot)))
     const reportedError = commandReportedError(value)
@@ -96,7 +96,7 @@ export function createDefaultResultSinkRegistry(options: DefaultResultSinkRegist
 
   registry.register("file", async (sink, input) => {
     if (sink.type !== "file") return { ok: false, error: `Invalid file sink: ${sink.type}` }
-    requireWorkspaceTrust(options.isWorkspaceTrusted, "writing file result sink")
+    requireWorkspaceTrust(options.isWorkspaceTrusted, "ファイルへ結果を書き込む")
     const target = resolveWorkspacePath(options.workspaceRoot, renderTemplate(sink.path, input))
     await fs.mkdir(path.dirname(target), { recursive: true })
     await fs.writeFile(target, input.text, { encoding: sink.encoding ?? "utf8" })
@@ -105,7 +105,7 @@ export function createDefaultResultSinkRegistry(options: DefaultResultSinkRegist
 
   registry.registerFileTransaction(async (writes, commitState) => {
     for (const write of writes) {
-      requireWorkspaceTrust(options.isWorkspaceTrusted, "writing file result sink")
+      requireWorkspaceTrust(options.isWorkspaceTrusted, "ファイルへ結果を書き込む")
       if (write.sink.type !== "file") return { ok: false, error: `Invalid file transaction sink: ${write.sink.type}` }
     }
     await writeWorkspaceFilesAtomically(options.workspaceRoot, writes.map((write) => ({

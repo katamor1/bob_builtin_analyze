@@ -27,24 +27,24 @@ export function buildWorkflowControlBlock(input: WorkflowControlBlockInput): str
     ">"
   ].join("")
   const lines = [
-    "Workflow controls:",
+    "ワークフロー操作:",
     openTag,
-    "Bob Operation Hub の Run Monitor で操作してください。",
-    `- runId: ${input.runId}`,
-    `- currentStep: ${input.currentStep ?? input.stepId ?? "none"}`,
-    `- status: ${input.status ?? "unknown"}`,
+    "Bob 操作センターの「実行状況」で操作してください。",
+    `- 実行 ID（runId）: ${input.runId}`,
+    `- 現在のステップ: ${input.currentStep ?? input.stepId ?? "なし"}`,
+    `- 状態: ${input.status ?? "不明"}`,
     "- 状態に応じて「承認して次へ」「再試行」「再開」「手順を開く」「詳細」を選択してください。"
   ]
-  if (input.includeResume) lines.push("- 一時停止中の run は Run Monitor の「再開」から続行してください。")
+  if (input.includeResume) lines.push("- 一時停止中の実行は「実行状況」の「再開」から続行してください。")
   const provenanceLines = (input.provenanceLines ?? [])
   .map((line) => line.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim())
   .filter((line) => line.length > 0)
   .slice(0, 12)
-  if (provenanceLines.length > 0) lines.push("", "Workflow provenance:", ...provenanceLines.map((line) => `- ${line}`))
+  if (provenanceLines.length > 0) lines.push("", "ワークフローの来歴:", ...provenanceLines.map((line) => `- ${line}`))
   lines.push(
     "</workflow_controls>",
     "",
-    "Note: pause is graceful. If an AI response or command is already running, it stops after that response/command completes and before the next workflow step starts."
+    "注: 一時停止は安全な区切りで行われます。AI 応答またはコマンドが実行中の場合は、その処理が完了し、次のステップを開始する前に停止します。"
   )
   return lines.join("\n")
 }

@@ -138,15 +138,15 @@ export function workflowRunProvenanceControlLines(
     .filter((step) => step.artifactVerified)
     .flatMap((step) => step.artifactIds))
   const lines = [
-    provenance.sourceRunId ? `Reused from run: ${safeControlToken(provenance.sourceRunId)}` : undefined,
-    provenance.startStepId ? `Reuse start step: ${safeControlToken(provenance.startStepId)}` : undefined,
-    boundedControlList("Reused steps", provenance.reusedStepIds, limit),
-    boundedControlList("Verified artifacts", verifiedArtifacts, limit),
-    boundedControlList("Hydrated state keys", provenance.hydratedStateKeys, limit),
+    provenance.sourceRunId ? `再利用元の実行: ${safeControlToken(provenance.sourceRunId)}` : undefined,
+    provenance.startStepId ? `再利用開始ステップ: ${safeControlToken(provenance.startStepId)}` : undefined,
+    boundedControlList("再利用したステップ", provenance.reusedStepIds, limit),
+    boundedControlList("確認済みの成果物", verifiedArtifacts, limit),
+    boundedControlList("復元した状態キー", provenance.hydratedStateKeys, limit),
     provenance.taskSnapshotImportCount > 0
-      ? `Imported from task snapshot: ${provenance.taskSnapshotImportCount} artifact(s)`
+      ? `保存済みタスクから取り込み: ${provenance.taskSnapshotImportCount}件`
       : undefined,
-    provenance.definitionMismatchAllowed ? "Definition mismatch allowed: yes" : undefined
+    provenance.definitionMismatchAllowed ? "定義の差異を許可: はい" : undefined
   ]
   return lines.filter((value): value is string => Boolean(value))
 }
@@ -156,7 +156,7 @@ function boundedControlList(label: string, values: readonly string[], limit: num
   if (safeValues.length === 0) return undefined
   const shown = safeValues.slice(0, limit)
   const remaining = safeValues.length - shown.length
-  return `${label}: ${shown.join(", ")}${remaining > 0 ? ` (+${remaining} more)` : ""}`
+  return `${label}: ${shown.join(", ")}${remaining > 0 ? `（ほか${remaining}件）` : ""}`
 }
 
 function safeControlToken(value: string): string {

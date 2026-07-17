@@ -55,7 +55,7 @@ test("StepRuntime completes the active step only when expected run and step matc
   runtime.hold(workflow(), { id: "review-input", title: "Review target" }, held.task, { runId: "run-1" })
   const message = await runtime.completeCurrentStep({ expectedRunId: "run-1", expectedStepId: "review-input" })
 
-  assert.match(message, /Completed: Project Rule Review \/ Review target/)
+  assert.match(message, /完了しました: Project Rule Review \/ Review target/)
   assert.equal(held.completed(), true)
   assert.equal(runtime.list().length, 0)
 })
@@ -68,9 +68,9 @@ test("StepRuntime refuses to complete a step when the expected run does not matc
   runtime.hold(workflow(), { id: "review-input", title: "Review target" }, held.task, { runId: "run-1" })
   const message = await runtime.completeCurrentStep({ expectedRunId: "run-2", expectedStepId: "review-input" })
 
-  assert.match(message, /Active Bob workflow step mismatch/)
-  assert.match(message, /expected runId=run-2/)
-  assert.match(message, /active runId=run-1/)
+  assert.match(message, /対象の Bob ワークフローステップが一致しません/)
+  assert.match(message, /期待値: runId=run-2/)
+  assert.match(message, /実行中: runId=run-1/)
   assert.equal(held.completed(), false)
   assert.equal(runtime.list().length, 1)
 })
@@ -83,9 +83,9 @@ test("StepRuntime refuses to complete a step when the expected step does not mat
   runtime.hold(workflow(), { id: "review-input", title: "Review target" }, held.task, { runId: "run-1" })
   const message = await runtime.completeCurrentStep({ expectedRunId: "run-1", expectedStepId: "collect-context" })
 
-  assert.match(message, /Active Bob workflow step mismatch/)
+  assert.match(message, /対象の Bob ワークフローステップが一致しません/)
   assert.match(message, /stepId=collect-context/)
-  assert.match(message, /active .*stepId=review-input/)
+  assert.match(message, /実行中: .*stepId=review-input/)
   assert.equal(held.completed(), false)
   assert.equal(runtime.list().length, 1)
 })
@@ -105,7 +105,7 @@ test("StepRuntime applies completion state updates only after the expected step 
     }
   })
 
-  assert.match(message, /Completed: Project Rule Review \/ Review target/)
+  assert.match(message, /完了しました: Project Rule Review \/ Review target/)
   assert.deepEqual(JSON.parse(state["bobBazaar.reviewPacket"]), { packetUri: "untitled:packet-1", runId: "run-1" })
 })
 
@@ -145,7 +145,7 @@ test("StepRuntime does not apply completion state updates when the expected step
     }
   })
 
-  assert.match(message, /Active Bob workflow step mismatch/)
+  assert.match(message, /対象の Bob ワークフローステップが一致しません/)
   assert.equal(state["bobBazaar.reviewPacket"], undefined)
   assert.equal(held.completed(), false)
 })
@@ -191,7 +191,7 @@ test("StepRuntime collects structured manual form and approval values through a 
   const message = await runtime.completeCurrentStep({ expectedRunId: "run-1", expectedStepId: "collect-input" })
   const result = await pending
 
-  assert.match(message, /Completed: Project Rule Review \/ Collect input/)
+  assert.match(message, /完了しました: Project Rule Review \/ Collect input/)
   assert.equal(result.completed, true)
   assert.deepEqual(result.formValues, { request: "revised request", priority: 2 })
   assert.deepEqual(result.approval, { decision: "rejected", reason: "needs more detail" })

@@ -129,7 +129,7 @@ function renderStepDraftPanel(result) {
     '<button class="secondary" data-action="validate-step-draft">Validate step</button>',
     '<button data-action="apply-step-draft"',
     applyDisabled,
-    '>Apply changes</button>',
+    '>変更を反映</button>',
     '<button class="secondary" data-action="discard-step-draft"',
     discardDisabled,
     '>Discard</button><span class="muted">',

@@ -108,18 +108,18 @@ function destructiveCommandPlan() {
 
 function expectedCleanupReport(workspaceRoot) {
   return {
-    title: "Workflow Run Cleanup Preview",
-    summary: "1 eligible run(s); reclaim 2.0 KiB.",
+    title: "実行履歴の削除候補",
+    summary: "1件を削除可能、2.0 KiBを解放予定。",
     lines: [
-      `- workspace: ${workspaceRoot}`,
-      "- created: 2026-07-15T00:00:00.000Z",
-      "- candidates: 1",
-      "- total bytes: 4.0 KiB",
-      "- reclaim bytes: 2.0 KiB",
-      "- digest: non-empty-plan",
+      `- ワークスペース: ${workspaceRoot}`,
+      "- 作成日時: 2026-07-15T00:00:00.000Z",
+      "- 削除候補: 1件",
+      "- 合計サイズ: 4.0 KiB",
+      "- 解放予定: 2.0 KiB",
+      "- 計画ダイジェスト: non-empty-plan",
       "",
-      "Decisions:",
-      "- eligible-run: delete; status=completed; bytes=2.0 KiB; reasons=completedDays; blockers=none"
+      "判定:",
+      "- eligible-run: delete; 状態=completed; サイズ=2.0 KiB; 理由=completedDays; 除外理由=なし"
     ]
   }
 }
@@ -359,7 +359,7 @@ test("retention settings are disabled by default and bounded", () => {
   assert.equal(properties["workflowRegister.runs.retention.maxCompletedRuns"].default, 100)
   assert.match(
     properties["workflowRegister.runs.retention.maxCompletedRuns"].description,
-    /terminal run.*completed.*failed/
+    /終了済みの実行.*completed.*failed/
   )
   assert.equal(properties["workflowRegister.runs.retention.maxTotalBytes"].type, "integer")
   assert.equal(properties["workflowRegister.runs.retention.maxTotalBytes"].default, 524288000)
@@ -398,7 +398,7 @@ test("destructive retention commands preview before modal cancellation or exact-
         assertPreviewThenModal(outcome)
         if (!accepted) {
           assert.equal(outcome.applyPlans.length, 0)
-          assert.equal(outcome.result, "Workflow run cleanup cancelled.")
+          assert.equal(outcome.result, "実行履歴の整理を中止しました。")
           return
         }
         assert.ok(outcome.events.indexOf("modal") < outcome.events.indexOf("apply"))
@@ -585,7 +585,7 @@ test("workflow root selection handles zero, one, multiple, cancellation and requ
         assert.deepEqual(result, emptyInspection().summary)
         assert.deepEqual(constructed, [item.expected])
       } else {
-        assert.equal(result, "No workflow workspace selected.")
+        assert.equal(result, "ワークフローのワークスペースが選択されていません。対象のフォルダーを開いてから再実行してください。")
         assert.deepEqual(constructed, [])
       }
       assert.equal(quickPickCalls, item.quickPick === "forbidden" ? 0 : 1)
