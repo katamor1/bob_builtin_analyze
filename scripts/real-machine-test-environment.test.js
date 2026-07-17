@@ -260,3 +260,36 @@ test("manifest validator enforces isolated unique fixture destinations", () => {
   const runner = fs.readFileSync(path.join(toolRoot, "Invoke-BobReviewTestEnvironment.ps1"), "utf8")
   assert.match(runner, /Assert-ScenarioFixtureCopies -RepoRoot \$RepoRoot -Manifest \$manifest/)
 })
+
+test("README documents safe generation and explicit launch", () => {
+  const readme = fs.readFileSync(path.join(toolRoot, "README-ja.md"), "utf8")
+  for (const pattern of [
+    /npm\.cmd run package/,
+    /-ValidateOnly/,
+    /-Scenario all/,
+    /-OpenScenario bazaar-run-recovery/,
+    /operator-result\.json/,
+    /Remove-Item .* -Recurse -Force/
+  ]) assert.match(readme, pattern)
+})
+
+test("extensions-quality watches and validates environment contracts", () => {
+  const workflow = fs.readFileSync(path.join(repoRoot, ".github", "workflows", "extensions-quality.yml"), "utf8")
+  for (const watchedPath of [
+    "tools/real-machine-test-environment/**",
+    "docs/workflows/bazaar-project-rule-review/integration/**",
+    "docs/workflows/code-consistency-review/integration/**",
+    "docs/workflows/code-consistency-review/examples/**",
+    "extensions/bob-bazaar-review/docs/real-machine-test-spec-ja.md",
+    "extensions/bob-code-consistency-review/docs/real-machine-test-spec-ja.md"
+  ]) {
+    const matches = workflow.match(new RegExp(escapeRegExp(watchedPath), "g")) ?? []
+    assert.equal(matches.length, 2, `${watchedPath} must be watched for pull requests and main pushes`)
+  }
+  assert.match(workflow, /real-machine-environment-contracts:/)
+  assert.match(workflow, /runs-on:\s*windows-latest/)
+  assert.match(workflow, /node --test scripts\/real-machine-test-environment\.test\.js/)
+  assert.match(workflow, /Invoke-BobReviewTestEnvironment\.ps1 -ValidateOnly/)
+  const job = workflow.split("  real-machine-environment-contracts:")[1].split("  extension-metrics:")[0]
+  assert.doesNotMatch(job, /npm (?:ci|install)|npm\.cmd run package|vscode-test|\bbzr\b|IBM Bob/i)
+})

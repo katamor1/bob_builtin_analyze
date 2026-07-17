@@ -7,6 +7,12 @@ on:
       - "extensions/bob-bazaar-review/**"
       - "extensions/bob-code-consistency-review/**"
       - "scripts/*.js"
+      - "tools/real-machine-test-environment/**"
+      - "docs/workflows/bazaar-project-rule-review/integration/**"
+      - "docs/workflows/code-consistency-review/integration/**"
+      - "docs/workflows/code-consistency-review/examples/**"
+      - "extensions/bob-bazaar-review/docs/real-machine-test-spec-ja.md"
+      - "extensions/bob-code-consistency-review/docs/real-machine-test-spec-ja.md"
       - ".github/workflows/extensions-quality.yml"
   push:
     branches:
@@ -16,6 +22,12 @@ on:
       - "extensions/bob-bazaar-review/**"
       - "extensions/bob-code-consistency-review/**"
       - "scripts/*.js"
+      - "tools/real-machine-test-environment/**"
+      - "docs/workflows/bazaar-project-rule-review/integration/**"
+      - "docs/workflows/code-consistency-review/integration/**"
+      - "docs/workflows/code-consistency-review/examples/**"
+      - "extensions/bob-bazaar-review/docs/real-machine-test-spec-ja.md"
+      - "extensions/bob-code-consistency-review/docs/real-machine-test-spec-ja.md"
       - ".github/workflows/extensions-quality.yml"
   workflow_dispatch:
 
@@ -300,6 +312,27 @@ jobs:
         run: |
           node ../../scripts/extension-host-smoke.test.js --write-config
           & .\node_modules\.bin\vscode-test.cmd
+
+  real-machine-environment-contracts:
+    name: Real-machine environment contracts
+    runs-on: windows-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+
+      - name: Verify repository contracts
+        run: node --test scripts/real-machine-test-environment.test.js
+
+      - name: Verify PowerShell manifest and seed plans
+        shell: pwsh
+        run: pwsh -NoProfile -File tools/real-machine-test-environment/Invoke-BobReviewTestEnvironment.ps1 -ValidateOnly
 
   extension-metrics:
     name: Extension source metrics
