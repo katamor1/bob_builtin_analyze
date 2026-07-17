@@ -21,6 +21,9 @@ const {
   writeWorkflowRunJournal
 } = require("../out/core/runtime/runStateJournal.js")
 
+const reproducibleRuntimeFixtureRoot = path.join(__dirname, "fixtures", "reproducible-runtime")
+const reproducibleRuntimeRunId = "20260717T000000Z-reproducible-runtime-phase4-000000010000"
+
 function root(t) {
   const value = fs.mkdtempSync(path.join(os.tmpdir(), "workflow-journal-"))
   t.after(() => fs.rmSync(value, { recursive: true, force: true }))
@@ -220,4 +223,19 @@ test("journal recovery preserves evidence on materialized and event-head conflic
     writeRunText: (text) => replaceRun(workspace, text)
   }), /event head conflict/)
   assert.ok(await readWorkflowRunJournal(workspace, "run-1"))
+})
+
+test("current journal event read rejects the middle-event bitflip fixture", async (t) => {
+  const workspace = root(t)
+  const eventDirectory = path.join(workspace, ".bob", "workflows", "runs", reproducibleRuntimeRunId)
+  const fixture = fs.readFileSync(
+    path.join(reproducibleRuntimeFixtureRoot, "corrupt", "events-middle-bitflip.jsonl")
+  )
+  await fsp.mkdir(eventDirectory, { recursive: true })
+  await fsp.writeFile(path.join(eventDirectory, "events.ndjson"), fixture)
+
+  await assert.rejects(
+    readWorkflowRunEventLog(workspace, reproducibleRuntimeRunId),
+    /event 2 event hash is invalid/
+  )
 })
