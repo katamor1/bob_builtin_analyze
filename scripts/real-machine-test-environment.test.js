@@ -9,7 +9,9 @@ const repoRoot = path.resolve(__dirname, "..")
 const toolRoot = path.join(repoRoot, "tools", "real-machine-test-environment")
 const manifestPath = path.join(toolRoot, "scenarios.json")
 const read = (...parts) => fs.readFileSync(path.join(...parts), "utf8")
+const readJson = (...parts) => JSON.parse(read(...parts).replace(/^\uFEFF/, ""))
 const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+const psLiteral = (value) => `'${String(value).replace(/'/g, "''")}'`
 const specs = {
   BZR: read(repoRoot, "extensions", "bob-bazaar-review", "docs", "real-machine-test-spec-ja.md"),
   CCR: read(repoRoot, "extensions", "bob-code-consistency-review", "docs", "real-machine-test-spec-ja.md")
@@ -25,7 +27,7 @@ function assertFunctionNames(source, names) {
 }
 
 test("manifest defines the approved six P0 + P1 scenarios", () => {
-  const manifest = JSON.parse(read(manifestPath))
+  const manifest = readJson(manifestPath)
   const expectedIds = [
     "bazaar-core", "bazaar-run-recovery", "consistency-ai-matrix",
     "consistency-traceability", "consistency-multilang", "consistency-validation-errors"
@@ -51,14 +53,14 @@ test("manifest defines the approved six P0 + P1 scenarios", () => {
 })
 
 test("operator template and checklists never pre-pass manual UAT", () => {
-  assert.deepEqual(JSON.parse(read(toolRoot, "templates", "operator-result.template.json")), {
+  assert.deepEqual(readJson(toolRoot, "templates", "operator-result.template.json"), {
     schemaVersion: 1, scenarioId: "", operator: "", startedAt: null, completedAt: null, results: []
   })
   const tokens = [
     "SCENARIO_ID", "SCENARIO_ROOT", "WORKSPACE_PATH", "BOB_ROOT", "VCS_ROOT",
     "REVIEW_TARGET", "LAUNCH_COMMAND", "TEST_CASES", "EXPECTED_ARTIFACTS"
   ]
-  for (const scenario of JSON.parse(read(manifestPath)).scenarios) {
+  for (const scenario of readJson(manifestPath).scenarios) {
     const checklist = read(repoRoot, scenario.checklistTemplate)
     for (const token of tokens) assert.match(checklist, new RegExp(`\\{\\{${token}\\}\\}`))
     assert.match(checklist, /not_run/)
@@ -77,6 +79,7 @@ test("manifest validation and runner expose only approved interfaces", () => {
   assert.match(runner, /\[string\]\$OpenScenario/)
   assert.match(runner, /\$selected = @\(Resolve-ScenarioSelection/)
   assert.match(runner, /Manifest validation succeeded/)
+  assert.match(runner, /New-Item -ItemType Directory -Force -Path \$outputFull/)
   assert.match(manifest, /p0-p1 must list every scenario exactly once in manifest order/)
   assert.match(manifest, /if \(\$fullPath -eq \$pathRoot\) \{ return \$fullPath \}/)
   assert.doesNotMatch(runner + manifest, /Invoke-Expression/)
@@ -86,9 +89,9 @@ test("execution and evidence modules enforce safe, non-secret generation", () =>
   const execution = read(toolRoot, "lib", "ScenarioExecution.ps1")
   const evidence = read(toolRoot, "lib", "RunEvidence.ps1")
   assertFunctionNames(execution, [
-    "Assert-NoReparsePointTraversal", "Assert-SafeOutputRoot", "Get-ScenarioPrerequisiteReport",
-    "New-LauncherInvocation", "Invoke-ScenarioLauncher", "Copy-ScenarioFixtureFiles",
-    "Test-ExpectedScenarioArtifacts", "Get-ScenarioLaunchDescriptor"
+    "Assert-NoReparsePointTraversal", "Get-NearestExistingAncestor", "Assert-SafeOutputRoot",
+    "Get-ScenarioPrerequisiteReport", "New-LauncherInvocation", "Invoke-ScenarioLauncher",
+    "Copy-ScenarioFixtureFiles", "Test-ExpectedScenarioArtifacts", "Get-ScenarioLaunchDescriptor"
   ])
   assertFunctionNames(evidence, [
     "Write-JsonUtf8", "Get-ToolVersionSnapshot", "Get-RepositorySnapshot", "New-OperatorResult",
@@ -97,6 +100,7 @@ test("execution and evidence modules enforce safe, non-secret generation", () =>
   assert.match(execution, /FileAttributes\]::ReparsePoint/)
   assert.match(execution, /NoLaunch\s*=\s*\$true/)
   assert.match(execution, /\$arguments = \$Invocation\.arguments\s+& \$Invocation\.launcherPath @arguments/s)
+  assert.match(execution, /Get-NearestExistingAncestor \$parent/)
   assert.doesNotMatch(execution, /SkipExtensionInstall\s*=/)
   assert.match(evidence, /status = "not_run"/)
   assert.match(evidence, /\[System\.Collections\.IDictionary\]\$ScenarioRecord/)
@@ -115,10 +119,11 @@ test("runner isolates scenario failures and opens only one ready target", () => 
   assert.match(runner, /if \(\$blockedCount -gt 0 -or \$failedCount -gt 0\) \{ exit 1 \}/)
 })
 
-test("missing VS Code CLI becomes blocked evidence on Windows", {
+test("missing VS Code CLI becomes blocked evidence under a new nested output root on Windows", {
   skip: process.platform !== "win32"
 }, () => {
-  const outputRoot = path.join(os.homedir(), `bob-review-real-machine-${process.pid}-${Date.now()}`)
+  const testRoot = path.join(os.homedir(), `bob-review-real-machine-${process.pid}-${Date.now()}`)
+  const outputRoot = path.join(testRoot, "missing-parent", "nested", "run")
   try {
     const result = childProcess.spawnSync("pwsh", [
       "-NoProfile", "-File", path.join(toolRoot, "Invoke-BobReviewTestEnvironment.ps1"),
@@ -126,20 +131,55 @@ test("missing VS Code CLI becomes blocked evidence on Windows", {
       "-CodeCommand", "__missing_bob_code_command__"
     ], { cwd: repoRoot, encoding: "utf8" })
     assert.notEqual(result.status, 0, result.stdout + result.stderr)
-    const run = JSON.parse(read(outputRoot, "run-manifest.json"))
+    const run = readJson(outputRoot, "run-manifest.json")
     assert.equal(run.scenarios[0].status, "blocked")
     assert.deepEqual(run.scenarios[0].missingCommands, ["__missing_bob_code_command__"])
-    const operator = JSON.parse(read(outputRoot, "consistency-ai-matrix", "operator-result.json"))
+    const operator = readJson(outputRoot, "consistency-ai-matrix", "operator-result.json")
     assert.ok(operator.results.length > 0)
     assert.ok(operator.results.every(({ status }) => status === "not_run"))
     assert.equal(run.scenarios[0].launchTarget, null)
   } finally {
-    fs.rmSync(outputRoot, { recursive: true, force: true })
+    fs.rmSync(testRoot, { recursive: true, force: true })
+  }
+})
+
+test("scenario launcher splats NoLaunch and captures output on Windows", {
+  skip: process.platform !== "win32"
+}, () => {
+  const testRoot = path.join(os.homedir(), `bob-review-launcher-${process.pid}-${Date.now()}`)
+  const launcherPath = path.join(testRoot, "fake-launcher.ps1")
+  const logPath = path.join(testRoot, "logs", "launcher.log")
+  const markerPath = path.join(testRoot, "marker.json")
+  try {
+    fs.mkdirSync(testRoot, { recursive: true })
+    fs.writeFileSync(launcherPath, [
+      "param([string]$RepoRoot, [string]$SandboxRoot, [string]$CodeCommand, [switch]$NoLaunch, [string]$Sample)",
+      "[ordered]@{ repoRoot = $RepoRoot; sandboxRoot = $SandboxRoot; codeCommand = $CodeCommand; noLaunch = [bool]$NoLaunch; sample = $Sample } | ConvertTo-Json -Compress | Set-Content -LiteralPath (Join-Path $SandboxRoot 'marker.json') -Encoding utf8NoBOM",
+      "Write-Output 'fake-launcher-ok'"
+    ].join("\n"), "utf8")
+    const command = [
+      `. ${psLiteral(path.join(toolRoot, "lib", "ScenarioExecution.ps1"))}`,
+      `$invocation = [pscustomobject]@{ launcherPath = ${psLiteral(launcherPath)}; arguments = [ordered]@{ RepoRoot = 'repo'; SandboxRoot = ${psLiteral(testRoot)}; CodeCommand = 'code'; NoLaunch = $true; Sample = 'ai-verification-matrix' } }`,
+      `$result = Invoke-ScenarioLauncher -Invocation $invocation -LogPath ${psLiteral(logPath)}`,
+      "if (-not $result.succeeded) { throw $result.error }"
+    ].join("; ")
+    const result = childProcess.spawnSync("pwsh", ["-NoProfile", "-Command", command], {
+      cwd: repoRoot,
+      encoding: "utf8"
+    })
+    assert.equal(result.status, 0, result.stdout + result.stderr)
+    const marker = readJson(markerPath)
+    assert.equal(marker.noLaunch, true)
+    assert.equal(marker.sample, "ai-verification-matrix")
+    assert.equal(marker.sandboxRoot, testRoot)
+    assert.match(read(logPath), /fake-launcher-ok/)
+  } finally {
+    fs.rmSync(testRoot, { recursive: true, force: true })
   }
 })
 
 test("Bazaar recovery seed preserves phase/artifact invariants and isolation", () => {
-  const manifest = JSON.parse(read(manifestPath))
+  const manifest = readJson(manifestPath)
   const scenario = manifest.scenarios.find(({ id }) => id === "bazaar-run-recovery")
   assert.equal(scenario.postSeed, "tools/real-machine-test-environment/seeds/bazaar-run-recovery/Seed-BazaarRunRecovery.ps1")
   const seed = read(repoRoot, scenario.postSeed)
@@ -159,7 +199,7 @@ test("Bazaar recovery seed preserves phase/artifact invariants and isolation", (
 })
 
 test("code-consistency invalid fixtures target five distinct isolated failures", () => {
-  const scenario = JSON.parse(read(manifestPath)).scenarios.find(({ id }) => id === "consistency-validation-errors")
+  const scenario = readJson(manifestPath).scenarios.find(({ id }) => id === "consistency-validation-errors")
   assert.equal(scenario.fixtureCopies.length, 5)
   const active = new Set([
     "workspace/review-input.yaml", "workspace/.bob-review/bob-output/bob-output.yaml",
@@ -186,7 +226,7 @@ test("code-consistency invalid fixtures target five distinct isolated failures",
   assert.match(unknown, /result_type:\s*pre_review/)
   assert.match(unknown, /final_approval:\s*not_performed/)
   assert.match(unknown, /evidence_id:\s*UNKNOWN-9999/)
-  assert.equal(JSON.parse(read(root, "traceability-draft-invalid-status.json")).domains[0].status, "accepted")
+  assert.equal(readJson(root, "traceability-draft-invalid-status.json").domains[0].status, "accepted")
   const validator = read(toolRoot, "lib", "ScenarioFixtureValidation.ps1")
   for (const text of [
     "Invalid fixture destination must remain isolated", "Invalid fixture destination must not be an active artifact path",
