@@ -132,3 +132,22 @@ export interface WorkflowRunState {
   updatedAt: string
   error?: string
 }
+
+export interface WorkflowRunStateV2 {
+  schemaVersion: "workflow-register/run-state/v2"
+  runId: string
+  workflowId: string
+  workflowName: string
+  workflowSchemaVersion?: WorkflowSchemaVersion
+  workflowDefinitionHash?: string
+  engineVersion?: string
+  status: RunStatus
+  currentStep?: string
+  inputs: Record<string, unknown>
+  state: Record<string, string>
+  branching?: WorkflowRunBranchingState
+  steps: RunStepState[]
+  createdAt: string
+  updatedAt: string
+  error?: string
+}
