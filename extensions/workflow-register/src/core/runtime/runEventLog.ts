@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "crypto"
+import { types as utilTypes } from "node:util"
 import type { WorkflowRunState } from "../model"
 import { decodeWorkflowRunState, isCurrentWorkflowRunState } from "./runStateCodec"
 import { appendRunDurabilityFile, readRunDurabilityFile } from "./runDurabilityPath"
@@ -33,6 +34,17 @@ export interface BuildWorkflowRunEventInput {
   previousEvent?: WorkflowRunEventV1
   previousRunHash?: string
   eventId?: string
+}
+
+export interface DecodeWorkflowRunEventLineV1Context {
+  expectedRunId: string
+  expectedSequence: number
+  previous?: WorkflowRunEventV1
+}
+
+export interface DecodedWorkflowRunEventLineV1 {
+  event: WorkflowRunEventV1
+  exactLine: Buffer
 }
 
 export function buildWorkflowRunEvent(input: BuildWorkflowRunEventInput): WorkflowRunEventV1 {
@@ -73,6 +85,33 @@ export function parseWorkflowRunEventLog(text: string, expectedRunId: string): W
     events.push(event)
   }
   return { events, head: events.at(-1) }
+}
+
+export function decodeWorkflowRunEventLineV1(
+  bytes: Buffer,
+  context: DecodeWorkflowRunEventLineV1Context
+): DecodedWorkflowRunEventLineV1 {
+  if (utilTypes.isProxy(bytes) || !Buffer.isBuffer(bytes)) {
+    throw new Error("Workflow run event line must be a Buffer.")
+  }
+  if (bytes.length <= 1 || bytes[bytes.length - 1] !== 0x0a || bytes.indexOf(0x0a) !== bytes.length - 1) {
+    throw new Error("Workflow run event line must contain exactly one non-empty LF-terminated line.")
+  }
+  let value: unknown
+  try {
+    value = JSON.parse(bytes.subarray(0, -1).toString("utf8"))
+  } catch (error) {
+    throw new Error(`Workflow run event line is invalid JSON: ${formatError(error)}`)
+  }
+  return {
+    event: parseWorkflowRunEvent(
+      value,
+      context.expectedRunId,
+      context.expectedSequence,
+      context.previous
+    ),
+    exactLine: Buffer.from(bytes)
+  }
 }
 
 export async function readWorkflowRunEventLog(workspaceRoot: string, runId: string): Promise<WorkflowRunEventLogState> {

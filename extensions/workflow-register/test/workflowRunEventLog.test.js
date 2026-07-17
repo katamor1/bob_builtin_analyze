@@ -1,13 +1,19 @@
 const assert = require("node:assert/strict")
+const fs = require("node:fs")
+const path = require("node:path")
 const { test } = require("node:test")
 
 const {
   appendWorkflowRunEvent,
   buildWorkflowRunEvent,
+  decodeWorkflowRunEventLineV1,
   parseWorkflowRunEventLog,
   readWorkflowRunEventLog,
   serializeWorkflowRunState
 } = require("../out/core/runtime/runEventLog.js")
+
+const reproducibleRuntimeFixtureRoot = path.join(__dirname, "fixtures", "reproducible-runtime")
+const reproducibleRuntimeRunId = "20260717T000000Z-reproducible-runtime-phase4-000000010000"
 
 function run(overrides = {}) {
   return {
@@ -111,4 +117,28 @@ test("event append is idempotent by event hash and preserves a valid chain", asy
   const state = await readWorkflowRunEventLog(root, first.runId)
   assert.equal(state.events.length, 2)
   assert.equal(state.head.hash, second.hash)
+})
+
+test("current event reader rejects the future-schema fixture", () => {
+  const fixture = fs.readFileSync(path.join(reproducibleRuntimeFixtureRoot, "future", "events.jsonl"), "utf8")
+
+  assert.throws(
+    () => parseWorkflowRunEventLog(fixture, reproducibleRuntimeRunId),
+    /unsupported schemaVersion 'workflow-register\/run-event\/v2'/
+  )
+})
+
+test("the v1 line codec verifies and preserves exact original Phase 4 bytes", () => {
+  const bytes = fs.readFileSync(path.join(reproducibleRuntimeFixtureRoot, "phase4-v1", "events.jsonl"))
+  const firstLf = bytes.indexOf(0x0a)
+  const exactLine = Buffer.from(bytes.subarray(0, firstLf + 1))
+  const decoded = decodeWorkflowRunEventLineV1(exactLine, {
+    expectedRunId: reproducibleRuntimeRunId,
+    expectedSequence: 1
+  })
+
+  assert.equal(decoded.event.schemaVersion, "workflow-register/run-event/v1")
+  assert.equal(decoded.event.sequence, 1)
+  assert.deepEqual(decoded.exactLine, exactLine)
+  assert.notEqual(decoded.exactLine, exactLine)
 })

@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "workflow-register/artifact-manifest/v1",
+  "workflowId": "workflow-register.reproducible-runtime-phase4",
+  "workflowDefinitionHash": "sha256:phase4-characterization",
+  "workflowFile": ".bob/workflows/reproducible-runtime-phase4/WORKFLOW.md",
+  "runId": "20260717T000000Z-reproducible-runtime-phase4-000000010000",
+  "inputsHash": "sha256:2a55e3c07660886834b043483337c2143e50ea57313aa7e16b746cca55422ade",
+  "createdAt": "2026-07-17T00:02:30.000Z",
+  "updatedAt": "2026-07-17T00:02:30.000Z",
+  "artifacts": [
+    {
+      "id": "context",
+      "stateKey": "context",
+      "producedBy": "collect",
+      "path": ".bob/workflows/runs/20260717T000000Z-reproducible-runtime-phase4-000000010000/artifacts/collect/context.txt",
+      "schema": "text/plain",
+      "sha256": "9a460bdb6251969abb3c24a2956036fc08f1f58c8b92d1a906d39aac2a9da151",
+      "bytes": 15,
+      "source": "workflow-artifact",
+      "updatedAt": "2026-07-17T00:02:30.000Z"
+    }
+  ]
+}
