@@ -20,9 +20,7 @@
 
 ## 2. Existing assets and identified gap
 
-既存 repository には、次の実機確認資産がある。
-
-### 2.1 Bazaar review
+### 2.1 Bazaar review sandbox
 
 `docs/workflows/bazaar-project-rule-review/integration/launch-bob-bazaar-review-sandbox.ps1` は次を生成する。
 
@@ -34,7 +32,7 @@
 - 期待指摘一覧
 - isolated VS Code user data / extensions directory
 
-### 2.2 Code consistency review
+### 2.2 Code consistency review sandbox
 
 `docs/workflows/code-consistency-review/integration/launch-bob-code-consistency-sandbox.ps1` は次の sample を扱う。
 
@@ -53,11 +51,12 @@
 - test case ID と生成データの対応
 - 前提 CLI / VSIX の診断
 - 中断・再開用の Review Run seed
-- validation error 用の隔離 fixture
+- Bazaar review-result 異常系データ
+- code consistency validation error 用の隔離 fixture
 - run manifest、operator checklist、結果記録
 - repository-level contract test
 
-## 3. Confirmed product decisions
+## 3. Confirmed decisions
 
 - 既存 launcher の上に薄い共通 orchestrator を追加する。
 - 既存 launcher の Git / Bazaar repository 生成処理を再実装しない。
@@ -144,6 +143,8 @@ tools/
     seeds/
       bazaar-run-recovery/
         Seed-BazaarRunRecovery.ps1
+        review-result-schema-error.json
+        review-result-id-mismatch.json
       consistency-validation-errors/
         review-input-missing-required.yaml
         review-input-path-escape.yaml
@@ -177,13 +178,26 @@ docs/workflows/code-consistency-review/integration/
 | `ScenarioExecution.ps1` | child process 実行、stdout / stderr log、scenario status、failure evidence |
 | `RunEvidence.ps1` | Git revision、tool versions、run/scenario manifest、summary、operator result 生成 |
 | `checklists/*.md` | 実機操作、test case ID、期待結果、保存する evidence の定義 |
-| `Seed-BazaarRunRecovery.ps1` | Review Run artifact 不変条件を満たす中断・再開データの生成 |
+| `Seed-BazaarRunRecovery.ps1` | Review Run artifact 不変条件を満たす中断・再開データと Bazaar 異常系データの配置 |
 | validation error fixtures | clipboard、editor、入力差し替えで利用する意図的不正データ |
-| Node contract test | manifest、path、testcase、launcher、seed、fixture 配置の自動検証 |
+| Node contract test | manifest、path、testcase、launcher、fixture 配置の自動検証 |
 
 各 module は責務を 1 つに限定し、メイン script へ manifest 検証、process 実行、evidence 出力を集中させない。
 
-## 7. Scenario manifest contract
+## 7. P0 + P1 scenarios
+
+| Scenario ID | Base generator | Post-seed | Primary purpose | Representative testcase IDs |
+| --- | --- | --- | --- | --- |
+| `bazaar-core` | Bazaar launcher | なし | 実 Bazaar revision range、multi-root、GUI、Workflow UI、packet、capture、MCP、Shift-JIS | `BZR-RT-004`, `BZR-RT-006`–`010`, `BZR-RT-017`–`030`, `BZR-RT-034`, `BZR-RT-035` |
+| `bazaar-run-recovery` | Bazaar launcher | recovery run と invalid review-result | packet 後中断、result 後中断、triage 後 finalize、malformed run 除外、invalid result rejection | `BZR-RT-022`, `BZR-RT-044`–`047` |
+| `consistency-ai-matrix` | Code consistency launcher / `ai-verification-matrix` | なし | 実 Git 差分、OK / NG / N/A / question、preprocess、capture、validate、triage | `CCR-RT-016`, `CCR-RT-022`–`031` |
+| `consistency-traceability` | Code consistency launcher / `live-traceability-sidecar` | なし | AI draft、sidecar catalog、人間承認、gate、review-input、review-package | `CCR-RT-010`–`015`, `CCR-RT-023`–`031` |
+| `consistency-multilang` | Code consistency launcher / `multi-language-git-review` | なし | TypeScript / Python / Java と `SRC-*` fallback evidence | `CCR-RT-016A`, `CCR-RT-021A` |
+| `consistency-validation-errors` | Code consistency launcher / `ai-verification-matrix` | isolated invalid fixtures | schema error、unknown evidence、invalid review-input、path escape | `CCR-RT-008`, `CCR-RT-012`, `CCR-RT-028`, `CCR-RT-034` |
+
+`testCases` の正確な列挙は manifest に置き、repository-level contract test が各 ID の実機テスト仕様書内での存在を検証する。
+
+## 8. Scenario manifest contract
 
 `scenarios.json` を生成定義の source of truth とする。
 
@@ -213,6 +227,13 @@ docs/workflows/code-consistency-review/integration/
         }
       },
       "requiredCommands": ["code", "node", "git"],
+      "requiredRepositoryPaths": [
+        "bob2/bob-code",
+        "extensions/workflow-register/workflow-register-0.1.0.vsix",
+        "extensions/bob-bazaar-review/bob-bazaar-review-0.3.0.vsix",
+        "extensions/bob-code-consistency-review/bob-code-consistency-review-0.1.0.vsix"
+      ],
+      "checklistTemplate": "tools/real-machine-test-environment/checklists/consistency-ai-matrix.md",
       "testCases": [
         "CCR-RT-016",
         "CCR-RT-022",
@@ -235,7 +256,7 @@ docs/workflows/code-consistency-review/integration/
 
 Source manifest には生成日時、absolute path、実行結果を保存しない。それらは実行時に `run-manifest.json` と `scenario-manifest.json` へ解決して保存する。
 
-### 7.1 Scenario ID
+### 8.1 Scenario ID
 
 ID は次に一致させる。
 
@@ -250,19 +271,28 @@ ID は次に一致させる。
 - 存在しない scenario への group 参照
 - path separator を含む ID
 
-### 7.2 Repository paths
+### 8.2 Repository-relative paths
 
 次の field は repository root 配下へ解決できる relative path だけを許可する。
 
 - `generator.path`
 - `postSeed`
 - `checklistTemplate`
-- `expectedArtifacts`
 - `fixtureSources`
+- `requiredRepositoryPaths`
 
 absolute path、`..` escape、realpath 解決後の repository 外 path を拒否する。
 
-### 7.3 Generator allowlist
+### 8.3 Scenario-relative paths
+
+`expectedArtifacts` は生成後の scenario root を基準にする。
+
+- absolute path を拒否する。
+- `..` escape を拒否する。
+- symlink / junction を解決した結果が scenario root 外になる場合は失敗する。
+- file と directory の両方を検証できる。
+
+### 8.4 Generator allowlist
 
 初版で許可する generator は次だけである。
 
@@ -270,11 +300,25 @@ absolute path、`..` escape、realpath 解決後の repository 外 path を拒�
 { "kind": "existing-launcher" }
 ```
 
-Manifest から arbitrary executable、script body、shell command を指定できる設計にはしない。
+Manifest から arbitrary executable、script body、shell command を指定できる設計にはしない。許可する launcher path は既存の 2 file に限定する。
 
-許可する launcher path は既存の 2 file に限定する。
+### 8.5 Manifest arguments and runtime-injected arguments
 
-### 7.4 Argument allowlist
+Manifest が `generator.arguments` で指定できる値は次に限定する。
+
+Bazaar launcher:
+
+```text
+なし
+```
+
+Code consistency launcher:
+
+```text
+Sample
+```
+
+次は runner が検証済み値を必ず注入し、manifest から上書きできない。
 
 Bazaar launcher:
 
@@ -283,8 +327,7 @@ RepoRoot
 SandboxRoot
 CodeCommand
 BzrCommand
-NoLaunch
-SkipExtensionInstall
+NoLaunch = true
 ```
 
 Code consistency launcher:
@@ -292,25 +335,17 @@ Code consistency launcher:
 ```text
 RepoRoot
 SandboxRoot
-Sample
 CodeCommand
-NoLaunch
+NoLaunch = true
 ```
 
-`Invoke-Expression` は使わず、検証済み argument array と call operator で実行する。
+`SkipExtensionInstall` は初版の共通 runner では使用しない。`Invoke-Expression` は使わず、検証済み argument array と call operator で実行する。
 
-## 8. P0 + P1 scenarios
+### 8.6 Missing repository prerequisites
 
-| Scenario ID | Primary purpose | Representative testcase IDs |
-| --- | --- | --- |
-| `bazaar-core` | 実 Bazaar revision range、multi-root、GUI、Workflow UI、packet、capture、MCP、Shift-JIS | `BZR-RT-004`, `BZR-RT-006`–`010`, `BZR-RT-017`–`030`, `BZR-RT-034`, `BZR-RT-035` |
-| `bazaar-run-recovery` | packet 後中断、result 後中断、triage 後 finalize、malformed run 除外 | `BZR-RT-044`–`047` |
-| `consistency-ai-matrix` | 実 Git 差分、OK / NG / N/A / question、preprocess、capture、validate、triage | `CCR-RT-016`, `CCR-RT-022`–`031` |
-| `consistency-traceability` | AI draft、sidecar catalog、人間承認、gate、review-input、review-package | `CCR-RT-010`–`015`, `CCR-RT-023`–`031` |
-| `consistency-multilang` | TypeScript / Python / Java と `SRC-*` fallback evidence | `CCR-RT-016A`, `CCR-RT-021A` |
-| `consistency-validation-errors` | schema error、unknown evidence、invalid review-input、path escape | `CCR-RT-008`, `CCR-RT-012`, `CCR-RT-028`, `CCR-RT-034` |
+`requiredRepositoryPaths` の不足は launcher failure ではなく `blocked` とする。
 
-`testCases` の正確な列挙は manifest に置き、repository-level contract test が各 ID の実機テスト仕様書内での存在を検証する。
+Runner は不足 path に応じて、固定された package hint を `run-summary.md` に表示する。Manifest 内の文字列を command として実行しない。
 
 ## 9. Runner interface
 
@@ -329,6 +364,8 @@ param(
 )
 ```
 
+`RepoRoot` を省略した場合は script location から repository root を解決する。`OutputRoot` を省略した場合は `%TEMP%/bob-review-real-machine-<yyyyMMdd-HHmmss>` を使用する。
+
 ### 9.1 Selection rules
 
 - `-Scenario all` は manifest group `p0-p1` を生成する。
@@ -336,6 +373,7 @@ param(
 - 不明な ID は生成前に拒否する。
 - `-Open` は単一 scenario 選択時だけ許可する。
 - 複数 scenario で起動する場合は `-OpenScenario <id>` を必須とする。
+- `-OpenScenario` は選択された scenario の ID だけを受け付ける。
 - `-Open` と `-OpenScenario` の同時指定を拒否する。
 - `-ValidateOnly` と起動 option の同時指定を拒否する。
 
@@ -396,25 +434,16 @@ Bazaar launcher は `.code-workspace`、`review-inputs.json`、MCP 設定に abs
 
 Scenario は最初から final path に生成する。失敗した directory は診断用に残し、manifest で `failed` とする。
 
+### 10.2 Repository state
+
+Runner は repository commit、branch、dirty state を記録する。Dirty state は生成を block しないが、再現性 warning として `run-summary.md` に表示する。
+
 ## 11. Output layout
-
-既定 output root:
-
-```text
-%TEMP%/bob-review-real-machine-<yyyyMMdd-HHmmss>/
-```
-
-Layout:
 
 ```text
 bob-review-real-machine-<timestamp>/
   _logs/
-    bazaar-core.log
-    bazaar-run-recovery.log
-    consistency-ai-matrix.log
-    consistency-traceability.log
-    consistency-multilang.log
-    consistency-validation-errors.log
+    <scenario-id>.log
 
   run-manifest.json
   run-summary.md
@@ -446,6 +475,8 @@ bob-review-real-machine-<timestamp>/
     ...
 ```
 
+`environment-versions.json` は version command の exit code と raw output を保存する。`run-manifest.json` はそこから得た normalized summary と scenario status を保存する。
+
 ## 12. Run and scenario evidence
 
 ### 12.1 `run-manifest.json`
@@ -461,10 +492,10 @@ bob-review-real-machine-<timestamp>/
     "dirty": false
   },
   "tools": {
-    "code": "<version-or-unavailable>",
-    "node": "<version-or-unavailable>",
-    "git": "<version-or-unavailable>",
-    "bzr": "<version-or-unavailable>"
+    "code": "<normalized-version-or-unavailable>",
+    "node": "<normalized-version-or-unavailable>",
+    "git": "<normalized-version-or-unavailable>",
+    "bzr": "<normalized-version-or-unavailable>"
   },
   "scenarios": [
     {
@@ -480,7 +511,26 @@ bob-review-real-machine-<timestamp>/
 
 Environment variable values、tokens、GitHub credentials、clipboard contents は記録しない。
 
-### 12.2 `operator-result.json`
+### 12.2 `scenario-manifest.json`
+
+各 scenario には次を記録する。
+
+- source manifest schema version
+- scenario ID と extension
+- resolved launcher path
+- sanitized launcher arguments
+- generatedAt
+- scenario status
+- resolved workspace / Bob root / VCS root
+- launch target
+- test case IDs
+- expected artifact の検証結果
+- post-seed の実行結果
+- log path
+
+`NoLaunch = true` は記録してよいが、secret を含む environment values は記録しない。
+
+### 12.3 `operator-result.json`
 
 ```json
 {
@@ -511,17 +561,17 @@ blocked
 
 Environment generator は `pass` を自動設定しない。
 
-## 13. Bazaar recovery seed
+## 13. Bazaar recovery and invalid-result seed
 
-`Seed-BazaarRunRecovery.ps1` は、既存 Bazaar launcher が生成した Bob workspace に Review Run fixture を追加する。
+`Seed-BazaarRunRecovery.ps1` は、既存 Bazaar launcher が生成した Bob workspace に Review Run fixture と invalid review-result fixture を追加する。
 
-### 13.1 Cases
+### 13.1 Recovery cases
 
-| Review ID | Persisted state | Expected next action |
+| Review ID | Persisted phase state | Expected next action |
 | --- | --- | --- |
-| `resume-result-capture` | packet completed、result in progress | `resultCapture` |
-| `resume-human-triage` | result completed、triage in progress | `humanTriage` |
-| `resume-finalize` | triage completed、record not started | `finalize` |
+| `resume-result-capture` | target `completed`; packet `completed`; result `in_progress`; remaining phases `not_started` | `resultCapture` |
+| `resume-human-triage` | target / packet / result `completed`; triage `in_progress`; record / summary `not_started` | `humanTriage` |
+| `resume-finalize` | target / packet / result / triage `completed`; record / summary `not_started` | `finalize` |
 | `malformed-run-hidden` | malformed `review-run.json` | 通常 resume list に表示しない |
 
 ### 13.2 Artifact invariants
@@ -536,7 +586,7 @@ Completed phase に対応する実 artifact を必ず作成する。
 | record | `record.yaml` |
 | summary | summary JSON / Markdown |
 
-Status だけを completed にして artifact を省略しない。
+Status だけを `completed` にして artifact を省略しない。
 
 ### 13.3 Deterministic ordering
 
@@ -546,9 +596,18 @@ Status だけを completed にして artifact を省略しない。
 - filesystem enumeration order に依存しない。
 - duplicate timestamp を作らない。
 
-## 14. Validation error fixtures
+### 13.4 Invalid review-result fixtures
 
-不正データは active artifact path に直接配置しない。
+次を `bob-managed/test-data/invalid/` に配置する。
+
+- required field を欠く `review-result-schema-error.json`
+- file name と payload の `review_id` が一致しない `review-result-id-mismatch.json`
+
+Active result directory へ自動配置しない。Operator が clipboard または editor から capture / validation を実行し、不正成果物が正式保存されないことを確認する。
+
+## 14. Code consistency validation error fixtures
+
+`consistency-validation-errors` は `ai-verification-matrix` を正常な base workspace として生成し、不正データだけを次へ追加する。
 
 ```text
 workspace/
@@ -561,16 +620,15 @@ workspace/
       traceability-draft-invalid-status.json
 ```
 
-`operator-checklist.md` は次を明示する。
+不正データは active artifact path に直接配置しない。`operator-checklist.md` は次を明示する。
 
 - clipboard にコピーする fixture
 - editor で開く fixture
--一時的に active path へコピーする場合の手順
+- 一時的に active path へコピーする場合の手順
 - 実行する command
 - 期待する rejection / diagnostic
 - 正常 artifact が作成されないことの確認
-
-異常系実行後に正常系へ戻す手順も checklist に含める。
+- 異常系実行後に正常系へ戻す手順
 
 ## 15. Prerequisite and failure behavior
 
@@ -587,8 +645,8 @@ Rules:
 
 - manifest 自体が不正なら、run root を作成せず全体を失敗させる。
 - `bzr` 不足では Bazaar scenario を `blocked` にし、Git scenario は続行する。
-- 対象 VSIX 不足では該当 scenario を `blocked` にする。
-- `run-summary.md` に不足 file と推奨 package command を表示する。
+- 対象 VSIX または expanded Bob extension 不足では該当 scenario を `blocked` にする。
+- `run-summary.md` に不足 path と固定 package hint を表示する。
 - launcher failure では stdout / stderr を `_logs/<scenario>.log` に残す。
 - scenario root が存在する場合は `generation-failure.json` を残す。
 - expected artifact 不足は `failed` とする。
@@ -602,8 +660,9 @@ Rules:
 - `OutputRoot` は `RepoRoot` 配下を拒否する。
 - `OutputRoot` は既存 path を拒否する。
 - `RepoRoot` は repository marker と必要 launcher の存在で確認する。
-- Manifest path は realpath containment を検証する。
-- Scenario ID を直接 path concatenation に使う前に pattern 検証する。
+- Repository-relative manifest path は realpath containment を検証する。
+- Scenario-relative artifact path は scenario root containment を検証する。
+- Scenario ID を path concatenation に使う前に pattern 検証する。
 - `Invoke-Expression` を使用しない。
 - 外部 command は executable と argument array を分けて実行する。
 - Log に environment variable dictionary や secret を出力しない。
@@ -643,17 +702,16 @@ Checks:
 3. scenario ID と group reference が一意である。
 4. `p0-p1` の 6 scenario が存在する。
 5. launcher、checklist、post-seed、fixture path が存在する。
-6. manifest path が repository 外へ escape しない。
-7. `BZR-RT-*` が Bazaar 実機テスト仕様書に存在する。
-8. `CCR-RT-*` が Code Consistency 実機テスト仕様書に存在する。
-9. 既存 launcher が required parameters を維持する。
-10. 既存 launcher が `-NoLaunch` で起動を抑止できる。
-11. Bazaar launcher が Bob root と Bazaar root を分離する。
-12. Bazaar command path が `--no-aliases` contract を維持する。
-13. Recovery seed が completed phase の required artifact を作成する。
-14. Malformed run fixture が意図的に malformed である。
-15. Invalid fixture が active artifact path に置かれていない。
-16. Operator result template の status enum と testcase IDs が正しい。
+6. repository-relative path が repository 外へ escape しない。
+7. scenario-relative `expectedArtifacts` が absolute path または `..` を含まない。
+8. `BZR-RT-*` が Bazaar 実機テスト仕様書に存在する。
+9. `CCR-RT-*` が Code Consistency 実機テスト仕様書に存在する。
+10. 既存 launcher が required parameters を維持する。
+11. 既存 launcher が `-NoLaunch` で起動を抑止できる。
+12. Bazaar launcher が Bob root と Bazaar root を分離する。
+13. Bazaar command path が `--no-aliases` contract を維持する。
+14. Invalid fixture が active artifact path に置かれていない。
+15. Operator result template の status enum と testcase IDs が正しい。
 
 ### 18.2 `-ValidateOnly`
 
@@ -669,6 +727,11 @@ Checks:
 - testcase existence validation
 - launcher parameter contract validation
 - checklist / seed / fixture existence validation
+- Bazaar recovery seed の in-memory plan 生成
+- completed phase と required artifact plan の整合性検証
+- malformed run と invalid fixture が active path に入らないことの検証
+
+Recovery seed module は plan 生成と filesystem write を分離する。`-ValidateOnly` は plan を検証するが、filesystem へ書き込まない。
 
 `-ValidateOnly` が行わないこと:
 
@@ -684,6 +747,11 @@ Checks:
 
 ```yaml
 - "tools/real-machine-test-environment/**"
+- "docs/workflows/bazaar-project-rule-review/integration/**"
+- "docs/workflows/code-consistency-review/integration/**"
+- "docs/workflows/code-consistency-review/examples/**"
+- "extensions/bob-bazaar-review/docs/real-machine-test-spec-ja.md"
+- "extensions/bob-code-consistency-review/docs/real-machine-test-spec-ja.md"
 ```
 
 Repository-level test file 変更でも起動するよう、既存 `scripts/*.js` filter を利用する。
@@ -695,15 +763,12 @@ real-machine-environment-contracts
   runs-on: windows-latest
 ```
 
-Commands:
+Steps:
 
-```powershell
-node --test scripts/real-machine-test-environment.test.js
-
-pwsh -NoProfile -File `
-  tools/real-machine-test-environment/Invoke-BobReviewTestEnvironment.ps1 `
-  -ValidateOnly
-```
+1. repository checkout
+2. Node.js 22 setup
+3. `node --test scripts/real-machine-test-environment.test.js`
+4. `pwsh -NoProfile -File tools/real-machine-test-environment/Invoke-BobReviewTestEnvironment.ps1 -ValidateOnly`
 
 CI では次を実行しない。
 
@@ -753,7 +818,8 @@ CI は生成定義と fixture contract を検証し、実機操作結果は gene
 - Recovery scenario の phase と artifact が矛盾しない。
 - Resume list が result capture、human triage、finalize の各状態を再現できる。
 - Malformed Review Run が通常 resume list から除外される。
-- Invalid fixture が正常系実行を汚染しない。
+- Invalid Bazaar review-result が正式保存されないことを確認できる。
+- Invalid code consistency fixture が正常系実行を汚染しない。
 - Run manifest、scenario manifest、operator checklist、operator result が生成される。
 - Environment generator が実機結果を自動で `pass` にしない。
 - Repository-level Node contract test が成功する。
@@ -769,8 +835,8 @@ CI は生成定義と fixture contract を検証し、実機操作結果は gene
 - existing launcher orchestration
 - run evidence
 - six scenario definitions
-- Bazaar recovery seed
-- validation error fixtures
+- Bazaar recovery / invalid-result seed
+- code consistency validation error fixtures
 - operator checklist generation
 - CI integration
 - end-to-end local verification
