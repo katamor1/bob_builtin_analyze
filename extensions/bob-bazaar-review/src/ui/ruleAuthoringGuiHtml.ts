@@ -1,3 +1,4 @@
+import { extractionStatusLabel, ruleAuthoringPhaseLabel } from "./displayLabels"
 const MAX_AI_PAYLOAD_BYTES = 1024 * 1024
 const MAX_SOURCES = 20
 const MAX_CHUNKS = Math.floor(MAX_AI_PAYLOAD_BYTES / 128)
@@ -81,7 +82,7 @@ export function renderRuleAuthoringGuiHtml(model: RuleAuthoringGuiModel, nonce: 
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${escapeHtml(safe.cspSource)} 'unsafe-inline'; script-src 'nonce-${escapedNonce}';">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Project Rule Source Wizard</title>
+  <title>規約資料の取り込み</title>
   <style>
     body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); padding: 18px; }
     h1 { font-size: 21px; margin: 0 0 8px; }
@@ -104,49 +105,49 @@ export function renderRuleAuthoringGuiHtml(model: RuleAuthoringGuiModel, nonce: 
   </style>
 </head>
 <body>
-  <h1>Project Rule Source Wizard</h1>
-  <div class="muted">Run <code>${escapeHtml(safe.runId || "not-started")}</code> · phase <code>${escapeHtml(safe.phase)}</code></div>
+  <h1>規約資料の取り込み</h1>
+  <div class="muted">実行 ID <code>${escapeHtml(safe.runId || "未開始")}</code> · 工程 <code>${escapeHtml(ruleAuthoringPhaseLabel(safe.phase))}</code></div>
 
   <section class="card" aria-labelledby="environment-heading">
-    <h2 id="environment-heading">Environment</h2>
+    <h2 id="environment-heading">実行環境</h2>
     <div class="grid">
-      <div class="metric"><strong>Workspace</strong><div>${escapeHtml(safe.environment.workspaceName)}</div><div class="muted">${safe.environment.workspaceReady ? "ready" : "not ready"}</div></div>
-      <div class="metric"><strong>Bob extension</strong><div>${safe.environment.bobExtensionAvailable ? "available" : "not detected"}</div></div>
-      <div class="metric"><strong>Configured Bob model route</strong><div>${escapeHtml(safe.environment.configuredBobModelRoute)}</div><div class="muted">Display only. This wizard does not start a Bob task.</div></div>
+      <div class="metric"><strong>ワークスペース</strong><div>${escapeHtml(safe.environment.workspaceName)}</div><div class="muted">${safe.environment.workspaceReady ? "使用可能" : "要確認"}</div></div>
+      <div class="metric"><strong>Bob 拡張機能</strong><div>${safe.environment.bobExtensionAvailable ? "利用可能" : "未検出"}</div></div>
+      <div class="metric"><strong>設定済みの Bob モデル経路</strong><div>${escapeHtml(safe.environment.configuredBobModelRoute)}</div><div class="muted">表示のみです。この画面から Bob タスクは開始しません。</div></div>
     </div>
   </section>
 
   ${renderResumeRuns(safe.resumableRuns)}
 
   <section class="card" aria-labelledby="sources-heading">
-    <h2 id="sources-heading">Source Selection</h2>
-    <div class="muted">Choose up to 20 DOCX, XLSX, PDF, or legacy DOC/XLS files. Legacy Office files require conversion before extraction.</div>
+    <h2 id="sources-heading">資料の選択</h2>
+    <div class="muted">DOCX、XLSX、PDF、旧形式の DOC／XLS を最大20件選択できます。旧形式の Office ファイルは抽出前に変換が必要です。</div>
     <div class="actions">
-      <button type="button" data-action="chooseSources">Choose source files</button>
-      <button type="button" data-action="extractSources"${safe.sources.length === 0 ? " disabled" : ""}>Extract selected sources</button>
+      <button type="button" data-action="chooseSources">資料を選択</button>
+      <button type="button" data-action="extractSources"${safe.sources.length === 0 ? " disabled" : ""}>選択した資料を読み取る</button>
     </div>
     ${renderSources(safe.sources)}
   </section>
 
   <section class="card" aria-labelledby="scope-heading">
-    <h2 id="scope-heading">Extraction Preview / Scope</h2>
-    <div class="muted">Only logical metadata is shown here. Source text and local paths remain in the extension host.</div>
+    <h2 id="scope-heading">抽出内容と対象範囲</h2>
+    <div class="muted">ここには資料名などの論理情報だけを表示します。本文とローカルパスは拡張機能内に保持されます。</div>
     ${renderChunks(safe.chunks)}
   </section>
 
   <section class="card" aria-labelledby="payload-heading">
-    <h2 id="payload-heading">AI Payload / Consent</h2>
+    <h2 id="payload-heading">AI に送る内容の確認</h2>
     <div class="grid">
-      <div class="metric"><strong>Logical source names</strong>${renderLogicalNames(safe.aiPayload.logicalNames)}</div>
-      <div class="metric"><strong>Selected chunks</strong><div>${escapeHtml(safe.aiPayload.selectedChunkCount)}</div></div>
-      <div class="metric"><strong>UTF-8 bytes</strong><div>${escapeHtml(safe.aiPayload.utf8Bytes)} bytes</div><div class="muted">Limit: ${MAX_AI_PAYLOAD_BYTES} bytes (1 MiB)</div></div>
+      <div class="metric"><strong>資料名</strong>${renderLogicalNames(safe.aiPayload.logicalNames)}</div>
+      <div class="metric"><strong>選択した範囲</strong><div>${escapeHtml(safe.aiPayload.selectedChunkCount)}</div></div>
+      <div class="metric"><strong>UTF-8 バイト数</strong><div>${escapeHtml(safe.aiPayload.utf8Bytes)}バイト</div><div class="muted">上限: ${MAX_AI_PAYLOAD_BYTES}バイト（1 MiB）</div></div>
     </div>
-    ${safe.scopeOverflow ? `<div class="warning">Selected evidence exceeds the 1 MiB scope limit. Deselect chunks before consent.</div>` : ""}
-    ${!safe.exclusionsApproved && hasExclusionRequiringSource(safe.sources) ? `<div class="warning">Duplicate, partial, blocked, or non-shareable exclusions require explicit approval.</div>` : ""}
+    ${safe.scopeOverflow ? `<div class="warning">選択した根拠が 1 MiB の上限を超えています。AI に送る前に対象範囲を減らしてください。</div>` : ""}
+    ${!safe.exclusionsApproved && hasExclusionRequiringSource(safe.sources) ? `<div class="warning">重複、一部抽出、抽出不可、共有不可の除外には明示的な承認が必要です。</div>` : ""}
     ${renderWarnings(safe.warnings)}
     <div class="actions">
-      <button type="button" data-action="confirmAiPayload"${canConfirm ? "" : " disabled"}>Confirm AI payload</button>
-      <button type="button" class="secondary" data-action="cancelRun">Cancel</button>
+      <button type="button" data-action="confirmAiPayload"${canConfirm ? "" : " disabled"}>この内容で AI に渡す</button>
+      <button type="button" class="secondary" data-action="cancelRun">中止</button>
     </div>
     <div id="status" class="status muted">${escapeHtml(safe.status)}</div>
   </section>
@@ -192,20 +193,20 @@ export function renderRuleAuthoringGuiHtml(model: RuleAuthoringGuiModel, nonce: 
 function renderResumeRuns(runs: readonly RuleAuthoringGuiResumableRunModel[]): string {
   if (runs.length === 0) return ""
   return `<section class="card" aria-labelledby="resume-heading">
-    <h2 id="resume-heading">Resume an incomplete run</h2>
+    <h2 id="resume-heading">途中の取り込みを再開</h2>
     ${runs.map((run) => `<div class="run row">
-      <div><code>${escapeHtml(run.runId)}</code><div class="muted">${escapeHtml(run.phase)} · ${escapeHtml(run.updatedAt)}</div></div>
-      <button type="button" class="secondary" data-action="resumeRun" data-run-id="${escapeHtml(run.runId)}">Resume</button>
+      <div><code>${escapeHtml(run.runId)}</code><div class="muted">${escapeHtml(ruleAuthoringPhaseLabel(run.phase))} · ${escapeHtml(run.updatedAt)}</div></div>
+      <button type="button" class="secondary" data-action="resumeRun" data-run-id="${escapeHtml(run.runId)}">続きから再開</button>
     </div>`).join("")}
   </section>`
 }
 
 function renderSources(sources: readonly RuleAuthoringGuiSourceModel[]): string {
-  if (sources.length === 0) return `<div class="muted">No source files selected.</div>`
+  if (sources.length === 0) return `<div class="muted">資料が選択されていません。</div>`
   return sources.map((source) => `<div class="source">
     <div class="row">
-      <div><strong>${escapeHtml(source.logicalName)}</strong><div class="muted">${escapeHtml(source.mediaType)} · ${escapeHtml(source.byteSize)} bytes · ${escapeHtml(source.extractionStatus)}</div></div>
-      <button type="button" class="secondary" data-action="removeSource" data-source-id="${escapeHtml(source.sourceId)}">Remove</button>
+      <div><strong>${escapeHtml(source.logicalName)}</strong><div class="muted">${escapeHtml(source.mediaType)} · ${escapeHtml(source.byteSize)}バイト · ${escapeHtml(extractionStatusLabel(source.extractionStatus))}</div></div>
+      <button type="button" class="secondary" data-action="removeSource" data-source-id="${escapeHtml(source.sourceId)}">選択から外す</button>
     </div>
     ${renderSourceGuidance(source)}
     ${renderWarnings(source.warnings)}
@@ -214,30 +215,30 @@ function renderSources(sources: readonly RuleAuthoringGuiSourceModel[]): string 
 
 function renderSourceGuidance(source: RuleAuthoringGuiSourceModel): string {
   if (source.mediaType === "doc" || source.mediaType === "xls" || source.extractionStatus === "requires_conversion") {
-    return `<div class="guidance">Conversion required: convert this legacy Office file to DOCX or XLSX, then select the converted file.</div>`
+    return `<div class="guidance">ファイル変換が必要です。旧形式の Office ファイルを DOCX または XLSX に変換し、変換後のファイルを選択してください。</div>`
   }
   if (source.extractionStatus === "requires_ocr") {
-    return `<div class="guidance">OCR required: this PDF appears image-only. Run OCR and select a text-searchable PDF.</div>`
+    return `<div class="guidance">OCR が必要です。この PDF は画像のみの可能性があります。OCR を実行し、文字検索できる PDF を選択してください。</div>`
   }
   if (source.extractionStatus === "partial") {
-    return `<div class="guidance">Partial extraction: extracted chunks remain included; unavailable or failed portions are excluded. Review and approve that exclusion before AI consent.</div>`
+    return `<div class="guidance">一部のみ抽出されました。抽出できた範囲は含まれ、取得できない部分は除外されます。AI に送る前に除外内容を確認してください。</div>`
   }
   if (source.extractionStatus === "blocked" || source.extractionStatus === "failed") {
-    return `<div class="guidance">Extraction is blocked. This source is fully excluded and must be replaced to include it.</div>`
+    return `<div class="guidance">抽出できません。この資料は対象から除外されます。含めるには別のファイルへ置き換えてください。</div>`
   }
   return ""
 }
 
 function renderChunks(chunks: readonly RuleAuthoringGuiChunkModel[]): string {
-  if (chunks.length === 0) return `<div class="muted">Extract sources to choose evidence chunks.</div>`
+  if (chunks.length === 0) return `<div class="muted">資料を読み取ると、AI に送る範囲を選択できます。</div>`
   return chunks.map((chunk) => `<label class="chunk row">
-    <span><strong>${escapeHtml(chunk.title)}</strong><span class="muted"> · ${escapeHtml(chunk.locator)} · ${escapeHtml(chunk.utf8Bytes)} bytes</span></span>
+    <span><strong>${escapeHtml(chunk.title)}</strong><span class="muted"> · ${escapeHtml(chunk.locator)} · ${escapeHtml(chunk.utf8Bytes)}バイト</span></span>
     <input type="checkbox" data-action="setChunkIncluded" data-chunk-id="${escapeHtml(chunk.chunkId)}"${chunk.included ? " checked" : ""}>
   </label>`).join("")
 }
 
 function renderLogicalNames(names: readonly string[]): string {
-  if (names.length === 0) return `<div class="muted">none</div>`
+  if (names.length === 0) return `<div class="muted">なし</div>`
   return `<ul>${names.map((name) => `<li>${escapeHtml(name)}</li>`).join("")}</ul>`
 }
 

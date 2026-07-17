@@ -1,7 +1,7 @@
 {
   "name": "bob-code-consistency-review",
   "displayName": "Bob コード整合プレレビュー",
-  "description": "IBM Bob ワークフロー向けに、コード変更と要求・設計・テスト仕様の整合プレレビュー用パッケージを作成します。日本語と Shift-JIS 系テキストを想定します。",
+  "description": "コード変更と要求・設計・テスト仕様の整合性を確認するための Bob 向けレビュー資料、トレーサビリティ、出力検証、人による判定を提供します。日本語と Shift-JIS 系テキストに対応します。",
   "version": "0.1.0",
   "publisher": "local",
   "license": "UNLICENSED",
@@ -43,98 +43,98 @@
     "commands": [
       {
         "command": "bobCodeConsistency.openReviewWizard",
-        "title": "Review Wizard を開く",
-        "category": "Bob Code Consistency Review"
+        "title": "整合プレレビューを開始",
+        "category": "Bob コード整合プレレビュー"
       },
       {
         "command": "bobCodeConsistency.openResultCaptureGui",
-        "title": "Result Capture GUI を開く",
-        "category": "Bob Code Consistency Review"
+        "title": "Bob 出力の取り込みを開く",
+        "category": "Bob コード整合プレレビュー"
       },
       {
         "command": "bobCodeConsistency.openHumanTriageGui",
-        "title": "Human Triage GUI を開く",
-        "category": "Bob Code Consistency Review"
+        "title": "指摘・確認事項の判定を開く",
+        "category": "Bob コード整合プレレビュー"
       },
       {
         "command": "bobCodeConsistency.initializeWorkspace",
-        "title": ".bob ワークフロー定義と review-input 雛形を初期化",
-        "category": "Bob Code Consistency Review"
+        "title": "整合プレレビュー用ファイルを初期化",
+        "category": "Bob コード整合プレレビュー"
       },
       {
         "command": "bobCodeConsistency.createReviewInput",
-        "title": "対話式に review-input.yaml を作成",
-        "category": "Bob Code Consistency Review"
+        "title": "対話形式で review-input.yaml を作成",
+        "category": "Bob コード整合プレレビュー"
       },
       {
         "command": "bobCodeConsistency.prepareAiReviewInputDraft",
-        "title": "AI draft 用プロンプトを作成",
-        "category": "Bob Code Consistency Review"
+        "title": "AI にレビュー入力候補を依頼するプロンプトを作成",
+        "category": "Bob コード整合プレレビュー"
       },
       {
         "command": "bobCodeConsistency.applyAiReviewInputDraft",
-        "title": "AI draft JSON から review-input.yaml を生成",
-        "category": "Bob Code Consistency Review"
+        "title": "AI のレビュー入力候補から review-input.yaml を作成",
+        "category": "Bob コード整合プレレビュー"
       },
       {
         "command": "bobCodeConsistency.prepareAiTraceabilityDraft",
-        "title": "traceability AI draft 用プロンプトを作成",
-        "category": "Bob Code Consistency Review"
+        "title": "AI にトレーサビリティ候補を依頼するプロンプトを作成",
+        "category": "Bob コード整合プレレビュー"
       },
       {
         "command": "bobCodeConsistency.applyAiTraceabilityDraft",
-        "title": "traceability AI draft JSON を catalog に反映",
-        "category": "Bob Code Consistency Review"
+        "title": "AI のトレーサビリティ候補を台帳へ反映",
+        "category": "Bob コード整合プレレビュー"
       },
       {
         "command": "bobCodeConsistency.captureAiTraceabilityDraft",
-        "title": "traceability AI draft JSON を取り込み",
-        "category": "Bob Code Consistency Review"
+        "title": "AI のトレーサビリティ候補を取り込む",
+        "category": "Bob コード整合プレレビュー"
       },
       {
         "command": "bobCodeConsistency.openTraceabilityPrep",
-        "title": "traceability prep を開く",
-        "category": "Bob Code Consistency Review"
+        "title": "トレーサビリティ確認を開く",
+        "category": "Bob コード整合プレレビュー"
       },
       {
         "command": "bobCodeConsistency.validateTraceabilityCatalog",
-        "title": "traceability catalog を検証",
-        "category": "Bob Code Consistency Review"
+        "title": "トレーサビリティ台帳を検証",
+        "category": "Bob コード整合プレレビュー"
       },
       {
         "command": "bobCodeConsistency.createReviewInputFromTraceability",
-        "title": "traceability catalog から review-input.yaml を生成",
-        "category": "Bob Code Consistency Review"
+        "title": "トレーサビリティ台帳から review-input.yaml を作成",
+        "category": "Bob コード整合プレレビュー"
       },
       {
         "command": "bobCodeConsistency.repairReviewInput",
         "title": "review-input.yaml を自動修復",
-        "category": "Bob Code Consistency Review"
+        "category": "Bob コード整合プレレビュー"
       },
       {
         "command": "bobCodeConsistency.explainReviewInputDiagnostics",
-        "title": "review-input.yaml 診断を説明",
-        "category": "Bob Code Consistency Review"
+        "title": "review-input.yaml の診断内容を説明",
+        "category": "Bob コード整合プレレビュー"
       },
       {
         "command": "bobCodeConsistency.preprocess",
-        "title": "入力を前処理して Bob 用パッケージを作成",
-        "category": "Bob Code Consistency Review"
+        "title": "Bob に渡すレビュー資料を作成",
+        "category": "Bob コード整合プレレビュー"
       },
       {
         "command": "bobCodeConsistency.captureBobOutput",
-        "title": "Bob 出力 YAML を取り込む",
-        "category": "Bob Code Consistency Review"
+        "title": "Bob 出力を取り込む",
+        "category": "Bob コード整合プレレビュー"
       },
       {
         "command": "bobCodeConsistency.validateOutput",
-        "title": "Bob 出力 YAML を検証",
-        "category": "Bob Code Consistency Review"
+        "title": "Bob 出力を検証",
+        "category": "Bob コード整合プレレビュー"
       },
       {
         "command": "bobCodeConsistency.triage",
-        "title": "人間確認用 triage を生成",
-        "category": "Bob Code Consistency Review"
+        "title": "人による判定一覧を作成",
+        "category": "Bob コード整合プレレビュー"
       }
     ],
     "configuration": {
@@ -143,44 +143,44 @@
         "bobCodeConsistency.reviewInputPath": {
           "type": "string",
           "default": "review-input.yaml",
-          "description": "review-input.yaml のワークスペース相対パス。日本語を含む UTF-8 / Shift-JIS 系テキストを自動判定して読み込みます。"
+          "description": "レビュー条件を記述する review-input.yaml のワークスペース相対パスです。日本語を含む UTF-8／Shift-JIS 系テキストを自動判定して読み込みます。"
         },
         "bobCodeConsistency.reviewPackagePath": {
           "type": "string",
           "default": ".bob-review/review-package",
-          "description": "生成した review-package を書き込むワークスペース相対パス。"
+          "description": "Bob に渡すレビュー資料の出力先となるワークスペース相対パスです。"
         },
         "bobCodeConsistency.traceabilityCatalogPath": {
           "type": "string",
           "default": ".bob-trace/traceability-catalog.json",
-          "description": "上流仕様書を変更せずに traceability ID・リンク・承認状態を保持する sidecar catalog のワークスペース相対パス。"
+          "description": "仕様間の ID、関連、承認状態を上流文書とは別に保持するトレーサビリティ台帳のワークスペース相対パスです。"
         },
         "bobCodeConsistency.traceabilityGateReportPath": {
           "type": "string",
           "default": ".bob-trace/gate-report.md",
-          "description": "traceability catalog のレビューゲート検証結果を書き込む Markdown レポートのワークスペース相対パス。"
+          "description": "トレーサビリティ台帳の検証結果を書き込む Markdown レポートのワークスペース相対パスです。"
         },
         "bobCodeConsistency.bobOutputPath": {
           "type": "string",
           "default": ".bob-review/bob-output/bob-output.yaml",
-          "description": "取り込んだ Bob YAML 出力を保存するワークスペース相対パス。"
+          "description": "取り込んだ Bob 出力（YAML）を保存するワークスペース相対パスです。"
         },
         "bobCodeConsistency.triagePath": {
           "type": "string",
           "default": ".bob-review/human-triage",
-          "description": "人間確認用 triage ファイルを書き込むワークスペース相対パス。"
+          "description": "人による判定内容と生成成果物を書き込むワークスペース相対パスです。"
         },
         "bobCodeConsistency.bzrPath": {
           "type": "string",
           "default": "bzr",
-          "description": "review.vcs が bazaar / bzr の場合に使用する Bazaar 実行ファイルのパス。実行時は必ず --no-aliases を付与します。"
+          "description": "バージョン管理が Bazaar の場合に使用する実行ファイルのパスです。実行時は必ず --no-aliases を付与します。"
         },
         "bobCodeConsistency.vcsCommandTimeoutMs": {
           "type": "number",
           "default": 120000,
           "minimum": 1000,
           "maximum": 600000,
-          "description": "Git / Bazaar CLI 1回あたりのハードタイムアウト（ミリ秒）。"
+          "description": "Git／Bazaar コマンド1回あたりの実行上限時間（ミリ秒）です。"
         },
         "bobCodeConsistency.textEncoding": {
           "type": "string",
@@ -192,49 +192,49 @@
             "windows-31j"
           ],
           "default": "auto",
-          "description": "review-input.yaml、Markdown 文書、C/C++ ソース、Git/Bazaar 差分 stdout、diff fixture の読み取り文字コード。auto は UTF-8 を優先し、文字化けが疑われる場合に Shift-JIS 系へ fallback します。"
+          "description": "レビュー入力、文書、ソースコード、Git／Bazaar 差分を読み取る文字コードです。auto は UTF-8 を優先し、文字化けが疑われる場合に Shift-JIS 系で読み直します。"
         },
         "bobCodeConsistency.maxDocumentBytes": {
           "type": "number",
           "default": 5242880,
           "minimum": 1,
           "maximum": 52428800,
-          "description": "1 文書あたりの読み取り上限 bytes。Markdown は上限まで読み、DOCX/XLSX は上限超過時に抽出を中止します。"
+          "description": "文書1件あたりの読み取り上限（バイト）です。Markdown は上限まで読み、DOCX／XLSX は上限超過時に抽出を中止します。"
         },
         "bobCodeConsistency.maxWorkbookSheets": {
           "type": "number",
           "default": 20,
           "minimum": 1,
           "maximum": 100,
-          "description": "XLSX 抽出時に処理する最大 sheet 数。"
+          "description": "XLSX から読み取る最大シート数です。"
         },
         "bobCodeConsistency.maxRowsPerSheet": {
           "type": "number",
           "default": 500,
           "minimum": 1,
           "maximum": 5000,
-          "description": "XLSX 抽出時に 1 sheet あたり処理する最大 data row 数。"
+          "description": "XLSX の各シートから読み取る最大データ行数です。"
         },
         "bobCodeConsistency.maxExcerptBytesPerDocument": {
           "type": "number",
           "default": 65536,
           "minimum": 1,
           "maximum": 1048576,
-          "description": "1 evidence excerpt あたりの最大 UTF-8 bytes。超過分は truncation warning とともに切り詰めます。"
+          "description": "Bob に渡す文書抜粋1件あたりの上限（バイト）です。"
         },
         "bobCodeConsistency.maxRawDiffBytes": {
           "type": "number",
           "default": 1048576,
           "minimum": 1,
           "maximum": 10485760,
-          "description": "review package と Bob input に含める raw unified diff の最大 UTF-8 bytes。"
+          "description": "レビュー資料と Bob 入力へ含める未加工の差分の最大 UTF-8 バイト数です。"
         },
         "bobCodeConsistency.maxBobInputBytes": {
           "type": "number",
           "default": 2097152,
           "minimum": 1,
           "maximum": 8388608,
-          "description": "生成する bob-input.md の最大 UTF-8 bytes。"
+          "description": "生成する bob-input.md の最大 UTF-8 バイト数です。"
         }
       }
     },

@@ -1,7 +1,7 @@
 {
   "name": "workflow-register",
-  "displayName": "Bob ワークフロー登録",
-  "description": ".bob/workflows/*/WORKFLOW.md に定義された IBM Bob ワークフローを登録します。",
+  "displayName": "Bob ワークフロー管理",
+  "description": "IBM Bob ワークフローの作成、実行、再開、診断、成果物管理を行います。",
   "version": "0.1.0",
   "publisher": "local",
   "license": "UNLICENSED",
@@ -379,12 +379,12 @@
       "explorer": [
         {
           "id": "workflowRegister.operationHub",
-          "name": "Bob Operation Hub",
+          "name": "Bob 操作センター",
           "type": "webview"
         },
         {
           "id": "workflowRegister.runs",
-          "name": "Bob Workflow Runs"
+          "name": "Bob ワークフロー実行"
         }
       ]
     },

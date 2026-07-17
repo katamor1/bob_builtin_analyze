@@ -680,7 +680,7 @@ test("Operation Hub openArtifact rejects a workspace-local alias that resolves o
   await provider.handleMessage(openArtifactMessage(path.join(aliasDirectory, "outside.md")))
 
   assert.deepEqual(state.openedDocuments, [])
-  assert.deepEqual(state.errors, ["Bob Operation Hub: workspace 外の成果物は開けません。"])
+  assert.deepEqual(state.errors, ["Bob 操作センター: workspace 外の成果物は開けません。"])
   assert.equal(fs.readFileSync(outsideArtifact, "utf8"), outsideBytes)
 })
 

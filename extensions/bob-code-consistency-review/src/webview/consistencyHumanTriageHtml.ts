@@ -1,4 +1,5 @@
 import type { HumanTriageViewItem } from "../triage/triageTypes"
+import { confidenceLabel, humanDecisionLabel, severityLabel, sourceTypeLabel } from "./displayLabels"
 
 export type ConsistencyHumanTriageItem = HumanTriageViewItem
 
@@ -28,7 +29,7 @@ export function renderConsistencyHumanTriageHtml(input: RenderConsistencyHumanTr
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${escapeHtml(input.cspSource)} 'unsafe-inline'; script-src 'nonce-${escapeHtml(input.nonce)}';">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Code Consistency Human Triage</title>
+  <title>指摘・確認事項の判定</title>
   <style>
     body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); padding: 18px; }
     h1 { font-size: 20px; margin: 0 0 12px; }
@@ -54,20 +55,20 @@ export function renderConsistencyHumanTriageHtml(input: RenderConsistencyHumanTr
   </style>
 </head>
 <body>
-  <h1>Human Triage</h1>
+  <h1>指摘・確認事項の判定</h1>
   <section class="card">
     <h2>対象</h2>
-    <div class="muted">bob-output: ${escapeHtml(model.bobOutputPath)} / triage: ${escapeHtml(model.outDir)}</div>
-    <div class="muted">source: ${escapeHtml(shortHash(model.sourceSha256))} / decision revision: ${model.decisionRevision}</div>
+    <div class="muted">Bob 出力: ${escapeHtml(model.bobOutputPath)} / 判定成果物: ${escapeHtml(model.outDir)}</div>
+    <div class="muted">元データ: ${escapeHtml(shortHash(model.sourceSha256))} / 判定版: ${model.decisionRevision}</div>
     <div class="actions">
-      <button type="button" data-action="generateTriage">triage を生成</button>
-      <button type="button" data-action="saveDecisions"${model.sourceSha256 ? "" : " disabled"}>すべて保存</button>
-      <button type="button" class="secondary" data-action="openResultCapture">Result Capture へ戻る</button>
+      <button type="button" data-action="generateTriage">判定一覧を作成</button>
+      <button type="button" data-action="saveDecisions"${model.sourceSha256 ? "" : " disabled"}>判定内容を保存</button>
+      <button type="button" class="secondary" data-action="openResultCapture">Bob 出力の取り込みへ戻る</button>
     </div>
   </section>
   <section class="card">
-    <h2>Finding / Question 採否判断</h2>
-    ${model.items.length === 0 ? `<div class="muted">triage を生成すると item が表示されます。</div>` : model.items.map(renderItem).join("")}
+    <h2>指摘・確認事項の判定</h2>
+    ${model.items.length === 0 ? `<div class="muted">判定一覧を作成すると item が表示されます。</div>` : model.items.map(renderItem).join("")}
   </section>
   <section class="card">
     <h2>検証結果</h2>
@@ -122,31 +123,31 @@ function renderItem(item: ConsistencyHumanTriageItem): string {
   return `<article class="triage-item" data-triage-row data-source-id="${escapeHtml(item.source_id)}">
     <h3><code>${escapeHtml(item.source_id)}</code> ${escapeHtml(item.summary ?? "")}</h3>
     <div class="metadata muted">${[
-      item.source_type,
+      item.source_type ? sourceTypeLabel(item.source_type) : undefined,
       item.category,
-      item.severity ? `severity: ${item.severity}` : undefined,
-      item.confidence ? `confidence: ${item.confidence}` : undefined
+      item.severity ? `重大度: ${severityLabel(item.severity)}` : undefined,
+      item.confidence ? `確信度: ${confidenceLabel(item.confidence)}` : undefined
     ].filter(Boolean).map((value) => `<span>${escapeHtml(value)}</span>`).join("")}</div>
     <div class="source-context">
-      ${sourceLine("Bob reason", item.source_reason)}
-      ${sourceLine("impact", item.impact)}
-      ${sourceLine("recommended action", item.recommended_action ?? item.suggested_action)}
-      ${sourceLine("suggested owner", item.suggested_owner)}
-      ${sourceLine("human check", item.human_check)}
+      ${sourceLine("Bob の判断理由", item.source_reason)}
+      ${sourceLine("影響", item.impact)}
+      ${sourceLine("推奨対応", item.recommended_action ?? item.suggested_action)}
+      ${sourceLine("推奨担当者", item.suggested_owner)}
+      ${sourceLine("人による確認ポイント", item.human_check)}
       ${renderEvidence(item)}
     </div>
     <div class="fields">
-      <label class="field">decision<select data-field="decision">${decisionOptions(item.decision)}</select></label>
-      <label class="field">final severity<select data-field="final_severity">${severityOptions(item.final_severity)}</select></label>
-      <label class="field">owner<input data-field="owner" value="${escapeHtml(item.owner ?? "")}"></label>
-      <label class="field">suggested recipient<input data-field="suggested_recipient" value="${escapeHtml(item.suggested_recipient ?? "")}"></label>
-      <label class="field wide">human reason<textarea data-field="reason">${escapeHtml(item.reason ?? "")}</textarea></label>
-      <label class="field wide">review comment<textarea data-field="review_comment">${escapeHtml(item.review_comment ?? "")}</textarea></label>
+      <label class="field">判定<select data-field="decision">${decisionOptions(item.decision)}</select></label>
+      <label class="field">最終重大度<select data-field="final_severity">${severityOptions(item.final_severity)}</select></label>
+      <label class="field">担当者<input data-field="owner" value="${escapeHtml(item.owner ?? "")}"></label>
+      <label class="field">連絡先候補<input data-field="suggested_recipient" value="${escapeHtml(item.suggested_recipient ?? "")}"></label>
+      <label class="field wide">判定理由<textarea data-field="reason">${escapeHtml(item.reason ?? "")}</textarea></label>
+      <label class="field wide">レビューコメント<textarea data-field="review_comment">${escapeHtml(item.review_comment ?? "")}</textarea></label>
     </div>
     <div class="fields follow-up">
-      <label><input type="checkbox" data-field="follow_up_required"${followUp.required ? " checked" : ""}> follow-up required</label>
-      <label class="field">follow-up action<input data-field="follow_up_action" value="${escapeHtml(followUp.action ?? "")}"></label>
-      <label class="field">due<input type="date" data-field="follow_up_due" value="${escapeHtml(followUp.due ?? "")}"></label>
+      <label><input type="checkbox" data-field="follow_up_required"${followUp.required ? " checked" : ""}> 後続対応が必要</label>
+      <label class="field">後続対応<input data-field="follow_up_action" value="${escapeHtml(followUp.action ?? "")}"></label>
+      <label class="field">期限<input type="date" data-field="follow_up_due" value="${escapeHtml(followUp.due ?? "")}"></label>
     </div>
   </article>`
 }
@@ -154,20 +155,20 @@ function renderItem(item: ConsistencyHumanTriageItem): string {
 function decisionOptions(selected: string | undefined): string {
   return [
     `<option value=""${selected ? "" : " selected"}>未判断</option>`,
-    ...DECISIONS.map((decision) => `<option value="${decision}"${decision === selected ? " selected" : ""}>${decision}</option>`)
+    ...DECISIONS.map((decision) => `<option value="${decision}"${decision === selected ? " selected" : ""}>${escapeHtml(humanDecisionLabel(decision))}</option>`)
   ].join("")
 }
 
 function severityOptions(selected: string | undefined): string {
   return [
     `<option value=""${selected ? "" : " selected"}>未設定</option>`,
-    ...SEVERITIES.map((severity) => `<option value="${severity}"${severity === selected ? " selected" : ""}>${severity}</option>`)
+    ...SEVERITIES.map((severity) => `<option value="${severity}"${severity === selected ? " selected" : ""}>${escapeHtml(severityLabel(severity))}</option>`)
   ].join("")
 }
 
 function renderEvidence(item: ConsistencyHumanTriageItem): string {
   if (item.evidence.length === 0) return ""
-  return `<div class="muted">evidence</div><ul class="evidence">${item.evidence.map((evidence) => `<li><code>${escapeHtml(evidence.evidence_id ?? "(no id)")}</code> ${escapeHtml(evidence.type ?? "")} ${escapeHtml(evidence.ref ?? "")}</li>`).join("")}</ul>`
+  return `<div class="muted">根拠</div><ul class="evidence">${item.evidence.map((evidence) => `<li><code>${escapeHtml(evidence.evidence_id ?? "ID なし")}</code> ${escapeHtml(evidence.type ?? "")} ${escapeHtml(evidence.ref ?? "")}</li>`).join("")}</ul>`
 }
 
 function sourceLine(label: string, value: string | undefined): string {

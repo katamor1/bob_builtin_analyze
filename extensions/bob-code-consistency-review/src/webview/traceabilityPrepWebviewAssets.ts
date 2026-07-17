@@ -124,6 +124,11 @@ let typeFilter = 'all';
 const content = document.getElementById('content');
 const status = document.getElementById('status');
 
+const statusLabels = { proposed: '未承認', accepted: '採用', rejected: '却下', deprecated: '廃止', ok: '正常', error: 'エラー', warning: '警告' };
+const itemTypeLabels = { all: 'すべて', requirement: '要求仕様', basic_design: '基本設計', detailed_design: '詳細設計', test_spec: 'テスト仕様', qa_item: 'QA項目', review_finding: 'レビュー指摘' };
+function statusLabel(value) { return statusLabels[value] || ('不明（' + String(value || '') + '）'); }
+function itemTypeLabel(value) { return itemTypeLabels[value] || ('不明（' + String(value || '') + '）'); }
+
 function setStatus(message, className) {
   status.textContent = message;
   status.className = className || 'meta';
@@ -135,10 +140,10 @@ document.getElementById('save').onclick = function() {
 
 document.getElementById('restore-original-catalog').onclick = function() {
   if (!hasCatalogChanges()) {
-    setStatus('No changes to restore.');
+    setStatus('元に戻す変更はありません。');
     return;
   }
-  if (!confirm('Restore all Traceability Prep changes to the catalog state from when this panel was opened?')) return;
+  if (!confirm('この画面を開いた時点の内容へすべて戻しますか？')) return;
   vscode.postMessage({ type: 'restoreOriginalCatalog' });
 };
 
@@ -174,9 +179,9 @@ window.addEventListener('message', function(event) {
     render();
   } else if (message.type === 'saved') {
     setStatus([
-      'Saved: ' + message.catalogPath,
-      message.backupPath ? ' / backup: ' + message.backupPath : '',
-      message.reportPath ? ' / report: ' + message.reportPath : ''
+      '保存しました: ' + message.catalogPath,
+      message.backupPath ? ' / バックアップ: ' + message.backupPath : '',
+      message.reportPath ? ' / レポート: ' + message.reportPath : ''
     ].join(''));
   } else if (message.type === 'info') {
     setStatus(message.message);
@@ -282,11 +287,11 @@ function render() {
 
 function renderSummary() {
   const items = [
-    'status: ' + model.report.status,
-    'errors: ' + model.report.errors.length,
-    'warnings: ' + model.report.warnings.length,
-    'proposed items: ' + model.counts.proposedItems,
-    'changed rows: ' + countChangedRows()
+    '状態: ' + statusLabel(model.report.status),
+    'エラー: ' + model.report.errors.length + '件',
+    '警告: ' + model.report.warnings.length + '件',
+    '未承認項目: ' + model.counts.proposedItems + '件',
+    '変更行: ' + countChangedRows() + '件'
   ];
   document.getElementById('summary').innerHTML = items.map(function(item) {
     return '<span class="pill">' + escapeHtml(item) + '</span>';
@@ -297,8 +302,8 @@ function renderDomains() {
   content.innerHTML = '<div class="table">' + model.catalog.domains.map(function(domain) {
     const original = findOriginalDomain(domain.code);
     let actions = domain.status === 'proposed'
-      ? actionButton('approveDomain', [domain.code], 'Approve')
-        + actionButton('rejectDomain', [domain.code], 'Reject', true)
+      ? actionButton('approveDomain', [domain.code], '採用')
+        + actionButton('rejectDomain', [domain.code], '却下', true)
       : '';
     actions += restoreButtonIfChanged(domain, original, 'restoreDomain', [domain.code]);
     return row(domain.code, domain.status, escapeHtml(domain.label || ''), actions);
@@ -311,7 +316,7 @@ function renderItems() {
     '<div class="toolbar"><select data-action="typeFilter">',
     types.map(function(type) {
       const selected = type === typeFilter ? 'selected' : '';
-      return '<option ' + selected + ' value="' + escapeHtml(type) + '">' + escapeHtml(type) + '</option>';
+      return '<option ' + selected + ' value="' + escapeHtml(type) + '">' + escapeHtml(itemTypeLabel(type)) + '</option>';
     }).join(''),
     '</select></div>'
   ].join('');
@@ -326,14 +331,14 @@ function renderItemRow(item) {
   const original = findOriginalItem(id);
   let actions = '';
   if (item.status === 'proposed') {
-    actions = actionButton('approveItem', [item.proposed_id], 'Approve')
-      + actionButton('rejectItem', [item.proposed_id], 'Reject', true);
+    actions = actionButton('approveItem', [item.proposed_id], '採用')
+      + actionButton('rejectItem', [item.proposed_id], '却下', true);
   } else if (item.status === 'accepted') {
-    actions = actionButton('deprecateItem', [item.id], 'Deprecate', true);
+    actions = actionButton('deprecateItem', [item.id], '廃止', true);
   }
   actions += restoreButtonIfChanged(item, original, 'restoreItem', [id]);
   const body = [
-    item.type,
+    itemTypeLabel(item.type),
     item.source_document_id,
     item.domain,
     item.text_summary || ''
@@ -347,8 +352,8 @@ function renderLinks() {
     const to = link.to || link.proposed_to || '';
     const original = findOriginalLink(from, to, link.link_type);
     let actions = link.status === 'proposed'
-      ? actionButton('approveLink', [link.proposed_from, link.proposed_to, link.link_type], 'Approve')
-        + actionButton('rejectLink', [link.proposed_from, link.proposed_to, link.link_type], 'Reject', true)
+      ? actionButton('approveLink', [link.proposed_from, link.proposed_to, link.link_type], '採用')
+        + actionButton('rejectLink', [link.proposed_from, link.proposed_to, link.link_type], '却下', true)
       : '';
     actions += restoreButtonIfChanged(link, original, 'restoreLink', [from, to, link.link_type]);
     return row(from + ' -> ' + to, link.status, escapeHtml(link.link_type), actions);
@@ -359,8 +364,8 @@ function renderDecisions() {
   content.innerHTML = '<div class="table">' + (model.catalog.decisions || []).map(function(decision) {
     const original = findOriginalDecision(decision.subject, decision.gate);
     let actions = decision.status === 'proposed'
-      ? actionButton('approveDecision', [decision.subject, decision.gate], 'Approve')
-        + actionButton('rejectDecision', [decision.subject, decision.gate], 'Reject', true)
+      ? actionButton('approveDecision', [decision.subject, decision.gate], '採用')
+        + actionButton('rejectDecision', [decision.subject, decision.gate], '却下', true)
       : '';
     actions += restoreButtonIfChanged(decision, original, 'restoreDecision', [decision.subject, decision.gate]);
     return row(decision.subject, decision.status, escapeHtml(decision.decision + ' / ' + decision.gate + ' / ' + (decision.reason || '')), actions);
@@ -369,11 +374,11 @@ function renderDecisions() {
 
 function renderGate() {
   content.innerHTML = [
-    '<h2>Gate Report</h2>',
-    '<div class="meta">Missing traceability links can be carried forward as accepted TBD decisions. They remain warnings and should be resolved later.</div>',
-    '<h3>Errors</h3>',
+    '<h2>検証レポート</h2>',
+    '<div class="meta">不足している関連は、未確定の判断として保留できます。警告として残るため、後で解消してください。</div>',
+    '<h3>エラー</h3>',
     issues(model.report.errors, 'error'),
-    '<h3>Warnings</h3>',
+    '<h3>警告</h3>',
     issues(model.report.warnings, 'warning')
   ].join('');
 }
@@ -390,17 +395,17 @@ function renderPreview() {
     };
   });
   content.innerHTML = [
-    '<h2>Review Input Preview</h2><pre>',
+    '<h2>レビュー入力プレビュー</h2><pre>',
     escapeHtml(JSON.stringify(accepted, null, 2)),
     '</pre>'
   ].join('');
 }
 
 function issues(items, cls) {
-  if (!items.length) return '<div class="meta">none</div>';
+  if (!items.length) return '<div class="meta">なし</div>';
   return '<div class="table">' + items.map(function(item) {
     const actions = cls === 'error' && canDeferIssue(item)
-      ? actionButton('deferIssue', [item.code, item.subject, item.message], 'Defer as TBD')
+      ? actionButton('deferIssue', [item.code, item.subject, item.message], '未確定として保留')
       : '';
     return [
       '<div class="row ',
@@ -434,7 +439,7 @@ function row(title, state, body, actions) {
     '<div class="row"><div class="rowHead"><div><b>',
     escapeHtml(title),
     '</b><div class="meta">',
-    escapeHtml(state),
+    escapeHtml(statusLabel(state)),
     '</div></div><div class="actions">',
     actions,
     '</div></div><div>',
@@ -445,7 +450,7 @@ function row(title, state, body, actions) {
 
 function restoreButtonIfChanged(current, original, action, args) {
   if (!original || !isChangedFromOriginal(current, original)) return '';
-  return actionButton(action, args, 'Restore Original', true);
+  return actionButton(action, args, '元に戻す', true);
 }
 
 function actionButton(action, args, label, secondary) {

@@ -2,7 +2,7 @@
 
 ## 1. 目的
 
-本書は `extensions/bob-bazaar-review` の実機テスト仕様を定義する。Review Runの中断・再開・finalize・legacy recoveryも対象とする。単体テストでは mock 化する VS Code Extension Host、IBM Bob、workflow-register、Bob Workflow UI、Webview、Bazaar CLI、MCP server、multi-root workspace、実ファイル I/O を含めて確認する。
+本書は `extensions/bob-bazaar-review` の実機テスト仕様を定義する。レビュー実行の中断・再開・finalize・legacy recoveryも対象とする。単体テストでは mock 化する VS Code Extension Host、IBM Bob、workflow-register、Bob Workflow UI、Webview、Bazaar CLI、MCP server、multi-root workspace、実ファイル I/O を含めて確認する。
 
 ## 2. テスト対象
 
@@ -426,7 +426,7 @@ bazaar_test/branch2/
 | 項目 | 内容 |
 | --- | --- |
 | 目的 | Bob finding を人間判断用 `triage.yaml` に変換できることを確認する。 |
-| 手順 | 1. findings を含む review-result を保存する。<br>2. `Bob Bazaar Review: 人間 triage 雛形を生成` を実行する。 |
+| 手順 | 1. findings を含む review-result を保存する。<br>2. `Bob Bazaar Review: 人による判定一覧を作成` を実行する。 |
 | 期待結果 | finding ごとに item が作成され、初期 decision は `needs_investigation` になる。fail checklist だが finding がない rule も追加調査 item になる。 |
 
 ### BZR-RT-040 triage validation error
@@ -434,7 +434,7 @@ bazaar_test/branch2/
 | 項目 | 内容 |
 | --- | --- |
 | 目的 | human triage の不正 decision や summary mismatch を検出できることを確認する。 |
-| 手順 | 1. `triage.yaml` の decision を不正値に変更する。<br>2. `Bob Bazaar Review: 人間 triage を検証` を実行する。 |
+| 手順 | 1. `triage.yaml` の decision を不正値に変更する。<br>2. `Bob Bazaar Review: 人による判定内容を検証` を実行する。 |
 | 期待結果 | invalid decision、unknown finding_id、summary mismatch が warning / error として表示される。 |
 
 ### BZR-RT-041 campaign summary 生成
@@ -461,35 +461,35 @@ bazaar_test/branch2/
 | 手順 | 1. `summary.md` を開く。<br>2. 件数、採用/棄却/追加調査、所要時間、warning を確認する。 |
 | 期待結果 | Phase 1 実績報告へ転記でき、triage missing や invalid record が隠れない。 |
 
-### 6.6 Review Run Wizard v3 Iteration 2
+### 6.6 レビュー手順 Iteration 2
 
-#### BZR-RT-044 Review Run開始とartifact関連付け
+#### BZR-RT-044 レビュー実行開始とartifact関連付け
 
 1. Review GUIでcampaignとsingle revisionを選ぶ。
-2. Review Runを開始する。
+2. レビュー実行を開始する。
 3. record directoryとresult directoryを確認する。
 
 期待結果:
 
 - `review-run.json`と`review-packet.md`が同じcampaign / review IDで作成される。
-- packetのReview Run sectionにexact `review_id`契約がある。
+- packetのレビュー実行 sectionにexact `review_id`契約がある。
 - phaseはpacket completed、result in_progressになる。
 - workspace外pathやunsafe IDは保存前に拒否される。
 
 #### BZR-RT-045 VS Code再起動後の再開
 
-1. packet保存後、Result Capture前にVS Codeを閉じる。
+1. packet保存後、レビュー結果の取り込み前にVS Codeを閉じる。
 2. 同じworkspaceを開きReview GUIを再表示する。
-3. 未完了Review Runを選択し再開する。
+3. 未完了レビュー実行を選択し再開する。
 
 期待結果:
 
 - runが`updatedAt`順の候補に表示される。
 - next actionが`resultCapture`になる。
 - campaign / review ID、packetを再入力・再生成しない。
-- result保存後に再度中断した場合はHuman Triageから再開する。
+- result保存後に再度中断した場合は人による判定から再開する。
 
-#### BZR-RT-046 decision別Human Triage validation
+#### BZR-RT-046 decision別人による判定 validation
 
 各decisionについて不足値を作り、保存を試す。
 
@@ -509,42 +509,42 @@ bazaar_test/branch2/
 #### BZR-RT-047 Metricsの自動計測と補正
 
 1. packetを保存してからvalid resultを保存する。
-2. Human Triageを完了する。
-3. baseline / Bob / Human Triage時間を確認する。
+2. 人による判定を完了する。
+3. baseline / Bob / 人による判定時間を確認する。
 4. 有効値、負数、NaN相当、30日超を入力する。
 
 期待結果:
 
-- Bob reviewとHuman Triageの経過時間が自動記録される。
+- Bob reviewと人による判定の経過時間が自動記録される。
 - valid補正は`user_corrected`として残る。
 - invalid補正は拒否される。
-- 完了済みtriageを再保存してもHuman Triage時間を二重加算しない。
+- 完了済みtriageを再保存しても人による判定時間を二重加算しない。
 
-#### BZR-RT-048 Review Run一括finalize
+#### BZR-RT-048 レビュー実行一括finalize
 
 1. valid triageまで進める。
 2. metricsを確認・補正する。
-3. `Review Runを完了して集計`を実行する。
+3. `レビュー実行を完了して集計`を実行する。
 
 期待結果:
 
 - `record.yaml`が生成・検証される。
 - campaign `summary.json` / `summary.md`が再生成される。
-- record / summary phaseとReview Run全体がcompletedになる。
+- record / summary phaseとレビュー実行全体がcompletedになる。
 - target、packet、result、triage、record、summaryが同じcampaign / review IDで結び付く。
 
 #### BZR-RT-049 Summary失敗からの再試行
 
 1. summary出力先をdirectoryにするなど、summary writeだけが失敗するfixtureを作る。
 2. finalizeを実行する。
-3. failure causeを解消し、古いHuman Triage画面から再度finalizeする。
+3. failure causeを解消し、古い人による判定画面から再度finalizeする。
 
 期待結果:
 
 - `record.yaml`を保持し、record phaseはcompletedのままになる。
 - summaryだけfailedになり、retryable issueが表示される。
 - 再操作時にpersisted stateへ追従し、recordを作り直さずsummaryから続行する。
-- 最終的にReview Runがcompletedになる。
+- 最終的にレビュー実行がcompletedになる。
 
 #### BZR-RT-050 Legacy artifact recovery
 
@@ -560,22 +560,22 @@ bazaar_test/branch2/
 - 承認後に追加されるのは`review-run.json`だけである。
 - 既存packet / result / triage / recordのbytesが変化しない。
 
-### 6.7 Review Run Wizard v3 Iteration 3 Campaign Dashboard
+### 6.7 レビュー手順 Iteration 3 レビューキャンペーン ダッシュボード
 
 #### BZR-RT-051 Dashboard起動・campaign選択・refresh
 
 1. 2件以上のcampaignを持つBob workspaceを開く。
-2. Command PaletteまたはReview GUIからCampaign Dashboardを開く。
+2. Command PaletteまたはReview GUIからレビューキャンペーン ダッシュボードを開く。
 3. campaignを切り替え、refreshする。
 
 期待結果:
 
 - campaign候補がsafe IDだけで表示される。
 - run一覧が`updatedAt`降順になる。
-- refresh後に最新のReview Run / record / triageが反映される。
+- refresh後に最新のレビュー実行 / record / triageが反映される。
 - workspace外rootは拒否される。
 
-#### BZR-RT-052 Human Triage pendingの可視化
+#### BZR-RT-052 人による判定 pendingの可視化
 
 1. triageなしrun、invalid triage run、valid triage runを用意する。
 2. Dashboardを開く。
@@ -671,10 +671,10 @@ bazaar_test/branch2/
 - Bazaar CLI 読み取り操作が `--no-aliases` 経路で実行され、packet が生成できる。
 - review-result JSON / Markdown が `.bob/review/results` に保存できる。
 - Phase 1 record / triage / summary が `.bob-review-records` に保存できる。
-- Review Runの開始、画面間handoff、中断再開、decision validation、metrics、finalizeが合格する。
+- レビュー実行の開始、画面間handoff、中断再開、decision validation、metrics、finalizeが合格する。
 - summary失敗時にrecordを保持し、失敗phaseから再試行できる。
 - legacy recoveryが確認付きかつ非破壊である。
-- Campaign Dashboardのpending、rate、rule / target mode trend、warning、3形式exportがsource artifactと一致する。
+- レビューキャンペーン ダッシュボードのpending、rate、rule / target mode trend、warning、3形式exportがsource artifactと一致する。
 - Dashboard refresh / exportが既存review evidenceを変更しない。
 - active editor validation と MCP result tools が保存済み result を扱える。
 - Bob Workflow UI 経由で主要 provider が provider missing にならない。
@@ -685,8 +685,8 @@ bazaar_test/branch2/
 
 | 優先度 | 対象 |
 | --- | --- |
-| P0 | 起動、project rules初期化、Review Run開始、packet、capture、Human Triage、標準finalize。 |
-| P1 | 中断再開、summary failure retry、legacy recovery、Campaign Dashboard、workflow provider、MCP、multi-root。 |
+| P0 | 起動、project rules初期化、レビュー実行開始、packet、capture、人による判定、標準finalize。 |
+| P1 | 中断再開、summary failure retry、legacy recovery、レビューキャンペーン ダッシュボード、workflow provider、MCP、multi-root。 |
 | P2 | revisionRange、working tree、Shift-JIS / CP932、diff / added file truncation。 |
 | P3 | file save fallback、Bob 拡張なし fallback、unsafe input、OS 差分。 |
 

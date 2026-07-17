@@ -50,10 +50,14 @@ test("consistency review wizard renders evidence picker traceability and package
     }
   })
 
-  assert.match(html, /Consistency Review Wizard/)
-  assert.match(html, /Evidence Picker/)
-  assert.match(html, /Traceability/)
-  assert.match(html, /Package Preview/)
+  assert.match(html, /整合プレレビューを開始/)
+  assert.match(html, /変更範囲/)
+  assert.match(html, /関連資料の選択/)
+  assert.match(html, /確認観点/)
+  assert.match(html, /トレーサビリティ/)
+  assert.match(html, /Bob に渡す資料/)
+  assert.match(html, /value="maintenance" selected>保守変更<\/option>/)
+  assert.match(html, /data-focus="requirement-code-consistency"[^>]*checked[^>]*>要求とコードの整合<\/label>/)
   assert.match(html, /data-action="createReviewInput"/)
   assert.match(html, /data-action="openTraceabilityPrep"/)
   assert.match(html, /data-action="preprocess"/)
@@ -101,8 +105,11 @@ test("code consistency result capture GUI exposes YAML validation before triage"
   const { renderConsistencyResultCaptureHtml } = require("../out/webview/consistencyResultCaptureHtml")
   const html = renderConsistencyResultCaptureHtml({ cspSource: "vscode-resource:", nonce: "nonce-456" })
 
-  assert.match(html, /Result Capture/)
-  assert.match(html, /Bob output YAML/)
+  assert.match(html, /Bob 出力の取り込み/)
+  assert.match(html, /Bob 出力（YAML）/)
+  assert.match(html, /クリップボードから取り込む/)
+  assert.match(html, /保存済みの Bob 出力を検証/)
+  assert.match(html, /人による判定へ進む/)
   assert.match(html, /data-action="captureManual"/)
   assert.match(html, /data-action="captureClipboard"/)
   assert.match(html, /data-action="validateOutput"/)
@@ -146,7 +153,9 @@ test("code consistency human triage GUI renders source context and conflict toke
     }
   })
 
-  assert.match(html, /Human Triage/)
+  assert.match(html, /指摘・確認事項の判定/)
+  assert.match(html, /value="needs_investigation">要調査<\/option>/)
+  assert.match(html, /value="critical">緊急<\/option>/)
   assert.match(html, /data-action="generateTriage"/)
   assert.match(html, /data-action="saveDecisions"/)
   assert.match(html, /PRE-001/)

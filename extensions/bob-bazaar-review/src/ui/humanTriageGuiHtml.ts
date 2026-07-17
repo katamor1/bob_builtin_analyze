@@ -1,4 +1,5 @@
 import type { TriageDecision, TriageItem } from "../records/reviewRecordTypes"
+import { reviewDecisionLabel, reviewRunPhaseLabel, reviewRunStatusLabel } from "./displayLabels"
 import type {
   ReviewRunPhaseStatus,
   ReviewRunTrackedPhase
@@ -40,7 +41,7 @@ export function renderHumanTriageHtml(input: RenderHumanTriageHtmlInput): string
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${escapeHtml(input.cspSource)} 'unsafe-inline'; script-src 'nonce-${escapeHtml(input.nonce)}';">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Bob Bazaar Human Triage</title>
+  <title>Bazaar レビューの人による判定</title>
   <style>
     body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); padding: 18px; }
     h1 { font-size: 20px; margin: 0 0 12px; }
@@ -68,45 +69,45 @@ export function renderHumanTriageHtml(input: RenderHumanTriageHtmlInput): string
   </style>
 </head>
 <body>
-  <h1>Human Triage</h1>
+  <h1>人による判定</h1>
   <section class="card">
     <h2>対象</h2>
-    ${model.reviewRunBound ? `<div class="muted">Active Review Runから引き継いだ値です。campaign / review / result pathの再入力は不要です。</div>` : ""}
+    ${model.reviewRunBound ? `<div class="muted">現在のレビューから引き継いだ値です。キャンペーン、レビュー、結果ファイルの再入力は不要です。</div>` : ""}
     <div class="row">
       <div class="field">
-        <label for="campaignId">campaign_id</label>
+        <label for="campaignId">キャンペーン ID <code>campaign_id</code></label>
         <input id="campaignId" value="${escapeHtml(model.campaignId)}"${readonly}>
       </div>
       <div class="field">
-        <label for="reviewId">review_id</label>
+        <label for="reviewId">レビュー ID <code>review_id</code></label>
         <input id="reviewId" value="${escapeHtml(model.reviewId)}"${readonly}>
       </div>
       <div class="field">
-        <label for="reviewResultJsonPath">review-result JSON</label>
+        <label for="reviewResultJsonPath">レビュー結果 JSON</label>
         <input id="reviewResultJsonPath" value="${escapeHtml(model.reviewResultJsonPath)}"${readonly}>
       </div>
     </div>
-    <div class="muted">triage: ${escapeHtml(model.triagePath ?? "未生成")}</div>
+    <div class="muted">判定ファイル: ${escapeHtml(model.triagePath ?? "未生成")}</div>
     ${model.reviewRunBound ? renderRunStatus(model) : ""}
     <div class="actions">
-      ${model.reviewRunBound ? "" : `<button type="button" data-action="initCampaign">campaign を初期化</button>`}
-      <button type="button" data-action="createTriage">triage 雛形を生成</button>
-      <button type="button" class="secondary" data-action="validateTriage">triage を検証</button>
-      ${model.reviewRunBound ? "" : `<button type="button" class="secondary" data-action="createRecord">record を作成</button><button type="button" class="secondary" data-action="generateSummary">summary 生成</button>`}
+      ${model.reviewRunBound ? "" : `<button type="button" data-action="initCampaign">レビューキャンペーンを初期化</button>`}
+      <button type="button" data-action="createTriage">判定一覧を作成</button>
+      <button type="button" class="secondary" data-action="validateTriage">判定内容を検証</button>
+      ${model.reviewRunBound ? "" : `<button type="button" class="secondary" data-action="createRecord">実績記録を作成</button><button type="button" class="secondary" data-action="generateSummary">集計レポートを作成</button>`}
     </div>
   </section>
   ${model.reviewRunBound ? renderMetrics(model) : ""}
   <section class="card">
-    <h2>Finding 採否判断</h2>
-    ${model.items.length === 0 ? `<div class="muted">triage 雛形を生成すると finding が表示されます。</div>` : renderItemsTable(model.items)}
+    <h2>指摘の判定</h2>
+    ${model.items.length === 0 ? `<div class="muted">判定一覧を作成すると指摘が表示されます。</div>` : renderItemsTable(model.items)}
     <div class="actions">
-      <button type="button" data-action="saveDecisions">すべて保存</button>
-      ${model.reviewRunBound ? `<button type="button" data-action="finalizeReviewRun"${model.canFinalize === false || model.reviewRunStatus === "completed" ? " disabled" : ""}>Review Runを完了して集計</button>` : ""}
+      <button type="button" data-action="saveDecisions">判定内容を保存</button>
+      ${model.reviewRunBound ? `<button type="button" data-action="finalizeReviewRun"${model.canFinalize === false || model.reviewRunStatus === "completed" ? " disabled" : ""}>レビューを完了して集計</button>` : ""}
     </div>
   </section>
   <section class="card">
     <h2>検証結果</h2>
-    <div id="status" class="status ${model.issues.length > 0 ? "error" : "muted"}">${escapeHtml(model.issues.join("\n") || (model.reviewRunStatus === "completed" ? "Review Runは完了しています。" : "未実行"))}</div>
+    <div id="status" class="status ${model.issues.length > 0 ? "error" : "muted"}">${escapeHtml(model.issues.join("\n") || (model.reviewRunStatus === "completed" ? "レビューは完了しています。" : "未実行"))}</div>
   </section>
   <script nonce="${escapeHtml(input.nonce)}">
     const vscode = acquireVsCodeApi();
@@ -159,11 +160,11 @@ export function renderHumanTriageHtml(input: RenderHumanTriageHtmlInput): string
         const owner = item.owner.trim();
         const action = item.action.trim();
         const reason = item.reason.trim();
-        if (item.decision === 'accepted' && !owner && !action) issues.push('items[' + index + ']: acceptedにはownerまたはactionが必要です。');
-        if (item.decision === 'rejected' && !reason) issues.push('items[' + index + ']: rejectedにはreasonが必要です。');
-        if (item.decision === 'needs_investigation' && !owner) issues.push('items[' + index + ']: needs_investigationにはownerが必要です。');
-        if (item.decision === 'needs_investigation' && !action) issues.push('items[' + index + ']: needs_investigationにはactionが必要です。');
-        if (item.decision === 'deferred' && !reason) issues.push('items[' + index + ']: deferredにはreasonが必要です。');
+        if (item.decision === 'accepted' && !owner && !action) issues.push('items[' + index + ']: 採用には担当者または対応内容が必要です。');
+        if (item.decision === 'rejected' && !reason) issues.push('items[' + index + ']: 却下には理由が必要です。');
+        if (item.decision === 'needs_investigation' && !owner) issues.push('items[' + index + ']: 要調査には担当者が必要です。');
+        if (item.decision === 'needs_investigation' && !action) issues.push('items[' + index + ']: 要調査には対応内容が必要です。');
+        if (item.decision === 'deferred' && !reason) issues.push('items[' + index + ']: 保留には理由が必要です。');
       });
       return issues;
     }
@@ -178,21 +179,21 @@ export function renderHumanTriageHtml(input: RenderHumanTriageHtmlInput): string
 }
 
 function renderRunStatus(model: HumanTriageGuiModel): string {
-  return `<div class="phase-grid" aria-label="Review Run phase status">${PHASES.map((phase) => `<div class="phase"><strong>${phase}</strong><div class="muted">${escapeHtml(model.phaseStatuses?.[phase] ?? "not_started")}</div></div>`).join("")}</div>
-    <div class="muted">record: ${escapeHtml(model.recordPath ?? "未作成")}</div>
-    <div class="muted">summary: ${escapeHtml(model.summaryMarkdownPath ?? "未作成")}</div>`
+  return `<div class="phase-grid" aria-label="レビュー実行の工程状態">${PHASES.map((phase) => `<div class="phase"><strong>${escapeHtml(reviewRunPhaseLabel(phase))}</strong><div class="muted">${escapeHtml(reviewRunStatusLabel(model.phaseStatuses?.[phase] ?? "not_started"))}</div></div>`).join("")}</div>
+    <div class="muted">実績記録: ${escapeHtml(model.recordPath ?? "未作成")}</div>
+    <div class="muted">集計レポート: ${escapeHtml(model.summaryMarkdownPath ?? "未作成")}</div>`
 }
 
 function renderMetrics(model: HumanTriageGuiModel): string {
   return `<section class="card">
-    <h2>Review Run Metrics</h2>
+    <h2>レビュー時間</h2>
     <div class="muted">自動計測値は確定前に補正できます。単位は分です。</div>
     <div class="row">
-      <div class="field"><label for="baselineReviewMinutes">baseline review</label><input id="baselineReviewMinutes" type="number" min="0" step="0.1" value="${numberAttribute(model.baselineReviewMinutes)}"></div>
-      <div class="field"><label for="bobReviewMinutes">Bob review</label><input id="bobReviewMinutes" type="number" min="0" step="0.1" value="${numberAttribute(model.bobReviewMinutes)}"></div>
-      <div class="field"><label for="humanTriageMinutes">Human Triage</label><input id="humanTriageMinutes" type="number" min="0" step="0.1" value="${numberAttribute(model.humanTriageMinutes)}"></div>
+      <div class="field"><label for="baselineReviewMinutes">従来レビュー</label><input id="baselineReviewMinutes" type="number" min="0" step="0.1" value="${numberAttribute(model.baselineReviewMinutes)}"></div>
+      <div class="field"><label for="bobReviewMinutes">Bob レビュー</label><input id="bobReviewMinutes" type="number" min="0" step="0.1" value="${numberAttribute(model.bobReviewMinutes)}"></div>
+      <div class="field"><label for="humanTriageMinutes">人による判定</label><input id="humanTriageMinutes" type="number" min="0" step="0.1" value="${numberAttribute(model.humanTriageMinutes)}"></div>
     </div>
-    <div class="actions"><button type="button" class="secondary" data-action="saveMetrics">metricsを保存</button></div>
+    <div class="actions"><button type="button" class="secondary" data-action="saveMetrics">レビュー時間を保存</button></div>
   </section>`
 }
 
@@ -200,12 +201,12 @@ function renderItemsTable(items: TriageItem[]): string {
   return `<table>
     <thead>
       <tr>
-        <th>finding</th>
-        <th>rule_id</th>
-        <th>decision</th>
-        <th>owner</th>
-        <th>action</th>
-        <th>reason</th>
+        <th>指摘</th>
+        <th>規約 ID</th>
+        <th>判定</th>
+        <th>担当者</th>
+        <th>対応内容</th>
+        <th>理由</th>
       </tr>
     </thead>
     <tbody>${items.map(renderItemRow).join("")}</tbody>
@@ -216,7 +217,7 @@ function renderItemRow(item: TriageItem): string {
   return `<tr data-triage-row data-finding-id="${escapeHtml(item.finding_id)}" data-rule-id="${escapeHtml(item.rule_id ?? "")}">
     <td><code>${escapeHtml(item.finding_id)}</code></td>
     <td><code>${escapeHtml(item.rule_id ?? "")}</code></td>
-    <td><select data-field="decision">${DECISIONS.map((decision) => `<option value="${decision}"${decision === item.decision ? " selected" : ""}>${decision}</option>`).join("")}</select></td>
+    <td><select data-field="decision">${DECISIONS.map((decision) => `<option value="${decision}"${decision === item.decision ? " selected" : ""}>${escapeHtml(reviewDecisionLabel(decision))}</option>`).join("")}</select></td>
     <td><input data-field="owner" value="${escapeHtml(item.owner ?? "")}"></td>
     <td><input data-field="action" value="${escapeHtml(item.action ?? "")}"></td>
     <td><textarea data-field="reason">${escapeHtml(item.reason ?? "")}</textarea></td>

@@ -80,7 +80,7 @@ const SAFE_WARNING_CODE = /^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)+$/
 const CONTROL_CHARACTER = /[\u0000-\u001f\u007f-\u009f]/
 const MAX_REMOTE_WARNINGS = 100
 const MAX_MODEL_CHUNKS = Math.floor(DEFAULT_RULE_AUTHORING_LIMITS.maxSourceIndexBytes / 128)
-const APPROVE_EXCLUSION = "Exclude and continue"
+const APPROVE_EXCLUSION = "除外して続行"
 
 export type RuleAuthoringGuiMessage =
   | { type: "chooseSources" }
@@ -298,7 +298,7 @@ async function openWithDependencies(
     if (transactions.length > 0) {
       const transactionId = requireGeneralId(transactions[0].transaction_id, "transaction ID")
       await vscode.window.showWarningMessage(
-        "An incomplete project rule apply transaction requires recovery or rollback before authoring can continue.",
+        "未完了の規約反映処理があります。規約作成を続ける前に、規約案の確認・採否画面で復旧または変更前への復元を行ってください。",
         { modal: true }
       )
       return { status: "recovery_required", transactionId }
@@ -324,7 +324,7 @@ async function openWithDependencies(
 
     panel = vscode.window.createWebviewPanel(
       "bobBazaarRuleAuthoring",
-      "Project Rule Source Wizard",
+      "規約資料の取り込み",
       vscode.ViewColumn.One,
       { enableScripts: true, retainContextWhenHidden: true }
     )
@@ -342,7 +342,7 @@ async function openWithDependencies(
         dependencies,
         panel: panel!,
         workspace,
-        configuredBobModelRoute: sanitizeRemoteSafeText(initial.configuredBobModelRoute ?? "Not provided", 512),
+        configuredBobModelRoute: sanitizeRemoteSafeText(initial.configuredBobModelRoute ?? "未設定", 512),
         bobExtensionAvailable: initial.bobExtensionAvailable ?? detectBobExtension(),
         workflowRunId,
         workflowStepId,
@@ -523,7 +523,7 @@ class RuleAuthoringGuiController {
 
   private async chooseSources(): Promise<void> {
     if (!this.activeRun) {
-      this.status = "Resume an incomplete run before selecting sources."
+      this.status = "途中の取り込みを再開してから資料を選択してください。"
       this.render()
       return
     }
@@ -531,10 +531,10 @@ class RuleAuthoringGuiController {
       canSelectFiles: true,
       canSelectFolders: false,
       canSelectMany: true,
-      openLabel: "Select project rule sources",
+      openLabel: "規約資料を選択",
       filters: {
-        "Supported rule documents": ["docx", "xlsx", "pdf"],
-        "Legacy Office documents (conversion required)": ["doc", "xls"]
+        "対応する規約資料": ["docx", "xlsx", "pdf"],
+        "旧形式の Office 資料（変換が必要）": ["doc", "xls"]
       }
     })
     if (!selected || this.disposed) return
@@ -800,7 +800,7 @@ class RuleAuthoringGuiController {
       const completed = await this.input.dependencies.completeCurrentWorkflowStepAfterGuiAction({
         executeCommand: (command, ...args) => vscode.commands.executeCommand(command, ...args),
         showWarningMessage: () => vscode.window.showWarningMessage(
-          "Could not complete the current Bob workflow step automatically."
+          "現在の Bob ワークフローステップを自動完了できませんでした。操作センターで実行状態を確認してください。"
         )
       }, metadata)
       this.externalCompletionStarted = false
@@ -810,7 +810,7 @@ class RuleAuthoringGuiController {
           this.input.settle({ status: "cancelled" }, false)
           return
         }
-        this.status = "AI payload consent was persisted, but workflow completion did not succeed. Retry completion."
+        this.status = "AI に送る内容の確認は保存されましたが、ワークフローを完了できませんでした。もう一度完了操作を実行してください。"
         this.render()
         return
       }
@@ -1024,7 +1024,7 @@ async function requestExclusionApprovals(outcomes: readonly SourceOutcome[]): Pr
   if (duplicates.length > 0) {
     const names = remoteSafeLogicalNames(duplicates.map((outcome) => outcome.model.logicalName))
     const response = await vscode.window.showWarningMessage(
-      `Duplicate sources will be fully excluded. Logical names: ${names.join(", ")}`,
+      `重複している資料は対象から除外されます。資料名: ${names.join(", ")}`,
       { modal: true },
       APPROVE_EXCLUSION
     )
@@ -1037,10 +1037,10 @@ async function requestExclusionApprovals(outcomes: readonly SourceOutcome[]): Pr
     const names = remoteSafeLogicalNames(unavailable.map((outcome) => outcome.model.logicalName))
     const hasPartial = unavailable.some((outcome) => outcome.model.extractionStatus === "partial")
     const copy = hasPartial
-      ? "For partial sources, extracted chunks remain included while unavailable or failed portions are excluded. Other blocked or non-shareable sources are fully excluded."
-      : "Blocked, failed, or non-shareable sources will be fully excluded."
+      ? "一部抽出の資料では、抽出できた範囲を含め、取得できない部分を除外します。抽出不可または共有不可の資料は全体を除外します。"
+      : "抽出不可、抽出失敗、共有不可の資料は対象から除外します。"
     const response = await vscode.window.showWarningMessage(
-      `${copy} Logical names: ${names.join(", ")}`,
+      `${copy} 資料名: ${names.join(", ")}`,
       { modal: true },
       APPROVE_EXCLUSION
     )
@@ -1237,7 +1237,7 @@ function resolveWorkspace(explicitRoot: string | undefined): WorkspaceSelection 
     return { workspaceRoot, workspaceName: matching.name }
   }
   const folder = vscode.workspace.workspaceFolders?.[0]
-  if (!folder || folder.uri.scheme !== "file") throw new Error("A local workspace is required")
+  if (!folder || folder.uri.scheme !== "file") throw new Error("ローカルワークスペースが必要です。フォルダーを開いてから再実行してください。")
   return { workspaceRoot: path.resolve(folder.uri.fsPath), workspaceName: folder.name }
 }
 
@@ -1258,7 +1258,7 @@ function newAuthoringRunId(): string {
 async function showSafeHostError(): Promise<void> {
   try {
     await vscode.window.showErrorMessage(
-      "Project rule source wizard stopped because an operation could not be completed safely."
+      "規約資料の取り込みを安全に続行できなかったため停止しました。入力資料とワークスペースを確認して再実行してください。"
     )
   } catch {
     // Reporting a safe, pathless error must not create a second failure.

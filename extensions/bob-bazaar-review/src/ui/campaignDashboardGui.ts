@@ -34,7 +34,7 @@ export function openBazaarCampaignDashboardGui(
 ): void {
   const panel = vscode.window.createWebviewPanel(
     "bobBazaarCampaignDashboard",
-    "Bazaar Campaign Dashboard",
+    "レビューキャンペーン ダッシュボード",
     vscode.ViewColumn.One,
     { enableScripts: true, retainContextWhenHidden: true }
   )
@@ -64,7 +64,7 @@ class BazaarCampaignDashboardGuiController {
       this.workspaceRoot = await resolveDashboardWorkspaceRoot(this.input.workspaceRoot)
       this.campaigns = await listCampaignDashboardCampaigns(this.workspaceRoot)
       this.selectedCampaignId = selectInitialCampaign(this.selectedCampaignId, this.campaigns)
-      await this.reload("Campaign Dashboardを読み込みました。")
+      await this.reload("ダッシュボードを読み込みました。")
     } catch (error) {
       this.render(undefined, errorMessage(error))
     }
@@ -73,18 +73,18 @@ class BazaarCampaignDashboardGuiController {
   async handleMessage(rawMessage: unknown): Promise<void> {
     const message = parseCampaignDashboardMessage(rawMessage)
     if (!message) {
-      this.post({ ok: false, message: "不正なDashboard操作を拒否しました。" })
+      this.post({ ok: false, message: "不正なダッシュボード操作を拒否しました。画面を再読み込みしてください。" })
       return
     }
     try {
       if (message.type === "campaignDashboard.refresh") {
-        await this.reload("Campaign Dashboardを再読込しました。")
+        await this.reload("ダッシュボードを再読み込みしました。")
       } else if (message.type === "campaignDashboard.selectCampaign") {
         const selected = validateReviewRunSegment(message.campaignId, "campaignId")
-        if (!this.campaigns.includes(selected)) throw new Error(`campaignが見つかりません: ${selected}`)
+        if (!this.campaigns.includes(selected)) throw new Error(`レビューキャンペーンが見つかりません: ${selected}`)
         this.selectedCampaignId = selected
         this.exportedPaths = undefined
-        await this.reload(`campaign ${selected} を読み込みました。`)
+        await this.reload(`レビューキャンペーン ${selected} を読み込みました。`)
       } else if (message.type === "campaignDashboard.export") {
         await this.exportDashboard()
       }
@@ -112,12 +112,12 @@ class BazaarCampaignDashboardGuiController {
     const paths = await writeCampaignDashboardArtifacts(workspaceRoot, campaignId, dashboard)
     this.dashboard = dashboard
     this.exportedPaths = paths
-    this.render("DashboardをJSON / Markdown / CSVへexportしました。")
-    await vscode.window.showInformationMessage(`Bazaar Campaign Dashboardをexportしました: ${paths.markdownPath}`)
+    this.render("ダッシュボードを JSON／Markdown／CSV へ書き出しました。")
+    await vscode.window.showInformationMessage(`レビューキャンペーン ダッシュボードを書き出しました: ${paths.markdownPath}`)
     this.post({
       ok: true,
       message: [
-        "Dashboard exportが完了しました。",
+        "ファイルへの書き出しが完了しました。",
         `JSON: ${paths.jsonPath}`,
         `Markdown: ${paths.markdownPath}`,
         `CSV: ${paths.csvPath}`
@@ -155,9 +155,9 @@ async function resolveDashboardWorkspaceRoot(explicitRoot: string | undefined): 
   }
   const folder = await resolveBobWorkspaceFolder({
     allowPick: true,
-    title: "Campaign DashboardのBob workspaceを選択"
+    title: "ダッシュボードの Bob ワークスペースを選択"
   })
-  if (!folder) throw new Error("Campaign DashboardにはBob workspaceが必要です。")
+  if (!folder) throw new Error("ダッシュボードには Bob ワークスペースが必要です。ワークスペースを選択してください。")
   return validateDashboardWorkspaceRoot(
     folder.uri.fsPath,
     (vscode.workspace.workspaceFolders ?? []).map((candidate) => candidate.uri.fsPath)
@@ -174,14 +174,14 @@ async function validateDashboardWorkspaceRoot(value: string, openWorkspaceRoots:
     try {
       await assertReviewRunPathContained(root, workspaceRoot)
       const stats = await fs.stat(workspaceRoot)
-      if (!stats.isDirectory()) throw new Error("workspaceRoot is not a directory")
+      if (!stats.isDirectory()) throw new Error("ワークスペースのパスがフォルダーではありません")
       return workspaceRoot
     } catch (error) {
       boundaryError = error
     }
   }
   const detail = boundaryError instanceof Error ? `: ${boundaryError.message}` : ""
-  throw new Error(`Campaign Dashboard workspaceRoot must be inside an open workspace folder: ${value}${detail}`)
+  throw new Error(`ダッシュボードのワークスペースは、開いているワークスペースフォルダー内にある必要があります: ${value}${detail}`)
 }
 
 function parseCampaignDashboardMessage(value: unknown): CampaignDashboardMessage | undefined {

@@ -23,38 +23,38 @@ export const REVIEW_GUI_STYLE = `
 `
 
 export const REVIEW_GUI_BODY = `
-  <h1>Bob Bazaar レビュー</h1>
+  <h1>Bazaar レビューを開始</h1>
   <div class="card">
-    <h2>Wizard v3 / Review Run</h2>
-    <div class="wizard" aria-label="Bazaar review wizard steps">
-      <div class="wizard-step"><strong>campaign</strong><div class="small">Review Run の保存先</div></div>
-      <div class="wizard-step"><strong>target</strong><div class="small">revision / range / working tree</div></div>
-      <div class="wizard-step"><strong>packet</strong><div class="small">Bob contextへ追加</div></div>
-      <div class="wizard-step"><strong>result</strong><div class="small">同じreview_idで保存</div></div>
-      <div class="wizard-step"><strong>triage</strong><div class="small">人間の採否判断</div></div>
-      <div class="wizard-step"><strong>record / summary</strong><div class="small">実績を確定・集計</div></div>
+    <h2>レビュー手順</h2>
+    <div class="wizard" aria-label="Bazaar レビュー手順">
+      <div class="wizard-step"><strong>レビューキャンペーン</strong><div class="small">レビュー実行の保存先</div></div>
+      <div class="wizard-step"><strong>レビュー対象</strong><div class="small">1リビジョン／範囲／未コミット差分</div></div>
+      <div class="wizard-step"><strong>レビュー資料</strong><div class="small">Bob コンテキストへ追加</div></div>
+      <div class="wizard-step"><strong>結果の取り込み</strong><div class="small">同じレビュー ID で保存</div></div>
+      <div class="wizard-step"><strong>人による判定</strong><div class="small">指摘を採用・却下・保留</div></div>
+      <div class="wizard-step"><strong>実績保存・集計</strong><div class="small">実績記録と集計レポートを作成</div></div>
     </div>
     <div class="row" style="margin-top:12px">
-      <div class="field"><label class="small" for="campaignId">campaign_id</label><input id="campaignId" type="text" value="phase1-bazaar-review-uat-001"></div>
-      <div class="field"><label class="small" for="reviewId">review_id（対象取得後に自動提案）</label><input id="reviewId" type="text" placeholder="bazaar-r125-project-rule-review"></div>
+      <div class="field"><label class="small" for="campaignId">キャンペーン ID <code>campaign_id</code></label><input id="campaignId" type="text" value="phase1-bazaar-review-uat-001"></div>
+      <div class="field"><label class="small" for="reviewId">レビュー ID <code>review_id</code>（対象取得後に自動提案）</label><input id="reviewId" type="text" placeholder="bazaar-r125-project-rule-review"></div>
     </div>
-    <div id="runState" class="small">Review Run はまだ開始されていません。</div>
+    <div id="runState" class="small">レビュー実行はまだ開始されていません。</div>
     <div class="row" style="margin-top:12px">
-      <button class="secondary" id="openResultCapture">Result Capture を開く</button>
-      <button class="secondary" id="openHumanTriage">Human Triage を開く</button>
-      <button class="secondary" id="openCampaignDashboard">Campaign Dashboard を開く</button>
+      <button class="secondary" id="openResultCapture">レビュー結果の取り込みを開く</button>
+      <button class="secondary" id="openHumanTriage">人による判定を開く</button>
+      <button class="secondary" id="openCampaignDashboard">レビューキャンペーン ダッシュボードを開く</button>
     </div>
   </div>
 
   <div class="card">
-    <h2>未完了のReview Runを再開</h2>
+    <h2>途中のレビューを再開</h2>
     <div class="row">
-      <div class="field"><label class="small" for="incompleteRun">Review Run</label><select id="incompleteRun"><option value="">未完了runを取得してください</option></select></div>
+      <div class="field"><label class="small" for="incompleteRun">レビュー実行</label><select id="incompleteRun"><option value="">途中のレビューを取得してください</option></select></div>
       <button class="secondary" id="refreshReviewRuns">一覧を更新</button>
-      <button id="resumeReviewRun" disabled>選択したrunを再開</button>
+      <button id="resumeReviewRun" disabled>選択したレビューを再開</button>
     </div>
     <div id="resumeDetails" class="small">未選択</div>
-    <div id="phaseStatuses" class="phase-grid" aria-label="Review Run phase status"></div>
+    <div id="phaseStatuses" class="phase-grid" aria-label="レビュー実行の工程状態"></div>
     <ul id="runArtifacts" class="artifacts"></ul>
   </div>
 
@@ -83,7 +83,7 @@ export const REVIEW_GUI_BODY = `
     <div class="field"><label class="small" for="targetRevision">比較先リビジョン</label><input id="targetRevision" type="text" placeholder="例: 1234"></div>
   </div>
   <div class="row hidden" id="workingTreeFields"><div class="field"><label class="small" for="workingBaseRevision">基準リビジョン（空欄はTOP）</label><input id="workingBaseRevision" type="text"></div></div>
-  <div class="row"><button id="load">対象情報を取得</button><button id="review" disabled>Review Run を開始して Bob に追加</button></div>
+  <div class="row"><button id="load">対象情報を取得</button><button id="review" disabled>レビューを開始して Bob に渡す</button></div>
   <label><input id="withProjectRules" type="checkbox" checked> プロジェクト規約を含める</label>
   <div id="status" class="status"></div>
   <div id="info" class="card hidden">
@@ -92,13 +92,13 @@ export const REVIEW_GUI_BODY = `
       <div class="label">モード</div><div id="infoMode"></div>
       <div class="label">対象</div><div id="infoTarget"></div>
       <div class="label">リビジョン</div><div id="infoRevision"></div>
-      <div class="label">Revno</div><div id="infoRevno"></div>
+      <div class="label">リビジョン番号</div><div id="infoRevno"></div>
       <div class="label">作者</div><div id="infoAuthor"></div>
-      <div class="label">Committer</div><div id="infoCommitter"></div>
+      <div class="label">コミッター</div><div id="infoCommitter"></div>
       <div class="label">日時</div><div id="infoTimestamp"></div>
       <div class="label">変更ファイル数</div><div id="infoChangedCount"></div>
     </div>
-    <h3>メッセージ / status</h3><pre id="infoMessage"></pre>
+    <h3>コミットメッセージ／状態</h3><pre id="infoMessage"></pre>
     <h3>変更ファイル</h3><ul id="infoFiles" class="files"></ul>
   </div>
 `
@@ -109,6 +109,11 @@ export function renderReviewGuiScript(nonce: string, initialTargetJson: string):
     const $ = (id) => document.getElementById(id)
     const initialTarget = ${initialTargetJson}
     const phases = ["target", "packet", "result", "triage", "record", "summary"]
+    const phaseLabels = { target: "レビュー対象", packet: "レビュー資料", result: "結果の取り込み", triage: "人による判定", record: "実績記録", summary: "集計レポート" }
+    const phaseStatusLabels = { not_started: "未開始", in_progress: "実行中", completed: "完了", failed: "失敗", blocked: "続行不可" }
+    const nextActionLabels = { review: "レビューを実行", resultCapture: "結果を取り込む", humanTriage: "人による判定", finalize: "完了処理", none: "なし" }
+    const targetModeLabels = { singleRevision: "1リビジョン", revisionRange: "リビジョン範囲", workingTreeSinceRevision: "未コミット差分" }
+    const labelOrUnknown = (value, labels) => labels[value] || "不明（" + String(value || "") + "）"
     let loaded = false
     let bobInitialized = false
     let reviewIdManuallyEdited = false
@@ -189,7 +194,7 @@ export function renderReviewGuiScript(nonce: string, initialTargetJson: string):
     function renderInfo(info) {
       loaded = true
       $("info").classList.remove("hidden")
-      $("infoMode").textContent = info.mode || ""
+      $("infoMode").textContent = info.mode ? labelOrUnknown(info.mode, targetModeLabels) : ""
       $("infoTarget").textContent = info.targetLabel || ""
       $("infoRevision").textContent = info.revision || info.targetRevision || ""
       $("infoRevno").textContent = info.revno || ""
@@ -207,7 +212,7 @@ export function renderReviewGuiScript(nonce: string, initialTargetJson: string):
       $("campaignId").value = run.campaignId || $("campaignId").value
       $("reviewId").value = run.reviewId || $("reviewId").value
       reviewIdManuallyEdited = true
-      $("runState").textContent = "Review Run: " + run.campaignId + " / " + run.reviewId + " / phase=" + (run.phase || "unknown") + " / status=" + (run.status || "in_progress")
+      $("runState").textContent = "レビュー実行: " + run.campaignId + " / " + run.reviewId + " / 工程=" + labelOrUnknown(run.phase || "unknown", phaseLabels) + " / 状態=" + labelOrUnknown(run.status || "in_progress", phaseStatusLabels)
       if (run.phases) renderPhaseStatuses(run.phases)
       if (run.artifacts) renderArtifacts(run.artifacts)
       updateReviewButton()
@@ -217,7 +222,7 @@ export function renderReviewGuiScript(nonce: string, initialTargetJson: string):
       $("incompleteRun").innerHTML = ""
       const placeholder = document.createElement("option")
       placeholder.value = ""
-      placeholder.textContent = reviewRuns.length ? "未完了runを選択" : "未完了runはありません"
+      placeholder.textContent = reviewRuns.length ? "途中のレビューを選択" : "途中のレビューはありません"
       $("incompleteRun").appendChild(placeholder)
       reviewRuns.forEach((run, index) => { const option = document.createElement("option"); option.value = String(index); option.textContent = run.label + " — " + run.description; $("incompleteRun").appendChild(option) })
       renderSelectedRun()
@@ -226,13 +231,13 @@ export function renderReviewGuiScript(nonce: string, initialTargetJson: string):
     function renderSelectedRun() {
       const run = selectedRun()
       $("resumeReviewRun").disabled = !run
-      $("resumeDetails").textContent = run ? "target=" + run.targetLabel + " / 次の操作=" + run.action + " / updated=" + run.updatedAt : "未選択"
+      $("resumeDetails").textContent = run ? "対象=" + run.targetLabel + " / 次の操作=" + labelOrUnknown(run.action, nextActionLabels) + " / 更新=" + run.updatedAt : "未選択"
       renderPhaseStatuses(run ? run.phases : {})
       renderArtifacts(run ? run.artifacts : {})
     }
     function renderPhaseStatuses(statuses) {
       $("phaseStatuses").innerHTML = ""
-      phases.forEach((phase) => { const item = document.createElement("div"); item.className = "phase"; const strong = document.createElement("strong"); strong.textContent = phase; const detail = document.createElement("div"); detail.className = "small"; detail.textContent = statuses[phase] || "not_started"; item.append(strong, detail); $("phaseStatuses").appendChild(item) })
+      phases.forEach((phase) => { const item = document.createElement("div"); item.className = "phase"; const strong = document.createElement("strong"); strong.textContent = labelOrUnknown(phase, phaseLabels); const detail = document.createElement("div"); detail.className = "small"; detail.textContent = labelOrUnknown(statuses[phase] || "not_started", phaseStatusLabels); item.append(strong, detail); $("phaseStatuses").appendChild(item) })
     }
     function renderArtifacts(artifacts) {
       $("runArtifacts").innerHTML = ""
@@ -248,7 +253,7 @@ export function renderReviewGuiScript(nonce: string, initialTargetJson: string):
       updateMode()
       loaded = true
       renderReviewRun(message.reviewRun)
-      setStatus("target phaseのReview Runを選択しました。対象を確認してpacket作成を再試行してください。", false, true)
+      setStatus("レビュー対象工程の実行を選択しました。対象を確認し、レビュー資料の作成をもう一度実行してください。", false, true)
     }
     function renderWorkspaceState(message) {
       const parts = []
@@ -261,12 +266,12 @@ export function renderReviewGuiScript(nonce: string, initialTargetJson: string):
       if (message.type === "workspaceState") renderWorkspaceState(message)
       else if (message.type === "bobWorkspaceStatus") renderBobStatus(message)
       else if (message.type === "reviewRuns") renderReviewRuns(message.items)
-      else if (message.type === "activeReviewRun") { renderReviewRun(message.reviewRun); setStatus(message.message || "Review Runを再開しました。", false, true) }
+      else if (message.type === "activeReviewRun") { renderReviewRun(message.reviewRun); setStatus(message.message || "レビュー実行を再開しました。", false, true) }
       else if (message.type === "resumeTarget") applyResumeTarget(message)
       else if (message.type === "initialized") setStatus(message.message, false, true)
       else if (message.type === "loading") setStatus(message.message)
       else if (message.type === "targetInfo") { if (!reviewIdManuallyEdited && message.suggestedReviewId) $("reviewId").value = message.suggestedReviewId; renderInfo(message.info); setStatus("対象情報を取得しました", false, true) }
-      else if (message.type === "reviewAdded") { renderInfo(message.info); renderReviewRun(message.reviewRun); setStatus("Review Run と packet を保存しました。packet bytes: " + message.packetBytes, false, true); vscode.postMessage({ type: "refreshReviewRuns" }) }
+      else if (message.type === "reviewAdded") { renderInfo(message.info); renderReviewRun(message.reviewRun); setStatus("レビュー実行とレビュー資料を保存しました。資料サイズ: " + message.packetBytes + "バイト", false, true); vscode.postMessage({ type: "refreshReviewRuns" }) }
       else if (message.type === "error") setStatus(message.message || "エラー", true)
     })
     updateMode()

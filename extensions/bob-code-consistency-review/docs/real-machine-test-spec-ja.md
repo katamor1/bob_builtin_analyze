@@ -15,7 +15,7 @@
 | 出力 | `.bob-review/review-package`, `.bob-review/bob-output`, `.bob-review/human-triage`, `.bob-trace` |
 | VCS | Git 差分、Git rename / binary numstat、Bazaar / bzr 差分、diff fixture |
 | 文書形式 | Markdown、Word `.docx`、Excel `.xlsx` |
-| UI | Command Palette、QuickPick、Webview Traceability Prep、Bob Workflow UI |
+| UI | Command Palette、QuickPick、Webview トレーサビリティ確認、Bob Workflow UI |
 
 ## 3. 前提環境
 
@@ -206,7 +206,7 @@ powershell -File docs\workflows\code-consistency-review\integration\launch-bob-c
 | 項目 | 内容 |
 | --- | --- |
 | 目的 | traceability prep Webview が開き、catalog を表示できることを確認する。 |
-| 手順 | 1. `Bob Code Consistency Review: traceability prep を開く` を実行する。<br>2. Domains / Items / Links / Decisions / Gate Report / Preview タブを確認する。 |
+| 手順 | 1. `Bob Code Consistency Review: トレーサビリティ確認を開く` を実行する。<br>2. Domains / Items / Links / Decisions / Gate Report / Preview タブを確認する。 |
 | 期待結果 | Webview が表示され、空 catalog または既存 catalog が読み込まれる。 |
 
 ### CCR-RT-011 traceability prep 保存と gate report
@@ -230,7 +230,7 @@ powershell -File docs\workflows\code-consistency-review\integration\launch-bob-c
 | 項目 | 内容 |
 | --- | --- |
 | 目的 | catalog validation と gate report 生成を command から確認する。 |
-| 手順 | 1. valid / invalid catalog を用意する。<br>2. `Bob Code Consistency Review: traceability catalog を検証` を実行する。 |
+| 手順 | 1. valid / invalid catalog を用意する。<br>2. `Bob Code Consistency Review: トレーサビリティ台帳を検証` を実行する。 |
 | 期待結果 | `.bob-trace/gate-report.md` が更新され、error / warning 件数が通知される。 |
 
 ### CCR-RT-013 traceability AI draft prompt 生成
@@ -254,7 +254,7 @@ powershell -File docs\workflows\code-consistency-review\integration\launch-bob-c
 | 項目 | 内容 |
 | --- | --- |
 | 目的 | accepted item から `review-input.yaml` を生成できることを確認する。 |
-| 手順 | 1. accepted requirement / design / test item を含む catalog を用意する。<br>2. `Bob Code Consistency Review: traceability catalog から review-input.yaml を生成` を実行する。<br>3. review metadata を入力する。 |
+| 手順 | 1. accepted requirement / design / test item を含む catalog を用意する。<br>2. `Bob Code Consistency Review: トレーサビリティ台帳から review-input.yaml を作成` を実行する。<br>3. review metadata を入力する。 |
 | 期待結果 | accepted item の source path / id が artifacts に反映された `review-input.yaml` が生成される。 |
 
 ### CCR-RT-016 Git preprocess
@@ -262,7 +262,7 @@ powershell -File docs\workflows\code-consistency-review\integration\launch-bob-c
 | 項目 | 内容 |
 | --- | --- |
 | 目的 | Git diff から review-package を生成できることを確認する。 |
-| 手順 | 1. Git repository で変更を作成する。<br>2. valid `review-input.yaml` に `review.vcs: git`、base / head を設定する。<br>3. `Bob Code Consistency Review: 入力を前処理して Bob 用パッケージを作成` を実行する。 |
+| 手順 | 1. Git repository で変更を作成する。<br>2. valid `review-input.yaml` に `review.vcs: git`、base / head を設定する。<br>3. `Bob Code Consistency Review: Bob に渡すレビュー資料を作成` を実行する。 |
 | 期待結果 | `.bob-review/review-package` に manifest、changed files、evidence index、bob-input.md などが生成される。 |
 
 ### CCR-RT-016A Git 複数言語 preprocess
@@ -382,7 +382,7 @@ powershell -File docs\workflows\code-consistency-review\integration\launch-bob-c
 | 項目 | 内容 |
 | --- | --- |
 | 目的 | Bob output から human triage 成果物を生成できることを確認する。 |
-| 手順 | 1. valid Bob output を保存する。<br>2. `Bob Code Consistency Review: 人間確認用 triage を生成` を実行する。 |
+| 手順 | 1. valid Bob output を保存する。<br>2. `Bob Code Consistency Review: 人による判定一覧を作成` を実行する。 |
 | 期待結果 | `.bob-review/human-triage` に `triage-result.yaml`、`accepted-findings.md`、`questions-to-author.md`、`rejected-findings.md`、`follow-up-actions.md` が生成される。 |
 
 ### CCR-RT-030 End-to-End: Command Palette 経由
@@ -480,13 +480,13 @@ powershell -File docs\workflows\code-consistency-review\integration\launch-bob-c
 6. workflow-contracts CI が repository 内の全対象 WORKFLOW.md を検証し成功していること。
 
 <!-- TRIAGE-INTEGRITY-2026-07-12 -->
-## 2026-07-12 Human Triage Integrity 実機テスト
+## 2026-07-12 人による判定 Integrity 実機テスト
 
 ### CCR-RT-036 Generate / edit / save / reload
 
 | 項目 | 内容 |
 | --- | --- |
-| 手順 | Bob outputをcapture・validateし、Human Triage GUIで生成する。findingをaccepted、questionをquestionとして必要fieldを入力し保存後、GUIを閉じて再度開く。 |
+| 手順 | Bob outputをcapture・validateし、指摘・確認事項の判定画面で生成する。findingをaccepted、questionをquestionとして必要fieldを入力し保存後、GUIを閉じて再度開く。 |
 | 期待結果 | source contextは不変で、人間decision、owner、reason、comment、follow-upが再表示される。accepted / question / follow-up Markdownが保存内容と一致する。 |
 
 ### CCR-RT-037 Source change conflict
@@ -500,7 +500,7 @@ powershell -File docs\workflows\code-consistency-review\integration\launch-bob-c
 
 | 項目 | 内容 |
 | --- | --- |
-| 手順 | Human Triage GUIを2画面で開き、画面Aで保存後、古い画面Bから保存する。 |
+| 手順 | 指摘・確認事項の判定画面を2画面で開き、画面Aで保存後、古い画面Bから保存する。 |
 | 期待結果 | 画面Bは`TRIAGE_REVISION_CONFLICT`となる。Aのdecisionと生成成果物を保持し、再読込後に最新revisionを表示する。 |
 
 ### CCR-RT-039 Legacy migration

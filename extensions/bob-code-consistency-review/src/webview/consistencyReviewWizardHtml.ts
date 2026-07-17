@@ -7,6 +7,7 @@ import {
   type VcsKind
 } from "../core/reviewInputBuilder"
 import type { ReviewInputDocumentCandidate } from "../core/reviewInputDiscovery"
+import { artifactKindLabel, changeTypeLabel, reviewFocusLabel, traceabilityStatusLabel } from "./displayLabels"
 
 export interface ConsistencyWizardTraceabilitySummary {
   proposed: number
@@ -62,7 +63,7 @@ export function renderConsistencyReviewWizardHtml(input: RenderConsistencyReview
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${escapeHtml(input.cspSource)} 'unsafe-inline'; script-src 'nonce-${escapeHtml(input.nonce)}';">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Consistency Review Wizard</title>
+  <title>整合プレレビューを開始</title>
   <style>
     body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); padding: 18px; }
     h1 { font-size: 20px; margin: 0 0 12px; }
@@ -85,48 +86,48 @@ export function renderConsistencyReviewWizardHtml(input: RenderConsistencyReview
   </style>
 </head>
 <body>
-  <h1>Consistency Review Wizard</h1>
+  <h1>整合プレレビューを開始</h1>
   ${renderWorkspaceInitialization(model.initialization)}
   <section class="card">
-    <h2>VCS / Revision</h2>
+    <h2>変更範囲</h2>
     <div class="row">
-      <div class="field"><label for="reviewId">review_id</label><input id="reviewId" value="code-consistency-review"></div>
-      <div class="field"><label for="reviewTitle">title</label><input id="reviewTitle" value="コード整合プレレビュー"></div>
-      <div class="field"><label for="vcs">VCS</label><select id="vcs">${VCS_VALUES.map((value) => option(value, model.vcs)).join("")}</select></div>
-      <div class="field"><label for="changeType">change_type</label><select id="changeType">${CHANGE_TYPE_VALUES.map((value) => option(value, model.changeType)).join("")}</select></div>
-      <div class="field"><label for="base">base</label><input id="base" value="${escapeHtml(model.base)}"></div>
-      <div class="field"><label for="head">head</label><input id="head" value="${escapeHtml(model.head)}"></div>
+      <div class="field"><label for="reviewId">レビュー ID <code>review_id</code></label><input id="reviewId" value="code-consistency-review"></div>
+      <div class="field"><label for="reviewTitle">表示名 <code>title</code></label><input id="reviewTitle" value="コード整合プレレビュー"></div>
+      <div class="field"><label for="vcs">バージョン管理</label><select id="vcs">${VCS_VALUES.map((value) => option(value, model.vcs, vcsLabel(value))).join("")}</select></div>
+      <div class="field"><label for="changeType">変更種別 <code>change_type</code></label><select id="changeType">${CHANGE_TYPE_VALUES.map((value) => option(value, model.changeType, changeTypeLabel(value))).join("")}</select></div>
+      <div class="field"><label for="base">比較元 <code>base</code></label><input id="base" value="${escapeHtml(model.base)}"></div>
+      <div class="field"><label for="head">比較先 <code>head</code></label><input id="head" value="${escapeHtml(model.head)}"></div>
     </div>
   </section>
   <section class="card">
-    <h2>Evidence Picker</h2>
+    <h2>関連資料の選択</h2>
     <div class="grid">${model.documents.length === 0 ? `<div class="muted">文書候補はありません。</div>` : model.documents.map(renderDocument).join("")}</div>
   </section>
   <section class="card">
-    <h2>Review Focus</h2>
-    ${REVIEW_FOCUS_VALUES.map((focus) => `<label class="focus"><input type="checkbox" data-focus="${focus}"${model.focus.includes(focus) ? " checked" : ""}>${focus}</label>`).join("")}
+    <h2>確認観点</h2>
+    ${REVIEW_FOCUS_VALUES.map((focus) => `<label class="focus"><input type="checkbox" data-focus="${focus}"${model.focus.includes(focus) ? " checked" : ""}>${escapeHtml(reviewFocusLabel(focus))}</label>`).join("")}
   </section>
   <section class="card">
-    <h2>Traceability</h2>
-    <div class="muted">proposed ${model.traceability.proposed} / accepted ${model.traceability.accepted} / rejected ${model.traceability.rejected} / deprecated ${model.traceability.deprecated} / errors ${model.traceability.errors} / warnings ${model.traceability.warnings}</div>
+    <h2>トレーサビリティ</h2>
+    <div class="muted">${traceabilityStatusLabel("proposed")} ${model.traceability.proposed}件 / ${traceabilityStatusLabel("accepted")} ${model.traceability.accepted}件 / ${traceabilityStatusLabel("rejected")} ${model.traceability.rejected}件 / ${traceabilityStatusLabel("deprecated")} ${model.traceability.deprecated}件 / エラー ${model.traceability.errors}件 / 警告 ${model.traceability.warnings}件</div>
     <div class="actions">
-      <button type="button" data-action="openTraceabilityPrep">Traceability Prep を開く</button>
-      <button type="button" class="secondary" data-action="createReviewInputFromTraceability">Traceability から review-input</button>
-      <button type="button" class="secondary" data-action="validateTraceability">Traceability を検証</button>
+      <button type="button" data-action="openTraceabilityPrep">トレーサビリティ確認を開く</button>
+      <button type="button" class="secondary" data-action="createReviewInputFromTraceability">トレーサビリティから review-input を作成</button>
+      <button type="button" class="secondary" data-action="validateTraceability">トレーサビリティを検証</button>
     </div>
   </section>
   <section class="card">
-    <h2>Package Preview</h2>
-    ${model.packagePreview.length === 0 ? `<div class="muted">review-package はまだ生成されていません。</div>` : `<ul>${model.packagePreview.map((file) => `<li><code>${escapeHtml(file.path)}</code></li>`).join("")}</ul>`}
+    <h2>Bob に渡す資料</h2>
+    ${model.packagePreview.length === 0 ? `<div class="muted">Bob に渡すレビュー資料はまだ作成されていません。</div>` : `<ul>${model.packagePreview.map((file) => `<li><code>${escapeHtml(file.path)}</code></li>`).join("")}</ul>`}
     <div class="actions">
-      <button type="button" data-action="createReviewInput">選択内容から review-input を生成</button>
-      <button type="button" data-action="preprocess">Bob 用パッケージを作成</button>
-      <button type="button" class="secondary" data-action="openResultCapture">Result Capture へ進む</button>
-      <button type="button" class="secondary" data-action="openHumanTriage">Human Triage へ進む</button>
+      <button type="button" data-action="createReviewInput">選択内容から review-input を作成</button>
+      <button type="button" data-action="preprocess">Bob に渡すレビュー資料を作成</button>
+      <button type="button" class="secondary" data-action="openResultCapture">Bob 出力の取り込みへ進む</button>
+      <button type="button" class="secondary" data-action="openHumanTriage">人による判定へ進む</button>
     </div>
   </section>
   <section class="card">
-    <h2>Status</h2>
+    <h2>実行結果</h2>
     <div id="status" class="status ${escapeHtml(model.status.tone)}">${escapeHtml(model.status.message)}</div>
   </section>
   <script nonce="${escapeHtml(input.nonce)}">
@@ -175,12 +176,19 @@ function renderDocument(candidate: ReviewInputDocumentCandidate): string {
   return `<label class="doc">
     <input type="checkbox" data-document-path="${escapeHtml(candidate.path)}" checked>
     <strong>${escapeHtml(candidate.label)}</strong>
-    <div class="muted">${escapeHtml(candidate.kind)} / ${escapeHtml(candidate.description ?? "")}</div>
+    <div class="muted">${escapeHtml(artifactKindLabel(candidate.kind))} / ${escapeHtml(candidate.description ?? "")}</div>
   </label>`
 }
 
-function option(value: string, selected: string): string {
-  return `<option value="${escapeHtml(value)}"${value === selected ? " selected" : ""}>${escapeHtml(value)}</option>`
+function option(value: string, selected: string, label: string): string {
+  return `<option value="${escapeHtml(value)}"${value === selected ? " selected" : ""}>${escapeHtml(label)}</option>`
+}
+
+function vcsLabel(value: string): string {
+  if (value === "git") return "Git"
+  if (value === "bazaar") return "Bazaar"
+  if (value === "bzr") return "Bazaar（bzr）"
+  return `不明（${value}）`
 }
 
 function escapeHtml(value: unknown): string {

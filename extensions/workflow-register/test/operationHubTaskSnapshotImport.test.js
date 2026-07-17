@@ -56,10 +56,10 @@ test("Operation Hub exposes task snapshot import provenance as a distinct badge"
 
   const summary = model.runMonitor[0]
   assert.equal(summary.taskSnapshotImportStatus, "ok")
-  assert.match(summary.taskSnapshotImportLabel, /Imported from task snapshot: 1 artifact/)
+  assert.match(summary.taskSnapshotImportLabel, /保存済みタスクから取り込み: 成果物 1件/)
   assert.match(summary.taskSnapshotImportLabel, /2026-07-12T12:34:56.000Z/)
   const html = renderOperationHubHtml({ model, cspSource: "vscode-resource:", nonce: "nonce" })
-  assert.match(html, /Imported from task snapshot: 1 artifact/)
+  assert.match(html, /保存済みタスクから取り込み: 成果物 1件/)
 })
 
 test("Runs View source projects task snapshot provenance into description, tooltip, and icon", () => {

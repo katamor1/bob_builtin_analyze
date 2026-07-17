@@ -36,7 +36,7 @@ interface ConsistencyWizardMessage {
 }
 
 export function openConsistencyReviewWizard(context: vscode.ExtensionContext): void {
-  const panel = vscode.window.createWebviewPanel("bobCodeConsistencyReviewWizard", "Consistency Review Wizard", vscode.ViewColumn.One, {
+  const panel = vscode.window.createWebviewPanel("bobCodeConsistencyReviewWizard", "整合プレレビューを開始", vscode.ViewColumn.One, {
     enableScripts: true,
     retainContextWhenHidden: true
   })
@@ -83,14 +83,14 @@ class ConsistencyReviewWizardController {
         await vscode.commands.executeCommand("bobCodeConsistency.validateTraceabilityCatalog", { workspaceRoot: this.workspaceRoot })
       } else if (message.action === "preprocess") {
         await vscode.commands.executeCommand("bobCodeConsistency.preprocess", { workspaceRoot: this.workspaceRoot })
-        this.model = await this.buildModel(["review-package を更新しました。"])
+        this.model = await this.buildModel(["Bob に渡すレビュー資料を更新しました。"])
         this.render()
       } else if (message.action === "openResultCapture") {
         await vscode.commands.executeCommand("bobCodeConsistency.openResultCaptureGui")
       } else if (message.action === "openHumanTriage") {
         await vscode.commands.executeCommand("bobCodeConsistency.openHumanTriageGui")
       }
-      this.post({ ok: true, message: "操作を実行しました。" })
+      this.post({ ok: true, message: "操作が完了しました。次の画面を確認してください。" })
     } catch (error) {
       this.post({ error: true, message: error instanceof Error ? error.message : String(error) })
     }
@@ -229,7 +229,7 @@ function parseConsistencyWizardMessage(message: unknown): ConsistencyWizardMessa
 }
 
 async function requireWorkspaceRoot(): Promise<string> {
-  const root = await resolveBobWorkspaceRoot({ allowPick: true, title: "Bob コード整合レビュー workspace を選択" })
+  const root = await resolveBobWorkspaceRoot({ allowPick: true, title: "コード整合プレレビューのワークスペースを選択" })
   if (!root) throw new Error("先にワークスペースフォルダーを開いてください。")
   return root
 }

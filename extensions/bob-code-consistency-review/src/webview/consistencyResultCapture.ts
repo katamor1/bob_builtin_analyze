@@ -11,7 +11,7 @@ interface ResultCaptureMessage {
 }
 
 export function openConsistencyResultCaptureGui(context: vscode.ExtensionContext): void {
-  const panel = vscode.window.createWebviewPanel("bobCodeConsistencyResultCapture", "Code Consistency Result Capture", vscode.ViewColumn.One, {
+  const panel = vscode.window.createWebviewPanel("bobCodeConsistencyResultCapture", "Bob 出力の取り込み", vscode.ViewColumn.One, {
     enableScripts: true,
     retainContextWhenHidden: true
   })
@@ -34,7 +34,7 @@ class ConsistencyResultCaptureController {
     }
     try {
       if (message.action === "captureManual") {
-        if (!message.text?.trim()) throw new Error("Bob output YAML を貼り付けてください。")
+        if (!message.text?.trim()) throw new Error("Bob 出力（YAML）を貼り付けてください。")
         const result = await runCaptureBobOutput({ text: message.text })
         this.post({ ok: true, message: describeResult(result) })
       } else if (message.action === "captureClipboard") {
@@ -45,7 +45,7 @@ class ConsistencyResultCaptureController {
         this.post({ ok: resultStatus(result) !== "error", message: describeResult(result) })
       } else if (message.action === "openHumanTriage") {
         await vscode.commands.executeCommand("bobCodeConsistency.openHumanTriageGui")
-        this.post({ ok: true, message: "Human Triage を開きました。" })
+        this.post({ ok: true, message: "人による判定を開きました。" })
       }
     } catch (error) {
       this.post({ error: true, message: error instanceof Error ? error.message : String(error) })
@@ -80,7 +80,7 @@ function describeResult(result: unknown): string {
   const status = typeof record.status === "string" ? record.status : "ok"
   const errors = Array.isArray(record.errors) ? record.errors.length : 0
   const warnings = Array.isArray(record.warnings) ? record.warnings.length : 0
-  return `status: ${status}; errors: ${errors}; warnings: ${warnings}`
+  return `状態: ${status}; エラー: ${errors}件; 警告: ${warnings}件`
 }
 
 function resultStatus(result: unknown): string {

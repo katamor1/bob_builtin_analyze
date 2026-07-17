@@ -15,7 +15,7 @@ import {
 } from "./consistencyHumanTriageMessage"
 
 export async function openConsistencyHumanTriageGui(context: vscode.ExtensionContext): Promise<void> {
-  const panel = vscode.window.createWebviewPanel("bobCodeConsistencyHumanTriage", "Code Consistency Human Triage", vscode.ViewColumn.One, {
+  const panel = vscode.window.createWebviewPanel("bobCodeConsistencyHumanTriage", "指摘・確認事項の判定", vscode.ViewColumn.One, {
     enableScripts: true,
     retainContextWhenHidden: true
   })
@@ -69,7 +69,7 @@ class ConsistencyHumanTriageController {
         await this.saveDecisions(message)
       } else if (message.action === "openResultCapture") {
         await vscode.commands.executeCommand("bobCodeConsistency.openResultCaptureGui")
-        await this.post({ ok: true, message: "Result Capture を開きました。" })
+        await this.post({ ok: true, message: "Bob 出力の取り込みを開きました。" })
       }
     } catch (error) {
       if (this.disposed) throw error
@@ -104,7 +104,7 @@ class ConsistencyHumanTriageController {
   private async saveDecisions(message: HumanTriageMessage): Promise<void> {
     if (this.disposed) return
     if (!message.sourceSha256 || !Number.isInteger(message.decisionRevision) || !message.items) {
-      throw new Error("triage save token が不足しています。画面を再読込してください。")
+      throw new Error("判定内容を保存するための確認情報が不足しています。画面を再読み込みしてから、もう一度保存してください。")
     }
     await saveHumanTriageDecisions({
       workspaceRoot: this.workspaceRoot,
@@ -114,7 +114,7 @@ class ConsistencyHumanTriageController {
       items: message.items
     })
     if (this.disposed) return
-    const model = await this.loadModel(["triage decision と生成成果物を保存しました。"])
+    const model = await this.loadModel(["判定内容と生成成果物を保存しました。"])
     if (this.disposed) return
     this.model = model
     this.render()
@@ -136,11 +136,11 @@ function isDisposedWebviewError(error: unknown): boolean {
 }
 
 function reportHumanTriageControllerError(error: unknown): void {
-  console.error("Human Triage Webview task failed:", error)
+  console.error("人による判定画面の処理に失敗しました:", error)
 }
 
 async function requireWorkspaceRoot(): Promise<string> {
-  const root = await resolveBobWorkspaceRoot({ allowPick: true, title: "Bob コード整合 triage workspace を選択" })
+  const root = await resolveBobWorkspaceRoot({ allowPick: true, title: "コード整合プレレビューの判定用ワークスペースを選択" })
   if (!root) throw new Error("先にワークスペースフォルダーを開いてください。")
   return root
 }

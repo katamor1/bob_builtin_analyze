@@ -27,7 +27,7 @@ export function renderOperationHubHtml(input: RenderOperationHubHtmlInput): stri
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${escapeHtml(cspSource)}; style-src 'nonce-${escapeHtml(nonce)}'; script-src 'nonce-${escapeHtml(nonce)}';">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Bob Operation Hub</title>
+  <title>Bob 操作センター</title>
   <style nonce="${escapeHtml(nonce)}">
     * { box-sizing: border-box; }
     body { margin: 0; color: var(--vscode-foreground); background: var(--vscode-editor-background); font-family: var(--vscode-font-family); font-size: var(--vscode-font-size); }
@@ -141,7 +141,7 @@ function renderPanelContent(model: OperationHubModel, refreshLabel: string): str
     ${renderHeader(model, false, refreshLabel)}
     <div class="panel-shell">
       <section class="primary-pane" id="runs">
-        <h2>Run Monitor</h2>
+        <h2>実行状況</h2>
         ${renderRunsGrid(model)}
       </section>
       <div class="secondary-pane">
@@ -157,8 +157,8 @@ function renderHeader(model: OperationHubModel, includeWideAction: boolean, refr
     ? [widePanelAction(), ...model.home.recommendedActions]
     : model.home.recommendedActions
   return `<header class="hub-header">
-      <h1>Bob Operation Hub</h1>
-      <div class="muted">${escapeHtml(model.home.workspaceName)} / workflow ${model.home.workflowCount} / active run ${model.home.activeRunCount}${refreshLabel}</div>
+      <h1>Bob 操作センター</h1>
+      <div class="muted">${escapeHtml(model.home.workspaceName)} / ワークフロー ${model.home.workflowCount}件 / 実行中 ${model.home.activeRunCount}件${refreshLabel}</div>
       <div class="actions">${actions.map(renderActionButton).join("")}</div>
     </header>`
 }
@@ -179,14 +179,14 @@ function renderWorkflowCatalogSection(model: OperationHubModel): string {
 
 function renderRunsSection(model: OperationHubModel): string {
   return `<section class="section" id="runs">
-      <h2>Run Monitor</h2>
+      <h2>実行状況</h2>
       ${renderRunsGrid(model)}
     </section>`
 }
 
 function renderRunsGrid(model: OperationHubModel): string {
   return model.runMonitor.length === 0
-    ? `<div class="card muted">実行中または直近の run はありません。</div>`
+    ? `<div class="card muted">実行中または最近の実行はありません。</div>`
     : `<div class="grid">${model.runMonitor.map(renderRun).join("")}</div>`
 }
 
@@ -202,7 +202,7 @@ function renderWorkflow(workflow: OperationHubWorkflowSummary): string {
   return `<article class="card">
     <div class="card-title"><h3>${escapeHtml(workflow.label)}</h3><span class="badge info">${escapeHtml(workflow.category)}</span></div>
     <div class="muted">${escapeHtml(workflow.description || "説明なし")}</div>
-    <div class="muted">必須入力 ${workflow.requiredInputCount} / 成果物 ${workflow.artifactCount}</div>
+    <div class="muted">必須入力 ${workflow.requiredInputCount}件 / 成果物 ${workflow.artifactCount}件</div>
     <div class="actions">${workflow.primaryActions.map(renderActionButton).join("")}</div>
   </article>`
 }
@@ -227,8 +227,8 @@ function renderRun(run: OperationHubRunSummary): string {
     <div class="card-title"><h3>${escapeHtml(run.workflowName)}</h3><span class="title-badges">${focusBadge}${statusBadge}</span></div>
     <div class="muted"><code>${escapeHtml(run.runId)}</code> / ${escapeHtml(run.currentStepLabel)}</div>
     <div class="muted"><span class="run-badges">${syncBadge}${manifestBadge}${reuseBadge}${taskSnapshotImportBadge}</span></div>
-    <div class="progress" aria-label="progress"><span style="width:${percent}%"></span></div>
-    <div class="muted">${run.completedStepCount}/${run.totalStepCount} step / updated ${escapeHtml(run.updatedAt)}</div>
+    <div class="progress" aria-label="進捗"><span style="width:${percent}%"></span></div>
+    <div class="muted">${run.completedStepCount}/${run.totalStepCount}ステップ / 更新 ${escapeHtml(run.updatedAt)}</div>
     ${renderStepProvenanceList(run)}
     ${renderHeldRecovery(run)}
     <div class="actions">${run.primaryActions.map(renderActionButton).join("")}</div>
@@ -242,7 +242,7 @@ function renderHeldRecovery(run: OperationHubRunSummary): string {
     ? `<ul>${run.heldRecoveryBlockers.map((blocker) => `<li>${escapeHtml(blocker)}</li>`).join("")}</ul>`
     : ""
   return `<div class="held-recovery">
-    <strong>${escapeHtml(run.heldRecoveryTitle ?? "Held run recovery")}</strong>
+    <strong>${escapeHtml(run.heldRecoveryTitle ?? "中断した実行の復旧")}</strong>
     <div class="muted">${escapeHtml(run.heldRecoveryExplanation ?? "")}</div>
     ${blockers}
   </div>`
@@ -252,7 +252,7 @@ function renderStepProvenanceList(run: OperationHubRunSummary): string {
   const steps = run.stepProvenance ?? []
   if (steps.length === 0) return ""
   const omitted = run.stepProvenanceOmittedCount > 0
-    ? `<div class="muted">${run.stepProvenanceOmittedCount} more step(s); see Run Diagnostics</div>`
+    ? `<div class="muted">ほか${run.stepProvenanceOmittedCount}ステップ。詳しくは実行診断を確認してください。</div>`
     : ""
   return `<div class="step-list">${steps.map((step) => `<div class="step-provenance${step.reused ? " reused" : ""}">
     <div class="step-heading"><code>${escapeHtml(step.stepId)} · ${escapeHtml(step.title)}</code><span class="badge ${step.reused ? "ok" : "info"}">${escapeHtml(step.completionLabel)}</span></div>

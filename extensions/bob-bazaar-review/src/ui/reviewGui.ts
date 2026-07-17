@@ -38,6 +38,7 @@ import type { ReviewRunCommandInput, ReviewRunContext } from "../reviewRuns/revi
 import { getBobWorkspaceStatus, initializeBobWorkspaceFromTemplates } from "../workspace/bobWorkspaceInit"
 import { resolveBazaarWorkspaceFolder, resolveBobWorkspaceFolder } from "../workspace/workspaceResolver"
 import { completeCurrentWorkflowStepAfterGuiAction } from "../workflow/workflowStepCompletion"
+import { nextReviewActionLabel } from "./displayLabels"
 import { renderHtml } from "./reviewGuiHtml"
 import type { BazaarReviewInitialTarget } from "./reviewGuiTypes"
 
@@ -49,7 +50,7 @@ interface ReviewRunSelection {
 }
 
 export function openBazaarReviewGui(context: vscode.ExtensionContext, initialTarget?: BazaarReviewInitialTarget): void {
-  const panel = vscode.window.createWebviewPanel("bobBazaarReviewGui", "Bazaar レビュー", vscode.ViewColumn.One, {
+  const panel = vscode.window.createWebviewPanel("bobBazaarReviewGui", "Bazaar レビューを開始", vscode.ViewColumn.One, {
     enableScripts: true,
     retainContextWhenHidden: true
   })
@@ -108,7 +109,7 @@ class BazaarReviewGuiController {
     const workspaceRoot = this.activeReviewRun?.workspaceRoot ??
       this.bobWorkspaceFolder?.uri.fsPath ??
       this.bazaarWorkspaceFolder?.uri.fsPath
-    if (!workspaceRoot) throw new Error("Campaign Dashboardを開くworkspaceが選択されていません。")
+    if (!workspaceRoot) throw new Error("レビューキャンペーン ダッシュボードを開くワークスペースが選択されていません。先にワークスペースを選択してください。")
     const campaignId = this.activeReviewRun?.campaignId ??
       textOrDefault(message?.campaignId, DEFAULT_CAMPAIGN_ID)
     await vscode.commands.executeCommand("bobBazaar.openCampaignDashboard", { workspaceRoot, campaignId })
@@ -185,7 +186,7 @@ class BazaarReviewGuiController {
     this.post({
       type: "activeReviewRun",
       reviewRun: serializeReviewRun(run),
-      message: `Review Runを再開しました。次の操作: ${action}`
+      message: `レビュー実行を再開しました。次の操作: ${nextReviewActionLabel(action)}`
     })
     if (action === "resultCapture") {
       await vscode.commands.executeCommand("bobBazaar.openResultCaptureGui", reviewRunCommandInput(run))
@@ -196,20 +197,20 @@ class BazaarReviewGuiController {
 
   private async recoverLegacyReview(): Promise<void> {
     const folder = this.bobWorkspaceFolder ?? this.bazaarWorkspaceFolder
-    if (!folder) throw new Error("legacy成果物を検索するworkspaceが選択されていません。")
+    if (!folder) throw new Error("既存成果物を検索するワークスペースが選択されていません。先にワークスペースを選択してください。")
     const candidates = await listLegacyReviewCandidates(folder.uri.fsPath)
     if (candidates.length === 0) {
-      await vscode.window.showInformationMessage("復旧可能なlegacy review-resultを検出できませんでした。")
+      await vscode.window.showInformationMessage("復旧できる既存のレビュー結果が見つかりませんでした。対象ワークスペースと成果物を確認してください。")
       return
     }
     const selected = await vscode.window.showQuickPick(
       candidates.map((candidate) => ({
         label: candidate.reviewId,
-        description: candidate.campaignIds.length > 0 ? candidate.campaignIds.join(", ") : "campaign未特定",
+        description: candidate.campaignIds.length > 0 ? candidate.campaignIds.join(", ") : "キャンペーン未特定",
         detail: [candidate.resultJsonPath, ...candidate.issues].join(" · "),
         candidate
       })),
-      { title: "復旧するlegacy Reviewを選択" }
+      { title: "復旧する既存レビューを選択" }
     )
     if (!selected) return
 
@@ -218,32 +219,32 @@ class BazaarReviewGuiController {
       campaignId = selected.candidate.campaignIds[0]
     } else if (selected.candidate.campaignIds.length > 1) {
       const pickedCampaign = await vscode.window.showQuickPick(selected.candidate.campaignIds, {
-        title: "Review Runを関連付けるcampaignを選択"
+        title: "レビュー実行を関連付けるキャンペーンを選択"
       })
       if (!pickedCampaign) return
       campaignId = pickedCampaign
     } else {
       campaignId = await vscode.window.showInputBox({
-        title: "Review Runを関連付けるcampaign ID",
+        title: "レビュー実行を関連付けるキャンペーン ID",
         value: DEFAULT_CAMPAIGN_ID,
-        validateInput: (value) => value.trim() ? undefined : "campaign IDは必須です。"
+        validateInput: (value) => value.trim() ? undefined : "キャンペーン ID は必須です。"
       })
       if (!campaignId) return
     }
 
     const preview = await previewLegacyReviewRecovery(folder.uri.fsPath, selected.candidate, campaignId)
     if (preview.blockingIssues.length > 0) {
-      throw new Error(`legacy recoveryを実行できません:\n${preview.blockingIssues.join("\n")}`)
+      throw new Error(`既存成果物からの復旧を実行できません。問題を解消してから再実行してください:\n${preview.blockingIssues.join("\n")}`)
     }
     const artifactLines = Object.entries(preview.artifacts)
       .filter(([, value]) => value)
       .map(([name, value]) => `${name}: ${value}`)
     const confirmation = await vscode.window.showWarningMessage(
       [
-        `legacy成果物からReview Runを復旧します: ${preview.campaignId} / ${preview.reviewId}`,
-        "既存成果物は変更せずreview-run.jsonだけを生成します。",
+        `既存成果物からレビュー実行を復旧します: ${preview.campaignId} / ${preview.reviewId}`,
+        "既存成果物は変更せず、review-run.json だけを生成します。",
         ...artifactLines,
-        ...preview.warnings.map((warning) => `warning: ${warning}`)
+        ...preview.warnings.map((warning) => `注意: ${warning}`)
       ].join("\n"),
       { modal: true },
       "復旧する"
@@ -255,7 +256,7 @@ class BazaarReviewGuiController {
     this.post({
       type: "activeReviewRun",
       reviewRun: serializeReviewRun(run),
-      message: "legacy成果物からReview Runを復旧しました。"
+      message: "既存成果物からレビュー実行を復旧しました。"
     })
     await this.postReviewRuns()
   }
@@ -279,7 +280,7 @@ class BazaarReviewGuiController {
   private async initializeBobWorkspace(): Promise<void> {
     const folder = await this.requireBobWorkspaceFolder()
     const config = vscode.workspace.getConfiguration("bobBazaar")
-    this.post({ type: "loading", message: ".bob を初期化しています..." })
+    this.post({ type: "loading", message: ".bob を初期化しています…" })
     const status = await initializeBobWorkspaceFromTemplates({
       context: this.context,
       workspaceFolder: folder,
@@ -296,7 +297,7 @@ class BazaarReviewGuiController {
   private async loadTarget(request: TargetRequest): Promise<void> {
     const folder = await this.requireBazaarWorkspaceFolder()
     validateTargetRequest(request)
-    this.post({ type: "loading", message: "対象情報を取得しています..." })
+    this.post({ type: "loading", message: "対象情報を取得しています…" })
     const prepared = await prepareTarget(makeBazaarClient(), folder.uri.fsPath, request, {
       includeAddedFiles: false,
       maxAddedFileContentBytes: getMaxAddedFileContentBytes()
@@ -326,7 +327,7 @@ class BazaarReviewGuiController {
       }
     }
 
-    this.post({ type: "loading", message: "Review Runを作成し、レビュー packet を Bob コンテキストへ追加しています..." })
+    this.post({ type: "loading", message: "レビュー実行を作成し、レビュー資料を Bob コンテキストへ追加しています…" })
     const prepared = await prepareTarget(makeBazaarClient(), bazaarFolder.uri.fsPath, request, {
       includeAddedFiles: true,
       maxAddedFileContentBytes: getMaxAddedFileContentBytes()
@@ -416,12 +417,12 @@ class BazaarReviewGuiController {
     if (!run || run.status === "completed" || run.phases.packet.status === "completed") return undefined
     if (run.campaignId !== campaignId || run.reviewId !== reviewId) return undefined
     if (run.target.mode !== info.mode || run.target.repositoryRoot !== repositoryRoot) {
-      throw new Error("選択したReview Runのtargetと現在のBazaar targetが一致しません。")
+      throw new Error("選択したレビュー実行の対象と現在の Bazaar 対象が一致しません。対象を再取得してからやり直してください。")
     }
     if ((run.target.revision ?? "") !== (info.revision ?? "") ||
         (run.target.baseRevision ?? "") !== (info.baseRevision ?? "") ||
         (run.target.targetRevision ?? "") !== (info.targetRevision ?? "")) {
-      throw new Error("選択したReview Runのrevision情報と現在のtargetが一致しません。")
+      throw new Error("選択したレビュー実行のリビジョン情報と現在の対象が一致しません。対象を再取得してからやり直してください。")
     }
     return run
   }
@@ -440,7 +441,7 @@ class BazaarReviewGuiController {
         title: "Bob ワークスペースを選択"
       })
     }
-    if (!this.bobWorkspaceFolder) throw new Error("Bob ワークスペースフォルダーが選択されていません。")
+    if (!this.bobWorkspaceFolder) throw new Error("Bob ワークスペースフォルダーが選択されていません。先にワークスペースを選択してください。")
     return this.bobWorkspaceFolder
   }
 
