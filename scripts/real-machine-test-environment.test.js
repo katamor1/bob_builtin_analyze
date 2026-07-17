@@ -116,7 +116,7 @@ test("runner isolates scenario failures and opens only one ready target", () => 
 })
 
 test("missing VS Code CLI becomes blocked evidence on Windows", {
-  skip: process.platform !== "win32" || process.env.RUN_REAL_MACHINE_WINDOWS_PROCESS_TEST !== "1"
+  skip: process.platform !== "win32"
 }, () => {
   const outputRoot = path.join(os.homedir(), `bob-review-real-machine-${process.pid}-${Date.now()}`)
   try {
