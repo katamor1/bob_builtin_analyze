@@ -29,6 +29,83 @@ function phase4Run() {
   return JSON.parse(fs.readFileSync(PHASE4_RUN, "utf8"))
 }
 
+function richPhase4Run() {
+  const run = phase4Run()
+  run.inputs = {
+    revision: "abc123",
+    options: { labels: ["alpha", "beta"], nested: { enabled: true } }
+  }
+  run.state.context = "rich-context"
+  run.steps[0] = {
+    ...run.steps[0],
+    status: "reviewing",
+    attempt: 2,
+    attempts: [{
+      attempt: 1,
+      status: "completed",
+      startedAt: "2026-07-17T00:00:10.000Z",
+      completedAt: "2026-07-17T00:00:20.000Z",
+      reviewDecision: "accepted",
+      reviewComment: "reviewed",
+      stateSnapshot: { context: "attempt-context", draft: "attempt-draft" },
+      branchDecisionId: "decision-1",
+      branchLoopId: "review-loop",
+      branchFromStepId: "collect",
+      branchToStepId: "collect",
+      branchLoopCount: 1,
+      createdAt: "2026-07-17T00:00:30.000Z"
+    }],
+    reviewStartedAt: "2026-07-17T00:00:25.000Z"
+  }
+  run.branching = {
+    loops: {
+      "review-loop": {
+        loopId: "review-loop",
+        count: 1,
+        allowed: 2,
+        maxIterations: 2,
+        extensionSize: 1,
+        checkpointCount: 1,
+        lastTransitionAt: "2026-07-17T00:00:40.000Z"
+      }
+    },
+    checkpoint: {
+      id: "checkpoint-1",
+      loopId: "review-loop",
+      fromStepId: "collect",
+      toStepId: "collect",
+      decisionId: "decision-1",
+      count: 1,
+      allowed: 2,
+      extensionSize: 1,
+      message: "Review again.",
+      createdAt: "2026-07-17T00:00:41.000Z"
+    },
+    checkpointDecisions: [{
+      checkpointId: "checkpoint-0",
+      outcome: "approved",
+      loopId: "review-loop",
+      ownerStepId: "collect",
+      targetStepId: "collect",
+      transitionDecisionId: "decision-0",
+      decidedAt: "2026-07-17T00:00:35.000Z",
+      reason: "continue"
+    }],
+    history: [{
+      id: "transition-1",
+      loopId: "review-loop",
+      decisionId: "decision-1",
+      fromStepId: "collect",
+      toStepId: "collect",
+      action: "checkpoint",
+      loopCount: 1,
+      createdAt: "2026-07-17T00:00:41.000Z",
+      conditionSnapshot: { result: "retry", scores: [3, 1] }
+    }]
+  }
+  return run
+}
+
 test("canonical-json/v1 is independent of object insertion order", () => {
   const { canonicalizeJsonV1 } = canonicalJsonV1()
   const first = { b: 2, a: 1 }
@@ -58,6 +135,27 @@ test("canonical-json/v1 preserves array order and omits undefined object propert
   assert.equal(
     canonicalizeJsonV1(value).toString("utf8"),
     "{\"nested\":{\"kept\":true},\"values\":[\"third\",\"first\",\"second\"]}\n"
+  )
+})
+
+test("canonical-json/v1 treats non-callable own toJSON keys as ordinary data", () => {
+  const { canonicalizeJsonV1 } = canonicalJsonV1()
+  const value = JSON.parse('{"toJSON":"business","nested":{"toJSON":null},"omitted":{}}')
+  value.omitted.toJSON = undefined
+
+  assert.equal(
+    canonicalizeJsonV1(value).toString("utf8"),
+    "{\"nested\":{\"toJSON\":null},\"omitted\":{},\"toJSON\":\"business\"}\n"
+  )
+})
+
+test("canonical-json/v1 accepts a shared alias without treating it as a cycle", () => {
+  const { canonicalizeJsonV1 } = canonicalJsonV1()
+  const shared = { value: [2, 1] }
+
+  assert.equal(
+    canonicalizeJsonV1({ left: shared, right: shared }).toString("utf8"),
+    "{\"left\":{\"value\":[2,1]},\"right\":{\"value\":[2,1]}}\n"
   )
 })
 
@@ -166,7 +264,7 @@ test("canonical-json/v1 rejects custom prototypes, accessors, and toJSON before 
     assert.equal(getterCalls, 0)
   })
 
-  await t.test("toJSON", () => {
+  await t.test("callable toJSON", () => {
     let toJSONCalls = 0
     const value = {
       safe: true,
@@ -198,6 +296,103 @@ test("canonical-json/v1 rejects custom prototypes, accessors, and toJSON before 
       else delete Object.prototype.toJSON
     }
   })
+})
+
+test("canonical-json/v1 never reads absent descriptor fields through Object.prototype", () => {
+  const { canonicalizeJsonV1 } = canonicalJsonV1()
+  const fields = ["get", "set", "value", "writable", "enumerable", "configurable"]
+  const previous = Object.create(null)
+  let getterCalls = 0
+  let output
+  let failure
+
+  for (let index = 0; index < fields.length; index += 1) {
+    const field = fields[index]
+    previous[field] = Object.getOwnPropertyDescriptor(Object.prototype, field)
+  }
+  for (let index = 0; index < fields.length; index += 1) {
+    const field = fields[index]
+    const descriptor = Object.create(null)
+    descriptor.configurable = true
+    descriptor.get = () => {
+      getterCalls += 1
+      return undefined
+    }
+    Object.defineProperty(Object.prototype, field, descriptor)
+  }
+  getterCalls = 0
+  try {
+    output = canonicalizeJsonV1({ b: [2, 1], a: true }).toString("utf8")
+  } catch (error) {
+    failure = error
+  } finally {
+    for (let index = 0; index < fields.length; index += 1) delete Object.prototype[fields[index]]
+    for (let index = 0; index < fields.length; index += 1) {
+      const field = fields[index]
+      if (previous[field]) Object.defineProperty(Object.prototype, field, previous[field])
+    }
+  }
+
+  if (failure) throw failure
+  assert.equal(getterCalls, 0)
+  assert.equal(output, "{\"a\":true,\"b\":[2,1]}\n")
+})
+
+test("canonical-json/v1 does not dispatch through modified Array.prototype helpers", () => {
+  const { canonicalizeJsonV1 } = canonicalJsonV1()
+  const names = ["map", "join", "push", "sort"]
+  const previous = {}
+  let helperCalls = 0
+  let output
+  let failure
+
+  for (let index = 0; index < names.length; index += 1) {
+    const name = names[index]
+    const descriptor = Object.getOwnPropertyDescriptor(Array.prototype, name)
+    previous[name] = descriptor
+    const original = descriptor.value
+    Object.defineProperty(Array.prototype, name, {
+      ...descriptor,
+      value: function (...args) {
+        helperCalls += 1
+        return Reflect.apply(original, this, args)
+      }
+    })
+  }
+  const iteratorDescriptor = Object.getOwnPropertyDescriptor(Array.prototype, Symbol.iterator)
+  const originalIterator = iteratorDescriptor.value
+  const zeroDescriptor = Object.getOwnPropertyDescriptor(Array.prototype, "0")
+  Object.defineProperty(Array.prototype, Symbol.iterator, {
+    ...iteratorDescriptor,
+    value: function () {
+      helperCalls += 1
+      return Reflect.apply(originalIterator, this, [])
+    }
+  })
+  Object.defineProperty(Array.prototype, "0", {
+    configurable: true,
+    set() {
+      helperCalls += 1
+    }
+  })
+
+  try {
+    output = canonicalizeJsonV1({ z: [3, 1], a: { b: 2, a: 1 } }).toString("utf8")
+  } catch (error) {
+    failure = error
+  } finally {
+    for (let index = 0; index < names.length; index += 1) {
+      const name = names[index]
+      Object.defineProperty(Array.prototype, name, previous[name])
+    }
+    Object.defineProperty(Array.prototype, Symbol.iterator, iteratorDescriptor)
+    if (zeroDescriptor) Object.defineProperty(Array.prototype, "0", zeroDescriptor)
+    else delete Array.prototype[0]
+  }
+
+  if (failure) throw failure
+  assert.equal(helperCalls, 0)
+  assert.equal(output, "{\"a\":{\"a\":1,\"b\":2},\"z\":[3,1]}\n")
 })
 
 test("Phase 4 v1 upgrades twice to one pinned closed run-state/v2 byte sequence", () => {
@@ -289,4 +484,69 @@ test("run-state/v2 preserves arbitrary JSON state keys as own data properties", 
   assert.equal(decoded.state.__proto__, "business value")
   assert.equal(decoded.state.constructor, "also business")
   assert.match(encodeWorkflowRunStateV2(decoded).toString("utf8"), /"__proto__":"business value"/)
+})
+
+test("run-state/v2 retains non-callable toJSON business keys", () => {
+  const { encodeWorkflowRunStateV2, upgradeWorkflowRunStateV1 } = runStateV2()
+  const source = phase4Run()
+  source.inputs = {
+    toJSON: "input business value",
+    nested: { toJSON: null },
+    omitted: { toJSON: undefined }
+  }
+  source.state.toJSON = "state business value"
+
+  const upgraded = upgradeWorkflowRunStateV1(source)
+
+  assert.equal(upgraded.inputs.toJSON, "input business value")
+  assert.equal(upgraded.inputs.nested.toJSON, null)
+  assert.equal(Object.hasOwn(upgraded.inputs.omitted, "toJSON"), false)
+  assert.equal(upgraded.state.toJSON, "state business value")
+  assert.match(encodeWorkflowRunStateV2(upgraded).toString("utf8"), /"toJSON":"state business value"/)
+})
+
+test("run-state/v2 richly upgrades attempts and branching with bidirectional alias isolation", () => {
+  const { decodeWorkflowRunStateV2, encodeWorkflowRunStateV2, upgradeWorkflowRunStateV1 } = runStateV2()
+  const source = richPhase4Run()
+  const upgraded = upgradeWorkflowRunStateV1(source)
+
+  assert.equal(upgraded.steps[0].attempts[0].reviewDecision, "accepted")
+  assert.equal(upgraded.branching.loops["review-loop"].checkpointCount, 1)
+  assert.equal(upgraded.branching.checkpointDecisions[0].outcome, "approved")
+  assert.equal(upgraded.branching.history[0].conditionSnapshot.result, "retry")
+  assert.deepEqual(decodeWorkflowRunStateV2(JSON.parse(encodeWorkflowRunStateV2(upgraded))), upgraded)
+
+  source.inputs.options.labels[0] = "source-mutated"
+  source.steps[0].attempts[0].stateSnapshot.context = "source-mutated"
+  source.branching.history[0].conditionSnapshot.result = "source-mutated"
+  assert.equal(upgraded.inputs.options.labels[0], "alpha")
+  assert.equal(upgraded.steps[0].attempts[0].stateSnapshot.context, "attempt-context")
+  assert.equal(upgraded.branching.history[0].conditionSnapshot.result, "retry")
+
+  upgraded.inputs.options.labels[1] = "upgrade-mutated"
+  upgraded.steps[0].attempts[0].stateSnapshot.draft = "upgrade-mutated"
+  upgraded.branching.loops["review-loop"].count = 9
+  assert.equal(source.inputs.options.labels[1], "beta")
+  assert.equal(source.steps[0].attempts[0].stateSnapshot.draft, "attempt-draft")
+  assert.equal(source.branching.loops["review-loop"].count, 1)
+})
+
+test("run-state/v2 rejects unknown attempt and branching fields", async (t) => {
+  const { upgradeWorkflowRunStateV1 } = runStateV2()
+  const cases = [
+    ["attempt", (run) => { run.steps[0].attempts[0].futureField = true }],
+    ["branching", (run) => { run.branching.futureField = true }],
+    ["branch loop", (run) => { run.branching.loops["review-loop"].futureField = true }],
+    ["checkpoint", (run) => { run.branching.checkpoint.futureField = true }],
+    ["checkpoint decision", (run) => { run.branching.checkpointDecisions[0].futureField = true }],
+    ["transition", (run) => { run.branching.history[0].futureField = true }]
+  ]
+
+  for (const [name, mutate] of cases) {
+    await t.test(name, () => {
+      const source = richPhase4Run()
+      mutate(source)
+      assert.throws(() => upgradeWorkflowRunStateV1(source), /unsupported field/i)
+    })
+  }
 })
