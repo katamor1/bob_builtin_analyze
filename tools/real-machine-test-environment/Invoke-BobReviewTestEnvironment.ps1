@@ -45,7 +45,7 @@ if (-not $OutputRoot) {
   $OutputRoot = Join-Path $env:TEMP ("bob-review-real-machine-{0}" -f (Get-Date -Format "yyyyMMdd-HHmmss"))
 }
 $outputFull = Assert-SafeOutputRoot -RepoRoot $RepoRoot -OutputRoot $OutputRoot
-New-Item -ItemType Directory -Path $outputFull | Out-Null
+New-Item -ItemType Directory -Force -Path $outputFull | Out-Null
 Assert-NoReparsePointTraversal -Root $outputFull -Target $outputFull
 New-Item -ItemType Directory -Path (Join-Path $outputFull "_logs") | Out-Null
 
