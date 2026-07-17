@@ -1,0 +1,275 @@
+{
+  "schemaVersion": 1,
+  "groups": {
+    "p0-p1": [
+      "bazaar-core",
+      "bazaar-run-recovery",
+      "consistency-ai-matrix",
+      "consistency-traceability",
+      "consistency-multilang",
+      "consistency-validation-errors"
+    ]
+  },
+  "scenarios": [
+    {
+      "id": "bazaar-core",
+      "extension": "bob-bazaar-review",
+      "priorities": [
+        "P0",
+        "P1"
+      ],
+      "generator": {
+        "kind": "existing-launcher",
+        "path": "docs/workflows/bazaar-project-rule-review/integration/launch-bob-bazaar-review-sandbox.ps1",
+        "arguments": {}
+      },
+      "requiredCommands": [
+        "code",
+        "node",
+        "bzr"
+      ],
+      "requiredRepositoryPaths": [
+        "bob2/bob-code",
+        "extensions/workflow-register/workflow-register-0.1.0.vsix",
+        "extensions/bob-bazaar-review/bob-bazaar-review-0.3.0.vsix"
+      ],
+      "checklistTemplate": "tools/real-machine-test-environment/checklists/bazaar-core.md",
+      "testCases": [
+        "BZR-RT-004",
+        "BZR-RT-006",
+        "BZR-RT-007",
+        "BZR-RT-008",
+        "BZR-RT-009",
+        "BZR-RT-010",
+        "BZR-RT-017",
+        "BZR-RT-018",
+        "BZR-RT-019",
+        "BZR-RT-020",
+        "BZR-RT-021",
+        "BZR-RT-022",
+        "BZR-RT-023",
+        "BZR-RT-024",
+        "BZR-RT-025",
+        "BZR-RT-026",
+        "BZR-RT-027",
+        "BZR-RT-027A",
+        "BZR-RT-028",
+        "BZR-RT-029",
+        "BZR-RT-030",
+        "BZR-RT-034",
+        "BZR-RT-035"
+      ],
+      "expectedArtifacts": [
+        "bob-bazaar-review.code-workspace",
+        "bob-managed/.bob/workflows/bazaar-project-rule-review/WORKFLOW.md",
+        "bob-managed/.bob/review/checklist.json",
+        "bob-managed/EXPECTED_BAZAAR_REVIEW_FINDINGS.md",
+        "bazaar-source/.bzr"
+      ]
+    },
+    {
+      "id": "bazaar-run-recovery",
+      "extension": "bob-bazaar-review",
+      "priorities": [
+        "P0",
+        "P1"
+      ],
+      "generator": {
+        "kind": "existing-launcher",
+        "path": "docs/workflows/bazaar-project-rule-review/integration/launch-bob-bazaar-review-sandbox.ps1",
+        "arguments": {}
+      },
+      "requiredCommands": [
+        "code",
+        "node",
+        "bzr"
+      ],
+      "requiredRepositoryPaths": [
+        "bob2/bob-code",
+        "extensions/workflow-register/workflow-register-0.1.0.vsix",
+        "extensions/bob-bazaar-review/bob-bazaar-review-0.3.0.vsix"
+      ],
+      "checklistTemplate": "tools/real-machine-test-environment/checklists/bazaar-run-recovery.md",
+      "testCases": [
+        "BZR-RT-022",
+        "BZR-RT-044",
+        "BZR-RT-045",
+        "BZR-RT-046",
+        "BZR-RT-047"
+      ],
+      "expectedArtifacts": [
+        "bob-bazaar-review.code-workspace",
+        "bob-managed/.bob/workflows/bazaar-project-rule-review/WORKFLOW.md",
+        "bazaar-source/.bzr"
+      ]
+    },
+    {
+      "id": "consistency-ai-matrix",
+      "extension": "bob-code-consistency-review",
+      "priorities": [
+        "P0",
+        "P1"
+      ],
+      "generator": {
+        "kind": "existing-launcher",
+        "path": "docs/workflows/code-consistency-review/integration/launch-bob-code-consistency-sandbox.ps1",
+        "arguments": {
+          "Sample": "ai-verification-matrix"
+        }
+      },
+      "requiredCommands": [
+        "code",
+        "node",
+        "git"
+      ],
+      "requiredRepositoryPaths": [
+        "bob2/bob-code",
+        "extensions/workflow-register/workflow-register-0.1.0.vsix",
+        "extensions/bob-bazaar-review/bob-bazaar-review-0.3.0.vsix",
+        "extensions/bob-code-consistency-review/bob-code-consistency-review-0.1.0.vsix"
+      ],
+      "checklistTemplate": "tools/real-machine-test-environment/checklists/consistency-ai-matrix.md",
+      "testCases": [
+        "CCR-RT-016",
+        "CCR-RT-022",
+        "CCR-RT-023",
+        "CCR-RT-024",
+        "CCR-RT-025",
+        "CCR-RT-026",
+        "CCR-RT-027",
+        "CCR-RT-028",
+        "CCR-RT-029",
+        "CCR-RT-030",
+        "CCR-RT-031"
+      ],
+      "expectedArtifacts": [
+        "workspace/.git",
+        "workspace/review-input.yaml",
+        "workspace/.bob/workflows/code-consistency-review/WORKFLOW.md"
+      ]
+    },
+    {
+      "id": "consistency-traceability",
+      "extension": "bob-code-consistency-review",
+      "priorities": [
+        "P0",
+        "P1"
+      ],
+      "generator": {
+        "kind": "existing-launcher",
+        "path": "docs/workflows/code-consistency-review/integration/launch-bob-code-consistency-sandbox.ps1",
+        "arguments": {
+          "Sample": "live-traceability-sidecar"
+        }
+      },
+      "requiredCommands": [
+        "code",
+        "node",
+        "git"
+      ],
+      "requiredRepositoryPaths": [
+        "bob2/bob-code",
+        "extensions/workflow-register/workflow-register-0.1.0.vsix",
+        "extensions/bob-bazaar-review/bob-bazaar-review-0.3.0.vsix",
+        "extensions/bob-code-consistency-review/bob-code-consistency-review-0.1.0.vsix"
+      ],
+      "checklistTemplate": "tools/real-machine-test-environment/checklists/consistency-traceability.md",
+      "testCases": [
+        "CCR-RT-010",
+        "CCR-RT-011",
+        "CCR-RT-011A",
+        "CCR-RT-012",
+        "CCR-RT-013",
+        "CCR-RT-014",
+        "CCR-RT-015",
+        "CCR-RT-023",
+        "CCR-RT-024",
+        "CCR-RT-025",
+        "CCR-RT-026",
+        "CCR-RT-027",
+        "CCR-RT-028",
+        "CCR-RT-029",
+        "CCR-RT-031"
+      ],
+      "expectedArtifacts": [
+        "workspace/.git",
+        "workspace/review-input.yaml",
+        "workspace/.bob-trace/traceability-catalog.json",
+        "workspace/.bob/workflows/code-consistency-review/WORKFLOW.md"
+      ]
+    },
+    {
+      "id": "consistency-multilang",
+      "extension": "bob-code-consistency-review",
+      "priorities": [
+        "P1"
+      ],
+      "generator": {
+        "kind": "existing-launcher",
+        "path": "docs/workflows/code-consistency-review/integration/launch-bob-code-consistency-sandbox.ps1",
+        "arguments": {
+          "Sample": "multi-language-git-review"
+        }
+      },
+      "requiredCommands": [
+        "code",
+        "node",
+        "git"
+      ],
+      "requiredRepositoryPaths": [
+        "bob2/bob-code",
+        "extensions/workflow-register/workflow-register-0.1.0.vsix",
+        "extensions/bob-bazaar-review/bob-bazaar-review-0.3.0.vsix",
+        "extensions/bob-code-consistency-review/bob-code-consistency-review-0.1.0.vsix"
+      ],
+      "checklistTemplate": "tools/real-machine-test-environment/checklists/consistency-multilang.md",
+      "testCases": [
+        "CCR-RT-016A",
+        "CCR-RT-021A"
+      ],
+      "expectedArtifacts": [
+        "workspace/.git",
+        "workspace/review-input.yaml",
+        "workspace/.bob/workflows/code-consistency-review/WORKFLOW.md"
+      ]
+    },
+    {
+      "id": "consistency-validation-errors",
+      "extension": "bob-code-consistency-review",
+      "priorities": [
+        "P0",
+        "P1"
+      ],
+      "generator": {
+        "kind": "existing-launcher",
+        "path": "docs/workflows/code-consistency-review/integration/launch-bob-code-consistency-sandbox.ps1",
+        "arguments": {
+          "Sample": "ai-verification-matrix"
+        }
+      },
+      "requiredCommands": [
+        "code",
+        "node",
+        "git"
+      ],
+      "requiredRepositoryPaths": [
+        "bob2/bob-code",
+        "extensions/workflow-register/workflow-register-0.1.0.vsix",
+        "extensions/bob-bazaar-review/bob-bazaar-review-0.3.0.vsix",
+        "extensions/bob-code-consistency-review/bob-code-consistency-review-0.1.0.vsix"
+      ],
+      "checklistTemplate": "tools/real-machine-test-environment/checklists/consistency-validation-errors.md",
+      "testCases": [
+        "CCR-RT-008",
+        "CCR-RT-012",
+        "CCR-RT-028",
+        "CCR-RT-034"
+      ],
+      "expectedArtifacts": [
+        "workspace/.git",
+        "workspace/review-input.yaml",
+        "workspace/.bob/workflows/code-consistency-review/WORKFLOW.md"
+      ]
+    }
+  ]
+}
