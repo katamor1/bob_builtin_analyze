@@ -240,7 +240,7 @@ function Get-ScenarioLaunchDescriptor {
     "--extensionDevelopmentPath", (Join-Path $RepoRoot "bob2/bob-code"),
     $target
   )
-  $display = @((ConvertTo-DisplayArgument $CodeCommand)) + @($arguments | ForEach-Object { ConvertTo-DisplayArgument ([string]$_ })
+  $display = @((ConvertTo-DisplayArgument $CodeCommand)) + @($arguments | ForEach-Object { ConvertTo-DisplayArgument ([string]$_) })
   return [pscustomobject]@{
     command = $CodeCommand
     arguments = $arguments
