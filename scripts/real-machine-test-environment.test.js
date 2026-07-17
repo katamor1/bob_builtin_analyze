@@ -104,3 +104,24 @@ test("runner exposes the approved validation interface", () => {
   assert.match(source, /p0-p1 must list every scenario exactly once in manifest order/)
   assert.match(source, /if \(\$fullPath -eq \$pathRoot\) \{ return \$fullPath \}/)
 })
+
+
+test("execution module injects NoLaunch and validates reparse-point traversal", () => {
+  const source = fs.readFileSync(path.join(toolRoot, "lib", "ScenarioExecution.ps1"), "utf8")
+  for (const name of [
+    "Assert-NoReparsePointTraversal",
+    "Assert-SafeOutputRoot",
+    "Get-ScenarioPrerequisiteReport",
+    "New-LauncherInvocation",
+    "Invoke-ScenarioLauncher",
+    "Copy-ScenarioFixtureFiles",
+    "Test-ExpectedScenarioArtifacts",
+    "Get-ScenarioLaunchDescriptor"
+  ]) assert.match(source, new RegExp(`function ${name}`))
+  assert.match(source, /FileAttributes\]::ReparsePoint/)
+  assert.match(source, /NoLaunch\s*=\s*\$true/)
+  assert.match(source, /\$arguments = \$Invocation\.arguments\s+& \$Invocation\.launcherPath @arguments/s)
+  assert.doesNotMatch(source, /Invoke-Expression/)
+  assert.doesNotMatch(source, /SkipExtensionInstall\s*=/)
+  assert.match(source, /Assert-NoReparsePointTraversal -Root \$ScenarioRoot -Target \$destination/)
+})
