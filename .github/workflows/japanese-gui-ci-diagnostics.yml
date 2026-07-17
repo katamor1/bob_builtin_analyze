@@ -1,4 +1,4 @@
-name: Japanese GUI CI diagnostics
+name: Apply Japanese GUI validation fixes
 
 on:
   pull_request:
@@ -7,98 +7,65 @@ on:
       - .sdd/diagnostics/japanese-gui
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
-  group: japanese-gui-ci-diagnostics-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+  group: japanese-gui-validation-fix-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
 
 jobs:
-  workflow-register-unit:
+  apply:
     if: >-
       github.repository == 'katamor1/bob_builtin_analyze' &&
       github.event.pull_request.number == 132 &&
+      github.event.pull_request.user.login == 'katamor1' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.event.pull_request.head.ref == 'agent/japanese-gui-copy-review'
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: extensions/workflow-register
     steps:
-      - name: Checkout
+      - name: Checkout exact head
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - name: Setup Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: '22'
-          cache: npm
-          cache-dependency-path: extensions/workflow-register/package-lock.json
-      - name: Install dependencies
-        run: npm ci
-      - name: Capture workflow-register unit output
-        shell: bash
-        run: |
-          set +e
-          npm test > "$RUNNER_TEMP/workflow-register-unit.log" 2>&1
-          status=$?
-          printf '%s\n' "$status" > "$RUNNER_TEMP/workflow-register-unit.status"
-          exit 0
-      - name: Upload workflow-register diagnostics
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: japanese-gui-workflow-register-unit-${{ github.run_id }}
-          path: |
-            ${{ runner.temp }}/workflow-register-unit.log
-            ${{ runner.temp }}/workflow-register-unit.status
-          retention-days: 1
-
-  consistency-extension-host:
-    if: >-
-      github.repository == 'katamor1/bob_builtin_analyze' &&
-      github.event.pull_request.number == 132 &&
-      github.event.pull_request.head.repo.full_name == github.repository &&
-      github.event.pull_request.head.ref == 'agent/japanese-gui-copy-review'
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: extensions/bob-code-consistency-review
-    steps:
-      - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - name: Setup Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: '22'
-          cache: npm
-          cache-dependency-path: extensions/bob-code-consistency-review/package-lock.json
-      - name: Install dependencies
-        run: npm ci
-      - name: Prepare package and pinned VS Code runtime
-        run: |
-          npm test
-          npm run package
-          npm install --no-save --package-lock=false --ignore-scripts --audit=false --fund=false @vscode/test-cli@0.0.12 @vscode/test-electron@2.5.2
-      - name: Capture Extension Host smoke output
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - name: Apply bounded display-contract fixes and remove diagnostics
         shell: bash
         env:
-          SMOKE_EXTENSION_ID: local.bob-code-consistency-review
-          SMOKE_COMMANDS: bobCodeConsistency.openReviewWizard,bobCodeConsistency.preprocess
-          SMOKE_EXTRA_FILES: ../../scripts/triage-integrity-extension-host.test.js
-          SMOKE_WORKSPACE_FOLDER: test/fixtures/triage-operator-workspace
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+          HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
         run: |
-          set +e
-          {
-            node ../../scripts/extension-host-smoke.test.js --write-config
-            xvfb-run -a ./node_modules/.bin/vscode-test
-          } > "$RUNNER_TEMP/consistency-extension-host.log" 2>&1
-          status=$?
-          printf '%s\n' "$status" > "$RUNNER_TEMP/consistency-extension-host.status"
-          exit 0
-      - name: Upload consistency diagnostics
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: japanese-gui-consistency-extension-host-${{ github.run_id }}
-          path: |
-            ${{ runner.temp }}/consistency-extension-host.log
-            ${{ runner.temp }}/consistency-extension-host.status
-          retention-days: 1
+          set -euo pipefail
+          test "$HEAD_BRANCH" = 'agent/japanese-gui-copy-review'
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          git fetch --no-tags origin "$HEAD_BRANCH"
+          test "$(git rev-parse "origin/$HEAD_BRANCH")" = "$EXPECTED_HEAD"
+
+          python - <<'PY'
+          from pathlib import Path
+
+          package = Path('extensions/workflow-register/package.json')
+          package_text = package.read_text(encoding='utf-8')
+          old_category = '"category": "Bob ワークフロー"'
+          new_category = '"category": "Bob Workflow"'
+          if package_text.count(old_category) != 58:
+              raise SystemExit(f'Expected 58 localized workflow command categories, found {package_text.count(old_category)}')
+          if new_category in package_text:
+              raise SystemExit('English workflow command category unexpectedly already present')
+          package.write_text(package_text.replace(old_category, new_category), encoding='utf-8')
+
+          smoke = Path('scripts/triage-integrity-extension-host.test.js')
+          smoke_text = smoke.read_text(encoding='utf-8')
+          old_label = 'const HUMAN_TRIAGE_TAB_LABEL = "Code Consistency Human Triage"'
+          new_label = 'const HUMAN_TRIAGE_TAB_LABEL = "指摘・確認事項の判定"'
+          if smoke_text.count(old_label) != 1 or new_label in smoke_text:
+              raise SystemExit('Human Triage tab-label contract changed unexpectedly')
+          smoke.write_text(smoke_text.replace(old_label, new_label, 1), encoding='utf-8')
+          PY
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/japanese-gui-ci-diagnostics.yml .sdd/diagnostics/japanese-gui
+          git add extensions/workflow-register/package.json scripts/triage-integrity-extension-host.test.js
+          git diff --cached --check
+          git commit -m 'fix: align Japanese GUI display contracts with validation'
+          git push origin "HEAD:$HEAD_BRANCH"
