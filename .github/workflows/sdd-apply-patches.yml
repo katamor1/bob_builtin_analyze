@@ -20,7 +20,7 @@ jobs:
           ref: ${{ github.ref_name }}
           fetch-depth: 0
 
-      - name: Apply queued patch series
+      - name: Apply queued patch
         shell: bash
         run: |
           set -euo pipefail
@@ -30,20 +30,23 @@ jobs:
           ready=.sdd/patches/READY
           test -f "$ready"
           expected="$(tr -d '\r\n' < "$ready")"
-          mapfile -t parts < <(find .sdd/patches -maxdepth 1 -type f -name 'series.mbox.gz.b64.part*' | sort)
+          mapfile -t parts < <(find .sdd/patches -maxdepth 1 -type f -name 'payload.diff.bz2.b64.part*' | sort)
           if [ "${#parts[@]}" -eq 0 ]; then
             echo "No patch parts found." >&2
             exit 1
           fi
 
-          cat "${parts[@]}" | base64 --decode > /tmp/series.mbox.gz
-          actual="$(sha256sum /tmp/series.mbox.gz | awk '{print $1}')"
+          cat "${parts[@]}" | base64 --decode > /tmp/payload.diff.bz2
+          actual="$(sha256sum /tmp/payload.diff.bz2 | awk '{print $1}')"
           if [ "$actual" != "$expected" ]; then
             echo "Patch digest mismatch: expected=$expected actual=$actual" >&2
             exit 1
           fi
-          gzip --decompress --stdout /tmp/series.mbox.gz > /tmp/series.mbox
-          git am --3way /tmp/series.mbox
+          bzip2 --decompress --stdout /tmp/payload.diff.bz2 > /tmp/payload.diff
+          git apply --check /tmp/payload.diff
+          git apply --index --whitespace=nowarn /tmp/payload.diff
+          git diff --cached --check
+          git commit -m "feat: finish workflow-register Japanese GUI copy"
 
           git rm -r .sdd/patches .github/workflows/sdd-apply-patches.yml
           git commit -m "chore: remove temporary workflow GUI patch transport"
