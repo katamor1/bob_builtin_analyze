@@ -45,6 +45,20 @@ function Assert-NoReparsePointTraversal {
   }
 }
 
+function Get-NearestExistingAncestor {
+  param([Parameter(Mandatory)][string]$Path)
+
+  $current = Get-NormalizedFullPath $Path
+  while (-not (Test-Path -LiteralPath $current)) {
+    $parent = Split-Path -Parent $current
+    if (-not $parent -or $parent -eq $current) {
+      throw "Unable to find an existing ancestor for path: $Path"
+    }
+    $current = Get-NormalizedFullPath $parent
+  }
+  return $current
+}
+
 function Assert-SafeOutputRoot {
   param(
     [Parameter(Mandatory)][string]$RepoRoot,
@@ -57,13 +71,15 @@ function Assert-SafeOutputRoot {
   if (Test-PathInsideRoot $repoFull $outputFull) { throw "OutputRoot must be outside RepoRoot: $outputFull" }
 
   $parent = Split-Path -Parent $outputFull
-  if (-not $parent -or -not (Test-Path -LiteralPath $parent)) { throw "OutputRoot parent does not exist: $parent" }
-  $volumeRoot = [System.IO.Path]::GetPathRoot((Get-NormalizedFullPath $parent))
-  Assert-NoReparsePointTraversal -Root $volumeRoot -Target $parent
+  if (-not $parent) { throw "OutputRoot parent cannot be resolved: $outputFull" }
+  $existingAncestor = Get-NearestExistingAncestor $parent
+  $volumeRoot = [System.IO.Path]::GetPathRoot((Get-NormalizedFullPath $existingAncestor))
+  Assert-NoReparsePointTraversal -Root $volumeRoot -Target $existingAncestor
 
   $repoReal = (Resolve-Path -LiteralPath $repoFull).Path
-  $parentReal = (Resolve-Path -LiteralPath $parent).Path
-  $candidateReal = Join-Path $parentReal (Split-Path -Leaf $outputFull)
+  $ancestorReal = (Resolve-Path -LiteralPath $existingAncestor).Path
+  $relativeFromAncestor = [System.IO.Path]::GetRelativePath($existingAncestor, $outputFull)
+  $candidateReal = Get-NormalizedFullPath (Join-Path $ancestorReal $relativeFromAncestor)
   if (Test-PathInsideRoot $repoReal $candidateReal) { throw "OutputRoot resolves inside RepoRoot: $outputFull" }
   return $outputFull
 }
