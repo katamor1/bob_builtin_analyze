@@ -1,0 +1,54 @@
+name: Reproducible Runtime Windows diagnostics
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - .sdd/diagnostics/reproducible-runtime-windows
+
+permissions:
+  contents: read
+
+concurrency:
+  group: reproducible-runtime-windows-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  workflow-register-windows-unit:
+    if: >-
+      github.repository == 'katamor1/bob_builtin_analyze' &&
+      github.event.pull_request.number == 137 &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'codex/reproducible-runtime-v2-impl-20260717'
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: extensions/workflow-register
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: extensions/workflow-register/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Capture Windows unit output
+        shell: pwsh
+        run: |
+          $log = Join-Path $env:RUNNER_TEMP 'workflow-register-windows-unit.log'
+          $statusFile = Join-Path $env:RUNNER_TEMP 'workflow-register-windows-unit.status'
+          npm test *> $log
+          $status = $LASTEXITCODE
+          Set-Content -Path $statusFile -Value $status -Encoding utf8
+          exit 0
+      - name: Upload Windows diagnostics
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: reproducible-runtime-windows-unit-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/workflow-register-windows-unit.log
+            ${{ runner.temp }}/workflow-register-windows-unit.status
+          retention-days: 1
