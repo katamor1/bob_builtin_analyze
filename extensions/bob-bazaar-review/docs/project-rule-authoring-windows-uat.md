@@ -54,7 +54,7 @@ Get-ChildItem -LiteralPath $FixtureRoot -File |
 
 共有する記録では `Path` を削除し、logical fixture name と hash だけにします。
 
-## 3. Environment preflight
+## 3. 実行環境の事前確認
 
 PowerShell で version と package gate を記録します。
 
@@ -113,11 +113,11 @@ Poppler が PATH にない場合は user setting `bobBazaar.ruleAuthoring.pdfToT
 
 期待結果: Palette command が Bob task を自動起動せず、Bob UI の明示操作で workflow が始まる。
 
-### PRA-WIN-004 conflicting sources と Human Triage
+### PRA-WIN-004 conflicting sources と 人による判定
 
 1. conflicting sources を含む run を proposal まで進める。
 2. conflict が関連 operation と source locator を示すことを確認する。
-3. Human Triage で候補ごとに accept、reject、edit、retire を選び、rule decisions を記録する。
+3. 人による判定 で候補ごとに accept、reject、edit、retire を選び、rule decisions を記録する。
 4. unresolved blocking conflict が apply を止めること、解決後の apply preview が判断を反映することを確認する。
 
 期待結果: AI が conflict を独断で解消せず、人間の decision overlay が正本になる。
@@ -126,7 +126,7 @@ Poppler が PATH にない場合は user setting `bobBazaar.ruleAuthoring.pdfToT
 
 1. extraction 完了後に VS Code を終了し、再起動して resume する。
 2. agent failure 後に再起動し、保持済み deterministic artifact から agent step だけ再試行する。
-3. proposal capture 後と Human Triage 途中でも VS Code restart / resume を確認する。
+3. proposal capture 後と 人による判定 途中でも VS Code restart / resume を確認する。
 
 期待結果: source の再選択や完了済み phase の再実行を強制せず、authoritative artifact pointer から続行する。
 
@@ -151,7 +151,7 @@ $Before = $Assets | ForEach-Object {
 1. apply preview を表示した後、後半 target の一つを test 用に read-only にして induced write failure を起こす。例: `attrib +R (Join-Path $Review "rule-provenance.json")`。
 2. apply を実行し、transaction が `committed` にならず rollback または明示 recovery を要求することを確認する。
 3. `attrib -R` で test 属性を戻す。
-4. incomplete transaction があれば Human Triage recovery UI から rollback を完了する。
+4. incomplete transaction があれば 人による判定 recovery UI から rollback を完了する。
 5. transaction ID と状態だけを記録し、journal / backup 本文は共有しない。
 6. 全 asset を `Get-FileHash -Algorithm SHA256` で再計算し、`$Before` と一致する rollback confirmation を記録する。
 
