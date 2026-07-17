@@ -166,3 +166,65 @@ test("retry controller exclusively owns provider registrations", async () => {
   for (const ownedDisposable of owned) ownedDisposable.dispose()
   assert.deepEqual(disposed, ["provider", "listener"])
 })
+
+test("retry controller disposes every registration when one provider cleanup throws", async () => {
+  const api = {}
+  const disposed = []
+  const errors = []
+  const controller = startRetryRegistrationController({
+    retryDelaysMs: [],
+    register: async () => ({
+      registered: true,
+      api,
+      registrations: [
+        disposable("first", disposed),
+        {
+          dispose: () => {
+            disposed.push("throwing")
+            throw new Error("provider cleanup failed")
+          }
+        },
+        disposable("last", disposed)
+      ]
+    }),
+    currentApi: () => api,
+    subscribeChanges: () => disposable("listener", disposed),
+    own: () => {},
+    reportError: (error) => errors.push(error)
+  })
+
+  await tick()
+  assert.doesNotThrow(() => controller.dispose())
+
+  assert.deepEqual(disposed, ["last", "throwing", "first", "listener"])
+  assert.equal(errors.length, 1)
+  assert.match(String(errors[0]), /provider cleanup failed/)
+})
+
+test("cleanup error reporting cannot interrupt listener disposal", async () => {
+  const api = {}
+  const disposed = []
+  const controller = startRetryRegistrationController({
+    retryDelaysMs: [],
+    register: async () => ({
+      registered: true,
+      api,
+      registrations: [{
+        dispose: () => {
+          disposed.push("provider")
+          throw new Error("provider cleanup failed")
+        }
+      }]
+    }),
+    currentApi: () => api,
+    subscribeChanges: () => disposable("listener", disposed),
+    own: () => {},
+    reportError: () => {
+      throw new Error("reporting failed")
+    }
+  })
+
+  await tick()
+  assert.doesNotThrow(() => controller.dispose())
+  assert.deepEqual(disposed, ["provider", "listener"])
+})

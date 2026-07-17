@@ -423,3 +423,12 @@ file basename は `review_id` を sanitize して作る。`review_id` が無い�
 - review processing limit は manifest と runtime で同じ最小・既定・最大値を持つ。UTF-8 切り詰め後の suffix を含めても byte 上限を超えないこと。
 - repository 内の全 WORKFLOW.md を strict validation し、provider、preflight、nested command ID、template mirror の契約ずれを CI で拒否する。
 - Ubuntu と Windows の両方で compile、unit test、VSIX package、package policy を確認する。IBM Bob 実環境の UI / task / MCP は release candidate 実機ゲートで確認する。
+
+<!-- RELEASE-BLOCKERS-2026-07-16 -->
+## 2026-07-16 release blocker closure 詳細
+
+- dependency は `extensionDependencies` を要求しない soft dependency とし、lockfile、production dependency、VSIX runtime contents を `dependency:policy` と package smoke で固定する。
+- provider retry controller は API generation ごとの登録だけを所有する。rollback / deactivate では全Disposableを逆順に試行し、1件の例外や診断callbackの例外で残りのproviderまたはchange listenerの解除を中断しない。
+- 外部process timeoutは1,000〜600,000 msへ正規化する。timeout、AbortSignal、buffer超過ではprocess tree終了後にだけ結果をsettleする。Windowsでは親processの`exit`だけを完了条件にせず、`taskkill /T /F`の完了または2秒の有限fallbackまで待つ。
+- Bazaar path validationはPOSIX absolute、Windows drive absolute / drive-relative、UNC、device path、dot / traversal / empty segment、制御文字、外側空白をCLI起動前に拒否する。
+- `truncateUtf8`が返す本文とtruncation noticeの合計を指定UTF-8 byte budget内へ収め、0以下のbudgetでは空文字を返す。multibyte code pointを途中分割しない。
