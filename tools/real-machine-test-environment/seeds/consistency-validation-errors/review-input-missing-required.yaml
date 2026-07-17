@@ -1,0 +1,6 @@
+schema_version: 1
+review:
+  id: INVALID-MISSING-REQUIRED
+  title: 必須項目不足
+artifacts: {}
+review_focus: []

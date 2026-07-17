@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "documents": [
+    {
+      "document_id": "RS001",
+      "display_id": "要求仕様 INVALID-001",
+      "source_path": "docs/requirements-ai-matrix.md",
+      "id_source": "extracted"
+    }
+  ],
+  "domains": [
+    {
+      "code": "PAY",
+      "label": "決済",
+      "description": "invalid status fixture",
+      "status": "accepted"
+    }
+  ],
+  "items": [],
+  "links": [],
+  "decisions": []
+}

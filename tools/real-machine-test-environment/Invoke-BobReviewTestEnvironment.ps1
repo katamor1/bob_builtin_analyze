@@ -12,6 +12,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "lib\ScenarioManifest.ps1")
+. (Join-Path $PSScriptRoot "lib\ScenarioFixtureValidation.ps1")
 . (Join-Path $PSScriptRoot "lib\ScenarioExecution.ps1")
 . (Join-Path $PSScriptRoot "lib\RunEvidence.ps1")
 
@@ -21,6 +22,7 @@ if ($ValidateOnly -and ($Open -or $OpenScenario)) { throw "-ValidateOnly cannot 
 $RepoRoot = (Resolve-Path -LiteralPath $RepoRoot).Path
 $manifest = Read-ScenarioManifest -RepoRoot $RepoRoot
 Assert-ScenarioManifest -RepoRoot $RepoRoot -Manifest $manifest
+Assert-ScenarioFixtureCopies -RepoRoot $RepoRoot -Manifest $manifest
 $selected = @(Resolve-ScenarioSelection -Manifest $manifest -Scenario $Scenario)
 
 if ($Open -and $selected.Count -ne 1) { throw "-Open requires exactly one selected scenario" }

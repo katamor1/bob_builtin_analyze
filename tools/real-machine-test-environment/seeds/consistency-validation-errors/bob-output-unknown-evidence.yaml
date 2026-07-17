@@ -1,0 +1,27 @@
+schema_version: 1
+review_summary:
+  review_id: REVIEW-AI-MATRIX-001
+  target_range: main..feature/ai-verification-matrix
+  result_type: pre_review
+  final_approval: not_performed
+  scope_statement: unknown evidence ID の validation を確認する固定出力。
+findings:
+  - id: PRE-999
+    category: requirement-code-consistency
+    severity: medium
+    confidence: high
+    summary: 存在しない evidence を参照する。
+    evidence:
+      - evidence_id: UNKNOWN-9999
+        type: code
+        ref: MissingSymbol
+    reason: schema validation 後の evidence lookup failure を確認するため。
+    impact: 不正な根拠参照を正式成果物へ通さない。
+    recommended_action: evidence-index に存在する ID だけを使用する。
+    human_check: validation error が UNKNOWN-9999 を示すことを確認する。
+questions: []
+coverage_notes:
+  - id: COV-999
+    type: checked
+    summary: fixture shape の確認のみ実施した。
+rejected_or_uncertain: []

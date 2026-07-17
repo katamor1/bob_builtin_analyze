@@ -206,3 +206,57 @@ test("ValidateOnly invokes declared post-seeds without creating an output root",
   assert.match(runner, /if \(\$ValidateOnly\) \{[\s\S]*& \$seedPath -ValidateOnly[\s\S]*Manifest validation succeeded/)
   assert.match(runner, /if \(\$ValidateOnly\)[\s\S]*return[\s\S]*if \(-not \$OutputRoot\)/)
 })
+
+test("consistency invalid fixtures are isolated from active paths", () => {
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"))
+  const scenario = manifest.scenarios.find((entry) => entry.id === "consistency-validation-errors")
+  assert.equal(scenario.fixtureCopies.length, 5)
+  const activePaths = new Set([
+    "workspace/review-input.yaml",
+    "workspace/.bob-review/bob-output/bob-output.yaml",
+    "workspace/.bob-trace/ai-traceability-draft/ai-draft.json"
+  ])
+  const destinations = new Set()
+  for (const copy of scenario.fixtureCopies) {
+    assertSafeRelativePath(copy.source, "fixture source")
+    assertSafeRelativePath(copy.destination, "fixture destination")
+    assert.match(copy.destination, /^workspace\/test-data\/invalid\/[A-Za-z0-9._-]+$/)
+    assert.equal(activePaths.has(copy.destination), false)
+    assert.equal(fs.existsSync(path.join(repoRoot, copy.source)), true)
+    assert.ok(scenario.expectedArtifacts.includes(copy.destination))
+    destinations.add(copy.destination)
+  }
+  assert.equal(destinations.size, 5)
+})
+
+test("unknown-evidence output keeps the intended validation boundary", () => {
+  const source = fs.readFileSync(path.join(toolRoot, "seeds", "consistency-validation-errors", "bob-output-unknown-evidence.yaml"), "utf8")
+  assert.match(source, /schema_version:\s*1/)
+  assert.match(source, /result_type:\s*pre_review/)
+  assert.match(source, /final_approval:\s*not_performed/)
+  assert.match(source, /scope_statement:/)
+  assert.match(source, /evidence_id:\s*UNKNOWN-9999/)
+  assert.match(source, /coverage_notes:/)
+  assert.match(source, /rejected_or_uncertain:/)
+})
+
+test("invalid fixtures each target a distinct validation layer", () => {
+  const root = path.join(toolRoot, "seeds", "consistency-validation-errors")
+  assert.match(fs.readFileSync(path.join(root, "review-input-missing-required.yaml"), "utf8"), /review_focus:\s*\[\]/)
+  assert.match(fs.readFileSync(path.join(root, "review-input-path-escape.yaml"), "utf8"), /path:\s*\.\.\/outside-requirements\.md/)
+  const schemaError = fs.readFileSync(path.join(root, "bob-output-schema-error.yaml"), "utf8")
+  assert.match(schemaError, /result_type:\s*final_review/)
+  assert.doesNotMatch(schemaError, /scope_statement:/)
+  const traceability = JSON.parse(fs.readFileSync(path.join(root, "traceability-draft-invalid-status.json"), "utf8"))
+  assert.equal(traceability.domains[0].status, "accepted")
+})
+
+test("manifest validator enforces isolated unique fixture destinations", () => {
+  const source = fs.readFileSync(path.join(toolRoot, "lib", "ScenarioFixtureValidation.ps1"), "utf8")
+  assert.match(source, /Invalid fixture destination must remain isolated/)
+  assert.match(source, /Invalid fixture destination must not be an active artifact path/)
+  assert.match(source, /Invalid fixture destination must be listed in expectedArtifacts/)
+  assert.match(source, /Invalid fixture destinations must be unique/)
+  const runner = fs.readFileSync(path.join(toolRoot, "Invoke-BobReviewTestEnvironment.ps1"), "utf8")
+  assert.match(runner, /Assert-ScenarioFixtureCopies -RepoRoot \$RepoRoot -Manifest \$manifest/)
+})

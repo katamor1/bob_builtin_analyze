@@ -1,0 +1,10 @@
+schema_version: 1
+review_summary:
+  review_id: INVALID-SCHEMA
+  target_range: main..feature/ai-verification-matrix
+  result_type: final_review
+  final_approval: approved
+findings: []
+questions: []
+coverage_notes: []
+rejected_or_uncertain: []

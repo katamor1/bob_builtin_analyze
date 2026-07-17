@@ -1,0 +1,26 @@
+schema_version: 1
+review:
+  id: INVALID-PATH-ESCAPE
+  title: workspace 外参照
+  change_type: maintenance
+  purpose: artifact path containment を確認する
+  base: main
+  head: feature/ai-verification-matrix
+  vcs: git
+artifacts:
+  requirements:
+    - path: ../outside-requirements.md
+      sections:
+        - REQ-OUTSIDE-001
+review_focus:
+  - requirement-code-consistency
+analysis_options:
+  include_callers: true
+  include_callees: true
+  include_global_access: true
+  include_struct_impact: true
+  include_ledgers: true
+  max_call_depth: 1
+  max_code_context_lines: 80
+  language:
+    - c
