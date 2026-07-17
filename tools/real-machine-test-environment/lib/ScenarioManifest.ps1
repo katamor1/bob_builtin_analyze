@@ -148,7 +148,7 @@ function Assert-ScenarioManifest {
         Assert-RepositoryRelativePath $RepoRoot ([string]$scenario.postSeed) "$scenarioId.postSeed" -MustExist | Out-Null
       }
 
-      $argumentNames = @($scenario.generator.arguments.psobject.Properties.Name)
+      $argumentNames = @($scenario.generator.arguments.psobject.Properties | ForEach-Object { [string]$_.Name })
       if ($launcher -like "*bazaar-project-rule-review*") {
         if ($argumentNames.Count -ne 0) { throw "Bazaar manifest arguments are not allowed" }
       } else {
