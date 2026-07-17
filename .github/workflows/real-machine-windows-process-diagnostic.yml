@@ -30,7 +30,7 @@ jobs:
           node-version: "22"
 
       - name: Run ValidateOnly contract
-        id: validate-only
+        id: validate_only
         continue-on-error: true
         shell: pwsh
         run: |
@@ -42,7 +42,7 @@ jobs:
           exit $exitCode
 
       - name: Run Windows process contract
-        id: process-contract
+        id: process_contract
         continue-on-error: true
         shell: pwsh
         env:
@@ -67,6 +67,6 @@ jobs:
           retention-days: 3
 
       - name: Propagate diagnostic failure
-        if: steps.validate-only.outcome == 'failure' || steps.process-contract.outcome == 'failure'
+        if: steps.validate_only.outcome == 'failure' || steps.process_contract.outcome == 'failure'
         shell: pwsh
         run: exit 1
