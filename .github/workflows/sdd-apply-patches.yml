@@ -5,7 +5,7 @@ on:
     branches:
       - agent/workflow-register-japanese-finish
     paths:
-      - .sdd/patches/READY
+      - .sdd/patches/TRIGGER
 
 permissions:
   contents: write
