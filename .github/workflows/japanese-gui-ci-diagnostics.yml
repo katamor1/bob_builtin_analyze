@@ -1,0 +1,104 @@
+name: Japanese GUI CI diagnostics
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - .sdd/diagnostics/japanese-gui
+
+permissions:
+  contents: read
+
+concurrency:
+  group: japanese-gui-ci-diagnostics-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  workflow-register-unit:
+    if: >-
+      github.repository == 'katamor1/bob_builtin_analyze' &&
+      github.event.pull_request.number == 132 &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'agent/japanese-gui-copy-review'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: extensions/workflow-register
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: extensions/workflow-register/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Capture workflow-register unit output
+        shell: bash
+        run: |
+          set +e
+          npm test > "$RUNNER_TEMP/workflow-register-unit.log" 2>&1
+          status=$?
+          printf '%s\n' "$status" > "$RUNNER_TEMP/workflow-register-unit.status"
+          exit 0
+      - name: Upload workflow-register diagnostics
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: japanese-gui-workflow-register-unit-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/workflow-register-unit.log
+            ${{ runner.temp }}/workflow-register-unit.status
+          retention-days: 1
+
+  consistency-extension-host:
+    if: >-
+      github.repository == 'katamor1/bob_builtin_analyze' &&
+      github.event.pull_request.number == 132 &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'agent/japanese-gui-copy-review'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: extensions/bob-code-consistency-review
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: extensions/bob-code-consistency-review/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Prepare package and pinned VS Code runtime
+        run: |
+          npm test
+          npm run package
+          npm install --no-save --package-lock=false --ignore-scripts --audit=false --fund=false @vscode/test-cli@0.0.12 @vscode/test-electron@2.5.2
+      - name: Capture Extension Host smoke output
+        shell: bash
+        env:
+          SMOKE_EXTENSION_ID: local.bob-code-consistency-review
+          SMOKE_COMMANDS: bobCodeConsistency.openReviewWizard,bobCodeConsistency.preprocess
+          SMOKE_EXTRA_FILES: ../../scripts/triage-integrity-extension-host.test.js
+          SMOKE_WORKSPACE_FOLDER: test/fixtures/triage-operator-workspace
+        run: |
+          set +e
+          {
+            node ../../scripts/extension-host-smoke.test.js --write-config
+            xvfb-run -a ./node_modules/.bin/vscode-test
+          } > "$RUNNER_TEMP/consistency-extension-host.log" 2>&1
+          status=$?
+          printf '%s\n' "$status" > "$RUNNER_TEMP/consistency-extension-host.status"
+          exit 0
+      - name: Upload consistency diagnostics
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: japanese-gui-consistency-extension-host-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/consistency-extension-host.log
+            ${{ runner.temp }}/consistency-extension-host.status
+          retention-days: 1
