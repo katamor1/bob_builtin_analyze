@@ -19,3 +19,13 @@
 - 適用後ブランチ先端: `5f71337a80e4be73bfb3127d655e3b9b96c82a07`
 
 この文書はタスク単位の実装・検証証跡を追記する。
+
+<!-- INTEGRATION-COMPLETION-2026-07-17 -->
+## Integration completion (2026-07-17)
+
+- Repaired the reviewed one-byte split corruption in the Bazaar GUI patch payload.
+- Verified SHA-256 for all four decoded mail patches before application.
+- Preserved the Review Wizard workspace-initialization card and model-backed status while localizing the surrounding GUI.
+- Applied the Japanese GUI and terminology series on top of the current `main`.
+- Preserved workflow-register task snapshot maximums introduced by the runtime-blocker remediation.
+- Removed the temporary SDD workflow and encoded patch queue in the same cleanup commit.
