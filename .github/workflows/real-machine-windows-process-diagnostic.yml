@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   windows-process-contract:
-    name: Windows blocked-scenario process contract
+    name: Windows real-machine diagnostic contracts
     runs-on: windows-latest
     timeout-minutes: 10
 
@@ -28,6 +28,18 @@ jobs:
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
+
+      - name: Run ValidateOnly contract
+        id: validate-only
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $output = & pwsh -NoProfile -File tools/real-machine-test-environment/Invoke-BobReviewTestEnvironment.ps1 -ValidateOnly 2>&1
+          $exitCode = $LASTEXITCODE
+          $output | Set-Content -LiteralPath validate-only.log -Encoding utf8
+          $output | Write-Host
+          "exit_code=$exitCode" | Add-Content -LiteralPath validate-only.log -Encoding utf8
+          exit $exitCode
 
       - name: Run Windows process contract
         id: process-contract
@@ -43,16 +55,18 @@ jobs:
           "exit_code=$exitCode" | Add-Content -LiteralPath windows-process-contract.log -Encoding utf8
           exit $exitCode
 
-      - name: Upload Windows process contract log
+      - name: Upload diagnostic logs
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: windows-process-contract-log
-          path: windows-process-contract.log
+          name: real-machine-windows-diagnostic-logs
+          path: |
+            validate-only.log
+            windows-process-contract.log
           if-no-files-found: error
           retention-days: 3
 
-      - name: Propagate process contract failure
-        if: steps.process-contract.outcome == 'failure'
+      - name: Propagate diagnostic failure
+        if: steps.validate-only.outcome == 'failure' || steps.process-contract.outcome == 'failure'
         shell: pwsh
         run: exit 1
