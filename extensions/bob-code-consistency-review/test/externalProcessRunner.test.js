@@ -6,6 +6,7 @@ const { test } = require("node:test")
 
 const {
   ExternalProcessError,
+  normalizeExternalProcessTimeoutMs,
   runExternalProcess
 } = require("../out/core/externalProcessRunner")
 
@@ -17,7 +18,9 @@ function runNode(script, options = {}) {
     args: ["-e", script],
     cwd,
     maxBufferBytes: 1024 * 1024,
-    timeoutMs: 2000,
+    // Keep non-timeout assertions independent from slow CI process scheduling.
+    // Timeout-specific tests override this value explicitly below.
+    timeoutMs: 10000,
     allowedExitCodes: [0],
     ...options
   })
@@ -40,9 +43,23 @@ test("external process runner terminates commands that exceed the hard timeout",
   assert.ok(Date.now() - startedAt < 3000)
 })
 
-test("external process runner clamps timeouts below the safety minimum", async () => {
-  const result = await runNode("setTimeout(() => {}, 50)", { timeoutMs: 1 })
-  assert.equal(result.exitCode, 0)
+test("external process runner clamps timeout configuration to the safety range", () => {
+  assert.equal(normalizeExternalProcessTimeoutMs(1), 1000)
+  assert.equal(normalizeExternalProcessTimeoutMs(1000), 1000)
+  assert.equal(normalizeExternalProcessTimeoutMs(600000), 600000)
+  assert.equal(normalizeExternalProcessTimeoutMs(Number.MAX_SAFE_INTEGER), 600000)
+})
+
+test("external process runner applies the minimum timeout to executions", async () => {
+  await assert.rejects(
+    runNode("setInterval(() => {}, 1000)", { timeoutMs: 1 }),
+    (error) => {
+      assert.ok(error instanceof ExternalProcessError)
+      assert.equal(error.kind, "timeout")
+      assert.match(error.message, /timed out after 1000 ms/)
+      return true
+    }
+  )
 })
 
 test("external process runner propagates AbortSignal cancellation", async () => {

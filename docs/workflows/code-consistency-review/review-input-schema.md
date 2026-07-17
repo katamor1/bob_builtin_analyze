@@ -138,7 +138,7 @@ analysis_options:
   include_global_access: true
   include_struct_impact: true
   include_ledgers: true
-  max_call_depth: 2
+  max_call_depth: 1
   max_code_context_lines: 80
   language:
     - c
@@ -154,6 +154,8 @@ bob_options:
 ```
 
 `analysis_options.language` は任意である。未指定の場合は対応言語をフィルタせず、`c`、`cpp`、`h`、`hpp`、`typescript`、`javascript`、`python`、`csharp`、`java`、`go`、`rust`、`shell`、`sql`、`json`、`yaml`、`markdown`、`text`、`unknown` を対象にする。指定した場合だけ、変更ファイルの言語をその集合に絞る。
+
+`analysis_options.max_call_depth` の既定値は `1` である。未指定時は変更 symbol から直接接続された依存だけを展開する。
 
 ## 6. バリデーションルール
 

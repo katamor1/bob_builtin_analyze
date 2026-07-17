@@ -32,6 +32,11 @@ export type RepositoryIndexCacheLoadResult = {
   warnings: string[]
 }
 
+type AtomicTextFileWriteOptions = {
+  rename?: typeof fs.rename
+  retryDelaysMs?: readonly number[]
+}
+
 type RepositoryIndexCacheDocument = {
   schema_version: 1
   producer: {
@@ -123,18 +128,40 @@ export async function writeRepositoryIndexCache(input: {
   await writeAtomicTextFile(input.filePath, `${JSON.stringify(document, null, 2)}\n`)
 }
 
-export async function writeAtomicTextFile(filePath: string, content: string): Promise<void> {
+export async function writeAtomicTextFile(
+  filePath: string,
+  content: string,
+  options: AtomicTextFileWriteOptions = {}
+): Promise<void> {
   await fs.mkdir(path.dirname(filePath), { recursive: true })
   const temporaryPath = `${filePath}.tmp-${process.pid}-${randomUUID()}`
   await fs.writeFile(temporaryPath, content, { encoding: "utf8", flag: "wx" })
   try {
-    await fs.rename(temporaryPath, filePath)
-  } catch (error) {
-    if (!replaceRetryable(error)) throw error
-    await fs.rm(filePath, { force: true })
-    await fs.rename(temporaryPath, filePath)
+    await renameWithTransientRetry(
+      temporaryPath,
+      filePath,
+      options.rename ?? fs.rename,
+      options.retryDelaysMs ?? [10, 50, 100]
+    )
   } finally {
     await fs.rm(temporaryPath, { force: true })
+  }
+}
+
+async function renameWithTransientRetry(
+  source: string,
+  target: string,
+  rename: typeof fs.rename,
+  retryDelaysMs: readonly number[]
+): Promise<void> {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      await rename(source, target)
+      return
+    } catch (error) {
+      if (!replaceRetryable(error) || attempt >= retryDelaysMs.length) throw error
+      await new Promise((resolve) => setTimeout(resolve, Math.max(0, retryDelaysMs[attempt] ?? 0)))
+    }
   }
 }
 

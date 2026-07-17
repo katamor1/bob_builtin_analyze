@@ -112,7 +112,8 @@ export function extractRepositorySourceFragment(input: {
 }): RepositorySourceFragment {
   const testFile = isTestPath(input.path)
   const fileId = repositoryFileSymbolId(input.path)
-  const declarations = extractDeclarations(input.path, input.language, input.text, testFile)
+  const codeText = maskNonCodeText(input.text, input.language)
+  const declarations = extractDeclarations(input.path, input.language, codeText, testFile)
   const symbols: RepositoryIndexSymbolRecord[] = [
     {
       id: fileId,
@@ -134,7 +135,7 @@ export function extractRepositorySourceFragment(input: {
   })).sort(compareEdges)
   const references = [
     ...extractPathReferences(input.path, input.language, input.text, testFile),
-    ...extractNameReferences(input.path, input.text, declarations)
+    ...extractNameReferences(input.path, codeText, declarations)
   ].sort(compareReferences)
 
   return { path: input.path, language: input.language, symbols, edges, references }
@@ -219,13 +220,23 @@ function extractPathReferences(
 ): RepositoryReferenceCandidate[] {
   const result: RepositoryReferenceCandidate[] = []
   const seen = new Set<string>()
-  const add = (kind: "imports" | "includes" | "tests", targetPath: string, reason: string): void => {
-    const normalized = targetPath.trim()
+  const add = (
+    kind: "imports" | "includes" | "tests",
+    targetPath: string,
+    referenceType: "import" | "include"
+  ): void => {
+    const normalized = safeRepositoryReferenceTarget(filePath, targetPath)
     if (!normalized) return
     const key = `${kind}\u0000${normalized}`
     if (seen.has(key)) return
     seen.add(key)
-    result.push({ from: repositoryFileSymbolId(filePath), kind, targetPath: normalized, reason })
+    const origin = testFile ? "test" : "source"
+    result.push({
+      from: repositoryFileSymbolId(filePath),
+      kind,
+      targetPath: normalized,
+      reason: `${origin} ${referenceType} reference`
+    })
   }
 
   if (["typescript", "javascript"].includes(language)) {
@@ -235,16 +246,88 @@ function extractPathReferences(
       /\bimport\s*\(\s*["']([^"']+)["']\s*\)/gu
     ]
     for (const expression of expressions) {
-      collectPathMatches(expression, text, (target) => add(testFile ? "tests" : "imports", target, `${testFile ? "test" : "source"} imports ${target}`))
+      collectPathMatches(expression, text, (target) => add(testFile ? "tests" : "imports", target, "import"))
     }
   } else if (["c", "cpp", "h", "hpp"].includes(language)) {
-    collectPathMatches(/^\s*#\s*include\s*"([^"]+)"/gmu, text, (target) => add(testFile ? "tests" : "includes", target, `${testFile ? "test" : "source"} includes ${target}`))
+    collectPathMatches(/^\s*#\s*include\s*"([^"]+)"/gmu, text, (target) => add(testFile ? "tests" : "includes", target, "include"))
   } else if (language === "python") {
-    collectPathMatches(/^\s*from\s+([.A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s+import\b/gmu, text, (target) => add(testFile ? "tests" : "imports", target, `${testFile ? "test" : "source"} imports ${target}`))
-    collectPathMatches(/^\s*import\s+([.A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)/gmu, text, (target) => add(testFile ? "tests" : "imports", target, `${testFile ? "test" : "source"} imports ${target}`))
+    collectPathMatches(/^\s*from\s+([.A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s+import\b/gmu, text, (target) => add(testFile ? "tests" : "imports", target, "import"))
+    collectPathMatches(/^\s*import\s+([.A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)/gmu, text, (target) => add(testFile ? "tests" : "imports", target, "import"))
   }
 
   return result
+}
+
+function safeRepositoryReferenceTarget(filePath: string, value: string): string | undefined {
+  const normalized = value.trim().replace(/\\/gu, "/")
+  if (!normalized || /[\0-\x1f\x7f]/u.test(normalized)) return undefined
+  if (normalized.startsWith("/") || /^[A-Za-z][A-Za-z0-9+.-]*:/u.test(normalized)) return undefined
+  if (normalized.includes("?") || normalized.includes("#")) return undefined
+
+  if (normalized.startsWith(".") || normalized.includes("/")) {
+    const resolved = path.posix.normalize(path.posix.join(path.posix.dirname(filePath), normalized))
+    if (resolved === ".." || resolved.startsWith("../") || resolved.startsWith("/")) return undefined
+  }
+  return normalized
+}
+
+function maskNonCodeText(text: string, language: string): string {
+  const masked = text.split("")
+  let index = 0
+  while (index < text.length) {
+    const current = text[index]
+    const next = text[index + 1]
+    if (current === '"' || current === "'" || current === "`") {
+      const quote = current
+      masked[index] = " "
+      index += 1
+      while (index < text.length) {
+        const character = text[index]
+        if (character !== "\n" && character !== "\r") masked[index] = " "
+        if (character === "\\") {
+          index += 1
+          if (index < text.length && text[index] !== "\n" && text[index] !== "\r") masked[index] = " "
+        } else if (character === quote) {
+          index += 1
+          break
+        }
+        index += 1
+      }
+      continue
+    }
+    if (current === "/" && next === "/") {
+      while (index < text.length && text[index] !== "\n" && text[index] !== "\r") {
+        masked[index] = " "
+        index += 1
+      }
+      continue
+    }
+    if (current === "/" && next === "*") {
+      masked[index] = " "
+      masked[index + 1] = " "
+      index += 2
+      while (index < text.length) {
+        if (text[index] === "*" && text[index + 1] === "/") {
+          masked[index] = " "
+          masked[index + 1] = " "
+          index += 2
+          break
+        }
+        if (text[index] !== "\n" && text[index] !== "\r") masked[index] = " "
+        index += 1
+      }
+      continue
+    }
+    if (language === "python" && current === "#") {
+      while (index < text.length && text[index] !== "\n" && text[index] !== "\r") {
+        masked[index] = " "
+        index += 1
+      }
+      continue
+    }
+    index += 1
+  }
+  return masked.join("")
 }
 
 function collectPathMatches(expression: RegExp, text: string, add: (target: string) => void): void {

@@ -368,6 +368,8 @@ Branch checkpoint command は active run selection と run store を使い、`ap
 
 各 snapshot は時刻、stepId、reason を含むファイル名で保存される。最新 snapshot は `latest.json` にも保存する。保存 reason は `workflow-start`、`step-start`、`agent-output`、`handoff-failed`、`held`、`failed`、`completed` などである。
 
+snapshot の `maxBytes` は 1,024〜1,048,576 bytes（既定 262,144 bytes）、`maxPerRun` は 1〜500件（既定 50件）へ runtime で正規化し、package manifest も同じ範囲を公開する。size 判定は実際に保存する整形済み JSON と末尾改行を含む UTF-8 bytes で行う。超過時は messages、task export、task metadata、assistant text、handoff error、補助 run metadata の順に削減し、必須の schema / run / workflow / step metadata だけでも上限へ収まらない場合は書き込まず失敗する。通常 snapshot と `latest.json` はいずれも hard cap を超えない。
+
 `recoverResultTextFromSnapshots()` は `latest.json`、次に最新の `agent-output` snapshot から `lastAssistantText` を探す。workflow ID、run ID、step ID、definition hash が一致する場合だけ利用する。
 
 ## 15. StepRuntime

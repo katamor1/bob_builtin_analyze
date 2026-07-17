@@ -262,7 +262,16 @@ steps:
       - reviewPackage
     stateRequired: true
     resultKey: bobReviewResult
-    prompt: Bob 出力 schema に一致する YAML を返してください。final_approval は not_performed にしてください。
+    prompt: |
+      state.reviewPackage の packageDir にある bob-input.md を読み、Bob 出力 schema に一致するプレレビュー結果を作成してください。
+
+      出力契約:
+      - 厳密な JSON object だけを返してください。JSON は YAML 1.2 としても有効で、capture 後に canonical YAML へ保存されます。
+      - 応答の先頭は `{`、末尾は `}` にしてください。
+      - Markdown、コードフェンス、前置き、後書きは禁止です。
+      - 文字列値はすべて JSON のダブルクォートで囲んでください。
+      - YAML の compact mapping、flow mapping、未引用 scalar は使用しないでください。
+      - result_type は pre_review、final_approval は not_performed にしてください。
   - id: capture-bob-output
     title: Bob YAML 出力を取り込み
     type: command

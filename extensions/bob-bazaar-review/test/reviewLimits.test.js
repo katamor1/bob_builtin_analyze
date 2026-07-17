@@ -31,15 +31,23 @@ test("truncateUtf8 terminates for zero and negative limits", () => {
   const zero = truncateUtf8("abcdef", 0, "diff")
   const negative = truncateUtf8("abcdef", -1, "diff")
 
-  assert.match(zero, /TRUNCATED/)
-  assert.match(zero, /limit is 0 bytes/)
-  assert.match(negative, /TRUNCATED/)
-  assert.match(negative, /limit is 0 bytes/)
+  assert.equal(zero, "")
+  assert.equal(negative, "")
 })
 
 test("truncateUtf8 keeps multibyte characters valid while truncating", () => {
   const output = truncateUtf8("あいうえお", 8, "diff")
 
-  assert.match(output, /TRUNCATED/)
-  assert.doesNotThrow(() => Buffer.from(output, "utf8").toString("utf8"))
+  assert.ok(Buffer.byteLength(output, "utf8") <= 8)
+  assert.equal(Buffer.from(output, "utf8").toString("utf8"), output)
+})
+
+test("truncateUtf8 includes its truncation notice inside every byte budget", () => {
+  for (const maxBytes of [0, 1, 8, 64]) {
+    const output = truncateUtf8("x".repeat(1024), maxBytes, "diff")
+    assert.ok(
+      Buffer.byteLength(output, "utf8") <= maxBytes,
+      `retained ${Buffer.byteLength(output, "utf8")} bytes for a ${maxBytes}-byte budget`
+    )
+  }
 })

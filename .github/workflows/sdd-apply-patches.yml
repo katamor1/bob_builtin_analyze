@@ -1,4 +1,4 @@
-name: SDD Apply Patches
+name: SDD Apply Repaired Japanese GUI Patches
 
 on:
   pull_request:
@@ -9,54 +9,145 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: sdd-apply-japanese-gui-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
 jobs:
   apply-patches:
-    if: github.event.pull_request.head.ref == 'agent/japanese-gui-copy-review'
+    if: >-
+      github.repository == 'katamor1/bob_builtin_analyze' &&
+      github.event.pull_request.number == 132 &&
+      github.event.pull_request.user.login == 'katamor1' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'agent/japanese-gui-copy-review'
     runs-on: ubuntu-latest
     steps:
-      - name: Check out branch
-        uses: actions/checkout@v4
+      - name: Check out exact branch head
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
-          ref: ${{ github.event.pull_request.head.ref }}
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
-      - name: Apply queued patches
+      - name: Apply verified patch series and remove temporary queue
         shell: bash
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+          HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
         run: |
           set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          test "$HEAD_BRANCH" = 'agent/japanese-gui-copy-review'
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          git fetch --no-tags origin "$HEAD_BRANCH"
+          test "$(git rev-parse "origin/$HEAD_BRANCH")" = "$EXPECTED_HEAD"
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
 
           ready=.sdd/patches/READY
           test -f "$ready"
+          grep -Fx 'apply repaired Japanese GUI patch series on current main 2026-07-17' "$ready"
+
           mapfile -t payloads < <(
             find .sdd/patches -maxdepth 1 -type f \
               \( -name '*.patch.gz.b64' -o -name '*.patch.gz.b64.part00' \) \
               -print | sort
           )
-          if [ "${#payloads[@]}" -eq 0 ]; then
-            echo "No queued patches." >&2
-            exit 1
-          fi
+          test "${#payloads[@]}" -eq 4
 
-          cleanup=("$ready")
           for payload in "${payloads[@]}"; do
-            if [[ "$payload" == *.part00 ]]; then
-              prefix="${payload%.part00}"
-              mapfile -t parts < <(find .sdd/patches -maxdepth 1 -type f -path "${prefix}.part*" -print | sort)
-              if [ "${#parts[@]}" -eq 0 ]; then
-                echo "No parts found for $prefix" >&2
-                exit 1
-              fi
-              cat "${parts[@]}" | base64 --decode | gzip --decompress > /tmp/sdd.patch
-              cleanup+=("${parts[@]}")
-            else
-              base64 --decode "$payload" | gzip --decompress > /tmp/sdd.patch
-              cleanup+=("$payload")
-            fi
+            case "$(basename "$payload")" in
+              0001-*) expected_patch_sha='6c7c6abf2a48678588be49107b7d3c997375ce713f654a761ff70fa3299a1c5d' ;;
+              0002-*) expected_patch_sha='ae757b1157dbeec862b7222f05bd04529d0b814f719e1ffdd3f4c20bd62eb0a5' ;;
+              0003-*) expected_patch_sha='65b6626ca2a8ac66f62d2ceebc62c05d5126f47f968e8443c3fb449345db2950' ;;
+              0004-*) expected_patch_sha='e63ae3ef08f07668ccaaf39a8b5a2158eb42498d56aa6e9544dd5094afa680e3' ;;
+              *) echo "Unexpected payload: $payload" >&2; exit 1 ;;
+            esac
+
+            python - "$payload" "$expected_patch_sha" <<'PY'
+          import base64
+          import gzip
+          import hashlib
+          from pathlib import Path
+          import sys
+
+          payload = Path(sys.argv[1])
+          expected = sys.argv[2]
+          if payload.name.endswith('.part00'):
+              prefix = payload.name.removesuffix('.part00')
+              parts = sorted(payload.parent.glob(prefix + '.part*'))
+              if [part.name for part in parts] != [
+                  prefix + '.part00',
+                  prefix + '.part01a',
+                  prefix + '.part01b',
+                  prefix + '.part02a',
+                  prefix + '.part02b',
+                  prefix + '.part03',
+              ]:
+                  raise SystemExit(f'Unexpected split payload set: {[part.name for part in parts]}')
+              encoded_parts = []
+              for part in parts:
+                  data = part.read_bytes()
+                  if part.name.endswith('.part01b'):
+                      if len(data) != 6001 or data[-1:] != b'4':
+                          raise SystemExit('The reviewed one-byte split corruption is not present exactly as expected')
+                      data = data[:-1]
+                  encoded_parts.append(data)
+              encoded = b''.join(encoded_parts)
+          else:
+              encoded = payload.read_bytes()
+
+          compressed = base64.b64decode(encoded, validate=True)
+          patch = gzip.decompress(compressed)
+          actual = hashlib.sha256(patch).hexdigest()
+          if actual != expected:
+              raise SystemExit(f'Patch digest mismatch: expected {expected}, got {actual}')
+          Path('/tmp/sdd.patch').write_bytes(patch)
+          PY
+
             git am --3way /tmp/sdd.patch
           done
 
-          git rm "${cleanup[@]}"
-          git commit -m "chore: clear applied SDD patch queue"
-          git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path('extensions/workflow-register/package.json')
+          data = json.loads(path.read_text(encoding='utf-8'))
+          props = data['contributes']['configuration']['properties']
+          expected = {
+              'workflowRegister.taskSnapshots.maxBytes': 1048576,
+              'workflowRegister.taskSnapshots.maxPerRun': 500,
+          }
+          for key, maximum in expected.items():
+              current = props[key]
+              if current.get('maximum') not in (None, maximum):
+                  raise SystemExit(f'Unexpected maximum for {key}: {current.get("maximum")}')
+              rebuilt = {}
+              inserted = False
+              for field, value in current.items():
+                  if field == 'description':
+                      rebuilt['maximum'] = maximum
+                      inserted = True
+                  if field != 'maximum':
+                      rebuilt[field] = value
+              if not inserted:
+                  rebuilt['maximum'] = maximum
+              props[key] = rebuilt
+          path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+
+          progress = Path('docs/implementation/three-extension-japanese-gui-copy-progress.md')
+          marker = '<!-- INTEGRATION-COMPLETION-2026-07-17 -->'
+          text = progress.read_text(encoding='utf-8')
+          if marker not in text:
+              text = text.rstrip() + f'''\n\n{marker}\n## Integration completion (2026-07-17)\n\n- Repaired the reviewed one-byte split corruption in the Bazaar GUI patch payload.\n- Verified SHA-256 for all four decoded mail patches before application.\n- Applied the Japanese GUI and terminology series on top of the current `main`.\n- Preserved workflow-register task snapshot maximums introduced by the runtime-blocker remediation.\n- Removed the temporary SDD workflow and encoded patch queue in the same cleanup commit.\n'''
+              progress.write_text(text, encoding='utf-8')
+          PY
+
+          git rm -r .sdd/patches .github/workflows/sdd-apply-patches.yml
+          git add extensions/workflow-register/package.json \
+            docs/implementation/three-extension-japanese-gui-copy-progress.md
+          test -z "$(git diff --name-only --diff-filter=U)"
+          git diff --cached --check
+          git commit -m 'chore: finalize Japanese GUI integration and clear patch queue'
+          git push origin "HEAD:$HEAD_BRANCH"

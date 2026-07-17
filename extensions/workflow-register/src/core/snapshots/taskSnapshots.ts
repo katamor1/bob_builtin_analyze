@@ -88,6 +88,32 @@ export interface FileTaskSnapshotStoreOptions {
   pruneOnSave?: boolean
 }
 
+export const MIN_TASK_SNAPSHOT_BYTES = 1024
+export const DEFAULT_TASK_SNAPSHOT_BYTES = 262_144
+export const MAX_TASK_SNAPSHOT_BYTES = 1024 * 1024
+export const MIN_TASK_SNAPSHOTS_PER_RUN = 1
+export const DEFAULT_TASK_SNAPSHOTS_PER_RUN = 50
+export const MAX_TASK_SNAPSHOTS_PER_RUN = 500
+
+export function normalizeTaskSnapshotLimits(
+  input: Pick<FileTaskSnapshotStoreOptions, "maxBytes" | "maxPerRun">
+): { maxBytes: number; maxPerRun: number } {
+  return {
+    maxBytes: boundedInteger(
+      input.maxBytes,
+      DEFAULT_TASK_SNAPSHOT_BYTES,
+      MIN_TASK_SNAPSHOT_BYTES,
+      MAX_TASK_SNAPSHOT_BYTES
+    ),
+    maxPerRun: boundedInteger(
+      input.maxPerRun,
+      DEFAULT_TASK_SNAPSHOTS_PER_RUN,
+      MIN_TASK_SNAPSHOTS_PER_RUN,
+      MAX_TASK_SNAPSHOTS_PER_RUN
+    )
+  }
+}
+
 export class FileTaskSnapshotStore implements TaskSnapshotStore {
   private readonly workspaceRoot: string
   private readonly now: () => string
@@ -97,10 +123,11 @@ export class FileTaskSnapshotStore implements TaskSnapshotStore {
   private readonly pruneOnSave: boolean
 
   constructor(options: FileTaskSnapshotStoreOptions) {
+    const limits = normalizeTaskSnapshotLimits(options)
     this.workspaceRoot = options.workspaceRoot
     this.now = options.now ?? (() => new Date().toISOString())
-    this.maxBytes = options.maxBytes ?? 262_144
-    this.maxPerRun = options.maxPerRun ?? 50
+    this.maxBytes = limits.maxBytes
+    this.maxPerRun = limits.maxPerRun
     this.includeMessages = options.includeMessages ?? false
     this.pruneOnSave = options.pruneOnSave ?? true
   }
@@ -110,7 +137,10 @@ export class FileTaskSnapshotStore implements TaskSnapshotStore {
     const pruned = this.prepareSnapshot(snapshot)
     await ensureWorkflowRunsIgnored(this.workspaceRoot)
     const fileName = `${safeTimestamp(pruned.createdAt)}-${pruned.reason}.json`
-    const content = `${JSON.stringify(pruned, null, 2)}\n`
+    const content = serializeTaskSnapshot(pruned)
+    if (Buffer.byteLength(content, "utf8") > this.maxBytes) {
+      throw new Error(`Workflow task snapshot exceeds the ${this.maxBytes}-byte hard limit after truncation.`)
+    }
     await writeContainedTaskSnapshotFile(this.workspaceRoot, snapshot.runId, fileName, content)
     await writeContainedTaskSnapshotFile(this.workspaceRoot, snapshot.runId, "latest.json", content)
     if (this.pruneOnSave) await this.pruneSnapshots(snapshot.runId)
@@ -176,7 +206,7 @@ export class FileTaskSnapshotStore implements TaskSnapshotStore {
       createdAt: this.now(),
       messages: this.includeMessages ? snapshot.messages : undefined
     })
-    while (Buffer.byteLength(JSON.stringify(prepared), "utf8") > this.maxBytes && prepared.messages && prepared.messages.length > 0) {
+    while (snapshotBytes(prepared) > this.maxBytes && prepared.messages && prepared.messages.length > 0) {
       prepared = {
         ...prepared,
         messages: prepared.messages.slice(1),
@@ -184,11 +214,38 @@ export class FileTaskSnapshotStore implements TaskSnapshotStore {
         truncated: true
       }
     }
-    if (Buffer.byteLength(JSON.stringify(prepared), "utf8") > this.maxBytes && prepared.taskExport !== undefined) {
+    if (snapshotBytes(prepared) > this.maxBytes && prepared.messages !== undefined) {
+      prepared = { ...prepared, messages: undefined, truncated: true }
+    }
+    if (snapshotBytes(prepared) > this.maxBytes && prepared.taskExport !== undefined) {
       prepared = { ...prepared, taskExport: undefined, truncated: true }
     }
-    if (Buffer.byteLength(JSON.stringify(prepared), "utf8") > this.maxBytes && prepared.lastAssistantText) {
-      prepared = { ...prepared, lastAssistantText: truncateToBytes(prepared.lastAssistantText, Math.max(1024, Math.floor(this.maxBytes / 4))), truncated: true }
+    if (snapshotBytes(prepared) > this.maxBytes && prepared.taskMetadata !== undefined) {
+      prepared = { ...prepared, taskMetadata: undefined, truncated: true }
+    }
+    if (snapshotBytes(prepared) > this.maxBytes && prepared.lastAssistantText) {
+      prepared = fitLastAssistantText(prepared, this.maxBytes)
+    }
+    if (snapshotBytes(prepared) > this.maxBytes && prepared.handoff?.error) {
+      prepared = fitHandoffError(prepared, this.maxBytes)
+    }
+    if (snapshotBytes(prepared) > this.maxBytes && prepared.handoff !== undefined) {
+      prepared = { ...prepared, handoff: undefined, truncated: true }
+    }
+    if (snapshotBytes(prepared) > this.maxBytes) {
+      prepared = {
+        ...prepared,
+        logicalWorkflowId: undefined,
+        workflowDefinitionHash: undefined,
+        runStatus: undefined,
+        runCurrentStep: undefined,
+        messageCount: undefined,
+        omittedMessageCount: undefined,
+        truncated: true
+      }
+    }
+    if (snapshotBytes(prepared) > this.maxBytes) {
+      throw new Error(`Workflow task snapshot required metadata exceeds the ${this.maxBytes}-byte hard limit.`)
     }
     return prepared
   }
@@ -271,6 +328,71 @@ function parseTaskSnapshot(bytes: Uint8Array, runId: string): TaskSnapshotPayloa
     throw new Error(`Workflow task snapshot run id mismatch: expected '${runId}', got '${snapshot.runId}'.`)
   }
   return snapshot
+}
+
+function serializeTaskSnapshot(snapshot: TaskSnapshotPayload): string {
+  return `${JSON.stringify(snapshot, null, 2)}\n`
+}
+
+function snapshotBytes(snapshot: TaskSnapshotPayload): number {
+  return Buffer.byteLength(serializeTaskSnapshot(snapshot), "utf8")
+}
+
+function fitLastAssistantText(snapshot: TaskSnapshotPayload, maxBytes: number): TaskSnapshotPayload {
+  const value = snapshot.lastAssistantText ?? ""
+  const characters = Array.from(value)
+  let low = 0
+  let high = characters.length
+  let best: TaskSnapshotPayload = { ...snapshot, lastAssistantText: undefined, truncated: true }
+  while (low <= high) {
+    const middle = Math.floor((low + high) / 2)
+    const candidate: TaskSnapshotPayload = {
+      ...snapshot,
+      lastAssistantText: characters.slice(0, middle).join("") || undefined,
+      truncated: true
+    }
+    if (snapshotBytes(candidate) <= maxBytes) {
+      best = candidate
+      low = middle + 1
+    } else {
+      high = middle - 1
+    }
+  }
+  return best
+}
+
+function fitHandoffError(snapshot: TaskSnapshotPayload, maxBytes: number): TaskSnapshotPayload {
+  const value = snapshot.handoff?.error ?? ""
+  const characters = Array.from(value)
+  const resultCommand = snapshot.handoff?.resultCommand
+  let low = 0
+  let high = characters.length
+  let best: TaskSnapshotPayload = {
+    ...snapshot,
+    handoff: resultCommand ? { resultCommand } : undefined,
+    truncated: true
+  }
+  while (low <= high) {
+    const middle = Math.floor((low + high) / 2)
+    const error = characters.slice(0, middle).join("")
+    const candidate: TaskSnapshotPayload = {
+      ...snapshot,
+      handoff: error || resultCommand ? { resultCommand, error: error || undefined } : undefined,
+      truncated: true
+    }
+    if (snapshotBytes(candidate) <= maxBytes) {
+      best = candidate
+      low = middle + 1
+    } else {
+      high = middle - 1
+    }
+  }
+  return best
+}
+
+function boundedInteger(value: number | undefined, fallback: number, min: number, max: number): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return fallback
+  return Math.max(min, Math.min(max, Math.floor(value)))
 }
 
 function extractLastAssistantText(messages: unknown[]): string | undefined {
@@ -359,13 +481,4 @@ function redactString(value: string, key?: string): string {
 
 function safeTimestamp(value: string): string {
   return value.replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z").replace(/[^\dTZ]/g, "") || Date.now().toString()
-}
-
-function truncateToBytes(value: string, maxBytes: number): string {
-  if (Buffer.byteLength(value, "utf8") <= maxBytes) return value
-  let output = value
-  while (Buffer.byteLength(output, "utf8") > maxBytes && output.length > 0) {
-    output = output.slice(0, Math.max(0, output.length - 512))
-  }
-  return `${output}\n... [truncated to ${maxBytes} bytes]`
 }

@@ -6,6 +6,7 @@ const { test } = require("node:test")
 
 const {
   ExternalProcessError,
+  normalizeExternalProcessTimeoutMs,
   runExternalProcess
 } = require("../out/bazaar/externalProcessRunner")
 
@@ -17,7 +18,7 @@ function runNode(script, options = {}) {
     args: ["-e", script],
     cwd,
     maxBufferBytes: 1024 * 1024,
-    timeoutMs: 2000,
+    timeoutMs: 10000,
     allowedExitCodes: [0],
     ...options
   })
@@ -40,9 +41,11 @@ test("external process runner terminates commands that exceed the hard timeout",
   assert.ok(Date.now() - startedAt < 3000)
 })
 
-test("external process runner clamps timeouts below the safety minimum", async () => {
-  const result = await runNode("setTimeout(() => {}, 50)", { timeoutMs: 1 })
-  assert.equal(result.exitCode, 0)
+test("external process runner clamps timeouts to the safety range", () => {
+  assert.equal(normalizeExternalProcessTimeoutMs(1), 1000)
+  assert.equal(normalizeExternalProcessTimeoutMs(1000), 1000)
+  assert.equal(normalizeExternalProcessTimeoutMs(600000), 600000)
+  assert.equal(normalizeExternalProcessTimeoutMs(Number.MAX_SAFE_INTEGER), 600000)
 })
 
 test("external process runner propagates AbortSignal cancellation", async () => {

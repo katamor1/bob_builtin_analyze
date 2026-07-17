@@ -243,3 +243,72 @@ checkoutやrepository codeを一切使わないprobeでも再現するため、�
 | 判定 | `release / conditional / reject` |
 
 全必須欄が合格するまではPRをdraftのまま維持する。最終mergeは履歴を整理するためsquashを使用する。
+
+<!-- RELEASE-BLOCKERS-2026-07-16 -->
+## 8. 2026-07-16 release blocker closure follow-up
+
+| 項目 | 値 |
+| --- | --- |
+| Base | `main` / `f4f9d3308361333e02ab1af732706b7a9e5fc952` |
+| Branch | `codex/three-extension-release-blockers-20260716` |
+| Code commit | `9b61a915` |
+| 対象 | dependency方針、process timeout/cancel/tree kill、Windows path、provider lifecycle、resource cap |
+| 判定 | 対象コード契約はローカルで完了。外部CI・実機ゲートは保留。 |
+
+### 8.1 実装した追加契約
+
+- Windows process terminationは親processの`exit`だけでsettleせず、`taskkill /T /F`完了または2秒の有限fallbackを待つ。
+- timeout正規化をpure functionとして検証し、1,000〜600,000 msの範囲を固定する。
+- provider cleanupは1件のdispose失敗後も全登録を逆順解除し、error reporter自体の例外でもlistener解除を止めない。
+- Bazaar review truncationはnoticeを含む最終UTF-8 bytesをbudget内へ収め、multibyte code pointを分割しない。
+- workflow task snapshotは`maxBytes`を1,024〜1,048,576 bytes、`maxPerRun`を1〜500件へclampし、整形JSONと末尾改行を含む通常file / `latest.json`をhard cap内へ収める。
+- dependency soft policyとWindows path拒否は既存実装を最新headのfocused test、production audit、VSIX policyで再固定した。
+
+### 8.2 TDD記録
+
+| RED | GREEN |
+| --- | --- |
+| timeout正規化関数が公開されず境界を決定的に検証できない | pure normalizerで下限・上限を固定 |
+| Windows親process exitで`taskkill /T`完了前にcancel Promiseがsettleする | taskkill完了まで未settleをmockで確認 |
+| 1 providerのdispose例外で残りのregistrationが解除されない | 全Disposableを試行しcleanup errorを報告 |
+| error reporter例外でchange listenerが残る | 診断例外をcleanup境界から隔離 |
+| BBR truncation noticeが指定byte budget外へ追加される | notice込み最終bytesをhard cap内へ制限 |
+| task snapshotがcompact JSONで判定後にpretty JSONを書き、metadataも無制限 | 最終serializationで判定し、optional payloadを段階削減 |
+
+### 8.3 最新ローカル検証
+
+| Scope | Command / gate | Result |
+| --- | --- | --- |
+| workflow-register focused | compile + dependency + provider registry + task snapshot | 19 passed / 0 failed |
+| bob-bazaar-review focused | dependency、Windows path、process、provider、output cap、provider wiring | 45 passed / 0 failed |
+| bob-code-consistency-review focused | dependency、process、provider、path/revision、size limits、provider wiring | 45 passed / 0 failed |
+| workflow contracts | strict discovery、mirror、provider catalog、allowlist | 7 passed / 0 failed |
+| workflow-register policy | dependency 3、architecture 216 files、source 216 files、schema 5 | passed |
+| bob-bazaar-review policy | dependency 6、architecture 111 files、source 111 files、unused、20 artifacts、package smoke 2 | passed |
+| bob-code-consistency-review policy | dependency 2、architecture 98 files、source 98 files | passed |
+| production dependency audit | 3 extensions | 0 vulnerabilities |
+| workflow-register VSIX | package / policy | 1,032,367 bytes / passed |
+| bob-bazaar-review VSIX | package / policy | 3,741,237 bytes / passed |
+| bob-code-consistency-review VSIX | package / policy | 3,694,510 bytes / passed |
+| workflow-register full unit | `npm test` | 1,085 passed / 0 failed / 1 expected skip |
+| bob-bazaar-review full unit | `npm test` | 679 passed / 0 failed |
+| bob-code-consistency-review full unit | `npm test` | 261 passed / 0 failed |
+
+### 8.4 初回並列タイムアウトとclean rerun
+
+| Extension | Initial full suite | Isolated rerun | Clean full rerun |
+| --- | --- | --- | --- |
+| workflow-register | 1,083 passed、1 failed、1 cancelled、1 skipped。`bobGateLifecycle`の5秒/20秒待機が全体並列負荷でtimeout。 | 同file 27 passed / 0 failed | 1,085 passed / 0 failed / 1 expected skip |
+| bob-bazaar-review | 677 passed / 1 failed。`ruleAuthoringRunStore`のinter-process lock待機が全体並列負荷でtimeout。 | 同file 32 passed / 0 failed | 679 passed / 0 failed |
+
+いずれも今回変更したmoduleのfocused suiteでは再現せず、失敗file単独と負荷を分けた全体再実行の両方でgreenになった。初回結果もflaky観測として残し、最終local unit gateはclean rerunを採用する。
+
+### 8.5 未完了の外部ゲート
+
+- Windows / Ubuntu GitHub Actions。
+- VS Code Extension Host activation smoke。
+- IBM Bob実環境のprovider recovery、workflow、Webview、result handoff。
+- 実Bazaarでのtimeout/cancel後のdescendant残留確認。
+- Bob rootとVCS rootを分けたmulti-root確認。
+
+これらを通過するまではrepository全体をrelease-readyとは判定しない。

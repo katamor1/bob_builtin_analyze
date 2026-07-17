@@ -337,3 +337,14 @@
 | EXT-UT-REM-004 | Windows path | drive、UNC、device、drive-relative、dot、traversal、control-character path を拒否する。 |
 | EXT-UT-REM-005 | processing limits | manifest/runtime の範囲が一致し、極端値を clamp し、UTF-8 byte 上限を守る。 |
 | EXT-UT-REM-006 | workflow contracts | 全 workflow を動的探索し、未知 provider / command、strict warning、mirror drift を検出する。 |
+
+<!-- RELEASE-BLOCKERS-2026-07-16 -->
+## 2026-07-16 release blocker 回帰契約
+
+| ID | 観点 | 期待結果 | 実テスト |
+| --- | --- | --- | --- |
+| BZR-UT-RB-001 | Windows tree kill | 親processが先にexitしても`taskkill /T /F`完了前にcancel結果をsettleしない。 | `test/windowsProcessTreeTermination.test.js` |
+| BZR-UT-RB-002 | timeout clamp | 下限未満は1,000 ms、上限超過は600,000 msへ正規化する。 | `test/externalProcessRunner.test.js` |
+| BZR-UT-RB-003 | provider cleanup | 1 providerのdisposeまたはerror reporterが例外を投げても、全providerとchange listenerを解除する。 | `test/retryRegistrationController.test.js` |
+| BZR-UT-RB-004 | output hard cap | truncation noticeを含むUTF-8出力が0、1、8、64 bytesの各budgetを超えず、multibyte文字を壊さない。 | `test/reviewLimits.test.js` |
+| BZR-UT-RB-005 | dependency / Windows path | soft dependency、lockfile/VSIX dependency policy、Windows absolute / drive-relative path拒否を固定する。 | `test/dependencyPolicy.test.js`, `test/bazaarClient.test.js` |

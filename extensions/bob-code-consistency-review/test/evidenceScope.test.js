@@ -47,6 +47,32 @@ test("change scope expands deterministic direct and two-hop impact while retaini
   assert.deepEqual(first.budgetReport, second.budgetReport)
 })
 
+test("change scope rejects duplicate symbol ids with an input-order-independent error", () => {
+  const symbols = [
+    symbol("duplicate-b", { riskTags: ["first"] }),
+    symbol("duplicate-a", { riskTags: ["first"] }),
+    symbol("duplicate-b", { riskTags: ["second"] }),
+    symbol("duplicate-a", { riskTags: ["second"] })
+  ]
+  const request = {
+    changedSymbolIds: ["duplicate-a"],
+    symbols,
+    dependencyEdges: [],
+    maxDependencyDepth: 1,
+    rules: [],
+    tokenBudget: 1000
+  }
+
+  assert.throws(
+    () => buildEvidenceScope(request),
+    { message: "duplicate scope symbol ids: duplicate-a, duplicate-b" }
+  )
+  assert.throws(
+    () => buildEvidenceScope({ ...request, symbols: [...symbols].reverse() }),
+    { message: "duplicate scope symbol ids: duplicate-a, duplicate-b" }
+  )
+})
+
 test("rule pack applies structured path, language, risk, symbol kind, and interface conditions", () => {
   const changed = [
     symbol("api", {

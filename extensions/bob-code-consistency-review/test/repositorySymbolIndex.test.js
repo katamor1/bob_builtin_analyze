@@ -151,6 +151,42 @@ test("repository index merge expands external caller callee type global and test
   assert.equal(second.scopeFingerprint, first.scopeFingerprint)
 })
 
+test("current analysis fully replaces matching repository symbol metadata", () => {
+  const repositoryIndex = externalImpactIndex("9".repeat(40))
+  const staleRepositorySymbol = repositoryIndex.symbols.find((item) => item.id === "fn:api")
+  staleRepositorySymbol.visibility = "public"
+  staleRepositorySymbol.interfaceChange = true
+  staleRepositorySymbol.riskTags = ["security"]
+  const currentAnalysisSymbol = {
+    id: "fn:api",
+    name: "api",
+    path: "src/api-current.ts",
+    kind: "function",
+    language: "typescript",
+    estimatedTokens: 12,
+    riskTags: []
+  }
+
+  const { mergeRepositoryScopeData } = repositoryIndexAdapterApi()
+  const merged = mergeRepositoryScopeData([currentAnalysisSymbol], [], repositoryIndex)
+  assert.deepEqual(merged.symbols.find((item) => item.id === "fn:api"), currentAnalysisSymbol)
+
+  const result = buildReviewEvidenceScope(analysisFixture(), undefined, {
+    changedSymbolIds: ["fn:api"],
+    tokenBudget: 5000,
+    maxDependencyDepth: 1,
+    rules: [{
+      id: "stale-security-rule",
+      title: "Stale repository security metadata",
+      evaluation: "local",
+      appliesWhen: { riskTags: ["security"] }
+    }],
+    repositoryIndex
+  })
+
+  assert.deepEqual(result.applicableRules, [])
+})
+
 test("repository index maps unstable analysis ids to the unique stable symbol identity", () => {
   const analysis = analysisFixture()
   analysis.changedSymbols[0].id = "FUNC-0001"

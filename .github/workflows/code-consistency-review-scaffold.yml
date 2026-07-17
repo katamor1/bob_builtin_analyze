@@ -8,6 +8,7 @@ on:
       - "docs/workflows/code-consistency-review/templates/**"
       - "extensions/bob-code-consistency-review/**"
       - "scripts/check-export-star-policy.js"
+      - "scripts/ci-baseline-summary.js"
       - ".bob/workflows/code-consistency-review/WORKFLOW.md"
       - ".github/workflows/code-consistency-review-scaffold.yml"
   push:
@@ -19,6 +20,7 @@ on:
       - "docs/workflows/code-consistency-review/templates/**"
       - "extensions/bob-code-consistency-review/**"
       - "scripts/check-export-star-policy.js"
+      - "scripts/ci-baseline-summary.js"
       - ".bob/workflows/code-consistency-review/WORKFLOW.md"
       - ".github/workflows/code-consistency-review-scaffold.yml"
   workflow_dispatch:
@@ -47,6 +49,9 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: docs/workflows/code-consistency-review/scaffold/package-lock.json
+
+      - name: Record CI baseline
+        run: node ../../../../scripts/ci-baseline-summary.js
 
       - name: Install dependencies
         run: npm ci
@@ -78,6 +83,9 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: extensions/bob-code-consistency-review/package-lock.json
+
+      - name: Record CI baseline
+        run: node ../../scripts/ci-baseline-summary.js
 
       - name: Install dependencies
         run: npm ci
