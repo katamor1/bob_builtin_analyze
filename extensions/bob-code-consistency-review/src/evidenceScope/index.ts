@@ -37,7 +37,8 @@ export type {
 } from "./repositorySymbolIndexProducer"
 export type {
   ReviewContextBudgetInput,
-  ReviewContextBudgetResult
+  ReviewContextBudgetResult,
+  ReviewContextBudgetUpstreamKind
 } from "./reviewContextBudget"
 export type {
   ContextBudgetReport,

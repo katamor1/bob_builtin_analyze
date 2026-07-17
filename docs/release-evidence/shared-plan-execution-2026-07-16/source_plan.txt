@@ -1,0 +1,48 @@
+SOURCE_TYPE: ChatGPT shared conversation
+SOURCE_URL: https://chatgpt.com/share/6a53743e-7444-83e8-b0f8-b21f9a9864d5
+SOURCE_CAPTURE_COMMIT: d7d9aaa6de5572f477e88cdfe51a4fc0893f0f18
+SOURCE_CAPTURE_PATH: .codex/shared-plan.md
+SOURCE_CAPTURE_TITLE: このチャットを見てみる
+
+NORMALIZED_EXECUTION_DIRECTIVE
+
+Large repositories need a deterministic evidence-selection layer before AI review.
+Implement bob-evidence-scope as the first priority and keep it compatible with the
+existing bob-code-consistency-review pipeline.
+
+Required capabilities:
+
+1. Resolve the VCS base/head to immutable revisions and derive changed files,
+   hunks, symbols, interface changes, risk tags, and unresolved impact.
+2. Expand caller, callee, type, global, and test relationships with bounded depth
+   and retain unresolved dynamic relationships as unknown-impact evidence.
+3. Select applicable project rules using machine-evaluable conditions; execute
+   deterministic checks locally and send only semantic judgments to AI.
+4. Adapt document evidence into stable, deduplicated units without copying raw
+   documents or credentials into generated metadata.
+5. Allocate context by required/high/medium/low priority under an explicit token
+   budget and record every inclusion or exclusion reason.
+6. Produce deterministic, schema-versioned provenance for the selected scope,
+   rule packs, document evidence, repository index, and review package.
+7. Add a repository-wide symbol/reference index with immutable Git input,
+   incremental source-free caching, bounded resources, and deterministic output.
+8. Add a metadata-only artifact ledger that tracks lineage, freshness, missing
+   inputs, and transitive stale propagation across runs.
+9. Keep path confinement, workspace trust, read-only source access, Windows path
+   behavior, resource limits, and privacy boundaries fail closed.
+10. Implement by failing tests first, run focused and full verification, perform an
+    independent review, and publish through a pull request.
+
+SCOPE_BOUNDARIES
+
+- Start inside extensions/bob-code-consistency-review; do not create a new VSIX
+  until independent reuse justifies it.
+- bob-document-evidence may later become a separate VSIX when multiple workflows
+  need independent extraction.
+- bob-artifact-ledger starts as a common schema and read-only/persistent index;
+  independent VSIX extraction is deferred until cross-producer reuse is proven.
+- bob-process-assurance remains an upper-layer consumer and is not part of this
+  implementation plan.
+
+The immutable source capture above is the authoritative raw source. The executable
+phase decomposition is recorded in resolved_plan.md.

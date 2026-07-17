@@ -116,6 +116,85 @@ test("missing upstream is recorded and propagates to dependents", () => {
   assert.deepEqual(packageRecord.stale_reasons, ["dependency-missing:repository-symbol-index:repo"])
 })
 
+test("dangling dependencies synthesize deterministic metadata-only missing records", () => {
+  const { reconcileArtifactLedger } = ledgerApi()
+  const missingId = "project-rule-pack:unobserved-rules"
+  const first = reconcileArtifactLedger(undefined, {
+    sourceRevision: REV_A,
+    observations: [
+      observation({
+        id: "review-package:REVIEW-002",
+        kind: "review-package",
+        path: ".bob-review/review-package-two",
+        depends_on: [missingId]
+      }),
+      observation({
+        id: "review-package:REVIEW-001",
+        kind: "review-package",
+        path: ".bob-review/review-package-one",
+        depends_on: [missingId]
+      })
+    ],
+    completeKinds: ["review-package"]
+  })
+  const second = reconcileArtifactLedger(undefined, {
+    sourceRevision: REV_A,
+    observations: [...first.artifacts]
+      .filter((item) => item.kind === "review-package")
+      .reverse()
+      .map(({ status: _status, stale_reasons: _staleReasons, ...item }) => item),
+    completeKinds: ["review-package"]
+  })
+
+  assert.deepEqual(first, second)
+  const missing = first.artifacts.find((item) => item.id === missingId)
+  assert.deepEqual(missing, {
+    id: missingId,
+    kind: "project-rule-pack",
+    producer: "bob-code-consistency-review/artifact-ledger-v1",
+    path: `.bob-review/missing/project-rule-pack/${createHash("sha256").update(missingId).digest("hex")}.metadata`,
+    content_hash: `sha256:${"0".repeat(64)}`,
+    input_hash: `sha256:${"0".repeat(64)}`,
+    source_revision: REV_A,
+    depends_on: [],
+    status: "missing",
+    stale_reasons: ["artifact-missing"]
+  })
+  for (const record of first.artifacts.filter((item) => item.kind === "review-package")) {
+    assert.equal(record.status, "stale")
+    assert.deepEqual(record.stale_reasons, [`dependency-missing:${missingId}`])
+  }
+})
+
+test("synthetic dependency records reject unknown ids and remain within the ledger bound", () => {
+  const { reconcileArtifactLedger } = ledgerApi()
+  for (const dependencyId of ["unknown:artifact", "project-rule-pack:"]) {
+    assert.throws(
+      () => reconcileArtifactLedger(undefined, {
+        sourceRevision: REV_A,
+        observations: [observation({ depends_on: [dependencyId] })],
+        completeKinds: []
+      }),
+      new RegExp(`unsupported or invalid artifact dependency id: ${dependencyId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`)
+    )
+  }
+
+  const observations = Array.from({ length: 512 }, (_, index) => observation({
+    id: `review-package:bounded-${String(index).padStart(3, "0")}`,
+    kind: "review-package",
+    path: `.bob-review/bounded-${String(index).padStart(3, "0")}`,
+    depends_on: index === 0 ? ["repository-symbol-index:missing"] : []
+  }))
+  assert.throws(
+    () => reconcileArtifactLedger(undefined, {
+      sourceRevision: REV_A,
+      observations,
+      completeKinds: ["review-package"]
+    }),
+    /artifact ledger record count exceeded maximum \(513 > 512\)/
+  )
+})
+
 test("source revision changes stale unobserved artifacts", () => {
   const { reconcileArtifactLedger } = ledgerApi()
   const result = reconcileArtifactLedger(previousLedger(), {
@@ -413,6 +492,110 @@ test("upstream checkpoint persists a stale prior package when package rebuild fa
   assert.equal(packageRecord.status, "stale")
   assert.ok(packageRecord.stale_reasons.includes("upstream-changed:repository-symbol-index:external-repo"))
 })
+
+test("missing configured repository index is checkpointed before its original load error is rethrown", async () => {
+  const { preprocessReview } = require("../out/core/pipeline")
+  const workspace = createMultiLanguageGitReviewWorkspace()
+  const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: workspace, encoding: "utf8" }).trim()
+  const inputPath = path.join(workspace, "review-input.yaml")
+  const original = fs.readFileSync(inputPath, "utf8")
+  const newline = original.includes("\r\n") ? "\r\n" : "\n"
+  const relativePath = ".bob/evidence-scope/repository-symbol-index.json"
+  fs.writeFileSync(
+    inputPath,
+    original.replace(
+      /analysis_options:\r?\n/,
+      `analysis_options:${newline}  repository_symbol_index_path: ${relativePath}${newline}`
+    ),
+    "utf8"
+  )
+  fs.mkdirSync(path.join(workspace, ".bob", "evidence-scope"), { recursive: true })
+  writeExternalIndex(workspace, head, "checkpoint-before-missing")
+
+  await preprocessReview({
+    workspaceRoot: workspace,
+    inputPath,
+    outDir: ".bob-review/review-package"
+  })
+  fs.unlinkSync(path.join(workspace, relativePath))
+
+  await assert.rejects(
+    preprocessReview({
+      workspaceRoot: workspace,
+      inputPath,
+      outDir: ".bob-review/review-package"
+    }),
+    (error) => {
+      assert.equal(error.code, "ENOENT")
+      return true
+    }
+  )
+
+  const ledger = readWorkspaceLedger(workspace)
+  assertCheckpointedMissingUpstream(
+    ledger,
+    "repository-symbol-index:external-repo",
+    "review-package:REVIEW-MULTILANG-001"
+  )
+})
+
+test("unreadable configured project rule pack is checkpointed before its original parse error is rethrown", async () => {
+  const { preprocessReview } = require("../out/core/pipeline")
+  const workspace = createMultiLanguageGitReviewWorkspace()
+  const inputPath = path.join(workspace, "review-input.yaml")
+  const relativePath = ".bob/evidence-scope/project-rules.yaml"
+  const rulePackPath = path.join(workspace, relativePath)
+  fs.mkdirSync(path.dirname(rulePackPath), { recursive: true })
+  fs.writeFileSync(rulePackPath, ledgerRulePackYaml(), "utf8")
+  fs.appendFileSync(inputPath, `\n  evidence_scope_rule_pack_path: ${relativePath}\n`, "utf8")
+
+  await preprocessReview({
+    workspaceRoot: workspace,
+    inputPath,
+    outDir: ".bob-review/review-package"
+  })
+  fs.writeFileSync(rulePackPath, "schema_version: [\n", "utf8")
+
+  await assert.rejects(
+    preprocessReview({
+      workspaceRoot: workspace,
+      inputPath,
+      outDir: ".bob-review/review-package"
+    }),
+    /Invalid evidence scope rule pack.*YAML\/JSON parse failed/s
+  )
+
+  const ledger = readWorkspaceLedger(workspace)
+  assertCheckpointedMissingUpstream(
+    ledger,
+    "project-rule-pack:ledger-checkpoint-rules",
+    "review-package:REVIEW-MULTILANG-001"
+  )
+})
+
+function readWorkspaceLedger(workspace) {
+  return JSON.parse(fs.readFileSync(path.join(workspace, ".bob-review", "artifact-ledger.json"), "utf8"))
+}
+
+function assertCheckpointedMissingUpstream(ledger, upstreamId, packageId) {
+  const upstream = ledger.artifacts.find((item) => item.id === upstreamId)
+  const packageRecord = ledger.artifacts.find((item) => item.id === packageId)
+  assert.equal(upstream.status, "missing")
+  assert.deepEqual(upstream.stale_reasons, ["artifact-missing"])
+  assert.equal(packageRecord.status, "stale")
+  assert.ok(packageRecord.stale_reasons.includes(`dependency-missing:${upstreamId}`))
+}
+
+function ledgerRulePackYaml() {
+  return [
+    "schema_version: 1",
+    "rule_pack:",
+    "  id: ledger-checkpoint-rules",
+    "  version: \"1\"",
+    "rules: []",
+    ""
+  ].join("\n")
+}
 
 function writeExternalIndex(workspace, sourceRevision, generator) {
   fs.writeFileSync(
