@@ -1,9 +1,8 @@
 name: SDD Apply Patches
 
 on:
-  push:
-    branches:
-      - agent/japanese-gui-copy-review
+  pull_request:
+    types: [opened, synchronize, reopened]
     paths:
       - .sdd/patches/READY
 
@@ -12,12 +11,13 @@ permissions:
 
 jobs:
   apply-patches:
+    if: github.event.pull_request.head.ref == 'agent/japanese-gui-copy-review'
     runs-on: ubuntu-latest
     steps:
       - name: Check out branch
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.ref_name }}
+          ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
 
       - name: Apply queued patches
@@ -59,4 +59,4 @@ jobs:
 
           git rm "${cleanup[@]}"
           git commit -m "chore: clear applied SDD patch queue"
-          git push origin "HEAD:${GITHUB_REF_NAME}"
+          git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
