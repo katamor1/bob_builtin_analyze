@@ -340,10 +340,16 @@ function validateAncestryShape(
   switch (kind) {
     case "run.created":
     case "run.imported":
-      if (sequence !== 1 || previousEventHash !== undefined || previousStateHash !== undefined) {
+      if (sequence !== 1) {
+        throw new RunEventV2CodecError(
+          "sequence",
+          `Run-event/v2 ${kind} must use sequence 1.`
+        )
+      }
+      if (previousEventHash !== undefined || previousStateHash !== undefined) {
         throw new RunEventV2CodecError(
           "ancestry",
-          `Run-event/v2 ${kind} must be sequence 1 and omit previousEventHash and previousStateHash.`
+          `Run-event/v2 ${kind} must omit previousEventHash and previousStateHash.`
         )
       }
       return
@@ -396,17 +402,11 @@ function validateTransitionEvidence(
     "transition-evidence"
   )
   requiredHash(evidence.sourceRunHash, "evidence.sourceRunHash", "transition-evidence")
-  const sourceEventHash = optionalHash(
+  optionalHash(
     evidence.sourceEventHash,
     "evidence.sourceEventHash",
     "transition-evidence"
   )
-  if (kind === "stream.cutover" && sourceEventHash === undefined) {
-    throw new RunEventV2CodecError(
-      "transition-evidence",
-      "Run-event/v2 stream.cutover evidence requires sourceEventHash."
-    )
-  }
   requiredTrimmedString(
     evidence.sourceSchemaVersion,
     "evidence.sourceSchemaVersion",

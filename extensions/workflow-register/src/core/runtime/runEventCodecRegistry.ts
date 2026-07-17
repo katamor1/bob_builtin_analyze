@@ -116,12 +116,26 @@ export class RunEventCodecRegistry {
   decodeLine(bytes: Buffer, context: RunEventDecodeContext): VerifiedRunEvent {
     const decodedContext = decodeContext(context)
     const lineNumber = decodedContext.lineNumber ?? 1
+    const previousRunId = decodedContext.previous?.event.runId
+    if (
+      decodedContext.expectedRunId !== undefined
+      && previousRunId !== undefined
+      && decodedContext.expectedRunId !== previousRunId
+    ) {
+      fail(
+        "run-id",
+        lineNumber,
+        `Expected runId '${decodedContext.expectedRunId}' does not match the verified previous runId '${previousRunId}'.`
+      )
+    }
     const inspected = inspectLine(bytes, lineNumber)
     if (inspected.inspection.schemaVersion === CURRENT_WORKFLOW_RUN_EVENT_SCHEMA_VERSION) {
       if (decodedContext.previous?.version === "v2") {
         fail("ancestry", lineNumber, "A run-event/v1 record cannot follow the v2 stream boundary.")
       }
-      const expectedRunId = decodedContext.expectedRunId ?? decodeInspectedRunId(inspected.record, lineNumber)
+      const expectedRunId = decodedContext.expectedRunId
+        ?? previousRunId
+        ?? decodeInspectedRunId(inspected.record, lineNumber)
       try {
         const decoded = decodeWorkflowRunEventLineV1(inspected.exactLine, {
           expectedRunId,
@@ -144,7 +158,6 @@ export class RunEventCodecRegistry {
       throw mapCodecError(error, lineNumber)
     }
 
-    validateVersionBoundary(verified.event, decodedContext.previous, lineNumber)
     if (verified.event.sequence !== decodedContext.expectedSequence) {
       fail(
         "sequence",
@@ -152,6 +165,7 @@ export class RunEventCodecRegistry {
         `Run event sequence ${verified.event.sequence} does not match expected ${decodedContext.expectedSequence}.`
       )
     }
+    validateVersionBoundary(verified.event, decodedContext.previous, lineNumber)
     const expectedRunId = decodedContext.expectedRunId ?? decodedContext.previous?.event.runId
     if (expectedRunId !== undefined && verified.event.runId !== expectedRunId) {
       fail(
@@ -441,7 +455,7 @@ function validateCutoverBoundary(
     )
   }
   if (
-    evidence.sourceEventHash !== previous.event.hash
+    (evidence.sourceEventHash !== undefined && evidence.sourceEventHash !== previous.event.hash)
     || evidence.sourceRunHash !== previous.event.runHash
     || evidence.sourceSchemaVersion !== previous.event.snapshot.schemaVersion
     || evidence.upgradedSourceStateHash !== upgradedSourceStateHash

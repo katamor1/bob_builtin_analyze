@@ -17,6 +17,9 @@ const {
 const {
   upgradeWorkflowRunStateV1
 } = require("../out/core/runtime/runStateV2.js")
+const {
+  buildWorkflowRunEvent
+} = require("../out/core/runtime/runEventLog.js")
 
 const FIXTURE_ROOT = path.join(__dirname, "fixtures", "reproducible-runtime")
 const EVENT_V1 = "workflow-register/run-event/v1"
@@ -310,8 +313,16 @@ test("run.imported and stream.cutover require hash-bound transition evidence", a
   })
   assert.equal(success(registry.verifyStream([imported])).events[0].event.kind, "run.imported")
 
+  await t.test("cutover may omit optional sourceEventHash", () => {
+    const evidence = transitionEvidence(fixture)
+    delete evidence.sourceEventHash
+    const line = registry.encodeV2(cutoverDraft(fixture, { evidence }))
+    const verified = success(registry.verifyStream([...fixture.v1Lines, line]))
+    assert.equal(verified.events.at(-1).event.kind, "stream.cutover")
+    assert.equal(verified.events.at(-1).event.evidence.sourceEventHash, undefined)
+  })
+
   const cases = [
-    ["missing cutover sourceEventHash", (record) => { delete record.evidence.sourceEventHash }],
     ["wrong cutover sourceEventHash", (record) => { record.evidence.sourceEventHash = HASH_C }],
     ["wrong sourceRunHash", (record) => { record.evidence.sourceRunHash = HASH_C }],
     ["wrong sourceSchemaVersion", (record) => { record.evidence.sourceSchemaVersion = "workflow-register/run-state/v0" }],
@@ -333,6 +344,46 @@ test("run.imported and stream.cutover require hash-bound transition evidence", a
     })
     failure(registry.verifyStream([...fixture.v1Lines, line]), "transition-evidence", 4)
   })
+})
+
+test("public v1 decodeLine binds an omitted or explicit run id to the verified previous event", () => {
+  const fixture = phase4()
+  const registry = new RunEventCodecRegistry()
+  const previous = registry.decodeLine(fixture.v1Lines[0], {
+    expectedSequence: 1,
+    lineNumber: 1
+  })
+  const runB = structuredClone(previous.event.snapshot)
+  runB.runId = "run-B"
+  runB.updatedAt = "2026-07-17T00:02:00.000Z"
+  const crossRunEvent = buildWorkflowRunEvent({
+    run: runB,
+    kind: "run.updated",
+    occurredAt: "2026-07-17T00:02:00.000Z",
+    eventId: "event-run-B",
+    previousEvent: previous.event,
+    previousRunHash: previous.event.runHash
+  })
+  const crossRunLine = Buffer.from(`${JSON.stringify(crossRunEvent)}\n`, "utf8")
+
+  for (const context of [
+    { expectedSequence: 2, previous, lineNumber: 2 },
+    { expectedRunId: "run-B", expectedSequence: 2, previous, lineNumber: 2 }
+  ]) {
+    assert.throws(
+      () => registry.decodeLine(crossRunLine, context),
+      (error) => {
+        assert.equal(error instanceof RunEventCodecError, true)
+        assert.equal(error.category, "run-id")
+        assert.equal(error.lineNumber, 2)
+        assert.equal("event" in error, false)
+        assert.equal("state" in error, false)
+        assert.equal("head" in error, false)
+        return true
+      }
+    )
+  }
+  failure(registry.verifyStream([fixture.v1Lines[0], crossRunLine]), "run-id", 2)
 })
 
 test("corruption failures use stable categories and return no partially trusted stream", async (t) => {
@@ -365,6 +416,39 @@ test("corruption failures use stable categories and return no partially trusted 
   }
 })
 
+test("canonical run.created and run.imported sequence gaps take precedence as sequence failures", async (t) => {
+  const fixture = phase4()
+  const registry = new RunEventCodecRegistry()
+  const createdLine = registry.encodeV2(nativeDraft(fixture.state))
+  const importedLine = registry.encodeV2({
+    ...nativeDraft(fixture.state),
+    eventId: "event-imported-gap",
+    kind: "run.imported",
+    evidence: {
+      sourceRunHash: fixture.v1Head.runHash,
+      sourceSchemaVersion: fixture.sourceState.schemaVersion,
+      upgradedSourceStateHash: hashCanonicalJsonV1(fixture.state),
+      importerVersion: "workflow-register/legacy-importer/v1"
+    }
+  })
+
+  for (const [kind, validLine] of [
+    ["run.created", createdLine],
+    ["run.imported", importedLine]
+  ]) {
+    await t.test(kind, () => {
+      const line = mutateLine(validLine, (record) => { record.sequence = 2 })
+      assert.throws(
+        () => registry.decodeLine(line, { expectedSequence: 1, lineNumber: 1 }),
+        (error) => error instanceof RunEventCodecError
+          && error.category === "sequence"
+          && error.lineNumber === 1
+      )
+      failure(registry.verifyStream([line]), "sequence", 1)
+    })
+  }
+})
+
 test("the stream transition is one-way and genesis/cutover placement fails closed", async (t) => {
   const fixture = phase4()
   const registry = new RunEventCodecRegistry()
@@ -383,16 +467,16 @@ test("the stream transition is one-way and genesis/cutover placement fails close
   })
 
   const cases = [
-    ["v1 after v2", [nativeLine, fixture.v1Lines[0]], 2],
-    ["cutover without v1 prefix", [cutoverLine], 1],
+    ["v1 after v2", [nativeLine, fixture.v1Lines[0]], "ancestry", 2],
+    ["cutover without v1 prefix", [mutateLine(cutoverLine, (record) => { record.sequence = 1 })], "ancestry", 1],
     ["run.created after v1 prefix", [...fixture.v1Lines, mutateLine(cutoverLine, (record) => {
       record.kind = "run.created"
       delete record.previousEventHash
-    })], 4],
-    ["run.imported after v1 prefix", [...fixture.v1Lines, mutateLine(importedLine, (record) => { record.sequence = 4 })], 4]
+    })], "sequence", 4],
+    ["run.imported after v1 prefix", [...fixture.v1Lines, mutateLine(importedLine, (record) => { record.sequence = 4 })], "sequence", 4]
   ]
-  for (const [name, lines, lineNumber] of cases) {
-    await t.test(name, () => failure(registry.verifyStream(lines), "ancestry", lineNumber))
+  for (const [name, lines, category, lineNumber] of cases) {
+    await t.test(name, () => failure(registry.verifyStream(lines), category, lineNumber))
   }
 })
 
