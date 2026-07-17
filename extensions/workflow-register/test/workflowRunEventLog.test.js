@@ -6,6 +6,7 @@ const { test } = require("node:test")
 const {
   appendWorkflowRunEvent,
   buildWorkflowRunEvent,
+  decodeWorkflowRunEventLineV1,
   parseWorkflowRunEventLog,
   readWorkflowRunEventLog,
   serializeWorkflowRunState
@@ -125,4 +126,19 @@ test("current event reader rejects the future-schema fixture", () => {
     () => parseWorkflowRunEventLog(fixture, reproducibleRuntimeRunId),
     /unsupported schemaVersion 'workflow-register\/run-event\/v2'/
   )
+})
+
+test("the v1 line codec verifies and preserves exact original Phase 4 bytes", () => {
+  const bytes = fs.readFileSync(path.join(reproducibleRuntimeFixtureRoot, "phase4-v1", "events.jsonl"))
+  const firstLf = bytes.indexOf(0x0a)
+  const exactLine = Buffer.from(bytes.subarray(0, firstLf + 1))
+  const decoded = decodeWorkflowRunEventLineV1(exactLine, {
+    expectedRunId: reproducibleRuntimeRunId,
+    expectedSequence: 1
+  })
+
+  assert.equal(decoded.event.schemaVersion, "workflow-register/run-event/v1")
+  assert.equal(decoded.event.sequence, 1)
+  assert.deepEqual(decoded.exactLine, exactLine)
+  assert.notEqual(decoded.exactLine, exactLine)
 })
