@@ -1,0 +1,111 @@
+name: Resolve selected integration PR conflicts
+
+on:
+  pull_request_target:
+    types:
+      - ready_for_review
+
+permissions:
+  contents: write
+
+concurrency:
+  group: selected-pr-integration-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  resolve-pr-134:
+    if: >-
+      github.repository == 'katamor1/bob_builtin_analyze' &&
+      github.event.pull_request.number == 134 &&
+      github.event.pull_request.user.login == 'katamor1' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'codex/three-extension-release-blockers-20260716' &&
+      github.event.pull_request.head.sha == 'edeecb72248d9edcfc10e2c63d8f3b1f4df444e8'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact reviewed head
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: edeecb72248d9edcfc10e2c63d8f3b1f4df444e8
+          fetch-depth: 0
+
+      - name: Merge current main and resolve the reviewed conflict
+        shell: bash
+        run: |
+          set -euo pipefail
+          branch='codex/three-extension-release-blockers-20260716'
+          expected='edeecb72248d9edcfc10e2c63d8f3b1f4df444e8'
+
+          test "$(git rev-parse HEAD)" = "$expected"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git fetch --no-tags origin main "$branch"
+          test "$(git rev-parse "origin/$branch")" = "$expected"
+          git checkout -B "$branch" "origin/$branch"
+
+          set +e
+          git merge --no-ff --no-commit origin/main
+          merge_status=$?
+          set -e
+
+          if [[ $merge_status -ne 0 ]]; then
+            mapfile -t conflicts < <(git diff --name-only --diff-filter=U | sort)
+            printf 'Conflicts detected:\n'
+            printf ' - %s\n' "${conflicts[@]}"
+            if [[ ${#conflicts[@]} -ne 1 || "${conflicts[0]}" != 'docs/review-findings-tracking.md' ]]; then
+              echo 'Unexpected conflict set; refusing automatic resolution.' >&2
+              exit 1
+            fi
+            git checkout --theirs -- docs/review-findings-tracking.md
+          fi
+
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('docs/review-findings-tracking.md')
+          text = path.read_text(encoding='utf-8')
+          replacements = {
+              '| REM-H01 | High | bob-code-consistency-review | hard / soft dependency contract alignment and delayed provider recovery | implemented | soft-dependency and provider registration tests |':
+                  '| REM-H01 | High | bob-code-consistency-review | hard / soft dependency contract alignment and delayed provider recovery | verified_local | soft-dependency and provider registration tests |',
+              '| REM-H02 | High | bob-bazaar-review, bob-code-consistency-review | bounded Git / Bazaar process execution with timeout, cancellation and kill | implemented | externalProcessRunner and wiring tests |':
+                  '| REM-H02 | High | bob-bazaar-review, bob-code-consistency-review | bounded Git / Bazaar process execution with timeout, cancellation and kill | verified_local | externalProcessRunner and wiring tests |',
+              '| REM-M01 | Medium | bob-bazaar-review | cross-platform repository-relative path boundary | implemented | bazaarClient Windows / POSIX path tests |':
+                  '| REM-M01 | Medium | bob-bazaar-review | cross-platform repository-relative path boundary | verified_local | bazaarClient Windows / POSIX path tests |',
+              '| REM-M02 | Medium | workflow-register and companion extensions | provider ownership, duplicate rejection and disposal | implemented | actionRegistry and provider registration tests |':
+                  '| REM-M02 | Medium | workflow-register and companion extensions | provider ownership, duplicate rejection and disposal | verified_local | actionRegistry and provider registration tests |',
+              '| REM-M05 | Medium | bob-code-consistency-review | bounded manifest/runtime processing limits and byte-safe truncation | implemented | sizeLimits and limitsPolicy tests |':
+                  '| REM-M05 | Medium | bob-code-consistency-review | bounded manifest/runtime processing limits and byte-safe truncation | verified_local | sizeLimits and limitsPolicy tests |',
+          }
+          for old, new in replacements.items():
+              if old not in text:
+                  raise SystemExit(f'Expected tracking row not found: {old}')
+              text = text.replace(old, new, 1)
+
+          marker = '<!-- RELEASE-BLOCKERS-2026-07-16 -->'
+          if marker in text:
+              raise SystemExit('Release-blocker section unexpectedly already exists')
+          section = '''<!-- RELEASE-BLOCKERS-2026-07-16 -->
+          ## 2026-07-16 release blocker closure
+
+          | ID | Scope | Contract | Status | Commit | Verification |
+          | --- | --- | --- | --- | --- | --- |
+          | REM-RB-01 | 3 extensions | lockfile、soft dependency、production audit、VSIX dependency/package policy | verified_local | `9b61a915` + existing policy | dependency policies、`npm audit --omit=dev` 0 vulnerabilities、3 VSIX policies |
+          | REM-RB-02 | BBR / CCR | 1,000〜600,000 ms timeout、AbortSignal、bounded output、process-tree termination | verified_local | `9b61a915` | external process focused tests、Windows taskkill completion tests |
+          | REM-RB-03 | BBR / CCR | cleanup例外と診断例外を越えてprovider / listenerを全解除 | verified_local | `9b61a915` | retry controller 8/8 in each extension |
+          | REM-RB-04 | BBR / CCR | Windows absolute / drive-relative / UNC / device / traversal / control pathを実行前拒否 | verified_local | existing implementation + `9b61a915` verification | Bazaar client、VCS validation tests |
+          | REM-RB-05 | WFR / BBR / CCR | manifest/runtime clamp、最終UTF-8出力、task snapshot整形JSONのhard cap | verified_local | `9b61a915` | WFR task snapshot、BBR review limit、CCR size limit tests |
+
+          `verified_local` はコードとローカル回帰ゲートの完了を示す。Windows/Ubuntu CI、Extension Host、IBM Bob、実Bazaar、multi-rootのrelease-candidate gateは `REM-M04` として未完了のまま分離する。
+          '''
+          section = '\n'.join(line.removeprefix('          ') for line in section.splitlines())
+          path.write_text(text.rstrip() + '\n\n' + section.rstrip() + '\n', encoding='utf-8')
+          PY
+
+          if [[ -e .github/workflows/resolve-pr-134.yml ]]; then
+            git rm .github/workflows/resolve-pr-134.yml
+          fi
+          git add -A
+          test -z "$(git diff --name-only --diff-filter=U)"
+          git diff --cached --check
+          git commit -m 'merge: reconcile runtime blockers with current main'
+          git push origin "HEAD:$branch"
