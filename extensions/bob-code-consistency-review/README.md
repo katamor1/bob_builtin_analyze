@@ -14,7 +14,7 @@
 - `docs/**/*.md|docx|xlsx` から関連文書候補と `REQ-*`、`BD-*`、`DD-*`、`TC-*`、`TICKET-*` などの ID 候補を抽出する。
 - Git / Bazaar、base / head、変更種別、関連文書、レビュー観点を対話式に選択して `review-input.yaml` を作成する。
 - 元文書を変更せず、`.bob-trace/traceability-catalog.json` に traceability 候補と承認状態を保持する。
-- Traceability Prep Webview で人間が `proposed` 候補を `accepted` / `rejected` / `deprecated` に分類する。
+- トレーサビリティ確認画面 で人間が `proposed` 候補を `accepted` / `rejected` / `deprecated` に分類する。
 - accepted traceability item から `review-input.yaml` を生成する。
 - Git / Bazaar 差分から変更ファイル、変更行、C / C++ の変更関数候補を抽出する。
 - Markdown、Word `.docx`、Excel `.xlsx` から、要求・設計・テスト仕様・台帳などの根拠抜粋を作る。
@@ -48,11 +48,11 @@
 4. 手書きする代わりに `Bob Code Consistency Review: 対話式に review-input.yaml を作成` で、短いドラフトと候補選択から `review-input.yaml` を生成する。
 5. AI を使う場合は `Bob Code Consistency Review: AI draft 用プロンプトを作成` でプロンプトを作り、AI の JSON 応答を `Bob Code Consistency Review: AI draft JSON から review-input.yaml を生成` で取り込む。
 6. `review-input.yaml` の `review`、`artifacts`、`review_focus` を必要に応じて確認する。
-7. `Bob Code Consistency Review: 入力を前処理して Bob 用パッケージを作成` を実行する。
+7. `Bob Code Consistency Review: Bob に渡すレビュー資料を作成` を実行する。
 8. 生成された `.bob-review/review-package/bob-input.md` を Bob に渡し、整合プレレビューを実行する。
 9. Bob の YAML 出力をコピーし、`Bob Code Consistency Review: Bob 出力 YAML を取り込む` で保存する。
 10. `Bob Code Consistency Review: Bob 出力 YAML を検証` で schema と evidence 参照を検証する。
-11. `Bob Code Consistency Review: 人間確認用 triage を生成` で人間確認用ファイルを生成する。
+11. `Bob Code Consistency Review: 人による判定一覧を作成` で人間確認用ファイルを生成する。
 12. 人間が triage 結果を確認し、正式レビューや修正作業へ回す指摘を判断する。
 
 ## Command Palette のコマンド
@@ -66,15 +66,15 @@
 | `Bob Code Consistency Review: traceability AI draft 用プロンプトを作成` | `bobCodeConsistency.prepareAiTraceabilityDraft` | 文書候補、差分、既存 catalog をもとに traceability AI draft 用 prompt を作る。 |
 | `Bob Code Consistency Review: traceability AI draft JSON を取り込み` | `bobCodeConsistency.captureAiTraceabilityDraft` | `.bob-trace/ai-traceability-draft/ai-draft.json` などの proposed-only JSON を検証し、workflow state へ渡す。 |
 | `Bob Code Consistency Review: traceability AI draft JSON を catalog に反映` | `bobCodeConsistency.applyAiTraceabilityDraft` | AI が返した proposed-only JSON を `.bob-trace/traceability-catalog.json` に merge し、gate report を更新する。 |
-| `Bob Code Consistency Review: traceability prep を開く` | `bobCodeConsistency.openTraceabilityPrep` | Traceability Prep Webview を開き、人間が proposed item を承認 / 棄却 / 廃止する。 |
-| `Bob Code Consistency Review: traceability catalog を検証` | `bobCodeConsistency.validateTraceabilityCatalog` | catalog の gate 検証を行い、`.bob-trace/gate-report.md` を生成する。 |
-| `Bob Code Consistency Review: traceability catalog から review-input.yaml を生成` | `bobCodeConsistency.createReviewInputFromTraceability` | accepted catalog item と review metadata から `review-input.yaml` を生成する。 |
+| `Bob Code Consistency Review: トレーサビリティ確認を開く` | `bobCodeConsistency.openTraceabilityPrep` | トレーサビリティ確認画面 を開き、人間が proposed item を承認 / 棄却 / 廃止する。 |
+| `Bob Code Consistency Review: トレーサビリティ台帳を検証` | `bobCodeConsistency.validateTraceabilityCatalog` | catalog の gate 検証を行い、`.bob-trace/gate-report.md` を生成する。 |
+| `Bob Code Consistency Review: トレーサビリティ台帳から review-input.yaml を作成` | `bobCodeConsistency.createReviewInputFromTraceability` | accepted catalog item と review metadata から `review-input.yaml` を生成する。 |
 | `Bob Code Consistency Review: review-input.yaml を自動修復` | `bobCodeConsistency.repairReviewInput` | 古い `review_focus` 名を現行 schema enum へ置換し、バックアップ後に保存する。 |
 | `Bob Code Consistency Review: review-input.yaml 診断を説明` | `bobCodeConsistency.explainReviewInputDiagnostics` | `review-input.yaml` の schema / 文書パス診断を表示する。 |
-| `Bob Code Consistency Review: 入力を前処理して Bob 用パッケージを作成` | `bobCodeConsistency.preprocess` | `review-input.yaml`、Git / Bazaar 差分、文書、コード解析結果から `review-package` を生成する。 |
+| `Bob Code Consistency Review: Bob に渡すレビュー資料を作成` | `bobCodeConsistency.preprocess` | `review-input.yaml`、Git / Bazaar 差分、文書、コード解析結果から `review-package` を生成する。 |
 | `Bob Code Consistency Review: Bob 出力 YAML を取り込む` | `bobCodeConsistency.captureBobOutput` | Bob が出力した YAML を clipboard または引数から抽出し、`bob-output.yaml` として保存する。 |
 | `Bob Code Consistency Review: Bob 出力 YAML を検証` | `bobCodeConsistency.validateOutput` | Bob 出力 YAML を schema と evidence index で検証する。 |
-| `Bob Code Consistency Review: 人間確認用 triage を生成` | `bobCodeConsistency.triage` | Bob 出力から人間確認用の triage 成果物を生成する。 |
+| `Bob Code Consistency Review: 人による判定一覧を作成` | `bobCodeConsistency.triage` | Bob 出力から人間確認用の triage 成果物を生成する。 |
 
 ## 設定
 
@@ -131,13 +131,13 @@ prepareAiTraceabilityDraft
   -> AI に proposed-only JSON を返させ、.bob-trace/ai-traceability-draft/ai-draft.json に保存する
   -> captureAiTraceabilityDraft
   -> applyAiTraceabilityDraft
-  -> Traceability Prep Webview で人間が accepted / rejected / deprecated を判断
+  -> トレーサビリティ確認画面 で人間が accepted / rejected / deprecated を判断
   -> validateTraceabilityCatalog
   -> createReviewInputFromTraceability
   -> review-input.yaml
 ```
 
-AI が作成できるのは `status: proposed` の候補だけです。`accepted`、`rejected`、`deprecated` への遷移は人間が Traceability Prep Webview で実施します。
+AI が作成できるのは `status: proposed` の候補だけです。`accepted`、`rejected`、`deprecated` への遷移は人間が トレーサビリティ確認画面 で実施します。
 
 ## Draft -> Builder -> Validator
 
@@ -358,7 +358,7 @@ analysis_options:
 | `src/commands/reviewInputCommands.ts` | review-input 作成、AI draft 作成 / 反映、repair、診断説明の command handler。 |
 | `src/workflowProviderRegistration.ts` | `workflow-register` の action provider 登録と action provider から渡される option record の正規化。 |
 | `src/workspaceInitializer.ts` | `.bob/workflows/code-consistency-review/WORKFLOW.md` と `review-input.yaml` 雛形の初期化。 |
-| `src/traceabilityCommands.ts` | traceability AI draft 作成 / 反映、Traceability Prep Webview 起動、catalog gate 検証、accepted item からの `review-input.yaml` 生成。 |
+| `src/traceabilityCommands.ts` | traceability AI draft 作成 / 反映、トレーサビリティ確認画面 起動、catalog gate 検証、accepted item からの `review-input.yaml` 生成。 |
 | `src/reviewExecutionCommands.ts` | preprocess、Bob output capture、Bob output validate、人間 triage 生成。 |
 | `src/core/*` | review-input builder、AI draft provider、traceability catalog、pipeline、Bob output capture / validator。 |
 | `src/webview/traceabilityPrepWebview.ts` | traceability item の人間承認 UI。 |
@@ -441,9 +441,9 @@ npm run package:policy
 - Release validation runs on both Ubuntu and Windows, while IBM Bob UI/MCP checks remain a release-candidate real-machine gate.
 
 <!-- TRIAGE-INTEGRITY-2026-07-12 -->
-## Human Triage Integrity
+## 人による判定 Integrity
 
-Human Triage は、Bob 出力由来の情報と人間の判断を別の正本として保存します。GUI は Bob finding / question の本文を更新せず、`source_id` に紐づく判断だけを保存します。
+人による判定 は、Bob 出力由来の情報と人間の判断を別の正本として保存します。GUI は Bob finding / question の本文を更新せず、`source_id` に紐づく判断だけを保存します。
 
 ```text
 .bob-review/human-triage/
