@@ -30,6 +30,8 @@ jobs:
           fetch-depth: 0
 
       - name: Apply verified patch series and remove temporary queue
+        id: apply
+        continue-on-error: true
         shell: bash
         env:
           EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
@@ -46,7 +48,10 @@ jobs:
 
           ready=.sdd/patches/READY
           test -f "$ready"
-          grep -Fx 'apply repaired Japanese GUI patch series on current main 2026-07-17' "$ready"
+          grep -Fx 'apply repaired Japanese GUI patch series diagnostic v2 2026-07-17' "$ready"
+
+          rm -rf /tmp/sdd-debug
+          mkdir -p /tmp/sdd-debug
 
           mapfile -t payloads < <(
             find .sdd/patches -maxdepth 1 -type f \
@@ -76,14 +81,15 @@ jobs:
           if payload.name.endswith('.part00'):
               prefix = payload.name.removesuffix('.part00')
               parts = sorted(payload.parent.glob(prefix + '.part*'))
-              if [part.name for part in parts] != [
+              expected_parts = [
                   prefix + '.part00',
                   prefix + '.part01a',
                   prefix + '.part01b',
                   prefix + '.part02a',
                   prefix + '.part02b',
                   prefix + '.part03',
-              ]:
+              ]
+              if [part.name for part in parts] != expected_parts:
                   raise SystemExit(f'Unexpected split payload set: {[part.name for part in parts]}')
               encoded_parts = []
               for part in parts:
@@ -105,7 +111,28 @@ jobs:
           Path('/tmp/sdd.patch').write_bytes(patch)
           PY
 
-            git am --3way /tmp/sdd.patch
+            echo "Applying $(basename "$payload")"
+            if ! git am --3way /tmp/sdd.patch; then
+              printf '%s\n' "$payload" > /tmp/sdd-debug/failed-payload.txt
+              cp /tmp/sdd.patch /tmp/sdd-debug/current.patch
+              git status --short > /tmp/sdd-debug/status.txt || true
+              git status > /tmp/sdd-debug/status-long.txt || true
+              git ls-files -u > /tmp/sdd-debug/unmerged-index.txt || true
+              git diff --name-only --diff-filter=U > /tmp/sdd-debug/conflicts.txt || true
+              git diff > /tmp/sdd-debug/working.diff || true
+              git am --show-current-patch=diff > /tmp/sdd-debug/am-current.patch 2>&1 || true
+              while IFS= read -r path; do
+                test -n "$path" || continue
+                safe=$(printf '%s' "$path" | sha256sum | cut -d' ' -f1)
+                mkdir -p "/tmp/sdd-debug/files/$safe"
+                printf '%s\n' "$path" > "/tmp/sdd-debug/files/$safe/path.txt"
+                git show ":1:$path" > "/tmp/sdd-debug/files/$safe/base" 2>/dev/null || true
+                git show ":2:$path" > "/tmp/sdd-debug/files/$safe/ours" 2>/dev/null || true
+                git show ":3:$path" > "/tmp/sdd-debug/files/$safe/theirs" 2>/dev/null || true
+                cp -- "$path" "/tmp/sdd-debug/files/$safe/worktree" 2>/dev/null || true
+              done < /tmp/sdd-debug/conflicts.txt
+              exit 1
+            fi
           done
 
           python - <<'PY'
@@ -151,3 +178,17 @@ jobs:
           git diff --cached --check
           git commit -m 'chore: finalize Japanese GUI integration and clear patch queue'
           git push origin "HEAD:$HEAD_BRANCH"
+
+      - name: Upload patch conflict diagnostics
+        if: steps.apply.outcome == 'failure'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: japanese-gui-patch-conflict-${{ github.run_id }}
+          path: /tmp/sdd-debug
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Fail after diagnostics are uploaded
+        if: steps.apply.outcome == 'failure'
+        shell: bash
+        run: exit 1
