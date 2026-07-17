@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto"
 import * as fs from "node:fs/promises"
 import {
   normalizeChangedFilePathStrict,
@@ -12,6 +13,8 @@ const MAX_ARTIFACT_RECORDS = 512
 const MAX_DEPENDENCIES_PER_RECORD = 64
 const HASH_PATTERN = /^sha256:[0-9a-f]{64}$/u
 const REVISION_PATTERN = /^[A-Za-z0-9._/@:+~^-]+(?:\.\.[A-Za-z0-9._/@:+~^-]+)?$/u
+const MISSING_ARTIFACT_HASH = `sha256:${"0".repeat(64)}`
+const SYNTHETIC_MISSING_PRODUCER = "bob-code-consistency-review/artifact-ledger-v1"
 
 export type ArtifactKind = "repository-symbol-index" | "project-rule-pack" | "review-package"
 export type ArtifactStatus = "fresh" | "stale" | "missing"
@@ -87,6 +90,17 @@ export function reconcileArtifactLedger(
       status: "fresh",
       stale_reasons: []
     })
+  }
+
+  assertRecordCount(records.size)
+  const danglingDependencyIds = [...new Set(
+    [...records.values()].flatMap((record) => record.depends_on)
+  )]
+    .filter((id) => !records.has(id))
+    .sort()
+  for (const dependencyId of danglingDependencyIds) {
+    assertRecordCount(records.size + 1)
+    records.set(dependencyId, syntheticMissingRecord(dependencyId, sourceRevision))
   }
 
   const revisionChanged = Boolean(normalizedPrevious && normalizedPrevious.source_revision !== sourceRevision)
@@ -316,6 +330,40 @@ function artifactFingerprint(value: ArtifactObservation): string {
     value.source_revision,
     [...value.depends_on].sort()
   ])
+}
+
+function syntheticMissingRecord(id: string, sourceRevision: string): ArtifactLedgerRecord {
+  const kind = artifactKindFromDependencyId(id)
+  const identityHash = createHash("sha256").update(id).digest("hex")
+  return {
+    id,
+    kind,
+    producer: SYNTHETIC_MISSING_PRODUCER,
+    path: `.bob-review/missing/${kind}/${identityHash}.metadata`,
+    content_hash: MISSING_ARTIFACT_HASH,
+    input_hash: MISSING_ARTIFACT_HASH,
+    source_revision: sourceRevision,
+    depends_on: [],
+    status: "missing",
+    stale_reasons: ["artifact-missing"]
+  }
+}
+
+function artifactKindFromDependencyId(id: string): ArtifactKind {
+  for (const kind of ["project-rule-pack", "repository-symbol-index", "review-package"] as const) {
+    const prefix = `${kind}:`
+    if (!id.startsWith(prefix)) continue
+    const suffix = id.slice(prefix.length)
+    if (id.length <= 512 && suffix.trim() && suffix === suffix.trim()) return kind
+    break
+  }
+  throw new Error(`unsupported or invalid artifact dependency id: ${id}`)
+}
+
+function assertRecordCount(count: number): void {
+  if (count > MAX_ARTIFACT_RECORDS) {
+    throw new Error(`artifact ledger record count exceeded maximum (${count} > ${MAX_ARTIFACT_RECORDS})`)
+  }
 }
 
 function normalizeKind(value: unknown): ArtifactKind {

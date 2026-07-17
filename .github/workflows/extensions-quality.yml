@@ -43,6 +43,12 @@ jobs:
           cache: npm
           cache-dependency-path: extensions/workflow-register/package-lock.json
 
+      - name: Record CI baseline
+        run: node ../../scripts/ci-baseline-summary.js
+
+      - name: Verify CI baseline summary
+        run: node --test ../../scripts/ci-baseline-summary.test.js
+
       - name: Verify Extension Host smoke contract
         run: node --test ../../scripts/extension-host-smoke-contract.test.js
 
@@ -105,6 +111,9 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: extensions/bob-bazaar-review/package-lock.json
+
+      - name: Record CI baseline
+        run: node ../../scripts/ci-baseline-summary.js
 
       - name: Install dependencies
         run: npm ci
@@ -171,6 +180,9 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: extensions/bob-code-consistency-review/package-lock.json
+
+      - name: Record CI baseline
+        run: node ../../scripts/ci-baseline-summary.js
 
       - name: Install dependencies
         run: npm ci
@@ -251,6 +263,9 @@ jobs:
           cache: npm
           cache-dependency-path: extensions/${{ matrix.extension }}/package-lock.json
 
+      - name: Record CI baseline
+        run: node ../../scripts/ci-baseline-summary.js
+
       - name: Install dependencies
         run: npm ci
 
@@ -303,6 +318,9 @@ jobs:
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
+
+      - name: Record CI baseline
+        run: node scripts/ci-baseline-summary.js
 
       - name: Generate extension metrics
         run: node scripts/report-extension-metrics.js --output extension-metrics.md

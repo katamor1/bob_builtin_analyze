@@ -22,6 +22,17 @@ export interface ConsistencyWizardPackageFile {
   path: string
 }
 
+export interface ConsistencyWizardInitializationStatus {
+  initialized: boolean
+  workflowPath: string
+  missing: string[]
+}
+
+export interface ConsistencyWizardStatusNotice {
+  tone: "muted" | "warning" | "ok"
+  message: string
+}
+
 export interface ConsistencyReviewWizardModel {
   workspaceRoot: string
   base: string
@@ -32,7 +43,9 @@ export interface ConsistencyReviewWizardModel {
   documents: ReviewInputDocumentCandidate[]
   traceability: ConsistencyWizardTraceabilitySummary
   packagePreview: ConsistencyWizardPackageFile[]
+  initialization: ConsistencyWizardInitializationStatus
   warnings: string[]
+  status: ConsistencyWizardStatusNotice
 }
 
 export interface RenderConsistencyReviewWizardHtmlInput {
@@ -73,6 +86,7 @@ export function renderConsistencyReviewWizardHtml(input: RenderConsistencyReview
 </head>
 <body>
   <h1>Consistency Review Wizard</h1>
+  ${renderWorkspaceInitialization(model.initialization)}
   <section class="card">
     <h2>VCS / Revision</h2>
     <div class="row">
@@ -113,7 +127,7 @@ export function renderConsistencyReviewWizardHtml(input: RenderConsistencyReview
   </section>
   <section class="card">
     <h2>Status</h2>
-    <div id="status" class="status ${model.warnings.length > 0 ? "warning" : "muted"}">${escapeHtml(model.warnings.join("\n") || "未実行")}</div>
+    <div id="status" class="status ${escapeHtml(model.status.tone)}">${escapeHtml(model.status.message)}</div>
   </section>
   <script nonce="${escapeHtml(input.nonce)}">
     const vscode = acquireVsCodeApi();
@@ -145,6 +159,16 @@ export function renderConsistencyReviewWizardHtml(input: RenderConsistencyReview
   </script>
 </body>
 </html>`
+}
+
+function renderWorkspaceInitialization(status: ConsistencyWizardInitializationStatus): string {
+  if (status.initialized) return ""
+  return `<section class="card">
+    <h2 class="warning">.bob ワークフロー初期化: 未完了</h2>
+    <div>コード整合プレレビュー用ワークフローを workspace に配置してください。</div>
+    <ul>${status.missing.map((item) => `<li><code>${escapeHtml(item)}</code></li>`).join("")}</ul>
+    <div class="actions"><button type="button" data-action="initializeWorkspace">.bob を初期化</button></div>
+  </section>`
 }
 
 function renderDocument(candidate: ReviewInputDocumentCandidate): string {

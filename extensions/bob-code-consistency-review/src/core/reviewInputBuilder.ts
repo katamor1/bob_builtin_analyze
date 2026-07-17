@@ -217,7 +217,7 @@ function defaultAnalysisOptions(): NonNullable<ReviewInput["analysis_options"]> 
     include_global_access: true,
     include_struct_impact: true,
     include_ledgers: true,
-    max_call_depth: 2,
+    max_call_depth: 1,
     max_code_context_lines: 80
   }
 }

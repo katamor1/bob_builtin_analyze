@@ -76,7 +76,16 @@ export async function preprocessReview(input: PreprocessReviewInput): Promise<Pr
     documents,
     codeAnalysis,
     limits,
-    textEncoding
+    textEncoding,
+    onUpstreamLoadFailure: async (kind) => {
+      await updateArtifactLedger({
+        workspaceRoot: input.workspaceRoot,
+        sourceRevision: diff.head,
+        observations: [],
+        completeKinds: [kind],
+        maxBytes: limits.maxDocumentBytes
+      })
+    }
   })
   const upstreamObservations = buildUpstreamArtifactObservations(
     contextBudget.artifact,
