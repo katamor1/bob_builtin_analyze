@@ -52,3 +52,18 @@
 ## Minor findings
 
 - None recorded.
+
+---
+
+# Three-extension quality design and plan restoration (2026-07-17)
+
+- Branch: `codex/three-extension-quality-improvements-20260717`
+- Base: `f4f9d3308361333e02ab1af732706b7a9e5fc952`
+- Scope: planning-artifact restoration only; no product source, tests, manifests, or workflows changed.
+- Restored approved design: `docs/superpowers/specs/2026-07-17-three-extension-quality-contract-and-ui-consolidation-design.md`.
+- Restored Action SHA plan: `docs/superpowers/plans/2026-07-17-github-actions-immutable-sha-policy.md`.
+- Restored UI/document plan: `docs/superpowers/plans/2026-07-17-three-extension-ui-and-documentation-contracts.md`.
+- The plans use the repository's current package scripts and preserve the approved 18-reference baseline, exact five public labels, soft-dependency contract, three-mode Builder, single-review-GUI routes, and documentation contract.
+- Restoration validation: Markdown/path/required-content checks and `git diff --check` are recorded in `.superpowers/sdd/three-extension-quality-task-0-report.md`.
+- Task 0: complete (commits `f4f9d330..08d2ad3c`, independent re-review clean: Critical 0 / Important 0 / Minor 0).
+- Task 1: in progress — commits `ffc8a947`, `789dc9ee`, `ba205263`, and `e6ea8dad`; focused suite 56/56 PASS and real baseline scan 3 files / 18 external / 0 violations. Independent review closed the block-scalar sibling, CR-only, document-marker, BOM, standalone block-scalar, and embedded flow-indicator cases, but still rejects approval because valid block plain scalar `run: echo foo:"bar"suffix` is misclassified. After three bounded fix loops, systematic-debugging requires an architecture decision: replace the neighbor-heuristic line mask with a position-aware YAML lexer/parser, or revise the approved dependency-free/pre-install constraint. Task 2 has not started.
