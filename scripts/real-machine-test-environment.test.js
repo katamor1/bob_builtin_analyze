@@ -115,7 +115,9 @@ test("runner isolates scenario failures and opens only one ready target", () => 
   assert.match(runner, /if \(\$blockedCount -gt 0 -or \$failedCount -gt 0\) \{ exit 1 \}/)
 })
 
-test("missing VS Code CLI becomes blocked evidence on Windows", { skip: process.platform !== "win32" }, () => {
+test("missing VS Code CLI becomes blocked evidence on Windows", {
+  skip: process.platform !== "win32" || process.env.RUN_REAL_MACHINE_WINDOWS_PROCESS_TEST !== "1"
+}, () => {
   const outputRoot = path.join(os.homedir(), `bob-review-real-machine-${process.pid}-${Date.now()}`)
   try {
     const result = childProcess.spawnSync("pwsh", [
