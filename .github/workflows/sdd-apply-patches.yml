@@ -29,17 +29,28 @@ jobs:
 
           ready=.sdd/patches/READY
           test -f "$ready"
-          mapfile -d '' patches < <(find .sdd/patches -maxdepth 1 -type f -name '*.patch.gz.b64' -print0 2>/dev/null | sort -z)
-          if [ "${#patches[@]}" -eq 0 ]; then
-            echo "No queued patches." >&2
+          mapfile -t prefixes < <(
+            find .sdd/patches -maxdepth 1 -type f -name '*.patch.gz.b64.part*' -print \
+              | sed -E 's/\.part[0-9]+$//' \
+              | sort -u
+          )
+          if [ "${#prefixes[@]}" -eq 0 ]; then
+            echo "No queued patch parts." >&2
             exit 1
           fi
 
-          for patch in "${patches[@]}"; do
-            base64 --decode "$patch" | gzip --decompress > /tmp/sdd.patch
+          cleanup=("$ready")
+          for prefix in "${prefixes[@]}"; do
+            mapfile -t parts < <(find .sdd/patches -maxdepth 1 -type f -path "${prefix}.part*" -print | sort)
+            if [ "${#parts[@]}" -eq 0 ]; then
+              echo "No parts found for $prefix" >&2
+              exit 1
+            fi
+            cat "${parts[@]}" | base64 --decode | gzip --decompress > /tmp/sdd.patch
             git am --3way /tmp/sdd.patch
+            cleanup+=("${parts[@]}")
           done
 
-          git rm "$ready" "${patches[@]}"
+          git rm "${cleanup[@]}"
           git commit -m "chore: clear applied SDD patch queue"
           git push origin "HEAD:${GITHUB_REF_NAME}"
