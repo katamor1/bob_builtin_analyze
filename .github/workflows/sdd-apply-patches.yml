@@ -48,10 +48,32 @@ jobs:
 
           ready=.sdd/patches/READY
           test -f "$ready"
-          grep -Fx 'apply repaired Japanese GUI patch series diagnostic v2 2026-07-17' "$ready"
+          grep -Fx 'apply repaired Japanese GUI patch series resolved v3 2026-07-17' "$ready"
 
           rm -rf /tmp/sdd-debug
           mkdir -p /tmp/sdd-debug
+
+          capture_failure() {
+            local payload=$1
+            printf '%s\n' "$payload" > /tmp/sdd-debug/failed-payload.txt
+            cp /tmp/sdd.patch /tmp/sdd-debug/current.patch
+            git status --short > /tmp/sdd-debug/status.txt || true
+            git status > /tmp/sdd-debug/status-long.txt || true
+            git ls-files -u > /tmp/sdd-debug/unmerged-index.txt || true
+            git diff --name-only --diff-filter=U > /tmp/sdd-debug/conflicts.txt || true
+            git diff > /tmp/sdd-debug/working.diff || true
+            git am --show-current-patch=diff > /tmp/sdd-debug/am-current.patch 2>&1 || true
+            while IFS= read -r path; do
+              test -n "$path" || continue
+              safe=$(printf '%s' "$path" | sha256sum | cut -d' ' -f1)
+              mkdir -p "/tmp/sdd-debug/files/$safe"
+              printf '%s\n' "$path" > "/tmp/sdd-debug/files/$safe/path.txt"
+              git show ":1:$path" > "/tmp/sdd-debug/files/$safe/base" 2>/dev/null || true
+              git show ":2:$path" > "/tmp/sdd-debug/files/$safe/ours" 2>/dev/null || true
+              git show ":3:$path" > "/tmp/sdd-debug/files/$safe/theirs" 2>/dev/null || true
+              cp -- "$path" "/tmp/sdd-debug/files/$safe/worktree" 2>/dev/null || true
+            done < /tmp/sdd-debug/conflicts.txt
+          }
 
           mapfile -t payloads < <(
             find .sdd/patches -maxdepth 1 -type f \
@@ -113,25 +135,46 @@ jobs:
 
             echo "Applying $(basename "$payload")"
             if ! git am --3way /tmp/sdd.patch; then
-              printf '%s\n' "$payload" > /tmp/sdd-debug/failed-payload.txt
-              cp /tmp/sdd.patch /tmp/sdd-debug/current.patch
-              git status --short > /tmp/sdd-debug/status.txt || true
-              git status > /tmp/sdd-debug/status-long.txt || true
-              git ls-files -u > /tmp/sdd-debug/unmerged-index.txt || true
-              git diff --name-only --diff-filter=U > /tmp/sdd-debug/conflicts.txt || true
-              git diff > /tmp/sdd-debug/working.diff || true
-              git am --show-current-patch=diff > /tmp/sdd-debug/am-current.patch 2>&1 || true
-              while IFS= read -r path; do
-                test -n "$path" || continue
-                safe=$(printf '%s' "$path" | sha256sum | cut -d' ' -f1)
-                mkdir -p "/tmp/sdd-debug/files/$safe"
-                printf '%s\n' "$path" > "/tmp/sdd-debug/files/$safe/path.txt"
-                git show ":1:$path" > "/tmp/sdd-debug/files/$safe/base" 2>/dev/null || true
-                git show ":2:$path" > "/tmp/sdd-debug/files/$safe/ours" 2>/dev/null || true
-                git show ":3:$path" > "/tmp/sdd-debug/files/$safe/theirs" 2>/dev/null || true
-                cp -- "$path" "/tmp/sdd-debug/files/$safe/worktree" 2>/dev/null || true
-              done < /tmp/sdd-debug/conflicts.txt
-              exit 1
+              conflict_path='extensions/bob-code-consistency-review/src/webview/consistencyReviewWizardHtml.ts'
+              mapfile -t conflicts < <(git diff --name-only --diff-filter=U | sort)
+              if [[ $(basename "$payload") == 0003-* && ${#conflicts[@]} -eq 1 && "${conflicts[0]}" == "$conflict_path" ]]; then
+                python - "$conflict_path" <<'PY'
+          from pathlib import Path
+          import sys
+
+          path = Path(sys.argv[1])
+          text = path.read_text(encoding='utf-8')
+          heading_conflict = '''<<<<<<< HEAD
+            <h1>Consistency Review Wizard</h1>
+            ${renderWorkspaceInitialization(model.initialization)}
+          =======
+            <h1>整合プレレビューを開始</h1>
+          >>>>>>> feat: localize consistency review GUI surfaces'''
+          heading_resolution = '''  <h1>整合プレレビューを開始</h1>
+            ${renderWorkspaceInitialization(model.initialization)}'''
+          status_conflict = '''<<<<<<< HEAD
+              <h2>Status</h2>
+              <div id="status" class="status ${escapeHtml(model.status.tone)}">${escapeHtml(model.status.message)}</div>
+          =======
+              <h2>実行結果</h2>
+              <div id="status" class="status ${model.warnings.length > 0 ? "warning" : "muted"}">${escapeHtml(model.warnings.join("\\n") || "未実行")}</div>
+          >>>>>>> feat: localize consistency review GUI surfaces'''
+          status_resolution = '''    <h2>実行結果</h2>
+              <div id="status" class="status ${escapeHtml(model.status.tone)}">${escapeHtml(model.status.message)}</div>'''
+          if text.count(heading_conflict) != 1 or text.count(status_conflict) != 1:
+              raise SystemExit('The reviewed wizard conflict shape changed')
+          text = text.replace(heading_conflict, heading_resolution, 1)
+          text = text.replace(status_conflict, status_resolution, 1)
+          if any(marker in text for marker in ('<<<<<<<', '=======', '>>>>>>>')):
+              raise SystemExit('Conflict markers remain after deterministic resolution')
+          path.write_text(text, encoding='utf-8')
+          PY
+                git add "$conflict_path"
+                GIT_EDITOR=true git am --continue
+              else
+                capture_failure "$payload"
+                exit 1
+              fi
             fi
           done
 
@@ -167,7 +210,7 @@ jobs:
           marker = '<!-- INTEGRATION-COMPLETION-2026-07-17 -->'
           text = progress.read_text(encoding='utf-8')
           if marker not in text:
-              text = text.rstrip() + f'''\n\n{marker}\n## Integration completion (2026-07-17)\n\n- Repaired the reviewed one-byte split corruption in the Bazaar GUI patch payload.\n- Verified SHA-256 for all four decoded mail patches before application.\n- Applied the Japanese GUI and terminology series on top of the current `main`.\n- Preserved workflow-register task snapshot maximums introduced by the runtime-blocker remediation.\n- Removed the temporary SDD workflow and encoded patch queue in the same cleanup commit.\n'''
+              text = text.rstrip() + f'''\n\n{marker}\n## Integration completion (2026-07-17)\n\n- Repaired the reviewed one-byte split corruption in the Bazaar GUI patch payload.\n- Verified SHA-256 for all four decoded mail patches before application.\n- Preserved the Review Wizard workspace-initialization card and model-backed status while localizing the surrounding GUI.\n- Applied the Japanese GUI and terminology series on top of the current `main`.\n- Preserved workflow-register task snapshot maximums introduced by the runtime-blocker remediation.\n- Removed the temporary SDD workflow and encoded patch queue in the same cleanup commit.\n'''
               progress.write_text(text, encoding='utf-8')
           PY
 
