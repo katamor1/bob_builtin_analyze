@@ -13,7 +13,7 @@ export function renderResultCaptureHtml(input: RenderResultCaptureHtmlInput): st
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${escapeHtml(input.cspSource)} 'unsafe-inline'; script-src 'nonce-${escapeHtml(input.nonce)}';">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Bob Bazaar Result Capture</title>
+  <title>Bazaar レビュー結果の取り込み</title>
   <style>
     body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); padding: 18px; }
     h1 { font-size: 20px; margin: 0 0 12px; }
@@ -31,26 +31,26 @@ export function renderResultCaptureHtml(input: RenderResultCaptureHtmlInput): st
   </style>
 </head>
 <body>
-  <h1>Result Capture</h1>
+  <h1>レビュー結果の取り込み</h1>
   ${renderReviewRunCard(input.reviewRun)}
   <section class="card">
-    <h2>Bob 出力候補</h2>
-    <div class="muted">active editor selection、active editor、clipboard の順で既存 capture helper に渡します。保存前に review-result JSON schema と checklist contract を検証します。</div>
+    <h2>Bob のレビュー結果</h2>
+    <div class="muted">選択範囲、開いているファイル、クリップボードの順に候補を探します。保存前に JSON の形式とチェックリストとの整合を確認します。</div>
     <div class="actions">
-      <button type="button" data-action="captureCandidates">候補から取り込む</button>
-      <button type="button" class="secondary" data-action="validateActive">開いている JSON を検証</button>
-      <button type="button" class="secondary" data-action="openTriage">Human Triage へ進む</button>
+      <button type="button" data-action="captureCandidates">見つかった候補を取り込む</button>
+      <button type="button" class="secondary" data-action="validateActive">開いているレビュー結果を検証</button>
+      <button type="button" class="secondary" data-action="openTriage">人による判定へ進む</button>
     </div>
   </section>
   <section class="card">
-    <h2>手動貼り付け</h2>
+    <h2>JSON を貼り付けて取り込む</h2>
     <textarea id="manualText" aria-label="Bob review-result JSON"></textarea>
     <div class="actions">
       <button type="button" data-action="captureManual">貼り付け内容を検証して保存</button>
     </div>
   </section>
   <section class="card">
-    <h2>検証結果</h2>
+    <h2>取り込み結果</h2>
     <div id="status" class="status muted">未実行</div>
   </section>
   <script nonce="${escapeHtml(input.nonce)}">
@@ -79,12 +79,12 @@ export function renderResultCaptureHtml(input: RenderResultCaptureHtmlInput): st
 
 function renderReviewRunCard(reviewRun: ReviewRunCommandInput | undefined): string {
   if (!reviewRun) {
-    return `<section class="card"><div class="muted">Standalone mode: 保存先と review_id は取り込み結果から決定します。</div></section>`
+    return `<section class="card"><div class="muted">単独実行モード: 保存先とレビュー ID は取り込み結果から決定します。</div></section>`
   }
   return `<section class="card">
-    <h2>Active Review Run</h2>
+    <h2>現在のレビュー</h2>
     <div><code>${escapeHtml(reviewRun.campaignId)}</code> / <code>${escapeHtml(reviewRun.reviewId)}</code></div>
-    <div class="muted">最終JSONはこの exact review_id を使用してください。保存成功後は同じReview RunのHuman Triageを開きます。</div>
+    <div class="muted">最終 JSON にはこのレビュー ID を使用してください。保存後は同じレビューの「人による判定」を開きます。</div>
   </section>`
 }
 

@@ -52,7 +52,7 @@ export function openBazaarHumanTriageGui(
   context: vscode.ExtensionContext,
   reviewRunInput?: ReviewRunCommandInput
 ): void {
-  const panel = vscode.window.createWebviewPanel("bobBazaarHumanTriage", "Bazaar Human Triage", vscode.ViewColumn.One, {
+  const panel = vscode.window.createWebviewPanel("bobBazaarHumanTriage", "Bazaar レビューの人による判定", vscode.ViewColumn.One, {
     enableScripts: true,
     retainContextWhenHidden: true
   })
@@ -108,26 +108,26 @@ class BazaarHumanTriageGuiController {
       const input = await this.commandInput(message)
       if (message.action === "initCampaign") {
         const result = await initReviewRecordCampaign(this.context, input)
-        this.post({ ok: true, message: `campaign を初期化しました: ${result.targetRoot}` })
+        this.post({ ok: true, message: `レビューキャンペーンを初期化しました: ${result.targetRoot}` })
       } else if (message.action === "createTriage") {
         const result = await createReviewTriage(input)
         if (this.activeReviewRun) this.activeReviewRun = await recordTriageDraft(this.activeReviewRun, result.path)
         await this.reloadTriage(input, result.path, result.issues)
       } else if (message.action === "validateTriage") {
         const result = await validateReviewTriageCommand(input)
-        this.post({ ok: result.status === "ok", message: result.issues.join("\n") || "triage は検証に通りました。" })
+        this.post({ ok: result.status === "ok", message: result.issues.join("\n") || "判定内容は検証に合格しました。" })
       } else if (message.action === "createRecord") {
         const result = await createReviewRecord(input)
-        this.post({ ok: result.issues.length === 0, message: [`record を作成しました: ${result.path}`, ...result.issues].join("\n") })
+        this.post({ ok: result.issues.length === 0, message: [`実績記録を作成しました: ${result.path}`, ...result.issues].join("\n") })
       } else if (message.action === "generateSummary") {
         const result = await generateReviewCampaignSummary(input)
-        this.post({ ok: true, message: `summary を生成しました:\n${result.markdownPath}` })
+        this.post({ ok: true, message: `集計レポートを作成しました:\n${result.markdownPath}` })
       } else if (message.action === "saveDecisions") {
         const saved = await this.saveDecisions(input, message.items ?? [])
-        if (saved) this.post({ ok: true, message: "triage decisionを保存し、Review Runのtriage phaseを完了しました。" })
+        if (saved) this.post({ ok: true, message: "判定内容を保存し、レビュー実行の人による判定工程を完了しました。" })
       } else if (message.action === "saveMetrics") {
         await this.saveMetrics(message)
-        this.post({ ok: true, message: "Review Run metricsを保存しました。" })
+        this.post({ ok: true, message: "レビュー時間を保存しました。" })
       } else if (message.action === "finalizeReviewRun") {
         const saved = await this.saveDecisions(input, message.items ?? [], false)
         if (!saved) return
@@ -139,9 +139,9 @@ class BazaarHumanTriageGuiController {
         this.post({
           ok: true,
           message: [
-            "Review Runを完了しました。",
-            `record: ${result.recordPath}`,
-            `summary: ${result.summaryMarkdownPath}`
+            "レビュー実行を完了しました。",
+            `実績記録: ${result.recordPath}`,
+            `集計レポート: ${result.summaryMarkdownPath}`
           ].join("\n")
         })
       }

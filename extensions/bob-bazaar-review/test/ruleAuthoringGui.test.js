@@ -1076,8 +1076,8 @@ test("describes partial extraction as included chunks plus excluded unavailable 
     ]
   }), "nonce-partial")
 
-  assert.match(html, /partial\.pdf[\s\S]{0,600}extracted chunks remain included[\s\S]{0,300}(?:unavailable|failed) portions are excluded/i)
-  assert.match(html, /blocked\.pdf[\s\S]{0,500}(?:fully excluded|must be excluded)/i)
+  assert.match(html, /partial\.pdf[\s\S]{0,600}抽出できた範囲は含まれ[\s\S]{0,300}取得できない部分は除外/)
+  assert.match(html, /blocked\.pdf[\s\S]{0,500}対象から除外されます/)
 })
 
 test("rejects a partial workflow identity pair before run creation or Webview opening", async (t) => {

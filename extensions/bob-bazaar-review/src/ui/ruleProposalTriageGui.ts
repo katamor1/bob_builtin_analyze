@@ -250,7 +250,7 @@ const MAX_ARTIFACT_BYTES = 16 * 1024 * 1024
 const MAX_TRANSACTION_ENTRIES = 10_000
 const MAX_DOCUMENT_CHUNKS = Math.floor(DEFAULT_RULE_AUTHORING_LIMITS.maxSourceIndexBytes / 128)
 const MAX_COMPARISON_DOCUMENT_BYTES = (2 * DEFAULT_RULE_AUTHORING_LIMITS.maxProposalBytes) + 65_536
-const APPLY_CONFIRMATION = "Apply approved project rules"
+const APPLY_CONFIRMATION = "採用した規約を反映"
 const TARGET_SPECS = Object.freeze([
   ["checklist", ".bob/review/checklist.json"],
   ["project_context", ".bob/review/project-context.md"],
@@ -453,7 +453,7 @@ async function openWithDependencies(
   const input = normalizeTriageInput(inputValue)
   const panel = vscodeApi.window.createWebviewPanel(
     "bobBazaar.ruleProposalTriage",
-    "Project Rule Proposal Triage",
+    "規約案の確認・採否",
     vscodeApi.ViewColumn.One,
     { enableScripts: true, retainContextWhenHidden: true }
   )
@@ -466,7 +466,7 @@ async function openWithDependencies(
   let displayedPreviewDigest: string | undefined
   let transaction: RuleProposalTriageTransactionModel | undefined
   let staleWarning = ""
-  let status = "Loading the validated proposal."
+  let status = "検証済みの規約案を読み込んでいます。"
   let busy = false
   let settled = false
 
@@ -479,7 +479,7 @@ async function openWithDependencies(
     const fail = (error: unknown): void => {
       if (settled) return
       settled = true
-      reject(error instanceof Error ? error : new Error("Project rule triage failed"))
+      reject(error instanceof Error ? error : new Error("規約案の確認・採否に失敗しました"))
     }
     const render = (): void => {
       const model = state
@@ -654,14 +654,14 @@ async function openWithDependencies(
             preview = undefined
             displayedPreviewDigest = undefined
             staleWarning = ""
-            status = "Human Triage decision saved."
+            status = "判定内容を保存しました。反映前にプレビューを更新してください。"
             render()
             return
           }
           if (message.type === "editRule") {
             const operation = requireOperation(state.proposal, message.candidateId)
             if (operation.operation === "retire") {
-              throw new SafeTriageError("This candidate does not accept an edit.")
+              throw new SafeTriageError("この候補は編集できません。採用または却下を選択してください。")
             }
             const previous = decisions.decisions[message.candidateId]
             const common = {
@@ -808,13 +808,13 @@ async function openWithDependencies(
             preview = previewModel(prepared.plan, decisions, canonicalNow(dependencies.now()))
             displayedPreviewDigest = freshDigest
             staleWarning = ""
-            status = "The apply plan changed. Inspect the regenerated preview before applying."
+            status = "反映計画が変更されました。更新されたプレビューを確認してから反映してください。"
             render()
             return
           }
           await dependencies.validateDisplayedRuleApplyPreview(prepared.state, prepared.plan)
           const confirmation = await vscodeApi.window.showWarningMessage(
-            "Apply the accepted and human-edited project rule operations to all approved assets?",
+            "採用または編集した規約案を、承認済みのすべての成果物へ反映しますか？",
             { modal: true },
             APPLY_CONFIRMATION
           )
@@ -946,7 +946,7 @@ async function openWithDependencies(
           displayedPreviewDigest = finalOutcome.digest
           if (finalOutcome.kind === "changed") {
             staleWarning = ""
-            status = "The apply plan changed during confirmation. Inspect the regenerated preview before applying."
+            status = "確認中に反映計画が変更されました。更新されたプレビューを確認してから反映してください。"
             render()
             return
           }
@@ -1588,19 +1588,19 @@ function buildRuleProposalTriageModel(
   const groups: RuleProposalTriageGroupModel[] = [
     {
       asset: "rule",
-      label: "Checklist rules",
+      label: "チェックリスト規約",
       operations: proposal.operations.map((operation) =>
         operationModel(state, decisions, operation, "rule"))
     },
     {
       asset: "project_context",
-      label: "Project context",
+      label: "プロジェクト情報",
       operations: proposal.project_context_operations.map((operation) =>
         operationModel(state, decisions, operation, "project_context"))
     },
     {
       asset: "prompt_addendum",
-      label: "Review prompt addendum",
+      label: "レビュープロンプトの補足",
       operations: proposal.prompt_addendum_operations.map((operation) =>
         operationModel(state, decisions, operation, "prompt_addendum"))
     }
@@ -3157,7 +3157,7 @@ function requireVscode(): typeof import("vscode") {
   try {
     return require("vscode") as typeof import("vscode")
   } catch {
-    throw new Error("VS Code API is required to open Project Rule Proposal Triage")
+    throw new Error("規約案の確認・採否を開くには VS Code API が必要です")
   }
 }
 

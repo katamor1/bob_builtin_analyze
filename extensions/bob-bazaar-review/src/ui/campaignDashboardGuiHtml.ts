@@ -5,6 +5,7 @@ import type {
   CampaignDashboardRun,
   CampaignDashboardWarning
 } from "../dashboard/campaignDashboardTypes"
+import { nextReviewActionLabel, reviewDecisionLabel, reviewRunStatusLabel, targetModeLabel } from "./displayLabels"
 
 export interface CampaignDashboardGuiModel {
   workspaceRoot?: string
@@ -35,7 +36,7 @@ export function renderCampaignDashboardHtml(input: RenderCampaignDashboardHtmlIn
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${escapeHtml(input.cspSource)} 'unsafe-inline'; script-src 'nonce-${escapeHtml(input.nonce)}';">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Bob Bazaar Campaign Dashboard</title>
+  <title>レビューキャンペーン ダッシュボード</title>
   <style>
     body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); padding: 18px; }
     h1 { font-size: 22px; margin: 0 0 8px; }
@@ -64,21 +65,21 @@ export function renderCampaignDashboardHtml(input: RenderCampaignDashboardHtmlIn
   </style>
 </head>
 <body>
-  <h1>Campaign Dashboard</h1>
-  <div class="muted">Review Run、Human Triage、rule、target mode、時間指標をsource artifactから集計します。</div>
+  <h1>レビューキャンペーン ダッシュボード</h1>
+  <div class="muted">レビュー実行、人による判定、規約、変更種別、所要時間を保存済み成果物から集計します。</div>
   <div class="toolbar">
     <div class="field">
-      <label for="campaignId" class="muted">campaign_id</label>
+      <label for="campaignId" class="muted">キャンペーン ID <code>campaign_id</code></label>
       <select id="campaignId"${model.campaigns.length === 0 ? " disabled" : ""}>
-        ${model.campaigns.length === 0 ? `<option value="">campaignがありません</option>` : model.campaigns.map((campaignId) => `<option value="${escapeHtml(campaignId)}"${campaignId === model.selectedCampaignId ? " selected" : ""}>${escapeHtml(campaignId)}</option>`).join("")}
+        ${model.campaigns.length === 0 ? `<option value="">レビューキャンペーンがありません</option>` : model.campaigns.map((campaignId) => `<option value="${escapeHtml(campaignId)}"${campaignId === model.selectedCampaignId ? " selected" : ""}>${escapeHtml(campaignId)}</option>`).join("")}
       </select>
     </div>
-    <button type="button" data-action="refresh">再読込</button>
-    <button type="button" class="secondary" data-action="export"${dashboard ? "" : " disabled"}>JSON / Markdown / CSV export</button>
+    <button type="button" data-action="refresh">再読み込み</button>
+    <button type="button" class="secondary" data-action="export"${dashboard ? "" : " disabled"}>JSON／Markdown／CSV で書き出す</button>
   </div>
-  <div class="muted">workspace: ${escapeHtml(model.workspaceRoot ?? "未選択")}</div>
-  ${dashboard ? renderDashboard(dashboard) : `<div class="empty">表示できるcampaign dataがありません。</div>`}
-  ${model.exportedPaths ? `<section class="card"><h2>Exports</h2><div><code>${escapeHtml(model.exportedPaths.jsonPath)}</code></div><div><code>${escapeHtml(model.exportedPaths.markdownPath)}</code></div><div><code>${escapeHtml(model.exportedPaths.csvPath)}</code></div></section>` : ""}
+  <div class="muted">ワークスペース: ${escapeHtml(model.workspaceRoot ?? "未選択")}</div>
+  ${dashboard ? renderDashboard(dashboard) : `<div class="empty">表示できるレビューキャンペーンのデータがありません。</div>`}
+  ${model.exportedPaths ? `<section class="card"><h2>書き出したファイル</h2><div><code>${escapeHtml(model.exportedPaths.jsonPath)}</code></div><div><code>${escapeHtml(model.exportedPaths.markdownPath)}</code></div><div><code>${escapeHtml(model.exportedPaths.csvPath)}</code></div></section>` : ""}
   <div id="status" class="status ${model.error ? "error" : model.status ? "ok" : "muted"}">${escapeHtml(model.error ?? model.status ?? "")}</div>
   <script nonce="${escapeHtml(input.nonce)}">
     const vscode = acquireVsCodeApi();
@@ -107,39 +108,39 @@ export function renderCampaignDashboardHtml(input: RenderCampaignDashboardHtmlIn
 function renderDashboard(dashboard: CampaignDashboard): string {
   const overview = dashboard.overview
   return `${renderOverview(dashboard)}
-    <h2>Human Triage Pending</h2>
+    <h2>判定待ち</h2>
     ${renderRunTable(dashboard.triage_pending, true)}
-    <h2>Review Runs</h2>
+    <h2>レビュー実行</h2>
     ${renderRunTable(dashboard.runs, false)}
-    <h2>Rule Trends</h2>
+    <h2>規約別の傾向</h2>
     ${renderRuleTable(dashboard.rule_trends)}
-    <h2>Change Type Trends</h2>
+    <h2>変更種別の傾向</h2>
     ${renderChangeTypeTable(dashboard.change_type_trends)}
-    <h2>Time</h2>
+    <h2>所要時間</h2>
     <div class="kpis">
-      ${kpi("Baseline review", overview.baseline_review_minutes_total, "min")}
-      ${kpi("Bob review", overview.bob_review_minutes_total, "min")}
-      ${kpi("Human Triage", overview.human_triage_minutes_total, "min")}
-      ${kpi("Estimated saved", overview.estimated_minutes_saved, "min")}
+      ${kpi("従来レビュー", overview.baseline_review_minutes_total, "分")}
+      ${kpi("Bob レビュー", overview.bob_review_minutes_total, "分")}
+      ${kpi("人による判定", overview.human_triage_minutes_total, "分")}
+      ${kpi("推定削減時間", overview.estimated_minutes_saved, "分")}
     </div>
-    <h2>Warnings</h2>
+    <h2>注意事項</h2>
     ${renderWarnings(dashboard.warnings)}`
 }
 
 function renderOverview(dashboard: CampaignDashboard): string {
   const overview = dashboard.overview
   return `<section aria-labelledby="overview-heading">
-    <h2 id="overview-heading">Overview</h2>
-    <div class="muted">campaign: ${escapeHtml(dashboard.campaign_id)} · generated: ${escapeHtml(dashboard.generated_at)}</div>
+    <h2 id="overview-heading">概要</h2>
+    <div class="muted">キャンペーン: ${escapeHtml(dashboard.campaign_id)} · 生成日時: ${escapeHtml(dashboard.generated_at)}</div>
     <div class="kpis">
-      ${kpi("Review Runs", overview.review_runs_total)}
-      ${kpi("Completed", overview.completed_runs)}
-      ${kpi("In progress", overview.in_progress_runs)}
-      ${kpi("Triage pending", overview.triage_pending)}
-      ${kpi("Schema validation", formatRate(overview.schema_validation_rate))}
-      ${kpi("Finding acceptance", formatRate(overview.finding_acceptance_rate))}
-      ${kpi("Finding rejection", formatRate(overview.finding_rejection_rate))}
-      ${kpi("Finding resolution", formatRate(overview.finding_resolution_rate))}
+      ${kpi("レビュー実行", overview.review_runs_total)}
+      ${kpi("完了", overview.completed_runs)}
+      ${kpi("実行中", overview.in_progress_runs)}
+      ${kpi("判定待ち", overview.triage_pending)}
+      ${kpi("形式検証率", formatRate(overview.schema_validation_rate))}
+      ${kpi("指摘の採用率", formatRate(overview.finding_acceptance_rate))}
+      ${kpi("指摘の却下率", formatRate(overview.finding_rejection_rate))}
+      ${kpi("指摘の判定完了率", formatRate(overview.finding_resolution_rate))}
     </div>
   </section>`
 }
@@ -149,26 +150,26 @@ function kpi(label: string, value: string | number, suffix = ""): string {
 }
 
 function renderRunTable(runs: CampaignDashboardRun[], pending: boolean): string {
-  if (runs.length === 0) return `<div class="empty">${pending ? "triage pendingなし" : "Review Runなし"}</div>`
+  if (runs.length === 0) return `<div class="empty">${pending ? "判定待ちはありません" : "レビュー実行はありません"}</div>`
   return `<div class="table-wrap"><table>
-    <thead><tr><th>review_id</th><th>status</th><th>target mode</th><th>triage</th><th>schema</th><th>next</th><th>metrics</th><th>updated</th></tr></thead>
+    <thead><tr><th>レビュー ID</th><th>状態</th><th>変更種別</th><th>人による判定</th><th>形式検証</th><th>次の操作</th><th>所要時間</th><th>更新日時</th></tr></thead>
     <tbody>${runs.map((run) => `<tr>
       <td><code>${escapeHtml(run.review_id)}</code></td>
-      <td>${escapeHtml(run.status)}</td>
-      <td>${escapeHtml(run.target_mode)}</td>
-      <td>${escapeHtml(run.triage_status)}</td>
-      <td>${run.schema_valid === null ? "n/a" : escapeHtml(run.schema_valid)}</td>
-      <td>${escapeHtml(run.next_action)}</td>
-      <td>${escapeHtml(run.metrics_source)}; Bob ${escapeHtml(run.bob_review_minutes)} min; Human ${escapeHtml(run.human_triage_minutes)} min</td>
+      <td>${escapeHtml(reviewRunStatusLabel(run.status))}</td>
+      <td>${escapeHtml(targetModeLabel(run.target_mode))}</td>
+      <td>${escapeHtml(reviewRunStatusLabel(run.triage_status))}</td>
+      <td>${run.schema_valid === null ? "未確認" : run.schema_valid ? "有効" : "無効"}</td>
+      <td>${escapeHtml(nextReviewActionLabel(run.next_action))}</td>
+      <td>${escapeHtml(run.metrics_source)}; Bob ${escapeHtml(run.bob_review_minutes)}分; 人 ${escapeHtml(run.human_triage_minutes)}分</td>
       <td>${escapeHtml(run.updated_at)}</td>
     </tr>`).join("")}</tbody>
   </table></div>`
 }
 
 function renderRuleTable(trends: CampaignDashboardRuleTrend[]): string {
-  if (trends.length === 0) return `<div class="empty">rule trend dataなし</div>`
+  if (trends.length === 0) return `<div class="empty">規約別の傾向データはありません</div>`
   return `<div class="table-wrap"><table>
-    <thead><tr><th>rule_id</th><th>title</th><th>detected</th><th>accepted</th><th>rejected</th><th>investigation</th><th>deferred</th><th>accept rate</th></tr></thead>
+    <thead><tr><th>規約 ID</th><th>表示名</th><th>検出数</th><th>採用</th><th>却下</th><th>要調査</th><th>保留</th><th>採用率</th></tr></thead>
     <tbody>${trends.map((trend) => `<tr>
       <td><code>${escapeHtml(trend.rule_id)}</code></td>
       <td>${escapeHtml(trend.title ?? "")}</td>
@@ -183,11 +184,11 @@ function renderRuleTable(trends: CampaignDashboardRuleTrend[]): string {
 }
 
 function renderChangeTypeTable(trends: CampaignDashboardChangeTypeTrend[]): string {
-  if (trends.length === 0) return `<div class="empty">change type dataなし</div>`
+  if (trends.length === 0) return `<div class="empty">変更種別の傾向データはありません</div>`
   return `<div class="table-wrap"><table>
-    <thead><tr><th>change type</th><th>runs</th><th>completed</th><th>triage pending</th><th>findings</th><th>accepted</th><th>rejected</th><th>accept rate</th><th>saved min</th></tr></thead>
+    <thead><tr><th>変更種別</th><th>実行数</th><th>完了</th><th>判定待ち</th><th>指摘数</th><th>採用</th><th>却下</th><th>採用率</th><th>削減時間（分）</th></tr></thead>
     <tbody>${trends.map((trend) => `<tr>
-      <td>${escapeHtml(trend.change_type)}</td>
+      <td>${escapeHtml(targetModeLabel(trend.change_type))}</td>
       <td>${trend.review_runs}</td>
       <td>${trend.completed_runs}</td>
       <td>${trend.triage_pending}</td>
@@ -201,9 +202,9 @@ function renderChangeTypeTable(trends: CampaignDashboardChangeTypeTrend[]): stri
 }
 
 function renderWarnings(warnings: CampaignDashboardWarning[]): string {
-  if (warnings.length === 0) return `<div class="empty">warningなし</div>`
+  if (warnings.length === 0) return `<div class="empty">注意事項はありません</div>`
   return `<div class="table-wrap"><table>
-    <thead><tr><th>code</th><th>review_id</th><th>artifact</th><th>message</th></tr></thead>
+    <thead><tr><th>コード</th><th>レビュー ID</th><th>成果物</th><th>内容</th></tr></thead>
     <tbody>${warnings.map((warning) => `<tr><td><code>${escapeHtml(warning.code)}</code></td><td>${escapeHtml(warning.review_id ?? "")}</td><td>${escapeHtml(warning.artifact ?? "")}</td><td>${escapeHtml(warning.message)}</td></tr>`).join("")}</tbody>
   </table></div>`
 }

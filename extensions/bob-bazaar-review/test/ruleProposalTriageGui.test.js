@@ -472,15 +472,15 @@ test("renders grouped add/update/retire operations, safe locators, required deci
   for (const tag of html.match(/<script\b[^>]*>/gi) ?? []) assert.match(tag, /nonce="nonce-&lt;triage&gt;"/)
   assert.doesNotMatch(html, /\son[a-z]+\s*=/i)
 
-  assert.match(html, /Checklist rules/)
-  assert.match(html, />add</i)
-  assert.match(html, />update</i)
-  assert.match(html, />retire</i)
+  assert.match(html, /チェックリスト規約/)
+  assert.match(html, />追加</)
+  assert.match(html, />更新</)
+  assert.match(html, />廃止</)
   assert.match(html, /PRJ-0001/)
   assert.match(html, /PRJ-0002/)
-  assert.match(html, /1 source/i)
+  assert.match(html, /1件の根拠/)
   assert.match(html, /engineering-policy\.docx · heading Security · block 7/)
-  assert.match(html, /blocking/i)
+  assert.match(html, /解決が必要な競合|解決必須/)
   assert.match(html, /conflict-blocking/)
   assert.match(html, /Existing approved &lt;rule&gt;/)
   assert.match(html, /Proposed replacement &lt;rule&gt;/)
@@ -488,12 +488,12 @@ test("renders grouped add/update/retire operations, safe locators, required deci
   assert.match(html, /data-edit-field="category" value="human-security"/)
   assert.match(html, /data-edit-field="title" value="Human &lt;edited&gt; title"/)
   assert.match(html, /data-edit-field="description">Human &lt;\/textarea&gt;&lt;script&gt;alert\(&#39;edit&#39;\)&lt;\/script&gt; \/project\/settings\.json<\/textarea>/)
-  assert.match(html, /<option value="warning" selected>warning<\/option>/)
+  assert.match(html, /<option value="warning" selected>警告<\/option>/)
   assert.match(html, /data-edit-field="appliesWhen">changed_file_matches:\*\*\/\*\.tsx\ndiff_contains:auth<\/textarea>/)
   assert.match(html, /data-edit-field="evidenceRequired" checked/)
   assert.match(html, /data-edit-field="reviewHint">Review &lt;carefully&gt;<\/textarea>/)
   assert.doesNotMatch(html, /<script>alert\('edit'\)<\/script>/)
-  assert.match(html, /decision[^<]*(?:required|pending)|(?:required|pending)[^<]*decision/i)
+  assert.match(html, /判定[^<]*(?:必須|未判定)|(?:必須|未判定)[^<]*判定/)
   assert.match(html, /data-action="previewApply"[^>]*disabled/)
   assert.match(html, /data-action="applyApproved"[^>]*disabled/)
 
@@ -577,8 +577,8 @@ test("shows all seven rule fields and marks truncated Markdown with a host-contr
     "category", "title", "description", "severity_on_fail",
     "applies_when", "evidence_required", "review_hint"
   ]) assert.match(html, new RegExp(field))
-  assert.match(html, /truncated/i)
-  assert.match(html, /Open full comparison/i)
+  assert.match(html, /一部省略/)
+  assert.match(html, /全文比較を開く/)
   assert.match(html, /data-action="openEvidence"[^>]*data-comparison-document="full"/)
 })
 
@@ -608,7 +608,7 @@ test("renders a durable-manifest recovery as complete-commit instead of rollback
   }]
   const html = renderRuleProposalTriageGuiHtml(model, "recovery-nonce")
   assert.match(html, /data-recovery-action="resume"/)
-  assert.match(html, />Complete commit<\/button>/)
+  assert.match(html, />反映処理を完了<\/button>/)
   assert.doesNotMatch(html, /until every incomplete transaction is rolled back/i)
 })
 
@@ -1012,7 +1012,7 @@ test("re-parses a stored validated proposal and persists decisions in a separate
 })
 
 test("persists a separate decision overlay, validates edits in the host, regenerates preview, and applies only after modal confirmation", async () => {
-  const fake = createFakeVscode({ warningResponses: [undefined, "Apply approved project rules"] })
+  const fake = createFakeVscode({ warningResponses: [undefined, "採用した規約を反映"] })
   const fixture = hostDependencies()
   const hostileComparisonTail = [
     "Hostile managed Markdown\r## Proposed",
@@ -1206,7 +1206,7 @@ test("persists a separate decision overlay, validates edits in the host, regener
 })
 
 test("requires a displayed preview and never executes a freshly changed unseen plan", async () => {
-  const fake = createFakeVscode({ warningResponses: ["Apply approved project rules"] })
+  const fake = createFakeVscode({ warningResponses: ["採用した規約を反映"] })
   let generation = 0
   const fixture = hostDependencies({
     buildRuleApplyPlan: (_bundle, _proposal, decisions) => {
@@ -1253,7 +1253,7 @@ test("requires a displayed preview and never executes a freshly changed unseen p
   await panel.emitMessage({ type: "applyApproved" })
   assert.equal(fake.warningCalls.length, 0, "changed plan must be displayed before confirmation")
   assert.equal(fixture.calls.filter(([name]) => name === "execute").length, 0)
-  assert.match(fixture.renderedModels.at(-1).model.status, /changed|review.*preview/i)
+  assert.match(fixture.renderedModels.at(-1).model.status, /変更|プレビューを確認/)
   assert.notEqual(fixture.renderedModels.at(-1).model.preview.planDigest, displayedDigest)
 
   await panel.emitMessage({ type: "applyApproved" })
@@ -1273,7 +1273,7 @@ test("requires a displayed preview and never executes a freshly changed unseen p
 })
 
 test("the controller passes one workspace-lock token through final recovery, validation, execute, and completion", async () => {
-  const fake = createFakeVscode({ warningResponses: ["Apply approved project rules"] })
+  const fake = createFakeVscode({ warningResponses: ["採用した規約を反映"] })
   const fixture = hostDependencies()
   fixture.state.decisions = completeHostOverlay()
   const observed = {
@@ -1318,7 +1318,7 @@ test("the controller passes one workspace-lock token through final recovery, val
 test("requires another explicit apply when the authoritative bundle changes inside the modal", async () => {
   let postImage = "a".repeat(64)
   const fake = createFakeVscode({
-    warningResponses: ["Apply approved project rules"],
+    warningResponses: ["採用した規約を反映"],
     onWarningMessage: () => { postImage = "b".repeat(64) }
   })
   let generation = 0
@@ -1361,7 +1361,7 @@ test("requires another explicit apply when the authoritative bundle changes insi
   assert.equal(fake.warningCalls.length, 1, "the first two plan reads are stable through the modal")
   assert.equal(fixture.calls.filter(([name]) => name === "execute").length, 0)
   assert.notEqual(fixture.renderedModels.at(-1).model.preview.planDigest, displayedDigest)
-  assert.match(fixture.renderedModels.at(-1).model.status, /changed during confirmation|inspect.*preview/i)
+  assert.match(fixture.renderedModels.at(-1).model.status, /確認中.*変更|プレビューを確認/)
   assert.equal(fixture.renderedModels.at(-1).model.canApply, true)
 
   await panel.emitMessage({ type: "close" })
@@ -1369,7 +1369,7 @@ test("requires another explicit apply when the authoritative bundle changes insi
 })
 
 test("a rolled-back apply invalidates the preview before normal triage resumes", async () => {
-  const fake = createFakeVscode({ warningResponses: ["Apply approved project rules"] })
+  const fake = createFakeVscode({ warningResponses: ["採用した規約を反映"] })
   const transactionError = Object.assign(new Error("rolled back safely"), {
     code: "filesystem_failure",
     status: "rolled_back"
@@ -1400,7 +1400,7 @@ test("a rolled-back apply invalidates the preview before normal triage resumes",
 })
 
 test("a rollback-failed apply stays open in recovery-only state", async () => {
-  const fake = createFakeVscode({ warningResponses: ["Apply approved project rules"] })
+  const fake = createFakeVscode({ warningResponses: ["採用した規約を反映"] })
   let incomplete = []
   const transactionError = Object.assign(new Error("rollback requires recovery"), {
     code: "rollback_failed",

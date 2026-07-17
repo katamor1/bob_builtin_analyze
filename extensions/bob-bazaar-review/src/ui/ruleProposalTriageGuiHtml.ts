@@ -3,6 +3,7 @@ import {
   hasUtf8ByteLength,
   RULE_AUTHORING_TEXT_BYTE_LIMITS
 } from "../ruleAuthoring/ruleAuthoringTextLimits"
+import { confidenceLabel, proposalAssetLabel, proposalOperationLabel, reviewDecisionLabel, severityLabel } from "./displayLabels"
 
 export type RuleProposalTriageAssetModel = "rule" | "project_context" | "prompt_addendum"
 export type RuleProposalTriageDecisionModel = "pending" | "accept" | "reject" | "edit"
@@ -125,7 +126,7 @@ export function renderRuleProposalTriageGuiHtml(
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${escapeHtml(safe.cspSource)} 'unsafe-inline'; script-src 'nonce-${safeNonce}';">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Project Rule Proposal Triage</title>
+  <title>規約案の確認・採否</title>
   <style>
     body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); padding: 18px; }
     h1 { font-size: 21px; margin: 0 0 8px; }
@@ -152,21 +153,21 @@ export function renderRuleProposalTriageGuiHtml(
   </style>
 </head>
 <body>
-  <h1>Project Rule Proposal Triage</h1>
-  <div class="muted">Run <code>${escapeHtml(safe.runId)}</code></div>
+  <h1>規約案の確認・採否</h1>
+  <div class="muted">実行 ID <code>${escapeHtml(safe.runId)}</code></div>
   ${renderRecovery(safe.recovery)}
   ${safe.recovery.length > 0 ? "" : safe.groups.map(renderGroup).join("")}
   ${safe.recovery.length > 0 ? "" : renderConflicts(safe.conflicts)}
   <section class="card" aria-labelledby="apply-heading">
-    <h2 id="apply-heading">Apply preview and completion</h2>
-    ${safe.decisionsComplete ? `<div class="ok">Every candidate has a Human Triage decision.</div>` : `<div class="warning">Decision required: every candidate is pending until explicitly accepted, rejected, or edited.</div>`}
+    <h2 id="apply-heading">反映プレビューと完了処理</h2>
+    ${safe.decisionsComplete ? `<div class="ok">すべての候補を判定済みです。</div>` : `<div class="warning">すべての候補について採用、却下、または編集を選んでください。</div>`}
     ${safe.staleWarning ? `<div class="warning">${escapeHtml(safe.staleWarning)}</div>` : ""}
     ${renderPreview(safe.preview)}
     ${renderTransaction(safe.transaction)}
     <div class="actions">
-      <button type="button" data-action="previewApply"${canPreview ? "" : " disabled"}>Regenerate apply preview</button>
-      <button type="button" data-action="applyApproved"${canApply ? "" : " disabled"}>Apply approved operations</button>
-      <button type="button" class="secondary" data-action="close">Close</button>
+      <button type="button" data-action="previewApply"${canPreview ? "" : " disabled"}>反映プレビューを更新</button>
+      <button type="button" data-action="applyApproved"${canApply ? "" : " disabled"}>採用した変更を反映</button>
+      <button type="button" class="secondary" data-action="close">閉じる</button>
     </div>
     <div id="status" class="muted">${escapeHtml(safe.status)}</div>
   </section>
@@ -273,9 +274,9 @@ export function renderRuleProposalTriageGuiHtml(
 
 function renderGroup(group: RuleProposalTriageGroupModel): string {
   return `<section class="card" data-asset="${escapeHtml(group.asset)}">
-    <h2>${escapeHtml(group.label)}</h2>
+    <h2>${escapeHtml(proposalAssetLabel(group.asset))}</h2>
     ${group.operations.length === 0
-      ? `<div class="muted">No proposed operations.</div>`
+      ? `<div class="muted">提案された変更はありません。</div>`
       : group.operations.map((operation) => renderOperation(group.asset, operation)).join("")}
   </section>`
 }
@@ -289,22 +290,22 @@ function renderOperation(
     <div class="row">
       <h3>${escapeHtml(operation.title)}</h3>
       <div>
-        <span class="badge">${escapeHtml(operation.operation)}</span>
-        <span class="badge">${escapeHtml(operation.confidence)}</span>
-        ${operation.severity ? `<span class="badge">${escapeHtml(operation.severity)}</span>` : ""}
-        <span class="badge">decision: ${pending ? "pending / required" : escapeHtml(operation.decision)}</span>
+        <span class="badge">${escapeHtml(proposalOperationLabel(operation.operation))}</span>
+        <span class="badge">確信度: ${escapeHtml(confidenceLabel(operation.confidence))}</span>
+        ${operation.severity ? `<span class="badge">重大度: ${escapeHtml(severityLabel(operation.severity))}</span>` : ""}
+        <span class="badge">判定: ${pending ? "未判定（必須）" : escapeHtml(reviewDecisionLabel(operation.decision))}</span>
       </div>
     </div>
-    <div class="muted">candidate <code>${escapeHtml(operation.candidateId)}</code>${operation.targetId ? ` · target <code>${escapeHtml(operation.targetId)}</code>` : ""}</div>
+    <div class="muted">候補 <code>${escapeHtml(operation.candidateId)}</code>${operation.targetId ? ` · 反映先 <code>${escapeHtml(operation.targetId)}</code>` : ""}</div>
     <p>${escapeHtml(operation.rationale)}</p>
     ${renderComparison(operation)}
-    <div><strong>${escapeHtml(operation.sourceCount)} ${operation.sourceCount === 1 ? "source" : "sources"}</strong></div>
-    <ul>${operation.sourceLocators.map((locator, index) => `<li class="locator">${escapeHtml(locator)} <button type="button" class="secondary" data-action="openEvidence" data-candidate-id="${escapeHtml(operation.candidateId)}" data-source-ref-index="${index}">Inspect locator</button></li>`).join("")}</ul>
-    ${operation.blockingConflictIds.length > 0 ? `<div class="warning">Blocking conflict: ${operation.blockingConflictIds.map(escapeHtml).join(", ")}</div>` : ""}
-    <label class="muted">Optional reject reason<br><textarea data-reject-reason="${escapeHtml(operation.candidateId)}">${escapeHtml(operation.rejectReason)}</textarea></label>
+    <div><strong>${escapeHtml(operation.sourceCount)}件の根拠</strong></div>
+    <ul>${operation.sourceLocators.map((locator, index) => `<li class="locator">${escapeHtml(locator)} <button type="button" class="secondary" data-action="openEvidence" data-candidate-id="${escapeHtml(operation.candidateId)}" data-source-ref-index="${index}">根拠を開く</button></li>`).join("")}</ul>
+    ${operation.blockingConflictIds.length > 0 ? `<div class="warning">解決が必要な競合: ${operation.blockingConflictIds.map(escapeHtml).join(", ")}</div>` : ""}
+    <label class="muted">却下理由（任意）<br><textarea data-reject-reason="${escapeHtml(operation.candidateId)}">${escapeHtml(operation.rejectReason)}</textarea></label>
     <div class="actions">
-      <button type="button" data-action="setDecision" data-candidate-id="${escapeHtml(operation.candidateId)}" data-decision="accept">Accept</button>
-      <button type="button" class="secondary" data-action="setDecision" data-candidate-id="${escapeHtml(operation.candidateId)}" data-decision="reject">Reject</button>
+      <button type="button" data-action="setDecision" data-candidate-id="${escapeHtml(operation.candidateId)}" data-decision="accept">採用</button>
+      <button type="button" class="secondary" data-action="setDecision" data-candidate-id="${escapeHtml(operation.candidateId)}" data-decision="reject">却下</button>
     </div>
     ${operation.operation === "retire"
       ? ""
@@ -317,10 +318,10 @@ function renderOperation(
 function renderComparison(operation: RuleProposalTriageOperationModel): string {
   if (!operation.existingSummary && !operation.proposedSummary) return ""
   return `<details class="comparison">
-    <summary>Inspect existing versus proposed</summary>
-    <div><strong>Existing approved</strong>${operation.existingSummaryTruncated ? ` <span class="warning">(truncated)</span>` : ""}<pre>${escapeHtml(operation.existingSummary ?? "Unavailable")}</pre></div>
-    <div><strong>Proposed</strong>${operation.proposedSummaryTruncated ? ` <span class="warning">(truncated)</span>` : ""}<pre>${escapeHtml(operation.proposedSummary ?? "Unavailable")}</pre></div>
-    ${operation.comparisonAvailable ? `<button type="button" class="secondary" data-action="openEvidence" data-candidate-id="${escapeHtml(operation.candidateId)}" data-comparison-document="full">Open full comparison</button>` : ""}
+    <summary>現在の内容と規約案を比較</summary>
+    <div><strong>現在の承認済み内容</strong>${operation.existingSummaryTruncated ? ` <span class="warning">（一部省略）</span>` : ""}<pre>${escapeHtml(operation.existingSummary ?? "利用不可")}</pre></div>
+    <div><strong>規約案</strong>${operation.proposedSummaryTruncated ? ` <span class="warning">（一部省略）</span>` : ""}<pre>${escapeHtml(operation.proposedSummary ?? "利用不可")}</pre></div>
+    ${operation.comparisonAvailable ? `<button type="button" class="secondary" data-action="openEvidence" data-candidate-id="${escapeHtml(operation.candidateId)}" data-comparison-document="full">全文比較を開く</button>` : ""}
   </details>`
 }
 
@@ -335,56 +336,56 @@ function renderRuleEditForm(operation: RuleProposalTriageOperationModel): string
     reviewHint: ""
   }
   return `<details data-edit-form="${escapeHtml(operation.candidateId)}" data-edit-kind="rule">
-    <summary>Edit proposed rule</summary>
-    <label class="muted">Category<br><input data-edit-field="category" value="${escapeHtml(edit.category)}"></label><br>
-    <label class="muted">Title<br><input data-edit-field="title" value="${escapeHtml(edit.title)}"></label><br>
-    <label class="muted">Description<br><textarea data-edit-field="description">${escapeHtml(edit.description)}</textarea></label><br>
-    <label class="muted">Severity<br><select data-edit-field="severity">${(["error", "warning", "info"] as const).map((severity) => `<option value="${severity}"${edit.severityOnFail === severity ? " selected" : ""}>${severity}</option>`).join("")}</select></label><br>
-    <label class="muted">Applies when (one per line)<br><textarea data-edit-field="appliesWhen">${escapeHtml(edit.appliesWhen.join("\n"))}</textarea></label><br>
-    <label><input type="checkbox" data-edit-field="evidenceRequired"${edit.evidenceRequired ? " checked" : ""}> Evidence required</label><br>
-    <label class="muted">Review hint<br><textarea data-edit-field="reviewHint">${escapeHtml(edit.reviewHint)}</textarea></label>
-    <div class="actions"><button type="button" data-action="editRule" data-candidate-id="${escapeHtml(operation.candidateId)}">Validate and save edit</button></div>
+    <summary>規約案を編集</summary>
+    <label class="muted">カテゴリ<br><input data-edit-field="category" value="${escapeHtml(edit.category)}"></label><br>
+    <label class="muted">表示名<br><input data-edit-field="title" value="${escapeHtml(edit.title)}"></label><br>
+    <label class="muted">説明<br><textarea data-edit-field="description">${escapeHtml(edit.description)}</textarea></label><br>
+    <label class="muted">重大度<br><select data-edit-field="severity">${(["error", "warning", "info"] as const).map((severity) => `<option value="${severity}"${edit.severityOnFail === severity ? " selected" : ""}>${escapeHtml(severityLabel(severity))}</option>`).join("")}</select></label><br>
+    <label class="muted">適用条件（1行に1件）<br><textarea data-edit-field="appliesWhen">${escapeHtml(edit.appliesWhen.join("\n"))}</textarea></label><br>
+    <label><input type="checkbox" data-edit-field="evidenceRequired"${edit.evidenceRequired ? " checked" : ""}> 根拠を必須にする</label><br>
+    <label class="muted">レビュー時の補足<br><textarea data-edit-field="reviewHint">${escapeHtml(edit.reviewHint)}</textarea></label>
+    <div class="actions"><button type="button" data-action="editRule" data-candidate-id="${escapeHtml(operation.candidateId)}">検証して編集内容を保存</button></div>
   </details>`
 }
 
 function renderMarkdownEditForm(operation: RuleProposalTriageOperationModel): string {
   return `<details data-edit-form="${escapeHtml(operation.candidateId)}" data-edit-kind="markdown">
-    <summary>Edit proposed managed Markdown</summary>
-    <label class="muted">Heading<br><input data-edit-field="heading" value="${escapeHtml(operation.editHeading ?? operation.title)}"></label><br>
+    <summary>提案された管理対象 Markdown を編集</summary>
+    <label class="muted">見出し<br><input data-edit-field="heading" value="${escapeHtml(operation.editHeading ?? operation.title)}"></label><br>
     <label class="muted">Markdown<br><textarea data-edit-field="markdown">${escapeHtml(operation.editMarkdown ?? "")}</textarea></label>
-    <div class="actions"><button type="button" data-action="editRule" data-candidate-id="${escapeHtml(operation.candidateId)}">Validate and save edit</button></div>
+    <div class="actions"><button type="button" data-action="editRule" data-candidate-id="${escapeHtml(operation.candidateId)}">検証して編集内容を保存</button></div>
   </details>`
 }
 
 function renderConflicts(conflicts: readonly RuleProposalTriageConflictModel[]): string {
   if (conflicts.length === 0) return ""
-  return `<section class="card"><h2>Conflicts</h2>${conflicts.map((conflict) => `<article class="operation">
-    <div><strong>${escapeHtml(conflict.conflictId)}</strong>${conflict.blocking ? ` <span class="warning">blocking</span>` : ""}</div>
+  return `<section class="card"><h2>競合</h2>${conflicts.map((conflict) => `<article class="operation">
+    <div><strong>${escapeHtml(conflict.conflictId)}</strong>${conflict.blocking ? ` <span class="warning">解決必須</span>` : ""}</div>
     <p>${escapeHtml(conflict.summary)}</p>
-    <div class="muted">Choose an alternative from the affected operation.</div>
+    <div class="muted">影響を受ける候補に適用する選択肢を選んでください。</div>
     ${conflict.alternatives.map((alternative) => `<div class="operation">
       <div>${escapeHtml(alternative.description)} <code>${escapeHtml(alternative.alternativeId)}</code></div>
-      <div class="actions">${(conflict.affectedCandidateIds ?? []).map((candidateId) => `<button type="button" data-action="resolveConflict" data-candidate-id="${escapeHtml(candidateId)}" data-conflict-id="${escapeHtml(conflict.conflictId)}" data-alternative-id="${escapeHtml(alternative.alternativeId)}">Use for ${escapeHtml(candidateId)}</button>`).join("")}</div>
+      <div class="actions">${(conflict.affectedCandidateIds ?? []).map((candidateId) => `<button type="button" data-action="resolveConflict" data-candidate-id="${escapeHtml(candidateId)}" data-conflict-id="${escapeHtml(conflict.conflictId)}" data-alternative-id="${escapeHtml(alternative.alternativeId)}">${escapeHtml(candidateId)} に適用</button>`).join("")}</div>
     </div>`).join("")}
   </article>`).join("")}</section>`
 }
 
 function renderRecovery(recovery: readonly RuleProposalTriageRecoveryModel[]): string {
   if (recovery.length === 0) return ""
-  return `<section class="card"><h2>Transaction recovery required</h2>
-    <div class="warning">Preview and apply remain blocked until every incomplete transaction is safely recovered.</div>
-    ${recovery.map((item) => `<div class="operation row"><div><code>${escapeHtml(item.transactionId)}</code> · ${escapeHtml(item.status)}</div><button type="button" data-action="recoverTransaction" data-transaction-id="${escapeHtml(item.transactionId)}" data-recovery-action="${item.recoveryAction}">${item.recoveryAction === "resume" ? "Complete commit" : "Rollback"}</button></div>`).join("")}
+  return `<section class="card"><h2>未完了の反映処理を復旧</h2>
+    <div class="warning">未完了の反映処理を安全に復旧するまで、プレビューと反映は実行できません。</div>
+    ${recovery.map((item) => `<div class="operation row"><div><code>${escapeHtml(item.transactionId)}</code> · ${escapeHtml(item.status)}</div><button type="button" data-action="recoverTransaction" data-transaction-id="${escapeHtml(item.transactionId)}" data-recovery-action="${item.recoveryAction}">${item.recoveryAction === "resume" ? "反映処理を完了" : "変更前に戻す"}</button></div>`).join("")}
   </section>`
 }
 
 function renderPreview(preview: RuleProposalTriagePreviewModel | undefined): string {
-  if (!preview) return `<div class="muted">No apply preview has been generated.</div>`
-  return `<div class="muted">Preview ${escapeHtml(preview.generatedAt)} · ${escapeHtml(preview.targetCount)} targets · ${escapeHtml(preview.acceptedCount)} accepted · ${escapeHtml(preview.editedCount)} edited · ${escapeHtml(preview.rejectedCount)} rejected · plan <code>${escapeHtml(preview.planDigest)}</code></div>`
+  if (!preview) return `<div class="muted">反映プレビューはまだ作成されていません。</div>`
+  return `<div class="muted">プレビュー ${escapeHtml(preview.generatedAt)} · 反映先 ${escapeHtml(preview.targetCount)}件 · 採用 ${escapeHtml(preview.acceptedCount)}件 · 編集 ${escapeHtml(preview.editedCount)}件 · 却下 ${escapeHtml(preview.rejectedCount)}件 · 計画 <code>${escapeHtml(preview.planDigest)}</code></div>`
 }
 
 function renderTransaction(transaction: RuleProposalTriageTransactionModel | undefined): string {
   if (!transaction) return ""
-  return `<div class="${transaction.status === "committed" ? "ok" : "warning"}">Transaction <code>${escapeHtml(transaction.transactionId)}</code>: ${escapeHtml(transaction.status)} (${escapeHtml(transaction.targetCount)} targets)</div>`
+  return `<div class="${transaction.status === "committed" ? "ok" : "warning"}">反映処理 <code>${escapeHtml(transaction.transactionId)}</code>: ${transaction.status === "committed" ? "完了" : "変更前に復元"}（反映先 ${escapeHtml(transaction.targetCount)}件）</div>`
 }
 
 function allowlistedModel(model: RuleProposalTriageGuiModel): SafeRuleProposalTriageGuiModel {
