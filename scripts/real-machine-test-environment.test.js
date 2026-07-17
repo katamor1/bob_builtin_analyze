@@ -71,7 +71,6 @@ test("operator result template contains no automatic result", () => {
   })
 })
 
-
 test("checklist templates retain every expansion token", () => {
   const tokens = [
     "SCENARIO_ID", "SCENARIO_ROOT", "WORKSPACE_PATH", "BOB_ROOT", "VCS_ROOT",
@@ -82,7 +81,6 @@ test("checklist templates retain every expansion token", () => {
     for (const token of tokens) assert.match(source, new RegExp(`\\{\\{${token}\\}\\}`))
   }
 })
-
 
 test("runner exposes the approved validation interface", () => {
   const runner = fs.readFileSync(path.join(toolRoot, "Invoke-BobReviewTestEnvironment.ps1"), "utf8")
@@ -105,7 +103,6 @@ test("runner exposes the approved validation interface", () => {
   assert.match(source, /if \(\$fullPath -eq \$pathRoot\) \{ return \$fullPath \}/)
 })
 
-
 test("execution module injects NoLaunch and validates reparse-point traversal", () => {
   const source = fs.readFileSync(path.join(toolRoot, "lib", "ScenarioExecution.ps1"), "utf8")
   for (const name of [
@@ -124,4 +121,47 @@ test("execution module injects NoLaunch and validates reparse-point traversal", 
   assert.doesNotMatch(source, /Invoke-Expression/)
   assert.doesNotMatch(source, /SkipExtensionInstall\s*=/)
   assert.match(source, /Assert-NoReparsePointTraversal -Root \$ScenarioRoot -Target \$destination/)
+})
+
+test("evidence module preserves manual operator status and complete run records", () => {
+  const source = fs.readFileSync(path.join(toolRoot, "lib", "RunEvidence.ps1"), "utf8")
+  for (const name of [
+    "Write-JsonUtf8", "Get-ToolVersionSnapshot", "Get-RepositorySnapshot",
+    "New-OperatorResult", "Expand-ChecklistTemplate", "Write-ScenarioEvidence", "Write-RunEvidence"
+  ]) assert.match(source, new RegExp(`function ${name}`))
+  assert.match(source, /status = "not_run"/)
+  assert.match(source, /\[System\.Collections\.IDictionary\]\$ScenarioRecord/)
+  assert.match(source, /environment-versions\.json/)
+  assert.match(source, /run-manifest\.json/)
+  assert.match(source, /run-summary\.md/)
+  assert.doesNotMatch(source, /Get-ChildItem\s+Env:/i)
+})
+
+test("runner isolates scenario statuses and opens only an explicit ready target", () => {
+  const source = fs.readFileSync(path.join(toolRoot, "Invoke-BobReviewTestEnvironment.ps1"), "utf8")
+  for (const status of ["not_started", "blocked", "failed", "ready"]) assert.match(source, new RegExp(`"${status}"`))
+  assert.match(source, /foreach \(\$selectedScenario in \$selected\)/)
+  assert.match(source, /try \{\s*Write-ScenarioEvidence/s)
+  assert.match(source, /Write-RunEvidence/)
+  assert.match(source, /Cannot open non-ready scenario/)
+  assert.match(source, /if \(\$blockedCount -gt 0 -or \$failedCount -gt 0\) \{ exit 1 \}/)
+})
+
+test("runner records a missing command as blocked without invoking a launcher", { skip: process.platform !== "win32" }, () => {
+  const outputRoot = path.join(os.tmpdir(), `bob-review-real-machine-${process.pid}-${Date.now()}`)
+  const result = childProcess.spawnSync("pwsh", [
+    "-NoProfile", "-File", path.join(toolRoot, "Invoke-BobReviewTestEnvironment.ps1"),
+    "-Scenario", "consistency-ai-matrix",
+    "-OutputRoot", outputRoot,
+    "-CodeCommand", "__missing_bob_code_command__"
+  ], { cwd: repoRoot, encoding: "utf8" })
+  assert.notEqual(result.status, 0)
+  const run = JSON.parse(fs.readFileSync(path.join(outputRoot, "run-manifest.json"), "utf8"))
+  assert.equal(run.scenarios[0].status, "blocked")
+  assert.deepEqual(run.scenarios[0].missingCommands, ["__missing_bob_code_command__"])
+  const operator = JSON.parse(fs.readFileSync(path.join(outputRoot, "consistency-ai-matrix", "operator-result.json"), "utf8"))
+  assert.ok(operator.results.length > 0)
+  assert.ok(operator.results.every((entry) => entry.status === "not_run"))
+  assert.equal(run.scenarios[0].launchTarget, null)
+  fs.rmSync(outputRoot, { recursive: true, force: true })
 })
