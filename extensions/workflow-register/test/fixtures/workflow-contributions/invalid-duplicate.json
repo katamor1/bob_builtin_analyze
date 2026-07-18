@@ -1,0 +1,28 @@
+{
+  "schema_version": "workflow-contributions/v1",
+  "owner": { "id": "local.sample-extension", "version": "1.2.3" },
+  "registry_api": { "min": "provider-registry/v1", "max": "provider-registry/v1" },
+  "action_providers": [
+    {
+      "id": "sample.same",
+      "contract_version": "sample.first/v1",
+      "input_schema": "sample.input",
+      "output_schema": "sample.output",
+      "error_codes": []
+    },
+    {
+      "id": "sample.same",
+      "contract_version": "sample.second/v1",
+      "input_schema": "sample.input",
+      "output_schema": "sample.output",
+      "error_codes": []
+    }
+  ],
+  "preflight_checks": [],
+  "result_sinks": [],
+  "workflow_templates": [],
+  "schemas": [
+    { "id": "sample.input", "path": "extensions/sample-extension/schema/input.json" },
+    { "id": "sample.output", "path": "extensions/sample-extension/schema/output.json" }
+  ]
+}

@@ -1,0 +1,64 @@
+{
+  "schema_version": "workflow-contributions/v1",
+  "owner": {
+    "id": "local.sample-extension",
+    "version": "1.2.3"
+  },
+  "registry_api": {
+    "min": "provider-registry/v1",
+    "max": "provider-registry/v2"
+  },
+  "action_providers": [
+    {
+      "id": "sample.collect",
+      "contract_version": "sample.collect/v1",
+      "input_schema": "sample.collect-input",
+      "output_schema": "sample.collect-output",
+      "error_codes": ["sample.collect.invalid-input", "sample.collect.failed"]
+    }
+  ],
+  "preflight_checks": [
+    {
+      "id": "sample.workspaceReady",
+      "contract_version": "sample.workspace-ready/v1",
+      "result_schema": "sample.preflight-result"
+    }
+  ],
+  "result_sinks": [
+    {
+      "type": "sample.report",
+      "contract_version": "sample.report/v1",
+      "payload_schema": "sample.report-payload"
+    }
+  ],
+  "agent_provider": {
+    "id": "sample.agent",
+    "contract_version": "sample.agent/v1",
+    "capabilities": ["analysis", "review"]
+  },
+  "workflow_templates": [
+    {
+      "id": "sample-review",
+      "source": "extensions/sample-extension/templates/.bob/workflows/sample-review/WORKFLOW.md",
+      "destinations": ["extensions/sample-extension/samples/sample-review/.bob/workflows/sample-review/WORKFLOW.md"]
+    }
+  ],
+  "schemas": [
+    {
+      "id": "sample.collect-input",
+      "path": "extensions/sample-extension/schema/sample.collect-input.v1.schema.json"
+    },
+    {
+      "id": "sample.collect-output",
+      "path": "extensions/sample-extension/schema/sample.collect-output.v1.schema.json"
+    },
+    {
+      "id": "sample.preflight-result",
+      "path": "extensions/sample-extension/schema/sample.preflight-result.v1.schema.json"
+    },
+    {
+      "id": "sample.report-payload",
+      "path": "extensions/sample-extension/schema/sample.report-payload.v1.schema.json"
+    }
+  ]
+}

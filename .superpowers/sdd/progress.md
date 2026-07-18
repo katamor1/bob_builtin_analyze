@@ -49,6 +49,29 @@
   - Evidence tail: **in progress, second evidence-only tail**. The first evidence head exposed and closed the Webview lifecycle race; final RC is all GREEN. PR merge remains NO-GO until the second evidence-only exact-final-head `extensions-quality`、`workflow-contracts`、`code-consistency-review-scaffold` gates and final review close. Product Release remains NO-GO.
   - Remaining order: evidence-only commit/push → exact-final-head hosted matrix → final review/PR body → ready/squash merge → `origin/main` containment proof → local worktree/branch cleanup. Remote branch deletion is out of scope.
 
+---
+
+# Three Extension P1 Release Gates — recovered (2026-07-18)
+
+- Branch: `codex/three-extension-p1-release-gates`
+- Recovery base: `8793804f2f99fd1d545cb496064bcbdc7df4bf40`
+- Master plan: `docs/superpowers/plans/2026-07-18-three-extension-p1-release-gates.md`
+- Scope: six same-release P1 gates across workflow-register, bob-bazaar-review, bob-code-consistency-review, CI, installed-VSIX smoke, and release governance.
+- Recovery status: planning artifacts restored; production implementation has not resumed.
+- Historical-loss note: workspace maintenance removed the prior local plan branch and unpushed Task 1/Task 2 commits. Their behavior will be reconstructed against current `main`; neither task is credited as complete from the lost commits.
+- Traceability history: the earlier approved-design snapshot was WR 39 + BZR 52 + CCR 69 + shared 6 = 166; it is retained only as historical evidence.
+- Current recovery-base drift snapshot: WR 42 + BZR 57 + CCR 74 + shared 6 = 179 unique IDs. This too is observational only; the implemented gate must derive its required ID set from canonical specification declarations on every run.
+
+## Recovered plan progress
+
+- Task 1: complete — commits `4f1429d7` and `505c9864`; RED fixtures covered the missing implementation and review regressions; compile PASS; focused 22/22 PASS; full workflow-register suite 1224 PASS / 0 FAIL / 1 pre-existing SKIP; JSON Schema parse and diff check PASS. Independent final review: Approved with Critical 0 / Important 0 / Minor 0.
+  - Contract decision: action, preflight, result sink, agent, workflow template, and schema IDs share one global collision domain; schema paths remain separate. Registry ranges use arbitrary-precision comparison and diagnostics use locale-independent UTF-16 code-unit ordering.
+- Task 2: in progress — atomic contribution registry RED suite under construction against the reviewed Task 1 manifest contract.
+- Tasks 3–42: pending.
+- Next task gate: complete Task 2 focused RED/GREEN, compile/full-suite evidence, commit, and independent review before starting Task 3 implementation.
+- Task completion rule: focused RED/GREEN evidence, relevant package verification, committed implementation, and independent full-range review with Critical 0 / Important 0.
+- Release completion rule: exact same-commit Ubuntu and Windows traceability plus installed-VSIX smoke evidence, complete budget/workflow/governance reports, and a semantically GO `p1-release-readiness.json`.
+
 ## Minor findings
 
 - None recorded.

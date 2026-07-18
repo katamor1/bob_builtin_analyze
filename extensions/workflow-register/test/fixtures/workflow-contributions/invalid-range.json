@@ -1,0 +1,10 @@
+{
+  "schema_version": "workflow-contributions/v1",
+  "owner": { "id": "local.sample-extension", "version": "1.2.3" },
+  "registry_api": { "min": "provider-registry/v3", "max": "provider-registry/v2" },
+  "action_providers": [],
+  "preflight_checks": [],
+  "result_sinks": [],
+  "workflow_templates": [],
+  "schemas": []
+}
