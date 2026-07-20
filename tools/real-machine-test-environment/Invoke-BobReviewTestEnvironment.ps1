@@ -32,6 +32,11 @@ if ($OpenScenario -and (@($selected.id) -notcontains $OpenScenario)) {
 
 if ($ValidateOnly) {
   foreach ($validationScenario in $selected) {
+    if ($validationScenario.psobject.Properties.Name -contains "documentFixtureProfile") {
+      Invoke-DocumentFixtureProfileValidation `
+        -RepoRoot $RepoRoot `
+        -Profile ([string]$validationScenario.documentFixtureProfile)
+    }
     if ($validationScenario.psobject.Properties.Name -contains "postSeed") {
       $seedPath = Assert-RepositoryRelativePath $RepoRoot ([string]$validationScenario.postSeed) "$($validationScenario.id).postSeed" -MustExist
       & $seedPath -ValidateOnly

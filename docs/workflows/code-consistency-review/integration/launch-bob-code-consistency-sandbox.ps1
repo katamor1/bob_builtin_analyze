@@ -4,10 +4,15 @@ param(
   [ValidateSet("simple-timeout-bugfix", "ai-verification-matrix", "live-traceability-sidecar", "multi-language-git-review")]
   [string]$Sample = "simple-timeout-bugfix",
   [string]$CodeCommand = "code",
+  [switch]$IncludeDocumentFixtures,
   [switch]$NoLaunch
 )
 
 $ErrorActionPreference = "Stop"
+
+if ($IncludeDocumentFixtures -and $Sample -ne "ai-verification-matrix") {
+  throw "IncludeDocumentFixtures requires -Sample ai-verification-matrix"
+}
 
 function Resolve-RequiredPath {
   param([string]$Path, [string]$Description)
@@ -56,6 +61,24 @@ function Copy-DirectoryContents {
   }
 }
 
+function Invoke-DocumentFixtureGenerator {
+  param(
+    [Parameter(Mandatory)][string]$RepoRoot,
+    [Parameter(Mandatory)][string]$WorkspaceDir
+  )
+
+  $NodeCommand = Resolve-CommandPath "node"
+  $GeneratorPath = Resolve-RequiredPath (
+    Join-Path $RepoRoot "tools\real-machine-test-environment\document-fixtures\Generate-InputDocumentFixtures.js"
+  ) "Document fixture generator"
+  Invoke-CheckedCommand $NodeCommand @(
+    $GeneratorPath,
+    "--profile", "consistency-ai-matrix",
+    "--output", (Join-Path $WorkspaceDir "docs\input-documents"),
+    "--review-input", (Join-Path $WorkspaceDir "review-input.yaml")
+  ) $RepoRoot
+}
+
 function Initialize-SimpleTimeoutWorkspace {
   param([string]$RepoRoot, [string]$WorkspaceDir)
   $SamplePath = Join-Path $RepoRoot "docs\workflows\code-consistency-review\examples\simple-timeout-bugfix"
@@ -77,6 +100,9 @@ function Initialize-AiVerificationMatrixWorkspace {
 
   Copy-DirectoryContents $WorkspaceCommonDir $WorkspaceDir
   Copy-DirectoryContents $BaselineDir $WorkspaceDir
+  if ($IncludeDocumentFixtures) {
+    Invoke-DocumentFixtureGenerator -RepoRoot $RepoRoot -WorkspaceDir $WorkspaceDir
+  }
   Invoke-CheckedCommand (Resolve-CommandPath "git") @("init", "-b", "main") $WorkspaceDir
   Invoke-CheckedCommand $GitCommand @("config", "user.email", "bob-fixture@example.local") $WorkspaceDir
   Invoke-CheckedCommand $GitCommand @("config", "user.name", "Bob Fixture") $WorkspaceDir
@@ -170,6 +196,9 @@ $launchArgs = @(
 Write-Host "Sandbox: $SandboxRoot"
 Write-Host "Workspace: $WorkspaceDir"
 Write-Host "Sample: $Sample"
+if ($IncludeDocumentFixtures) {
+  Write-Host "Input documents: $(Join-Path $WorkspaceDir 'docs\input-documents')"
+}
 Write-Host "Bob extensionDevelopmentPath: $BobExtensionPath"
 Write-Host "Installed extensions:"
 & $CodeCommand --user-data-dir $UserDataDir --extensions-dir $ExtensionsDir --list-extensions --show-versions

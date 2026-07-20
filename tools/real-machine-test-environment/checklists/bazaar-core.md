@@ -17,6 +17,12 @@
 4. valid / invalid review-result の capture と validation を行う。
 5. MCP `initialize`、`tools/list`、readonly Bazaar tools、allowed roots を確認する。
 6. Shift-JIS fixture が packet で大きく文字化けしないことを確認する。
+7. `{{SCENARIO_ROOT}}\input-documents` に `project-review-rules.docx`、`review-traceability-ledger.xlsx`、`system-review-guidelines.pdf`、manifest、期待値文書があることを確認する。
+8. `document-fixture-manifest.json` の SHA-256 と `Get-FileHash -Algorithm SHA256` の結果を照合する。
+9. `bobBazaar.authorProjectRulesFromDocuments` を開き、DOCX の heading／paragraph／list／table と、XLSX の `Rules`／`Verification` sheet を確認する。
+10. `pdftotext` が利用可能なら PDF を選択し、page 1、empty page 2、page 3 の locator を確認して `PRA-WIN-001` を実測結果どおり `pass` または `fail` にする。
+11. `pdftotext` が利用できない場合も環境は `ready` のまま扱い、`PRA-WIN-001` だけを `blocked`、notes を `Poppler unavailable` とする。
+12. 選択前に原本が `bob-managed`、`bazaar-source`、`.bob/review/rule-authoring` へコピーされていないことを確認する。
 
 ## Expected artifacts
 {{EXPECTED_ARTIFACTS}}
