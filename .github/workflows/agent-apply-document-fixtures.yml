@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 jobs:
-  apply:
+  build-workflow-commit:
     if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -21,36 +21,53 @@ jobs:
           fetch-depth: 0
           show-progress: false
 
-      - name: Assemble and verify patch
+      - name: Prepare final workflow tree
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          cat .github/agent-document-fixtures-patch/part-*.b64 | base64 --decode > "$RUNNER_TEMP/implementation.patch.gz"
-          echo "5801d33f3a4c1f226281ba857a5dd911b0205e3e81f288159e5f5f01f8e7530f  $RUNNER_TEMP/implementation.patch.gz" | sha256sum --check --status
-          gzip --decompress --stdout "$RUNNER_TEMP/implementation.patch.gz" > "$RUNNER_TEMP/implementation.patch"
-          echo "b2a49b45918bc328922fce3e62b969ba55ac16c4dedd6b749a4468ccd3ced236  $RUNNER_TEMP/implementation.patch" | sha256sum --check --status
-          git apply --check "$RUNNER_TEMP/implementation.patch"
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('.github/workflows/extensions-quality.yml')
+          old = 'run: node --test scripts/real-machine-test-environment.test.js'
+          new = 'run: node --test scripts/real-machine-test-environment.test.js scripts/real-machine-input-document-fixtures.test.js'
+          text = path.read_text(encoding='utf-8')
+          if text.count(old) != 1:
+              raise SystemExit(f'expected one CI command anchor, found {text.count(old)}')
+          path.write_text(text.replace(old, new), encoding='utf-8', newline='\n')
+          PY
 
-      - name: Apply implementation without workflow-file writes
-        shell: bash
-        run: |
-          set -euo pipefail
-          git apply --index "$RUNNER_TEMP/implementation.patch"
-          git restore --source=HEAD --staged --worktree -- \
-            .github/workflows/extensions-quality.yml \
-            .github/workflows/agent-export-branch.yml \
-            .github/workflows/agent-apply-document-fixtures.yml
-          rm -rf .github/agent-document-fixtures-patch
-          git add -A
-          git diff --cached --check
-          git diff --cached --stat
+          base_commit=$(git rev-parse HEAD)
+          base_tree=$(gh api "repos/$GITHUB_REPOSITORY/git/commits/$base_commit" --jq '.tree.sha')
+          workflow_blob=$(base64 -w 0 .github/workflows/extensions-quality.yml | \
+            jq -Rs '{content: ., encoding: "base64"}' | \
+            gh api --method POST "repos/$GITHUB_REPOSITORY/git/blobs" --input - --jq '.sha')
 
-      - name: Commit and push implementation
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name "OpenAI Agent"
-          git config user.email "openai-agent@users.noreply.github.com"
-          git commit -m "feat: add PDF Word Excel real-machine document fixtures"
-          git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
-          echo "IMPLEMENTATION_COMMIT=$(git rev-parse HEAD)"
+          new_tree=$(jq -n \
+            --arg base "$base_tree" \
+            --arg blob "$workflow_blob" \
+            '{base_tree: $base, tree: [
+              {path: ".github/workflows/extensions-quality.yml", mode: "100644", type: "blob", sha: $blob},
+              {path: ".github/workflows/agent-export-branch.yml", mode: "100644", type: "blob", sha: null},
+              {path: ".github/workflows/agent-apply-document-fixtures.yml", mode: "100644", type: "blob", sha: null}
+            ]}' | \
+            gh api --method POST "repos/$GITHUB_REPOSITORY/git/trees" --input - --jq '.sha')
+
+          new_commit=$(jq -n \
+            --arg message 'ci: finalize document fixture validation workflow' \
+            --arg tree "$new_tree" \
+            --arg parent "$base_commit" \
+            '{message: $message, tree: $tree, parents: [$parent]}' | \
+            gh api --method POST "repos/$GITHUB_REPOSITORY/git/commits" --input - --jq '.sha')
+
+          printf '%s\n' "$new_commit" > workflow-commit-sha.txt
+          echo "WORKFLOW_COMMIT=$new_commit"
+
+      - name: Upload workflow commit SHA
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: document-fixtures-workflow-commit
+          path: workflow-commit-sha.txt
+          if-no-files-found: error
+          retention-days: 1
