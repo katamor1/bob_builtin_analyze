@@ -22,12 +22,16 @@ jobs:
           show-progress: false
 
       - name: Prepare final workflow tree
+        id: prepare
+        continue-on-error: true
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          set -euo pipefail
-          python - <<'PY'
+          set +e
+          {
+            set -euxo pipefail
+            python - <<'PY'
           from pathlib import Path
           path = Path('.github/workflows/extensions-quality.yml')
           old = 'run: node --test scripts/real-machine-test-environment.test.js'
@@ -38,36 +42,49 @@ jobs:
           path.write_text(text.replace(old, new), encoding='utf-8', newline='\n')
           PY
 
-          base_commit=$(git rev-parse HEAD)
-          base_tree=$(gh api "repos/$GITHUB_REPOSITORY/git/commits/$base_commit" --jq '.tree.sha')
-          workflow_blob=$(base64 -w 0 .github/workflows/extensions-quality.yml | \
-            jq -Rs '{content: ., encoding: "base64"}' | \
-            gh api --method POST "repos/$GITHUB_REPOSITORY/git/blobs" --input - --jq '.sha')
+            base_commit=$(git rev-parse HEAD)
+            base_tree=$(gh api "repos/$GITHUB_REPOSITORY/git/commits/$base_commit" --jq '.tree.sha')
+            workflow_blob=$(base64 -w 0 .github/workflows/extensions-quality.yml | \
+              jq -Rs '{content: ., encoding: "base64"}' | \
+              gh api --method POST "repos/$GITHUB_REPOSITORY/git/blobs" --input - --jq '.sha')
 
-          new_tree=$(jq -n \
-            --arg base "$base_tree" \
-            --arg blob "$workflow_blob" \
-            '{base_tree: $base, tree: [
-              {path: ".github/workflows/extensions-quality.yml", mode: "100644", type: "blob", sha: $blob},
-              {path: ".github/workflows/agent-export-branch.yml", mode: "100644", type: "blob", sha: null},
-              {path: ".github/workflows/agent-apply-document-fixtures.yml", mode: "100644", type: "blob", sha: null}
-            ]}' | \
-            gh api --method POST "repos/$GITHUB_REPOSITORY/git/trees" --input - --jq '.sha')
+            new_tree=$(jq -n \
+              --arg base "$base_tree" \
+              --arg blob "$workflow_blob" \
+              '{base_tree: $base, tree: [
+                {path: ".github/workflows/extensions-quality.yml", mode: "100644", type: "blob", sha: $blob},
+                {path: ".github/workflows/agent-export-branch.yml", mode: "100644", type: "blob", sha: null},
+                {path: ".github/workflows/agent-apply-document-fixtures.yml", mode: "100644", type: "blob", sha: null}
+              ]}' | \
+              gh api --method POST "repos/$GITHUB_REPOSITORY/git/trees" --input - --jq '.sha')
 
-          new_commit=$(jq -n \
-            --arg message 'ci: finalize document fixture validation workflow' \
-            --arg tree "$new_tree" \
-            --arg parent "$base_commit" \
-            '{message: $message, tree: $tree, parents: [$parent]}' | \
-            gh api --method POST "repos/$GITHUB_REPOSITORY/git/commits" --input - --jq '.sha')
+            new_commit=$(jq -n \
+              --arg message 'ci: finalize document fixture validation workflow' \
+              --arg tree "$new_tree" \
+              --arg parent "$base_commit" \
+              '{message: $message, tree: $tree, parents: [$parent]}' | \
+              gh api --method POST "repos/$GITHUB_REPOSITORY/git/commits" --input - --jq '.sha')
 
-          printf '%s\n' "$new_commit" > workflow-commit-sha.txt
-          echo "WORKFLOW_COMMIT=$new_commit"
+            printf '%s\n' "$new_commit" > workflow-commit-sha.txt
+            echo "WORKFLOW_COMMIT=$new_commit"
+          } > workflow-commit-diagnostic.log 2>&1
+          exit_code=$?
+          cat workflow-commit-diagnostic.log
+          printf 'exit_code=%s\n' "$exit_code" >> workflow-commit-diagnostic.log
+          exit "$exit_code"
 
-      - name: Upload workflow commit SHA
+      - name: Upload workflow diagnostics
+        if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: document-fixtures-workflow-commit
-          path: workflow-commit-sha.txt
-          if-no-files-found: error
+          name: document-fixtures-workflow-commit-diagnostic
+          path: |
+            workflow-commit-diagnostic.log
+            workflow-commit-sha.txt
+          if-no-files-found: warn
           retention-days: 1
+
+      - name: Propagate preparation failure
+        if: steps.prepare.outcome == 'failure'
+        shell: bash
+        run: exit 1
