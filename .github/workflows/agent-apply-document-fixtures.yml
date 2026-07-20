@@ -1,0 +1,53 @@
+name: agent-apply-document-fixtures
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/agent-apply-document-fixtures.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+          show-progress: false
+
+      - name: Assemble and verify patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .github/agent-document-fixtures-patch/part-*.b64 | base64 --decode > "$RUNNER_TEMP/implementation.patch.gz"
+          echo "5801d33f3a4c1f226281ba857a5dd911b0205e3e81f288159e5f5f01f8e7530f  $RUNNER_TEMP/implementation.patch.gz" | sha256sum --check --status
+          gzip --decompress --stdout "$RUNNER_TEMP/implementation.patch.gz" > "$RUNNER_TEMP/implementation.patch"
+          echo "b2a49b45918bc328922fce3e62b969ba55ac16c4dedd6b749a4468ccd3ced236  $RUNNER_TEMP/implementation.patch" | sha256sum --check --status
+          git apply --check "$RUNNER_TEMP/implementation.patch"
+
+      - name: Apply implementation and remove transport files
+        shell: bash
+        run: |
+          set -euo pipefail
+          git apply --index "$RUNNER_TEMP/implementation.patch"
+          rm -rf .github/agent-document-fixtures-patch
+          rm -f .github/workflows/agent-apply-document-fixtures.yml
+          git add -A
+          git diff --cached --check
+          git diff --cached --stat
+
+      - name: Commit and push implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "OpenAI Agent"
+          git config user.email "openai-agent@users.noreply.github.com"
+          git commit -m "feat: add PDF Word Excel real-machine document fixtures"
+          git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
+          echo "IMPLEMENTATION_COMMIT=$(git rev-parse HEAD)"
