@@ -31,13 +31,16 @@ jobs:
           echo "b2a49b45918bc328922fce3e62b969ba55ac16c4dedd6b749a4468ccd3ced236  $RUNNER_TEMP/implementation.patch" | sha256sum --check --status
           git apply --check "$RUNNER_TEMP/implementation.patch"
 
-      - name: Apply implementation and remove transport files
+      - name: Apply implementation without workflow-file writes
         shell: bash
         run: |
           set -euo pipefail
           git apply --index "$RUNNER_TEMP/implementation.patch"
+          git restore --source=HEAD --staged --worktree -- \
+            .github/workflows/extensions-quality.yml \
+            .github/workflows/agent-export-branch.yml \
+            .github/workflows/agent-apply-document-fixtures.yml
           rm -rf .github/agent-document-fixtures-patch
-          rm -f .github/workflows/agent-apply-document-fixtures.yml
           git add -A
           git diff --cached --check
           git diff --cached --stat
