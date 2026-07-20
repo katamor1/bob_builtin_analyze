@@ -1,6 +1,9 @@
 name: agent-export-branch
 
 on:
+  pull_request:
+    paths:
+      - ".github/workflows/agent-export-branch.yml"
   push:
     branches:
       - agent/bob-review-document-input-fixtures-design
