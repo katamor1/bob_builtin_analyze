@@ -1,0 +1,25 @@
+schemaVersion: workflow-register/v2
+id: minimal
+name: Minimal workflow
+description: A minimal Contract v2 workflow.
+inputs: []
+steps:
+  - id: finish
+    title: Finish
+    type: result
+    required: true
+    source:
+      source: literal
+      value: null
+    artifacts: []
+requiredArtifacts: []
+resumePolicy:
+  mode: fail-closed
+  maxAttempts: 1
+  retainCommittedOutputs: false
+  allowArtifactReuse: false
+providers: []
+bob:
+  profile: bob/2.0.1
+  requiredCapabilities: []
+  taskCapabilities: []
