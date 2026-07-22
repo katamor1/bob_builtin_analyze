@@ -1,14 +1,16 @@
 export {
+  compileWorkflowContractDocument,
   compileWorkflowDocument,
   formatWorkflowDiagnostics,
-  validateCoreWorkflow,
   validateWorkflowText
 } from "./workflowCompiler"
 export type {
+  CompileWorkflowContractDocumentOptions,
   CompileWorkflowDocumentOptions,
   CompileWorkflowDocumentResult,
   ValidateWorkflowResult,
   ValidateWorkflowTextOptions,
   WorkflowDiagnostic,
-  WorkflowDiagnosticSeverity
+  WorkflowDiagnosticSeverity,
+  RepositoryWorkflowPathSyntax
 } from "./workflowCompiler"

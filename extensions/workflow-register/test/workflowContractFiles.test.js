@@ -3,7 +3,7 @@ const fs = require("node:fs")
 const path = require("node:path")
 const { test } = require("node:test")
 
-const { validateWorkflowText } = require("../out/core/workflowValidator")
+const { compileWorkflowContractDocument } = require("../out/core/workflowValidator")
 const { buildWorkflowContributionCatalog } = require("../out/core/contributionCatalog")
 const { createWorkflowInventory, discoverContributionManifests } = require("../scripts/discover-tracked-workflows")
 
@@ -77,7 +77,7 @@ steps:
     type: command
     prompt: Collect the context.
     action:
-      provider: sample.collect
+      provider: workflowRegister.runMechanicalChecks
     resultKey: context
   - id: save
     title: Save context
@@ -93,10 +93,7 @@ steps:
           path: .bob/workflows/runs/{{run.id}}/context.json
 ---
 # Result runtime fields
-`, "test/fixtures/inline/WORKFLOW.md", {
-    availableActionProviders: ["sample.collect"],
-    availablePreflightChecks: []
-  })
+`, "test/fixtures/inline/WORKFLOW.md", readWorkflowRegisterContributionCatalog())
 
   assert.equal(validation.ok, true, formatDiagnostics(validation))
   assert.equal(validation.workflow.engineSteps[1].prompt, "Save the collected context.")
@@ -121,10 +118,7 @@ steps:
           path: .bob/workflows/runs/{{run.id}}/done.txt
 ---
 # Result step without prompt
-`, "test/fixtures/inline/WORKFLOW.md", {
-    availableActionProviders: [],
-    availablePreflightChecks: []
-  })
+`, "test/fixtures/inline/WORKFLOW.md", readWorkflowRegisterContributionCatalog())
 
   assert.equal(validation.ok, true, formatDiagnostics(validation))
 })
@@ -182,25 +176,26 @@ function readSampleExternalCommandAllowlist() {
   return allowlist
 }
 
-function validateStrictText(text, filePath = "test/fixtures/inline/WORKFLOW.md", overrides = {}) {
-  const legacyCompatibilityMode = overrides.availableActionProviders && overrides.availablePreflightChecks
-  const contributionOptions = legacyCompatibilityMode
-    ? {
-        availableActionProviders: overrides.availableActionProviders,
-        availablePreflightChecks: overrides.availablePreflightChecks
-      }
-    : { contributionCatalog: readGeneratedContributionCatalog() }
-  return validateWorkflowText({
+function validateStrictText(text, filePath = "test/fixtures/inline/WORKFLOW.md", contributionCatalog = readGeneratedContributionCatalog()) {
+  return compileWorkflowContractDocument({
     sourceId: "workflow-register",
     filePath,
+    filePathSyntax: "canonical-repository",
     text,
-    strict: true,
-    ...contributionOptions
+    contributionCatalog
   })
 }
 
 function readGeneratedContributionCatalog() {
-  return buildWorkflowContributionCatalog(discoverContributionManifestPaths().map((manifestPath) => {
+  return buildContributionCatalog(discoverContributionManifestPaths())
+}
+
+function readWorkflowRegisterContributionCatalog() {
+  return buildContributionCatalog(["extensions/workflow-register/contracts/workflow-contributions.json"])
+}
+
+function buildContributionCatalog(manifestPaths) {
+  return buildWorkflowContributionCatalog(manifestPaths.map((manifestPath) => {
     const ownerDirectory = path.posix.dirname(path.posix.dirname(manifestPath))
     const packagePath = path.join(repoRoot, ownerDirectory, "package.json")
     const packageJson = fs.existsSync(packagePath)

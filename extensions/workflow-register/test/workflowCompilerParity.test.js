@@ -341,7 +341,7 @@ test("workspace validation compiles the same nested marker-root document set as 
     text: validWorkflow,
     strict: true
   }))
-  assert.equal(reports[0].summary, "ワークフローファイル 2件、エラー 1件、警告 0件。")
+  assert.equal(reports[0].summary, "2 workflow file(s); 1 error(s); 0 warning(s).")
   assert.deepEqual(loaded.workflows.map((workflow) => workflow.id), ["workflow-register.valid-workflow"])
   assert.ok(loaded.diagnostics.some((line) => line.includes("Duplicate step id 'analyze'")))
 
@@ -417,13 +417,13 @@ test("explicit current and workspace validation match strict registration diagno
   assert.deepEqual(currentDiagnostics.get(warningPath), expected)
   assert.deepEqual(workspaceDiagnostics.get(warningPath), expected)
   assert.deepEqual(currentReports, [{
-    title: "現在のワークフローの検証",
-    summary: "ワークフローファイル1件、エラー 1件、警告 0件。",
+    title: "Current Workflow Validation",
+    summary: "1 workflow file; 1 error(s); 0 warning(s).",
     lines: expectedLines
   }])
   assert.deepEqual(workspaceReports, [{
-    title: "ワークスペースのワークフロー検証",
-    summary: "ワークフローファイル 1件、エラー 1件、警告 0件。",
+    title: "Workspace Workflow Validation",
+    summary: "1 workflow file(s); 1 error(s); 0 warning(s).",
     lines: expectedLines
   }])
   assert.deepEqual(loaded.workflows, [])
@@ -544,16 +544,9 @@ test("workflow compiler owns parse, semantic, strict, catalog, and diagnostic pa
   assert.equal(strict.ok, false)
   assert.ok(strict.diagnostics.some((item) => item.severity === "error" && item.message.includes("unknown top-level field")))
 
-  const catalogOptional = compileWorkflowDocument({ ...base, text: validWorkflow, strict: true })
-  const catalogEnforced = compileWorkflowDocument({
-    ...base,
-    text: validWorkflow,
-    strict: true,
-    availableActionProviders: []
-  })
-  assert.equal(catalogOptional.ok, true)
-  assert.equal(catalogEnforced.ok, false)
-  assert.ok(catalogEnforced.diagnostics.some((item) => item.message.includes("unsupported action provider 'sample.collect'")))
+  const structuralStrict = compileWorkflowDocument({ ...base, text: validWorkflow, strict: true })
+  assert.equal(structuralStrict.ok, true)
+  assert.equal(structuralStrict.diagnostics.some((item) => item.message.includes("contribution catalog")), false)
 
   const ordered = compileWorkflowDocument({ ...base, text: stableOrderingWorkflow })
   const repeated = compileWorkflowDocument({ ...base, text: stableOrderingWorkflow })

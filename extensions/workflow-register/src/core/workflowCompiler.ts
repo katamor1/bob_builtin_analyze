@@ -8,7 +8,6 @@ import {
   WorkflowTransitionConditionDefinition
 } from "./model"
 import { validateApprovalExpression } from "./approvalGuardrails"
-import type { WorkflowContributionCatalog } from "./contributionCatalog"
 import { boundedDiagnosticText } from "./diagnosticText"
 import { parseWorkflowMarkdown } from "./parser"
 import { isReservedWorkflowStateKey } from "./stateKeys"
@@ -21,14 +20,22 @@ export interface WorkflowDiagnostic {
   filePath?: string
 }
 
+/** Structural authoring/runtime compilation; never performs repository contribution resolution. */
 export interface CompileWorkflowDocumentOptions {
   sourceId: string
   filePath: string
   text: string
   strict?: boolean
-  contributionCatalog?: WorkflowContributionCatalog
-  availableActionProviders?: string[]
-  availablePreflightChecks?: string[]
+}
+
+export type RepositoryWorkflowPathSyntax = "canonical-repository" | "windows-separated"
+
+export interface CompileWorkflowContractDocumentOptions {
+  sourceId: string
+  filePath: string
+  filePathSyntax: RepositoryWorkflowPathSyntax
+  text: string
+  contributionCatalog: unknown
 }
 
 export type ValidateWorkflowTextOptions = CompileWorkflowDocumentOptions
@@ -53,12 +60,144 @@ interface SkipResumeWorkflowMetadata {
   }
 }
 
+interface WorkflowValidationOptions extends Omit<CompileWorkflowDocumentOptions, "sourceId" | "text"> {
+  contributionLookup?: ContributionCatalogLookup
+}
+
+interface ContributionCatalogLookup {
+  actionProviders: ReadonlyMap<string, number>
+  preflightChecks: ReadonlyMap<string, number>
+  resultSinks: ReadonlyMap<string, readonly string[]>
+}
+
+interface CatalogContributionSnapshot {
+  key: string
+  contractVersion: string
+}
+
+type ContributionCatalogSnapshotResult =
+  | { ok: true; lookup: ContributionCatalogLookup }
+  | { ok: false; reason: string }
+
+interface WorkflowContractOptionsSnapshot {
+  sourceId: string
+  filePath: string
+  filePathSyntax: unknown
+  text: string
+  contributionCatalog: unknown
+}
+
+type WorkflowContractOptionsSnapshotResult =
+  | { ok: true; options: WorkflowContractOptionsSnapshot }
+  | { ok: false; filePath: string; reason: string }
+
+class ContributionCatalogSnapshotError extends Error {}
+class WorkflowContractOptionsSnapshotError extends Error {}
+
+const INVALID_WORKFLOW_CONTRACT_OPTIONS_PATH = "<workflow-contract-options>"
+
 export function compileWorkflowDocument(options: CompileWorkflowDocumentOptions): CompileWorkflowDocumentResult {
-  const normalizedOptions = { ...options, filePath: normalizeRepositoryPath(options.filePath) }
+  return compileWorkflowDocumentInternal({
+    sourceId: options.sourceId,
+    filePath: options.filePath,
+    text: options.text,
+    strict: options.strict
+  })
+}
+
+/**
+ * Contribution-aware repository contract gate. Unlike the structural
+ * authoring/runtime compiler, this entrypoint always requires a generated
+ * contribution catalog and always promotes warnings to errors.
+ */
+export function compileWorkflowContractDocument(
+  options: CompileWorkflowContractDocumentOptions
+): CompileWorkflowDocumentResult {
+  const snapshot = snapshotWorkflowContractOptions(options)
+  if (!snapshot.ok) return invalidWorkflowContractOptionsResult(snapshot.filePath, snapshot.reason)
+  const contractOptions = snapshot.options
+  if (contractOptions.filePathSyntax !== "canonical-repository" && contractOptions.filePathSyntax !== "windows-separated") {
+    return {
+      ok: false,
+      workflow: undefined,
+      diagnostics: [error(
+        contractOptions.filePath,
+        "Workflow file path syntax is invalid: expected 'canonical-repository' or 'windows-separated'."
+      )]
+    }
+  }
+  const filePath = contractOptions.filePathSyntax === "windows-separated"
+    ? normalizeWindowsRepositoryPath(contractOptions.filePath)
+    : contractOptions.filePath
+  const catalog = snapshotContributionCatalog(contractOptions.contributionCatalog, true)
+  if (!catalog.ok) return invalidContributionCatalogResult(filePath, catalog.reason)
+  return compileWorkflowDocumentInternal({
+    sourceId: contractOptions.sourceId,
+    filePath,
+    text: contractOptions.text,
+    strict: true,
+    contributionLookup: catalog.lookup
+  })
+}
+
+function snapshotWorkflowContractOptions(value: unknown): WorkflowContractOptionsSnapshotResult {
+  let diagnosticFilePath = INVALID_WORKFLOW_CONTRACT_OPTIONS_PATH
+  try {
+    if (!isPlainDataObject(value)) {
+      return {
+        ok: false,
+        filePath: diagnosticFilePath,
+        reason: "expected a non-null plain data object"
+      }
+    }
+    const filePath = readWorkflowContractOption(value, "filePath")
+    if (typeof filePath === "string" && filePath.length > 0) diagnosticFilePath = filePath
+    const sourceId = readWorkflowContractOption(value, "sourceId")
+    const filePathSyntax = readWorkflowContractOption(value, "filePathSyntax")
+    const text = readWorkflowContractOption(value, "text")
+    const contributionCatalog = readWorkflowContractOption(value, "contributionCatalog")
+    if (typeof sourceId !== "string" || sourceId.length === 0) {
+      throw new WorkflowContractOptionsSnapshotError("field 'sourceId' must be a non-empty string")
+    }
+    if (typeof filePath !== "string" || filePath.length === 0) {
+      throw new WorkflowContractOptionsSnapshotError("field 'filePath' must be a non-empty string")
+    }
+    if (typeof text !== "string") {
+      throw new WorkflowContractOptionsSnapshotError("field 'text' must be a string")
+    }
+    return {
+      ok: true,
+      options: Object.freeze({ sourceId, filePath, filePathSyntax, text, contributionCatalog })
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      filePath: diagnosticFilePath,
+      reason: error instanceof WorkflowContractOptionsSnapshotError
+        ? error.message
+        : "options data could not be snapshotted"
+    }
+  }
+}
+
+function readWorkflowContractOption(
+  options: Record<string, unknown>,
+  field: keyof CompileWorkflowContractDocumentOptions
+): unknown {
+  const descriptor = Object.getOwnPropertyDescriptor(options, field)
+  if (!descriptor || !("value" in descriptor)) {
+    throw new WorkflowContractOptionsSnapshotError(`field '${field}' must be an own data property`)
+  }
+  return descriptor.value
+}
+
+function compileWorkflowDocumentInternal(
+  options: CompileWorkflowDocumentOptions & { contributionLookup?: ContributionCatalogLookup }
+): CompileWorkflowDocumentResult {
   const text = options.text.replace(/^\uFEFF/, "")
-  const parsed = parseWorkflowMarkdown({ sourceId: options.sourceId, filePath: normalizedOptions.filePath, text })
-  const diagnostics = parsed.diagnostics.map((line) => diagnosticFromParserLine(line, normalizedOptions.filePath))
-  if (parsed.ok) diagnostics.push(...validateCoreWorkflow(parsed.workflow, normalizedOptions))
+  const parsed = parseWorkflowMarkdown({ sourceId: options.sourceId, filePath: options.filePath, text })
+  const diagnostics = parsed.diagnostics.map((line) => diagnosticFromParserLine(line, options.filePath))
+  if (parsed.ok) diagnostics.push(...validateCoreWorkflow(parsed.workflow, options))
   const promoted = diagnostics.map((item): WorkflowDiagnostic =>
     options.strict && item.severity === "warning" ? { ...item, severity: "error" } : item
   )
@@ -70,7 +209,129 @@ export function compileWorkflowDocument(options: CompileWorkflowDocumentOptions)
   }
 }
 
-function normalizeRepositoryPath(filePath: string): string {
+function invalidContributionCatalogResult(filePath: string, reason: string): CompileWorkflowDocumentResult {
+  return {
+    ok: false,
+    workflow: undefined,
+    diagnostics: [error(filePath, `Workflow contribution catalog is invalid: ${reason}.`)]
+  }
+}
+
+function invalidWorkflowContractOptionsResult(filePath: string, reason: string): CompileWorkflowDocumentResult {
+  return {
+    ok: false,
+    workflow: undefined,
+    diagnostics: [error(filePath, `Workflow contract compile options are invalid: ${reason}.`)]
+  }
+}
+
+function isPlainDataObject(value: unknown): value is Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false
+  const prototype = Object.getPrototypeOf(value)
+  return prototype === Object.prototype || prototype === null
+}
+
+function snapshotContributionCatalog(value: unknown, validateValues: boolean): ContributionCatalogSnapshotResult {
+  try {
+    if (!isPlainDataObject(value)) {
+      return { ok: false, reason: "expected a non-null plain data object" }
+    }
+    if (readOwnDataProperty(value, "schema_version", "schema_version") !== "workflow-contribution-catalog/v1") {
+      throw new ContributionCatalogSnapshotError("field 'schema_version' must be 'workflow-contribution-catalog/v1'")
+    }
+    const actionProviders = snapshotContributionSection(value, "action_providers", "id", validateValues)
+    const preflightChecks = snapshotContributionSection(value, "preflight_checks", "id", validateValues)
+    const resultSinks = snapshotContributionSection(value, "result_sinks", "type", validateValues)
+    return {
+      ok: true,
+      lookup: {
+        actionProviders: contributionCounts(actionProviders),
+        preflightChecks: contributionCounts(preflightChecks),
+        resultSinks: contributionVersions(resultSinks)
+      }
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      reason: error instanceof ContributionCatalogSnapshotError
+        ? error.message
+        : "catalog data could not be snapshotted"
+    }
+  }
+}
+
+function snapshotContributionSection(
+  catalog: Record<string, unknown>,
+  field: "action_providers" | "preflight_checks" | "result_sinks",
+  keyField: "id" | "type",
+  validateValues: boolean
+): readonly CatalogContributionSnapshot[] {
+  const section = readOwnDataProperty(catalog, field, field)
+  if (!Array.isArray(section)) {
+    throw new ContributionCatalogSnapshotError(`field '${field}' must be an array`)
+  }
+  const lengthDescriptor = Object.getOwnPropertyDescriptor(section, "length")
+  const length = lengthDescriptor && "value" in lengthDescriptor ? lengthDescriptor.value : undefined
+  if (!Number.isSafeInteger(length) || length < 0) {
+    throw new ContributionCatalogSnapshotError(`field '${field}' must be an array`)
+  }
+  const snapshot: CatalogContributionSnapshot[] = []
+  for (let index = 0; index < length; index += 1) {
+    const entryPath = `${field}[${index}]`
+    const entry = readArrayDataItem(section, index, entryPath)
+    if (!isPlainDataObject(entry)) {
+      throw new ContributionCatalogSnapshotError(`field '${entryPath}' must be a plain data object`)
+    }
+    const key = readOwnDataProperty(entry, keyField, `${entryPath}.${keyField}`)
+    const contractVersion = readOwnDataProperty(entry, "contract_version", `${entryPath}.contract_version`)
+    if (typeof key !== "string" || (validateValues && !CONTRIBUTION_ID_PATTERN.test(key))) {
+      throw new ContributionCatalogSnapshotError(`field '${entryPath}.${keyField}' is invalid`)
+    }
+    if (
+      typeof contractVersion !== "string"
+      || (validateValues && (
+        !CONTRIBUTION_CONTRACT_PATTERN.test(contractVersion)
+        || contractVersion.length > MAX_CONTRIBUTION_CONTRACT_VERSION_LENGTH
+      ))
+    ) {
+      throw new ContributionCatalogSnapshotError(`field '${entryPath}.contract_version' is invalid`)
+    }
+    snapshot.push(Object.freeze({ key, contractVersion }))
+  }
+  return Object.freeze(snapshot)
+}
+
+function readOwnDataProperty(record: Record<string, unknown>, key: string, fieldPath: string): unknown {
+  const descriptor = Object.getOwnPropertyDescriptor(record, key)
+  if (!descriptor || !("value" in descriptor)) {
+    throw new ContributionCatalogSnapshotError(`field '${fieldPath}' must be an own data property`)
+  }
+  return descriptor.value
+}
+
+function readArrayDataItem(array: unknown[], index: number, fieldPath: string): unknown {
+  const descriptor = Object.getOwnPropertyDescriptor(array, String(index))
+  if (!descriptor || !("value" in descriptor)) {
+    throw new ContributionCatalogSnapshotError(`field '${fieldPath}' must be an own data property`)
+  }
+  return descriptor.value
+}
+
+function contributionCounts(entries: readonly CatalogContributionSnapshot[]): ReadonlyMap<string, number> {
+  const counts = new Map<string, number>()
+  for (const entry of entries) counts.set(entry.key, (counts.get(entry.key) ?? 0) + 1)
+  return counts
+}
+
+function contributionVersions(entries: readonly CatalogContributionSnapshot[]): ReadonlyMap<string, readonly string[]> {
+  const versions = new Map<string, readonly string[]>()
+  for (const entry of entries) {
+    versions.set(entry.key, Object.freeze([...(versions.get(entry.key) ?? []), entry.contractVersion]))
+  }
+  return versions
+}
+
+function normalizeWindowsRepositoryPath(filePath: string): string {
   return filePath.replace(/\\/g, "/")
 }
 
@@ -91,9 +352,9 @@ function compareText(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0
 }
 
-export function validateCoreWorkflow(
+function validateCoreWorkflow(
   workflow: CoreWorkflowDefinition,
-  options: Omit<ValidateWorkflowTextOptions, "sourceId" | "text">
+  options: WorkflowValidationOptions
 ): WorkflowDiagnostic[] {
   const diagnostics: WorkflowDiagnostic[] = []
   const filePath = options.filePath
@@ -188,21 +449,19 @@ export function formatWorkflowDiagnostics(result: ValidateWorkflowResult): strin
 
 function validateCommandStep(
   step: Extract<EngineStep, { type: "command" }>,
-  options: Omit<ValidateWorkflowTextOptions, "sourceId" | "text">,
+  options: WorkflowValidationOptions,
   diagnostics: WorkflowDiagnostic[],
   filePath: string
 ): void {
   if (!step.action.provider.trim()) diagnostics.push(error(filePath, `Command step '${step.id}' action.provider is empty.`))
-  if (options.contributionCatalog) {
-    const matches = options.contributionCatalog.action_providers.filter((entry) => entry.id === step.action.provider)
-    if (matches.length !== 1) {
+  if (options.contributionLookup) {
+    const matchCount = options.contributionLookup.actionProviders.get(step.action.provider) ?? 0
+    if (matchCount !== 1) {
       diagnostics.push(error(filePath, contributionMatchMessage(
         `Command step '${boundedDiagnosticText(step.id)}' action provider '${boundedDiagnosticText(step.action.provider)}'`,
-        matches.length
+        matchCount
       )))
     }
-  } else if (options.availableActionProviders && !options.availableActionProviders.includes(step.action.provider)) {
-    diagnostics.push(error(filePath, `Command step '${step.id}' uses unsupported action provider '${step.action.provider}'.`))
   }
 }
 
@@ -220,7 +479,7 @@ function validateTodoStepMapping(workflow: CoreWorkflowDefinition, stepIds: Set<
 function validateStateReferences(
   steps: EngineStep[],
   resultKeys: Set<string>,
-  options: Omit<ValidateWorkflowTextOptions, "sourceId" | "text">,
+  options: WorkflowValidationOptions,
   diagnostics: WorkflowDiagnostic[],
   filePath: string
 ): void {
@@ -368,7 +627,7 @@ function validateResultSource(
   stepId: string,
   result: ResultSourceDefinition,
   resultKeys: Set<string>,
-  options: Omit<ValidateWorkflowTextOptions, "sourceId" | "text">,
+  options: WorkflowValidationOptions,
   diagnostics: WorkflowDiagnostic[],
   filePath: string
 ): void {
@@ -382,11 +641,11 @@ function validateResultSink(
   stepId: string,
   sink: ResultSinkDefinition,
   index: number,
-  options: Omit<ValidateWorkflowTextOptions, "sourceId" | "text">,
+  options: WorkflowValidationOptions,
   diagnostics: WorkflowDiagnostic[],
   filePath: string
 ): void {
-  validateResultSinkContribution(stepId, sink, index, options.contributionCatalog, diagnostics, filePath)
+  validateResultSinkContribution(stepId, sink, index, options.contributionLookup, diagnostics, filePath)
   if (isCommandResultSink(sink)) {
     if (!sink.command.trim()) diagnostics.push(error(filePath, `Step '${stepId}' command result sink has no command.`))
     return
@@ -398,7 +657,10 @@ function validateResultSink(
   if (!CUSTOM_SINK_TYPE_PATTERN.test(sink.type) || sink.type === "command" || sink.type === "file") {
     diagnostics.push(error(filePath, `Step '${stepId}' custom result sink has an invalid type.`))
   }
-  if (!CUSTOM_SINK_CONTRACT_PATTERN.test(sink.contractVersion) || sink.contractVersion.length > 256) {
+  if (
+    !CUSTOM_SINK_CONTRACT_PATTERN.test(sink.contractVersion)
+    || sink.contractVersion.length > MAX_CONTRIBUTION_CONTRACT_VERSION_LENGTH
+  ) {
     diagnostics.push(error(filePath, `Step '${stepId}' custom result sink has an invalid contractVersion.`))
   }
   if (!sink.payload || typeof sink.payload !== "object" || Array.isArray(sink.payload)) {
@@ -410,21 +672,21 @@ function validateResultSinkContribution(
   stepId: string,
   sink: ResultSinkDefinition,
   index: number,
-  catalog: WorkflowContributionCatalog | undefined,
+  catalog: ContributionCatalogLookup | undefined,
   diagnostics: WorkflowDiagnostic[],
   filePath: string
 ): void {
   if (!catalog) return
   const location = `Step '${boundedDiagnosticText(stepId)}' result sink[${index}] type '${boundedDiagnosticText(sink.type)}'`
-  const matches = catalog.result_sinks.filter((entry) => entry.type === sink.type)
-  if (matches.length !== 1) {
-    diagnostics.push(error(filePath, contributionMatchMessage(location, matches.length)))
+  const versions = catalog.resultSinks.get(sink.type) ?? []
+  if (versions.length !== 1) {
+    diagnostics.push(error(filePath, contributionMatchMessage(location, versions.length)))
     return
   }
-  if (!isCommandResultSink(sink) && !isFileResultSink(sink) && sink.contractVersion !== matches[0].contract_version) {
+  if (!isCommandResultSink(sink) && !isFileResultSink(sink) && sink.contractVersion !== versions[0]) {
     diagnostics.push(error(
       filePath,
-      `${location} contractVersion '${boundedDiagnosticText(sink.contractVersion)}' does not match catalog contract_version '${boundedDiagnosticText(matches[0].contract_version)}'.`
+      `${location} contractVersion '${boundedDiagnosticText(sink.contractVersion)}' does not match catalog contract_version '${boundedDiagnosticText(versions[0])}'.`
     ))
   }
 }
@@ -435,8 +697,11 @@ function contributionMatchMessage(location: string, matchCount: number): string 
     : `${location} has ${matchCount} contribution catalog matches.`
 }
 
-const CUSTOM_SINK_TYPE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/
-const CUSTOM_SINK_CONTRACT_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*(?:\/[A-Za-z0-9][A-Za-z0-9._-]*)*\/v[1-9][0-9]*$/
+const CONTRIBUTION_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/
+const CONTRIBUTION_CONTRACT_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*(?:\/[A-Za-z0-9][A-Za-z0-9._-]*)*\/v[1-9][0-9]*$/
+const MAX_CONTRIBUTION_CONTRACT_VERSION_LENGTH = 256
+const CUSTOM_SINK_TYPE_PATTERN = CONTRIBUTION_ID_PATTERN
+const CUSTOM_SINK_CONTRACT_PATTERN = CONTRIBUTION_CONTRACT_PATTERN
 
 function validateArtifacts(workflow: CoreWorkflowDefinition, stepIds: Set<string>, diagnostics: WorkflowDiagnostic[], filePath: string): void {
   const artifactIds = new Set<string>()
@@ -525,22 +790,20 @@ function validateInputs(workflow: CoreWorkflowDefinition, diagnostics: WorkflowD
 
 function validatePreflight(
   workflow: CoreWorkflowDefinition,
-  options: Omit<ValidateWorkflowTextOptions, "sourceId" | "text">,
+  options: WorkflowValidationOptions,
   diagnostics: WorkflowDiagnostic[],
   filePath: string
 ): void {
   for (const preflight of workflow.preflight) {
     for (const check of preflight.checks ?? []) {
-      if (options.contributionCatalog) {
-        const matches = options.contributionCatalog.preflight_checks.filter((entry) => entry.id === check)
-        if (matches.length !== 1) {
+      if (options.contributionLookup) {
+        const matchCount = options.contributionLookup.preflightChecks.get(check) ?? 0
+        if (matchCount !== 1) {
           diagnostics.push(error(filePath, contributionMatchMessage(
             `Preflight '${boundedDiagnosticText(preflight.id)}' check '${boundedDiagnosticText(check)}'`,
-            matches.length
+            matchCount
           )))
         }
-      } else if (options.availablePreflightChecks && !options.availablePreflightChecks.includes(check)) {
-        diagnostics.push(warning(filePath, `Preflight '${preflight.id}' references unknown check '${check}'.`))
       }
     }
   }

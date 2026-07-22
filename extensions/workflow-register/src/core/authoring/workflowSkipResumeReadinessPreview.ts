@@ -8,8 +8,6 @@ import {
 
 export interface SkipResumeReadinessValidationContext {
   sourceId: string
-  availableActionProviders?: string[]
-  availablePreflightChecks?: string[]
 }
 
 export interface SkipResumeReadinessPreview {
@@ -41,9 +39,7 @@ export function buildSkipResumeReadinessPreview(
     sourceId: context.sourceId,
     filePath: after.filePath,
     text: after.markdown,
-    strict: true,
-    availableActionProviders: context.availableActionProviders,
-    availablePreflightChecks: context.availablePreflightChecks
+    strict: true
   })
   const ok = plan.blockingIssues.length === 0 && validation.ok
   return {
