@@ -10,7 +10,8 @@ test("Operation Hub next-step execution passes an AgentProvider into the standal
   assert.match(runCommands, /this\.options\.runtimeFactory\.createEngine\(root, agentProvider\)/)
   assert.match(runCommands, /await this\.reconcileBobTask\(root, result, workflow, "operation-hub-next"\)/)
   assert.match(runtimeFactory, /createEngine\(workspaceRoot: string, agentProvider\?: AgentProvider\): WorkflowEngine/)
-  assert.match(runtimeFactory, /agentProvider: agentProvider \?\? this\.options\.agentProvider\(\) \?\? this\.createCommandAgentProvider\(\)/)
+  assert.match(runtimeFactory, /agentProvider: this\.createRuntimeAgentProvider\(agentProvider\)/)
+  assert.match(runtimeFactory, /if \(explicitProvider\) return explicitProvider/)
 })
 
 test("Operation Hub retry and resume execution reuses the run-scoped Bob AgentProvider", () => {

@@ -309,7 +309,54 @@ export const workflowV1Schema = {
               source: { enum: ["state", "literal", "agent"] },
               stateKey: { type: "string" },
               text: { type: "string" },
-              sinks: { type: "array", items: { type: "object", required: ["type"], properties: { type: { enum: ["command", "file"] }, command: { type: "string" }, args: { type: "array" }, path: { type: "string" }, encoding: { type: "string" } }, additionalProperties: false } }
+              sinks: {
+                type: "array",
+                items: {
+                  oneOf: [
+                    {
+                      type: "object",
+                      required: ["type"],
+                      properties: {
+                        type: { const: "command" },
+                        command: { type: "string" },
+                        args: { type: "array" }
+                      },
+                      additionalProperties: false
+                    },
+                    {
+                      type: "object",
+                      required: ["type"],
+                      properties: {
+                        type: { const: "file" },
+                        path: { type: "string" },
+                        encoding: { type: "string" }
+                      },
+                      additionalProperties: false
+                    },
+                    {
+                      type: "object",
+                      required: ["type", "contractVersion", "payload"],
+                      properties: {
+                        type: {
+                          type: "string",
+                          minLength: 1,
+                          maxLength: 200,
+                          pattern: "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+                          not: { enum: ["command", "file"] }
+                        },
+                        contractVersion: {
+                          type: "string",
+                          minLength: 4,
+                          maxLength: 256,
+                          pattern: "^[A-Za-z0-9][A-Za-z0-9._-]*(?:/[A-Za-z0-9][A-Za-z0-9._-]*)*/v[1-9][0-9]*$"
+                        },
+                        payload: { type: "object" }
+                      },
+                      additionalProperties: false
+                    }
+                  ]
+                }
+              }
             },
             additionalProperties: false
           }

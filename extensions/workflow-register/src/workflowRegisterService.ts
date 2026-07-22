@@ -49,7 +49,8 @@ export class WorkflowRegisterService implements vscode.Disposable {
   private readonly coreWorkflows = new Map<string, CoreWorkflowDefinition>()
   private readonly actionRegistry = createDefaultActionRegistry({
     isWorkspaceTrusted: () => vscode.workspace.isTrusted,
-    executeCommand: (command, ...args) => vscode.commands.executeCommand(command, ...args)
+    executeCommand: (command, ...args) => vscode.commands.executeCommand(command, ...args),
+    contributionResolver: this.providerRegistryHost.runtimeResolver
   })
   private readonly customResultSinks: Array<{ type: string; handler: Parameters<ResultSinkRegistry["register"]>[1] }> = []
   private readonly actionProviderRegistrations = new ActionProviderRegistrationStore()
@@ -81,6 +82,7 @@ export class WorkflowRegisterService implements vscode.Disposable {
     this.runtimeFactory = new WorkflowRuntimeFactory({
       engineVersion,
       actionRegistry: this.actionRegistry,
+      contributionResolver: this.providerRegistryHost.runtimeResolver,
       customResultSinks: this.customResultSinks,
       stepRuntime: this.stepRuntime,
       gateRegistry: this.bobWorkflowGates,

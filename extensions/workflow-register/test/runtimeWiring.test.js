@@ -194,13 +194,19 @@ test("activation schedules delayed workflow reload retries after Bob finishes st
   assert.match(source, /setTimeout\([\s\S]*service\.reload\(\{ showReport: false \}\)/)
 })
 
-test("standalone workflow launcher wires an AgentProvider through API or configured command", () => {
+test("standalone workflow launcher resolves explicit, registry, legacy, and configured agent providers in order", () => {
   const source = runtimeSource()
 
-  assert.match(source, /import \{ createCommandAgentProvider \} from "\.\/core\/agentProvider"/)
+  assert.match(source, /import \{ createCommandAgentProvider, createLiveAgentProvider \} from "\.\/core\/agentProvider"/)
   assert.match(source, /registerAgentProvider: \(provider: AgentProvider\) => void/)
   assert.match(source, /registerAgentProvider: \(provider\) => service\.registerAgentProvider\(provider\)/)
-  assert.match(source, /agentProvider: agentProvider \?\? this\.options\.agentProvider\(\) \?\? this\.createCommandAgentProvider\(\)/)
+  assert.match(source, /agentProvider: this\.createRuntimeAgentProvider\(agentProvider\)/)
+  assert.match(source, orderedPattern(
+    "if (explicitProvider) return explicitProvider",
+    "this.options.contributionResolver.getAgentProvider()",
+    "this.options.agentProvider()",
+    "configuredProvider"
+  ))
   assert.match(source, orderedPattern(
     "createCommandAgentProvider({",
     'command: config.get<string>("agentCommand", ""),',
@@ -213,9 +219,9 @@ test("runtime entry points and default providers check Workspace Trust", () => {
   const source = runtimeSource()
 
   assert.match(source, /import \{ requireTrustedWorkspace \} from "\.\/workspaceTrust"/)
-  assert.match(source, /async reload\(options: \{ showReport: boolean \}\): Promise<void> \{[\s\S]*requireTrustedWorkspace\("ワークフロー登録を再読み込み", \{ showWarning: options\.showReport \}\)/)
-  assert.match(source, /async runWorkflow\(workflowArg\?: WorkflowCommandArg, inputs: Record<string, unknown> = \{\}\): Promise<unknown> \{[\s\S]*requireTrustedWorkspace\("ワークフローを実行"\)/)
-  assert.match(source, /async runWorkflowStep\([\s\S]*requireTrustedWorkspace\("ワークフローステップを実行"\)/)
+  assert.match(source, /async reload\(options: \{ showReport: boolean \}\): Promise<void> \{[\s\S]*requireTrustedWorkspace\("reload registration", \{ showWarning: options\.showReport \}\)/)
+  assert.match(source, /async runWorkflow\(workflowArg\?: WorkflowCommandArg, inputs: Record<string, unknown> = \{\}\): Promise<unknown> \{[\s\S]*requireTrustedWorkspace\("run workflow"\)/)
+  assert.match(source, /async runWorkflowStep\([\s\S]*requireTrustedWorkspace\("run workflow step"\)/)
   assert.match(source, /isWorkspaceTrusted: \(\) => vscode\.workspace\.isTrusted/)
   assert.match(source, /requireTrustedCommandExecution\("write command result sink"\)/)
 })
@@ -281,7 +287,7 @@ test("Bob workflow runner surfaces step review gates without failing the run", (
   const source = readSrc("bobWorkflowRunner.ts")
 
   assert.match(source, /if \(\(run\.status === "reviewing" \|\| run\.status === "held"\) && run\.error\)/)
-  assert.match(source, /vscode\.window\.showWarningMessage\("ワークフローはユーザー操作待ちです。Bob 操作センターを開きました。"\)/)
+  assert.match(source, /vscode\.window\.showWarningMessage\("ワークフローはユーザー操作待ちです。Operation Hub を開きました。"\)/)
   assert.match(source, /run\.status === "held"/)
   assert.doesNotMatch(source, /Bob workflow step gate:/)
 })
@@ -416,7 +422,7 @@ test("standalone next-step commands reuse the Bob review task agent provider", (
     "mode === \"resume\" ? \"operation-hub-resume\" : \"operation-hub-retry\""
   ))
   assert.match(runtimeFactory, /createEngine\(workspaceRoot: string, agentProvider\?: AgentProvider\): WorkflowEngine/)
-  assert.match(runtimeFactory, /agentProvider: agentProvider \?\? this\.options\.agentProvider\(\) \?\? this\.createCommandAgentProvider\(\)/)
+  assert.match(runtimeFactory, /agentProvider: this\.createRuntimeAgentProvider\(agentProvider\)/)
 })
 
 test("Bob workflow result recovery is scoped to messages after the current step starts", () => {

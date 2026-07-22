@@ -1,4 +1,4 @@
-import { WorkflowArtifactDefinition, WorkflowStepType } from "../model"
+import { isFileResultSink, WorkflowArtifactDefinition, WorkflowStepType } from "../model"
 import { WorkflowAuthoringModel, WorkflowAuthoringStep } from "./workflowAuthoringModel"
 
 export type SkipResumeReadinessCandidateStatus = "ready" | "existing" | "blocked"
@@ -151,7 +151,7 @@ function validateStepReadiness(steps: readonly WorkflowAuthoringStep[], addIssue
     if (step.type === "agent" && !step.resultKey?.trim()) {
       addIssue(`File-bound skip resume requires agent step '${step.id}' to define a resultKey.`)
     }
-    if (step.type === "result" && !step.result.sinks.some((sink) => sink.type === "file" && sink.path.trim())) {
+    if (step.type === "result" && !step.result.sinks.some((sink) => isFileResultSink(sink) && sink.path.trim())) {
       addIssue(`File-bound skip resume requires result step '${step.id}' to define a file sink.`)
     }
   }

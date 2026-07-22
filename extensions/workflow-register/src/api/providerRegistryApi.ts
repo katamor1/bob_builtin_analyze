@@ -4,11 +4,13 @@ import {
   type ContributionHandlerSet,
   type ContributionRegistration,
   type ContributionRegistryOptions,
-  type ContributionRegistrySnapshot
+  type ContributionRegistrySnapshot,
+  type ContributionRuntimeResolver
 } from "../core/contributionRegistry"
 import type {
   ContributionManifestValidationContext,
   ContributionRegistryApiRange,
+  ResultSinkContribution,
   WorkflowContributionManifest
 } from "../core/contributionManifest"
 
@@ -76,6 +78,7 @@ export class ProviderRegistryHost {
   private readonly registrations = new Set<ContributionRegistration>()
   private acceptingRegistrations = true
   readonly api: ProviderRegistryV1Api
+  readonly runtimeResolver: ContributionRuntimeResolver
 
   constructor(options: ContributionRegistryOptions = {}) {
     const additionalManifestPolicy = options.manifestPolicy
@@ -86,6 +89,15 @@ export class ProviderRegistryHost {
         negotiateProviderRegistry(manifest.registry_api)
         additionalManifestPolicy?.(manifest)
       }
+    })
+    this.runtimeResolver = Object.freeze({
+      getActionProvider: (id: string) => this.registry.getActionProvider(id),
+      getPreflightCheck: (id: string) => this.registry.getPreflightCheck(id),
+      getResultSink: (type: string) => this.registry.getResultSink(type),
+      getResultSinkContractVersion: (type: string) => (
+        this.registry.getResultSinkMetadata(type)?.declaration as ResultSinkContribution | undefined
+      )?.contract_version,
+      getAgentProvider: (id?: string) => this.registry.getAgentProvider(id)
     })
     const registerContributionSet = (
       manifest: WorkflowContributionManifest,

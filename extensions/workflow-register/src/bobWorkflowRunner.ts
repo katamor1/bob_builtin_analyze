@@ -21,12 +21,14 @@ import { getTaskMessageCount, StepRuntime } from "./bobStepRuntime"
 import type { ActionRegistry } from "./core/actionRegistry"
 import { WorkflowEngine } from "./core/engine"
 import type { WorkflowEngineOptions, WorkflowExecutionHooks } from "./core/engine"
-import type {
-  AgentProvider,
-  CoreWorkflowDefinition,
-  EngineStep,
-  ResultSinkDefinition,
-  WorkflowRunState
+import type { WorkflowPreflightCheckResolver } from "./core/engine/preflight"
+import {
+  isCommandResultSink,
+  type AgentProvider,
+  type CoreWorkflowDefinition,
+  type EngineStep,
+  type ResultSinkDefinition,
+  type WorkflowRunState
 } from "./core/model"
 import type { ResultSinkRegistry } from "./core/resultSinkRegistry"
 import { projectWorkflowRunProvenance, workflowRunProvenanceControlLines } from "./core/runProvenance"
@@ -60,6 +62,7 @@ interface BobWorkflowEngineRunnerOptions {
   runControlStore?: (workspaceRoot: string) => RunControlStore
   taskSnapshotStore: (workspaceRoot: string) => TaskSnapshotStore | undefined
   preflightChecks: (workspaceRoot: string) => NonNullable<WorkflowEngineOptions["preflightChecks"]>
+  preflightCheckResolver?: WorkflowPreflightCheckResolver
   agentProvider?: AgentProvider
   stepRuntime: StepRuntime
   inputsProvider: BobWorkflowRunnerInputCollector
@@ -106,13 +109,13 @@ export class BobWorkflowEngineRunner {
   ): Promise<boolean> {
     const workspaceRoot = this.options.definition.workflowRoot
     if (!workspaceRoot) {
-      await vscode.window.showErrorMessage("Bob ワークフローのワークスペースが見つかりません。フォルダーを開いてから再実行してください。")
+      await vscode.window.showErrorMessage("Bob workflow workspace root is not available.")
       return false
     }
     const registryWorkspaceRoot = resolveWorkspaceRootIdentity(workspaceRoot)
     const inputs = await this.inputsForTask(task)
     if (!inputs) {
-      await vscode.window.showErrorMessage("Bob ワークフローの入力を中止しました。入力内容を確認して再実行してください。")
+      await vscode.window.showErrorMessage("Bob workflow input failed: Workflow input was cancelled.")
       return false
     }
     const snapshotStore = this.options.taskSnapshotStore(workspaceRoot)
@@ -128,6 +131,7 @@ export class BobWorkflowEngineRunner {
       runControlStore: this.options.runControlStore?.(workspaceRoot),
       agentProvider: this.createAgentProvider(task),
       preflightChecks: this.options.preflightChecks(workspaceRoot),
+      preflightCheckResolver: this.options.preflightCheckResolver,
       hooks: this.createHooks(
         task,
         snapshotProvider,
@@ -184,15 +188,15 @@ export class BobWorkflowEngineRunner {
     if (request.executionMode === "full") {
       while (true) {
         if (run.status === "failed") {
-          await vscode.window.showErrorMessage(`Bob ワークフロー実行に失敗しました。実行診断を確認してください。詳細: ${run.error ?? run.runId}`)
+          await vscode.window.showErrorMessage(`Bob workflow run failed: ${run.error ?? run.runId}`)
           return false
         }
         if (run.status === "completed") return true
         if (isBobHumanGate(run.status)) {
           if ((run.status === "reviewing" || run.status === "held") && run.error) {
-            await vscode.window.showWarningMessage("ワークフローはユーザー操作待ちです。Bob 操作センターを開きました。")
+            await vscode.window.showWarningMessage("ワークフローはユーザー操作待ちです。Operation Hub を開きました。")
           }
-          if (!run.currentStep) throw new Error(`確認待ちの実行 ${run.runId} に現在のステップがありません（状態: ${run.status}）。実行診断を確認してください。`)
+          if (!run.currentStep) throw new Error(`Gated workflow run has no current step: ${run.runId} (${run.status})`)
           const accepted = await (gateWait.promise ?? this.beginGateWait(
             gateWait,
             registryWorkspaceRoot,
@@ -204,7 +208,7 @@ export class BobWorkflowEngineRunner {
           if (!accepted) return false
 
           const acceptedRun = await runStore.loadRun(run.runId)
-          if (!acceptedRun) throw new Error(`確認の承認後に実行 ${run.runId} が見つかりません。実行一覧を更新してください。`)
+          if (!acceptedRun) throw new Error(`Workflow run not found after gate acceptance: ${run.runId}`)
           this.resetGateWait(gateWait)
           run = acceptedRun
           continue
@@ -224,20 +228,20 @@ export class BobWorkflowEngineRunner {
         }
 
         await vscode.window.showErrorMessage(
-          `Bob ワークフロー実行 ${run.runId} は完了前に停止しました（状態: ${run.status}; 現在のステップ: ${run.currentStep ?? "なし"}）。`
+          `Bob workflow run stopped before completion: ${run.runId} (${run.status}; currentStep=${run.currentStep ?? "none"})`
         )
         return false
       }
     }
 
     if (run.status === "failed") {
-      await vscode.window.showErrorMessage(`Bob ワークフロー実行に失敗しました。実行診断を確認してください。詳細: ${run.error ?? run.runId}`)
+      await vscode.window.showErrorMessage(`Bob workflow run failed: ${run.error ?? run.runId}`)
     }
     if ((run.status === "reviewing" || run.status === "held") && run.error) {
-      await vscode.window.showWarningMessage("ワークフローはユーザー操作待ちです。Bob 操作センターを開きました。")
+      await vscode.window.showWarningMessage("ワークフローはユーザー操作待ちです。Operation Hub を開きました。")
     }
     if (isBobHumanGate(run.status)) {
-      if (!run.currentStep) throw new Error(`確認待ちの実行 ${run.runId} に現在のステップがありません（状態: ${run.status}）。実行診断を確認してください。`)
+      if (!run.currentStep) throw new Error(`Gated workflow run has no current step: ${run.runId} (${run.status})`)
       return gateWait.promise ?? this.beginGateWait(
         gateWait,
         registryWorkspaceRoot,
@@ -262,7 +266,7 @@ export class BobWorkflowEngineRunner {
       if (gateWait.runId && (gateWait.ownerStepId || gateWait.stepId)) {
         this.options.gateRegistry.abort(registryWorkspaceRoot, gateWait.runId, gateWait.ownerStepId ?? gateWait.stepId!, message)
       }
-      await vscode.window.showErrorMessage(`Bob ワークフローの実行に失敗しました。実行診断を確認してください。詳細: ${message}`)
+      await vscode.window.showErrorMessage(`Bob workflow execution failed: ${message}`)
       return undefined
     }
   }
@@ -295,11 +299,11 @@ export class BobWorkflowEngineRunner {
             includeState: stepDefinition?.includeState ?? []
           }))
           const result = extractSubagentResult(value)
-          if (!result) throw new Error("Bob サブエージェントから結果が返りませんでした。もう一度実行してください。")
+          if (!result) throw new Error("Bob subagent returned no result.")
           return result
         }
         if (this.options.agentProvider) return this.options.agentProvider.run(input)
-        throw new Error("Bob の startSubagent API を利用できません。Bob 拡張機能の状態を確認してください。")
+        throw new Error("Bob startSubagent API is not available.")
       }
     }
   }
@@ -449,7 +453,7 @@ export class BobWorkflowEngineRunner {
           bobTaskSyncRegistry.registerTask(registryWorkspaceRoot, run.runId, step.id, task)
         }
         await task.sendMessage?.([
-          "ワークフロー実行を一時停止しました。",
+          "Workflow run paused.",
           "",
           `- runId: ${run.runId}`,
           `- currentStep: ${run.currentStep ?? "none"}`,
@@ -500,7 +504,7 @@ export class BobWorkflowEngineRunner {
     try {
       await vscode.commands.executeCommand("workflowRegister.openOperationHub", { runId: run.runId, stepId: step?.id, reason })
     } catch {
-      await vscode.window.showWarningMessage("Bob 操作センターを自動表示できませんでした。Explorer から「Bob 操作センター」を開いてください。")
+      await vscode.window.showWarningMessage("Operation Hub を自動表示できませんでした。Explorer から Bob Operation Hub を開いてください。")
     }
   }
 
@@ -532,6 +536,6 @@ function stateEntriesFromRecord(state: Record<string, string>, keys: string[]): 
 function resultCommandForStep(step: EngineStep | undefined): string | undefined {
   if (!step || !("result" in step)) return undefined
   return step.result?.sinks.find(
-    (sink): sink is Extract<ResultSinkDefinition, { type: "command" }> => sink.type === "command"
+    (sink): sink is Extract<ResultSinkDefinition, { type: "command" }> => isCommandResultSink(sink)
   )?.command
 }

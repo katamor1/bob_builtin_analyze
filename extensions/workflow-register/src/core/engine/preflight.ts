@@ -11,6 +11,25 @@ export interface WorkflowPreflightCheckInput {
 export type WorkflowPreflightCheckResult = boolean | string | { ok: boolean; error?: string }
 
 export type WorkflowPreflightChecks = Record<string, (input: WorkflowPreflightCheckInput) => Promise<WorkflowPreflightCheckResult> | WorkflowPreflightCheckResult>
+export type WorkflowPreflightCheck = WorkflowPreflightChecks[string]
+
+export interface WorkflowPreflightCheckResolver {
+  getPreflightCheck(checkId: string): WorkflowPreflightCheck | undefined
+}
+
+export function createPreflightCheckResolver(
+  overrides: WorkflowPreflightChecks,
+  contributions?: WorkflowPreflightCheckResolver,
+  defaults: WorkflowPreflightChecks = {}
+): WorkflowPreflightCheckResolver {
+  return Object.freeze({
+    getPreflightCheck(checkId: string): WorkflowPreflightCheck | undefined {
+      return contributions?.getPreflightCheck(checkId)
+        ?? (Object.prototype.hasOwnProperty.call(overrides, checkId) ? overrides[checkId] : undefined)
+        ?? (Object.prototype.hasOwnProperty.call(defaults, checkId) ? defaults[checkId] : undefined)
+    }
+  })
+}
 
 export interface EvaluateWorkflowPreflightInput {
   workflow: CoreWorkflowDefinition
@@ -18,6 +37,7 @@ export interface EvaluateWorkflowPreflightInput {
   workspaceAvailable?: () => Promise<boolean> | boolean
   fileExists?: (relativePath: string) => Promise<boolean> | boolean
   preflightChecks: WorkflowPreflightChecks
+  preflightCheckResolver?: WorkflowPreflightCheckResolver
   strictPreflightChecks: boolean
 }
 
@@ -51,7 +71,8 @@ async function evaluatePreflightEntry(input: EvaluateWorkflowPreflightInput, pre
   }
   for (const file of preflight.files ?? []) await checkFile(file, input.fileExists, errors, warnings, required && policy === "stop", preflight.id)
   for (const checkId of preflight.checks ?? []) {
-    const check = input.preflightChecks[checkId]
+    const check = input.preflightCheckResolver?.getPreflightCheck(checkId)
+      ?? (Object.prototype.hasOwnProperty.call(input.preflightChecks, checkId) ? input.preflightChecks[checkId] : undefined)
     if (!check) {
       if (input.strictPreflightChecks) fail(`Unsupported preflight check: ${checkId}`)
       else warnings.push(`${preflight.id}: skipped unsupported preflight check: ${checkId}`)

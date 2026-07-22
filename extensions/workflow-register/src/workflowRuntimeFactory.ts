@@ -13,7 +13,8 @@ import type {
 } from "./bobWorkflowTypes"
 import type { ActionRegistry } from "./core/actionRegistry"
 import { normalizeAutomaticPauseSettings } from "./core/automaticPauseSettings"
-import { createCommandAgentProvider } from "./core/agentProvider"
+import { createCommandAgentProvider, createLiveAgentProvider } from "./core/agentProvider"
+import type { ContributionRuntimeResolver } from "./core/contributionRegistry"
 import { WorkflowEngine } from "./core/engine"
 import type { ManualCompletionInput, ManualCompletionResult, WorkflowEngineOptions } from "./core/engine"
 import type { AgentProvider } from "./core/model"
@@ -35,6 +36,7 @@ export interface TaskSnapshotSettings {
 export interface WorkflowRuntimeFactoryOptions {
   engineVersion: string
   actionRegistry: ActionRegistry
+  contributionResolver: ContributionRuntimeResolver
   customResultSinks: Array<{ type: string; handler: Parameters<ResultSinkRegistry["register"]>[1] }>
   stepRuntime: StepRuntime
   agentProvider: () => AgentProvider | undefined
@@ -53,8 +55,9 @@ export class WorkflowRuntimeFactory {
       resultSinks: this.createResultSinks(workspaceRoot),
       runStore: this.createRunStore(workspaceRoot),
       runControlStore: this.createRunControlStore(workspaceRoot),
-      agentProvider: agentProvider ?? this.options.agentProvider() ?? this.createCommandAgentProvider(),
+      agentProvider: this.createRuntimeAgentProvider(agentProvider),
       preflightChecks: this.createPreflightChecks(workspaceRoot),
+      preflightCheckResolver: this.options.contributionResolver,
       manualCompletion: (input) => this.holdStandaloneManualStep(input),
       recoverResultText: snapshotStore
         ? (input) => recoverResultTextFromSnapshots(snapshotStore, input.workflow, input.run, input.step)
@@ -72,7 +75,8 @@ export class WorkflowRuntimeFactory {
       runControlStore: (workspaceRoot) => this.createRunControlStore(workspaceRoot),
       taskSnapshotStore: (workspaceRoot) => this.createTaskSnapshotStore(workspaceRoot),
       preflightChecks: (workspaceRoot) => this.createPreflightChecks(workspaceRoot),
-      agentProvider: this.options.agentProvider() ?? this.createCommandAgentProvider(),
+      preflightCheckResolver: this.options.contributionResolver,
+      agentProvider: this.createRuntimeAgentProvider(),
       stepRuntime: this.options.stepRuntime,
       gateRegistry: this.options.gateRegistry,
       onManualStepHeld: this.options.onManualStepHeld,
@@ -131,6 +135,16 @@ export class WorkflowRuntimeFactory {
     })
   }
 
+  private createRuntimeAgentProvider(explicitProvider?: AgentProvider): AgentProvider {
+    if (explicitProvider) return explicitProvider
+    const configuredProvider = this.createCommandAgentProvider()
+    return createLiveAgentProvider(() => (
+      this.options.contributionResolver.getAgentProvider()
+      ?? this.options.agentProvider()
+      ?? configuredProvider
+    ))
+  }
+
   private createResultSinks(workspaceRoot: string): ResultSinkRegistry {
     const registry = createDefaultResultSinkRegistry({
       workspaceRoot,
@@ -138,7 +152,9 @@ export class WorkflowRuntimeFactory {
       executeCommand: (command, ...args) => {
         requireTrustedCommandExecution("write command result sink")
         return vscode.commands.executeCommand(command, ...args)
-      }
+      },
+      // Task 5 binds built-in contribution lifecycles through this same resolver after manifest migration.
+      contributionResolver: this.options.contributionResolver
     })
     for (const sink of this.options.customResultSinks) registry.register(sink.type, sink.handler)
     return registry

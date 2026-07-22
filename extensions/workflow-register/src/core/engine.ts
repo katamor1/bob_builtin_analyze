@@ -2,6 +2,7 @@ import * as path from "path"
 import { ActionRegistry } from "./actionRegistry"
 import { approveHeldWorkflowStep } from "./approvalGuardrails"
 import {
+  createPreflightCheckResolver,
   createDefaultPreflightChecks,
   evaluatePreflight,
   exists
@@ -89,7 +90,7 @@ export class WorkflowEngine {
   private readonly agentProvider?: AgentProvider
   private readonly workspaceAvailable?: WorkflowEngineOptions["workspaceAvailable"]
   private readonly fileExists?: WorkflowEngineOptions["fileExists"]
-  private readonly preflightChecks: NonNullable<WorkflowEngineOptions["preflightChecks"]>
+  private readonly preflightChecks: import("./engine/preflight").WorkflowPreflightCheckResolver
   private readonly strictPreflightChecks: boolean
   private readonly hooks: WorkflowExecutionHooks
   private readonly manualCompletion?: NonNullable<WorkflowEngineOptions["manualCompletion"]>
@@ -104,10 +105,11 @@ export class WorkflowEngine {
     this.agentProvider = options.agentProvider
     this.workspaceAvailable = options.workspaceAvailable ?? (workspaceRoot ? (() => true) : undefined)
     this.fileExists = options.fileExists ?? (workspaceRoot ? ((relativePath) => exists(path.join(workspaceRoot, relativePath))) : undefined)
-    this.preflightChecks = {
-      ...createDefaultPreflightChecks(workspaceRoot),
-      ...(options.preflightChecks ?? {})
-    }
+    this.preflightChecks = createPreflightCheckResolver(
+      options.preflightChecks ?? {},
+      options.preflightCheckResolver,
+      createDefaultPreflightChecks(workspaceRoot)
+    )
     this.strictPreflightChecks = options.strictPreflightChecks === true
     this.hooks = options.hooks ?? {}
     this.manualCompletion = options.manualCompletion
@@ -167,7 +169,8 @@ export class WorkflowEngine {
       run,
       workspaceAvailable: this.workspaceAvailable,
       fileExists: this.fileExists,
-      preflightChecks: this.preflightChecks,
+      preflightChecks: {},
+      preflightCheckResolver: this.preflightChecks,
       strictPreflightChecks: this.strictPreflightChecks
     })
     if (preflight.warnings.length > 0) run.state["workflow.preflightWarnings"] = JSON.stringify(preflight.warnings)

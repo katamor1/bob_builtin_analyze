@@ -1,5 +1,6 @@
 import { analyzeAuthoringReferences } from "./workflowAuthoringReferenceAnalysis"
 import type { ResultSinkDefinition, ResultSourceDefinition } from "./model"
+import { isCommandResultSink, isFileResultSink } from "./model"
 import { isReservedWorkflowStateKey } from "./stateKeys"
 import type { WorkflowAuthoringModel, WorkflowAuthoringStep } from "./workflowAuthoringModel"
 
@@ -206,14 +207,29 @@ function validateResultSinks(result: ResultSourceDefinition, diagnostics: StepDr
     diagnostics.push(warning("result.sinks.empty", "result step に sink がありません。結果をファイルや後続処理へ渡す必要があるか確認してください。", "result.sinks"))
   }
   sinks.forEach((sink: ResultSinkDefinition, index) => {
-    if (sink.type === "command") {
+    if (isCommandResultSink(sink)) {
       if (!nonEmpty(sink.command)) diagnostics.push(error("result.commandSink.command.required", `command sink #${index + 1} の command は必須です。`, `result.sinks[${index}].command`))
       return
     }
-    if (!nonEmpty(sink.path)) diagnostics.push(error("result.fileSink.path.required", `file sink #${index + 1} の path は必須です。`, `result.sinks[${index}].path`))
-    if (typeof sink.path === "string" && isWorkspaceEscapePath(sink.path)) diagnostics.push(error("result.fileSink.path.outsideWorkspace", `file sink #${index + 1} は workspace 外へ出ない相対パスを指定してください。`, `result.sinks[${index}].path`))
+    if (isFileResultSink(sink)) {
+      if (!nonEmpty(sink.path)) diagnostics.push(error("result.fileSink.path.required", `file sink #${index + 1} の path は必須です。`, `result.sinks[${index}].path`))
+      if (typeof sink.path === "string" && isWorkspaceEscapePath(sink.path)) diagnostics.push(error("result.fileSink.path.outsideWorkspace", `file sink #${index + 1} は workspace 外へ出ない相対パスを指定してください。`, `result.sinks[${index}].path`))
+      return
+    }
+    if (!CUSTOM_SINK_TYPE_PATTERN.test(sink.type) || sink.type === "command" || sink.type === "file") {
+      diagnostics.push(error("result.customSink.type.invalid", `custom sink #${index + 1} の type が不正です。`, `result.sinks[${index}].type`))
+    }
+    if (!CUSTOM_SINK_CONTRACT_PATTERN.test(sink.contractVersion) || sink.contractVersion.length > 256) {
+      diagnostics.push(error("result.customSink.contractVersion.invalid", `custom sink #${index + 1} の contractVersion が不正です。`, `result.sinks[${index}].contractVersion`))
+    }
+    if (!sink.payload || typeof sink.payload !== "object" || Array.isArray(sink.payload)) {
+      diagnostics.push(error("result.customSink.payload.invalid", `custom sink #${index + 1} の payload は object が必須です。`, `result.sinks[${index}].payload`))
+    }
   })
 }
+
+const CUSTOM_SINK_TYPE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/
+const CUSTOM_SINK_CONTRACT_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*(?:\/[A-Za-z0-9][A-Za-z0-9._-]*)*\/v[1-9][0-9]*$/
 
 function analyzeOriginalFieldChanges(
   model: WorkflowAuthoringModel,

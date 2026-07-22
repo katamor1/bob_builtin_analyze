@@ -282,5 +282,10 @@ export function normalizeResult(value: unknown): ResultSourceDefinition {
 
 export function normalizeSink(record: Record<string, unknown>): ResultSinkDefinition {
   if (record.type === "command") return { type: "command", command: requiredString(record, "command"), args: listField(record, "args") }
-  return { type: "file", path: requiredString(record, "path"), encoding: optionalString(record, "encoding") as BufferEncoding | undefined }
+  if (record.type === "file") return { type: "file", path: requiredString(record, "path"), encoding: optionalString(record, "encoding") as BufferEncoding | undefined }
+  return {
+    type: requiredString(record, "type"),
+    contractVersion: requiredString(record, "contractVersion"),
+    payload: asRecord(record.payload)
+  }
 }

@@ -1,6 +1,8 @@
 import {
   CoreWorkflowDefinition,
   EngineStep,
+  isCommandResultSink,
+  isFileResultSink,
   ResultSinkDefinition,
   ResultSourceDefinition,
   WorkflowTransitionConditionDefinition
@@ -354,9 +356,27 @@ function validateResultSource(
 }
 
 function validateResultSink(stepId: string, sink: ResultSinkDefinition, diagnostics: WorkflowDiagnostic[], filePath: string): void {
-  if (sink.type === "command" && !sink.command.trim()) diagnostics.push(error(filePath, `Step '${stepId}' command result sink has no command.`))
-  if (sink.type === "file" && !sink.path.trim()) diagnostics.push(error(filePath, `Step '${stepId}' file result sink has no path.`))
+  if (isCommandResultSink(sink)) {
+    if (!sink.command.trim()) diagnostics.push(error(filePath, `Step '${stepId}' command result sink has no command.`))
+    return
+  }
+  if (isFileResultSink(sink)) {
+    if (!sink.path.trim()) diagnostics.push(error(filePath, `Step '${stepId}' file result sink has no path.`))
+    return
+  }
+  if (!CUSTOM_SINK_TYPE_PATTERN.test(sink.type) || sink.type === "command" || sink.type === "file") {
+    diagnostics.push(error(filePath, `Step '${stepId}' custom result sink has an invalid type.`))
+  }
+  if (!CUSTOM_SINK_CONTRACT_PATTERN.test(sink.contractVersion) || sink.contractVersion.length > 256) {
+    diagnostics.push(error(filePath, `Step '${stepId}' custom result sink has an invalid contractVersion.`))
+  }
+  if (!sink.payload || typeof sink.payload !== "object" || Array.isArray(sink.payload)) {
+    diagnostics.push(error(filePath, `Step '${stepId}' custom result sink payload must be an object.`))
+  }
 }
+
+const CUSTOM_SINK_TYPE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/
+const CUSTOM_SINK_CONTRACT_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*(?:\/[A-Za-z0-9][A-Za-z0-9._-]*)*\/v[1-9][0-9]*$/
 
 function validateArtifacts(workflow: CoreWorkflowDefinition, stepIds: Set<string>, diagnostics: WorkflowDiagnostic[], filePath: string): void {
   const artifactIds = new Set<string>()
@@ -484,8 +504,8 @@ function validateTemplatePlaceholders(workflow: CoreWorkflowDefinition, diagnost
     if ((step.type === "agent" || step.type === "result") && step.result) {
       if (step.result.source === "literal") warnBareTemplatePlaceholders(step.result.text, `step '${step.id}' result.text`, diagnostics, filePath)
       for (const sink of step.result.sinks) {
-        if (sink.type === "file") warnBareTemplatePlaceholders(sink.path, `step '${step.id}' file sink path`, diagnostics, filePath)
-        if (sink.type === "command") warnBareTemplateValues(sink.args, `step '${step.id}' command sink args`, diagnostics, filePath)
+        if (isFileResultSink(sink)) warnBareTemplatePlaceholders(sink.path, `step '${step.id}' file sink path`, diagnostics, filePath)
+        if (isCommandResultSink(sink)) warnBareTemplateValues(sink.args, `step '${step.id}' command sink args`, diagnostics, filePath)
       }
     }
   }

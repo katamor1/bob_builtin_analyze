@@ -35,6 +35,15 @@ export interface ContributionHandlerSet {
   agentProvider?: AgentProvider
 }
 
+/** Internal runtime lookup surface. This is intentionally not part of the public extension API. */
+export interface ContributionRuntimeResolver {
+  getActionProvider(id: string): ActionProvider | undefined
+  getPreflightCheck(id: string): PreflightCheckHandler | undefined
+  getResultSink(type: string): ResultSinkHandler | undefined
+  getResultSinkContractVersion(type: string): string | undefined
+  getAgentProvider(id?: string): AgentProvider | undefined
+}
+
 export type ContributionDeclaration =
   | ActionProviderContribution
   | PreflightCheckContribution

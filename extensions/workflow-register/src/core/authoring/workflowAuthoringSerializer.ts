@@ -1,5 +1,7 @@
 import { WorkflowAuthoringInput, WorkflowAuthoringModel, WorkflowAuthoringStep } from "./workflowAuthoringModel"
 import {
+  isCommandResultSink,
+  isFileResultSink,
   ResultSinkDefinition,
   ResultSourceDefinition,
   WorkflowApprovalRuleDefinition,
@@ -197,8 +199,9 @@ function serializeResult(result: ResultSourceDefinition): Record<string, unknown
 }
 
 function serializeSink(sink: ResultSinkDefinition): Record<string, unknown> {
-  if (sink.type === "command") return compactObject({ type: "command", command: sink.command, args: sink.args && sink.args.length > 0 ? sink.args : undefined })
-  return compactObject({ type: "file", path: sink.path, encoding: sink.encoding })
+  if (isCommandResultSink(sink)) return compactObject({ type: "command", command: sink.command, args: sink.args && sink.args.length > 0 ? sink.args : undefined })
+  if (isFileResultSink(sink)) return compactObject({ type: "file", path: sink.path, encoding: sink.encoding })
+  return { type: sink.type, contractVersion: sink.contractVersion, payload: sink.payload }
 }
 
 function requiresOrUndefined(requires: WorkflowRequiresDefinition | undefined): WorkflowRequiresDefinition | undefined {

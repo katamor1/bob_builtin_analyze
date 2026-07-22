@@ -11,11 +11,19 @@ interface RegisteredActionProvider {
   token: symbol
 }
 
+interface ContributionActionResolver {
+  getActionProvider(id: string): ActionProvider | undefined
+}
+
 const DEFAULT_PROVIDER_SOURCE_ID = "anonymous"
 const WORKFLOW_REGISTER_PROVIDER_SOURCE_ID = "local.workflow-register"
 
 export class ActionRegistry {
   private readonly providers = new Map<string, RegisteredActionProvider>()
+
+  constructor(private readonly options: {
+    contributionResolver?: ContributionActionResolver
+  } = {}) {}
 
   register(provider: ActionProvider): ActionProviderRegistration {
     const id = provider.id.trim()
@@ -52,9 +60,10 @@ export class ActionRegistry {
 
   async execute(providerId: string, input: ActionExecutionInput): Promise<ActionExecutionResult> {
     const registration = this.providers.get(providerId)
-    if (!registration) return { ok: false, error: `Unsupported action provider: ${providerId}` }
+    const provider = this.options.contributionResolver?.getActionProvider(providerId) ?? registration?.provider
+    if (!provider) return { ok: false, error: `Unsupported action provider: ${providerId}` }
     try {
-      const value = await Promise.resolve(registration.provider.execute(input))
+      const value = await Promise.resolve(provider.execute(input))
       return { ok: true, value }
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : String(error) }
@@ -65,10 +74,11 @@ export class ActionRegistry {
 export interface DefaultActionRegistryOptions {
   executeCommand: (command: string, ...args: unknown[]) => Promise<unknown> | unknown
   isWorkspaceTrusted?: WorkspaceTrustCheck
+  contributionResolver?: ContributionActionResolver
 }
 
 export function createDefaultActionRegistry(options?: DefaultActionRegistryOptions): ActionRegistry {
-  const registry = new ActionRegistry()
+  const registry = new ActionRegistry({ contributionResolver: options?.contributionResolver })
   registry.register({
     ...createMechanicalChecksActionProvider({
       isWorkspaceTrusted: options?.isWorkspaceTrusted
@@ -80,7 +90,7 @@ export function createDefaultActionRegistry(options?: DefaultActionRegistryOptio
       id: "vscode.executeCommand",
       sourceId: WORKFLOW_REGISTER_PROVIDER_SOURCE_ID,
       execute: (input) => {
-        requireWorkspaceTrust(options.isWorkspaceTrusted, "VS Code コマンドを実行")
+        requireWorkspaceTrust(options.isWorkspaceTrusted, "running VS Code commands")
         const args = argumentList(input.args)
         const command = args.shift()
         if (typeof command !== "string" || !command.trim()) {

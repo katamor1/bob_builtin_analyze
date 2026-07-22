@@ -8,10 +8,11 @@ import type {
   WorkflowDefinition,
   WorkflowStepDefinition
 } from "./bobWorkflowTypes"
-import type {
-  CoreWorkflowDefinition,
-  EngineStep,
-  ResultSinkDefinition
+import {
+  isCommandResultSink,
+  type CoreWorkflowDefinition,
+  type EngineStep,
+  type ResultSinkDefinition
 } from "./core/model"
 
 export function adaptCoreWorkflowForBob(core: CoreWorkflowDefinition, file: vscode.Uri): WorkflowDefinition {
@@ -111,7 +112,7 @@ function workflowStepDefinitionFromEngineStep(step: EngineStep): WorkflowStepDef
 function commandResultSink(step: EngineStep): Extract<ResultSinkDefinition, { type: "command" }> | undefined {
   const result = "result" in step ? step.result : undefined
   return result?.sinks.find(
-    (sink): sink is Extract<ResultSinkDefinition, { type: "command" }> => sink.type === "command"
+    (sink): sink is Extract<ResultSinkDefinition, { type: "command" }> => isCommandResultSink(sink)
   )
 }
 

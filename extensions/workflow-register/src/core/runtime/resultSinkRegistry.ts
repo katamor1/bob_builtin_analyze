@@ -1,6 +1,12 @@
 import * as fs from "fs/promises"
 import * as path from "path"
-import { ResultSinkDefinition, ResultSinkWriteInput, ResultSinkWriteResult } from "../model"
+import {
+  isCommandResultSink,
+  isFileResultSink,
+  ResultSinkDefinition,
+  ResultSinkWriteInput,
+  ResultSinkWriteResult
+} from "../model"
 import { requireWorkspaceTrust, type WorkspaceTrustCheck } from "../workspaceTrust"
 import { writeWorkspaceFilesAtomically } from "./workspaceFileTransaction"
 
@@ -15,9 +21,18 @@ type FileTransactionHandler = (
   commitState: FileTransactionCommit
 ) => Promise<ResultSinkWriteResult>
 
+interface ContributionResultSinkResolver {
+  getResultSink(type: string): SinkHandler | undefined
+  getResultSinkContractVersion(type: string): string | undefined
+}
+
 export class ResultSinkRegistry {
   private readonly handlers = new Map<string, SinkHandler>()
   private fileTransactionHandler?: FileTransactionHandler
+
+  constructor(private readonly options: {
+    contributionResolver?: ContributionResultSinkResolver
+  } = {}) {}
 
   register(type: string, handler: SinkHandler): void {
     if (!type.trim()) throw new Error("Result sink type is required.")
@@ -63,8 +78,20 @@ export class ResultSinkRegistry {
   }
 
   async write(sink: ResultSinkDefinition, input: ResultSinkWriteInput): Promise<ResultSinkWriteResult> {
-    const handler = this.handlers.get(sink.type)
+    const builtInShape = isCommandResultSink(sink) || isFileResultSink(sink)
+    const contributionHandler = this.options.contributionResolver?.getResultSink(sink.type)
+    const localHandler = this.handlers.get(sink.type)
+    const handler = contributionHandler ?? (builtInShape ? localHandler : undefined)
     if (!handler) return { ok: false, error: `Unsupported result sink: ${sink.type}` }
+    if (contributionHandler && !builtInShape) {
+      const expectedVersion = this.options.contributionResolver?.getResultSinkContractVersion(sink.type)
+      if (expectedVersion !== sink.contractVersion) {
+        return {
+          ok: false,
+          error: `Result sink contract version mismatch for '${sink.type}': received '${sink.contractVersion}', expected '${expectedVersion ?? "unknown"}'.`
+        }
+      }
+    }
     try {
       return await handler(sink, input)
     } catch (error) {
@@ -78,15 +105,16 @@ export interface DefaultResultSinkRegistryOptions {
   executeCommand: (command: string, ...args: unknown[]) => Promise<unknown> | unknown
   allowedCommandSinks?: string[]
   isWorkspaceTrusted?: WorkspaceTrustCheck
+  contributionResolver?: ContributionResultSinkResolver
 }
 
 export function createDefaultResultSinkRegistry(options: DefaultResultSinkRegistryOptions): ResultSinkRegistry {
   const allowedCommandSinks = new Set(options.allowedCommandSinks ?? ["bobBazaar.captureReviewResult"])
-  const registry = new ResultSinkRegistry()
+  const registry = new ResultSinkRegistry({ contributionResolver: options.contributionResolver })
 
   registry.register("command", async (sink, input) => {
-    if (sink.type !== "command") return { ok: false, error: `Invalid command sink: ${sink.type}` }
-    requireWorkspaceTrust(options.isWorkspaceTrusted, "コマンド結果を書き込む")
+    if (!isCommandResultSink(sink)) return { ok: false, error: `Invalid command sink: ${sink.type}` }
+    requireWorkspaceTrust(options.isWorkspaceTrusted, "writing command result sink")
     if (!allowedCommandSinks.has(sink.command)) return { ok: false, error: `Unsupported result command: ${sink.command}` }
     const value = await Promise.resolve(options.executeCommand(sink.command, input.text, ...(sink.args ?? []), commandContext(input, options.workspaceRoot)))
     const reportedError = commandReportedError(value)
@@ -95,8 +123,8 @@ export function createDefaultResultSinkRegistry(options: DefaultResultSinkRegist
   })
 
   registry.register("file", async (sink, input) => {
-    if (sink.type !== "file") return { ok: false, error: `Invalid file sink: ${sink.type}` }
-    requireWorkspaceTrust(options.isWorkspaceTrusted, "ファイルへ結果を書き込む")
+    if (!isFileResultSink(sink)) return { ok: false, error: `Invalid file sink: ${sink.type}` }
+    requireWorkspaceTrust(options.isWorkspaceTrusted, "writing file result sink")
     const target = resolveWorkspacePath(options.workspaceRoot, renderTemplate(sink.path, input))
     await fs.mkdir(path.dirname(target), { recursive: true })
     await fs.writeFile(target, input.text, { encoding: sink.encoding ?? "utf8" })
@@ -105,7 +133,7 @@ export function createDefaultResultSinkRegistry(options: DefaultResultSinkRegist
 
   registry.registerFileTransaction(async (writes, commitState) => {
     for (const write of writes) {
-      requireWorkspaceTrust(options.isWorkspaceTrusted, "ファイルへ結果を書き込む")
+      requireWorkspaceTrust(options.isWorkspaceTrusted, "writing file result sink")
       if (write.sink.type !== "file") return { ok: false, error: `Invalid file transaction sink: ${write.sink.type}` }
     }
     await writeWorkspaceFilesAtomically(options.workspaceRoot, writes.map((write) => ({
