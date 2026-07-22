@@ -55,7 +55,7 @@ node --test test/workflowContractV2RunProvenance.test.js test/workflowRunProvena
 
 - Create: `extensions/workflow-register/src/core/contractV2/providerInvocation.ts`
 - Create: `extensions/workflow-register/test/workflowContractV2ProviderInvocation.test.js`
-- Modify: `extensions/workflow-register/src/core/actionRegistry.ts`
+- Modify: `extensions/workflow-register/src/core/contractV2/providerRegistry.ts`
 - Modify: `extensions/workflow-register/src/core/engine/stepExecutor.ts`
 - Modify: `extensions/workflow-register/src/core/reportedActionError.ts`
 
@@ -69,22 +69,35 @@ invokeCompiledWorkflowProvider(input: {
   readonly signal: AbortSignal
   readonly attempt: WorkflowAttemptStaging
 }): Promise<CompiledProviderInvocationResult>
+
+// Module-internal in providerRegistry.ts; never exported from contractV2/index.ts.
+invokeBoundWorkflowProviderDispatch(
+  handle: BoundWorkflowProviderDispatchHandle,
+  input: WorkflowProviderDispatchInput
+): Promise<unknown> | unknown
 ```
+
+`invokeBoundWorkflowProviderDispatch` is the sole consumer of F6's bound-handle `WeakMap`. It validates only the private handle brand, throws `TypeError` for a forged/lookalike handle, and calls the captured dispatch exactly once with `input`, returning its exact synchronous value or promise. It performs no input/output/error validation, catch or error conversion, retry, idempotency decision, artifact operation, state mutation, or commit. It is imported only by `providerInvocation.ts`; architecture tests reject any barrel or external import. The surrounding `invokeCompiledWorkflowProvider` layer validates before calling the bridge, awaits/catches the single result, validates the returned/thrown envelope, and alone decides retry and acceptance.
+
+Before the bridge call, R2 validates and F1-freezes `value`, then freezes an idempotency variant exactly matching the bound declaration: `{ mode: "idempotent" }`, `{ mode: "key-required", key }` with the runtime-issued stable key, or `{ mode: "non-idempotent" }`. It freezes the matching effect variant: `{ kind: "none" }`, `{ kind: "workspace-write", artifacts }`, or `{ kind: "external" }`. Only the workspace variant contains the frozen `WorkflowProviderArtifactWriter`; its sole `writeArtifact({ id, bytes })` method snapshots `Uint8Array` bytes immediately on entry into attempt staging and exposes no read/path/promote/commit surface. External dispatch is itself the registered adapter and receives no writer. The bridge forwards this frozen ABI input unchanged. A synchronous throw or rejected promise is caught only by `providerInvocation.ts` and becomes unknown input to the bound error-schema validator.
 
 - [ ] RED: invalid input returns `WF2_PROVIDER_INPUT_INVALID`, calls the adapter zero times, writes no attempt output, and makes no run-state mutation.
 - [ ] RED: valid input plus invalid output returns `WF2_PROVIDER_OUTPUT_INVALID`; the adapter is called once but success/result state and artifact commit counts remain zero.
 - [ ] RED: a value contract validates/detaches canonical output and enforces the 16,777,216-byte bound. A unit contract accepts only `undefined`, creates no committed-output id, and rejects every JSON/non-`undefined` return as `WF2_PROVIDER_OUTPUT_INVALID` with zero success/artifact commit.
 - [ ] RED: thrown/reported errors matching the bound error schema produce the typed failure path; malformed errors produce `WF2_PROVIDER_ERROR_INVALID` without persisting source-controlled fields.
-- [ ] RED: enforce the bound side-effect/idempotency contract: `none` receives no writer/effect capability, `workspace-write` requires `workflow.effect.workspace-write` and receives only attempt staging, `external` requires `workflow.effect.external`, identical-key retry is the only automatic `key-required` retry, and an ambiguous `non-idempotent` attempt fails closed without redispatch.
-- [ ] RED: mutate/dispose/re-register the live registry after F6 snapshot/P4 compilation and prove invocation uses the lease handle's exact private dispatch identity, never re-resolves a new version or reads the live registry.
+- [ ] RED: enforce the bound side-effect/idempotency contract: `none` forbids both reserved capabilities and receives no writer/effect API; `workspace-write` requires `workflow.effect.workspace-write`, forbids `workflow.effect.external`, and receives only attempt staging; `external` requires `workflow.effect.external` and forbids `workflow.effect.workspace-write`; identical-key retry is the only automatic `key-required` retry, and an ambiguous `non-idempotent` attempt fails closed without redispatch.
+- [ ] RED: assert the exact frozen dispatch ABI for all three idempotency and effect variants. Prove only workspace-write receives the frozen one-method writer; mutation after `writeArtifact` entry cannot change staged bytes; no variant exposes path/read/promote/commit; and thrown/rejected unknown reaches error-envelope validation without bridge conversion.
+- [ ] RED: mutate/dispose/re-register the live registry after F6 snapshot/P4 compilation and prove the internal bridge invokes the handle's exact captured dispatch identity once, never re-resolves a version or reads the live registry. Reject a forged/lookalike handle with `TypeError` and zero dispatch calls. Prove the bridge is not barrel-exported and has no validation/catch/retry/artifact/state/commit behavior.
+- [ ] RED: require a live lease from the exact runtime `WorkflowCompilerEnvironment` namespace. Authoring-validation/evidence `getOrCompile` handles, equal-digest handles from another environment object, released leases, and forged leases fail before the bridge and produce zero dispatch calls.
 - [ ] RED: reject proxy/accessor/exotic/sparse provider values before validator/source behavior and prove validation returns the F1-frozen detached value.
-- [ ] GREEN: look up the compiled private validator set by handle brand, validate input before adapter call, snapshot output/error once, and return only staged detached data.
+- [ ] GREEN: add the module-internal bridge beside F6's private handle `WeakMap`; keep it out of `contractV2/index.ts`. In `providerInvocation.ts`, require a live runtime lease, look up the compiled private validator set, validate/freeze value and exact ABI discriminants before the one bridge call, catch/validate its output or error once, and return only staged detached data. Authoring/evidence handles have no lease and cannot enter this path.
 - [ ] Verify:
 
 ```bash
 cd extensions/workflow-register
 npm run compile
 node --test test/workflowContractV2ProviderInvocation.test.js test/actionRegistry.test.js test/stepRuntimeCompletion.test.js
+npm run architecture:policy
 ```
 
 **Commit:** `feat(workflow): validate bound provider invocations`
