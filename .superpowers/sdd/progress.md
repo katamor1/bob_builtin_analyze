@@ -76,8 +76,10 @@
   - GitHub checkpoint: `codex/three-extension-p1-release-gates` at `34418c9c`; PR and `main` unchanged.
 - Task 7: complete — commits `6159d2f`, `3968ba0`, and `563baec`; initial module-missing RED 0/1, review-hardening RED 4/6, and manifest-contract RED 5/6 all reached final discovery 6/6 and cumulative discovery/manifest 38/38 GREEN. Compile, dependency 5/5, 225-file source/architecture policies, and `git diff --check` PASS. Independent final review: Spec compliant and Approved with Critical 0 / Important 0 / Minor 0.
   - Recovery inventory: six tracked workflows (four claims, two owned exclusions); no fixed roots or minimum count. The pre-existing strict contract file remains 1/7 because the partial recovery checkout lacks catalog/template assets, so no full contract-suite PASS is claimed.
-- Tasks 8–42: pending.
-- Next task gate: implement Task 8 deterministic contribution catalog generation exclusively from validated manifests and content digests.
+- Task 8: complete — commits `de438d9`, `6ef2f44`, `92b4d8f`, and `cb11d76`; initial module-missing RED 0/1 and review-hardening RED 2/14 reached final catalog/manifest/aggregate/discovery 53/53 GREEN. The generator parses and hashes one immutable manifest byte snapshot, snapshots untrusted metadata and provenance once, rejects missing declared content, enforces global ID and contract-version uniqueness, emits a closed deterministic schema-valid catalog, and removes legacy source-regex/fixed-catalog dependence. Compile, inline workflow fixtures 2/2, dependency 5/5, 227-file source/architecture policies, and `git diff --check` PASS. Independent final review: Approved with Critical 0 / Important 0 / Minor 0.
+  - Recovery limitation: the changed strict contract file is 2/5; the remaining three failures are absent companion packages/templates/provenance. No fallback bytes, digest fabrication, or full contract-suite PASS is claimed.
+- Tasks 9–42: pending.
+- Next task gate: implement Task 9 strict compile resolution for providers, preflights, and result sinks against the generated catalog.
 - Task completion rule: focused RED/GREEN evidence, relevant package verification, committed implementation, and independent full-range review with Critical 0 / Important 0.
 - Release completion rule: exact same-commit Ubuntu and Windows traceability plus installed-VSIX smoke evidence, complete budget/workflow/governance reports, and a semantically GO `p1-release-readiness.json`.
 

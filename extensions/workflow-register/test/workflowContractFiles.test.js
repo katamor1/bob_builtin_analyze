@@ -4,26 +4,14 @@ const path = require("node:path")
 const { test } = require("node:test")
 
 const { validateWorkflowText } = require("../out/core/workflowValidator")
-const { createWorkflowInventory } = require("../scripts/discover-tracked-workflows")
+const { buildWorkflowContributionCatalog } = require("../out/core/contributionCatalog")
+const { createWorkflowInventory, discoverContributionManifests } = require("../scripts/discover-tracked-workflows")
 
 const repoRoot = path.resolve(__dirname, "..", "..", "..")
-const providerCatalogPath = "docs/workflows/action-provider-contracts.json"
-const providerImplementationSourcePaths = [
-  "extensions/workflow-register/src/core/actionRegistry.ts",
-  "extensions/workflow-register/src/core/mechanicalChecks/actionProvider.ts",
-  "extensions/bob-bazaar-review/src/workflow/workflowProviders.ts",
-  "extensions/bob-code-consistency-review/src/workflowProviderRegistration.ts"
-]
 const packagePaths = [
   "extensions/workflow-register/package.json",
   "extensions/bob-bazaar-review/package.json",
   "extensions/bob-code-consistency-review/package.json"
-]
-const availablePreflightChecks = ["workspaceOpen", "bobWorkspaceInitialized", "bazaarRepository"]
-const contributionManifestPaths = [
-  "extensions/workflow-register/contracts/workflow-contributions.json",
-  "extensions/bob-bazaar-review/contracts/workflow-contributions.json",
-  "extensions/bob-code-consistency-review/contracts/workflow-contributions.json"
 ]
 const sampleExternalCommandAllowlist = readSampleExternalCommandAllowlist()
 
@@ -46,12 +34,11 @@ test("all tracked claimed workflow contracts are discovered and strict-clean", (
   const workflowPaths = createWorkflowInventory(repoRoot)
     .filter((entry) => entry.kind === "claim")
     .map((entry) => entry.path)
-  const providerIds = readActionProviderCatalogIds()
   const commandIds = discoverContributedCommandIds()
 
   for (const relativePath of workflowPaths) {
     const text = readRepoFile(relativePath)
-    const validation = validateStrictText(text, relativePath, providerIds)
+    const validation = validateStrictText(text, relativePath)
     assert.equal(validation.ok, true, `${relativePath}\n${formatDiagnostics(validation)}`)
     assertNestedCommandContracts(relativePath, validation.workflow, commandIds)
   }
@@ -62,50 +49,6 @@ test("integration workflow templates match their workspace mirrors", () => {
     const templateText = readRepoFile(templatePath)
     const mirrorText = readRepoFile(mirrorPath)
     assert.equal(mirrorText, templateText, `${mirrorPath} must match ${templatePath}`)
-  }
-})
-
-test("canonical provider catalog exactly matches extension registration sources", () => {
-  const catalogIds = readActionProviderCatalogIds()
-  const implementationIds = discoverImplementedActionProviderIds()
-
-  assert.deepEqual(implementationIds, catalogIds)
-  for (const expected of [
-    "vscode.executeCommand",
-    "workflowRegister.runMechanicalChecks",
-    "bobBazaar.openReviewGui",
-    "bobBazaar.collectReviewContext",
-    "bobBazaar.loadReviewRules",
-    "bobBazaar.captureReviewResult",
-    "bobBazaar.openRuleAuthoringGui",
-    "bobBazaar.loadRuleSourceIndex",
-    "bobBazaar.captureRuleEvidenceSelection",
-    "bobBazaar.loadSelectedRuleEvidence",
-    "bobBazaar.captureRuleProposal",
-    "bobBazaar.openRuleProposalTriageGui",
-    "bobBazaar.verifyRuleAuthoringApply",
-    "bobCodeConsistency.preprocess",
-    "bobCodeConsistency.captureBobOutput",
-    "bobCodeConsistency.validateOutput",
-    "bobCodeConsistency.triage"
-  ]) {
-    assert.ok(catalogIds.includes(expected), `Missing action provider contract: ${expected}`)
-  }
-})
-
-test("provider catalog has stable owners, unique ids, and no implicit implementation ids", () => {
-  const catalog = readProviderCatalog()
-  assert.deepEqual(Object.keys(catalog.providers).sort(), [
-    "local.bob-bazaar-review",
-    "local.bob-code-consistency-review",
-    "local.workflow-register"
-  ])
-
-  const allIds = Object.values(catalog.providers).flat()
-  assert.equal(new Set(allIds).size, allIds.length, "Action provider ids must be globally unique")
-  for (const id of allIds) {
-    assert.match(id, /^[A-Za-z0-9._-]+$/, `Invalid action provider id: ${id}`)
-    assert.equal(id, id.trim(), `Action provider id has outer whitespace: ${id}`)
   }
 })
 
@@ -150,7 +93,10 @@ steps:
           path: .bob/workflows/runs/{{run.id}}/context.json
 ---
 # Result runtime fields
-`, "test/fixtures/inline/WORKFLOW.md", ["sample.collect"])
+`, "test/fixtures/inline/WORKFLOW.md", {
+    availableActionProviders: ["sample.collect"],
+    availablePreflightChecks: []
+  })
 
   assert.equal(validation.ok, true, formatDiagnostics(validation))
   assert.equal(validation.workflow.engineSteps[1].prompt, "Save the collected context.")
@@ -175,39 +121,13 @@ steps:
           path: .bob/workflows/runs/{{run.id}}/done.txt
 ---
 # Result step without prompt
-`)
+`, "test/fixtures/inline/WORKFLOW.md", {
+    availableActionProviders: [],
+    availablePreflightChecks: []
+  })
 
   assert.equal(validation.ok, true, formatDiagnostics(validation))
 })
-
-function readActionProviderCatalogIds() {
-  const catalog = readProviderCatalog()
-  return [...new Set(Object.values(catalog.providers).flat())].sort()
-}
-
-function readProviderCatalog() {
-  const catalog = JSON.parse(readRepoFile(providerCatalogPath))
-  assert.equal(catalog.schema_version, "bob-action-provider-contracts/v1")
-  assert.ok(catalog.providers && typeof catalog.providers === "object" && !Array.isArray(catalog.providers))
-  for (const [owner, ids] of Object.entries(catalog.providers)) {
-    assert.match(owner, /^[A-Za-z0-9._-]+$/, `Invalid action provider owner: ${owner}`)
-    assert.ok(Array.isArray(ids), `Provider catalog entry must be an array: ${owner}`)
-    assert.ok(ids.every((id) => typeof id === "string"), `Provider catalog ids must be strings: ${owner}`)
-  }
-  return catalog
-}
-
-function discoverImplementedActionProviderIds() {
-  const result = new Set()
-  for (const relativePath of providerImplementationSourcePaths) {
-    const source = readRepoFile(relativePath)
-    for (const match of source.matchAll(/\bid:\s*"([A-Za-z0-9._-]+)"/g)) result.add(match[1])
-    for (const match of source.matchAll(/\b[A-Z0-9_]*ACTION_PROVIDER_ID\s*=\s*"([A-Za-z0-9._-]+)"/g)) {
-      result.add(match[1])
-    }
-  }
-  return [...result].sort()
-}
 
 function discoverContributedCommandIds() {
   const result = new Set()
@@ -249,7 +169,7 @@ function isDeclaredSampleExternalCommand(relativePath, workflow, commandId) {
 
 function readSampleExternalCommandAllowlist() {
   const allowlist = new Map()
-  for (const manifestPath of contributionManifestPaths) {
+  for (const manifestPath of discoverContributionManifestPaths()) {
     const manifest = JSON.parse(readRepoFile(manifestPath))
     for (const command of manifest.external_commands) {
       for (const workflowPath of command.workflow_paths) {
@@ -262,15 +182,41 @@ function readSampleExternalCommandAllowlist() {
   return allowlist
 }
 
-function validateStrictText(text, filePath = "test/fixtures/inline/WORKFLOW.md", providerIds = readActionProviderCatalogIds()) {
+function validateStrictText(text, filePath = "test/fixtures/inline/WORKFLOW.md", overrides = {}) {
+  const catalog = overrides.availableActionProviders && overrides.availablePreflightChecks
+    ? undefined
+    : readGeneratedContributionCatalog()
   return validateWorkflowText({
     sourceId: "workflow-register",
     filePath,
     text,
     strict: true,
-    availableActionProviders: providerIds,
-    availablePreflightChecks
+    availableActionProviders: overrides.availableActionProviders ?? catalog.action_providers.map((entry) => entry.id),
+    availablePreflightChecks: overrides.availablePreflightChecks ?? catalog.preflight_checks.map((entry) => entry.id)
   })
+}
+
+function readGeneratedContributionCatalog() {
+  return buildWorkflowContributionCatalog(discoverContributionManifestPaths().map((manifestPath) => {
+    const ownerDirectory = path.posix.dirname(path.posix.dirname(manifestPath))
+    const packagePath = path.join(repoRoot, ownerDirectory, "package.json")
+    const packageJson = fs.existsSync(packagePath)
+      ? JSON.parse(fs.readFileSync(packagePath, "utf8"))
+      : undefined
+    return {
+      manifestPath,
+      manifestContent: readRepoFile(manifestPath),
+      context: packageJson && {
+        expectedOwner: { id: `${packageJson.publisher}.${packageJson.name}`, version: packageJson.version },
+        ownerDirectory
+      },
+      readContent: (repositoryPath) => fs.readFileSync(path.join(repoRoot, repositoryPath), "utf8")
+    }
+  }))
+}
+
+function discoverContributionManifestPaths() {
+  return discoverContributionManifests(repoRoot).map((entry) => entry.path)
 }
 
 function formatDiagnostics(validation) {

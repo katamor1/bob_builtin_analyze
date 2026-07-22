@@ -318,6 +318,10 @@ The checkout was reconstructed from the plan's recovery base `8793804f2f99fd1d54
 
 **Commit:** `feat: generate workflow catalog from manifests`
 
+**Completion evidence (2026-07-23):** Complete in commits `de438d9`, `6ef2f44`, `92b4d8f`, and `cb11d76`. The initial module-missing RED was 0 PASS / 1 FAIL; review hardening then produced 2 PASS / 12 FAIL before implementation. The final byte-only generator parses and validates one immutable UTF-8 manifest snapshot, hashes that same snapshot, snapshots untrusted metadata/provenance exactly once, clones Buffer input, rejects unavailable declared content, enforces cross-owner ID and contract-version uniqueness, and emits a closed schema-valid deterministic catalog without VS Code imports or TypeScript parsing. Final-head compile, catalog/manifest/aggregate/discovery batch (53/53), inline workflow contract fixtures (2/2), dependency policy (5/5), architecture/source policies (227 TypeScript files each), and `git diff --check` pass. Independent final review: Approved with Critical 0 / Important 0 / Minor 0.
+
+**Recovery-checkout evidence:** One provenance-backed workflow-register manifest builds from real declared bytes. The changed strict contract file is 2 PASS / 3 FAIL because the reconstruction lacks companion package provenance and template assets; missing bytes are rejected rather than replaced with fabricated digest input, so no full contract-suite PASS is claimed.
+
 ## Task 9: Resolve providers, preflights, and sinks during strict compile
 
 **Files:** strict workflow contract validator/compiler integration and resolution tests.

@@ -1,0 +1,74 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://local.schemas/workflow-contribution-catalog.v1.schema.json",
+  "title": "Workflow contribution catalog v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "registry_api", "owners", "action_providers", "preflight_checks", "result_sinks", "agent_providers", "workflow_templates", "schemas"],
+  "properties": {
+    "schema_version": { "const": "workflow-contribution-catalog/v1" },
+    "registry_api": { "$ref": "#/definitions/registryRange" },
+    "owners": { "type": "array", "items": { "$ref": "#/definitions/owner" } },
+    "action_providers": { "type": "array", "items": { "$ref": "#/definitions/actionProvider" } },
+    "preflight_checks": { "type": "array", "items": { "$ref": "#/definitions/preflightCheck" } },
+    "result_sinks": { "type": "array", "items": { "$ref": "#/definitions/resultSink" } },
+    "agent_providers": { "type": "array", "items": { "$ref": "#/definitions/agentProvider" } },
+    "workflow_templates": { "type": "array", "items": { "$ref": "#/definitions/asset" } },
+    "schemas": { "type": "array", "items": { "$ref": "#/definitions/asset" } }
+  },
+  "definitions": {
+    "identifier": { "type": "string", "minLength": 1, "maxLength": 200, "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$" },
+    "contractVersion": { "type": "string", "minLength": 4, "maxLength": 256, "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*(?:/[A-Za-z0-9][A-Za-z0-9._-]*)*/v[1-9][0-9]*$" },
+    "ownerId": { "type": "string", "minLength": 3, "maxLength": 200, "pattern": "^[a-z0-9][a-z0-9-]*\\.[a-z0-9][a-z0-9-]*$" },
+    "semver": { "type": "string", "maxLength": 200, "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$" },
+    "registryVersion": { "type": "string", "maxLength": 64, "pattern": "^provider-registry/v[1-9][0-9]*$" },
+    "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "registryRange": {
+      "type": "object", "additionalProperties": false, "required": ["min", "max"],
+      "properties": { "min": { "$ref": "#/definitions/registryVersion" }, "max": { "$ref": "#/definitions/registryVersion" } }
+    },
+    "owner": {
+      "type": "object", "additionalProperties": false, "required": ["id", "version", "manifest_path", "manifest_sha256"],
+      "properties": {
+        "id": { "$ref": "#/definitions/ownerId" }, "version": { "$ref": "#/definitions/semver" },
+        "manifest_path": { "type": "string", "minLength": 1 }, "manifest_sha256": { "$ref": "#/definitions/digest" }
+      }
+    },
+    "actionProvider": {
+      "type": "object", "additionalProperties": false, "required": ["id", "contract_version", "input_schema", "output_schema", "error_codes", "owner"],
+      "properties": {
+        "id": { "$ref": "#/definitions/identifier" }, "contract_version": { "$ref": "#/definitions/contractVersion" },
+        "input_schema": { "$ref": "#/definitions/identifier" }, "output_schema": { "$ref": "#/definitions/identifier" },
+        "error_codes": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/definitions/identifier" } }, "owner": { "$ref": "#/definitions/ownerId" }
+      }
+    },
+    "preflightCheck": {
+      "type": "object", "additionalProperties": false, "required": ["id", "contract_version", "result_schema", "owner"],
+      "properties": {
+        "id": { "$ref": "#/definitions/identifier" }, "contract_version": { "$ref": "#/definitions/contractVersion" },
+        "result_schema": { "$ref": "#/definitions/identifier" }, "owner": { "$ref": "#/definitions/ownerId" }
+      }
+    },
+    "resultSink": {
+      "type": "object", "additionalProperties": false, "required": ["type", "contract_version", "payload_schema", "owner"],
+      "properties": {
+        "type": { "$ref": "#/definitions/identifier" }, "contract_version": { "$ref": "#/definitions/contractVersion" },
+        "payload_schema": { "$ref": "#/definitions/identifier" }, "owner": { "$ref": "#/definitions/ownerId" }
+      }
+    },
+    "agentProvider": {
+      "type": "object", "additionalProperties": false, "required": ["id", "contract_version", "capabilities", "owner"],
+      "properties": {
+        "id": { "$ref": "#/definitions/identifier" }, "contract_version": { "$ref": "#/definitions/contractVersion" },
+        "capabilities": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/definitions/identifier" } }, "owner": { "$ref": "#/definitions/ownerId" }
+      }
+    },
+    "asset": {
+      "type": "object", "additionalProperties": false, "required": ["owner", "id", "path", "sha256"],
+      "properties": {
+        "owner": { "$ref": "#/definitions/ownerId" }, "id": { "$ref": "#/definitions/identifier" },
+        "path": { "type": "string", "minLength": 1 }, "sha256": { "$ref": "#/definitions/digest" }
+      }
+    }
+  }
+}
