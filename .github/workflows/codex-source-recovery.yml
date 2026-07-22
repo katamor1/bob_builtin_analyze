@@ -1,0 +1,33 @@
+name: Codex source recovery
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/codex-source-recovery.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    name: Authenticated source snapshot
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 1
+
+      - name: Archive checkout
+        shell: bash
+        run: tar -czf "$RUNNER_TEMP/bob-source-snapshot.tgz" .
+
+      - name: Upload source snapshot
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: bob-source-snapshot
+          path: ${{ runner.temp }}/bob-source-snapshot.tgz
+          if-no-files-found: error
+          retention-days: 1
