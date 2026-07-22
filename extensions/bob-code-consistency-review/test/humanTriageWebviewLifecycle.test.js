@@ -2,212 +2,124 @@ const assert = require("node:assert/strict")
 const Module = require("node:module")
 const { test } = require("node:test")
 
+const MODULE = require.resolve("../out/webview/consistencyHumanTriage")
+
 function deferred() {
   let resolve
   let reject
-  const promise = new Promise((resolvePromise, rejectPromise) => {
-    resolve = resolvePromise
-    reject = rejectPromise
-  })
-  return { promise, reject, resolve }
+  const promise = new Promise((res, rej) => { resolve = res; reject = rej })
+  return { promise, resolve, reject }
 }
 
-async function drainMicrotasks() {
-  for (let index = 0; index < 8; index += 1) await Promise.resolve()
-}
-
-function loadHumanTriageWebview(harness) {
+function loadStage(options = {}) {
   const originalLoad = Module._load
-  Module._load = function patchedLoad(request, parent, isMain) {
-    if (request === "vscode") return harness.vscode
+  delete require.cache[MODULE]
+  Module._load = function patched(request, parent, isMain) {
+    if (request === "vscode") {
+      return { workspace: { getConfiguration: () => ({ get: (_key, fallback) => fallback }) } }
+    }
     if (request === "../reviewExecutionCommands") {
-      return { runTriage: harness.runTriage }
+      return { runTriage: options.runTriage ?? (async () => ({ status: "ok" })) }
     }
     if (request === "../triage/humanTriageWorkspace") {
       return {
-        loadHumanTriageWorkspace: harness.loadHumanTriageWorkspace,
-        saveHumanTriageDecisions: async () => undefined
+        loadHumanTriageWorkspace: options.loadHumanTriageWorkspace ?? (async () => ({
+          sourceSha256: "source-sha",
+          decisionRevision: 4,
+          items: [],
+          issues: []
+        })),
+        saveHumanTriageDecisions: options.saveHumanTriageDecisions ?? (async () => undefined)
       }
     }
-    if (request === "../workspaceResolver") {
-      return { resolveBobWorkspaceRoot: harness.resolveBobWorkspaceRoot }
-    }
     if (request === "./consistencyHumanTriageHtml") {
-      return { renderConsistencyHumanTriageHtml: () => "<html>human triage</html>" }
-    }
-    if (request === "./consistencyHumanTriageMessage") {
-      return { parseHumanTriageMessage: harness.parseHumanTriageMessage }
+      return { renderConsistencyHumanTriageHtml: ({ model }) => `<main>${model.sourceSha256}:${model.decisionRevision}</main>` }
     }
     return originalLoad.call(this, request, parent, isMain)
   }
-  try {
-    const modulePath = require.resolve("../out/webview/consistencyHumanTriage")
-    delete require.cache[modulePath]
-    return require(modulePath)
-  } finally {
-    Module._load = originalLoad
-  }
+  try { return require(MODULE) } finally { Module._load = originalLoad }
 }
 
-function webviewHarness(options = {}) {
-  const initialized = deferred()
-  const postStarted = deferred()
-  const htmlWrites = []
-  const subscriptions = []
-  const disposeListeners = []
-  let receiveMessage
-  let disposed = false
-
-  const webview = {
+function hostHarness(options = {}) {
+  let active = true
+  const html = []
+  const posts = []
+  const host = {
     cspSource: "vscode-resource:",
-    onDidReceiveMessage: (listener) => {
-      receiveMessage = listener
-      return { dispose: () => undefined }
-    },
-    postMessage: (message) => {
-      postStarted.resolve(message)
-      return options.postMessage?.(message) ?? Promise.resolve(true)
-    }
+    stage: "triage",
+    isActive: () => active,
+    nextRenderToken: () => active ? "token" : "",
+    render(value) { if (!active) return false; html.push(value); return options.renderResult ?? true },
+    async post(message) { if (!active) return false; posts.push(message); return true },
+    getWorkspaceRoot: () => active ? "/workspace" : undefined,
+    async showStage() { return { status: "ok" } }
   }
-  Object.defineProperty(webview, "html", {
-    get: () => htmlWrites.at(-1)?.value ?? "",
-    set: (value) => {
-      htmlWrites.push({ value, disposed })
-      initialized.resolve()
-    }
-  })
-
-  const panel = {
-    webview,
-    onDidDispose: (listener) => {
-      disposeListeners.push(listener)
-      return { dispose: () => undefined }
-    }
-  }
-  const vscode = {
-    ViewColumn: { One: 1 },
-    commands: { executeCommand: async () => undefined },
-    window: { createWebviewPanel: () => panel },
-    workspace: {
-      getConfiguration: () => ({ get: (_key, defaultValue) => defaultValue })
-    }
-  }
-  const module = loadHumanTriageWebview({
-    vscode,
-    parseHumanTriageMessage: options.parseHumanTriageMessage ?? (() => undefined),
-    resolveBobWorkspaceRoot: options.resolveBobWorkspaceRoot ?? (async () => "C:\\workspace"),
-    runTriage: options.runTriage ?? (async () => ({ status: "ok" })),
-    loadHumanTriageWorkspace: options.loadHumanTriageWorkspace ?? (async () => ({
-      sourceSha256: "source-sha",
-      decisionRevision: 0,
-      items: [],
-      issues: []
-    }))
-  })
-
-  return {
-    context: { subscriptions },
-    dispose: () => {
-      disposed = true
-      for (const listener of disposeListeners) listener()
-    },
-    htmlWrites,
-    initialized: initialized.promise,
-    open: module.openConsistencyHumanTriageGui,
-    postStarted: postStarted.promise,
-    send: (message) => receiveMessage(message)
-  }
+  return { host, html, posts, deactivate: () => { active = false } }
 }
 
-function controlledThenable() {
-  let rejectHandler
-  let unobservedRejection
-  return {
-    thenable: {
-      then: (_resolve, reject) => {
-        rejectHandler = reject
-      }
-    },
-    reject: (error) => {
-      if (rejectHandler) rejectHandler(error)
-      else unobservedRejection = error
-    },
-    rejectionObserved: () => rejectHandler !== undefined,
-    unobservedRejection: () => unobservedRejection
-  }
-}
+test("embedded Human Triage returns a structured error when the host rejects its render", async () => {
+  const module = loadStage()
+  const harness = hostHarness({ renderResult: false })
 
-test("Human Triage does not render when the panel is disposed during initialization", async () => {
-  const rootRequested = deferred()
-  const workspaceRoot = deferred()
-  let loadCalls = 0
-  const harness = webviewHarness({
-    resolveBobWorkspaceRoot: async () => {
-      rootRequested.resolve()
-      return workspaceRoot.promise
-    },
-    loadHumanTriageWorkspace: async () => {
-      loadCalls += 1
-      return { sourceSha256: "source-sha", decisionRevision: 0, items: [], issues: [] }
-    }
+  const outcome = await module.createConsistencyHumanTriageStage(harness.host).initialize()
+
+  assert.deepEqual(outcome, { status: "error", errors: ["triage stage could not be rendered"] })
+})
+
+test("embedded Human Triage does not render when its stage becomes inactive during initialization", async () => {
+  const load = deferred()
+  const module = loadStage({ loadHumanTriageWorkspace: () => load.promise })
+  const harness = hostHarness()
+  const stage = module.createConsistencyHumanTriageStage(harness.host)
+
+  const initializing = stage.initialize()
+  harness.deactivate()
+  load.resolve({ sourceSha256: "sha", decisionRevision: 0, items: [], issues: [] })
+  const outcome = await initializing
+
+  assert.equal(outcome.status, "error")
+  assert.deepEqual(harness.html, [])
+})
+
+test("embedded Human Triage preserves source hash and decision revision conflict tokens", async () => {
+  const saves = []
+  const module = loadStage({ saveHumanTriageDecisions: async (input) => { saves.push(input) } })
+  const harness = hostHarness()
+  const stage = module.createConsistencyHumanTriageStage(harness.host)
+  await stage.initialize()
+
+  await stage.handleMessage({
+    type: "consistencyHumanTriage.action",
+    action: "saveDecisions",
+    sourceSha256: "expected-source",
+    decisionRevision: 7,
+    items: []
   })
 
-  const opening = harness.open(harness.context)
-  await rootRequested.promise
-  harness.dispose()
-  workspaceRoot.resolve("C:\\workspace")
-  await Promise.resolve(opening)
-  await drainMicrotasks()
-
-  assert.equal(loadCalls, 0, "disposed initialization must not continue into model loading")
-  assert.deepEqual(harness.htmlWrites, [], "disposed initialization must not render HTML")
+  assert.equal(saves.length, 1)
+  assert.equal(saves[0].expectedSourceSha256, "expected-source")
+  assert.equal(saves[0].expectedDecisionRevision, 7)
 })
 
-test("Human Triage observes a pending post rejection when the panel is disposed", async () => {
-  const post = controlledThenable()
-  const harness = webviewHarness({ postMessage: () => post.thenable })
-  await Promise.resolve(harness.open(harness.context))
-  await harness.initialized
-
-  harness.send({ type: "invalid" })
-  await harness.postStarted
-  await drainMicrotasks()
-  harness.dispose()
-  const disposedError = new Error("Webview is disposed")
-  post.reject(disposedError)
-  await drainMicrotasks()
-
-  assert.equal(post.rejectionObserved(), true, "postMessage rejection must be observed")
-  assert.equal(post.unobservedRejection(), undefined)
-})
-
-test("Human Triage reports a non-disposal action failure that settles after disposal", async () => {
-  const actionStarted = deferred()
-  const actionResult = deferred()
-  const reports = []
-  const harness = webviewHarness({
-    parseHumanTriageMessage: (message) => message,
+test("embedded Human Triage serializes overlapping mutations", async () => {
+  const first = deferred()
+  let calls = 0
+  const module = loadStage({
     runTriage: async () => {
-      actionStarted.resolve()
-      return actionResult.promise
+      calls += 1
+      if (calls === 1) await first.promise
+      return { status: "ok" }
     }
   })
-  await Promise.resolve(harness.open(harness.context))
-  await harness.initialized
+  const harness = hostHarness()
+  const stage = module.createConsistencyHumanTriageStage(harness.host)
+  await stage.initialize()
 
-  const originalConsoleError = console.error
-  console.error = (...args) => reports.push(args)
-  try {
-    harness.send({ type: "consistencyHumanTriage.action", action: "generateTriage" })
-    await actionStarted.promise
-    harness.dispose()
-    const actionError = new Error("ACTION_FAILED_AFTER_DISPOSE")
-    actionResult.reject(actionError)
-    await drainMicrotasks()
-
-    assert.equal(reports.length, 1, "non-disposal failures must reach the listener task boundary")
-    assert.equal(reports[0][1], actionError)
-  } finally {
-    console.error = originalConsoleError
-  }
+  const one = stage.handleMessage({ type: "consistencyHumanTriage.action", action: "generateTriage" })
+  const two = stage.handleMessage({ type: "consistencyHumanTriage.action", action: "generateTriage" })
+  await Promise.resolve()
+  assert.equal(calls, 1)
+  first.resolve()
+  await Promise.all([one, two])
+  assert.equal(calls, 2)
 })

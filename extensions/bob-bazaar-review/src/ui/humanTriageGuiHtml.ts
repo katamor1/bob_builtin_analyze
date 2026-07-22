@@ -135,7 +135,7 @@ export function renderHumanTriageHtml(input: RenderHumanTriageHtmlInput): string
         const issues = validateDecisionItems(items);
         if (issues.length > 0) {
           status.className = 'status error';
-          status.textContent = issues.join('\n');
+          status.textContent = issues.join('\\n');
           return;
         }
       }

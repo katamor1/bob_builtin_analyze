@@ -6,7 +6,7 @@
 | --- | --- |
 | `bobCodeConsistency.prepareAiTraceabilityDraft` | traceability AI draft 用 prompt を作成する。 |
 | `bobCodeConsistency.applyAiTraceabilityDraft` | AI draft JSON を catalog に反映する。 |
-| `bobCodeConsistency.openTraceabilityPrep` | Traceability Prep Webview を開く。 |
+| `bobCodeConsistency.openTraceabilityPrep` | 保持する主GUIをトレーサビリティ整理 stage へ route する。 |
 | `bobCodeConsistency.validateTraceabilityCatalog` | traceability catalog gate を検証する。 |
 | `bobCodeConsistency.createReviewInputFromTraceability` | catalog から `review-input.yaml` を生成する。 |
 | `bobCodeConsistency.preprocess` | review package を生成する。 |

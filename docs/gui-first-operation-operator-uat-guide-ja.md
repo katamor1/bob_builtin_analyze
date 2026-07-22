@@ -18,7 +18,7 @@
 | workflow 実行 | `Bob 操作センター` > `ワークフロー一覧` > `開始` |
 | 中断 run の再開 | `Bob 操作センター` > `実行状況` |
 | Bob 出力取り込み | 各レビュー画面 > `結果の取り込み` |
-| 採否判断 | 各レビュー画面 > `人による判定` |
+| 採否判断 | 各レビュー画面 > `指摘確認・振り分け` |
 
 ## 2. Bazaar レビュー UAT
 
@@ -48,11 +48,11 @@
 2. `整合プレレビューを開始` 画面で VCS、比較元／比較先、変更種別を確認する。
 3. `関連資料の選択` で文書候補を選ぶ。
 4. `確認観点` を選ぶ。
-5. 必要に応じて `トレーサビリティ確認を開く` で proposed item を承認する。
+5. 必要に応じて `トレーサビリティ整理を開く` で proposed item を承認する。
 6. `選択内容から review-input を生成` を押し、`review-input.yaml` が画面操作から生成されることを確認する。
 7. `Bob 用パッケージを作成` を押し、`Package Preview` が更新されることを確認する。
 8. `Bob 出力の取り込み` で Bob 出力（YAML） を貼り付け、schema / evidence ref validation を確認する。
-9. `指摘・確認事項の判定` で `triage-result.yaml` を生成し、finding / question の decision を保存する。
+9. `指摘確認・振り分け` で `triage-result.yaml` を生成し、finding / question の decision を保存する。
 
 合格条件:
 

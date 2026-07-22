@@ -54,8 +54,9 @@ function loadConsistencyReviewWizard(harness) {
       getCodeConsistencyWorkspaceInitializationStatus: harness.getInitializationStatus
     }
     if (request === "./consistencyReviewWizardHtml") return {
-      renderConsistencyReviewWizardHtml: ({ model }) => {
+      renderConsistencyReviewWizardHtml: ({ model, renderToken }) => {
         harness.models.push(model)
+        harness.setRenderToken(renderToken)
         return "<html>consistency wizard</html>"
       }
     }
@@ -79,6 +80,7 @@ function controllerHarness(options = {}) {
   const posts = []
   const subscriptions = []
   const workspaceRoot = "C:\\workspace"
+  let renderToken = ""
   let receiveMessage
 
   const webview = {
@@ -100,7 +102,10 @@ function controllerHarness(options = {}) {
     }
   })
 
-  const panel = { webview }
+  const panel = {
+    webview,
+    onDidDispose: () => ({ dispose: () => undefined })
+  }
   const vscode = {
     ViewColumn: { One: 1 },
     commands: {
@@ -123,6 +128,7 @@ function controllerHarness(options = {}) {
     commandCalls,
     getInitializationStatus: options.getInitializationStatus ?? (async () => initializationStatus(false)),
     models,
+    setRenderToken: (value) => { renderToken = value },
     vscode,
     workspaceRoot
   }
@@ -134,11 +140,10 @@ function controllerHarness(options = {}) {
     htmlWrites,
     models,
     open: async () => {
-      openConsistencyReviewWizard({ subscriptions })
-      await firstHtmlWrite.promise
+      await openConsistencyReviewWizard({ subscriptions })
     },
     posts,
-    send: (message) => receiveMessage(message)
+    send: (message) => receiveMessage({ ...message, renderToken })
   }
 }
 
@@ -163,7 +168,8 @@ test("workspace initialization executes the existing command and reloads the ren
       initialized = true
       return {
         message: "コード整合プレレビュー workflow を作成しました",
-        backupPath: "C:\\workspace\\.bob\\workflows\\code-consistency-review\\WORKFLOW.md.bak-20260717T000000Z"
+        backupPath: "C:\\workspace\\.bob\\workflows\\code-consistency-review\\WORKFLOW.md.bak-20260717T000000Z",
+        reviewInputBackupPath: "C:\\workspace\\review-input.yaml.bak-20260717T000000Z"
       }
     },
     getInitializationStatus: async () => initializationStatus(initialized)
@@ -183,7 +189,48 @@ test("workspace initialization executes the existing command and reloads the ren
   assert.equal(harness.models.at(-1).status.tone, "ok")
   assert.match(harness.models.at(-1).status.message, /workflow を作成しました/)
   assert.match(harness.models.at(-1).status.message, /workflow backup:/)
+  assert.match(harness.models.at(-1).status.message, /review-input backup:/)
   assert.equal(harness.posts.some((message) => message.message === "操作を実行しました。"), false)
+})
+
+test("workspace initialization reports workflow and review-input outcomes without applying the aggregate status to both", async () => {
+  let initialized = false
+  const workflowBackupPath = "C:\\workspace\\.bob\\workflows\\code-consistency-review\\WORKFLOW.md.bak-20260717T000000Z"
+  const reviewInputBackupPath = "C:\\workspace\\review-input.yaml.bak-20260717T000000Z"
+  const harness = controllerHarness({
+    executeCommand: async () => {
+      initialized = true
+      return {
+        status: "updated",
+        message: "aggregate initialization status: updated",
+        backupPath: workflowBackupPath,
+        reviewInputBackupPath,
+        workflowResult: {
+          status: "updated",
+          path: "C:\\workspace\\.bob\\workflows\\code-consistency-review\\WORKFLOW.md",
+          backupPath: workflowBackupPath,
+          message: "workflow was updated"
+        },
+        reviewInputResult: {
+          status: "unchanged",
+          path: "C:\\workspace\\review-input.yaml",
+          backupPath: reviewInputBackupPath,
+          message: "existing review input was preserved"
+        }
+      }
+    },
+    getInitializationStatus: async () => initializationStatus(initialized)
+  })
+  await harness.open()
+
+  await harness.send(initializeMessage)
+
+  const message = harness.models.at(-1).status.message
+  assert.match(message, /workflow \[updated\]: workflow was updated/)
+  assert.match(message, /review-input \[unchanged\]: existing review input was preserved/)
+  assert.match(message, new RegExp(`workflow backup: ${escapeRegExp(workflowBackupPath)}`))
+  assert.match(message, new RegExp(`review-input backup: ${escapeRegExp(reviewInputBackupPath)}`))
+  assert.doesNotMatch(message, /review-input \[updated\]/)
 })
 
 test("unknown wizard actions are rejected without executing a command", async () => {
@@ -259,3 +306,7 @@ test("failed workspace initialization keeps the current card and permits retry",
   assert.equal(harness.models.at(-1).initialization.initialized, true)
   assert.equal(harness.models.at(-1).status.tone, "ok")
 })
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+}

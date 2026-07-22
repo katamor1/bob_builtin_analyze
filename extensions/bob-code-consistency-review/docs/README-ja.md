@@ -22,7 +22,7 @@
   workspace 初期化、review-input 作成、AI draft、traceability sidecar、前処理、文書抽出、C / C++ 軽量解析、複数言語の汎用コード根拠、review-package、Bob 出力 capture / validation、triage、workflow-register provider の単体テスト仕様書です。
 
 - `real-machine-test-spec-ja.md`  
-  VS Code、IBM Bob、workflow-register、Bob Workflow UI、トレーサビリティ確認画面、Git / Bazaar、Markdown / docx / xlsx、C / C++ と TypeScript / Python / Java などのソースを含む実機テスト仕様書です。
+  VS Code、IBM Bob、workflow-register、Bob Workflow UI、主GUIのトレーサビリティ整理 stage、Git / Bazaar、Markdown / docx / xlsx、C / C++ と TypeScript / Python / Java などのソースを含む実機テスト仕様書です。
 
 ## 運用メモ
 

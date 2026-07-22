@@ -8,8 +8,9 @@ Product commits:
 
 - `13778ec refactor: route Bazaar review stages through one GUI`
 - `2dd2bb0 fix: harden Bazaar review stage ownership`
+- `e2c3fd9 fix: strengthen Bazaar review client contracts`
 
-Task range reviewed: `bc24c80..2dd2bb0`
+Task range reviewed: `bc24c80..e2c3fd9`
 
 ## Behavior delivered
 
@@ -44,38 +45,45 @@ Task range reviewed: `bc24c80..2dd2bb0`
 - Initial `test/bazaarReviewTerminology.test.js`: 3 total, 1 pass, 2 expected fail. It caught current documents that still named removed routes and the unfinished command/export terminology migration.
 - First full-suite run after the consolidation: 697 total, 696 pass, 1 fail. The existing Command Palette policy caught category text duplicated inside the command title; the manifest now composes the exact visible label from category `Bob Bazaar Review` and title `レビューを開始`.
 - Independent review follow-up: the two controller regressions failed as expected for dropped dashboard campaign input and acceptance of an old same-stage render token; the two dashboard behavior regressions failed as expected for stale refresh overwrite and inactive export side effects; the expanded current-document terminology contract also failed on the two omitted v3 documents.
+- Post-closure audit targeted run: 19 total, 17 pass, 2 expected fail. The failures listed all six operator-facing `Dashboard` lines in the real-machine specification and rejected the generated Human Triage client with `Invalid or unexpected token`.
+- Mutation check for campaign precedence: changing the actual stage factory to request-first made the dedicated active-Review-Run precedence test fail 0/1; the production expression was restored and its exact source diff returned to zero.
+- Mutation check for in-stage render ownership: replacing `host.nextRenderToken()` with a fixed dashboard token made the dedicated rotation test fail 0/1; the production expression was restored and its exact source diff returned to zero.
 
 ## GREEN verification
 
 - Compile: PASS.
 - Final lifecycle suite (`test/reviewGuiLifecycle.test.js`): 12/12 PASS.
-- Final review-hardening targeted command: `node --test test/bazaarReviewTerminology.test.js test/campaignDashboardGui.test.js test/guiFirstSurfaces.test.js test/reviewGuiHtml.test.js test/reviewGuiLifecycle.test.js`; 29/29 PASS.
-- Final Review Run/dashboard focused command: `node --test test/bazaarReviewTerminology.test.js test/campaignDashboard*.test.js test/guiFirstSurfaces.test.js test/reviewGui*.test.js test/reviewRun*.test.js`; 94/94 PASS.
-- Final `npm test`: 702/702 PASS, 0 fail, 0 skip.
+- Final post-closure targeted command: `node --test test/bazaarReviewTerminology.test.js test/campaignDashboardGui.test.js test/guiFirstSurfaces.test.js`; 19/19 PASS.
+- Final Review Run/dashboard focused command: `node --test test/bazaarReviewTerminology.test.js test/campaignDashboard*.test.js test/guiFirstSurfaces.test.js test/reviewGui*.test.js test/reviewRun*.test.js`; 98/98 PASS.
+- Final `npm test`: 706/706 PASS, 0 fail, 0 skip.
 - Architecture policy: PASS, 113 TypeScript files checked.
 - Source export-star policy: PASS, 113 TypeScript files checked.
 - Dependency policy: 6/6 PASS.
 - Unused dependency/source policy: PASS.
 - Artifact size policy: PASS, 20 template files within the 12,000-byte per-file budget.
 - Package: PASS; VSIX created with 1,841 entries.
-- VSIX policy: PASS at 3,771,910 bytes (12,000,000-byte budget; 31.4% used).
+- VSIX policy: PASS at 3,771,906 bytes (12,000,000-byte budget; 31.4% used).
 - Package smoke: 2/2 PASS.
 - `git diff --check`: PASS.
 - Exact old-route scan across the manifest, live source, README, and current extension docs: zero matches.
+- Exact real-machine operator-facing `Dashboard` scan: zero matches; persisted `dashboard.json` and internal model names remain unchanged.
+- The generated main, result-capture, Human Triage, and review-results clients all parse as JavaScript and expose no direct outbound `postMessage` path around their render-token wrapper; main-stage `ready` uses the same wrapper.
 - Exactly one `createWebviewPanel` remains across the four Bazaar review-stage controller modules.
 
 The Bazaar package has no separate `schema:policy` script. Schema and artifact compatibility remained covered by the full suite, Review Run acceptance tests, dashboard/capture tests, and the explicit persisted-field terminology regression.
 
 ## Self-review
 
-- Reviewed the full `bc24c80..2dd2bb0` source, test, manifest, UI, and current-document diff.
+- Reviewed the full `bc24c80..e2c3fd9` source, test, manifest, UI, and current-document diff.
 - Confirmed the run engine, provider contracts, Review Run schemas, persisted artifacts, and `run.json` contracts were not changed.
 - Confirmed all removed GUI command IDs are absent from live product/current-document surfaces while non-GUI workflow and record commands remain registered.
 - Confirmed every embedded renderer emits namespaced, render-token-bound messages and origin-bound stage navigation.
 - Confirmed stale stage services and stale main-stage operations cannot update the current UI or host Review Run model.
-- Confirmed stale dashboard operations cannot replace a newer campaign selection and that an explicit campaign is inherited when no active Review Run exists.
+- Confirmed campaign selection uses active Review Run, then an explicit request, then the first available campaign, and that the direct behavior test detects request-first ordering.
+- Confirmed each in-stage dashboard render obtains a new token and the direct behavior test detects a fixed-token implementation.
+- Confirmed all four generated review clients parse and all outbound messages, including main-stage `ready`, use the render-token wrapper.
 - Confirmed canonical command category/title and current instructions agree exactly.
-- No unresolved correctness concerns.
+- No unresolved implementation concerns remained after the post-closure audit fixes. Final independent specification and quality re-reviews both approved the final product with Critical 0 / Important 0 / Minor 0.
 
 ## Environment notes
 
@@ -83,8 +91,9 @@ The Bazaar package has no separate `schema:policy` script. Schema and artifact c
 - `vsce` prints the existing bundle/file-count recommendation; the package remains within policy.
 - The optional `npm run audit:prod` check reports two existing high-severity `fast-uri` advisories through `ajv`, both marked by npm as having no fix available. Task 3 did not change dependencies or the lockfile; all five package policy gates and package smoke pass.
 
-## Final independent closure
+## Independent review history and remediation closure
 
-- Final committed range: `bc24c80..929f3de`.
-- Specification review: `SPEC_COMPLIANT`, Critical 0 / Important 0 / Minor 0.
-- Quality review: `CODE_QUALITY_APPROVED`, Critical 0 / Important 0 / Minor 0.
+- The earlier `bc24c80..929f3de` review recorded `SPEC_COMPLIANT` and `CODE_QUALITY_APPROVED`, both Critical 0 / Important 0 / Minor 0.
+- A subsequent read-only audit invalidated that closure with Critical 0 / Important 3 / Minor 1: six stale real-machine labels, missing direct active-run precedence evidence, an unparsable generated Human Triage client, and insufficient mutation-sensitive render-token coverage.
+- Product follow-up `e2c3fd9` closes those four areas with the terminology regression, direct three-level campaign-precedence behavior, generated-client syntax/ownership checks, and in-stage token-rotation behavior.
+- Final independent re-approval after `e2c3fd9`: `SPEC_COMPLIANT` and `CODE_QUALITY_APPROVED`, both Critical 0 / Important 0 / Minor 0. The specification reviewer passed fresh compile, focused 55/55, and runtime probes 6/6; the quality reviewer passed fresh compile, focused 98/98, range diff-check, and route/listener/contract scans.

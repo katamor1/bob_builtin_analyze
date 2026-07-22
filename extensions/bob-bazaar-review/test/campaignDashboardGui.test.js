@@ -171,6 +171,47 @@ test("requested campaign is selected without an active Review Run", async () => 
   assert.match(host.html, /<option value="campaign-b" selected>/)
 })
 
+test("campaign selection precedence is active Review Run then explicit request then first fallback", async () => {
+  const generated = []
+  const { createBazaarReviewResultsStage } = loadDashboardStage({
+    async listCampaignDashboardCampaigns() { return ["campaign-a", "campaign-b"] },
+    async generateCampaignDashboard(_root, campaignId) {
+      generated.push(campaignId)
+      return dashboardFixture(campaignId)
+    }
+  })
+
+  const activeRunHost = dashboardHost({
+    workspaceRoot: "/workspace",
+    campaignId: "campaign-a"
+  })
+  await createBazaarReviewResultsStage(activeRunHost, { campaignId: "campaign-b" }).initialize()
+
+  const fallbackHost = dashboardHost()
+  await createBazaarReviewResultsStage(fallbackHost).initialize()
+
+  assert.deepEqual(generated, ["campaign-a", "campaign-a"])
+  assert.match(activeRunHost.html, /<option value="campaign-a" selected>/)
+  assert.match(fallbackHost.html, /<option value="campaign-a" selected>/)
+})
+
+test("each in-stage dashboard render rotates its render token", async () => {
+  const { createBazaarReviewResultsStage } = loadDashboardStage({
+    async listCampaignDashboardCampaigns() { return ["campaign-a"] },
+    async generateCampaignDashboard(_root, campaignId) { return dashboardFixture(campaignId) }
+  })
+  const host = dashboardHost()
+  const stage = createBazaarReviewResultsStage(host, { campaignId: "campaign-a" })
+
+  await stage.initialize()
+  await stage.handleMessage({ type: "campaignDashboard.refresh" })
+
+  assert.equal(host.renders.length, 2)
+  assert.match(host.renders[0], /dashboard-render-token-1/)
+  assert.match(host.renders[1], /dashboard-render-token-2/)
+  assert.doesNotMatch(host.renders[1], /dashboard-render-token-1/)
+})
+
 test("latest dashboard operation wins when refresh and selection finish out of order", async () => {
   const oldRefresh = deferred()
   let holdOldRefresh = false
@@ -248,7 +289,7 @@ test("campaign dashboard controller validates workspace and keeps a fixed messag
   assert.doesNotMatch(source, /executeCommand\(message/)
 })
 
-function dashboardHost() {
+function dashboardHost(activeReviewRun) {
   const host = {
     active: true,
     renders: [],
@@ -267,7 +308,7 @@ function dashboardHost() {
       host.posts.push(structuredClone(message))
       return true
     },
-    getActiveReviewRun() { return undefined },
+    getActiveReviewRun() { return activeReviewRun },
     commitActiveReviewRun() { return false },
     getWorkspaceRoot() { return "/workspace" },
     async showStage() { return false }

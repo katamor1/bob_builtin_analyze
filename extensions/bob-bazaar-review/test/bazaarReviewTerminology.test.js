@@ -38,6 +38,15 @@ test("current Bazaar documentation routes users through the single primary GUI",
   }
 })
 
+test("real-machine operator instructions use the approved review-results name", () => {
+  const realMachine = readExtensionFile("docs", "real-machine-test-spec-ja.md")
+  const legacyOperatorLines = realMachine
+    .split(/\r?\n/)
+    .filter((line) => /Dashboard(?:起動|を開く|全体|のrefresh| refresh)/.test(line))
+
+  assert.deepEqual(legacyOperatorLines, [])
+})
+
 test("primary command and exported Markdown use the approved current names", () => {
   const packageJson = readJson("package.json")
   const command = packageJson.contributes.commands.find((entry) => entry.command === "bobBazaar.openReviewGui")

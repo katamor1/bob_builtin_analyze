@@ -311,13 +311,13 @@ type ConsistencyReviewStage =
 
 **Run-contract boundary:** Run engine/provider/artifact/`run.json` contracts are out of scope; preprocessing, triage, traceability, and initialization persistence contracts remain unchanged.
 
-- [ ] **Step 1: RED-test the single primary GUI and init button**
+- [x] **Step 1: RED-test the single primary GUI and init button**
 
 Assert only `openConsistencyReviewWizard()` creates a panel; all stages share view type `bobCodeConsistencyReviewWizard`. Assert approved stage labels and an `initializeWorkspace` action/button exist.
 
 Assert standalone capture/triage commands are absent. Assert `bobCodeConsistency.initializeWorkspace` remains registered for workflows but is not expected as a public palette entry.
 
-- [ ] **Step 2: RED-test exact initialization writes**
+- [x] **Step 2: RED-test exact initialization writes**
 
 Keep/add regressions proving:
 
@@ -339,15 +339,15 @@ node --test test/guiFirstSurfaces.test.js test/traceabilityPrepWebview.test.js t
 
 Expected: FAIL on independent panels and missing primary-GUI initialization route.
 
-- [ ] **Step 3: Add primary-panel stage routing**
+- [x] **Step 3: Add primary-panel stage routing**
 
 Move capture/triage/traceability controllers to stage renderers owned by the primary controller. Preserve triage source hash/revision checks, Webview disposal guards, traceability original/restore/save semantics, output validation, and CSP/message validation.
 
-- [ ] **Step 4: Route initialization from the GUI**
+- [x] **Step 4: Route initialization from the GUI**
 
 The button invokes the existing initialization service with selected workspace. Report workflow backup and review-input backup separately. Keep `initializeWorkspace` registered for workflows; Task 5 hides it.
 
-- [ ] **Step 5: Verify and commit**
+- [x] **Step 5: Verify and commit**
 
 ```bash
 cd extensions/bob-code-consistency-review

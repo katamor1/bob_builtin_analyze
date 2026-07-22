@@ -30,15 +30,19 @@ export interface InitializeCodeConsistencyWorkspaceResult {
   placeholderDocumentPath?: string
   backupPath?: string
   reviewInputBackupPath?: string
+  workflowResult: CodeConsistencyFileInitializationResult
+  reviewInputResult: CodeConsistencyFileInitializationResult
   message: string
 }
 
-type FileInitializationResult = {
+export interface CodeConsistencyFileInitializationResult {
   status: "created" | "updated" | "unchanged"
   path: string
   backupPath?: string
   message: string
 }
+
+type FileInitializationResult = CodeConsistencyFileInitializationResult
 
 const WORKFLOW_TEMPLATE_RELATIVE_PATH = path.join("templates", ".bob", "workflows", "code-consistency-review", "WORKFLOW.md")
 const REVIEW_INPUT_RELATIVE_PATH = "review-input.yaml"
@@ -142,7 +146,7 @@ export async function getCodeConsistencyWorkspaceInitializationStatus(
 export async function initializeCodeConsistencyWorkspace(options: InitializeCodeConsistencyWorkspaceOptions): Promise<InitializeCodeConsistencyWorkspaceResult> {
   const workflowPath = path.join(options.workspaceRoot, CODE_CONSISTENCY_WORKFLOW_RELATIVE_PATH)
   const templatePath = options.context.asAbsolutePath(WORKFLOW_TEMPLATE_RELATIVE_PATH)
-  const template = await fs.readFile(templatePath, "utf8")
+  const template = await fs.readFile(templatePath)
   const workflowResult = await writeOrUpdateTemplateFile(workflowPath, template, {
     created: `コード整合プレレビュー workflow を作成しました: ${workflowPath}`,
     updated: `コード整合プレレビュー workflow を更新しました: ${workflowPath}`,
@@ -168,6 +172,8 @@ export async function initializeCodeConsistencyWorkspace(options: InitializeCode
     placeholderDocumentPath: placeholderDocumentResult?.path,
     backupPath: workflowResult.backupPath,
     reviewInputBackupPath: reviewInputResult.backupPath,
+    workflowResult,
+    reviewInputResult,
     message
   }
 }
@@ -203,23 +209,23 @@ function hasGitignoreLine(text: string, expected: string): boolean {
 
 async function writeOrUpdateTemplateFile(
   filePath: string,
-  template: string,
+  template: Buffer,
   messages: { created: string; updated: string; unchanged: string }
 ): Promise<FileInitializationResult> {
   await fs.mkdir(path.dirname(filePath), { recursive: true })
 
-  const current = await readIfExists(filePath)
-  if (current === template) {
+  const current = await readBufferIfExists(filePath)
+  if (current?.equals(template)) {
     return { status: "unchanged", path: filePath, message: messages.unchanged }
   }
 
   let backupPath: string | undefined
   if (current !== undefined) {
     backupPath = `${filePath}.bak-${timestampForFileName(new Date())}`
-    await fs.writeFile(backupPath, current, "utf8")
+    await fs.writeFile(backupPath, current)
   }
 
-  await fs.writeFile(filePath, template, "utf8")
+  await fs.writeFile(filePath, template)
   const status = current === undefined ? "created" : "updated"
   return {
     status,
@@ -232,7 +238,7 @@ async function writeOrUpdateTemplateFile(
 async function createReviewInputSkeletonIfMissing(reviewInputPath: string): Promise<FileInitializationResult> {
   await fs.mkdir(path.dirname(reviewInputPath), { recursive: true })
 
-  const current = await readIfExists(reviewInputPath)
+  const current = await readBufferIfExists(reviewInputPath)
   if (current === undefined) {
     await fs.writeFile(reviewInputPath, REVIEW_INPUT_TEMPLATE, "utf8")
     return {
@@ -242,7 +248,7 @@ async function createReviewInputSkeletonIfMissing(reviewInputPath: string): Prom
     }
   }
 
-  if (current === REVIEW_INPUT_TEMPLATE) {
+  if (current.equals(Buffer.from(REVIEW_INPUT_TEMPLATE, "utf8"))) {
     return {
       status: "unchanged",
       path: reviewInputPath,
@@ -251,7 +257,7 @@ async function createReviewInputSkeletonIfMissing(reviewInputPath: string): Prom
   }
 
   const backupPath = `${reviewInputPath}.bak-${timestampForFileName(new Date())}`
-  await fs.writeFile(backupPath, current, "utf8")
+  await fs.writeFile(backupPath, current)
   return {
     status: "unchanged",
     path: reviewInputPath,
@@ -291,6 +297,15 @@ function mergeStatus(statuses: Array<InitializeCodeConsistencyWorkspaceResult["s
 async function readIfExists(filePath: string): Promise<string | undefined> {
   try {
     return await fs.readFile(filePath, "utf8")
+  } catch (error) {
+    if (isNodeError(error) && error.code === "ENOENT") return undefined
+    throw error
+  }
+}
+
+async function readBufferIfExists(filePath: string): Promise<Buffer | undefined> {
+  try {
+    return await fs.readFile(filePath)
   } catch (error) {
     if (isNodeError(error) && error.code === "ENOENT") return undefined
     throw error

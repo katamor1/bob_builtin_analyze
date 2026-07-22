@@ -93,7 +93,10 @@ VS Code Extension Host
        │    ├─ cCppChangeAnalyzer
        │    ├─ genericCodeEvidenceAnalyzer
        │    └─ traceabilityBuilder
-       ├─ webview/traceabilityPrepWebview
+       ├─ webview/consistencyReviewWizard（唯一のpanel owner）
+       ├─ webview/traceabilityPrepWebview（embedded stage）
+       ├─ webview/consistencyResultCapture（embedded stage）
+       ├─ webview/consistencyHumanTriage（embedded stage）
        └─ triage/humanTriageHelper
 
 workflow-register
@@ -104,6 +107,7 @@ workflow-register
 
 | コンポーネント | 主な責務 | 主なファイル |
 | --- | --- | --- |
+| 整合プレレビュー主GUI | view type `bobCodeConsistencyReviewWizard`を所有し、レビュー準備／トレーサビリティ整理／レビュー結果取り込み／指摘確認・振り分けをrouteする | `src/webview/consistencyReviewWizard.ts` |
 | Extension Entry | VS Code command 登録、workflow-register provider mapping | `src/extension.ts` |
 | Command Options | option / prompt / path / notification helper | `src/extensionCommandOptions.ts` |
 | Workflow Provider Registration | 15 provider の登録、workflow input / args / state の統合 | `src/workflowProviderRegistration.ts` |
@@ -116,7 +120,7 @@ workflow-register
 | Review Input Diagnostics | 既存 input の診断と legacy repair | `src/core/reviewInputDiagnostics.ts` |
 | Traceability Catalog | sidecar catalog model、validation、review-input draft 生成 | `src/core/traceability*.ts` |
 | Traceability Commands | AI draft、catalog 検証、Webview、review-input 生成 | `src/traceabilityCommands.ts` |
-| Traceability Prep Webview | domains / items / links / decisions / gate / preview 編集 UI | `src/webview/traceabilityPrepWebview.ts` |
+| トレーサビリティ整理 embedded stage | domains / items / links / decisions / gate / preview 編集 UI。独自panelは作成しない | `src/webview/traceabilityPrepWebview.ts` |
 | Review Input Validator | `review-input.yaml` の schema 検証と関連文書存在確認 | `src/core/reviewInputValidator.ts` |
 | Language Classifier | 拡張子から review 対応言語を分類し、`analysis_options.language` filter と diff collector で共有する | `src/core/languageClassifier.ts` |
 | Git / Bazaar Diff Collector | 差分、変更ファイル、numstat、unified diff の収集 | `src/core/gitDiffCollector.ts` |
@@ -246,7 +250,8 @@ Bob 出力は YAML として扱い、既定では `.bob-review/bob-output/bob-ou
 
 ### 10.3 traceability prep
 
-- `openTraceabilityPrep` は Webview を開き、Domains / Items / Links / Decisions / Gate Report / Review Input Preview を表示する。
+- `openTraceabilityPrep` は`openConsistencyReviewWizard`を`initialStage: "traceability"`で開き、主GUIの`トレーサビリティ整理`stageにDomains / Items / Links / Decisions / Gate Report / Review Input Previewを表示する。
+- `レビュー結果取り込み`と`指摘確認・振り分け`も同じview type `bobCodeConsistencyReviewWizard`のembedded stageであり、standalone panelを作成しない。
 - `validateTraceabilityCatalog` は catalog を検証し、gate report を生成する。
 - `prepareAiTraceabilityDraft` は catalog、diff summary、docs root、enum を含む prompt を `.bob-trace/ai-traceability-draft` に生成する。
 - `captureAiTraceabilityDraft` は proposed-only draft JSON を検証し、workflow state へ渡す。
@@ -285,7 +290,7 @@ Bob 出力は YAML として扱い、既定では `.bob-review/bob-output/bob-ou
 | `bobCodeConsistency.prepareAiTraceabilityDraft` | traceability AI draft 用 prompt を生成する。 |
 | `bobCodeConsistency.captureAiTraceabilityDraft` | traceability AI draft JSON を取り込む。 |
 | `bobCodeConsistency.applyAiTraceabilityDraft` | AI draft JSON を catalog に反映する。 |
-| `bobCodeConsistency.openTraceabilityPrep` | traceability prep Webview を開く。 |
+| `bobCodeConsistency.openTraceabilityPrep` | 主GUIの`トレーサビリティ整理`embedded stageを開く。 |
 | `bobCodeConsistency.validateTraceabilityCatalog` | catalog を検証し gate report を生成する。 |
 | `bobCodeConsistency.createReviewInputFromTraceability` | accepted traceability item から `review-input.yaml` を生成する。 |
 | `bobCodeConsistency.repairReviewInput` | `review-input.yaml` を修復する。 |

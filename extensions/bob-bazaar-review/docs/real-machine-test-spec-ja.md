@@ -562,7 +562,7 @@ bazaar_test/branch2/
 
 ### 6.7 レビュー手順 Iteration 3 レビュー実績
 
-#### BZR-RT-051 Dashboard起動・campaign選択・refresh
+#### BZR-RT-051 レビュー実績の起動・campaign選択・refresh
 
 1. 2件以上のcampaignを持つBob workspaceを開く。
 2. `Bob Bazaar Review: レビューを開始`を開き、主GUI内のレビュー実績へ切り替える。
@@ -578,7 +578,7 @@ bazaar_test/branch2/
 #### BZR-RT-052 指摘確認・振り分け pendingの可視化
 
 1. triageなしrun、invalid triage run、valid triage runを用意する。
-2. Dashboardを開く。
+2. レビュー実績を開く。
 
 期待結果:
 
@@ -625,12 +625,12 @@ bazaar_test/branch2/
 #### BZR-RT-056 malformed evidenceとexport failure
 
 1. malformed record / triage / resultとsymlink record directoryを用意する。
-2. Dashboardを開く。
+2. レビュー実績を開く。
 3. 既存dashboard exportを用意し、置換途中で失敗するfixtureを作る。
 
 期待結果:
 
-- Dashboard全体を停止せずwarningを表示する。
+- レビュー実績全体を停止せずwarningを表示する。
 - conflicting artifactからdecisionを生成しない。
 - symlink / junctionを追跡しない。
 - export失敗時は画面を維持し、旧exportを復元する。
@@ -638,7 +638,7 @@ bazaar_test/branch2/
 #### BZR-RT-057 review evidence不変性
 
 1. packet、result、triage、record、summaryのhashを取得する。
-2. Dashboardのrefreshとexportを複数回実行する。
+2. レビュー実績のrefreshとexportを複数回実行する。
 3. hashを再取得する。
 
 期待結果:
@@ -675,7 +675,7 @@ bazaar_test/branch2/
 - summary失敗時にrecordを保持し、失敗phaseから再試行できる。
 - legacy recoveryが確認付きかつ非破壊である。
 - レビュー実績のpending、rate、rule / target mode trend、warning、3形式exportがsource artifactと一致する。
-- Dashboard refresh / exportが既存review evidenceを変更しない。
+- レビュー実績のrefresh / exportが既存review evidenceを変更しない。
 - active editor validation と MCP result tools が保存済み result を扱える。
 - Bob Workflow UI 経由で主要 provider が provider missing にならない。
 - multi-root で `.bob` と `.bzr` の責務分離が守られる。

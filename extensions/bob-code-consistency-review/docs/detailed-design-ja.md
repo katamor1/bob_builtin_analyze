@@ -87,7 +87,7 @@ extensions/bob-code-consistency-review/
 | `bobCodeConsistency.prepareAiTraceabilityDraft` | `runPrepareAiTraceabilityDraft` | traceability AI draft 用 prompt を作成する。 |
 | `bobCodeConsistency.captureAiTraceabilityDraft` | `runCaptureAiTraceabilityDraft` | traceability AI draft JSON を workflow state に取り込む。 |
 | `bobCodeConsistency.applyAiTraceabilityDraft` | `runApplyAiTraceabilityDraft` | traceability AI draft JSON を catalog に反映する。 |
-| `bobCodeConsistency.openTraceabilityPrep` | `runOpenTraceabilityPrep` | traceability prep Webview を開く。 |
+| `bobCodeConsistency.openTraceabilityPrep` | `runOpenTraceabilityPrep` | 主GUIの`トレーサビリティ整理`embedded stageを開く。 |
 | `bobCodeConsistency.validateTraceabilityCatalog` | `runValidateTraceabilityCatalog` | catalog を検証し gate report を生成する。 |
 | `bobCodeConsistency.createReviewInputFromTraceability` | `runCreateReviewInputFromTraceability` | accepted traceability item から `review-input.yaml` を生成する。 |
 | `bobCodeConsistency.repairReviewInput` | `runRepairReviewInput` | legacy / 不完全な `review-input.yaml` の修復を試みる。 |
@@ -141,14 +141,24 @@ interface InitializeCodeConsistencyWorkspaceOptions {
 出力:
 
 ```ts
+interface CodeConsistencyFileInitializationResult {
+  status: "created" | "updated" | "unchanged"
+  path: string
+  backupPath?: string
+  message: string
+}
+
 interface InitializeCodeConsistencyWorkspaceResult {
   status: "created" | "updated" | "unchanged"
   workspaceRoot: string
   workflowPath: string
   reviewInputPath: string
+  gitignorePath: string
   placeholderDocumentPath?: string
   backupPath?: string
   reviewInputBackupPath?: string
+  workflowResult: CodeConsistencyFileInitializationResult
+  reviewInputResult: CodeConsistencyFileInitializationResult
   message: string
 }
 ```
@@ -161,7 +171,7 @@ interface InitializeCodeConsistencyWorkspaceResult {
 <workspaceRoot>/docs/review-input-placeholder.md
 ```
 
-workflow template が既存 file と異なる場合は `.bak-<timestamp>` を作成して上書きする。`review-input.yaml` が存在しない場合は雛形を作成する。既存 `review-input.yaml` が雛形と異なる場合は上書きせず、backup のみ作成する。
+workflow template が既存 file と異なる場合は `.bak-<timestamp>` を作成して上書きする。`review-input.yaml` が存在しない場合は雛形を作成する。既存 `review-input.yaml` が雛形と異なる場合は上書きせず、backup のみ作成する。既存 workflow と review-input の backup は、比較時に一度だけ読み取った raw bytes を文字コード変換せず保存する。aggregate の `status` と flat な backup path は互換性のため維持し、`workflowResult` と `reviewInputResult` で各 file の結果を個別に返す。
 
 ## 8. Workflow-register 連携設計
 
@@ -262,11 +272,11 @@ interface TraceabilityCatalog {
 | `runApplyAiTraceabilityDraft` | inline JSON、clipboard、path、既定 `ai-draft*.json` から draft を読み、catalog に反映する。 |
 | `runValidateTraceabilityCatalog` | catalog を検証し gate report を生成する。 |
 | `runCreateReviewInputFromTraceability` | accepted item から `review-input.yaml` を生成する。 |
-| `runOpenTraceabilityPrep` | Webview を開く。 |
+| `runOpenTraceabilityPrep` | `openConsistencyReviewWizard`を`initialStage: "traceability"`で呼び、主GUIの`トレーサビリティ整理`stageを開く。 |
 
 `resolveTraceabilityDraftText()` は inline JSON を優先し、次に Markdown link / quoted path / bare `.json` path / `traceabilityDraftJsonPath` / 既定 `ai-draft*.json` を探す。path は workspace 内に限定する。
 
-`traceabilityPrepWebview.ts` は `Traceability Prep` panel を作成する。タブは Domains、Items、Links、Decisions、Gate Report、Review Input Preview である。Save 時は catalog を backup 付きで保存し、gate report を再生成する。
+panel ownershipは`openConsistencyReviewWizard`だけが持ち、view typeは`bobCodeConsistencyReviewWizard`である。`traceabilityPrepWebview.ts`、`consistencyResultCapture.ts`、`consistencyHumanTriage.ts`はそれぞれ`トレーサビリティ整理`、`レビュー結果取り込み`、`指摘確認・振り分け`のembedded stage serviceであり、独自panelを作成しない。トレーサビリティ整理stageのタブはDomains、Items、Links、Decisions、Gate Report、Review Input Previewである。Save時はcatalogをbackup付きで保存し、gate reportを再生成する。
 
 ## 13. Preprocess pipeline 詳細
 
@@ -379,6 +389,8 @@ Markdown は見出しごとに block 化する。`.docx` は `mammoth.convertToH
 
 ## 21. Human Triage 詳細
 
+`Human Triage`は成果物／domain helperの歴史的名称である。現行UIでは`consistencyHumanTriage.ts`が主GUIの`指摘確認・振り分け`embedded stageとして動作し、standalone panelを作成しない。
+
 `humanTriageHelper.ts` は次のファイルを生成する。
 
 | ファイル | 詳細 |
@@ -467,7 +479,7 @@ templates/.bob/workflows/code-consistency-review/WORKFLOW.md
 
 | 対象 | 観点 |
 | --- | --- |
-| `workspaceInitializer` | workflow 作成、更新、backup、review-input 雛形、placeholder document、既存 input 非上書き。 |
+| `workspaceInitializer` | workflow 作成、更新、byte-exact backup、review-input 雛形、placeholder document、既存 input 非上書き、file 別 outcome。 |
 | `reviewInputDiscovery` | docs 探索、ID 抽出、artifact kind 推定、warning。 |
 | `reviewInputBuilder` | enum、focus preset、path containment、strictPaths、schema validation、backup。 |
 | `reviewInputAiDraftProvider` | prompt 内容、diff summary、JSON parse、draft 適用。 |

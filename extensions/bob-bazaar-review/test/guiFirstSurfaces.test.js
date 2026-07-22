@@ -7,6 +7,12 @@ const {
   readSrc
 } = require("./helpers/sourceReader")
 
+function extractInlineClient(html, name) {
+  const scripts = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)]
+  assert.equal(scripts.length, 1, `${name} renders one inline client`)
+  return scripts[0][1]
+}
+
 test("package and extension expose one public Bazaar review GUI route", () => {
   const packageJson = readJson("package.json")
   const source = readSrc("extension.ts")
@@ -202,6 +208,54 @@ test("Review GUI routes capture triage and review results as internal stages", (
   assert.match(reviewSource, /showStage\("review-results"/)
   assert.doesNotMatch(reviewSource, /executeCommand\("bobBazaar\.open(?:CampaignDashboard|ResultCaptureGui|HumanTriageGui)"/)
   assert.doesNotMatch(html, /onclick=/)
+})
+
+test("all Bazaar review clients parse and send only render-token-owned messages", () => {
+  const { renderHtml } = require("../out/ui/reviewGuiHtml")
+  const { renderResultCaptureHtml } = require("../out/ui/resultCaptureGuiHtml")
+  const { renderHumanTriageHtml } = require("../out/ui/humanTriageGuiHtml")
+  const { renderCampaignDashboardHtml } = require("../out/ui/campaignDashboardGuiHtml")
+  const clients = {
+    review: extractInlineClient(renderHtml("vscode-resource:", undefined, "review-owner"), "review"),
+    capture: extractInlineClient(renderResultCaptureHtml({
+      cspSource: "vscode-resource:",
+      nonce: "capture-nonce",
+      renderToken: "capture-owner"
+    }), "capture"),
+    triage: extractInlineClient(renderHumanTriageHtml({
+      cspSource: "vscode-resource:",
+      nonce: "triage-nonce",
+      renderToken: "triage-owner",
+      model: {
+        campaignId: "campaign-a",
+        reviewId: "review-a",
+        reviewResultJsonPath: ".bob/review/results/review-a.json",
+        issues: [],
+        items: []
+      }
+    }), "triage"),
+    results: extractInlineClient(renderCampaignDashboardHtml({
+      cspSource: "vscode-resource:",
+      nonce: "results-nonce",
+      renderToken: "results-owner",
+      model: { campaigns: [], status: "empty" }
+    }), "results")
+  }
+
+  for (const [name, script] of Object.entries(clients)) {
+    assert.doesNotThrow(() => new Function(script), `${name} client parses`)
+  }
+
+  assert.match(clients.review, /const postMessage = \(message\) => rawPostMessage\(\{ \.\.\.message, renderToken \}\)/)
+  assert.equal((clients.review.match(/\brawPostMessage\(/g) ?? []).length, 1)
+  assert.doesNotMatch(clients.review, /\bvscode\.postMessage\(/)
+  assert.match(clients.review, /postMessage\(\{ type: "ready" \}\)/)
+
+  for (const name of ["capture", "triage", "results"]) {
+    const script = clients[name]
+    assert.match(script, /const postMessage = \(message\) => vscode\.postMessage\(\{ \.\.\.message, renderToken \}\);/)
+    assert.equal((script.match(/\bvscode\.postMessage\(/g) ?? []).length, 1, `${name} has no direct outbound bypass`)
+  }
 })
 
 test("project rule authoring is a GUI-first environment, source-scope, and AI-consent surface", () => {

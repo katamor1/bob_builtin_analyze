@@ -1,5 +1,7 @@
 # Human Triage Integrity IBM Bob UAT Runbook
 
+> **現行UIへの読み替え:** 本書の `Human Triage` は成果物／domain moduleの歴史的名称である。standalone Result Capture／Human Triage panelと公開commandは削除済みで、現在のoperator操作は`整合プレレビュー`主GUI内の`レビュー結果取り込み`／`指摘確認・振り分け`stageから行う。
+
 - 対象: `extensions/bob-code-consistency-review`
 - 対象ブランチ: `agent/bob-code-consistency-review-triage-integrity`
 - Pull Request: `#74`
@@ -19,7 +21,7 @@ Human Triage Integrity Phase 1について、自動Extension Host試験では代
 2. Bob agent出力とresult handoff
 3. workflow-registerのrun stateと生成成果物の対応
 4. MCP連携の代表smoke
-5. Human Triage Webviewの視覚表示、focus、keyboard操作、operator向け文言
+5. 主GUIの`指摘確認・振り分け`stageの視覚表示、focus、keyboard操作、operator向け文言
 6. 二画面競合の見え方
 7. Developer Tools Console全体のwarning / exception確認
 
@@ -105,10 +107,7 @@ CCR74-CONSOLE-01-errors.txt
 2. sandboxをVS Code / Bob IDEで開く。
 3. `Bob Code Consistency Review: .bob ワークフロー定義と review-input 雛形を初期化`を実行する。
 4. `workflowRegister.reload`を実行する。
-5. Command Paletteで以下が存在することを確認する。
-   - `Bob Code Consistency Review: Review Wizard を開く`
-   - `Bob Code Consistency Review: Result Capture GUI を開く`
-   - `Bob Code Consistency Review: Human Triage GUI を開く`
+5. `Bob Code Consistency Review: 整合プレレビューを開始`で主GUIを開き、`レビュー結果取り込み`と`指摘確認・振り分け`へ同じpanel内で遷移できることを確認する。
 6. Developer Tools Consoleをclearする。
 7. workspace内に以前の`.bob-review/human-triage`がある場合はbackup後に削除する。
 
@@ -184,7 +183,7 @@ started_at:
 - command step resultとfile pathが対応する。
 - Consoleに未処理例外がない。
 
-## 7. Human Triage operator UAT
+## 7. 指摘確認・振り分け operator UAT
 
 ### 7.1 fixture配置
 
@@ -204,7 +203,7 @@ Copy-Item "$fixture\bob-output-initial.yaml" "$workspace\.bob-review\bob-output\
 
 1. initial fixtureを配置する。
 2. `人間確認用 triage を生成`を実行する。
-3. Human Triage GUIを開く。
+3. `整合プレレビュー`主GUIを開き、`指摘確認・振り分け`stageへ進む。
 4. `PRE-001`を次の内容で保存する。
    - decision: `accepted`
    - final severity: `high`
@@ -215,7 +214,7 @@ Copy-Item "$fixture\bob-output-initial.yaml" "$workspace\.bob-review\bob-output\
    - action: `timeout実装を修正`
    - due: 実施日より後の日付
 5. `Q-001`を`question`としてownerまたはsuggested recipientとreasonを入力する。
-6. GUIを閉じて再度開く。
+6. 主GUIを閉じて再度開き、`指摘確認・振り分け`stageへ進む。
 
 合格条件:
 
@@ -243,7 +242,7 @@ Copy-Item "$fixture\bob-output-initial.yaml" "$workspace\.bob-review\bob-output\
 ### 7.4 CCR-RT-038 Two-window revision conflict
 
 1. initial fixtureでtriageを生成する。
-2. Human Triage GUIを二つ開く。
+2. `整合プレレビュー`主GUIを二つ開き、両方を`指摘確認・振り分け`stageへ進める。
 3. 画面Aで`PRE-001`をacceptedとして保存する。
 4. 画面Bで異なるowner / reasonを入力して保存する。
 5. 画面Bを閉じて再度開く。
@@ -262,7 +261,7 @@ Copy-Item "$fixture\bob-output-initial.yaml" "$workspace\.bob-review\bob-output\
 2. initial fixtureを`bob-output.yaml`へ配置する。
 3. `legacy-triage-result.yaml`だけを`.bob-review/human-triage/triage-result.yaml`へ配置する。
 4. `人間確認用 triage を生成`を実行する。
-5. Human Triage GUIを開く。
+5. `整合プレレビュー`主GUIを開き、`指摘確認・振り分け`stageへ進む。
 
 合格条件:
 
@@ -299,7 +298,7 @@ Get-ChildItem "<sandbox-root>\.bob-review\human-triage" -File |
 
 ## 8. Webview visual / keyboard / wording
 
-Human Triage GUIで次を確認する。
+主GUIの`指摘確認・振り分け`stageで次を確認する。
 
 - 200% zoomでもhorizontal scrollだけに依存せず、field labelと値を識別できる。
 - Windows High ContrastまたはVS Code High Contrast themeでstatus、button、input境界を識別できる。
@@ -353,7 +352,7 @@ MCP
 - unhandled rejectionが0件
 - CSP violationが0件
 - save failure後に追加のsecondary exceptionが0件
-- extension deactivate / panel close後のdangling callback errorが0件
+- extension deactivate / 主GUI panel close後のdangling callback errorが0件
 
 ## 11. cleanup
 

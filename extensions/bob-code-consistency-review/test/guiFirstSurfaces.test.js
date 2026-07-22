@@ -7,17 +7,54 @@ const {
   readSrc
 } = require("./helpers/sourceReader")
 
-test("package and extension expose code consistency GUI first commands", () => {
+function assertApprovedStageNavigation(html) {
+  const navigation = html.match(/<nav class="actions" aria-label="レビュー工程">[\s\S]*?<\/nav>/)?.[0]
+  assert.ok(navigation, "review stage navigation")
+  for (const label of ["レビュー準備", "トレーサビリティ整理", "レビュー結果取り込み", "指摘確認・振り分け"]) {
+    assert.match(navigation, new RegExp(`>${label}<\\/button>`))
+  }
+  assert.doesNotMatch(navigation, />トレーサビリティ<\/button>/)
+  assert.doesNotMatch(navigation, /人による判定/)
+}
+
+test("package and extension expose one code consistency GUI command", () => {
   const packageJson = readJson("package.json")
   const source = readSrc("extension.ts")
 
-  for (const command of [
-    "bobCodeConsistency.openReviewWizard",
+  assertContributesCommand(packageJson, "bobCodeConsistency.openReviewWizard")
+  assert.match(source, /registerCommand\(\s*"bobCodeConsistency\.openReviewWizard"/)
+  for (const obsoleteCommand of [
     "bobCodeConsistency.openResultCaptureGui",
     "bobCodeConsistency.openHumanTriageGui"
   ]) {
-    assertContributesCommand(packageJson, command)
-    assert.match(source, new RegExp(`registerCommand\\(\\s*"${command.replace(/\./g, "\\.")}"`))
+    assert.equal(packageJson.contributes.commands.some(({ command }) => command === obsoleteCommand), false)
+    assert.doesNotMatch(source, new RegExp(`registerCommand\\(\\s*"${obsoleteCommand.replace(/\./g, "\\.")}"`))
+  }
+})
+
+test("only the review wizard owns a webview panel and all review stages are routed through it", () => {
+  const sources = [
+    readSrc("webview", "consistencyReviewWizard.ts"),
+    readSrc("webview", "consistencyResultCapture.ts"),
+    readSrc("webview", "consistencyHumanTriage.ts"),
+    readSrc("webview", "traceabilityPrepWebview.ts")
+  ]
+  const combined = sources.join("\n")
+
+  assert.equal((combined.match(/createWebviewPanel\(/g) ?? []).length, 1)
+  assert.match(sources[0], /createWebviewPanel\(\s*"bobCodeConsistencyReviewWizard"/)
+  for (const stage of ["review", "traceability", "review-result-capture", "triage"]) {
+    assert.match(combined, new RegExp(`"${stage}"`))
+  }
+})
+
+test("embedded stage initialization treats a rejected render as a structured failure", () => {
+  for (const source of [
+    readSrc("webview", "consistencyResultCapture.ts"),
+    readSrc("webview", "consistencyHumanTriage.ts"),
+    readSrc("webview", "traceabilityPrepWebview.ts")
+  ]) {
+    assert.match(source, /if \(!this\.(?:host\.)?render\(/)
   }
 })
 
@@ -51,23 +88,40 @@ test("consistency review wizard renders evidence picker traceability and package
   })
 
   assert.match(html, /整合プレレビューを開始/)
+  assertApprovedStageNavigation(html)
   assert.match(html, /変更範囲/)
   assert.match(html, /関連資料の選択/)
   assert.match(html, /確認観点/)
-  assert.match(html, /トレーサビリティ/)
+  assert.match(html, /トレーサビリティ整理/)
   assert.match(html, /Bob に渡す資料/)
   assert.match(html, /value="maintenance" selected>保守変更<\/option>/)
   assert.match(html, /data-focus="requirement-code-consistency"[^>]*checked[^>]*>要求とコードの整合<\/label>/)
   assert.match(html, /data-action="createReviewInput"/)
   assert.match(html, /data-action="openTraceabilityPrep"/)
+  assert.match(html, />トレーサビリティ整理を開く<\/button>/)
   assert.match(html, /data-action="preprocess"/)
   assert.match(html, /data-action="openResultCapture"/)
+  assert.match(html, />指摘確認・振り分けへ進む<\/button>/)
   assert.match(html, /docs\/requirements\.md/)
   assert.match(html, /nonce-123/)
   assert.match(html, /\.bob ワークフロー初期化: 未完了/)
   assert.match(html, /data-action="initializeWorkspace"/)
   assert.match(html, /\.bob\/workflows\/code-consistency-review\/WORKFLOW\.md/)
   assert.doesNotMatch(html, /onclick=/)
+})
+
+test("all embedded review stage templates expose only the approved navigation labels", () => {
+  const sources = [
+    readSrc("webview", "consistencyReviewWizardHtml.ts"),
+    readSrc("webview", "consistencyResultCaptureHtml.ts"),
+    readSrc("webview", "consistencyHumanTriageHtml.ts"),
+    readSrc("webview", "traceabilityPrepWebview.ts")
+  ]
+
+  for (const source of sources) {
+    assertApprovedStageNavigation(source)
+    assert.match(source, /consistencyReview\.navigate/)
+  }
 })
 
 test("consistency review wizard hides workspace initialization card after initialization", () => {
@@ -105,11 +159,12 @@ test("code consistency result capture GUI exposes YAML validation before triage"
   const { renderConsistencyResultCaptureHtml } = require("../out/webview/consistencyResultCaptureHtml")
   const html = renderConsistencyResultCaptureHtml({ cspSource: "vscode-resource:", nonce: "nonce-456" })
 
+  assertApprovedStageNavigation(html)
   assert.match(html, /Bob 出力の取り込み/)
   assert.match(html, /Bob 出力（YAML）/)
   assert.match(html, /クリップボードから取り込む/)
   assert.match(html, /保存済みの Bob 出力を検証/)
-  assert.match(html, /人による判定へ進む/)
+  assert.match(html, /指摘確認・振り分けへ進む/)
   assert.match(html, /data-action="captureManual"/)
   assert.match(html, /data-action="captureClipboard"/)
   assert.match(html, /data-action="validateOutput"/)
@@ -153,7 +208,9 @@ test("code consistency human triage GUI renders source context and conflict toke
     }
   })
 
-  assert.match(html, /指摘・確認事項の判定/)
+  assertApprovedStageNavigation(html)
+  assert.match(html, /<title>指摘確認・振り分け<\/title>/)
+  assert.match(html, /<h1>指摘確認・振り分け<\/h1>/)
   assert.match(html, /value="needs_investigation">要調査<\/option>/)
   assert.match(html, /value="critical">緊急<\/option>/)
   assert.match(html, /data-action="generateTriage"/)

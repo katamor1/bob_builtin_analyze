@@ -1,6 +1,9 @@
-import * as vscode from "vscode"
 import { runCaptureBobOutput, runValidateOutput } from "../reviewExecutionCommands"
 import { renderConsistencyResultCaptureHtml } from "./consistencyResultCaptureHtml"
+import type {
+  ConsistencyReviewStageHost,
+  ConsistencyReviewStageService
+} from "./consistencyReviewWizardStages"
 
 type ResultCaptureAction = "captureManual" | "captureClipboard" | "validateOutput" | "openHumanTriage"
 
@@ -10,50 +13,67 @@ interface ResultCaptureMessage {
   text?: string
 }
 
-export function openConsistencyResultCaptureGui(context: vscode.ExtensionContext): void {
-  const panel = vscode.window.createWebviewPanel("bobCodeConsistencyResultCapture", "Bob 出力の取り込み", vscode.ViewColumn.One, {
-    enableScripts: true,
-    retainContextWhenHidden: true
-  })
-  const controller = new ConsistencyResultCaptureController(panel)
-  context.subscriptions.push(panel.webview.onDidReceiveMessage((message) => controller.handleMessage(message)))
-  panel.webview.html = renderConsistencyResultCaptureHtml({
-    cspSource: panel.webview.cspSource,
-    nonce: nonce()
-  })
+export function createConsistencyResultCaptureStage(
+  host: ConsistencyReviewStageHost
+): ConsistencyReviewStageService {
+  return new ConsistencyResultCaptureStage(host)
 }
 
-class ConsistencyResultCaptureController {
-  constructor(private readonly panel: vscode.WebviewPanel) {}
+class ConsistencyResultCaptureStage implements ConsistencyReviewStageService {
+  private messageTail = Promise.resolve()
+  private workspaceRoot = ""
 
-  async handleMessage(rawMessage: unknown): Promise<void> {
+  constructor(private readonly host: ConsistencyReviewStageHost) {}
+
+  async initialize() {
+    if (!this.host.isActive()) return { status: "error" as const, errors: ["stage is no longer active"] }
+    const workspaceRoot = this.host.getWorkspaceRoot()
+    if (!workspaceRoot) return { status: "error" as const, errors: ["先にワークスペースフォルダーを開いてください。"] }
+    this.workspaceRoot = workspaceRoot
+    const renderToken = this.host.nextRenderToken()
+    if (!renderToken) return { status: "error" as const, errors: ["stage is no longer active"] }
+    if (!this.host.render(renderConsistencyResultCaptureHtml({
+      cspSource: this.host.cspSource,
+      nonce: nonce(),
+      renderToken
+    }))) return { status: "error" as const, errors: ["result capture stage could not be rendered"] }
+    return { status: "ok" as const }
+  }
+
+  handleMessage(rawMessage: unknown): Promise<void> {
+    const handled = this.messageTail.then(() => this.handleMessageSerial(rawMessage))
+    this.messageTail = handled.then(() => undefined, () => undefined)
+    return handled
+  }
+
+  private async handleMessageSerial(rawMessage: unknown): Promise<void> {
+    if (!this.host.isActive()) return
     const message = parseResultCaptureMessage(rawMessage)
     if (!message) {
-      this.post({ error: true, message: "不正な画面操作を拒否しました。" })
+      await this.host.post({ error: true, message: "不正な画面操作を拒否しました。" })
       return
     }
     try {
       if (message.action === "captureManual") {
         if (!message.text?.trim()) throw new Error("Bob 出力（YAML）を貼り付けてください。")
-        const result = await runCaptureBobOutput({ text: message.text })
-        this.post({ ok: true, message: describeResult(result) })
+        const result = await runCaptureBobOutput({ text: message.text, workspaceRoot: this.workspaceRoot })
+        if (this.host.isActive()) await this.host.post({ ok: true, message: describeResult(result) })
       } else if (message.action === "captureClipboard") {
-        const result = await runCaptureBobOutput()
-        this.post({ ok: true, message: describeResult(result) })
+        const result = await runCaptureBobOutput({ workspaceRoot: this.workspaceRoot })
+        if (this.host.isActive()) await this.host.post({ ok: true, message: describeResult(result) })
       } else if (message.action === "validateOutput") {
-        const result = await runValidateOutput()
-        this.post({ ok: resultStatus(result) !== "error", message: describeResult(result) })
+        const result = await runValidateOutput({ workspaceRoot: this.workspaceRoot })
+        if (this.host.isActive()) {
+          await this.host.post({ ok: resultStatus(result) !== "error", message: describeResult(result) })
+        }
       } else if (message.action === "openHumanTriage") {
-        await vscode.commands.executeCommand("bobCodeConsistency.openHumanTriageGui")
-        this.post({ ok: true, message: "人による判定を開きました。" })
+        await this.host.showStage("triage")
       }
     } catch (error) {
-      this.post({ error: true, message: error instanceof Error ? error.message : String(error) })
+      if (this.host.isActive()) {
+        await this.host.post({ error: true, message: error instanceof Error ? error.message : String(error) })
+      }
     }
-  }
-
-  private post(message: Record<string, unknown>): void {
-    void this.panel.webview.postMessage(message)
   }
 }
 
