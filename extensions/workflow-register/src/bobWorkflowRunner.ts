@@ -63,6 +63,7 @@ interface BobWorkflowEngineRunnerOptions {
   taskSnapshotStore: (workspaceRoot: string) => TaskSnapshotStore | undefined
   preflightChecks: (workspaceRoot: string) => NonNullable<WorkflowEngineOptions["preflightChecks"]>
   preflightCheckResolver?: WorkflowPreflightCheckResolver
+  includeDefaultPreflightChecks?: boolean
   agentProvider?: AgentProvider
   stepRuntime: StepRuntime
   inputsProvider: BobWorkflowRunnerInputCollector
@@ -132,6 +133,7 @@ export class BobWorkflowEngineRunner {
       agentProvider: this.createAgentProvider(task),
       preflightChecks: this.options.preflightChecks(workspaceRoot),
       preflightCheckResolver: this.options.preflightCheckResolver,
+      includeDefaultPreflightChecks: this.options.includeDefaultPreflightChecks,
       hooks: this.createHooks(
         task,
         snapshotProvider,

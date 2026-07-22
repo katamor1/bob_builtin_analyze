@@ -18,6 +18,8 @@ import {
   firstStringArg,
   getWorkflowRegisterApi,
   initialTargetFromWorkflowInputs,
+  loadWorkflowContributionManifest,
+  registerNegotiatedContributionSet,
   stringInput,
   WORKFLOW_REGISTER_EXTENSION_ID,
   type WorkflowActionProvider,
@@ -54,26 +56,35 @@ async function registerWorkflowProviders(
   const api = await getWorkflowRegisterApi()
   if (!api) return { registered: false, registrations: [] }
 
-  const registrations: vscode.Disposable[] = []
-  try {
-    registerOwnedProvider(api, registrations, {
+  const manifest = await loadWorkflowContributionManifest(context)
+
+  const actionProviders = new Map<string, WorkflowActionProvider>()
+  actionProviders.set("bobBazaar.openReviewGui", {
       id: "bobBazaar.openReviewGui",
-      execute: (input) => openBazaarReviewGui(context, initialTargetFromWorkflowInputs(input.inputs, input))
-    })
-    registerOwnedProvider(api, registrations, {
+      sourceId: BAZAAR_PROVIDER_SOURCE_ID,
+      execute: (input) => {
+        openBazaarReviewGui(context, initialTargetFromWorkflowInputs(input.inputs, input))
+        return null
+      }
+  })
+  actionProviders.set("bobBazaar.collectReviewContext", {
       id: "bobBazaar.collectReviewContext",
+      sourceId: BAZAAR_PROVIDER_SOURCE_ID,
       execute: (input) => collectReviewContext(input)
-    })
-    registerOwnedProvider(api, registrations, {
+  })
+  actionProviders.set("bobBazaar.loadReviewRules", {
       id: "bobBazaar.loadReviewRules",
+      sourceId: BAZAAR_PROVIDER_SOURCE_ID,
       execute: (input) => loadReviewRules(input)
-    })
-    registerOwnedProvider(api, registrations, {
+  })
+  actionProviders.set("bobBazaar.captureReviewResult", {
       id: "bobBazaar.captureReviewResult",
+      sourceId: BAZAAR_PROVIDER_SOURCE_ID,
       execute: (input) => captureReviewResult(firstStringArg(input.args), captureOptionsFromCommandArgs([input]))
-    })
-    registerOwnedProvider(api, registrations, {
+  })
+  actionProviders.set("bobBazaar.openRuleAuthoringGui", {
       id: "bobBazaar.openRuleAuthoringGui",
+      sourceId: BAZAAR_PROVIDER_SOURCE_ID,
       execute: async (input) => {
         const configuration = getRuleAuthoringHostConfiguration()
         const result = await openRuleAuthoringGui(context, {
@@ -88,25 +99,30 @@ async function registerWorkflowProviders(
         }
         return result.authoringSession
       }
-    })
-    registerOwnedProvider(api, registrations, {
+  })
+  actionProviders.set("bobBazaar.loadRuleSourceIndex", {
       id: "bobBazaar.loadRuleSourceIndex",
+      sourceId: BAZAAR_PROVIDER_SOURCE_ID,
       execute: (input) => configuredRuleAuthoringActions().loadRuleSourceIndex(input)
-    })
-    registerOwnedProvider(api, registrations, {
+  })
+  actionProviders.set("bobBazaar.captureRuleEvidenceSelection", {
       id: "bobBazaar.captureRuleEvidenceSelection",
+      sourceId: BAZAAR_PROVIDER_SOURCE_ID,
       execute: (input) => configuredRuleAuthoringActions().captureRuleEvidenceSelection(input)
-    })
-    registerOwnedProvider(api, registrations, {
+  })
+  actionProviders.set("bobBazaar.loadSelectedRuleEvidence", {
       id: "bobBazaar.loadSelectedRuleEvidence",
+      sourceId: BAZAAR_PROVIDER_SOURCE_ID,
       execute: (input) => configuredRuleAuthoringActions().loadSelectedRuleEvidence(input)
-    })
-    registerOwnedProvider(api, registrations, {
+  })
+  actionProviders.set("bobBazaar.captureRuleProposal", {
       id: "bobBazaar.captureRuleProposal",
+      sourceId: BAZAAR_PROVIDER_SOURCE_ID,
       execute: (input) => configuredRuleAuthoringActions().captureRuleProposal(input)
-    })
-    registerOwnedProvider(api, registrations, {
+  })
+  actionProviders.set("bobBazaar.openRuleProposalTriageGui", {
       id: "bobBazaar.openRuleProposalTriageGui",
+      sourceId: BAZAAR_PROVIDER_SOURCE_ID,
       execute: async (input) => {
         const target = await resolveRuleAuthoringWorkflowTarget(input)
         const result = await openRuleProposalTriageGui(context, {
@@ -128,16 +144,27 @@ async function registerWorkflowProviders(
         }
         return result
       }
-    })
-    registerOwnedProvider(api, registrations, {
+  })
+  actionProviders.set("bobBazaar.verifyRuleAuthoringApply", {
       id: "bobBazaar.verifyRuleAuthoringApply",
+      sourceId: BAZAAR_PROVIDER_SOURCE_ID,
       execute: (input) => configuredRuleAuthoringActions().verifyRuleAuthoringApply(input)
-    })
-    return { registered: true, registrations, api }
-  } catch (error) {
-    disposeRegistrations(registrations)
-    throw error
+  })
+
+  const extensionVersion = context.extension.packageJSON.version
+  const provenance = {
+    expectedOwner: {
+      id: context.extension.id,
+      version: typeof extensionVersion === "string" ? extensionVersion : ""
+    },
+    ownerDirectory: "extensions/bob-bazaar-review"
   }
+  const registration = registerNegotiatedContributionSet(api, manifest, provenance, {
+    actionProviders,
+    preflightChecks: new Map(),
+    resultSinks: new Map()
+  })
+  return { registered: true, registrations: [registration], api }
 }
 
 function configuredRuleAuthoringActions() {
@@ -145,18 +172,4 @@ function configuredRuleAuthoringActions() {
   return createRuleAuthoringWorkflowActions({
     maxSelectedEvidenceBytes: configured.limits.maxSelectedEvidenceBytes
   })
-}
-
-function registerOwnedProvider(
-  api: WorkflowRegisterApi,
-  registrations: vscode.Disposable[],
-  provider: WorkflowActionProvider
-): void {
-  const registration = api.registerActionProvider({ ...provider, sourceId: BAZAAR_PROVIDER_SOURCE_ID })
-  if (registration && typeof registration.dispose === "function") registrations.push(registration)
-}
-
-function disposeRegistrations(registrations: vscode.Disposable[]): void {
-  for (const registration of [...registrations].reverse()) registration.dispose()
-  registrations.length = 0
 }

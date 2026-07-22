@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://local.schemas/bob-bazaar-review/load-selected-rule-evidence-output.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status", "authoringSession", "selected_chunk_count", "evidence_utf8_bytes", "evidence", "proposal_contract", "artifact_path", "$workflow"],
+  "properties": {
+    "status": { "enum": ["loaded", "resumed"] },
+    "authoringSession": { "$ref": "#/$defs/session" },
+    "selected_chunk_count": { "type": "integer", "minimum": 0 },
+    "evidence_utf8_bytes": { "type": "integer", "minimum": 0 },
+    "evidence": { "type": "string" },
+    "proposal_contract": { "type": "object" },
+    "artifact_path": { "type": "string" },
+    "$workflow": { "type": "object" }
+  },
+  "$defs": {
+    "session": { "type": "object", "additionalProperties": false, "required": ["run_id"], "properties": { "run_id": { "type": "string" } } }
+  }
+}

@@ -3,7 +3,8 @@ import { buildCaptureWorkflowOptions } from "./workflowOptions"
 import { buildSafeWorkflowOptions, optionRecord } from "./workflowUserOptions"
 
 const WORKFLOW_REGISTER_EXTENSION_ID = "local.workflow-register"
-const CODE_CONSISTENCY_PROVIDER_SOURCE_ID = "local.bob-code-consistency-review"
+const PROVIDER_REGISTRY_API_VERSION = "provider-registry/v1" as const
+const contributionManifest = require("../contracts/workflow-contributions.json") as WorkflowContributionManifest
 
 interface WorkflowActionExecutionInput {
   args: unknown
@@ -18,16 +19,50 @@ interface WorkflowActionExecutionInput {
   workspaceRoot?: string
   runId?: string
   stepId?: string
+  latestAssistantText?: string
+  resultText?: string
+  artifactText?: string
 }
 
 interface WorkflowActionProvider {
   id: string
-  sourceId?: string
   execute: (input: WorkflowActionExecutionInput) => Promise<unknown> | unknown
 }
 
+interface WorkflowContributionManifest {
+  schema_version: "workflow-contributions/v1"
+  owner: { id: string; version: string }
+  registry_api: { min: string; max: string }
+  action_providers: Array<{ id: string }>
+  preflight_checks: unknown[]
+  result_sinks: unknown[]
+  workflow_templates: unknown[]
+  schemas: unknown[]
+  workflow_claims: unknown[]
+  workflow_exclusions: unknown[]
+  external_commands: unknown[]
+}
+
+interface WorkflowContributionHandlerSet {
+  actionProviders: Map<string, WorkflowActionProvider>
+  preflightChecks: Map<string, never>
+  resultSinks: Map<string, never>
+  agentProvider?: undefined
+}
+
 export interface WorkflowRegisterApi {
-  registerActionProvider: (provider: WorkflowActionProvider) => vscode.Disposable | void
+  readonly apiVersion: typeof PROVIDER_REGISTRY_API_VERSION
+  negotiateProviderRegistry: (range: { min: string; max: string }) => typeof PROVIDER_REGISTRY_API_VERSION
+  registerContributionSet: (
+    manifest: WorkflowContributionManifest,
+    provenance: WorkflowProviderProvenanceContext,
+    handlers: WorkflowContributionHandlerSet
+  ) => vscode.Disposable
+}
+
+export interface WorkflowProviderProvenanceContext {
+  expectedOwner: { id: string; version: string }
+  ownerDirectory: string
 }
 
 export type WorkflowProviderRegistrationResult =
@@ -145,100 +180,140 @@ export interface CodeConsistencyWorkflowHandlers {
   triage: WorkflowCommandHandler
 }
 
+const WORKFLOW_HANDLER_KEYS = [
+  "initializeWorkspace",
+  "createReviewInput",
+  "prepareAiReviewInputDraft",
+  "applyAiReviewInputDraft",
+  "prepareAiTraceabilityDraft",
+  "captureAiTraceabilityDraft",
+  "applyAiTraceabilityDraft",
+  "openTraceabilityPrep",
+  "validateTraceabilityCatalog",
+  "createReviewInputFromTraceability",
+  "repairReviewInput",
+  "explainReviewInputDiagnostics",
+  "preprocess",
+  "captureBobOutput",
+  "validateOutput",
+  "triage"
+] as const
+
 export async function registerWorkflowProviders(
-  handlers: CodeConsistencyWorkflowHandlers
+  handlers: CodeConsistencyWorkflowHandlers,
+  provenance: WorkflowProviderProvenanceContext
 ): Promise<WorkflowProviderRegistrationResult> {
+  validateWorkflowHandlers(handlers)
   const api = await getWorkflowRegisterApi()
   if (!api) return { registered: false, registrations: [] }
 
-  const registrations: vscode.Disposable[] = []
-  try {
-    registerOwnedProvider(api, registrations, {
+  const negotiatedVersion = api.negotiateProviderRegistry(contributionManifest.registry_api)
+  if (negotiatedVersion !== PROVIDER_REGISTRY_API_VERSION) {
+    throw new Error("Provider registry negotiation returned an unexpected version.")
+  }
+  const actionProviders = new Map<string, WorkflowActionProvider>([
+    actionProvider({
       id: "bobCodeConsistency.initializeWorkspace",
       execute: (input) => handlers.initializeWorkspace(mergeWorkflowOptions("bobCodeConsistency.initializeWorkspace", input))
-    })
-    registerOwnedProvider(api, registrations, {
+    }),
+    actionProvider({
       id: "bobCodeConsistency.createReviewInput",
       execute: (input) => handlers.createReviewInput(mergeWorkflowOptions("bobCodeConsistency.createReviewInput", input))
-    })
-    registerOwnedProvider(api, registrations, {
+    }),
+    actionProvider({
       id: "bobCodeConsistency.prepareAiReviewInputDraft",
       execute: (input) => handlers.prepareAiReviewInputDraft(mergeWorkflowOptions("bobCodeConsistency.prepareAiReviewInputDraft", input))
-    })
-    registerOwnedProvider(api, registrations, {
+    }),
+    actionProvider({
       id: "bobCodeConsistency.applyAiReviewInputDraft",
       execute: (input) => handlers.applyAiReviewInputDraft(mergeWorkflowOptions("bobCodeConsistency.applyAiReviewInputDraft", input))
-    })
-    registerOwnedProvider(api, registrations, {
+    }),
+    actionProvider({
       id: "bobCodeConsistency.prepareAiTraceabilityDraft",
       execute: (input) => handlers.prepareAiTraceabilityDraft(mergeWorkflowOptions("bobCodeConsistency.prepareAiTraceabilityDraft", input))
-    })
-    registerOwnedProvider(api, registrations, {
+    }),
+    actionProvider({
       id: "bobCodeConsistency.captureAiTraceabilityDraft",
       execute: (input) => handlers.captureAiTraceabilityDraft(buildCaptureTraceabilityDraftOptions(input))
-    })
-    registerOwnedProvider(api, registrations, {
+    }),
+    actionProvider({
       id: "bobCodeConsistency.applyAiTraceabilityDraft",
       execute: (input) => handlers.applyAiTraceabilityDraft(buildApplyTraceabilityDraftOptions(input))
-    })
-    registerOwnedProvider(api, registrations, {
+    }),
+    actionProvider({
       id: "bobCodeConsistency.openTraceabilityPrep",
       execute: (input) => handlers.openTraceabilityPrep(mergeWorkflowOptions("bobCodeConsistency.openTraceabilityPrep", input))
-    })
-    registerOwnedProvider(api, registrations, {
+    }),
+    actionProvider({
       id: "bobCodeConsistency.validateTraceabilityCatalog",
       execute: (input) => handlers.validateTraceabilityCatalog(mergeWorkflowOptions("bobCodeConsistency.validateTraceabilityCatalog", input))
-    })
-    registerOwnedProvider(api, registrations, {
+    }),
+    actionProvider({
       id: "bobCodeConsistency.createReviewInputFromTraceability",
       execute: (input) => handlers.createReviewInputFromTraceability(mergeWorkflowOptions("bobCodeConsistency.createReviewInputFromTraceability", input))
-    })
-    registerOwnedProvider(api, registrations, {
+    }),
+    actionProvider({
       id: "bobCodeConsistency.repairReviewInput",
       execute: (input) => handlers.repairReviewInput(mergeWorkflowOptions("bobCodeConsistency.repairReviewInput", input))
-    })
-    registerOwnedProvider(api, registrations, {
+    }),
+    actionProvider({
       id: "bobCodeConsistency.explainReviewInputDiagnostics",
       execute: (input) => handlers.explainReviewInputDiagnostics(mergeWorkflowOptions("bobCodeConsistency.explainReviewInputDiagnostics", input))
-    })
-    registerOwnedProvider(api, registrations, {
+    }),
+    actionProvider({
       id: "bobCodeConsistency.preprocess",
       execute: (input) => handlers.preprocess(mergeWorkflowOptions("bobCodeConsistency.preprocess", input))
-    })
-    registerOwnedProvider(api, registrations, {
+    }),
+    actionProvider({
       id: "bobCodeConsistency.captureBobOutput",
       execute: (input) => handlers.captureBobOutput(buildCaptureBobOutputOptions(input))
-    })
-    registerOwnedProvider(api, registrations, {
+    }),
+    actionProvider({
       id: "bobCodeConsistency.validateOutput",
       execute: (input) => handlers.validateOutput(mergeWorkflowOptions("bobCodeConsistency.validateOutput", input))
-    })
-    registerOwnedProvider(api, registrations, {
+    }),
+    actionProvider({
       id: "bobCodeConsistency.triage",
       execute: (input) => handlers.triage(mergeWorkflowOptions("bobCodeConsistency.triage", input))
     })
-    return { registered: true, registrations, api }
-  } catch (error) {
-    disposeRegistrations(registrations)
-    throw error
+  ])
+  const registration = api.registerContributionSet(
+    contributionManifest,
+    provenance,
+    {
+      actionProviders,
+      preflightChecks: new Map<string, never>(),
+      resultSinks: new Map<string, never>()
+    }
+  )
+  return { registered: true, registrations: [registration], api }
+}
+
+function actionProvider(
+  provider: WorkflowActionProvider
+): [string, WorkflowActionProvider] {
+  return [provider.id, provider]
+}
+
+function validateWorkflowHandlers(handlers: unknown): asserts handlers is CodeConsistencyWorkflowHandlers {
+  if (typeof handlers !== "object" || handlers === null) throw invalidWorkflowHandlerSetError()
+  const ownKeys = Reflect.ownKeys(handlers)
+  if (
+    ownKeys.length !== WORKFLOW_HANDLER_KEYS.length
+    || WORKFLOW_HANDLER_KEYS.some((key) => !ownKeys.includes(key))
+  ) {
+    throw invalidWorkflowHandlerSetError()
+  }
+  for (const key of WORKFLOW_HANDLER_KEYS) {
+    const descriptor = Object.getOwnPropertyDescriptor(handlers, key)
+    if (!descriptor || !("value" in descriptor) || typeof descriptor.value !== "function") {
+      throw invalidWorkflowHandlerSetError()
+    }
   }
 }
 
-function registerOwnedProvider(
-  api: WorkflowRegisterApi,
-  registrations: vscode.Disposable[],
-  provider: WorkflowActionProvider
-): void {
-  const registration = api.registerActionProvider({
-    ...provider,
-    sourceId: CODE_CONSISTENCY_PROVIDER_SOURCE_ID
-  })
-  if (registration && typeof registration.dispose === "function") registrations.push(registration)
-}
-
-export function disposeRegistrations(registrations: vscode.Disposable[]): void {
-  for (const registration of [...registrations].reverse()) registration.dispose()
-  registrations.length = 0
+function invalidWorkflowHandlerSetError(): Error {
+  return new Error("Code consistency workflow handler set is invalid.")
 }
 
 async function getWorkflowRegisterApi(): Promise<WorkflowRegisterApi | undefined> {
@@ -249,9 +324,14 @@ async function getWorkflowRegisterApi(): Promise<WorkflowRegisterApi | undefined
   }
 
   const api = extension.isActive ? extension.exports : await extension.activate()
-  if (!api?.registerActionProvider) {
+  if (
+    !api
+    || api.apiVersion !== PROVIDER_REGISTRY_API_VERSION
+    || typeof api.negotiateProviderRegistry !== "function"
+    || typeof api.registerContributionSet !== "function"
+  ) {
     console.warn(
-      `workflow-register 拡張機能が registerActionProvider を公開していません: ${WORKFLOW_REGISTER_EXTENSION_ID}`
+      `workflow-register 拡張機能が provider-registry/v1 API を公開していません: ${WORKFLOW_REGISTER_EXTENSION_ID}`
     )
     return undefined
   }

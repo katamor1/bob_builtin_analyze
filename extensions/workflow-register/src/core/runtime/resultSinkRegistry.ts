@@ -10,13 +10,13 @@ import {
 import { requireWorkspaceTrust, type WorkspaceTrustCheck } from "../workspaceTrust"
 import { writeWorkspaceFilesAtomically } from "./workspaceFileTransaction"
 
-type SinkHandler = (sink: ResultSinkDefinition, input: ResultSinkWriteInput) => Promise<ResultSinkWriteResult>
+export type SinkHandler = (sink: ResultSinkDefinition, input: ResultSinkWriteInput) => Promise<ResultSinkWriteResult>
 type FileTransactionCommit = () => Promise<void> | void
 export interface ResultSinkFileTransactionWrite {
   sink: Extract<ResultSinkDefinition, { type: "file" }>
   input: ResultSinkWriteInput
 }
-type FileTransactionHandler = (
+export type FileTransactionHandler = (
   writes: ResultSinkFileTransactionWrite[],
   commitState: FileTransactionCommit
 ) => Promise<ResultSinkWriteResult>
@@ -26,12 +26,45 @@ interface ContributionResultSinkResolver {
   getResultSinkContractVersion(type: string): string | undefined
 }
 
+export interface ResultSinkFileTransactionResolver {
+  getFileTransaction(fileSinkHandler: SinkHandler | undefined): FileTransactionHandler | undefined
+}
+
+export class ResultSinkFileTransactionBinding implements ResultSinkFileTransactionResolver {
+  private current?: {
+    token: symbol
+    fileSinkHandler: SinkHandler
+    fileTransaction: FileTransactionHandler
+  }
+
+  bind(fileSinkHandler: SinkHandler, fileTransaction: FileTransactionHandler): { dispose(): void } {
+    if (this.current) throw new Error("A result sink file transaction is already bound.")
+    const token = Symbol("result-sink-file-transaction")
+    this.current = { token, fileSinkHandler, fileTransaction }
+    let disposed = false
+    return {
+      dispose: () => {
+        if (disposed) return
+        disposed = true
+        if (this.current?.token === token) this.current = undefined
+      }
+    }
+  }
+
+  getFileTransaction(fileSinkHandler: SinkHandler | undefined): FileTransactionHandler | undefined {
+    return fileSinkHandler && this.current?.fileSinkHandler === fileSinkHandler
+      ? this.current.fileTransaction
+      : undefined
+  }
+}
+
 export class ResultSinkRegistry {
   private readonly handlers = new Map<string, SinkHandler>()
   private fileTransactionHandler?: FileTransactionHandler
 
   constructor(private readonly options: {
     contributionResolver?: ContributionResultSinkResolver
+    fileTransactionResolver?: ResultSinkFileTransactionResolver
   } = {}) {}
 
   register(type: string, handler: SinkHandler): void {
@@ -53,7 +86,15 @@ export class ResultSinkRegistry {
   ): Promise<ResultSinkWriteResult> {
     if (writes.length === 0) return { ok: true }
     try {
-      if (!this.fileTransactionHandler) {
+      const contributionFileHandler = this.options.contributionResolver?.getResultSink("file")
+      const liveFileTransaction = this.options.fileTransactionResolver?.getFileTransaction(contributionFileHandler)
+      const fileTransaction = this.options.fileTransactionResolver
+        ? liveFileTransaction
+        : this.fileTransactionHandler
+      if (this.options.fileTransactionResolver && !fileTransaction) {
+        return { ok: false, error: "Unsupported result sink: file" }
+      }
+      if (!fileTransaction) {
         // Compatibility for registries that predate the transaction capability.
         // Earlier successful external writes cannot be rolled back by a legacy handler.
         for (const write of writes) {
@@ -64,7 +105,7 @@ export class ResultSinkRegistry {
         return { ok: true }
       }
       let committed = false
-      const result = await this.fileTransactionHandler(writes, async () => {
+      const result = await fileTransaction(writes, async () => {
         await Promise.resolve(commitState())
         committed = true
       })
@@ -108,43 +149,89 @@ export interface DefaultResultSinkRegistryOptions {
   contributionResolver?: ContributionResultSinkResolver
 }
 
-export function createDefaultResultSinkRegistry(options: DefaultResultSinkRegistryOptions): ResultSinkRegistry {
-  const allowedCommandSinks = new Set(options.allowedCommandSinks ?? ["bobBazaar.captureReviewResult"])
-  const registry = new ResultSinkRegistry({ contributionResolver: options.contributionResolver })
+export interface BuiltInResultSinkHandlerOptions {
+  workspaceRoot?: string
+  executeCommand: (command: string, ...args: unknown[]) => Promise<unknown> | unknown
+  allowedCommandSinks?: string[]
+  isWorkspaceTrusted?: WorkspaceTrustCheck
+  writeFilesAtomically?: typeof writeWorkspaceFilesAtomically
+}
 
-  registry.register("command", async (sink, input) => {
+export interface BuiltInResultSinkHandlers {
+  resultSinks: Map<string, SinkHandler>
+  fileTransaction: FileTransactionHandler
+}
+
+export function createBuiltInResultSinkHandlers(
+  options: BuiltInResultSinkHandlerOptions
+): BuiltInResultSinkHandlers {
+  const allowedCommandSinks = new Set(options.allowedCommandSinks ?? ["bobBazaar.captureReviewResult"])
+  const resultSinks = new Map<string, SinkHandler>()
+
+  resultSinks.set("command", async (sink, input) => {
     if (!isCommandResultSink(sink)) return { ok: false, error: `Invalid command sink: ${sink.type}` }
     requireWorkspaceTrust(options.isWorkspaceTrusted, "writing command result sink")
     if (!allowedCommandSinks.has(sink.command)) return { ok: false, error: `Unsupported result command: ${sink.command}` }
-    const value = await Promise.resolve(options.executeCommand(sink.command, input.text, ...(sink.args ?? []), commandContext(input, options.workspaceRoot)))
+    const workspaceRoot = requireInputWorkspaceRoot(input, options.workspaceRoot)
+    const value = await Promise.resolve(options.executeCommand(
+      sink.command,
+      input.text,
+      ...(sink.args ?? []),
+      commandContext(input, workspaceRoot)
+    ))
     const reportedError = commandReportedError(value)
     if (reportedError) return { ok: false, value, error: reportedError }
     return { ok: true, value }
   })
 
-  registry.register("file", async (sink, input) => {
+  resultSinks.set("file", async (sink, input) => {
     if (!isFileResultSink(sink)) return { ok: false, error: `Invalid file sink: ${sink.type}` }
     requireWorkspaceTrust(options.isWorkspaceTrusted, "writing file result sink")
-    const target = resolveWorkspacePath(options.workspaceRoot, renderTemplate(sink.path, input))
+    const workspaceRoot = requireInputWorkspaceRoot(input, options.workspaceRoot)
+    const target = resolveWorkspacePath(workspaceRoot, renderTemplate(sink.path, input))
     await fs.mkdir(path.dirname(target), { recursive: true })
     await fs.writeFile(target, input.text, { encoding: sink.encoding ?? "utf8" })
     return { ok: true, path: target }
   })
 
-  registry.registerFileTransaction(async (writes, commitState) => {
+  const fileTransaction: FileTransactionHandler = async (writes, commitState) => {
+    let workspaceRoot: string | undefined
     for (const write of writes) {
       requireWorkspaceTrust(options.isWorkspaceTrusted, "writing file result sink")
       if (write.sink.type !== "file") return { ok: false, error: `Invalid file transaction sink: ${write.sink.type}` }
+      const writeRoot = requireInputWorkspaceRoot(write.input, options.workspaceRoot)
+      if (workspaceRoot && workspaceRoot !== writeRoot) {
+        return { ok: false, error: "File transaction writes must share one workflow root." }
+      }
+      workspaceRoot = writeRoot
     }
-    await writeWorkspaceFilesAtomically(options.workspaceRoot, writes.map((write) => ({
+    if (!workspaceRoot) return { ok: true }
+    await (options.writeFilesAtomically ?? writeWorkspaceFilesAtomically)(workspaceRoot, writes.map((write) => ({
       relativePath: renderTemplate(write.sink.path, write.input),
       text: write.input.text,
       encoding: write.sink.encoding
     })), commitState)
     return { ok: true }
-  })
+  }
+
+  return { resultSinks, fileTransaction }
+}
+
+export function createDefaultResultSinkRegistry(options: DefaultResultSinkRegistryOptions): ResultSinkRegistry {
+  const registry = new ResultSinkRegistry({ contributionResolver: options.contributionResolver })
+  const builtIns = createBuiltInResultSinkHandlers(options)
+  for (const [type, handler] of builtIns.resultSinks) registry.register(type, handler)
+  registry.registerFileTransaction(builtIns.fileTransaction)
 
   return registry
+}
+
+function requireInputWorkspaceRoot(input: ResultSinkWriteInput, fallback: string | undefined): string {
+  const workspaceRoot = input.workflowRoot ?? fallback
+  if (typeof workspaceRoot !== "string" || !workspaceRoot.trim()) {
+    throw new Error("Result sink workflow root is required.")
+  }
+  return workspaceRoot
 }
 
 function resolveWorkspacePath(workspaceRoot: string, sinkPath: string): string {

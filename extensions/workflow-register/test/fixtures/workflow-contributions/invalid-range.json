@@ -6,5 +6,8 @@
   "preflight_checks": [],
   "result_sinks": [],
   "workflow_templates": [],
+  "workflow_claims": [],
+  "workflow_exclusions": [],
+  "external_commands": [],
   "schemas": []
 }

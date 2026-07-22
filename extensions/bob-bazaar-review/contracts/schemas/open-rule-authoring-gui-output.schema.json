@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://local.schemas/bob-bazaar-review/open-rule-authoring-gui-output.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["run_id"],
+  "properties": { "run_id": { "type": "string", "minLength": 1 } }
+}

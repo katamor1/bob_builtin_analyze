@@ -21,6 +21,9 @@
   "preflight_checks": [],
   "result_sinks": [],
   "workflow_templates": [],
+  "workflow_claims": [],
+  "workflow_exclusions": [],
+  "external_commands": [],
   "schemas": [
     { "id": "sample.input", "path": "extensions/sample-extension/schema/input.json" },
     { "id": "sample.output", "path": "extensions/sample-extension/schema/output.json" }

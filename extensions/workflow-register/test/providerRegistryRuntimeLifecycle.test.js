@@ -42,6 +42,9 @@ function manifest(version) {
       capabilities: ["workflow-step"]
     },
     workflow_templates: [],
+    workflow_claims: [],
+    workflow_exclusions: [],
+    external_commands: [],
     schemas: [
       { id: "runtime.action.input", path: "extensions/runtime-owner/schema/action-input.json" },
       { id: "runtime.action.output", path: "extensions/runtime-owner/schema/action-output.json" },

@@ -145,6 +145,33 @@ function requiredProductionDependencyEntries(extensionRoot) {
   return [...requiredEntries].sort()
 }
 
+function requiredContributionAssetEntries(extensionRoot) {
+  const packageJson = readJson(path.join(extensionRoot, "package.json"))
+  const manifestRelativePath = "contracts/workflow-contributions.json"
+  const manifest = readJson(path.join(extensionRoot, manifestRelativePath))
+  const ownerPrefix = `extensions/${packageJson.name}/`
+  const repoPaths = [
+    ...manifest.schemas.map(({ path: schemaPath }) => schemaPath),
+    ...manifest.workflow_templates.map(({ source }) => source)
+  ]
+  const requiredEntries = new Set([`extension/${manifestRelativePath}`])
+
+  for (const repoPath of repoPaths) {
+    if (
+      typeof repoPath !== "string" ||
+      repoPath.includes("\\") ||
+      path.posix.normalize(repoPath) !== repoPath ||
+      !repoPath.startsWith(ownerPrefix)
+    ) {
+      throw new Error(`Contribution asset must be an owned normalized repository path: ${repoPath}`)
+    }
+    const relativePath = repoPath.slice(ownerPrefix.length)
+    requiredEntries.add(normalizeExtensionEntry(extensionRoot, path.join(extensionRoot, ...relativePath.split("/"))))
+  }
+
+  return [...requiredEntries].sort()
+}
+
 function checkForbiddenEntries(entries) {
   const rules = [
     { pattern: /^extension\/src\//, reason: "source directory" },
@@ -194,6 +221,7 @@ function main() {
   const requiredEntries = [
     "extension/package.json",
     mainEntry,
+    ...requiredContributionAssetEntries(extensionRoot),
     ...requiredProductionDependencyEntries(extensionRoot)
   ]
   for (const requiredEntry of requiredEntries) {
@@ -225,4 +253,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { requiredProductionDependencyEntries }
+module.exports = { requiredContributionAssetEntries, requiredProductionDependencyEntries }

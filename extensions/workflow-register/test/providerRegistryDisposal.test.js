@@ -22,6 +22,9 @@ function manifest() {
       source: "extensions/owner-a/templates/WORKFLOW.md",
       destinations: ["extensions/owner-a/WORKFLOW.md"]
     }],
+    workflow_claims: [],
+    workflow_exclusions: [],
+    external_commands: [],
     schemas: []
   }
 }

@@ -108,7 +108,9 @@ export class WorkflowEngine {
     this.preflightChecks = createPreflightCheckResolver(
       options.preflightChecks ?? {},
       options.preflightCheckResolver,
-      createDefaultPreflightChecks(workspaceRoot)
+      options.includeDefaultPreflightChecks === false
+        ? {}
+        : createDefaultPreflightChecks(workspaceRoot)
     )
     this.strictPreflightChecks = options.strictPreflightChecks === true
     this.hooks = options.hooks ?? {}

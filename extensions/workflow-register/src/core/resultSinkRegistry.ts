@@ -1,5 +1,15 @@
-export { createDefaultResultSinkRegistry, ResultSinkRegistry } from "./runtime/resultSinkRegistry"
+export {
+  createBuiltInResultSinkHandlers,
+  createDefaultResultSinkRegistry,
+  ResultSinkFileTransactionBinding,
+  ResultSinkRegistry
+} from "./runtime/resultSinkRegistry"
 export type {
+  BuiltInResultSinkHandlerOptions,
+  BuiltInResultSinkHandlers,
   DefaultResultSinkRegistryOptions,
-  ResultSinkFileTransactionWrite
+  FileTransactionHandler,
+  ResultSinkFileTransactionResolver,
+  ResultSinkFileTransactionWrite,
+  SinkHandler
 } from "./runtime/resultSinkRegistry"

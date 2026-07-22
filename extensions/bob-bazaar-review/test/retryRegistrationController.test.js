@@ -169,36 +169,85 @@ test("retry controller exclusively owns provider registrations", async () => {
 
 test("retry controller disposes every registration when one provider cleanup throws", async () => {
   const api = {}
-  const disposed = []
+  const events = []
   const errors = []
+  const cleanupError = new Error("provider cleanup failed")
   const controller = startRetryRegistrationController({
     retryDelaysMs: [],
     register: async () => ({
       registered: true,
       api,
       registrations: [
-        disposable("first", disposed),
+        disposable("first", events),
         {
           dispose: () => {
-            disposed.push("throwing")
-            throw new Error("provider cleanup failed")
+            events.push("throwing")
+            throw cleanupError
           }
         },
-        disposable("last", disposed)
+        disposable("last", events)
       ]
     }),
     currentApi: () => api,
-    subscribeChanges: () => disposable("listener", disposed),
+    subscribeChanges: () => disposable("listener", events),
     own: () => {},
-    reportError: (error) => errors.push(error)
+    reportError: (error) => {
+      events.push("report")
+      errors.push(error)
+    }
   })
 
   await tick()
   assert.doesNotThrow(() => controller.dispose())
 
-  assert.deepEqual(disposed, ["last", "throwing", "first", "listener"])
+  assert.deepEqual(events, ["last", "throwing", "first", "listener", "report"])
+  assert.deepEqual(errors, [cleanupError])
+})
+
+test("cleanup aggregates provider and listener failures only after every resource is detached", async () => {
+  const api = {}
+  const events = []
+  const errors = []
+  const lastError = new Error("last provider cleanup failed")
+  const firstError = new Error("first provider cleanup failed")
+  const listenerError = new Error("listener cleanup failed")
+  let listenerLive = true
+  const controller = startRetryRegistrationController({
+    retryDelaysMs: [],
+    register: async () => ({
+      registered: true,
+      api,
+      registrations: [
+        { dispose: () => { events.push("first"); throw firstError } },
+        disposable("middle", events),
+        { dispose: () => { events.push("last"); throw lastError } }
+      ]
+    }),
+    currentApi: () => api,
+    subscribeChanges: () => ({
+      dispose: () => {
+        events.push("listener")
+        listenerLive = false
+        throw listenerError
+      }
+    }),
+    own: () => {},
+    reportError: (error) => {
+      assert.equal(listenerLive, false)
+      events.push("report")
+      errors.push(error)
+    }
+  })
+
+  await tick()
+  assert.doesNotThrow(() => controller.dispose())
+
+  assert.deepEqual(events, ["last", "middle", "first", "listener", "report"])
+  assert.equal(listenerLive, false)
   assert.equal(errors.length, 1)
-  assert.match(String(errors[0]), /provider cleanup failed/)
+  assert.ok(errors[0] instanceof AggregateError)
+  assert.deepEqual(errors[0].errors, [lastError, firstError, listenerError])
+  assert.match(errors[0].message, /cleanup failed/i)
 })
 
 test("cleanup error reporting cannot interrupt listener disposal", async () => {

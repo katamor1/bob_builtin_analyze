@@ -6,17 +6,24 @@ import {
 } from "./bobWorkflowGateRegistry"
 import { StepRuntime, type StepCompletionExpectation } from "./bobStepRuntime"
 import type { BobSourceLike } from "./bobApi"
-import { createDefaultActionRegistry } from "./core/actionRegistry"
+import { ActionRegistry } from "./core/actionRegistry"
 import type { ActionProvider, ActionProviderRegistration } from "./core/actionRegistry"
 import { ActionProviderRegistrationStore } from "./core/actionProviderRegistrationStore"
+import type { ContributionRegistration } from "./core/contributionRegistry"
+import type { ContributionOwner } from "./core/contributionManifest"
 import { disposeResourcesInOrder } from "./core/disposeResources"
+import { exists } from "./core/engine/preflight"
 import type { AgentProvider, CoreWorkflowDefinition } from "./core/model"
+import { ResultSinkFileTransactionBinding } from "./core/resultSinkRegistry"
 import type { ResultSinkRegistry } from "./core/resultSinkRegistry"
 import {
   fallbackWorkspaceRootCandidates,
+  findMarkerRoots,
   findWorkflowRootCandidates,
-  MarkerRootCandidate
+  MarkerRootCandidate,
+  rootHasMarker
 } from "./core/workspaceRoots"
+import { registerWorkflowRegisterBuiltInContributions } from "./builtInContributions"
 import { showMarkdownReport } from "./reports"
 import { ManualStepPanelController } from "./webview/manualStepPanel"
 import {
@@ -41,15 +48,14 @@ export interface StepCompletionOptions extends StepCompletionExpectation {
 export class WorkflowRegisterService implements vscode.Disposable {
   private readonly providerRegistryHost = new ProviderRegistryHost()
   readonly providerRegistryApi = this.providerRegistryHost.api
+  private readonly fileTransactions = new ResultSinkFileTransactionBinding()
   private readonly registeredIds = new Set<string>()
   private readonly watcher = vscode.workspace.createFileSystemWatcher(WORKFLOW_GLOB)
   private readonly bobWorkflowGates = new BobWorkflowGateRegistry()
   private readonly reviewAcceptances = new ReviewAcceptanceCoordinator()
   private readonly stepRuntime = new StepRuntime()
   private readonly coreWorkflows = new Map<string, CoreWorkflowDefinition>()
-  private readonly actionRegistry = createDefaultActionRegistry({
-    isWorkspaceTrusted: () => vscode.workspace.isTrusted,
-    executeCommand: (command, ...args) => vscode.commands.executeCommand(command, ...args),
+  private readonly actionRegistry = new ActionRegistry({
     contributionResolver: this.providerRegistryHost.runtimeResolver
   })
   private readonly customResultSinks: Array<{ type: string; handler: Parameters<ResultSinkRegistry["register"]>[1] }> = []
@@ -57,11 +63,13 @@ export class WorkflowRegisterService implements vscode.Disposable {
   private readonly manualStepPanel: ManualStepPanelController
   private readonly runtimeFactory: WorkflowRuntimeFactory
   private readonly runCommands: WorkflowRunCommandService
+  private readonly builtInContributionRegistration: ContributionRegistration
   private agentProvider?: AgentProvider
   private registeredSource?: BobSourceLike
   private lastResult: RegistrationResult = { summary: "No workflow registration has run yet.", lines: [] }
 
-  constructor(private readonly engineVersion: string) {
+  constructor(private readonly installedOwner: ContributionOwner) {
+    const engineVersion = installedOwner.version
     this.manualStepPanel = new ManualStepPanelController({
       host: {
         createWebviewPanel: (viewType, title, showOptions, options) => vscode.window.createWebviewPanel(
@@ -83,6 +91,7 @@ export class WorkflowRegisterService implements vscode.Disposable {
       engineVersion,
       actionRegistry: this.actionRegistry,
       contributionResolver: this.providerRegistryHost.runtimeResolver,
+      fileTransactionResolver: this.fileTransactions,
       customResultSinks: this.customResultSinks,
       stepRuntime: this.stepRuntime,
       gateRegistry: this.bobWorkflowGates,
@@ -102,6 +111,15 @@ export class WorkflowRegisterService implements vscode.Disposable {
         this.reviewAcceptances.coordinate(workspaceRoot, runId, kind, operation)
       )
     })
+    this.builtInContributionRegistration = registerWorkflowRegisterBuiltInContributions({
+      api: this.providerRegistryApi,
+      installedOwner,
+      fileTransactions: this.fileTransactions,
+      isWorkspaceTrusted: () => vscode.workspace.isTrusted,
+      executeCommand: (command, ...args) => vscode.commands.executeCommand(command, ...args),
+      pathExists: exists,
+      bazaarRepositoryAvailable: (workflowRoot) => this.bazaarRepositoryAvailable(workflowRoot)
+    })
     this.watcher.onDidCreate(() => this.reload({ showReport: false }))
     this.watcher.onDidChange(() => this.reload({ showReport: false }))
     this.watcher.onDidDelete(() => this.reload({ showReport: false }))
@@ -116,6 +134,11 @@ export class WorkflowRegisterService implements vscode.Disposable {
         label: "one or more provider contribution sets",
         propagate: false,
         dispose: () => this.providerRegistryHost.dispose()
+      },
+      {
+        label: "workflow-register built-in contribution set",
+        propagate: false,
+        dispose: () => this.builtInContributionRegistration.dispose()
       },
       {
         label: "one or more workflow action providers",
@@ -264,6 +287,14 @@ export class WorkflowRegisterService implements vscode.Disposable {
     if (folders.length === 0) return []
     const markerRoots = await findWorkflowRootCandidates(folders)
     return markerRoots.length > 0 ? markerRoots : fallbackWorkspaceRootCandidates(folders)
+  }
+
+  private async bazaarRepositoryAvailable(workflowRoot: string): Promise<boolean> {
+    if (await rootHasMarker(workflowRoot, ".bzr")) return true
+    const folders = vscode.workspace.workspaceFolders ?? []
+    if (folders.length === 0) return false
+    const candidates = await findMarkerRoots(folders, ".bzr")
+    return candidates.length > 0
   }
 
   async reload(options: { showReport: boolean }): Promise<void> {

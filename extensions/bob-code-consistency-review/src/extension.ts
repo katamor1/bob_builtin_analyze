@@ -133,7 +133,13 @@ export function registerWorkflowProvidersWithRetry(
 ): void {
   startRetryRegistrationController<WorkflowRegisterApi>({
     retryDelaysMs: WORKFLOW_PROVIDER_RETRY_DELAYS_MS,
-    register: () => registerWorkflowProviders(handlers),
+    register: () => registerWorkflowProviders(handlers, {
+      expectedOwner: {
+        id: context.extension.id,
+        version: String(context.extension.packageJSON.version)
+      },
+      ownerDirectory: "extensions/bob-code-consistency-review"
+    }),
     currentApi: currentWorkflowRegisterApi,
     subscribeChanges: (listener) => vscode.extensions.onDidChange(listener),
     own: (...registrations) => context.subscriptions.push(...registrations),

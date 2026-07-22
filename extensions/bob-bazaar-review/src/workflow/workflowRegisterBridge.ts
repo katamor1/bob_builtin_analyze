@@ -1,4 +1,5 @@
 import * as vscode from "vscode"
+import * as fs from "node:fs/promises"
 import type { CaptureReviewResultOptions } from "../projectRules/resultCaptureTypes"
 import type { BazaarReviewInitialTarget } from "../ui/reviewGuiTypes"
 
@@ -25,8 +26,50 @@ export interface WorkflowActionProvider {
   execute: (input: WorkflowActionExecutionInput) => Promise<unknown> | unknown
 }
 
+export interface ContributionRegistryApiRange {
+  min: string
+  max: string
+}
+
+export interface WorkflowContributionManifest {
+  schema_version: "workflow-contributions/v1"
+  owner: { id: string; version: string }
+  registry_api: ContributionRegistryApiRange
+  action_providers: Array<{
+    id: string
+    contract_version: string
+    input_schema: string
+    output_schema: string
+    error_codes: string[]
+  }>
+  preflight_checks: unknown[]
+  result_sinks: unknown[]
+  workflow_templates: Array<{ id: string; source: string; destinations: string[] }>
+  schemas: Array<{ id: string; path: string }>
+  workflow_claims: Array<{ path: string; role: "product" | "template" | "sample" | "fixture" }>
+  workflow_exclusions: Array<{ path: string; reason: string }>
+  external_commands: Array<{ id: string; contract_version: string; workflow_paths: string[] }>
+}
+
+export interface ProviderProvenanceContext {
+  expectedOwner: { id: string; version: string }
+  ownerDirectory: string
+}
+
+export interface ContributionHandlerSet {
+  actionProviders: Map<string, WorkflowActionProvider>
+  preflightChecks: Map<string, unknown>
+  resultSinks: Map<string, unknown>
+}
+
 export interface WorkflowRegisterApi {
-  registerActionProvider: (provider: WorkflowActionProvider) => vscode.Disposable | void
+  apiVersion: "provider-registry/v1"
+  negotiateProviderRegistry(range: ContributionRegistryApiRange): "provider-registry/v1"
+  registerContributionSet(
+    manifest: WorkflowContributionManifest,
+    provenance: ProviderProvenanceContext,
+    handlers: ContributionHandlerSet
+  ): vscode.Disposable
 }
 
 export async function getWorkflowRegisterApi(extensionId = WORKFLOW_REGISTER_EXTENSION_ID): Promise<WorkflowRegisterApi | undefined> {
@@ -36,11 +79,35 @@ export async function getWorkflowRegisterApi(extensionId = WORKFLOW_REGISTER_EXT
     return undefined
   }
   const api = extension.isActive ? extension.exports : await extension.activate()
-  if (!api?.registerActionProvider) {
-    console.warn(`workflow-register 拡張機能が registerActionProvider を公開していません: ${extensionId}`)
+  if (
+    api?.apiVersion !== "provider-registry/v1" ||
+    typeof api.negotiateProviderRegistry !== "function" ||
+    typeof api.registerContributionSet !== "function"
+  ) {
+    console.warn(`workflow-register 拡張機能が provider-registry/v1 を公開していません: ${extensionId}`)
     return undefined
   }
   return api
+}
+
+export async function loadWorkflowContributionManifest(
+  context: vscode.ExtensionContext
+): Promise<WorkflowContributionManifest> {
+  const manifestPath = context.asAbsolutePath("contracts/workflow-contributions.json")
+  return JSON.parse(await fs.readFile(manifestPath, "utf8")) as WorkflowContributionManifest
+}
+
+export function registerNegotiatedContributionSet(
+  api: WorkflowRegisterApi,
+  manifest: WorkflowContributionManifest,
+  provenance: ProviderProvenanceContext,
+  handlers: ContributionHandlerSet
+): vscode.Disposable {
+  const negotiatedVersion = api.negotiateProviderRegistry(manifest.registry_api)
+  if (negotiatedVersion !== api.apiVersion) {
+    throw new Error(`workflow-register negotiated an unexpected provider registry version: ${negotiatedVersion}`)
+  }
+  return api.registerContributionSet(manifest, provenance, handlers)
 }
 
 export function isWorkflowRegisterExtensionAvailable(extensionId = WORKFLOW_REGISTER_EXTENSION_ID): boolean {

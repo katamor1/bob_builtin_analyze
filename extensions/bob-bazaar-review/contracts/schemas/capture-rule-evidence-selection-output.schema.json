@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://local.schemas/bob-bazaar-review/capture-rule-evidence-selection-output.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status", "authoringSession", "selected_chunk_count", "artifact_path", "$workflow"],
+  "properties": {
+    "status": { "enum": ["captured", "resumed"] },
+    "authoringSession": { "$ref": "#/$defs/session" },
+    "selected_chunk_count": { "type": "integer", "minimum": 0 },
+    "artifact_path": { "type": "string" },
+    "$workflow": { "type": "object" }
+  },
+  "$defs": {
+    "session": { "type": "object", "additionalProperties": false, "required": ["run_id"], "properties": { "run_id": { "type": "string" } } }
+  }
+}

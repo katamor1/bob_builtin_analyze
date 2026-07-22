@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://local.schemas/bob-bazaar-review/capture-rule-proposal-output.schema.json",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "authoringSession", "issues"],
+      "properties": {
+        "status": { "const": "error" },
+        "authoringSession": { "$ref": "#/$defs/session" },
+        "issues": { "type": "array", "items": { "type": "object" } }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "authoringSession", "artifacts", "$workflow"],
+      "properties": {
+        "status": { "enum": ["captured", "resumed"] },
+        "authoringSession": { "$ref": "#/$defs/session" },
+        "artifacts": { "type": "object" },
+        "$workflow": { "type": "object" }
+      }
+    }
+  ],
+  "$defs": {
+    "session": { "type": "object", "additionalProperties": false, "required": ["run_id"], "properties": { "run_id": { "type": "string" } } }
+  }
+}

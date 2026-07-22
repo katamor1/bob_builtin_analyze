@@ -4,6 +4,7 @@ const path = require("node:path")
 const { test } = require("node:test")
 
 const { extensionRoot, readJson } = require("./helpers/sourceReader")
+const { requiredContributionAssetEntries } = require("../scripts/check-vsix-policy")
 
 function assertLocalScript(packageJson, scriptName, expectedCommand) {
   const command = packageJson.scripts[scriptName]
@@ -42,6 +43,23 @@ test("workflow-register dependency policy requires a committed lockfile and loca
   const lock = JSON.parse(fs.readFileSync(lockPath, "utf8"))
   const rootPackage = lock.packages?.[""]
   assert.deepEqual(Object.keys(rootPackage?.dependencies ?? {}).sort(), Object.keys(packageJson.dependencies ?? {}).sort())
+})
+
+test("workflow-register VSIX policy derives required contribution assets from its manifest", () => {
+  const policy = fs.readFileSync(path.join(extensionRoot, "scripts", "check-vsix-policy.js"), "utf8")
+  const manifest = readJson("contracts", "workflow-contributions.json")
+  const ownerPrefix = "extensions/workflow-register/"
+  const expectedEntries = [
+    "extension/contracts/workflow-contributions.json",
+    ...manifest.schemas.map((item) => `extension/${item.path.slice(ownerPrefix.length)}`),
+    ...manifest.workflow_templates.map((item) => `extension/${item.source.slice(ownerPrefix.length)}`)
+  ].sort()
+
+  assert.match(policy, /contracts\/workflow-contributions\.json/)
+  assert.match(policy, /manifest\.schemas/)
+  assert.match(policy, /manifest\.workflow_templates/)
+  assert.match(policy, /requiredContributionAssetEntries/)
+  assert.deepEqual(requiredContributionAssetEntries(extensionRoot), expectedEntries)
 })
 
 test("workflow-register README documents generated artifacts, package budget, dependencies, CLI, and trust boundary", () => {

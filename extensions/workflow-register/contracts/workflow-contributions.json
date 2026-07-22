@@ -1,0 +1,196 @@
+{
+  "schema_version": "workflow-contributions/v1",
+  "owner": {
+    "id": "local.workflow-register",
+    "version": "0.1.0"
+  },
+  "registry_api": {
+    "min": "provider-registry/v1",
+    "max": "provider-registry/v1"
+  },
+  "action_providers": [
+    {
+      "id": "workflowRegister.runMechanicalChecks",
+      "contract_version": "workflow-register.run-mechanical-checks/v1",
+      "input_schema": "workflow-register.action-input",
+      "output_schema": "workflow-register.action-output",
+      "error_codes": []
+    },
+    {
+      "id": "vscode.executeCommand",
+      "contract_version": "workflow-register.vscode-execute-command/v1",
+      "input_schema": "workflow-register.action-input",
+      "output_schema": "workflow-register.action-output",
+      "error_codes": []
+    }
+  ],
+  "preflight_checks": [
+    {
+      "id": "workspaceOpen",
+      "contract_version": "workflow-register.workspace-open/v1",
+      "result_schema": "workflow-register.preflight-result"
+    },
+    {
+      "id": "bobWorkspaceInitialized",
+      "contract_version": "workflow-register.bob-workspace-initialized/v1",
+      "result_schema": "workflow-register.preflight-result"
+    },
+    {
+      "id": "bazaarRepository",
+      "contract_version": "workflow-register.bazaar-repository/v1",
+      "result_schema": "workflow-register.preflight-result"
+    }
+  ],
+  "result_sinks": [
+    {
+      "type": "command",
+      "contract_version": "workflow-register.command-result-sink/v1",
+      "payload_schema": "workflow-register.command-result-sink"
+    },
+    {
+      "type": "file",
+      "contract_version": "workflow-register.file-result-sink/v1",
+      "payload_schema": "workflow-register.file-result-sink"
+    }
+  ],
+  "workflow_templates": [],
+  "workflow_claims": [
+    {
+      "path": ".bob/template-library/standard/process-code-precheck/WORKFLOW.md",
+      "role": "template"
+    },
+    {
+      "path": ".bob/workflows/process-code-doc-investigation/WORKFLOW.md",
+      "role": "product"
+    },
+    {
+      "path": ".bob/workflows/process-code-precheck/WORKFLOW.md",
+      "role": "product"
+    },
+    {
+      "path": ".bob/workflows/process-coding-plan/WORKFLOW.md",
+      "role": "product"
+    },
+    {
+      "path": ".bob/workflows/process-common-review/WORKFLOW.md",
+      "role": "product"
+    },
+    {
+      "path": ".bob/workflows/process-external-spec-design/WORKFLOW.md",
+      "role": "product"
+    },
+    {
+      "path": ".bob/workflows/process-external-spec-review/WORKFLOW.md",
+      "role": "product"
+    },
+    {
+      "path": ".bob/workflows/process-functional-test-design/WORKFLOW.md",
+      "role": "product"
+    },
+    {
+      "path": ".bob/workflows/process-functional-test-execution-review/WORKFLOW.md",
+      "role": "product"
+    },
+    {
+      "path": ".bob/workflows/process-integration-test-design/WORKFLOW.md",
+      "role": "product"
+    },
+    {
+      "path": ".bob/workflows/process-internal-spec-design/WORKFLOW.md",
+      "role": "product"
+    },
+    {
+      "path": ".bob/workflows/process-internal-spec-review/WORKFLOW.md",
+      "role": "product"
+    },
+    {
+      "path": ".bob/workflows/process-qa-intake-analysis/WORKFLOW.md",
+      "role": "product"
+    },
+    {
+      "path": ".bob/workflows/process-unit-test-design/WORKFLOW.md",
+      "role": "product"
+    },
+    {
+      "path": ".bob/workflows/process-unit-test-execution-review/WORKFLOW.md",
+      "role": "product"
+    },
+    {
+      "path": "extensions/workflow-register/samples/mechanical-checks-parser-pilot/.bob/workflows/mechanical-checks-parser-pilot/WORKFLOW.md",
+      "role": "sample"
+    },
+    {
+      "path": "extensions/workflow-register/samples/mechanical-checks-precheck/.bob/workflows/mechanical-checks-precheck/WORKFLOW.md",
+      "role": "sample"
+    },
+    {
+      "path": "extensions/workflow-register/samples/review-gated-step-execution/.bob/workflows/review-gated-step-execution/WORKFLOW.md",
+      "role": "sample"
+    },
+    {
+      "path": "extensions/workflow-register/samples/step-back-branching-approval/.bob/workflows/step-back-branching-approval/WORKFLOW.md",
+      "role": "sample"
+    }
+  ],
+  "workflow_exclusions": [
+    {
+      "path": "extensions/workflow-register/test/fixtures/bob-code-consistency-review-template/WORKFLOW.md",
+      "reason": "negative schema fixture"
+    },
+    {
+      "path": "extensions/workflow-register/test/fixtures/code-consistency-workflow/WORKFLOW.md",
+      "reason": "negative workflow fixture"
+    }
+  ],
+  "external_commands": [
+    {
+      "id": "example.preapprovalCheck",
+      "contract_version": "example.preapproval-check/v1",
+      "workflow_paths": [
+        "extensions/workflow-register/samples/step-back-branching-approval/.bob/workflows/step-back-branching-approval/WORKFLOW.md"
+      ]
+    }
+  ],
+  "schemas": [
+    {
+      "id": "workflow-register.action-input",
+      "path": "extensions/workflow-register/schema/workflow-register-action-input.v1.schema.json"
+    },
+    {
+      "id": "workflow-register.action-output",
+      "path": "extensions/workflow-register/schema/workflow-register-action-output.v1.schema.json"
+    },
+    {
+      "id": "workflow-register.preflight-result",
+      "path": "extensions/workflow-register/schema/workflow-register-preflight-result.v1.schema.json"
+    },
+    {
+      "id": "workflow-register.command-result-sink",
+      "path": "extensions/workflow-register/schema/workflow-register-command-result-sink.v1.schema.json"
+    },
+    {
+      "id": "workflow-register.file-result-sink",
+      "path": "extensions/workflow-register/schema/workflow-register-file-result-sink.v1.schema.json"
+    },
+    {
+      "id": "workflow-contributions.v1",
+      "path": "extensions/workflow-register/schema/workflow-contributions.v1.schema.json"
+    },
+    {
+      "id": "workflow-register.v1",
+      "path": "extensions/workflow-register/schema/workflow-register.v1.schema.json"
+    },
+    {
+      "id": "bob-project-profile.v1",
+      "path": "extensions/workflow-register/schema/bob-project-profile.v1.schema.json"
+    },
+    {
+      "id": "bob-workflow-customization.v1",
+      "path": "extensions/workflow-register/schema/bob-workflow-customization.v1.schema.json"
+    },
+    {
+      "id": "bob-workflow-template.v1",
+      "path": "extensions/workflow-register/schema/bob-workflow-template.v1.schema.json"
+    }
+  ]
+}

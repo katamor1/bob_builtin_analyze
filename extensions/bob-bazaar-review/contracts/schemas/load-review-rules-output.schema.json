@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://local.schemas/bob-bazaar-review/load-review-rules-output.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status", "checklistPath", "schemaPath", "checklistItems", "ruleIds", "categories", "reviewResultSchema", "projectContext", "reviewPromptAddendum", "baseHashes", "projectRulesSection", "schemaTopLevelKeys", "summary"],
+  "properties": {
+    "status": { "const": "ok" },
+    "checklistPath": { "type": "string" },
+    "schemaPath": { "type": "string" },
+    "project": { "type": "string" },
+    "checklistVersion": { "type": "string" },
+    "checklistItems": { "type": "integer", "minimum": 0 },
+    "ruleIds": { "type": "array", "items": { "type": "string" } },
+    "categories": { "type": "array", "items": { "type": "string" } },
+    "reviewResultSchema": { "type": "object" },
+    "projectContext": { "type": "string" },
+    "reviewPromptAddendum": { "type": "string" },
+    "provenanceSummary": { "type": "object" },
+    "baseHashes": { "type": "object" },
+    "projectRulesSection": { "type": "string" },
+    "schemaTopLevelKeys": { "type": "array", "items": { "type": "string" } },
+    "summary": { "type": "string" }
+  }
+}

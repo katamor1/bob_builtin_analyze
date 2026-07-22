@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://local.schemas/bob-bazaar-review/verify-rule-authoring-apply-output.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status", "runId", "transactionId", "targetCount", "authoringSession", "artifact_path", "$workflow"],
+  "properties": {
+    "status": { "const": "verified" },
+    "runId": { "type": "string" },
+    "transactionId": { "type": "string" },
+    "targetCount": { "type": "integer", "minimum": 0 },
+    "authoringSession": { "type": "object", "additionalProperties": false, "required": ["run_id"], "properties": { "run_id": { "type": "string" } } },
+    "artifact_path": { "type": "string" },
+    "$workflow": { "type": "object" }
+  }
+}

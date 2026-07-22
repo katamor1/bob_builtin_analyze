@@ -43,7 +43,7 @@ export function startRetryRegistrationController<Api>(
     timers.clear()
   }
 
-  const disposeRegistrations = (registrations: DisposableLike[]): void => {
+  const disposeRegistrations = (registrations: DisposableLike[]): unknown[] => {
     const errors: unknown[] = []
     for (const registration of [...registrations].reverse()) {
       try {
@@ -53,16 +53,26 @@ export function startRetryRegistrationController<Api>(
       }
     }
     registrations.length = 0
-    for (const error of errors) reportError(error)
+    return errors
   }
 
-  const resetRegistration = (): void => {
+  const reportCleanupErrors = (errors: unknown[]): void => {
+    if (errors.length === 0) return
+    if (errors.length === 1) {
+      reportError(errors[0])
+      return
+    }
+    reportError(new AggregateError(errors, `Provider registration cleanup failed (${errors.length} errors).`))
+  }
+
+  const resetRegistration = (): unknown[] => {
     generation += 1
     registrationAttempt = undefined
-    disposeRegistrations(activeRegistrations)
+    const errors = disposeRegistrations(activeRegistrations)
     activeRegistrations = []
     registeredApi = undefined
     providersRegistered = false
+    return errors
   }
 
   const scheduleRetry = (): void => {
@@ -78,16 +88,19 @@ export function startRetryRegistrationController<Api>(
   const performAttempt = async (attemptGeneration: number): Promise<boolean> => {
     const result = await options.register()
     if (disposed || attemptGeneration !== generation) {
-      disposeRegistrations(result.registrations)
+      const errors = disposeRegistrations(result.registrations)
+      reportCleanupErrors(errors)
       return false
     }
     if (!result.registered) {
-      disposeRegistrations(result.registrations)
+      const errors = disposeRegistrations(result.registrations)
+      reportCleanupErrors(errors)
       scheduleRetry()
       return false
     }
     if (result.api === undefined) {
-      disposeRegistrations(result.registrations)
+      const errors = disposeRegistrations(result.registrations)
+      reportCleanupErrors(errors)
       reportError(new Error("Provider registration succeeded without API identity."))
       scheduleRetry()
       return false
@@ -120,9 +133,10 @@ export function startRetryRegistrationController<Api>(
   const changeSubscription = options.subscribeChanges(() => {
     const currentApi = options.currentApi()
     if (providersRegistered && currentApi === registeredApi) return
-    resetRegistration()
+    const errors = resetRegistration()
     retryIndex = 0
     clearRetryTimers()
+    reportCleanupErrors(errors)
     void attempt()
   })
 
@@ -131,8 +145,13 @@ export function startRetryRegistrationController<Api>(
       if (disposed) return
       disposed = true
       clearRetryTimers()
-      resetRegistration()
-      changeSubscription.dispose()
+      const errors = resetRegistration()
+      try {
+        changeSubscription.dispose()
+      } catch (error) {
+        errors.push(error)
+      }
+      reportCleanupErrors(errors)
     }
   }
 

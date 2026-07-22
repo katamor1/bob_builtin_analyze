@@ -23,6 +23,8 @@ function runtimeSource() {
     "webview/manualStepPanel.ts",
     "workflowInputPrompt.ts",
     "workflowRegisterService.ts",
+    "builtInContributions.ts",
+    "core/runtime/resultSinkRegistry.ts",
     "workflowRunCommands.ts",
     "core/engine.ts",
     "core/engine/stepExecutor.ts"
@@ -223,7 +225,7 @@ test("runtime entry points and default providers check Workspace Trust", () => {
   assert.match(source, /async runWorkflow\(workflowArg\?: WorkflowCommandArg, inputs: Record<string, unknown> = \{\}\): Promise<unknown> \{[\s\S]*requireTrustedWorkspace\("run workflow"\)/)
   assert.match(source, /async runWorkflowStep\([\s\S]*requireTrustedWorkspace\("run workflow step"\)/)
   assert.match(source, /isWorkspaceTrusted: \(\) => vscode\.workspace\.isTrusted/)
-  assert.match(source, /requireTrustedCommandExecution\("write command result sink"\)/)
+  assert.match(source, /requireWorkspaceTrust\(options\.isWorkspaceTrusted, "writing command result sink"\)/)
 })
 
 test("standalone workflow launcher uses the shared input resolver for conditional prompts", () => {
@@ -433,14 +435,13 @@ test("Bob workflow result recovery is scoped to messages after the current step 
   assert.doesNotMatch(source, /extractLastAssistantText\(task\.getMessages\?\.\(\) \?\? \[\], 0\)/)
 })
 
-test("Engine preflight checks Bazaar repositories across multi-root workspaces", () => {
-  const source = readSourceSet(["workflowRuntimeFactory.ts", "bobWorkflowRunner.ts"])
+test("Atomic preflight checks Bazaar repositories across multi-root workspaces", () => {
+  const source = readSourceSet(["workflowRegisterService.ts", "builtInContributions.ts", "bobWorkflowRunner.ts"])
 
   assert.match(source, /import \{[\s\S]*findMarkerRoots[\s\S]*\} from "\.\/core\/workspaceRoots"/)
-  assert.match(source, /private createPreflightChecks\(workspaceRoot: string\): NonNullable<WorkflowEngineOptions\["preflightChecks"\]>/)
-  assert.match(source, /bazaarRepository: \(\) => this\.bazaarRepositoryAvailable\(workspaceRoot\)/)
-  assert.match(source, /preflightChecks: this\.createPreflightChecks\(workspaceRoot\)/)
-  assert.match(source, /preflightChecks: \(workspaceRoot\) => this\.createPreflightChecks\(workspaceRoot\)/)
+  assert.match(source, /bazaarRepositoryAvailable: \(workflowRoot\) => this\.bazaarRepositoryAvailable\(workflowRoot\)/)
+  assert.match(source, /\["bazaarRepository", \(\{ workflow \}\) => \{/)
+  assert.match(source, /options\.bazaarRepositoryAvailable\(root\)/)
   assert.match(source, /await findMarkerRoots\(folders, "\.bzr"\)/)
 })
 

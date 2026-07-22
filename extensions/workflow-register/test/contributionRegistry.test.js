@@ -49,6 +49,9 @@ function completeManifest(ownerId = "local.owner-a", version = "1.0.0") {
       source: `extensions/${ownerName}/templates/WORKFLOW.md`,
       destinations: [`extensions/${ownerName}/WORKFLOW.md`]
     }],
+    workflow_claims: [],
+    workflow_exclusions: [],
+    external_commands: [],
     schemas: [
       { id: `${prefix}.schema.input`, path: `extensions/${ownerName}/schema/input.json` },
       { id: `${prefix}.schema.output`, path: `extensions/${ownerName}/schema/output.json` },

@@ -3,9 +3,11 @@ const fs = require("node:fs")
 const os = require("node:os")
 const path = require("node:path")
 const { test } = require("node:test")
+const Ajv = require("ajv")
 
 const { createDefaultActionRegistry } = require("../out/core/actionRegistry")
 const { createWorkflowEngineContext } = require("./helpers/workflowEngineFixtures")
+const actionOutputSchema = require("../schema/workflow-register-action-output.v1.schema.json")
 
 function tempWorkspace(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "mechanical-checks-action-"))
@@ -59,6 +61,9 @@ test("default action registry exposes workflowRegister.runMechanicalChecks", asy
   assert.equal(result.ok, true)
   assert.equal(result.value.status, "passed")
   assert.equal(result.value.profile, "pre-code-review")
+  const validate = new Ajv({ strict: true }).compile(actionOutputSchema)
+  assert.equal(validate(result.value), true, JSON.stringify(validate.errors))
+  assert.equal(Object.hasOwn(result.value.checks[0], "timed_out"), false)
   assert.ok(fs.existsSync(path.join(workspaceRoot, ".bob", "mechanical-checks", "runs", result.value.run_id, "profile-result.json")))
 })
 

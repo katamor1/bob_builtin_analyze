@@ -5,7 +5,10 @@ const path = require("node:path")
 const { test } = require("node:test")
 
 const { extensionRoot, readJson } = require("../helpers/sourceReader")
-const { requiredProductionDependencyEntries } = require("../../scripts/check-vsix-policy")
+const {
+  requiredContributionAssetEntries,
+  requiredProductionDependencyEntries
+} = require("../../scripts/check-vsix-policy")
 
 const END_OF_CENTRAL_DIRECTORY_SIGNATURE = 0x06054b50
 const CENTRAL_DIRECTORY_ENTRY_SIGNATURE = 0x02014b50
@@ -59,5 +62,8 @@ test("packaged extension contains metadata and load entries for every installed 
   const entryNames = readZipEntryNames(vsixPath)
   for (const requiredEntry of requiredProductionDependencyEntries(extensionRoot)) {
     assert.ok(entryNames.has(requiredEntry), `packaged extension is missing runtime entry: ${requiredEntry}`)
+  }
+  for (const requiredEntry of requiredContributionAssetEntries(extensionRoot)) {
+    assert.ok(entryNames.has(requiredEntry), `packaged extension is missing contribution asset: ${requiredEntry}`)
   }
 })

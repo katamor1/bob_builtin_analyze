@@ -47,6 +47,24 @@ export interface WorkflowTemplateContribution {
   destinations: string[]
 }
 
+export type WorkflowClaimRole = "product" | "template" | "sample" | "fixture"
+
+export interface WorkflowClaim {
+  path: string
+  role: WorkflowClaimRole
+}
+
+export interface WorkflowExclusion {
+  path: string
+  reason: string
+}
+
+export interface ExternalCommandDeclaration {
+  id: string
+  contract_version: string
+  workflow_paths: string[]
+}
+
 export interface SchemaContribution {
   id: string
   path: string
@@ -61,6 +79,9 @@ export interface WorkflowContributionManifest {
   result_sinks: ResultSinkContribution[]
   agent_provider?: AgentProviderContribution
   workflow_templates: WorkflowTemplateContribution[]
+  workflow_claims: WorkflowClaim[]
+  workflow_exclusions: WorkflowExclusion[]
+  external_commands: ExternalCommandDeclaration[]
   schemas: SchemaContribution[]
 }
 
@@ -105,6 +126,8 @@ export function validateContributionManifest(
   validateIdentifiers(manifest, diagnostics)
   validateSchemaReferences(manifest, diagnostics)
   validateOwnedPaths(manifest, context.ownerDirectory, diagnostics)
+  validateWorkflowClassifications(manifest, context.ownerDirectory, diagnostics)
+  validateExternalCommands(manifest, diagnostics)
 
   if (diagnostics.length > 0) return failure(diagnostics)
   return { ok: true, diagnostics: [], manifest }
@@ -247,6 +270,19 @@ function validateIdentifiers(
       contracts.set(entry.contractVersion, entry.contractPath)
     }
   }
+  for (const [index, command] of manifest.external_commands.entries()) {
+    const contractPath = `/external_commands/${index}/contract_version`
+    const existing = contracts.get(command.contract_version)
+    if (existing) {
+      diagnostics.push(diagnostic(
+        "contract_version.duplicate",
+        contractPath,
+        `contract version '${command.contract_version}' is already declared at '${existing}'`
+      ))
+    } else {
+      contracts.set(command.contract_version, contractPath)
+    }
+  }
 
   validateUniqueValues(
     manifest.schemas.map((item, index) => ({ value: item.path, path: `/schemas/${index}/path` })),
@@ -309,26 +345,16 @@ function validateOwnedPaths(
   diagnostics: ContributionManifestDiagnostic[]
 ): void {
   if (!isNormalizedRepoPath(ownerDirectory)) return
-  const paths = [
+  const ownerContainedPaths = [
     ...manifest.schemas.map((item, index) => ({ value: item.path, path: `/schemas/${index}/path` })),
-    ...manifest.workflow_templates.flatMap((item, index) => [
-      { value: item.source, path: `/workflow_templates/${index}/source` },
-      ...item.destinations.map((destination, destinationIndex) => ({
-        value: destination,
-        path: `/workflow_templates/${index}/destinations/${destinationIndex}`
-      }))
-    ])
+    ...manifest.workflow_templates.map((item, index) => ({
+      value: item.source,
+      path: `/workflow_templates/${index}/source`
+    }))
   ]
-  for (const entry of paths) {
-    if (!isNormalizedRepoPath(entry.value)) {
-      diagnostics.push(diagnostic(
-        "path.not_normalized",
-        entry.path,
-        `path '${entry.value}' must be a normalized repository-relative POSIX path`
-      ))
-      continue
-    }
-    if (entry.value !== ownerDirectory && !entry.value.startsWith(`${ownerDirectory}/`)) {
+  for (const entry of ownerContainedPaths) {
+    if (!validateExactRepoPath(entry.value, entry.path, diagnostics)) continue
+    if (!isInsideOwner(entry.value, ownerDirectory)) {
       diagnostics.push(diagnostic(
         "path.outside_owner",
         entry.path,
@@ -336,6 +362,173 @@ function validateOwnedPaths(
       ))
     }
   }
+
+  for (const [templateIndex, template] of manifest.workflow_templates.entries()) {
+    for (const [destinationIndex, destination] of template.destinations.entries()) {
+      const path = `/workflow_templates/${templateIndex}/destinations/${destinationIndex}`
+      if (!validateExactRepoPath(destination, path, diagnostics)) continue
+      if (!isInsideOwner(destination, ownerDirectory) && !isExternalWorkflowTemplateDestination(destination)) {
+        diagnostics.push(diagnostic(
+          "path.outside_owner",
+          path,
+          `path '${destination}' is outside owner directory '${ownerDirectory}'`
+        ))
+      }
+    }
+  }
+}
+
+function validateWorkflowClassifications(
+  manifest: WorkflowContributionManifest,
+  ownerDirectory: string,
+  diagnostics: ContributionManifestDiagnostic[]
+): void {
+  const claimPaths = new Map<string, string>()
+  for (const [index, claim] of manifest.workflow_claims.entries()) {
+    const path = `/workflow_claims/${index}/path`
+    validateWorkflowFilePath(claim.path, path, diagnostics)
+    const existing = claimPaths.get(claim.path)
+    if (existing) {
+      diagnostics.push(diagnostic(
+        "workflow_claim.duplicate",
+        path,
+        `workflow claim '${claim.path}' is already declared at '${existing}'`
+      ))
+    } else {
+      claimPaths.set(claim.path, path)
+    }
+  }
+
+  const exclusionPaths = new Map<string, string>()
+  for (const [index, exclusion] of manifest.workflow_exclusions.entries()) {
+    const path = `/workflow_exclusions/${index}/path`
+    const exact = validateWorkflowFilePath(exclusion.path, path, diagnostics)
+    if (exact && isNormalizedRepoPath(ownerDirectory) && !isInsideOwner(exclusion.path, ownerDirectory)) {
+      diagnostics.push(diagnostic(
+        "workflow_exclusion.outside_owner",
+        path,
+        `workflow exclusion '${exclusion.path}' is outside owner directory '${ownerDirectory}'`
+      ))
+    }
+    const existing = exclusionPaths.get(exclusion.path)
+    if (existing) {
+      diagnostics.push(diagnostic(
+        "workflow_exclusion.duplicate",
+        path,
+        `workflow exclusion '${exclusion.path}' is already declared at '${existing}'`
+      ))
+    } else {
+      exclusionPaths.set(exclusion.path, path)
+    }
+    const claimPath = claimPaths.get(exclusion.path)
+    if (claimPath) {
+      diagnostics.push(diagnostic(
+        "workflow_path.ambiguous",
+        path,
+        `workflow path '${exclusion.path}' is both claimed at '${claimPath}' and excluded`
+      ))
+    }
+    if (exclusion.reason.trim().length === 0) {
+      diagnostics.push(diagnostic(
+        "workflow_exclusion.reason_empty",
+        `/workflow_exclusions/${index}/reason`,
+        "workflow exclusion reason must contain non-whitespace text"
+      ))
+    }
+  }
+
+  for (const [commandIndex, command] of manifest.external_commands.entries()) {
+    for (const [workflowIndex, workflowPath] of command.workflow_paths.entries()) {
+      validateWorkflowFilePath(
+        workflowPath,
+        `/external_commands/${commandIndex}/workflow_paths/${workflowIndex}`,
+        diagnostics
+      )
+    }
+  }
+}
+
+function validateExternalCommands(
+  manifest: WorkflowContributionManifest,
+  diagnostics: ContributionManifestDiagnostic[]
+): void {
+  const sampleClaims = new Set(
+    manifest.workflow_claims
+      .filter((claim) => claim.role === "sample")
+      .map((claim) => claim.path)
+  )
+  const identifiers = new Map<string, string>()
+  for (const [commandIndex, command] of manifest.external_commands.entries()) {
+    const idPath = `/external_commands/${commandIndex}/id`
+    const existing = identifiers.get(command.id)
+    if (existing) {
+      diagnostics.push(diagnostic(
+        "external_command.id_duplicate",
+        idPath,
+        `external command '${command.id}' is already declared at '${existing}'`
+      ))
+    } else {
+      identifiers.set(command.id, idPath)
+    }
+    for (const [workflowIndex, workflowPath] of command.workflow_paths.entries()) {
+      if (!sampleClaims.has(workflowPath)) {
+        diagnostics.push(diagnostic(
+          "external_command.not_sample_claim",
+          `/external_commands/${commandIndex}/workflow_paths/${workflowIndex}`,
+          `external command workflow '${workflowPath}' is not a sample claim in this manifest`
+        ))
+      }
+    }
+  }
+}
+
+function validateExactRepoPath(
+  value: string,
+  path: string,
+  diagnostics: ContributionManifestDiagnostic[]
+): boolean {
+  if (!isNormalizedRepoPath(value)) {
+    diagnostics.push(diagnostic(
+      "path.not_normalized",
+      path,
+      `path '${value}' must be a normalized repository-relative POSIX path`
+    ))
+    return false
+  }
+  if (/[*?\[\]{}!]/.test(value)) {
+    diagnostics.push(diagnostic(
+      "path.not_exact",
+      path,
+      `path '${value}' must be exact and cannot contain glob syntax`
+    ))
+    return false
+  }
+  return true
+}
+
+function validateWorkflowFilePath(
+  value: string,
+  path: string,
+  diagnostics: ContributionManifestDiagnostic[]
+): boolean {
+  if (!validateExactRepoPath(value, path, diagnostics)) return false
+  if (value !== "WORKFLOW.md" && !value.endsWith("/WORKFLOW.md")) {
+    diagnostics.push(diagnostic(
+      "workflow_path.not_workflow_file",
+      path,
+      `path '${value}' must identify a WORKFLOW.md file`
+    ))
+    return false
+  }
+  return true
+}
+
+function isInsideOwner(value: string, ownerDirectory: string): boolean {
+  return value === ownerDirectory || value.startsWith(`${ownerDirectory}/`)
+}
+
+function isExternalWorkflowTemplateDestination(value: string): boolean {
+  return /^\.bob\/workflows\/[^/]+\/WORKFLOW\.md$/.test(value)
 }
 
 function isNormalizedRepoPath(value: string): boolean {

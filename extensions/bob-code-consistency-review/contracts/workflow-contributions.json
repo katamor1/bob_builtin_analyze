@@ -1,0 +1,174 @@
+{
+  "schema_version": "workflow-contributions/v1",
+  "owner": {
+    "id": "local.bob-code-consistency-review",
+    "version": "0.1.0"
+  },
+  "registry_api": {
+    "min": "provider-registry/v1",
+    "max": "provider-registry/v1"
+  },
+  "action_providers": [
+    {
+      "id": "bobCodeConsistency.initializeWorkspace",
+      "contract_version": "bobCodeConsistency.initializeWorkspace/v1",
+      "input_schema": "bobCodeConsistency.workflow-action-input",
+      "output_schema": "bobCodeConsistency.workflow-action-output",
+      "error_codes": []
+    },
+    {
+      "id": "bobCodeConsistency.createReviewInput",
+      "contract_version": "bobCodeConsistency.createReviewInput/v1",
+      "input_schema": "bobCodeConsistency.workflow-action-input",
+      "output_schema": "bobCodeConsistency.workflow-action-output",
+      "error_codes": []
+    },
+    {
+      "id": "bobCodeConsistency.prepareAiReviewInputDraft",
+      "contract_version": "bobCodeConsistency.prepareAiReviewInputDraft/v1",
+      "input_schema": "bobCodeConsistency.workflow-action-input",
+      "output_schema": "bobCodeConsistency.workflow-action-output",
+      "error_codes": []
+    },
+    {
+      "id": "bobCodeConsistency.applyAiReviewInputDraft",
+      "contract_version": "bobCodeConsistency.applyAiReviewInputDraft/v1",
+      "input_schema": "bobCodeConsistency.workflow-action-input",
+      "output_schema": "bobCodeConsistency.workflow-action-output",
+      "error_codes": []
+    },
+    {
+      "id": "bobCodeConsistency.prepareAiTraceabilityDraft",
+      "contract_version": "bobCodeConsistency.prepareAiTraceabilityDraft/v1",
+      "input_schema": "bobCodeConsistency.workflow-action-input",
+      "output_schema": "bobCodeConsistency.workflow-action-output",
+      "error_codes": []
+    },
+    {
+      "id": "bobCodeConsistency.captureAiTraceabilityDraft",
+      "contract_version": "bobCodeConsistency.captureAiTraceabilityDraft/v1",
+      "input_schema": "bobCodeConsistency.workflow-action-input",
+      "output_schema": "bobCodeConsistency.workflow-action-output",
+      "error_codes": []
+    },
+    {
+      "id": "bobCodeConsistency.applyAiTraceabilityDraft",
+      "contract_version": "bobCodeConsistency.applyAiTraceabilityDraft/v1",
+      "input_schema": "bobCodeConsistency.workflow-action-input",
+      "output_schema": "bobCodeConsistency.workflow-action-output",
+      "error_codes": []
+    },
+    {
+      "id": "bobCodeConsistency.openTraceabilityPrep",
+      "contract_version": "bobCodeConsistency.openTraceabilityPrep/v1",
+      "input_schema": "bobCodeConsistency.workflow-action-input",
+      "output_schema": "bobCodeConsistency.workflow-action-output",
+      "error_codes": []
+    },
+    {
+      "id": "bobCodeConsistency.validateTraceabilityCatalog",
+      "contract_version": "bobCodeConsistency.validateTraceabilityCatalog/v1",
+      "input_schema": "bobCodeConsistency.workflow-action-input",
+      "output_schema": "bobCodeConsistency.workflow-action-output",
+      "error_codes": []
+    },
+    {
+      "id": "bobCodeConsistency.createReviewInputFromTraceability",
+      "contract_version": "bobCodeConsistency.createReviewInputFromTraceability/v1",
+      "input_schema": "bobCodeConsistency.workflow-action-input",
+      "output_schema": "bobCodeConsistency.workflow-action-output",
+      "error_codes": []
+    },
+    {
+      "id": "bobCodeConsistency.repairReviewInput",
+      "contract_version": "bobCodeConsistency.repairReviewInput/v1",
+      "input_schema": "bobCodeConsistency.workflow-action-input",
+      "output_schema": "bobCodeConsistency.workflow-action-output",
+      "error_codes": []
+    },
+    {
+      "id": "bobCodeConsistency.explainReviewInputDiagnostics",
+      "contract_version": "bobCodeConsistency.explainReviewInputDiagnostics/v1",
+      "input_schema": "bobCodeConsistency.workflow-action-input",
+      "output_schema": "bobCodeConsistency.workflow-action-output",
+      "error_codes": []
+    },
+    {
+      "id": "bobCodeConsistency.preprocess",
+      "contract_version": "bobCodeConsistency.preprocess/v1",
+      "input_schema": "bobCodeConsistency.workflow-action-input",
+      "output_schema": "bobCodeConsistency.workflow-action-output",
+      "error_codes": []
+    },
+    {
+      "id": "bobCodeConsistency.captureBobOutput",
+      "contract_version": "bobCodeConsistency.captureBobOutput/v1",
+      "input_schema": "bobCodeConsistency.workflow-action-input",
+      "output_schema": "bobCodeConsistency.workflow-action-output",
+      "error_codes": []
+    },
+    {
+      "id": "bobCodeConsistency.validateOutput",
+      "contract_version": "bobCodeConsistency.validateOutput/v1",
+      "input_schema": "bobCodeConsistency.workflow-action-input",
+      "output_schema": "bobCodeConsistency.workflow-action-output",
+      "error_codes": []
+    },
+    {
+      "id": "bobCodeConsistency.triage",
+      "contract_version": "bobCodeConsistency.triage/v1",
+      "input_schema": "bobCodeConsistency.workflow-action-input",
+      "output_schema": "bobCodeConsistency.workflow-action-output",
+      "error_codes": []
+    }
+  ],
+  "preflight_checks": [],
+  "result_sinks": [],
+  "workflow_templates": [
+    {
+      "id": "code-consistency-review",
+      "source": "extensions/bob-code-consistency-review/templates/.bob/workflows/code-consistency-review/WORKFLOW.md",
+      "destinations": [
+        ".bob/workflows/code-consistency-review/WORKFLOW.md"
+      ]
+    }
+  ],
+  "schemas": [
+    {
+      "id": "bobCodeConsistency.workflow-action-input",
+      "path": "extensions/bob-code-consistency-review/contracts/schemas/workflow-action-input.v1.schema.json"
+    },
+    {
+      "id": "bobCodeConsistency.workflow-action-output",
+      "path": "extensions/bob-code-consistency-review/contracts/schemas/workflow-action-output.v1.schema.json"
+    },
+    {
+      "id": "bobCodeConsistency.review-input",
+      "path": "extensions/bob-code-consistency-review/resources/schemas/review-input.schema.json"
+    },
+    {
+      "id": "bobCodeConsistency.bob-output",
+      "path": "extensions/bob-code-consistency-review/resources/schemas/bob-output.schema.json"
+    },
+    {
+      "id": "bobCodeConsistency.evidence-scope-rule-pack",
+      "path": "extensions/bob-code-consistency-review/resources/schemas/evidence-scope-rule-pack.schema.json"
+    },
+    {
+      "id": "bobCodeConsistency.repository-symbol-index",
+      "path": "extensions/bob-code-consistency-review/resources/schemas/repository-symbol-index.schema.json"
+    }
+  ],
+  "workflow_claims": [
+    {
+      "path": ".bob/workflows/code-consistency-review/WORKFLOW.md",
+      "role": "product"
+    },
+    {
+      "path": "extensions/bob-code-consistency-review/templates/.bob/workflows/code-consistency-review/WORKFLOW.md",
+      "role": "template"
+    }
+  ],
+  "workflow_exclusions": [],
+  "external_commands": []
+}

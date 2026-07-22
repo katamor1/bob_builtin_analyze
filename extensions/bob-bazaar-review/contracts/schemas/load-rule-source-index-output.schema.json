@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://local.schemas/bob-bazaar-review/load-rule-source-index-output.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status", "authoringSession", "source_index", "summary", "artifact_path", "$workflow"],
+  "properties": {
+    "status": { "const": "ok" },
+    "authoringSession": { "$ref": "#/$defs/session" },
+    "source_index": { "type": "object" },
+    "summary": { "type": "string" },
+    "artifact_path": { "type": "string" },
+    "$workflow": { "type": "object" }
+  },
+  "$defs": {
+    "session": { "type": "object", "additionalProperties": false, "required": ["run_id"], "properties": { "run_id": { "type": "string" } } }
+  }
+}

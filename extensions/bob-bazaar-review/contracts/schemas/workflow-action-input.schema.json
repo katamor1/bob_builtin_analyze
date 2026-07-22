@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://local.schemas/bob-bazaar-review/workflow-action-input.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["args", "inputs"],
+  "properties": {
+    "args": { "$ref": "#/$defs/jsonValue" },
+    "inputs": { "type": "object", "additionalProperties": { "$ref": "#/$defs/jsonValue" } },
+    "state": { "type": "object", "additionalProperties": { "type": "string" } },
+    "workflowId": { "type": "string" },
+    "logicalWorkflowId": { "type": "string" },
+    "workflowRoot": { "type": "string" },
+    "workflowFile": { "type": "string" },
+    "workflowFolderName": { "type": "string" },
+    "bazaarRoot": { "type": "string" },
+    "repositoryRoot": { "type": "string" },
+    "runId": { "type": "string" },
+    "stepId": { "type": "string" }
+  },
+  "$defs": {
+    "jsonValue": {
+      "anyOf": [
+        { "type": "null" },
+        { "type": "boolean" },
+        { "type": "number" },
+        { "type": "string" },
+        { "type": "array", "items": { "$ref": "#/$defs/jsonValue" } },
+        { "type": "object", "additionalProperties": { "$ref": "#/$defs/jsonValue" } }
+      ]
+    }
+  }
+}

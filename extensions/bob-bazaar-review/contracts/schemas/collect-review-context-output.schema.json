@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://local.schemas/bob-bazaar-review/collect-review-context-output.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status", "workspacePath", "mode", "target", "changedFiles", "packetBytes", "packetSummary"],
+  "properties": {
+    "status": { "const": "ok" },
+    "workspacePath": { "type": "string" },
+    "mode": { "type": "string" },
+    "target": { "type": "string" },
+    "revision": { "type": "string" },
+    "baseRevision": { "type": "string" },
+    "targetRevision": { "type": "string" },
+    "revno": { "type": "string" },
+    "author": { "type": "string" },
+    "committer": { "type": "string" },
+    "timestamp": { "type": "string" },
+    "message": { "type": "string" },
+    "changedFiles": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "status"],
+        "properties": { "path": { "type": "string" }, "status": { "type": "string" } }
+      }
+    },
+    "packetBytes": { "type": "integer", "minimum": 0 },
+    "packetSummary": { "type": "string" }
+  }
+}

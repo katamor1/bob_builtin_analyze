@@ -12,5 +12,8 @@
       "destinations": ["extensions/sample-extension/samples/escape/WORKFLOW.md"]
     }
   ],
+  "workflow_claims": [],
+  "workflow_exclusions": [],
+  "external_commands": [],
   "schemas": []
 }

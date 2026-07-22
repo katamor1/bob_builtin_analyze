@@ -69,6 +69,24 @@ function normalizeMain(main) {
   return `extension/${main.replace(/^\.\//, "").replace(/\\/g, "/")}`
 }
 
+function contributionEntries(extensionRoot, packageJson) {
+  const manifestRelativePath = "contracts/workflow-contributions.json"
+  const manifest = readJson(path.join(extensionRoot, manifestRelativePath))
+  const ownerPrefix = `extensions/${packageJson.name}/`
+  const declaredPaths = [
+    ...manifest.schemas.map((item) => item.path),
+    ...manifest.workflow_templates.map((item) => item.source)
+  ]
+  const entries = [`extension/${manifestRelativePath}`]
+  for (const declaredPath of declaredPaths) {
+    if (typeof declaredPath !== "string" || !declaredPath.startsWith(ownerPrefix)) {
+      throw new Error(`Manifest packaged path is outside extension owner: ${String(declaredPath)}`)
+    }
+    entries.push(`extension/${declaredPath.slice(ownerPrefix.length)}`)
+  }
+  return [...new Set(entries)]
+}
+
 function checkForbiddenEntries(entries) {
   const rules = [
     { pattern: /^extension\/src\//, reason: "source directory" },
@@ -115,7 +133,12 @@ function main() {
   }
 
   const mainEntry = normalizeMain(packageJson.main)
-  for (const requiredEntry of ["extension/package.json", mainEntry]) {
+  const requiredEntries = [
+    "extension/package.json",
+    mainEntry,
+    ...contributionEntries(extensionRoot, packageJson)
+  ]
+  for (const requiredEntry of requiredEntries) {
     if (!entryNames.has(requiredEntry)) {
       errors.push(`Missing required VSIX entry: ${requiredEntry}`)
     }

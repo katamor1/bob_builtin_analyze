@@ -1,7 +1,9 @@
 const assert = require("node:assert/strict")
 const { test } = require("node:test")
+const Ajv = require("ajv")
 
 const { ActionRegistry, createDefaultActionRegistry } = require("../out/core/actionRegistry")
+const actionOutputSchema = require("../schema/workflow-register-action-output.v1.schema.json")
 
 test("default action registry exposes a VS Code command provider", async () => {
   const calls = []
@@ -21,6 +23,47 @@ test("default action registry exposes a VS Code command provider", async () => {
   assert.equal(result.ok, true)
   assert.equal(result.value, "ok")
   assert.deepEqual(calls, [{ command: "sample.command", args: ["one", 2] }])
+})
+
+test("default VS Code command outputs are canonical JSON values matching the declared schema", async () => {
+  const outputs = [
+    undefined,
+    { uri: { scheme: "file", path: "/workspace/project" }, optional: undefined }
+  ]
+  const registry = createDefaultActionRegistry({ executeCommand: () => outputs.shift() })
+  const validate = new Ajv({ strict: true }).compile(actionOutputSchema)
+
+  const noResult = await registry.execute("vscode.executeCommand", {
+    args: ["sample.noResult"],
+    inputs: {}
+  })
+  assert.equal(noResult.ok, true)
+  assert.equal(noResult.value, null)
+  assert.equal(validate(noResult.value), true)
+
+  const objectResult = await registry.execute("vscode.executeCommand", {
+    args: ["sample.objectResult"],
+    inputs: {}
+  })
+  assert.equal(objectResult.ok, true)
+  assert.deepEqual(objectResult.value, {
+    uri: { scheme: "file", path: "/workspace/project" }
+  })
+  assert.equal(validate(objectResult.value), true)
+})
+
+test("default VS Code command rejects results that cannot be represented by its JSON contract", async () => {
+  const cyclic = {}
+  cyclic.self = cyclic
+  const registry = createDefaultActionRegistry({ executeCommand: () => cyclic })
+
+  const result = await registry.execute("vscode.executeCommand", {
+    args: ["sample.cyclicResult"],
+    inputs: {}
+  })
+
+  assert.equal(result.ok, false)
+  assert.match(result.error, /JSON-compatible/)
 })
 
 test("default action registry rejects missing VS Code command ids", async () => {
@@ -112,7 +155,7 @@ test("default action registry blocks VS Code commands in untrusted workspaces", 
   })
 
   assert.equal(result.ok, false)
-  assert.match(result.error, /ワークスペースは信頼されていません/)
+  assert.match(result.error, /Workspace is not trusted/)
   assert.equal(called, false)
 })
 

@@ -47,6 +47,16 @@ test("accepts a complete closed contribution manifest without importing VS Code"
   assert.equal(result.manifest.agent_provider.id, "sample.agent")
 })
 
+test("accepts exact path-scoped workflow claims, exclusions, and external sample commands", () => {
+  const value = fixture("valid.json")
+
+  const result = validate(value)
+  assert.equal(result.ok, true, JSON.stringify(result.diagnostics, null, 2))
+  assert.deepEqual(result.manifest.workflow_claims, value.workflow_claims)
+  assert.deepEqual(result.manifest.workflow_exclusions, value.workflow_exclusions)
+  assert.deepEqual(result.manifest.external_commands, value.external_commands)
+})
+
 test("requires the exact v1 schema discriminator and every closed top-level field", () => {
   const future = fixture("valid.json")
   future.schema_version = "workflow-contributions/v2"
@@ -60,6 +70,9 @@ test("requires the exact v1 schema discriminator and every closed top-level fiel
     "preflight_checks",
     "result_sinks",
     "workflow_templates",
+    "workflow_claims",
+    "workflow_exclusions",
+    "external_commands",
     "schemas"
   ]) {
     const value = fixture("valid.json")
@@ -76,6 +89,9 @@ test("accepts an owner with no optional agent and empty contribution namespaces"
   value.preflight_checks = []
   value.result_sinks = []
   value.workflow_templates = []
+  value.workflow_claims = []
+  value.workflow_exclusions = []
+  value.external_commands = []
   value.schemas = []
 
   const result = validate(value)
@@ -93,6 +109,9 @@ test("rejects unknown fields at the top level and in every manifest namespace", 
     ["result_sinks", (value) => { value.result_sinks[0].unexpected = true }],
     ["agent_provider", (value) => { value.agent_provider.unexpected = true }],
     ["workflow_templates", (value) => { value.workflow_templates[0].unexpected = true }],
+    ["workflow_claims", (value) => { value.workflow_claims[0].unexpected = true }],
+    ["workflow_exclusions", (value) => { value.workflow_exclusions[0].unexpected = true }],
+    ["external_commands", (value) => { value.external_commands[0].unexpected = true }],
     ["schemas", (value) => { value.schemas[0].unexpected = true }]
   ]
 
@@ -149,7 +168,8 @@ test("rejects zero and malformed versions in every contribution contract referen
     ["action_providers", (value, version) => { value.action_providers[0].contract_version = version }],
     ["preflight_checks", (value, version) => { value.preflight_checks[0].contract_version = version }],
     ["result_sinks", (value, version) => { value.result_sinks[0].contract_version = version }],
-    ["agent_provider", (value, version) => { value.agent_provider.contract_version = version }]
+    ["agent_provider", (value, version) => { value.agent_provider.contract_version = version }],
+    ["external_commands", (value, version) => { value.external_commands[0].contract_version = version }]
   ]
   for (const [namespace, mutate] of references) {
     for (const version of ["sample/v0", "sample/1", "sample/v01", "/v1", "v1"]) {
@@ -204,6 +224,116 @@ test("rejects cross-namespace provider identifiers and contract-version collisio
   const contractCollision = fixture("valid.json")
   contractCollision.preflight_checks[0].contract_version = contractCollision.action_providers[0].contract_version
   assertInvalid(contractCollision, "contract_version.duplicate")
+
+  const externalContractCollision = fixture("valid.json")
+  externalContractCollision.external_commands[0].contract_version = externalContractCollision.action_providers[0].contract_version
+  assertInvalid(externalContractCollision, "contract_version.duplicate")
+})
+
+test("requires exact normalized paths for every workflow classification and command scope", () => {
+  for (const unsafePath of [
+    "**/WORKFLOW.md",
+    "extensions/sample-extension/**/WORKFLOW.md",
+    "extensions/sample-extension/samples/?/WORKFLOW.md",
+    "extensions/sample-extension/samples/[ab]/WORKFLOW.md",
+    "extensions/sample-extension/samples/{a,b}/WORKFLOW.md"
+  ]) {
+    for (const mutate of [
+      (value) => { value.workflow_claims[0].path = unsafePath },
+      (value) => { value.workflow_exclusions[0].path = unsafePath },
+      (value) => {
+        value.workflow_claims[1].path = unsafePath
+        value.external_commands[0].workflow_paths[0] = unsafePath
+      }
+    ]) {
+      const value = fixture("valid.json")
+      mutate(value)
+      assertInvalid(value, "path.not_exact")
+    }
+  }
+
+  for (const unsafePath of [
+    "/extensions/sample-extension/WORKFLOW.md",
+    "C:/extensions/sample-extension/WORKFLOW.md",
+    "extensions\\sample-extension\\WORKFLOW.md",
+    "extensions/sample-extension/../other/WORKFLOW.md"
+  ]) {
+    for (const mutate of [
+      (value) => { value.workflow_claims[0].path = unsafePath },
+      (value) => { value.workflow_exclusions[0].path = unsafePath },
+      (value) => {
+        value.workflow_claims[1].path = unsafePath
+        value.external_commands[0].workflow_paths[0] = unsafePath
+      }
+    ]) {
+      const value = fixture("valid.json")
+      mutate(value)
+      assertInvalid(value, "path.not_normalized")
+    }
+  }
+})
+
+test("limits workflow classifications to WORKFLOW.md files and exclusions to meaningful reasons", () => {
+  for (const mutate of [
+    (value) => { value.workflow_claims[0].path = "extensions/sample-extension/templates/readme.txt" },
+    (value) => { value.workflow_exclusions[0].path = "extensions/sample-extension/test/fixtures/readme.txt" },
+    (value) => {
+      value.workflow_claims[1].path = "extensions/sample-extension/samples/sample-review/command.yaml"
+      value.external_commands[0].workflow_paths[0] = value.workflow_claims[1].path
+    }
+  ]) {
+    const value = fixture("valid.json")
+    mutate(value)
+    assertInvalid(value, "workflow_path.not_workflow_file")
+  }
+
+  const blankReason = fixture("valid.json")
+  blankReason.workflow_exclusions[0].reason = " \t "
+  assertInvalid(blankReason, "workflow_exclusion.reason_empty")
+})
+
+test("rejects duplicate or ambiguous workflow classifications and unowned exclusions", () => {
+  const duplicateClaim = fixture("valid.json")
+  duplicateClaim.workflow_claims.push(clone(duplicateClaim.workflow_claims[0]))
+  assertInvalid(duplicateClaim, "workflow_claim.duplicate")
+
+  const duplicateExclusion = fixture("valid.json")
+  duplicateExclusion.workflow_exclusions.push(clone(duplicateExclusion.workflow_exclusions[0]))
+  assertInvalid(duplicateExclusion, "workflow_exclusion.duplicate")
+
+  const ambiguous = fixture("valid.json")
+  ambiguous.workflow_exclusions[0].path = ambiguous.workflow_claims[0].path
+  assertInvalid(ambiguous, "workflow_path.ambiguous")
+
+  const unowned = fixture("valid.json")
+  unowned.workflow_exclusions[0].path = "extensions/other/test/fixtures/WORKFLOW.md"
+  assertInvalid(unowned, "workflow_exclusion.outside_owner")
+})
+
+test("binds external command declarations to non-empty exact sample claims", () => {
+  const empty = fixture("valid.json")
+  empty.external_commands[0].workflow_paths = []
+  assertInvalid(empty, "schema.minItems")
+
+  const productClaim = fixture("valid.json")
+  productClaim.workflow_claims[1].role = "product"
+  assertInvalid(productClaim, "external_command.not_sample_claim")
+
+  const unclaimed = fixture("valid.json")
+  unclaimed.external_commands[0].workflow_paths[0] = "extensions/sample-extension/samples/other/.bob/workflows/other/WORKFLOW.md"
+  assertInvalid(unclaimed, "external_command.not_sample_claim")
+
+  const duplicateId = fixture("valid.json")
+  const secondById = clone(duplicateId.external_commands[0])
+  secondById.contract_version = "sample.external-review-secondary/v1"
+  duplicateId.external_commands.push(secondById)
+  assertInvalid(duplicateId, "external_command.id_duplicate")
+
+  const duplicateContract = fixture("valid.json")
+  const secondByContract = clone(duplicateContract.external_commands[0])
+  secondByContract.id = "sample.otherExternalReview"
+  duplicateContract.external_commands.push(secondByContract)
+  assertInvalid(duplicateContract, "contract_version.duplicate")
 })
 
 test("uses one global identifier collision domain for every contribution kind", () => {
@@ -334,6 +464,24 @@ test("validates template sources, every destination, and schema paths", () => {
   const schema = fixture("valid.json")
   schema.schemas[0].path = "extensions/other/schema.json"
   assertInvalid(schema, "path.outside_owner")
+})
+
+test("permits only the exact root workflow template destination outside the owner", () => {
+  const accepted = fixture("valid.json")
+  accepted.workflow_templates[0].destinations = [".bob/workflows/sample-review/WORKFLOW.md"]
+  assert.equal(validate(accepted).ok, true)
+
+  for (const destination of [
+    ".bob/workflows/WORKFLOW.md",
+    ".bob/workflows/nested/sample-review/WORKFLOW.md",
+    ".bob/workflows/sample-review/workflow.md",
+    ".bob/other/sample-review/WORKFLOW.md",
+    "other/.bob/workflows/sample-review/WORKFLOW.md"
+  ]) {
+    const value = fixture("valid.json")
+    value.workflow_templates[0].destinations = [destination]
+    assertInvalid(value, "path.outside_owner")
+  }
 })
 
 test("returns stable path-sorted diagnostics", () => {

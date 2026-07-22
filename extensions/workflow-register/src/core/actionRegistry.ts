@@ -77,31 +77,54 @@ export interface DefaultActionRegistryOptions {
   contributionResolver?: ContributionActionResolver
 }
 
-export function createDefaultActionRegistry(options?: DefaultActionRegistryOptions): ActionRegistry {
-  const registry = new ActionRegistry({ contributionResolver: options?.contributionResolver })
-  registry.register({
+export type BuiltInActionProviderOptions = Omit<DefaultActionRegistryOptions, "contributionResolver">
+
+export function createBuiltInActionProviders(options: BuiltInActionProviderOptions): Map<string, ActionProvider> {
+  const providers = new Map<string, ActionProvider>()
+  const mechanicalChecksProvider = {
     ...createMechanicalChecksActionProvider({
-      isWorkspaceTrusted: options?.isWorkspaceTrusted
+      isWorkspaceTrusted: options.isWorkspaceTrusted
     }),
     sourceId: WORKFLOW_REGISTER_PROVIDER_SOURCE_ID
-  })
-  if (options) {
-    registry.register({
-      id: "vscode.executeCommand",
-      sourceId: WORKFLOW_REGISTER_PROVIDER_SOURCE_ID,
-      execute: (input) => {
-        requireWorkspaceTrust(options.isWorkspaceTrusted, "running VS Code commands")
-        const args = argumentList(input.args)
-        const command = args.shift()
-        if (typeof command !== "string" || !command.trim()) {
-          throw new Error("vscode.executeCommand requires the command id as the first argument.")
-        }
-        injectWorkflowRoot(command, args, input.workflowRoot)
-        return options.executeCommand(command, ...args)
-      }
-    })
   }
+  const mechanicalChecks: ActionProvider = {
+    ...mechanicalChecksProvider,
+    execute: (input) => Promise.resolve(mechanicalChecksProvider.execute(input)).then(canonicalJsonActionResult)
+  }
+  providers.set(mechanicalChecks.id, mechanicalChecks)
+  const executeCommand: ActionProvider = {
+    id: "vscode.executeCommand",
+    sourceId: WORKFLOW_REGISTER_PROVIDER_SOURCE_ID,
+    execute: (input) => {
+      requireWorkspaceTrust(options.isWorkspaceTrusted, "running VS Code commands")
+      const args = argumentList(input.args)
+      const command = args.shift()
+      if (typeof command !== "string" || !command.trim()) {
+        throw new Error("vscode.executeCommand requires the command id as the first argument.")
+      }
+      injectWorkflowRoot(command, args, input.workflowRoot)
+      return Promise.resolve(options.executeCommand(command, ...args)).then(canonicalJsonActionResult)
+    }
+  }
+  providers.set(executeCommand.id, executeCommand)
+  return providers
+}
+
+export function createDefaultActionRegistry(options: DefaultActionRegistryOptions): ActionRegistry {
+  const registry = new ActionRegistry({ contributionResolver: options.contributionResolver })
+  for (const provider of createBuiltInActionProviders(options).values()) registry.register(provider)
   return registry
+}
+
+function canonicalJsonActionResult(value: unknown): unknown {
+  if (value === undefined) return null
+  try {
+    const serialized = JSON.stringify(value)
+    if (serialized === undefined) throw new Error("unsupported JSON value")
+    return JSON.parse(serialized) as unknown
+  } catch {
+    throw new Error("Workflow action returned a value that is not JSON-compatible.")
+  }
 }
 
 function normalizedSourceId(value: string | undefined): string {

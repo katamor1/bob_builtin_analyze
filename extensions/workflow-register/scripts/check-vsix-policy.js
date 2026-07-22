@@ -69,6 +69,24 @@ function normalizeMain(main) {
   return `extension/${main.replace(/^\.\//, "").replace(/\\/g, "/")}`
 }
 
+function requiredContributionAssetEntries(extensionRoot) {
+  const manifestRelativePath = "contracts/workflow-contributions.json"
+  const manifest = readJson(path.join(extensionRoot, manifestRelativePath))
+  const ownerPrefix = "extensions/workflow-register/"
+  const declaredPaths = [
+    ...manifest.schemas.map((item) => item.path),
+    ...manifest.workflow_templates.map((item) => item.source)
+  ]
+  const requiredEntries = new Set([`extension/${manifestRelativePath}`])
+  for (const declaredPath of declaredPaths) {
+    if (typeof declaredPath !== "string" || !declaredPath.startsWith(ownerPrefix)) {
+      throw new Error(`Manifest packaged path is outside extension owner: ${String(declaredPath)}`)
+    }
+    requiredEntries.add(`extension/${declaredPath.slice(ownerPrefix.length)}`)
+  }
+  return [...requiredEntries].sort()
+}
+
 function checkForbiddenEntries(entries) {
   const rules = [
     { pattern: /^extension\/src\//, reason: "source directory" },
@@ -115,7 +133,12 @@ function main() {
   }
 
   const mainEntry = normalizeMain(packageJson.main)
-  for (const requiredEntry of ["extension/package.json", mainEntry]) {
+  const requiredEntries = [
+    "extension/package.json",
+    mainEntry,
+    ...requiredContributionAssetEntries(extensionRoot)
+  ]
+  for (const requiredEntry of requiredEntries) {
     if (!entryNames.has(requiredEntry)) {
       errors.push(`Missing required VSIX entry: ${requiredEntry}`)
     }
@@ -135,9 +158,13 @@ function main() {
   console.log(`VSIX policy OK: ${vsixName} (${stat.size} bytes, ${entries.length} entries)`)
 }
 
-try {
-  main()
-} catch (error) {
-  console.error(error instanceof Error ? error.message : String(error))
-  process.exit(1)
+if (require.main === module) {
+  try {
+    main()
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error))
+    process.exit(1)
+  }
 }
+
+module.exports = { requiredContributionAssetEntries }

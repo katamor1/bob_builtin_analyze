@@ -16,13 +16,15 @@ import { normalizeAutomaticPauseSettings } from "./core/automaticPauseSettings"
 import { createCommandAgentProvider, createLiveAgentProvider } from "./core/agentProvider"
 import type { ContributionRuntimeResolver } from "./core/contributionRegistry"
 import { WorkflowEngine } from "./core/engine"
-import type { ManualCompletionInput, ManualCompletionResult, WorkflowEngineOptions } from "./core/engine"
+import type { ManualCompletionInput, ManualCompletionResult } from "./core/engine"
 import type { AgentProvider } from "./core/model"
-import { createDefaultResultSinkRegistry, ResultSinkRegistry } from "./core/resultSinkRegistry"
+import {
+  ResultSinkRegistry,
+  type ResultSinkFileTransactionResolver
+} from "./core/resultSinkRegistry"
 import { FileRunControlStore, RunControlStore } from "./core/runControlStore"
 import { FileRunStateStore, RunStateStore } from "./core/runStateStore"
 import { FileTaskSnapshotStore, TaskSnapshotStore } from "./core/taskSnapshots"
-import { findMarkerRoots, rootHasMarker } from "./core/workspaceRoots"
 import { requireTrustedCommandExecution } from "./workspaceTrust"
 
 export interface TaskSnapshotSettings {
@@ -37,6 +39,7 @@ export interface WorkflowRuntimeFactoryOptions {
   engineVersion: string
   actionRegistry: ActionRegistry
   contributionResolver: ContributionRuntimeResolver
+  fileTransactionResolver: ResultSinkFileTransactionResolver
   customResultSinks: Array<{ type: string; handler: Parameters<ResultSinkRegistry["register"]>[1] }>
   stepRuntime: StepRuntime
   agentProvider: () => AgentProvider | undefined
@@ -56,8 +59,9 @@ export class WorkflowRuntimeFactory {
       runStore: this.createRunStore(workspaceRoot),
       runControlStore: this.createRunControlStore(workspaceRoot),
       agentProvider: this.createRuntimeAgentProvider(agentProvider),
-      preflightChecks: this.createPreflightChecks(workspaceRoot),
+      preflightChecks: {},
       preflightCheckResolver: this.options.contributionResolver,
+      includeDefaultPreflightChecks: false,
       manualCompletion: (input) => this.holdStandaloneManualStep(input),
       recoverResultText: snapshotStore
         ? (input) => recoverResultTextFromSnapshots(snapshotStore, input.workflow, input.run, input.step)
@@ -74,8 +78,9 @@ export class WorkflowRuntimeFactory {
       runStore: (workspaceRoot) => this.createRunStore(workspaceRoot),
       runControlStore: (workspaceRoot) => this.createRunControlStore(workspaceRoot),
       taskSnapshotStore: (workspaceRoot) => this.createTaskSnapshotStore(workspaceRoot),
-      preflightChecks: (workspaceRoot) => this.createPreflightChecks(workspaceRoot),
+      preflightChecks: () => ({}),
       preflightCheckResolver: this.options.contributionResolver,
+      includeDefaultPreflightChecks: false,
       agentProvider: this.createRuntimeAgentProvider(),
       stepRuntime: this.options.stepRuntime,
       gateRegistry: this.options.gateRegistry,
@@ -145,16 +150,10 @@ export class WorkflowRuntimeFactory {
     ))
   }
 
-  private createResultSinks(workspaceRoot: string): ResultSinkRegistry {
-    const registry = createDefaultResultSinkRegistry({
-      workspaceRoot,
-      isWorkspaceTrusted: () => vscode.workspace.isTrusted,
-      executeCommand: (command, ...args) => {
-        requireTrustedCommandExecution("write command result sink")
-        return vscode.commands.executeCommand(command, ...args)
-      },
-      // Task 5 binds built-in contribution lifecycles through this same resolver after manifest migration.
-      contributionResolver: this.options.contributionResolver
+  private createResultSinks(_workspaceRoot: string): ResultSinkRegistry {
+    const registry = new ResultSinkRegistry({
+      contributionResolver: this.options.contributionResolver,
+      fileTransactionResolver: this.options.fileTransactionResolver
     })
     for (const sink of this.options.customResultSinks) registry.register(sink.type, sink.handler)
     return registry
@@ -170,20 +169,6 @@ export class WorkflowRuntimeFactory {
       includeMessages: settings.includeMessages,
       pruneOnSave: settings.pruneOnSave
     })
-  }
-
-  private createPreflightChecks(workspaceRoot: string): NonNullable<WorkflowEngineOptions["preflightChecks"]> {
-    return {
-      bazaarRepository: () => this.bazaarRepositoryAvailable(workspaceRoot)
-    }
-  }
-
-  private async bazaarRepositoryAvailable(workspaceRoot: string): Promise<boolean> {
-    if (await rootHasMarker(workspaceRoot, ".bzr")) return true
-    const folders = vscode.workspace.workspaceFolders ?? []
-    if (folders.length === 0) return false
-    const candidates = await findMarkerRoots(folders, ".bzr")
-    return candidates.length > 0
   }
 
   private automaticPauseSettings(): ReturnType<typeof normalizeAutomaticPauseSettings> {

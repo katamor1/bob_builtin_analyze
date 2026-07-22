@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://local.schemas/workflow-register-action-input.v1.schema.json",
+  "title": "Workflow Register built-in action input v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["args", "inputs"],
+  "properties": {
+    "args": { "$ref": "#/$defs/jsonValue" },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/jsonValue" }
+    },
+    "state": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "workflowId": { "type": "string" },
+    "logicalWorkflowId": { "type": "string" },
+    "workflowRoot": { "type": "string" },
+    "workflowFile": { "type": "string" },
+    "workflowFolderName": { "type": "string" },
+    "runId": { "type": "string" },
+    "stepId": { "type": "string" },
+    "latestAssistantText": { "type": "string" },
+    "resultText": { "type": "string" },
+    "artifactText": { "type": "string" }
+  },
+  "$defs": {
+    "jsonValue": {
+      "oneOf": [
+        { "type": "null" },
+        { "type": "boolean" },
+        { "type": "number" },
+        { "type": "string" },
+        {
+          "type": "array",
+          "items": { "$ref": "#/$defs/jsonValue" }
+        },
+        {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/jsonValue" }
+        }
+      ]
+    }
+  }
+}

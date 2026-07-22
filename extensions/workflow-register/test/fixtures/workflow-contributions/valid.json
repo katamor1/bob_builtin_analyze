@@ -43,6 +43,31 @@
       "destinations": ["extensions/sample-extension/samples/sample-review/.bob/workflows/sample-review/WORKFLOW.md"]
     }
   ],
+  "workflow_claims": [
+    {
+      "path": "extensions/sample-extension/templates/.bob/workflows/sample-review/WORKFLOW.md",
+      "role": "template"
+    },
+    {
+      "path": "extensions/sample-extension/samples/sample-review/.bob/workflows/sample-review/WORKFLOW.md",
+      "role": "sample"
+    }
+  ],
+  "workflow_exclusions": [
+    {
+      "path": "extensions/sample-extension/test/fixtures/invalid/WORKFLOW.md",
+      "reason": "negative validation fixture"
+    }
+  ],
+  "external_commands": [
+    {
+      "id": "sample.externalReview",
+      "contract_version": "sample.external-review/v1",
+      "workflow_paths": [
+        "extensions/sample-extension/samples/sample-review/.bob/workflows/sample-review/WORKFLOW.md"
+      ]
+    }
+  ],
   "schemas": [
     {
       "id": "sample.collect-input",

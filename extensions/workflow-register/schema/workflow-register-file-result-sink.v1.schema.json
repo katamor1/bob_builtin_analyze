@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://local.schemas/workflow-register-file-result-sink.v1.schema.json",
+  "title": "Workflow Register file result sink v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["type", "path"],
+  "properties": {
+    "type": { "const": "file" },
+    "path": { "type": "string", "minLength": 1 },
+    "encoding": {
+      "enum": [
+        "ascii",
+        "utf8",
+        "utf-8",
+        "utf16le",
+        "utf-16le",
+        "ucs2",
+        "ucs-2",
+        "base64",
+        "base64url",
+        "latin1",
+        "binary",
+        "hex"
+      ]
+    }
+  }
+}

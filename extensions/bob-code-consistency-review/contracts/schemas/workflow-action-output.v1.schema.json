@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://local.schemas/bob-code-consistency-review/workflow-action-output.v1.schema.json",
+  "title": "Bob Code Consistency workflow action output v1",
+  "oneOf": [
+    { "type": "null" },
+    { "type": "boolean" },
+    { "type": "number" },
+    { "type": "string" },
+    {
+      "type": "array",
+      "items": { "$ref": "#" }
+    },
+    {
+      "type": "object",
+      "additionalProperties": { "$ref": "#" }
+    }
+  ]
+}

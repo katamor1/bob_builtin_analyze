@@ -1,0 +1,49 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://local.schemas/bob-code-consistency-review/workflow-action-input.v1.schema.json",
+  "title": "Bob Code Consistency workflow action input v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["args", "inputs"],
+  "properties": {
+    "args": { "$ref": "#/definitions/jsonValue" },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/definitions/jsonValue" }
+    },
+    "state": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "workflowId": { "type": "string" },
+    "logicalWorkflowId": { "type": "string" },
+    "workflowRoot": { "type": "string" },
+    "workflowFile": { "type": "string" },
+    "workflowFolderName": { "type": "string" },
+    "bobRoot": { "type": "string" },
+    "workspaceRoot": { "type": "string" },
+    "runId": { "type": "string" },
+    "stepId": { "type": "string" },
+    "latestAssistantText": { "type": "string" },
+    "resultText": { "type": "string" },
+    "artifactText": { "type": "string" }
+  },
+  "definitions": {
+    "jsonValue": {
+      "oneOf": [
+        { "type": "null" },
+        { "type": "boolean" },
+        { "type": "number" },
+        { "type": "string" },
+        {
+          "type": "array",
+          "items": { "$ref": "#/definitions/jsonValue" }
+        },
+        {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/definitions/jsonValue" }
+        }
+      ]
+    }
+  }
+}

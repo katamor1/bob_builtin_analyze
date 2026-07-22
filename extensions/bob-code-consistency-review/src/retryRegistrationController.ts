@@ -28,21 +28,12 @@ export function startRetryRegistrationController<Api>(
   let retryIndex = 0
   const timers = new Set<ReturnType<typeof setTimeout>>()
 
-  const reportError = (error: unknown): void => {
-    try {
-      options.reportError(error)
-    } catch {
-      // Diagnostics must never interrupt provider rollback or deactivation.
-    }
-  }
-
   const clearRetryTimers = (): void => {
     for (const timer of timers) clearTimeout(timer)
     timers.clear()
   }
 
-  const disposeRegistrations = (registrations: DisposableLike[]): void => {
-    const errors: unknown[] = []
+  const disposeRegistrations = (registrations: DisposableLike[], errors: unknown[]): void => {
     for (const registration of [...registrations].reverse()) {
       try {
         registration.dispose()
@@ -51,16 +42,28 @@ export function startRetryRegistrationController<Api>(
       }
     }
     registrations.length = 0
-    for (const error of errors) reportError(error)
   }
 
-  const resetRegistration = (): void => {
+  const reportCleanupErrors = (errors: unknown[]): void => {
+    if (errors.length === 0) return
+    if (errors.length === 1) {
+      options.reportError(errors[0])
+      return
+    }
+    options.reportError(new AggregateError(
+      errors,
+      `Provider registration cleanup failed: ${errors.map((error) => String(error)).join("; ")}`
+    ))
+  }
+
+  const resetRegistration = (errors: unknown[]): void => {
     generation += 1
     registrationAttempt = undefined
-    disposeRegistrations(activeRegistrations)
+    const registrations = activeRegistrations
     activeRegistrations = []
     registeredApi = undefined
     providersRegistered = false
+    disposeRegistrations(registrations, errors)
   }
 
   const scheduleRetry = (): void => {
@@ -76,17 +79,23 @@ export function startRetryRegistrationController<Api>(
   const performAttempt = async (attemptGeneration: number): Promise<boolean> => {
     const result = await options.register()
     if (disposed || attemptGeneration !== generation) {
-      disposeRegistrations(result.registrations)
+      const errors: unknown[] = []
+      disposeRegistrations(result.registrations, errors)
+      reportCleanupErrors(errors)
       return false
     }
     if (!result.registered) {
-      disposeRegistrations(result.registrations)
+      const errors: unknown[] = []
+      disposeRegistrations(result.registrations, errors)
+      reportCleanupErrors(errors)
       scheduleRetry()
       return false
     }
     if (result.api === undefined) {
-      disposeRegistrations(result.registrations)
-      reportError(new Error("Provider registration succeeded without API identity."))
+      const errors: unknown[] = []
+      disposeRegistrations(result.registrations, errors)
+      reportCleanupErrors(errors)
+      options.reportError(new Error("Provider registration succeeded without API identity."))
       scheduleRetry()
       return false
     }
@@ -107,7 +116,7 @@ export function startRetryRegistrationController<Api>(
     try {
       return await currentAttempt
     } catch (error) {
-      reportError(error)
+      options.reportError(error)
       if (!disposed && attemptGeneration === generation) scheduleRetry()
       return false
     } finally {
@@ -118,10 +127,15 @@ export function startRetryRegistrationController<Api>(
   const changeSubscription = options.subscribeChanges(() => {
     const currentApi = options.currentApi()
     if (providersRegistered && currentApi === registeredApi) return
-    resetRegistration()
+    const errors: unknown[] = []
+    resetRegistration(errors)
     retryIndex = 0
     clearRetryTimers()
-    void attempt()
+    try {
+      reportCleanupErrors(errors)
+    } finally {
+      void attempt()
+    }
   })
 
   const controller: DisposableLike = {
@@ -129,8 +143,14 @@ export function startRetryRegistrationController<Api>(
       if (disposed) return
       disposed = true
       clearRetryTimers()
-      resetRegistration()
-      changeSubscription.dispose()
+      const errors: unknown[] = []
+      resetRegistration(errors)
+      try {
+        changeSubscription.dispose()
+      } catch (error) {
+        errors.push(error)
+      }
+      reportCleanupErrors(errors)
     }
   }
 

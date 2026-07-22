@@ -138,7 +138,10 @@ export interface WorkflowRegisterApi extends ProviderRegistryV1Api {
  * @returns workflow-aware companion extension が利用する public API object。
  */
 export function activate(context: vscode.ExtensionContext): WorkflowRegisterApi {
-  const service = new WorkflowRegisterService(String(context.extension.packageJSON.version ?? "unknown"))
+  const service = new WorkflowRegisterService({
+    id: String(context.extension.id),
+    version: String(context.extension.packageJSON.version ?? "unknown")
+  })
   const providerRegistryApi = service.providerRegistryApi
   const api: WorkflowRegisterApi = Object.freeze({
     apiVersion: providerRegistryApi.apiVersion,

@@ -29,6 +29,9 @@ function emptyManifest(ownerId = "local.owner-a", version = "1.0.0") {
     preflight_checks: [],
     result_sinks: [],
     workflow_templates: [],
+    workflow_claims: [],
+    workflow_exclusions: [],
+    external_commands: [],
     schemas: []
   }
 }

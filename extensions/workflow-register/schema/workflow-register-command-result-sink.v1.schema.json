@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://local.schemas/workflow-register-command-result-sink.v1.schema.json",
+  "title": "Workflow Register command result sink v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["type", "command"],
+  "properties": {
+    "type": { "const": "command" },
+    "command": { "type": "string", "minLength": 1 },
+    "args": { "type": "array" }
+  }
+}

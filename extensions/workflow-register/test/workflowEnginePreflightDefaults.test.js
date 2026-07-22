@@ -59,6 +59,39 @@ test("workflow engine provides default preflight checks from FileRunStateStore",
   assert.equal(run.error, undefined)
 })
 
+test("workflow engine can disable local preflight defaults for atomic registry ownership", async () => {
+  const { ActionRegistry } = require("../out/core/actionRegistry")
+  const { WorkflowEngine } = require("../out/core/engine")
+  const { createDefaultResultSinkRegistry } = require("../out/core/resultSinkRegistry")
+  const { FileRunStateStore } = require("../out/core/runStateStore")
+
+  const workspaceRoot = tempDir()
+  fs.mkdirSync(path.join(workspaceRoot, ".bob"), { recursive: true })
+  fs.mkdirSync(path.join(workspaceRoot, ".bzr"), { recursive: true })
+  const engine = new WorkflowEngine({
+    actions: new ActionRegistry(),
+    resultSinks: createDefaultResultSinkRegistry({ workspaceRoot, executeCommand: async () => undefined }),
+    runStore: new FileRunStateStore({ workspaceRoot }),
+    includeDefaultPreflightChecks: false,
+    strictPreflightChecks: true
+  })
+  const workflow = {
+    id: "workflow-register.atomic-preflight",
+    name: "atomic-preflight",
+    label: "Atomic preflight",
+    schemaVersion: "workflow-register/v1",
+    inputs: {},
+    requires: {},
+    preflight: [{ id: "atomic", checks: ["workspaceOpen"], failurePolicy: "stop" }],
+    guardrails: {},
+    engineSteps: []
+  }
+
+  const run = await engine.runWorkflow(workflow, {})
+  assert.equal(run.status, "failed")
+  assert.match(run.error, /Unsupported preflight check: workspaceOpen/)
+})
+
 test("workflow engine rejects preflight file paths outside the workspace", async () => {
   const { ActionRegistry } = require("../out/core/actionRegistry")
   const { WorkflowEngine } = require("../out/core/engine")

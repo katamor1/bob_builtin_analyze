@@ -31,13 +31,19 @@ function runSyntheticVsixPolicy(runtimeMetadata) {
     }
   }
   try {
+    fs.mkdirSync(path.join(directory, "contracts"))
     fs.writeFileSync(path.join(directory, "package.json"), JSON.stringify(packageJson))
     fs.writeFileSync(path.join(directory, "package-lock.json"), JSON.stringify(lock))
+    fs.writeFileSync(
+      path.join(directory, "contracts", "workflow-contributions.json"),
+      JSON.stringify({ schemas: [], workflow_templates: [] })
+    )
     fs.writeFileSync(
       path.join(directory, "policy-fixture-1.0.0.vsix"),
       createStoredZip([
         { name: "extension/package.json" },
-        { name: "extension/out/extension.js" }
+        { name: "extension/out/extension.js" },
+        { name: "extension/contracts/workflow-contributions.json" }
       ])
     )
     return spawnSync(

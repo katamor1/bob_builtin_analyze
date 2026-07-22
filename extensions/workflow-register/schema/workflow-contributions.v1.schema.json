@@ -12,6 +12,9 @@
     "preflight_checks",
     "result_sinks",
     "workflow_templates",
+    "workflow_claims",
+    "workflow_exclusions",
+    "external_commands",
     "schemas"
   ],
   "properties": {
@@ -42,6 +45,18 @@
     "workflow_templates": {
       "type": "array",
       "items": { "$ref": "#/$defs/workflowTemplate" }
+    },
+    "workflow_claims": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/workflowClaim" }
+    },
+    "workflow_exclusions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/workflowExclusion" }
+    },
+    "external_commands": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/externalCommand" }
     },
     "schemas": {
       "type": "array",
@@ -159,6 +174,45 @@
         "id": { "$ref": "#/$defs/identifier" },
         "source": { "$ref": "#/$defs/repoPath" },
         "destinations": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/repoPath" }
+        }
+      }
+    },
+    "workflowClaim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "role"],
+      "properties": {
+        "path": { "$ref": "#/$defs/repoPath" },
+        "role": {
+          "enum": ["product", "template", "sample", "fixture"]
+        }
+      }
+    },
+    "workflowExclusion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "reason"],
+      "properties": {
+        "path": { "$ref": "#/$defs/repoPath" },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        }
+      }
+    },
+    "externalCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "contract_version", "workflow_paths"],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "contract_version": { "$ref": "#/$defs/contractVersion" },
+        "workflow_paths": {
           "type": "array",
           "minItems": 1,
           "uniqueItems": true,

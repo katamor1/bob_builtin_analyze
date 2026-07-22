@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://local.schemas/workflow-register-preflight-result.v1.schema.json",
+  "title": "Workflow Register preflight result v1",
+  "oneOf": [
+    { "type": "boolean" },
+    { "type": "string" },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ok"],
+      "properties": {
+        "ok": { "type": "boolean" },
+        "error": { "type": "string" }
+      }
+    }
+  ]
+}

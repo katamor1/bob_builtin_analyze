@@ -94,14 +94,15 @@ test("Bazaar provider retry lifecycle recovers restarts and disposes stale or la
   assert.doesNotMatch(source, /^let workflowProviderRegistrationAttempt/m)
 })
 
-test("Bazaar workflow providers declare ownership and register disposables", () => {
+test("Bazaar workflow providers bind installed provenance and return the atomic registration", () => {
   const source = readSourceSet(["workflow/workflowRegisterBridge.ts", "workflow/workflowProviders.ts"])
 
   assert.match(source, /const BAZAAR_PROVIDER_SOURCE_ID = "local\.bob-bazaar-review"/)
   assert.match(source, /sourceId: BAZAAR_PROVIDER_SOURCE_ID/)
-  assert.match(source, /const registrations: vscode\.Disposable\[\] = \[\]/)
-  assert.match(source, /disposeRegistrations\(registrations\)/)
-  assert.match(source, /context\.subscriptions\.push\(\.\.\.registrations\)/)
+  assert.match(source, /id: context\.extension\.id/)
+  assert.match(source, /version: typeof extensionVersion === "string" \? extensionVersion : ""/)
+  assert.match(source, /ownerDirectory: "extensions\/bob-bazaar-review"/)
+  assert.match(source, /registrations: \[registration\]/)
 })
 
 test("Bazaar workflow template starts review target selection from the GUI by default", () => {

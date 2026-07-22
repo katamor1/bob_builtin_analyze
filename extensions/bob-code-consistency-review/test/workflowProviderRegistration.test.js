@@ -13,8 +13,6 @@ test("extension registers code consistency workflow providers with workflow-regi
 
   assert.ok(packageJson.activationEvents.includes("onStartupFinished"))
   assert.match(source, /const WORKFLOW_REGISTER_EXTENSION_ID = "local\.workflow-register"/)
-  assert.match(source, /id: "bobCodeConsistency\.preprocess"/)
-  assert.match(source, /id: "bobCodeConsistency\.captureBobOutput"/)
   assert.match(source, /buildCaptureWorkflowOptions\(\{ args, inputs, state \}\)/)
   assert.match(source, /mergeWorkflowOptions\("bobCodeConsistency\.preprocess", input\)/)
   assert.match(source, /WORKFLOW_COMMAND_ALLOWED_OPTIONS/)
@@ -24,14 +22,6 @@ test("extension registers code consistency workflow providers with workflow-regi
   assert.match(source, /buildApplyTraceabilityDraftOptions\(input\)/)
   assert.match(source, /input\.state\?\.traceabilityDraftJson/)
   assert.match(source, /return \{ \.\.\.options, text: draftText \}/)
-  assert.match(source, /id: "bobCodeConsistency\.validateOutput"/)
-  assert.match(source, /id: "bobCodeConsistency\.triage"/)
-  assert.match(source, /id: "bobCodeConsistency\.prepareAiTraceabilityDraft"/)
-  assert.match(source, /id: "bobCodeConsistency\.captureAiTraceabilityDraft"/)
-  assert.match(source, /id: "bobCodeConsistency\.applyAiTraceabilityDraft"/)
-  assert.match(source, /id: "bobCodeConsistency\.openTraceabilityPrep"/)
-  assert.match(source, /id: "bobCodeConsistency\.validateTraceabilityCatalog"/)
-  assert.match(source, /id: "bobCodeConsistency\.createReviewInputFromTraceability"/)
   for (const command of [
     "bobCodeConsistency.prepareAiTraceabilityDraft",
     "bobCodeConsistency.captureAiTraceabilityDraft",
@@ -78,29 +68,34 @@ test("code consistency provider retry lifecycle recovers restarts and disposes s
   assert.match(source, /let activeRegistrations: DisposableLike\[\] = \[\]/)
   assert.match(source, /const currentAttempt = performAttempt\(generation\)/)
   assert.match(source, /if \(disposed \|\| attemptGeneration !== generation\)/)
-  assert.match(source, /disposeRegistrations\(result\.registrations\)/)
+  assert.match(source, /disposeRegistrations\(result\.registrations, errors\)/)
+  assert.match(source, /reportCleanupErrors\(errors\)/)
   assert.match(source, /if \(registrationAttempt === currentAttempt\) registrationAttempt = undefined/)
   assert.match(source, /currentApi === registeredApi/)
-  assert.match(source, /disposeRegistrations\(activeRegistrations\)/)
+  assert.match(source, /disposeRegistrations\(registrations, errors\)/)
+  assert.match(source, /changeSubscription\.dispose\(\)/)
   assert.doesNotMatch(source, /^let workflowProviderRegistrationAttempt/m)
 })
 
 test("code consistency provider generation records the exact API used for registration", () => {
   const source = readSourceSet(["extension.ts", "workflowProviderRegistration.ts"])
 
-  assert.match(source, /return \{ registered: true, registrations, api \}/)
-  assert.match(source, /register: \(\) => registerWorkflowProviders\(handlers\)/)
+  assert.match(source, /return \{ registered: true, registrations: \[registration\], api \}/)
+  assert.match(source, /register: \(\) => registerWorkflowProviders\(handlers, \{/)
   assert.doesNotMatch(source, /api: result\.registered \? currentWorkflowRegisterApi\(\) : undefined/)
 })
 
-test("code consistency workflow providers declare ownership and register disposables", () => {
+test("code consistency workflow providers use one owner-bound atomic registration", () => {
   const source = readSourceSet(["extension.ts", "workflowProviderRegistration.ts"])
 
-  assert.match(source, /const CODE_CONSISTENCY_PROVIDER_SOURCE_ID = "local\.bob-code-consistency-review"/)
-  assert.match(source, /sourceId: CODE_CONSISTENCY_PROVIDER_SOURCE_ID/)
-  assert.match(source, /const registrations: vscode\.Disposable\[\] = \[\]/)
-  assert.match(source, /disposeRegistrations\(registrations\)/)
-  assert.match(source, /context\.subscriptions\.push\(\.\.\.registrations\)/)
+  assert.match(source, /expectedOwner: \{/)
+  assert.match(source, /id: context\.extension\.id/)
+  assert.match(source, /version: String\(context\.extension\.packageJSON\.version\)/)
+  assert.match(source, /ownerDirectory: "extensions\/bob-code-consistency-review"/)
+  assert.doesNotMatch(source, /require\("\.\.\/package\.json"\)/)
+  assert.match(source, /registerContributionSet/)
+  assert.doesNotMatch(source, /registerActionProvider/)
+  assert.match(source, /context\.subscriptions\.push/)
 })
 
 test("code consistency provider accepts workflowRoot without first-folder fallback", () => {
@@ -142,12 +137,9 @@ test("Bob workflow template uses command providers instead of manual CLI instruc
   const collectStep = workflow.slice(collectStepStart, generateStepStart)
   const validateDraftStepStart = workflow.indexOf("  - id: validate-traceability-draft")
   const applyStepStart = workflow.indexOf("  - id: apply-traceability-draft")
-  const runBobStepStart = workflow.indexOf("  - id: run-bob-pre-review")
-  const captureBobStepStart = workflow.indexOf("  - id: capture-bob-output")
   const generateStep = workflow.slice(generateStepStart, validateDraftStepStart)
   const validateDraftStep = workflow.slice(validateDraftStepStart, applyStepStart)
   const applyStep = workflow.slice(applyStepStart, workflow.indexOf("  - id: approve-traceability-catalog"))
-  const runBobStep = workflow.slice(runBobStepStart, captureBobStepStart)
   const artifacts = workflow.slice(workflow.indexOf("artifacts:"), workflow.indexOf("completion:"))
   assert.match(workflow, /allowedCommands:[\s\S]*- vscode\.executeCommand/)
   assert.match(workflow, /allowedCommandIds:[\s\S]*- bobCodeConsistency\.prepareAiTraceabilityDraft/)
@@ -172,9 +164,6 @@ test("Bob workflow template uses command providers instead of manual CLI instruc
   assert.match(applyStep, /text: "\{\{state\.validatedTraceabilityDraftJson\}\}"/)
   assert.match(applyStep, /includeState:[\s\S]*- validatedTraceabilityDraftJson/)
   assert.match(applyStep, /resultKey: traceabilityCatalogResult/)
-  assert.match(runBobStep, /厳密な JSON object/)
-  assert.match(runBobStep, /応答の先頭は `\{`、末尾は `\}`/)
-  assert.doesNotMatch(runBobStep, /YAML を返/)
   assert.doesNotMatch(artifacts, /id: traceabilityDraftPrompt/)
   assert.doesNotMatch(artifacts, /id: traceabilityCatalog/)
   assert.doesNotMatch(artifacts, /id: reviewInput/)

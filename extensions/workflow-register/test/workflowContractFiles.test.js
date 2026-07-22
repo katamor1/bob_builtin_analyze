@@ -27,12 +27,12 @@ const packagePaths = [
   "extensions/bob-code-consistency-review/package.json"
 ]
 const availablePreflightChecks = ["workspaceOpen", "bobWorkspaceInitialized", "bazaarRepository"]
-const sampleExternalCommandAllowlist = new Map([
-  [
-    "extensions/workflow-register/samples/step-back-branching-approval/.bob/workflows/step-back-branching-approval/WORKFLOW.md",
-    new Set(["example.preapprovalCheck"])
-  ]
-])
+const contributionManifestPaths = [
+  "extensions/workflow-register/contracts/workflow-contributions.json",
+  "extensions/bob-bazaar-review/contracts/workflow-contributions.json",
+  "extensions/bob-code-consistency-review/contracts/workflow-contributions.json"
+]
+const sampleExternalCommandAllowlist = readSampleExternalCommandAllowlist()
 
 const integrationWorkflowPairs = [
   {
@@ -270,6 +270,21 @@ function isDeclaredSampleExternalCommand(relativePath, workflow, commandId) {
   const allowedCommands = sampleExternalCommandAllowlist.get(relativePath)
   return allowedCommands?.has(commandId) === true &&
     (workflow.guardrails?.allowedCommandIds ?? []).includes(commandId)
+}
+
+function readSampleExternalCommandAllowlist() {
+  const allowlist = new Map()
+  for (const manifestPath of contributionManifestPaths) {
+    const manifest = JSON.parse(readRepoFile(manifestPath))
+    for (const command of manifest.external_commands) {
+      for (const workflowPath of command.workflow_paths) {
+        const commandIds = allowlist.get(workflowPath) ?? new Set()
+        commandIds.add(command.id)
+        allowlist.set(workflowPath, commandIds)
+      }
+    }
+  }
+  return allowlist
 }
 
 function validateStrictText(text, filePath = "test/fixtures/inline/WORKFLOW.md", providerIds = readActionProviderCatalogIds()) {

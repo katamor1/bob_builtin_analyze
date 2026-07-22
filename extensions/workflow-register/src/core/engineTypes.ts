@@ -88,6 +88,7 @@ export interface WorkflowEngineOptions {
     (input: WorkflowPreflightCheckInput) => Promise<WorkflowPreflightCheckResult> | WorkflowPreflightCheckResult
   >
   preflightCheckResolver?: WorkflowPreflightCheckResolver
+  includeDefaultPreflightChecks?: boolean
   strictPreflightChecks?: boolean
   hooks?: WorkflowExecutionHooks
   manualCompletion?: (input: ManualCompletionInput) => Promise<ManualCompletionResult> | ManualCompletionResult
