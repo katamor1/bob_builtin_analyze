@@ -4,7 +4,7 @@
   "title": "Workflow contribution catalog v1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "registry_api", "owners", "action_providers", "preflight_checks", "result_sinks", "agent_providers", "workflow_templates", "schemas"],
+  "required": ["schema_version", "registry_api", "owners", "action_providers", "preflight_checks", "result_sinks", "agent_providers", "commands", "external_commands", "workflow_templates", "schemas"],
   "properties": {
     "schema_version": { "const": "workflow-contribution-catalog/v1" },
     "registry_api": { "$ref": "#/definitions/registryRange" },
@@ -13,6 +13,8 @@
     "preflight_checks": { "type": "array", "items": { "$ref": "#/definitions/preflightCheck" } },
     "result_sinks": { "type": "array", "items": { "$ref": "#/definitions/resultSink" } },
     "agent_providers": { "type": "array", "items": { "$ref": "#/definitions/agentProvider" } },
+    "commands": { "type": "array", "items": { "$ref": "#/definitions/command" } },
+    "external_commands": { "type": "array", "items": { "$ref": "#/definitions/externalCommand" } },
     "workflow_templates": { "type": "array", "items": { "$ref": "#/definitions/asset" } },
     "schemas": { "type": "array", "items": { "$ref": "#/definitions/asset" } }
   },
@@ -20,6 +22,8 @@
     "identifier": { "type": "string", "minLength": 1, "maxLength": 200, "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$" },
     "contractVersion": { "type": "string", "minLength": 4, "maxLength": 256, "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*(?:/[A-Za-z0-9][A-Za-z0-9._-]*)*/v[1-9][0-9]*$" },
     "ownerId": { "type": "string", "minLength": 3, "maxLength": 200, "pattern": "^[a-z0-9][a-z0-9-]*\\.[a-z0-9][a-z0-9-]*$" },
+    "packagePath": { "type": "string", "minLength": 1, "maxLength": 2048, "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*[\\u0000-\\u001f\\u007f-\\u009f*?\\[\\]{}!])(?!\\.{1,2}(?:/|$))(?!.*\\/\\.{1,2}(?:/|$))(?:[^/]+/)*package\\.json$" },
+    "workflowPath": { "type": "string", "minLength": 1, "maxLength": 2048, "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*[\\u0000-\\u001f\\u007f-\\u009f*?\\[\\]{}!])(?!\\.{1,2}(?:/|$))(?!.*\\/\\.{1,2}(?:/|$))(?:[^/]+/)*WORKFLOW\\.md$" },
     "semver": { "type": "string", "maxLength": 200, "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$" },
     "registryVersion": { "type": "string", "maxLength": 64, "pattern": "^provider-registry/v[1-9][0-9]*$" },
     "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
@@ -61,6 +65,24 @@
       "properties": {
         "id": { "$ref": "#/definitions/identifier" }, "contract_version": { "$ref": "#/definitions/contractVersion" },
         "capabilities": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/definitions/identifier" } }, "owner": { "$ref": "#/definitions/ownerId" }
+      }
+    },
+    "command": {
+      "type": "object", "additionalProperties": false, "required": ["owner", "id", "package_path"],
+      "properties": {
+        "owner": { "$ref": "#/definitions/ownerId" }, "id": { "$ref": "#/definitions/identifier" },
+        "package_path": { "$ref": "#/definitions/packagePath" }
+      }
+    },
+    "externalCommand": {
+      "type": "object", "additionalProperties": false, "required": ["owner", "id", "contract_version", "workflow_paths"],
+      "properties": {
+        "owner": { "$ref": "#/definitions/ownerId" }, "id": { "$ref": "#/definitions/identifier" },
+        "contract_version": { "$ref": "#/definitions/contractVersion" },
+        "workflow_paths": {
+          "type": "array", "minItems": 1, "uniqueItems": true,
+          "items": { "$ref": "#/definitions/workflowPath" }
+        }
       }
     },
     "asset": {

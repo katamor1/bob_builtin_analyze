@@ -1,19 +1,15 @@
 const assert = require("node:assert/strict")
 const fs = require("node:fs")
+const os = require("node:os")
 const path = require("node:path")
 const { test } = require("node:test")
 
 const { compileWorkflowContractDocument } = require("../out/core/workflowValidator")
 const { buildWorkflowContributionCatalog } = require("../out/core/contributionCatalog")
+const { validateCommandGuardrails } = require("../out/core/guardrails")
 const { createWorkflowInventory, discoverContributionManifests } = require("../scripts/discover-tracked-workflows")
 
 const repoRoot = path.resolve(__dirname, "..", "..", "..")
-const packagePaths = [
-  "extensions/workflow-register/package.json",
-  "extensions/bob-bazaar-review/package.json",
-  "extensions/bob-code-consistency-review/package.json"
-]
-const sampleExternalCommandAllowlist = readSampleExternalCommandAllowlist()
 
 const integrationWorkflowPairs = [
   {
@@ -34,13 +30,11 @@ test("all tracked claimed workflow contracts are discovered and strict-clean", (
   const workflowPaths = createWorkflowInventory(repoRoot)
     .filter((entry) => entry.kind === "claim")
     .map((entry) => entry.path)
-  const commandIds = discoverContributedCommandIds()
 
   for (const relativePath of workflowPaths) {
     const text = readRepoFile(relativePath)
     const validation = validateStrictText(text, relativePath)
     assert.equal(validation.ok, true, `${relativePath}\n${formatDiagnostics(validation)}`)
-    assertNestedCommandContracts(relativePath, validation.workflow, commandIds)
   }
 })
 
@@ -52,16 +46,73 @@ test("integration workflow templates match their workspace mirrors", () => {
   }
 })
 
-test("sample external command allowlist is path-scoped and guardrail-declared", () => {
+test("sample external command contract is accepted only at its exact manifest-declared path", () => {
   const samplePath = "extensions/workflow-register/samples/step-back-branching-approval/.bob/workflows/step-back-branching-approval/WORKFLOW.md"
-  const validation = validateStrictText(readRepoFile(samplePath), samplePath)
+  const text = readRepoFile(samplePath)
+  const contributionCatalog = readWorkflowRegisterContributionCatalog()
+  const validation = validateStrictText(text, samplePath, contributionCatalog)
   assert.equal(validation.ok, true, formatDiagnostics(validation))
-  const commandIds = discoverContributedCommandIds()
+  const wrongPath = validateStrictText(text, ".bob/workflows/production-copy/WORKFLOW.md", contributionCatalog)
+  assert.equal(wrongPath.ok, false)
+  assert.match(formatDiagnostics(wrongPath), /example\.preapprovalCheck.*not declared for workflow path/i)
 
-  assert.doesNotThrow(() => assertNestedCommandContracts(samplePath, validation.workflow, commandIds))
+  const missingAllowedCommandId = validateStrictText(
+    text.replace("  allowedCommandIds:\n    - example.preapprovalCheck\n", ""),
+    samplePath,
+    contributionCatalog
+  )
+  assert.equal(missingAllowedCommandId.ok, false)
+  assert.match(formatDiagnostics(missingAllowedCommandId), /example\.preapprovalCheck.*allowedCommandIds/i)
+
+  for (const [name, mutatedText, expectedRuntimeError] of [
+    [
+      "non-allowlisted provider",
+      text.replace("    - vscode.executeCommand\n", "    - workflowRegister.runMechanicalChecks\n"),
+      /not allowed by workflow guardrails.*vscode\.executeCommand/i
+    ],
+    [
+      "denied provider",
+      text
+        .replace("    - vscode.executeCommand\n", "    - workflowRegister.runMechanicalChecks\n")
+        .replace("    - shell\n", "    - vscode.executeCommand\n"),
+      /denied by workflow guardrails.*vscode\.executeCommand/i
+    ]
+  ]) {
+    const strictResult = validateStrictText(mutatedText, samplePath, contributionCatalog)
+    assert.ok(strictResult.workflow)
+    const runtimeError = validateCommandGuardrails(
+      { guardrails: strictResult.workflow.guardrails },
+      "vscode.executeCommand",
+      ["example.preapprovalCheck"]
+    )
+    assert.match(runtimeError ?? "", expectedRuntimeError, name)
+
+    assert.equal(strictResult.ok, false, `${name}: ${formatDiagnostics(strictResult)}`)
+    assert.match(formatDiagnostics(strictResult), /vscode\.executeCommand.*(?:allowedCommands|deniedCommands)/i)
+  }
+})
+
+test("real-style repository reads preserve invalid package bytes for fatal decoding", (t) => {
+  const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "workflow-command-bytes-"))
+  t.after(() => fs.rmSync(temporaryRoot, { recursive: true, force: true }))
+  const manifestPath = "extensions/sample-extension/contracts/workflow-contributions.json"
+  const packagePath = "extensions/sample-extension/package.json"
+  const packageFile = path.join(temporaryRoot, ...packagePath.split("/"))
+  fs.mkdirSync(path.dirname(packageFile), { recursive: true })
+  fs.writeFileSync(packageFile, Buffer.from([0xc3, 0x28]))
+  const manifestContent = readRepoFile("extensions/workflow-register/test/fixtures/workflow-contributions/valid.json")
+
   assert.throws(
-    () => assertNestedCommandContracts(".bob/workflows/production-copy/WORKFLOW.md", validation.workflow, commandIds),
-    /uncontributed command 'example\.preapprovalCheck'/
+    () => buildWorkflowContributionCatalog([{
+      manifestPath,
+      manifestContent,
+      context: {
+        expectedOwner: { id: "local.sample-extension", version: "1.2.3" },
+        ownerDirectory: "extensions/sample-extension"
+      },
+      readContent: (repositoryPath) => fs.readFileSync(path.join(temporaryRoot, ...repositoryPath.split("/")))
+    }]),
+    /package manifest content must be valid UTF-8 JSON/i
   )
 })
 
@@ -123,59 +174,6 @@ steps:
   assert.equal(validation.ok, true, formatDiagnostics(validation))
 })
 
-function discoverContributedCommandIds() {
-  const result = new Set()
-  for (const relativePath of packagePaths) {
-    const packageJson = JSON.parse(readRepoFile(relativePath))
-    for (const item of packageJson.contributes?.commands ?? []) {
-      if (typeof item.command === "string" && item.command.trim()) result.add(item.command.trim())
-    }
-  }
-  return result
-}
-
-function assertNestedCommandContracts(relativePath, workflow, commandIds) {
-  for (const step of workflow.engineSteps) {
-    if (step.type !== "command" || step.action.provider !== "vscode.executeCommand") continue
-    const args = step.action.args
-    const commandId = Array.isArray(args) ? args[0] : undefined
-    assert.equal(typeof commandId, "string", `${relativePath}: step '${step.id}' must pass a command id as vscode.executeCommand args[0]`)
-    assert.ok(
-      commandIds.has(commandId) || isDeclaredSampleExternalCommand(relativePath, workflow, commandId),
-      `${relativePath}: step '${step.id}' references uncontributed command '${commandId}'`
-    )
-  }
-
-  for (const commandId of workflow.guardrails?.allowedCommandIds ?? []) {
-    assert.ok(
-      commandIds.has(commandId) || isDeclaredSampleExternalCommand(relativePath, workflow, commandId),
-      `${relativePath}: guardrails allow uncontributed command '${commandId}'`
-    )
-  }
-}
-
-function isDeclaredSampleExternalCommand(relativePath, workflow, commandId) {
-  if (typeof commandId !== "string") return false
-  const allowedCommands = sampleExternalCommandAllowlist.get(relativePath)
-  return allowedCommands?.has(commandId) === true &&
-    (workflow.guardrails?.allowedCommandIds ?? []).includes(commandId)
-}
-
-function readSampleExternalCommandAllowlist() {
-  const allowlist = new Map()
-  for (const manifestPath of discoverContributionManifestPaths()) {
-    const manifest = JSON.parse(readRepoFile(manifestPath))
-    for (const command of manifest.external_commands) {
-      for (const workflowPath of command.workflow_paths) {
-        const commandIds = allowlist.get(workflowPath) ?? new Set()
-        commandIds.add(command.id)
-        allowlist.set(workflowPath, commandIds)
-      }
-    }
-  }
-  return allowlist
-}
-
 function validateStrictText(text, filePath = "test/fixtures/inline/WORKFLOW.md", contributionCatalog = readGeneratedContributionCatalog()) {
   return compileWorkflowContractDocument({
     sourceId: "workflow-register",
@@ -208,7 +206,7 @@ function buildContributionCatalog(manifestPaths) {
         expectedOwner: { id: `${packageJson.publisher}.${packageJson.name}`, version: packageJson.version },
         ownerDirectory
       },
-      readContent: (repositoryPath) => fs.readFileSync(path.join(repoRoot, repositoryPath), "utf8")
+      readContent: (repositoryPath) => fs.readFileSync(path.join(repoRoot, repositoryPath))
     }
   }))
 }

@@ -68,11 +68,32 @@ interface ContributionCatalogLookup {
   actionProviders: ReadonlyMap<string, number>
   preflightChecks: ReadonlyMap<string, number>
   resultSinks: ReadonlyMap<string, readonly string[]>
+  productCommands: ReadonlyMap<string, number>
+  externalCommands: ReadonlyMap<string, readonly (readonly string[])[]>
 }
 
 interface CatalogContributionSnapshot {
   key: string
   contractVersion: string
+}
+
+interface CatalogExternalCommandSnapshot {
+  id: string
+  owner: string
+  location: string
+  workflowPaths: readonly string[]
+}
+
+interface CatalogProductCommandSnapshot {
+  id: string
+  owner: string
+  packagePath: string
+  location: string
+}
+
+interface CatalogOwnerSnapshot {
+  id: string
+  packagePath: string
 }
 
 type ContributionCatalogSnapshotResult =
@@ -239,15 +260,22 @@ function snapshotContributionCatalog(value: unknown, validateValues: boolean): C
     if (readOwnDataProperty(value, "schema_version", "schema_version") !== "workflow-contribution-catalog/v1") {
       throw new ContributionCatalogSnapshotError("field 'schema_version' must be 'workflow-contribution-catalog/v1'")
     }
+    const owners = snapshotOwnerSection(value, validateValues)
     const actionProviders = snapshotContributionSection(value, "action_providers", "id", validateValues)
     const preflightChecks = snapshotContributionSection(value, "preflight_checks", "id", validateValues)
     const resultSinks = snapshotContributionSection(value, "result_sinks", "type", validateValues)
+    const productCommands = snapshotProductCommandSection(value, validateValues)
+    const externalCommands = snapshotExternalCommandSection(value, validateValues)
+    assertCatalogCommandProvenance(owners, productCommands, externalCommands)
+    assertUniqueCatalogCommandIds(productCommands, externalCommands)
     return {
       ok: true,
       lookup: {
         actionProviders: contributionCounts(actionProviders),
         preflightChecks: contributionCounts(preflightChecks),
-        resultSinks: contributionVersions(resultSinks)
+        resultSinks: contributionVersions(resultSinks),
+        productCommands: commandCounts(productCommands),
+        externalCommands: externalCommandPaths(externalCommands)
       }
     }
   } catch (error) {
@@ -258,6 +286,231 @@ function snapshotContributionCatalog(value: unknown, validateValues: boolean): C
         : "catalog data could not be snapshotted"
     }
   }
+}
+
+function snapshotOwnerSection(
+  catalog: Record<string, unknown>,
+  validateValues: boolean
+): readonly CatalogOwnerSnapshot[] {
+  const { section, length } = snapshotCatalogArray(catalog, "owners")
+  const snapshot: CatalogOwnerSnapshot[] = []
+  const seen = new Map<string, string>()
+  for (let index = 0; index < length; index += 1) {
+    const entryPath = `owners[${index}]`
+    const entry = readArrayDataItem(section, index, entryPath)
+    if (!isPlainDataObject(entry)) {
+      throw new ContributionCatalogSnapshotError(`field '${entryPath}' must be a plain data object`)
+    }
+    const id = readOwnDataProperty(entry, "id", `${entryPath}.id`)
+    const version = readOwnDataProperty(entry, "version", `${entryPath}.version`)
+    const manifestPath = readOwnDataProperty(entry, "manifest_path", `${entryPath}.manifest_path`)
+    const manifestSha256 = readOwnDataProperty(entry, "manifest_sha256", `${entryPath}.manifest_sha256`)
+    if (typeof id !== "string" || (validateValues && !EXTENSION_OWNER_ID_PATTERN.test(id))) {
+      throw new ContributionCatalogSnapshotError(`field '${entryPath}.id' is invalid`)
+    }
+    if (typeof version !== "string" || (validateValues && !SEMVER_PATTERN.test(version))) {
+      throw new ContributionCatalogSnapshotError(`field '${entryPath}.version' is invalid`)
+    }
+    if (
+      typeof manifestPath !== "string"
+      || (validateValues && !isCanonicalRepositoryFilePath(manifestPath, "workflow-contributions.json"))
+    ) {
+      throw new ContributionCatalogSnapshotError(`field '${entryPath}.manifest_path' is invalid`)
+    }
+    if (typeof manifestSha256 !== "string" || (validateValues && !SHA256_PATTERN.test(manifestSha256))) {
+      throw new ContributionCatalogSnapshotError(`field '${entryPath}.manifest_sha256' is invalid`)
+    }
+    const packagePath = packagePathFromOwnerManifest(id, manifestPath, entryPath, validateValues)
+    const existing = seen.get(id)
+    if (existing) {
+      throw new ContributionCatalogSnapshotError(
+        `duplicate owner '${boundedDiagnosticText(id)}' between '${existing}' and '${entryPath}'`
+      )
+    }
+    seen.set(id, entryPath)
+    snapshot.push(Object.freeze({ id, packagePath }))
+  }
+  return Object.freeze(snapshot)
+}
+
+function packagePathFromOwnerManifest(
+  ownerId: string,
+  manifestPath: string,
+  entryPath: string,
+  validateValues: boolean
+): string {
+  const suffix = "/contracts/workflow-contributions.json"
+  if (!manifestPath.endsWith(suffix)) {
+    if (validateValues) {
+      throw new ContributionCatalogSnapshotError(
+        `field '${entryPath}.manifest_path' must identify an owner contracts/workflow-contributions.json file`
+      )
+    }
+    return ""
+  }
+  const ownerDirectory = manifestPath.slice(0, -suffix.length)
+  const extensionName = ownerId.split(".")[1]
+  const ownerDirectorySegments = ownerDirectory.split("/")
+  if (validateValues && ownerDirectorySegments[ownerDirectorySegments.length - 1] !== extensionName) {
+    throw new ContributionCatalogSnapshotError(
+      `field '${entryPath}.manifest_path' does not match owner '${boundedDiagnosticText(ownerId)}'`
+    )
+  }
+  const packagePath = `${ownerDirectory}/package.json`
+  if (validateValues && !isCanonicalRepositoryFilePath(packagePath, "package.json")) {
+    throw new ContributionCatalogSnapshotError(`field '${entryPath}.manifest_path' derives an invalid package path`)
+  }
+  return packagePath
+}
+
+function snapshotProductCommandSection(
+  catalog: Record<string, unknown>,
+  validateValues: boolean
+): readonly CatalogProductCommandSnapshot[] {
+  const { section, length } = snapshotCatalogArray(catalog, "commands")
+  const snapshot: CatalogProductCommandSnapshot[] = []
+  for (let index = 0; index < length; index += 1) {
+    const entryPath = `commands[${index}]`
+    const entry = readArrayDataItem(section, index, entryPath)
+    if (!isPlainDataObject(entry)) {
+      throw new ContributionCatalogSnapshotError(`field '${entryPath}' must be a plain data object`)
+    }
+    const id = readOwnDataProperty(entry, "id", `${entryPath}.id`)
+    const owner = readOwnDataProperty(entry, "owner", `${entryPath}.owner`)
+    const packagePath = readOwnDataProperty(entry, "package_path", `${entryPath}.package_path`)
+    if (typeof id !== "string" || (validateValues && !CONTRIBUTION_ID_PATTERN.test(id))) {
+      throw new ContributionCatalogSnapshotError(`field '${entryPath}.id' is invalid`)
+    }
+    if (typeof owner !== "string" || (validateValues && !EXTENSION_OWNER_ID_PATTERN.test(owner))) {
+      throw new ContributionCatalogSnapshotError(`field '${entryPath}.owner' is invalid`)
+    }
+    if (typeof packagePath !== "string" || (validateValues && !isCanonicalRepositoryFilePath(packagePath, "package.json"))) {
+      throw new ContributionCatalogSnapshotError(`field '${entryPath}.package_path' is invalid`)
+    }
+    snapshot.push(Object.freeze({ id, owner, packagePath, location: entryPath }))
+  }
+  return Object.freeze(snapshot)
+}
+
+function snapshotExternalCommandSection(
+  catalog: Record<string, unknown>,
+  validateValues: boolean
+): readonly CatalogExternalCommandSnapshot[] {
+  const { section, length } = snapshotCatalogArray(catalog, "external_commands")
+  const snapshot: CatalogExternalCommandSnapshot[] = []
+  for (let index = 0; index < length; index += 1) {
+    const entryPath = `external_commands[${index}]`
+    const entry = readArrayDataItem(section, index, entryPath)
+    if (!isPlainDataObject(entry)) {
+      throw new ContributionCatalogSnapshotError(`field '${entryPath}' must be a plain data object`)
+    }
+    const id = readOwnDataProperty(entry, "id", `${entryPath}.id`)
+    const owner = readOwnDataProperty(entry, "owner", `${entryPath}.owner`)
+    const contractVersion = readOwnDataProperty(entry, "contract_version", `${entryPath}.contract_version`)
+    const workflowPathValues = readOwnDataProperty(entry, "workflow_paths", `${entryPath}.workflow_paths`)
+    if (typeof id !== "string" || (validateValues && !CONTRIBUTION_ID_PATTERN.test(id))) {
+      throw new ContributionCatalogSnapshotError(`field '${entryPath}.id' is invalid`)
+    }
+    if (typeof owner !== "string" || (validateValues && !EXTENSION_OWNER_ID_PATTERN.test(owner))) {
+      throw new ContributionCatalogSnapshotError(`field '${entryPath}.owner' is invalid`)
+    }
+    if (
+      typeof contractVersion !== "string"
+      || (validateValues && (
+        !CONTRIBUTION_CONTRACT_PATTERN.test(contractVersion)
+        || contractVersion.length > MAX_CONTRIBUTION_CONTRACT_VERSION_LENGTH
+      ))
+    ) {
+      throw new ContributionCatalogSnapshotError(`field '${entryPath}.contract_version' is invalid`)
+    }
+    if (!Array.isArray(workflowPathValues)) {
+      throw new ContributionCatalogSnapshotError(`field '${entryPath}.workflow_paths' must be a non-empty array`)
+    }
+    const workflowPathLength = snapshotArrayLength(workflowPathValues, `${entryPath}.workflow_paths`)
+    if (workflowPathLength === 0) {
+      throw new ContributionCatalogSnapshotError(`field '${entryPath}.workflow_paths' must be a non-empty array`)
+    }
+    const workflowPaths: string[] = []
+    const seen = new Set<string>()
+    for (let pathIndex = 0; pathIndex < workflowPathLength; pathIndex += 1) {
+      const pathEntry = `${entryPath}.workflow_paths[${pathIndex}]`
+      const workflowPath = readArrayDataItem(workflowPathValues, pathIndex, pathEntry)
+      if (typeof workflowPath !== "string" || (validateValues && !isCanonicalRepositoryFilePath(workflowPath, "WORKFLOW.md"))) {
+        throw new ContributionCatalogSnapshotError(`field '${pathEntry}' is invalid`)
+      }
+      if (seen.has(workflowPath)) {
+        throw new ContributionCatalogSnapshotError(`field '${entryPath}.workflow_paths' contains a duplicate path`)
+      }
+      seen.add(workflowPath)
+      workflowPaths.push(workflowPath)
+    }
+    snapshot.push(Object.freeze({ id, owner, location: entryPath, workflowPaths: Object.freeze(workflowPaths) }))
+  }
+  return Object.freeze(snapshot)
+}
+
+function assertCatalogCommandProvenance(
+  owners: readonly CatalogOwnerSnapshot[],
+  productCommands: readonly CatalogProductCommandSnapshot[],
+  externalCommands: readonly CatalogExternalCommandSnapshot[]
+): void {
+  const ownersById = new Map(owners.map((owner) => [owner.id, owner]))
+  for (const command of productCommands) {
+    const owner = ownersById.get(command.owner)
+    if (!owner) {
+      throw new ContributionCatalogSnapshotError(
+        `field '${command.location}.owner' has no matching owners record`
+      )
+    }
+    if (command.packagePath !== owner.packagePath) {
+      throw new ContributionCatalogSnapshotError(
+        `field '${command.location}.package_path' does not match owner '${boundedDiagnosticText(command.owner)}' manifest_path-derived package path`
+      )
+    }
+  }
+  for (const command of externalCommands) {
+    if (!ownersById.has(command.owner)) {
+      throw new ContributionCatalogSnapshotError(
+        `field '${command.location}.owner' has no matching owners record`
+      )
+    }
+  }
+}
+
+function assertUniqueCatalogCommandIds(
+  productCommands: readonly CatalogProductCommandSnapshot[],
+  externalCommands: readonly CatalogExternalCommandSnapshot[]
+): void {
+  const seen = new Map<string, string>()
+  for (const command of [...productCommands, ...externalCommands]) {
+    const existing = seen.get(command.id)
+    if (existing) {
+      throw new ContributionCatalogSnapshotError(
+        `duplicate command id '${boundedDiagnosticText(command.id)}' between '${existing}' and '${command.location}'`
+      )
+    }
+    seen.set(command.id, command.location)
+  }
+}
+
+function snapshotCatalogArray(
+  catalog: Record<string, unknown>,
+  field: string
+): { section: unknown[]; length: number } {
+  const section = readOwnDataProperty(catalog, field, field)
+  if (!Array.isArray(section)) {
+    throw new ContributionCatalogSnapshotError(`field '${field}' must be an array`)
+  }
+  return { section, length: snapshotArrayLength(section, field) }
+}
+
+function snapshotArrayLength(array: unknown[], field: string): number {
+  const lengthDescriptor = Object.getOwnPropertyDescriptor(array, "length")
+  const length = lengthDescriptor && "value" in lengthDescriptor ? lengthDescriptor.value : undefined
+  if (!Number.isSafeInteger(length) || length < 0) {
+    throw new ContributionCatalogSnapshotError(`field '${field}' must be an array`)
+  }
+  return length
 }
 
 function snapshotContributionSection(
@@ -331,6 +584,34 @@ function contributionVersions(entries: readonly CatalogContributionSnapshot[]): 
   return versions
 }
 
+function commandCounts(entries: readonly CatalogProductCommandSnapshot[]): ReadonlyMap<string, number> {
+  const counts = new Map<string, number>()
+  for (const entry of entries) counts.set(entry.id, (counts.get(entry.id) ?? 0) + 1)
+  return counts
+}
+
+function externalCommandPaths(
+  entries: readonly CatalogExternalCommandSnapshot[]
+): ReadonlyMap<string, readonly (readonly string[])[]> {
+  const paths = new Map<string, readonly (readonly string[])[]>()
+  for (const entry of entries) {
+    paths.set(entry.id, Object.freeze([...(paths.get(entry.id) ?? []), entry.workflowPaths]))
+  }
+  return paths
+}
+
+function isCanonicalRepositoryFilePath(value: string, basename: string): boolean {
+  return value.length > 0
+    && value.length <= 2048
+    && !value.startsWith("/")
+    && !value.includes("\\")
+    && !/[\u0000-\u001f\u007f-\u009f]/.test(value)
+    && !/^[A-Za-z]:/.test(value)
+    && !/[*?\[\]{}!]/.test(value)
+    && value.split("/").every((segment) => segment.length > 0 && segment !== "." && segment !== "..")
+    && (value === basename || value.endsWith(`/${basename}`))
+}
+
 function normalizeWindowsRepositoryPath(filePath: string): string {
   return filePath.replace(/\\/g, "/")
 }
@@ -361,6 +642,9 @@ function validateCoreWorkflow(
   const stepIds = new Set<string>()
   const stepIndexes = new Map<string, number>()
   const resultKeyProducers = new Map<string, ResultKeyProducer[]>()
+  const allowedCommandIds = new Set(workflow.guardrails.allowedCommandIds ?? [])
+  const allowedCommands = workflow.guardrails.allowedCommands ?? []
+  const deniedCommands = workflow.guardrails.deniedCommands ?? []
 
   if (workflow.todoRequired && (workflow.todos ?? []).length === 0) {
     diagnostics.push(error(filePath, "todoRequired is true but no todo items were found."))
@@ -385,7 +669,17 @@ function validateCoreWorkflow(
     if (step.maxResultBytes !== undefined && step.maxResultBytes <= 0) {
       diagnostics.push(error(filePath, `Step '${step.id}' maxResultBytes must be greater than zero.`))
     }
-    if (step.type === "command") validateCommandStep(step, options, diagnostics, filePath)
+    if (step.type === "command") {
+      validateCommandStep(
+        step,
+        options,
+        allowedCommandIds,
+        allowedCommands,
+        deniedCommands,
+        diagnostics,
+        filePath
+      )
+    }
   }
   validateResultKeyConflicts(resultKeyProducers, diagnostics, filePath)
   const resultKeys = new Set(resultKeyProducers.keys())
@@ -397,7 +691,7 @@ function validateCoreWorkflow(
   validateSkipResumeFileBound(workflow, resultKeyProducers, diagnostics, filePath)
   validateInputs(workflow, diagnostics, filePath)
   validatePreflight(workflow, options, diagnostics, filePath)
-  validateGuardrails(workflow, diagnostics, filePath)
+  validateGuardrails(workflow, options, diagnostics, filePath)
   validateTemplatePlaceholders(workflow, diagnostics, filePath)
   return diagnostics
 }
@@ -450,10 +744,26 @@ export function formatWorkflowDiagnostics(result: ValidateWorkflowResult): strin
 function validateCommandStep(
   step: Extract<EngineStep, { type: "command" }>,
   options: WorkflowValidationOptions,
+  allowedCommandIds: ReadonlySet<string>,
+  allowedCommands: readonly string[],
+  deniedCommands: readonly string[],
   diagnostics: WorkflowDiagnostic[],
   filePath: string
 ): void {
   if (!step.action.provider.trim()) diagnostics.push(error(filePath, `Command step '${step.id}' action.provider is empty.`))
+  if (options.strict) {
+    if (deniedCommands.includes(step.action.provider)) {
+      diagnostics.push(error(
+        filePath,
+        `Command step '${boundedDiagnosticText(step.id)}' action provider '${boundedDiagnosticText(step.action.provider)}' is listed in workflow.guardrails.deniedCommands.`
+      ))
+    } else if (allowedCommands.length > 0 && !allowedCommands.includes(step.action.provider)) {
+      diagnostics.push(error(
+        filePath,
+        `Command step '${boundedDiagnosticText(step.id)}' action provider '${boundedDiagnosticText(step.action.provider)}' must be listed in workflow.guardrails.allowedCommands.`
+      ))
+    }
+  }
   if (options.contributionLookup) {
     const matchCount = options.contributionLookup.actionProviders.get(step.action.provider) ?? 0
     if (matchCount !== 1) {
@@ -461,6 +771,29 @@ function validateCommandStep(
         `Command step '${boundedDiagnosticText(step.id)}' action provider '${boundedDiagnosticText(step.action.provider)}'`,
         matchCount
       )))
+    }
+    if (step.action.provider === "vscode.executeCommand") {
+      const commandId = Array.isArray(step.action.args) ? step.action.args[0] : undefined
+      if (typeof commandId !== "string" || commandId.length === 0) {
+        diagnostics.push(error(
+          filePath,
+          `Command step '${boundedDiagnosticText(step.id)}' vscode.executeCommand args[0] must be a non-empty command id.`
+        ))
+      } else {
+        if (!allowedCommandIds.has(commandId)) {
+          diagnostics.push(error(
+            filePath,
+            `Command step '${boundedDiagnosticText(step.id)}' vscode.executeCommand command '${boundedDiagnosticText(commandId)}' must be listed in workflow.guardrails.allowedCommandIds.`
+          ))
+        }
+        validateCommandReference(
+          commandId,
+          `Command step '${boundedDiagnosticText(step.id)}' vscode.executeCommand command`,
+          options.contributionLookup,
+          diagnostics,
+          filePath
+        )
+      }
     }
   }
 }
@@ -698,6 +1031,9 @@ function contributionMatchMessage(location: string, matchCount: number): string 
 }
 
 const CONTRIBUTION_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/
+const EXTENSION_OWNER_ID_PATTERN = /^[a-z0-9][a-z0-9-]*\.[a-z0-9][a-z0-9-]*$/
+const SEMVER_PATTERN = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/
+const SHA256_PATTERN = /^[0-9a-f]{64}$/
 const CONTRIBUTION_CONTRACT_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*(?:\/[A-Za-z0-9][A-Za-z0-9._-]*)*\/v[1-9][0-9]*$/
 const MAX_CONTRIBUTION_CONTRACT_VERSION_LENGTH = 256
 const CUSTOM_SINK_TYPE_PATTERN = CONTRIBUTION_ID_PATTERN
@@ -809,12 +1145,28 @@ function validatePreflight(
   }
 }
 
-function validateGuardrails(workflow: CoreWorkflowDefinition, diagnostics: WorkflowDiagnostic[], filePath: string): void {
+function validateGuardrails(
+  workflow: CoreWorkflowDefinition,
+  options: WorkflowValidationOptions,
+  diagnostics: WorkflowDiagnostic[],
+  filePath: string
+): void {
   const allowed = new Set(workflow.guardrails.allowedCommands ?? [])
   for (const denied of workflow.guardrails.deniedCommands ?? []) {
     if (allowed.has(denied)) diagnostics.push(error(filePath, `Guardrail command '${denied}' is both allowed and denied.`))
   }
   const allowedCommandIds = new Set(workflow.guardrails.allowedCommandIds ?? [])
+  if (options.contributionLookup) {
+    for (const commandId of allowedCommandIds) {
+      validateCommandReference(
+        commandId,
+        "Guardrail command id",
+        options.contributionLookup,
+        diagnostics,
+        filePath
+      )
+    }
+  }
   for (const denied of workflow.guardrails.deniedCommandIds ?? []) {
     if (allowedCommandIds.has(denied)) diagnostics.push(error(filePath, `Guardrail command id '${denied}' is both allowed and denied.`))
   }
@@ -822,6 +1174,34 @@ function validateGuardrails(workflow: CoreWorkflowDefinition, diagnostics: Workf
     const issue = validateApprovalExpression(rule.when)
     if (issue) diagnostics.push(error(filePath, rule.id ? `${issue} (rule: ${rule.id})` : issue))
   }
+}
+
+function validateCommandReference(
+  commandId: string,
+  location: string,
+  lookup: ContributionCatalogLookup,
+  diagnostics: WorkflowDiagnostic[],
+  filePath: string
+): void {
+  const productMatches = lookup.productCommands.get(commandId) ?? 0
+  const externalDeclarations = lookup.externalCommands.get(commandId) ?? []
+  const externalMatches = externalDeclarations.filter((paths) => paths.includes(filePath)).length
+  const matchCount = productMatches + externalMatches
+  const displayedId = boundedDiagnosticText(commandId)
+  if (matchCount === 1) return
+  if (matchCount === 0 && externalDeclarations.length > 0) {
+    diagnostics.push(error(
+      filePath,
+      `${location} '${displayedId}' is not declared for workflow path '${boundedDiagnosticText(filePath)}'.`
+    ))
+    return
+  }
+  diagnostics.push(error(
+    filePath,
+    matchCount === 0
+      ? `${location} '${displayedId}' has no command catalog match.`
+      : `${location} '${displayedId}' has ${matchCount} command catalog matches.`
+  ))
 }
 
 function validateTemplatePlaceholders(workflow: CoreWorkflowDefinition, diagnostics: WorkflowDiagnostic[], filePath: string): void {

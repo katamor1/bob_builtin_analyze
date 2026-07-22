@@ -37,7 +37,14 @@ function generatedTestCatalog() {
       expectedOwner: { id: "local.sample-extension", version: "1.2.3" },
       ownerDirectory: "extensions/sample-extension"
     },
-    readContent: (repositoryPath) => `declared test bytes: ${repositoryPath}`
+    readContent: (repositoryPath) => repositoryPath.endsWith("/package.json")
+      ? Buffer.from(JSON.stringify({
+        publisher: "local",
+        name: "sample-extension",
+        version: "1.2.3",
+        contributes: { commands: [{ command: "sample.capture", title: "Capture" }] }
+      }))
+      : `declared test bytes: ${repositoryPath}`
   }])
 }
 
@@ -271,13 +278,61 @@ test("repository contract compilation requires a non-null generated catalog", ()
   assert.equal(result.ok, true, messages(result).join("\n"))
 })
 
-for (const field of ["action_providers", "preflight_checks", "result_sinks"]) {
+for (const field of ["action_providers", "preflight_checks", "result_sinks", "commands", "external_commands"]) {
   test(`repository contract compilation rejects non-array catalog field ${field}`, () => {
     const catalog = generatedTestCatalog()
     catalog[field] = null
     assertInvalidCatalog(catalog, `field '${field}' must be an array`)
   })
 }
+
+for (const field of ["commands", "external_commands"]) {
+  test(`repository contract compilation rejects accessor catalog metadata ${field} without invoking it`, () => {
+    const catalog = generatedTestCatalog()
+    let reads = 0
+    Object.defineProperty(catalog, field, {
+      configurable: true,
+      enumerable: true,
+      get() {
+        reads += 1
+        throw new Error("must not escape")
+      }
+    })
+
+    assertInvalidCatalog(catalog, `field '${field}' must be an own data property`)
+    assert.equal(reads, 0)
+  })
+}
+
+test("repository contract compilation rejects external command workflow path accessors without invoking them", () => {
+  const catalog = generatedTestCatalog()
+  let reads = 0
+  Object.defineProperty(catalog.external_commands[0], "workflow_paths", {
+    configurable: true,
+    enumerable: true,
+    get() {
+      reads += 1
+      throw new Error("must not escape")
+    }
+  })
+
+  assertInvalidCatalog(
+    catalog,
+    "field 'external_commands[0].workflow_paths' must be an own data property"
+  )
+  assert.equal(reads, 0)
+})
+
+test("repository contract compilation contains throwing command catalog array traps", () => {
+  const catalog = generatedTestCatalog()
+  catalog.commands = new Proxy(catalog.commands, {
+    getOwnPropertyDescriptor() {
+      throw new Error("must not escape")
+    }
+  })
+
+  assertInvalidCatalog(catalog, "catalog data could not be snapshotted")
+})
 
 test("repository contract compilation rejects accessor catalog metadata without invoking it", () => {
   const catalog = generatedTestCatalog()

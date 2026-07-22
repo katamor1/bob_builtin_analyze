@@ -5,6 +5,12 @@ import {
 } from "./contributionManifest"
 import { sha256Content } from "./contentDigest"
 import { TextDecoder } from "node:util"
+import { boundedDiagnosticText } from "./diagnosticText"
+import {
+  type ExtensionCommandCatalog,
+  type ExtensionProductCommand,
+  readExtensionCommandCatalog
+} from "./extensionCommandCatalog"
 
 export const WORKFLOW_CONTRIBUTION_CATALOG_SCHEMA_VERSION = "workflow-contribution-catalog/v1" as const
 
@@ -29,6 +35,13 @@ export interface WorkflowContributionCatalogAsset {
   sha256: string
 }
 
+export interface WorkflowExternalCommandCatalogEntry {
+  owner: string
+  id: string
+  contract_version: string
+  workflow_paths: string[]
+}
+
 export interface WorkflowContributionCatalog {
   schema_version: typeof WORKFLOW_CONTRIBUTION_CATALOG_SCHEMA_VERSION
   registry_api: { min: string; max: string }
@@ -37,6 +50,8 @@ export interface WorkflowContributionCatalog {
   preflight_checks: Array<WorkflowContributionManifest["preflight_checks"][number] & { owner: string }>
   result_sinks: Array<WorkflowContributionManifest["result_sinks"][number] & { owner: string }>
   agent_providers: Array<WorkflowContributionManifest["agent_provider"] extends infer T ? NonNullable<T> & { owner: string } : never>
+  commands: ExtensionProductCommand[]
+  external_commands: WorkflowExternalCommandCatalogEntry[]
   workflow_templates: WorkflowContributionCatalogAsset[]
   schemas: WorkflowContributionCatalogAsset[]
 }
@@ -47,6 +62,7 @@ interface CatalogInputSnapshot extends WorkflowContributionCatalogInput {
 
 interface ValidatedCatalogInput extends CatalogInputSnapshot {
   manifest: WorkflowContributionManifest
+  commandCatalog: ExtensionCommandCatalog
 }
 
 interface NamedContribution {
@@ -69,6 +85,7 @@ export function buildWorkflowContributionCatalog(inputs: readonly WorkflowContri
   const registryApi = intersectRegistryRanges(validated)
   assertUniqueContributionIds(validated)
   assertUniqueContractVersions(validated)
+  assertUniqueCommandIds(validated)
 
   return {
     schema_version: WORKFLOW_CONTRIBUTION_CATALOG_SCHEMA_VERSION,
@@ -91,6 +108,13 @@ export function buildWorkflowContributionCatalog(inputs: readonly WorkflowContri
     agent_providers: validated.flatMap((input) => input.manifest.agent_provider
       ? [{ ...input.manifest.agent_provider, owner: input.manifest.owner.id }]
       : []),
+    commands: validated.flatMap((input) => input.commandCatalog.commands).sort(compareCommands),
+    external_commands: validated.flatMap((input) => input.manifest.external_commands.map((command) => ({
+      owner: input.manifest.owner.id,
+      id: command.id,
+      contract_version: command.contract_version,
+      workflow_paths: [...command.workflow_paths].sort(compareText)
+    }))).sort(compareExternalCommands),
     workflow_templates: validated.flatMap((input) => input.manifest.workflow_templates.map((template) => asset(
       input,
       template.id,
@@ -106,13 +130,51 @@ export function buildWorkflowContributionCatalog(inputs: readonly WorkflowContri
 
 function validateCatalogInput(input: unknown, index: number): ValidatedCatalogInput {
   const checked = snapshotCatalogInput(input, index)
+  assertManifestPathMatchesOwnerDirectory(checked)
   const manifest = parseManifestContent(checked.manifestPath, checked.manifestContent)
   const validation = validateContributionManifest(manifest, checked.context)
   if (!validation.ok || !validation.manifest) {
     const diagnostics = validation.diagnostics.map((item) => `${item.code}: ${item.message}`).join("; ")
     throw new Error(`${checked.manifestPath}: invalid contribution manifest: ${diagnostics}`)
   }
-  return { ...checked, manifest: validation.manifest }
+  const packagePath = derivePackagePath(checked.context.ownerDirectory)
+  const commandCatalog = readExtensionCommandCatalog(
+    packagePath,
+    readPackageContent(checked, packagePath),
+    validation.manifest.owner
+  )
+  return { ...checked, manifest: validation.manifest, commandCatalog }
+}
+
+function assertManifestPathMatchesOwnerDirectory(input: CatalogInputSnapshot): void {
+  const expectedManifestPath = `${input.context.ownerDirectory}/contracts/workflow-contributions.json`
+  if (input.manifestPath !== expectedManifestPath) {
+    throw new Error(
+      `manifest path '${boundedDiagnosticText(input.manifestPath)}' must equal '${boundedDiagnosticText(expectedManifestPath)}' derived from ownerDirectory`
+    )
+  }
+}
+
+function derivePackagePath(ownerDirectory: string): string {
+  const packagePath = `${ownerDirectory}/package.json`
+  if (!isCanonicalPackagePath(packagePath)) {
+    throw new Error(
+      `derived package path '${boundedDiagnosticText(packagePath)}' is invalid; expected a normalized repository-relative package.json path`
+    )
+  }
+  return packagePath
+}
+
+function isCanonicalPackagePath(value: string): boolean {
+  return value.length > 0
+    && value.length <= 2048
+    && !value.startsWith("/")
+    && !value.includes("\\")
+    && !/^[A-Za-z]:/.test(value)
+    && !/[\u0000-\u001f\u007f-\u009f]/.test(value)
+    && !/[*?\[\]{}!]/.test(value)
+    && value.split("/").every((segment) => segment.length > 0 && segment !== "." && segment !== "..")
+    && (value === "package.json" || value.endsWith("/package.json"))
 }
 
 function snapshotCatalogInput(input: unknown, index: number): CatalogInputSnapshot {
@@ -241,6 +303,29 @@ function assertUniqueContractVersions(inputs: readonly ValidatedCatalogInput[]):
   }
 }
 
+function assertUniqueCommandIds(inputs: readonly ValidatedCatalogInput[]): void {
+  const values = new Map<string, { kind: "product" | "external"; owner: string }>()
+  for (const input of inputs) {
+    const owner = input.manifest.owner.id
+    const commands = [
+      ...input.commandCatalog.commands.map((entry) => ({ kind: "product" as const, id: entry.id })),
+      ...input.manifest.external_commands.map((entry) => ({ kind: "external" as const, id: entry.id }))
+    ]
+    for (const command of commands) {
+      const existing = values.get(command.id)
+      if (existing) {
+        const label = existing.kind === command.kind
+          ? `duplicate ${command.kind} command`
+          : "product/external command collision"
+        throw new Error(
+          `${label} '${command.id}' between owner '${existing.owner}' and owner '${owner}'`
+        )
+      }
+      values.set(command.id, { kind: command.kind, owner })
+    }
+  }
+}
+
 function asset(input: ValidatedCatalogInput, id: string, repositoryPath: string): WorkflowContributionCatalogAsset {
   return {
     owner: input.manifest.owner.id,
@@ -250,7 +335,7 @@ function asset(input: ValidatedCatalogInput, id: string, repositoryPath: string)
   }
 }
 
-function readDeclaredContent(input: ValidatedCatalogInput, repositoryPath: string): string | Buffer {
+function readDeclaredContent(input: CatalogInputSnapshot, repositoryPath: string): string | Buffer {
   try {
     const content = input.readContent(repositoryPath)
     if (typeof content !== "string" && !Buffer.isBuffer(content)) throw new Error("invalid content type")
@@ -260,12 +345,33 @@ function readDeclaredContent(input: ValidatedCatalogInput, repositoryPath: strin
   }
 }
 
+function readPackageContent(input: CatalogInputSnapshot, packagePath: string): Buffer {
+  let content: unknown
+  try {
+    content = input.readContent(packagePath)
+  } catch {
+    throw new Error(`failed to read package manifest '${boundedDiagnosticText(packagePath)}'`)
+  }
+  if (!Buffer.isBuffer(content)) {
+    throw new Error(`${boundedDiagnosticText(packagePath)}: package manifest content must be a Buffer`)
+  }
+  return content
+}
+
 function compareCatalogInputs(left: ValidatedCatalogInput, right: ValidatedCatalogInput): number {
   return compareText(left.manifest.owner.id, right.manifest.owner.id) || compareText(left.manifestPath, right.manifestPath)
 }
 
 function compareAssets(left: WorkflowContributionCatalogAsset, right: WorkflowContributionCatalogAsset): number {
   return compareText(left.id, right.id) || compareText(left.owner, right.owner) || compareText(left.path, right.path)
+}
+
+function compareCommands(left: ExtensionProductCommand, right: ExtensionProductCommand): number {
+  return compareText(left.id, right.id) || compareText(left.owner, right.owner) || compareText(left.package_path, right.package_path)
+}
+
+function compareExternalCommands(left: WorkflowExternalCommandCatalogEntry, right: WorkflowExternalCommandCatalogEntry): number {
+  return compareText(left.id, right.id) || compareText(left.owner, right.owner) || compareText(left.contract_version, right.contract_version)
 }
 
 function registryVersionNumber(value: string): bigint {

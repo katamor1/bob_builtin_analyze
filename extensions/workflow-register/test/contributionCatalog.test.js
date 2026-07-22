@@ -30,13 +30,34 @@ function mutateManifestContent(content, mutate) {
   return JSON.stringify(manifest)
 }
 
+function packageFixture(owner = fixtureContext.expectedOwner, commands = []) {
+  const [publisher, name] = owner.id.split(".")
+  return Buffer.from(JSON.stringify({
+    publisher,
+    name,
+    version: owner.version,
+    contributes: { commands: commands.map((command) => ({ command, title: command })) }
+  }))
+}
+
 function fixtureEntry(overrides = {}) {
+  const context = overrides.context ?? fixtureContext
+  const customReadContent = Object.hasOwn(overrides, "readContent") ? overrides.readContent : undefined
+  const readContent = typeof customReadContent === "function"
+    ? (repositoryPath) => repositoryPath === `${context.ownerDirectory}/package.json`
+      ? packageFixture(context.expectedOwner)
+      : customReadContent(repositoryPath)
+    : customReadContent === undefined && !Object.hasOwn(overrides, "readContent")
+      ? (repositoryPath) => repositoryPath === `${context.ownerDirectory}/package.json`
+        ? packageFixture(context.expectedOwner)
+        : `fixture content for ${repositoryPath}`
+      : customReadContent
   return {
     manifestPath: "extensions/sample-extension/contracts/workflow-contributions.json",
     manifestContent: fixtureContent(),
-    context: fixtureContext,
-    readContent: (repositoryPath) => `fixture content for ${repositoryPath}`,
-    ...overrides
+    ...overrides,
+    context,
+    readContent
   }
 }
 
@@ -78,12 +99,52 @@ test("catalog rejects manifests that fail the authoritative manifest contract", 
   )
 })
 
+test("catalog binds manifestPath to ownerDirectory before reading declared content", () => {
+  const expectedManifestPath = "extensions/sample-extension/contracts/workflow-contributions.json"
+  for (const [name, manifestPath] of [
+    ["unrelated", "extensions/unrelated/contracts/workflow-contributions.json"],
+    ["overlong", `${"x".repeat(2200)}/contracts/workflow-contributions.json`]
+  ]) {
+    let reads = 0
+    const input = fixtureEntry({ manifestPath })
+    input.readContent = (repositoryPath) => {
+      reads += 1
+      return repositoryPath.endsWith("/package.json")
+        ? packageFixture()
+        : `fixture content for ${repositoryPath}`
+    }
+    const messages = []
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      assert.throws(
+        () => buildWorkflowContributionCatalog([input]),
+        (error) => {
+          assert.ok(error instanceof Error)
+          messages.push(error.message)
+          assert.match(error.message, /manifest path.*must equal/i, name)
+          if (name === "overlong") assert.equal(error.message.includes(manifestPath), false, name)
+          assert.match(error.message, new RegExp(expectedManifestPath.replaceAll(".", "\\.")))
+          const displayedPath = error.message.match(/manifest path '([^']+)'/)?.[1]
+          assert.equal(typeof displayedPath, "string")
+          assert.ok(Buffer.byteLength(displayedPath, "utf8") <= 256)
+          return true
+        }
+      )
+    }
+    assert.equal(reads, 0, name)
+    assert.equal(messages[1], messages[0], name)
+  }
+})
+
 test("catalog rejects duplicate owners and contribution IDs across kinds", () => {
   const duplicateOwner = secondEntry()
   duplicateOwner.manifestContent = mutateManifestContent(duplicateOwner.manifestContent, (manifest) => {
     manifest.owner = fixtureContext.expectedOwner
   })
   duplicateOwner.context = fixtureContext
+  duplicateOwner.manifestPath = "extensions/sample-extension/contracts/workflow-contributions.json"
+  duplicateOwner.readContent = (repositoryPath) => repositoryPath === "extensions/sample-extension/package.json"
+    ? packageFixture()
+    : `fixture content for ${repositoryPath}`
   assert.throws(
     () => buildWorkflowContributionCatalog([fixtureEntry(), duplicateOwner]),
     /duplicate owner/i
@@ -194,7 +255,12 @@ test("catalog snapshots hostile manifest and provenance metadata before parsing 
     get manifestPath() { reads.manifestPath += 1; return "extensions/sample-extension/contracts/workflow-contributions.json" },
     get manifestContent() { reads.manifestContent += 1; return reads.manifestContent === 1 ? firstContent : laterContent },
     get context() { reads.context += 1; return context },
-    get readContent() { reads.readContent += 1; return (repositoryPath) => `fixture content for ${repositoryPath}` }
+    get readContent() {
+      reads.readContent += 1
+      return (repositoryPath) => repositoryPath.endsWith("/package.json")
+        ? packageFixture()
+        : `fixture content for ${repositoryPath}`
+    }
   }
 
   const catalog = buildWorkflowContributionCatalog([input])
@@ -354,7 +420,7 @@ test("a provenance-backed real manifest generates a catalog from real declared b
       expectedOwner: { id: `${packageJson.publisher}.${packageJson.name}`, version: packageJson.version },
       ownerDirectory: "extensions/workflow-register"
     },
-    readContent: (repositoryPath) => fs.readFileSync(path.join(repositoryRoot, repositoryPath), "utf8")
+    readContent: (repositoryPath) => fs.readFileSync(path.join(repositoryRoot, repositoryPath))
   }])
   assert.equal(catalog.owners[0].id, `${packageJson.publisher}.${packageJson.name}`)
   assert.ok(catalog.schemas.every((entry) => /^[0-9a-f]{64}$/.test(entry.sha256)))
