@@ -2,7 +2,14 @@ import { URL as NodeUrl } from "url"
 import { types as utilTypes } from "util"
 
 const arrayIsArray = Array.isArray
+const arrayJoin = Array.prototype.join
 const arrayPrototype = Array.prototype
+const arraySlice = Array.prototype.slice
+const mathMin = Math.min
+const NumberConstructor = Number
+const numberIsInteger = Number.isInteger
+const numberIsSafeInteger = Number.isSafeInteger
+const numberToString = Number.prototype.toString
 const objectCreate = Object.create
 const objectFreeze = Object.freeze
 const objectGetOwnPropertyDescriptors = Object.getOwnPropertyDescriptors
@@ -11,6 +18,14 @@ const objectPrototype = Object.prototype
 const reflectApply = Reflect.apply
 const reflectOwnKeys = Reflect.ownKeys
 const regexpExec = RegExp.prototype.exec
+const stringCharCodeAt = String.prototype.charCodeAt
+const stringEndsWith = String.prototype.endsWith
+const stringIncludes = String.prototype.includes
+const stringIndexOf = String.prototype.indexOf
+const stringSlice = String.prototype.slice
+const stringSplit = String.prototype.split
+const stringStartsWith = String.prototype.startsWith
+const stringToLowerCase = String.prototype.toLowerCase
 const setHas = Function.prototype.call.bind(Set.prototype.has) as (set: ReadonlySet<string>, value: unknown) => boolean
 const sortArray = Function.prototype.call.bind(Array.prototype.sort) as <T>(
   values: T[],
@@ -83,6 +98,7 @@ const DIAGNOSTIC_REQUIRED_FIELDS = objectFreeze([
   "relatedLocations"
 ] as const)
 const NO_OPTIONAL_FIELDS = objectFreeze([] as const)
+const REMOTE_AUTHORITY_SEPARATORS = objectFreeze(["/", "?", "#"] as const)
 
 export function createWorkflowContractV2Diagnostic(
   input: CreateWorkflowContractV2DiagnosticInput
@@ -174,17 +190,20 @@ function assertPackageRelativePath(value: unknown, label: string): asserts value
   assertValidUnicode(value, `${label} path`)
   if (
     value.length === 0
-    || value.startsWith("/")
-    || value.endsWith("/")
-    || value.includes("\\")
-    || value.includes(":")
+    || startsWith(value, "/")
+    || endsWith(value, "/")
+    || includes(value, "\\")
+    || includes(value, ":")
     || testPattern(controlCharacterPattern, value)
   ) {
     throw new TypeError(`${label} path must be a portable package-relative POSIX path.`)
   }
-  const segments = value.split("/")
-  if (segments.some((segment) => segment.length === 0 || segment === "." || segment === "..")) {
-    throw new TypeError(`${label} path must not contain empty or dot segments.`)
+  const segments = split(value, "/")
+  for (let index = 0; index < segments.length; index += 1) {
+    const segment = segments[index]
+    if (segment.length === 0 || segment === "." || segment === "..") {
+      throw new TypeError(`${label} path must not contain empty or dot segments.`)
+    }
   }
 }
 
@@ -193,7 +212,7 @@ function assertJsonPointer(value: unknown, label: string): asserts value is stri
   assertValidUnicode(value, `${label} pointer`)
   if (
     testPattern(controlCharacterPattern, value)
-    || (value.length > 0 && !value.startsWith("/"))
+    || (value.length > 0 && !startsWith(value, "/"))
     || testPattern(/~(?:[^01]|$)/u, value)
   ) {
     throw new TypeError(`${label} pointer must be an RFC 6901 JSON Pointer without control characters.`)
@@ -205,9 +224,10 @@ function sanitizeMessage(input: string): string {
   const normalized = normalizeLineEndings(input)
   const redacted = redactAbsolutePaths(normalized)
   const displaySafe = replaceDisplayControls(redacted)
-  const codePoints = Array.from(displaySafe)
+  const codePoints = toCodePoints(displaySafe)
   if (codePoints.length <= MAX_MESSAGE_CODE_POINTS) return displaySafe
-  return `${codePoints.slice(0, MAX_MESSAGE_CODE_POINTS - 1).join("")}…`
+  const truncated = reflectApply(arraySlice, codePoints, [0, MAX_MESSAGE_CODE_POINTS - 1]) as string[]
+  return `${reflectApply(arrayJoin, truncated, [""]) as string}…`
 }
 
 function redactAbsolutePaths(input: string): string {
@@ -219,7 +239,7 @@ function redactAbsolutePaths(input: string): string {
       if (scheme) {
         const remoteEnd = validRemoteUrlEnd(input, cursor, scheme)
         if (remoteEnd !== undefined) {
-          output += input.slice(cursor, remoteEnd)
+          output += slice(input, cursor, remoteEnd)
           cursor = remoteEnd
           continue
         }
@@ -249,13 +269,13 @@ interface SchemeMatch {
 }
 
 function readScheme(input: string, start: number): SchemeMatch | undefined {
-  const first = input.charCodeAt(start)
+  const first = charCodeAt(input, start)
   if (!isAsciiLetter(first)) return undefined
   let cursor = start + 1
   while (cursor < input.length) {
-    const code = input.charCodeAt(cursor)
+    const code = charCodeAt(input, cursor)
     if (code === 0x3a) {
-      return { colon: cursor, lowerName: input.slice(start, cursor).toLowerCase() }
+      return { colon: cursor, lowerName: toLowerCase(slice(input, start, cursor)) }
     }
     if (!isAsciiLetter(code) && !isAsciiDigit(code) && code !== 0x2b && code !== 0x2d && code !== 0x2e) {
       return undefined
@@ -267,29 +287,29 @@ function readScheme(input: string, start: number): SchemeMatch | undefined {
 
 function validRemoteUrlEnd(input: string, start: number, scheme: SchemeMatch): number | undefined {
   if (scheme.lowerName !== "http" && scheme.lowerName !== "https") return undefined
-  if (input.slice(scheme.colon + 1, scheme.colon + 3) !== "//") return undefined
+  if (slice(input, scheme.colon + 1, scheme.colon + 3) !== "//") return undefined
   const urlEnd = remoteUrlEnd(input, start)
-  const raw = input.slice(start, urlEnd)
+  const raw = slice(input, start, urlEnd)
   if (
     testPattern(/[\u0000-\u0020\u007f-\u009f]/u, raw)
-    || raw.includes("\\")
-    || raw.includes('"')
-    || raw.includes("'")
-    || raw.includes("`")
+    || includes(raw, "\\")
+    || includes(raw, '"')
+    || includes(raw, "'")
+    || includes(raw, "`")
     || containsBoundaryDrivePath(raw)
   ) return undefined
   const authorityStart = scheme.colon - start + 3
   let authorityEnd = raw.length
-  for (const separator of ["/", "?", "#"]) {
-    const found = raw.indexOf(separator, authorityStart)
+  for (let index = 0; index < REMOTE_AUTHORITY_SEPARATORS.length; index += 1) {
+    const found = indexOf(raw, REMOTE_AUTHORITY_SEPARATORS[index], authorityStart)
     if (found >= 0 && found < authorityEnd) authorityEnd = found
   }
-  const authority = raw.slice(authorityStart, authorityEnd)
-  if (authority.length === 0 || authority.includes("\\")) return undefined
+  const authority = slice(raw, authorityStart, authorityEnd)
+  if (authority.length === 0 || includes(authority, "\\")) return undefined
   try {
     const parsed = new UrlConstructor(raw)
     if (
-      parsed.protocol.toLowerCase() !== `${scheme.lowerName}:`
+      toLowerCase(parsed.protocol) !== `${scheme.lowerName}:`
       || !isRealHostname(parsed.hostname)
     ) return undefined
     return urlEnd
@@ -303,7 +323,7 @@ function remoteUrlEnd(input: string, start: number): number {
   if (quote) return closingQuoteIndex(input, start, quote) ?? lineEnd(input, start)
   let cursor = start
   while (cursor < input.length) {
-    const code = input.charCodeAt(cursor)
+    const code = charCodeAt(input, cursor)
     if (code === 0x0a || code === 0x0d || isAsciiWhitespace(code)) break
     cursor += 1
   }
@@ -313,9 +333,9 @@ function remoteUrlEnd(input: string, start: number): number {
 function containsBoundaryDrivePath(input: string): boolean {
   for (let index = 0; index + 2 < input.length; index += 1) {
     if (
-      isAsciiLetter(input.charCodeAt(index))
-      && input.charCodeAt(index + 1) === 0x3a
-      && input.charCodeAt(index + 2) === 0x2f
+      isAsciiLetter(charCodeAt(input, index))
+      && charCodeAt(input, index + 1) === 0x3a
+      && charCodeAt(input, index + 2) === 0x2f
       && isTokenBoundary(input, index)
     ) return true
   }
@@ -325,7 +345,7 @@ function containsBoundaryDrivePath(input: string): boolean {
 function isRedactableSchemePath(input: string, scheme: SchemeMatch): boolean {
   const afterColon = scheme.colon + 1
   if (afterColon >= input.length) return false
-  const next = input.charCodeAt(afterColon)
+  const next = charCodeAt(input, afterColon)
   return next !== 0x0a
     && next !== 0x0d
     && !isAsciiWhitespace(next)
@@ -335,11 +355,12 @@ function isRedactableSchemePath(input: string, scheme: SchemeMatch): boolean {
 }
 
 function isRealHostname(input: string): boolean {
-  if (input.startsWith("[") && input.endsWith("]")) return input.length > 2
-  const hostname = input.endsWith(".") ? input.slice(0, -1) : input
+  if (startsWith(input, "[") && endsWith(input, "]")) return input.length > 2
+  const hostname = endsWith(input, ".") ? slice(input, 0, -1) : input
   if (hostname.length === 0 || hostname.length > 253) return false
-  const labels = hostname.split(".")
-  for (const label of labels) {
+  const labels = split(hostname, ".")
+  for (let index = 0; index < labels.length; index += 1) {
+    const label = labels[index]
     if (
       label.length === 0
       || label.length > 63
@@ -350,9 +371,9 @@ function isRealHostname(input: string): boolean {
 }
 
 function isAbsolutePathStart(input: string, start: number): boolean {
-  const code = input.charCodeAt(start)
-  if (isAsciiLetter(code) && input.charCodeAt(start + 1) === 0x3a) {
-    const separator = input.charCodeAt(start + 2)
+  const code = charCodeAt(input, start)
+  if (isAsciiLetter(code) && charCodeAt(input, start + 1) === 0x3a) {
+    const separator = charCodeAt(input, start + 2)
     return separator === 0x2f || separator === 0x5c
   }
   return code === 0x2f || code === 0x5c
@@ -381,7 +402,7 @@ function closingQuoteIndex(input: string, start: number, quote: string): number 
 }
 
 function lineEnd(input: string, start: number): number {
-  const newline = input.indexOf("\n", start)
+  const newline = indexOf(input, "\n", start)
   return newline < 0 ? input.length : newline
 }
 
@@ -392,20 +413,20 @@ function isTokenBoundary(input: string, index: number): boolean {
 }
 
 function previousCodePoint(input: string, index: number): string {
-  const last = input.charCodeAt(index - 1)
+  const last = charCodeAt(input, index - 1)
   if (last >= 0xdc00 && last <= 0xdfff && index >= 2) {
-    const first = input.charCodeAt(index - 2)
-    if (first >= 0xd800 && first <= 0xdbff) return input.slice(index - 2, index)
+    const first = charCodeAt(input, index - 2)
+    if (first >= 0xd800 && first <= 0xdbff) return slice(input, index - 2, index)
   }
   return input[index - 1]
 }
 
 function assertValidUnicode(value: string, label: string): void {
   for (let index = 0; index < value.length; index += 1) {
-    const code = value.charCodeAt(index)
+    const code = charCodeAt(value, index)
     if (code >= 0xd800 && code <= 0xdbff) {
-      const next = value.charCodeAt(index + 1)
-      if (!Number.isInteger(next) || next < 0xdc00 || next > 0xdfff) {
+      const next = charCodeAt(value, index + 1)
+      if (!numberIsInteger(next) || next < 0xdc00 || next > 0xdfff) {
         throw new TypeError(`${label} contains malformed Unicode.`)
       }
       index += 1
@@ -432,7 +453,7 @@ function snapshotDenseOrdinaryArray(value: unknown, label: string): readonly unk
     || !hasOwn(lengthDescriptor, "value")
     || lengthDescriptor.enumerable
     || typeof lengthDescriptor.value !== "number"
-    || !Number.isSafeInteger(lengthDescriptor.value)
+    || !numberIsSafeInteger(lengthDescriptor.value)
     || lengthDescriptor.value < 0
   ) throw new TypeError(`${label} has an invalid length descriptor.`)
   const length = lengthDescriptor.value
@@ -447,8 +468,8 @@ function snapshotDenseOrdinaryArray(value: unknown, label: string): readonly unk
     if (typeof key !== "string" || !testPattern(/^(?:0|[1-9][0-9]*)$/u, key)) {
       throw new TypeError(`${label} must not have symbol, hidden, or extra fields.`)
     }
-    const index = Number(key)
-    if (!Number.isSafeInteger(index) || index < 0 || index >= length || `${index}` !== key) {
+    const index = reflectApply(NumberConstructor, undefined, [key]) as number
+    if (!numberIsSafeInteger(index) || index < 0 || index >= length || numberAsString(index) !== key) {
       throw new TypeError(`${label} must not have non-index fields.`)
     }
     const descriptor = descriptors[key]
@@ -509,6 +530,56 @@ function includesField(fields: readonly string[], expected: string): boolean {
   return false
 }
 
+function startsWith(value: string, search: string): boolean {
+  return reflectApply(stringStartsWith, value, [search]) as boolean
+}
+
+function endsWith(value: string, search: string): boolean {
+  return reflectApply(stringEndsWith, value, [search]) as boolean
+}
+
+function includes(value: string, search: string): boolean {
+  return reflectApply(stringIncludes, value, [search]) as boolean
+}
+
+function split(value: string, separator: string): string[] {
+  return reflectApply(stringSplit, value, [separator]) as string[]
+}
+
+function slice(value: string, start: number, end: number): string {
+  return reflectApply(stringSlice, value, [start, end]) as string
+}
+
+function charCodeAt(value: string, index: number): number {
+  return reflectApply(stringCharCodeAt, value, [index]) as number
+}
+
+function toLowerCase(value: string): string {
+  return reflectApply(stringToLowerCase, value, []) as string
+}
+
+function indexOf(value: string, search: string, start: number): number {
+  return reflectApply(stringIndexOf, value, [search, start]) as number
+}
+
+function numberAsString(value: number): string {
+  return reflectApply(numberToString, value, []) as string
+}
+
+function toCodePoints(value: string): string[] {
+  const codePoints: string[] = []
+  for (let index = 0; index < value.length; index += 1) {
+    const code = charCodeAt(value, index)
+    if (code >= 0xd800 && code <= 0xdbff) {
+      codePoints[codePoints.length] = slice(value, index, index + 2)
+      index += 1
+    } else {
+      codePoints[codePoints.length] = value[index]
+    }
+  }
+  return codePoints
+}
+
 function testPattern(pattern: RegExp, value: string): boolean {
   return reflectApply(regexpExec, pattern, [value]) !== null
 }
@@ -516,10 +587,10 @@ function testPattern(pattern: RegExp, value: string): boolean {
 function normalizeLineEndings(value: string): string {
   let normalized = ""
   for (let index = 0; index < value.length; index += 1) {
-    const code = value.charCodeAt(index)
+    const code = charCodeAt(value, index)
     if (code === 0x0d) {
       normalized += "\n"
-      if (value.charCodeAt(index + 1) === 0x0a) index += 1
+      if (charCodeAt(value, index + 1) === 0x0a) index += 1
     } else {
       normalized += value[index]
     }
@@ -530,7 +601,7 @@ function normalizeLineEndings(value: string): string {
 function replaceDisplayControls(value: string): string {
   let displaySafe = ""
   for (let index = 0; index < value.length; index += 1) {
-    const code = value.charCodeAt(index)
+    const code = charCodeAt(value, index)
     displaySafe += (
       code <= 0x08
       || code === 0x0b
@@ -554,7 +625,7 @@ function compareLocationArrays(
   left: readonly WorkflowContractV2DiagnosticLocation[],
   right: readonly WorkflowContractV2DiagnosticLocation[]
 ): number {
-  const length = Math.min(left.length, right.length)
+  const length = reflectApply(mathMin, undefined, [left.length, right.length]) as number
   for (let index = 0; index < length; index += 1) {
     const compared = compareLocations(left[index], right[index])
     if (compared !== 0) return compared
