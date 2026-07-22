@@ -1,6 +1,6 @@
 # Bob Workflow Register（Bob ワークフロー登録）
 
-`workflow-register` は、ワークスペースに置かれた IBM Bob 用のワークフロー定義を読み込み、Bob の Workflow UI に登録するための VS Code 拡張機能です。`.bob/workflows/*/WORKFLOW.md` を対象に、ワークフローの作成、検証、単体実行、再開、診断、AI 補助、ワークフロー作成・編集を提供します。IBM Bob 拡張がない環境でも authoring / validation / standalone workflow execution は利用でき、Bob UI への登録だけ `IBM.bob-code` を必要とします。
+`workflow-register` は、ワークスペースに置かれた IBM Bob 用のワークフロー定義を読み込み、Bob の Workflow UI に登録するための VS Code 拡張機能です。`.bob/workflows/*/WORKFLOW.md` を対象に、ワークフローの作成、検証、単体実行、再開、診断、AI 補助、GUI Builder を提供します。IBM Bob 拡張がない環境でも authoring / validation / standalone workflow execution は利用でき、Bob UI への登録だけ `IBM.bob-code` を必要とします。
 
 この README では、コマンド名、設定キー、JSON / YAML のフィールド名、ファイル名、識別子は実装上の名称として原文のまま記載します。
 
@@ -8,8 +8,8 @@
 
 - `.bob/workflows/*/WORKFLOW.md` を Bob ワークフローとして登録する。
 - `schemaVersion: workflow-register/v1` のワークフロー定義を検証する。
-- テンプレートまたは ワークフロー作成・編集 から新しいワークフローを作成する。
-- テンプレート調整で標準テンプレート、project profile、customization を選び、readiness を確認して workflow を生成する。
+- テンプレートまたは GUI Builder から新しいワークフローを作成する。
+- Template Customization Studio で標準テンプレート、project profile、customization を選び、readiness を確認して workflow を生成する。
 - 手動ステップ、コマンドステップ、エージェントステップ、結果ステップを順番に実行する。
 - ステップの結果を workflow state に保存し、後続ステップへ渡す。
 - 実行状態を `.bob/workflows/runs/<runId>/run.json` に保存し、診断、再開、再試行を行う。
@@ -46,11 +46,11 @@
 ## 最短手順
 
 1. Bob IDE / VS Code で対象ワークスペースを開く。
-2. Command Palette で `Bob ワークフロー: テンプレートから作成`、`Bob ワークフロー: テンプレート調整を開く`、または `Bob ワークフロー: GUI で作成` を実行する。
+2. Command Palette で `Bob Workflow: テンプレートから作成`、`Bob Workflow: テンプレートカスタマイズ Studio`、または `Bob Workflow: GUI で作成` を実行する。
 3. 生成された `.bob/workflows/<name>/WORKFLOW.md` を編集する。
-4. `Bob ワークフロー: 現在の定義を検証` で検証する。
-5. `Bob ワークフロー: ファイルを再読み込み` で再読み込みする。
-6. Bob UI に登録して使う場合は `IBM.bob-code` を有効にし、Bob の Workflow UI から実行する。Bob なしで使う場合は `Bob ワークフロー: 実行` から単体実行する。
+4. `Bob Workflow: 現在の定義を検証` で検証する。
+5. `Bob Workflow: ファイルを再読み込み` で再読み込みする。
+6. Bob UI に登録して使う場合は `IBM.bob-code` を有効にし、Bob の Workflow UI から実行する。Bob なしで使う場合は `Bob Workflow: 実行` から単体実行する。
 
 ## 推奨フォーマット
 
@@ -168,7 +168,7 @@ steps:
 
 `userAction.message` は手動操作ページに表示する利用者向け手順です。未指定の場合は `prompt`、それも無い場合は既定文言を表示します。`completeLabel` は完了ボタンの文言、`confirmOnComplete` と `confirmMessage` は完了前確認に使います。
 
-手動ステップで停止すると、Bob UI 実行中は `Bob 手動ステップ` Webview が開きます。手動ステップを進めるには、そのページの完了ボタン、`Bob ワークフロー: 手動操作ステップを開く`、または従来の `Bob ワークフロー: 現在のステップを完了` を使います。
+手動ステップで停止すると、Bob UI 実行中は `Bob Workflow Manual Step` Webview が開きます。手動ステップを進めるには、そのページの完了ボタン、`Bob Workflow: 手動操作ステップを開く`、または従来の `Bob Workflow: 現在のステップを完了` を使います。
 
 入力値や承認結果を後続 step の state として使う場合は、structured manual step を使います。
 
@@ -242,7 +242,7 @@ stepExecution:
 
 ## stepReview
 
-`stepReview` を使うと、step 結果を人間が確認してから次へ進められます。成功した step は `completed` ではなく `reviewing` で停止し、`Bob ワークフロー: 現在のステップ結果を承認` 後に `completed` になります。
+`stepReview` を使うと、step 結果を人間が確認してから次へ進められます。成功した step は `completed` ではなく `reviewing` で停止し、`Bob Workflow: 現在のステップ結果を承認` 後に `completed` になります。
 
 ```yaml
 stepReview:
@@ -291,14 +291,14 @@ steps:
       default: next
 ```
 
-後方 `goto` には `loop` が必須です。loop 上限に達すると run は `checkpoint` で停止し、`Bob ワークフロー: ループ上限を承認して続行` または `Bob ワークフロー: ループ上限で中止` だけが解除できます。サンプルは `samples/step-back-branching-approval` を参照してください。
+後方 `goto` には `loop` が必須です。loop 上限に達すると run は `checkpoint` で停止し、`Bob Workflow: ループ上限を承認して続行` または `Bob Workflow: ループ上限で中止` だけが解除できます。サンプルは `samples/step-back-branching-approval` を参照してください。
 
 ## 検証
 
 | コマンド | 用途 |
 | --- | --- |
-| `Bob ワークフロー: 現在の定義を検証` | 開いている `WORKFLOW.md` だけを検証する。 |
-| `Bob ワークフロー: ワークスペース定義を検証` | ワークスペース内のワークフローをまとめて検証する。 |
+| `Bob Workflow: 現在の定義を検証` | 開いている `WORKFLOW.md` だけを検証する。 |
+| `Bob Workflow: ワークスペース定義を検証` | ワークスペース内のワークフローをまとめて検証する。 |
 
 主な検証内容:
 
@@ -320,31 +320,31 @@ steps:
 
 | コマンド | 用途 |
 | --- | --- |
-| `Bob ワークフロー: ファイルを再読み込み` | ワークフローファイルを再読み込みして Bob に登録する。 |
-| `Bob ワークフロー: 登録状態を確認` | 登録状況と診断を Markdown で確認する。 |
-| `Bob ワークフロー: 実行` | ワークフローを選択して実行する。 |
-| `Bob ワークフロー: ステップを実行` | ワークフローと step を選択して `singleStep` 実行する。 |
-| `Bob ワークフロー: 実行履歴を確認` | 実行状態を確認する。 |
-| `Bob ワークフロー: 実行を再開` | 中断または保持された実行を再開する。 |
-| `Bob ワークフロー: 現在のステップを再試行` | 現在のステップを再試行する。 |
-| `Bob ワークフロー: 現在のステップ結果を承認` | step review 中の現在ステップを承認する。 |
-| `Bob ワークフロー: 次のステップを実行` | `reviewing` でない run の次の pending step を1つだけ実行する。 |
-| `Bob ワークフロー: 承認して次のステップを実行` | current step を承認して次 step を実行する。 |
-| `Bob ワークフロー: 現在のステップ状態を確認` | current step の状態を表示する。 |
-| `Bob ワークフロー: ループ上限を承認して続行` | branch checkpoint を解除し、loop 許可回数を追加する。 |
-| `Bob ワークフロー: ループ上限で中止` | branch checkpoint 中の run を安全に失敗終了する。 |
-| `Bob ワークフロー: 分岐状態を確認` | loop count、checkpoint、分岐履歴を表示する。 |
-| `Bob ワークフロー: 現在のステップをGUIで編集` | current step の定義を ワークフロー作成・編集で開く。 |
-| `Bob ワークフロー: 診断を確認` | run state と task snapshot の診断を確認する。 |
-| `Bob ワークフロー: 実行ストレージを確認` | run件数、物理使用量、status、blockerをmetadata-onlyで確認する。 |
-| `Bob ワークフロー: 実行クリーンアップをプレビュー` | retention policyによる対象/除外理由とplan digestをread-onlyで確認する。 |
-| `Bob ワークフロー: 完了済み実行をクリーンアップ` | previewとmodal確認後、同じplanを再検証してterminal runを整理する。 |
-| `Bob ワークフロー: 選択した実行を削除` | rootを先に選び、選択したrunのうちplannerが許可したものだけを整理する。 |
-| `Bob ワークフロー: 実行を保持` | 既存runへpin metadataと任意noteを設定する。 |
-| `Bob ワークフロー: 実行の保持を解除` | 既存runのpinを解除する。 |
-| `Bob ワークフロー: 実行中ステップを確認` | 手動完了待ち active step を確認する。 |
-| `Bob ワークフロー: 手動操作ステップを開く` | held run または active manual step の手動操作ページを開く。 |
-| `Bob ワークフロー: 現在のステップを完了` | 現在の手動ステップを完了する。 |
+| `Bob Workflow: ファイルを再読み込み` | ワークフローファイルを再読み込みして Bob に登録する。 |
+| `Bob Workflow: 登録状態を確認` | 登録状況と診断を Markdown で確認する。 |
+| `Bob Workflow: 実行` | ワークフローを選択して実行する。 |
+| `Bob Workflow: ステップを実行` | ワークフローと step を選択して `singleStep` 実行する。 |
+| `Bob Workflow: 実行履歴を確認` | 実行状態を確認する。 |
+| `Bob Workflow: 実行を再開` | 中断または保持された実行を再開する。 |
+| `Bob Workflow: 現在のステップを再試行` | 現在のステップを再試行する。 |
+| `Bob Workflow: 現在のステップ結果を承認` | step review 中の現在ステップを承認する。 |
+| `Bob Workflow: 次のステップを実行` | `reviewing` でない run の次の pending step を1つだけ実行する。 |
+| `Bob Workflow: 承認して次のステップを実行` | current step を承認して次 step を実行する。 |
+| `Bob Workflow: 現在のステップ状態を確認` | current step の状態を表示する。 |
+| `Bob Workflow: ループ上限を承認して続行` | branch checkpoint を解除し、loop 許可回数を追加する。 |
+| `Bob Workflow: ループ上限で中止` | branch checkpoint 中の run を安全に失敗終了する。 |
+| `Bob Workflow: 分岐状態を確認` | loop count、checkpoint、分岐履歴を表示する。 |
+| `Bob Workflow: 現在のステップをGUIで編集` | current step の定義を GUI Builder で開く。 |
+| `Bob Workflow: 診断を確認` | run state と task snapshot の診断を確認する。 |
+| `Bob Workflow: 実行ストレージを確認` | run件数、物理使用量、status、blockerをmetadata-onlyで確認する。 |
+| `Bob Workflow: 実行クリーンアップをプレビュー` | retention policyによる対象/除外理由とplan digestをread-onlyで確認する。 |
+| `Bob Workflow: 完了済み実行をクリーンアップ` | previewとmodal確認後、同じplanを再検証してterminal runを整理する。 |
+| `Bob Workflow: 選択した実行を削除` | rootを先に選び、選択したrunのうちplannerが許可したものだけを整理する。 |
+| `Bob Workflow: 実行を保持` | 既存runへpin metadataと任意noteを設定する。 |
+| `Bob Workflow: 実行の保持を解除` | 既存runのpinを解除する。 |
+| `Bob Workflow: 実行中ステップを確認` | 手動完了待ち active step を確認する。 |
+| `Bob Workflow: 手動操作ステップを開く` | held run または active manual step の手動操作ページを開く。 |
+| `Bob Workflow: 現在のステップを完了` | 現在の手動ステップを完了する。 |
 
 実行状態は、ワークスペース内の `.bob/workflows/runs/<runId>/run.json` に保存されます。
 Task snapshot は `.bob/workflows/runs/<runId>/task-snapshots/` に保存され、既定では Bob chat messages を含めません。
@@ -359,17 +359,17 @@ Cleanupは`run.json`を正本とし、active/recoverable/referenced/pinned/read-
 
 | コマンド | 用途 |
 | --- | --- |
-| `Bob ワークフロー: AI で新規設計` | 目的とテンプレート候補から新しい `WORKFLOW.md` を作る。 |
-| `Bob ワークフロー: AI で改善` | 開いているワークフローの検証結果をもとに修正案を作る。 |
-| `Bob ワークフロー: 診断を AI で説明` | 診断結果を説明する。 |
+| `Bob Workflow: AI で新規設計` | 目的とテンプレート候補から新しい `WORKFLOW.md` を作る。 |
+| `Bob Workflow: AI で改善` | 開いているワークフローの検証結果をもとに修正案を作る。 |
+| `Bob Workflow: 診断を AI で説明` | 診断結果を説明する。 |
 
 AI プロバイダーは `workflowRegister.aiProviderCommand` で指定します。未設定時は mock provider が使われます。
 
 `AI で改善` は候補 Markdown を preview し、`.bob/workflows/.previews/...` に保存し、diff を表示します。明示確認後に backup を作成して適用します。
 
-## テンプレート調整
+## Template Customization Studio
 
-`Bob ワークフロー: テンプレート調整を開く` は、標準テンプレートを選択し、project profile と customization を Webview 上で編集して `WORKFLOW.md` を生成する画面です。Studio はテンプレート metadata から `targetLanguage` と `vcs.type` の候補を作り、input default の `string` / `number` / `boolean` / `null` 型を保持します。
+`Bob Workflow: テンプレートカスタマイズ Studio` は、標準テンプレートを選択し、project profile と customization を Webview 上で編集して `WORKFLOW.md` を生成する画面です。Studio はテンプレート metadata から `targetLanguage` と `vcs.type` の候補を作り、input default の `string` / `number` / `boolean` / `null` 型を保持します。
 
 生成前には profile / customization / readiness を検証します。`artifactOutputRoot` は phase artifact root として扱い、workspace root 外や symlink escape への書き込みは拒否します。既存の profile、customization、workflow は上書き前に backup されます。Bazaar profile では `bzr --no-aliases` を含む prompt supplement が補完され、Git profile には Bazaar 専用 supplement を混入させません。
 
@@ -385,6 +385,14 @@ AI プロバイダーは `workflowRegister.aiProviderCommand` で指定します
 | `listWorkflows()` | 読み込み済みワークフロー定義を取得する。 |
 | `runWorkflow(workflowId, inputs)` | ワークフローをプログラムから standalone 実行する。 |
 
+### Contribution Registry の信頼境界
+
+Provider handler は同一 JavaScript realm で動く信頼済み拡張コードとして扱います。登録時に handler set の過不足と callable 形状は検査しますが、悪意ある同一 realm コードを封じ込める security sandbox ではありません。
+
+`workflow-contributions.json`、validation context、そこから作る contribution metadata は信頼しない入力です。Registry はこれらを snapshot 化して厳格に検査し、manifest の owner ID / version を validation context へbindして、失敗時は fail-closed で公開状態を変更しません。対応するregistry API versionとの交渉は公開API層の責務で、Task 3で接続します。
+
+同一 realm の handler が export 済み constructor / method callable 自体を改変するケースは Task 2 の保護境界外です。Task 2 は callable membrane や worker / process isolation を導入しません。この脅威を対象にする場合は、互換性を含む別の threat model と設計判断が必要です。
+
 ## 現在の実装分割
 
 リファクタリング後の主な実装ファイルは次の通りです。
@@ -392,7 +400,7 @@ AI プロバイダーは `workflowRegister.aiProviderCommand` で指定します
 | ファイル | 責務 |
 | --- | --- |
 | `src/extension.ts` | core activation、Bob source 登録、公開 API、standalone 実行 command。 |
-| `src/extensionWithAuthoring.ts` | core activation に検証、AI 補助、ワークフロー作成・編集コマンド を追加する entry。 |
+| `src/extensionWithAuthoring.ts` | core activation に検証、AI 補助、GUI Builder command を追加する entry。 |
 | `src/bobApi.ts` | Bob 拡張 API の取得と source-like object への安全な変換。 |
 | `src/reports.ts` | attempt 実行、戻り値整形、Markdown report 表示 helper。 |
 | `src/bobWorkflowRunner.ts` | Bob task と `WorkflowEngine` を接続する adapter。 |
@@ -447,7 +455,7 @@ workflow-register-0.1.0.vsix
 | `includeState references unknown resultKey` | 参照先より前のステップに `resultKey` があるか確認する。 |
 | `Unsupported action provider` | provider ID が登録済みか、または `vscode.executeCommand` を使っているか確認する。 |
 | `select but has no options` | `inputs.<name>.options` に候補を追加する。 |
-| 手動ステップが進まない | `Bob ワークフロー: 手動操作ステップを開く` で手動操作ページを開く。VS Code 再起動後など active task が無い held run は、`Bob ワークフロー: 実行を再開` または `Bob ワークフロー: 次のステップを実行` で復帰する。 |
+| 手動ステップが進まない | `Bob Workflow: 手動操作ステップを開く` で手動操作ページを開く。VS Code 再起動後など active task が無い held run は、`Bob Workflow: 実行を再開` または `Bob Workflow: 次のステップを実行` で復帰する。 |
 
 ## 保守・配布ポリシー
 
@@ -523,6 +531,6 @@ runControl:
 - `pauseAtLocalTime` は `timezone` の IANA timezone で判定し、日付をまたいでも到達済み cutoff を解除しません。
 - workflow と workspace の policy は独立して評価し、決定的な順序で最初に到達した制限を停止理由にします。
 - 手動 Pause は常に優先されます。自動 Pause から再開するときだけ、15 / 30 / 60 分の期限付き override を選択でき、理由と操作者を `control.json` に記録します。
-- `Bob ワークフロー: 中断・再開状態を確認` と「実行診断」で、kind、source、checkpoint、limit、observed value、override を確認できます。
+- `Bob Workflow: 中断・再開状態を確認` と Run Diagnostics で、kind、source、checkpoint、limit、observed value、override を確認できます。
 
 Workspace setting では `workflowRegister.runControl.maxRunMinutes`、`maxAgentStepsPerRun`、`pauseAtLocalTime`、`timezone` を使用します。数値 `0` と空の時刻は無効を表します。

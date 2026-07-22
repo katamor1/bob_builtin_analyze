@@ -9,6 +9,7 @@ import type { BobSourceLike } from "./bobApi"
 import { createDefaultActionRegistry } from "./core/actionRegistry"
 import type { ActionProvider, ActionProviderRegistration } from "./core/actionRegistry"
 import { ActionProviderRegistrationStore } from "./core/actionProviderRegistrationStore"
+import { disposeResourcesInOrder } from "./core/disposeResources"
 import type { AgentProvider, CoreWorkflowDefinition } from "./core/model"
 import type { ResultSinkRegistry } from "./core/resultSinkRegistry"
 import {
@@ -29,6 +30,7 @@ import { WorkflowRunCommandService } from "./workflowRunCommands"
 import type { ArtifactSourceRunArg, RunCommandArg, WorkflowCommandArg } from "./workflowRunCommands"
 import { requireTrustedWorkspace } from "./workspaceTrust"
 import { ReviewAcceptanceCoordinator } from "./reviewAcceptanceCoordinator"
+import { ProviderRegistryHost } from "./api/providerRegistryApi"
 
 const WORKFLOW_GLOB = "**/.bob/workflows/*/WORKFLOW.md"
 
@@ -37,6 +39,8 @@ export interface StepCompletionOptions extends StepCompletionExpectation {
 }
 
 export class WorkflowRegisterService implements vscode.Disposable {
+  private readonly providerRegistryHost = new ProviderRegistryHost()
+  readonly providerRegistryApi = this.providerRegistryHost.api
   private readonly registeredIds = new Set<string>()
   private readonly watcher = vscode.workspace.createFileSystemWatcher(WORKFLOW_GLOB)
   private readonly bobWorkflowGates = new BobWorkflowGateRegistry()
@@ -54,7 +58,7 @@ export class WorkflowRegisterService implements vscode.Disposable {
   private readonly runCommands: WorkflowRunCommandService
   private agentProvider?: AgentProvider
   private registeredSource?: BobSourceLike
-  private lastResult: RegistrationResult = { summary: "ワークフロー定義はまだ読み込まれていません。", lines: [] }
+  private lastResult: RegistrationResult = { summary: "No workflow registration has run yet.", lines: [] }
 
   constructor(private readonly engineVersion: string) {
     this.manualStepPanel = new ManualStepPanelController({
@@ -102,21 +106,36 @@ export class WorkflowRegisterService implements vscode.Disposable {
   }
 
   dispose(): void {
-    this.watcher.dispose()
-    this.manualStepPanel.dispose()
-    this.bobWorkflowGates.dispose()
-    try {
-      this.actionProviderRegistrations.dispose()
-    } catch (error) {
-      console.warn("Failed to dispose one or more workflow action providers", error)
+    const disposal = disposeResourcesInOrder([
+      { label: "workflow watcher", propagate: true, dispose: () => this.watcher.dispose() },
+      { label: "manual step panel", propagate: true, dispose: () => this.manualStepPanel.dispose() },
+      { label: "Bob workflow gates", propagate: true, dispose: () => this.bobWorkflowGates.dispose() },
+      {
+        label: "one or more provider contribution sets",
+        propagate: false,
+        dispose: () => this.providerRegistryHost.dispose()
+      },
+      {
+        label: "one or more workflow action providers",
+        propagate: false,
+        dispose: () => this.actionProviderRegistrations.dispose()
+      }
+    ])
+    for (const failure of disposal.failures) {
+      try {
+        console.warn(`Failed to dispose ${failure.label}`, failure.error)
+      } catch {
+        // Cleanup and source deactivation must not depend on a diagnostic sink.
+      }
     }
     const source = this.registeredSource
     this.registeredSource = undefined
     void deactivateRegisteredSource(source)
+    if (disposal.hasPropagatedError) throw disposal.firstPropagatedError
   }
 
   async inspect(): Promise<void> {
-    await showMarkdownReport("Bob ワークフロー登録", this.lastResult.summary, this.lastResult.lines)
+    await showMarkdownReport("Bob Workflow Register", this.lastResult.summary, this.lastResult.lines)
   }
 
   listActiveSteps() {
@@ -126,19 +145,19 @@ export class WorkflowRegisterService implements vscode.Disposable {
   async inspectActiveSteps(): Promise<void> {
     const steps = this.stepRuntime.list()
     const lines = steps.length === 0
-      ? ["- 実行中の Bob ワークフローステップはありません。"]
+      ? ["- No active Bob workflow steps."]
       : steps.map((step) => [
-        `- 実行キー（key）=${step.key}`,
-        `ワークフロー ID=${step.workflowId}`,
-        `ワークフロー名=${step.workflowLabel}`,
-        `ステップ ID=${step.stepId}`,
-        `ステップ名=${step.title}`
+        `- key=${step.key}`,
+        `workflowId=${step.workflowId}`,
+        `workflowTitle=${step.workflowLabel}`,
+        `stepId=${step.stepId}`,
+        `stepTitle=${step.title}`
       ].join("; "))
-    await showMarkdownReport("実行中の Bob ワークフローステップ", `${steps.length}件のステップが実行中です。`, lines)
+    await showMarkdownReport("Active Bob Workflow Steps", `${steps.length} active step(s).`, lines)
   }
 
   async completeCurrentStep(options: StepCompletionOptions = {}): Promise<string> {
-    const trustError = await requireTrustedWorkspace("ワークフローステップを完了", { showWarning: !options.silent })
+    const trustError = await requireTrustedWorkspace("complete workflow step", { showWarning: !options.silent })
     if (trustError) return trustError
     const message = await this.stepRuntime.completeCurrentStep({
       expectedRunId: options.expectedRunId,
@@ -246,15 +265,15 @@ export class WorkflowRegisterService implements vscode.Disposable {
   }
 
   async reload(options: { showReport: boolean }): Promise<void> {
-    const trustError = await requireTrustedWorkspace("ワークフロー登録を再読み込み", { showWarning: options.showReport })
+    const trustError = await requireTrustedWorkspace("reload registration", { showWarning: options.showReport })
     if (trustError) {
-      this.lastResult = { summary: "ワークスペースが信頼されていません。", lines: [`- 失敗: ${trustError}`] }
-      if (options.showReport) await showMarkdownReport("Bob ワークフロー登録", this.lastResult.summary, this.lastResult.lines)
+      this.lastResult = { summary: "Workspace is not trusted.", lines: [`- fail: ${trustError}`] }
+      if (options.showReport) await showMarkdownReport("Bob Workflow Register", this.lastResult.summary, this.lastResult.lines)
       return
     }
     const result = await this.registerWorkflows()
     this.lastResult = result
-    if (options.showReport) await showMarkdownReport("Bob ワークフロー登録", result.summary, result.lines)
+    if (options.showReport) await showMarkdownReport("Bob Workflow Register", result.summary, result.lines)
   }
 
   private async registerWorkflows(): Promise<RegistrationResult> {

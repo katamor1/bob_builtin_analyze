@@ -7,13 +7,14 @@ import { WorkflowRegisterService } from "./workflowRegisterService"
 import type { StepCompletionOptions } from "./workflowRegisterService"
 import type { BobWorkflowGateAcceptance, BobWorkflowGateAcceptResult } from "./bobWorkflowGateRegistry"
 import type { ArtifactSourceRunArg, RunCommandArg, WorkflowCommandArg } from "./workflowRunCommands"
+import type { ProviderRegistryV1Api } from "./api/providerRegistryApi"
 
 /**
  * 他の Bob companion extension へ公開する workflow-register API。
  *
  * provider ID、workflow ID、command ID は WORKFLOW.md と companion extension から参照される互換性契約である。
  */
-export interface WorkflowRegisterApi {
+export interface WorkflowRegisterApi extends ProviderRegistryV1Api {
   /**
    * live Bob execution が待機している review gate を承認する。
    *
@@ -138,7 +139,11 @@ export interface WorkflowRegisterApi {
  */
 export function activate(context: vscode.ExtensionContext): WorkflowRegisterApi {
   const service = new WorkflowRegisterService(String(context.extension.packageJSON.version ?? "unknown"))
-  const api: WorkflowRegisterApi = {
+  const providerRegistryApi = service.providerRegistryApi
+  const api: WorkflowRegisterApi = Object.freeze({
+    apiVersion: providerRegistryApi.apiVersion,
+    negotiateProviderRegistry: providerRegistryApi.negotiateProviderRegistry,
+    registerContributionSet: providerRegistryApi.registerContributionSet,
     acceptBobWorkflowGate: (workspaceRoot, runId, stepId) => service.acceptBobWorkflowGate(workspaceRoot, runId, stepId),
     acceptBobWorkflowGateWithMetadata: (workspaceRoot, runId, stepId) => service.acceptBobWorkflowGateWithMetadata(workspaceRoot, runId, stepId),
     coordinateReviewAcceptance: (workspaceRoot, runId, operation) => service.coordinateReviewAcceptance(workspaceRoot, runId, operation),
@@ -154,7 +159,7 @@ export function activate(context: vscode.ExtensionContext): WorkflowRegisterApi 
     approveBranchCheckpoint: (runId) => service.approveBranchCheckpoint(runId),
     abortBranchCheckpoint: (runId) => service.abortBranchCheckpoint(runId),
     inspectBranching: (runId) => service.inspectBranching(runId)
-  }
+  } satisfies WorkflowRegisterApi)
   const operationHub = new OperationHubProvider({
     api,
     extensionUri: context.extensionUri,

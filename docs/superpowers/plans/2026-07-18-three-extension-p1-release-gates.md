@@ -59,7 +59,15 @@ All objects reject unknown properties. Contribution contract versions end in `/v
 
 - `apiVersion`;
 - `negotiateProviderRegistry(...)`;
-- `registerContributionSet(manifest, handlers): Disposable`.
+- `registerContributionSet(manifest, provenanceContext, handlers): Disposable`.
+
+Task 2 uses the following explicit trust boundary:
+
+- contribution manifests, validation context, and all metadata derived from them are untrusted data; the registry snapshots and validates them fail-closed before publishing any state;
+- provider handler implementations are trusted extension code running in the same JavaScript realm, although the handler set is still structurally checked for completeness, surplus entries, and callable shape before registration;
+- manifest validation binds the declared owner ID/version to the host-provided provenance context and validates registry-range syntax/order. Negotiation against the API versions actually supported by the host is Task 3 and is not claimed as Task 2 behavior;
+- defensive checks against handler-side mutation are robustness measures, not a containment boundary for malicious same-realm code;
+- mutation of exported constructor or method callables by same-realm handler code is outside Task 2's protection boundary. Task 2 does not add callable membranes or worker/process isolation; either would require a separate threat-model and compatibility decision.
 
 Negotiation and complete handler-set validation happen before mutation. Registration is atomic and fail-closed. Duplicate errors identify both existing and requesting owners. The returned disposable is idempotent and token-protected so an old disposable cannot remove a later registration. A contribution set is disposed in reverse registration order, and extension shutdown disposes all sets in reverse activation order. Action provider, preflight, result sink, and agent provider registration use the same ownership/version/lifecycle rules; silent overwrite is removed everywhere.
 
@@ -202,11 +210,15 @@ Missing reports, mismatched commit SHA, skipped/unexecuted tests, partial covera
 
 ## Task 2: Implement the atomic contribution registry core
 
+**Status (2026-07-22): Complete.** The recovered checkpoint contains the atomic registry implementation; the final local review-fix commits are `2824382`, `3a90e45`, and `2fc472b`. Fresh final-head evidence is compile PASS, contribution-registry focused tests 39/39 PASS, combined contribution-manifest plus contribution-registry tests 61/61 PASS, and combined manifest/registry/dependency-policy closeout tests 65/65 PASS. The prior review's remaining same-realm exported-callable mutation finding is explicitly outside the selected trusted-handler boundary above; it is not represented as remediated by a membrane or process boundary. Independent boundary closeout review: Approved with Critical 0 / Important 0 / Minor 0.
+
+The checkout was reconstructed from the plan's recovery base `8793804f2f99fd1d545cb496064bcbdc7df4bf40`. A fresh full workflow-register attempt produced 1,124 PASS / 40 FAIL / 1,164 total, so no full-suite PASS is claimed for this recovered final Task 2 head. The 40 observed failures were outside the focused contribution-manifest and contribution-registry files; many report absent repository-level `.bob`, `.github`, workflow-catalog, or companion-extension paths, while others report existing package-description drift. They remain unwaived and are not represented as caused or fixed by Task 2.
+
 **Files:** `extensions/workflow-register/src/core/contributionRegistry.ts`, `extensions/workflow-register/test/contributionRegistry.test.js`.
 
 **RED:** Cover complete handler-set prevalidation, missing/extra handlers, duplicate IDs within and across owners, cross-kind conflicts, agent singleton conflict, all-or-none registration, rollback on staged commit failure, reverse disposal, idempotent disposal, and stale-disposable token protection.
 
-**GREEN:** Implement a VS Code-independent registry whose entries retain owner, version, kind, token, and handler; expose read-only lookup/snapshot seams required by later runtime and smoke tasks.
+**GREEN:** Implement a VS Code-independent registry whose entries retain owner, version, kind, token, and handler; expose read-only lookup/snapshot seams required by later runtime and smoke tasks. Treat manifest-derived data as untrusted and fail-closed, while treating same-realm provider handler implementations as trusted extension code under the approved boundary above.
 
 **Verify:** Compile, focused tests including injected commit failure, mutation proof for stale-token comparison, and the workflow-register package suite.
 
@@ -223,6 +235,10 @@ Missing reports, mismatched commit SHA, skipped/unexecuted tests, partial covera
 **Verify:** Type-level consumer fixture, focused runtime tests, public export audit, compile, and package suite.
 
 **Commit:** `feat: publish provider registry api v1`
+
+**Completion evidence (2026-07-22):** Complete in commit `03fab16`. The initial public-API/runtime/type/wiring batch was RED at 1 PASS / 13 FAIL / 14 total. Final-head compile, the direct Task 3 API/lifecycle/type/wiring batch (17/17), the combined manifest/registry/dependency/API batch (82/82), export-star policy (224 TypeScript files), import-cycle policy (224 TypeScript files), and `git diff --check` all pass. Independent specification and quality reviews are both Approved with Critical 0 / Important 0 / Minor 0.
+
+**Boundary and recovery-suite evidence:** Version ranges are untrusted closed own-data records, are compared numerically with arbitrary precision, and negotiate before handlers or the commit seam are consulted. One service-owned registry host publishes one frozen three-member API; manual and host disposal retain failed handles for bounded retry, continue cleanup after individual failures, and reject registration after shutdown. Existing legacy provider routes remain unchanged until Task 4. The reconstructed checkout's exact package attempt is 1,142 PASS / 40 FAIL / 1,182 total, with the same 40 out-of-scope recovery failures as the Task 2 baseline; no full-suite PASS is claimed.
 
 ## Task 4: Unify action, preflight, result-sink, and agent lifecycles
 

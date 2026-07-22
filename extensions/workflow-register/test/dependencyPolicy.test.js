@@ -71,6 +71,23 @@ test("workflow-register README documents generated artifacts, package budget, de
   }
 })
 
+test("workflow-register README fixes the contribution registry same-realm trust boundary", () => {
+  const readme = fs.readFileSync(path.join(extensionRoot, "README.md"), "utf8")
+
+  for (const phrase of [
+    "Provider handler は同一 JavaScript realm で動く信頼済み拡張コード",
+    "`workflow-contributions.json`、validation context",
+    "contribution metadata は信頼しない入力",
+    "manifest の owner ID / version を validation context へbind",
+    "registry API versionとの交渉は公開API層の責務",
+    "fail-closed で公開状態を変更しません",
+    "export 済み constructor / method callable 自体を改変するケースは Task 2 の保護境界外",
+    "Task 2 は callable membrane や worker / process isolation を導入しません"
+  ]) {
+    assert.ok(readme.includes(phrase), `README must preserve contribution registry trust boundary: ${phrase}`)
+  }
+})
+
 test("workflow-register source does not use global Object title augmentation", () => {
   const typeFixPath = path.join(extensionRoot, "src", "type-fixes.d.ts")
   assert.ok(!fs.existsSync(typeFixPath), "type-fixes.d.ts must not hide imprecise Object.title typing")
