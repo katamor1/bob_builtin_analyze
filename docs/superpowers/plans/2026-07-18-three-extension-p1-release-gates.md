@@ -334,6 +334,10 @@ The checkout was reconstructed from the plan's recovery base `8793804f2f99fd1d54
 
 **Commit:** `feat: validate workflow contribution references`
 
+**Completion evidence (2026-07-23):** Complete in commits `9a2a990` and `0f21cca`. Initial RED was 3 PASS / 6 FAIL / 9 total; review hardening added a corrected 8 PASS / 4 FAIL / 12 total RED for bounded diagnostics and agent-sink coverage. Catalog mode is authoritative over legacy provider/preflight arrays, rejects zero or multiple action/preflight/sink matches, resolves built-in sinks by type, and requires exact custom-sink contract-version equality. Diagnostics preserve raw matching while sanitizing C0/C1 controls and bounding every displayed untrusted value to 256 UTF-8 bytes; workflow paths and exact step/preflight/sink locations are deterministic across separators. Final-head compile, Task 9/custom-sink/manifest batch (45/45), compiler parity excluding the absent CI asset (13/13), inline contracts (2/2), dependency policy (5/5), architecture/source policies (228 TypeScript files each), and `git diff --check` pass. Independent final review: Approved with Critical 0 / Important 0 / Minor 0.
+
+**Recovery-checkout evidence:** The full changed workflow contract file remains 2 PASS / 3 FAIL because companion package provenance/templates are absent, and one compiler-parity test still fails because `.github/workflows/workflow-contracts.yml` is absent. The implementation candidate's full workflow-register run was 1,230 PASS / 37 FAIL / 1 SKIP / 1,268 total; no full-suite PASS or waiver is claimed.
+
 ## Task 10: Validate commands and path-scoped external samples
 
 **Files:** command catalog reader, external sample contract schema/manifest fields, and tests.

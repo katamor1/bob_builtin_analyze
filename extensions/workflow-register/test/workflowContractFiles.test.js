@@ -183,16 +183,19 @@ function readSampleExternalCommandAllowlist() {
 }
 
 function validateStrictText(text, filePath = "test/fixtures/inline/WORKFLOW.md", overrides = {}) {
-  const catalog = overrides.availableActionProviders && overrides.availablePreflightChecks
-    ? undefined
-    : readGeneratedContributionCatalog()
+  const legacyCompatibilityMode = overrides.availableActionProviders && overrides.availablePreflightChecks
+  const contributionOptions = legacyCompatibilityMode
+    ? {
+        availableActionProviders: overrides.availableActionProviders,
+        availablePreflightChecks: overrides.availablePreflightChecks
+      }
+    : { contributionCatalog: readGeneratedContributionCatalog() }
   return validateWorkflowText({
     sourceId: "workflow-register",
     filePath,
     text,
     strict: true,
-    availableActionProviders: overrides.availableActionProviders ?? catalog.action_providers.map((entry) => entry.id),
-    availablePreflightChecks: overrides.availablePreflightChecks ?? catalog.preflight_checks.map((entry) => entry.id)
+    ...contributionOptions
   })
 }
 

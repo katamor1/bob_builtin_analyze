@@ -8,6 +8,8 @@ import {
   WorkflowTransitionConditionDefinition
 } from "./model"
 import { validateApprovalExpression } from "./approvalGuardrails"
+import type { WorkflowContributionCatalog } from "./contributionCatalog"
+import { boundedDiagnosticText } from "./diagnosticText"
 import { parseWorkflowMarkdown } from "./parser"
 import { isReservedWorkflowStateKey } from "./stateKeys"
 
@@ -24,6 +26,7 @@ export interface CompileWorkflowDocumentOptions {
   filePath: string
   text: string
   strict?: boolean
+  contributionCatalog?: WorkflowContributionCatalog
   availableActionProviders?: string[]
   availablePreflightChecks?: string[]
 }
@@ -51,10 +54,11 @@ interface SkipResumeWorkflowMetadata {
 }
 
 export function compileWorkflowDocument(options: CompileWorkflowDocumentOptions): CompileWorkflowDocumentResult {
+  const normalizedOptions = { ...options, filePath: normalizeRepositoryPath(options.filePath) }
   const text = options.text.replace(/^\uFEFF/, "")
-  const parsed = parseWorkflowMarkdown({ sourceId: options.sourceId, filePath: options.filePath, text })
-  const diagnostics = parsed.diagnostics.map((line) => diagnosticFromParserLine(line, options.filePath))
-  if (parsed.ok) diagnostics.push(...validateCoreWorkflow(parsed.workflow, options))
+  const parsed = parseWorkflowMarkdown({ sourceId: options.sourceId, filePath: normalizedOptions.filePath, text })
+  const diagnostics = parsed.diagnostics.map((line) => diagnosticFromParserLine(line, normalizedOptions.filePath))
+  if (parsed.ok) diagnostics.push(...validateCoreWorkflow(parsed.workflow, normalizedOptions))
   const promoted = diagnostics.map((item): WorkflowDiagnostic =>
     options.strict && item.severity === "warning" ? { ...item, severity: "error" } : item
   )
@@ -64,6 +68,10 @@ export function compileWorkflowDocument(options: CompileWorkflowDocumentOptions)
     workflow: parsed.ok ? parsed.workflow : undefined,
     diagnostics: ordered
   }
+}
+
+function normalizeRepositoryPath(filePath: string): string {
+  return filePath.replace(/\\/g, "/")
 }
 
 export function validateWorkflowText(options: ValidateWorkflowTextOptions): ValidateWorkflowResult {
@@ -122,7 +130,7 @@ export function validateCoreWorkflow(
   const resultKeys = new Set(resultKeyProducers.keys())
 
   validateTodoStepMapping(workflow, stepIds, diagnostics, filePath)
-  validateStateReferences(workflow.engineSteps, resultKeys, diagnostics, filePath)
+  validateStateReferences(workflow.engineSteps, resultKeys, options, diagnostics, filePath)
   validateBranching(workflow, stepIndexes, resultKeyProducers, diagnostics, filePath)
   validateArtifacts(workflow, stepIds, diagnostics, filePath)
   validateSkipResumeFileBound(workflow, resultKeyProducers, diagnostics, filePath)
@@ -185,7 +193,15 @@ function validateCommandStep(
   filePath: string
 ): void {
   if (!step.action.provider.trim()) diagnostics.push(error(filePath, `Command step '${step.id}' action.provider is empty.`))
-  if (options.availableActionProviders && !options.availableActionProviders.includes(step.action.provider)) {
+  if (options.contributionCatalog) {
+    const matches = options.contributionCatalog.action_providers.filter((entry) => entry.id === step.action.provider)
+    if (matches.length !== 1) {
+      diagnostics.push(error(filePath, contributionMatchMessage(
+        `Command step '${boundedDiagnosticText(step.id)}' action provider '${boundedDiagnosticText(step.action.provider)}'`,
+        matches.length
+      )))
+    }
+  } else if (options.availableActionProviders && !options.availableActionProviders.includes(step.action.provider)) {
     diagnostics.push(error(filePath, `Command step '${step.id}' uses unsupported action provider '${step.action.provider}'.`))
   }
 }
@@ -201,7 +217,13 @@ function validateTodoStepMapping(workflow: CoreWorkflowDefinition, stepIds: Set<
   }
 }
 
-function validateStateReferences(steps: EngineStep[], resultKeys: Set<string>, diagnostics: WorkflowDiagnostic[], filePath: string): void {
+function validateStateReferences(
+  steps: EngineStep[],
+  resultKeys: Set<string>,
+  options: Omit<ValidateWorkflowTextOptions, "sourceId" | "text">,
+  diagnostics: WorkflowDiagnostic[],
+  filePath: string
+): void {
   for (const step of steps) {
     for (const key of step.includeState ?? []) {
       if (!resultKeys.has(key)) {
@@ -209,7 +231,7 @@ function validateStateReferences(steps: EngineStep[], resultKeys: Set<string>, d
       }
     }
     if ((step.type === "agent" || step.type === "result") && step.result) {
-      validateResultSource(step.id, step.result, resultKeys, diagnostics, filePath)
+      validateResultSource(step.id, step.result, resultKeys, options, diagnostics, filePath)
     }
   }
 }
@@ -346,16 +368,25 @@ function validateResultSource(
   stepId: string,
   result: ResultSourceDefinition,
   resultKeys: Set<string>,
+  options: Omit<ValidateWorkflowTextOptions, "sourceId" | "text">,
   diagnostics: WorkflowDiagnostic[],
   filePath: string
 ): void {
   if (result.source === "state" && !resultKeys.has(result.stateKey)) {
     diagnostics.push(error(filePath, `Step '${stepId}' result references unknown stateKey '${result.stateKey}'.`))
   }
-  for (const sink of result.sinks) validateResultSink(stepId, sink, diagnostics, filePath)
+  for (const [index, sink] of result.sinks.entries()) validateResultSink(stepId, sink, index, options, diagnostics, filePath)
 }
 
-function validateResultSink(stepId: string, sink: ResultSinkDefinition, diagnostics: WorkflowDiagnostic[], filePath: string): void {
+function validateResultSink(
+  stepId: string,
+  sink: ResultSinkDefinition,
+  index: number,
+  options: Omit<ValidateWorkflowTextOptions, "sourceId" | "text">,
+  diagnostics: WorkflowDiagnostic[],
+  filePath: string
+): void {
+  validateResultSinkContribution(stepId, sink, index, options.contributionCatalog, diagnostics, filePath)
   if (isCommandResultSink(sink)) {
     if (!sink.command.trim()) diagnostics.push(error(filePath, `Step '${stepId}' command result sink has no command.`))
     return
@@ -373,6 +404,35 @@ function validateResultSink(stepId: string, sink: ResultSinkDefinition, diagnost
   if (!sink.payload || typeof sink.payload !== "object" || Array.isArray(sink.payload)) {
     diagnostics.push(error(filePath, `Step '${stepId}' custom result sink payload must be an object.`))
   }
+}
+
+function validateResultSinkContribution(
+  stepId: string,
+  sink: ResultSinkDefinition,
+  index: number,
+  catalog: WorkflowContributionCatalog | undefined,
+  diagnostics: WorkflowDiagnostic[],
+  filePath: string
+): void {
+  if (!catalog) return
+  const location = `Step '${boundedDiagnosticText(stepId)}' result sink[${index}] type '${boundedDiagnosticText(sink.type)}'`
+  const matches = catalog.result_sinks.filter((entry) => entry.type === sink.type)
+  if (matches.length !== 1) {
+    diagnostics.push(error(filePath, contributionMatchMessage(location, matches.length)))
+    return
+  }
+  if (!isCommandResultSink(sink) && !isFileResultSink(sink) && sink.contractVersion !== matches[0].contract_version) {
+    diagnostics.push(error(
+      filePath,
+      `${location} contractVersion '${boundedDiagnosticText(sink.contractVersion)}' does not match catalog contract_version '${boundedDiagnosticText(matches[0].contract_version)}'.`
+    ))
+  }
+}
+
+function contributionMatchMessage(location: string, matchCount: number): string {
+  return matchCount === 0
+    ? `${location} has no contribution catalog match.`
+    : `${location} has ${matchCount} contribution catalog matches.`
 }
 
 const CUSTOM_SINK_TYPE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/
@@ -469,10 +529,17 @@ function validatePreflight(
   diagnostics: WorkflowDiagnostic[],
   filePath: string
 ): void {
-  if (!options.availablePreflightChecks) return
   for (const preflight of workflow.preflight) {
     for (const check of preflight.checks ?? []) {
-      if (!options.availablePreflightChecks.includes(check)) {
+      if (options.contributionCatalog) {
+        const matches = options.contributionCatalog.preflight_checks.filter((entry) => entry.id === check)
+        if (matches.length !== 1) {
+          diagnostics.push(error(filePath, contributionMatchMessage(
+            `Preflight '${boundedDiagnosticText(preflight.id)}' check '${boundedDiagnosticText(check)}'`,
+            matches.length
+          )))
+        }
+      } else if (options.availablePreflightChecks && !options.availablePreflightChecks.includes(check)) {
         diagnostics.push(warning(filePath, `Preflight '${preflight.id}' references unknown check '${check}'.`))
       }
     }

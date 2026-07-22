@@ -1,5 +1,6 @@
 import { posix } from "node:path"
 import Ajv, { type ErrorObject } from "ajv"
+import { boundedDiagnosticText } from "./diagnosticText"
 
 const contributionManifestSchema = require("../../schema/workflow-contributions.v1.schema.json") as object
 
@@ -106,7 +107,6 @@ export interface ContributionManifestValidationResult {
 const ajv = new Ajv({ allErrors: true, strict: true })
 const validateStructure = ajv.compile<WorkflowContributionManifest>(contributionManifestSchema)
 const REGISTRY_VERSION_PATTERN = /^provider-registry\/v([1-9][0-9]*)$/
-const DIAGNOSTIC_BYTE_LIMIT = 256
 
 /**
  * Validate an already-decoded contribution manifest without filesystem or VS Code access.
@@ -560,24 +560,10 @@ function appendPointer(base: string, segment: string): string {
 
 function diagnostic(code: string, path: string, message: string): ContributionManifestDiagnostic {
   return {
-    code: boundedText(code),
-    path: boundedText(path),
-    message: boundedText(message)
+    code: boundedDiagnosticText(code),
+    path: boundedDiagnosticText(path),
+    message: boundedDiagnosticText(message)
   }
-}
-
-function boundedText(value: string): string {
-  const sanitized = value.replace(/[\u0000-\u001f\u007f-\u009f]/g, "�")
-  if (Buffer.byteLength(sanitized, "utf8") <= DIAGNOSTIC_BYTE_LIMIT) return sanitized
-  let result = ""
-  let bytes = 0
-  for (const character of sanitized) {
-    const nextBytes = Buffer.byteLength(character, "utf8")
-    if (bytes + nextBytes > DIAGNOSTIC_BYTE_LIMIT) break
-    result += character
-    bytes += nextBytes
-  }
-  return result
 }
 
 function failure(diagnostics: ContributionManifestDiagnostic[]): ContributionManifestValidationResult {
