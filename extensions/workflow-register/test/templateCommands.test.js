@@ -109,7 +109,7 @@ test("template command metadata is activated, contributed, and registered", () =
   }
 })
 
-test("template customization studio command metadata is activated, contributed, and registered", () => {
+test("standalone template customization studio command metadata is removed", () => {
   const commandId = "bobTemplate.openCustomizationStudio"
   const packageJson = readJson("package.json")
   const activationEvents = new Set(packageJson.activationEvents)
@@ -117,11 +117,10 @@ test("template customization studio command metadata is activated, contributed, 
   const paletteCommands = new Set(packageJson.contributes.menus.commandPalette.map((entry) => entry.command))
   const extensionSource = readSourceSet(["extensionWithAuthoring.ts"])
 
-  assert.ok(activationEvents.has(`onCommand:${commandId}`), `${commandId} activation`)
-  assert.ok(contributedCommands.has(commandId), `${commandId} contribution`)
-  assert.ok(paletteCommands.has(commandId), `${commandId} palette`)
-  assert.match(extensionSource, /openTemplateCustomizationStudio/)
-  assert.match(extensionSource, new RegExp(`registerCommand\\(\\s*"${commandId.replace(".", "\\.")}"`))
+  assert.equal(activationEvents.has(`onCommand:${commandId}`), false)
+  assert.equal(contributedCommands.has(commandId), false)
+  assert.equal(paletteCommands.has(commandId), false)
+  assert.doesNotMatch(extensionSource, /openTemplateCustomizationStudio|bobTemplate\.openCustomizationStudio/)
 })
 
 test("template commands validate, generate workflow, and write readiness reports", async () => {

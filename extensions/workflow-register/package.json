@@ -18,11 +18,8 @@
   ],
   "activationEvents": [
     "onStartupFinished",
-    "onView:workflowRegister.runs",
-    "onView:workflowRegister.operationHub",
     "onCommand:workflowRegister.openOperationHub",
     "onCommand:workflowRegister.refreshOperationHub",
-    "onCommand:workflowRegister.openOperationHubPanel",
     "onCommand:workflowRegister.reload",
     "onCommand:workflowRegister.inspect",
     "onCommand:workflowRegister.completeCurrentStep",
@@ -49,7 +46,6 @@
     "onCommand:workflowRegister.approveBranchCheckpoint",
     "onCommand:workflowRegister.abortBranchCheckpoint",
     "onCommand:workflowRegister.inspectBranching",
-    "onCommand:workflowRegister.refreshRunsView",
     "onCommand:workflowRegister.openCurrentStepInBuilder",
     "onCommand:workflowRegister.inspectRunDiagnostics",
     "onCommand:workflowRegister.inspectRunStorage",
@@ -76,8 +72,7 @@
     "onCommand:bobTemplate.validateProjectProfile",
     "onCommand:bobTemplate.validateCustomization",
     "onCommand:bobTemplate.generateWorkflow",
-    "onCommand:bobTemplate.checkReadiness",
-    "onCommand:bobTemplate.openCustomizationStudio"
+    "onCommand:bobTemplate.checkReadiness"
   ],
   "main": "./out/extensionWithAuthoring.js",
   "contributes": {
@@ -92,12 +87,6 @@
         "title": "操作センターを更新",
         "category": "Bob Workflow",
         "icon": "$(refresh)"
-      },
-      {
-        "command": "workflowRegister.openOperationHubPanel",
-        "title": "操作センターをパネルで開く",
-        "category": "Bob Workflow",
-        "icon": "$(layout)"
       },
       {
         "command": "workflowRegister.reload",
@@ -227,11 +216,6 @@
       {
         "command": "workflowRegister.inspectBranching",
         "title": "分岐状態を確認",
-        "category": "Bob Workflow"
-      },
-      {
-        "command": "workflowRegister.refreshRunsView",
-        "title": "実行一覧を更新",
         "category": "Bob Workflow"
       },
       {
@@ -368,26 +352,8 @@
         "command": "bobTemplate.checkReadiness",
         "title": "テンプレートの適用準備状況を確認",
         "category": "Bob Workflow"
-      },
-      {
-        "command": "bobTemplate.openCustomizationStudio",
-        "title": "テンプレート調整を開く",
-        "category": "Bob Workflow"
       }
     ],
-    "views": {
-      "explorer": [
-        {
-          "id": "workflowRegister.operationHub",
-          "name": "Bob 操作センター",
-          "type": "webview"
-        },
-        {
-          "id": "workflowRegister.runs",
-          "name": "Bob ワークフロー実行"
-        }
-      ]
-    },
     "configuration": {
       "title": "Bob ワークフロー登録",
       "properties": {
@@ -497,9 +463,6 @@
           "command": "workflowRegister.refreshOperationHub"
         },
         {
-          "command": "workflowRegister.openOperationHubPanel"
-        },
-        {
           "command": "workflowRegister.reload"
         },
         {
@@ -573,9 +536,6 @@
         },
         {
           "command": "workflowRegister.inspectBranching"
-        },
-        {
-          "command": "workflowRegister.refreshRunsView"
         },
         {
           "command": "workflowRegister.openCurrentStepInBuilder"
@@ -657,48 +617,6 @@
         },
         {
           "command": "bobTemplate.checkReadiness"
-        },
-        {
-          "command": "bobTemplate.openCustomizationStudio"
-        }
-      ],
-      "view/title": [
-        {
-          "command": "workflowRegister.openOperationHubPanel",
-          "when": "view == workflowRegister.operationHub",
-          "group": "navigation"
-        },
-        {
-          "command": "workflowRegister.refreshOperationHub",
-          "when": "view == workflowRegister.operationHub",
-          "group": "navigation"
-        },
-        {
-          "command": "workflowRegister.refreshRunsView",
-          "when": "view == workflowRegister.runs",
-          "group": "navigation"
-        }
-      ],
-      "view/item/context": [
-        {
-          "command": "workflowRegister.inspectRunControl",
-          "when": "view == workflowRegister.runs",
-          "group": "inline"
-        },
-        {
-          "command": "workflowRegister.pauseAfterCurrentStep",
-          "when": "view == workflowRegister.runs && viewItem =~ /workflowRun\\.(running|reviewing|held)/",
-          "group": "inline"
-        },
-        {
-          "command": "workflowRegister.openManualStepPanel",
-          "when": "view == workflowRegister.runs && viewItem == workflowRun.held",
-          "group": "inline"
-        },
-        {
-          "command": "workflowRegister.resumePausedRun",
-          "when": "view == workflowRegister.runs && viewItem == workflowRun.paused",
-          "group": "inline"
         }
       ]
     }

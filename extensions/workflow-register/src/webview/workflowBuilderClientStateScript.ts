@@ -1,6 +1,7 @@
 export function renderWorkflowBuilderClientStateScript(): string {
   return String.raw`
-const vscode = acquireVsCodeApi();
+const rawVscode = acquireVsCodeApi();
+const vscode = { postMessage: function(message) { rawVscode.postMessage(Object.assign({}, message, { sessionToken: sessionToken })); } };
 let activeTab = 'step';
 let selectedStepIndex = 0;
 let previewTimer = undefined;
@@ -9,6 +10,8 @@ let latestDiagnostics = ['- preview is not ready yet.'];
 let latestOk = false;
 let latestFilePath = '';
 let editorDiagnostics = [];
+let latestHostGeneration = -1;
+function acceptHostMessage(message) { if (!message || message.sessionToken !== sessionToken) return false; const generation = Number(message.generation); if (!Number.isInteger(generation) || generation < latestHostGeneration) return false; latestHostGeneration = generation; return true; }
 function escapeHtml(value) { return String(value === undefined || value === null ? '' : value).replace(/[&<>"]/g, function(ch) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]; }); }
 function linesFromText(value) { return String(value || '').split(/\r?\n/).map(function(x) { return x.trim(); }).filter(Boolean); }
 function textFromLines(value) { return Array.isArray(value) ? value.join('\n') : ''; }
@@ -30,6 +33,8 @@ function analyzeReferences(steps) { const targetSteps = steps || model.steps; co
 function issuesForStep(index) { const step = model.steps[index]; if (!step) return []; return analyzeReferences().filter(function(issue) { return issue.stepIndex === index || issue.stepId === step.id; }); }
 function deletionImpact(index) { const step = model.steps[index]; if (!step) return []; const messages = []; stepResultKeys(step).forEach(function(resultKey) { messages.push('削除される resultKey: ' + resultKey); model.steps.forEach(function(candidate, candidateIndex) { if (candidateIndex !== index && (candidate.includeState || []).includes(resultKey)) messages.push("step '" + candidate.id + "' の includeState '" + resultKey + "' が参照切れになります。"); }); }); model.artifacts.forEach(function(artifact) { if (artifact.producedBy === step.id) messages.push("artifact '" + artifact.id + "' の producedBy が参照切れになります: " + artifact.path); }); return messages; }
 function moveImpact(fromIndex, toIndex) { if (toIndex < 0 || toIndex >= model.steps.length || fromIndex === toIndex) return []; const next = model.steps.slice(); const moved = next.splice(fromIndex, 1)[0]; next.splice(toIndex, 0, moved); const movedKeys = new Set(stepResultKeys(moved)); return analyzeReferences(next).filter(function(issue) { return issue.stepId === moved.id || movedKeys.has(issue.key) || (moved.includeState || []).includes(issue.key); }).map(function(issue) { return issue.message; }); }
-function requestPreview() { clearTimeout(previewTimer); previewTimer = setTimeout(function() { vscode.postMessage({ type: 'preview', model: model }); }, 180); }
+function hasBlockingEditorDiagnostics() { return editorDiagnostics.length > 0; }
+function blockHostOperationForEditorDiagnostics() { if (!hasBlockingEditorDiagnostics()) return false; activeTab = 'preview'; renderTabs(); renderPreview(); return true; }
+function requestPreview(markDirty) { if (markDirty) vscode.postMessage({ type: 'draftChanged' }); clearTimeout(previewTimer); previewTimer = setTimeout(function() { if (!hasBlockingEditorDiagnostics()) vscode.postMessage({ type: 'preview', model: model }); }, 180); }
 `
 }

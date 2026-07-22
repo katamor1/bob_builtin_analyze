@@ -67,3 +67,12 @@
 - Restoration validation: Markdown/path/required-content checks and `git diff --check` are recorded in `.superpowers/sdd/three-extension-quality-task-0-report.md`.
 - Task 0: complete (commits `f4f9d330..08d2ad3c`, independent re-review clean: Critical 0 / Important 0 / Minor 0).
 - Task 1: in progress — commits `ffc8a947`, `789dc9ee`, `ba205263`, and `e6ea8dad`; focused suite 56/56 PASS and real baseline scan 3 files / 18 external / 0 violations. Independent review closed the block-scalar sibling, CR-only, document-marker, BOM, standalone block-scalar, and embedded flow-indicator cases, but still rejects approval because valid block plain scalar `run: echo foo:"bar"suffix` is misclassified. After three bounded fix loops, systematic-debugging requires an architecture decision: replace the neighbor-heuristic line mask with a position-aware YAML lexer/parser, or revise the approved dependency-free/pre-install constraint. Task 2 has not started.
+
+---
+
+# Three-extension UI/document consolidation recovery (2026-07-23)
+
+- Branch: `codex/ui-doc-consolidation-recovery-20260723`
+- Restored current-main baseline: `4df9986f600edd26f9f92045cafe751dd14f08ea`
+- Task 1: complete — product commits `a2c067a` and `31693d3`; panel/provider behavior 3/3, focused 91/91, implementer full suite 1262/1263 PASS with 1 skip, architecture/source policies and range diff check PASS. Independent final review: `SPEC_COMPLIANT` and `CODE_QUALITY_APPROVED`, Critical 0 / Important 0 / Minor 0. Reviewer full-suite attempts reproduced only the unchanged durability timing race; that test passed alone and alongside the new provider behavior suite.
+- Task 2: complete — consolidation/hardening series from `2f3fbe1`, final product commit `18761da`, boundary-test commit `bacd6cb`; clean detached verification compiled successfully, passed Builder transactional 78/78, expanded focused 132/132, and full 1368/1369 with 1 environment-dependent skip and 0 failures. Architecture/source policies checked 221 files, dependency 3/3, schema 5/5, unused report, package, VSIX policy (1,073,651 bytes / 816 entries), and range diff check all passed. Final independent review: `SPEC_COMPLIANT` and `CODE_QUALITY_APPROVED`, Critical 0 / Important 0 / Minor 0. Canonical save boundary is exclusive-link publication: pre-link stale requests publish nothing; post-linearization disk/backup/reload complete while generation, render-token, and session guards suppress stale model and not-yet-started UI delivery.

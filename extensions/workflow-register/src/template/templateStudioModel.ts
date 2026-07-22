@@ -1,6 +1,7 @@
 import * as fs from "fs/promises"
 import * as path from "path"
 import { dump, load } from "js-yaml"
+import { writeWorkspaceFilesAtomically } from "../core/runtime/workspaceFileTransaction"
 import { isPathInside, workspacePath } from "../process/processPaths"
 import {
   CUSTOMIZATION_SCHEMA_VERSION,
@@ -144,6 +145,18 @@ export type TemplateStudioReadinessResult =
       readinessJsonPath?: string
       readinessMarkdownPath?: string
     }
+
+export type TemplateStudioReadinessCalculation = TemplateStudioReadinessResult
+
+export interface ReadinessReportCommitOptions {
+  canCommit?: () => boolean
+  beforeReplace?: (targetPath: string, index: number) => void | Promise<void>
+}
+
+export type ReadinessReportCommitResult =
+  | { status: "ok"; diagnostics: string[] }
+  | { status: "stale"; diagnostics: string[] }
+  | { status: "error"; diagnostics: string[] }
 
 export async function listTemplateLibrary(workspaceRoot: string): Promise<TemplateLibraryListResult> {
   const diagnostics: string[] = []
@@ -345,6 +358,19 @@ export async function checkReadinessFromStudioModel(
   workspaceRoot: string,
   model: TemplateCustomizationStudioModel
 ): Promise<TemplateStudioReadinessResult> {
+  const calculated = await calculateReadinessFromStudioModel(workspaceRoot, model)
+  if (calculated.status !== "ok") return calculated
+  const committed = await commitReadinessReportsFromStudioModel(workspaceRoot, calculated)
+  if (committed.status !== "ok") {
+    return { ...calculated, status: "error", diagnostics: committed.diagnostics }
+  }
+  return calculated
+}
+
+export async function calculateReadinessFromStudioModel(
+  workspaceRoot: string,
+  model: TemplateCustomizationStudioModel
+): Promise<TemplateStudioReadinessCalculation> {
   try {
     const input = await loadStudioGenerationInput(workspaceRoot, model)
     const readiness = await checkTemplateReadiness({
@@ -355,13 +381,48 @@ export async function checkReadinessFromStudioModel(
     const workflowName = safeSegmentOrFallback(model.workflowName, "unknown-workflow")
     const readinessJsonPath = `.bob/template-readiness/${projectId}/${workflowName}-readiness.json`
     const readinessMarkdownPath = `.bob/template-readiness/${projectId}/${workflowName}-readiness.md`
-    await Promise.all([
-      writeWorkspaceText(workspaceRoot, readinessJsonPath, JSON.stringify({ readiness }, null, 2)),
-      writeWorkspaceText(workspaceRoot, readinessMarkdownPath, renderReadinessMarkdown(readiness))
-    ])
     return { status: "ok", diagnostics: [], readiness, readinessJsonPath, readinessMarkdownPath }
   } catch (error) {
     return { status: "error", diagnostics: [errorMessage(error)] }
+  }
+}
+
+export async function commitReadinessReportsFromStudioModel(
+  workspaceRoot: string,
+  calculated: Extract<TemplateStudioReadinessCalculation, { status: "ok" }>,
+  options: ReadinessReportCommitOptions = {}
+): Promise<ReadinessReportCommitResult> {
+  const canCommit = options.canCommit ?? (() => true)
+  if (!canCommit()) return { status: "stale", diagnostics: ["readiness request is stale"] }
+  const reports = [
+    { relativePath: calculated.readinessJsonPath, text: JSON.stringify({ readiness: calculated.readiness }, null, 2) },
+    { relativePath: calculated.readinessMarkdownPath, text: renderReadinessMarkdown(calculated.readiness) }
+  ]
+  try {
+    await writeWorkspaceFilesAtomically(workspaceRoot, reports.map((report) => ({
+      relativePath: report.relativePath,
+      text: report.text.endsWith("\n") ? report.text : `${report.text}\n`,
+      encoding: "utf8"
+    })), async () => {
+      if (!canCommit()) throw new StaleReadinessCommitError()
+    }, async () => {
+      for (const [index, report] of reports.entries()) {
+        if (!canCommit()) throw new StaleReadinessCommitError()
+        await options.beforeReplace?.(workspacePath(workspaceRoot, report.relativePath), index)
+      }
+      if (!canCommit()) throw new StaleReadinessCommitError()
+    })
+    return { status: "ok", diagnostics: [] }
+  } catch (error) {
+    return error instanceof StaleReadinessCommitError
+      ? { status: "stale", diagnostics: [errorMessage(error)] }
+      : { status: "error", diagnostics: [errorMessage(error)] }
+  }
+}
+
+class StaleReadinessCommitError extends Error {
+  constructor() {
+    super("readiness request became stale before commit")
   }
 }
 

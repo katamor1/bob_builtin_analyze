@@ -168,13 +168,13 @@ interface WorkflowBuilderPanelOptions {
 
 **Run-contract boundary:** Run engine/provider/artifact/`run.json` contracts are out of scope; standard-template mode changes authoring routes only.
 
-- [ ] **Step 1: RED-test exactly three modes and one panel**
+- [x] **Step 1: RED-test exactly three modes and one panel**
 
 Assert Builder renders selectors labeled `空のワークフロー`, `標準テンプレートから作成`, and `既存ワークフローを編集`; no fourth mode exists. Assert all modes reuse view type `workflowRegisterBuilder` and title `ワークフロー作成・編集`.
 
 Assert package/source no longer contributes/registers `bobTemplate.openCustomizationStudio`, and no code creates `bobTemplateCustomizationStudio`.
 
-- [ ] **Step 2: RED-test safety parity**
+- [x] **Step 2: RED-test safety parity**
 
 Extend transactional tests so standard-template output:
 
@@ -195,15 +195,15 @@ node --test test/templateCustomizationStudio.test.js test/workflowBuilderTransac
 
 Expected: FAIL because Template Studio is independent and Builder has only create/edit semantics.
 
-- [ ] **Step 3: Add the mode router and integrate template logic**
+- [x] **Step 3: Add the mode router and integrate template logic**
 
 `openWorkflowBuilder()` opens the retained panel at its mode chooser. `editWorkflowInBuilder()` routes the same panel to `edit`. Move Template Studio host message handling into Builder and call existing template model/generator/validator/readiness functions. Template generation updates the active in-memory authoring session; it never writes directly.
 
-- [ ] **Step 4: Remove the standalone panel/command**
+- [x] **Step 4: Remove the standalone panel/command**
 
 Delete its activation/contribution/registration and panel assets. Keep non-GUI `bobTemplate.validate*`, `generateWorkflow`, and `checkReadiness` commands registered because workflows may invoke them; Task 5 hides them.
 
-- [ ] **Step 5: Verify and commit**
+- [x] **Step 5: Verify and commit**
 
 ```bash
 cd extensions/workflow-register

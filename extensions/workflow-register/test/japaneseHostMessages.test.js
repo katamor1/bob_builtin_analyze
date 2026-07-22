@@ -22,7 +22,7 @@ test("workflow host-owned dialogs use actionable Japanese copy", () => {
     "workflowRunCommands.ts",
     "workflowRunSelection.ts",
     "workflowRegisterService.ts",
-    "webview/templateCustomizationStudioPanel.ts",
+    "webview/workflowBuilderPanel.ts",
     "gui/operationHubProvider.ts",
     "core/workspaceTrust.ts"
   ])
@@ -39,7 +39,7 @@ test("workflow host-owned dialogs use actionable Japanese copy", () => {
     "はい",
     "いいえ",
     "実行診断",
-    "プレビューファイルだけを作成しました",
+    "既存の WORKFLOW.md がないため差分は表示できません",
     "画面を更新してから再実行してください"
   ]) assert.match(source, new RegExp(label))
 

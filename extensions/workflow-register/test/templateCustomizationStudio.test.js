@@ -12,7 +12,9 @@ const repoRoot = path.resolve(__dirname, "..", "..", "..")
 const { parseWorkflowMarkdown } = require(path.join(outRoot, "core", "parser"))
 const {
   buildProjectProfileFromStudioModel,
+  calculateReadinessFromStudioModel,
   checkReadinessFromStudioModel,
+  commitReadinessReportsFromStudioModel,
   createDefaultStudioModel,
   generateWorkflowFromStudioModel,
   listTemplateLibrary,
@@ -22,8 +24,15 @@ const {
   writeWorkflowDiffPreviewFromStudioModel
 } = require(path.join(outRoot, "template", "templateStudioModel"))
 const {
-  renderTemplateCustomizationStudioHtml
-} = require(path.join(outRoot, "webview", "templateCustomizationStudioHtml"))
+  renderWorkflowBuilderStandardTemplateHtml
+} = require(path.join(outRoot, "webview", "workflowBuilderStandardTemplateHtml"))
+const {
+  writeWorkspaceFilesAtomically
+} = require(path.join(outRoot, "core", "runtime", "workspaceFileTransaction"))
+
+function renderTemplateCustomizationStudioHtml(options) {
+  return renderWorkflowBuilderStandardTemplateHtml({ ...options, sessionToken: "test-session" })
+}
 
 async function tempRoot() {
   return fs.mkdtemp(path.join(os.tmpdir(), "template-studio-"))
@@ -89,7 +98,8 @@ test("template customization studio html exposes only allowed customization fiel
     model
   })
 
-  assert.match(html, /テンプレート調整/)
+  assert.match(html, /ワークフロー作成・編集/)
+  assert.match(html, /標準テンプレートから作成/)
   assert.match(html, /テンプレート一覧/)
   assert.match(html, /プロジェクト設定/)
   assert.match(html, /適用準備状況/)
@@ -133,7 +143,7 @@ test("template customization studio html preserves editable input default types"
   assert.match(html, /data-input-default="includeDocs" data-input-default-type="boolean"/)
   assert.match(html, /data-input-default="optionalFlag" data-input-default-type="null"/)
 
-  const source = readSourceSet(["webview/templateCustomizationStudioClientScript.ts"])
+  const source = readSourceSet(["webview/workflowBuilderStandardTemplateClientScript.ts"])
   assert.match(source, /readInputDefaultValue/)
   assert.match(source, /Number\.isFinite/)
 })
@@ -196,7 +206,7 @@ test("template customization studio refreshes template library from listTemplate
     templates: library.templates,
     model
   })
-  const source = readSourceSet(["webview/templateCustomizationStudioClientScript.ts"])
+  const source = readSourceSet(["webview/workflowBuilderStandardTemplateClientScript.ts"])
 
   assert.match(html, /id="templateList"/)
   assert.match(source, /message\.type === 'templateList'/)
@@ -359,18 +369,17 @@ test("template customization studio rejects generated writes through symlink esc
   assert.equal(fsSync.existsSync(path.join(outside, "escape-project.yaml")), false)
 })
 
-test("template customization studio panel wires preview generation and diff host messages", () => {
+test("Builder standard-template mode wires preview application and diff host messages", () => {
   const source = readSourceSet([
-    "webview/templateCustomizationStudioPanel.ts",
-    "webview/templateCustomizationStudioClientScript.ts"
+    "webview/workflowBuilderPanel.ts",
+    "webview/workflowBuilderStandardTemplateClientScript.ts"
   ])
 
-  for (const messageType of ["previewWorkflow", "generateWorkflow", "showWorkflowDiff"]) {
+  for (const messageType of ["previewWorkflow", "applyStandardTemplate", "showWorkflowDiff"]) {
     assert.match(source, new RegExp(messageType))
   }
   assert.match(source, /previewWorkflowFromStudioModel/)
-  assert.match(source, /generateWorkflowFromStudioModel/)
-  assert.match(source, /writeWorkflowDiffPreviewFromStudioModel/)
+  assert.match(source, /loadAuthoringModelFromMarkdown/)
   assert.match(source, /vscode\.diff/)
 })
 
@@ -418,10 +427,235 @@ test("template customization studio readiness warns when UAT evidence is absent"
   assert.match(readiness.readiness.nextActions.join("\n"), /UAT 証跡がありません/)
 })
 
-test("template customization studio panel wires validation readiness and report actions", () => {
+test("readiness calculation is no-write until its latest-request commit", async () => {
+  const root = await studioWorkspace()
+  const library = await listTemplateLibrary(root)
+  const model = createDefaultStudioModel(library.templates[0])
+  model.projectId = "no-write-project"
+  model.workflowName = "no-write-workflow"
+  await addReadinessFiles(root, model)
+
+  const calculated = await calculateReadinessFromStudioModel(root, model)
+  assert.equal(calculated.status, "ok", calculated.diagnostics.join("\n"))
+  assert.equal(fsSync.existsSync(path.join(root, calculated.readinessJsonPath)), false)
+  assert.equal(fsSync.existsSync(path.join(root, calculated.readinessMarkdownPath)), false)
+
+  const stale = await commitReadinessReportsFromStudioModel(root, calculated, { canCommit: () => false })
+  assert.equal(stale.status, "stale")
+  assert.equal(fsSync.existsSync(path.join(root, calculated.readinessJsonPath)), false)
+  assert.equal(fsSync.existsSync(path.join(root, calculated.readinessMarkdownPath)), false)
+})
+
+test("readiness report pair rolls back together and rechecks generation at commit", async () => {
+  const root = await studioWorkspace()
+  const library = await listTemplateLibrary(root)
+  const model = createDefaultStudioModel(library.templates[0])
+  model.projectId = "transaction-project"
+  model.workflowName = "transaction-workflow"
+  await addReadinessFiles(root, model)
+  const calculated = await calculateReadinessFromStudioModel(root, model)
+  const jsonPath = path.join(root, calculated.readinessJsonPath)
+  const markdownPath = path.join(root, calculated.readinessMarkdownPath)
+  await fs.mkdir(path.dirname(jsonPath), { recursive: true })
+  await fs.writeFile(jsonPath, "old json\n", "utf8")
+  await fs.writeFile(markdownPath, "old markdown\n", "utf8")
+
+  let commitChecks = 0
+  const failed = await commitReadinessReportsFromStudioModel(root, calculated, {
+    canCommit: () => { commitChecks += 1; return true },
+    beforeReplace: (_targetPath, index) => {
+      if (index === 1) throw new Error("simulated second-report failure")
+    }
+  })
+
+  assert.equal(failed.status, "error")
+  assert.ok(commitChecks >= 2)
+  assert.equal(await fs.readFile(jsonPath, "utf8"), "old json\n")
+  assert.equal(await fs.readFile(markdownPath, "utf8"), "old markdown\n")
+})
+
+test("a readiness request that becomes stale while waiting for the root lock never publishes a target", async () => {
+  const root = await studioWorkspace()
+  const library = await listTemplateLibrary(root)
+  const model = createDefaultStudioModel(library.templates[0])
+  model.projectId = "queued-stale-project"
+  model.workflowName = "queued-stale-workflow"
+  await addReadinessFiles(root, model)
+  const calculated = await calculateReadinessFromStudioModel(root, model)
+  const reportTargets = new Set([
+    path.resolve(root, calculated.readinessJsonPath),
+    path.resolve(root, calculated.readinessMarkdownPath)
+  ])
+  let enterBlocker
+  const blockerEntered = new Promise((resolve) => { enterBlocker = resolve })
+  let releaseBlocker
+  const blockerReleased = new Promise((resolve) => { releaseBlocker = resolve })
+  const blocker = writeWorkspaceFilesAtomically(root, [{
+    relativePath: ".bob/root-lock-blocker.txt",
+    text: "blocker\n"
+  }], async () => {
+    enterBlocker()
+    await blockerReleased
+  })
+  await blockerEntered
+
+  const originalRename = fs.rename
+  const publications = []
+  fs.rename = async (source, target, ...args) => {
+    if (reportTargets.has(path.resolve(String(target))) && String(source).includes(".workflow-txn-")) {
+      publications.push(path.resolve(String(target)))
+    }
+    return originalRename(source, target, ...args)
+  }
+  let fresh = true
+  let committed
+  try {
+    const waiting = commitReadinessReportsFromStudioModel(root, calculated, { canCommit: () => fresh })
+    fresh = false
+    releaseBlocker()
+    ;[committed] = await Promise.all([waiting, blocker])
+  } finally {
+    fs.rename = originalRename
+    releaseBlocker()
+    await blocker.catch(() => undefined)
+  }
+
+  assert.equal(committed.status, "stale")
+  assert.deepEqual(publications, [])
+  assert.equal(fsSync.existsSync(path.join(root, calculated.readinessJsonPath)), false)
+  assert.equal(fsSync.existsSync(path.join(root, calculated.readinessMarkdownPath)), false)
+})
+
+for (const [failedIndex, label] of [[0, "first"], [1, "second"]]) {
+  test(`a partially written ${label} readiness replacement restores both originals`, async () => {
+    const root = await studioWorkspace()
+    const library = await listTemplateLibrary(root)
+    const model = createDefaultStudioModel(library.templates[0])
+    model.projectId = `partial-${label}-project`
+    model.workflowName = `partial-${label}-workflow`
+    await addReadinessFiles(root, model)
+    const calculated = await calculateReadinessFromStudioModel(root, model)
+    const targets = [
+      path.join(root, calculated.readinessJsonPath),
+      path.join(root, calculated.readinessMarkdownPath)
+    ]
+    await fs.mkdir(path.dirname(targets[0]), { recursive: true })
+    await fs.writeFile(targets[0], "old json\n", "utf8")
+    await fs.writeFile(targets[1], "old markdown\n", "utf8")
+    const originalRename = fs.rename
+    let injected = false
+    fs.rename = async (source, target) => {
+      if (!injected && path.resolve(String(target)) === path.resolve(targets[failedIndex]) && String(source).includes(".workflow-txn-")) {
+        injected = true
+        await originalRename(source, target)
+        throw new Error(`simulated partial ${label} replacement`)
+      }
+      return originalRename(source, target)
+    }
+
+    let committed
+    try {
+      committed = await commitReadinessReportsFromStudioModel(root, calculated)
+    } finally {
+      fs.rename = originalRename
+    }
+
+    assert.equal(injected, true)
+    assert.equal(committed.status, "error")
+    assert.equal(await fs.readFile(targets[0], "utf8"), "old json\n")
+    assert.equal(await fs.readFile(targets[1], "utf8"), "old markdown\n")
+  })
+}
+
+test("readiness report transaction rejects a destination parent swap without writing outside", async () => {
+  const root = await studioWorkspace()
+  const outside = await tempRoot()
+  const library = await listTemplateLibrary(root)
+  const model = createDefaultStudioModel(library.templates[0])
+  model.projectId = "parent-swap-project"
+  model.workflowName = "parent-swap-workflow"
+  await addReadinessFiles(root, model)
+  const calculated = await calculateReadinessFromStudioModel(root, model)
+  const reportParent = path.dirname(path.join(root, calculated.readinessJsonPath))
+  const parkedParent = `${reportParent}-parked`
+  let swapped = false
+  let outsideWriteObserved = false
+  const reportNames = new Set([path.basename(calculated.readinessJsonPath), path.basename(calculated.readinessMarkdownPath)])
+  const originalCopyFile = fs.copyFile
+  fs.copyFile = async (source, target, ...args) => {
+    const result = await originalCopyFile(source, target, ...args)
+    if (reportNames.has(path.basename(String(target))) && fsSync.existsSync(path.join(outside, path.basename(String(target))))) outsideWriteObserved = true
+    return result
+  }
+
+  let committed
+  try {
+    committed = await commitReadinessReportsFromStudioModel(root, calculated, {
+      beforeReplace: async (_targetPath, index) => {
+        if (swapped || index !== 0) return
+        await fs.rename(reportParent, parkedParent)
+        await fs.symlink(outside, reportParent, process.platform === "win32" ? "junction" : "dir")
+        for (const name of await fs.readdir(parkedParent)) {
+          if (name.includes(".tmp-")) await fs.copyFile(path.join(parkedParent, name), path.join(outside, name))
+        }
+        swapped = true
+      }
+    })
+  } finally {
+    fs.copyFile = originalCopyFile
+  }
+
+  assert.equal(swapped, true)
+  assert.equal(committed.status, "error")
+  assert.equal(outsideWriteObserved, false)
+  assert.equal((await fs.readdir(outside)).some((name) => reportNames.has(name)), false)
+})
+
+test("overlapping readiness transactions serialize freshness and cannot tear the latest report pair", async () => {
+  const root = await studioWorkspace()
+  const library = await listTemplateLibrary(root)
+  const model = createDefaultStudioModel(library.templates[0])
+  model.projectId = "overlap-project"
+  model.workflowName = "overlap-workflow"
+  await addReadinessFiles(root, model)
+  const firstCalculation = await calculateReadinessFromStudioModel(root, model)
+  const latestCalculation = {
+    ...firstCalculation,
+    readiness: { ...firstCalculation.readiness, status: "warning", score: 17, nextActions: ["latest transaction"] }
+  }
+  let enterFirst
+  const firstEntered = new Promise((resolve) => { enterFirst = resolve })
+  let releaseFirst
+  const firstReleased = new Promise((resolve) => { releaseFirst = resolve })
+  let firstFresh = true
+  const first = commitReadinessReportsFromStudioModel(root, firstCalculation, {
+    canCommit: () => firstFresh,
+    beforeReplace: async (_targetPath, index) => {
+      if (index !== 1) return
+      enterFirst()
+      await firstReleased
+    }
+  })
+  await firstEntered
+
+  const latest = commitReadinessReportsFromStudioModel(root, latestCalculation)
+  await Promise.race([latest, new Promise((resolve) => setTimeout(resolve, 25))])
+  firstFresh = false
+  releaseFirst()
+  const [firstResult, latestResult] = await Promise.all([first, latest])
+
+  assert.equal(firstResult.status, "stale")
+  assert.equal(latestResult.status, "ok")
+  const json = JSON.parse(await fs.readFile(path.join(root, latestCalculation.readinessJsonPath), "utf8"))
+  const markdown = await fs.readFile(path.join(root, latestCalculation.readinessMarkdownPath), "utf8")
+  assert.equal(json.readiness.score, 17)
+  assert.match(markdown, /latest transaction/)
+})
+
+test("Builder standard-template mode wires validation readiness and report actions", () => {
   const source = readSourceSet([
-    "webview/templateCustomizationStudioPanel.ts",
-    "webview/templateCustomizationStudioClientScript.ts"
+    "webview/workflowBuilderPanel.ts",
+    "webview/workflowBuilderStandardTemplateClientScript.ts"
   ])
 
   for (const messageType of ["validateProfile", "validateCustomization", "checkReadiness", "openReadinessReport"]) {
@@ -429,7 +663,8 @@ test("template customization studio panel wires validation readiness and report 
   }
   assert.match(source, /validateProfileFromStudioModel/)
   assert.match(source, /validateCustomizationFromStudioModel/)
-  assert.match(source, /checkReadinessFromStudioModel/)
+  assert.match(source, /calculateReadinessFromStudioModel/)
+  assert.match(source, /commitReadinessReportsFromStudioModel/)
   assert.match(source, /readinessMarkdownPath/)
   assert.match(source, /showTextDocument/)
 })

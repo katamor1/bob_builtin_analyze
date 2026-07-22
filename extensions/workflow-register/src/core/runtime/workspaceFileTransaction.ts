@@ -1,4 +1,4 @@
-import { randomUUID } from "crypto"
+import { createHash, randomUUID } from "crypto"
 import * as fs from "fs/promises"
 import * as path from "path"
 
@@ -19,9 +19,13 @@ interface StagedWorkspaceWrite {
   parent: VerifiedPhysicalDirectory
   target: string
   temporary: string
+  ownershipAnchor: string
   backup: string
   backupCreated: boolean
   committed: boolean
+  stagedDevice?: bigint
+  stagedInode?: bigint
+  stagedDigest?: string
 }
 
 const workspaceTransactionTails = new Map<string, Promise<void>>()
@@ -29,7 +33,8 @@ const workspaceTransactionTails = new Map<string, Promise<void>>()
 export async function writeWorkspaceFilesAtomically(
   workspaceRoot: string,
   writes: WorkspaceFileTransactionWrite[],
-  commitState: () => Promise<void> | void = () => undefined
+  commitState: () => Promise<void> | void = () => undefined,
+  prepareCommit: () => Promise<void> | void = () => undefined
 ): Promise<void> {
   if (writes.length === 0) return
   const root = path.resolve(workspaceRoot)
@@ -38,7 +43,8 @@ export async function writeWorkspaceFilesAtomically(
     root,
     physicalRoot,
     writes,
-    commitState
+    commitState,
+    prepareCommit
   ))
 }
 
@@ -46,7 +52,8 @@ async function writeWorkspaceFilesTransaction(
   root: string,
   physicalRoot: string,
   writes: WorkspaceFileTransactionWrite[],
-  commitState: () => Promise<void> | void
+  commitState: () => Promise<void> | void,
+  prepareCommit: () => Promise<void> | void
 ): Promise<void> {
   const transactionId = randomUUID().replace(/-/g, "")
   const stagingDirectory = await verifiedPhysicalDirectory(
@@ -69,12 +76,14 @@ async function writeWorkspaceFilesTransaction(
       targets.add(targetKey)
       const marker = `.workflow-txn-${transactionId}-${index}`
       const temporary = path.join(stagingDirectory.path, `${marker}.tmp`)
+      const ownershipAnchor = path.join(stagingDirectory.path, `${marker}.anchor`)
       const backup = path.join(stagingDirectory.path, `${marker}.bak`)
-      const stagedWrite = {
+      const stagedWrite: StagedWorkspaceWrite = {
         relativePath: write.relativePath,
         parent,
         target,
         temporary,
+        ownershipAnchor,
         backup,
         backupCreated: false,
         committed: false
@@ -88,16 +97,37 @@ async function writeWorkspaceFilesTransaction(
       }
       await assertStableWriteDirectories(physicalRoot, stagingDirectory, stagedWrite)
       await requireRegularFile(temporary, `transaction staging file for ${write.relativePath}`)
+      const stagedIdentity = await fs.lstat(temporary, { bigint: true })
+      stagedWrite.stagedDevice = stagedIdentity.dev
+      stagedWrite.stagedInode = stagedIdentity.ino
+      stagedWrite.stagedDigest = await regularFileDigest(temporary)
+      await fs.link(temporary, ownershipAnchor)
+      const anchorIdentity = await optionalRegularFileIdentity(ownershipAnchor, write.relativePath)
+      if (!anchorIdentity || anchorIdentity.dev !== stagedIdentity.dev || anchorIdentity.ino !== stagedIdentity.ino) {
+        throw new Error(`Workspace file transaction ownership anchor changed: ${write.relativePath}`)
+      }
     }
+
+    for (const write of staged) await assertStableWriteDirectories(physicalRoot, stagingDirectory, write)
+    await Promise.resolve(prepareCommit())
 
     for (const write of staged) {
       await assertStableWriteDirectories(physicalRoot, stagingDirectory, write)
       await rejectSymbolicFileTarget(write.target, write.relativePath)
+      const originalIdentity = await optionalRegularFileIdentity(write.target, write.relativePath)
       try {
         await fs.rename(write.target, write.backup)
         write.backupCreated = true
       } catch (error) {
-        if (!isMissingPathError(error)) throw error
+        const backupIdentity = await optionalRegularFileIdentity(write.backup, write.relativePath)
+        const targetIdentity = await optionalRegularFileIdentity(write.target, write.relativePath)
+        if (originalIdentity && backupIdentity
+          && originalIdentity.dev === backupIdentity.dev && originalIdentity.ino === backupIdentity.ino
+          && !targetIdentity) {
+          write.backupCreated = true
+          throw error
+        }
+        if (!isMissingPathError(error) || originalIdentity || backupIdentity) throw error
       }
       await assertStableWriteDirectories(physicalRoot, stagingDirectory, write)
       if (write.backupCreated) {
@@ -105,16 +135,29 @@ async function writeWorkspaceFilesTransaction(
       }
       await assertMissingPath(write.target, write.relativePath)
       await requireRegularFile(write.temporary, `transaction staging file for ${write.relativePath}`)
-      await fs.rename(write.temporary, write.target)
-      write.committed = true
+      try {
+        await fs.rename(write.temporary, write.target)
+        write.committed = true
+      } catch (error) {
+        const targetIdentity = await optionalRegularFileIdentity(write.target, write.relativePath)
+        const temporaryIdentity = await optionalRegularFileIdentity(write.temporary, write.relativePath)
+        if (targetIdentity && targetIdentity.dev === write.stagedDevice && targetIdentity.ino === write.stagedInode && !temporaryIdentity) {
+          write.committed = true
+        }
+        throw error
+      }
       await assertStableWriteDirectories(physicalRoot, stagingDirectory, write)
       await rejectSymbolicFileTarget(write.target, write.relativePath)
     }
     for (const write of staged) {
       await assertStableWriteDirectories(physicalRoot, stagingDirectory, write)
-      await rejectSymbolicFileTarget(write.target, write.relativePath)
+      await requireOwnedPublishedTarget(write)
     }
     await Promise.resolve(commitState())
+    for (const write of staged) {
+      await assertStableWriteDirectories(physicalRoot, stagingDirectory, write)
+      await requireOwnedPublishedTarget(write)
+    }
   } catch (error) {
     const rollbackErrors = await rollbackWorkspaceWrites(physicalRoot, stagingDirectory, staged)
     if (rollbackErrors.length > 0) {
@@ -138,15 +181,38 @@ async function rollbackWorkspaceWrites(
       try {
         await assertStableWriteDirectories(physicalRoot, stagingDirectory, write)
         if (write.committed) {
-          await rejectSymbolicFileTarget(write.target, write.relativePath)
-          await fs.rm(write.target, { force: true })
+          await removeOwnedPublishedTargetForRollback(write)
           write.committed = false
           await assertStableWriteDirectories(physicalRoot, stagingDirectory, write)
         }
         if (write.backupCreated) {
-          await requireRegularFile(write.backup, `transaction backup for ${write.relativePath}`)
+          if (!write.committed) {
+            const targetIdentity = await optionalRegularFileIdentity(write.target, write.relativePath)
+            if (targetIdentity) {
+              await removeOwnedPublishedTargetForRollback(write)
+              await assertStableWriteDirectories(physicalRoot, stagingDirectory, write)
+            }
+          }
+          const backupIdentity = await optionalRegularFileIdentity(write.backup, write.relativePath)
+          if (!backupIdentity) throw new Error(`Workspace file transaction backup is missing: ${write.relativePath}`)
+          const backupDigest = await regularFileDigest(write.backup)
           await assertMissingPath(write.target, write.relativePath)
-          await fs.rename(write.backup, write.target)
+          let restoreError: unknown
+          try {
+            await fs.rename(write.backup, write.target)
+          } catch (error) {
+            restoreError = error
+          }
+          const restored = await optionalRegularFileIdentity(write.target, write.relativePath)
+          const backupRemaining = await optionalRegularFileIdentity(write.backup, write.relativePath)
+          const restoredDigest = restored && restored.dev === backupIdentity.dev && restored.ino === backupIdentity.ino
+            ? await regularFileDigest(write.target)
+            : undefined
+          if (!restored || restored.dev !== backupIdentity.dev || restored.ino !== backupIdentity.ino
+            || restoredDigest !== backupDigest || backupRemaining) {
+            if (restoreError) throw restoreError
+            throw new Error(`Workspace file transaction restored target changed during rollback: ${write.relativePath}`)
+          }
           write.backupCreated = false
           await assertStableWriteDirectories(physicalRoot, stagingDirectory, write)
           await rejectSymbolicFileTarget(write.target, write.relativePath)
@@ -155,7 +221,10 @@ async function rollbackWorkspaceWrites(
         errors.push(error instanceof Error ? error.message : String(error))
       }
     }
-    for (const stagingPath of [write.temporary, write.backup]) {
+    const stagingPaths = write.backupCreated
+      ? [write.temporary, write.ownershipAnchor]
+      : [write.temporary, write.ownershipAnchor, write.backup]
+    for (const stagingPath of stagingPaths) {
       try {
         await removeStagingPath(physicalRoot, stagingDirectory, stagingPath)
       } catch (error) {
@@ -171,9 +240,15 @@ async function cleanupWorkspaceWrites(
   stagingDirectory: VerifiedPhysicalDirectory,
   staged: StagedWorkspaceWrite[]
 ): Promise<void> {
-  await Promise.all(staged.flatMap((write) => [write.temporary, write.backup].map(async (stagingPath) => {
-    await removeStagingPath(physicalRoot, stagingDirectory, stagingPath).catch(() => undefined)
-  })))
+  const errors = (await Promise.all(staged.flatMap((write) => [write.temporary, write.ownershipAnchor, write.backup].map(async (stagingPath) => {
+    try {
+      await removeStagingPath(physicalRoot, stagingDirectory, stagingPath)
+      return undefined
+    } catch (error) {
+      return `${path.basename(stagingPath)}: ${error instanceof Error ? error.message : String(error)}`
+    }
+  })))).filter((error): error is string => error !== undefined)
+  if (errors.length > 0) throw new Error(`Workspace file transaction cleanup failed: ${errors.join("; ")}`)
 }
 
 async function removeStagingPath(
@@ -183,7 +258,16 @@ async function removeStagingPath(
 ): Promise<void> {
   await assertVerifiedDirectory(physicalRoot, stagingDirectory, "transaction staging directory")
   assertPhysicalContainment(stagingDirectory.path, stagingPath, stagingPath)
-  await fs.rm(stagingPath, { force: true })
+  try {
+    await fs.rm(stagingPath, { force: true })
+  } catch (error) {
+    try {
+      await fs.lstat(stagingPath)
+    } catch (inspectionError) {
+      if (isMissingPathError(inspectionError)) return
+    }
+    throw error
+  }
 }
 
 async function assertStableWriteDirectories(
@@ -302,6 +386,44 @@ async function requireRegularFile(target: string, label: string): Promise<void> 
   if (stat.isSymbolicLink() || !stat.isFile()) {
     throw new Error(`Workspace file transaction file changed: ${label}`)
   }
+}
+
+async function optionalRegularFileIdentity(target: string, relativePath: string): Promise<{ dev: bigint; ino: bigint } | undefined> {
+  try {
+    const stat = await fs.lstat(target, { bigint: true })
+    if (stat.isSymbolicLink() || !stat.isFile()) throw new Error(`Workspace file transaction target changed during rollback: ${relativePath}`)
+    return { dev: stat.dev, ino: stat.ino }
+  } catch (error) {
+    if (isMissingPathError(error)) return undefined
+    throw error
+  }
+}
+
+async function requireOwnedPublishedTarget(write: StagedWorkspaceWrite): Promise<void> {
+  await rejectSymbolicFileTarget(write.target, write.relativePath)
+  const [targetIdentity, anchorIdentity] = await Promise.all([
+    optionalRegularFileIdentity(write.target, write.relativePath),
+    optionalRegularFileIdentity(write.ownershipAnchor, write.relativePath)
+  ])
+  if (!targetIdentity || !anchorIdentity
+    || targetIdentity.dev !== write.stagedDevice || targetIdentity.ino !== write.stagedInode
+    || anchorIdentity.dev !== write.stagedDevice || anchorIdentity.ino !== write.stagedInode
+    || await regularFileDigest(write.target) !== write.stagedDigest) {
+    throw new Error(`Workspace file transaction target changed during rollback: ${write.relativePath}`)
+  }
+}
+
+async function removeOwnedPublishedTargetForRollback(write: StagedWorkspaceWrite): Promise<void> {
+  await requireOwnedPublishedTarget(write)
+  try {
+    await fs.rm(write.target, { force: true })
+  } catch (error) {
+    if (await optionalRegularFileIdentity(write.target, write.relativePath)) throw error
+  }
+}
+
+async function regularFileDigest(target: string): Promise<string> {
+  return createHash("sha256").update(await fs.readFile(target)).digest("hex")
 }
 
 async function assertMissingPath(target: string, label: string): Promise<void> {

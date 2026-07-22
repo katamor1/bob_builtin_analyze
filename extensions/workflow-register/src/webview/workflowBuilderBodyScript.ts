@@ -35,7 +35,7 @@ function handleMarkdownBodyEvent(event) {
   const target = event.target;
   if (!target || !target.dataset || !target.dataset.bodyField) return;
   model.body = target.value;
-  requestPreview();
+  requestPreview(true);
 }
 document.addEventListener('input', handleMarkdownBodyEvent);
 document.addEventListener('change', handleMarkdownBodyEvent);

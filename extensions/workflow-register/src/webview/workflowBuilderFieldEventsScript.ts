@@ -10,11 +10,11 @@ function handleFieldEvent(event) {
   const target = event.target;
   if (!target || !target.dataset) return;
   const value = target.type === 'checkbox' ? target.checked : target.value;
-  if (target.dataset.meta) { model.metadata[target.dataset.meta] = value; requestPreview(); return; }
+  if (target.dataset.meta) { model.metadata[target.dataset.meta] = value; requestPreview(true); return; }
   if (target.dataset.branchingField) {
     ensureArrays();
     if (target.dataset.branchingField === 'enabled') model.branching.enabled = value;
-    requestPreview(); return;
+    requestPreview(true); return;
   }
   if (target.dataset.branchLoopIndex) {
     ensureArrays();
@@ -29,7 +29,7 @@ function handleFieldEvent(event) {
     } else {
       loop[field] = value || undefined;
     }
-    requestPreview(); return;
+    requestPreview(true); return;
   }
   const step = selectedStep();
   if (step && target.dataset.stepField) {
@@ -48,7 +48,7 @@ function handleFieldEvent(event) {
     }
     if (field === 'maxResultBytes') step[field] = value ? Number(value) : undefined;
     else step[field] = value;
-    renderStepsList(); renderTabs(); requestPreview(); return;
+    renderStepsList(); renderTabs(); requestPreview(true); return;
   }
   if (step && target.dataset.userActionField) {
     const field = target.dataset.userActionField;
@@ -59,7 +59,7 @@ function handleFieldEvent(event) {
       if (userAction[key] === undefined || userAction[key] === '') delete userAction[key];
     });
     if (Object.keys(userAction).length === 0) delete step.userAction;
-    renderTabs(); requestPreview(); return;
+    renderTabs(); requestPreview(true); return;
   }
   if (step && target.dataset.manualFormField && step.type === 'manual') {
     if (!step.form) step.form = { resultKey: '', fields: [] };
@@ -72,17 +72,17 @@ function handleFieldEvent(event) {
     } else {
       step.form[target.dataset.manualFormField] = value || undefined;
     }
-    renderStepsList(); requestPreview(); return;
+    renderStepsList(); requestPreview(true); return;
   }
   if (step && target.dataset.manualApprovalField && step.type === 'manual') {
     if (!step.approval) step.approval = { resultKey: '' };
     step.approval[target.dataset.manualApprovalField] = value || undefined;
-    renderStepsList(); requestPreview(); return;
+    renderStepsList(); requestPreview(true); return;
   }
   if (step && target.dataset.transitionDefault) {
     const transition = ensureTransition(step);
     transition.default = value || 'next';
-    requestPreview(); return;
+    requestPreview(true); return;
   }
   if (step && target.dataset.transitionDecisionsJson) {
     const transition = ensureTransition(step);
@@ -91,7 +91,7 @@ function handleFieldEvent(event) {
       if (Array.isArray(decisions)) { transition.decisions = decisions; clearEditorDiagnostic('transitionDecisions:' + step.id); }
       else setEditorDiagnostic('transitionDecisions:' + step.id, "Transition decisions JSON must be an array for step '" + step.id + "'.");
     } catch (error) { setEditorDiagnostic('transitionDecisions:' + step.id, "Transition decisions JSON parse error for step '" + step.id + "': " + error.message); }
-    requestPreview(); return;
+    requestPreview(true); return;
   }
   if (step && target.dataset.commandField && step.type === 'command') {
     if (!step.action) step.action = { provider: 'vscode.executeCommand', args: [] };
@@ -105,7 +105,7 @@ function handleFieldEvent(event) {
         clearEditorDiagnostic('commandExtraArgs:' + step.id);
       } catch (error) { setEditorDiagnostic('commandExtraArgs:' + step.id, "Command extra args JSON parse error for step '" + step.id + "': " + error.message); }
     }
-    requestPreview(); return;
+    requestPreview(true); return;
   }
   if (step && target.dataset.resultField && (step.type === 'result' || step.type === 'agent')) {
     const result = ensureResult(step);
@@ -120,13 +120,13 @@ function handleFieldEvent(event) {
     if (field === 'stateKey' && result.source === 'state') result.stateKey = value;
     if (field === 'text' && result.source === 'literal') result.text = value;
     if (field === 'path') result.sinks[0] = { type: 'file', path: value };
-    requestPreview(); return;
+    requestPreview(true); return;
   }
   if (target.dataset.stateKey && step) {
     step.includeState = Array.isArray(step.includeState) ? step.includeState : [];
     if (target.checked && !step.includeState.includes(target.dataset.stateKey)) step.includeState.push(target.dataset.stateKey);
     if (!target.checked) step.includeState = step.includeState.filter(function(key) { return key !== target.dataset.stateKey; });
-    renderStepsList(); renderTabs(); requestPreview(); return;
+    renderStepsList(); renderTabs(); requestPreview(true); return;
   }
   if (target.dataset.inputIndex) {
     const input = model.inputs[Number(target.dataset.inputIndex)];
@@ -142,14 +142,14 @@ function handleFieldEvent(event) {
       }
     }
     else input[field] = value || undefined;
-    requestPreview(); return;
+    requestPreview(true); return;
   }
   if (target.dataset.requiresField) {
     if (!model.requires) model.requires = {};
     if (target.dataset.requiresField === 'workspace') model.requires.workspace = value;
     if (target.dataset.requiresField === 'bobMinVersion') model.requires.bob = value ? { minVersion: value } : undefined;
     if (target.dataset.requiresField === 'files') model.requires.files = linesFromText(value);
-    requestPreview(); return;
+    requestPreview(true); return;
   }
   if (target.dataset.preflightIndex) {
     const item = model.preflight[Number(target.dataset.preflightIndex)];
@@ -158,18 +158,18 @@ function handleFieldEvent(event) {
     if (field === 'checks' || field === 'files') item[field] = linesFromText(value);
     else if (field === 'required') item.required = value;
     else item[field] = value || undefined;
-    requestPreview(); return;
+    requestPreview(true); return;
   }
   if (target.dataset.artifactIndex) {
     const artifact = model.artifacts[Number(target.dataset.artifactIndex)];
     if (!artifact) return;
     artifact[target.dataset.artifactField] = value || undefined;
-    renderTabs(); requestPreview(); return;
+    renderTabs(); requestPreview(true); return;
   }
   if (target.dataset.guardrailField) {
     if (!model.guardrails) model.guardrails = {};
     model.guardrails[target.dataset.guardrailField] = linesFromText(value);
-    requestPreview(); return;
+    requestPreview(true); return;
   }
   if (target.dataset.approvalIndex) {
     if (!model.guardrails) model.guardrails = {};
@@ -177,7 +177,7 @@ function handleFieldEvent(event) {
     const rule = model.guardrails.requireApproval[Number(target.dataset.approvalIndex)];
     if (!rule) return;
     rule[target.dataset.approvalField] = value || undefined;
-    requestPreview(); return;
+    requestPreview(true); return;
   }
   if (target.dataset.completionField) {
     if (!model.completion) model.completion = {};
@@ -188,7 +188,7 @@ function handleFieldEvent(event) {
       else model.completion.visualization.enabled = value;
     } else if (field === 'includeArtifacts' || field === 'validateResult') model.completion[field] = value;
     else model.completion[field] = value || undefined;
-    requestPreview(); return;
+    requestPreview(true); return;
   }
 }
 document.addEventListener('input', handleFieldEvent);

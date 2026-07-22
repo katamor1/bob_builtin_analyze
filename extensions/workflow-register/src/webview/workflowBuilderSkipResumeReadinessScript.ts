@@ -166,6 +166,7 @@ document.addEventListener('click', function(event) {
 
 window.addEventListener('message', function(event) {
   const message = event.data || {};
+  if (typeof acceptHostMessage === 'function' && !acceptHostMessage(message)) return;
   if (message.type === 'model') {
     invalidateSkipResumeReadinessPreview();
     return;

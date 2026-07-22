@@ -13,5 +13,5 @@ export async function openWorkflowBuilder(options: OpenWorkflowBuilderOptions): 
     await vscode.window.showErrorMessage("ワークスペースフォルダーが開かれていません。フォルダーを開いてからもう一度実行してください。")
     return
   }
-  WorkflowBuilderPanel.createOrShow({ extensionUri: options.extensionUri, workflowRoot, sourceId: options.sourceId })
+  WorkflowBuilderPanel.createOrShow({ extensionUri: options.extensionUri, workflowRoot, sourceId: options.sourceId, mode: "empty" })
 }

@@ -1,4 +1,6 @@
 const assert = require("node:assert/strict")
+const fs = require("node:fs")
+const path = require("node:path")
 const { test } = require("node:test")
 const {
   assertContributesCommand,
@@ -31,6 +33,20 @@ test("package exposes workflow authoring commands", () => {
     assertContributesCommand(packageJson, command)
     assert.match(source, new RegExp(command.replace(/\./g, "\\.")))
   }
+})
+
+test("Builder is the only GUI authoring panel and Template Studio command is removed", () => {
+  const packageJson = readJson("package.json")
+  const extension = readSrc("extensionWithAuthoring.ts")
+  const builderPanel = readSrc("webview", "workflowBuilderPanel.ts")
+  const extensionRoot = path.resolve(__dirname, "..")
+
+  assert.equal(packageJson.activationEvents.includes("onCommand:bobTemplate.openCustomizationStudio"), false)
+  assert.equal(packageJson.contributes.commands.some((entry) => entry.command === "bobTemplate.openCustomizationStudio"), false)
+  assert.doesNotMatch(extension, /bobTemplate\.openCustomizationStudio|openTemplateCustomizationStudio/)
+  assert.equal(fs.existsSync(path.join(extensionRoot, "src", "webview", "templateCustomizationStudioPanel.ts")), false)
+  assert.equal(fs.existsSync(path.join(extensionRoot, "src", "commands", "openTemplateCustomizationStudio.ts")), false)
+  assert.match(builderPanel, /createWebviewPanel\("workflowRegisterBuilder",\s*"ワークフロー作成・編集"/s)
 })
 
 test("workflow authoring wrapper wires a configurable AI provider command", () => {
@@ -133,13 +149,9 @@ test("package and extension wire the manual step panel command", () => {
 
   assertContributesCommand(packageJson, "workflowRegister.openManualStepPanel")
   assert.ok(packageJson.activationEvents.includes("onCommand:workflowRegister.openManualStepPanel"))
-  assert.deepEqual(
-    packageJson.contributes.menus["view/item/context"].filter((item) => item.command === "workflowRegister.openManualStepPanel"),
-    [{
-      command: "workflowRegister.openManualStepPanel",
-      when: "view == workflowRegister.runs && viewItem == workflowRun.held",
-      group: "inline"
-    }]
+  assert.equal(
+    packageJson.contributes.menus["view/item/context"]?.some((item) => item.command === "workflowRegister.openManualStepPanel") ?? false,
+    false
   )
   assert.match(extension, /registerCommand\("workflowRegister\.openManualStepPanel"[\s\S]*service\.openManualStepPanel/)
   assert.match(service, /new ManualStepPanelController/)
@@ -183,7 +195,7 @@ test("workflow authoring write paths enforce WORKFLOW.md document boundaries", (
   assert.match(improve, /\.bob\/workflows\/\*\/WORKFLOW\.md を開いてください/)
   assert.match(edit, /isWorkflowDocumentPath\(targetUri\.fsPath\)/)
   assert.match(panel, /validateWorkflowDocumentPath\(\{ workspaceRoot: options\.workflowRoot, filePath: targetUri\.fsPath \}\)/)
-  assert.ok(panel.indexOf("validateWorkflowDocumentPath({ workspaceRoot: options.workflowRoot, filePath: targetUri.fsPath })") < panel.indexOf("workspace.fs.writeFile(targetUri"))
+  assert.ok(panel.indexOf("validateWorkflowDocumentPath({ workspaceRoot: options.workflowRoot, filePath: targetUri.fsPath })") < panel.indexOf("commitAuthoringFileAtomically(options.workflowRoot"))
 })
 
 test("workspace workflow validation uses strict diagnostics", () => {

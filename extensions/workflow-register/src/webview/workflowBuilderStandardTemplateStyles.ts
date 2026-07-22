@@ -1,4 +1,4 @@
-export function renderTemplateCustomizationStudioStyles(): string {
+export function renderWorkflowBuilderStandardTemplateStyles(): string {
   return String.raw`
 body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); padding: 0; margin: 0; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
 header { padding: 14px 18px; border-bottom: 1px solid var(--vscode-panel-border); flex: 0 0 auto; }

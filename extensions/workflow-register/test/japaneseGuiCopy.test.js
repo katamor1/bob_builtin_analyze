@@ -16,9 +16,8 @@ test("workflow operation surfaces use approved Japanese-first labels", () => {
     "webview/workflowBuilderPanel.ts",
     "webview/manualStepPanel.ts",
     "webview/manualStepPanelHtml.ts",
-    "webview/templateCustomizationStudioHtml.ts",
-    "webview/templateCustomizationStudioClientScript.ts",
-    "webview/templateCustomizationStudioPanel.ts"
+    "webview/workflowBuilderStandardTemplateHtml.ts",
+    "webview/workflowBuilderStandardTemplateClientScript.ts"
   ])
   const packageJson = readJson("package.json")
   const visibleMetadata = JSON.stringify({
@@ -29,11 +28,11 @@ test("workflow operation surfaces use approved Japanese-first labels", () => {
   })
 
   for (const required of [
-    "Bob 操作センター",
+    "Bob 操作ハブ",
     "実行状況",
     "ワークフロー一覧",
     "セットアップ",
-    "Bob ワークフロー作成・編集",
+    "ワークフロー作成・編集",
     "ステップ設定",
     "入力項目",
     "実行条件",
@@ -45,7 +44,7 @@ test("workflow operation surfaces use approved Japanese-first labels", () => {
     "Markdown 本文",
     "プレビューと診断",
     "Bob 手動ステップ",
-    "テンプレート調整",
+    "標準テンプレートから作成",
     "テンプレート一覧",
     "プロジェクト設定",
     "適用準備状況"
@@ -75,7 +74,6 @@ test("workflow commands and settings use approved Japanese metadata", () => {
   const expectedTitles = {
     "workflowRegister.openOperationHub": "操作センターを開く",
     "workflowRegister.refreshOperationHub": "操作センターを更新",
-    "workflowRegister.openOperationHubPanel": "操作センターをパネルで開く",
     "workflowRegister.importArtifactsFromTaskSnapshots": "保存済みタスクから成果物を取り込む",
     "workflowRegister.pauseCurrentRun": "実行を一時停止",
     "workflowRegister.pauseAfterCurrentStep": "現在のステップ後に一時停止",
@@ -84,8 +82,7 @@ test("workflow commands and settings use approved Japanese metadata", () => {
     "workflowRegister.inspectRunStorage": "実行履歴の保存状況を確認",
     "workflowRegister.previewRunCleanup": "実行履歴の削除候補を確認",
     "workflowRegister.cleanupCompletedRuns": "完了済みの実行履歴を整理",
-    "bobTemplate.checkReadiness": "テンプレートの適用準備状況を確認",
-    "bobTemplate.openCustomizationStudio": "テンプレート調整を開く"
+    "bobTemplate.checkReadiness": "テンプレートの適用準備状況を確認"
   }
   for (const [commandId, title] of Object.entries(expectedTitles)) {
     assert.equal(commands.get(commandId)?.title, title, commandId)

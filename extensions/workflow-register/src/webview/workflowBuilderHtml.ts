@@ -22,6 +22,8 @@ export interface RenderWorkflowBuilderHtmlOptions {
   modeNote: string
   nonce: string
   templateOptions: WorkflowBuilderTemplateOption[]
+  mode?: "empty" | "standard-template" | "edit"
+  sessionToken?: string
 }
 
 export function renderWorkflowBuilderHtml(options: RenderWorkflowBuilderHtmlOptions): string {
@@ -31,13 +33,13 @@ export function renderWorkflowBuilderHtml(options: RenderWorkflowBuilderHtmlOpti
 <meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${options.cspSource} 'unsafe-inline'; script-src 'nonce-${options.nonce}';">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Bob ワークフロー作成・編集</title>
+<title>ワークフロー作成・編集</title>
 <style>
 ${renderWorkflowBuilderStyles()}
 </style>
 </head>
 <body>
-<header><h1>Bob ワークフロー作成・編集</h1><div class="muted">${options.modeNote}</div></header>
+<header><h1>ワークフロー作成・編集</h1>${renderModeSelector(options.mode ?? (options.isEditMode ? "edit" : "empty"))}<div class="muted">${options.modeNote}</div></header>
 <main>
 <aside>
 <h2>基本情報</h2>
@@ -60,6 +62,7 @@ ${renderWorkflowBuilderStyles()}
 <script nonce="${options.nonce}">
 const templates = ${JSON.stringify(options.templateOptions)};
 const helpCatalog = ${JSON.stringify(workflowBuilderHelpCatalog)};
+const sessionToken = ${JSON.stringify(options.sessionToken ?? "test-session")};
 let model = ${JSON.stringify(options.initialModel)};
 let editMode = ${JSON.stringify(options.isEditMode)};
 let focusStepId = ${JSON.stringify(options.focusStepId ?? "")};
@@ -78,4 +81,13 @@ window.workflowBuilderJumpToHelp = typeof jumpToHelpEntry === 'function' ? jumpT
 </script>
 </body>
 </html>`
+}
+
+function renderModeSelector(activeMode: string): string {
+  const modes = [
+    ["empty", "空のワークフロー"],
+    ["standard-template", "標準テンプレートから作成"],
+    ["edit", "既存ワークフローを編集"]
+  ]
+  return `<nav class="builder-modes">${modes.map(([mode, label]) => `<button class="secondary${mode === activeMode ? " active" : ""}" data-builder-mode="${mode}"${mode === activeMode ? " disabled aria-current=\"page\"" : ""}>${label}</button>`).join("")}</nav>`
 }

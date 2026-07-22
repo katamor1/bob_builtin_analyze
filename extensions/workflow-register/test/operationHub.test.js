@@ -7,61 +7,43 @@ const {
   readSrc
 } = require("./helpers/sourceReader")
 
-test("package contributes the Operation Hub command and Explorer view", () => {
+test("package contributes Operation Hub as the only retained panel surface", () => {
   const packageJson = readJson("package.json")
   const core = readSrc("extension.ts")
-  const wrapper = readSrc("extensionWithAuthoring.ts")
 
   assertContributesCommand(packageJson, "workflowRegister.openOperationHub")
   assertContributesCommand(packageJson, "workflowRegister.refreshOperationHub")
-  assertContributesCommand(packageJson, "workflowRegister.openOperationHubPanel")
-  assert.ok(packageJson.activationEvents.includes("onView:workflowRegister.operationHub"))
+  assert.equal(packageJson.contributes.views?.explorer?.length ?? 0, 0)
+  assert.equal(packageJson.activationEvents.includes("onView:workflowRegister.operationHub"), false)
+  assert.equal(packageJson.activationEvents.includes("onView:workflowRegister.runs"), false)
+  assert.doesNotMatch(core, /registerWebviewViewProvider/)
+  assert.doesNotMatch(core, /workflowRegister\.openOperationHubPanel/)
+  assert.match(core, /registerCommand\("workflowRegister\.openOperationHub"[\s\S]*operationHub\.open/)
   assert.ok(packageJson.activationEvents.includes("onCommand:workflowRegister.refreshOperationHub"))
-  assert.ok(packageJson.activationEvents.includes("onCommand:workflowRegister.openOperationHubPanel"))
-  assert.ok(
-    packageJson.contributes.views.explorer.some((view) => (
-      view.id === "workflowRegister.operationHub" &&
-      view.name === "Bob 操作センター" &&
-      view.type === "webview"
-    )),
-    "Operation Hub explorer webview contribution"
-  )
-  assert.match(core, /registerWebviewViewProvider\("workflowRegister\.operationHub"/)
-  assert.match(core, /registerCommand\("workflowRegister\.openOperationHub"/)
   assert.match(core, /registerCommand\("workflowRegister\.refreshOperationHub"/)
-  assert.match(core, /registerCommand\("workflowRegister\.openOperationHubPanel"/)
-  assert.doesNotMatch(wrapper, /registerWebviewViewProvider\("workflowRegister\.operationHub"/)
-  assert.doesNotMatch(wrapper, /registerCommand\("workflowRegister\.openOperationHub"/)
+  const provider = readSrc("gui", "operationHubProvider.ts")
+  assert.match(provider, /createWebviewPanel\(\s*"workflowRegisterOperationHub",\s*"Bob 操作ハブ"/)
 })
 
-test("Operation Hub title actions refresh the compact hub and open the wide panel", () => {
+test("Operation Hub removes duplicate Runs and status-bar wiring", () => {
   const packageJson = readJson("package.json")
-  const commandPalette = packageJson.contributes.menus.commandPalette
   const core = readSrc("extension.ts")
+  const wrapper = readSrc("extensionWithAuthoring.ts")
   const provider = readSrc("gui", "operationHubProvider.ts")
-  const viewTitleItems = packageJson.contributes.menus["view/title"]
-
-  assert.ok(commandPalette.some((item) => item.command === "workflowRegister.refreshOperationHub"))
-  assert.ok(commandPalette.some((item) => item.command === "workflowRegister.openOperationHubPanel"))
-  assert.deepEqual(
-    viewTitleItems.filter((item) => item.when === "view == workflowRegister.operationHub"),
-    [
-      {
-        command: "workflowRegister.openOperationHubPanel",
-        when: "view == workflowRegister.operationHub",
-        group: "navigation"
-      },
-      {
-        command: "workflowRegister.refreshOperationHub",
-        when: "view == workflowRegister.operationHub",
-        group: "navigation"
-      }
-    ]
-  )
-  assert.match(core, /registerCommand\("workflowRegister\.refreshOperationHub", \(\) => operationHub\.refreshFromCommand\(\)\)/)
-  assert.match(core, /registerCommand\("workflowRegister\.openOperationHubPanel", \(input\?: unknown\) => operationHub\.openPanel\(input\)\)/)
+  const contributionSurface = JSON.stringify({
+    activationEvents: packageJson.activationEvents,
+    commands: packageJson.contributes.commands,
+    views: packageJson.contributes.views,
+    menus: packageJson.contributes.menus
+  })
+  for (const source of [contributionSurface, core, wrapper, provider]) {
+    assert.doesNotMatch(source, /workflowRegister\.runs/)
+    assert.doesNotMatch(source, /refreshRunsView/)
+    assert.doesNotMatch(source, /createStatusBarItem/)
+    assert.doesNotMatch(source, /WorkflowRunControlView/)
+  }
   assert.match(provider, /async refreshFromCommand\(\): Promise<void>/)
-  assert.match(provider, /async openPanel\(input\?: unknown\): Promise<void>/)
+  assert.match(provider, /async open\(input\?: unknown\): Promise<void> \{[\s\S]*this\.applyOpenInput\(input\)[\s\S]*const panel = this\.ensurePanel\(\)[\s\S]*panel\.reveal\(vscode\.ViewColumn\.One\)[\s\S]*await this\.refreshPanel\(\)/)
 })
 
 test("Operation Hub model builds home setup catalog and run monitor sections", () => {
@@ -71,8 +53,9 @@ test("Operation Hub model builds home setup catalog and run monitor sections", (
     workspaceName: "sample-repo",
     workspaceRoots: ["C:\\work\\sample-repo"],
     extensionStatus: [
-      { id: "IBM.bob-code", label: "IBM Bob", available: false },
-      { id: "local.bob-bazaar-review", label: "Bob Bazaar Review", available: true }
+      { id: "IBM.bob-code", label: "IBM Bob", available: false, unavailableReason: "IBM Bob 拡張がインストールされていません。" },
+      { id: "local.bob-bazaar-review", label: "Bob Bazaar Review", available: false, unavailableReason: "Bob Bazaar Review 拡張がインストールされていません。" },
+      { id: "local.bob-code-consistency-review", label: "Bob Code Consistency", available: false, unavailableReason: "Bob Code Consistency 拡張がインストールされていません。" }
     ],
     setup: {
       bobRootPresent: false,
@@ -135,6 +118,14 @@ test("Operation Hub model builds home setup catalog and run monitor sections", (
     action.id === "acceptAndRunNextStep" &&
     action.commandId === "workflowRegister.acceptAndRunNextStep"
   )))
+  const bazaar = model.home.recommendedActions.find((action) => action.id === "openBazaarReview")
+  const consistency = model.home.recommendedActions.find((action) => action.id === "openConsistencyWizard")
+  const builder = model.home.recommendedActions.find((action) => action.id === "openWorkflowBuilder")
+  assert.equal(bazaar?.disabled, true)
+  assert.equal(bazaar?.unavailableReason, "Bob Bazaar Review 拡張がインストールされていません。")
+  assert.equal(consistency?.disabled, true)
+  assert.equal(consistency?.unavailableReason, "Bob Code Consistency 拡張がインストールされていません。")
+  assert.equal(builder?.disabled, undefined)
 })
 
 test("Operation Hub offers the next-step action for idle running workflow runs", () => {
@@ -180,6 +171,41 @@ test("Operation Hub offers the next-step action for idle running workflow runs",
     action.commandId === "workflowRegister.runNextStep" &&
     action.variant === "primary"
   )))
+})
+
+test("Operation Hub keeps future run-state versions read-only", () => {
+  const { buildOperationHubModel } = require("../out/gui/operationHubModel")
+  const model = buildOperationHubModel({
+    workspaceName: "sample-repo",
+    workspaceRoots: ["C:\\work\\sample-repo"],
+    extensionStatus: [],
+    setup: {
+      bobRootPresent: true,
+      workflowsPresent: true,
+      runStatePresent: true,
+      mcpConfigPresent: true,
+      traceabilityPresent: false
+    },
+    workflows: [],
+    runs: [{
+      root: "C:\\work\\sample-repo",
+      run: {
+        schemaVersion: "workflow-register/run-state/v2",
+        runId: "future-read-only",
+        workflowId: "qa.review",
+        workflowName: "QA Review",
+        status: "running",
+        currentStep: "review",
+        inputs: {},
+        state: {},
+        steps: [{ id: "review", title: "確認", type: "manual", status: "pending" }],
+        createdAt: "2026-07-05T01:00:00.000Z",
+        updatedAt: "2026-07-05T01:02:00.000Z"
+      }
+    }]
+  })
+
+  assert.deepEqual(model.runMonitor[0].primaryActions.map((action) => action.id), ["inspectRunControl"])
 })
 
 test("Operation Hub focused run is pinned first and marked for operator action", () => {
@@ -299,22 +325,20 @@ test("Operation Hub html uses nonce protected scripts and data-action buttons", 
   const html = renderOperationHubHtml({ model, cspSource: "vscode-resource:", nonce: "nonce-123" })
 
   assert.match(html, /nonce-123/)
-  assert.match(html, /Bob 操作センター/)
+  assert.match(html, /Bob 操作ハブ/)
   assert.match(html, /セットアップ/)
   assert.match(html, /ワークフロー一覧/)
   assert.match(html, /実行状況/)
   assert.match(html, /data-action="openWorkflowBuilder"/)
-  assert.match(html, /data-action="openOperationHubPanel"/)
-  assert.match(html, /広い画面で開く/)
   assert.match(html, /vscode\.postMessage/)
   assert.doesNotMatch(html, /onclick=/)
   assert.doesNotMatch(html, /eval\(/)
   assert.ok(OPERATION_HUB_ALLOWED_ACTIONS.includes("acceptAndRunNextStep"))
   assert.ok(OPERATION_HUB_ALLOWED_ACTIONS.includes("openRunControl"))
-  assert.ok(OPERATION_HUB_ALLOWED_ACTIONS.includes("openOperationHubPanel"))
+  assert.equal(OPERATION_HUB_ALLOWED_ACTIONS.includes("openOperationHubPanel"), false)
 })
 
-test("Operation Hub html supports compact and panel layouts", () => {
+test("Operation Hub html uses the retained panel layout", () => {
   const { renderOperationHubHtml } = require("../out/gui/operationHubHtml")
   const { buildOperationHubModel } = require("../out/gui/operationHubModel")
 
@@ -359,17 +383,12 @@ test("Operation Hub html supports compact and panel layouts", () => {
     ]
   })
 
-  const compact = renderOperationHubHtml({ model, cspSource: "vscode-resource:", nonce: "nonce-123", layout: "compact" })
-  const panel = renderOperationHubHtml({ model, cspSource: "vscode-resource:", nonce: "nonce-456", layout: "panel" })
+  const html = renderOperationHubHtml({ model, cspSource: "vscode-resource:", nonce: "nonce-123" })
 
-  assert.match(compact, /class="operation-hub compact"/)
-  assert.match(compact, /data-action="openOperationHubPanel"/)
-  assert.match(panel, /class="operation-hub panel"/)
-  assert.match(panel, /class="panel-shell"/)
-  assert.match(panel, /class="primary-pane"/)
-  assert.match(panel, /class="secondary-pane"/)
-  assert.ok(panel.indexOf('id="runs"') < panel.indexOf('id="setup"'))
-  assert.ok(panel.indexOf('id="runs"') < panel.indexOf('id="catalog"'))
+  assert.match(html, /class="operation-hub"/)
+  assert.doesNotMatch(html, /compact|panel-shell|primary-pane|secondary-pane/)
+  assert.ok(html.indexOf('id="runs"') < html.indexOf('id="setup"'))
+  assert.ok(html.indexOf('id="runs"') < html.indexOf('id="catalog"'))
 })
 
 test("Operation Hub html exposes the latest refresh time", () => {
@@ -451,7 +470,6 @@ test("Operation Hub provider accepts run focus arguments from the open command",
   const provider = readSrc("gui", "operationHubProvider.ts")
 
   assert.match(core, /registerCommand\("workflowRegister\.openOperationHub", \(input\?: unknown\) => operationHub\.open\(input\)\)/)
-  assert.match(core, /registerCommand\("workflowRegister\.openOperationHubPanel", \(input\?: unknown\) => operationHub\.openPanel\(input\)\)/)
   assert.match(provider, /type OperationHubOpenInput = string \| \{ workspaceRoot\?: string; runId\?: string; stepId\?: string; reason\?: "stepGate" \| "paused" \}/)
   assert.match(provider, /private focusedRunId\?: string/)
   assert.match(provider, /private focusedWorkspaceRoot\?: string/)
@@ -459,12 +477,11 @@ test("Operation Hub provider accepts run focus arguments from the open command",
   assert.match(provider, /focusedRunId: this\.focusedRunId/)
   assert.match(provider, /const focusedWorkspaceRoot = await matchingCandidateRoot/)
   assert.match(provider, /focusedWorkspaceRoot\s*\n\s*\}/)
-  assert.match(provider, /async openPanel\(input\?: unknown\): Promise<void>/)
-  assert.match(provider, /if \(parsed && typeof parsed !== "string" && \(parsed\.reason === "stepGate" \|\| parsed\.reason === "paused"\)\)/)
-  assert.match(provider, /this\.panel\.reveal\(vscode\.ViewColumn\.One\)/)
-  assert.match(provider, /createWebviewPanel\(\s*"workflowRegister\.operationHubPanel"/)
+  assert.doesNotMatch(provider, /openPanel/)
+  assert.match(provider, /panel\.reveal\(vscode\.ViewColumn\.One\)/)
+  assert.match(provider, /createWebviewPanel\(\s*"workflowRegisterOperationHub"/)
   assert.match(provider, /retainContextWhenHidden: true/)
-  assert.match(provider, /await this\.refreshAll\(\)/)
+  assert.match(provider, /await this\.refreshPanel\(\)/)
 })
 
 
@@ -485,10 +502,9 @@ test("Operation Hub renders Japanese-first headings and empty state", () => {
       workflowCatalog: [],
       runMonitor: []
     },
-    layout: "panel"
   })
 
-  assert.match(html, /Bob 操作センター/)
+  assert.match(html, /Bob 操作ハブ/)
   assert.match(html, /実行状況/)
   assert.match(html, /実行中または最近の実行はありません/)
   assert.doesNotMatch(html, /Run Monitor/)
