@@ -162,9 +162,32 @@ export function compileLocalJsonSchema(
 export function validateLocalJsonSchemaValue(
   input: ValidateLocalJsonSchemaValueInput
 ): ValidateLocalJsonSchemaValueResult
+
+export type LocalJsonSchemaInstanceKind =
+  | "null" | "boolean" | "number" | "string" | "array" | "object"
+
+export function inspectLocalJsonSchemaInstancePointer(input: {
+  readonly compiled: CompiledLocalJsonSchema
+  readonly pointer: string
+}):
+  | { readonly ok: true; readonly kinds: readonly LocalJsonSchemaInstanceKind[] }
+  | { readonly ok: false }
 ```
 
 The caller supplies one of the existing twelve diagnostic codes for its owning boundary. Every domain diagnostic emitted by this module, including catalog-entry, preflight, AJV compile, and value-validation failures, uses that caller code. The module does not add or substitute schema-specific public codes. Successful results expose deeply frozen canonical evidence (per-document digests and catalog digest) plus an opaque compiled handle branded in a private `WeakMap`.
+
+`inspectLocalJsonSchemaInstancePointer` is the only public schema-introspection boundary. Its input is an exact ordinary own-data record; an invalid handle or malformed/noncanonical RFC 6901 pointer is a programmer error and throws `TypeError` without invoking traps. For a valid query it walks only the detached, immutable local schema graph captured at compile time and returns a deeply frozen result. A successful result contains the code-unit-sorted conservative runtime kind set `null | boolean | number | string | array | object` in exact order `array, boolean, null, number, object, string`, with `integer` normalized to `number`; an accepted dense `type` array is normalized and deduplicated; and a reachable target without a narrower provable kind returns all six kinds. It performs no validation, I/O, cloning of caller values, raw-schema exposure, or AJV call.
+
+The resolver uses this exact algorithm:
+
+1. Decode the canonical RFC 6901 pointer to tokens and start at the root node.
+2. Before consuming each token and again after the final token, including when the pointer is root `""`, repeatedly follow `$ref` only when it is the sole validation keyword at that node. `$schema`, `$id`, `$defs`, `$comment`, `title`, `description`, `default`, `deprecated`, `readOnly`, `writeOnly`, and `examples` may coexist. A `$ref` with any other validation sibling is unresolved.
+3. A string token traverses only an exact own member of `properties`. `patternProperties`, `additionalProperties`, `propertyNames`, and dependent keywords never invent a named pointer. An exact `properties` member remains usable when `additionalProperties` is present.
+4. A canonical decimal array index (`0` or a nonzero digit followed by digits, within the safe-integer range) traverses its `prefixItems` member or, after that prefix, `items`. No other token traverses an array.
+5. A traversal node containing `patternProperties`, `dependentSchemas`, `allOf`, `anyOf`, `oneOf`, `if`, `then`, `else`, `not`, `contains`, `propertyNames`, `unevaluatedProperties`, or `unevaluatedItems` is unresolved before consuming another token. Boolean `true` resolves only when it is the target and yields all six kinds; boolean `false` is unresolved.
+6. At the normalized target, an exact `type` string or accepted dense `type` array maps directly, with `integer` mapped to `number`, duplicates removed, and the result placed in the fixed kind order. An absent `type` yields all six kinds. `const` and `enum` do not narrow kinds. F3 compile already rejects invalid type syntax and every `$ref` cycle, so neither is a query-state branch.
+
+Every other traversal returns frozen `{ ok: false }`.
 
 - [x] **RED 1 — hostile outer input:** reject proxy/accessor/sparse/exotic outer records and schema arrays without invoking traps/getters. Require exact ordinary own-data records. Fix compile precedence exactly: outer record shape → caller diagnostic code → caller base location → `rootId` → dense ordinary `schemas` array → source structural checks in array-index order → catalog index checks → catalog semantic checks. Fix validate precedence separately: outer shape → diagnostic code → caller location → compiled-handle `WeakMap` brand → value.
 - [x] **RED 2 — safe source entries:** a source is exactly `{id, schema, location}` with own data descriptors. A hostile/malformed source wrapper, getter, proxy, sparse position, or malformed source location produces exactly one caller-code diagnostic at the compile base with `JSON Schema catalog entry is invalid.` It must not invoke or quote source-controlled text. After a structurally safe entry exists, invalid id/schema/dialect/ref/keyword diagnostics use that source's safe location.
@@ -233,6 +256,7 @@ unevaluatedItems -> Value contains a disallowed array item.
 Every AJV error becomes exactly one caller-code diagnostic and exactly one related schema location. Prove fail → pass → fail reuse has no stale errors.
 - [x] **RED 13 — intrinsics and no I/O:** capture every intrinsic used on untrusted values at module initialization, including `util.types.isProxy`, `Array.isArray`, `Object.getPrototypeOf`, `Object.getOwnPropertyDescriptors`, `Object.keys`, `Object.prototype.hasOwnProperty`, `Reflect.ownKeys`, string code-unit operations, and `Buffer.from`. Monkey-patch globals after import and prove behavior is unchanged. Source policy rejects `fs`, `http`, `https`, `fetch`, or `loadSchema`; tests replace `global.fetch` and assert zero calls.
 - [x] **RED 14 — AJV lifecycle:** calls rejected before the AJV phase construct zero AJV instances. A call that reaches the AJV phase constructs at most one AJV instance, registers every transformed document on it, and compiles every id on that same instance.
+- [ ] **RED 15 — opaque instance-pointer inspection:** query root, exact `properties`, terminal/nonterminal `$ref`, `prefixItems`, and `items` pointers through the branded handle; normalize `integer` and accepted nullable `type` arrays; return the frozen exact kind order and all six kinds for an untyped reachable target. Fail closed for missing members, boolean `false`, dynamic property names, validation siblings beside `$ref` including at root/target, listed applicators, and invalid array-index tokens. Reject lookalike handles, proxies, accessors, unknown fields, and malformed/noncanonical pointers without invoking traps. Keep cycle rejection in RED 6 because no cyclic catalog can produce a branded handle. Prove the query performs zero AJV validation/I/O and remains stable after built-in monkey-patching.
 - [x] **GREEN:** clone every source schema with F1 before semantic traversal; use captured intrinsics and descriptor snapshots; transform refs/false schemas only in a detached AJV copy; register/compile sorted schemas; freeze evidence, wrapper, result, and the successfully validated detached value; store validators only in the private brand map.
 - [x] **Verify:**
 
@@ -327,6 +351,8 @@ node --test test/workflowContractV2Yaml.test.js
 - Create: `extensions/workflow-register/src/core/contractV2/predicate.ts`
 - Create: `extensions/workflow-register/test/workflowContractV2Predicate.test.js`
 - Create: `extensions/workflow-register/test/fixtures/workflow-contract-v2/predicate-golden.json`
+- Modify: `extensions/workflow-register/src/core/contractV2/jsonSchema.ts`
+- Modify: `extensions/workflow-register/test/workflowContractV2JsonSchema.test.js`
 
 **Interface**
 
@@ -359,6 +385,33 @@ export type WorkflowPredicatePlacement =
   | { readonly kind: "stepEntry"; readonly stepIndex: number }
   | { readonly kind: "stepTransition"; readonly stepIndex: number }
 
+export interface WorkflowPredicateInputSchemaBinding {
+  readonly id: string
+  readonly schemaId: string
+  readonly schema: CompiledLocalJsonSchema
+}
+
+export type WorkflowPredicateStepSchemaBinding =
+  | { readonly kind: "noValue" }
+  | {
+      readonly kind: "value"
+      readonly id: string
+      readonly schemaId: string
+      readonly schema: CompiledLocalJsonSchema
+    }
+
+export interface WorkflowPredicateSchemaEnvironment {
+  readonly inputs: readonly WorkflowPredicateInputSchemaBinding[]
+  readonly steps: readonly WorkflowPredicateStepSchemaBinding[]
+}
+
+export interface CompileWorkflowPredicateInput {
+  readonly predicate: unknown
+  readonly placement: WorkflowPredicatePlacement
+  readonly schemas: WorkflowPredicateSchemaEnvironment
+  readonly location: WorkflowContractV2DiagnosticLocation
+}
+
 compileWorkflowPredicate(input: CompileWorkflowPredicateInput): CompileWorkflowPredicateResult
 evaluateWorkflowPredicate(
   predicate: CompiledWorkflowPredicate,
@@ -369,8 +422,12 @@ evaluateWorkflowPredicate(
 ): boolean
 ```
 
+F5 receives no raw schema catalog and no caller-derived allowlist. The single P1 compiler constructs `schemas` directly from the validated, detached F4 document plus F3 handles and is the only production caller; the one-to-one input/step/output correspondence is a trusted internal precondition that P1's compiler integration tests must prove. The environment, its arrays, and every binding are closed ordinary own-data values; arrays are dense with ordinary prototypes. `inputs` has 0–256 unique ids. `steps` has 1–512 entries and exactly the F4 step count; the index is the step index, so each step has at most one value output and output ids are unique across all `kind: "value"` entries. `inputRequiredWhen.inputIndex` must be within `inputs`; both step placements must be within `steps`. Each `schemaId` is the exact F4-selected package-relative schema id and must equal its F3-branded handle's `evidence.rootId`; an invalid, lookalike, or root-id-mismatched handle is rejected. F5 calls `inspectLocalJsonSchemaInstancePointer` for every reference and never reparses schema documents.
+
+Compile precedence is exact: outer record and base location → closed/dense schema environment in input then step order, including root-pointer handle preflight → closed placement and actual-array index range → iterative predicate snapshot and global budgets → operator/field/visibility/pointer semantics. A handle-preflight `TypeError` becomes one `WF2_PREDICATE_INVALID` diagnostic at the supplied predicate base location. A malformed predicate pointer is diagnosed at its exact `left/pointer` before inspection. Equality, membership, and existence require a successful resolution. Ordered comparison additionally requires a finite numeric right operand with exactly the resolved kind `number`, or a string right operand with exactly the resolved kind `string`; mixed or indeterminate kinds fail closed.
+
 - [ ] RED: cover every equality/`in`/ordered/exists/boolean AST variant, reject empty `all`/`any`, missing input/output/pointer, deep JSON equality/membership, numeric and code-unit string ordering, and deterministic short-circuit order. Freeze exact limits: depth 32, 1,024 total AST nodes, 1–128 direct `all`/`any` children, 1–256 dense `in` members, and 262,144 canonical UTF-8 bytes across literal `right` values. Test each boundary and one over; ordered comparison is valid only number/number or string/string and never coerces.
-- [ ] RED: compile with an explicit `WorkflowPredicatePlacement` and the F4 step/output table. `inputRequiredWhen` allows input refs only; `stepEntry` allows strictly earlier lexical value outputs; `stepTransition` additionally allows exactly its owning step's value output. Resolve every RFC 6901 pointer against the referenced schema. Reject unit, other same-step, future, undeclared output/pointer, transient/uncommitted provider result, run/step state, artifact content, environment/time/filesystem, expression string, unknown operator/field, malformed value, and sparse/proxy context.
+- [ ] RED: compile with an explicit `WorkflowPredicatePlacement` and the closed compiler-owned environment. Cover exact ordinary outer/environment/placement/binding records, dense array and 0–256/1–512 limits, actual-array placement ranges, one step entry per F4 step, at most one value output per step, unique input/output ids, invalid/lookalike/root-id-mismatched handles, and the fixed precedence. `inputRequiredWhen` allows input refs only; `stepEntry` allows strictly earlier lexical value outputs; `stepTransition` additionally allows exactly its owning step's value output. Resolve every RFC 6901 pointer exclusively through F3's branded read-only query. Reject raw schemas, caller allowlists, no-value, other same-step, future, undeclared output/pointer, unresolved/mixed-kind ordered targets, transient/uncommitted provider result, run/step state, artifact content, environment/time/filesystem, expression string, unknown operator/field, malformed value, and sparse/proxy/accessor context. P1 later proves that its environment builder preserves each F4 input/output id, schema id, and lexical step position exactly.
 - [ ] RED: import the same module from compiler preflight and engine in a test harness and assert identical golden results/diagnostics. The golden file includes entry, prior-output, permitted post-commit same-output, forbidden same-output placement, future/transient/uncommitted, and all 15 C1 human-gate `/decision` cases (inventory 01 and 05–18).
 - [ ] GREEN: compile to a detached frozen AST and evaluate only the supplied `{ inputs, committedOutputs }` context without coercion, `eval`, locale comparison, clocks, environment, provider lookup, or I/O.
 - [ ] Verify:
