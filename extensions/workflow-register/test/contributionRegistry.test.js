@@ -969,7 +969,7 @@ test("uses the captured Map size getter after a hostile handler property read", 
   assert.equal(registry.snapshot().actionProviders.length, 1)
 })
 
-test("does not inherit registry state or lifecycle hooks polluted by a handler getter", () => {
+test("rejects registry state and lifecycle pollution injected by a handler getter", () => {
   const originalAgentId = Object.getOwnPropertyDescriptor(Object.prototype, "agentId")
   const originalBeforeCommit = Object.getOwnPropertyDescriptor(Object.prototype, "beforeCommit")
   const originalOnRemove = Object.getOwnPropertyDescriptor(Object.prototype, "onRemove")
@@ -996,12 +996,12 @@ test("does not inherit registry state or lifecycle hooks polluted by a handler g
     }
   })
   const registry = new ContributionRegistry()
+  const before = registry.snapshot()
   let caught
 
   try {
     try {
-      const registration = register(registry, manifest, handlers)
-      registration.dispose()
+      register(registry, manifest, handlers)
     } catch (error) {
       caught = error
     }
@@ -1014,9 +1014,231 @@ test("does not inherit registry state or lifecycle hooks polluted by a handler g
     else delete Object.prototype.onRemove
   }
 
-  assert.ifError(caught)
+  assert.ok(caught instanceof ContributionRegistryError)
+  assert.equal(caught.code, "contribution.registry.handler_set_invalid")
   assert.equal(pollutedHookCalls, 0)
-  assert.equal(registry.snapshot().actionProviders.length, 0)
+  assert.strictEqual(registry.snapshot(), before)
+})
+
+test("keeps pre-existing snapshots and caught errors inert while rejecting late Object.prototype pollution", () => {
+  const originalToJSON = Object.getOwnPropertyDescriptor(Object.prototype, "toJSON")
+  const coercionKey = Symbol.toPrimitive
+  const originalCoercion = Object.getOwnPropertyDescriptor(Object.prototype, coercionKey)
+  let pending
+  const registry = new ContributionRegistry({
+    beforeCommit(value) { pending = value }
+  })
+  const publishedManifest = completeManifest()
+  const live = register(registry, publishedManifest, completeHandlers(publishedManifest))
+  const before = registry.snapshot()
+  const metadata = registry.getActionProviderMetadata(publishedManifest.action_providers[0].id)
+  const provider = registry.getActionProvider(publishedManifest.action_providers[0].id)
+  const manifest = completeManifest()
+  const handlers = completeHandlers(manifest)
+  const action = handlers.actionProviders.get(manifest.action_providers[0].id)
+  const execute = action.execute
+  let pollutedToJSONCalls = 0
+  let pollutedCoercionCalls = 0
+  let caught
+  let serializedPublicValues
+  let coercedRegistry
+  let coercedError
+  Object.defineProperty(action, "execute", {
+    enumerable: true,
+    configurable: true,
+    get() {
+      Object.defineProperty(Object.prototype, "toJSON", {
+        configurable: true,
+        value() {
+          pollutedToJSONCalls += 1
+          return "HANDLER_SECRET_MUST_NOT_LEAK"
+        }
+      })
+      Object.defineProperty(Object.prototype, coercionKey, {
+        configurable: true,
+        value() {
+          pollutedCoercionCalls += 1
+          return "HANDLER_COERCION_SECRET_MUST_NOT_LEAK"
+        }
+      })
+      return execute
+    }
+  })
+
+  try {
+    try {
+      register(registry, manifest, handlers)
+    } catch (error) {
+      caught = error
+      serializedPublicValues = [registry, before, metadata, provider, provider.execute, pending, live, live.dispose, error]
+        .map((value) => JSON.stringify(value))
+      coercedRegistry = String(registry)
+      coercedError = String(error)
+    }
+  } finally {
+    if (originalToJSON) Object.defineProperty(Object.prototype, "toJSON", originalToJSON)
+    else delete Object.prototype.toJSON
+    if (originalCoercion) Object.defineProperty(Object.prototype, coercionKey, originalCoercion)
+    else delete Object.prototype[coercionKey]
+  }
+
+  assert.ok(caught instanceof ContributionRegistryError)
+  assert.equal(caught.code, "contribution.registry.handler_set_invalid")
+  assert.match(caught.message, /^Contribution handler modified the object runtime\.$/)
+  assert.match(coercedError, /^ContributionRegistryError: /)
+  assert.equal(coercedRegistry, "[object Object]")
+  for (const serialized of serializedPublicValues) {
+    assert.equal(
+      serialized === undefined || !serialized.includes("HANDLER_SECRET_MUST_NOT_LEAK"),
+      true
+    )
+  }
+  assert.equal(pollutedToJSONCalls, 0)
+  assert.equal(pollutedCoercionCalls, 0)
+  assert.strictEqual(registry.snapshot(), before)
+  assert.ok(registry instanceof ContributionRegistry)
+  for (const publicValue of [registry, before, metadata, provider, provider.execute, pending, live, live.dispose]) {
+    assert.equal(Object.prototype.isPrototypeOf(publicValue), false)
+  }
+  const resumed = register(registry, emptyManifest("local.owner-b"), emptyHandlers(), ownerContext("local.owner-b"))
+  resumed.dispose()
+  assert.equal(registry.snapshot().actionProviders.length, before.actionProviders.length)
+  assert.equal(registry.getActionProvider(publishedManifest.action_providers[0].id), provider)
+  live.dispose()
+})
+
+test("keeps native Error compatibility without consulting active Object.prototype hooks", () => {
+  const originalToJSON = Object.getOwnPropertyDescriptor(Object.prototype, "toJSON")
+  const originalThen = Object.getOwnPropertyDescriptor(Object.prototype, "then")
+  const coercionKey = Symbol.toPrimitive
+  const originalCoercion = Object.getOwnPropertyDescriptor(Object.prototype, coercionKey)
+  const inspectionKey = Symbol.for("nodejs.util.inspect.custom")
+  const originalInspection = Object.getOwnPropertyDescriptor(Object.prototype, inspectionKey)
+  const manifest = completeManifest()
+  const handlers = completeHandlers(manifest)
+  const action = handlers.actionProviders.get(manifest.action_providers[0].id)
+  const execute = action.execute
+  let pollutedToJSONCalls = 0
+  let pollutedCoercionCalls = 0
+  let pollutedLookupCalls = 0
+  let caught
+  let serializedError
+  let coercedError
+  let inheritedThen
+  let inheritedInspection
+  Object.defineProperty(action, "execute", {
+    enumerable: true,
+    configurable: true,
+    get() {
+      Object.defineProperty(Object.prototype, "toJSON", {
+        configurable: true,
+        value() {
+          pollutedToJSONCalls += 1
+          return "ERROR_JSON_SECRET_MUST_NOT_LEAK"
+        }
+      })
+      Object.defineProperty(Object.prototype, coercionKey, {
+        configurable: true,
+        value() {
+          pollutedCoercionCalls += 1
+          return "ERROR_COERCION_SECRET_MUST_NOT_LEAK"
+        }
+      })
+      for (const key of ["then", inspectionKey]) {
+        Object.defineProperty(Object.prototype, key, {
+          configurable: true,
+          get() {
+            pollutedLookupCalls += 1
+            throw new Error("dynamic Object.prototype lookup must not run")
+          }
+        })
+      }
+      return execute
+    }
+  })
+
+  try {
+    try {
+      register(new ContributionRegistry(), manifest, handlers)
+    } catch (error) {
+      caught = error
+      serializedError = JSON.stringify(error)
+      coercedError = String(error)
+      inheritedThen = error.then
+      inheritedInspection = error[inspectionKey]
+    }
+  } finally {
+    if (originalToJSON) Object.defineProperty(Object.prototype, "toJSON", originalToJSON)
+    else delete Object.prototype.toJSON
+    if (originalThen) Object.defineProperty(Object.prototype, "then", originalThen)
+    else delete Object.prototype.then
+    if (originalCoercion) Object.defineProperty(Object.prototype, coercionKey, originalCoercion)
+    else delete Object.prototype[coercionKey]
+    if (originalInspection) Object.defineProperty(Object.prototype, inspectionKey, originalInspection)
+    else delete Object.prototype[inspectionKey]
+  }
+
+  assert.ok(caught instanceof ContributionRegistryError)
+  assert.ok(caught instanceof Error)
+  assert.equal(Object.isFrozen(caught), true)
+  assert.equal(caught.code, "contribution.registry.handler_set_invalid")
+  assert.equal(caught.message, "Contribution handler modified the object runtime.")
+  assert.match(coercedError, /^ContributionRegistryError: Contribution handler modified the object runtime\.$/)
+  assert.doesNotMatch(serializedError, /ERROR_JSON_SECRET_MUST_NOT_LEAK/)
+  assert.equal(inheritedThen, undefined)
+  assert.equal(inheritedInspection, undefined)
+  assert.equal(pollutedToJSONCalls, 0)
+  assert.equal(pollutedCoercionCalls, 0)
+  assert.equal(pollutedLookupCalls, 0)
+})
+
+test("rejects every late Object.prototype descriptor mutation and keeps prior snapshots inert", () => {
+  const coercionKey = Symbol.toPrimitive
+  const originalCoercion = Object.getOwnPropertyDescriptor(Object.prototype, coercionKey)
+  const manifest = completeManifest()
+  const handlers = completeHandlers(manifest)
+  const action = handlers.actionProviders.get(manifest.action_providers[0].id)
+  const execute = action.execute
+  const registry = new ContributionRegistry()
+  const before = registry.snapshot()
+  let pollutedCoercionCalls = 0
+  let caught
+  let registration
+  let coercedSnapshot
+  Object.defineProperty(action, "execute", {
+    enumerable: true,
+    configurable: true,
+    get() {
+      Object.defineProperty(Object.prototype, coercionKey, {
+        configurable: true,
+        value() {
+          pollutedCoercionCalls += 1
+          return "HANDLER_COERCION_SECRET_MUST_NOT_LEAK"
+        }
+      })
+      return execute
+    }
+  })
+
+  try {
+    try {
+      registration = register(registry, manifest, handlers)
+    } catch (error) {
+      caught = error
+    }
+    coercedSnapshot = String(before)
+  } finally {
+    if (originalCoercion) Object.defineProperty(Object.prototype, coercionKey, originalCoercion)
+    else delete Object.prototype[coercionKey]
+  }
+  const afterAttempt = registry.snapshot()
+  registration?.dispose()
+
+  assert.ok(caught instanceof ContributionRegistryError)
+  assert.equal(caught.code, "contribution.registry.handler_set_invalid")
+  assert.equal(coercedSnapshot, "[object Object]")
+  assert.equal(pollutedCoercionCalls, 0)
+  assert.strictEqual(afterAttempt, before)
 })
 
 test("reads manifest and callable handler accessors exactly once", () => {
