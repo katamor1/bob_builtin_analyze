@@ -7,24 +7,10 @@ const { test } = require("node:test")
 const { compileWorkflowContractDocument } = require("../out/core/workflowValidator")
 const { buildWorkflowContributionCatalog } = require("../out/core/contributionCatalog")
 const { validateCommandGuardrails } = require("../out/core/guardrails")
+const { validateWorkflowTemplateMirrors } = require("../out/core/templateMirrorValidator")
 const { createWorkflowInventory, discoverContributionManifests } = require("../scripts/discover-tracked-workflows")
 
 const repoRoot = path.resolve(__dirname, "..", "..", "..")
-
-const integrationWorkflowPairs = [
-  {
-    templatePath: "extensions/bob-bazaar-review/templates/.bob/workflows/bazaar-project-rule-review/WORKFLOW.md",
-    mirrorPath: ".bob/workflows/bazaar-project-rule-review/WORKFLOW.md"
-  },
-  {
-    templatePath: "extensions/bob-bazaar-review/templates/.bob/workflows/bazaar-project-rule-authoring/WORKFLOW.md",
-    mirrorPath: ".bob/workflows/bazaar-project-rule-authoring/WORKFLOW.md"
-  },
-  {
-    templatePath: "extensions/bob-code-consistency-review/templates/.bob/workflows/code-consistency-review/WORKFLOW.md",
-    mirrorPath: ".bob/workflows/code-consistency-review/WORKFLOW.md"
-  }
-]
 
 test("all tracked claimed workflow contracts are discovered and strict-clean", () => {
   const workflowPaths = createWorkflowInventory(repoRoot)
@@ -38,12 +24,28 @@ test("all tracked claimed workflow contracts are discovered and strict-clean", (
   }
 })
 
-test("integration workflow templates match their workspace mirrors", () => {
-  for (const { templatePath, mirrorPath } of integrationWorkflowPairs) {
-    const templateText = readRepoFile(templatePath)
-    const mirrorText = readRepoFile(mirrorPath)
-    assert.equal(mirrorText, templateText, `${mirrorPath} must match ${templatePath}`)
-  }
+test("all dynamically declared workflow templates exactly match their mirrors", () => {
+  const inputs = discoverContributionManifestPaths().map((manifestPath) => {
+    const ownerDirectory = path.posix.dirname(path.posix.dirname(manifestPath))
+    const packageJson = JSON.parse(fs.readFileSync(path.join(repoRoot, ownerDirectory, "package.json"), "utf8"))
+    return {
+      manifestPath,
+      manifestContent: fs.readFileSync(path.join(repoRoot, manifestPath)),
+      context: {
+        expectedOwner: { id: `${packageJson.publisher}.${packageJson.name}`, version: packageJson.version },
+        ownerDirectory
+      },
+      readContent: (repositoryPath) => fs.readFileSync(path.join(repoRoot, repositoryPath))
+    }
+  })
+
+  const validation = validateWorkflowTemplateMirrors(inputs)
+
+  assert.equal(
+    validation.ok,
+    true,
+    validation.diagnostics.map((item) => `${item.code}: ${item.path}: ${item.message}`).join("\n")
+  )
 })
 
 test("sample external command contract is accepted only at its exact manifest-declared path", () => {

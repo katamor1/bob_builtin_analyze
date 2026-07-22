@@ -3,6 +3,7 @@
 
 const fs = require("node:fs")
 const path = require("node:path")
+const { createPackageExpectation, validatePackagedContribution } = require("./validate-contribution-assets")
 
 function parseArgs(argv) {
   const args = { maxBytes: undefined }
@@ -40,8 +41,7 @@ function findEndOfCentralDirectory(buffer) {
   throw new Error("Could not find ZIP end of central directory")
 }
 
-function readZipEntries(zipPath) {
-  const buffer = fs.readFileSync(zipPath)
+function readZipEntries(buffer) {
   const eocdOffset = findEndOfCentralDirectory(buffer)
   const entryCount = buffer.readUInt16LE(eocdOffset + 10)
   const centralDirectoryOffset = buffer.readUInt32LE(eocdOffset + 16)
@@ -123,13 +123,13 @@ function main() {
     throw new Error(`Missing ${vsixName}; run npm run package before package:policy`)
   }
 
-  const stat = fs.statSync(vsixPath)
-  const entries = readZipEntries(vsixPath)
+  const archiveContent = fs.readFileSync(vsixPath)
+  const entries = readZipEntries(archiveContent)
   const entryNames = new Set(entries.map((entry) => entry.fileName))
   const errors = []
 
-  if (stat.size > args.maxBytes) {
-    errors.push(`${vsixName} is ${stat.size} bytes, above budget ${args.maxBytes}`)
+  if (archiveContent.length > args.maxBytes) {
+    errors.push(`${vsixName} is ${archiveContent.length} bytes, above budget ${args.maxBytes}`)
   }
 
   const mainEntry = normalizeMain(packageJson.main)
@@ -148,6 +148,19 @@ function main() {
     errors.push(`Forbidden VSIX entry: ${violation}`)
   }
 
+  if (typeof packageJson.publisher !== "string" || packageJson.publisher.trim().length === 0) {
+    errors.push("Package publisher must be a non-empty string for contribution payload validation")
+  } else {
+    const contributionValidation = validatePackagedContribution({
+      archiveContent,
+      expectedCatalog: createPackageExpectation(extensionRoot),
+      ownerId: `${packageJson.publisher}.${packageJson.name}`
+    })
+    for (const diagnostic of contributionValidation.diagnostics) {
+      errors.push(`${diagnostic.code}: ${diagnostic.path}: ${diagnostic.message}`)
+    }
+  }
+
   if (errors.length > 0) {
     for (const error of errors) {
       console.error(error)
@@ -155,7 +168,7 @@ function main() {
     process.exit(1)
   }
 
-  console.log(`VSIX policy OK: ${vsixName} (${stat.size} bytes, ${entries.length} entries)`)
+  console.log(`VSIX policy OK: ${vsixName} (${archiveContent.length} bytes, ${entries.length} entries)`)
 }
 
 if (require.main === module) {

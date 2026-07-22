@@ -16,13 +16,32 @@ function assertLocalScript(packageJson, scriptName, expectedCommand) {
   if (scriptPath) assert.ok(fs.existsSync(path.join(extensionRoot, scriptPath)), `${scriptName} target must exist locally`)
 }
 
-function runSyntheticVsixPolicy(runtimeMetadata) {
+function runSyntheticVsixPolicy(runtimeMetadata, options = {}) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "bob-vsix-policy-"))
   const packageJson = {
+    publisher: "local",
     name: "policy-fixture",
     version: "1.0.0",
     main: "./out/extension.js"
   }
+  const manifest = {
+    schema_version: "workflow-contributions/v1",
+    owner: { id: "local.policy-fixture", version: "1.0.0" },
+    registry_api: { min: "provider-registry/v1", max: "provider-registry/v1" },
+    action_providers: [],
+    preflight_checks: [],
+    result_sinks: [],
+    workflow_claims: [],
+    workflow_exclusions: [],
+    external_commands: [],
+    schemas: [],
+    workflow_templates: []
+  }
+  const packageContent = Buffer.from(JSON.stringify(packageJson))
+  const manifestContent = Buffer.from(JSON.stringify(manifest))
+  const archivedPackageContent = options.mutateArchivedPackage
+    ? Buffer.from(JSON.stringify({ ...packageJson, description: "mutated archive package bytes" }))
+    : packageContent
   const lock = {
     lockfileVersion: 3,
     packages: {
@@ -32,18 +51,15 @@ function runSyntheticVsixPolicy(runtimeMetadata) {
   }
   try {
     fs.mkdirSync(path.join(directory, "contracts"))
-    fs.writeFileSync(path.join(directory, "package.json"), JSON.stringify(packageJson))
+    fs.writeFileSync(path.join(directory, "package.json"), packageContent)
     fs.writeFileSync(path.join(directory, "package-lock.json"), JSON.stringify(lock))
-    fs.writeFileSync(
-      path.join(directory, "contracts", "workflow-contributions.json"),
-      JSON.stringify({ schemas: [], workflow_templates: [] })
-    )
+    fs.writeFileSync(path.join(directory, "contracts", "workflow-contributions.json"), manifestContent)
     fs.writeFileSync(
       path.join(directory, "policy-fixture-1.0.0.vsix"),
       createStoredZip([
-        { name: "extension/package.json" },
+        zipEntry("extension/package.json", archivedPackageContent),
         { name: "extension/out/extension.js" },
-        { name: "extension/contracts/workflow-contributions.json" }
+        zipEntry("extension/contracts/workflow-contributions.json", manifestContent)
       ])
     )
     return spawnSync(
@@ -54,6 +70,21 @@ function runSyntheticVsixPolicy(runtimeMetadata) {
   } finally {
     fs.rmSync(directory, { recursive: true, force: true })
   }
+}
+
+function zipEntry(name, data) {
+  return { name, data, crc32: crc32(data) }
+}
+
+function crc32(content) {
+  let value = 0xffffffff
+  for (const byte of content) {
+    value ^= byte
+    for (let bit = 0; bit < 8; bit += 1) {
+      value = (value >>> 1) ^ (value & 1 ? 0xedb88320 : 0)
+    }
+  }
+  return (value ^ 0xffffffff) >>> 0
 }
 
 test("bob-bazaar-review declares the exact rule authoring production dependencies", () => {
@@ -169,6 +200,17 @@ test("bob-bazaar-review VSIX policy allows an incompatible platform-optional loc
   assert.ok(otherPlatform)
   const result = runSyntheticVsixPolicy({ optional: true, os: [otherPlatform] })
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`)
+})
+
+test("bob-bazaar-review VSIX policy binds the archived package bytes in dependency fixtures", () => {
+  const otherPlatform = ["darwin", "linux", "win32"].find((platform) => platform !== process.platform)
+  assert.ok(otherPlatform)
+  const result = runSyntheticVsixPolicy(
+    { optional: true, os: [otherPlatform] },
+    { mutateArchivedPackage: true }
+  )
+  assert.notEqual(result.status, 0)
+  assert.match(`${result.stdout}\n${result.stderr}`, /vsix\.package_digest_mismatch/iu)
 })
 
 test("bob-bazaar-review README documents generated artifacts, package budget, dependencies, CLI, and trust boundary", () => {
