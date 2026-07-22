@@ -19,9 +19,6 @@
   "activationEvents": [
     "onStartupFinished",
     "onCommand:bobBazaar.openReviewGui",
-    "onCommand:bobBazaar.openCampaignDashboard",
-    "onCommand:bobBazaar.openResultCaptureGui",
-    "onCommand:bobBazaar.openHumanTriageGui",
     "onCommand:bobBazaar.collectReviewContext",
     "onCommand:bobBazaar.loadReviewRules",
     "onCommand:bobBazaar.captureReviewResult",
@@ -44,10 +41,7 @@
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
-      { "command": "bobBazaar.openReviewGui", "title": "Bazaar レビューを開始", "category": "Bob Bazaar レビュー" },
-      { "command": "bobBazaar.openCampaignDashboard", "title": "レビューキャンペーン ダッシュボードを開く", "category": "Bob Bazaar レビュー" },
-      { "command": "bobBazaar.openResultCaptureGui", "title": "レビュー結果の取り込みを開く", "category": "Bob Bazaar レビュー" },
-      { "command": "bobBazaar.openHumanTriageGui", "title": "人による判定を開く", "category": "Bob Bazaar レビュー" },
+      { "command": "bobBazaar.openReviewGui", "title": "レビューを開始", "category": "Bob Bazaar Review" },
       { "command": "bobBazaar.collectReviewContext", "title": "レビュー対象の情報を収集", "category": "Bob Bazaar レビュー" },
       { "command": "bobBazaar.loadReviewRules", "title": "プロジェクト規約を読み込む", "category": "Bob Bazaar レビュー" },
       { "command": "bobBazaar.captureReviewResult", "title": "レビュー結果を取り込む", "category": "Bob Bazaar レビュー" },
@@ -63,8 +57,8 @@
       { "command": "bobBazaar.records.initCampaign", "title": "実績キャンペーンを初期化", "category": "Bob Bazaar レビュー" },
       { "command": "bobBazaar.records.createRecord", "title": "実績記録を作成", "category": "Bob Bazaar レビュー" },
       { "command": "bobBazaar.records.validateRecord", "title": "実績記録を検証", "category": "Bob Bazaar レビュー" },
-      { "command": "bobBazaar.records.createTriage", "title": "人による判定一覧を作成", "category": "Bob Bazaar レビュー" },
-      { "command": "bobBazaar.records.validateTriage", "title": "人による判定内容を検証", "category": "Bob Bazaar レビュー" },
+      { "command": "bobBazaar.records.createTriage", "title": "指摘確認・振り分け一覧を作成", "category": "Bob Bazaar レビュー" },
+      { "command": "bobBazaar.records.validateTriage", "title": "指摘確認・振り分け内容を検証", "category": "Bob Bazaar レビュー" },
       { "command": "bobBazaar.records.generateSummary", "title": "集計レポートを生成", "category": "Bob Bazaar レビュー" }
     ],
     "configuration": {
@@ -89,9 +83,6 @@
     "menus": {
       "commandPalette": [
         { "command": "bobBazaar.openReviewGui" },
-        { "command": "bobBazaar.openCampaignDashboard" },
-        { "command": "bobBazaar.openResultCaptureGui" },
-        { "command": "bobBazaar.openHumanTriageGui" },
         { "command": "bobBazaar.collectReviewContext" },
         { "command": "bobBazaar.loadReviewRules" },
         { "command": "bobBazaar.captureReviewResult" },

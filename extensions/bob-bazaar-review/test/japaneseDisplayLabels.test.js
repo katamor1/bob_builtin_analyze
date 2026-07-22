@@ -4,10 +4,12 @@ const labels = require("../out/ui/displayLabels")
 
 test("Bazaar review values use Japanese display labels", () => {
   assert.equal(labels.reviewRunPhaseLabel("packet"), "レビュー資料")
+  assert.equal(labels.reviewRunPhaseLabel("result"), "レビュー結果取り込み")
+  assert.equal(labels.reviewRunPhaseLabel("triage"), "指摘確認・振り分け")
   assert.equal(labels.reviewRunStatusLabel("in_progress"), "実行中")
   assert.equal(labels.reviewDecisionLabel("needs_investigation"), "要調査")
   assert.equal(labels.targetModeLabel("revisionRange"), "リビジョン範囲")
-  assert.equal(labels.nextReviewActionLabel("humanTriage"), "人による判定")
+  assert.equal(labels.nextReviewActionLabel("humanTriage"), "指摘確認・振り分け")
   assert.equal(labels.extractionStatusLabel("requires_ocr"), "OCR が必要")
   assert.equal(labels.proposalOperationLabel("retire"), "廃止")
   assert.equal(labels.confidenceLabel("high"), "高")

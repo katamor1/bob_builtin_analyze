@@ -17,6 +17,7 @@ import {
   renderCampaignDashboardHtml,
   type CampaignDashboardGuiModel
 } from "./campaignDashboardGuiHtml"
+import type { BazaarReviewStageHost, BazaarReviewStageRequest, BazaarReviewStageService } from "./reviewGuiStages"
 
 export interface CampaignDashboardCommandInput {
   workspaceRoot?: string
@@ -28,93 +29,103 @@ type CampaignDashboardMessage =
   | { type: "campaignDashboard.selectCampaign"; campaignId: string }
   | { type: "campaignDashboard.export" }
 
-export function openBazaarCampaignDashboardGui(
-  context: vscode.ExtensionContext,
-  input: CampaignDashboardCommandInput = {}
-): void {
-  const panel = vscode.window.createWebviewPanel(
-    "bobBazaarCampaignDashboard",
-    "レビューキャンペーン ダッシュボード",
-    vscode.ViewColumn.One,
-    { enableScripts: true, retainContextWhenHidden: true }
-  )
-  const controller = new BazaarCampaignDashboardGuiController(panel, input)
-  context.subscriptions.push(
-    panel.webview.onDidReceiveMessage((message) => controller.handleMessage(message))
-  )
-  void controller.initialize()
+export function createBazaarReviewResultsStage(host: BazaarReviewStageHost, request: BazaarReviewStageRequest = {}): BazaarReviewStageService {
+  const reviewRun = host.getActiveReviewRun()
+  return new BazaarReviewResultsStage(host, {
+    workspaceRoot: reviewRun?.workspaceRoot ?? host.getWorkspaceRoot(),
+    campaignId: reviewRun?.campaignId ?? request.campaignId
+  })
 }
 
-class BazaarCampaignDashboardGuiController {
+class BazaarReviewResultsStage implements BazaarReviewStageService {
   private workspaceRoot?: string
   private campaigns: string[] = []
   private selectedCampaignId?: string
   private dashboard?: CampaignDashboard
   private exportedPaths?: CampaignDashboardGuiModel["exportedPaths"]
+  private operationGeneration = 0
 
   constructor(
-    private readonly panel: vscode.WebviewPanel,
+    private readonly host: BazaarReviewStageHost,
     private readonly input: CampaignDashboardCommandInput
   ) {
     this.selectedCampaignId = input.campaignId
   }
 
   async initialize(): Promise<void> {
+    const operation = this.beginOperation()
     try {
-      this.workspaceRoot = await resolveDashboardWorkspaceRoot(this.input.workspaceRoot)
-      this.campaigns = await listCampaignDashboardCampaigns(this.workspaceRoot)
-      this.selectedCampaignId = selectInitialCampaign(this.selectedCampaignId, this.campaigns)
-      await this.reload("ダッシュボードを読み込みました。")
+      const workspaceRoot = await resolveDashboardWorkspaceRoot(this.input.workspaceRoot)
+      if (!this.isCurrentOperation(operation)) return
+      await this.reload(operation, "レビュー実績を読み込みました。", this.selectedCampaignId, workspaceRoot)
     } catch (error) {
-      this.render(undefined, errorMessage(error))
+      if (this.isCurrentOperation(operation)) this.render(undefined, errorMessage(error))
     }
   }
 
   async handleMessage(rawMessage: unknown): Promise<void> {
     const message = parseCampaignDashboardMessage(rawMessage)
     if (!message) {
-      this.post({ ok: false, message: "不正なダッシュボード操作を拒否しました。画面を再読み込みしてください。" })
+      if (this.host.isActive()) {
+        await this.host.post({ ok: false, message: "不正なレビュー実績操作を拒否しました。画面を再読み込みしてください。" })
+      }
       return
     }
+    const operation = this.beginOperation()
     try {
       if (message.type === "campaignDashboard.refresh") {
-        await this.reload("ダッシュボードを再読み込みしました。")
+        await this.reload(operation, "レビュー実績を再読み込みしました。", this.selectedCampaignId)
       } else if (message.type === "campaignDashboard.selectCampaign") {
         const selected = validateReviewRunSegment(message.campaignId, "campaignId")
         if (!this.campaigns.includes(selected)) throw new Error(`レビューキャンペーンが見つかりません: ${selected}`)
-        this.selectedCampaignId = selected
-        this.exportedPaths = undefined
-        await this.reload(`レビューキャンペーン ${selected} を読み込みました。`)
+        await this.reload(operation, `レビューキャンペーン ${selected} を読み込みました。`, selected)
       } else if (message.type === "campaignDashboard.export") {
-        await this.exportDashboard()
+        await this.exportDashboard(operation)
       }
     } catch (error) {
+      if (!this.isCurrentOperation(operation)) return
       const messageText = errorMessage(error)
       this.render(undefined, messageText)
-      this.post({ ok: false, message: messageText })
+      await this.host.post({ ok: false, message: messageText })
     }
   }
 
-  private async reload(status: string): Promise<void> {
-    const workspaceRoot = requiredText(this.workspaceRoot, "workspaceRoot")
-    this.campaigns = await listCampaignDashboardCampaigns(workspaceRoot)
-    this.selectedCampaignId = selectInitialCampaign(this.selectedCampaignId, this.campaigns)
-    this.dashboard = this.selectedCampaignId
-      ? await generateCampaignDashboard(workspaceRoot, this.selectedCampaignId)
+  private async reload(
+    operation: number,
+    status: string,
+    requestedCampaignId: string | undefined,
+    requestedWorkspaceRoot = this.workspaceRoot
+  ): Promise<void> {
+    const workspaceRoot = requiredText(requestedWorkspaceRoot, "workspaceRoot")
+    const campaigns = await listCampaignDashboardCampaigns(workspaceRoot)
+    if (!this.isCurrentOperation(operation)) return
+    const selectedCampaignId = selectInitialCampaign(requestedCampaignId, campaigns)
+    const dashboard = selectedCampaignId
+      ? await generateCampaignDashboard(workspaceRoot, selectedCampaignId)
       : undefined
+    if (!this.isCurrentOperation(operation)) return
+    this.workspaceRoot = workspaceRoot
+    this.campaigns = campaigns
+    this.selectedCampaignId = selectedCampaignId
+    this.dashboard = dashboard
+    this.exportedPaths = undefined
     this.render(status)
   }
 
-  private async exportDashboard(): Promise<void> {
+  private async exportDashboard(operation: number): Promise<void> {
     const workspaceRoot = requiredText(this.workspaceRoot, "workspaceRoot")
     const campaignId = requiredText(this.selectedCampaignId, "campaignId")
     const dashboard = await generateCampaignDashboard(workspaceRoot, campaignId)
+    if (!this.isCurrentOperation(operation)) return
     const paths = await writeCampaignDashboardArtifacts(workspaceRoot, campaignId, dashboard)
+    if (!this.isCurrentOperation(operation)) return
     this.dashboard = dashboard
     this.exportedPaths = paths
-    this.render("ダッシュボードを JSON／Markdown／CSV へ書き出しました。")
-    await vscode.window.showInformationMessage(`レビューキャンペーン ダッシュボードを書き出しました: ${paths.markdownPath}`)
-    this.post({
+    this.render("レビュー実績を JSON／Markdown／CSV へ書き出しました。")
+    if (!this.isCurrentOperation(operation)) return
+    await vscode.window.showInformationMessage(`レビュー実績を書き出しました: ${paths.markdownPath}`)
+    if (!this.isCurrentOperation(operation)) return
+    await this.host.post({
       ok: true,
       message: [
         "ファイルへの書き出しが完了しました。",
@@ -126,9 +137,11 @@ class BazaarCampaignDashboardGuiController {
   }
 
   private render(status?: string, error?: string): void {
-    this.panel.webview.html = renderCampaignDashboardHtml({
-      cspSource: this.panel.webview.cspSource,
+    if (!this.host.isActive()) return
+    this.host.render(renderCampaignDashboardHtml({
+      cspSource: this.host.cspSource,
       nonce: randomBytes(16).toString("base64"),
+      renderToken: this.host.nextRenderToken(),
       model: {
         workspaceRoot: this.workspaceRoot,
         campaigns: this.campaigns,
@@ -138,11 +151,15 @@ class BazaarCampaignDashboardGuiController {
         status,
         error
       }
-    })
+    }))
   }
 
-  private post(message: Record<string, unknown>): void {
-    void this.panel.webview.postMessage(message)
+  private beginOperation(): number {
+    return ++this.operationGeneration
+  }
+
+  private isCurrentOperation(operation: number): boolean {
+    return this.host.isActive() && operation === this.operationGeneration
   }
 }
 
@@ -155,9 +172,9 @@ async function resolveDashboardWorkspaceRoot(explicitRoot: string | undefined): 
   }
   const folder = await resolveBobWorkspaceFolder({
     allowPick: true,
-    title: "ダッシュボードの Bob ワークスペースを選択"
+    title: "レビュー実績の Bob ワークスペースを選択"
   })
-  if (!folder) throw new Error("ダッシュボードには Bob ワークスペースが必要です。ワークスペースを選択してください。")
+  if (!folder) throw new Error("レビュー実績には Bob ワークスペースが必要です。ワークスペースを選択してください。")
   return validateDashboardWorkspaceRoot(
     folder.uri.fsPath,
     (vscode.workspace.workspaceFolders ?? []).map((candidate) => candidate.uri.fsPath)
@@ -181,7 +198,7 @@ async function validateDashboardWorkspaceRoot(value: string, openWorkspaceRoots:
     }
   }
   const detail = boundaryError instanceof Error ? `: ${boundaryError.message}` : ""
-  throw new Error(`ダッシュボードのワークスペースは、開いているワークスペースフォルダー内にある必要があります: ${value}${detail}`)
+  throw new Error(`レビュー実績のワークスペースは、開いているワークスペースフォルダー内にある必要があります: ${value}${detail}`)
 }
 
 function parseCampaignDashboardMessage(value: unknown): CampaignDashboardMessage | undefined {

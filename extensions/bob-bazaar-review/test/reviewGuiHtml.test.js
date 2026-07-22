@@ -19,7 +19,7 @@ const { createNonce, renderHtml } = require("../out/ui/reviewGuiHtml")
 test("review GUI omits range target revision outside revision range mode", () => {
   const { renderReviewGuiScript } = require("../out/ui/reviewGuiHtmlAssets")
 
-  const script = renderReviewGuiScript("nonce", "{}")
+  const script = renderReviewGuiScript("nonce", "{}", '"render-owner"')
 
   assert.match(
     script,

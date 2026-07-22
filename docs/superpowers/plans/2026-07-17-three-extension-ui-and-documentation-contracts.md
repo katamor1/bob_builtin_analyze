@@ -246,13 +246,13 @@ The retained controller owns one panel, active Review Run identity, stage model,
 
 **Run-contract boundary:** Run engine/provider/artifact/`run.json` contracts are out of scope; Review Run services/schemas remain unchanged.
 
-- [ ] **Step 1: RED-test a single stage-routed panel**
+- [x] **Step 1: RED-test a single stage-routed panel**
 
 Assert `openReviewGui`, capture, triage, and results all render under view type `bobBazaarReviewGui`; only `openBazaarReviewGui()` calls `createWebviewPanel`. Assert stage labels are `レビュー結果取り込み`, `指摘確認・振り分け`, and `レビュー実績`.
 
 Assert the package no longer contributes/activates/registers standalone dashboard/capture/triage GUI commands.
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 ```bash
 cd extensions/bob-bazaar-review
@@ -262,15 +262,15 @@ node --test test/guiFirstSurfaces.test.js test/reviewGuiHtml.test.js test/campai
 
 Expected: FAIL because four panel factories/public routes exist.
 
-- [ ] **Step 3: Move stage ownership into the review controller**
+- [x] **Step 3: Move stage ownership into the review controller**
 
 Extract the existing standalone controllers into stage services/renderers that accept active panel/context. Replace `executeCommand()` hops with `showStage()`. Preserve Review Run validation, exact review ID, capture validation, triage decisions/metrics/finalization, dashboard aggregation/export, and message allowlists.
 
-- [ ] **Step 4: Delete duplicate public routes and migrate terminology**
+- [x] **Step 4: Delete duplicate public routes and migrate terminology**
 
 Remove standalone command registrations/contributions only after all callers route to `showStage()`. Replace user-facing Campaign Dashboard/Result Capture/Human Triage strings with approved terms. Keep internal data/module names where technically useful.
 
-- [ ] **Step 5: Verify and commit**
+- [x] **Step 5: Verify and commit**
 
 ```bash
 cd extensions/bob-bazaar-review

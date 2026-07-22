@@ -17,14 +17,13 @@ import type { ReviewTriage, TriageDecision, TriageItem } from "../records/review
 import {
   correctActiveReviewRunMetrics,
   finalizeReviewRun,
-  loadReviewRun,
   recordTriageCompleted,
-  recordTriageDraft,
-  validateReviewRunCommandInput
+  recordTriageDraft
 } from "../reviewRuns/reviewRunCoordinator"
 import { secondsToMinutes, type ReviewRunMetricCorrection } from "../reviewRuns/reviewRunMetrics"
 import type { ReviewRunCommandInput, ReviewRunContext } from "../reviewRuns/reviewRunTypes"
 import { renderHumanTriageHtml, type HumanTriageGuiModel } from "./humanTriageGuiHtml"
+import type { BazaarReviewStageHost, BazaarReviewStageService } from "./reviewGuiStages"
 
 type HumanTriageAction =
   | "initCampaign"
@@ -48,29 +47,21 @@ interface HumanTriageMessage {
   items?: unknown[]
 }
 
-export function openBazaarHumanTriageGui(
+export function createBazaarHumanTriageStage(
   context: vscode.ExtensionContext,
-  reviewRunInput?: ReviewRunCommandInput
-): void {
-  const panel = vscode.window.createWebviewPanel("bobBazaarHumanTriage", "Bazaar レビューの人による判定", vscode.ViewColumn.One, {
-    enableScripts: true,
-    retainContextWhenHidden: true
-  })
-  const controller = new BazaarHumanTriageGuiController(context, panel, reviewRunInput)
-  context.subscriptions.push(panel.webview.onDidReceiveMessage((message) => controller.handleMessage(message)))
-  void controller.initialize()
+  host: BazaarReviewStageHost
+): BazaarReviewStageService {
+  return new BazaarHumanTriageStage(context, host)
 }
 
-class BazaarHumanTriageGuiController {
+class BazaarHumanTriageStage implements BazaarReviewStageService {
   private model: HumanTriageGuiModel
-  private activeReviewRun?: ReviewRunContext
 
   constructor(
     private readonly context: vscode.ExtensionContext,
-    private readonly panel: vscode.WebviewPanel,
-    private readonly reviewRunInput?: ReviewRunCommandInput
+    private readonly host: BazaarReviewStageHost
   ) {
-    this.model = defaultModel(reviewRunInput)
+    this.model = defaultModel(commandInputForRun(host.getActiveReviewRun()))
   }
 
   async initialize(): Promise<void> {
@@ -91,52 +82,57 @@ class BazaarHumanTriageGuiController {
 
   render(model: HumanTriageGuiModel = this.model): void {
     this.model = model
-    this.panel.webview.html = renderHumanTriageHtml({
-      cspSource: this.panel.webview.cspSource,
+    this.host.render(renderHumanTriageHtml({
+      cspSource: this.host.cspSource,
       nonce: randomBytes(16).toString("base64"),
+      renderToken: this.host.nextRenderToken(),
       model
-    })
+    }))
   }
 
   async handleMessage(rawMessage: unknown): Promise<void> {
     const message = parseHumanTriageMessage(rawMessage)
     if (!message) {
-      this.post({ error: true, message: "不正な画面操作を拒否しました。" })
+      await this.host.post({ error: true, message: "不正な画面操作を拒否しました。" })
       return
     }
     try {
       const input = await this.commandInput(message)
       if (message.action === "initCampaign") {
         const result = await initReviewRecordCampaign(this.context, input)
-        this.post({ ok: true, message: `レビューキャンペーンを初期化しました: ${result.targetRoot}` })
+        await this.host.post({ ok: true, message: `レビューキャンペーンを初期化しました: ${result.targetRoot}` })
       } else if (message.action === "createTriage") {
         const result = await createReviewTriage(input)
-        if (this.activeReviewRun) this.activeReviewRun = await recordTriageDraft(this.activeReviewRun, result.path)
+        const activeReviewRun = this.host.getActiveReviewRun()
+        if (activeReviewRun) {
+          const nextReviewRun = await recordTriageDraft(activeReviewRun, result.path)
+          if (!this.host.commitActiveReviewRun(activeReviewRun, nextReviewRun)) return
+        }
         await this.reloadTriage(input, result.path, result.issues)
       } else if (message.action === "validateTriage") {
         const result = await validateReviewTriageCommand(input)
-        this.post({ ok: result.status === "ok", message: result.issues.join("\n") || "判定内容は検証に合格しました。" })
+        await this.host.post({ ok: result.status === "ok", message: result.issues.join("\n") || "判定内容は検証に合格しました。" })
       } else if (message.action === "createRecord") {
         const result = await createReviewRecord(input)
-        this.post({ ok: result.issues.length === 0, message: [`実績記録を作成しました: ${result.path}`, ...result.issues].join("\n") })
+        await this.host.post({ ok: result.issues.length === 0, message: [`実績記録を作成しました: ${result.path}`, ...result.issues].join("\n") })
       } else if (message.action === "generateSummary") {
         const result = await generateReviewCampaignSummary(input)
-        this.post({ ok: true, message: `集計レポートを作成しました:\n${result.markdownPath}` })
+        await this.host.post({ ok: true, message: `集計レポートを作成しました:\n${result.markdownPath}` })
       } else if (message.action === "saveDecisions") {
         const saved = await this.saveDecisions(input, message.items ?? [])
-        if (saved) this.post({ ok: true, message: "判定内容を保存し、レビュー実行の人による判定工程を完了しました。" })
+        if (saved) await this.host.post({ ok: true, message: "判定内容を保存し、レビュー実行の指摘確認・振り分け工程を完了しました。" })
       } else if (message.action === "saveMetrics") {
         await this.saveMetrics(message)
-        this.post({ ok: true, message: "レビュー時間を保存しました。" })
+        await this.host.post({ ok: true, message: "レビュー時間を保存しました。" })
       } else if (message.action === "finalizeReviewRun") {
         const saved = await this.saveDecisions(input, message.items ?? [], false)
         if (!saved) return
         await this.applyMetrics(message)
-        const reviewRun = requiredReviewRun(this.activeReviewRun)
+        const reviewRun = requiredReviewRun(this.host.getActiveReviewRun())
         const result = await finalizeReviewRun(reviewRun)
-        this.activeReviewRun = result.context
+        if (!this.host.commitActiveReviewRun(reviewRun, result.context)) return
         await this.renderReviewRun(result.context, [], this.model.items)
-        this.post({
+        await this.host.post({
           ok: true,
           message: [
             "レビュー実行を完了しました。",
@@ -146,12 +142,12 @@ class BazaarHumanTriageGuiController {
         })
       }
     } catch (error) {
-      this.post({ error: true, message: error instanceof Error ? error.message : String(error) })
+      await this.host.post({ error: true, message: error instanceof Error ? error.message : String(error) })
     }
   }
 
   private async commandInput(message: HumanTriageMessage): Promise<ReviewRecordCommandInput> {
-    const reviewRun = await this.resolveReviewRun()
+    const reviewRun = this.resolveReviewRun()
     const workspaceRoot = reviewRun?.workspaceRoot ?? await resolveWorkspaceRoot()
     const campaignId = reviewRun?.campaignId ?? textOrDefault(message.campaignId, this.model.campaignId)
     const reviewId = reviewRun?.reviewId ?? textOrDefault(message.reviewId, this.model.reviewId)
@@ -162,15 +158,8 @@ class BazaarHumanTriageGuiController {
     return { workspaceRoot, campaignId, reviewId, reviewResultJsonPath }
   }
 
-  private async resolveReviewRun(): Promise<ReviewRunContext | undefined> {
-    if (this.activeReviewRun) return this.activeReviewRun
-    if (!this.reviewRunInput) return undefined
-    const validatedInput = await validateReviewRunCommandInput(
-      this.reviewRunInput,
-      (vscode.workspace.workspaceFolders ?? []).map((folder) => folder.uri.fsPath)
-    )
-    this.activeReviewRun = await loadReviewRun(validatedInput)
-    return this.activeReviewRun
+  private resolveReviewRun(): ReviewRunContext | undefined {
+    return this.host.getActiveReviewRun()
   }
 
   private async reloadTriage(input: ReviewRecordCommandInput, triagePath: string, issues: string[]): Promise<void> {
@@ -178,8 +167,9 @@ class BazaarHumanTriageGuiController {
     const campaignId = required(input.campaignId, "campaignId")
     const reviewId = required(input.reviewId, "reviewId")
     const triage = await readTriage(workspaceRoot, campaignId, reviewId)
-    if (this.activeReviewRun) {
-      await this.renderReviewRun(this.activeReviewRun, issues, triage.items, triagePath)
+    const activeReviewRun = this.host.getActiveReviewRun()
+    if (activeReviewRun) {
+      await this.renderReviewRun(activeReviewRun, issues, triage.items, triagePath)
       return
     }
     this.render({
@@ -215,8 +205,9 @@ class BazaarHumanTriageGuiController {
     const issues = validateTriage(next, reviewResult)
     const triagePath = path.join(workspaceRoot, ".bob-review-records", "campaigns", campaignId, "records", reviewId, "triage.yaml")
     if (issues.length > 0) {
-      if (this.activeReviewRun) {
-        await this.renderReviewRun(this.activeReviewRun, issues, items, triagePath)
+      const activeReviewRun = this.host.getActiveReviewRun()
+      if (activeReviewRun) {
+        await this.renderReviewRun(activeReviewRun, issues, items, triagePath)
       } else {
         this.render({
           campaignId,
@@ -232,9 +223,11 @@ class BazaarHumanTriageGuiController {
     }
 
     const writtenPath = await writeTriage(workspaceRoot, campaignId, reviewId, next)
-    if (this.activeReviewRun) {
-      this.activeReviewRun = await recordTriageCompleted(this.activeReviewRun, writtenPath)
-      if (renderResult) await this.renderReviewRun(this.activeReviewRun, [], next.items, writtenPath)
+    const activeReviewRun = this.host.getActiveReviewRun()
+    if (activeReviewRun) {
+      const nextReviewRun = await recordTriageCompleted(activeReviewRun, writtenPath)
+      if (!this.host.commitActiveReviewRun(activeReviewRun, nextReviewRun)) return false
+      if (renderResult) await this.renderReviewRun(nextReviewRun, [], next.items, writtenPath)
     } else if (renderResult) {
       this.render({
         campaignId,
@@ -251,16 +244,19 @@ class BazaarHumanTriageGuiController {
 
   private async saveMetrics(message: HumanTriageMessage): Promise<void> {
     await this.applyMetrics(message)
-    await this.renderReviewRun(requiredReviewRun(this.activeReviewRun), [], this.model.items)
+    await this.renderReviewRun(requiredReviewRun(this.host.getActiveReviewRun()), [], this.model.items)
   }
 
   private async applyMetrics(message: HumanTriageMessage): Promise<void> {
-    const reviewRun = requiredReviewRun(await this.resolveReviewRun())
+    const reviewRun = requiredReviewRun(this.resolveReviewRun())
     const correction: ReviewRunMetricCorrection = {}
     if (message.baselineReviewMinutes !== undefined) correction.baselineReviewMinutes = message.baselineReviewMinutes
     if (message.bobReviewMinutes !== undefined) correction.bobReviewMinutes = message.bobReviewMinutes
     if (message.humanTriageMinutes !== undefined) correction.humanTriageMinutes = message.humanTriageMinutes
-    this.activeReviewRun = await correctActiveReviewRunMetrics(reviewRun, correction)
+    const nextReviewRun = await correctActiveReviewRunMetrics(reviewRun, correction)
+    if (!this.host.commitActiveReviewRun(reviewRun, nextReviewRun)) {
+      throw new Error("レビュー実行が別の操作で更新されたため、時間の保存結果を画面へ反映しませんでした。")
+    }
   }
 
   private async renderReviewRun(
@@ -298,8 +294,14 @@ class BazaarHumanTriageGuiController {
     })
   }
 
-  private post(message: Record<string, unknown>): void {
-    void this.panel.webview.postMessage(message)
+}
+
+function commandInputForRun(reviewRun: ReviewRunContext | undefined): ReviewRunCommandInput | undefined {
+  if (!reviewRun) return undefined
+  return {
+    workspaceRoot: reviewRun.workspaceRoot,
+    campaignId: reviewRun.campaignId,
+    reviewId: reviewRun.reviewId
   }
 }
 

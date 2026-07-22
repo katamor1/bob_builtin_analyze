@@ -1,14 +1,15 @@
 const assert = require("node:assert/strict")
 const fs = require("node:fs")
+const Module = require("node:module")
 const path = require("node:path")
 const { test } = require("node:test")
 
 const { extensionRoot } = require("./helpers/sourceReader")
 
-function dashboardFixture() {
+function dashboardFixture(campaignId = "campaign-<one>") {
   return {
     schema_version: "bazaar-campaign-dashboard/v1",
-    campaign_id: "campaign-<one>",
+    campaign_id: campaignId,
     generated_at: "2026-07-12T03:00:00.000Z",
     overview: {
       review_runs_total: 2,
@@ -119,6 +120,7 @@ test("renders a CSP-safe accessible campaign dashboard with fixed actions", () =
   const html = renderCampaignDashboardHtml({
     cspSource: "vscode-resource:",
     nonce: "nonce-dashboard",
+    renderToken: "render-dashboard",
     model: {
       workspaceRoot: "/workspace",
       campaigns: ["campaign-<one>", "campaign-two"],
@@ -128,7 +130,7 @@ test("renders a CSP-safe accessible campaign dashboard with fixed actions", () =
     }
   })
 
-  assert.match(html, /レビューキャンペーン ダッシュボード/)
+  assert.match(html, /レビュー実績/)
   assert.match(html, /id="campaignId"/)
   assert.match(html, /data-action="refresh"/)
   assert.match(html, /data-action="export"/)
@@ -143,11 +145,94 @@ test("renders a CSP-safe accessible campaign dashboard with fixed actions", () =
   assert.match(html, /campaignDashboard\.selectCampaign/)
   assert.match(html, /campaignDashboard\.export/)
   assert.match(html, /nonce-dashboard/)
+  assert.match(html, /render-dashboard/)
   assert.match(html, /100\.0%/)
   assert.match(html, /review-&lt;one&gt;/)
   assert.doesNotMatch(html, /<script>alert\(1\)<\/script>/)
   assert.doesNotMatch(html, /<img src=x onerror=/)
   assert.doesNotMatch(html, /onclick=/)
+})
+
+test("requested campaign is selected without an active Review Run", async () => {
+  const generated = []
+  const { createBazaarReviewResultsStage } = loadDashboardStage({
+    async listCampaignDashboardCampaigns() { return ["campaign-a", "campaign-b"] },
+    async generateCampaignDashboard(_root, campaignId) {
+      generated.push(campaignId)
+      return dashboardFixture(campaignId)
+    }
+  })
+  const host = dashboardHost()
+  const stage = createBazaarReviewResultsStage(host, { campaignId: "campaign-b" })
+
+  await stage.initialize()
+
+  assert.deepEqual(generated, ["campaign-b"])
+  assert.match(host.html, /<option value="campaign-b" selected>/)
+})
+
+test("latest dashboard operation wins when refresh and selection finish out of order", async () => {
+  const oldRefresh = deferred()
+  let holdOldRefresh = false
+  const generated = []
+  const { createBazaarReviewResultsStage } = loadDashboardStage({
+    async listCampaignDashboardCampaigns() { return ["campaign-a", "campaign-b"] },
+    async generateCampaignDashboard(_root, campaignId) {
+      generated.push(campaignId)
+      if (campaignId === "campaign-a" && holdOldRefresh) return oldRefresh.promise
+      return dashboardFixture(campaignId)
+    }
+  })
+  const host = dashboardHost()
+  const stage = createBazaarReviewResultsStage(host, { campaignId: "campaign-a" })
+  await stage.initialize()
+  holdOldRefresh = true
+
+  const refresh = stage.handleMessage({ type: "campaignDashboard.refresh" })
+  await turn()
+  const select = stage.handleMessage({ type: "campaignDashboard.selectCampaign", campaignId: "campaign-b" })
+  await select
+  oldRefresh.resolve(dashboardFixture("campaign-a"))
+  await refresh
+
+  assert.deepEqual(generated, ["campaign-a", "campaign-a", "campaign-b"])
+  assert.match(host.html, /キャンペーン: campaign-b/)
+  assert.doesNotMatch(host.html, /キャンペーン: campaign-a/)
+})
+
+test("inactive export completion has no write render post or notification effects", async () => {
+  const exportBuild = deferred()
+  let exporting = false
+  let writes = 0
+  const informationMessages = []
+  const { createBazaarReviewResultsStage } = loadDashboardStage({
+    async listCampaignDashboardCampaigns() { return ["campaign-a"] },
+    async generateCampaignDashboard(_root, campaignId) {
+      if (exporting) return exportBuild.promise
+      return dashboardFixture(campaignId)
+    },
+    async writeCampaignDashboardArtifacts() {
+      writes += 1
+      return { jsonPath: "dashboard.json", markdownPath: "dashboard.md", csvPath: "dashboard.csv" }
+    },
+    async showInformationMessage(message) { informationMessages.push(message) }
+  })
+  const host = dashboardHost()
+  const stage = createBazaarReviewResultsStage(host, { campaignId: "campaign-a" })
+  await stage.initialize()
+  const renderedBeforeExport = host.renders.length
+  exporting = true
+
+  const pending = stage.handleMessage({ type: "campaignDashboard.export" })
+  await turn()
+  host.active = false
+  exportBuild.resolve(dashboardFixture("campaign-a"))
+  await pending
+
+  assert.equal(writes, 0)
+  assert.equal(host.renders.length, renderedBeforeExport)
+  assert.deepEqual(host.posts, [])
+  assert.deepEqual(informationMessages, [])
 })
 
 test("campaign dashboard controller validates workspace and keeps a fixed message allowlist", () => {
@@ -162,3 +247,70 @@ test("campaign dashboard controller validates workspace and keeps a fixed messag
   assert.match(source, /campaignDashboard\.export/)
   assert.doesNotMatch(source, /executeCommand\(message/)
 })
+
+function dashboardHost() {
+  const host = {
+    active: true,
+    renders: [],
+    posts: [],
+    cspSource: "vscode-resource:",
+    stage: "review-results",
+    isActive() { return host.active },
+    nextRenderToken() { return "dashboard-render-token-" + (host.renders.length + 1) },
+    render(html) {
+      if (!host.active) return false
+      host.renders.push(String(html))
+      return true
+    },
+    async post(message) {
+      if (!host.active) return false
+      host.posts.push(structuredClone(message))
+      return true
+    },
+    getActiveReviewRun() { return undefined },
+    commitActiveReviewRun() { return false },
+    getWorkspaceRoot() { return "/workspace" },
+    async showStage() { return false }
+  }
+  Object.defineProperty(host, "html", { get: () => host.renders.at(-1) ?? "" })
+  return host
+}
+
+function loadDashboardStage(overrides = {}) {
+  const modulePath = require.resolve("../out/ui/campaignDashboardGui")
+  const originalLoad = Module._load
+  delete require.cache[modulePath]
+  Module._load = function load(request, parent, isMain) {
+    if (request === "vscode") {
+      return {
+        workspace: { workspaceFolders: [{ uri: { fsPath: "/workspace" } }] },
+        window: { showInformationMessage: overrides.showInformationMessage ?? (async () => undefined) }
+      }
+    }
+    if (request === "../dashboard/campaignDashboard") {
+      return {
+        listCampaignDashboardCampaigns: overrides.listCampaignDashboardCampaigns,
+        generateCampaignDashboard: overrides.generateCampaignDashboard
+      }
+    }
+    if (request === "../dashboard/campaignDashboardExport") {
+      return { writeCampaignDashboardArtifacts: overrides.writeCampaignDashboardArtifacts ?? (async () => ({})) }
+    }
+    return originalLoad.call(this, request, parent, isMain)
+  }
+  try {
+    return require(modulePath)
+  } finally {
+    Module._load = originalLoad
+  }
+}
+
+function deferred() {
+  let resolve
+  const promise = new Promise((resolvePromise) => { resolve = resolvePromise })
+  return { promise, resolve }
+}
+
+function turn() {
+  return new Promise((resolve) => setImmediate(resolve))
+}

@@ -8,8 +8,8 @@ const recordCommands = [
   ["bobBazaar.records.initCampaign", "実績キャンペーンを初期化"],
   ["bobBazaar.records.createRecord", "実績記録を作成"],
   ["bobBazaar.records.validateRecord", "実績記録を検証"],
-  ["bobBazaar.records.createTriage", "人による判定一覧を作成"],
-  ["bobBazaar.records.validateTriage", "人による判定内容を検証"],
+  ["bobBazaar.records.createTriage", "指摘確認・振り分け一覧を作成"],
+  ["bobBazaar.records.validateTriage", "指摘確認・振り分け内容を検証"],
   ["bobBazaar.records.generateSummary", "集計レポートを生成"]
 ]
 test("Phase 1 review record commands are exposed in package.json", () => {

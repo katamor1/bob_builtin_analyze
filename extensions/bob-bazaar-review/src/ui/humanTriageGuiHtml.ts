@@ -26,6 +26,7 @@ export interface HumanTriageGuiModel {
 export interface RenderHumanTriageHtmlInput {
   cspSource: string
   nonce: string
+  renderToken: string
   model: HumanTriageGuiModel
 }
 
@@ -41,7 +42,7 @@ export function renderHumanTriageHtml(input: RenderHumanTriageHtmlInput): string
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${escapeHtml(input.cspSource)} 'unsafe-inline'; script-src 'nonce-${escapeHtml(input.nonce)}';">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Bazaar レビューの人による判定</title>
+  <title>Bazaar 指摘確認・振り分け</title>
   <style>
     body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); padding: 18px; }
     h1 { font-size: 20px; margin: 0 0 12px; }
@@ -69,7 +70,13 @@ export function renderHumanTriageHtml(input: RenderHumanTriageHtmlInput): string
   </style>
 </head>
 <body>
-  <h1>人による判定</h1>
+  <nav class="actions" aria-label="Bazaar レビュー工程">
+    <button type="button" class="secondary" data-stage="review">レビュー</button>
+    <button type="button" class="secondary" data-stage="review-result-capture">レビュー結果取り込み</button>
+    <button type="button" data-stage="triage" aria-current="page">指摘確認・振り分け</button>
+    <button type="button" class="secondary" data-stage="review-results">レビュー実績</button>
+  </nav>
+  <h1>指摘確認・振り分け</h1>
   <section class="card">
     <h2>対象</h2>
     ${model.reviewRunBound ? `<div class="muted">現在のレビューから引き継いだ値です。キャンペーン、レビュー、結果ファイルの再入力は不要です。</div>` : ""}
@@ -111,8 +118,15 @@ export function renderHumanTriageHtml(input: RenderHumanTriageHtmlInput): string
   </section>
   <script nonce="${escapeHtml(input.nonce)}">
     const vscode = acquireVsCodeApi();
+    const renderToken = ${JSON.stringify(input.renderToken)};
+    const postMessage = (message) => vscode.postMessage({ ...message, renderToken });
     const status = document.getElementById('status');
     document.addEventListener('click', (event) => {
+      const stageButton = event.target && event.target.closest ? event.target.closest('button[data-stage]') : undefined;
+      if (stageButton) {
+        postMessage({ type: 'bazaarReview.navigate', fromStage: 'triage', stage: stageButton.dataset.stage });
+        return;
+      }
       const button = event.target && event.target.closest ? event.target.closest('button[data-action]') : undefined;
       if (!button || button.disabled) return;
       const action = button.dataset.action;
@@ -126,7 +140,7 @@ export function renderHumanTriageHtml(input: RenderHumanTriageHtmlInput): string
         }
       }
       button.disabled = true;
-      vscode.postMessage({
+      postMessage({
         type: 'bazaarHumanTriage.action',
         action,
         campaignId: document.getElementById('campaignId').value,
@@ -191,7 +205,7 @@ function renderMetrics(model: HumanTriageGuiModel): string {
     <div class="row">
       <div class="field"><label for="baselineReviewMinutes">従来レビュー</label><input id="baselineReviewMinutes" type="number" min="0" step="0.1" value="${numberAttribute(model.baselineReviewMinutes)}"></div>
       <div class="field"><label for="bobReviewMinutes">Bob レビュー</label><input id="bobReviewMinutes" type="number" min="0" step="0.1" value="${numberAttribute(model.bobReviewMinutes)}"></div>
-      <div class="field"><label for="humanTriageMinutes">人による判定</label><input id="humanTriageMinutes" type="number" min="0" step="0.1" value="${numberAttribute(model.humanTriageMinutes)}"></div>
+      <div class="field"><label for="humanTriageMinutes">指摘確認・振り分け</label><input id="humanTriageMinutes" type="number" min="0" step="0.1" value="${numberAttribute(model.humanTriageMinutes)}"></div>
     </div>
     <div class="actions"><button type="button" class="secondary" data-action="saveMetrics">レビュー時間を保存</button></div>
   </section>`

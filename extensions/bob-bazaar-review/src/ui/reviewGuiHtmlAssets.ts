@@ -30,9 +30,9 @@ export const REVIEW_GUI_BODY = `
       <div class="wizard-step"><strong>レビューキャンペーン</strong><div class="small">レビュー実行の保存先</div></div>
       <div class="wizard-step"><strong>レビュー対象</strong><div class="small">1リビジョン／範囲／未コミット差分</div></div>
       <div class="wizard-step"><strong>レビュー資料</strong><div class="small">Bob コンテキストへ追加</div></div>
-      <div class="wizard-step"><strong>結果の取り込み</strong><div class="small">同じレビュー ID で保存</div></div>
-      <div class="wizard-step"><strong>人による判定</strong><div class="small">指摘を採用・却下・保留</div></div>
-      <div class="wizard-step"><strong>実績保存・集計</strong><div class="small">実績記録と集計レポートを作成</div></div>
+      <div class="wizard-step"><strong>レビュー結果取り込み</strong><div class="small">同じレビュー ID で保存</div></div>
+      <div class="wizard-step"><strong>指摘確認・振り分け</strong><div class="small">指摘を採用・却下・保留</div></div>
+      <div class="wizard-step"><strong>レビュー実績</strong><div class="small">実績記録と集計レポートを作成</div></div>
     </div>
     <div class="row" style="margin-top:12px">
       <div class="field"><label class="small" for="campaignId">キャンペーン ID <code>campaign_id</code></label><input id="campaignId" type="text" value="phase1-bazaar-review-uat-001"></div>
@@ -40,9 +40,9 @@ export const REVIEW_GUI_BODY = `
     </div>
     <div id="runState" class="small">レビュー実行はまだ開始されていません。</div>
     <div class="row" style="margin-top:12px">
-      <button class="secondary" id="openResultCapture">レビュー結果の取り込みを開く</button>
-      <button class="secondary" id="openHumanTriage">人による判定を開く</button>
-      <button class="secondary" id="openCampaignDashboard">レビューキャンペーン ダッシュボードを開く</button>
+      <button class="secondary" id="openResultCapture">レビュー結果取り込み</button>
+      <button class="secondary" id="openHumanTriage">指摘確認・振り分け</button>
+      <button class="secondary" id="openCampaignDashboard">レビュー実績</button>
     </div>
   </div>
 
@@ -103,15 +103,18 @@ export const REVIEW_GUI_BODY = `
   </div>
 `
 
-export function renderReviewGuiScript(nonce: string, initialTargetJson: string): string {
-  return `<script nonce="${nonce}">
+export function renderReviewGuiScript(nonce: string, initialTargetJson: string, renderTokenJson: string): string {
+  const script = `<script nonce="${nonce}">
     const vscode = acquireVsCodeApi()
+    const rawPostMessage = vscode.postMessage.bind(vscode)
+    const renderToken = ${renderTokenJson}
+    const postMessage = (message) => rawPostMessage({ ...message, renderToken })
     const $ = (id) => document.getElementById(id)
     const initialTarget = ${initialTargetJson}
     const phases = ["target", "packet", "result", "triage", "record", "summary"]
-    const phaseLabels = { target: "レビュー対象", packet: "レビュー資料", result: "結果の取り込み", triage: "人による判定", record: "実績記録", summary: "集計レポート" }
+    const phaseLabels = { target: "レビュー対象", packet: "レビュー資料", result: "レビュー結果取り込み", triage: "指摘確認・振り分け", record: "実績記録", summary: "集計レポート" }
     const phaseStatusLabels = { not_started: "未開始", in_progress: "実行中", completed: "完了", failed: "失敗", blocked: "続行不可" }
-    const nextActionLabels = { review: "レビューを実行", resultCapture: "結果を取り込む", humanTriage: "人による判定", finalize: "完了処理", none: "なし" }
+    const nextActionLabels = { review: "レビューを実行", resultCapture: "レビュー結果取り込み", humanTriage: "指摘確認・振り分け", finalize: "完了処理", none: "なし" }
     const targetModeLabels = { singleRevision: "1リビジョン", revisionRange: "リビジョン範囲", workingTreeSinceRevision: "未コミット差分" }
     const labelOrUnknown = (value, labels) => labels[value] || "不明（" + String(value || "") + "）"
     let loaded = false
@@ -278,4 +281,5 @@ export function renderReviewGuiScript(nonce: string, initialTargetJson: string):
     applyInitialTarget(initialTarget)
     vscode.postMessage({ type: "ready" })
   </script>`
+  return script.replaceAll("vscode.postMessage(", "postMessage(")
 }

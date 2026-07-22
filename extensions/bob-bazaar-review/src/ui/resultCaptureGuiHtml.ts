@@ -3,6 +3,7 @@ import type { ReviewRunCommandInput } from "../reviewRuns/reviewRunTypes"
 export interface RenderResultCaptureHtmlInput {
   cspSource: string
   nonce: string
+  renderToken: string
   reviewRun?: ReviewRunCommandInput
 }
 
@@ -13,7 +14,7 @@ export function renderResultCaptureHtml(input: RenderResultCaptureHtmlInput): st
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${escapeHtml(input.cspSource)} 'unsafe-inline'; script-src 'nonce-${escapeHtml(input.nonce)}';">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Bazaar レビュー結果の取り込み</title>
+  <title>Bazaar レビュー結果取り込み</title>
   <style>
     body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); padding: 18px; }
     h1 { font-size: 20px; margin: 0 0 12px; }
@@ -31,7 +32,13 @@ export function renderResultCaptureHtml(input: RenderResultCaptureHtmlInput): st
   </style>
 </head>
 <body>
-  <h1>レビュー結果の取り込み</h1>
+  <nav class="actions" aria-label="Bazaar レビュー工程">
+    <button type="button" class="secondary" data-stage="review">レビュー</button>
+    <button type="button" data-stage="review-result-capture" aria-current="page">レビュー結果取り込み</button>
+    <button type="button" class="secondary" data-stage="triage">指摘確認・振り分け</button>
+    <button type="button" class="secondary" data-stage="review-results">レビュー実績</button>
+  </nav>
+  <h1>レビュー結果取り込み</h1>
   ${renderReviewRunCard(input.reviewRun)}
   <section class="card">
     <h2>Bob のレビュー結果</h2>
@@ -39,7 +46,7 @@ export function renderResultCaptureHtml(input: RenderResultCaptureHtmlInput): st
     <div class="actions">
       <button type="button" data-action="captureCandidates">見つかった候補を取り込む</button>
       <button type="button" class="secondary" data-action="validateActive">開いているレビュー結果を検証</button>
-      <button type="button" class="secondary" data-action="openTriage">人による判定へ進む</button>
+      <button type="button" class="secondary" data-action="openTriage">指摘確認・振り分けへ進む</button>
     </div>
   </section>
   <section class="card">
@@ -55,12 +62,19 @@ export function renderResultCaptureHtml(input: RenderResultCaptureHtmlInput): st
   </section>
   <script nonce="${escapeHtml(input.nonce)}">
     const vscode = acquireVsCodeApi();
+    const renderToken = ${JSON.stringify(input.renderToken)};
+    const postMessage = (message) => vscode.postMessage({ ...message, renderToken });
     const status = document.getElementById('status');
     document.addEventListener('click', (event) => {
+      const stageButton = event.target && event.target.closest ? event.target.closest('button[data-stage]') : undefined;
+      if (stageButton) {
+        postMessage({ type: 'bazaarReview.navigate', fromStage: 'review-result-capture', stage: stageButton.dataset.stage });
+        return;
+      }
       const button = event.target && event.target.closest ? event.target.closest('button[data-action]') : undefined;
       if (!button) return;
       button.disabled = true;
-      vscode.postMessage({
+      postMessage({
         type: 'bazaarResultCapture.action',
         action: button.dataset.action,
         text: document.getElementById('manualText').value
@@ -84,7 +98,7 @@ function renderReviewRunCard(reviewRun: ReviewRunCommandInput | undefined): stri
   return `<section class="card">
     <h2>現在のレビュー</h2>
     <div><code>${escapeHtml(reviewRun.campaignId)}</code> / <code>${escapeHtml(reviewRun.reviewId)}</code></div>
-    <div class="muted">最終 JSON にはこのレビュー ID を使用してください。保存後は同じレビューの「人による判定」を開きます。</div>
+    <div class="muted">最終 JSON にはこのレビュー ID を使用してください。保存後は同じレビューの「指摘確認・振り分け」を開きます。</div>
   </section>`
 }
 

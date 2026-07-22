@@ -10,11 +10,11 @@
 Review Run開始
   -> Bazaar review packet保存
   -> review-result JSON / Markdown保存
-  -> Human Triage確定
+  -> 指摘確認・振り分け確定
   -> metrics補正
   -> record.yaml作成・検証
   -> summary.json / summary.md更新
-  -> Campaign Dashboard生成
+  -> レビュー実績生成
   -> dashboard.json / dashboard.md / dashboard.csv export
 ```
 
@@ -31,7 +31,7 @@ test/reviewRunV3Acceptance.test.js
 1. `startReviewRun()`でcampaign / review identityを確定する。
 2. `recordReviewPacket()`で`review-packet.md`を保存する。
 3. validなreview-result JSON / Markdownを保存し、`recordReviewResult()`で同じrunへ関連付ける。
-4. validな`triage.yaml`を保存し、`recordTriageCompleted()`でHuman Triageを完了する。
+4. validな`triage.yaml`を保存し、`recordTriageCompleted()`で指摘確認・振り分けを完了する。
 5. baseline時間を補正し、`finalizeReviewRun()`でrecordとsummaryを生成する。
 6. persisted `review-run.json`と`record.yaml`を再読込し、identity・phase・metricsを検証する。
 7. `generateCampaignDashboard()`でcampaignを集計する。
@@ -48,18 +48,18 @@ test/reviewRunV3Acceptance.test.js
 
 ### 3.2 Phase
 
-- valid Human Triageなしでrecord / summaryを確定しない。
+- validな指摘確認・振り分けなしでrecord / summaryを確定しない。
 - finalize後は`status=completed`、`phase=completed`である。
 - `target / packet / result / triage / record / summary`がすべてcompletedである。
 
 ### 3.3 Metrics
 
 - finalized metricsは`record.yaml`をsource of truthとする。
-- 自動計測されたBob review / Human Triage時間を分へ変換する。
+- 自動計測されたBob review / 指摘確認・振り分け時間を分へ変換する。
 - baseline入力済みの場合だけ推定削減時間を意味のある値として扱う。
 - Dashboardのtime totalはfinalized recordと一致する。
 
-### 3.4 Human Triage
+### 3.4 指摘確認・振り分け
 
 - finding decisionはvalidな`triage.yaml`だけから集計する。
 - accepted findingはDashboardのaccepted件数とrule trendへ反映する。
@@ -67,7 +67,7 @@ test/reviewRunV3Acceptance.test.js
 
 ### 3.5 Evidence immutability
 
-Campaign Dashboardのrefresh / exportは、次のbytesを変更してはならない。
+レビュー実績のrefresh / exportは、次のbytesを変更してはならない。
 
 - `review-run.json`
 - `review-packet.md`
@@ -116,7 +116,7 @@ Review Run v3は次の順で統合する。
 ```text
 PR #76  Iteration 1: Contextと画面間handoff
   -> PR #79  Iteration 2: Resume / metrics / finalize / recovery
-  -> PR #83  Iteration 3: Campaign Dashboard
+  -> PR #83  Iteration 3: レビュー実績
   -> PR #85  Stack acceptance / release evidence
 ```
 

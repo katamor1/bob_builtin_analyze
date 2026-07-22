@@ -24,6 +24,7 @@ export interface CampaignDashboardGuiModel {
 export interface RenderCampaignDashboardHtmlInput {
   cspSource: string
   nonce: string
+  renderToken: string
   model: CampaignDashboardGuiModel
 }
 
@@ -36,7 +37,7 @@ export function renderCampaignDashboardHtml(input: RenderCampaignDashboardHtmlIn
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${escapeHtml(input.cspSource)} 'unsafe-inline'; script-src 'nonce-${escapeHtml(input.nonce)}';">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>レビューキャンペーン ダッシュボード</title>
+  <title>Bazaar レビュー実績</title>
   <style>
     body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); padding: 18px; }
     h1 { font-size: 22px; margin: 0 0 8px; }
@@ -65,8 +66,14 @@ export function renderCampaignDashboardHtml(input: RenderCampaignDashboardHtmlIn
   </style>
 </head>
 <body>
-  <h1>レビューキャンペーン ダッシュボード</h1>
-  <div class="muted">レビュー実行、人による判定、規約、変更種別、所要時間を保存済み成果物から集計します。</div>
+  <nav class="toolbar" aria-label="Bazaar レビュー工程">
+    <button type="button" class="secondary" data-stage="review">レビュー</button>
+    <button type="button" class="secondary" data-stage="review-result-capture">レビュー結果取り込み</button>
+    <button type="button" class="secondary" data-stage="triage">指摘確認・振り分け</button>
+    <button type="button" data-stage="review-results" aria-current="page">レビュー実績</button>
+  </nav>
+  <h1>レビュー実績</h1>
+  <div class="muted">レビュー実行、指摘確認・振り分け、規約、変更種別、所要時間を保存済み成果物から集計します。</div>
   <div class="toolbar">
     <div class="field">
       <label for="campaignId" class="muted">キャンペーン ID <code>campaign_id</code></label>
@@ -83,16 +90,23 @@ export function renderCampaignDashboardHtml(input: RenderCampaignDashboardHtmlIn
   <div id="status" class="status ${model.error ? "error" : model.status ? "ok" : "muted"}">${escapeHtml(model.error ?? model.status ?? "")}</div>
   <script nonce="${escapeHtml(input.nonce)}">
     const vscode = acquireVsCodeApi();
+    const renderToken = ${JSON.stringify(input.renderToken)};
+    const postMessage = (message) => vscode.postMessage({ ...message, renderToken });
     const campaign = document.getElementById('campaignId');
     campaign.addEventListener('change', () => {
-      vscode.postMessage({ type: 'campaignDashboard.selectCampaign', campaignId: campaign.value });
+      postMessage({ type: 'campaignDashboard.selectCampaign', campaignId: campaign.value });
     });
     document.addEventListener('click', (event) => {
+      const stageButton = event.target && event.target.closest ? event.target.closest('button[data-stage]') : undefined;
+      if (stageButton) {
+        postMessage({ type: 'bazaarReview.navigate', fromStage: 'review-results', stage: stageButton.dataset.stage });
+        return;
+      }
       const button = event.target && event.target.closest ? event.target.closest('button[data-action]') : undefined;
       if (!button || button.disabled) return;
       const action = button.dataset.action;
-      if (action === 'refresh') vscode.postMessage({ type: 'campaignDashboard.refresh' });
-      if (action === 'export') vscode.postMessage({ type: 'campaignDashboard.export' });
+      if (action === 'refresh') postMessage({ type: 'campaignDashboard.refresh' });
+      if (action === 'export') postMessage({ type: 'campaignDashboard.export' });
     });
     window.addEventListener('message', (event) => {
       const message = event.data || {};
@@ -120,7 +134,7 @@ function renderDashboard(dashboard: CampaignDashboard): string {
     <div class="kpis">
       ${kpi("従来レビュー", overview.baseline_review_minutes_total, "分")}
       ${kpi("Bob レビュー", overview.bob_review_minutes_total, "分")}
-      ${kpi("人による判定", overview.human_triage_minutes_total, "分")}
+      ${kpi("指摘確認・振り分け", overview.human_triage_minutes_total, "分")}
       ${kpi("推定削減時間", overview.estimated_minutes_saved, "分")}
     </div>
     <h2>注意事項</h2>
@@ -152,7 +166,7 @@ function kpi(label: string, value: string | number, suffix = ""): string {
 function renderRunTable(runs: CampaignDashboardRun[], pending: boolean): string {
   if (runs.length === 0) return `<div class="empty">${pending ? "判定待ちはありません" : "レビュー実行はありません"}</div>`
   return `<div class="table-wrap"><table>
-    <thead><tr><th>レビュー ID</th><th>状態</th><th>変更種別</th><th>人による判定</th><th>形式検証</th><th>次の操作</th><th>所要時間</th><th>更新日時</th></tr></thead>
+    <thead><tr><th>レビュー ID</th><th>状態</th><th>変更種別</th><th>指摘確認・振り分け</th><th>形式検証</th><th>次の操作</th><th>所要時間</th><th>更新日時</th></tr></thead>
     <tbody>${runs.map((run) => `<tr>
       <td><code>${escapeHtml(run.review_id)}</code></td>
       <td>${escapeHtml(reviewRunStatusLabel(run.status))}</td>

@@ -1,13 +1,8 @@
 # Review Run command 引数境界
 
-## 1. 対象 command
+## 1. 対象境界
 
-次の既存 command は、Review Runから開く場合に任意のcommand引数を受け取る。
-
-```text
-bobBazaar.openResultCaptureGui
-bobBazaar.openHumanTriageGui
-```
+レビュー結果取り込みと指摘確認・振り分けは、`bobBazaar.openReviewGui`で開いた単一panel内のstageである。独立GUI commandは公開しない。
 
 引数形は次である。
 
@@ -19,11 +14,11 @@ interface ReviewRunCommandInput {
 }
 ```
 
-引数なしのstandalone動作は維持する。
+主GUIで未完了Review Runを再開するとき、このidentityを検証してactive contextへ束縛する。
 
 ## 2. workspaceRoot検証
 
-VS Code commandは別の拡張機能からも呼び出せるため、command引数を内部データとして信頼しない。
+Webview messageは改ざんできるため、再開要求の値を内部データとして信頼しない。
 
 Review Run bound modeでartifactを読み書きする前に、`workspaceRoot`が現在openされているいずれかのworkspace folderと同一、またはその配下であることを確認する。
 
@@ -38,7 +33,7 @@ workspace内の合法なdot-prefixed child、たとえば`..project`は親参照
 
 ## 3. ID再検証
 
-command boundaryでは`campaignId`と`reviewId`も再検証する。
+stage遷移境界では`campaignId`と`reviewId`も再検証する。
 
 - path separator
 - Windows禁止文字
@@ -50,10 +45,10 @@ command boundaryでは`campaignId`と`reviewId`も再検証する。
 
 ## 4. 適用箇所
 
-Result CaptureとHuman Triageは、受け取った引数をそのまま`loadReviewRun`へ渡さない。
+レビュー結果取り込みと指摘確認・振り分けは、主controllerが検証・読込み済みのactive Review Runだけを受け取る。
 
 ```text
-command input
+resume message
   -> open workspace boundary validation
   -> campaign/review ID validation
   -> review-run.json load
@@ -71,4 +66,4 @@ GUIに表示する値はHTML escapeし、Webview actionは既存allowlistを維�
 - workspace外rootを拒否する。
 - unsafe campaign/review IDを拒否する。
 - `..project`のようなdot-prefixed childを許可する。
-- Result CaptureとHuman Triageがvalidation helperを経由する。
+- 主GUIのresumeと各stageがvalidation helperを経由し、exact Review Run identityを維持する。

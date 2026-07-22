@@ -2,7 +2,7 @@
 
 ## 1. 目的
 
-Iteration 1 は、Bazaar Review GUI、Result Capture、Human Triage を、1つの永続化された **Review Run** として接続する。
+Iteration 1 は、Bazaar Review GUIのレビュー結果取り込み、指摘確認・振り分けを、1つの永続化された **Review Run** として接続する。
 
 標準フローでは、利用者が画面ごとに次を再入力しないことを目標とする。
 
@@ -19,11 +19,11 @@ Bazaar target を取得
   -> review packet を保存
   -> Bob context へ追加
   -> review-result を検証・保存
-  -> 同じ Review Run の Human Triage を開く
+  -> 同じ Review Run の指摘確認・振り分けへ進む
   -> triage 雛形を保存
 ```
 
-中断 run の一覧・再開、時間計測、record / summary 一括 finalize、legacy recovery、Campaign Dashboard は Iteration 2 以降とする。
+中断 run の一覧・再開、時間計測、record / summary 一括 finalize、legacy recovery、レビュー実績は Iteration 2 以降とする。
 
 ## 2. Review Run artifact
 
@@ -149,15 +149,15 @@ Windowsで既存fileへのrenameが拒否された場合のみ、既存destinati
 
 ## 6. Review GUI
 
-`Bob Bazaar Review: GUI を開く` は Wizard v3 として次を表示する。
+`Bob Bazaar Review: レビューを開始` は次を単一panel内に表示する。
 
 - `campaign_id`
 - `review_id`
 - target mode / revision入力
 - project rules利用有無
 - Review Run状態
-- Result Captureへの導線
-- Human Triageへの導線
+- レビュー結果取り込みへの導線
+- 指摘確認・振り分けへの導線
 
 ### 6.1 target取得
 
@@ -187,11 +187,9 @@ packetには次の契約を含める。
 - output_contract: Use this exact review_id in the final review-result JSON.
 ```
 
-## 7. Result Capture
+## 7. レビュー結果取り込み
 
-`bobBazaar.openResultCaptureGui` は従来通り引数なしで利用できる。
-
-Review Runから開く場合は、次をcommand引数として受け取る。
+レビュー結果取り込みは主GUI内のstageとして動作する。Review Runを再開すると、主controllerが次のidentityを検証してstageへ渡す。
 
 ```ts
 interface ReviewRunCommandInput {
@@ -203,22 +201,20 @@ interface ReviewRunCommandInput {
 
 Review Run bound modeでは次を行う。
 
-1. command引数の`workspaceRoot`がopen workspace内であることとIDの安全性を確認する。
+1. resume入力の`workspaceRoot`がopen workspace内であることとIDの安全性を確認する。
 2. persisted `review-run.json`を読み直す。
 3. active Review Runの`workspaceRoot`をcapture保存先に使う。
 4. Bob出力を既存validatorで検証し、`expectedReviewId`としてactive Review Runの`reviewId`を渡す。
 5. captured `review_id`が不一致なら、JSON / Markdown / metadataを保存せずvalidation errorを返す。
 6. 一致時だけreview-result artifactsを保存し、そのpathをrunへ保存する。
 7. runを`result` phaseへ更新する。
-8. 同じReview Run引数でHuman Triageを開く。
+8. 同じReview Run identityで指摘確認・振り分けへ進む。
 
 captured `review_id`が一致しない場合は、暗黙補正、自動rename、別ID artifactの保存を行わない。保存後の関連付け処理でも同じIDを再確認する。
 
-## 8. Human Triage
+## 8. 指摘確認・振り分け
 
-`bobBazaar.openHumanTriageGui` も引数なしのstandalone modeを維持する。
-
-Review Run bound modeでは、command引数のworkspace境界とIDを再検証した後、次の値をread-only表示する。
+active Review Runのworkspace境界とIDを確認した後、次の値をread-only表示する。
 
 - `campaign_id`
 - `review_id`
@@ -232,12 +228,11 @@ Review Run bound modeでは、command引数のworkspace境界とIDを再検証�
 
 次を維持する。
 
-- 既存command ID
+- 非GUI workflow command ID
 - workflow action provider ID
 - `.bob/review/results` artifact path
 - `.bob-review-records` record / triage / summary形式
-- Result Capture standalone mode
-- Human Triage standalone mode
+- 単一主GUIのstage route
 - Bazaar CLIの`--no-aliases`
 - MCPのreadonly既定値
 - Webview CSP nonce
@@ -286,9 +281,9 @@ Review Run bound modeでは、command引数のworkspace境界とIDを再検証�
 - `guiFirstSurfaces.test.js`
   - Wizard v3表示
   - command context handoff
-  - Result Capture active run表示
+  - レビュー結果取り込みのactive run表示
   - `expectedReviewId` wiring
-  - Human Triage read-only identity
+  - 指摘確認・振り分けのread-only identity
   - CSP / inline handler回帰
 
 ## 11. UAT
@@ -300,8 +295,8 @@ Review Run bound modeでは、command引数のworkspace境界とIDを再検証�
 3. revisionを指定して対象情報を取得する。
 4. 提案review IDを確認する。
 5. Review Runを開始する。
-6. Bob出力JSONをResult Captureで保存する。
-7. 自動で開いたHuman Triageからtriage雛形を生成する。
+6. Bob出力JSONをレビュー結果取り込みで保存する。
+7. 自動で進んだ指摘確認・振り分けからtriage雛形を生成する。
 
 合格条件:
 
@@ -320,12 +315,12 @@ Review Run bound modeでは、command引数のworkspace境界とIDを再検証�
 - active Review Runは`packet` phaseのままになる。
 - 別IDのartifactをactive runへ関連付けない。
 
-### UAT-03 standalone互換性
+### UAT-03 単一GUI stage遷移
 
-1. Command PaletteからResult Captureを直接開く。
-2. Command PaletteからHuman Triageを直接開く。
+1. Command Paletteから`Bob Bazaar Review: レビューを開始`を開く。
+2. レビュー結果取り込み、指摘確認・振り分け、レビュー実績を順に切り替える。
 
 合格条件:
 
-- 従来通りworkspaceやIDを選択・入力できる。
-- Review Run引数がなくてもcommandが動作する。
+- すべて同じpanelとactive Review Run identityを使う。
+- 独立GUI commandやpanelを作成しない。

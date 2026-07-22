@@ -46,7 +46,7 @@ export interface CampaignDashboardArtifactPaths {
 export function renderCampaignDashboardMarkdown(dashboard: CampaignDashboard): string {
   const overview = dashboard.overview
   const lines = [
-    "# IBM Bob Bazaar Campaign Dashboard",
+    "# IBM Bob Bazaar レビュー実績",
     "",
     `- campaign_id: ${markdownCell(dashboard.campaign_id)}`,
     `- generated_at: ${markdownCell(dashboard.generated_at)}`,
@@ -73,7 +73,7 @@ export function renderCampaignDashboardMarkdown(dashboard: CampaignDashboard): s
     `| Finding rejection rate | ${formatRate(overview.finding_rejection_rate)} |`,
     `| Finding resolution rate | ${formatRate(overview.finding_resolution_rate)} |`,
     "",
-    "## Human Triage Pending",
+    "## 指摘確認・振り分け待ち",
     ""
   ]
 
@@ -122,7 +122,7 @@ export function renderCampaignDashboardMarkdown(dashboard: CampaignDashboard): s
     "|---|---:|",
     `| Baseline review | ${overview.baseline_review_minutes_total} |`,
     `| Bob review | ${overview.bob_review_minutes_total} |`,
-    `| Human Triage | ${overview.human_triage_minutes_total} |`,
+    `| 指摘確認・振り分け | ${overview.human_triage_minutes_total} |`,
     `| Estimated saved | ${overview.estimated_minutes_saved} |`,
     "",
     "## Warnings",
@@ -204,7 +204,7 @@ export async function writeCampaignDashboardArtifacts(
     jsonText = `${JSON.stringify(dashboard, null, 2)}\n`
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    throw new Error(`Could not serialize Campaign Dashboard JSON: ${message}`)
+    throw new Error(`レビュー実績 JSON を生成できませんでした: ${message}`)
   }
   const markdownText = renderCampaignDashboardMarkdown(dashboard)
   const csvText = renderCampaignDashboardCsv(dashboard)
@@ -262,7 +262,7 @@ export async function writeCampaignDashboardArtifacts(
       }
     }
     if (rollbackFailures.length > 0) {
-      throw new Error(`Campaign Dashboard export failed: ${errorMessage(error)}; rollback could not restore ${rollbackFailures.join("; ")}`)
+      throw new Error(`レビュー実績の書き出しに失敗しました: ${errorMessage(error)}; rollback could not restore ${rollbackFailures.join("; ")}`)
     }
     throw error
   } finally {
