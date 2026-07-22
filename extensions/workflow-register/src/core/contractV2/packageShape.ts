@@ -1207,8 +1207,7 @@ function isSemverRange(value: string): boolean {
   const parts = value.split("||")
   if (parts.some((part) => part.trim().length === 0)) return false
   const numeric = "(?:0|[1-9]\\d*)"
-  const partialPart = `(?:${numeric}|[xX*])`
-  const partial = `v?${partialPart}(?:\\.${partialPart}){0,2}`
+  const partial = `v?(?:[xX*]|${numeric}(?:\\.(?:[xX*]|${numeric}(?:\\.(?:[xX*]|${numeric}))?))?)`
   const prereleaseIdentifier = `(?:${numeric}|\\d*[A-Za-z-][0-9A-Za-z-]*)`
   const prerelease = `(?:-${prereleaseIdentifier}(?:\\.${prereleaseIdentifier})*)?`
   const buildIdentifier = "[0-9A-Za-z-]+"
