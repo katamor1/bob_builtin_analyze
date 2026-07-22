@@ -449,26 +449,198 @@ node --test test/workflowContractV2Predicate.test.js
 - Create: `extensions/workflow-register/test/workflowContractV2ProviderRegistry.test.js`
 - Modify: `extensions/workflow-register/src/core/actionRegistry.ts`
 - Modify: `extensions/workflow-register/src/core/actionTypes.ts`
-- Modify: `extensions/workflow-register/package.json`
-- Modify: `extensions/workflow-register/package-lock.json`
 
 **Interface**
 
 ```ts
-registerWorkflowProviderContract(input: WorkflowProviderContractInput): void
-snapshotWorkflowProviderCatalog(): WorkflowProviderCatalog
-bindWorkflowProvider(input: BindWorkflowProviderInput): BindWorkflowProviderResult
+export interface WorkflowProviderRegistrationInput {
+  readonly sourceId: string
+  readonly contract: WorkflowProviderContractInput
+}
+
+export interface WorkflowProviderRegistration {
+  dispose(): void
+}
+
+export interface WorkflowProviderSchemaEvidence {
+  readonly id: string
+  readonly bytes: number
+  readonly digest: Sha256Digest
+}
+
+export type WorkflowProviderOutputEvidence =
+  | { readonly kind: "unit" }
+  | { readonly kind: "value"; readonly schema: WorkflowProviderSchemaEvidence }
+
+export interface WorkflowProviderArtifactWriter {
+  writeArtifact(input: {
+    readonly id: string
+    readonly bytes: Uint8Array
+  }): Promise<void>
+}
+
+export type WorkflowProviderIdempotencyInput =
+  | { readonly mode: "idempotent" }
+  | { readonly mode: "key-required"; readonly key: string }
+  | { readonly mode: "non-idempotent" }
+
+export type WorkflowProviderEffectInput =
+  | { readonly kind: "none" }
+  | {
+      readonly kind: "workspace-write"
+      readonly artifacts: WorkflowProviderArtifactWriter
+    }
+  | { readonly kind: "external" }
+
+export interface WorkflowProviderDispatchInput {
+  readonly value: JsonValue
+  readonly signal: AbortSignal
+  readonly idempotency: WorkflowProviderIdempotencyInput
+  readonly effect: WorkflowProviderEffectInput
+}
+
+export type WorkflowProviderDispatch = (
+  input: WorkflowProviderDispatchInput
+) => Promise<unknown> | unknown
+
+export interface WorkflowProviderContractInput {
+  readonly id: string
+  readonly version: string
+  readonly inputSchema: WorkflowProviderSchemaEvidence
+  readonly output: WorkflowProviderOutputEvidence
+  readonly errorSchema: WorkflowProviderSchemaEvidence
+  readonly sideEffect: "none" | "workspace-write" | "external"
+  readonly idempotency: "idempotent" | "key-required" | "non-idempotent"
+  readonly requiredCapabilities: readonly string[]
+  readonly dispatch: WorkflowProviderDispatch
+}
+
+export interface WorkflowProviderContractEvidence {
+  readonly id: string
+  readonly version: string
+  readonly inputSchema: WorkflowProviderSchemaEvidence
+  readonly output: WorkflowProviderOutputEvidence
+  readonly errorSchema: WorkflowProviderSchemaEvidence
+  readonly sideEffect: "none" | "workspace-write" | "external"
+  readonly idempotency: "idempotent" | "key-required" | "non-idempotent"
+  readonly requiredCapabilities: readonly string[]
+  readonly contractDigest: Sha256Digest
+}
+
+export interface WorkflowProviderCatalogEvidence {
+  readonly schemaVersion: "workflow-provider-catalog/v2"
+  readonly providers: readonly WorkflowProviderContractEvidence[]
+}
+
+declare const workflowProviderCatalogBrand: unique symbol
+export interface WorkflowProviderCatalog {
+  readonly [workflowProviderCatalogBrand]: true
+  readonly evidence: WorkflowProviderCatalogEvidence
+  // The exact-version dispatch map is intentionally not a public field.
+}
+
+export interface WorkflowProviderContractRequirement {
+  readonly id: string
+  readonly version: string
+  readonly inputSchema: WorkflowProviderSchemaEvidence
+  readonly output: WorkflowProviderOutputEvidence
+  readonly errorSchema: WorkflowProviderSchemaEvidence
+  readonly sideEffect: "none" | "workspace-write" | "external"
+  readonly idempotency: "idempotent" | "key-required" | "non-idempotent"
+  readonly requiredCapabilities: readonly string[]
+}
+
+export interface WorkflowProviderLockEvidence {
+  readonly id: string
+  readonly requestedVersion: string
+  readonly exactVersion: string
+  readonly contractDigest: Sha256Digest
+  readonly inputSchema: WorkflowProviderSchemaEvidence
+  readonly output: WorkflowProviderOutputEvidence
+  readonly errorSchema: WorkflowProviderSchemaEvidence
+  readonly sideEffect: "none" | "workspace-write" | "external"
+  readonly idempotency: "idempotent" | "key-required" | "non-idempotent"
+  readonly requiredCapabilities: readonly string[]
+}
+
+declare const boundWorkflowProviderDispatchBrand: unique symbol
+export interface BoundWorkflowProviderDispatchHandle {
+  readonly [boundWorkflowProviderDispatchBrand]: true
+  // No public callable or dispatch field.
+}
+
+export class ActionRegistry {
+  // Existing register/list/execute legacy ActionProvider methods remain unchanged.
+  registerWorkflowProviderContract(
+    input: WorkflowProviderRegistrationInput
+  ): WorkflowProviderRegistration
+  snapshotWorkflowProviderCatalog(): WorkflowProviderCatalog
+}
+
+export interface BindWorkflowProviderInput {
+  readonly catalog: WorkflowProviderCatalog
+  readonly requirement: WorkflowProviderContractRequirement
+  readonly location: WorkflowContractV2DiagnosticLocation
+}
+
+export type BindWorkflowProviderResult =
+  | {
+      readonly ok: true
+      readonly lockEvidence: WorkflowProviderLockEvidence
+      readonly dispatchHandle: BoundWorkflowProviderDispatchHandle
+      readonly diagnostics: readonly []
+    }
+  | {
+      readonly ok: false
+      readonly diagnostics: readonly WorkflowContractV2Diagnostic[]
+    }
+
+export function bindWorkflowProvider(
+  input: BindWorkflowProviderInput
+): BindWorkflowProviderResult
 ```
 
-Each contract is the exact closed record `{ id, version, inputSchema, output, errorSchema, sideEffect, idempotency, requiredCapabilities, dispatch }`. `version` is exact SemVer; input/error and value-output schema evidence each has `{ id, bytes, digest }`; `output` is `{ kind: "unit" }` or `{ kind: "value", schema }`; `sideEffect` is `none | workspace-write | external`; `idempotency` is `idempotent | key-required | non-idempotent`; capabilities are code-unit-sorted unique ids. The contract digest covers every public field except dispatch. `WorkflowProviderCatalog` is an opaque branded snapshot, not a plain evidence record: it exposes deeply frozen canonical evidence while a private immutable exact-version map retains the dispatch identity captured at snapshot time.
+`ActionRegistry` constructs and exclusively owns one `WorkflowProviderRegistry`; it is not global and is not shared by `createDefaultActionRegistry` instances. The two delegating methods above are the public lifecycle boundary. `sourceId` is detached registration metadata retained for owner-aware duplicate errors. It is not a provider contract field, is absent from catalog/lock evidence and the contract digest, and cannot affect selection. The existing `ActionProvider`, `ActionProviderRegistration`, `ActionRegistry.register/list/execute`, default legacy registrations, and their id-only duplicate/disposal behavior remain unchanged in F6. There is no adapter, mirroring, or lookup fallback between legacy and v2 maps.
 
-F6 enforces design section 6 semantics: a unit dispatch must resolve `undefined`; `none` receives neither reserved effect capability; `workspace-write` requires `workflow.effect.workspace-write` and receives only attempt-staging artifact APIs; `external` requires `workflow.effect.external`; and automatic retries are allowed only for `idempotent` or for `key-required` with the identical stable key. `non-idempotent` ambiguous attempts fail closed.
+Registration input and every nested wrapper must be an exact ordinary own-data record; arrays must be dense ordinary arrays with no extra or symbol keys. Mutable ordinary inputs are accepted, validated from descriptor snapshots, detached, and frozen before storage. Proxies, accessors, exotic prototypes, sparse arrays, and a callable Proxy in `dispatch` are rejected without invoking their behavior; callable-Proxy detection uses the captured native `util.types.isProxy`. F6 requires only that a non-proxy `dispatch` is callable, stores its identity, and never freezes, introspects, or invokes it.
 
-- [ ] RED: reject invalid ids/versions, ranges in registrations, duplicates, mutable/exotic schema evidence, unknown side-effect/idempotency values, unsorted/duplicate capabilities, missing/forbidden reserved effect capabilities, and inconsistent unit/value/schema roles. Prove a unit provider returning any value fails output validation and never creates committed output.
-- [ ] RED: bind an allowed range to exactly one highest compatible registration using pinned `semver`; record exact selected version/contract digest; reject absent, ambiguous duplicate, prerelease-policy, and lock mismatch cases.
-- [ ] RED: prove source-regex registration discovery is not used, a plain lookalike catalog fails the private brand, a catalog snapshot cannot mutate the live registry, and later dispose/re-register/mutation does not change the snapshot evidence or exact dispatch identity returned to P4.
-- [ ] GREEN: snapshot both evidence and a new private dispatch-map copy; add exact dependencies `semver@7.7.2` and `@types/semver@7.7.1`; sort snapshots/capabilities by code unit; compute contract digest with F1.
-- [ ] Verify:
+`providerContract.ts` owns the callable ABI above. R2 supplies a validated F1-frozen `JsonValue`, the attempt `AbortSignal`, and deeply frozen idempotency/effect discriminants that exactly match the bound contract. Only `workspace-write` receives a writer. `none` receives no effect capability; `external` is itself the registered external adapter and receives no staging writer. `WorkflowProviderArtifactWriter` is a frozen write-only capability with only `writeArtifact`; that method snapshots the supplied `Uint8Array` immediately on entry and exposes no path, read, promote, commit, transaction, or final-workspace API. A dispatch throw or rejection is an unknown value consumed later by R2's error-envelope validator. F6 validates only non-proxy callability and never creates, validates, freezes, or inspects a dispatch input.
+
+The exact leaf rules are:
+
+- `sourceId`, provider `id`, and every capability are already-trimmed 1–128 character ASCII ids matching F4's `^[A-Za-z][A-Za-z0-9]*(?:[._-][A-Za-z0-9]+)*$` grammar;
+- schema evidence is exactly `{ id, bytes, digest }`; `id` is an NFC canonical one-level `schemas/*.json` path matching `^schemas/[A-Za-z0-9._-]+\.json$` and at most 240 UTF-8 bytes, `bytes` is a safe integer from 1 through 4,194,304, and `digest` is exactly `sha256:<64 lowercase hex>`;
+- `requiredCapabilities` is a dense 0–128 element array, code-unit sorted and duplicate-free;
+- a requirement range is a 1–256 code-unit control-free string accepted by the same strict `semver.validRange(value, { loose: false }) !== null` rule as F4; and
+- output, side-effect, and idempotency unions are exactly the interface literals above. F6 validates schema evidence syntax/bounds only. P4 resolves actual schema content and the fixed dialect, computes the exact evidence from those bytes, and supplies that already-resolved evidence in the requirement.
+
+An exact registration version uses `semver.parse(version, { loose: false })`. It is accepted only when parsing succeeds and reconstructing `${parsed.version}${parsed.build.length ? "+" + parsed.build.join(".") : ""}` equals the original input, so canonical build metadata is retained while aliases such as `v1.2.3` are rejected. Range satisfaction and ordering use pinned `semver@7.7.2` with `loose: false` and default `includePrerelease: false`; a prerelease is eligible only when the range contains a prerelease comparator for the same major/minor/patch tuple. Highest selection uses `semver.compare`, which ignores build metadata. Distinct highest exact versions that differ only in build metadata therefore tie and fail binding as ambiguous.
+
+Strict registration is synchronous and atomic. Any invalid registration wrapper, source metadata, contract leaf, schema evidence, capability array, or dispatch throws `TypeError` before mutation. A duplicate live `(id, exactVersion)` throws an owner-aware `Error` identifying both retained and requesting `sourceId` values; it does not replace the retained entry. Success returns the idempotent token-protected disposable. It removes only its exact live registration, and a stale disposable cannot remove a later re-registration.
+
+The contract digest preimage is exactly the detached deeply frozen canonical object `{ id, version, inputSchema, output, errorSchema, sideEffect, idempotency, requiredCapabilities }`—no `schemaVersion`, `sourceId`, `dispatch`, or `contractDigest`. F6 computes `contractDigest = canonicalJsonDigest(preimage)`, then creates and deeply freezes the public contract-evidence entry `{ ...preimage, contractDigest }`. Catalog evidence has exactly `{ schemaVersion: "workflow-provider-catalog/v2", providers }`; `providers` is a new detached deeply frozen array sorted by `(id, version)` using direct code-unit order. The branded catalog's private `WeakMap` state is a new immutable `(id, exactVersion)`-to-dispatch map and never consults the live registry.
+
+`bindWorkflowProvider` first validates the exact ordinary outer `{ catalog, requirement, location }` record, then diagnostic location, then catalog private brand. Invalid outer/location/catalog inputs are programmer errors and throw `TypeError` without reading hostile fields. Once location and brand are valid, requirement validation and comparison use this exact recursive order:
+
+1. For every exact record, validate required fields in declaration order, recursively completing each field before continuing; then inspect unknown own string keys in direct code-unit order. Append unknown keys with RFC 6901 escaping. A proxy, accessor, symbol key, exotic prototype, wrong container, sparse/extra-property array, or ambiguous descriptor fails at that container pointer.
+2. Requirement fields are `id`, `version`, `inputSchema`, `output`, `errorSchema`, `sideEffect`, `idempotency`, `requiredCapabilities`. A schema evidence record is `id` then `bytes` then `digest`. Output is `kind`, then for `value` its schema `id`, `bytes`, `digest`; for `unit`, a `schema` member is an unknown key and points to `/output/schema`.
+3. Capability elements validate in ascending index order. The first invalid id, duplicate, or out-of-order member points to that index.
+4. After range syntax, exact-id/range candidates, and highest-precedence ambiguity, compare the selected contract in order `inputSchema`, `output`, `errorSchema`, `sideEffect`, `idempotency`, `requiredCapabilities`, recursively using the same leaf order. Arrays point to their first differing index; a prefix-length mismatch points to the first missing/excess index.
+
+Each requirement/binding failure returns exactly one frozen `WF2_PROVIDER_CONTRACT_MISMATCH`. Malformed/no-candidate/ambiguous version failures use `/version`; other structural/leaf failures and selected-contract mismatches use the first pointer determined above. Binding always selects highest by id/range before comparison and never downgrades to a lower matching contract.
+
+Success returns a deeply frozen `{ ok: true, lockEvidence, dispatchHandle, diagnostics: [] }`; the empty tuple, section-15-shaped lock evidence, and opaque frozen handle are all detached/frozen. Failure returns deeply frozen `{ ok: false, diagnostics }` with the F2-frozen diagnostic array. The handle has no public callable/dispatch field. F6 stores its captured dispatch identity only in a module-private `WeakMap`; P4 stores only the handle in private compiled-plan state. Later disposal/re-registration cannot change existing catalog evidence, bind evidence, handle identity, or the handle's captured private dispatch identity.
+
+The normative reserved-capability rules are: `none` forbids both `workflow.effect.workspace-write` and `workflow.effect.external`; `workspace-write` requires the workspace capability and forbids the external capability; `external` requires the external capability and forbids the workspace capability. F6 validates this declaration only. P4 owns actual schema/dialect resolution and private validator/plan construction. R2 owns the internal invocation bridge, input/output/error validation, dispatch, unit-return enforcement, retry/idempotency, artifact promotion, and success/output/commit acceptance. F6 does none of those runtime actions.
+
+- [x] RED: accept mutable ordinary records/arrays, mutate them after registration, and prove detached frozen evidence. Reject missing/unknown fields, proxies/accessors/exotic records, sparse/extra-property arrays, callable Proxy dispatch, non-callable dispatch, and every exact leaf boundary above without behavior invocation. Assert every invalid registration throws `TypeError` atomically; assert duplicate `(id, exactVersion)` throws owner-aware `Error` with both source ids and no replacement/evidence pollution.
+- [x] RED: type-check the exact dispatch ABI. F6 tests assert only callable/non-proxy storage, the write-only writer type surface, and zero dispatch/ABI-input construction. R2 tests own runtime writer freezing and `Uint8Array` snapshotting, effect/idempotency variant construction, the absence of path/read/promote/commit behavior, and thrown/rejected values.
+- [x] RED: retain multiple exact versions including canonical build metadata; independently dispose/re-register them; prove idempotent stale-token safety, per-`ActionRegistry` isolation, and unchanged legacy `ActionProvider` behavior with no mirroring/fallback.
+- [x] RED: recompute the exact eight-field contract digest preimage independently; reject any accidental `sourceId`, dispatch, wrapper version, or digest self-inclusion. Assert the exact flattened catalog-evidence shape/order, recursive freezing, private brand, and stability after caller/live-registry mutation.
+- [x] RED: bind with exact diagnostic locations and precedence. Cover every nested required/unknown/container/schema/output/capability order, escaped unknown keys, unit-with-schema, first invalid/duplicate/out-of-order capability index, array first-difference/prefix-length pointers, malformed/overlong/control ranges, missing candidates, build-only highest ties, and highest-version mismatch without lower fallback. Assert exact frozen lock evidence/empty success diagnostics and frozen failure diagnostics under pinned `semver@7.7.2`.
+- [x] RED: prove source-regex discovery is unused, a catalog lookalike fails the private brand, the opaque handle exposes no dispatch/callable field, and live dispose/register/re-register cannot change existing snapshot/bind/handle identity. Do not call dispatch or test forged-handle invocation until R2 adds the internal consumer.
+- [x] GREEN: add one registry field per `ActionRegistry` and only the two delegating public methods; use captured descriptor/proxy intrinsics, F1 cloning/digesting, private `WeakMap` state, and exact frozen result objects. Verify the existing F4 pins are exactly `semver@7.7.2` and `@types/semver@7.7.1`; do not modify dependency manifests or runtime invocation/validation code.
+- [x] Verify:
 
 ```bash
 cd extensions/workflow-register
