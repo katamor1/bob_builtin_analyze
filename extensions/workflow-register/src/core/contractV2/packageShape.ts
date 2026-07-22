@@ -1,4 +1,5 @@
 import { types as utilTypes } from "node:util"
+import { validRange as validSemverRange } from "semver"
 
 import { canonicalJsonBytes } from "./canonicalJson"
 import {
@@ -15,11 +16,21 @@ import {
 export const WORKFLOW_CONTRACT_V2_PACKAGE_SHAPE_POLICY =
   "workflow-contract-package-shape/v2" as const
 
-export interface WorkflowReferenceV2 {
-  readonly source: "input" | "committedOutput"
+export interface WorkflowInputReferenceV2 {
+  readonly source: "input"
   readonly id: string
   readonly pointer: string
 }
+
+export interface WorkflowCommittedOutputReferenceV2 {
+  readonly source: "committedOutput"
+  readonly id: string
+  readonly pointer: string
+}
+
+export type WorkflowReferenceV2 =
+  | WorkflowInputReferenceV2
+  | WorkflowCommittedOutputReferenceV2
 
 export type WorkflowValueTemplateV2 =
   | { readonly source: "literal"; readonly value: JsonValue }
@@ -29,10 +40,14 @@ export type WorkflowValueTemplateV2 =
 
 export type WorkflowPredicateV2 =
   | {
-      readonly kind: "equals" | "notEquals" | "greaterThan" | "greaterThanOrEqual" |
-        "lessThan" | "lessThanOrEqual"
+      readonly kind: "equals" | "notEquals"
       readonly left: WorkflowReferenceV2
       readonly right: JsonValue
+    }
+  | {
+      readonly kind: "greaterThan" | "greaterThanOrEqual" | "lessThan" | "lessThanOrEqual"
+      readonly left: WorkflowReferenceV2
+      readonly right: string | number
     }
   | {
       readonly kind: "in"
@@ -88,7 +103,7 @@ export type WorkflowStepV2 =
       readonly when?: WorkflowPredicateV2
       readonly transition?: WorkflowTransitionV2
       readonly prompt: string
-      readonly context: readonly WorkflowReferenceV2[]
+      readonly context: readonly WorkflowCommittedOutputReferenceV2[]
       readonly output: Extract<WorkflowOutputV2, { readonly kind: "value" }>
       readonly artifacts: readonly string[]
     }
@@ -218,18 +233,47 @@ const cloneJsonValue = cloneAndFreezeJsonValue
 const canonicalBytes = canonicalJsonBytes
 const createDiagnostic = createWorkflowContractV2Diagnostic
 const arrayIsArray = Array.isArray
+const arrayPop = Array.prototype.pop
+const arrayPush = Array.prototype.push
 const bufferByteLength = Buffer.byteLength.bind(Buffer) as (value: string, encoding?: BufferEncoding) => number
 const isProxy = utilTypes.isProxy
+const mapGet = Map.prototype.get
+const mapHas = Map.prototype.has
+const mapSet = Map.prototype.set
+const MapConstructor = Map
 const numberIsFinite = Number.isFinite
 const numberIsSafeInteger = Number.isSafeInteger
+const numberToString = Number.prototype.toString
+const objectDefineProperty = Object.defineProperty
 const objectFreeze = Object.freeze
+const objectGetOwnPropertyDescriptor = Object.getOwnPropertyDescriptor
 const objectGetOwnPropertyDescriptors = Object.getOwnPropertyDescriptors
 const objectGetPrototypeOf = Object.getPrototypeOf
 const objectHasOwn = Object.hasOwn
 const objectKeys = Object.keys
+const reflectApply = Reflect.apply
 const reflectOwnKeys = Reflect.ownKeys
+const regexpTest = RegExp.prototype.test
+const semverValidRange = validSemverRange
+const stringCharCodeAt = String.prototype.charCodeAt
+const stringEndsWith = String.prototype.endsWith
+const stringIncludes = String.prototype.includes
 const stringNormalize = String.prototype.normalize
+const stringReplace = String.prototype.replace
+const stringSplit = String.prototype.split
+const stringStartsWith = String.prototype.startsWith
+const stringToLowerCase = String.prototype.toLowerCase
+const setAdd = Set.prototype.add
+const setHas = Set.prototype.has
+const SetConstructor = Set
+const weakSetAdd = WeakSet.prototype.add
+const weakSetDelete = WeakSet.prototype.delete
+const weakSetHas = WeakSet.prototype.has
+const WeakSetConstructor = WeakSet
+const ordinaryArrayPrototype = Array.prototype
 const ordinaryObjectPrototype = Object.prototype
+const mapSizeGetter = objectGetOwnPropertyDescriptor(Map.prototype, "size")?.get as
+  ((this: ReadonlyMap<unknown, unknown>) => number)
 
 const SUCCESS_DIAGNOSTICS = objectFreeze([]) as readonly []
 const TOP_REQUIRED = objectFreeze([
@@ -300,6 +344,7 @@ export function validateWorkflowContractV2PackageShape(input: {
   try {
     const snapshot = snapshotApiInput(input)
     path = snapshot.path
+    preflightDocumentBounds(snapshot.document)
     const document = cloneJsonValue(snapshot.document)
     validateDocument(document)
     validateDocumentBounds(document)
@@ -312,6 +357,112 @@ export function validateWorkflowContractV2PackageShape(input: {
     if (error instanceof ShapeFailure) return failure(path, error.code, error.pointer, error.message)
     return failure(path, "WF2_PACKAGE_LAYOUT_INVALID", "", "Workflow package document is invalid.")
   }
+}
+
+interface PreflightEntry {
+  readonly value: unknown
+  readonly depth: number
+  readonly leave: boolean
+}
+
+function preflightDocumentBounds(root: unknown): void {
+  const stack: PreflightEntry[] = []
+  const active = new WeakSetConstructor<object>()
+  defineArrayItem(stack, 0, { value: root, depth: 1, leave: false })
+  let nodes = 0
+
+  while (stack.length > 0) {
+    const entry = stack[stack.length - 1]
+    stack.length -= 1
+    if (entry.leave) {
+      if (entry.value !== null && typeof entry.value === "object") {
+        reflectApply(weakSetDelete, active, [entry.value])
+      }
+      continue
+    }
+
+    nodes += 1
+    if (nodes > 65_536 || entry.depth > 64) layout("")
+    const value = entry.value
+    if (value === null || typeof value !== "object") continue
+    if (isProxy(value)) layout("")
+    if (reflectApply(weakSetHas, active, [value]) as boolean) layout("")
+
+    const array = arrayIsArray(value)
+    const prototype = objectGetPrototypeOf(value)
+    if (
+      (array && prototype !== ordinaryArrayPrototype) ||
+      (!array && prototype !== ordinaryObjectPrototype && prototype !== null)
+    ) layout("")
+
+    const descriptors = objectGetOwnPropertyDescriptors(value)
+    const keys = reflectOwnKeys(descriptors)
+    reflectApply(weakSetAdd, active, [value])
+    defineArrayItem(stack, stack.length, { value, depth: entry.depth, leave: true })
+
+    if (array) {
+      const lengthDescriptor = descriptorSnapshotValue(descriptors, "length")
+      const length = descriptorDataValueForPreflight(lengthDescriptor)
+      if (
+        typeof length !== "number" || !numberIsSafeInteger(length) || length < 0 ||
+        length > 65_536 || keys.length !== length + 1
+      ) layout("")
+      if (nodes + length > 65_536) layout("")
+      for (let index = length - 1; index >= 0; index -= 1) {
+        const descriptor = descriptorSnapshotValue(descriptors, numberAsString(index))
+        if (descriptor.enumerable !== true) layout("")
+        defineArrayItem(stack, stack.length, {
+          value: descriptorDataValueForPreflight(descriptor),
+          depth: entry.depth + 1,
+          leave: false
+        })
+      }
+      continue
+    }
+
+    if (nodes + keys.length > 65_536) layout("")
+    for (let index = keys.length - 1; index >= 0; index -= 1) {
+      const key = keys[index]
+      if (typeof key !== "string") layout("")
+      const descriptor = descriptorSnapshotValue(descriptors, key)
+      if (descriptor.enumerable !== true) layout("")
+      defineArrayItem(stack, stack.length, {
+        value: descriptorDataValueForPreflight(descriptor),
+        depth: entry.depth + 1,
+        leave: false
+      })
+    }
+  }
+}
+
+function descriptorSnapshotValue(
+  descriptors: PropertyDescriptorMap,
+  key: PropertyKey
+): PropertyDescriptor {
+  const mapDescriptor = objectGetOwnPropertyDescriptor(descriptors, key)
+  if (mapDescriptor === undefined || !objectHasOwn(mapDescriptor, "value")) layout("")
+  return mapDescriptor.value as PropertyDescriptor
+}
+
+function descriptorDataValueForPreflight(descriptor: PropertyDescriptor): unknown {
+  if (
+    !objectHasOwn(descriptor, "value") || objectHasOwn(descriptor, "get") ||
+    objectHasOwn(descriptor, "set")
+  ) layout("")
+  return descriptor.value
+}
+
+function defineArrayItem<T>(array: T[], index: number, value: T): void {
+  objectDefineProperty(array, numberAsString(index), {
+    configurable: true,
+    enumerable: true,
+    value,
+    writable: true
+  })
+}
+
+function numberAsString(value: number): string {
+  return reflectApply(numberToString, value, []) as string
 }
 
 function snapshotApiInput(input: unknown): ApiSnapshot {
@@ -350,7 +501,7 @@ function validateDocument(document: JsonValue): void {
   humanText(root.description, "/description", 8192)
 
   const inputs = denseArray(root.inputs, "/inputs", 0, 256)
-  const inputIds = new Map<string, number>()
+  const inputIds = new MapConstructor<string, number>()
   for (let index = 0; index < inputs.length; index += 1) {
     const pointer = `/inputs/${index}`
     const record = exactRecord(
@@ -369,8 +520,8 @@ function validateDocument(document: JsonValue): void {
   }
 
   const providers = denseArray(root.providers, "/providers", 0, 256)
-  const providerIds = new Map<string, number>()
-  const providerInfo = new Map<string, ProviderInfo>()
+  const providerIds = new MapConstructor<string, number>()
+  const providerInfo = new MapConstructor<string, ProviderInfo>()
   for (let index = 0; index < providers.length; index += 1) {
     const pointer = `/providers/${index}`
     const record = exactRecord(
@@ -389,14 +540,14 @@ function validateDocument(document: JsonValue): void {
     enumString(record.idempotency, ["idempotent", "key-required", "non-idempotent"], `${pointer}/idempotency`)
     const capabilities = capabilityArray(record.requiredCapabilities, `${pointer}/requiredCapabilities`, 128)
     validateProviderEffects(sideEffect, capabilities, `${pointer}/requiredCapabilities`)
-    providerInfo.set(id, { record })
+    setMapValue(providerInfo, id, { record })
   }
 
   const artifacts = denseArray(root.requiredArtifacts, "/requiredArtifacts", 0, 512)
-  const artifactIds = new Map<string, number>()
-  const artifactInfo = new Map<string, Readonly<Record<string, JsonValue>>>()
-  const exactPaths = new Map<string, number>()
-  const foldedPaths = new Map<string, number>()
+  const artifactIds = new MapConstructor<string, number>()
+  const artifactInfo = new MapConstructor<string, Readonly<Record<string, JsonValue>>>()
+  const exactPaths = new MapConstructor<string, number>()
+  const foldedPaths = new MapConstructor<string, number>()
   for (let index = 0; index < artifacts.length; index += 1) {
     const pointer = `/requiredArtifacts/${index}`
     const record = exactRecord(
@@ -409,30 +560,31 @@ function validateDocument(document: JsonValue): void {
     uniqueId(artifactIds, id, `${pointer}/id`)
     identifier(record.producedBy, `${pointer}/producedBy`)
     const artifactPathValue = artifactPath(record.path, `${pointer}/path`)
-    if (exactPaths.has(artifactPathValue) || foldedPaths.has(artifactPathValue.toLowerCase())) {
+    const foldedPath = callStringToLowerCase(artifactPathValue)
+    if (hasMapValue(exactPaths, artifactPathValue) || hasMapValue(foldedPaths, foldedPath)) {
       layout(`${pointer}/path`)
     }
-    exactPaths.set(artifactPathValue, index)
-    foldedPaths.set(artifactPathValue.toLowerCase(), index)
+    setMapValue(exactPaths, artifactPathValue, index)
+    setMapValue(foldedPaths, foldedPath, index)
     mediaType(record.mediaType, `${pointer}/mediaType`)
     schemaPath(record.schema, `${pointer}/schema`)
     safeInteger(record.maxBytes, `${pointer}/maxBytes`, 1, 67_108_864)
     enumString(record.owner, ["provider", "runtime"], `${pointer}/owner`)
     requiredBoolean(record.required, `${pointer}/required`)
-    artifactInfo.set(id, record)
+    setMapValue(artifactInfo, id, record)
   }
 
   const steps = denseArray(root.steps, "/steps", 1, 512)
-  const stepIds = new Map<string, number>()
-  const outputIds = new Map<string, number>()
-  const decisionIds = new Map<string, number>()
-  const loopIds = new Map<string, number>()
+  const stepIds = new MapConstructor<string, number>()
+  const outputIds = new MapConstructor<string, number>()
+  const decisionIds = new MapConstructor<string, number>()
+  const loopIds = new MapConstructor<string, number>()
   const stepInfo: StepInfo[] = []
   for (let index = 0; index < steps.length; index += 1) {
     const info = validateStepShape(
       steps[index], index, stepIds, outputIds, decisionIds, loopIds
     )
-    stepInfo.push(info)
+    appendArrayItem(stepInfo, info)
   }
 
   validateResumePolicy(root.resumePolicy)
@@ -444,6 +596,7 @@ function validateDocument(document: JsonValue): void {
     stepIds,
     outputIds,
     providerInfo,
+    artifacts,
     artifactInfo
   )
 }
@@ -525,7 +678,7 @@ function validateStepShape(
   } else if (type === "agent") {
     promptPath(record.prompt, `${pointer}/prompt`)
     const context = denseArray(record.context, `${pointer}/context`, 0, 256)
-    const seen = new Map<string, number>()
+    const seen = new MapConstructor<string, number>()
     for (let contextIndex = 0; contextIndex < context.length; contextIndex += 1) {
       const reference = validateReference(context[contextIndex], `${pointer}/context/${contextIndex}`)
       if (reference.source !== "committedOutput") layout(`${pointer}/context/${contextIndex}/source`)
@@ -580,7 +733,7 @@ function validateResultSource(value: JsonValue, pointer: string): void {
 function validateManualForm(value: JsonValue, pointer: string, hasApproval: boolean): void {
   const record = exactRecord(value, pointer, ["fields"], NO_FIELDS)
   const fields = denseArray(record.fields, `${pointer}/fields`, 1, 128)
-  const ids = new Map<string, number>()
+  const ids = new MapConstructor<string, number>()
   for (let index = 0; index < fields.length; index += 1) {
     const fieldPointer = `${pointer}/fields/${index}`
     const base = looseRecord(fields[index], fieldPointer)
@@ -682,9 +835,14 @@ function validateReferencesAndSemantics(
   stepIds: ReadonlyMap<string, number>,
   outputIds: ReadonlyMap<string, number>,
   providers: ReadonlyMap<string, ProviderInfo>,
+  artifactRecords: readonly JsonValue[],
   artifacts: ReadonlyMap<string, Readonly<Record<string, JsonValue>>>
 ): void {
-  const allInputIds = new Set(inputIds.keys())
+  const allInputIds = new SetConstructor<string>()
+  for (let index = 0; index < inputs.length; index += 1) {
+    const id = (inputs[index] as Readonly<Record<string, JsonValue>>).id
+    if (typeof id === "string") addSetValue(allInputIds, id)
+  }
   for (let index = 0; index < inputs.length; index += 1) {
     const record = inputs[index] as Readonly<Record<string, JsonValue>>
     if (objectHasOwn(record, "requiredWhen")) {
@@ -692,13 +850,13 @@ function validateReferencesAndSemantics(
         record.requiredWhen,
         `/inputs/${index}/requiredWhen`,
         allInputIds,
-        new Set(),
+        new SetConstructor<string>(),
         false
       )
     }
   }
 
-  const priorOutputs = new Set<string>()
+  const priorOutputs = new SetConstructor<string>()
   for (let index = 0; index < steps.length; index += 1) {
     const step = steps[index]
     const pointer = `/steps/${index}`
@@ -708,8 +866,8 @@ function validateReferencesAndSemantics(
     if (step.type === "command") {
       validateTemplateReferences(step.record.input, `${pointer}/input`, allInputIds, priorOutputs)
       const providerId = step.record.provider
-      if (typeof providerId !== "string" || !providers.has(providerId)) layout(`${pointer}/provider`)
-      const provider = providers.get(providerId) as ProviderInfo
+      if (typeof providerId !== "string" || !hasMapValue(providers, providerId)) layout(`${pointer}/provider`)
+      const provider = getMapValue(providers, providerId) as ProviderInfo
       const providerOutput = provider.record.output as Readonly<Record<string, JsonValue>>
       if (step.output?.kind !== providerOutput.kind) layout(`${pointer}/output`)
       if (
@@ -734,15 +892,19 @@ function validateReferencesAndSemantics(
       const refs = step.record.artifacts as readonly JsonValue[]
       for (let artifactIndex = 0; artifactIndex < refs.length; artifactIndex += 1) {
         const id = refs[artifactIndex]
-        if (typeof id !== "string" || !artifacts.has(id)) layout(`${pointer}/artifacts/${artifactIndex}`)
+        if (typeof id !== "string" || !hasMapValue(artifacts, id)) layout(`${pointer}/artifacts/${artifactIndex}`)
       }
     }
 
     if (objectHasOwn(step.record, "transition")) {
       const transition = step.record.transition as Readonly<Record<string, JsonValue>>
       const decisions = transition.decisions as readonly JsonValue[]
-      const transitionOutputs = new Set(priorOutputs)
-      if (step.output?.kind === "value") transitionOutputs.add(step.output.id as string)
+      const transitionOutputs = new SetConstructor<string>()
+      for (let priorIndex = 0; priorIndex < index; priorIndex += 1) {
+        const priorOutput = steps[priorIndex].output
+        if (priorOutput?.kind === "value") addSetValue(transitionOutputs, priorOutput.id as string)
+      }
+      if (step.output?.kind === "value") addSetValue(transitionOutputs, step.output.id as string)
       for (let decisionIndex = 0; decisionIndex < decisions.length; decisionIndex += 1) {
         const decision = decisions[decisionIndex] as Readonly<Record<string, JsonValue>>
         const decisionPointer = `${pointer}/transition/decisions/${decisionIndex}`
@@ -754,22 +916,24 @@ function validateReferencesAndSemantics(
       const fallback = transition.default as Readonly<Record<string, JsonValue>>
       validateDefaultTarget(fallback.goto, `${pointer}/transition/default/goto`, index, stepIds)
     }
-    if (step.output?.kind === "value") priorOutputs.add(step.output.id as string)
+    if (step.output?.kind === "value") addSetValue(priorOutputs, step.output.id as string)
   }
 
-  for (const [artifactId, artifact] of artifacts) {
-    const artifactIndex = artifactIndexById(artifacts, artifactId)
+  for (let artifactIndex = 0; artifactIndex < artifactRecords.length; artifactIndex += 1) {
+    const artifact = artifactRecords[artifactIndex] as Readonly<Record<string, JsonValue>>
+    const artifactId = artifact.id
+    if (typeof artifactId !== "string") layout(`/requiredArtifacts/${artifactIndex}/id`)
     const pointer = `/requiredArtifacts/${artifactIndex}`
     const producedBy = artifact.producedBy
-    if (typeof producedBy !== "string" || !stepIds.has(producedBy)) layout(`${pointer}/producedBy`)
+    if (typeof producedBy !== "string" || !hasMapValue(stepIds, producedBy)) layout(`${pointer}/producedBy`)
     if (artifact.owner === "provider") {
-      const producer = steps[stepIds.get(producedBy) as number]
+      const producer = steps[getMapValue(stepIds, producedBy) as number]
       if (producer.type !== "command") layout(`${pointer}/owner`)
       const providerId = producer.record.provider
-      const provider = typeof providerId === "string" ? providers.get(providerId) : undefined
+      const provider = typeof providerId === "string" ? getMapValue(providers, providerId) : undefined
       if (provider?.record.sideEffect !== "workspace-write") layout(`${pointer}/owner`)
     }
-    const producer = steps[stepIds.get(producedBy) as number]
+    const producer = steps[getMapValue(stepIds, producedBy) as number]
     const producedArtifacts = objectHasOwn(producer.record, "artifacts")
       ? producer.record.artifacts as readonly JsonValue[]
       : []
@@ -777,18 +941,6 @@ function validateReferencesAndSemantics(
   }
 
   void outputIds
-}
-
-function artifactIndexById(
-  artifacts: ReadonlyMap<string, Readonly<Record<string, JsonValue>>>,
-  id: string
-): number {
-  let index = 0
-  for (const key of artifacts.keys()) {
-    if (key === id) return index
-    index += 1
-  }
-  return 0
 }
 
 function validateDecisionTarget(
@@ -800,7 +952,7 @@ function validateDecisionTarget(
   const target = decision.goto
   if (typeof target !== "string") layout(`${pointer}/goto`)
   const terminal = target === "$end" || target === "$fail"
-  const targetIndex = terminal ? undefined : stepIds.get(target)
+  const targetIndex = terminal ? undefined : getMapValue(stepIds, target)
   if (!terminal && targetIndex === undefined) layout(`${pointer}/goto`)
   const needsLoop = targetIndex !== undefined && targetIndex <= currentIndex
   const hasLoop = objectHasOwn(decision, "loop")
@@ -816,7 +968,7 @@ function validateDefaultTarget(
 ): void {
   if (typeof target !== "string") layout(pointer)
   if (target === "$end" || target === "$fail") return
-  const targetIndex = stepIds.get(target)
+  const targetIndex = getMapValue(stepIds, target)
   if (targetIndex === undefined || targetIndex <= currentIndex) layout(pointer)
 }
 
@@ -869,7 +1021,9 @@ function validateTemplateReferences(
     }
   } else if (record.source === "object") {
     const properties = record.properties as Readonly<Record<string, JsonValue>>
-    for (const key of objectKeys(properties)) {
+    const keys = objectKeys(properties)
+    for (let index = 0; index < keys.length; index += 1) {
+      const key = keys[index]
       validateTemplateReferences(properties[key], `${pointer}/properties/${escapePointer(key)}`, inputs, outputs)
     }
   }
@@ -962,8 +1116,8 @@ function validateReferenceVisibility(
 ): void {
   const reference = value as unknown as WorkflowReferenceV2
   if (reference.source === "input") {
-    if (!inputs.has(reference.id)) layout(`${pointer}/id`)
-  } else if (!outputs.has(reference.id)) {
+    if (!hasSetValue(inputs, reference.id)) layout(`${pointer}/id`)
+  } else if (!hasSetValue(outputs, reference.id)) {
     layout(`${pointer}/id`)
   }
 }
@@ -989,19 +1143,19 @@ function validateDocumentBounds(root: JsonValue): void {
   const stack: Array<{ readonly value: JsonValue; readonly depth: number }> = [{ value: root, depth: 1 }]
   let nodes = 0
   while (stack.length > 0) {
-    const entry = stack.pop() as { readonly value: JsonValue; readonly depth: number }
+    const entry = reflectApply(arrayPop, stack, []) as { readonly value: JsonValue; readonly depth: number }
     nodes += 1
     if (nodes > 65_536 || entry.depth > 64) layout("")
     if (entry.value !== null && typeof entry.value === "object") {
       if (arrayIsArray(entry.value)) {
         for (let index = entry.value.length - 1; index >= 0; index -= 1) {
-          stack.push({ value: entry.value[index], depth: entry.depth + 1 })
+          appendArrayItem(stack, { value: entry.value[index], depth: entry.depth + 1 })
         }
       } else {
         const record = entry.value as JsonObject
         const keys = objectKeys(record)
         for (let index = keys.length - 1; index >= 0; index -= 1) {
-          stack.push({ value: record[keys[index]], depth: entry.depth + 1 })
+          appendArrayItem(stack, { value: record[keys[index]], depth: entry.depth + 1 })
         }
       }
     }
@@ -1063,13 +1217,13 @@ function predicateArray(value: JsonValue, pointer: string, min: number, max: num
 }
 
 function identifier(value: JsonValue, pointer: string): string {
-  if (typeof value !== "string" || value.length > 128 || !IDENTIFIER_PATTERN.test(value)) layout(pointer)
+  if (typeof value !== "string" || value.length > 128 || !testPattern(IDENTIFIER_PATTERN, value)) layout(pointer)
   return value
 }
 
 function humanText(value: JsonValue, pointer: string, maxCodePoints: number): string {
   if (
-    typeof value !== "string" || value.includes("\r") || CONTROL_PATTERN.test(value) ||
+    typeof value !== "string" || callStringIncludes(value, "\r") || testPattern(CONTROL_PATTERN, value) ||
     codePointCount(value) < 1 || codePointCount(value) > maxCodePoints
   ) layout(pointer)
   return value
@@ -1093,7 +1247,7 @@ function enumString(value: JsonValue, allowed: readonly string[], pointer: strin
 function schemaPath(value: JsonValue, pointer: string): string {
   if (
     typeof value !== "string" || bufferByteLength(value, "utf8") > 240 ||
-    !SCHEMA_PATH_PATTERN.test(value) || !portableReference(value)
+    !testPattern(SCHEMA_PATH_PATTERN, value) || !portableReference(value)
   ) layout(pointer)
   return value
 }
@@ -1101,28 +1255,28 @@ function schemaPath(value: JsonValue, pointer: string): string {
 function promptPath(value: JsonValue, pointer: string): string {
   if (
     typeof value !== "string" || bufferByteLength(value, "utf8") > 240 ||
-    !PROMPT_PATH_PATTERN.test(value) || !portableReference(value)
+    !testPattern(PROMPT_PATH_PATTERN, value) || !portableReference(value)
   ) layout(pointer)
   return value
 }
 
 function artifactPath(value: JsonValue, pointer: string): string {
   if (
-    typeof value !== "string" || !ARTIFACT_PATH_PATTERN.test(value) ||
+    typeof value !== "string" || !testPattern(ARTIFACT_PATH_PATTERN, value) ||
     bufferByteLength(value, "utf8") > 240 || normalize(value) !== value
   ) layout(pointer)
   return value
 }
 
 function mediaType(value: JsonValue, pointer: string): string {
-  if (typeof value !== "string" || !MEDIA_TYPE_PATTERN.test(value)) layout(pointer)
+  if (typeof value !== "string" || !testPattern(MEDIA_TYPE_PATTERN, value)) layout(pointer)
   return value
 }
 
 function jsonPointer(value: JsonValue, pointer: string): string {
   if (
-    typeof value !== "string" || CONTROL_PATTERN.test(value) ||
-    (value.length > 0 && !value.startsWith("/")) || /~(?:[^01]|$)/u.test(value)
+    typeof value !== "string" || testPattern(CONTROL_PATTERN, value) ||
+    (value.length > 0 && !callStringStartsWith(value, "/")) || testPattern(/~(?:[^01]|$)/u, value)
   ) layout(pointer)
   return value
 }
@@ -1135,11 +1289,11 @@ function gotoValue(value: JsonValue, pointer: string): string {
 function identifierArray(value: JsonValue, pointer: string, min: number, max: number): readonly string[] {
   const values = denseArray(value, pointer, min, max)
   const result: string[] = []
-  const seen = new Map<string, number>()
+  const seen = new MapConstructor<string, number>()
   for (let index = 0; index < values.length; index += 1) {
     const id = identifier(values[index], `${pointer}/${index}`)
     uniqueId(seen, id, `${pointer}/${index}`)
-    result.push(id)
+    appendArrayItem(result, id)
   }
   return result
 }
@@ -1162,7 +1316,7 @@ function subsetArray(
     const item = values[index]
     if (typeof item !== "string" || !contains(allowed, item)) layout(`${pointer}/${index}`)
     if (index > 0 && result[index - 1] >= item) layout(pointer)
-    result.push(item)
+    appendArrayItem(result, item)
   }
   return result
 }
@@ -1170,12 +1324,12 @@ function subsetArray(
 function optionArray(value: JsonValue, pointer: string): readonly string[] {
   const values = denseArray(value, pointer, 1, 256)
   const result: string[] = []
-  const seen = new Map<string, number>()
+  const seen = new MapConstructor<string, number>()
   for (let index = 0; index < values.length; index += 1) {
     const item = values[index]
     if (typeof item !== "string" || codePointCount(item) < 1 || codePointCount(item) > 256) layout(`${pointer}/${index}`)
     uniqueId(seen, item, `${pointer}/${index}`)
-    result.push(item)
+    appendArrayItem(result, item)
   }
   return result
 }
@@ -1187,13 +1341,16 @@ function requireSorted(values: readonly string[], pointer: string): void {
 }
 
 function uniqueId(seen: Map<string, number>, id: string, pointer: string): void {
-  if (seen.has(id)) layout(pointer)
-  seen.set(id, seen.size)
+  if (hasMapValue(seen, id)) layout(pointer)
+  setMapValue(seen, id, mapSize(seen))
 }
 
 function portableReference(value: string): boolean {
-  if (value.includes("\\") || value.includes(":") || value.startsWith("/") || value.endsWith("/")) return false
-  const segments = value.split("/")
+  if (
+    callStringIncludes(value, "\\") || callStringIncludes(value, ":") ||
+    callStringStartsWith(value, "/") || callStringEndsWith(value, "/")
+  ) return false
+  const segments = callStringSplit(value, "/")
   for (let index = 0; index < segments.length; index += 1) {
     if (segments[index].length === 0 || segments[index] === "." || segments[index] === "..") return false
   }
@@ -1201,39 +1358,78 @@ function portableReference(value: string): boolean {
 }
 
 function isSemverRange(value: string): boolean {
-  if (value.length === 0 || value.length > 256 || CONTROL_PATTERN.test(value) || !/[0-9xX*]/u.test(value)) {
+  if (value.length === 0 || value.length > 256 || testPattern(CONTROL_PATTERN, value)) return false
+  try {
+    return semverValidRange(value, { loose: false }) !== null
+  } catch {
     return false
   }
-  const parts = value.split("||")
-  if (parts.some((part) => part.trim().length === 0)) return false
-  const numeric = "(?:0|[1-9]\\d*)"
-  const partial = `v?(?:[xX*]|${numeric}(?:\\.(?:[xX*]|${numeric}(?:\\.(?:[xX*]|${numeric}))?))?)`
-  const prereleaseIdentifier = `(?:${numeric}|\\d*[A-Za-z-][0-9A-Za-z-]*)`
-  const prerelease = `(?:-${prereleaseIdentifier}(?:\\.${prereleaseIdentifier})*)?`
-  const buildIdentifier = "[0-9A-Za-z-]+"
-  const build = `(?:\\+${buildIdentifier}(?:\\.${buildIdentifier})*)?`
-  const exact = `v?${numeric}\\.${numeric}\\.${numeric}${prerelease}${build}`
-  const versionSource = `(?:${exact}|${partial})`
-  const version = new RegExp(`^${versionSource}$`, "u")
-  const comparator = new RegExp(`^(?:(?:<=|>=|<|>|=|~|\\^)\\s*)?${versionSource}$`, "u")
-  for (let index = 0; index < parts.length; index += 1) {
-    const part = parts[index].trim().replace(/(<=|>=|<|>|=|~|\^)\s+(?=[v0-9xX*])/gu, "$1")
-    const hyphen = part.split(/\s+-\s+/u)
-    if (hyphen.length === 2 && version.test(hyphen[0]) && version.test(hyphen[1])) continue
-    const tokens = part.split(/\s+/u)
-    if (tokens.length === 0 || tokens.some((token) => !comparator.test(token))) return false
-  }
-  return true
 }
 
 function codePointCount(value: string): number {
   let count = 0
-  for (const _character of value) count += 1
+  for (let index = 0; index < value.length; index += 1) {
+    const codeUnit = reflectApply(stringCharCodeAt, value, [index]) as number
+    if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) index += 1
+    count += 1
+  }
   return count
 }
 
 function normalize(value: string): string {
-  return Reflect.apply(stringNormalize, value, ["NFC"])
+  return reflectApply(stringNormalize, value, ["NFC"]) as string
+}
+
+function callStringIncludes(value: string, search: string): boolean {
+  return reflectApply(stringIncludes, value, [search]) as boolean
+}
+
+function callStringStartsWith(value: string, search: string): boolean {
+  return reflectApply(stringStartsWith, value, [search]) as boolean
+}
+
+function callStringEndsWith(value: string, search: string): boolean {
+  return reflectApply(stringEndsWith, value, [search]) as boolean
+}
+
+function callStringToLowerCase(value: string): string {
+  return reflectApply(stringToLowerCase, value, []) as string
+}
+
+function callStringSplit(value: string, separator: string): string[] {
+  return reflectApply(stringSplit, value, [separator]) as string[]
+}
+
+function appendArrayItem<T>(array: T[], value: T): void {
+  reflectApply(arrayPush, array, [value])
+}
+
+function hasMapValue<K>(map: ReadonlyMap<K, unknown>, key: K): boolean {
+  return reflectApply(mapHas, map, [key]) as boolean
+}
+
+function getMapValue<K, V>(map: ReadonlyMap<K, V>, key: K): V | undefined {
+  return reflectApply(mapGet, map, [key]) as V | undefined
+}
+
+function setMapValue<K, V>(map: Map<K, V>, key: K, value: V): void {
+  reflectApply(mapSet, map, [key, value])
+}
+
+function mapSize(map: ReadonlyMap<unknown, unknown>): number {
+  return reflectApply(mapSizeGetter, map, []) as number
+}
+
+function hasSetValue<T>(set: ReadonlySet<T>, value: T): boolean {
+  return reflectApply(setHas, set, [value]) as boolean
+}
+
+function addSetValue<T>(set: Set<T>, value: T): void {
+  reflectApply(setAdd, set, [value])
+}
+
+function testPattern(pattern: RegExp, value: string): boolean {
+  return reflectApply(regexpTest, pattern, [value]) as boolean
 }
 
 function contains(values: readonly string[], value: string): boolean {
@@ -1251,7 +1447,8 @@ function indexOf(values: readonly string[], value: string): number {
 }
 
 function escapePointer(value: string): string {
-  return value.replace(/~/gu, "~0").replace(/\//gu, "~1")
+  const escapedTilde = reflectApply(stringReplace, value, [/~/gu, "~0"]) as string
+  return reflectApply(stringReplace, escapedTilde, [/\//gu, "~1"]) as string
 }
 
 function layout(pointer: string): never {

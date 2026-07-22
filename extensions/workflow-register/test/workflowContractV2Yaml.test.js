@@ -347,6 +347,80 @@ describe("strict YAML document boundary", () => {
     })
   })
 
+  test("does not treat marker text inside a larger plain scalar as a YAML node property", () => {
+    const source = [
+      "tagText: hello !tag world",
+      "anchorText: hello &anchor world",
+      "aliasText: hello *alias world",
+      ""
+    ].join("\n")
+    const result = parse(Buffer.from(source))
+    assert.equal(result.ok, true)
+    assert.deepEqual(plain(result.document), {
+      aliasText: "hello *alias world",
+      anchorText: "hello &anchor world",
+      tagText: "hello !tag world"
+    })
+  })
+
+  test("does not let an apostrophe in a plain scalar hide a later anchor or alias", () => {
+    for (const description of ["Bob's workflow", "Bob:'s workflow"]) {
+      const plainScalar = parse(Buffer.from(`description: ${description}\n`))
+      assert.equal(plainScalar.ok, true)
+      assert.deepEqual(plain(plainScalar.document), { description })
+
+      oneDiagnostic(parse(Buffer.from([
+        `description: ${description}`,
+        "base: &base",
+        "  value: 1",
+        "copy: *base",
+        ""
+      ].join("\n"))), "WF2_PACKAGE_LAYOUT_INVALID", "")
+    }
+  })
+
+  test("rejects every implicit non-string numeric mapping key form", () => {
+    for (const key of ["0xFF", "0o77", "0b11", "01", "+1", "1.", "1.0", "01.2", "1e2"]) {
+      oneDiagnostic(
+        parse(Buffer.from(`${key}: value\n`)),
+        "WF2_PACKAGE_LAYOUT_INVALID",
+        ""
+      )
+    }
+  })
+
+  test("rejects timestamp spellings that YAML 1.1 implementations may resolve", () => {
+    for (const source of [
+      "value: 2001-1-1 1:02:03\n",
+      "value: 2001-1-1  1:02:03\n",
+      "value: 2001-1-1\t1:02:03\n",
+      "value: 2001-1-1 1:02:03.\n",
+      "2001-1-1 1:02:03: value\n"
+    ]) {
+      oneDiagnostic(parse(Buffer.from(source)), "WF2_PACKAGE_LAYOUT_INVALID", "")
+    }
+  })
+
+  test("accepts numeric-looking plain keys that CORE resolves as strings", () => {
+    const result = parse(Buffer.from("0x_FF: value\n"))
+    assert.equal(result.ok, true)
+    assert.deepEqual(plain(result.document), { "0x_FF": "value" })
+  })
+
+  test("accepts both legal orders of block scalar indentation and chomping indicators", () => {
+    const result = parse(Buffer.from([
+      "literal: |2+",
+      "  &anchor *alias !tag 2026-07-22",
+      "folded: >2-",
+      "  &anchor *alias !tag 2026-07-22",
+      ""
+    ].join("\n")))
+
+    assert.equal(result.ok, true)
+    assert.equal(result.document.literal, "&anchor *alias !tag 2026-07-22\n")
+    assert.equal(result.document.folded, "&anchor *alias !tag 2026-07-22")
+  })
+
   test("rejects flow-style sequence and mapping keys before js-yaml can stringify them", () => {
     oneDiagnostic(parse(Buffer.from("{ [a, b]: value }\n")), "WF2_PACKAGE_LAYOUT_INVALID", "")
     oneDiagnostic(parse(Buffer.from("{ {a: b}: value }\n")), "WF2_PACKAGE_LAYOUT_INVALID", "")
@@ -374,6 +448,20 @@ describe("strict YAML document boundary", () => {
       "WF2_PACKAGE_LAYOUT_INVALID",
       ""
     )
+
+    let byteTrapCalls = 0
+    const proxyBytes = new Proxy(Buffer.from("value: 1\n"), {
+      get() {
+        byteTrapCalls += 1
+        throw new Error("bytes trap must not run")
+      }
+    })
+    oneDiagnostic(
+      yamlModule().parseWorkflowContractV2Yaml({ bytes: proxyBytes, path: "workflow.yaml" }),
+      "WF2_PACKAGE_LAYOUT_INVALID",
+      ""
+    )
+    assert.equal(byteTrapCalls, 0)
   })
 })
 
@@ -496,13 +584,22 @@ describe("closed package shape", () => {
   test("accepts the supported SemVer range grammar without requiring provider binding", () => {
     for (const version of [
       "*",
+      "x.x",
       "=1.2.3",
       "1.2.x",
+      "1.2.x-beta",
+      "1.2.*+build",
+      "1.x.x",
+      "1.x.3",
+      "x.2.3",
+      ">=1.*.3",
       ">=1.2.3 <2.0.0",
       "1.2.3 - 2.0.0",
       "1.2.3-beta.1+build.5",
       "<= 1.2.3",
-      "^1.2.3 || ^2.0.0"
+      "~>1.2.3",
+      "^1.2.3 || ^2.0.0",
+      "1 ||"
     ]) {
       const document = richDocument()
       document.providers[0].version = version
@@ -547,15 +644,11 @@ describe("closed package shape", () => {
     for (const version of [
       "1..2",
       "1.2.3.4",
-      "1 ||",
       "=>1.0.0",
       "01.2.3",
       "1.2.3-01",
       "1.2.3-alpha..1",
-      "1.x-beta",
-      "1.x.3",
-      "x.2.3",
-      ">=1.*.3"
+      "1.x-beta"
     ]) {
       const invalidRange = richDocument()
       invalidRange.providers[0].version = version
@@ -652,6 +745,10 @@ describe("references, predicates, and control flow", () => {
     futureContext.steps[1].context[0].id = "reviewOutput"
     expectLayout(futureContext, "/steps/1/context/0/id")
 
+    const inputContext = richDocument()
+    inputContext.steps[1].context[0] = { source: "input", id: "request", pointer: "" }
+    expectLayout(inputContext, "/steps/1/context/0/source")
+
     const currentTransition = richDocument()
     assert.equal(validate(currentTransition).ok, true)
 
@@ -676,6 +773,223 @@ describe("references, predicates, and control flow", () => {
 })
 
 describe("fixed resource bounds and hostile inputs", () => {
+  test("accepts exact maxima for every top-level collection", () => {
+    const inputs = minimalDocument()
+    inputs.inputs = Array.from({ length: 256 }, (_, index) => ({
+      id: `input.${index}`,
+      title: `Input ${index}`,
+      schema: "schemas/input.json",
+      required: false
+    }))
+    assert.equal(validate(inputs).ok, true)
+
+    const providers = minimalDocument()
+    providers.providers = Array.from({ length: 256 }, (_, index) => ({
+      id: `provider.${index}`,
+      version: "1.0.0",
+      inputSchema: "schemas/input.json",
+      output: { kind: "unit" },
+      errorSchema: "schemas/error.json",
+      sideEffect: "none",
+      idempotency: "idempotent",
+      requiredCapabilities: []
+    }))
+    assert.equal(validate(providers).ok, true)
+
+    const steps = minimalDocument()
+    steps.steps = Array.from({ length: 512 }, (_, index) => ({
+      id: `step.${index}`,
+      title: `Step ${index}`,
+      type: "result",
+      required: true,
+      source: { source: "literal", value: null },
+      artifacts: []
+    }))
+    assert.equal(validate(steps).ok, true)
+
+    const artifacts = minimalDocument()
+    artifacts.steps = Array.from({ length: 4 }, (_, stepIndex) => ({
+      id: `producer.${stepIndex}`,
+      title: `Producer ${stepIndex}`,
+      type: "result",
+      required: true,
+      source: { source: "literal", value: null },
+      artifacts: Array.from(
+        { length: 128 },
+        (_, artifactIndex) => `artifact.${stepIndex}.${artifactIndex}`
+      )
+    }))
+    artifacts.requiredArtifacts = Array.from({ length: 512 }, (_, index) => ({
+      id: `artifact.${Math.floor(index / 128)}.${index % 128}`,
+      producedBy: `producer.${Math.floor(index / 128)}`,
+      path: `artifacts/a${String(index).padStart(3, "0")}.json`,
+      mediaType: "application/json",
+      schema: "schemas/artifact.json",
+      maxBytes: 1,
+      owner: "runtime",
+      required: false
+    }))
+    assert.equal(validate(artifacts).ok, true)
+  })
+
+  test("accepts exact maxima for every nested collection", () => {
+    const template = richDocument()
+    template.steps[0].input = {
+      source: "object",
+      properties: Object.fromEntries(Array.from(
+        { length: 256 },
+        (_, index) => [`property.${index}`, { source: "literal", value: null }]
+      ))
+    }
+    assert.equal(validate(template).ok, true)
+    template.steps[0].input.properties["property.256"] = { source: "literal", value: null }
+    expectLayout(template, "/steps/0/input/properties")
+
+    const context = minimalDocument()
+    context.providers = [{
+      id: "builder",
+      version: "1.0.0",
+      inputSchema: "schemas/input.json",
+      output: { kind: "value", schema: "schemas/result.json" },
+      errorSchema: "schemas/error.json",
+      sideEffect: "none",
+      idempotency: "idempotent",
+      requiredCapabilities: []
+    }]
+    context.steps = Array.from({ length: 256 }, (_, index) => ({
+      id: `build.${index}`,
+      title: `Build ${index}`,
+      type: "command",
+      required: true,
+      provider: "builder",
+      input: { source: "literal", value: null },
+      output: {
+        kind: "value",
+        id: `output.${index}`,
+        schema: "schemas/result.json",
+        maxBytes: 1
+      },
+      artifacts: []
+    }))
+    context.steps.push({
+      id: "consume",
+      title: "Consume",
+      type: "agent",
+      required: true,
+      prompt: "prompts/consume.md",
+      context: Array.from({ length: 256 }, (_, index) => ({
+        source: "committedOutput",
+        id: `output.${index}`,
+        pointer: ""
+      })),
+      output: {
+        kind: "value",
+        id: "consumed",
+        schema: "schemas/result.json",
+        maxBytes: 1
+      },
+      artifacts: []
+    })
+    assert.equal(validate(context).ok, true)
+
+    const nested = richDocument()
+    nested.steps[0].artifacts = Array.from({ length: 128 }, (_, index) => `artifact.${index}`)
+    nested.requiredArtifacts = nested.steps[0].artifacts.map((id, index) => ({
+      id,
+      producedBy: "build",
+      path: `artifacts/a${String(index).padStart(3, "0")}.json`,
+      mediaType: "application/json",
+      schema: "schemas/artifact.json",
+      maxBytes: 1,
+      owner: "provider",
+      required: false
+    }))
+    nested.steps[3].artifacts = []
+    nested.steps[0].transition.decisions = Array.from({ length: 128 }, (_, index) => ({
+      id: `decision.${index}`,
+      when: { kind: "exists", left: { source: "input", id: "request", pointer: "" } },
+      goto: "draft"
+    }))
+    nested.steps[2].form.fields = Array.from({ length: 128 }, (_, index) => ({
+      id: `field.${index}`,
+      title: `Field ${index}`,
+      type: "boolean",
+      required: false
+    }))
+    nested.providers[0].requiredCapabilities = [
+      ...Array.from({ length: 127 }, (_, index) => `capability.${String(index).padStart(3, "0")}`),
+      "workflow.effect.workspace-write"
+    ]
+    const select = nested.steps[2].form.fields[0]
+    select.type = "select"
+    select.options = Array.from({ length: 256 }, (_, index) => `option-${index}`)
+    const nestedResult = validate(nested)
+    assert.equal(nestedResult.ok, true, JSON.stringify(nestedResult.diagnostics))
+  })
+
+  test("covers predicate, Bob subset, and loop numeric boundaries", () => {
+    const leaf = () => ({
+      kind: "exists",
+      left: { source: "input", id: "request", pointer: "" }
+    })
+    const booleanChildren = richDocument()
+    booleanChildren.steps[1].when = {
+      kind: "all",
+      predicates: Array.from({ length: 128 }, leaf)
+    }
+    assert.equal(validate(booleanChildren).ok, true)
+    booleanChildren.steps[1].when.predicates.push(leaf())
+    oneDiagnostic(
+      validate(booleanChildren),
+      "WF2_PREDICATE_INVALID",
+      "/steps/1/when/predicates"
+    )
+
+    const inValues = richDocument()
+    inValues.steps[1].when = {
+      kind: "in",
+      left: { source: "input", id: "request", pointer: "" },
+      right: Array.from({ length: 256 }, (_, index) => index)
+    }
+    assert.equal(validate(inValues).ok, true)
+    inValues.steps[1].when.right.push(256)
+    oneDiagnostic(validate(inValues), "WF2_PREDICATE_INVALID", "/steps/1/when/right")
+
+    const bob = minimalDocument()
+    bob.bob.requiredCapabilities = [
+      "source.deactivate",
+      "source.log",
+      "source.registerWorkflow",
+      "task.getAllMetadata",
+      "task.getMessages",
+      "task.sendMessage",
+      "task.setStepComplete",
+      "task.startSubagent",
+      "task.toSerializable"
+    ]
+    bob.bob.taskCapabilities = [
+      "task.getAllMetadata",
+      "task.getMessages",
+      "task.sendMessage",
+      "task.setStepComplete",
+      "task.startSubagent",
+      "task.toSerializable"
+    ]
+    assert.equal(validate(bob).ok, true)
+    bob.bob.requiredCapabilities.push("task.toSerializable")
+    expectLayout(bob, "/bob/requiredCapabilities")
+
+    const loop = richDocument()
+    loop.steps[0].transition.decisions[0].loop.maxIterations = 1000
+    loop.steps[0].transition.decisions[0].loop.extensionSize = 1000
+    assert.equal(validate(loop).ok, true)
+    loop.steps[0].transition.decisions[0].loop.maxIterations = 1001
+    expectLayout(loop, "/steps/0/transition/decisions/0/loop/maxIterations")
+    loop.steps[0].transition.decisions[0].loop.maxIterations = 1
+    loop.steps[0].transition.decisions[0].loop.extensionSize = 0
+    expectLayout(loop, "/steps/0/transition/decisions/0/loop/extensionSize")
+  })
+
   test("enforces every top-level and nested collection limit", async (t) => {
     const cases = [
       ["inputs", 257, (index) => ({
@@ -793,7 +1107,7 @@ describe("fixed resource bounds and hostile inputs", () => {
     let template = { source: "literal", value: null }
     for (let index = 0; index < 33; index += 1) template = { source: "array", items: [template] }
     deep.steps[0].input = template
-    expectLayout(deep, "/steps/0/input")
+    expectLayout(deep, "")
 
     const wide = richDocument()
     wide.steps[0].input = {
@@ -826,6 +1140,36 @@ describe("fixed resource bounds and hostile inputs", () => {
     expectLayout(documentDepth, "")
   })
 
+  test("preflights constructed document bounds before invoking the detaching clone", () => {
+    const shapePath = require.resolve("../out/core/contractV2/packageShape.js")
+    const jsonValue = require("../out/core/contractV2/jsonValue.js")
+    const originalClone = jsonValue.cloneAndFreezeJsonValue
+    let cloneCalls = 0
+    let result
+
+    delete require.cache[shapePath]
+    jsonValue.cloneAndFreezeJsonValue = (value) => {
+      cloneCalls += 1
+      return originalClone(value)
+    }
+    try {
+      const document = minimalDocument()
+      let nested = null
+      for (let index = 0; index < 64; index += 1) nested = [nested]
+      document.steps[0].source.value = nested
+      result = require(shapePath).validateWorkflowContractV2PackageShape({
+        document,
+        path: "workflow.yaml"
+      })
+    } finally {
+      jsonValue.cloneAndFreezeJsonValue = originalClone
+      delete require.cache[shapePath]
+    }
+
+    assert.equal(cloneCalls, 0)
+    oneDiagnostic(result, "WF2_PACKAGE_LAYOUT_INVALID", "")
+  })
+
   test("enforces predicate node and literal-byte budgets before semantic resolution", () => {
     const leaf = () => ({
       kind: "equals",
@@ -844,13 +1188,31 @@ describe("fixed resource bounds and hostile inputs", () => {
     exact.steps[1].when.predicates[7].predicates.push(leaf())
     oneDiagnostic(validate(exact), "WF2_PREDICATE_INVALID", "/steps/1/when")
 
-    const literalBudget = richDocument()
-    literalBudget.steps[1].when = {
+    const exactLiteralBudget = richDocument()
+    exactLiteralBudget.steps[1].when = {
       kind: "equals",
       left: { source: "input", id: "request", pointer: "" },
-      right: "x".repeat(262143)
+      right: "x".repeat(262142)
     }
-    oneDiagnostic(validate(literalBudget), "WF2_PREDICATE_INVALID", "/steps/1/when/right")
+    assert.equal(validate(exactLiteralBudget).ok, true)
+
+    exactLiteralBudget.steps[1].when.right += "x"
+    oneDiagnostic(validate(exactLiteralBudget), "WF2_PREDICATE_INVALID", "/steps/1/when/right")
+  })
+
+  test("accepts exact output and artifact byte maxima and rejects one over", () => {
+    const exact = richDocument()
+    exact.steps[0].output.maxBytes = 16_777_216
+    exact.requiredArtifacts[0].maxBytes = 67_108_864
+    assert.equal(validate(exact).ok, true)
+
+    const outputOver = richDocument()
+    outputOver.steps[0].output.maxBytes = 16_777_217
+    expectLayout(outputOver, "/steps/0/output/maxBytes")
+
+    const artifactOver = richDocument()
+    artifactOver.requiredArtifacts[0].maxBytes = 67_108_865
+    expectLayout(artifactOver, "/requiredArtifacts/0/maxBytes")
   })
 
   test("rejects sparse, exotic, accessor, proxy, and cyclic input without invoking user code", () => {
@@ -896,6 +1258,170 @@ describe("fixed resource bounds and hostile inputs", () => {
     } finally {
       jsonValue.cloneAndFreezeJsonValue = originalClone
     }
+  })
+
+  test("pins byte and string intrinsics before callers can monkeypatch them", () => {
+    const loadedYaml = yamlModule()
+    const loadedShape = shapeModule()
+    const originalBufferIncludes = Buffer.prototype.includes
+    const originalStringIncludes = String.prototype.includes
+    const originalToLowerCase = String.prototype.toLowerCase
+    let yamlResult
+    let controlResult
+    let aliasResult
+
+    try {
+      Buffer.prototype.includes = () => false
+      String.prototype.includes = () => false
+      String.prototype.toLowerCase = function () { return String(this) }
+
+      yamlResult = loadedYaml.parseWorkflowContractV2Yaml({
+        bytes: Buffer.from("value: 1\r\n"),
+        path: "workflow.yaml"
+      })
+
+      const control = minimalDocument()
+      control.name = "invalid\rname"
+      controlResult = loadedShape.validateWorkflowContractV2PackageShape({
+        document: control,
+        path: "workflow.yaml"
+      })
+
+      const alias = richDocument()
+      alias.requiredArtifacts.push({
+        ...clone(alias.requiredArtifacts[0]),
+        id: "alias",
+        path: "REPORTS/RESULT.JSON",
+        owner: "runtime"
+      })
+      aliasResult = loadedShape.validateWorkflowContractV2PackageShape({
+        document: alias,
+        path: "workflow.yaml"
+      })
+    } finally {
+      Buffer.prototype.includes = originalBufferIncludes
+      String.prototype.includes = originalStringIncludes
+      String.prototype.toLowerCase = originalToLowerCase
+    }
+
+    oneDiagnostic(yamlResult, "WF2_PACKAGE_LAYOUT_INVALID", "")
+    oneDiagnostic(controlResult, "WF2_PACKAGE_LAYOUT_INVALID", "/name")
+    oneDiagnostic(aliasResult, "WF2_PACKAGE_LAYOUT_INVALID", "/requiredArtifacts/1/path")
+  })
+
+  test("pins collection intrinsics before callers can monkeypatch them", () => {
+    const loadedShape = shapeModule()
+    const originals = {
+      arrayPop: Array.prototype.pop,
+      arrayPush: Array.prototype.push,
+      mapGet: Map.prototype.get,
+      mapHas: Map.prototype.has,
+      mapKeys: Map.prototype.keys,
+      mapSet: Map.prototype.set,
+      mapIterator: Map.prototype[Symbol.iterator],
+      mapSize: Object.getOwnPropertyDescriptor(Map.prototype, "size"),
+      setAdd: Set.prototype.add,
+      setHas: Set.prototype.has,
+      setIterator: Set.prototype[Symbol.iterator]
+    }
+    const document = minimalDocument()
+    document.steps[0].transition = { decisions: [], default: { goto: "second" } }
+    document.steps.push({
+      id: "second",
+      title: "Second",
+      type: "result",
+      required: true,
+      source: { source: "literal", value: null },
+      artifacts: []
+    })
+    let result
+
+    try {
+      Array.prototype.pop = () => undefined
+      Array.prototype.push = () => 0
+      Map.prototype.get = () => undefined
+      Map.prototype.has = () => false
+      Map.prototype.keys = () => { throw new Error("live Map.keys") }
+      Map.prototype.set = function () { return this }
+      Map.prototype[Symbol.iterator] = () => { throw new Error("live Map iterator") }
+      Object.defineProperty(Map.prototype, "size", { configurable: true, get: () => 0 })
+      Set.prototype.add = function () { return this }
+      Set.prototype.has = () => false
+      Set.prototype[Symbol.iterator] = () => { throw new Error("live Set iterator") }
+
+      result = loadedShape.validateWorkflowContractV2PackageShape({
+        document,
+        path: "workflow.yaml"
+      })
+    } finally {
+      Array.prototype.pop = originals.arrayPop
+      Array.prototype.push = originals.arrayPush
+      Map.prototype.get = originals.mapGet
+      Map.prototype.has = originals.mapHas
+      Map.prototype.keys = originals.mapKeys
+      Map.prototype.set = originals.mapSet
+      Map.prototype[Symbol.iterator] = originals.mapIterator
+      Object.defineProperty(Map.prototype, "size", originals.mapSize)
+      Set.prototype.add = originals.setAdd
+      Set.prototype.has = originals.setHas
+      Set.prototype[Symbol.iterator] = originals.setIterator
+    }
+
+    assert.equal(result.ok, true, JSON.stringify(result.diagnostics))
+  })
+
+  test("pins array and string iterators before callers can monkeypatch them", () => {
+    const loadedShape = shapeModule()
+    assert.equal(loadedShape.validateWorkflowContractV2PackageShape({
+      document: richDocument(),
+      path: "workflow.yaml"
+    }).ok, true)
+    const originalArrayIterator = Array.prototype[Symbol.iterator]
+    const originalStringIterator = String.prototype[Symbol.iterator]
+    let templateResult
+    let nameResult
+
+    try {
+      Array.prototype[Symbol.iterator] = () => ({
+        next: () => ({ done: true, value: undefined })
+      })
+      const template = richDocument()
+      template.steps[0].input.properties.bad = {
+        source: "input",
+        id: "missing",
+        pointer: ""
+      }
+      templateResult = loadedShape.validateWorkflowContractV2PackageShape({
+        document: template,
+        path: "workflow.yaml"
+      })
+    } finally {
+      Array.prototype[Symbol.iterator] = originalArrayIterator
+    }
+
+    try {
+      String.prototype[Symbol.iterator] = () => {
+        let done = false
+        return {
+          next: () => {
+            if (done) return { done: true, value: undefined }
+            done = true
+            return { done: false, value: "x" }
+          }
+        }
+      }
+      const longName = minimalDocument()
+      longName.name = "x".repeat(4097)
+      nameResult = loadedShape.validateWorkflowContractV2PackageShape({
+        document: longName,
+        path: "workflow.yaml"
+      })
+    } finally {
+      String.prototype[Symbol.iterator] = originalStringIterator
+    }
+
+    oneDiagnostic(templateResult, "WF2_PACKAGE_LAYOUT_INVALID", "/steps/0/input/properties/bad/id")
+    oneDiagnostic(nameResult, "WF2_PACKAGE_LAYOUT_INVALID", "/name")
   })
 
   test("rejects hostile outer API records before getters or proxies can run", () => {
