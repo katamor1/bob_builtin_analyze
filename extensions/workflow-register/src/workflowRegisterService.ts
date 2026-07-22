@@ -7,15 +7,12 @@ import {
 import { StepRuntime, type StepCompletionExpectation } from "./bobStepRuntime"
 import type { BobSourceLike } from "./bobApi"
 import { ActionRegistry } from "./core/actionRegistry"
-import type { ActionProvider, ActionProviderRegistration } from "./core/actionRegistry"
-import { ActionProviderRegistrationStore } from "./core/actionProviderRegistrationStore"
-import type { ContributionRegistration } from "./core/contributionRegistry"
-import type { ContributionOwner } from "./core/contributionManifest"
+import type { ContributionHandlerSet, ContributionRegistration } from "./core/contributionRegistry"
+import type { ContributionOwner, WorkflowContributionManifest } from "./core/contributionManifest"
 import { disposeResourcesInOrder } from "./core/disposeResources"
 import { exists } from "./core/engine/preflight"
-import type { AgentProvider, CoreWorkflowDefinition } from "./core/model"
+import type { CoreWorkflowDefinition } from "./core/model"
 import { ResultSinkFileTransactionBinding } from "./core/resultSinkRegistry"
-import type { ResultSinkRegistry } from "./core/resultSinkRegistry"
 import {
   fallbackWorkspaceRootCandidates,
   findMarkerRoots,
@@ -37,7 +34,11 @@ import { WorkflowRunCommandService } from "./workflowRunCommands"
 import type { ArtifactSourceRunArg, RunCommandArg, WorkflowCommandArg } from "./workflowRunCommands"
 import { requireTrustedWorkspace } from "./workspaceTrust"
 import { ReviewAcceptanceCoordinator } from "./reviewAcceptanceCoordinator"
-import { ProviderRegistryHost } from "./api/providerRegistryApi"
+import { ProviderRegistryHost, type ProviderProvenanceContext } from "./api/providerRegistryApi"
+import {
+  createLegacyContributionAdapter,
+  type LegacyContributionAdapter
+} from "./api/legacyContributionAdapter"
 
 const WORKFLOW_GLOB = "**/.bob/workflows/*/WORKFLOW.md"
 
@@ -58,18 +59,21 @@ export class WorkflowRegisterService implements vscode.Disposable {
   private readonly actionRegistry = new ActionRegistry({
     contributionResolver: this.providerRegistryHost.runtimeResolver
   })
-  private readonly customResultSinks: Array<{ type: string; handler: Parameters<ResultSinkRegistry["register"]>[1] }> = []
-  private readonly actionProviderRegistrations = new ActionProviderRegistrationStore()
+  private readonly legacyContributionAdapter: LegacyContributionAdapter
   private readonly manualStepPanel: ManualStepPanelController
   private readonly runtimeFactory: WorkflowRuntimeFactory
   private readonly runCommands: WorkflowRunCommandService
   private readonly builtInContributionRegistration: ContributionRegistration
-  private agentProvider?: AgentProvider
   private registeredSource?: BobSourceLike
   private lastResult: RegistrationResult = { summary: "No workflow registration has run yet.", lines: [] }
 
   constructor(private readonly installedOwner: ContributionOwner) {
     const engineVersion = installedOwner.version
+    this.legacyContributionAdapter = createLegacyContributionAdapter({
+      api: this.providerRegistryApi,
+      hostVersion: installedOwner.version,
+      reportDiagnostic: (message) => console.warn(`[workflow-register] ${message}`)
+    })
     this.manualStepPanel = new ManualStepPanelController({
       host: {
         createWebviewPanel: (viewType, title, showOptions, options) => vscode.window.createWebviewPanel(
@@ -92,10 +96,8 @@ export class WorkflowRegisterService implements vscode.Disposable {
       actionRegistry: this.actionRegistry,
       contributionResolver: this.providerRegistryHost.runtimeResolver,
       fileTransactionResolver: this.fileTransactions,
-      customResultSinks: this.customResultSinks,
       stepRuntime: this.stepRuntime,
       gateRegistry: this.bobWorkflowGates,
-      agentProvider: () => this.agentProvider,
       inputsProvider: (workflow, provided) => collectBobWorkflowInputs(workflow, provided),
       onManualStepHeld: (input) => this.manualStepPanel.show(input)
     })
@@ -139,11 +141,6 @@ export class WorkflowRegisterService implements vscode.Disposable {
         label: "workflow-register built-in contribution set",
         propagate: false,
         dispose: () => this.builtInContributionRegistration.dispose()
-      },
-      {
-        label: "one or more workflow action providers",
-        propagate: false,
-        dispose: () => this.actionProviderRegistrations.dispose()
       }
     ])
     for (const failure of disposal.failures) {
@@ -209,16 +206,12 @@ export class WorkflowRegisterService implements vscode.Disposable {
     return this.reviewAcceptances.coordinate(workspaceRoot, runId, "review-accept", operation)
   }
 
-  registerActionProvider(provider: ActionProvider): ActionProviderRegistration {
-    return this.actionProviderRegistrations.track(this.actionRegistry.register(provider))
-  }
-
-  registerAgentProvider(provider: AgentProvider): void {
-    this.agentProvider = provider
-  }
-
-  registerResultSink(type: string, handler: Parameters<ResultSinkRegistry["register"]>[1]): void {
-    this.customResultSinks.push({ type, handler })
+  registerLegacyContributionSet(
+    manifest: WorkflowContributionManifest,
+    provenance: ProviderProvenanceContext,
+    handlers: ContributionHandlerSet
+  ): ContributionRegistration {
+    return this.legacyContributionAdapter.registerLegacyContributionSet(manifest, provenance, handlers)
   }
 
   listCoreWorkflows(): CoreWorkflowDefinition[] {

@@ -23,11 +23,13 @@ test("runtime factory resolves preflight, result sink, and agent providers live"
   assert.match(factory, /createLiveAgentProvider\(\(\) =>/)
 })
 
-test("review-task agent remains ahead of registry, legacy, and configured providers", () => {
+test("explicit per-run agent remains ahead of the owned registry provider", () => {
   const factory = readSrc("workflowRuntimeFactory.ts")
 
   assert.match(factory, /if \(explicitProvider\) return explicitProvider/)
-  assert.match(factory, /this\.options\.contributionResolver\.getAgentProvider\(\)[\s\S]*this\.options\.agentProvider\(\)[\s\S]*configuredProvider/)
+  assert.match(factory, /createLiveAgentProvider\(\(\) => this\.options\.contributionResolver\.getAgentProvider\(\)\)/)
+  assert.doesNotMatch(factory, /this\.options\.agentProvider\(\)/)
+  assert.doesNotMatch(factory, /configuredProvider|agentCommand/)
 })
 
 test("Bob runner receives the same live preflight and agent facades", () => {

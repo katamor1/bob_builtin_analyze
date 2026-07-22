@@ -13,7 +13,7 @@ import type {
 } from "./bobWorkflowTypes"
 import type { ActionRegistry } from "./core/actionRegistry"
 import { normalizeAutomaticPauseSettings } from "./core/automaticPauseSettings"
-import { createCommandAgentProvider, createLiveAgentProvider } from "./core/agentProvider"
+import { createLiveAgentProvider } from "./core/agentProvider"
 import type { ContributionRuntimeResolver } from "./core/contributionRegistry"
 import { WorkflowEngine } from "./core/engine"
 import type { ManualCompletionInput, ManualCompletionResult } from "./core/engine"
@@ -25,7 +25,6 @@ import {
 import { FileRunControlStore, RunControlStore } from "./core/runControlStore"
 import { FileRunStateStore, RunStateStore } from "./core/runStateStore"
 import { FileTaskSnapshotStore, TaskSnapshotStore } from "./core/taskSnapshots"
-import { requireTrustedCommandExecution } from "./workspaceTrust"
 
 export interface TaskSnapshotSettings {
   enabled: boolean
@@ -40,9 +39,7 @@ export interface WorkflowRuntimeFactoryOptions {
   actionRegistry: ActionRegistry
   contributionResolver: ContributionRuntimeResolver
   fileTransactionResolver: ResultSinkFileTransactionResolver
-  customResultSinks: Array<{ type: string; handler: Parameters<ResultSinkRegistry["register"]>[1] }>
   stepRuntime: StepRuntime
-  agentProvider: () => AgentProvider | undefined
   inputsProvider: (workflow: WorkflowDefinition, provided: Record<string, unknown>) => ReturnType<BobWorkflowRunnerInputCollector>
   gateRegistry: BobWorkflowGateRegistry
   onManualStepHeld?: (input: { workflow: import("./core/model").CoreWorkflowDefinition; run: import("./core/model").WorkflowRunState; step: import("./core/model").EngineStep; active: ActiveStep }) => Promise<void> | void
@@ -129,25 +126,9 @@ export class WorkflowRuntimeFactory {
     )
   }
 
-  private createCommandAgentProvider(): AgentProvider | undefined {
-    const config = vscode.workspace.getConfiguration("workflowRegister")
-    return createCommandAgentProvider({
-      command: config.get<string>("agentCommand", ""),
-      executeCommand: (command, input) => {
-        requireTrustedCommandExecution("run configured agent command")
-        return vscode.commands.executeCommand(command, input)
-      }
-    })
-  }
-
   private createRuntimeAgentProvider(explicitProvider?: AgentProvider): AgentProvider {
     if (explicitProvider) return explicitProvider
-    const configuredProvider = this.createCommandAgentProvider()
-    return createLiveAgentProvider(() => (
-      this.options.contributionResolver.getAgentProvider()
-      ?? this.options.agentProvider()
-      ?? configuredProvider
-    ))
+    return createLiveAgentProvider(() => this.options.contributionResolver.getAgentProvider())
   }
 
   private createResultSinks(_workspaceRoot: string): ResultSinkRegistry {
@@ -155,7 +136,6 @@ export class WorkflowRuntimeFactory {
       contributionResolver: this.options.contributionResolver,
       fileTransactionResolver: this.options.fileTransactionResolver
     })
-    for (const sink of this.options.customResultSinks) registry.register(sink.type, sink.handler)
     return registry
   }
 

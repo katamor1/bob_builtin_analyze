@@ -48,7 +48,7 @@ The report shows:
 Unsupported action provider: example.collectReviewContext
 ```
 
-Fix: register an `ActionProvider` for that id, or use `vscode.executeCommand` with a real VS Code command id in `action.args`.
+Fix: declare that action provider in `workflow-contributions.json`, negotiate `provider-registry/v1`, and register the complete contribution set with matching provenance; or use `vscode.executeCommand` with a real VS Code command id in `action.args`.
 
 ### Missing required file
 
@@ -84,7 +84,7 @@ If `run.json` has `status: "reviewing"`, `workflowRegister.runNextStep` will not
 Agent provider is required for agent workflow steps.
 ```
 
-Fix: configure `workflowRegister.agentCommand` or register an `AgentProvider` through the extension API.
+Fix: declare an `agent_provider` in `workflow-contributions.json`, negotiate `provider-registry/v1`, and register the complete contribution set with matching provenance.
 
 ### Guardrail rejected command
 

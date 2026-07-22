@@ -52,15 +52,14 @@ test("workflow reload re-registers current workflows and clears Bob context when
   assert.match(source, /"setContext", "bob-code\.hasWorkflows", registeredIds\.size > 0/)
 })
 
-test("workflow service removes manually disposed action providers from its lifecycle store", () => {
+test("workflow service has no per-kind provider lifecycle store outside the atomic host", () => {
   const source = registrationSource()
 
-  assert.match(source, /import \{ ActionProviderRegistrationStore \} from "\.\/core\/actionProviderRegistrationStore"/)
-  assert.match(source, /private readonly actionProviderRegistrations = new ActionProviderRegistrationStore\(\)/)
-  assert.match(source, /return this\.actionProviderRegistrations\.track\(this\.actionRegistry\.register\(provider\)\)/)
-  assert.match(source, /this\.actionProviderRegistrations\.dispose\(\)/)
-  assert.doesNotMatch(source, /actionProviderRegistrations: ActionProviderRegistration\[\]/)
-  assert.doesNotMatch(source, /actionProviderRegistrations\.push\(/)
+  assert.match(source, /private readonly providerRegistryHost = new ProviderRegistryHost\(\)/)
+  assert.match(source, /dispose: \(\) => this\.providerRegistryHost\.dispose\(\)/)
+  assert.doesNotMatch(source, /ActionProviderRegistrationStore/)
+  assert.doesNotMatch(source, /actionProviderRegistrations/)
+  assert.doesNotMatch(source, /customResultSinks/)
 })
 
 test("workflow service closes the manual step panel during deactivation", () => {

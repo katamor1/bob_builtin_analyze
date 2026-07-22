@@ -27,6 +27,7 @@ test("core activation publishes one frozen complete API and the authoring wrappe
   assert.match(extension, /apiVersion: providerRegistryApi\.apiVersion/)
   assert.match(extension, /negotiateProviderRegistry: providerRegistryApi\.negotiateProviderRegistry/)
   assert.match(extension, /registerContributionSet: providerRegistryApi\.registerContributionSet/)
+  assert.match(extension, /registerLegacyContributionSet: \(manifest, provenance, handlers\) =>/)
   assert.match(wrapper, /const api = activateCore\(context\)/)
   assert.match(wrapper, /return api/)
   assert.doesNotMatch(wrapper, /return\s+\{[\s\S]*\.\.\.api/)
@@ -43,10 +44,16 @@ test("WorkflowRegisterService owns and disposes exactly one provider registry ho
   assert.equal((service.match(/new ProviderRegistryHost\(/g) ?? []).length, 1)
 })
 
-test("existing legacy provider methods are not routed through the v1 registry in Task 3", () => {
+test("service exposes only the atomic legacy adapter and has no per-kind fallback state", () => {
   const service = readSrc("workflowRegisterService.ts")
 
-  assert.match(service, /registerActionProvider\(provider: ActionProvider\): ActionProviderRegistration \{[\s\S]*this\.actionProviderRegistrations\.track\(this\.actionRegistry\.register\(provider\)\)/)
-  assert.match(service, /registerAgentProvider\(provider: AgentProvider\): void \{[\s\S]*this\.agentProvider = provider/)
-  assert.match(service, /registerResultSink\(type: string,[\s\S]*this\.customResultSinks\.push\(\{ type, handler \}\)/)
+  assert.match(service, /createLegacyContributionAdapter\(\{[\s\S]*api: this\.providerRegistryApi[\s\S]*hostVersion: installedOwner\.version/)
+  assert.match(service, /registerLegacyContributionSet\([\s\S]*this\.legacyContributionAdapter\.registerLegacyContributionSet\(manifest, provenance, handlers\)/)
+  for (const obsoleteState of [
+    "actionProviderRegistrations",
+    "customResultSinks",
+    "private agentProvider",
+  ]) {
+    assert.doesNotMatch(service, new RegExp(obsoleteState))
+  }
 })

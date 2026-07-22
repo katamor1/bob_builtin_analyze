@@ -289,7 +289,7 @@ OpenAI API、外部 process、VS Code command provider などが cancellation to
 
 確認項目:
 
-- `workflowRegister.agentCommand` が cancellation token を受けられる設計にできるか。
+- versioned `agent_provider` contributionへcancellation contractを追加できるか。
 - 外部 command provider に abort controller を渡せるか。
 - 返却前 partial output を保存できるか。
 

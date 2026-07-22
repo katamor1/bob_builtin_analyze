@@ -196,25 +196,21 @@ test("activation schedules delayed workflow reload retries after Bob finishes st
   assert.match(source, /setTimeout\([\s\S]*service\.reload\(\{ showReport: false \}\)/)
 })
 
-test("standalone workflow launcher resolves explicit, registry, legacy, and configured agent providers in order", () => {
+test("standalone workflow launcher resolves only explicit and owned registry agent providers", () => {
   const source = runtimeSource()
+  const packageJson = JSON.parse(fs.readFileSync(path.resolve(__dirname, "../package.json"), "utf8"))
 
-  assert.match(source, /import \{ createCommandAgentProvider, createLiveAgentProvider \} from "\.\/core\/agentProvider"/)
-  assert.match(source, /registerAgentProvider: \(provider: AgentProvider\) => void/)
-  assert.match(source, /registerAgentProvider: \(provider\) => service\.registerAgentProvider\(provider\)/)
+  assert.match(source, /import \{ createLiveAgentProvider \} from "\.\/core\/agentProvider"/)
   assert.match(source, /agentProvider: this\.createRuntimeAgentProvider\(agentProvider\)/)
   assert.match(source, orderedPattern(
     "if (explicitProvider) return explicitProvider",
-    "this.options.contributionResolver.getAgentProvider()",
-    "this.options.agentProvider()",
-    "configuredProvider"
+    "this.options.contributionResolver.getAgentProvider()"
   ))
-  assert.match(source, orderedPattern(
-    "createCommandAgentProvider({",
-    'command: config.get<string>("agentCommand", ""),',
-    "requireTrustedCommandExecution(\"run configured agent command\")",
-    "vscode.commands.executeCommand(command, input)"
-  ))
+  assert.doesNotMatch(source, /this\.options\.agentProvider\(\)/)
+  assert.doesNotMatch(source, /createCommandAgentProvider/)
+  assert.doesNotMatch(source, /configuredProvider/)
+  assert.doesNotMatch(source, /agentCommand/)
+  assert.equal(packageJson.contributes.configuration.properties["workflowRegister.agentCommand"], undefined)
 })
 
 test("runtime entry points and default providers check Workspace Trust", () => {

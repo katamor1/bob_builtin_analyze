@@ -401,11 +401,6 @@
           "default": "ワークフロー登録",
           "description": "IBM Bob に表示する登録元の名称です。"
         },
-        "workflowRegister.agentCommand": {
-          "type": "string",
-          "default": "",
-          "description": "単独実行時に AI ステップを処理する任意の VS Code コマンド ID です。AgentExecutionInput を受け取り、text・result・output・content のいずれかを含む文字列またはオブジェクトを返す必要があります。"
-        },
         "workflowRegister.aiProviderCommand": {
           "type": "string",
           "default": "",
@@ -715,7 +710,8 @@
     "watch": "tsc -watch -p ./",
     "vscode:prepublish": "npm run compile",
     "package": "vsce package",
-    "package:policy": "node scripts/check-vsix-policy.js --max-bytes 1200000"
+    "package:policy": "node scripts/check-vsix-policy.js --max-bytes 1200000",
+    "phase1:policy": "npm run compile && node scripts/check-provider-registry-phase1.js"
   },
   "dependencies": {
     "ajv": "^8.17.1",

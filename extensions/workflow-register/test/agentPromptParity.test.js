@@ -168,15 +168,12 @@ test("direct, live Bob, and Operation Hub share one rendered agent step prompt",
   const workflow = createCoreWorkflow(workspaceRoot, rawAgentPrompt)
 
   const directCalls = []
-  const { createCommandAgentProvider } = require("../out/core/agentProvider")
-  const directProvider = createCommandAgentProvider({
-    command: "sample.direct-agent",
-    executeCommand: async (_command, input) => {
+  const directProvider = {
+    run: async (input) => {
       directCalls.push(input)
-      return { result: "direct result" }
+      return "direct result"
     }
-  })
-  assert.ok(directProvider)
+  }
   const directRun = await createEngine(workspaceRoot, directProvider, priorResult).runWorkflow(workflow, inputs)
   assert.equal(directRun.status, "completed")
   assert.equal(directCalls.length, 1)

@@ -6,7 +6,7 @@ const { spawnSync } = require("node:child_process")
 const { test } = require("node:test")
 const { extensionRoot } = require("./helpers/sourceReader")
 
-test("provider registry v1 consumer types preserve the literal version and three-argument contract", () => {
+test("provider registry v1 and its deprecated atomic adapter preserve three-argument disposable contracts", () => {
   const tsc = path.join(extensionRoot, "node_modules", ".bin", process.platform === "win32" ? "tsc.cmd" : "tsc")
   const result = spawnSync(tsc, ["-p", "test/fixtures/provider-registry-api/tsconfig.json"], {
     cwd: extensionRoot,

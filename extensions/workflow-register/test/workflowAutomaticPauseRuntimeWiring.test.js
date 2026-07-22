@@ -36,9 +36,7 @@ function createFactory(WorkflowRuntimeFactory) {
   return new WorkflowRuntimeFactory({
     engineVersion: "test",
     actionRegistry: new ActionRegistry(),
-    customResultSinks: [],
     stepRuntime: { hold: async () => ({ completed: false }) },
-    agentProvider: () => undefined,
     inputsProvider: () => (async () => ({})),
     gateRegistry: {}
   })

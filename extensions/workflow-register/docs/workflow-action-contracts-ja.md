@@ -8,12 +8,19 @@
 
 | API | Contract |
 | --- | --- |
-| `registerActionProvider(provider)` | `command` step から呼び出す action provider を登録する。`provider.id` は workflow の `command` と一致させる。 |
-| `registerAgentProvider(provider)` | standalone 実行時の `agent` step を外部 provider に委譲する。 |
-| `registerResultSink(sink)` | `result` step の保存先を追加する。result sink は file / command sink と同じ failure contract に従う。 |
+| `registerContributionSet(manifest, provenance, handlers)` | `provider-registry/v1` の推奨API。manifestが宣言する完全な contribution set を一度に登録する。 |
+| `registerLegacyContributionSet(manifest, provenance, handlers)` | `workflow-register` 0.1.xだけで利用できるdeprecated adapter。下記の移行契約に従う。 |
 | `runWorkflow(workflowId, inputs)` | workflow を最初の step から standalone 実行する。 |
 | `runWorkflowStep(runId, stepId, inputs)` | 既存 run の指定 step を実行する。 |
 | `runNextStep(runId, inputs)` | run state の現在位置から次 step を実行する。 |
+
+### Legacy contribution adapter
+
+`registerLegacyContributionSet(manifest, provenance, handlers)` は、個別kindの旧登録APIから `provider-registry/v1` へ移行するための1リリース限定adapterです。呼び出しには、`manifest.owner.id` と `manifest.owner.version` に明示した `owner` / `version`、およびinstalled extension identityから独立に得た `provenance` が必要です。manifestのowner identityとprovenanceが一致しない呼び出しは拒否されます。`handlers` はmanifestが宣言する完全な contribution set を含まなければならず、部分登録はできません。
+
+Adapterは `provider-registry/v1` を交渉し、完全なsetを `registerContributionSet` へ1回でアトミックに委譲します。交渉、検証、登録のいずれかが失敗した場合は一部の状態を公開しません。成功時は実体のある `Disposable` をそのまま返すため、consumerはactivation lifecycleで保持し、解除時に`dispose()`する必要があります。
+
+Deprecated診断はmetadataを含まない固定文で、UTF-8最大256 bytesの上限を持ち、登録成功後に`activation`ごとに1回だけ通知されます。このadapterは`workflow-register` 0.1.0でdeprecatedとなり、`workflow-register` 0.2.0で削除します。replacementは`provider-registry/v1`です。0.2.0へ更新する前に、`provider-registry/v1`を交渉して`registerContributionSet(manifest, provenance, handlers)`を直接呼ぶ実装へ移行してください。
 
 ## Execution input
 

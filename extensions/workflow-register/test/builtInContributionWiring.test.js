@@ -18,7 +18,7 @@ test("service activation owns one atomic built-in registration and lets the host
   assert.ok(hostIndex >= 0 && builtInIndex > hostIndex)
 })
 
-test("runtime factory uses only live atomic built-ins and keeps legacy custom sinks separate", () => {
+test("runtime factory uses only live atomic contributions without a custom sink fallback", () => {
   const factory = readSrc("workflowRuntimeFactory.ts")
   const runner = readSrc("bobWorkflowRunner.ts")
   const engine = readSrc("core", "engine.ts")
@@ -27,6 +27,7 @@ test("runtime factory uses only live atomic built-ins and keeps legacy custom si
   assert.match(factory, /fileTransactionResolver: ResultSinkFileTransactionResolver/)
   assert.match(factory, /new ResultSinkRegistry\(\{[\s\S]*contributionResolver: this\.options\.contributionResolver[\s\S]*fileTransactionResolver: this\.options\.fileTransactionResolver/)
   assert.doesNotMatch(factory, /createDefaultResultSinkRegistry/)
+  assert.doesNotMatch(factory, /customResultSinks/)
   assert.match(factory, /includeDefaultPreflightChecks: false/)
   assert.match(factory, /preflightChecks: \(\) => \(\{\}\)/)
   assert.match(runner, /includeDefaultPreflightChecks\?: boolean/)

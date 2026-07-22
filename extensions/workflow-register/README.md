@@ -379,17 +379,24 @@ AI プロバイダーは `workflowRegister.aiProviderCommand` で指定します
 
 | API | 用途 |
 | --- | --- |
-| `registerActionProvider(provider)` | `command` ステップで使うアクションプロバイダーを追加する。 |
-| `registerAgentProvider(provider)` | standalone engine 用のエージェントプロバイダーを追加する。 |
-| `registerResultSink(type, handler)` | `result` ステップの出力先を追加する。 |
+| `registerContributionSet(manifest, provenance, handlers)` | `provider-registry/v1` の推奨API。manifestが宣言する完全な contribution set を一度に登録する。 |
+| `registerLegacyContributionSet(manifest, provenance, handlers)` | `workflow-register` 0.1.xだけで利用できるdeprecated adapter。移行条件は下記を参照する。 |
 | `listWorkflows()` | 読み込み済みワークフロー定義を取得する。 |
 | `runWorkflow(workflowId, inputs)` | ワークフローをプログラムから standalone 実行する。 |
+
+### Legacy contribution adapterの移行契約
+
+`registerLegacyContributionSet(manifest, provenance, handlers)` は、個別kindの旧登録APIから `provider-registry/v1` へ移行するための1リリース限定adapterです。`manifest.owner.id` と `manifest.owner.version` に明示した `owner` / `version`、およびinstalled extension identityから独立に得た `provenance` が必須で、両者は一致しなければなりません。`handlers` はmanifestに宣言した完全な contribution set を含める必要があり、部分登録は拒否されます。
+
+Adapterは `provider-registry/v1` を交渉し、成功した完全なsetだけを `registerContributionSet` へ1回でアトミックに委譲します。失敗時は一部を公開せず、成功時は実体のある `Disposable` をそのまま返します。呼び出し元はその`Disposable`をactivation lifecycleで保持し、解除時に`dispose()`してください。
+
+移行診断はmetadataを含まない固定文で、UTF-8最大256 bytesの上限を持ち、登録成功後に`activation`ごとに1回だけ通知されます。このadapterは`workflow-register` 0.1.0でdeprecatedとなり、`workflow-register` 0.2.0で削除します。利用側はそれまでに`provider-registry/v1`を交渉し、`registerContributionSet(manifest, provenance, handlers)`を直接呼ぶ実装へ置き換えてください。
 
 ### Contribution Registry の信頼境界
 
 Provider handler は同一 JavaScript realm で動く信頼済み拡張コードとして扱います。登録時に handler set の過不足と callable 形状は検査しますが、悪意ある同一 realm コードを封じ込める security sandbox ではありません。
 
-`workflow-contributions.json`、validation context、そこから作る contribution metadata は信頼しない入力です。Registry はこれらを snapshot 化して厳格に検査し、manifest の owner ID / version を validation context へbindして、失敗時は fail-closed で公開状態を変更しません。対応するregistry API versionとの交渉は公開API層の責務で、Task 3で接続します。
+`workflow-contributions.json`、validation context、そこから作る contribution metadata は信頼しない入力です。Registry はこれらを snapshot 化して厳格に検査し、manifest の owner ID / version を validation context へbindして、失敗時は fail-closed で公開状態を変更しません。対応するregistry API versionとの交渉は公開API層の責務です。
 
 同一 realm の handler が export 済み constructor / method callable 自体を改変するケースは Task 2 の保護境界外です。Task 2 は callable membrane や worker / process isolation を導入しません。この脅威を対象にする場合は、互換性を含む別の threat model と設計判断が必要です。
 
@@ -417,7 +424,6 @@ Provider handler は同一 JavaScript realm で動く信頼済み拡張コード
 | --- | --- | --- |
 | `workflowRegister.sourceId` | `workflow-register` | Bob に登録する source ID。 |
 | `workflowRegister.sourceName` | `ワークフロー登録` | Bob に表示する source 名。 |
-| `workflowRegister.agentCommand` | 空 | standalone engine のエージェントステップを実行する VS Code コマンド。 |
 | `workflowRegister.aiProviderCommand` | 空 | AI 設計、改善、診断説明に使う VS Code コマンド。 |
 | `workflowRegister.taskSnapshots.enabled` | `true` | Bob UI 実行時に task snapshot を保存する。 |
 | `workflowRegister.taskSnapshots.maxBytes` | `262144` | 1 snapshot JSON の最大サイズ。 |

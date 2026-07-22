@@ -28,6 +28,14 @@ export function startRetryRegistrationController<Api>(
   let retryIndex = 0
   const timers = new Set<ReturnType<typeof setTimeout>>()
 
+  const reportError = (error: unknown): void => {
+    try {
+      options.reportError(error)
+    } catch {
+      // Diagnostics must never interrupt provider rollback, retry, or deactivation.
+    }
+  }
+
   const clearRetryTimers = (): void => {
     for (const timer of timers) clearTimeout(timer)
     timers.clear()
@@ -47,12 +55,12 @@ export function startRetryRegistrationController<Api>(
   const reportCleanupErrors = (errors: unknown[]): void => {
     if (errors.length === 0) return
     if (errors.length === 1) {
-      options.reportError(errors[0])
+      reportError(errors[0])
       return
     }
-    options.reportError(new AggregateError(
+    reportError(new AggregateError(
       errors,
-      `Provider registration cleanup failed: ${errors.map((error) => String(error)).join("; ")}`
+      `Provider registration cleanup failed for ${errors.length} resources.`
     ))
   }
 
@@ -95,7 +103,7 @@ export function startRetryRegistrationController<Api>(
       const errors: unknown[] = []
       disposeRegistrations(result.registrations, errors)
       reportCleanupErrors(errors)
-      options.reportError(new Error("Provider registration succeeded without API identity."))
+      reportError(new Error("Provider registration succeeded without API identity."))
       scheduleRetry()
       return false
     }
@@ -116,7 +124,7 @@ export function startRetryRegistrationController<Api>(
     try {
       return await currentAttempt
     } catch (error) {
-      options.reportError(error)
+      reportError(error)
       if (!disposed && attemptGeneration === generation) scheduleRetry()
       return false
     } finally {

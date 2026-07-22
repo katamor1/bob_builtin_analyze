@@ -129,9 +129,9 @@ test("workflow run diagnostics include failed step and suggested fix", () => {
     error: "Unsupported action provider: example.collect"
   }
 
-  assert.match(workflowRunFailureHint(run.error), /ActionProvider を登録/)
-  assert.ok(formatWorkflowRunDiagnostics(run).some((line) => line.includes("推奨対応")))
-  assert.equal(buildWorkflowRunDiagnosticReport([run]).summary, "1件; 失敗 1件; 確認待ち 0件; 手動操作待ち 0件; 保存済み試行 0件。")
+  assert.match(workflowRunFailureHint(run.error), /provider-registry\/v1/)
+  assert.ok(formatWorkflowRunDiagnostics(run).some((line) => line.includes("suggested fix")))
+  assert.equal(buildWorkflowRunDiagnosticReport([run]).summary, "1 run(s); 1 failed; 0 reviewing; 0 held; 0 archived attempt(s).")
 })
 
 test("workflow run diagnostics include task snapshot evidence and mismatch warnings", () => {
@@ -169,12 +169,12 @@ test("workflow run diagnostics include task snapshot evidence and mismatch warni
     }
   })
 
-  assert.ok(report.lines.some((line) => line.includes("保存済みタスク:")))
+  assert.ok(report.lines.some((line) => line.includes("Task snapshots:")))
   assert.ok(report.lines.some((line) => line.includes("agent-output")))
-  assert.ok(report.lines.some((line) => line.includes("ワークフローハッシュ不一致")))
-  assert.ok(report.lines.some((line) => line.includes("ステップ不一致")))
-  assert.ok(report.lines.some((line) => line.includes("最終アシスタント本文=あり")))
-  assert.ok(report.lines.some((line) => line.includes("引き渡しエラー=capture failed")))
+  assert.ok(report.lines.some((line) => line.includes("workflow hash mismatch")))
+  assert.ok(report.lines.some((line) => line.includes("step mismatch")))
+  assert.ok(report.lines.some((line) => line.includes("lastAssistantText=yes")))
+  assert.ok(report.lines.some((line) => line.includes("handoffError=capture failed")))
 })
 
 test("workflow run diagnostics include branch loops, checkpoint, and history", () => {
@@ -233,11 +233,11 @@ test("workflow run diagnostics include branch loops, checkpoint, and history", (
 
   const lines = formatWorkflowRunDiagnostics(run)
 
-  assert.ok(lines.some((line) => line.includes("分岐ループ:")))
+  assert.ok(lines.some((line) => line.includes("Branch loops:")))
   assert.ok(lines.some((line) => line.includes("retry-loop: count=1; allowed=1; maxIterations=1; extensionSize=2; checkpoints=1")))
-  assert.ok(lines.some((line) => line.includes("分岐チェックポイント:")))
-  assert.ok(lines.some((line) => line.includes("遷移: review -> collect")))
-  assert.ok(lines.some((line) => line.includes("分岐履歴:")))
+  assert.ok(lines.some((line) => line.includes("Branch checkpoint:")))
+  assert.ok(lines.some((line) => line.includes("transition: review -> collect")))
+  assert.ok(lines.some((line) => line.includes("Branching history:")))
   assert.ok(lines.some((line) => line.includes("checkpoint: retry; review -> collect; loop=retry-loop; count=1")))
 })
 

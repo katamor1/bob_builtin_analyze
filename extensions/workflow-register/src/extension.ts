@@ -1,13 +1,12 @@
 import * as vscode from "vscode"
-import type { ActionProvider, ActionProviderRegistration } from "./core/actionRegistry"
-import type { AgentProvider, CoreWorkflowDefinition } from "./core/model"
-import type { ResultSinkRegistry } from "./core/resultSinkRegistry"
+import type { CoreWorkflowDefinition } from "./core/model"
 import { OperationHubProvider } from "./gui/operationHubProvider"
 import { WorkflowRegisterService } from "./workflowRegisterService"
 import type { StepCompletionOptions } from "./workflowRegisterService"
 import type { BobWorkflowGateAcceptance, BobWorkflowGateAcceptResult } from "./bobWorkflowGateRegistry"
 import type { ArtifactSourceRunArg, RunCommandArg, WorkflowCommandArg } from "./workflowRunCommands"
 import type { ProviderRegistryV1Api } from "./api/providerRegistryApi"
+import type { LegacyContributionAdapter } from "./api/legacyContributionAdapter"
 
 /**
  * 他の Bob companion extension へ公開する workflow-register API。
@@ -38,27 +37,11 @@ export interface WorkflowRegisterApi extends ProviderRegistryV1Api {
    */
   coordinateReviewAcceptance: <T>(workspaceRoot: string, runId: string, operation: () => Promise<T>) => Promise<T>
   /**
-   * custom action step を実行する workflow action provider を登録する。
+   * Deprecated one-release bridge for complete, owned contribution sets.
    *
-   * @param provider workflow runtime へ公開する action provider 実装。
-   * @returns provider 登録を解除する disposable。
+   * @deprecated Use registerContributionSet directly. This bridge is removed in workflow-register 0.2.0.
    */
-  registerActionProvider: (provider: ActionProvider) => ActionProviderRegistration
-  /**
-   * agent-backed workflow step を実行する agent provider を登録する。
-   *
-   * @param provider workflow runtime へ公開する agent provider 実装。
-   * @returns なし。
-   */
-  registerAgentProvider: (provider: AgentProvider) => void
-  /**
-   * workflow output の保存または転送に使う result sink handler を登録する。
-   *
-   * @param type workflow definition から参照される result sink type identifier。
-   * @param handler workflow step が一致する result sink payload を出したときに呼ぶ handler。
-   * @returns なし。
-   */
-  registerResultSink: (type: string, handler: Parameters<ResultSinkRegistry["register"]>[1]) => void
+  registerLegacyContributionSet: LegacyContributionAdapter["registerLegacyContributionSet"]
   /**
    * registration service が現在把握している workflow definition を返す。
    *
@@ -147,12 +130,12 @@ export function activate(context: vscode.ExtensionContext): WorkflowRegisterApi 
     apiVersion: providerRegistryApi.apiVersion,
     negotiateProviderRegistry: providerRegistryApi.negotiateProviderRegistry,
     registerContributionSet: providerRegistryApi.registerContributionSet,
+    registerLegacyContributionSet: (manifest, provenance, handlers) => (
+      service.registerLegacyContributionSet(manifest, provenance, handlers)
+    ),
     acceptBobWorkflowGate: (workspaceRoot, runId, stepId) => service.acceptBobWorkflowGate(workspaceRoot, runId, stepId),
     acceptBobWorkflowGateWithMetadata: (workspaceRoot, runId, stepId) => service.acceptBobWorkflowGateWithMetadata(workspaceRoot, runId, stepId),
     coordinateReviewAcceptance: (workspaceRoot, runId, operation) => service.coordinateReviewAcceptance(workspaceRoot, runId, operation),
-    registerActionProvider: (provider) => service.registerActionProvider(provider),
-    registerAgentProvider: (provider) => service.registerAgentProvider(provider),
-    registerResultSink: (type, handler) => service.registerResultSink(type, handler),
     listWorkflows: () => service.listCoreWorkflows(),
     runWorkflow: (workflowId, inputs) => service.runWorkflow(workflowId, inputs),
     runWorkflowStep: (workflowId, stepId, inputs) => service.runWorkflowStep(workflowId, stepId, inputs),
