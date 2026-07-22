@@ -11,6 +11,7 @@ import { validateApprovalExpression } from "./approvalGuardrails"
 import { boundedDiagnosticText } from "./diagnosticText"
 import { parseWorkflowMarkdown } from "./parser"
 import { isReservedWorkflowStateKey } from "./stateKeys"
+import type { WorkflowContractResolution } from "./workflowContractReport"
 
 export type WorkflowDiagnosticSeverity = "error" | "warning" | "info"
 
@@ -62,24 +63,29 @@ interface SkipResumeWorkflowMetadata {
 
 interface WorkflowValidationOptions extends Omit<CompileWorkflowDocumentOptions, "sourceId" | "text"> {
   contributionLookup?: ContributionCatalogLookup
+  resolutionTrace?: WorkflowContractResolution[]
 }
 
 interface ContributionCatalogLookup {
-  actionProviders: ReadonlyMap<string, number>
-  preflightChecks: ReadonlyMap<string, number>
-  resultSinks: ReadonlyMap<string, readonly string[]>
-  productCommands: ReadonlyMap<string, number>
-  externalCommands: ReadonlyMap<string, readonly (readonly string[])[]>
+  actionProviders: ReadonlyMap<string, readonly CatalogContributionSnapshot[]>
+  preflightChecks: ReadonlyMap<string, readonly CatalogContributionSnapshot[]>
+  resultSinks: ReadonlyMap<string, readonly CatalogContributionSnapshot[]>
+  agentProviders: readonly CatalogContributionSnapshot[]
+  productCommands: ReadonlyMap<string, readonly CatalogProductCommandSnapshot[]>
+  externalCommands: ReadonlyMap<string, readonly CatalogExternalCommandSnapshot[]>
 }
 
 interface CatalogContributionSnapshot {
   key: string
   contractVersion: string
+  owner: string
+  location: string
 }
 
 interface CatalogExternalCommandSnapshot {
   id: string
   owner: string
+  contractVersion: string
   location: string
   workflowPaths: readonly string[]
 }
@@ -161,6 +167,50 @@ export function compileWorkflowContractDocument(
   })
 }
 
+export interface CompileWorkflowContractDocumentTraceResult extends CompileWorkflowDocumentResult {
+  result: CompileWorkflowDocumentResult
+  resolutions: WorkflowContractResolution[]
+}
+
+/** Additive evidence facade; all rows are emitted at the authoritative strict lookup success seam. */
+export function compileWorkflowContractDocumentWithTrace(
+  options: CompileWorkflowContractDocumentOptions
+): CompileWorkflowContractDocumentTraceResult {
+  const snapshot = snapshotWorkflowContractOptions(options)
+  if (!snapshot.ok) {
+    const result = invalidWorkflowContractOptionsResult(snapshot.filePath, snapshot.reason)
+    return { ...result, result, resolutions: [] }
+  }
+  const contractOptions = snapshot.options
+  if (contractOptions.filePathSyntax !== "canonical-repository" && contractOptions.filePathSyntax !== "windows-separated") {
+    const result: CompileWorkflowDocumentResult = {
+      ok: false,
+      workflow: undefined,
+      diagnostics: [error(contractOptions.filePath, "Workflow file path syntax is invalid: expected 'canonical-repository' or 'windows-separated'.")]
+    }
+    return { ...result, result, resolutions: [] }
+  }
+  const filePath = contractOptions.filePathSyntax === "windows-separated"
+    ? normalizeWindowsRepositoryPath(contractOptions.filePath)
+    : contractOptions.filePath
+  const catalog = snapshotContributionCatalog(contractOptions.contributionCatalog, true)
+  if (!catalog.ok) {
+    const result = invalidContributionCatalogResult(filePath, catalog.reason)
+    return { ...result, result, resolutions: [] }
+  }
+  const resolutions: WorkflowContractResolution[] = []
+  const result = compileWorkflowDocumentInternal({
+    sourceId: contractOptions.sourceId,
+    filePath,
+    text: contractOptions.text,
+    strict: true,
+    contributionLookup: catalog.lookup,
+    resolutionTrace: resolutions
+  })
+  const canonical = resolutions.sort(compareResolutions)
+  return { ...result, result, resolutions: canonical }
+}
+
 function snapshotWorkflowContractOptions(value: unknown): WorkflowContractOptionsSnapshotResult {
   let diagnosticFilePath = INVALID_WORKFLOW_CONTRACT_OPTIONS_PATH
   try {
@@ -213,7 +263,7 @@ function readWorkflowContractOption(
 }
 
 function compileWorkflowDocumentInternal(
-  options: CompileWorkflowDocumentOptions & { contributionLookup?: ContributionCatalogLookup }
+  options: CompileWorkflowDocumentOptions & { contributionLookup?: ContributionCatalogLookup; resolutionTrace?: WorkflowContractResolution[] }
 ): CompileWorkflowDocumentResult {
   const text = options.text.replace(/^\uFEFF/, "")
   const parsed = parseWorkflowMarkdown({ sourceId: options.sourceId, filePath: options.filePath, text })
@@ -264,18 +314,25 @@ function snapshotContributionCatalog(value: unknown, validateValues: boolean): C
     const actionProviders = snapshotContributionSection(value, "action_providers", "id", validateValues)
     const preflightChecks = snapshotContributionSection(value, "preflight_checks", "id", validateValues)
     const resultSinks = snapshotContributionSection(value, "result_sinks", "type", validateValues)
+    const agentProviders = snapshotContributionSection(value, "agent_providers", "id", validateValues)
     const productCommands = snapshotProductCommandSection(value, validateValues)
     const externalCommands = snapshotExternalCommandSection(value, validateValues)
-    assertCatalogCommandProvenance(owners, productCommands, externalCommands)
+    assertCatalogProvenance(
+      owners,
+      [...actionProviders, ...preflightChecks, ...resultSinks, ...agentProviders],
+      productCommands,
+      externalCommands
+    )
     assertUniqueCatalogCommandIds(productCommands, externalCommands)
     return {
       ok: true,
       lookup: {
-        actionProviders: contributionCounts(actionProviders),
-        preflightChecks: contributionCounts(preflightChecks),
-        resultSinks: contributionVersions(resultSinks),
-        productCommands: commandCounts(productCommands),
-        externalCommands: externalCommandPaths(externalCommands)
+        actionProviders: contributionsByKey(actionProviders),
+        preflightChecks: contributionsByKey(preflightChecks),
+        resultSinks: contributionsByKey(resultSinks),
+        agentProviders,
+        productCommands: productCommandsById(productCommands),
+        externalCommands: externalCommandsById(externalCommands)
       }
     }
   } catch (error) {
@@ -444,17 +501,25 @@ function snapshotExternalCommandSection(
       seen.add(workflowPath)
       workflowPaths.push(workflowPath)
     }
-    snapshot.push(Object.freeze({ id, owner, location: entryPath, workflowPaths: Object.freeze(workflowPaths) }))
+    snapshot.push(Object.freeze({ id, owner, contractVersion, location: entryPath, workflowPaths: Object.freeze(workflowPaths) }))
   }
   return Object.freeze(snapshot)
 }
 
-function assertCatalogCommandProvenance(
+function assertCatalogProvenance(
   owners: readonly CatalogOwnerSnapshot[],
+  contributions: readonly CatalogContributionSnapshot[],
   productCommands: readonly CatalogProductCommandSnapshot[],
   externalCommands: readonly CatalogExternalCommandSnapshot[]
 ): void {
   const ownersById = new Map(owners.map((owner) => [owner.id, owner]))
+  for (const contribution of contributions) {
+    if (!ownersById.has(contribution.owner)) {
+      throw new ContributionCatalogSnapshotError(
+        `field '${contribution.location}.owner' has no matching owners record`
+      )
+    }
+  }
   for (const command of productCommands) {
     const owner = ownersById.get(command.owner)
     if (!owner) {
@@ -515,7 +580,7 @@ function snapshotArrayLength(array: unknown[], field: string): number {
 
 function snapshotContributionSection(
   catalog: Record<string, unknown>,
-  field: "action_providers" | "preflight_checks" | "result_sinks",
+  field: "action_providers" | "preflight_checks" | "result_sinks" | "agent_providers",
   keyField: "id" | "type",
   validateValues: boolean
 ): readonly CatalogContributionSnapshot[] {
@@ -537,6 +602,7 @@ function snapshotContributionSection(
     }
     const key = readOwnDataProperty(entry, keyField, `${entryPath}.${keyField}`)
     const contractVersion = readOwnDataProperty(entry, "contract_version", `${entryPath}.contract_version`)
+    const owner = readOwnDataProperty(entry, "owner", `${entryPath}.owner`)
     if (typeof key !== "string" || (validateValues && !CONTRIBUTION_ID_PATTERN.test(key))) {
       throw new ContributionCatalogSnapshotError(`field '${entryPath}.${keyField}' is invalid`)
     }
@@ -549,7 +615,10 @@ function snapshotContributionSection(
     ) {
       throw new ContributionCatalogSnapshotError(`field '${entryPath}.contract_version' is invalid`)
     }
-    snapshot.push(Object.freeze({ key, contractVersion }))
+    if (typeof owner !== "string" || (validateValues && !EXTENSION_OWNER_ID_PATTERN.test(owner))) {
+      throw new ContributionCatalogSnapshotError(`field '${entryPath}.owner' is invalid`)
+    }
+    snapshot.push(Object.freeze({ key, contractVersion, owner, location: entryPath }))
   }
   return Object.freeze(snapshot)
 }
@@ -570,34 +639,26 @@ function readArrayDataItem(array: unknown[], index: number, fieldPath: string): 
   return descriptor.value
 }
 
-function contributionCounts(entries: readonly CatalogContributionSnapshot[]): ReadonlyMap<string, number> {
-  const counts = new Map<string, number>()
-  for (const entry of entries) counts.set(entry.key, (counts.get(entry.key) ?? 0) + 1)
-  return counts
-}
-
-function contributionVersions(entries: readonly CatalogContributionSnapshot[]): ReadonlyMap<string, readonly string[]> {
-  const versions = new Map<string, readonly string[]>()
+function contributionsByKey(entries: readonly CatalogContributionSnapshot[]): ReadonlyMap<string, readonly CatalogContributionSnapshot[]> {
+  const versions = new Map<string, readonly CatalogContributionSnapshot[]>()
   for (const entry of entries) {
-    versions.set(entry.key, Object.freeze([...(versions.get(entry.key) ?? []), entry.contractVersion]))
+    versions.set(entry.key, Object.freeze([...(versions.get(entry.key) ?? []), entry]))
   }
   return versions
 }
 
-function commandCounts(entries: readonly CatalogProductCommandSnapshot[]): ReadonlyMap<string, number> {
-  const counts = new Map<string, number>()
-  for (const entry of entries) counts.set(entry.id, (counts.get(entry.id) ?? 0) + 1)
-  return counts
+function productCommandsById(entries: readonly CatalogProductCommandSnapshot[]): ReadonlyMap<string, readonly CatalogProductCommandSnapshot[]> {
+  const commands = new Map<string, readonly CatalogProductCommandSnapshot[]>()
+  for (const entry of entries) commands.set(entry.id, Object.freeze([...(commands.get(entry.id) ?? []), entry]))
+  return commands
 }
 
-function externalCommandPaths(
+function externalCommandsById(
   entries: readonly CatalogExternalCommandSnapshot[]
-): ReadonlyMap<string, readonly (readonly string[])[]> {
-  const paths = new Map<string, readonly (readonly string[])[]>()
-  for (const entry of entries) {
-    paths.set(entry.id, Object.freeze([...(paths.get(entry.id) ?? []), entry.workflowPaths]))
-  }
-  return paths
+): ReadonlyMap<string, readonly CatalogExternalCommandSnapshot[]> {
+  const commands = new Map<string, readonly CatalogExternalCommandSnapshot[]>()
+  for (const entry of entries) commands.set(entry.id, Object.freeze([...(commands.get(entry.id) ?? []), entry]))
+  return commands
 }
 
 function isCanonicalRepositoryFilePath(value: string, basename: string): boolean {
@@ -631,6 +692,31 @@ function canonicalDiagnostics(diagnostics: WorkflowDiagnostic[]): WorkflowDiagno
 
 function compareText(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0
+}
+
+function compareResolutions(left: WorkflowContractResolution, right: WorkflowContractResolution): number {
+  return compareText(left.workflow_path, right.workflow_path)
+    || compareText(left.kind, right.kind)
+    || compareText(left.location, right.location)
+    || compareText(left.id, right.id)
+    || compareText(left.owner, right.owner)
+}
+
+function traceProvider(
+  options: WorkflowValidationOptions,
+  kind: "action_provider" | "preflight_check" | "agent_provider",
+  location: string,
+  id: string,
+  match: CatalogContributionSnapshot
+): void {
+  options.resolutionTrace?.push({
+    workflow_path: options.filePath,
+    kind,
+    location,
+    id,
+    owner: match.owner,
+    contract_version: match.contractVersion
+  })
 }
 
 function validateCoreWorkflow(
@@ -679,6 +765,12 @@ function validateCoreWorkflow(
         diagnostics,
         filePath
       )
+    }
+    if (step.type === "agent" && options.contributionLookup) {
+      const matches = options.contributionLookup.agentProviders
+      if (matches.length === 1) {
+        traceProvider(options, "agent_provider", `steps/${step.id}/agent_provider`, matches[0].key, matches[0])
+      }
     }
   }
   validateResultKeyConflicts(resultKeyProducers, diagnostics, filePath)
@@ -765,12 +857,14 @@ function validateCommandStep(
     }
   }
   if (options.contributionLookup) {
-    const matchCount = options.contributionLookup.actionProviders.get(step.action.provider) ?? 0
-    if (matchCount !== 1) {
+    const matches = options.contributionLookup.actionProviders.get(step.action.provider) ?? []
+    if (matches.length !== 1) {
       diagnostics.push(error(filePath, contributionMatchMessage(
         `Command step '${boundedDiagnosticText(step.id)}' action provider '${boundedDiagnosticText(step.action.provider)}'`,
-        matchCount
+        matches.length
       )))
+    } else {
+      traceProvider(options, "action_provider", `steps/${step.id}/action/provider`, step.action.provider, matches[0])
     }
     if (step.action.provider === "vscode.executeCommand") {
       const commandId = Array.isArray(step.action.args) ? step.action.args[0] : undefined
@@ -791,7 +885,9 @@ function validateCommandStep(
           `Command step '${boundedDiagnosticText(step.id)}' vscode.executeCommand command`,
           options.contributionLookup,
           diagnostics,
-          filePath
+          filePath,
+          options.resolutionTrace,
+          `steps/${step.id}/action/args/0`
         )
       }
     }
@@ -978,7 +1074,7 @@ function validateResultSink(
   diagnostics: WorkflowDiagnostic[],
   filePath: string
 ): void {
-  validateResultSinkContribution(stepId, sink, index, options.contributionLookup, diagnostics, filePath)
+  validateResultSinkContribution(stepId, sink, index, options.contributionLookup, diagnostics, filePath, options.resolutionTrace)
   if (isCommandResultSink(sink)) {
     if (!sink.command.trim()) diagnostics.push(error(filePath, `Step '${stepId}' command result sink has no command.`))
     return
@@ -1007,21 +1103,31 @@ function validateResultSinkContribution(
   index: number,
   catalog: ContributionCatalogLookup | undefined,
   diagnostics: WorkflowDiagnostic[],
-  filePath: string
+  filePath: string,
+  trace?: WorkflowContractResolution[]
 ): void {
   if (!catalog) return
   const location = `Step '${boundedDiagnosticText(stepId)}' result sink[${index}] type '${boundedDiagnosticText(sink.type)}'`
-  const versions = catalog.resultSinks.get(sink.type) ?? []
-  if (versions.length !== 1) {
-    diagnostics.push(error(filePath, contributionMatchMessage(location, versions.length)))
+  const matches = catalog.resultSinks.get(sink.type) ?? []
+  if (matches.length !== 1) {
+    diagnostics.push(error(filePath, contributionMatchMessage(location, matches.length)))
     return
   }
-  if (!isCommandResultSink(sink) && !isFileResultSink(sink) && sink.contractVersion !== versions[0]) {
+  if (!isCommandResultSink(sink) && !isFileResultSink(sink) && sink.contractVersion !== matches[0].contractVersion) {
     diagnostics.push(error(
       filePath,
-      `${location} contractVersion '${boundedDiagnosticText(sink.contractVersion)}' does not match catalog contract_version '${boundedDiagnosticText(versions[0])}'.`
+      `${location} contractVersion '${boundedDiagnosticText(sink.contractVersion)}' does not match catalog contract_version '${boundedDiagnosticText(matches[0].contractVersion)}'.`
     ))
+    return
   }
+  trace?.push({
+    workflow_path: filePath,
+    kind: "result_sink",
+    location: `steps/${stepId}/result/sinks/${index}`,
+    id: sink.type,
+    owner: matches[0].owner,
+    contract_version: matches[0].contractVersion
+  })
 }
 
 function contributionMatchMessage(location: string, matchCount: number): string {
@@ -1131,14 +1237,16 @@ function validatePreflight(
   filePath: string
 ): void {
   for (const preflight of workflow.preflight) {
-    for (const check of preflight.checks ?? []) {
+    for (const [checkIndex, check] of (preflight.checks ?? []).entries()) {
       if (options.contributionLookup) {
-        const matchCount = options.contributionLookup.preflightChecks.get(check) ?? 0
-        if (matchCount !== 1) {
+        const matches = options.contributionLookup.preflightChecks.get(check) ?? []
+        if (matches.length !== 1) {
           diagnostics.push(error(filePath, contributionMatchMessage(
             `Preflight '${boundedDiagnosticText(preflight.id)}' check '${boundedDiagnosticText(check)}'`,
-            matchCount
+            matches.length
           )))
+        } else {
+          traceProvider(options, "preflight_check", `preflight/${preflight.id}/checks/${checkIndex}`, check, matches[0])
         }
       }
     }
@@ -1163,7 +1271,9 @@ function validateGuardrails(
         "Guardrail command id",
         options.contributionLookup,
         diagnostics,
-        filePath
+        filePath,
+        options.resolutionTrace,
+        `guardrails/allowedCommandIds/${[...allowedCommandIds].indexOf(commandId)}`
       )
     }
   }
@@ -1181,14 +1291,25 @@ function validateCommandReference(
   location: string,
   lookup: ContributionCatalogLookup,
   diagnostics: WorkflowDiagnostic[],
-  filePath: string
+  filePath: string,
+  trace?: WorkflowContractResolution[],
+  traceLocation = "command"
 ): void {
-  const productMatches = lookup.productCommands.get(commandId) ?? 0
+  const productMatches = lookup.productCommands.get(commandId) ?? []
   const externalDeclarations = lookup.externalCommands.get(commandId) ?? []
-  const externalMatches = externalDeclarations.filter((paths) => paths.includes(filePath)).length
-  const matchCount = productMatches + externalMatches
+  const externalMatches = externalDeclarations.filter((entry) => entry.workflowPaths.includes(filePath))
+  const matchCount = productMatches.length + externalMatches.length
   const displayedId = boundedDiagnosticText(commandId)
-  if (matchCount === 1) return
+  if (matchCount === 1) {
+    if (productMatches.length === 1) {
+      const match = productMatches[0]
+      trace?.push({ workflow_path: filePath, kind: "command", location: traceLocation, id: commandId, owner: match.owner, source: "product", package_path: match.packagePath })
+    } else {
+      const match = externalMatches[0]
+      trace?.push({ workflow_path: filePath, kind: "command", location: traceLocation, id: commandId, owner: match.owner, source: "external", contract_version: match.contractVersion, declared_workflow_path: filePath })
+    }
+    return
+  }
   if (matchCount === 0 && externalDeclarations.length > 0) {
     diagnostics.push(error(
       filePath,

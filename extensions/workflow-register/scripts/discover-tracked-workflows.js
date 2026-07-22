@@ -148,11 +148,17 @@ function collectManifestRules(manifests) {
 
 function classifyTrackedWorkflows(repositoryRoot, workflowPaths, manifests) {
   if (!Array.isArray(workflowPaths)) throw new Error("workflow paths must be an array")
+  const validated = workflowPaths.map((workflowPath) => validateTrackedWorkflowPath(repositoryRoot, workflowPath))
+  return classifyWorkflowInventory(validated, manifests)
+}
+
+function classifyWorkflowInventory(workflowPaths, manifests) {
+  if (!Array.isArray(workflowPaths)) throw new Error("workflow paths must be an array")
   const rules = collectManifestRules(manifests)
   const inventory = []
   const seen = new Set()
   for (const workflowPath of workflowPaths) {
-    const normalized = validateTrackedWorkflowPath(repositoryRoot, workflowPath)
+    const normalized = normalizeWorkflowPath(workflowPath)
     if (seen.has(normalized)) throw new Error(`tracked workflow '${normalized}' was discovered more than once`)
     seen.add(normalized)
     const matches = rules.get(normalized) ?? []
@@ -177,6 +183,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  classifyWorkflowInventory,
   classifyTrackedWorkflows,
   createWorkflowInventory,
   discoverContributionManifests,

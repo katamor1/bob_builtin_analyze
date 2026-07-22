@@ -1,0 +1,87 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://local.schemas/workflow-contract-report.v1.schema.json",
+  "title": "Workflow contract report v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "commit_sha", "tree_sha", "worktree_clean", "manifests", "workflows", "resolutions", "vsix", "checks", "warnings"],
+  "properties": {
+    "schema_version": { "const": "workflow-contract-report/v1" },
+    "commit_sha": { "$ref": "#/definitions/gitSha" },
+    "tree_sha": { "$ref": "#/definitions/gitSha" },
+    "worktree_clean": { "const": true },
+    "manifests": { "type": "array", "minItems": 1, "maxItems": 64, "items": { "$ref": "#/definitions/manifest" } },
+    "workflows": { "type": "array", "maxItems": 4096, "items": { "oneOf": [{ "$ref": "#/definitions/claim" }, { "$ref": "#/definitions/exclusion" }] } },
+    "resolutions": { "type": "array", "maxItems": 8192, "items": { "oneOf": [{ "$ref": "#/definitions/providerResolution" }, { "$ref": "#/definitions/productCommandResolution" }, { "$ref": "#/definitions/externalCommandResolution" }] } },
+    "vsix": { "type": "array", "minItems": 1, "maxItems": 64, "items": { "$ref": "#/definitions/vsix" } },
+    "checks": { "type": "array", "minItems": 5, "maxItems": 5, "items": { "$ref": "#/definitions/check" } },
+    "warnings": { "type": "array", "maxItems": 0 }
+  },
+  "definitions": {
+    "gitSha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "owner": { "type": "string", "maxLength": 200, "pattern": "^[a-z0-9][a-z0-9-]*\\.[a-z0-9][a-z0-9-]*$" },
+    "semver": { "type": "string", "maxLength": 200, "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$" },
+    "text": { "type": "string", "minLength": 1, "maxLength": 512, "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]+$" },
+    "path": { "type": "string", "minLength": 1, "maxLength": 1024, "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!\\.{1,2}(?:/|$))(?!.*\\/\\.{1,2}(?:/|$))[^\\u0000-\\u001f\\u007f-\\u009f]+$" },
+    "contractVersion": { "type": "string", "minLength": 4, "maxLength": 256, "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*(?:/[A-Za-z0-9][A-Za-z0-9._-]*)*/v[1-9][0-9]*$" },
+    "schema": {
+      "type": "object", "additionalProperties": false, "required": ["path", "sha256"],
+      "properties": { "path": { "$ref": "#/definitions/path" }, "sha256": { "$ref": "#/definitions/sha256" } }
+    },
+    "manifest": {
+      "type": "object", "additionalProperties": false, "required": ["owner", "version", "path", "sha256", "schemas"],
+      "properties": {
+        "owner": { "$ref": "#/definitions/owner" }, "version": { "$ref": "#/definitions/semver" },
+        "path": { "$ref": "#/definitions/path" }, "sha256": { "$ref": "#/definitions/sha256" },
+        "schemas": { "type": "array", "maxItems": 64, "items": { "$ref": "#/definitions/schema" } }
+      }
+    },
+    "claim": {
+      "type": "object", "additionalProperties": false, "required": ["path", "owner", "classification", "role"],
+      "properties": { "path": { "$ref": "#/definitions/path" }, "owner": { "$ref": "#/definitions/owner" }, "classification": { "const": "claim" }, "role": { "$ref": "#/definitions/text" } }
+    },
+    "exclusion": {
+      "type": "object", "additionalProperties": false, "required": ["path", "owner", "classification", "reason"],
+      "properties": { "path": { "$ref": "#/definitions/path" }, "owner": { "$ref": "#/definitions/owner" }, "classification": { "const": "exclusion" }, "reason": { "$ref": "#/definitions/text" } }
+    },
+    "resolutionBase": {
+      "type": "object",
+      "properties": {
+        "workflow_path": { "$ref": "#/definitions/path" }, "location": { "$ref": "#/definitions/text" },
+        "id": { "$ref": "#/definitions/text" }, "owner": { "$ref": "#/definitions/owner" }
+      }
+    },
+    "providerResolution": {
+      "type": "object", "additionalProperties": false, "required": ["workflow_path", "kind", "location", "id", "owner", "contract_version"],
+      "properties": {
+        "workflow_path": { "$ref": "#/definitions/path" }, "kind": { "enum": ["action_provider", "preflight_check", "result_sink", "agent_provider"] },
+        "location": { "$ref": "#/definitions/text" }, "id": { "$ref": "#/definitions/text" }, "owner": { "$ref": "#/definitions/owner" },
+        "contract_version": { "$ref": "#/definitions/contractVersion" }
+      }
+    },
+    "productCommandResolution": {
+      "type": "object", "additionalProperties": false, "required": ["workflow_path", "kind", "location", "id", "owner", "source", "package_path"],
+      "properties": {
+        "workflow_path": { "$ref": "#/definitions/path" }, "kind": { "const": "command" }, "location": { "$ref": "#/definitions/text" },
+        "id": { "$ref": "#/definitions/text" }, "owner": { "$ref": "#/definitions/owner" }, "source": { "const": "product" }, "package_path": { "$ref": "#/definitions/path" }
+      }
+    },
+    "externalCommandResolution": {
+      "type": "object", "additionalProperties": false, "required": ["workflow_path", "kind", "location", "id", "owner", "source", "contract_version", "declared_workflow_path"],
+      "properties": {
+        "workflow_path": { "$ref": "#/definitions/path" }, "kind": { "const": "command" }, "location": { "$ref": "#/definitions/text" },
+        "id": { "$ref": "#/definitions/text" }, "owner": { "$ref": "#/definitions/owner" }, "source": { "const": "external" },
+        "contract_version": { "$ref": "#/definitions/contractVersion" }, "declared_workflow_path": { "$ref": "#/definitions/path" }
+      }
+    },
+    "vsix": {
+      "type": "object", "additionalProperties": false, "required": ["owner", "archive_path", "sha256", "status"],
+      "properties": { "owner": { "$ref": "#/definitions/owner" }, "archive_path": { "$ref": "#/definitions/path" }, "sha256": { "$ref": "#/definitions/sha256" }, "status": { "const": "passed" } }
+    },
+    "check": {
+      "type": "object", "additionalProperties": false, "required": ["name", "status"],
+      "properties": { "name": { "enum": ["command", "discovery", "mirror", "strict-compile", "vsix"] }, "status": { "const": "passed" } }
+    }
+  }
+}

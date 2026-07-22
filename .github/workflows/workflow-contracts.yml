@@ -2,55 +2,9 @@ name: workflow-contracts
 
 on:
   pull_request:
-    paths:
-      - ".bob/workflows/**/WORKFLOW.md"
-      - ".bob/template-library/**/WORKFLOW.md"
-      - "extensions/workflow-register/samples/**/WORKFLOW.md"
-      - "extensions/**/templates/**/WORKFLOW.md"
-      - "docs/workflows/**/WORKFLOW.md"
-      - "docs/workflows/action-provider-contracts.json"
-      - ".bob/process/process-catalog.yaml"
-      - "extensions/workflow-register/src/core/actionRegistry.ts"
-      - "extensions/workflow-register/src/core/mechanicalChecks/actionProvider.ts"
-      - "extensions/workflow-register/src/core/engine/preflight.ts"
-      - "extensions/workflow-register/src/core/workflowCompiler.ts"
-      - "extensions/workflow-register/src/core/workflowValidator.ts"
-      - "extensions/workflow-register/test/workflowContractFiles.test.js"
-      - "extensions/workflow-register/test/processWorkflowContracts.test.js"
-      - "extensions/bob-bazaar-review/src/workflow/workflowProviders.ts"
-      - "extensions/bob-code-consistency-review/src/workflowProviderRegistration.ts"
-      - "extensions/workflow-register/package.json"
-      - "extensions/bob-bazaar-review/package.json"
-      - "extensions/bob-code-consistency-review/package.json"
-      - "scripts/ci-baseline-summary.js"
-      - ".github/workflows/workflow-contracts.yml"
   push:
-    branches:
-      - main
-    paths:
-      - ".bob/workflows/**/WORKFLOW.md"
-      - ".bob/template-library/**/WORKFLOW.md"
-      - "extensions/workflow-register/samples/**/WORKFLOW.md"
-      - "extensions/**/templates/**/WORKFLOW.md"
-      - "docs/workflows/**/WORKFLOW.md"
-      - "docs/workflows/action-provider-contracts.json"
-      - ".bob/process/process-catalog.yaml"
-      - "extensions/workflow-register/src/core/actionRegistry.ts"
-      - "extensions/workflow-register/src/core/mechanicalChecks/actionProvider.ts"
-      - "extensions/workflow-register/src/core/engine/preflight.ts"
-      - "extensions/workflow-register/src/core/workflowCompiler.ts"
-      - "extensions/workflow-register/src/core/workflowValidator.ts"
-      - "extensions/workflow-register/test/workflowContractFiles.test.js"
-      - "extensions/workflow-register/test/processWorkflowContracts.test.js"
-      - "extensions/bob-bazaar-review/src/workflow/workflowProviders.ts"
-      - "extensions/bob-code-consistency-review/src/workflowProviderRegistration.ts"
-      - "extensions/workflow-register/package.json"
-      - "extensions/bob-bazaar-review/package.json"
-      - "extensions/bob-code-consistency-review/package.json"
-      - "scripts/ci-baseline-summary.js"
-      - ".github/workflows/workflow-contracts.yml"
+    branches: [main]
   workflow_dispatch:
-  # Manual dispatch is retained for explicit post-evidence contract verification.
 
 concurrency:
   group: workflow-contracts-${{ github.event.pull_request.number || github.ref }}
@@ -58,52 +12,81 @@ concurrency:
 
 jobs:
   validate:
-    name: Strict workflow validation
+    name: Dynamic workflow contract evidence
     runs-on: ubuntu-latest
-
-    defaults:
-      run:
-        working-directory: extensions/workflow-register
-
     steps:
-      - name: Checkout
+      - name: Checkout exact commit
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: extensions/workflow-register/package-lock.json
+          cache-dependency-path: |
+            extensions/workflow-register/package-lock.json
+            extensions/bob-bazaar-review/package-lock.json
+            extensions/bob-code-consistency-review/package-lock.json
 
-      - name: Record CI baseline
-        run: node ../../scripts/ci-baseline-summary.js
+      - name: Install all extension dependencies
+        run: |
+          npm --prefix extensions/workflow-register ci --silent
+          npm --prefix extensions/bob-bazaar-review ci --silent
+          npm --prefix extensions/bob-code-consistency-review ci --silent
 
-      - name: Install dependencies
-        run: npm ci --silent
+      - name: Compile and package all manifest owners
+        run: |
+          npm --prefix extensions/workflow-register run compile --silent
+          npm --prefix extensions/workflow-register run package --silent
+          npm --prefix extensions/bob-bazaar-review run compile --silent
+          npm --prefix extensions/bob-bazaar-review run package --silent
+          npm --prefix extensions/bob-code-consistency-review run compile --silent
+          npm --prefix extensions/bob-code-consistency-review run package --silent
 
-      - name: Compile
-        run: npm run compile --silent
+      - name: Enforce workflow-register package policy
+        run: npm --prefix extensions/workflow-register run package:policy --silent
 
-      - name: Validate workflow contracts
+      - name: Enforce bob-bazaar-review package policy
+        run: npm --prefix extensions/bob-bazaar-review run package:policy --silent
+
+      - name: Enforce bob-code-consistency-review package policy
+        run: npm --prefix extensions/bob-code-consistency-review run package:policy --silent
+
+      - name: Select exact commit and tree
         shell: bash
         run: |
-          set +e
-          node --test test/workflowContractFiles.test.js test/processWorkflowContracts.test.js > "$RUNNER_TEMP/workflow-contracts.log" 2>&1
-          status=$?
-          if [ "$status" -ne 0 ]; then
-            echo "Workflow contract validation failed. Relevant output:"
-            grep -n -B 45 -A 160 -E "not ok|AssertionError|Unsupported action provider|uncontributed command|error:" "$RUNNER_TEMP/workflow-contracts.log" || tail -n 240 "$RUNNER_TEMP/workflow-contracts.log"
-          else
-            tail -n 20 "$RUNNER_TEMP/workflow-contracts.log"
-          fi
-          exit "$status"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          workflow_tree=$(git rev-parse "${GITHUB_SHA}^{tree}")
+          echo "WORKFLOW_TREE=$workflow_tree" >> "$GITHUB_ENV"
 
-      - name: Upload failed contract log
-        if: failure()
+      - name: Generate discovery, strict-compile, command, mirror, and vsix evidence
+        run: |
+          npm --prefix extensions/workflow-register run report:generate -- \
+            --repository-root "$GITHUB_WORKSPACE" \
+            --expected-commit "$GITHUB_SHA" \
+            --expected-tree "$WORKFLOW_TREE" \
+            --output "$RUNNER_TEMP/workflow-contract-report.json" \
+            --archive local.workflow-register=extensions/workflow-register/workflow-register-0.1.0.vsix \
+            --archive local.bob-bazaar-review=extensions/bob-bazaar-review/bob-bazaar-review-0.3.0.vsix \
+            --archive local.bob-code-consistency-review=extensions/bob-code-consistency-review/bob-code-consistency-review-0.1.0.vsix
+
+      - name: Re-read schema and semantic report validation
+        run: |
+          npm --prefix extensions/workflow-register run report:validate -- \
+            --report "$RUNNER_TEMP/workflow-contract-report.json" \
+            --repository-root "$GITHUB_WORKSPACE" \
+            --expected-commit "$GITHUB_SHA" \
+            --expected-tree "$WORKFLOW_TREE" \
+            --archive local.workflow-register=extensions/workflow-register/workflow-register-0.1.0.vsix \
+            --archive local.bob-bazaar-review=extensions/bob-bazaar-review/bob-bazaar-review-0.3.0.vsix \
+            --archive local.bob-code-consistency-review=extensions/bob-code-consistency-review/bob-code-consistency-review-0.1.0.vsix
+
+      - name: Upload workflow contract evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: workflow-contracts-failure
-          path: ${{ runner.temp }}/workflow-contracts.log
+          name: workflow-contract-report
+          path: ${{ runner.temp }}/workflow-contract-report.json
           if-no-files-found: error
-          retention-days: 3
+          retention-days: 90

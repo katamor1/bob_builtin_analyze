@@ -188,6 +188,39 @@ test("strict compile resolves action, preflight, custom sink version, and built-
   assert.equal(result.ok, true, messages(result).join("\n"))
 })
 
+test("strict compile exposes positive provider, command, sink, preflight, and referenced agent decisions from its authoritative lookup", () => {
+  const { compileWorkflowContractDocumentWithTrace } = workflowCompiler
+  assert.equal(typeof compileWorkflowContractDocumentWithTrace, "function")
+  const options = compileContractOptions(generatedTestCatalog())
+  options.filePath = "extensions/sample-extension/samples/sample-review/.bob/workflows/sample-review/WORKFLOW.md"
+  options.text = workflowText({
+    extraTopLevel: "guardrails:\n  allowedCommandIds:\n    - sample.capture\n    - sample.externalReview\n"
+  })
+  const command = compileWorkflowContractDocumentWithTrace(options)
+  assert.equal(command.ok, true, messages(command).join("\n"))
+  assert.ok(command.resolutions.some((entry) => entry.kind === "action_provider" && entry.id === "sample.collect" && entry.owner === "local.sample-extension"))
+  assert.ok(command.resolutions.some((entry) => entry.kind === "preflight_check" && entry.id === "sample.workspaceReady" && entry.contract_version === "sample.workspace-ready/v1"))
+  assert.ok(command.resolutions.some((entry) => entry.kind === "result_sink" && entry.id === "sample.report" && entry.contract_version === "sample.report/v1"))
+  assert.ok(command.resolutions.some((entry) => entry.kind === "command" && entry.id === "sample.capture" && entry.source === "product" && entry.package_path === "extensions/sample-extension/package.json" && !("contract_version" in entry)))
+  assert.ok(command.resolutions.some((entry) => entry.kind === "command" && entry.id === "sample.externalReview" && entry.source === "external" && entry.contract_version === "sample.external-review/v1" && entry.declared_workflow_path === options.filePath))
+
+  const agent = compileWorkflowContractDocumentWithTrace({ ...options, text: agentResultWorkflowText() })
+  assert.equal(agent.ok, true, messages(agent).join("\n"))
+  assert.ok(agent.resolutions.some((entry) => entry.kind === "agent_provider" && entry.id === "sample.agent" && entry.contract_version === "sample.agent/v1"))
+  assert.deepEqual(compileWorkflowContractDocument(options), command.result)
+})
+
+test("strict compile rejects contribution owners absent from the authoritative owner catalog", () => {
+  for (const field of ["action_providers", "preflight_checks", "result_sinks", "agent_providers"]) {
+    const catalog = generatedTestCatalog()
+    assert.ok(catalog[field].length > 0, field)
+    catalog[field][0] = { ...catalog[field][0], owner: "local.unknown" }
+    const result = compile(workflowText(), catalog)
+    assert.equal(result.ok, false, field)
+    assert.match(messages(result).join("\n"), /owner.*no matching owners record|catalog is invalid/i, field)
+  }
+})
+
 test("catalog-aware core validation is not exported outside the mandatory document facade", () => {
   const workflowValidator = require("../out/core/workflowValidator")
 
@@ -501,7 +534,7 @@ test("strict compile rejects a missing action provider at the command step", () 
 
 test("strict compile rejects an ambiguous action provider at the command step", () => {
   const ambiguousCatalog = generatedTestCatalog()
-  ambiguousCatalog.action_providers.push({ ...ambiguousCatalog.action_providers[0], owner: "local.duplicate" })
+  ambiguousCatalog.action_providers.push({ ...ambiguousCatalog.action_providers[0] })
   const ambiguous = compile(workflowText(), ambiguousCatalog)
   assert.equal(ambiguous.ok, false)
   assert.ok(messages(ambiguous).includes(
@@ -519,7 +552,7 @@ test("strict compile rejects a missing preflight check at the block and check", 
 
 test("strict compile rejects an ambiguous preflight check at the block and check", () => {
   const ambiguousCatalog = generatedTestCatalog()
-  ambiguousCatalog.preflight_checks.push({ ...ambiguousCatalog.preflight_checks[0], owner: "local.duplicate" })
+  ambiguousCatalog.preflight_checks.push({ ...ambiguousCatalog.preflight_checks[0] })
   const ambiguous = compile(workflowText(), ambiguousCatalog)
   assert.equal(ambiguous.ok, false)
   assert.ok(messages(ambiguous).includes(
@@ -538,7 +571,7 @@ test("strict compile rejects an unknown custom result sink at the exact index", 
 test("strict compile rejects an ambiguous custom result sink at the exact index", () => {
   const ambiguousCatalog = generatedTestCatalog()
   const custom = ambiguousCatalog.result_sinks.find((entry) => entry.type === "sample.report")
-  ambiguousCatalog.result_sinks.push({ ...custom, owner: "local.duplicate" })
+  ambiguousCatalog.result_sinks.push({ ...custom })
   const ambiguous = compile(workflowText(), ambiguousCatalog)
   assert.equal(ambiguous.ok, false)
   assert.ok(messages(ambiguous).includes(
@@ -567,7 +600,7 @@ test("strict compile rejects a missing built-in sink without requiring a workflo
 test("strict compile rejects an ambiguous built-in sink without requiring a workflow version", () => {
   const ambiguousCatalog = generatedTestCatalog()
   const command = ambiguousCatalog.result_sinks.find((entry) => entry.type === "command")
-  ambiguousCatalog.result_sinks.push({ ...command, owner: "local.duplicate" })
+  ambiguousCatalog.result_sinks.push({ ...command })
   const ambiguous = compile(workflowText(), ambiguousCatalog)
   assert.equal(ambiguous.ok, false)
   assert.ok(messages(ambiguous).includes(
@@ -621,7 +654,7 @@ test("an ambiguous agent result sink reports the agent step id and exact sink in
   const expectedLocation = "Step 'analyze-output' result sink[0] type 'sample.report'"
   const ambiguousCatalog = generatedTestCatalog()
   const sink = ambiguousCatalog.result_sinks.find((entry) => entry.type === "sample.report")
-  ambiguousCatalog.result_sinks.push({ ...sink, owner: "local.duplicate" })
+  ambiguousCatalog.result_sinks.push({ ...sink })
   assert.ok(messages(compile(text, ambiguousCatalog)).includes(
     `${expectedLocation} has 2 contribution catalog matches.`
   ))

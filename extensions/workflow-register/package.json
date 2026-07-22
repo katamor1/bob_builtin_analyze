@@ -711,7 +711,9 @@
     "vscode:prepublish": "npm run compile",
     "package": "vsce package",
     "package:policy": "node scripts/check-vsix-policy.js --max-bytes 1200000",
-    "phase1:policy": "npm run compile && node scripts/check-provider-registry-phase1.js"
+    "phase1:policy": "npm run compile && node scripts/check-provider-registry-phase1.js",
+    "report:generate": "npm run compile --silent && node scripts/generate-workflow-contract-report.js generate",
+    "report:validate": "npm run compile --silent && node scripts/generate-workflow-contract-report.js validate"
   },
   "dependencies": {
     "ajv": "^8.17.1",
