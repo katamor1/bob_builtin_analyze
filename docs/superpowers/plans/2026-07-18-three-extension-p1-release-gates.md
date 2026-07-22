@@ -302,6 +302,10 @@ The checkout was reconstructed from the plan's recovery base `8793804f2f99fd1d54
 
 **Commit:** `feat: discover tracked workflows dynamically`
 
+**Completion evidence (2026-07-23):** Complete in commits `6159d2f`, `3968ba0`, and `563baec`. Initial RED was 0 PASS / 1 FAIL because the dynamic discovery module did not exist. Review hardening added two exact RED cases (4 PASS / 2 FAIL) for an intermediate manifest-directory symlink that exposed outside JSON and a POSIX literal-backslash workflow path aliased to a slash path, followed by a contract-alignment RED (5 PASS / 1 FAIL) for accepting a manifest rule that Task 5 rejects as non-POSIX. Final-head compile, discovery plus contribution-manifest batch (38/38), dependency policy (5/5), architecture/source policies (225 TypeScript files each), and `git diff --check` pass. Independent task review is Spec compliant and Approved with Critical 0 / Important 0 / Minor 0.
+
+**Recovery-checkout evidence:** Discovery executes `git ls-files -z -- ':(glob)**/WORKFLOW.md'`, parses NUL boundaries, discovers tracked contribution manifests, validates every path component and final realpath before reading, and classifies every tracked workflow exactly once without fixed roots or minimum counts. The recovery index truthfully contains six tracked workflows: four workflow-register sample claims and two owned negative-fixture exclusions. Raw Git paths preserve POSIX literal backslashes without aliasing, while manifest claims/exclusions retain Task 5's POSIX-separator contract. The pre-existing strict contract file remains 1 PASS / 6 FAIL because this reconstruction lacks `docs/workflows/action-provider-contracts.json` and companion template assets; no full contract-suite PASS is claimed.
+
 ## Task 8: Generate the contribution catalog from manifests
 
 **Files:** contract catalog generator, tests, schema hash utility, and generated catalog schema.

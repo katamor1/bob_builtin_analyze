@@ -1,0 +1,40 @@
+{
+  "workflows": [
+    {
+      "path": "extensions/workflow-register/samples/mechanical-checks-parser-pilot/.bob/workflows/mechanical-checks-parser-pilot/WORKFLOW.md",
+      "kind": "claim",
+      "role": "sample",
+      "owner": "local.workflow-register"
+    },
+    {
+      "path": "extensions/workflow-register/samples/mechanical-checks-precheck/.bob/workflows/mechanical-checks-precheck/WORKFLOW.md",
+      "kind": "claim",
+      "role": "sample",
+      "owner": "local.workflow-register"
+    },
+    {
+      "path": "extensions/workflow-register/samples/review-gated-step-execution/.bob/workflows/review-gated-step-execution/WORKFLOW.md",
+      "kind": "claim",
+      "role": "sample",
+      "owner": "local.workflow-register"
+    },
+    {
+      "path": "extensions/workflow-register/samples/step-back-branching-approval/.bob/workflows/step-back-branching-approval/WORKFLOW.md",
+      "kind": "claim",
+      "role": "sample",
+      "owner": "local.workflow-register"
+    },
+    {
+      "path": "extensions/workflow-register/test/fixtures/bob-code-consistency-review-template/WORKFLOW.md",
+      "kind": "exclusion",
+      "reason": "negative schema fixture",
+      "owner": "local.workflow-register"
+    },
+    {
+      "path": "extensions/workflow-register/test/fixtures/code-consistency-workflow/WORKFLOW.md",
+      "kind": "exclusion",
+      "reason": "negative workflow fixture",
+      "owner": "local.workflow-register"
+    }
+  ]
+}

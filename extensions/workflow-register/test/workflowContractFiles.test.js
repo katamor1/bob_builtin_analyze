@@ -4,16 +4,9 @@ const path = require("node:path")
 const { test } = require("node:test")
 
 const { validateWorkflowText } = require("../out/core/workflowValidator")
+const { createWorkflowInventory } = require("../scripts/discover-tracked-workflows")
 
 const repoRoot = path.resolve(__dirname, "..", "..", "..")
-const workflowSearchRoots = [
-  ".bob/workflows",
-  ".bob/template-library",
-  "extensions/workflow-register/samples",
-  "extensions/bob-bazaar-review/templates",
-  "extensions/bob-code-consistency-review/templates",
-  "docs/workflows"
-]
 const providerCatalogPath = "docs/workflows/action-provider-contracts.json"
 const providerImplementationSourcePaths = [
   "extensions/workflow-register/src/core/actionRegistry.ts",
@@ -49,17 +42,12 @@ const integrationWorkflowPairs = [
   }
 ]
 
-test("all repository workflow contracts are discovered and strict-clean", () => {
-  const workflowPaths = discoverWorkflowPaths()
+test("all tracked claimed workflow contracts are discovered and strict-clean", () => {
+  const workflowPaths = createWorkflowInventory(repoRoot)
+    .filter((entry) => entry.kind === "claim")
+    .map((entry) => entry.path)
   const providerIds = readActionProviderCatalogIds()
   const commandIds = discoverContributedCommandIds()
-
-  assert.ok(workflowPaths.length >= 22, `Expected at least 22 workflow contracts, found ${workflowPaths.length}`)
-  assert.ok(workflowPaths.includes(".bob/workflows/process-coding-plan/WORKFLOW.md"))
-  assert.ok(workflowPaths.includes(".bob/workflows/bazaar-project-rule-review/WORKFLOW.md"))
-  assert.ok(workflowPaths.includes(".bob/workflows/bazaar-project-rule-authoring/WORKFLOW.md"))
-  assert.ok(workflowPaths.includes(".bob/workflows/code-consistency-review/WORKFLOW.md"))
-  assert.ok(workflowPaths.includes(".bob/template-library/standard/process-code-precheck/WORKFLOW.md"))
 
   for (const relativePath of workflowPaths) {
     const text = readRepoFile(relativePath)
@@ -192,19 +180,6 @@ steps:
   assert.equal(validation.ok, true, formatDiagnostics(validation))
 })
 
-function discoverWorkflowPaths() {
-  const result = new Set()
-  for (const root of workflowSearchRoots) {
-    const absoluteRoot = path.join(repoRoot, ...root.split("/"))
-    if (!fs.existsSync(absoluteRoot)) continue
-    walk(absoluteRoot, (filePath) => {
-      if (path.basename(filePath) !== "WORKFLOW.md") return
-      result.add(toRepoPath(filePath))
-    })
-  }
-  return [...result].sort()
-}
-
 function readActionProviderCatalogIds() {
   const catalog = readProviderCatalog()
   return [...new Set(Object.values(catalog.providers).flat())].sort()
@@ -300,19 +275,6 @@ function validateStrictText(text, filePath = "test/fixtures/inline/WORKFLOW.md",
 
 function formatDiagnostics(validation) {
   return validation.diagnostics.map((item) => `${item.severity}: ${item.message}`).join("\n")
-}
-
-function walk(directory, visit) {
-  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
-    if ([".git", "node_modules", "out", "dist"].includes(entry.name)) continue
-    const filePath = path.join(directory, entry.name)
-    if (entry.isDirectory()) walk(filePath, visit)
-    else if (entry.isFile()) visit(filePath)
-  }
-}
-
-function toRepoPath(filePath) {
-  return path.relative(repoRoot, filePath).split(path.sep).join("/")
 }
 
 function readRepoFile(relativePath) {

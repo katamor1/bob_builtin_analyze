@@ -74,8 +74,10 @@
 - Task 5: complete — commits `e03c6cf` and `d09626a`; all three manifests and atomic provider bridges are present; workflow-register focused 155/155 plus 27/27, complete-tree assets 11/11, Bazaar 686/686, and CCR 271/271 PASS. Three cumulative independent reviews: Approved with Critical 0 / Important 0 / Minor 0.
 - Task 6: complete — commits `8ff57f4` and `9423c73`; fail-closed one-release adapter, removal marker, deprecation diagnostic, retry cleanup containment, and Phase 1 evidence helper are present. Direct 67/67, CCR cleanup 12/12, Bazaar cleanup 9/9, dependency 5/5, 225-file source/architecture policies, clean-tree `phase1:policy`, and `git diff --check` PASS. Independent specification and quality reviews: Approved with Critical 0 / Important 0 / Minor 0.
   - GitHub checkpoint: `codex/three-extension-p1-release-gates` at `34418c9c`; PR and `main` unchanged.
-- Tasks 7–42: pending.
-- Next task gate: implement Task 7 dynamic tracked-workflow discovery without fixed roots or minimum-count assertions.
+- Task 7: complete — commits `6159d2f`, `3968ba0`, and `563baec`; initial module-missing RED 0/1, review-hardening RED 4/6, and manifest-contract RED 5/6 all reached final discovery 6/6 and cumulative discovery/manifest 38/38 GREEN. Compile, dependency 5/5, 225-file source/architecture policies, and `git diff --check` PASS. Independent final review: Spec compliant and Approved with Critical 0 / Important 0 / Minor 0.
+  - Recovery inventory: six tracked workflows (four claims, two owned exclusions); no fixed roots or minimum count. The pre-existing strict contract file remains 1/7 because the partial recovery checkout lacks catalog/template assets, so no full contract-suite PASS is claimed.
+- Tasks 8–42: pending.
+- Next task gate: implement Task 8 deterministic contribution catalog generation exclusively from validated manifests and content digests.
 - Task completion rule: focused RED/GREEN evidence, relevant package verification, committed implementation, and independent full-range review with Critical 0 / Important 0.
 - Release completion rule: exact same-commit Ubuntu and Windows traceability plus installed-VSIX smoke evidence, complete budget/workflow/governance reports, and a semantically GO `p1-release-readiness.json`.
 
