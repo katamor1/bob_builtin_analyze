@@ -8,7 +8,9 @@ const objectFreeze = Object.freeze
 const objectGetOwnPropertyDescriptors = Object.getOwnPropertyDescriptors
 const objectGetPrototypeOf = Object.getPrototypeOf
 const objectPrototype = Object.prototype
+const reflectApply = Reflect.apply
 const reflectOwnKeys = Reflect.ownKeys
+const regexpExec = RegExp.prototype.exec
 const setHas = Function.prototype.call.bind(Set.prototype.has) as (set: ReadonlySet<string>, value: unknown) => boolean
 const sortArray = Function.prototype.call.bind(Array.prototype.sort) as <T>(
   values: T[],
@@ -70,7 +72,6 @@ const isProxy = utilTypes.isProxy
 const UrlConstructor = NodeUrl
 const tokenCharacterPattern = /[\p{L}\p{N}_]/u
 const controlCharacterPattern = /[\u0000-\u001f\u007f-\u009f]/u
-const displayControlPattern = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/g
 const CREATE_INPUT_REQUIRED_FIELDS = objectFreeze(["code", "severity", "message", "location"] as const)
 const CREATE_INPUT_OPTIONAL_FIELDS = objectFreeze(["relatedLocations"] as const)
 const LOCATION_REQUIRED_FIELDS = objectFreeze(["path", "pointer"] as const)
@@ -177,7 +178,7 @@ function assertPackageRelativePath(value: unknown, label: string): asserts value
     || value.endsWith("/")
     || value.includes("\\")
     || value.includes(":")
-    || controlCharacterPattern.test(value)
+    || testPattern(controlCharacterPattern, value)
   ) {
     throw new TypeError(`${label} path must be a portable package-relative POSIX path.`)
   }
@@ -191,9 +192,9 @@ function assertJsonPointer(value: unknown, label: string): asserts value is stri
   if (typeof value !== "string") throw new TypeError(`${label} pointer must be a string.`)
   assertValidUnicode(value, `${label} pointer`)
   if (
-    controlCharacterPattern.test(value)
+    testPattern(controlCharacterPattern, value)
     || (value.length > 0 && !value.startsWith("/"))
-    || /~(?:[^01]|$)/u.test(value)
+    || testPattern(/~(?:[^01]|$)/u, value)
   ) {
     throw new TypeError(`${label} pointer must be an RFC 6901 JSON Pointer without control characters.`)
   }
@@ -201,9 +202,9 @@ function assertJsonPointer(value: unknown, label: string): asserts value is stri
 
 function sanitizeMessage(input: string): string {
   assertValidUnicode(input, "Workflow contract diagnostic message")
-  const normalized = input.replace(/\r\n?/g, "\n")
+  const normalized = normalizeLineEndings(input)
   const redacted = redactAbsolutePaths(normalized)
-  const displaySafe = redacted.replace(displayControlPattern, "�")
+  const displaySafe = replaceDisplayControls(redacted)
   const codePoints = Array.from(displaySafe)
   if (codePoints.length <= MAX_MESSAGE_CODE_POINTS) return displaySafe
   return `${codePoints.slice(0, MAX_MESSAGE_CODE_POINTS - 1).join("")}…`
@@ -270,7 +271,7 @@ function validRemoteUrlEnd(input: string, start: number, scheme: SchemeMatch): n
   const urlEnd = remoteUrlEnd(input, start)
   const raw = input.slice(start, urlEnd)
   if (
-    /[\u0000-\u0020\u007f-\u009f]/u.test(raw)
+    testPattern(/[\u0000-\u0020\u007f-\u009f]/u, raw)
     || raw.includes("\\")
     || raw.includes('"')
     || raw.includes("'")
@@ -342,7 +343,7 @@ function isRealHostname(input: string): boolean {
     if (
       label.length === 0
       || label.length > 63
-      || !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/iu.test(label)
+      || !testPattern(/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/iu, label)
     ) return false
   }
   return true
@@ -387,7 +388,7 @@ function lineEnd(input: string, start: number): number {
 function isTokenBoundary(input: string, index: number): boolean {
   if (index === 0) return true
   const previous = previousCodePoint(input, index)
-  return !tokenCharacterPattern.test(previous)
+  return !testPattern(tokenCharacterPattern, previous)
 }
 
 function previousCodePoint(input: string, index: number): string {
@@ -443,7 +444,7 @@ function snapshotDenseOrdinaryArray(value: unknown, label: string): readonly unk
   for (let keyIndex = 0; keyIndex < ownKeys.length; keyIndex += 1) {
     const key = ownKeys[keyIndex]
     if (key === "length") continue
-    if (typeof key !== "string" || !/^(?:0|[1-9][0-9]*)$/u.test(key)) {
+    if (typeof key !== "string" || !testPattern(/^(?:0|[1-9][0-9]*)$/u, key)) {
       throw new TypeError(`${label} must not have symbol, hidden, or extra fields.`)
     }
     const index = Number(key)
@@ -506,6 +507,39 @@ function includesField(fields: readonly string[], expected: string): boolean {
     if (fields[index] === expected) return true
   }
   return false
+}
+
+function testPattern(pattern: RegExp, value: string): boolean {
+  return reflectApply(regexpExec, pattern, [value]) !== null
+}
+
+function normalizeLineEndings(value: string): string {
+  let normalized = ""
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index)
+    if (code === 0x0d) {
+      normalized += "\n"
+      if (value.charCodeAt(index + 1) === 0x0a) index += 1
+    } else {
+      normalized += value[index]
+    }
+  }
+  return normalized
+}
+
+function replaceDisplayControls(value: string): string {
+  let displaySafe = ""
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index)
+    displaySafe += (
+      code <= 0x08
+      || code === 0x0b
+      || code === 0x0c
+      || (code >= 0x0e && code <= 0x1f)
+      || (code >= 0x7f && code <= 0x9f)
+    ) ? "�" : value[index]
+  }
+  return displaySafe
 }
 
 function compareDiagnostics(left: WorkflowContractV2Diagnostic, right: WorkflowContractV2Diagnostic): number {

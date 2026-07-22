@@ -1423,6 +1423,190 @@ test("never performs network or filesystem loading", () => {
   assert.doesNotMatch(sourceText, /\bimport\s*\(/u)
 })
 
+test("inspects branded schema instance pointers without exposing the schema graph", () => {
+  const { inspectLocalJsonSchemaInstancePointer } = schemaModule()
+  const compiledResult = compile([
+    source("schemas/root.json", {
+      type: "object",
+      properties: {
+        name: { type: "string" },
+        count: { type: "integer" },
+        optional: { type: ["string", "null"] },
+        unconstrained: {},
+        profile: { $ref: "schemas/shared.json#/$defs/profile" },
+        tuple: {
+          type: "array",
+          prefixItems: [{ type: "string" }, { type: "integer" }],
+          minItems: 2,
+          maxItems: 2,
+          items: false
+        },
+        list: { type: "array", items: { type: "boolean" } },
+        denied: false,
+        dynamic: {
+          type: "object",
+          patternProperties: { ".*": { type: "string" } }
+        },
+        composed: {
+          allOf: [{
+            type: "object",
+            properties: { hidden: { type: "string" } }
+          }]
+        },
+        refWithValidationSibling: {
+          $ref: "schemas/shared.json#/$defs/text",
+          type: "string"
+        }
+      },
+      additionalProperties: false
+    }),
+    source("schemas/shared.json", {
+      $defs: {
+        profile: {
+          type: "object",
+          properties: { decision: { type: "string" } },
+          additionalProperties: false
+        },
+        text: { type: "string" }
+      }
+    })
+  ], "schemas/root.json")
+  assert.equal(compiledResult.ok, true, compiledResult.diagnostics?.[0]?.message)
+  const compiled = compiledResult.compiled
+  const inspect = (pointer) => inspectLocalJsonSchemaInstancePointer({ compiled, pointer })
+
+  const cases = [
+    ["", { ok: true, kinds: ["object"] }],
+    ["/name", { ok: true, kinds: ["string"] }],
+    ["/count", { ok: true, kinds: ["number"] }],
+    ["/optional", { ok: true, kinds: ["null", "string"] }],
+    ["/unconstrained", {
+      ok: true,
+      kinds: ["array", "boolean", "null", "number", "object", "string"]
+    }],
+    ["/profile", { ok: true, kinds: ["object"] }],
+    ["/profile/decision", { ok: true, kinds: ["string"] }],
+    ["/tuple/0", { ok: true, kinds: ["string"] }],
+    ["/tuple/1", { ok: true, kinds: ["number"] }],
+    ["/tuple/2", { ok: false }],
+    ["/list/2", { ok: true, kinds: ["boolean"] }],
+    ["/denied", { ok: false }],
+    ["/missing", { ok: false }],
+    ["/dynamic/name", { ok: false }],
+    ["/composed/hidden", { ok: false }],
+    ["/tuple/01", { ok: false }],
+    ["/refWithValidationSibling", { ok: false }]
+  ]
+
+  for (const [pointer, expected] of cases) {
+    const result = inspect(pointer)
+    assert.deepEqual(result, expected, pointer)
+    assert.equal(Object.isFrozen(result), true, pointer)
+    if (result.ok) assert.equal(Object.isFrozen(result.kinds), true, pointer)
+  }
+  assert.equal(Object.hasOwn(compiled, "schema"), false)
+  assert.equal(Object.hasOwn(compiled, "validator"), false)
+  assert.deepEqual(Object.keys(compiled), ["evidence"])
+})
+
+test("normalizes terminal and root references before schema-kind inspection", () => {
+  const { inspectLocalJsonSchemaInstancePointer } = schemaModule()
+  const referencedRoot = compile([
+    source("schemas/root.json", { $ref: "schemas/shared.json#/$defs/text" }),
+    source("schemas/shared.json", { $defs: { text: { type: "string" } } })
+  ], "schemas/root.json")
+  assert.equal(referencedRoot.ok, true)
+  assert.deepEqual(
+    inspectLocalJsonSchemaInstancePointer({ compiled: referencedRoot.compiled, pointer: "" }),
+    { ok: true, kinds: ["string"] }
+  )
+
+  const siblingRoot = compile([
+    source("schemas/root.json", {
+      $ref: "schemas/shared.json#/$defs/text",
+      type: "string"
+    }),
+    source("schemas/shared.json", { $defs: { text: { type: "string" } } })
+  ], "schemas/root.json")
+  assert.equal(siblingRoot.ok, true)
+  assert.deepEqual(
+    inspectLocalJsonSchemaInstancePointer({ compiled: siblingRoot.compiled, pointer: "" }),
+    { ok: false }
+  )
+})
+
+test("rejects hostile inspection inputs without invoking user code", () => {
+  const { inspectLocalJsonSchemaInstancePointer } = schemaModule()
+  const compiled = compile([source("schemas/root.json", { type: "object" })]).compiled
+  let traps = 0
+  const proxy = new Proxy({ compiled, pointer: "" }, {
+    get() { traps += 1; throw new Error("get trap") },
+    getOwnPropertyDescriptor() { traps += 1; throw new Error("descriptor trap") },
+    getPrototypeOf() { traps += 1; throw new Error("prototype trap") },
+    ownKeys() { traps += 1; throw new Error("ownKeys trap") }
+  })
+  const accessor = {}
+  Object.defineProperty(accessor, "compiled", {
+    enumerable: true,
+    get() { traps += 1; throw new Error("getter") }
+  })
+  Object.defineProperty(accessor, "pointer", {
+    enumerable: true,
+    value: ""
+  })
+
+  assert.throws(() => inspectLocalJsonSchemaInstancePointer(proxy), TypeError)
+  assert.throws(() => inspectLocalJsonSchemaInstancePointer(accessor), TypeError)
+  assert.throws(() => inspectLocalJsonSchemaInstancePointer({ compiled, pointer: "", extra: true }), TypeError)
+  assert.throws(() => inspectLocalJsonSchemaInstancePointer({ compiled: { evidence: compiled.evidence }, pointer: "" }), TypeError)
+  for (const pointer of ["root", "/bad~2escape", "/line\nfeed", "/\ud800"]) {
+    assert.throws(() => inspectLocalJsonSchemaInstancePointer({ compiled, pointer }), TypeError, pointer)
+  }
+  assert.equal(traps, 0)
+})
+
+test("uses captured inspection intrinsics and performs no validation or I/O", () => {
+  const module = schemaModule()
+  const compiled = compile([source("schemas/root.json", {
+    type: "object",
+    properties: { value: { type: "string" } }
+  })]).compiled
+  const originals = {
+    isArray: Array.isArray,
+    descriptors: Object.getOwnPropertyDescriptors,
+    prototype: Object.getPrototypeOf,
+    ownKeys: Reflect.ownKeys,
+    mapGet: Map.prototype.get,
+    fetch: global.fetch,
+    validate: module.validateLocalJsonSchemaValue
+  }
+  let fetchCalls = 0
+  let validateCalls = 0
+  Array.isArray = () => { throw new Error("patched Array.isArray") }
+  Object.getOwnPropertyDescriptors = () => { throw new Error("patched descriptors") }
+  Object.getPrototypeOf = () => { throw new Error("patched prototype") }
+  Reflect.ownKeys = () => { throw new Error("patched ownKeys") }
+  Map.prototype.get = () => { throw new Error("patched Map.get") }
+  global.fetch = () => { fetchCalls += 1; throw new Error("fetch") }
+  module.validateLocalJsonSchemaValue = () => { validateCalls += 1; throw new Error("validate") }
+  let result
+  try {
+    result = module.inspectLocalJsonSchemaInstancePointer({ compiled, pointer: "/value" })
+  } finally {
+    Array.isArray = originals.isArray
+    Object.getOwnPropertyDescriptors = originals.descriptors
+    Object.getPrototypeOf = originals.prototype
+    Reflect.ownKeys = originals.ownKeys
+    Map.prototype.get = originals.mapGet
+    global.fetch = originals.fetch
+    module.validateLocalJsonSchemaValue = originals.validate
+  }
+
+  assert.deepEqual(result, { ok: true, kinds: ["string"] })
+  assert.equal(fetchCalls, 0)
+  assert.equal(validateCalls, 0)
+})
+
 test("does not perform I/O while loading a fresh module instance", () => {
   const modulePath = require.resolve("../out/core/contractV2/jsonSchema.js")
   const originalFetch = global.fetch

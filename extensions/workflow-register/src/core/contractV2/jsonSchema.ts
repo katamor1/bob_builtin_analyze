@@ -47,6 +47,18 @@ export interface CompiledLocalJsonSchema {
   readonly evidence: LocalJsonSchemaEvidence
 }
 
+export type LocalJsonSchemaInstanceKind =
+  | "null"
+  | "boolean"
+  | "number"
+  | "string"
+  | "array"
+  | "object"
+
+export type InspectLocalJsonSchemaInstancePointerResult =
+  | { readonly ok: true; readonly kinds: readonly LocalJsonSchemaInstanceKind[] }
+  | { readonly ok: false }
+
 export type CompileLocalJsonSchemaResult =
   | {
       readonly ok: true
@@ -108,6 +120,7 @@ interface SchemaLocationRecord {
 
 interface CompiledState {
   readonly validator: ValidateFunction
+  readonly rootNode: SchemaNode
   readonly schemaLocations: WeakMap<object, SchemaLocationRecord>
   readonly fallbackSchemaLocation: SchemaLocationRecord
   readonly diagnosticCode: WorkflowContractV2DiagnosticCode
@@ -180,8 +193,48 @@ const VALIDATE_INPUT_FIELDS = objectFreeze([
   "diagnosticCode",
   "location"
 ] as const)
+const INSPECT_INPUT_FIELDS = objectFreeze(["compiled", "pointer"] as const)
 const SOURCE_FIELDS = objectFreeze(["id", "schema", "location"] as const)
 const EMPTY_DIAGNOSTICS = objectFreeze([]) as readonly []
+const INSTANCE_KIND_ORDER = objectFreeze([
+  "array",
+  "boolean",
+  "null",
+  "number",
+  "object",
+  "string"
+] as const)
+const ALL_INSTANCE_KINDS = INSTANCE_KIND_ORDER as readonly LocalJsonSchemaInstanceKind[]
+const INSPECTION_UNRESOLVED = objectFreeze({ ok: false }) as InspectLocalJsonSchemaInstancePointerResult
+const REFERENCE_NON_VALIDATION_KEYWORDS = new SetConstructor<string>([
+  "$ref",
+  "$schema",
+  "$id",
+  "$defs",
+  "$comment",
+  "title",
+  "description",
+  "default",
+  "deprecated",
+  "readOnly",
+  "writeOnly",
+  "examples"
+])
+const UNSUPPORTED_INSTANCE_TRAVERSAL_KEYWORDS = objectFreeze([
+  "patternProperties",
+  "dependentSchemas",
+  "allOf",
+  "anyOf",
+  "oneOf",
+  "if",
+  "then",
+  "else",
+  "not",
+  "contains",
+  "propertyNames",
+  "unevaluatedProperties",
+  "unevaluatedItems"
+] as const)
 
 const MESSAGES = objectFreeze({
   catalogEmpty: "JSON Schema catalog is empty.",
@@ -422,8 +475,13 @@ export function compileLocalJsonSchema(
   })
   const compiled: CompiledLocalJsonSchema = objectFreeze({ evidence })
   const rootDocument = callMapGet(documentsById, rootId) as DocumentState
+  const rootNode = callMapGet(rootDocument.nodes, "")
+  if (rootNode === undefined) {
+    return compileFailure(diagnosticCode, MESSAGES.schemaInvalid, baseLocation)
+  }
   callWeakMapSet(COMPILED_STATES, compiled, {
     validator: rootValidator,
+    rootNode,
     schemaLocations,
     fallbackSchemaLocation: {
       documentLocation: rootDocument.location,
@@ -433,6 +491,173 @@ export function compileLocalJsonSchema(
     diagnosticCode
   })
   return objectFreeze({ ok: true, compiled, diagnostics: EMPTY_DIAGNOSTICS })
+}
+
+export function inspectLocalJsonSchemaInstancePointer(
+  input: {
+    readonly compiled: CompiledLocalJsonSchema
+    readonly pointer: string
+  }
+): InspectLocalJsonSchemaInstancePointerResult {
+  const snapshot = snapshotExactOrdinaryRecord(
+    input,
+    INSPECT_INPUT_FIELDS,
+    "Local JSON Schema instance-pointer inspection input"
+  )
+  const compiled = snapshot.compiled
+  if (compiled === null || typeof compiled !== "object" || !callWeakMapHas(COMPILED_STATES, compiled)) {
+    throw new TypeError("Compiled local JSON Schema handle is invalid.")
+  }
+  const state = callWeakMapGet(COMPILED_STATES, compiled)
+  if (state === undefined) throw new TypeError("Compiled local JSON Schema handle is invalid.")
+  const tokens = decodeInstancePointer(snapshot.pointer)
+  let node: SchemaNode | undefined = state.rootNode
+
+  for (let index = 0; index < tokens.length; index += 1) {
+    node = normalizeInspectionReference(node)
+    if (node === undefined || !isJsonObject(node.value)) return INSPECTION_UNRESOLVED
+    if (hasUnsupportedInstanceTraversalKeyword(node.value)) return INSPECTION_UNRESOLVED
+    node = instanceChildNode(node, tokens[index])
+    if (node === undefined) return INSPECTION_UNRESOLVED
+  }
+
+  node = normalizeInspectionReference(node)
+  if (node === undefined || node.value === false) return INSPECTION_UNRESOLVED
+  const kinds = inspectionKinds(node.value)
+  return kinds === undefined
+    ? INSPECTION_UNRESOLVED
+    : objectFreeze({ ok: true, kinds })
+}
+
+function decodeInstancePointer(value: unknown): readonly string[] {
+  if (typeof value !== "string" || !hasWellFormedUnicode(value)) {
+    throw new TypeError("Local JSON Schema instance pointer is invalid.")
+  }
+  const canonical = canonicalReferencePointer(value)
+  if (canonical === undefined || canonical !== value || hasPointerControlCharacter(value)) {
+    throw new TypeError("Local JSON Schema instance pointer is invalid.")
+  }
+  if (value.length === 0) return objectFreeze([] as string[])
+
+  const tokens: string[] = []
+  let token = ""
+  for (let index = 1; index <= value.length; index += 1) {
+    if (index === value.length || callCharCodeAt(value, index) === 0x2f) {
+      defineArrayValue(tokens, tokens.length, token)
+      token = ""
+      continue
+    }
+    const code = callCharCodeAt(value, index)
+    if (code === 0x7e) {
+      const escaped = callCharCodeAt(value, index + 1)
+      token += escaped === 0x30 ? "~" : "/"
+      index += 1
+    } else {
+      token += codeUnitAsString(code)
+    }
+  }
+  return objectFreeze(tokens)
+}
+
+function hasPointerControlCharacter(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const code = callCharCodeAt(value, index)
+    if (code <= 0x1f || (code >= 0x7f && code <= 0x9f)) return true
+  }
+  return false
+}
+
+function normalizeInspectionReference(node: SchemaNode | undefined): SchemaNode | undefined {
+  let current = node
+  while (current !== undefined && current.reference !== undefined) {
+    if (!isJsonObject(current.value)) return undefined
+    const keys = objectKeys(current.value)
+    for (let index = 0; index < keys.length; index += 1) {
+      if (!callSetHas(REFERENCE_NON_VALIDATION_KEYWORDS, keys[index])) return undefined
+    }
+    current = current.reference.target
+  }
+  return current
+}
+
+function hasUnsupportedInstanceTraversalKeyword(value: JsonObject): boolean {
+  for (let index = 0; index < UNSUPPORTED_INSTANCE_TRAVERSAL_KEYWORDS.length; index += 1) {
+    if (objectHasOwn(value, UNSUPPORTED_INSTANCE_TRAVERSAL_KEYWORDS[index])) return true
+  }
+  return false
+}
+
+function instanceChildNode(node: SchemaNode, token: string): SchemaNode | undefined {
+  const value = node.value
+  if (!isJsonObject(value)) return undefined
+  const properties = readOwnJsonValue(value, "properties")
+  if (properties !== undefined && isJsonObject(properties) && objectHasOwn(properties, token)) {
+    return callMapGet(node.document.nodes, `${node.pointer}/properties/${escapePointerToken(token)}`)
+  }
+
+  const arrayIndex = canonicalSafeArrayIndex(token)
+  if (arrayIndex === undefined) return undefined
+  const prefixItems = readOwnJsonValue(value, "prefixItems")
+  if (prefixItems !== undefined && arrayIsArray(prefixItems) && arrayIndex < prefixItems.length) {
+    return callMapGet(node.document.nodes, `${node.pointer}/prefixItems/${numberAsString(arrayIndex)}`)
+  }
+  const items = readOwnJsonValue(value, "items")
+  if (items === undefined) return undefined
+  return callMapGet(node.document.nodes, `${node.pointer}/items`)
+}
+
+function canonicalSafeArrayIndex(value: string): number | undefined {
+  if (value.length === 0) return undefined
+  if (value.length > 1 && callCharCodeAt(value, 0) === 0x30) return undefined
+  let result = 0
+  for (let index = 0; index < value.length; index += 1) {
+    const code = callCharCodeAt(value, index)
+    if (code < 0x30 || code > 0x39) return undefined
+    result = result * 10 + code - 0x30
+    if (!numberIsSafeInteger(result)) return undefined
+  }
+  return result
+}
+
+function inspectionKinds(value: JsonValue): readonly LocalJsonSchemaInstanceKind[] | undefined {
+  if (value === true) return ALL_INSTANCE_KINDS
+  if (value === false || !isJsonObject(value)) return undefined
+  const type = readOwnJsonValue(value, "type")
+  if (type === undefined) return ALL_INSTANCE_KINDS
+  const selected = new SetConstructor<LocalJsonSchemaInstanceKind>()
+  if (typeof type === "string") {
+    const kind = schemaTypeToInstanceKind(type)
+    if (kind === undefined) return undefined
+    callSetAdd(selected, kind)
+  } else if (arrayIsArray(type)) {
+    for (let index = 0; index < type.length; index += 1) {
+      const kind = schemaTypeToInstanceKind(type[index])
+      if (kind === undefined) return undefined
+      callSetAdd(selected, kind)
+    }
+  } else {
+    return undefined
+  }
+  const kinds: LocalJsonSchemaInstanceKind[] = []
+  for (let index = 0; index < INSTANCE_KIND_ORDER.length; index += 1) {
+    const kind = INSTANCE_KIND_ORDER[index]
+    if (callSetHas(selected, kind)) defineArrayValue(kinds, kinds.length, kind)
+  }
+  return kinds.length === 0 ? undefined : objectFreeze(kinds)
+}
+
+function schemaTypeToInstanceKind(value: JsonValue): LocalJsonSchemaInstanceKind | undefined {
+  if (typeof value !== "string") return undefined
+  if (value === "integer") return "number"
+  if (
+    value === "null"
+    || value === "boolean"
+    || value === "number"
+    || value === "string"
+    || value === "array"
+    || value === "object"
+  ) return value
+  return undefined
 }
 
 function installCanonicalEqualityKeywords(ajv: Ajv2020): void {
