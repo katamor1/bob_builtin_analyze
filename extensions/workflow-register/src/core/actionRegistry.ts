@@ -2,6 +2,12 @@ import { ActionExecutionInput, ActionExecutionResult } from "./model"
 import { requireWorkspaceTrust, type WorkspaceTrustCheck } from "./workspaceTrust"
 import { createMechanicalChecksActionProvider } from "./mechanicalChecks/actionProvider"
 import type { ActionProvider, ActionProviderRegistration } from "./actionTypes"
+import {
+  WorkflowProviderRegistry,
+  type WorkflowProviderCatalog,
+  type WorkflowProviderRegistration,
+  type WorkflowProviderRegistrationInput
+} from "./contractV2/providerRegistry"
 
 export type { ActionProvider, ActionProviderRegistration } from "./actionTypes"
 
@@ -16,6 +22,17 @@ const WORKFLOW_REGISTER_PROVIDER_SOURCE_ID = "local.workflow-register"
 
 export class ActionRegistry {
   private readonly providers = new Map<string, RegisteredActionProvider>()
+  private readonly workflowProviders = new WorkflowProviderRegistry()
+
+  registerWorkflowProviderContract(
+    input: WorkflowProviderRegistrationInput
+  ): WorkflowProviderRegistration {
+    return this.workflowProviders.register(input)
+  }
+
+  snapshotWorkflowProviderCatalog(): WorkflowProviderCatalog {
+    return this.workflowProviders.snapshot()
+  }
 
   register(provider: ActionProvider): ActionProviderRegistration {
     const id = provider.id.trim()
