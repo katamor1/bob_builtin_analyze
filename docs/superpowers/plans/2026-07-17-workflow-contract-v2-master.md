@@ -100,11 +100,12 @@ createWorkflowPackageRoot(adapter, hostRoot): WorkflowPackageRoot
 loadWorkflowPackageGeneration(input): Promise<LoadWorkflowPackageResult>
 compileWorkflowPackage(input): WorkflowPackageCompileResult
 createAuditedWorkflowCompilerEnvironment(input): WorkflowCompilerEnvironment
+WorkflowPlanStore.getOrCompile(input): Promise<CompiledWorkflowPlanHandle>
 WorkflowPlanStore.acquire(input): Promise<WorkflowPlanLease>
 WorkflowPlanLease.release(): void
 ```
 
-The compiler handle owns private AJV validators/provider dispatch metadata. Its public `plan` member is canonical JSON data, deeply frozen, contains prompt text rather than Buffer, and does not contain `planDigest`. The wrapper exposes `planDigest = canonicalJsonDigest(plan)`. `WorkflowPlanLease.release()` is idempotent and the store has no second release API. P1/P3 import the exact closed `WorkflowPackageLock` and nine-key `WorkflowCompilerPolicyVersions` from design section 15; every environment uses compiler literal `workflow-register-compiler/v2` and that section's exact digest preimage.
+The compiler handle owns private AJV validators and opaque F6 bound-dispatch handles, never raw provider dispatch functions. Its public `plan` member is canonical JSON data, deeply frozen, contains prompt text rather than Buffer, and does not contain `planDigest`. The wrapper exposes `planDigest = canonicalJsonDigest(plan)`. `WorkflowPlanStore.getOrCompile()` is non-leasing for every audited purpose; `acquire()` is runtime-only. `WorkflowPlanLease.release()` is idempotent and the store has no second release API. P1/P3 import the exact closed `WorkflowPackageLock` and nine-key `WorkflowCompilerPolicyVersions` from design section 15; every environment uses compiler literal `workflow-register-compiler/v2` and that section's exact digest preimage.
 
 ## Public diagnostic ownership
 
