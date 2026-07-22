@@ -86,16 +86,26 @@ export type ContributionRegistryErrorCode =
   | "contribution.registry.commit_failed"
   | "contribution.registry.reentrant_mutation"
 
-/** A stable public error surface. Publicly constructed instances are not trusted internally. */
+/**
+ * A stable public error surface. A filtering proxy preserves native Error and
+ * typed instanceof behavior without exposing later Object.prototype additions.
+ * Publicly constructed instances are not trusted internally.
+ */
 export class ContributionRegistryError extends Error {
   readonly code: string
   readonly diagnosticId: string
 
   constructor(code: string, message: string, diagnosticId: string = code) {
     super(boundedText(message))
-    this.name = "ContributionRegistryError"
+    objectDefineProperty(this, "name", {
+      value: "ContributionRegistryError",
+      enumerable: true,
+      configurable: true,
+      writable: true
+    })
     this.code = boundedText(code)
     this.diagnosticId = boundedText(diagnosticId)
+    return createPublicErrorProxy(this)
   }
 }
 
@@ -152,11 +162,13 @@ const MAX_HANDLER_PROTOTYPE_DEPTH = 32
 
 const ArrayConstructor = Array
 const MapConstructor = Map
+const ProxyConstructor = Proxy
 const WeakSetConstructor = WeakSet
 const NumberConstructor = Number
 const StringConstructor = String
 const SymbolConstructor = Symbol
 const arrayPrototype = Array.prototype
+const errorPrototype = Error.prototype
 const functionPrototype = Function.prototype
 const mapPrototype = Map.prototype
 const setPrototype = Set.prototype
@@ -168,9 +180,11 @@ const objectDefineProperty = Object.defineProperty
 const objectCreate = Object.create
 const objectFreeze = Object.freeze
 const objectIs = Object.is
+const objectSetPrototypeOf = Object.setPrototypeOf
 const objectPrototype = Object.prototype
 const reflectOwnKeys = Reflect.ownKeys
 const reflectApply = Reflect.apply
+const reflectGet = Reflect.get
 const arrayIsArray = Array.isArray
 const arrayPush = Array.prototype.push
 const numberIsSafeInteger = Number.isSafeInteger
@@ -192,6 +206,19 @@ const mapIteratorNext = objectGetPrototypeOf(reflectApply(mapEntries, new MapCon
   this: IterableIterator<[unknown, unknown]>
 ) => IteratorResult<[unknown, unknown]>
 
+// Registry-owned public values use stable copies of the module-load prototype
+// descriptors. Their roots are null, so later Object.prototype additions cannot
+// become executable behavior on values that the registry already returned.
+const registryObjectPrototype = createIsolatedPrototype(objectPrototype, null)
+const registryArrayPrototype = createIsolatedPrototype(arrayPrototype, registryObjectPrototype)
+const registryFunctionPrototype = createIsolatedPrototype(functionPrototype, registryObjectPrototype)
+const publicErrorPrototypeBaselines = captureObjectBaselines([
+  ContributionRegistryError.prototype,
+  errorPrototype
+])
+objectFreeze(ContributionRegistryError.prototype)
+const publicErrorProxyHandler = createPublicErrorProxyHandler()
+
 const validatorPrimordialBaselines = captureObjectBaselines([
   objectPrototype,
   arrayPrototype,
@@ -202,6 +229,7 @@ const validatorPrimordialBaselines = captureObjectBaselines([
   regexpPrototype,
   nodePathModule.posix
 ])
+const objectPrototypeBaseline = validatorPrimordialBaselines[0]
 
 const validatorBindingBaselines = capturePropertyBaselines([
   [globalThis, "Array"],
@@ -226,19 +254,37 @@ const EMPTY_SNAPSHOT = createSnapshot([])
 
 export class ContributionRegistry {
   private readonly options: Readonly<ContributionRegistryOptions>
-  private state: RegistryState = objectFreeze({
+  private state: RegistryState = objectFreeze(isolateRegistryObject({
     byId: new MapConstructor<string, RegisteredContribution>(),
     ordered: objectFreeze([]) as readonly RegisteredContribution[],
     agentId: undefined,
     snapshot: EMPTY_SNAPSHOT
-  })
+  }))
   private mutating = false
 
   constructor(options: ContributionRegistryOptions = {}) {
-    this.options = objectFreeze({
-      manifestPolicy: options.manifestPolicy,
-      beforeCommit: options.beforeCommit,
-      onRemove: options.onRemove
+    this.options = objectFreeze(isolateRegistryObject({
+      manifestPolicy: readRegistryOption(options, "manifestPolicy"),
+      beforeCommit: readRegistryOption(options, "beforeCommit"),
+      onRemove: readRegistryOption(options, "onRemove")
+    }))
+    objectDefineProperty(this, "options", {
+      value: this.options,
+      enumerable: false,
+      configurable: false,
+      writable: false
+    })
+    objectDefineProperty(this, "state", {
+      value: this.state,
+      enumerable: false,
+      configurable: false,
+      writable: true
+    })
+    objectDefineProperty(this, "mutating", {
+      value: this.mutating,
+      enumerable: false,
+      configurable: false,
+      writable: true
     })
   }
 
@@ -267,8 +313,13 @@ export class ContributionRegistry {
       // This policy is registry-owned, not caller-provided. Its typed failures must pass through.
       this.options.manifestPolicy?.(manifest)
 
-      const handlers = snapshotHandlerSet(untrustedHandlers)
-      const incoming = createIncomingContributions(manifest, handlers)
+      let incoming: IncomingContribution[]
+      try {
+        const handlers = snapshotHandlerSet(untrustedHandlers)
+        incoming = createIncomingContributions(manifest, handlers)
+      } finally {
+        assertHandlerObjectPrototypeIntegrity()
+      }
       const staged = this.stageRegistration(incoming)
       const token = SymbolConstructor(manifest.owner.id)
       const tokenized: RegisteredContribution[] = []
@@ -288,54 +339,53 @@ export class ContributionRegistry {
       for (let index = 0; index < tokenized.length; index += 1) {
         appendArray(contributionIds, tokenized[index].metadata.id)
       }
-      const disposable: ContributionRegistration = objectFreeze({
-        dispose: () => {
-          this.enterMutation()
-          let removed: ContributionMetadata[] = []
-          try {
-            if (disposed) return
-            const nextById = cloneMap(this.state.byId)
-            for (let index = contributionIds.length - 1; index >= 0; index -= 1) {
-              const id = contributionIds[index]
-              const current = reflectApply(mapGet, nextById, [id]) as RegisteredContribution | undefined
-              if (current?.token !== token) continue
-              reflectApply(mapDelete, nextById, [id])
-              appendArray(removed, current.metadata)
-            }
-            const remaining: RegisteredContribution[] = []
-            for (let index = 0; index < this.state.ordered.length; index += 1) {
-              const current = this.state.ordered[index]
-              if (reflectApply(mapGet, nextById, [current.metadata.id]) === current) {
-                appendArray(remaining, current)
-              }
-            }
-            this.state = objectFreeze({
-              byId: nextById,
-              ordered: objectFreeze(remaining),
-              agentId: findAgentId(remaining),
-              snapshot: createSnapshot(remaining)
-            })
-            disposed = true
-          } finally {
-            this.leaveMutation()
+      const dispose = isolateRegistryFunction(() => {
+        this.enterMutation()
+        let removed: ContributionMetadata[] = []
+        try {
+          if (disposed) return
+          const nextById = cloneMap(this.state.byId)
+          for (let index = contributionIds.length - 1; index >= 0; index -= 1) {
+            const id = contributionIds[index]
+            const current = reflectApply(mapGet, nextById, [id]) as RegisteredContribution | undefined
+            if (current?.token !== token) continue
+            reflectApply(mapDelete, nextById, [id])
+            appendArray(removed, current.metadata)
           }
-          if (this.options.onRemove) {
-            for (let index = 0; index < removed.length; index += 1) this.options.onRemove(removed[index])
+          const remaining: RegisteredContribution[] = []
+          for (let index = 0; index < this.state.ordered.length; index += 1) {
+            const current = this.state.ordered[index]
+            if (reflectApply(mapGet, nextById, [current.metadata.id]) === current) {
+              appendArray(remaining, current)
+            }
           }
+          this.state = objectFreeze(isolateRegistryObject({
+            byId: nextById,
+            ordered: objectFreeze(remaining),
+            agentId: findAgentId(remaining),
+            snapshot: createSnapshot(remaining)
+          }))
+          disposed = true
+        } finally {
+          this.leaveMutation()
+        }
+        if (this.options.onRemove) {
+          for (let index = 0; index < removed.length; index += 1) this.options.onRemove(removed[index])
         }
       })
+      const disposable: ContributionRegistration = objectFreeze(isolateRegistryObject({ dispose }))
 
       const nextById = staged
       for (let index = 0; index < tokenized.length; index += 1) {
         reflectApply(mapSet, nextById, [tokenized[index].metadata.id, tokenized[index]])
       }
-      const nextState: RegistryState = objectFreeze({
+      const nextState: RegistryState = objectFreeze(isolateRegistryObject({
         byId: nextById,
         ordered: objectFreeze(nextOrdered),
         agentId: findAgentId(nextOrdered),
         snapshot: nextSnapshot
-      })
-      const pending = objectFreeze({ disposable, snapshot: nextSnapshot })
+      }))
+      const pending = objectFreeze(isolateRegistryObject({ disposable, snapshot: nextSnapshot }))
       try {
         this.options.beforeCommit?.(pending)
       } catch (error) {
@@ -419,7 +469,7 @@ export class ContributionRegistry {
       // Reserve the global identifier in the staged copy before inspecting later items.
       reflectApply(mapSet, staged, [
         id,
-        objectFreeze({ token: SymbolConstructor("staged"), metadata: item.metadata })
+        objectFreeze(isolateRegistryObject({ token: SymbolConstructor("staged"), metadata: item.metadata }))
       ])
     }
     return staged
@@ -450,6 +500,9 @@ export class ContributionRegistry {
   }
 }
 
+objectSetPrototypeOf(ContributionRegistry.prototype, registryObjectPrototype)
+objectFreeze(ContributionRegistry.prototype)
+
 function validateSafely(value: unknown, context: unknown) {
   try {
     return contributionManifestValidator(value, context as ContributionManifestValidationContext)
@@ -476,6 +529,96 @@ function assertValidatorRuntimeIntegrity(): void {
       )
     }
   }
+}
+
+function assertHandlerObjectPrototypeIntegrity(): void {
+  if (!objectBaselineMatches(objectPrototypeBaseline)) {
+    throw internalError(
+      "contribution.registry.handler_set_invalid",
+      "Contribution handler modified the object runtime."
+    )
+  }
+}
+
+function createIsolatedPrototype(source: object, parent: object | null): object {
+  const isolated = objectCreate(parent) as object
+  const keys = reflectOwnKeys(source)
+  for (let index = 0; index < keys.length; index += 1) {
+    const descriptor = objectGetOwnPropertyDescriptor(source, keys[index])
+    if (!descriptor) throw new Error("Unable to isolate registry prototype descriptor.")
+    objectDefineProperty(isolated, keys[index], descriptor)
+  }
+  return objectFreeze(isolated)
+}
+
+function isolateRegistryObject<T extends object>(value: T): T {
+  objectSetPrototypeOf(value, registryObjectPrototype)
+  return value
+}
+
+function isolateRegistryArray<T>(value: T[]): T[] {
+  objectSetPrototypeOf(value, registryArrayPrototype)
+  return value
+}
+
+function isolateRegistryFunction<T extends (...args: never[]) => unknown>(value: T): T {
+  objectSetPrototypeOf(value, registryFunctionPrototype)
+  return objectFreeze(value)
+}
+
+function createPublicErrorProxy(error: ContributionRegistryError): ContributionRegistryError {
+  return new ProxyConstructor(error, publicErrorProxyHandler)
+}
+
+function createPublicErrorProxyHandler(): ProxyHandler<ContributionRegistryError> {
+  const handler = objectCreate(null) as ProxyHandler<ContributionRegistryError>
+  const get = isolateRegistryFunction((
+    target: ContributionRegistryError,
+    key: PropertyKey
+  ): unknown => {
+    const ownDescriptor = objectGetOwnPropertyDescriptor(target, key)
+    if (ownDescriptor) return reflectGet(target, key, target)
+    return readCapturedErrorPrototypeProperty(target, key)
+  })
+  objectDefineProperty(handler, "get", {
+    value: get,
+    enumerable: false,
+    configurable: false,
+    writable: false
+  })
+  return objectFreeze(handler)
+}
+
+function readCapturedErrorPrototypeProperty(
+  target: ContributionRegistryError,
+  key: PropertyKey
+): unknown {
+  for (let baselineIndex = 0; baselineIndex < publicErrorPrototypeBaselines.length; baselineIndex += 1) {
+    const descriptors = publicErrorPrototypeBaselines[baselineIndex][1]
+    for (let descriptorIndex = 0; descriptorIndex < descriptors.length; descriptorIndex += 1) {
+      const descriptor = descriptors[descriptorIndex]
+      if (descriptor[0] !== key) continue
+      if (descriptor[1]) return descriptor[2]
+      return typeof descriptor[2] === "function"
+        ? reflectApply(descriptor[2] as (...args: never[]) => unknown, target, [])
+        : undefined
+    }
+  }
+  return undefined
+}
+
+function readRegistryOption<K extends keyof ContributionRegistryOptions>(
+  options: ContributionRegistryOptions,
+  key: K
+): ContributionRegistryOptions[K] {
+  const descriptor = objectGetOwnPropertyDescriptor(options, key)
+  if (!descriptor) return undefined
+  const valueDescriptor = objectGetOwnPropertyDescriptor(descriptor, "value")
+  if (valueDescriptor) return valueDescriptor.value as ContributionRegistryOptions[K]
+  const getter = descriptorField(descriptor, "get")
+  return typeof getter === "function"
+    ? reflectApply(getter, options, []) as ContributionRegistryOptions[K]
+    : undefined
 }
 
 function captureObjectBaselines(targets: readonly object[]): readonly CapturedObjectBaseline[] {
@@ -615,7 +758,7 @@ function snapshotArray(
     if (key === "length") continue
     if (typeof key !== "string" || !isArrayIndexWithinLength(key, length)) throw sourceReadError(source)
   }
-  const result = new ArrayConstructor<unknown>(length)
+  const result = isolateRegistryArray(new ArrayConstructor<unknown>(length))
   for (let index = 0; index < length; index += 1) {
     const descriptor = safeOwnDescriptor(value, StringConstructor(index), source)
     const item = descriptor ? descriptorValue(value, descriptor, source) : undefined
@@ -829,20 +972,24 @@ function snapshotActionProvider(value: unknown, expectedId: string, ownerId: str
   const id = readHandlerMember(value, "id")
   const execute = readHandlerMember(value, "execute")
   if (id !== expectedId || typeof execute !== "function") throw handlerMismatch()
-  return objectFreeze({
+  const callExecute = isolateRegistryFunction((input: Parameters<ActionProvider["execute"]>[0]) => (
+    reflectApply(execute, value, [input])
+  ))
+  return objectFreeze(isolateRegistryObject({
     id: expectedId,
     sourceId: ownerId,
-    execute: (input: Parameters<ActionProvider["execute"]>[0]) => reflectApply(execute, value, [input])
-  })
+    execute: callExecute
+  }))
 }
 
 function snapshotAgentProvider(value: unknown): AgentProvider {
   if (value === null || typeof value !== "object") throw handlerMismatch()
   const run = readHandlerMember(value, "run")
   if (typeof run !== "function") throw handlerMismatch()
-  return objectFreeze({
-    run: (input: Parameters<AgentProvider["run"]>[0]) => reflectApply(run, value, [input])
-  })
+  const callRun = isolateRegistryFunction((input: Parameters<AgentProvider["run"]>[0]) => (
+    reflectApply(run, value, [input])
+  ))
+  return objectFreeze(isolateRegistryObject({ run: callRun }))
 }
 
 function readHandlerMember(value: object, key: string): unknown {
@@ -879,12 +1026,12 @@ function entry(
   declaration: ContributionDeclaration,
   handler?: IncomingContribution["handler"]
 ): IncomingContribution {
-  const metadata: ContributionMetadata = objectFreeze({
+  const metadata: ContributionMetadata = objectFreeze(isolateRegistryObject({
     kind,
     id,
     owner: manifest.owner,
     declaration
-  })
+  }))
   return contributionRecord({ metadata }, handler)
 }
 
@@ -900,6 +1047,7 @@ function contributionRecord<T extends { metadata: ContributionMetadata }>(
       writable: false
     })
   }
+  isolateRegistryObject(base)
   return objectFreeze(base) as T & { readonly handler?: IncomingContribution["handler"] }
 }
 
@@ -913,12 +1061,12 @@ function ownContributionHandler(
 }
 
 function createSnapshot(ordered: readonly RegisteredContribution[]): ContributionRegistrySnapshot {
-  const actionProviders: ContributionMetadata[] = []
-  const preflightChecks: ContributionMetadata[] = []
-  const resultSinks: ContributionMetadata[] = []
-  const agentProviders: ContributionMetadata[] = []
-  const workflowTemplates: ContributionMetadata[] = []
-  const schemas: ContributionMetadata[] = []
+  const actionProviders = isolateRegistryArray<ContributionMetadata>([])
+  const preflightChecks = isolateRegistryArray<ContributionMetadata>([])
+  const resultSinks = isolateRegistryArray<ContributionMetadata>([])
+  const agentProviders = isolateRegistryArray<ContributionMetadata>([])
+  const workflowTemplates = isolateRegistryArray<ContributionMetadata>([])
+  const schemas = isolateRegistryArray<ContributionMetadata>([])
   for (let index = 0; index < ordered.length; index += 1) {
     const metadata = ordered[index].metadata
     switch (metadata.kind) {
@@ -930,14 +1078,14 @@ function createSnapshot(ordered: readonly RegisteredContribution[]): Contributio
       case "schema": appendArray(schemas, metadata); break
     }
   }
-  return objectFreeze({
+  return objectFreeze(isolateRegistryObject({
     actionProviders: objectFreeze(actionProviders),
     preflightChecks: objectFreeze(preflightChecks),
     resultSinks: objectFreeze(resultSinks),
     agentProviders: objectFreeze(agentProviders),
     workflowTemplates: objectFreeze(workflowTemplates),
     schemas: objectFreeze(schemas)
-  })
+  }))
 }
 
 function findAgentId(ordered: readonly RegisteredContribution[]): string | undefined {
