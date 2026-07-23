@@ -1,3 +1,4 @@
+import { BOB_2_0_1_PROFILE_DIGEST, probeBobTaskCapabilities } from "./core/contractV2/bobProfile"
 import type {
   BobWorkflow,
   BobWorkflowStep,
@@ -41,19 +42,26 @@ function buildWorkflowSteps(
     return definition.core.engineSteps.map((step, index) => ({
       id: step.id,
       title: step.title,
-      execution: async (task) => runner.runEngineStep(step.id, index, task)
+      execution: async (task) => runner.runEngineStep(step.id, index, probeTask(task))
     }))
   }
   if (definition.stepExecution.showInBob !== false && definition.stepExecution.mode === "todo" && definition.todoEnabled && definition.todoAsSteps && definition.todos.length > 0) {
     return definition.todos.map((todo, index) => ({
       id: todo.id,
       title: todo.text,
-      execution: async (task) => runner.runTodoStep(todo, index, task)
+      execution: async (task) => runner.runTodoStep(todo, index, probeTask(task))
     }))
   }
   return [{
     id: "runWorkflow",
     title: definition.label,
-    execution: async (task) => runner.runSingleWorkflowStep(task)
+    execution: async (task) => runner.runSingleWorkflowStep(probeTask(task))
   }]
+}
+
+function probeTask(task: BobWorkflowTask): BobWorkflowTask {
+  return probeBobTaskCapabilities({
+    expectedProfileDigest: BOB_2_0_1_PROFILE_DIGEST,
+    task
+  })
 }
