@@ -1,8 +1,11 @@
 import * as path from "node:path"
 import {
   ProcessingBudgetLedger,
+  commitWorkbookBudget,
   preflightOoxmlArchive,
-  readBoundedDocumentFile
+  readBoundedDocumentFile,
+  type SharedProcessingBudgetLedger,
+  type SharedWorkbookBudgetCancellation
 } from "../../sharedProcessingBudgetRuntime"
 import { splitDocumentChunk } from "../documentChunk"
 import { DEFAULT_RULE_AUTHORING_LIMITS } from "../ruleAuthoringLimits"
@@ -16,6 +19,8 @@ export interface XlsxExtractionContext {
   maxFileBytes?: number
   maxArchiveEntries?: number
   maxExpandedBytes?: number
+  budgetLedger?: SharedProcessingBudgetLedger
+  signal?: SharedWorkbookBudgetCancellation
 }
 
 export interface XlsxExtractionResult {
@@ -25,7 +30,7 @@ export interface XlsxExtractionResult {
   extractor: { id: string; version: string }
 }
 
-const XLSX_EXTRACTOR = Object.freeze({ id: "xlsx-read-excel-rows", version: "2" })
+const XLSX_EXTRACTOR = Object.freeze({ id: "xlsx-read-excel-rows", version: "3" })
 
 let excelFileModulePromise: Promise<ExcelFileModule> | undefined
 
@@ -54,7 +59,7 @@ export async function extractXlsx(
     "XLSX expanded byte limit"
   )
   const absolutePath = path.resolve(filePath)
-  const ledger = new ProcessingBudgetLedger({
+  const readLedger = new ProcessingBudgetLedger({
     limits: {
       single_document_bytes: maxFileBytes,
       total_document_bytes: maxExpandedBytes,
@@ -65,31 +70,48 @@ export async function extractXlsx(
     filePath: absolutePath,
     rootPath: path.dirname(absolutePath),
     target: documentTarget(context.sourceId),
-    ledger,
+    ledger: readLedger,
     maximumFileBytes: maxFileBytes
   })
   preflightOoxmlArchive({
     archiveBytes: snapshot.copyBytes(),
     target: archiveTarget(context.sourceId),
-    ledger,
+    ledger: readLedger,
     expectedKind: "xlsx",
     maximumEntries: maxArchiveEntries,
     maximumEntryBytes: maxFileBytes,
     maximumExpandedBytes: maxExpandedBytes
   })
 
+  throwIfCancelled(context.signal)
   const readExcelFile = await loadExcelFile()
   const workbook = await readExcelFile.default(Buffer.from(snapshot.copyBytes()))
-  const chunks: DocumentChunkV1[] = []
+  const prepared = workbook.map((sheet, sheetIndex) => ({
+    sheet,
+    sheetIndex,
+    rows: sheet.data.map((row, rowIndex) => ({ row, rowIndex }))
+      .filter(({ row }) => row.some(isNonEmptyCell))
+  }))
+  const workbookLedger = context.budgetLedger ?? new ProcessingBudgetLedger()
+  commitWorkbookBudget({
+    ledger: workbookLedger,
+    workbookTarget: workbookTarget(context.sourceId),
+    sheets: prepared.map(({ sheetIndex, rows }) => ({
+      target: sheetTarget(context.sourceId, sheetIndex),
+      rows: rows.length
+    })),
+    signal: context.signal
+  })
 
-  for (const sheet of workbook) {
-    for (const [rowIndex, row] of sheet.data.entries()) {
+  const chunks: DocumentChunkV1[] = []
+  for (const { sheet, rows } of prepared) {
+    throwIfCancelled(context.signal)
+    for (const { row, rowIndex } of rows) {
+      throwIfCancelled(context.signal)
       const nonEmptyColumns: number[] = []
       for (const [columnIndex, cell] of row.entries()) {
         if (isNonEmptyCell(cell)) nonEmptyColumns.push(columnIndex)
       }
-      if (nonEmptyColumns.length === 0) continue
-
       const firstColumn = nonEmptyColumns[0]
       const lastColumn = nonEmptyColumns.at(-1) ?? firstColumn
       const excelRow = rowIndex + 1
@@ -135,8 +157,22 @@ function archiveTarget(sourceId: string): string {
   return `xlsx:archive:${boundedSourceId(sourceId)}`
 }
 
+function workbookTarget(sourceId: string): string {
+  return `xlsx:workbook:${boundedSourceId(sourceId)}`
+}
+
+function sheetTarget(sourceId: string, sheetIndex: number): string {
+  return `${workbookTarget(sourceId)}:sheet:${sheetIndex}`
+}
+
 function boundedSourceId(sourceId: string): string {
   return /^[A-Za-z0-9._-]{1,96}$/.test(sourceId) ? sourceId : "untrusted-source"
+}
+
+function throwIfCancelled(signal: SharedWorkbookBudgetCancellation | undefined): void {
+  if (!signal?.aborted) return
+  if (signal.reason instanceof Error) throw signal.reason
+  throw new Error("XLSX enumeration was cancelled")
 }
 
 function isNonEmptyCell(value: unknown): boolean {
