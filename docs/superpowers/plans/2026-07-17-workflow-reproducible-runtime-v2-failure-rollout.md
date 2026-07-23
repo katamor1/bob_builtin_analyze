@@ -1,3 +1,5 @@
+Replaced: `workflowRegister.openOperationHub` and `workflowRegister.openWorkflowBuilder` are the current workflow operator routes; the legacy workflow projection and control surface references below are retained only as historical runtime v2 rollout planning evidence.
+
 # Workflow Reproducible Runtime v2 Failure Campaign and Rollout Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (- [ ]) syntax for tracking.
@@ -195,9 +197,9 @@
 **Files:**
 
 - Modify: extensions/workflow-register/package.json
-- Create: extensions/workflow-register/scripts/run-reproducible-runtime-faults.js
+- Create: extensions/workflow-register/scripts/run-reproducible-runtime-tests.js
+- Create: extensions/workflow-register/test/reproducibleRuntimeTestRunner.test.js
 - Modify: .github/workflows/extensions-quality.yml
-- Modify: extensions/workflow-register/test/dependencyPolicy.test.js
 
 **Interface:**
 
