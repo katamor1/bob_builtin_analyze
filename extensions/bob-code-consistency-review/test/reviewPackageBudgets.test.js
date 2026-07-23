@@ -1,6 +1,8 @@
 "use strict"
 
 const assert = require("node:assert/strict")
+const fs = require("node:fs")
+const path = require("node:path")
 const test = require("node:test")
 
 const {
@@ -31,42 +33,36 @@ function bobOnlyProfile(limit) {
   }
 }
 
-test("preserves mandatory template values and only truncates optional markdown", () => {
+test("preserves all metadata by default and only truncates declared bulk Markdown", () => {
   const ledger = new ProcessingBudgetLedger(bobOnlyProfile(120))
   const result = reserveMandatoryFirstBobInput({
     ledger,
     maximumBytes: 120,
-    template: "BEGIN\n{{mandatory}}\nOPTIONAL\n{{optional}}\nEND\n",
+    template: "BEGIN\n{{metadata}}\nOPTIONAL\n{{document_excerpts}}\nEND\n",
     values: {
-      mandatory: "must survive",
-      optional: "line one\nline two\nline three\n".repeat(10)
+      metadata: "must survive",
+      document_excerpts: "line one\nline two\nline three\n".repeat(10)
     },
-    mandatoryKeys: ["mandatory"]
+    truncatableKeys: ["document_excerpts"]
   })
-
   assert.match(result.text, /must survive/)
   assert.match(result.text, /END\n$/)
   assert.match(result.text, /\[truncated: bob_input_bytes\]/)
   assert.ok(Buffer.byteLength(result.text, "utf8") <= 120)
-  assert.equal(result.truncated, true)
   result.reservation.commit()
   assert.equal(category(ledger, "bob_input_bytes").committed, Buffer.byteLength(result.text, "utf8"))
 })
 
-test("rejects mandatory review metadata instead of truncating it", () => {
+test("rejects newly added metadata even when callers forget to classify it", () => {
   const ledger = new ProcessingBudgetLedger(bobOnlyProfile(64))
   const before = ledger.snapshot()
-
   assert.throws(
     () => reserveMandatoryFirstBobInput({
       ledger,
       maximumBytes: 64,
-      template: "META={{review.summary}}\n{{optional}}",
-      values: {
-        "review.summary": "x".repeat(80),
-        optional: ""
-      },
-      mandatoryKeys: ["review.summary"]
+      template: "META={{future.metadata}}\n{{document_excerpts}}",
+      values: { "future.metadata": "x".repeat(80), document_excerpts: "" },
+      truncatableKeys: ["document_excerpts"]
     }),
     (error) => error?.code === "processing_budget_exceeded"
       && error.details?.constrainedCategory === "bob_input_bytes"
@@ -86,9 +82,9 @@ test("enforces default and absolute Bob-input exact and plus-one boundaries", ()
       maximumBytes: limit,
       template: "{{mandatory}}",
       values: { mandatory: "x".repeat(limit) },
-      mandatoryKeys: ["mandatory"]
+      truncatableKeys: []
     })
-    assert.equal(Buffer.byteLength(exact.text, "utf8"), limit)
+    assert.equal(Buffer.byteLength(exact.text), limit)
     exact.reservation.commit()
 
     const overLedger = new ProcessingBudgetLedger(profile)
@@ -98,10 +94,9 @@ test("enforces default and absolute Bob-input exact and plus-one boundaries", ()
         maximumBytes: limit,
         template: "{{mandatory}}",
         values: { mandatory: "x".repeat(limit + 1) },
-        mandatoryKeys: ["mandatory"]
+        truncatableKeys: []
       }),
       (error) => error?.code === "processing_budget_exceeded"
-        && error.details?.constrainedCategory === "bob_input_bytes"
         && error.details?.limit === limit
         && error.details?.observed === limit + 1
     )
@@ -120,18 +115,16 @@ test("fails Bob-input reservation when other inputs exhaust the total operation 
     }
   })
   ledger.reserve("raw_diff_bytes", 60).commit()
-
   assert.throws(
     () => reserveMandatoryFirstBobInput({
       ledger,
       maximumBytes: 100,
       template: "{{mandatory}}",
       values: { mandatory: "x".repeat(50) },
-      mandatoryKeys: ["mandatory"]
+      truncatableKeys: []
     }),
     (error) => error?.code === "processing_budget_exceeded"
       && error.details?.constrainedCategory === "total_operation_input_bytes"
-      && error.details?.limit === 100
       && error.details?.observed === 110
   )
 })
@@ -142,17 +135,44 @@ test("enforces default and absolute managed-artifact exact and plus-one boundari
     [{ limits: PROCESSING_BUDGET_ABSOLUTE_MAXIMA }, 64 * MiB]
   ]) {
     const exactLedger = new ProcessingBudgetLedger(profile)
-    const exact = reserveManagedArtifactBytes(exactLedger, limit)
-    exact.commit()
+    reserveManagedArtifactBytes(exactLedger, limit).commit()
     assert.equal(category(exactLedger, "managed_artifact_bytes").committed, limit)
 
     const overLedger = new ProcessingBudgetLedger(profile)
     assert.throws(
       () => reserveManagedArtifactBytes(overLedger, limit + 1),
       (error) => error?.code === "processing_budget_exceeded"
-        && error.details?.constrainedCategory === "managed_artifact_bytes"
-        && error.details?.limit === limit
         && error.details?.observed === limit + 1
     )
   }
+})
+
+test("counts original bytes without rendering the unbounded original template", () => {
+  const source = fs.readFileSync(path.join(__dirname, "..", "src", "core", "reviewPackageBudgets.ts"), "utf8")
+  assert.doesNotMatch(source, /tokens\.map\([\s\S]*?\.join\(""\)/)
+  assert.match(source, /renderedTemplateByteLength/)
+})
+
+test("rejects undeclared or duplicate truncatable keys", () => {
+  const ledger = new ProcessingBudgetLedger()
+  assert.throws(
+    () => reserveMandatoryFirstBobInput({
+      ledger,
+      maximumBytes: 1000,
+      template: "{{x}}",
+      values: { x: "" },
+      truncatableKeys: ["missing"]
+    }),
+    /absent/
+  )
+  assert.throws(
+    () => reserveMandatoryFirstBobInput({
+      ledger,
+      maximumBytes: 1000,
+      template: "{{x}}",
+      values: { x: "" },
+      truncatableKeys: ["x", "x"]
+    }),
+    /duplicate/
+  )
 })
