@@ -322,6 +322,128 @@ test("current documentation states the canonical routes and the approved cross-e
   assertContainsAll(consistencyDocs, ["workflow", "バックアップ", "review-input.yaml", "上書き", "変更しない"], "Code Consistency canonical documents")
 })
 
+test("current operator guides route through canonical public surfaces", () => {
+  const operatorCorpus = [
+    "docs/gui-first-operation-operator-uat-guide-ja.md",
+    "docs/ops/extensions-vsix-release-checklist-ja.md",
+    "docs/training/phase4-template-customization-gui-core-ja.md",
+    "docs/workflow-authoring-guide-ja.md",
+    "extensions/workflow-register/docs/README-ja.md",
+    "extensions/workflow-register/docs/basic-design-ja.md",
+    "extensions/workflow-register/docs/command-palette-policy-ja.md",
+    "extensions/workflow-register/docs/detailed-design-ja.md",
+    "extensions/workflow-register/docs/run-state-schema-v1-ja.md",
+    "extensions/workflow-register/docs/workflow-authoring-guide.md",
+    "extensions/workflow-register/docs/workflow-run-retention-ja.md",
+    "extensions/workflow-register/docs/workflow-runtime-debugging.md"
+  ].map(readText).join("\n")
+
+  assertContainsAll(operatorCorpus, [
+    "Bob: 操作ハブを開く",
+    "Bob Workflow: ワークフローを作成・編集",
+    "Bob Bazaar Review: レビューを開始",
+    "Bob Bazaar Review: 資料からプロジェクト規約を作成",
+    "Bob Code Consistency Review: 整合プレレビューを開始",
+    "Bob 操作ハブ",
+    "標準テンプレートから作成"
+  ], "current operator documentation")
+
+  const forbidden = [
+    "Bob 操作センター",
+    "Run Control View",
+    "Explorer view",
+    "Workflow Register: Bob 操作ハブを開く",
+    "Workflow Register: ワークフロー作成・編集を開く",
+    "テンプレートカスタマイズ Studio",
+    "Command Palette に `Bob ワークフロー:`",
+    "Command Palette に `Bazaar レビュー:`",
+    "Command Palette に `コード整合レビュー:`",
+    "Bob Workflow: テンプレートから作成",
+    "Bob Workflow: AI で新規設計",
+    "Bob Workflow: 現在の定義を検証",
+    "Bob Workflow: ワークスペース定義を検証",
+    "Bob Workflow: 実行履歴を確認",
+    "Bob Workflow: 診断を確認",
+    "Bob Workflow: 実行を再開",
+    "Bob Workflow: AI で改善",
+    "Use the Command Palette command:"
+  ]
+  for (const phrase of forbidden) assert.equal(operatorCorpus.includes(phrase), false, `current operator documentation must not advertise: ${phrase}`)
+})
+
+test("canonical extension designs describe primary panels and safe update boundaries", () => {
+  const bazaarDesign = [
+    "extensions/bob-bazaar-review/docs/basic-design-ja.md",
+    "extensions/bob-bazaar-review/docs/detailed-design-ja.md"
+  ].map(readText).join("\n")
+  assertContainsAll(bazaarDesign, [
+    "Bob Bazaar Review: レビューを開始",
+    "Bob Bazaar Review: 資料からプロジェクト規約を作成",
+    "bobBazaarReviewGui",
+    "レビュー結果取り込み",
+    "指摘確認・振り分け",
+    "レビュー実績",
+    "review-run.json",
+    "registerWorkflowProvidersWithRetry",
+    "diff preview",
+    "明示確認",
+    "cancel時no-change",
+    "BOB_BAZAAR_ENABLE_WRITE_TOOLS=1",
+    "BOB_BAZAAR_ALLOWED_ROOTS"
+  ], "Bazaar canonical design")
+  for (const phrase of ["## 15. Phase 1 review record / triage", "## 17. Review Records 詳細"]) {
+    assert.equal(bazaarDesign.includes(phrase), false, "Bazaar canonical design must not retain obsolete section: " + phrase)
+  }
+
+  const consistencyDesign = [
+    "extensions/bob-code-consistency-review/docs/basic-design-ja.md",
+    "extensions/bob-code-consistency-review/docs/detailed-design-ja.md"
+  ].map(readText).join("\n")
+  assertContainsAll(consistencyDesign, [
+    "Bob Code Consistency Review: 整合プレレビューを開始",
+    "bobCodeConsistencyReviewWizard",
+    "トレーサビリティ整理",
+    "レビュー結果取り込み",
+    "指摘確認・振り分け",
+    "triage-source.yaml",
+    "triage-decisions.yaml",
+    "TRIAGE_SOURCE_CHANGED",
+    "TRIAGE_REVISION_CONFLICT",
+    "既存`review-input.yaml`を上書きせずbackupだけ"
+  ], "Code Consistency canonical design")
+  for (const phrase of ["## 21. Human Triage 詳細", "人間 triage 担当者"]) {
+    assert.equal(consistencyDesign.includes(phrase), false, "Code Consistency canonical design must not advertise: " + phrase)
+  }
+})
+
+test("current decision documents use the primary review route and approved stage name", () => {
+  const decisionDocs = [
+    "docs/workflows/code-consistency-review/human-triage-spec.md",
+    "extensions/bob-code-consistency-review/docs/README-ja.md",
+    "extensions/bob-code-consistency-review/docs/triage-operator-extension-host-test-spec-ja.md"
+  ].map(readText).join("\n")
+
+  assertContainsAll(decisionDocs, [
+    "Bob Code Consistency Review: 整合プレレビューを開始",
+    "整合プレレビュー",
+    "レビュー結果取り込み",
+    "指摘確認・振り分け",
+    "triage-source.yaml",
+    "triage-decisions.yaml",
+    "TRIAGE_SOURCE_CHANGED",
+    "TRIAGE_REVISION_CONFLICT"
+  ], "current decision documentation")
+
+  for (const phrase of [
+    "# 人間 triage 仕様",
+    "# Human Triage Operator Extension Host テスト仕様",
+    "Human Triage operator suite",
+    "人間 triage 担当者"
+  ]) {
+    assert.equal(decisionDocs.includes(phrase), false, "current decision documentation must not advertise: " + phrase)
+  }
+})
+
 test("obsolete matcher preserves retained settings and ignores internal domain terminology", () => {
   const obsoleteRunsView = ["workflowRegister", "runs"].join(".")
   assert.ok(findReferences(obsoleteRunsView).some((match) => match.token === obsoleteRunsView))
