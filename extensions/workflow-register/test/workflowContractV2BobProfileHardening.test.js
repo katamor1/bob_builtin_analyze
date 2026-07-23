@@ -29,7 +29,7 @@ test("activation registerSource must be an own data capability", () => {
   assert.throws(() => bindBobCapabilities(bindingInput(inherited)), /registerSource/)
 })
 
-test("every exposed bound capability function is frozen", () => {
+test("bound activation and source functions are frozen while task probe retains no live callable", () => {
   const bound = bindBobCapabilities(bindingInput({ registerSource() { return source() } }))
   assert.equal(Object.isFrozen(bound.registerSource), true)
 
@@ -50,7 +50,11 @@ test("every exposed bound capability function is frozen", () => {
     expectedProfileDigest: BOB_2_0_1_PROFILE_DIGEST,
     task
   })
-  for (const name of Object.keys(probed)) {
-    assert.equal(Object.isFrozen(probed[name]), true, name)
-  }
+  assert.equal(Object.isFrozen(probed), true)
+  assert.equal(Object.isFrozen(probed.taskCapabilities), true)
+  assert.equal("task" in probed, false)
+  for (const name of [
+    "getAllMetadata", "getMessages", "sendMessage",
+    "setStepComplete", "startSubagent", "toSerializable"
+  ]) assert.equal(name in probed, false)
 })
