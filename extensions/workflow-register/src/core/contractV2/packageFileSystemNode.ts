@@ -1,4 +1,5 @@
 import {
+  constants as nodeFsConstants,
   lstat as nodeLstat,
   open as nodeOpen,
   readFile as nodeReadFile,
@@ -18,6 +19,9 @@ import type {
 const numberIsSafeInteger = Number.isSafeInteger
 const objectFreeze = Object.freeze
 const stringStartsWith = String.prototype.startsWith
+const stableReadOpenFlags = nodeFsConstants.O_RDONLY | (
+  typeof nodeFsConstants.O_NOFOLLOW === "number" ? nodeFsConstants.O_NOFOLLOW : 0
+)
 
 export function createNodeWorkflowPackageFileSystem(): WorkflowPackageFileSystem<string> {
   return objectFreeze({
@@ -27,7 +31,7 @@ export function createNodeWorkflowPackageFileSystem(): WorkflowPackageFileSystem
     },
 
     async openFile(root: string, segments: readonly string[]): Promise<WorkflowPackageOpenFile> {
-      const handle = await nodeOpen(resolveNodePath(root, segments), "r")
+      const handle = await nodeOpen(resolveNodePath(root, segments), stableReadOpenFlags)
       let closed = false
       try {
         const initialStat = nodeStatEvidence(await handle.stat({ bigint: true }))
