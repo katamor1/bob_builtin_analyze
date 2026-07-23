@@ -1,7 +1,9 @@
 import {
   DEFAULT_PROCESSING_BUDGET_PROFILE,
   ProcessingBudgetLedger,
+  assertParsedXlsxWorkbookWithinBudget,
   commitWorkbookBudget,
+  commitXlsxWorkbookBudget,
   normalizeProcessingBudgetProfile,
   preflightOoxmlArchive,
   readBoundedDocumentFile,
@@ -23,7 +25,7 @@ ledger.reserveForTarget("single_document_bytes", "fixture-document", 128).releas
 commitWorkbookBudget({
   ledger,
   workbookTarget: "fixture-workbook",
-  sheets: [{ target: "fixture-workbook:sheet:0", rows: 1 }]
+  sheets: [{ target: "fixture-workbook:sheet-0", rows: 1 }]
 })
 const report: ProcessingBudgetLedgerReport = ledger.snapshot()
 const firstCategory = report.categories[0]
@@ -42,6 +44,12 @@ const archive: OoxmlArchiveSnapshot = preflightOoxmlArchive({
   expectedKind: "docx"
 })
 void archive
+const workbookInspection = commitXlsxWorkbookBudget({
+  ledger,
+  workbookTarget: "fixture-workbook-from-archive",
+  archive
+})
+assertParsedXlsxWorkbookWithinBudget(workbookInspection, [])
 
 // @ts-expect-error target-scoped categories require an explicit target
 ledger.reserve("single_document_bytes", 1)
