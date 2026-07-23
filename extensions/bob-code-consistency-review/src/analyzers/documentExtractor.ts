@@ -6,12 +6,15 @@ import { normalizeReviewProcessingLimits, truncateUtf8Text, type ReviewProcessin
 import type { DocumentExtractionResult, EvidenceRef } from "../core/documentTypes"
 import type { ReviewInput } from "../core/reviewTypes"
 import {
+  DEFAULT_PROCESSING_BUDGET_PROFILE,
   ProcessingBudgetLedger,
   preflightOoxmlArchive,
   readBoundedDocumentFile,
   type SharedBoundedDocumentSnapshot,
+  type SharedOoxmlArchiveSnapshot,
   type SharedProcessingBudgetLedger,
-  type SharedProcessingBudgetProfileOverrides
+  type SharedProcessingBudgetLimits,
+  type SharedWorkbookBudgetCancellation
 } from "../sharedProcessingBudgetRuntime"
 import { extractDocxChunks } from "./documentDocxExtractor"
 import type { ArtifactRef, ExtractedChunk } from "./documentExtractionCommon"
@@ -19,14 +22,6 @@ import { extractMarkdownChunks } from "./documentMarkdownExtractor"
 import { extractXlsxChunks } from "./documentXlsxExtractor"
 
 type DocumentMeta = DocumentExtractionResult["documents"][number]
-
-export interface DocumentExtractionOptions {
-  readonly workspaceRoot: string
-  readonly textEncoding?: string
-  readonly limits?: Partial<ReviewProcessingLimits>
-  readonly budgetProfile?: SharedProcessingBudgetProfileOverrides
-  readonly signal?: AbortSignal
-}
 
 const ARTIFACT_TYPES: Record<string, { evidenceType: string; prefix: string; documentPrefix: string }> = {
   requirements: { evidenceType: "requirement", prefix: "REQ", documentPrefix: "REQ" },
@@ -38,17 +33,25 @@ const ARTIFACT_TYPES: Record<string, { evidenceType: string; prefix: string; doc
 }
 const AGGREGATE_EXCERPT_SUFFIX = "\n\n[truncated: aggregate maxBobInputBytes]\n"
 
-export async function extractDocuments(
-  reviewInput: ReviewInput,
-  options: DocumentExtractionOptions
-): Promise<DocumentExtractionResult> {
+export interface DocumentExtractionOptions {
+  workspaceRoot: string
+  textEncoding?: string
+  limits?: Partial<ReviewProcessingLimits>
+  processingBudgetLimits?: Readonly<Partial<SharedProcessingBudgetLimits>>
+  signal?: SharedWorkbookBudgetCancellation
+}
+
+export async function extractDocuments(reviewInput: ReviewInput, options: DocumentExtractionOptions): Promise<DocumentExtractionResult> {
   const documents: DocumentMeta[] = []
   const evidence: EvidenceRef[] = []
   const excerpts: string[] = []
   const warnings: string[] = []
   const counters = new Map<string, number>()
+  throwIfCancelled(options.signal)
   const limits = normalizeReviewProcessingLimits(options.limits)
-  const ledger = documentLedger(limits, options.budgetProfile)
+  const ledger = documentLedger(limits, options.processingBudgetLimits)
+  const documentCount = countSelectedDocuments(reviewInput)
+  ledger.reserve("document_count", documentCount).commit()
   let excerptMarkdownBytes = 0
   let aggregateBudgetExhausted = false
 
@@ -68,7 +71,6 @@ export async function extractDocuments(
         continue
       }
 
-      ledger.reserve("document_count", 1).commit()
       const documentId = `DOC-${typeInfo.documentPrefix}-${String(documents.length + 1).padStart(4, "0")}`
       const selectors = selectorList(item)
       let chunks: ExtractedChunk[] = []
@@ -87,10 +89,12 @@ export async function extractDocuments(
           options.textEncoding
         )
       } catch (error) {
-        if (isProcessingBudgetExceeded(error) || options.signal?.aborted) throw error
+        if (options.signal?.aborted) throw cancellationReason(options.signal)
+        if (isResourceControlError(error)) throw error
         warnings.push(`failed to extract ${item.path}: ${error instanceof Error ? error.message : String(error)}`)
       }
 
+      throwIfCancelled(options.signal)
       if (chunks.length === 0) warnings.push(`no matching excerpt found in ${item.path}`)
 
       const document: DocumentMeta = {
@@ -164,7 +168,7 @@ async function extractFileChunks(
   warnings: string[],
   limits: ReviewProcessingLimits,
   ledger: SharedProcessingBudgetLedger,
-  signal: AbortSignal | undefined,
+  signal: SharedWorkbookBudgetCancellation | undefined,
   textEncoding = "auto"
 ): Promise<ExtractedChunk[]> {
   const extension = path.extname(filePath).toLowerCase()
@@ -173,23 +177,26 @@ async function extractFileChunks(
   }
 
   throwIfCancelled(signal)
-  const snapshot = await readBoundedDocumentFile({
+  const snapshot: SharedBoundedDocumentSnapshot = await readBoundedDocumentFile({
     filePath,
     rootPath: workspaceRoot,
     target: documentTarget(filePath),
     ledger,
-    maximumFileBytes: ledger.profile.limits.single_document_bytes
+    maximumFileBytes: limits.maxDocumentBytes
   })
+  throwIfCancelled(signal)
   const documentBytes = snapshot.copyBytes()
   let chunks: ExtractedChunk[]
 
   if (extension === ".md" || extension === ".markdown") {
     chunks = extractMarkdownChunks(decodeTextBuffer(Buffer.from(documentBytes), textEncoding), evidenceType, selectors)
   } else if (extension === ".docx") {
-    preflightArchive(snapshot, ledger, filePath, "docx")
+    preflightArchive(snapshot, ledger, filePath, "docx", limits)
+    throwIfCancelled(signal)
     chunks = await extractDocxChunks(documentBytes, evidenceType, selectors)
   } else {
-    preflightArchive(snapshot, ledger, filePath, "xlsx")
+    const archive = preflightArchive(snapshot, ledger, filePath, "xlsx", limits)
+    throwIfCancelled(signal)
     chunks = await extractXlsxChunks(
       documentBytes,
       filePath,
@@ -198,35 +205,45 @@ async function extractFileChunks(
       selectors,
       warnings,
       limits,
-      { ledger, workbookTarget: workbookTarget(filePath), signal }
+      { ledger, workbookTarget: workbookTarget(filePath), archive, signal }
     )
   }
 
   throwIfCancelled(signal)
   await snapshot.assertCurrent()
+  throwIfCancelled(signal)
   return chunks
+}
+
+function countSelectedDocuments(reviewInput: ReviewInput): number {
+  let count = 0
+  for (const value of Object.values(reviewInput.artifacts)) {
+    if (!Array.isArray(value)) continue
+    for (const item of value as ArtifactRef[]) if (item.path) count += 1
+  }
+  return count
 }
 
 function documentLedger(
   limits: ReviewProcessingLimits,
-  profile: SharedProcessingBudgetProfileOverrides | undefined
+  overrides: Readonly<Partial<SharedProcessingBudgetLimits>> | undefined
 ): SharedProcessingBudgetLedger {
-  const requested = profile?.limits ?? {}
+  const totalDocumentBytes = overrides?.total_document_bytes ?? Math.max(
+    limits.maxDocumentBytes,
+    DEFAULT_PROCESSING_BUDGET_PROFILE.limits.total_document_bytes
+  )
+  const totalOperationInputBytes = overrides?.total_operation_input_bytes ?? Math.max(
+    totalDocumentBytes,
+    DEFAULT_PROCESSING_BUDGET_PROFILE.limits.total_operation_input_bytes
+  )
   return new ProcessingBudgetLedger({
     limits: {
-      ...requested,
-      single_document_bytes: Math.min(
-        limits.maxDocumentBytes,
-        requested.single_document_bytes ?? limits.maxDocumentBytes
-      ),
-      sheets_per_workbook: Math.min(
-        limits.maxWorkbookSheets,
-        requested.sheets_per_workbook ?? limits.maxWorkbookSheets
-      ),
-      rows_per_sheet: Math.min(
-        limits.maxRowsPerSheet,
-        requested.rows_per_sheet ?? limits.maxRowsPerSheet
-      )
+      ...overrides,
+      single_document_bytes: limits.maxDocumentBytes,
+      sheets_per_workbook: limits.maxWorkbookSheets,
+      rows_per_sheet: limits.maxRowsPerSheet,
+      total_document_bytes: totalDocumentBytes,
+      total_operation_input_bytes: totalOperationInputBytes
     }
   })
 }
@@ -235,15 +252,16 @@ function preflightArchive(
   snapshot: SharedBoundedDocumentSnapshot,
   ledger: SharedProcessingBudgetLedger,
   filePath: string,
-  kind: "docx" | "xlsx"
-): void {
-  preflightOoxmlArchive({
+  kind: "docx" | "xlsx",
+  limits: ReviewProcessingLimits
+): SharedOoxmlArchiveSnapshot {
+  return preflightOoxmlArchive({
     archiveBytes: snapshot.copyBytes(),
     target: archiveTarget(filePath),
     ledger,
     expectedKind: kind,
-    maximumArchiveBytes: ledger.profile.limits.single_document_bytes,
-    maximumEntryBytes: ledger.profile.limits.single_document_bytes,
+    maximumArchiveBytes: limits.maxDocumentBytes,
+    maximumEntryBytes: limits.maxDocumentBytes,
     maximumExpandedBytes: ledger.profile.limits.total_document_bytes
   })
 }
@@ -264,15 +282,24 @@ function pathDigest(filePath: string): string {
   return createHash("sha256").update(path.resolve(filePath), "utf8").digest("hex").slice(0, 24)
 }
 
-function throwIfCancelled(signal: AbortSignal | undefined): void {
-  if (!signal?.aborted) return
-  if (signal.reason instanceof Error) throw signal.reason
-  throw new Error("document enumeration was cancelled")
+function isResourceControlError(error: unknown): boolean {
+  if (typeof error !== "object" || error === null || !("code" in error)) return false
+  const code = (error as { code?: unknown }).code
+  return typeof code === "string" && (
+    code === "processing_budget_exceeded"
+    || code === "ooxml_kind_mismatch"
+    || code.startsWith("bounded_document_")
+    || code.startsWith("archive_")
+    || code.startsWith("xlsx_")
+  )
 }
 
-function isProcessingBudgetExceeded(error: unknown): boolean {
-  return typeof error === "object" && error !== null && "code" in error &&
-    (error as { code?: unknown }).code === "processing_budget_exceeded"
+function throwIfCancelled(signal: SharedWorkbookBudgetCancellation | undefined): void {
+  if (signal?.aborted) throw cancellationReason(signal)
+}
+
+function cancellationReason(signal: SharedWorkbookBudgetCancellation): Error {
+  return signal.reason instanceof Error ? signal.reason : new Error("document extraction was cancelled")
 }
 
 function limitChunkText(chunk: ExtractedChunk, sourcePath: string, warnings: string[], limits: ReviewProcessingLimits): ExtractedChunk {
