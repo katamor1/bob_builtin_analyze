@@ -20,7 +20,7 @@ workflow、validation、record、capture、decision、retention用の内部comma
 2. `Bob: 操作ハブを開く`を実行し、wide panelの`Bob 操作ハブ`を開く。
 3. setup、workflow catalog、run一覧、optional integrationの利用可否を確認する。
 4. IBM Bobまたはcompanion extensionを無効化してもactivationが失敗せず、利用できないactionに理由が表示されることを確認する。
-5. Explorerに重複Operation Hub / Runs viewがなく、別run status UIもないことを確認する。
+5. Explorerに重複する旧run viewや別のrun status UIがなく、実行操作が操作ハブへ集約されていることを確認する。
 
 ## 2. ワークフロー作成・編集 UAT
 
@@ -36,7 +36,7 @@ workflow、validation、record、capture、decision、retention用の内部comma
 
 合格条件:
 
-- independent Template Studio panelまたは公開commandがない。
+- template調整用の独立公開panelまたは公開commandがない。
 - template生成も通常のPreview / Diff / confirmation / backup / transactional saveを通る。
 - 保存後にworkflow catalogが更新される。
 
@@ -53,7 +53,7 @@ workflow、validation、record、capture、decision、retention用の内部comma
 
 合格条件:
 
-- capture、decision、dashboardの独立公開panel / commandがない。
+- capture、decision、metricsの独立公開panel / commandがない。
 - active Review Run identityをstageごとに再入力しない。
 - invalid result、stale revision、unsafe workspace rootを保存前に拒否する。
 - MCPはread-only既定で、write toolは明示opt-inとallowed rootを要求する。
@@ -81,7 +81,7 @@ workflow、validation、record、capture、decision、retention用の内部comma
 
 合格条件:
 
-- Traceability Prep、Result Capture、Human Triageの独立公開panel / commandがない。
+- traceability、capture、decisionの各serviceが独立した公開panel / commandを持たない。
 - AIはproposed候補までを担当し、accepted / rejected / deprecatedを確定しない。
 - source contextと人間decisionを別成果物として維持する。
 
@@ -89,10 +89,10 @@ workflow、validation、record、capture、decision、retention用の内部comma
 
 1. workflow catalogから任意workflowを開始する。
 2. run cardが`.bob/workflows/runs/<runId>/run.json`のstatus、current step、revisionと一致することを確認する。
-3.状態に応じてresume、retry、accept、accept-and-next、run-next、pause、held recovery、diagnostics、artifact操作が表示されることを確認する。
+3. 状態に応じてresume、retry、accept、accept-and-next、run-next、pause、held recovery、diagnostics、artifact操作が表示されることを確認する。
 4. task snapshot importとartifact reuseでpreview / digest / provenanceを確認する。
 5. retention previewでprotected runを除外し、明示確認後だけcleanupすることを確認する。
-6.同じrunへのmutationが直列化され、stale revisionが拒否されることを確認する。
+6. 同じrunへのmutationが直列化され、stale revisionが拒否されることを確認する。
 
 ## 7. Visual / keyboard / Console gate
 
