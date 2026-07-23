@@ -1,3 +1,5 @@
+Replaced: `workflowRegister.openOperationHub`, `workflowRegister.openWorkflowBuilder`, `bobBazaar.openReviewGui`, and `bobCodeConsistency.openReviewWizard` are the current operator routes; the legacy standalone capture, triage, and dashboard terminology below is retained only as historical Review Run Iteration 2 planning evidence.
+
 # Bob Bazaar Review Run Wizard v3 Iteration 2 Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
@@ -258,8 +260,6 @@ The model must use phase status plus required artifacts, not only the top-level 
 - [ ] **Step 3: Add Review GUI controls**
 
 Render an incomplete-run selector, refresh button, resume button, six phase statuses, next action, metrics, issues, and artifact paths. The webview posts only explicit allowlisted message types.
-
-- [ ] **Step 4: Implement host routing**
 
 On refresh, call `listReviewRuns()`. On resume, re-read the selected run and route to Result Capture, Human Triage, or Human Triage finalize state. Target-only runs remain selected in Review GUI with their stored target displayed.
 
