@@ -158,7 +158,7 @@
         "bobCodeConsistency.traceabilityGateReportPath": {
           "type": "string",
           "default": ".bob-trace/gate-report.md",
-          "description": "トレーサビリティ台帳の検証結果を書き込む Markdown レポートです。"
+          "description": "トレーサビリティ台帳の検証結果を書き込む Markdown レポートのワークスペース相対パスです。"
         },
         "bobCodeConsistency.bobOutputPath": {
           "type": "string",
