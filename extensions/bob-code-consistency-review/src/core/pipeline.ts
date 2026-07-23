@@ -67,7 +67,12 @@ export async function preprocessReview(input: PreprocessReviewInput): Promise<Pr
         abortSignal: input.abortSignal
       })
     : undefined
-  const documents = await extractDocuments(reviewInput, { workspaceRoot: input.workspaceRoot, textEncoding, limits })
+  const documents = await extractDocuments(reviewInput, {
+    workspaceRoot: input.workspaceRoot,
+    textEncoding,
+    limits,
+    signal: input.abortSignal
+  })
   const codeAnalysis = await analyzeCodeChanges(diff, reviewInput, { workspaceRoot: input.workspaceRoot, textEncoding, limits })
   const contextBudget = await buildReviewContextBudget({
     workspaceRoot: input.workspaceRoot,
