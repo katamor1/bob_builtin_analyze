@@ -1,3 +1,5 @@
+Replaced: `workflowRegister.openOperationHub` and `workflowRegister.openWorkflowBuilder` are the current workflow operator routes; the legacy snapshot-import command and run-view references below are retained only as historical P1-2 design evidence.
+
 # Task Snapshot Import Preview / Selective Apply Design
 
 ## Goal
