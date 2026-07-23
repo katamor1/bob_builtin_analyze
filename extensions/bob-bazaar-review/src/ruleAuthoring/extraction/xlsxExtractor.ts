@@ -76,7 +76,7 @@ export async function extractXlsx(
   preflightOoxmlArchive({
     archiveBytes: snapshot.copyBytes(),
     target: archiveTarget(context.sourceId),
-    ledger: readLedger,
+    ledger: context.budgetLedger ?? readLedger,
     expectedKind: "xlsx",
     maximumEntries: maxArchiveEntries,
     maximumEntryBytes: maxFileBytes,
