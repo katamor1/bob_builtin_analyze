@@ -79,6 +79,10 @@ test("accepts raw diff exactly at the default and absolute byte boundaries", () 
 test("truncates over-budget raw diff on UTF-8 and complete-line boundaries", () => {
   const ledger = new ProcessingBudgetLedger({
     limits: {
+      single_document_bytes: 0,
+      total_document_bytes: 0,
+      document_excerpt_bytes: 0,
+      bob_input_bytes: 0,
       raw_diff_bytes: 80,
       total_operation_input_bytes: 80
     }
@@ -103,16 +107,21 @@ test("truncates over-budget raw diff on UTF-8 and complete-line boundaries", () 
 test("rolls back changed-file reservation when aggregate input budget rejects raw diff", () => {
   const ledger = new ProcessingBudgetLedger({
     limits: {
-      changed_files: 10,
+      single_document_bytes: 0,
+      total_document_bytes: 0,
+      document_excerpt_bytes: 0,
+      bob_input_bytes: 10,
       raw_diff_bytes: 10,
-      total_operation_input_bytes: 5
+      total_operation_input_bytes: 10,
+      changed_files: 10
     }
   })
+  ledger.reserve("bob_input_bytes", 5).commit()
   const before = ledger.snapshot()
 
   assert.throws(
     () => finalizeDiffProcessingBudget(diff(changedFiles(1), "123456"), ledger),
-    expectExceeded("total_operation_input_bytes", 5, 6)
+    expectExceeded("total_operation_input_bytes", 10, 11)
   )
   assert.deepEqual(ledger.snapshot(), before)
 })
