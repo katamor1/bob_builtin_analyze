@@ -1,0 +1,29 @@
+{
+  "name": "@bob/processing-budget-runtime",
+  "version": "0.1.0",
+  "description": "Shared immutable processing-budget profiles and operation-scoped reservation ledger for Bob extensions.",
+  "license": "UNLICENSED",
+  "private": true,
+  "main": "./out/index.js",
+  "types": "./out/index.d.ts",
+  "files": [
+    "contracts",
+    "out",
+    "schema",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "contracts:generate": "node scripts/generate-processing-budget-contracts.js",
+    "contracts:check": "node scripts/generate-processing-budget-contracts.js --check",
+    "compile": "npm run contracts:check && tsc -p ./",
+    "prepack": "npm run compile",
+    "typecheck:consumers": "tsc -p test/fixtures/tsconfig.json --noEmit",
+    "test": "npm run compile && npm run typecheck:consumers && node --test test/*.test.js"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3"
+  }
+}
