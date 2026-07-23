@@ -2,7 +2,8 @@ import * as path from "node:path"
 import {
   ProcessingBudgetLedger,
   preflightOoxmlArchive,
-  readBoundedDocumentFile
+  readBoundedDocumentFile,
+  type SharedProcessingBudgetLedger
 } from "../../sharedProcessingBudgetRuntime"
 import { splitDocumentChunk } from "../documentChunk"
 import { DEFAULT_RULE_AUTHORING_LIMITS } from "../ruleAuthoringLimits"
@@ -18,6 +19,7 @@ export interface DocxExtractionContext {
   maxFileBytes?: number
   maxArchiveEntries?: number
   maxExpandedBytes?: number
+  budgetLedger?: SharedProcessingBudgetLedger
 }
 
 export interface DocxExtractionResult {
@@ -27,7 +29,7 @@ export interface DocxExtractionResult {
   extractor: { id: string; version: string }
 }
 
-const DOCX_EXTRACTOR = Object.freeze({ id: "docx-mammoth-html", version: "2" })
+const DOCX_EXTRACTOR = Object.freeze({ id: "docx-mammoth-html", version: "3" })
 
 let cheerioModulePromise: Promise<CheerioModule> | undefined
 let mammothModulePromise: Promise<MammothModule> | undefined
@@ -57,7 +59,7 @@ export async function extractDocx(
     "DOCX expanded byte limit"
   )
   const absolutePath = path.resolve(filePath)
-  const ledger = new ProcessingBudgetLedger({
+  const readLedger = new ProcessingBudgetLedger({
     limits: {
       single_document_bytes: maxFileBytes,
       total_document_bytes: maxExpandedBytes,
@@ -68,13 +70,13 @@ export async function extractDocx(
     filePath: absolutePath,
     rootPath: path.dirname(absolutePath),
     target: documentTarget("docx", context.sourceId),
-    ledger,
+    ledger: readLedger,
     maximumFileBytes: maxFileBytes
   })
   preflightOoxmlArchive({
     archiveBytes: snapshot.copyBytes(),
     target: archiveTarget("docx", context.sourceId),
-    ledger,
+    ledger: context.budgetLedger ?? readLedger,
     expectedKind: "docx",
     maximumEntries: maxArchiveEntries,
     maximumEntryBytes: maxFileBytes,
