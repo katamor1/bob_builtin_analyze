@@ -1,5 +1,6 @@
 import type {
   WorkflowPackageFileKind,
+  WorkflowPackageOpenFile,
   WorkflowPackageFileStat,
   WorkflowPackageFileSystem
 } from "./packageFileSystem"
@@ -83,23 +84,73 @@ export async function readStableControlFile(
     throw new Error(`Workflow package ${label} escapes physical containment.`)
   }
 
-  let bytesValue: Uint8Array
+  return readStableOpenedFile(
+    fileSystem,
+    hostRoot,
+    segments,
+    before,
+    physical,
+    label,
+    containmentRootPhysical
+  )
+}
+
+export async function readStableOpenedFile(
+  fileSystem: WorkflowPackageFileSystem<unknown>,
+  hostRoot: unknown,
+  segments: readonly string[],
+  before: WorkflowPackageFileStat,
+  physical: string,
+  label: string,
+  containmentRootPhysical: string
+): Promise<StableControlFileSnapshot> {
+  let opened: WorkflowPackageOpenFile
   try {
-    bytesValue = await fileSystem.readFile(hostRoot, segments)
+    opened = await fileSystem.openFile(hostRoot, segments)
   } catch {
-    throw new Error(`Workflow package ${label} could not be read safely.`)
+    throw new Error(`Workflow package ${label} could not be opened safely.`)
   }
-  if (!(bytesValue instanceof Uint8ArrayConstructor)) {
-    throw new Error(`Workflow package ${label} bytes are invalid.`)
-  }
-  const bytes = new Uint8ArrayConstructor(bytesValue)
-  const after = await safeLstat(fileSystem, hostRoot, segments, label)
   if (
-    after.kind !== "file"
-    || after.identity !== before.identity
-    || after.size !== before.size
-    || bytes.byteLength !== before.size
-  ) throw new Error(`Workflow package ${label} changed during snapshot read.`)
+    typeof opened !== "object"
+    || opened === null
+    || typeof opened.read !== "function"
+    || typeof opened.stat !== "function"
+    || typeof opened.close !== "function"
+  ) throw new Error(`Workflow package ${label} open handle is invalid.`)
+
+  let bytes: Uint8Array
+  try {
+    const openedBefore = snapshotStat(opened.initialStat, `${label} open handle`)
+    if (!sameFileStat(openedBefore, before)) {
+      throw new Error(`Workflow package ${label} changed before its stable handle opened.`)
+    }
+
+    let bytesValue: Uint8Array
+    try {
+      bytesValue = await opened.read()
+    } catch {
+      throw new Error(`Workflow package ${label} could not be read safely.`)
+    }
+    if (!(bytesValue instanceof Uint8ArrayConstructor)) {
+      throw new Error(`Workflow package ${label} bytes are invalid.`)
+    }
+    bytes = new Uint8ArrayConstructor(bytesValue)
+    const openedAfter = snapshotStat(await opened.stat(), `${label} open handle`)
+    if (!sameFileStat(openedAfter, openedBefore) || bytes.byteLength !== openedBefore.size) {
+      throw new Error(`Workflow package ${label} changed while its stable handle was read.`)
+    }
+  } finally {
+    try {
+      await opened.close()
+    } catch {
+      throw new Error(`Workflow package ${label} open handle could not be closed safely.`)
+    }
+  }
+
+  const after = await safeLstat(fileSystem, hostRoot, segments, label)
+  if (!sameFileStat(after, before)) {
+    throw new Error(`Workflow package ${label} changed during snapshot read.`)
+  }
   const afterPhysical = normalizeContainmentRoot(
     await safeRealpath(fileSystem, hostRoot, segments, label)
   )
@@ -161,15 +212,7 @@ export async function safeLstat(
   label: string
 ): Promise<WorkflowPackageFileStat> {
   try {
-    const stat = await fileSystem.lstat(hostRoot, segments)
-    if (
-      typeof stat !== "object"
-      || stat === null
-      || !includes(ALLOWED_KINDS, stat.kind)
-      || typeof stat.identity !== "string"
-      || typeof stat.size !== "number"
-    ) throw new Error("invalid stat")
-    return objectFreeze({ kind: stat.kind, size: stat.size, identity: stat.identity })
+    return snapshotStat(await fileSystem.lstat(hostRoot, segments), label)
   } catch (error) {
     if (
       error instanceof Error
@@ -177,6 +220,22 @@ export async function safeLstat(
     ) throw error
     throw new Error(`Workflow package ${label} is missing or unavailable.`)
   }
+}
+
+function snapshotStat(value: unknown, label: string): WorkflowPackageFileStat {
+  if (
+    typeof value !== "object"
+    || value === null
+    || !includes(ALLOWED_KINDS, (value as { kind?: string }).kind ?? "")
+    || typeof (value as { identity?: unknown }).identity !== "string"
+    || typeof (value as { size?: unknown }).size !== "number"
+  ) throw new Error(`invalid stat for ${label}`)
+  const stat = value as WorkflowPackageFileStat
+  return objectFreeze({ kind: stat.kind, size: stat.size, identity: stat.identity })
+}
+
+function sameFileStat(left: WorkflowPackageFileStat, right: WorkflowPackageFileStat): boolean {
+  return left.kind === right.kind && left.size === right.size && left.identity === right.identity
 }
 
 export async function safeReadDirectory(
