@@ -1,4 +1,5 @@
 import { decodeWorkflowPackagePointer } from "./packagePointer"
+import { workflowPackageGenerationDirectoryName } from "./packageGenerationPath"
 import {
   OWNER_MAX_BYTES,
   OWNER_SCHEMA_VERSION,
@@ -36,6 +37,7 @@ import { objectHasOwn } from "./packageLoaderIntrinsics"
 import { requireWorkflowPackageRootState } from "./packageRoot"
 
 export {
+  workflowPackageGenerationDirectoryName,
   WORKFLOW_PACKAGE_V2_LOAD_LIMITS,
   type LoadCurrentWorkflowPackageInput,
   type LoadWorkflowPackageCandidateInput,
@@ -88,7 +90,11 @@ export async function loadCurrentWorkflowPackage(input: unknown): Promise<LoadWo
     publication: "published",
     generation: pointer.generation,
     expectedPackageDigest: pointer.packageDigest,
-    baseSegments: [workflowId, "versions", pointer.generation]
+    baseSegments: [
+      workflowId,
+      "versions",
+      workflowPackageGenerationDirectoryName(pointer.generation)
+    ]
   })
   await assertDirectoryIdentitySnapshotsUnchanged(fileSystem, state.hostRoot, chainSnapshots)
   return loaded
@@ -124,7 +130,11 @@ export async function loadWorkflowPackageGeneration(input: unknown): Promise<Loa
     publication: "published",
     generation,
     expectedPackageDigest,
-    baseSegments: [workflowId, "versions", generation]
+    baseSegments: [
+      workflowId,
+      "versions",
+      workflowPackageGenerationDirectoryName(generation)
+    ]
   })
 }
 
@@ -160,7 +170,11 @@ export async function loadWorkflowPackageCandidate(input: unknown): Promise<Load
       publication: "published",
       generation,
       expectedPackageDigest,
-      baseSegments: [workflowId, "versions", generation]
+      baseSegments: [
+        workflowId,
+        "versions",
+        workflowPackageGenerationDirectoryName(generation)
+      ]
     })
   }
 
