@@ -72,11 +72,14 @@ export interface FileMetadata {
   readonly kind: "workflow" | "lock" | "prompt" | "schema"
 }
 
-export interface DirectorySnapshot {
+export interface DirectoryIdentitySnapshot {
   readonly segments: readonly string[]
-  readonly names: readonly string[]
   readonly identity: string
   readonly physical: string
+}
+
+export interface DirectorySnapshot extends DirectoryIdentitySnapshot {
+  readonly names: readonly string[]
 }
 
 export interface CandidateTarget {
