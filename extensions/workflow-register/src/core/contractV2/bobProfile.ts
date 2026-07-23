@@ -129,12 +129,9 @@ export interface ProbeBobTaskCapabilitiesInput {
 }
 
 export interface ProbedBobTaskCapabilities {
-  readonly getAllMetadata?: () => Record<string, unknown>
-  readonly getMessages?: () => unknown[]
-  readonly sendMessage?: (...args: unknown[]) => unknown
-  readonly setStepComplete?: () => unknown
-  readonly startSubagent?: (prompt: string, preset?: unknown, mask?: unknown) => unknown
-  readonly toSerializable?: () => unknown
+  readonly ok: true
+  readonly profileDigest: typeof BOB_2_0_1_PROFILE_DIGEST
+  readonly taskCapabilities: readonly BobTaskCapabilityName[]
 }
 
 export type ProbeBobTaskCapabilitiesResult = ProbedBobTaskCapabilities
@@ -205,13 +202,14 @@ export function probeBobTaskCapabilities(
     : BOB_2_0_1_TASK_CAPABILITIES
   const task = snapshot.task
   assertInspectableObject(task, "Bob task")
-  const result = objectCreate(null) as Record<string, (...args: unknown[]) => unknown>
   for (let index = 0; index < requiredCapabilities.length; index += 1) {
-    const capability = requiredCapabilities[index]
-    const name = taskMethodName(capability)
-    result[name] = bindMethod(task, findRequiredFunction(task, name, "Bob task"))
+    findRequiredFunction(task, taskMethodName(requiredCapabilities[index]), "Bob task")
   }
-  return objectFreeze(result) as ProbeBobTaskCapabilitiesResult
+  return objectFreeze({
+    ok: true as const,
+    profileDigest: BOB_2_0_1_PROFILE_DIGEST,
+    taskCapabilities: requiredCapabilities
+  })
 }
 
 function bindBobSource(source: unknown): BoundBobSource {
@@ -338,7 +336,7 @@ function deriveTaskCapabilities(
   return objectFreeze(result)
 }
 
-function taskMethodName(capability: BobTaskCapabilityName): keyof ProbedBobTaskCapabilities {
+function taskMethodName(capability: BobTaskCapabilityName): string {
   switch (capability) {
     case "task.getAllMetadata": return "getAllMetadata"
     case "task.getMessages": return "getMessages"
