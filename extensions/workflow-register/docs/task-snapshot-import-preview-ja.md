@@ -2,13 +2,13 @@
 
 ## 目的
 
-`Bob Workflow: Task Snapshotから成果物をImport` は、古いrunやartifact未生成runのtask snapshotを、再開可能なartifactへ変換する救済導線です。
+`Task Snapshotから成果物をImport`は、古いrunやartifact未生成runのtask snapshotを、再開可能なartifactへ変換する救済導線です。
 
 この導線は、artifact fileを書き込む前に必ずpreviewを表示します。preview中はrun、manifest、artifact fileを変更しません。
 
 ## 操作手順
 
-1. Command Paletteまたはrun操作から`Task Snapshotから成果物をImport`を実行します。
+1. Bob 操作ハブのrun操作、または内部command `workflowRegister.importArtifactsFromTaskSnapshots`からimportを開始します。
 2. 対象runを選びます。
 3. Markdown previewで次を確認します。
    - producing stepとartifact ID
@@ -61,15 +61,15 @@ artifact files
 
 Import後は次で確認できます。
 
-- Operation Hub: `Imported from task snapshot: N artifact(s)` badge
-- Bob Workflow Runs: `snapshot N` description、import日時を含むtooltip、download icon
+- Bob 操作ハブ: `Imported from task snapshot: N artifact(s)` badge、import日時、download action
 - Run Diagnostics / run.json: `workflow.taskSnapshotImport`
 
 表示にはsnapshot本文を含めません。
 
 ## 互換性
 
-- command IDは`workflowRegister.importArtifactsFromTaskSnapshots`のままです。
+- command IDは`workflowRegister.importArtifactsFromTaskSnapshots`のまま内部登録を維持します。
+- commandはCommand Paletteの公開入口にせず、Bob 操作ハブ、workflow、公開APIから呼びます。
 - artifact manifestは`workflow-register/artifact-manifest/v1`を維持します。
 - provenanceは`workflow-register/task-snapshot-import/v1`を維持します。
 - selection省略時はdefault-safe candidateだけを自動importします。
