@@ -10,6 +10,7 @@ const { packageRoot } = require("./helpers")
 test("compiles generated runtime entrypoints before packaging", () => {
   const packageJson = JSON.parse(fs.readFileSync(path.join(packageRoot, "package.json"), "utf8"))
   assert.equal(packageJson.scripts.prepack, "npm run compile")
+  assert.match(packageJson.scripts.compile, /runtime:copy/)
 })
 
 test("package payload contains runtime contracts and excludes source and tests", () => {
@@ -27,6 +28,11 @@ test("package payload contains runtime contracts and excludes source and tests",
     "contracts/processing-budget-definition.v1.json",
     "out/index.js",
     "out/index.d.ts",
+    "out/boundedDocumentIo.js",
+    "out/bounded-document-runtime.js",
+    "out/bounded-file.js",
+    "out/bounded-zip.js",
+    "out/errors.js",
     "schema/processing-budget-profile.v1.schema.json"
   ]) {
     assert.equal(paths.includes(required), true, `missing packaged file ${required}`)
@@ -34,4 +40,5 @@ test("package payload contains runtime contracts and excludes source and tests",
   assert.equal(paths.some((entry) => entry.startsWith("src/")), false)
   assert.equal(paths.some((entry) => entry.startsWith("test/")), false)
   assert.equal(paths.some((entry) => entry.startsWith("scripts/")), false)
+  assert.equal(paths.some((entry) => entry.startsWith("runtime/")), false)
 })
