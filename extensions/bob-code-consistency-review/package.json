@@ -158,7 +158,7 @@
         "bobCodeConsistency.traceabilityGateReportPath": {
           "type": "string",
           "default": ".bob-trace/gate-report.md",
-          "description": "トレーサビリティ台帳の検証結果を書き込む Markdown レポートのワークスペース相対パスです。"
+          "description": "トレーサビリティ台帳の検証結果を書き込む Markdown レポートです。"
         },
         "bobCodeConsistency.bobOutputPath": {
           "type": "string",
@@ -199,7 +199,7 @@
           "default": 5242880,
           "minimum": 1,
           "maximum": 52428800,
-          "description": "文書1件あたりの読み取り上限（バイト）です。Markdown は上限まで読み、DOCX／XLSX は上限超過時に抽出を中止します。"
+          "description": "文書1件あたりの読み取り上限（バイト）です。Markdown／DOCX／XLSX は、原文が上限を超える場合に抽出を開始せず拒否します。抜粋の切り詰めは別の抜粋上限で管理します。"
         },
         "bobCodeConsistency.maxWorkbookSheets": {
           "type": "number",
