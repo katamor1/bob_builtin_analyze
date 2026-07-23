@@ -21,9 +21,13 @@ export const objectPrototype = Object.prototype
 export const reflectApply = Reflect.apply
 export const reflectOwnKeys = Reflect.ownKeys
 export const regexpTest = RegExp.prototype.test
+export const SetConstructor = Set
+export const setAdd = Set.prototype.add
+export const setHas = Set.prototype.has
 export const stringEndsWith = String.prototype.endsWith
 export const stringIncludes = String.prototype.includes
 export const stringNormalize = String.prototype.normalize
+export const stringSlice = String.prototype.slice
 export const stringStartsWith = String.prototype.startsWith
 export const stringToLowerCase = String.prototype.toLowerCase
 export const jsonParse = JSON.parse
@@ -37,6 +41,14 @@ export function pushValue<T>(values: T[], value: T): void {
 
 export function sortValues<T>(values: T[], compare: (left: T, right: T) => number): void {
   reflectApply(arraySort, values, [compare])
+}
+
+export function addSetValue<T>(values: Set<T>, value: T): void {
+  reflectApply(setAdd, values, [value])
+}
+
+export function hasSetValue<T>(values: Set<T>, value: T): boolean {
+  return reflectApply(setHas, values, [value]) as boolean
 }
 
 export function testPattern(pattern: RegExp, value: string): boolean {
