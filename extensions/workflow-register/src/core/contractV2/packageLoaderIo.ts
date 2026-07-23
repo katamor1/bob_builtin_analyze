@@ -92,6 +92,15 @@ export async function readStableControlFile(
     || after.size !== before.size
     || bytes.byteLength !== before.size
   ) throw new Error(`Workflow package ${label} changed during snapshot read.`)
+  const afterPhysical = normalizeContainmentRoot(
+    await safeRealpath(fileSystem, hostRoot, segments, label)
+  )
+  if (afterPhysical !== physical) {
+    throw new Error(`Workflow package ${label} physical identity changed during snapshot read.`)
+  }
+  if (!safeIsWithin(fileSystem, containmentRootPhysical, afterPhysical)) {
+    throw new Error(`Workflow package ${label} escapes physical containment.`)
+  }
   return bytes
 }
 
@@ -105,6 +114,12 @@ export async function assertDirectorySnapshotsUnchanged(
     const stat = await safeLstat(fileSystem, hostRoot, snapshot.segments, "workflow package directory")
     if (stat.kind !== "directory" || stat.identity !== snapshot.identity) {
       throw new Error("Workflow package directory changed during snapshot read.")
+    }
+    const physical = normalizeContainmentRoot(
+      await safeRealpath(fileSystem, hostRoot, snapshot.segments, "workflow package directory")
+    )
+    if (physical !== snapshot.physical) {
+      throw new Error("Workflow package directory physical identity changed during snapshot read.")
     }
     const names = snapshotDirectoryNames(
       await safeReadDirectory(fileSystem, hostRoot, snapshot.segments),
