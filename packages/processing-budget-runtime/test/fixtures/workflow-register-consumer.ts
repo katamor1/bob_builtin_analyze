@@ -1,6 +1,7 @@
 import {
   DEFAULT_PROCESSING_BUDGET_PROFILE,
   ProcessingBudgetLedger,
+  commitWorkbookBudget,
   normalizeProcessingBudgetProfile,
   preflightOoxmlArchive,
   readBoundedDocumentFile,
@@ -19,6 +20,11 @@ const ledger = new ProcessingBudgetLedger(profile)
 const reservation = ledger.reserve(category, 128)
 reservation.commit(64)
 ledger.reserveForTarget("single_document_bytes", "fixture-document", 128).release()
+commitWorkbookBudget({
+  ledger,
+  workbookTarget: "fixture-workbook",
+  sheets: [{ target: "fixture-workbook:sheet:0", rows: 1 }]
+})
 const report: ProcessingBudgetLedgerReport = ledger.snapshot()
 const firstCategory = report.categories[0]
 if (firstCategory?.scope === "operation") void firstCategory.remaining
