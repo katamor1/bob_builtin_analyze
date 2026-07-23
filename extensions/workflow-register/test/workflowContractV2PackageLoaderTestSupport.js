@@ -188,9 +188,12 @@ class MemoryPackageFileSystem {
 
   async realpath(_root, segments) {
     this.calls.push(["realpath", this.key(segments)])
+    this.hooks.beforeRealpath?.(segments, this)
     const entry = this.entries.get(this.key(segments))
     if (!entry) throw Object.assign(new Error("ENOENT"), { code: "ENOENT" })
-    return entry.physical
+    const physical = entry.physical
+    this.hooks.afterRealpath?.(segments, this)
+    return physical
   }
 
   isWithin(rootPhysical, candidatePhysical) {
