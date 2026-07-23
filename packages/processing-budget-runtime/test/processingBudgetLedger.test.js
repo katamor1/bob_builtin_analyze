@@ -25,11 +25,16 @@ test("reserves each category at its boundary and rejects limit plus one without 
   for (const definition of runtime.PROCESSING_BUDGET_DEFINITION) {
     const ledger = new runtime.ProcessingBudgetLedger()
     const before = snapshot(runtime, ledger)
-    const reservation = ledger.reserve(definition.id, definition.defaultLimit)
+    const target = `boundary-${definition.id}`
+    const reserve = (amount) => definition.scope === "target"
+      ? ledger.reserveForTarget(definition.id, target, amount)
+      : ledger.reserve(definition.id, amount)
+    const reservation = reserve(definition.defaultLimit)
     const reserved = byCategory(ledger.snapshot(), definition.id)
     assert.equal(reserved.reserved, definition.defaultLimit)
-    expectCode(runtime, "processing_budget_exceeded", () => ledger.reserve(definition.id, 1))
-    assert.deepEqual(snapshot(runtime, ledger), ledger.snapshot().categories)
+    const afterReservation = snapshot(runtime, ledger)
+    expectCode(runtime, "processing_budget_exceeded", () => reserve(1))
+    assert.deepEqual(snapshot(runtime, ledger), afterReservation)
     reservation.release()
     assert.deepEqual(snapshot(runtime, ledger), before)
   }
@@ -38,14 +43,14 @@ test("reserves each category at its boundary and rejects limit plus one without 
 test("atomically debits category and aggregate chains", () => {
   const runtime = loadRuntime()
   const ledger = new runtime.ProcessingBudgetLedger()
-  const document = ledger.reserve("single_document_bytes", 3 * MiB)
+  const document = ledger.reserveForTarget("single_document_bytes", "document-a", 3 * MiB)
   let report = ledger.snapshot()
   assert.equal(byCategory(report, "single_document_bytes").reserved, 3 * MiB)
   assert.equal(byCategory(report, "total_document_bytes").reserved, 3 * MiB)
   assert.equal(byCategory(report, "total_operation_input_bytes").reserved, 3 * MiB)
 
-  const sheet = ledger.reserve("sheets_per_workbook", 7)
-  const row = ledger.reserve("rows_per_sheet", 11)
+  const sheet = ledger.reserveForTarget("sheets_per_workbook", "workbook-a", 7)
+  const row = ledger.reserveForTarget("rows_per_sheet", "workbook-a/sheet-a", 11)
   report = ledger.snapshot()
   assert.equal(byCategory(report, "total_sheets").reserved, 7)
   assert.equal(byCategory(report, "total_rows").reserved, 11)
@@ -75,6 +80,91 @@ test("enforces the total operation budget across independent byte categories", (
   diff.release()
 })
 
+test("applies local limits per target while aggregating committed usage operation-wide", () => {
+  const runtime = loadRuntime()
+  const profile = runtime.normalizeProcessingBudgetProfile({
+    limits: {
+      single_document_bytes: 5 * MiB,
+      total_document_bytes: 12 * MiB,
+      total_operation_input_bytes: 12 * MiB
+    }
+  })
+  const ledger = new runtime.ProcessingBudgetLedger(profile)
+  ledger.reserveForTarget("single_document_bytes", "doc-b", 5 * MiB).commit()
+  ledger.reserveForTarget("single_document_bytes", "doc-a", 5 * MiB).commit()
+  ledger.reserveForTarget("single_document_bytes", "doc-c", 2 * MiB).commit()
+
+  expectCode(runtime, "processing_budget_exceeded", () => {
+    ledger.reserveForTarget("single_document_bytes", "doc-a", 1)
+  })
+  expectCode(runtime, "processing_budget_exceeded", () => {
+    ledger.reserveForTarget("single_document_bytes", "doc-d", 1)
+  })
+
+  const report = ledger.snapshot()
+  assert.equal(byCategory(report, "total_document_bytes").committed, 12 * MiB)
+  assert.deepEqual(
+    report.targets.map((entry) => [entry.category, entry.target, entry.committed]),
+    [
+      ["single_document_bytes", "doc-a", 5 * MiB],
+      ["single_document_bytes", "doc-b", 5 * MiB],
+      ["single_document_bytes", "doc-c", 2 * MiB]
+    ]
+  )
+})
+
+test("requires target-scoped categories to use a bounded explicit target", () => {
+  const runtime = loadRuntime()
+  const ledger = new runtime.ProcessingBudgetLedger()
+  expectCode(runtime, "processing_budget_target_required", () => {
+    ledger.reserve("single_document_bytes", 1)
+  })
+  expectCode(runtime, "processing_budget_target_invalid", () => {
+    ledger.reserveForTarget("raw_diff_bytes", "diff", 1)
+  })
+  for (const target of ["", "x".repeat(32_769)]) {
+    expectCode(runtime, "processing_budget_target_invalid", () => {
+      ledger.reserveForTarget("single_document_bytes", target, 1)
+    })
+  }
+})
+
+test("holds aggregate capacity across concurrent target reservations and releases it atomically", () => {
+  const runtime = loadRuntime()
+  const profile = runtime.normalizeProcessingBudgetProfile({
+    limits: {
+      single_document_bytes: 5 * MiB,
+      total_document_bytes: 8 * MiB,
+      total_operation_input_bytes: 8 * MiB
+    }
+  })
+  const ledger = new runtime.ProcessingBudgetLedger(profile)
+  const first = ledger.reserveForTarget("single_document_bytes", "doc-a", 5 * MiB)
+  const second = ledger.reserveForTarget("single_document_bytes", "doc-b", 3 * MiB)
+  const beforeFailure = snapshot(runtime, ledger)
+  expectCode(runtime, "processing_budget_exceeded", () => {
+    ledger.reserveForTarget("single_document_bytes", "doc-c", 1)
+  })
+  assert.deepEqual(snapshot(runtime, ledger), beforeFailure)
+  second.release()
+  ledger.reserveForTarget("single_document_bytes", "doc-c", 1).commit()
+  first.release()
+  assert.equal(byCategory(ledger.snapshot(), "total_document_bytes").committed, 1)
+})
+
+test("target commit records actual usage and releases unused local and aggregate capacity", () => {
+  const runtime = loadRuntime()
+  const ledger = new runtime.ProcessingBudgetLedger()
+  ledger.reserveForTarget("single_document_bytes", "doc-a", 5 * MiB).commit(3 * MiB)
+  const report = ledger.snapshot()
+  const target = report.targets.find((entry) => entry.category === "single_document_bytes" && entry.target === "doc-a")
+  assert.ok(target)
+  assert.equal(target.committed, 3 * MiB)
+  assert.equal(target.remaining, 2 * MiB)
+  assert.equal(byCategory(report, "total_document_bytes").committed, 3 * MiB)
+  ledger.reserveForTarget("single_document_bytes", "doc-a", 2 * MiB).release()
+})
+
 test("commit debits actual usage and releases the unused reservation", () => {
   const runtime = loadRuntime()
   const ledger = new runtime.ProcessingBudgetLedger()
@@ -85,6 +175,7 @@ test("commit debits actual usage and releases the unused reservation", () => {
     byCategory(report, "raw_diff_bytes"),
     {
       category: "raw_diff_bytes",
+      scope: "operation",
       unit: "bytes",
       limit: MiB,
       committed: 640,
@@ -175,6 +266,8 @@ test("emits a deeply immutable report in canonical category order", () => {
   assert.equal(Object.isFrozen(report), true)
   assert.equal(Object.isFrozen(report.categories), true)
   assert.equal(report.categories.every(Object.isFrozen), true)
+  assert.equal(Object.isFrozen(report.targets), true)
+  assert.equal(report.targets.every(Object.isFrozen), true)
   assert.throws(() => {
     report.categories[0].remaining = 0
   }, TypeError)
@@ -194,7 +287,9 @@ test("preserves ledger invariants across deterministic boundary and property seq
     for (let index = 0; index < 64; index += 1) {
       const remaining = definition.defaultLimit - expectedCommitted
       const requested = remaining === 0 ? 0 : next() % (Math.min(remaining, 257) + 1)
-      const reservation = ledger.reserve(definition.id, requested)
+      const reservation = definition.scope === "target"
+        ? ledger.reserveForTarget(definition.id, `property-${definition.id}`, requested)
+        : ledger.reserve(definition.id, requested)
       const actual = requested === 0 ? 0 : next() % (requested + 1)
       if ((next() & 1) === 0) {
         reservation.commit(actual)
@@ -202,7 +297,13 @@ test("preserves ledger invariants across deterministic boundary and property seq
       } else {
         reservation.release()
       }
-      const entry = byCategory(ledger.snapshot(), definition.id)
+      const report = ledger.snapshot()
+      const entry = definition.scope === "target"
+        ? report.targets.find((candidate) => candidate.category === definition.id
+          && candidate.target === `property-${definition.id}`)
+        : byCategory(report, definition.id)
+      if (!entry && definition.scope === "target" && expectedCommitted === 0) continue
+      assert.ok(entry, `missing property report for ${definition.id}`)
       assert.equal(entry.committed, expectedCommitted)
       assert.equal(entry.reserved, 0)
       assert.equal(entry.used, expectedCommitted)
