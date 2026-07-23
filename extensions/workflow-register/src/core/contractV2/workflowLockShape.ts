@@ -9,6 +9,7 @@ import {
   type WorkflowPackageLock
 } from "./workflowLockContract"
 import { files, policy, workflow } from "./workflowLockFiles"
+import { preflightWorkflowLockCollectionLimits } from "./workflowLockPreflight"
 import { providers } from "./workflowLockProvider"
 import { array, digest, record } from "./workflowLockValidation"
 
@@ -36,6 +37,7 @@ export interface WorkflowPackageSchemaV2 {
 }
 
 export function decodeWorkflowPackageLock(input: unknown): WorkflowPackageLock {
+  preflightWorkflowLockCollectionLimits(input)
   const value = record(cloneAndFreezeJsonValue(input), [
     "schemaVersion", "compilerContractVersion", "policyVersions", "workflow",
     "prompts", "schemas", "providers", "bob", "environmentDigest"
