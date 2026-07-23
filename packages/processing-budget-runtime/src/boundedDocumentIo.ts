@@ -52,6 +52,7 @@ export interface OoxmlArchivePreflightInput {
   readonly target: string
   readonly ledger: ProcessingBudgetLedger
   readonly expectedKind?: OoxmlDocumentKind
+  readonly maximumArchiveBytes?: number
   readonly maximumEntries?: number
   readonly maximumEntryBytes?: number
   readonly maximumExpandedBytes?: number
@@ -70,6 +71,7 @@ interface BoundedDocumentRuntimeEngine {
     readonly target: string
     readonly ledger: ProcessingBudgetLedger
     readonly expectedKind?: OoxmlDocumentKind
+    readonly maximumArchiveBytes: number
     readonly maximumEntries?: number
     readonly maximumEntryBytes: number
     readonly maximumExpandedBytes: number
@@ -100,6 +102,10 @@ export function preflightOoxmlArchive(input: OoxmlArchivePreflightInput): OoxmlA
     target: input.target,
     ledger: input.ledger,
     expectedKind: input.expectedKind,
+    maximumArchiveBytes: boundedMaximum(
+      input.maximumArchiveBytes,
+      PROCESSING_BUDGET_ABSOLUTE_MAXIMA.single_document_bytes
+    ),
     maximumEntries: input.maximumEntries,
     maximumEntryBytes: boundedMaximum(
       input.maximumEntryBytes,
