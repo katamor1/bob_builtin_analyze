@@ -1,7 +1,8 @@
 import * as path from "node:path"
 import {
   ProcessingBudgetLedger,
-  type SharedProcessingBudgetLedger
+  type SharedProcessingBudgetLedger,
+  type SharedWorkbookBudgetCancellation
 } from "../../sharedProcessingBudgetRuntime"
 import { DEFAULT_RULE_AUTHORING_LIMITS, type RuleAuthoringLimits } from "../ruleAuthoringLimits"
 import {
@@ -29,8 +30,8 @@ type LocalDocumentMediaType = RuleSourceMediaType | "doc" | "xls"
 export interface RuleDocumentExtractionRequest {
   filePath: string
   logicalName?: string
-  signal?: AbortSignal
-  pdf?: Omit<PdfExtractionOptions, "sourceId" | "maxChunkBytes" | "maxOutputBytes" | "signal">
+  signal?: SharedWorkbookBudgetCancellation
+  pdf?: Omit<PdfExtractionOptions, "sourceId" | "maxChunkBytes" | "maxOutputBytes">
 }
 
 export interface DocumentExtractionResult {
@@ -99,10 +100,7 @@ export async function extractRuleDocument(
 ): Promise<DocumentExtractionResult> {
   const ledger = documentLedger(DEFAULT_RULE_AUTHORING_LIMITS)
   ledger.reserve("document_count", 1).commit()
-  return extractRuleDocumentWithContext(request, {
-    limits: DEFAULT_RULE_AUTHORING_LIMITS,
-    ledger
-  })
+  return extractRuleDocumentWithContext(request, { limits: DEFAULT_RULE_AUTHORING_LIMITS, ledger })
 }
 
 async function extractRuleDocumentWithContext(
@@ -138,16 +136,8 @@ async function extractRuleDocumentWithContext(
       warnings: ["conversion_required"],
       extractor: { ...LEGACY_EXTRACTOR }
     }
-  } else if (mediaType === "docx") {
-    extracted = await extractDocx(absolutePath, {
-      sourceId,
-      maxChunkBytes: limits.maxChunkBytes,
-      maxFileBytes: limits.maxSourceBytes,
-      maxArchiveEntries: limits.maxOoxmlEntries,
-      maxExpandedBytes: limits.maxOoxmlDeclaredUncompressedBytes
-    })
-  } else if (mediaType === "xlsx") {
-    extracted = await extractXlsx(absolutePath, {
+  } else if (mediaType === "docx" || mediaType === "xlsx") {
+    const snapshotContext = {
       sourceId,
       maxChunkBytes: limits.maxChunkBytes,
       maxFileBytes: limits.maxSourceBytes,
@@ -155,14 +145,17 @@ async function extractRuleDocumentWithContext(
       maxExpandedBytes: limits.maxOoxmlDeclaredUncompressedBytes,
       budgetLedger: context.ledger,
       signal: request.signal
-    })
+    }
+    extracted = mediaType === "docx"
+      ? await extractDocx(absolutePath, snapshotContext)
+      : await extractXlsx(absolutePath, snapshotContext)
   } else {
     extracted = await extractPdf(absolutePath, {
       ...request.pdf,
       sourceId,
       maxChunkBytes: limits.maxChunkBytes,
       maxOutputBytes: limits.maxPdfOutputBytes,
-      signal: request.signal
+      signal: request.signal ?? request.pdf?.signal
     })
   }
 
