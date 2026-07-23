@@ -39,7 +39,7 @@ test("extractXlsx locates the minimum/maximum non-empty cells and uses saved for
     maxChunkBytes: 32 * 1024
   })
 
-  assert.deepEqual(result.extractor, { id: "xlsx-read-excel-rows", version: "1" })
+  assert.deepEqual(result.extractor, { id: "xlsx-read-excel-rows", version: "2" })
   assert.equal(result.status, "success")
   assert.equal(result.chunks[0].locator.cell_range, "B1:D1")
   assert.equal(result.chunks[0].text, "beta\t\tdelta")
