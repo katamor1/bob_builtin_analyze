@@ -203,7 +203,7 @@ class MemoryPackageFileSystem {
 
 function installPublished(fsAdapter, workflowId = "minimal", files = fixtureBytes()) {
   const digest = packageDigest(files)
-  const base = [workflowId, "versions", digest]
+  const base = [workflowId, "versions", `sha256-${digest.slice("sha256:".length)}`]
   fsAdapter.addDirectory([workflowId])
   fsAdapter.addDirectory([workflowId, "versions"])
   fsAdapter.addDirectory(base)
