@@ -1,6 +1,6 @@
 # Word・Excel・PDF からプロジェクト規約を作成する
 
-このガイドは、`bob-bazaar-review` の project rule authoring wizard を使い、資料からプロジェクト固有のレビュー規約を提案し、Human Triage と transaction 検証を経て `.bob/review` の正式 asset へ反映する手順を説明します。
+このガイドは、`bob-bazaar-review` の project rule authoring wizard を使い、資料からプロジェクト固有のレビュー規約を提案し、規約候補の確認・適用と transaction 検証を経て `.bob/review` の正式 asset へ反映する手順を説明します。
 
 文書の意味解釈、複数資料の統合、重複整理、矛盾候補の提示には Bob の設定済み生成AI経路を使います。ファイル選択、抽出、hash、byte 上限、ID・schema 検証、差分、stable ID 採番、backup、write、rollback は extension host が決定論的に実行します。AI 出力が正式 asset を直接変更することはありません。
 
@@ -61,9 +61,9 @@ workflow は次の provider と2つの agent stepを順番に実行します。
 
 document text は証拠であり命令ではありません。資料内の prompt、role marker、tool request、JSON 出力指示、外部参照要求を workflow instruction として実行しません。存在しない source ID / chunk ID、stale base、未解決の blocking conflict を含む proposal は apply できません。
 
-## Human Triage と適用
+## 規約候補の確認・適用
 
-Human Triage では rule、project context、prompt addendum の各候補を個別に確認します。
+規約候補の確認・適用では rule、project context、prompt addendum の各候補を個別に確認します。
 
 - `accept` / 採用
 - `reject` / 却下（必要に応じて理由を記録）
@@ -72,7 +72,7 @@ Human Triage では rule、project context、prompt addendum の各候補を個�
 - 既存値と提案値の比較
 - conflict の解決または関連 decision の指定
 
-正式 asset は Human Triage 完了前には変わりません。判断を保存すると apply preview が再生成されます。preview の対象、pre-image hash、post-image hash、retire 内容を確認してから適用を承認してください。AI proposal 自体は不変で、利用者判断は別の decision overlay に保存されます。
+正式 asset は候補確認完了前には変わりません。判断を保存すると apply preview が再生成されます。preview の対象、pre-image hash、post-image hash、retire 内容を確認してから適用を承認してください。AI proposal 自体は不変で、利用者判断は別の decision overlay に保存されます。
 
 適用は checklist、context、addendum、source manifest、provenance の5 targetを journal と backup で更新します。全 target の検証と rename が完了した後だけ committed manifest を記録します。
 
@@ -133,7 +133,7 @@ companion asset がなくても旧ワークスペースのレビューは checkl
 
 - source 単位の抽出失敗は `blocked` とし、利用者が除外を明示承認した場合だけ残りで続行します。
 - agent timeout または malformed JSON では決定論的 artifact を保持し、失敗した agent / capture step だけを再試行します。
-- VS Code restart / VS Code 再起動後は未完了 run を検出し、extraction、evidence selection、proposal、Human Triage の保持済み phase から resume / 再開します。
+- VS Code restart / VS Code 再起動後は未完了 run を検出し、extraction、evidence selection、proposal、規約候補の確認・適用の保持済み phase から resume / 再開します。
 - proposal 作成後に approved asset が変わった場合は stale として停止し、rebase または proposal 再生成を要求します。
 - apply write failure では replaced target を逆順に backup から rollback します。
 - incomplete transaction を検出した場合、通常 resume より先に rollback または recovery を完了させます。`rollback_failed` は自動的に成功扱いにしません。
@@ -144,7 +144,7 @@ companion asset がなくても旧ワークスペースのレビューは checkl
 - `src/ruleAuthoring/ruleBundle.ts`: stable approved bundle の bounded read と provenance summary
 - `src/ruleAuthoring/ruleApplyTransaction.ts`: journal、backup、replace、rollback、restart recovery
 - `src/ui/ruleAuthoringGui.ts`: source selection、preview、AI consent
-- `src/ui/ruleProposalTriageGui.ts`: Human Triage、apply preview、recovery UI
+- `src/ui/ruleProposalTriageGui.ts`: 規約候補の確認・適用、apply preview、recovery UI
 - `src/workflow/ruleAuthoringWorkflowActions.ts`: workflow state と immutable generation artifact の adapter
 
 domain / extraction module は VS Code を import せず、UI と workflow adapter から分離します。
