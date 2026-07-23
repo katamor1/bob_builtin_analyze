@@ -180,3 +180,11 @@ test("propagates XLSX safety failures instead of downgrading them to warnings", 
     patched.restore()
   }
 })
+
+test("derives local sheet and row caps from lower aggregate overrides", async () => {
+  const result = await extractDocuments(input([]), {
+    workspaceRoot: os.tmpdir(),
+    processingBudgetLimits: { total_sheets: 1, total_rows: 1 }
+  })
+  assert.deepEqual(result.documents, [])
+})
