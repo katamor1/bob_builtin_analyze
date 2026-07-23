@@ -185,7 +185,7 @@ test("buildReviewPackage records truncation warnings in manifest and determinist
     },
     documents: {
       documents: [],
-      excerptsMarkdown: "REQ-LIMIT-001 " + "large document excerpt ".repeat(120),
+      excerptsMarkdown: "REQ-LIMIT-001 " + "large document excerpt ".repeat(150_000),
       evidence: [],
       warnings: []
     },
@@ -204,7 +204,7 @@ test("buildReviewPackage records truncation warnings in manifest and determinist
     traceability: { rows: [], warnings: [], markdown: "" },
     limits: {
       maxRawDiffBytes: 180,
-      maxBobInputBytes: 700
+      maxBobInputBytes: 2 * 1024 * 1024
     }
   })
 
