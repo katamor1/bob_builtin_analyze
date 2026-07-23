@@ -366,3 +366,43 @@ test("initializer rechecks its lease after post-write model reload before commit
   assert.equal(h.controller.model, initialModel, "a stale reloaded model must not be committed")
   assert.match(h.panel.webview.html, /review-result-capture/)
 })
+
+test("create-from-traceability does not post generic success for a structured command error", async () => {
+  const h = harness({
+    executeCommand: async (command) => {
+      assert.equal(command, "bobCodeConsistency.createReviewInputFromTraceability")
+      return { status: "error", errors: ["TRACEABILITY_REVIEW_INPUT_FAILED"] }
+    }
+  })
+  await h.controller.initialize()
+
+  await h.panel.emit({
+    type: "consistencyWizard.action",
+    action: "createReviewInputFromTraceability"
+  })
+
+  assert.deepEqual(h.panel.posts, [{
+    error: true,
+    message: "TRACEABILITY_REVIEW_INPUT_FAILED"
+  }])
+})
+
+test("traceability validation does not post generic success for a structured cancellation", async () => {
+  const h = harness({
+    executeCommand: async (command) => {
+      assert.equal(command, "bobCodeConsistency.validateTraceabilityCatalog")
+      return { status: "cancelled", message: "TRACEABILITY_VALIDATION_CANCELLED" }
+    }
+  })
+  await h.controller.initialize()
+
+  await h.panel.emit({
+    type: "consistencyWizard.action",
+    action: "validateTraceability"
+  })
+
+  assert.deepEqual(h.panel.posts, [{
+    error: true,
+    message: "TRACEABILITY_VALIDATION_CANCELLED"
+  }])
+})
