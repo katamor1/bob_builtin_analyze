@@ -1,3 +1,5 @@
+Replaced: `workflowRegister.openOperationHub` and `workflowRegister.openWorkflowBuilder` are the current workflow operator routes; the legacy Operation Hub and Runs View references below are retained only as historical release evidence.
+
 # Task Snapshot Import Preview / Selective Apply Release Evidence
 
 ## 1. 判定
@@ -137,7 +139,3 @@ reload run / workflow
 - P1-3 Reused / Skipped状態の統一表示は次の実装単位。
 - P1-4 Detached Held Run recovery assistantは後続。
 - 実IBM Bob、実Bazaar、multi-root、distribution signingは製品配布UATで確認する。
-
-## 9. Cleanup
-
-TDD、command mutation、provenance mutation、safe-default mutation、full-log diagnosticに使ったtemporary workflowsは最終PR diffから削除した。最終差分はproduction code、tests、design/plan、operator document、release/review evidenceだけに限定する。
