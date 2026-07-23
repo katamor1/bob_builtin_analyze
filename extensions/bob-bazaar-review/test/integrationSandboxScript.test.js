@@ -52,3 +52,15 @@ test("Bazaar integration sandbox launcher seeds Bob review assets and expected f
   assert.match(script, /Shift-JIS/)
   assert.match(script, /README-bob-bazaar-review-sandbox\.md/)
 })
+
+test("Bazaar integration sandbox optionally creates external document inputs", () => {
+  const script = fs.readFileSync(scriptPath, "utf8")
+
+  assert.match(script, /\[switch\]\$IncludeDocumentFixtures/)
+  assert.match(script, /Generate-InputDocumentFixtures\.js/)
+  assert.match(script, /\$DocumentInputDir = Join-Path \$SandboxRoot "input-documents"/)
+  assert.match(script, /"--profile", "bazaar-core"/)
+  assert.match(script, /"--output", \$DocumentInputDir/)
+  assert.match(script, /if \(\$IncludeDocumentFixtures\)/)
+  assert.doesNotMatch(script, /Invoke-Expression/)
+})

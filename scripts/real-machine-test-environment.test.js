@@ -14,7 +14,8 @@ const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 const psLiteral = (value) => `'${String(value).replace(/'/g, "''")}'`
 const specs = {
   BZR: read(repoRoot, "extensions", "bob-bazaar-review", "docs", "real-machine-test-spec-ja.md"),
-  CCR: read(repoRoot, "extensions", "bob-code-consistency-review", "docs", "real-machine-test-spec-ja.md")
+  CCR: read(repoRoot, "extensions", "bob-code-consistency-review", "docs", "real-machine-test-spec-ja.md"),
+  PRA: read(repoRoot, "extensions", "bob-bazaar-review", "docs", "project-rule-authoring-windows-uat.md")
 }
 
 function assertSafeRelativePath(value, label) {
@@ -46,7 +47,11 @@ test("manifest defines the approved six P0 + P1 scenarios", () => {
     assert.equal(fs.existsSync(path.join(repoRoot, scenario.generator.path)), true)
     assert.equal(fs.existsSync(path.join(repoRoot, scenario.checklistTemplate)), true)
     for (const testCaseId of scenario.testCases) {
-      const family = testCaseId.startsWith("BZR-") ? "BZR" : "CCR"
+      const family = testCaseId.startsWith("BZR-")
+        ? "BZR"
+        : testCaseId.startsWith("CCR-")
+          ? "CCR"
+          : "PRA"
       assert.match(specs[family], new RegExp(`^#{3,4}\\s+${escapeRegExp(testCaseId)}(?:\\s|$)`, "m"))
     }
   }
@@ -249,8 +254,95 @@ test("README and Windows CI document and validate the safe workflow", () => {
   ]) assert.equal((workflow.match(new RegExp(escapeRegExp(watchedPath), "g")) ?? []).length, 2)
   assert.match(workflow, /real-machine-environment-contracts:/)
   assert.match(workflow, /runs-on:\s*windows-latest/)
-  assert.match(workflow, /node --test scripts\/real-machine-test-environment\.test\.js/)
+  assert.match(
+    workflow,
+    /node --test scripts\/real-machine-test-environment\.test\.js scripts\/real-machine-input-document-fixtures\.test\.js/
+  )
   assert.match(workflow, /Invoke-BobReviewTestEnvironment\.ps1 -ValidateOnly/)
   const job = workflow.split("  real-machine-environment-contracts:")[1].split("  extension-metrics:")[0]
   assert.doesNotMatch(job, /npm (?:ci|install)|npm\.cmd run package|vscode-test|\bbzr\b|IBM Bob/i)
+})
+
+
+test("only the approved scenarios opt into fixed document profiles", () => {
+  const manifest = readJson(manifestPath)
+  const mapped = manifest.scenarios
+    .filter((scenario) => Object.hasOwn(scenario, "documentFixtureProfile"))
+    .map(({ id, documentFixtureProfile }) => [id, documentFixtureProfile])
+  assert.deepEqual(mapped, [
+    ["bazaar-core", "bazaar-core"],
+    ["consistency-ai-matrix", "consistency-ai-matrix"]
+  ])
+
+  const bazaar = manifest.scenarios.find(({ id }) => id === "bazaar-core")
+  assert.ok(bazaar.testCases.includes("PRA-WIN-001"))
+  for (const artifact of [
+    "input-documents/project-review-rules.docx",
+    "input-documents/review-traceability-ledger.xlsx",
+    "input-documents/system-review-guidelines.pdf",
+    "input-documents/document-fixture-manifest.json",
+    "input-documents/EXPECTED_DOCUMENT_INPUTS.md"
+  ]) assert.ok(bazaar.expectedArtifacts.includes(artifact))
+
+  const consistency = manifest.scenarios.find(({ id }) => id === "consistency-ai-matrix")
+  assert.ok(consistency.testCases.includes("CCR-RT-019"))
+  assert.ok(consistency.testCases.includes("CCR-RT-020"))
+  for (const artifact of [
+    "workspace/docs/input-documents/requirements-and-design.docx",
+    "workspace/docs/input-documents/verification-matrix.xlsx",
+    "workspace/docs/input-documents/supplemental-reference.pdf",
+    "workspace/docs/input-documents/document-fixture-manifest.json",
+    "workspace/docs/input-documents/EXPECTED_DOCUMENT_EXTRACTION.md"
+  ]) assert.ok(consistency.expectedArtifacts.includes(artifact))
+})
+
+test("runner controls document generation and validates profiles without writes", () => {
+  const manifestModule = read(toolRoot, "lib", "ScenarioManifest.ps1")
+  const execution = read(toolRoot, "lib", "ScenarioExecution.ps1")
+  const runner = read(toolRoot, "Invoke-BobReviewTestEnvironment.ps1")
+
+  assert.match(manifestModule, /documentFixtureProfile/)
+  assert.match(manifestModule, /project-rule-authoring-windows-uat\.md/)
+  assert.match(execution, /function Invoke-DocumentFixtureProfileValidation/)
+  assert.match(execution, /IncludeDocumentFixtures\s*=\s*\$true/)
+  assert.match(execution, /"--validate-only"/)
+  assert.match(runner, /Invoke-DocumentFixtureProfileValidation/)
+  assert.doesNotMatch(JSON.stringify(readJson(manifestPath)), /IncludeDocumentFixtures/)
+})
+
+test("operator docs describe document inputs and the optional Poppler boundary", () => {
+  const bazaarChecklist = read(toolRoot, "checklists", "bazaar-core.md")
+  for (const pattern of [
+    /input-documents/,
+    /bobBazaar\.authorProjectRulesFromDocuments/,
+    /project-review-rules\.docx/,
+    /review-traceability-ledger\.xlsx/,
+    /system-review-guidelines\.pdf/,
+    /PRA-WIN-001/,
+    /Poppler unavailable/,
+    /blocked/,
+    /bob-managed/,
+    /bazaar-source/
+  ]) assert.match(bazaarChecklist, pattern)
+
+  const consistencyChecklist = read(toolRoot, "checklists", "consistency-ai-matrix.md")
+  for (const pattern of [
+    /requirements-and-design\.docx/,
+    /verification-matrix\.xlsx/,
+    /supplemental-reference\.pdf/,
+    /REQ-DOC-001/,
+    /REQ-DOC-002/,
+    /BD-DOC-001/,
+    /TC-DOC-001/,
+    /TC-DOC-002/,
+    /document-index\.json/,
+    /document-excerpts\.md/
+  ]) assert.match(consistencyChecklist, pattern)
+  assert.match(consistencyChecklist, /PDF.*参照.*しない|参照対象外/)
+
+  const readme = read(toolRoot, "README-ja.md")
+  assert.match(readme, /文書fixture/)
+  assert.match(readme, /pdftotext/)
+  assert.match(readme, /PRA-WIN-001/)
+  assert.match(readme, /not_run/)
 })

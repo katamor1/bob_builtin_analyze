@@ -10,6 +10,10 @@ $script:AllowedSamples = @(
   "live-traceability-sidecar",
   "multi-language-git-review"
 )
+$script:AllowedDocumentFixtureProfiles = [ordered]@{
+  "bazaar-core" = "bazaar-core"
+  "consistency-ai-matrix" = "consistency-ai-matrix"
+}
 
 function Get-NormalizedFullPath {
   param([Parameter(Mandatory)][string]$Path)
@@ -86,6 +90,8 @@ function Assert-TestCaseExists {
     Join-Path $RepoRoot "extensions/bob-bazaar-review/docs/real-machine-test-spec-ja.md"
   } elseif ($TestCaseId.StartsWith("CCR-")) {
     Join-Path $RepoRoot "extensions/bob-code-consistency-review/docs/real-machine-test-spec-ja.md"
+  } elseif ($TestCaseId.StartsWith("PRA-WIN-")) {
+    Join-Path $RepoRoot "extensions/bob-bazaar-review/docs/project-rule-authoring-windows-uat.md"
   } else {
     throw "Unsupported testcase prefix: $TestCaseId"
   }
@@ -147,6 +153,16 @@ function Assert-ScenarioManifest {
       if ($scenario.psobject.Properties.Name -contains "postSeed") {
         Assert-RepositoryRelativePath $RepoRoot ([string]$scenario.postSeed) "$scenarioId.postSeed" -MustExist | Out-Null
       }
+      if ($scenario.psobject.Properties.Name -contains "documentFixtureProfile") {
+        $profile = [string]$scenario.documentFixtureProfile
+        if (-not $script:AllowedDocumentFixtureProfiles.Contains([string]$scenarioId)) {
+          throw "Scenario is not allowed to declare documentFixtureProfile: $scenarioId"
+        }
+        $expectedProfile = [string]$script:AllowedDocumentFixtureProfiles[[string]$scenarioId]
+        if ($profile -ne $expectedProfile) {
+          throw "documentFixtureProfile must be ${expectedProfile} for ${scenarioId}: $profile"
+        }
+      }
 
       $argumentNames = @($scenario.generator.arguments.psobject.Properties | ForEach-Object { [string]$_.Name })
       if ($launcher -like "*bazaar-project-rule-review*") {
@@ -164,6 +180,13 @@ function Assert-ScenarioManifest {
     } catch {
       $errors.Add("$($scenario.id): $($_.Exception.Message)")
     }
+  }
+
+  $documentProfileScenarios = @(
+    $scenarios | Where-Object { $_.psobject.Properties.Name -contains "documentFixtureProfile" }
+  )
+  if ($documentProfileScenarios.Count -ne $script:AllowedDocumentFixtureProfiles.Count) {
+    $errors.Add("Exactly two approved documentFixtureProfile mappings are required")
   }
 
   $groupIds = @($Manifest.groups."p0-p1" | ForEach-Object { [string]$_ })

@@ -328,7 +328,7 @@ jobs:
           node-version: "22"
 
       - name: Verify repository contracts
-        run: node --test scripts/real-machine-test-environment.test.js
+        run: node --test scripts/real-machine-test-environment.test.js scripts/real-machine-input-document-fixtures.test.js
 
       - name: Verify PowerShell manifest and seed plans
         shell: pwsh

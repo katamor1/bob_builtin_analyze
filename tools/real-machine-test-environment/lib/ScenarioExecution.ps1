@@ -138,6 +138,9 @@ function New-LauncherInvocation {
     CodeCommand = $CodeCommand
     NoLaunch = $true
   }
+  if ($Scenario.psobject.Properties.Name -contains "documentFixtureProfile") {
+    $arguments.IncludeDocumentFixtures = $true
+  }
   if ([string]$Scenario.generator.path -like "*bazaar-project-rule-review*") {
     $arguments.BzrCommand = $BzrCommand
   } else {
@@ -147,6 +150,31 @@ function New-LauncherInvocation {
     launcherPath = Join-Path $RepoRoot ([string]$Scenario.generator.path)
     arguments = $arguments
   }
+}
+
+function Invoke-DocumentFixtureProfileValidation {
+  param(
+    [Parameter(Mandatory)][string]$RepoRoot,
+    [Parameter(Mandatory)][string]$Profile
+  )
+
+  if ($Profile -notin @("bazaar-core", "consistency-ai-matrix")) {
+    throw "Unsupported document fixture profile: $Profile"
+  }
+  $generator = Assert-RepositoryRelativePath `
+    $RepoRoot `
+    "tools/real-machine-test-environment/document-fixtures/Generate-InputDocumentFixtures.js" `
+    "DocumentFixtureGenerator" `
+    -MustExist
+  $node = Get-Command "node" -ErrorAction SilentlyContinue
+  if (-not $node) { throw "Required command not found on PATH: node" }
+
+  $output = @(& $node.Source $generator "--profile" $Profile "--validate-only" 2>&1 |
+    ForEach-Object { [string]$_ })
+  if ($LASTEXITCODE -ne 0) {
+    throw "Document fixture validation failed for ${Profile}: $($output -join ' | ')"
+  }
+  foreach ($line in $output) { Write-Host $line }
 }
 
 function Invoke-ScenarioLauncher {

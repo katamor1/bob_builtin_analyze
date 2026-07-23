@@ -4,6 +4,7 @@ param(
   [string]$CodeCommand = "code",
   [string]$BzrCommand = "bzr",
   [switch]$NoLaunch,
+  [switch]$IncludeDocumentFixtures,
   [switch]$SkipExtensionInstall
 )
 
@@ -364,6 +365,17 @@ if ((Resolve-Path -LiteralPath $BobWorkspaceDir).Path -eq (Resolve-Path -Literal
 Initialize-BobWorkspace $BobWorkspaceDir
 Initialize-BazaarReviewRepository $BazaarRepoDir
 Write-CodeWorkspaceFile
+if ($IncludeDocumentFixtures) {
+  $DocumentFixtureGenerator = Resolve-RequiredPath (
+    Join-Path $RepoRoot "tools\real-machine-test-environment\document-fixtures\Generate-InputDocumentFixtures.js"
+  ) "Document fixture generator"
+  $DocumentInputDir = Join-Path $SandboxRoot "input-documents"
+  Invoke-CheckedCommand $NodeCommand @(
+    $DocumentFixtureGenerator,
+    "--profile", "bazaar-core",
+    "--output", $DocumentInputDir
+  ) $RepoRoot
+}
 Write-SandboxReadme $SandboxRoot
 
 if (-not $SkipExtensionInstall) {
@@ -385,6 +397,9 @@ Write-Host "VS Code workspace: $WorkspaceFile"
 Write-Host "Review range: 1..$TargetRevision"
 Write-Host "Expected findings: $(Join-Path $BobWorkspaceDir "EXPECTED_BAZAAR_REVIEW_FINDINGS.md")"
 Write-Host "Sandbox README: $(Join-Path $SandboxRoot "README-bob-bazaar-review-sandbox.md")"
+if ($IncludeDocumentFixtures) {
+  Write-Host "Input documents: $(Join-Path $SandboxRoot 'input-documents')"
+}
 
 if (-not $SkipExtensionInstall) {
   Write-Host "Installed extensions:"

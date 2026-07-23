@@ -1,0 +1,126 @@
+{
+  "schemaVersion": 1,
+  "profiles": {
+    "bazaar-core": {
+      "docx": {
+        "title": "Project Review Rules",
+        "sections": [
+          {
+            "heading": "RULE-DOC-001 Real-time path",
+            "paragraphs": [
+              "RULE-DOC-001 forbids console I/O, waits, and dynamic allocation in RT_CONTROL."
+            ],
+            "list": [
+              "Check printf, SleepForIo, malloc, and free.",
+              "Record file and line evidence for every violation."
+            ]
+          },
+          {
+            "heading": "RULE-DOC-002 Shared interface",
+            "paragraphs": [
+              "RULE-DOC-002 requires versioned field order and a single documented owner."
+            ],
+            "list": []
+          }
+        ],
+        "table": [
+          ["Rule ID", "Area", "Required review"],
+          ["RULE-DOC-003", "Bounds", "Reject unbounded sprintf and strcpy usage"],
+          ["RULE-DOC-004", "Tests", "Require negative and timeout path coverage"]
+        ]
+      },
+      "xlsx": {
+        "sheets": [
+          {
+            "name": "Rules",
+            "rows": [
+              ["Rule ID", "Owner", "Area", "Verification method", "Status"],
+              ["RULE-DOC-001", "rt-team", "RT_CONTROL", "Review calls and allocation", "active"],
+              ["RULE-DOC-002", "interface-team", "PlcSharedFrame", "Compare field order and owner", "active"],
+              ["RULE-DOC-003", "safety-team", "String bounds", "Review fixed buffers", "active"],
+              ["RULE-DOC-004", "qa-team", "Tests", "Compare negative-path coverage", "active"]
+            ]
+          },
+          {
+            "name": "Verification",
+            "rows": [
+              ["Rule ID", "Fixture evidence", "Expected"],
+              ["RULE-DOC-001", "src/rt_control.c", "finding"],
+              ["RULE-DOC-002", "src/if/plc_shared.h", "finding"],
+              ["RULE-DOC-003", "src/diagnostics.c", "finding"],
+              ["RULE-DOC-004", "docs/test-spec.md", "finding"]
+            ]
+          }
+        ]
+      },
+      "pdf": {
+        "pages": [
+          [
+            "System Review Guidelines",
+            "PDF-RULE-001 Review real-time paths for blocking calls.",
+            "PDF-RULE-002 Review shared interface ownership."
+          ],
+          [],
+          [
+            "Continuation",
+            "PDF-RULE-003 Review bounds and negative-path tests."
+          ]
+        ]
+      }
+    },
+    "consistency-ai-matrix": {
+      "docx": {
+        "title": "Requirements and Basic Design",
+        "sections": [
+          {
+            "heading": "REQ-DOC-001 Timeout status",
+            "paragraphs": [
+              "REQ-DOC-001 requires ERR_TIMEOUT when the provider times out."
+            ],
+            "list": []
+          },
+          {
+            "heading": "REQ-DOC-002 Fraud review",
+            "paragraphs": [
+              "REQ-DOC-002 requires ERR_FRAUD_REVIEW for a manual fraud hold."
+            ],
+            "list": []
+          }
+        ],
+        "table": [
+          ["Design ID", "Requirement", "Implementation"],
+          ["BD-DOC-001", "REQ-DOC-001", "map_provider_status returns ERR_TIMEOUT"],
+          ["BD-DOC-002", "REQ-DOC-002", "manual review remains an explicit branch"]
+        ]
+      },
+      "xlsx": {
+        "sheets": [
+          {
+            "name": "Verification",
+            "rows": [
+              ["Test ID", "Condition", "Expected"],
+              ["TC-DOC-001", "provider timeout", "ERR_TIMEOUT"],
+              ["TC-DOC-002", "fraud hold", "ERR_FRAUD_REVIEW"]
+            ]
+          },
+          {
+            "name": "Reference",
+            "rows": [
+              ["Reference ID", "Purpose"],
+              ["REF-DOC-001", "Non-selected control sheet"]
+            ]
+          }
+        ]
+      },
+      "pdf": {
+        "pages": [
+          [
+            "Supplemental Reference",
+            "PDF-CONSISTENCY-UNREFERENCED",
+            "This file is intentionally absent from review-input.yaml."
+          ]
+        ]
+      }
+    }
+  }
+}

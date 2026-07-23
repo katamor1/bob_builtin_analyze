@@ -29,3 +29,21 @@ test("integration sandbox launcher uses Bob as an extension development path", (
   assert.doesNotMatch(script, /Copy-Item[^\r\n]*bob2[\\/]bob-code/)
   assert.doesNotMatch(script, /WindowStyle\s+Hidden/)
 })
+
+test("integration sandbox optionally seeds office documents before the Git baseline", () => {
+  const script = fs.readFileSync(scriptPath, "utf8")
+
+  assert.match(script, /\[switch\]\$IncludeDocumentFixtures/)
+  assert.match(script, /IncludeDocumentFixtures requires -Sample ai-verification-matrix/)
+  assert.match(script, /Generate-InputDocumentFixtures\.js/)
+  assert.match(script, /"--profile", "consistency-ai-matrix"/)
+  assert.match(script, /"--review-input", \(Join-Path \$WorkspaceDir "review-input\.yaml"\)/)
+  const initializer = script.indexOf("function Initialize-AiVerificationMatrixWorkspace")
+  const generation = script.indexOf(
+    "Invoke-DocumentFixtureGenerator -RepoRoot $RepoRoot -WorkspaceDir $WorkspaceDir",
+    initializer
+  )
+  const gitInit = script.indexOf('@("init", "-b", "main")', initializer)
+  assert.ok(generation >= 0 && gitInit > generation, "document generation must occur before git init")
+  assert.doesNotMatch(script, /Invoke-Expression/)
+})
