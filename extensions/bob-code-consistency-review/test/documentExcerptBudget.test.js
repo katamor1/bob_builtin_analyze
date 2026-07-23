@@ -72,9 +72,9 @@ test("shares total-operation input consumption between raw diff, document bytes,
       single_document_bytes: 100,
       total_document_bytes: 100,
       raw_diff_bytes: 100,
-      document_excerpt_bytes: 100,
+      document_excerpt_bytes: 180,
       bob_input_bytes: 0,
-      total_operation_input_bytes: 120
+      total_operation_input_bytes: 200
     }
   })
   ledger.reserve("raw_diff_bytes", 70).commit()
@@ -84,13 +84,13 @@ test("shares total-operation input consumption between raw diff, document bytes,
       workspaceRoot: root,
       limits: {
         maxDocumentBytes: 100,
-        maxExcerptBytesPerDocument: 100,
-        maxBobInputBytes: 100
+        maxExcerptBytesPerDocument: 180,
+        maxBobInputBytes: 180
       },
       budgetLedger: ledger
     }),
     (error) => error?.code === "processing_budget_exceeded"
       && error.details?.constrainedCategory === "total_operation_input_bytes"
-      && error.details?.limit === 120
+      && error.details?.limit === 200
   )
 })
