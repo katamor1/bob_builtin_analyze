@@ -38,6 +38,19 @@ test("Node package filesystem adapter exposes stable file kinds, bytes, containm
   assert.equal(Buffer.from(await adapter.readFile(root, ["slot", "b.txt"])).toString(), "alpha")
 })
 
+test("Node package filesystem stable open does not follow symbolic links", {
+  skip: typeof fs.constants.O_NOFOLLOW !== "number"
+}, async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "workflow-package-node-nofollow-"))
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  fs.writeFileSync(path.join(root, "target.txt"), "target")
+  fs.symlinkSync("target.txt", path.join(root, "link.txt"))
+
+  const { createNodeWorkflowPackageFileSystem } = require("../out/core/contractV2/packageFileSystemNode.js")
+  const adapter = createNodeWorkflowPackageFileSystem()
+  await assert.rejects(() => adapter.openFile(root, ["link.txt"]), /link|loop|nofollow|ELOOP/i)
+})
+
 test("VS Code package filesystem adapter maps file types and delegates URI operations without leaking URIs into evidence", async () => {
   const calls = []
   const entries = new Map([
