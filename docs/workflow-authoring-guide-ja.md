@@ -1,339 +1,237 @@
-# IBM Bob ワークフロー作成手順書
+# IBM Bob ワークフロー作成・編集ガイド
 
-この手順書は、`workflow-register` を使って IBM Bob 用のワークフローを作成、検証、実行、改善するための日本語ガイドです。
+## 1. 目的
 
-## 目的
+このガイドは、`workflow-register`の公開UIを使ってIBM Bob用ワークフローを作成、検証、保存、実行、改善する手順を定義する。
 
-Bob workflow は、AI に渡す prompt だけでなく、事前入力、外部 command、手動確認、成果物保存、診断、再開をまとめて扱うための実行単位です。
-
-次のような作業を、毎回チャットで説明し直さずに再利用できます。
-
-- Bazaar 差分レビュー
-- プロジェクト規約レビュー
-- 設計書レビュー
-- テスト観点抽出
-- 変更影響調査
-- 調査結果レポート生成
-- 人間の確認を挟む段階的作業
-
-## 前提
-
-- Bob IDE / VS Code で対象 workspace を開いている。
-- `IBM.bob-code` がインストールされている。
-- `workflow-register` がインストールされている。
-- 必要に応じて `bob-bazaar-review` などの連携拡張がインストールされている。
-
-## 全体の流れ
-
-1. 作りたい作業を 1 文で定義する。
-2. workflow 名と配置先を決める。
-3. テンプレートまたは手書きで `WORKFLOW.md` を作る。
-4. `steps` を設計する。
-5. `inputs`、`preflight`、`guardrails`、`artifacts` を必要に応じて追加する。
-6. 検証コマンドでエラーを消す。
-7. Bob に再登録する。
-8. 実行して run diagnostics を確認する。
-9. 改善点を README / workflow / checklist に反映する。
-
-## 1. 作業を 1 文で定義する
-
-最初に、workflow の目的を短く書きます。
-
-よい例:
+通常operatorが使う入口は次の2件だけである。
 
 ```text
-Bazaar の指定 revision range をプロジェクト規約に照らしてレビューし、正規化 JSON と Markdown チェックリストを出す。
+Bob Workflow: ワークフローを作成・編集
+Bob: 操作ハブを開く
 ```
 
-悪い例:
+`ワークフロー作成・編集`は標準テンプレートからの作成、既存定義の編集、preview、diagnostics、diff、backup付き保存、AI補助を同じpanelで扱う。`Bob 操作ハブ`は実行、状態確認、pause、resume、review gate、診断、成果物、retentionを扱う。
+
+個別レビューを開始する場合は、用途に応じて次の公開入口を使う。
 
 ```text
-レビューする。
+Bob Bazaar Review: レビューを開始
+Bob Bazaar Review: 資料からプロジェクト規約を作成
+Bob Code Consistency Review: 整合プレレビューを開始
 ```
 
-目的文には、次の 3 点を入れると設計しやすくなります。
+## 2. 前提
+
+- Bob IDEまたはVS Codeで対象workspaceを開いている。
+- `workflow-register`がインストールされている。
+- IBM Bobとの連携を使う場合は`IBM.bob-code`が利用可能である。
+- Bazaarやコード整合プレレビューを使う場合は対応するcompanion extensionが利用可能である。
+- workspace外への出力、破壊的VCS操作、未承認commandをワークフローへ含めない。
+
+companion extensionはsoft dependencyである。未導入でもBuilder、validation、standalone engineは利用できる。
+
+## 3. 全体の流れ
+
+1. 作業目的を1文で定義する。
+2. `Bob Workflow: ワークフローを作成・編集`を開く。
+3. `標準テンプレートから作成`、空の新規作成、既存編集のいずれかを選ぶ。
+4. workflow名、入力、step、guardrail、成果物を設定する。
+5. previewとdiagnosticsを確認する。
+6. 既存fileがある場合はdiffを確認する。
+7. 保存を明示確認する。
+8. backup作成後にatomic saveされることを確認する。
+9. `Bob: 操作ハブを開く`から実行する。
+10. 実行診断と成果物を確認し、必要なら同じBuilderで改善する。
+
+## 4. 作業目的を定義する
+
+目的文には入力、処理、出力を含める。
+
+```text
+Bazaarの指定revision rangeをプロジェクト規約に照らしてレビューし、検証済みJSONとMarkdownを保存する。
+```
 
 | 観点 | 例 |
-| --- | --- |
-| 入力 | revision、対象ファイル、設計書、差分、チケット番号 |
-| 処理 | 収集、検証、分析、レビュー、変換、要約 |
-| 出力 | JSON、Markdown、チェックリスト、設計メモ、修正案 |
+|---|---|
+| 入力 | revision、対象file、設計書、ticket、parameter |
+| 処理 | 収集、検証、分析、変換、レビュー、要約 |
+| 出力 | JSON、Markdown、checklist、artifact、修正案 |
 
-## 2. workflow 名を決める
+## 5. workflow名と配置
 
-`name` は安定 ID として扱います。フォルダ名と一致させてください。
+`name`は安定IDであり、directory名と一致させる。
 
 ```text
 .bob/workflows/<name>/WORKFLOW.md
 ```
 
-命名ルール:
+命名規則:
 
-- 英数字、`.`、`_`、`-` を使う。
+- 英数字、`.`、`_`、`-`を使う。
 - 先頭は英数字にする。
-- 空白は使わない。
-- 後から変えにくいので、機能名を短く明確にする。
+- 空白を使わない。
+- 後から変更しにくいため、用途を短く明確に表す。
 
-例:
+新規定義では`schemaVersion: workflow-register/v1`を使用する。
 
-| 用途 | name |
-| --- | --- |
-| Bazaar 規約レビュー | `bazaar-project-rule-review` |
-| 設計書レビュー | `design-doc-review` |
-| テスト観点抽出 | `test-viewpoint-extraction` |
-| workflow 自体の検証 | `workflow-self-review` |
+## 6. Builderの3モード
 
-## 3. 作成方法を選ぶ
+### 6.1 標準テンプレートから作成
 
-### 方法 A: テンプレートから作る
+`ワークフロー作成・編集`で`標準テンプレートから作成`を選ぶ。テンプレート、project profile、customization、readinessは別panelではなく同じBuilder sessionで扱う。
 
-Command Palette で次を実行します。
+代表テンプレート:
 
-```text
-Bob Workflow: テンプレートから作成
-```
+| 用途 | template |
+|---|---|
+| AIへ1回依頼する | `simple-agent` |
+| commandで情報収集後にAIへ渡す | `command-then-agent` |
+| 人間確認を段階的に挟む | `manual-checklist` |
+| 実行前入力を使う | `input-driven-agent` |
+| 必須fileを検査する | `preflight-files` |
+| artifactを保存する | `artifact-output` |
+| commandの許可・禁止を明示する | `guarded-command` |
+| レビュー結果を構造化する | `review-workflow` |
 
-選ぶ目安:
+profileとcustomizationを検証し、preview、diff、readinessを確認してから生成する。cancelした場合はworkflow fileとbackup setを変更しない。
 
-| やりたいこと | テンプレート |
-| --- | --- |
-| AI に 1 回依頼すればよい | `simple-agent` |
-| command で情報収集してから AI に渡す | `command-then-agent` |
-| 人間の確認を段階的に挟む | `manual-checklist` |
-| 実行前にユーザー入力が必要 | `input-driven-agent` |
-| 必須ファイルがある | `preflight-files` |
-| レポート等をファイル保存する | `artifact-output` |
-| command 実行に承認や禁止ルールが必要 | `guarded-command` |
-| レビュー結果を構造化したい | `review-workflow` |
+### 6.2 空の新規作成
 
-### 方法 B: 手書きで作る
-
-次の最小形から始めます。
+最小構成からstepを追加する。
 
 ```md
 ---
 schemaVersion: workflow-register/v1
 name: sample-workflow
-description: "サンプル作業を実行する"
-title: "Sample Workflow"
+description: サンプル作業を実行する
+title: サンプルワークフロー
 mode: agent
 workspaceRequired: true
 steps:
   - id: analyze
-    title: Analyze
+    title: 対象を分析
     type: agent
     prompt: |
       対象を確認し、結果を日本語で要約してください。
 ---
-# Sample Workflow
-
-## Goal
-
-サンプル作業を実行する。
+# サンプルワークフロー
 ```
 
-### 方法 C: AI で下書きする
+### 6.3 既存定義を編集
 
-Command Palette で次を実行します。
+`workflow-register/v1`の既存fileを選び、parser / loaderでmodel化する。未知front matterやMarkdown bodyを保持し、save前にreference analysisとvalidationを行う。
 
-```text
-Bob Workflow: AI で新規設計
-```
+外部変更、stale session、workspace escape、symlink、validation errorがある場合は保存しない。
 
-入力する内容:
+## 7. top-levelフィールド
 
-- workflow goal
-- preferred workflow template
+| フィールド | 用途 |
+|---|---|
+| `name` | 安定workflow ID |
+| `description` | 人間とBobが理解できる目的 |
+| `title` | 表示名 |
+| `inputs` | 実行前入力 |
+| `requires` | workspace、Bob version、必須file |
+| `preflight` | 実行前check |
+| `guardrails` | commandの許可、禁止、承認条件 |
+| `stepExecution` | full / todo / engineStepsの表示・実行方式 |
+| `stepReview` | step成功後の人間review gate |
+| `branching` | 条件分岐、戻りloop、checkpoint |
+| `artifacts` | 成果物contract |
+| `completion` | 完了時の検証とhandoff |
+| `steps` | 実行順序 |
 
-`workflowRegister.aiProviderCommand` が未設定の場合は mock provider が使われます。実運用で AI 設計補助を使う場合は、社内方針に合う provider command を設定してください。
+Builderは参照切れ、前方参照、重複ID、`artifact.producedBy`不整合、危険なpathを保存前に表示する。
 
-## 4. `WORKFLOW.md` の基本構造
+## 8. step種別
 
-`WORKFLOW.md` は、YAML front matter と Markdown 本文で構成します。
+| type | 選択基準 |
+|---|---|
+| `command` | 登録済みaction providerで決定論的処理を行う |
+| `agent` | AIに判断、要約、分析、生成を依頼する |
+| `manual` | 人間の入力、確認、承認を待つ |
+| `result` | stateやagent結果をsinkへ保存する |
 
-```md
----
-# YAML front matter
----
-# Markdown body
-```
+作業は通常3〜7stepへ分割する。1stepへ過剰な責務を集めず、入力収集、検証、AI処理、保存を分離する。
 
-front matter は機械が読む定義です。Markdown body は人間が読む説明と、Bob に渡す補足指示です。
+## 9. state flow
 
-## 5. top-level フィールドを埋める
-
-まずは次の項目だけで開始できます。
-
-```yaml
-schemaVersion: workflow-register/v1
-name: sample-workflow
-description: "サンプル作業を実行する"
-title: "Sample Workflow"
-mode: agent
-workspaceRequired: true
-steps: []
-```
-
-よく使うフィールド:
-
-| フィールド | 使いどころ |
-| --- | --- |
-| `permissions` | Bob approval permissions を明示したい。 |
-| `inputs` | 実行前にユーザー入力を受け取りたい。 |
-| `requires` | workspace、Bob version、必須ファイルを宣言したい。 |
-| `preflight` | 実行前チェックを行いたい。 |
-| `guardrails` | command 実行の許可・禁止・承認条件を明示したい。 |
-| `artifacts` | 出力ファイルを成果物として扱いたい。 |
-| `completion` | 完了時に成果物や結果検証を扱いたい。 |
-
-## 6. step を設計する
-
-step は workflow の実行単位です。まず、作業を 3〜7 個程度の step に分けます。
-
-例: Bazaar 規約レビュー
-
-```text
-1. review-input: 対象 revision / range を確認する
-2. collect-context: Bazaar 差分と変更ファイル情報を集める
-3. load-rules: プロジェクト規約と JSON schema を読み込む
-4. analyze-changes: 差分を規約に照らして分析する
-5. output-result: review-result JSON と Markdown を出す
-```
-
-### step type の選び方
-
-| type | 選ぶ基準 |
-| --- | --- |
-| `command` | VS Code command、MCP 連携、別拡張の処理で情報を集める。 |
-| `agent` | AI に判断、要約、分析、生成をさせる。 |
-| `manual` | 人間の確認が終わるまで先へ進めない。 |
-| `result` | state や agent 結果をファイルや command に渡す。 |
-
-## 7. command step を作る
-
-`vscode.executeCommand` を使う場合の例です。
+前段結果は`resultKey`へ保存し、後段の`includeState`または`result.source: state`から参照する。
 
 ```yaml
 steps:
   - id: collect-context
-    title: Collect context
+    title: 対象情報を収集
     type: command
     action:
-      provider: vscode.executeCommand
-      args:
-        - bobBazaar.collectReviewContext
+      provider: bobBazaar.collectReviewContext
     resultKey: reviewContext
-    sendResult: true
     required: true
-```
-
-設計ポイント:
-
-- `args` の先頭は command ID。
-- `resultKey` を付けると後続 step で参照できる。
-- `sendResult: true` にすると command 結果を Bob message に含める。
-- `required: true` にすると失敗時に workflow を止めやすい。
-
-## 8. state を後続 step に渡す
-
-前段 step の `resultKey` を、後続 step の `includeState` で参照します。
-
-```yaml
-steps:
-  - id: collect-context
-    title: Collect context
-    type: command
-    action:
-      provider: vscode.executeCommand
-      args:
-        - bobBazaar.collectReviewContext
-    resultKey: reviewContext
 
   - id: analyze
-    title: Analyze
+    title: 変更を分析
     type: agent
     includeState:
       - reviewContext
+    resultKey: analysisReport
     prompt: |
-      reviewContext を使って分析してください。
+      reviewContextを根拠として分析してください。
 ```
 
-`includeState` が存在しない `resultKey` を参照すると検証エラーになります。
+存在しない`resultKey`、現在stepより後でしか生成されないkey、不明なmanual form / approval resultを参照するとdiagnosticsになる。
 
-## 9. 実行前入力を定義する
+## 10. 入力
 
 ```yaml
 inputs:
   target:
     type: string
-    title: Target path or topic
+    title: 対象pathまたはtopic
     required: true
   outputStyle:
     type: select
-    title: Output style
+    title: 出力形式
     required: true
     options:
       - concise
       - detailed
 ```
 
-prompt では次のように参照します。
+promptでは`{{inputs.target}}`の形式で参照する。unknown placeholderは解決できないまま残るため、previewで確認する。
 
-```yaml
-steps:
-  - id: analyze
-    title: Analyze input
-    type: agent
-    prompt: |
-      Target: {{inputs.target}}
-      Output style: {{inputs.outputStyle}}
-```
+## 11. preflightとguardrails
 
-## 10. preflight を定義する
-
-必須ファイルがないと実行しても失敗する workflow では、`requires` と `preflight` を使います。
+必須fileがある場合は`requires`と`preflight`を定義する。
 
 ```yaml
 requires:
   workspace: true
   files:
     - .bob/review/checklist.json
-    - .bob/review/review-result.schema.json
 preflight:
   - id: required-review-files
-    title: Required review files exist
+    title: 必須レビューfileを確認
     required: true
     files:
       - .bob/review/checklist.json
-      - .bob/review/review-result.schema.json
     failurePolicy: stop
 ```
 
-`failurePolicy` は `stop`、`continue`、`warn` を指定できます。
-
-## 11. guardrails を定義する
-
-command を使う workflow では、許可・禁止・承認を明示してください。
+command stepはallowlist / denylistを明示する。
 
 ```yaml
 guardrails:
   allowedCommands:
     - bobBazaar.collectReviewContext
-    - bobBazaar.loadReviewRules
   deniedCommands:
     - bzr.commit
     - bzr.push
-  requireApproval:
-    - id: command-approval
-      when: before-command
-      message: この command が現在の workspace で安全か確認してください。
 ```
 
-同じ command を `allowedCommands` と `deniedCommands` の両方に入れると検証エラーになります。
+同じcommandをallowed / deniedの両方へ置かない。workspace外書込み、VCS commit / push / revert / merge、shell文字列連結を許可しない。
 
-## 12. 成果物を書き出す
-
-AI の出力を Markdown ファイルに保存する例です。
+## 12. artifactとresult sink
 
 ```yaml
 artifacts:
@@ -343,14 +241,8 @@ artifacts:
 completion:
   includeArtifacts: true
 steps:
-  - id: analyze
-    title: Analyze
-    type: agent
-    resultKey: analysisReport
-    prompt: |
-      Markdown レポートを作成してください。
   - id: write-report
-    title: Write report
+    title: レポートを保存
     type: result
     result:
       source: state
@@ -360,192 +252,105 @@ steps:
           path: .bob/artifacts/sample-report.md
 ```
 
-`file` sink は workspace 外のパスを拒否します。
+`file` sinkはworkspace外pathを拒否する。artifactの本文、size、checksum、producer identityはrun stateとmanifestの契約に従う。
 
-## 13. 検証する
+## 13. manual input、承認、分岐
 
-現在のファイルだけを検証する場合:
+manual stepはformまたはapprovalを持てる。
 
-```text
-Bob Workflow: 現在の定義を検証
+```yaml
+- id: user-approval
+  title: 人間が内容を確認
+  type: manual
+  approval:
+    resultKey: userApproval
+    approveLabel: 承認
+    rejectLabel: 差し戻し
 ```
 
-workspace 内の workflow をまとめて検証する場合:
+step-level `transition`とtop-level `branching`を組み合わせると、決定的な条件で過去stepへ戻せる。backward `goto`にはnamed loopと上限を必須とし、上限到達時は`checkpoint`で停止する。
 
-```text
-Bob Workflow: ワークスペース定義を検証
-```
+通常operatorはcheckpoint、manual待ち、review gateを`Bob 操作ハブ`のrun cardから処理する。内部Command IDはworkflow、panel action、API互換用に登録を維持するが、通常手順としてCommand Paletteへ列挙しない。
 
-検証で見るべき優先順位:
+## 14. preview、diagnostics、diff、save
 
-1. `error` を 0 にする。
-2. `warning` をレビューし、意図したものだけ残す。
-3. `info` で読み込み対象と schema version を確認する。
+保存前の順序:
 
-よくあるエラー:
+1. modelをcanonical化する。
+2. Markdownへserializeする。
+3. parser / validatorで再検証する。
+4. reference analysisを実行する。
+5. previewとdiagnosticsを表示する。
+6. 既存fileがある場合はdiffを表示する。
+7. operatorの明示確認を得る。
+8. target pathとopen時file expectationを再検証する。
+9. transaction lockを取得する。
+10. 既存fileをbackupする。
+11. temporary fileからatomic commitする。
+12. catalogをreloadする。
 
-| エラー | 対処 |
-| --- | --- |
-| `missing YAML front matter` | ファイル先頭に `---` を置き、front matter を閉じる。 |
-| `invalid YAML` | インデント、リスト、引用符、タブ混入を直す。 |
-| `Duplicate step id` | step ID を一意にする。 |
-| `includeState references unknown resultKey` | 前段 step に `resultKey` を追加するか、参照を削除する。 |
-| `select but has no options` | `inputs.<name>.options` を追加する。 |
-| `Artifact ... unknown producedBy step` | `producedBy` を存在する step ID にする。 |
-| `both allowed and denied` | command を allowed / denied の片方だけに置く。 |
+cancel、stale generation、external change、unsafe path、validation errorではno-changeとする。
 
-## 14. Bob に再登録する
+## 15. 実行と診断
 
-ファイルを保存したら、必要に応じて再読み込みします。
+保存後は`Bob: 操作ハブを開く`からworkflowを選び、開始する。実行中または過去runの確認も同じpanelで行う。
 
-```text
-Bob Workflow: ファイルを再読み込み
-```
+run cardから次を利用できる。
 
-登録状態を確認します。
+- status、current step、updated time
+- pause / resume / retry
+- accept / accept-and-next
+- manual step input
+- branch checkpoint
+- task snapshot import
+- artifact reuse
+- run diagnostics
+- retention preview / cleanup
 
-```text
-Bob Workflow: 登録状態を確認
-```
+`run.json`が実行状態の正本であり、`control.json`はoperator control signalの正本である。task snapshotは補助証跡であり、再開状態の正本ではない。
 
-Bob の `Start Workflow` に表示されない場合は、次を確認してください。
+## 16. AI補助
 
-- `.bob/workflows/*/WORKFLOW.md` の配置になっているか。
-- `hidden: true` になっていないか。
-- `workspaceRequired: true` なのに Bob 側 workspace がない状態で見ていないか。
-- 検証エラーで登録対象から外れていないか。
+AI設計、AI改善、diagnostics説明はBuilder内の操作として提供する。AIが返したcandidateは直接保存せず、host側でparser、schema、reference、pathを再検証し、previewとdiffを経て明示確認後に適用する。
 
-## 15. 実行する
+AI providerが未設定の場合のfallbackやmock結果を、productionの成功証跡として扱わない。
 
-Bob の UI から実行する場合:
-
-```text
-Start Workflow
-```
-
-Command Palette から実行する場合:
-
-```text
-Bob Workflow: 実行
-```
-
-手動 step がある場合は、作業が終わったら次を実行します。
-
-```text
-Bob Workflow: 現在のステップを完了
-```
-
-または:
-
-```text
-Workflow Step: Complete Current Step
-```
-
-## 16. run を確認・再開する
-
-実行状態を確認します。
-
-```text
-Bob Workflow: 実行履歴を確認
-```
-
-診断を確認します。
-
-```text
-Bob Workflow: 診断を確認
-```
-
-途中で止まった run を再開します。
-
-```text
-Bob Workflow: 実行を再開
-```
-
-現在 step を再試行します。
-
-```text
-Bob Workflow: 現在のステップを再試行
-```
-
-run state は次の場所に保存されます。
-
-```text
-.bob/workflows/runs/<runId>/run.json
-```
-
-## 17. AI で改善する
-
-開いている `WORKFLOW.md` を改善したい場合:
-
-```text
-Bob Workflow: AI で改善
-```
-
-処理の流れ:
-
-1. 現在の workflow を検証する。
-2. 診断結果から repair context を作る。
-3. AI provider に修正案を要求する。
-4. 置換候補 Markdown を検証する。
-5. preview と diff を表示する。
-6. 明示確認後に backup を作成して上書きする。
-
-すぐに上書きされるわけではないため、差分を確認してから適用できます。
-
-## 18. レビュー観点チェックリスト
-
-workflow を追加・変更したら、次を確認してください。
+## 17. レビューchecklist
 
 ### 構造
 
-- [ ] `schemaVersion: workflow-register/v1` を使っている。
-- [ ] `name` とフォルダ名が一致している。
-- [ ] `description` が人間にも Bob にも分かる。
-- [ ] step ID が一意で、作業順に並んでいる。
+- [ ] `schemaVersion: workflow-register/v1`を使用している。
+- [ ] `name`とdirectory名が一致している。
+- [ ] step IDが一意で作業順に並んでいる。
+- [ ] unknown referenceや前方参照がない。
 
 ### 実行
 
-- [ ] `command` step の provider と args が正しい。
-- [ ] `resultKey` と `includeState` の対応が正しい。
-- [ ] required step の失敗時に止まるべきところで止まる。
-- [ ] manual step は人間が判断する内容だけに絞っている。
+- [ ] provider IDとargsが正しい。
+- [ ] `resultKey`と`includeState`が対応する。
+- [ ] required stepの失敗時に適切に停止する。
+- [ ] manual stepは人間が判断する内容だけを扱う。
 
 ### 安全性
 
-- [ ] 破壊的 command を実行しない。
-- [ ] 必要なら `guardrails.deniedCommands` を設定している。
-- [ ] workspace 外へのファイル出力がない。
-- [ ] 大きすぎる diff / result をそのまま Bob に渡さない。
+- [ ] 破壊的commandを含めない。
+- [ ] workspace外へのfile出力がない。
+- [ ] diff / result / artifactにsize上限がある。
+- [ ] secretや本文をrelease evidenceへ転記しない。
 
-### 出力
+### 運用
 
-- [ ] 出力形式が明確。
-- [ ] JSON が正式成果物の場合、schema と validation を用意している。
-- [ ] Markdown は人間向け表示として位置づけている。
-- [ ] 成果物の保存先が `.bob/artifacts` や `.bob/review/results` など分かりやすい。
+- [ ] preview、diagnostics、diffを確認した。
+- [ ] backupとatomic saveの結果を確認した。
+- [ ] Ubuntu / Windowsの同一source headでtestする。
+- [ ] 実IBM Bob UATではkeyboard、200% zoom、High Contrast、Consoleを確認する。
 
-## 19. 推奨する整備単位
-
-workflow を増やすときは、次の 3 点をセットで整備してください。
-
-```text
-.bob/workflows/<workflow-name>/WORKFLOW.md
-.bob/skills/<skill-name>/SKILL.md        # 必要な場合
-.bob/review/checklist.json              # レビュー規約が必要な場合
-```
-
-拡張機能として提供する場合は、README に次を必ず書きます。
-
-- 何をする拡張か。
-- どの Bob / workflow-register command と連携するか。
-- 初期化手順。
-- 設定項目。
-- 代表的な workflow 例。
-- 生成・保存されるファイル。
-- 破壊的操作をしない設計か。
-
-## 20. 関連 README
+## 18. 関連文書
 
 - `extensions/workflow-register/README.md`
+- `extensions/workflow-register/docs/basic-design-ja.md`
+- `extensions/workflow-register/docs/detailed-design-ja.md`
+- `extensions/workflow-register/docs/unit-test-spec-ja.md`
+- `extensions/workflow-register/docs/real-machine-test-spec-ja.md`
 - `extensions/bob-bazaar-review/README.md`
-- `extensions/README.md`
+- `extensions/bob-code-consistency-review/README.md`
