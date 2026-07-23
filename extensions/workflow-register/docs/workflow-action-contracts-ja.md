@@ -1,23 +1,44 @@
 # Bob workflow action contract
 
-この文書は `workflow-register` が公開する workflow 実行 API と、domain extension が登録する action provider ID を固定するための contract です。VS Code command ID、workflow action provider ID、workflow name、schema version は互換性に直結するため、この文書に載せた ID は rename しません。
+この文書は、`local.workflow-register`が公開するAPIと、domain extensionが登録するaction provider IDの互換性境界を定義します。provider ID、workflow ID、result sink type、artifact schemaを変更する場合は、同梱workflow、runtime、README、テストを同じ変更で更新します。
 
-## workflow-register public API
+## 公開operator commandとの関係
 
-`local.workflow-register` は拡張 export として次の API を公開します。
+Command Paletteに常時表示する入口は5件だけです。action providerはこの公開面とは別のworkflow連携契約であり、provider数だけCommand Palette entryを増やしません。
+
+```text
+workflowRegister.openOperationHub
+workflowRegister.openWorkflowBuilder
+bobBazaar.openReviewGui
+bobBazaar.authorProjectRulesFromDocuments
+bobCodeConsistency.openReviewWizard
+```
+
+## workflow-register exported API
+
+`local.workflow-register`は次のAPIをexportします。
 
 | API | Contract |
 | --- | --- |
-| `registerActionProvider(provider)` | `command` step から呼び出す action provider を登録する。`provider.id` は workflow の `command` と一致させる。 |
-| `registerAgentProvider(provider)` | standalone 実行時の `agent` step を外部 provider に委譲する。 |
-| `registerResultSink(sink)` | `result` step の保存先を追加する。result sink は file / command sink と同じ failure contract に従う。 |
-| `runWorkflow(workflowId, inputs)` | workflow を最初の step から standalone 実行する。 |
-| `runWorkflowStep(runId, stepId, inputs)` | 既存 run の指定 step を実行する。 |
-| `runNextStep(runId, inputs)` | run state の現在位置から次 step を実行する。 |
+| `acceptBobWorkflowGate(workspaceRoot, runId, stepId)` | live Bob executionが待つreview gateをatomicに承認する。 |
+| `acceptBobWorkflowGateWithMetadata(workspaceRoot, runId, stepId)` | gate承認結果と待機中Bob execution metadataを返す。 |
+| `coordinateReviewAcceptance(workspaceRoot, runId, operation)` | 同じroot / runの重複review acceptanceをsingle-flight化する。 |
+| `registerActionProvider(provider)` | `command` step用providerを所有元付きで登録し、解除用disposableを返す。 |
+| `registerAgentProvider(provider)` | standalone / Bob adapter fallback用agent providerを登録する。 |
+| `registerResultSink(type, handler)` | `result.sinks[].type`に対応するhandlerを登録する。 |
+| `listWorkflows()` | 現在登録済みのcore workflow definitionを返す。 |
+| `runWorkflow(workflowId?, inputs?)` | workflowをstandalone実行する。 |
+| `runWorkflowStep(workflowId?, stepId?, inputs?)` | workflowの指定stepをsingle-stepで実行する。 |
+| `startFromStepWithArtifacts(workflowId?, stepId?, sourceRunId?, inputs?)` | 検証済みartifactからstateを復元し、新しいrunを指定stepから開始する。 |
+| `importArtifactsFromTaskSnapshots(runId?)` | preview / selection / digest検証後にtask snapshot候補をartifactへ取り込む。 |
+| `runNextStep(runId?)` | 保存済みrunの次に実行可能なstepを実行する。 |
+| `approveBranchCheckpoint(runId?)` | pending branch checkpointを承認してloop allowanceを延長する。 |
+| `abortBranchCheckpoint(runId?)` | pending branch checkpointのrunを中止する。 |
+| `inspectBranching(runId?)` | loop、checkpoint、transition historyを表示する。 |
 
-## Execution input
+`registerActionProvider`は同じIDを別ownerが無警告で上書きすることを拒否します。古いregistrationのdisposeが新しいregistrationを削除してはなりません。
 
-`ActionExecutionInput` は action provider に渡される入力です。provider は `args`、`inputs`、`state` を主入力とし、必要な場合だけ workflow context を参照します。
+## ActionExecutionInput
 
 ```ts
 interface ActionExecutionInput {
@@ -36,47 +57,80 @@ interface ActionExecutionInput {
 }
 ```
 
-`AgentExecutionInput` は agent provider に渡される入力です。agent provider は prompt と workflow state を受け取り、Bob UI に依存せずに standalone 実行できます。
-
-```ts
-interface AgentExecutionInput {
-  prompt: string
-  inputs: Record<string, unknown>
-  state?: Record<string, string>
-  workflowId?: string
-  runId?: string
-  stepId?: string
-}
-```
+providerは`args`、`inputs`、`state`をuntrusted inputとして扱い、許可field、workspace containment、ID、pathをhost側で再検証します。
 
 ## Result handoff
 
-`result` step は `latestAssistantText`、`resultText`、`artifactText` の順に利用可能な出力を解決し、configured result sink に渡します。result sink が失敗した場合、workflow-register は失敗を握りつぶさず step failure として run state と診断に記録します。file sink / command sink / registered result sink のいずれでも、失敗時は後続 step へ成功として進めません。
+agent出力のhandoffは、trim済みtextを互換用`args[0]`と`latestAssistantText` / `resultText` / `artifactText`へ渡します。file sink、command sink、registered sinkのいずれでも、失敗を成功として握りつぶさずstep / runをfailedにします。
 
 ## bob-bazaar-review providers
 
-`bob-bazaar-review` は次の action provider ID を登録します。provider ID と同名の VS Code command ID は変更しません。
+source ownerは`local.bob-bazaar-review`です。
+
+### Review providers
 
 | Provider ID | Contract |
 | --- | --- |
-| `bobBazaar.openReviewGui` | Bazaar review GUI を開く。workflow context から初期 target を受け取れる。 |
-| `bobBazaar.collectReviewContext` | review target、変更ファイル、packet summary を収集する。 |
-| `bobBazaar.loadReviewRules` | `.bob/review/checklist.json` と `.bob/review/review-result.schema.json` を読み込む。 |
-| `bobBazaar.captureReviewResult` | Bob 出力から review-result JSON を取り込み、検証して保存する。 |
+| `bobBazaar.openReviewGui` | `Bazaar レビュー`主GUIを開き、workflow contextからinitial targetを受け取る。 |
+| `bobBazaar.collectReviewContext` | target、changed files、packet summaryを収集する。 |
+| `bobBazaar.loadReviewRules` | checklist、schema、approved context / addendum / provenanceをboundedに読み込む。 |
+| `bobBazaar.captureReviewResult` | result handoffからreview-result JSONを検証し、active Review Run identityと一致する場合だけ保存する。 |
+
+### Document-backed rule authoring providers
+
+| Provider ID | Contract |
+| --- | --- |
+| `bobBazaar.openRuleAuthoringGui` | source選択、決定論的抽出、preview、AI consentを行う。 |
+| `bobBazaar.loadRuleSourceIndex` | 本文を含まないbounded source indexを読み込む。 |
+| `bobBazaar.captureRuleEvidenceSelection` | selected chunk ID、hash、source membershipを検証・保存する。 |
+| `bobBazaar.loadSelectedRuleEvidence` | 明示選択された本文だけをuntrusted evidence frameで渡す。 |
+| `bobBazaar.captureRuleProposal` | proposal schema、base hash、citation、operationを検証・保存する。 |
+| `bobBazaar.openRuleProposalTriageGui` | 規約候補の人間decision、apply preview、transactionを行う。 |
+| `bobBazaar.verifyRuleAuthoringApply` | committed manifest、final hash、provenance、phaseを再検証する。 |
 
 ## bob-code-consistency-review providers
 
-`bob-code-consistency-review` は次の action provider ID を登録します。provider ID と VS Code command ID は変更しません。
+source ownerは`local.bob-code-consistency-review`です。
+
+### Workspace and review-input providers
 
 | Provider ID | Contract |
 | --- | --- |
-| `bobCodeConsistency.prepareAiTraceabilityDraft` | traceability AI draft 用 prompt を作成する。 |
-| `bobCodeConsistency.captureAiTraceabilityDraft` | AI draft JSON を取り込み、workflow state に渡す。 |
-| `bobCodeConsistency.applyAiTraceabilityDraft` | AI draft JSON を `.bob-trace/traceability-catalog.json` に反映する。 |
-| `bobCodeConsistency.openTraceabilityPrep` | Traceability Prep Webview を開く。 |
-| `bobCodeConsistency.validateTraceabilityCatalog` | traceability catalog gate を検証する。 |
-| `bobCodeConsistency.createReviewInputFromTraceability` | accepted traceability item から `review-input.yaml` を生成する。 |
-| `bobCodeConsistency.preprocess` | `review-input.yaml` から review-package を生成する。 |
-| `bobCodeConsistency.captureBobOutput` | Bob output YAML を取り込む。 |
-| `bobCodeConsistency.validateOutput` | Bob output YAML を schema と evidence index で検証する。 |
-| `bobCodeConsistency.triage` | 人間確認用 triage 成果物を生成する。 |
+| `bobCodeConsistency.initializeWorkspace` | bundled workflowをbackup後に更新し、既存`review-input.yaml`は変更せずbackupだけ作成する。 |
+| `bobCodeConsistency.createReviewInput` | 対話入力をbuilder / schema / path validatorへ通して`review-input.yaml`を作成する。 |
+| `bobCodeConsistency.prepareAiReviewInputDraft` | AIへ渡すbounded draft promptを作成する。 |
+| `bobCodeConsistency.applyAiReviewInputDraft` | AIの`ReviewInputDraft` JSONをhost側で再検証して適用する。 |
+| `bobCodeConsistency.repairReviewInput` | 既知の旧enumなどをpreview / backup付きで修復する。 |
+| `bobCodeConsistency.explainReviewInputDiagnostics` | review-input診断を説明する。 |
+
+### Traceability providers
+
+| Provider ID | Contract |
+| --- | --- |
+| `bobCodeConsistency.prepareAiTraceabilityDraft` | proposed-only traceability候補用promptを作成する。 |
+| `bobCodeConsistency.captureAiTraceabilityDraft` | AI draft JSONを検証しworkflow stateへ渡す。 |
+| `bobCodeConsistency.applyAiTraceabilityDraft` | proposed-only JSONをsidecar catalogへmergeする。 |
+| `bobCodeConsistency.openTraceabilityPrep` | 独立panelを作らず、保持中の`整合プレレビュー`主GUIを`トレーサビリティ整理`stageへrouteする。 |
+| `bobCodeConsistency.validateTraceabilityCatalog` | catalog gateを検証してreportを生成する。 |
+| `bobCodeConsistency.createReviewInputFromTraceability` | accepted itemから`review-input.yaml`を生成する。 |
+
+### Review execution providers
+
+| Provider ID | Contract |
+| --- | --- |
+| `bobCodeConsistency.preprocess` | validated review-input、VCS差分、文書、コード根拠からreview-packageを生成する。 |
+| `bobCodeConsistency.captureBobOutput` | result handoff / clipboard / textからBob output YAMLを取り込み、固定workspaceへ保存する。 |
+| `bobCodeConsistency.validateOutput` | Bob outputをschemaとevidence indexで検証する。 |
+| `bobCodeConsistency.triage` | immutable source snapshot、人間decision store、projectionを生成する。 |
+
+## UI route boundary
+
+provider IDとUI ownershipは別契約です。
+
+- `bobBazaar.openReviewGui`がBazaarのreview / result / decision / metrics stageを所有します。
+- `bobCodeConsistency.openReviewWizard`がinput / traceability / preprocess / result / decision stageを所有します。
+- stage serviceはvalidator、store、transaction、conflict tokenを再利用しますが、独立した公開panelを所有しません。
+
+## soft dependency
+
+Bazaar ReviewとCode Consistency Reviewは、`workflow-register`が存在する場合だけproviderを登録します。未導入時も各拡張のactivationとlocal serviceを維持します。登録失敗はwarningとして扱い、optional integrationをhard dependencyへ変えません。
