@@ -2,7 +2,7 @@
 
 `bob-bazaar-review`は、Bazaarリポジトリの差分レビューをIBM Bobから扱いやすくするVS Code拡張機能です。
 
-`IBM.bob-code`本体は変更しません。`.bob/mcp.json`へ読み取り専用Bazaar MCP serverを登録し、レビュー対象の収集、プロジェクト規約、review-resultの検証・保存、人による判定、レビュー実行、実績集計を支援します。
+`IBM.bob-code`本体は変更しません。`.bob/mcp.json`へ読み取り専用Bazaar MCP serverを登録し、レビュー対象の収集、プロジェクト規約、review-resultの検証・保存、指摘確認・振り分け、レビュー実行、実績集計を支援します。
 
 コマンドID、設定キー、JSON / YAML field、ファイル名は実装上の名称をそのまま記載します。
 
@@ -24,10 +24,10 @@ bzr --no-aliases <command>
 - workspace外の`.docx`、`.xlsx`、text PDFからAI規約候補を作り、人による判定後にproject-owned review assetへ選択適用する。
 - `workflow-register`のaction providerを提供する。
 - Bobのreview-result JSONを検証し、JSON / Markdown / metadataとして保存する。
-- packet、result、人による判定、record、summary、所要時間をレビュー実行として追跡する。
+- packet、result、指摘確認・振り分け、record、summary、所要時間をレビュー実行として追跡する。
 - 中断したレビュー実行を一覧から再開する。
 - Iteration 1以前のartifactを確認付きでレビュー実行へ復旧する。
-- campaign単位のレビュー実行、人による判定、rule、target mode、時間指標をDashboardで確認・exportする。
+- campaign単位のレビュー実行、指摘確認・振り分け、rule、target mode、時間指標をレビュー実績で確認・exportする。
 - 読み取り専用Bazaar MCP toolsとproject rules toolsを提供する。
 
 ## 任意連携
@@ -60,14 +60,14 @@ Command Paletteの`bobBazaar.authorProjectRulesFromDocuments`は、外部資料�
 ## 標準レビュー実行フロー
 
 1. Bazaar workspaceをBob IDE / VS Codeで開く。
-2. `Bob Bazaar Review: GUI を開く`を実行する。
+2. `Bob Bazaar Review: レビューを開始`を実行する。
 3. 必要なら`.bobを初期化`する。
 4. campaign、target、review IDを確認する。
 5. `対象情報を取得`でrevision情報と変更ファイルを確認する。
 6. `レビュー実行を開始してBobに追加`で`review-run.json`と`review-packet.md`を保存する。
-7. Bobでレビューし、レビュー結果の取り込みでreview-resultを検証・保存する。
-8. 人による判定でdecision、owner、action、reasonを入力する。
-9. Bob review / 人による判定時間を確認し、必要なら補正する。
+7. Bobでレビューし、主GUI内の`レビュー結果取り込み`でreview-resultを検証・保存する。
+8. `指摘確認・振り分け`でdecision、owner、action、reasonを入力する。
+9. Bob review / 指摘確認・振り分け時間を確認し、必要なら補正する。
 10. `レビュー実行を完了して集計`で`record.yaml`と集計レポートを生成する。
 
 VS Codeを閉じた後は、Review GUIの未完了レビュー実行一覧から続きの画面へ再開できます。
@@ -76,10 +76,7 @@ VS Codeを閉じた後は、Review GUIの未完了レビュー実行一覧から
 
 | 表示名 | command ID | 用途 |
 | --- | --- | --- |
-| Bazaar レビューを開始 | `bobBazaar.openReviewGui` | レビュー手順を開く。 |
-| レビューキャンペーン ダッシュボードを開く | `bobBazaar.openCampaignDashboard` | campaign実績とdata qualityを表示・exportする。 |
-| レビュー結果の取り込みを開く | `bobBazaar.openResultCaptureGui` | Bob出力を検証・保存する。 |
-| 人による判定を開く | `bobBazaar.openHumanTriageGui` | 人間判断、metrics補正、finalizeを行う。 |
+| Bob Bazaar Review: レビューを開始 | `bobBazaar.openReviewGui` | レビュー手順を開く。 |
 | レビューコンテキストを収集 | `bobBazaar.collectReviewContext` | packetからworkflow contextを作る。 |
 | プロジェクト規約を読み込む | `bobBazaar.loadReviewRules` | checklistとschemaを読み込む。 |
 | レビュー結果を取り込む | `bobBazaar.captureReviewResult` | editor / selection / clipboardから保存する。 |
@@ -95,15 +92,15 @@ VS Codeを閉じた後は、Review GUIの未完了レビュー実行一覧から
 | 実績キャンペーンを初期化 | `bobBazaar.records.initCampaign` | `.bob-review-records`の雛形を作る。 |
 | 実績記録を作成 | `bobBazaar.records.createRecord` | standaloneでartifactをrecordへ結ぶ。 |
 | 実績記録を検証 | `bobBazaar.records.validateRecord` | field、path、artifactを検証する。 |
-| 人による判定雛形を生成 | `bobBazaar.records.createTriage` | resultからtriageを作る。 |
-| 人による判定を検証 | `bobBazaar.records.validateTriage` | decisionと必須入力を検証する。 |
+| 指摘確認・振り分け一覧を作成 | `bobBazaar.records.createTriage` | resultからtriageを作る。 |
+| 指摘確認・振り分け内容を検証 | `bobBazaar.records.validateTriage` | decisionと必須入力を検証する。 |
 | 集計レポートを生成 | `bobBazaar.records.generateSummary` | 複数recordを集計する。 |
 
-既存commandは引数なしのstandalone modeを維持します。レビュー実行経由では検証済み`workspaceRoot`、`campaignId`、`reviewId`を渡します。
+レビューGUIのcapture、triage、実績表示は独立commandを持たず、`bobBazaar.openReviewGui`で開く単一panel内のstageとして切り替えます。非GUI workflow commandとrecord commandは引き続き利用できます。
 
 ## レビュー手順
 
-Review GUI、レビュー結果の取り込み、人による判定を、永続化された同じrun contextで接続します。
+主GUI内のレビュー、レビュー結果取り込み、指摘確認・振り分け、レビュー実績を、永続化された同じrun contextで接続します。
 
 ### 生成物
 
@@ -145,14 +142,14 @@ target -> packet -> result -> triage -> record -> summary
 | 状態 | 再開先 |
 | --- | --- |
 | packet未完了 | Review GUI |
-| packet完了、result未完了 | レビュー結果の取り込み |
-| result完了、triage未完了 | 人による判定 |
+| packet完了、result未完了 | レビュー結果取り込み |
+| result完了、triage未完了 | 指摘確認・振り分け |
 | triage完了、record / summary未完了 | finalize |
 | completed | 操作なし |
 
 一覧は`updatedAt`降順です。malformed JSON、template、symlink / junction経由のrunは通常一覧へ含めません。
 
-### 人による判定契約
+### 指摘確認・振り分け契約
 
 | decision | 必須入力 |
 | --- | --- |
@@ -195,19 +192,19 @@ summaryが失敗しても作成済みrecordを保持します。次回はpersist
 - 承認後に追加するのは`review-run.json`だけとする。
 - 既存artifactをrename、上書き、補正しない。
 
-## レビューキャンペーン ダッシュボード
+## レビュー実績
 
-`bobBazaar.openCampaignDashboard`は、レビュー実行、record、valid 人による判定、review-resultをcampaign単位で集計します。Review GUIの`レビューキャンペーン ダッシュボードを開く`からも起動できます。
+主GUI内の`レビュー実績`stageは、レビュー実行、record、validな指摘確認・振り分け、review-resultをcampaign単位で集計します。
 
 表示内容:
 
 - レビュー実行一覧と次の操作。
-- 人による判定 pending一覧。
+- 指摘確認・振り分け pending一覧。
 - schema validation成功率。
 - findingのaccepted / rejected / needs investigation / deferredと各rate。
 - rule別の検出数・採用率・棄却率。
 - target mode別の傾向。Dashboard v1ではこれを`change_type`とする。
-- baseline / Bob review / 人による判定 / estimated savedの時間。
+- baseline / Bob review / 指摘確認・振り分け / estimated savedの時間。
 - malformed、missing、identity mismatch、symlink除外などのdata quality warning。
 
 rateの分母が0の場合は`0%`ではなく`n/a`です。decisionはvalidな`triage.yaml`だけから集計し、pending triageを自動採否しません。
@@ -252,7 +249,7 @@ required: true
 completeOnSuccess: false
 ```
 
-レビュー実行から開いたレビュー結果の取り込みでは、workflowのchecklist / schema契約に加え、expected review IDをartifact保存前に検証します。
+レビュー実行から進んだレビュー結果取り込みでは、workflowのchecklist / schema契約に加え、expected review IDをartifact保存前に検証します。
 
 ## review-resultの保存
 
@@ -311,7 +308,7 @@ Bazaar / result toolは`BOB_BAZAAR_ALLOWED_ROOTS`内だけを受け付けます�
 | `src/ruleAuthoring/` | 文書抽出、source/evidence/proposal契約、run store、apply transaction、approved bundle |
 | `src/reviewRuns/` | state、store、metrics、resume、finalize、recovery、coordinator |
 | `src/dashboard/` | campaign evidence集計、rate / trend、JSON / Markdown / CSV export |
-| `src/ui/` | Review GUI、レビュー結果の取り込み、人による判定、レビューキャンペーン ダッシュボード、規約作成wizard / proposal triage |
+| `src/ui/` | 単一Review GUI内のレビュー結果取り込み、指摘確認・振り分け、レビュー実績、規約作成wizard / proposal triage |
 | `src/workflow/` | workflow-register bridge、review / rule authoring action adapter |
 | `src/workspace/` | workspace rootと`.bob`初期化 |
 | `src/records/` | record、triage、summary |

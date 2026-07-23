@@ -18,8 +18,8 @@ const EXTENSION_ID = "local.bob-code-consistency-review"
 const BOB_OUTPUT_PATH = ".bob-review/bob-output/bob-output.yaml"
 const TRIAGE_PATH = ".bob-review/human-triage"
 const REVIEW_PACKAGE_PATH = ".bob-review/review-package"
-const HUMAN_TRIAGE_TAB_LABEL = "指摘・確認事項の判定"
-const HUMAN_TRIAGE_VIEW_TYPE = "bobCodeConsistencyHumanTriage"
+const HUMAN_TRIAGE_TAB_LABEL = "整合プレレビューを開始"
+const HUMAN_TRIAGE_VIEW_TYPE = "bobCodeConsistencyReviewWizard"
 const TAB_STATE_TIMEOUT_MS = 5_000
 const TAB_STATE_POLL_INTERVAL_MS = 50
 const temporaryRoots = []
@@ -209,7 +209,7 @@ async function openAndCloseHumanTriage() {
   )
   assert.ok(vscode.window.tabGroups.all.length > 0, "editor workbench must expose at least one tab group")
 
-  await vscode.commands.executeCommand("bobCodeConsistency.openHumanTriageGui")
+  await vscode.commands.executeCommand("bobCodeConsistency.openReviewWizard", { initialStage: "triage" })
   const targetTab = await waitForTabSelection(
     () => {
       const activeTab = vscode.window.tabGroups.activeTabGroup.activeTab

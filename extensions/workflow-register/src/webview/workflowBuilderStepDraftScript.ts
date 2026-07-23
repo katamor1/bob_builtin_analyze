@@ -270,6 +270,7 @@ handleFieldEvent = function(event) {
   if (!target || !target.dataset) return;
   const value = target.type === 'checkbox' ? target.checked : target.value;
   if (activeTab === 'step' && mutateStepDraftFromEvent(target, value)) {
+    vscode.postMessage({ type: 'draftChanged', source: 'stepDraft' });
     renderStepsList();
     renderTabs();
     return;
@@ -291,6 +292,7 @@ document.addEventListener('click', function(event) {
     if (!step) return;
     const result = ensureResult(step);
     result.sinks.push({ type: 'file', path: '' });
+    vscode.postMessage({ type: 'draftChanged', source: 'stepDraft' });
     latestStepDraftHostValidation = undefined;
     renderTabs();
     return;
@@ -303,6 +305,7 @@ document.addEventListener('click', function(event) {
     const result = ensureResult(step);
     result.sinks.splice(Number(target.dataset.index), 1);
     if (result.sinks.length === 0) result.sinks.push({ type: 'file', path: '' });
+    vscode.postMessage({ type: 'draftChanged', source: 'stepDraft' });
     latestStepDraftHostValidation = undefined;
     renderTabs();
     return;
@@ -324,6 +327,7 @@ document.addEventListener('click', function(event) {
       return;
     }
     clearStepDraft();
+    vscode.postMessage({ type: 'draftChanged', source: 'stepDraft', dirty: false });
   }
   if (action === 'validate-step-draft') {
     event.preventDefault();
@@ -336,6 +340,7 @@ document.addEventListener('click', function(event) {
     event.preventDefault();
     event.stopImmediatePropagation();
     clearStepDraft();
+    vscode.postMessage({ type: 'draftChanged', source: 'stepDraft', dirty: false });
     renderTabs();
     renderStepsList();
     return;
@@ -351,12 +356,13 @@ document.addEventListener('click', function(event) {
     if (result.status === 'warning' && !confirm('warning があります。理解した上で確定しますか？')) return;
     model.steps[selectedStepIndex] = cloneStepDraft(stepDraft);
     clearStepDraft();
-    render();
+    render(true);
   }
 }, true);
 
 window.addEventListener('message', function(event) {
   const message = event.data;
+  if (typeof acceptHostMessage === 'function' && !acceptHostMessage(message)) return;
   if (message.type === 'model' || message.type === 'saved') clearStepDraft();
   if (message.type === 'stepDraftValidationResult') {
     latestStepDraftHostValidation = message;

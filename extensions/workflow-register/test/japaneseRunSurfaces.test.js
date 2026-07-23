@@ -4,7 +4,6 @@ const { readSourceSet } = require("./helpers/sourceReader")
 
 test("run surfaces use Japanese operator copy", () => {
   const source = readSourceSet([
-    "commands/runControlView.ts",
     "commands/runControl.ts",
     "commands/runControlReport.ts",
     "commands/inspectRunDiagnostics.ts",
@@ -12,8 +11,6 @@ test("run surfaces use Japanese operator copy", () => {
     "workflowRunCommands.ts"
   ])
   for (const label of [
-    "Bob ワークフロー実行",
-    "読み取り専用",
     "現在のステップ",
     "実行を一時停止",
     "ワークフロー実行制御",

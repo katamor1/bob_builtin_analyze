@@ -114,9 +114,10 @@ export function serializeTraceabilityPrepInitialModel(model: unknown): string {
   return JSON.stringify(model).replace(/</g, "\\u003c")
 }
 
-export function renderTraceabilityPrepClientScript(initialJson: string): string {
+export function renderTraceabilityPrepClientScript(initialJson: string, renderTokenExpression = "undefined"): string {
   return String.raw`
 const vscode = acquireVsCodeApi();
+const postMessage = (message) => vscode.postMessage(Object.assign({}, message, { renderToken: ` + renderTokenExpression + String.raw` }));
 let model = ` + initialJson + String.raw`;
 let originalModel = cloneModel(model);
 let activeTab = 'domains';
@@ -135,7 +136,7 @@ function setStatus(message, className) {
 }
 
 document.getElementById('save').onclick = function() {
-  vscode.postMessage({ type: 'save' });
+  postMessage({ type: 'save' });
 };
 
 document.getElementById('restore-original-catalog').onclick = function() {
@@ -144,7 +145,7 @@ document.getElementById('restore-original-catalog').onclick = function() {
     return;
   }
   if (!confirm('この画面を開いた時点の内容へすべて戻しますか？')) return;
-  vscode.postMessage({ type: 'restoreOriginalCatalog' });
+  postMessage({ type: 'restoreOriginalCatalog' });
 };
 
 document.querySelectorAll('.tab').forEach(function(tab) {
@@ -191,7 +192,7 @@ window.addEventListener('message', function(event) {
 });
 
 function send(action) {
-  vscode.postMessage({ type: 'action', action: action });
+  postMessage({ type: 'action', action: action });
 }
 
 function invokeAction(action, args) {
@@ -530,6 +531,6 @@ function escapeHtml(value) {
 }
 
 render();
-vscode.postMessage({ type: 'ready' });
+postMessage({ type: 'ready' });
 `
 }

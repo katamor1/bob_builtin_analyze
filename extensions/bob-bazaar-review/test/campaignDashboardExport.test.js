@@ -148,7 +148,7 @@ test("renders answer-first Markdown and RFC 4180 CSV from the same dashboard", (
   const markdown = renderCampaignDashboardMarkdown(dashboard)
   const csv = renderCampaignDashboardCsv(dashboard)
 
-  assert.match(markdown, /# IBM Bob Bazaar Campaign Dashboard/)
+  assert.match(markdown, /# IBM Bob Bazaar レビュー実績/)
   assert.match(markdown, /campaign-1/)
   assert.match(markdown, /schema validation rate \| 100\.0%/i)
   assert.match(markdown, /RULE-1/)

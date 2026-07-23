@@ -7,7 +7,7 @@
 ## 表示契約の整合
 
 - workflow-register の Command Palette は既存ポリシーどおり `Bob Workflow: <日本語の操作名>` を維持する。
-- Human Triage の Extension Host smoke は、実際の日本語 Webview タイトル `指摘・確認事項の判定` を待機する。
+- Human Triage の Extension Host smoke は、実際の日本語 Webview タイトル `指摘確認・振り分け` を待機する。
 - コマンド ID、設定キー、Webview message value、保存列挙値、JSON/YAMLキー、成果物schemaは変更しない。
 - Consistency Review Wizard は日本語化と同時に、`.bob` workspace初期化カードとmodel-backed statusを保持する。
 

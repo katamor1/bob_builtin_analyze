@@ -18,11 +18,8 @@
   ],
   "activationEvents": [
     "onStartupFinished",
-    "onView:workflowRegister.runs",
-    "onView:workflowRegister.operationHub",
     "onCommand:workflowRegister.openOperationHub",
     "onCommand:workflowRegister.refreshOperationHub",
-    "onCommand:workflowRegister.openOperationHubPanel",
     "onCommand:workflowRegister.reload",
     "onCommand:workflowRegister.inspect",
     "onCommand:workflowRegister.completeCurrentStep",
@@ -49,7 +46,6 @@
     "onCommand:workflowRegister.approveBranchCheckpoint",
     "onCommand:workflowRegister.abortBranchCheckpoint",
     "onCommand:workflowRegister.inspectBranching",
-    "onCommand:workflowRegister.refreshRunsView",
     "onCommand:workflowRegister.openCurrentStepInBuilder",
     "onCommand:workflowRegister.inspectRunDiagnostics",
     "onCommand:workflowRegister.inspectRunStorage",
@@ -76,28 +72,21 @@
     "onCommand:bobTemplate.validateProjectProfile",
     "onCommand:bobTemplate.validateCustomization",
     "onCommand:bobTemplate.generateWorkflow",
-    "onCommand:bobTemplate.checkReadiness",
-    "onCommand:bobTemplate.openCustomizationStudio"
+    "onCommand:bobTemplate.checkReadiness"
   ],
   "main": "./out/extensionWithAuthoring.js",
   "contributes": {
     "commands": [
       {
         "command": "workflowRegister.openOperationHub",
-        "title": "操作センターを開く",
-        "category": "Bob Workflow"
+        "title": "操作ハブを開く",
+        "category": "Bob"
       },
       {
         "command": "workflowRegister.refreshOperationHub",
         "title": "操作センターを更新",
         "category": "Bob Workflow",
         "icon": "$(refresh)"
-      },
-      {
-        "command": "workflowRegister.openOperationHubPanel",
-        "title": "操作センターをパネルで開く",
-        "category": "Bob Workflow",
-        "icon": "$(layout)"
       },
       {
         "command": "workflowRegister.reload",
@@ -230,11 +219,6 @@
         "category": "Bob Workflow"
       },
       {
-        "command": "workflowRegister.refreshRunsView",
-        "title": "実行一覧を更新",
-        "category": "Bob Workflow"
-      },
-      {
         "command": "workflowRegister.openCurrentStepInBuilder",
         "title": "現在のステップをGUIで編集",
         "category": "Bob Workflow"
@@ -306,7 +290,7 @@
       },
       {
         "command": "workflowRegister.openWorkflowBuilder",
-        "title": "GUI で作成",
+        "title": "ワークフローを作成・編集",
         "category": "Bob Workflow"
       },
       {
@@ -368,26 +352,8 @@
         "command": "bobTemplate.checkReadiness",
         "title": "テンプレートの適用準備状況を確認",
         "category": "Bob Workflow"
-      },
-      {
-        "command": "bobTemplate.openCustomizationStudio",
-        "title": "テンプレート調整を開く",
-        "category": "Bob Workflow"
       }
     ],
-    "views": {
-      "explorer": [
-        {
-          "id": "workflowRegister.operationHub",
-          "name": "Bob 操作センター",
-          "type": "webview"
-        },
-        {
-          "id": "workflowRegister.runs",
-          "name": "Bob ワークフロー実行"
-        }
-      ]
-    },
     "configuration": {
       "title": "Bob ワークフロー登録",
       "properties": {
@@ -494,211 +460,219 @@
           "command": "workflowRegister.openOperationHub"
         },
         {
-          "command": "workflowRegister.refreshOperationHub"
+          "command": "workflowRegister.refreshOperationHub",
+          "when": "false"
         },
         {
-          "command": "workflowRegister.openOperationHubPanel"
+          "command": "workflowRegister.reload",
+          "when": "false"
         },
         {
-          "command": "workflowRegister.reload"
+          "command": "workflowRegister.inspect",
+          "when": "false"
         },
         {
-          "command": "workflowRegister.inspect"
+          "command": "workflowRegister.completeCurrentStep",
+          "when": "false"
         },
         {
-          "command": "workflowRegister.completeCurrentStep"
+          "command": "workflowRegister.completeStep",
+          "when": "false"
         },
         {
-          "command": "workflowRegister.completeStep"
+          "command": "workflowRegister.inspectActiveSteps",
+          "when": "false"
         },
         {
-          "command": "workflowRegister.inspectActiveSteps"
+          "command": "workflowRegister.runWorkflow",
+          "when": "false"
         },
         {
-          "command": "workflowRegister.runWorkflow"
+          "command": "workflowRegister.runWorkflowStep",
+          "when": "false"
         },
         {
-          "command": "workflowRegister.runWorkflowStep"
+          "command": "workflowRegister.startFromStepWithArtifacts",
+          "when": "false"
         },
         {
-          "command": "workflowRegister.startFromStepWithArtifacts"
+          "command": "workflowRegister.importArtifactsFromTaskSnapshots",
+          "when": "false"
         },
         {
-          "command": "workflowRegister.importArtifactsFromTaskSnapshots"
+          "command": "workflowRegister.inspectRuns",
+          "when": "false"
         },
         {
-          "command": "workflowRegister.inspectRuns"
+          "command": "workflowRegister.resumeRun",
+          "when": "false"
         },
         {
-          "command": "workflowRegister.resumeRun"
+          "command": "workflowRegister.recoverDetachedHeldRun",
+          "when": "false"
         },
         {
-          "command": "workflowRegister.retryCurrentStep"
+          "command": "workflowRegister.retryCurrentStep",
+          "when": "false"
         },
         {
-          "command": "workflowRegister.acceptCurrentStep"
+          "command": "workflowRegister.acceptCurrentStep",
+          "when": "false"
         },
         {
-          "command": "workflowRegister.runNextStep"
+          "command": "workflowRegister.runNextStep",
+          "when": "false"
         },
         {
-          "command": "workflowRegister.openManualStepPanel"
+          "command": "workflowRegister.openManualStepPanel",
+          "when": "false"
         },
         {
-          "command": "workflowRegister.acceptAndRunNextStep"
+          "command": "workflowRegister.acceptAndRunNextStep",
+          "when": "false"
         },
         {
-          "command": "workflowRegister.inspectCurrentStep"
+          "command": "workflowRegister.inspectCurrentStep",
+          "when": "false"
         },
         {
-          "command": "workflowRegister.pauseCurrentRun"
+          "command": "workflowRegister.pauseCurrentRun",
+          "when": "false"
         },
         {
-          "command": "workflowRegister.pauseAfterCurrentStep"
+          "command": "workflowRegister.pauseAfterCurrentStep",
+          "when": "false"
         },
         {
-          "command": "workflowRegister.pauseBeforeNextAiCall"
+          "command": "workflowRegister.pauseBeforeNextAiCall",
+          "when": "false"
         },
         {
-          "command": "workflowRegister.resumePausedRun"
+          "command": "workflowRegister.resumePausedRun",
+          "when": "false"
         },
         {
-          "command": "workflowRegister.inspectRunControl"
+          "command": "workflowRegister.inspectRunControl",
+          "when": "false"
         },
         {
-          "command": "workflowRegister.approveBranchCheckpoint"
+          "command": "workflowRegister.approveBranchCheckpoint",
+          "when": "false"
         },
         {
-          "command": "workflowRegister.abortBranchCheckpoint"
+          "command": "workflowRegister.abortBranchCheckpoint",
+          "when": "false"
         },
         {
-          "command": "workflowRegister.inspectBranching"
+          "command": "workflowRegister.inspectBranching",
+          "when": "false"
         },
         {
-          "command": "workflowRegister.refreshRunsView"
+          "command": "workflowRegister.openCurrentStepInBuilder",
+          "when": "false"
         },
         {
-          "command": "workflowRegister.openCurrentStepInBuilder"
+          "command": "workflowRegister.inspectRunDiagnostics",
+          "when": "false"
         },
         {
-          "command": "workflowRegister.inspectRunDiagnostics"
+          "command": "workflowRegister.designWorkflowWithAi",
+          "when": "false"
         },
         {
-          "command": "workflowRegister.designWorkflowWithAi"
+          "command": "workflowRegister.improveWorkflowWithAi",
+          "when": "false"
         },
         {
-          "command": "workflowRegister.improveWorkflowWithAi"
+          "command": "workflowRegister.explainWorkflowDiagnostics",
+          "when": "false"
         },
         {
-          "command": "workflowRegister.explainWorkflowDiagnostics"
+          "command": "workflowRegister.validateCurrentWorkflow",
+          "when": "false"
         },
         {
-          "command": "workflowRegister.validateCurrentWorkflow"
+          "command": "workflowRegister.validateWorkspaceWorkflows",
+          "when": "false"
         },
         {
-          "command": "workflowRegister.validateWorkspaceWorkflows"
-        },
-        {
-          "command": "workflowRegister.createWorkflowFromTemplate"
+          "command": "workflowRegister.createWorkflowFromTemplate",
+          "when": "false"
         },
         {
           "command": "workflowRegister.openWorkflowBuilder"
         },
         {
-          "command": "workflowRegister.editWorkflowInBuilder"
+          "command": "workflowRegister.editWorkflowInBuilder",
+          "when": "false"
         },
         {
-          "command": "workflowRegister.inspectRunStorage"
+          "command": "workflowRegister.inspectRunStorage",
+          "when": "false"
         },
         {
-          "command": "workflowRegister.previewRunCleanup"
+          "command": "workflowRegister.previewRunCleanup",
+          "when": "false"
         },
         {
-          "command": "workflowRegister.cleanupCompletedRuns"
+          "command": "workflowRegister.cleanupCompletedRuns",
+          "when": "false"
         },
         {
-          "command": "workflowRegister.deleteSelectedRuns"
+          "command": "workflowRegister.deleteSelectedRuns",
+          "when": "false"
         },
         {
-          "command": "workflowRegister.pinRun"
+          "command": "workflowRegister.pinRun",
+          "when": "false"
         },
         {
-          "command": "workflowRegister.unpinRun"
+          "command": "workflowRegister.unpinRun",
+          "when": "false"
         },
         {
-          "command": "bobProcess.validateCatalog"
+          "command": "bobProcess.validateCatalog",
+          "when": "false"
         },
         {
-          "command": "bobProcess.loadProcessInput"
+          "command": "bobProcess.loadProcessInput",
+          "when": "false"
         },
         {
-          "command": "bobProcess.collectEvidence"
+          "command": "bobProcess.collectEvidence",
+          "when": "false"
         },
         {
-          "command": "bobProcess.validateReviewResult"
+          "command": "bobProcess.validateReviewResult",
+          "when": "false"
         },
         {
-          "command": "bobProcess.writeProcessRecord"
+          "command": "bobProcess.writeProcessRecord",
+          "when": "false"
         },
         {
-          "command": "bobProcess.generateCampaignSummary"
+          "command": "bobProcess.generateCampaignSummary",
+          "when": "false"
         },
         {
-          "command": "bobTemplate.validateLibrary"
+          "command": "bobTemplate.validateLibrary",
+          "when": "false"
         },
         {
-          "command": "bobTemplate.validateProjectProfile"
+          "command": "bobTemplate.validateProjectProfile",
+          "when": "false"
         },
         {
-          "command": "bobTemplate.validateCustomization"
+          "command": "bobTemplate.validateCustomization",
+          "when": "false"
         },
         {
-          "command": "bobTemplate.generateWorkflow"
+          "command": "bobTemplate.generateWorkflow",
+          "when": "false"
         },
         {
-          "command": "bobTemplate.checkReadiness"
-        },
-        {
-          "command": "bobTemplate.openCustomizationStudio"
-        }
-      ],
-      "view/title": [
-        {
-          "command": "workflowRegister.openOperationHubPanel",
-          "when": "view == workflowRegister.operationHub",
-          "group": "navigation"
-        },
-        {
-          "command": "workflowRegister.refreshOperationHub",
-          "when": "view == workflowRegister.operationHub",
-          "group": "navigation"
-        },
-        {
-          "command": "workflowRegister.refreshRunsView",
-          "when": "view == workflowRegister.runs",
-          "group": "navigation"
-        }
-      ],
-      "view/item/context": [
-        {
-          "command": "workflowRegister.inspectRunControl",
-          "when": "view == workflowRegister.runs",
-          "group": "inline"
-        },
-        {
-          "command": "workflowRegister.pauseAfterCurrentStep",
-          "when": "view == workflowRegister.runs && viewItem =~ /workflowRun\\.(running|reviewing|held)/",
-          "group": "inline"
-        },
-        {
-          "command": "workflowRegister.openManualStepPanel",
-          "when": "view == workflowRegister.runs && viewItem == workflowRun.held",
-          "group": "inline"
-        },
-        {
-          "command": "workflowRegister.resumePausedRun",
-          "when": "view == workflowRegister.runs && viewItem == workflowRun.paused",
-          "group": "inline"
+          "command": "bobTemplate.checkReadiness",
+          "when": "false"
         }
       ]
     }

@@ -1,16 +1,17 @@
 import { TemplateCustomizationStudioModel, TemplateLibraryEntry } from "../template/templateStudioModel"
-import { renderTemplateCustomizationStudioClientScript } from "./templateCustomizationStudioClientScript"
-import { renderTemplateCustomizationStudioStyles } from "./templateCustomizationStudioStyles"
+import { renderWorkflowBuilderStandardTemplateClientScript } from "./workflowBuilderStandardTemplateClientScript"
+import { renderWorkflowBuilderStandardTemplateStyles } from "./workflowBuilderStandardTemplateStyles"
 
-export interface RenderTemplateCustomizationStudioHtmlOptions {
+export interface RenderWorkflowBuilderStandardTemplateHtmlOptions {
   cspSource: string
   nonce: string
   templates: TemplateLibraryEntry[]
   model: TemplateCustomizationStudioModel
   diagnostics?: string[]
+  sessionToken: string
 }
 
-export function renderTemplateCustomizationStudioHtml(options: RenderTemplateCustomizationStudioHtmlOptions): string {
+export function renderWorkflowBuilderStandardTemplateHtml(options: RenderWorkflowBuilderStandardTemplateHtmlOptions): string {
   const selectedTemplate = options.templates.find((template) => template.templatePath === options.model.templatePath) ?? options.templates[0]
   const supportedLanguages = selectedTemplate?.supportedLanguages?.length ? selectedTemplate.supportedLanguages : [options.model.targetLanguage]
   const supportedVcs = selectedTemplate?.supportedVcs?.length ? selectedTemplate.supportedVcs : [options.model.vcsType]
@@ -20,14 +21,15 @@ export function renderTemplateCustomizationStudioHtml(options: RenderTemplateCus
 <meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${options.cspSource} 'unsafe-inline'; script-src 'nonce-${options.nonce}';">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>テンプレート調整</title>
+<title>ワークフロー作成・編集</title>
 <style>
-${renderTemplateCustomizationStudioStyles()}
+${renderWorkflowBuilderStandardTemplateStyles()}
 </style>
 </head>
 <body>
 <header>
-  <h1>テンプレート調整</h1>
+  <h1>ワークフロー作成・編集</h1>
+  ${renderModeSelector("standard-template")}
   <div class="muted">標準テンプレートを選び、許可されたプロジェクト情報とワークフロー設定だけを編集します。Bazaar では <code>bzr --no-aliases</code> を前提にします。</div>
 </header>
 <main>
@@ -96,7 +98,7 @@ ${renderTemplateCustomizationStudioStyles()}
       <button data-action="validate-customization">ワークフロー設定を検証</button>
       <button data-action="preview-workflow">プレビュー</button>
       <button data-action="show-workflow-diff" class="secondary">差分を表示</button>
-      <button data-action="generate-workflow">ワークフローを生成</button>
+      <button data-action="generate-workflow">Builder に反映</button>
     </div>
   </div>
 
@@ -123,10 +125,20 @@ ${renderTemplateCustomizationStudioStyles()}
 <script nonce="${options.nonce}">
 const initialTemplates = ${jsonForScript(options.templates)};
 const initialModel = ${jsonForScript(options.model)};
-${renderTemplateCustomizationStudioClientScript()}
+const sessionToken = ${jsonForScript(options.sessionToken)};
+${renderWorkflowBuilderStandardTemplateClientScript()}
 </script>
 </body>
 </html>`
+}
+
+function renderModeSelector(activeMode: string): string {
+  const modes = [
+    ["empty", "空のワークフロー"],
+    ["standard-template", "標準テンプレートから作成"],
+    ["edit", "既存ワークフローを編集"]
+  ]
+  return `<nav class="builder-modes">${modes.map(([mode, label]) => `<button class="secondary${mode === activeMode ? " active" : ""}" data-builder-mode="${mode}"${mode === activeMode ? " disabled aria-current=\"page\"" : ""}>${label}</button>`).join("")}</nav>`
 }
 
 function renderTemplateList(templates: TemplateLibraryEntry[], selectedPath: string): string {

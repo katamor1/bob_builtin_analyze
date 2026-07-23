@@ -14,7 +14,6 @@ import { workflowRunStatusLabel, workflowStepCompletionLabel } from "../ui/displ
 
 export const OPERATION_HUB_ALLOWED_ACTIONS = [
   "refresh",
-  "openOperationHubPanel",
   "openWorkflowBuilder",
   "validateWorkspaceWorkflows",
   "openRunControl",
@@ -48,12 +47,15 @@ export interface OperationHubAction {
   expectedRevision?: string
   artifactPath?: string
   variant?: "primary" | "secondary" | "danger"
+  disabled?: boolean
+  unavailableReason?: string
 }
 
 export interface OperationHubExtensionStatus {
   id: string
   label: string
   available: boolean
+  unavailableReason?: string
 }
 
 export interface OperationHubSetupState {
@@ -199,7 +201,7 @@ export function buildOperationHubModel(input: OperationHubModelInput): Operation
       workspaceRoots: input.workspaceRoots,
       activeRunCount,
       workflowCount: workflowCatalog.length,
-      recommendedActions: buildRecommendedActions(activeRunCount)
+      recommendedActions: buildRecommendedActions(activeRunCount, input.extensionStatus)
     },
     setupChecklist: buildSetupChecklist(input.setup, input.extensionStatus),
     workflowCatalog,
@@ -264,10 +266,10 @@ function sameWorkspaceRoot(left: string, right: string): boolean {
   return normalize(left) === normalize(right)
 }
 
-function buildRecommendedActions(activeRunCount: number): OperationHubAction[] {
+function buildRecommendedActions(activeRunCount: number, extensions: readonly OperationHubExtensionStatus[]): OperationHubAction[] {
   const actions: OperationHubAction[] = [
-    { id: "openBazaarReview", label: "Bazaar レビューを開始", commandId: "bobBazaar.openReviewGui", variant: "primary" },
-    { id: "openConsistencyWizard", label: "整合プレレビューを開始", commandId: "bobCodeConsistency.openReviewWizard", variant: "primary" },
+    integrationAction(extensions, "local.bob-bazaar-review", "openBazaarReview", "Bazaar レビューを開始", "bobBazaar.openReviewGui"),
+    integrationAction(extensions, "local.bob-code-consistency-review", "openConsistencyWizard", "整合プレレビューを開始", "bobCodeConsistency.openReviewWizard"),
     { id: "openWorkflowBuilder", label: "ワークフローを作る", commandId: "workflowRegister.openWorkflowBuilder" },
     { id: "validateWorkspaceWorkflows", label: "セットアップを再確認", commandId: "workflowRegister.validateWorkspaceWorkflows" }
   ]
@@ -310,7 +312,7 @@ function buildSetupChecklist(setup: OperationHubSetupState, extensions: Operatio
       label: "Bazaar MCP",
       status: setup.mcpConfigPresent ? "ok" : "warning",
       message: setup.mcpConfigPresent ? ".bob/mcp.json を検出しました。" : "Bazaar 連携が必要な場合は MCP 設定を作成してください。",
-      action: setup.mcpConfigPresent ? undefined : { id: "openBazaarReview", label: "Bazaar レビューを開く", commandId: "bobBazaar.openReviewGui" }
+      action: setup.mcpConfigPresent ? undefined : integrationAction(extensions, "local.bob-bazaar-review", "openBazaarReview", "Bazaar レビューを開く", "bobBazaar.openReviewGui")
     },
     {
       id: "traceability",
@@ -320,6 +322,27 @@ function buildSetupChecklist(setup: OperationHubSetupState, extensions: Operatio
     }
   )
   return items
+}
+
+function integrationAction(
+  extensions: readonly OperationHubExtensionStatus[],
+  extensionId: string,
+  id: "openBazaarReview" | "openConsistencyWizard",
+  label: string,
+  commandId: string
+): OperationHubAction {
+  const extension = extensions.find((candidate) => candidate.id === extensionId)
+  const unavailableReason = extension && !extension.available
+    ? extension.unavailableReason || `${extension.label} 拡張がインストールされていません。`
+    : undefined
+  return {
+    id,
+    label,
+    commandId,
+    variant: "primary",
+    disabled: Boolean(unavailableReason),
+    unavailableReason
+  }
 }
 
 function buildWorkflowCatalog(workflows: OperationHubWorkflowInput[]): OperationHubWorkflowSummary[] {

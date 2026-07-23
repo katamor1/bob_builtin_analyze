@@ -1,5 +1,7 @@
 # Human Triage Operator Extension Host テスト仕様
 
+> **現行UIへの読み替え:** `Human Triage`は成果物／domain moduleの歴史的名称である。現行UIではstandalone panelを使わず、`整合プレレビュー`主GUI内の`指摘確認・振り分け`stageを開く。
+
 ## 1. 目的
 
 本書は、`bob-code-consistency-review`のHuman Triage Integrity Phase 1について、Node.js単体テストでは確認できないVS Code Extension Host上のoperator flowを定義する。
@@ -71,7 +73,7 @@
 | 操作 | first save成功後、同じold revisionでsecond saveを行う。 |
 | 期待結果 | second saveは`TRIAGE_REVISION_CONFLICT`で拒否される。 |
 
-このtestは二画面競合のdomain contractを、同じstale tokenの二つのsaveとして再現する。実際の二つのWebview panelを同時操作する視覚的UATは別途行う。
+このtestは二画面競合のdomain contractを、同じstale tokenの二つのsaveとして再現する。実際の二つの主GUI panelを`指摘確認・振り分け`stageへ進める視覚的UATは別途行う。
 
 ### CCR-EH-005 Legacy migration
 
@@ -94,8 +96,8 @@
 | 項目 | 内容 |
 | --- | --- |
 | 入力 | workspace fixture、生成済みsource / decision |
-| 操作 | Human Triage commandでpanelを開く → active tab確認 → close → reopen |
-| 期待結果 | 二回ともpanelが開き、`unhandledRejection`がなく、decisionが保持される。 |
+| 操作 | `整合プレレビュー`主GUIを開く → `指摘確認・振り分け`stageへ進む → active tab確認 → close → reopen |
+| 期待結果 | 二回とも主GUI内でstageが開き、`unhandledRejection`がなく、decisionが保持される。 |
 
 ## 5. Cleanup
 
@@ -136,4 +138,4 @@
 - Webviewのvisual layout、focus、keyboard操作
 - Developer Tools Console全体の警告確認
 
-Human Triageの保存・再読込、source/revision conflict、legacy migration、artifact生成、Webview reopenのコア動作は自動gateで確認する。
+Human Triage成果物の保存・再読込、source/revision conflict、legacy migration、artifact生成、主GUI stage reopenのコア動作は自動gateで確認する。

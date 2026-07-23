@@ -113,70 +113,35 @@ const RUN_MONITOR_WATCH_PATTERNS = [
 const RUN_MONITOR_REFRESH_DEBOUNCE_MS = 150
 const ACTION_REFRESH_DELAYS_MS = [300, 1000, 2500, 5000] as const
 
-export class OperationHubProvider implements vscode.WebviewViewProvider, vscode.Disposable {
-  private view?: vscode.WebviewView
+export class OperationHubProvider implements vscode.Disposable {
   private panel?: vscode.WebviewPanel
   private focusedRunId?: string
   private focusedWorkspaceRoot?: string
   private watchedRunRootsKey = ""
   private pendingAutoRefresh?: ReturnType<typeof setTimeout>
   private readonly actionRefreshTimers = new Set<ReturnType<typeof setTimeout>>()
+  private readonly backgroundRefreshFailureContexts = new Set<string>()
   private readonly runWatcherDisposables: vscode.Disposable[] = []
-  private readonly disposables: vscode.Disposable[] = []
   private readonly panelDisposables: vscode.Disposable[] = []
   private readonly mutations = new OperationHubMutationCoordinator()
 
   constructor(private readonly options: OperationHubProviderOptions) {}
 
-  resolveWebviewView(webviewView: vscode.WebviewView): void {
-    this.view = webviewView
-    webviewView.webview.options = { enableScripts: true, localResourceRoots: [this.options.extensionUri] }
-    this.disposables.push(webviewView.webview.onDidReceiveMessage((message) => this.handleMessage(message)))
-    void this.refresh()
-  }
-
   async open(input?: unknown): Promise<void> {
-    const parsed = this.applyOpenInput(input)
-    if (parsed && typeof parsed !== "string" && (parsed.reason === "stepGate" || parsed.reason === "paused")) {
-      await this.openPanel(parsed)
-      return
-    }
-    await vscode.commands.executeCommand("workbench.view.explorer")
-    await vscode.commands.executeCommand("workflowRegister.operationHub.focus")
-    await this.refresh()
-  }
-
-  async refreshFromCommand(): Promise<void> {
-    if (!this.view) {
-      await this.open(this.focusedRunId ? {
-        workspaceRoot: this.focusedWorkspaceRoot,
-        runId: this.focusedRunId
-      } : undefined)
-      return
-    }
-    await this.refreshAll()
-  }
-
-  async openPanel(input?: unknown): Promise<void> {
     this.applyOpenInput(input)
-    this.panel = this.ensurePanel()
-    this.panel.reveal(vscode.ViewColumn.One)
+    const panel = this.ensurePanel()
+    panel.reveal(vscode.ViewColumn.One)
     await this.refreshPanel()
   }
 
-  async refresh(): Promise<void> {
-    if (!this.view) return
-    await this.renderIntoWebview(this.view.webview, "compact")
+  async refreshFromCommand(): Promise<void> {
+    if (!this.panel) return this.open()
+    await this.refreshPanel()
   }
 
   async refreshPanel(): Promise<void> {
     if (!this.panel) return
-    await this.renderIntoWebview(this.panel.webview, "panel")
-  }
-
-  async refreshAll(): Promise<void> {
-    await this.refresh()
-    await this.refreshPanel()
+    await this.renderIntoWebview(this.panel.webview)
   }
 
   dispose(): void {
@@ -185,7 +150,6 @@ export class OperationHubProvider implements vscode.WebviewViewProvider, vscode.
     this.clearPendingAutoRefresh()
     this.clearActionRefreshTimers()
     while (this.panelDisposables.length > 0) this.panelDisposables.pop()?.dispose()
-    for (const disposable of this.disposables) disposable.dispose()
   }
 
   private async handleMessage(rawMessage: unknown): Promise<void> {
@@ -196,19 +160,16 @@ export class OperationHubProvider implements vscode.WebviewViewProvider, vscode.
     }
     try {
       if (message.action === "refresh") {
-        await this.refreshAll()
-        return
-      }
-      if (message.action === "openOperationHubPanel") {
-        await this.openPanel(message.runId ? { runId: message.runId } : undefined)
-        await this.refresh()
+        await this.refreshPanel()
         return
       }
       if (message.action === "openArtifact") {
         await this.openArtifact(message.artifactPath)
-        await this.refreshAll()
+        await this.refreshPanel()
         return
       }
+      const unavailableReason = unavailableIntegrationReason(message.action)
+      if (unavailableReason) throw new Error(unavailableReason)
       const command = ACTION_COMMANDS[message.action]
       if (!command) {
         throw new Error(`未対応の操作です: ${message.action}`)
@@ -219,12 +180,12 @@ export class OperationHubProvider implements vscode.WebviewViewProvider, vscode.
       }
       this.scheduleActionRefreshes()
       await vscode.commands.executeCommand(command, ...commandArgsForAction(message))
-      await this.refreshAll()
+      await this.refreshPanel()
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error)
       const separator = /[。.!?！？]$/.test(detail) ? "" : "。"
       void vscode.window.showErrorMessage(`Bob 操作センター: ${detail}${separator}画面を更新してから再実行してください。`)
-      await this.refreshAll().catch((refreshError) => {
+      await this.refreshPanel().catch((refreshError) => {
         console.warn("Bob 操作センターの操作失敗後の更新に失敗しました", refreshError)
       })
     }
@@ -242,7 +203,7 @@ export class OperationHubProvider implements vscode.WebviewViewProvider, vscode.
       }
       this.scheduleActionRefreshes()
       await vscode.commands.executeCommand(command, ...mutationCommandArgs(message, target))
-      await this.refreshAll()
+      await this.refreshPanel()
     })
   }
 
@@ -285,8 +246,8 @@ export class OperationHubProvider implements vscode.WebviewViewProvider, vscode.
   private ensurePanel(): vscode.WebviewPanel {
     if (this.panel) return this.panel
     const panel = vscode.window.createWebviewPanel(
-      "workflowRegister.operationHubPanel",
-      "Bob 操作センター",
+      "workflowRegisterOperationHub",
+      "Bob 操作ハブ",
       vscode.ViewColumn.One,
       {
         enableScripts: true,
@@ -302,18 +263,18 @@ export class OperationHubProvider implements vscode.WebviewViewProvider, vscode.
 
   private disposePanel(): void {
     this.panel = undefined
+    this.backgroundRefreshFailureContexts.clear()
     while (this.panelDisposables.length > 0) this.panelDisposables.pop()?.dispose()
   }
 
-  private async renderIntoWebview(webview: vscode.Webview, layout: "compact" | "panel"): Promise<void> {
+  private async renderIntoWebview(webview: vscode.Webview): Promise<void> {
     const model = await this.loadModel()
     this.syncRunMonitorWatchers(model.home.workspaceRoots)
     webview.html = renderOperationHubHtml({
       cspSource: webview.cspSource,
       nonce: nonce(),
       model,
-      refreshedAt: refreshTimestamp(),
-      layout
+      refreshedAt: refreshTimestamp()
     })
   }
 
@@ -413,7 +374,7 @@ export class OperationHubProvider implements vscode.WebviewViewProvider, vscode.
     this.clearPendingAutoRefresh()
     this.pendingAutoRefresh = setTimeout(() => {
       this.pendingAutoRefresh = undefined
-      void this.refreshAll()
+      this.refreshInBackground("実行状態")
     }, delayMs)
   }
 
@@ -427,7 +388,7 @@ export class OperationHubProvider implements vscode.WebviewViewProvider, vscode.
     for (const delayMs of ACTION_REFRESH_DELAYS_MS) {
       const timer = setTimeout(() => {
         this.actionRefreshTimers.delete(timer)
-        void this.refreshAll()
+        this.refreshInBackground("操作後")
       }, delayMs)
       this.actionRefreshTimers.add(timer)
     }
@@ -436,6 +397,20 @@ export class OperationHubProvider implements vscode.WebviewViewProvider, vscode.
   private clearActionRefreshTimers(): void {
     for (const timer of this.actionRefreshTimers) clearTimeout(timer)
     this.actionRefreshTimers.clear()
+  }
+
+  private refreshInBackground(context: "実行状態" | "操作後"): void {
+    void this.refreshPanel().catch((error) => {
+      if (this.backgroundRefreshFailureContexts.has(context)) return
+      this.backgroundRefreshFailureContexts.add(context)
+      const detail = error instanceof Error ? error.message : String(error)
+      console.warn(`Bob 操作センター: ${context}の自動更新に失敗しました`, error)
+      void Promise.resolve(
+        vscode.window.showErrorMessage(`Bob 操作センター: ${context}の自動更新に失敗しました。${detail}`)
+      ).catch((reportError) => {
+        console.warn("Bob 操作センターの自動更新エラー表示に失敗しました", reportError)
+      })
+    })
   }
 
   private async openArtifact(artifactPath?: string): Promise<void> {
@@ -545,7 +520,23 @@ async function workflowRootCandidates(folders: readonly vscode.WorkspaceFolder[]
 }
 
 function extensionStatus(id: string, label: string) {
-  return { id, label, available: Boolean(vscode.extensions.getExtension(id)) }
+  const available = Boolean(vscode.extensions.getExtension(id))
+  return {
+    id,
+    label,
+    available,
+    unavailableReason: available ? undefined : `${label} 拡張がインストールされていません。`
+  }
+}
+
+function unavailableIntegrationReason(action: OperationHubActionId): string | undefined {
+  const integration = action === "openBazaarReview"
+    ? { id: "local.bob-bazaar-review", label: "Bob Bazaar レビュー" }
+    : action === "openConsistencyWizard"
+      ? { id: "local.bob-code-consistency-review", label: "Bob コード整合プレレビュー" }
+      : undefined
+  if (!integration || vscode.extensions.getExtension(integration.id)) return undefined
+  return `${integration.label} 拡張がインストールされていません。`
 }
 
 async function setupState(roots: readonly MarkerRootCandidate[]): Promise<OperationHubSetupState> {

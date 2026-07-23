@@ -2,12 +2,12 @@ import { randomBytes } from "node:crypto"
 import { REVIEW_GUI_BODY, REVIEW_GUI_STYLE, renderReviewGuiScript } from "./reviewGuiHtmlAssets"
 import type { BazaarReviewInitialTarget } from "./reviewGuiTypes"
 
-export function renderHtml(cspSource: string, initialTarget?: BazaarReviewInitialTarget): string {
+export function renderHtml(cspSource: string, initialTarget?: BazaarReviewInitialTarget, renderToken = createNonce()): string {
   const nonce = createNonce()
   const initialTargetJson = JSON.stringify(initialTarget ?? {}).replace(/</g, "\u003c")
-  const script = renderReviewGuiScript(nonce, initialTargetJson).replace(
-    `    $("refreshReviewRuns").onclick = () => vscode.postMessage({ type: "refreshReviewRuns" })`,
-    `    $("refreshReviewRuns").onclick = () => vscode.postMessage({ type: "refreshReviewRuns" })\n    $("recoverLegacyReview").onclick = () => vscode.postMessage({ type: "recoverLegacyReview" })`
+  const script = renderReviewGuiScript(nonce, initialTargetJson, JSON.stringify(renderToken)).replace(
+    `    $("refreshReviewRuns").onclick = () => postMessage({ type: "refreshReviewRuns" })`,
+    `    $("refreshReviewRuns").onclick = () => postMessage({ type: "refreshReviewRuns" })\n    $("recoverLegacyReview").onclick = () => postMessage({ type: "recoverLegacyReview" })`
   )
 
   return `<!DOCTYPE html>

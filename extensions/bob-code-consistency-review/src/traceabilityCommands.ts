@@ -26,7 +26,7 @@ import {
   vcsOrPrompt
 } from "./extensionCommandOptions"
 import { collectReviewMetadata } from "./reviewInputWizard"
-import { openTraceabilityPrepWebview } from "./webview/traceabilityPrepWebview"
+import { openConsistencyReviewWizard } from "./webview/consistencyReviewWizard"
 import { optionRecord } from "./workflowProviderRegistration"
 
 const TRACEABILITY_DRAFT_FILE_NAMES = ["ai-draft.json", "ai-draft-output.json", "ai-draft-result.json"]
@@ -223,9 +223,15 @@ export async function runOpenTraceabilityPrep(context: vscode.ExtensionContext, 
   const reportPath = stringOption(record, "traceabilityGateReportPath") ??
     config.get<string>("traceabilityGateReportPath", DEFAULT_TRACEABILITY_GATE_REPORT_PATH)
   const textEncoding = stringOption(record, "textEncoding") ?? config.get<string>("textEncoding", "auto")
-  const result = await openTraceabilityPrepWebview({ context, workspaceRoot, catalogPath, reportPath, textEncoding })
-  if (result.status === "error") notifyError(`traceability prep を開けません: ${result.errors.join("; ")}`)
-  else notifyInfo(`traceability prep を開きました: ${result.catalogPath}`)
+  const result = await openConsistencyReviewWizard(context, {
+    initialStage: "traceability",
+    workspaceRoot,
+    catalogPath,
+    reportPath,
+    textEncoding
+  })
+  if (result.status === "error") notifyError(`トレーサビリティ整理を開けません: ${result.errors.join("; ")}`)
+  else notifyInfo(`トレーサビリティ整理を開きました: ${result.catalogPath}`)
   return result
 }
 

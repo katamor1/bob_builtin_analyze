@@ -8,7 +8,7 @@
 
 リファクタリング後は、`workflow-register` 連携を `src/workflow/`、直接レビュー command と Bazaar packet 生成を `src/bazaar/`、active editor の review-result JSON 検証を `src/projectRules/`、Bob 拡張連携を `src/bob/`、GUI を `src/ui/`、workspace 初期化と root 解決を `src/workspace/`、MCP server を `src/mcp/`、review record / triage / summary を `src/records/` に分離しています。
 
-Review Run Wizard v3では、`src/reviewRuns/`がReview GUI、Result Capture、Human Triage間のrun contextを管理します。Iteration 1でpacketからtriage draftまでを接続し、Iteration 2で中断・再開、phase status、timing、decision validation、record/summary一括finalize、legacy artifact復旧を追加しています。Iteration 3では`src/dashboard/`とCampaign Dashboard GUIが、run、pending triage、schema/finding/rule/target mode/timeを集計し、JSON / Markdown / CSVへexportします。stack横断acceptance testは、開始からDashboard exportまでのidentity・metrics・evidence不変性を一つのfilesystem round tripで検証します。
+Review Run Wizard v3では、`src/reviewRuns/`が主GUI内のレビュー、レビュー結果取り込み、指摘確認・振り分け、レビュー実績で共有するrun contextを管理します。Iteration 1でpacketからtriage draftまでを接続し、Iteration 2で中断・再開、phase status、timing、decision validation、record/summary一括finalize、legacy artifact復旧を追加しています。Iteration 3では`src/dashboard/`とレビュー実績stageが、run、pending triage、schema/finding/rule/target mode/timeを集計し、JSON / Markdown / CSVへexportします。stack横断acceptance testは、開始からレビュー実績exportまでのidentity・metrics・evidence不変性を一つのfilesystem round tripで検証します。
 
 ## 設計書
 
@@ -19,19 +19,19 @@ Review Run Wizard v3では、`src/reviewRuns/`がReview GUI、Result Capture、H
   実装モジュール、VS Code command、workspace 解決、BazaarClient、GUI、直接レビュー command、MCP server、workflow-register bridge、project rules、review-result capture、review record、multi-root 動作、テスト観点を整理した詳細設計書です。
 
 - `review-run-v3-iteration1-ja.md`  
-  Review Run Wizard v3 Iteration 1 のrun schema、artifact配置、ID/path安全性、Review GUIからResult Capture・Human Triageへのhandoff、互換性、テスト、UATをまとめた実装仕様書です。
+  Review Run Wizard v3 Iteration 1 のrun schema、artifact配置、ID/path安全性、主GUI内stage handoff、互換性、テスト、UATをまとめた実装仕様書です。
 
 - `review-run-v3-iteration2-ja.md`  
   Review Run Wizard v3 Iteration 2 のprogress/metrics field、stale-write保護、未完了run再開、decision validation、finalize順序、legacy recovery、セキュリティ、UATをまとめた実装仕様書です。
 
 - `review-run-v3-iteration3-dashboard-ja.md`
-  Campaign Dashboardのsource優先順位、rate定義、pending triage、rule / target mode trend、warning、export、セキュリティ、UATをまとめています。
+  レビュー実績のsource優先順位、rate定義、pending triage、rule / target mode trend、warning、export、セキュリティ、UATをまとめています。
 
 - `review-run-id-allocation-ja.md`  
   同一campaign内で既存・legacy・並行Review Runを上書きしない、`-02`以降のcollision-safe ID予約契約をまとめています。
 
 - `review-run-command-boundary-ja.md`  
-  Result Capture / Human Triage command引数のopen workspace境界、ID再検証、workspace外root拒否をまとめています。
+  主GUIのresume/stage遷移におけるopen workspace境界、ID再検証、workspace外root拒否をまとめています。
 
 ## テスト仕様書
 
@@ -39,10 +39,10 @@ Review Run Wizard v3では、`src/reviewRuns/`がReview GUI、Result Capture、H
   BazaarClient、文字コード、workspace resolver、review packet、直接レビュー command、workflow-register bridge、review-result capture、MCP server、review record、Review Run、workflow template の単体テスト仕様書です。
 
 - `real-machine-test-spec-ja.md`  
-  VS Code、IBM Bob、workflow-register、Bob Workflow UI、Bazaar Review GUI、Review Run再開/finalize/recovery、Campaign Dashboard、Bazaar CLI、MCP server、multi-root workspace を含む実機テスト仕様書です。
+  VS Code、IBM Bob、workflow-register、Bob Workflow UI、Bazaar Review GUI、Review Run再開/finalize/recovery、レビュー実績、Bazaar CLI、MCP server、multi-root workspace を含む実機テスト仕様書です。
 
 - `review-run-v3-acceptance-ja.md`  
-  Iteration 1〜3を横断する自動受入テスト、identity / phase / metrics / Human Triage / evidence不変条件、回帰gate、stack統合順、rollbackを定義します。
+  Iteration 1〜3を横断する自動受入テスト、identity / phase / metrics / 指摘確認・振り分け / evidence不変条件、回帰gate、stack統合順、rollbackを定義します。
 
 - `review-run-v3-integration-result-ja.md`  
   PR #76 / #79 / #83 / #85の実merge SHA、main同期時の競合解消、検証結果、互換性、rollback順を記録します。

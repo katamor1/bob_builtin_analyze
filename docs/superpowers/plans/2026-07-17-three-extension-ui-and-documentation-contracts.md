@@ -168,13 +168,13 @@ interface WorkflowBuilderPanelOptions {
 
 **Run-contract boundary:** Run engine/provider/artifact/`run.json` contracts are out of scope; standard-template mode changes authoring routes only.
 
-- [ ] **Step 1: RED-test exactly three modes and one panel**
+- [x] **Step 1: RED-test exactly three modes and one panel**
 
 Assert Builder renders selectors labeled `空のワークフロー`, `標準テンプレートから作成`, and `既存ワークフローを編集`; no fourth mode exists. Assert all modes reuse view type `workflowRegisterBuilder` and title `ワークフロー作成・編集`.
 
 Assert package/source no longer contributes/registers `bobTemplate.openCustomizationStudio`, and no code creates `bobTemplateCustomizationStudio`.
 
-- [ ] **Step 2: RED-test safety parity**
+- [x] **Step 2: RED-test safety parity**
 
 Extend transactional tests so standard-template output:
 
@@ -195,15 +195,15 @@ node --test test/templateCustomizationStudio.test.js test/workflowBuilderTransac
 
 Expected: FAIL because Template Studio is independent and Builder has only create/edit semantics.
 
-- [ ] **Step 3: Add the mode router and integrate template logic**
+- [x] **Step 3: Add the mode router and integrate template logic**
 
 `openWorkflowBuilder()` opens the retained panel at its mode chooser. `editWorkflowInBuilder()` routes the same panel to `edit`. Move Template Studio host message handling into Builder and call existing template model/generator/validator/readiness functions. Template generation updates the active in-memory authoring session; it never writes directly.
 
-- [ ] **Step 4: Remove the standalone panel/command**
+- [x] **Step 4: Remove the standalone panel/command**
 
 Delete its activation/contribution/registration and panel assets. Keep non-GUI `bobTemplate.validate*`, `generateWorkflow`, and `checkReadiness` commands registered because workflows may invoke them; Task 5 hides them.
 
-- [ ] **Step 5: Verify and commit**
+- [x] **Step 5: Verify and commit**
 
 ```bash
 cd extensions/workflow-register
@@ -246,13 +246,13 @@ The retained controller owns one panel, active Review Run identity, stage model,
 
 **Run-contract boundary:** Run engine/provider/artifact/`run.json` contracts are out of scope; Review Run services/schemas remain unchanged.
 
-- [ ] **Step 1: RED-test a single stage-routed panel**
+- [x] **Step 1: RED-test a single stage-routed panel**
 
 Assert `openReviewGui`, capture, triage, and results all render under view type `bobBazaarReviewGui`; only `openBazaarReviewGui()` calls `createWebviewPanel`. Assert stage labels are `レビュー結果取り込み`, `指摘確認・振り分け`, and `レビュー実績`.
 
 Assert the package no longer contributes/activates/registers standalone dashboard/capture/triage GUI commands.
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 ```bash
 cd extensions/bob-bazaar-review
@@ -262,15 +262,15 @@ node --test test/guiFirstSurfaces.test.js test/reviewGuiHtml.test.js test/campai
 
 Expected: FAIL because four panel factories/public routes exist.
 
-- [ ] **Step 3: Move stage ownership into the review controller**
+- [x] **Step 3: Move stage ownership into the review controller**
 
 Extract the existing standalone controllers into stage services/renderers that accept active panel/context. Replace `executeCommand()` hops with `showStage()`. Preserve Review Run validation, exact review ID, capture validation, triage decisions/metrics/finalization, dashboard aggregation/export, and message allowlists.
 
-- [ ] **Step 4: Delete duplicate public routes and migrate terminology**
+- [x] **Step 4: Delete duplicate public routes and migrate terminology**
 
 Remove standalone command registrations/contributions only after all callers route to `showStage()`. Replace user-facing Campaign Dashboard/Result Capture/Human Triage strings with approved terms. Keep internal data/module names where technically useful.
 
-- [ ] **Step 5: Verify and commit**
+- [x] **Step 5: Verify and commit**
 
 ```bash
 cd extensions/bob-bazaar-review
@@ -311,13 +311,13 @@ type ConsistencyReviewStage =
 
 **Run-contract boundary:** Run engine/provider/artifact/`run.json` contracts are out of scope; preprocessing, triage, traceability, and initialization persistence contracts remain unchanged.
 
-- [ ] **Step 1: RED-test the single primary GUI and init button**
+- [x] **Step 1: RED-test the single primary GUI and init button**
 
 Assert only `openConsistencyReviewWizard()` creates a panel; all stages share view type `bobCodeConsistencyReviewWizard`. Assert approved stage labels and an `initializeWorkspace` action/button exist.
 
 Assert standalone capture/triage commands are absent. Assert `bobCodeConsistency.initializeWorkspace` remains registered for workflows but is not expected as a public palette entry.
 
-- [ ] **Step 2: RED-test exact initialization writes**
+- [x] **Step 2: RED-test exact initialization writes**
 
 Keep/add regressions proving:
 
@@ -339,15 +339,15 @@ node --test test/guiFirstSurfaces.test.js test/traceabilityPrepWebview.test.js t
 
 Expected: FAIL on independent panels and missing primary-GUI initialization route.
 
-- [ ] **Step 3: Add primary-panel stage routing**
+- [x] **Step 3: Add primary-panel stage routing**
 
 Move capture/triage/traceability controllers to stage renderers owned by the primary controller. Preserve triage source hash/revision checks, Webview disposal guards, traceability original/restore/save semantics, output validation, and CSP/message validation.
 
-- [ ] **Step 4: Route initialization from the GUI**
+- [x] **Step 4: Route initialization from the GUI**
 
 The button invokes the existing initialization service with selected workspace. Report workflow backup and review-input backup separately. Keep `initializeWorkspace` registered for workflows; Task 5 hides it.
 
-- [ ] **Step 5: Verify and commit**
+- [x] **Step 5: Verify and commit**
 
 ```bash
 cd extensions/bob-code-consistency-review

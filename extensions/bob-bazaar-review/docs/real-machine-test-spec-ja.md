@@ -154,7 +154,7 @@ bazaar_test/branch2/
 | 項目 | 内容 |
 | --- | --- |
 | 目的 | Webview GUI が開き、workspace state と `.bob` status が表示されることを確認する。 |
-| 手順 | 1. `Bob Bazaar Review: GUI を開く` を実行する。<br>2. Webview の初期表示を確認する。 |
+| 手順 | 1. `Bob Bazaar Review: レビューを開始` を実行する。<br>2. Webview の初期表示を確認する。 |
 | 期待結果 | Bazaar workspace、Bob workspace、初期化状態、target 入力欄が表示される。 |
 
 ### BZR-RT-007 GUI singleRevision target 読み込み
@@ -426,7 +426,7 @@ bazaar_test/branch2/
 | 項目 | 内容 |
 | --- | --- |
 | 目的 | Bob finding を人間判断用 `triage.yaml` に変換できることを確認する。 |
-| 手順 | 1. findings を含む review-result を保存する。<br>2. `Bob Bazaar Review: 人による判定一覧を作成` を実行する。 |
+| 手順 | 1. findings を含む review-result を保存する。<br>2. `Bob Bazaar Review: 指摘確認・振り分け一覧を作成` を実行する。 |
 | 期待結果 | finding ごとに item が作成され、初期 decision は `needs_investigation` になる。fail checklist だが finding がない rule も追加調査 item になる。 |
 
 ### BZR-RT-040 triage validation error
@@ -434,7 +434,7 @@ bazaar_test/branch2/
 | 項目 | 内容 |
 | --- | --- |
 | 目的 | human triage の不正 decision や summary mismatch を検出できることを確認する。 |
-| 手順 | 1. `triage.yaml` の decision を不正値に変更する。<br>2. `Bob Bazaar Review: 人による判定内容を検証` を実行する。 |
+| 手順 | 1. `triage.yaml` の decision を不正値に変更する。<br>2. `Bob Bazaar Review: 指摘確認・振り分け内容を検証` を実行する。 |
 | 期待結果 | invalid decision、unknown finding_id、summary mismatch が warning / error として表示される。 |
 
 ### BZR-RT-041 campaign summary 生成
@@ -478,7 +478,7 @@ bazaar_test/branch2/
 
 #### BZR-RT-045 VS Code再起動後の再開
 
-1. packet保存後、レビュー結果の取り込み前にVS Codeを閉じる。
+1. packet保存後、レビュー結果取り込み前にVS Codeを閉じる。
 2. 同じworkspaceを開きReview GUIを再表示する。
 3. 未完了レビュー実行を選択し再開する。
 
@@ -487,9 +487,9 @@ bazaar_test/branch2/
 - runが`updatedAt`順の候補に表示される。
 - next actionが`resultCapture`になる。
 - campaign / review ID、packetを再入力・再生成しない。
-- result保存後に再度中断した場合は人による判定から再開する。
+- result保存後に再度中断した場合は指摘確認・振り分けから再開する。
 
-#### BZR-RT-046 decision別人による判定 validation
+#### BZR-RT-046 decision別の指摘確認・振り分け validation
 
 各decisionについて不足値を作り、保存を試す。
 
@@ -509,16 +509,16 @@ bazaar_test/branch2/
 #### BZR-RT-047 Metricsの自動計測と補正
 
 1. packetを保存してからvalid resultを保存する。
-2. 人による判定を完了する。
-3. baseline / Bob / 人による判定時間を確認する。
+2. 指摘確認・振り分けを完了する。
+3. baseline / Bob / 指摘確認・振り分け時間を確認する。
 4. 有効値、負数、NaN相当、30日超を入力する。
 
 期待結果:
 
-- Bob reviewと人による判定の経過時間が自動記録される。
+- Bob reviewと指摘確認・振り分けの経過時間が自動記録される。
 - valid補正は`user_corrected`として残る。
 - invalid補正は拒否される。
-- 完了済みtriageを再保存しても人による判定時間を二重加算しない。
+- 完了済みtriageを再保存しても指摘確認・振り分け時間を二重加算しない。
 
 #### BZR-RT-048 レビュー実行一括finalize
 
@@ -537,7 +537,7 @@ bazaar_test/branch2/
 
 1. summary出力先をdirectoryにするなど、summary writeだけが失敗するfixtureを作る。
 2. finalizeを実行する。
-3. failure causeを解消し、古い人による判定画面から再度finalizeする。
+3. failure causeを解消し、指摘確認・振り分けstageから再度finalizeする。
 
 期待結果:
 
@@ -560,12 +560,12 @@ bazaar_test/branch2/
 - 承認後に追加されるのは`review-run.json`だけである。
 - 既存packet / result / triage / recordのbytesが変化しない。
 
-### 6.7 レビュー手順 Iteration 3 レビューキャンペーン ダッシュボード
+### 6.7 レビュー手順 Iteration 3 レビュー実績
 
-#### BZR-RT-051 Dashboard起動・campaign選択・refresh
+#### BZR-RT-051 レビュー実績の起動・campaign選択・refresh
 
 1. 2件以上のcampaignを持つBob workspaceを開く。
-2. Command PaletteまたはReview GUIからレビューキャンペーン ダッシュボードを開く。
+2. `Bob Bazaar Review: レビューを開始`を開き、主GUI内のレビュー実績へ切り替える。
 3. campaignを切り替え、refreshする。
 
 期待結果:
@@ -575,10 +575,10 @@ bazaar_test/branch2/
 - refresh後に最新のレビュー実行 / record / triageが反映される。
 - workspace外rootは拒否される。
 
-#### BZR-RT-052 人による判定 pendingの可視化
+#### BZR-RT-052 指摘確認・振り分け pendingの可視化
 
 1. triageなしrun、invalid triage run、valid triage runを用意する。
-2. Dashboardを開く。
+2. レビュー実績を開く。
 
 期待結果:
 
@@ -625,12 +625,12 @@ bazaar_test/branch2/
 #### BZR-RT-056 malformed evidenceとexport failure
 
 1. malformed record / triage / resultとsymlink record directoryを用意する。
-2. Dashboardを開く。
+2. レビュー実績を開く。
 3. 既存dashboard exportを用意し、置換途中で失敗するfixtureを作る。
 
 期待結果:
 
-- Dashboard全体を停止せずwarningを表示する。
+- レビュー実績全体を停止せずwarningを表示する。
 - conflicting artifactからdecisionを生成しない。
 - symlink / junctionを追跡しない。
 - export失敗時は画面を維持し、旧exportを復元する。
@@ -638,7 +638,7 @@ bazaar_test/branch2/
 #### BZR-RT-057 review evidence不変性
 
 1. packet、result、triage、record、summaryのhashを取得する。
-2. Dashboardのrefreshとexportを複数回実行する。
+2. レビュー実績のrefreshとexportを複数回実行する。
 3. hashを再取得する。
 
 期待結果:
@@ -674,8 +674,8 @@ bazaar_test/branch2/
 - レビュー実行の開始、画面間handoff、中断再開、decision validation、metrics、finalizeが合格する。
 - summary失敗時にrecordを保持し、失敗phaseから再試行できる。
 - legacy recoveryが確認付きかつ非破壊である。
-- レビューキャンペーン ダッシュボードのpending、rate、rule / target mode trend、warning、3形式exportがsource artifactと一致する。
-- Dashboard refresh / exportが既存review evidenceを変更しない。
+- レビュー実績のpending、rate、rule / target mode trend、warning、3形式exportがsource artifactと一致する。
+- レビュー実績のrefresh / exportが既存review evidenceを変更しない。
 - active editor validation と MCP result tools が保存済み result を扱える。
 - Bob Workflow UI 経由で主要 provider が provider missing にならない。
 - multi-root で `.bob` と `.bzr` の責務分離が守られる。
@@ -685,8 +685,8 @@ bazaar_test/branch2/
 
 | 優先度 | 対象 |
 | --- | --- |
-| P0 | 起動、project rules初期化、レビュー実行開始、packet、capture、人による判定、標準finalize。 |
-| P1 | 中断再開、summary failure retry、legacy recovery、レビューキャンペーン ダッシュボード、workflow provider、MCP、multi-root。 |
+| P0 | 起動、project rules初期化、レビュー実行開始、packet、capture、指摘確認・振り分け、標準finalize。 |
+| P1 | 中断再開、summary failure retry、legacy recovery、レビュー実績、workflow provider、MCP、multi-root。 |
 | P2 | revisionRange、working tree、Shift-JIS / CP932、diff / added file truncation。 |
 | P3 | file save fallback、Bob 拡張なし fallback、unsafe input、OS 差分。 |
 

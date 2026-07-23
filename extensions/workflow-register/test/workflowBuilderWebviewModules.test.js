@@ -28,7 +28,8 @@ test("workflow builder html includes split style and client script output", () =
   })
 
   assert.match(html, /nonce-123/)
-  assert.match(html, /Bob ワークフロー作成・編集/)
+  assert.match(html, /ワークフロー作成・編集/)
+  assert.doesNotMatch(html, /Bob ワークフロー作成・編集/)
   assert.match(html, /実行条件/)
   assert.match(html, /安全制限/)
   assert.match(html, /data-tab="branching"/)
@@ -41,6 +42,20 @@ test("workflow builder html includes split style and client script output", () =
   assert.match(html, /workflowHelpPanel/)
   assert.match(html, /workflowBuilderJumpToHelp/)
   assert.match(html, /renderWorkflowBuilderGuidedHelpScript|stepTypeGuideHtml/)
+  assert.equal((html.match(/data-builder-mode=/g) ?? []).length, 3)
+  assert.match(html, /data-builder-mode="empty"[^>]*>空のワークフロー</)
+  assert.match(html, /data-builder-mode="standard-template"[^>]*>標準テンプレートから作成</)
+  assert.match(html, /data-builder-mode="edit"[^>]*>既存ワークフローを編集</)
+  assert.doesNotMatch(html, /data-builder-mode="(?:create|template|customize)"/)
+  assert.match(html, /data-builder-mode="empty"[^>]*disabled[^>]*aria-current="page"/)
+})
+
+test("workflow builder client attaches the current render token to every host message", () => {
+  const source = renderWorkflowBuilderClientScript()
+
+  assert.match(source, /sessionToken/)
+  assert.match(source, /rawVscode/)
+  assert.doesNotMatch(source, /const vscode = acquireVsCodeApi\(\);/)
 })
 
 test("workflow builder split modules expose approval, markdown body, help, and guided navigation pieces", () => {

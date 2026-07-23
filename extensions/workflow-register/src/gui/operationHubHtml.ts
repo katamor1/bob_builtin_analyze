@@ -12,47 +12,38 @@ export interface RenderOperationHubHtmlInput {
   nonce: string
   model: OperationHubModel
   refreshedAt?: string
-  layout?: "compact" | "panel"
 }
 
 export function renderOperationHubHtml(input: RenderOperationHubHtmlInput): string {
   const { cspSource, nonce, model } = input
   const refreshLabel = input.refreshedAt ? ` / 更新 ${escapeHtml(input.refreshedAt)}` : ""
-  const layout = input.layout ?? "compact"
-  const isPanel = layout === "panel"
-  const content = isPanel ? renderPanelContent(model, refreshLabel) : renderCompactContent(model, refreshLabel)
+  const content = renderContent(model, refreshLabel)
   return `<!DOCTYPE html>
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${escapeHtml(cspSource)}; style-src 'nonce-${escapeHtml(nonce)}'; script-src 'nonce-${escapeHtml(nonce)}';">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Bob 操作センター</title>
+  <title>Bob 操作ハブ</title>
   <style nonce="${escapeHtml(nonce)}">
     * { box-sizing: border-box; }
     body { margin: 0; color: var(--vscode-foreground); background: var(--vscode-editor-background); font-family: var(--vscode-font-family); font-size: var(--vscode-font-size); }
-    body.compact { background: var(--vscode-sideBar-background); }
     main { min-height: 100vh; }
-    .operation-hub.compact { padding: 12px; display: flex; flex-direction: column; gap: 14px; }
-    .operation-hub.panel { padding: 18px 20px; display: flex; flex-direction: column; gap: 16px; }
+    .operation-hub { padding: 18px 20px; display: flex; flex-direction: column; gap: 16px; }
     .hub-header { display: flex; flex-direction: column; gap: 6px; }
-    .panel .hub-header { border-bottom: 1px solid var(--vscode-panel-border); padding-bottom: 14px; }
-    .panel-shell { display: grid; grid-template-columns: minmax(420px, 1.5fr) minmax(280px, 0.85fr); gap: 16px; align-items: start; }
-    .primary-pane, .secondary-pane { min-width: 0; }
-    .secondary-pane { display: flex; flex-direction: column; gap: 16px; }
+    .hub-header { border-bottom: 1px solid var(--vscode-panel-border); padding-bottom: 14px; }
     h1 { font-size: 17px; margin: 0 0 4px; }
-    .panel h1 { font-size: 22px; }
+    h1 { font-size: 22px; }
     h2 { font-size: 14px; margin: 0 0 8px; }
-    .panel h2 { font-size: 16px; }
+    h2 { font-size: 16px; }
     h3 { font-size: 13px; margin: 0 0 4px; }
     .muted { color: var(--vscode-descriptionForeground); font-size: 12px; }
     .section { border-top: 1px solid var(--vscode-panel-border); padding-top: 12px; }
-    .panel .section { border-top: 0; padding-top: 0; }
+    .section { border-top: 0; padding-top: 0; }
     .grid { display: grid; grid-template-columns: 1fr; gap: 8px; }
-    .panel .grid { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
-    .secondary-pane .grid { grid-template-columns: 1fr; }
+    .grid { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
     .card { border: 1px solid var(--vscode-panel-border); border-radius: 4px; background: var(--vscode-editor-background); padding: 10px; }
-    .panel .card { background: var(--vscode-sideBar-background); }
+    .card { background: var(--vscode-sideBar-background); }
     .card.focused-run { border-color: var(--vscode-focusBorder); box-shadow: inset 3px 0 0 var(--vscode-focusBorder); }
     .card-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
     .card-title h3 { overflow-wrap: anywhere; }
@@ -79,12 +70,11 @@ export function renderOperationHubHtml(input: RenderOperationHubHtmlInput): stri
   .step-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
     code { font-family: var(--vscode-editor-font-family); font-size: 11px; overflow-wrap: anywhere; }
     @media (max-width: 760px) {
-      .panel-shell { grid-template-columns: 1fr; }
-      .operation-hub.panel { padding: 12px; }
+      .operation-hub { padding: 12px; }
     }
   </style>
 </head>
-<body class="${layout}">
+<body>
   ${content}
   <script nonce="${escapeHtml(nonce)}">
     const vscode = acquireVsCodeApi();
@@ -118,7 +108,6 @@ export function renderOperationHubHtml(input: RenderOperationHubHtmlInput): stri
     function pendingLabel(action, originalLabel) {
       if (action === 'refresh') return '更新中…';
       if (action === 'openArtifact') return '開いています…';
-      if (action === 'openOperationHubPanel') return '開いています…';
       if (action === 'startFromArtifacts') return '再利用準備中…';
       return '反映中…';
     }
@@ -127,37 +116,19 @@ export function renderOperationHubHtml(input: RenderOperationHubHtmlInput): stri
 </html>`
 }
 
-function renderCompactContent(model: OperationHubModel, refreshLabel: string): string {
-  return `<main class="operation-hub compact">
-    ${renderHeader(model, true, refreshLabel)}
+function renderContent(model: OperationHubModel, refreshLabel: string): string {
+  return `<main class="operation-hub">
+    ${renderHeader(model, refreshLabel)}
     ${renderRunsSection(model)}
     ${renderWorkflowCatalogSection(model)}
     ${renderSetupSection(model)}
   </main>`
 }
 
-function renderPanelContent(model: OperationHubModel, refreshLabel: string): string {
-  return `<main class="operation-hub panel">
-    ${renderHeader(model, false, refreshLabel)}
-    <div class="panel-shell">
-      <section class="primary-pane" id="runs">
-        <h2>実行状況</h2>
-        ${renderRunsGrid(model)}
-      </section>
-      <div class="secondary-pane">
-        ${renderWorkflowCatalogSection(model)}
-        ${renderSetupSection(model)}
-      </div>
-    </div>
-  </main>`
-}
-
-function renderHeader(model: OperationHubModel, includeWideAction: boolean, refreshLabel: string): string {
-  const actions = includeWideAction
-    ? [widePanelAction(), ...model.home.recommendedActions]
-    : model.home.recommendedActions
+function renderHeader(model: OperationHubModel, refreshLabel: string): string {
+  const actions = model.home.recommendedActions
   return `<header class="hub-header">
-      <h1>Bob 操作センター</h1>
+      <h1>Bob 操作ハブ</h1>
       <div class="muted">${escapeHtml(model.home.workspaceName)} / ワークフロー ${model.home.workflowCount}件 / 実行中 ${model.home.activeRunCount}件${refreshLabel}</div>
       <div class="actions">${actions.map(renderActionButton).join("")}</div>
     </header>`
@@ -264,15 +235,6 @@ function renderArtifact(artifact: OperationHubArtifactSummary): string {
   return `<div class="artifact"><code>${escapeHtml(artifact.displayPath)}</code>${renderActionButton(artifact.action)}</div>`
 }
 
-function widePanelAction(): OperationHubAction {
-  return {
-    id: "openOperationHubPanel",
-    label: "広い画面で開く",
-    commandId: "workflowRegister.openOperationHubPanel",
-    variant: "primary"
-  }
-}
-
 function renderActionButton(action: OperationHubAction): string {
   const classes = action.variant ? ` class="${escapeHtml(action.variant)}"` : ""
   const workflowId = action.workflowId ? ` data-workflow-id="${escapeHtml(action.workflowId)}"` : ""
@@ -280,7 +242,9 @@ function renderActionButton(action: OperationHubAction): string {
   const workspaceRoot = action.workspaceRoot ? ` data-workspace-root="${escapeHtml(action.workspaceRoot)}"` : ""
   const expectedRevision = action.expectedRevision ? ` data-expected-revision="${escapeHtml(action.expectedRevision)}"` : ""
   const artifactPath = action.artifactPath ? ` data-artifact-path="${escapeHtml(action.artifactPath)}"` : ""
-  return `<button type="button"${classes} data-action="${escapeHtml(action.id)}"${workflowId}${runId}${workspaceRoot}${expectedRevision}${artifactPath}>${escapeHtml(action.label)}</button>`
+  const disabled = action.disabled ? " disabled aria-disabled=\"true\"" : ""
+  const unavailableReason = action.unavailableReason ? ` title="${escapeHtml(action.unavailableReason)}"` : ""
+  return `<button type="button"${classes}${disabled}${unavailableReason} data-action="${escapeHtml(action.id)}"${workflowId}${runId}${workspaceRoot}${expectedRevision}${artifactPath}>${escapeHtml(action.label)}</button>`
 }
 
 function statusText(status: OperationHubSetupItem["status"]): string {

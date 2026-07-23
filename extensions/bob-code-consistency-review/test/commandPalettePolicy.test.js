@@ -3,25 +3,20 @@ const { test } = require("node:test")
 
 const { readJson } = require("./helpers/sourceReader")
 
-const expectedCategory = "Bob コード整合プレレビュー"
+const expectedVisible = [
+  ["bobCodeConsistency.openReviewWizard", "Bob Code Consistency Review", "整合プレレビューを開始"]
+]
 
-function commandPaletteCommands(packageJson) {
-  const paletteIds = new Set(packageJson.contributes.menus.commandPalette.map((entry) => entry.command))
-  return packageJson.contributes.commands.filter((command) => paletteIds.has(command.command))
-}
-
-test("Command Palette display names use the Japanese-first Bob category before the colon", () => {
+test("Command Palette exposes only the approved consistency-review entry point", () => {
   const packageJson = readJson("package.json")
-  const commands = commandPaletteCommands(packageJson)
-  assert.ok(commands.length > 0, "commandPalette must expose commands")
+  const commands = new Map(packageJson.contributes.commands.map((command) => [command.command, command]))
+  const visible = packageJson.contributes.menus.commandPalette
+    .filter((entry) => entry.when !== "false")
+    .map(({ command }) => [command, commands.get(command).category, commands.get(command).title])
+  assert.deepEqual(visible, expectedVisible)
 
-  for (const command of commands) {
-    assert.equal(command.category, expectedCategory, `${command.command} category`)
-    assert.doesNotMatch(command.title, /[:：]/, `${command.command} title must not duplicate the Command Palette category`)
-
-    const displayName = `${command.category}: ${command.title}`
-    const prefix = displayName.slice(0, displayName.indexOf(":"))
-    assert.ok(displayName.startsWith("Bob "), `${command.command} display name must start with Bob`)
-    assert.equal(prefix, expectedCategory, `${command.command} prefix before colon`)
+  const publicIds = new Set(expectedVisible.map(([command]) => command))
+  for (const entry of packageJson.contributes.menus.commandPalette) {
+    if (!publicIds.has(entry.command)) assert.equal(entry.when, "false", entry.command)
   }
 })

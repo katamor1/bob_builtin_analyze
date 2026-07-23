@@ -62,12 +62,10 @@ test("Operation Hub exposes task snapshot import provenance as a distinct badge"
   assert.match(html, /保存済みタスクから取り込み: 成果物 1件/)
 })
 
-test("Runs View source projects task snapshot provenance into description, tooltip, and icon", () => {
-  const source = readSrc("commands", "runControlView.ts")
+test("Operation Hub model projects task snapshot provenance", () => {
+  const source = readSrc("gui", "operationHubModel.ts")
   assert.match(source, /TASK_SNAPSHOT_IMPORT_STATE_KEY/)
-  assert.match(source, /保存済みタスクから取り込んだ成果物/)
-  assert.match(source, /保存済みタスクから取り込み: \$\{importedCount\}件/)
-  assert.match(source, /cloud-download|history/)
+  assert.match(source, /保存済みタスクから取り込み: 成果物 \$\{count\}件/)
 })
 
 test("invalid import provenance is ignored instead of breaking run projections", () => {

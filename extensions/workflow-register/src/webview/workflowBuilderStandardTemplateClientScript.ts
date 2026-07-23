@@ -1,10 +1,20 @@
-export function renderTemplateCustomizationStudioClientScript(): string {
+export function renderWorkflowBuilderStandardTemplateClientScript(): string {
   return String.raw`
-const vscode = typeof acquireVsCodeApi === 'function' ? acquireVsCodeApi() : { postMessage: function(message) { console.log(message); } };
+const rawVscode = typeof acquireVsCodeApi === 'function' ? acquireVsCodeApi() : { postMessage: function(message) { console.log(message); } };
+const vscode = { postMessage: function(message) { rawVscode.postMessage(Object.assign({}, message, { sessionToken: sessionToken })); } };
 const BAZAAR_PROMPT_SUPPLEMENT = 'Bazaar 操作では bzr --no-aliases を使う。';
 let activeTab = 'library';
 let templates = Array.isArray(initialTemplates) ? initialTemplates.slice() : [];
 let selectedTemplatePath = initialModel && initialModel.templatePath ? initialModel.templatePath : '';
+let latestHostGeneration = -1;
+
+function acceptHostMessage(message) {
+  if (!message || message.sessionToken !== sessionToken) return false;
+  const generation = Number(message.generation);
+  if (!Number.isInteger(generation) || generation < latestHostGeneration) return false;
+  latestHostGeneration = generation;
+  return true;
+}
 
 function $(id) {
   return document.getElementById(id);
@@ -142,7 +152,9 @@ function renderReadiness(readiness) {
 }
 
 document.addEventListener('click', function(event) {
-  const target = event.target && event.target.closest ? event.target.closest('[data-action]') : event.target;
+  const target = event.target && event.target.closest ? event.target.closest('[data-action], [data-builder-mode]') : event.target;
+  const nextMode = target && target.getAttribute ? target.getAttribute('data-builder-mode') : '';
+  if (nextMode) { post('selectMode', { mode: nextMode }); return; }
   const action = target && target.getAttribute ? target.getAttribute('data-action') : '';
   if (!action) return;
   if (action === 'tab') setTab(target.getAttribute('data-tab'));
@@ -155,24 +167,31 @@ document.addEventListener('click', function(event) {
   if (action === 'validate-profile') post('validateProfile', { model: currentModel() });
   if (action === 'validate-customization') post('validateCustomization', { model: currentModel() });
   if (action === 'preview-workflow') post('previewWorkflow', { model: currentModel() });
-  if (action === 'generate-workflow') post('generateWorkflow', { model: currentModel() });
+  if (action === 'generate-workflow') post('applyStandardTemplate', { model: currentModel() });
   if (action === 'check-readiness') post('checkReadiness', { model: currentModel() });
   if (action === 'open-readiness-report') post('openReadinessReport');
   if (action === 'show-workflow-diff') post('showWorkflowDiff', { model: currentModel() });
 });
 
 document.addEventListener('change', function(event) {
-  if (!event.target || event.target.id !== 'vcsType') return;
-  const prompt = $('promptSupplement');
-  if (!prompt) return;
-  const current = prompt.value.trim();
-  if (current && current !== BAZAAR_PROMPT_SUPPLEMENT) return;
-  const nextVcs = event.target.value;
-  prompt.value = (nextVcs === 'bazaar' || nextVcs === 'bzr') ? BAZAAR_PROMPT_SUPPLEMENT : '';
+  if (event.target && event.target.id === 'vcsType') {
+    const prompt = $('promptSupplement');
+    if (prompt) {
+      const current = prompt.value.trim();
+      if (!current || current === BAZAAR_PROMPT_SUPPLEMENT) {
+        const nextVcs = event.target.value;
+        prompt.value = (nextVcs === 'bazaar' || nextVcs === 'bzr') ? BAZAAR_PROMPT_SUPPLEMENT : '';
+      }
+    }
+  }
+  post('templateDraftChanged', { model: currentModel() });
 });
+
+document.addEventListener('input', function() { post('templateDraftChanged', { model: currentModel() }); });
 
 window.addEventListener('message', function(event) {
   const message = event.data || {};
+  if (!acceptHostMessage(message)) return;
   if (message.type === 'templateList') {
     templates = Array.isArray(message.templates) ? message.templates : [];
     selectedTemplatePath = currentModel().templatePath || selectedTemplatePath;
@@ -186,7 +205,9 @@ window.addEventListener('message', function(event) {
   }
   if (message.type === 'readinessResult') {
     const readiness = message.readiness || (message.result && message.result.readiness);
-    renderReadiness(readiness);
+    renderReadiness(message.status === 'error'
+      ? Object.assign({}, readiness || {}, { status: 'error', nextActions: message.diagnostics || [] })
+      : readiness);
     setText('readinessOutput', JSON.stringify(message, null, 2));
   }
 });

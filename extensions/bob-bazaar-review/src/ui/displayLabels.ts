@@ -1,8 +1,8 @@
 const REVIEW_RUN_PHASE_LABELS: Readonly<Record<string, string>> = {
   target: "レビュー対象",
   packet: "レビュー資料",
-  result: "結果の取り込み",
-  triage: "人による判定",
+  result: "レビュー結果取り込み",
+  triage: "指摘確認・振り分け",
   record: "実績記録",
   summary: "集計レポート"
 }
@@ -51,8 +51,8 @@ const TARGET_MODE_LABELS: Readonly<Record<string, string>> = {
 
 const NEXT_REVIEW_ACTION_LABELS: Readonly<Record<string, string>> = {
   review: "レビューを実行",
-  resultCapture: "結果を取り込む",
-  humanTriage: "人による判定",
+  resultCapture: "レビュー結果取り込み",
+  humanTriage: "指摘確認・振り分け",
   finalize: "完了処理",
   none: "なし"
 }

@@ -1,13 +1,13 @@
-# Review Run Wizard v3 Iteration 3 Campaign Dashboard 実装仕様
+# Review Run Wizard v3 Iteration 3 レビュー実績 実装仕様
 
 ## 1. 目的
 
-Iteration 3は、Iteration 1と2で蓄積したReview Run、record、Human Triage、metricsをcampaign単位で読み取り、運用状況と実績を同じ画面で確認できるDashboardを追加する。
+Iteration 3は、Iteration 1と2で蓄積したReview Run、record、指摘確認・振り分け、metricsをcampaign単位で読み取り、運用状況と実績を主GUI内のレビュー実績stageで確認できるようにする。
 
 ```text
 review-run.json / record.yaml / triage.yaml / review-result JSON
   -> source-backed aggregation
-  -> Campaign Dashboard Webview
+  -> 主GUIのレビュー実績stage
   -> dashboard.json / dashboard.md / dashboard.csv
 ```
 
@@ -17,11 +17,7 @@ Dashboardは派生成果物であり、review evidenceのsource of truthでは�
 
 新規command:
 
-```text
-bobBazaar.openCampaignDashboard
-```
-
-Command PaletteまたはReview GUIの`Campaign Dashboardを開く`から起動する。Review GUIから開く場合は、active Review Runまたは選択済みworkspaceの`workspaceRoot`と`campaignId`を引き渡す。
+レビュー実績は独立commandを公開せず、`bobBazaar.openReviewGui`で開く主GUIから切り替える。active Review Runまたは選択済みworkspaceの`workspaceRoot`と`campaignId`を引き継ぐ。
 
 Webviewから受け付けるmessage typeは次だけである。
 
@@ -105,12 +101,12 @@ changed file名からsource / test / docsを推測しない。Review Run v1に�
 campaign totalは確定したrecord metricsを加算する。
 
 ```text
-estimated_minutes_saved = baseline - Bob review - Human Triage
+estimated_minutes_saved = baseline - Bob review - 指摘確認・振り分け
 ```
 
 run rowではrecord未作成時もReview Run metricsをprovisional値として表示する。
 
-## 6. Human Triage pending
+## 6. 指摘確認・振り分け pending
 
 次のrunを`triage_pending`へ表示する。
 
@@ -194,7 +190,7 @@ warningには可能な範囲で`review_id`とartifact pathを含める。raw pac
 - campaignを切り替え、run数とupdated順がartifactと一致する。
 - refresh後に最新のtriage / recordが反映される。
 
-### UAT-02 Human Triage pending
+### UAT-02 指摘確認・振り分け pending
 
 - triageなし、invalid triageをpendingとして表示する。
 - pending findingはaccepted / rejectedへ加算しない。

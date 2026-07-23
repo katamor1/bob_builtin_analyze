@@ -4,7 +4,6 @@ import {
   loadHumanTriageWorkspace,
   saveHumanTriageDecisions
 } from "../triage/humanTriageWorkspace"
-import { resolveBobWorkspaceRoot } from "../workspaceResolver"
 import {
   renderConsistencyHumanTriageHtml,
   type ConsistencyHumanTriageModel
@@ -13,77 +12,80 @@ import {
   parseHumanTriageMessage,
   type HumanTriageMessage
 } from "./consistencyHumanTriageMessage"
+import type {
+  ConsistencyReviewStageHost,
+  ConsistencyReviewStageService
+} from "./consistencyReviewWizardStages"
 
-export async function openConsistencyHumanTriageGui(context: vscode.ExtensionContext): Promise<void> {
-  const panel = vscode.window.createWebviewPanel("bobCodeConsistencyHumanTriage", "指摘・確認事項の判定", vscode.ViewColumn.One, {
-    enableScripts: true,
-    retainContextWhenHidden: true
-  })
-  const controller = new ConsistencyHumanTriageController(panel)
-  context.subscriptions.push(
-    panel.onDidDispose(() => controller.dispose()),
-    panel.webview.onDidReceiveMessage((message) => {
-      void controller.handleMessage(message).catch(reportHumanTriageControllerError)
-    })
-  )
-  await controller.initialize()
+export function createConsistencyHumanTriageStage(
+  host: ConsistencyReviewStageHost
+): ConsistencyReviewStageService {
+  return new ConsistencyHumanTriageStage(host)
 }
 
-class ConsistencyHumanTriageController {
-  private disposed = false
+class ConsistencyHumanTriageStage implements ConsistencyReviewStageService {
   private workspaceRoot = ""
   private model?: ConsistencyHumanTriageModel
+  private messageTail = Promise.resolve()
 
-  constructor(private readonly panel: vscode.WebviewPanel) {}
+  constructor(private readonly host: ConsistencyReviewStageHost) {}
 
-  dispose(): void {
-    this.disposed = true
-  }
-
-  async initialize(): Promise<void> {
-    const workspaceRoot = await requireWorkspaceRoot()
-    if (this.disposed) return
+  async initialize() {
+    const workspaceRoot = this.host.getWorkspaceRoot()
+    if (!workspaceRoot || !this.host.isActive()) {
+      return { status: "error" as const, errors: ["先にワークスペースフォルダーを開いてください。"] }
+    }
     this.workspaceRoot = workspaceRoot
     const model = await this.loadModel([])
-    if (this.disposed) return
+    if (!this.host.isActive()) return { status: "error" as const, errors: ["stage is no longer active"] }
     this.model = model
-    this.render()
+    if (!this.render()) return { status: "error" as const, errors: ["triage stage could not be rendered"] }
+    return { status: "ok" as const }
   }
 
-  async handleMessage(rawMessage: unknown): Promise<void> {
-    if (this.disposed) return
+  handleMessage(rawMessage: unknown): Promise<void> {
+    const handled = this.messageTail.then(() => this.handleMessageSerial(rawMessage))
+    this.messageTail = handled.then(() => undefined, () => undefined)
+    return handled
+  }
+
+  private async handleMessageSerial(rawMessage: unknown): Promise<void> {
+    if (!this.host.isActive()) return
     const message = parseHumanTriageMessage(rawMessage)
     if (!message) {
-      await this.post({ error: true, message: "不正な画面操作を拒否しました。" })
+      await this.host.post({ error: true, message: "不正な画面操作を拒否しました。" })
       return
     }
     try {
       if (message.action === "generateTriage") {
         const result = await runTriage({ workspaceRoot: this.workspaceRoot })
-        if (this.disposed) return
+        if (!this.host.isActive()) return
         const model = await this.loadModel([describeResult(result)])
-        if (this.disposed) return
+        if (!this.host.isActive()) return
         this.model = model
         this.render()
       } else if (message.action === "saveDecisions") {
         await this.saveDecisions(message)
       } else if (message.action === "openResultCapture") {
-        await vscode.commands.executeCommand("bobCodeConsistency.openResultCaptureGui")
-        await this.post({ ok: true, message: "Bob 出力の取り込みを開きました。" })
+        await this.host.showStage("review-result-capture")
       }
     } catch (error) {
-      if (this.disposed) throw error
-      await this.post({ error: true, message: error instanceof Error ? error.message : String(error) })
+      if (this.host.isActive()) {
+        await this.host.post({ error: true, message: error instanceof Error ? error.message : String(error) })
+      }
     }
   }
 
-  private render(): void {
-    if (this.disposed || !this.model) return
-    this.panel.webview.html = renderConsistencyHumanTriageHtml({
-      cspSource: this.panel.webview.cspSource,
+  private render(): boolean {
+    if (!this.host.isActive() || !this.model) return false
+    const renderToken = this.host.nextRenderToken()
+    if (!renderToken) return false
+    return this.host.render(renderConsistencyHumanTriageHtml({
+      cspSource: this.host.cspSource,
       nonce: nonce(),
+      renderToken,
       model: this.model
-    })
+    }))
   }
 
   private async loadModel(issues: string[]): Promise<ConsistencyHumanTriageModel> {
@@ -102,7 +104,6 @@ class ConsistencyHumanTriageController {
   }
 
   private async saveDecisions(message: HumanTriageMessage): Promise<void> {
-    if (this.disposed) return
     if (!message.sourceSha256 || !Number.isInteger(message.decisionRevision) || !message.items) {
       throw new Error("判定内容を保存するための確認情報が不足しています。画面を再読み込みしてから、もう一度保存してください。")
     }
@@ -113,36 +114,12 @@ class ConsistencyHumanTriageController {
       expectedDecisionRevision: message.decisionRevision as number,
       items: message.items
     })
-    if (this.disposed) return
+    if (!this.host.isActive()) return
     const model = await this.loadModel(["判定内容と生成成果物を保存しました。"])
-    if (this.disposed) return
+    if (!this.host.isActive()) return
     this.model = model
     this.render()
   }
-
-  private async post(message: Record<string, unknown>): Promise<void> {
-    if (this.disposed) return
-    try {
-      await this.panel.webview.postMessage(message)
-    } catch (error) {
-      if (this.disposed && isDisposedWebviewError(error)) return
-      throw error
-    }
-  }
-}
-
-function isDisposedWebviewError(error: unknown): boolean {
-  return error instanceof Error && error.message === "Webview is disposed"
-}
-
-function reportHumanTriageControllerError(error: unknown): void {
-  console.error("人による判定画面の処理に失敗しました:", error)
-}
-
-async function requireWorkspaceRoot(): Promise<string> {
-  const root = await resolveBobWorkspaceRoot({ allowPick: true, title: "コード整合プレレビューの判定用ワークスペースを選択" })
-  if (!root) throw new Error("先にワークスペースフォルダーを開いてください。")
-  return root
 }
 
 function describeResult(result: unknown): string {

@@ -9,9 +9,9 @@
 ```text
 Review Run開始
   -> packet / result handoff
-  -> Human Triage
+  -> 指摘確認・振り分け
   -> resume / metrics / finalize / recovery
-  -> Campaign Dashboard
+  -> レビュー実績
   -> stack acceptance
 ```
 
@@ -21,7 +21,7 @@ Review Run開始
 | --- | ---: | --- | --- | --- |
 | Iteration 1: context / handoff | #76 | `3387d87405f73b92555aca1cee82fbe7e8b4bdbf` | `221197921eae2a68878ef9a677be35b1dd81bd48` | merged |
 | Iteration 2: resume / metrics / finalize / recovery | #79 | `a20adf542342ee782d08a686032cea4b1a6b61e1` | `5d8efef2851760dd3a99a63f31a6fe2255ebecf3` | merged |
-| Iteration 3: Campaign Dashboard | #83 | `af63e516459e20d983e6e59e71ce180ef2bc855c` | `47145268c75b91987b94f9c20ca8556bda1286aa` | merged |
+| Iteration 3: レビュー実績 | #83 | `af63e516459e20d983e6e59e71ce180ef2bc855c` | `47145268c75b91987b94f9c20ca8556bda1286aa` | merged |
 | Stack acceptance | #85 | `0fb80235440d81a2b3813e8363a8b231e59a1e36` | `3a6820f4bb0e396f4222e6c988fe89d0331dc00d` | merged |
 
 重複実装だったPR #84は、より包括的なPR #83へ一本化し、未mergeでcloseした。
@@ -96,7 +96,7 @@ startReviewRun
 受入条件:
 
 - `target / packet / result / triage / record / summary`がすべてcompletedになる。
-- baseline 20分、Bob review 3分、Human Triage 2分、estimated saved 15分になる。
+- baseline 20分、Bob review 3分、指摘確認・振り分け 2分、estimated saved 15分になる。
 - accepted findingがDashboard overview / rule trend / target-mode trendへ反映される。
 - `dashboard.json`、`dashboard.md`、`dashboard.csv`が生成される。
 - Dashboard生成・export前後で、Review Run、packet、result、triage、record、summaryのSHA-256が変化しない。
@@ -111,7 +111,7 @@ startReviewRun
 - 既存command IDとworkflow provider ID
 - 既存review-result、record、triage、summaryのpathと形式
 - readonly Bazaar / MCP境界
-- Human Triage gate
+- 指摘確認・振り分け gate
 - workspace containment、realpath、symlink / junction拒否
 - Webview CSP nonceとhost側action allowlist
 
@@ -130,4 +130,4 @@ review evidenceを削除するrollbackは行わない。schemaやartifact identi
 
 ## 7. 結論
 
-Review Run Wizard v3の計画範囲はmainへ統合された。標準Review Run、再開、metrics、finalize / retry、legacy recovery、Campaign Dashboard、3形式export、stack横断の証拠不変性が自動テストと運用文書で固定されている。
+Review Run Wizard v3の計画範囲はmainへ統合された。標準Review Run、再開、metrics、finalize / retry、legacy recovery、レビュー実績、3形式export、stack横断の証拠不変性が自動テストと運用文書で固定されている。

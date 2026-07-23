@@ -2,7 +2,7 @@
 
 ## 1. 目的
 
-Iteration 2は、Iteration 1で接続したBazaar target、packet、review-result、Human Triageを、**中断・再開でき、実績確定まで完了できるReview Run**へ拡張する。
+Iteration 2は、Iteration 1で接続したBazaar target、packet、review-result、指摘確認・振り分けを、**中断・再開でき、実績確定まで完了できるReview Run**へ拡張する。
 
 対象範囲:
 
@@ -10,8 +10,8 @@ Iteration 2は、Iteration 1で接続したBazaar target、packet、review-resul
 未完了Review Runを検出
   -> 現在phaseとartifactを表示
   -> 次の操作へ再開
-  -> Human Triage decisionを検証
-  -> Bob review / Human Triage時間を確定
+  -> 指摘確認・振り分けdecisionを検証
+  -> Bob review / 指摘確認・振り分け時間を確定
   -> record.yamlを生成・検証
   -> campaign summaryを再生成
   -> Review Runをcompletedへ更新
@@ -19,16 +19,16 @@ Iteration 2は、Iteration 1で接続したBazaar target、packet、review-resul
 
 加えて、Iteration 1導入前に作られたpacket、review-result、triage、recordを変更せず、確認付きで`review-run.json`へ関連付ける。
 
-Campaign DashboardはIteration 3とし、本仕様には含めない。
+レビュー実績はIteration 3とし、本仕様には含めない。
 
 ## 2. 互換性
 
 - Review Run schema versionは`bazaar-review-run/v1`を維持する。
 - Iteration 1の`review-run.json`は読み込み時に新fieldを補完する。
 - 既存command ID、workflow provider ID、artifact pathを変更しない。
-- Result CaptureとHuman Triageのstandalone modeを維持する。
+- レビュー結果取り込みと指摘確認・振り分けは、単一主GUI内のstageとして既存artifact契約を維持する。
 - 新規runtime dependencyを追加しない。
-- Bazaar CLIの`--no-aliases`、readonly MCP、Human Triage gateを維持する。
+- Bazaar CLIの`--no-aliases`、readonly MCP、指摘確認・振り分けgateを維持する。
 
 ## 3. Review Run progress
 
@@ -79,7 +79,7 @@ Review Run全体を`completed`にするには、6 phaseすべてが`completed`�
 
 - targetは`completed`
 - packet/resultは必要artifactがあれば`completed`
-- `triage.yaml`が存在しても、Human Triageの妥当性を確認できるまでは`triage.in_progress`
+- `triage.yaml`が存在しても、指摘確認・振り分けの妥当性を確認できるまでは`triage.in_progress`
 - record/summaryは対応artifactがあれば`completed`
 - top-level phaseが`completed`ならstatusも`completed`
 
@@ -116,8 +116,8 @@ interface ReviewRunMetrics {
 ### 5.1 自動計測
 
 - packet保存時: Bob review timer開始
-- valid result保存時: Bob review timer停止、Human Triage timer開始
-- valid triage保存時: Human Triage timer停止
+- valid result保存時: Bob review timer停止、指摘確認・振り分けtimer開始
+- valid triage保存時: 指摘確認・振り分けtimer停止
 
 ### 5.2 手動補正
 
@@ -125,13 +125,13 @@ interface ReviewRunMetrics {
 
 - baseline review
 - Bob review
-- Human Triage
+- 指摘確認・振り分け
 
 補正値は有限、0以上、30日以下とする。補正後は`timingSource=user_corrected`、`correctedByUser=true`とする。
 
 recordへは小数第1位の分へ変換する。
 
-## 6. Human Triage decision契約
+## 6. 指摘確認・振り分けdecision契約
 
 | decision | 必須入力 |
 |---|---|
@@ -234,7 +234,7 @@ Review GUIは候補とcampaignを選択し、推測したtarget、artifact、war
 - command引数のworkspace rootをopen workspace配下に限定する。
 - Webview actionはhost側allowlistで処理する。
 - CSP nonceとinline handler禁止を維持する。
-- Human Triageなしでfindingを自動確定しない。
+- 指摘確認・振り分けなしでfindingを自動確定しない。
 
 ## 11. テスト
 

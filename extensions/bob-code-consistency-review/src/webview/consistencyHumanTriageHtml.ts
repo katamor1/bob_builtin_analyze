@@ -15,6 +15,7 @@ export interface ConsistencyHumanTriageModel {
 export interface RenderConsistencyHumanTriageHtmlInput {
   cspSource: string
   nonce: string
+  renderToken?: string
   model: ConsistencyHumanTriageModel
 }
 
@@ -29,7 +30,7 @@ export function renderConsistencyHumanTriageHtml(input: RenderConsistencyHumanTr
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${escapeHtml(input.cspSource)} 'unsafe-inline'; script-src 'nonce-${escapeHtml(input.nonce)}';">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>指摘・確認事項の判定</title>
+  <title>指摘確認・振り分け</title>
   <style>
     body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); padding: 18px; }
     h1 { font-size: 20px; margin: 0 0 12px; }
@@ -55,7 +56,13 @@ export function renderConsistencyHumanTriageHtml(input: RenderConsistencyHumanTr
   </style>
 </head>
 <body>
-  <h1>指摘・確認事項の判定</h1>
+  <nav class="actions" aria-label="レビュー工程">
+    <button type="button" class="secondary" data-stage="review">レビュー準備</button>
+    <button type="button" class="secondary" data-stage="traceability">トレーサビリティ整理</button>
+    <button type="button" class="secondary" data-stage="review-result-capture">レビュー結果取り込み</button>
+    <button type="button" data-stage="triage" aria-current="page" disabled>指摘確認・振り分け</button>
+  </nav>
+  <h1>指摘確認・振り分け</h1>
   <section class="card">
     <h2>対象</h2>
     <div class="muted">Bob 出力: ${escapeHtml(model.bobOutputPath)} / 判定成果物: ${escapeHtml(model.outDir)}</div>
@@ -67,7 +74,7 @@ export function renderConsistencyHumanTriageHtml(input: RenderConsistencyHumanTr
     </div>
   </section>
   <section class="card">
-    <h2>指摘・確認事項の判定</h2>
+    <h2>指摘確認・振り分け</h2>
     ${model.items.length === 0 ? `<div class="muted">判定一覧を作成すると item が表示されます。</div>` : model.items.map(renderItem).join("")}
   </section>
   <section class="card">
@@ -76,9 +83,15 @@ export function renderConsistencyHumanTriageHtml(input: RenderConsistencyHumanTr
   </section>
   <script nonce="${escapeHtml(input.nonce)}">
     const vscode = acquireVsCodeApi();
+    const renderToken = ${scriptValue(input.renderToken ?? "")};
     const sourceSha256 = ${scriptValue(model.sourceSha256)};
     const decisionRevision = ${model.decisionRevision};
     document.addEventListener('click', (event) => {
+      const stageButton = event.target && event.target.closest ? event.target.closest('button[data-stage]') : undefined;
+      if (stageButton && !stageButton.disabled) {
+        vscode.postMessage({ type: 'consistencyReview.navigate', fromStage: 'triage', stage: stageButton.dataset.stage, renderToken });
+        return;
+      }
       const button = event.target && event.target.closest ? event.target.closest('button[data-action]') : undefined;
       if (!button || button.disabled) return;
       button.disabled = true;
@@ -87,7 +100,8 @@ export function renderConsistencyHumanTriageHtml(input: RenderConsistencyHumanTr
         action: button.dataset.action,
         sourceSha256,
         decisionRevision,
-        items: collectItems()
+        items: collectItems(),
+        renderToken
       });
       setTimeout(() => { button.disabled = false; }, 1200);
     });

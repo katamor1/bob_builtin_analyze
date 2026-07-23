@@ -52,6 +52,7 @@ export interface ConsistencyReviewWizardModel {
 export interface RenderConsistencyReviewWizardHtmlInput {
   cspSource: string
   nonce: string
+  renderToken?: string
   model: ConsistencyReviewWizardModel
 }
 
@@ -86,6 +87,12 @@ export function renderConsistencyReviewWizardHtml(input: RenderConsistencyReview
   </style>
 </head>
 <body>
+  <nav class="actions" aria-label="レビュー工程">
+    <button type="button" data-stage="review" aria-current="page" disabled>レビュー準備</button>
+    <button type="button" class="secondary" data-stage="traceability">トレーサビリティ整理</button>
+    <button type="button" class="secondary" data-stage="review-result-capture">レビュー結果取り込み</button>
+    <button type="button" class="secondary" data-stage="triage">指摘確認・振り分け</button>
+  </nav>
   <h1>整合プレレビューを開始</h1>
   ${renderWorkspaceInitialization(model.initialization)}
   <section class="card">
@@ -108,10 +115,10 @@ export function renderConsistencyReviewWizardHtml(input: RenderConsistencyReview
     ${REVIEW_FOCUS_VALUES.map((focus) => `<label class="focus"><input type="checkbox" data-focus="${focus}"${model.focus.includes(focus) ? " checked" : ""}>${escapeHtml(reviewFocusLabel(focus))}</label>`).join("")}
   </section>
   <section class="card">
-    <h2>トレーサビリティ</h2>
+    <h2>トレーサビリティ整理</h2>
     <div class="muted">${traceabilityStatusLabel("proposed")} ${model.traceability.proposed}件 / ${traceabilityStatusLabel("accepted")} ${model.traceability.accepted}件 / ${traceabilityStatusLabel("rejected")} ${model.traceability.rejected}件 / ${traceabilityStatusLabel("deprecated")} ${model.traceability.deprecated}件 / エラー ${model.traceability.errors}件 / 警告 ${model.traceability.warnings}件</div>
     <div class="actions">
-      <button type="button" data-action="openTraceabilityPrep">トレーサビリティ確認を開く</button>
+      <button type="button" data-action="openTraceabilityPrep">トレーサビリティ整理を開く</button>
       <button type="button" class="secondary" data-action="createReviewInputFromTraceability">トレーサビリティから review-input を作成</button>
       <button type="button" class="secondary" data-action="validateTraceability">トレーサビリティを検証</button>
     </div>
@@ -123,7 +130,7 @@ export function renderConsistencyReviewWizardHtml(input: RenderConsistencyReview
       <button type="button" data-action="createReviewInput">選択内容から review-input を作成</button>
       <button type="button" data-action="preprocess">Bob に渡すレビュー資料を作成</button>
       <button type="button" class="secondary" data-action="openResultCapture">Bob 出力の取り込みへ進む</button>
-      <button type="button" class="secondary" data-action="openHumanTriage">人による判定へ進む</button>
+      <button type="button" class="secondary" data-action="openHumanTriage">指摘確認・振り分けへ進む</button>
     </div>
   </section>
   <section class="card">
@@ -132,11 +139,17 @@ export function renderConsistencyReviewWizardHtml(input: RenderConsistencyReview
   </section>
   <script nonce="${escapeHtml(input.nonce)}">
     const vscode = acquireVsCodeApi();
+    const renderToken = ${scriptValue(input.renderToken ?? "")};
     document.addEventListener('click', (event) => {
+      const stageButton = event.target && event.target.closest ? event.target.closest('button[data-stage]') : undefined;
+      if (stageButton && !stageButton.disabled) {
+        vscode.postMessage({ type: 'consistencyReview.navigate', fromStage: 'review', stage: stageButton.dataset.stage, renderToken });
+        return;
+      }
       const button = event.target && event.target.closest ? event.target.closest('button[data-action]') : undefined;
       if (!button) return;
       button.disabled = true;
-      vscode.postMessage({ type: 'consistencyWizard.action', action: button.dataset.action, draft: collectDraft() });
+      vscode.postMessage({ type: 'consistencyWizard.action', action: button.dataset.action, draft: collectDraft(), renderToken });
       setTimeout(() => { button.disabled = false; }, 1200);
     });
     function collectDraft() {
@@ -160,6 +173,10 @@ export function renderConsistencyReviewWizardHtml(input: RenderConsistencyReview
   </script>
 </body>
 </html>`
+}
+
+function scriptValue(value: string): string {
+  return JSON.stringify(value).replace(/</g, "\\u003c").replace(/>/g, "\\u003e").replace(/&/g, "\\u0026")
 }
 
 function renderWorkspaceInitialization(status: ConsistencyWizardInitializationStatus): string {

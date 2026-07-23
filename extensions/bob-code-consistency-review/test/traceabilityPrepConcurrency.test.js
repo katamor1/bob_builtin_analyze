@@ -1,6 +1,5 @@
 const assert = require("node:assert/strict")
 const fs = require("node:fs/promises")
-const Module = require("node:module")
 const os = require("node:os")
 const path = require("node:path")
 const { test } = require("node:test")
@@ -22,55 +21,66 @@ function catalogWithDomains(domains) {
   }
 }
 
-function loadPrepWebview(vscode) {
-  const originalLoad = Module._load
-  Module._load = function patchedLoad(request, parent, isMain) {
-    if (request === "vscode") return vscode
-    return originalLoad.call(this, request, parent, isMain)
-  }
-  try {
-    const modulePath = require.resolve("../out/webview/traceabilityPrepWebview")
-    delete require.cache[modulePath]
-    return require(modulePath)
-  } finally {
-    Module._load = originalLoad
-  }
-}
-
-function webviewHarness(modelPostDelayMs = 0) {
+function webviewHarness(modelPostDelayMs = 0, options = {}) {
   const posted = []
-  let receiveMessage
-  const webview = {
+  const html = []
+  const host = {
     cspSource: "vscode-resource:",
-    html: "",
-    onDidReceiveMessage: (listener) => {
-      receiveMessage = listener
-      return { dispose: () => undefined }
-    },
-    postMessage: async (message) => {
+    stage: "traceability",
+    isActive: () => true,
+    nextRenderToken: () => "token",
+    render: (value) => { html.push(value); return options.renderResult ?? true },
+    post: async (message) => {
       posted.push(message)
       if (modelPostDelayMs > 0 && message.type === "model") {
         await new Promise((resolve) => setTimeout(resolve, modelPostDelayMs))
       }
       return true
-    }
+    },
+    getWorkspaceRoot: () => undefined,
+    showStage: async () => ({ status: "ok" })
   }
-  const panel = { webview }
-  const vscode = {
-    ViewColumn: { One: 1 },
-    window: { createWebviewPanel: () => panel }
-  }
-  const { openTraceabilityPrepWebview } = loadPrepWebview(vscode)
   return {
-    openTraceabilityPrepWebview,
+    create: (request) => require("../out/webview/traceabilityPrepWebview").createTraceabilityPrepStage(host, request),
+    html,
     posted,
-    send: (message) => receiveMessage(message)
   }
 }
 
+test("Traceability Prep returns a structured error when the host rejects its render", async () => {
+  const workspaceRoot = await makeWorkspace()
+  await writeTraceabilityCatalog({ workspaceRoot, catalog: catalogWithDomains([]) })
+  const harness = webviewHarness(0, { renderResult: false })
+
+  const outcome = await harness.create(options(workspaceRoot)).initialize()
+
+  assert.deepEqual(outcome, {
+    status: "error",
+    errors: ["traceability stage could not be rendered"]
+  })
+})
+
+test("Traceability Prep renders the approved embedded stage navigation labels", async () => {
+  const workspaceRoot = await makeWorkspace()
+  await writeTraceabilityCatalog({ workspaceRoot, catalog: catalogWithDomains([]) })
+  const harness = webviewHarness()
+
+  const outcome = await harness.create(options(workspaceRoot)).initialize()
+
+  assert.equal(outcome.status, "ok")
+  const navigation = harness.html.at(-1).match(/<nav class="actions" aria-label="レビュー工程">[\s\S]*?<\/nav>/)?.[0]
+  assert.ok(navigation)
+  for (const label of ["レビュー準備", "トレーサビリティ整理", "レビュー結果取り込み", "指摘確認・振り分け"]) {
+    assert.match(navigation, new RegExp(`>${label}<\\/button>`))
+  }
+  assert.doesNotMatch(navigation, />トレーサビリティ<\/button>/)
+  assert.doesNotMatch(navigation, /人による判定/)
+  assert.match(harness.html.at(-1), /<title>トレーサビリティ整理<\/title>/)
+  assert.match(harness.html.at(-1), /<h1>トレーサビリティ整理<\/h1>/)
+})
+
 function options(workspaceRoot) {
   return {
-    context: { subscriptions: [] },
     workspaceRoot,
     catalogPath: ".bob-trace/traceability-catalog.json",
     reportPath: ".bob-trace/gate-report.md",
@@ -85,14 +95,15 @@ test("Traceability Prep rejects an external winner without saved or gate-report 
     catalog: catalogWithDomains([{ code: "PAY", status: "proposed" }])
   })
   const harness = webviewHarness()
-  await harness.openTraceabilityPrepWebview(options(workspaceRoot))
+  const stage = harness.create(options(workspaceRoot))
+  await stage.initialize()
   await writeTraceabilityCatalog({
     workspaceRoot,
     catalog: catalogWithDomains([{ code: "AUTH", status: "accepted" }])
   })
 
-  await harness.send({ type: "action", action: { type: "approveDomain", code: "PAY" } })
-  await harness.send({ type: "save" })
+  await stage.handleMessage({ type: "action", action: { type: "approveDomain", code: "PAY" } })
+  await stage.handleMessage({ type: "save" })
 
   const final = JSON.parse(await fs.readFile(path.join(workspaceRoot, ".bob-trace", "traceability-catalog.json"), "utf8"))
   assert.deepEqual(final.domains, [{ code: "AUTH", status: "accepted" }])
@@ -111,13 +122,14 @@ test("Traceability Prep serializes same-panel actions and consecutive saves whil
     ])
   })
   const harness = webviewHarness(10)
-  await harness.openTraceabilityPrepWebview(options(workspaceRoot))
+  const stage = harness.create(options(workspaceRoot))
+  await stage.initialize()
 
   await Promise.all([
-    harness.send({ type: "action", action: { type: "approveDomain", code: "PAY" } }),
-    harness.send({ type: "save" }),
-    harness.send({ type: "action", action: { type: "approveDomain", code: "AUTH" } }),
-    harness.send({ type: "save" })
+    stage.handleMessage({ type: "action", action: { type: "approveDomain", code: "PAY" } }),
+    stage.handleMessage({ type: "save" }),
+    stage.handleMessage({ type: "action", action: { type: "approveDomain", code: "AUTH" } }),
+    stage.handleMessage({ type: "save" })
   ])
 
   const saved = harness.posted.filter((message) => message.type === "saved")

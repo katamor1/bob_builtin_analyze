@@ -14,7 +14,7 @@ test("Operation Hub locks action buttons until the hub refreshes", () => {
   assert.equal(source.includes("button.disabled = false"), false)
 })
 
-test("Operation Hub refreshes Run Monitor when run state files change", () => {
+test("Operation Hub refreshes its retained panel when run state files change", () => {
   const source = readSrc("gui", "operationHubProvider.ts")
 
   assert.ok(source.includes("RUN_MONITOR_WATCH_PATTERNS"))
@@ -34,6 +34,7 @@ test("Operation Hub schedules follow-up refreshes after action commands start", 
     source,
     /this\.scheduleActionRefreshes\(\)\s+await vscode\.commands\.executeCommand\(command, \.\.\.commandArgsForAction\(message\)\)/
   )
-  assert.ok(source.includes("await this.refreshAll().catch"))
-  assert.match(source, /await this\.openPanel\(message\.runId \? \{ runId: message\.runId \} : undefined\)\s+await this\.refresh\(\)/)
+  assert.ok(source.includes("await this.refreshPanel().catch"))
+  assert.match(source, /await this\.refreshPanel\(\)/)
+  assert.doesNotMatch(source, /openOperationHubPanel/)
 })

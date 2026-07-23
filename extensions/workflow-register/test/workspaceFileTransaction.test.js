@@ -185,3 +185,357 @@ test("workspace file transaction serializes one physical root so a failed rollba
 
   assert.equal(fs.readFileSync(target, "utf8"), "second")
 })
+
+test("workspace file transaction preserves an unrelated winner after a failed target publish", async (t) => {
+  const { writeWorkspaceFilesAtomically } = require("../out/core/runtime/workspaceFileTransaction")
+  const root = tempDir(t)
+  const target = path.join(root, "artifact.txt")
+  fs.writeFileSync(target, "old")
+  const originalRename = fsPromises.rename
+  let injected = false
+  fsPromises.rename = async (source, destination) => {
+    if (!injected && path.resolve(String(destination)) === path.resolve(target) && String(source).includes(".workflow-txn-")) {
+      injected = true
+      fs.writeFileSync(target, "external winner")
+      throw new Error("failed publish after unrelated winner")
+    }
+    return originalRename(source, destination)
+  }
+
+  try {
+    await assert.rejects(
+      writeWorkspaceFilesAtomically(root, [{ relativePath: "artifact.txt", text: "transaction", encoding: "utf8" }]),
+      /failed publish after unrelated winner.*rollback failed/
+    )
+  } finally {
+    fsPromises.rename = originalRename
+  }
+
+  assert.equal(injected, true)
+  assert.equal(fs.readFileSync(target, "utf8"), "external winner")
+})
+
+test("workspace file transaction restores an existing target when backup rename mutates then rejects", async (t) => {
+  const { writeWorkspaceFilesAtomically } = require("../out/core/runtime/workspaceFileTransaction")
+  const root = tempDir(t)
+  const target = path.join(root, "artifact.txt")
+  fs.writeFileSync(target, "exact original")
+  const originalRename = fsPromises.rename
+  let injected = false
+  fsPromises.rename = async (source, destination) => {
+    if (!injected && path.resolve(String(source)) === target && String(destination).endsWith(".bak")) {
+      injected = true
+      await originalRename(source, destination)
+      throw new Error("backup rename rejected after mutation")
+    }
+    return originalRename(source, destination)
+  }
+
+  try {
+    await assert.rejects(
+      writeWorkspaceFilesAtomically(root, [{ relativePath: "artifact.txt", text: "new bytes", encoding: "utf8" }]),
+      /backup rename rejected after mutation/
+    )
+  } finally {
+    fsPromises.rename = originalRename
+  }
+
+  assert.equal(injected, true)
+  assert.equal(fs.readFileSync(target, "utf8"), "exact original")
+  assert.deepEqual(fs.readdirSync(root).filter((name) => name.includes(".workflow-txn-")), [])
+})
+
+test("workspace file transaction removes every missing-target publication when publish mutates then rejects", async (t) => {
+  const { writeWorkspaceFilesAtomically } = require("../out/core/runtime/workspaceFileTransaction")
+  const root = tempDir(t)
+  const first = path.join(root, "first.txt")
+  const second = path.join(root, "second.txt")
+  const originalRename = fsPromises.rename
+  let injected = false
+  fsPromises.rename = async (source, destination) => {
+    if (!injected && path.resolve(String(destination)) === second && String(source).endsWith(".tmp")) {
+      injected = true
+      await originalRename(source, destination)
+      throw new Error("publish rejected after mutation")
+    }
+    return originalRename(source, destination)
+  }
+
+  try {
+    await assert.rejects(
+      writeWorkspaceFilesAtomically(root, [
+        { relativePath: "first.txt", text: "first", encoding: "utf8" },
+        { relativePath: "second.txt", text: "second", encoding: "utf8" }
+      ]),
+      /publish rejected after mutation/
+    )
+  } finally {
+    fsPromises.rename = originalRename
+  }
+
+  assert.equal(injected, true)
+  assert.equal(fs.existsSync(first), false)
+  assert.equal(fs.existsSync(second), false)
+})
+
+test("workspace successful commit reports every cleanup artifact that remains", async (t) => {
+  const { writeWorkspaceFilesAtomically } = require("../out/core/runtime/workspaceFileTransaction")
+  const root = tempDir(t)
+  const target = path.join(root, "artifact.txt")
+  fs.writeFileSync(target, "old")
+  const originalRm = fsPromises.rm
+  const failedKinds = []
+  fsPromises.rm = async (candidate, options) => {
+    const kind = [".bak", ".anchor"].find((suffix) => String(candidate).endsWith(suffix))
+    if (kind) {
+      failedKinds.push(kind)
+      const error = new Error(`forced cleanup failure ${kind}`)
+      error.code = "EACCES"
+      throw error
+    }
+    return originalRm(candidate, options)
+  }
+
+  try {
+    await assert.rejects(
+      writeWorkspaceFilesAtomically(root, [{ relativePath: "artifact.txt", text: "new", encoding: "utf8" }]),
+      /cleanup failed.*\.anchor.*\.bak|cleanup failed.*\.bak.*\.anchor/
+    )
+  } finally {
+    fsPromises.rm = originalRm
+  }
+
+  assert.deepEqual(failedKinds.sort(), [".anchor", ".bak"])
+  assert.equal(fs.readFileSync(target, "utf8"), "new")
+  const staging = path.join(root, ".bob", ".workflow-file-transactions")
+  const names = fs.readdirSync(staging)
+  assert.equal(names.some((name) => name.endsWith(".anchor")), true)
+  assert.equal(names.some((name) => name.endsWith(".bak")), true)
+})
+
+test("workspace successful cleanup accepts removals that mutate then reject", async (t) => {
+  const { writeWorkspaceFilesAtomically } = require("../out/core/runtime/workspaceFileTransaction")
+  const root = tempDir(t)
+  const target = path.join(root, "artifact.txt")
+  fs.writeFileSync(target, "old")
+  const originalRm = fsPromises.rm
+  const rejectedKinds = []
+  fsPromises.rm = async (candidate, options) => {
+    const kind = [".bak", ".anchor"].find((suffix) => String(candidate).endsWith(suffix))
+    if (!kind) return originalRm(candidate, options)
+    await originalRm(candidate, options)
+    rejectedKinds.push(kind)
+    throw new Error(`cleanup rejected after removal ${kind}`)
+  }
+
+  try {
+    await writeWorkspaceFilesAtomically(root, [{ relativePath: "artifact.txt", text: "new", encoding: "utf8" }])
+  } finally {
+    fsPromises.rm = originalRm
+  }
+
+  assert.deepEqual(rejectedKinds.sort(), [".anchor", ".bak"])
+  assert.equal(fs.readFileSync(target, "utf8"), "new")
+  const staging = path.join(root, ".bob", ".workflow-file-transactions")
+  assert.deepEqual(fs.readdirSync(staging), [])
+})
+
+test("workspace rollback reconciles target removal that mutates then rejects", async (t) => {
+  const { writeWorkspaceFilesAtomically } = require("../out/core/runtime/workspaceFileTransaction")
+  const root = tempDir(t)
+  const target = path.join(root, "artifact.txt")
+  fs.writeFileSync(target, "exact original")
+  const originalRm = fsPromises.rm
+  let injected = false
+  fsPromises.rm = async (candidate, options) => {
+    if (!injected && path.resolve(String(candidate)) === target) {
+      injected = true
+      await originalRm(candidate, options)
+      throw new Error("rollback target removal rejected after mutation")
+    }
+    return originalRm(candidate, options)
+  }
+
+  try {
+    await assert.rejects(
+      writeWorkspaceFilesAtomically(
+        root,
+        [{ relativePath: "artifact.txt", text: "new bytes", encoding: "utf8" }],
+        () => { throw new Error("force rollback") }
+      ),
+      /^Error: force rollback$/
+    )
+  } finally {
+    fsPromises.rm = originalRm
+  }
+
+  assert.equal(injected, true)
+  assert.equal(fs.readFileSync(target, "utf8"), "exact original")
+  assert.deepEqual(fs.readdirSync(path.join(root, ".bob", ".workflow-file-transactions")), [])
+})
+
+test("workspace rollback preserves an in-place winner recreated after target removal", async (t) => {
+  const { writeWorkspaceFilesAtomically } = require("../out/core/runtime/workspaceFileTransaction")
+  const root = tempDir(t)
+  const target = path.join(root, "artifact.txt")
+  fs.writeFileSync(target, "exact original")
+  const originalRm = fsPromises.rm
+  const winner = Buffer.from("external winner")
+  let injected = false
+  fsPromises.rm = async (candidate, options) => {
+    if (!injected && path.resolve(String(candidate)) === target) {
+      injected = true
+      await originalRm(candidate, options)
+      const staging = path.join(root, ".bob", ".workflow-file-transactions")
+      const anchor = fs.readdirSync(staging).find((name) => name.endsWith(".anchor"))
+      assert.ok(anchor)
+      fs.linkSync(path.join(staging, anchor), target)
+      fs.writeFileSync(target, winner)
+      return
+    }
+    return originalRm(candidate, options)
+  }
+
+  try {
+    await assert.rejects(
+      writeWorkspaceFilesAtomically(
+        root,
+        [{ relativePath: "artifact.txt", text: "new bytes", encoding: "utf8" }],
+        () => { throw new Error("force rollback") }
+      ),
+      /force rollback; rollback failed: Workspace file transaction target changed during rollback/
+    )
+  } finally {
+    fsPromises.rm = originalRm
+  }
+
+  assert.equal(injected, true)
+  assert.deepEqual(fs.readFileSync(target), winner)
+  const staging = path.join(root, ".bob", ".workflow-file-transactions")
+  const rollback = fs.readdirSync(staging).find((name) => name.endsWith(".bak"))
+  assert.ok(rollback)
+  assert.equal(fs.readFileSync(path.join(staging, rollback), "utf8"), "exact original")
+})
+
+test("workspace rollback reconciles restore rename that mutates then rejects", async (t) => {
+  const { writeWorkspaceFilesAtomically } = require("../out/core/runtime/workspaceFileTransaction")
+  const root = tempDir(t)
+  const target = path.join(root, "artifact.txt")
+  fs.writeFileSync(target, "exact original")
+  const originalRename = fsPromises.rename
+  let injected = false
+  fsPromises.rename = async (source, destination) => {
+    if (!injected && String(source).endsWith(".bak") && path.resolve(String(destination)) === target) {
+      injected = true
+      await originalRename(source, destination)
+      throw new Error("rollback restore rename rejected after mutation")
+    }
+    return originalRename(source, destination)
+  }
+
+  try {
+    await assert.rejects(
+      writeWorkspaceFilesAtomically(
+        root,
+        [{ relativePath: "artifact.txt", text: "new bytes", encoding: "utf8" }],
+        () => { throw new Error("force rollback") }
+      ),
+      /^Error: force rollback$/
+    )
+  } finally {
+    fsPromises.rename = originalRename
+  }
+
+  assert.equal(injected, true)
+  assert.equal(fs.readFileSync(target, "utf8"), "exact original")
+  assert.deepEqual(fs.readdirSync(path.join(root, ".bob", ".workflow-file-transactions")), [])
+})
+
+test("workspace rollback does not reconcile an in-place rewrite after restore rename", async (t) => {
+  const { writeWorkspaceFilesAtomically } = require("../out/core/runtime/workspaceFileTransaction")
+  const root = tempDir(t)
+  const target = path.join(root, "artifact.txt")
+  fs.writeFileSync(target, "exact original")
+  const originalRename = fsPromises.rename
+  const winner = Buffer.from("external win!")
+  let injected = false
+  fsPromises.rename = async (source, destination) => {
+    if (!injected && String(source).endsWith(".bak") && path.resolve(String(destination)) === target) {
+      injected = true
+      await originalRename(source, destination)
+      await fsPromises.writeFile(destination, winner)
+      throw new Error("rollback restore rejected after in-place rewrite")
+    }
+    return originalRename(source, destination)
+  }
+
+  try {
+    await assert.rejects(
+      writeWorkspaceFilesAtomically(
+        root,
+        [{ relativePath: "artifact.txt", text: "new bytes", encoding: "utf8" }],
+        () => { throw new Error("force rollback") }
+      ),
+      /force rollback; rollback failed: rollback restore rejected after in-place rewrite/
+    )
+  } finally {
+    fsPromises.rename = originalRename
+  }
+
+  assert.equal(injected, true)
+  assert.deepEqual(fs.readFileSync(target), winner)
+})
+
+test("workspace rollback preserves a normal replacement even when the allocator reuses the published inode", async (t) => {
+  const { writeWorkspaceFilesAtomically } = require("../out/core/runtime/workspaceFileTransaction")
+  const root = tempDir(t)
+  const target = path.join(root, "artifact.txt")
+  fs.writeFileSync(target, "old bytes")
+  let reusedPublishedInode = false
+
+  await assert.rejects(
+    writeWorkspaceFilesAtomically(root, [{ relativePath: "artifact.txt", text: "transaction bytes", encoding: "utf8" }], async () => {
+      const published = fs.statSync(target, { bigint: true })
+      fs.unlinkSync(target)
+      for (let attempt = 0; attempt < 512; attempt += 1) {
+        fs.writeFileSync(target, "external replacement")
+        const replacement = fs.statSync(target, { bigint: true })
+        if (replacement.dev === published.dev && replacement.ino === published.ino) {
+          reusedPublishedInode = true
+          break
+        }
+        if (attempt < 511) fs.unlinkSync(target)
+      }
+      throw new Error("state commit failed after replacement")
+    }),
+    /state commit failed after replacement.*rollback failed/
+  )
+
+  assert.equal(reusedPublishedInode, false, "an ownership anchor must keep the published inode allocated")
+  assert.equal(fs.readFileSync(target, "utf8"), "external replacement")
+  const transactionDirectory = path.join(root, ".bob", ".workflow-file-transactions")
+  assert.equal(fs.readdirSync(transactionDirectory).some((name) => name.endsWith(".bak")), true)
+})
+
+test("workspace rollback preserves an in-place rewrite of the published inode", async (t) => {
+  const { writeWorkspaceFilesAtomically } = require("../out/core/runtime/workspaceFileTransaction")
+  const root = tempDir(t)
+  const target = path.join(root, "artifact.txt")
+  fs.writeFileSync(target, "old bytes")
+
+  await assert.rejects(
+    writeWorkspaceFilesAtomically(root, [{ relativePath: "artifact.txt", text: "transaction bytes", encoding: "utf8" }], async () => {
+      const before = fs.statSync(target, { bigint: true })
+      fs.writeFileSync(target, "in-place external rewrite")
+      const after = fs.statSync(target, { bigint: true })
+      assert.equal(after.dev, before.dev)
+      assert.equal(after.ino, before.ino)
+      throw new Error("state commit failed after in-place rewrite")
+    }),
+    /state commit failed after in-place rewrite.*rollback failed/
+  )
+
+  assert.equal(fs.readFileSync(target, "utf8"), "in-place external rewrite")
+  const transactionDirectory = path.join(root, ".bob", ".workflow-file-transactions")
+  assert.equal(fs.readdirSync(transactionDirectory).some((name) => name.endsWith(".bak")), true)
+})

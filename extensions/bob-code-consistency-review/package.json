@@ -1,7 +1,7 @@
 {
   "name": "bob-code-consistency-review",
   "displayName": "Bob コード整合プレレビュー",
-  "description": "コード変更と要求・設計・テスト仕様の整合性を確認するための Bob 向けレビュー資料、トレーサビリティ、出力検証、人による判定を提供します。日本語と Shift-JIS 系テキストに対応します。",
+  "description": "コード変更と要求・設計・テスト仕様の整合性を確認するための Bob 向けレビュー資料、トレーサビリティ、出力検証、指摘確認・振り分けを提供します。日本語と Shift-JIS 系テキストに対応します。",
   "version": "0.1.0",
   "publisher": "local",
   "license": "UNLICENSED",
@@ -19,8 +19,6 @@
   "activationEvents": [
     "onStartupFinished",
     "onCommand:bobCodeConsistency.openReviewWizard",
-    "onCommand:bobCodeConsistency.openResultCaptureGui",
-    "onCommand:bobCodeConsistency.openHumanTriageGui",
     "onCommand:bobCodeConsistency.initializeWorkspace",
     "onCommand:bobCodeConsistency.createReviewInput",
     "onCommand:bobCodeConsistency.prepareAiReviewInputDraft",
@@ -44,17 +42,7 @@
       {
         "command": "bobCodeConsistency.openReviewWizard",
         "title": "整合プレレビューを開始",
-        "category": "Bob コード整合プレレビュー"
-      },
-      {
-        "command": "bobCodeConsistency.openResultCaptureGui",
-        "title": "Bob 出力の取り込みを開く",
-        "category": "Bob コード整合プレレビュー"
-      },
-      {
-        "command": "bobCodeConsistency.openHumanTriageGui",
-        "title": "指摘・確認事項の判定を開く",
-        "category": "Bob コード整合プレレビュー"
+        "category": "Bob Code Consistency Review"
       },
       {
         "command": "bobCodeConsistency.initializeWorkspace",
@@ -93,7 +81,7 @@
       },
       {
         "command": "bobCodeConsistency.openTraceabilityPrep",
-        "title": "トレーサビリティ確認を開く",
+        "title": "トレーサビリティ整理を開く",
         "category": "Bob コード整合プレレビュー"
       },
       {
@@ -133,7 +121,7 @@
       },
       {
         "command": "bobCodeConsistency.triage",
-        "title": "人による判定一覧を作成",
+        "title": "指摘確認・振り分け一覧を作成",
         "category": "Bob コード整合プレレビュー"
       }
     ],
@@ -168,7 +156,7 @@
         "bobCodeConsistency.triagePath": {
           "type": "string",
           "default": ".bob-review/human-triage",
-          "description": "人による判定内容と生成成果物を書き込むワークスペース相対パスです。"
+          "description": "指摘確認・振り分け内容と生成成果物を書き込むワークスペース相対パスです。"
         },
         "bobCodeConsistency.bzrPath": {
           "type": "string",
@@ -244,58 +232,68 @@
           "command": "bobCodeConsistency.openReviewWizard"
         },
         {
-          "command": "bobCodeConsistency.openResultCaptureGui"
+          "command": "bobCodeConsistency.initializeWorkspace",
+          "when": "false"
         },
         {
-          "command": "bobCodeConsistency.openHumanTriageGui"
+          "command": "bobCodeConsistency.createReviewInput",
+          "when": "false"
         },
         {
-          "command": "bobCodeConsistency.initializeWorkspace"
+          "command": "bobCodeConsistency.prepareAiReviewInputDraft",
+          "when": "false"
         },
         {
-          "command": "bobCodeConsistency.createReviewInput"
+          "command": "bobCodeConsistency.applyAiReviewInputDraft",
+          "when": "false"
         },
         {
-          "command": "bobCodeConsistency.prepareAiReviewInputDraft"
+          "command": "bobCodeConsistency.prepareAiTraceabilityDraft",
+          "when": "false"
         },
         {
-          "command": "bobCodeConsistency.applyAiReviewInputDraft"
+          "command": "bobCodeConsistency.captureAiTraceabilityDraft",
+          "when": "false"
         },
         {
-          "command": "bobCodeConsistency.prepareAiTraceabilityDraft"
+          "command": "bobCodeConsistency.applyAiTraceabilityDraft",
+          "when": "false"
         },
         {
-          "command": "bobCodeConsistency.captureAiTraceabilityDraft"
+          "command": "bobCodeConsistency.openTraceabilityPrep",
+          "when": "false"
         },
         {
-          "command": "bobCodeConsistency.applyAiTraceabilityDraft"
+          "command": "bobCodeConsistency.validateTraceabilityCatalog",
+          "when": "false"
         },
         {
-          "command": "bobCodeConsistency.openTraceabilityPrep"
+          "command": "bobCodeConsistency.createReviewInputFromTraceability",
+          "when": "false"
         },
         {
-          "command": "bobCodeConsistency.validateTraceabilityCatalog"
+          "command": "bobCodeConsistency.repairReviewInput",
+          "when": "false"
         },
         {
-          "command": "bobCodeConsistency.createReviewInputFromTraceability"
+          "command": "bobCodeConsistency.explainReviewInputDiagnostics",
+          "when": "false"
         },
         {
-          "command": "bobCodeConsistency.repairReviewInput"
+          "command": "bobCodeConsistency.preprocess",
+          "when": "false"
         },
         {
-          "command": "bobCodeConsistency.explainReviewInputDiagnostics"
+          "command": "bobCodeConsistency.captureBobOutput",
+          "when": "false"
         },
         {
-          "command": "bobCodeConsistency.preprocess"
+          "command": "bobCodeConsistency.validateOutput",
+          "when": "false"
         },
         {
-          "command": "bobCodeConsistency.captureBobOutput"
-        },
-        {
-          "command": "bobCodeConsistency.validateOutput"
-        },
-        {
-          "command": "bobCodeConsistency.triage"
+          "command": "bobCodeConsistency.triage",
+          "when": "false"
         }
       ]
     }
