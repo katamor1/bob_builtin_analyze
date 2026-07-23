@@ -4,6 +4,7 @@ const { types: utilTypes } = require("node:util")
 const {
   VALID,
   DIGEST,
+  assertDeepFrozen,
   lockModule,
   pointerModule,
   replaceAt,
@@ -114,6 +115,23 @@ test("captured proxy detection remains authoritative after util.types.isProxy is
     assert.throws(() => decodeWorkflowPackageLock(new Proxy(validLock(), {})), TypeError)
   } finally {
     utilTypes.isProxy = original
+  }
+})
+
+test("captured Object.freeze remains authoritative after the global is replaced", () => {
+  const { decodeWorkflowPackagePointer } = pointerModule()
+  const { decodeWorkflowPackageLock } = lockModule()
+  const original = Object.freeze
+  Object.freeze = (value) => value
+  try {
+    const pointer = decodeWorkflowPackagePointer(validPointerInput())
+    const lock = decodeWorkflowPackageLock(richLock())
+    assertDeepFrozen(pointer)
+    assertDeepFrozen(lock)
+    assert.throws(() => { pointer.workflowId = "changed" }, TypeError)
+    assert.throws(() => { lock.workflow.bytes = 999 }, TypeError)
+  } finally {
+    Object.freeze = original
   }
 })
 
