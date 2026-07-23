@@ -31,6 +31,7 @@ export {
   type ProcessingBudgetProfileOverrides
 } from "./processingBudgetProfile"
 export {
+  PROCESSING_BUDGET_TARGET_MAX_UTF8_BYTES,
   ProcessingBudgetLedger,
   type ProcessingBudgetLedgerCategoryReport,
   type ProcessingBudgetLedgerOperationCategoryReport,
