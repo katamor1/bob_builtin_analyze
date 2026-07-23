@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "roots": [
+    "extensions/README.md",
+    "extensions/workflow-register/README.md",
+    "extensions/workflow-register/docs",
+    "extensions/bob-bazaar-review/README.md",
+    "extensions/bob-bazaar-review/docs",
+    "extensions/bob-code-consistency-review/README.md",
+    "extensions/bob-code-consistency-review/docs",
+    "docs"
+  ],
+  "historicalDocuments": [
+    "extensions/bob-bazaar-review/docs/review-run-v3-iteration1-ja.md",
+    "extensions/bob-bazaar-review/docs/review-run-v3-iteration2-ja.md",
+    "extensions/bob-bazaar-review/docs/review-run-v3-iteration3-dashboard-ja.md",
+    "docs/superpowers/plans/2026-07-17-three-extension-ui-and-documentation-contracts.md",
+    "docs/superpowers/specs/2026-07-17-three-extension-quality-contract-and-ui-consolidation-design.md"
+  ]
+}
