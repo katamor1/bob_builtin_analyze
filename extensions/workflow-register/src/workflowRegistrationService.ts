@@ -59,11 +59,15 @@ export async function registerWorkflows(input: RegisterWorkflowsInput): Promise<
   const api = bob.api
   if (!api) {
     lines.push("- fail: IBM Bob 2.0.1 audited registerSource API is not available.")
+    await deactivateRegisteredSource(input.previousSource, lines)
+    await vscode.commands.executeCommand("setContext", "bob-code.hasWorkflows", false)
     return {
       result: { summary: "Bob workflow registration API is unavailable or incompatible.", lines },
       coreWorkflows,
-      sourceChanged: false,
-      idsChanged: false
+      registeredSource: undefined,
+      registeredIds: new Set(),
+      sourceChanged: true,
+      idsChanged: true
     }
   }
 
@@ -78,12 +82,14 @@ export async function registerWorkflows(input: RegisterWorkflowsInput): Promise<
   )
   lines.push(formatAttempt(sourceResult))
   if (!source) {
+    await vscode.commands.executeCommand("setContext", "bob-code.hasWorkflows", false)
     return {
       result: { summary: "Bob accepted the source request, but an audited source was not returned.", lines },
       coreWorkflows,
       registeredSource: undefined,
+      registeredIds: new Set(),
       sourceChanged: true,
-      idsChanged: false
+      idsChanged: true
     }
   }
   const auditedSource = source
