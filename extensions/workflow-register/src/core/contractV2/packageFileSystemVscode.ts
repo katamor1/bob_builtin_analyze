@@ -27,6 +27,11 @@ export interface CreateVscodeWorkflowPackageFileSystemInput<Uri> {
   readonly joinPath: (root: Uri, ...segments: string[]) => Uri
   readonly realpath: (uri: Uri) => Promise<string>
   readonly isWithin: (rootPhysical: string, candidatePhysical: string) => boolean
+  /** Must change whenever the provider's file kind or byte snapshot changes. */
+  readonly snapshotIdentity: (
+    uri: Uri,
+    stat: WorkflowPackageVscodeFileStat
+  ) => Promise<string> | string
   readonly flushFile?: (uri: Uri) => Promise<void>
   readonly flushDirectory?: (uri: Uri) => Promise<void>
 }
@@ -43,17 +48,33 @@ const objectFreeze = Object.freeze
 export function createVscodeWorkflowPackageFileSystem<Uri>(
   input: CreateVscodeWorkflowPackageFileSystemInput<Uri>
 ): WorkflowPackageFileSystem<Uri> {
-  const { workspaceFs, joinPath, realpath, isWithin, flushFile, flushDirectory } = input
+  const {
+    workspaceFs,
+    joinPath,
+    realpath,
+    isWithin,
+    snapshotIdentity,
+    flushFile,
+    flushDirectory
+  } = input
+  if (typeof snapshotIdentity !== "function") {
+    throw new TypeError("VS Code package filesystem requires a snapshot identity provider.")
+  }
   return objectFreeze({
     async lstat(root: Uri, segments: readonly string[]): Promise<WorkflowPackageFileStat> {
-      const stat = await workspaceFs.stat(joinPath(root, ...segments))
+      const uri = joinPath(root, ...segments)
+      const stat = await workspaceFs.stat(uri)
       if (!numberIsSafeInteger(stat.size) || stat.size < 0) {
         throw new Error("Workflow package VS Code file size is not a safe integer.")
+      }
+      const identity = await snapshotIdentity(uri, stat)
+      if (typeof identity !== "string" || identity.length === 0) {
+        throw new Error("VS Code package filesystem snapshot identity is unavailable.")
       }
       return objectFreeze({
         kind: vscodeFileKind(stat.type),
         size: stat.size,
-        identity: `${stat.type}:${stat.size}:${stat.ctime}:${stat.mtime}`
+        identity
       })
     },
 
