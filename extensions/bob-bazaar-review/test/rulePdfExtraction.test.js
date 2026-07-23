@@ -33,7 +33,8 @@ test("extractPdf invokes the bounded runner with the fixed argument array and no
   assert.deepEqual(captured.args, ["-layout", "-enc", "UTF-8", absolutePath, "-"])
   assert.equal(captured.cwd, path.dirname(absolutePath))
   assert.equal(captured.timeoutMs, 4321)
-  assert.equal(captured.maxBufferBytes, 32 * 1024 * 1024)
+  assert.equal(captured.maxStdoutBytes, 32 * 1024 * 1024)
+  assert.equal(Object.hasOwn(captured, "maxBufferBytes"), false)
   assert.deepEqual(captured.allowedExitCodes, [0])
   assert.equal(Object.hasOwn(captured, "shell"), false)
   assert.deepEqual(result.extractor, { id: "pdf-pdftotext-layout", version: "1" })
@@ -69,10 +70,10 @@ test("extractPdf clamps raised output/chunk limits while preserving lower caller
     maxChunkBytes: 8
   }))
 
-  assert.equal(captures[0].maxBufferBytes, DEFAULT_RULE_AUTHORING_LIMITS.maxPdfOutputBytes)
+  assert.equal(captures[0].maxStdoutBytes, DEFAULT_RULE_AUTHORING_LIMITS.maxPdfOutputBytes)
   assert.equal(raised.chunks.length, 2)
   assert.ok(raised.chunks.every((chunk) => Buffer.byteLength(chunk.text, "utf8") <= DEFAULT_RULE_AUTHORING_LIMITS.maxChunkBytes))
-  assert.equal(captures[1].maxBufferBytes, 1024)
+  assert.equal(captures[1].maxStdoutBytes, 1024)
   assert.deepEqual(lowered.chunks.map((chunk) => chunk.text), ["12345678", "9"])
 })
 
