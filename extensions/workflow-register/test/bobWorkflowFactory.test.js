@@ -4,6 +4,7 @@ const { test } = require("node:test")
 
 const outRoot = path.resolve(__dirname, "..", "out")
 const { createBobWorkflow } = require(path.join(outRoot, "bobWorkflowFactory.js"))
+const PROFILE_DIGEST = "sha256:aea18a3b1d19f2a1231c7d5e6ac7a416f0ace09ffa823fe4ceb0f43733492b73"
 
 class AuditedTask {
   constructor() {
@@ -82,7 +83,7 @@ test("Bob workflow factory probes an audited task before dispatching a Todo step
   assert.equal(calls[0][3], originalTask)
 })
 
-test("Bob workflow factory fails closed before runner dispatch when a task capability is missing", async () => {
+test("Bob workflow factory fails closed before runner dispatch when a required task capability is missing", async () => {
   let dispatches = 0
   const workflow = createBobWorkflow(definition(), {
     runSingleWorkflowStep: async () => { dispatches += 1; return true },
@@ -93,5 +94,40 @@ test("Bob workflow factory fails closed before runner dispatch when a task capab
   Object.defineProperty(task, "startSubagent", { value: undefined })
 
   await assert.rejects(workflow.getSteps()[0].execution(task), /startSubagent/)
+  assert.equal(dispatches, 0)
+})
+
+test("Bob workflow factory probes only the workflow's locked task capability subset", async () => {
+  let received
+  const task = { sendMessage() { return undefined } }
+  const workflow = createBobWorkflow(definition({
+    bobTaskBinding: {
+      profileDigest: PROFILE_DIGEST,
+      taskCapabilities: ["task.sendMessage"]
+    }
+  }), {
+    runSingleWorkflowStep: async () => true,
+    runTodoStep: async () => true,
+    runEngineStep: async (_stepId, _index, value) => { received = value; return true }
+  })
+
+  assert.equal(await workflow.getSteps()[0].execution(task), true)
+  assert.equal(received, task)
+})
+
+test("Bob workflow factory rejects a drifted task binding before runner dispatch", async () => {
+  let dispatches = 0
+  const workflow = createBobWorkflow(definition({
+    bobTaskBinding: {
+      profileDigest: `sha256:${"0".repeat(64)}`,
+      taskCapabilities: ["task.sendMessage"]
+    }
+  }), {
+    runSingleWorkflowStep: async () => { dispatches += 1; return true },
+    runTodoStep: async () => { dispatches += 1; return true },
+    runEngineStep: async () => { dispatches += 1; return true }
+  })
+
+  await assert.rejects(workflow.getSteps()[0].execution({ sendMessage() {} }), /profile digest/)
   assert.equal(dispatches, 0)
 })
