@@ -1,0 +1,5 @@
+require("./workflowContractV2PackageLoaderCoreCases.js")
+require("./workflowContractV2PackageLoaderSafetyCases.js")
+require("./workflowContractV2PackageLoaderLimitCases.js")
+require("./workflowContractV2PackageLoaderStagingCases.js")
+require("./workflowContractV2PackageLoaderAdapterCases.js")
