@@ -5,6 +5,7 @@ import {
   DEFAULT_MAX_RESULT_BYTES
 } from "./bobWorkflowTypes"
 import type {
+  BobWorkflowTaskBinding,
   WorkflowDefinition,
   WorkflowStepDefinition
 } from "./bobWorkflowTypes"
@@ -14,7 +15,14 @@ import type {
   ResultSinkDefinition
 } from "./core/model"
 
-export function adaptCoreWorkflowForBob(core: CoreWorkflowDefinition, file: vscode.Uri): WorkflowDefinition {
+export type CoreWorkflowWithBobTaskBinding = CoreWorkflowDefinition & {
+  readonly bobTaskBinding: BobWorkflowTaskBinding
+}
+
+export function adaptCoreWorkflowForBob(
+  core: CoreWorkflowWithBobTaskBinding,
+  file: vscode.Uri
+): WorkflowDefinition {
   const todos = core.todos.map((todo, index) => ({
     id: todo.id,
     text: todo.title,
@@ -53,7 +61,8 @@ export function adaptCoreWorkflowForBob(core: CoreWorkflowDefinition, file: vsco
     workflowFile: core.workflowFile,
     workflowFolderName: core.workflowFolderName,
     file,
-    core
+    core,
+    bobTaskBinding: core.bobTaskBinding
   }
 }
 
