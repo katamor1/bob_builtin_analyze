@@ -88,3 +88,28 @@ test("loader preserves semantically unreferenced prompt and schema bytes for P4"
   })
   assert.deepEqual(loaded.files.map((file) => file.path), Object.keys(files).sort())
 })
+
+test("package digest delegates to F1 canonical JSON instead of mutable Array.join", async () => {
+  const fileSystem = new MemoryPackageFileSystem()
+  const installed = installPublished(fileSystem)
+  const root = rootSubject().createWorkflowPackageRoot(fileSystem, {})
+  const loader = subject()
+  const originalJoin = Array.prototype.join
+  Array.prototype.join = function guardedJoin(separator) {
+    if (this.length > 0 && typeof this[0] === "string" && this[0].startsWith('{"digest"')) {
+      return "tampered-manifest"
+    }
+    return Reflect.apply(originalJoin, this, [separator])
+  }
+  try {
+    const loaded = await loader.loadWorkflowPackageGeneration({
+      fileSystem,
+      collectionRoot: root,
+      workflowId: "minimal",
+      generation: installed.digest
+    })
+    assert.equal(loaded.packageDigest, installed.digest)
+  } finally {
+    Array.prototype.join = originalJoin
+  }
+})
