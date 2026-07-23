@@ -44,6 +44,10 @@ import type { Sha256Digest } from "./providerContract"
 
 const PATH_CONTROL_PATTERN = /[\u0000-\u001f\u007f-\u009f]/u
 
+interface PackageEntryBudget {
+  remaining: number
+}
+
 export async function loadCandidateSnapshot(
   fileSystem: WorkflowPackageFileSystem<unknown>,
   hostRoot: unknown,
@@ -69,6 +73,9 @@ export async function loadCandidateSnapshot(
 
   const directorySnapshots: DirectorySnapshot[] = []
   const metadata: FileMetadata[] = []
+  const entryBudget: PackageEntryBudget = {
+    remaining: WORKFLOW_PACKAGE_V2_LOAD_LIMITS.maxFiles
+  }
   await enumerateDirectory(
     fileSystem,
     hostRoot,
@@ -76,7 +83,8 @@ export async function loadCandidateSnapshot(
     [],
     basePhysical,
     directorySnapshots,
-    metadata
+    metadata,
+    entryBudget
   )
 
   if (metadata.length > WORKFLOW_PACKAGE_V2_LOAD_LIMITS.maxFiles) {
@@ -119,7 +127,8 @@ async function enumerateDirectory(
   relativeSegments: readonly string[],
   basePhysical: string,
   directorySnapshots: DirectorySnapshot[],
-  metadata: FileMetadata[]
+  metadata: FileMetadata[],
+  entryBudget: PackageEntryBudget
 ): Promise<void> {
   if (relativeSegments.length > WORKFLOW_PACKAGE_V2_LOAD_LIMITS.maxDepth) {
     throw new Error("Workflow package depth exceeds the maximum depth of 3.")
@@ -133,14 +142,12 @@ async function enumerateDirectory(
   if (!safeIsWithin(fileSystem, basePhysical, physical)) {
     throw new Error("Workflow package directory escapes physical containment.")
   }
-  const maximumEntries = WORKFLOW_PACKAGE_V2_LOAD_LIMITS.maxFiles
-    - metadata.length
-    + (relativeSegments.length === 0 ? 2 : 0)
   const sortedNames = snapshotDirectoryNames(
     await safeReadDirectory(fileSystem, hostRoot, fullSegments),
     relativeSegments.join("/") || "generation root",
-    maximumEntries
+    entryBudget.remaining
   )
+  entryBudget.remaining -= sortedNames.length
   pushValue(directorySnapshots, objectFreeze({
     segments: objectFreeze([...fullSegments]),
     names: sortedNames,
@@ -180,7 +187,8 @@ async function enumerateDirectory(
         childRelative,
         basePhysical,
         directorySnapshots,
-        metadata
+        metadata,
+        entryBudget
       )
       continue
     }
