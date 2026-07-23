@@ -1,0 +1,240 @@
+import type {
+  WorkflowPackageFileKind,
+  WorkflowPackageFileStat,
+  WorkflowPackageFileSystem
+} from "./packageFileSystem"
+import type { DirectorySnapshot } from "./packageLoaderContract"
+import {
+  arrayIsArray,
+  arrayPrototype,
+  includes,
+  isProxy,
+  normalizeContainmentRoot,
+  numberIsSafeInteger,
+  objectFreeze,
+  objectGetOwnPropertyDescriptor,
+  objectGetOwnPropertyDescriptors,
+  objectGetPrototypeOf,
+  objectHasOwn,
+  pushValue,
+  sortValues,
+  Uint8ArrayConstructor
+} from "./packageLoaderIntrinsics"
+
+const ALLOWED_KINDS = objectFreeze(["file", "directory", "symbolic-link", "other"] as const)
+
+export async function assertDirectoryChain(
+  fileSystem: WorkflowPackageFileSystem<unknown>,
+  hostRoot: unknown,
+  paths: readonly (readonly string[])[]
+): Promise<string> {
+  const collectionPhysical = normalizeContainmentRoot(
+    await safeRealpath(fileSystem, hostRoot, [], "collection root")
+  )
+  let parentPhysical = collectionPhysical
+  for (let index = 0; index < paths.length; index += 1) {
+    const stat = await safeLstat(fileSystem, hostRoot, paths[index], "workflow package directory")
+    assertDirectoryKind(stat.kind, paths[index].join("/"))
+    const physical = normalizeContainmentRoot(
+      await safeRealpath(fileSystem, hostRoot, paths[index], "workflow package directory")
+    )
+    if (
+      !safeIsWithin(fileSystem, collectionPhysical, physical)
+      || !safeIsWithin(fileSystem, parentPhysical, physical)
+    ) throw new Error("Workflow package directory escapes physical containment.")
+    parentPhysical = physical
+  }
+  return parentPhysical
+}
+
+export async function readStableControlFile(
+  fileSystem: WorkflowPackageFileSystem<unknown>,
+  hostRoot: unknown,
+  segments: readonly string[],
+  maximumBytes: number,
+  label: string,
+  containmentRootPhysical: string
+): Promise<Uint8Array> {
+  let before: WorkflowPackageFileStat
+  try {
+    before = await safeLstat(fileSystem, hostRoot, segments, label)
+  } catch {
+    throw new Error(`Workflow package ${label} is missing or unavailable.`)
+  }
+  if (before.kind === "symbolic-link") {
+    throw new Error(`Workflow package ${label} must not be a symbolic link.`)
+  }
+  if (before.kind !== "file") throw new Error(`Workflow package ${label} must be a regular file.`)
+  if (!numberIsSafeInteger(before.size) || before.size < 1 || before.size > maximumBytes) {
+    throw new Error(`Workflow package ${label} has an invalid byte size.`)
+  }
+  const physical = normalizeContainmentRoot(
+    await safeRealpath(fileSystem, hostRoot, segments, label)
+  )
+  if (!safeIsWithin(fileSystem, containmentRootPhysical, physical)) {
+    throw new Error(`Workflow package ${label} escapes physical containment.`)
+  }
+
+  let bytesValue: Uint8Array
+  try {
+    bytesValue = await fileSystem.readFile(hostRoot, segments)
+  } catch {
+    throw new Error(`Workflow package ${label} could not be read safely.`)
+  }
+  if (!(bytesValue instanceof Uint8ArrayConstructor)) {
+    throw new Error(`Workflow package ${label} bytes are invalid.`)
+  }
+  const bytes = new Uint8ArrayConstructor(bytesValue)
+  const after = await safeLstat(fileSystem, hostRoot, segments, label)
+  if (
+    after.kind !== "file"
+    || after.identity !== before.identity
+    || after.size !== before.size
+    || bytes.byteLength !== before.size
+  ) throw new Error(`Workflow package ${label} changed during snapshot read.`)
+  return bytes
+}
+
+export async function assertDirectorySnapshotsUnchanged(
+  fileSystem: WorkflowPackageFileSystem<unknown>,
+  hostRoot: unknown,
+  snapshots: readonly DirectorySnapshot[]
+): Promise<void> {
+  for (let index = 0; index < snapshots.length; index += 1) {
+    const snapshot = snapshots[index]
+    const stat = await safeLstat(fileSystem, hostRoot, snapshot.segments, "workflow package directory")
+    if (stat.kind !== "directory" || stat.identity !== snapshot.identity) {
+      throw new Error("Workflow package directory changed during snapshot read.")
+    }
+    const names = snapshotDirectoryNames(
+      await safeReadDirectory(fileSystem, hostRoot, snapshot.segments),
+      "workflow package directory"
+    )
+    if (names.length !== snapshot.names.length) {
+      throw new Error("Workflow package directory changed during snapshot read.")
+    }
+    for (let nameIndex = 0; nameIndex < names.length; nameIndex += 1) {
+      if (names[nameIndex] !== snapshot.names[nameIndex]) {
+        throw new Error("Workflow package directory changed during snapshot read.")
+      }
+    }
+  }
+}
+
+export function assertDirectoryKind(actual: WorkflowPackageFileKind, label: string): void {
+  if (actual === "symbolic-link") {
+    throw new Error(`Workflow package path ${label} must not be a symbolic link.`)
+  }
+  if (actual !== "directory") {
+    throw new Error(`Workflow package path ${label} must be a directory.`)
+  }
+}
+
+export async function safeLstat(
+  fileSystem: WorkflowPackageFileSystem<unknown>,
+  hostRoot: unknown,
+  segments: readonly string[],
+  label: string
+): Promise<WorkflowPackageFileStat> {
+  try {
+    const stat = await fileSystem.lstat(hostRoot, segments)
+    if (
+      typeof stat !== "object"
+      || stat === null
+      || !includes(ALLOWED_KINDS, stat.kind)
+      || typeof stat.identity !== "string"
+      || typeof stat.size !== "number"
+    ) throw new Error("invalid stat")
+    return objectFreeze({ kind: stat.kind, size: stat.size, identity: stat.identity })
+  } catch (error) {
+    if (
+      error instanceof Error
+      && /symbolic|directory|regular|snapshot|invalid stat/i.test(error.message)
+    ) throw error
+    throw new Error(`Workflow package ${label} is missing or unavailable.`)
+  }
+}
+
+export async function safeReadDirectory(
+  fileSystem: WorkflowPackageFileSystem<unknown>,
+  hostRoot: unknown,
+  segments: readonly string[]
+): Promise<readonly string[]> {
+  try {
+    return await fileSystem.readDirectory(hostRoot, segments)
+  } catch {
+    throw new Error("Workflow package directory could not be enumerated.")
+  }
+}
+
+export async function safeRealpath(
+  fileSystem: WorkflowPackageFileSystem<unknown>,
+  hostRoot: unknown,
+  segments: readonly string[],
+  label: string
+): Promise<string> {
+  try {
+    const value = await fileSystem.realpath(hostRoot, segments)
+    if (typeof value !== "string" || value.length === 0) throw new Error("invalid realpath")
+    return value
+  } catch {
+    throw new Error(`Workflow package ${label} physical path is unavailable.`)
+  }
+}
+
+export function safeIsWithin(
+  fileSystem: WorkflowPackageFileSystem<unknown>,
+  rootPhysical: string,
+  candidatePhysical: string
+): boolean {
+  try {
+    return fileSystem.isWithin(rootPhysical, candidatePhysical) === true
+  } catch {
+    throw new Error("Workflow package physical containment could not be verified.")
+  }
+}
+
+export function snapshotDirectoryNames(
+  value: readonly string[],
+  label: string
+): readonly string[] {
+  if (
+    !arrayIsArray(value)
+    || isProxy(value)
+    || objectGetPrototypeOf(value) !== arrayPrototype
+  ) throw new Error(`${label} enumeration is invalid.`)
+
+  const descriptors = objectGetOwnPropertyDescriptors(value)
+  const lengthDescriptor = objectGetOwnPropertyDescriptor(descriptors, "length")?.value as
+    | PropertyDescriptor
+    | undefined
+  const length = lengthDescriptor?.value
+  if (typeof length !== "number" || !numberIsSafeInteger(length) || length < 0) {
+    throw new Error(`${label} enumeration length is invalid.`)
+  }
+
+  const result: string[] = []
+  const seen = new Set<string>()
+  for (let index = 0; index < length; index += 1) {
+    const property = objectGetOwnPropertyDescriptor(descriptors, String(index))?.value as
+      | PropertyDescriptor
+      | undefined
+    if (
+      property === undefined
+      || !objectHasOwn(property, "value")
+      || property.enumerable !== true
+      || typeof property.value !== "string"
+    ) throw new Error(`${label} enumeration must be dense string data.`)
+    if (seen.has(property.value)) {
+      throw new Error(`${label} enumeration contains a duplicate name.`)
+    }
+    seen.add(property.value)
+    pushValue(result, property.value)
+  }
+  sortValues(result, compareText)
+  return objectFreeze(result)
+}
+
+function compareText(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0
+}
