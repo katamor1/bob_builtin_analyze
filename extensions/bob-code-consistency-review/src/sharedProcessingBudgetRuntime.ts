@@ -11,11 +11,6 @@ export interface SharedProcessingBudgetReservation {
   release(): void
 }
 
-export interface SharedProcessingBudgetLedger {
-  reserve(category: SharedProcessingBudgetOperationCategory, amount: number): SharedProcessingBudgetReservation
-  reserveForTarget(category: SharedProcessingBudgetTargetCategory, target: string, amount: number): SharedProcessingBudgetReservation
-}
-
 export interface SharedProcessingBudgetLimits {
   readonly document_count: number
   readonly single_document_bytes: number
@@ -25,6 +20,12 @@ export interface SharedProcessingBudgetLimits {
   readonly rows_per_sheet: number
   readonly total_rows: number
   readonly total_operation_input_bytes: number
+}
+
+export interface SharedProcessingBudgetLedger {
+  readonly profile: Readonly<{ limits: SharedProcessingBudgetLimits }>
+  reserve(category: SharedProcessingBudgetOperationCategory, amount: number): SharedProcessingBudgetReservation
+  reserveForTarget(category: SharedProcessingBudgetTargetCategory, target: string, amount: number): SharedProcessingBudgetReservation
 }
 
 export interface SharedProcessingBudgetProfileOverrides {
