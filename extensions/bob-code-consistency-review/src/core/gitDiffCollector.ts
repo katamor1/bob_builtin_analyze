@@ -141,6 +141,11 @@ async function collectBazaarDiff(reviewInput: ReviewInput, options: {
     options.commandTimeoutMs,
     options.signal
   )
+  if (unifiedDiff.overflow) {
+    throw new Error(
+      `Bazaar diff exceeded raw_diff_bytes (${options.rawDiffLimit}); complete changed-file metadata is unavailable`
+    )
+  }
   const files = parseBazaarDiffFiles(unifiedDiff.text)
   return {
     diff: { vcs: "bazaar", vcsRoot: options.vcsRoot, base, head, files, unifiedDiff: unifiedDiff.text, warnings: [] },
