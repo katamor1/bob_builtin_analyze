@@ -5,7 +5,7 @@ import {
   type ProcessingBudgetCategory,
   type ProcessingBudgetLedgerReport,
   type ProcessingBudgetProfile
-} from "../../src"
+} from "../.."
 
 const category: ProcessingBudgetCategory = "raw_diff_bytes"
 const profile: ProcessingBudgetProfile = normalizeProcessingBudgetProfile({
