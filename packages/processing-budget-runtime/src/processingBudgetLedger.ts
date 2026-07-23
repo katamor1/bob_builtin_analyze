@@ -16,7 +16,7 @@ import {
   type ProcessingBudgetProfileOverrides
 } from "./processingBudgetProfile"
 
-const MAX_PROCESSING_BUDGET_TARGET_CODE_UNITS = 32_768
+export const PROCESSING_BUDGET_TARGET_MAX_UTF8_BYTES = 256 as const
 
 interface MutableCategoryState {
   committed: number
@@ -159,11 +159,34 @@ function operationChain(category: OperationScopedProcessingBudgetCategory): read
   return Object.freeze(output)
 }
 
+function utf8ByteLengthExceeds(value: string, maximum: number): boolean {
+  let bytes = 0
+  for (let index = 0; index < value.length; index += 1) {
+    const codeUnit = value.charCodeAt(index)
+    if (codeUnit <= 0x7f) {
+      bytes += 1
+    } else if (codeUnit <= 0x7ff) {
+      bytes += 2
+    } else if (codeUnit >= 0xd800 && codeUnit <= 0xdbff
+      && index + 1 < value.length
+      && value.charCodeAt(index + 1) >= 0xdc00
+      && value.charCodeAt(index + 1) <= 0xdfff) {
+      bytes += 4
+      index += 1
+    } else {
+      bytes += 3
+    }
+    if (bytes > maximum) return true
+  }
+  return false
+}
+
 function validateTarget(target: unknown, category: TargetScopedProcessingBudgetCategory): string {
-  if (typeof target !== "string" || target.length === 0 || target.length > MAX_PROCESSING_BUDGET_TARGET_CODE_UNITS) {
+  if (typeof target !== "string" || target.length === 0
+    || utf8ByteLengthExceeds(target, PROCESSING_BUDGET_TARGET_MAX_UTF8_BYTES)) {
     throw new ProcessingBudgetError(
       "processing_budget_target_invalid",
-      `target for ${category} must be a non-empty string of at most ${MAX_PROCESSING_BUDGET_TARGET_CODE_UNITS} code units`,
+      `target for ${category} must be a non-empty string of at most ${PROCESSING_BUDGET_TARGET_MAX_UTF8_BYTES} UTF-8 bytes`,
       { targetCategory: category }
     )
   }
