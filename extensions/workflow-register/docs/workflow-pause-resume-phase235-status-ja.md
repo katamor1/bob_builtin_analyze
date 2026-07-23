@@ -1,74 +1,114 @@
-# Phase 2 / Phase 3 / Phase 5 実施状況
+# Workflow Pause / Resume 現行実装状況
 
 ## 方針
 
-Phase 4 の自動停止・コスト制限は、要件が固まるまで pending とする。
+workflow-registerは、実行中のagent / command / processを強制停止しない**graceful pause**を正式方式とする。
 
-Phase 3 は当面 **graceful pause のみ** を正式方式とする。実行中 AI への steering prompt 注入、provider cancellation、hard cancel は実装しない。
+- manual pause requestを`control.json`へ保存する。
+- engineの安全なcheckpointで`paused`へ遷移する。
+- in-flight operationは完了を待つ。
+- provider cancellation、hard cancel、実行中subagentへのsteering prompt注入は行わない。
+- run stateの正本は`run.json`、操作者制御の正本は`control.json`である。
 
-## Phase 2: Bob UI 導線
+## Bob UI導線
 
-実装内容:
+Bob chatへ`Workflow controls` blockを出し、run ID付きの操作情報を表示する。
 
-- Bob chat に `Workflow controls` block を出す。
-- control block には runId 付き command URI を載せる。
-- 対象 command:
-  - `workflowRegister.pauseAfterCurrentStep`
-  - `workflowRegister.pauseBeforeNextAiCall`
-  - `workflowRegister.inspectRunControl`
-  - `workflowRegister.inspectCurrentStep`
-  - `workflowRegister.openCurrentStepInBuilder`
-  - paused 時のみ `workflowRegister.resumePausedRun`
-- step start / review required / paused の hook で control block を出す。
-- `paused` snapshot reason を追加する。
+主なinternal command:
 
-注意:
+```text
+workflowRegister.pauseAfterCurrentStep
+workflowRegister.pauseBeforeNextAiCall
+workflowRegister.inspectRunControl
+workflowRegister.inspectCurrentStep
+workflowRegister.openCurrentStepInBuilder
+workflowRegister.resumePausedRun
+```
 
-- command URI が Bob UI でクリック実行できない環境でも、コマンド名と runId が見えるため Command Palette の fallback として使える。
-- `pauseBeforeNextAiCall` は Phase 3 方針に合わせ、当面は graceful checkpoint として扱う。
+これらはworkflow / Bob UI / `Bob 操作ハブ`から呼べるよう登録を維持するが、通常operatorのCommand Palette入口は`workflowRegister.openOperationHub`である。
 
-## Phase 3: graceful pause 固定
+command URIを直接実行できないBob環境でも、control blockにrun IDと操作名を表示し、`Bob 操作ハブ`から同じrunへ到達できるようにする。
+
+## graceful pause
 
 採用方式:
 
-- 現在実行中の AI 応答 / command は完了を待つ。
-- 完了後、次 step / 次 AI 呼び出し前に `paused` へ遷移する。
-- 中断時の chat message に「in-flight AI response was not force-cancelled」と明記する。
+1. pause requestを保存する。
+2. 現在実行中のAI応答またはcommandは完了させる。
+3. `before-preflight`、`before-step`、`after-step`、次agent call前などのcheckpointでrequestを確認する。
+4. runを`paused`へ更新する。
+5. `run.state["workflow.pause"]`へsource、kind、checkpoint、next step、detectedAtを保存する。
+6. Bob chat、snapshot、`Bob 操作ハブ`を更新する。
 
-保留する方式:
+保留・非採用:
 
 - cooperative interrupt prompt
 - hard cancel
-- provider cancellation token / abort controller
-- command step process kill
+- provider cancellation token / abort controllerの強制注入
+- command step child processの一律kill
+- partial agent outputをresultKey / artifact / sinkへ成功として保存すること
 
-保留理由:
+## automatic pause
 
-- 現状の `BobWorkflowTask` 型には、実行中 subagent への追加メッセージ注入や cancellation API がない。
-- standalone `AgentProvider` にも cancellation token / abort signal がない。
-- 中途半端な成果物を `resultKey` / artifact / result sink に混ぜるリスクを避ける。
+manual requestを先に評価し、その後にworkflow policyとworkspace settingを同じpure evaluatorで評価する。
 
-## Phase 5: 外側 UI
+対応する制限:
 
-実装内容:
+- `maxRunMinutes`
+- `maxAgentStepsPerRun`
+- `pauseAtLocalTime`
+- IANA timezone
+- 期限付きoverride
 
-- Status Bar に active run 件数を表示する。
-- Explorer 配下に `Bob Workflow Runs` tree view を追加する。
-- tree item には runId / status / currentStep / root / updatedAt を表示する。
-- item click は `inspectRunControl` を開く。
-- context menu から pause / resume / inspect へ到達できる。
-- `workflowRegister.refreshRunsView` で手動更新できる。
-- 15秒間隔で軽く自動 refresh する。
+`0`または空値は無効を表す。overrideはautomatic limitだけを抑止し、manual requestを無効化しない。期限切れ後は再び制限を評価する。
 
-## 今後の pending
+## Bob 操作ハブ
 
-Phase 4 は未実施。
+`Bob 操作ハブ`がpause / resumeの単一operator UIである。
 
-今後決めるべき項目:
+run cardで次を表示・操作する。
 
-- 業務終了時刻の扱い。
-- timezone。
-- maxRunMinutes。
-- maxAgentStepsPerRun。
-- token / cost budget をどの provider 情報から見積もるか。
-- workflow 定義側 `runControl.limits` と VS Code settings の優先順位。
+- status、current step、updatedAt
+- pause requestとautomatic pause provenance
+- pause
+- resume
+- retry
+- accept / accept-and-next
+- run control inspection
+- diagnostics
+
+run mutationはworkspace root、run ID、表示時revisionを再検証し、同じrunへの操作を直列化する。`run.json`と`control.json`のwatcherでpanelを更新する。
+
+独立したrun tree view、Status Bar monitor、manual refresh commandは現行operator surfaceではない。
+
+## snapshot
+
+pause発生時は`paused` reasonのtask snapshotを保存できる。snapshotは`run.json` / `control.json`の代替ではない。
+
+既定ではBob chat messagesを保存しない。pause provenance、run ID、workflow ID、step ID、timestampなどbounded metadataだけを診断へ使う。
+
+## Windows lock heartbeat
+
+`run.lock.json` heartbeatのatomic replacement中に観測する一時的なidentity change、`ENOENT`、`ENOTDIR`は、acquisition timeout内でbounded retryする。
+
+次はtransient扱いしない。
+
+- workspace containment failure
+- symlink / junction / alias
+- ownership token mismatch
+- unsupported schema
+- stable malformed recent lock
+
+## verification
+
+- manual requestの保存 / clear
+- checkpointでのpaused遷移
+- resume後のcontrol clear
+- manual request precedence
+- automatic limit境界
+- timezone / date rollover
+- override expiry
+- standalone / Bob runnerのpolicy parity
+- hub revision check / mutation serialization
+- lock heartbeat contention
+- Linux / Windows Extension Host smoke
