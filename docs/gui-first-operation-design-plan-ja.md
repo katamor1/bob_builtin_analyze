@@ -1,3 +1,5 @@
+Replaced: `workflowRegister.openOperationHub`, `workflowRegister.openWorkflowBuilder`, `bobBazaar.openReviewGui`, and `bobCodeConsistency.openReviewWizard` are the current operator routes; the legacy Bob Operation Hub, Run Monitor, Result Capture, Human Triage, and Traceability Prep surfaces below are retained only as historical planning context.
+
 # GUIファースト操作設計 企画書
 
 - 対象リポジトリ: `katamor1/bob_builtin_analyze`
