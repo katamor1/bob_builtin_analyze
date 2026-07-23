@@ -38,6 +38,7 @@ export interface DocumentExtractionOptions {
   textEncoding?: string
   limits?: Partial<ReviewProcessingLimits>
   processingBudgetLimits?: Readonly<Partial<SharedProcessingBudgetLimits>>
+  budgetLedger?: SharedProcessingBudgetLedger
   signal?: SharedWorkbookBudgetCancellation
 }
 
@@ -49,9 +50,13 @@ export async function extractDocuments(reviewInput: ReviewInput, options: Docume
   const counters = new Map<string, number>()
   throwIfCancelled(options.signal)
   const limits = normalizeReviewProcessingLimits(options.limits)
-  const ledger = documentLedger(limits, options.processingBudgetLimits)
+  const ledger = options.budgetLedger ?? documentLedger(limits, options.processingBudgetLimits)
   const documentCount = countSelectedDocuments(reviewInput)
   ledger.reserve("document_count", documentCount).commit()
+  const excerptLimit = Math.min(
+    limits.maxBobInputBytes,
+    ledger.profile.limits.document_excerpt_bytes
+  )
   let excerptMarkdownBytes = 0
   let aggregateBudgetExhausted = false
 
@@ -111,7 +116,7 @@ export async function extractDocuments(reviewInput: ReviewInput, options: Docume
         const limitedChunk = limitChunkText(chunk, item.path, warnings, limits)
         const evidenceId = nextEvidenceId(typeInfo.prefix, counters)
         const separatorBytes = excerpts.length > 0 ? Buffer.byteLength("\n", "utf8") : 0
-        const remainingBytes = Math.max(0, limits.maxBobInputBytes - excerptMarkdownBytes - separatorBytes)
+        const remainingBytes = Math.max(0, excerptLimit - excerptMarkdownBytes - separatorBytes)
         const aggregateFit = fitExcerptWithinAggregateBudget(
           evidenceId,
           item.path,
@@ -121,12 +126,12 @@ export async function extractDocuments(reviewInput: ReviewInput, options: Docume
           remainingBytes
         )
         if (!aggregateFit) {
-          warnings.push(`document excerpts exhausted aggregate maxBobInputBytes (${limits.maxBobInputBytes}); remaining excerpts skipped.`)
+          warnings.push(`document excerpts exhausted aggregate maxBobInputBytes / document_excerpt_bytes (${excerptLimit}); remaining excerpts skipped.`)
           aggregateBudgetExhausted = true
           break
         }
         if (aggregateFit.truncated) {
-          warnings.push(`${toPosixPath(item.path)} ${chunk.ref} exceeded aggregate maxBobInputBytes (${limits.maxBobInputBytes}); excerpt truncated and remaining excerpts skipped.`)
+          warnings.push(`${toPosixPath(item.path)} ${chunk.ref} exceeded aggregate maxBobInputBytes / document_excerpt_bytes (${excerptLimit}); excerpt truncated and remaining excerpts skipped.`)
           aggregateBudgetExhausted = true
         }
 
@@ -153,6 +158,7 @@ export async function extractDocuments(reviewInput: ReviewInput, options: Docume
     if (aggregateBudgetExhausted) break
   }
 
+  ledger.reserve("document_excerpt_bytes", excerptMarkdownBytes).commit()
   return { documents, excerptsMarkdown: excerpts.join("\n"), evidence, warnings }
 }
 
@@ -230,31 +236,61 @@ function documentLedger(
   limits: ReviewProcessingLimits,
   overrides: Readonly<Partial<SharedProcessingBudgetLimits>> | undefined
 ): SharedProcessingBudgetLedger {
-  const totalDocumentBytes = overrides?.total_document_bytes ?? Math.max(
-    limits.maxDocumentBytes,
+  const requestedSingleDocumentBytes = Math.min(
+    overrides?.single_document_bytes ?? limits.maxDocumentBytes,
+    limits.maxDocumentBytes
+  )
+  const requestedTotalDocumentBytes = overrides?.total_document_bytes ?? Math.max(
+    requestedSingleDocumentBytes,
     DEFAULT_PROCESSING_BUDGET_PROFILE.limits.total_document_bytes
   )
-  const totalOperationInputBytes = overrides?.total_operation_input_bytes ?? Math.max(
-    totalDocumentBytes,
-    DEFAULT_PROCESSING_BUDGET_PROFILE.limits.total_operation_input_bytes
+  const requestedRawDiffBytes = overrides?.raw_diff_bytes
+    ?? DEFAULT_PROCESSING_BUDGET_PROFILE.limits.raw_diff_bytes
+  const requestedDocumentExcerptBytes = Math.min(
+    overrides?.document_excerpt_bytes ?? limits.maxBobInputBytes,
+    limits.maxBobInputBytes
   )
+  const requestedBobInputBytes = Math.min(
+    overrides?.bob_input_bytes ?? limits.maxBobInputBytes,
+    limits.maxBobInputBytes
+  )
+  const totalOperationInputBytes = overrides?.total_operation_input_bytes ?? Math.max(
+    DEFAULT_PROCESSING_BUDGET_PROFILE.limits.total_operation_input_bytes,
+    requestedTotalDocumentBytes,
+    requestedRawDiffBytes,
+    requestedDocumentExcerptBytes,
+    requestedBobInputBytes
+  )
+  const totalDocumentBytes = Math.min(requestedTotalDocumentBytes, totalOperationInputBytes)
   const totalSheets = overrides?.total_sheets ?? Math.max(
-    limits.maxWorkbookSheets,
+    overrides?.sheets_per_workbook ?? limits.maxWorkbookSheets,
     DEFAULT_PROCESSING_BUDGET_PROFILE.limits.total_sheets
   )
   const totalRows = overrides?.total_rows ?? Math.max(
-    limits.maxRowsPerSheet,
+    overrides?.rows_per_sheet ?? limits.maxRowsPerSheet,
     DEFAULT_PROCESSING_BUDGET_PROFILE.limits.total_rows
   )
+
   return new ProcessingBudgetLedger({
     limits: {
       ...overrides,
-      single_document_bytes: Math.min(limits.maxDocumentBytes, totalDocumentBytes),
-      sheets_per_workbook: Math.min(limits.maxWorkbookSheets, totalSheets),
-      rows_per_sheet: Math.min(limits.maxRowsPerSheet, totalRows),
+      single_document_bytes: Math.min(requestedSingleDocumentBytes, totalDocumentBytes),
       total_document_bytes: totalDocumentBytes,
+      sheets_per_workbook: Math.min(
+        overrides?.sheets_per_workbook ?? limits.maxWorkbookSheets,
+        limits.maxWorkbookSheets,
+        totalSheets
+      ),
       total_sheets: totalSheets,
+      rows_per_sheet: Math.min(
+        overrides?.rows_per_sheet ?? limits.maxRowsPerSheet,
+        limits.maxRowsPerSheet,
+        totalRows
+      ),
       total_rows: totalRows,
+      raw_diff_bytes: Math.min(requestedRawDiffBytes, totalOperationInputBytes),
+      document_excerpt_bytes: Math.min(requestedDocumentExcerptBytes, totalOperationInputBytes),
+      bob_input_bytes: Math.min(requestedBobInputBytes, totalOperationInputBytes),
       total_operation_input_bytes: totalOperationInputBytes
     }
   })
