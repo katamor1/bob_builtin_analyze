@@ -70,9 +70,12 @@ test("workflow commands and settings use approved Japanese metadata", () => {
   const packageJson = readJson("package.json")
   const commands = new Map(packageJson.contributes.commands.map((command) => [command.command, command]))
 
-  assert.ok(packageJson.contributes.commands.every((command) => command.category === "Bob Workflow"))
+  assert.equal(commands.get("workflowRegister.openOperationHub")?.category, "Bob")
+  assert.ok(packageJson.contributes.commands
+    .filter((command) => command.command !== "workflowRegister.openOperationHub")
+    .every((command) => command.category === "Bob Workflow"))
   const expectedTitles = {
-    "workflowRegister.openOperationHub": "操作センターを開く",
+    "workflowRegister.openOperationHub": "操作ハブを開く",
     "workflowRegister.refreshOperationHub": "操作センターを更新",
     "workflowRegister.importArtifactsFromTaskSnapshots": "保存済みタスクから成果物を取り込む",
     "workflowRegister.pauseCurrentRun": "実行を一時停止",
