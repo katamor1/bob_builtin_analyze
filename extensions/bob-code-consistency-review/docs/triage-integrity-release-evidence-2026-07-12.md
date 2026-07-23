@@ -1,3 +1,5 @@
+Replaced: `workflowRegister.openOperationHub`, `workflowRegister.openWorkflowBuilder`, `bobBazaar.openReviewGui`, and `bobCodeConsistency.openReviewWizard` are the current operator routes; the legacy Human Triage Webview and panel terminology below is retained only as historical release evidence.
+
 # Human Triage Integrity Phase 1 リリース証跡
 
 - 対象: `extensions/bob-code-consistency-review`
