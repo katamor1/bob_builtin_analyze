@@ -189,13 +189,14 @@ export async function extractRuleDocuments(
   const ledger = documentLedger(effectiveLimits)
   ledger.reserve("document_count", requests.length).commit()
 
-  const fingerprinted = await Promise.all(requests.map(async (request): Promise<FingerprintedRequest> => {
+  const fingerprinted = await Promise.all(requests.map(async (request, selectionIndex): Promise<FingerprintedRequest> => {
     const absolutePath = path.resolve(request.filePath)
     const logicalName = request.logicalName ?? path.basename(absolutePath)
     assertLogicalName(logicalName)
     const fingerprint = await fingerprintSource(absolutePath, {
       maximumBytes: effectiveLimits.maxSourceBytes,
-      ledger
+      ledger,
+      target: `rule-source-selection:${selectionIndex}`
     })
     const byteSize = fingerprintByteSize(fingerprint)
     if (byteSize > effectiveLimits.maxSourceBytes) {
