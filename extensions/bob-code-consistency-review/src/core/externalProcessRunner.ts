@@ -15,7 +15,7 @@ export interface ExternalProcessOptions {
   args: string[]
   cwd: string
   env?: NodeJS.ProcessEnv
-  maxBufferBytes: number
+  maxStdoutBytes: number
   timeoutMs: number
   allowedExitCodes?: number[]
   signal?: AbortSignal
@@ -46,9 +46,10 @@ export class ExternalProcessError extends Error {
 const MIN_EXTERNAL_PROCESS_TIMEOUT_MS = 1_000
 const MAX_EXTERNAL_PROCESS_TIMEOUT_MS = 600_000
 const PROCESS_TERMINATION_WAIT_MS = 2_000
+export const EXTERNAL_PROCESS_STDERR_MAX_BYTES = 256 * 1024
 
 export function runExternalProcess(options: ExternalProcessOptions): Promise<ExternalProcessResult> {
-  const maxBufferBytes = positiveInteger(options.maxBufferBytes, "maxBufferBytes")
+  const maxStdoutBytes = positiveInteger(options.maxStdoutBytes, "maxStdoutBytes")
   const timeoutMs = normalizeExternalProcessTimeoutMs(options.timeoutMs)
   const allowedExitCodes = new Set(options.allowedExitCodes ?? [0])
 
@@ -65,7 +66,8 @@ export function runExternalProcess(options: ExternalProcessOptions): Promise<Ext
   return new Promise((resolve, reject) => {
     const stdoutChunks: Buffer[] = []
     const stderrChunks: Buffer[] = []
-    let bufferedBytes = 0
+    let stdoutBytes = 0
+    let stderrBytes = 0
     let settled = false
     let child: ExternalProcessChild
 
@@ -125,25 +127,37 @@ export function runExternalProcess(options: ExternalProcessOptions): Promise<Ext
       return
     }
 
-    const collect = (target: Buffer[], chunk: Buffer | string): void => {
+    const collect = (
+      target: Buffer[],
+      chunk: Buffer | string,
+      stream: "stdout" | "stderr",
+      maximumBytes: number
+    ): void => {
       if (settled) return
       const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
-      const remainingBytes = maxBufferBytes - bufferedBytes
+      const usedBytes = stream === "stdout" ? stdoutBytes : stderrBytes
+      const remainingBytes = maximumBytes - usedBytes
       const retainedBytes = Math.min(buffer.length, Math.max(0, remainingBytes))
       if (retainedBytes > 0) {
         target.push(buffer.subarray(0, retainedBytes))
-        bufferedBytes += retainedBytes
+        if (stream === "stdout") stdoutBytes += retainedBytes
+        else stderrBytes += retainedBytes
       }
       if (retainedBytes < buffer.length) {
         fail(
           "bufferExceeded",
-          `Command output exceeded ${maxBufferBytes} bytes: ${options.command}`
+          `Command ${stream} exceeded ${maximumBytes} bytes: ${options.command}`
         )
       }
     }
 
-    child.stdout.on("data", (chunk) => collect(stdoutChunks, chunk))
-    child.stderr.on("data", (chunk) => collect(stderrChunks, chunk))
+    child.stdout.on("data", (chunk) => collect(stdoutChunks, chunk, "stdout", maxStdoutBytes))
+    child.stderr.on("data", (chunk) => collect(
+      stderrChunks,
+      chunk,
+      "stderr",
+      EXTERNAL_PROCESS_STDERR_MAX_BYTES
+    ))
     child.on("error", (error) => {
       fail(
         "spawnFailure",
