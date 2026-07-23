@@ -14,7 +14,7 @@ F1–F7 implementation is present on `codex/workflow-contract-v2-f7`, but the Fo
 | F4 strict YAML/package shape | implementation complete | source and focused test implementation present; formal phase replay pending | exact task commit to recover at phase gate |
 | F5 shared predicate AST | implementation complete | source, golden fixture, and focused test implementation present; formal phase replay pending | exact task commit to recover at phase gate |
 | F6 provider contract registry | implementation complete | registry implementation and boundary tests present through branch baseline `9a0bd62d817992bca8fa31f3b7c986c8c0fe97f8` | final F6 feature/fix commit set to recover at phase gate |
-| F7 audited Bob profile | implementation complete; review/gate pending | exact `IBM.bob-code@2.0.1` profile, digest, two-stage binding, task-subset propagation, stale-registration cleanup, and real-probe lifecycle integration present | current implementation head `975153c5198865f753451e2c4c7ee8f1eebb322b`; final reviewed head not yet frozen |
+| F7 audited Bob profile | implementation complete; review/gate pending | exact `IBM.bob-code@2.0.1` profile, digest, two-stage binding, task-subset propagation, stale-registration cleanup, and real-probe lifecycle integration present | implementation head `975153c5198865f753451e2c4c7ee8f1eebb322b`; final reviewed head not yet frozen |
 
 ## F7 fixed evidence
 
@@ -50,12 +50,12 @@ A final independent review of the current/final head remains required. Critical 
 
 ## Hosted CI infrastructure blocker
 
-The PR's `extensions-quality` and `workflow-contracts` runs terminate before repository code executes. Linux and Windows jobs report no steps and no logs. Failed-job reruns reproduce the same zero-step result. These runs provide no product pass/fail evidence.
+The current-head `extensions-quality` and `workflow-contracts` runs terminate before repository code executes. Linux and Windows jobs report no steps and no logs. Failed-job reruns reproduce the same zero-step result. These runs provide no product pass/fail evidence.
 
 ## Outstanding Foundation gate
 
 - [ ] synchronize the detailed Foundation plan F4–F7 headings and checkboxes
-- [ ] synchronize the master 34-task ledger
+- [x] synchronize the master 34-task ledger
 - [ ] record exact task commit hashes for F1–F7
 - [ ] synchronize the branch with current `main` and resolve conflicts
 - [ ] `npm run compile`
