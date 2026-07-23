@@ -3,10 +3,9 @@ const path = require("node:path")
 
 // The legacy lifecycle suite predates F7 and intentionally models Bob tasks with
 // only the methods each scenario touches. Keep those 1,800+ lifecycle assertions
-// unchanged while still executing the real F7 descriptor probe. The dedicated
-// bobWorkflowFactory/profile suites verify the production frozen-capability
-// wrapper; this harness preserves the lifecycle suite's original task identity
-// assertions after successful validation.
+// unchanged while still executing the real F7 descriptor probe. Dedicated F7
+// suites verify the exact audited capability surface and prove that production
+// dispatch preserves the original Bob task identity after validation.
 const bobProfilePath = require.resolve("../out/core/contractV2/bobProfile.js")
 const legacySuitePath = path.join(__dirname, "bobGateLifecycleLegacyCases.js")
 const originalLoad = Module._load
@@ -25,8 +24,7 @@ Module._load = function auditedLifecycleLoad(request, parent, isMain) {
     ...realProfile,
     probeBobTaskCapabilities(input) {
       completeLegacyTaskFixture(input.task)
-      realProfile.probeBobTaskCapabilities(input)
-      return input.task
+      return realProfile.probeBobTaskCapabilities(input)
     }
   }
 }
