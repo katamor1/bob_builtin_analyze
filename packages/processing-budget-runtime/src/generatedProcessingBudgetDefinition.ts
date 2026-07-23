@@ -8,6 +8,7 @@ const RAW_PROCESSING_BUDGET_DEFINITION = [
   {
     id: "single_document_bytes",
     title: "Single document",
+    scope: "target",
     unit: "bytes",
     defaultLimit: 5242880,
     absoluteMaximum: 52428800,
@@ -16,6 +17,7 @@ const RAW_PROCESSING_BUDGET_DEFINITION = [
   {
     id: "total_document_bytes",
     title: "Total document bytes",
+    scope: "operation",
     unit: "bytes",
     defaultLimit: 33554432,
     absoluteMaximum: 268435456,
@@ -24,6 +26,7 @@ const RAW_PROCESSING_BUDGET_DEFINITION = [
   {
     id: "document_count",
     title: "Document count",
+    scope: "operation",
     unit: "count",
     defaultLimit: 128,
     absoluteMaximum: 1024,
@@ -32,6 +35,7 @@ const RAW_PROCESSING_BUDGET_DEFINITION = [
   {
     id: "sheets_per_workbook",
     title: "Sheets per workbook",
+    scope: "target",
     unit: "count",
     defaultLimit: 20,
     absoluteMaximum: 100,
@@ -40,6 +44,7 @@ const RAW_PROCESSING_BUDGET_DEFINITION = [
   {
     id: "total_sheets",
     title: "Total sheets",
+    scope: "operation",
     unit: "count",
     defaultLimit: 100,
     absoluteMaximum: 1000,
@@ -48,6 +53,7 @@ const RAW_PROCESSING_BUDGET_DEFINITION = [
   {
     id: "rows_per_sheet",
     title: "Rows per sheet",
+    scope: "target",
     unit: "count",
     defaultLimit: 500,
     absoluteMaximum: 5000,
@@ -56,6 +62,7 @@ const RAW_PROCESSING_BUDGET_DEFINITION = [
   {
     id: "total_rows",
     title: "Total rows",
+    scope: "operation",
     unit: "count",
     defaultLimit: 25000,
     absoluteMaximum: 250000,
@@ -64,6 +71,7 @@ const RAW_PROCESSING_BUDGET_DEFINITION = [
   {
     id: "changed_files",
     title: "Changed files",
+    scope: "operation",
     unit: "count",
     defaultLimit: 5000,
     absoluteMaximum: 20000,
@@ -72,6 +80,7 @@ const RAW_PROCESSING_BUDGET_DEFINITION = [
   {
     id: "raw_diff_bytes",
     title: "Raw diff",
+    scope: "operation",
     unit: "bytes",
     defaultLimit: 1048576,
     absoluteMaximum: 10485760,
@@ -80,6 +89,7 @@ const RAW_PROCESSING_BUDGET_DEFINITION = [
   {
     id: "document_excerpt_bytes",
     title: "Total document excerpts",
+    scope: "operation",
     unit: "bytes",
     defaultLimit: 2097152,
     absoluteMaximum: 8388608,
@@ -88,6 +98,7 @@ const RAW_PROCESSING_BUDGET_DEFINITION = [
   {
     id: "bob_input_bytes",
     title: "Bob input",
+    scope: "operation",
     unit: "bytes",
     defaultLimit: 2097152,
     absoluteMaximum: 8388608,
@@ -96,6 +107,7 @@ const RAW_PROCESSING_BUDGET_DEFINITION = [
   {
     id: "managed_artifact_bytes",
     title: "Total managed artifacts",
+    scope: "operation",
     unit: "bytes",
     defaultLimit: 16777216,
     absoluteMaximum: 67108864,
@@ -104,6 +116,7 @@ const RAW_PROCESSING_BUDGET_DEFINITION = [
   {
     id: "total_operation_input_bytes",
     title: "Total operation input",
+    scope: "operation",
     unit: "bytes",
     defaultLimit: 67108864,
     absoluteMaximum: 268435456,
@@ -111,12 +124,18 @@ const RAW_PROCESSING_BUDGET_DEFINITION = [
   }
 ] as const
 
-export type ProcessingBudgetCategory = typeof RAW_PROCESSING_BUDGET_DEFINITION[number]["id"]
-export type ProcessingBudgetUnit = typeof RAW_PROCESSING_BUDGET_DEFINITION[number]["unit"]
+type RawProcessingBudgetCategoryDefinition = typeof RAW_PROCESSING_BUDGET_DEFINITION[number]
+
+export type ProcessingBudgetCategory = RawProcessingBudgetCategoryDefinition["id"]
+export type ProcessingBudgetScope = RawProcessingBudgetCategoryDefinition["scope"]
+export type ProcessingBudgetUnit = RawProcessingBudgetCategoryDefinition["unit"]
+export type TargetScopedProcessingBudgetCategory = Extract<RawProcessingBudgetCategoryDefinition, { readonly scope: "target" }>["id"]
+export type OperationScopedProcessingBudgetCategory = Extract<RawProcessingBudgetCategoryDefinition, { readonly scope: "operation" }>["id"]
 
 export interface ProcessingBudgetCategoryDefinition {
   readonly id: ProcessingBudgetCategory
   readonly title: string
+  readonly scope: ProcessingBudgetScope
   readonly unit: ProcessingBudgetUnit
   readonly defaultLimit: number
   readonly absoluteMaximum: number
@@ -129,6 +148,14 @@ export const PROCESSING_BUDGET_DEFINITION: readonly ProcessingBudgetCategoryDefi
 
 export const PROCESSING_BUDGET_CATEGORY_IDS: readonly ProcessingBudgetCategory[] = Object.freeze(
   RAW_PROCESSING_BUDGET_DEFINITION.map((entry) => entry.id)
+)
+
+export const PROCESSING_BUDGET_TARGET_CATEGORY_IDS: readonly TargetScopedProcessingBudgetCategory[] = Object.freeze(
+  RAW_PROCESSING_BUDGET_DEFINITION.filter((entry) => entry.scope === "target").map((entry) => entry.id) as TargetScopedProcessingBudgetCategory[]
+)
+
+export const PROCESSING_BUDGET_OPERATION_CATEGORY_IDS: readonly OperationScopedProcessingBudgetCategory[] = Object.freeze(
+  RAW_PROCESSING_BUDGET_DEFINITION.filter((entry) => entry.scope === "operation").map((entry) => entry.id) as OperationScopedProcessingBudgetCategory[]
 )
 
 export const PROCESSING_BUDGET_DEFINITION_BY_ID: Readonly<Record<ProcessingBudgetCategory, ProcessingBudgetCategoryDefinition>> = Object.freeze(
