@@ -13,6 +13,13 @@ import {
   type ReviewProcessingLimits
 } from "./limits"
 import { ExternalProcessError, runExternalProcess } from "./externalProcessRunner"
+import {
+  DEFAULT_PROCESSING_BUDGET_PROFILE,
+  ProcessingBudgetLedger,
+  type SharedProcessingBudgetLedger,
+  type SharedProcessingBudgetLimits,
+  type SharedProcessingBudgetReservation
+} from "../sharedProcessingBudgetRuntime"
 import type { DiffSummary } from "./diffTypes"
 import type { ReviewInput } from "./reviewTypes"
 
@@ -22,7 +29,7 @@ const MIN_VCS_COMMAND_TIMEOUT_MS = 1_000
 const DEFAULT_VCS_COMMAND_TIMEOUT_MS = 120_000
 const MAX_VCS_COMMAND_TIMEOUT_MS = 600_000
 
-export async function collectGitDiff(reviewInput: ReviewInput, options: {
+export interface CollectGitDiffOptions {
   workspaceRoot: string
   diffFixturePath?: string
   bzrPath?: string
@@ -30,20 +37,47 @@ export async function collectGitDiff(reviewInput: ReviewInput, options: {
   limits?: Partial<ReviewProcessingLimits>
   commandTimeoutMs?: number
   signal?: AbortSignal
-}): Promise<DiffSummary> {
+  budgetLedger?: SharedProcessingBudgetLedger
+  processingBudgetLimits?: Readonly<Partial<SharedProcessingBudgetLimits>>
+}
+
+interface CollectedDiff {
+  readonly diff: DiffSummary
+  readonly rawDiffOverflow: boolean
+}
+
+interface BoundedCommandText {
+  readonly text: string
+  readonly overflow: boolean
+}
+
+const RAW_DIFF_TRUNCATION_SUFFIX = "\n\n[truncated: maxRawDiffBytes]\n"
+
+export async function collectGitDiff(reviewInput: ReviewInput, options: CollectGitDiffOptions): Promise<DiffSummary> {
   const limits = normalizeReviewProcessingLimits(options.limits)
+  const ledger = options.budgetLedger ?? createDiffProcessingLedger(limits, options.processingBudgetLimits)
   if (options.diffFixturePath) {
     const fixturePath = resolveWorkspacePathStrict(options.workspaceRoot, options.diffFixturePath, "diffFixturePath")
     const fixture = parseDiffFixtureText(await readTextFile(fixturePath, options.textEncoding))
-    return applyDiffLimits(fixture, limits)
+    return finalizeDiffProcessingBudget(fixture, ledger)
   }
 
   const vcs = normalizeVcs(reviewInput.review.vcs)
   const vcsRoot = resolveVcsRoot(options.workspaceRoot, reviewInput.review.vcs_root)
-  const diff = vcs === "bazaar"
-    ? await collectBazaarDiff(reviewInput, { ...options, vcsRoot, limits })
-    : await collectStandardGitDiff(reviewInput, { ...options, vcsRoot, limits })
-  return applyDiffLimits(diff, limits)
+  const collected = vcs === "bazaar"
+    ? await collectBazaarDiff(reviewInput, {
+        ...options,
+        vcsRoot,
+        limits,
+        rawDiffLimit: ledger.profile.limits.raw_diff_bytes
+      })
+    : await collectStandardGitDiff(reviewInput, {
+        ...options,
+        vcsRoot,
+        limits,
+        rawDiffLimit: ledger.profile.limits.raw_diff_bytes
+      })
+  return finalizeDiffProcessingBudget(collected.diff, ledger, collected.rawDiffOverflow)
 }
 
 async function collectStandardGitDiff(reviewInput: ReviewInput, options: {
@@ -53,13 +87,21 @@ async function collectStandardGitDiff(reviewInput: ReviewInput, options: {
   limits: ReviewProcessingLimits
   commandTimeoutMs?: number
   signal?: AbortSignal
-}): Promise<DiffSummary> {
+  rawDiffLimit: number
+}): Promise<CollectedDiff> {
   const base = await resolveGitRevision(reviewInput.review.base, options.vcsRoot, options.textEncoding, options.commandTimeoutMs, options.signal)
   const head = await resolveGitRevision(reviewInput.review.head, options.vcsRoot, options.textEncoding, options.commandTimeoutMs, options.signal)
   const processBufferBytes = maxVcsProcessBufferBytes(options.limits.maxRawDiffBytes)
   const nameStatus = await runGitText(["diff", "--find-renames", "--name-status", "-z", base, head], options.vcsRoot, processBufferBytes, options.textEncoding, options.commandTimeoutMs, options.signal)
   const numstat = await runGitText(["diff", "--find-renames", "--numstat", "-z", base, head], options.vcsRoot, processBufferBytes, options.textEncoding, options.commandTimeoutMs, options.signal)
-  const unifiedDiff = await runGitText(["diff", "--find-renames", "--unified=80", base, head], options.vcsRoot, processBufferBytes, options.textEncoding, options.commandTimeoutMs, options.signal)
+  const unifiedDiff = await runGitTextAllowingOverflow(
+    ["diff", "--find-renames", "--unified=80", base, head],
+    options.vcsRoot,
+    options.rawDiffLimit,
+    options.textEncoding,
+    options.commandTimeoutMs,
+    options.signal
+  )
 
   const counts = parseNumstatZ(numstat)
   const files = parseNameStatusZ(nameStatus).map(({ statusToken, filePath }) => {
@@ -67,7 +109,10 @@ async function collectStandardGitDiff(reviewInput: ReviewInput, options: {
     return buildChangedFile(normalizedPath, statusFromGit(statusToken), counts.get(normalizedPath))
   })
 
-  return { vcs: "git", vcsRoot: options.vcsRoot, base, head, files, unifiedDiff, warnings: [] }
+  return {
+    diff: { vcs: "git", vcsRoot: options.vcsRoot, base, head, files, unifiedDiff: unifiedDiff.text, warnings: [] },
+    rawDiffOverflow: unifiedDiff.overflow
+  }
 }
 
 async function collectBazaarDiff(reviewInput: ReviewInput, options: {
@@ -78,26 +123,29 @@ async function collectBazaarDiff(reviewInput: ReviewInput, options: {
   limits: ReviewProcessingLimits
   commandTimeoutMs?: number
   signal?: AbortSignal
-}): Promise<DiffSummary> {
+  rawDiffLimit: number
+}): Promise<CollectedDiff> {
   const bzrPath = options.bzrPath?.trim() || "bzr"
   const base = validateBazaarRevision(reviewInput.review.base)
   const head = validateBazaarRevision(reviewInput.review.head)
   const revisionRange = `${base}..${head}`
-  const processBufferBytes = maxVcsProcessBufferBytes(options.limits.maxRawDiffBytes)
   // Bazaar の alias は差分本文と副作用を変え得るため、収集系でも bzr --no-aliases を必ず先頭に置く。
-  const unifiedDiff = await runCommandText(
+  const unifiedDiff = await runCommandTextAllowingOverflow(
     bzrPath,
     ["--no-aliases", "diff", "-r", revisionRange],
     options.vcsRoot,
-    processBufferBytes,
+    options.rawDiffLimit,
     [0, 1],
     options.textEncoding,
     { BZR_PROGRESS_BAR: "none" },
     options.commandTimeoutMs,
     options.signal
   )
-  const files = parseBazaarDiffFiles(unifiedDiff)
-  return { vcs: "bazaar", vcsRoot: options.vcsRoot, base, head, files, unifiedDiff, warnings: [] }
+  const files = parseBazaarDiffFiles(unifiedDiff.text)
+  return {
+    diff: { vcs: "bazaar", vcsRoot: options.vcsRoot, base, head, files, unifiedDiff: unifiedDiff.text, warnings: [] },
+    rawDiffOverflow: unifiedDiff.overflow
+  }
 }
 
 async function resolveGitRevision(
@@ -154,6 +202,72 @@ async function runGitText(
   signal?: AbortSignal
 ): Promise<string> {
   return runCommandText("git", args, cwd, maxStdoutBytes, [0], textEncoding, undefined, commandTimeoutMs, signal)
+}
+
+async function runGitTextAllowingOverflow(
+  args: string[],
+  cwd: string,
+  maxRawDiffBytes: number,
+  textEncoding = "auto",
+  commandTimeoutMs?: number,
+  signal?: AbortSignal
+): Promise<BoundedCommandText> {
+  return runCommandTextAllowingOverflow(
+    "git",
+    args,
+    cwd,
+    maxRawDiffBytes,
+    [0],
+    textEncoding,
+    undefined,
+    commandTimeoutMs,
+    signal
+  )
+}
+
+async function runCommandTextAllowingOverflow(
+  command: string,
+  args: string[],
+  cwd: string,
+  maxRawDiffBytes: number,
+  allowedExitCodes: number[],
+  textEncoding = "auto",
+  env?: Record<string, string>,
+  commandTimeoutMs?: number,
+  signal?: AbortSignal
+): Promise<BoundedCommandText> {
+  const captureBytes = maxRawDiffBytes < Number.MAX_SAFE_INTEGER
+    ? maxRawDiffBytes + 1
+    : maxRawDiffBytes
+  try {
+    const text = await runCommandText(
+      command,
+      args,
+      cwd,
+      captureBytes,
+      allowedExitCodes,
+      textEncoding,
+      env,
+      commandTimeoutMs,
+      signal
+    )
+    return Object.freeze({
+      text,
+      overflow: Buffer.byteLength(text, "utf8") > maxRawDiffBytes
+    })
+  } catch (error) {
+    if (!isStdoutLimitError(error)) throw error
+    return Object.freeze({
+      text: decodeTextBuffer(error.stdout, textEncoding),
+      overflow: true
+    })
+  }
+}
+
+function isStdoutLimitError(error: unknown): error is ExternalProcessError {
+  return error instanceof ExternalProcessError
+    && error.kind === "bufferExceeded"
+    && error.message.includes(" stdout exceeded ")
 }
 
 async function runCommandText(
@@ -314,19 +428,84 @@ function statusFromBazaar(status: string): DiffSummary["files"][number]["status"
   return "unknown"
 }
 
-function applyDiffLimits(diff: DiffSummary, limits: ReviewProcessingLimits): DiffSummary {
-  if (!diff.unifiedDiff) return diff
-  const suffix = "\n\n[truncated: maxRawDiffBytes]\n"
-  const limited = truncateUtf8Text(diff.unifiedDiff, limits.maxRawDiffBytes, suffix)
-  if (!limited.truncated) return diff
+export function finalizeDiffProcessingBudget(
+  diff: DiffSummary,
+  ledger: SharedProcessingBudgetLedger,
+  sourceOverflow = false
+): DiffSummary {
+  const reservations: SharedProcessingBudgetReservation[] = []
+  try {
+    reservations.push(ledger.reserve("changed_files", diff.files.length))
+    const limited = limitRawDiff(diff, ledger.profile.limits.raw_diff_bytes, sourceOverflow)
+    reservations.push(ledger.reserve(
+      "raw_diff_bytes",
+      Buffer.byteLength(limited.unifiedDiff ?? "", "utf8")
+    ))
+    for (const reservation of reservations) reservation.commit()
+    return limited
+  } catch (error) {
+    for (let index = reservations.length - 1; index >= 0; index -= 1) {
+      try { reservations[index].release() } catch {}
+    }
+    throw error
+  }
+}
+
+function limitRawDiff(diff: DiffSummary, maxRawDiffBytes: number, sourceOverflow: boolean): DiffSummary {
+  const source = diff.unifiedDiff ?? ""
+  const originalBytes = Buffer.byteLength(source, "utf8")
+  if (!sourceOverflow && originalBytes <= maxRawDiffBytes) return diff
+
+  const suffix = truncateUtf8Text(RAW_DIFF_TRUNCATION_SUFFIX, maxRawDiffBytes, "").text
+  const prefixBudget = Math.max(0, maxRawDiffBytes - Buffer.byteLength(suffix, "utf8"))
+  const boundedPrefix = truncateUtf8Text(source, prefixBudget, "").text
+  const lineEnd = boundedPrefix.lastIndexOf("\n")
+  const completeLines = lineEnd < 0 ? "" : boundedPrefix.slice(0, lineEnd + 1)
+  const warning = sourceOverflow && originalBytes <= maxRawDiffBytes
+    ? `unified diff exceeded maxRawDiffBytes (> ${maxRawDiffBytes}); raw diff truncated.`
+    : `unified diff exceeded maxRawDiffBytes (${originalBytes} > ${maxRawDiffBytes}); raw diff truncated.`
   return {
     ...diff,
-    unifiedDiff: limited.text,
-    warnings: [
-      ...(diff.warnings ?? []),
-      `unified diff exceeded maxRawDiffBytes (${limited.originalBytes} > ${limits.maxRawDiffBytes}); raw diff truncated.`
-    ]
+    unifiedDiff: `${completeLines}${suffix}`,
+    warnings: [...(diff.warnings ?? []), warning]
   }
+}
+
+function createDiffProcessingLedger(
+  limits: ReviewProcessingLimits,
+  overrides: Readonly<Partial<SharedProcessingBudgetLimits>> | undefined
+): SharedProcessingBudgetLedger {
+  const totalOperationInputBytes = overrides?.total_operation_input_bytes
+    ?? DEFAULT_PROCESSING_BUDGET_PROFILE.limits.total_operation_input_bytes
+  const totalDocumentBytes = Math.min(
+    overrides?.total_document_bytes ?? DEFAULT_PROCESSING_BUDGET_PROFILE.limits.total_document_bytes,
+    totalOperationInputBytes
+  )
+  const rawDiffBytes = Math.min(
+    overrides?.raw_diff_bytes ?? limits.maxRawDiffBytes,
+    limits.maxRawDiffBytes,
+    totalOperationInputBytes
+  )
+  return new ProcessingBudgetLedger({
+    limits: {
+      ...overrides,
+      single_document_bytes: Math.min(
+        overrides?.single_document_bytes ?? DEFAULT_PROCESSING_BUDGET_PROFILE.limits.single_document_bytes,
+        totalDocumentBytes
+      ),
+      total_document_bytes: totalDocumentBytes,
+      raw_diff_bytes: rawDiffBytes,
+      document_excerpt_bytes: Math.min(
+        overrides?.document_excerpt_bytes ?? DEFAULT_PROCESSING_BUDGET_PROFILE.limits.document_excerpt_bytes,
+        totalOperationInputBytes
+      ),
+      bob_input_bytes: Math.min(
+        overrides?.bob_input_bytes ?? DEFAULT_PROCESSING_BUDGET_PROFILE.limits.bob_input_bytes,
+        totalOperationInputBytes
+      ),
+      total_operation_input_bytes: totalOperationInputBytes
+    }
+  })
 }
 
 function normalizeVcs(value: ReviewInput["review"]["vcs"]): VcsKind {
