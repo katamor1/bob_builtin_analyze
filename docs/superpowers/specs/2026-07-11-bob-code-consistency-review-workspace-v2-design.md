@@ -1,3 +1,5 @@
+Replaced: `workflowRegister.openOperationHub`, `workflowRegister.openWorkflowBuilder`, `bobBazaar.openReviewGui`, and `bobCodeConsistency.openReviewWizard` are the current operator routes; the legacy Review Wizard, Result Capture, Human Triage, and dashboard terminology below is retained only as historical Workspace v2 design evidence.
+
 # Bob Code Consistency Review Workspace v2 機能追加・改善企画
 
 - ステータス: Phase 1 implemented（Triage Integrity）
