@@ -38,6 +38,11 @@ const obsolete = [
 ]
 
 const uiCuePattern = /\b(?:command palette|command|panel|view|screen|button|menu|stage|title|label|gui|webview)\b|画面|パネル|ビュー|ボタン|メニュー|導線|表示名|起動|開く|切り替え|遷移|公開|コマンド/i
+const technicalFenceLanguages = new Set([
+  "bash", "c", "c++", "cpp", "css", "go", "html", "ini", "java", "javascript", "js", "jsx",
+  "json", "php", "powershell", "ps1", "py", "python", "rb", "ruby", "rust", "scss", "sh",
+  "shell", "sql", "toml", "ts", "tsx", "typescript", "xml", "yaml", "yml"
+])
 
 function readJson(relativePath) {
   return JSON.parse(fs.readFileSync(path.join(repoRoot, relativePath), "utf8"))
@@ -138,7 +143,27 @@ function lineBounds(text, index) {
   return { line: text.slice(start, end) }
 }
 
+function openFenceAt(text, index) {
+  const lines = text.slice(0, index).split(/\r?\n/)
+  let open
+  for (const line of lines) {
+    const match = line.match(/^\s*(`{3,}|~{3,})\s*([^\s`~]*)?.*$/)
+    if (!match) continue
+    const marker = match[1][0]
+    const length = match[1].length
+    if (!open) {
+      open = { marker, length, language: String(match[2] ?? "").toLowerCase() }
+      continue
+    }
+    if (marker === open.marker && length >= open.length) open = undefined
+  }
+  return open
+}
+
 function isUserFacingLabelOccurrence(text, index) {
+  const fence = openFenceAt(text, index)
+  if (fence && technicalFenceLanguages.has(fence.language)) return false
+
   const { line } = lineBounds(text, index)
   const trimmed = line.trim()
   if (/^#{1,6}\s/.test(trimmed)) return true
@@ -309,6 +334,19 @@ test("obsolete matcher preserves retained settings and ignores internal domain t
   assert.ok(findReferences("| Result Capture | GUI stage |").some((match) => match.token === "Result Capture"))
   assert.ok(findReferences("- Campaign Dashboard を開く").some((match) => match.token === "Campaign Dashboard"))
   assert.ok(findReferences("画面タイトルは Traceability Prep").some((match) => match.token === "Traceability Prep"))
+
+  const technicalJSDoc = [
+    "```ts",
+    "/**",
+    " * 承認状態の変更権限は Traceability Prep Webview での人間操作に限定する。",
+    " */",
+    "```"
+  ].join("\n")
+  assert.deepEqual(findReferences(technicalJSDoc), [])
+  assert.ok(findReferences("```md\n## Human Triage\n```").some((match) => match.token === "Human Triage"))
+  assert.ok(findReferences("```text\nCommand Palette から Template Studio を開く\n```").some((match) => match.token === "Template Studio"))
+  assert.ok(findReferences('```ts\nvscode.commands.executeCommand("bobBazaar.openResultCaptureGui")\n```')
+    .some((match) => match.token === "bobBazaar.openResultCaptureGui"))
 
   assert.deepEqual(findReferences("| Result Capture | review-result JSON persistence | src/projectRules/resultCapture.ts |"), [])
   assert.deepEqual(findReferences("The Human Triage domain module stores decisions."), [])
