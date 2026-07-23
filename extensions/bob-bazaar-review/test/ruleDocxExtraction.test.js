@@ -50,7 +50,7 @@ test("extractDocx emits bounded Mammoth/image warning codes and omits image byte
   })
 
   assert.equal(result.status, "partial")
-  assert.deepEqual(result.extractor, { id: "docx-mammoth-html", version: "1" })
+  assert.deepEqual(result.extractor, { id: "docx-mammoth-html", version: "2" })
   assert.ok(result.warnings.includes("mammoth_warning"))
   assert.ok(result.warnings.includes("image_omitted"))
   assert.doesNotMatch(result.chunks.map((chunk) => chunk.text).join("\n"), /data:image|89504e47/i)
