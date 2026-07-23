@@ -37,7 +37,6 @@ import { objectHasOwn } from "./packageLoaderIntrinsics"
 import { requireWorkflowPackageRootState } from "./packageRoot"
 
 export {
-  workflowPackageGenerationDirectoryName,
   WORKFLOW_PACKAGE_V2_LOAD_LIMITS,
   type LoadCurrentWorkflowPackageInput,
   type LoadWorkflowPackageCandidateInput,
