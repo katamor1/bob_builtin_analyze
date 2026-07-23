@@ -14,7 +14,7 @@ F1–F7 implementation is present on `codex/workflow-contract-v2-f7`, but the Fo
 | F4 strict YAML/package shape | implementation complete | source and focused test implementation present; formal phase replay pending | exact task commit to recover at phase gate |
 | F5 shared predicate AST | implementation complete | source, golden fixture, and focused test implementation present; formal phase replay pending | exact task commit to recover at phase gate |
 | F6 provider contract registry | implementation complete | registry implementation and boundary tests present through branch baseline `9a0bd62d817992bca8fa31f3b7c986c8c0fe97f8` | final F6 feature/fix commit set to recover at phase gate |
-| F7 audited Bob profile | implementation complete; review/gate pending | exact `IBM.bob-code@2.0.1` profile, digest, two-stage binding, task-subset propagation, stale-registration cleanup, and real-probe lifecycle integration present | implementation head `975153c5198865f753451e2c4c7ee8f1eebb322b`; final reviewed head not yet frozen |
+| F7 audited Bob profile | implementation complete; review/gate pending | exact `IBM.bob-code@2.0.1` profile, digest, two-stage binding, explicit P4/R5 task-binding handoff, stale-registration cleanup, and real-probe lifecycle integration present | current implementation/test head `a9c994290c045be48d8a1dc85e870ed78bf55b13`; final reviewed head not yet frozen |
 
 ## F7 fixed evidence
 
@@ -22,7 +22,9 @@ F1–F7 implementation is present on `codex/workflow-contract-v2-f7`, but the Fo
 - Profile digest: `sha256:aea18a3b1d19f2a1231c7d5e6ac7a416f0ace09ffa823fe4ceb0f43733492b73`
 - Compile/registration capabilities: `registerSource`; source `deactivate`, `log`, `registerWorkflow`
 - Runtime task capabilities: `getAllMetadata`, `getMessages`, `sendMessage`, `setStepComplete`, `startSubagent`, `toSerializable`
-- Workflow-specific locked task-capability subsets are preserved from loader to adapter to factory.
+- `adaptCoreWorkflowForBob` requires a real caller-supplied task binding.
+- The legacy v1 loader supplies the audited six-capability binding explicitly and does not claim to produce Contract v2 lock evidence.
+- P4/R5 will supply each compiled plan's exact digest and task-capability subset through that explicit adapter boundary.
 - The task probe is pure and the original task object reaches the existing runner.
 - Proxy, accessor, missing, non-callable, callable-proxy, ordering, duplicate, sparse, extra-field, version, profile-drift, and stale-registration cases fail closed.
 
@@ -33,20 +35,22 @@ These checks were executed against reconstructed copies of the current relevant 
 ```text
 profile/factory strict TypeScript compile: exit 0
 focused profile/factory harness: 48 test events / 48 pass / 0 fail
-loader/adapter strict TypeScript wiring compile: exit 0
+explicit legacy/compiled binding boundary strict TypeScript compile: exit 0
+binding-boundary source tests: 2 pass / 0 fail
 legacy real-probe plus original-task-identity integration harness: pass
 ```
 
 ## Review record
 
-Codex reviews of earlier heads reported four actionable findings:
+Codex reviews reported five actionable findings:
 
 1. Probe exact workflow task-capability subset — fixed and resolved.
 2. Do not mutate legacy task fixtures — fixed and resolved.
-3. Carry compiled task binding through the production loader/adapter — fixed and resolved at `975153c...`.
-4. Run legacy lifecycle factory cases through the real probe — fixed and resolved at `975153c...`.
+3. Close the production handoff gap — fixed by introducing an explicit adapter binding argument.
+4. Run legacy lifecycle factory cases through the real probe — fixed and resolved.
+5. Remove the false legacy-compiler cast — fixed; the v1 loader now supplies only its explicit legacy binding, while P4/R5 owns compiled-plan evidence.
 
-A final independent review of the current/final head remains required. Critical and Important findings must be zero before the Foundation gate can close.
+A final independent re-review of the current/final head remains required. Critical and Important findings must be zero before the Foundation gate can close.
 
 ## Hosted CI infrastructure blocker
 
