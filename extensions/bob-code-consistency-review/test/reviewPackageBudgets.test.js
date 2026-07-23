@@ -18,13 +18,21 @@ function category(ledger, name) {
   return ledger.snapshot().categories.find((entry) => entry.category === name)
 }
 
-test("preserves mandatory template values and only truncates optional markdown", () => {
-  const ledger = new ProcessingBudgetLedger({
+function bobOnlyProfile(limit) {
+  return {
     limits: {
-      bob_input_bytes: 120,
-      total_operation_input_bytes: 120
+      single_document_bytes: 0,
+      total_document_bytes: 0,
+      raw_diff_bytes: 0,
+      document_excerpt_bytes: 0,
+      bob_input_bytes: limit,
+      total_operation_input_bytes: limit
     }
-  })
+  }
+}
+
+test("preserves mandatory template values and only truncates optional markdown", () => {
+  const ledger = new ProcessingBudgetLedger(bobOnlyProfile(120))
   const result = reserveMandatoryFirstBobInput({
     ledger,
     maximumBytes: 120,
@@ -46,12 +54,7 @@ test("preserves mandatory template values and only truncates optional markdown",
 })
 
 test("rejects mandatory review metadata instead of truncating it", () => {
-  const ledger = new ProcessingBudgetLedger({
-    limits: {
-      bob_input_bytes: 64,
-      total_operation_input_bytes: 64
-    }
-  })
+  const ledger = new ProcessingBudgetLedger(bobOnlyProfile(64))
   const before = ledger.snapshot()
 
   assert.throws(
