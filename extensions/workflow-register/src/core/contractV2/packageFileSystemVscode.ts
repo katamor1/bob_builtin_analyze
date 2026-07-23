@@ -16,6 +16,14 @@ export interface WorkflowPackageVscodeFileStat {
   readonly mtime: number
 }
 
+
+export interface WorkflowPackageVscodeOpenFile {
+  readonly initialStat: WorkflowPackageVscodeFileStat
+  read(): Promise<Uint8Array>
+  stat(): Promise<WorkflowPackageVscodeFileStat>
+  close(): Promise<void>
+}
+
 export interface WorkflowPackageVscodeFileSystemLike<Uri> {
   stat(uri: Uri): Promise<WorkflowPackageVscodeFileStat>
   readDirectory(uri: Uri): Promise<readonly (readonly [string, number])[]>
@@ -33,6 +41,8 @@ export interface CreateVscodeWorkflowPackageFileSystemInput<Uri> {
     uri: Uri,
     stat: WorkflowPackageVscodeFileStat
   ) => Promise<string> | string
+  /** Must bind reads and stats to one provider-guaranteed file snapshot. */
+  readonly openFile: (uri: Uri) => Promise<WorkflowPackageVscodeOpenFile>
   readonly flushFile?: (uri: Uri) => Promise<void>
   readonly flushDirectory?: (uri: Uri) => Promise<void>
 }
@@ -55,11 +65,15 @@ export function createVscodeWorkflowPackageFileSystem<Uri>(
     realpath,
     isWithin,
     snapshotIdentity,
+    openFile,
     flushFile,
     flushDirectory
   } = input
   if (typeof snapshotIdentity !== "function") {
     throw new TypeError("VS Code package filesystem requires a snapshot identity provider.")
+  }
+  if (typeof openFile !== "function") {
+    throw new TypeError("VS Code package filesystem requires a snapshot-bound openFile provider.")
   }
   return objectFreeze({
     async lstat(root: Uri, segments: readonly string[]): Promise<WorkflowPackageFileStat> {
@@ -69,24 +83,40 @@ export function createVscodeWorkflowPackageFileSystem<Uri>(
 
     async openFile(root: Uri, segments: readonly string[]): Promise<WorkflowPackageOpenFile> {
       const uri = joinPath(root, ...segments)
-      const initialStat = await vscodeStatEvidence(
-        uri,
-        await workspaceFs.stat(uri),
-        snapshotIdentity
-      )
+      const providerHandle = await openFile(uri)
+      if (
+        typeof providerHandle !== "object"
+        || providerHandle === null
+        || typeof providerHandle.read !== "function"
+        || typeof providerHandle.stat !== "function"
+        || typeof providerHandle.close !== "function"
+      ) throw new Error("VS Code package filesystem openFile provider returned an invalid handle.")
       let closed = false
+      let initialStat: WorkflowPackageFileStat
+      try {
+        initialStat = await vscodeStatEvidence(
+          uri,
+          providerHandle.initialStat,
+          snapshotIdentity
+        )
+      } catch (error) {
+        await providerHandle.close()
+        throw error
+      }
       return objectFreeze({
         initialStat,
         async read(): Promise<Uint8Array> {
           if (closed) throw new Error("Workflow package file handle is closed.")
-          return workspaceFs.readFile(uri)
+          return providerHandle.read()
         },
         async stat(): Promise<WorkflowPackageFileStat> {
           if (closed) throw new Error("Workflow package file handle is closed.")
-          return vscodeStatEvidence(uri, await workspaceFs.stat(uri), snapshotIdentity)
+          return vscodeStatEvidence(uri, await providerHandle.stat(), snapshotIdentity)
         },
         async close(): Promise<void> {
+          if (closed) return
           closed = true
+          await providerHandle.close()
         }
       })
     },
