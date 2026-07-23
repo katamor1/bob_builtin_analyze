@@ -123,7 +123,7 @@
     "unused:report": "node scripts/run-unused-checks.js",
     "artifact:policy": "node scripts/check-artifact-size-policy.js --max-bytes 12000 templates",
     "audit:prod": "npm audit --omit=dev --audit-level=high",
-    "compile": "tsc -p ./",
+    "compile": "node ../../packages/processing-budget-runtime/scripts/generate-processing-budget-contracts.js --check && tsc -p ../../packages/processing-budget-runtime && node ../../packages/processing-budget-runtime/scripts/copy-bounded-document-runtime.js && tsc -p ./ && node ../../packages/processing-budget-runtime/scripts/copy-extension-runtime.js out/shared-processing-budget-runtime",
     "dependency:policy": "node --test test/dependencyPolicy.test.js",
     "test": "npm run compile && node --test test/*.test.js",
     "watch": "tsc -watch -p ./",
