@@ -1,35 +1,31 @@
-# Human Triage Integrity IBM Bob UAT Runbook
-
-> **現行UIへの読み替え:** 本書の `Human Triage` は成果物／domain moduleの歴史的名称である。standalone Result Capture／Human Triage panelと公開commandは削除済みで、現在のoperator操作は`整合プレレビュー`主GUI内の`レビュー結果取り込み`／`指摘確認・振り分け`stageから行う。
+# 指摘確認・振り分け整合性 IBM Bob UAT Runbook
 
 - 対象: `extensions/bob-code-consistency-review`
-- 対象ブランチ: `agent/bob-code-consistency-review-triage-integrity`
-- Pull Request: `#74`
+- 対象機能: `整合プレレビュー` 主GUI内の `レビュー結果取り込み` / `指摘確認・振り分け`
 - ステータス: ready to run / 実IBM Bob環境での実施待ち
 - 関連仕様:
   - `real-machine-test-spec-ja.md`
   - `triage-operator-extension-host-test-spec-ja.md`
-  - `triage-integrity-release-evidence-2026-07-12.md`
+  - `triage-integrity-ibm-bob-uat-evidence-template.md`
 
 ## 1. 目的
 
-Human Triage Integrity Phase 1について、自動Extension Host試験では代替できないIBM Bob固有の経路を、同じ入力・同じ証跡形式で再現できるようにする。
-
+自動Extension Host試験では代替できないIBM Bob固有の経路を、同じ入力と同じ証跡形式で再現できるようにする。
 本runbookは次を対象とする。
 
 1. Bob Workflow UIからのpreprocess、agent、capture、validate、triage
 2. Bob agent出力とresult handoff
 3. workflow-registerのrun stateと生成成果物の対応
 4. MCP連携の代表smoke
-5. 主GUIの`指摘確認・振り分け`stageの視覚表示、focus、keyboard操作、operator向け文言
-6. 二画面競合の見え方
+5. `整合プレレビュー` 主GUI内stageの視覚表示、focus、keyboard操作、operator向け文言
+6. 二画面競合、source変更競合、legacy migration、backup / projection
 7. Developer Tools Console全体のwarning / exception確認
 
-Human Triageの保存、再読込、source/revision conflict、legacy migration、projection生成はUbuntu / WindowsのExtension Host自動試験でも検証済みである。本runbookでは、実際のoperator体験とIBM Bob固有の統合点を確認する。
+保存、再読込、source / revision conflict、legacy migration、projection生成はUbuntu / WindowsのExtension Host自動試験でも検証する。本runbookでは、実際のoperator体験とIBM Bob固有の統合点を確認する。
 
 ## 2. UATキット
 
-triageだけを決定論的に再現するfixtureは次に置く。
+決定論的に再現するfixtureは次に置く。
 
 ```text
 test/fixtures/triage-operator-uat/
@@ -39,9 +35,9 @@ test/fixtures/triage-operator-uat/
   README.md
 ```
 
-fixtureはBob output schemaの代表形を持つが、任意のreview-packageの`evidence-index.json`とは結び付かない。したがって、fixtureを使うケースはHuman Triageの生成・保存・競合・migration確認に限定する。Bob output validationを含むE2Eでは、同じworkspaceで実際に生成したreview-packageとBob agent出力を使う。
+fixtureはBob output schemaの代表形を持つが、任意のreview-packageの`evidence-index.json`とは結び付かない。fixture利用ケースは、生成・保存・競合・migration確認に限定する。Bob output validationを含むE2Eでは、同じworkspaceで実際に生成したreview-packageとBob agent出力を使う。
 
-実施結果は次へコピーして記録する。
+実施結果は次のtemplateを複製して記録する。
 
 ```text
 docs/triage-integrity-ibm-bob-uat-evidence-template.md
@@ -55,22 +51,19 @@ docs/release-evidence/triage-integrity-ibm-bob-uat-YYYY-MM-DD.md
 
 ## 3. 前提条件
 
-実施前に以下を満たす。
-
 - Windows 11を主対象とする。追加でmacOS / Linuxを使った場合は別runとして記録する。
 - VS Code / Bob IDEは`package.json`の`engines.vscode`を満たす。
 - `IBM.bob-code`が導入済みで有効である。
-- `local.workflow-register`が導入済みで有効である。
-- `bob-code-consistency-review`のVSIXが対象commitから作成されている。
-- テストworkspaceは本番repositoryのcopyではなく、破棄可能なsandboxである。
+- `local.workflow-register`はsoft dependencyであり、連携確認時だけ導入して有効化する。
+- 対象commitから`bob-code-consistency-review`のVSIXを作成する。
+- テストworkspaceは破棄可能なsandboxを使用する。
 - Developer Tools Consoleを開ける。
-- screenshot、run state export、generated artifactを保存できる場所がある。
-- 実施者はPR head SHA、各extension version、OS、VS Code / Bob IDE versionを記録する。
+- screenshot、run state export、generated artifactを保存できる場所を用意する。
+- PR head SHA、各extension version、OS、VS Code / Bob IDE versionを記録する。
 
 VSIX作成例:
 
 ```powershell
-git checkout agent/bob-code-consistency-review-triage-integrity
 git rev-parse HEAD
 cd extensions\bob-code-consistency-review
 npm ci
@@ -81,23 +74,21 @@ npm run package:policy
 
 ## 4. 証跡の命名規則
 
-証跡fileは次の形式にする。
-
 ```text
-CCR74-<testcase>-<sequence>-<description>.<ext>
+CCR-<testcase>-<sequence>-<description>.<ext>
 ```
 
 例:
 
 ```text
-CCR74-RT031-01-workflow-start.png
-CCR74-RT031-02-run-state.json
-CCR74-RT038-03-revision-conflict.png
-CCR74-RT040-04-artifact-hashes.txt
-CCR74-CONSOLE-01-errors.txt
+CCR-RT031-01-workflow-start.png
+CCR-RT031-02-run-state.json
+CCR-RT038-03-revision-conflict.png
+CCR-RT040-04-artifact-hashes.txt
+CCR-CONSOLE-01-errors.txt
 ```
 
-各testcaseについて最低限、開始状態、操作結果、生成成果物、Console状態の4種類を記録する。
+各testcaseについて最低限、開始状態、操作結果、生成成果物、Console状態を記録する。
 
 ## 5. 共通setup
 
@@ -106,14 +97,13 @@ CCR74-CONSOLE-01-errors.txt
 1. `docs/workflows/code-consistency-review/examples/`の適切なsampleからsandboxを作る。
 2. sandboxをVS Code / Bob IDEで開く。
 3. `Bob Code Consistency Review: .bob ワークフロー定義と review-input 雛形を初期化`を実行する。
-4. `workflowRegister.reload`を実行する。
-5. `Bob Code Consistency Review: 整合プレレビューを開始`で主GUIを開き、`レビュー結果取り込み`と`指摘確認・振り分け`へ同じpanel内で遷移できることを確認する。
-6. Developer Tools Consoleをclearする。
-7. workspace内に以前の`.bob-review/human-triage`がある場合はbackup後に削除する。
+4. workflow-registerを使用する場合は`workflowRegister.reload`を実行する。
+5. `Bob Code Consistency Review: 整合プレレビューを開始`を実行する。
+6. 同じpanel内で`レビュー結果取り込み`と`指摘確認・振り分け`へ遷移できることを確認する。
+7. Developer Tools Consoleをclearする。
+8. workspace内に以前の`.bob-review/human-triage`がある場合はbackup後に削除する。
 
 ### 5.2 version記録
-
-次をevidence fileへ記録する。
 
 ```text
 PR:
@@ -144,7 +134,7 @@ started_at:
 - stepがsuccessになる。
 - run stateにcommand resultが残る。
 - `manifest.yaml`, `evidence-index.json`, `bob-input.md`が存在する。
-- run stateの対象workspace / package pathと実fileが一致する。
+- run stateのworkspace / package pathと実fileが一致する。
 - Consoleに未処理例外がない。
 
 ### 6.2 Bob agent
@@ -166,7 +156,7 @@ started_at:
 1. `capture-bob-output` stepを実行する。
 2. `validate-bob-output` stepを実行する。
 3. `human-triage` stepを実行する。
-4. run stateと以下のfileを比較する。
+4. run stateと次のfileを比較する。
 
 ```text
 .bob-review/bob-output/bob-output.yaml
@@ -177,7 +167,7 @@ started_at:
 
 合格条件:
 
-- captureした内容がagent resultと一致する。
+- capture内容がagent resultと一致する。
 - validation errorが0件である。
 - triage sourceのreview ID / package IDがBob outputと一致する。
 - command step resultとfile pathが対応する。
@@ -187,34 +177,23 @@ started_at:
 
 ### 7.1 fixture配置
 
-PowerShell例:
-
 ```powershell
 $fixture = "extensions\bob-code-consistency-review\test\fixtures\triage-operator-uat"
 $workspace = "<sandbox-root>"
-
 New-Item -ItemType Directory -Force "$workspace\.bob-review\bob-output" | Out-Null
 Copy-Item "$fixture\bob-output-initial.yaml" "$workspace\.bob-review\bob-output\bob-output.yaml" -Force
 ```
 
-以降のfixture caseでは、Bob output validationを実行せずHuman Triage生成から開始する。
+fixture caseではBob output validationを実行せず、triage生成から開始する。
 
 ### 7.2 CCR-RT-036 Generate / edit / save / reload
 
 1. initial fixtureを配置する。
 2. `人間確認用 triage を生成`を実行する。
 3. `整合プレレビュー`主GUIを開き、`指摘確認・振り分け`stageへ進む。
-4. `PRE-001`を次の内容で保存する。
-   - decision: `accepted`
-   - final severity: `high`
-   - owner: `uat-owner`
-   - human reason: `UATで根拠を確認した`
-   - review comment: `正式レビューへ引き継ぐ`
-   - follow-up required: checked
-   - action: `timeout実装を修正`
-   - due: 実施日より後の日付
-5. `Q-001`を`question`としてownerまたはsuggested recipientとreasonを入力する。
-6. 主GUIを閉じて再度開き、`指摘確認・振り分け`stageへ進む。
+4. `PRE-001`をaccepted / highとしてowner、human reason、review comment、follow-up action、dueを入力して保存する。
+5. `Q-001`をquestionとしてrecipientまたはownerとreasonを入力する。
+6. 主GUIを閉じて再度開き、同じstageへ進む。
 
 合格条件:
 
@@ -226,10 +205,10 @@ Copy-Item "$fixture\bob-output-initial.yaml" "$workspace\.bob-review\bob-output\
 
 ### 7.3 CCR-RT-037 Source change conflict
 
-1. initial fixtureでGUIを開いたままにする。
+1. initial fixtureで主GUIを開いたままにする。
 2. 別操作で`bob-output-regenerated.yaml`を`bob-output.yaml`へ上書きする。
 3. `人間確認用 triage を生成`を再実行する。
-4. 古いGUIへ戻り、何かを変更して保存する。
+4. 古い画面へ戻り、何かを変更して保存する。
 5. 画面を閉じて再度開く。
 
 合格条件:
@@ -237,7 +216,7 @@ Copy-Item "$fixture\bob-output-initial.yaml" "$workspace\.bob-review\bob-output\
 - 古い画面の保存は`TRIAGE_SOURCE_CHANGED`になる。
 - regenerated sourceとprojectionを古い内容で上書きしない。
 - 再open後に新しいsummary、severity、package ID由来のsource hashを表示する。
-- operatorが「保存失敗」と「再読込が必要」を理解できる文言である。
+- operatorが保存失敗と再読込の必要性を理解できる。
 
 ### 7.4 CCR-RT-038 Two-window revision conflict
 
@@ -257,11 +236,11 @@ Copy-Item "$fixture\bob-output-initial.yaml" "$workspace\.bob-review\bob-output\
 
 ### 7.5 CCR-RT-039 Legacy migration
 
-1. Human Triage directoryを削除する。
+1. `.bob-review/human-triage` directoryを削除する。
 2. initial fixtureを`bob-output.yaml`へ配置する。
 3. `legacy-triage-result.yaml`だけを`.bob-review/human-triage/triage-result.yaml`へ配置する。
 4. `人間確認用 triage を生成`を実行する。
-5. `整合プレレビュー`主GUIを開き、`指摘確認・振り分け`stageへ進む。
+5. `整合プレレビュー`主GUIの`指摘確認・振り分け`stageへ進む。
 
 合格条件:
 
@@ -274,8 +253,8 @@ Copy-Item "$fixture\bob-output-initial.yaml" "$workspace\.bob-review\bob-output\
 ### 7.6 CCR-RT-040 Backup / projection
 
 1. decisionを2回以上保存する。
-2. Human Triage directoryのfile一覧、更新時刻、hashを採取する。
-3. Markdownを一時的に手編集し、GUIからもう一度保存する。
+2. `.bob-review/human-triage`内のfile一覧、更新時刻、hashを採取する。
+3. Markdown projectionを一時的に手編集し、主GUIからもう一度保存する。
 
 合格条件:
 
@@ -293,14 +272,14 @@ Get-ChildItem "<sandbox-root>\.bob-review\human-triage" -File |
   ForEach-Object {
     $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash
     "$hash  $($_.Name)"
-  } | Set-Content "CCR74-RT040-04-artifact-hashes.txt"
+  } | Set-Content "CCR-RT040-04-artifact-hashes.txt"
 ```
 
 ## 8. Webview visual / keyboard / wording
 
-主GUIの`指摘確認・振り分け`stageで次を確認する。
+Ubuntu / WindowsのExtension Host自動試験でcommand登録とpanel openを確認し、実機では主GUIの`指摘確認・振り分け`stageで次を確認する。
 
-- 200% zoomでもhorizontal scrollだけに依存せず、field labelと値を識別できる。
+- 200% zoomでもfield labelと値を識別できる。
 - Windows High ContrastまたはVS Code High Contrast themeでstatus、button、input境界を識別できる。
 - Tab / Shift+Tabでaction buttonと全editable fieldへ移動できる。
 - select、checkbox、date inputをkeyboardで操作できる。
@@ -308,24 +287,22 @@ Get-ChildItem "<sandbox-root>\.bob-review\human-triage" -File |
 - source contextとhuman-editable fieldを区別できる。
 - suggested ownerがowner inputへ自動入力されない。
 - 未判断itemがacceptedとして見えない。
-- validation、source conflict、revision conflictの文言が区別できる。
+- validation、source conflict、revision conflictの文言を区別できる。
 - status更新後もoperatorが結果を見失わない。
-- screenshotには秘密情報、個人情報、顧客dataを含めない。
+- screenshotに秘密情報、個人情報、顧客dataを含めない。
 
 ## 9. MCP smoke
 
-IBM Bob環境で利用するMCP接続について、次を代表確認する。
-
 1. 対象workflow runでMCP接続状態を記録する。
 2. 読み取り系の代表toolを1回実行する。
-3. Human Triageの正本fileがMCP経由で無断更新されないことを確認する。
+3. `.bob-review/human-triage`の正本fileがMCP経由で無断更新されないことを確認する。
 4. tool resultとworkflow run stateの対応を記録する。
-5. 接続失敗、permission不足、timeoutのいずれかを安全に表示できることを確認する。
+5. 接続失敗、permission不足、timeoutを安全に表示できることを確認する。
 
 合格条件:
 
 - MCP tool利用の有無と結果が追跡可能である。
-- Human Triage decisionは人間操作なしに変更されない。
+- decisionは人間操作なしに変更されない。
 - failure時にworkflowが成功扱いにならない。
 - secret、token、credentialが証跡へ出ない。
 
@@ -351,7 +328,7 @@ MCP
 - uncaught exceptionが0件
 - unhandled rejectionが0件
 - CSP violationが0件
-- save failure後に追加のsecondary exceptionが0件
+- save failure後にsecondary exceptionが0件
 - extension deactivate / 主GUI panel close後のdangling callback errorが0件
 
 ## 11. cleanup
