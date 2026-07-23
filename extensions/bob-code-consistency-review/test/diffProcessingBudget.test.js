@@ -1,9 +1,16 @@
 "use strict"
 
 const assert = require("node:assert/strict")
+const childProcess = require("node:child_process")
+const fs = require("node:fs")
+const os = require("node:os")
+const path = require("node:path")
 const test = require("node:test")
 
-const { finalizeDiffProcessingBudget } = require("../out/core/gitDiffCollector")
+const {
+  collectGitDiff,
+  finalizeDiffProcessingBudget
+} = require("../out/core/gitDiffCollector")
 const {
   PROCESSING_BUDGET_ABSOLUTE_MAXIMA,
   ProcessingBudgetLedger
@@ -125,3 +132,37 @@ test("rolls back changed-file reservation when aggregate input budget rejects ra
   )
   assert.deepEqual(ledger.snapshot(), before)
 })
+
+test("converts a real Git stdout overflow into a bounded line-safe diff", async (t) => {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "bob-diff-budget-"))
+  t.after(() => fs.rmSync(workspace, { recursive: true, force: true }))
+  runGit(workspace, ["init", "-q"])
+  runGit(workspace, ["config", "user.email", "test@example.invalid"])
+  runGit(workspace, ["config", "user.name", "Budget Test"])
+
+  const sourcePath = path.join(workspace, "large.txt")
+  fs.writeFileSync(sourcePath, "base\n", "utf8")
+  runGit(workspace, ["add", "large.txt"])
+  runGit(workspace, ["commit", "-qm", "base"])
+  const base = runGit(workspace, ["rev-parse", "HEAD"]).trim()
+
+  fs.writeFileSync(sourcePath, `${"x".repeat(2 * 1024 * 1024)}\n`, "utf8")
+  runGit(workspace, ["add", "large.txt"])
+  runGit(workspace, ["commit", "-qm", "large"])
+  const head = runGit(workspace, ["rev-parse", "HEAD"]).trim()
+
+  const result = await collectGitDiff({
+    review: { vcs: "git", base, head }
+  }, {
+    workspaceRoot: workspace,
+    limits: { maxRawDiffBytes: 200 }
+  })
+
+  assert.ok(Buffer.byteLength(result.unifiedDiff, "utf8") <= 200)
+  assert.match(result.unifiedDiff, /\[truncated: maxRawDiffBytes\]\n$/)
+  assert.ok(result.warnings.some((warning) => warning.includes("maxRawDiffBytes")))
+})
+
+function runGit(cwd, args) {
+  return childProcess.execFileSync("git", args, { cwd, encoding: "utf8" })
+}
