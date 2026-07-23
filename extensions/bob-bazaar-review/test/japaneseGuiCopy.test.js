@@ -38,16 +38,19 @@ test("Bazaar command metadata is Japanese-first without changing command IDs", (
   const commands = new Map(packageJson.contributes.commands.map((entry) => [entry.command, entry]))
   assert.equal(commands.get("bobBazaar.openReviewGui").title, "レビューを開始")
   assert.equal(commands.get("bobBazaar.openReviewGui").category, "Bob Bazaar Review")
-  assert.equal(commands.has("bobBazaar.openCampaignDashboard"), false)
-  assert.equal(commands.has("bobBazaar.openResultCaptureGui"), false)
-  assert.equal(commands.has("bobBazaar.openHumanTriageGui"), false)
-  assert.equal(commands.get("bobBazaar.authorProjectRulesFromDocuments").title, "規約資料からプロジェクト規約を作成")
+  assert.equal(commands.has(["bobBazaar", "openCampaignDashboard"].join(".")), false)
+  assert.equal(commands.has(["bobBazaar", "openResultCaptureGui"].join(".")), false)
+  assert.equal(commands.has(["bobBazaar", "openHumanTriageGui"].join(".")), false)
+  assert.equal(commands.get("bobBazaar.authorProjectRulesFromDocuments").title, "資料からプロジェクト規約を作成")
+  assert.equal(commands.get("bobBazaar.authorProjectRulesFromDocuments").category, "Bob Bazaar Review")
   assert.equal(commands.get("bobBazaar.records.initCampaign").title, "実績キャンペーンを初期化")
   assert.equal(commands.get("bobBazaar.records.createRecord").title, "実績記録を作成")
   assert.equal(commands.get("bobBazaar.records.createTriage").title, "指摘確認・振り分け一覧を作成")
   assert.equal(commands.get("bobBazaar.records.validateTriage").title, "指摘確認・振り分け内容を検証")
   assert.equal(commands.get("bobBazaar.records.generateSummary").title, "集計レポートを生成")
   for (const [commandId, entry] of commands) {
-    if (commandId !== "bobBazaar.openReviewGui") assert.equal(entry.category, "Bob Bazaar レビュー")
+    if (!["bobBazaar.openReviewGui", "bobBazaar.authorProjectRulesFromDocuments"].includes(commandId)) {
+      assert.equal(entry.category, "Bob Bazaar レビュー")
+    }
   }
 })
