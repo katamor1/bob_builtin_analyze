@@ -132,9 +132,16 @@ async function extractRuleDocumentWithContext(
     if (preflight.documentKind !== mediaType) {
       throw new Error(`OOXML document kind does not match .${mediaType}`)
     }
+    const snapshotContext = {
+      sourceId,
+      maxChunkBytes: limits.maxChunkBytes,
+      maxFileBytes: limits.maxSourceBytes,
+      maxArchiveEntries: limits.maxOoxmlEntries,
+      maxExpandedBytes: limits.maxOoxmlDeclaredUncompressedBytes
+    }
     extracted = mediaType === "docx"
-      ? await extractDocx(absolutePath, { sourceId, maxChunkBytes: limits.maxChunkBytes })
-      : await extractXlsx(absolutePath, { sourceId, maxChunkBytes: limits.maxChunkBytes })
+      ? await extractDocx(absolutePath, snapshotContext)
+      : await extractXlsx(absolutePath, snapshotContext)
   } else {
     extracted = await extractPdf(absolutePath, {
       ...request.pdf,
