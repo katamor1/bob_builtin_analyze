@@ -4,7 +4,7 @@ import type {
   WorkflowPackageFileStat,
   WorkflowPackageFileSystem
 } from "./packageFileSystem"
-import type { DirectorySnapshot } from "./packageLoaderContract"
+import type { DirectoryIdentitySnapshot, DirectorySnapshot } from "./packageLoaderContract"
 import {
   arrayIsArray,
   arrayPrototype,
@@ -33,27 +33,79 @@ export interface StableControlFileSnapshot {
 export async function assertDirectoryChain(
   fileSystem: WorkflowPackageFileSystem<unknown>,
   hostRoot: unknown,
-  paths: readonly (readonly string[])[]
+  paths: readonly (readonly string[])[],
+  snapshots?: DirectoryIdentitySnapshot[]
 ): Promise<string> {
-  const collectionStat = await safeLstat(fileSystem, hostRoot, [], "collection root")
-  assertDirectoryKind(collectionStat.kind, "collection root")
-  const collectionPhysical = normalizeContainmentRoot(
-    await safeRealpath(fileSystem, hostRoot, [], "collection root")
+  const collection = await snapshotStableDirectory(
+    fileSystem,
+    hostRoot,
+    [],
+    "collection root"
   )
-  let parentPhysical = collectionPhysical
+  if (snapshots !== undefined) pushValue(snapshots, collection)
+  let parentPhysical = collection.physical
   for (let index = 0; index < paths.length; index += 1) {
-    const stat = await safeLstat(fileSystem, hostRoot, paths[index], "workflow package directory")
-    assertDirectoryKind(stat.kind, paths[index].join("/"))
-    const physical = normalizeContainmentRoot(
-      await safeRealpath(fileSystem, hostRoot, paths[index], "workflow package directory")
+    const snapshot = await snapshotStableDirectory(
+      fileSystem,
+      hostRoot,
+      paths[index],
+      "workflow package directory"
     )
     if (
-      !safeIsWithin(fileSystem, collectionPhysical, physical)
-      || !safeIsWithin(fileSystem, parentPhysical, physical)
+      !safeIsWithin(fileSystem, collection.physical, snapshot.physical)
+      || !safeIsWithin(fileSystem, parentPhysical, snapshot.physical)
     ) throw new Error("Workflow package directory escapes physical containment.")
-    parentPhysical = physical
+    if (snapshots !== undefined) pushValue(snapshots, snapshot)
+    parentPhysical = snapshot.physical
   }
   return parentPhysical
+}
+
+export async function snapshotStableDirectory(
+  fileSystem: WorkflowPackageFileSystem<unknown>,
+  hostRoot: unknown,
+  segments: readonly string[],
+  label: string
+): Promise<DirectoryIdentitySnapshot> {
+  const before = await safeLstat(fileSystem, hostRoot, segments, label)
+  assertDirectoryKind(before.kind, segments.join("/") || label)
+  const physical = normalizeContainmentRoot(
+    await safeRealpath(fileSystem, hostRoot, segments, label)
+  )
+  const after = await safeLstat(fileSystem, hostRoot, segments, label)
+  if (after.kind !== "directory" || !sameFileStat(after, before)) {
+    throw new Error(`Workflow package ${label} changed while resolving physical identity.`)
+  }
+  const afterPhysical = normalizeContainmentRoot(
+    await safeRealpath(fileSystem, hostRoot, segments, label)
+  )
+  if (afterPhysical !== physical) {
+    throw new Error(`Workflow package ${label} physical identity changed while resolving.`)
+  }
+  return objectFreeze({
+    segments: objectFreeze([...segments]),
+    identity: before.identity,
+    physical
+  })
+}
+
+export async function assertDirectoryIdentitySnapshotsUnchanged(
+  fileSystem: WorkflowPackageFileSystem<unknown>,
+  hostRoot: unknown,
+  snapshots: readonly DirectoryIdentitySnapshot[]
+): Promise<void> {
+  for (let index = 0; index < snapshots.length; index += 1) {
+    const expected = snapshots[index]
+    const actual = await snapshotStableDirectory(
+      fileSystem,
+      hostRoot,
+      expected.segments,
+      expected.segments.length === 0 ? "collection root" : "workflow package directory"
+    )
+    if (actual.identity !== expected.identity || actual.physical !== expected.physical) {
+      throw new Error("Workflow package directory changed during snapshot read.")
+    }
+  }
 }
 
 export async function readStableControlFile(
@@ -170,15 +222,14 @@ export async function assertDirectorySnapshotsUnchanged(
 ): Promise<void> {
   for (let index = 0; index < snapshots.length; index += 1) {
     const snapshot = snapshots[index]
-    const stat = await safeLstat(fileSystem, hostRoot, snapshot.segments, "workflow package directory")
-    if (stat.kind !== "directory" || stat.identity !== snapshot.identity) {
-      throw new Error("Workflow package directory changed during snapshot read.")
-    }
-    const physical = normalizeContainmentRoot(
-      await safeRealpath(fileSystem, hostRoot, snapshot.segments, "workflow package directory")
+    const current = await snapshotStableDirectory(
+      fileSystem,
+      hostRoot,
+      snapshot.segments,
+      "workflow package directory"
     )
-    if (physical !== snapshot.physical) {
-      throw new Error("Workflow package directory physical identity changed during snapshot read.")
+    if (current.identity !== snapshot.identity || current.physical !== snapshot.physical) {
+      throw new Error("Workflow package directory changed during snapshot read.")
     }
     const names = snapshotDirectoryNames(
       await safeReadDirectory(fileSystem, hostRoot, snapshot.segments),
