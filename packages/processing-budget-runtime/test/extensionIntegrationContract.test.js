@@ -46,6 +46,9 @@ test("Bazaar DOCX and XLSX parse only bounded snapshot bytes", () => {
   assert.doesNotMatch(fingerprint, /createReadStream|readFile/)
   const fingerprintCalls = coordinator.match(/fingerprintSource\(absolutePath, \{\s*maximumBytes: (?:limits|effectiveLimits)\.maxSourceBytes\s*\}\)/g) ?? []
   assert.equal(fingerprintCalls.length, 3)
+  assert.match(coordinator, /maxFileBytes: limits\.maxSourceBytes/)
+  assert.match(coordinator, /maxArchiveEntries: limits\.maxOoxmlEntries/)
+  assert.match(coordinator, /maxExpandedBytes: limits\.maxOoxmlDeclaredUncompressedBytes/)
 })
 
 test("consistency review removes governed stat/read truncation and parses shared bytes", () => {
