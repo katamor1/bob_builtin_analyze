@@ -11,23 +11,10 @@ const TASK_METHODS = [
   "startSubagent",
   "toSerializable"
 ]
+const TASK_CAPABILITIES = TASK_METHODS.map((name) => `task.${name}`)
 
 function subject() {
   return require("../out/core/contractV2/bobProfile.js")
-}
-
-function exactOwnMethods(names, calls = []) {
-  const owner = Object.create(null)
-  for (const name of names) Object.defineProperty(owner, name, {
-    enumerable: true,
-    configurable: false,
-    writable: false,
-    value: function (...args) {
-      calls.push({ name, owner: this, args })
-      return undefined
-    }
-  })
-  return owner
 }
 
 class AuditedSource {
@@ -129,7 +116,13 @@ function plainProfile(value) {
 }
 
 test("golden Bob profile and digest are exact detached frozen evidence", () => {
-  const { BOB_2_0_1_PROFILE, BOB_2_0_1_PROFILE_DIGEST, canonicalJsonDigest } = subject()
+  const {
+    BOB_2_0_1_CAPABILITIES,
+    BOB_2_0_1_PROFILE,
+    BOB_2_0_1_PROFILE_DIGEST,
+    BOB_2_0_1_TASK_CAPABILITIES,
+    canonicalJsonDigest
+  } = subject()
   assert.equal(BOB_2_0_1_PROFILE_DIGEST, GOLDEN_DIGEST)
   assert.equal(canonicalJsonDigest(BOB_2_0_1_PROFILE), GOLDEN_DIGEST)
   assert.deepEqual(plainProfile(BOB_2_0_1_PROFILE), {
@@ -157,15 +150,18 @@ test("golden Bob profile and digest are exact detached frozen evidence", () => {
       { capability: "task.toSerializable", name: "toSerializable", valueKind: "function" }
     ]
   })
+  assert.deepEqual(BOB_2_0_1_TASK_CAPABILITIES, TASK_CAPABILITIES)
   assert.equal(Object.isFrozen(BOB_2_0_1_PROFILE), true)
   assert.equal(Object.isFrozen(BOB_2_0_1_PROFILE.extension), true)
   assert.equal(Object.isFrozen(BOB_2_0_1_PROFILE.activationDescriptors), true)
   assert.equal(Object.isFrozen(BOB_2_0_1_PROFILE.sourceDescriptors), true)
   assert.equal(Object.isFrozen(BOB_2_0_1_PROFILE.capabilityNames), true)
   assert.equal(Object.isFrozen(BOB_2_0_1_PROFILE.taskCapabilityDescriptors), true)
+  assert.equal(Object.isFrozen(BOB_2_0_1_CAPABILITIES), true)
+  assert.equal(Object.isFrozen(BOB_2_0_1_TASK_CAPABILITIES), true)
 })
 
-test("compile-time snapshot validates the activation function without invoking it or claiming task capabilities", () => {
+test("compile-time snapshot validates activation without invoking it or claiming live task handles", () => {
   const { snapshotBobContractProfile } = subject()
   const calls = []
   const result = snapshotBobContractProfile(bobExports(calls))
@@ -181,12 +177,15 @@ test("compile-time snapshot validates the activation function without invoking i
   assert.equal(Object.isFrozen(result.compileTimeCapabilities), true)
 })
 
-test("binding accepts the audited function among the other Bob 2.0.1 exports and captures prototype source methods", () => {
+test("binding accepts registerSource among unrelated Bob exports and captures prototype source methods", () => {
   const { bindBobCapabilities } = subject()
   const calls = []
   const liveExport = bobExports(calls)
   const bound = bindBobCapabilities(bindInput(liveExport))
   assert.equal(bound.ok, true)
+  assert.equal(bound.profile, "bob/2.0.1")
+  assert.equal(bound.extensionId, "IBM.bob-code")
+  assert.equal(bound.extensionVersion, "2.0.1")
   assert.deepEqual(calls, [])
 
   const source = bound.registerSource("workflow-register", "Workflow Register")
@@ -203,10 +202,11 @@ test("binding accepts the audited function among the other Bob 2.0.1 exports and
   assert.equal("registerTool" in source, false)
   assert.equal("_parts" in source, false)
   assert.equal(Object.isFrozen(bound), true)
+  assert.equal(Object.isFrozen(bound.registerSource), true)
   assert.equal(Object.isFrozen(source), true)
 })
 
-test("source binding fails before returning when an audited source method is missing, accessor-backed, non-callable, or proxied", async (t) => {
+test("source binding fails before returning for missing, accessor, non-callable, and proxied methods", async (t) => {
   const { bindBobCapabilities } = subject()
   let getterCalls = 0
   const cases = [
@@ -235,7 +235,7 @@ test("source binding fails before returning when an audited source method is mis
   assert.equal(getterCalls, 0)
 })
 
-test("activation binding rejects wrong identity, profile drift, proxy, accessor, missing, and non-callable registerSource", async (t) => {
+test("activation binding rejects wrong identity, drift, proxy, inherited, accessor, missing, and non-callable registerSource", async (t) => {
   const { bindBobCapabilities } = subject()
   let getterCalls = 0
   const valid = bobExports()
@@ -254,12 +254,14 @@ test("activation binding rejects wrong identity, profile drift, proxy, accessor,
   nonFunction.registerSource = 1
   const callableProxy = bobExports()
   callableProxy.registerSource = new Proxy(() => undefined, {})
+  const inherited = Object.create({ registerSource() { return new AuditedSource([]) } })
 
   const invalid = [
     ["wrong id", { ...bindInput(valid), extensionId: "ibm.bob-code" }],
     ["wrong version", { ...bindInput(valid), extensionVersion: "2.0.0" }],
     ["profile drift", { ...bindInput(valid), expectedProfileDigest: `sha256:${"0".repeat(64)}` }],
     ["proxy export", bindInput(new Proxy(valid, {}))],
+    ["inherited", bindInput(inherited)],
     ["accessor", bindInput(accessor)],
     ["missing", bindInput(missing)],
     ["non-function", bindInput(nonFunction)],
@@ -271,7 +273,7 @@ test("activation binding rejects wrong identity, profile drift, proxy, accessor,
   assert.equal(getterCalls, 0)
 })
 
-test("binding and task-probe input wrappers reject proxies, accessors, and unknown fields without invoking getters", () => {
+test("binding and task-probe wrappers reject proxies, accessors, and unknown fields without invoking getters", () => {
   const { bindBobCapabilities, probeBobTaskCapabilities } = subject()
   let getterCalls = 0
   const accessorBindInput = bindInput()
@@ -307,27 +309,25 @@ test("binding and task-probe input wrappers reject proxies, accessors, and unkno
   assert.equal(getterCalls, 0)
 })
 
-test("task probe binds the six audited prototype methods without invoking them and ignores unrelated state and methods", async () => {
+test("task probe validates the six prototype methods without invoking or retaining the task", () => {
   const { probeBobTaskCapabilities } = subject()
   const calls = []
   const task = new AuditedTask(calls)
   const probed = probeBobTaskCapabilities({ expectedProfileDigest: GOLDEN_DIGEST, task })
+  assert.deepEqual(probed, {
+    ok: true,
+    profileDigest: GOLDEN_DIGEST,
+    taskCapabilities: TASK_CAPABILITIES
+  })
   assert.deepEqual(calls, [])
-  assert.deepEqual(Object.keys(probed), TASK_METHODS)
+  assert.equal("task" in probed, false)
+  assert.equal("getAllMetadata" in probed, false)
   assert.equal("unrelatedTaskMethod" in probed, false)
-  assert.equal("status" in probed, false)
   assert.equal(Object.isFrozen(probed), true)
-
-  assert.deepEqual(probed.getAllMetadata(), { id: "task-1" })
-  assert.deepEqual(probed.getMessages(), [])
-  probed.sendMessage("message", "user")
-  probed.setStepComplete()
-  await probed.startSubagent("prompt")
-  assert.deepEqual(probed.toSerializable(), { id: "task-1" })
-  assert.equal(calls.every((call) => call.owner === task), true)
+  assert.equal(Object.isFrozen(probed.taskCapabilities), true)
 })
 
-test("task probe rejects profile drift, missing methods, inherited accessors, non-functions, callable proxies, and proxy handles", async (t) => {
+test("task probe rejects drift, missing methods, inherited accessors, non-functions, callable proxies, and proxy handles", async (t) => {
   const { probeBobTaskCapabilities } = subject()
   const task = new AuditedTask([])
   assert.throws(
