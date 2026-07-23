@@ -64,9 +64,10 @@ function buildWorkflowSteps(
 }
 
 function probeTask(task: BobWorkflowTask): BobWorkflowTask {
-  return probeBobTaskCapabilities({
+  probeBobTaskCapabilities({
     expectedProfileDigest: BOB_2_0_1_PROFILE_DIGEST,
     requiredCapabilities: BOB_2_0_1_TASK_CAPABILITIES,
     task
   })
+  return task
 }
