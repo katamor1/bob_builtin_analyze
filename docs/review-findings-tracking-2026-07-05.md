@@ -1,3 +1,5 @@
+Replaced: `workflowRegister.openOperationHub`, `workflowRegister.openWorkflowBuilder`, `bobBazaar.openReviewGui`, and `bobCodeConsistency.openReviewWizard` are the current operator routes; the legacy review-surface terminology below is retained only as historical findings-tracking context.
+
 # 2026-07-05 review findings tracking
 
 更新日: 2026-07-05
