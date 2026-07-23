@@ -3,6 +3,8 @@ import { canonicalJsonDigest } from "./canonicalJson"
 import { cloneAndFreezeJsonValue } from "./jsonValue"
 
 const isProxy = utilTypes.isProxy
+const arrayIsArray = Array.isArray
+const arrayPrototype = Array.prototype
 const objectCreate = Object.create
 const objectFreeze = Object.freeze
 const objectGetOwnPropertyDescriptor = Object.getOwnPropertyDescriptor
@@ -10,32 +12,56 @@ const objectGetOwnPropertyDescriptors = Object.getOwnPropertyDescriptors
 const objectGetPrototypeOf = Object.getPrototypeOf
 const objectHasOwn = Object.hasOwn
 const objectPrototype = Object.prototype
+const numberIsSafeInteger = Number.isSafeInteger
+const numberToString = Number.prototype.toString
 const reflectApply = Reflect.apply
 const reflectOwnKeys = Reflect.ownKeys
 
 const MAX_PROTOTYPE_DEPTH = 64
+export type BobCapabilityName =
+  | "source.deactivate" | "source.log" | "source.registerWorkflow"
+  | "task.getAllMetadata" | "task.getMessages" | "task.sendMessage"
+  | "task.setStepComplete" | "task.startSubagent" | "task.toSerializable"
+
+export type BobTaskCapabilityName = Extract<BobCapabilityName, `task.${string}`>
+
+export const BOB_2_0_1_CAPABILITIES = objectFreeze([
+  "source.deactivate",
+  "source.log",
+  "source.registerWorkflow",
+  "task.getAllMetadata",
+  "task.getMessages",
+  "task.sendMessage",
+  "task.setStepComplete",
+  "task.startSubagent",
+  "task.toSerializable"
+] as const)
+
+export const BOB_2_0_1_TASK_CAPABILITIES = objectFreeze([
+  "task.getAllMetadata",
+  "task.getMessages",
+  "task.sendMessage",
+  "task.setStepComplete",
+  "task.startSubagent",
+  "task.toSerializable"
+] as const)
+
 const ACTIVATION_NAMES = objectFreeze(["registerSource"] as const)
 const SOURCE_NAMES = objectFreeze(["deactivate", "log", "registerWorkflow"] as const)
-const TASK_NAMES = objectFreeze([
-  "getAllMetadata",
-  "getMessages",
-  "sendMessage",
-  "setStepComplete",
-  "startSubagent",
-  "toSerializable"
-] as const)
 const COMPILE_TIME_CAPABILITIES = objectFreeze([
   "source.deactivate",
   "source.log",
   "source.registerWorkflow"
 ] as const)
-const BIND_INPUT_FIELDS = objectFreeze([
+const BIND_REQUIRED_FIELDS = objectFreeze([
   "extensionId",
   "extensionVersion",
   "expectedProfileDigest",
   "liveExport"
 ] as const)
-const PROBE_INPUT_FIELDS = objectFreeze(["expectedProfileDigest", "task"] as const)
+const BIND_OPTIONAL_FIELDS = objectFreeze(["requiredCapabilities"] as const)
+const PROBE_REQUIRED_FIELDS = objectFreeze(["expectedProfileDigest", "task"] as const)
+const PROBE_OPTIONAL_FIELDS = objectFreeze(["requiredCapabilities"] as const)
 
 export const BOB_2_0_1_PROFILE = cloneAndFreezeJsonValue({
   schemaVersion: "workflow-bob-profile/v1",
@@ -48,11 +74,7 @@ export const BOB_2_0_1_PROFILE = cloneAndFreezeJsonValue({
     { name: "log", valueKind: "function" },
     { name: "registerWorkflow", valueKind: "function" }
   ],
-  capabilityNames: [
-    "source.deactivate", "source.log", "source.registerWorkflow",
-    "task.getAllMetadata", "task.getMessages", "task.sendMessage",
-    "task.setStepComplete", "task.startSubagent", "task.toSerializable"
-  ],
+  capabilityNames: BOB_2_0_1_CAPABILITIES,
   taskCapabilityDescriptors: [
     { capability: "task.getAllMetadata", name: "getAllMetadata", valueKind: "function" },
     { capability: "task.getMessages", name: "getMessages", valueKind: "function" },
@@ -78,74 +100,118 @@ export interface BoundBobSource {
   readonly registerWorkflow: (workflow: unknown) => unknown
 }
 
+export interface BindBobCapabilitiesInput {
+  readonly extensionId: unknown
+  readonly extensionVersion: unknown
+  readonly expectedProfileDigest: unknown
+  readonly liveExport: unknown
+  readonly requiredCapabilities?: unknown
+}
+
 export interface BoundBobCapabilities {
   readonly ok: true
+  readonly profile: "bob/2.0.1"
+  readonly extensionId: "IBM.bob-code"
+  readonly extensionVersion: "2.0.1"
   readonly profileDigest: typeof BOB_2_0_1_PROFILE_DIGEST
+  readonly capabilities: typeof BOB_2_0_1_CAPABILITIES
+  readonly requiredCapabilities: readonly BobCapabilityName[]
+  readonly taskCapabilities: readonly BobTaskCapabilityName[]
   readonly registerSource: (id: string, name?: string) => BoundBobSource
 }
 
-export interface ProbedBobTaskCapabilities {
-  readonly getAllMetadata: () => Record<string, unknown>
-  readonly getMessages: () => unknown[]
-  readonly sendMessage: (...args: unknown[]) => unknown
-  readonly setStepComplete: () => unknown
-  readonly startSubagent: (prompt: string, preset?: unknown, mask?: unknown) => unknown
-  readonly toSerializable: () => unknown
+export type BindBobCapabilitiesResult = BoundBobCapabilities
+
+export interface ProbeBobTaskCapabilitiesInput {
+  readonly expectedProfileDigest: unknown
+  readonly task: unknown
+  readonly requiredCapabilities?: unknown
 }
 
-export function snapshotBobContractProfile(liveExport: unknown): Readonly<{
+export interface ProbedBobTaskCapabilities {
+  readonly getAllMetadata?: () => Record<string, unknown>
+  readonly getMessages?: () => unknown[]
+  readonly sendMessage?: (...args: unknown[]) => unknown
+  readonly setStepComplete?: () => unknown
+  readonly startSubagent?: (prompt: string, preset?: unknown, mask?: unknown) => unknown
+  readonly toSerializable?: () => unknown
+}
+
+export type ProbeBobTaskCapabilitiesResult = ProbedBobTaskCapabilities
+
+export type BobContractProfileResult = Readonly<{
   ok: true
   profile: typeof BOB_2_0_1_PROFILE
   profileDigest: typeof BOB_2_0_1_PROFILE_DIGEST
+  capabilities: typeof BOB_2_0_1_CAPABILITIES
   compileTimeCapabilities: typeof COMPILE_TIME_CAPABILITIES
-}> {
+}>
+
+export function snapshotBobContractProfile(liveExport: unknown): BobContractProfileResult {
   snapshotOwnRequiredFunctions(liveExport, ACTIVATION_NAMES, "Bob activation export")
   return objectFreeze({
     ok: true as const,
     profile: BOB_2_0_1_PROFILE,
     profileDigest: BOB_2_0_1_PROFILE_DIGEST,
+    capabilities: BOB_2_0_1_CAPABILITIES,
     compileTimeCapabilities: COMPILE_TIME_CAPABILITIES
   })
 }
 
-export function bindBobCapabilities(input: {
-  readonly extensionId: unknown
-  readonly extensionVersion: unknown
-  readonly expectedProfileDigest: unknown
-  readonly liveExport: unknown
-}): BoundBobCapabilities {
-  const snapshot = snapshotExactInput(input, BIND_INPUT_FIELDS, "Bob capability binding input")
+export function bindBobCapabilities(input: BindBobCapabilitiesInput): BindBobCapabilitiesResult {
+  const snapshot = snapshotInputWithOptionalFields(
+    input,
+    BIND_REQUIRED_FIELDS,
+    BIND_OPTIONAL_FIELDS,
+    "Bob capability binding input"
+  )
   assertProfileIdentity(snapshot.extensionId, snapshot.extensionVersion, snapshot.expectedProfileDigest)
+  const requiredCapabilities = objectHasOwn(snapshot, "requiredCapabilities")
+    ? snapshotCapabilitySubset(snapshot.requiredCapabilities, BOB_2_0_1_CAPABILITIES, "Bob required capabilities")
+    : BOB_2_0_1_CAPABILITIES
+  const taskCapabilities = deriveTaskCapabilities(requiredCapabilities)
   const liveExport = snapshot.liveExport
   const activation = snapshotOwnRequiredFunctions(liveExport, ACTIVATION_NAMES, "Bob activation export")
   const registerSource = activation.registerSource as (id: string, name?: string) => unknown
   return objectFreeze({
     ok: true as const,
+    profile: "bob/2.0.1" as const,
+    extensionId: "IBM.bob-code" as const,
+    extensionVersion: "2.0.1" as const,
     profileDigest: BOB_2_0_1_PROFILE_DIGEST,
+    capabilities: BOB_2_0_1_CAPABILITIES,
+    requiredCapabilities,
+    taskCapabilities,
     registerSource: freezeFunction((id: string, name?: string) => bindBobSource(
       reflectApply(registerSource, liveExport, name === undefined ? [id] : [id, name])
     ))
   })
 }
 
-export function probeBobTaskCapabilities(input: {
-  readonly expectedProfileDigest: unknown
-  readonly task: unknown
-}): ProbedBobTaskCapabilities {
-  const snapshot = snapshotExactInput(input, PROBE_INPUT_FIELDS, "Bob task probe input")
+export function probeBobTaskCapabilities(
+  input: ProbeBobTaskCapabilitiesInput
+): ProbeBobTaskCapabilitiesResult {
+  const snapshot = snapshotInputWithOptionalFields(
+    input,
+    PROBE_REQUIRED_FIELDS,
+    PROBE_OPTIONAL_FIELDS,
+    "Bob task probe input"
+  )
   if (snapshot.expectedProfileDigest !== BOB_2_0_1_PROFILE_DIGEST) {
     throw new TypeError("IBM Bob task profile digest does not match the audited 2.0.1 profile.")
   }
+  const requiredCapabilities = objectHasOwn(snapshot, "requiredCapabilities")
+    ? snapshotCapabilitySubset(snapshot.requiredCapabilities, BOB_2_0_1_TASK_CAPABILITIES, "Bob task required capabilities")
+    : BOB_2_0_1_TASK_CAPABILITIES
   const task = snapshot.task
-  const methods = snapshotRequiredFunctions(task, TASK_NAMES, "Bob task")
-  return objectFreeze({
-    getAllMetadata: bindMethod(task, methods.getAllMetadata),
-    getMessages: bindMethod(task, methods.getMessages),
-    sendMessage: bindMethod(task, methods.sendMessage),
-    setStepComplete: bindMethod(task, methods.setStepComplete),
-    startSubagent: bindMethod(task, methods.startSubagent),
-    toSerializable: bindMethod(task, methods.toSerializable)
-  }) as ProbedBobTaskCapabilities
+  assertInspectableObject(task, "Bob task")
+  const result = objectCreate(null) as Record<string, (...args: unknown[]) => unknown>
+  for (let index = 0; index < requiredCapabilities.length; index += 1) {
+    const capability = requiredCapabilities[index]
+    const name = taskMethodName(capability)
+    result[name] = bindMethod(task, findRequiredFunction(task, name, "Bob task"))
+  }
+  return objectFreeze(result) as ProbeBobTaskCapabilitiesResult
 }
 
 function bindBobSource(source: unknown): BoundBobSource {
@@ -167,11 +233,15 @@ function assertProfileIdentity(extensionId: unknown, extensionVersion: unknown, 
   }
 }
 
-function snapshotExactInput<T extends readonly string[]>(
+function snapshotInputWithOptionalFields<
+  Required extends readonly string[],
+  Optional extends readonly string[]
+>(
   value: unknown,
-  expectedNames: T,
+  requiredNames: Required,
+  optionalNames: Optional,
   label: string
-): Record<T[number], unknown> {
+): Record<Required[number] | Optional[number], unknown> {
   if (typeof value !== "object" || value === null || isProxy(value)) {
     throw new TypeError(`${label} must be a non-proxy ordinary record.`)
   }
@@ -181,25 +251,102 @@ function snapshotExactInput<T extends readonly string[]>(
   }
   const descriptors = objectGetOwnPropertyDescriptors(value)
   const keys = reflectOwnKeys(descriptors)
-  if (keys.length !== expectedNames.length) throw new TypeError(`${label} fields do not match the audited shape.`)
   const result = objectCreate(null) as Record<string, unknown>
-  for (let index = 0; index < expectedNames.length; index += 1) {
-    const name = expectedNames[index]
-    const descriptor = descriptorMapValue(descriptors, name)
-    if (
-      descriptor === undefined
-      || !objectHasOwn(descriptor, "value")
-      || descriptor.enumerable !== true
-    ) throw new TypeError(`${label}.${name} must be an enumerable own data property.`)
-    result[name] = descriptor.value
+  for (let index = 0; index < requiredNames.length; index += 1) {
+    copyInputField(descriptors, result, requiredNames[index], label, true)
+  }
+  for (let index = 0; index < optionalNames.length; index += 1) {
+    copyInputField(descriptors, result, optionalNames[index], label, false)
   }
   for (let index = 0; index < keys.length; index += 1) {
     const key = keys[index]
-    if (typeof key !== "string" || !includesName(expectedNames, key)) {
-      throw new TypeError(`${label} contains an unaudited field.`)
+    if (
+      typeof key !== "string"
+      || (!includesName(requiredNames, key) && !includesName(optionalNames, key))
+    ) throw new TypeError(`${label} contains an unaudited field.`)
+  }
+  return result as Record<Required[number] | Optional[number], unknown>
+}
+
+function copyInputField(
+  descriptors: PropertyDescriptorMap,
+  result: Record<string, unknown>,
+  name: string,
+  label: string,
+  required: boolean
+): void {
+  const descriptor = descriptorMapValue(descriptors, name)
+  if (descriptor === undefined) {
+    if (required) throw new TypeError(`${label}.${name} is required.`)
+    return
+  }
+  if (!objectHasOwn(descriptor, "value") || descriptor.enumerable !== true) {
+    throw new TypeError(`${label}.${name} must be an enumerable own data property.`)
+  }
+  result[name] = descriptor.value
+}
+
+function snapshotCapabilitySubset<Allowed extends readonly string[]>(
+  value: unknown,
+  allowed: Allowed,
+  label: string
+): readonly Allowed[number][] {
+  if (!arrayIsArray(value) || isProxy(value) || objectGetPrototypeOf(value) !== arrayPrototype) {
+    throw new TypeError(`${label} must be a dense ordinary array.`)
+  }
+  const descriptors = objectGetOwnPropertyDescriptors(value) as unknown as PropertyDescriptorMap
+  const lengthDescriptor = descriptorMapValue(descriptors, "length")
+  if (
+    lengthDescriptor === undefined
+    || !objectHasOwn(lengthDescriptor, "value")
+    || typeof lengthDescriptor.value !== "number"
+    || !numberIsSafeInteger(lengthDescriptor.value)
+    || lengthDescriptor.value < 0
+    || lengthDescriptor.value > allowed.length
+  ) throw new TypeError(`${label} has an invalid length.`)
+  const length = lengthDescriptor.value
+  const keys = reflectOwnKeys(descriptors)
+  if (keys.length !== length + 1) throw new TypeError(`${label} must not be sparse or have extra fields.`)
+  const result: string[] = []
+  for (let index = 0; index < length; index += 1) {
+    const descriptor = descriptorMapValue(descriptors, numberAsString(index))
+    if (descriptor === undefined || !objectHasOwn(descriptor, "value") || descriptor.enumerable !== true) {
+      throw new TypeError(`${label}[${index}] must be an enumerable own data property.`)
+    }
+    const capability = descriptor.value
+    if (typeof capability !== "string" || !includesName(allowed, capability)) {
+      throw new TypeError(`${label}[${index}] is not an audited capability.`)
+    }
+    if (index > 0 && result[index - 1] >= capability) {
+      throw new TypeError(`${label} must be code-unit sorted and duplicate-free.`)
+    }
+    result[index] = capability
+  }
+  return objectFreeze(result) as readonly Allowed[number][]
+}
+
+function deriveTaskCapabilities(
+  requiredCapabilities: readonly BobCapabilityName[]
+): readonly BobTaskCapabilityName[] {
+  const result: BobTaskCapabilityName[] = []
+  for (let index = 0; index < requiredCapabilities.length; index += 1) {
+    const capability = requiredCapabilities[index]
+    if (includesName(BOB_2_0_1_TASK_CAPABILITIES, capability)) {
+      result[result.length] = capability as BobTaskCapabilityName
     }
   }
-  return result as Record<T[number], unknown>
+  return objectFreeze(result)
+}
+
+function taskMethodName(capability: BobTaskCapabilityName): keyof ProbedBobTaskCapabilities {
+  switch (capability) {
+    case "task.getAllMetadata": return "getAllMetadata"
+    case "task.getMessages": return "getMessages"
+    case "task.sendMessage": return "sendMessage"
+    case "task.setStepComplete": return "setStepComplete"
+    case "task.startSubagent": return "startSubagent"
+    case "task.toSerializable": return "toSerializable"
+  }
 }
 
 function snapshotOwnRequiredFunctions<T extends readonly string[]>(
@@ -294,6 +441,10 @@ function bindMethod(owner: unknown, method: Function): (...args: unknown[]) => u
 
 function freezeFunction<T extends Function>(value: T): T {
   return objectFreeze(value)
+}
+
+function numberAsString(value: number): string {
+  return reflectApply(numberToString, value, []) as string
 }
 
 function includesName(names: readonly string[], expected: string): boolean {
