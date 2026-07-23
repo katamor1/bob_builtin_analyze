@@ -2,8 +2,12 @@ import {
   PROCESSING_BUDGET_CATEGORY_IDS,
   PROCESSING_BUDGET_DEFINITION_BY_ID,
   PROCESSING_BUDGET_LEDGER_REPORT_SCHEMA_VERSION,
+  PROCESSING_BUDGET_OPERATION_CATEGORY_IDS,
+  PROCESSING_BUDGET_TARGET_CATEGORY_IDS,
+  type OperationScopedProcessingBudgetCategory,
   type ProcessingBudgetCategory,
-  type ProcessingBudgetUnit
+  type ProcessingBudgetUnit,
+  type TargetScopedProcessingBudgetCategory
 } from "./generatedProcessingBudgetDefinition"
 import { ProcessingBudgetError } from "./processingBudgetError"
 import {
@@ -12,19 +16,54 @@ import {
   type ProcessingBudgetProfileOverrides
 } from "./processingBudgetProfile"
 
+const MAX_PROCESSING_BUDGET_TARGET_CODE_UNITS = 32_768
+
 interface MutableCategoryState {
   committed: number
   reserved: number
 }
 
+interface ReservationDebit {
+  readonly category: ProcessingBudgetCategory
+  readonly state: MutableCategoryState
+  readonly target?: string
+}
+
 interface OpenReservation {
   readonly targetCategory: ProcessingBudgetCategory
-  readonly categories: readonly ProcessingBudgetCategory[]
+  readonly target?: string
+  readonly debits: readonly ReservationDebit[]
   readonly amount: number
 }
 
-export interface ProcessingBudgetLedgerCategoryReport {
+interface ProcessingBudgetLedgerCategoryBaseReport {
   readonly category: ProcessingBudgetCategory
+  readonly unit: ProcessingBudgetUnit
+  readonly limit: number
+  readonly committed: number
+  readonly reserved: number
+  readonly used: number
+}
+
+export interface ProcessingBudgetLedgerOperationCategoryReport extends ProcessingBudgetLedgerCategoryBaseReport {
+  readonly scope: "operation"
+  readonly category: OperationScopedProcessingBudgetCategory
+  readonly remaining: number
+}
+
+export interface ProcessingBudgetLedgerTargetCategoryReport extends ProcessingBudgetLedgerCategoryBaseReport {
+  readonly scope: "target"
+  readonly category: TargetScopedProcessingBudgetCategory
+  readonly target_count: number
+}
+
+export type ProcessingBudgetLedgerCategoryReport =
+  | ProcessingBudgetLedgerOperationCategoryReport
+  | ProcessingBudgetLedgerTargetCategoryReport
+
+export interface ProcessingBudgetLedgerTargetReport {
+  readonly category: TargetScopedProcessingBudgetCategory
+  readonly target: string
   readonly unit: ProcessingBudgetUnit
   readonly limit: number
   readonly committed: number
@@ -36,16 +75,18 @@ export interface ProcessingBudgetLedgerCategoryReport {
 export interface ProcessingBudgetLedgerReport {
   readonly schema_version: typeof PROCESSING_BUDGET_LEDGER_REPORT_SCHEMA_VERSION
   readonly categories: readonly ProcessingBudgetLedgerCategoryReport[]
+  readonly targets: readonly ProcessingBudgetLedgerTargetReport[]
 }
 
 export interface ProcessingBudgetReservation {
   readonly category: ProcessingBudgetCategory
+  readonly target?: string
   readonly amount: number
   commit(actualAmount?: number): void
   release(): void
 }
 
-function invalidReservationAmount(value: unknown): value is number {
+function validReservationAmount(value: unknown): value is number {
   return Number.isSafeInteger(value) && (value as number) >= 0
 }
 
@@ -57,6 +98,16 @@ function diagnosticNumber(value: unknown): number | undefined {
 
 function safeObservedTotal(used: number, requested: number): number | undefined {
   return requested <= Number.MAX_SAFE_INTEGER - used ? used + requested : undefined
+}
+
+function safeSum(left: number, right: number): number {
+  if (!Number.isSafeInteger(left) || !Number.isSafeInteger(right) || left < 0 || right < 0 || right > Number.MAX_SAFE_INTEGER - left) {
+    throw new ProcessingBudgetError(
+      "processing_budget_internal_invariant",
+      "processing budget ledger report total is not a non-negative safe integer"
+    )
+  }
+  return left + right
 }
 
 function assertStateWithinLimit(state: MutableCategoryState, limit: number): number {
@@ -75,8 +126,20 @@ function isCategory(value: unknown): value is ProcessingBudgetCategory {
   return typeof value === "string" && Object.hasOwn(PROCESSING_BUDGET_DEFINITION_BY_ID, value)
 }
 
-function categoryChain(category: ProcessingBudgetCategory): readonly ProcessingBudgetCategory[] {
-  const output: ProcessingBudgetCategory[] = []
+function isTargetCategory(value: ProcessingBudgetCategory): value is TargetScopedProcessingBudgetCategory {
+  return PROCESSING_BUDGET_DEFINITION_BY_ID[value].scope === "target"
+}
+
+function isOperationCategory(value: ProcessingBudgetCategory): value is OperationScopedProcessingBudgetCategory {
+  return PROCESSING_BUDGET_DEFINITION_BY_ID[value].scope === "operation"
+}
+
+function compareCodePoints(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0
+}
+
+function operationChain(category: OperationScopedProcessingBudgetCategory): readonly OperationScopedProcessingBudgetCategory[] {
+  const output: OperationScopedProcessingBudgetCategory[] = []
   const visited = new Set<ProcessingBudgetCategory>()
   let current: ProcessingBudgetCategory | null = category
   while (current !== null) {
@@ -84,22 +147,42 @@ function categoryChain(category: ProcessingBudgetCategory): readonly ProcessingB
       throw new ProcessingBudgetError("processing_budget_internal_invariant", `aggregate cycle includes ${current}`)
     }
     visited.add(current)
+    if (!isOperationCategory(current)) {
+      throw new ProcessingBudgetError(
+        "processing_budget_internal_invariant",
+        `${current} is not operation-scoped inside an operation aggregate chain`
+      )
+    }
     output.push(current)
     current = PROCESSING_BUDGET_DEFINITION_BY_ID[current].aggregateInto
   }
   return Object.freeze(output)
 }
 
+function validateTarget(target: unknown, category: TargetScopedProcessingBudgetCategory): string {
+  if (typeof target !== "string" || target.length === 0 || target.length > MAX_PROCESSING_BUDGET_TARGET_CODE_UNITS) {
+    throw new ProcessingBudgetError(
+      "processing_budget_target_invalid",
+      `target for ${category} must be a non-empty string of at most ${MAX_PROCESSING_BUDGET_TARGET_CODE_UNITS} code units`,
+      { targetCategory: category }
+    )
+  }
+  return target
+}
+
 export class ProcessingBudgetLedger {
   readonly #profile: ProcessingBudgetProfile
-  readonly #state: Record<ProcessingBudgetCategory, MutableCategoryState>
+  readonly #operationState = new Map<OperationScopedProcessingBudgetCategory, MutableCategoryState>()
+  readonly #targetState = new Map<TargetScopedProcessingBudgetCategory, Map<string, MutableCategoryState>>()
   readonly #reservations = new Map<symbol, OpenReservation>()
 
   constructor(profile: ProcessingBudgetProfile | ProcessingBudgetProfileOverrides | undefined = undefined) {
     this.#profile = normalizeProcessingBudgetProfile(profile)
-    this.#state = Object.create(null) as Record<ProcessingBudgetCategory, MutableCategoryState>
-    for (const category of PROCESSING_BUDGET_CATEGORY_IDS) {
-      this.#state[category] = { committed: 0, reserved: 0 }
+    for (const category of PROCESSING_BUDGET_OPERATION_CATEGORY_IDS) {
+      this.#operationState.set(category, { committed: 0, reserved: 0 })
+    }
+    for (const category of PROCESSING_BUDGET_TARGET_CATEGORY_IDS) {
+      this.#targetState.set(category, new Map())
     }
     Object.freeze(this)
   }
@@ -108,7 +191,7 @@ export class ProcessingBudgetLedger {
     return this.#profile
   }
 
-  reserve(categoryValue: ProcessingBudgetCategory, amountValue: number): ProcessingBudgetReservation {
+  reserve(categoryValue: OperationScopedProcessingBudgetCategory, amountValue: number): ProcessingBudgetReservation {
     if (!isCategory(categoryValue)) {
       throw new ProcessingBudgetError(
         "processing_budget_category_invalid",
@@ -116,39 +199,172 @@ export class ProcessingBudgetLedger {
         { targetCategory: String(categoryValue) }
       )
     }
-    if (!invalidReservationAmount(amountValue)) {
+    if (isTargetCategory(categoryValue)) {
       throw new ProcessingBudgetError(
-        "processing_budget_reservation_invalid",
-        `reservation for ${categoryValue} must be a non-negative safe integer`,
-        { targetCategory: categoryValue, observed: diagnosticNumber(amountValue) }
+        "processing_budget_target_required",
+        `${categoryValue} requires reserveForTarget(...)`,
+        { targetCategory: categoryValue }
       )
     }
-    const category = categoryValue
+    return this.#reserve(categoryValue, undefined, amountValue)
+  }
+
+  reserveForTarget(
+    categoryValue: TargetScopedProcessingBudgetCategory,
+    targetValue: string,
+    amountValue: number
+  ): ProcessingBudgetReservation {
+    if (!isCategory(categoryValue)) {
+      throw new ProcessingBudgetError(
+        "processing_budget_category_invalid",
+        `unknown processing budget category ${String(categoryValue)}`,
+        { targetCategory: String(categoryValue) }
+      )
+    }
+    if (isOperationCategory(categoryValue)) {
+      throw new ProcessingBudgetError(
+        "processing_budget_target_invalid",
+        `${categoryValue} is operation-scoped and does not accept a target`,
+        { targetCategory: categoryValue }
+      )
+    }
+    const target = validateTarget(targetValue, categoryValue)
+    return this.#reserve(categoryValue, target, amountValue)
+  }
+
+  snapshot(): ProcessingBudgetLedgerReport {
+    const targetReports: ProcessingBudgetLedgerTargetReport[] = []
+    const categories = PROCESSING_BUDGET_CATEGORY_IDS.map((category): ProcessingBudgetLedgerCategoryReport => {
+      const definition = PROCESSING_BUDGET_DEFINITION_BY_ID[category]
+      const limit = this.#profile.limits[category]
+      if (isOperationCategory(category)) {
+        const state = this.#requiredOperationState(category)
+        const remaining = assertStateWithinLimit(state, limit)
+        return Object.freeze({
+          category,
+          scope: "operation" as const,
+          unit: definition.unit,
+          limit,
+          committed: state.committed,
+          reserved: state.reserved,
+          used: limit - remaining,
+          remaining
+        })
+      }
+
+      const states = this.#requiredTargetStates(category)
+      let committed = 0
+      let reserved = 0
+      const orderedTargets = [...states.entries()].sort(([left], [right]) => compareCodePoints(left, right))
+      for (const [target, state] of orderedTargets) {
+        const remaining = assertStateWithinLimit(state, limit)
+        committed = safeSum(committed, state.committed)
+        reserved = safeSum(reserved, state.reserved)
+        targetReports.push(Object.freeze({
+          category,
+          target,
+          unit: definition.unit,
+          limit,
+          committed: state.committed,
+          reserved: state.reserved,
+          used: limit - remaining,
+          remaining
+        }))
+      }
+      return Object.freeze({
+        category,
+        scope: "target" as const,
+        unit: definition.unit,
+        limit,
+        committed,
+        reserved,
+        used: safeSum(committed, reserved),
+        target_count: states.size
+      })
+    })
+    return Object.freeze({
+      schema_version: PROCESSING_BUDGET_LEDGER_REPORT_SCHEMA_VERSION,
+      categories: Object.freeze(categories),
+      targets: Object.freeze(targetReports)
+    })
+  }
+
+  #reserve(
+    category: ProcessingBudgetCategory,
+    target: string | undefined,
+    amountValue: number
+  ): ProcessingBudgetReservation {
+    if (!validReservationAmount(amountValue)) {
+      throw new ProcessingBudgetError(
+        "processing_budget_reservation_invalid",
+        `reservation for ${category} must be a non-negative safe integer`,
+        { targetCategory: category, target, observed: diagnosticNumber(amountValue) }
+      )
+    }
     const amount = amountValue
-    const categories = categoryChain(category)
-    for (const constrainedCategory of categories) {
-      const limit = this.#profile.limits[constrainedCategory]
-      const remaining = assertStateWithinLimit(this.#state[constrainedCategory], limit)
+    const debits: ReservationDebit[] = []
+    let unattachedTargetState: MutableCategoryState | undefined
+
+    if (isTargetCategory(category)) {
+      if (target === undefined) {
+        throw new ProcessingBudgetError(
+          "processing_budget_internal_invariant",
+          `${category} target reservation is missing its target`
+        )
+      }
+      const states = this.#requiredTargetStates(category)
+      const existing = states.get(target)
+      const state = existing ?? { committed: 0, reserved: 0 }
+      if (!existing) unattachedTargetState = state
+      debits.push(Object.freeze({ category, target, state }))
+      const parent = PROCESSING_BUDGET_DEFINITION_BY_ID[category].aggregateInto
+      if (parent === null || !isOperationCategory(parent)) {
+        throw new ProcessingBudgetError(
+          "processing_budget_internal_invariant",
+          `${category} does not have an operation-scoped aggregate`
+        )
+      }
+      for (const aggregate of operationChain(parent)) {
+        debits.push(Object.freeze({ category: aggregate, state: this.#requiredOperationState(aggregate) }))
+      }
+    } else {
+      for (const aggregate of operationChain(category)) {
+        debits.push(Object.freeze({ category: aggregate, state: this.#requiredOperationState(aggregate) }))
+      }
+    }
+
+    for (const debit of debits) {
+      const limit = this.#profile.limits[debit.category]
+      const remaining = assertStateWithinLimit(debit.state, limit)
       if (amount > remaining) {
         throw new ProcessingBudgetError(
           "processing_budget_exceeded",
-          `${category} reservation exceeds ${constrainedCategory} limit ${limit}`,
+          `${category} reservation exceeds ${debit.category} limit ${limit}`,
           {
             targetCategory: category,
-            constrainedCategory,
+            target,
+            constrainedCategory: debit.category,
             limit,
             observed: safeObservedTotal(limit - remaining, amount)
           }
         )
       }
     }
-    for (const constrainedCategory of categories) {
-      this.#state[constrainedCategory].reserved += amount
+
+    if (unattachedTargetState !== undefined && target !== undefined && amount > 0 && isTargetCategory(category)) {
+      this.#requiredTargetStates(category).set(target, unattachedTargetState)
     }
+    for (const debit of debits) debit.state.reserved += amount
+
     const token = Symbol(category)
-    this.#reservations.set(token, Object.freeze({ targetCategory: category, categories, amount }))
+    this.#reservations.set(token, Object.freeze({
+      targetCategory: category,
+      target,
+      debits: Object.freeze(debits),
+      amount
+    }))
     const ledger = this
-    return Object.freeze({
+    const reservation = {
       category,
       amount,
       commit(actualAmount: number = amount): void {
@@ -157,29 +373,31 @@ export class ProcessingBudgetLedger {
       release(): void {
         ledger.#releaseReservation(token)
       }
-    })
+    } as ProcessingBudgetReservation & { target?: string }
+    if (target !== undefined) reservation.target = target
+    return Object.freeze(reservation)
   }
 
-  snapshot(): ProcessingBudgetLedgerReport {
-    const categories = PROCESSING_BUDGET_CATEGORY_IDS.map((category) => {
-      const definition = PROCESSING_BUDGET_DEFINITION_BY_ID[category]
-      const state = this.#state[category]
-      const limit = this.#profile.limits[category]
-      const remaining = assertStateWithinLimit(state, limit)
-      return Object.freeze({
-        category,
-        unit: definition.unit,
-        limit,
-        committed: state.committed,
-        reserved: state.reserved,
-        used: limit - remaining,
-        remaining
-      })
-    })
-    return Object.freeze({
-      schema_version: PROCESSING_BUDGET_LEDGER_REPORT_SCHEMA_VERSION,
-      categories: Object.freeze(categories)
-    })
+  #requiredOperationState(category: OperationScopedProcessingBudgetCategory): MutableCategoryState {
+    const state = this.#operationState.get(category)
+    if (!state) {
+      throw new ProcessingBudgetError(
+        "processing_budget_internal_invariant",
+        `missing operation state for ${category}`
+      )
+    }
+    return state
+  }
+
+  #requiredTargetStates(category: TargetScopedProcessingBudgetCategory): Map<string, MutableCategoryState> {
+    const states = this.#targetState.get(category)
+    if (!states) {
+      throw new ProcessingBudgetError(
+        "processing_budget_internal_invariant",
+        `missing target state for ${category}`
+      )
+    }
+    return states
   }
 
   #openReservation(token: symbol): OpenReservation {
@@ -195,49 +413,56 @@ export class ProcessingBudgetLedger {
 
   #commitReservation(token: symbol, actualAmountValue: number): void {
     const reservation = this.#openReservation(token)
-    if (!invalidReservationAmount(actualAmountValue) || actualAmountValue > reservation.amount) {
+    if (!validReservationAmount(actualAmountValue) || actualAmountValue > reservation.amount) {
       throw new ProcessingBudgetError(
         "processing_budget_commit_invalid",
         `committed usage must be a non-negative safe integer no greater than reserved ${reservation.amount}`,
         {
           targetCategory: reservation.targetCategory,
+          target: reservation.target,
           limit: reservation.amount,
           observed: diagnosticNumber(actualAmountValue)
         }
       )
     }
     const actualAmount = actualAmountValue
-    for (const category of reservation.categories) {
-      const state = this.#state[category]
-      const limit = this.#profile.limits[category]
-      assertStateWithinLimit(state, limit)
-      if (state.reserved < reservation.amount || actualAmount > limit - state.committed) {
+    for (const debit of reservation.debits) {
+      const limit = this.#profile.limits[debit.category]
+      assertStateWithinLimit(debit.state, limit)
+      if (debit.state.reserved < reservation.amount || actualAmount > limit - debit.state.committed) {
         throw new ProcessingBudgetError(
           "processing_budget_internal_invariant",
-          `cannot commit reservation against ${category}`
+          `cannot commit reservation against ${debit.category}`
         )
       }
     }
-    for (const category of reservation.categories) {
-      const state = this.#state[category]
-      state.reserved -= reservation.amount
-      state.committed += actualAmount
+    for (const debit of reservation.debits) {
+      debit.state.reserved -= reservation.amount
+      debit.state.committed += actualAmount
     }
     this.#reservations.delete(token)
+    this.#removeEmptyTargetState(reservation)
   }
 
   #releaseReservation(token: symbol): void {
     const reservation = this.#openReservation(token)
-    for (const category of reservation.categories) {
-      const state = this.#state[category]
-      if (state.reserved < reservation.amount) {
+    for (const debit of reservation.debits) {
+      if (debit.state.reserved < reservation.amount) {
         throw new ProcessingBudgetError(
           "processing_budget_internal_invariant",
-          `cannot release reservation against ${category}`
+          `cannot release reservation against ${debit.category}`
         )
       }
     }
-    for (const category of reservation.categories) this.#state[category].reserved -= reservation.amount
+    for (const debit of reservation.debits) debit.state.reserved -= reservation.amount
     this.#reservations.delete(token)
+    this.#removeEmptyTargetState(reservation)
+  }
+
+  #removeEmptyTargetState(reservation: OpenReservation): void {
+    if (reservation.target === undefined || !isTargetCategory(reservation.targetCategory)) return
+    const states = this.#requiredTargetStates(reservation.targetCategory)
+    const state = states.get(reservation.target)
+    if (state && state.committed === 0 && state.reserved === 0) states.delete(reservation.target)
   }
 }
