@@ -42,7 +42,7 @@
       {
         "command": "bobCodeConsistency.openReviewWizard",
         "title": "整合プレレビューを開始",
-        "category": "Bob コード整合プレレビュー"
+        "category": "Bob Code Consistency Review"
       },
       {
         "command": "bobCodeConsistency.initializeWorkspace",
@@ -232,52 +232,68 @@
           "command": "bobCodeConsistency.openReviewWizard"
         },
         {
-          "command": "bobCodeConsistency.initializeWorkspace"
+          "command": "bobCodeConsistency.initializeWorkspace",
+          "when": "false"
         },
         {
-          "command": "bobCodeConsistency.createReviewInput"
+          "command": "bobCodeConsistency.createReviewInput",
+          "when": "false"
         },
         {
-          "command": "bobCodeConsistency.prepareAiReviewInputDraft"
+          "command": "bobCodeConsistency.prepareAiReviewInputDraft",
+          "when": "false"
         },
         {
-          "command": "bobCodeConsistency.applyAiReviewInputDraft"
+          "command": "bobCodeConsistency.applyAiReviewInputDraft",
+          "when": "false"
         },
         {
-          "command": "bobCodeConsistency.prepareAiTraceabilityDraft"
+          "command": "bobCodeConsistency.prepareAiTraceabilityDraft",
+          "when": "false"
         },
         {
-          "command": "bobCodeConsistency.captureAiTraceabilityDraft"
+          "command": "bobCodeConsistency.captureAiTraceabilityDraft",
+          "when": "false"
         },
         {
-          "command": "bobCodeConsistency.applyAiTraceabilityDraft"
+          "command": "bobCodeConsistency.applyAiTraceabilityDraft",
+          "when": "false"
         },
         {
-          "command": "bobCodeConsistency.openTraceabilityPrep"
+          "command": "bobCodeConsistency.openTraceabilityPrep",
+          "when": "false"
         },
         {
-          "command": "bobCodeConsistency.validateTraceabilityCatalog"
+          "command": "bobCodeConsistency.validateTraceabilityCatalog",
+          "when": "false"
         },
         {
-          "command": "bobCodeConsistency.createReviewInputFromTraceability"
+          "command": "bobCodeConsistency.createReviewInputFromTraceability",
+          "when": "false"
         },
         {
-          "command": "bobCodeConsistency.repairReviewInput"
+          "command": "bobCodeConsistency.repairReviewInput",
+          "when": "false"
         },
         {
-          "command": "bobCodeConsistency.explainReviewInputDiagnostics"
+          "command": "bobCodeConsistency.explainReviewInputDiagnostics",
+          "when": "false"
         },
         {
-          "command": "bobCodeConsistency.preprocess"
+          "command": "bobCodeConsistency.preprocess",
+          "when": "false"
         },
         {
-          "command": "bobCodeConsistency.captureBobOutput"
+          "command": "bobCodeConsistency.captureBobOutput",
+          "when": "false"
         },
         {
-          "command": "bobCodeConsistency.validateOutput"
+          "command": "bobCodeConsistency.validateOutput",
+          "when": "false"
         },
         {
-          "command": "bobCodeConsistency.triage"
+          "command": "bobCodeConsistency.triage",
+          "when": "false"
         }
       ]
     }
