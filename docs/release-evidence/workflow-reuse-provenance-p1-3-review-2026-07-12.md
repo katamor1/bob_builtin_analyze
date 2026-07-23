@@ -1,3 +1,5 @@
+Replaced: `workflowRegister.openOperationHub`, `workflowRegister.openWorkflowBuilder`, `bobBazaar.openReviewGui`, and `bobCodeConsistency.openReviewWizard` are the current operator routes; the legacy Operation Hub, Runs View, and Run Monitor surfaces below are retained only as historical review evidence.
+
 # Workflow Reused / Skipped Provenance P1-3 Whole-Diff Review
 
 ## Scope
