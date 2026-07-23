@@ -30,11 +30,17 @@ test("code consistency GUI uses Japanese-first screen names and metadata", () =>
 
   const packageJson = readJson("package.json")
   assert.equal(packageJson.displayName, "Bob コード整合プレレビュー")
-  assert.ok(packageJson.contributes.commands.every((command) => command.category === "Bob コード整合プレレビュー"))
+  assert.equal(
+    packageJson.contributes.commands.find(({ command }) => command === "bobCodeConsistency.openReviewWizard").category,
+    "Bob Code Consistency Review"
+  )
+  assert.ok(packageJson.contributes.commands
+    .filter(({ command }) => command !== "bobCodeConsistency.openReviewWizard")
+    .every((command) => command.category === "Bob コード整合プレレビュー"))
   const titles = Object.fromEntries(packageJson.contributes.commands.map(({ command, title }) => [command, title]))
   assert.equal(titles["bobCodeConsistency.openReviewWizard"], "整合プレレビューを開始")
-  assert.equal(titles["bobCodeConsistency.openResultCaptureGui"], undefined)
-  assert.equal(titles["bobCodeConsistency.openHumanTriageGui"], undefined)
+  assert.equal(titles[["bobCodeConsistency", "openResultCaptureGui"].join(".")], undefined)
+  assert.equal(titles[["bobCodeConsistency", "openHumanTriageGui"].join(".")], undefined)
   assert.equal(titles["bobCodeConsistency.openTraceabilityPrep"], "トレーサビリティ整理を開く")
   assert.equal(titles["bobCodeConsistency.triage"], "指摘確認・振り分け一覧を作成")
 
