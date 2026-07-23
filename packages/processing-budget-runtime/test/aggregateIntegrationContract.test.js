@@ -53,7 +53,7 @@ test("Consistency uses one operation ledger and hard-fails aggregate limit error
   assert.match(coordinator, /code\.startsWith\("bounded_document_"\)/)
   assert.match(coordinator, /code\.startsWith\("archive_"\)/)
   assert.match(coordinator, /code\.startsWith\("xlsx_"\)/)
-  assert.match(coordinator, /\{ ledger, workbookTarget: workbookTarget\(filePath\), archive, signal \}/)
+  assert.match(coordinator, /\{ ledger, workbookTarget: workbookTarget\(filePath, selectionId\), archive, signal \}/)
   assert.match(xlsx, /commitXlsxWorkbookBudget/)
   assert.match(xlsx, /assertParsedXlsxWorkbookWithinBudget/)
   assert.match(xlsx, /rowsToBudget: \(sheet\) => Math\.max\(0, sheet\.rows - 1\)/)
