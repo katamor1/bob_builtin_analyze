@@ -175,8 +175,8 @@ workflow-registerがCommand Paletteへ公開するcommandは次の2件だけで�
 
 | Command ID | 表示名 | 用途 |
 | --- | --- | --- |
-| `workflowRegister.openOperationHub` | `Workflow Register: Bob 操作ハブを開く` | run監視、制御、診断、成果物確認 |
-| `workflowRegister.openWorkflowBuilder` | `Workflow Register: ワークフロー作成・編集を開く` | 標準テンプレートから作成、既存編集、AI補助 |
+| `workflowRegister.openOperationHub` | `Bob: 操作ハブを開く` | run監視、制御、診断、成果物確認 |
+| `workflowRegister.openWorkflowBuilder` | `Bob Workflow: ワークフローを作成・編集` | 標準テンプレートから作成、既存編集、AI補助 |
 
 他のworkflow操作commandは内部登録を維持できるが、Command Paletteの公開面には出さない。
 
