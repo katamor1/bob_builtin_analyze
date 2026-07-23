@@ -7,10 +7,15 @@ export {
   PROCESSING_BUDGET_DEFINITION_BY_ID,
   PROCESSING_BUDGET_LEDGER_REPORT_SCHEMA_VERSION,
   PROCESSING_BUDGET_MANIFEST_MAXIMA,
+  PROCESSING_BUDGET_OPERATION_CATEGORY_IDS,
   PROCESSING_BUDGET_PROFILE_SCHEMA_VERSION,
+  PROCESSING_BUDGET_TARGET_CATEGORY_IDS,
+  type OperationScopedProcessingBudgetCategory,
   type ProcessingBudgetCategory,
   type ProcessingBudgetCategoryDefinition,
-  type ProcessingBudgetUnit
+  type ProcessingBudgetScope,
+  type ProcessingBudgetUnit,
+  type TargetScopedProcessingBudgetCategory
 } from "./generatedProcessingBudgetDefinition"
 export {
   ProcessingBudgetError,
@@ -28,6 +33,9 @@ export {
 export {
   ProcessingBudgetLedger,
   type ProcessingBudgetLedgerCategoryReport,
+  type ProcessingBudgetLedgerOperationCategoryReport,
   type ProcessingBudgetLedgerReport,
+  type ProcessingBudgetLedgerTargetCategoryReport,
+  type ProcessingBudgetLedgerTargetReport,
   type ProcessingBudgetReservation
 } from "./processingBudgetLedger"
