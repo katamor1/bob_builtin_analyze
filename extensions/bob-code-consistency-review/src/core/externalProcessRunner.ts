@@ -15,7 +15,9 @@ export interface ExternalProcessOptions {
   args: string[]
   cwd: string
   env?: NodeJS.ProcessEnv
-  maxStdoutBytes: number
+  maxStdoutBytes?: number
+  /** @deprecated Migrate callers to maxStdoutBytes. */
+  maxBufferBytes?: number
   timeoutMs: number
   allowedExitCodes?: number[]
   signal?: AbortSignal
@@ -49,7 +51,10 @@ const PROCESS_TERMINATION_WAIT_MS = 2_000
 export const EXTERNAL_PROCESS_STDERR_MAX_BYTES = 256 * 1024
 
 export function runExternalProcess(options: ExternalProcessOptions): Promise<ExternalProcessResult> {
-  const maxStdoutBytes = positiveInteger(options.maxStdoutBytes, "maxStdoutBytes")
+  const maxStdoutBytes = positiveInteger(
+    options.maxStdoutBytes ?? options.maxBufferBytes,
+    "maxStdoutBytes"
+  )
   const timeoutMs = normalizeExternalProcessTimeoutMs(options.timeoutMs)
   const allowedExitCodes = new Set(options.allowedExitCodes ?? [0])
 
@@ -191,8 +196,10 @@ export function runExternalProcess(options: ExternalProcessOptions): Promise<Ext
   })
 }
 
-function positiveInteger(value: number, label: string): number {
-  if (!Number.isFinite(value) || value <= 0) throw new Error(`${label} must be a positive finite number.`)
+function positiveInteger(value: number | undefined, label: string): number {
+  if (!Number.isFinite(value) || value === undefined || value <= 0) {
+    throw new Error(`${label} must be a positive finite number.`)
+  }
   return Math.floor(value)
 }
 
