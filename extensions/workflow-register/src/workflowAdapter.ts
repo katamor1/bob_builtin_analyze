@@ -15,13 +15,10 @@ import type {
   ResultSinkDefinition
 } from "./core/model"
 
-export type CoreWorkflowWithBobTaskBinding = CoreWorkflowDefinition & {
-  readonly bobTaskBinding: BobWorkflowTaskBinding
-}
-
 export function adaptCoreWorkflowForBob(
-  core: CoreWorkflowWithBobTaskBinding,
-  file: vscode.Uri
+  core: CoreWorkflowDefinition,
+  file: vscode.Uri,
+  bobTaskBinding: BobWorkflowTaskBinding
 ): WorkflowDefinition {
   const todos = core.todos.map((todo, index) => ({
     id: todo.id,
@@ -62,7 +59,7 @@ export function adaptCoreWorkflowForBob(
     workflowFolderName: core.workflowFolderName,
     file,
     core,
-    bobTaskBinding: core.bobTaskBinding
+    bobTaskBinding
   }
 }
 
