@@ -79,6 +79,7 @@ export async function extractDocuments(reviewInput: ReviewInput, options: Docume
         chunks = await extractFileChunks(
           filePath,
           options.workspaceRoot,
+          documentId,
           item,
           typeInfo.evidenceType,
           selectors,
@@ -162,6 +163,7 @@ function selectorList(item: ArtifactRef): string[] {
 async function extractFileChunks(
   filePath: string,
   workspaceRoot: string,
+  selectionId: string,
   item: ArtifactRef,
   evidenceType: string,
   selectors: string[],
@@ -180,7 +182,7 @@ async function extractFileChunks(
   const snapshot: SharedBoundedDocumentSnapshot = await readBoundedDocumentFile({
     filePath,
     rootPath: workspaceRoot,
-    target: documentTarget(filePath),
+    target: documentTarget(filePath, selectionId),
     ledger,
     maximumFileBytes: limits.maxDocumentBytes
   })
@@ -191,11 +193,11 @@ async function extractFileChunks(
   if (extension === ".md" || extension === ".markdown") {
     chunks = extractMarkdownChunks(decodeTextBuffer(Buffer.from(documentBytes), textEncoding), evidenceType, selectors)
   } else if (extension === ".docx") {
-    preflightArchive(snapshot, ledger, filePath, "docx", limits)
+    preflightArchive(snapshot, ledger, filePath, selectionId, "docx", limits)
     throwIfCancelled(signal)
     chunks = await extractDocxChunks(documentBytes, evidenceType, selectors)
   } else {
-    const archive = preflightArchive(snapshot, ledger, filePath, "xlsx", limits)
+    const archive = preflightArchive(snapshot, ledger, filePath, selectionId, "xlsx", limits)
     throwIfCancelled(signal)
     chunks = await extractXlsxChunks(
       documentBytes,
@@ -205,7 +207,7 @@ async function extractFileChunks(
       selectors,
       warnings,
       limits,
-      { ledger, workbookTarget: workbookTarget(filePath), archive, signal }
+      { ledger, workbookTarget: workbookTarget(filePath, selectionId), archive, signal }
     )
   }
 
@@ -262,12 +264,13 @@ function preflightArchive(
   snapshot: SharedBoundedDocumentSnapshot,
   ledger: SharedProcessingBudgetLedger,
   filePath: string,
+  selectionId: string,
   kind: "docx" | "xlsx",
   limits: ReviewProcessingLimits
 ): SharedOoxmlArchiveSnapshot {
   return preflightOoxmlArchive({
     archiveBytes: snapshot.copyBytes(),
-    target: archiveTarget(filePath),
+    target: archiveTarget(filePath, selectionId),
     ledger,
     expectedKind: kind,
     maximumArchiveBytes: limits.maxDocumentBytes,
@@ -276,20 +279,25 @@ function preflightArchive(
   })
 }
 
-function documentTarget(filePath: string): string {
-  return `consistency:document:${pathDigest(filePath)}`
+function documentTarget(filePath: string, selectionId: string): string {
+  return `consistency:document:${selectionDigest(filePath, selectionId)}`
 }
 
-function archiveTarget(filePath: string): string {
-  return `consistency:archive:${pathDigest(filePath)}`
+function archiveTarget(filePath: string, selectionId: string): string {
+  return `consistency:archive:${selectionDigest(filePath, selectionId)}`
 }
 
-function workbookTarget(filePath: string): string {
-  return `consistency:workbook:${pathDigest(filePath)}`
+function workbookTarget(filePath: string, selectionId: string): string {
+  return `consistency:workbook:${selectionDigest(filePath, selectionId)}`
 }
 
-function pathDigest(filePath: string): string {
-  return createHash("sha256").update(path.resolve(filePath), "utf8").digest("hex").slice(0, 24)
+function selectionDigest(filePath: string, selectionId: string): string {
+  return createHash("sha256")
+    .update(selectionId, "utf8")
+    .update("\0")
+    .update(path.resolve(filePath), "utf8")
+    .digest("hex")
+    .slice(0, 24)
 }
 
 function isResourceControlError(error: unknown): boolean {
