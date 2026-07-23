@@ -21,13 +21,12 @@ import type { ReviewInput } from "./reviewTypes"
 import type { TraceabilityResult } from "./traceabilityResultTypes"
 
 const PRIVACY_NOTICE_JA = "生成物は社内設計書・顧客仕様・ソースコード・raw diff を含む可能性があります。"
-const BOB_INPUT_MANDATORY_KEYS = Object.freeze([
-  "prompt.system",
-  "prompt.task",
-  "prompt.output_format",
-  "review.summary",
-  "change_summary",
-  "deterministic_checks"
+const BOB_INPUT_TRUNCATABLE_KEYS = Object.freeze([
+  "document_excerpts",
+  "diff_context",
+  "changed_symbols_summary",
+  "traceability_map",
+  "evidence_index_summary"
 ])
 const MANAGED_PACKAGE_OUTPUTS = [
   "prompts",
@@ -128,7 +127,7 @@ export async function buildReviewPackage(input: {
         traceability_map: traceability.markdown,
         evidence_index_summary: evidenceIndexSummary(evidence)
       },
-      mandatoryKeys: BOB_INPUT_MANDATORY_KEYS
+      truncatableKeys: BOB_INPUT_TRUNCATABLE_KEYS
     })
     reservations.push(bobInputBudget.reservation)
     if (bobInputBudget.truncated) {
