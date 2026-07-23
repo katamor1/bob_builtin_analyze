@@ -72,3 +72,27 @@ test("directory entry count is rejected before descriptor snapshot and sorting",
   await assert.rejects(() => load(fileSystem, installed.digest), /directory entry count|entry limit|512-file limit/i)
   assert.equal(getterCalls, 0)
 })
+
+test("global package entry budget counts directories before descending", async () => {
+  const fileSystem = new MemoryPackageFileSystem()
+  const installed = installPublished(fileSystem)
+  for (const parent of ["prompts", "schemas"]) {
+    for (let index = 0; index < 260; index += 1) {
+      fileSystem.addDirectory([
+        ...installed.base,
+        parent,
+        `empty-${index.toString().padStart(3, "0")}`
+      ])
+    }
+  }
+
+  await assert.rejects(
+    () => load(fileSystem, installed.digest),
+    /entry budget|directory entry count|512-file limit/i
+  )
+  assert.equal(
+    fileSystem.calls.some(([operation]) => operation === "openRead"),
+    false,
+    "the global entry budget must fail before package file reads"
+  )
+})
