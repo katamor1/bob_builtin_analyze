@@ -77,6 +77,10 @@ test("rejects an undersized mandatory Bob-input budget and removes managed outpu
   const outDir = path.join(workspace, "review-package")
   const ledger = new ProcessingBudgetLedger({
     limits: {
+      single_document_bytes: 0,
+      total_document_bytes: 0,
+      raw_diff_bytes: 0,
+      document_excerpt_bytes: 0,
       bob_input_bytes: 700,
       total_operation_input_bytes: 700
     }
