@@ -7,9 +7,15 @@ import type {
   BobWorkflow,
   BobWorkflowStep,
   BobWorkflowTask,
+  BobWorkflowTaskBinding,
   WorkflowDefinition,
   WorkflowTodoItem
 } from "./bobWorkflowTypes"
+
+const DEFAULT_BOB_TASK_BINDING: BobWorkflowTaskBinding = Object.freeze({
+  profileDigest: BOB_2_0_1_PROFILE_DIGEST,
+  taskCapabilities: BOB_2_0_1_TASK_CAPABILITIES
+})
 
 export interface BobWorkflowStepRunner {
   runSingleWorkflowStep: (task: BobWorkflowTask) => Promise<boolean>
@@ -21,7 +27,8 @@ export function createBobWorkflow(
   definition: WorkflowDefinition,
   runner: BobWorkflowStepRunner
 ): BobWorkflow {
-  const steps = buildWorkflowSteps(definition, runner)
+  const bobTaskBinding = definition.bobTaskBinding ?? DEFAULT_BOB_TASK_BINDING
+  const steps = buildWorkflowSteps(definition, runner, bobTaskBinding)
   return {
     hidden: definition.hidden,
     getId: () => definition.id,
@@ -40,33 +47,37 @@ export function createBobWorkflow(
 
 function buildWorkflowSteps(
   definition: WorkflowDefinition,
-  runner: BobWorkflowStepRunner
+  runner: BobWorkflowStepRunner,
+  bobTaskBinding: BobWorkflowTaskBinding
 ): BobWorkflowStep[] {
   if (definition.stepExecution.showInBob !== false && definition.stepExecution.mode === "engineSteps") {
     return definition.core.engineSteps.map((step, index) => ({
       id: step.id,
       title: step.title,
-      execution: async (task) => runner.runEngineStep(step.id, index, probeTask(task))
+      execution: async (task) => runner.runEngineStep(step.id, index, probeTask(task, bobTaskBinding))
     }))
   }
   if (definition.stepExecution.showInBob !== false && definition.stepExecution.mode === "todo" && definition.todoEnabled && definition.todoAsSteps && definition.todos.length > 0) {
     return definition.todos.map((todo, index) => ({
       id: todo.id,
       title: todo.text,
-      execution: async (task) => runner.runTodoStep(todo, index, probeTask(task))
+      execution: async (task) => runner.runTodoStep(todo, index, probeTask(task, bobTaskBinding))
     }))
   }
   return [{
     id: "runWorkflow",
     title: definition.label,
-    execution: async (task) => runner.runSingleWorkflowStep(probeTask(task))
+    execution: async (task) => runner.runSingleWorkflowStep(probeTask(task, bobTaskBinding))
   }]
 }
 
-function probeTask(task: BobWorkflowTask): BobWorkflowTask {
+function probeTask(
+  task: BobWorkflowTask,
+  bobTaskBinding: BobWorkflowTaskBinding
+): BobWorkflowTask {
   probeBobTaskCapabilities({
-    expectedProfileDigest: BOB_2_0_1_PROFILE_DIGEST,
-    requiredCapabilities: BOB_2_0_1_TASK_CAPABILITIES,
+    expectedProfileDigest: bobTaskBinding.profileDigest,
+    requiredCapabilities: bobTaskBinding.taskCapabilities,
     task
   })
   return task
