@@ -45,9 +45,9 @@ ID予約後、初回 `review-run.json` 保存に失敗した場合は、予約�
 
 - `ReviewRunContext.reviewId`
 - packet内の `review_id`
-- Result Captureの期待 `review_id`
+- レビュー結果取り込みの期待 `review_id`
 - review-result保存先
-- Human Triageの `review_id`
+- 指摘確認・振り分けの `review_id`
 - record directory
 
 suffixが追加された場合、Review GUIは開始結果を受け取った時点で表示中の `review_id` を実際の割り当て値へ更新する。
