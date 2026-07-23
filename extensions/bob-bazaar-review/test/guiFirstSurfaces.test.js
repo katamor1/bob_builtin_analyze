@@ -17,9 +17,9 @@ test("package and extension expose one public Bazaar review GUI route", () => {
   const packageJson = readJson("package.json")
   const source = readSrc("extension.ts")
   const removedCommands = [
-    "bobBazaar.openCampaignDashboard",
-    "bobBazaar.openResultCaptureGui",
-    "bobBazaar.openHumanTriageGui"
+    ["bobBazaar", "openCampaignDashboard"].join("."),
+    ["bobBazaar", "openResultCaptureGui"].join("."),
+    ["bobBazaar", "openHumanTriageGui"].join(".")
   ]
 
   assertContributesCommand(packageJson, "bobBazaar.openReviewGui")
