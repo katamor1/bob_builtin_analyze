@@ -15,9 +15,7 @@ export interface ExternalProcessOptions {
   args: string[]
   cwd: string
   env?: NodeJS.ProcessEnv
-  maxStdoutBytes?: number
-  /** @deprecated Migrate callers to maxStdoutBytes. */
-  maxBufferBytes?: number
+  maxStdoutBytes: number
   timeoutMs: number
   allowedExitCodes?: number[]
   signal?: AbortSignal
@@ -51,10 +49,7 @@ const PROCESS_TERMINATION_WAIT_MS = 2_000
 export const EXTERNAL_PROCESS_STDERR_MAX_BYTES = 256 * 1024
 
 export function runExternalProcess(options: ExternalProcessOptions): Promise<ExternalProcessResult> {
-  const maxStdoutBytes = positiveInteger(
-    options.maxStdoutBytes ?? options.maxBufferBytes,
-    "maxStdoutBytes"
-  )
+  const maxStdoutBytes = positiveInteger(options.maxStdoutBytes, "maxStdoutBytes")
   const timeoutMs = normalizeExternalProcessTimeoutMs(options.timeoutMs)
   const allowedExitCodes = new Set(options.allowedExitCodes ?? [0])
 
