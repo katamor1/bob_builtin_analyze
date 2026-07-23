@@ -1,0 +1,112 @@
+{
+  "schema_version": "processing-budget-definition/v1",
+  "profile_schema_version": "processing-budget-profile/v1",
+  "ledger_report_schema_version": "processing-budget-ledger-report/v1",
+  "mebibyte_bytes": 1048576,
+  "categories": [
+    {
+      "id": "single_document_bytes",
+      "title": "Single document",
+      "unit": "bytes",
+      "default": 5242880,
+      "absolute_maximum": 52428800,
+      "aggregate_into": "total_document_bytes"
+    },
+    {
+      "id": "total_document_bytes",
+      "title": "Total document bytes",
+      "unit": "bytes",
+      "default": 33554432,
+      "absolute_maximum": 268435456,
+      "aggregate_into": "total_operation_input_bytes"
+    },
+    {
+      "id": "document_count",
+      "title": "Document count",
+      "unit": "count",
+      "default": 128,
+      "absolute_maximum": 1024,
+      "aggregate_into": null
+    },
+    {
+      "id": "sheets_per_workbook",
+      "title": "Sheets per workbook",
+      "unit": "count",
+      "default": 20,
+      "absolute_maximum": 100,
+      "aggregate_into": "total_sheets"
+    },
+    {
+      "id": "total_sheets",
+      "title": "Total sheets",
+      "unit": "count",
+      "default": 100,
+      "absolute_maximum": 1000,
+      "aggregate_into": null
+    },
+    {
+      "id": "rows_per_sheet",
+      "title": "Rows per sheet",
+      "unit": "count",
+      "default": 500,
+      "absolute_maximum": 5000,
+      "aggregate_into": "total_rows"
+    },
+    {
+      "id": "total_rows",
+      "title": "Total rows",
+      "unit": "count",
+      "default": 25000,
+      "absolute_maximum": 250000,
+      "aggregate_into": null
+    },
+    {
+      "id": "changed_files",
+      "title": "Changed files",
+      "unit": "count",
+      "default": 5000,
+      "absolute_maximum": 20000,
+      "aggregate_into": null
+    },
+    {
+      "id": "raw_diff_bytes",
+      "title": "Raw diff",
+      "unit": "bytes",
+      "default": 1048576,
+      "absolute_maximum": 10485760,
+      "aggregate_into": "total_operation_input_bytes"
+    },
+    {
+      "id": "document_excerpt_bytes",
+      "title": "Total document excerpts",
+      "unit": "bytes",
+      "default": 2097152,
+      "absolute_maximum": 8388608,
+      "aggregate_into": "total_operation_input_bytes"
+    },
+    {
+      "id": "bob_input_bytes",
+      "title": "Bob input",
+      "unit": "bytes",
+      "default": 2097152,
+      "absolute_maximum": 8388608,
+      "aggregate_into": "total_operation_input_bytes"
+    },
+    {
+      "id": "managed_artifact_bytes",
+      "title": "Total managed artifacts",
+      "unit": "bytes",
+      "default": 16777216,
+      "absolute_maximum": 67108864,
+      "aggregate_into": null
+    },
+    {
+      "id": "total_operation_input_bytes",
+      "title": "Total operation input",
+      "unit": "bytes",
+      "default": 67108864,
+      "absolute_maximum": 268435456,
+      "aggregate_into": null
+    }
+  ]
+}
