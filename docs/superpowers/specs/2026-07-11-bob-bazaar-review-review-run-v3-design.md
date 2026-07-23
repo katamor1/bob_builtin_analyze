@@ -1,3 +1,5 @@
+Replaced: `workflowRegister.openOperationHub`, `workflowRegister.openWorkflowBuilder`, `bobBazaar.openReviewGui`, and `bobCodeConsistency.openReviewWizard` are the current operator routes; the separated Result Capture, Human Triage, and Dashboard surfaces below are retained only as historical design context.
+
 # bob-bazaar-review Review Run Wizard v3 企画・設計書
 
 - 対象リポジトリ: `katamor1/bob_builtin_analyze`
