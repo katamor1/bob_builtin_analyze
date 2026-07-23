@@ -2,272 +2,270 @@
 
 ## 1. 目的
 
-本書は `extensions/workflow-register` の単体テスト仕様を定義する。対象は現行 TypeScript 実装の parser、validator、engine、run state、run control、task snapshot、result handoff、Bob adapter helper、authoring helper、テンプレート調整 helper である。
+本書は`extensions/workflow-register`の自動テスト契約を定義する。
+対象はcommand surface、文書契約、parser / validator、engine、run state、pause / review / branching、task snapshot、artifact reuse、retention、`Bob 操作ハブ`、`ワークフロー作成・編集`、公開APIである。
 
-## 2. テスト実行方式
+## 2. 実行方式
 
 | 項目 | 内容 |
 | --- | --- |
-| 実行コマンド | `npm run compile && node --test test/*.test.js` |
-| 対象成果物 | `out/` 配下へ compile された JavaScript |
-| テストランナー | Node.js built-in test runner |
-| 外部依存 | VS Code API と Bob API は mock / stub 化する |
-| ファイル I/O | `fs.mkdtemp()` で一時 workspace を作成し、`.bob` 配下を検証する |
+| compile | `npm run compile` |
+| extension test | `node --test test/*.test.js` |
+| repository contract | `node --test ../../scripts/three-extension-command-surface.test.js ../../scripts/three-extension-documentation-contract.test.js` |
+| package gate | `npm run package && npm run package:policy` |
+| runner | Node.js built-in test runner |
+| filesystem | `fs.mkdtemp()`でtestごとに独立workspaceを作る |
+| external API | VS Code / IBM BobはmockまたはExtension Host testで置換する |
 
-## 3. 共通テストデータ
+## 3. 最上位surface contract
 
-| データ | 内容 |
-| --- | --- |
-| `workflowMinimalV1` | `schemaVersion: workflow-register/v1`、1 command step、required input なし。 |
-| `workflowWithAgentResult` | agent step が `resultKey` を作成し、result sink へ渡す。 |
-| `workflowWithManualStep` | manual step を含み、`manualCompletion` の有無で held / completed を分岐する。 |
-| `workflowWithStepReview` | `stepReview.pauseAfter` と `allowRetry` を有効化する。 |
-| `workflowWithPause` | 2 step 以上を持ち、checkpoint pause を検証する。 |
-| `mockActionRegistry` | action ID ごとに success / error / structured error を返す。 |
-| `mockAgentProvider` | fixed text、error、empty result を返す。 |
-| `mockResultSinkRegistry` | file / command sink 呼び出しを記録する。 |
-| `templateStudioModel` | 標準テンプレート、project profile、customization、UAT evidence path を持つ Studio model。 |
+### WR-UT-SURFACE-001 manifest entry point
 
-## 4. テスト項目
+- `package.json.main`は`./out/extensionWithAuthoring.js`である。
+- required `extensionDependencies`を追加しない。
+- `onStartupFinished`と内部command activationを維持する。
 
-### WR-UT-001 Parser: v1 workflow を解析できる
+### WR-UT-SURFACE-002 Command Palette公開
 
-- 入力: `workflowMinimalV1` の Markdown text。
-- 期待結果: `CoreWorkflowDefinition` が返り、`engineSteps`、`inputs`、`workflowFile`、`workflowRoot` が正規化される。
+workflow-registerがCommand Paletteへ公開するcommandは次の2件だけである。
 
-### WR-UT-002 Parser: legacy workflow を互換解析できる
+```text
+workflowRegister.openOperationHub
+workflowRegister.openWorkflowBuilder
+```
 
-- 入力: `schemaVersion` を持たない legacy Markdown。
-- 期待結果: legacy parser が呼ばれ、diagnostics error なしで workflow が生成される。
+title、category、menu visibilityをbyte-for-byteで検査する。内部commandはregistrationとactivation eventを維持しつつ、公開menuから隠す。
 
-### WR-UT-003 Schema: 必須 field 不足を diagnostics 化する
+実テスト:
 
-- 入力: `name` または `description` が無い v1 workflow。
-- 期待結果: parse result は失敗し、schema error が diagnostics に含まれる。
+- `test/commandPalettePolicy.test.js`
+- `../../scripts/three-extension-command-surface.test.js`
 
-### WR-UT-004 Validator: step ID 重複を検出する
+### WR-UT-SURFACE-003 廃止済み識別子
 
-- 入力: 同じ `id` の step を2つ持つ workflow。
-- 期待結果: `workflowValidator` が error を返す。
+source、manifest、current documentationへ廃止済みcommand / view / panel identifierが再導入されていないことを検査する。
+`workflowRegister.runs.retention.*`はsettings namespaceとして許可し、短いprefixだけで誤検知しない。
 
-### WR-UT-005 Validator: state 前方参照を検出する
+実テスト:
 
-- 入力: 前の step で生成されない `includeState` / `stateKey` を参照する workflow。
-- 期待結果: 参照不正が error になる。
+- `../../scripts/three-extension-command-surface.test.js`
+- `../../scripts/three-extension-documentation-contract.test.js`
 
-### WR-UT-006 Validator: guardrails の allowed / denied 衝突を検出する
+### WR-UT-SURFACE-004 current / historical documentation
 
-- 入力: 同じ command を `allowedCommands` と `deniedCommands` の両方に含む workflow。
-- 期待結果: guardrail 衝突 error が返る。
+- configured rootを再帰探索する。
+- missing、duplicate、outside-root、symlinkを拒否する。
+- unlisted documentはcurrentとする。
+- current documentに旧IDまたは旧ユーザー向け表示名を許可しない。
+- historical documentに旧参照がある場合、冒頭の`Superseded:`または`Replaced:`で正規routeを示す。
+- internal module名やtest file名はユーザー向け表示名として誤検知しない。
 
-### WR-UT-007 Engine: full 実行で全 step を完了できる
+実テスト: `../../scripts/three-extension-documentation-contract.test.js`
 
-- 入力: command step 2件、成功 action provider。
-- 期待結果: run status は `completed`、全 step status は `completed`、state に resultKey が保存される。
+## 4. `Bob 操作ハブ`
 
-### WR-UT-008 Engine: singleStep 実行で run を running のまま残す
+### WR-UT-HUB-001 panel lifecycle
 
-- 入力: 2 step workflow、`executionMode: "singleStep"`、先頭 step ID。
-- 期待結果: 先頭 step は `completed`、run status は `running`、次 step は `pending`。
+- viewTypeは`workflowRegisterOperationHub`。
+- titleは`Bob 操作ハブ`。
+- openを繰り返してもsingle panelを再利用する。
+- close / extension disposeでpanel listener、watcher、timerを破棄する。
 
-### WR-UT-009 Engine: allowOutOfOrder=false で前 step 未完了を拒否する
+実テスト:
 
-- 入力: 2 step workflow、2 step 目を直接 `singleStep` 実行。
-- 期待結果: run status は `failed`、error に previous step block が含まれる。
+- `test/operationHubProviderBehavior.test.js`
+- `test/operationHub.test.js`
+- `test/japaneseGuiCopy.test.js`
 
-### WR-UT-010 Engine: manual step は completion provider なしで held になる
+### WR-UT-HUB-002 model
 
-- 入力: manual step、`manualCompletion` 未指定。
-- 期待結果: step status と run status は `held`。
+- workspace root、workflow catalog、run、extension status、setup stateをmodelへ反映する。
+- running / paused / reviewing / held / checkpoint / completed / failedを正しく分類する。
+- focus runはworkspace rootとrun IDの組で選ぶ。
+- no-workspaceとoptional extension不在を安全に表示する。
 
-### WR-UT-011 Engine: stepReview で reviewing に停止する
+実テスト:
 
-- 入力: `stepReview.pauseAfter: everyStep` の workflow。
-- 期待結果: step 成功後に step status と run status が `reviewing` になる。
+- `test/operationHub.test.js`
+- `test/operationHubHeldRecovery.test.js`
 
-### WR-UT-012 Engine: retryCurrentStep は attempt を保存して再実行する
+### WR-UT-HUB-003 自動更新
 
-- 入力: reviewing run、`allowRetry: true`。
-- 期待結果: 既存 attempt が `attempts[]` に保存され、current step が再実行される。
+- `run.json`、`control.json`、artifact manifestのcreate / change / deleteをwatchする。
+- event burstをdebounceする。
+- action後の段階refreshを予約する。
+- dispose後にrefreshしない。
+- background error通知を同じcontextで重複させない。
 
-### WR-UT-013 Engine: preflight error は run を failed にする
+実テスト: `test/operationHubAutoRefresh.test.js`
 
-- 入力: failed preflight を返す workflow。
-- 期待結果: run status は `failed`、error に preflight failure が含まれる。
+### WR-UT-HUB-004 action allowlist
 
-### WR-UT-014 RunStateStore: run.json を atomic save / load できる
+- `operationHub.action`以外を拒否する。
+- unknown actionを拒否する。
+- actionごとのrequired fieldを検査する。
+- optional extension不在時は対応commandを実行せず理由を返す。
+- artifact openはcontained pathだけを許可する。
 
-- 入力: 一時 workspace、run state。
-- 期待結果: `.bob/workflows/runs/<runId>/run.json` が作成され、load 結果が一致する。
+実テスト:
 
-### WR-UT-015 RunStateStore: recoverable run を一致条件で取得する
+- `test/operationHubProviderBehavior.test.js`
+- `test/operationHubArtifactReuse.test.js`
 
-- 入力: workflow ID、definition hash、workflow file、inputs が一致する running run。
-- 期待結果: `findRecoverableRun()` が対象 run を返す。不一致の場合は返さない。
+### WR-UT-HUB-005 mutation safety
 
-### WR-UT-016 RunControlStore: pause request を保存・clear できる
+- canonical physical workspace rootを使う。
+- open workspace外rootを拒否する。
+- workflow targetをcurrent catalogへ再照合する。
+- run `expectedRevision`不一致を拒否する。
+-同一root / target / actionを直列化する。
+- stale mutationはstateを変更せずrefresh-requiredになる。
 
-- 入力: run ID、`mode: afterCurrentStep`。
-- 期待結果: `control.json` に `pauseRequestedAt` と `mode` が保存され、`clearPause()` 後は `clearedAt` が保存される。
+実テスト: `test/operationHubMutations.test.js`
 
-### WR-UT-017 RunControlStore: invalid schemaVersion は undefined として扱う
+### WR-UT-HUB-006 held recovery / artifact reuse
 
-- 入力: `schemaVersion` が異なる `control.json`。
-- 期待結果: `loadControl()` は undefined を返す。
+- live task、active manual step、artifact manifest、task snapshotの組合せでrecovery classを決める。
+- evidence不足時にcompleted扱いしない。
+- artifact manifestのworkflow identity、hash、inputs、contained pathを検証する。
 
-### WR-UT-018 Engine Pause: checkpoint で paused に遷移する
+実テスト:
 
-- 入力: active pause request を持つ run。
-- 期待結果: `pauseRunIfRequested()` が true を返し、run status は `paused`、`workflow.pause` state が保存され、`onRunPaused` hook が呼ばれる。
+- `test/operationHubHeldRecovery.test.js`
+- `test/operationHubArtifactReuse.test.js`
 
-### WR-UT-019 Resume: paused run は control clear 後に再開する
+## 5. `ワークフロー作成・編集`
 
-- 入力: `paused` run と active `control.json`。
-- 期待結果: `resumeRun()` により pause request が clear され、run は次 step から継続する。
+### WR-UT-BUILDER-001 single panel / session
 
-### WR-UT-020 RunControl command: completed / failed run の pause を拒否する
+- viewTypeは`workflowRegisterBuilder`、titleは`ワークフロー作成・編集`。
+- `empty` / `standard-template` / `edit`を同一panelで扱う。
+- 同一sessionをrevealし、別sessionはgenerationを更新する。
+- dirty sessionへ外部内容を無断適用しない。
 
-- 入力: completed または failed run selection。
-- 期待結果: warning message を表示し、`control.json` を新規作成しない。
+### WR-UT-BUILDER-002 model round trip
 
-### WR-UT-021 RunControl command: inspect report に control と workflow.pause を出力する
+- authoring modelをv1 Markdownへserializeできる。
+- unknown front matterとMarkdown bodyを保持する。
+- parser / validatorで再読込できる。
+- branching、transition、manual form / approvalを保持する。
 
-- 入力: `control.json` と `run.state["workflow.pause"]` を持つ run。
-- 期待結果: Markdown report に pauseRequestedAt、pauseReason、mode、clearedAt、workflow.pause が含まれる。
+### WR-UT-BUILDER-003 reference analysis
 
-### WR-UT-022 RunControlView: TreeItem の表示を status ごとに作る
+- `includeState`、`stateKey`、`artifact.producedBy`、`requiredWhen`のproducer削除・移動を検出する。
+- step draftの利用者向けmessage、button label、confirmationを検証する。
 
-- 入力: running / paused / reviewing / held / failed / completed の run。
-- 期待結果: description、tooltip、icon、contextValue が status に一致する。
+### WR-UT-BUILDER-004 標準テンプレートから作成
 
-### WR-UT-023 RunControlView: Status Bar は active run を集計する
+- metadataから選択肢とtyped defaultを生成する。
+- project profile、customization、preview、diff、readinessを同一sessionで扱う。
+- `string` / `number` / `boolean` / `null`の型を保持する。
+- VCS別prompt supplementを誤混入しない。
 
-- 入力: running / paused / reviewing / held / completed が混在する run list。
-- 期待結果: Status Bar text に running / paused / reviewing / held の件数が反映される。
+### WR-UT-BUILDER-005 transactional save
 
-### WR-UT-024 TaskSnapshots: latest と pruning を保存する
+- target pathをworkspace内へ制限する。
+- symlink / junction escapeを拒否する。
+- open時のfile expectationと現在fileを比較する。
+- target path単位のqueueとtransaction lockで直列化する。
+- backup作成後にtemporary fileからatomic commitする。
+- stale generation、external change、validation errorでは保存しない。
 
-- 入力: maxPerRun を超える snapshot 保存。
-- 期待結果: `latest.json` が更新され、古い snapshot が prune される。
+実テスト:
 
-### WR-UT-025 TaskSnapshotRecovery: last assistant text を復旧する
+- `test/workflowBuilderTransactionalSave.test.js`
+- `test/workflowBuilderSkipResumeReadinessWebview.test.js`
+- `test/workflowSkipResumeReadinessPreview.test.js`
+- `test/templateCustomizationStudio.test.js`
+- authoring / serializer / loader / reference analysis test群
 
-- 入力: `latest.json` または `agent-output` snapshot。
-- 期待結果: workflow ID、run ID、step ID、definition hash が一致する場合だけ text を返す。
-
-### WR-UT-026 ResultHandoff: assistant text を互換 args と明示 field に渡す
-
-- 入力: assistant output text。
-- 期待結果: `args[0]`、`latestAssistantText`、`resultText`、`artifactText` に同じ trim 済み text が入る。
-
-### WR-UT-027 ResultSink file: workspace 外 path を拒否する
-
-- 入力: `../outside.md` など workspace 外へ逃げる path。
-- 期待結果: sink error になり、ファイルは作成されない。
-
-### WR-UT-028 BobTaskInputs: metadata / message から input を抽出する
-
-- 入力: Bob task metadata、user message、既定 input。
-- 期待結果: 優先順位どおりに workflow input が解決される。
-
-### WR-UT-029 BobWorkflowMessages: step message と command result message を生成する
-
-- 入力: workflow、step、state、command result。
-- 期待結果: expected Markdown / text block を含む message が生成される。
-
-### WR-UT-030 BobWorkflowFactory: stepExecution に応じて visible step を生成する
-
-- 入力: `engineSteps` / `todo` / `full` の workflow。
-- 期待結果: Bob step 数、label、runner 呼び出し先が設計どおりになる。
-
-### WR-UT-031 BobWorkflowEngineRunner: hook で task snapshot を保存する
-
-- 入力: mock Bob task、agent output を返す workflow。
-- 期待結果: `workflow-start`、`step-start`、`agent-output`、`completed` snapshot 保存 hook が呼ばれる。
-
-### WR-UT-032 BobWorkflowEngineRunner: manual step を StepRuntime に登録する
-
-- 入力: manual step workflow、mock Bob task。
-- 期待結果: active step が登録され、`completeCurrentStep()` で `task.setStepComplete()` と resolve が呼ばれる。
-
-### WR-UT-033 Authoring serializer: GUI model を v1 Markdown に保存する
-
-- 入力: authoring model。
-- 期待結果: YAML front matter と Markdown body が生成され、parse 可能である。
-
-### WR-UT-034 Authoring loader: unknownFrontMatter と body を保持する
-
-- 入力: unknown field と Markdown body を含む workflow。
-- 期待結果: GUI model へ保持され、保存後も欠落しない。
-
-### WR-UT-035 Reference analysis: step 削除・移動の影響を検出する
-
-- 入力: `includeState`、`producedBy`、`requiredWhen` を持つ model。
-- 期待結果: 参照切れ候補が warning として返る。
-
-### WR-UT-036 Template Studio: metadata から候補と既定値を作る
-
-- 入力: 標準テンプレート metadata。
-- 期待結果: `targetLanguage` / `vcs.type` の選択肢が metadata と一致し、Git profile には Bazaar prompt supplement が入らない。
-
-### WR-UT-037 Template Studio: input default の型を保持する
-
-- 入力: `string` / `number` / `boolean` / `null` を含む workflow input defaults。
-- 期待結果: Studio HTML と client parser が型を保持し、生成される profile / customization で文字列化されない。
-
-### WR-UT-038 Template Studio: unsafe output path と symlink escape を拒否する
-
-- 入力: `../outside`、workspace 外へ向く symlink 配下の生成先。
-- 期待結果: workflow / profile / customization は書き込まれず、readiness または generate result に error が含まれる。
-
-### WR-UT-039 Template Studio: 既存生成物を backup してから上書きする
-
-- 入力: 既存の profile、customization、`WORKFLOW.md` を持つ workspace。
-- 期待結果: `.bak` 系の backup が作成され、生成結果と backup path が report に含まれる。
-
-## 5. 非機能観点
-
-- 一時ファイルと workspace root はテストごとに分離する。
-- 時刻依存は `now()` injection または matcher で安定化する。
-- Bob / VS Code API は直接呼ばず、最小 interface の mock を使う。
-- ファイル保存系テストは Windows / POSIX path 差異を考慮する。
-- snapshot のサイズ制限、truncation、messages 省略は境界値を含める。
-- Webview / Status Bar / TreeDataProvider は VS Code API mock で表示値と command 登録を検証する。
-- テンプレート調整 は source regex だけでなく、model helper と生成結果の実ファイル I/O を検証する。
-
-## 6. 完了条件
-
-- `npm run compile` が成功する。
-- `node --test test/*.test.js` が成功する。
-- 新規 run control / Run Control View 関連テストが既存 engine / snapshot テストと独立して実行できる。
-- テストデータは実 workspace や Bob task に依存しない。
-
-<!-- REMEDIATION-2026-07-11 -->
-## 2026-07-11 追加単体テスト契約
+## 6. parser / schema / validator
 
 | ID | 観点 | 期待結果 |
 | --- | --- | --- |
-| EXT-UT-REM-001 | soft dependency | companion extension 不在でも通常 command が利用でき、後から有効化すると provider 登録が回復する。 |
-| EXT-UT-REM-002 | provider ownership | 同一 ID の別所有元登録を拒否し、disposable 後は再登録できる。古い disposable は新登録を削除しない。 |
-| EXT-UT-REM-003 | external process | timeout、cancel、buffer exceed、非許可 exit code を分類し、子プロセスを終了する。 |
-| EXT-UT-REM-004 | Windows path | drive、UNC、device、drive-relative、dot、traversal、control-character path を拒否する。 |
-| EXT-UT-REM-005 | processing limits | manifest/runtime の範囲が一致し、極端値を clamp し、UTF-8 byte 上限を守る。 |
-| EXT-UT-REM-006 | workflow contracts | 全 workflow を動的探索し、未知 provider / command、strict warning、mirror drift を検出する。 |
+| WR-UT-PARSE-001 | v1 parse | normalized `CoreWorkflowDefinition`を返す。 |
+| WR-UT-PARSE-002 | legacy parse | compatibility parserで読み、diagnosticsを返す。 |
+| WR-UT-PARSE-003 | required field | `name` / `description`不足をerrorにする。 |
+| WR-UT-VALID-001 | duplicate | step / decision ID重複を拒否する。 |
+| WR-UT-VALID-002 | state reference | missing producerと前方参照を拒否する。 |
+| WR-UT-VALID-003 | artifact | missing `producedBy`とsource mismatchを拒否する。 |
+| WR-UT-VALID-004 | guardrail | allowed / denied衝突を拒否する。 |
+| WR-UT-VALID-005 | branching | unknown target、undeclared backward loop、上限不正を拒否する。 |
+| WR-UT-VALID-006 | workflow contract | provider、preflight、nested command、template mirror driftを検出する。 |
 
-## 自動 Pause 制限テスト
+## 7. engine / run state
 
-- schema / parser: 正常値、未知フィールド、0以下、小数 agent 上限、`HH:mm`、IANA timezone を検証する。
-- evaluator: 境界直前・境界一致・境界超過、attempt 集計、policy tie-break、override 有効期限、timezone と日付跨ぎを固定時計で検証する。
-- engine: preflight / next step / next agent call 前の graceful pause、manual precedence、構造化 state 保存を検証する。
-- runtime wiring: standalone と Bob runner が同じ workspace policy を受け取ることを検証する。
-- diagnostics / command: automatic pause と override の全 provenance、Operation Hub revision check、cancel 経路を検証する。
-- durability: heartbeat による lock file の原子的置換を transient contention として扱い、最終的に busy / locked を返すことを決定的に再現する。
+| ID | 観点 | 期待結果 |
+| --- | --- | --- |
+| WR-UT-ENGINE-001 | full | 全step完了でrunが`completed`になる。 |
+| WR-UT-ENGINE-002 | single step | 1step完了後も次stepをpendingで保持する。 |
+| WR-UT-ENGINE-003 | out-of-order | predecessor未完了を拒否する。 |
+| WR-UT-ENGINE-004 | manual | completion source無しで`held`になる。 |
+| WR-UT-ENGINE-005 | review | step成功後に`reviewing`で停止する。 |
+| WR-UT-ENGINE-006 | retry | previous attemptを保存して再実行する。 |
+| WR-UT-ENGINE-007 | preflight | failureをrun / stepへ保存する。 |
+| WR-UT-ENGINE-008 | branching | transition、loop reset、checkpoint、approve / abortを決定的に処理する。 |
+| WR-UT-RUN-001 | atomic save | `run.json`をtemporary file + renameで保存する。 |
+| WR-UT-RUN-002 | recovery | workflow identity、hash、file、inputs一致時だけreuseする。 |
+| WR-UT-RUN-003 | path safety | traversal、symlink、junction、identity changeを拒否する。 |
 
-<!-- RELEASE-BLOCKERS-2026-07-16 -->
-## 2026-07-16 resource cap 回帰契約
+## 8. pause / review / held
 
-| ID | 観点 | 期待結果 | 実テスト |
-| --- | --- | --- | --- |
-| WR-UT-RC-001 | 設定値正規化 | 非有限値と0以下は既定値、下限未満は下限、上限超過は上限へ正規化する。manifest の `maximum` と runtime 定数が一致する。 | `test/taskSnapshots.test.js` |
-| WR-UT-RC-002 | 最終保存byte上限 | messages、task metadata、task export、assistant text、handoff error が大きくても、整形済み通常snapshotと`latest.json`が設定byte数以下になる。 | `test/taskSnapshots.test.js` |
-| WR-UT-RC-003 | 必須metadata保持 | truncation 後も schema version、run ID、workflow ID、step IDを保持し、必須metadataだけで収まらない場合は保存を拒否する。 | `test/taskSnapshots.test.js` |
+- `control.json`のrequest / clear / resume note / override round trip。
+- manual pauseをautomatic pauseより先に評価する。
+- elapsed minutes、agent count、local cutoffの境界値をfixed clockで検証する。
+- paused runの再開時にcontrolをclearする。
+- completed / failed runへのpauseを拒否する。
+- review acceptanceをdurable stateとlive Bob gateへ一度だけ反映する。
+- detached held recoveryで根拠不足を拒否する。
+- lock heartbeatのatomic replacementをtransient contentionとして再試行する。
+
+## 9. task snapshot / handoff / artifact
+
+- latest更新、max-per-run pruning、byte cap、optional field削減。
+-必須identityだけで上限超過する場合は保存拒否。
+- workflow / run / step / definition hash一致時だけassistant textを復旧。
+- `args[0]`と明示fieldへ同じtrim済みtextを渡す。
+- file sinkのworkspace escape拒否。
+- artifact manifest schema、hash、source run、inputs、producer stepを検証。
+- task snapshot import後もmanifestをauthorityにする。
+
+## 10. retention
+
+- inventoryのbounded direct scanとmeasurement completeness。
+- active / referenced / pinned / future / malformed / unsafe runをblockする。
+- stable plan digestとfresh inventory再構築。
+- trust checkをroot discovery / filesystem accessより前に行う。
+- multi-rootでrootをrunより先に選ぶ。
+- owner guard、lease token、heartbeat、release、execution exclusion。
+- quarantine rename、reverse rollback、residual preservation。
+- migration backupのcreate-once publicationとcross-process crash pair保全。
+- diagnostics / evidenceへ本文を出さないprivacy contract。
+
+## 11. soft dependency / provider ownership
+
+| ID | 観点 | 期待結果 |
+| --- | --- | --- |
+| WR-UT-INTEGRATION-001 | IBM Bob不在 | standalone commandとBuilderを利用できる。 |
+| WR-UT-INTEGRATION-002 | companion不在 |操作ハブに理由を表示し、他機能を維持する。 |
+| WR-UT-INTEGRATION-003 | late activation | provider登録が回復する。 |
+| WR-UT-INTEGRATION-004 | owner collision | 同一IDの別owner登録を拒否する。 |
+| WR-UT-INTEGRATION-005 | disposable | owner disposal後だけ再登録でき、古いdisposableは新登録を削除しない。 |
+
+## 12. 非機能観点
+
+- testごとにworkspace、clock、UUID、process resultを固定する。
+- Windows / POSIX path差をtable-drivenで検証する。
+- UTF-8 byte上限はcharacter countで代用しない。
+- WebviewはCSP、nonce、message allowlist、keyboard labelを検証する。
+- source regexだけでなくmodel helperと実file I/Oを検証する。
+- testは実workspace、個人path、credential、live Bob taskへ依存しない。
+
+## 13. 完了条件
+
+- `npm run compile`が成功する。
+- `node --test test/*.test.js`が成功する。
+- 3拡張command surface契約が成功する。
+- 3拡張documentation契約が成功する。
+- `npm run package`と`npm run package:policy`が成功する。
+- Linux / Windowsで同一契約を実行できる。
