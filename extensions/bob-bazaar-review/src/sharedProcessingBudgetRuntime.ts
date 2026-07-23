@@ -64,6 +64,7 @@ interface SharedRuntimeModule {
     target: string
     ledger: SharedProcessingBudgetLedger
     expectedKind?: "docx" | "xlsx"
+    maximumArchiveBytes?: number
     maximumEntries?: number
     maximumEntryBytes?: number
     maximumExpandedBytes?: number
