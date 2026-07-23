@@ -1,3 +1,5 @@
+Replaced: `workflowRegister.openOperationHub`, `workflowRegister.openWorkflowBuilder`, `bobBazaar.openReviewGui`, and `bobCodeConsistency.openReviewWizard` are the current operator routes; the legacy Runs View, Run Control, Operation Hub, Result Capture, Human Triage, Campaign Dashboard, and Traceability Prep surfaces below are retained only as historical integration context.
+
 # 3拡張機能 日本語 GUI 横断仕上げ Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan after the three extension-specific plans. Steps use checkbox (`- [ ]`) syntax for tracking.
