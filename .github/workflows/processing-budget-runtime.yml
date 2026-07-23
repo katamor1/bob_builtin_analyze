@@ -1,0 +1,57 @@
+name: processing-budget-runtime
+
+on:
+  pull_request:
+    paths:
+      - "packages/processing-budget-runtime/**"
+      - ".github/workflows/processing-budget-runtime.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "packages/processing-budget-runtime/**"
+      - ".github/workflows/processing-budget-runtime.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: processing-budget-runtime-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+
+    defaults:
+      run:
+        working-directory: packages/processing-budget-runtime
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: packages/processing-budget-runtime/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Compile and test contracts
+        run: npm test
+
+      - name: Verify package payload
+        run: npm pack --dry-run --json
