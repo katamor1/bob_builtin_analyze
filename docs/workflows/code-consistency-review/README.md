@@ -1,8 +1,36 @@
 # コード変更と要求・設計整合プレレビュー 詳細仕様
 
-このディレクトリは、コード変更と要求書・設計書・テスト仕様書の整合プレレビューを実装・運用するための詳細仕様と参照資料をまとめる。
+このディレクトリは、コード変更と要求書・設計書・テスト仕様書の整合プレレビューを実装・運用するための詳細仕様、schema、prompt、fixtureをまとめる。
 
-現行 runtime の正本は `extensions/bob-code-consistency-review/docs/` と `extensions/bob-code-consistency-review/resources/` である。このディレクトリ直下の schema / prompt / package 仕様は runtime と同期する公開仕様として扱い、`mvp-*` と `scaffold/` は歴史的経緯、fixture、設計検討の参照用として残す。
+現行runtimeの正本は`extensions/bob-code-consistency-review/`である。このディレクトリ直下のschema / prompt / package仕様はruntimeと同期する公開仕様として扱う。`mvp-*`と`scaffold/`は初期設計・fixture・検討経緯の参照用であり、現行operator導線ではない。
+
+## 現行operator導線
+
+常時表示するCommand Palette入口は次の1件だけである。
+
+```text
+Bob Code Consistency Review: 整合プレレビューを開始
+bobCodeConsistency.openReviewWizard
+```
+
+`整合プレレビュー`主GUIは、同じ`bobCodeConsistencyReviewWizard` panel内で次を扱う。
+
+1. workspace初期化
+2. review対象・文書・変更箇所の選択
+3. `トレーサビリティ整理`
+4. review-input / review-package preview
+5. `レビュー結果取り込み`
+6. `指摘確認・振り分け`
+
+workflow用commandは登録を維持するが、Command Paletteでは非表示である。`bobCodeConsistency.openTraceabilityPrep`も独立Webviewを作らず、既存panelを`トレーサビリティ整理`stageへ移動する。
+
+## soft dependency
+
+runtime拡張の`main`は`./out/extension.js`であり、必須`extensionDependencies`を持たない。
+
+- `IBM.bob-code`はBob実行時だけ使うsoft dependencyである。
+- `local.workflow-register`はworkflow / provider連携時だけ使うsoft dependencyである。
+- optional extensionがない場合もactivationを継続し、主GUIで利用不可理由を示す。
 
 ## 文書一覧
 
@@ -10,132 +38,113 @@
 |---|---|
 | `../code-requirement-design-consistency-review.md` | 全体の詳細フロー |
 | `../code-requirement-design-consistency-review-plan-skeleton.md` | 計画の骨格 |
-| `review-input-schema.md` | 人間または builder が生成する入力 YAML の仕様 |
-| `review-package-spec.md` | Bob 投入前に作る根拠パッケージ仕様 |
-| `bob-prompt-template.md` | Bob に投入するプロンプトテンプレート |
-| `bob-output-schema.md` | Bob の構造化出力 YAML 仕様 |
-| `human-triage-spec.md` | Bob 出力を人間が採用・棄却・追加調査に分類する仕様 |
-| `c-cpp-analysis-scope.md` | C/C++ コード解析で抽出する対象 |
-| `document-extraction-spec.md` | Word / Excel / Markdown 文書抽出仕様 |
-| `traceability-sidecar-catalog.md` | 元文書非改変の sidecar catalog、ID 付与、工程間リンク、レビューゲート、review-input 生成統合方針 |
-| `mvp-implementation-plan.md` | legacy/reference: 初期 MVP 実装マイルストーン、タスク、受け入れ条件 |
-| `mvp-architecture.md` | legacy/reference: 初期 MVP の CLI、モジュール、データフロー構成 |
-| `mvp-backlog.md` | legacy/reference: 初期 MVP 実装チケット候補と着手順 |
-| `implementation-assets.md` | 実装コードから参照するスキーマ・テンプレート一覧 |
-| `schemas/review-input.schema.json` | `review-input.yaml` 検証用 JSON Schema |
-| `schemas/bob-output.schema.json` | `bob-output.yaml` 検証用 JSON Schema |
-| `templates/prompts/consistency-review-v1/` | Bob 投入用 prompt template |
-| `templates/triage/triage-result.template.yaml` | 人間 triage 結果テンプレート |
-| `scaffold/README.md` | legacy/reference: 仕様検証用 scaffold の概要 |
-| `scaffold/DEVELOPMENT.md` | legacy/reference: scaffold のローカル確認手順 |
-| `scaffold/CI.md` | legacy/reference: scaffold の GitHub Actions 検証方針 |
-| `scaffold/package-lock.json` | legacy/reference: scaffold CI 用の依存関係ロックファイル |
-| `scaffold/tests/README.md` | legacy/reference: scaffold 検証 fixture と自動テストの説明 |
-| `scaffold/tests/*.test.ts` | legacy/reference: review-input / bob-output validator の自動テスト |
-| `scaffold/tests/fixtures/` | legacy/reference: review-input / bob-output の正常系・異常系 fixture |
-| `scaffold/src/cli/main.ts` | legacy/reference: CLI エントリポイントの雛形 |
-| `scaffold/src/core/` | legacy/reference: 入力検証、差分収集、review-package 生成、Bob 出力検証の雛形 |
-| `scaffold/src/analyzers/` | legacy/reference: 文書抽出、C/C++ 解析、traceability 生成の雛形 |
-| `scaffold/src/triage/` | legacy/reference: human triage 生成の雛形 |
-| `../../../extensions/bob-code-consistency-review/` | 実行可能な VS Code 拡張実装 |
-| `.github/workflows/code-consistency-review-scaffold.yml` | scaffold の typecheck / unit / smoke CI |
-| `.bob/workflows/code-consistency-review/WORKFLOW.md` | Bob から整合プレレビュー手順を開始する workflow 定義 |
-| `examples/simple-timeout-bugfix/README.md` | E2E 検証用の timeout 不整合サンプル |
-| `examples/live-traceability-sidecar/README.md` | traceability sidecar 作成入力を含む実機検証用サンプル |
-| `examples/multi-language-git-review/README.md` | TypeScript / Python / Java の Git 差分から汎用コード根拠を生成する実機検証用サンプル |
+| `review-input-schema.md` | 人間またはbuilderが生成する入力YAMLの仕様 |
+| `review-package-spec.md` | Bob投入前に作る根拠package仕様 |
+| `bob-prompt-template.md` | Bobへ渡すprompt template |
+| `bob-output-schema.md` | Bobの構造化出力YAML仕様 |
+| `human-triage-spec.md` | 人間decisionとprojectionのdomain仕様 |
+| `c-cpp-analysis-scope.md` | C / C++コード解析対象 |
+| `document-extraction-spec.md` | Word / Excel / Markdown文書抽出仕様 |
+| `traceability-sidecar-catalog.md` | 元文書非改変のsidecar catalog、ID、工程間link、gate、review-input統合 |
+| `implementation-assets.md` | 実装コードから参照するschema / template一覧 |
+| `schemas/review-input.schema.json` | `review-input.yaml`検証用JSON Schema |
+| `schemas/bob-output.schema.json` | `bob-output.yaml`検証用JSON Schema |
+| `templates/prompts/consistency-review-v1/` | Bob投入用prompt template |
+| `templates/triage/triage-result.template.yaml` | decision projectionの互換template |
+| `examples/` | E2E / multi-language / traceability fixture |
+| `mvp-*` | 初期MVP設計の履歴参照 |
+| `scaffold/` | 初期CLI / validator / CI検討の履歴参照 |
+| `../../../extensions/bob-code-consistency-review/` | 実行可能なVS Code拡張実装 |
 
-## 現行 runtime のゴール
+## 現行runtimeのゴール
 
-現行 runtime では、1 件のコード変更に対して以下を実現する。
+1件のコード変更に対して次を実現する。
 
-- 関連文書候補を収集し、AI draft 用 prompt にまとめられる。
-- 元文書を変更せず、`.bob-trace/traceability-catalog.json` に仕様単位、ID 候補、工程間リンク、人間の承認状態を保持できる。
-- traceability gate で未承認、欠落、stale、未対応レビュー指摘を検出できる。
-- accepted catalog item から `review-input.yaml` を生成できる。
-- `review-input.yaml` で対象コミットと関連文書を指定できる。
-- Git / Bazaar 差分、変更ファイル、Git rename、空白入り path、binary numstat を抽出できる。
-- C / C++ は変更関数や周辺候補を抽出し、TypeScript / JavaScript / Python / C# / Java / Go / Rust / Shell / SQL / JSON / YAML / Markdown / text / unknown は diff hunk 単位の汎用コード根拠を生成できる。
-- Word / Excel / Markdown から関連文書の抜粋を作れる。
-- 要求・設計・コード・テストの対応候補を作れる。
-- Bob 投入用の `review-package` を生成できる。
-- Bob 出力を YAML として保存できる。
-- 人間が Bob 出力を triage できる。
+- 関連文書候補を収集し、AI draft用promptにまとめる。
+- 元文書を変更せず、`.bob-trace/traceability-catalog.json`に仕様単位、ID候補、工程間link、人間の承認状態を保持する。
+- gateで未承認、欠落、stale、未対応レビュー指摘を検出する。
+- accepted catalog itemから`review-input.yaml`を生成する。
+- Git / Bazaar差分、rename、空白入りpath、binary numstatを抽出する。
+- C / C++は変更関数や周辺候補を抽出し、その他の主要言語はdiff hunk単位の汎用コード根拠を生成する。
+- Word / Excel / Markdownから関連文書の抜粋を作る。
+- 要求・設計・コード・テストの対応候補を作る。
+- Bob投入用`review-package`と`bob-input.md`を生成する。
+- Bob出力をYAMLとして保存・検証する。
+- 人間decisionをsource snapshotと分離して保存する。
 
-## workflow の開始地点
+## workflowの開始地点
 
-現行の `.bob/workflows/code-consistency-review/WORKFLOW.md` は、`review-input.yaml` が既に完成している状態だけを入口にしない。
-
-新しい入口は次の順序である。
+現行`.bob/workflows/code-consistency-review/WORKFLOW.md`は、`review-input.yaml`完成済みだけを入口にしない。
 
 ```text
 文書候補収集
-  -> traceability AI draft prompt 生成
-  -> AI が proposed-only catalog JSON を作成
-  -> AI draft JSON を sidecar catalog へ merge
-  -> Traceability Prep Webview で人間が承認 / 棄却 / 廃止
-  -> traceability gate 検証
-  -> accepted item から review-input.yaml 生成
-  -> review-package / bob-input.md 生成
-  -> Bob 整合プレレビュー
-  -> Bob 出力検証
-  -> 人間 triage
+  -> traceability AI draft prompt生成
+  -> AIがproposed-only catalog JSONを作成
+  -> AI draft JSONをsidecar catalogへmerge
+  -> 整合プレレビュー主GUIのトレーサビリティ整理stageで人間が承認 / 棄却 / 廃止
+  -> traceability gate検証
+  -> accepted itemからreview-input.yaml生成
+  -> review-package / bob-input.md生成
+  -> Bob整合プレレビュー
+  -> レビュー結果取り込み
+  -> Bob出力検証
+  -> 指摘確認・振り分け
   -> 正式レビュー引き継ぎ
 ```
 
-このため workflow の `requires.files` から `review-input.yaml` 必須条件を外す。`review-input.yaml` は、前段の `create-review-input-from-traceability` step で生成される成果物として扱う。
-
-AI は traceability の正式承認を行わない。AI が作成できるのは `status: proposed` の候補だけであり、`accepted`、`rejected`、`deprecated` への遷移は Traceability Prep Webview で人間が実施する。
+AIが作成できるのは`status: proposed`の候補だけである。`accepted`、`rejected`、`deprecated`への遷移は人間だけが行う。
 
 ## 実行可能な拡張実装
 
-runtime 実装は `extensions/bob-code-consistency-review/` に配置する。
+runtime実装は`extensions/bob-code-consistency-review/`に配置する。
 
-- VS Code 拡張 ID は `local.bob-code-consistency-review`。
-- `workflow-register` の `registerActionProvider` へ、preprocess / capture / validate / triage に加え、traceability-prep 系の provider を登録する。
-- `.bob/workflows/code-consistency-review/WORKFLOW.md` は manual CLI 手順ではなく、provider を使って次の流れを実行する:
-  `collect-document-candidates -> traceability draft -> human approval -> create review-input`
-  `-> preprocess -> Bob agent -> capture -> validate -> triage -> handoff`
-- `resources/schemas/` と `resources/templates/` は、この docs 配下の schema / template を runtime 用に同梱したもの。
-- `scaffold/` は仕様検証用の歴史的参照として残し、実運用の Bob workflow からは runtime 拡張を呼び出す。
+- VS Code拡張ID: `local.bob-code-consistency-review`
+- composition root: `src/extension.ts`
+- `workflow-register` provider登録: `src/workflowProviderRegistration.ts`
+- review-input command群: `src/commands/reviewInputCommands.ts`
+- traceability command群: `src/traceabilityCommands.ts`
+- review実行command群: `src/reviewExecutionCommands.ts`
+- workspace初期化: `src/workspaceInitializer.ts`
+- primary panel controller: `src/webview/consistencyReviewWizard.ts`
+- embedded stage services:
+  - `src/webview/traceabilityPrepWebview.ts`
+  - `src/webview/consistencyResultCapture.ts`
+  - `src/webview/consistencyHumanTriage.ts`
+- domain / pipeline: `src/core/`, `src/analyzers/`, `src/triage/`
 
-## 現在の runtime モジュール分割
+`src/extension.ts`はcommand登録とcompositionに集中し、各domain処理を重複実装しない。内部module名、artifact path、schema fieldは互換性のため技術名称を維持する。
 
-| モジュール | 現在の責務 |
-|---|---|
-| `src/extension.ts` | activation、Command Palette 登録、workflow provider mapping、まだ分離していない command handler 群。 |
-| `src/extensionCommandOptions.ts` | command option / prompt / path / notification helper。 |
-| `src/reviewInputWizard.ts` | 対話式 `review-input.yaml` 作成 UI と review metadata 収集。 |
-| `src/workflowProviderRegistration.ts` | `workflow-register` action provider 登録。 |
-| `src/workspaceInitializer.ts` | `.bob/workflows/code-consistency-review/WORKFLOW.md` と `review-input.yaml` 雛形の初期化。 |
-| `src/core/*` | review-input builder、AI draft provider、traceability catalog、language classifier、Git / Bazaar diff collector、pipeline、Bob output capture / validator。 |
-| `src/analyzers/codeChangeAnalyzer.ts` | C / C++ 深掘り解析と複数言語の汎用コード根拠生成を統合する。 |
-| `src/analyzers/cCppChangeAnalyzer.ts` | C / C++ 変更関数、define、global、call graph、RT 候補を抽出する。 |
-| `src/analyzers/genericCodeEvidenceAnalyzer.ts` | 詳細解析対象外の言語でも diff hunk 単位の `SRC-*` evidence を生成する。 |
-| `src/webview/traceabilityPrepWebview.ts` | Traceability Prep Webview。 |
-| `src/triage/humanTriageHelper.ts` | human triage 成果物生成。 |
+## workspace初期化
 
-今後の分割候補は `traceabilityCommands.ts`、`reviewInputCommands.ts`、`reviewExecutionCommands.ts` である。Command ID と workflow provider ID は互換性に直結するため、分割時も名称を変更しない。
+主GUIの初期化操作と`bobCodeConsistency.initializeWorkspace`は同じserviceを使う。
 
-## legacy MVP 実装単位
+- 同梱workflowと既存fileが異なる場合、既存bytesをバックアップしてから更新する。
+- 既存`review-input.yaml`は上書きせず、内容を変更しないままバックアップだけ作成する。
+- workflowとreview-inputの結果を別々のtyped outcomeとして返す。
+- `.gitignore`更新はworkspace境界内で行う。
 
-この一覧は初期計画の履歴であり、現行実装の作業順序ではない。
+## artifactの正本
 
 ```text
-M1. review-input-validator
-M2. git/bazaar-diff-collector
-M3. review-package-builder の最小版
-M4. document-extractor の最小版
-M5. c-cpp-change-analyzer の最小版
-M6. traceability-builder の最小版
-M7. bob-input.md 生成
-M8. bob-output-validator
-M9. human-triage-helper
-M10. サンプル変更で end-to-end 検証
+review-input.yaml
+.bob-trace/traceability-catalog.json
+.bob-trace/gate-report.md
+.bob-review/review-package/manifest.yaml
+.bob-review/review-package/evidence-index.json
+.bob-review/bob-output/bob-output.yaml
+.bob-review/human-triage/triage-source.yaml
+.bob-review/human-triage/triage-decisions.yaml
 ```
 
-## CLI の想定
+- `review-input.yaml`は対象・比較範囲・文書・review focusの正本である。
+- `manifest.yaml`と`evidence-index.json`はBobへ渡した範囲の正本である。
+- `triage-source.yaml`はBob出力由来のimmutable snapshotである。
+- `triage-decisions.yaml`は人間decisionの正本である。
+- Markdownと`triage-result.yaml`は再生成可能なprojectionである。
 
-CLI 仕様は scaffold と将来の自動化確認用に残す。現行の Bob workflow は runtime 拡張の Command Palette / action provider を呼び出す。
+## CLI / scaffold
+
+次のCLI例はscaffoldと自動化検討用のlegacy/referenceである。現行Bob workflowはruntime拡張のproviderを呼ぶ。
 
 ```bash
 bob-review preprocess --input review-input.yaml --out .bob-review/review-package
@@ -143,25 +152,39 @@ bob-review validate-output --package .bob-review/review-package --bob-output .bo
 bob-review triage --package .bob-review/review-package --bob-output .bob-review/bob-output/bob-output.yaml --out .bob-review/human-triage
 ```
 
-## Bob 結合確認 sandbox
+## Bob結合確認sandbox
 
-`integration/launch-bob-code-consistency-sandbox.ps1` は、repo root を汚さず `%TEMP%/bob-workflow-integration-*` に確認用 workspace を作る。
+`integration/launch-bob-code-consistency-sandbox.ps1`は、repo rootを汚さず一時workspaceを作る。
 
-- `workflow-register`、`bob-bazaar-review`、`bob-code-consistency-review` の VSIX を isolated `--extensions-dir` に install する。
-- `bob2/bob-code` は raw copy ではなく `--extensionDevelopmentPath` で読み込む。
-- sample `review-input.yaml` と `.bob/workflows/code-consistency-review/WORKFLOW.md` は sandbox workspace にコピーする。
-- `-Sample multi-language-git-review` は TypeScript / Python / Java の baseline / head fixture から実 Git repo を作成し、`feature/multi-language-git-review` branch を checkout する。
-- `-NoLaunch` を付けると VS Code は起動せず、sandbox 作成と拡張 install、起動コマンド表示だけを行う。
+- 3拡張のVSIXをisolated `--extensions-dir`へinstallする。
+- `bob2/bob-code`は`--extensionDevelopmentPath`で読み込む。
+- sample `review-input.yaml`とworkflowをsandboxへコピーする。
+- multi-language fixtureから実Git repositoryを構築できる。
+- `-NoLaunch`で構築と起動command表示だけを行える。
 
-## 実装アセット
+## 検証
 
-`schemas/` と `templates/` は、仕様説明ではなく実装コードから読み込むアセットとして扱う。
+repository contract:
 
-- `schemas/review-input.schema.json` で `review-input.yaml` を検証する。
-- `schemas/bob-output.schema.json` で Bob 出力 YAML を検証する。
-- `templates/prompts/consistency-review-v1/` で `bob-input.md` を組み立てる。
-- `templates/triage/triage-result.template.yaml` で人間 triage の初期 YAML を生成する。
+```bash
+node --test \
+  scripts/three-extension-command-surface.test.js \
+  scripts/three-extension-documentation-contract.test.js \
+  scripts/extension-host-smoke-contract.test.js
+```
 
-## 実装スケルトン
+extension gate:
 
-`scaffold/` は、仕様確定前に CLI / validator / CI の粒度を確認するための legacy/reference スケルトンである。runtime 拡張実装が整った後も、仕様説明用の fixture として残す。
+```bash
+cd extensions/bob-code-consistency-review
+npm ci
+npm run compile
+npm run dependency:policy
+npm run architecture:policy
+npm run source:policy
+npm test
+npm run package
+npm run package:policy
+```
+
+Ubuntu / WindowsのExtension Host gateは、activation、公開command、代表hidden command、`整合プレレビュー`panel、stage route、unhandled rejection不在を同一SHAで確認する。
