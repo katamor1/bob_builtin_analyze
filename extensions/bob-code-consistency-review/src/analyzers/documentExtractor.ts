@@ -285,8 +285,12 @@ function pathDigest(filePath: string): string {
 function isResourceControlError(error: unknown): boolean {
   if (typeof error !== "object" || error === null || !("code" in error)) return false
   const code = (error as { code?: unknown }).code
+  const constrainedCategory = "details" in error && typeof (error as { details?: unknown }).details === "object"
+    && (error as { details?: { constrainedCategory?: unknown } }).details !== null
+    ? (error as { details: { constrainedCategory?: unknown } }).details.constrainedCategory
+    : undefined
   return typeof code === "string" && (
-    code === "processing_budget_exceeded"
+    (code.startsWith("processing_budget_") && constrainedCategory !== "single_document_bytes")
     || code === "ooxml_kind_mismatch"
     || code.startsWith("bounded_document_")
     || code.startsWith("archive_")
