@@ -40,3 +40,16 @@ export {
   type ProcessingBudgetLedgerTargetReport,
   type ProcessingBudgetReservation
 } from "./processingBudgetLedger"
+export {
+  ABSOLUTE_MAX_OOXML_ARCHIVE_ENTRIES,
+  DEFAULT_MAX_OOXML_ARCHIVE_ENTRIES,
+  preflightOoxmlArchive,
+  readBoundedDocumentFile,
+  type BoundedDocumentIdentity,
+  type BoundedDocumentReadInput,
+  type BoundedDocumentSnapshot,
+  type OoxmlArchiveEntryRecord,
+  type OoxmlArchivePreflightInput,
+  type OoxmlArchiveSnapshot,
+  type OoxmlDocumentKind
+} from "./boundedDocumentIo"
