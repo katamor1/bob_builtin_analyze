@@ -1,7 +1,8 @@
 import * as path from "node:path"
 import {
   ProcessingBudgetLedger,
-  commitWorkbookBudget,
+  assertParsedXlsxWorkbookWithinBudget,
+  commitXlsxWorkbookBudget,
   preflightOoxmlArchive,
   readBoundedDocumentFile,
   type SharedProcessingBudgetLedger,
@@ -30,7 +31,7 @@ export interface XlsxExtractionResult {
   extractor: { id: string; version: string }
 }
 
-const XLSX_EXTRACTOR = Object.freeze({ id: "xlsx-read-excel-rows", version: "3" })
+const XLSX_EXTRACTOR = Object.freeze({ id: "xlsx-read-excel-rows", version: "2" })
 
 let excelFileModulePromise: Promise<ExcelFileModule> | undefined
 
@@ -73,7 +74,7 @@ export async function extractXlsx(
     ledger: readLedger,
     maximumFileBytes: maxFileBytes
   })
-  preflightOoxmlArchive({
+  const archive = preflightOoxmlArchive({
     archiveBytes: snapshot.copyBytes(),
     target: archiveTarget(context.sourceId),
     ledger: context.budgetLedger ?? readLedger,
@@ -83,27 +84,25 @@ export async function extractXlsx(
     maximumExpandedBytes: maxExpandedBytes
   })
 
+  const budgetLedger = context.budgetLedger ?? readLedger
+  const inspection = commitXlsxWorkbookBudget({
+    ledger: budgetLedger,
+    workbookTarget: workbookTarget(context.sourceId),
+    archive,
+    signal: context.signal,
+    sheetTarget: (_sheet, sheetIndex) => sheetTarget(context.sourceId, sheetIndex)
+  })
   throwIfCancelled(context.signal)
   const readExcelFile = await loadExcelFile()
   const workbook = await readExcelFile.default(Buffer.from(snapshot.copyBytes()))
-  const prepared = workbook.map((sheet, sheetIndex) => ({
+  assertParsedXlsxWorkbookWithinBudget(inspection, workbook)
+  const prepared = workbook.map((sheet) => ({
     sheet,
-    sheetIndex,
     rows: sheet.data.map((row, rowIndex) => ({ row, rowIndex }))
       .filter(({ row }) => row.some(isNonEmptyCell))
   }))
-  const workbookLedger = context.budgetLedger ?? new ProcessingBudgetLedger()
-  commitWorkbookBudget({
-    ledger: workbookLedger,
-    workbookTarget: workbookTarget(context.sourceId),
-    sheets: prepared.map(({ sheetIndex, rows }) => ({
-      target: sheetTarget(context.sourceId, sheetIndex),
-      rows: rows.length
-    })),
-    signal: context.signal
-  })
-
   const chunks: DocumentChunkV1[] = []
+
   for (const { sheet, rows } of prepared) {
     throwIfCancelled(context.signal)
     for (const { row, rowIndex } of rows) {
@@ -157,16 +156,16 @@ function archiveTarget(sourceId: string): string {
   return `xlsx:archive:${boundedSourceId(sourceId)}`
 }
 
+function boundedSourceId(sourceId: string): string {
+  return /^[A-Za-z0-9._-]{1,96}$/.test(sourceId) ? sourceId : "untrusted-source"
+}
+
 function workbookTarget(sourceId: string): string {
   return `xlsx:workbook:${boundedSourceId(sourceId)}`
 }
 
 function sheetTarget(sourceId: string, sheetIndex: number): string {
   return `${workbookTarget(sourceId)}:sheet:${sheetIndex}`
-}
-
-function boundedSourceId(sourceId: string): string {
-  return /^[A-Za-z0-9._-]{1,96}$/.test(sourceId) ? sourceId : "untrusted-source"
 }
 
 function throwIfCancelled(signal: SharedWorkbookBudgetCancellation | undefined): void {
