@@ -50,7 +50,17 @@ test("VS Code package filesystem adapter maps file types and delegates URI opera
     joinPath: (root, ...segments) => [root, ...segments].join("/"),
     realpath: async (uri) => `/physical/${uri}`,
     isWithin: (root, candidate) => candidate === root || candidate.startsWith(`${root}/`),
-    snapshotIdentity: (uri, stat) => `${uri}:${stat.type}:${stat.size}:${stat.ctime}:${stat.mtime}`
+    snapshotIdentity: (uri, stat) => `${uri}:${stat.type}:${stat.size}:${stat.ctime}:${stat.mtime}`,
+    openFile: async (uri) => {
+      const stat = entries.get(uri)
+      const bytes = Uint8Array.from(stat.bytes)
+      return {
+        initialStat: stat,
+        async read() { return Uint8Array.from(bytes) },
+        async stat() { return stat },
+        async close() {}
+      }
+    }
   })
 
   assert.equal((await adapter.lstat("root", ["a"])).kind, "file")
@@ -79,7 +89,16 @@ test("VS Code adapter requires a provider-guaranteed snapshot identity", async (
     workspaceFs,
     joinPath: (root, ...segments) => [root, ...segments].join("/"),
     realpath: async (uri) => `/physical/${uri}`,
-    isWithin: (root, candidate) => candidate === root || candidate.startsWith(`${root}/`)
+    isWithin: (root, candidate) => candidate === root || candidate.startsWith(`${root}/`),
+    openFile: async () => {
+      const stat = await workspaceFs.stat()
+      return {
+        initialStat: stat,
+        async read() { return workspaceFs.readFile() },
+        async stat() { return stat },
+        async close() {}
+      }
+    }
   }
 
   assert.throws(() => createVscodeWorkflowPackageFileSystem(base), /snapshot identity|identity provider/i)
@@ -93,4 +112,64 @@ test("VS Code adapter requires a provider-guaranteed snapshot identity", async (
   version = 2
   const second = await adapter.lstat("root", ["a"])
   assert.notEqual(first.identity, second.identity)
+})
+
+
+test("VS Code adapter requires a provider-bound openFile snapshot", async () => {
+  const entries = new Map([
+    ["root/a", { type: 1, size: 1, ctime: 1, mtime: 1, version: 1, bytes: Uint8Array.of(97) }]
+  ])
+  const workspaceFs = {
+    async stat(uri) { return entries.get(uri) },
+    async readDirectory() { return [] },
+    async readFile() { throw new Error("path-based readFile must not back openFile") },
+    async rename() {}
+  }
+  const { createVscodeWorkflowPackageFileSystem } = require("../out/core/contractV2/packageFileSystemVscode.js")
+  const base = {
+    workspaceFs,
+    joinPath: (root, ...segments) => [root, ...segments].join("/"),
+    realpath: async (uri) => `/physical/${uri}`,
+    isWithin: (root, candidate) => candidate === root || candidate.startsWith(`${root}/`),
+    snapshotIdentity: (_uri, stat) => `version:${stat.version}`
+  }
+
+  assert.throws(
+    () => createVscodeWorkflowPackageFileSystem(base),
+    /snapshot-bound openFile|openFile provider|open file provider/i
+  )
+
+  let closeCalls = 0
+  const adapter = createVscodeWorkflowPackageFileSystem({
+    ...base,
+    openFile: async (uri) => {
+      const entry = entries.get(uri)
+      const openedStat = { ...entry }
+      const openedBytes = Uint8Array.from(entry.bytes)
+      let closed = false
+      return {
+        initialStat: openedStat,
+        async read() {
+          assert.equal(closed, false)
+          return Uint8Array.from(openedBytes)
+        },
+        async stat() {
+          assert.equal(closed, false)
+          return openedStat
+        },
+        async close() {
+          if (closed) return
+          closed = true
+          closeCalls += 1
+        }
+      }
+    }
+  })
+
+  const opened = await adapter.openFile("root", ["a"])
+  entries.set("root/a", { type: 1, size: 1, ctime: 1, mtime: 1, version: 2, bytes: Uint8Array.of(98) })
+  assert.equal(Buffer.from(await opened.read()).toString(), "a")
+  assert.equal((await opened.stat()).identity, "version:1")
+  await opened.close()
+  assert.equal(closeCalls, 1)
 })
