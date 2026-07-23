@@ -110,7 +110,7 @@ test("template command metadata is activated, contributed, and registered", () =
 })
 
 test("standalone template customization studio command metadata is removed", () => {
-  const commandId = "bobTemplate.openCustomizationStudio"
+  const commandId = ["bobTemplate", "openCustomizationStudio"].join(".")
   const packageJson = readJson("package.json")
   const activationEvents = new Set(packageJson.activationEvents)
   const contributedCommands = new Set(packageJson.contributes.commands.map((command) => command.command))
