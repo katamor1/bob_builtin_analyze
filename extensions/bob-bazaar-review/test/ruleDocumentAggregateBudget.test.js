@@ -62,3 +62,17 @@ test("reserves aggregate document bytes before each source read", async (t) => {
       && error.details.observed === 6
   )
 })
+
+test("derives the per-source cap from a lower aggregate document byte limit", async (t) => {
+  const [filePath] = await temporaryFiles(t, [3])
+  const { extractRuleDocuments } = require("../out/ruleAuthoring/extraction/documentExtractor")
+
+  const result = await extractRuleDocuments([{ filePath }], undefined, {
+    ...DEFAULT_RULE_AUTHORING_LIMITS,
+    maxSourceBytes: 10,
+    maxAggregateSourceBytes: 5
+  })
+
+  assert.equal(result.documents.length, 1)
+  assert.equal(result.documents[0].status, "requires_conversion")
+})
