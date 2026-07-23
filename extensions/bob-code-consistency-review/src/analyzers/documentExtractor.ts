@@ -236,13 +236,23 @@ function documentLedger(
     totalDocumentBytes,
     DEFAULT_PROCESSING_BUDGET_PROFILE.limits.total_operation_input_bytes
   )
+  const totalSheets = overrides?.total_sheets ?? Math.max(
+    limits.maxWorkbookSheets,
+    DEFAULT_PROCESSING_BUDGET_PROFILE.limits.total_sheets
+  )
+  const totalRows = overrides?.total_rows ?? Math.max(
+    limits.maxRowsPerSheet,
+    DEFAULT_PROCESSING_BUDGET_PROFILE.limits.total_rows
+  )
   return new ProcessingBudgetLedger({
     limits: {
       ...overrides,
       single_document_bytes: Math.min(limits.maxDocumentBytes, totalDocumentBytes),
-      sheets_per_workbook: limits.maxWorkbookSheets,
-      rows_per_sheet: limits.maxRowsPerSheet,
+      sheets_per_workbook: Math.min(limits.maxWorkbookSheets, totalSheets),
+      rows_per_sheet: Math.min(limits.maxRowsPerSheet, totalRows),
       total_document_bytes: totalDocumentBytes,
+      total_sheets: totalSheets,
+      total_rows: totalRows,
       total_operation_input_bytes: totalOperationInputBytes
     }
   })
