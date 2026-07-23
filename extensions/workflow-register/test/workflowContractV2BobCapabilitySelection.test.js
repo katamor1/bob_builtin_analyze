@@ -3,6 +3,11 @@ const { test } = require("node:test")
 
 const subject = () => require("../out/core/contractV2/bobProfile.js")
 const DIGEST = "sha256:aea18a3b1d19f2a1231c7d5e6ac7a416f0ace09ffa823fe4ceb0f43733492b73"
+const ALL_CAPABILITIES = [
+  "source.deactivate", "source.log", "source.registerWorkflow",
+  "task.getAllMetadata", "task.getMessages", "task.sendMessage",
+  "task.setStepComplete", "task.startSubagent", "task.toSerializable"
+]
 
 function source() {
   return {
@@ -27,14 +32,20 @@ function bindingInput(requiredCapabilities) {
   return value
 }
 
-test("binding publishes detached frozen required and task capability evidence", () => {
+test("binding publishes exact detached frozen Bob lock evidence", () => {
   const { bindBobCapabilities } = subject()
   const required = ["source.registerWorkflow", "task.sendMessage"]
   const result = bindBobCapabilities(bindingInput(required))
   required[0] = "changed"
 
+  assert.equal(result.profile, "bob/2.0.1")
+  assert.equal(result.extensionId, "IBM.bob-code")
+  assert.equal(result.extensionVersion, "2.0.1")
+  assert.equal(result.profileDigest, DIGEST)
+  assert.deepEqual(result.capabilities, ALL_CAPABILITIES)
   assert.deepEqual(result.requiredCapabilities, ["source.registerWorkflow", "task.sendMessage"])
   assert.deepEqual(result.taskCapabilities, ["task.sendMessage"])
+  assert.equal(Object.isFrozen(result.capabilities), true)
   assert.equal(Object.isFrozen(result.requiredCapabilities), true)
   assert.equal(Object.isFrozen(result.taskCapabilities), true)
 })
