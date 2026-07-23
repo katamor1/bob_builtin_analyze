@@ -1,3 +1,5 @@
+Replaced: `workflowRegister.openOperationHub`, `workflowRegister.openWorkflowBuilder`, `bobBazaar.openReviewGui`, and `bobCodeConsistency.openReviewWizard` are the current operator routes; the legacy Human Triage terminology below is retained only as historical project-rule-authoring design evidence.
+
 # Bob Bazaar Review AI Project Rule Authoring Design
 
 **Date:** 2026-07-14
