@@ -2,9 +2,18 @@ import * as fs from "node:fs/promises"
 import * as path from "node:path"
 import { createHash, randomUUID } from "node:crypto"
 import type { ContextBudgetArtifact } from "../evidenceScope/contextBudgetArtifact"
-import { applyTemplate, loadPromptTemplates } from "../templates/templateLoader"
+import {
+  ProcessingBudgetLedger,
+  type SharedProcessingBudgetLedger,
+  type SharedProcessingBudgetReservation
+} from "../sharedProcessingBudgetRuntime"
+import { loadPromptTemplates, type PromptTemplates } from "../templates/templateLoader"
 import { relativePosix, writeJsonFile, writeTextFile } from "./fileSystem"
 import { normalizeReviewProcessingLimits, truncateUtf8Text, type ReviewProcessingLimits } from "./limits"
+import {
+  reserveManagedArtifactBytes,
+  reserveMandatoryFirstBobInput
+} from "./reviewPackageBudgets"
 import type { CodeAnalysisResult } from "./analysisTypes"
 import type { DiffSummary } from "./diffTypes"
 import type { DocumentExtractionResult, EvidenceRef } from "./documentTypes"
@@ -12,6 +21,14 @@ import type { ReviewInput } from "./reviewTypes"
 import type { TraceabilityResult } from "./traceabilityResultTypes"
 
 const PRIVACY_NOTICE_JA = "生成物は社内設計書・顧客仕様・ソースコード・raw diff を含む可能性があります。"
+const BOB_INPUT_MANDATORY_KEYS = Object.freeze([
+  "prompt.system",
+  "prompt.task",
+  "prompt.output_format",
+  "review.summary",
+  "change_summary",
+  "deterministic_checks"
+])
 const MANAGED_PACKAGE_OUTPUTS = [
   "prompts",
   "code-slices",
@@ -42,77 +59,108 @@ export async function buildReviewPackage(input: {
   traceability: TraceabilityResult
   contextBudgetArtifact?: ContextBudgetArtifact
   limits?: Partial<ReviewProcessingLimits>
+  budgetLedger?: SharedProcessingBudgetLedger
   workflowRunId?: string
 }): Promise<string[]> {
   const { outDir, reviewInput, diff, documents, codeAnalysis, traceability } = input
   const limits = normalizeReviewProcessingLimits(input.limits)
+  const ledger = input.budgetLedger ?? new ProcessingBudgetLedger({
+    limits: { bob_input_bytes: limits.maxBobInputBytes }
+  })
   const packageWarnings: string[] = []
+  const reservations: SharedProcessingBudgetReservation[] = []
   const generationId = randomUUID()
   await fs.mkdir(outDir, { recursive: true })
   await cleanManagedPackageOutputs(outDir)
-  await writePrompts(outDir)
-  await writeCodeSlices(outDir, codeAnalysis)
-  await writeTables(outDir, documents)
 
-  const evidence = [...documents.evidence, ...codeAnalysis.evidence]
-  await writeJsonFile(path.join(outDir, "input-normalized.json"), reviewInput)
-  await writeJsonFile(path.join(outDir, "changed-files.json"), { vcs: diff.vcs ?? "git", vcsRoot: diff.vcsRoot, files: diff.files, warnings: diff.warnings })
-  await writeJsonFile(path.join(outDir, "changed-symbols.json"), {
-    symbols: codeAnalysis.changedSymbols,
-    functions: codeAnalysis.functions,
-    defines: codeAnalysis.defines,
-    globals: codeAnalysis.globals,
-    call_graph: codeAnalysis.callGraph,
-    rt_forbidden_candidates: codeAnalysis.rtForbiddenCandidates,
-    warnings: codeAnalysis.warnings
-  })
-  await writeJsonFile(path.join(outDir, "document-index.json"), { documents: documents.documents, warnings: documents.warnings })
-  await writeJsonFile(path.join(outDir, "evidence-index.json"), { evidence: evidence.map(stripEvidenceText) })
-  await writeJsonFile(path.join(outDir, "traceability-map.json"), { rows: traceability.rows, warnings: traceability.warnings })
-  if (input.contextBudgetArtifact) {
-    await writeJsonFile(path.join(outDir, "context-budget-report.json"), input.contextBudgetArtifact)
+  try {
+    const templates = await loadPromptTemplates()
+    await writePrompts(outDir, templates)
+    await writeCodeSlices(outDir, codeAnalysis)
+    await writeTables(outDir, documents)
+
+    const evidence = [...documents.evidence, ...codeAnalysis.evidence]
+    await writeJsonFile(path.join(outDir, "input-normalized.json"), reviewInput)
+    await writeJsonFile(path.join(outDir, "changed-files.json"), { vcs: diff.vcs ?? "git", vcsRoot: diff.vcsRoot, files: diff.files, warnings: diff.warnings })
+    await writeJsonFile(path.join(outDir, "changed-symbols.json"), {
+      symbols: codeAnalysis.changedSymbols,
+      functions: codeAnalysis.functions,
+      defines: codeAnalysis.defines,
+      globals: codeAnalysis.globals,
+      call_graph: codeAnalysis.callGraph,
+      rt_forbidden_candidates: codeAnalysis.rtForbiddenCandidates,
+      warnings: codeAnalysis.warnings
+    })
+    await writeJsonFile(path.join(outDir, "document-index.json"), { documents: documents.documents, warnings: documents.warnings })
+    await writeJsonFile(path.join(outDir, "evidence-index.json"), { evidence: evidence.map(stripEvidenceText) })
+    await writeJsonFile(path.join(outDir, "traceability-map.json"), { rows: traceability.rows, warnings: traceability.warnings })
+    if (input.contextBudgetArtifact) {
+      await writeJsonFile(path.join(outDir, "context-budget-report.json"), input.contextBudgetArtifact)
+    }
+
+    const changeSummary = buildChangeSummary(reviewInput, diff, codeAnalysis, documents)
+    const diffContext = buildDiffContext(diff, codeAnalysis, limits, packageWarnings)
+    let deterministicChecks = buildDeterministicChecks(documents, codeAnalysis, traceability, packageWarnings)
+
+    await writeTextFile(path.join(outDir, "change-summary.md"), changeSummary)
+    await writeTextFile(path.join(outDir, "diff-context.md"), diffContext)
+    await writeTextFile(path.join(outDir, "document-excerpts.md"), documents.excerptsMarkdown)
+    await writeTextFile(path.join(outDir, "traceability-map.md"), traceability.markdown)
+
+    const bobInputLimit = Math.min(
+      limits.maxBobInputBytes,
+      ledger.profile.limits.bob_input_bytes
+    )
+    const bobInputBudget = reserveMandatoryFirstBobInput({
+      ledger,
+      maximumBytes: bobInputLimit,
+      template: templates.bobInputTemplate,
+      values: {
+        "prompt.system": templates.system,
+        "prompt.task": templates.task,
+        "prompt.output_format": templates.outputFormat,
+        "review.summary": buildReviewSummary(reviewInput, diff),
+        change_summary: changeSummary,
+        deterministic_checks: deterministicChecks,
+        document_excerpts: documents.excerptsMarkdown,
+        diff_context: diffContext,
+        changed_symbols_summary: codeAnalysis.summaryMarkdown,
+        traceability_map: traceability.markdown,
+        evidence_index_summary: evidenceIndexSummary(evidence)
+      },
+      mandatoryKeys: BOB_INPUT_MANDATORY_KEYS
+    })
+    reservations.push(bobInputBudget.reservation)
+    if (bobInputBudget.truncated) {
+      packageWarnings.push(`bob-input.md exceeded maxBobInputBytes / bob_input_bytes (${bobInputBudget.originalBytes} > ${bobInputLimit}); optional sections truncated.`)
+    }
+    deterministicChecks = buildDeterministicChecks(documents, codeAnalysis, traceability, packageWarnings)
+
+    await writeTextFile(path.join(outDir, "manifest.yaml"), buildManifest(
+      reviewInput,
+      diff,
+      evidence,
+      input.workspaceRoot,
+      outDir,
+      input.contextBudgetArtifact,
+      packageWarnings,
+      generationId,
+      input.workflowRunId
+    ))
+    await writeTextFile(path.join(outDir, "deterministic-checks.md"), deterministicChecks)
+    await writeTextFile(path.join(outDir, "bob-input.md"), bobInputBudget.text)
+
+    const managedArtifactBytes = await computeManagedReviewPackageBytes(outDir)
+    reservations.push(reserveManagedArtifactBytes(ledger, managedArtifactBytes))
+    for (const reservation of reservations) reservation.commit()
+    return packageWarnings
+  } catch (error) {
+    for (let index = reservations.length - 1; index >= 0; index -= 1) {
+      try { reservations[index].release() } catch {}
+    }
+    try { await cleanManagedPackageOutputs(outDir) } catch {}
+    throw error
   }
-
-  const changeSummary = buildChangeSummary(reviewInput, diff, codeAnalysis, documents)
-  const diffContext = buildDiffContext(diff, codeAnalysis, limits, packageWarnings)
-  let deterministicChecks = buildDeterministicChecks(documents, codeAnalysis, traceability, packageWarnings)
-
-  await writeTextFile(path.join(outDir, "change-summary.md"), changeSummary)
-  await writeTextFile(path.join(outDir, "diff-context.md"), diffContext)
-  await writeTextFile(path.join(outDir, "document-excerpts.md"), documents.excerptsMarkdown)
-  await writeTextFile(path.join(outDir, "traceability-map.md"), traceability.markdown)
-
-  const templates = await loadPromptTemplates()
-  const bobInputSource = applyTemplate(templates.bobInputTemplate, {
-    "prompt.system": templates.system,
-    "prompt.task": templates.task,
-    "prompt.output_format": templates.outputFormat,
-    "review.summary": buildReviewSummary(reviewInput, diff),
-    change_summary: changeSummary,
-    deterministic_checks: deterministicChecks,
-    document_excerpts: documents.excerptsMarkdown,
-    diff_context: diffContext,
-    changed_symbols_summary: codeAnalysis.summaryMarkdown,
-    traceability_map: traceability.markdown,
-    evidence_index_summary: evidenceIndexSummary(evidence)
-  })
-  const bobInput = limitBobInput(bobInputSource, limits, packageWarnings)
-  deterministicChecks = buildDeterministicChecks(documents, codeAnalysis, traceability, packageWarnings)
-
-  await writeTextFile(path.join(outDir, "manifest.yaml"), buildManifest(
-    reviewInput,
-    diff,
-    evidence,
-    input.workspaceRoot,
-    outDir,
-    input.contextBudgetArtifact,
-    packageWarnings,
-    generationId,
-    input.workflowRunId
-  ))
-  await writeTextFile(path.join(outDir, "deterministic-checks.md"), deterministicChecks)
-  await writeTextFile(path.join(outDir, "bob-input.md"), bobInput)
-  return packageWarnings
 }
 
 function buildManifest(
@@ -197,11 +245,7 @@ export function computeReviewPackageInputHash(
 }
 
 export async function computeManagedReviewPackageContentHash(outDir: string): Promise<string> {
-  const files: Array<{ relativePath: string; absolutePath: string }> = []
-  for (const managedPath of MANAGED_PACKAGE_OUTPUTS) {
-    await collectManagedFiles(outDir, managedPath, files)
-  }
-  files.sort((left, right) => left.relativePath.localeCompare(right.relativePath))
+  const files = await listManagedFiles(outDir)
   const hash = createHash("sha256")
   for (const file of files) {
     const bytes = await fs.readFile(file.absolutePath)
@@ -213,6 +257,27 @@ export async function computeManagedReviewPackageContentHash(outDir: string): Pr
     hash.update("\0")
   }
   return `sha256:${hash.digest("hex")}`
+}
+
+export async function computeManagedReviewPackageBytes(outDir: string): Promise<number> {
+  const files = await listManagedFiles(outDir)
+  let totalBytes = 0
+  for (const file of files) {
+    const stat = await fs.stat(file.absolutePath)
+    if (!Number.isSafeInteger(stat.size) || stat.size < 0 || stat.size > Number.MAX_SAFE_INTEGER - totalBytes) {
+      throw new Error("managed review package byte total exceeds safe integer range")
+    }
+    totalBytes += stat.size
+  }
+  return totalBytes
+}
+
+async function listManagedFiles(outDir: string): Promise<Array<{ relativePath: string; absolutePath: string }>> {
+  const files: Array<{ relativePath: string; absolutePath: string }> = []
+  for (const managedPath of MANAGED_PACKAGE_OUTPUTS) {
+    await collectManagedFiles(outDir, managedPath, files)
+  }
+  return files.sort((left, right) => left.relativePath.localeCompare(right.relativePath))
 }
 
 async function collectManagedFiles(
@@ -345,14 +410,6 @@ function buildDeterministicChecks(documents: DocumentExtractionResult, codeAnaly
   ].join("\n")
 }
 
-function limitBobInput(text: string, limits: ReviewProcessingLimits, packageWarnings: string[]): string {
-  const suffix = "\n\n[truncated: maxBobInputBytes]\n"
-  const limited = truncateUtf8Text(text, limits.maxBobInputBytes, suffix)
-  if (!limited.truncated) return text
-  packageWarnings.push(`bob-input.md exceeded maxBobInputBytes (${limited.originalBytes} > ${limits.maxBobInputBytes}); truncated.`)
-  return limited.text
-}
-
 function evidenceIndexSummary(evidence: EvidenceRef[]): string {
   return evidence.map((item) => `- ${item.evidence_id}: ${item.type} ${item.ref}${item.source ? ` (${item.source})` : ""}`).join("\n")
 }
@@ -367,8 +424,7 @@ function hasDuplicateEvidenceIds(evidence: EvidenceRef[]): boolean {
   return new Set(ids).size !== ids.length
 }
 
-async function writePrompts(outDir: string): Promise<void> {
-  const templates = await loadPromptTemplates()
+async function writePrompts(outDir: string, templates: PromptTemplates): Promise<void> {
   const promptDir = path.join(outDir, "prompts")
   await Promise.all([
     writeTextFile(path.join(promptDir, "system.md"), templates.system),
