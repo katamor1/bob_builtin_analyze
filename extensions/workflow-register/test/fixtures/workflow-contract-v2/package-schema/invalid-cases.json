@@ -1,0 +1,44 @@
+[
+  {
+    "name": "pointer schema version",
+    "target": "pointer",
+    "path": ["schemaVersion"],
+    "value": "workflow-package-pointer/v2"
+  },
+  {
+    "name": "pointer digest alias",
+    "target": "pointer",
+    "path": ["packageDigest"],
+    "value": "SHA256:1111111111111111111111111111111111111111111111111111111111111111"
+  },
+  {
+    "name": "lock schema version",
+    "target": "lock",
+    "path": ["schemaVersion"],
+    "value": "workflow-register-lock/v1"
+  },
+  {
+    "name": "lock compiler version",
+    "target": "lock",
+    "path": ["compilerContractVersion"],
+    "value": "workflow-register-compiler/v3"
+  },
+  {
+    "name": "workflow path",
+    "target": "lock",
+    "path": ["workflow", "path"],
+    "value": "./workflow.yaml"
+  },
+  {
+    "name": "Bob profile",
+    "target": "lock",
+    "path": ["bob", "profile"],
+    "value": "bob/2.0.0"
+  },
+  {
+    "name": "environment digest",
+    "target": "lock",
+    "path": ["environmentDigest"],
+    "value": "sha256:abc"
+  }
+]
