@@ -6,6 +6,8 @@ import {
   type WorkflowPackageCandidate
 } from "./packageLoaderContract"
 import {
+  addSetValue,
+  hasSetValue,
   isProxy,
   jsonParse,
   objectCreate,
@@ -16,6 +18,9 @@ import {
   objectHasOwn,
   objectPrototype,
   reflectOwnKeys,
+  reflectApply,
+  SetConstructor,
+  stringSlice,
   testPattern,
   textDecoder
 } from "./packageLoaderIntrinsics"
@@ -151,11 +156,179 @@ export function parseStrictJson(bytes: Uint8Array, label: string): unknown {
   } catch {
     throw new TypeError(`${label} must be valid UTF-8 JSON.`)
   }
+  let parsed: unknown
   try {
-    return jsonParse(text)
+    parsed = jsonParse(text)
   } catch {
     throw new TypeError(`${label} must contain exactly one valid JSON value.`)
   }
+  assertNoDuplicateJsonObjectKeys(text, label)
+  return parsed
+}
+
+type JsonScanFrame =
+  | {
+      readonly kind: "object"
+      readonly keys: Set<string>
+      state: "keyOrEnd" | "colon" | "value" | "commaOrEnd"
+    }
+  | {
+      readonly kind: "array"
+      state: "valueOrEnd" | "commaOrEnd"
+    }
+
+function assertNoDuplicateJsonObjectKeys(text: string, label: string): void {
+  const stack: JsonScanFrame[] = []
+  let index = 0
+  let rootComplete = false
+
+  const completeValue = (): void => {
+    if (stack.length === 0) {
+      rootComplete = true
+      return
+    }
+    const parent = stack[stack.length - 1]
+    if (parent.kind === "object") {
+      if (parent.state !== "value") failJsonScan(label)
+      parent.state = "commaOrEnd"
+      return
+    }
+    if (parent.state !== "valueOrEnd") failJsonScan(label)
+    parent.state = "commaOrEnd"
+  }
+
+  const scanString = (): string => {
+    const start = index
+    index += 1
+    while (index < text.length) {
+      const character = text[index]
+      if (character === "\\") {
+        index += 2
+        continue
+      }
+      index += 1
+      if (character === '"') {
+        return reflectApply(stringSlice, text, [start, index]) as string
+      }
+    }
+    failJsonScan(label)
+  }
+
+  const scanValue = (): void => {
+    const character = text[index]
+    if (character === "{") {
+      index += 1
+      stack[stack.length] = {
+        kind: "object",
+        keys: new SetConstructor<string>(),
+        state: "keyOrEnd"
+      }
+      return
+    }
+    if (character === "[") {
+      index += 1
+      stack[stack.length] = { kind: "array", state: "valueOrEnd" }
+      return
+    }
+    if (character === '"') {
+      scanString()
+      completeValue()
+      return
+    }
+    while (index < text.length && !isJsonValueDelimiter(text[index])) index += 1
+    completeValue()
+  }
+
+  while (index < text.length) {
+    while (index < text.length && isJsonWhitespace(text[index])) index += 1
+    if (index >= text.length) break
+
+    if (stack.length === 0) {
+      if (rootComplete) failJsonScan(label)
+      scanValue()
+      continue
+    }
+
+    const frame = stack[stack.length - 1]
+    if (frame.kind === "object") {
+      if (frame.state === "keyOrEnd") {
+        if (text[index] === "}") {
+          index += 1
+          stack.length -= 1
+          completeValue()
+          continue
+        }
+        if (text[index] !== '"') failJsonScan(label)
+        const token = scanString()
+        const key = jsonParse(token) as string
+        if (hasSetValue(frame.keys, key)) {
+          throw new TypeError(`${label} contains a duplicate JSON object key.`)
+        }
+        addSetValue(frame.keys, key)
+        frame.state = "colon"
+        continue
+      }
+      if (frame.state === "colon") {
+        if (text[index] !== ":") failJsonScan(label)
+        index += 1
+        frame.state = "value"
+        continue
+      }
+      if (frame.state === "value") {
+        scanValue()
+        continue
+      }
+      if (text[index] === ",") {
+        index += 1
+        frame.state = "keyOrEnd"
+        continue
+      }
+      if (text[index] === "}") {
+        index += 1
+        stack.length -= 1
+        completeValue()
+        continue
+      }
+      failJsonScan(label)
+    }
+
+    if (frame.state === "valueOrEnd") {
+      if (text[index] === "]") {
+        index += 1
+        stack.length -= 1
+        completeValue()
+        continue
+      }
+      scanValue()
+      continue
+    }
+    if (text[index] === ",") {
+      index += 1
+      frame.state = "valueOrEnd"
+      continue
+    }
+    if (text[index] === "]") {
+      index += 1
+      stack.length -= 1
+      completeValue()
+      continue
+    }
+    failJsonScan(label)
+  }
+
+  if (!rootComplete || stack.length !== 0) failJsonScan(label)
+}
+
+function isJsonWhitespace(value: string): boolean {
+  return value === " " || value === "\t" || value === "\n" || value === "\r"
+}
+
+function isJsonValueDelimiter(value: string): boolean {
+  return isJsonWhitespace(value) || value === "," || value === "]" || value === "}"
+}
+
+function failJsonScan(label: string): never {
+  throw new TypeError(`${label} contains invalid JSON structure.`)
 }
 
 function assertExactFields(value: unknown, fields: readonly string[], label: string): void {
