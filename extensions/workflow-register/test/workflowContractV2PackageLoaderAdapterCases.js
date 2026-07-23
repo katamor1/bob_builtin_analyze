@@ -44,7 +44,8 @@ test("VS Code package filesystem adapter maps file types and delegates URI opera
     workspaceFs,
     joinPath: (root, ...segments) => [root, ...segments].join("/"),
     realpath: async (uri) => `/physical/${uri}`,
-    isWithin: (root, candidate) => candidate === root || candidate.startsWith(`${root}/`)
+    isWithin: (root, candidate) => candidate === root || candidate.startsWith(`${root}/`),
+    snapshotIdentity: (uri, stat) => `${uri}:${stat.type}:${stat.size}:${stat.ctime}:${stat.mtime}`
   })
 
   assert.equal((await adapter.lstat("root", ["a"])).kind, "file")
@@ -54,4 +55,32 @@ test("VS Code package filesystem adapter maps file types and delegates URI opera
   assert.equal(await adapter.realpath("root", ["a"]), "/physical/root/a")
   await adapter.rename("root", ["a"], ["b"])
   assert.deepEqual(calls.at(-1), ["rename", "root/a", "root/b", { overwrite: false }])
+})
+
+test("VS Code adapter requires a provider-guaranteed snapshot identity", async () => {
+  const workspaceFs = {
+    async stat() { return { type: 1, size: 1, ctime: 1, mtime: 1 } },
+    async readDirectory() { return [] },
+    async readFile() { return Uint8Array.of(97) },
+    async rename() {}
+  }
+  const { createVscodeWorkflowPackageFileSystem } = require("../out/core/contractV2/packageFileSystemVscode.js")
+  const base = {
+    workspaceFs,
+    joinPath: (root, ...segments) => [root, ...segments].join("/"),
+    realpath: async (uri) => `/physical/${uri}`,
+    isWithin: (root, candidate) => candidate === root || candidate.startsWith(`${root}/`)
+  }
+
+  assert.throws(() => createVscodeWorkflowPackageFileSystem(base), /snapshot identity|identity provider/i)
+
+  let version = 1
+  const adapter = createVscodeWorkflowPackageFileSystem({
+    ...base,
+    snapshotIdentity: () => `version:${version}`
+  })
+  const first = await adapter.lstat("root", ["a"])
+  version = 2
+  const second = await adapter.lstat("root", ["a"])
+  assert.notEqual(first.identity, second.identity)
 })
