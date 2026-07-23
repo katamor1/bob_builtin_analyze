@@ -1,3 +1,5 @@
+Replaced: `workflowRegister.openOperationHub` and `workflowRegister.openWorkflowBuilder` are the current workflow operator routes; the legacy held-run UI references below are retained only as historical P1-4 design evidence.
+
 # Detached Held Run Recovery Assistant P1-4 Design
 
 ## Goal
