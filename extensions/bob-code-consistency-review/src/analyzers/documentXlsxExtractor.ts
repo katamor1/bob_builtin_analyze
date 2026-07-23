@@ -1,6 +1,11 @@
 import { toPosixPath } from "../core/fileSystem"
 import type { ReviewProcessingLimits } from "../core/limits"
 import {
+  commitWorkbookBudget,
+  type SharedProcessingBudgetLedger,
+  type SharedWorkbookBudgetCancellation
+} from "../sharedProcessingBudgetRuntime"
+import {
   cellText,
   firstKnownId,
   matchingChunks,
@@ -12,6 +17,12 @@ import {
 type ExcelFileModule = typeof import("read-excel-file/node")
 type ExcelSheet = import("read-excel-file/node").Sheet
 
+export interface XlsxBudgetContext {
+  readonly ledger: SharedProcessingBudgetLedger
+  readonly workbookTarget: string
+  readonly signal?: SharedWorkbookBudgetCancellation
+}
+
 let excelFileModulePromise: Promise<ExcelFileModule> | undefined
 
 export async function extractXlsxChunks(
@@ -21,40 +32,48 @@ export async function extractXlsxChunks(
   evidenceType: string,
   selectors: string[],
   warnings: string[],
-  limits: ReviewProcessingLimits
+  limits: ReviewProcessingLimits,
+  budget: XlsxBudgetContext
 ): Promise<ExtractedChunk[]> {
+  throwIfCancelled(budget.signal)
   const readExcelFile = await loadExcelFile()
   const workbook = await readExcelFile.default(Buffer.from(documentBytes))
   const sheetsByName = new Map(workbook.map((sheet) => [sheet.sheet, sheet] as const))
   const sheetNames = workbook.map((sheet) => sheet.sheet)
-  const allSelectedSheets = item.sheets && item.sheets.length > 0 ? item.sheets : sheetNames
-  const selectedSheets = allSelectedSheets.slice(0, limits.maxWorkbookSheets)
-  if (allSelectedSheets.length > selectedSheets.length) {
-    warnings.push(`${toPosixPath(item.path ?? displayPath)} exceeded maxWorkbookSheets (${allSelectedSheets.length} > ${limits.maxWorkbookSheets}); remaining sheets skipped.`)
-  }
-  const chunks: ExtractedChunk[] = []
-
-  for (const sheetName of selectedSheets) {
+  const requestedNames = item.sheets && item.sheets.length > 0 ? item.sheets : sheetNames
+  const selected = requestedNames.flatMap((sheetName, sheetIndex) => {
     const sheet = sheetsByName.get(sheetName)
-    if (!sheet) continue
+    if (!sheet) return []
     const rows = normalizeSheetRows(sheet)
-    if (rows.length === 0) continue
-    const headers = rows[0].map(cellText)
-    const dataRows = rows.slice(1)
-    if (dataRows.length > limits.maxRowsPerSheet) {
-      warnings.push(`${toPosixPath(item.path ?? displayPath)} sheet ${sheetName} exceeded maxRowsPerSheet (${dataRows.length} > ${limits.maxRowsPerSheet}); remaining rows skipped.`)
-    }
-    for (let index = 1; index <= Math.min(dataRows.length, limits.maxRowsPerSheet); index += 1) {
-      const row = rows[index].map(cellText)
+    if (rows.length === 0) return [{ sheet, sheetIndex, headers: [], dataRows: [] }]
+    return [{ sheet, sheetIndex, headers: rows[0].map(cellText), dataRows: rows.slice(1) }]
+  })
+
+  commitWorkbookBudget({
+    ledger: budget.ledger,
+    workbookTarget: budget.workbookTarget,
+    sheets: selected.map(({ sheetIndex, dataRows }) => ({
+      target: `${budget.workbookTarget}:sheet:${sheetIndex}`,
+      rows: dataRows.length
+    })),
+    signal: budget.signal
+  })
+
+  const chunks: ExtractedChunk[] = []
+  for (const { sheet, headers, dataRows } of selected) {
+    throwIfCancelled(budget.signal)
+    for (let index = 0; index < dataRows.length; index += 1) {
+      throwIfCancelled(budget.signal)
+      const row = dataRows[index].map(cellText)
       if (row.every((cell) => !cell)) continue
-      const rowText = [sheetName, ...row].join(" ")
-      const rowId = firstKnownId(rowText) ?? `${sheetName}!${index + 1}`
+      const rowText = [sheet.sheet, ...row].join(" ")
+      const rowId = firstKnownId(rowText) ?? `${sheet.sheet}!${index + 2}`
       const table = rowsToMarkdown([headers, row])
       chunks.push({
         evidenceType,
         ref: rowId,
-        title: sheetName,
-        location: `${sheetName}!${index + 1}`,
+        title: sheet.sheet,
+        location: `${sheet.sheet}!${index + 2}`,
         text: table
       })
     }
@@ -65,6 +84,12 @@ export async function extractXlsxChunks(
 
 function normalizeSheetRows(sheet: ExcelSheet): unknown[][] {
   return sheet.data.filter((row) => row.some((cell) => cellText(cell).length > 0))
+}
+
+function throwIfCancelled(signal: SharedWorkbookBudgetCancellation | undefined): void {
+  if (!signal?.aborted) return
+  if (signal.reason instanceof Error) throw signal.reason
+  throw new Error("XLSX enumeration was cancelled")
 }
 
 function loadExcelFile(): Promise<ExcelFileModule> {
