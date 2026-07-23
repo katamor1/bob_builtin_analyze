@@ -5,6 +5,7 @@ const path = require("node:path")
 const { test } = require("node:test")
 
 const {
+  EXTERNAL_PROCESS_STDERR_MAX_BYTES,
   ExternalProcessError,
   normalizeExternalProcessTimeoutMs,
   runExternalProcess
@@ -17,7 +18,7 @@ function runNode(script, options = {}) {
     command: process.execPath,
     args: ["-e", script],
     cwd,
-    maxBufferBytes: 1024 * 1024,
+    maxStdoutBytes: 1024 * 1024,
     timeoutMs: 10000,
     allowedExitCodes: [0],
     ...options
@@ -73,37 +74,70 @@ test("external process runner closes the preflight-to-listener cancellation race
   assert.ok(abortedReads >= 2)
 })
 
-test("external process runner terminates output that exceeds the buffer budget", async () => {
-  await rejectsWithKind(
-    runNode("process.stdout.write('x'.repeat(65536))", { maxBufferBytes: 1024 }),
-    "bufferExceeded"
-  )
+test("external process runner fixes the stderr limit at 256 KiB", () => {
+  assert.equal(EXTERNAL_PROCESS_STDERR_MAX_BYTES, 256 * 1024)
 })
 
-test("bufferExceeded errors retain no more than the configured byte budget", async () => {
-  const maxBufferBytes = 1024
+test("external process runner accepts stdout exactly at its configured limit", async () => {
+  const result = await runNode("process.stdout.write('x'.repeat(1024))", { maxStdoutBytes: 1024 })
+  assert.equal(result.stdout.length, 1024)
+})
+
+test("external process runner rejects stdout limit plus one and bounds retained stdout", async () => {
   await assert.rejects(
-    runNode("process.stdout.write('x'.repeat(65536)); process.stderr.write('y'.repeat(65536))", { maxBufferBytes }),
+    runNode("process.stdout.write('x'.repeat(1025))", { maxStdoutBytes: 1024 }),
     (error) => {
       assert.ok(error instanceof ExternalProcessError)
       assert.equal(error.kind, "bufferExceeded")
-      assert.ok(
-        error.stdout.length + error.stderr.length <= maxBufferBytes,
-        `retained ${error.stdout.length + error.stderr.length} bytes for a ${maxBufferBytes}-byte budget`
-      )
+      assert.equal(error.stdout.length, 1024)
+      assert.ok(error.stderr.length <= EXTERNAL_PROCESS_STDERR_MAX_BYTES)
       return true
     }
   )
 })
 
-test("process runner settles only after a buffer-exceeded child exits", async () => {
+test("external process runner accepts stderr exactly at 256 KiB", async () => {
+  const result = await runNode(`process.stderr.write('y'.repeat(${256 * 1024}))`, { maxStdoutBytes: 1024 })
+  assert.equal(result.stderr.length, 256 * 1024)
+})
+
+test("external process runner rejects stderr limit plus one and bounds retained stderr", async () => {
+  await assert.rejects(
+    runNode(`process.stderr.write('y'.repeat(${256 * 1024 + 1}))`, { maxStdoutBytes: 1024 }),
+    (error) => {
+      assert.ok(error instanceof ExternalProcessError)
+      assert.equal(error.kind, "bufferExceeded")
+      assert.ok(error.stdout.length <= 1024)
+      assert.equal(error.stderr.length, 256 * 1024)
+      return true
+    }
+  )
+})
+
+test("external process runner maintains independent stdout and stderr budgets", async () => {
+  const result = await runNode(
+    `process.stdout.write('x'.repeat(1024)); process.stderr.write('y'.repeat(${256 * 1024}))`,
+    { maxStdoutBytes: 1024 }
+  )
+  assert.equal(result.stdout.length, 1024)
+  assert.equal(result.stderr.length, 256 * 1024)
+})
+
+test("external process runner rejects invalid stdout limits before spawning", () => {
+  assert.throws(
+    () => runNode("", { maxStdoutBytes: 0 }),
+    /maxStdoutBytes.*positive finite number/i
+  )
+})
+
+test("process runner settles only after an output-limit child exits", async () => {
   const pidFile = path.join(os.tmpdir(), `external-runner-${process.pid}-${Date.now()}.pid`)
   try {
     await assert.rejects(
       runNode(
         `require('node:fs').writeFileSync(${JSON.stringify(pidFile)}, String(process.pid)); ` +
           "process.stdout.write('x'.repeat(65536)); setInterval(() => {}, 1000)",
-        { maxBufferBytes: 1024 }
+        { maxStdoutBytes: 1024 }
       ),
       (error) => error instanceof ExternalProcessError && error.kind === "bufferExceeded"
     )
