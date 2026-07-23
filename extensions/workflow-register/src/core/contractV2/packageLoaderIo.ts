@@ -294,7 +294,7 @@ export function snapshotDirectoryNames(
     throw new Error(`${label} enumeration length is invalid.`)
   }
   if (length > maximumEntries) {
-    throw new Error(`${label} directory entry count exceeds the 512-file limit.`)
+    throw new Error(`${label} file count or directory entry budget exceeds the 512-file limit.`)
   }
 
   const descriptors = objectGetOwnPropertyDescriptors(value)
