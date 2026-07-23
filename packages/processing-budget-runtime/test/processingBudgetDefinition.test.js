@@ -6,19 +6,19 @@ const { loadRuntime } = require("./helpers")
 
 const MiB = 1_048_576
 const EXPECTED_TABLE = Object.freeze([
-  ["single_document_bytes", "bytes", 5 * MiB, 50 * MiB, "total_document_bytes"],
-  ["total_document_bytes", "bytes", 32 * MiB, 256 * MiB, "total_operation_input_bytes"],
-  ["document_count", "count", 128, 1_024, null],
-  ["sheets_per_workbook", "count", 20, 100, "total_sheets"],
-  ["total_sheets", "count", 100, 1_000, null],
-  ["rows_per_sheet", "count", 500, 5_000, "total_rows"],
-  ["total_rows", "count", 25_000, 250_000, null],
-  ["changed_files", "count", 5_000, 20_000, null],
-  ["raw_diff_bytes", "bytes", 1 * MiB, 10 * MiB, "total_operation_input_bytes"],
-  ["document_excerpt_bytes", "bytes", 2 * MiB, 8 * MiB, "total_operation_input_bytes"],
-  ["bob_input_bytes", "bytes", 2 * MiB, 8 * MiB, "total_operation_input_bytes"],
-  ["managed_artifact_bytes", "bytes", 16 * MiB, 64 * MiB, null],
-  ["total_operation_input_bytes", "bytes", 64 * MiB, 256 * MiB, null]
+  ["single_document_bytes", "target", "bytes", 5 * MiB, 50 * MiB, "total_document_bytes"],
+  ["total_document_bytes", "operation", "bytes", 32 * MiB, 256 * MiB, "total_operation_input_bytes"],
+  ["document_count", "operation", "count", 128, 1_024, null],
+  ["sheets_per_workbook", "target", "count", 20, 100, "total_sheets"],
+  ["total_sheets", "operation", "count", 100, 1_000, null],
+  ["rows_per_sheet", "target", "count", 500, 5_000, "total_rows"],
+  ["total_rows", "operation", "count", 25_000, 250_000, null],
+  ["changed_files", "operation", "count", 5_000, 20_000, null],
+  ["raw_diff_bytes", "operation", "bytes", 1 * MiB, 10 * MiB, "total_operation_input_bytes"],
+  ["document_excerpt_bytes", "operation", "bytes", 2 * MiB, 8 * MiB, "total_operation_input_bytes"],
+  ["bob_input_bytes", "operation", "bytes", 2 * MiB, 8 * MiB, "total_operation_input_bytes"],
+  ["managed_artifact_bytes", "operation", "bytes", 16 * MiB, 64 * MiB, null],
+  ["total_operation_input_bytes", "operation", "bytes", 64 * MiB, 256 * MiB, null]
 ])
 
 test("exports the exact ordered 13-category default and absolute table", () => {
@@ -27,6 +27,7 @@ test("exports the exact ordered 13-category default and absolute table", () => {
   assert.deepEqual(
     runtime.PROCESSING_BUDGET_DEFINITION.map((entry) => [
       entry.id,
+      entry.scope,
       entry.unit,
       entry.defaultLimit,
       entry.absoluteMaximum,
@@ -36,12 +37,20 @@ test("exports the exact ordered 13-category default and absolute table", () => {
   )
   assert.deepEqual(runtime.PROCESSING_BUDGET_CATEGORY_IDS, EXPECTED_TABLE.map(([id]) => id))
   assert.deepEqual(
+    runtime.PROCESSING_BUDGET_TARGET_CATEGORY_IDS,
+    EXPECTED_TABLE.filter(([, scope]) => scope === "target").map(([id]) => id)
+  )
+  assert.deepEqual(
+    runtime.PROCESSING_BUDGET_OPERATION_CATEGORY_IDS,
+    EXPECTED_TABLE.filter(([, scope]) => scope === "operation").map(([id]) => id)
+  )
+  assert.deepEqual(
     Object.entries(runtime.DEFAULT_PROCESSING_BUDGET_PROFILE.limits),
-    EXPECTED_TABLE.map(([id, , defaultLimit]) => [id, defaultLimit])
+    EXPECTED_TABLE.map(([id, , , defaultLimit]) => [id, defaultLimit])
   )
   assert.deepEqual(
     Object.entries(runtime.ABSOLUTE_PROCESSING_BUDGET_PROFILE.limits),
-    EXPECTED_TABLE.map(([id, , , absoluteMaximum]) => [id, absoluteMaximum])
+    EXPECTED_TABLE.map(([id, , , , absoluteMaximum]) => [id, absoluteMaximum])
   )
   assert.equal(runtime.PROCESSING_BUDGET_MANIFEST_MAXIMA, runtime.PROCESSING_BUDGET_ABSOLUTE_MAXIMA)
   assert.deepEqual(
