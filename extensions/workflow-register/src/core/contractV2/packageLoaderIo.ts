@@ -23,11 +23,19 @@ import {
 
 const ALLOWED_KINDS = objectFreeze(["file", "directory", "symbolic-link", "other"] as const)
 
+export interface StableControlFileSnapshot {
+  readonly bytes: Uint8Array
+  readonly identity: string
+  readonly physical: string
+}
+
 export async function assertDirectoryChain(
   fileSystem: WorkflowPackageFileSystem<unknown>,
   hostRoot: unknown,
   paths: readonly (readonly string[])[]
 ): Promise<string> {
+  const collectionStat = await safeLstat(fileSystem, hostRoot, [], "collection root")
+  assertDirectoryKind(collectionStat.kind, "collection root")
   const collectionPhysical = normalizeContainmentRoot(
     await safeRealpath(fileSystem, hostRoot, [], "collection root")
   )
@@ -54,7 +62,7 @@ export async function readStableControlFile(
   maximumBytes: number,
   label: string,
   containmentRootPhysical: string
-): Promise<Uint8Array> {
+): Promise<StableControlFileSnapshot> {
   let before: WorkflowPackageFileStat
   try {
     before = await safeLstat(fileSystem, hostRoot, segments, label)
@@ -101,7 +109,7 @@ export async function readStableControlFile(
   if (!safeIsWithin(fileSystem, containmentRootPhysical, afterPhysical)) {
     throw new Error(`Workflow package ${label} escapes physical containment.`)
   }
-  return bytes
+  return objectFreeze({ bytes, identity: before.identity, physical })
 }
 
 export async function assertDirectorySnapshotsUnchanged(
@@ -123,7 +131,8 @@ export async function assertDirectorySnapshotsUnchanged(
     }
     const names = snapshotDirectoryNames(
       await safeReadDirectory(fileSystem, hostRoot, snapshot.segments),
-      "workflow package directory"
+      "workflow package directory",
+      snapshot.names.length
     )
     if (names.length !== snapshot.names.length) {
       throw new Error("Workflow package directory changed during snapshot read.")
@@ -211,7 +220,8 @@ export function safeIsWithin(
 
 export function snapshotDirectoryNames(
   value: readonly string[],
-  label: string
+  label: string,
+  maximumEntries: number
 ): readonly string[] {
   if (
     !arrayIsArray(value)
@@ -219,14 +229,16 @@ export function snapshotDirectoryNames(
     || objectGetPrototypeOf(value) !== arrayPrototype
   ) throw new Error(`${label} enumeration is invalid.`)
 
-  const descriptors = objectGetOwnPropertyDescriptors(value)
-  const lengthDescriptor = objectGetOwnPropertyDescriptor(descriptors, "length")?.value as
-    | PropertyDescriptor
-    | undefined
-  const length = lengthDescriptor?.value
+  const ownLengthDescriptor = objectGetOwnPropertyDescriptor(value, "length")
+  const length = ownLengthDescriptor?.value
   if (typeof length !== "number" || !numberIsSafeInteger(length) || length < 0) {
     throw new Error(`${label} enumeration length is invalid.`)
   }
+  if (length > maximumEntries) {
+    throw new Error(`${label} directory entry count exceeds the 512-file limit.`)
+  }
+
+  const descriptors = objectGetOwnPropertyDescriptors(value)
 
   const result: string[] = []
   const seen = new Set<string>()

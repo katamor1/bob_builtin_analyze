@@ -132,9 +132,13 @@ async function enumerateDirectory(
   if (!safeIsWithin(fileSystem, basePhysical, physical)) {
     throw new Error("Workflow package directory escapes physical containment.")
   }
+  const maximumEntries = WORKFLOW_PACKAGE_V2_LOAD_LIMITS.maxFiles
+    - metadata.length
+    + (relativeSegments.length === 0 ? 2 : 0)
   const sortedNames = snapshotDirectoryNames(
     await safeReadDirectory(fileSystem, hostRoot, fullSegments),
-    relativeSegments.join("/") || "generation root"
+    relativeSegments.join("/") || "generation root",
+    maximumEntries
   )
   pushValue(directorySnapshots, objectFreeze({
     segments: objectFreeze([...fullSegments]),
@@ -179,7 +183,6 @@ async function enumerateDirectory(
       )
       continue
     }
-
     const logicalPath = childRelative.join("/")
     pushValue(metadata, objectFreeze({
       path: logicalPath,

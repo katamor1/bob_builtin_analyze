@@ -22,7 +22,13 @@ import {
   snapshotRecord,
   stagingName
 } from "./packageLoaderInput"
-import { assertDirectoryChain, readStableControlFile } from "./packageLoaderIo"
+import {
+  assertDirectoryChain,
+  assertDirectoryKind,
+  readStableControlFile,
+  safeLstat,
+  safeRealpath
+} from "./packageLoaderIo"
 import { loadCandidateSnapshot } from "./packageLoaderSnapshot"
 import { objectHasOwn } from "./packageLoaderIntrinsics"
 import { requireWorkflowPackageRootState } from "./packageRoot"
@@ -57,7 +63,7 @@ export async function loadCurrentWorkflowPackage(input: unknown): Promise<LoadWo
   )
   const state = requireWorkflowPackageRootState(snapshot.collectionRoot, fileSystem)
   const slotPhysical = await assertDirectoryChain(fileSystem, state.hostRoot, [[workflowId]])
-  const pointerBytes = await readStableControlFile(
+  const pointerSnapshot = await readStableControlFile(
     fileSystem,
     state.hostRoot,
     [workflowId, "current.json"],
@@ -67,7 +73,7 @@ export async function loadCurrentWorkflowPackage(input: unknown): Promise<LoadWo
   )
   const pointer = decodeWorkflowPackagePointer({
     workflowId,
-    pointer: parseStrictJson(pointerBytes, "Current workflow package pointer")
+    pointer: parseStrictJson(pointerSnapshot.bytes, "Current workflow package pointer")
   })
   return loadCandidateSnapshot(fileSystem, state.hostRoot, workflowId, {
     publication: "published",
@@ -155,7 +161,7 @@ export async function loadWorkflowPackageCandidate(input: unknown): Promise<Load
     [workflowId, "versions"],
     stagingBase
   ])
-  const ownerBytes = await readStableControlFile(
+  const ownerSnapshot = await readStableControlFile(
     fileSystem,
     state.hostRoot,
     [...stagingBase, "owner.json"],
@@ -164,7 +170,7 @@ export async function loadWorkflowPackageCandidate(input: unknown): Promise<Load
     stagingPhysical
   )
   const owner = snapshotRecord(
-    parseStrictJson(ownerBytes, "Workflow package staging owner"),
+    parseStrictJson(ownerSnapshot.bytes, "Workflow package staging owner"),
     ["schemaVersion", "ownershipToken"],
     [],
     "Workflow package staging owner"
@@ -176,10 +182,69 @@ export async function loadWorkflowPackageCandidate(input: unknown): Promise<Load
     throw new Error("Workflow package staging ownership token does not match.")
   }
 
-  return loadCandidateSnapshot(fileSystem, state.hostRoot, workflowId, {
+  const stagingStat = await safeLstat(
+    fileSystem,
+    state.hostRoot,
+    stagingBase,
+    "staging directory"
+  )
+  assertDirectoryKind(stagingStat.kind, "staging directory")
+  const loaded = await loadCandidateSnapshot(fileSystem, state.hostRoot, workflowId, {
     publication: "staging",
     generation: name,
     expectedPackageDigest,
     baseSegments: [...stagingBase, "package"]
   })
+
+  const afterStagingStat = await safeLstat(
+    fileSystem,
+    state.hostRoot,
+    stagingBase,
+    "staging directory"
+  )
+  const afterStagingPhysical = await safeRealpath(
+    fileSystem,
+    state.hostRoot,
+    stagingBase,
+    "staging directory"
+  )
+  if (
+    afterStagingStat.kind !== "directory"
+    || afterStagingStat.identity !== stagingStat.identity
+    || afterStagingPhysical !== stagingPhysical
+  ) throw new Error("Workflow package staging authorization directory changed during package load.")
+
+  const afterOwnerSnapshot = await readStableControlFile(
+    fileSystem,
+    state.hostRoot,
+    [...stagingBase, "owner.json"],
+    OWNER_MAX_BYTES,
+    "staging owner",
+    stagingPhysical
+  )
+  if (
+    afterOwnerSnapshot.identity !== ownerSnapshot.identity
+    || afterOwnerSnapshot.physical !== ownerSnapshot.physical
+    || !equalBytes(afterOwnerSnapshot.bytes, ownerSnapshot.bytes)
+  ) throw new Error("Workflow package staging owner changed during package load.")
+  const afterOwner = snapshotRecord(
+    parseStrictJson(afterOwnerSnapshot.bytes, "Workflow package staging owner"),
+    ["schemaVersion", "ownershipToken"],
+    [],
+    "Workflow package staging owner"
+  )
+  if (
+    afterOwner.schemaVersion !== OWNER_SCHEMA_VERSION
+    || ownershipToken(afterOwner.ownershipToken) !== token
+  ) throw new Error("Workflow package staging ownership authorization changed during package load.")
+
+  return loaded
+}
+
+function equalBytes(left: Uint8Array, right: Uint8Array): boolean {
+  if (left.byteLength !== right.byteLength) return false
+  for (let index = 0; index < left.byteLength; index += 1) {
+    if (left[index] !== right[index]) return false
+  }
+  return true
 }
