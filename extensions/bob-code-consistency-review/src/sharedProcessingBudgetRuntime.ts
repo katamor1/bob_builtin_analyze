@@ -1,5 +1,8 @@
 declare const require: (id: string) => unknown
 
+export type SharedProcessingBudgetOperationCategory = "document_count" | "total_document_bytes" | "total_sheets" | "total_rows" | "total_operation_input_bytes"
+export type SharedProcessingBudgetTargetCategory = "single_document_bytes" | "sheets_per_workbook" | "rows_per_sheet"
+
 export interface SharedProcessingBudgetReservation {
   readonly category: string
   readonly target?: string
@@ -9,12 +12,18 @@ export interface SharedProcessingBudgetReservation {
 }
 
 export interface SharedProcessingBudgetLedger {
-  reserveForTarget(category: "single_document_bytes", target: string, amount: number): SharedProcessingBudgetReservation
+  reserve(category: SharedProcessingBudgetOperationCategory, amount: number): SharedProcessingBudgetReservation
+  reserveForTarget(category: SharedProcessingBudgetTargetCategory, target: string, amount: number): SharedProcessingBudgetReservation
 }
 
 export interface SharedProcessingBudgetLimits {
+  readonly document_count: number
   readonly single_document_bytes: number
   readonly total_document_bytes: number
+  readonly sheets_per_workbook: number
+  readonly total_sheets: number
+  readonly rows_per_sheet: number
+  readonly total_rows: number
   readonly total_operation_input_bytes: number
 }
 
@@ -22,17 +31,23 @@ export interface SharedProcessingBudgetProfileOverrides {
   readonly limits?: Readonly<Partial<SharedProcessingBudgetLimits>>
 }
 
+export interface SharedWorkbookBudgetCancellation {
+  readonly aborted: boolean
+  readonly reason?: unknown
+}
+
+export interface SharedWorkbookBudgetInput {
+  readonly ledger: SharedProcessingBudgetLedger
+  readonly workbookTarget: string
+  readonly sheets: readonly { readonly target: string; readonly rows: number }[]
+  readonly signal?: SharedWorkbookBudgetCancellation
+}
+
 export interface SharedBoundedDocumentSnapshot {
   readonly path: string
   readonly byteLength: number
   readonly sha256: string
-  readonly identity: Readonly<{
-    device: string
-    inode: string
-    size: string
-    modified_ns: string
-    changed_ns: string
-  }>
+  readonly identity: Readonly<{ device: string; inode: string; size: string; modified_ns: string; changed_ns: string }>
   copyBytes(): Uint8Array
   assertCurrent(): Promise<void>
 }
@@ -41,14 +56,7 @@ export interface SharedOoxmlArchiveSnapshot {
   readonly documentKind: "docx" | "xlsx"
   readonly entryCount: number
   readonly expandedBytes: number
-  readonly entries: readonly Readonly<{
-    name: string
-    directory: boolean
-    compression_method: number
-    compressed_bytes: number
-    expanded_bytes: number
-    crc32: string
-  }>[]
+  readonly entries: readonly Readonly<{ name: string; directory: boolean; compression_method: number; compressed_bytes: number; expanded_bytes: number; crc32: string }>[]
   copyEntry(name: string): Uint8Array | undefined
 }
 
@@ -56,23 +64,9 @@ interface SharedRuntimeModule {
   readonly DEFAULT_PROCESSING_BUDGET_PROFILE: Readonly<{ limits: SharedProcessingBudgetLimits }>
   readonly PROCESSING_BUDGET_ABSOLUTE_MAXIMA: SharedProcessingBudgetLimits
   readonly ProcessingBudgetLedger: new (profile?: SharedProcessingBudgetProfileOverrides) => SharedProcessingBudgetLedger
-  readBoundedDocumentFile(input: {
-    filePath: string
-    rootPath?: string
-    target: string
-    ledger: SharedProcessingBudgetLedger
-    maximumFileBytes?: number
-  }): Promise<SharedBoundedDocumentSnapshot>
-  preflightOoxmlArchive(input: {
-    archiveBytes: Uint8Array
-    target: string
-    ledger: SharedProcessingBudgetLedger
-    expectedKind?: "docx" | "xlsx"
-    maximumArchiveBytes?: number
-    maximumEntries?: number
-    maximumEntryBytes?: number
-    maximumExpandedBytes?: number
-  }): SharedOoxmlArchiveSnapshot
+  commitWorkbookBudget(input: SharedWorkbookBudgetInput): Readonly<{ sheetCount: number; rowCount: number }>
+  readBoundedDocumentFile(input: { filePath: string; rootPath?: string; target: string; ledger: SharedProcessingBudgetLedger; maximumFileBytes?: number }): Promise<SharedBoundedDocumentSnapshot>
+  preflightOoxmlArchive(input: { archiveBytes: Uint8Array; target: string; ledger: SharedProcessingBudgetLedger; expectedKind?: "docx" | "xlsx"; maximumArchiveBytes?: number; maximumEntries?: number; maximumEntryBytes?: number; maximumExpandedBytes?: number }): SharedOoxmlArchiveSnapshot
 }
 
 const runtime = require("./shared-processing-budget-runtime") as SharedRuntimeModule
@@ -80,5 +74,6 @@ const runtime = require("./shared-processing-budget-runtime") as SharedRuntimeMo
 export const DEFAULT_PROCESSING_BUDGET_PROFILE = runtime.DEFAULT_PROCESSING_BUDGET_PROFILE
 export const PROCESSING_BUDGET_ABSOLUTE_MAXIMA = runtime.PROCESSING_BUDGET_ABSOLUTE_MAXIMA
 export const ProcessingBudgetLedger = runtime.ProcessingBudgetLedger
+export const commitWorkbookBudget = runtime.commitWorkbookBudget
 export const readBoundedDocumentFile = runtime.readBoundedDocumentFile
 export const preflightOoxmlArchive = runtime.preflightOoxmlArchive
