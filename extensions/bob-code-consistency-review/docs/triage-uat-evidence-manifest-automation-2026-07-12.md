@@ -1,3 +1,5 @@
+Replaced: `workflowRegister.openOperationHub`, `workflowRegister.openWorkflowBuilder`, `bobBazaar.openReviewGui`, and `bobCodeConsistency.openReviewWizard` are the current operator routes; the legacy Human Triage terminology below is retained only as historical UAT automation evidence.
+
 # Human Triage UAT Evidence Manifest Automation 証跡
 
 - 対象: `extensions/bob-code-consistency-review`
