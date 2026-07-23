@@ -1,5 +1,7 @@
 # Bob Bazaar Review Run Wizard v3 Iteration 3 Dashboard Plan
 
+Replaced: bobBazaar.openReviewGui. This historical plan retains the former standalone dashboard command and screen name as implementation evidence.
+
 **Goal:** Review Run、record、triage、review-resultから、campaignの進捗・品質・時間・rule有効性を再現可能に集計し、VS Code上で確認・再生成・CSV出力できるDashboardを追加する。
 
 **Architecture:** 既存`CampaignSummary`は互換維持する。新規`src/dashboard/`をVS Code非依存の集計・CSV・artifact層と、薄いWebview controllerへ分離する。推測値は生成せず、取得不能な指標はcoverageとwarningで明示する。
