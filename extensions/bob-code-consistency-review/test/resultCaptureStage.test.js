@@ -4,14 +4,20 @@ const { test } = require("node:test")
 
 const MODULE = require.resolve("../out/webview/consistencyResultCapture")
 
-function loadStage(calls) {
+function loadStage(calls, options = {}) {
   const originalLoad = Module._load
   delete require.cache[MODULE]
   Module._load = function patched(request, parent, isMain) {
     if (request === "../reviewExecutionCommands") {
       return {
-        runCaptureBobOutput: async (options) => { calls.push({ type: "capture", options }); return { status: "ok" } },
-        runValidateOutput: async (options) => { calls.push({ type: "validate", options }); return { status: "ok" } }
+        runCaptureBobOutput: async (commandOptions) => {
+          calls.push({ type: "capture", options: commandOptions })
+          return options.captureResult ?? { status: "ok" }
+        },
+        runValidateOutput: async (commandOptions) => {
+          calls.push({ type: "validate", options: commandOptions })
+          return options.validateResult ?? { status: "ok" }
+        }
       }
     }
     if (request === "./consistencyResultCaptureHtml") {
@@ -74,4 +80,36 @@ test("result capture returns a structured error when the selected workspace or r
     errors: ["result capture stage could not be rendered"]
   })
   assert.deepEqual(calls, [])
+})
+
+test("manual result capture does not report a structured error outcome as success", async () => {
+  const calls = []
+  const { createConsistencyResultCaptureStage } = loadStage(calls, {
+    captureResult: { status: "error", message: "MANUAL_CAPTURE_FAILED" }
+  })
+  const harness = hostHarness()
+  const stage = createConsistencyResultCaptureStage(harness.host)
+  await stage.initialize()
+
+  await stage.handleMessage({
+    type: "consistencyResultCapture.action",
+    action: "captureManual",
+    text: "schema_version: 1"
+  })
+
+  assert.deepEqual(harness.posts, [{ ok: false, message: "MANUAL_CAPTURE_FAILED" }])
+})
+
+test("clipboard result capture does not report a structured cancelled outcome as success", async () => {
+  const calls = []
+  const { createConsistencyResultCaptureStage } = loadStage(calls, {
+    captureResult: { status: "cancelled", message: "CLIPBOARD_CAPTURE_CANCELLED" }
+  })
+  const harness = hostHarness()
+  const stage = createConsistencyResultCaptureStage(harness.host)
+  await stage.initialize()
+
+  await stage.handleMessage({ type: "consistencyResultCapture.action", action: "captureClipboard" })
+
+  assert.deepEqual(harness.posts, [{ ok: false, message: "CLIPBOARD_CAPTURE_CANCELLED" }])
 })
