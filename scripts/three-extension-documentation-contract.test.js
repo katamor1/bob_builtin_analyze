@@ -37,6 +37,8 @@ const obsolete = [
   { kind: "label", token: ["Traceability", "Prep"].join(" "), replacements: [canonical.consistency] }
 ]
 
+const uiCuePattern = /\b(?:command palette|command|panel|view|screen|button|menu|stage|title|label|gui|webview)\b|画面|パネル|ビュー|ボタン|メニュー|導線|表示名|起動|開く|切り替え|遷移|公開|コマンド/i
+
 function readJson(relativePath) {
   return JSON.parse(fs.readFileSync(path.join(repoRoot, relativePath), "utf8"))
 }
@@ -131,11 +133,34 @@ function phrasePattern(token) {
   return new RegExp(`(?<![A-Za-z0-9_-])${escapeRegExp(token)}(?![A-Za-z0-9_-])`, "g")
 }
 
+function lineBounds(text, index) {
+  const start = text.lastIndexOf("\n", index - 1) + 1
+  const nextBreak = text.indexOf("\n", index)
+  const end = nextBreak === -1 ? text.length : nextBreak
+  return { start, end, line: text.slice(start, end) }
+}
+
+function isUserFacingLabelOccurrence(text, index) {
+  const { line } = lineBounds(text, index)
+  const trimmed = line.trim()
+
+  if (/^#{1,6}\s/.test(trimmed)) return true
+  if (uiCuePattern.test(line)) return true
+
+  if (/^[-*+]\s/.test(trimmed)) {
+    const remainder = trimmed.replace(/^[-*+]\s+/, "")
+    if (!/\b(?:module|class|function|test|fixture|directory|schema)\b/i.test(remainder)) return true
+  }
+
+  return false
+}
+
 function findReferences(text) {
   const matches = []
   for (const reference of obsolete) {
     const pattern = reference.kind === "label" ? phrasePattern(reference.token) : identifierPattern(reference.token)
     for (const match of text.matchAll(pattern)) {
+      if (reference.kind === "label" && !isUserFacingLabelOccurrence(text, match.index)) continue
       matches.push({ ...reference, index: match.index })
     }
   }
@@ -155,14 +180,16 @@ function assertContainsAll(text, phrases, label) {
   for (const phrase of phrases) assert.ok(text.includes(phrase), `${label} must document: ${phrase}`)
 }
 
-const { classification } = loadClassification()
+const { contract, classification } = loadClassification()
 
 test("documentation metadata recursively classifies the complete configured scope", () => {
   assert.ok(classification.size > 0)
+  assert.ok(contract.historicalDocuments.length > 100, "reviewed historical inventory must remain explicit")
   assert.equal(classification.get("extensions/bob-code-consistency-review/docs/triage-integrity-ibm-bob-uat-runbook-ja.md"), "current")
   assert.equal(classification.get("extensions/bob-bazaar-review/docs/review-run-v3-iteration1-ja.md"), "historical")
   assert.equal(classification.get("extensions/bob-bazaar-review/docs/review-run-v3-iteration2-ja.md"), "historical")
   assert.equal(classification.get("extensions/bob-bazaar-review/docs/review-run-v3-iteration3-dashboard-ja.md"), "historical")
+  assert.equal(classification.get("docs/workflows/code-consistency-review/README.md"), "current")
 })
 
 test("current documents contain no obsolete public identifier or user-facing label", () => {
@@ -276,10 +303,20 @@ test("current documentation states the canonical routes and the approved cross-e
   assertContainsAll(consistencyDocs, ["workflow", "バックアップ", "review-input.yaml", "上書き", "変更しない"], "Code Consistency canonical documents")
 })
 
-test("obsolete matcher preserves retained run-retention settings", () => {
+test("obsolete matcher preserves retained settings and ignores internal domain terminology", () => {
   const obsoleteRunsView = ["workflowRegister", "runs"].join(".")
   assert.ok(findReferences(obsoleteRunsView).some((match) => match.token === obsoleteRunsView))
   assert.ok(findReferences(`view == ${obsoleteRunsView}`).some((match) => match.token === obsoleteRunsView))
   assert.deepEqual(findReferences("workflowRegister.runs.retention.enabled"), [])
   assert.deepEqual(findReferences('getConfiguration("workflowRegister.runs.retention")'), [])
+
+  assert.ok(findReferences("## Human Triage").some((match) => match.token === "Human Triage"))
+  assert.ok(findReferences("Command Palette から `Template Studio` を開く").some((match) => match.token === "Template Studio"))
+  assert.ok(findReferences("| Result Capture | GUI stage |").some((match) => match.token === "Result Capture"))
+  assert.ok(findReferences("- Campaign Dashboard を開く").some((match) => match.token === "Campaign Dashboard"))
+  assert.ok(findReferences("画面タイトルは Traceability Prep").some((match) => match.token === "Traceability Prep"))
+
+  assert.deepEqual(findReferences("| Result Capture | review-result JSON persistence | src/projectRules/resultCapture.ts |"), [])
+  assert.deepEqual(findReferences("The Human Triage domain module stores decisions."), [])
+  assert.deepEqual(findReferences("resultCaptureStage.test.js covers Human Triage persistence."), [])
 })
