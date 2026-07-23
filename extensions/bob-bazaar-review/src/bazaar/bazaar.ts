@@ -140,7 +140,7 @@ export class BazaarClient {
       command: this.bzrPath,
       args,
       cwd,
-      maxBufferBytes: this.maxBuffer,
+      maxStdoutBytes: this.maxBuffer,
       timeoutMs: this.timeoutMs,
       allowedExitCodes,
       signal: this.signal,
