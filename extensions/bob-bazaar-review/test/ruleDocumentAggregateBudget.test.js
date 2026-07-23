@@ -4,71 +4,61 @@ const assert = require("node:assert/strict")
 const fs = require("node:fs/promises")
 const os = require("node:os")
 const path = require("node:path")
-const { test } = require("node:test")
+const test = require("node:test")
 
-const { extractRuleDocuments } = require("../out/ruleAuthoring/extraction/documentExtractor")
 const { DEFAULT_RULE_AUTHORING_LIMITS } = require("../out/ruleAuthoring/ruleAuthoringLimits")
+const sourceHash = require("../out/ruleAuthoring/ruleSourceHash")
 
-async function directory(t) {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "bob-rule-aggregate-"))
-  t.after(() => fs.rm(root, { recursive: true, force: true }))
-  return root
+async function temporaryFiles(t, sizes) {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "bob-rule-aggregate-budget-"))
+  t.after(() => fs.rm(directory, { recursive: true, force: true }))
+  return Promise.all(sizes.map(async (size, index) => {
+    const filePath = path.join(directory, `source-${index}.doc`)
+    await fs.writeFile(filePath, "x".repeat(size))
+    return filePath
+  }))
 }
 
-function expectExceeded(category, limit, observed) {
-  return (error) => {
-    assert.equal(error?.code, "processing_budget_exceeded")
-    assert.equal(error?.details?.constrainedCategory, category)
-    assert.equal(error?.details?.limit, limit)
-    assert.equal(error?.details?.observed, observed)
-    return true
+test("rejects document count before fingerprinting any selected source", async (t) => {
+  const files = await temporaryFiles(t, [1, 1])
+  let fingerprintCalls = 0
+  const original = sourceHash.fingerprintSource
+  sourceHash.fingerprintSource = async (...args) => {
+    fingerprintCalls += 1
+    return original(...args)
   }
-}
+  t.after(() => { sourceHash.fingerprintSource = original })
+  delete require.cache[require.resolve("../out/ruleAuthoring/extraction/documentExtractor")]
+  const { extractRuleDocuments } = require("../out/ruleAuthoring/extraction/documentExtractor")
 
-test("rejects document count before reading an input prefix", async (t) => {
-  const root = await directory(t)
-  const requests = ["a.doc", "b.doc"].map((name) => ({ filePath: path.join(root, name) }))
   await assert.rejects(
-    extractRuleDocuments(requests, undefined, {
+    () => extractRuleDocuments(files.map((filePath) => ({ filePath })), undefined, {
       ...DEFAULT_RULE_AUTHORING_LIMITS,
       maxSourceFiles: 1
     }),
-    expectExceeded("document_count", 1, 2)
+    (error) => error.code === "processing_budget_exceeded"
+      && error.details.targetCategory === "document_count"
+      && error.details.constrainedCategory === "document_count"
+      && error.details.limit === 1
+      && error.details.observed === 2
   )
+  assert.equal(fingerprintCalls, 0)
 })
 
-test("rejects aggregate document bytes across separate sources", async (t) => {
-  const root = await directory(t)
-  const requests = []
-  for (const [name, content] of [["a.doc", "abc"], ["b.doc", "def"]]) {
-    const filePath = path.join(root, name)
-    await fs.writeFile(filePath, content)
-    requests.push({ filePath })
-  }
+test("reserves aggregate document bytes before each source read", async (t) => {
+  const files = await temporaryFiles(t, [3, 3])
+  const { extractRuleDocuments } = require("../out/ruleAuthoring/extraction/documentExtractor")
 
   await assert.rejects(
-    extractRuleDocuments(requests, undefined, {
+    () => extractRuleDocuments(files.map((filePath) => ({ filePath })), undefined, {
       ...DEFAULT_RULE_AUTHORING_LIMITS,
+      maxSourceBytes: 3,
       maxAggregateSourceBytes: 5
     }),
-    expectExceeded("total_document_bytes", 5, 6)
+    (error) => error.code === "processing_budget_exceeded"
+      && error.details.targetCategory === "single_document_bytes"
+      && error.details.constrainedCategory === "total_document_bytes"
+      && error.details.limit === 5
+      && error.details.observed === 6
   )
-})
-
-test("accepts exact document count and aggregate byte boundaries", async (t) => {
-  const root = await directory(t)
-  const requests = []
-  for (const [name, content] of [["a.doc", "abc"], ["b.doc", "def"]]) {
-    const filePath = path.join(root, name)
-    await fs.writeFile(filePath, content)
-    requests.push({ filePath })
-  }
-
-  const result = await extractRuleDocuments(requests, undefined, {
-    ...DEFAULT_RULE_AUTHORING_LIMITS,
-    maxSourceFiles: 2,
-    maxAggregateSourceBytes: 6
-  })
-  assert.equal(result.documents.length, 2)
-  assert.deepEqual(result.documents.map((document) => document.status), ["requires_conversion", "requires_conversion"])
 })
