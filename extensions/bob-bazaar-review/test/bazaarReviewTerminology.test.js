@@ -7,9 +7,9 @@ const {
 } = require("./helpers/sourceReader")
 
 const REMOVED_GUI_COMMANDS = [
-  "bobBazaar.openCampaignDashboard",
-  "bobBazaar.openResultCaptureGui",
-  "bobBazaar.openHumanTriageGui"
+  ["bobBazaar", "openCampaignDashboard"].join("."),
+  ["bobBazaar", "openResultCaptureGui"].join("."),
+  ["bobBazaar", "openHumanTriageGui"].join(".")
 ]
 
 test("current Bazaar documentation routes users through the single primary GUI", () => {
