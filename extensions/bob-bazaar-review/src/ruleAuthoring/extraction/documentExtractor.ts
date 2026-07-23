@@ -319,7 +319,7 @@ function documentLedger(limits: RuleAuthoringLimits): SharedProcessingBudgetLedg
   return new ProcessingBudgetLedger({
     limits: {
       document_count: limits.maxSourceFiles,
-      single_document_bytes: limits.maxSourceBytes,
+      single_document_bytes: Math.min(limits.maxSourceBytes, limits.maxAggregateSourceBytes),
       total_document_bytes: limits.maxAggregateSourceBytes,
       total_operation_input_bytes: limits.maxAggregateSourceBytes
     }
