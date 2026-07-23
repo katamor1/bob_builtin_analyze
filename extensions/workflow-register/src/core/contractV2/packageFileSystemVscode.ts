@@ -1,5 +1,6 @@
 import type {
   WorkflowPackageFileKind,
+  WorkflowPackageOpenFile,
   WorkflowPackageFileStat,
   WorkflowPackageFileSystem
 } from "./packageFileSystem"
@@ -63,18 +64,30 @@ export function createVscodeWorkflowPackageFileSystem<Uri>(
   return objectFreeze({
     async lstat(root: Uri, segments: readonly string[]): Promise<WorkflowPackageFileStat> {
       const uri = joinPath(root, ...segments)
-      const stat = await workspaceFs.stat(uri)
-      if (!numberIsSafeInteger(stat.size) || stat.size < 0) {
-        throw new Error("Workflow package VS Code file size is not a safe integer.")
-      }
-      const identity = await snapshotIdentity(uri, stat)
-      if (typeof identity !== "string" || identity.length === 0) {
-        throw new Error("VS Code package filesystem snapshot identity is unavailable.")
-      }
+      return vscodeStatEvidence(uri, await workspaceFs.stat(uri), snapshotIdentity)
+    },
+
+    async openFile(root: Uri, segments: readonly string[]): Promise<WorkflowPackageOpenFile> {
+      const uri = joinPath(root, ...segments)
+      const initialStat = await vscodeStatEvidence(
+        uri,
+        await workspaceFs.stat(uri),
+        snapshotIdentity
+      )
+      let closed = false
       return objectFreeze({
-        kind: vscodeFileKind(stat.type),
-        size: stat.size,
-        identity
+        initialStat,
+        async read(): Promise<Uint8Array> {
+          if (closed) throw new Error("Workflow package file handle is closed.")
+          return workspaceFs.readFile(uri)
+        },
+        async stat(): Promise<WorkflowPackageFileStat> {
+          if (closed) throw new Error("Workflow package file handle is closed.")
+          return vscodeStatEvidence(uri, await workspaceFs.stat(uri), snapshotIdentity)
+        },
+        async close(): Promise<void> {
+          closed = true
+        }
       })
     },
 
@@ -108,6 +121,28 @@ export function createVscodeWorkflowPackageFileSystem<Uri>(
         { overwrite: false }
       )
     }
+  })
+}
+
+async function vscodeStatEvidence<Uri>(
+  uri: Uri,
+  stat: WorkflowPackageVscodeFileStat,
+  snapshotIdentity: (
+    uri: Uri,
+    stat: WorkflowPackageVscodeFileStat
+  ) => Promise<string> | string
+): Promise<WorkflowPackageFileStat> {
+  if (!numberIsSafeInteger(stat.size) || stat.size < 0) {
+    throw new Error("Workflow package VS Code file size is not a safe integer.")
+  }
+  const identity = await snapshotIdentity(uri, stat)
+  if (typeof identity !== "string" || identity.length === 0) {
+    throw new Error("VS Code package filesystem snapshot identity is unavailable.")
+  }
+  return objectFreeze({
+    kind: vscodeFileKind(stat.type),
+    size: stat.size,
+    identity
   })
 }
 
