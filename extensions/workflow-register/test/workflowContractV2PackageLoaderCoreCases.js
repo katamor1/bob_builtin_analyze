@@ -75,11 +75,19 @@ test("published generation directories use a Windows-safe encoding while evidenc
     workflowId: "minimal",
     generation: digest
   })
+  const publishedCandidate = await loader.loadWorkflowPackageCandidate({
+    fileSystem,
+    collectionRoot: root,
+    workflowId: "minimal",
+    candidate: { kind: "published", generation: digest }
+  })
 
   assert.equal(current.generation, digest)
   assert.equal(current.packageDigest, digest)
   assert.equal(explicit.generation, digest)
   assert.equal(explicit.packageDigest, digest)
+  assert.equal(publishedCandidate.generation, digest)
+  assert.equal(publishedCandidate.packageDigest, digest)
   assert.equal(
     fileSystem.calls.some(([, logicalPath]) => logicalPath.split("/").some((segment) => segment.includes(":"))),
     false,
