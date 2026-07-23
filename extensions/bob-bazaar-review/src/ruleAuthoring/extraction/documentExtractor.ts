@@ -1,4 +1,8 @@
 import * as path from "node:path"
+import {
+  ProcessingBudgetLedger,
+  type SharedProcessingBudgetLedger
+} from "../../sharedProcessingBudgetRuntime"
 import { DEFAULT_RULE_AUTHORING_LIMITS, type RuleAuthoringLimits } from "../ruleAuthoringLimits"
 import {
   assertStableSourceFingerprint,
@@ -25,7 +29,8 @@ type LocalDocumentMediaType = RuleSourceMediaType | "doc" | "xls"
 export interface RuleDocumentExtractionRequest {
   filePath: string
   logicalName?: string
-  pdf?: Omit<PdfExtractionOptions, "sourceId" | "maxChunkBytes" | "maxOutputBytes">
+  signal?: AbortSignal
+  pdf?: Omit<PdfExtractionOptions, "sourceId" | "maxChunkBytes" | "maxOutputBytes" | "signal">
 }
 
 export interface DocumentExtractionResult {
@@ -84,6 +89,7 @@ interface ExtractionContext {
   limits: RuleAuthoringLimits
   sourceId?: string
   beforeFingerprint?: SourceFingerprint
+  ledger: SharedProcessingBudgetLedger
 }
 
 const LEGACY_EXTRACTOR = Object.freeze({ id: "legacy-office", version: "1" })
@@ -91,7 +97,12 @@ const LEGACY_EXTRACTOR = Object.freeze({ id: "legacy-office", version: "1" })
 export async function extractRuleDocument(
   request: RuleDocumentExtractionRequest
 ): Promise<DocumentExtractionResult> {
-  return extractRuleDocumentWithContext(request, { limits: DEFAULT_RULE_AUTHORING_LIMITS })
+  const ledger = documentLedger(DEFAULT_RULE_AUTHORING_LIMITS)
+  ledger.reserve("document_count", 1).commit()
+  return extractRuleDocumentWithContext(request, {
+    limits: DEFAULT_RULE_AUTHORING_LIMITS,
+    ledger
+  })
 }
 
 async function extractRuleDocumentWithContext(
@@ -104,7 +115,8 @@ async function extractRuleDocumentWithContext(
   assertLogicalName(logicalName)
   const mediaType = classifySelectedPath(absolutePath, logicalName)
   const before = context.beforeFingerprint ?? await fingerprintSource(absolutePath, {
-    maximumBytes: limits.maxSourceBytes
+    maximumBytes: limits.maxSourceBytes,
+    ledger: context.ledger
   })
   const byteSize = fingerprintByteSize(before)
   if (byteSize > limits.maxSourceBytes) {
@@ -126,23 +138,31 @@ async function extractRuleDocumentWithContext(
       warnings: ["conversion_required"],
       extractor: { ...LEGACY_EXTRACTOR }
     }
-  } else if (mediaType === "docx" || mediaType === "xlsx") {
-    const snapshotContext = {
+  } else if (mediaType === "docx") {
+    extracted = await extractDocx(absolutePath, {
       sourceId,
       maxChunkBytes: limits.maxChunkBytes,
       maxFileBytes: limits.maxSourceBytes,
       maxArchiveEntries: limits.maxOoxmlEntries,
       maxExpandedBytes: limits.maxOoxmlDeclaredUncompressedBytes
-    }
-    extracted = mediaType === "docx"
-      ? await extractDocx(absolutePath, snapshotContext)
-      : await extractXlsx(absolutePath, snapshotContext)
+    })
+  } else if (mediaType === "xlsx") {
+    extracted = await extractXlsx(absolutePath, {
+      sourceId,
+      maxChunkBytes: limits.maxChunkBytes,
+      maxFileBytes: limits.maxSourceBytes,
+      maxArchiveEntries: limits.maxOoxmlEntries,
+      maxExpandedBytes: limits.maxOoxmlDeclaredUncompressedBytes,
+      budgetLedger: context.ledger,
+      signal: request.signal
+    })
   } else {
     extracted = await extractPdf(absolutePath, {
       ...request.pdf,
       sourceId,
       maxChunkBytes: limits.maxChunkBytes,
-      maxOutputBytes: limits.maxPdfOutputBytes
+      maxOutputBytes: limits.maxPdfOutputBytes,
+      signal: request.signal
     })
   }
 
@@ -173,16 +193,16 @@ export async function extractRuleDocuments(
 ): Promise<RuleDocumentBatchResult> {
   if (existingManifest) assertCanonicalExistingManifest(existingManifest)
   const effectiveLimits = boundedRuleAuthoringLimits(limits)
-  if (requests.length > effectiveLimits.maxSourceFiles) {
-    throw new Error(`Rule source file count exceeds the ${effectiveLimits.maxSourceFiles}-file limit`)
-  }
+  const ledger = documentLedger(effectiveLimits)
+  ledger.reserve("document_count", requests.length).commit()
 
   const fingerprinted = await Promise.all(requests.map(async (request): Promise<FingerprintedRequest> => {
     const absolutePath = path.resolve(request.filePath)
     const logicalName = request.logicalName ?? path.basename(absolutePath)
     assertLogicalName(logicalName)
     const fingerprint = await fingerprintSource(absolutePath, {
-      maximumBytes: effectiveLimits.maxSourceBytes
+      maximumBytes: effectiveLimits.maxSourceBytes,
+      ledger
     })
     const byteSize = fingerprintByteSize(fingerprint)
     if (byteSize > effectiveLimits.maxSourceBytes) {
@@ -190,13 +210,6 @@ export async function extractRuleDocuments(
     }
     return { request, absolutePath, logicalName, fingerprint }
   }))
-  const aggregateBytes = fingerprinted.reduce(
-    (total, item) => total + fingerprintByteSize(item.fingerprint),
-    0
-  )
-  if (!Number.isSafeInteger(aggregateBytes) || aggregateBytes > effectiveLimits.maxAggregateSourceBytes) {
-    throw new Error(`Rule source aggregate bytes exceed the ${effectiveLimits.maxAggregateSourceBytes}-byte limit`)
-  }
   const prepared: PreparedRequest[] = fingerprinted.map((item) => ({
     ...item,
     mediaType: classifySelectedPath(item.absolutePath, item.logicalName)
@@ -258,7 +271,8 @@ export async function extractRuleDocuments(
     }, {
       limits: effectiveLimits,
       sourceId,
-      beforeFingerprint: item.fingerprint
+      beforeFingerprint: item.fingerprint,
+      ledger
     }))
   }
 
@@ -306,6 +320,17 @@ export async function extractRuleDocuments(
     duplicates,
     diagnostics
   }
+}
+
+function documentLedger(limits: RuleAuthoringLimits): SharedProcessingBudgetLedger {
+  return new ProcessingBudgetLedger({
+    limits: {
+      document_count: limits.maxSourceFiles,
+      single_document_bytes: limits.maxSourceBytes,
+      total_document_bytes: limits.maxAggregateSourceBytes,
+      total_operation_input_bytes: limits.maxAggregateSourceBytes
+    }
+  })
 }
 
 function classifyExtension(logicalName: string): LocalDocumentMediaType {
