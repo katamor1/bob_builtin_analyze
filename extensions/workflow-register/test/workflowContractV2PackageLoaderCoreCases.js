@@ -2,9 +2,11 @@ const assert = require("node:assert/strict")
 const { test } = require("node:test")
 const {
   MemoryPackageFileSystem,
+  currentPointer,
   fixtureBytes,
   installPublished,
   installStaging,
+  packageDigest,
   rootSubject,
   subject
 } = require("./workflowContractV2PackageLoaderTestSupport")
@@ -44,6 +46,45 @@ test("current pointer and explicit generation load the same detached raw package
   assert.equal(Object.isFrozen(current), true)
   assert.equal(Object.isFrozen(current.files), true)
   assert.equal(Object.isFrozen(current.files[0]), true)
+})
+
+test("published generation directories use a Windows-safe encoding while evidence remains canonical", async () => {
+  const fileSystem = new MemoryPackageFileSystem()
+  const files = fixtureBytes()
+  const digest = packageDigest(files)
+  const directoryName = `sha256-${digest.slice("sha256:".length)}`
+  const base = ["minimal", "versions", directoryName]
+  fileSystem.addDirectory(["minimal"])
+  fileSystem.addDirectory(["minimal", "versions"])
+  fileSystem.addDirectory(base)
+  for (const [logicalPath, bytes] of Object.entries(files)) {
+    fileSystem.addFile([...base, ...logicalPath.split("/")], bytes)
+  }
+  fileSystem.addFile(["minimal", "current.json"], currentPointer("minimal", digest))
+
+  const root = rootSubject().createWorkflowPackageRoot(fileSystem, {})
+  const loader = subject()
+  const current = await loader.loadCurrentWorkflowPackage({
+    fileSystem,
+    collectionRoot: root,
+    workflowId: "minimal"
+  })
+  const explicit = await loader.loadWorkflowPackageGeneration({
+    fileSystem,
+    collectionRoot: root,
+    workflowId: "minimal",
+    generation: digest
+  })
+
+  assert.equal(current.generation, digest)
+  assert.equal(current.packageDigest, digest)
+  assert.equal(explicit.generation, digest)
+  assert.equal(explicit.packageDigest, digest)
+  assert.equal(
+    fileSystem.calls.some(([, logicalPath]) => logicalPath.split("/").some((segment) => segment.includes(":"))),
+    false,
+    "canonical digest punctuation must never enter a physical path segment"
+  )
 })
 
 test("explicit generation loading never reads current.json", async () => {
