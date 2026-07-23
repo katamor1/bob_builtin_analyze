@@ -7,6 +7,7 @@ import {
   SCHEMA_FILE_PATTERN,
   WORKFLOW_PACKAGE_V2_LOAD_LIMITS,
   type CandidateTarget,
+  type DirectoryIdentitySnapshot,
   type DirectorySnapshot,
   type FileMetadata,
   type RawWorkflowPackage,
@@ -14,14 +15,15 @@ import {
 } from "./packageLoaderContract"
 import {
   assertDirectoryChain,
-  assertDirectoryKind,
+  assertDirectoryIdentitySnapshotsUnchanged,
   assertDirectorySnapshotsUnchanged,
   readStableOpenedFile,
   safeIsWithin,
   safeLstat,
   safeReadDirectory,
   safeRealpath,
-  snapshotDirectoryNames
+  snapshotDirectoryNames,
+  snapshotStableDirectory
 } from "./packageLoaderIo"
 import {
   bufferByteLength,
@@ -59,9 +61,15 @@ export async function loadCandidateSnapshot(
     pushValue(componentPaths, target.baseSegments.slice(0, index))
   }
 
+  const chainSnapshots: DirectoryIdentitySnapshot[] = []
   let basePhysical: string
   try {
-    basePhysical = await assertDirectoryChain(fileSystem, hostRoot, componentPaths)
+    basePhysical = await assertDirectoryChain(
+      fileSystem,
+      hostRoot,
+      componentPaths,
+      chainSnapshots
+    )
   } catch (error) {
     if (
       target.publication === "published"
@@ -101,6 +109,7 @@ export async function loadCandidateSnapshot(
     pushValue(files, await readStablePackageFile(fileSystem, hostRoot, metadata[index]))
   }
   await assertDirectorySnapshotsUnchanged(fileSystem, hostRoot, directorySnapshots)
+  await assertDirectoryIdentitySnapshotsUnchanged(fileSystem, hostRoot, chainSnapshots)
 
   const packageDigest = digestPackageManifest(files)
   if (target.publication === "published" && packageDigest !== target.generation) {
@@ -134,11 +143,13 @@ async function enumerateDirectory(
     throw new Error("Workflow package depth exceeds the maximum depth of 3.")
   }
   const fullSegments = [...baseSegments, ...relativeSegments]
-  const stat = await safeLstat(fileSystem, hostRoot, fullSegments, "workflow package directory")
-  assertDirectoryKind(stat.kind, relativeSegments.join("/") || "generation root")
-  const physical = normalizeContainmentRoot(
-    await safeRealpath(fileSystem, hostRoot, fullSegments, "workflow package directory")
+  const directory = await snapshotStableDirectory(
+    fileSystem,
+    hostRoot,
+    fullSegments,
+    "workflow package directory"
   )
+  const physical = directory.physical
   if (!safeIsWithin(fileSystem, basePhysical, physical)) {
     throw new Error("Workflow package directory escapes physical containment.")
   }
@@ -151,7 +162,7 @@ async function enumerateDirectory(
   pushValue(directorySnapshots, objectFreeze({
     segments: objectFreeze([...fullSegments]),
     names: sortedNames,
-    identity: stat.identity,
+    identity: directory.identity,
     physical
   }))
 
@@ -170,12 +181,6 @@ async function enumerateDirectory(
     if (childStat.kind !== "directory" && childStat.kind !== "file") {
       throw new Error("Workflow package entries must be regular files or allowed directories.")
     }
-    const childPhysical = normalizeContainmentRoot(
-      await safeRealpath(fileSystem, hostRoot, childFull, "workflow package entry")
-    )
-    if (!safeIsWithin(fileSystem, basePhysical, childPhysical)) {
-      throw new Error("Workflow package entry escapes physical containment.")
-    }
     if (childStat.kind === "directory") {
       if (relativeSegments.length === 0 && name !== "prompts" && name !== "schemas") {
         throw new Error("Workflow package contains an unexpected directory.")
@@ -191,6 +196,12 @@ async function enumerateDirectory(
         entryBudget
       )
       continue
+    }
+    const childPhysical = normalizeContainmentRoot(
+      await safeRealpath(fileSystem, hostRoot, childFull, "workflow package entry")
+    )
+    if (!safeIsWithin(fileSystem, basePhysical, childPhysical)) {
+      throw new Error("Workflow package entry escapes physical containment.")
     }
     const logicalPath = childRelative.join("/")
     pushValue(metadata, objectFreeze({
