@@ -1,3 +1,5 @@
+Replaced: `workflowRegister.openOperationHub`, `workflowRegister.openWorkflowBuilder`, `bobBazaar.openReviewGui`, and `bobCodeConsistency.openReviewWizard` are the current operator routes; the legacy Dashboard and Human Triage surfaces below are retained only as historical design context.
+
 # Bob Bazaar Review Campaign Dashboard Design
 
 **Date:** 2026-07-12  
