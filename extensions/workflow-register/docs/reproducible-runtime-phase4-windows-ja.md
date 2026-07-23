@@ -2,7 +2,7 @@
 
 ## 1. 目的
 
-この文書は、Phase 4 のphysical workspace identityとcross-process leaseをWindowsで検証するときの追加契約を定義します。
+この文書は、Phase 4のphysical workspace identityとcross-process leaseをWindowsで検証するときの追加契約を定義します。
 
 対象は、Windowsの8.3 short path、Node.jsのrealpath API差分、heartbeat中のlock file atomic replacementです。Phase 4本体の契約は`reproducible-runtime-phase4-ja.md`を正本とし、この文書はWindows固有の運用・テスト補遺です。
 
@@ -59,8 +59,8 @@ Windows verificationでは、少なくとも次を確認します。
 - active owner中にlock fileが一時的に消えてもacquirerが即時I/O errorを漏らさない。
 - heartbeat replace中のidentity changeをbounded retryする。
 - timeout後は`busy or locked by another process` familyへ収束する。
-- 同一physical rootのshort/long representationでduplicate executionを許可しない。
-- Operation Hub、Bob runner、artifact transaction、migration backupが同じphysical rootを共有する。
+- 同一physical rootのshort / long representationでduplicate executionを許可しない。
+- `Bob 操作ハブ`、Bob runner、artifact transaction、migration backupが同じphysical rootを共有する。
 - temporary diagnostic workflowを最終diffへ残さない。
 
 ## 5. Operator guidance
