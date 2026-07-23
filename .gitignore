@@ -21,5 +21,7 @@
 /extensions/workflow-register/out
 /extensions/bob-code-consistency-review/node_modules
 /extensions/bob-code-consistency-review/out
+/packages/processing-budget-runtime/node_modules
+/packages/processing-budget-runtime/out
 /.worktrees/
 /.superpowers/
