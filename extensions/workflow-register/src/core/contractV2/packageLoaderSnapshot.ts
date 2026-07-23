@@ -16,6 +16,7 @@ import {
   assertDirectoryChain,
   assertDirectoryKind,
   assertDirectorySnapshotsUnchanged,
+  readStableOpenedFile,
   safeIsWithin,
   safeLstat,
   safeReadDirectory,
@@ -286,30 +287,16 @@ async function readStablePackageFile(
   hostRoot: unknown,
   metadata: FileMetadata
 ): Promise<RawWorkflowPackageFile> {
-  let bytesValue: Uint8Array
-  try {
-    bytesValue = await fileSystem.readFile(hostRoot, metadata.segments)
-  } catch {
-    throw new Error("Workflow package file could not be read safely.")
-  }
-  if (!(bytesValue instanceof Uint8ArrayConstructor)) {
-    throw new Error("Workflow package file system returned invalid file bytes.")
-  }
-  const bytes = new Uint8ArrayConstructor(bytesValue)
-  const after = await safeLstat(fileSystem, hostRoot, metadata.segments, "workflow package file")
-  if (
-    after.kind !== "file"
-    || after.identity !== metadata.stat.identity
-    || after.size !== metadata.stat.size
-    || bytes.byteLength !== metadata.stat.size
-  ) throw new Error("Workflow package file changed during snapshot read.")
-
-  const physical = normalizeContainmentRoot(
-    await safeRealpath(fileSystem, hostRoot, metadata.segments, "workflow package file")
+  const snapshot = await readStableOpenedFile(
+    fileSystem,
+    hostRoot,
+    metadata.segments,
+    metadata.stat,
+    normalizeContainmentRoot(metadata.physical),
+    "workflow package file",
+    normalizeContainmentRoot(metadata.physical)
   )
-  if (physical !== normalizeContainmentRoot(metadata.physical)) {
-    throw new Error("Workflow package file physical identity changed during snapshot read.")
-  }
+  const bytes = snapshot.bytes
   return objectFreeze({
     path: metadata.path,
     bytes,
