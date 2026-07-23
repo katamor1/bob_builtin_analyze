@@ -3,6 +3,8 @@ import type { ProcessingBudgetCategory } from "./generatedProcessingBudgetDefini
 export type ProcessingBudgetErrorCode =
   | "processing_budget_profile_invalid"
   | "processing_budget_category_invalid"
+  | "processing_budget_target_required"
+  | "processing_budget_target_invalid"
   | "processing_budget_reservation_invalid"
   | "processing_budget_exceeded"
   | "processing_budget_commit_invalid"
@@ -11,6 +13,7 @@ export type ProcessingBudgetErrorCode =
 
 export interface ProcessingBudgetErrorDetails {
   readonly targetCategory?: string
+  readonly target?: string
   readonly constrainedCategory?: ProcessingBudgetCategory
   readonly limit?: number
   readonly observed?: number
