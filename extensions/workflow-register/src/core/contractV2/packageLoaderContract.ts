@@ -76,6 +76,7 @@ export interface DirectorySnapshot {
   readonly segments: readonly string[]
   readonly names: readonly string[]
   readonly identity: string
+  readonly physical: string
 }
 
 export interface CandidateTarget {
