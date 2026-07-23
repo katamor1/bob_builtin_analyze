@@ -23,9 +23,13 @@ test("package and extension expose one code consistency GUI command", () => {
 
   assertContributesCommand(packageJson, "bobCodeConsistency.openReviewWizard")
   assert.match(source, /registerCommand\(\s*"bobCodeConsistency\.openReviewWizard"/)
+  assert.match(
+    source,
+    /"bobCodeConsistency\.openReviewWizard",\s*\(options\?: OpenConsistencyReviewWizardOptions\) => openConsistencyReviewWizard\(context, options\)/
+  )
   for (const obsoleteCommand of [
-    "bobCodeConsistency.openResultCaptureGui",
-    "bobCodeConsistency.openHumanTriageGui"
+    ["bobCodeConsistency", "openResultCaptureGui"].join("."),
+    ["bobCodeConsistency", "openHumanTriageGui"].join(".")
   ]) {
     assert.equal(packageJson.contributes.commands.some(({ command }) => command === obsoleteCommand), false)
     assert.doesNotMatch(source, new RegExp(`registerCommand\\(\\s*"${obsoleteCommand.replace(/\./g, "\\.")}"`))
