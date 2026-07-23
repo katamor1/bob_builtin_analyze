@@ -114,7 +114,7 @@ diagnosticはrun ID、severity、code、messageの順で決定的にsortする�
 
 ## 7. Diagnostics
 
-`Bob Workflow: 診断を確認`は、通常のrun diagnosticsに次を追加する。
+`Bob 操作ハブ`のrun cardからDiagnosticsを開くと、通常のrun diagnosticsに次を追加する。内部diagnostics Command IDはhost routing用に維持するが、通常のCommand Paletteには表示しない。
 
 - run state schema version
 - future-version runのread-only表示
