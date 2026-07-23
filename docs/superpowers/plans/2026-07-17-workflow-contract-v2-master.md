@@ -44,10 +44,10 @@ Foundation task F3 may begin only after F1 and F2. P1 waits for F3–F7. Runtime
 | 1 | F1 canonical JSON, digest, and detached deep freeze | **complete; replay/recovery tracked** | focused 34/34, compile, independent review approved |
 | 2 | F2 stable diagnostics and path redaction | **complete; replay/recovery tracked** | focused 19/19, compile, independent review approved |
 | 3 | F3 strict local JSON Schema catalog | **complete; remote checkpoint** | focused 121/121, compile, source policy, full suite 1,402 pass / 1 skip / 0 fail |
-| 4 | F4 strict YAML and closed package schema primitives | pending | YAML/schema focused tests |
-| 5 | F5 shared structured predicate AST | pending | validator/runtime golden parity |
-| 6 | F6 exact provider contract registry | pending | registry/schema/semver focused tests |
-| 7 | F7 audited Bob profile and capability binding | pending | activation/task-profile tests |
+| 4 | F4 strict YAML and closed package schema primitives | **implementation complete; documentation synchronized** | formal focused replay and phase evidence pending |
+| 5 | F5 shared structured predicate AST | **implementation complete; documentation synchronized** | formal focused replay and phase evidence pending |
+| 6 | F6 exact provider contract registry | **implementation complete through `9a0bd62d817992bca8fa31f3b7c986c8c0fe97f8`; documentation synchronized** | final task commit table and formal replay pending |
+| 7 | F7 audited Bob profile and capability binding | **implementation complete; Foundation phase gate pending** | isolated focused evidence 48/48; repository Gate F, policies, full suite, and final review pending |
 | 8 | P1 define package v2 and pointer schemas | pending | schema/layout fixtures |
 | 9 | P2 implement safe generation package loader | pending | path/symlink/snapshot tests |
 | 10 | P3 implement deterministic lock generation/verification | pending | drift matrix and no-write test |
@@ -76,7 +76,7 @@ Foundation task F3 may begin only after F1 and F2. P1 waits for F3–F7. Runtime
 | 33 | C8 add Ubuntu/Windows compiled-manifest CI | pending | artifact compare job |
 | 34 | C9 execute full hard-cutover acceptance and remove converter | pending | A01–A20 and clean tree |
 
-The two completed task results predate workspace recovery. Their acceptance evidence is authoritative: F1 focused 34/34 and F2 focused 19/19, both with compile success and independent review at zero findings. Recovery must replay their exact public behavior before F3; it must not reopen their design.
+F1–F6 implementation is complete, and F7 implementation is complete on the dedicated branch. The historical F1 focused 34/34 and F2 focused 19/19 acceptance evidence remains authoritative and must not be redesigned. P1 remains blocked until the formal Foundation gate, current-main synchronization, final independent review, and the exact seven-task commit evidence table are complete. The live status record is `../../release-evidence/workflow-contract-v2-foundation-status-2026-07-23.md`.
 
 ## Stable cross-plan interfaces
 
