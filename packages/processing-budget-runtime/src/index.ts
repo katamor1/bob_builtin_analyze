@@ -54,11 +54,19 @@ export {
   type OoxmlDocumentKind
 } from "./boundedDocumentIo"
 export {
+  assertParsedXlsxWorkbookWithinBudget,
   commitWorkbookBudget,
+  commitXlsxWorkbookBudget,
+  type ParsedXlsxWorkbookSheet,
+  type WorkbookBudgetArchive,
+  type WorkbookBudgetArchiveEntry,
   type WorkbookBudgetCancellation,
   type WorkbookBudgetCommit,
   type WorkbookBudgetInput,
   type WorkbookBudgetLedger,
   type WorkbookBudgetReservation,
-  type WorkbookBudgetSheet
+  type WorkbookBudgetSheet,
+  type XlsxWorkbookBudgetCommit,
+  type XlsxWorkbookBudgetInput,
+  type XlsxWorkbookBudgetSheet
 } from "./workbookBudget"
