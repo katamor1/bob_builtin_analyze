@@ -20,23 +20,30 @@ function expectCode(runtime, code, operation) {
   })
 }
 
-test("reserves each category at its boundary and rejects limit plus one without mutating state", () => {
+test("reserves every default and absolute category boundary and rejects limit plus one without mutation", () => {
   const runtime = loadRuntime()
-  for (const definition of runtime.PROCESSING_BUDGET_DEFINITION) {
-    const ledger = new runtime.ProcessingBudgetLedger()
-    const before = snapshot(runtime, ledger)
-    const target = `boundary-${definition.id}`
-    const reserve = (amount) => definition.scope === "target"
-      ? ledger.reserveForTarget(definition.id, target, amount)
-      : ledger.reserve(definition.id, amount)
-    const reservation = reserve(definition.defaultLimit)
-    const reserved = byCategory(ledger.snapshot(), definition.id)
-    assert.equal(reserved.reserved, definition.defaultLimit)
-    const afterReservation = snapshot(runtime, ledger)
-    expectCode(runtime, "processing_budget_exceeded", () => reserve(1))
-    assert.deepEqual(snapshot(runtime, ledger), afterReservation)
-    reservation.release()
-    assert.deepEqual(snapshot(runtime, ledger), before)
+  const profiles = [
+    ["default", undefined, (definition) => definition.defaultLimit],
+    ["absolute", runtime.ABSOLUTE_PROCESSING_BUDGET_PROFILE, (definition) => definition.absoluteMaximum]
+  ]
+  for (const [profileName, profile, limitFor] of profiles) {
+    for (const definition of runtime.PROCESSING_BUDGET_DEFINITION) {
+      const ledger = new runtime.ProcessingBudgetLedger(profile)
+      const before = snapshot(runtime, ledger)
+      const target = `${profileName}-boundary-${definition.id}`
+      const reserve = (amount) => definition.scope === "target"
+        ? ledger.reserveForTarget(definition.id, target, amount)
+        : ledger.reserve(definition.id, amount)
+      const limit = limitFor(definition)
+      const reservation = reserve(limit)
+      const reserved = byCategory(ledger.snapshot(), definition.id)
+      assert.equal(reserved.reserved, limit)
+      const afterReservation = snapshot(runtime, ledger)
+      expectCode(runtime, "processing_budget_exceeded", () => reserve(1))
+      assert.deepEqual(snapshot(runtime, ledger), afterReservation)
+      reservation.release()
+      assert.deepEqual(snapshot(runtime, ledger), before)
+    }
   }
 })
 
