@@ -240,63 +240,25 @@
     },
     "menus": {
       "commandPalette": [
-        {
-          "command": "bobCodeConsistency.openReviewWizard"
-        },
-        {
-          "command": "bobCodeConsistency.openResultCaptureGui"
-        },
-        {
-          "command": "bobCodeConsistency.openHumanTriageGui"
-        },
-        {
-          "command": "bobCodeConsistency.initializeWorkspace"
-        },
-        {
-          "command": "bobCodeConsistency.createReviewInput"
-        },
-        {
-          "command": "bobCodeConsistency.prepareAiReviewInputDraft"
-        },
-        {
-          "command": "bobCodeConsistency.applyAiReviewInputDraft"
-        },
-        {
-          "command": "bobCodeConsistency.prepareAiTraceabilityDraft"
-        },
-        {
-          "command": "bobCodeConsistency.captureAiTraceabilityDraft"
-        },
-        {
-          "command": "bobCodeConsistency.applyAiTraceabilityDraft"
-        },
-        {
-          "command": "bobCodeConsistency.openTraceabilityPrep"
-        },
-        {
-          "command": "bobCodeConsistency.validateTraceabilityCatalog"
-        },
-        {
-          "command": "bobCodeConsistency.createReviewInputFromTraceability"
-        },
-        {
-          "command": "bobCodeConsistency.repairReviewInput"
-        },
-        {
-          "command": "bobCodeConsistency.explainReviewInputDiagnostics"
-        },
-        {
-          "command": "bobCodeConsistency.preprocess"
-        },
-        {
-          "command": "bobCodeConsistency.captureBobOutput"
-        },
-        {
-          "command": "bobCodeConsistency.validateOutput"
-        },
-        {
-          "command": "bobCodeConsistency.triage"
-        }
+        { "command": "bobCodeConsistency.openReviewWizard" },
+        { "command": "bobCodeConsistency.openResultCaptureGui" },
+        { "command": "bobCodeConsistency.openHumanTriageGui" },
+        { "command": "bobCodeConsistency.initializeWorkspace" },
+        { "command": "bobCodeConsistency.createReviewInput" },
+        { "command": "bobCodeConsistency.prepareAiReviewInputDraft" },
+        { "command": "bobCodeConsistency.applyAiReviewInputDraft" },
+        { "command": "bobCodeConsistency.prepareAiTraceabilityDraft" },
+        { "command": "bobCodeConsistency.captureAiTraceabilityDraft" },
+        { "command": "bobCodeConsistency.applyAiTraceabilityDraft" },
+        { "command": "bobCodeConsistency.openTraceabilityPrep" },
+        { "command": "bobCodeConsistency.validateTraceabilityCatalog" },
+        { "command": "bobCodeConsistency.createReviewInputFromTraceability" },
+        { "command": "bobCodeConsistency.repairReviewInput" },
+        { "command": "bobCodeConsistency.explainReviewInputDiagnostics" },
+        { "command": "bobCodeConsistency.preprocess" },
+        { "command": "bobCodeConsistency.captureBobOutput" },
+        { "command": "bobCodeConsistency.validateOutput" },
+        { "command": "bobCodeConsistency.triage" }
       ]
     }
   },
@@ -305,7 +267,7 @@
     "source:policy": "node scripts/check-export-star-policy.js src",
     "unused:report": "node scripts/run-unused-checks.js",
     "audit:prod": "npm audit --omit=dev --audit-level=high",
-    "compile": "tsc -p ./",
+    "compile": "node ../../packages/processing-budget-runtime/scripts/generate-processing-budget-contracts.js --check && tsc -p ../../packages/processing-budget-runtime && node ../../packages/processing-budget-runtime/scripts/copy-bounded-document-runtime.js && tsc -p ./ && node ../../packages/processing-budget-runtime/scripts/copy-extension-runtime.js out/shared-processing-budget-runtime",
     "dependency:policy": "node --test test/dependencyPolicy.test.js",
     "test": "npm run compile && node --test test/*.test.js",
     "watch": "tsc -watch -p ./",
