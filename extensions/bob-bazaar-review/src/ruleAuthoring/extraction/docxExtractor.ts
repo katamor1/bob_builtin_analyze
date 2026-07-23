@@ -3,7 +3,8 @@ import {
   ProcessingBudgetLedger,
   preflightOoxmlArchive,
   readBoundedDocumentFile,
-  type SharedProcessingBudgetLedger
+  type SharedProcessingBudgetLedger,
+  type SharedWorkbookBudgetCancellation
 } from "../../sharedProcessingBudgetRuntime"
 import { splitDocumentChunk } from "../documentChunk"
 import { DEFAULT_RULE_AUTHORING_LIMITS } from "../ruleAuthoringLimits"
@@ -20,6 +21,7 @@ export interface DocxExtractionContext {
   maxArchiveEntries?: number
   maxExpandedBytes?: number
   budgetLedger?: SharedProcessingBudgetLedger
+  signal?: SharedWorkbookBudgetCancellation
 }
 
 export interface DocxExtractionResult {
@@ -29,7 +31,7 @@ export interface DocxExtractionResult {
   extractor: { id: string; version: string }
 }
 
-const DOCX_EXTRACTOR = Object.freeze({ id: "docx-mammoth-html", version: "3" })
+const DOCX_EXTRACTOR = Object.freeze({ id: "docx-mammoth-html", version: "2" })
 
 let cheerioModulePromise: Promise<CheerioModule> | undefined
 let mammothModulePromise: Promise<MammothModule> | undefined
@@ -83,6 +85,7 @@ export async function extractDocx(
     maximumExpandedBytes: maxExpandedBytes
   })
 
+  throwIfCancelled(context.signal)
   const [mammoth, cheerio] = await Promise.all([loadMammoth(), loadCheerio()])
   const conversion = await mammoth.convertToHtml(
     { buffer: Buffer.from(snapshot.copyBytes()) },
@@ -91,6 +94,7 @@ export async function extractDocx(
       convertImage: mammoth.images.imgElement(async () => ({ src: "" }))
     }
   )
+  throwIfCancelled(context.signal)
   const $ = cheerio.load(conversion.value)
   const warnings = new Set<string>()
   if (conversion.messages.length > 0) warnings.add("mammoth_warning")
@@ -101,7 +105,7 @@ export async function extractDocx(
   let tableIndex = 0
 
   $("body").children().each((blockIndex, element) => {
-    const tag = (element as { tagName?: string }).tagName?.toLowerCase()
+    const tag = element.tagName?.toLowerCase()
     const selection = $(element)
     if (tag && /^h[1-6]$/.test(tag)) {
       const text = normalizedText(selection.text())
@@ -203,6 +207,12 @@ function archiveTarget(kind: "docx", sourceId: string): string {
 
 function boundedSourceId(sourceId: string): string {
   return /^[A-Za-z0-9._-]{1,96}$/.test(sourceId) ? sourceId : "untrusted-source"
+}
+
+function throwIfCancelled(signal: SharedWorkbookBudgetCancellation | undefined): void {
+  if (!signal?.aborted) return
+  if (signal.reason instanceof Error) throw signal.reason
+  throw new Error("DOCX extraction was cancelled")
 }
 
 function tableText($: CheerioAPI, table: unknown): string {
