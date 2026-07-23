@@ -1,8 +1,15 @@
 const assert = require("node:assert/strict")
 const fs = require("node:fs")
+const fsp = require("node:fs/promises")
 const os = require("node:os")
 const path = require("node:path")
 const { test } = require("node:test")
+const {
+  fixtureBytes,
+  packageDigest,
+  rootSubject,
+  subject
+} = require("./workflowContractV2PackageLoaderTestSupport")
 
 test("Node package filesystem adapter exposes stable file kinds, bytes, containment, flush, and rename", async (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "workflow-package-node-adapter-"))
@@ -173,3 +180,94 @@ test("VS Code adapter requires a provider-bound openFile snapshot", async () => 
   await opened.close()
   assert.equal(closeCalls, 1)
 })
+
+test("Node and VS Code adapters produce identical raw package evidence", async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "workflow-package-adapter-parity-"))
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const files = fixtureBytes()
+  const digest = packageDigest(files)
+  const generationDirectory = `sha256-${digest.slice("sha256:".length)}`
+  const generationRoot = path.join(root, "minimal", "versions", generationDirectory)
+  fs.mkdirSync(generationRoot, { recursive: true })
+  for (const [logicalPath, bytes] of Object.entries(files)) {
+    const target = path.join(generationRoot, ...logicalPath.split("/"))
+    fs.mkdirSync(path.dirname(target), { recursive: true })
+    fs.writeFileSync(target, bytes)
+  }
+
+  const { createNodeWorkflowPackageFileSystem } = require("../out/core/contractV2/packageFileSystemNode.js")
+  const { createVscodeWorkflowPackageFileSystem } = require("../out/core/contractV2/packageFileSystemVscode.js")
+  const nodeAdapter = createNodeWorkflowPackageFileSystem()
+  const vscodeAdapter = createVscodeWorkflowPackageFileSystem({
+    workspaceFs: {
+      async stat(uri) { return vscodeStat(await fsp.lstat(uri, { bigint: true })) },
+      async readDirectory(uri) {
+        const entries = await fsp.readdir(uri, { withFileTypes: true })
+        return entries.map((entry) => [entry.name, entry.isSymbolicLink() ? 64 : entry.isFile() ? 1 : entry.isDirectory() ? 2 : 0])
+      },
+      async readFile(uri) { return fsp.readFile(uri) },
+      async rename(from, to) { await fsp.rename(from, to) }
+    },
+    joinPath: (base, ...segments) => path.join(base, ...segments),
+    realpath: (uri) => fsp.realpath(uri),
+    isWithin: (base, candidate) => {
+      const relative = path.relative(base, candidate)
+      return relative === "" || (!path.isAbsolute(relative) && relative !== ".." && !relative.startsWith(`..${path.sep}`))
+    },
+    snapshotIdentity: (_uri, stat) => stat.snapshotIdentity,
+    openFile: async (uri) => {
+      const noFollow = typeof fs.constants.O_NOFOLLOW === "number" ? fs.constants.O_NOFOLLOW : 0
+      const handle = await fsp.open(uri, fs.constants.O_RDONLY | noFollow)
+      const initialStat = vscodeStat(await handle.stat({ bigint: true }))
+      return {
+        initialStat,
+        async read() { return handle.readFile() },
+        async stat() { return vscodeStat(await handle.stat({ bigint: true })) },
+        async close() { await handle.close() }
+      }
+    }
+  })
+
+  const createRoot = rootSubject().createWorkflowPackageRoot
+  const loader = subject().loadWorkflowPackageGeneration
+  const nodeResult = await loader({
+    fileSystem: nodeAdapter,
+    collectionRoot: createRoot(nodeAdapter, root),
+    workflowId: "minimal",
+    generation: digest
+  })
+  const vscodeResult = await loader({
+    fileSystem: vscodeAdapter,
+    collectionRoot: createRoot(vscodeAdapter, root),
+    workflowId: "minimal",
+    generation: digest
+  })
+
+  const evidence = (value) => ({
+    publication: value.publication,
+    workflowId: value.workflowId,
+    generation: value.generation,
+    packageDigest: value.packageDigest,
+    files: value.files.map((file) => ({
+      path: file.path,
+      byteLength: file.byteLength,
+      digest: file.digest,
+      bytes: Buffer.from(file.bytes).toString("hex")
+    }))
+  })
+  assert.deepEqual(evidence(vscodeResult), evidence(nodeResult))
+})
+
+function vscodeStat(stats) {
+  const size = Number(stats.size)
+  const kind = stats.isSymbolicLink() ? 64 : stats.isFile() ? 1 : stats.isDirectory() ? 2 : 0
+  return {
+    type: kind,
+    size,
+    ctime: Number(stats.ctimeMs),
+    mtime: Number(stats.mtimeMs),
+    snapshotIdentity: [stats.dev, stats.ino, stats.mode, stats.size, stats.mtimeNs, stats.ctimeNs]
+      .map((value) => value.toString())
+      .join(":")
+  }
+}
