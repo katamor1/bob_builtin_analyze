@@ -47,3 +47,28 @@ test("file-count, per-file, total-byte, depth, and logical-path limits fail befo
   pathFs.addFile([...pathInstalled.base, "prompts", `${"a".repeat(230)}.md`], Buffer.from("x"))
   await assert.rejects(() => load(pathFs, pathInstalled.digest), /path.*240|logical path/i)
 })
+
+test("directory entry count is rejected before descriptor snapshot and sorting", async () => {
+  const fileSystem = new MemoryPackageFileSystem()
+  const installed = installPublished(fileSystem)
+  const originalReadDirectory = fileSystem.readDirectory.bind(fileSystem)
+  let getterCalls = 0
+  fileSystem.readDirectory = async (root, segments) => {
+    if (segments.join("/") !== installed.base.join("/")) {
+      return originalReadDirectory(root, segments)
+    }
+    const names = Array.from({ length: 515 }, (_, index) => `entry-${index}`)
+    Object.defineProperty(names, "0", {
+      enumerable: true,
+      configurable: true,
+      get() {
+        getterCalls += 1
+        return "entry-0"
+      }
+    })
+    return names
+  }
+
+  await assert.rejects(() => load(fileSystem, installed.digest), /directory entry count|entry limit|512-file limit/i)
+  assert.equal(getterCalls, 0)
+})
