@@ -148,3 +148,38 @@ test("loader rejects a symbolic-link entry before resolving its physical target"
     "a rejected symbolic link must never be followed through realpath"
   )
 })
+
+test("loader rejects control-file and directory physical identity changes during a snapshot", async () => {
+  const pointerFs = new MemoryPackageFileSystem()
+  installPublished(pointerFs)
+  let pointerChanged = false
+  pointerFs.hooks.afterReadFile = (segments, fs) => {
+    if (!pointerChanged && segments.join("/").endsWith("current.json")) {
+      pointerChanged = true
+      fs.entries.get(fs.key(segments)).physical = "/outside/current.json"
+    }
+  }
+  const pointerRoot = rootSubject().createWorkflowPackageRoot(pointerFs, {})
+  await assert.rejects(() => subject().loadCurrentWorkflowPackage({
+    fileSystem: pointerFs,
+    collectionRoot: pointerRoot,
+    workflowId: "minimal"
+  }), /physical|changed|contain/i)
+
+  const directoryFs = new MemoryPackageFileSystem()
+  const installed = installPublished(directoryFs)
+  let directoryMoved = false
+  directoryFs.hooks.afterReadFile = (_segments, fs) => {
+    if (!directoryMoved) {
+      directoryMoved = true
+      fs.entries.get(fs.key([...installed.base, "prompts"])).physical = "/outside/prompts"
+    }
+  }
+  const directoryRoot = rootSubject().createWorkflowPackageRoot(directoryFs, {})
+  await assert.rejects(() => subject().loadWorkflowPackageGeneration({
+    fileSystem: directoryFs,
+    collectionRoot: directoryRoot,
+    workflowId: "minimal",
+    generation: installed.digest
+  }), /physical|directory.*changed/i)
+})
