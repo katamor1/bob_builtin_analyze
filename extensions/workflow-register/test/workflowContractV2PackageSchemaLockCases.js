@@ -91,23 +91,46 @@ test("lock collection limits are checked before entry validation", () => {
   maxFiles.schemas = Array.from({ length: 255 }, (_, index) => fileEvidence("schema", index))
   assert.equal(decodeWorkflowPackageLock(maxFiles).prompts.length, 255)
 
+  let combinedTrapCalls = 0
   const tooManyCombined = clone(maxFiles)
   tooManyCombined.prompts.push(fileEvidence("prompt", 255))
+  tooManyCombined.schemas[0] = new Proxy({ bad: true }, {
+    ownKeys() {
+      combinedTrapCalls += 1
+      throw new Error("must not run")
+    }
+  })
   assert.throws(() => decodeWorkflowPackageLock(tooManyCombined), /combined/)
+  assert.equal(combinedTrapCalls, 0)
 
+  let promptTrapCalls = 0
   const overPromptLimit = validLock()
   overPromptLimit.prompts = Array.from({ length: 511 }, (_, index) => fileEvidence("prompt", index))
-  overPromptLimit.prompts[0] = { bad: true }
+  overPromptLimit.prompts[0] = new Proxy({ bad: true }, {
+    ownKeys() {
+      promptTrapCalls += 1
+      throw new Error("must not run")
+    }
+  })
   assert.throws(() => decodeWorkflowPackageLock(overPromptLimit), /length/)
+  assert.equal(promptTrapCalls, 0)
 
   const maxProviders = validLock()
   maxProviders.providers = Array.from({ length: 256 }, (_, index) => providerEvidence(index))
   assert.equal(decodeWorkflowPackageLock(maxProviders).providers.length, 256)
 
+  let providerGetterCalls = 0
   const tooManyProviders = validLock()
   tooManyProviders.providers = Array.from({ length: 257 }, (_, index) => providerEvidence(index))
-  tooManyProviders.providers[0] = { bad: true }
+  tooManyProviders.providers[0] = Object.defineProperty({}, "id", {
+    enumerable: true,
+    get() {
+      providerGetterCalls += 1
+      return "provider-000"
+    }
+  })
   assert.throws(() => decodeWorkflowPackageLock(tooManyProviders), /length/)
+  assert.equal(providerGetterCalls, 0)
 })
 
 test("file evidence enforces exact paths, byte bounds, digests, sort order, and independent id/path uniqueness", () => {
