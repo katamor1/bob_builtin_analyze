@@ -120,7 +120,7 @@ test("applies local limits per target while aggregating committed usage operatio
   )
 })
 
-test("requires target-scoped categories to use a bounded explicit target", () => {
+test("requires target-scoped categories to use an explicit target bounded to 256 UTF-8 bytes", () => {
   const runtime = loadRuntime()
   const ledger = new runtime.ProcessingBudgetLedger()
   expectCode(runtime, "processing_budget_target_required", () => {
@@ -129,7 +129,13 @@ test("requires target-scoped categories to use a bounded explicit target", () =>
   expectCode(runtime, "processing_budget_target_invalid", () => {
     ledger.reserveForTarget("raw_diff_bytes", "diff", 1)
   })
-  for (const target of ["", "x".repeat(32_769)]) {
+  assert.equal(runtime.PROCESSING_BUDGET_TARGET_MAX_UTF8_BYTES, 256)
+  ledger.reserveForTarget(
+    "single_document_bytes",
+    "x".repeat(runtime.PROCESSING_BUDGET_TARGET_MAX_UTF8_BYTES),
+    1
+  ).release()
+  for (const target of ["", "x".repeat(257), "界".repeat(86)]) {
     expectCode(runtime, "processing_budget_target_invalid", () => {
       ledger.reserveForTarget("single_document_bytes", target, 1)
     })
