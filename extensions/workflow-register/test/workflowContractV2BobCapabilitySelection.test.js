@@ -70,17 +70,28 @@ test("binding rejects unknown, duplicate, unsorted, sparse, proxied, and extra-p
   }
 })
 
-test("task probe validates and binds only the selected task subset", () => {
+test("task probe validates only the selected task subset and returns detached evidence", () => {
   const { probeBobTaskCapabilities } = subject()
-  const task = { sendMessage() { return "sent" } }
+  const calls = []
+  const task = { sendMessage() { calls.push("send") } }
+  const requiredCapabilities = ["task.sendMessage"]
   const result = probeBobTaskCapabilities({
     expectedProfileDigest: DIGEST,
-    requiredCapabilities: ["task.sendMessage"],
+    requiredCapabilities,
     task
   })
+  requiredCapabilities[0] = "changed"
 
-  assert.deepEqual(Object.keys(result), ["sendMessage"])
-  assert.equal(result.sendMessage(), "sent")
+  assert.deepEqual(result, {
+    ok: true,
+    profileDigest: DIGEST,
+    taskCapabilities: ["task.sendMessage"]
+  })
+  assert.deepEqual(calls, [])
+  assert.equal("sendMessage" in result, false)
+  assert.equal("task" in result, false)
+  assert.equal(Object.isFrozen(result), true)
+  assert.equal(Object.isFrozen(result.taskCapabilities), true)
 })
 
 test("task probe rejects source, unknown, duplicate, and unsorted requested capabilities", async (t) => {
