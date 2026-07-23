@@ -1,4 +1,8 @@
-import { BOB_2_0_1_PROFILE_DIGEST, probeBobTaskCapabilities } from "./core/contractV2/bobProfile"
+import {
+  BOB_2_0_1_PROFILE_DIGEST,
+  BOB_2_0_1_TASK_CAPABILITIES,
+  probeBobTaskCapabilities
+} from "./core/contractV2/bobProfile"
 import type {
   BobWorkflow,
   BobWorkflowStep,
@@ -62,6 +66,7 @@ function buildWorkflowSteps(
 function probeTask(task: BobWorkflowTask): BobWorkflowTask {
   return probeBobTaskCapabilities({
     expectedProfileDigest: BOB_2_0_1_PROFILE_DIGEST,
+    requiredCapabilities: BOB_2_0_1_TASK_CAPABILITIES,
     task
   })
 }
