@@ -14,7 +14,7 @@ F1–F7 implementation is present on `codex/workflow-contract-v2-f7`, but the Fo
 | F4 strict YAML/package shape | implementation complete | source and focused test implementation present; formal phase replay pending | exact task commit to recover at phase gate |
 | F5 shared predicate AST | implementation complete | source, golden fixture, and focused test implementation present; formal phase replay pending | exact task commit to recover at phase gate |
 | F6 provider contract registry | implementation complete | registry implementation and boundary tests present through branch baseline `9a0bd62d817992bca8fa31f3b7c986c8c0fe97f8` | final F6 feature/fix commit set to recover at phase gate |
-| F7 audited Bob profile | implementation complete; review/gate pending | exact `IBM.bob-code@2.0.1` profile, digest, two-stage binding, explicit P4/R5 task-binding handoff, stale-registration cleanup, and real-probe lifecycle integration present | current implementation/test head `a9c994290c045be48d8a1dc85e870ed78bf55b13`; final reviewed head not yet frozen |
+| F7 audited Bob profile | implementation complete; review/gate pending | exact `IBM.bob-code@2.0.1` profile, digest, two-stage binding, explicit P4/R5 task-binding handoff, stale-registration cleanup, and real-probe lifecycle integration present | current implementation/test head `e895c43b5275018bbc04265c8f7936be8266827d`; final reviewed head not yet frozen |
 
 ## F7 fixed evidence
 
@@ -36,19 +36,20 @@ These checks were executed against reconstructed copies of the current relevant 
 profile/factory strict TypeScript compile: exit 0
 focused profile/factory harness: 48 test events / 48 pass / 0 fail
 explicit legacy/compiled binding boundary strict TypeScript compile: exit 0
-binding-boundary source tests: 2 pass / 0 fail
+workflowDefinitionLoader + F7 binding source suites: 6 pass / 0 fail / 0 skip
 legacy real-probe plus original-task-identity integration harness: pass
 ```
 
 ## Review record
 
-Codex reviews reported five actionable findings:
+Codex reviews reported six actionable findings:
 
 1. Probe exact workflow task-capability subset — fixed and resolved.
 2. Do not mutate legacy task fixtures — fixed and resolved.
 3. Close the production handoff gap — fixed by introducing an explicit adapter binding argument.
 4. Run legacy lifecycle factory cases through the real probe — fixed and resolved.
 5. Remove the false legacy-compiler cast — fixed; the v1 loader now supplies only its explicit legacy binding, while P4/R5 owns compiled-plan evidence.
+6. Update existing loader assertions for the required binding argument — fixed; the reported combined source suites now pass 6/6.
 
 A final independent re-review of the current/final head remains required. Critical and Important findings must be zero before the Foundation gate can close.
 
