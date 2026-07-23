@@ -2,7 +2,8 @@ import { createHash } from "node:crypto"
 import * as path from "node:path"
 import {
   ProcessingBudgetLedger,
-  readBoundedDocumentFile
+  readBoundedDocumentFile,
+  type SharedProcessingBudgetLedger
 } from "../sharedProcessingBudgetRuntime"
 import { DEFAULT_RULE_AUTHORING_LIMITS } from "./ruleAuthoringLimits"
 
@@ -18,6 +19,7 @@ export interface SourceFingerprintOptions {
   maximumBytes?: number
   rootPath?: string
   target?: string
+  ledger?: SharedProcessingBudgetLedger
 }
 
 const FINGERPRINT_FIELDS: ReadonlyArray<keyof SourceFingerprint> = [
@@ -34,7 +36,7 @@ export async function fingerprintSource(
 ): Promise<SourceFingerprint> {
   const maximumBytes = boundedMaximumBytes(options.maximumBytes)
   const absolutePath = path.resolve(filePath)
-  const ledger = new ProcessingBudgetLedger({
+  const ledger = options.ledger ?? new ProcessingBudgetLedger({
     limits: {
       single_document_bytes: maximumBytes,
       total_document_bytes: maximumBytes,
