@@ -47,6 +47,7 @@ test("Bob registration binds the exact audited profile before source registratio
   assert.match(source, /extensionId: ext\.id/)
   assert.match(source, /extensionVersion: packageJson\?\.version/)
   assert.match(source, /expectedProfileDigest: BOB_2_0_1_PROFILE_DIGEST/)
+  assert.match(source, /requiredCapabilities: BOB_2_0_1_CAPABILITIES/)
   assert.match(source, /liveExport: exportsValue/)
   assert.doesNotMatch(source, /as BobWorkflowApi/)
   assert.doesNotMatch(source, /asSource\(/)
