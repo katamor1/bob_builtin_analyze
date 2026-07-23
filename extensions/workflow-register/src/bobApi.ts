@@ -1,5 +1,6 @@
 import * as vscode from "vscode"
 import {
+  BOB_2_0_1_CAPABILITIES,
   BOB_2_0_1_PROFILE_DIGEST,
   bindBobCapabilities,
   type BoundBobCapabilities,
@@ -35,6 +36,7 @@ export async function loadBobApi(extensionId: string): Promise<LoadedBobApi> {
       extensionId: ext.id,
       extensionVersion: packageJson?.version,
       expectedProfileDigest: BOB_2_0_1_PROFILE_DIGEST,
+      requiredCapabilities: BOB_2_0_1_CAPABILITIES,
       liveExport: exportsValue
     })
     return { found: true, active: Boolean(ext.isActive), activationError, api }
