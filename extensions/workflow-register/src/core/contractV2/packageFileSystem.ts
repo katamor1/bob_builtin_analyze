@@ -14,8 +14,16 @@ export interface WorkflowPackageFileStat {
   readonly identity: string
 }
 
+export interface WorkflowPackageOpenFile {
+  readonly initialStat: WorkflowPackageFileStat
+  read(): Promise<Uint8Array>
+  stat(): Promise<WorkflowPackageFileStat>
+  close(): Promise<void>
+}
+
 export interface WorkflowPackageFileSystem<HostRoot = unknown> {
   lstat(root: HostRoot, segments: readonly string[]): Promise<WorkflowPackageFileStat>
+  openFile(root: HostRoot, segments: readonly string[]): Promise<WorkflowPackageOpenFile>
   readDirectory(root: HostRoot, segments: readonly string[]): Promise<readonly string[]>
   readFile(root: HostRoot, segments: readonly string[]): Promise<Uint8Array>
   realpath(root: HostRoot, segments: readonly string[]): Promise<string>
