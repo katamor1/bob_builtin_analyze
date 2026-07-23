@@ -1,3 +1,5 @@
+Replaced: `workflowRegister.openOperationHub` and `workflowRegister.openWorkflowBuilder` are the current workflow operator routes; the legacy workflow control surface reference below is retained only as historical runtime v2 budget and cancellation planning evidence.
+
 # Workflow Reproducible Runtime v2 Budgets and Cancellation Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (- [ ]) syntax for tracking.
@@ -245,7 +247,6 @@ TerminalResolution is provider-confirmed-cancelled, provider-result-won, cancel-
 
 **Interface:**
 
-    CommandProcessController.spawn(spec, invocation): ManagedProcess
     ManagedProcess.cancel(deadline): ProcessCancellationReceipt
     ManagedProcess.inspectTree(): ProcessTreeObservation
 
