@@ -22,7 +22,10 @@ import {
   runPrepareAiTraceabilityDraft,
   runValidateTraceabilityCatalog
 } from "./traceabilityCommands"
-import { openConsistencyReviewWizard } from "./webview/consistencyReviewWizard"
+import {
+  openConsistencyReviewWizard,
+  type OpenConsistencyReviewWizardOptions
+} from "./webview/consistencyReviewWizard"
 import {
   registerWorkflowProviders,
   type CodeConsistencyWorkflowHandlers,
@@ -37,7 +40,7 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.commands.registerCommand(
       "bobCodeConsistency.openReviewWizard",
-      () => openConsistencyReviewWizard(context)
+      (options?: OpenConsistencyReviewWizardOptions) => openConsistencyReviewWizard(context, options)
     ),
     vscode.commands.registerCommand(
       "bobCodeConsistency.initializeWorkspace",
