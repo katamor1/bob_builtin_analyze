@@ -104,7 +104,9 @@ async function extractRuleDocumentWithContext(
   const logicalName = request.logicalName ?? path.basename(absolutePath)
   assertLogicalName(logicalName)
   const mediaType = classifySelectedPath(absolutePath, logicalName)
-  const before = context.beforeFingerprint ?? await fingerprintSource(absolutePath)
+  const before = context.beforeFingerprint ?? await fingerprintSource(absolutePath, {
+    maximumBytes: limits.maxSourceBytes
+  })
   const byteSize = fingerprintByteSize(before)
   if (byteSize > limits.maxSourceBytes) {
     throw new Error(`Rule source exceeds the ${limits.maxSourceBytes}-byte per-source limit`)
@@ -142,7 +144,9 @@ async function extractRuleDocumentWithContext(
     })
   }
 
-  const after = await fingerprintSource(absolutePath)
+  const after = await fingerprintSource(absolutePath, {
+    maximumBytes: limits.maxSourceBytes
+  })
   assertStableSourceFingerprint(before, after)
   const shareable = (mediaType === "docx" || mediaType === "xlsx" || mediaType === "pdf") &&
     (extracted.status === "success" || extracted.status === "partial")
@@ -175,7 +179,9 @@ export async function extractRuleDocuments(
     const absolutePath = path.resolve(request.filePath)
     const logicalName = request.logicalName ?? path.basename(absolutePath)
     assertLogicalName(logicalName)
-    const fingerprint = await fingerprintSource(absolutePath)
+    const fingerprint = await fingerprintSource(absolutePath, {
+      maximumBytes: effectiveLimits.maxSourceBytes
+    })
     const byteSize = fingerprintByteSize(fingerprint)
     if (byteSize > effectiveLimits.maxSourceBytes) {
       throw new Error(`Rule source exceeds the ${effectiveLimits.maxSourceBytes}-byte per-source limit`)
