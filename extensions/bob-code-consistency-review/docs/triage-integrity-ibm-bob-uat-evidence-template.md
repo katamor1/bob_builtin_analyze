@@ -1,4 +1,4 @@
-# Human Triage Integrity IBM Bob UAT Evidence
+# 指摘確認・振り分け整合性 IBM Bob UAT Evidence
 
 > このfileはtemplateである。実施時は`docs/release-evidence/triage-integrity-ibm-bob-uat-YYYY-MM-DD.md`へcopyし、原本を変更しない。
 
@@ -11,8 +11,8 @@
 | 実施者 |  |
 | Reviewer |  |
 | Repository | `katamor1/bob_builtin_analyze` |
-| Pull Request | `#74` |
-| Branch | `agent/bob-code-consistency-review-triage-integrity` |
+| Pull Request |  |
+| Branch |  |
 | Tested commit SHA |  |
 | VSIX build commit SHA |  |
 | OS / version |  |
@@ -30,8 +30,10 @@ SHA不一致の場合は実施を中止し、正しいVSIXで最初からやり�
 - [ ] sandbox workspaceである
 - [ ] Tested commitとVSIX build commitが一致する
 - [ ] IBM Bobが有効
-- [ ] workflow-registerが有効
+- [ ] workflow-register連携を確認するcaseではworkflow-registerが有効
 - [ ] bob-code-consistency-reviewが有効
+- [ ] `整合プレレビュー`主GUIを開ける
+- [ ] 同じpanelで`レビュー結果取り込み`と`指摘確認・振り分け`へ遷移できる
 - [ ] Developer Tools Consoleをclearした
 - [ ] screenshot / logの保存先を作成した
 - [ ] 秘密情報・顧客dataを使用していない
@@ -42,9 +44,9 @@ SHA不一致の場合は実施を中止し、正しいVSIXで最初からやり�
 | --- | --- | --- | --- | --- |
 | CCR-RT-023 | Bob Workflow UI preprocess |  |  |  |
 | CCR-RT-024 | Bob agentによるpre-review |  |  |  |
-| CCR-RT-026 | workflow result handoff capture |  |  |  |
+| CCR-RT-026 | workflow result handoff / レビュー結果取り込み |  |  |  |
 | CCR-RT-031 | Bob Workflow UI E2E |  |  |  |
-| CCR-RT-036 | generate / edit / save / reload |  |  |  |
+| CCR-RT-036 | 指摘確認・振り分け generate / edit / save / reload |  |  |  |
 | CCR-RT-037 | source change conflict |  |  |  |
 | CCR-RT-038 | two-window revision conflict |  |  |  |
 | CCR-RT-039 | legacy migration |  |  |  |
@@ -64,16 +66,18 @@ SHA不一致の場合は実施を中止し、正しいVSIXで最初からやり�
 | run ID |  |
 | preprocess result |  |
 | Bob agent result |  |
-| capture result |  |
+| レビュー結果取り込み result |  |
 | validation result |  |
-| triage result |  |
+| 指摘確認・振り分け result |  |
 | result handoff確認 |  |
 | run state export |  |
 | Bob output SHA-256 |  |
 | triage source SHA-256 |  |
 | triage decisions revision |  |
 
-## 5. Human Triage artifact inventory
+## 5. 指摘確認・振り分け artifact inventory
+
+`.bob-review/human-triage` は永続artifactの互換パス名であり、operator操作は主GUI内stageから行う。
 
 | File | 存在 | SHA-256 | 判定 / note |
 | --- | --- | --- | --- |
@@ -126,6 +130,7 @@ SHA不一致の場合は実施を中止し、正しいVSIXで最初からやり�
 
 ## 8. Webview and accessibility
 
+- [ ] `整合プレレビュー`主GUI内でstageを切り替えられる
 - [ ] source contextとhuman decision fieldを区別できる
 - [ ] suggested ownerがownerへ自動入力されない
 - [ ] 未判断optionが明確
@@ -153,7 +158,7 @@ SHA不一致の場合は実施を中止し、正しいVSIXで最初からやり�
 | request summary |  |
 | result summary |  |
 | workflow run stateとの対応 |  |
-| Human Triage fileを無断更新しなかった |  |
+| 指摘確認・振り分け正本fileを無断更新しなかった |  |
 | failure handling |  |
 | credential redaction |  |
 
