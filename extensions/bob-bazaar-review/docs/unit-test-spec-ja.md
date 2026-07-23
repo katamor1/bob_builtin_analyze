@@ -2,349 +2,356 @@
 
 ## 1. 目的
 
-本書は `extensions/bob-bazaar-review` の単体テスト仕様を定義する。対象は Bazaar CLI wrapper、文字コード、workspace 解決、review packet、workflow-register bridge、project rules、review-result capture、MCP server、review record / triage / summary、直接レビュー command である。
+本書は`extensions/bob-bazaar-review`の自動テスト契約を定義する。対象はBazaar CLI wrapper、文字コード、workspace解決、review packet、Review Run、project rules、review-result、指摘確認・振り分け、レビュー実績、文書ベース規約作成、MCP、workflow provider、主GUI lifecycleである。
 
-## 2. テスト実行方式
+## 2. 実行方式
 
 | 項目 | 内容 |
 | --- | --- |
-| 実行コマンド | `npm run compile && node --test test/*.test.js` |
-| 対象成果物 | `out/` 配下へ compile された JavaScript |
-| テストランナー | Node.js built-in test runner |
-| 外部依存 | VS Code API、Bob API、Bazaar CLI は mock / stub 化する |
-| ファイル I/O | `fs.mkdtemp()` で一時 Bob workspace / Bazaar workspace を作成する |
+| compile | `npm run compile` |
+| full suite | `node --test test/*.test.js`または`npm test` |
+| runner | Node.js built-in test runner |
+| VS Code / Bob | mock / stub |
+| Bazaar CLI | fake executableまたはinjected process runner |
+| filesystem | `fs.mkdtemp()`でtestごとに隔離 |
 
-## 3. 共通テストデータ
+## 3. 公開surface contract
 
-| データ | 内容 |
-| --- | --- |
-| `bazaarRootFixture` | `.bzr` marker を持つ一時 directory。 |
-| `bobRootFixture` | `.bob` marker を持つ一時 directory。 |
-| `singleRevisionLog` | revision、author、timestamp、message を含む Bazaar log。 |
-| `unifiedDiffSmall` | 1 file 変更の unified diff。 |
-| `unifiedDiffLarge` | `maxDiffBytes` を超える unified diff。 |
-| `addedFileDiff` | added file を含む diff。 |
-| `projectChecklist` | `rules[]` と category を持つ checklist JSON。 |
-| `reviewResultValid` | schema に合う review-result JSON。 |
-| `reviewResultInvalid` | required field または evidence 条件に違反する JSON。 |
-| `mcpRequest` | `initialize`、`tools/list`、`tools/call` の JSON-RPC request。 |
+### BZR-UT-SURFACE-001 公開Command Palette entry
 
-## 4. テスト項目
+- manifestを構造的に読む。
+- 常時表示は次の2件だけである。
 
-### BZR-UT-001 BazaarClient: `--no-aliases` を必ず付与する
+```text
+bobBazaar.openReviewGui | Bob Bazaar Review | レビューを開始
+bobBazaar.authorProjectRulesFromDocuments | Bob Bazaar Review | 資料からプロジェクト規約を作成
+```
 
-- 入力: `root`、`log`、`diffRevision`、`diffRange`、`status` の各 method 呼び出し。
-- 期待結果: stub された `execFile` の args 先頭に `--no-aliases` が含まれる。
+- その他のcontributed commandは`menus.commandPalette`で`when: "false"`を持つ。
+- contributed commandと`onCommand:` activation event、runtime registrationの対応を検証する。
 
-### BZR-UT-002 BazaarClient: diff 系は exit code 1 を許可する
+実テスト:
 
-- 入力: `diffRevision` 実行時に exit code 1 と stdout diff を返す stub。
-- 期待結果: 例外を投げず stdout text を返す。
+- `test/commandPalettePolicy.test.js`
+- `../../scripts/three-extension-command-surface.test.js`
 
-### BZR-UT-003 BazaarClient: 非 diff 系の exit code 1 はエラーになる
+### BZR-UT-SURFACE-002 単一主GUI
 
-- 入力: `log` 実行時に exit code 1 を返す stub。
-- 期待結果: `BazaarError` が throw され、cwd / args / stdout / stderr / code を含む。
+- `bobBazaar.openReviewGui`だけがreview operator panelを開く。
+- view typeは`bobBazaarReviewGui`、titleは`Bazaar レビュー`である。
+- review、`レビュー結果取り込み`、`指摘確認・振り分け`、`レビュー実績`を同じpanelで切り替える。
+- stage serviceは独立した公開panelを作らない。
+- stage切替、dispose、同じstageへの再遷移、古いgeneration完了を検証する。
 
-### BZR-UT-004 BazaarClient: unsafe revision を拒否する
+実テスト:
 
-- 入力: 改行、空文字、不許可文字を含む revision。
-- 期待結果: Bazaar CLI を呼ばず validation error を返す。
+- `test/guiFirstSurfaces.test.js`
+- `test/reviewGuiHtml.test.js`
+- `test/reviewGuiLifecycle.test.js`
+- `test/campaignDashboardGui.test.js`
 
-### BZR-UT-005 BazaarClient: unsafe relative path を拒否する
+## 4. Bazaar CLI
 
-- 入力: `../secret.txt`、absolute path、空 path。
-- 期待結果: Bazaar CLI を呼ばず validation error を返す。
+### BZR-UT-CLI-001 `--no-aliases`
 
-### BZR-UT-006 TextEncoding: UTF-8 を decode できる
+`root`、`revno`、`log`、`diff`、`cat`、`status`の全呼出しで`--no-aliases`が先頭global optionとして入る。
 
-- 入力: UTF-8 日本語 Buffer、encoding `utf8`。
-- 期待結果: 文字化けなく string が返る。
+### BZR-UT-CLI-002 safe argument array
 
-### BZR-UT-007 TextEncoding: Shift-JIS / CP932 を decode できる
+- shellを使わない。
+- revision、path、cwdを別argumentで渡す。
+-改行、制御文字、absolute / traversal path、Windows device pathを拒否する。
 
-- 入力: Shift-JIS / CP932 日本語 Buffer、encoding `shift_jis` / `cp932` / `windows-31j`。
-- 期待結果: 文字化けなく string が返る。
+### BZR-UT-CLI-003 exit code / timeout / output cap
 
-### BZR-UT-008 TextEncoding: auto fallback が働く
+- diffありexit codeだけを許可する。
+- timeout、abort、buffer超過、非許可exit codeを分類する。
+- process終了後にdangling callbackを残さない。
 
-- 入力: UTF-8 として不自然な Buffer、encoding `auto`。
-- 期待結果: Shift-JIS 系として再 decode される。
+### BZR-UT-CLI-004 text decode
 
-### BZR-UT-009 WorkspaceResolver: `.bob` と `.bzr` を分離解決する
+UTF-8、Shift-JIS、CP932、windows-31j、auto fallbackを検証する。byte上限はdecode前後で逸脱しない。
 
-- 入力: Bob workspace と Bazaar workspace が別 folder の multi-root。
-- 期待結果: `resolveBobWorkspaceFolder()` と `resolveBazaarWorkspaceFolder()` が別 folder を返す。
+主な実テスト:
 
-### BZR-UT-010 WorkspaceResolver: single candidate を自動採用する
+- `test/bazaar.test.js`
+- `test/textEncoding.test.js`
+- external process policy tests
 
-- 入力: `.bzr` candidate が1件だけの workspace。
-- 期待結果: QuickPick を呼ばず candidate を返す。
+## 5. Workspace解決
 
-### BZR-UT-011 ReviewPacket: 基本 section を生成する
+### BZR-UT-ROOT-001 `.bob` / `.bzr`分離
 
-- 入力: repository root、mode、revision、log、diff。
-- 期待結果: `# Bazaar Revision Review Request`、repository root、mode、log、diff section を含む。
+multi-rootでBob workspaceとBazaar repositoryを別々に解決する。
 
-### BZR-UT-012 ReviewPacket: diff truncation を明示する
+### BZR-UT-ROOT-002 explicit / active / picker優先順位
 
-- 入力: `maxDiffBytes` を超える diff。
-- 期待結果: diff が切り詰められ、truncated message を含む。
+explicit root、workflow root、marker candidate、active editor、single candidate、QuickPick、fallbackの順序を固定する。
 
-### BZR-UT-013 RevisionInfo: added file contents section を生成する
+### BZR-UT-ROOT-003 physical containment
 
-- 入力: added file を含む revision info、`cat` stub。
-- 期待結果: 上限内の追加ファイル本文 section が生成される。
+realpath、symlink / junction、case、Windows reserved name、trailing dot / spaceを検証する。
 
-### BZR-UT-014 RevisionInfo: added file contents 上限を守る
+主な実テスト:
 
-- 入力: 複数 added file と小さい `maxAddedFileContentBytes`。
-- 期待結果: 上限超過分は省略され、summary に反映される。
+- workspace resolver / roots / path boundary tests
 
-### BZR-UT-015 BazaarReviewCommands: Bob 拡張なしでは Markdown document で停止する
+## 6. Review targetとpacket
 
-- 入力: `IBM.bob-code` 不在の stub 環境。
-- 期待結果: Bob context 追加 command を呼ばず、Markdown document を開く。
+### BZR-UT-PACKET-001 target mode
 
-### BZR-UT-016 BazaarReviewCommands: workflow-register 不在時は Bob context へ追加する
+`singleRevision`、`revisionRange`、`workingTreeSinceRevision`のmetadataとdiff commandを検証する。
 
-- 入力: `IBM.bob-code` あり、`workflow-register` なし。
-- 期待結果: `bob-code.addToContext` 相当の command が呼ばれる。
+### BZR-UT-PACKET-002 added file content
 
-### BZR-UT-017 BazaarReviewCommands: workflow-register ありでは action を選択する
+新規file本文をboundedに取得し、超過時は省略を明記する。
 
-- 入力: `IBM.bob-code` と `workflow-register` がある stub 環境。
-- 期待結果: 情報ダイアログが表示され、選択に応じて Bob context / clipboard / file save が実行される。
+### BZR-UT-PACKET-003 packet contract
 
-### BZR-UT-018 WorkflowRegisterBridge: initial target を inputs から生成する
+packetにrepository、mode、revision / range、log、diff、changed files、project rules、output contractを含める。
 
-- 入力: `revisionMode`、`revision`、`baseRevision`、`targetRevision`、`bazaarRoot` を持つ inputs。
-- 期待結果: `BazaarReviewInitialTarget` が生成される。
+### BZR-UT-PACKET-004 Bob fallback
 
-### BZR-UT-019 WorkflowRegisterBridge: root は action input を優先する
+IBM Bob不在時はMarkdown documentを作成する。context追加失敗時はclipboard fallbackを行う。
 
-- 入力: `input.bazaarRoot`、`input.repositoryRoot`、inputs 側 root が混在する。
-- 期待結果: action input 側の root が優先される。
+主な実テスト:
 
-### BZR-UT-020 WorkflowRegisterBridge: capture options を workflow context から生成する
+- Bazaar target / packet / direct command tests
+- `test/workflowStepCompletion.test.js`
 
-- 入力: `state.reviewRules` に checklistItems を含む workflow context。
-- 期待結果: `expectedChecklistItems`、`workspaceRoot`、`workflowState` が設定される。
+## 7. Review Run
 
-### BZR-UT-021 WorkflowBridge: review packet から context を作る
+### BZR-UT-RUN-001 identityとpath
 
-- 入力: review packet Markdown。
-- 期待結果: repository root、mode、diff summary、target label などが workflow state 用 result に含まれる。
+- `campaignId` / `reviewId`をsafe path segmentとして検証する。
+- workspace外、symlink / junction、Windows reserved nameを拒否する。
 
-### BZR-UT-022 ProjectRules IO: checklist / schema を読み込む
+### BZR-UT-RUN-002 collision-safe allocation
 
-- 入力: `.bob/review/checklist.json` と schema file。
-- 期待結果: parsed object と path metadata が返る。
+既存またはlegacy record directoryがある場合は`-02`以降をatomic予約する。並行開始で同じIDを共有しない。
 
-### BZR-UT-023 ProjectRules IO: workspace 外 path を拒否する
+### BZR-UT-RUN-003 state transition
 
-- 入力: `../outside/checklist.json`。
-- 期待結果: 読み込みを拒否する。
+```text
+target -> packet -> result -> triage -> record -> summary
+```
 
-### BZR-UT-024 ResultCaptureCore: fenced JSON を抽出する
+逆方向遷移、不正schema、identity mismatchを拒否する。
 
-- 入力: Markdown fenced code block 内の JSON。
-- 期待結果: JSON object が抽出される。
+### BZR-UT-RUN-004 atomic save / revision
 
-### BZR-UT-025 ResultCaptureCore: severity / summary を正規化する
+same-directory temp + rename、cleanup、revision token、stale writer rejectionを検証する。
 
-- 入力: severity 表記揺れ、summary 欠落を含む JSON。
-- 期待結果: schema に合わせて正規化される。
+### BZR-UT-RUN-005 resume / recovery
 
-### BZR-UT-026 ResultCaptureCore: JSON と Markdown を保存する
+未完了runの一覧、再開、legacy artifact recovery、duplicate candidate、workspace再検証を確認する。
 
-- 入力: valid review-result、Bob workspace。
-- 期待結果: `.bob/review/results/<review_id>.json` と `.md` が作成される。
+### BZR-UT-RUN-006 result ID binding
 
-### BZR-UT-027 ResultCaptureCore: invalid JSON は error result になる
+active Review Runと異なる`review_id`を、artifact保存前と関連付け時の両方で拒否する。
 
-- 入力: required field 不足の JSON。
-- 期待結果: `status: "error"` と validation issues が返る。
+主な実テスト:
 
-### BZR-UT-028 ReviewResultValidationCommand: active selection を検証する
+- `test/reviewRunPaths.test.js`
+- `test/reviewRunState.test.js`
+- `test/reviewRunStore.test.js`
+- `test/reviewRunCoordinator.test.js`
+- `test/reviewRunCommandInput.test.js`
+- `test/reviewRunExpectedReviewId.test.js`
+- Review Run resume / recovery / integration tests
 
-- 入力: active editor selection に valid JSON。
-- 期待結果: 有効メッセージを表示し、summary 選択時に Markdown document を開く。
+## 8. レビュー結果取り込み
 
-### BZR-UT-029 ReviewResultValidationCommand: invalid JSON report を表示する
+### BZR-UT-RESULT-001 candidate extraction
 
-- 入力: active editor full text に invalid JSON。
-- 期待結果: Markdown validation report を開く。
+raw object、fenced JSON、balanced JSON objectから候補を抽出する。
 
-### BZR-UT-030 ReviewResultsStore: 最新 result を取得する
+### BZR-UT-RESULT-002 schema / rule validation
 
-- 入力: 複数 result JSON と更新時刻。
-- 期待結果: mtime が最新の result を返す。
+required、enum、type、minimum、local `$ref`、project checklist条件を検証する。
 
-### BZR-UT-031 ReviewResultsStore: review id 指定で取得する
+### BZR-UT-RESULT-003 fixed workspace
 
-- 入力: review id。
-- 期待結果: 対応する JSON result を返す。存在しない場合は not found 扱い。
+stage初期化時に選択したworkspace rootを、manual / clipboard / validationの全処理で固定する。
 
-### BZR-UT-032 MCP Server: initialize と tools/list を返す
+### BZR-UT-RESULT-004 atomic artifacts
 
-- 入力: JSON-RPC `initialize`、`tools/list`。
-- 期待結果: serverInfo、capabilities、tool definitions が返る。
+JSON、Markdown、metadata sidecarを整合したidentityで保存する。途中失敗で部分成果物を残さない。
 
-### BZR-UT-033 MCP Server: Bazaar tools は readonly のみ提供する
+### BZR-UT-RESULT-005 render / dispose
 
-- 入力: `tools/list`。
-- 期待結果: commit / push / pull / revert などの tool が含まれない。
+render拒否、Webview post rejection、dispose後完了、古いgeneration完了を成功扱いしない。
 
-### BZR-UT-034 MCP Server: tools/call エラーを isError に変換する
+主な実テスト:
 
-- 入力: invalid arguments または BazaarError を発生させる tool call。
-- 期待結果: `isError: true` と text content を返す。
+- result capture core / artifact tests
+- `test/reviewGuiLifecycle.test.js`
+- `test/guiFirstSurfaces.test.js`
 
-### BZR-UT-035 WorkflowStepCompletion: best effort で完了 command を呼ぶ
+## 9. 指摘確認・振り分け / record / summary
 
-- 入力: workflow step completion stub が成功 / 失敗する2ケース。
-- 期待結果: 成功時は完了 command 呼び出し、失敗時は warning のみで packet 生成結果を壊さない。
+### BZR-UT-DECISION-001 decision validation
 
-### BZR-UT-036 Workflow template: 現行 schema 要素を持つ
+`accepted`、`rejected`、`needs_investigation`、`deferred`と必須owner / action / reasonを検証する。
 
-- 入力: 同梱 `WORKFLOW.md`。
-- 期待結果: `schemaVersion`、`requires`、`preflight`、`guardrails.requireApproval`、`artifacts`、`completion`、typed `steps` を含む。
+### BZR-UT-DECISION-002 record binding
 
-### BZR-UT-037 MCP Server: write tools は既定非公開
+packet、review-result、decision、quality gateを同じreview IDで`record.yaml`へ結び付ける。
 
-- 入力: env 未指定の `tools/list` と `project_rules_init` call。
-- 期待結果: `project_rules_init` は `tools/list` に出ず、直接 call は `isError: true` になる。
+### BZR-UT-DECISION-003 finalize
 
-### BZR-UT-038 MCP Server: allowed roots 未設定 cwd を拒否する
+record validation、summary generation、Review Run phase更新を安全な順序で行う。
 
-- 入力: `BOB_BAZAAR_ALLOWED_ROOTS` 未設定の Bazaar tool call。
-- 期待結果: `BOB_BAZAAR_ALLOWED_ROOTS` または `BOB_BAZAAR_ALLOW_UNRESTRICTED_CWD=1` を要求する error を返す。
+### BZR-UT-DECISION-004 legacy recovery
 
-### BZR-UT-039 ReviewRecords: record / triage / summary を生成・検証する
+legacy fileを読込み、backup、migration report、unmatched findingの保全を確認する。
 
-- 入力: 保存済み review-result、review packet、campaign template。
-- 期待結果: `record.yaml`、`triage.yaml`、`summary.json` / `summary.md` が作成され、invalid decision / missing triage / summary mismatch を検出する。
+主な実テスト:
 
-### BZR-UT-040 ReviewRecords: path segment と artifact path を検証する
+- `test/reviewRecordCommands.test.js`
+- record store / validation / finalize / recovery tests
 
-- 入力: Windows 予約文字、device name、workspace escape を含む campaignId / reviewId / artifact path。
-- 期待結果: record / triage / packet artifact の保存前に拒否する。
+## 10. レビュー実績
 
-### BZR-UT-041 ResultCaptureCore: metadata producer version は package version と一致する
+### BZR-UT-METRICS-001 aggregation
 
-- 入力: valid review-result。
-- 期待結果: artifact metadata の `producer_version` が `package.json` の version と一致する。
+Review Run、record、valid decision、review-resultをsource priorityに従って集計する。
 
-### BZR-UT-042 Review Run: progressとIteration 1互換を維持する
+### BZR-UT-METRICS-002 rates / pending / warning
 
-- 入力: 新規Review Runと、`phases` / `metrics`を持たないIteration 1の`review-run.json`。
-- 期待結果: 6 phaseが補完され、必須artifactなしの`completed`を拒否し、読み書き後も未設定fieldのshapeが変化しない。
+- 分母0は`n/a`。
+- pending decisionを別集計する。
+- malformed、missing、identity mismatch、symlink除外をwarningにする。
 
-### BZR-UT-043 Review Run: metricsを計測・補正する
+### BZR-UT-METRICS-003 export parity
 
-- 入力: Bob review / 指摘確認・振り分けの開始・終了時刻と手動補正値。
-- 期待結果: 秒を加算し分へ小数第1位で変換する。負数、NaN、Infinity、30日超を拒否する。
+JSON / Markdown / CSVを同じmodelから生成し、source artifactを変更しない。
 
-### BZR-UT-044 Review Run: stale writeと同一run更新競合を拒否する
+主な実テスト:
 
-- 入力: 同じrunを2回読み、片方を保存した後の古いcontext。
-- 期待結果: `Review Run changed since it was loaded`で拒否し、先に保存された状態を保持する。
+- `test/campaignDashboardExport.test.js`
+- `test/campaignDashboardGui.test.js`
+- dashboard / metric / integration tests
 
-### BZR-UT-045 指摘確認・振り分け: decision別必須入力を検証する
+## 11. 文書ベース規約作成
 
-- 入力: `accepted`、`rejected`、`needs_investigation`、`deferred`の各item。
-- 期待結果: owner / action / reasonの契約違反をitem path付きで返し、validな組合せは通る。
+### BZR-UT-AUTHOR-001 extraction
 
-### BZR-UT-046 Review Run: finalizeと失敗phase再試行を保証する
+`.docx`、`.xlsx`、text PDFをdocument orderとlocator付きでbounded抽出する。`.doc` / `.xls` / image-only PDFはconversion / OCR要求として扱う。
 
-- 入力: valid packet/result/triage、計測済みmetrics、summary出力を一度失敗させるfilesystem fixture。
-- 期待結果: recordを保持したままsummaryだけfailedになり、stale caller contextから再試行してcompletedへ進む。完了済みtriageの再保存で時間を二重加算しない。
+### BZR-UT-AUTHOR-002 AI consent
 
-### BZR-UT-047 Review Run: 未完了runの再開位置を判定する
+source name、selected chunk count、UTF-8 bytes、model routeを表示し、明示同意前に本文をagentへ渡さない。
 
-- 入力: target / packet / result / triage / record / completedの各状態。
-- 期待結果: `review`、`resultCapture`、`humanTriage`、`finalize`、`none`をartifactとphase statusから判定する。
+### BZR-UT-AUTHOR-003 evidence / proposal
 
-### BZR-UT-048 Review Run: legacy artifactを非破壊復旧する
+chunk ID、hash、source membership、proposal schema、base hash、citation、operationを検証する。
 
-- 入力: resultのみ、packet/triage/record付き、ID不一致、複数campaign、既存runの各fixture。
-- 期待結果: previewでblocking issueを返し、確認済みケースだけ`review-run.json`を追加する。既存artifact bytesは変更しない。
+### BZR-UT-AUTHOR-004 human decision / transaction
 
-### BZR-UT-049 レビュー実績: overviewとrateを集計する
+accept / reject / edit、preview、journal、backup、rename、rollback、restart recovery、final verificationを検証する。
 
-- 入力: complete / in-progress Review Run、valid / invalid record、valid / missing triage。
-- 期待結果: run数、pending triage、schema / finding rateが定義済み分母で集計され、分母0は`null`になる。
+### BZR-UT-AUTHOR-005 privacy
 
-### BZR-UT-050 レビュー実績: ruleとchange type trendを集計する
+raw document text、raw AI response、absolute pathをremote artifact、notification、MCP provenanceへ出さない。
 
-- 入力: 複数rule IDと`singleRevision` / `revisionRange` / `workingTreeSinceRevision`のReview Run。
-- 期待結果: ruleは検出数順、change typeは固定順で表示され、valid triageだけがdecisionへ加算される。
+主な実テスト:
 
-### BZR-UT-051 レビュー実績: evidenceを安全に読み込みexportする
+- rule authoring extraction / consent / proposal / apply tests
+- `test/ruleAuthoringDocumentation.test.js`
+- Windows-root identity tests
 
-- 入力: malformed / missing / identity mismatch / symlink artifactと、comma / quote / newlineを含むwarning。
-- 期待結果: evidenceを推測せずwarningへ出し、JSON / Markdown / RFC 4180 CSVが同じmodelから生成される。serialization / write失敗時は旧exportを保持する。
+## 12. MCP
 
-### BZR-UT-052 レビュー実績: Webviewと単一panel境界を維持する
+### BZR-UT-MCP-001 stdio protocol
 
-- 入力: Dashboard HTML model、open workspace外root、unsafe campaign ID、不正message type。
-- 期待結果: CSP nonce、HTML escape、固定message allowlist、workspace containmentが有効で、レビュー実績が主GUI内stageとして開き、独立公開routeを持たない。
+`initialize`、`notifications/initialized`、`tools/list`、`tools/call`、unknown method、malformed params、request size上限を検証する。
 
-## 4.1 実テスト対応表
+### BZR-UT-MCP-002 read-only Bazaar tools
 
-| 観点 | 主な testcase ID | 実テスト file |
-| --- | --- | --- |
-| Bazaar CLI wrapper / no-aliases / unsafe revision | BZR-UT-001〜005 | `test/bazaarClient.test.js`, `test/bazaarReviewCommandWiring.test.js` |
-| 文字コード | BZR-UT-006〜008 | `test/extensionEncoding.test.js` |
-| workspace root / explicit root | BZR-UT-009〜010 | `test/workspaceRoots.test.js`, `test/reviewGuiInitialTarget.test.js` |
-| review packet / revision info / direct commands | BZR-UT-011〜017 | `test/reviewLimits.test.js`, `test/reviewTarget.test.js`, `test/bazaarReviewCommandWiring.test.js` |
-| workflow bridge / provider / step completion | BZR-UT-018〜021、035〜036 | `test/workflowBridge.test.js`, `test/workflowProviderRegistration.test.js`, `test/workflowStepCompletion.test.js`, `test/workflowTemplate.test.js` |
-| project rules / capture / validation / result store | BZR-UT-022〜031、041 | `test/projectRulesPath.test.js`, `test/resultCaptureCore.test.js`, `test/reviewResultsStore.test.js`, `test/mcpServerVersion.test.js` |
-| MCP server / write tools / allowed roots | BZR-UT-032〜034、037〜038 | `test/mcpWriteTools.test.js`, `test/mcpAllowedRoots.test.js`, `test/mcpRequestLimit.test.js`, `test/mcpSourceLayout.test.js` |
-| review record / triage / campaign summary | BZR-UT-039〜040、045 | `test/reviewRecordsCore.test.js`, `test/reviewRecordCommands.test.js`, `test/phase1RecordTemplates.test.js` |
-| Review Run progress / metrics / stale write / finalize | BZR-UT-042〜046 | `test/reviewRunState.test.js`, `test/reviewRunMetrics.test.js`, `test/reviewRunStore.test.js`, `test/reviewRunFinalize.test.js` |
-| Review Run resume / legacy recovery / GUI contract | BZR-UT-047〜048 | `test/reviewRunResume.test.js`, `test/reviewRunRecovery.test.js`, `test/guiFirstSurfaces.test.js` |
-| レビュー実績 aggregation / loader / export / GUI | BZR-UT-049〜052 | `test/campaignDashboardCore.test.js`, `test/campaignDashboard.test.js`, `test/campaignDashboardExport.test.js`, `test/campaignDashboardGui.test.js`, `test/guiFirstSurfaces.test.js` |
-| docs / source layout contracts | BZR-UT-036 | `test/architectureContracts.test.js`, `test/extensionSourceLayout.test.js` |
+Bazaar operationsはread-onlyのみ。破壊的operationはtool registryに存在しない。
 
-## 5. 非機能観点
+### BZR-UT-MCP-003 allowed root
 
-- Bazaar CLI は実行せず、`execFile` stub で args / cwd / env を検証する。
-- VS Code UI は `showInputBox`、`showInformationMessage`、`showQuickPick`、`openTextDocument`、`showTextDocument` を stub 化する。
-- Bob extension / workflow-register extension の有無は `vscode.extensions.getExtension` stub で制御する。
-- 日本語 fixture は UTF-8 と Shift-JIS / CP932 の両方を持つ。
-- file path のテストは Windows / POSIX 差異を吸収する。
-- Review Runのartifact testは一時workspace内で行い、symlink / stale write / failure retryを外部状態へ依存せず再現する。
+`BOB_BAZAAR_ALLOWED_ROOTS`未設定またはroot外cwdを拒否する。明示的なunrestricted modeだけ例外にする。
 
-## 6. 完了条件
+### BZR-UT-MCP-004 write opt-in
 
-- `npm run compile` が成功する。
-- `node --test test/*.test.js` が成功する。
-- Bazaar CLI、VS Code、Bob、workflow-register の実体が無くてもテストが完結する。
-- readonly 境界、path validation、workspace 分離、result 保存が回帰テストで守られる。
-- Review Runの再開、metrics、decision validation、finalize retry、legacy recoveryが回帰テストで守られる。
-- レビュー実績のrate、trend、warning、export、Webview境界が回帰テストで守られる。
+`project_rules_init`だけがwrite toolであり、`BOB_BAZAAR_ENABLE_WRITE_TOOLS=1`とallowed rootの両方を要求する。
 
-<!-- REMEDIATION-2026-07-11 -->
-## 2026-07-11 追加単体テスト契約
+### BZR-UT-MCP-005 VS Code config separation
 
-| ID | 観点 | 期待結果 |
-| --- | --- | --- |
-| EXT-UT-REM-001 | soft dependency | companion extension 不在でも通常 command が利用でき、後から有効化すると provider 登録が回復する。 |
-| EXT-UT-REM-002 | provider ownership | 同一 ID の別所有元登録を拒否し、disposable 後は再登録できる。古い disposable は新登録を削除しない。 |
-| EXT-UT-REM-003 | external process | timeout、cancel、buffer exceed、非許可 exit code を分類し、子プロセスを終了する。 |
-| EXT-UT-REM-004 | Windows path | drive、UNC、device、drive-relative、dot、traversal、control-character path を拒否する。 |
-| EXT-UT-REM-005 | processing limits | manifest/runtime の範囲が一致し、極端値を clamp し、UTF-8 byte 上限を守る。 |
-| EXT-UT-REM-006 | workflow contracts | 全 workflow を動的探索し、未知 provider / command、strict warning、mirror drift を検出する。 |
+`.bob/mcp.json`設定は`BOB_BAZAAR_ALLOWED_ROOTS`を記録するが、write toolを自動有効化しない。
 
-<!-- RELEASE-BLOCKERS-2026-07-16 -->
-## 2026-07-16 release blocker 回帰契約
+主な実テスト:
 
-| ID | 観点 | 期待結果 | 実テスト |
-| --- | --- | --- | --- |
-| BZR-UT-RB-001 | Windows tree kill | 親processが先にexitしても`taskkill /T /F`完了前にcancel結果をsettleしない。 | `test/windowsProcessTreeTermination.test.js` |
-| BZR-UT-RB-002 | timeout clamp | 下限未満は1,000 ms、上限超過は600,000 msへ正規化する。 | `test/externalProcessRunner.test.js` |
-| BZR-UT-RB-003 | provider cleanup | 1 providerのdisposeまたはerror reporterが例外を投げても、全providerとchange listenerを解除する。 | `test/retryRegistrationController.test.js` |
-| BZR-UT-RB-004 | output hard cap | truncation noticeを含むUTF-8出力が0、1、8、64 bytesの各budgetを超えず、multibyte文字を壊さない。 | `test/reviewLimits.test.js` |
-| BZR-UT-RB-005 | dependency / Windows path | soft dependency、lockfile/VSIX dependency policy、Windows absolute / drive-relative path拒否を固定する。 | `test/dependencyPolicy.test.js`, `test/bazaarClient.test.js` |
+- MCP server / registry / root boundary / write-tool tests
+- `test/mcpWriteTools.test.js`
+
+## 13. Workflow provider
+
+### BZR-UT-PROVIDER-001 exact provider inventory
+
+review provider 4件とrule authoring provider 7件を実装・文書・同梱workflow間で照合する。
+
+### BZR-UT-PROVIDER-002 owner / rollback
+
+owner付き登録、duplicate拒否、部分登録失敗時の逆順dispose、deactivation cleanupを検証する。
+
+### BZR-UT-PROVIDER-003 soft dependency
+
+workflow-register未導入でもactivationとlocal commandが利用でき、後から有効化すると登録が回復する。
+
+主な実テスト:
+
+- `test/workflowProviderRegistration.test.js`
+- workflow action contract tests
+
+## 14. Cross-extension documentation contract
+
+### BZR-UT-DOC-001 recursive classification
+
+`scripts/three-extension-documentation-contract.json`のrootから全Markdownを再帰探索し、未列挙fileはcurrent、明示pathだけhistoricalにする。
+
+### BZR-UT-DOC-002 current references
+
+current文書には、廃止済みpublic IDと旧user-facing UI名が残らない。
+
+### BZR-UT-DOC-003 historical notices
+
+historical文書が旧ID / 旧画面名を保持する場合、冒頭12行以内の`Replaced:`または`Superseded:`で正規routeを示す。
+
+### BZR-UT-DOC-004 manifest / runtime / write safety
+
+main、soft dependency、composition root、template diff -> confirmation -> backup -> update、MCP write boundaryをsourceと文書で照合する。
+
+実行:
+
+```bash
+node --test ../../scripts/three-extension-documentation-contract.test.js
+node --test ../../scripts/three-extension-command-surface.test.js
+```
+
+## 15. Policy / full gate
+
+```bash
+npm run compile
+npm run dependency:policy
+npm run architecture:policy
+npm run source:policy
+npm run unused:policy
+npm run unused:report
+npm run artifact:policy
+npm test
+npm run package
+npm run package:policy
+npm run package:smoke
+npm run package:metrics
+```
+
+完了条件:
+
+- full suiteがfail 0。
+- current docsに旧公開routeが0件。
+- package budgetと禁止entry policyを満たす。
+- source / manifest / workflow / docsのprovider IDが一致する。
