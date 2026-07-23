@@ -2,6 +2,10 @@ import {
   DEFAULT_PROCESSING_BUDGET_PROFILE,
   ProcessingBudgetLedger,
   normalizeProcessingBudgetProfile,
+  preflightOoxmlArchive,
+  readBoundedDocumentFile,
+  type BoundedDocumentSnapshot,
+  type OoxmlArchiveSnapshot,
   type ProcessingBudgetCategory,
   type ProcessingBudgetLedgerReport,
   type ProcessingBudgetProfile
@@ -19,6 +23,20 @@ const report: ProcessingBudgetLedgerReport = ledger.snapshot()
 const firstCategory = report.categories[0]
 if (firstCategory?.scope === "operation") void firstCategory.remaining
 
+const document: Promise<BoundedDocumentSnapshot> = readBoundedDocumentFile({
+  filePath: "fixture.docx",
+  target: "fixture-document",
+  ledger
+})
+void document
+const archive: OoxmlArchiveSnapshot = preflightOoxmlArchive({
+  archiveBytes: new Uint8Array(),
+  target: "fixture-archive",
+  ledger,
+  expectedKind: "docx"
+})
+void archive
+
 // @ts-expect-error target-scoped categories require an explicit target
 ledger.reserve("single_document_bytes", 1)
 // @ts-expect-error operation-scoped categories must not accept a target
@@ -27,3 +45,5 @@ ledger.reserveForTarget("raw_diff_bytes", "fixture-diff", 1)
 normalizeProcessingBudgetProfile({ limits: { not_a_category: 1 } })
 // @ts-expect-error consumers must not reserve unknown budget categories
 ledger.reserve("not_a_category", 1)
+// @ts-expect-error OOXML kind is closed
+preflightOoxmlArchive({ archiveBytes: new Uint8Array(), target: "invalid", ledger, expectedKind: "pdf" })
