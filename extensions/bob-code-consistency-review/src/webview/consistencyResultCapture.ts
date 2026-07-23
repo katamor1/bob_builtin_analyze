@@ -57,15 +57,13 @@ class ConsistencyResultCaptureStage implements ConsistencyReviewStageService {
       if (message.action === "captureManual") {
         if (!message.text?.trim()) throw new Error("Bob 出力（YAML）を貼り付けてください。")
         const result = await runCaptureBobOutput({ text: message.text, workspaceRoot: this.workspaceRoot })
-        if (this.host.isActive()) await this.host.post({ ok: true, message: describeResult(result) })
+        await this.postResult(result)
       } else if (message.action === "captureClipboard") {
         const result = await runCaptureBobOutput({ workspaceRoot: this.workspaceRoot })
-        if (this.host.isActive()) await this.host.post({ ok: true, message: describeResult(result) })
+        await this.postResult(result)
       } else if (message.action === "validateOutput") {
         const result = await runValidateOutput({ workspaceRoot: this.workspaceRoot })
-        if (this.host.isActive()) {
-          await this.host.post({ ok: resultStatus(result) !== "error", message: describeResult(result) })
-        }
+        await this.postResult(result)
       } else if (message.action === "openHumanTriage") {
         await this.host.showStage("triage")
       }
@@ -74,6 +72,11 @@ class ConsistencyResultCaptureStage implements ConsistencyReviewStageService {
         await this.host.post({ error: true, message: error instanceof Error ? error.message : String(error) })
       }
     }
+  }
+
+  private async postResult(result: unknown): Promise<void> {
+    if (!this.host.isActive()) return
+    await this.host.post({ ok: !isFailedResult(result), message: describeResult(result) })
   }
 }
 
@@ -97,16 +100,19 @@ function describeResult(result: unknown): string {
   if (!result || typeof result !== "object") return String(result ?? "")
   const record = result as Record<string, unknown>
   if (typeof record.message === "string") return record.message
+  const errorMessages = Array.isArray(record.errors)
+    ? record.errors.map((error) => String(error)).filter(Boolean)
+    : []
+  if (errorMessages.length > 0) return errorMessages.join("; ")
   const status = typeof record.status === "string" ? record.status : "ok"
-  const errors = Array.isArray(record.errors) ? record.errors.length : 0
   const warnings = Array.isArray(record.warnings) ? record.warnings.length : 0
-  return `状態: ${status}; エラー: ${errors}件; 警告: ${warnings}件`
+  return `状態: ${status}; エラー: 0件; 警告: ${warnings}件`
 }
 
-function resultStatus(result: unknown): string {
-  return result && typeof result === "object" && typeof (result as Record<string, unknown>).status === "string"
-    ? String((result as Record<string, unknown>).status)
-    : "ok"
+function isFailedResult(result: unknown): boolean {
+  if (!result || typeof result !== "object") return false
+  const status = (result as Record<string, unknown>).status
+  return status === "error" || status === "cancelled"
 }
 
 function nonce(): string {
