@@ -183,3 +183,23 @@ test("loader rejects control-file and directory physical identity changes during
     generation: installed.digest
   }), /physical|directory.*changed/i)
 })
+
+test("loader rejects a symbolic-link collection root before resolving it", async () => {
+  const fileSystem = new MemoryPackageFileSystem()
+  const installed = installPublished(fileSystem)
+  fileSystem.setKind([], "symbolic-link")
+  const root = rootSubject().createWorkflowPackageRoot(fileSystem, {})
+
+  await assert.rejects(() => subject().loadWorkflowPackageGeneration({
+    fileSystem,
+    collectionRoot: root,
+    workflowId: "minimal",
+    generation: installed.digest
+  }), /symbolic link|directory/i)
+
+  assert.equal(
+    fileSystem.calls.some(([operation, logicalPath]) => operation === "realpath" && logicalPath === ""),
+    false,
+    "the collection root must be lstat-checked before realpath"
+  )
+})
