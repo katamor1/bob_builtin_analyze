@@ -68,16 +68,15 @@ function collectMarkdown(rootRelative) {
   const rootReal = fs.realpathSync(absoluteRoot)
   assert.ok(isInside(repoRoot, rootReal), `configured documentation root escapes repository: ${rootRelative}`)
 
-  const files = []
   const rootStat = fs.lstatSync(absoluteRoot)
   assert.equal(rootStat.isSymbolicLink(), false, `configured documentation root must not be a symlink: ${rootRelative}`)
-
   if (rootStat.isFile()) {
     assert.match(rootRelative, /\.md$/i, `configured file root must be Markdown: ${rootRelative}`)
     return [rootRelative]
   }
   assert.ok(rootStat.isDirectory(), `configured documentation root must be a file or directory: ${rootRelative}`)
 
+  const files = []
   function walk(absoluteDirectory) {
     for (const entry of fs.readdirSync(absoluteDirectory, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
       const absolutePath = path.join(absoluteDirectory, entry.name)
@@ -91,7 +90,6 @@ function collectMarkdown(rootRelative) {
       else if (stat.isFile() && /\.md$/i.test(entry.name)) files.push(relativePath)
     }
   }
-
   walk(absoluteRoot)
   return files
 }
@@ -137,21 +135,18 @@ function lineBounds(text, index) {
   const start = text.lastIndexOf("\n", index - 1) + 1
   const nextBreak = text.indexOf("\n", index)
   const end = nextBreak === -1 ? text.length : nextBreak
-  return { start, end, line: text.slice(start, end) }
+  return { line: text.slice(start, end) }
 }
 
 function isUserFacingLabelOccurrence(text, index) {
   const { line } = lineBounds(text, index)
   const trimmed = line.trim()
-
   if (/^#{1,6}\s/.test(trimmed)) return true
   if (uiCuePattern.test(line)) return true
-
   if (/^[-*+]\s/.test(trimmed)) {
     const remainder = trimmed.replace(/^[-*+]\s+/, "")
     if (!/\b(?:module|class|function|test|fixture|directory|schema)\b/i.test(remainder)) return true
   }
-
   return false
 }
 
@@ -172,8 +167,7 @@ function lineNumber(text, index) {
 }
 
 function topLevelReplacementNotice(text) {
-  const lines = text.split(/\r?\n/).slice(0, 12)
-  return lines.find((line) => /^(?:Superseded|Replaced):\s+\S/.test(line))
+  return text.split(/\r?\n/).slice(0, 12).find((line) => /^(?:Superseded|Replaced):\s+\S/.test(line))
 }
 
 function assertContainsAll(text, phrases, label) {
@@ -216,8 +210,7 @@ test("historical obsolete references carry a top-level replacement notice naming
       violations.push(`${relativePath}: missing top-level Superseded:/Replaced: notice`)
       continue
     }
-    const replacements = new Set(matches.flatMap((match) => match.replacements))
-    for (const replacement of replacements) {
+    for (const replacement of new Set(matches.flatMap((match) => match.replacements))) {
       if (!notice.includes(replacement)) violations.push(`${relativePath}: notice does not name ${replacement}`)
     }
   }
@@ -257,9 +250,10 @@ test("template refresh, workspace initialization, and MCP source preserve their 
   const mcpServer = readText("extensions/bob-bazaar-review/src/mcp/server.ts")
   const projectRulesTools = readText("extensions/bob-bazaar-review/src/mcp/projectRulesTools.ts")
   const mcpConfig = readText("extensions/bob-bazaar-review/src/mcp/mcpConfig.ts")
-  assertContainsAll(mcpServer, ["BOB_BAZAAR_ENABLE_WRITE_TOOLS", "BOB_BAZAAR_ALLOWED_ROOTS", "project_rules_init"], "Bazaar MCP server")
-  assertContainsAll(projectRulesTools, ["requiredAllowedCwd", "requireWriteToolEnabled", "project_rules_init"], "Bazaar MCP project rules")
-  assertContainsAll(mcpConfig, [".bob", "mcp.json"], "VS Code MCP configuration")
+  assertContainsAll(mcpServer, ["BOB_BAZAAR_ENABLE_WRITE_TOOLS", "BOB_BAZAAR_ALLOWED_ROOTS", "writeToolsEnabled"], "Bazaar MCP server")
+  assertContainsAll(projectRulesTools, ["requiredAllowedCwd", "requireWriteToolEnabled", 'new Set(["project_rules_init"])'], "Bazaar MCP project rules")
+  assertContainsAll(mcpConfig, [".bob", "mcp.json", "BOB_BAZAAR_ALLOWED_ROOTS"], "VS Code MCP configuration")
+  assert.equal(mcpConfig.includes("BOB_BAZAAR_ENABLE_WRITE_TOOLS"), false, "VS Code MCP configuration must not silently opt into MCP writes")
 })
 
 test("current documentation states the canonical routes and the approved cross-extension facts", () => {
