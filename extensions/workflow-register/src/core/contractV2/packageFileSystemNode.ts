@@ -10,6 +10,7 @@ import * as nodePath from "node:path"
 
 import type {
   WorkflowPackageFileKind,
+  WorkflowPackageOpenFile,
   WorkflowPackageFileStat,
   WorkflowPackageFileSystem
 } from "./packageFileSystem"
@@ -22,15 +23,35 @@ export function createNodeWorkflowPackageFileSystem(): WorkflowPackageFileSystem
   return objectFreeze({
     async lstat(root: string, segments: readonly string[]): Promise<WorkflowPackageFileStat> {
       const stats = await nodeLstat(resolveNodePath(root, segments), { bigint: true })
-      const size = Number(stats.size)
-      if (!numberIsSafeInteger(size) || size < 0) throw new Error("Workflow package file size is not a safe integer.")
-      return objectFreeze({
-        kind: nodeFileKind(stats),
-        size,
-        identity: [stats.dev, stats.ino, stats.mode, stats.size, stats.mtimeNs, stats.ctimeNs]
-          .map((value) => value.toString())
-          .join(":")
-      })
+      return nodeStatEvidence(stats)
+    },
+
+    async openFile(root: string, segments: readonly string[]): Promise<WorkflowPackageOpenFile> {
+      const handle = await nodeOpen(resolveNodePath(root, segments), "r")
+      let closed = false
+      try {
+        const initialStat = nodeStatEvidence(await handle.stat({ bigint: true }))
+        return objectFreeze({
+          initialStat,
+          async read(): Promise<Uint8Array> {
+            if (closed) throw new Error("Workflow package file handle is closed.")
+            return handle.readFile()
+          },
+          async stat(): Promise<WorkflowPackageFileStat> {
+            if (closed) throw new Error("Workflow package file handle is closed.")
+            return nodeStatEvidence(await handle.stat({ bigint: true }))
+          },
+          async close(): Promise<void> {
+            if (closed) return
+            closed = true
+            await handle.close()
+          }
+        })
+      } catch (error) {
+        closed = true
+        await handle.close()
+        throw error
+      }
     },
 
     async readDirectory(root: string, segments: readonly string[]): Promise<readonly string[]> {
@@ -77,6 +98,30 @@ export function createNodeWorkflowPackageFileSystem(): WorkflowPackageFileSystem
     async rename(root: string, from: readonly string[], to: readonly string[]): Promise<void> {
       await nodeRename(resolveNodePath(root, from), resolveNodePath(root, to))
     }
+  })
+}
+
+function nodeStatEvidence(stats: {
+  readonly dev: bigint
+  readonly ino: bigint
+  readonly mode: bigint
+  readonly size: bigint
+  readonly mtimeNs: bigint
+  readonly ctimeNs: bigint
+  isFile(): boolean
+  isDirectory(): boolean
+  isSymbolicLink(): boolean
+}): WorkflowPackageFileStat {
+  const size = Number(stats.size)
+  if (!numberIsSafeInteger(size) || size < 0) {
+    throw new Error("Workflow package file size is not a safe integer.")
+  }
+  return objectFreeze({
+    kind: nodeFileKind(stats),
+    size,
+    identity: [stats.dev, stats.ino, stats.mode, stats.size, stats.mtimeNs, stats.ctimeNs]
+      .map((value) => value.toString())
+      .join(":")
   })
 }
 
