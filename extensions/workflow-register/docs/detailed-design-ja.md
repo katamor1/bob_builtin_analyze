@@ -2,479 +2,529 @@
 
 ## 1. 文書の位置づけ
 
-本書は `extensions/workflow-register` 拡張機能の詳細設計を定義する。現在の実装に合わせ、Bob UI 実行、standalone 実行、中断・再開、step review、task snapshot、Run Control View、ワークフロー作成・編集、テンプレート調整、AI 補助、Help / docs 統合の責務を整理する。
+本書は `extensions/workflow-register` の現在実装に対応する詳細設計を定義する。
+対象は、workflow探索・登録、Bob UI実行、standalone実行、run state、pause / review / branching、task snapshot、artifact reuse、run retention、`Bob 操作ハブ`、`ワークフロー作成・編集`、AI補助、diagnostics、公開APIである。
 
-## 2. 実装構成
+run engine、provider、artifact、`run.json` の互換性を維持したまま、利用者向け入口だけを次の2commandへ集約する。
+
+| Command ID | panel viewType | title |
+| --- | --- | --- |
+| `workflowRegister.openOperationHub` | `workflowRegisterOperationHub` | `Bob 操作ハブ` |
+| `workflowRegister.openWorkflowBuilder` | `workflowRegisterBuilder` | `ワークフロー作成・編集` |
+
+## 2. entry point と起動
+
+`package.json` の `main` は `./out/extensionWithAuthoring.js` である。
+`extensionWithAuthoring.activate()` は `extension.activate()` を先に呼び、core serviceと公開APIを作成した後、authoring、validation、run control、retention、process、template、AI commandを追加登録する。
+
+`activationEvents` には `onStartupFinished` と、公開・内部双方のcommand activationが含まれる。activation eventに存在することはCommand Palette公開を意味しない。公開面はmanifestのcommand/menu契約で別に制御する。
+
+起動順序は次の通り。
+
+1. `WorkflowRegisterService`を作成する。
+2. `WorkflowRegisterApi`をcomposition rootで構築する。
+3. `OperationHubProvider`を作成する。
+4. core commandを登録する。
+5. validation、builder、step review、run control、retention、process、template、AI commandを登録する。
+6. 開いている`WORKFLOW.md`へdiagnosticsを適用する。
+7. `service.reload({ showReport: false })`を非同期実行する。
+8. IBM Bobの遅延activationに備え、3秒、10秒、30秒、60秒、120秒後に再登録を試行する。
+
+extension停止時は`ExtensionContext.subscriptions`がservice、panel provider、command、listener、timerを破棄する。
+
+## 3. 実装構成
 
 ```text
 extensions/workflow-register/
   package.json
-  README.md
-  docs/
-    basic-design-ja.md
-    detailed-design-ja.md
-    unit-test-spec-ja.md
-    real-machine-test-spec-ja.md
-    workflow-authoring-guide.md
-    bob-task-export-recovery-plan-ja.md
-    workflow-pause-resume-plan-ja.md
-    workflow-pause-resume-phase0-decision-ja.md
   src/
-    extensionWithAuthoring.ts
     extension.ts
-    agentStep.ts
-    bobApi.ts
-    bobTaskInputs.ts
+    extensionWithAuthoring.ts
+    workflowRegisterService.ts
+    workflowRunCommands.ts
+    operationHubMutationTarget.ts
+    bobWorkflowRunner.ts
     bobWorkflowFactory.ts
     bobWorkflowMessages.ts
-    bobWorkflowRunner.ts
-    bobWorkflowTypes.ts
-    reports.ts
     resultHandoff.ts
-    taskSnapshotRecovery.ts
-    workflowPromptContext.ts
-    workflowRunSelection.ts
+    reviewTaskRegistry.ts
     commands/
-      createWorkflow.ts
-      designWorkflowWithAi.ts
-      editWorkflowInBuilder.ts
-      explainWorkflowDiagnostics.ts
-      improveWorkflowWithAi.ts
-      inspectRunDiagnostics.ts
       openWorkflowBuilder.ts
-      runControl.ts
-      runControlView.ts
-      stepReview.ts
+      createWorkflow.ts
+      editWorkflowInBuilder.ts
       validateWorkflow.ts
       workflowDiagnostics.ts
+      inspectRunDiagnostics.ts
+      runControl.ts
+      runRetention.ts
+      stepReview.ts
+      automaticPauseResumeUi.ts
+      designWorkflowWithAi.ts
+      improveWorkflowWithAi.ts
+      explainWorkflowDiagnostics.ts
+      processCommands.ts
+      templateCommands.ts
+    gui/
+      operationHubProvider.ts
+      operationHubModel.ts
+      operationHubHtml.ts
+      operationHubMutationCoordinator.ts
     core/
-      actionRegistry.ts
-      agentProvider.ts
+      model.ts
       engine.ts
       engineTypes.ts
-      guardrails.ts
-      inputCollector.ts
-      inputResolver.ts
-      model.ts
-      reportedActionError.ts
+      actionRegistry.ts
+      agentProvider.ts
       resultSinkRegistry.ts
-      runControlStore.ts
       runStateStore.ts
+      runControlStore.ts
       taskSnapshots.ts
-      workflowAiProvider.ts
-      workflowAiProviderFactory.ts
-      workflowAuthoring*.ts
-      workflowScaffold.ts
+      artifacts.ts
+      heldRunRecovery.ts
+      guardrails.ts
       workflowSchema.ts
-      workflowTemplates.ts
       workflowValidator.ts
       workspaceRoots.ts
+      authoring/
       engine/
-        manualCompletion.ts
-        preflight.ts
-        resultWriters.ts
-        runPause.ts
-        runState.ts
-        stepExecutor.ts
-        templateRenderer.ts
       parser/
-        ...
-    template/
-      templateGenerator.ts
-      templateReadiness.ts
-      templateStudioModel.ts
-      templateValidation.ts
+      runtime/
     webview/
-      templateCustomizationStudioClientScript.ts
-      templateCustomizationStudioHtml.ts
-      templateCustomizationStudioPanel.ts
-      templateCustomizationStudioStyles.ts
-      workflowBuilderBodyScript.ts
-      workflowBuilderClientScript.ts
-      workflowBuilderHtml.ts
       workflowBuilderPanel.ts
+      workflowBuilderHtml.ts
+      workflowBuilderStandardTemplateHtml.ts
+      workflowBuilderClientScript.ts
       workflowBuilderStyles.ts
-  test/
-    *.test.js
+    template/
+      templateStudioModel.ts
+      templateGenerator.ts
+      templateValidation.ts
+      templateReadiness.ts
 ```
 
-`bobWorkflowRunner.ts` から低リスク helper は分離済みである。現在同ファイルに残る主責務は `BobWorkflowEngineRunner` と `StepRuntime` である。
+## 4. command surface
 
-## 3. 起動設計
+### 4.1 Command Paletteへ公開するcommand
 
-`package.json` の `main` は `./out/extensionWithAuthoring.js` である。activation event は `onStartupFinished`、`onView:workflowRegister.runs`、各 command の `onCommand` を指定する。
+公開するのは次の2件だけである。
 
-起動時の処理は次の通り。
-
-1. `extensionWithAuthoring.activate(context)` を呼ぶ。
-2. `activateCore(context)` を呼び、`WorkflowRegisterService` と core API を作る。
-3. core command を登録する。
-4. validation / diagnostics / ワークフロー作成・編集 / AI 補助 / step review / run control command を追加登録する。
-5. `WorkflowRunControlView` を作成し、Explorer view `workflowRegister.runs` と Status Bar を開始する。
-6. 既に開いている `WORKFLOW.md` を diagnostics 対象にする。
-7. `WorkflowRegisterService.reload()` を非同期で実行する。
-8. Bob 拡張の遅延起動に備えて retry timer を設定する。
-
-## 4. Command entry
-
-| Command ID | 主な用途 |
-| --- | --- |
-| `workflowRegister.reload` | `.bob/workflows/*/WORKFLOW.md` を再読み込みする。 |
-| `workflowRegister.inspect` | 登録状態と diagnostics を Markdown で表示する。 |
-| `workflowRegister.runWorkflow` | standalone engine で workflow を実行する。 |
-| `workflowRegister.runWorkflowStep` | workflow と step を選択し、`singleStep` で1 step だけ実行する。 |
-| `workflowRegister.inspectRuns` | 保存済み run state を一覧表示する。 |
-| `workflowRegister.resumeRun` | held / running / paused run を再開する。 |
-| `workflowRegister.retryCurrentStep` | current step を再試行する。 |
-| `workflowRegister.acceptCurrentStep` | step review 中の current step を承認する。 |
-| `workflowRegister.runNextStep` | 保存済み run の次の pending step を1つ実行する。 |
-| `workflowRegister.acceptAndRunNextStep` | current step を承認して次 step を実行する。 |
-| `workflowRegister.inspectCurrentStep` | current step の状態を表示する。 |
-| `workflowRegister.pauseCurrentRun` | 選択 run に pause request を保存する。 |
-| `workflowRegister.pauseAfterCurrentStep` | 現在 step 完了後の pause request を保存する。 |
-| `workflowRegister.pauseBeforeNextAiCall` | 次の AI 呼び出し前を意図した pause request を保存する。現行 engine では checkpoint 停止として扱う。 |
-| `workflowRegister.resumePausedRun` | paused run の pause request を clear し、`resumeRun` を呼ぶ。 |
-| `workflowRegister.inspectRunControl` | `control.json` と `workflow.pause` state を表示する。 |
-| `workflowRegister.refreshRunsView` | Explorer view `workflowRegister.runs` を更新する。 |
-| `workflowRegister.openCurrentStepInBuilder` | current step の workflow 定義を ワークフロー作成・編集で開く。 |
-| `workflowRegister.inspectRunDiagnostics` | run state と task snapshot の診断を表示する。 |
-| `workflowRegister.inspectActiveSteps` | Bob UI の手動完了待ち active step を表示する。 |
-| `workflowRegister.openManualStepPanel` | held run または active manual step の手動操作 Webview を開く。 |
-| `workflowRegister.completeCurrentStep` | Bob UI 経由の current manual step を完了する。 |
-| `workflowRegister.completeStep` | `completeCurrentStep` の別名。 |
-| `workflowRegister.validateCurrentWorkflow` | active editor の workflow を検証する。 |
-| `workflowRegister.validateWorkspaceWorkflows` | workspace 内 workflow を一括検証する。 |
-| `workflowRegister.createWorkflowFromTemplate` | template から `WORKFLOW.md` を作成する。 |
-| `workflowRegister.openWorkflowBuilder` | Webview GUI で新規 workflow を作成する。 |
-| `workflowRegister.editWorkflowInBuilder` | 既存 `workflow-register/v1` workflow を Webview GUI で編集する。 |
-| `bobTemplate.validateLibrary` | 標準テンプレートライブラリを検証する。 |
-| `bobTemplate.validateProjectProfile` | project profile YAML を検証する。 |
-| `bobTemplate.validateCustomization` | customization YAML を検証する。 |
-| `bobTemplate.generateWorkflow` | template / profile / customization から workflow を生成し、既存ファイルを backup する。 |
-| `bobTemplate.checkReadiness` | checklist、UAT evidence、出力先などの readiness を検査する。 |
-| `bobTemplate.openCustomizationStudio` | テンプレート調整 Webview を開く。 |
-| `workflowRegister.designWorkflowWithAi` | AI provider で新規 workflow draft を作る。 |
-| `workflowRegister.improveWorkflowWithAi` | AI provider で改善案を作り、preview / diff / backup 後に適用する。 |
-| `workflowRegister.explainWorkflowDiagnostics` | diagnostics を自然言語で説明する。 |
-
-## 5. 設定設計
-
-| 設定 | 既定値 | 用途 |
+| Command ID | 表示名 | category |
 | --- | --- | --- |
-| `workflowRegister.sourceId` | `workflow-register` | Bob に登録する source ID。 |
-| `workflowRegister.sourceName` | `ワークフロー登録` | Bob に表示する source 名。 |
-| `workflowRegister.agentCommand` | 空 | standalone agent step を VS Code command に委譲する。 |
-| `workflowRegister.aiProviderCommand` | 空 | AI 設計、改善、診断説明に使う。 |
-| `workflowRegister.taskSnapshots.enabled` | `true` | Bob UI 実行時に task snapshot を保存する。 |
-| `workflowRegister.taskSnapshots.maxBytes` | `262144` | 1 snapshot JSON の最大サイズ。 |
-| `workflowRegister.taskSnapshots.maxPerRun` | `50` | 1 run に保持する snapshot 数。 |
-| `workflowRegister.taskSnapshots.includeMessages` | `false` | 既定では Bob chat messages を含めない。診断目的で必要な場合だけ明示的に有効化する。 |
-| `workflowRegister.taskSnapshots.pruneOnSave` | `true` | 保存時に古い snapshot を削除する。 |
+| `workflowRegister.openOperationHub` | `操作ハブを開く` | `Bob` |
+| `workflowRegister.openWorkflowBuilder` | `ワークフロー作成・編集を開く` | `Bob` |
 
-## 6. 公開 API
+### 4.2 内部command
 
-`activate` の戻り値として `WorkflowRegisterApi` を公開する。
+workflow definition、companion extension、panel action、公開API、テストから呼ぶ内部commandは登録を維持する。代表groupは次の通り。
 
-```ts
-export interface WorkflowRegisterApi {
-  registerActionProvider: (provider: ActionProvider) => void
-  registerAgentProvider: (provider: AgentProvider) => void
-  registerResultSink: (type: string, handler: Parameters<ResultSinkRegistry["register"]>[1]) => void
-  listWorkflows: () => CoreWorkflowDefinition[]
-  runWorkflow: (workflowId?: string, inputs?: Record<string, unknown>) => Promise<unknown>
-  runWorkflowStep: (workflowId?: string, stepId?: string, inputs?: Record<string, unknown>) => Promise<unknown>
-  runNextStep: (runId?: string) => Promise<unknown>
-}
+- catalog: reload、inspect、validate
+- execution: run、single step、next step、resume、retry
+- review: accept、accept-and-next、inspect current step
+- pause: request、resume、inspect、automatic limit override
+- held recovery: manual panel、detached held recovery、task snapshot import
+- branching: checkpoint approve / abort、branch diagnostics
+- artifact reuse: source runからの再開、manifest検証
+- retention: inspect、preview、cleanup、delete、pin、unpin
+- authoring: template作成、既存編集、AI設計、AI改善、diagnostics説明
+- process / template provider command
+
+内部commandは`when: "false"`相当のmenu policyでCommand Paletteから隠す。activation eventとregistrationは互換性のため残し、公開入口の重複には数えない。
+
+## 5. `Bob 操作ハブ`
+
+### 5.1 lifecycle
+
+`OperationHubProvider`は単一の`vscode.WebviewPanel`を所有する。
+
+- viewType: `workflowRegisterOperationHub`
+- title: `Bob 操作ハブ`
+- column: `ViewColumn.One`
+- `enableScripts: true`
+- `retainContextWhenHidden: true`
+- 既存panelがある場合は再作成せず`reveal()`する
+- dispose時にpanel、watcher、debounce timer、action refresh timerを破棄する
+
+`workflowRegister.refreshOperationHub`はpanel内部やテストから利用する非公開commandである。panelが無い場合はopenへ委譲し、存在する場合はmodelを再読込する。
+
+### 5.2 model
+
+`buildOperationHubModel()`へ次を渡す。
+
+- open workspace名とworkflow root候補
+- IBM Bob、Bazaar Review、Code Consistency Reviewの導入状態
+- workflow catalog
+- rootごとの`FileRunStateStore.listRuns()`結果
+- run state revision
+- held recovery分類
+- task snapshot利用可否
+- artifact manifest利用可否
+- active manual step利用可否
+- focus対象run / workspace root
+
+workflow rootは`.bob` markerを持つ候補を優先し、無い場合はopen workspace folderをfallback候補にする。multi-rootでは物理pathのcanonical identityでfocus対象を照合する。
+
+### 5.3 自動更新
+
+次のpathをrootごとにwatchする。
+
+```text
+.bob/workflows/runs/**/run.json
+.bob/workflows/runs/**/control.json
+.bob/workflows/runs/**/artifacts/manifest.json
 ```
 
-公開 API の `runWorkflow` / `runWorkflowStep` / `runNextStep` は standalone 実行である。Bob task は作成されない。
+create / change / deleteを150ms debounceし、panelを再renderする。操作後は300ms、1秒、2.5秒、5秒の段階refreshを予約し、非同期処理のstate反映を追従する。同じcontextのbackground refresh errorは繰り返し通知しない。
 
-## 7. Workflow 読み込み設計
+### 5.4 action dispatch
 
-探索対象は `**/.bob/workflows/*/WORKFLOW.md` である。`workspaceRoots.ts` は `.bob` を持つ root 候補を direct candidate、child candidate、fallback candidate の順で解決する。
+Webview messageは`type: "operationHub.action"`とallowlist済みaction IDだけを受け付ける。未知message、未知action、必要field欠落は拒否する。
 
-読み込み時は workflow root ごとに `WORKFLOW.md` を探し、`parseWorkflowMarkdown()` で `CoreWorkflowDefinition` へ変換する。同じ logical workflow ID が複数 root から見つかった場合は、workflow root の basename と SHA-1 hash を使って workflow ID を一意化する。
+代表actionは次の通り。
 
-## 8. Parser / Schema / Validator
+- Builderを開く
+- workspace workflowを検証する
+- Bazaar review / Code Consistency reviewを開く
+- workflowを実行する
+- artifact source runから開始する
+- detached held runを復旧する
+- task snapshot artifactをimportする
+- pause / resume / retry / accept / next step
+- manual step panelを開く
+- run controlを確認する
+- artifactを開く
 
-`parseWorkflowMarkdown()` は Markdown 先頭の YAML front matter を抽出し、`schemaVersion: workflow-register/v1` なら v1 parser、そうでなければ legacy parser を使う。
+optional extensionが無いactionは、command実行エラーへ流さず利用不可理由を表示する。
 
-v1 schema の主な制約は次の通り。
+### 5.5 mutation safety
 
-- `name` と `description` は必須。
-- `name` は英数字で始まり、英数字、`.`、`_`、`-` のみを許可する。
-- `stepCompletion` は `auto` または `manual`。
-- `stepMessage` は `full` / `current` / `silent` / `step`。
-- `stepExecution.mode` は `full` / `todo` / `engineSteps`。
-- `stepReview.pauseAfter` は `everyStep` / `agentAndCommand` / `none`。
-- `branching.enabled` が true の場合、`branching.loops[]` の `entryStep`、`maxIterations`、`extensionSize` を検証する。
-- input `type` は `string` / `number` / `boolean` / `select`。
-- step `type` は `command` / `agent` / `manual` / `result`。
-- `command` step では `action` を必須とする。
-- `result` step では `result` を必須とする。
+runまたはworkflowを変更するactionは次を満たす。
 
-`workflowValidator.ts` は schema 検証に加え、step ID 重複、Todo と step の対応、`includeState` 前方参照、result source、sink 設定、artifact `producedBy`、input `requiredWhen`、guardrails 衝突を検査する。分岐では decision ID 重複、condition 演算子数、`goto` step の存在、後方 `goto` の loop 指定、loop ID の存在、manual `form.resultKey` / `approval.resultKey` と既存 producer の衝突を検査する。
+1. `workspaceRoot`をopen workspace folderのcanonical physical pathへ検証する。
+2. target IDの存在を確認する。
+3. workflow targetは現在catalogのworkflow rootと一致することを確認する。
+4. run targetは`expectedRevision`と現在revisionを比較する。
+5. `OperationHubMutationCoordinator`が同じphysical root / target / actionの重複mutationを直列化する。
+6. stale revision、workspace変更、target消失はrefresh-required errorとして拒否する。
+7. commandへは`source: "operationHub"`、canonical workspace root、target ID、expected revisionを渡す。
 
-## 9. Bob 登録設計
+artifactを開く場合も、候補root配下のcontained pathだけを許可する。
 
-`adaptCoreWorkflowForBob()` は `CoreWorkflowDefinition` を Bob adapter 用 model へ変換する。`buildWorkflowSteps()` は次の方針で Bob step を生成する。
+## 6. `ワークフロー作成・編集`
+
+### 6.1 openとsession
+
+`openWorkflowBuilder()`はworkspace rootを選択し、`WorkflowBuilderPanel.createOrShow()`を呼ぶ。
+
+- viewType: `workflowRegisterBuilder`
+- title: `ワークフロー作成・編集`
+- single current panel
+- mode: `empty` / `standard-template` / `edit`
+- root、source ID、editing file、focus stepをsession identityとして扱う
+
+同一sessionを再openした場合はpanelをrevealする。未保存変更がある状態で外部から新しい内容を渡された場合は、編集内容を上書きせずwarningを表示する。別sessionへ切り替える場合は旧previewをcleanupし、generationを更新する。
+
+### 6.2 mode
+
+`empty`は空modelから新規作成する。
+`standard-template`は標準テンプレート一覧、project profile、customization、preview、diff、readinessを扱う。
+`edit`は既存`workflow-register/v1`をparser / loaderでmodel化する。
+
+`標準テンプレートから作成`は別panelや別公開commandではなく、同じBuilder内のmodeである。
+
+### 6.3 messageとconcurrency
+
+Webview messageはrender tokenとsession generationを検証する。対応actionは次の通り。
+
+- mode選択
+- template一覧 / 読込 / reset
+- project profile / customization検証
+- workflow preview / diff
+- readiness確認 / report open
+- authoring preview / diff / save
+- step draft検証
+- skip / resume readiness preview / apply
+
+stale generationの結果はcurrent sessionへ適用しない。saveはtarget path単位のqueueとtransaction lockで直列化する。
+
+### 6.4 save safety
+
+保存時は次の順で処理する。
+
+1. authoring modelをcanonical化する。
+2. Markdownへserializeする。
+3. parser / validatorと同じ契約で検証する。
+4. workflow document pathがworkspace root内であることを検証する。
+5. open時に取得したfile expectationが現在も一致するか確認する。
+6. transaction lockを取得する。
+7. 既存fileをbackupする。
+8. temporary fileからatomic commitする。
+9. previewをcleanupする。
+10. workflow catalogをreloadする。
+
+外部変更、symlink escape、workspace escape、stale session、validation errorでは保存しない。
+
+## 7. workflow探索・parser・validator
+
+探索対象は`**/.bob/workflows/*/WORKFLOW.md`である。`.bob`を持つroot候補を優先し、同一logical workflow IDが複数rootにある場合はroot slugとhashで一意化する。
+
+`parseWorkflowMarkdown()`は先頭YAML front matterを抽出し、`schemaVersion: workflow-register/v1`ならv1 parser、そうでなければlegacy parserを使う。
+
+validatorは次を検査する。
+
+- required fieldとfield type
+- workflow / step ID
+- duplicate step / decision ID
+- Todoとengine stepの対応
+- `includeState`のproducerと前方参照
+- result source / sink
+- artifact `producedBy`
+- input `requiredWhen`
+- guardrail衝突
+- branch targetとbackward loop宣言
+- manual form / approval result key衝突
+- nested command IDとprovider参照
+
+repository内のworkflow template mirrorも同じstrict validationへ通す。
+
+## 8. Bob登録と実行adapter
+
+`WorkflowRegisterService.reload()`はrootごとにworkflowを読み、Bob sourceへ登録する。IBM Bobが未導入または未activationの場合は通常commandとstandalone engineを維持し、Bob登録だけを保留してretryする。
+
+`buildWorkflowSteps()`は次の規則でBob visible stepを生成する。
 
 | 条件 | Bob step |
 | --- | --- |
-| `stepExecution.showInBob !== false` かつ `stepExecution.mode === "engineSteps"` | engine `steps[]` ごとの Bob step。 |
-| `stepExecution.showInBob !== false` かつ `stepExecution.mode === "todo"` かつ Todo がある | Todo ごとの Bob step。 |
-| 上記以外 | 単一 `runWorkflow` step。 |
+| `showInBob !== false`かつ`mode === "engineSteps"` | engine stepごと |
+| `showInBob !== false`かつ`mode === "todo"`かつTodoあり | Todoごと |
+| その他 | 単一full-run step |
 
-## 10. WorkflowEngine 詳細
+`BobWorkflowEngineRunner`はtask metadata / messagesからinputを抽出し、subagent、message、step completion、task snapshot、review gate、manual completionをengineへ接続する。
 
-`WorkflowEngineOptions` は、actions、resultSinks、runStore、runControlStore、agentProvider、workspaceAvailable、fileExists、preflightChecks、strictPreflightChecks、hooks、manualCompletion、recoverResultText を持つ。
+## 9. `WorkflowEngine`
 
-`runWorkflow()` は次の順で処理する。
+`runWorkflow()`の主要順序は次の通り。
 
-1. recoverable run を検索し、無ければ run を作成する。
-2. paused run はそのまま返す。
-3. input を検証する。
-4. `before-preflight` checkpoint で pause request を確認する。
-5. preflight を実行する。
-6. start index を決定する。
-7. step を実行する。
-8. step 成功後に artifact 出力、manual completion、step review、pause checkpoint を処理する。
-9. step `transition` があれば `run.state` を条件評価し、`next` / `goto` / `end` / `fail` / `checkpoint` を適用する。
-10. full 実行で全 step が完了したら run を `completed` にする。
+1. recoverable runを検索し、無ければ新規runを作成する。
+2. paused / checkpoint状態を判定する。
+3. inputを解決・検証する。
+4. `before-preflight` checkpointでmanual pauseとautomatic pauseを評価する。
+5. preflightを実行する。
+6. start indexを決める。
+7. stepを実行する。
+8. result / artifact、effect record、manual completion、review gateを処理する。
+9. step後checkpointでpauseを評価する。
+10. transitionを`next` / `goto` / `end` / `fail` / `checkpoint`へ決定する。
+11. full実行で全step完了時に`completed`へ移す。
 
-`retryCurrentStep()` は current step を pending に戻し、必要に応じて attempt を保存してから再実行する。`resumeRun()` は `paused` の場合に run control を clear し、`held` の場合は `completeHeldStep` に応じて held step を完了扱いにして続行する。`checkpoint` の run は通常 resume では突破できず、`approveBranchCheckpoint()` または `abortBranchCheckpoint()` で明示処理する。
+backward `goto`は対象範囲のstepをpendingへ戻し、attemptをarchiveし、その範囲のstate producerをcleanupする。loop上限到達時は専用checkpoint承認またはabortを要求する。
 
-後方 `goto` は reset 対象範囲の step state を pending に戻し、attempt を archive し、範囲内で生成された `resultKey` / manual result key を `run.state` から削除する。manual form の前回値は `workflow.branching.lastValues.<stepId>.<resultKey>` に退避し、再入力 UI の初期値として利用できる。
+## 10. run state とphysical safety
 
-## 11. Run State Store
-
-保存場所:
+### 10.1 authority
 
 ```text
 <workflowRoot>/.bob/workflows/runs/<runId>/run.json
 ```
 
-`FileRunStateStore.saveRun()` は一時ファイルに JSON を書き込み、rename する atomic write で保存する。`findRecoverableRun()` は workflow ID、definition hash、workflow file、canonical inputs が一致する継続可能 run を返す。recoverable status には `checkpoint` も含めるが、engine は通常 resume ではなく専用 checkpoint command の対象として扱う。
+`run.json`はstatus、current step、inputs、state、step records、attempt、transition history、artifact/effect provenance、timestampsの正本である。Bob task object、Promise、callbackは保存しない。
 
-## 11A. Workflow Run Retention / Cleanup
+`FileRunStateStore.saveRun()`は同directoryのtemporary fileへ書き、renameでcommitする。run pathはdirect containment、symlink / junction拒否、identity確認を通す。
 
-### 11A.1 Authority と公開surface
+### 10.2 recoverable run
 
-`run.json`をstatus、updatedAt、provenanceの正本とし、run-state schemaは変更しない。Pinはrun directory内の`retention.json` sidecar（`workflow-register/run-retention/v1`）に保存する。Malformed/future sidecarはfail-safeでpinnedとして扱う。
+workflow ID、definition hash、workflow file、canonical inputsが一致する継続可能runだけをreuseする。paused、held、reviewing、checkpointはそれぞれ専用操作契約を通し、通常full executionから暗黙突破しない。
 
-公開commandは次の6つで、すべてmanual-onlyである。
+## 11. run control とautomatic pause
 
 ```text
-workflowRegister.inspectRunStorage
-workflowRegister.previewRunCleanup
-workflowRegister.cleanupCompletedRuns
-workflowRegister.deleteSelectedRuns
-workflowRegister.pinRun
-workflowRegister.unpinRun
+<workflowRoot>/.bob/workflows/runs/<runId>/control.json
 ```
 
-`inspectRunStorage`と`previewRunCleanup`はuntrusted workspaceでもread-onlyで動作する。`cleanupCompletedRuns`、`deleteSelectedRuns`、`pinRun`、`unpinRun`はroot discovery、UI selection、service construction、filesystem accessより前に`requireTrustedWorkspace()`を通す。Multi-rootではroot selectionをrun selectionより先に行い、同じrun IDをroot間で共有しない。
+`control.json`はpause request、reason、requestedBy、mode、clear、resume note、automatic-pause overrideを保持する。
 
-Retention設定は`enabled=false`、`completedDays=30`、`maxCompletedRuns=100`、`maxTotalBytes=524288000`を既定値とする。`maxCompletedRuns`は名前にかかわらずterminal statusの`completed`と`failed`を合算し、上限超過分のeligible terminal runを候補にする。`enabled`は将来の自動cleanup用予約値で、manual commandの可否には使わない。Startup/timer/background cleanupは実装しない。
+manual requestを先に評価し、その後にworkflow / workspace automatic policyを同じpure evaluatorで評価する。対象は最大run時間、agent step数、IANA timezone上のlocal cutoffである。
 
-### 11A.2 Inventory、planner、apply binding
+停止時は`workflow.pause` stateへkind、source、checkpoint、nextStepId、limit、observed、detectedAtを保存する。実行中のcommand、process、Bob subagentを強制停止せず、安全なcheckpointで状態遷移する。
 
-`runRetentionInventory.ts`はdirect physical run treeをbounded scanし、run revision、retention revision、directory identity、bounded tree fingerprint、measurement completeness、reference graph completenessを収集する。Symlink/junctionをfollowせず、hard-linked fileはbytesを計上しても本文を開かず、runをunsafeとしてcleanup対象外にする。
+## 12. review gate・manual completion・held recovery
 
-`runRetention.ts`のpure plannerはage、terminal (`completed` / `failed`) count、total bytes、selected run IDからstable decisionとSHA-256 digestを生成する。次をblockerとして保持する。
+step review対象stepは`reviewing`で停止する。accept operationはdurable run updateとlive Bob gate reconciliationを同じworkspace root / run ID単位でcoordinateする。
 
-- Active/recoverable status: `running`、`paused`、`checkpoint`、`reviewing`、`held`
-- Artifact reuse、hydration、task-snapshot importから参照されるsource run
-- Pinned、future/read-only、unknown、invalid/missing、measurement/reference incomplete
-- Execution lock、pending journal
-- Symlink/junction/hard link/workspace escape/identity changeなどphysical safety不明
+manual stepは`held`で保存し、live `StepRuntime`がある場合だけcompletionをBob taskへ返す。`StepRuntime`はprocess memory上の補助であり、再起動後の正本は`run.json`である。
 
-`WorkflowRunRetentionService.apply()`はfresh inventoryから同一policyでplanを再構築し、digestとevidence revisionの一致を要求する。明示選択も同じplannerを通り、protected runを迂回しない。
+held recovery分類は次を組み合わせる。
 
-### 11A.3 Cleanup lease と owner guard
+- live Bob task
+- active manual step
+- valid artifact manifest
+- matching task snapshot
+- current workflow definition
 
-保存場所はruns列挙の外に固定する。
+recovery sourceが不足する場合は誤ってcompletedへ進めず、read-only説明または明示的なdetached recoveryを要求する。
+
+## 13. task snapshot とresult handoff
+
+```text
+<workflowRoot>/.bob/workflows/runs/<runId>/task-snapshots/*.json
+<workflowRoot>/.bob/workflows/runs/<runId>/task-snapshots/latest.json
+```
+
+snapshotはrun/workflow/step identity、reason、assistant text、optional task export、bounded metadataを保持する。既定上限は1件262,144 bytes、1 run 50件で、manifestとruntimeを同期する。
+
+size判定は整形済みJSONと末尾改行を含むUTF-8 byteで行う。超過時はoptional dataを順に削減し、必須identityだけでも上限を超える場合は書き込まない。
+
+result handoffはcurrent live outputを優先し、失敗復旧時だけidentityとdefinition hashが一致するsnapshotからassistant textを取得する。`file` sinkはworkspace root外を拒否し、`command` sinkはregistered action providerまたはVS Code commandへ渡す。
+
+## 14. artifact reuse
+
+artifact manifestはproducer run、workflow identity、definition hash、inputs、artifact path、hash、source stepを保持する。reuse開始時はmanifest schema、current workflow、canonical inputs、contained artifact pathを検証する。
+
+source runがretention cleanup対象にならないようreference graphへ含める。task snapshot importも同じartifact manifest authorityへ追加し、raw chat textだけをrun stateへ埋め込まない。
+
+## 15. run retention / cleanup
+
+### 15.1 surface
+
+retention関連commandはmanual-onlyの内部commandであり、Command Paletteの公開入口ではない。operatorはBob 操作ハブまたは明示的な内部呼び出しからinspect、preview、cleanup、delete、pin、unpinを実行する。
+
+settings namespaceは`workflowRegister.runs.retention.*`を維持する。
+既定は`enabled=false`、`completedDays=30`、`maxCompletedRuns=100`、`maxTotalBytes=524288000`である。`enabled`は将来自動cleanup用の予約値で、startup / timer / background cleanupは行わない。
+
+### 15.2 planner
+
+inventoryはdirect physical run treeをbounded scanし、run revision、retention revision、directory identity、tree fingerprint、measurement completeness、reference graph completenessを収集する。
+
+pure plannerはage、terminal count、total bytes、selected run IDからstable decisionとSHA-256 digestを作る。次はcleanup blockerである。
+
+- running / paused / checkpoint / reviewing / held
+- artifact reuse、hydration、task snapshot importから参照されるsource run
+- pinned、future / unknown / malformed state
+- measurementまたはreference incomplete
+- execution lock、pending journal
+- symlink、junction、hard link、workspace escape、identity change
+
+apply時はfresh inventoryから同じplanを再構築し、digestとevidence revision一致を要求する。
+
+### 15.3 lease / owner guard
 
 ```text
 <workflowRoot>/.bob/workflows/run-cleanup-leases/<runId>.json
 <workflowRoot>/.bob/workflows/run-cleanup-leases/<runId>.guard/owner.json
 ```
 
-Run ID順にatomic guard-directory `mkdir`でowner guardを取得し、guard ownerとlease JSONに同じcleanup lease v1 tokenを保存する。Normal executionはrun lock取得前にcleanup guard/leaseを確認する。Cleanupはlease取得後にexecution lock、journal、revision、directory identityを再検証する。
+run ID順にatomic directory作成でowner guardを取得する。guard ownerとlease JSONへ同じtokenを保存し、normal executionもrun lock取得前にguard / leaseを確認する。
 
-Heartbeatとreleaseはacquisition時に保持したguard directoryの`dev`/`ino`を再検証し、現在のdirect single-linked `owner.json`をcleanup lease v1としてdecodeし、run IDとtokenを照合する。各readはdirect regular file、`nlink=1`、containment/no-alias、path/handle identityを検査するが、acquisition時のowner bytesまたはowner-file `dev`/`ino`をlifetime全体へ固定しない。Lease JSONもcurrent tokenを照合し、heartbeatではそのoperation内のsnapshotとopen handleの`dev`/`ino`/`nlink`を比較する。通常releaseは`<runId>.json`、`owner.json`、`<runId>.guard`の順である。Orphan/new-protocol guardは自動reclaimしない。Owner token不一致、guard identity変更、unexpected entry、alias/hard link、recent/uncertain ownerはfail-closedで保全する。手動復旧もこのowner-checked順を再現しなければならない。
+heartbeatとreleaseはcurrent owner token、direct regular file、single link、containment、path / handle identityを再検証する。owner不一致、identity変更、unexpected entry、alias、recent / uncertain ownerはfail closedとする。
 
-### 11A.4 Quarantine transaction
+### 15.4 quarantine transaction
 
 ```text
 <workflowRoot>/.bob/workflows/run-cleanup-quarantine/<txId>/<runId>
 ```
 
-全候補のlease/evidence再検証後、run directoryをtransaction directoryへ順にrenameする。途中rename失敗は移動済みentryを逆順でruns rootへ戻す。全rename成功後、各quarantine entryを再検証して1件ずつpurgeし、最後に空のtransaction/base directoryを削除する。
+全候補のlease / evidence再検証後にrun directoryをquarantineへrenameする。途中失敗は逆順rollbackする。全rename成功後に各entryを再検証してpurgeする。
 
-Rollback、purge、parent cleanupが失敗した場合は`WorkflowRunCleanupIncompleteError`へ`phase`、`committedRunIds`、`residualRunIds`、`retainedQuarantinePath`を保存し、quarantineを削除しない。Node.jsにはidentity-conditional rename/recursive removeがないため、cooperative writerはleaseで排除し、filesystem call直前までidentityを再検証するが、非協調OS actorに対する最終verify-to-call raceは既知の境界として残る。
+rollback、purge、parent cleanupが失敗した場合はphase、committed run、residual run、retained quarantine pathをerrorへ保持し、残存quarantineを削除しない。
 
-### 11A.5 Migration publication crash pair
+### 15.5 migration backup
 
-Historical v0 backupは`run-state-v0.backup.json`へcreate-once hard-link publicationする。Tempはruns rootの`.<runId>.<pid>.<uuid>.tmp`である。Initial publicationとrollbackは、operation/identity、byte/domain safety、cleanup `rm`、verification/cleanup handle close、owner closeの順でerrorを選択し、全verification handleのoperation/close settlement後にcleanupへ進む。
+historical v0 backupはcreate-once publicationを使う。cross-process crash pairが残った場合はPID visibilityだけで自動recoverせず、operatorがno-alias、identity、link count、exact bytes、publisher停止を証明した場合だけcleanupする。
 
-Tempとbackupが同一`dev`/`ino`、各`nlink=2`、同一historical bytesのcross-process crash pairとして残っても、自動recoverしない。PID visibilityだけでは別host/container/namespaceのpublisher停止を証明できないためである。Operatorはno-alias、direct containment、exactly one valid temp、`dev`/`ino`/`nlink`、exact bytes、publisher停止を証明した場合だけtemp linkを外し、その直後にbackupの同一identity、`nlink=1`、exact bytesを再確認する。
+### 15.6 privacy
 
-### 11A.6 Privacy
+inspect / preview / diagnosticsはrun ID、status、bytes、timestamp、blocker、digest、revision、path identity、件数だけを表示する。task本文、artifact本文、snapshot本文、state本文、Bob message本文は出力しない。
 
-Inspect/preview/diagnostics/evidenceはrun ID、status、inspection status、bytes、timestamp、blocker、digest/revision、path/identity、件数だけを出力する。Task、artifact、snapshot、state、Bob message本文は出力しない。
+## 16. 公開APIとsoft dependency
 
-## 12. Run Control Store / Pause
+`WorkflowRegisterApi`は次を公開する。
 
-保存場所:
+- action provider登録とdisposable返却
+- agent provider登録
+- result sink登録
+- workflow一覧
+- full / single-step実行
+- artifact reuse開始
+- task snapshot artifact import
+- next step実行
+- branch checkpoint approve / abort / inspect
+- live Bob review gate accept / metadata付きaccept
+- run単位のreview acceptance coordination
 
-```text
-<workflowRoot>/.bob/workflows/runs/<runId>/control.json
-```
+companion extensionは`local.workflow-register`をsoft dependencyとして扱う。manifestのrequired `extensionDependencies`へ追加しない。未導入時は連携actionを説明付きで無効化し、各extensionの通常commandを維持する。
 
-`FileRunControlStore` は次を提供する。
+providerはowner source IDを持ち、同一IDの無警告上書きを拒否する。登録disposableはextension停止時に必ず解除する。
 
-| API | 処理 |
-| --- | --- |
-| `requestPause(input)` | pause request を保存する。 |
-| `clearPause(runId)` | pause request を clear し `clearedAt` を保存する。 |
-| `loadControl(runId)` | `control.json` を読む。 |
-| `isPauseRequested(runId)` | active pause request の有無を返す。 |
-| `recordResumeNote(runId, note)` | resume note を保存する。 |
+## 17. diagnostics とerror handling
 
-`pauseRunIfRequested()` は active pause request を検出すると、run status を `paused` にし、次 step があれば `currentStep` に設定し、`run.state["workflow.pause"]` に pause metadata を JSON 文字列で保存し、`onRunPaused` hook を呼ぶ。
+validationはactive editor切替、`WORKFLOW.md`保存、明示検証、Builder preview / saveで実行する。
 
-## 13. Run Control Commands / View
-
-`runControl.ts` は `pauseCurrentRun`、`pauseAfterCurrentStep`、`pauseBeforeNextAiCall`、`resumePausedRun`、`inspectRunControl` を実装する。run selection は `workflowRunSelection.ts`、`FileRunStateStore`、workspace root candidate を使う。
-
-`runControlView.ts` は `WorkflowRunControlView` を実装する。
-
-- Explorer view ID は `workflowRegister.runs`。
-- 15秒間隔と workspace folder 変更時に refresh する。
-- 各 item は run ID、status、current step、root、updatedAt を表示する。
-- `contextValue` は `workflowRun.<status>`。
-- Status Bar は active run を running / paused / reviewing / held 別に集計する。
-
-Branch checkpoint command は active run selection と run store を使い、`approveBranchCheckpoint` で loop の `allowed` を `extensionSize` だけ増やして pending back transition を適用し、`abortBranchCheckpoint` で run を `failed` にする。`inspectBranching` は loop count、allowed、checkpoint、history を Markdown report として表示する。
-
-## 14. Task Snapshot / Recovery
-
-保存場所:
-
-```text
-<workflowRoot>/.bob/workflows/runs/<runId>/task-snapshots/
-```
-
-各 snapshot は時刻、stepId、reason を含むファイル名で保存される。最新 snapshot は `latest.json` にも保存する。保存 reason は `workflow-start`、`step-start`、`agent-output`、`handoff-failed`、`held`、`failed`、`completed` などである。
-
-snapshot の `maxBytes` は 1,024〜1,048,576 bytes（既定 262,144 bytes）、`maxPerRun` は 1〜500件（既定 50件）へ runtime で正規化し、package manifest も同じ範囲を公開する。size 判定は実際に保存する整形済み JSON と末尾改行を含む UTF-8 bytes で行う。超過時は messages、task export、task metadata、assistant text、handoff error、補助 run metadata の順に削減し、必須の schema / run / workflow / step metadata だけでも上限へ収まらない場合は書き込まず失敗する。通常 snapshot と `latest.json` はいずれも hard cap を超えない。
-
-`recoverResultTextFromSnapshots()` は `latest.json`、次に最新の `agent-output` snapshot から `lastAssistantText` を探す。workflow ID、run ID、step ID、definition hash が一致する場合だけ利用する。
-
-## 15. StepRuntime
-
-`StepRuntime` は Bob UI 実行で manual step または workflow-level manual completion が必要なときだけ使う。保持する情報は active key、workflow ID、run ID、step ID、Bob task object、step definition、guardrails、action registry、inputs / state の snapshot、message start index、Promise の `resolve` である。
-
-`StepRuntime` は永続状態ではない。VS Code 再起動で失われる。復帰時の正本は `run.json` であり、Bob chat 側の補助情報は task snapshot である。
-
-`completeCurrentStep()` は active step を選択し、必要なら `captureHeldStepResult()` で Bob chat の latest assistant text を result command へ handoff した後、`task.setStepComplete()` と Promise resolve を行う。`completeStepByKey(activeKey)` は Manual Step Panel から指定 key の active step だけを完了するための経路であり、同じ完了 helper を使って result handoff と guardrails を bypass しない。
-
-`manualCompletion` は step が held になった時点で `onHeldStep` callback を呼ぶ。`WorkflowRegisterService` はこの callback から `ManualStepPanelController.show()` を呼び、`steps[].userAction`、`prompt`、run inputs、state snapshot を使って利用者向けメッセージを表示する。active task が残っていない held run では read-only 表示にし、誤って完了扱いにしない。
-
-## 16. Result Handoff / Sink
-
-`executeResultHandoff()` は agent step が出力した text を trim し、互換用 `args[0]` と `latestAssistantText` / `resultText` / `artifactText` に渡す。`file` sink は workspace root 配下のみ許可し、path escape を拒否する。`command` sink は action provider または VS Code command を呼び出す。
-
-## 17. ワークフロー作成・編集 / AI Authoring
-
-ワークフロー作成・編集 の保存処理は、authoring model を Markdown 化し、検証し、error が無ければ既存ファイルを backup して `WORKFLOW.md` を書き込み、`workflowRegister.reload` を実行する。authoring model は `branching`、step `transition`、manual `form` / `approval` を保持し、プレビューと診断 / Save で parser と validator の同じ検査を通す。
-
-ステップ設定 は `User action` section を持ち、`steps[].userAction.message`、`completeLabel`、`confirmOnComplete`、`confirmMessage` を編集できる。manual step では `userAction.message` が無い場合に `prompt` へ fallback する。Builder preview は template 変数を未展開のまま表示し、保存前 validation は利用者向けメッセージ欠落、長すぎるボタン文言、確認文の既定 fallback、無効化される `command:` URI を warning / info として出す。
-
-AI provider は `workflowRegister.aiProviderCommand` で指定する。未設定時は mock provider を使う。`improveWorkflowWithAi` は候補 Markdown を `.bob/workflows/.previews/...` に保存し、diff を表示し、明示確認後に backup を作成して適用する。
-
-## 18. Diagnostics
-
-検証タイミングは、`validateCurrentWorkflow`、`validateWorkspaceWorkflows`、`WORKFLOW.md` 保存時、active editor 切替時、ワークフロー作成・編集 preview / save 時である。
-
-`inspectRunDiagnostics` は、run state と task snapshot summary を読み、run ID、status、current step、workflow hash、step 状態、attempt 件数、snapshot 件数、latest snapshot、handoff error、truncated、不一致 warning を表示する。分岐 run では branch history、loop count、pending checkpoint、reset attempt の有無も表示対象にする。
-
-## 19. Multi-root workspace
-
-`.bob` を持つ root を workflow root として扱う。action provider、agent provider、result sink、run store、task snapshot store、run control store には `workflowRoot` / `workflowFile` / `workflowFolderName` を渡す。同じ workflow ID が複数 root から見つかった場合、`<logicalId>.<rootSlug>-<sha1-prefix>` の形式に修飾する。
-
-## 20. Error Handling
+run diagnosticsはrun identity、status、current step、definition hash、step state、attempt、snapshot、handoff error、truncation、branch history、loop count、pending checkpoint、artifact/effect provenanceを表示する。
 
 | 発生箇所 | 処理 |
 | --- | --- |
-| YAML parse / schema error | diagnostics として返す。 |
-| Bob extension 不在 | 登録を中断し inspect report に記録する。 |
-| action provider 不在 | command step を failed にする。 |
-| result sink 不在 | result / artifact 書き込みを failed にする。 |
-| manual step | `held` として保存する。 |
-| step review | `reviewing` として保存する。 |
-| pause requested | `paused` として保存し、`onRunPaused` hook を呼ぶ。 |
-| completed / failed run の pause | command 側で warning を表示して拒否する。 |
-| hook 失敗 | warning に留め、run state 更新を優先する。 |
-| snapshot 保存失敗 | hook 失敗扱い。workflow 実行は可能な範囲で継続する。 |
+| YAML / schema error | diagnosticsへ返し、登録対象から除外する。 |
+| IBM Bob不在 | Bob登録を保留し、standalone機能を維持する。 |
+| provider / sink不在 | stepをfailedにする。 |
+| manual step | heldとして保存する。 |
+| review gate | reviewingとして保存する。 |
+| pause | pausedとして保存する。 |
+| stale panel mutation | stateを変更せず、refreshを要求する。 |
+| snapshot保存失敗 | warningとして記録し、可能な範囲でrunを継続する。 |
+| hook失敗 | warningとして記録し、durable state更新を優先する。 |
 
-## 21. テスト設計
+## 18. security boundary
 
-| 対象 | 観点 |
-| --- | --- |
-| parser / schema | v1 / legacy parse、diagnostics、step type、input type、stepReview、guardrails。 |
-| workflowValidator | state 参照、artifact 参照、guardrail 衝突、requiredWhen。 |
-| engine | full / singleStep、preflight、command、agent、manual、result、stepReview。 |
-| runStateStore | runId 採番、atomic save、load、list、recoverable run。 |
-| runControlStore / runPause | request、clear、load、paused 遷移、`workflow.pause` state、`onRunPaused` hook。 |
-| runControl commands | run selection、pause refusal、resumePausedRun、inspectRunControl report。 |
-| runControlView | TreeItem、contextValue、icon、Status Bar 集計、refresh。 |
-| taskSnapshots | save、latest、size truncation、includeMessages、prune、findLatest。 |
-| taskSnapshotRecovery | snapshot からの latest assistant text 復旧。 |
-| run retention | pure planner、pin sidecar、physical inventory、reference graph、preview/apply digest、trust split、root-first multi-root、manual-only dispatch。 |
-| cleanup lease / transaction | owner guard、execution exclusion、heartbeat/release、rollback/purge、quarantine residual、symlink/junction/hard-link/alias拒否。 |
-| migration backup | create-once publication、exact bytes、crash-pair preservation、error precedence、all-handle settlement、operator-only recovery。 |
-| resultHandoff | latest assistant text、args 互換、validation failure。 |
-| BobWorkflowFactory | Bob workflow object と step array の構築。 |
-| BobWorkflowMessages | step message、command result、state block の生成。 |
-| BobTaskInputs | metadata / message からの input 抽出。 |
-| BobWorkflowEngineRunner | full / singleStep、task input 抽出、hooks、manual completion。 |
-| authoring | serializer、loader、reference analysis、Webview module。 |
-| テンプレート調整 | template metadata からの候補生成、typed input defaults、VCS別 prompt supplement、readiness、backup、workspace/symlink escape 拒否。 |
-| 実機 | VS Code / IBM Bob / workspace / Webview / Explorer view / Status Bar を含む結合動作。 |
+- external processはshellを使わず、argument array、timeout、output cap、AbortSignalを使う。
+- file / artifact / workflow / run pathはworkspace containmentとphysical identityを検証する。
+- symlink / junction / hard-link ambiguityはwrite / cleanup対象から除外する。
+- Webviewはnonce付きCSPとmessage action allowlistを使う。
+- panel mutationはcanonical root、target identity、revision、coordinatorを通す。
+- untrusted workspaceではread-only inspect / previewだけを許可する。
+- destructive retention operationはworkspace trustをfilesystem access前に要求する。
+- secret、credential、task本文、Bob message本文をdiagnostics / retention evidenceへ出さない。
 
-詳細な単体テスト仕様は `unit-test-spec-ja.md`、実機テスト仕様は `real-machine-test-spec-ja.md` に定義する。
+## 19. test contract
 
-## 22. 変更時の注意点
+### 19.1 automated
 
-- `workflowV1Schema` を変更した場合は parser、validator、README、テンプレート、ワークフロー作成・編集、テストを同期する。
-- テンプレート調整 の template metadata、project profile、customization schema を変更した場合は README、基本設計、詳細設計、単体テスト仕様、実機テスト仕様を同期する。
-- `WorkflowEngineOptions` または `WorkflowExecutionHooks` を変更した場合は Bob UI 実行系と standalone 実行系を確認する。
-- `RunStateStore` の recoverable 判定を変更した場合は singleStep 継続と resume / retry を確認する。
-- `RunControlState` を変更した場合は `runControl.ts`、`runPause.ts`、Run Control View、単体テスト、実機テストを更新する。
-- `TaskSnapshotPayload` を変更した場合は run diagnostics、snapshot pruning、復帰候補利用を更新する。
-- Retention policy、inventory evidence、lease/guard、quarantineを変更した場合はmanual-only/trust/multi-root/privacy契約、operator recovery、Linux/Windows physical-path testsを同期する。
-- Migration backup publicationを変更した場合は`dev`/`ino`/`nlink`/bytes/no-alias、primary/cleanup/close優先順位、cross-process crash-pair保全を同期する。
-- active step の永続化を検討する場合も、Bob task object や Promise は保存しない。
+- manifest `main`が`./out/extensionWithAuthoring.js`
+- Command Palette公開が2件だけ
+- hidden command登録とactivation eventの維持
+-廃止済みcommand / view / panel identifierがlive codeに存在しない
+- `workflowRegister.runs.retention.*`が誤って廃止ID扱いされない
+- OperationHubProviderのsingle panel lifecycle、title、viewType、message allowlist
+- run watcher、debounce、段階refresh、dispose
+- canonical workspace root、revision、target identity、mutation serialization
+- optional extension不在理由
+- WorkflowBuilderPanelのsingle panel、mode、dirty session保護、generation、save queue
+- parser / validator / authoring round trip
+- engine full / single step / resume / retry / review / pause / branching
+- run state atomic writeとphysical path safety
+- task snapshot cap、prune、identity付きrecovery
+- artifact manifest、reuse、reference graph
+- retention planner、lease、owner guard、quarantine、migration backup、privacy
+- package policyとVSIX内容
 
-<!-- REMEDIATION-2026-07-11 -->
-## 2026-07-11 横断修正契約
+### 19.2 Extension Host / real machine
 
-3拡張の横断レビューに基づき、次をリリース契約とする。
+UbuntuとWindowsの同一SHAで次を確認する。
 
-- IBM Bob と companion extension は、機能上必須でない場合は soft dependency とし、未導入でも通常 command を起動できること。
-- workflow action provider は所有元 source ID を持ち、同一 ID の無警告上書きを禁止する。登録解除用 disposable を返し、extension 停止時に解除する。
-- Git / Bazaar 外部プロセスは shell を使わず、hard timeout、出力上限、AbortSignal、子プロセス終了を必須とする。
-- Bazaar repository path は POSIX / Windows の絶対 path、drive-relative path、UNC、device path、dot / traversal / control-character segment を拒否する。
-- review processing limit は manifest と runtime で同じ最小・既定・最大値を持つ。UTF-8 切り詰め後の suffix を含めても byte 上限を超えないこと。
-- repository 内の全 WORKFLOW.md を strict validation し、provider、preflight、nested command ID、template mirror の契約ずれを CI で拒否する。
-- Ubuntu と Windows の両方で compile、unit test、VSIX package、package policy を確認する。IBM Bob 実環境の UI / task / MCP は release candidate 実機ゲートで確認する。
+- `workflowRegister.openOperationHub`を実行するとviewType `workflowRegisterOperationHub`、title `Bob 操作ハブ`のpanelが開く
+- `workflowRegister.openWorkflowBuilder`を実行するとviewType `workflowRegisterBuilder`、title `ワークフロー作成・編集`のpanelが開く
+- 公開5command全体とworkflow-register内部代表commandが登録される
+- optional extension不在時に理由が表示される
+- panel close後にdangling callback / unhandled rejectionがない
+- keyboard操作、focus、200% zoom、High Contrast、長文表示を手動確認する
+- compile、unit、package、package policyをLinux / Windowsで通す
 
-## 自動 Pause evaluator と override
+詳細なcase IDは`unit-test-spec-ja.md`と`real-machine-test-spec-ja.md`に定義する。
 
-`evaluateAutomaticPause()` は `WorkflowRunState`、次 step、注入時計、workflow / workspace policy、optional override を受け取り、`maxRunMinutes`、`maxAgentStepsPerRun`、`pauseAtLocalTime` の決定を返す。local cutoff は timezone-local の日付と時刻を比較し、run が cutoff 日を越えた後に午前0時へ戻っても停止条件を維持する。
+## 20. 変更時の同期範囲
 
-engine は manual request を先に処理し、その後に自動制限を評価する。停止時は `workflow-register/automatic-pause/v1` を `state["workflow.pause"]` に保存し、kind、source、checkpoint、nextStepId、limit、observed、detectedAt を記録する。override は `workflow-register/automatic-pause-override/v1` として `control.json` に保存し、期限切れ後は再び制限を評価する。
-
-active lease の heartbeat による `run.lock.json` の原子的置換は、path identity 検査で観測された場合に限り transient contention として再試行する。symlink、junction、workspace escape、所有 token 変更は引き続き拒否する。
+- command surface変更時: manifest、composition root、cross-extension契約、Extension Host smoke、README、基本/詳細設計、単体/実機仕様
+- OperationHub action変更時: model、HTML、allowlist、command mapping、mutation target、coordinator、watcher tests
+- Builder model変更時: serializer、loader、validator、HTML、client script、save transaction tests
+- run state変更時: schema、store、engine、diagnostics、retention inventory、artifact reference graph
+- run control変更時: store、pause evaluator、resume UI、operation hub、Linux / Windows tests
+- retention変更時: planner、inventory、lease / guard、quarantine、privacy、operator recovery
+- public API変更時: companion extension integration、soft dependency behavior、disposable ownership
