@@ -172,14 +172,32 @@ export class ConsistencyReviewWizardController {
       } else if (message.action === "openTraceabilityPrep") {
         await this.navigateToStage("traceability")
       } else if (message.action === "createReviewInputFromTraceability") {
-        await vscode.commands.executeCommand("bobCodeConsistency.createReviewInputFromTraceability", { workspaceRoot: this.workspaceRoot })
+        const result = await vscode.commands.executeCommand(
+          "bobCodeConsistency.createReviewInputFromTraceability",
+          { workspaceRoot: this.workspaceRoot }
+        )
+        if (!this.isCurrentReviewLease(lease)) return
+        const failureMessage = structuredCommandFailureMessage(result)
+        if (failureMessage) {
+          await this.postForReview(lease, { error: true, message: failureMessage })
+          return
+        }
       } else if (message.action === "validateTraceability") {
-        await vscode.commands.executeCommand("bobCodeConsistency.validateTraceabilityCatalog", { workspaceRoot: this.workspaceRoot })
+        const result = await vscode.commands.executeCommand(
+          "bobCodeConsistency.validateTraceabilityCatalog",
+          { workspaceRoot: this.workspaceRoot }
+        )
+        if (!this.isCurrentReviewLease(lease)) return
+        const failureMessage = structuredCommandFailureMessage(result)
+        if (failureMessage) {
+          await this.postForReview(lease, { error: true, message: failureMessage })
+          return
+        }
       } else if (message.action === "preprocess") {
         await vscode.commands.executeCommand("bobCodeConsistency.preprocess", { workspaceRoot: this.workspaceRoot })
         const model = await this.dependencies.loadReviewModel(["Bob に渡すレビュー資料を更新しました。"])
         if (!this.isCurrentReviewLease(lease)) return
-        this.model = model
+        this.commitReviewModel(model)
         this.renderReview(lease.stageGeneration)
       } else if (message.action === "openResultCapture") {
         await this.navigateToStage("review-result-capture")
@@ -212,7 +230,7 @@ export class ConsistencyReviewWizardController {
         return { status: "error", errors: [error instanceof Error ? error.message : String(error)] }
       }
       if (!this.isCurrentStage("review", generation)) return { status: "error", errors: ["stage is no longer active"] }
-      this.model = model
+      this.commitReviewModel(model)
       if (!this.renderReview(generation)) return { status: "error", errors: ["review stage could not be rendered"] }
       return { status: "ok" }
     }
@@ -263,7 +281,7 @@ export class ConsistencyReviewWizardController {
           ? { skipTraceabilityIo: true, traceabilityErrorCount: errors.length }
           : undefined)
         if (!this.isCurrentStage("review", generation)) return
-        this.model = model
+        this.commitReviewModel(model)
       } catch {
         return
       }
@@ -391,7 +409,7 @@ export class ConsistencyReviewWizardController {
     const config = vscode.workspace.getConfiguration("bobCodeConsistency")
     const textEncoding = config.get<string>("textEncoding", "auto")
     const discovery = await discoverReviewInputCandidates(this.workspaceRoot, { textEncoding })
-    this.documents = discovery.documents
+    const documents = discovery.documents
     const traceability = options.skipTraceabilityIo
       ? {
           proposed: 0,
@@ -416,7 +434,7 @@ export class ConsistencyReviewWizardController {
       vcs: "git",
       changeType: "maintenance",
       focus: ["requirement-code-consistency", "design-code-consistency", "test-gap"],
-      documents: this.documents,
+      documents,
       traceability,
       packagePreview: await listPackagePreview(this.workspaceRoot, config.get<string>("reviewPackagePath", ".bob-review/review-package")),
       initialization,
@@ -444,11 +462,16 @@ export class ConsistencyReviewWizardController {
             tone: "warning",
             message: "初期化コマンド完了後もコード整合プレレビュー workflow を確認できませんでした。"
           }
-      this.model = nextModel
+      this.commitReviewModel(nextModel)
       this.renderReview(lease.stageGeneration)
     } finally {
       this.initializingWorkspace = false
     }
+  }
+
+  private commitReviewModel(model: ConsistencyReviewWizardModel): void {
+    this.model = model
+    this.documents = Array.isArray(model.documents) ? model.documents : []
   }
 
   private async createReviewInput(rawDraft: Record<string, unknown>): Promise<string> {
@@ -518,6 +541,18 @@ function initializationSuccessMessage(result: unknown): string {
     lines.push(`review-input backup: ${candidate.reviewInputBackupPath.trim()}`)
   }
   return lines.join("\n") || fallback
+}
+
+function structuredCommandFailureMessage(result: unknown): string | undefined {
+  if (!result || typeof result !== "object") return undefined
+  const record = result as Record<string, unknown>
+  if (record.status !== "error" && record.status !== "cancelled") return undefined
+  if (typeof record.message === "string" && record.message.trim()) return record.message.trim()
+  const errors = Array.isArray(record.errors)
+    ? record.errors.map((error) => String(error).trim()).filter(Boolean)
+    : []
+  if (errors.length > 0) return errors.join("; ")
+  return record.status === "cancelled" ? "操作をキャンセルしました。" : "操作に失敗しました。"
 }
 
 function fileInitializationOutcome(value: unknown): {
