@@ -1,5 +1,6 @@
 import type * as vscode from "vscode"
 import type { ActionRegistry } from "./core/actionRegistry"
+import type { BobTaskCapabilityName } from "./core/contractV2/bobProfile"
 import type {
   CoreWorkflowDefinition,
   EngineStep,
@@ -22,6 +23,11 @@ export interface BobWorkflowTask {
   getMessages?: () => unknown[]
   getAllMetadata?: () => Record<string, unknown>
   toSerializable?: () => unknown
+}
+
+export interface BobWorkflowTaskBinding {
+  readonly profileDigest: string
+  readonly taskCapabilities: readonly BobTaskCapabilityName[]
 }
 
 export interface BobWorkflowStep {
@@ -114,6 +120,7 @@ export interface WorkflowDefinition {
   workflowFolderName?: string
   file: vscode.Uri
   core: CoreWorkflowDefinition
+  bobTaskBinding?: BobWorkflowTaskBinding
 }
 
 export interface LoadResult {
