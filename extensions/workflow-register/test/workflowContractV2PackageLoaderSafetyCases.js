@@ -203,3 +203,51 @@ test("loader rejects a symbolic-link collection root before resolving it", async
     "the collection root must be lstat-checked before realpath"
   )
 })
+
+test("loader reads package bytes through stable open handles instead of path reads", async () => {
+  const fileSystem = new MemoryPackageFileSystem()
+  const installed = installPublished(fileSystem)
+  let openCalls = 0
+  let closeCalls = 0
+  fileSystem.openFile = async (_root, segments) => {
+    openCalls += 1
+    const entry = fileSystem.entries.get(fileSystem.key(segments))
+    if (!entry || entry.kind !== "file") throw new Error("not file")
+    const openedIdentity = entry.identity
+    const openedSize = entry.size
+    const openedBytes = Buffer.from(entry.bytes)
+    let closed = false
+    return Object.freeze({
+      initialStat: Object.freeze({ kind: "file", size: openedSize, identity: openedIdentity }),
+      async read() {
+        assert.equal(closed, false)
+        return Buffer.from(openedBytes)
+      },
+      async stat() {
+        assert.equal(closed, false)
+        return Object.freeze({ kind: "file", size: openedSize, identity: openedIdentity })
+      },
+      async close() {
+        if (!closed) {
+          closed = true
+          closeCalls += 1
+        }
+      }
+    })
+  }
+  fileSystem.readFile = async () => {
+    throw new Error("path-based readFile must not be used")
+  }
+  const root = rootSubject().createWorkflowPackageRoot(fileSystem, {})
+
+  const loaded = await subject().loadWorkflowPackageGeneration({
+    fileSystem,
+    collectionRoot: root,
+    workflowId: "minimal",
+    generation: installed.digest
+  })
+
+  assert.equal(loaded.packageDigest, installed.digest)
+  assert.equal(openCalls, loaded.files.length)
+  assert.equal(closeCalls, openCalls)
+})
