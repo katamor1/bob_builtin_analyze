@@ -251,3 +251,49 @@ test("loader reads package bytes through stable open handles instead of path rea
   assert.equal(openCalls, loaded.files.length)
   assert.equal(closeCalls, openCalls)
 })
+
+
+test("loader rejects collection-root replacement between lstat and realpath", async () => {
+  const fileSystem = new MemoryPackageFileSystem()
+  const installed = installPublished(fileSystem)
+  let replaced = false
+  fileSystem.hooks.beforeRealpath = (segments, fs) => {
+    if (replaced || segments.length !== 0) return
+    replaced = true
+    const rootEntry = fs.entries.get(fs.key([]))
+    rootEntry.kind = "symbolic-link"
+    rootEntry.identity = "symbolic-link:collection:1"
+    rootEntry.physical = "/outside"
+    for (const entry of fs.entries.values()) {
+      if (entry.segments.length === 0) continue
+      entry.physical = `/outside/${fs.key(entry.segments)}`
+    }
+  }
+  const root = rootSubject().createWorkflowPackageRoot(fileSystem, {})
+
+  await assert.rejects(() => subject().loadWorkflowPackageGeneration({
+    fileSystem,
+    collectionRoot: root,
+    workflowId: "minimal",
+    generation: installed.digest
+  }), /collection root|symbolic link|directory.*changed|physical identity/i)
+})
+
+test("loader revalidates the collection root across the package snapshot", async () => {
+  const fileSystem = new MemoryPackageFileSystem()
+  const installed = installPublished(fileSystem)
+  let replaced = false
+  fileSystem.hooks.beforeReadFile = (segments, fs) => {
+    if (replaced || !segments.includes("workflow.yaml")) return
+    replaced = true
+    fs.setKind([], "symbolic-link")
+  }
+  const root = rootSubject().createWorkflowPackageRoot(fileSystem, {})
+
+  await assert.rejects(() => subject().loadWorkflowPackageGeneration({
+    fileSystem,
+    collectionRoot: root,
+    workflowId: "minimal",
+    generation: installed.digest
+  }), /collection root|symbolic link|directory.*changed|physical identity/i)
+})
