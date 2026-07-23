@@ -152,14 +152,17 @@ async function enumerateDirectory(
     }
     const childFull = [...baseSegments, ...childRelative]
     const childStat = await safeLstat(fileSystem, hostRoot, childFull, "workflow package entry")
+    if (childStat.kind === "symbolic-link") {
+      throw new Error("Workflow package symbolic links are not allowed.")
+    }
+    if (childStat.kind !== "directory" && childStat.kind !== "file") {
+      throw new Error("Workflow package entries must be regular files or allowed directories.")
+    }
     const childPhysical = normalizeContainmentRoot(
       await safeRealpath(fileSystem, hostRoot, childFull, "workflow package entry")
     )
     if (!safeIsWithin(fileSystem, basePhysical, childPhysical)) {
       throw new Error("Workflow package entry escapes physical containment.")
-    }
-    if (childStat.kind === "symbolic-link") {
-      throw new Error("Workflow package symbolic links are not allowed.")
     }
     if (childStat.kind === "directory") {
       if (relativeSegments.length === 0 && name !== "prompts" && name !== "schemas") {
@@ -175,9 +178,6 @@ async function enumerateDirectory(
         metadata
       )
       continue
-    }
-    if (childStat.kind !== "file") {
-      throw new Error("Workflow package entries must be regular files or allowed directories.")
     }
 
     const logicalPath = childRelative.join("/")
