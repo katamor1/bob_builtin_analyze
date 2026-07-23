@@ -12,12 +12,14 @@ export interface SharedProcessingBudgetLedger {
   reserveForTarget(category: "single_document_bytes", target: string, amount: number): SharedProcessingBudgetReservation
 }
 
+export interface SharedProcessingBudgetLimits {
+  readonly single_document_bytes: number
+  readonly total_document_bytes: number
+  readonly total_operation_input_bytes: number
+}
+
 export interface SharedProcessingBudgetProfileOverrides {
-  readonly limits?: Readonly<Partial<{
-    single_document_bytes: number
-    total_document_bytes: number
-    total_operation_input_bytes: number
-  }>>
+  readonly limits?: Readonly<Partial<SharedProcessingBudgetLimits>>
 }
 
 export interface SharedBoundedDocumentSnapshot {
@@ -51,6 +53,8 @@ export interface SharedOoxmlArchiveSnapshot {
 }
 
 interface SharedRuntimeModule {
+  readonly DEFAULT_PROCESSING_BUDGET_PROFILE: Readonly<{ limits: SharedProcessingBudgetLimits }>
+  readonly PROCESSING_BUDGET_ABSOLUTE_MAXIMA: SharedProcessingBudgetLimits
   readonly ProcessingBudgetLedger: new (profile?: SharedProcessingBudgetProfileOverrides) => SharedProcessingBudgetLedger
   readBoundedDocumentFile(input: {
     filePath: string
@@ -72,6 +76,8 @@ interface SharedRuntimeModule {
 
 const runtime = require("./shared-processing-budget-runtime") as SharedRuntimeModule
 
+export const DEFAULT_PROCESSING_BUDGET_PROFILE = runtime.DEFAULT_PROCESSING_BUDGET_PROFILE
+export const PROCESSING_BUDGET_ABSOLUTE_MAXIMA = runtime.PROCESSING_BUDGET_ABSOLUTE_MAXIMA
 export const ProcessingBudgetLedger = runtime.ProcessingBudgetLedger
 export const readBoundedDocumentFile = runtime.readBoundedDocumentFile
 export const preflightOoxmlArchive = runtime.preflightOoxmlArchive
