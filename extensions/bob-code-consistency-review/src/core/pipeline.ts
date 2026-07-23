@@ -122,6 +122,7 @@ export async function preprocessReview(input: PreprocessReviewInput): Promise<Pr
     traceability,
     contextBudgetArtifact: contextBudget.artifact,
     limits,
+    budgetLedger: processingBudgetLedger,
     workflowRunId: input.workflowRunId
   })
 
