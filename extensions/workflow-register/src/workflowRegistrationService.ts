@@ -68,12 +68,15 @@ export async function registerWorkflows(input: RegisterWorkflowsInput): Promise<
   }
 
   await deactivateRegisteredSource(input.previousSource, lines)
+  let source: BobSourceLike | undefined
   const sourceResult = await runAttempt(
     "registerSource(sourceId, sourceName)",
-    () => api.registerSource(sourceId, sourceName)
+    () => {
+      source = api.registerSource(sourceId, sourceName)
+      return source
+    }
   )
   lines.push(formatAttempt(sourceResult))
-  const source = sourceResult.value
   if (!source) {
     return {
       result: { summary: "Bob accepted the source request, but an audited source was not returned.", lines },
