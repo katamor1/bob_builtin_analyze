@@ -120,6 +120,41 @@ class MemoryPackageFileSystem {
     })
   }
 
+  async openFile(_root, segments) {
+    this.calls.push(["openFile", this.key(segments)])
+    this.hooks.beforeOpenFile?.(segments, this)
+    const entry = this.entries.get(this.key(segments))
+    if (!entry || entry.kind !== "file") throw new Error("not file")
+    let closed = false
+    const stat = () => Object.freeze({
+      kind: entry.kind,
+      size: entry.kind === "file" ? entry.size : 0,
+      identity: entry.identity
+    })
+    return Object.freeze({
+      initialStat: stat(),
+      read: async () => {
+        if (closed) throw new Error("closed")
+        this.calls.push(["openRead", this.key(segments)])
+        this.hooks.beforeReadFile?.(segments, this)
+        if (entry.readThrows) throw entry.readThrows
+        const bytes = Buffer.from(entry.bytes)
+        this.hooks.afterReadFile?.(segments, this)
+        return bytes
+      },
+      stat: async () => {
+        if (closed) throw new Error("closed")
+        this.calls.push(["openStat", this.key(segments)])
+        return stat()
+      },
+      close: async () => {
+        if (closed) return
+        closed = true
+        this.calls.push(["closeFile", this.key(segments)])
+      }
+    })
+  }
+
   async readDirectory(_root, segments) {
     this.calls.push(["readDirectory", this.key(segments)])
     this.hooks.beforeReadDirectory?.(segments, this)
