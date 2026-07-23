@@ -142,6 +142,19 @@ test("requires target-scoped categories to use an explicit target bounded to 256
   }
 })
 
+test("orders target reports by Unicode code point rather than UTF-16 code unit", () => {
+  const runtime = loadRuntime()
+  const ledger = new runtime.ProcessingBudgetLedger()
+  ledger.reserveForTarget("single_document_bytes", "𐀀", 1).commit()
+  ledger.reserveForTarget("single_document_bytes", "￿", 1).commit()
+  assert.deepEqual(
+    ledger.snapshot().targets
+      .filter((entry) => entry.category === "single_document_bytes")
+      .map((entry) => entry.target),
+    ["￿", "𐀀"]
+  )
+})
+
 test("holds aggregate capacity across concurrent target reservations and releases it atomically", () => {
   const runtime = loadRuntime()
   const profile = runtime.normalizeProcessingBudgetProfile({
