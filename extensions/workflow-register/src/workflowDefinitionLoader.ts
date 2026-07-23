@@ -1,8 +1,13 @@
 import * as vscode from "vscode"
 import type {
+  BobWorkflowTaskBinding,
   LoadResult,
   WorkflowDefinition
 } from "./bobWorkflowTypes"
+import {
+  BOB_2_0_1_PROFILE_DIGEST,
+  BOB_2_0_1_TASK_CAPABILITIES
+} from "./core/contractV2/bobProfile"
 import type { CoreWorkflowDefinition } from "./core/model"
 import {
   compileWorkflowDocument,
@@ -10,13 +15,23 @@ import {
 } from "./core/workflowCompiler"
 import {
   adaptCoreWorkflowForBob,
-  qualifyDuplicateWorkflowIds
+  qualifyDuplicateWorkflowIds,
+  type CoreWorkflowWithBobTaskBinding
 } from "./workflowAdapter"
 import {
   discoverWorkspaceWorkflowFiles,
   type WorkflowFileCandidate
 } from "./workflowDiscovery"
 import { validateAndDescribeWorkflow } from "./workflowDiagnostics"
+
+const LEGACY_BOB_TASK_BINDING: BobWorkflowTaskBinding = Object.freeze({
+  profileDigest: BOB_2_0_1_PROFILE_DIGEST,
+  taskCapabilities: BOB_2_0_1_TASK_CAPABILITIES
+})
+
+type CompiledCoreWorkflow = CoreWorkflowDefinition & {
+  readonly bobTaskBinding?: BobWorkflowTaskBinding
+}
 
 export async function loadWorkspaceWorkflows(sourceId: string): Promise<LoadResult> {
   const diagnostics: string[] = []
@@ -48,9 +63,11 @@ async function loadWorkflowFile(
   const compiled = compileWorkflowDocument({ sourceId, filePath: candidate.relativePath, text, strict: true })
   diagnostics.push(...formatWorkflowDiagnostics(compiled))
   if (!compiled.ok || !compiled.workflow) return { diagnostics }
-  const coreWorkflow = {
-    ...compiled.workflow,
-    logicalWorkflowId: compiled.workflow.id,
+  const compiledWorkflow = compiled.workflow as CompiledCoreWorkflow
+  const coreWorkflow: CoreWorkflowWithBobTaskBinding = {
+    ...compiledWorkflow,
+    bobTaskBinding: compiledWorkflow.bobTaskBinding ?? LEGACY_BOB_TASK_BINDING,
+    logicalWorkflowId: compiledWorkflow.id,
     workflowRoot: candidate.root.root,
     workflowFile: candidate.file.fsPath,
     workflowFolderName: candidate.root.name
@@ -59,7 +76,7 @@ async function loadWorkflowFile(
   const workflowDiagnostics = validateAndDescribeWorkflow({
     relativePath: candidate.relativePath,
     folderName: candidate.folderName,
-    parsedWorkflowName: compiled.workflow.name,
+    parsedWorkflowName: compiledWorkflow.name,
     workflow
   })
   diagnostics.push(...workflowDiagnostics.diagnostics)
