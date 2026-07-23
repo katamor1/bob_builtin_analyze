@@ -76,3 +76,21 @@ test("derives the per-source cap from a lower aggregate document byte limit", as
   assert.equal(result.documents.length, 1)
   assert.equal(result.documents[0].status, "requires_conversion")
 })
+
+test("allows the same source path to be selected as distinct logical documents", async (t) => {
+  const [filePath] = await temporaryFiles(t, [6])
+  const { extractRuleDocuments } = require("../out/ruleAuthoring/extraction/documentExtractor")
+
+  const result = await extractRuleDocuments([
+    { filePath, logicalName: "first.doc" },
+    { filePath, logicalName: "second.doc" }
+  ], undefined, {
+    ...DEFAULT_RULE_AUTHORING_LIMITS,
+    maxSourceBytes: 6,
+    maxAggregateSourceBytes: 12
+  })
+
+  assert.equal(result.documents.length, 2)
+  assert.equal(result.duplicates.length, 1)
+  assert.deepEqual(result.documents.map((document) => document.status), ["requires_conversion", "requires_conversion"])
+})
