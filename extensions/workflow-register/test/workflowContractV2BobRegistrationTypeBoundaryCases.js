@@ -20,8 +20,10 @@ test("audited Bob source remains typed across runAttempt without a cast", () => 
 test("incompatible Bob and failed source creation clear stale source, ids, and context", () => {
   const source = registrationSource()
   const incompatibleStart = source.indexOf("if (!api) {")
-  const registrationStart = source.indexOf("let source: BobSourceLike | undefined", incompatibleStart)
-  const incompatibleBlock = source.slice(incompatibleStart, registrationStart)
+  const incompatibleEnd = source.indexOf("\n  }\n\n  await deactivateRegisteredSource", incompatibleStart)
+  assert.notEqual(incompatibleStart, -1)
+  assert.notEqual(incompatibleEnd, -1)
+  const incompatibleBlock = source.slice(incompatibleStart, incompatibleEnd)
   assert.match(incompatibleBlock, /await deactivateRegisteredSource\(input\.previousSource, lines\)/)
   assert.match(incompatibleBlock, /"setContext", "bob-code\.hasWorkflows", false/)
   assert.match(incompatibleBlock, /registeredSource: undefined/)
@@ -31,6 +33,8 @@ test("incompatible Bob and failed source creation clear stale source, ids, and c
 
   const missingStart = source.indexOf("if (!source) {")
   const auditedStart = source.indexOf("const auditedSource = source", missingStart)
+  assert.notEqual(missingStart, -1)
+  assert.notEqual(auditedStart, -1)
   const missingBlock = source.slice(missingStart, auditedStart)
   assert.match(missingBlock, /"setContext", "bob-code\.hasWorkflows", false/)
   assert.match(missingBlock, /registeredSource: undefined/)
