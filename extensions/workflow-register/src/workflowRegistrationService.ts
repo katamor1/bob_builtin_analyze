@@ -86,6 +86,7 @@ export async function registerWorkflows(input: RegisterWorkflowsInput): Promise<
       idsChanged: false
     }
   }
+  const auditedSource = source
   lines.push("- audited source capabilities: deactivate, log, registerWorkflow")
 
   let registeredCount = 0
@@ -93,20 +94,20 @@ export async function registerWorkflows(input: RegisterWorkflowsInput): Promise<
   for (const workflow of loaded.workflows) {
     const attempt = await runAttempt(
       `source.registerWorkflow(${workflow.id})`,
-      () => source.registerWorkflow(createBobWorkflow(workflow, input.createRunner(workflow)))
+      () => auditedSource.registerWorkflow(createBobWorkflow(workflow, input.createRunner(workflow)))
     )
     lines.push(formatAttempt(attempt))
     if (attempt.ok) {
       registeredIds.add(workflow.id)
       registeredCount += 1
-      source.log(`Workflow registered from ${workflow.file.fsPath}: ${workflow.id}`)
+      auditedSource.log(`Workflow registered from ${workflow.file.fsPath}: ${workflow.id}`)
     }
   }
   await vscode.commands.executeCommand("setContext", "bob-code.hasWorkflows", registeredIds.size > 0)
   return {
     result: { summary: `Registered ${registeredCount} workflow(s); ${registeredIds.size} workflow(s) are registered in this session.`, lines },
     coreWorkflows,
-    registeredSource: source,
+    registeredSource: auditedSource,
     registeredIds,
     sourceChanged: true,
     idsChanged: true
