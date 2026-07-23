@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto"
 
+import { canonicalJsonDigest } from "./canonicalJson"
 import type { WorkflowPackageFileSystem } from "./packageFileSystem"
 import {
   PROMPT_FILE_PATTERN,
@@ -23,9 +24,7 @@ import {
 } from "./packageLoaderIo"
 import {
   bufferByteLength,
-  bufferFrom,
   compareText,
-  jsonStringify,
   normalizeContainmentRoot,
   numberIsSafeInteger,
   objectFreeze,
@@ -332,10 +331,10 @@ function digestBytes(bytes: Uint8Array): Sha256Digest {
 }
 
 function digestPackageManifest(files: readonly RawWorkflowPackageFile[]): Sha256Digest {
-  const entries: string[] = []
+  const entries: { readonly path: string; readonly digest: Sha256Digest }[] = []
   for (let index = 0; index < files.length; index += 1) {
     const file = files[index]
-    pushValue(entries, `{"digest":"${file.digest}","path":${jsonStringify(file.path)}}`)
+    pushValue(entries, objectFreeze({ path: file.path, digest: file.digest }))
   }
-  return digestBytes(bufferFrom(`{"files":[${entries.join(",")}]}`, "utf8"))
+  return canonicalJsonDigest(objectFreeze({ files: objectFreeze(entries) })) as Sha256Digest
 }
