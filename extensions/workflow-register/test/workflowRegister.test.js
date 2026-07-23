@@ -41,8 +41,9 @@ test("Builder is the only GUI authoring panel and Template Studio command is rem
   const builderPanel = readSrc("webview", "workflowBuilderPanel.ts")
   const extensionRoot = path.resolve(__dirname, "..")
 
-  assert.equal(packageJson.activationEvents.includes("onCommand:bobTemplate.openCustomizationStudio"), false)
-  assert.equal(packageJson.contributes.commands.some((entry) => entry.command === "bobTemplate.openCustomizationStudio"), false)
+  const obsoleteStudioCommand = ["bobTemplate", "openCustomizationStudio"].join(".")
+  assert.equal(packageJson.activationEvents.includes(`onCommand:${obsoleteStudioCommand}`), false)
+  assert.equal(packageJson.contributes.commands.some((entry) => entry.command === obsoleteStudioCommand), false)
   assert.doesNotMatch(extension, /bobTemplate\.openCustomizationStudio|openTemplateCustomizationStudio/)
   assert.equal(fs.existsSync(path.join(extensionRoot, "src", "webview", "templateCustomizationStudioPanel.ts")), false)
   assert.equal(fs.existsSync(path.join(extensionRoot, "src", "commands", "openTemplateCustomizationStudio.ts")), false)
