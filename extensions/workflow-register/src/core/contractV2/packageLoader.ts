@@ -7,6 +7,7 @@ import {
   type LoadCurrentWorkflowPackageInput,
   type LoadWorkflowPackageCandidateInput,
   type LoadWorkflowPackageGenerationInput,
+  type DirectoryIdentitySnapshot,
   type LoadWorkflowPackageResult,
   type RawWorkflowPackage,
   type RawWorkflowPackageFile,
@@ -24,6 +25,7 @@ import {
 } from "./packageLoaderInput"
 import {
   assertDirectoryChain,
+  assertDirectoryIdentitySnapshotsUnchanged,
   assertDirectoryKind,
   readStableControlFile,
   safeLstat,
@@ -38,6 +40,7 @@ export {
   type LoadCurrentWorkflowPackageInput,
   type LoadWorkflowPackageCandidateInput,
   type LoadWorkflowPackageGenerationInput,
+  type DirectoryIdentitySnapshot,
   type LoadWorkflowPackageResult,
   type RawWorkflowPackage,
   type RawWorkflowPackageFile,
@@ -62,7 +65,13 @@ export async function loadCurrentWorkflowPackage(input: unknown): Promise<LoadWo
     "Current workflow package load input.workflowId"
   )
   const state = requireWorkflowPackageRootState(snapshot.collectionRoot, fileSystem)
-  const slotPhysical = await assertDirectoryChain(fileSystem, state.hostRoot, [[workflowId]])
+  const chainSnapshots: DirectoryIdentitySnapshot[] = []
+  const slotPhysical = await assertDirectoryChain(
+    fileSystem,
+    state.hostRoot,
+    [[workflowId]],
+    chainSnapshots
+  )
   const pointerSnapshot = await readStableControlFile(
     fileSystem,
     state.hostRoot,
@@ -75,12 +84,14 @@ export async function loadCurrentWorkflowPackage(input: unknown): Promise<LoadWo
     workflowId,
     pointer: parseStrictJson(pointerSnapshot.bytes, "Current workflow package pointer")
   })
-  return loadCandidateSnapshot(fileSystem, state.hostRoot, workflowId, {
+  const loaded = await loadCandidateSnapshot(fileSystem, state.hostRoot, workflowId, {
     publication: "published",
     generation: pointer.generation,
     expectedPackageDigest: pointer.packageDigest,
     baseSegments: [workflowId, "versions", pointer.generation]
   })
+  await assertDirectoryIdentitySnapshotsUnchanged(fileSystem, state.hostRoot, chainSnapshots)
+  return loaded
 }
 
 export async function loadWorkflowPackageGeneration(input: unknown): Promise<LoadWorkflowPackageResult> {
@@ -156,11 +167,12 @@ export async function loadWorkflowPackageCandidate(input: unknown): Promise<Load
   const name = stagingName(candidate.name)
   const token = ownershipToken(candidate.ownershipToken)
   const stagingBase = [workflowId, "versions", name] as const
+  const authorizationChain: DirectoryIdentitySnapshot[] = []
   const stagingPhysical = await assertDirectoryChain(fileSystem, state.hostRoot, [
     [workflowId],
     [workflowId, "versions"],
     stagingBase
-  ])
+  ], authorizationChain)
   const ownerSnapshot = await readStableControlFile(
     fileSystem,
     state.hostRoot,
@@ -238,6 +250,11 @@ export async function loadWorkflowPackageCandidate(input: unknown): Promise<Load
     || ownershipToken(afterOwner.ownershipToken) !== token
   ) throw new Error("Workflow package staging ownership authorization changed during package load.")
 
+  await assertDirectoryIdentitySnapshotsUnchanged(
+    fileSystem,
+    state.hostRoot,
+    authorizationChain
+  )
   return loaded
 }
 
