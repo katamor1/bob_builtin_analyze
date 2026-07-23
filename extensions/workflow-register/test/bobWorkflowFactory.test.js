@@ -17,7 +17,7 @@ class AuditedTask {
   setStepComplete() { return undefined }
   startSubagent() { return Promise.resolve("ok") }
   toSerializable() { return { id: this.id } }
-  unrelatedTaskMethod() { throw new Error("The task probe must not expose unrelated methods.") }
+  unrelatedTaskMethod() { throw new Error("The task probe must not invoke unrelated methods.") }
 }
 
 function definition(overrides = {}) {
@@ -45,7 +45,7 @@ function definition(overrides = {}) {
   }
 }
 
-test("Bob workflow factory probes an audited task before dispatching an engine step", async () => {
+test("Bob workflow factory probes an audited task before dispatching an engine step and preserves identity", async () => {
   const calls = []
   const originalTask = new AuditedTask()
   const workflow = createBobWorkflow(definition(), {
@@ -62,15 +62,12 @@ test("Bob workflow factory probes an audited task before dispatching an engine s
   assert.equal(await steps[1].execution(originalTask), true)
   assert.equal(calls.length, 1)
   assert.deepEqual(calls[0].slice(0, 3), ["engine", "review", 1])
-  assert.notEqual(calls[0][3], originalTask)
-  assert.deepEqual(Object.keys(calls[0][3]), [
-    "getAllMetadata", "getMessages", "sendMessage", "setStepComplete", "startSubagent", "toSerializable"
-  ])
-  assert.deepEqual(calls[0][3].getAllMetadata(), { id: "task-1" })
+  assert.equal(calls[0][3], originalTask)
 })
 
-test("Bob workflow factory probes an audited task before dispatching a Todo step", async () => {
+test("Bob workflow factory probes an audited task before dispatching a Todo step and preserves identity", async () => {
   const calls = []
+  const originalTask = new AuditedTask()
   const workflow = createBobWorkflow(definition({ stepExecution: { mode: "todo", allowOutOfOrder: false, showInBob: true } }), {
     runSingleWorkflowStep: async () => { calls.push(["single"]); return true },
     runTodoStep: async (todo, index, task) => { calls.push(["todo", todo.id, index, task]); return true },
@@ -79,10 +76,10 @@ test("Bob workflow factory probes an audited task before dispatching a Todo step
 
   const steps = workflow.getSteps()
   assert.deepEqual(steps.map((step) => [step.id, step.title]), [["todo-only", "Todo only"]])
-  assert.equal(await steps[0].execution(new AuditedTask()), true)
+  assert.equal(await steps[0].execution(originalTask), true)
   assert.equal(calls.length, 1)
   assert.deepEqual(calls[0].slice(0, 3), ["todo", "todo-only", 0])
-  assert.equal(Object.isFrozen(calls[0][3]), true)
+  assert.equal(calls[0][3], originalTask)
 })
 
 test("Bob workflow factory fails closed before runner dispatch when a task capability is missing", async () => {
