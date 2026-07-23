@@ -1,10 +1,18 @@
-import * as fs from "node:fs/promises"
+import { createHash } from "node:crypto"
 import * as path from "node:path"
 import { resolveWorkspacePathStrict, toPosixPath } from "../core/fileSystem"
 import { decodeTextBuffer } from "../core/textEncoding"
 import { normalizeReviewProcessingLimits, truncateUtf8Text, type ReviewProcessingLimits } from "../core/limits"
 import type { DocumentExtractionResult, EvidenceRef } from "../core/documentTypes"
 import type { ReviewInput } from "../core/reviewTypes"
+import {
+  DEFAULT_PROCESSING_BUDGET_PROFILE,
+  ProcessingBudgetLedger,
+  preflightOoxmlArchive,
+  readBoundedDocumentFile,
+  type SharedBoundedDocumentSnapshot,
+  type SharedProcessingBudgetLedger
+} from "../sharedProcessingBudgetRuntime"
 import { extractDocxChunks } from "./documentDocxExtractor"
 import type { ArtifactRef, ExtractedChunk } from "./documentExtractionCommon"
 import { extractMarkdownChunks } from "./documentMarkdownExtractor"
@@ -51,7 +59,16 @@ export async function extractDocuments(reviewInput: ReviewInput, options: { work
       let chunks: ExtractedChunk[] = []
       try {
         const filePath = resolveWorkspacePathStrict(options.workspaceRoot, item.path, "artifact path")
-        chunks = await extractFileChunks(filePath, item, typeInfo.evidenceType, selectors, warnings, limits, options.textEncoding)
+        chunks = await extractFileChunks(
+          filePath,
+          options.workspaceRoot,
+          item,
+          typeInfo.evidenceType,
+          selectors,
+          warnings,
+          limits,
+          options.textEncoding
+        )
       } catch (error) {
         warnings.push(`failed to extract ${item.path}: ${error instanceof Error ? error.message : String(error)}`)
       }
@@ -122,6 +139,7 @@ function selectorList(item: ArtifactRef): string[] {
 
 async function extractFileChunks(
   filePath: string,
+  workspaceRoot: string,
   item: ArtifactRef,
   evidenceType: string,
   selectors: string[],
@@ -130,35 +148,80 @@ async function extractFileChunks(
   textEncoding = "auto"
 ): Promise<ExtractedChunk[]> {
   const extension = path.extname(filePath).toLowerCase()
+  if (extension !== ".md" && extension !== ".markdown" && extension !== ".docx" && extension !== ".xlsx") {
+    throw new Error(`unsupported document extension: ${extension || "(none)"}`)
+  }
+
+  const ledger = documentLedger(limits)
+  const snapshot = await readBoundedDocumentFile({
+    filePath,
+    rootPath: workspaceRoot,
+    target: documentTarget(filePath),
+    ledger,
+    maximumFileBytes: limits.maxDocumentBytes
+  })
+  const documentBytes = snapshot.copyBytes()
+  let chunks: ExtractedChunk[]
+
   if (extension === ".md" || extension === ".markdown") {
-    const read = await readLimitedTextFile(filePath, limits.maxDocumentBytes, textEncoding)
-    if (read.truncated) warnings.push(`${toPosixPath(item.path ?? filePath)} exceeded maxDocumentBytes (${read.originalBytes} > ${limits.maxDocumentBytes}); truncated before extraction.`)
-    return extractMarkdownChunks(read.text, evidenceType, selectors)
+    chunks = extractMarkdownChunks(decodeTextBuffer(Buffer.from(documentBytes), textEncoding), evidenceType, selectors)
+  } else if (extension === ".docx") {
+    preflightArchive(snapshot, ledger, filePath, "docx", limits)
+    chunks = await extractDocxChunks(documentBytes, evidenceType, selectors)
+  } else {
+    preflightArchive(snapshot, ledger, filePath, "xlsx", limits)
+    chunks = await extractXlsxChunks(documentBytes, filePath, item, evidenceType, selectors, warnings, limits)
   }
-  await assertDocumentWithinByteLimit(filePath, item.path ?? filePath, limits, warnings)
-  if (extension === ".docx") return extractDocxChunks(filePath, evidenceType, selectors)
-  if (extension === ".xlsx") return extractXlsxChunks(filePath, item, evidenceType, selectors, warnings, limits)
-  throw new Error(`unsupported document extension: ${extension || "(none)"}`)
+
+  await snapshot.assertCurrent()
+  return chunks
 }
 
-async function readLimitedTextFile(filePath: string, maxBytes: number, textEncoding: string): Promise<{ text: string; truncated: boolean; originalBytes: number }> {
-  const stat = await fs.stat(filePath)
-  const length = Math.min(stat.size, maxBytes)
-  const handle = await fs.open(filePath, "r")
-  try {
-    const buffer = Buffer.alloc(length)
-    await handle.read(buffer, 0, length, 0)
-    return { text: decodeTextBuffer(buffer, textEncoding), truncated: stat.size > maxBytes, originalBytes: stat.size }
-  } finally {
-    await handle.close()
-  }
+function documentLedger(limits: ReviewProcessingLimits): SharedProcessingBudgetLedger {
+  const aggregateBytes = Math.max(
+    limits.maxDocumentBytes,
+    DEFAULT_PROCESSING_BUDGET_PROFILE.limits.total_document_bytes
+  )
+  return new ProcessingBudgetLedger({
+    limits: {
+      single_document_bytes: limits.maxDocumentBytes,
+      total_document_bytes: aggregateBytes,
+      total_operation_input_bytes: aggregateBytes
+    }
+  })
 }
 
-async function assertDocumentWithinByteLimit(filePath: string, sourcePath: string, limits: ReviewProcessingLimits, warnings: string[]): Promise<void> {
-  const stat = await fs.stat(filePath)
-  if (stat.size <= limits.maxDocumentBytes) return
-  warnings.push(`${toPosixPath(sourcePath)} exceeded maxDocumentBytes (${stat.size} > ${limits.maxDocumentBytes}); skipped.`)
-  throw new Error(`document exceeds maxDocumentBytes (${stat.size} > ${limits.maxDocumentBytes})`)
+function preflightArchive(
+  snapshot: SharedBoundedDocumentSnapshot,
+  ledger: SharedProcessingBudgetLedger,
+  filePath: string,
+  kind: "docx" | "xlsx",
+  limits: ReviewProcessingLimits
+): void {
+  const aggregateBytes = Math.max(
+    limits.maxDocumentBytes,
+    DEFAULT_PROCESSING_BUDGET_PROFILE.limits.total_document_bytes
+  )
+  preflightOoxmlArchive({
+    archiveBytes: snapshot.copyBytes(),
+    target: archiveTarget(filePath),
+    ledger,
+    expectedKind: kind,
+    maximumEntryBytes: limits.maxDocumentBytes,
+    maximumExpandedBytes: aggregateBytes
+  })
+}
+
+function documentTarget(filePath: string): string {
+  return `consistency:document:${pathDigest(filePath)}`
+}
+
+function archiveTarget(filePath: string): string {
+  return `consistency:archive:${pathDigest(filePath)}`
+}
+
+function pathDigest(filePath: string): string {
+  return createHash("sha256").update(path.resolve(filePath), "utf8").digest("hex").slice(0, 24)
 }
 
 function limitChunkText(chunk: ExtractedChunk, sourcePath: string, warnings: string[], limits: ReviewProcessingLimits): ExtractedChunk {
