@@ -7,6 +7,7 @@
     {
       "id": "single_document_bytes",
       "title": "Single document",
+      "scope": "target",
       "unit": "bytes",
       "default": 5242880,
       "absolute_maximum": 52428800,
@@ -15,6 +16,7 @@
     {
       "id": "total_document_bytes",
       "title": "Total document bytes",
+      "scope": "operation",
       "unit": "bytes",
       "default": 33554432,
       "absolute_maximum": 268435456,
@@ -23,6 +25,7 @@
     {
       "id": "document_count",
       "title": "Document count",
+      "scope": "operation",
       "unit": "count",
       "default": 128,
       "absolute_maximum": 1024,
@@ -31,6 +34,7 @@
     {
       "id": "sheets_per_workbook",
       "title": "Sheets per workbook",
+      "scope": "target",
       "unit": "count",
       "default": 20,
       "absolute_maximum": 100,
@@ -39,6 +43,7 @@
     {
       "id": "total_sheets",
       "title": "Total sheets",
+      "scope": "operation",
       "unit": "count",
       "default": 100,
       "absolute_maximum": 1000,
@@ -47,6 +52,7 @@
     {
       "id": "rows_per_sheet",
       "title": "Rows per sheet",
+      "scope": "target",
       "unit": "count",
       "default": 500,
       "absolute_maximum": 5000,
@@ -55,6 +61,7 @@
     {
       "id": "total_rows",
       "title": "Total rows",
+      "scope": "operation",
       "unit": "count",
       "default": 25000,
       "absolute_maximum": 250000,
@@ -63,6 +70,7 @@
     {
       "id": "changed_files",
       "title": "Changed files",
+      "scope": "operation",
       "unit": "count",
       "default": 5000,
       "absolute_maximum": 20000,
@@ -71,6 +79,7 @@
     {
       "id": "raw_diff_bytes",
       "title": "Raw diff",
+      "scope": "operation",
       "unit": "bytes",
       "default": 1048576,
       "absolute_maximum": 10485760,
@@ -79,6 +88,7 @@
     {
       "id": "document_excerpt_bytes",
       "title": "Total document excerpts",
+      "scope": "operation",
       "unit": "bytes",
       "default": 2097152,
       "absolute_maximum": 8388608,
@@ -87,6 +97,7 @@
     {
       "id": "bob_input_bytes",
       "title": "Bob input",
+      "scope": "operation",
       "unit": "bytes",
       "default": 2097152,
       "absolute_maximum": 8388608,
@@ -95,6 +106,7 @@
     {
       "id": "managed_artifact_bytes",
       "title": "Total managed artifacts",
+      "scope": "operation",
       "unit": "bytes",
       "default": 16777216,
       "absolute_maximum": 67108864,
@@ -103,6 +115,7 @@
     {
       "id": "total_operation_input_bytes",
       "title": "Total operation input",
+      "scope": "operation",
       "unit": "bytes",
       "default": 67108864,
       "absolute_maximum": 268435456,
