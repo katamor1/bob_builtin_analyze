@@ -66,3 +66,27 @@ test("staging candidate rejects malformed names, missing owner records, and acce
   await assert.rejects(() => load({ fileSystem, collectionRoot: root, workflowId: "minimal", candidate }), TypeError)
   assert.equal(getterCalls, 0)
 })
+
+test("owned staging revalidates the owner token after the package snapshot", async () => {
+  const fileSystem = new MemoryPackageFileSystem()
+  const staging = installStaging(fileSystem)
+  const ownerPath = [...staging.base, "owner.json"]
+  let replaced = false
+  fileSystem.hooks.beforeReadFile = (segments, fs) => {
+    if (!replaced && segments.includes("package")) {
+      replaced = true
+      fs.mutate(ownerPath, Buffer.from(JSON.stringify({
+        schemaVersion: "workflow-package-staging-owner/v1",
+        ownershipToken: "replacement-owner"
+      })))
+    }
+  }
+  const root = rootSubject().createWorkflowPackageRoot(fileSystem, {})
+
+  await assert.rejects(() => subject().loadWorkflowPackageCandidate({
+    fileSystem,
+    collectionRoot: root,
+    workflowId: "minimal",
+    candidate: { kind: "owned-staging", name: staging.name, ownershipToken: staging.token }
+  }), /ownership|owner.*changed|authorization/i)
+})
