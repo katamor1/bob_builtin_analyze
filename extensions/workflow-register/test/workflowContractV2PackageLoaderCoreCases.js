@@ -113,3 +113,24 @@ test("package digest delegates to F1 canonical JSON instead of mutable Array.joi
     Array.prototype.join = originalJoin
   }
 })
+
+test("current pointer rejects duplicate JSON object keys", async () => {
+  const fileSystem = new MemoryPackageFileSystem()
+  const installed = installPublished(fileSystem)
+  fileSystem.mutate(["minimal", "current.json"], Buffer.from([
+    "{",
+    '"schemaVersion":"workflow-package-pointer/v1",',
+    '"workflowId":"minimal",',
+    '"\\u0077orkflowId":"minimal",',
+    `"generation":"${installed.digest}",`,
+    `"packageDigest":"${installed.digest}"`,
+    "}"
+  ].join("")))
+  const root = rootSubject().createWorkflowPackageRoot(fileSystem, {})
+
+  await assert.rejects(() => subject().loadCurrentWorkflowPackage({
+    fileSystem,
+    collectionRoot: root,
+    workflowId: "minimal"
+  }), /duplicate.*key|duplicate.*property/i)
+})
