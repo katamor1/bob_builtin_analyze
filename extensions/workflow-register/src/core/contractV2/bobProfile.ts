@@ -99,7 +99,7 @@ export function snapshotBobContractProfile(liveExport: unknown): Readonly<{
   profileDigest: typeof BOB_2_0_1_PROFILE_DIGEST
   compileTimeCapabilities: typeof COMPILE_TIME_CAPABILITIES
 }> {
-  snapshotRequiredFunctions(liveExport, ACTIVATION_NAMES, "Bob activation export")
+  snapshotOwnRequiredFunctions(liveExport, ACTIVATION_NAMES, "Bob activation export")
   return objectFreeze({
     ok: true as const,
     profile: BOB_2_0_1_PROFILE,
@@ -117,14 +117,14 @@ export function bindBobCapabilities(input: {
   const snapshot = snapshotExactInput(input, BIND_INPUT_FIELDS, "Bob capability binding input")
   assertProfileIdentity(snapshot.extensionId, snapshot.extensionVersion, snapshot.expectedProfileDigest)
   const liveExport = snapshot.liveExport
-  const activation = snapshotRequiredFunctions(liveExport, ACTIVATION_NAMES, "Bob activation export")
+  const activation = snapshotOwnRequiredFunctions(liveExport, ACTIVATION_NAMES, "Bob activation export")
   const registerSource = activation.registerSource as (id: string, name?: string) => unknown
   return objectFreeze({
     ok: true as const,
     profileDigest: BOB_2_0_1_PROFILE_DIGEST,
-    registerSource: (id: string, name?: string) => bindBobSource(
+    registerSource: freezeFunction((id: string, name?: string) => bindBobSource(
       reflectApply(registerSource, liveExport, name === undefined ? [id] : [id, name])
-    )
+    ))
   })
 }
 
@@ -202,6 +202,30 @@ function snapshotExactInput<T extends readonly string[]>(
   return result as Record<T[number], unknown>
 }
 
+function snapshotOwnRequiredFunctions<T extends readonly string[]>(
+  value: unknown,
+  expectedNames: T,
+  label: string
+): Record<T[number], Function> {
+  assertInspectableObject(value, label)
+  const descriptors = objectGetOwnPropertyDescriptors(value)
+  const result = objectCreate(null) as Record<string, Function>
+  for (let index = 0; index < expectedNames.length; index += 1) {
+    const name = expectedNames[index]
+    const descriptor = descriptorMapValue(descriptors, name)
+    if (descriptor === undefined) throw new TypeError(`${label}.${name} must be an own data function.`)
+    if (!objectHasOwn(descriptor, "value")) {
+      throw new TypeError(`${label}.${name} must be a data function, not an accessor.`)
+    }
+    const method = descriptor.value
+    if (typeof method !== "function" || isProxy(method)) {
+      throw new TypeError(`${label}.${name} must be a non-proxy function.`)
+    }
+    result[name] = method
+  }
+  return result as Record<T[number], Function>
+}
+
 function snapshotRequiredFunctions<T extends readonly string[]>(
   value: unknown,
   expectedNames: T,
@@ -265,7 +289,11 @@ function descriptorMapValue(
 }
 
 function bindMethod(owner: unknown, method: Function): (...args: unknown[]) => unknown {
-  return (...args: unknown[]) => reflectApply(method, owner, args)
+  return freezeFunction((...args: unknown[]) => reflectApply(method, owner, args))
+}
+
+function freezeFunction<T extends Function>(value: T): T {
+  return objectFreeze(value)
 }
 
 function includesName(names: readonly string[], expected: string): boolean {
