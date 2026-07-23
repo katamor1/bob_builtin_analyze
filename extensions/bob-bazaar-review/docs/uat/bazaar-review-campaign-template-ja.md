@@ -21,7 +21,7 @@
 - BZR-RT-036: campaign 初期化で `.bob-review-records` を用意する。
 - BZR-RT-043: campaign summary から報告 Markdown を作成する。
 
-## Human triage decision
+## 指摘確認・振り分け decision
 
 - accepted
 - rejected
