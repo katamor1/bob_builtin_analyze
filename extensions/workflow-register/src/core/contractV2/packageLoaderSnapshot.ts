@@ -140,7 +140,8 @@ async function enumerateDirectory(
   pushValue(directorySnapshots, objectFreeze({
     segments: objectFreeze([...fullSegments]),
     names: sortedNames,
-    identity: stat.identity
+    identity: stat.identity,
+    physical
   }))
 
   for (let index = 0; index < sortedNames.length; index += 1) {
