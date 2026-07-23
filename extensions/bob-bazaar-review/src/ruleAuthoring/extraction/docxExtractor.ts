@@ -1,3 +1,9 @@
+import * as path from "node:path"
+import {
+  ProcessingBudgetLedger,
+  preflightOoxmlArchive,
+  readBoundedDocumentFile
+} from "../../sharedProcessingBudgetRuntime"
 import { splitDocumentChunk } from "../documentChunk"
 import { DEFAULT_RULE_AUTHORING_LIMITS } from "../ruleAuthoringLimits"
 import type { DocumentChunkV1, RuleSourceExtractionStatus } from "../ruleAuthoringTypes"
@@ -9,6 +15,9 @@ type MammothModule = typeof import("mammoth")
 export interface DocxExtractionContext {
   sourceId: string
   maxChunkBytes: number
+  maxFileBytes?: number
+  maxArchiveEntries?: number
+  maxExpandedBytes?: number
 }
 
 export interface DocxExtractionResult {
@@ -18,7 +27,7 @@ export interface DocxExtractionResult {
   extractor: { id: string; version: string }
 }
 
-const DOCX_EXTRACTOR = Object.freeze({ id: "docx-mammoth-html", version: "1" })
+const DOCX_EXTRACTOR = Object.freeze({ id: "docx-mammoth-html", version: "2" })
 
 let cheerioModulePromise: Promise<CheerioModule> | undefined
 let mammothModulePromise: Promise<MammothModule> | undefined
@@ -32,9 +41,49 @@ export async function extractDocx(
     DEFAULT_RULE_AUTHORING_LIMITS.maxChunkBytes,
     "DOCX chunk byte limit"
   )
+  const maxFileBytes = boundedOptionalLimit(
+    context.maxFileBytes,
+    DEFAULT_RULE_AUTHORING_LIMITS.maxSourceBytes,
+    "DOCX source byte limit"
+  )
+  const maxArchiveEntries = boundedOptionalLimit(
+    context.maxArchiveEntries,
+    DEFAULT_RULE_AUTHORING_LIMITS.maxOoxmlEntries,
+    "DOCX archive entry limit"
+  )
+  const maxExpandedBytes = boundedOptionalLimit(
+    context.maxExpandedBytes,
+    DEFAULT_RULE_AUTHORING_LIMITS.maxOoxmlDeclaredUncompressedBytes,
+    "DOCX expanded byte limit"
+  )
+  const absolutePath = path.resolve(filePath)
+  const ledger = new ProcessingBudgetLedger({
+    limits: {
+      single_document_bytes: maxFileBytes,
+      total_document_bytes: maxExpandedBytes,
+      total_operation_input_bytes: maxExpandedBytes
+    }
+  })
+  const snapshot = await readBoundedDocumentFile({
+    filePath: absolutePath,
+    rootPath: path.dirname(absolutePath),
+    target: documentTarget("docx", context.sourceId),
+    ledger,
+    maximumFileBytes: maxFileBytes
+  })
+  preflightOoxmlArchive({
+    archiveBytes: snapshot.copyBytes(),
+    target: archiveTarget("docx", context.sourceId),
+    ledger,
+    expectedKind: "docx",
+    maximumEntries: maxArchiveEntries,
+    maximumEntryBytes: maxFileBytes,
+    maximumExpandedBytes: maxExpandedBytes
+  })
+
   const [mammoth, cheerio] = await Promise.all([loadMammoth(), loadCheerio()])
   const conversion = await mammoth.convertToHtml(
-    { path: filePath },
+    { buffer: Buffer.from(snapshot.copyBytes()) },
     {
       externalFileAccess: false,
       convertImage: mammoth.images.imgElement(async () => ({ src: "" }))
@@ -123,6 +172,7 @@ export async function extractDocx(
     }
   })
 
+  await snapshot.assertCurrent()
   const warningCodes = [...warnings].sort()
   return {
     chunks,
@@ -135,6 +185,22 @@ export async function extractDocx(
 function boundedPositiveLimit(value: number, ceiling: number, label: string): number {
   if (!Number.isSafeInteger(value) || value <= 0) throw new Error(`${label} must be a positive safe integer`)
   return Math.min(value, ceiling)
+}
+
+function boundedOptionalLimit(value: number | undefined, ceiling: number, label: string): number {
+  return value === undefined ? ceiling : boundedPositiveLimit(value, ceiling, label)
+}
+
+function documentTarget(kind: "docx", sourceId: string): string {
+  return `${kind}:source:${boundedSourceId(sourceId)}`
+}
+
+function archiveTarget(kind: "docx", sourceId: string): string {
+  return `${kind}:archive:${boundedSourceId(sourceId)}`
+}
+
+function boundedSourceId(sourceId: string): string {
+  return /^[A-Za-z0-9._-]{1,96}$/.test(sourceId) ? sourceId : "untrusted-source"
 }
 
 function tableText($: CheerioAPI, table: unknown): string {
