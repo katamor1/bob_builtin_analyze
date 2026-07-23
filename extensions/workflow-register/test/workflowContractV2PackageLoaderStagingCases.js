@@ -90,3 +90,27 @@ test("owned staging revalidates the owner token after the package snapshot", asy
     candidate: { kind: "owned-staging", name: staging.name, ownershipToken: staging.token }
   }), /ownership|owner.*changed|authorization/i)
 })
+
+test("staging owner rejects duplicate JSON object keys", async () => {
+  const fileSystem = new MemoryPackageFileSystem()
+  const staging = installStaging(fileSystem)
+  fileSystem.mutate([...staging.base, "owner.json"], Buffer.from([
+    "{",
+    '"schemaVersion":"workflow-package-staging-owner/v1",',
+    `"ownershipToken":"${staging.token}",`,
+    `"\\u006fwnershipToken":"${staging.token}"`,
+    "}"
+  ].join("")))
+  const root = rootSubject().createWorkflowPackageRoot(fileSystem, {})
+
+  await assert.rejects(() => subject().loadWorkflowPackageCandidate({
+    fileSystem,
+    collectionRoot: root,
+    workflowId: "minimal",
+    candidate: {
+      kind: "owned-staging",
+      name: staging.name,
+      ownershipToken: staging.token
+    }
+  }), /duplicate.*key|duplicate.*property/i)
+})
