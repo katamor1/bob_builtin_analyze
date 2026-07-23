@@ -239,7 +239,7 @@ function documentLedger(
   return new ProcessingBudgetLedger({
     limits: {
       ...overrides,
-      single_document_bytes: limits.maxDocumentBytes,
+      single_document_bytes: Math.min(limits.maxDocumentBytes, totalDocumentBytes),
       sheets_per_workbook: limits.maxWorkbookSheets,
       rows_per_sheet: limits.maxRowsPerSheet,
       total_document_bytes: totalDocumentBytes,
