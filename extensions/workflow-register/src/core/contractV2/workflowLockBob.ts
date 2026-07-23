@@ -6,6 +6,7 @@ import {
   type BobTaskCapabilityName
 } from "./bobProfile"
 import type { JsonValue } from "./jsonValue"
+import { freezeEvidence } from "./workflowLockIntrinsics"
 import type { LockedBobBinding } from "./workflowLockContract"
 import { array, record } from "./workflowLockValidation"
 
@@ -37,7 +38,7 @@ export function bob(value: JsonValue): LockedBobBinding {
   if (expected.length !== taskCapabilities.length || expected.some((value, index) => value !== taskCapabilities[index])) {
     throw new TypeError(`${label}.taskCapabilities does not match the required task capability subset.`)
   }
-  return Object.freeze({
+  return freezeEvidence({
     profile: "bob/2.0.1" as const,
     extensionId: "IBM.bob-code" as const,
     extensionVersion: "2.0.1" as const,
@@ -78,5 +79,5 @@ function subset<const Values extends readonly string[]>(
     }
     result.push(capability as Values[number])
   }
-  return Object.freeze(result)
+  return freezeEvidence(result)
 }

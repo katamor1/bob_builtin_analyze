@@ -1,4 +1,5 @@
 import type { JsonValue } from "./jsonValue"
+import { freezeEvidence } from "./workflowLockIntrinsics"
 import {
   WORKFLOW_COMPILER_POLICY_VERSIONS,
   type LockedFileEvidence,
@@ -14,13 +15,13 @@ export function policy(value: JsonValue): WorkflowCompilerPolicyVersions {
       throw new TypeError(`Workflow package lock.policyVersions.${key} is invalid.`)
     }
   }
-  return Object.freeze({ ...WORKFLOW_COMPILER_POLICY_VERSIONS })
+  return freezeEvidence({ ...WORKFLOW_COMPILER_POLICY_VERSIONS })
 }
 
 export function workflow(value: JsonValue): WorkflowPackageLock["workflow"] {
   const item = record(value, ["path", "bytes", "digest"], "Workflow package lock.workflow")
   if (item.path !== "workflow.yaml") throw new TypeError("Workflow package lock.workflow.path is invalid.")
-  return Object.freeze({
+  return freezeEvidence({
     path: "workflow.yaml" as const,
     bytes: bytes(item.bytes, 1_048_576, "Workflow package lock.workflow.bytes"),
     digest: digest(item.digest, "Workflow package lock.workflow.digest")
@@ -36,7 +37,7 @@ export function files(
   for (let index = 0; index < values.length; index += 1) {
     const entryLabel = `${label}[${index}]`
     const item = record(values[index], ["id", "path", "bytes", "digest"], entryLabel)
-    result.push(Object.freeze({
+    result.push(freezeEvidence({
       id: identifier(item.id, `${entryLabel}.id`),
       path: packagePath(item.path, kind, `${entryLabel}.path`),
       bytes: bytes(item.bytes, 4_194_304, `${entryLabel}.bytes`),
@@ -57,5 +58,5 @@ export function files(
       }
     }
   }
-  return Object.freeze(result)
+  return freezeEvidence(result)
 }

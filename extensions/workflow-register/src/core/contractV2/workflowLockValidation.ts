@@ -2,6 +2,7 @@ import { validRange as validSemverRange, parse as parseSemver } from "semver"
 
 import type { JsonObject, JsonValue } from "./jsonValue"
 import type { Sha256Digest } from "./providerContract"
+import { freezeEvidence } from "./workflowLockIntrinsics"
 
 const ID = /^[A-Za-z][A-Za-z0-9]*(?:[._-][A-Za-z0-9]+)*$/u
 const PROMPT = /^prompts\/[A-Za-z0-9._-]+\.md$/u
@@ -46,7 +47,7 @@ export function identifierArray(value: JsonValue, maximum: number, label: string
     }
     result.push(item)
   }
-  return Object.freeze(result)
+  return freezeEvidence(result)
 }
 
 export function digest(value: JsonValue, label: string): Sha256Digest {

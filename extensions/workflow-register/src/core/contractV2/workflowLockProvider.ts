@@ -1,4 +1,5 @@
 import type { JsonValue } from "./jsonValue"
+import { freezeEvidence } from "./workflowLockIntrinsics"
 import type {
   LockedProviderBinding,
   LockedProviderOutput,
@@ -33,7 +34,7 @@ export function providers(values: readonly JsonValue[]): readonly LockedProvider
     const sideEffect = enumValue(value.sideEffect, ["none", "workspace-write", "external"], `${label}.sideEffect`)
     const requiredCapabilities = identifierArray(value.requiredCapabilities, 128, `${label}.requiredCapabilities`)
     reservedCapabilities(sideEffect, requiredCapabilities, label)
-    result.push(Object.freeze({
+    result.push(freezeEvidence({
       id,
       requestedVersion: semverRange(value.requestedVersion, `${label}.requestedVersion`),
       exactVersion: exactSemver(value.exactVersion, `${label}.exactVersion`),
@@ -46,12 +47,12 @@ export function providers(values: readonly JsonValue[]): readonly LockedProvider
       requiredCapabilities
     }))
   }
-  return Object.freeze(result)
+  return freezeEvidence(result)
 }
 
 function providerSchema(value: JsonValue, label: string): LockedProviderSchemaEvidence {
   const item = record(value, ["id", "bytes", "digest"], label)
-  return Object.freeze({
+  return freezeEvidence({
     id: schemaPath(item.id, `${label}.id`),
     bytes: bytes(item.bytes, 4_194_304, `${label}.bytes`),
     digest: digest(item.digest, `${label}.digest`)
@@ -65,11 +66,11 @@ function providerOutput(value: JsonValue, label: string): LockedProviderOutput {
   const kind = (value as Record<string, JsonValue>).kind
   if (kind === "unit") {
     record(value, ["kind"], label)
-    return Object.freeze({ kind: "unit" as const })
+    return freezeEvidence({ kind: "unit" as const })
   }
   if (kind === "value") {
     const item = record(value, ["kind", "schema"], label)
-    return Object.freeze({ kind: "value" as const, schema: providerSchema(item.schema, `${label}.schema`) })
+    return freezeEvidence({ kind: "value" as const, schema: providerSchema(item.schema, `${label}.schema`) })
   }
   throw new TypeError(`${label}.kind is invalid.`)
 }

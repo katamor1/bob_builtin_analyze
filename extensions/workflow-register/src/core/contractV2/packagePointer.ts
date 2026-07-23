@@ -1,5 +1,6 @@
 import { cloneAndFreezeJsonValue, type JsonObject } from "./jsonValue"
 import type { Sha256Digest } from "./providerContract"
+import { freezeEvidence } from "./workflowLockIntrinsics"
 
 export const WORKFLOW_PACKAGE_POINTER_SCHEMA_VERSION =
   "workflow-package-pointer/v1" as const
@@ -32,7 +33,7 @@ export function decodeWorkflowPackagePointer(input: unknown): WorkflowPackagePoi
   if (generation !== packageDigest) {
     throw new TypeError("Workflow package pointer generation and package digest must be identical.")
   }
-  return Object.freeze({
+  return freezeEvidence({
     schemaVersion: WORKFLOW_PACKAGE_POINTER_SCHEMA_VERSION,
     workflowId,
     generation,

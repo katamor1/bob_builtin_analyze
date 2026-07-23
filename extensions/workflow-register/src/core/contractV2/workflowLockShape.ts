@@ -1,4 +1,5 @@
 import { cloneAndFreezeJsonValue } from "./jsonValue"
+import { freezeEvidence } from "./workflowLockIntrinsics"
 import type { WorkflowPackageDocumentV2 } from "./packageShape"
 import type { WorkflowPackagePointer } from "./packagePointer"
 import { bob } from "./workflowLockBob"
@@ -54,7 +55,7 @@ export function decodeWorkflowPackageLock(input: unknown): WorkflowPackageLock {
     throw new TypeError("Workflow package lock prompts and schemas exceed the combined length limit.")
   }
   const providerValues = array(value.providers, 256, "Workflow package lock.providers")
-  return Object.freeze({
+  return freezeEvidence({
     schemaVersion: WORKFLOW_PACKAGE_LOCK_SCHEMA_VERSION,
     compilerContractVersion: WORKFLOW_COMPILER_CONTRACT_VERSION,
     policyVersions: policy(value.policyVersions),
