@@ -125,3 +125,26 @@ test("loader detects file and directory mutation instead of mixing snapshots", a
     generation: directoryInstalled.digest
   }), /snapshot|directory|changed/i)
 })
+
+test("loader rejects a symbolic-link entry before resolving its physical target", async () => {
+  const fileSystem = new MemoryPackageFileSystem()
+  const installed = installPublished(fileSystem)
+  const linkSegments = [...installed.base, "prompts", "draft.md"]
+  fileSystem.setKind(linkSegments, "symbolic-link")
+  const root = rootSubject().createWorkflowPackageRoot(fileSystem, {})
+
+  await assert.rejects(() => subject().loadWorkflowPackageGeneration({
+    fileSystem,
+    collectionRoot: root,
+    workflowId: "minimal",
+    generation: installed.digest
+  }), /symbolic link/i)
+
+  assert.equal(
+    fileSystem.calls.some(([operation, logicalPath]) => (
+      operation === "realpath" && logicalPath === linkSegments.join("/")
+    )),
+    false,
+    "a rejected symbolic link must never be followed through realpath"
+  )
+})
