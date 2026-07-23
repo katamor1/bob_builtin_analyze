@@ -1,3 +1,5 @@
+Replaced: `workflowRegister.openOperationHub` and `workflowRegister.openWorkflowBuilder` are the current workflow operator routes; the legacy workflow UI terminology below is retained only as historical Phase 0 release evidence.
+
 # Workflow Platform Phase 0 完了証跡
 
 ## 1. 判定
