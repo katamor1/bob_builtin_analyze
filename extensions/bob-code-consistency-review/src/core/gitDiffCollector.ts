@@ -148,19 +148,19 @@ function formatRevisionForError(revision: string): string {
 async function runGitText(
   args: string[],
   cwd: string,
-  maxBuffer: number,
+  maxStdoutBytes: number,
   textEncoding = "auto",
   commandTimeoutMs?: number,
   signal?: AbortSignal
 ): Promise<string> {
-  return runCommandText("git", args, cwd, maxBuffer, [0], textEncoding, undefined, commandTimeoutMs, signal)
+  return runCommandText("git", args, cwd, maxStdoutBytes, [0], textEncoding, undefined, commandTimeoutMs, signal)
 }
 
 async function runCommandText(
   command: string,
   args: string[],
   cwd: string,
-  maxBuffer: number,
+  maxStdoutBytes: number,
   allowedExitCodes: number[],
   textEncoding = "auto",
   env?: Record<string, string>,
@@ -171,7 +171,7 @@ async function runCommandText(
     command,
     args,
     cwd,
-    maxBufferBytes: maxBuffer,
+    maxStdoutBytes,
     timeoutMs: normalizeCommandTimeout(commandTimeoutMs),
     allowedExitCodes,
     signal,
