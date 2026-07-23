@@ -53,3 +53,12 @@ export {
   type OoxmlArchiveSnapshot,
   type OoxmlDocumentKind
 } from "./boundedDocumentIo"
+export {
+  commitWorkbookBudget,
+  type WorkbookBudgetCancellation,
+  type WorkbookBudgetCommit,
+  type WorkbookBudgetInput,
+  type WorkbookBudgetLedger,
+  type WorkbookBudgetReservation,
+  type WorkbookBudgetSheet
+} from "./workbookBudget"
