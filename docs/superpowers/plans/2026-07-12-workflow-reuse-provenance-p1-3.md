@@ -1,3 +1,5 @@
+Replaced: `workflowRegister.openOperationHub` and `workflowRegister.openWorkflowBuilder` are the current workflow operator routes; the legacy workflow run projections below are retained only as historical P1-3 implementation planning evidence.
+
 # Workflow Reused / Skipped Provenance P1-3 Implementation Plan
 
 **実行状況（2026-07-13）:** Task 1〜5 implemented and focused GREEN. Task 6 final cross-platform verification pending.
