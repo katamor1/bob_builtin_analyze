@@ -1,3 +1,5 @@
+Replaced: `workflowRegister.openOperationHub` and `workflowRegister.openWorkflowBuilder` are the current workflow operator routes; the legacy Operation Hub and Runs View references below are retained only as historical review evidence.
+
 # Task Snapshot Import Preview / Selective Apply Whole-Diff Review
 
 ## Scope
