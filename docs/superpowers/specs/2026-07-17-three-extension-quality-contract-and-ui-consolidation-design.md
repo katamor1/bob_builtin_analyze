@@ -1,7 +1,5 @@
 # Three Extension Quality Contract and UI Consolidation Design
 
-Replaced: workflowRegister.openOperationHub; workflowRegister.openWorkflowBuilder; bobBazaar.openReviewGui; bobCodeConsistency.openReviewWizard. This approved historical design intentionally retains the obsolete identifiers and screen names that it replaced.
-
 - Status: approved for implementation
 - Date: 2026-07-17
 - Repository: `katamor1/bob_builtin_analyze`
@@ -194,7 +192,7 @@ Reject tags (`@v4`), branches (`@main`), abbreviated/uppercase SHAs, expressions
 
 ### 11.2 Fail-closed YAML audit
 
-The scanner uses a tokenizer/state machine, not a line-only regex. It supports normal block style, quoted keys/values, flow maps/sequences, compact mappings, and quoted-key escapes (`\x`, `\u`, `\U`).
+The scanner uses a tokenizer/state machine, not a line-only regex. It supports normal block style, quoted keys/values, flow maps/sequences, compact mappings, and quoted-key escapes (`\\x`, `\\u`, `\\U`).
 
 It rejects multiline/ambiguous `uses` forms, explicit/indirect keys, mapping-key indirection, anchors, aliases, named tags, and bare `!` when they prevent direct audit. Comments and ordinary scalar values containing similar characters remain allowed.
 

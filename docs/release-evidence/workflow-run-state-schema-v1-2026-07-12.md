@@ -1,5 +1,3 @@
-Replaced: `workflowRegister.openOperationHub` and `workflowRegister.openWorkflowBuilder` are the current workflow operator routes; the legacy run inspection surface references below are retained only as historical release evidence.
-
 # Workflow Run State Schema v1 証跡
 
 ## 1. 判定

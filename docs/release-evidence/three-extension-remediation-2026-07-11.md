@@ -1,5 +1,3 @@
-Replaced: `workflowRegister.openOperationHub`, `workflowRegister.openWorkflowBuilder`, `bobBazaar.openReviewGui`, and `bobCodeConsistency.openReviewWizard` are the current operator routes; the legacy workflow and review UI references below are retained only as historical remediation evidence.
-
 # 3拡張機能修正 リリース証跡
 
 ## 1. 対象
@@ -189,6 +187,9 @@ checkoutやrepository codeを一切使わないprobeでも再現するため、�
 | Gate | 必須結果 | 実績 |
 | --- | --- | --- |
 | smoke harness contract | pinned local CLI/Electron、local binary、preflight、soft dependency isolation | 局所3 passed、GitHub実行待ち |
+| workflow-register Ubuntu | dependency / architecture / source / schema / unit / package / VSIX policy 全成功 | 最新head未実施 |
+| bob-bazaar-review Ubuntu | dependency / architecture / source / unused / artifact / unit / package / VSIX policy 全成功 | 最新head未実施 |
+| bob-code-consistency-review Ubuntu | dependency / architecture / source / unit / package / VSIX policy 全成功 | 最新head未実施 |
 | Windows matrix | 3拡張すべて成功 | 未実施 |
 | Extension Host smoke | 3拡張のactivationと代表command登録成功 | local runtime修正済み、GitHub実行待ち |
 | workflow contracts | 全対象workflow strict/provider-aware検証成功 | 最新head未実施 |

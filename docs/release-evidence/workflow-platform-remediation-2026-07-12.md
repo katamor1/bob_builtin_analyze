@@ -1,5 +1,3 @@
-Replaced: `workflowRegister.openOperationHub` and `workflowRegister.openWorkflowBuilder` are the current workflow operator routes; the legacy workflow UI terminology below is retained only as historical Phase 0 release evidence.
-
 # Workflow Platform Phase 0 完了証跡
 
 ## 1. 判定
@@ -112,7 +110,7 @@ operator指示により、固定wall-clockに依存するfull失敗は、関連�
 - file transactionは同一process内ではrollback/serializeするが、OS crashと別process writerまでは保護しない。
 - realpath確認からopen/renameまでの同一user TOCTOUを完全には排除していない。
 - legacy custom `ResultSink`は任意の外部副作用をrollbackできない。
-- `bob-bazaar-review`の`js-yaml` moderate advisoryは依存更新候補として追跡が必要である。
+- `bob-bazaar-review`の`js-yaml` moderate advisoryは依存更新候補として追跡が必要。
 - package file数が多く、bundle/ignore最適化はPhase 1候補である。
 
 ## 8. 製品リリースをNO-GOとする外部ゲート

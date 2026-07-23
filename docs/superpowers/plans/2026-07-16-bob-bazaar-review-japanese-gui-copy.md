@@ -1,5 +1,3 @@
-Replaced: `workflowRegister.openOperationHub`, `workflowRegister.openWorkflowBuilder`, `bobBazaar.openReviewGui`, and `bobCodeConsistency.openReviewWizard` are the current operator routes; the legacy Result Capture, Human Triage, and Campaign Dashboard labels below are retained only as historical terminology-migration context.
-
 # Bob Bazaar Review 日本語 GUI 文言 Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
@@ -198,6 +196,7 @@ Standalone mode             -> 単独実行モード
 Bob 出力候補                -> Bob のレビュー結果
 候補から取り込む            -> 見つかった候補を取り込む
 開いている JSON を検証      -> 開いているレビュー結果を検証
+Human Triage へ進む         -> 人による判定へ進む
 手動貼り付け                -> JSON を貼り付けて取り込む
 検証結果                    -> 取り込み結果
 ```
