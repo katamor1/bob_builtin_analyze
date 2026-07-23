@@ -1,3 +1,5 @@
+Replaced: `workflowRegister.openOperationHub`, `workflowRegister.openWorkflowBuilder`, `bobBazaar.openReviewGui`, and `bobCodeConsistency.openReviewWizard` are the current operator routes; the legacy Operation Hub wording below is retained only as historical implementation evidence.
+
 # 3拡張機能 日本語 GUI 文言 実装進捗
 
 ## workflow-register
