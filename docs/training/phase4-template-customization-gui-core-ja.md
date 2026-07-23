@@ -2,7 +2,7 @@
 
 ## 目的
 
-この教材は、独立したTemplate Studioではなく、`ワークフロー作成・編集`の`標準テンプレートから作成`モードで`process-code-precheck`を安全にproject別workflowへ変換する手順を定義する。
+この教材は、独立した旧template調整surfaceではなく、`ワークフロー作成・編集`の`標準テンプレートから作成`モードで`process-code-precheck`を安全にproject別workflowへ変換する手順を定義する。
 
 ## 開始
 
