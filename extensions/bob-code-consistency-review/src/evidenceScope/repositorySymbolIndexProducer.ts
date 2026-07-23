@@ -422,13 +422,13 @@ function producerOptionsHash(options: ProducerOptions): string {
 async function git(
   options: ProducerOptions,
   args: string[],
-  maxBufferBytes: number
+  maxStdoutBytes: number
 ): Promise<{ stdout: Buffer; stderr: Buffer; exitCode: number }> {
   return runExternalProcess({
     command: "git",
     args,
     cwd: options.repositoryRoot,
-    maxBufferBytes,
+    maxStdoutBytes,
     timeoutMs: options.commandTimeoutMs,
     signal: options.signal
   })
