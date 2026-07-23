@@ -199,11 +199,10 @@ guardrails:
 
 A command should not appear in both `allowedCommands` and `deniedCommands`.
 
-## Validation
+## Validation and saving
 
-Run these commands from the Command Palette:
+Open the public Command Palette entry `Bob Workflow: ワークフローを作成・編集`. The single Builder supports an empty workflow, `標準テンプレートから作成`, and existing-workflow edit modes.
 
-- `Bob Workflow: 現在の定義を検証`
-- `Bob Workflow: ワークスペース定義を検証`
+Before saving, the Builder serializes the authoring model, runs the parser and validator, checks the current file expectation, and shows Preview / Diagnostics / Diff. A confirmed replacement creates a unique backup and uses the transactional save path. Cancel leaves both the current file and backup set unchanged.
 
-Validation results are shown in a Markdown report and in the VS Code Problems panel. Open workflow files are also validated when saved.
+Validation, template, reload, and AI authoring command IDs remain registered for workflow and host integration, but they are hidden from the normal Command Palette. Use `Bob 操作ハブ` for run diagnostics and operational recovery.
