@@ -188,3 +188,25 @@ test("derives local sheet and row caps from lower aggregate overrides", async ()
   })
   assert.deepEqual(result.documents, [])
 })
+
+test("allows the same workspace file to be selected as distinct document references", async (t) => {
+  const fixture = await workspace(t, [1])
+  const fileSize = (await fs.stat(path.join(fixture.root, fixture.paths[0]))).size
+  const reviewInput = input([])
+  reviewInput.artifacts = {
+    requirements: [{ path: fixture.paths[0], sections: ["REQ-0"] }],
+    detailed_design: [{ path: fixture.paths[0], sections: ["REQ-0"] }]
+  }
+
+  const result = await extractDocuments(reviewInput, {
+    workspaceRoot: fixture.root,
+    limits: { maxDocumentBytes: fileSize },
+    processingBudgetLimits: {
+      total_document_bytes: fileSize * 2,
+      total_operation_input_bytes: fileSize * 2
+    }
+  })
+
+  assert.equal(result.documents.length, 2)
+  assert.equal(result.warnings.some((warning) => warning.includes("failed to extract")), false, JSON.stringify(result.warnings))
+})
