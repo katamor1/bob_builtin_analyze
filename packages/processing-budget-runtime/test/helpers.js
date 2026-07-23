@@ -18,7 +18,11 @@ function loadRuntime() {
 }
 
 function snapshot(runtime, ledger) {
-  return ledger.snapshot().categories.map((entry) => ({ ...entry }))
+  const report = ledger.snapshot()
+  return {
+    categories: report.categories.map((entry) => ({ ...entry })),
+    targets: report.targets.map((entry) => ({ ...entry }))
+  }
 }
 
 module.exports = { loadRuntime, packageRoot, snapshot }
