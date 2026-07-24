@@ -71,3 +71,35 @@ test("manual schema role returns closed reasons and rejects mismatched source ev
     /evidence|digest|match/i
   )
 })
+
+test("manual schema role rejects proxy and accessor collections without invoking behavior", () => {
+  const subject = require("../out/core/contractV2/jsonSchemaRole.js")
+  const schema = source()
+  const role = subject.createLocalJsonSchemaRoleHandle({ compiled: compiled(schema), schema })
+
+  let optionTraps = 0
+  const options = new Proxy(["alpha", "beta"], {
+    get() { optionTraps += 1; throw new Error("must not read options proxy") },
+    ownKeys() { optionTraps += 1; throw new Error("must not inspect options proxy") }
+  })
+  assert.throws(
+    () => subject.validateLocalJsonSchemaManualContract({ role, fields: fields(options) }),
+    TypeError
+  )
+  assert.equal(optionTraps, 0)
+
+  let getterCalls = 0
+  const field = { id: "category", required: true, kind: "select" }
+  Object.defineProperty(field, "options", {
+    enumerable: true,
+    get() { getterCalls += 1; return ["alpha", "beta"] }
+  })
+  assert.throws(
+    () => subject.validateLocalJsonSchemaManualContract({
+      role,
+      fields: [field, { id: "decision", required: true, kind: "approval" }]
+    }),
+    TypeError
+  )
+  assert.equal(getterCalls, 0)
+})
