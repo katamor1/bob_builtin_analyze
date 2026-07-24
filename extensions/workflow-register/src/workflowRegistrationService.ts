@@ -6,6 +6,7 @@ import { createBobWorkflow } from "./bobWorkflowFactory"
 import type { WorkflowDefinition } from "./bobWorkflowTypes"
 import type { CoreWorkflowDefinition } from "./core/model"
 import { formatAttempt, runAttempt } from "./reports"
+import type { WorkflowContractV2Entrypoint } from "./workflowContractV2Entrypoint"
 import { loadWorkspaceWorkflows } from "./workflowDefinitionLoader"
 
 const BOB_EXTENSION_ID = "IBM.bob-code"
@@ -27,6 +28,7 @@ export interface WorkflowRegistrationUpdate {
 export interface RegisterWorkflowsInput {
   previousSource?: BobSourceLike
   createRunner: (workflow: WorkflowDefinition) => Parameters<typeof createBobWorkflow>[1]
+  contractV2: WorkflowContractV2Entrypoint
 }
 
 export async function registerWorkflows(input: RegisterWorkflowsInput): Promise<WorkflowRegistrationUpdate> {
@@ -34,7 +36,7 @@ export async function registerWorkflows(input: RegisterWorkflowsInput): Promise<
   const sourceId = config.get<string>("sourceId", "workflow-register")
   const sourceName = config.get<string>("sourceName", "Workflow Register")
   const lines: string[] = []
-  const loaded = await loadWorkspaceWorkflows(sourceId)
+  const loaded = await loadWorkspaceWorkflows(sourceId, input.contractV2)
   lines.push(...loaded.diagnostics)
   const coreWorkflows = loaded.coreWorkflows
 
