@@ -3,6 +3,7 @@
 const { createHash } = require("node:crypto")
 const fs = require("node:fs")
 const fsp = require("node:fs/promises")
+const { ProcessingCancellationError } = require("./deadline-cancellation")
 const pathPolicy = require("./path-policy")
 const {
   boundedString,
@@ -21,10 +22,13 @@ const ABSOLUTE_MAX_FILE_BYTES = 256 * 1024 * 1024
 function snapshotReadInput(input) {
   const values = ownDataRecord(
     input,
-    ["filePath", "rootPath", "target", "ledger", "maximumFileBytes"],
-    ["rootPath", "maximumFileBytes"],
+    ["filePath", "rootPath", "target", "ledger", "maximumFileBytes", "signal"],
+    ["rootPath", "maximumFileBytes", "signal"],
     "bounded document read input"
   )
+  if (values.signal !== undefined && (values.signal === null || typeof values.signal !== "object")) {
+    throw processingError("bounded_document_input_invalid", "signal must be an object")
+  }
   return Object.freeze({
     filePath: boundedString(values.filePath, "filePath", MAX_PUBLIC_PATH_UTF8_BYTES),
     rootPath: values.rootPath === undefined ? undefined : boundedString(values.rootPath, "rootPath", MAX_PUBLIC_PATH_UTF8_BYTES),
@@ -32,14 +36,17 @@ function snapshotReadInput(input) {
     ledger: ledgerFrom(values.ledger),
     maximumFileBytes: values.maximumFileBytes === undefined
       ? DEFAULT_MAX_FILE_BYTES
-      : positiveSafeInteger(values.maximumFileBytes, "maximumFileBytes", ABSOLUTE_MAX_FILE_BYTES)
+      : positiveSafeInteger(values.maximumFileBytes, "maximumFileBytes", ABSOLUTE_MAX_FILE_BYTES),
+    signal: values.signal
   })
 }
 
 async function readBoundedDocumentFile(input, hooks = undefined) {
   const options = snapshotReadInput(input)
+  throwIfCancelled(options.signal)
   const resolved = resolveSafeDocumentPath(options.filePath, options.rootPath)
   const absolutePath = resolved.path
+  throwIfCancelled(options.signal)
 
   const flags = fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0)
   let handle
@@ -49,27 +56,36 @@ async function readBoundedDocumentFile(input, hooks = undefined) {
 
   let reservation
   try {
+    throwIfCancelled(options.signal)
     const before = await handle.stat({ bigint: true })
+    throwIfCancelled(options.signal)
     assertRegularStat(before, options.maximumFileBytes, "before read")
     const size = Number(before.size)
     reservation = options.ledger.reserveForTarget("single_document_bytes", options.target, size)
     if (hooks && typeof hooks.afterReserve === "function") await hooks.afterReserve({ absolutePath, handle, size })
+    throwIfCancelled(options.signal)
 
     const content = Buffer.alloc(size)
     let offset = 0
     while (offset < size) {
+      throwIfCancelled(options.signal)
       const result = await handle.read(content, offset, size - offset, offset)
       if (result.bytesRead === 0) throw processingError("bounded_document_short_read", "document file ended before its reserved byte count")
       offset += result.bytesRead
       if (hooks && typeof hooks.afterReadChunk === "function") await hooks.afterReadChunk({ absolutePath, handle, size, offset })
+      throwIfCancelled(options.signal)
     }
+    throwIfCancelled(options.signal)
     if ((await handle.read(Buffer.alloc(1), 0, 1, size)).bytesRead !== 0) {
       throw processingError("bounded_document_grew", "document file grew after its byte reservation")
     }
 
+    throwIfCancelled(options.signal)
     const after = await handle.stat({ bigint: true })
+    throwIfCancelled(options.signal)
     assertSameIdentity(before, after, "document file changed while reading")
     assertNamedPathCurrent(absolutePath, options.rootPath, after)
+    throwIfCancelled(options.signal)
     reservation.commit(size)
     reservation = undefined
 
@@ -87,7 +103,11 @@ async function readBoundedDocumentFile(input, hooks = undefined) {
       sha256: createHash("sha256").update(retained).digest("hex"),
       identity,
       copyBytes: () => Uint8Array.from(retained),
-      assertCurrent: async () => assertNamedPathCurrent(absolutePath, options.rootPath, after)
+      assertCurrent: async () => {
+        throwIfCancelled(options.signal)
+        assertNamedPathCurrent(absolutePath, options.rootPath, after)
+        throwIfCancelled(options.signal)
+      }
     })
   } catch (error) {
     if (reservation) try { reservation.release() } catch {}
@@ -95,6 +115,19 @@ async function readBoundedDocumentFile(input, hooks = undefined) {
   } finally {
     try { await handle.close() } catch {}
   }
+}
+
+function throwIfCancelled(signal) {
+  if (!signal?.aborted) return
+  const reason = signal.reason
+  if (reason && typeof reason === "object" && reason.code === "processing_cancelled") {
+    if (reason instanceof Error) throw reason
+    throw new ProcessingCancellationError(
+      reason.kind === "deadline" ? "deadline" : "user",
+      reason.original_reason
+    )
+  }
+  throw new ProcessingCancellationError("user", reason)
 }
 
 function assertRegularStat(stat, maximumFileBytes, phase) {
