@@ -228,7 +228,8 @@ export async function extractRuleDocuments(
     const ledger = documentLedger(effectiveLimits)
     ledger.reserve("document_count", requests.length).commit()
 
-    const fingerprinted = await Promise.all(requests.map(async (request, selectionIndex): Promise<FingerprintedRequest> => {
+    const fingerprinted: FingerprintedRequest[] = []
+    for (const [selectionIndex, request] of requests.entries()) {
       cancellation.throwIfCancelled()
       const absolutePath = path.resolve(request.filePath)
       const logicalName = request.logicalName ?? path.basename(absolutePath)
@@ -244,8 +245,8 @@ export async function extractRuleDocuments(
       if (byteSize > effectiveLimits.maxSourceBytes) {
         throw new Error(`Rule source exceeds the ${effectiveLimits.maxSourceBytes}-byte per-source limit`)
       }
-      return { request, absolutePath, logicalName, fingerprint }
-    }))
+      fingerprinted.push({ request, absolutePath, logicalName, fingerprint })
+    }
     const prepared: PreparedRequest[] = fingerprinted.map((item) => ({
       ...item,
       mediaType: classifySelectedPath(item.absolutePath, item.logicalName)
