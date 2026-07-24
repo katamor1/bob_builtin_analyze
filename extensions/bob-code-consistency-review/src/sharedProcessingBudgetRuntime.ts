@@ -118,6 +118,34 @@ export interface SharedOoxmlArchiveSnapshot {
   copyEntry(name: string): Uint8Array | undefined
 }
 
+export type SharedProcessingCancellationKind = "user" | "deadline"
+
+export interface SharedAbsoluteDeadline {
+  readonly expires_at_monotonic_ms: number
+}
+
+export interface SharedCancellationSignal {
+  readonly aborted: boolean
+  readonly reason?: unknown
+  addEventListener?(type: "abort", listener: () => void, options?: { readonly once?: boolean }): void
+  removeEventListener?(type: "abort", listener: () => void): void
+}
+
+export interface SharedCancellationScope {
+  readonly deadline: SharedAbsoluteDeadline
+  readonly signal: SharedCancellationSignal
+  remainingMilliseconds(): number
+  throwIfCancelled(): void
+  dispose(): void
+}
+
+export interface SharedPhysicalContainedPath {
+  readonly root_path: string
+  readonly path: string
+  readonly relative_path: string
+  readonly exists: boolean
+}
+
 interface SharedRuntimeModule {
   readonly DEFAULT_PROCESSING_BUDGET_PROFILE: Readonly<{ limits: SharedProcessingBudgetLimits }>
   readonly PROCESSING_BUDGET_ABSOLUTE_MAXIMA: SharedProcessingBudgetLimits
@@ -157,6 +185,25 @@ interface SharedRuntimeModule {
     maximumEntryBytes?: number
     maximumExpandedBytes?: number
   }): SharedOoxmlArchiveSnapshot
+  createAbsoluteDeadline(timeoutMs: number, nowMs?: number): SharedAbsoluteDeadline
+  constrainAbsoluteDeadline(parent: SharedAbsoluteDeadline, timeoutMs: number, nowMs?: number): SharedAbsoluteDeadline
+  remainingDeadlineMilliseconds(deadline: SharedAbsoluteDeadline, nowMs?: number): number
+  createCancellationScope(input: {
+    deadline: SharedAbsoluteDeadline
+    signal?: SharedCancellationSignal
+  }): SharedCancellationScope
+  cancellationKindFromSignal(signal: SharedCancellationSignal): SharedProcessingCancellationKind | undefined
+  cancellationOriginalReason(signal: SharedCancellationSignal): unknown
+  normalizeWorkspaceRelativePath(value: string, label?: string): string
+  isPortablePathContained(rootPath: string, targetPath: string, platform?: string): boolean
+  resolvePhysicalContainedPathSync(input: {
+    rootPath: string
+    candidatePath: string
+    allowAbsolute?: boolean
+    mustExist?: boolean
+    expectedType?: "file" | "directory"
+  }): SharedPhysicalContainedPath
+  selectDeepestPhysicalRoot(roots: readonly string[], filePath: string): Promise<string | undefined>
 }
 
 const runtime = require("./shared-processing-budget-runtime") as SharedRuntimeModule
@@ -169,3 +216,13 @@ export const commitWorkbookBudget = runtime.commitWorkbookBudget
 export const commitXlsxWorkbookBudget = runtime.commitXlsxWorkbookBudget
 export const readBoundedDocumentFile = runtime.readBoundedDocumentFile
 export const preflightOoxmlArchive = runtime.preflightOoxmlArchive
+export const createAbsoluteDeadline = runtime.createAbsoluteDeadline
+export const constrainAbsoluteDeadline = runtime.constrainAbsoluteDeadline
+export const remainingDeadlineMilliseconds = runtime.remainingDeadlineMilliseconds
+export const createCancellationScope = runtime.createCancellationScope
+export const cancellationKindFromSignal = runtime.cancellationKindFromSignal
+export const cancellationOriginalReason = runtime.cancellationOriginalReason
+export const normalizeWorkspaceRelativePath = runtime.normalizeWorkspaceRelativePath
+export const isPortablePathContained = runtime.isPortablePathContained
+export const resolvePhysicalContainedPathSync = runtime.resolvePhysicalContainedPathSync
+export const selectDeepestPhysicalRoot = runtime.selectDeepestPhysicalRoot
