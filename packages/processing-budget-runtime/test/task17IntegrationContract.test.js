@@ -31,6 +31,7 @@ test("Code Consistency creates one operation deadline and passes it through ever
   assert.match(pipeline, /budgetLedger: processingBudgetLedger,[\s\S]*deadline,[\s\S]*signal: cancellation\.signal/)
   assert.match(diff, /deadline\?: SharedAbsoluteDeadline/)
   assert.match(diff, /const deadline = options\.deadline \?\? createAbsoluteDeadline/)
+  assert.match(diff, /createCancellationScope\(\{ deadline, signal: options\.signal \}\)/)
   assert.match(index, /deadline\?: SharedAbsoluteDeadline/)
   assert.match(index, /deadline: input\.deadline \?\? createAbsoluteDeadline/)
 })
@@ -43,6 +44,31 @@ test("Bazaar client and PDF extraction convert timeout configuration once at the
   assert.match(client, /deadline: this\.deadline/)
   assert.match(pdf, /const deadline = options\.deadline \?\? createAbsoluteDeadline/)
   assert.match(pdf, /deadline,/)
+})
+
+test("long-lived MCP registries create Bazaar clients at the tool-call boundary", () => {
+  const tools = source("extensions/bob-bazaar-review/src/mcp/tools.ts")
+  assert.match(tools, /new BazaarClient\(this\.clientOptions\)/)
+  assert.doesNotMatch(tools, /private readonly client = new BazaarClient/)
+})
+
+test("bounded document reads carry cancellation through both consumer extensions", () => {
+  const boundedFile = source("packages/processing-budget-runtime/runtime/bounded-file.js")
+  const sourceHash = source("extensions/bob-bazaar-review/src/ruleAuthoring/ruleSourceHash.ts")
+  const bazaarDocuments = source("extensions/bob-bazaar-review/src/ruleAuthoring/extraction/documentExtractor.ts")
+  const docx = source("extensions/bob-bazaar-review/src/ruleAuthoring/extraction/docxExtractor.ts")
+  const xlsx = source("extensions/bob-bazaar-review/src/ruleAuthoring/extraction/xlsxExtractor.ts")
+  const consistencyDocuments = source("extensions/bob-code-consistency-review/src/analyzers/documentExtractor.ts")
+
+  assert.match(boundedFile, /"maximumFileBytes", "signal"/)
+  assert.match(boundedFile, /throwIfCancelled\(options\.signal\)/)
+  assert.match(sourceHash, /signal\?: SharedWorkbookBudgetCancellation/)
+  assert.match(sourceHash, /signal: options\.signal/)
+  assert.match(bazaarDocuments, /signal: context\.cancellation\.signal/)
+  assert.match(bazaarDocuments, /signal: cancellation\.signal/)
+  assert.match(docx, /maximumFileBytes: maxFileBytes,[\s\S]*signal: context\.signal/)
+  assert.match(xlsx, /maximumFileBytes: maxFileBytes,[\s\S]*signal: context\.signal/)
+  assert.match(consistencyDocuments, /maximumFileBytes: limits\.maxDocumentBytes,[\s\S]*signal/)
 })
 
 test("governed workspace and document paths share one physical containment policy", () => {
