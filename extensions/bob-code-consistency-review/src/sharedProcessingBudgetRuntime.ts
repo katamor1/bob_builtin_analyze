@@ -185,6 +185,7 @@ interface SharedRuntimeModule {
     maximumEntries?: number
     maximumEntryBytes?: number
     maximumExpandedBytes?: number
+    signal?: SharedWorkbookBudgetCancellation
   }): SharedOoxmlArchiveSnapshot
   createAbsoluteDeadline(timeoutMs: number, nowMs?: number): SharedAbsoluteDeadline
   constrainAbsoluteDeadline(parent: SharedAbsoluteDeadline, timeoutMs: number, nowMs?: number): SharedAbsoluteDeadline
