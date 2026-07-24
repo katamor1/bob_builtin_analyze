@@ -12,7 +12,12 @@ import {
   produceRepositorySymbolIndex,
   type ProduceRepositorySymbolIndexResult
 } from "../evidenceScope/repositorySymbolIndexProducer"
-import type { SharedProcessingBudgetLimits } from "../sharedProcessingBudgetRuntime"
+import {
+  createAbsoluteDeadline,
+  createCancellationScope,
+  type SharedAbsoluteDeadline,
+  type SharedProcessingBudgetLimits
+} from "../sharedProcessingBudgetRuntime"
 import { collectGitDiff } from "./gitDiffCollector"
 import { relativePosix, resolveWorkspacePathForKind, resolveWorkspacePathStrict } from "./fileSystem"
 import { normalizeReviewProcessingLimits, type ReviewProcessingLimits } from "./limits"
@@ -26,6 +31,10 @@ import { validateReviewInput } from "./reviewInputValidator"
 import type { PreprocessResult } from "./preprocessTypes"
 import type { ReviewInput } from "./reviewTypes"
 
+const DEFAULT_PREPROCESS_TIMEOUT_MS = 120_000
+const MIN_PREPROCESS_TIMEOUT_MS = 1_000
+const MAX_PREPROCESS_TIMEOUT_MS = 600_000
+
 export interface PreprocessReviewInput {
   workspaceRoot: string
   inputPath: string
@@ -37,6 +46,7 @@ export interface PreprocessReviewInput {
   processingBudgetLimits?: Readonly<Partial<SharedProcessingBudgetLimits>>
   workflowRunId?: string
   commandTimeoutMs?: number
+  deadline?: SharedAbsoluteDeadline
   abortSignal?: AbortSignal
 }
 
@@ -44,128 +54,145 @@ export async function preprocessReview(input: PreprocessReviewInput): Promise<Pr
   const textEncoding = input.textEncoding ?? "auto"
   const limits = normalizeReviewProcessingLimits(input.limits)
   const processingBudgetLedger = createPipelineProcessingBudgetLedger(limits, input.processingBudgetLimits)
-  const inputPath = resolveWorkspacePathStrict(input.workspaceRoot, input.inputPath, "reviewInputPath")
-  const outDir = resolveWorkspacePathForKind(input.workspaceRoot, input.outDir, "review-package-output")
-  const diffFixturePath = input.diffFixturePath
-    ? resolveWorkspacePathStrict(input.workspaceRoot, input.diffFixturePath, "diffFixturePath")
-    : undefined
-  const reviewInput = await validateReviewInput(inputPath, input.workspaceRoot, textEncoding, limits.maxDocumentBytes)
-  const diff = await collectGitDiff(reviewInput, {
-    workspaceRoot: input.workspaceRoot,
-    diffFixturePath,
-    bzrPath: input.bzrPath,
-    textEncoding,
-    limits,
-    budgetLedger: processingBudgetLedger,
-    commandTimeoutMs: input.commandTimeoutMs,
+  const deadline = input.deadline ?? createAbsoluteDeadline(normalizePreprocessTimeout(input.commandTimeoutMs))
+  const cancellation = createCancellationScope({
+    deadline,
     signal: input.abortSignal
   })
-  const repositoryIndexBuild = reviewInput.analysis_options?.repository_symbol_index_mode === "build"
-    ? await produceConfiguredRepositoryIndex({
-        workspaceRoot: input.workspaceRoot,
-        repositoryRoot: diff.vcsRoot,
-        vcs: diff.vcs ?? "git",
-        reviewInput,
-        sourceRevision: diff.head,
-        textEncoding,
-        commandTimeoutMs: input.commandTimeoutMs,
-        abortSignal: input.abortSignal
-      })
-    : undefined
-  const documents = await extractDocuments(reviewInput, {
-    workspaceRoot: input.workspaceRoot,
-    textEncoding,
-    limits,
-    budgetLedger: processingBudgetLedger,
-    signal: input.abortSignal
-  })
-  const codeAnalysis = await analyzeCodeChanges(diff, reviewInput, { workspaceRoot: input.workspaceRoot, textEncoding, limits })
-  const contextBudget = await buildReviewContextBudget({
-    workspaceRoot: input.workspaceRoot,
-    reviewInput,
-    diff,
-    documents,
-    codeAnalysis,
-    limits,
-    textEncoding,
-    onUpstreamLoadFailure: async (kind) => {
-      await updateArtifactLedger({
-        workspaceRoot: input.workspaceRoot,
-        sourceRevision: diff.head,
-        observations: [],
-        completeKinds: [kind],
-        maxBytes: limits.maxDocumentBytes
-      })
+
+  try {
+    cancellation.throwIfCancelled()
+    const inputPath = resolveWorkspacePathStrict(input.workspaceRoot, input.inputPath, "reviewInputPath")
+    const outDir = resolveWorkspacePathForKind(input.workspaceRoot, input.outDir, "review-package-output")
+    const diffFixturePath = input.diffFixturePath
+      ? resolveWorkspacePathStrict(input.workspaceRoot, input.diffFixturePath, "diffFixturePath")
+      : undefined
+    const reviewInput = await validateReviewInput(inputPath, input.workspaceRoot, textEncoding, limits.maxDocumentBytes)
+    cancellation.throwIfCancelled()
+    const diff = await collectGitDiff(reviewInput, {
+      workspaceRoot: input.workspaceRoot,
+      diffFixturePath,
+      bzrPath: input.bzrPath,
+      textEncoding,
+      limits,
+      budgetLedger: processingBudgetLedger,
+      deadline,
+      signal: cancellation.signal as AbortSignal
+    })
+    const repositoryIndexBuild = reviewInput.analysis_options?.repository_symbol_index_mode === "build"
+      ? await produceConfiguredRepositoryIndex({
+          workspaceRoot: input.workspaceRoot,
+          repositoryRoot: diff.vcsRoot,
+          vcs: diff.vcs ?? "git",
+          reviewInput,
+          sourceRevision: diff.head,
+          textEncoding,
+          deadline,
+          abortSignal: cancellation.signal as AbortSignal
+        })
+      : undefined
+    const documents = await extractDocuments(reviewInput, {
+      workspaceRoot: input.workspaceRoot,
+      textEncoding,
+      limits,
+      budgetLedger: processingBudgetLedger,
+      signal: cancellation.signal
+    })
+    cancellation.throwIfCancelled()
+    const codeAnalysis = await analyzeCodeChanges(diff, reviewInput, { workspaceRoot: input.workspaceRoot, textEncoding, limits })
+    const contextBudget = await buildReviewContextBudget({
+      workspaceRoot: input.workspaceRoot,
+      reviewInput,
+      diff,
+      documents,
+      codeAnalysis,
+      limits,
+      textEncoding,
+      onUpstreamLoadFailure: async (kind) => {
+        cancellation.throwIfCancelled()
+        await updateArtifactLedger({
+          workspaceRoot: input.workspaceRoot,
+          sourceRevision: diff.head,
+          observations: [],
+          completeKinds: [kind],
+          maxBytes: limits.maxDocumentBytes
+        })
+      }
+    })
+    const upstreamObservations = buildUpstreamArtifactObservations(
+      contextBudget.artifact,
+      repositoryIndexBuild,
+      diff.head
+    )
+    cancellation.throwIfCancelled()
+    const upstreamLedger = await updateArtifactLedger({
+      workspaceRoot: input.workspaceRoot,
+      sourceRevision: diff.head,
+      observations: upstreamObservations,
+      completeKinds: ["project-rule-pack", "repository-symbol-index"],
+      maxBytes: limits.maxDocumentBytes
+    })
+    const traceability = await buildTraceability({ reviewInput, documents, codeAnalysis, diff })
+    cancellation.throwIfCancelled()
+
+    const packageWarnings = await buildReviewPackage({
+      workspaceRoot: input.workspaceRoot,
+      outDir,
+      reviewInput,
+      diff,
+      documents,
+      codeAnalysis,
+      traceability,
+      contextBudgetArtifact: contextBudget.artifact,
+      limits,
+      budgetLedger: processingBudgetLedger,
+      workflowRunId: input.workflowRunId
+    })
+    cancellation.throwIfCancelled()
+
+    const packageObservation: ArtifactObservation = {
+      id: `review-package:${reviewInput.review.id}`,
+      kind: "review-package",
+      producer: "bob-code-consistency-review@0.1.0",
+      path: relativePosix(input.workspaceRoot, outDir),
+      content_hash: await computeManagedReviewPackageContentHash(outDir),
+      input_hash: computeReviewPackageInputHash(reviewInput, diff, contextBudget.artifact),
+      source_revision: sourceRevision(diff.base, diff.head),
+      depends_on: upstreamObservations.map((item) => item.id).sort()
     }
-  })
-  const upstreamObservations = buildUpstreamArtifactObservations(
-    contextBudget.artifact,
-    repositoryIndexBuild,
-    diff.head
-  )
-  const upstreamLedger = await updateArtifactLedger({
-    workspaceRoot: input.workspaceRoot,
-    sourceRevision: diff.head,
-    observations: upstreamObservations,
-    completeKinds: ["project-rule-pack", "repository-symbol-index"],
-    maxBytes: limits.maxDocumentBytes
-  })
-  const traceability = await buildTraceability({ reviewInput, documents, codeAnalysis, diff })
+    const finalLedger = await updateArtifactLedger({
+      workspaceRoot: input.workspaceRoot,
+      sourceRevision: diff.head,
+      observations: [...upstreamObservations, packageObservation],
+      completeKinds: ["project-rule-pack", "repository-symbol-index", "review-package"],
+      maxBytes: limits.maxDocumentBytes
+    })
 
-  const packageWarnings = await buildReviewPackage({
-    workspaceRoot: input.workspaceRoot,
-    outDir,
-    reviewInput,
-    diff,
-    documents,
-    codeAnalysis,
-    traceability,
-    contextBudgetArtifact: contextBudget.artifact,
-    limits,
-    budgetLedger: processingBudgetLedger,
-    workflowRunId: input.workflowRunId
-  })
-
-  const packageObservation: ArtifactObservation = {
-    id: `review-package:${reviewInput.review.id}`,
-    kind: "review-package",
-    producer: "bob-code-consistency-review@0.1.0",
-    path: relativePosix(input.workspaceRoot, outDir),
-    content_hash: await computeManagedReviewPackageContentHash(outDir),
-    input_hash: computeReviewPackageInputHash(reviewInput, diff, contextBudget.artifact),
-    source_revision: sourceRevision(diff.base, diff.head),
-    depends_on: upstreamObservations.map((item) => item.id).sort()
-  }
-  const finalLedger = await updateArtifactLedger({
-    workspaceRoot: input.workspaceRoot,
-    sourceRevision: diff.head,
-    observations: [...upstreamObservations, packageObservation],
-    completeKinds: ["project-rule-pack", "repository-symbol-index", "review-package"],
-    maxBytes: limits.maxDocumentBytes
-  })
-
-  const warnings = [...new Set([
-    ...diff.warnings,
-    ...documents.warnings,
-    ...codeAnalysis.warnings,
-    ...(repositoryIndexBuild?.warnings ?? []),
-    ...contextBudget.warnings,
-    ...traceability.warnings,
-    ...packageWarnings,
-    ...upstreamLedger.warnings,
-    ...finalLedger.warnings
-  ])].sort()
-  return {
-    status: "ok",
-    reviewId: reviewInput.review.id,
-    packageDir: outDir,
-    changedFiles: diff.files.length,
-    documentEvidence: documents.evidence.length,
-    codeEvidence: codeAnalysis.evidence.length,
-    ...(repositoryIndexBuild ? { repositoryIndexBuild } : {}),
-    artifactLedger: ledgerSummary(finalLedger),
-    warnings,
-    summary: `Generated review package for ${reviewInput.review.id}: ${diff.files.length} file(s), ${documents.evidence.length} document evidence item(s), ${codeAnalysis.evidence.length} code evidence item(s).${repositoryIndexBuild ? ` Repository index: ${repositoryIndexBuild.rebuiltFiles} rebuilt, ${repositoryIndexBuild.reusedFiles} reused, ${repositoryIndexBuild.removedFiles} removed.` : ""} Artifact ledger: ${finalLedger.fresh} fresh, ${finalLedger.stale} stale, ${finalLedger.missing} missing. Generated artifacts may contain sensitive design, customer, source, or raw diff context; ensure .bob-review/ and .bob-trace/ai-traceability-draft/ are ignored unless intentionally versioned.`
+    const warnings = [...new Set([
+      ...diff.warnings,
+      ...documents.warnings,
+      ...codeAnalysis.warnings,
+      ...(repositoryIndexBuild?.warnings ?? []),
+      ...contextBudget.warnings,
+      ...traceability.warnings,
+      ...packageWarnings,
+      ...upstreamLedger.warnings,
+      ...finalLedger.warnings
+    ])].sort()
+    return {
+      status: "ok",
+      reviewId: reviewInput.review.id,
+      packageDir: outDir,
+      changedFiles: diff.files.length,
+      documentEvidence: documents.evidence.length,
+      codeEvidence: codeAnalysis.evidence.length,
+      ...(repositoryIndexBuild ? { repositoryIndexBuild } : {}),
+      artifactLedger: ledgerSummary(finalLedger),
+      warnings,
+      summary: `Generated review package for ${reviewInput.review.id}: ${diff.files.length} file(s), ${documents.evidence.length} document evidence item(s), ${codeAnalysis.evidence.length} code evidence item(s).${repositoryIndexBuild ? ` Repository index: ${repositoryIndexBuild.rebuiltFiles} rebuilt, ${repositoryIndexBuild.reusedFiles} reused, ${repositoryIndexBuild.removedFiles} removed.` : ""} Artifact ledger: ${finalLedger.fresh} fresh, ${finalLedger.stale} stale, ${finalLedger.missing} missing. Generated artifacts may contain sensitive design, customer, source, or raw diff context; ensure .bob-review/ and .bob-trace/ai-traceability-draft/ are ignored unless intentionally versioned.`
+    }
+  } finally {
+    cancellation.dispose()
   }
 }
 
@@ -176,7 +203,7 @@ async function produceConfiguredRepositoryIndex(input: {
   reviewInput: ReviewInput
   sourceRevision: string
   textEncoding: string
-  commandTimeoutMs?: number
+  deadline: SharedAbsoluteDeadline
   abortSignal?: AbortSignal
 }): Promise<ProduceRepositorySymbolIndexResult> {
   if (input.vcs !== "git") {
@@ -197,7 +224,7 @@ async function produceConfiguredRepositoryIndex(input: {
     cachePath: input.reviewInput.analysis_options?.repository_symbol_index_cache_path,
     includeLanguages,
     textEncoding: input.textEncoding,
-    commandTimeoutMs: input.commandTimeoutMs,
+    deadline: input.deadline,
     signal: input.abortSignal
   })
   return omittedLanguages.length === 0
@@ -257,4 +284,9 @@ function ledgerSummary(result: ArtifactLedgerUpdateResult): PreprocessResult["ar
     stale: result.stale,
     missing: result.missing
   }
+}
+
+function normalizePreprocessTimeout(value: number | undefined): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return DEFAULT_PREPROCESS_TIMEOUT_MS
+  return Math.max(MIN_PREPROCESS_TIMEOUT_MS, Math.min(MAX_PREPROCESS_TIMEOUT_MS, Math.floor(value)))
 }
