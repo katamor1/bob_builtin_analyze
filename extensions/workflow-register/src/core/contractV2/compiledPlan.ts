@@ -5,7 +5,11 @@ import type { WorkflowCompilerEnvironment } from "./compilerEnvironment"
 import { requireWorkflowCompilerEnvironmentState } from "./compilerEnvironment"
 import type { CompiledLocalJsonSchema } from "./jsonSchema"
 import { cloneAndFreezeJsonValue, type JsonValue } from "./jsonValue"
-import type { WorkflowPackageDocumentV2 } from "./packageShape"
+import type {
+  WorkflowPackageDocumentV2,
+  WorkflowStepV2,
+  WorkflowTransitionV2
+} from "./packageShape"
 import type { Sha256Digest } from "./providerContract"
 import type {
   BoundWorkflowProviderDispatchHandle,
@@ -20,6 +24,38 @@ export interface CompiledWorkflowPlanPredicateRecord {
   readonly predicate: JsonValue
 }
 
+export type CompiledWorkflowInput = Omit<WorkflowPackageDocumentV2["inputs"][number], "requiredWhen"> & {
+  readonly requiredWhenPredicate?: number
+}
+
+export interface CompiledWorkflowTransition {
+  readonly decisions: readonly (Omit<WorkflowTransitionV2["decisions"][number], "when"> & {
+    readonly predicate: number
+  })[]
+  readonly default: WorkflowTransitionV2["default"]
+}
+
+type CompiledWorkflowStepVariant<Step extends WorkflowStepV2> = Omit<Step, "when" | "transition"> & {
+  readonly entryPredicate?: number
+  readonly transition?: CompiledWorkflowTransition
+}
+
+export type CompiledWorkflowStep =
+  | CompiledWorkflowStepVariant<Extract<WorkflowStepV2, { readonly type: "command" }>>
+  | CompiledWorkflowStepVariant<Extract<WorkflowStepV2, { readonly type: "agent" }>>
+  | CompiledWorkflowStepVariant<Extract<WorkflowStepV2, { readonly type: "manual" }>>
+  | CompiledWorkflowStepVariant<Extract<WorkflowStepV2, { readonly type: "result" }>>
+
+export interface CompiledWorkflowDefinition {
+  readonly schemaVersion: "workflow-compiled-workflow/v2"
+  readonly id: string
+  readonly name: string
+  readonly description: string
+  readonly inputs: readonly CompiledWorkflowInput[]
+  readonly steps: readonly CompiledWorkflowStep[]
+  readonly resumePolicy: WorkflowPackageDocumentV2["resumePolicy"]
+}
+
 export interface CompiledWorkflowPlan {
   readonly schemaVersion: "workflow-compiled-plan/v2"
   readonly compilerContractVersion: "workflow-register-compiler/v2"
@@ -28,7 +64,7 @@ export interface CompiledWorkflowPlan {
   readonly packageDigest: Sha256Digest
   readonly lockfileDigest: Sha256Digest
   readonly environmentDigest: Sha256Digest
-  readonly workflow: WorkflowPackageDocumentV2
+  readonly workflow: CompiledWorkflowDefinition
   readonly prompts: readonly {
     readonly id: string
     readonly text: string
@@ -62,7 +98,6 @@ export interface CompiledWorkflowPlanPrivateState {
   readonly generation: string
   readonly prompts: readonly {
     readonly id: string
-    readonly bytes: Readonly<Uint8Array>
   }[]
   readonly schemas: readonly {
     readonly id: string
@@ -102,7 +137,21 @@ const weakMapSet = Function.prototype.call.bind(WeakMap.prototype.set) as (
   key: object,
   value: CompiledWorkflowPlanPrivateState
 ) => WeakMap<object, CompiledWorkflowPlanPrivateState>
+interface CompiledWorkflowPromptBytes {
+  readonly id: string
+  readonly bytes: Uint8Array
+}
+const promptBytesGet = Function.prototype.call.bind(WeakMap.prototype.get) as (
+  map: WeakMap<object, readonly CompiledWorkflowPromptBytes[]>,
+  key: object
+) => readonly CompiledWorkflowPromptBytes[] | undefined
+const promptBytesSet = Function.prototype.call.bind(WeakMap.prototype.set) as (
+  map: WeakMap<object, readonly CompiledWorkflowPromptBytes[]>,
+  key: object,
+  value: readonly CompiledWorkflowPromptBytes[]
+) => WeakMap<object, readonly CompiledWorkflowPromptBytes[]>
 const states = new WeakMap<object, CompiledWorkflowPlanPrivateState>()
+const promptBytes = new WeakMap<object, readonly CompiledWorkflowPromptBytes[]>()
 
 export function createCompiledWorkflowPlanHandle(
   input: CreateCompiledWorkflowPlanHandleInput
@@ -122,12 +171,14 @@ export function createCompiledWorkflowPlanHandle(
   const planDigest = canonicalJsonDigest(plan) as Sha256Digest
   const handle = objectFreeze({ plan, planDigest }) as CompiledWorkflowPlanHandle
 
-  const promptCopies: { readonly id: string; readonly bytes: Readonly<Uint8Array> }[] = []
+  const promptCopies: { readonly id: string }[] = []
+  const promptByteCopies: CompiledWorkflowPromptBytes[] = []
   for (let index = 0; index < input.prompts.length; index += 1) {
     const prompt = input.prompts[index]
     const bytes = new Uint8ArrayConstructor(prompt.bytes.byteLength)
     reflectApply(typedArraySet, bytes, [prompt.bytes])
-    push(promptCopies, objectFreeze({ id: prompt.id, bytes }))
+    push(promptCopies, objectFreeze({ id: prompt.id }))
+    push(promptByteCopies, objectFreeze({ id: prompt.id, bytes }))
   }
 
   const schemaCopies: { readonly id: string; readonly compiled: CompiledLocalJsonSchema }[] = []
@@ -148,6 +199,7 @@ export function createCompiledWorkflowPlanHandle(
     }))
   }
 
+  promptBytesSet(promptBytes, handle, objectFreeze(promptByteCopies))
   weakMapSet(states, handle, objectFreeze({
     environment: input.environment,
     environmentIdentity: environmentState.identity,
@@ -171,6 +223,25 @@ export function requireCompiledWorkflowPlanState(
   const state = weakMapGet(states, handle)
   if (state === undefined) throw new TypeError("Compiled workflow plan handle is invalid.")
   return state
+}
+
+export function readCompiledWorkflowPromptBytes(
+  handle: CompiledWorkflowPlanHandle,
+  id: string
+): Uint8Array {
+  requireCompiledWorkflowPlanState(handle)
+  if (typeof id !== "string" || id.length === 0) {
+    throw new TypeError("Compiled workflow prompt id is invalid.")
+  }
+  const prompts = promptBytesGet(promptBytes, handle)
+  if (prompts === undefined) throw new TypeError("Compiled workflow plan prompt state is unavailable.")
+  for (let index = 0; index < prompts.length; index += 1) {
+    if (prompts[index].id !== id) continue
+    const copy = new Uint8ArrayConstructor(prompts[index].bytes.byteLength)
+    reflectApply(typedArraySet, copy, [prompts[index].bytes])
+    return copy
+  }
+  throw new TypeError("Compiled workflow prompt is unavailable.")
 }
 
 export function compiledWorkflowPlanBelongsToEnvironment(
