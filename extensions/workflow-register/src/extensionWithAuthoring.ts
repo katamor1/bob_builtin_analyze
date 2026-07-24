@@ -93,6 +93,12 @@ export function activate(context: vscode.ExtensionContext): WorkflowRegisterApi 
     extensionUri: context.extensionUri
   }
   const runControlOptions = { showMarkdownReport }
+  const workflowValidationOptions = () => ({
+    sourceId: sourceId(),
+    showMarkdownReport,
+    diagnostics,
+    compileCurrentWorkflowPackage: api.compileCurrentWorkflowPackage
+  })
   const processCommandOptions = (input: unknown) => ({ workspaceRoot: workspaceRootFromCommandInput(input, "bobProcess") })
   const templateCommandOptions = (input: unknown) => ({ workspaceRoot: workspaceRootFromCommandInput(input, "bobTemplate") })
   context.subscriptions.push(
@@ -102,11 +108,11 @@ export function activate(context: vscode.ExtensionContext): WorkflowRegisterApi 
     vscode.commands.registerCommand("workflowRegister.refreshRunsView", () => runControlView.refresh()),
     vscode.commands.registerCommand(
       "workflowRegister.validateCurrentWorkflow",
-      () => validateCurrentWorkflow({ sourceId: sourceId(), showMarkdownReport, diagnostics })
+      () => validateCurrentWorkflow(workflowValidationOptions())
     ),
     vscode.commands.registerCommand(
       "workflowRegister.validateWorkspaceWorkflows",
-      () => validateWorkspaceWorkflows({ sourceId: sourceId(), showMarkdownReport, diagnostics })
+      () => validateWorkspaceWorkflows(workflowValidationOptions())
     ),
     vscode.commands.registerCommand(
       "workflowRegister.createWorkflowFromTemplate",
