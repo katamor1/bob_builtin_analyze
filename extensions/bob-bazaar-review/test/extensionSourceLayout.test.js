@@ -120,12 +120,13 @@ test("bazaar review modules live under the bazaar source boundary", () => {
   assert.match(commandSource, /from "\.\/reviewPacket"/)
 })
 
-test("extension source root only keeps the extension entrypoint", () => {
+test("extension source root keeps the composition entrypoint and the generated shared-runtime facade only", () => {
   const rootFiles = fs.readdirSync(path.join(extensionRoot, "src"))
     .filter((entry) => entry.endsWith(".ts"))
     .sort()
 
-  assert.deepEqual(rootFiles, ["extension.ts"])
+  assert.deepEqual(rootFiles, ["extension.ts", "sharedProcessingBudgetRuntime.ts"])
+  assert.match(readSrc("sharedProcessingBudgetRuntime.ts"), /shared-processing-budget-runtime/)
 
   for (const fileName of ["bobCodeExtension.ts", "bobContext.ts"]) {
     assert.ok(fs.existsSync(path.join(extensionRoot, "src", "bob", fileName)), `bob/${fileName} must exist`)
