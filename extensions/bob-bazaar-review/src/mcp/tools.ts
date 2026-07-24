@@ -1,4 +1,4 @@
-import { BazaarClient, BazaarError } from "../bazaar/bazaar"
+import { BazaarClient, BazaarError, type BazaarOptions } from "../bazaar/bazaar"
 import { callBazaarTool, createBazaarToolDefinitions, isBazaarTool } from "./bazaarTools"
 import {
   callProjectRulesTool,
@@ -16,7 +16,7 @@ export interface McpToolRegistryOptions {
 }
 
 export class McpToolRegistry {
-  private readonly client: BazaarClient
+  private readonly clientOptions: BazaarOptions
   private readonly toolDefinitions = [
     ...createBazaarToolDefinitions(),
     ...createProjectRulesToolDefinitions()
@@ -25,7 +25,7 @@ export class McpToolRegistry {
 
   constructor(private readonly options: McpToolRegistryOptions) {
     const env = options.env ?? process.env
-    this.client = new BazaarClient({
+    this.clientOptions = Object.freeze({
       bzrPath: env.BZR_PATH || "bzr",
       maxBuffer: Number(env.BZR_MAX_BUFFER || 10 * 1024 * 1024),
       textEncoding: env.BZR_TEXT_ENCODING || "auto"
@@ -42,7 +42,10 @@ export class McpToolRegistry {
 
   async callTool(name: string, args: unknown): Promise<McpToolResponse> {
     if (isBazaarTool(name)) {
-      return callBazaarTool(name, args, this.client, this.options.requiredAllowedCwd)
+      // The registry is long-lived, but a Bazaar deadline is operation-scoped.
+      // Create the client here so an idle MCP server cannot retain an expired
+      // constructor deadline and poison every later tool invocation.
+      return callBazaarTool(name, args, new BazaarClient(this.clientOptions), this.options.requiredAllowedCwd)
     }
     if (isProjectRulesTool(name)) {
       return callProjectRulesTool(name, args, this.options.requiredAllowedCwd, this.writeToolsEnabled)
