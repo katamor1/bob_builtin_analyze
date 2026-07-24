@@ -100,3 +100,27 @@ test("deadline cause remains authoritative when its timer fires first", () => {
     scope.dispose()
   }
 })
+
+test("source cancellation cannot slip between preflight and listener registration", () => {
+  let reads = 0
+  const signal = {
+    get aborted() {
+      reads += 1
+      return reads >= 2
+    },
+    reason: new Error("raced cancellation"),
+    addEventListener() {},
+    removeEventListener() {}
+  }
+  const scope = createCancellationScope({
+    deadline: createAbsoluteDeadline(1000),
+    signal
+  })
+  try {
+    assert.equal(scope.signal.aborted, true)
+    assert.equal(cancellationKindFromSignal(scope.signal), "user")
+    assert.ok(reads >= 2)
+  } finally {
+    scope.dispose()
+  }
+})
