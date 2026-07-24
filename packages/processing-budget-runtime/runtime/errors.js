@@ -75,7 +75,13 @@ function ledgerFrom(value) {
 
 function preserveTypedError(error, fallbackCode, fallbackMessage) {
   if (error && typeof error === "object" && typeof error.code === "string") {
-    if (error.name === "BoundedDocumentError" || error.code.startsWith("processing_budget_")) throw error
+    if (
+      error.name === "BoundedDocumentError" ||
+      error.code === "processing_cancelled" ||
+      error.code.startsWith("processing_budget_")
+    ) {
+      throw error
+    }
   }
   throw processingError(fallbackCode, error instanceof Error ? safeEcho(error.message) : fallbackMessage)
 }
