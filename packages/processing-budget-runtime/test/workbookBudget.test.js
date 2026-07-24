@@ -82,6 +82,39 @@ test("cancellation during enumeration releases every pending reservation", () =>
   assert.deepEqual(snapshot(runtime, ledger), before)
 })
 
+test("structured cancellation signals preserve deadline and user causes", () => {
+  const runtime = loadRuntime()
+  const ledger = new runtime.ProcessingBudgetLedger()
+  const userReason = new Error("operator cancelled")
+
+  assert.throws(
+    () => runtime.commitWorkbookBudget({
+      ledger,
+      workbookTarget: "deadline-book",
+      sheets: [],
+      signal: {
+        aborted: true,
+        reason: { code: "processing_cancelled", kind: "deadline", original_reason: undefined }
+      }
+    }),
+    (error) => error?.code === "processing_cancelled" && error.kind === "deadline"
+  )
+  assert.throws(
+    () => runtime.commitWorkbookBudget({
+      ledger,
+      workbookTarget: "user-book",
+      sheets: [],
+      signal: {
+        aborted: true,
+        reason: { code: "processing_cancelled", kind: "user", original_reason: userReason }
+      }
+    }),
+    (error) => error?.code === "processing_cancelled"
+      && error.kind === "user"
+      && error.original_reason === userReason
+  )
+})
+
 test("the configured absolute profile accepts its exact workbook and row boundaries", () => {
   const runtime = loadRuntime()
   const ledger = new runtime.ProcessingBudgetLedger(runtime.ABSOLUTE_PROCESSING_BUDGET_PROFILE)
