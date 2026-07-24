@@ -7,13 +7,16 @@ function readSource(...segments) {
   return fs.readFileSync(path.join(__dirname, "..", "src", ...segments), "utf8")
 }
 
-test("BazaarClient delegates process execution to the bounded runner", () => {
+test("BazaarClient delegates process execution with one absolute deadline", () => {
   const source = readSource("bazaar", "bazaar.ts")
 
   assert.match(source, /runExternalProcess/)
-  assert.match(source, /timeoutMs/)
+  assert.match(source, /private readonly deadline:/)
+  assert.match(source, /options\.deadline \?\? createAbsoluteDeadline/)
+  assert.match(source, /deadline:\s*this\.deadline/)
   assert.match(source, /signal/)
   assert.doesNotMatch(source, /execFile\(/)
+  assert.doesNotMatch(source, /timeoutMs:\s*this\.timeoutMs/)
 })
 
 test("direct Bazaar review progress exposes cancellation to the client", () => {
