@@ -208,25 +208,19 @@ export function runExternalProcess(options: ExternalProcessOptions): Promise<Ext
     })
     child.on("close", (code) => {
       if (settled) return
-      settled = true
-      cleanup()
       const exitCode = typeof code === "number" ? code : -1
-      const result = { stdout: stdout(), stderr: stderr(), exitCode }
       if (allowedExitCodes.has(exitCode)) {
-        resolve(result)
+        settled = true
+        cleanup()
+        resolve({ stdout: stdout(), stderr: stderr(), exitCode })
         return
       }
-      reject(new ExternalProcessError(
-        `Command exited with code ${exitCode}: ${options.command}`,
+      fail(
         "nonZeroExit",
-        options.command,
-        [...options.args],
-        options.cwd,
-        result.stdout,
-        result.stderr,
-        exitCode,
-        "non_zero_exit"
-      ))
+        `Command exited with code ${exitCode}: ${options.command}`,
+        "non_zero_exit",
+        exitCode
+      )
     })
 
     cancellation.signal.addEventListener?.("abort", onAbort, { once: true })
@@ -313,15 +307,11 @@ function terminateWindowsProcessTree(child: ExternalProcessChild): Promise<void>
     child.once("exit", onChildFinished)
     child.once("close", onChildFinished)
 
-    if (childFinished) {
-      finish()
-      return
-    }
-
     const pid = child.pid
     if (!pid) {
       treeKillerFinished = true
       fallbackKillChild()
+      finish()
       return
     }
 
@@ -368,14 +358,10 @@ function terminatePosixProcessTree(child: ExternalProcessChild): Promise<void> {
     child.once("exit", finish)
     child.once("close", finish)
 
-    if (child.exitCode !== null || child.signalCode !== null) {
-      finish()
-      return
-    }
-
     const pid = child.pid
     if (!pid) {
       fallbackKill()
+      finish()
       return
     }
 
@@ -384,5 +370,6 @@ function terminatePosixProcessTree(child: ExternalProcessChild): Promise<void> {
     } catch {
       fallbackKill()
     }
+    if (child.exitCode !== null || child.signalCode !== null) finish()
   })
 }
