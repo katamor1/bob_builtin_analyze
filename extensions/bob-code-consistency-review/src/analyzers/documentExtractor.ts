@@ -190,7 +190,8 @@ async function extractFileChunks(
     rootPath: workspaceRoot,
     target: documentTarget(filePath, selectionId),
     ledger,
-    maximumFileBytes: limits.maxDocumentBytes
+    maximumFileBytes: limits.maxDocumentBytes,
+    signal
   })
   throwIfCancelled(signal)
   const documentBytes = snapshot.copyBytes()
