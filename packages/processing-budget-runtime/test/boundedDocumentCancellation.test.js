@@ -9,6 +9,12 @@ const test = require("node:test")
 const { FakeLedger } = require("./helpers/boundedDocumentFixtures")
 const { readBoundedDocumentFile } = require("../runtime/bounded-file")
 
+function isUserCancellation(error, originalReason) {
+  return error?.code === "processing_cancelled"
+    && error.kind === "user"
+    && error.original_reason === originalReason
+}
+
 test("bounded document reads observe cancellation between chunks and release their reservation", async (t) => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "processing-budget-cancel-"))
   t.after(() => fs.rm(directory, { recursive: true, force: true }))
@@ -29,7 +35,7 @@ test("bounded document reads observe cancellation between chunks and release the
     }, {
       afterReadChunk: async () => controller.abort(reason)
     }),
-    (error) => error === reason
+    (error) => isUserCancellation(error, reason)
   )
 
   assert.deepEqual(ledger.events.map((event) => event[0]), ["reserve", "release"])
@@ -54,7 +60,7 @@ test("a pre-cancelled bounded document read performs no reservation", async (t) 
       maximumFileBytes: 1024,
       signal: controller.signal
     }),
-    (error) => error === reason
+    (error) => isUserCancellation(error, reason)
   )
   assert.deepEqual(ledger.events, [])
 })
