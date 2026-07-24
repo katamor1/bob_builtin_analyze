@@ -135,3 +135,13 @@ test("missing and additional lock entries produce one mismatch", () => {
     "/prompts/1"
   )
 })
+
+test("unknown lock fields cannot escape through diagnostic pointers", () => {
+  const lockModule = subject()
+  const fixture = withEncodedLock(lockModule)
+  const hostile = cloneJson(fixture.lock)
+  hostile["\u0001C:\\private\\secret"] = "sensitive-value"
+  const input = replaceLockBytes(fixture.input, canonicalBytes(hostile))
+
+  expectMismatch(lockModule.verifyWorkflowPackageLock(input), "")
+})
