@@ -7,6 +7,8 @@ const objectIs = Object.is
 const reflectApply = Reflect.apply
 const stringReplace = String.prototype.replace
 
+const KNOWN_ADDITIONAL_ROOT_FIELDS = ["packageDigest"] as const
+
 export function firstWorkflowLockDifference(
   actual: unknown,
   expected: unknown
@@ -51,28 +53,43 @@ function compareValue(actual: unknown, expected: unknown, pointer: string): stri
     if (!actualObject || !expectedObject) return pointer
     const actualRecord = actual as Record<string, unknown>
     const expectedRecord = expected as Record<string, unknown>
-    const expectedKeys = objectKeys(expectedRecord)
-    sort(expectedKeys, compareText)
-    for (let index = 0; index < expectedKeys.length; index += 1) {
-      const key = expectedKeys[index]
+    const trustedKeys = objectKeys(expectedRecord)
+    if (pointer === "") {
+      for (let index = 0; index < KNOWN_ADDITIONAL_ROOT_FIELDS.length; index += 1) {
+        const field = KNOWN_ADDITIONAL_ROOT_FIELDS[index]
+        if (objectHasOwn(actualRecord, field) && !objectHasOwn(expectedRecord, field)) {
+          trustedKeys[trustedKeys.length] = field
+        }
+      }
+    }
+    sort(trustedKeys, compareText)
+    for (let index = 0; index < trustedKeys.length; index += 1) {
+      const key = trustedKeys[index]
       const keyPointer = `${pointer}/${escapePointerToken(key)}`
+      if (!objectHasOwn(expectedRecord, key)) return keyPointer
       if (!objectHasOwn(actualRecord, key)) return keyPointer
       const difference = compareValue(actualRecord[key], expectedRecord[key], keyPointer)
       if (difference !== undefined) return difference
     }
-    if (
-      pointer === ""
-      && objectHasOwn(actualRecord, "packageDigest")
-      && !objectHasOwn(expectedRecord, "packageDigest")
-    ) return "/packageDigest"
     const actualKeys = objectKeys(actualRecord)
     for (let index = 0; index < actualKeys.length; index += 1) {
-      if (!objectHasOwn(expectedRecord, actualKeys[index])) return pointer
+      if (
+        !objectHasOwn(expectedRecord, actualKeys[index])
+        && !isKnownAdditionalRootField(pointer, actualKeys[index])
+      ) return pointer
     }
     return undefined
   }
 
   return pointer
+}
+
+function isKnownAdditionalRootField(pointer: string, value: string): boolean {
+  if (pointer !== "") return false
+  for (let index = 0; index < KNOWN_ADDITIONAL_ROOT_FIELDS.length; index += 1) {
+    if (KNOWN_ADDITIONAL_ROOT_FIELDS[index] === value) return true
+  }
+  return false
 }
 
 function escapePointerToken(value: string): string {
