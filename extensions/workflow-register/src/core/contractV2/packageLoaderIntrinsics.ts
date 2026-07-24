@@ -1,6 +1,8 @@
+import { posix as nodePathPosix, win32 as nodePathWin32 } from "node:path"
 import { types as utilTypes } from "node:util"
 
-const WINDOWS_DRIVE_ABSOLUTE_PATTERN = /^[A-Za-z]:[\\/]/u
+const pathPosixParse = nodePathPosix.parse
+const pathWin32Parse = nodePathWin32.parse
 
 export const isProxy = utilTypes.isProxy
 export const arrayIsArray = Array.isArray
@@ -78,7 +80,11 @@ export function includes(values: readonly string[], value: string): boolean {
 
 export function normalizeContainmentRoot(value: string): string {
   let result = value
-  const minimumLength = testPattern(WINDOWS_DRIVE_ABSOLUTE_PATTERN, result) ? 3 : 1
+  let minimumLength = 1
+  const posixRootLength = (reflectApply(pathPosixParse, undefined, [value]) as { root: string }).root.length
+  const win32RootLength = (reflectApply(pathWin32Parse, undefined, [value]) as { root: string }).root.length
+  if (posixRootLength > minimumLength) minimumLength = posixRootLength
+  if (win32RootLength > minimumLength) minimumLength = win32RootLength
   while (
     result.length > minimumLength
     && (
