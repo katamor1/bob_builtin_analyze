@@ -2,9 +2,9 @@ import { types as utilTypes } from "node:util"
 
 import { canonicalJsonDigest } from "./canonicalJson"
 import {
-  inspectLocalJsonSchemaInstancePointer,
-  type CompiledLocalJsonSchema
-} from "./jsonSchema"
+  inspectLocalJsonSchemaViewInstancePointer,
+  type CompiledLocalJsonSchemaView
+} from "./jsonSchemaCatalog"
 import { cloneAndFreezeJsonValue, type JsonValue } from "./jsonValue"
 
 export type LocalJsonSchemaManualFieldContract =
@@ -26,7 +26,7 @@ export interface LocalJsonSchemaRoleHandle {
 }
 
 interface LocalJsonSchemaRoleState {
-  readonly compiled: CompiledLocalJsonSchema
+  readonly compiled: CompiledLocalJsonSchemaView
   readonly root: Readonly<Record<string, JsonValue>>
 }
 
@@ -66,12 +66,12 @@ const states = new WeakMap<object, LocalJsonSchemaRoleState>()
 const SUCCESS = objectFreeze({ ok: true as const })
 
 export function createLocalJsonSchemaRoleHandle(input: {
-  readonly compiled: CompiledLocalJsonSchema
+  readonly compiled: CompiledLocalJsonSchemaView
   readonly schema: unknown
 }): LocalJsonSchemaRoleHandle {
   const snapshot = snapshotExactRecord(input, CREATE_FIELDS, "Local JSON Schema role input")
-  const compiled = snapshot.compiled as CompiledLocalJsonSchema
-  inspectLocalJsonSchemaInstancePointer({ compiled, pointer: "" })
+  const compiled = snapshot.compiled as CompiledLocalJsonSchemaView
+  inspectLocalJsonSchemaViewInstancePointer({ compiled, pointer: "" })
   const schema = cloneAndFreezeJsonValue(snapshot.schema)
   if (!isJsonObject(schema)) throw new TypeError("Local JSON Schema role root must be an object schema.")
   const rootId = compiled.evidence.rootId
@@ -145,8 +145,7 @@ function snapshotFields(value: unknown): readonly LocalJsonSchemaManualFieldCont
     throw new TypeError("Local JSON Schema manual fields must be a dense ordinary array.")
   }
   const descriptors = objectGetOwnPropertyDescriptors(value) as unknown as PropertyDescriptorMap
-  const lengthDescriptor = descriptors.length
-  const length = lengthDescriptor?.value
+  const length = descriptors.length?.value
   if (typeof length !== "number" || !numberIsSafeInteger(length) || length < 0 || length > 128) {
     throw new TypeError("Local JSON Schema manual fields have an invalid length.")
   }
@@ -156,9 +155,13 @@ function snapshotFields(value: unknown): readonly LocalJsonSchemaManualFieldCont
   const result: LocalJsonSchemaManualFieldContract[] = []
   for (let index = 0; index < length; index += 1) {
     const descriptor = descriptors[numberAsString(index)]
-    if (descriptor === undefined || !objectHasOwn(descriptor, "value") || descriptor.enumerable !== true) {
-      throw new TypeError("Local JSON Schema manual fields must contain own data items.")
-    }
+    if (
+      descriptor === undefined
+      || !objectHasOwn(descriptor, "value")
+      || objectHasOwn(descriptor, "get")
+      || objectHasOwn(descriptor, "set")
+      || descriptor.enumerable !== true
+    ) throw new TypeError("Local JSON Schema manual fields must contain own data items.")
     const baseSnapshot = snapshotRecord(descriptor.value, "Local JSON Schema manual field")
     const fields = baseSnapshot.kind === "select" ? FIELD_SELECT_FIELDS : FIELD_BASE_FIELDS
     assertExactKeys(baseSnapshot, fields, "Local JSON Schema manual field")
@@ -250,17 +253,14 @@ function readStringArray(value: unknown): string[] {
 }
 
 function snapshotStringArray(value: unknown): string[] | undefined {
-  if (isProxy(value) || !arrayIsArray(value) || objectGetPrototypeOf(value) !== arrayPrototype) {
-    return undefined
-  }
+  if (isProxy(value) || !arrayIsArray(value) || objectGetPrototypeOf(value) !== arrayPrototype) return undefined
   let descriptors: PropertyDescriptorMap
   try {
     descriptors = objectGetOwnPropertyDescriptors(value) as unknown as PropertyDescriptorMap
   } catch {
     return undefined
   }
-  const lengthDescriptor = descriptors.length
-  const length = lengthDescriptor?.value
+  const length = descriptors.length?.value
   if (
     typeof length !== "number"
     || !numberIsSafeInteger(length)
