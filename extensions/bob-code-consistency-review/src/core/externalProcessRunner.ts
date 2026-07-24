@@ -60,6 +60,7 @@ export class ExternalProcessError extends Error {
 const MIN_EXTERNAL_PROCESS_TIMEOUT_MS = 1_000
 const MAX_EXTERNAL_PROCESS_TIMEOUT_MS = 600_000
 const PROCESS_TERMINATION_WAIT_MS = 2_000
+const PROCESS_TERMINATION_POLL_MS = 25
 export const EXTERNAL_PROCESS_STDERR_MAX_BYTES = 256 * 1024
 
 export function runExternalProcess(options: ExternalProcessOptions): Promise<ExternalProcessResult> {
@@ -141,6 +142,16 @@ export function runExternalProcess(options: ExternalProcessOptions): Promise<Ext
       )
     }
 
+    const abortIfCancelled = (): boolean => {
+      try {
+        cancellation.throwIfCancelled()
+        return false
+      } catch {
+        onAbort()
+        return true
+      }
+    }
+
     try {
       child = spawn(options.command, options.args, {
         cwd: options.cwd,
@@ -173,7 +184,7 @@ export function runExternalProcess(options: ExternalProcessOptions): Promise<Ext
       stream: "stdout" | "stderr",
       maximumBytes: number
     ): void => {
-      if (settled) return
+      if (settled || abortIfCancelled()) return
       const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
       const usedBytes = stream === "stdout" ? stdoutBytes : stderrBytes
       const remainingBytes = maximumBytes - usedBytes
@@ -200,6 +211,7 @@ export function runExternalProcess(options: ExternalProcessOptions): Promise<Ext
       EXTERNAL_PROCESS_STDERR_MAX_BYTES
     ))
     child.on("error", (error) => {
+      if (settled || abortIfCancelled()) return
       fail(
         "spawnFailure",
         `Command failed to start ${options.command}: ${error.message}`,
@@ -207,7 +219,7 @@ export function runExternalProcess(options: ExternalProcessOptions): Promise<Ext
       )
     })
     child.on("close", (code) => {
-      if (settled) return
+      if (settled || abortIfCancelled()) return
       const exitCode = typeof code === "number" ? code : -1
       if (allowedExitCodes.has(exitCode)) {
         settled = true
@@ -224,7 +236,7 @@ export function runExternalProcess(options: ExternalProcessOptions): Promise<Ext
     })
 
     cancellation.signal.addEventListener?.("abort", onAbort, { once: true })
-    if (cancellation.signal.aborted) onAbort()
+    abortIfCancelled()
   })
 }
 
@@ -331,14 +343,18 @@ function terminateWindowsProcessTree(child: ExternalProcessChild): Promise<void>
 function terminatePosixProcessTree(child: ExternalProcessChild): Promise<void> {
   return new Promise((resolve) => {
     let finished = false
+    let childFinished = child.exitCode !== null || child.signalCode !== null
+    let processGroupGone = false
     let timeout: ReturnType<typeof setTimeout>
+    let poll: ReturnType<typeof setTimeout> | undefined
 
     const finish = (): void => {
       if (finished) return
       finished = true
       clearTimeout(timeout)
-      child.removeListener("exit", finish)
-      child.removeListener("close", finish)
+      if (poll !== undefined) clearTimeout(poll)
+      child.removeListener("exit", onChildFinished)
+      child.removeListener("close", onChildFinished)
       resolve()
     }
 
@@ -350,13 +366,22 @@ function terminatePosixProcessTree(child: ExternalProcessChild): Promise<void> {
       }
     }
 
+    const maybeFinish = (): void => {
+      if (childFinished && processGroupGone) finish()
+    }
+
+    const onChildFinished = (): void => {
+      childFinished = true
+      maybeFinish()
+    }
+
     timeout = setTimeout(() => {
       fallbackKill()
       finish()
     }, PROCESS_TERMINATION_WAIT_MS)
 
-    child.once("exit", finish)
-    child.once("close", finish)
+    child.once("exit", onChildFinished)
+    child.once("close", onChildFinished)
 
     const pid = child.pid
     if (!pid) {
@@ -365,11 +390,35 @@ function terminatePosixProcessTree(child: ExternalProcessChild): Promise<void> {
       return
     }
 
+    const pollProcessGroup = (): void => {
+      if (finished) return
+      processGroupGone = !posixProcessGroupExists(pid)
+      if (processGroupGone) {
+        maybeFinish()
+        return
+      }
+      poll = setTimeout(pollProcessGroup, PROCESS_TERMINATION_POLL_MS)
+    }
+
     try {
       process.kill(-pid, "SIGKILL")
     } catch {
       fallbackKill()
     }
-    if (child.exitCode !== null || child.signalCode !== null) finish()
+    pollProcessGroup()
   })
+}
+
+function posixProcessGroupExists(pid: number): boolean {
+  try {
+    process.kill(-pid, 0)
+    return true
+  } catch (error) {
+    return !(
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      (error as { readonly code?: unknown }).code === "ESRCH"
+    )
+  }
 }
