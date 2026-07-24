@@ -4,6 +4,10 @@ import {
   type ExternalProcessOptions,
   type ExternalProcessResult
 } from "../../bazaar/externalProcessRunner"
+import {
+  createAbsoluteDeadline,
+  type SharedAbsoluteDeadline
+} from "../../sharedProcessingBudgetRuntime"
 import { splitDocumentChunk } from "../documentChunk"
 import { DEFAULT_RULE_AUTHORING_LIMITS } from "../ruleAuthoringLimits"
 import type { DocumentChunkV1, RuleSourceExtractionStatus } from "../ruleAuthoringTypes"
@@ -14,6 +18,7 @@ export interface PdfExtractionOptions {
   sourceId: string
   command?: string
   timeoutMs?: number
+  deadline?: SharedAbsoluteDeadline
   maxOutputBytes?: number
   maxChunkBytes?: number
   signal?: AbortSignal
@@ -30,6 +35,8 @@ export interface PdfExtractionResult {
 export const PDF_LOW_TEXT_DENSITY_CHARACTERS = 32
 
 const DEFAULT_PDF_TIMEOUT_MS = 120_000
+const MIN_PDF_TIMEOUT_MS = 1_000
+const MAX_PDF_TIMEOUT_MS = 600_000
 const PDF_EXTRACTOR = Object.freeze({ id: "pdf-pdftotext-layout", version: "1" })
 
 export async function extractPdf(
@@ -48,6 +55,7 @@ export async function extractPdf(
     DEFAULT_RULE_AUTHORING_LIMITS.maxChunkBytes,
     "PDF chunk byte limit"
   )
+  const deadline = options.deadline ?? createAbsoluteDeadline(normalizePdfTimeout(options.timeoutMs))
   let result: ExternalProcessResult
   try {
     result = await runner({
@@ -55,7 +63,7 @@ export async function extractPdf(
       args: ["-layout", "-enc", "UTF-8", absolutePath, "-"],
       cwd: path.dirname(absolutePath),
       maxStdoutBytes: maxOutputBytes,
-      timeoutMs: options.timeoutMs ?? DEFAULT_PDF_TIMEOUT_MS,
+      deadline,
       allowedExitCodes: [0],
       signal: options.signal
     })
@@ -98,6 +106,11 @@ export async function extractPdf(
 function boundedPositiveLimit(value: number, ceiling: number, label: string): number {
   if (!Number.isSafeInteger(value) || value <= 0) throw new Error(`${label} must be a positive safe integer`)
   return Math.min(value, ceiling)
+}
+
+function normalizePdfTimeout(value: number | undefined): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return DEFAULT_PDF_TIMEOUT_MS
+  return Math.max(MIN_PDF_TIMEOUT_MS, Math.min(MAX_PDF_TIMEOUT_MS, Math.floor(value)))
 }
 
 function blockedPdfResult(warning: string): PdfExtractionResult {
