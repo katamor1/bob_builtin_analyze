@@ -10,6 +10,7 @@ function schema(id, type) {
 test("F3 compiles all requested roots from one AJV catalog construction", () => {
   const ajvPath = require.resolve("ajv/dist/2020")
   const schemaPath = require.resolve("../out/core/contractV2/jsonSchema.js")
+  const catalogPath = require.resolve("../out/core/contractV2/jsonSchemaCatalog.js")
   const originalExports = require(ajvPath)
   const Original = originalExports.default ?? originalExports
   let constructions = 0
@@ -19,15 +20,14 @@ test("F3 compiles all requested roots from one AJV catalog construction", () => 
       super(...args)
     }
   }
-  const replacement = originalExports && originalExports.__esModule
-    ? { ...originalExports, default: CountingAjv }
-    : CountingAjv
+  const replacement = { ...originalExports, default: CountingAjv }
   const cached = require.cache[ajvPath]
   if (cached === undefined) throw new Error("AJV module cache is unavailable")
   cached.exports = replacement
   delete require.cache[schemaPath]
+  delete require.cache[catalogPath]
   try {
-    const subject = require(schemaPath)
+    const subject = require(catalogPath)
     const roots = ["schemas/a.json", "schemas/b.json"]
     const result = subject.compileLocalJsonSchemaCatalog({
       rootIds: roots,
@@ -43,21 +43,22 @@ test("F3 compiles all requested roots from one AJV catalog construction", () => 
     assert.deepEqual(result.roots.map((root) => root.id), roots)
     assert.deepEqual(result.roots.map((root) => root.compiled.evidence.rootId), roots)
     assert.deepEqual(
-      subject.inspectLocalJsonSchemaInstancePointer({ compiled: result.roots[0].compiled, pointer: "" }),
+      subject.inspectLocalJsonSchemaViewInstancePointer({ compiled: result.roots[0].compiled, pointer: "" }),
       { ok: true, kinds: ["string"] }
     )
     assert.deepEqual(
-      subject.inspectLocalJsonSchemaInstancePointer({ compiled: result.roots[1].compiled, pointer: "" }),
+      subject.inspectLocalJsonSchemaViewInstancePointer({ compiled: result.roots[1].compiled, pointer: "" }),
       { ok: true, kinds: ["number"] }
     )
   } finally {
     cached.exports = originalExports
     delete require.cache[schemaPath]
+    delete require.cache[catalogPath]
   }
 })
 
 test("F3 catalog root IDs are dense canonical sorted and duplicate-free", () => {
-  const subject = require("../out/core/contractV2/jsonSchema.js")
+  const subject = require("../out/core/contractV2/jsonSchemaCatalog.js")
   const source = {
     schemas: [{
       id: "schemas/a.json",
