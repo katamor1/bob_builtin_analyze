@@ -14,3 +14,13 @@ export type {
   CompiledWorkflowPlanHandle,
   CompiledWorkflowPlanPredicateRecord
 } from "./compiledPlan"
+export {
+  WorkflowPlanCompilationError,
+  WorkflowPlanInvalidatedError,
+  WorkflowPlanStore
+} from "./planStore"
+export type {
+  AcquireWorkflowPlanInput,
+  GetOrCompileWorkflowPlanInput
+} from "./planStore"
+export type { WorkflowPlanLease } from "./planLease"
