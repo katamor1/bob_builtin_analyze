@@ -45,6 +45,7 @@ export {
   DEFAULT_MAX_OOXML_ARCHIVE_ENTRIES,
   preflightOoxmlArchive,
   readBoundedDocumentFile,
+  type BoundedDocumentCancellation,
   type BoundedDocumentIdentity,
   type BoundedDocumentReadInput,
   type BoundedDocumentSnapshot,
