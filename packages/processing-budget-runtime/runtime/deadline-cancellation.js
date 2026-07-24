@@ -65,6 +65,18 @@ function createCancellationScope(input) {
     }))
   }
   const onSourceAbort = () => abort("user", sourceSignal?.reason)
+  const scheduleDeadline = () => {
+    if (disposed || controller.signal.aborted) return
+    const remaining = remainingDeadlineMilliseconds(deadline, now())
+    if (remaining === 0) {
+      abort("deadline", undefined)
+      return
+    }
+    timer = schedule(() => {
+      timer = undefined
+      scheduleDeadline()
+    }, Math.min(remaining, MAX_TIMER_DELAY_MS))
+  }
 
   // A cancellation already observed by the caller is authoritative even when
   // the deadline is also expired at scope construction time.
@@ -80,11 +92,7 @@ function createCancellationScope(input) {
     // Close the preflight-to-listener race without changing first-cause wins.
     if (sourceSignal.aborted) onSourceAbort()
   }
-  if (!controller.signal.aborted) {
-    const remaining = remainingDeadlineMilliseconds(deadline, now())
-    const delay = Math.min(remaining, MAX_TIMER_DELAY_MS)
-    timer = schedule(() => abort("deadline", undefined), delay)
-  }
+  scheduleDeadline()
 
   return Object.freeze({
     deadline,
