@@ -1,3 +1,5 @@
+Replaced: `workflowRegister.openOperationHub`, `workflowRegister.openWorkflowBuilder`, `bobBazaar.openReviewGui`, and `bobCodeConsistency.openReviewWizard` are the current operator routes; the legacy Campaign Dashboard terminology below is retained only as historical superseded-branch reconciliation planning evidence.
+
 # 意図的に未統合だった変更群の照合・統合計画
 
 > **Execution:** `superpowers:executing-plans` または `superpowers:subagent-driven-development` を使い、各TaskをTDDで実行する。リモートブランチ削除はこの計画では行わず、後続の `2026-07-16-retire-superseded-remote-branches.md` だけが削除を担当する。
