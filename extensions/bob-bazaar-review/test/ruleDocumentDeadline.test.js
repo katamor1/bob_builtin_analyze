@@ -31,6 +31,7 @@ test("every PDF in a batch receives the operation deadline rather than a nested 
   assert.doesNotMatch(source, /createAbsoluteDeadline\([^)]*\)[\s\S]*extractPdf\(/)
 })
 
-test("multiple explicit cancellation signals are rejected instead of silently dropping a cause", () => {
+test("top-level and PDF cancellation signals are all considered before uniqueness validation", () => {
+  assert.match(source, /flatMap\(\(request\) => \[request\.signal, request\.pdf\?\.signal\]\)/)
   assert.match(source, /Rule document batch requests must share one cancellation signal/)
 })
