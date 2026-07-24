@@ -13,9 +13,15 @@ const source = fs.readFileSync(
 test("rule document batches create one deadline and one cancellation scope before fingerprinting", () => {
   assert.match(source, /const deadline = operationDeadlineForRequests\(requests\)/)
   assert.match(source, /const cancellation = createCancellationScope\(\{[\s\S]*deadline,[\s\S]*signal: sharedRequestSignal\(requests\)/)
-  assert.ok(source.indexOf("const deadline = operationDeadlineForRequests(requests)") < source.indexOf("Promise.all(requests.map"))
+  assert.ok(source.indexOf("const deadline = operationDeadlineForRequests(requests)") < source.indexOf("requests.entries()"))
   assert.match(source, /cancellation\.throwIfCancelled\(\)/)
   assert.match(source, /finally \{[\s\S]*cancellation\.dispose\(\)/)
+})
+
+test("bounded source fingerprints run sequentially so a failure leaves no sibling read running", () => {
+  assert.match(source, /const fingerprinted: FingerprintedRequest\[\] = \[\]/)
+  assert.match(source, /for \(const \[selectionIndex, request\] of requests\.entries\(\)\)/)
+  assert.doesNotMatch(source, /Promise\.all\(requests\.map/)
 })
 
 test("every bounded source fingerprint receives the operation cancellation signal", () => {
