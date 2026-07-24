@@ -289,7 +289,7 @@
     "depcheck": "^1.4.7",
     "iconv-lite": "^0.6.3",
     "knip": "^5.0.0",
-    "ts-prune": "^10.0.3",
+    "ts-prune": "^0.10.3",
     "typescript": "^5.4.5"
   }
 }
