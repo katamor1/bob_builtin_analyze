@@ -40,6 +40,7 @@ export async function extractDocx(
   filePath: string,
   context: DocxExtractionContext
 ): Promise<DocxExtractionResult> {
+  throwIfCancelled(context.signal)
   const maxChunkBytes = boundedPositiveLimit(
     context.maxChunkBytes,
     DEFAULT_RULE_AUTHORING_LIMITS.maxChunkBytes,
@@ -73,8 +74,10 @@ export async function extractDocx(
     rootPath: path.dirname(absolutePath),
     target: documentTarget("docx", context.sourceId),
     ledger: readLedger,
-    maximumFileBytes: maxFileBytes
+    maximumFileBytes: maxFileBytes,
+    signal: context.signal
   })
+  throwIfCancelled(context.signal)
   preflightOoxmlArchive({
     archiveBytes: snapshot.copyBytes(),
     target: archiveTarget("docx", context.sourceId),
@@ -178,7 +181,9 @@ export async function extractDocx(
     }
   })
 
+  throwIfCancelled(context.signal)
   await snapshot.assertCurrent()
+  throwIfCancelled(context.signal)
   const warningCodes = [...warnings].sort()
   return {
     chunks,
