@@ -52,8 +52,9 @@ test("long-lived MCP registries create Bazaar clients at the tool-call boundary"
   assert.doesNotMatch(tools, /private readonly client = new BazaarClient/)
 })
 
-test("bounded document reads carry cancellation through both consumer extensions", () => {
+test("bounded document reads and archive preflight carry cancellation through both consumers", () => {
   const boundedFile = source("packages/processing-budget-runtime/runtime/bounded-file.js")
+  const boundedArchive = source("packages/processing-budget-runtime/runtime/bounded-zip.js")
   const sourceHash = source("extensions/bob-bazaar-review/src/ruleAuthoring/ruleSourceHash.ts")
   const bazaarDocuments = source("extensions/bob-bazaar-review/src/ruleAuthoring/extraction/documentExtractor.ts")
   const docx = source("extensions/bob-bazaar-review/src/ruleAuthoring/extraction/docxExtractor.ts")
@@ -62,13 +63,18 @@ test("bounded document reads carry cancellation through both consumer extensions
 
   assert.match(boundedFile, /"maximumFileBytes", "signal"/)
   assert.match(boundedFile, /throwIfCancelled\(options\.signal\)/)
+  assert.match(boundedArchive, /"maximumExpandedBytes", "signal"/)
+  assert.match(boundedArchive, /throwIfCancelled\(options\.signal\)/)
   assert.match(sourceHash, /signal\?: SharedWorkbookBudgetCancellation/)
   assert.match(sourceHash, /signal: options\.signal/)
   assert.match(bazaarDocuments, /signal: context\.cancellation\.signal/)
   assert.match(bazaarDocuments, /signal: cancellation\.signal/)
   assert.match(docx, /maximumFileBytes: maxFileBytes,[\s\S]*signal: context\.signal/)
+  assert.match(docx, /maximumExpandedBytes: maxExpandedBytes,[\s\S]*signal: context\.signal/)
   assert.match(xlsx, /maximumFileBytes: maxFileBytes,[\s\S]*signal: context\.signal/)
+  assert.match(xlsx, /maximumExpandedBytes: maxExpandedBytes,[\s\S]*signal: context\.signal/)
   assert.match(consistencyDocuments, /maximumFileBytes: limits\.maxDocumentBytes,[\s\S]*signal/)
+  assert.match(consistencyDocuments, /maximumExpandedBytes: ledger\.profile\.limits\.total_document_bytes,[\s\S]*signal/)
 })
 
 test("governed workspace and document paths share one physical containment policy", () => {
