@@ -1,4 +1,5 @@
 const assert = require("node:assert/strict")
+const childProcess = require("node:child_process")
 const fs = require("node:fs")
 const os = require("node:os")
 const path = require("node:path")
@@ -10,6 +11,7 @@ const {
   normalizeExternalProcessTimeoutMs,
   runExternalProcess
 } = require("../out/core/externalProcessRunner")
+const { createAbsoluteDeadline } = require("../out/sharedProcessingBudgetRuntime")
 
 const cwd = process.cwd()
 
@@ -19,55 +21,51 @@ function runNode(script, options = {}) {
     args: ["-e", script],
     cwd,
     maxStdoutBytes: 1024 * 1024,
-    // Keep non-timeout assertions independent from slow CI process scheduling.
-    // Timeout-specific tests override this value explicitly below.
-    timeoutMs: 10000,
+    deadline: createAbsoluteDeadline(10_000),
     allowedExitCodes: [0],
     ...options
   })
 }
 
-async function rejectsWithKind(promise, kind) {
+async function rejectsWithKind(promise, kind, terminationCause) {
   await assert.rejects(promise, (error) => {
     assert.ok(error instanceof ExternalProcessError)
     assert.equal(error.kind, kind)
+    if (terminationCause) assert.equal(error.terminationCause, terminationCause)
     return true
   })
 }
 
-test("external process runner terminates commands that exceed the hard timeout", async () => {
+test("external process runner terminates commands when the absolute deadline expires", async () => {
   const startedAt = Date.now()
   await rejectsWithKind(
-    runNode("setInterval(() => {}, 1000)", { timeoutMs: 50 }),
-    "timeout"
+    runNode("setInterval(() => {}, 1000)", { deadline: createAbsoluteDeadline(50) }),
+    "timeout",
+    "deadline"
   )
   assert.ok(Date.now() - startedAt < 3000)
 })
 
-test("external process runner clamps timeout configuration to the safety range", () => {
+test("external process runner rejects a pre-expired deadline before spawning", async () => {
+  await rejectsWithKind(
+    runNode("process.exit(99)", { deadline: Object.freeze({ expires_at_monotonic_ms: 0 }) }),
+    "timeout",
+    "deadline"
+  )
+})
+
+test("external process timeout configuration clamps only at the operation boundary", () => {
   assert.equal(normalizeExternalProcessTimeoutMs(1), 1000)
   assert.equal(normalizeExternalProcessTimeoutMs(1000), 1000)
   assert.equal(normalizeExternalProcessTimeoutMs(600000), 600000)
   assert.equal(normalizeExternalProcessTimeoutMs(Number.MAX_SAFE_INTEGER), 600000)
 })
 
-test("external process runner applies the minimum timeout to executions", async () => {
-  await assert.rejects(
-    runNode("setInterval(() => {}, 1000)", { timeoutMs: 1 }),
-    (error) => {
-      assert.ok(error instanceof ExternalProcessError)
-      assert.equal(error.kind, "timeout")
-      assert.match(error.message, /timed out after 1000 ms/)
-      return true
-    }
-  )
-})
-
-test("external process runner propagates AbortSignal cancellation", async () => {
+test("external process runner preserves user cancellation as the termination cause", async () => {
   const controller = new AbortController()
   const running = runNode("setInterval(() => {}, 1000)", { signal: controller.signal })
-  setTimeout(() => controller.abort(), 50)
-  await rejectsWithKind(running, "cancelled")
+  setTimeout(() => controller.abort(new Error("operator cancelled")), 50)
+  await rejectsWithKind(running, "cancelled", "user")
 })
 
 test("external process runner closes the preflight-to-listener cancellation race", async () => {
@@ -82,8 +80,9 @@ test("external process runner closes the preflight-to-listener cancellation race
   }
 
   await rejectsWithKind(
-    runNode("setInterval(() => {}, 1000)", { signal, timeoutMs: 100 }),
-    "cancelled"
+    runNode("setInterval(() => {}, 1000)", { signal }),
+    "cancelled",
+    "user"
   )
   assert.ok(abortedReads >= 2)
 })
@@ -97,12 +96,13 @@ test("external process runner accepts stdout exactly at its configured limit", a
   assert.equal(result.stdout.length, 1024)
 })
 
-test("external process runner rejects stdout limit plus one and bounds retained stdout", async () => {
+test("external process runner rejects stdout limit plus one and records stdout_limit", async () => {
   await assert.rejects(
     runNode("process.stdout.write('x'.repeat(1025))", { maxStdoutBytes: 1024 }),
     (error) => {
       assert.ok(error instanceof ExternalProcessError)
       assert.equal(error.kind, "bufferExceeded")
+      assert.equal(error.terminationCause, "stdout_limit")
       assert.equal(error.stdout.length, 1024)
       assert.ok(error.stderr.length <= EXTERNAL_PROCESS_STDERR_MAX_BYTES)
       return true
@@ -115,12 +115,13 @@ test("external process runner accepts stderr exactly at 256 KiB", async () => {
   assert.equal(result.stderr.length, 256 * 1024)
 })
 
-test("external process runner rejects stderr limit plus one and bounds retained stderr", async () => {
+test("external process runner rejects stderr limit plus one and records stderr_limit", async () => {
   await assert.rejects(
     runNode(`process.stderr.write('y'.repeat(${256 * 1024 + 1}))`, { maxStdoutBytes: 1024 }),
     (error) => {
       assert.ok(error instanceof ExternalProcessError)
       assert.equal(error.kind, "bufferExceeded")
+      assert.equal(error.terminationCause, "stderr_limit")
       assert.ok(error.stdout.length <= 1024)
       assert.equal(error.stderr.length, 256 * 1024)
       return true
@@ -153,13 +154,35 @@ test("process runner settles only after an output-limit child exits", async () =
           "process.stdout.write('x'.repeat(65536)); setInterval(() => {}, 1000)",
         { maxStdoutBytes: 1024 }
       ),
-      (error) => error instanceof ExternalProcessError && error.kind === "bufferExceeded"
+      (error) => error instanceof ExternalProcessError
+        && error.kind === "bufferExceeded"
+        && error.terminationCause === "stdout_limit"
     )
     const pid = Number(fs.readFileSync(pidFile, "utf8"))
     assert.equal(isProcessAlive(pid), false, `child ${pid} was still alive after rejection`)
   } finally {
     fs.rmSync(pidFile, { force: true })
   }
+})
+
+test("POSIX deadline termination kills descendants in the command process group", { skip: process.platform === "win32" }, async (t) => {
+  const pidFile = path.join(os.tmpdir(), `external-descendant-${process.pid}-${Date.now()}.pid`)
+  t.after(() => fs.rmSync(pidFile, { force: true }))
+  const parentScript = [
+    "const cp=require('node:child_process')",
+    `const child=cp.spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore'})`,
+    `require('node:fs').writeFileSync(${JSON.stringify(pidFile)},String(child.pid))`,
+    "setInterval(()=>{},1000)"
+  ].join(";")
+
+  await rejectsWithKind(
+    runNode(parentScript, { deadline: createAbsoluteDeadline(100) }),
+    "timeout",
+    "deadline"
+  )
+  const descendantPid = Number(fs.readFileSync(pidFile, "utf8"))
+  await waitForDeath(descendantPid)
+  assert.equal(isProcessAlive(descendantPid), false, `descendant ${descendantPid} survived process-tree termination`)
 })
 
 test("external process runner accepts explicitly allowed non-zero exit codes", async () => {
@@ -173,12 +196,20 @@ test("external process runner classifies disallowed exit codes", async () => {
     (error) => {
       assert.ok(error instanceof ExternalProcessError)
       assert.equal(error.kind, "nonZeroExit")
+      assert.equal(error.terminationCause, "non_zero_exit")
       assert.equal(error.exitCode, 7)
       assert.match(error.stderr.toString("utf8"), /failed/)
       return true
     }
   )
 })
+
+async function waitForDeath(pid) {
+  const deadline = Date.now() + 2000
+  while (Date.now() < deadline && isProcessAlive(pid)) {
+    await new Promise((resolve) => setTimeout(resolve, 25))
+  }
+}
 
 function isProcessAlive(pid) {
   try {
