@@ -1,4 +1,8 @@
 import * as path from "node:path"
+import {
+  createAbsoluteDeadline,
+  type SharedAbsoluteDeadline
+} from "../sharedProcessingBudgetRuntime"
 import { decodeTextBuffer } from "./textEncoding"
 import { clampExecBufferBytes } from "./reviewLimits"
 import {
@@ -21,6 +25,7 @@ export interface BazaarOptions {
   maxBuffer?: number
   textEncoding?: string
   timeoutMs?: number
+  deadline?: SharedAbsoluteDeadline
   signal?: AbortSignal
   processRunner?: (options: ExternalProcessOptions) => Promise<ExternalProcessResult>
 }
@@ -46,7 +51,7 @@ export class BazaarClient {
   private readonly bzrPath: string
   private readonly maxBuffer: number
   private readonly textEncoding: string
-  private readonly timeoutMs: number
+  private readonly deadline: SharedAbsoluteDeadline
   private readonly signal?: AbortSignal
   private readonly processRunner: (options: ExternalProcessOptions) => Promise<ExternalProcessResult>
 
@@ -54,7 +59,7 @@ export class BazaarClient {
     this.bzrPath = options.bzrPath || "bzr"
     this.maxBuffer = clampExecBufferBytes(options.maxBuffer)
     this.textEncoding = options.textEncoding ?? "auto"
-    this.timeoutMs = positiveTimeout(options.timeoutMs)
+    this.deadline = options.deadline ?? createAbsoluteDeadline(positiveTimeout(options.timeoutMs))
     this.signal = options.signal
     this.processRunner = options.processRunner ?? runExternalProcess
   }
@@ -123,6 +128,7 @@ export class BazaarClient {
         : ""
       const code = error instanceof ExternalProcessError ? error.exitCode : undefined
       const kind = error instanceof ExternalProcessError ? error.kind : "spawnFailure"
+      const terminationCause = error instanceof ExternalProcessError ? error.terminationCause : "spawn_failure"
       const message = stderr.trim() || stdout.trim() || (error instanceof Error ? error.message : String(error))
       throw new BazaarError(`bzr ${commandArgs.join(" ")} が失敗しました: ${message}`, {
         cwd,
@@ -130,7 +136,8 @@ export class BazaarClient {
         stdout,
         stderr,
         code,
-        kind
+        kind,
+        terminationCause
       })
     }
   }
@@ -141,7 +148,7 @@ export class BazaarClient {
       args,
       cwd,
       maxStdoutBytes: this.maxBuffer,
-      timeoutMs: this.timeoutMs,
+      deadline: this.deadline,
       allowedExitCodes,
       signal: this.signal,
       env: {
