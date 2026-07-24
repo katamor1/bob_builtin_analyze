@@ -1,4 +1,6 @@
 const assert = require("node:assert/strict")
+const fs = require("node:fs")
+const path = require("node:path")
 const { test } = require("node:test")
 const {
   assertDeepFrozen,
@@ -8,6 +10,14 @@ const {
   sourceFiles,
   subject
 } = require("./workflowContractV2LockTestSupport")
+
+const EXPECTED_LOCK_BYTES = fs.readFileSync(path.join(
+  __dirname,
+  "fixtures",
+  "workflow-contract-v2",
+  "lock",
+  "expected.lock.json"
+))
 
 test("lock generation is canonical across provider and capability insertion orders", () => {
   const lockModule = subject()
@@ -22,6 +32,7 @@ test("lock generation is canonical across provider and capability insertion orde
     lockModule.encodeWorkflowPackageLock(second),
     lockModule.encodeWorkflowPackageLock(first)
   )
+  assert.deepEqual(lockModule.encodeWorkflowPackageLock(first), EXPECTED_LOCK_BYTES)
   assert.equal(first.schemaVersion, "workflow-register-lock/v2")
   assert.equal(first.compilerContractVersion, "workflow-register-compiler/v2")
   assert.equal("packageDigest" in first, false)
