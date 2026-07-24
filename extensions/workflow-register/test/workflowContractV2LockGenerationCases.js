@@ -26,13 +26,20 @@ test("lock generation is canonical across provider and capability insertion orde
     reverseProviders: true,
     reverseCapabilities: true
   }))
+  const reorderedInput = generationInput()
+  reorderedInput.rawPackage.files.reverse()
+  const third = lockModule.generateWorkflowPackageLock(reorderedInput)
+  const firstBytes = lockModule.encodeWorkflowPackageLock(first)
+  const secondBytes = lockModule.encodeWorkflowPackageLock(second)
+  const thirdBytes = lockModule.encodeWorkflowPackageLock(third)
 
   assert.deepEqual(second, first)
-  assert.deepEqual(
-    lockModule.encodeWorkflowPackageLock(second),
-    lockModule.encodeWorkflowPackageLock(first)
-  )
-  assert.deepEqual(lockModule.encodeWorkflowPackageLock(first), EXPECTED_LOCK_BYTES)
+  assert.deepEqual(third, first)
+  assert.deepEqual(secondBytes, firstBytes)
+  assert.deepEqual(thirdBytes, firstBytes)
+  assert.equal(digestBytes(secondBytes), digestBytes(firstBytes))
+  assert.equal(digestBytes(thirdBytes), digestBytes(firstBytes))
+  assert.deepEqual(firstBytes, EXPECTED_LOCK_BYTES)
   assert.equal(first.schemaVersion, "workflow-register-lock/v2")
   assert.equal(first.compilerContractVersion, "workflow-register-compiler/v2")
   assert.equal("packageDigest" in first, false)
