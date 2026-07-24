@@ -116,7 +116,7 @@ export function compileWorkflowPackage(input: CompileWorkflowPackageInput): Work
     let verified: ReturnType<typeof verifyWorkflowPackageLock>
     try {
       verified = verifyWorkflowPackageLock({
-        rawPackage: outer.rawPackage as RawWorkflowPackage,
+        rawPackage: rawPackage as unknown as RawWorkflowPackage,
         providers: providerEvidence,
         bob: document.bob
       })
