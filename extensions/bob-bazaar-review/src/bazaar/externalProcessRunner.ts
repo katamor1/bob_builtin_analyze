@@ -1,5 +1,10 @@
 import { spawn, type ChildProcess, type ChildProcessByStdio } from "node:child_process"
 import type { Readable } from "node:stream"
+import {
+  cancellationKindFromSignal,
+  createCancellationScope,
+  type SharedAbsoluteDeadline
+} from "../sharedProcessingBudgetRuntime"
 
 type ExternalProcessChild = ChildProcessByStdio<null, Readable, Readable>
 
@@ -10,13 +15,21 @@ export type ExternalProcessErrorKind =
   | "spawnFailure"
   | "nonZeroExit"
 
+export type ExternalProcessTerminationCause =
+  | "deadline"
+  | "user"
+  | "stdout_limit"
+  | "stderr_limit"
+  | "spawn_failure"
+  | "non_zero_exit"
+
 export interface ExternalProcessOptions {
   command: string
   args: string[]
   cwd: string
   env?: NodeJS.ProcessEnv
   maxStdoutBytes: number
-  timeoutMs: number
+  deadline: SharedAbsoluteDeadline
   allowedExitCodes?: number[]
   signal?: AbortSignal
 }
@@ -36,7 +49,8 @@ export class ExternalProcessError extends Error {
     readonly cwd: string,
     readonly stdout: Buffer = Buffer.alloc(0),
     readonly stderr: Buffer = Buffer.alloc(0),
-    readonly exitCode?: number
+    readonly exitCode?: number,
+    readonly terminationCause?: ExternalProcessTerminationCause
   ) {
     super(message)
     this.name = "ExternalProcessError"
@@ -50,16 +64,27 @@ export const EXTERNAL_PROCESS_STDERR_MAX_BYTES = 256 * 1024
 
 export function runExternalProcess(options: ExternalProcessOptions): Promise<ExternalProcessResult> {
   const maxStdoutBytes = positiveInteger(options.maxStdoutBytes, "maxStdoutBytes")
-  const timeoutMs = normalizeExternalProcessTimeoutMs(options.timeoutMs)
   const allowedExitCodes = new Set(options.allowedExitCodes ?? [0])
+  const cancellation = createCancellationScope({
+    deadline: options.deadline,
+    signal: options.signal
+  })
 
-  if (options.signal?.aborted) {
+  if (cancellation.signal.aborted) {
+    const cause = cancellationKindFromSignal(cancellation.signal)
+    cancellation.dispose()
     return Promise.reject(new ExternalProcessError(
-      `Command cancelled before start: ${options.command}`,
-      "cancelled",
+      cause === "deadline"
+        ? `Command deadline expired before start: ${options.command}`
+        : `Command cancelled before start: ${options.command}`,
+      cause === "deadline" ? "timeout" : "cancelled",
       options.command,
       [...options.args],
-      options.cwd
+      options.cwd,
+      Buffer.alloc(0),
+      Buffer.alloc(0),
+      undefined,
+      cause === "deadline" ? "deadline" : "user"
     ))
   }
 
@@ -75,11 +100,16 @@ export function runExternalProcess(options: ExternalProcessOptions): Promise<Ext
     const stderr = (): Buffer => Buffer.concat(stderrChunks)
 
     const cleanup = (): void => {
-      clearTimeout(timeout)
-      options.signal?.removeEventListener("abort", onAbort)
+      cancellation.signal.removeEventListener?.("abort", onAbort)
+      cancellation.dispose()
     }
 
-    const fail = (kind: ExternalProcessErrorKind, message: string, exitCode?: number): void => {
+    const fail = (
+      kind: ExternalProcessErrorKind,
+      message: string,
+      terminationCause: ExternalProcessTerminationCause,
+      exitCode?: number
+    ): void => {
       if (settled) return
       settled = true
       cleanup()
@@ -91,7 +121,8 @@ export function runExternalProcess(options: ExternalProcessOptions): Promise<Ext
         options.cwd,
         stdout(),
         stderr(),
-        exitCode
+        exitCode,
+        terminationCause
       )
       void terminateProcessTree(child).then(
         () => reject(error),
@@ -99,11 +130,16 @@ export function runExternalProcess(options: ExternalProcessOptions): Promise<Ext
       )
     }
 
-    const onAbort = (): void => fail("cancelled", `Command cancelled: ${options.command}`)
-    const timeout = setTimeout(
-      () => fail("timeout", `Command timed out after ${timeoutMs} ms: ${options.command}`),
-      timeoutMs
-    )
+    const onAbort = (): void => {
+      const cause = cancellationKindFromSignal(cancellation.signal)
+      fail(
+        cause === "deadline" ? "timeout" : "cancelled",
+        cause === "deadline"
+          ? `Command deadline expired: ${options.command}`
+          : `Command cancelled: ${options.command}`,
+        cause === "deadline" ? "deadline" : "user"
+      )
+    }
 
     try {
       child = spawn(options.command, options.args, {
@@ -122,7 +158,11 @@ export function runExternalProcess(options: ExternalProcessOptions): Promise<Ext
         "spawnFailure",
         options.command,
         [...options.args],
-        options.cwd
+        options.cwd,
+        Buffer.alloc(0),
+        Buffer.alloc(0),
+        undefined,
+        "spawn_failure"
       ))
       return
     }
@@ -146,7 +186,8 @@ export function runExternalProcess(options: ExternalProcessOptions): Promise<Ext
       if (retainedBytes < buffer.length) {
         fail(
           "bufferExceeded",
-          `Command ${stream} exceeded ${maximumBytes} bytes: ${options.command}`
+          `Command ${stream} exceeded ${maximumBytes} bytes: ${options.command}`,
+          stream === "stdout" ? "stdout_limit" : "stderr_limit"
         )
       }
     }
@@ -161,7 +202,8 @@ export function runExternalProcess(options: ExternalProcessOptions): Promise<Ext
     child.on("error", (error) => {
       fail(
         "spawnFailure",
-        `Command failed to start ${options.command}: ${error.message}`
+        `Command failed to start ${options.command}: ${error.message}`,
+        "spawn_failure"
       )
     })
     child.on("close", (code) => {
@@ -182,12 +224,13 @@ export function runExternalProcess(options: ExternalProcessOptions): Promise<Ext
         options.cwd,
         result.stdout,
         result.stderr,
-        exitCode
+        exitCode,
+        "non_zero_exit"
       ))
     })
 
-    options.signal?.addEventListener("abort", onAbort, { once: true })
-    if (options.signal?.aborted) onAbort()
+    cancellation.signal.addEventListener?.("abort", onAbort, { once: true })
+    if (cancellation.signal.aborted) onAbort()
   })
 }
 
