@@ -64,7 +64,10 @@ function createCancellationScope(input) {
       original_reason: originalReason
     }))
   }
-  const onSourceAbort = () => abort("user", sourceSignal?.reason)
+  const onSourceAbort = () => {
+    const inherited = inheritedCancellation(sourceSignal)
+    abort(inherited.kind, inherited.originalReason)
+  }
   const scheduleDeadline = () => {
     if (disposed || controller.signal.aborted) return
     const remaining = remainingDeadlineMilliseconds(deadline, now())
@@ -118,6 +121,19 @@ function createCancellationScope(input) {
       }
     }
   })
+}
+
+function inheritedCancellation(signal) {
+  const reason = signal?.reason
+  if (
+    reason &&
+    typeof reason === "object" &&
+    reason.code === "processing_cancelled" &&
+    (reason.kind === "deadline" || reason.kind === "user")
+  ) {
+    return Object.freeze({ kind: reason.kind, originalReason: reason.original_reason })
+  }
+  return Object.freeze({ kind: "user", originalReason: reason })
 }
 
 function cancellationKindFromSignal(signal) {
