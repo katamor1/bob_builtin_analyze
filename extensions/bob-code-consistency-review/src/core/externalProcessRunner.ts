@@ -152,6 +152,33 @@ export function runExternalProcess(options: ExternalProcessOptions): Promise<Ext
       }
     }
 
+    const rejectIfCancelledBeforeSpawn = (): boolean => {
+      try {
+        cancellation.throwIfCancelled()
+        return false
+      } catch {
+        const cause = cancellationKindFromSignal(cancellation.signal)
+        settled = true
+        cleanup()
+        reject(new ExternalProcessError(
+          cause === "deadline"
+            ? `Command deadline expired before start: ${options.command}`
+            : `Command cancelled before start: ${options.command}`,
+          cause === "deadline" ? "timeout" : "cancelled",
+          options.command,
+          [...options.args],
+          options.cwd,
+          Buffer.alloc(0),
+          Buffer.alloc(0),
+          undefined,
+          cause === "deadline" ? "deadline" : "user"
+        ))
+        return true
+      }
+    }
+
+    if (rejectIfCancelledBeforeSpawn()) return
+
     try {
       child = spawn(options.command, options.args, {
         cwd: options.cwd,
