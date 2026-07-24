@@ -1,6 +1,7 @@
 require("./workflowContractV2CompilerEnvironmentCases.js")
 require("./workflowContractV2CompilerEnvironmentHardeningCases.js")
 require("./workflowContractV2CompilerPipelineCases.js")
+require("./workflowContractV2CompilerSnapshotCases.js")
 require("./workflowContractV2CompilerCoreCases.js")
 require("./workflowContractV2CompilerPlanCases.js")
 require("./workflowContractV2CompilerSemanticCases.js")
