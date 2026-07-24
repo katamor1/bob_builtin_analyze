@@ -5,6 +5,7 @@ import {
   type BobTaskCapabilityName
 } from "./bobProfile"
 import { cloneAndFreezeJsonValue, type JsonObject, type JsonValue } from "./jsonValue"
+import { preflightDenseWorkflowLockArrayLength } from "./workflowLockArrayPreflight"
 import { bob as decodeBob } from "./workflowLockBob"
 import type { LockedBobBinding, LockedProviderBinding } from "./workflowLockContract"
 import { providers as decodeProviders } from "./workflowLockProvider"
@@ -19,6 +20,7 @@ import {
   freezeWorkflowLockEvidence,
   normalizeWorkflowLockStringArray,
   snapshotDenseWorkflowLockArray,
+  snapshotExactWorkflowLockRecord,
   testWorkflowLockPattern,
   workflowLockPush,
   workflowLockSort
@@ -40,9 +42,20 @@ export function snapshotWorkflowLockProviders(
   value: unknown,
   rawPackage: WorkflowLockRawPackageSnapshot
 ): readonly LockedProviderBinding[] {
+  preflightDenseWorkflowLockArrayLength(value, 256, "Workflow lock providers")
   const inputs = snapshotDenseWorkflowLockArray(value, 256, "Workflow lock providers")
   const normalized: JsonValue[] = []
   for (let index = 0; index < inputs.length; index += 1) {
+    const inputRecord = snapshotExactWorkflowLockRecord(
+      inputs[index],
+      PROVIDER_FIELDS,
+      `Workflow lock provider at index ${index}`
+    )
+    preflightDenseWorkflowLockArrayLength(
+      inputRecord.requiredCapabilities,
+      128,
+      `Workflow lock provider at index ${index} requiredCapabilities`
+    )
     const clone = cloneAndFreezeJsonValue(inputs[index])
     const record = exactWorkflowLockJsonRecord(
       clone,
@@ -90,6 +103,17 @@ export function snapshotWorkflowLockProviders(
 }
 
 export function snapshotWorkflowLockBob(value: unknown): LockedBobBinding {
+  const inputRecord = snapshotExactWorkflowLockRecord(value, BOB_FIELDS, "Workflow lock Bob evidence")
+  preflightDenseWorkflowLockArrayLength(
+    inputRecord.requiredCapabilities,
+    BOB_2_0_1_CAPABILITIES.length,
+    "Workflow lock Bob requiredCapabilities"
+  )
+  preflightDenseWorkflowLockArrayLength(
+    inputRecord.taskCapabilities,
+    6,
+    "Workflow lock Bob taskCapabilities"
+  )
   const clone = cloneAndFreezeJsonValue(value)
   const record = exactWorkflowLockJsonRecord(clone, BOB_FIELDS, "Workflow lock Bob evidence")
   const requiredCapabilities = normalizeWorkflowLockStringArray(
