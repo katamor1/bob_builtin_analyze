@@ -46,7 +46,7 @@ test("OOXML preflight observes cancellation during entry processing and releases
   const signal = {
     get aborted() {
       reads += 1
-      return reads >= 12
+      return reads >= 88
     },
     reason
   }
@@ -61,7 +61,7 @@ test("OOXML preflight observes cancellation during entry processing and releases
     }),
     expectUserCancellation(reason)
   )
-  assert.ok(reads >= 12)
+  assert.ok(reads >= 88)
   assert.ok(ledger.events.some((event) => event[0] === "reserve"))
   assert.equal(ledger.reserved, 0)
   assert.ok(ledger.events.some((event) => event[0] === "release"))
