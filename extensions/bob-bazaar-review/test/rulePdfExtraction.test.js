@@ -1,5 +1,6 @@
 const assert = require("node:assert/strict")
 const path = require("node:path")
+const { performance } = require("node:perf_hooks")
 const { test } = require("node:test")
 
 const { ExternalProcessError } = require("../out/bazaar/externalProcessRunner")
@@ -21,8 +22,9 @@ function options(runner, overrides = {}) {
   }
 }
 
-test("extractPdf invokes the bounded runner with the fixed argument array and no shell override", async () => {
+test("extractPdf invokes the bounded runner with a fixed argv and absolute deadline", async () => {
   const absolutePath = path.resolve("fixtures", "rules.pdf")
+  const before = performance.now()
   let captured
   const result = await extractPdf(absolutePath, options(async (runnerOptions) => {
     captured = runnerOptions
@@ -32,12 +34,24 @@ test("extractPdf invokes the bounded runner with the fixed argument array and no
   assert.equal(captured.command, "/configured/pdftotext")
   assert.deepEqual(captured.args, ["-layout", "-enc", "UTF-8", absolutePath, "-"])
   assert.equal(captured.cwd, path.dirname(absolutePath))
-  assert.equal(captured.timeoutMs, 4321)
+  assert.ok(captured.deadline.expires_at_monotonic_ms >= before + 4000)
+  assert.ok(captured.deadline.expires_at_monotonic_ms <= performance.now() + 4321)
+  assert.equal(Object.hasOwn(captured, "timeoutMs"), false)
   assert.equal(captured.maxStdoutBytes, 32 * 1024 * 1024)
   assert.equal(Object.hasOwn(captured, "maxBufferBytes"), false)
   assert.deepEqual(captured.allowedExitCodes, [0])
   assert.equal(Object.hasOwn(captured, "shell"), false)
   assert.deepEqual(result.extractor, { id: "pdf-pdftotext-layout", version: "1" })
+})
+
+test("extractPdf preserves an operation deadline supplied by its caller", async () => {
+  const deadline = Object.freeze({ expires_at_monotonic_ms: 987654321 })
+  let captured
+  await extractPdf("deadline.pdf", options(async (runnerOptions) => {
+    captured = runnerOptions
+    return { stdout: Buffer.from("text\f"), stderr: Buffer.alloc(0), exitCode: 0 }
+  }, { deadline }))
+  assert.equal(captured.deadline, deadline)
 })
 
 test("extractPdf preserves interior blank pages and removes only the final trailing blank page", async () => {
