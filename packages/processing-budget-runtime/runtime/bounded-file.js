@@ -3,7 +3,7 @@
 const { createHash } = require("node:crypto")
 const fs = require("node:fs")
 const fsp = require("node:fs/promises")
-const path = require("node:path")
+const pathPolicy = require("./path-policy")
 const {
   boundedString,
   ledgerFrom,
@@ -38,9 +38,8 @@ function snapshotReadInput(input) {
 
 async function readBoundedDocumentFile(input, hooks = undefined) {
   const options = snapshotReadInput(input)
-  const absolutePath = path.resolve(options.filePath)
-  const root = options.rootPath === undefined ? undefined : path.resolve(options.rootPath)
-  await assertSafeNamedPath(absolutePath, root)
+  const resolved = resolveSafeDocumentPath(options.filePath, options.rootPath)
+  const absolutePath = resolved.path
 
   const flags = fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0)
   let handle
@@ -70,7 +69,7 @@ async function readBoundedDocumentFile(input, hooks = undefined) {
 
     const after = await handle.stat({ bigint: true })
     assertSameIdentity(before, after, "document file changed while reading")
-    await assertSafeNamedPath(absolutePath, root, after)
+    assertNamedPathCurrent(absolutePath, options.rootPath, after)
     reservation.commit(size)
     reservation = undefined
 
@@ -88,7 +87,7 @@ async function readBoundedDocumentFile(input, hooks = undefined) {
       sha256: createHash("sha256").update(retained).digest("hex"),
       identity,
       copyBytes: () => Uint8Array.from(retained),
-      assertCurrent: () => assertSafeNamedPath(absolutePath, root, after)
+      assertCurrent: async () => assertNamedPathCurrent(absolutePath, options.rootPath, after)
     })
   } catch (error) {
     if (reservation) try { reservation.release() } catch {}
@@ -117,38 +116,50 @@ function assertSameIdentity(before, after, message) {
   }
 }
 
-async function assertSafeNamedPath(absolutePath, rootPath, openedStat = undefined) {
-  await rejectSymlinkComponents(absolutePath)
-  let realPath
-  try { realPath = await fsp.realpath(absolutePath) } catch {
+function assertNamedPathCurrent(absolutePath, rootPath, openedStat) {
+  const current = resolveSafeDocumentPath(absolutePath, rootPath)
+  if (current.path !== absolutePath) {
+    throw processingError("bounded_document_identity_changed", "document named path changed while reading")
+  }
+  let namedStat
+  try { namedStat = fs.statSync(current.path, { bigint: true }) } catch {
     throw processingError("bounded_document_unavailable", "document path is unavailable")
   }
-  if (rootPath !== undefined) {
-    await rejectSymlinkComponents(rootPath)
-    let realRoot
-    try { realRoot = await fsp.realpath(rootPath) } catch {
-      throw processingError("bounded_document_root_unavailable", "document containment root is unavailable")
-    }
-    const rootStat = await fsp.stat(realRoot)
-    if (!rootStat.isDirectory()) throw processingError("bounded_document_root_unavailable", "document containment root is not a directory")
-    const relative = path.relative(realRoot, realPath)
-    if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
-      throw processingError("bounded_document_escape", "document path escapes its containment root")
-    }
-  }
-  if (openedStat !== undefined) assertSameIdentity(openedStat, await fsp.stat(realPath, { bigint: true }), "document named path changed while reading")
+  assertSameIdentity(openedStat, namedStat, "document named path changed while reading")
 }
 
-async function rejectSymlinkComponents(absolutePath) {
-  const parsed = path.parse(absolutePath)
-  let current = parsed.root
-  for (const segment of absolutePath.slice(parsed.root.length).split(path.sep).filter(Boolean)) {
-    current = path.join(current, segment)
-    let stat
-    try { stat = await fsp.lstat(current) } catch {
-      throw processingError("bounded_document_unavailable", "document path component is unavailable")
+function resolveSafeDocumentPath(filePath, rootPath) {
+  try {
+    if (rootPath === undefined) {
+      return pathPolicy.canonicalizePhysicalPathSync(filePath, {
+        label: "document path",
+        mustExist: true,
+        rejectLinks: true,
+        expectedType: "file"
+      })
     }
-    if (stat.isSymbolicLink()) throw processingError("bounded_document_symlink", "document path contains a symbolic link or reparse point")
+    return pathPolicy.resolvePhysicalContainedPathSync({
+      rootPath,
+      candidatePath: filePath,
+      allowAbsolute: true,
+      mustExist: true,
+      expectedType: "file"
+    })
+  } catch (error) {
+    const code = error && typeof error === "object" ? error.code : undefined
+    if (code === "path_policy_symlink") {
+      throw processingError("bounded_document_symlink", "document path contains a symbolic link or reparse point")
+    }
+    if (code === "path_policy_escape") {
+      throw processingError("bounded_document_escape", "document path escapes its containment root")
+    }
+    if (code === "path_policy_not_directory") {
+      throw processingError("bounded_document_root_unavailable", "document containment root is not a directory")
+    }
+    if (code === "path_policy_not_file") {
+      throw processingError("bounded_document_not_regular", "document must be a regular file")
+    }
+    throw processingError("bounded_document_unavailable", "document path or containment root is unavailable")
   }
 }
 
