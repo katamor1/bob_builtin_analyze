@@ -68,8 +68,9 @@ function isPortablePathContained(rootValue, targetValue, platform = process.plat
 }
 
 function canonicalizePhysicalPathSync(value, options = {}) {
-  const input = checkedPathString(value, options.label ?? "path")
-  const absolutePath = path.resolve(input)
+  const label = options.label ?? "path"
+  const input = checkedPathString(value, label)
+  const absolutePath = resolveHostPathInput(input, label)
   if (options.rejectLinks !== false) rejectLinkComponentsSync(absolutePath, options.mustExist !== false)
   let realPath
   try {
@@ -118,7 +119,7 @@ function resolvePhysicalContainedPathSync(input) {
     lexicalCandidate = path.resolve(root.path, ...normalizeWorkspaceRelativePath(candidateInput, "candidatePath").split("/"))
   } else {
     if (input.allowAbsolute === false) throw pathError("path_policy_absolute", "candidatePath must be workspace-relative")
-    lexicalCandidate = path.resolve(candidateInput)
+    lexicalCandidate = resolveHostAbsolutePath(candidateInput, candidateKind, "candidatePath")
   }
   if (!hostContained(root.path, lexicalCandidate)) {
     throw pathError("path_policy_escape", "candidatePath escapes rootPath")
@@ -149,13 +150,14 @@ async function resolvePhysicalContainedPath(input) {
 async function selectDeepestPhysicalRoot(rootValues, filePathValue) {
   if (!Array.isArray(rootValues)) throw pathError("path_policy_invalid", "roots must be an array")
   const fileInput = checkedPathString(filePathValue, "filePath")
+  const absoluteFile = resolveHostPathInput(fileInput, "filePath")
   let physicalFile
   try {
-    physicalFile = fs.realpathSync.native ? fs.realpathSync.native(path.resolve(fileInput)) : fs.realpathSync(path.resolve(fileInput))
+    physicalFile = fs.realpathSync.native ? fs.realpathSync.native(absoluteFile) : fs.realpathSync(absoluteFile)
   } catch {
-    const ancestor = nearestExistingAncestorSync(path.resolve(fileInput), false)
+    const ancestor = nearestExistingAncestorSync(absoluteFile, false)
     if (!ancestor) return undefined
-    physicalFile = path.resolve(ancestor.realPath, path.relative(ancestor.path, path.resolve(fileInput)))
+    physicalFile = path.resolve(ancestor.realPath, path.relative(ancestor.path, absoluteFile))
   }
 
   const candidates = []
@@ -228,6 +230,43 @@ function portablePathKind(value) {
 
 function isWindowsAbsoluteKind(kind) {
   return kind === "drive-absolute" || kind === "unc"
+}
+
+function resolveHostPathInput(value, label) {
+  const kind = portablePathKind(value)
+  if (kind === "device") throw pathError("path_policy_device", `${label} must not use a device path`)
+  if (kind === "drive-relative") throw pathError("path_policy_drive_relative", `${label} must not use a drive-relative path`)
+  if (kind === "relative") {
+    return path.resolve(...normalizeWorkspaceRelativePath(value, label).split("/"))
+  }
+  return resolveHostAbsolutePath(value, kind, label)
+}
+
+function resolveHostAbsolutePath(value, kind, label) {
+  const hostKindAllowed = process.platform === "win32"
+    ? isWindowsAbsoluteKind(kind)
+    : kind === "posix-absolute"
+  if (!hostKindAllowed) throw pathError("path_policy_absolute", `${label} is not an absolute path for this platform`)
+  assertCanonicalAbsoluteComponents(value, kind, label)
+  return path.resolve(value)
+}
+
+function assertCanonicalAbsoluteComponents(value, kind, label) {
+  const implementation = isWindowsAbsoluteKind(kind) ? path.win32 : path.posix
+  const root = implementation.parse(value).root
+  if (!root) throw pathError("path_policy_absolute", `${label} is not absolute`)
+  const remainder = value.slice(root.length)
+  if (remainder.length === 0) return
+  const segments = remainder.split(/[\\/]/u)
+  if (segments.some((segment) => segment.length === 0)) {
+    throw pathError("path_policy_invalid", `${label} contains an empty path component`)
+  }
+  if (segments.some((segment) => segment === "." || segment === "..")) {
+    throw pathError("path_policy_escape", `${label} contains dot or traversal components`)
+  }
+  if (segments.some((segment) => segment.trim() !== segment)) {
+    throw pathError("path_policy_invalid", `${label} contains component edge whitespace`)
+  }
 }
 
 function checkedPathString(value, label) {
