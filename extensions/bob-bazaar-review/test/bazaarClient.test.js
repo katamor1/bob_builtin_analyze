@@ -1,4 +1,5 @@
 const assert = require("node:assert/strict")
+const { performance } = require("node:perf_hooks")
 const test = require("node:test")
 
 const { BazaarClient, validateRelativePath, validateRevision } = require("../out/bazaar/bazaar")
@@ -19,10 +20,11 @@ test("BazaarClient.cat separates option parsing before relative file paths", asy
   })
 })
 
-test("BazaarClient clamps command timeouts to the manifest range", async () => {
+test("BazaarClient clamps timeout configuration once when creating its absolute deadline", async () => {
   const captured = []
   const processRunner = async (options) => {
-    captured.push(options.timeoutMs)
+    captured.push(options.deadline.expires_at_monotonic_ms - performance.now())
+    assert.equal(Object.hasOwn(options, "timeoutMs"), false)
     return { stdout: Buffer.alloc(0), stderr: Buffer.alloc(0), exitCode: 0 }
   }
 
@@ -30,7 +32,22 @@ test("BazaarClient clamps command timeouts to the manifest range", async () => {
   await new BazaarClient({ bzrPath: "bzr", timeoutMs: Number.MAX_SAFE_INTEGER, processRunner }).status(process.cwd())
   await new BazaarClient({ bzrPath: "bzr", timeoutMs: Number.NaN, processRunner }).status(process.cwd())
 
-  assert.deepEqual(captured, [1000, 600000, 120000])
+  assert.ok(captured[0] > 900 && captured[0] <= 1000)
+  assert.ok(captured[1] > 599900 && captured[1] <= 600000)
+  assert.ok(captured[2] > 119900 && captured[2] <= 120000)
+})
+
+test("one BazaarClient reuses the same absolute deadline for nested commands", async () => {
+  const deadlines = []
+  const processRunner = async (options) => {
+    deadlines.push(options.deadline)
+    return { stdout: Buffer.alloc(0), stderr: Buffer.alloc(0), exitCode: 0 }
+  }
+  const client = new BazaarClient({ bzrPath: "bzr", timeoutMs: 10_000, processRunner })
+  await client.status(process.cwd())
+  await client.revno(process.cwd())
+  assert.equal(deadlines.length, 2)
+  assert.equal(deadlines[0], deadlines[1])
 })
 
 test("validateRevision accepts expected Bazaar revision forms", () => {
