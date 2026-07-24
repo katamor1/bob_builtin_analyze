@@ -84,7 +84,8 @@ export async function extractXlsx(
     expectedKind: "xlsx",
     maximumEntries: maxArchiveEntries,
     maximumEntryBytes: maxFileBytes,
-    maximumExpandedBytes: maxExpandedBytes
+    maximumExpandedBytes: maxExpandedBytes,
+    signal: context.signal
   })
 
   const budgetLedger = context.budgetLedger ?? readLedger
