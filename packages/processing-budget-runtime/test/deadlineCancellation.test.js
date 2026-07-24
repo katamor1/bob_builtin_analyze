@@ -101,6 +101,53 @@ test("deadline cause remains authoritative when its timer fires first", () => {
   }
 })
 
+test("nested cancellation scopes preserve an inherited deadline cause", () => {
+  let parentTimer
+  const deadline = Object.freeze({ expires_at_monotonic_ms: 200 })
+  const parent = createCancellationScope({
+    deadline,
+    now: () => 100,
+    schedule: (callback) => {
+      parentTimer = callback
+      return 1
+    },
+    cancelSchedule: () => {}
+  })
+  const child = createCancellationScope({
+    deadline,
+    signal: parent.signal,
+    now: () => 100,
+    schedule: () => 2,
+    cancelSchedule: () => {}
+  })
+  try {
+    parentTimer()
+    assert.equal(cancellationKindFromSignal(parent.signal), "deadline")
+    assert.equal(cancellationKindFromSignal(child.signal), "deadline")
+    assert.throws(() => child.throwIfCancelled(), (error) =>
+      error?.code === "processing_cancelled" && error.kind === "deadline")
+  } finally {
+    child.dispose()
+    parent.dispose()
+  }
+})
+
+test("nested cancellation scopes preserve the original user reason", () => {
+  const controller = new AbortController()
+  const originalReason = new Error("operator cancelled")
+  const deadline = createAbsoluteDeadline(1_000)
+  const parent = createCancellationScope({ deadline, signal: controller.signal })
+  const child = createCancellationScope({ deadline, signal: parent.signal })
+  try {
+    controller.abort(originalReason)
+    assert.equal(cancellationKindFromSignal(child.signal), "user")
+    assert.equal(child.signal.reason.original_reason, originalReason)
+  } finally {
+    child.dispose()
+    parent.dispose()
+  }
+})
+
 test("source cancellation cannot slip between preflight and listener registration", () => {
   let reads = 0
   const signal = {
