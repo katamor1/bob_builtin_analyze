@@ -63,6 +63,7 @@ function fakeVscode() {
     panel,
     vscode: {
       ViewColumn: { One: 1 },
+      FileType: { File: 1, Directory: 2 },
       Uri: { file: (fsPath) => ({ scheme: "file", fsPath, path: fsPath }) },
       window: {
         createWebviewPanel: () => panel,
