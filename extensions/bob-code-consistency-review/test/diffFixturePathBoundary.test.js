@@ -56,3 +56,17 @@ test("diff fixtures reject unsafe or silently normalized changed paths", async (
     )
   }
 })
+
+test("a pre-expired operation deadline rejects before reading a diff fixture", async (t) => {
+  const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "bob-diff-fixture-deadline-"))
+  t.after(() => fs.rm(workspaceRoot, { recursive: true, force: true }))
+
+  await assert.rejects(
+    () => collectGitDiff({ review: { vcs: "git", base: "main", head: "feature" } }, {
+      workspaceRoot,
+      diffFixturePath: path.join(workspaceRoot, "missing.json"),
+      deadline: Object.freeze({ expires_at_monotonic_ms: 0 })
+    }),
+    (error) => error?.code === "processing_cancelled" && error.kind === "deadline"
+  )
+})
