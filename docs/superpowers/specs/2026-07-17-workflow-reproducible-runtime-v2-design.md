@@ -1,3 +1,5 @@
+Replaced: `workflowRegister.openOperationHub` and `workflowRegister.openWorkflowBuilder` are the current workflow operator routes; the legacy Operation Hub references below are retained only as historical reproducible-runtime v2 design evidence.
+
 # Workflow Reproducible Runtime v2 Design
 
 - Date: 2026-07-17
