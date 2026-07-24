@@ -6,9 +6,14 @@ import type {
   CompiledWorkflowTransition
 } from "./compiledPlan"
 import { CompilerSemanticFailure, schemaById, type CompilerSemanticFiles } from "./compilerFiles"
+import {
+  bindLocalJsonSchemaViewForPredicate,
+  type LocalJsonSchemaPredicateBinding
+} from "./jsonSchemaCatalog"
 import type {
   WorkflowPackageDocumentV2,
   WorkflowPredicateV2,
+  WorkflowReferenceV2,
   WorkflowStepV2
 } from "./packageShape"
 import {
@@ -28,11 +33,22 @@ export interface CompiledWorkflowExecution {
   readonly predicates: readonly CompiledWorkflowPlanPredicateRecord[]
 }
 
+interface PredicatePrefixBinding {
+  readonly id: string
+  readonly prefix: string
+}
+
+interface PredicateCompilationEnvironment {
+  readonly schemas: WorkflowPredicateSchemaEnvironment
+  readonly inputs: readonly PredicatePrefixBinding[]
+  readonly outputs: readonly PredicatePrefixBinding[]
+}
+
 export function compileWorkflowExecution(
   document: WorkflowPackageDocumentV2,
   files: CompilerSemanticFiles
 ): CompiledWorkflowExecution {
-  const schemas = createPredicateEnvironment(document, files)
+  const environment = createPredicateEnvironment(document, files)
   const records: CompiledWorkflowPlanPredicateRecord[] = []
   const inputs: CompiledWorkflowInput[] = []
 
@@ -46,7 +62,7 @@ export function compileWorkflowExecution(
         objectFreeze({ kind: "inputRequiredWhen" as const, inputIndex }),
         "entry",
         `/inputs/${inputIndex}/requiredWhen`,
-        schemas
+        environment
       ))
     }
     const compiled: {
@@ -80,12 +96,12 @@ export function compileWorkflowExecution(
         objectFreeze({ kind: "stepEntry" as const, stepIndex }),
         "entry",
         `/steps/${stepIndex}/when`,
-        schemas
+        environment
       ))
     }
     const transition = step.transition === undefined
       ? undefined
-      : compileTransition(step.transition, stepIndex, records, schemas)
+      : compileTransition(step.transition, stepIndex, records, environment)
     push(steps, compileStep(step, entryPredicate, transition))
   }
 
@@ -112,7 +128,7 @@ function compileTransition(
   transition: NonNullable<WorkflowStepV2["transition"]>,
   stepIndex: number,
   records: CompiledWorkflowPlanPredicateRecord[],
-  schemas: WorkflowPredicateSchemaEnvironment
+  environment: PredicateCompilationEnvironment
 ): CompiledWorkflowTransition {
   const decisions: CompiledWorkflowTransition["decisions"][number][] = []
   for (let decisionIndex = 0; decisionIndex < transition.decisions.length; decisionIndex += 1) {
@@ -123,7 +139,7 @@ function compileTransition(
       objectFreeze({ kind: "stepTransition" as const, stepIndex }),
       "postCommit",
       `/steps/${stepIndex}/transition/decisions/${decisionIndex}/when`,
-      schemas
+      environment
     ))
     const compiled: {
       id: string
@@ -192,13 +208,21 @@ function compileStep(
 function createPredicateEnvironment(
   document: WorkflowPackageDocumentV2,
   files: CompilerSemanticFiles
-): WorkflowPredicateSchemaEnvironment {
+): PredicateCompilationEnvironment {
   const inputs: WorkflowPredicateInputSchemaBinding[] = []
   const steps: WorkflowPredicateStepSchemaBinding[] = []
+  const inputPrefixes: PredicatePrefixBinding[] = []
+  const outputPrefixes: PredicatePrefixBinding[] = []
   for (let index = 0; index < document.inputs.length; index += 1) {
     const input = document.inputs[index]
     const schema = schemaById(files, input.schema, `/inputs/${index}/schema`)
-    push(inputs, objectFreeze({ id: input.id, schemaId: input.schema, schema: schema.compiled }))
+    const binding = bindLocalJsonSchemaViewForPredicate(schema.compiled)
+    push(inputs, objectFreeze({
+      id: input.id,
+      schemaId: binding.compiled.evidence.rootId,
+      schema: binding.compiled
+    }))
+    push(inputPrefixes, objectFreeze({ id: input.id, prefix: binding.pointerPrefix }))
   }
   for (let index = 0; index < document.steps.length; index += 1) {
     const step = document.steps[index]
@@ -207,14 +231,20 @@ function createPredicateEnvironment(
       continue
     }
     const schema = schemaById(files, step.output.schema, `/steps/${index}/output/schema`)
+    const binding = bindLocalJsonSchemaViewForPredicate(schema.compiled)
     push(steps, objectFreeze({
       kind: "value" as const,
       id: step.output.id,
-      schemaId: step.output.schema,
-      schema: schema.compiled
+      schemaId: binding.compiled.evidence.rootId,
+      schema: binding.compiled
     }))
+    push(outputPrefixes, objectFreeze({ id: step.output.id, prefix: binding.pointerPrefix }))
   }
-  return objectFreeze({ inputs: objectFreeze(inputs), steps: objectFreeze(steps) })
+  return objectFreeze({
+    schemas: objectFreeze({ inputs: objectFreeze(inputs), steps: objectFreeze(steps) }),
+    inputs: objectFreeze(inputPrefixes),
+    outputs: objectFreeze(outputPrefixes)
+  })
 }
 
 function compilePredicateRecord(
@@ -225,10 +255,16 @@ function compilePredicateRecord(
     | { readonly kind: "stepTransition"; readonly stepIndex: number },
   phase: "entry" | "postCommit",
   pointer: string,
-  schemas: WorkflowPredicateSchemaEnvironment
+  environment: PredicateCompilationEnvironment
 ): CompiledWorkflowPlanPredicateRecord {
   const location = objectFreeze({ path: "workflow.yaml", pointer })
-  const result = compileWorkflowPredicate({ predicate, placement, schemas, location })
+  const prefixed = prefixPredicate(predicate, environment)
+  const result = compileWorkflowPredicate({
+    predicate: prefixed,
+    placement,
+    schemas: environment.schemas,
+    location
+  })
   if (!result.ok) {
     throw new CompilerSemanticFailure(
       "workflow.yaml",
@@ -241,8 +277,52 @@ function compilePredicateRecord(
     phase,
     placement,
     location,
-    predicate: result.predicate
+    predicate
   }) as unknown as CompiledWorkflowPlanPredicateRecord
+}
+
+function prefixPredicate(
+  predicate: WorkflowPredicateV2,
+  environment: PredicateCompilationEnvironment
+): WorkflowPredicateV2 {
+  if (predicate.kind === "all" || predicate.kind === "any") {
+    const predicates: WorkflowPredicateV2[] = []
+    for (let index = 0; index < predicate.predicates.length; index += 1) {
+      push(predicates, prefixPredicate(predicate.predicates[index], environment))
+    }
+    return objectFreeze({ kind: predicate.kind, predicates: objectFreeze(predicates) })
+  }
+  if (predicate.kind === "not") {
+    return objectFreeze({ kind: "not" as const, predicate: prefixPredicate(predicate.predicate, environment) })
+  }
+  if (predicate.kind === "exists") {
+    return objectFreeze({ kind: "exists" as const, left: prefixReference(predicate.left, environment) })
+  }
+  return objectFreeze({
+    kind: predicate.kind,
+    left: prefixReference(predicate.left, environment),
+    right: predicate.right
+  }) as WorkflowPredicateV2
+}
+
+function prefixReference(
+  reference: WorkflowReferenceV2,
+  environment: PredicateCompilationEnvironment
+): WorkflowReferenceV2 {
+  const values = reference.source === "input" ? environment.inputs : environment.outputs
+  const prefix = findPrefix(values, reference.id)
+  return objectFreeze({
+    source: reference.source,
+    id: reference.id,
+    pointer: prefix === undefined ? reference.pointer : `${prefix}${reference.pointer}`
+  })
+}
+
+function findPrefix(values: readonly PredicatePrefixBinding[], id: string): string | undefined {
+  for (let index = 0; index < values.length; index += 1) {
+    if (values[index].id === id) return values[index].prefix
+  }
+  return undefined
 }
 
 function push<T>(values: T[], value: T): void {
