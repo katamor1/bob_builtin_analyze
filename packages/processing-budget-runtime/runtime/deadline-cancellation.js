@@ -77,6 +77,8 @@ function createCancellationScope(input) {
 
   if (!controller.signal.aborted && sourceSignal && typeof sourceSignal.addEventListener === "function") {
     sourceSignal.addEventListener("abort", onSourceAbort, { once: true })
+    // Close the preflight-to-listener race without changing first-cause wins.
+    if (sourceSignal.aborted) onSourceAbort()
   }
   if (!controller.signal.aborted) {
     const remaining = remainingDeadlineMilliseconds(deadline, now())
