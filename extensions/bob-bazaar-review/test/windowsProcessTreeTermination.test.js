@@ -1,6 +1,7 @@
 const assert = require("node:assert/strict")
 const childProcess = require("node:child_process")
 const { EventEmitter } = require("node:events")
+const { performance } = require("node:perf_hooks")
 const { test } = require("node:test")
 
 class FakeChild extends EventEmitter {
@@ -48,13 +49,13 @@ test("Windows cancellation waits for taskkill tree completion after the parent e
       args: [],
       cwd: process.cwd(),
       maxStdoutBytes: 1024,
-      timeoutMs: 1000,
+      deadline: Object.freeze({ expires_at_monotonic_ms: performance.now() + 1000 }),
       signal: controller.signal
     })
     let settled = false
     void running.then(() => { settled = true }, () => { settled = true })
 
-    controller.abort()
+    controller.abort(new Error("operator cancelled"))
     await tick()
     assert.equal(spawnCalls, 2)
 
@@ -66,6 +67,7 @@ test("Windows cancellation waits for taskkill tree completion after the parent e
     await assert.rejects(running, (error) => {
       assert.ok(error instanceof ExternalProcessError)
       assert.equal(error.kind, "cancelled")
+      assert.equal(error.terminationCause, "user")
       return true
     })
   } finally {
