@@ -9,6 +9,10 @@ import {
   type LocalJsonSchemaSource
 } from "./jsonSchema"
 import { cloneAndFreezeJsonValue, type JsonValue } from "./jsonValue"
+import {
+  createLocalJsonSchemaRoleHandle,
+  type LocalJsonSchemaRoleHandle
+} from "./jsonSchemaRole"
 import { parseStrictJson } from "./packageLoaderInput"
 import type { WorkflowPackageDocumentV2 } from "./packageShape"
 import type { Sha256Digest } from "./providerContract"
@@ -41,7 +45,7 @@ export interface CompilerSchemaEvidence {
   readonly dialect: typeof WORKFLOW_CONTRACT_V2_JSON_SCHEMA_DIALECT
   readonly digest: Sha256Digest
   readonly bytes: number
-  readonly document: JsonValue
+  readonly role: LocalJsonSchemaRoleHandle
   readonly compiled: CompiledLocalJsonSchema
 }
 
@@ -170,7 +174,10 @@ export function compileSemanticFiles(
       dialect: WORKFLOW_CONTRACT_V2_JSON_SCHEMA_DIALECT,
       digest: canonical.digest,
       bytes: canonical.bytes,
-      document: source.value,
+      role: createLocalJsonSchemaRoleHandle({
+        compiled: compiled.compiled,
+        schema: source.value
+      }),
       compiled: compiled.compiled
     }))
   }
