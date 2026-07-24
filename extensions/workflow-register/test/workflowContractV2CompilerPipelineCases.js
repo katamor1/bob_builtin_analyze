@@ -54,3 +54,34 @@ test("loader raw evidence cannot be used without the audited compiler environmen
     environment: Object.freeze({})
   }), /environment|audited/i)
 })
+
+test("lock verification consumes the exact first compiler raw snapshot rather than the caller object again", () => {
+  const compiler = compilerSubject()
+  const fixture = createLockedRawPackage()
+  const snapshotModule = require("../out/core/contractV2/workflowLockSnapshot.js")
+  const original = snapshotModule.snapshotWorkflowLockGenerationRawPackage
+  const inputs = []
+  snapshotModule.snapshotWorkflowLockGenerationRawPackage = (value) => {
+    const snapshot = original(value)
+    inputs.push(value)
+    if (inputs.length === 1) {
+      const lockFile = fixture.rawPackage.files.find((file) => file.path === "workflow.lock.json")
+      lockFile.bytes[0] ^= 0xff
+    }
+    return snapshot
+  }
+  try {
+    const environment = compiler.createAuditedWorkflowCompilerEnvironment({
+      purpose: "runtime",
+      providerCatalog: createEmptyProviderCatalog(),
+      bobProfile: createBobProfile()
+    })
+    const result = compiler.compileWorkflowPackage({ rawPackage: fixture.rawPackage, environment })
+    assert.equal(result.ok, true)
+    assert.equal(inputs.length >= 2, true)
+    assert.equal(inputs[0], fixture.rawPackage)
+    assert.notEqual(inputs[1], fixture.rawPackage)
+  } finally {
+    snapshotModule.snapshotWorkflowLockGenerationRawPackage = original
+  }
+})
