@@ -18,18 +18,18 @@ function source() {
 }
 
 function compiled(schema) {
-  const result = require("../out/core/contractV2/jsonSchema.js").compileLocalJsonSchema({
-    rootId: "schemas/review.json",
+  const result = require("../out/core/contractV2/jsonSchemaCatalog.js").compileLocalJsonSchemaCatalog({
+    rootIds: ["schemas/review.json"],
     schemas: [{
       id: "schemas/review.json",
       schema,
       location: { path: "schemas/review.json", pointer: "" }
     }],
     diagnosticCode: "WF2_PACKAGE_LAYOUT_INVALID",
-    location: { path: "schemas/review.json", pointer: "" }
+    location: { path: "workflow.yaml", pointer: "" }
   })
   assert.equal(result.ok, true)
-  return result.compiled
+  return result.roots[0].compiled
 }
 
 function fields(options = ["alpha", "beta"]) {
