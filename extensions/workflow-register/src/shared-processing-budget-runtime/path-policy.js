@@ -5,6 +5,8 @@ const path = require("node:path")
 
 const MAX_PUBLIC_PATH_UTF8_BYTES = 4096
 const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f-\u009f]/u
+const WINDOWS_RESERVED_CHARACTERS = /[<>:"|?*]/u
+const WINDOWS_RESERVED_DEVICE_NAME = /^(?:con|prn|aux|nul|com(?:[1-9]|[¹²³])|lpt(?:[1-9]|[¹²³]))(?:\..*)?$/iu
 
 class PathPolicyError extends Error {
   constructor(code, message) {
@@ -32,6 +34,7 @@ function normalizeWorkspaceRelativePath(value, label = "path") {
   if (segments.some((segment) => segment.trim() !== segment)) {
     throw pathError("path_policy_invalid", `${label} contains component edge whitespace`)
   }
+  for (const segment of segments) assertPortableSegment(segment, label)
   const normalized = path.posix.normalize(normalizedSlashes)
   if (normalized === "." || normalized === ".." || normalized.startsWith("../")) {
     throw pathError("path_policy_escape", `${label} escapes its workspace`)
@@ -266,6 +269,19 @@ function assertCanonicalAbsoluteComponents(value, kind, label) {
   }
   if (segments.some((segment) => segment.trim() !== segment)) {
     throw pathError("path_policy_invalid", `${label} contains component edge whitespace`)
+  }
+  for (const segment of segments) assertPortableSegment(segment, label)
+}
+
+function assertPortableSegment(segment, label) {
+  if (WINDOWS_RESERVED_CHARACTERS.test(segment)) {
+    throw pathError("path_policy_invalid", `${label} contains a Windows-reserved character`)
+  }
+  if (segment.endsWith(".")) {
+    throw pathError("path_policy_invalid", `${label} contains a component ending in a period`)
+  }
+  if (WINDOWS_RESERVED_DEVICE_NAME.test(segment)) {
+    throw pathError("path_policy_invalid", `${label} contains a Windows-reserved device name`)
   }
 }
 
