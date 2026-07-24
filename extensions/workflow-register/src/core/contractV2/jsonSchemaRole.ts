@@ -141,7 +141,7 @@ export function validateLocalJsonSchemaManualContract(input: {
 }
 
 function snapshotFields(value: unknown): readonly LocalJsonSchemaManualFieldContract[] {
-  if (!arrayIsArray(value) || isProxy(value) || objectGetPrototypeOf(value) !== arrayPrototype) {
+  if (isProxy(value) || !arrayIsArray(value) || objectGetPrototypeOf(value) !== arrayPrototype) {
     throw new TypeError("Local JSON Schema manual fields must be a dense ordinary array.")
   }
   const descriptors = objectGetOwnPropertyDescriptors(value) as unknown as PropertyDescriptorMap
@@ -238,19 +238,48 @@ function assertExactKeys(value: Readonly<Record<string, unknown>>, fields: reado
 }
 
 function readRequiredStringArray(value: unknown): readonly string[] {
-  const values = readStringArray(value)
-  if (!arrayIsArray(value) || values.length !== value.length) {
-    throw new TypeError("Local JSON Schema select options must be a string array.")
+  const values = snapshotStringArray(value)
+  if (values === undefined) {
+    throw new TypeError("Local JSON Schema select options must be a dense ordinary string array.")
   }
   return objectFreeze(values)
 }
 
 function readStringArray(value: unknown): string[] {
-  if (!arrayIsArray(value)) return []
+  return snapshotStringArray(value) ?? []
+}
+
+function snapshotStringArray(value: unknown): string[] | undefined {
+  if (isProxy(value) || !arrayIsArray(value) || objectGetPrototypeOf(value) !== arrayPrototype) {
+    return undefined
+  }
+  let descriptors: PropertyDescriptorMap
+  try {
+    descriptors = objectGetOwnPropertyDescriptors(value) as unknown as PropertyDescriptorMap
+  } catch {
+    return undefined
+  }
+  const lengthDescriptor = descriptors.length
+  const length = lengthDescriptor?.value
+  if (
+    typeof length !== "number"
+    || !numberIsSafeInteger(length)
+    || length < 0
+    || length > 256
+    || reflectOwnKeys(descriptors).length !== length + 1
+  ) return undefined
   const result: string[] = []
-  for (let index = 0; index < value.length; index += 1) {
-    if (typeof value[index] !== "string") return []
-    push(result, value[index])
+  for (let index = 0; index < length; index += 1) {
+    const descriptor = descriptors[numberAsString(index)]
+    if (
+      descriptor === undefined
+      || !objectHasOwn(descriptor, "value")
+      || objectHasOwn(descriptor, "get")
+      || objectHasOwn(descriptor, "set")
+      || descriptor.enumerable !== true
+      || typeof descriptor.value !== "string"
+    ) return undefined
+    push(result, descriptor.value)
   }
   return result
 }
