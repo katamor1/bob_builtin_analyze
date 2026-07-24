@@ -82,37 +82,45 @@ test("cancellation during enumeration releases every pending reservation", () =>
   assert.deepEqual(snapshot(runtime, ledger), before)
 })
 
-test("structured cancellation signals preserve deadline and user causes", () => {
+test("shared cancellation scopes preserve deadline and user causes inside workbook enumeration", () => {
   const runtime = loadRuntime()
   const ledger = new runtime.ProcessingBudgetLedger()
+  const deadlineScope = runtime.createCancellationScope({
+    deadline: Object.freeze({ expires_at_monotonic_ms: 0 })
+  })
+  const controller = new AbortController()
   const userReason = new Error("operator cancelled")
+  controller.abort(userReason)
+  const userScope = runtime.createCancellationScope({
+    deadline: runtime.createAbsoluteDeadline(1_000),
+    signal: controller.signal
+  })
 
-  assert.throws(
-    () => runtime.commitWorkbookBudget({
-      ledger,
-      workbookTarget: "deadline-book",
-      sheets: [],
-      signal: {
-        aborted: true,
-        reason: { code: "processing_cancelled", kind: "deadline", original_reason: undefined }
-      }
-    }),
-    (error) => error?.code === "processing_cancelled" && error.kind === "deadline"
-  )
-  assert.throws(
-    () => runtime.commitWorkbookBudget({
-      ledger,
-      workbookTarget: "user-book",
-      sheets: [],
-      signal: {
-        aborted: true,
-        reason: { code: "processing_cancelled", kind: "user", original_reason: userReason }
-      }
-    }),
-    (error) => error?.code === "processing_cancelled"
-      && error.kind === "user"
-      && error.original_reason === userReason
-  )
+  try {
+    assert.throws(
+      () => runtime.commitWorkbookBudget({
+        ledger,
+        workbookTarget: "deadline-book",
+        sheets: [],
+        signal: deadlineScope.signal
+      }),
+      (error) => error?.code === "processing_cancelled" && error.kind === "deadline"
+    )
+    assert.throws(
+      () => runtime.commitWorkbookBudget({
+        ledger,
+        workbookTarget: "user-book",
+        sheets: [],
+        signal: userScope.signal
+      }),
+      (error) => error?.code === "processing_cancelled"
+        && error.kind === "user"
+        && error.original_reason === userReason
+    )
+  } finally {
+    userScope.dispose()
+    deadlineScope.dispose()
+  }
 })
 
 test("the configured absolute profile accepts its exact workbook and row boundaries", () => {
