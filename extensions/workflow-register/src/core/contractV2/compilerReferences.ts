@@ -1,4 +1,4 @@
-import { inspectLocalJsonSchemaInstancePointer } from "./jsonSchema"
+import { inspectLocalJsonSchemaViewInstancePointer } from "./jsonSchemaCatalog"
 import type { WorkflowPackageDocumentV2, WorkflowValueTemplateV2 } from "./packageShape"
 import { CompilerSemanticFailure, schemaById, type CompilerSemanticFiles } from "./compilerFiles"
 
@@ -143,7 +143,7 @@ function validateReference(
     )
   }
   const schema = schemaById(files, schemaId, `${pointer}/id`)
-  const inspected = inspectLocalJsonSchemaInstancePointer({
+  const inspected = inspectLocalJsonSchemaViewInstancePointer({
     compiled: schema.compiled,
     pointer: reference.pointer
   })
