@@ -140,7 +140,8 @@ async function extractRuleDocumentWithContext(
   const mediaType = classifySelectedPath(absolutePath, logicalName)
   const before = context.beforeFingerprint ?? await fingerprintSource(absolutePath, {
     maximumBytes: limits.maxSourceBytes,
-    ledger: context.ledger
+    ledger: context.ledger,
+    signal: context.cancellation.signal
   })
   context.cancellation.throwIfCancelled()
   const byteSize = fingerprintByteSize(before)
@@ -189,7 +190,8 @@ async function extractRuleDocumentWithContext(
 
   context.cancellation.throwIfCancelled()
   const after = await fingerprintSource(absolutePath, {
-    maximumBytes: limits.maxSourceBytes
+    maximumBytes: limits.maxSourceBytes,
+    signal: context.cancellation.signal
   })
   context.cancellation.throwIfCancelled()
   assertStableSourceFingerprint(before, after)
@@ -234,7 +236,8 @@ export async function extractRuleDocuments(
       const fingerprint = await fingerprintSource(absolutePath, {
         maximumBytes: effectiveLimits.maxSourceBytes,
         ledger,
-        target: `rule-source-selection:${selectionIndex}`
+        target: `rule-source-selection:${selectionIndex}`,
+        signal: cancellation.signal
       })
       cancellation.throwIfCancelled()
       const byteSize = fingerprintByteSize(fingerprint)
