@@ -61,6 +61,8 @@ function isPortablePathContained(rootValue, targetValue, platform = process.plat
   } else if (rootKind !== "posix-absolute" || targetKind !== "posix-absolute") {
     return false
   }
+  assertCanonicalAbsoluteComponents(root, rootKind, "rootPath")
+  assertCanonicalAbsoluteComponents(target, targetKind, "targetPath")
 
   const normalizedRoot = implementation.normalize(root)
   const normalizedTarget = implementation.normalize(target)
