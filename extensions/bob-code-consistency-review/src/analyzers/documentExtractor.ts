@@ -200,11 +200,11 @@ async function extractFileChunks(
   if (extension === ".md" || extension === ".markdown") {
     chunks = extractMarkdownChunks(decodeTextBuffer(Buffer.from(documentBytes), textEncoding), evidenceType, selectors)
   } else if (extension === ".docx") {
-    preflightArchive(snapshot, ledger, filePath, selectionId, "docx", limits)
+    preflightArchive(snapshot, ledger, filePath, selectionId, "docx", limits, signal)
     throwIfCancelled(signal)
     chunks = await extractDocxChunks(documentBytes, evidenceType, selectors)
   } else {
-    const archive = preflightArchive(snapshot, ledger, filePath, selectionId, "xlsx", limits)
+    const archive = preflightArchive(snapshot, ledger, filePath, selectionId, "xlsx", limits, signal)
     throwIfCancelled(signal)
     chunks = await extractXlsxChunks(
       documentBytes,
@@ -303,7 +303,8 @@ function preflightArchive(
   filePath: string,
   selectionId: string,
   kind: "docx" | "xlsx",
-  limits: ReviewProcessingLimits
+  limits: ReviewProcessingLimits,
+  signal: SharedWorkbookBudgetCancellation | undefined
 ): SharedOoxmlArchiveSnapshot {
   return preflightOoxmlArchive({
     archiveBytes: snapshot.copyBytes(),
@@ -312,7 +313,8 @@ function preflightArchive(
     expectedKind: kind,
     maximumArchiveBytes: limits.maxDocumentBytes,
     maximumEntryBytes: limits.maxDocumentBytes,
-    maximumExpandedBytes: ledger.profile.limits.total_document_bytes
+    maximumExpandedBytes: ledger.profile.limits.total_document_bytes,
+    signal
   })
 }
 
