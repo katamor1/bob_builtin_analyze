@@ -39,6 +39,7 @@ export async function extractXlsx(
   filePath: string,
   context: XlsxExtractionContext
 ): Promise<XlsxExtractionResult> {
+  throwIfCancelled(context.signal)
   const maxChunkBytes = boundedPositiveLimit(
     context.maxChunkBytes,
     DEFAULT_RULE_AUTHORING_LIMITS.maxChunkBytes,
@@ -72,8 +73,10 @@ export async function extractXlsx(
     rootPath: path.dirname(absolutePath),
     target: documentTarget(context.sourceId),
     ledger: readLedger,
-    maximumFileBytes: maxFileBytes
+    maximumFileBytes: maxFileBytes,
+    signal: context.signal
   })
+  throwIfCancelled(context.signal)
   const archive = preflightOoxmlArchive({
     archiveBytes: snapshot.copyBytes(),
     target: archiveTarget(context.sourceId),
@@ -95,6 +98,7 @@ export async function extractXlsx(
   throwIfCancelled(context.signal)
   const readExcelFile = await loadExcelFile()
   const workbook = await readExcelFile.default(Buffer.from(snapshot.copyBytes()))
+  throwIfCancelled(context.signal)
   assertParsedXlsxWorkbookWithinBudget(inspection, workbook)
   const prepared = workbook.map((sheet) => ({
     sheet,
@@ -130,7 +134,9 @@ export async function extractXlsx(
     }
   }
 
+  throwIfCancelled(context.signal)
   await snapshot.assertCurrent()
+  throwIfCancelled(context.signal)
   return {
     chunks,
     status: "success",
