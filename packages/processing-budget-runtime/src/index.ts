@@ -71,6 +71,7 @@ export {
   type XlsxWorkbookBudgetSheet
 } from "./workbookBudget"
 export {
+  MAX_TIMER_DELAY_MS,
   ProcessingCancellationError,
   cancellationKindFromSignal,
   cancellationOriginalReason,
