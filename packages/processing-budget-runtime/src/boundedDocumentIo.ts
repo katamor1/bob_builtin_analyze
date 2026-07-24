@@ -5,6 +5,11 @@ declare const require: (id: string) => unknown
 
 export type OoxmlDocumentKind = "docx" | "xlsx"
 
+export interface BoundedDocumentCancellation {
+  readonly aborted: boolean
+  readonly reason?: unknown
+}
+
 export interface BoundedDocumentIdentity {
   readonly device: string
   readonly inode: string
@@ -28,6 +33,7 @@ export interface BoundedDocumentReadInput {
   readonly target: string
   readonly ledger: ProcessingBudgetLedger
   readonly maximumFileBytes?: number
+  readonly signal?: BoundedDocumentCancellation
 }
 
 export interface OoxmlArchiveEntryRecord {
@@ -65,6 +71,7 @@ interface BoundedDocumentRuntimeEngine {
     readonly target: string
     readonly ledger: ProcessingBudgetLedger
     readonly maximumFileBytes: number
+    readonly signal?: BoundedDocumentCancellation
   }): Promise<BoundedDocumentSnapshot>
   preflightOoxmlArchive(input: {
     readonly archiveBytes: Uint8Array
@@ -92,7 +99,8 @@ export function readBoundedDocumentFile(input: BoundedDocumentReadInput): Promis
     maximumFileBytes: boundedMaximum(
       input.maximumFileBytes,
       PROCESSING_BUDGET_ABSOLUTE_MAXIMA.single_document_bytes
-    )
+    ),
+    signal: input.signal
   })
 }
 
