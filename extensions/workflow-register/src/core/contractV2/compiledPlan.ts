@@ -3,7 +3,7 @@ import { types as utilTypes } from "node:util"
 import { canonicalJsonDigest } from "./canonicalJson"
 import type { WorkflowCompilerEnvironment } from "./compilerEnvironment"
 import { requireWorkflowCompilerEnvironmentState } from "./compilerEnvironment"
-import type { CompiledLocalJsonSchema } from "./jsonSchema"
+import type { CompiledLocalJsonSchemaView } from "./jsonSchemaCatalog"
 import { cloneAndFreezeJsonValue, type JsonValue } from "./jsonValue"
 import type {
   WorkflowPackageDocumentV2,
@@ -101,7 +101,7 @@ export interface CompiledWorkflowPlanPrivateState {
   }[]
   readonly schemas: readonly {
     readonly id: string
-    readonly compiled: CompiledLocalJsonSchema
+    readonly compiled: CompiledLocalJsonSchemaView
   }[]
   readonly providers: readonly {
     readonly id: string
@@ -115,7 +115,7 @@ export interface CreateCompiledWorkflowPlanHandleInput {
   readonly generation: string
   readonly plan: unknown
   readonly prompts: readonly { readonly id: string; readonly bytes: Uint8Array }[]
-  readonly schemas: readonly { readonly id: string; readonly compiled: CompiledLocalJsonSchema }[]
+  readonly schemas: readonly { readonly id: string; readonly compiled: CompiledLocalJsonSchemaView }[]
   readonly providers: readonly {
     readonly id: string
     readonly dispatchHandle: BoundWorkflowProviderDispatchHandle
@@ -181,7 +181,7 @@ export function createCompiledWorkflowPlanHandle(
     push(promptByteCopies, objectFreeze({ id: prompt.id, bytes }))
   }
 
-  const schemaCopies: { readonly id: string; readonly compiled: CompiledLocalJsonSchema }[] = []
+  const schemaCopies: { readonly id: string; readonly compiled: CompiledLocalJsonSchemaView }[] = []
   for (let index = 0; index < input.schemas.length; index += 1) {
     const schema = input.schemas[index]
     push(schemaCopies, objectFreeze({ id: schema.id, compiled: schema.compiled }))
