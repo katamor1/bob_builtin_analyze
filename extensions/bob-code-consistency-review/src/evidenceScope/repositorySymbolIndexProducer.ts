@@ -10,6 +10,10 @@ import {
 import { classifyLanguageFromPath, type ReviewLanguage } from "../core/languageClassifier"
 import { decodeTextBuffer } from "../core/textEncoding"
 import {
+  createAbsoluteDeadline,
+  type SharedAbsoluteDeadline
+} from "../sharedProcessingBudgetRuntime"
+import {
   loadRepositoryIndexCache,
   writeAtomicTextFile,
   writeRepositoryIndexCache,
@@ -59,6 +63,7 @@ export type ProduceRepositorySymbolIndexInput = {
   maxTotalBytes?: number
   textEncoding?: string
   commandTimeoutMs?: number
+  deadline?: SharedAbsoluteDeadline
   signal?: AbortSignal
 }
 
@@ -90,7 +95,7 @@ type ProducerOptions = {
   maxFileBytes: number
   maxTotalBytes: number
   textEncoding: string
-  commandTimeoutMs: number
+  deadline: SharedAbsoluteDeadline
   signal?: AbortSignal
 }
 
@@ -241,7 +246,9 @@ function normalizeOptions(input: ProduceRepositorySymbolIndexInput): ProducerOpt
     maxFileBytes: positiveInteger(input.maxFileBytes, DEFAULT_MAX_FILE_BYTES, "maxFileBytes"),
     maxTotalBytes: positiveInteger(input.maxTotalBytes, DEFAULT_MAX_TOTAL_BYTES, "maxTotalBytes"),
     textEncoding: input.textEncoding ?? "auto",
-    commandTimeoutMs: positiveInteger(input.commandTimeoutMs, DEFAULT_COMMAND_TIMEOUT_MS, "commandTimeoutMs"),
+    deadline: input.deadline ?? createAbsoluteDeadline(
+      positiveInteger(input.commandTimeoutMs, DEFAULT_COMMAND_TIMEOUT_MS, "commandTimeoutMs")
+    ),
     signal: input.signal
   }
 }
@@ -429,7 +436,7 @@ async function git(
     args,
     cwd: options.repositoryRoot,
     maxStdoutBytes,
-    timeoutMs: options.commandTimeoutMs,
+    deadline: options.deadline,
     signal: options.signal
   })
 }
