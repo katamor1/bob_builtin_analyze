@@ -172,6 +172,7 @@ interface SharedRuntimeModule {
     target: string
     ledger: SharedProcessingBudgetLedger
     maximumFileBytes?: number
+    signal?: SharedWorkbookBudgetCancellation
   }): Promise<SharedBoundedDocumentSnapshot>
   preflightOoxmlArchive(input: {
     archiveBytes: Uint8Array
