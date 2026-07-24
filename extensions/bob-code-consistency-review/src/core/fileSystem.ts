@@ -119,16 +119,34 @@ export function resolveWorkspacePath(workspaceRoot: string, value: string): stri
 
 export function resolveWorkspacePathStrict(workspaceRoot: string, value: string, label = "path"): string {
   const root = path.resolve(workspaceRoot)
-  const candidate = path.resolve(root, value)
-  if (!isInsidePath(root, candidate)) throw new Error(`${label} escapes workspace: ${value}`)
+  let candidatePath: string
+  if (path.isAbsolute(value)) {
+    candidatePath = value
+  } else {
+    try {
+      candidatePath = normalizeWorkspaceRelativePath(value, label)
+    } catch (error) {
+      const code = pathPolicyErrorCode(error)
+      if (code === "path_policy_escape") throw new Error(`${label} escapes workspace: ${value}`)
+      if (code === "path_policy_absolute" || code === "path_policy_drive_relative" || code === "path_policy_device") {
+        throw new Error(`${label} must be a safe workspace-relative or contained host absolute path: ${value}`)
+      }
+      throw new Error(`${label} is unsafe: ${value}`)
+    }
+  }
   try {
     return resolvePhysicalContainedPathSync({
       rootPath: root,
-      candidatePath: candidate,
+      candidatePath,
       allowAbsolute: true,
       mustExist: false
     }).path
-  } catch {
+  } catch (error) {
+    const code = pathPolicyErrorCode(error)
+    if (code === "path_policy_escape") throw new Error(`${label} escapes workspace: ${value}`)
+    if (code === "path_policy_absolute" || code === "path_policy_drive_relative" || code === "path_policy_device") {
+      throw new Error(`${label} is unsafe: ${value}`)
+    }
     throw new Error(`${label} resolves outside workspace: ${value}`)
   }
 }
