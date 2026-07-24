@@ -185,6 +185,22 @@ test("POSIX deadline termination kills descendants in the command process group"
   assert.equal(isProcessAlive(descendantPid), false, `descendant ${descendantPid} survived process-tree termination`)
 })
 
+test("POSIX non-zero failure kills descendants after the parent exits", { skip: process.platform === "win32" }, async (t) => {
+  const pidFile = path.join(os.tmpdir(), `external-nonzero-descendant-${process.pid}-${Date.now()}.pid`)
+  t.after(() => fs.rmSync(pidFile, { force: true }))
+  const parentScript = [
+    "const cp=require('node:child_process')",
+    `const child=cp.spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore'})`,
+    `require('node:fs').writeFileSync(${JSON.stringify(pidFile)},String(child.pid))`,
+    "setTimeout(()=>process.exit(7),50)"
+  ].join(";")
+
+  await rejectsWithKind(runNode(parentScript), "nonZeroExit", "non_zero_exit")
+  const descendantPid = Number(fs.readFileSync(pidFile, "utf8"))
+  await waitForDeath(descendantPid)
+  assert.equal(isProcessAlive(descendantPid), false, `descendant ${descendantPid} survived non-zero process failure`)
+})
+
 test("external process runner accepts explicitly allowed non-zero exit codes", async () => {
   const result = await runNode("process.exit(1)", { allowedExitCodes: [0, 1] })
   assert.equal(result.exitCode, 1)
