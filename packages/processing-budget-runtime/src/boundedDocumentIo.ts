@@ -62,6 +62,7 @@ export interface OoxmlArchivePreflightInput {
   readonly maximumEntries?: number
   readonly maximumEntryBytes?: number
   readonly maximumExpandedBytes?: number
+  readonly signal?: BoundedDocumentCancellation
 }
 
 interface BoundedDocumentRuntimeEngine {
@@ -82,6 +83,7 @@ interface BoundedDocumentRuntimeEngine {
     readonly maximumEntries?: number
     readonly maximumEntryBytes: number
     readonly maximumExpandedBytes: number
+    readonly signal?: BoundedDocumentCancellation
   }): OoxmlArchiveSnapshot
 }
 
@@ -122,7 +124,8 @@ export function preflightOoxmlArchive(input: OoxmlArchivePreflightInput): OoxmlA
     maximumExpandedBytes: boundedMaximum(
       input.maximumExpandedBytes,
       PROCESSING_BUDGET_ABSOLUTE_MAXIMA.total_document_bytes
-    )
+    ),
+    signal: input.signal
   })
 }
 
