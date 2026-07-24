@@ -1,0 +1,27 @@
+[
+  {
+    "path": "src/workflowDefinitionLoader.ts",
+    "import": "./core/workflowCompiler",
+    "reason": "legacy-v1-document-compilation"
+  },
+  {
+    "path": "src/workflowDefinitionLoader.ts",
+    "import": "./workflowAdapter",
+    "reason": "legacy-v1-bob-adaptation"
+  },
+  {
+    "path": "src/core/workflowValidator.ts",
+    "import": "./workflowCompiler",
+    "reason": "legacy-v1-validator-export-compatibility"
+  },
+  {
+    "path": "src/commands/validateWorkflow.ts",
+    "import": "../core/workflowCompiler",
+    "reason": "legacy-v1-editor-validation"
+  },
+  {
+    "path": "src/bobWorkflowFactory.ts",
+    "import": "./core/contractV2/bobProfile",
+    "reason": "audited-F7-task-probe"
+  }
+]
