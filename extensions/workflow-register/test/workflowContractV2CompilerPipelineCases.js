@@ -39,6 +39,65 @@ test("closed package-shape failure wins before lock verification", () => {
   expectFailure(compile(fixture.rawPackage), "WF2_UNKNOWN_OR_NOOP_FIELD", "workflow.yaml")
 })
 
+test("predicate compilation wins before provider and Bob binding", () => {
+  const dialect = "https://json-schema.org/draft/2020-12/schema"
+  const workflow = {
+    schemaVersion: "workflow-register/v2",
+    id: "minimal",
+    name: "Pipeline precedence",
+    description: "Predicate semantics must fail before provider binding.",
+    inputs: [{ id: "payload", title: "Payload", schema: "schemas/input.json", required: true }],
+    steps: [{
+      id: "execute",
+      title: "Execute",
+      type: "command",
+      required: true,
+      when: { kind: "exists", left: { source: "input", id: "payload", pointer: "/missing" } },
+      provider: "missing.provider",
+      input: { source: "literal", value: {} },
+      output: { kind: "unit" },
+      artifacts: []
+    }],
+    requiredArtifacts: [],
+    resumePolicy: {
+      mode: "fail-closed",
+      maxAttempts: 1,
+      retainCommittedOutputs: false,
+      allowArtifactReuse: false
+    },
+    providers: [{
+      id: "missing.provider",
+      version: "1.0.0",
+      inputSchema: "schemas/input.json",
+      output: { kind: "unit" },
+      errorSchema: "schemas/error.json",
+      sideEffect: "none",
+      idempotency: "idempotent",
+      requiredCapabilities: []
+    }],
+    bob: { profile: "bob/2.0.1", requiredCapabilities: [], taskCapabilities: [] }
+  }
+  const fixture = createLockedRawPackage({
+    "workflow.yaml": `${JSON.stringify(workflow)}\n`,
+    "schemas/input.json": `${JSON.stringify({
+      $schema: dialect,
+      $id: "schemas/input.json",
+      type: "object",
+      properties: { known: { type: "string" } },
+      required: ["known"],
+      additionalProperties: false
+    })}\n`,
+    "schemas/error.json": `${JSON.stringify({
+      $schema: dialect,
+      $id: "schemas/error.json",
+      type: "object"
+    })}\n`
+  })
+  const result = compile(fixture.rawPackage)
+  expectFailure(result, "WF2_PREDICATE_INVALID", "workflow.yaml")
+  assert.equal(result.diagnostics[0].location.pointer, "/steps/0/when/left/pointer")
+})
+
 test("valid semantics with drifted canonical lock reaches lock verification", () => {
   const fixture = createLockedRawPackage()
   const files = { ...fixture.files, "workflow.lock.json": Buffer.from("{}", "utf8") }
