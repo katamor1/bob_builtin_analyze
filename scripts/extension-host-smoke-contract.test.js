@@ -19,8 +19,6 @@ function occurrenceCount(text, pattern) {
 const pinnedRuntimeInstall = /npm install --no-save --package-lock=false --ignore-scripts --audit=false --fund=false @vscode\/test-cli@0\.0\.12 @vscode\/test-electron@2\.5\.2/g
 const transientCliInvocation = /npx\s+--yes\s+--package\s+["']?@vscode\/test-cli/
 const localCliInvocation = /node_modules[\\/]\.bin[\\/]vscode-test(?:\.cmd)?/
-const surfaceHostTest = "../../scripts/three-extension-surface-extension-host.test.js"
-const surfaceWorkspace = "test/fixtures/gui-surface-workspace"
 
 const surfaceFixtures = [
   ["workflow-register", "Workflow Register"],
@@ -83,7 +81,7 @@ test("consolidated surface smoke is wired identically on Ubuntu and Windows", ()
   assert.match(surfaceSource, /unhandledRejection/)
   assert.doesNotMatch(
     surfaceSource,
-    /executeCommand\(\s*["']bobBazaar\.authorProjectRulesFromDocuments["']/, 
+    /executeCommand\(\s*["']bobBazaar\.authorProjectRulesFromDocuments["']/,
     "document-backed Bazaar authoring is registration-only in noninteractive Extension Host smoke"
   )
 
