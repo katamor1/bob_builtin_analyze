@@ -1,0 +1,8 @@
+require("./workflowContractV2CompilerEnvironmentCases.js")
+require("./workflowContractV2CompilerPipelineCases.js")
+require("./workflowContractV2CompilerCoreCases.js")
+require("./workflowContractV2CompilerPlanCases.js")
+require("./workflowContractV2CompilerSemanticCases.js")
+require("./workflowContractV2CompilerProviderCases.js")
+require("./workflowContractV2CompilerPredicateCases.js")
+require("./workflowContractV2CompilerReferenceRoleCases.js")
