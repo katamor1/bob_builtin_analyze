@@ -72,9 +72,12 @@ function createCancellationScope(input) {
       abort("deadline", undefined)
       return
     }
+    const terminalTimer = remaining <= MAX_TIMER_DELAY_MS
     timer = schedule(() => {
       timer = undefined
-      scheduleDeadline()
+      if (disposed || controller.signal.aborted) return
+      if (terminalTimer) abort("deadline", undefined)
+      else scheduleDeadline()
     }, Math.min(remaining, MAX_TIMER_DELAY_MS))
   }
 
