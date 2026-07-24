@@ -85,7 +85,8 @@ export async function extractDocx(
     expectedKind: "docx",
     maximumEntries: maxArchiveEntries,
     maximumEntryBytes: maxFileBytes,
-    maximumExpandedBytes: maxExpandedBytes
+    maximumExpandedBytes: maxExpandedBytes,
+    signal: context.signal
   })
 
   throwIfCancelled(context.signal)
