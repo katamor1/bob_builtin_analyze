@@ -62,6 +62,9 @@ const objectPrototype = Object.prototype
 const reflectApply = Reflect.apply
 const reflectOwnKeys = Reflect.ownKeys
 const INPUT_FIELDS = objectFreeze(["rawPackage", "environment"] as const)
+const RAW_PACKAGE_FIELDS = objectFreeze([
+  "publication", "workflowId", "generation", "packageDigest", "files"
+] as const)
 const EMPTY_DIAGNOSTICS = objectFreeze([]) as readonly []
 
 export function compileWorkflowPackage(input: CompileWorkflowPackageInput): WorkflowPackageCompileResult {
@@ -76,8 +79,9 @@ export function compileWorkflowPackage(input: CompileWorkflowPackageInput): Work
   const environmentState = requireWorkflowCompilerEnvironmentState(environment)
 
   try {
-    const rawIdentity = snapshotRawIdentity(outer.rawPackage)
-    const rawPackage = snapshotWorkflowLockGenerationRawPackage(outer.rawPackage)
+    const rawInput = snapshotCompilerRawPackageInput(outer.rawPackage)
+    const rawIdentity = rawInput
+    const rawPackage = snapshotWorkflowLockGenerationRawPackage(rawInput.rawPackage)
     const workflowFile = workflowLockFileByPath(rawPackage, "workflow.yaml")
     if (workflowFile === undefined) {
       return failure("WF2_PACKAGE_LAYOUT_INVALID", "workflow.yaml", "", "Workflow package is missing workflow.yaml.")
@@ -191,20 +195,22 @@ export function compileWorkflowPackage(input: CompileWorkflowPackageInput): Work
   }
 }
 
-function snapshotRawIdentity(value: unknown): {
+function snapshotCompilerRawPackageInput(value: unknown): {
   readonly publication: "published" | "staging"
   readonly generation: string
+  readonly rawPackage: RawWorkflowPackage
 } {
-  if (typeof value !== "object" || value === null || isProxy(value)) {
-    throw new TypeError("Workflow raw package identity is invalid.")
-  }
-  const descriptors = objectGetOwnPropertyDescriptors(value)
-  const publication = dataValue(descriptors, "publication", "Workflow raw package")
-  const generation = dataValue(descriptors, "generation", "Workflow raw package")
+  const record = snapshotExactRecord(value, RAW_PACKAGE_FIELDS, "Workflow raw package")
+  const publication = record.publication
+  const generation = record.generation
   if ((publication !== "published" && publication !== "staging") || typeof generation !== "string") {
     throw new TypeError("Workflow raw package identity is invalid.")
   }
-  return objectFreeze({ publication, generation })
+  return objectFreeze({
+    publication,
+    generation,
+    rawPackage: record as unknown as RawWorkflowPackage
+  })
 }
 
 function snapshotExactRecord<const Fields extends readonly string[]>(
