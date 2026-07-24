@@ -32,11 +32,11 @@ test("minimal package compiles to one deterministic deeply frozen public plan", 
   assert.equal(Object.isFrozen(handle), true)
   assert.equal(handle.planDigest, canonicalDigest(handle.plan))
   assert.equal("planDigest" in handle.plan, false)
+  assert.equal("generation" in handle.plan, false)
   assert.equal(handle.plan.schemaVersion, "workflow-compiled-plan/v2")
   assert.equal(handle.plan.compilerContractVersion, "workflow-register-compiler/v2")
   assert.equal(handle.plan.workflowId, "minimal")
   assert.equal(handle.plan.packageDigest, fixture.rawPackage.packageDigest)
-  assert.equal(handle.plan.generation, fixture.rawPackage.generation)
   assert.equal(handle.plan.lockfileDigest, fixture.rawPackage.files.find(
     (file) => file.path === "workflow.lock.json"
   ).digest)
@@ -48,6 +48,10 @@ test("minimal package compiles to one deterministic deeply frozen public plan", 
   assertDeepFrozen(handle.plan)
   assertNoNodeValues(handle.plan)
   assert.doesNotThrow(() => JSON.stringify(handle.plan))
+
+  const state = require("../out/core/contractV2/compiledPlan.js").requireCompiledWorkflowPlanState(handle)
+  assert.equal(state.publication, "published")
+  assert.equal(state.generation, fixture.rawPackage.generation)
 })
 
 test("equal public evidence across distinct environments never reuses private handle identity", () => {

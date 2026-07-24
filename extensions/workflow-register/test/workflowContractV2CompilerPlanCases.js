@@ -40,10 +40,10 @@ test("single compiler returns a canonical frozen plan and a separate digest", ()
   assert.equal(second.handle.planDigest, first.handle.planDigest)
   assert.equal(first.handle.planDigest, canonicalDigest(first.handle.plan))
   assert.equal("planDigest" in first.handle.plan, false)
+  assert.equal("generation" in first.handle.plan, false)
   assert.equal("purpose" in first.handle.plan, false)
   assert.equal("leaseable" in first.handle.plan, false)
   assert.equal(first.handle.plan.packageDigest, fixture.rawPackage.packageDigest)
-  assert.equal(first.handle.plan.generation, fixture.rawPackage.generation)
   assert.equal(first.handle.plan.lockfileDigest, fixture.rawPackage.files.find(
     (file) => file.path === "workflow.lock.json"
   ).digest)
