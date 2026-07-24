@@ -3,6 +3,7 @@
 const { createHash } = require("node:crypto")
 const { TextDecoder } = require("node:util")
 const { inflateRawSync } = require("node:zlib")
+const { ProcessingCancellationError } = require("./deadline-cancellation")
 const {
   boundedString,
   ledgerFrom,
@@ -34,14 +35,18 @@ const WINDOWS_DRIVE_PATH = /^[A-Za-z]:/
 function snapshotArchiveInput(input) {
   const values = ownDataRecord(
     input,
-    ["archiveBytes", "target", "ledger", "expectedKind", "maximumEntries", "maximumEntryBytes", "maximumExpandedBytes"],
-    ["expectedKind", "maximumEntries", "maximumEntryBytes", "maximumExpandedBytes"],
+    ["archiveBytes", "target", "ledger", "expectedKind", "maximumEntries", "maximumEntryBytes", "maximumExpandedBytes", "signal"],
+    ["expectedKind", "maximumEntries", "maximumEntryBytes", "maximumExpandedBytes", "signal"],
     "OOXML archive input"
   )
   if (!(values.archiveBytes instanceof Uint8Array)) throw processingError("bounded_document_input_invalid", "archiveBytes must be a Uint8Array")
   if (values.expectedKind !== undefined && values.expectedKind !== "docx" && values.expectedKind !== "xlsx") {
     throw processingError("bounded_document_input_invalid", "expectedKind must be docx or xlsx")
   }
+  if (values.signal !== undefined && (values.signal === null || typeof values.signal !== "object")) {
+    throw processingError("bounded_document_input_invalid", "signal must be an object")
+  }
+  throwIfCancelled(values.signal)
   return Object.freeze({
     archive: Buffer.from(values.archiveBytes),
     target: boundedString(values.target, "target", MAX_TARGET_UTF8_BYTES),
@@ -55,18 +60,21 @@ function snapshotArchiveInput(input) {
       : positiveSafeInteger(values.maximumEntryBytes, "maximumEntryBytes", 256 * 1024 * 1024),
     maximumExpandedBytes: values.maximumExpandedBytes === undefined
       ? 256 * 1024 * 1024
-      : positiveSafeInteger(values.maximumExpandedBytes, "maximumExpandedBytes", 1024 * 1024 * 1024)
+      : positiveSafeInteger(values.maximumExpandedBytes, "maximumExpandedBytes", 1024 * 1024 * 1024),
+    signal: values.signal
   })
 }
 
 function preflightOoxmlArchive(input) {
   const options = snapshotArchiveInput(input)
+  throwIfCancelled(options.signal)
   const entries = parseZipDirectory(options.archive, options)
   const reservations = []
   const contents = []
   let expandedBytes = 0
   try {
     for (const [index, entry] of entries.entries()) {
+      throwIfCancelled(options.signal)
       if (entry.directory) continue
       if (entry.uncompressedSize > options.maximumEntryBytes) {
         throw processingError("archive_entry_too_large", `archive entry exceeds ${options.maximumEntryBytes} bytes`, {
@@ -87,25 +95,45 @@ function preflightOoxmlArchive(input) {
       })
     }
 
-    for (const item of reservations) contents.push({ entry: item.entry, content: inflateEntry(options.archive, item.entry) })
-    const byName = new Map(contents.map(({ entry, content }) => [entry.name, Buffer.from(content)]))
+    for (const item of reservations) {
+      throwIfCancelled(options.signal)
+      const content = inflateEntry(options.archive, item.entry, options.signal)
+      throwIfCancelled(options.signal)
+      contents.push({ entry: item.entry, content })
+    }
+
+    const byName = new Map()
+    for (const { entry, content } of contents) {
+      throwIfCancelled(options.signal)
+      byName.set(entry.name, Buffer.from(content))
+    }
     const documentKind = detectOoxmlKind(byName)
     if (options.expectedKind !== undefined && documentKind !== options.expectedKind) {
       throw processingError("ooxml_kind_mismatch", `OOXML archive is ${documentKind}, not ${options.expectedKind}`)
     }
+
+    const metadataItems = []
+    for (const entry of entries) {
+      throwIfCancelled(options.signal)
+      metadataItems.push(Object.freeze({
+        name: entry.name,
+        directory: entry.directory,
+        compression_method: entry.method,
+        compressed_bytes: entry.compressedSize,
+        expanded_bytes: entry.uncompressedSize,
+        crc32: entry.crc32.toString(16).padStart(8, "0")
+      }))
+    }
+    const metadata = Object.freeze(metadataItems)
+
+    // Do not check the signal after commit begins: all reservations are committed
+    // as one synchronous finalization phase, avoiding a partially committed ledger.
+    throwIfCancelled(options.signal)
     for (let index = 0; index < reservations.length; index += 1) {
       reservations[index].reservation.commit(contents[index].content.length)
       reservations[index].reservation = undefined
     }
 
-    const metadata = Object.freeze(entries.map((entry) => Object.freeze({
-      name: entry.name,
-      directory: entry.directory,
-      compression_method: entry.method,
-      compressed_bytes: entry.compressedSize,
-      expanded_bytes: entry.uncompressedSize,
-      crc32: entry.crc32.toString(16).padStart(8, "0")
-    })))
     return Object.freeze({
       documentKind,
       entryCount: entries.length,
@@ -123,8 +151,9 @@ function preflightOoxmlArchive(input) {
 }
 
 function parseZipDirectory(archive, options) {
+  throwIfCancelled(options.signal)
   if (archive.length < EOCD_BYTES) throw processingError("archive_invalid", "ZIP end-of-central-directory record is missing")
-  const endOffset = findEndOfCentralDirectory(archive)
+  const endOffset = findEndOfCentralDirectory(archive, options.signal)
   const diskNumber = readUInt16(archive, endOffset + 4)
   const centralDisk = readUInt16(archive, endOffset + 6)
   const diskEntries = readUInt16(archive, endOffset + 8)
@@ -148,6 +177,7 @@ function parseZipDirectory(archive, options) {
   const normalizedNames = new Set()
   let offset = centralOffset
   for (let index = 0; index < totalEntries; index += 1) {
+    throwIfCancelled(options.signal)
     requireBounds(archive, offset, CENTRAL_ENTRY_BYTES, "central directory entry")
     if (readUInt32(archive, offset) !== 0x02014b50) throw processingError("archive_invalid", `ZIP central-directory entry ${index} has an invalid signature`)
     const flags = readUInt16(archive, offset + 8)
@@ -172,7 +202,7 @@ function parseZipDirectory(archive, options) {
     try { name = decoder.decode(archive.subarray(nameStart, nameStart + nameLength)) } catch {
       throw processingError("archive_entry_name_invalid", "ZIP entry name is not valid UTF-8")
     }
-    assertNoZip64Extra(archive.subarray(nameStart + nameLength, nameStart + nameLength + extraLength), name)
+    assertNoZip64Extra(archive.subarray(nameStart + nameLength, nameStart + nameLength + extraLength), name, options.signal)
     const normalized = normalizeZipEntryName(name)
     if (normalizedNames.has(normalized.key)) throw processingError("archive_duplicate_entry", `ZIP entry is duplicated: ${safeEcho(name)}`)
     normalizedNames.add(normalized.key)
@@ -186,27 +216,31 @@ function parseZipDirectory(archive, options) {
       uncompressedSize,
       localOffset,
       dataOffset: 0
-    }, decoder, centralOffset)
+    }, decoder, centralOffset, options.signal)
     if (entry.directory && (entry.compressedSize !== 0 || entry.uncompressedSize !== 0)) throw processingError("archive_invalid", `ZIP directory entry has content: ${safeEcho(name)}`)
     entries.push(entry)
     offset += recordLength
   }
+  throwIfCancelled(options.signal)
   if (offset !== centralOffset + centralSize) throw processingError("archive_invalid", "ZIP central-directory size does not match its entries")
 
   const regions = entries.map((entry) => ({ entry, start: entry.localOffset, end: entry.dataOffset + entry.compressedSize })).sort((left, right) => left.start - right.start)
   if (regions.length > 0 && regions[0].start !== 0) throw processingError("archive_invalid", "unexpected bytes precede the first ZIP entry")
   for (let index = 0; index < regions.length; index += 1) {
+    throwIfCancelled(options.signal)
     const region = regions[index]
     const boundary = index + 1 < regions.length ? regions[index + 1].start : centralOffset
     if (boundary < region.end) throw processingError("archive_invalid", "ZIP entries overlap")
     validateLocalEntryGap(archive, region.entry, region.end, boundary)
   }
+  throwIfCancelled(options.signal)
   return entries
 }
 
-function assertNoZip64Extra(extra, entryName) {
+function assertNoZip64Extra(extra, entryName, signal) {
   let offset = 0
   while (offset < extra.length) {
+    throwIfCancelled(signal)
     if (offset + 4 > extra.length) throw processingError("archive_invalid", `ZIP entry has malformed extra fields: ${safeEcho(entryName)}`)
     const header = extra.readUInt16LE(offset)
     const length = extra.readUInt16LE(offset + 2)
@@ -229,7 +263,8 @@ function normalizeZipEntryName(name) {
   return { key: body, directory }
 }
 
-function parseLocalHeader(archive, central, decoder, centralOffset) {
+function parseLocalHeader(archive, central, decoder, centralOffset, signal) {
+  throwIfCancelled(signal)
   requireBounds(archive, central.localOffset, LOCAL_HEADER_BYTES, "local ZIP entry")
   if (readUInt32(archive, central.localOffset) !== 0x04034b50) throw processingError("archive_invalid", "local ZIP entry signature is invalid")
   const flags = readUInt16(archive, central.localOffset + 6)
@@ -245,7 +280,7 @@ function parseLocalHeader(archive, central, decoder, centralOffset) {
   try { name = decoder.decode(archive.subarray(nameStart, nameStart + nameLength)) } catch {
     throw processingError("archive_entry_name_invalid", "local ZIP entry name is not valid UTF-8")
   }
-  assertNoZip64Extra(archive.subarray(nameStart + nameLength, nameStart + nameLength + extraLength), name)
+  assertNoZip64Extra(archive.subarray(nameStart + nameLength, nameStart + nameLength + extraLength), name, signal)
   if (name !== central.name || flags !== central.flags || method !== central.method) throw processingError("archive_invalid", "local and central ZIP metadata disagree")
   const descriptor = (flags & DATA_DESCRIPTOR_FLAG) !== 0
   if ((!descriptor && (crc !== central.crc32 || compressedSize !== central.compressedSize || uncompressedSize !== central.uncompressedSize))
@@ -272,7 +307,8 @@ function validateLocalEntryGap(archive, entry, dataEnd, boundary) {
   }
 }
 
-function inflateEntry(archive, entry) {
+function inflateEntry(archive, entry, signal) {
+  throwIfCancelled(signal)
   const compressed = archive.subarray(entry.dataOffset, entry.dataOffset + entry.compressedSize)
   let content
   if (entry.method === 0) {
@@ -283,8 +319,9 @@ function inflateEntry(archive, entry) {
       throw processingError("archive_inflate_failed", `ZIP entry cannot be inflated within its declared bound: ${safeEcho(entry.name)}`)
     }
   }
+  throwIfCancelled(signal)
   if (content.length !== entry.uncompressedSize) throw processingError("archive_expanded_size_mismatch", `ZIP entry expanded size disagrees with its header: ${safeEcho(entry.name)}`)
-  if (crc32(content) !== entry.crc32) throw processingError("archive_crc_mismatch", `ZIP entry checksum disagrees with its header: ${safeEcho(entry.name)}`)
+  if (crc32(content, signal) !== entry.crc32) throw processingError("archive_crc_mismatch", `ZIP entry checksum disagrees with its header: ${safeEcho(entry.name)}`)
   return content
 }
 
@@ -301,9 +338,10 @@ function archiveEntryTarget(target, index) {
   return `archive:${createHash("sha256").update(target, "utf8").digest("hex").slice(0, 16)}:${index}`
 }
 
-function findEndOfCentralDirectory(archive) {
+function findEndOfCentralDirectory(archive, signal) {
   const minimum = Math.max(0, archive.length - MAX_ZIP_COMMENT_BYTES - EOCD_BYTES)
   for (let offset = archive.length - EOCD_BYTES; offset >= minimum; offset -= 1) {
+    if ((offset & 0x3ff) === 0) throwIfCancelled(signal)
     if (readUInt32(archive, offset) === 0x06054b50 && offset + EOCD_BYTES + readUInt16(archive, offset + 20) === archive.length) return offset
   }
   throw processingError("archive_invalid", "ZIP end-of-central-directory record is missing or has trailing bytes")
@@ -324,10 +362,26 @@ const CRC_TABLE = (() => {
   }
   return table
 })()
-function crc32(content) {
+function crc32(content, signal) {
   let value = 0xffffffff
-  for (const byte of content) value = CRC_TABLE[(value ^ byte) & 0xff] ^ (value >>> 8)
+  for (let index = 0; index < content.length; index += 1) {
+    if ((index & 0xffff) === 0) throwIfCancelled(signal)
+    value = CRC_TABLE[(value ^ content[index]) & 0xff] ^ (value >>> 8)
+  }
   return (value ^ 0xffffffff) >>> 0
+}
+
+function throwIfCancelled(signal) {
+  if (!signal?.aborted) return
+  const reason = signal.reason
+  if (reason && typeof reason === "object" && reason.code === "processing_cancelled") {
+    if (reason instanceof Error) throw reason
+    throw new ProcessingCancellationError(
+      reason.kind === "deadline" ? "deadline" : "user",
+      reason.original_reason
+    )
+  }
+  throw new ProcessingCancellationError("user", reason)
 }
 
 module.exports = Object.freeze({
