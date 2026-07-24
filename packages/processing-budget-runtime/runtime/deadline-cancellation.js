@@ -3,6 +3,7 @@
 const { performance } = require("node:perf_hooks")
 
 const MAX_TIMER_DELAY_MS = 0x7fffffff
+const trustedCancellationSignals = new WeakMap()
 
 class ProcessingCancellationError extends Error {
   constructor(kind, originalReason) {
@@ -58,7 +59,9 @@ function createCancellationScope(input) {
 
   const abort = (kind, originalReason) => {
     if (controller.signal.aborted) return
-    controller.abort(Object.freeze(new ProcessingCancellationError(kind, originalReason)))
+    const reason = Object.freeze(new ProcessingCancellationError(kind, originalReason))
+    trustedCancellationSignals.set(controller.signal, reason)
+    controller.abort(reason)
   }
   const onSourceAbort = () => {
     const inherited = inheritedCancellation(sourceSignal)
@@ -101,6 +104,10 @@ function createCancellationScope(input) {
     signal: controller.signal,
     remainingMilliseconds: () => remainingDeadlineMilliseconds(deadline, now()),
     throwIfCancelled: () => {
+      if (!controller.signal.aborted && sourceSignal?.aborted) onSourceAbort()
+      if (!controller.signal.aborted && remainingDeadlineMilliseconds(deadline, now()) === 0) {
+        abort("deadline", undefined)
+      }
       if (!controller.signal.aborted) return
       const reason = controller.signal.reason
       if (reason instanceof ProcessingCancellationError) throw reason
@@ -123,10 +130,10 @@ function createCancellationScope(input) {
 function inheritedCancellation(signal) {
   const reason = signal?.reason
   if (
-    reason &&
-    typeof reason === "object" &&
-    reason.code === "processing_cancelled" &&
-    (reason.kind === "deadline" || reason.kind === "user")
+    signal &&
+    typeof signal === "object" &&
+    trustedCancellationSignals.get(signal) === reason &&
+    reason instanceof ProcessingCancellationError
   ) {
     return Object.freeze({ kind: reason.kind, originalReason: reason.original_reason })
   }
@@ -135,11 +142,12 @@ function inheritedCancellation(signal) {
 
 function cancellationKindFromSignal(signal) {
   if (!signal || signal.aborted !== true) return undefined
-  return signal.reason && signal.reason.kind === "deadline" ? "deadline" : "user"
+  return inheritedCancellation(signal).kind
 }
 
 function cancellationOriginalReason(signal) {
-  return signal?.reason?.original_reason
+  if (!signal || signal.aborted !== true) return undefined
+  return inheritedCancellation(signal).originalReason
 }
 
 function absoluteDeadline(value) {
