@@ -15,11 +15,6 @@ import type {
   WorkflowContractV2Slot
 } from "./workflowContractV2Entrypoint"
 
-/**
- * 他の Bob companion extension へ公開する workflow-register API。
- *
- * provider ID、workflow ID、command ID は WORKFLOW.md と companion extension から参照される互換性契約である。
- */
 export interface WorkflowRegisterApi {
   acceptBobWorkflowGate: (workspaceRoot: string, runId: string, stepId: string) => BobWorkflowGateAcceptResult
   acceptBobWorkflowGateWithMetadata: (workspaceRoot: string, runId: string, stepId: string) => BobWorkflowGateAcceptance
@@ -74,8 +69,7 @@ export function activate(context: vscode.ExtensionContext): WorkflowRegisterApi 
   const operationHub = new OperationHubProvider({
     api,
     extensionUri: context.extensionUri,
-    activeSteps: () => service.listActiveSteps(),
-    compileCurrentWorkflowPackage: (input) => service.compileCurrentWorkflowPackage(input)
+    activeSteps: () => service.listActiveSteps()
   })
   context.subscriptions.push(
     service,
