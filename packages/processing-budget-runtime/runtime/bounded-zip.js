@@ -3,7 +3,11 @@
 const { createHash } = require("node:crypto")
 const { TextDecoder } = require("node:util")
 const { inflateRawSync } = require("node:zlib")
-const { ProcessingCancellationError } = require("./deadline-cancellation")
+const {
+  ProcessingCancellationError,
+  cancellationKindFromSignal,
+  cancellationOriginalReason
+} = require("./deadline-cancellation")
 const {
   boundedString,
   ledgerFrom,
@@ -373,15 +377,17 @@ function crc32(content, signal) {
 
 function throwIfCancelled(signal) {
   if (!signal?.aborted) return
+  const kind = cancellationKindFromSignal(signal) ?? "user"
+  const originalReason = cancellationOriginalReason(signal)
   const reason = signal.reason
-  if (reason && typeof reason === "object" && reason.code === "processing_cancelled") {
-    if (reason instanceof Error) throw reason
-    throw new ProcessingCancellationError(
-      reason.kind === "deadline" ? "deadline" : "user",
-      reason.original_reason
-    )
+  if (
+    reason instanceof ProcessingCancellationError &&
+    reason.kind === kind &&
+    reason.original_reason === originalReason
+  ) {
+    throw reason
   }
-  throw new ProcessingCancellationError("user", reason)
+  throw new ProcessingCancellationError(kind, originalReason)
 }
 
 module.exports = Object.freeze({
