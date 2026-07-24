@@ -3,7 +3,11 @@
 const { createHash } = require("node:crypto")
 const fs = require("node:fs")
 const fsp = require("node:fs/promises")
-const { ProcessingCancellationError } = require("./deadline-cancellation")
+const {
+  ProcessingCancellationError,
+  cancellationKindFromSignal,
+  cancellationOriginalReason
+} = require("./deadline-cancellation")
 const pathPolicy = require("./path-policy")
 const {
   boundedString,
@@ -119,15 +123,17 @@ async function readBoundedDocumentFile(input, hooks = undefined) {
 
 function throwIfCancelled(signal) {
   if (!signal?.aborted) return
+  const kind = cancellationKindFromSignal(signal) ?? "user"
+  const originalReason = cancellationOriginalReason(signal)
   const reason = signal.reason
-  if (reason && typeof reason === "object" && reason.code === "processing_cancelled") {
-    if (reason instanceof Error) throw reason
-    throw new ProcessingCancellationError(
-      reason.kind === "deadline" ? "deadline" : "user",
-      reason.original_reason
-    )
+  if (
+    reason instanceof ProcessingCancellationError &&
+    reason.kind === kind &&
+    reason.original_reason === originalReason
+  ) {
+    throw reason
   }
-  throw new ProcessingCancellationError("user", reason)
+  throw new ProcessingCancellationError(kind, originalReason)
 }
 
 function assertRegularStat(stat, maximumFileBytes, phase) {
