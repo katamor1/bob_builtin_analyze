@@ -17,6 +17,7 @@ import {
   DEFAULT_PROCESSING_BUDGET_PROFILE,
   ProcessingBudgetLedger,
   createAbsoluteDeadline,
+  createCancellationScope,
   type SharedAbsoluteDeadline,
   type SharedProcessingBudgetLedger,
   type SharedProcessingBudgetLimits,
@@ -60,30 +61,41 @@ export async function collectGitDiff(reviewInput: ReviewInput, options: CollectG
   const limits = normalizeReviewProcessingLimits(options.limits)
   const ledger = options.budgetLedger ?? createDiffProcessingLedger(limits, options.processingBudgetLimits)
   const deadline = options.deadline ?? createAbsoluteDeadline(normalizeCommandTimeout(options.commandTimeoutMs))
-  if (options.diffFixturePath) {
-    const fixturePath = resolveWorkspacePathStrict(options.workspaceRoot, options.diffFixturePath, "diffFixturePath")
-    const fixture = parseDiffFixtureText(await readTextFile(fixturePath, options.textEncoding))
-    return finalizeDiffProcessingBudget(fixture, ledger)
-  }
+  const cancellation = createCancellationScope({ deadline, signal: options.signal })
+  try {
+    cancellation.throwIfCancelled()
+    if (options.diffFixturePath) {
+      const fixturePath = resolveWorkspacePathStrict(options.workspaceRoot, options.diffFixturePath, "diffFixturePath")
+      const fixtureText = await readTextFile(fixturePath, options.textEncoding)
+      cancellation.throwIfCancelled()
+      return finalizeDiffProcessingBudget(parseDiffFixtureText(fixtureText), ledger)
+    }
 
-  const vcs = normalizeVcs(reviewInput.review.vcs)
-  const vcsRoot = resolveVcsRoot(options.workspaceRoot, reviewInput.review.vcs_root)
-  const collected = vcs === "bazaar"
-    ? await collectBazaarDiff(reviewInput, {
-        ...options,
-        deadline,
-        vcsRoot,
-        limits,
-        rawDiffLimit: ledger.profile.limits.raw_diff_bytes
-      })
-    : await collectStandardGitDiff(reviewInput, {
-        ...options,
-        deadline,
-        vcsRoot,
-        limits,
-        rawDiffLimit: ledger.profile.limits.raw_diff_bytes
-      })
-  return finalizeDiffProcessingBudget(collected.diff, ledger, collected.rawDiffOverflow)
+    const vcs = normalizeVcs(reviewInput.review.vcs)
+    const vcsRoot = resolveVcsRoot(options.workspaceRoot, reviewInput.review.vcs_root)
+    const signal = cancellation.signal as AbortSignal
+    const collected = vcs === "bazaar"
+      ? await collectBazaarDiff(reviewInput, {
+          ...options,
+          deadline,
+          signal,
+          vcsRoot,
+          limits,
+          rawDiffLimit: ledger.profile.limits.raw_diff_bytes
+        })
+      : await collectStandardGitDiff(reviewInput, {
+          ...options,
+          deadline,
+          signal,
+          vcsRoot,
+          limits,
+          rawDiffLimit: ledger.profile.limits.raw_diff_bytes
+        })
+    cancellation.throwIfCancelled()
+    return finalizeDiffProcessingBudget(collected.diff, ledger, collected.rawDiffOverflow)
+  } finally {
+    cancellation.dispose()
+  }
 }
 
 async function collectStandardGitDiff(reviewInput: ReviewInput, options: {
