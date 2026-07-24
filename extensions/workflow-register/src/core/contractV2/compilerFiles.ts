@@ -3,11 +3,15 @@ import { TextDecoder as NodeTextDecoder } from "node:util"
 import { canonicalJsonBytes, canonicalJsonDigest } from "./canonicalJson"
 import type { WorkflowContractV2Diagnostic } from "./diagnostics"
 import {
-  compileLocalJsonSchema,
   WORKFLOW_CONTRACT_V2_JSON_SCHEMA_DIALECT,
-  type CompiledLocalJsonSchema,
   type LocalJsonSchemaSource
 } from "./jsonSchema"
+import {
+  compileLocalJsonSchemaCatalog,
+  inspectLocalJsonSchemaViewDocumentDependencies,
+  type CompiledLocalJsonSchemaView,
+  type CompiledLocalJsonSchemaViewRoot
+} from "./jsonSchemaCatalog"
 import { cloneAndFreezeJsonValue, type JsonValue } from "./jsonValue"
 import {
   createLocalJsonSchemaRoleHandle,
@@ -46,7 +50,7 @@ export interface CompilerSchemaEvidence {
   readonly digest: Sha256Digest
   readonly bytes: number
   readonly role: LocalJsonSchemaRoleHandle
-  readonly compiled: CompiledLocalJsonSchema
+  readonly compiled: CompiledLocalJsonSchemaView
 }
 
 export interface CompilerSemanticFiles {
@@ -56,31 +60,18 @@ export interface CompilerSemanticFiles {
 }
 
 const TextDecoderConstructor = NodeTextDecoder
-const arrayIsArray = Array.isArray
 const textDecoderDecode = NodeTextDecoder.prototype.decode
-const arrayPop = Array.prototype.pop
 const arrayPush = Array.prototype.push
 const arraySort = Array.prototype.sort
 const bufferFrom = Buffer.from
 const BufferConstructor = Buffer
 const objectFreeze = Object.freeze
-const objectHasOwn = Object.hasOwn
-const objectKeys = Object.keys
 const reflectApply = Reflect.apply
 const stringEndsWith = String.prototype.endsWith
 const stringReplace = String.prototype.replace
 const stringSlice = String.prototype.slice
 const stringStartsWith = String.prototype.startsWith
 const Uint8ArrayConstructor = Uint8Array
-
-const MAP_SCHEMA_KEYWORDS = objectFreeze([
-  "$defs", "properties", "patternProperties", "dependentSchemas"
-] as const)
-const ARRAY_SCHEMA_KEYWORDS = objectFreeze(["prefixItems", "allOf", "anyOf", "oneOf"] as const)
-const ONE_SCHEMA_KEYWORDS = objectFreeze([
-  "items", "contains", "additionalProperties", "propertyNames", "if", "then", "else", "not",
-  "unevaluatedItems", "unevaluatedProperties"
-] as const)
 
 export function compileSemanticFiles(
   rawPackage: WorkflowLockRawPackageSnapshot,
@@ -117,7 +108,6 @@ export function compileSemanticFiles(
   }
 
   const schemaSources: LocalJsonSchemaSource[] = []
-  const schemaDocuments: { readonly id: string; readonly value: JsonValue }[] = []
   const schemaCanonical: { readonly id: string; readonly bytes: number; readonly digest: Sha256Digest }[] = []
   for (let index = 0; index < schemaPaths.length; index += 1) {
     const path = schemaPaths[index]
@@ -135,7 +125,6 @@ export function compileSemanticFiles(
       bytes: canonical.byteLength,
       digest: canonicalJsonDigest(parsed) as Sha256Digest
     }))
-    push(schemaDocuments, objectFreeze({ id: path, value: parsed }))
     push(schemaSources, objectFreeze({
       id: path,
       schema: parsed,
@@ -143,29 +132,35 @@ export function compileSemanticFiles(
     }))
   }
 
-  const schemas: CompilerSchemaEvidence[] = []
-  for (let index = 0; index < schemaPaths.length; index += 1) {
-    const id = schemaPaths[index]
-    const compiled = compileLocalJsonSchema({
-      rootId: id,
-      schemas: schemaSources,
+  let compiledRoots: readonly CompiledLocalJsonSchemaViewRoot[] = objectFreeze([])
+  if (schemaPaths.length > 0) {
+    const compiled = compileLocalJsonSchemaCatalog({
+      rootIds: objectFreeze(schemaPaths),
+      schemas: objectFreeze(schemaSources),
       diagnosticCode: "WF2_PACKAGE_LAYOUT_INVALID",
-      location: objectFreeze({ path: id, pointer: "" })
+      location: objectFreeze({ path: "workflow.yaml", pointer: "" })
     })
     if (!compiled.ok) {
       throw new CompilerSemanticFailure(
-        id,
+        "workflow.yaml",
         "",
-        "Workflow local schema failed compilation.",
+        "Workflow local schema catalog failed compilation.",
         compiled.diagnostics
       )
     }
+    compiledRoots = compiled.roots
+  }
+
+  const schemas: CompilerSchemaEvidence[] = []
+  for (let index = 0; index < schemaPaths.length; index += 1) {
+    const id = schemaPaths[index]
+    const root = findCompiledRoot(compiledRoots, id)
     const canonical = findById(schemaCanonical, id)
-    const source = findById(schemaDocuments, id)
-    if (canonical === undefined || source === undefined) {
+    const source = findById(schemaSources, id)
+    if (root === undefined || canonical === undefined || source === undefined) {
       throw new CompilerSemanticFailure(id, "", "Workflow local schema evidence is unavailable.")
     }
-    const ownEvidence = findSchemaEvidence(compiled.compiled.evidence.schemas, id)
+    const ownEvidence = findSchemaEvidence(root.compiled.evidence.schemas, id)
     if (ownEvidence === undefined || ownEvidence.schemaDigest !== canonical.digest) {
       throw new CompilerSemanticFailure(id, "", "Workflow local schema digest evidence does not match.")
     }
@@ -175,14 +170,25 @@ export function compileSemanticFiles(
       digest: canonical.digest,
       bytes: canonical.bytes,
       role: createLocalJsonSchemaRoleHandle({
-        compiled: compiled.compiled,
-        schema: source.value
+        compiled: root.compiled,
+        schema: source.schema
       }),
-      compiled: compiled.compiled
+      compiled: root.compiled
     }))
   }
 
-  const reachableSchemaIds = collectReachableSchemaIds(schemaReferences, schemaDocuments)
+  const reachableSchemaIds: string[] = []
+  for (let index = 0; index < schemaReferences.length; index += 1) {
+    const root = findById(schemas, schemaReferences[index])
+    if (root === undefined) {
+      throw new CompilerSemanticFailure("workflow.yaml", "", "Workflow references a missing local schema.")
+    }
+    const dependencies = inspectLocalJsonSchemaViewDocumentDependencies({ compiled: root.compiled })
+    for (let dependencyIndex = 0; dependencyIndex < dependencies.length; dependencyIndex += 1) {
+      pushUnique(reachableSchemaIds, dependencies[dependencyIndex])
+    }
+  }
+  sortText(reachableSchemaIds)
   assertExactReferenceSet(reachableSchemaIds, schemaPaths, "schema")
 
   const publicSchemas: { readonly dialect: string; readonly id: string; readonly digest: Sha256Digest }[] = []
@@ -246,74 +252,6 @@ function collectSchemaReferences(document: WorkflowPackageDocumentV2): readonly 
   return objectFreeze(values)
 }
 
-function collectReachableSchemaIds(
-  roots: readonly string[],
-  documents: readonly { readonly id: string; readonly value: JsonValue }[]
-): readonly string[] {
-  const reachable: string[] = []
-  const queue: string[] = []
-  for (let index = 0; index < roots.length; index += 1) {
-    pushUnique(reachable, roots[index])
-    pushUnique(queue, roots[index])
-  }
-  while (queue.length > 0) {
-    const id = pop(queue)
-    if (id === undefined) break
-    const source = findById(documents, id)
-    if (source === undefined) continue
-    const targets = collectSchemaReferenceTargets(source.value)
-    for (let index = 0; index < targets.length; index += 1) {
-      if (!contains(reachable, targets[index])) {
-        push(reachable, targets[index])
-        push(queue, targets[index])
-      }
-    }
-  }
-  sortText(reachable)
-  return objectFreeze(reachable)
-}
-
-function collectSchemaReferenceTargets(root: JsonValue): readonly string[] {
-  const targets: string[] = []
-  const stack: JsonValue[] = []
-  push(stack, root)
-  while (stack.length > 0) {
-    const value = pop(stack)
-    if (value === undefined || value === null || typeof value !== "object" || arrayIsArray(value)) continue
-    const record = value as Readonly<Record<string, JsonValue>>
-    if (objectHasOwn(record, "$ref") && typeof record.$ref === "string" && !startsWith(record.$ref, "#")) {
-      const target = referenceDocumentId(record.$ref)
-      if (target !== undefined) pushUnique(targets, target)
-    }
-    for (let index = 0; index < ONE_SCHEMA_KEYWORDS.length; index += 1) {
-      const child = record[ONE_SCHEMA_KEYWORDS[index]]
-      if (child !== undefined) push(stack, child)
-    }
-    for (let index = 0; index < ARRAY_SCHEMA_KEYWORDS.length; index += 1) {
-      const children = record[ARRAY_SCHEMA_KEYWORDS[index]]
-      if (!arrayIsArray(children)) continue
-      for (let childIndex = 0; childIndex < children.length; childIndex += 1) push(stack, children[childIndex])
-    }
-    for (let index = 0; index < MAP_SCHEMA_KEYWORDS.length; index += 1) {
-      const children = record[MAP_SCHEMA_KEYWORDS[index]]
-      if (children === null || typeof children !== "object" || arrayIsArray(children)) continue
-      const keys = objectKeys(children)
-      for (let childIndex = 0; childIndex < keys.length; childIndex += 1) {
-        push(stack, (children as Readonly<Record<string, JsonValue>>)[keys[childIndex]])
-      }
-    }
-  }
-  sortText(targets)
-  return objectFreeze(targets)
-}
-
-function referenceDocumentId(reference: string): string | undefined {
-  for (let index = 0; index < reference.length; index += 1) {
-    if (reference.charCodeAt(index) === 0x23) return slice(reference, 0, index)
-  }
-  return reference
-}
-
 function assertReferenceSubset(
   referenced: readonly string[],
   physical: readonly string[],
@@ -374,10 +312,6 @@ function push<T>(values: T[], value: T): void {
   reflectApply(arrayPush, values, [value])
 }
 
-function pop<T>(values: T[]): T | undefined {
-  return reflectApply(arrayPop, values, []) as T | undefined
-}
-
 function sortText(values: string[]): void {
   reflectApply(arraySort, values, [(left: string, right: string) => left < right ? -1 : left > right ? 1 : 0])
 }
@@ -392,6 +326,14 @@ function contains(values: readonly string[], value: string): boolean {
 }
 
 function findById<T extends { readonly id: string }>(values: readonly T[], id: string): T | undefined {
+  for (let index = 0; index < values.length; index += 1) if (values[index].id === id) return values[index]
+  return undefined
+}
+
+function findCompiledRoot(
+  values: readonly CompiledLocalJsonSchemaViewRoot[],
+  id: string
+): CompiledLocalJsonSchemaViewRoot | undefined {
   for (let index = 0; index < values.length; index += 1) if (values[index].id === id) return values[index]
   return undefined
 }
