@@ -72,14 +72,17 @@ export function snapshotWorkflowLockGenerationInput(
   return freezeWorkflowLockEvidence({ rawPackage, providers, bob })
 }
 
-
 export function snapshotWorkflowLockGenerationRawPackage(value: unknown): WorkflowLockRawPackageSnapshot {
   if (
     typeof value === "object"
     && value !== null
     && !isProxy(value)
     && weakSetHas(generationSnapshots, value)
-  ) return value as WorkflowLockRawPackageSnapshot
+  ) {
+    const revalidated = snapshotWorkflowLockRawPackage(value)
+    weakSetAdd(generationSnapshots, revalidated)
+    return revalidated
+  }
 
   const raw = snapshotExactWorkflowLockRecord(
     value,
