@@ -70,3 +70,36 @@ export {
   type XlsxWorkbookBudgetInput,
   type XlsxWorkbookBudgetSheet
 } from "./workbookBudget"
+export {
+  ProcessingCancellationError,
+  cancellationKindFromSignal,
+  cancellationOriginalReason,
+  constrainAbsoluteDeadline,
+  createAbsoluteDeadline,
+  createCancellationScope,
+  monotonicNowMilliseconds,
+  remainingDeadlineMilliseconds,
+  type AbsoluteProcessingDeadline,
+  type CancellationSignalLike,
+  type CreateProcessingCancellationScopeInput,
+  type ProcessingCancellationKind,
+  type ProcessingCancellationScope,
+  type SharedProcessingCancellationError
+} from "./deadlineCancellation"
+export {
+  MAX_PUBLIC_PATH_UTF8_BYTES,
+  PathPolicyError,
+  canonicalizePhysicalPathSync,
+  isPortablePathContained,
+  normalizeWorkspaceRelativePath,
+  resolvePhysicalContainedPath,
+  resolvePhysicalContainedPathSync,
+  selectDeepestPhysicalRoot,
+  type CanonicalPhysicalPath,
+  type CanonicalizePhysicalPathOptions,
+  type PhysicalContainedPath,
+  type PhysicalPathExpectedType,
+  type PortablePathPlatform,
+  type ResolvePhysicalContainedPathInput,
+  type SharedPathPolicyError
+} from "./pathPolicy"
