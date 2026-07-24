@@ -180,7 +180,7 @@
           "default": 120000,
           "minimum": 1000,
           "maximum": 600000,
-          "description": "Git／Bazaar コマンド1回あたりの実行上限時間（ミリ秒）です。"
+          "description": "コード整合プレレビューの前処理1回全体で共有する絶対期限（ミリ秒）です。Git／Bazaar の各コマンド、リポジトリ索引、文書抽出はこの期限を更新せず共有します。"
         },
         "bobCodeConsistency.textEncoding": {
           "type": "string",
@@ -289,7 +289,7 @@
     "depcheck": "^1.4.7",
     "iconv-lite": "^0.6.3",
     "knip": "^5.0.0",
-    "ts-prune": "^0.10.3",
+    "ts-prune": "^10.0.3",
     "typescript": "^5.4.5"
   }
 }
