@@ -22,9 +22,10 @@ function preflightOoxmlArchive(input) {
       "maximumArchiveBytes",
       "maximumEntries",
       "maximumEntryBytes",
-      "maximumExpandedBytes"
+      "maximumExpandedBytes",
+      "signal"
     ],
-    ["expectedKind", "maximumArchiveBytes", "maximumEntries", "maximumEntryBytes", "maximumExpandedBytes"],
+    ["expectedKind", "maximumArchiveBytes", "maximumEntries", "maximumEntryBytes", "maximumExpandedBytes", "signal"],
     "OOXML archive input"
   )
   if (!(values.archiveBytes instanceof Uint8Array)) {
@@ -52,7 +53,8 @@ function preflightOoxmlArchive(input) {
     expectedKind: values.expectedKind,
     maximumEntries: values.maximumEntries,
     maximumEntryBytes: values.maximumEntryBytes,
-    maximumExpandedBytes: values.maximumExpandedBytes
+    maximumExpandedBytes: values.maximumExpandedBytes,
+    signal: values.signal
   })
 }
 
