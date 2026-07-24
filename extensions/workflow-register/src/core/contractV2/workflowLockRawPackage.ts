@@ -1,4 +1,5 @@
 import { canonicalJsonDigest } from "./canonicalJson"
+import { preflightDenseWorkflowLockArrayLength } from "./workflowLockArrayPreflight"
 import type { Sha256Digest } from "./providerContract"
 import type { LockedFileEvidence } from "./workflowLockContract"
 import {
@@ -56,6 +57,7 @@ export function snapshotWorkflowLockRawPackage(value: unknown): WorkflowLockRawP
   const packageDigest = workflowLockDigest(record.packageDigest, "Workflow raw package packageDigest")
   if (generation !== packageDigest) throw new WorkflowLockRawPackageEvidenceError()
 
+  preflightDenseWorkflowLockArrayLength(record.files, MAX_FILES, "Workflow raw package files")
   const fileInputs = snapshotDenseWorkflowLockArray(record.files, MAX_FILES, "Workflow raw package files")
   const files: WorkflowLockFileSnapshot[] = []
   let totalBytes = 0
