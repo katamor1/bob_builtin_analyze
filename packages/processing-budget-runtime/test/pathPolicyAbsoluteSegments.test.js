@@ -6,7 +6,7 @@ const os = require("node:os")
 const path = require("node:path")
 const test = require("node:test")
 
-const { resolvePhysicalContainedPathSync } = require("../out")
+const { isPortablePathContained, resolvePhysicalContainedPathSync } = require("../out")
 
 test("absolute governed paths reject lexical dot and traversal components before normalization", async (t) => {
   const root = await fsp.mkdtemp(path.join(os.tmpdir(), "bob-path-absolute-dot-"))
@@ -45,4 +45,19 @@ test("physical resolution rejects foreign-platform absolute syntax", async (t) =
     }),
     (error) => error?.code === "path_policy_absolute"
   )
+})
+
+test("portable containment rejects raw dot and traversal components before normalization", () => {
+  for (const [root, target, platform] of [
+    ["C:\\Work\\Root", "C:\\Work\\Root\\.\\file.txt", "win32"],
+    ["C:\\Work\\Root", "C:\\Work\\Root\\a\\..\\file.txt", "win32"],
+    ["/work/root", "/work/root/./file.txt", "linux"],
+    ["/work/root", "/work/root/a/../file.txt", "linux"]
+  ]) {
+    assert.throws(
+      () => isPortablePathContained(root, target, platform),
+      (error) => error?.code === "path_policy_escape",
+      `${platform}: ${target}`
+    )
+  }
 })
