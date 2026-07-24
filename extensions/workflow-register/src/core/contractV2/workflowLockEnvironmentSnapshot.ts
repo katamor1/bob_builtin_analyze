@@ -10,18 +10,12 @@ import { bob as decodeBob } from "./workflowLockBob"
 import type { LockedBobBinding, LockedProviderBinding } from "./workflowLockContract"
 import { providers as decodeProviders } from "./workflowLockProvider"
 import {
-  WORKFLOW_LOCK_SCHEMA_PATH_PATTERN,
-  workflowLockFileByPath,
-  type WorkflowLockRawPackageSnapshot
-} from "./workflowLockRawPackage"
-import {
   compareWorkflowLockText,
   exactWorkflowLockJsonRecord,
   freezeWorkflowLockEvidence,
   normalizeWorkflowLockStringArray,
   snapshotDenseWorkflowLockArray,
   snapshotExactWorkflowLockRecord,
-  testWorkflowLockPattern,
   workflowLockPush,
   workflowLockSort
 } from "./workflowLockSnapshotUtilities"
@@ -39,8 +33,7 @@ const PROVIDER_FIELDS = freezeWorkflowLockEvidence([
 const BOB_FIELDS = freezeWorkflowLockEvidence(["profile", "requiredCapabilities", "taskCapabilities"] as const)
 
 export function snapshotWorkflowLockProviders(
-  value: unknown,
-  rawPackage: WorkflowLockRawPackageSnapshot
+  value: unknown
 ): readonly LockedProviderBinding[] {
   preflightDenseWorkflowLockArrayLength(value, 256, "Workflow lock providers")
   const inputs = snapshotDenseWorkflowLockArray(value, 256, "Workflow lock providers")
@@ -90,16 +83,7 @@ export function snapshotWorkflowLockProviders(
       throw new TypeError("Workflow lock providers contain a duplicate id.")
     }
   }
-  const result = decodeProviders(normalized)
-  for (let index = 0; index < result.length; index += 1) {
-    const provider = result[index]
-    assertProviderSchemaMatchesRaw(provider.inputSchema, rawPackage)
-    assertProviderSchemaMatchesRaw(provider.errorSchema, rawPackage)
-    if (provider.output.kind === "value") {
-      assertProviderSchemaMatchesRaw(provider.output.schema, rawPackage)
-    }
-  }
-  return result
+  return decodeProviders(normalized)
 }
 
 export function snapshotWorkflowLockBob(value: unknown): LockedBobBinding {
@@ -135,17 +119,4 @@ export function snapshotWorkflowLockBob(value: unknown): LockedBobBinding {
     requiredCapabilities,
     taskCapabilities
   }) as JsonValue)
-}
-
-function assertProviderSchemaMatchesRaw(
-  schema: { readonly id: string; readonly bytes: number; readonly digest: string },
-  rawPackage: WorkflowLockRawPackageSnapshot
-): void {
-  const file = workflowLockFileByPath(rawPackage, schema.id)
-  if (
-    file === undefined
-    || !testWorkflowLockPattern(WORKFLOW_LOCK_SCHEMA_PATH_PATTERN, file.path)
-    || file.byteLength !== schema.bytes
-    || file.digest !== schema.digest
-  ) throw new TypeError("Workflow provider schema evidence does not match raw package bytes.")
 }
