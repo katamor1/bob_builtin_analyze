@@ -1,8 +1,8 @@
+import type { LocalJsonSchemaInstanceKind } from "./jsonSchema"
 import {
-  inspectLocalJsonSchemaInstancePointer,
-  validateLocalJsonSchemaValue,
-  type LocalJsonSchemaInstanceKind
-} from "./jsonSchema"
+  inspectLocalJsonSchemaViewInstancePointer,
+  validateLocalJsonSchemaViewValue
+} from "./jsonSchemaCatalog"
 import {
   validateLocalJsonSchemaManualContract,
   type LocalJsonSchemaManualFieldContract
@@ -33,7 +33,7 @@ function validateInputDefaults(
     const input = document.inputs[index]
     if (!objectHasOwn(input, "default")) continue
     const schema = schemaById(files, input.schema, `/inputs/${index}/schema`)
-    const result = validateLocalJsonSchemaValue({
+    const result = validateLocalJsonSchemaViewValue({
       compiled: schema.compiled,
       value: input.default,
       diagnosticCode: "WF2_PACKAGE_LAYOUT_INVALID",
@@ -119,7 +119,7 @@ function validateArtifactSchemas(
   for (let index = 0; index < document.requiredArtifacts.length; index += 1) {
     const artifact = document.requiredArtifacts[index]
     const schema = schemaById(files, artifact.schema, `/requiredArtifacts/${index}/schema`)
-    const result = inspectLocalJsonSchemaInstancePointer({ compiled: schema.compiled, pointer: "" })
+    const result = inspectLocalJsonSchemaViewInstancePointer({ compiled: schema.compiled, pointer: "" })
     if (!result.ok) {
       fail(`/requiredArtifacts/${index}/schema`, "Workflow artifact schema root is unresolved.")
     }
