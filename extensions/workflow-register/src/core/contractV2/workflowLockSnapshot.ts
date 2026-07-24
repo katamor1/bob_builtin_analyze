@@ -53,7 +53,7 @@ export function snapshotWorkflowLockGenerationInput(
     "Workflow lock generation input"
   )
   const rawPackage = snapshotWorkflowLockRawPackage(outer.rawPackage)
-  const providers = snapshotWorkflowLockProviders(outer.providers, rawPackage)
+  const providers = snapshotWorkflowLockProviders(outer.providers)
   const bob = snapshotWorkflowLockBob(outer.bob)
   return freezeWorkflowLockEvidence({ rawPackage, providers, bob })
 }
