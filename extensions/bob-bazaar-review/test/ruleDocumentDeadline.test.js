@@ -18,6 +18,12 @@ test("rule document batches create one deadline and one cancellation scope befor
   assert.match(source, /finally \{[\s\S]*cancellation\.dispose\(\)/)
 })
 
+test("every bounded source fingerprint receives the operation cancellation signal", () => {
+  const calls = [...source.matchAll(/fingerprintSource\([\s\S]*?\}\)/g)].map((match) => match[0])
+  assert.equal(calls.length, 3)
+  assert.ok(calls.every((call) => /signal:\s*context\.cancellation\.signal|signal:\s*cancellation\.signal/.test(call)))
+})
+
 test("every PDF in a batch receives the operation deadline rather than a nested timeout", () => {
   assert.match(source, /deadline: context\.deadline/)
   assert.match(source, /signal: context\.cancellation\.signal/)
