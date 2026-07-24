@@ -106,8 +106,8 @@ export function compileWorkflowPackage(input: CompileWorkflowPackageInput): Work
     const semanticFiles = compileSemanticFiles(rawPackage, document)
     validateCompilerValueReferences(document, semanticFiles)
     validateCompilerSchemaRoles(document, semanticFiles)
-    const bindings = bindCompilerEnvironment(document, semanticFiles, environmentState)
     const predicates = compileWorkflowPredicates(document, semanticFiles)
+    const bindings = bindCompilerEnvironment(document, semanticFiles, environmentState)
 
     const providerEvidence: typeof bindings.providers[number]["lockEvidence"][] = []
     for (let index = 0; index < bindings.providers.length; index += 1) {
