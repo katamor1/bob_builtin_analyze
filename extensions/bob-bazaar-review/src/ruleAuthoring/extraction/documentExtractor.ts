@@ -381,7 +381,7 @@ function operationDeadlineForRequests(requests: readonly RuleDocumentExtractionR
 
 function sharedRequestSignal(requests: readonly RuleDocumentExtractionRequest[]): SharedCancellationSignal | undefined {
   const signals = requests
-    .map((request) => request.signal ?? request.pdf?.signal)
+    .flatMap((request) => [request.signal, request.pdf?.signal])
     .filter((signal): signal is SharedCancellationSignal => signal !== undefined)
   const unique = [...new Set(signals)]
   if (unique.length > 1) {
