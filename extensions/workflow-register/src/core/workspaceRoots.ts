@@ -24,7 +24,7 @@ export async function findMarkerRoots(folders: readonly WorkspaceFolderLike[], m
   const direct: MarkerRootCandidate[] = []
   for (const folder of folders) {
     const root = physicalDirectory(folder.uri.fsPath)
-    if (root && rootHasMarker(root, marker)) direct.push(candidate(root, folder.name, marker, "direct", folder))
+    if (root && await rootHasMarker(root, marker)) direct.push(candidate(root, folder.name, marker, "direct", folder))
   }
   if (direct.length > 0) return sortCandidates(direct)
 
@@ -35,7 +35,7 @@ export async function findMarkerRoots(folders: readonly WorkspaceFolderLike[], m
     for (const entry of await safeReadDir(root)) {
       if (entry.isSymbolicLink() || !entry.isDirectory()) continue
       const childRoot = physicalDirectory(path.join(root, entry.name))
-      if (childRoot && rootHasMarker(childRoot, marker)) child.push(candidate(childRoot, entry.name, marker, "child", folder))
+      if (childRoot && await rootHasMarker(childRoot, marker)) child.push(candidate(childRoot, entry.name, marker, "child", folder))
     }
   }
   return sortCandidates(child)
