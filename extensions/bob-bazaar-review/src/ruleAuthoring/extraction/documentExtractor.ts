@@ -1,8 +1,12 @@
 import * as path from "node:path"
 import {
   ProcessingBudgetLedger,
-  type SharedProcessingBudgetLedger,
-  type SharedWorkbookBudgetCancellation
+  createAbsoluteDeadline,
+  createCancellationScope,
+  type SharedAbsoluteDeadline,
+  type SharedCancellationScope,
+  type SharedCancellationSignal,
+  type SharedProcessingBudgetLedger
 } from "../../sharedProcessingBudgetRuntime"
 import { DEFAULT_RULE_AUTHORING_LIMITS, type RuleAuthoringLimits } from "../ruleAuthoringLimits"
 import {
@@ -26,12 +30,16 @@ import { extractPdf, type PdfExtractionOptions } from "./pdfExtractor"
 import { extractXlsx } from "./xlsxExtractor"
 
 type LocalDocumentMediaType = RuleSourceMediaType | "doc" | "xls"
+const DEFAULT_RULE_DOCUMENT_TIMEOUT_MS = 120_000
+const MIN_RULE_DOCUMENT_TIMEOUT_MS = 1_000
+const MAX_RULE_DOCUMENT_TIMEOUT_MS = 600_000
 
 export interface RuleDocumentExtractionRequest {
   filePath: string
   logicalName?: string
-  signal?: SharedWorkbookBudgetCancellation
-  pdf?: Omit<PdfExtractionOptions, "sourceId" | "maxChunkBytes" | "maxOutputBytes">
+  deadline?: SharedAbsoluteDeadline
+  signal?: SharedCancellationSignal
+  pdf?: Omit<PdfExtractionOptions, "sourceId" | "maxChunkBytes" | "maxOutputBytes" | "deadline">
 }
 
 export interface DocumentExtractionResult {
@@ -91,6 +99,8 @@ interface ExtractionContext {
   sourceId?: string
   beforeFingerprint?: SourceFingerprint
   ledger: SharedProcessingBudgetLedger
+  deadline: SharedAbsoluteDeadline
+  cancellation: SharedCancellationScope
 }
 
 const LEGACY_EXTRACTOR = Object.freeze({ id: "legacy-office", version: "1" })
@@ -98,15 +108,31 @@ const LEGACY_EXTRACTOR = Object.freeze({ id: "legacy-office", version: "1" })
 export async function extractRuleDocument(
   request: RuleDocumentExtractionRequest
 ): Promise<DocumentExtractionResult> {
-  const ledger = documentLedger(DEFAULT_RULE_AUTHORING_LIMITS)
-  ledger.reserve("document_count", 1).commit()
-  return extractRuleDocumentWithContext(request, { limits: DEFAULT_RULE_AUTHORING_LIMITS, ledger })
+  const deadline = operationDeadlineForRequests([request])
+  const cancellation = createCancellationScope({
+    deadline,
+    signal: sharedRequestSignal([request])
+  })
+  try {
+    cancellation.throwIfCancelled()
+    const ledger = documentLedger(DEFAULT_RULE_AUTHORING_LIMITS)
+    ledger.reserve("document_count", 1).commit()
+    return await extractRuleDocumentWithContext(request, {
+      limits: DEFAULT_RULE_AUTHORING_LIMITS,
+      ledger,
+      deadline,
+      cancellation
+    })
+  } finally {
+    cancellation.dispose()
+  }
 }
 
 async function extractRuleDocumentWithContext(
   request: RuleDocumentExtractionRequest,
   context: ExtractionContext
 ): Promise<DocumentExtractionResult> {
+  context.cancellation.throwIfCancelled()
   const limits = context.limits
   const absolutePath = path.resolve(request.filePath)
   const logicalName = request.logicalName ?? path.basename(absolutePath)
@@ -116,6 +142,7 @@ async function extractRuleDocumentWithContext(
     maximumBytes: limits.maxSourceBytes,
     ledger: context.ledger
   })
+  context.cancellation.throwIfCancelled()
   const byteSize = fingerprintByteSize(before)
   if (byteSize > limits.maxSourceBytes) {
     throw new Error(`Rule source exceeds the ${limits.maxSourceBytes}-byte per-source limit`)
@@ -144,7 +171,7 @@ async function extractRuleDocumentWithContext(
       maxArchiveEntries: limits.maxOoxmlEntries,
       maxExpandedBytes: limits.maxOoxmlDeclaredUncompressedBytes,
       budgetLedger: context.ledger,
-      signal: request.signal
+      signal: context.cancellation.signal
     }
     extracted = mediaType === "docx"
       ? await extractDocx(absolutePath, snapshotContext)
@@ -155,13 +182,16 @@ async function extractRuleDocumentWithContext(
       sourceId,
       maxChunkBytes: limits.maxChunkBytes,
       maxOutputBytes: limits.maxPdfOutputBytes,
-      signal: request.signal ?? request.pdf?.signal
+      deadline: context.deadline,
+      signal: context.cancellation.signal as AbortSignal
     })
   }
 
+  context.cancellation.throwIfCancelled()
   const after = await fingerprintSource(absolutePath, {
     maximumBytes: limits.maxSourceBytes
   })
+  context.cancellation.throwIfCancelled()
   assertStableSourceFingerprint(before, after)
   const shareable = (mediaType === "docx" || mediaType === "xlsx" || mediaType === "pdf") &&
     (extracted.status === "success" || extracted.status === "partial")
@@ -184,136 +214,182 @@ export async function extractRuleDocuments(
   existingManifest: RuleSourceManifestV1 | undefined,
   limits: RuleAuthoringLimits = DEFAULT_RULE_AUTHORING_LIMITS
 ): Promise<RuleDocumentBatchResult> {
-  if (existingManifest) assertCanonicalExistingManifest(existingManifest)
-  const effectiveLimits = boundedRuleAuthoringLimits(limits)
-  const ledger = documentLedger(effectiveLimits)
-  ledger.reserve("document_count", requests.length).commit()
+  const deadline = operationDeadlineForRequests(requests)
+  const cancellation = createCancellationScope({
+    deadline,
+    signal: sharedRequestSignal(requests)
+  })
+  try {
+    cancellation.throwIfCancelled()
+    if (existingManifest) assertCanonicalExistingManifest(existingManifest)
+    const effectiveLimits = boundedRuleAuthoringLimits(limits)
+    const ledger = documentLedger(effectiveLimits)
+    ledger.reserve("document_count", requests.length).commit()
 
-  const fingerprinted = await Promise.all(requests.map(async (request, selectionIndex): Promise<FingerprintedRequest> => {
-    const absolutePath = path.resolve(request.filePath)
-    const logicalName = request.logicalName ?? path.basename(absolutePath)
-    assertLogicalName(logicalName)
-    const fingerprint = await fingerprintSource(absolutePath, {
-      maximumBytes: effectiveLimits.maxSourceBytes,
-      ledger,
-      target: `rule-source-selection:${selectionIndex}`
-    })
-    const byteSize = fingerprintByteSize(fingerprint)
-    if (byteSize > effectiveLimits.maxSourceBytes) {
-      throw new Error(`Rule source exceeds the ${effectiveLimits.maxSourceBytes}-byte per-source limit`)
+    const fingerprinted = await Promise.all(requests.map(async (request, selectionIndex): Promise<FingerprintedRequest> => {
+      cancellation.throwIfCancelled()
+      const absolutePath = path.resolve(request.filePath)
+      const logicalName = request.logicalName ?? path.basename(absolutePath)
+      assertLogicalName(logicalName)
+      const fingerprint = await fingerprintSource(absolutePath, {
+        maximumBytes: effectiveLimits.maxSourceBytes,
+        ledger,
+        target: `rule-source-selection:${selectionIndex}`
+      })
+      cancellation.throwIfCancelled()
+      const byteSize = fingerprintByteSize(fingerprint)
+      if (byteSize > effectiveLimits.maxSourceBytes) {
+        throw new Error(`Rule source exceeds the ${effectiveLimits.maxSourceBytes}-byte per-source limit`)
+      }
+      return { request, absolutePath, logicalName, fingerprint }
+    }))
+    const prepared: PreparedRequest[] = fingerprinted.map((item) => ({
+      ...item,
+      mediaType: classifySelectedPath(item.absolutePath, item.logicalName)
+    }))
+
+    const existingByHash = new Map(
+      (existingManifest?.sources ?? []).map((source) => [source.sha256, source] as const)
+    )
+    const groups = new Map<string, PreparedRequest[]>()
+    for (const item of prepared) {
+      const group = groups.get(item.fingerprint.sha256) ?? []
+      group.push(item)
+      groups.set(item.fingerprint.sha256, group)
     }
-    return { request, absolutePath, logicalName, fingerprint }
-  }))
-  const prepared: PreparedRequest[] = fingerprinted.map((item) => ({
-    ...item,
-    mediaType: classifySelectedPath(item.absolutePath, item.logicalName)
-  }))
 
-  const existingByHash = new Map(
-    (existingManifest?.sources ?? []).map((source) => [source.sha256, source] as const)
-  )
-  const groups = new Map<string, PreparedRequest[]>()
-  for (const item of prepared) {
-    const group = groups.get(item.fingerprint.sha256) ?? []
-    group.push(item)
-    groups.set(item.fingerprint.sha256, group)
-  }
-
-  const canonical: PreparedRequest[] = []
-  const duplicates: RuleDocumentDuplicate[] = []
-  for (const [sha256, unsortedGroup] of groups) {
-    const group = [...unsortedGroup].sort(comparePrepared)
-    const existing = existingByHash.get(sha256)
-    if (existing) {
-      for (const item of group) {
+    const canonical: PreparedRequest[] = []
+    const duplicates: RuleDocumentDuplicate[] = []
+    for (const [sha256, unsortedGroup] of groups) {
+      const group = [...unsortedGroup].sort(comparePrepared)
+      const existing = existingByHash.get(sha256)
+      if (existing) {
+        for (const item of group) {
+          duplicates.push({
+            logical_name: item.logicalName,
+            sha256,
+            reason: "duplicate_existing_manifest",
+            duplicate_of: existing.source_id
+          })
+          if (isLegacyMediaType(item.mediaType)) canonical.push(item)
+        }
+        continue
+      }
+      canonical.push(group[0])
+      for (const item of group.slice(1)) {
         duplicates.push({
           logical_name: item.logicalName,
           sha256,
-          reason: "duplicate_existing_manifest",
-          duplicate_of: existing.source_id
+          reason: "duplicate_in_run",
+          duplicate_of: group[0].logicalName
         })
         if (isLegacyMediaType(item.mediaType)) canonical.push(item)
       }
-      continue
     }
-    canonical.push(group[0])
-    for (const item of group.slice(1)) {
-      duplicates.push({
-        logical_name: item.logicalName,
-        sha256,
-        reason: "duplicate_in_run",
-        duplicate_of: group[0].logicalName
-      })
-      if (isLegacyMediaType(item.mediaType)) canonical.push(item)
+    canonical.sort(comparePrepared)
+    duplicates.sort((left, right) => left.logical_name.localeCompare(right.logical_name) || left.sha256.localeCompare(right.sha256))
+
+    const sourceIds = assignSourceIds([
+      ...(existingManifest?.sources ?? []).map((source) => source.sha256),
+      ...canonical.map((item) => item.fingerprint.sha256)
+    ])
+    const documents: DocumentExtractionResult[] = []
+    for (const item of canonical) {
+      cancellation.throwIfCancelled()
+      const sourceId = sourceIds.get(item.fingerprint.sha256)
+      if (!sourceId) throw new Error("Source ID assignment failed")
+      documents.push(await extractRuleDocumentWithContext({
+        ...item.request,
+        filePath: item.absolutePath,
+        logicalName: item.logicalName
+      }, {
+        limits: effectiveLimits,
+        sourceId,
+        beforeFingerprint: item.fingerprint,
+        ledger,
+        deadline,
+        cancellation
+      }))
     }
-  }
-  canonical.sort(comparePrepared)
-  duplicates.sort((left, right) => left.logical_name.localeCompare(right.logical_name) || left.sha256.localeCompare(right.sha256))
 
-  const sourceIds = assignSourceIds([
-    ...(existingManifest?.sources ?? []).map((source) => source.sha256),
-    ...canonical.map((item) => item.fingerprint.sha256)
-  ])
-  const documents: DocumentExtractionResult[] = []
-  for (const item of canonical) {
-    const sourceId = sourceIds.get(item.fingerprint.sha256)
-    if (!sourceId) throw new Error("Source ID assignment failed")
-    documents.push(await extractRuleDocumentWithContext({
-      ...item.request,
-      filePath: item.absolutePath,
-      logicalName: item.logicalName
-    }, {
-      limits: effectiveLimits,
-      sourceId,
-      beforeFingerprint: item.fingerprint,
-      ledger
-    }))
-  }
+    const manifestInputs: RuleSourceManifestInputSource[] = documents
+      .filter((document): document is DocumentExtractionResult & { mediaType: RuleSourceMediaType } => document.shareable)
+      .map((document) => ({
+        logicalName: document.logicalName,
+        mediaType: document.mediaType,
+        sha256: document.sha256,
+        byteSize: document.byteSize,
+        extractionStatus: document.status,
+        extractor: document.extractor,
+        warnings: document.warnings
+      }))
+    const manifest = buildRuleSourceManifest({
+      generatedAt: new Date().toISOString(),
+      sources: manifestInputs
+    })
+    for (const source of manifest.sources) {
+      const sourceId = sourceIds.get(source.sha256)
+      if (!sourceId) throw new Error("Manifest source ID assignment failed")
+      source.source_id = sourceId
+    }
 
-  const manifestInputs: RuleSourceManifestInputSource[] = documents
-    .filter((document): document is DocumentExtractionResult & { mediaType: RuleSourceMediaType } => document.shareable)
-    .map((document) => ({
-      logicalName: document.logicalName,
-      mediaType: document.mediaType,
-      sha256: document.sha256,
-      byteSize: document.byteSize,
-      extractionStatus: document.status,
-      extractor: document.extractor,
-      warnings: document.warnings
-    }))
-  const manifest = buildRuleSourceManifest({
-    generatedAt: new Date().toISOString(),
-    sources: manifestInputs
-  })
-  for (const source of manifest.sources) {
-    const sourceId = sourceIds.get(source.sha256)
-    if (!sourceId) throw new Error("Manifest source ID assignment failed")
-    source.source_id = sourceId
-  }
+    const documentByPath = new Map(documents.map((document) => [document.localPath, document]))
+    const localSourceMappings = [...prepared].sort(comparePrepared).map((item): LocalSourceMapping => {
+      const document = documentByPath.get(item.absolutePath)
+      return {
+        logicalName: item.logicalName,
+        absolutePath: item.absolutePath,
+        sha256: item.fingerprint.sha256,
+        status: document?.status ?? "duplicate"
+      }
+    })
+    const diagnostics = documents.flatMap((document) => document.warnings.map((code) => ({
+      logical_name: document.logicalName,
+      code
+    })))
 
-  const documentByPath = new Map(documents.map((document) => [document.localPath, document]))
-  const localSourceMappings = [...prepared].sort(comparePrepared).map((item): LocalSourceMapping => {
-    const document = documentByPath.get(item.absolutePath)
     return {
-      logicalName: item.logicalName,
-      absolutePath: item.absolutePath,
-      sha256: item.fingerprint.sha256,
-      status: document?.status ?? "duplicate"
+      manifest,
+      documents,
+      aiChunks: documents.filter((document) => document.shareable).flatMap((document) => document.chunks),
+      localSourceMappings,
+      duplicates,
+      diagnostics
     }
-  })
-  const diagnostics = documents.flatMap((document) => document.warnings.map((code) => ({
-    logical_name: document.logicalName,
-    code
-  })))
-
-  return {
-    manifest,
-    documents,
-    aiChunks: documents.filter((document) => document.shareable).flatMap((document) => document.chunks),
-    localSourceMappings,
-    duplicates,
-    diagnostics
+  } finally {
+    cancellation.dispose()
   }
+}
+
+function operationDeadlineForRequests(requests: readonly RuleDocumentExtractionRequest[]): SharedAbsoluteDeadline {
+  const explicitDeadlines = requests
+    .map((request) => request.deadline)
+    .filter((deadline): deadline is SharedAbsoluteDeadline => deadline !== undefined)
+  if (explicitDeadlines.length > 0) {
+    return Object.freeze({
+      expires_at_monotonic_ms: Math.min(...explicitDeadlines.map((deadline) => deadline.expires_at_monotonic_ms))
+    })
+  }
+  const timeout = requests.length === 0
+    ? DEFAULT_RULE_DOCUMENT_TIMEOUT_MS
+    : Math.min(...requests.map((request) => normalizeRuleDocumentTimeout(request.pdf?.timeoutMs)))
+  return createAbsoluteDeadline(timeout)
+}
+
+function sharedRequestSignal(requests: readonly RuleDocumentExtractionRequest[]): SharedCancellationSignal | undefined {
+  const signals = requests
+    .map((request) => request.signal ?? request.pdf?.signal)
+    .filter((signal): signal is SharedCancellationSignal => signal !== undefined)
+  const unique = [...new Set(signals)]
+  if (unique.length > 1) {
+    throw new Error("Rule document batch requests must share one cancellation signal")
+  }
+  return unique[0]
+}
+
+function normalizeRuleDocumentTimeout(value: number | undefined): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return DEFAULT_RULE_DOCUMENT_TIMEOUT_MS
+  return Math.max(MIN_RULE_DOCUMENT_TIMEOUT_MS, Math.min(MAX_RULE_DOCUMENT_TIMEOUT_MS, Math.floor(value)))
 }
 
 function documentLedger(limits: RuleAuthoringLimits): SharedProcessingBudgetLedger {
