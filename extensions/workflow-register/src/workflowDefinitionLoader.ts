@@ -1,13 +1,5 @@
 import * as vscode from "vscode"
-import type {
-  BobWorkflowTaskBinding,
-  LoadResult,
-  WorkflowDefinition
-} from "./bobWorkflowTypes"
-import {
-  BOB_2_0_1_PROFILE_DIGEST,
-  BOB_2_0_1_TASK_CAPABILITIES
-} from "./core/contractV2/bobProfile"
+import type { LoadResult, WorkflowDefinition } from "./bobWorkflowTypes"
 import type { WorkflowContractV2Diagnostic } from "./core/contractV2/diagnostics"
 import type { CoreWorkflowDefinition } from "./core/model"
 import {
@@ -18,6 +10,7 @@ import {
   adaptCoreWorkflowForBob,
   qualifyDuplicateWorkflowIds
 } from "./workflowAdapter"
+import { LEGACY_BOB_TASK_BINDING } from "./workflowBobTaskBinding"
 import type { WorkflowContractV2Entrypoint } from "./workflowContractV2Entrypoint"
 import { adaptCompiledWorkflowForProduct } from "./workflowContractV2View"
 import {
@@ -26,13 +19,6 @@ import {
   type WorkflowPackageSlotCandidate
 } from "./workflowDiscovery"
 import { validateAndDescribeWorkflow } from "./workflowDiagnostics"
-
-// This loader is the legacy v1 document path. Contract v2 package slots always
-// enter through WorkflowContractV2Entrypoint and never claim v2 lock evidence here.
-const LEGACY_BOB_TASK_BINDING: BobWorkflowTaskBinding = Object.freeze({
-  profileDigest: BOB_2_0_1_PROFILE_DIGEST,
-  taskCapabilities: BOB_2_0_1_TASK_CAPABILITIES
-})
 
 export async function loadWorkspaceWorkflows(
   sourceId: string,
