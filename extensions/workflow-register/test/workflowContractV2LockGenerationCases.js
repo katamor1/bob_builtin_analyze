@@ -70,7 +70,7 @@ test("lock evidence is rebuilt from exact raw package bytes", () => {
   const lock = lockModule.generateWorkflowPackageLock(input)
   const byPath = new Map(input.rawPackage.files.map((file) => [file.path, file]))
 
-  assert.deepEqual(lock.workflow, {
+  assert.deepEqual({ ...lock.workflow }, {
     path: "workflow.yaml",
     bytes: byPath.get("workflow.yaml").byteLength,
     digest: byPath.get("workflow.yaml").digest
