@@ -91,3 +91,68 @@ test("an allowed exit cannot settle after the absolute deadline when its timer c
     else delete require.cache[sharedPath]
   }
 })
+
+test("the deadline is rechecked immediately before spawn", async () => {
+  const runnerPath = require.resolve("../out/bazaar/externalProcessRunner")
+  const sharedPath = require.resolve("../out/sharedProcessingBudgetRuntime")
+  const originalSpawn = childProcess.spawn
+  const originalShared = require.cache[sharedPath]
+  const signal = {
+    aborted: false,
+    reason: undefined,
+    addEventListener() {},
+    removeEventListener() {}
+  }
+  const deadlineReason = Object.assign(new Error("deadline"), {
+    code: "processing_cancelled",
+    kind: "deadline"
+  })
+  let spawnCalls = 0
+
+  require.cache[sharedPath] = {
+    id: sharedPath,
+    filename: sharedPath,
+    loaded: true,
+    exports: {
+      createCancellationScope: () => ({
+        signal,
+        throwIfCancelled() {
+          signal.aborted = true
+          signal.reason = deadlineReason
+          throw deadlineReason
+        },
+        dispose() {}
+      }),
+      cancellationKindFromSignal: () => signal.aborted ? "deadline" : undefined
+    },
+    children: [],
+    paths: []
+  }
+  childProcess.spawn = () => {
+    spawnCalls += 1
+    throw new Error("spawn must not be reached after the deadline")
+  }
+  delete require.cache[runnerPath]
+
+  try {
+    const { ExternalProcessError, runExternalProcess } = require(runnerPath)
+    await assert.rejects(
+      runExternalProcess({
+        command: "fake-command",
+        args: [],
+        cwd: process.cwd(),
+        maxStdoutBytes: 1024,
+        deadline: Object.freeze({ expires_at_monotonic_ms: Number.MAX_SAFE_INTEGER })
+      }),
+      (error) => error instanceof ExternalProcessError
+        && error.kind === "timeout"
+        && error.terminationCause === "deadline"
+    )
+    assert.equal(spawnCalls, 0)
+  } finally {
+    childProcess.spawn = originalSpawn
+    delete require.cache[runnerPath]
+    if (originalShared) require.cache[sharedPath] = originalShared
+    else delete require.cache[sharedPath]
+  }
+})
