@@ -3,7 +3,8 @@ import * as path from "node:path"
 import {
   ProcessingBudgetLedger,
   readBoundedDocumentFile,
-  type SharedProcessingBudgetLedger
+  type SharedProcessingBudgetLedger,
+  type SharedWorkbookBudgetCancellation
 } from "../sharedProcessingBudgetRuntime"
 import { DEFAULT_RULE_AUTHORING_LIMITS } from "./ruleAuthoringLimits"
 
@@ -20,6 +21,7 @@ export interface SourceFingerprintOptions {
   rootPath?: string
   target?: string
   ledger?: SharedProcessingBudgetLedger
+  signal?: SharedWorkbookBudgetCancellation
 }
 
 const FINGERPRINT_FIELDS: ReadonlyArray<keyof SourceFingerprint> = [
@@ -48,7 +50,8 @@ export async function fingerprintSource(
     rootPath: options.rootPath ?? path.dirname(absolutePath),
     target: options.target ?? sourceTarget(absolutePath),
     ledger,
-    maximumFileBytes: maximumBytes
+    maximumFileBytes: maximumBytes,
+    signal: options.signal
   })
 
   return {
