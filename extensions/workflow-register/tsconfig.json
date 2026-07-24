@@ -8,8 +8,10 @@
     "sourceMap": true,
     "strict": true,
     "esModuleInterop": true,
+    "allowJs": true,
+    "checkJs": false,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts", "src/**/*.js"]
 }

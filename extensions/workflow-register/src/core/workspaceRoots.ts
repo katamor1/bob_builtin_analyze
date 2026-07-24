@@ -1,5 +1,6 @@
 import * as fs from "fs/promises"
 import * as path from "path"
+import { resolvePhysicalContainedPathSync } from "../sharedProcessingBudgetRuntime"
 
 export interface WorkspaceFolderLike {
   name: string
@@ -20,37 +21,28 @@ export async function findWorkflowRootCandidates(folders: readonly WorkspaceFold
 }
 
 export async function findMarkerRoots(folders: readonly WorkspaceFolderLike[], marker: string): Promise<MarkerRootCandidate[]> {
-  // 同一 workspace root と子ディレクトリ root の両方を扱うため、直下 marker を優先し、なければ一段下だけを候補にする。
   const direct: MarkerRootCandidate[] = []
   for (const folder of folders) {
-    const root = path.resolve(folder.uri.fsPath)
-    if (await rootHasMarker(root, marker)) {
-      direct.push(candidate(root, folder.name, marker, "direct", folder))
-    }
+    const root = physicalDirectory(folder.uri.fsPath)
+    if (root && rootHasMarker(root, marker)) direct.push(candidate(root, folder.name, marker, "direct", folder))
   }
   if (direct.length > 0) return sortCandidates(direct)
 
   const child: MarkerRootCandidate[] = []
   for (const folder of folders) {
-    const root = path.resolve(folder.uri.fsPath)
+    const root = physicalDirectory(folder.uri.fsPath)
+    if (!root) continue
     for (const entry of await safeReadDir(root)) {
-      if (!entry.isDirectory()) continue
-      const childRoot = path.join(root, entry.name)
-      if (await rootHasMarker(childRoot, marker)) {
-        child.push(candidate(childRoot, entry.name, marker, "child", folder))
-      }
+      if (entry.isSymbolicLink() || !entry.isDirectory()) continue
+      const childRoot = physicalDirectory(path.join(root, entry.name))
+      if (childRoot && rootHasMarker(childRoot, marker)) child.push(candidate(childRoot, entry.name, marker, "child", folder))
     }
   }
   return sortCandidates(child)
 }
 
 export async function rootHasMarker(root: string, marker: string): Promise<boolean> {
-  try {
-    const stat = await fs.stat(path.join(root, marker))
-    return stat.isDirectory()
-  } catch {
-    return false
-  }
+  return rootHasMarkerSync(root, marker)
 }
 
 export function workspaceRootFromFile(filePath: string, marker: string): string | undefined {
@@ -58,8 +50,20 @@ export function workspaceRootFromFile(filePath: string, marker: string): string 
   const parts = resolved.split(path.sep)
   const markerIndex = parts.lastIndexOf(marker)
   if (markerIndex <= 0) return undefined
-  const root = parts.slice(0, markerIndex).join(path.sep)
-  return root || path.parse(resolved).root
+  const lexicalRoot = parts.slice(0, markerIndex).join(path.sep) || path.parse(resolved).root
+  const root = physicalDirectory(lexicalRoot)
+  if (!root || !rootHasMarkerSync(root, marker)) return undefined
+  try {
+    resolvePhysicalContainedPathSync({
+      rootPath: root,
+      candidatePath: resolved,
+      allowAbsolute: true,
+      mustExist: false
+    })
+    return root
+  } catch {
+    return undefined
+  }
 }
 
 export function relativePathFromRoot(root: string, filePath: string): string {
@@ -67,7 +71,49 @@ export function relativePathFromRoot(root: string, filePath: string): string {
 }
 
 export function fallbackWorkspaceRootCandidates(folders: readonly WorkspaceFolderLike[]): MarkerRootCandidate[] {
-  return sortCandidates(folders.map((folder) => candidate(path.resolve(folder.uri.fsPath), folder.name, ".bob", "direct", folder)))
+  const candidates: MarkerRootCandidate[] = []
+  const seen = new Set<string>()
+  for (const folder of folders) {
+    const root = physicalDirectory(folder.uri.fsPath)
+    if (!root) continue
+    const identity = process.platform === "win32" ? root.toLowerCase() : root
+    if (seen.has(identity)) continue
+    seen.add(identity)
+    candidates.push(candidate(root, folder.name, ".bob", "direct", folder))
+  }
+  return sortCandidates(candidates)
+}
+
+function rootHasMarkerSync(root: string, marker: string): boolean {
+  const physicalRoot = physicalDirectory(root)
+  if (!physicalRoot) return false
+  try {
+    resolvePhysicalContainedPathSync({
+      rootPath: physicalRoot,
+      candidatePath: marker,
+      allowAbsolute: false,
+      mustExist: true,
+      expectedType: "directory"
+    })
+    return true
+  } catch {
+    return false
+  }
+}
+
+function physicalDirectory(value: string): string | undefined {
+  const absolute = path.resolve(value)
+  try {
+    return resolvePhysicalContainedPathSync({
+      rootPath: absolute,
+      candidatePath: absolute,
+      allowAbsolute: true,
+      mustExist: true,
+      expectedType: "directory"
+    }).root_path
+  } catch {
+    return undefined
+  }
 }
 
 function candidate(root: string, name: string, marker: string, depth: "direct" | "child", folder: WorkspaceFolderLike): MarkerRootCandidate {
@@ -77,11 +123,11 @@ function candidate(root: string, name: string, marker: string, depth: "direct" |
     marker,
     depth,
     workspaceFolderName: folder.name,
-    workspaceFolderRoot: path.resolve(folder.uri.fsPath)
+    workspaceFolderRoot: physicalDirectory(folder.uri.fsPath) ?? path.resolve(folder.uri.fsPath)
   }
 }
 
-async function safeReadDir(root: string): Promise<Array<{ name: string; isDirectory: () => boolean }>> {
+async function safeReadDir(root: string): Promise<Array<{ name: string; isDirectory: () => boolean; isSymbolicLink: () => boolean }>> {
   try {
     return await fs.readdir(root, { withFileTypes: true })
   } catch {
