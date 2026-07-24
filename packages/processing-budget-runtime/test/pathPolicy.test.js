@@ -36,6 +36,29 @@ test("workspace-relative normalization accepts spaces and Japanese while rejecti
   }
 })
 
+test("portable normalization rejects Windows device aliases, streams, reserved characters, and trailing dots", () => {
+  for (const value of [
+    "NUL",
+    "nul.txt",
+    "CON.log",
+    "COM1",
+    "COM¹.txt",
+    "LPT9.tar.gz",
+    "report.txt:secret",
+    "bad<name>.txt",
+    "bad|name.txt",
+    "bad?.txt",
+    "bad*.txt",
+    "trailing."
+  ]) {
+    assert.throws(
+      () => normalizeWorkspaceRelativePath(value),
+      (error) => error?.code === "path_policy_invalid",
+      value
+    )
+  }
+})
+
 test("portable containment handles drive and UNC paths without device aliases", () => {
   assert.equal(isPortablePathContained("C:\\Work\\Root", "c:\\work\\root\\資料\\a.txt", "win32"), true)
   assert.equal(isPortablePathContained("C:\\Work\\Root", "C:\\Work\\Other\\a.txt", "win32"), false)
