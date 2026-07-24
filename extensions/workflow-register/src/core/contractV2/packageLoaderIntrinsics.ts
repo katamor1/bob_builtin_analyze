@@ -1,5 +1,7 @@
 import { types as utilTypes } from "node:util"
 
+const WINDOWS_DRIVE_ABSOLUTE_PATTERN = /^[A-Za-z]:[\\/]/u
+
 export const isProxy = utilTypes.isProxy
 export const arrayIsArray = Array.isArray
 export const arrayPrototype = Array.prototype
@@ -76,12 +78,13 @@ export function includes(values: readonly string[], value: string): boolean {
 
 export function normalizeContainmentRoot(value: string): string {
   let result = value
+  const minimumLength = testPattern(WINDOWS_DRIVE_ABSOLUTE_PATTERN, result) ? 3 : 1
   while (
-    result.length > 1
+    result.length > minimumLength
     && (
       reflectBoolean(stringEndsWith, result, "/")
       || reflectBoolean(stringEndsWith, result, "\\")
     )
-  ) result = result.slice(0, -1)
+  ) result = reflectApply(stringSlice, result, [0, -1]) as string
   return result
 }
