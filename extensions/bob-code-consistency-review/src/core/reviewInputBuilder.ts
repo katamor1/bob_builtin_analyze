@@ -9,7 +9,22 @@ import {
   type ReviewInputWriteResult
 } from "./reviewInputBuilderBase"
 
-export * from "./reviewInputBuilderBase"
+export {
+  ARTIFACT_KIND_VALUES,
+  CHANGE_TYPE_VALUES,
+  REVIEW_FOCUS_PRESETS,
+  REVIEW_FOCUS_VALUES,
+  VCS_VALUES,
+  type ArtifactKind,
+  type ChangeType,
+  type ReviewFocus,
+  type ReviewFocusPreset,
+  type ReviewInputArtifactDraft,
+  type ReviewInputBuildResult,
+  type ReviewInputDraft,
+  type ReviewInputWriteResult,
+  type VcsKind
+} from "./reviewInputBuilderBase"
 
 export async function buildReviewInputFromDraft(
   draft: ReviewInputDraft,
