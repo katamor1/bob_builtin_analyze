@@ -16,6 +16,8 @@ import { ExternalProcessError, runExternalProcess } from "./externalProcessRunne
 import {
   DEFAULT_PROCESSING_BUDGET_PROFILE,
   ProcessingBudgetLedger,
+  createAbsoluteDeadline,
+  type SharedAbsoluteDeadline,
   type SharedProcessingBudgetLedger,
   type SharedProcessingBudgetLimits,
   type SharedProcessingBudgetReservation
@@ -36,6 +38,7 @@ export interface CollectGitDiffOptions {
   textEncoding?: string
   limits?: Partial<ReviewProcessingLimits>
   commandTimeoutMs?: number
+  deadline?: SharedAbsoluteDeadline
   signal?: AbortSignal
   budgetLedger?: SharedProcessingBudgetLedger
   processingBudgetLimits?: Readonly<Partial<SharedProcessingBudgetLimits>>
@@ -56,6 +59,7 @@ const RAW_DIFF_TRUNCATION_SUFFIX = "\n\n[truncated: maxRawDiffBytes]\n"
 export async function collectGitDiff(reviewInput: ReviewInput, options: CollectGitDiffOptions): Promise<DiffSummary> {
   const limits = normalizeReviewProcessingLimits(options.limits)
   const ledger = options.budgetLedger ?? createDiffProcessingLedger(limits, options.processingBudgetLimits)
+  const deadline = options.deadline ?? createAbsoluteDeadline(normalizeCommandTimeout(options.commandTimeoutMs))
   if (options.diffFixturePath) {
     const fixturePath = resolveWorkspacePathStrict(options.workspaceRoot, options.diffFixturePath, "diffFixturePath")
     const fixture = parseDiffFixtureText(await readTextFile(fixturePath, options.textEncoding))
@@ -67,12 +71,14 @@ export async function collectGitDiff(reviewInput: ReviewInput, options: CollectG
   const collected = vcs === "bazaar"
     ? await collectBazaarDiff(reviewInput, {
         ...options,
+        deadline,
         vcsRoot,
         limits,
         rawDiffLimit: ledger.profile.limits.raw_diff_bytes
       })
     : await collectStandardGitDiff(reviewInput, {
         ...options,
+        deadline,
         vcsRoot,
         limits,
         rawDiffLimit: ledger.profile.limits.raw_diff_bytes
@@ -85,21 +91,21 @@ async function collectStandardGitDiff(reviewInput: ReviewInput, options: {
   vcsRoot: string
   textEncoding?: string
   limits: ReviewProcessingLimits
-  commandTimeoutMs?: number
+  deadline: SharedAbsoluteDeadline
   signal?: AbortSignal
   rawDiffLimit: number
 }): Promise<CollectedDiff> {
-  const base = await resolveGitRevision(reviewInput.review.base, options.vcsRoot, options.textEncoding, options.commandTimeoutMs, options.signal)
-  const head = await resolveGitRevision(reviewInput.review.head, options.vcsRoot, options.textEncoding, options.commandTimeoutMs, options.signal)
+  const base = await resolveGitRevision(reviewInput.review.base, options.vcsRoot, options.textEncoding, options.deadline, options.signal)
+  const head = await resolveGitRevision(reviewInput.review.head, options.vcsRoot, options.textEncoding, options.deadline, options.signal)
   const processBufferBytes = maxVcsProcessBufferBytes(options.limits.maxRawDiffBytes)
-  const nameStatus = await runGitText(["diff", "--find-renames", "--name-status", "-z", base, head], options.vcsRoot, processBufferBytes, options.textEncoding, options.commandTimeoutMs, options.signal)
-  const numstat = await runGitText(["diff", "--find-renames", "--numstat", "-z", base, head], options.vcsRoot, processBufferBytes, options.textEncoding, options.commandTimeoutMs, options.signal)
+  const nameStatus = await runGitText(["diff", "--find-renames", "--name-status", "-z", base, head], options.vcsRoot, processBufferBytes, options.textEncoding, options.deadline, options.signal)
+  const numstat = await runGitText(["diff", "--find-renames", "--numstat", "-z", base, head], options.vcsRoot, processBufferBytes, options.textEncoding, options.deadline, options.signal)
   const unifiedDiff = await runGitTextAllowingOverflow(
     ["diff", "--find-renames", "--unified=80", base, head],
     options.vcsRoot,
     options.rawDiffLimit,
     options.textEncoding,
-    options.commandTimeoutMs,
+    options.deadline,
     options.signal
   )
 
@@ -121,7 +127,7 @@ async function collectBazaarDiff(reviewInput: ReviewInput, options: {
   bzrPath?: string
   textEncoding?: string
   limits: ReviewProcessingLimits
-  commandTimeoutMs?: number
+  deadline: SharedAbsoluteDeadline
   signal?: AbortSignal
   rawDiffLimit: number
 }): Promise<CollectedDiff> {
@@ -138,7 +144,7 @@ async function collectBazaarDiff(reviewInput: ReviewInput, options: {
     [0, 1],
     options.textEncoding,
     { BZR_PROGRESS_BAR: "none" },
-    options.commandTimeoutMs,
+    options.deadline,
     options.signal
   )
   if (unifiedDiff.overflow) {
@@ -156,8 +162,8 @@ async function collectBazaarDiff(reviewInput: ReviewInput, options: {
 async function resolveGitRevision(
   revision: string,
   cwd: string,
-  textEncoding = "auto",
-  commandTimeoutMs?: number,
+  textEncoding: string | undefined,
+  deadline: SharedAbsoluteDeadline,
   signal?: AbortSignal
 ): Promise<string> {
   const trimmed = revision.trim()
@@ -165,7 +171,7 @@ async function resolveGitRevision(
 
   try {
     // Git revision は rev-parse --verify --end-of-options で commit SHA に固定し、以降の diff へ曖昧指定を渡さない。
-    const output = await runGitText(["rev-parse", "--verify", "--end-of-options", `${trimmed}^{commit}`], cwd, 1024 * 1024, textEncoding, commandTimeoutMs, signal)
+    const output = await runGitText(["rev-parse", "--verify", "--end-of-options", `${trimmed}^{commit}`], cwd, 1024 * 1024, textEncoding, deadline, signal)
     const sha = output.trim().split(/\r?\n/).at(-1) ?? ""
     if (/^[0-9a-f]{40}$/i.test(sha)) return sha.toLowerCase()
   } catch (error) {
@@ -202,19 +208,19 @@ async function runGitText(
   args: string[],
   cwd: string,
   maxStdoutBytes: number,
-  textEncoding = "auto",
-  commandTimeoutMs?: number,
+  textEncoding: string | undefined,
+  deadline: SharedAbsoluteDeadline,
   signal?: AbortSignal
 ): Promise<string> {
-  return runCommandText("git", args, cwd, maxStdoutBytes, [0], textEncoding, undefined, commandTimeoutMs, signal)
+  return runCommandText("git", args, cwd, maxStdoutBytes, [0], textEncoding, undefined, deadline, signal)
 }
 
 async function runGitTextAllowingOverflow(
   args: string[],
   cwd: string,
   maxRawDiffBytes: number,
-  textEncoding = "auto",
-  commandTimeoutMs?: number,
+  textEncoding: string | undefined,
+  deadline: SharedAbsoluteDeadline,
   signal?: AbortSignal
 ): Promise<BoundedCommandText> {
   return runCommandTextAllowingOverflow(
@@ -225,7 +231,7 @@ async function runGitTextAllowingOverflow(
     [0],
     textEncoding,
     undefined,
-    commandTimeoutMs,
+    deadline,
     signal
   )
 }
@@ -236,9 +242,9 @@ async function runCommandTextAllowingOverflow(
   cwd: string,
   maxRawDiffBytes: number,
   allowedExitCodes: number[],
-  textEncoding = "auto",
-  env?: Record<string, string>,
-  commandTimeoutMs?: number,
+  textEncoding: string | undefined,
+  env: Record<string, string> | undefined,
+  deadline: SharedAbsoluteDeadline,
   signal?: AbortSignal
 ): Promise<BoundedCommandText> {
   const captureBytes = maxRawDiffBytes < Number.MAX_SAFE_INTEGER
@@ -253,7 +259,7 @@ async function runCommandTextAllowingOverflow(
       allowedExitCodes,
       textEncoding,
       env,
-      commandTimeoutMs,
+      deadline,
       signal
     )
     return Object.freeze({
@@ -263,7 +269,7 @@ async function runCommandTextAllowingOverflow(
   } catch (error) {
     if (!isStdoutLimitError(error)) throw error
     return Object.freeze({
-      text: decodeTextBuffer(error.stdout, textEncoding),
+      text: decodeTextBuffer(error.stdout, textEncoding ?? "auto"),
       overflow: true
     })
   }
@@ -272,7 +278,7 @@ async function runCommandTextAllowingOverflow(
 function isStdoutLimitError(error: unknown): error is ExternalProcessError {
   return error instanceof ExternalProcessError
     && error.kind === "bufferExceeded"
-    && error.message.includes(" stdout exceeded ")
+    && error.terminationCause === "stdout_limit"
 }
 
 async function runCommandText(
@@ -281,9 +287,9 @@ async function runCommandText(
   cwd: string,
   maxStdoutBytes: number,
   allowedExitCodes: number[],
-  textEncoding = "auto",
-  env?: Record<string, string>,
-  commandTimeoutMs?: number,
+  textEncoding: string | undefined,
+  env: Record<string, string> | undefined,
+  deadline: SharedAbsoluteDeadline,
   signal?: AbortSignal
 ): Promise<string> {
   const result = await runExternalProcess({
@@ -291,12 +297,12 @@ async function runCommandText(
     args,
     cwd,
     maxStdoutBytes,
-    timeoutMs: normalizeCommandTimeout(commandTimeoutMs),
+    deadline,
     allowedExitCodes,
     signal,
     env: { ...process.env, ...env }
   })
-  return decodeTextBuffer(result.stdout, textEncoding)
+  return decodeTextBuffer(result.stdout, textEncoding ?? "auto")
 }
 
 function normalizeCommandTimeout(value: number | undefined): number {
