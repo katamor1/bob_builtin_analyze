@@ -40,15 +40,62 @@ test("workflow root resolver finds immediate child .bob folders when no direct m
   assert.equal(candidates[0].depth, "child")
 })
 
-test("workflow root resolver exposes top folder fallbacks when no .bob marker exists", async () => {
+test("workflow root resolver accepts physical roots containing spaces and Japanese", async () => {
+  const root = await tempRoot()
+  const workspace = path.join(root, "設計 workspace")
+  await fs.mkdir(path.join(workspace, ".bob"), { recursive: true })
+
+  const candidates = await findMarkerRoots([folder("設計", workspace)], ".bob")
+  assert.deepEqual(candidates.map((candidate) => candidate.root), [workspace])
+})
+
+test("workflow root resolver rejects symlinked workspace roots and marker directories", async (t) => {
+  const root = await tempRoot()
+  const physical = path.join(root, "physical")
+  const alias = path.join(root, "alias")
+  const markerAliasRoot = path.join(root, "marker-alias-root")
+  const externalMarker = path.join(root, "external-marker")
+  await fs.mkdir(path.join(physical, ".bob"), { recursive: true })
+  await fs.mkdir(markerAliasRoot, { recursive: true })
+  await fs.mkdir(externalMarker, { recursive: true })
+  try {
+    await fs.symlink(physical, alias, process.platform === "win32" ? "junction" : "dir")
+    await fs.symlink(externalMarker, path.join(markerAliasRoot, ".bob"), process.platform === "win32" ? "junction" : "dir")
+  } catch (error) {
+    if (error && ["EPERM", "EACCES", "EINVAL"].includes(error.code)) {
+      t.skip(`symlink creation is unavailable: ${error.code}`)
+      return
+    }
+    throw error
+  }
+
+  assert.deepEqual(await findMarkerRoots([folder("alias", alias)], ".bob"), [])
+  assert.deepEqual(await findMarkerRoots([folder("marker-alias", markerAliasRoot)], ".bob"), [])
+})
+
+test("workflow root resolver exposes only physical top folder fallbacks when no .bob marker exists", async (t) => {
   const root = await tempRoot()
   const first = path.join(root, "first")
   const second = path.join(root, "second")
+  const secondAlias = path.join(root, "second-alias")
   await fs.mkdir(first, { recursive: true })
   await fs.mkdir(second, { recursive: true })
+  try {
+    await fs.symlink(second, secondAlias, process.platform === "win32" ? "junction" : "dir")
+  } catch (error) {
+    if (error && ["EPERM", "EACCES", "EINVAL"].includes(error.code)) {
+      t.skip(`symlink creation is unavailable: ${error.code}`)
+      return
+    }
+    throw error
+  }
 
   const markerCandidates = await findMarkerRoots([folder("first", first), folder("second", second)], ".bob")
-  const fallbackCandidates = fallbackWorkspaceRootCandidates([folder("first", first), folder("second", second)])
+  const fallbackCandidates = fallbackWorkspaceRootCandidates([
+    folder("first", first),
+    folder("second", second),
+    folder("second-alias", secondAlias)
+  ])
 
   assert.deepEqual(markerCandidates, [])
   assert.deepEqual(fallbackCandidates.map((candidate) => candidate.root), [first, second])
@@ -74,7 +121,7 @@ test("workflow root picker prompts when multiple .bob candidates exist", async (
   assert.deepEqual(pickedItems.map((item) => item.candidate.root), [first, second])
 })
 
-test("workflowRootFromFile resolves the owning .bob root for a workflow file", async () => {
+test("workflowRootFromFile resolves the physical owning .bob root for a workflow file", async () => {
   const root = await tempRoot()
   const workflowRoot = path.join(root, "workspace")
   const workflowFile = path.join(workflowRoot, ".bob", "workflows", "sample", "WORKFLOW.md")
