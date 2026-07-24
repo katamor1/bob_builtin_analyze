@@ -1,5 +1,7 @@
 import {
+  compiledWorkflowPlanBelongsToEnvironment,
   isCompiledWorkflowPlanLeasable,
+  requireCompiledWorkflowPlanState,
   type CompiledWorkflowPlanHandle
 } from "./compiledPlan"
 import { compileWorkflowPackage } from "./compiler"
@@ -163,9 +165,13 @@ export class WorkflowPlanStore {
       environment: request.environment
     })
     if (!result.ok) throw new WorkflowPlanCompilationError(result.diagnostics)
+    const handleState = requireCompiledWorkflowPlanState(result.handle)
     if (
       result.handle.plan.packageDigest !== request.packageDigest
       || result.handle.plan.workflowId !== request.workflowId
+      || !compiledWorkflowPlanBelongsToEnvironment(result.handle, request.environment)
+      || handleState.publication !== request.publication
+      || handleState.generation !== request.generation
     ) throw new WorkflowPlanCompilationError(objectFreeze([]))
     if (!isWorkflowPlanRequestCurrent(request)) throw new WorkflowPlanInvalidatedError()
 
