@@ -118,23 +118,26 @@ export function resolveWorkspacePath(workspaceRoot: string, value: string): stri
 }
 
 export function resolveWorkspacePathStrict(workspaceRoot: string, value: string, label = "path"): string {
+  const root = path.resolve(workspaceRoot)
+  const candidate = path.resolve(root, value)
+  if (!isInsidePath(root, candidate)) throw new Error(`${label} escapes workspace: ${value}`)
   try {
     return resolvePhysicalContainedPathSync({
-      rootPath: workspaceRoot,
-      candidatePath: value,
+      rootPath: root,
+      candidatePath: candidate,
       allowAbsolute: true,
       mustExist: false
     }).path
-  } catch (error) {
-    throw new Error(`${label} violates workspace containment: ${value}`, { cause: error })
+  } catch {
+    throw new Error(`${label} resolves outside workspace: ${value}`)
   }
 }
 
 export function normalizeChangedFilePathStrict(value: string, label = "changed file path"): string {
   try {
     return normalizeWorkspaceRelativePath(value, label)
-  } catch (error) {
-    throw new Error(`${label} is unsafe: ${String(value)}`, { cause: error })
+  } catch {
+    throw new Error(`${label} is unsafe: ${String(value)}`)
   }
 }
 
@@ -144,19 +147,27 @@ export function resolveWorkspacePathForKind(workspaceRoot: string, value: string
   try {
     relativePath = normalizeWorkspaceRelativePath(value, policy.label)
   } catch (error) {
-    throw new Error(`${policy.label} must be a safe workspace-relative path: ${value}`, { cause: error })
+    const code = pathPolicyErrorCode(error)
+    if (code === "path_policy_absolute" || code === "path_policy_drive_relative" || code === "path_policy_device") {
+      throw new Error(`${policy.label} must be a workspace-relative path: ${value}`)
+    }
+    if (code === "path_policy_escape") throw new Error(`${policy.label} escapes workspace: ${value}`)
+    throw new Error(`${policy.label} must be a safe workspace-relative path: ${value}`)
   }
   const segments = relativePath.split("/")
   if (!policy.allow(segments, relativePath)) throw new Error(`${policy.label} must be under ${policy.description}: ${value}`)
+  const root = path.resolve(workspaceRoot)
+  const candidate = path.resolve(root, ...segments)
+  if (!isInsidePath(root, candidate)) throw new Error(`${policy.label} escapes workspace: ${value}`)
   try {
     return resolvePhysicalContainedPathSync({
-      rootPath: workspaceRoot,
-      candidatePath: relativePath,
-      allowAbsolute: false,
+      rootPath: root,
+      candidatePath: candidate,
+      allowAbsolute: true,
       mustExist: false
     }).path
-  } catch (error) {
-    throw new Error(`${policy.label} violates physical workspace containment: ${value}`, { cause: error })
+  } catch {
+    throw new Error(`${policy.label} resolves outside workspace: ${value}`)
   }
 }
 
@@ -174,6 +185,12 @@ export function toPosixPath(value: string): string {
 
 export function relativePosix(from: string, to: string): string {
   return toPosixPath(path.relative(from, to)) || "."
+}
+
+function pathPolicyErrorCode(error: unknown): string | undefined {
+  return typeof error === "object" && error !== null && "code" in error
+    ? String((error as { code?: unknown }).code)
+    : undefined
 }
 
 function startsWithSegments(segments: string[], prefix: string[]): boolean {
