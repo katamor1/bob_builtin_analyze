@@ -36,6 +36,7 @@ export interface SharedProcessingCancellationError extends Error {
 }
 
 interface DeadlineCancellationRuntime {
+  readonly MAX_TIMER_DELAY_MS: number
   readonly ProcessingCancellationError: new (
     kind: ProcessingCancellationKind,
     originalReason?: unknown
@@ -55,6 +56,7 @@ interface DeadlineCancellationRuntime {
 
 const runtime = require("./deadline-cancellation.js") as DeadlineCancellationRuntime
 
+export const MAX_TIMER_DELAY_MS = runtime.MAX_TIMER_DELAY_MS
 export const ProcessingCancellationError = runtime.ProcessingCancellationError
 export const monotonicNowMilliseconds = runtime.monotonicNowMilliseconds
 export const createAbsoluteDeadline = runtime.createAbsoluteDeadline
