@@ -111,6 +111,15 @@ test("predicate placements compile into explicit entry and post-commit plan reco
   assert.equal(predicates[1].location.pointer, "/steps/0/transition/decisions/0/when")
   assert.equal(predicates[1].predicate.left.id, "reviewResult")
   assert.equal(Object.isFrozen(predicates[1]), true)
+
+  const workflow = result.handle.plan.workflow
+  assert.equal(workflow.schemaVersion, "workflow-compiled-workflow/v2")
+  assert.equal("requiredWhen" in workflow.inputs[1], false)
+  assert.equal(workflow.inputs[1].requiredWhenPredicate, 0)
+  assert.equal("when" in workflow.steps[0].transition.decisions[0], false)
+  assert.equal(workflow.steps[0].transition.decisions[0].predicate, 1)
+  assert.equal("when" in workflow.steps[1], false)
+  assert.equal(workflow.steps[1].entryPredicate, 2)
 })
 
 test("current-step outputs are forbidden at entry and input predicates cannot read outputs", async (t) => {
