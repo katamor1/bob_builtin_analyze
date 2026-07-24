@@ -58,11 +58,7 @@ function createCancellationScope(input) {
 
   const abort = (kind, originalReason) => {
     if (controller.signal.aborted) return
-    controller.abort(Object.freeze({
-      code: "processing_cancelled",
-      kind,
-      original_reason: originalReason
-    }))
+    controller.abort(Object.freeze(new ProcessingCancellationError(kind, originalReason)))
   }
   const onSourceAbort = () => {
     const inherited = inheritedCancellation(sourceSignal)
@@ -107,6 +103,7 @@ function createCancellationScope(input) {
     throwIfCancelled: () => {
       if (!controller.signal.aborted) return
       const reason = controller.signal.reason
+      if (reason instanceof ProcessingCancellationError) throw reason
       throw new ProcessingCancellationError(
         reason && reason.kind === "deadline" ? "deadline" : "user",
         reason?.original_reason
