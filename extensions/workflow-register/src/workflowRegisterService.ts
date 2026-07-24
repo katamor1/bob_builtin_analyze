@@ -23,6 +23,15 @@ import {
   registerWorkflows as registerWorkflowDefinitions,
   type RegistrationResult
 } from "./workflowRegistrationService"
+import type {
+  CompileCurrentWorkflowContractV2Input,
+  CompileWorkflowContractV2GenerationInput,
+  WorkflowContractV2AcquireResult,
+  WorkflowContractV2CompileResult,
+  WorkflowContractV2Entrypoint,
+  WorkflowContractV2Slot
+} from "./workflowContractV2Entrypoint"
+import { createWorkflowContractV2ProductEntrypoint } from "./workflowContractV2Product"
 import { WorkflowRuntimeFactory } from "./workflowRuntimeFactory"
 import { collectBobWorkflowInputs } from "./workflowInputPrompt"
 import { WorkflowRunCommandService } from "./workflowRunCommands"
@@ -30,7 +39,8 @@ import type { ArtifactSourceRunArg, RunCommandArg, WorkflowCommandArg } from "./
 import { requireTrustedWorkspace } from "./workspaceTrust"
 import { ReviewAcceptanceCoordinator } from "./reviewAcceptanceCoordinator"
 
-const WORKFLOW_GLOB = "**/.bob/workflows/*/WORKFLOW.md"
+const LEGACY_WORKFLOW_GLOB = "**/.bob/workflows/*/WORKFLOW.md"
+const CONTRACT_V2_POINTER_GLOB = "**/.bob/workflows/*/current.json"
 
 export interface StepCompletionOptions extends StepCompletionExpectation {
   silent?: boolean
@@ -38,7 +48,8 @@ export interface StepCompletionOptions extends StepCompletionExpectation {
 
 export class WorkflowRegisterService implements vscode.Disposable {
   private readonly registeredIds = new Set<string>()
-  private readonly watcher = vscode.workspace.createFileSystemWatcher(WORKFLOW_GLOB)
+  private readonly legacyWatcher = vscode.workspace.createFileSystemWatcher(LEGACY_WORKFLOW_GLOB)
+  private readonly contractV2Watcher = vscode.workspace.createFileSystemWatcher(CONTRACT_V2_POINTER_GLOB)
   private readonly bobWorkflowGates = new BobWorkflowGateRegistry()
   private readonly reviewAcceptances = new ReviewAcceptanceCoordinator()
   private readonly stepRuntime = new StepRuntime()
@@ -51,6 +62,7 @@ export class WorkflowRegisterService implements vscode.Disposable {
   private readonly actionProviderRegistrations = new ActionProviderRegistrationStore()
   private readonly manualStepPanel: ManualStepPanelController
   private readonly runtimeFactory: WorkflowRuntimeFactory
+  private readonly contractV2: WorkflowContractV2Entrypoint
   private readonly runCommands: WorkflowRunCommandService
   private agentProvider?: AgentProvider
   private registeredSource?: BobSourceLike
@@ -84,6 +96,14 @@ export class WorkflowRegisterService implements vscode.Disposable {
       inputsProvider: (workflow, provided) => collectBobWorkflowInputs(workflow, provided),
       onManualStepHeld: (input) => this.manualStepPanel.show(input)
     })
+    this.contractV2 = createWorkflowContractV2ProductEntrypoint({
+      actionRegistry: this.actionRegistry,
+      planStore: {
+        getOrCompile: (input) => this.runtimeFactory.getOrCompileWorkflowPlan(input),
+        acquire: (input) => this.runtimeFactory.acquireWorkflowPlan(input),
+        invalidate: (collectionId, workflowId) => this.runtimeFactory.invalidateWorkflowPlanSlot(collectionId, workflowId)
+      }
+    })
     this.runCommands = new WorkflowRunCommandService({
       coreWorkflows: this.coreWorkflows,
       runtimeFactory: this.runtimeFactory,
@@ -96,13 +116,16 @@ export class WorkflowRegisterService implements vscode.Disposable {
         this.reviewAcceptances.coordinate(workspaceRoot, runId, kind, operation)
       )
     })
-    this.watcher.onDidCreate(() => this.reload({ showReport: false }))
-    this.watcher.onDidChange(() => this.reload({ showReport: false }))
-    this.watcher.onDidDelete(() => this.reload({ showReport: false }))
+    for (const watcher of [this.legacyWatcher, this.contractV2Watcher]) {
+      watcher.onDidCreate(() => this.reload({ showReport: false }))
+      watcher.onDidChange(() => this.reload({ showReport: false }))
+      watcher.onDidDelete(() => this.reload({ showReport: false }))
+    }
   }
 
   dispose(): void {
-    this.watcher.dispose()
+    this.legacyWatcher.dispose()
+    this.contractV2Watcher.dispose()
     this.manualStepPanel.dispose()
     this.bobWorkflowGates.dispose()
     try {
@@ -179,6 +202,28 @@ export class WorkflowRegisterService implements vscode.Disposable {
 
   listCoreWorkflows(): CoreWorkflowDefinition[] {
     return this.runCommands.listCoreWorkflows()
+  }
+
+  compileCurrentWorkflowPackage(
+    input: CompileCurrentWorkflowContractV2Input
+  ): Promise<WorkflowContractV2CompileResult> {
+    return this.contractV2.compileCurrent(input)
+  }
+
+  compileWorkflowPackageGeneration(
+    input: CompileWorkflowContractV2GenerationInput
+  ): Promise<WorkflowContractV2CompileResult> {
+    return this.contractV2.compileGeneration(input)
+  }
+
+  acquireCurrentWorkflowPackage(
+    input: CompileCurrentWorkflowContractV2Input
+  ): Promise<WorkflowContractV2AcquireResult> {
+    return this.contractV2.acquireCurrent(input)
+  }
+
+  invalidateWorkflowPackageSlot(slot: WorkflowContractV2Slot): void {
+    this.contractV2.invalidateSlot(slot)
   }
 
   async runWorkflow(workflowArg?: WorkflowCommandArg, inputs: Record<string, unknown> = {}): Promise<unknown> {
@@ -260,7 +305,8 @@ export class WorkflowRegisterService implements vscode.Disposable {
   private async registerWorkflows(): Promise<RegistrationResult> {
     const update = await registerWorkflowDefinitions({
       previousSource: this.registeredSource,
-      createRunner: (workflow) => this.runtimeFactory.createBobWorkflowRunner(workflow)
+      createRunner: (workflow) => this.runtimeFactory.createBobWorkflowRunner(workflow),
+      contractV2: this.contractV2
     })
     this.coreWorkflows.clear()
     for (const workflow of update.coreWorkflows) this.coreWorkflows.set(workflow.id, workflow)
