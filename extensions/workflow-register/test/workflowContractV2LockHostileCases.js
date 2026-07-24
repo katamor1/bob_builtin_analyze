@@ -107,3 +107,33 @@ test("lock generation snapshots caller bytes and invokes no write capability", (
   ).digest)
   workflow.bytes[0] = original
 })
+
+test("duplicate raw logical paths are rejected before lock generation", () => {
+  const lockModule = subject()
+  const input = generationInput()
+  const duplicate = input.rawPackage.files.find((file) => file.path === "workflow.yaml")
+  input.rawPackage.files.push({
+    path: duplicate.path,
+    bytes: Uint8Array.from(duplicate.bytes),
+    byteLength: duplicate.byteLength,
+    digest: duplicate.digest
+  })
+
+  assert.throws(
+    () => lockModule.generateWorkflowPackageLock(input),
+    /raw evidence|inconsistent|duplicate/i
+  )
+})
+
+test("lock verification accepts no write capability", () => {
+  const lockModule = subject()
+  const input = generationInput()
+  let writeCalls = 0
+  Object.defineProperty(input, "writeFile", {
+    enumerable: true,
+    value() { writeCalls += 1 }
+  })
+
+  assert.throws(() => lockModule.verifyWorkflowPackageLock(input), /unknown field|exact|input/i)
+  assert.equal(writeCalls, 0)
+})
