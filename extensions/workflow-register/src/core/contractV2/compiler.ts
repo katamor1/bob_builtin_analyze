@@ -15,7 +15,7 @@ import {
 } from "./compilerFiles"
 import { validateCompilerValueReferences } from "./compilerReferences"
 import { validateCompilerSchemaRoles } from "./compilerSchemaRoles"
-import { compileWorkflowPredicates } from "./compilerWorkflow"
+import { compileWorkflowExecution } from "./compilerWorkflow"
 import {
   createWorkflowContractV2Diagnostic,
   type WorkflowContractV2Diagnostic
@@ -110,7 +110,7 @@ export function compileWorkflowPackage(input: CompileWorkflowPackageInput): Work
     const semanticFiles = compileSemanticFiles(rawPackage, document)
     validateCompilerValueReferences(document, semanticFiles)
     validateCompilerSchemaRoles(document, semanticFiles)
-    const predicates = compileWorkflowPredicates(document, semanticFiles)
+    const execution = compileWorkflowExecution(document, semanticFiles)
     const bindings = bindCompilerEnvironment(document, semanticFiles, environmentState)
 
     const providerEvidence: typeof bindings.providers[number]["lockEvidence"][] = []
@@ -164,11 +164,11 @@ export function compileWorkflowPackage(input: CompileWorkflowPackageInput): Work
       packageDigest: rawPackage.packageDigest,
       lockfileDigest: verified.lockfileDigest,
       environmentDigest: verified.lock.environmentDigest,
-      workflow: document,
+      workflow: execution.workflow,
       prompts: objectFreeze(publicPrompts),
       schemas: objectFreeze(publicSchemas),
       schemaCatalogDigest: semanticFiles.schemaCatalogDigest,
-      predicates,
+      predicates: execution.predicates,
       providerBindings: verified.lock.providers,
       bobProfileBinding: verified.lock.bob,
       requiredArtifacts: document.requiredArtifacts
