@@ -18,6 +18,7 @@ function assertContainsAll(text, phrases, label) {
 test("Code Consistency current design mirrors the implemented panel and stage contract", () => {
   const stages = read("extensions/bob-code-consistency-review/src/webview/consistencyReviewWizardStages.ts")
   const wizard = read("extensions/bob-code-consistency-review/src/webview/consistencyReviewWizard.ts")
+  const basic = read("extensions/bob-code-consistency-review/docs/basic-design-ja.md")
   const design = read("extensions/bob-code-consistency-review/docs/detailed-design-ja.md")
 
   assertContainsAll(stages, [
@@ -28,6 +29,15 @@ test("Code Consistency current design mirrors the implemented panel and stage co
   ], "Code Consistency runtime stage type")
   assert.ok(wizard.includes('createWebviewPanel("bobCodeConsistencyReviewWizard", "整合プレレビュー"'))
   assert.equal(wizard.includes("panel.reveal("), false, "the current wizard creates a panel instead of revealing a cached singleton")
+
+  assertContainsAll(basic, [
+    "呼び出しごとに新しいWebview panel",
+    '`review`',
+    '`traceability`',
+    '`review-result-capture`',
+    '`triage`',
+    "review stage内のaction"
+  ], "Code Consistency basic design")
 
   assertContainsAll(design, [
     '"review"',
@@ -45,6 +55,13 @@ test("Code Consistency current design mirrors the implemented panel and stage co
     "既存panelを`reveal()`"
   ]) {
     assert.equal(design.includes(stale), false, `Code Consistency detailed design must not retain stale contract: ${stale}`)
+  }
+
+  for (const stale of [
+    "同じsessionは既存panelをrevealする",
+    "レビュー入力\n→ トレーサビリティ整理\n→ 前処理・レビュー資料生成"
+  ]) {
+    assert.equal(basic.includes(stale), false, `Code Consistency basic design must not retain stale contract: ${stale}`)
   }
 })
 
