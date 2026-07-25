@@ -30,6 +30,35 @@ test("trusted signal observes deadline expiry before the scheduled callback runs
   }
 })
 
+test("an early terminal timer callback reschedules the remaining deadline", () => {
+  let now = 100
+  const scheduled = []
+  const scope = createCancellationScope({
+    deadline: Object.freeze({ expires_at_monotonic_ms: 200 }),
+    now: () => now,
+    schedule: (callback, delay) => {
+      scheduled.push({ callback, delay })
+      return scheduled.length
+    },
+    cancelSchedule: () => {}
+  })
+  try {
+    assert.equal(scheduled.length, 1)
+    assert.equal(scheduled[0].delay, 100)
+    now = 150
+    scheduled[0].callback()
+    assert.equal(scope.signal.aborted, false)
+    assert.equal(scheduled.length, 2)
+    assert.equal(scheduled[1].delay, 50)
+    now = 200
+    scheduled[1].callback()
+    assert.equal(scope.signal.aborted, true)
+    assert.equal(cancellationKindFromSignal(scope.signal), "deadline")
+  } finally {
+    scope.dispose()
+  }
+})
+
 test("throwIfCancelled observes deadline expiry before the scheduled callback runs", () => {
   let now = 100
   let scheduled
