@@ -17,15 +17,49 @@ function escapeRegex(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
-test('standalone and Bob run stores verify Contract v2 before FileRunStateStore creates a run', () => {
+test('all engine execution paths verify Contract v2 before recovery, resume, retry, or checkpoint work', () => {
+  const runtime = source('workflowRuntimeFactory.ts')
+  assert.match(runtime, /contractV2BeforeRun\?: \(workflow: CoreWorkflowDefinition\) => Promise<void> \| void/)
+  assert.match(runtime, /class ContractV2BoundaryWorkflowEngine extends WorkflowEngine/)
+  assert.match(runtime, ordered(
+    'override async runWorkflow(',
+    'await this.beforeRun?.(workflow)',
+    'return super.runWorkflow(workflow, inputs, options)'
+  ))
+  assert.match(runtime, ordered(
+    'override async resumeRun(',
+    'await this.beforeRun?.(options.workflow)',
+    'return super.resumeRun(runId, options)'
+  ))
+  assert.match(runtime, ordered(
+    'override async resumeRunGuarded(',
+    'await this.beforeRun?.(options.workflow)',
+    'return super.resumeRunGuarded(runId, options, hooks)'
+  ))
+  assert.match(runtime, ordered(
+    'override async retryCurrentStep(',
+    'await this.beforeRun?.(workflow)',
+    'return super.retryCurrentStep(runId, workflow, options)'
+  ))
+  assert.match(runtime, ordered(
+    'override async approveBranchCheckpoint(',
+    'await this.beforeRun?.(workflow)',
+    'return super.approveBranchCheckpoint(runId, workflow)'
+  ))
+  assert.match(runtime, ordered(
+    'createEngine(workspaceRoot: string, agentProvider?: AgentProvider)',
+    'new ContractV2BoundaryWorkflowEngine(engineOptions, this.options.contractV2BeforeRun)'
+  ))
+})
+
+test('direct run-state creation retains a second guard before FileRunStateStore creates a run', () => {
   const runtime = source('workflowRuntimeFactory.ts')
   const guardedStore = source('workflowContractV2RunStateStore.ts')
-  assert.match(runtime, /beforeCreateRun\?:/)
   assert.match(runtime, /ContractV2GuardedRunStateStore/)
   assert.match(runtime, ordered(
     'createRunStore(workspaceRoot: string)',
     'new ContractV2GuardedRunStateStore({',
-    'beforeCreateRun: this.options.beforeCreateRun'
+    'beforeCreateRun: this.options.contractV2BeforeRun'
   ))
   assert.match(guardedStore, ordered(
     'override async createRun(',
@@ -37,7 +71,7 @@ test('standalone and Bob run stores verify Contract v2 before FileRunStateStore 
 test('the service acquires the exact current v2 plan, releases it, and fails before R5', () => {
   const service = source('workflowRegisterService.ts')
   assert.match(service, /acquireWorkflowContractV2RunLease/)
-  assert.match(service, /beforeCreateRun: \(workflow\) => this\.assertContractV2RunCreationReady\(workflow\)/)
+  assert.match(service, /contractV2BeforeRun: \(workflow\) => this\.assertContractV2RunCreationReady\(workflow\)/)
   assert.match(service, ordered(
     'private async assertContractV2RunCreationReady(',
     'acquireWorkflowContractV2RunLease({',
