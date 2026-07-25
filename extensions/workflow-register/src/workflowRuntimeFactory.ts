@@ -156,6 +156,7 @@ export class WorkflowRuntimeFactory {
   }
 
   createBobWorkflowRunner(workflow: WorkflowDefinition): BobWorkflowEngineRunner {
+    const beforeRun = this.options.contractV2BeforeRun ?? this.options.beforeCreateRun
     return new BobWorkflowEngineRunner({
       definition: workflow,
       coreWorkflow: workflow.core,
@@ -169,10 +170,13 @@ export class WorkflowRuntimeFactory {
       stepRuntime: this.options.stepRuntime,
       gateRegistry: this.options.gateRegistry,
       onManualStepHeld: this.options.onManualStepHeld,
-      inputsProvider: (task, provided) => this.options.inputsProvider(workflow, {
-        ...extractTaskWorkflowInputs(workflow, task),
-        ...provided
-      })
+      inputsProvider: async (task, provided) => {
+        await beforeRun?.(workflow.core)
+        return this.options.inputsProvider(workflow, {
+          ...extractTaskWorkflowInputs(workflow, task),
+          ...provided
+        })
+      }
     })
   }
 
