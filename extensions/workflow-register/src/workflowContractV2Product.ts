@@ -4,10 +4,7 @@ import {
   type CompiledWorkflowPlanHandle,
   type WorkflowPlanLease
 } from "./core/contractV2"
-import {
-  BOB_2_0_1_PROFILE_DIGEST,
-  snapshotBobContractProfile
-} from "./core/contractV2/bobProfile"
+import { snapshotBobContractProfile } from "./core/contractV2/bobProfile"
 import {
   loadCurrentWorkflowPackage,
   loadWorkflowPackageGeneration
@@ -21,8 +18,6 @@ import {
   type WorkflowContractV2Entrypoint,
   type WorkflowContractV2Slot
 } from "./workflowContractV2Entrypoint"
-
-export const WORKFLOW_CONTRACT_V2_BOB_PROFILE_DIGEST = BOB_2_0_1_PROFILE_DIGEST
 
 export interface WorkflowContractV2PlanStoreFacade {
   getOrCompile(input: {
