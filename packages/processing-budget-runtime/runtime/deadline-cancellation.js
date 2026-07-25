@@ -54,31 +54,42 @@ function createCancellationScope(input) {
   const schedule = typeof input.schedule === "function" ? input.schedule : setTimeout
   const cancelSchedule = typeof input.cancelSchedule === "function" ? input.cancelSchedule : clearTimeout
   const controller = new AbortController()
+  const signal = controller.signal
+  const nativeAbortedGetter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(signal), "aborted")?.get
+  if (typeof nativeAbortedGetter !== "function") throw new Error("AbortSignal aborted getter is unavailable")
+  const isAborted = () => nativeAbortedGetter.call(signal)
   let timer
   let disposed = false
 
   const abort = (kind, originalReason) => {
-    if (controller.signal.aborted) return
+    if (isAborted()) return
     const reason = Object.freeze(new ProcessingCancellationError(kind, originalReason))
-    trustedCancellationSignals.set(controller.signal, reason)
+    trustedCancellationSignals.set(signal, reason)
     controller.abort(reason)
   }
   const onSourceAbort = () => {
     const inherited = inheritedCancellation(sourceSignal)
     abort(inherited.kind, inherited.originalReason)
   }
+  const refreshCancellationState = () => {
+    if (isAborted()) return
+    if (sourceSignal?.aborted) onSourceAbort()
+    if (!isAborted() && remainingDeadlineMilliseconds(deadline, now()) === 0) {
+      abort("deadline", undefined)
+    }
+  }
   const scheduleDeadline = () => {
-    if (disposed || controller.signal.aborted) return
+    if (disposed || isAborted()) return
     const remaining = remainingDeadlineMilliseconds(deadline, now())
     if (remaining === 0) {
-      abort("deadline", undefined)
+      refreshCancellationState()
       return
     }
     const terminalTimer = remaining <= MAX_TIMER_DELAY_MS
     timer = schedule(() => {
       timer = undefined
-      if (disposed || controller.signal.aborted) return
-      if (terminalTimer) abort("deadline", undefined)
+      if (disposed || isAborted()) return
+      if (terminalTimer) refreshCancellationState()
       else scheduleDeadline()
     }, Math.min(remaining, MAX_TIMER_DELAY_MS))
   }
@@ -92,24 +103,33 @@ function createCancellationScope(input) {
     if (remaining === 0) abort("deadline", undefined)
   }
 
-  if (!controller.signal.aborted && sourceSignal && typeof sourceSignal.addEventListener === "function") {
+  if (!isAborted() && sourceSignal && typeof sourceSignal.addEventListener === "function") {
     sourceSignal.addEventListener("abort", onSourceAbort, { once: true })
     // Close the preflight-to-listener race without changing first-cause wins.
     if (sourceSignal.aborted) onSourceAbort()
   }
+  // Synchronous consumers such as bounded OOXML parsing cannot rely on a timer
+  // callback while they hold the event loop. Reading an operation-owned signal
+  // therefore refreshes its source and monotonic deadline before returning the
+  // native AbortSignal state.
+  Object.defineProperty(signal, "aborted", {
+    configurable: false,
+    enumerable: true,
+    get: () => {
+      refreshCancellationState()
+      return isAborted()
+    }
+  })
   scheduleDeadline()
 
   return Object.freeze({
     deadline,
-    signal: controller.signal,
+    signal,
     remainingMilliseconds: () => remainingDeadlineMilliseconds(deadline, now()),
     throwIfCancelled: () => {
-      if (!controller.signal.aborted && sourceSignal?.aborted) onSourceAbort()
-      if (!controller.signal.aborted && remainingDeadlineMilliseconds(deadline, now()) === 0) {
-        abort("deadline", undefined)
-      }
-      if (!controller.signal.aborted) return
-      const reason = controller.signal.reason
+      refreshCancellationState()
+      if (!isAborted()) return
+      const reason = signal.reason
       if (reason instanceof ProcessingCancellationError) throw reason
       throw new ProcessingCancellationError(
         reason && reason.kind === "deadline" ? "deadline" : "user",
