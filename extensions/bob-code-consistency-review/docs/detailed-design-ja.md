@@ -2,7 +2,7 @@
 
 ## 1. 文書の位置付け
 
-本書は`extensions/bob-code-consistency-review`の現在実装に対応する詳細設計を定義する。対象は公開command、single-panel UI、workspace初期化、review-input、traceability sidecar、VCS差分、文書・コード根拠、review-package、Bob output、指摘確認・振り分け、workflow-register provider、transaction、安全境界である。
+本書は`extensions/bob-code-consistency-review`の現在実装に対応する詳細設計を定義する。対象は公開command、レビュー主GUI、workspace初期化、review-input、traceability sidecar、VCS差分、文書・コード根拠、review-package、Bob output、指摘確認・振り分け、workflow-register provider、安全境界である。
 
 通常operatorがCommand Paletteから開始する入口は次の1件だけである。
 
@@ -14,22 +14,22 @@ Bob Code Consistency Review: 整合プレレビューを開始
 |---|---|---|
 | `bobCodeConsistency.openReviewWizard` | `整合プレレビューを開始` | `Bob Code Consistency Review` |
 
-その他のCommand IDは主GUI action、workflow provider、互換API、テスト用に登録を維持するが、通常のCommand Paletteでは`when: "false"`とする。
+その他のCommand IDは主GUI action、workflow provider、互換API、テストのため登録を維持するが、通常のCommand Paletteでは`when: "false"`とする。
 
 ## 2. entry pointとactivation
 
-manifestの`main`は`./out/extension.js`である。`src/extension.ts`はcomposition rootとして次を行う。
+manifestの`main`は`./out/extension.js`であり、composition rootは`src/extension.ts`である。activation時は次を行う。
 
-1. workspace resolverとdomain serviceを生成する。
-2. `consistencyReviewWizard.ts`のpanel ownerを生成する。
-3. public / internal commandを登録する。
-4. traceability、review execution、decision serviceを接続する。
-5. `workflowProviderRegistration.ts`でoptional provider登録を開始する。
-6. diagnostics、listener、panel、registrationを`ExtensionContext.subscriptions`へ追加する。
+1. `bobCodeConsistency.openReviewWizard`と内部commandを登録する。
+2. workspace、review-input、traceability、preprocess、Bob output、triage handlerを接続する。
+3. `registerWorkflowProvidersWithRetry`を開始する。
+4. retry timer、provider registration、extension change listenerを`ExtensionContext.subscriptions`へ所有させる。
 
-`IBM.bob-code`と`local.workflow-register`はsoft dependencyである。未導入でもactivation、local UI、preprocess serviceを利用できる。
+`IBM.bob-code`と`local.workflow-register`はsoft dependencyである。未導入または未activationでもlocal GUI、workspace初期化、review-input作成、preprocessを利用できる。
 
 ## 3. 実装構成
+
+現在の主要moduleは次のとおりである。将来想定のfile名を現在実装の正本として列挙しない。
 
 ```text
 extensions/bob-code-consistency-review/
@@ -38,20 +38,23 @@ extensions/bob-code-consistency-review/
     extension.ts
     extensionCommandOptions.ts
     reviewExecutionCommands.ts
-    reviewInputWizard.ts
     traceabilityCommands.ts
     workflowProviderRegistration.ts
     workspaceInitializer.ts
     workspaceResolver.ts
+    commands/
+      reviewInputCommands.ts
+      workspaceCommands.ts
     core/
       reviewInputBuilder.ts
       reviewInputDiscovery.ts
       reviewInputAiDraftProvider.ts
       reviewInputDiagnostics.ts
       reviewInputValidator.ts
+      reviewTypes.ts
       traceabilityCatalog.ts
-      traceabilityStore.ts
-      traceabilityValidation.ts
+      traceabilityCatalogStore.ts
+      traceabilityAiDraftProvider.ts
       traceabilityPrepController.ts
       gitDiffCollector.ts
       languageClassifier.ts
@@ -60,6 +63,7 @@ extensions/bob-code-consistency-review/
       reviewPackageBuilder.ts
       bobOutputCapture.ts
       bobOutputValidator.ts
+      bobOutputSource.ts
       fileSystem.ts
       schemaLoader.ts
     analyzers/
@@ -71,12 +75,14 @@ extensions/bob-code-consistency-review/
     webview/
       consistencyReviewWizard.ts
       consistencyReviewWizardHtml.ts
+      consistencyReviewWizardStages.ts
       traceabilityPrepWebview.ts
       traceabilityPrepWebviewAssets.ts
       consistencyResultCapture.ts
       consistencyResultCaptureHtml.ts
       consistencyHumanTriage.ts
       consistencyHumanTriageHtml.ts
+      displayLabels.ts
     triage/
       triageTypes.ts
       triageSource.ts
@@ -87,67 +93,64 @@ extensions/bob-code-consistency-review/
       humanTriageHelper.ts
 ```
 
-## 4. `bobCodeConsistencyReviewWizard` ownership
+## 4. 整合プレレビュー主GUI
 
-### 4.1 panel lifecycle
+### 4.1 panel生成
 
-`consistencyReviewWizard.ts`だけが公開panelを所有する。
+`src/webview/consistencyReviewWizard.ts`だけがview type `bobCodeConsistencyReviewWizard`を生成する。
 
-- view type: `bobCodeConsistencyReviewWizard`
 - title: `整合プレレビュー`
 - `enableScripts: true`
 - `retainContextWhenHidden: true`
-- session identity: canonical workspace root、review ID
-- 同じsessionを再openした場合は既存panelを`reveal()`する
-- dispose時にlistener、watcher、pending operation、render stateを破棄する
+- 現在実装はcommand呼び出しごとに新しいWebview panelを生成する
+- panel dispose時にstage generationとoperation generationを進め、遅延完了を無効化する
 
-`traceabilityPrepWebview.ts`、`consistencyResultCapture.ts`、`consistencyHumanTriage.ts`はembedded stage serviceであり、独立した公開panelを作成しない。
+公開panel typeが1種類であることと、同一panel instanceを再利用することは別契約である。現在実装はcached singleton panelを保持しない。
 
-### 4.2 stage
+### 4.2 runtime stage
+
+`src/webview/consistencyReviewWizardStages.ts`のstage unionは次である。
 
 ```ts
 type ConsistencyReviewStage =
-  | "input"
+  | "review"
   | "traceability"
-  | "preprocess"
-  | "result"
-  | "decision"
+  | "review-result-capture"
+  | "triage"
 ```
 
-| stage | 表示 |
+| runtime stage | 利用者向け役割 |
 |---|---|
-| `input` | レビュー入力 |
-| `traceability` | トレーサビリティ整理 |
-| `preprocess` | Bobに渡すレビュー資料 |
-| `result` | レビュー結果取り込み |
-| `decision` | 指摘確認・振り分け |
+| `review` | workspace状態、レビュー入力、前処理、レビュー資料の確認 |
+| `traceability` | `トレーサビリティ整理` |
+| `review-result-capture` | `レビュー結果取り込み` |
+| `triage` | `指摘確認・振り分け` |
 
-stage routeはhost側でprerequisiteを検証する。validated inputなしでpreprocessへ進む、validated Bob outputなしでdecisionへ進む、といった遷移を拒否する。
+`initializeWorkspace`、`createReviewInput`、`createReviewInputFromTraceability`、`validateTraceability`、`preprocess`は`review` stage内のactionであり、独立stageではない。
 
-### 4.3 messageとconcurrency
+`traceabilityPrepWebview.ts`、`consistencyResultCapture.ts`、`consistencyHumanTriage.ts`は同じ公開panel内のstage serviceである。独立した公開Command Palette panelを作成しない。
 
-Webview messageは`type`、action ID、render token、session generationを検証する。
+### 4.3 message ownershipとfailure recovery
 
-- stale generationのasync resultをcurrent modelへ適用しない。
--同じworkspace / target fileへのsaveをqueueとtransaction lockで直列化する。
-- browserから受け取ったpath、source text、hash、decision revisionを再検証する。
-- unknown action、missing field、duplicate source IDを拒否する。
-- action errorはstage modelへ返し、uncaught rejectionにしない。
+- messageの`renderToken`がcurrent generationと一致することを確認する。
+- navigationの`fromStage`がcurrent stageと一致する場合だけ遷移する。
+- stage generationとoperation generationでstale async completionを拒否する。
+- non-review stageは`initialize()`成功後にだけmessage受付を有効にする。
+- stage初期化が失敗した場合はreview stageへ戻し、errorをmodelへ表示する。
+- unknown actionと不正messageをhost側で拒否する。
+- stage service例外を未処理Promise rejectionとして放置しない。
 
 ## 5. workspace解決と初期化
 
-### 5.1 root selection
+### 5.1 workspace root
 
-workspace rootはopen workspace folderから選ぶ。`review.vcs_root`がある場合、VCS rootはworkspace root内または明示許可されたopen rootへ解決する。
+workspace rootはopen workspace folderまたはworkflow contextから解決する。pathはlogical containmentだけでなくphysical identityを確認する。
 
-path validation:
-
-- absolute / relative形式の正規化
-- canonical physical path
-- symlink / junction / alias拒否
-- Windows drive-relative / device path拒否
-- workspace containment
-- target fileのregular-file identity
+- symlink / junction traversalの拒否
+- Windows device pathとdrive-relative pathの拒否
+- nearest existing ancestorのworkspace containment
+- parent directoryのdevice / inode再確認
+- write対象がregular fileまたはmissingであることの確認
 
 ### 5.2 initializer
 
@@ -157,358 +160,213 @@ path validation:
 .bob/workflows/code-consistency-review/WORKFLOW.md
 review-input.yaml
 docs/review-input-placeholder.md
+.gitignore
 ```
 
-workflow templateはcurrent bytesとbundled bytesを比較する。差異がある場合はbackupを作成してから更新し、same bytesなら`unchanged`を返す。
+workflow template更新は`src/workspaceInitializer.ts`でtransaction lockを取得し、current bytesとbundled bytesを比較する。
 
-既存`review-input.yaml`を上書きせずbackupだけ作成する。initializerがoperator固有のreview scopeやartifact選択を暗黙変更してはならない。
+- same bytesなら`unchanged`
+- existing workflowはsnapshot identityとbytesを再確認する
+- same-directory temporary fileを排他的に作成する
+- current workflowのhard-link backupを作成する
+- temporary fileをtargetへpublishする
+- publication後にtargetとbackupのidentity / bytesを検証する
+-途中失敗時は所有権を確認してrollbackする
 
-save sequence:
-
-```text
-path / identity検証
-→ current bytes読込
-→ backup path予約
-→ backup publication
-→ temporary write
-→ atomic replace
-→ post-write validation
-```
-
-backup failure、stale file、unsafe pathではreplacementを開始しない。
+`review-input.yaml`がmissingなら雛形を排他的に作成する。既存`review-input.yaml`を上書きせずbackupだけ作成し、result statusは`unchanged`とする。operator固有のreview scopeをinitializerが暗黙変更してはならない。
 
 ## 6. review-input
 
-### 6.1 model
+### 6.1 draftとnormalized YAML
 
-```ts
-interface ReviewInputDraft {
-  review: {
-    id: string
-    title: string
-    change_type: string
-    purpose?: string
-    vcs: "git" | "bazaar" | "bzr"
-    base: string
-    head: string
-    vcs_root?: string
-  }
-  artifacts: ReviewArtifactInput[]
-  review_focus: string[]
-  analysis_options?: Record<string, unknown>
-  bob_options?: Record<string, unknown>
-}
-```
+`src/core/reviewInputBuilder.ts`の`ReviewInputDraft`は次を持つ。
 
-### 6.2 creation routes
+- `review`: id、title、change_type、purpose、base、head、vcs、vcs_root等
+- `artifact_candidates`: kind、path、section / sheet / row / case locator
+- `focus_preset`または`review_focus`
+- `analysis_options`
+- `bob_options`
 
-- 主GUIの対話入力
+hostはenum、required field、workspace containment、artifact existenceを検証して`schema_version: 1`のnormalized YAMLを生成する。AI draftやbrowser draftを直接fileへ書かない。
+
+### 6.2作成経路
+
+- review stageの対話入力
 - accepted traceability catalog
 - AI draft JSON
-- existing file edit / repair
+- existing fileの診断・repair
 
-すべて`reviewInputBuilder.ts`と`reviewInputValidator.ts`を通す。AI draftやbrowser draftを直接YAMLへ書かない。
+すべて`src/commands/reviewInputCommands.ts`からdomain builder / validatorへ接続する。既存fileを更新するguided authoringでは、設定に従い時刻付きbackupを作成してから書き込む。
 
-### 6.3 discovery
+### 6.3 discoveryとdiagnostics
 
-`reviewInputDiscovery.ts`はdocs配下から候補を列挙する。候補はlogical ID、kind、relative path、size、encoding hintを持ち、本文全量をUI modelへ含めない。
-
-### 6.4 diagnosticsとrepair
-
-`reviewInputDiagnostics.ts`はschema、path、VCS range、artifact existence、language、focus、legacy enumを検査する。repairはknown migrationだけをpreviewし、明示確認、backup、revalidation後に適用する。
+`reviewInputDiscovery.ts`は候補文書のlogical metadataを列挙し、本文全量をUI modelへ含めない。`reviewInputDiagnostics.ts`はschema、path、VCS range、artifact、language、focus、legacy valueを検査する。repairはknown migrationだけをpreviewし、明示確認後に適用する。
 
 ## 7. traceability sidecar
 
-### 7.1 catalog
+### 7.1 storage
 
-sidecar catalogはdomains、items、links、decisions、source locator、source hash、revisionを保持する。
-
-```yaml
-schema_version: bob-traceability-catalog/v1
-revision: 12
-items:
-  - id: REQ-0001
-    kind: requirements
-    status: accepted
-    locator:
-      path: docs/requirements.md
-      heading: Timeout
-```
-
-### 7.2 `トレーサビリティ整理`
-
-embedded stageは次のtabを持つ。
-
-- 分類
-- 項目
-- 関連
-- 判断
-- 検証レポート
-- レビュー入力プレビュー
-
-browser actionはapprove、reject、deprecate、restore、link / decision edit等のintentだけを送る。save ownershipはextension hostが持つ。
-
-### 7.3 optimistic locking
-
-open時catalog revisionとcurrent revisionを比較する。stale revisionでは保存せず再読込を要求する。backup、staged YAML validation、atomic replace、gate report generationを同一transactionへ含める。
-
-### 7.4 AI draft
-
-AI draftはproposed-only candidateとして検証する。accepted / rejected / deprecated statusをAI payloadから直接適用しない。citation、source membership、ID、base revisionをhost側で確認する。
-
-## 8. VCS diff collection
-
-### 8.1 Git
-
-`gitDiffCollector.ts`はargument arrayでGitを実行する。
-
-- rename-aware name status
-- numstat
-- unified diff
-- binary marker
-- changed file list
-- base / head verification
-
-shellを使わず、timeout、AbortSignal、output limitを適用する。
-
-### 8.2 Bazaar
-
-`review.vcs`が`bazaar`または`bzr`の場合は`bzr --no-aliases`を使う。revision、root、pathを検証し、Gitと共通のnormalized changed-file modelへ変換する。
-
-### 8.3 language classification
-
-`languageClassifier.ts`はC / C++、TypeScript、JavaScript、Python、C#、Java、Go、Rust、Shell、SQL、JSON、YAML、Markdown、text、unknownを分類する。
-
-`analysis_options.language`指定時だけfilterし、未指定は全対応言語を対象にする。
-
-## 9. document extraction
-
-### 9.1 Markdown
-
-heading、line range、source IDを保持したexcerptを生成する。
-
-### 9.2 docx
-
-paragraphとtable cellを抽出し、document indexとsource locatorを保持する。
-
-### 9.3 xlsx
-
-sheet、cell range、header、data rowを抽出する。formula評価やmacro実行は行わない。
-
-### 9.4 encoding / size
-
-UTF-8を優先し、configured fallbackでShift-JIS / CP932系をdecodeする。excerpt、document、aggregate bytesに上限を設け、truncationをmanifestへ記録する。
-
-## 10. code evidence
-
-### 10.1 C / C++
-
-`cCppChangeAnalyzer.ts`は軽量parserとdiff contextを使って次を抽出する。
-
-- changed function
-- caller / callee candidate
-- global / static candidate
-- macro / define candidate
-- RT / TS rule candidate
-- source line range
-
-完全AST解析ではないため、confidenceとhuman checkを付ける。
-
-### 10.2 generic languages
-
-`genericCodeEvidenceAnalyzer.ts`はdiff hunkごとに`SRC-*` evidenceと`code-slices/*.md`を生成する。unsupported languageでもchanged fileを黙って捨てず、generic evidenceまたはdiagnosticを出す。
-
-## 11. traceability mapping
-
-`traceabilityBuilder.ts`はdocument evidenceとcode evidenceからcandidate linkを作る。linkはdeterministic heuristicと明示inputに基づき、Bobの推測をsource of truthにしない。
-
-accepted sidecar link、artifact kind、review focus、changed file relationをmanifestへ記録する。
-
-## 12. review-package
-
-### 12.1 output
+既定pathは次である。
 
 ```text
-.bob-review/
-  review-package/
-    manifest.yaml
-    review-input.normalized.yaml
-    evidence-index.json
-    traceability-map.yaml
-    bob-input.md
-    documents/
-    code-slices/
+.bob-trace/traceability-catalog.json
+.bob-trace/gate-report.md
 ```
 
-### 12.2 manifest
+`src/core/traceabilityCatalogStore.ts`がcatalogのread、validation、revision、backup、atomic write、gate reportを扱う。`traceabilityStore.ts`というmoduleは現在実装に存在しない。
+
+catalogはdomain、item、link、decision、source locator、source hash、revisionを保持する。browserはintentだけを送り、save ownershipはExtension Hostが持つ。
+
+### 7.2 トレーサビリティ整理
+
+`traceability` stageは分類、項目、関連、判断、検証レポート、レビュー入力previewを提供する。stage requestはworkspace root、catalog path、report path、text encodingを持つ。
+
+open時revisionとsave時revisionを比較し、stale revisionでは更新せず再読込を要求する。AI draftはproposed-only candidateとして検証し、accepted / rejected / deprecated statusをAI出力から直接昇格させない。
+
+## 8. VCS差分とevidence
+
+### 8.1 Git / Bazaar
+
+`gitDiffCollector.ts`はargument arrayでGitを実行し、rename-aware status、numstat、unified diff、binary marker、changed file listを生成する。
+
+`review.vcs`が`bazaar`または`bzr`の場合は`bzr --no-aliases`を用いる。Git / Bazaarともにshellを使わず、timeout、output limit、revision / path validationを適用する。
+
+### 8.2 document evidence
+
+`documentExtractor.ts`はMarkdown、DOCX、XLSX等からsource locator付きexcerptを生成する。XLSXではsheet / cell range / rowを保持し、formula評価やmacro実行を行わない。document、sheet、row、excerpt、aggregate bytesの上限を適用する。
+
+### 8.3 code evidence
+
+`cCppChangeAnalyzer.ts`はdiff contextからchanged function、caller / callee candidate、global / static candidate、macro candidate、source rangeを抽出する。完全AST解析ではないためconfidenceとhuman checkを付ける。
+
+`genericCodeEvidenceAnalyzer.ts`はその他の言語でdiff hunk単位のevidenceを生成する。unsupported languageを黙って除外せず、generic evidenceまたはdiagnosticを出す。
+
+`traceabilityBuilder.ts`はdocument evidenceとcode evidenceからcandidate relationを構築する。Bobの推測をsource of truthにしない。
+
+## 9. review-packageとBob input
+
+既定出力先は`.bob-review/review-package`である。
+
+```text
+manifest.yaml
+review-input.normalized.yaml
+evidence-index.json
+traceability-map.yaml
+bob-input.md
+documents/
+code-slices/
+```
 
 manifestはreview ID、package ID、VCS range、input hash、tool version、artifact inventory、bytes、SHA-256、truncation、warningを保持する。
 
-### 12.3 `bob-input.md`
+`bob-input.md`はvalidated evidenceだけで構成し、absolute local path、未選択文書、secret、workspace全体のfile listを含めない。findingとquestionを分離し、evidence ID、uncertainty、output schema、正式承認禁止をBobへ明示する。
 
-Bobへ渡す本文はvalidated evidenceだけで構成する。absolute local path、未選択文書、secret、workspace全体のfile listを含めない。
+## 10. レビュー結果取り込み
 
-Bobへ次を明示する。
+`src/core/bobOutputCapture.ts`はworkflow handoff、clipboard、editor、manual textからBob output候補を抽出する。`src/core/bobOutputValidator.ts`はschema version、review / package ID、finding / question、severity / confidence、evidence membership、duplicate ID、byte上限を検証する。
 
-- evidence IDなしの断定を避ける。
-- findingとquestionを分離する。
-- uncertaintyを表示する。
--正式承認を行わない。
-- output schemaへ従う。
+validation errorがある場合はcurrent outputを置換しない。stage serviceはvalidated outputを保存した後、必要なtriage sourceを準備して`triage` stageへ遷移する。
 
-## 13. `レビュー結果取り込み`
+## 11. 指摘確認・振り分けdomain
 
-### 13.1 capture
+### 11.1 source snapshot
 
-`bobOutputCapture.ts`はresult handoff、clipboard、editor、manual textからYAML候補を抽出する。source typeとcapture timestampを記録する。
+`src/triage/triageSource.ts`はBob outputから`triage-source/v1`を生成する。正本fileは`triage-source.yaml`である。
 
-### 13.2 validation
+- `review_id`
+- optional `package_id`
+- `bob_output_sha256`
+- `items[]`の`source_id`と`source_type`
 
-`bobOutputValidator.ts`は次を検証する。
+source snapshotはimmutableであり、Webview messageから更新しない。
 
-- schema version
-- review ID / package ID
-- finding / question shape
-- severity / confidence enum
-- evidence ID existence
-- duplicate ID
-- output bytes
+### 11.2 decision store
 
-validation errorがある場合は固定outputを置換しない。
+`src/triage/triageDecisions.ts`は`triage-decisions/v1`を扱う。正本fileは`triage-decisions.yaml`である。
 
-### 13.3 save
+- source SHA
+- monotonic `decision_revision`
+- `source_id` keyed decision map
+- decision、severity、owner、reason、comment、follow-up
 
-validated YAMLをsame-directory temporary fileからatomic replaceする。既存outputがある場合はfile expectationとbackupを扱う。save成功後にだけ主GUIを`指摘確認・振り分け`へ進める。
+posted array orderをidentityにしない。known editable fieldだけをmergeし、同じschema versionのdisk上unknown fieldを保持する。browser由来unknown fieldは採用しない。
 
-## 14. decision domain
-
-### 14.1 source snapshot
-
-`triageSource.ts`はBob outputから`triage-source/v1`を生成する。source textはimmutableであり、Webview messageから更新しない。
-
-### 14.2 decision store
-
-`triageDecisions.ts`は`triage-decisions/v1`を扱う。itemsは`source_id` keyed mapであり、posted array orderをidentityにしない。
-
-known editable fieldだけをmergeし、disk上のunknown fieldは同じschema versionで保持する。browserが送ったunknown fieldは破棄する。
-
-### 14.3 conflicts
+### 11.3 conflict
 
 - source SHA mismatch: `TRIAGE_SOURCE_CHANGED`
 - stale decision revision: `TRIAGE_REVISION_CONFLICT`
 - invalid field: `TRIAGE_DECISION_INVALID <source_id>`
 
-conflictはsave開始前に検出する。
+conflictはwrite開始前に検出する。
 
-### 14.4 projection
+### 11.4 projectionとtransaction
 
-`triageProjection.ts`は次を決定的に生成する。
+`src/triage/triageProjection.ts`はdecisionからprojectionを決定的に生成する。未判断findingをaccepted projectionへ含めない。
 
-```text
-triage-result.yaml
-accepted-findings.md
-rejected-findings.md
-investigation-items.md
-questions-to-author.md
-follow-up-actions.md
-```
+`src/triage/triageFileTransaction.ts`はstaging、YAML validation、backup、replace、rollbackを行う。途中失敗時に一部projectionだけをcurrentへ残さない。
 
-未判断findingをaccepted projectionへ出さない。
+`src/triage/humanTriageWorkspace.ts`はBob output、source、decision、projectionをworkspace pathへ接続し、legacy `triage-result.yaml`のmatching IDだけを移行する。
 
-### 14.5 transaction / migration
+## 12. workflow-register provider
 
-`triageFileTransaction.ts`はstaging、YAML validation、backup、replace、rollbackを行う。途中失敗時に一部projectionだけをcurrentへ残さない。
+source ownerは`local.bob-code-consistency-review`である。`src/workflowProviderRegistration.ts`はproviderごとのallowed option keyだけを採用し、workflow contextを明示fieldとして渡す。
 
-legacy `triage-result.yaml`はcurrent sourceに存在するmatching IDだけ移行し、unmatched IDを`migration-report.md`へ記録する。
-
-## 15. workflow-register providers
-
-source ownerは`local.bob-code-consistency-review`である。
-
-### 15.1 workspace / input
+登録provider:
 
 ```text
 bobCodeConsistency.initializeWorkspace
 bobCodeConsistency.createReviewInput
 bobCodeConsistency.prepareAiReviewInputDraft
 bobCodeConsistency.applyAiReviewInputDraft
-bobCodeConsistency.repairReviewInput
-bobCodeConsistency.explainReviewInputDiagnostics
-```
-
-### 15.2 traceability
-
-```text
 bobCodeConsistency.prepareAiTraceabilityDraft
 bobCodeConsistency.captureAiTraceabilityDraft
 bobCodeConsistency.applyAiTraceabilityDraft
 bobCodeConsistency.openTraceabilityPrep
 bobCodeConsistency.validateTraceabilityCatalog
 bobCodeConsistency.createReviewInputFromTraceability
-```
-
-`bobCodeConsistency.openTraceabilityPrep`は独立panelを作らず、current `bobCodeConsistencyReviewWizard`を`トレーサビリティ整理`stageへrouteする。
-
-### 15.3 execution
-
-```text
+bobCodeConsistency.repairReviewInput
+bobCodeConsistency.explainReviewInputDiagnostics
 bobCodeConsistency.preprocess
 bobCodeConsistency.captureBobOutput
 bobCodeConsistency.validateOutput
 bobCodeConsistency.triage
 ```
 
-provider inputのargs、inputs、state、workspace root、run ID、step IDをuntrustedとして検証する。registration failureをhard dependencyへ変えない。
+`bobCodeConsistency.openTraceabilityPrep`は独立panelを作らず、`bobCodeConsistencyReviewWizard`を`traceability` stageで開く。provider registration failureをhard dependencyへ変えない。
 
-## 16. security and error handling
+## 13. security / privacy
 
-- Webview CSP nonceとHTML escapeを維持する。
+- WebviewはCSP nonceとHTML escapeを維持する。
 - inline event handlerとuntrusted `innerHTML`を使用しない。
-- path containmentはphysical identityで検証する。
-- symlink、junction、hard link、alias、workspace escapeを拒否する。
-- subprocessはshellを使わず、timeout、AbortSignal、output limitを適用する。
-- YAML / JSON parser errorをuser action付きdiagnosticへ変換する。
+- path containmentをphysical identityで検証する。
+- symlink、junction、hard-link replacement、workspace escapeを拒否する。
+- subprocessはshellを使わず、timeoutとoutput limitを適用する。
+- YAML / JSON parse errorをoperator action付きdiagnosticへ変換する。
 - secret、document本文、Bob output本文、decision本文をrelease evidenceへ保存しない。
-- source hash、revision、preview digest、file expectationをwrite前に再検証する。
+- source hash、revision、file expectationをwrite前に再検証する。
 - Bob outputやAI draftを人間decisionなしで正式承認へ使わない。
 
-## 17. tests
+## 14. test / acceptance gate
 
-### 17.1 UI / route
+unit / source contract:
 
-- exact public command inventoryが1件。
-- view type `bobCodeConsistencyReviewWizard`のsingle-panel lifecycle。
-- `トレーサビリティ整理`、`レビュー結果取り込み`、`指摘確認・振り分け`のstage route。
-- close / reopen、render token、stale async completion。
-- keyboard、focus、200% zoom、High Contrast。
+- exact public command inventoryが1件
+- view type `bobCodeConsistencyReviewWizard`とtitle `整合プレレビュー`
+- runtime stage union `review / traceability / review-result-capture / triage`
+- render token、from-stage、generation、stale async completion
+- workflow template backup / publication / rollback
+- 既存`review-input.yaml`を上書きせずbackupだけ
+- review-input builder / schema / path validation
+- traceability catalog revision、backup、gate report、AI proposed-only merge
+- Git / Bazaar argument safety、encoding、document / code evidence
+- review-package manifest、hash、size、truncation
+- `triage-source.yaml`と`triage-decisions.yaml`
+- `TRIAGE_SOURCE_CHANGED`と`TRIAGE_REVISION_CONFLICT`
+- keyed identity、unknown field preservation、projection、rollback、legacy migration
 
-### 17.2 initializer / input
+release gate:
 
-- workflow template backup / update。
-- 既存`review-input.yaml`を上書きせずbackupだけ。
-- builder / schema / path validation。
-- AI draft host revalidation。
-- repair preview / confirmation / backup。
-
-### 17.3 traceability / preprocess
-
-- catalog revision、backup、transaction、gate report。
-- proposed-only AI merge。
-- Git / Bazaar argument safety。
-- encodingとdocument extraction。
-- C / C++とgeneric language evidence。
-- review-package manifest、hash、size、truncation。
-
-### 17.4 output / decision
-
-- Bob output schemaとevidence membership。
-- `triage-source.yaml`と`triage-decisions.yaml`。
-- `TRIAGE_SOURCE_CHANGED`と`TRIAGE_REVISION_CONFLICT`。
-- keyed identity、unknown field preservation、decision validation。
-- projection classification、transaction rollback、legacy migration。
-
-### 17.5 cross-platform / package
-
-Ubuntu / Windowsの同一source headでcompile、architecture、source、dependency、unit、package、VSIX policy、Extension Host smokeを実行する。
-
-実IBM Bob UATではresult handoff、workflow-register連携、visual layout、keyboard-only、200% zoom、High Contrast、Developer Tools Console、artifact hashを確認する。
+- Ubuntu / Windowsの同一source headでcompile、dependency / architecture / source policy、unit test、package、VSIX policy、Extension Host smokeを実行する。
+- 実IBM Bob UATでresult handoff、workflow-register連携、layout、keyboard-only、200% zoom、High Contrastを確認する。
+- Developer Tools Consoleのuncaught exception / unhandled rejectionを0件にする。
+- tested commit、VSIX build commit、artifact hashを一致させる。
