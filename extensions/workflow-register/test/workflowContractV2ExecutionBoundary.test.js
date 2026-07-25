@@ -17,50 +17,44 @@ function escapeRegex(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
-test('standalone engines verify the Contract v2 lease before any run-store operation', () => {
+test('standalone and Bob run stores verify Contract v2 before FileRunStateStore creates a run', () => {
   const runtime = source('workflowRuntimeFactory.ts')
-  assert.match(runtime, /contractV2BeforeRun\?: \(workflow: CoreWorkflowDefinition\) => Promise<void>/)
-  assert.match(runtime, /class ContractV2BoundaryWorkflowEngine extends WorkflowEngine/)
+  const guardedStore = source('workflowContractV2RunStateStore.ts')
+  assert.match(runtime, /beforeCreateRun\?:/)
+  assert.match(runtime, /ContractV2GuardedRunStateStore/)
   assert.match(runtime, ordered(
-    'override async runWorkflow(',
-    'await this.beforeRun(workflow)',
-    'return super.runWorkflow(workflow, inputs, options)'
+    'createRunStore(workspaceRoot: string)',
+    'new ContractV2GuardedRunStateStore({',
+    'beforeCreateRun: this.options.beforeCreateRun'
   ))
-  assert.match(runtime, ordered(
-    'const engineOptions: WorkflowEngineOptions = {',
-    'const beforeRun = this.options.contractV2BeforeRun',
-    'new ContractV2BoundaryWorkflowEngine(engineOptions, beforeRun)'
+  assert.match(guardedStore, ordered(
+    'override async createRun(',
+    'await this.beforeCreateRun?.(workflow, inputs)',
+    'return super.createRun(workflow, inputs)'
   ))
 })
 
-test('the service acquires the current v2 plan, verifies identity, releases it, and fails before R5', () => {
+test('the service acquires the exact current v2 plan, releases it, and fails before R5', () => {
   const service = source('workflowRegisterService.ts')
-  assert.match(service, /workflowContractV2CoreMetadata/)
-  assert.match(service, /contractV2BeforeRun: \(workflow\) => this\.assertContractV2RuntimeBoundary\(workflow\)/)
+  assert.match(service, /acquireWorkflowContractV2RunLease/)
+  assert.match(service, /beforeCreateRun: \(workflow\) => this\.assertContractV2RunCreationReady\(workflow\)/)
   assert.match(service, ordered(
-    'private async assertContractV2RuntimeBoundary(',
-    'this.contractV2.acquireCurrent({',
-    'consumer: "run-creation"',
-    'lease.planDigest !== metadata.planDigest',
-    'lease.packageDigest !== metadata.packageDigest',
+    'private async assertContractV2RunCreationReady(',
+    'acquireWorkflowContractV2RunLease({',
+    'acquireCurrent: (input) => this.acquireCurrentWorkflowPackage(input)',
     'lease.release()',
-    'Contract v2 runtime execution is unavailable before R5'
+    'Contract v2 runtime execution is not enabled before R5'
   ))
 })
 
-test('Operation Hub requests recompile the displayed current plan before command dispatch', () => {
+test('Operation Hub recompiles and compares the displayed current plan before dispatch', () => {
   const service = source('workflowRegisterService.ts')
   assert.match(service, /isOperationHubWorkflowMutationTarget/)
   assert.match(service, ordered(
     'async runWorkflow(',
-    'await this.assertOperationHubContractV2Current(workflowArg)',
+    'verifyWorkflowContractV2CurrentPlan({',
+    'compileCurrent: (input) => this.compileCurrentWorkflowPackage(input)',
     'return this.runCommands.runWorkflow(workflowArg, inputs)'
-  ))
-  assert.match(service, ordered(
-    'private async assertOperationHubContractV2Current(',
-    'consumer: "operation-hub"',
-    'result.handle.planDigest !== metadata.planDigest',
-    'result.handle.plan.packageDigest !== metadata.packageDigest'
   ))
 })
 
