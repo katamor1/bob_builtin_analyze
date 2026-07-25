@@ -91,6 +91,38 @@ test('lifecycle disposal revokes registrations, makes wrappers idempotent, and f
   lifecycle.dispose()
 })
 
+test('registry accessors are rejected without invocation and captured Set clear survives replacement', () => {
+  const modulePath = require.resolve('../out/workflowContractV2ProviderLifecycle.js')
+  delete require.cache[modulePath]
+  const subject = require(modulePath)
+  let getterCalls = 0
+  const hostile = {}
+  Object.defineProperty(hostile, 'registerWorkflowProviderContract', {
+    get() { getterCalls += 1; throw new Error('must not invoke registry getter') }
+  })
+  assert.throws(() => new subject.WorkflowContractV2ProviderLifecycle({
+    actionRegistry: hostile,
+    createEntrypoint: () => Object.freeze({})
+  }), TypeError)
+  assert.equal(getterCalls, 0)
+
+  const registry = fakeRegistry()
+  const lifecycle = new subject.WorkflowContractV2ProviderLifecycle({
+    actionRegistry: registry,
+    createEntrypoint: () => Object.freeze({})
+  })
+  lifecycle.register(input('captured'))
+  const originalClear = Set.prototype.clear
+  Set.prototype.clear = function replacedClear() { throw new Error('ambient Set.clear must not run') }
+  try {
+    assert.doesNotThrow(() => lifecycle.dispose())
+    assert.equal(registry.active.size, 0)
+  } finally {
+    Set.prototype.clear = originalClear
+    delete require.cache[modulePath]
+  }
+})
+
 test('public service API rotates the v2 gateway for provider contract registration lifecycle', () => {
   const root = path.join(__dirname, '..', 'src')
   const service = fs.readFileSync(path.join(root, 'workflowRegisterService.ts'), 'utf8')
