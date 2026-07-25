@@ -19,6 +19,7 @@ test("Bazaar current design mirrors the implemented Review Run schema and UI sta
   const runTypes = read("extensions/bob-bazaar-review/src/reviewRuns/reviewRunTypes.ts")
   const uiStages = read("extensions/bob-bazaar-review/src/ui/reviewGuiStages.ts")
   const reviewGui = read("extensions/bob-bazaar-review/src/ui/reviewGui.ts")
+  const basic = read("extensions/bob-bazaar-review/docs/basic-design-ja.md")
   const design = read("extensions/bob-bazaar-review/docs/detailed-design-ja.md")
 
   assertContainsAll(runTypes, [
@@ -40,6 +41,16 @@ test("Bazaar current design mirrors the implemented Review Run schema and UI sta
   ], "Bazaar UI stage runtime types")
   assert.ok(reviewGui.includes('createWebviewPanel("bobBazaarReviewGui", "Bazaar レビュー"'))
   assert.equal(reviewGui.includes("panel.reveal("), false, "the current GUI command creates a panel instead of revealing a cached singleton")
+
+  assertContainsAll(basic, [
+    "bazaar-review-run/v1",
+    "呼び出しごとに新しいWebview panel",
+    '`review`',
+    '`review-result-capture`',
+    '`triage`',
+    '`review-results`',
+    "tracked phase"
+  ], "Bazaar basic design")
 
   assertContainsAll(design, [
     "bazaar-review-run/v1",
@@ -68,6 +79,14 @@ test("Bazaar current design mirrors the implemented Review Run schema and UI sta
     "既存panelを`reveal()`"
   ]) {
     assert.equal(design.includes(stale), false, `Bazaar detailed design must not retain stale contract: ${stale}`)
+  }
+
+  for (const stale of [
+    "単一panelをopen / revealする",
+    "stage: target、packet、result、decision、record",
+    "phase、target、packet、result、decision、record path"
+  ]) {
+    assert.equal(basic.includes(stale), false, `Bazaar basic design must not retain stale contract: ${stale}`)
   }
 })
 
