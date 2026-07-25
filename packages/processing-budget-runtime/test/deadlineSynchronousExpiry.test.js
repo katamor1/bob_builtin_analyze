@@ -7,6 +7,29 @@ const {
   createCancellationScope
 } = require("../runtime/deadline-cancellation")
 
+test("trusted signal observes deadline expiry before the scheduled callback runs", () => {
+  let now = 100
+  let scheduled
+  const scope = createCancellationScope({
+    deadline: Object.freeze({ expires_at_monotonic_ms: 200 }),
+    now: () => now,
+    schedule: (callback) => {
+      scheduled = callback
+      return 1
+    },
+    cancelSchedule: () => {}
+  })
+  try {
+    assert.equal(scope.signal.aborted, false)
+    now = 201
+    assert.equal(scope.signal.aborted, true)
+    assert.equal(cancellationKindFromSignal(scope.signal), "deadline")
+    assert.equal(typeof scheduled, "function")
+  } finally {
+    scope.dispose()
+  }
+})
+
 test("throwIfCancelled observes deadline expiry before the scheduled callback runs", () => {
   let now = 100
   let scheduled
