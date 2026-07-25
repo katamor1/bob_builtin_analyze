@@ -1,5 +1,10 @@
 import * as vscode from "vscode"
-import type { ActionProvider, ActionProviderRegistration } from "./core/actionRegistry"
+import type {
+  ActionProvider,
+  ActionProviderRegistration,
+  WorkflowProviderRegistration,
+  WorkflowProviderRegistrationInput
+} from "./core/actionRegistry"
 import type { AgentProvider, CoreWorkflowDefinition } from "./core/model"
 import type { ResultSinkRegistry } from "./core/resultSinkRegistry"
 import { OperationHubProvider } from "./gui/operationHubProvider"
@@ -20,6 +25,9 @@ export interface WorkflowRegisterApi {
   acceptBobWorkflowGateWithMetadata: (workspaceRoot: string, runId: string, stepId: string) => BobWorkflowGateAcceptance
   coordinateReviewAcceptance: <T>(workspaceRoot: string, runId: string, operation: () => Promise<T>) => Promise<T>
   registerActionProvider: (provider: ActionProvider) => ActionProviderRegistration
+  registerWorkflowProviderContract: (
+    input: WorkflowProviderRegistrationInput
+  ) => WorkflowProviderRegistration
   registerAgentProvider: (provider: AgentProvider) => void
   registerResultSink: (type: string, handler: Parameters<ResultSinkRegistry["register"]>[1]) => void
   listWorkflows: () => CoreWorkflowDefinition[]
@@ -50,6 +58,7 @@ export function activate(context: vscode.ExtensionContext): WorkflowRegisterApi 
     acceptBobWorkflowGateWithMetadata: (workspaceRoot, runId, stepId) => service.acceptBobWorkflowGateWithMetadata(workspaceRoot, runId, stepId),
     coordinateReviewAcceptance: (workspaceRoot, runId, operation) => service.coordinateReviewAcceptance(workspaceRoot, runId, operation),
     registerActionProvider: (provider) => service.registerActionProvider(provider),
+    registerWorkflowProviderContract: (input) => service.registerWorkflowProviderContract(input),
     registerAgentProvider: (provider) => service.registerAgentProvider(provider),
     registerResultSink: (type, handler) => service.registerResultSink(type, handler),
     listWorkflows: () => service.listCoreWorkflows(),
