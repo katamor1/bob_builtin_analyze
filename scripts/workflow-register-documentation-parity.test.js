@@ -46,7 +46,10 @@ test("workflow-register current design mirrors Operation Hub and Builder ownersh
 })
 
 test("workflow-register current design mirrors the writable run-state codec", () => {
-  const codec = read("extensions/workflow-register/src/core/runtime/runStateCodec.ts")
+  const codecPath = path.join(repoRoot, "extensions/workflow-register/src/core/runtime/runStateCodec.ts")
+  assert.ok(fs.existsSync(codecPath), "implemented run-state codec is missing")
+
+  const codec = fs.readFileSync(codecPath, "utf8")
   const runtime = read("extensions/workflow-register/src/core/modelRuntime.ts")
   const design = read("extensions/workflow-register/docs/detailed-design-ja.md")
 
@@ -73,7 +76,6 @@ test("workflow-register current design names implemented surface modules", () =>
     "extensions/workflow-register/src/gui/operationHubProvider.ts",
     "extensions/workflow-register/src/gui/operationHubMutationCoordinator.ts",
     "extensions/workflow-register/src/webview/workflowBuilderPanel.ts",
-    "extensions/workflow-register/src/core/runtime/runStateCodec.ts",
     "extensions/workflow-register/src/core/runStateStore.ts",
     "extensions/workflow-register/src/commands/openWorkflowBuilder.ts",
     "extensions/workflow-register/src/commands/runRetention.ts"
