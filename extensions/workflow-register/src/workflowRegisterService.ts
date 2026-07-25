@@ -1,3 +1,4 @@
+import * as path from "path"
 import * as vscode from "vscode"
 import {
   BobWorkflowGateRegistry,
@@ -14,7 +15,9 @@ import type { ResultSinkRegistry } from "./core/resultSinkRegistry"
 import {
   fallbackWorkspaceRootCandidates,
   findWorkflowRootCandidates,
-  MarkerRootCandidate
+  MarkerRootCandidate,
+  relativePathFromRoot,
+  workspaceRootFromFile
 } from "./core/workspaceRoots"
 import { showMarkdownReport } from "./reports"
 import { ManualStepPanelController } from "./webview/manualStepPanel"
@@ -31,6 +34,10 @@ import type {
   WorkflowContractV2Entrypoint,
   WorkflowContractV2Slot
 } from "./workflowContractV2Entrypoint"
+import {
+  acquireWorkflowContractV2RunLease,
+  WorkflowContractV2BoundaryError
+} from "./workflowContractV2ExecutionGuard"
 import { createWorkflowContractV2ProductEntrypoint } from "./workflowContractV2Product"
 import { WorkflowRuntimeFactory } from "./workflowRuntimeFactory"
 import { collectBobWorkflowInputs } from "./workflowInputPrompt"
@@ -94,6 +101,7 @@ export class WorkflowRegisterService implements vscode.Disposable {
       gateRegistry: this.bobWorkflowGates,
       agentProvider: () => this.agentProvider,
       inputsProvider: (workflow, provided) => collectBobWorkflowInputs(workflow, provided),
+      beforeCreateRun: (workflow) => this.assertContractV2RunCreationReady(workflow),
       onManualStepHeld: (input) => this.manualStepPanel.show(input)
     })
     this.contractV2 = createWorkflowContractV2ProductEntrypoint({
@@ -116,11 +124,12 @@ export class WorkflowRegisterService implements vscode.Disposable {
         this.reviewAcceptances.coordinate(workspaceRoot, runId, kind, operation)
       )
     })
-    for (const watcher of [this.legacyWatcher, this.contractV2Watcher]) {
-      watcher.onDidCreate(() => this.reload({ showReport: false }))
-      watcher.onDidChange(() => this.reload({ showReport: false }))
-      watcher.onDidDelete(() => this.reload({ showReport: false }))
-    }
+    this.legacyWatcher.onDidCreate(() => this.reload({ showReport: false }))
+    this.legacyWatcher.onDidChange(() => this.reload({ showReport: false }))
+    this.legacyWatcher.onDidDelete(() => this.reload({ showReport: false }))
+    this.contractV2Watcher.onDidCreate((uri) => this.onContractV2PointerChanged(uri))
+    this.contractV2Watcher.onDidChange((uri) => this.onContractV2PointerChanged(uri))
+    this.contractV2Watcher.onDidDelete((uri) => this.onContractV2PointerChanged(uri))
   }
 
   dispose(): void {
@@ -281,6 +290,39 @@ export class WorkflowRegisterService implements vscode.Disposable {
 
   async inspectBranching(runId?: string): Promise<unknown> {
     return this.runCommands.inspectBranching(runId)
+  }
+
+  private async assertContractV2RunCreationReady(workflow: CoreWorkflowDefinition): Promise<void> {
+    const lease = await acquireWorkflowContractV2RunLease({
+      workflow,
+      acquireCurrent: (input) => this.acquireCurrentWorkflowPackage(input)
+    })
+    if (lease === undefined) return
+    try {
+      throw new WorkflowContractV2BoundaryError(
+        "Contract v2 runtime execution is not enabled before R5; no run was created."
+      )
+    } finally {
+      lease.release()
+    }
+  }
+
+  private onContractV2PointerChanged(uri: vscode.Uri): void {
+    const workspaceRoot = workspaceRootFromFile(uri.fsPath, ".bob")
+    if (workspaceRoot !== undefined) {
+      const slotRoot = path.dirname(uri.fsPath)
+      const collectionRoot = path.dirname(slotRoot)
+      try {
+        this.invalidateWorkflowPackageSlot({
+          collectionId: relativePathFromRoot(workspaceRoot, collectionRoot),
+          collectionRoot,
+          workflowId: path.basename(slotRoot)
+        })
+      } catch (error) {
+        console.warn("Failed to invalidate Contract v2 workflow slot", error)
+      }
+    }
+    void this.reload({ showReport: false })
   }
 
   private async workflowRootCandidates(): Promise<MarkerRootCandidate[]> {
