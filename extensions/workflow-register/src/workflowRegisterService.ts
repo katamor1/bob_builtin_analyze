@@ -8,7 +8,12 @@ import {
 import { StepRuntime, type StepCompletionExpectation } from "./bobStepRuntime"
 import type { BobSourceLike } from "./bobApi"
 import { createDefaultActionRegistry } from "./core/actionRegistry"
-import type { ActionProvider, ActionProviderRegistration } from "./core/actionRegistry"
+import type {
+  ActionProvider,
+  ActionProviderRegistration,
+  WorkflowProviderRegistration,
+  WorkflowProviderRegistrationInput
+} from "./core/actionRegistry"
 import { ActionProviderRegistrationStore } from "./core/actionProviderRegistrationStore"
 import type { AgentProvider, CoreWorkflowDefinition } from "./core/model"
 import type { ResultSinkRegistry } from "./core/resultSinkRegistry"
@@ -32,7 +37,6 @@ import type {
   CompileWorkflowContractV2GenerationInput,
   WorkflowContractV2AcquireResult,
   WorkflowContractV2CompileResult,
-  WorkflowContractV2Entrypoint,
   WorkflowContractV2Slot
 } from "./workflowContractV2Entrypoint"
 import {
@@ -41,6 +45,7 @@ import {
   WorkflowContractV2BoundaryError
 } from "./workflowContractV2ExecutionGuard"
 import { createWorkflowContractV2ProductEntrypoint } from "./workflowContractV2Product"
+import { WorkflowContractV2ProviderLifecycle } from "./workflowContractV2ProviderLifecycle"
 import { WorkflowRuntimeFactory } from "./workflowRuntimeFactory"
 import { collectBobWorkflowInputs } from "./workflowInputPrompt"
 import { WorkflowRunCommandService } from "./workflowRunCommands"
@@ -71,7 +76,7 @@ export class WorkflowRegisterService implements vscode.Disposable {
   private readonly actionProviderRegistrations = new ActionProviderRegistrationStore()
   private readonly manualStepPanel: ManualStepPanelController
   private readonly runtimeFactory: WorkflowRuntimeFactory
-  private readonly contractV2: WorkflowContractV2Entrypoint
+  private readonly contractV2Providers: WorkflowContractV2ProviderLifecycle
   private readonly runCommands: WorkflowRunCommandService
   private agentProvider?: AgentProvider
   private registeredSource?: BobSourceLike
@@ -106,12 +111,18 @@ export class WorkflowRegisterService implements vscode.Disposable {
       beforeCreateRun: (workflow) => this.assertContractV2RunCreationReady(workflow),
       onManualStepHeld: (input) => this.manualStepPanel.show(input)
     })
-    this.contractV2 = createWorkflowContractV2ProductEntrypoint({
+    this.contractV2Providers = new WorkflowContractV2ProviderLifecycle({
       actionRegistry: this.actionRegistry,
-      planStore: {
-        getOrCompile: (input) => this.runtimeFactory.getOrCompileWorkflowPlan(input),
-        acquire: (input) => this.runtimeFactory.acquireWorkflowPlan(input),
-        invalidate: (collectionId, workflowId) => this.runtimeFactory.invalidateWorkflowPlanSlot(collectionId, workflowId)
+      createEntrypoint: () => createWorkflowContractV2ProductEntrypoint({
+        actionRegistry: this.actionRegistry,
+        planStore: {
+          getOrCompile: (input) => this.runtimeFactory.getOrCompileWorkflowPlan(input),
+          acquire: (input) => this.runtimeFactory.acquireWorkflowPlan(input),
+          invalidate: (collectionId, workflowId) => this.runtimeFactory.invalidateWorkflowPlanSlot(collectionId, workflowId)
+        }
+      }),
+      onChanged: () => {
+        void this.reload({ showReport: false })
       }
     })
     this.runCommands = new WorkflowRunCommandService({
@@ -137,6 +148,7 @@ export class WorkflowRegisterService implements vscode.Disposable {
   dispose(): void {
     this.legacyWatcher.dispose()
     this.contractV2Watcher.dispose()
+    this.contractV2Providers.dispose()
     this.manualStepPanel.dispose()
     this.bobWorkflowGates.dispose()
     try {
@@ -203,6 +215,12 @@ export class WorkflowRegisterService implements vscode.Disposable {
     return this.actionProviderRegistrations.track(this.actionRegistry.register(provider))
   }
 
+  registerWorkflowProviderContract(
+    input: WorkflowProviderRegistrationInput
+  ): WorkflowProviderRegistration {
+    return this.contractV2Providers.register(input)
+  }
+
   registerAgentProvider(provider: AgentProvider): void {
     this.agentProvider = provider
   }
@@ -218,23 +236,23 @@ export class WorkflowRegisterService implements vscode.Disposable {
   compileCurrentWorkflowPackage(
     input: CompileCurrentWorkflowContractV2Input
   ): Promise<WorkflowContractV2CompileResult> {
-    return this.contractV2.compileCurrent(input)
+    return this.contractV2Providers.current().compileCurrent(input)
   }
 
   compileWorkflowPackageGeneration(
     input: CompileWorkflowContractV2GenerationInput
   ): Promise<WorkflowContractV2CompileResult> {
-    return this.contractV2.compileGeneration(input)
+    return this.contractV2Providers.current().compileGeneration(input)
   }
 
   acquireCurrentWorkflowPackage(
     input: CompileCurrentWorkflowContractV2Input
   ): Promise<WorkflowContractV2AcquireResult> {
-    return this.contractV2.acquireCurrent(input)
+    return this.contractV2Providers.current().acquireCurrent(input)
   }
 
   invalidateWorkflowPackageSlot(slot: WorkflowContractV2Slot): void {
-    this.contractV2.invalidateSlot(slot)
+    this.contractV2Providers.current().invalidateSlot(slot)
   }
 
   async runWorkflow(workflowArg?: WorkflowCommandArg, inputs: Record<string, unknown> = {}): Promise<unknown> {
@@ -362,7 +380,7 @@ export class WorkflowRegisterService implements vscode.Disposable {
     const update = await registerWorkflowDefinitions({
       previousSource: this.registeredSource,
       createRunner: (workflow) => this.runtimeFactory.createBobWorkflowRunner(workflow),
-      contractV2: this.contractV2
+      contractV2: this.contractV2Providers.current()
     })
     this.coreWorkflows.clear()
     for (const workflow of update.coreWorkflows) this.coreWorkflows.set(workflow.id, workflow)
