@@ -11,38 +11,30 @@ Bob Bazaar Review: レビューを開始
 Bob Bazaar Review: 資料からプロジェクト規約を作成
 ```
 
-レビュー開始後はview type `bobBazaarReviewGui`の単一主GUIが、レビュー対象、レビュー資料、`レビュー結果取り込み`、`指摘確認・振り分け`、`レビュー実績`を同じsessionでrouteする。保存、検証、実績生成などの内部Command IDはworkflow、host action、互換API用に登録を維持するが、通常operatorの入口としてCommand Paletteへ列挙しない。
+保存、検証、実績生成、workflow handoff等の内部Command IDは登録を維持するが、通常operatorの入口としてCommand Paletteへ列挙しない。
 
-## 2. 背景と課題
+## 2. 設計目標
 
-- `bzr diff`や`bzr log`の出力収集が手作業になりやすい。
-- Bazaar aliasにより標準出力を取得できない場合がある。
-- UTF-8、Shift-JIS、CP932系出力が混在する。
-- `.bob` workspaceと`.bzr` repositoryがmulti-rootで分かれる場合がある。
-- Bobへ渡す差分、変更file、規約、追加資料をbounded packetへ固定したい。
-- Bob出力をschemaとproject ruleで検証し、JSON / Markdown成果物へ保存したい。
-- レビュー途中の状態を`review-run.json`で再開可能にしたい。
-- Bobの指摘を人間が確認し、実績とmetricsへ接続したい。
-- 既存の規約資料から候補を作り、diff preview、明示確認、backup、transactionを経て安全に反映したい。
+- `bzr --no-aliases`でalias依存を排除する。
+- UTF-8、Shift-JIS、CP932系出力をboundedにdecodeする。
+- Bazaar差分、変更file、規約、追加資料をbounded review packetへ固定する。
+- Bob outputをschemaとproject ruleで検証し、人間decisionへ接続する。
+- `review-run.json`でreview identity、進捗、artifact pathを再開可能にする。
+- 規約候補をdiff preview、明示確認、backup、transactionを経て反映する。
+- workspace、repository、artifact、recordのphysical containmentを検証する。
 
 ## 3. スコープ
 
-### 3.1 対象範囲
+### 3.1 対象
 
 - Bazaar revision、revision range、working tree差分のread-only取得。
-- `bzr --no-aliases`の強制。
-- Bazaar出力のencoding判定とbounded decode。
-- review packet生成とBob context追加。
-- `bobBazaarReviewGui`によるレビュー全stageの統合。
-- review-result JSONの抽出、正規化、schema検証、保存。
-- `review-run.json`によるsession identity、stage、artifact path、revisionの保持。
-- project checklist、schema、prompt、packet addendumの読み込み。
-- review record、decision、metrics、campaign summaryの生成。
+- review packet生成とBob context handoff。
+- review-result JSONの抽出、schema検証、保存。
+- `指摘確認・振り分け`とreview record / metrics / campaign summary生成。
 - 規約資料の決定論的抽出、AI送信範囲確認、proposal検証、人間decision、安全反映。
 - `.bob` template、Skill、Workflow、MCP設定の初期化・refresh。
 - `workflow-register` action provider登録。
-- Bazaar / project rules /保存済み結果のMCP tools。
-- `.bob` rootと`.bzr` rootの分離解決。
+- Bazaar / project rules /保存済み結果のMCP read tools。
 
 ### 3.2 対象外
 
@@ -50,28 +42,17 @@ Bob Bazaar Review: 資料からプロジェクト規約を作成
 - 任意shell command実行。
 - Bobによる最終承認や自動採否。
 - workspace外への無制限書込み。
-- 複数利用者間の自動同期。
-- AI出力をhost validationなしで保存・反映すること。
+- AI outputのhost validationなしでの保存・反映。
 
-## 4. 利用者と利用シーン
-
-| 利用者 | 主な用途 |
-|---|---|
-| 開発者 | revisionまたはworking treeを選び、レビュー資料を作成する。 |
-| レビュー担当者 | `レビュー結果取り込み`後に`指摘確認・振り分け`を行う。 |
-| PL / UAT担当 | `レビュー実績`でrecord、metrics、campaign summaryを確認する。 |
-| 規約管理者 | 資料から規約候補を作成し、人間decision後に反映する。 |
-| workflow設計者 | `workflow-register` providerから本拡張を呼び出す。 |
-| 保守担当者 | template、MCP、backup、transaction、release evidenceを確認する。 |
-
-## 5. 全体構成
+## 4. 全体構成
 
 ```text
 VS Code Extension Host
   └─ bob-bazaar-review
        ├─ extension.ts
        ├─ ui/
-       │    ├─ reviewGui.ts                -> panel owner
+       │    ├─ reviewGui.ts                -> 公開review panel owner
+       │    ├─ reviewGuiStages.ts          -> runtime stage contract
        │    ├─ resultCaptureGui.ts         -> embedded stage service
        │    ├─ humanTriageGui.ts           -> embedded stage service
        │    ├─ campaignDashboardGui.ts     -> embedded stage service
@@ -90,50 +71,83 @@ workflow-register
   └─ bobBazaar.* action providers
 ```
 
-`src/extension.ts`がcomposition rootであり、manifestの`main`は`./out/extension.js`で固定する。`IBM.bob-code`と`local.workflow-register`はsoft dependencyである。
+`src/extension.ts`がcomposition rootであり、manifestの`main`は`./out/extension.js`である。`IBM.bob-code`と`local.workflow-register`はsoft dependencyである。
 
-## 6. 公開UI
+## 5. Bazaarレビュー主GUI
 
-### 6.1 Bazaarレビュー主GUI
+### 5.1 panel lifecycle
 
-`bobBazaar.openReviewGui`は単一panelをopen / revealする。
+`bobBazaar.openReviewGui`はview type `bobBazaarReviewGui`、title `Bazaar レビュー`のpanelを開く。
 
-- view type: `bobBazaarReviewGui`
-- title: `Bazaar レビュー`
-- session key: workspace root、campaign ID、review ID
-- stage: target、packet、result、decision、record
+- 現在実装はcommand呼び出しごとに新しいWebview panelを生成する。
+- `enableScripts: true`、`retainContextWhenHidden: true`を使用する。
+- panel dispose時にstage generationとoperation generationを進め、遅延完了を無効化する。
+- 公開panel typeが1種類であることと、同一panel instanceを再利用することを混同しない。
 
-主GUIは次を扱う。
+### 5.2 runtime stage
 
-1. review target選択。
-2. Bazaar log / diff / status取得。
-3. changed filesとpacket preview。
-4. Bob context handoff。
-5. `レビュー結果取り込み`。
-6. `指摘確認・振り分け`。
-7. `レビュー実績`とsummary生成。
+主GUIのruntime stageは次の4件である。
 
-各stageは同じ`review-run.json` identityを使用し、別panelへ対象情報を再入力させない。古いrender token、異なるworkspace、異なるreview IDからのmessageを拒否する。
+| runtime stage | 利用者向け役割 |
+|---|---|
+| `review` | target選択、Bazaar情報取得、packet preview、Bob handoff |
+| `review-result-capture` | `レビュー結果取り込み` |
+| `triage` | `指摘確認・振り分け` |
+| `review-results` | `レビュー実績` |
 
-### 6.2 規約作成フロー
+`target`、`packet`、`result`等のReview Run phaseは永続化上の進捗であり、Webview route stageとは別の契約である。
 
-`bobBazaar.authorProjectRulesFromDocuments`は、資料選択、抽出preview、AIへ送る内容の確認、proposal検証、人間decision、apply preview、transaction recoveryを提供する。
+stale render token、古いstage generation、異なるworkspace、異なるreview identityからのmessageを拒否する。
 
-AIは候補を返すだけであり、採用、却下、編集、競合解消、反映は人間とextension hostが行う。
+## 6. Review Run
 
-## 7. Bazaar実行方針
+### 6.1 schemaとpath
 
-すべてのBazaar subprocessは`execFile`とargument arrayを使用し、global option `--no-aliases`を付与する。
+Review Run schemaは`bazaar-review-run/v1`である。
 
 ```text
-bzr --no-aliases diff -c REV
-bzr --no-aliases log -r REV
-bzr --no-aliases status
+.bob-review-records/
+  campaigns/<campaignId>/
+    records/<reviewId>/
+      review-run.json
+      review-packet.md
+```
+
+`review-run.json`はcamelCase fieldでworkspace root、campaign ID、review ID、target、phase、status、artifact path、timing、issueを保持する。
+
+### 6.2 phase
+
+current phase:
+
+```text
+target | packet | result | triage | completed
+```
+
+tracked phase:
+
+```text
+target | packet | result | triage | record | summary
+```
+
+tracked phaseは`not_started / in_progress / completed / blocked / failed / skipped`のprogressを持つ。required artifactが存在しないphaseを完了扱いにしない。
+
+### 6.3 mutation
+
+Review Run identityごとのmutation queueで更新を直列化する。write前に`updatedAt`、identity、path containmentを再確認し、temporary fileとrenameでatomicに置換する。
+
+## 7. Bazaar実行
+
+すべてのBazaar subprocessはargument arrayを使用し、global option `--no-aliases`を付与する。
+
+```text
+bzr --no-aliases diff ...
+bzr --no-aliases log ...
+bzr --no-aliases status ...
 ```
 
 - revisionとrelative pathを検証する。
 - shell文字列連結を使わない。
-- hard timeout、AbortSignal、stdout / stderr byte上限を持つ。
+- timeout、AbortSignal、stdout / stderr byte上限を持つ。
 - diffありのexpected exit codeだけを明示許可する。
 - commit系subcommandを公開しない。
 
@@ -144,33 +158,38 @@ bzr --no-aliases status
 | Bob workspace root | `.bob` | Workflow、Skill、rules、results、MCP設定 |
 | Bazaar repository root | `.bzr` | diff、log、status、catの実行対象 |
 
-multi-rootでは物理path identityを検証し、別rootのreview session、artifact、recordを混在させない。
+multi-rootではlogical pathだけでなくphysical identityを検証し、別rootのsession、artifact、recordを混在させない。
 
-## 9. review-runと成果物
+## 9. review-result、triage、record
 
-主GUIのsession stateはreview record配下の`review-run.json`へ保存する。
+review-result JSONはworkflow handoff、selection、editor、clipboardから抽出し、size、schema、checklist、review ID、active Review Runを検証して保存する。
 
-```text
-.bob-review-records/
-  campaigns/<campaignId>/
-    records/<reviewId>/
-      review-run.json
-      record.yaml
-      triage.yaml
-      metrics.json
-      notes.md
-```
+`指摘確認・振り分け`ではaccepted、rejected、needs_investigation、deferredを人間が選ぶ。owner、reason、action、dueをhost側で検証し、summary件数を決定的に再計算する。
 
-`review-run.json`はphase、target、packet、result、decision、record path、timestamps、next actionを保持する。保存済みreview-resultの正本は引き続き次である。
+recordとsummaryの生成後、すべてのtracked phaseが完了した場合だけReview Run全体を`completed`へ進める。Bob outputを正式指摘や完了判定へ自動昇格させない。
+
+## 10. 規約作成フロー
+
+`bobBazaar.authorProjectRulesFromDocuments`は資料選択、抽出preview、AIへ送る根拠範囲の確認、proposal検証、人間decision、apply preview、transaction recoveryを提供する。
 
 ```text
-.bob/review/results/<reviewId>.json
-.bob/review/results/<reviewId>.md
+source選択
+→ bounded extraction
+→ evidence確認
+→ AI proposal
+→ host validation
+→ accept / reject / edit
+→ base hash再確認
+→ diff preview
+→ 明示確認
+→ backup / staged write / validation / commit
 ```
 
-## 10. workflow-register連携
+cancel、conflict、validation failureではcurrent fileとbackup setを変更しない。
 
-`registerWorkflowProvidersWithRetry`は`local.workflow-register`が利用可能な場合だけproviderを登録する。起動順序差を吸収するためbounded retryを行い、成功後は重複登録しない。未導入時もlocal UIとserviceを利用できる。
+## 11. workflow-register連携
+
+`registerWorkflowProvidersWithRetry`は`local.workflow-register`が利用可能な場合だけproviderを登録し、起動順序差をbounded retryで吸収する。provider registration failureを本拡張のactivation failureへ変えない。
 
 Review provider:
 
@@ -195,63 +214,48 @@ bobBazaar.verifyRuleAuthoringApply
 
 provider IDは公開Command Palette entryではない。input、args、state、workspace root、review identityをuntrustedとして再検証する。
 
-## 11. template refreshと初期化
+## 12. template refreshとMCP
 
-`.bob`初期化ではMCP設定、checklist、schema、prompt、example、Skill、Workflowを配置する。
-
-既存file更新は次の順序で行う。
+既存template更新は次の順序を守る。
 
 ```text
-現在bytesとtemplate bytesを比較
+current bytes比較
 → diff preview
 → operatorの明示確認
-→ backup作成
+→ backup
 → replacement
 → post-write validation
 ```
 
-`cancel時no-change`を保証し、cancel、stale expectation、unsafe path、backup failureでは既存fileとbackup setを変更しない。確認前にbackupやwriteを開始しない。
+`cancel時no-change`を保証し、確認前にbackupやwriteを開始しない。
 
-## 12. MCP境界
+MCP境界:
 
-Bazaar read tools、project rules read tools、保存済みresult read toolsはread-onlyである。
-
+- Bazaar / project rules /保存済みresultの通常toolsはread-only。
 - `BOB_BAZAAR_ALLOWED_ROOTS`内だけを受け付ける。
 - allowed roots未設定は既定拒否する。
-- `project_rules_init`は`BOB_BAZAAR_ENABLE_WRITE_TOOLS=1`の明示設定時だけ公開する。
-- `.bob/mcp.json`は`BOB_BAZAAR_ALLOWED_ROOTS`を設定できるが、write toolsを暗黙有効化しない。
-- unrestricted cwdは通常運用で使用しない。
+- `project_rules_init`は`BOB_BAZAAR_ENABLE_WRITE_TOOLS=1`の明示設定時だけ登録する。
+- `.bob/mcp.json`はwrite toolsを暗黙有効化しない。
 
-## 13. review-resultとdecision
+## 13. セキュリティ
 
-review-result JSONはresult handoff、selection、editor、clipboardから抽出し、schemaとchecklist contractで検証する。保存前にreview ID、active session、evidence、sizeを再確認する。
-
-`指摘確認・振り分け`では、accepted、rejected、needs_investigation、deferredを人間が選ぶ。owner、reason、action、due、metricsをhost側で検証し、summary件数を決定的に再計算する。
-
-Bob出力をそのまま正式指摘や完了判定へ昇格させない。
-
-## 14. セキュリティ
-
-- Bazaar操作はread-onlyに限定する。
+- Bazaar操作をread-onlyに限定する。
 - path、revision、ID、encoding、byte上限をhost側で検証する。
 - CSP nonce、HTML escape、message allowlistを維持する。
-- browserからsource本文、file path、stored decisionを信頼しない。
+- browser payload、Bob output、AI proposalをsource of truthにしない。
 - review IDとcampaign IDはreserved name、control character、path separatorを拒否する。
-- rule applyはbase hash、decision revision、preview digest、transaction lockを照合する。
 - secretやsource本文をrelease evidenceへ保存しない。
 
-## 15. テスト方針
+## 14. テスト方針
 
-- exact public command inventoryが2件であること。
-- `bobBazaarReviewGui`のsingle-panel lifecycle、close / reopen、stale message拒否。
-- target、packet、`レビュー結果取り込み`、`指摘確認・振り分け`、`レビュー実績`のroute。
-- `review-run.json` identityとresume。
-- Bazaar `--no-aliases`、timeout、encoding、path validation。
-- `registerWorkflowProvidersWithRetry`とsoft dependency。
-- template refreshのdiff preview、明示確認、backup、`cancel時no-change`。
-- MCP read-only、`BOB_BAZAAR_ENABLE_WRITE_TOOLS=1`、`BOB_BAZAAR_ALLOWED_ROOTS`。
-- result validation、decision validation、record / summary整合。
-- Ubuntu / Windowsのcompile、unit、package、VSIX policy、Extension Host smoke。
-- 実IBM Bob UATのkeyboard-only、200% zoom、High Contrast、Console、MCP、result handoff。
-
-詳細は`detailed-design-ja.md`、`unit-test-spec-ja.md`、`real-machine-test-spec-ja.md`に定義する。
+- exact public command inventoryが2件。
+- view type `bobBazaarReviewGui`とtitle `Bazaar レビュー`。
+- runtime stage unionとReview Run phaseを別々に検証する。
+- `bazaar-review-run/v1`、camelCase artifact field、CAS、atomic save。
+- target、packet、result capture、triage、record、summaryの進捗。
+- `bzr --no-aliases`、encoding、timeout、cancellation、output limit。
+-規約作成のsource selection、proposal validation、decision、transaction。
+- template refreshのpreview、confirmation、backup、cancel時no-change。
+- MCP write opt-inとallowed roots。
+- Ubuntu / Windowsの同一headでunit、policy、package、VSIX、Extension Host smoke。
+- 実IBM Bob / Bazaar UAT、keyboard-only、200% zoom、High Contrast、Console error 0件。
