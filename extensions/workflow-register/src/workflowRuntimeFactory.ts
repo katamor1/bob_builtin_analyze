@@ -23,12 +23,13 @@ import {
 } from "./core/contractV2"
 import { WorkflowEngine } from "./core/engine"
 import type { ManualCompletionInput, ManualCompletionResult, WorkflowEngineOptions } from "./core/engine"
-import type { AgentProvider } from "./core/model"
+import type { AgentProvider, CoreWorkflowDefinition } from "./core/model"
 import { createDefaultResultSinkRegistry, ResultSinkRegistry } from "./core/resultSinkRegistry"
 import { FileRunControlStore, RunControlStore } from "./core/runControlStore"
-import { FileRunStateStore, RunStateStore } from "./core/runStateStore"
+import type { RunStateStore } from "./core/runStateStore"
 import { FileTaskSnapshotStore, TaskSnapshotStore } from "./core/taskSnapshots"
 import { findMarkerRoots, rootHasMarker } from "./core/workspaceRoots"
+import { ContractV2GuardedRunStateStore } from "./workflowContractV2RunStateStore"
 import { requireTrustedCommandExecution } from "./workspaceTrust"
 
 export interface TaskSnapshotSettings {
@@ -47,6 +48,10 @@ export interface WorkflowRuntimeFactoryOptions {
   agentProvider: () => AgentProvider | undefined
   inputsProvider: (workflow: WorkflowDefinition, provided: Record<string, unknown>) => ReturnType<BobWorkflowRunnerInputCollector>
   gateRegistry: BobWorkflowGateRegistry
+  beforeCreateRun?: (
+    workflow: CoreWorkflowDefinition,
+    inputs: Record<string, unknown>
+  ) => Promise<void> | void
   onManualStepHeld?: (input: { workflow: import("./core/model").CoreWorkflowDefinition; run: import("./core/model").WorkflowRunState; step: import("./core/model").EngineStep; active: ActiveStep }) => Promise<void> | void
 }
 
@@ -107,7 +112,11 @@ export class WorkflowRuntimeFactory {
   }
 
   createRunStore(workspaceRoot: string): RunStateStore {
-    return new FileRunStateStore({ workspaceRoot, engineVersion: this.options.engineVersion })
+    return new ContractV2GuardedRunStateStore({
+      workspaceRoot,
+      engineVersion: this.options.engineVersion,
+      beforeCreateRun: this.options.beforeCreateRun
+    })
   }
 
   createRunControlStore(workspaceRoot: string): RunControlStore {
