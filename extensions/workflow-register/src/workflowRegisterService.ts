@@ -19,6 +19,7 @@ import {
   relativePathFromRoot,
   workspaceRootFromFile
 } from "./core/workspaceRoots"
+import { isOperationHubWorkflowMutationTarget } from "./operationHubMutationTarget"
 import { showMarkdownReport } from "./reports"
 import { ManualStepPanelController } from "./webview/manualStepPanel"
 import {
@@ -36,6 +37,7 @@ import type {
 } from "./workflowContractV2Entrypoint"
 import {
   acquireWorkflowContractV2RunLease,
+  verifyWorkflowContractV2CurrentPlan,
   WorkflowContractV2BoundaryError
 } from "./workflowContractV2ExecutionGuard"
 import { createWorkflowContractV2ProductEntrypoint } from "./workflowContractV2Product"
@@ -236,6 +238,18 @@ export class WorkflowRegisterService implements vscode.Disposable {
   }
 
   async runWorkflow(workflowArg?: WorkflowCommandArg, inputs: Record<string, unknown> = {}): Promise<unknown> {
+    if (isOperationHubWorkflowMutationTarget(workflowArg)) {
+      const workflow = this.coreWorkflows.get(workflowArg.workflowId)
+      if (workflow === undefined) {
+        throw new WorkflowContractV2BoundaryError(
+          "The selected workflow is no longer registered; refresh Operation Hub before running it."
+        )
+      }
+      await verifyWorkflowContractV2CurrentPlan({
+        workflow,
+        compileCurrent: (input) => this.compileCurrentWorkflowPackage(input)
+      })
+    }
     return this.runCommands.runWorkflow(workflowArg, inputs)
   }
 
