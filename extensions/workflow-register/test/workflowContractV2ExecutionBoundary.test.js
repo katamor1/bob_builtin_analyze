@@ -52,19 +52,14 @@ test('all standalone engine execution paths verify Contract v2 before recovery, 
   ))
 })
 
-test('Bob execution verifies Contract v2 before input collection and run-store recovery', () => {
+test('Bob legacy runner input collection verifies the workflow before it can create or recover a run', () => {
   const runtime = source('workflowRuntimeFactory.ts')
-  const bob = source('bobWorkflowRunner.ts')
-  assert.match(bob, /beforeRun\?: \(workflow: CoreWorkflowDefinition\) => Promise<void> \| void/)
-  assert.match(bob, ordered(
-    'private async runEngine(',
-    'await this.options.beforeRun?.(this.options.coreWorkflow)',
-    'const inputs = await this.inputsForTask(task)',
-    'const runStore = this.options.runStore(workspaceRoot)'
-  ))
   assert.match(runtime, ordered(
     'createBobWorkflowRunner(workflow: WorkflowDefinition)',
-    'beforeRun: this.options.contractV2BeforeRun ?? this.options.beforeCreateRun'
+    'const beforeRun = this.options.contractV2BeforeRun ?? this.options.beforeCreateRun',
+    'inputsProvider: async (task, provided) => {',
+    'await beforeRun?.(workflow.core)',
+    'return this.options.inputsProvider(workflow,'
   ))
 })
 
