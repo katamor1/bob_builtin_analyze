@@ -23,8 +23,14 @@ interface ManagedRegistration {
   disposed: boolean
 }
 
+type RegisterProvider = (
+  input: WorkflowProviderRegistrationInput
+) => WorkflowProviderRegistration
+
 const isProxy = utilTypes.isProxy
+const objectCreate = Object.create
 const objectFreeze = Object.freeze
+const objectGetOwnPropertyDescriptor = Object.getOwnPropertyDescriptor
 const objectGetOwnPropertyDescriptors = Object.getOwnPropertyDescriptors
 const objectGetPrototypeOf = Object.getPrototypeOf
 const objectHasOwn = Object.hasOwn
@@ -32,6 +38,7 @@ const objectPrototype = Object.prototype
 const reflectApply = Reflect.apply
 const reflectOwnKeys = Reflect.ownKeys
 const setAdd = Set.prototype.add
+const setClear = Set.prototype.clear
 const setDelete = Set.prototype.delete
 const setForEach = Set.prototype.forEach
 const SetConstructor = Set
@@ -39,7 +46,7 @@ const INPUT_REQUIRED_FIELDS = objectFreeze(["actionRegistry", "createEntrypoint"
 const INPUT_OPTIONAL_FIELDS = objectFreeze(["onChanged"] as const)
 
 export class WorkflowContractV2ProviderLifecycle {
-  private readonly actionRegistry: WorkflowContractV2ProviderRegistryLike
+  private readonly registerProvider: RegisterProvider
   private readonly createEntrypoint: () => WorkflowContractV2Entrypoint
   private readonly onChanged?: () => void
   private readonly registrations = new SetConstructor<ManagedRegistration>()
@@ -48,19 +55,13 @@ export class WorkflowContractV2ProviderLifecycle {
 
   constructor(input: WorkflowContractV2ProviderLifecycleInput) {
     const snapshot = snapshotInput(input)
-    if (
-      (typeof snapshot.actionRegistry !== "object" && typeof snapshot.actionRegistry !== "function")
-      || snapshot.actionRegistry === null
-      || isProxy(snapshot.actionRegistry)
-      || typeof (snapshot.actionRegistry as WorkflowContractV2ProviderRegistryLike).registerWorkflowProviderContract !== "function"
-    ) throw new TypeError("Workflow Contract v2 provider registry is invalid.")
+    this.registerProvider = bindRegistrationMethod(snapshot.actionRegistry)
     if (typeof snapshot.createEntrypoint !== "function" || isProxy(snapshot.createEntrypoint)) {
       throw new TypeError("Workflow Contract v2 entrypoint factory is invalid.")
     }
     if (snapshot.onChanged !== undefined && (typeof snapshot.onChanged !== "function" || isProxy(snapshot.onChanged))) {
       throw new TypeError("Workflow Contract v2 provider change callback is invalid.")
     }
-    this.actionRegistry = snapshot.actionRegistry as WorkflowContractV2ProviderRegistryLike
     this.createEntrypoint = snapshot.createEntrypoint as () => WorkflowContractV2Entrypoint
     this.onChanged = snapshot.onChanged as (() => void) | undefined
     this.entrypoint = this.buildEntrypoint()
@@ -76,7 +77,7 @@ export class WorkflowContractV2ProviderLifecycle {
 
   register(input: WorkflowProviderRegistrationInput): WorkflowProviderRegistration {
     if (this.disposed) throw new Error("Workflow Contract v2 provider lifecycle is disposed.")
-    const registration = this.actionRegistry.registerWorkflowProviderContract(input)
+    const registration = reflectApply(this.registerProvider, undefined, [input]) as WorkflowProviderRegistration
     let next: WorkflowContractV2Entrypoint
     try {
       next = this.buildEntrypoint()
@@ -105,7 +106,7 @@ export class WorkflowContractV2ProviderLifecycle {
         managed.registration.dispose()
       }
     ])
-    this.registrations.clear()
+    reflectApply(setClear, this.registrations, [])
   }
 
   private disposeRegistration(managed: ManagedRegistration): void {
@@ -144,6 +145,33 @@ export class WorkflowContractV2ProviderLifecycle {
   }
 }
 
+function bindRegistrationMethod(value: unknown): RegisterProvider {
+  if (
+    (typeof value !== "object" && typeof value !== "function")
+    || value === null
+    || isProxy(value)
+  ) throw new TypeError("Workflow Contract v2 provider registry is invalid.")
+
+  let owner: object | null = value
+  while (owner !== null) {
+    if (isProxy(owner)) throw new TypeError("Workflow Contract v2 provider registry is invalid.")
+    const descriptor = objectGetOwnPropertyDescriptor(owner, "registerWorkflowProviderContract")
+    if (descriptor !== undefined) {
+      if (
+        !objectHasOwn(descriptor, "value")
+        || objectHasOwn(descriptor, "get")
+        || objectHasOwn(descriptor, "set")
+        || typeof descriptor.value !== "function"
+        || isProxy(descriptor.value)
+      ) throw new TypeError("Workflow Contract v2 provider registry method is invalid.")
+      const method = descriptor.value
+      return (input) => reflectApply(method, value, [input]) as WorkflowProviderRegistration
+    }
+    owner = objectGetPrototypeOf(owner)
+  }
+  throw new TypeError("Workflow Contract v2 provider registry method is unavailable.")
+}
+
 function snapshotInput(
   input: WorkflowContractV2ProviderLifecycleInput
 ): Readonly<Record<string, unknown>> {
@@ -155,7 +183,7 @@ function snapshotInput(
   }
   const descriptors = objectGetOwnPropertyDescriptors(input)
   const keys = reflectOwnKeys(descriptors)
-  const result: Record<string, unknown> = Object.create(null) as Record<string, unknown>
+  const result: Record<string, unknown> = objectCreate(null) as Record<string, unknown>
   for (let index = 0; index < keys.length; index += 1) {
     const key = keys[index]
     if (
