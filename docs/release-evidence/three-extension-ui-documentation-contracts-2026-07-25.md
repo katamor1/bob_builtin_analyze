@@ -3,13 +3,14 @@
 - 記録日: 2026-07-25（Asia/Tokyo）
 - Pull Request: #144
 - Base: `b141523c054ce04fb4d21d582621360066701c57`
-- Product／test payload head: `e883d2b193bf628f8b5e80d40b4b78e732a132f1`
+- Task 7製品／surface payload head: `e883d2b193bf628f8b5e80d40b4b78e732a132f1`
+- Task 6 runtime parity／専用CI payload head: `2b247b30bc3c10c72baf68a7d090dec5725ccb54`
 - 最終受入対象: この証跡を含むPR branchの最終head
 - 判定: **Integration NO-GO / PR draft維持**
 
 ## 1. 対象契約
 
-現在の操作者向け入口は次の4 routeである。
+現在の操作者向けrouteは次の4件である。
 
 ```text
 workflowRegister.openOperationHub
@@ -30,21 +31,74 @@ Bob Code Consistency Review: 整合プレレビューを開始
 
 workflowから呼ばれるその他のcommandは登録を維持し、通常のCommand Paletteでは非表示にする。
 
-## 2. Task 6 文書契約の静的確認
+## 2. Task 6 文書契約
+
+### 2.1 current／historical分類
 
 次をPR差分として確認した。
 
-- `scripts/three-extension-documentation-contract.json` が対象rootとcurrent／historical分類を一元管理する。
-- `scripts/three-extension-documentation-contract.test.js` がcurrent文書の旧route・旧表示名を拒否する。
-- historical文書は本文を保持し、冒頭の `Replaced:` または `Superseded:` 通知で現在のrouteを示す。
-- 既存の設定名、内部module名、技術code fenceを利用者向け表示名と誤認しない境界を持つ。
-- Bazaarのtemplate更新順序、MCP write opt-in、Code Consistencyのworkflow更新と既存入力backup-only契約を検査する。
+- `scripts/three-extension-documentation-contract.json`が対象rootとcurrent／historical分類を一元管理する。
+- `scripts/three-extension-documentation-contract.test.js`がcurrent文書の旧route・旧表示名を拒否する。
+- historical文書は本文を保持し、冒頭の`Replaced:`または`Superseded:`通知で現在のrouteを示す。
+- 設定名、内部module名、技術code fenceを利用者向け表示名と誤認しない境界を持つ。
+- Bazaarのtemplate更新順序とMCP write opt-in、Code Consistencyのworkflow更新と既存入力backup-only契約を検査する。
 
-履歴通知の修復監査では、通知追加対象の本文を元の内容へ戻した後、通知1行と空行だけを追加する差分へ統一した。
+履歴通知の修復監査では、通知対象本文を元の内容へ戻した後、通知1行と空行だけを追加する差分へ統一した。
 
-この証跡自体も`docs/`配下のcurrent文書として再帰分類される。そのため、最終的なdocumentation contractはproduct／test payload headではなく、この証跡を含むPR branchの最終headで実行する。
+### 2.2 runtime parity追加監査
 
-## 3. Task 7 Extension Host surface契約の静的確認
+current詳細設計を実装型・実在moduleと照合した結果、初回の表示名中心の契約では検出できなかった意味的ずれを発見した。
+
+#### Bazaar Review
+
+旧記述には次の不一致があった。
+
+- `review-run.json`を`bazaar-review-run/v3`と記載していたが、codecのcurrent schemaは`bazaar-review-run/v1`。
+- snake_case fieldと`decision` stageを記載していたが、runtimeはcamelCase fieldと`triage` phase。
+- cached panelを`reveal()`すると記載していたが、command呼出しごとに新しい`bobBazaarReviewGui`を生成する。
+- 実装に存在しない規約作成module名を列挙していた。
+
+次でRED条件と修正を固定した。
+
+```text
+b319a5b0c8d5e1a9e06ebb59ea62b3d56ee46082  test: expose Bazaar documentation runtime drift
+d6a39975167b6c1a8f524037069286263b8645ce  docs: align Bazaar design with runtime contracts
+scripts/bazaar-review-documentation-parity.test.js
+```
+
+#### Code Consistency Review
+
+旧記述には次の不一致があった。
+
+- stageを`input / preprocess / result / decision`と記載していたが、runtimeは`review / traceability / review-result-capture / triage`。
+- cached panelを再利用すると記載していたが、command呼出しごとに新しい`bobCodeConsistencyReviewWizard`を生成する。
+- 存在しない`core/traceabilityStore.ts`を列挙し、実体の`core/traceabilityCatalogStore.ts`を欠いていた。
+
+次でRED条件と修正を固定した。
+
+```text
+67557b94d26197ce3626311f43b3b3271f009e17  test: expose Code Consistency documentation drift
+6cf81a30fa46d4e5fbb5f869ae143fe5edb953e7  docs: align Code Consistency design with runtime contracts
+scripts/code-consistency-documentation-parity.test.js
+```
+
+#### workflow-register
+
+Operation Hub、Builder、run-state codecは実装と設計が一致していたため、誤修正せず次を回帰契約へ固定した。
+
+- Operation Hubはcached panelを`reveal()`する。
+- Builderはsingle current panelを持ち、`empty / standard-template / edit`の3モードを扱う。
+- writable run-state codecのcurrent schemaは`workflow-register/run-state/v1`。
+- unversioned stateはv1へmigrationし、future versionはread-onlyで扱う。
+
+```text
+ff504352aeea9d5303f56dff15a348282fa4a5b1  test: lock workflow-register documentation parity
+scripts/workflow-register-documentation-parity.test.js
+```
+
+この証跡自体も`docs/`配下のcurrent文書として再帰分類される。そのため最終documentation contractは、上記payload headではなく、この証跡を含むPR branchの最終headで実行する。
+
+## 3. Task 7 Extension Host surface契約
 
 次の成果物が存在する。
 
@@ -59,24 +113,22 @@ extensions/bob-code-consistency-review/test/fixtures/gui-surface-workspace/READM
 共有surface testは次を行う。
 
 1. 対象拡張をactivationする。
-2. `vscode.commands.getCommands(true)` で公開commandと代表的な内部commandの登録を確認する。
+2. `vscode.commands.getCommands(true)`で公開commandと代表的な内部commandの登録を確認する。
 3. 主GUI commandを実行し、正確なview typeとtab titleを確認する。
 4. 開いたtabを閉じ、fixture READMEが残ることを確認する。
 5. 未処理Promise rejectionが0件であることを確認する。
 6. 資料選択を伴う規約作成commandは登録だけを確認し、非対話smokeでは実行しない。
 
-`.github/workflows/extensions-quality.yml` は3つのUbuntu jobと3つのWindows matrix entryへ、同じ共有surface test、workspace fixture、公開command、内部command、主GUI期待値を渡す。
+`.github/workflows/extensions-quality.yml`は3つのUbuntu jobと3つのWindows matrix entryへ、同じsurface test、workspace fixture、公開command、内部command、主GUI期待値を渡す。
 
-最新GREEN差分として、製品側のpanel titleをsmoke期待値へ合わせた。
+製品側のpanel titleは次へ同期済みである。
 
 ```text
-bobBazaarReviewGui             -> Bazaar レビュー
+bobBazaarReviewGui              -> Bazaar レビュー
 bobCodeConsistencyReviewWizard -> 整合プレレビュー
 ```
 
-Code Consistencyの個別operator smokeも同じ主GUI titleへ同期した。
-
-`c14497626241131c52083b112a86777a5493337f..e883d2b193bf628f8b5e80d40b4b78e732a132f1` の差分は次の3ファイルだけで、各ファイル1行追加・1行削除である。
+`c14497626241131c52083b112a86777a5493337f..e883d2b193bf628f8b5e80d40b4b78e732a132f1`の製品GREEN差分は次の3ファイルだけで、各ファイル1行追加・1行削除である。
 
 ```text
 extensions/bob-bazaar-review/src/ui/reviewGui.ts
@@ -84,62 +136,56 @@ extensions/bob-code-consistency-review/src/webview/consistencyReviewWizard.ts
 scripts/triage-integrity-extension-host.test.js
 ```
 
-## 4. GitHub Actions起動状態の比較
+## 4. 専用契約CI
 
-### 4.1 直近の正常baseline
+`2b247b30bc3c10c72baf68a7d090dec5725ccb54`で`.github/workflows/three-extension-ui-contracts.yml`を追加した。
 
-同じrepositoryでは、PR #141のhead `948a9df143656ccbbfc74e4fde285b2277645fd8` で次が成功している。
+同一jobで次を実行する。
+
+```bash
+node --test \
+  scripts/three-extension-command-surface.test.js \
+  scripts/three-extension-documentation-contract.test.js \
+  scripts/bazaar-review-documentation-parity.test.js \
+  scripts/code-consistency-documentation-parity.test.js \
+  scripts/workflow-register-documentation-parity.test.js \
+  scripts/extension-host-smoke-contract.test.js
+```
+
+PRではbase SHAからHEADまでの`git diff --check`も実行する。checkoutとsetup-nodeは既存品質workflowと同じimmutable commit SHAを使用する。
+
+## 5. GitHub Actions起動状態
+
+### 5.1 正常baseline
+
+同じrepositoryではPR #141のhead `948a9df143656ccbbfc74e4fde285b2277645fd8`で次が成功している。
 
 ```text
 extensions-quality:               29777975188 / success
 code-consistency-review-scaffold: 29777975200 / success
 ```
 
-`extensions-quality`ではUbuntu／Windowsの各jobが `Set up job`、`Checkout`、`Setup Node.js`、dependency／architecture／source policy、unit test、package、VSIX policy、Extension Host smokeまで実行して完了している。したがって、workflow定義とrepositoryのActions実行経路はこのbaseline時点ではrunner上で機能していた。
+この`extensions-quality`ではUbuntu／Windows jobがSet up、Checkout、Node setup、policy、unit test、package、VSIX policy、Extension Host smokeまで実行して完了している。
 
-### 4.2 Product／test payload headの結果
+### 5.2 現在の起動前失敗
 
-`e883d2b193bf628f8b5e80d40b4b78e732a132f1` に紐づくrunは次のとおりである。
-
-```text
-extensions-quality:               30119225146
-code-consistency-review-scaffold: 30119225117
-```
-
-`extensions-quality` の8 jobはすべて `completed/failure` だが、全jobで `steps` が空、job logが存在しない。
+Task 6 parityと専用CIを含むpayload head `2b247b30bc3c10c72baf68a7d090dec5725ccb54`では次のrunが生成された。
 
 ```text
-89567430283 Extension source metrics
-89567430325 Real-machine environment contracts
-89567430332 Windows / bob-bazaar-review
-89567430333 bob-bazaar-review
-89567430334 Windows / bob-code-consistency-review
-89567430342 Windows / workflow-register
-89567430354 bob-code-consistency-review
-89567430544 workflow-register
+code-consistency-review-scaffold: 30161406772
+three-extension-ui-contracts:      30161406777
+extensions-quality:                30161406795
 ```
 
-scaffold側の2 jobも同じ状態である。
+専用CIのjob `89687213042`は`completed/failure`だが、`steps: null`、job logなしで終了した。既存2workflowも同じ起動前失敗である。
 
-```text
-89567429912 Validate scaffold
-89567430023 Validate VS Code extension
-```
+先行run、公式GitHub Status上のActions障害解決後の再実行、failed-job単体再実行でも、全jobがstep 0件のまま終了した。job logを直接取得すると`BlobNotFound`となり、repository commandの失敗logは得られなかった。
 
-job logを直接取得した場合もGitHub側から`BlobNotFound`が返り、repository commandの失敗logは得られなかった。さらに、先行run `30088630427` と `30088630452` のfailed-job再実行でも、全jobがstep 0件のまま終了する状態を再現した。
+したがってcheckout、dependency install、repository contract、compile、unit test、policy、package、Extension Host実行はいずれも開始していない。この結果は製品テスト失敗でも成功でもない。
 
-したがって、checkout、dependency install、repository contract、compile、unit test、policy、package、Extension Host実行のいずれも開始していない。この結果は製品テスト失敗でも成功でもない。
+別branch・別payloadのopen PR #145、#153でも同時期に同じ`steps: null`／`logs_url: null`症状が報告されている。具体的な原因が課金、利用上限、policy、runner allocationのどれかはjob APIだけでは確定できない。
 
-### 4.3 他PRとの比較
-
-別branch・別payloadを持つopen PRでも同じ起動前症状が記録されている。
-
-- PR #145: dedicated Ubuntu／Windows matrixとworkflow-contract jobが `steps: null`／`logs_url: null` で終了し、再実行でも同じ状態。
-- PR #153: repository compile、policy、full test、Ubuntu／Windows実行が未実行で、`steps: null`／`logs_url: null` をinfrastructure evidenceとして扱っている。
-
-PR #144だけでなく独立した複数branchで同時期に同じ状態が出ており、直前にはPR #141で同じrepositoryのActionsが正常完走している。この比較は、現在の失敗がPR #144固有のrepository test failureではなく、repository／account側のActions起動基盤にあることを強く示唆する。ただしGitHub側の課金、利用上限、ポリシー、runner割当など、具体的な原因まではjob APIだけでは確定できない。
-
-## 5. 未確認ゲート
+## 6. 未確認ゲート
 
 PR branchの最終headでは次を実行済み証跡として扱わない。
 
@@ -147,18 +193,21 @@ PR branchの最終headでは次を実行済み証跡として扱わない。
 node --test \
   scripts/three-extension-command-surface.test.js \
   scripts/three-extension-documentation-contract.test.js \
+  scripts/bazaar-review-documentation-parity.test.js \
+  scripts/code-consistency-documentation-parity.test.js \
+  scripts/workflow-register-documentation-parity.test.js \
   scripts/extension-host-smoke-contract.test.js
 
-git diff --check
+git diff --check <base>...HEAD
 ```
 
 また、3拡張のcompile、dependency／architecture／source policy、unit test、package、package policy、Ubuntu／Windows Extension Hostも未確認である。
 
-## 6. 受入判断
+## 7. 受入判断
 
 次の理由によりPR #144はdraftを維持し、Ready化またはmergeを行わない。
 
-- 文書契約とsurface契約は静的に整合しているが、repository上での実行結果がない。
+- runtime parityの既知不一致は修正し、回帰テストを追加したが、private repository全体での実行結果がない。
 - 最終headと同一SHAのUbuntu／Windows gate成功がない。
 - packageとpackage policyの成功証跡がない。
 - Actions jobがcheckout前に終了しており、失敗原因をrepository差分へ帰属できない。
