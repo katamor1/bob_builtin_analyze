@@ -89,8 +89,12 @@ function createCancellationScope(input) {
     timer = schedule(() => {
       timer = undefined
       if (disposed || isAborted()) return
-      if (terminalTimer) refreshCancellationState()
-      else scheduleDeadline()
+      if (terminalTimer) {
+        refreshCancellationState()
+        if (!isAborted()) scheduleDeadline()
+      } else {
+        scheduleDeadline()
+      }
     }, Math.min(remaining, MAX_TIMER_DELAY_MS))
   }
 
