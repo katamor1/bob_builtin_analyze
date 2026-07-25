@@ -47,6 +47,8 @@ export interface TaskSnapshotSettings {
   pruneOnSave: boolean
 }
 
+type ContractV2BeforeRun = (workflow: CoreWorkflowDefinition) => Promise<void> | void
+
 export interface WorkflowRuntimeFactoryOptions {
   engineVersion: string
   actionRegistry: ActionRegistry
@@ -55,14 +57,16 @@ export interface WorkflowRuntimeFactoryOptions {
   agentProvider: () => AgentProvider | undefined
   inputsProvider: (workflow: WorkflowDefinition, provided: Record<string, unknown>) => ReturnType<BobWorkflowRunnerInputCollector>
   gateRegistry: BobWorkflowGateRegistry
-  contractV2BeforeRun?: (workflow: CoreWorkflowDefinition) => Promise<void> | void
+  contractV2BeforeRun?: ContractV2BeforeRun
+  /** Transitional alias retained while P6 consumers move to the execution-level name. */
+  beforeCreateRun?: ContractV2BeforeRun
   onManualStepHeld?: (input: { workflow: import("./core/model").CoreWorkflowDefinition; run: import("./core/model").WorkflowRunState; step: import("./core/model").EngineStep; active: ActiveStep }) => Promise<void> | void
 }
 
 class ContractV2BoundaryWorkflowEngine extends WorkflowEngine {
   constructor(
     options: WorkflowEngineOptions,
-    private readonly beforeRun?: WorkflowRuntimeFactoryOptions["contractV2BeforeRun"]
+    private readonly beforeRun?: ContractV2BeforeRun
   ) {
     super(options)
   }
@@ -147,7 +151,8 @@ export class WorkflowRuntimeFactory {
         ? (input) => recoverResultTextFromSnapshots(snapshotStore, input.workflow, input.run, input.step)
         : undefined
     }
-    return new ContractV2BoundaryWorkflowEngine(engineOptions, this.options.contractV2BeforeRun)
+    const beforeRun = this.options.contractV2BeforeRun ?? this.options.beforeCreateRun
+    return new ContractV2BoundaryWorkflowEngine(engineOptions, beforeRun)
   }
 
   createBobWorkflowRunner(workflow: WorkflowDefinition): BobWorkflowEngineRunner {
@@ -172,10 +177,11 @@ export class WorkflowRuntimeFactory {
   }
 
   createRunStore(workspaceRoot: string): RunStateStore {
+    const beforeRun = this.options.contractV2BeforeRun ?? this.options.beforeCreateRun
     return new ContractV2GuardedRunStateStore({
       workspaceRoot,
       engineVersion: this.options.engineVersion,
-      beforeCreateRun: this.options.contractV2BeforeRun
+      beforeCreateRun: beforeRun
     })
   }
 
