@@ -5,8 +5,8 @@ import { createBobWorkflow } from "./bobWorkflowFactory"
 import type { WorkflowDefinition } from "./bobWorkflowTypes"
 import type { CoreWorkflowDefinition } from "./core/model"
 import { formatAttempt, runAttempt } from "./reports"
+import { AUDITED_BOB_PROFILE_DIGEST } from "./workflowBobTaskBinding"
 import type { WorkflowContractV2Entrypoint } from "./workflowContractV2Entrypoint"
-import { WORKFLOW_CONTRACT_V2_BOB_PROFILE_DIGEST } from "./workflowContractV2Product"
 import { loadWorkspaceWorkflows } from "./workflowDefinitionLoader"
 
 const BOB_EXTENSION_ID = "IBM.bob-code"
@@ -57,7 +57,7 @@ export async function registerWorkflows(input: RegisterWorkflowsInput): Promise<
   lines.push(`- Bob extension found: ${bob.found}`)
   lines.push(`- Bob extension active: ${bob.active}`)
   lines.push(`- Bob activation error: ${bob.activationError}`)
-  lines.push(`- Bob audited profile: ${WORKFLOW_CONTRACT_V2_BOB_PROFILE_DIGEST}`)
+  lines.push(`- Bob audited profile: ${AUDITED_BOB_PROFILE_DIGEST}`)
   const api = bob.api
   if (!api) {
     lines.push("- fail: IBM Bob 2.0.1 audited registerSource API is not available.")
