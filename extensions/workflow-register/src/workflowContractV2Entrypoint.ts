@@ -95,7 +95,9 @@ const objectGetOwnPropertyDescriptors = Object.getOwnPropertyDescriptors
 const objectGetPrototypeOf = Object.getPrototypeOf
 const objectHasOwn = Object.hasOwn
 const objectPrototype = Object.prototype
+const reflectApply = Reflect.apply
 const reflectOwnKeys = Reflect.ownKeys
+const regexpExec = RegExp.prototype.exec
 const CREATE_FIELDS = objectFreeze([
   "environment", "loadCurrent", "loadGeneration", "getOrCompile", "acquire", "invalidate"
 ] as const)
@@ -218,7 +220,7 @@ function snapshotSlot(value: unknown): WorkflowContractV2Slot {
   if (
     typeof snapshot.workflowId !== "string"
     || snapshot.workflowId.length > 128
-    || !ID_PATTERN.test(snapshot.workflowId)
+    || !testPattern(ID_PATTERN, snapshot.workflowId)
   ) throw new TypeError("Workflow Contract v2 workflow id is invalid.")
   return objectFreeze({
     collectionId: snapshot.collectionId,
@@ -266,7 +268,7 @@ function requireConsumer(value: unknown): WorkflowContractV2Consumer {
 }
 
 function requireDigest(value: unknown, label: string): Sha256Digest {
-  if (typeof value !== "string" || !DIGEST_PATTERN.test(value)) {
+  if (typeof value !== "string" || !testPattern(DIGEST_PATTERN, value)) {
     throw new TypeError(`Workflow Contract v2 ${label} is invalid.`)
   }
   return value as Sha256Digest
@@ -342,6 +344,10 @@ function copyDataField(
     || descriptor.enumerable !== true
   ) throw new TypeError(`${label}.${key} must be an enumerable own data property.`)
   result[key] = descriptor.value
+}
+
+function testPattern(pattern: RegExp, value: string): boolean {
+  return reflectApply(regexpExec, pattern, [value]) !== null
 }
 
 function includes(values: readonly string[], value: string): boolean {
