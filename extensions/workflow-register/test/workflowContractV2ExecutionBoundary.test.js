@@ -17,7 +17,7 @@ function escapeRegex(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
-test('all engine execution paths verify Contract v2 before recovery, resume, retry, or checkpoint work', () => {
+test('all standalone engine execution paths verify Contract v2 before recovery, resume, retry, or checkpoint work', () => {
   const runtime = source('workflowRuntimeFactory.ts')
   assert.match(runtime, /contractV2BeforeRun\?: ContractV2BeforeRun/)
   assert.match(runtime, /class ContractV2BoundaryWorkflowEngine extends WorkflowEngine/)
@@ -49,6 +49,22 @@ test('all engine execution paths verify Contract v2 before recovery, resume, ret
   assert.match(runtime, ordered(
     'createEngine(workspaceRoot: string, agentProvider?: AgentProvider)',
     'new ContractV2BoundaryWorkflowEngine(engineOptions, beforeRun)'
+  ))
+})
+
+test('Bob execution verifies Contract v2 before input collection and run-store recovery', () => {
+  const runtime = source('workflowRuntimeFactory.ts')
+  const bob = source('bobWorkflowRunner.ts')
+  assert.match(bob, /beforeRun\?: \(workflow: CoreWorkflowDefinition\) => Promise<void> \| void/)
+  assert.match(bob, ordered(
+    'private async runEngine(',
+    'await this.options.beforeRun?.(this.options.coreWorkflow)',
+    'const inputs = await this.inputsForTask(task)',
+    'const runStore = this.options.runStore(workspaceRoot)'
+  ))
+  assert.match(runtime, ordered(
+    'createBobWorkflowRunner(workflow: WorkflowDefinition)',
+    'beforeRun: this.options.contractV2BeforeRun ?? this.options.beforeCreateRun'
   ))
 })
 
