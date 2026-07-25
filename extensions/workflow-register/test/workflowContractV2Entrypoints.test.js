@@ -173,6 +173,39 @@ test('entrypoint input rejects proxy and accessor records without invoking behav
   assert.equal(getterCalls, 0)
 })
 
+test('entrypoint validation uses captured RegExp intrinsics after module load', async () => {
+  const modulePath = require.resolve('../out/workflowContractV2Entrypoint.js')
+  delete require.cache[modulePath]
+  const loadedModule = require(modulePath)
+  const originalTest = RegExp.prototype.test
+  RegExp.prototype.test = function replacedTest() {
+    throw new Error('ambient RegExp.prototype.test must not run')
+  }
+  try {
+    const environment = Object.freeze({})
+    const compiled = Object.freeze({ planDigest: digest('p'), plan: Object.freeze({ workflowId: 'minimal' }) })
+    const entrypoint = loadedModule.createWorkflowContractV2Entrypoint({
+      environment,
+      loadCurrent: async () => rawPackage(),
+      loadGeneration: async () => rawPackage(),
+      getOrCompile: async () => compiled,
+      acquire: async () => Object.freeze({}),
+      invalidate: () => undefined
+    })
+    const result = await entrypoint.compileGeneration({
+      slot: slot(),
+      consumer: 'resume',
+      generation: digest('a'),
+      expectedPackageDigest: digest('a')
+    })
+    assert.equal(result.ok, true)
+    assert.equal(result.handle, compiled)
+  } finally {
+    RegExp.prototype.test = originalTest
+    delete require.cache[modulePath]
+  }
+})
+
 test('transitional legacy imports are exact and v2 consumers do not reach compiler internals', () => {
   const root = path.join(__dirname, '..')
   const allowlistPath = path.join(
