@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto"
 import { constants as fsConstants, type BigIntStats } from "node:fs"
 import * as fs from "node:fs/promises"
+import * as os from "node:os"
 import * as path from "node:path"
 import { PROCESSING_BUDGET_ABSOLUTE_MAXIMA } from "../sharedProcessingBudgetRuntime"
 
@@ -83,8 +84,7 @@ export async function withMaterializedVerifiedReviewPackage<T>(
   snapshot: VerifiedReviewPackageSnapshot,
   operation: (verifiedPackageDir: string) => Promise<T>
 ): Promise<T> {
-  const parent = path.dirname(snapshot.packageDir)
-  const verifiedPackageDir = await fs.mkdtemp(path.join(parent, ".verified-processing-"))
+  const verifiedPackageDir = await fs.mkdtemp(path.join(os.tmpdir(), "bob-verified-review-"))
   try {
     await fs.chmod(verifiedPackageDir, 0o700)
     for (const file of snapshot.files) {
@@ -92,15 +92,50 @@ export async function withMaterializedVerifiedReviewPackage<T>(
       await fs.mkdir(path.dirname(destination), { recursive: true, mode: 0o700 })
       await fs.writeFile(destination, file.copyBytes(), { flag: "wx", mode: 0o400 })
     }
-    const materialized = await readVerifiedReviewPackage(verifiedPackageDir)
-    if (materialized.contentHash !== snapshot.contentHash
-      || materialized.fileCount !== snapshot.fileCount
-      || materialized.totalBytes !== snapshot.totalBytes) {
-      throw new Error("materialized review package snapshot does not match verified bytes")
+
+    const materializedBefore = await readVerifiedReviewPackage(verifiedPackageDir)
+    assertSnapshotMatches(snapshot, materializedBefore)
+
+    let result: T | undefined
+    let operationError: unknown
+    try {
+      result = await operation(verifiedPackageDir)
+    } catch (error) {
+      operationError = error
     }
-    return await operation(verifiedPackageDir)
+
+    let verificationError: unknown
+    try {
+      const materializedAfter = await readVerifiedReviewPackage(verifiedPackageDir)
+      assertSnapshotMatches(snapshot, materializedAfter)
+    } catch (error) {
+      verificationError = error
+    }
+
+    if (operationError !== undefined && verificationError !== undefined) {
+      throw new AggregateError(
+        [operationError, verificationError],
+        "verified review package changed while the consuming operation was running"
+      )
+    }
+    if (operationError !== undefined) throw operationError
+    if (verificationError !== undefined) throw verificationError
+    return result as T
   } finally {
     await fs.rm(verifiedPackageDir, { recursive: true, force: true })
+  }
+}
+
+function assertSnapshotMatches(
+  expected: VerifiedReviewPackageSnapshot,
+  observed: VerifiedReviewPackageSnapshot
+): void {
+  if (observed.contentHash !== expected.contentHash
+    || observed.fileCount !== expected.fileCount
+    || observed.totalBytes !== expected.totalBytes) {
+    throw Object.assign(new Error("materialized review package snapshot does not match verified bytes"), {
+      code: "processing_budget_report_stale"
+    })
   }
 }
 
