@@ -34,7 +34,11 @@ import {
   persistProcessingBudgetReport
 } from "./processingBudgetCoverage"
 import { ProcessingCoveragePartialError } from "./processingCoverageError"
-import { removeStaleProcessingBudgetReport } from "./processingBudgetReportGuard"
+import {
+  persistCompleteProcessingBudgetBinding,
+  removeProcessingBudgetReportBinding,
+  removeStaleProcessingBudgetReport
+} from "./processingBudgetReportGuard"
 import {
   computeManagedReviewPackageContentHash,
   computeReviewPackageInputHash
@@ -219,13 +223,19 @@ export async function preprocessReview(input: PreprocessReviewInput): Promise<Pr
       ledger: processingBudgetLedger
     })
     assertCompleteProcessingCoverage(processingBudgetReport, inputSha256)
+    const packageContentHash = await computeManagedReviewPackageContentHash(outDir)
+    await persistCompleteProcessingBudgetBinding({
+      outDir,
+      reportInputSha256: inputSha256,
+      packageContentSha256: packageContentHash
+    })
 
     const packageObservation: ArtifactObservation = {
       id: `review-package:${reviewInput.review.id}`,
       kind: "review-package",
       producer: "bob-code-consistency-review@0.1.0",
       path: relativePosix(input.workspaceRoot, outDir),
-      content_hash: await computeManagedReviewPackageContentHash(outDir),
+      content_hash: packageContentHash,
       input_hash: computeReviewPackageInputHash(reviewInput, diff, contextBudget.artifact),
       source_revision: sourceRevision(diff.base, diff.head),
       depends_on: upstreamObservations.map((item) => item.id).sort()
@@ -268,6 +278,9 @@ export async function preprocessReview(input: PreprocessReviewInput): Promise<Pr
     }
   } catch (error) {
     if (error instanceof ProcessingCoveragePartialError) throw error
+    if (outDir) {
+      try { await removeProcessingBudgetReportBinding(outDir) } catch {}
+    }
     if (packageBuilt && outDir) {
       try { await cleanManagedReviewPackageOutputs(outDir) } catch {}
     }
@@ -416,8 +429,8 @@ function computeProcessingOperationInputSha(
 }
 
 function processingOperationId(reviewId: string): string {
-  const value = `${PROCESSING_REPORT_OPERATION_PREFIX}:${reviewId}`
-  return [...value].slice(0, 128).join("")
+  const digest = createHash("sha256").update(reviewId, "utf8").digest("hex").slice(0, 32)
+  return `${PROCESSING_REPORT_OPERATION_PREFIX}:${digest}`
 }
 
 function operationIncompleteIssue(
