@@ -32,7 +32,7 @@ test('new standalone execution acquires one Contract v2 lease and never falls ba
   ))
 })
 
-test('resume retry and checkpoint paths use a continuation guard rather than following current.json', () => {
+test('resume retry approval and abort paths use a continuation guard rather than following current.json', () => {
   const runtime = source('workflowRuntimeFactory.ts')
   for (const signature of [
     'override async resumeRun(',
@@ -42,6 +42,12 @@ test('resume retry and checkpoint paths use a continuation guard rather than fol
   ]) {
     assert.match(runtime, ordered(signature, 'await this.beforeContinuation?.('))
   }
+  assert.match(runtime, ordered(
+    'override async abortBranchCheckpoint(',
+    'const run = await this.continuationRunStore.loadRun(runId)',
+    'await this.beforeContinuation?.(',
+    'return super.abortBranchCheckpoint(runId, reason)'
+  ))
   assert.doesNotMatch(runtime, /acquireRunLease\?\.\(options\.workflow\)/)
 })
 
@@ -58,7 +64,7 @@ test('Bob legacy input collection does not acquire a Contract v2 lease before th
   assert.match(factory, /compiled runtime execution is not enabled before R5/)
 })
 
-test('direct run-state creation uses only the active lease context and never reacquires current evidence', () => {
+test('direct run-state creation uses only the exact active lease context and never reacquires current evidence', () => {
   const runtime = source('workflowRuntimeFactory.ts')
   const guardedStore = source('workflowContractV2RunStateStore.ts')
   assert.match(runtime, /ContractV2GuardedRunStateStore/)
@@ -74,6 +80,12 @@ test('direct run-state creation uses only the active lease context and never rea
     'currentWorkflowContractV2PlanLease()',
     'this.createRunFromPlanLease(contextualLease, inputs)'
   ))
+  assert.match(guardedStore, ordered(
+    'async createRunFromPlanLease(',
+    'currentWorkflowContractV2PlanLease()',
+    'contextualLease !== lease',
+    'active compiled plan lease context'
+  ))
   assert.match(guardedStore, /Contract v2 run creation requires an active compiled plan lease/)
 })
 
@@ -82,7 +94,7 @@ test('the service supplies new-run acquisition and fail-closed continuation boun
   assert.match(service, /acquireWorkflowContractV2RunLease/)
   assert.match(service, /workflowContractV2CoreMetadata/)
   assert.match(service, /contractV2AcquireRunLease: \(workflow\) => this\.acquireContractV2RunLease\(workflow\)/)
-  assert.match(service, /contractV2BeforeContinuation: \(workflow\) => this\.assertContractV2ContinuationReady\(workflow\)/)
+  assert.match(service, /contractV2BeforeContinuation: \(workflow, run\) => this\.assertContractV2ContinuationReady\(workflow, run\)/)
   assert.match(service, ordered(
     'private acquireContractV2RunLease(',
     'return acquireWorkflowContractV2RunLease({',
