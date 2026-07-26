@@ -1,6 +1,3 @@
-import { randomUUID } from "node:crypto"
-import * as fs from "node:fs/promises"
-import * as path from "node:path"
 import {
   assertProcessingBudgetReportAllowsHandoff,
   createProcessingBudgetReport,
@@ -10,9 +7,13 @@ import {
   type SharedProcessingBudgetReportIssue
 } from "../sharedProcessingBudgetReport"
 import type { SharedProcessingBudgetLedger } from "../sharedProcessingBudgetRuntime"
+import { replaceTextFileAtomically } from "./atomicReplaceFile"
 
 export const PROCESSING_BUDGET_REPORT_FILE_SUFFIX = ".processing-budget-report.json" as const
 const MAX_REPORT_TEXT_UTF8_BYTES = 256
+const RAW_DIFF_TRUNCATION = /(?:unified|raw) diff[\s\S]*truncat/i
+const DOCUMENT_TRUNCATION = /document_excerpt_bytes|excerpt truncat|remaining excerpts skipped/i
+const BOB_INPUT_TRUNCATION = /bob-input\.md[\s\S]*truncat|bob_input_bytes[\s\S]*truncat/i
 
 export interface PersistProcessingBudgetReportInput {
   readonly outDir: string
@@ -27,6 +28,18 @@ export interface PersistProcessingBudgetReportInput {
 export interface PersistedProcessingBudgetReport {
   readonly reportPath: string
   readonly report: SharedProcessingBudgetReport
+}
+
+export interface ProcessingCoverageWarningInput {
+  readonly ledger: SharedProcessingBudgetLedger
+  readonly diffWarnings?: readonly string[]
+  readonly documentWarnings?: readonly string[]
+  readonly codeWarnings?: readonly string[]
+  readonly repositoryWarnings?: readonly string[]
+  readonly contextWarnings?: readonly string[]
+  readonly traceabilityWarnings?: readonly string[]
+  readonly ledgerWarnings?: readonly string[]
+  readonly packageWarnings?: readonly string[]
 }
 
 export function processingBudgetReportPath(outDir: string): string {
@@ -46,7 +59,7 @@ export async function persistProcessingBudgetReport(
     failure: input.failure
   })
   const reportPath = processingBudgetReportPath(input.outDir)
-  await writeTextAtomic(reportPath, serializeProcessingBudgetReport(report))
+  await replaceTextFileAtomically(reportPath, serializeProcessingBudgetReport(report))
   return Object.freeze({ reportPath, report })
 }
 
@@ -59,18 +72,25 @@ export function assertCompleteProcessingCoverage(
   })
 }
 
-export function coverageIssuesFromWarnings(input: {
-  readonly ledger: SharedProcessingBudgetLedger
-  readonly diffWarnings?: readonly string[]
-  readonly documentWarnings?: readonly string[]
-  readonly packageWarnings?: readonly string[]
-}): readonly SharedProcessingBudgetReportIssue[] {
+export function coverageIssuesFromWarnings(
+  input: ProcessingCoverageWarningInput
+): readonly SharedProcessingBudgetReportIssue[] {
   const snapshot = input.ledger.snapshot()
   const issues: SharedProcessingBudgetReportIssue[] = []
-  if (someWarning(input.diffWarnings, /(?:unified|raw) diff[\s\S]*truncat/i)) {
-    issues.push(truncationIssue("raw_diff_bytes", "raw_diff_truncated", committed(snapshot, "raw_diff_bytes"), input.diffWarnings))
+
+  if (someWarning(input.diffWarnings, RAW_DIFF_TRUNCATION)) {
+    issues.push(truncationIssue(
+      "raw_diff_bytes",
+      "raw_diff_truncated",
+      committed(snapshot, "raw_diff_bytes"),
+      input.diffWarnings
+    ))
   }
-  if (someWarning(input.documentWarnings, /document_excerpt_bytes|excerpt truncat|remaining excerpts skipped/i)) {
+  if (hasUnclassifiedWarning(input.diffWarnings, [RAW_DIFF_TRUNCATION])) {
+    issues.push(unprocessedIssue("diff_evidence_incomplete", "diff"))
+  }
+
+  if (someWarning(input.documentWarnings, DOCUMENT_TRUNCATION)) {
     issues.push(truncationIssue(
       "document_excerpt_bytes",
       "document_excerpt_truncated",
@@ -78,9 +98,38 @@ export function coverageIssuesFromWarnings(input: {
       input.documentWarnings
     ))
   }
-  if (someWarning(input.packageWarnings, /bob-input\.md[\s\S]*truncat|bob_input_bytes[\s\S]*truncat/i)) {
-    issues.push(truncationIssue("bob_input_bytes", "bob_input_truncated", committed(snapshot, "bob_input_bytes"), input.packageWarnings))
+  if (hasUnclassifiedWarning(input.documentWarnings, [DOCUMENT_TRUNCATION])) {
+    issues.push(unprocessedIssue("document_evidence_incomplete", "documents", "document_count"))
   }
+
+  if ((input.codeWarnings?.length ?? 0) > 0) {
+    issues.push(unprocessedIssue("code_evidence_incomplete", "code-analysis"))
+  }
+  if ((input.repositoryWarnings?.length ?? 0) > 0) {
+    issues.push(unprocessedIssue("repository_evidence_incomplete", "repository-index"))
+  }
+  if ((input.contextWarnings?.length ?? 0) > 0) {
+    issues.push(unprocessedIssue("context_evidence_incomplete", "context-budget"))
+  }
+  if ((input.traceabilityWarnings?.length ?? 0) > 0) {
+    issues.push(unprocessedIssue("traceability_evidence_incomplete", "traceability"))
+  }
+  if ((input.ledgerWarnings?.length ?? 0) > 0) {
+    issues.push(unprocessedIssue("artifact_ledger_incomplete", "artifact-ledger"))
+  }
+
+  if (someWarning(input.packageWarnings, BOB_INPUT_TRUNCATION)) {
+    issues.push(truncationIssue(
+      "bob_input_bytes",
+      "bob_input_truncated",
+      committed(snapshot, "bob_input_bytes"),
+      input.packageWarnings
+    ))
+  }
+  if (hasUnclassifiedWarning(input.packageWarnings, [BOB_INPUT_TRUNCATION])) {
+    issues.push(unprocessedIssue("package_evidence_incomplete", "review-package", "managed_artifact_bytes"))
+  }
+
   return Object.freeze(issues)
 }
 
@@ -130,6 +179,19 @@ function truncationIssue(
   })
 }
 
+function unprocessedIssue(
+  code: string,
+  target: string,
+  category?: SharedProcessingBudgetReportIssue["category"]
+): SharedProcessingBudgetReportIssue {
+  return Object.freeze({
+    kind: "unprocessed" as const,
+    code,
+    target,
+    ...(category === undefined ? {} : { category })
+  })
+}
+
 function observedBytes(warnings: readonly string[] | undefined): number | undefined {
   for (const warning of warnings ?? []) {
     const match = /\(([0-9]+)\s*>\s*[0-9]+\)/u.exec(warning)
@@ -142,6 +204,13 @@ function observedBytes(warnings: readonly string[] | undefined): number | undefi
 
 function someWarning(warnings: readonly string[] | undefined, pattern: RegExp): boolean {
   return (warnings ?? []).some((warning) => pattern.test(warning))
+}
+
+function hasUnclassifiedWarning(
+  warnings: readonly string[] | undefined,
+  classifiedPatterns: readonly RegExp[]
+): boolean {
+  return (warnings ?? []).some((warning) => !classifiedPatterns.some((pattern) => pattern.test(warning)))
 }
 
 function committed(
@@ -197,37 +266,4 @@ function truncateUtf8Prefix(value: string, maximumBytes: number): string {
 
 function safeInteger(value: unknown): number | undefined {
   return Number.isSafeInteger(value) && (value as number) >= 0 ? value as number : undefined
-}
-
-async function writeTextAtomic(filePath: string, text: string): Promise<void> {
-  await fs.mkdir(path.dirname(filePath), { recursive: true })
-  const temporaryPath = `${filePath}.${process.pid}.${randomUUID()}.tmp`
-  const backupPath = `${filePath}.${process.pid}.${randomUUID()}.bak`
-  let existing = false
-  let backedUp = false
-  try {
-    try {
-      const stat = await fs.lstat(filePath)
-      if (stat.isSymbolicLink() || !stat.isFile()) throw new Error("processing budget report path must be a regular file")
-      existing = true
-    } catch (error) {
-      if (!(error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === "ENOENT")) throw error
-    }
-    await fs.writeFile(temporaryPath, text, { encoding: "utf8", flag: "wx", mode: 0o600 })
-    if (existing) {
-      await fs.rename(filePath, backupPath)
-      backedUp = true
-    }
-    await fs.rename(temporaryPath, filePath)
-    if (backedUp) await fs.rm(backupPath, { force: true })
-  } catch (error) {
-    try { await fs.rm(temporaryPath, { force: true }) } catch {}
-    if (backedUp) {
-      try {
-        await fs.rm(filePath, { force: true })
-        await fs.rename(backupPath, filePath)
-      } catch {}
-    }
-    throw error
-  }
 }
