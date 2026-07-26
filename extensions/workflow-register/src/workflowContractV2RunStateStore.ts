@@ -38,6 +38,12 @@ export class ContractV2GuardedRunStateStore extends FileRunStateStore {
     lease: WorkflowPlanLease,
     inputs: Record<string, unknown>
   ): Promise<WorkflowRunState> {
+    const contextualLease = currentWorkflowContractV2PlanLease()
+    if (contextualLease !== lease) {
+      throw new TypeError(
+        "Contract v2 lease-based run creation requires the exact active compiled plan lease context."
+      )
+    }
     const handle = lease.handle
     const shell = await super.createRun(compiledWorkflowShell(handle.plan.workflowId, handle.plan.workflow.name), inputs)
     return createWorkflowContractV2RunState({
