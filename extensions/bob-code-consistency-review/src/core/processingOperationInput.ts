@@ -83,7 +83,7 @@ function canonicalValue(value: unknown, seen: Set<object>): unknown {
   if (seen.has(value)) throw new Error("processing operation input contains a cycle")
   seen.add(value)
   try {
-    if (Array.isArray(value)) return value.map((entry) => canonicalValue(entry, seen))
+    if (Array.isArray(value)) return canonicalArray(value, seen)
     let prototype: object | null
     try {
       prototype = Object.getPrototypeOf(value)
@@ -127,6 +127,78 @@ function canonicalValue(value: unknown, seen: Set<object>): unknown {
   } finally {
     seen.delete(value)
   }
+}
+
+function canonicalArray(value: unknown[], seen: Set<object>): unknown[] {
+  let prototype: object | null
+  try {
+    prototype = Object.getPrototypeOf(value)
+  } catch {
+    throw new Error("processing operation input array prototype is unavailable")
+  }
+  if (prototype !== Array.prototype && prototype !== null) {
+    throw new Error("processing operation input must contain plain data arrays")
+  }
+
+  let ownKeys: readonly PropertyKey[]
+  try {
+    ownKeys = Reflect.ownKeys(value)
+  } catch {
+    throw new Error("processing operation input array keys are unavailable")
+  }
+
+  let lengthDescriptor: PropertyDescriptor | undefined
+  try {
+    lengthDescriptor = Object.getOwnPropertyDescriptor(value, "length")
+  } catch {
+    throw new Error("processing operation input array length descriptor is unavailable")
+  }
+  if (!lengthDescriptor || !("value" in lengthDescriptor)
+    || lengthDescriptor.enumerable !== false || lengthDescriptor.configurable !== false
+    || !Number.isSafeInteger(lengthDescriptor.value) || lengthDescriptor.value < 0
+    || lengthDescriptor.value > 0xffff_ffff) {
+    throw new Error("processing operation input array length is invalid")
+  }
+  const length = lengthDescriptor.value as number
+  const descriptors = new Map<number, PropertyDescriptor>()
+  for (const key of ownKeys) {
+    if (typeof key !== "string") {
+      throw new Error("processing operation input contains a symbol property on an array")
+    }
+    if (key === "length") continue
+    const index = canonicalArrayIndex(key, length)
+    if (index === undefined) {
+      throw new Error("processing operation input contains a hidden or non-index array property")
+    }
+    let descriptor: PropertyDescriptor | undefined
+    try {
+      descriptor = Object.getOwnPropertyDescriptor(value, key)
+    } catch {
+      throw new Error("processing operation input array property descriptor is unavailable")
+    }
+    if (!descriptor || !("value" in descriptor)) {
+      throw new Error("processing operation input contains an accessor on an array index")
+    }
+    if (descriptor.enumerable !== true) {
+      throw new Error("processing operation input contains a hidden array index")
+    }
+    descriptors.set(index, descriptor)
+  }
+
+  const output = new Array<unknown>(length)
+  for (const index of [...descriptors.keys()].sort((left, right) => left - right)) {
+    const descriptor = descriptors.get(index)
+    if (!descriptor) throw new Error("processing operation input array descriptor was lost")
+    output[index] = canonicalValue(descriptor.value, seen)
+  }
+  return output
+}
+
+function canonicalArrayIndex(key: string, length: number): number | undefined {
+  if (!/^(?:0|[1-9][0-9]*)$/u.test(key)) return undefined
+  const index = Number(key)
+  if (!Number.isSafeInteger(index) || index < 0 || index >= length || index >= 0xffff_ffff) return undefined
+  return index
 }
 
 function compareCodePoints(left: string, right: string): number {
