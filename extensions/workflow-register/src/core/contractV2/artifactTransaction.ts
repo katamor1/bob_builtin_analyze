@@ -1,34 +1,35 @@
 import * as nodeCrypto from "node:crypto"
 import { types as utilTypes } from "node:util"
 
+import { validateWorkflowArtifactContent } from "./artifactContentValidation"
 import {
   buildWorkflowArtifactSetV2,
   decodeWorkflowArtifactSetV2,
-  workflowArtifactSetV2Digest,
   type WorkflowArtifactSetEntryV2,
+  type WorkflowArtifactSetEvidenceV2,
   type WorkflowArtifactSetV2
 } from "./artifactSetV2"
 import {
   allocateAttemptArtifactWorkspace,
-  listAttemptArtifactWorkspaceFiles,
+  inspectAttemptArtifactWorkspaceTree,
+  inspectCommittedAttemptArtifactWorkspaceTree,
   promoteAttemptArtifactWorkspace,
   readCommittedAttemptArtifactFile,
   readCommittedAttemptArtifactSetBytes,
   readVerifiedAttemptArtifactWorkspaceFile,
   writeAttemptArtifactSetFile,
   writeAttemptArtifactWorkspaceFile,
-  type AttemptArtifactWorkspace
+  type AttemptArtifactWorkspace,
+  type AttemptArtifactWorkspaceTree
 } from "./attemptArtifactWorkspace"
+import { canonicalJsonBytes } from "./canonicalJson"
 import {
   requireCompiledWorkflowPlanState,
   type CompiledWorkflowPlan,
   type CompiledWorkflowPlanPrivateState,
   type CompiledWorkflowStep
 } from "./compiledPlan"
-import {
-  validateLocalJsonSchemaViewValue,
-  type CompiledLocalJsonSchemaView
-} from "./jsonSchemaCatalog"
+import type { CompiledLocalJsonSchemaView } from "./jsonSchemaCatalog"
 import { parseStrictJson } from "./packageLoaderInput"
 import {
   requireActiveWorkflowPlanLeaseHandle,
@@ -38,7 +39,6 @@ import {
   createWorkflowAttemptStaging,
   type WorkflowAttemptStaging
 } from "./providerAttemptStaging"
-import { snapshotBoundedWorkflowProviderEnvelope } from "./providerEnvelopeSnapshot"
 import type { Sha256Digest } from "./providerContract"
 
 export interface WorkflowArtifactTransaction {
@@ -112,6 +112,7 @@ const OPEN_FIELDS = objectFreeze(["lease", "runRoot", "attemptId", "stepId", "in
 const INSPECT_REQUIRED_FIELDS = objectFreeze(["runRoot", "attemptId"] as const)
 const INSPECT_OPTIONAL_FIELDS = objectFreeze(["expectedArtifactSetDigest"] as const)
 const MAX_ARTIFACT_SET_BYTES = 4_194_304
+const ARTIFACT_SET_PATH = "artifact-set.json"
 
 export async function openWorkflowArtifactTransaction(input: {
   readonly lease: WorkflowPlanLease
@@ -124,17 +125,13 @@ export async function openWorkflowArtifactTransaction(input: {
   const lease = snapshot.lease as WorkflowPlanLease
   const handle = requireActiveWorkflowPlanLeaseHandle(lease)
   const privateState = requireCompiledWorkflowPlanState(handle)
-  if (
-    privateState.purpose !== "runtime"
-    || !privateState.leaseable
-    || privateState.publication !== "published"
-  ) throw new TypeError("Workflow artifact transaction requires a live runtime plan lease.")
+  if (privateState.purpose !== "runtime" || !privateState.leaseable || privateState.publication !== "published") {
+    throw new TypeError("Workflow artifact transaction requires a live runtime plan lease.")
+  }
   const stepId = requireStepId(snapshot.stepId)
   const attemptId = requireAttemptId(snapshot.attemptId)
   const inputDigest = requireDigest(snapshot.inputDigest, "Workflow artifact transaction inputDigest")
-  if (typeof snapshot.runRoot !== "string") {
-    throw new TypeError("Workflow artifact transaction runRoot is invalid.")
-  }
+  if (typeof snapshot.runRoot !== "string") throw new TypeError("Workflow artifact transaction runRoot is invalid.")
   const step = findCommandStep(handle.plan.workflow.steps, stepId)
   const declarations = artifactDeclarations(handle.plan, privateState, step)
   const workspace = await allocateAttemptArtifactWorkspace(snapshot.runRoot, attemptId)
@@ -144,9 +141,7 @@ export async function openWorkflowArtifactTransaction(input: {
     stageArtifact: async (artifact) => {
       if (state.status !== "open") throw new Error("Workflow artifact transaction is no longer open.")
       const declaration = findDeclaration(state.declarations, artifact.id)
-      if (declaration === undefined) {
-        throw new Error("Workflow provider attempted to stage an undeclared artifact.")
-      }
+      if (declaration === undefined) throw new Error("Workflow provider attempted to stage an undeclared artifact.")
       if (reflectApply(setHas, state.stagedIds, [artifact.id]) as boolean) {
         throw new Error("Workflow provider attempted to stage a duplicate artifact.")
       }
@@ -191,68 +186,20 @@ export async function commitWorkflowArtifactTransaction(
   if (handle.planDigest !== state.planDigest || handle.plan.packageDigest !== state.packageDigest) {
     throw new Error("Workflow artifact transaction plan evidence changed.")
   }
-  for (let index = 0; index < state.declarations.length; index += 1) {
-    const declaration = state.declarations[index]
-    if (declaration.required && !(reflectApply(setHas, state.stagedIds, [declaration.id]) as boolean)) {
-      throw new Error("Workflow artifact transaction is missing a required artifact.")
-    }
-  }
+  assertRequiredArtifactsPresent(state)
 
-  const expectedPaths: string[] = []
-  for (let index = 0; index < state.declarations.length; index += 1) {
-    const declaration = state.declarations[index]
-    if (reflectApply(setHas, state.stagedIds, [declaration.id]) as boolean) expectedPaths.push(declaration.path)
-  }
-  expectedPaths.sort()
-  const observedPaths = await listAttemptArtifactWorkspaceFiles(state.workspace)
-  if (!sameStringArray(observedPaths, expectedPaths)) {
-    throw new Error("Workflow artifact staging set contains missing or extra files.")
-  }
-
-  const entries: WorkflowArtifactSetEntryV2[] = []
-  for (let index = 0; index < state.declarations.length; index += 1) {
-    const declaration = state.declarations[index]
-    if (!(reflectApply(setHas, state.stagedIds, [declaration.id]) as boolean)) continue
-    const verified = await readVerifiedAttemptArtifactWorkspaceFile(
-      state.workspace,
-      declaration.path,
-      declaration.maxBytes
-    )
-    validateArtifactSchema(declaration, verified.bytes)
-    entries.push(objectFreeze({
-      id: declaration.id,
-      path: declaration.path,
-      schema: declaration.schema,
-      sha256: sha256(verified.bytes),
-      bytes: verified.bytes.byteLength,
-      mediaType: declaration.mediaType,
-      producer: state.stepId,
-      producerAttempt: state.attemptId,
-      source: "runtime-staged" as const,
-      inputDigest: state.inputDigest,
-      planDigest: state.planDigest,
-      verification: "verified" as const
-    }))
-  }
-  entries.sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : left.id < right.id ? -1 : left.id > right.id ? 1 : 0)
-  const artifactSetEvidence = buildWorkflowArtifactSetV2({
-    workflowId: state.workflowId,
-    stepId: state.stepId,
-    attemptId: state.attemptId,
-    planDigest: state.planDigest,
-    packageDigest: state.packageDigest,
-    inputDigest: state.inputDigest,
-    entries: objectFreeze(entries)
-  })
-  if (artifactSetEvidence.bytes.byteLength > MAX_ARTIFACT_SET_BYTES) {
+  const evidence = await buildVerifiedArtifactSet(state)
+  if (evidence.bytes.byteLength > MAX_ARTIFACT_SET_BYTES) {
     throw new Error("Workflow artifact-set evidence exceeds its byte limit.")
   }
-  await writeAttemptArtifactSetFile(state.workspace, artifactSetEvidence.bytes)
+  await writeAttemptArtifactSetFile(state.workspace, evidence.bytes)
+  await reverifyPreparedArtifactSet(state, evidence)
   await promoteAttemptArtifactWorkspace(state.workspace)
   state.status = "promoted"
+
   const committed = objectFreeze({
-    artifactSet: artifactSetEvidence.artifactSet,
-    artifactSetDigest: artifactSetEvidence.artifactSetDigest
+    artifactSet: evidence.artifactSet,
+    artifactSetDigest: evidence.artifactSetDigest
   })
   try {
     await reflectApply(commitVisibility, undefined, [committed])
@@ -269,43 +216,110 @@ export async function inspectCommittedWorkflowArtifactTransaction(input: {
   readonly attemptId: string
   readonly expectedArtifactSetDigest?: Sha256Digest
 }): Promise<WorkflowArtifactTransactionInspection> {
-  const snapshot = snapshotRecord(
-    input,
-    INSPECT_REQUIRED_FIELDS,
-    INSPECT_OPTIONAL_FIELDS,
-    "Workflow artifact transaction inspection"
-  )
-  if (typeof snapshot.runRoot !== "string") {
-    throw new TypeError("Workflow artifact inspection runRoot is invalid.")
-  }
+  const snapshot = snapshotRecord(input, INSPECT_REQUIRED_FIELDS, INSPECT_OPTIONAL_FIELDS, "Workflow artifact transaction inspection")
+  if (typeof snapshot.runRoot !== "string") throw new TypeError("Workflow artifact inspection runRoot is invalid.")
   const attemptId = requireAttemptId(snapshot.attemptId)
-  const bytes = await readCommittedAttemptArtifactSetBytes({
-    runRoot: snapshot.runRoot,
-    attemptId
-  })
+  const bytes = await readCommittedAttemptArtifactSetBytes({ runRoot: snapshot.runRoot, attemptId })
   if (bytes === undefined) return objectFreeze({ status: "missing" as const })
-  if (bytes.byteLength > MAX_ARTIFACT_SET_BYTES) {
-    throw new Error("Workflow artifact-set evidence exceeds its byte limit.")
-  }
+  if (bytes.byteLength > MAX_ARTIFACT_SET_BYTES) throw new Error("Workflow artifact-set evidence exceeds its byte limit.")
+
   const artifactSet = decodeWorkflowArtifactSetV2(parseStrictJson(bytes, "Workflow artifact-set"))
   if (artifactSet.attemptId !== attemptId) {
     throw new Error("Workflow artifact-set attempt identity does not match its directory.")
   }
-  const artifactSetDigest = workflowArtifactSetV2Digest(artifactSet)
+  const canonicalBytes = canonicalJsonBytes(artifactSet)
+  if (!sameBytes(bytes, canonicalBytes)) {
+    throw new Error("Workflow artifact-set manifest bytes are not canonical.")
+  }
+  const artifactSetDigest = sha256(bytes)
+  await verifyCommittedTree(snapshot.runRoot, attemptId, artifactSet)
+
   if (snapshot.expectedArtifactSetDigest === undefined) {
     return objectFreeze({ status: "orphaned" as const, artifactSetDigest })
   }
-  const expected = requireDigest(
-    snapshot.expectedArtifactSetDigest,
-    "Workflow artifact inspection expected digest"
-  )
+  const expected = requireDigest(snapshot.expectedArtifactSetDigest, "Workflow artifact inspection expected digest")
   if (artifactSetDigest !== expected) {
     throw new Error("Workflow artifact-set digest does not match committed visibility evidence.")
   }
+  return objectFreeze({ status: "committed" as const, artifactSet, artifactSetDigest })
+}
+
+async function buildVerifiedArtifactSet(state: TransactionState): Promise<WorkflowArtifactSetEvidenceV2> {
+  const expectedPaths = stagedPaths(state)
+  assertTreeMatches(await inspectAttemptArtifactWorkspaceTree(state.workspace), expectedPaths)
+  const entries: WorkflowArtifactSetEntryV2[] = []
+  for (let index = 0; index < state.declarations.length; index += 1) {
+    const declaration = state.declarations[index]
+    if (!(reflectApply(setHas, state.stagedIds, [declaration.id]) as boolean)) continue
+    const verified = await readVerifiedAttemptArtifactWorkspaceFile(state.workspace, declaration.path, declaration.maxBytes)
+    validateWorkflowArtifactContent({
+      bytes: verified.bytes,
+      mediaType: declaration.mediaType,
+      schema: declaration.compiledSchema,
+      path: declaration.path,
+      maximumBytes: declaration.maxBytes
+    })
+    entries.push(objectFreeze({
+      id: declaration.id,
+      path: declaration.path,
+      schema: declaration.schema,
+      sha256: sha256(verified.bytes),
+      bytes: verified.bytes.byteLength,
+      mediaType: declaration.mediaType,
+      producer: state.stepId,
+      producerAttempt: state.attemptId,
+      source: "runtime-staged" as const,
+      inputDigest: state.inputDigest,
+      planDigest: state.planDigest,
+      verification: "verified" as const
+    }))
+  }
+  entries.sort(compareEntries)
+  return buildWorkflowArtifactSetV2({
+    workflowId: state.workflowId,
+    stepId: state.stepId,
+    attemptId: state.attemptId,
+    planDigest: state.planDigest,
+    packageDigest: state.packageDigest,
+    inputDigest: state.inputDigest,
+    entries: objectFreeze(entries)
+  })
+}
+
+async function reverifyPreparedArtifactSet(
+  state: TransactionState,
+  evidence: WorkflowArtifactSetEvidenceV2
+): Promise<void> {
+  const expectedPaths = [...evidence.artifactSet.entries.map((entry) => entry.path), ARTIFACT_SET_PATH].sort()
+  assertTreeMatches(await inspectAttemptArtifactWorkspaceTree(state.workspace), expectedPaths)
+  const manifest = await readVerifiedAttemptArtifactWorkspaceFile(state.workspace, ARTIFACT_SET_PATH, MAX_ARTIFACT_SET_BYTES)
+  if (!sameBytes(manifest.bytes, evidence.bytes) || sha256(manifest.bytes) !== evidence.artifactSetDigest) {
+    throw new Error("Workflow artifact-set changed after verification.")
+  }
+  for (let index = 0; index < evidence.artifactSet.entries.length; index += 1) {
+    const entry = evidence.artifactSet.entries[index]
+    const declaration = findDeclaration(state.declarations, entry.id)
+    if (declaration === undefined) throw new Error("Workflow artifact declaration disappeared before promotion.")
+    const file = await readVerifiedAttemptArtifactWorkspaceFile(state.workspace, entry.path, declaration.maxBytes)
+    if (file.bytes.byteLength !== entry.bytes || sha256(file.bytes) !== entry.sha256) {
+      throw new Error("Workflow artifact changed after verification and before promotion.")
+    }
+  }
+}
+
+async function verifyCommittedTree(
+  runRoot: string,
+  attemptId: string,
+  artifactSet: WorkflowArtifactSetV2
+): Promise<void> {
+  const tree = await inspectCommittedAttemptArtifactWorkspaceTree({ runRoot, attemptId })
+  if (tree === undefined) throw new Error("Workflow committed artifact directory is missing.")
+  const expectedPaths = [...artifactSet.entries.map((entry) => entry.path), ARTIFACT_SET_PATH].sort()
+  assertTreeMatches(tree, expectedPaths)
   for (let index = 0; index < artifactSet.entries.length; index += 1) {
     const entry = artifactSet.entries[index]
     const fileBytes = await readCommittedAttemptArtifactFile({
-      runRoot: snapshot.runRoot,
+      runRoot,
       attemptId,
       relativePath: entry.path,
       maximumBytes: entry.bytes
@@ -314,11 +328,50 @@ export async function inspectCommittedWorkflowArtifactTransaction(input: {
       throw new Error("Workflow committed artifact bytes do not match artifact-set evidence.")
     }
   }
-  return objectFreeze({
-    status: "committed" as const,
-    artifactSet,
-    artifactSetDigest
-  })
+}
+
+function assertRequiredArtifactsPresent(state: TransactionState): void {
+  for (let index = 0; index < state.declarations.length; index += 1) {
+    const declaration = state.declarations[index]
+    if (declaration.required && !(reflectApply(setHas, state.stagedIds, [declaration.id]) as boolean)) {
+      throw new Error("Workflow artifact transaction is missing a required artifact.")
+    }
+  }
+}
+
+function stagedPaths(state: TransactionState): readonly string[] {
+  const paths: string[] = []
+  for (let index = 0; index < state.declarations.length; index += 1) {
+    const declaration = state.declarations[index]
+    if (reflectApply(setHas, state.stagedIds, [declaration.id]) as boolean) paths.push(declaration.path)
+  }
+  paths.sort()
+  return objectFreeze(paths)
+}
+
+function assertTreeMatches(tree: AttemptArtifactWorkspaceTree, expectedFiles: readonly string[]): void {
+  if (!sameStringArray(tree.files, expectedFiles)) {
+    throw new Error("Workflow artifact directory is not the complete authorized artifact set.")
+  }
+  const expectedDirectories = directoriesForFiles(expectedFiles)
+  if (!sameStringArray(tree.directories, expectedDirectories)) {
+    throw new Error("Workflow artifact directory contains an extra or missing directory.")
+  }
+}
+
+function directoriesForFiles(files: readonly string[]): readonly string[] {
+  const directories: string[] = []
+  for (let index = 0; index < files.length; index += 1) {
+    const segments = files[index].split("/")
+    let prefix = ""
+    for (let segmentIndex = 0; segmentIndex < segments.length - 1; segmentIndex += 1) {
+      prefix = prefix ? `${prefix}/${segments[segmentIndex]}` : segments[segmentIndex]
+      const directory = `${prefix}/`
+      if (!contains(directories, directory)) directories.push(directory)
+    }
+  }
+  directories.sort()
+  return objectFreeze(directories)
 }
 
 function artifactDeclarations(
@@ -348,29 +401,6 @@ function artifactDeclarations(
   return objectFreeze(declarations)
 }
 
-function validateArtifactSchema(declaration: ArtifactDeclaration, bytes: Uint8Array): void {
-  if (!isJsonMediaType(declaration.mediaType)) {
-    throw new Error("Workflow Contract v2 artifact validation currently requires a JSON media type.")
-  }
-  let parsed: unknown
-  try {
-    parsed = parseStrictJson(bytes, `Workflow artifact ${declaration.id}`)
-  } catch {
-    throw new Error("Workflow artifact is not valid canonical JSON input.")
-  }
-  const bounded = snapshotBoundedWorkflowProviderEnvelope(parsed, declaration.maxBytes)
-  if (bounded === undefined) {
-    throw new Error("Workflow artifact JSON exceeds its structural budget.")
-  }
-  const validated = validateLocalJsonSchemaViewValue({
-    compiled: declaration.compiledSchema,
-    value: bounded,
-    diagnosticCode: "WF2_ARTIFACT_SCHEMA_INVALID",
-    location: objectFreeze({ path: declaration.path, pointer: "" })
-  })
-  if (!validated.ok) throw new Error("Workflow artifact failed its compiled schema validation.")
-}
-
 function findCommandStep(
   steps: readonly CompiledWorkflowStep[],
   stepId: string
@@ -383,30 +413,20 @@ function findCommandStep(
   throw new TypeError("Workflow artifact transaction command step is unavailable.")
 }
 
-function findSchema(
-  state: CompiledWorkflowPlanPrivateState,
-  id: string
-): CompiledLocalJsonSchemaView {
+function findSchema(state: CompiledWorkflowPlanPrivateState, id: string): CompiledLocalJsonSchemaView {
   for (let index = 0; index < state.schemas.length; index += 1) {
     if (state.schemas[index].id === id) return state.schemas[index].compiled
   }
   throw new TypeError("Workflow artifact transaction schema is unavailable.")
 }
 
-function findDeclaration(
-  declarations: readonly ArtifactDeclaration[],
-  id: string
-): ArtifactDeclaration | undefined {
-  for (let index = 0; index < declarations.length; index += 1) {
-    if (declarations[index].id === id) return declarations[index]
-  }
+function findDeclaration(declarations: readonly ArtifactDeclaration[], id: string): ArtifactDeclaration | undefined {
+  for (let index = 0; index < declarations.length; index += 1) if (declarations[index].id === id) return declarations[index]
   return undefined
 }
 
 function requireTransactionState(value: unknown): TransactionState {
-  if (typeof value !== "object" || value === null || isProxy(value)) {
-    throw new TypeError("Workflow artifact transaction is invalid.")
-  }
+  if (typeof value !== "object" || value === null || isProxy(value)) throw new TypeError("Workflow artifact transaction is invalid.")
   const state = weakMapGet(states, value)
   if (state === undefined) throw new TypeError("Workflow artifact transaction is invalid.")
   return state
@@ -426,16 +446,12 @@ function requireAttemptId(value: unknown): string {
 }
 
 function requireStepId(value: unknown): string {
-  if (typeof value !== "string" || !STEP_PATTERN.test(value)) {
-    throw new TypeError("Workflow artifact transaction step id is invalid.")
-  }
+  if (typeof value !== "string" || !STEP_PATTERN.test(value)) throw new TypeError("Workflow artifact transaction step id is invalid.")
   return value
 }
 
 function requireDigest(value: unknown, label: string): Sha256Digest {
-  if (typeof value !== "string" || !DIGEST_PATTERN.test(value)) {
-    throw new TypeError(`${label} is invalid.`)
-  }
+  if (typeof value !== "string" || !DIGEST_PATTERN.test(value)) throw new TypeError(`${label} is invalid.`)
   return value as Sha256Digest
 }
 
@@ -453,12 +469,9 @@ function snapshotRecord(
   optional: readonly string[],
   label: string
 ): Readonly<Record<string, unknown>> {
-  if (
-    typeof value !== "object"
-    || value === null
-    || isProxy(value)
-    || objectGetPrototypeOf(value) !== objectPrototype
-  ) throw new TypeError(`${label} must be an ordinary non-proxy record.`)
+  if (typeof value !== "object" || value === null || isProxy(value) || objectGetPrototypeOf(value) !== objectPrototype) {
+    throw new TypeError(`${label} must be an ordinary non-proxy record.`)
+  }
   const descriptors = objectGetOwnPropertyDescriptors(value)
   const keys = reflectOwnKeys(descriptors)
   const result = Object.create(null) as Record<string, unknown>
@@ -476,9 +489,7 @@ function snapshotRecord(
       throw new TypeError(`${label} contains an unknown field.`)
     }
   }
-  if (keys.length !== required.length + optionalCount(result, optional)) {
-    throw new TypeError(`${label} has an invalid shape.`)
-  }
+  if (keys.length !== required.length + optionalCount(result, optional)) throw new TypeError(`${label} has an invalid shape.`)
   return objectFreeze(result)
 }
 
@@ -499,9 +510,19 @@ function optionalCount(record: Readonly<Record<string, unknown>>, fields: readon
   return count
 }
 
+function compareEntries(left: WorkflowArtifactSetEntryV2, right: WorkflowArtifactSetEntryV2): number {
+  return left.path < right.path ? -1 : left.path > right.path ? 1 : left.id < right.id ? -1 : left.id > right.id ? 1 : 0
+}
+
 function sameStringArray(left: readonly string[], right: readonly string[]): boolean {
   if (left.length !== right.length) return false
   for (let index = 0; index < left.length; index += 1) if (left[index] !== right[index]) return false
+  return true
+}
+
+function sameBytes(left: Uint8Array, right: Uint8Array): boolean {
+  if (left.byteLength !== right.byteLength) return false
+  for (let index = 0; index < left.byteLength; index += 1) if (left[index] !== right[index]) return false
   return true
 }
 
@@ -509,10 +530,6 @@ function sha256(bytes: Uint8Array): Sha256Digest {
   const hash = reflectApply(createHash, undefined, ["sha256"]) as nodeCrypto.Hash
   reflectApply(hashUpdate, hash, [bytes])
   return `sha256:${reflectApply(hashDigest, hash, ["hex"]) as string}`
-}
-
-function isJsonMediaType(value: string): boolean {
-  return value === "application/json" || value.endsWith("+json")
 }
 
 function contains(values: readonly string[], value: string): boolean {
