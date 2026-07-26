@@ -27,6 +27,7 @@ const MANAGED_PACKAGE_OUTPUTS = Object.freeze([
 type BuildReviewPackageInput = Parameters<typeof buildReviewPackage>[0]
 
 export async function buildCompleteReviewPackage(input: BuildReviewPackageInput): Promise<string[]> {
+  if (!input.budgetLedger) throw new Error("complete review package generation requires the operation processing ledger")
   const warnings = await buildReviewPackage(input)
   const issues = coverageIssuesFromWarnings({
     ledger: input.budgetLedger,
