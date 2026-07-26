@@ -91,6 +91,8 @@ export async function runBazaarReviewProcessingOperation(
   const ledger = reviewLedger(input.maxDiffBytes, input.maxAddedFileContentBytes, maxBobInputBytes)
   const reservations: SharedProcessingBudgetReservation[] = []
   let product: BazaarReviewProcessingProduct | undefined
+  let preparedTarget: PreparedTarget | undefined
+  let preparedBudget: PreparedTargetBudget | undefined
   let preparedInputSha256: string | undefined
   let preparedObserved = false
   let stage = "before_target_preparation"
@@ -109,7 +111,9 @@ export async function runBazaarReviewProcessingOperation(
         operationId = `bazaar-review:${initialInputSha256.slice(7, 39)}`
         reportPath = processingReportPath(input.reportDirectory, initialInputSha256)
       }
+      preparedTarget = prepared
       preparedInputSha256 = preparedTargetInputSha(initialInputSha256, prepared)
+      preparedBudget = commitPreparedTargetBudget(ledger, reservations, prepared, input)
       stage = "packet_construction"
     }
   })
@@ -128,22 +132,14 @@ export async function runBazaarReviewProcessingOperation(
     }
     stage = "packet_budgeting"
 
-    const originalDiffBytes = Buffer.byteLength(product.prepared.diff.stdout, "utf8")
-    const boundedDiffBytes = Buffer.byteLength(
-      truncateUtf8(product.prepared.diff.stdout, input.maxDiffBytes, "diff"),
-      "utf8"
-    )
-    reservations.push(ledger.reserve("changed_files", product.prepared.info.changedFileCount))
-    reservations.push(ledger.reserve("raw_diff_bytes", boundedDiffBytes))
+    if (!preparedBudget) {
+      throw new Error("Bazaar prepared target budget checkpoint is missing")
+    }
+    const bobInputReservation = ledger.reserve("bob_input_bytes", Buffer.byteLength(product.packet, "utf8"))
+    reservations.push(bobInputReservation)
+    bobInputReservation.commit()
 
-    const addedSectionBytes = product.prepared.addedFilesSection
-      ? Math.min(input.maxAddedFileContentBytes, Buffer.byteLength(product.prepared.addedFilesSection, "utf8"))
-      : 0
-    reservations.push(ledger.reserve("document_excerpt_bytes", addedSectionBytes))
-    reservations.push(ledger.reserve("bob_input_bytes", Buffer.byteLength(product.packet, "utf8")))
-    for (const reservation of reservations) reservation.commit()
-
-    const issues = processingIssues(product, input, originalDiffBytes, boundedDiffBytes, addedSectionBytes)
+    const issues = processingIssues(product.prepared, input, preparedBudget)
     const inputSha256 = productInputSha(initialInputSha256, product)
     const report = createProcessingBudgetReport({
       producer: { id: "bob-bazaar-review", version: "0.3.0" },
@@ -172,7 +168,10 @@ export async function runBazaarReviewProcessingOperation(
         input_sha256: inputSha256,
         outcome: isCancellation(error, input.signal) ? "cancelled" : "failed",
         ledger: ledger.snapshot(),
-        issues: [{ kind: "unprocessed", code: "operation_incomplete", target: stage }],
+        issues: Object.freeze([
+          ...(preparedTarget && preparedBudget ? processingIssues(preparedTarget, input, preparedBudget) : []),
+          Object.freeze({ kind: "unprocessed" as const, code: "operation_incomplete", target: stage })
+        ]),
         failure: failureFromError(error, input.signal)
       })
       await persistReport(reportPath, report)
@@ -205,27 +204,62 @@ function reviewLedger(
   })
 }
 
+interface PreparedTargetBudget {
+  readonly originalDiffBytes: number
+  readonly boundedDiffBytes: number
+  readonly observedAddedFileBytes: number
+  readonly addedSectionBytes: number
+}
+
+function commitPreparedTargetBudget(
+  ledger: SharedProcessingBudgetLedger,
+  reservations: SharedProcessingBudgetReservation[],
+  prepared: PreparedTarget,
+  input: RunBazaarReviewProcessingOperationInput
+): PreparedTargetBudget {
+  const originalDiffBytes = Buffer.byteLength(prepared.diff.stdout, "utf8")
+  const boundedDiffBytes = Buffer.byteLength(
+    truncateUtf8(prepared.diff.stdout, input.maxDiffBytes, "diff"),
+    "utf8"
+  )
+  const observedAddedFileBytes = Buffer.byteLength(prepared.addedFilesSection ?? "", "utf8")
+  const addedSectionBytes = Math.min(input.maxAddedFileContentBytes, observedAddedFileBytes)
+  commitPreparedReservation(ledger, reservations, "changed_files", prepared.info.changedFileCount)
+  commitPreparedReservation(ledger, reservations, "raw_diff_bytes", boundedDiffBytes)
+  commitPreparedReservation(ledger, reservations, "document_excerpt_bytes", addedSectionBytes)
+  return Object.freeze({ originalDiffBytes, boundedDiffBytes, observedAddedFileBytes, addedSectionBytes })
+}
+
+function commitPreparedReservation(
+  ledger: SharedProcessingBudgetLedger,
+  reservations: SharedProcessingBudgetReservation[],
+  category: "changed_files" | "raw_diff_bytes" | "document_excerpt_bytes",
+  amount: number
+): void {
+  const reservation = ledger.reserve(category, amount)
+  reservations.push(reservation)
+  reservation.commit()
+}
+
 function processingIssues(
-  product: BazaarReviewProcessingProduct,
+  prepared: PreparedTarget,
   input: RunBazaarReviewProcessingOperationInput,
-  originalDiffBytes: number,
-  boundedDiffBytes: number,
-  addedSectionBytes: number
+  budget: PreparedTargetBudget
 ): readonly SharedProcessingBudgetReportIssue[] {
   const issues: SharedProcessingBudgetReportIssue[] = []
-  if (originalDiffBytes > input.maxDiffBytes) {
+  if (budget.originalDiffBytes > input.maxDiffBytes) {
     issues.push(Object.freeze({
       kind: "truncation" as const,
       code: "raw_diff_truncated",
       category: "raw_diff_bytes" as const,
       target: "bazaar-diff",
-      processed: boundedDiffBytes,
-      observed: originalDiffBytes,
-      unprocessed: Math.max(0, originalDiffBytes - boundedDiffBytes)
+      processed: budget.boundedDiffBytes,
+      observed: budget.originalDiffBytes,
+      unprocessed: Math.max(0, budget.originalDiffBytes - budget.boundedDiffBytes)
     }))
   }
 
-  const log = product.prepared.log?.stdout
+  const log = prepared.log?.stdout
   if (log !== undefined) {
     const observed = Buffer.byteLength(log, "utf8")
     if (observed > BAZAAR_REVIEW_LOG_MAX_BYTES) {
@@ -242,13 +276,18 @@ function processingIssues(
     }
   }
 
-  if (product.prepared.addedFilesSection?.includes("[TRUNCATED:")) {
+  if (budget.observedAddedFileBytes > input.maxAddedFileContentBytes
+    || prepared.addedFilesSection?.includes("[TRUNCATED:")) {
     issues.push(Object.freeze({
       kind: "truncation" as const,
       code: "added_file_content_truncated",
       category: "document_excerpt_bytes" as const,
       target: "bazaar-added-files",
-      processed: addedSectionBytes
+      processed: budget.addedSectionBytes,
+      ...(budget.observedAddedFileBytes > budget.addedSectionBytes ? {
+        observed: budget.observedAddedFileBytes,
+        unprocessed: budget.observedAddedFileBytes - budget.addedSectionBytes
+      } : {})
     }))
   }
   return Object.freeze(issues)
