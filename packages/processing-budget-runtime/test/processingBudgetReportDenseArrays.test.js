@@ -35,6 +35,14 @@ test("programmatic report creation rejects a sparse issues array", () => {
   )
 })
 
+test("huge sparse issues fail without iterating every missing slot", () => {
+  const issues = new Array(0xffff_ffff)
+  const started = process.hrtime.bigint()
+  assert.throws(() => createProcessingBudgetReport(input({ issues })), invalid)
+  const elapsedMilliseconds = Number(process.hrtime.bigint() - started) / 1_000_000
+  assert.ok(elapsedMilliseconds < 1_000, `sparse-array rejection took ${elapsedMilliseconds} ms`)
+})
+
 test("external validation rejects sparse ledger category and target arrays", () => {
   const complete = JSON.parse(serializeProcessingBudgetReport(createProcessingBudgetReport(input())))
 
