@@ -1,7 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks"
 
 import { normalizeWorkspaceRootIdentity } from "../../workspaceRootIdentity"
-import type { WorkflowRunState } from "../modelRuntime"
 import { canonicalJsonText } from "./canonicalJson"
 import { requireCompiledWorkflowPlanState } from "./compiledPlan"
 import { cloneAndFreezeJsonValue, type JsonValue } from "./jsonValue"
@@ -33,6 +32,18 @@ export interface WorkflowContractV2RunPlanProvenance {
   readonly bobProfileBinding: LockedBobBinding
 }
 
+declare module "../modelRuntime" {
+  interface WorkflowRunState {
+    planProvenance?: WorkflowContractV2RunPlanProvenance
+  }
+}
+
+interface WorkflowContractV2RunStateLike {
+  readonly runId: string
+  status: string
+  planProvenance?: WorkflowContractV2RunPlanProvenance
+}
+
 interface WorkflowContractV2LeaseContext {
   readonly lease: WorkflowPlanLease
   adopted: boolean
@@ -51,7 +62,7 @@ const PROVENANCE_FIELDS = freezeEvidence([
   "bobProfileBinding"
 ] as const)
 const canonicalJsonTextCaptured = canonicalJsonText
-const objectFreeze = Object.freeze
+const jsonStringify = JSON.stringify
 const mapDelete = Function.prototype.call.bind(Map.prototype.delete) as (
   map: Map<string, WorkflowPlanLease>, key: string
 ) => boolean
@@ -187,7 +198,7 @@ export function currentWorkflowContractV2PlanLease(): WorkflowPlanLease | undefi
 }
 
 export function bindWorkflowContractV2RunPlanLease(
-  run: WorkflowRunState,
+  run: WorkflowContractV2RunStateLike,
   lease: WorkflowPlanLease
 ): WorkflowContractV2RunPlanProvenance {
   const provenance = requireRunProvenance(run)
@@ -199,7 +210,7 @@ export function bindWorkflowContractV2RunPlanLease(
 
 export function prepareWorkflowContractV2RunPlanLeaseForWrite(
   workspaceScope: string,
-  run: WorkflowRunState
+  run: WorkflowContractV2RunStateLike
 ): WorkflowPlanLease | undefined {
   if (run.planProvenance === undefined) return undefined
   const lease = leaseForRun(workspaceScope, run)
@@ -212,7 +223,7 @@ export function prepareWorkflowContractV2RunPlanLeaseForWrite(
 
 export function adoptWorkflowContractV2RunPlanLease(
   workspaceScope: string,
-  run: WorkflowRunState,
+  run: WorkflowContractV2RunStateLike,
   preparedLease?: WorkflowPlanLease
 ): void {
   if (run.planProvenance === undefined) return
@@ -233,7 +244,7 @@ export function adoptWorkflowContractV2RunPlanLease(
 
 export function bindAvailableWorkflowContractV2RunPlanLease(
   workspaceScope: string,
-  run: WorkflowRunState
+  run: WorkflowContractV2RunStateLike
 ): void {
   if (run.planProvenance === undefined) return
   const lease = mapGet(runLeases, runLeaseKey(workspaceScope, run.runId))
@@ -242,7 +253,7 @@ export function bindAvailableWorkflowContractV2RunPlanLease(
 }
 
 export function requireWorkflowContractV2RunPlanLease(
-  run: WorkflowRunState
+  run: WorkflowContractV2RunStateLike
 ): WorkflowPlanLease {
   if (run.planProvenance === undefined) {
     throw new TypeError("Workflow run does not contain Contract v2 plan provenance.")
@@ -261,7 +272,7 @@ export function requireWorkflowContractV2RunPlanLease(
 
 export function requireWorkflowContractV2RunPlanLeaseForExecution(
   workspaceScope: string,
-  run: WorkflowRunState
+  run: WorkflowContractV2RunStateLike
 ): WorkflowPlanLease | undefined {
   if (run.planProvenance === undefined) return undefined
   const lease = mapGet(runLeases, runLeaseKey(workspaceScope, run.runId))
@@ -283,13 +294,15 @@ export function releaseWorkflowContractV2RunPlanLease(
   lease.release()
 }
 
-export function workflowContractV2RunIsTerminal(run: WorkflowRunState): boolean {
+export function workflowContractV2RunIsTerminal(
+  run: WorkflowContractV2RunStateLike
+): boolean {
   return run.status === "completed" || run.status === "failed"
 }
 
 function leaseForRun(
   workspaceScope: string,
-  run: WorkflowRunState
+  run: WorkflowContractV2RunStateLike
 ): WorkflowPlanLease | undefined {
   const objectLease = weakMapGet(runObjectLeases, run)
   if (objectLease !== undefined && !objectLease.released) return objectLease
@@ -299,7 +312,9 @@ function leaseForRun(
   return keyed === undefined || keyed.released ? undefined : keyed
 }
 
-function requireRunProvenance(run: WorkflowRunState): WorkflowContractV2RunPlanProvenance {
+function requireRunProvenance(
+  run: WorkflowContractV2RunStateLike
+): WorkflowContractV2RunPlanProvenance {
   if (run.planProvenance === undefined) {
     throw new TypeError("Workflow Contract v2 run plan provenance is required.")
   }
@@ -320,7 +335,8 @@ function runLeaseKey(workspaceScope: string, runId: string): string {
   if (typeof runId !== "string" || runId.length === 0) {
     throw new TypeError("Workflow Contract v2 run id is invalid.")
   }
-  return JSON.stringify([normalizeWorkspaceRootIdentity(workspaceScope), runId])
+  const normalizedScope = workspaceScope.startsWith("anonymous-run-store:")
+    ? workspaceScope
+    : normalizeWorkspaceRootIdentity(workspaceScope)
+  return jsonStringify([normalizedScope, runId])
 }
-
-export const WORKFLOW_CONTRACT_V2_EMPTY_PROVIDER_BINDINGS = objectFreeze([]) as readonly LockedProviderBinding[]
