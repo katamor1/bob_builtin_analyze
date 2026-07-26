@@ -195,6 +195,7 @@ export async function preprocessReview(input: PreprocessReviewInput): Promise<Pr
       completeKinds: ["project-rule-pack", "repository-symbol-index"],
       maxBytes: limits.maxDocumentBytes
     })
+    refreshInputSha({ upstreamArtifactLedger: upstreamLedger })
     const traceability = await buildTraceability({ reviewInput, documents, codeAnalysis, diff })
     refreshInputSha({ traceability })
     cancellation.throwIfCancelled()
@@ -270,6 +271,8 @@ export async function preprocessReview(input: PreprocessReviewInput): Promise<Pr
       completeKinds: ["project-rule-pack", "repository-symbol-index", "review-package"],
       maxBytes: limits.maxDocumentBytes
     })
+
+    refreshInputSha({ finalArtifactLedger: finalLedger })
 
     const postPackageIssues = coverageIssuesFromWarnings({
       ledger: processingBudgetLedger,
