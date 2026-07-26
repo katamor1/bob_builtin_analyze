@@ -96,10 +96,7 @@ function preflightEnvelopeBounds(root: unknown, maximumTextBytes: number): void 
       || (!array && prototype !== objectPrototype && prototype !== null)
     ) fail()
 
-    const sourceKeys = reflectOwnKeys(value)
-    if (sourceKeys.length > MAX_ENVELOPE_COLLECTION_ENTRIES) fail()
-    if (nodes + sourceKeys.length > MAX_ENVELOPE_NODES + 1) fail()
-
+    let expectedEntries: number
     if (array) {
       const lengthDescriptor = objectGetOwnPropertyDescriptor(value, "length")
       const length = descriptorDataValue(lengthDescriptor)
@@ -108,10 +105,20 @@ function preflightEnvelopeBounds(root: unknown, maximumTextBytes: number): void 
         || !numberIsSafeInteger(length)
         || length < 0
         || length > MAX_ENVELOPE_COLLECTION_ENTRIES
-        || sourceKeys.length !== length + 1
         || nodes + length > MAX_ENVELOPE_NODES
       ) fail()
+      expectedEntries = length + 1
     } else {
+      expectedEntries = -1
+    }
+
+    const sourceKeys = reflectOwnKeys(value)
+    if (
+      (array && sourceKeys.length !== expectedEntries)
+      || (!array && sourceKeys.length > MAX_ENVELOPE_COLLECTION_ENTRIES)
+      || (!array && nodes + sourceKeys.length > MAX_ENVELOPE_NODES)
+    ) fail()
+    if (!array) {
       for (let index = 0; index < sourceKeys.length; index += 1) {
         const key = sourceKeys[index]
         if (typeof key !== "string") fail()
