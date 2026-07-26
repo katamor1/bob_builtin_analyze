@@ -312,7 +312,7 @@ function operationInputSha(
 
 function preparedTargetInputSha(initialInputSha256: string, prepared: PreparedTarget): string {
   return sha256({
-    schema_version: "bazaar-review-processing-prepared/v1",
+    schema_version: "bazaar-review-processing-prepared/v2",
     initial_input_sha256: initialInputSha256,
     repository_root: normalizeRepositoryScope(prepared.root),
     target: {
@@ -334,15 +334,31 @@ function preparedTargetInputSha(initialInputSha256: string, prepared: PreparedTa
         binary: entry.binary === undefined ? null : entry.binary
       }))
     },
-    diff_sha256: sha256Text(prepared.diff.stdout),
-    log_sha256: sha256Text(prepared.log?.stdout ?? ""),
+    diff_command: commandInput(prepared.diff),
+    log_command: prepared.log === undefined ? null : commandInput(prepared.log),
     added_files_sha256: sha256Text(prepared.addedFilesSection ?? "")
+  })
+}
+
+function commandInput(result: PreparedTarget["diff"]): Readonly<{
+  command: string
+  args: readonly string[]
+  cwd: string
+  stdout_sha256: string
+  stderr_sha256: string
+}> {
+  return Object.freeze({
+    command: result.command,
+    args: Object.freeze([...result.args]),
+    cwd: result.cwd,
+    stdout_sha256: sha256Text(result.stdout),
+    stderr_sha256: sha256Text(result.stderr)
   })
 }
 
 function productInputSha(initialInputSha256: string, product: BazaarReviewProcessingProduct): string {
   return sha256({
-    schema_version: "bazaar-review-processing-product/v2",
+    schema_version: "bazaar-review-processing-product/v3",
     prepared_input_sha256: preparedTargetInputSha(initialInputSha256, product.prepared),
     packet_sha256: sha256Text(product.packet)
   })
