@@ -76,9 +76,10 @@ export function coordinateWorkflowRunExecution<T>(
         const returnedRun = workflowRunStateFromResult(result, runId)
         run = returnedRun ?? await runStore.loadRun(runId) ?? run
         if (run?.planProvenance !== undefined) {
-          requireWorkflowContractV2RunPlanLeaseForExecution(workspaceScope, run)
           if (workflowContractV2RunIsTerminal(run)) {
             releaseWorkflowContractV2RunPlanLease(workspaceScope, runId)
+          } else {
+            requireWorkflowContractV2RunPlanLeaseForExecution(workspaceScope, run)
           }
         }
         return result
