@@ -7,6 +7,7 @@ const path = require("node:path")
 const test = require("node:test")
 
 const {
+  BazaarProcessingCoveragePartialError,
   runBazaarReviewProcessingOperation
 } = require("../out/bazaar/bazaarProcessingCoverage")
 const {
@@ -83,7 +84,11 @@ async function executePostPrepareFailure(input, diff, infoOverrides = {}) {
   return { reportPath, report }
 }
 
-test("post-prepare failure keeps a deterministic content-bound report identity", async (t) => {
+function category(report, id) {
+  return report.ledger.categories.find((entry) => entry.category === id)
+}
+
+test("post-prepare failure keeps deterministic identity and committed prepared budgets", async (t) => {
   const input = await fixture(t)
 
   const first = await executePostPrepareFailure(input, "+one\n")
@@ -92,7 +97,14 @@ test("post-prepare failure keeps a deterministic content-bound report identity",
   assert.equal(retry.report.input_sha256, first.report.input_sha256)
   assert.equal(retry.report.outcome, "failed")
   assert.equal(retry.report.coverage_status, "failed")
-  assert.equal(retry.report.issues[0].target, "packet_construction")
+  assert.equal(retry.report.issues.at(-1).target, "packet_construction")
+
+  const diffBytes = Buffer.byteLength("+one\n", "utf8")
+  const excerptBytes = Buffer.byteLength("added file body", "utf8")
+  assert.equal(category(retry.report, "changed_files").committed, 1)
+  assert.equal(category(retry.report, "raw_diff_bytes").committed, diffBytes)
+  assert.equal(category(retry.report, "document_excerpt_bytes").committed, excerptBytes)
+  assert.equal(category(retry.report, "total_operation_input_bytes").committed, diffBytes + excerptBytes)
 
   const changed = await executePostPrepareFailure(input, "+two\n")
   assert.equal(changed.reportPath, first.reportPath)
@@ -112,6 +124,39 @@ test("post-prepare failure identity changes with packet-visible target metadata"
     changedFileEntries: [{ path: "src/b.cpp", status: "renamed" }]
   })
   assert.notEqual(changedFiles.report.input_sha256, baseline.report.input_sha256)
+})
+
+test("markerless oversized added-file evidence is partial and reports observed bytes", async (t) => {
+  const input = await fixture(t)
+  const target = prepared(input.repositoryRoot, "+same\n")
+  target.addedFilesSection = "x".repeat(65)
+  let reportPath
+
+  await assert.rejects(
+    () => runBazaarReviewProcessingOperation({
+      reportDirectory: input.reportDirectory,
+      repositoryScope: input.repositoryRoot,
+      operation: input.operation,
+      maxDiffBytes: input.maxDiffBytes,
+      maxAddedFileContentBytes: 32,
+      produce: async ({ recordPreparedTarget }) => {
+        recordPreparedTarget(target)
+        return { prepared: target, packet: "# packet\n" }
+      }
+    }),
+    (error) => {
+      assert.ok(error instanceof BazaarProcessingCoveragePartialError)
+      reportPath = error.reportPath
+      return true
+    }
+  )
+
+  const report = validateProcessingBudgetReport(JSON.parse(await fs.readFile(reportPath, "utf8")))
+  const issue = report.issues.find((entry) => entry.code === "added_file_content_truncated")
+  assert.equal(issue.processed, 32)
+  assert.equal(issue.observed, 65)
+  assert.equal(issue.unprocessed, 33)
+  assert.equal(category(report, "document_excerpt_bytes").committed, 32)
 })
 
 test("a completed product must match the prepared target checkpoint", async (t) => {
