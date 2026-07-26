@@ -1,6 +1,6 @@
 import { BazaarClient, BazaarCommandResult } from "./bazaar"
 import { fencedCodeBlock } from "./markdownFence"
-import { clampMaxAddedFileContentBytes, truncateUtf8 } from "./reviewLimits"
+import { clampMaxAddedFileContentBytes } from "./reviewLimits"
 
 export type BazaarChangedFileStatus = "added" | "modified" | "removed" | "renamed" | "unknown"
 
@@ -31,6 +31,25 @@ export interface BazaarRevisionPacketInput {
   info: BazaarRevisionInfo
 }
 
+export interface AddedFileReadFailure {
+  readonly path: string
+  readonly message: string
+}
+
+export interface AddedFilesContentEvidence {
+  readonly observedContentBytes: number
+  readonly processedContentBytes: number
+  readonly renderedContentBytes: number
+  readonly truncated: boolean
+  readonly skippedFileCount: number
+  readonly readFailures: readonly AddedFileReadFailure[]
+}
+
+export interface AddedFilesContentResult {
+  readonly section?: string
+  readonly evidence: AddedFilesContentEvidence
+}
+
 export async function loadBazaarRevisionPacketInput(client: BazaarClient, workspacePath: string, revision: string): Promise<BazaarRevisionPacketInput> {
   const root = await client.root(workspacePath)
   const [log, diff] = await Promise.all([
@@ -59,16 +78,43 @@ export function parseBazaarRevisionInfo(revision: string, logText: string, diffT
   }
 }
 
-export async function buildAddedFilesContentSection(
+export async function buildAddedFilesContent(
   client: BazaarClient,
   root: string,
   revision: string,
   info: BazaarRevisionInfo,
   maxBytes = 256 * 1024
-): Promise<string | undefined> {
+): Promise<AddedFilesContentResult> {
   const maxContentBytes = clampMaxAddedFileContentBytes(maxBytes)
   const addedFiles = info.changedFileEntries.filter((entry) => entry.status === "added")
-  if (addedFiles.length === 0 || maxContentBytes <= 0) return undefined
+  const failures: AddedFileReadFailure[] = []
+  let observedContentBytes = 0
+  let processedContentBytes = 0
+  let renderedContentBytes = 0
+  let truncated = false
+  let skippedFileCount = 0
+
+  if (addedFiles.length === 0) {
+    return freezeAddedFilesResult(undefined, {
+      observedContentBytes,
+      processedContentBytes,
+      renderedContentBytes,
+      truncated,
+      skippedFileCount,
+      readFailures: failures
+    })
+  }
+  if (maxContentBytes <= 0) {
+    skippedFileCount = addedFiles.filter((entry) => !entry.binary).length
+    return freezeAddedFilesResult(undefined, {
+      observedContentBytes,
+      processedContentBytes,
+      renderedContentBytes,
+      truncated,
+      skippedFileCount,
+      readFailures: failures
+    })
+  }
 
   const lines: string[] = [
     "## 追加ファイル本文",
@@ -77,9 +123,9 @@ export async function buildAddedFilesContentSection(
     ""
   ]
   let remainingBytes = maxContentBytes
-  let truncated = false
 
-  for (const entry of addedFiles) {
+  for (let index = 0; index < addedFiles.length; index += 1) {
+    const entry = addedFiles[index]
     if (entry.binary) {
       lines.push(`### ${entry.path}`)
       lines.push("")
@@ -88,36 +134,131 @@ export async function buildAddedFilesContentSection(
       continue
     }
     if (remainingBytes <= 0) {
-      truncated = true
+      skippedFileCount += addedFiles.slice(index).filter((remaining) => !remaining.binary).length
       break
     }
 
     try {
       const result = await client.cat(root, revision, entry.path)
-      let content = result.stdout
-      const contentBytes = Buffer.byteLength(content, "utf8")
-      if (contentBytes > remainingBytes) {
-        content = truncateUtf8(content, remainingBytes, "added file content")
-        truncated = true
-      }
-      remainingBytes -= Buffer.byteLength(content, "utf8")
+      const originalBytes = Buffer.byteLength(result.stdout, "utf8")
+      observedContentBytes = safeAdd(observedContentBytes, originalBytes, "added-file observed bytes")
+      const retained = truncateAddedFileContent(result.stdout, remainingBytes)
+      const renderedBytes = Buffer.byteLength(retained.text, "utf8")
+      processedContentBytes = safeAdd(processedContentBytes, retained.retainedInputBytes, "added-file processed bytes")
+      renderedContentBytes = safeAdd(renderedContentBytes, renderedBytes, "added-file rendered bytes")
+      remainingBytes -= renderedBytes
+      truncated = truncated || retained.truncated
       lines.push(`### ${entry.path}`)
       lines.push("")
-      lines.push(fencedCodeBlock("text", content))
+      lines.push(fencedCodeBlock("text", retained.text))
       lines.push("")
-    } catch (error: any) {
+    } catch (error) {
+      const message = safeFailureMessage(error)
+      failures.push(Object.freeze({ path: entry.path, message }))
       lines.push(`### ${entry.path}`)
       lines.push("")
-      lines.push(`リビジョン ${revision} の Bazaar cat で追加ファイル本文を読み込めませんでした: ${error?.message ?? String(error)}`)
+      lines.push(`リビジョン ${revision} の Bazaar cat で追加ファイル本文を読み込めませんでした: ${message}`)
       lines.push("")
     }
   }
 
-  if (truncated) {
+  if (truncated || skippedFileCount > 0) {
     lines.push(`[TRUNCATED: 追加ファイル本文が ${maxContentBytes} bytes の上限を超えました。必要に応じて focused read/search tools で追加確認してください。]`)
   }
 
-  return lines.join("\n")
+  return freezeAddedFilesResult(lines.join("\n"), {
+    observedContentBytes,
+    processedContentBytes,
+    renderedContentBytes,
+    truncated,
+    skippedFileCount,
+    readFailures: failures
+  })
+}
+
+export async function buildAddedFilesContentSection(
+  client: BazaarClient,
+  root: string,
+  revision: string,
+  info: BazaarRevisionInfo,
+  maxBytes = 256 * 1024
+): Promise<string | undefined> {
+  return (await buildAddedFilesContent(client, root, revision, info, maxBytes)).section
+}
+
+function truncateAddedFileContent(value: string, maximumBytes: number): Readonly<{
+  text: string
+  retainedInputBytes: number
+  truncated: boolean
+}> {
+  const originalBytes = Buffer.byteLength(value, "utf8")
+  if (originalBytes <= maximumBytes) {
+    return Object.freeze({ text: value, retainedInputBytes: originalBytes, truncated: false })
+  }
+  if (maximumBytes <= 0) return Object.freeze({ text: "", retainedInputBytes: 0, truncated: true })
+  const notice = `\n\n[TRUNCATED: original added file content output was ${originalBytes} bytes, limit is ${maximumBytes} bytes]`
+  const boundedNotice = truncateUtf8Prefix(notice, maximumBytes)
+  const prefixBudget = maximumBytes - Buffer.byteLength(boundedNotice, "utf8")
+  const prefix = truncateUtf8Prefix(value, prefixBudget)
+  return Object.freeze({
+    text: `${prefix}${boundedNotice}`,
+    retainedInputBytes: Buffer.byteLength(prefix, "utf8"),
+    truncated: true
+  })
+}
+
+function freezeAddedFilesResult(
+  section: string | undefined,
+  evidence: {
+    observedContentBytes: number
+    processedContentBytes: number
+    renderedContentBytes: number
+    truncated: boolean
+    skippedFileCount: number
+    readFailures: AddedFileReadFailure[]
+  }
+): AddedFilesContentResult {
+  return Object.freeze({
+    ...(section === undefined ? {} : { section }),
+    evidence: Object.freeze({
+      observedContentBytes: evidence.observedContentBytes,
+      processedContentBytes: evidence.processedContentBytes,
+      renderedContentBytes: evidence.renderedContentBytes,
+      truncated: evidence.truncated,
+      skippedFileCount: evidence.skippedFileCount,
+      readFailures: Object.freeze([...evidence.readFailures])
+    })
+  })
+}
+
+function safeFailureMessage(error: unknown): string {
+  const raw = error instanceof Error ? error.message : String(error)
+  const normalized = raw
+    .replace(/[\u0000-\u001f\u007f-\u009f]+/gu, " ")
+    .replace(/\s+/gu, " ")
+    .normalize("NFC")
+    .trim()
+  return truncateUtf8Prefix(normalized || "unknown error", 1_024)
+}
+
+function truncateUtf8Prefix(value: string, maximumBytes: number): string {
+  const output: string[] = []
+  let bytes = 0
+  for (const character of value) {
+    const characterBytes = Buffer.byteLength(character, "utf8")
+    if (bytes + characterBytes > maximumBytes) break
+    output.push(character)
+    bytes += characterBytes
+  }
+  return output.join("")
+}
+
+function safeAdd(left: number, right: number, label: string): number {
+  if (!Number.isSafeInteger(left) || !Number.isSafeInteger(right) || left < 0 || right < 0
+    || right > Number.MAX_SAFE_INTEGER - left) {
+    throw new Error(`${label} exceeds safe integer range`)
+  }
+  return left + right
 }
 
 function parseLogMetadata(logText: string): { revno?: string; author?: string; committer?: string; timestamp?: string; message?: string } {
@@ -188,16 +329,11 @@ function normalizeDiffFilePath(rawPath: string): string | undefined {
 
 function normalizeStatus(status: string): BazaarChangedFileStatus {
   switch (status) {
-    case "added":
-      return "added"
-    case "modified":
-      return "modified"
-    case "removed":
-      return "removed"
-    case "renamed":
-      return "renamed"
-    default:
-      return "unknown"
+    case "added": return "added"
+    case "modified": return "modified"
+    case "removed": return "removed"
+    case "renamed": return "renamed"
+    default: return "unknown"
   }
 }
 
