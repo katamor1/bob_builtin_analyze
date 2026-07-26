@@ -82,6 +82,21 @@ export function createWorkflowAttemptStaging(
   return attempt
 }
 
+/**
+ * Returns a new opaque attempt view with the same runtime-owned staging writer
+ * and a stable idempotency key. The original attempt remains immutable.
+ */
+export function withWorkflowAttemptStagingIdempotencyKey(
+  attempt: WorkflowAttemptStaging,
+  idempotencyKey: string
+): WorkflowAttemptStaging {
+  const state = requireState(attempt)
+  return createWorkflowAttemptStaging({
+    idempotencyKey,
+    stageArtifact: state.stageArtifact
+  })
+}
+
 export function workflowAttemptStagingIdempotencyKey(
   attempt: WorkflowAttemptStaging
 ): string | undefined {
