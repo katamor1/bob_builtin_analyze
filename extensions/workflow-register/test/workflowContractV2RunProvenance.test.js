@@ -35,8 +35,8 @@ function clone(value) {
 function temporaryRunStore(t, options = {}) {
   const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "workflow-contract-v2-run-provenance-"))
   t.after(() => fs.rmSync(workspaceRoot, { recursive: true, force: true }))
-  const { FileRunStateStore } = require("../out/core/runStateStore.js")
-  return new FileRunStateStore({
+  const { ContractV2GuardedRunStateStore } = require("../out/workflowContractV2RunStateStore.js")
+  return new ContractV2GuardedRunStateStore({
     workspaceRoot,
     now: () => "2026-07-26T00:00:00.000Z",
     engineVersion: "test-engine",
