@@ -190,9 +190,7 @@ function assertDenseDataArray(value: unknown, label: string): void {
     }
     present.add(index)
   }
-  for (let index = 0; index < length; index += 1) {
-    if (!present.has(index)) invalid(`${label} contains a sparse slot at index ${index}`)
-  }
+  if (present.size !== length) invalid(`${label} contains one or more sparse slots`)
 }
 
 function requiredCategory(
