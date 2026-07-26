@@ -40,10 +40,11 @@ function temporaryRunStore(t) {
   })
 }
 
-test("a terminal durable save releases the adopted run lease without requiring a coordinator wrapper", async (t) => {
+test("terminal durable save retains the lease through post-save hooks and the coordinator releases afterward", async (t) => {
   const { lease } = await runtimeLease()
   const runStore = temporaryRunStore(t)
   const provenance = require("../out/core/contractV2/runPlanProvenance.js")
+  const { coordinateWorkflowRunExecution } = require("../out/core/engine/runExecutionCoordinator.js")
   t.after(() => provenance.releaseAllWorkflowContractV2RunPlanLeases())
 
   let run
@@ -53,14 +54,23 @@ test("a terminal durable save releases the adopted run lease without requiring a
   })
   assert.equal(lease.released, false)
 
-  const loaded = await runStore.loadRun(run.runId)
-  assert.ok(loaded)
-  loaded.status = "completed"
-  await runStore.saveRun(loaded)
+  let hookObservedLease = false
+  const terminal = await coordinateWorkflowRunExecution(runStore, run.runId, "terminal-with-hook", async () => {
+    const loaded = await runStore.loadRun(run.runId)
+    assert.ok(loaded)
+    loaded.status = "completed"
+    await runStore.saveRun(loaded)
 
+    assert.strictEqual(provenance.requireWorkflowContractV2RunPlanLease(loaded), lease)
+    hookObservedLease = true
+    return loaded
+  })
+
+  assert.equal(terminal.status, "completed")
+  assert.equal(hookObservedLease, true)
   assert.equal(lease.released, true)
   assert.throws(
-    () => provenance.requireWorkflowContractV2RunPlanLease(loaded),
+    () => provenance.requireWorkflowContractV2RunPlanLease(terminal),
     /unavailable|released/i
   )
 })
