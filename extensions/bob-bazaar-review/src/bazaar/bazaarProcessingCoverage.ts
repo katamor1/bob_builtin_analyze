@@ -230,7 +230,8 @@ function commitPreparedTargetBudget(
     ?? Buffer.byteLength(prepared.addedFilesSection ?? "", "utf8")
   const processedAddedFileBytes = evidence?.processedContentBytes
     ?? Math.min(input.maxAddedFileContentBytes, observedAddedFileBytes)
-  const renderedAddedFileBytes = Buffer.byteLength(prepared.addedFilesSection ?? "", "utf8")
+  const renderedAddedFileBytes = evidence?.renderedContentBytes
+    ?? Math.min(input.maxAddedFileContentBytes, observedAddedFileBytes)
   const skippedAddedFileCount = evidence?.skippedFileCount ?? 0
   const failedAddedFileCount = evidence?.readFailures.length ?? 0
   commitPreparedReservation(ledger, reservations, "changed_files", prepared.info.changedFileCount)
