@@ -14,14 +14,15 @@ const {
 const {
   loadAndAssertCompleteProcessingBudgetReport,
   persistCompleteProcessingBudgetBinding,
-  processingBudgetReportBindingPath
+  processingBudgetReportBindingPath,
+  withCompleteProcessingBudgetReport
 } = require("../out/core/processingBudgetReportGuard")
 const {
   preprocessReviewWithCoverage
 } = require("../out/core/preprocessCoverageBoundary")
 const {
-  computeManagedReviewPackageContentHash
-} = require("../out/core/reviewPackageBuilder")
+  readVerifiedReviewPackage
+} = require("../out/core/verifiedReviewPackage")
 const {
   validateProcessingBudgetReport
 } = require("../out/sharedProcessingBudgetReport")
@@ -53,7 +54,7 @@ async function persistComplete(packageDir) {
   await persistCompleteProcessingBudgetBinding({
     outDir: packageDir,
     reportInputSha256: INPUT_SHA,
-    packageContentSha256: await computeManagedReviewPackageContentHash(packageDir)
+    packageContentSha256: (await readVerifiedReviewPackage(packageDir)).contentHash
   })
   return persisted
 }
@@ -65,6 +66,38 @@ test("complete bound report permits later review stages", async (t) => {
   assert.equal(loaded.reportPath, persisted.reportPath)
   assert.equal(loaded.report.input_sha256, INPUT_SHA)
   assert.equal(loaded.report.coverage_status, "complete")
+})
+
+test("guarded consumers read the retained snapshot when the original package changes", async (t) => {
+  const packageDir = await packageFixture(t)
+  await persistComplete(packageDir)
+
+  const text = await withCompleteProcessingBudgetReport(packageDir, async (verifiedPackageDir) => {
+    await fs.writeFile(path.join(packageDir, "bob-input.md"), "mutated original\n", "utf8")
+    return fs.readFile(path.join(verifiedPackageDir, "bob-input.md"), "utf8")
+  })
+
+  assert.equal(text, "complete input\n")
+  await assert.rejects(
+    () => loadAndAssertCompleteProcessingBudgetReport(packageDir),
+    (error) => error?.code === "processing_budget_report_stale"
+  )
+})
+
+test("guarded consumers fail when their verified snapshot is changed during use", async (t) => {
+  const packageDir = await packageFixture(t)
+  await persistComplete(packageDir)
+
+  await assert.rejects(
+    () => withCompleteProcessingBudgetReport(packageDir, async (verifiedPackageDir) => {
+      const inputPath = path.join(verifiedPackageDir, "bob-input.md")
+      await fs.chmod(inputPath, 0o600)
+      await fs.writeFile(inputPath, "tampered verified bytes\n", "utf8")
+      return "should-not-commit"
+    }),
+    (error) => error?.code === "processing_budget_report_stale"
+      || /does not match verified bytes/u.test(error?.message ?? "")
+  )
 })
 
 test("every evidence-loss warning family produces partial coverage", () => {
@@ -184,7 +217,7 @@ test("partial report remains ineligible even when a matching binding is present"
   await persistCompleteProcessingBudgetBinding({
     outDir: packageDir,
     reportInputSha256: INPUT_SHA,
-    packageContentSha256: await computeManagedReviewPackageContentHash(packageDir)
+    packageContentSha256: (await readVerifiedReviewPackage(packageDir)).contentHash
   })
   await assert.rejects(
     () => loadAndAssertCompleteProcessingBudgetReport(packageDir),
@@ -227,6 +260,14 @@ test("processing report and binding reads use no-follow opened-file identity che
   assert.doesNotMatch(source, /await fs\.readFile\(filePath\)/)
 })
 
+test("verified snapshots are checked before and after the consuming operation", async () => {
+  const source = await fs.readFile(path.join(__dirname, "..", "src", "core", "verifiedReviewPackage.ts"), "utf8")
+  assert.match(source, /const materializedBefore = await readVerifiedReviewPackage/)
+  assert.match(source, /const materializedAfter = await readVerifiedReviewPackage/)
+  assert.match(source, /await operation\(verifiedPackageDir\)/)
+  assert.ok(source.indexOf("materializedAfter") > source.indexOf("await operation(verifiedPackageDir)"))
+})
+
 test("report and binding writers replace the live path without a backup gap", async () => {
   for (const relativePath of [
     "src/core/processingBudgetCoverage.ts",
@@ -239,13 +280,13 @@ test("report and binding writers replace the live path without a backup gap", as
   }
 })
 
-test("review execution commands guard capture, validation, and triage", async () => {
+test("review execution commands consume verified snapshots for capture, validation, and triage", async () => {
   const source = await fs.readFile(path.join(__dirname, "..", "src", "reviewExecutionCommands.ts"), "utf8")
-  const guards = source.match(/await loadAndAssertCompleteProcessingBudgetReport\(packageDir\)/g) ?? []
+  const guards = source.match(/withCompleteProcessingBudgetReport\(/g) ?? []
   assert.equal(guards.length, 3)
-  assert.ok(source.indexOf(guards[0]) < source.indexOf("captureBobOutput({ workspaceRoot"))
-  assert.ok(source.indexOf(guards[1], source.indexOf(guards[0]) + 1) < source.indexOf("validateBobOutput({ packageDir"))
-  assert.ok(source.lastIndexOf(guards[2]) < source.indexOf("generateHumanTriage({ workspaceRoot"))
+  assert.match(source, /\(verifiedPackageDir\) => captureBobOutput\(/)
+  assert.match(source, /\(verifiedPackageDir\) => validateBobOutput\(/)
+  assert.match(source, /\(verifiedPackageDir\) => generateHumanTriage\(/)
   assert.match(source, /preprocessReviewWithCoverage\(/)
 })
 
