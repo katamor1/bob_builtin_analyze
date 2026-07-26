@@ -41,10 +41,42 @@ export interface SharedProcessingBudgetLimits {
   readonly total_operation_input_bytes: number
 }
 
+export type SharedProcessingBudgetCategory = keyof SharedProcessingBudgetLimits
+
+export interface SharedProcessingBudgetLedgerCategoryReport {
+  readonly category: SharedProcessingBudgetCategory
+  readonly scope: "operation" | "target"
+  readonly unit: "bytes" | "count"
+  readonly limit: number
+  readonly committed: number
+  readonly reserved: number
+  readonly used: number
+  readonly remaining?: number
+  readonly target_count?: number
+}
+
+export interface SharedProcessingBudgetLedgerTargetReport {
+  readonly category: SharedTargetScopedProcessingBudgetCategory
+  readonly target: string
+  readonly unit: "bytes" | "count"
+  readonly limit: number
+  readonly committed: number
+  readonly reserved: number
+  readonly used: number
+  readonly remaining: number
+}
+
+export interface SharedProcessingBudgetLedgerReport {
+  readonly schema_version: "processing-budget-ledger-report/v1"
+  readonly categories: readonly SharedProcessingBudgetLedgerCategoryReport[]
+  readonly targets: readonly SharedProcessingBudgetLedgerTargetReport[]
+}
+
 export interface SharedProcessingBudgetLedger {
   readonly profile: Readonly<{ limits: SharedProcessingBudgetLimits }>
   reserve(category: SharedOperationScopedProcessingBudgetCategory, amount: number): SharedProcessingBudgetReservation
   reserveForTarget(category: SharedTargetScopedProcessingBudgetCategory, target: string, amount: number): SharedProcessingBudgetReservation
+  snapshot(): SharedProcessingBudgetLedgerReport
 }
 
 export interface SharedProcessingBudgetProfileOverrides {
