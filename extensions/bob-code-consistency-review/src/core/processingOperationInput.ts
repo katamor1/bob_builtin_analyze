@@ -185,13 +185,13 @@ function canonicalArray(value: unknown[], seen: Set<object>): unknown[] {
     descriptors.set(index, descriptor)
   }
 
-  const output = new Array<unknown>(length)
+  const entries: unknown[] = []
   for (const index of [...descriptors.keys()].sort((left, right) => left - right)) {
     const descriptor = descriptors.get(index)
     if (!descriptor) throw new Error("processing operation input array descriptor was lost")
-    output[index] = canonicalValue(descriptor.value, seen)
+    entries.push([index, canonicalValue(descriptor.value, seen)])
   }
-  return output
+  return ["processing-operation-array/v1", length, entries]
 }
 
 function canonicalArrayIndex(key: string, length: number): number | undefined {
