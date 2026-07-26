@@ -282,7 +282,18 @@ function preparedTargetInputSha(initialInputSha256: string, prepared: PreparedTa
       revision: prepared.info.revision ?? "",
       base_revision: prepared.info.baseRevision ?? "",
       target_revision: prepared.info.targetRevision ?? "",
-      changed_file_count: prepared.info.changedFileCount
+      revno: prepared.info.revno ?? "",
+      author: prepared.info.author,
+      committer: prepared.info.committer,
+      timestamp: prepared.info.timestamp,
+      message: prepared.info.message,
+      changed_file_count: prepared.info.changedFileCount,
+      changed_files: [...prepared.info.changedFiles],
+      changed_file_entries: prepared.info.changedFileEntries.map((entry) => ({
+        path: entry.path,
+        status: entry.status,
+        binary: entry.binary === undefined ? null : entry.binary
+      }))
     },
     diff_sha256: sha256Text(prepared.diff.stdout),
     log_sha256: sha256Text(prepared.log?.stdout ?? ""),
