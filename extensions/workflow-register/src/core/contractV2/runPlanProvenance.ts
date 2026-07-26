@@ -189,6 +189,7 @@ export async function runWithWorkflowContractV2PlanLease<T>(
   const existing = leaseContext.getStore()
   if (existing !== undefined) {
     if (existing.lease !== lease) {
+      lease.release()
       throw new TypeError("Workflow Contract v2 leased operations cannot mix plan leases.")
     }
     return operation()
