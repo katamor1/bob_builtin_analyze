@@ -65,12 +65,13 @@ export function coordinateWorkflowRunExecution<T>(
   const workspaceScope = runStoreScope(runStore)
   return coordinator.coordinate(workspaceScope, runId, operationKey, () => {
     const execute = async () => {
-      let run = await runStore.loadRun(runId)
-      if (run) {
-        assertWorkflowRunStateWritable(run)
-        requireWorkflowContractV2RunPlanLeaseForExecution(workspaceScope, run)
-      }
+      let run: WorkflowRunState | undefined
       try {
+        run = await runStore.loadRun(runId)
+        if (run) {
+          assertWorkflowRunStateWritable(run)
+          requireWorkflowContractV2RunPlanLeaseForExecution(workspaceScope, run)
+        }
         const result = await operation()
         const returnedRun = workflowRunStateFromResult(result, runId)
         run = returnedRun ?? await runStore.loadRun(runId) ?? run
