@@ -1,15 +1,18 @@
-import { randomUUID } from "node:crypto"
 import { constants as fsConstants, type BigIntStats } from "node:fs"
 import * as fs from "node:fs/promises"
-import * as path from "node:path"
 import { TextDecoder } from "node:util"
 import {
   assertProcessingBudgetReportAllowsHandoff,
   validateProcessingBudgetReport,
   type SharedProcessingBudgetReport
 } from "../sharedProcessingBudgetReport"
+import { replaceTextFileAtomically } from "./atomicReplaceFile"
 import { processingBudgetReportPath } from "./processingBudgetCoverage"
-import { computeManagedReviewPackageContentHash } from "./reviewPackageBuilder"
+import {
+  readVerifiedReviewPackage,
+  withMaterializedVerifiedReviewPackage,
+  type VerifiedReviewPackageSnapshot
+} from "./verifiedReviewPackage"
 
 const MAX_PROCESSING_BUDGET_REPORT_BYTES = 4 * 1024 * 1024
 const MAX_PROCESSING_BUDGET_BINDING_BYTES = 4 * 1024
@@ -20,6 +23,13 @@ interface ProcessingBudgetPackageBinding {
   readonly schema_version: typeof PROCESSING_BUDGET_BINDING_SCHEMA
   readonly report_input_sha256: string
   readonly package_content_sha256: string
+}
+
+export interface LoadedCompleteProcessingBudgetReport {
+  readonly reportPath: string
+  readonly bindingPath: string
+  readonly report: SharedProcessingBudgetReport
+  readonly packageSnapshot: VerifiedReviewPackageSnapshot
 }
 
 export function processingBudgetReportBindingPath(outDir: string): string {
@@ -46,18 +56,19 @@ export async function persistCompleteProcessingBudgetBinding(input: {
     package_content_sha256: checkedSha(input.packageContentSha256, "package content SHA")
   })
   const bindingPath = processingBudgetReportBindingPath(input.outDir)
-  await writeTextAtomic(bindingPath, `${JSON.stringify(binding, null, 2)}\n`)
+  await replaceTextFileAtomically(bindingPath, `${JSON.stringify(binding, null, 2)}\n`)
   return bindingPath
 }
 
 export async function loadAndAssertCompleteProcessingBudgetReport(
   outDir: string
-): Promise<Readonly<{ reportPath: string; bindingPath: string; report: SharedProcessingBudgetReport }>> {
+): Promise<LoadedCompleteProcessingBudgetReport> {
   const reportPath = processingBudgetReportPath(outDir)
   const bindingPath = processingBudgetReportBindingPath(outDir)
-  const [reportValue, bindingValue] = await Promise.all([
+  const [reportValue, bindingValue, packageSnapshot] = await Promise.all([
     readBoundedJson(reportPath, MAX_PROCESSING_BUDGET_REPORT_BYTES, "processing budget report"),
-    readBoundedJson(bindingPath, MAX_PROCESSING_BUDGET_BINDING_BYTES, "processing budget report binding")
+    readBoundedJson(bindingPath, MAX_PROCESSING_BUDGET_BINDING_BYTES, "processing budget report binding"),
+    readVerifiedReviewPackage(outDir)
   ])
   const binding = validateBinding(bindingValue)
   const report = validateProcessingBudgetReport(reportValue, {
@@ -66,13 +77,23 @@ export async function loadAndAssertCompleteProcessingBudgetReport(
   assertProcessingBudgetReportAllowsHandoff(report, {
     expected_input_sha256: binding.report_input_sha256
   })
-  const packageContentSha256 = await computeManagedReviewPackageContentHash(outDir)
-  if (packageContentSha256 !== binding.package_content_sha256) {
+  if (packageSnapshot.contentHash !== binding.package_content_sha256) {
     throw Object.assign(new Error("processing budget report binding is stale for the current review package"), {
       code: "processing_budget_report_stale"
     })
   }
-  return Object.freeze({ reportPath, bindingPath, report })
+  return Object.freeze({ reportPath, bindingPath, report, packageSnapshot })
+}
+
+export async function withCompleteProcessingBudgetReport<T>(
+  outDir: string,
+  operation: (verifiedPackageDir: string, report: SharedProcessingBudgetReport) => Promise<T>
+): Promise<T> {
+  const loaded = await loadAndAssertCompleteProcessingBudgetReport(outDir)
+  return withMaterializedVerifiedReviewPackage(
+    loaded.packageSnapshot,
+    (verifiedPackageDir) => operation(verifiedPackageDir, loaded.report)
+  )
 }
 
 function validateBinding(value: unknown): ProcessingBudgetPackageBinding {
@@ -171,39 +192,6 @@ async function removeRegularFileIfPresent(filePath: string, label: string): Prom
     throw new Error(`${label} path must be a regular file`)
   } catch (error) {
     if (error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === "ENOENT") return
-    throw error
-  }
-}
-
-async function writeTextAtomic(filePath: string, text: string): Promise<void> {
-  await fs.mkdir(path.dirname(filePath), { recursive: true })
-  const temporaryPath = `${filePath}.${process.pid}.${randomUUID()}.tmp`
-  const backupPath = `${filePath}.${process.pid}.${randomUUID()}.bak`
-  let existing = false
-  let backedUp = false
-  try {
-    try {
-      const stat = await fs.lstat(filePath)
-      if (stat.isSymbolicLink() || !stat.isFile()) throw new Error("processing budget binding path must be a regular file")
-      existing = true
-    } catch (error) {
-      if (!(error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === "ENOENT")) throw error
-    }
-    await fs.writeFile(temporaryPath, text, { encoding: "utf8", flag: "wx", mode: 0o600 })
-    if (existing) {
-      await fs.rename(filePath, backupPath)
-      backedUp = true
-    }
-    await fs.rename(temporaryPath, filePath)
-    if (backedUp) await fs.rm(backupPath, { force: true })
-  } catch (error) {
-    try { await fs.rm(temporaryPath, { force: true }) } catch {}
-    if (backedUp) {
-      try {
-        await fs.rm(filePath, { force: true })
-        await fs.rename(backupPath, filePath)
-      } catch {}
-    }
     throw error
   }
 }
