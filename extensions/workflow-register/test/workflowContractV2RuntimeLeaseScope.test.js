@@ -112,3 +112,38 @@ test("runtime boundary exposes one exact lease through run creation and retains 
   assert.deepEqual(run.planProvenance, provenance.createWorkflowContractV2RunPlanProvenance(lease))
   assert.equal(lease.released, false)
 })
+
+test("a nested runtime boundary releases a newly acquired lease that conflicts with the active scope", async (t) => {
+  const { lease: outer } = await runtimeLease()
+  const { lease: rejected } = await runtimeLease()
+  const provenance = require("../out/core/contractV2/runPlanProvenance.js")
+  t.after(() => {
+    outer.release()
+    rejected.release()
+  })
+
+  await provenance.runWithWorkflowContractV2PlanLease(outer, async () => {
+    await assert.rejects(
+      () => subject().executeWorkflowContractV2RuntimeBoundary({
+        acquireLease: async () => rejected,
+        legacyOperation: async () => { throw new Error("legacy fallback") },
+        compiledOperation: async () => "unreachable"
+      }),
+      /mix plan leases|different plan lease/i
+    )
+    assert.equal(rejected.released, true)
+    assert.equal(outer.released, false)
+  })
+  assert.equal(outer.released, true)
+})
+
+test("direct lease-based run creation rejects a lease that is not the active runtime context", async (t) => {
+  const { lease } = await runtimeLease()
+  const runStore = temporaryRunStore(t)
+  t.after(() => lease.release())
+
+  await assert.rejects(
+    () => runStore.createRunFromPlanLease(lease, {}),
+    /active.*lease context|runtime context/i
+  )
+})
