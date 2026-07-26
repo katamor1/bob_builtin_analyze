@@ -46,15 +46,16 @@ export async function reviewRevision(context: vscode.ExtensionContext, withProje
         maxDiffBytes,
         maxAddedFileContentBytes,
         signal,
-        produce: async () => {
+        produce: async ({ recordPreparedTarget }) => {
           const client = makeBazaarClient(signal, maxDiffBytes)
-          const [prepared, projectRulesSection] = await Promise.all([
-            prepareTarget(client, bazaarFolder.uri.fsPath, { mode: "singleRevision", revision }, {
-              includeAddedFiles: true,
-              maxAddedFileContentBytes
-            }),
-            withProjectRules && bobFolder ? buildProjectRulesSectionForWorkspace(bobFolder.uri.fsPath) : Promise.resolve(undefined)
-          ])
+          const prepared = await prepareTarget(client, bazaarFolder.uri.fsPath, { mode: "singleRevision", revision }, {
+            includeAddedFiles: true,
+            maxAddedFileContentBytes
+          })
+          recordPreparedTarget(prepared)
+          const projectRulesSection = withProjectRules && bobFolder
+            ? await buildProjectRulesSectionForWorkspace(bobFolder.uri.fsPath)
+            : undefined
 
           const extraSections = [
             buildTargetMetadataSection(prepared.info),
@@ -122,15 +123,16 @@ export async function reviewRange(context: vscode.ExtensionContext, withProjectR
         maxDiffBytes,
         maxAddedFileContentBytes,
         signal,
-        produce: async () => {
+        produce: async ({ recordPreparedTarget }) => {
           const client = makeBazaarClient(signal, maxDiffBytes)
-          const [prepared, projectRulesSection] = await Promise.all([
-            prepareTarget(client, bazaarFolder.uri.fsPath, { mode: "revisionRange", baseRevision, targetRevision }, {
-              includeAddedFiles: true,
-              maxAddedFileContentBytes
-            }),
-            withProjectRules && bobFolder ? buildProjectRulesSectionForWorkspace(bobFolder.uri.fsPath) : Promise.resolve(undefined)
-          ])
+          const prepared = await prepareTarget(client, bazaarFolder.uri.fsPath, { mode: "revisionRange", baseRevision, targetRevision }, {
+            includeAddedFiles: true,
+            maxAddedFileContentBytes
+          })
+          recordPreparedTarget(prepared)
+          const projectRulesSection = withProjectRules && bobFolder
+            ? await buildProjectRulesSectionForWorkspace(bobFolder.uri.fsPath)
+            : undefined
           const extraSections = [
             buildTargetMetadataSection(prepared.info),
             prepared.addedFilesSection,
