@@ -1,5 +1,8 @@
 import { types as utilTypes } from "node:util"
 
+import {
+  releaseAllWorkflowContractV2RunPlanLeases
+} from "./core/contractV2/runPlanProvenance"
 import type {
   WorkflowProviderRegistration,
   WorkflowProviderRegistrationInput
@@ -99,6 +102,7 @@ export class WorkflowContractV2ProviderLifecycle {
     if (this.disposed) return
     this.disposed = true
     this.entrypoint = undefined
+    releaseAllWorkflowContractV2RunPlanLeases()
     reflectApply(setForEach, this.registrations, [
       (managed: ManagedRegistration) => {
         if (managed.disposed) return
