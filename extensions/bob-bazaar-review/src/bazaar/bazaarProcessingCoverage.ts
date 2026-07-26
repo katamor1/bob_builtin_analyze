@@ -24,6 +24,7 @@ export const BAZAAR_REVIEW_BOB_INPUT_DEFAULT_BYTES = DEFAULT_PROCESSING_BUDGET_P
 export const BAZAAR_REVIEW_BOB_INPUT_MAX_BYTES = PROCESSING_BUDGET_ABSOLUTE_MAXIMA.bob_input_bytes
 const BAZAAR_REVIEW_TOTAL_OPERATION_MAX_BYTES = 64 * 1024 * 1024
 const REPORT_FILE_SUFFIX = ".processing-budget-report.json"
+const MAX_ADDED_FILE_FAILURE_ISSUES = 64
 
 export interface BazaarReviewProcessingIdentity {
   readonly mode: "singleRevision" | "revisionRange" | "workingTreeSinceRevision"
@@ -317,7 +318,23 @@ function processingIssues(
       unprocessed: budget.skippedAddedFileCount
     }))
   }
-  if (budget.failedAddedFileCount > 0) {
+  const readFailures = prepared.addedFilesEvidence?.readFailures ?? []
+  for (const failure of readFailures.slice(0, MAX_ADDED_FILE_FAILURE_ISSUES)) {
+    issues.push(Object.freeze({
+      kind: "unprocessed" as const,
+      code: "added_file_read_failed",
+      target: safeText(failure.path) ?? "bazaar-added-file",
+      unprocessed: 1
+    }))
+  }
+  if (readFailures.length > MAX_ADDED_FILE_FAILURE_ISSUES) {
+    issues.push(Object.freeze({
+      kind: "unprocessed" as const,
+      code: "added_file_read_failures_omitted",
+      target: "bazaar-added-files",
+      unprocessed: readFailures.length - MAX_ADDED_FILE_FAILURE_ISSUES
+    }))
+  } else if (readFailures.length === 0 && budget.failedAddedFileCount > 0) {
     issues.push(Object.freeze({
       kind: "unprocessed" as const,
       code: "added_file_read_failed",
@@ -465,7 +482,9 @@ function throwIfCancelled(signal: AbortSignal | undefined): void {
 }
 
 function safeFailureCode(value: unknown): string {
-  return typeof value === "string" && /^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/u.test(value)
+  return typeof value === "string"
+    && Buffer.byteLength(value, "utf8") <= 256
+    && /^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/u.test(value)
     ? value
     : "processing_failed"
 }
