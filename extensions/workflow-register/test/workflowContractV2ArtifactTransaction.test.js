@@ -190,12 +190,12 @@ test("attempt IDs and committed destinations are immutable and collision-free", 
 })
 
 test("artifact-set bytes and digest are deterministic for equivalent staged content", async (t) => {
-  const left = await openRuntimeTransaction(t, { attemptId: "attempt-left" })
+  const left = await openRuntimeTransaction(t, { attemptId: "attempt-stable" })
   const rightRoot = await temporaryRunRoot(t)
   const right = await subject().openWorkflowArtifactTransaction({
     lease: left.runtime.lease,
     runRoot: rightRoot,
-    attemptId: "attempt-right",
+    attemptId: "attempt-stable",
     stepId: "invoke",
     inputDigest: digest("1")
   })
@@ -213,5 +213,5 @@ test("artifact-set bytes and digest are deterministic for equivalent staged cont
   const rightCommit = await subject().commitWorkflowArtifactTransaction(right, async () => {})
 
   assert.equal(leftCommit.artifactSetDigest, rightCommit.artifactSetDigest)
-  assert.deepEqual(leftCommit.artifactSet.entries, rightCommit.artifactSet.entries)
+  assert.deepEqual(leftCommit.artifactSet, rightCommit.artifactSet)
 })
