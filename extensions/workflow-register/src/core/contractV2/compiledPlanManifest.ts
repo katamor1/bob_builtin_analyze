@@ -39,12 +39,15 @@ export interface CreateCompiledWorkflowPlanManifestInput {
 }
 
 const isProxy = utilTypes.isProxy
+const canonicalJsonBytesCaptured = canonicalJsonBytes
+const requireCompiledWorkflowPlanStateCaptured = requireCompiledWorkflowPlanState
 const arrayIsArray = Array.isArray
 const arrayPrototype = Array.prototype
 const bufferConcat = Buffer.concat
 const bufferFrom = Buffer.from
 const BufferConstructor = Buffer
 const numberIsSafeInteger = Number.isSafeInteger
+const numberToString = Number.prototype.toString
 const objectCreate = Object.create
 const objectDefineProperty = Object.defineProperty
 const objectFreeze = Object.freeze
@@ -56,10 +59,12 @@ const objectPrototype = Object.prototype
 const reflectApply = Reflect.apply
 const reflectOwnKeys = Reflect.ownKeys
 const regexpExec = RegExp.prototype.exec
-const numberToString = Number.prototype.toString
+const stringEndsWith = String.prototype.endsWith
 const stringIncludes = String.prototype.includes
 const stringNormalize = String.prototype.normalize
 const stringSplit = String.prototype.split
+const stringStartsWith = String.prototype.startsWith
+const stringToLowerCase = String.prototype.toLowerCase
 
 const CREATE_PACKAGE_FIELDS = objectFreeze([
   "collection", "slot", "generation", "handle"
@@ -75,6 +80,8 @@ const PACKAGE_FIELDS = objectFreeze([
 const DIGEST_PATTERN = /^sha256:[0-9a-f]{64}$/u
 const SLOT_PATTERN = /^[A-Za-z][A-Za-z0-9]*(?:[._-][A-Za-z0-9]+)*$/u
 const CONTROL_PATTERN = /[\u0000-\u001f\u007f-\u009f]/u
+const WINDOWS_FORBIDDEN_PATTERN = /[<>:"|?*]/u
+const WINDOWS_RESERVED_DEVICE_PATTERN = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/iu
 const NEWLINE = reflectApply(bufferFrom, BufferConstructor, ["\n", "utf8"]) as Buffer
 const MAX_PACKAGES = 4096
 const MAX_COLLECTION_BYTES = 1024
@@ -89,10 +96,15 @@ export function createCompiledWorkflowPlanManifestPackage(
   )
   const collection = repositoryRelativePath(snapshot.collection, "Manifest collection")
   const slot = identifier(snapshot.slot, "Manifest slot")
+  assertPortablePathSegment(slot, "Manifest slot")
   const generation = digest(snapshot.generation, "Manifest generation")
   const handle = snapshot.handle as CompiledWorkflowPlanHandle
-  const state = requireCompiledWorkflowPlanState(handle)
-  if (state.publication !== "published" || state.generation !== generation) {
+  const state = requireCompiledWorkflowPlanStateCaptured(handle)
+  if (
+    state.publication !== "published"
+    || state.generation !== generation
+    || handle.plan.packageDigest !== generation
+  ) {
     throw new TypeError("Compiled workflow plan manifest package identity does not match the compiled handle.")
   }
   if (handle.plan.workflowId !== slot) {
@@ -122,13 +134,7 @@ export function createCompiledWorkflowPlanManifest(
   )
   const packages = snapshotPackages(snapshot.packages)
   sortPackages(packages)
-  for (let index = 1; index < packages.length; index += 1) {
-    const previous = packages[index - 1]
-    const current = packages[index]
-    if (previous.collection === current.collection && previous.slot === current.slot) {
-      throw new TypeError("Compiled workflow plan manifest contains a duplicate collection and slot pair.")
-    }
-  }
+  assertManifestIdentities(packages)
   return objectFreeze({
     schemaVersion: COMPILED_WORKFLOW_PLAN_MANIFEST_SCHEMA_VERSION,
     compilerContractVersion: WORKFLOW_COMPILER_CONTRACT_VERSION,
@@ -153,7 +159,10 @@ export function encodeCompiledWorkflowPlanManifest(
   const canonical = createCompiledWorkflowPlanManifest({
     packages: snapshot.packages as readonly CompiledWorkflowPlanManifestPackage[]
   })
-  return reflectApply(bufferConcat, BufferConstructor, [[canonicalJsonBytes(canonical), NEWLINE]]) as Buffer
+  return reflectApply(bufferConcat, BufferConstructor, [[
+    canonicalJsonBytesCaptured(canonical),
+    NEWLINE
+  ]]) as Buffer
 }
 
 function snapshotPackages(value: unknown): CompiledWorkflowPlanManifestPackage[] {
@@ -168,9 +177,11 @@ function snapshotPackages(value: unknown): CompiledWorkflowPlanManifestPackage[]
       PACKAGE_FIELDS,
       "Compiled workflow plan manifest package"
     )
+    const slot = identifier(item.slot, "Manifest slot")
+    assertPortablePathSegment(slot, "Manifest slot")
     defineArrayValue(result, index, objectFreeze({
       collection: repositoryRelativePath(item.collection, "Manifest collection"),
-      slot: identifier(item.slot, "Manifest slot"),
+      slot,
       generation: digest(item.generation, "Manifest generation"),
       packageDigest: digest(item.packageDigest, "Manifest package digest"),
       lockfileDigest: digest(item.lockfileDigest, "Manifest lockfile digest"),
@@ -181,11 +192,43 @@ function snapshotPackages(value: unknown): CompiledWorkflowPlanManifestPackage[]
   return result
 }
 
+function assertManifestIdentities(
+  packages: readonly CompiledWorkflowPlanManifestPackage[]
+): void {
+  const collections = objectCreate(null) as Record<string, string>
+  const pairs = objectCreate(null) as Record<string, string>
+  for (let index = 0; index < packages.length; index += 1) {
+    const item = packages[index]
+    const collectionKey = portableCaseKey(item.collection)
+    const previousCollection = collections[collectionKey]
+    if (previousCollection !== undefined && previousCollection !== item.collection) {
+      throw new TypeError("Compiled workflow plan manifest contains a cross-platform collection alias.")
+    }
+    collections[collectionKey] = item.collection
+
+    const pairKey = `${collectionKey}\n${portableCaseKey(item.slot)}`
+    const exactPair = `${item.collection}\n${item.slot}`
+    const previousPair = pairs[pairKey]
+    if (previousPair !== undefined) {
+      if (previousPair === exactPair) {
+        throw new TypeError("Compiled workflow plan manifest contains a duplicate collection and slot pair.")
+      }
+      throw new TypeError("Compiled workflow plan manifest contains a cross-platform collection and slot alias.")
+    }
+    pairs[pairKey] = exactPair
+  }
+}
+
 function snapshotDenseArray(value: unknown, label: string): readonly unknown[] {
   if (isProxy(value) || !arrayIsArray(value) || objectGetPrototypeOf(value) !== arrayPrototype) {
     throw new TypeError(`${label} must be a dense ordinary array.`)
   }
-  const descriptors = objectGetOwnPropertyDescriptors(value) as unknown as PropertyDescriptorMap
+  let descriptors: PropertyDescriptorMap
+  try {
+    descriptors = objectGetOwnPropertyDescriptors(value) as unknown as PropertyDescriptorMap
+  } catch {
+    throw new TypeError(`${label} must be safely inspectable.`)
+  }
   const length = descriptorValue(descriptors, "length")
   if (typeof length !== "number" || !numberIsSafeInteger(length) || length < 0) {
     throw new TypeError(`${label} length is invalid.`)
@@ -215,11 +258,17 @@ function snapshotExactRecord<const Fields extends readonly string[]>(
   if (typeof value !== "object" || value === null || isProxy(value)) {
     throw new TypeError(`${label} must be an ordinary non-proxy record.`)
   }
-  const prototype = objectGetPrototypeOf(value)
+  let prototype: object | null
+  let descriptors: PropertyDescriptorMap
+  try {
+    prototype = objectGetPrototypeOf(value)
+    descriptors = objectGetOwnPropertyDescriptors(value) as unknown as PropertyDescriptorMap
+  } catch {
+    throw new TypeError(`${label} must be safely inspectable.`)
+  }
   if (prototype !== objectPrototype && prototype !== null) {
     throw new TypeError(`${label} must be an ordinary record.`)
   }
-  const descriptors = objectGetOwnPropertyDescriptors(value)
   const keys = reflectOwnKeys(descriptors)
   if (keys.length !== fields.length) throw new TypeError(`${label} contains an unknown field.`)
   const result = objectCreate(null) as Record<string, unknown>
@@ -249,19 +298,30 @@ function repositoryRelativePath(value: unknown, label: string): string {
     throw new TypeError(`${label} is invalid.`)
   }
   if (
-    value[0] === "/"
-    || value[value.length - 1] === "/"
+    reflectApply(stringStartsWith, value, ["/"]) as boolean
+    || reflectApply(stringEndsWith, value, ["/"]) as boolean
     || reflectApply(stringIncludes, value, ["\\"]) as boolean
     || testPattern(CONTROL_PATTERN, value)
     || reflectApply(stringNormalize, value, ["NFC"]) !== value
   ) throw new TypeError(`${label} must be a canonical repository-relative POSIX path.`)
   const segments = reflectApply(stringSplit, value, ["/"]) as string[]
   for (let index = 0; index < segments.length; index += 1) {
-    if (segments[index].length === 0 || segments[index] === "." || segments[index] === "..") {
+    const segment = segments[index]
+    if (segment.length === 0 || segment === "." || segment === "..") {
       throw new TypeError(`${label} contains an invalid path segment.`)
     }
+    assertPortablePathSegment(segment, label)
   }
   return value
+}
+
+function assertPortablePathSegment(value: string, label: string): void {
+  if (
+    testPattern(WINDOWS_FORBIDDEN_PATTERN, value)
+    || testPattern(WINDOWS_RESERVED_DEVICE_PATTERN, value)
+    || value[value.length - 1] === "."
+    || value[value.length - 1] === " "
+  ) throw new TypeError(`${label} contains a non-portable path segment.`)
 }
 
 function identifier(value: unknown, label: string): string {
@@ -297,6 +357,10 @@ function comparePackages(
   if (left.collection !== right.collection) return left.collection < right.collection ? -1 : 1
   if (left.slot !== right.slot) return left.slot < right.slot ? -1 : 1
   return 0
+}
+
+function portableCaseKey(value: string): string {
+  return reflectApply(stringToLowerCase, value, []) as string
 }
 
 function utf8Length(value: string): number {
