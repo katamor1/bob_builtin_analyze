@@ -83,9 +83,7 @@ export function coordinateWorkflowRunExecution<T>(
         }
         return result
       } catch (error) {
-        if (run?.planProvenance !== undefined) {
-          releaseWorkflowContractV2RunPlanLease(workspaceScope, runId)
-        }
+        releaseWorkflowContractV2RunPlanLease(workspaceScope, runId)
         throw error
       }
     }
