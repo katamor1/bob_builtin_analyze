@@ -53,7 +53,8 @@ type ContractV2AcquireRunLease = (
 ) => Promise<WorkflowPlanLease | undefined> | WorkflowPlanLease | undefined
 
 type ContractV2BeforeContinuation = (
-  workflow: CoreWorkflowDefinition
+  workflow: CoreWorkflowDefinition | undefined,
+  run?: WorkflowRunState
 ) => Promise<void> | void
 
 export interface ContractV2RunExecutorInput {
@@ -81,9 +82,9 @@ export interface WorkflowRuntimeFactoryOptions {
   contractV2RunExecutor?: ContractV2RunExecutor
   contractV2BeforeContinuation?: ContractV2BeforeContinuation
   /** Transitional continuation alias retained while later runtime phases replace legacy continuation. */
-  contractV2BeforeRun?: ContractV2BeforeContinuation
+  contractV2BeforeRun?: (workflow: CoreWorkflowDefinition) => Promise<void> | void
   /** Transitional continuation alias retained for pre-R1 callers. */
-  beforeCreateRun?: ContractV2BeforeContinuation
+  beforeCreateRun?: (workflow: CoreWorkflowDefinition) => Promise<void> | void
   onManualStepHeld?: (input: { workflow: import("./core/model").CoreWorkflowDefinition; run: import("./core/model").WorkflowRunState; step: import("./core/model").EngineStep; active: ActiveStep }) => Promise<void> | void
 }
 
@@ -91,6 +92,7 @@ class ContractV2BoundaryWorkflowEngine extends WorkflowEngine {
   constructor(
     options: WorkflowEngineOptions,
     private readonly workspaceRoot: string,
+    private readonly continuationRunStore: RunStateStore,
     private readonly acquireRunLease?: ContractV2AcquireRunLease,
     private readonly runExecutor?: ContractV2RunExecutor,
     private readonly beforeContinuation?: ContractV2BeforeContinuation,
@@ -156,6 +158,15 @@ class ContractV2BoundaryWorkflowEngine extends WorkflowEngine {
     await this.beforeContinuation?.(workflow)
     return super.approveBranchCheckpoint(runId, workflow)
   }
+
+  override async abortBranchCheckpoint(
+    runId: string,
+    reason?: string
+  ): Promise<WorkflowRunState> {
+    const run = await this.continuationRunStore.loadRun(runId)
+    await this.beforeContinuation?.(undefined, run)
+    return super.abortBranchCheckpoint(runId, reason)
+  }
 }
 
 const processWorkflowPlanStore = new WorkflowPlanStore()
@@ -179,11 +190,12 @@ export class WorkflowRuntimeFactory {
 
   createEngine(workspaceRoot: string, agentProvider?: AgentProvider): WorkflowEngine {
     const snapshotStore = this.createTaskSnapshotStore(workspaceRoot)
+    const runStore = this.createRunStore(workspaceRoot)
     const runtimeAgentProvider = agentProvider ?? this.options.agentProvider() ?? this.createCommandAgentProvider()
     const engineOptions: WorkflowEngineOptions = {
       actions: this.options.actionRegistry,
       resultSinks: this.createResultSinks(workspaceRoot),
-      runStore: this.createRunStore(workspaceRoot),
+      runStore,
       runControlStore: this.createRunControlStore(workspaceRoot),
       agentProvider: runtimeAgentProvider,
       preflightChecks: this.createPreflightChecks(workspaceRoot),
@@ -192,12 +204,15 @@ export class WorkflowRuntimeFactory {
         ? (input) => recoverResultTextFromSnapshots(snapshotStore, input.workflow, input.run, input.step)
         : undefined
     }
+    const transitionalContinuation = this.options.contractV2BeforeRun ?? this.options.beforeCreateRun
     const beforeContinuation = this.options.contractV2BeforeContinuation
-      ?? this.options.contractV2BeforeRun
-      ?? this.options.beforeCreateRun
+      ?? (transitionalContinuation === undefined
+        ? undefined
+        : (workflow) => workflow === undefined ? undefined : transitionalContinuation(workflow))
     return new ContractV2BoundaryWorkflowEngine(
       engineOptions,
       workspaceRoot,
+      runStore,
       this.options.contractV2AcquireRunLease,
       this.options.contractV2RunExecutor,
       beforeContinuation,
