@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto"
 import { constants as fsConstants, type BigIntStats } from "node:fs"
 import * as fs from "node:fs/promises"
-import * as os from "node:os"
 import * as path from "node:path"
 import { PROCESSING_BUDGET_ABSOLUTE_MAXIMA } from "../sharedProcessingBudgetRuntime"
 
@@ -84,7 +83,9 @@ export async function withMaterializedVerifiedReviewPackage<T>(
   snapshot: VerifiedReviewPackageSnapshot,
   operation: (verifiedPackageDir: string) => Promise<T>
 ): Promise<T> {
-  const verifiedPackageDir = await fs.mkdtemp(path.join(os.tmpdir(), "bob-verified-review-"))
+  const verifiedPackageDir = await fs.mkdtemp(
+    path.join(path.dirname(snapshot.packageDir), ".verified-review-")
+  )
   try {
     await fs.chmod(verifiedPackageDir, 0o700)
     for (const file of snapshot.files) {
