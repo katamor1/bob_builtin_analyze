@@ -72,7 +72,7 @@ function optionalCanonicalSha(value: unknown): string | null {
 function canonicalValue(value: unknown, seen: Set<object>): unknown {
   if (value === null || typeof value === "string" || typeof value === "boolean") return value
   if (typeof value === "number") {
-    if (!Number.isFinite(value) || !Number.isSafeInteger(value)) {
+    if (!Number.isFinite(value) || (Number.isInteger(value) && !Number.isSafeInteger(value))) {
       throw new Error("processing operation input contains a non-finite or unsafe number")
     }
     return Object.is(value, -0) ? ["processing-operation-negative-zero/v1"] : value
