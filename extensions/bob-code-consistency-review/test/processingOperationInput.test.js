@@ -137,3 +137,11 @@ test("canonical hashing rejects hidden, symbolic, named, and accessor state on a
 
   assert.doesNotThrow(() => canonicalSha(Object.freeze([1, , { nested: [2] }])))
 })
+
+test("canonical hashing distinguishes sparse slots from own undefined entries", () => {
+  const sparse = new Array(1)
+  const ownUndefined = [undefined]
+  assert.equal(Object.hasOwn(sparse, 0), false)
+  assert.equal(Object.hasOwn(ownUndefined, 0), true)
+  assert.notEqual(canonicalSha(sparse), canonicalSha(ownUndefined))
+})
