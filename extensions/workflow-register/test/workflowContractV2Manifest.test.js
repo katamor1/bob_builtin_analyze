@@ -1,0 +1,228 @@
+const assert = require("node:assert/strict")
+const fs = require("node:fs")
+const os = require("node:os")
+const path = require("node:path")
+const { test } = require("node:test")
+
+const {
+  canonicalDigest,
+  compilerSubject,
+  createBobProfile,
+  createEmptyProviderCatalog,
+  createLockedRawPackage
+} = require("./workflowContractV2CompilerTestSupport")
+
+const PROVIDER_CATALOG = {
+  schemaVersion: "workflow-provider-catalog-source/v1",
+  providers: []
+}
+const COLLECTIONS_SCHEMA_VERSION = "workflow-contract-v2-collections/v1"
+
+function manifestSubject() {
+  return require("../out/core/contractV2/compiledPlanManifest.js")
+}
+
+function compileFixture(overrides = {}) {
+  const fixture = createLockedRawPackage()
+  const environment = compilerSubject().createAuditedWorkflowCompilerEnvironment({
+    purpose: "evidence",
+    providerCatalog: createEmptyProviderCatalog(),
+    bobProfile: createBobProfile()
+  })
+  const rawPackage = { ...fixture.rawPackage, ...overrides }
+  const result = compilerSubject().compileWorkflowPackage({ rawPackage, environment })
+  assert.equal(result.ok, true)
+  return { fixture, handle: result.handle, rawPackage }
+}
+
+function canonicalLine(value) {
+  const bytes = require("../out/core/contractV2/canonicalJson.js").canonicalJsonBytes(value)
+  return Buffer.concat([bytes, Buffer.from("\n", "utf8")])
+}
+
+function materializeCollection(repositoryRoot, collection, slot = "minimal") {
+  const fixture = createLockedRawPackage()
+  const generationName = require("../out/core/contractV2/packageGenerationPath.js")
+    .workflowPackageGenerationDirectoryName(fixture.rawPackage.generation)
+  const slotRoot = path.join(repositoryRoot, ...collection.split("/"), slot)
+  const generationRoot = path.join(slotRoot, "versions", generationName)
+  fs.mkdirSync(generationRoot, { recursive: true })
+  for (const [logicalPath, bytes] of Object.entries(fixture.files)) {
+    const target = path.join(generationRoot, ...logicalPath.split("/"))
+    fs.mkdirSync(path.dirname(target), { recursive: true })
+    fs.writeFileSync(target, bytes)
+  }
+  fs.writeFileSync(path.join(slotRoot, "current.json"), canonicalLine({
+    schemaVersion: "workflow-package-pointer/v1",
+    workflowId: slot,
+    generation: fixture.rawPackage.generation,
+    packageDigest: fixture.rawPackage.packageDigest
+  }))
+  return fixture
+}
+
+function createCliRepository(t) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "workflow-contract-v2-manifest-"))
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  materializeCollection(root, "collections/z")
+  materializeCollection(root, "collections/a")
+  fs.writeFileSync(path.join(root, "providers.json"), canonicalLine(PROVIDER_CATALOG))
+  fs.writeFileSync(path.join(root, "collections.json"), canonicalLine({
+    schemaVersion: COLLECTIONS_SCHEMA_VERSION,
+    collections: ["collections/z", "collections/a"]
+  }))
+  return root
+}
+
+test("compiled-plan manifest is canonical, sorted by collection and slot, and detached", () => {
+  const subject = manifestSubject()
+  const { handle, rawPackage } = compileFixture()
+  const right = subject.createCompiledWorkflowPlanManifestPackage({
+    collection: "z/workflows",
+    slot: "minimal",
+    generation: rawPackage.generation,
+    handle
+  })
+  const left = subject.createCompiledWorkflowPlanManifestPackage({
+    collection: "a/workflows",
+    slot: "minimal",
+    generation: rawPackage.generation,
+    handle
+  })
+  const manifest = subject.createCompiledWorkflowPlanManifest({ packages: [right, left] })
+  assert.deepEqual(manifest.packages.map((entry) => [entry.collection, entry.slot]), [
+    ["a/workflows", "minimal"],
+    ["z/workflows", "minimal"]
+  ])
+  assert.equal(manifest.packages[0].planDigest, canonicalDigest(handle.plan))
+  assert.equal(Object.isFrozen(manifest), true)
+  assert.equal(Object.isFrozen(manifest.packages), true)
+  assert.equal(Object.isFrozen(manifest.packages[0]), true)
+  const encoded = subject.encodeCompiledWorkflowPlanManifest(manifest)
+  assert.equal(encoded.at(-1), 0x0a)
+  assert.equal(encoded.subarray(0, -1).toString("utf8"), require("../out/core/contractV2/canonicalJson.js").canonicalJsonText(manifest))
+})
+
+test("manifest rejects duplicate pairs, unsafe collection paths, staging handles, and generation drift", () => {
+  const subject = manifestSubject()
+  const { handle, rawPackage } = compileFixture()
+  const entry = subject.createCompiledWorkflowPlanManifestPackage({
+    collection: "collections/a",
+    slot: "minimal",
+    generation: rawPackage.generation,
+    handle
+  })
+  assert.throws(
+    () => subject.createCompiledWorkflowPlanManifest({ packages: [entry, entry] }),
+    /duplicate collection and slot pair/i
+  )
+  assert.throws(
+    () => subject.createCompiledWorkflowPlanManifest({ packages: [{ ...entry, collection: "../escape" }] }),
+    /repository-relative|segment/i
+  )
+  const staging = compileFixture({ publication: "staging", generation: ".staging-manifest" })
+  assert.throws(
+    () => subject.createCompiledWorkflowPlanManifestPackage({
+      collection: "collections/a",
+      slot: "minimal",
+      generation: rawPackage.generation,
+      handle: staging.handle
+    }),
+    /identity/i
+  )
+  const otherDigest = `sha256:${"f".repeat(64)}`
+  assert.throws(
+    () => subject.createCompiledWorkflowPlanManifestPackage({
+      collection: "collections/a",
+      slot: "minimal",
+      generation: otherDigest,
+      handle
+    }),
+    /identity/i
+  )
+})
+
+test("manifest CLI produces identical bytes for permuted explicit collection order and collection-list input", async (t) => {
+  const root = createCliRepository(t)
+  const cli = require("../scripts/compile-workflow-contract-v2-packages.js")
+  const outputA = path.join(root, "manifest-a.json")
+  const outputB = path.join(root, "manifest-b.json")
+  const outputC = path.join(root, "manifest-c.json")
+  const common = [
+    "--root", root,
+    "--provider-catalog", "providers.json"
+  ]
+  await cli.main([
+    ...common,
+    "--collection", "collections/z",
+    "--collection", "collections/a",
+    "--manifest", outputA
+  ])
+  await cli.main([
+    ...common,
+    "--collection", "collections/a",
+    "--collection", "collections/z",
+    "--manifest", outputB
+  ])
+  await cli.main([
+    ...common,
+    "--collections", "collections.json",
+    "--manifest", outputC
+  ])
+  const bytesA = fs.readFileSync(outputA)
+  assert.deepEqual(fs.readFileSync(outputB), bytesA)
+  assert.deepEqual(fs.readFileSync(outputC), bytesA)
+  const manifest = JSON.parse(bytesA.toString("utf8"))
+  assert.deepEqual(manifest.packages.map((entry) => [entry.collection, entry.slot]), [
+    ["collections/a", "minimal"],
+    ["collections/z", "minimal"]
+  ])
+  assert.equal(manifest.packages[0].generation, manifest.packages[0].packageDigest)
+})
+
+test("manifest CLI rejects implicit discovery, overlapping roots, and noncanonical provider input", async (t) => {
+  const root = createCliRepository(t)
+  const cli = require("../scripts/compile-workflow-contract-v2-packages.js")
+  assert.throws(
+    () => cli.parseArguments([
+      "--root", root,
+      "--provider-catalog", "providers.json",
+      "--manifest", path.join(root, "missing.json")
+    ]),
+    /collection/i
+  )
+  assert.throws(
+    () => cli.normalizeCollections(["collections", "collections-extra", "collections/a"]),
+    /overlap/i
+  )
+  fs.writeFileSync(path.join(root, "noncanonical.json"), JSON.stringify(PROVIDER_CATALOG, null, 2))
+  await assert.rejects(
+    () => cli.main([
+      "--root", root,
+      "--collection", "collections/a",
+      "--provider-catalog", "noncanonical.json",
+      "--manifest", path.join(root, "noncanonical-output.json")
+    ]),
+    /canonical JSON/i
+  )
+})
+
+test("manifest is written only after every package compiles", async (t) => {
+  const root = createCliRepository(t)
+  const cli = require("../scripts/compile-workflow-contract-v2-packages.js")
+  const pointer = JSON.parse(fs.readFileSync(path.join(root, "collections/z/minimal/current.json"), "utf8"))
+  const generationName = require("../out/core/contractV2/packageGenerationPath.js")
+    .workflowPackageGenerationDirectoryName(pointer.generation)
+  fs.appendFileSync(path.join(root, "collections/z/minimal/versions", generationName, "workflow.yaml"), "# drift\n")
+  const output = path.join(root, "must-not-exist.json")
+  await assert.rejects(
+    () => cli.main([
+      "--root", root,
+      "--collection", "collections/a",
+      "--collection", "collections/z",
+      "--provider-catalog", "providers.json",
+      "--manifest", output
+    ])
+  )
+  assert.equal(fs.existsSync(output), false)
+})
