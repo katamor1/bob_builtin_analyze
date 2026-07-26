@@ -46,6 +46,7 @@ import {
 } from "./workflowContractV2ExecutionGuard"
 import { createWorkflowContractV2ProductEntrypoint } from "./workflowContractV2Product"
 import { WorkflowContractV2ProviderLifecycle } from "./workflowContractV2ProviderLifecycle"
+import { executeWorkflowContractV2Run } from "./workflowContractV2RunExecutor"
 import { workflowContractV2CoreMetadata } from "./workflowContractV2View"
 import { WorkflowRuntimeFactory } from "./workflowRuntimeFactory"
 import { collectBobWorkflowInputs } from "./workflowInputPrompt"
@@ -110,7 +111,7 @@ export class WorkflowRegisterService implements vscode.Disposable {
       agentProvider: () => this.agentProvider,
       inputsProvider: (workflow, provided) => collectBobWorkflowInputs(workflow, provided),
       contractV2AcquireRunLease: (workflow) => this.acquireContractV2RunLease(workflow),
-      contractV2RunExecutor: () => this.failContractV2CompiledRuntime(),
+      contractV2RunExecutor: (input) => executeWorkflowContractV2Run(input),
       contractV2BeforeContinuation: (workflow) => this.assertContractV2ContinuationReady(workflow),
       onManualStepHeld: (input) => this.manualStepPanel.show(input)
     })
@@ -332,12 +333,6 @@ export class WorkflowRegisterService implements vscode.Disposable {
       workflow,
       acquireCurrent: (input) => this.acquireCurrentWorkflowPackage(input)
     })
-  }
-
-  private failContractV2CompiledRuntime(): never {
-    throw new WorkflowContractV2BoundaryError(
-      "Contract v2 runtime execution is not enabled before R4; no run was created."
-    )
   }
 
   private assertContractV2ContinuationReady(workflow: CoreWorkflowDefinition): void {
