@@ -51,24 +51,17 @@ test("manifest rejects cross-platform aliases, non-portable paths, and generatio
     }),
     /generation.*package digest/i
   )
-  assert.throws(
-    () => subject.createCompiledWorkflowPlanManifestPackage({
-      collection: "collections/CON",
-      slot: "minimal",
-      generation: fixture.rawPackage.generation,
-      handle
-    }),
-    /portable/i
-  )
-  assert.throws(
-    () => subject.createCompiledWorkflowPlanManifestPackage({
-      collection: "collections/a:b",
-      slot: "minimal",
-      generation: fixture.rawPackage.generation,
-      handle
-    }),
-    /portable/i
-  )
+  for (const collection of ["collections/CON", "collections/a:b", "collections/ſample"]) {
+    assert.throws(
+      () => subject.createCompiledWorkflowPlanManifestPackage({
+        collection,
+        slot: "minimal",
+        generation: fixture.rawPackage.generation,
+        handle
+      }),
+      /portable/i
+    )
+  }
 })
 
 test("manifest captures canonical encoding and private-state readers at module load", () => {
@@ -112,10 +105,12 @@ test("manifest CLI rejects case-folded collection and slot aliases", () => {
     () => cli.normalizeSlotNames(["Alpha", "alpha"]),
     /alias/i
   )
-  assert.throws(
-    () => environment.repositoryRelativePath("collections/CON", "collection"),
-    /portable/i
-  )
+  for (const collection of ["collections/CON", "collections/ſample"]) {
+    assert.throws(
+      () => environment.repositoryRelativePath(collection, "collection"),
+      /portable/i
+    )
+  }
 })
 
 test("manifest control files reject symbolic-link path components", async (t) => {
@@ -147,4 +142,47 @@ test("manifest control files reject symbolic-link path components", async (t) =>
     ),
     /symbolic-link/i
   )
+})
+
+test("manifest environment captures the F6 registry methods at module load", async (t) => {
+  const canonical = require("../out/core/contractV2/canonicalJson.js")
+  const environment = require("../scripts/lib/workflow-contract-v2-environment.js")
+  const providerRegistry = require("../out/core/contractV2/providerRegistry.js")
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "workflow-contract-v2-manifest-registry-"))
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const digest = (character) => `sha256:${character.repeat(64)}`
+  const document = {
+    schemaVersion: "workflow-provider-catalog-source/v1",
+    providers: [{
+      id: "sample.provider",
+      version: "1.0.0",
+      inputSchema: { id: "schemas/input.json", bytes: 2, digest: digest("a") },
+      output: { kind: "unit" },
+      errorSchema: { id: "schemas/error.json", bytes: 2, digest: digest("b") },
+      sideEffect: "none",
+      idempotency: "idempotent",
+      requiredCapabilities: []
+    }]
+  }
+  fs.writeFileSync(
+    path.join(root, "providers.json"),
+    Buffer.concat([canonical.canonicalJsonBytes(document), Buffer.from("\n", "utf8")])
+  )
+  const originalRegister = providerRegistry.WorkflowProviderRegistry.prototype.register
+  const originalSnapshot = providerRegistry.WorkflowProviderRegistry.prototype.snapshot
+  providerRegistry.WorkflowProviderRegistry.prototype.register = () => {
+    throw new Error("ambient register replacement")
+  }
+  providerRegistry.WorkflowProviderRegistry.prototype.snapshot = () => {
+    throw new Error("ambient snapshot replacement")
+  }
+  try {
+    await assert.doesNotReject(() => environment.createWorkflowContractV2EvidenceEnvironment({
+      repositoryRoot: root,
+      providerCatalogPath: "providers.json"
+    }))
+  } finally {
+    providerRegistry.WorkflowProviderRegistry.prototype.register = originalRegister
+    providerRegistry.WorkflowProviderRegistry.prototype.snapshot = originalSnapshot
+  }
 })
