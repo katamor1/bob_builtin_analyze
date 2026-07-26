@@ -163,6 +163,7 @@ export async function invokeCompiledWorkflowProvider(
     returned = await invokeDispatchCaptured(binding.dispatchHandle, dispatchInput)
   } catch (error) {
     effectSession.close()
+    await promiseAll(pendingWrites)
     if (isInstance(WorkflowAttemptStagingError, error)) throw error
     const errorLocation = location(binding.stepIndex, "provider")
     const validatedError = validateSchemaCaptured({
