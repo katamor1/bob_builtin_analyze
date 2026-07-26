@@ -26,6 +26,11 @@ export type PreprocessResult = {
     stale: number
     missing: number
   }
+  processingBudgetReport: {
+    path: string
+    inputSha256: string
+    coverageStatus: "complete"
+  }
   warnings: string[]
   summary: string
 }
