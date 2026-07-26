@@ -147,6 +147,8 @@ export interface SharedPhysicalContainedPath {
 }
 
 interface SharedRuntimeModule {
+  readonly DEFAULT_PROCESSING_BUDGET_PROFILE: Readonly<{ limits: SharedProcessingBudgetLimits }>
+  readonly PROCESSING_BUDGET_ABSOLUTE_MAXIMA: SharedProcessingBudgetLimits
   readonly ProcessingBudgetLedger: new (profile?: SharedProcessingBudgetProfileOverrides) => SharedProcessingBudgetLedger
   commitWorkbookBudget(input: {
     ledger: SharedProcessingBudgetLedger
@@ -208,6 +210,8 @@ interface SharedRuntimeModule {
 
 const runtime = require("./shared-processing-budget-runtime") as SharedRuntimeModule
 
+export const DEFAULT_PROCESSING_BUDGET_PROFILE = runtime.DEFAULT_PROCESSING_BUDGET_PROFILE
+export const PROCESSING_BUDGET_ABSOLUTE_MAXIMA = runtime.PROCESSING_BUDGET_ABSOLUTE_MAXIMA
 export const ProcessingBudgetLedger = runtime.ProcessingBudgetLedger
 export const assertParsedXlsxWorkbookWithinBudget = runtime.assertParsedXlsxWorkbookWithinBudget
 export const commitWorkbookBudget = runtime.commitWorkbookBudget
