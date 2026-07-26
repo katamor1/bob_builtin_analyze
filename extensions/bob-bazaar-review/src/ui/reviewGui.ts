@@ -1,5 +1,9 @@
 import * as vscode from "vscode"
 import { BazaarClient } from "../bazaar/bazaar"
+import {
+  BazaarProcessingCoveragePartialError,
+  runBazaarReviewProcessingOperation
+} from "../bazaar/bazaarProcessingCoverage"
 import { clampMaxAddedFileContentBytes, clampMaxDiffBytes, maxBufferForDiffBytes } from "../bazaar/reviewLimits"
 import { buildReviewPacket } from "../bazaar/reviewPacket"
 import { buildReviewPacketState, REVIEW_PACKET_STATE_KEY } from "../bazaar/reviewPacketSelection"
@@ -101,7 +105,10 @@ class BazaarReviewGuiController {
         await this.recoverLegacyReview()
       }
     } catch (error: any) {
-      this.post({ type: "error", message: error?.message ?? String(error) })
+      const detail = error instanceof BazaarProcessingCoveragePartialError
+        ? `${error.message} 診断レポート: ${error.reportPath}`
+        : error?.message ?? String(error)
+      this.post({ type: "error", message: detail })
     }
   }
 
@@ -328,57 +335,78 @@ class BazaarReviewGuiController {
     }
 
     this.post({ type: "loading", message: "レビュー実行を作成し、レビュー資料を Bob コンテキストへ追加しています…" })
-    const prepared = await prepareTarget(makeBazaarClient(), bazaarFolder.uri.fsPath, request, {
-      includeAddedFiles: true,
-      maxAddedFileContentBytes: getMaxAddedFileContentBytes()
-    })
-    const runWorkspaceFolder = this.bobWorkspaceFolder ?? bobFolder ?? bazaarFolder
-    const reviewId = selection.reviewId ?? buildReviewId({
-      mode: prepared.info.mode,
-      revision: prepared.info.revision,
-      baseRevision: prepared.info.baseRevision,
-      targetRevision: prepared.info.targetRevision
-    })
-    let reviewRun = this.reusableTargetRun(selection.campaignId, reviewId, prepared.root, prepared.info)
-      ?? await startReviewRun({
-        workspaceRoot: runWorkspaceFolder.uri.fsPath,
-        campaignId: selection.campaignId,
-        reviewId,
-        target: {
+    const maxDiffBytes = getMaxDiffBytes()
+    const maxAddedFileContentBytes = getMaxAddedFileContentBytes()
+    let reviewRun: ReviewRunContext | undefined
+    const result = await runBazaarReviewProcessingOperation({
+      reportDirectory: vscode.Uri.joinPath(this.context.globalStorageUri, "processing-budget-reports").fsPath,
+      operation: {
+        mode: request.mode,
+        revision: request.revision,
+        baseRevision: request.baseRevision,
+        targetRevision: request.targetRevision,
+        withProjectRules: Boolean(request.withProjectRules)
+      },
+      maxDiffBytes,
+      maxAddedFileContentBytes,
+      produce: async () => {
+        const prepared = await prepareTarget(makeBazaarClient(maxDiffBytes), bazaarFolder.uri.fsPath, request, {
+          includeAddedFiles: true,
+          maxAddedFileContentBytes
+        })
+        const runWorkspaceFolder = this.bobWorkspaceFolder ?? bobFolder ?? bazaarFolder
+        const reviewId = selection.reviewId ?? buildReviewId({
           mode: prepared.info.mode,
-          repositoryRoot: prepared.root,
           revision: prepared.info.revision,
           baseRevision: prepared.info.baseRevision,
           targetRevision: prepared.info.targetRevision
-        }
-      })
-    const projectRulesSection = request.withProjectRules && bobFolder ? await buildProjectRulesSectionForWorkspace(bobFolder.uri.fsPath) : undefined
-    const extraSections = [
-      buildReviewRunMetadataSection(reviewRun),
-      buildTargetMetadataSection(prepared.info),
-      prepared.addedFilesSection,
-      projectRulesSection
-    ].filter((section): section is string => Boolean(section))
-    const packet = buildReviewPacket({
-      repositoryRoot: prepared.root,
-      mode: request.mode,
-      revision: request.revision,
-      baseRevision: prepared.info.baseRevision,
-      targetRevision: prepared.info.targetRevision,
-      log: prepared.log,
-      diff: prepared.diff,
-      maxDiffBytes: getMaxDiffBytes(),
-      extraSections
+        })
+        reviewRun = this.reusableTargetRun(selection.campaignId, reviewId, prepared.root, prepared.info)
+          ?? await startReviewRun({
+            workspaceRoot: runWorkspaceFolder.uri.fsPath,
+            campaignId: selection.campaignId,
+            reviewId,
+            target: {
+              mode: prepared.info.mode,
+              repositoryRoot: prepared.root,
+              revision: prepared.info.revision,
+              baseRevision: prepared.info.baseRevision,
+              targetRevision: prepared.info.targetRevision
+            }
+          })
+        const projectRulesSection = request.withProjectRules && bobFolder
+          ? await buildProjectRulesSectionForWorkspace(bobFolder.uri.fsPath)
+          : undefined
+        const extraSections = [
+          buildReviewRunMetadataSection(reviewRun),
+          buildTargetMetadataSection(prepared.info),
+          prepared.addedFilesSection,
+          projectRulesSection
+        ].filter((section): section is string => Boolean(section))
+        const packet = buildReviewPacket({
+          repositoryRoot: prepared.root,
+          mode: request.mode,
+          revision: request.revision,
+          baseRevision: prepared.info.baseRevision,
+          targetRevision: prepared.info.targetRevision,
+          log: prepared.log,
+          diff: prepared.diff,
+          maxDiffBytes,
+          extraSections
+        })
+        return { prepared, packet }
+      }
     })
-    reviewRun = await recordReviewPacket(reviewRun, packet)
+    if (!reviewRun) throw new Error("レビュー実行の作成結果がありません。")
+    reviewRun = await recordReviewPacket(reviewRun, result.packet)
     this.activeReviewRun = reviewRun
 
-    const doc = await vscode.workspace.openTextDocument({ language: "markdown", content: packet })
+    const doc = await vscode.workspace.openTextDocument({ language: "markdown", content: result.packet })
     await vscode.window.showTextDocument(doc, { preview: false })
     let addResult: "added" | "clipboardFallback" | "skipped" = "skipped"
     let workflowStepCompleted = false
     if (isBobCodeExtensionAvailable()) {
-      addResult = await addPacketToBobContext(doc.uri, packet)
+      addResult = await addPacketToBobContext(doc.uri, result.packet)
       if (addResult === "added") {
         workflowStepCompleted = await completeCurrentWorkflowStepAfterGuiAction({
           executeCommand: (command, ...args) => vscode.commands.executeCommand(command, ...args),
@@ -391,8 +419,8 @@ class BazaarReviewGuiController {
               packetUri: doc.uri.toString(),
               runId: this.initialTarget?.runId,
               stepId: this.initialTarget?.stepId,
-              target: prepared.info.targetRevision ?? prepared.info.revision,
-              repositoryRoot: prepared.root
+              target: result.prepared.info.targetRevision ?? result.prepared.info.revision,
+              repositoryRoot: result.prepared.root
             }))
           }
         })
@@ -402,8 +430,8 @@ class BazaarReviewGuiController {
     }
     this.post({
       type: "reviewAdded",
-      info: prepared.info,
-      packetBytes: Buffer.byteLength(packet, "utf8"),
+      info: result.prepared.info,
+      packetBytes: Buffer.byteLength(result.packet, "utf8"),
       bobContextAvailable: addResult !== "skipped",
       bobContextAdded: addResult === "added",
       workflowStepCompleted,
@@ -486,11 +514,11 @@ function requiredText(value: unknown, fieldName: string): string {
   return text
 }
 
-function makeBazaarClient(): BazaarClient {
+function makeBazaarClient(maxDiffBytes = getMaxDiffBytes()): BazaarClient {
   const config = vscode.workspace.getConfiguration("bobBazaar")
   return new BazaarClient({
     bzrPath: resolveBzrPath(config, vscode.workspace.isTrusted),
-    maxBuffer: maxBufferForDiffBytes(getMaxDiffBytes()),
+    maxBuffer: maxBufferForDiffBytes(maxDiffBytes),
     textEncoding: config.get<string>("textEncoding", "auto")
   })
 }
