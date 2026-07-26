@@ -35,7 +35,7 @@ export function computeProcessingOperationInputSha(input: {
 }): string {
   const materialized = input.materialized ?? {}
   const payload = {
-    schema_version: "code-consistency-processing-input/v2",
+    schema_version: "code-consistency-processing-input/v3",
     review_input_sha256: canonicalSha(input.reviewInput),
     configuration_sha256: canonicalSha({
       text_encoding: input.configuration.textEncoding ?? "auto",
@@ -75,9 +75,9 @@ function canonicalValue(value: unknown, seen: Set<object>): unknown {
     if (!Number.isFinite(value) || !Number.isSafeInteger(value)) {
       throw new Error("processing operation input contains a non-finite or unsafe number")
     }
-    return value
+    return Object.is(value, -0) ? ["processing-operation-negative-zero/v1"] : value
   }
-  if (typeof value === "bigint") return value.toString(10)
+  if (typeof value === "bigint") return ["processing-operation-bigint/v1", value.toString(10)]
   if (value === undefined) return ["processing-operation-undefined/v1"]
   if (typeof value !== "object") throw new Error("processing operation input contains an unsupported value")
   if (seen.has(value)) throw new Error("processing operation input contains a cycle")
