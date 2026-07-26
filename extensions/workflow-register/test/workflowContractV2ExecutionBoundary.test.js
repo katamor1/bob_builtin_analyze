@@ -32,7 +32,7 @@ test('new standalone execution acquires one Contract v2 lease and never falls ba
   ))
 })
 
-test('resume retry approval and abort paths use a continuation guard rather than following current.json', () => {
+test('resume retry approval and abort paths reject Contract v2 continuation without following current.json', () => {
   const runtime = source('workflowRuntimeFactory.ts')
   for (const signature of [
     'override async resumeRun(',
@@ -45,7 +45,9 @@ test('resume retry approval and abort paths use a continuation guard rather than
   assert.match(runtime, ordered(
     'override async abortBranchCheckpoint(',
     'const run = await this.continuationRunStore.loadRun(runId)',
-    'await this.beforeContinuation?.(',
+    'run?.workflowSchemaVersion === "workflow-register/v2"',
+    'run?.planProvenance !== undefined',
+    'Contract v2 resume and continuation require R6',
     'return super.abortBranchCheckpoint(runId, reason)'
   ))
   assert.doesNotMatch(runtime, /acquireRunLease\?\.\(options\.workflow\)/)
@@ -94,7 +96,7 @@ test('the service supplies new-run acquisition and fail-closed continuation boun
   assert.match(service, /acquireWorkflowContractV2RunLease/)
   assert.match(service, /workflowContractV2CoreMetadata/)
   assert.match(service, /contractV2AcquireRunLease: \(workflow\) => this\.acquireContractV2RunLease\(workflow\)/)
-  assert.match(service, /contractV2BeforeContinuation: \(workflow, run\) => this\.assertContractV2ContinuationReady\(workflow, run\)/)
+  assert.match(service, /contractV2BeforeContinuation: \(workflow\) => this\.assertContractV2ContinuationReady\(workflow\)/)
   assert.match(service, ordered(
     'private acquireContractV2RunLease(',
     'return acquireWorkflowContractV2RunLease({',
