@@ -1,4 +1,8 @@
 import {
+  decodeWorkflowContractV2RunPlanProvenance,
+  type WorkflowContractV2RunPlanProvenance
+} from "./contractV2/runPlanProvenance"
+import {
   ARTIFACT_HYDRATION_STATE_KEY
 } from "./artifacts/stateHydration"
 import {
@@ -35,6 +39,7 @@ export interface WorkflowHeldRecoveryProjection {
 }
 
 export interface WorkflowRunProvenanceProjection {
+  plan?: WorkflowContractV2RunPlanProvenance
   sourceRunId?: string
   startStepId?: string
   reusedStepIds: string[]
@@ -87,8 +92,12 @@ export function projectWorkflowRunProvenance(run: WorkflowRunState): WorkflowRun
   const hydrationEntries = hydration?.hydrated ?? []
   const snapshotEntries = taskSnapshotImport?.imported ?? []
   const sourceRunId = reuse?.sourceRunId ?? hydration?.sourceRunId
+  const plan = run.planProvenance === undefined
+    ? undefined
+    : decodeWorkflowContractV2RunPlanProvenance(run.planProvenance)
 
   return {
+    plan,
     sourceRunId,
     startStepId: reuse?.startStepId,
     reusedStepIds,
@@ -138,6 +147,9 @@ export function workflowRunProvenanceControlLines(
     .filter((step) => step.artifactVerified)
     .flatMap((step) => step.artifactIds))
   const lines = [
+    provenance.plan ? `固定プラン: ${safeControlToken(provenance.plan.planDigest)}` : undefined,
+    provenance.plan ? `固定世代: ${safeControlToken(provenance.plan.generation)}` : undefined,
+    provenance.plan ? `パッケージ: ${safeControlToken(provenance.plan.packageDigest)}` : undefined,
     provenance.sourceRunId ? `再利用元の実行: ${safeControlToken(provenance.sourceRunId)}` : undefined,
     provenance.startStepId ? `再利用開始ステップ: ${safeControlToken(provenance.startStepId)}` : undefined,
     boundedControlList("再利用したステップ", provenance.reusedStepIds, limit),
