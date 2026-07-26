@@ -177,7 +177,7 @@ test("artifact bytes are reverified after the manifest write and immediately bef
 })
 
 test("source pins the actual opened file before bytes are written and syncs each created parent", () => {
-  const source = fs.readFileSync(path.join(__dirname, "..", "src", "core", "contractV2", "attemptArtifactWorkspace.ts"), "utf8")
+  const source = fs.readFileSync(path.join(__dirname, "..", "src", "core", "contractV2", "attemptArtifactWorkspaceLinux.ts"), "utf8")
   const open = source.indexOf("const opened = await openArtifactFileAnchored")
   const verify = source.indexOf("await verifyOpenedArtifactFileContainment")
   const write = source.indexOf("await opened.file.writeFile(bytes)")
