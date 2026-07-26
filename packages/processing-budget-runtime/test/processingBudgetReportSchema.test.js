@@ -38,6 +38,16 @@ test("schema requires coverage, ledger, and issue evidence for every report", ()
   assert.equal(schema.$defs.ledger.properties.categories.maxItems, PROCESSING_BUDGET_CATEGORY_IDS.length)
 })
 
+test("schema rejects successful reports with failed coverage", () => {
+  const successRule = schema.allOf.find(
+    (entry) => entry.if?.properties?.outcome?.const === "success"
+  )
+  assert.deepEqual(
+    successRule.then.properties.coverage_status.enum,
+    ["complete", "partial"]
+  )
+})
+
 test("schema fixes every ledger category to canonical order, scope, unit, and absolute maximum", () => {
   const categories = schema.$defs.ledger.properties.categories
   assert.equal(categories.items, false)
