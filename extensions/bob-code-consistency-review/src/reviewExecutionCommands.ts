@@ -2,7 +2,7 @@ import * as path from "node:path"
 import * as vscode from "vscode"
 import { captureBobOutput } from "./core/bobOutputCapture"
 import { validateBobOutput } from "./core/bobOutputValidator"
-import { preprocessReview } from "./core/pipeline"
+import { preprocessReviewWithCoverage } from "./core/preprocessCoverageBoundary"
 import { loadAndAssertCompleteProcessingBudgetReport } from "./core/processingBudgetReportGuard"
 import {
   absolute,
@@ -49,7 +49,7 @@ export async function runPreprocess(options?: unknown): Promise<unknown> {
     const controller = new AbortController()
     const cancellation = token.onCancellationRequested(() => controller.abort())
     try {
-      return await preprocessReview({
+      return await preprocessReviewWithCoverage({
         workspaceRoot,
         inputPath,
         outDir,
