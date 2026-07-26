@@ -55,7 +55,11 @@ test("run creation persists exact detached provenance from the leased compiled p
   const subject = require("../out/core/contractV2/runPlanProvenance.js")
 
   const expected = subject.createWorkflowContractV2RunPlanProvenance(lease)
-  const run = await runStore.createRunFromPlanLease(lease, { sample: "input" })
+  let run
+  await subject.runWithWorkflowContractV2PlanLease(lease, async () => {
+    run = await runStore.createRunFromPlanLease(lease, { sample: "input" })
+    await runStore.saveRun(run)
+  })
 
   assert.equal(run.workflowSchemaVersion, "workflow-register/v2")
   assert.equal(run.workflowId, lease.handle.plan.workflowId)
@@ -64,7 +68,6 @@ test("run creation persists exact detached provenance from the leased compiled p
   assert.notStrictEqual(run.planProvenance, expected)
   assert.equal(Object.isFrozen(run.planProvenance), true)
 
-  await runStore.saveRun(run)
   const reopened = await runStore.loadRun(run.runId)
   assert.ok(reopened)
   assert.deepEqual(reopened.planProvenance, expected)
@@ -161,16 +164,17 @@ test("failure after first durable save releases the newly adopted lease", async 
   const runStore = temporaryRunStore(t)
   const subject = require("../out/core/contractV2/runPlanProvenance.js")
   const { coordinateWorkflowRunExecution } = require("../out/core/engine/runExecutionCoordinator.js")
-  const run = await runStore.createRunFromPlanLease(lease, {})
+  let run
 
   await assert.rejects(
-    subject.runWithWorkflowContractV2PlanLease(lease, () => (
-      coordinateWorkflowRunExecution(runStore, run.runId, "first-save-failure", async () => {
+    subject.runWithWorkflowContractV2PlanLease(lease, async () => {
+      run = await runStore.createRunFromPlanLease(lease, {})
+      return coordinateWorkflowRunExecution(runStore, run.runId, "first-save-failure", async () => {
         assert.equal(await runStore.loadRun(run.runId), undefined)
         await runStore.saveRun(run)
         throw new Error("injected post-save failure")
       })
-    )),
+    }),
     /injected post-save failure/
   )
 
