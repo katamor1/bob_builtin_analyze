@@ -48,6 +48,14 @@ test("schema rejects successful reports with failed coverage", () => {
   )
 })
 
+test("schema requires category and processed evidence for truncation issues", () => {
+  const conditional = schema.$defs.issue.allOf?.find(
+    (entry) => entry.if?.properties?.kind?.const === "truncation"
+  )
+  assert.ok(conditional)
+  assert.deepEqual(conditional.then.required, ["category", "processed"])
+})
+
 test("schema fixes every ledger category to canonical order, scope, unit, and absolute maximum", () => {
   const categories = schema.$defs.ledger.properties.categories
   assert.equal(categories.items, false)
