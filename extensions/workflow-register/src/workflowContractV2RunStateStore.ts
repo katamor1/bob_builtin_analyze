@@ -13,19 +13,11 @@ import {
 } from "./core/runStateStore"
 import { workflowContractV2CoreMetadata } from "./workflowContractV2View"
 
-export interface ContractV2GuardedRunStateStoreOptions extends FileRunStateStoreOptions {
-  readonly beforeCreateRun?: (
-    workflow: CoreWorkflowDefinition,
-    inputs: Record<string, unknown>
-  ) => Promise<void> | void
-}
+export type ContractV2GuardedRunStateStoreOptions = FileRunStateStoreOptions
 
 export class ContractV2GuardedRunStateStore extends FileRunStateStore {
-  private readonly beforeCreateRun?: ContractV2GuardedRunStateStoreOptions["beforeCreateRun"]
-
   constructor(options: ContractV2GuardedRunStateStoreOptions) {
     super(options)
-    this.beforeCreateRun = options.beforeCreateRun
   }
 
   override async createRun(
@@ -36,7 +28,6 @@ export class ContractV2GuardedRunStateStore extends FileRunStateStore {
     if (contextualLease !== undefined) {
       return this.createRunFromPlanLease(contextualLease, inputs)
     }
-    await this.beforeCreateRun?.(workflow, inputs)
     if (workflowContractV2CoreMetadata(workflow) !== undefined) {
       throw new TypeError("Contract v2 run creation requires an active compiled plan lease.")
     }
