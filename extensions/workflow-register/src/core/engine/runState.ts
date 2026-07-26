@@ -57,7 +57,7 @@ export function createWorkflowContractV2RunState(
   if (typeof input.createdAt !== "string" || input.createdAt.length === 0) {
     throw new TypeError("Workflow Contract v2 run creation time is invalid.")
   }
-  const run = {
+  const run: WorkflowRunState = {
     schemaVersion: "workflow-register/run-state/v1",
     runId: input.runId,
     workflowId: handle.plan.workflowId,
@@ -78,7 +78,7 @@ export function createWorkflowContractV2RunState(
     createdAt: input.createdAt,
     updatedAt: input.createdAt,
     planProvenance: createWorkflowContractV2RunPlanProvenance(input.lease)
-  } as unknown as WorkflowRunState
+  }
   bindWorkflowContractV2RunPlanLease(run, input.lease)
   return run
 }
