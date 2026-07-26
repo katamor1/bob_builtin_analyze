@@ -1,3 +1,7 @@
+import {
+  decodeWorkflowContractV2RunPlanProvenance,
+  type WorkflowContractV2RunPlanProvenance
+} from "../contractV2/runPlanProvenance"
 import type {
   RunStatus,
   RunStepState,
@@ -107,7 +111,12 @@ export function assertWorkflowRunStateWritable(run: WorkflowRunState): void {
 
 export function prepareWorkflowRunStateForWrite(run: WorkflowRunState): WorkflowRunState {
   assertWorkflowRunStateWritable(run)
-  return { ...run, schemaVersion: CURRENT_WORKFLOW_RUN_STATE_SCHEMA_VERSION }
+  const planProvenance = validatedPlanProvenance(run)
+  return {
+    ...run,
+    schemaVersion: CURRENT_WORKFLOW_RUN_STATE_SCHEMA_VERSION,
+    ...(planProvenance === undefined ? {} : { planProvenance })
+  }
 }
 
 export function isCurrentWorkflowRunState(run: WorkflowRunState): boolean {
@@ -135,6 +144,7 @@ function validateStableRun(record: Record<string, unknown>, expectedRunId?: stri
 
   const workflowId = requiredString(record, "workflowId")
   const workflowName = requiredString(record, "workflowName")
+  const workflowSchemaVersion = optionalWorkflowSchemaVersion(record.workflowSchemaVersion)
   const statusValue = requiredString(record, "status")
   if (!RUN_STATUSES.has(statusValue as RunStatus)) {
     throw new Error(`Workflow run field 'status' has unsupported value ${quoted(statusValue)}.`)
@@ -149,16 +159,27 @@ function validateStableRun(record: Record<string, unknown>, expectedRunId?: stri
   const steps = validateRunSteps(record.steps)
   requiredString(record, "createdAt")
   requiredString(record, "updatedAt")
+  const planProvenance = decodeRunPlanProvenance(record.planProvenance, workflowSchemaVersion)
+  if (planProvenance !== undefined) {
+    if (planProvenance.workflowId !== workflowId) {
+      throw new Error("Workflow run plan provenance workflowId does not match the run.")
+    }
+    if (record.workflowDefinitionHash !== planProvenance.planDigest) {
+      throw new Error("Workflow run plan provenance planDigest does not match workflowDefinitionHash.")
+    }
+  }
 
   return {
     ...record,
     runId,
     workflowId,
     workflowName,
+    workflowSchemaVersion: workflowSchemaVersion as WorkflowRunState["workflowSchemaVersion"],
     status: statusValue as RunStatus,
     inputs,
     state: state as Record<string, string>,
-    steps
+    steps,
+    ...(planProvenance === undefined ? {} : { planProvenance })
   } as WorkflowRunState
 }
 
@@ -178,6 +199,39 @@ function validateRunSteps(value: unknown): RunStepState[] {
     }
     return { ...step, id, title, type: type as WorkflowStepType, status: status as StepRunStatus } as RunStepState
   })
+}
+
+function decodeRunPlanProvenance(
+  value: unknown,
+  workflowSchemaVersion: string | undefined
+): WorkflowContractV2RunPlanProvenance | undefined {
+  if (workflowSchemaVersion === "workflow-register/v2") {
+    if (value === undefined) {
+      throw new Error("Workflow Contract v2 run plan provenance is required.")
+    }
+    return decodeWorkflowContractV2RunPlanProvenance(value)
+  }
+  if (value !== undefined) {
+    throw new Error("Workflow run plan provenance is only valid for workflow-register/v2 runs.")
+  }
+  return undefined
+}
+
+function validatedPlanProvenance(
+  run: WorkflowRunState
+): WorkflowContractV2RunPlanProvenance | undefined {
+  const workflowSchemaVersion = run.workflowSchemaVersion as string | undefined
+  return decodeRunPlanProvenance(run.planProvenance, workflowSchemaVersion)
+}
+
+function optionalWorkflowSchemaVersion(value: unknown): string | undefined {
+  if (value === undefined) return undefined
+  if (
+    value !== "legacy"
+    && value !== "workflow-register/v1"
+    && value !== "workflow-register/v2"
+  ) throw new Error("Workflow run field 'workflowSchemaVersion' is invalid.")
+  return value
 }
 
 function workflowRunRecord(value: unknown, label = "Workflow run document"): Record<string, unknown> {
