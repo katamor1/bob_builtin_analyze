@@ -5,36 +5,56 @@ const fs = require("node:fs/promises")
 const path = require("node:path")
 
 const {
-  compileWorkflowPackage
+  compileWorkflowPackage: compileWorkflowPackageCaptured
 } = require("../out/core/contractV2/index.js")
 const {
-  createCompiledWorkflowPlanManifest,
-  createCompiledWorkflowPlanManifestPackage,
-  encodeCompiledWorkflowPlanManifest
+  createCompiledWorkflowPlanManifest: createCompiledWorkflowPlanManifestCaptured,
+  createCompiledWorkflowPlanManifestPackage: createCompiledWorkflowPlanManifestPackageCaptured,
+  encodeCompiledWorkflowPlanManifest: encodeCompiledWorkflowPlanManifestCaptured
 } = require("../out/core/contractV2/compiledPlanManifest.js")
 const {
-  createNodeWorkflowPackageFileSystem
+  createNodeWorkflowPackageFileSystem: createNodeWorkflowPackageFileSystemCaptured
 } = require("../out/core/contractV2/packageFileSystemNode.js")
 const {
-  loadCurrentWorkflowPackage
+  loadCurrentWorkflowPackage: loadCurrentWorkflowPackageCaptured
 } = require("../out/core/contractV2/packageLoader.js")
 const {
-  createWorkflowPackageRoot
+  createWorkflowPackageRoot: createWorkflowPackageRootCaptured
 } = require("../out/core/contractV2/packageRoot.js")
 const {
+  canonicalRepositoryRoot,
   createWorkflowContractV2EvidenceEnvironment,
+  portablePathKey,
   readWorkflowContractV2Collections,
   repositoryRelativePath,
   resolveWithinRepository
 } = require("./lib/workflow-contract-v2-environment.js")
 
 const SLOT_PATTERN = /^[A-Za-z][A-Za-z0-9]*(?:[._-][A-Za-z0-9]+)*$/u
-const regexpExec = RegExp.prototype.exec
+const arrayPush = Array.prototype.push
+const dateNow = Date.now
+const objectCreate = Object.create
+const objectFreeze = Object.freeze
+const pathDirname = path.dirname
+const pathIsAbsolute = path.isAbsolute
+const pathJoin = path.join
+const pathRelative = path.relative
+const pathResolve = path.resolve
 const reflectApply = Reflect.apply
+const regexpExec = RegExp.prototype.exec
+const stringJoin = Array.prototype.join
+const stringStartsWith = String.prototype.startsWith
+const fsLstat = fs.lstat
+const fsMkdir = fs.mkdir
+const fsReaddir = fs.readdir
+const fsRealpath = fs.realpath
+const fsRename = fs.rename
+const fsRm = fs.rm
+const fsWriteFile = fs.writeFile
 
 async function main(argv = process.argv.slice(2)) {
   const options = parseArguments(argv)
-  const repositoryRoot = await fs.realpath(path.resolve(options.root))
+  const repositoryRoot = await canonicalRepositoryRoot(options.root)
   const requestedCollections = options.collectionsFile === undefined
     ? options.collections
     : await readWorkflowContractV2Collections({
@@ -46,36 +66,49 @@ async function main(argv = process.argv.slice(2)) {
     repositoryRoot,
     providerCatalogPath: options.providerCatalog
   })
-  const fileSystem = createNodeWorkflowPackageFileSystem()
+  const fileSystem = createNodeWorkflowPackageFileSystemCaptured()
   const packages = []
+  const physicalCollections = objectCreate(null)
 
-  for (const collection of collections) {
+  for (let collectionIndex = 0; collectionIndex < collections.length; collectionIndex += 1) {
+    const collection = collections[collectionIndex]
     const lexicalRoot = resolveWithinRepository(repositoryRoot, collection)
     const physicalRoot = await assertPhysicalCollection(repositoryRoot, lexicalRoot)
-    const collectionRoot = createWorkflowPackageRoot(fileSystem, physicalRoot)
+    const physicalKey = portablePathKey(physicalRoot)
+    if (physicalCollections[physicalKey] !== undefined) {
+      throw new TypeError("Workflow collection roots resolve to the same physical location.")
+    }
+    physicalCollections[physicalKey] = collection
+    const collectionRoot = createWorkflowPackageRootCaptured(fileSystem, physicalRoot)
     const slots = await discoverCurrentSlots(physicalRoot)
-    for (const slot of slots) {
-      const rawPackage = await loadCurrentWorkflowPackage({
+    for (let slotIndex = 0; slotIndex < slots.length; slotIndex += 1) {
+      const slot = slots[slotIndex]
+      const rawPackage = await loadCurrentWorkflowPackageCaptured({
         fileSystem,
         collectionRoot,
         workflowId: slot
       })
-      const compiled = compileWorkflowPackage({ rawPackage, environment })
+      const compiled = compileWorkflowPackageCaptured({ rawPackage, environment })
       if (!compiled.ok) {
-        const codes = compiled.diagnostics.map((item) => item.code).join(",")
-        throw new Error(`Workflow package compilation failed for ${collection}/${slot}: ${codes}`)
+        const codes = []
+        for (let index = 0; index < compiled.diagnostics.length; index += 1) {
+          reflectApply(arrayPush, codes, [compiled.diagnostics[index].code])
+        }
+        throw new Error(
+          `Workflow package compilation failed for ${collection}/${slot}: ${reflectApply(stringJoin, codes, [","])}`
+        )
       }
-      packages.push(createCompiledWorkflowPlanManifestPackage({
+      reflectApply(arrayPush, packages, [createCompiledWorkflowPlanManifestPackageCaptured({
         collection,
         slot,
         generation: rawPackage.generation,
         handle: compiled.handle
-      }))
+      })])
     }
   }
 
-  const manifest = createCompiledWorkflowPlanManifest({ packages })
-  const bytes = encodeCompiledWorkflowPlanManifest(manifest)
+  const manifest = createCompiledWorkflowPlanManifestCaptured({ packages })
+  const bytes = encodeCompiledWorkflowPlanManifestCaptured(manifest)
   await writeManifest(options.manifest, bytes)
   return manifest
 }
@@ -96,15 +129,25 @@ function parseArguments(argv) {
       result.root = requireArgument(option, value)
       index += 1
     } else if (option === "--collection") {
-      result.collections.push(repositoryRelativePath(requireArgument(option, value), "Workflow collection path"))
+      reflectApply(arrayPush, result.collections, [
+        repositoryRelativePath(requireArgument(option, value), "Workflow collection path")
+      ])
       index += 1
     } else if (option === "--collections") {
       if (result.collectionsFile !== undefined) throw new TypeError("--collections may be specified only once.")
-      result.collectionsFile = repositoryRelativePath(requireArgument(option, value), "Workflow collections file path")
+      result.collectionsFile = repositoryRelativePath(
+        requireArgument(option, value),
+        "Workflow collections file path"
+      )
       index += 1
     } else if (option === "--provider-catalog") {
-      if (result.providerCatalog !== undefined) throw new TypeError("--provider-catalog may be specified only once.")
-      result.providerCatalog = repositoryRelativePath(requireArgument(option, value), "Workflow provider catalog path")
+      if (result.providerCatalog !== undefined) {
+        throw new TypeError("--provider-catalog may be specified only once.")
+      }
+      result.providerCatalog = repositoryRelativePath(
+        requireArgument(option, value),
+        "Workflow provider catalog path"
+      )
       index += 1
     } else if (option === "--manifest") {
       if (result.manifest !== undefined) throw new TypeError("--manifest may be specified only once.")
@@ -120,38 +163,65 @@ function parseArguments(argv) {
   if ((result.collectionsFile === undefined) === (result.collections.length === 0)) {
     throw new TypeError("Specify repeated --collection values or exactly one --collections file.")
   }
-  return result
+  return objectFreeze({
+    root: result.root,
+    collections: objectFreeze(result.collections.slice()),
+    collectionsFile: result.collectionsFile,
+    providerCatalog: result.providerCatalog,
+    manifest: result.manifest
+  })
 }
 
 function normalizeCollections(values) {
-  const result = values.map((value) => repositoryRelativePath(value, "Workflow collection path"))
-  result.sort()
-  for (let index = 0; index < result.length; index += 1) {
+  const entries = []
+  for (let index = 0; index < values.length; index += 1) {
+    const value = repositoryRelativePath(values[index], "Workflow collection path")
+    reflectApply(arrayPush, entries, [{ value, key: portablePathKey(value) }])
+  }
+  insertionSort(entries, (left, right) => left.value < right.value ? -1 : left.value > right.value ? 1 : 0)
+  for (let index = 0; index < entries.length; index += 1) {
     for (let previousIndex = 0; previousIndex < index; previousIndex += 1) {
-      const previous = result[previousIndex]
-      const current = result[index]
-      if (current === previous) throw new TypeError("Workflow collection roots must be unique.")
-      if (current.startsWith(`${previous}/`) || previous.startsWith(`${current}/`)) {
-        throw new TypeError("Workflow collection roots must not overlap.")
+      const previous = entries[previousIndex]
+      const current = entries[index]
+      if (current.key === previous.key) {
+        throw new TypeError("Workflow collection roots must be unique across supported filesystems.")
+      }
+      if (
+        reflectApply(stringStartsWith, current.key, [`${previous.key}/`])
+        || reflectApply(stringStartsWith, previous.key, [`${current.key}/`])
+      ) {
+        throw new TypeError("Workflow collection roots must not overlap across supported filesystems.")
       }
     }
   }
-  return Object.freeze(result)
+  const result = []
+  for (let index = 0; index < entries.length; index += 1) {
+    reflectApply(arrayPush, result, [entries[index].value])
+  }
+  return objectFreeze(result)
 }
 
 async function assertPhysicalCollection(repositoryRoot, lexicalRoot) {
-  const stat = await fs.lstat(lexicalRoot)
-  if (!stat.isDirectory() || stat.isSymbolicLink()) {
+  const before = await fsLstat(lexicalRoot, { bigint: true })
+  if (!before.isDirectory() || before.isSymbolicLink()) {
     throw new TypeError("Workflow collection root must be a direct directory, not a symbolic link.")
   }
-  const physicalRoot = await fs.realpath(lexicalRoot)
-  const relative = path.relative(repositoryRoot, physicalRoot)
+  const physicalRoot = await fsRealpath(lexicalRoot)
+  const after = await fsLstat(lexicalRoot, { bigint: true })
+  if (
+    !after.isDirectory()
+    || after.isSymbolicLink()
+    || before.dev !== after.dev
+    || before.ino !== after.ino
+    || before.mode !== after.mode
+  ) throw new TypeError("Workflow collection root changed while it was being resolved.")
+  const relative = pathRelative(repositoryRoot, physicalRoot)
   if (
     relative === ""
     || relative === "."
-    || path.isAbsolute(relative)
+    || pathIsAbsolute(relative)
     || relative === ".."
-    || relative.startsWith(`..${path.sep}`)
+    || reflectApply(stringStartsWith, relative, [`..${path.sep}`])
   ) {
     throw new TypeError("Workflow collection physical root escapes or names the repository root.")
   }
@@ -159,15 +229,15 @@ async function assertPhysicalCollection(repositoryRoot, lexicalRoot) {
 }
 
 async function discoverCurrentSlots(collectionRoot) {
-  const entries = await fs.readdir(collectionRoot, { withFileTypes: true })
-  entries.sort((left, right) => left.name < right.name ? -1 : left.name > right.name ? 1 : 0)
+  const entries = await fsReaddir(collectionRoot, { withFileTypes: true })
   const slots = []
-  for (const entry of entries) {
+  for (let index = 0; index < entries.length; index += 1) {
+    const entry = entries[index]
     if (!entry.isDirectory() || entry.isSymbolicLink()) continue
-    const pointer = path.join(collectionRoot, entry.name, "current.json")
+    const pointer = pathJoin(collectionRoot, entry.name, "current.json")
     let stat
     try {
-      stat = await fs.lstat(pointer)
+      stat = await fsLstat(pointer)
     } catch (error) {
       if (error && error.code === "ENOENT") continue
       throw error
@@ -175,32 +245,71 @@ async function discoverCurrentSlots(collectionRoot) {
     if (!stat.isFile() || stat.isSymbolicLink()) {
       throw new TypeError("Workflow package current pointer must be a direct regular file.")
     }
-    if (entry.name.length > 128 || reflectApply(regexpExec, SLOT_PATTERN, [entry.name]) === null) {
-      throw new TypeError("Workflow package slot id is invalid.")
-    }
-    slots.push(entry.name)
+    reflectApply(arrayPush, slots, [entry.name])
   }
-  return Object.freeze(slots)
+  return normalizeSlotNames(slots)
+}
+
+function normalizeSlotNames(values) {
+  const result = []
+  const identities = objectCreate(null)
+  for (let index = 0; index < values.length; index += 1) {
+    const value = values[index]
+    if (
+      typeof value !== "string"
+      || value.length > 128
+      || reflectApply(regexpExec, SLOT_PATTERN, [value]) === null
+    ) throw new TypeError("Workflow package slot id is invalid.")
+    repositoryRelativePath(value, "Workflow package slot id")
+    const key = portablePathKey(value)
+    if (identities[key] !== undefined) {
+      throw new TypeError("Workflow package slot ids contain a cross-platform alias.")
+    }
+    identities[key] = value
+    reflectApply(arrayPush, result, [value])
+  }
+  insertionSort(result, (left, right) => left < right ? -1 : left > right ? 1 : 0)
+  return objectFreeze(result)
 }
 
 async function writeManifest(target, bytes) {
-  const output = path.resolve(target)
-  await fs.mkdir(path.dirname(output), { recursive: true })
-  const temporary = `${output}.tmp-${process.pid}-${Date.now()}`
+  const output = pathResolve(target)
+  await fsMkdir(pathDirname(output), { recursive: true })
+  const temporary = `${output}.tmp-${process.pid}-${reflectApply(dateNow, Date, [])}`
   try {
-    await fs.writeFile(temporary, bytes, { flag: "wx" })
-    await fs.rename(temporary, output)
+    await fsWriteFile(temporary, bytes, { flag: "wx" })
+    try {
+      await fsRename(temporary, output)
+    } catch (error) {
+      if (!error || (error.code !== "EEXIST" && error.code !== "EPERM")) throw error
+      await fsRm(output, { force: true })
+      await fsRename(temporary, output)
+    }
   } catch (error) {
-    await fs.rm(temporary, { force: true }).catch(() => undefined)
+    await fsRm(temporary, { force: true }).catch(() => undefined)
     throw error
   }
 }
 
 function requireArgument(option, value) {
-  if (typeof value !== "string" || value.length === 0 || value.startsWith("--")) {
-    throw new TypeError(`${option} requires a value.`)
-  }
+  if (
+    typeof value !== "string"
+    || value.length === 0
+    || reflectApply(stringStartsWith, value, ["--"])
+  ) throw new TypeError(`${option} requires a value.`)
   return value
+}
+
+function insertionSort(values, compare) {
+  for (let index = 1; index < values.length; index += 1) {
+    const value = values[index]
+    let insertion = index
+    while (insertion > 0 && compare(values[insertion - 1], value) > 0) {
+      values[insertion] = values[insertion - 1]
+      insertion -= 1
+    }
+    values[insertion] = value
+  }
 }
 
 if (require.main === module) {
@@ -219,5 +328,6 @@ module.exports = {
   discoverCurrentSlots,
   main,
   normalizeCollections,
+  normalizeSlotNames,
   parseArguments
 }
