@@ -30,6 +30,7 @@ export class WorkflowAttemptStagingError extends Error {
 }
 
 const isProxy = utilTypes.isProxy
+const functionHasInstance = Function.prototype[Symbol.hasInstance]
 const objectFreeze = Object.freeze
 const objectGetOwnPropertyDescriptors = Object.getOwnPropertyDescriptors
 const objectGetPrototypeOf = Object.getPrototypeOf
@@ -52,7 +53,7 @@ const weakMapSet = Function.prototype.call.bind(WeakMap.prototype.set) as (
 const states = new WeakMap<object, WorkflowAttemptStagingState>()
 const REQUIRED_FIELDS = objectFreeze(["stageArtifact"] as const)
 const OPTIONAL_FIELDS = objectFreeze(["idempotencyKey"] as const)
-const KEY_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$/u
+const CONTROL_PATTERN = /[\u0000-\u001f\u007f-\u009f]/u
 const ARTIFACT_ID_PATTERN = /^[A-Za-z][A-Za-z0-9]*(?:[._-][A-Za-z0-9]+)*$/u
 
 export function createWorkflowAttemptStaging(
@@ -67,7 +68,9 @@ export function createWorkflowAttemptStaging(
     idempotencyKey !== undefined
     && (
       typeof idempotencyKey !== "string"
-      || !(reflectApply(regexpTest, KEY_PATTERN, [idempotencyKey]) as boolean)
+      || idempotencyKey.length < 1
+      || idempotencyKey.length > 256
+      || (reflectApply(regexpTest, CONTROL_PATTERN, [idempotencyKey]) as boolean)
     )
   ) throw new TypeError("Workflow attempt staging idempotency key is invalid.")
 
@@ -157,11 +160,15 @@ function snapshotArtifact(value: unknown): WorkflowAttemptStagedArtifact {
     typeof id !== "string"
     || !(reflectApply(regexpTest, ARTIFACT_ID_PATTERN, [id]) as boolean)
   ) throw new TypeError("Workflow staged artifact id is invalid.")
-  if (!(bytes instanceof Uint8ArrayConstructor) || isProxy(bytes)) {
-    throw new TypeError("Workflow staged artifact bytes must be a Uint8Array.")
-  }
-  const copy = new Uint8ArrayConstructor(bytes.byteLength)
-  reflectApply(typedArraySet, copy, [bytes])
+  if (
+    typeof bytes !== "object"
+    || bytes === null
+    || isProxy(bytes)
+    || !(reflectApply(functionHasInstance, Uint8ArrayConstructor, [bytes]) as boolean)
+  ) throw new TypeError("Workflow staged artifact bytes must be a Uint8Array.")
+  const source = bytes as Uint8Array
+  const copy = new Uint8ArrayConstructor(source.byteLength)
+  reflectApply(typedArraySet, copy, [source])
   return objectFreeze({ id, bytes: copy })
 }
 
