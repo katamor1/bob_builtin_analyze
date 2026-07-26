@@ -34,15 +34,13 @@ import {
   persistProcessingBudgetReport
 } from "./processingBudgetCoverage"
 import { ProcessingCoveragePartialError } from "./processingCoverageError"
+import { computeProcessingOperationInputSha } from "./processingOperationInput"
 import {
   persistCompleteProcessingBudgetBinding,
   removeProcessingBudgetReportBinding,
   removeStaleProcessingBudgetReport
 } from "./processingBudgetReportGuard"
-import {
-  computeManagedReviewPackageContentHash,
-  computeReviewPackageInputHash
-} from "./reviewPackageBuilder"
+import { computeReviewPackageInputHash } from "./reviewPackageBuilder"
 import {
   buildCompleteReviewPackage,
   cleanManagedReviewPackageOutputs
@@ -50,6 +48,7 @@ import {
 import { validateReviewInput } from "./reviewInputValidator"
 import type { PreprocessResult } from "./preprocessTypes"
 import type { ReviewInput } from "./reviewTypes"
+import { readVerifiedReviewPackage } from "./verifiedReviewPackage"
 
 const DEFAULT_PREPROCESS_TIMEOUT_MS = 120_000
 const MIN_PREPROCESS_TIMEOUT_MS = 1_000
@@ -92,13 +91,19 @@ export async function preprocessReview(input: PreprocessReviewInput): Promise<Pr
     const inputPath = resolveWorkspacePathStrict(input.workspaceRoot, input.inputPath, "reviewInputPath")
     outDir = resolveWorkspacePathForKind(input.workspaceRoot, input.outDir, "review-package-output")
     await removeStaleProcessingBudgetReport(outDir)
+    await cleanManagedReviewPackageOutputs(outDir)
     const diffFixturePath = input.diffFixturePath
       ? resolveWorkspacePathStrict(input.workspaceRoot, input.diffFixturePath, "diffFixturePath")
       : undefined
     const reviewInput = await validateReviewInput(inputPath, input.workspaceRoot, textEncoding, limits.maxDocumentBytes)
     reviewInputForReport = reviewInput
-    inputSha256 = computeProcessingOperationInputSha(reviewInput, input, limits)
+    inputSha256 = computeProcessingOperationInputSha({
+      reviewInput,
+      configuration: input,
+      limits
+    })
     cancellation.throwIfCancelled()
+
     const diff = await collectGitDiff(reviewInput, {
       workspaceRoot: input.workspaceRoot,
       diffFixturePath,
@@ -110,7 +115,13 @@ export async function preprocessReview(input: PreprocessReviewInput): Promise<Pr
       signal: cancellation.signal as AbortSignal
     })
     diffForReport = diff
-    inputSha256 = computeProcessingOperationInputSha(reviewInput, input, limits, diff)
+    inputSha256 = computeProcessingOperationInputSha({
+      reviewInput,
+      configuration: input,
+      limits,
+      materialized: { diff }
+    })
+
     const repositoryIndexBuild = reviewInput.analysis_options?.repository_symbol_index_mode === "build"
       ? await produceConfiguredRepositoryIndex({
           workspaceRoot: input.workspaceRoot,
@@ -131,7 +142,11 @@ export async function preprocessReview(input: PreprocessReviewInput): Promise<Pr
       signal: cancellation.signal
     })
     cancellation.throwIfCancelled()
-    const codeAnalysis = await analyzeCodeChanges(diff, reviewInput, { workspaceRoot: input.workspaceRoot, textEncoding, limits })
+    const codeAnalysis = await analyzeCodeChanges(diff, reviewInput, {
+      workspaceRoot: input.workspaceRoot,
+      textEncoding,
+      limits
+    })
     const contextBudget = await buildReviewContextBudget({
       workspaceRoot: input.workspaceRoot,
       reviewInput,
@@ -168,10 +183,30 @@ export async function preprocessReview(input: PreprocessReviewInput): Promise<Pr
     const traceability = await buildTraceability({ reviewInput, documents, codeAnalysis, diff })
     cancellation.throwIfCancelled()
 
+    inputSha256 = computeProcessingOperationInputSha({
+      reviewInput,
+      configuration: input,
+      limits,
+      materialized: {
+        diff,
+        documents,
+        codeAnalysis,
+        repositoryIndexBuild,
+        contextBudgetArtifact: contextBudget.artifact,
+        contextWarnings: contextBudget.warnings,
+        traceability
+      }
+    })
+
     const prePackageIssues = coverageIssuesFromWarnings({
       ledger: processingBudgetLedger,
       diffWarnings: diff.warnings,
-      documentWarnings: documents.warnings
+      documentWarnings: documents.warnings,
+      codeWarnings: codeAnalysis.warnings,
+      repositoryWarnings: repositoryIndexBuild?.warnings,
+      contextWarnings: contextBudget.warnings,
+      traceabilityWarnings: traceability.warnings,
+      ledgerWarnings: upstreamLedger.warnings
     })
     if (prePackageIssues.length > 0) {
       const persisted = await persistProcessingBudgetReport({
@@ -215,21 +250,8 @@ export async function preprocessReview(input: PreprocessReviewInput): Promise<Pr
     }
     cancellation.throwIfCancelled()
 
-    const processingBudgetReport = await persistProcessingBudgetReport({
-      outDir,
-      operationId: processingOperationId(reviewInput.review.id),
-      inputSha256,
-      outcome: "success",
-      ledger: processingBudgetLedger
-    })
-    assertCompleteProcessingCoverage(processingBudgetReport, inputSha256)
-    const packageContentHash = await computeManagedReviewPackageContentHash(outDir)
-    await persistCompleteProcessingBudgetBinding({
-      outDir,
-      reportInputSha256: inputSha256,
-      packageContentSha256: packageContentHash
-    })
-
+    const packageSnapshot = await readVerifiedReviewPackage(outDir)
+    const packageContentHash = packageSnapshot.contentHash
     const packageObservation: ArtifactObservation = {
       id: `review-package:${reviewInput.review.id}`,
       kind: "review-package",
@@ -246,6 +268,39 @@ export async function preprocessReview(input: PreprocessReviewInput): Promise<Pr
       observations: [...upstreamObservations, packageObservation],
       completeKinds: ["project-rule-pack", "repository-symbol-index", "review-package"],
       maxBytes: limits.maxDocumentBytes
+    })
+
+    const postPackageIssues = coverageIssuesFromWarnings({
+      ledger: processingBudgetLedger,
+      packageWarnings,
+      ledgerWarnings: [...upstreamLedger.warnings, ...finalLedger.warnings]
+    })
+    if (postPackageIssues.length > 0) {
+      await cleanManagedReviewPackageOutputs(outDir)
+      packageBuilt = false
+      const persisted = await persistProcessingBudgetReport({
+        outDir,
+        operationId: processingOperationId(reviewInput.review.id),
+        inputSha256,
+        outcome: "success",
+        ledger: processingBudgetLedger,
+        issues: postPackageIssues
+      })
+      throw new ProcessingCoveragePartialError(postPackageIssues, persisted.reportPath)
+    }
+
+    const processingBudgetReport = await persistProcessingBudgetReport({
+      outDir,
+      operationId: processingOperationId(reviewInput.review.id),
+      inputSha256,
+      outcome: "success",
+      ledger: processingBudgetLedger
+    })
+    assertCompleteProcessingCoverage(processingBudgetReport, inputSha256)
+    await persistCompleteProcessingBudgetBinding({
+      outDir,
+      reportInputSha256: inputSha256,
+      packageContentSha256: packageContentHash
     })
 
     const warnings = [...new Set([
@@ -401,31 +456,6 @@ function ledgerSummary(result: ArtifactLedgerUpdateResult): PreprocessResult["ar
 function normalizePreprocessTimeout(value: number | undefined): number {
   if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return DEFAULT_PREPROCESS_TIMEOUT_MS
   return Math.max(MIN_PREPROCESS_TIMEOUT_MS, Math.min(MAX_PREPROCESS_TIMEOUT_MS, Math.floor(value)))
-}
-
-function computeProcessingOperationInputSha(
-  reviewInput: ReviewInput,
-  input: PreprocessReviewInput,
-  limits: ReviewProcessingLimits,
-  diff?: DiffSummary
-): string {
-  const processingBudgetLimits = Object.fromEntries(
-    Object.entries(input.processingBudgetLimits ?? {}).sort(([left], [right]) => left.localeCompare(right))
-  )
-  const payload = JSON.stringify({
-    schema_version: "code-consistency-processing-input/v1",
-    review_input: reviewInput,
-    diff: diff ? {
-      vcs: diff.vcs ?? "git",
-      base: diff.base,
-      head: diff.head,
-      files: diff.files.map((file) => ({ path: file.path, status: file.status }))
-    } : null,
-    limits,
-    processing_budget_limits: processingBudgetLimits,
-    workflow_run_id: input.workflowRunId ?? ""
-  })
-  return `sha256:${createHash("sha256").update(payload, "utf8").digest("hex")}`
 }
 
 function processingOperationId(reviewId: string): string {
