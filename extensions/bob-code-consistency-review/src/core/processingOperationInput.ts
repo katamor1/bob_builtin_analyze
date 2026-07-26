@@ -78,7 +78,7 @@ function canonicalValue(value: unknown, seen: Set<object>): unknown {
     return value
   }
   if (typeof value === "bigint") return value.toString(10)
-  if (value === undefined) return null
+  if (value === undefined) return ["processing-operation-undefined/v1"]
   if (typeof value !== "object") throw new Error("processing operation input contains an unsupported value")
   if (seen.has(value)) throw new Error("processing operation input contains a cycle")
   seen.add(value)
@@ -121,7 +121,7 @@ function canonicalValue(value: unknown, seen: Set<object>): unknown {
     for (const key of [...descriptors.keys()].sort(compareCodePoints)) {
       const descriptor = descriptors.get(key)
       if (!descriptor) throw new Error("processing operation input property descriptor was lost")
-      if (descriptor.value !== undefined) output[key] = canonicalValue(descriptor.value, seen)
+      output[key] = canonicalValue(descriptor.value, seen)
     }
     return output
   } finally {
