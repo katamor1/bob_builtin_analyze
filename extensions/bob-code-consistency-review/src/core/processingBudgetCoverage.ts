@@ -12,6 +12,7 @@ import {
 import type { SharedProcessingBudgetLedger } from "../sharedProcessingBudgetRuntime"
 
 export const PROCESSING_BUDGET_REPORT_FILE_SUFFIX = ".processing-budget-report.json" as const
+const MAX_REPORT_TEXT_UTF8_BYTES = 256
 
 export interface PersistProcessingBudgetReportInput {
   readonly outDir: string
@@ -179,8 +180,19 @@ function safeCategory(value: unknown): SharedProcessingBudgetReportFailure["cate
 
 function safeText(value: unknown): string | undefined {
   if (typeof value !== "string" || value.length === 0 || /[\u0000-\u001f\u007f-\u009f]/u.test(value)) return undefined
-  const characters = [...value.normalize("NFC")]
-  return characters.slice(0, 128).join("") || undefined
+  return truncateUtf8Prefix(value.normalize("NFC"), MAX_REPORT_TEXT_UTF8_BYTES) || undefined
+}
+
+function truncateUtf8Prefix(value: string, maximumBytes: number): string {
+  const output: string[] = []
+  let bytes = 0
+  for (const character of value) {
+    const characterBytes = Buffer.byteLength(character, "utf8")
+    if (bytes + characterBytes > maximumBytes) break
+    output.push(character)
+    bytes += characterBytes
+  }
+  return output.join("")
 }
 
 function safeInteger(value: unknown): number | undefined {
