@@ -95,10 +95,18 @@ test("canonical hashing is independent of object insertion order", () => {
   )
 })
 
-test("canonical hashing rejects accessors, cycles, and unsafe numbers", () => {
+test("canonical hashing rejects accessors, hidden state, symbols, cycles, and unsafe numbers", () => {
   const accessor = {}
   Object.defineProperty(accessor, "value", { enumerable: true, get: () => 1 })
   assert.throws(() => canonicalSha(accessor), /accessor/u)
+
+  const hidden = { visible: 1 }
+  Object.defineProperty(hidden, "hidden", { enumerable: false, value: 2 })
+  assert.throws(() => canonicalSha(hidden), /hidden property/u)
+
+  const symbolState = { visible: 1 }
+  symbolState[Symbol("hidden")] = 2
+  assert.throws(() => canonicalSha(symbolState), /symbol property/u)
 
   const cycle = {}
   cycle.self = cycle
