@@ -139,3 +139,49 @@ test("issues are copied into deterministic category, target, kind, and code orde
     ["raw_diff_bytes", "a", "truncation", "raw_diff_truncated"]
   ])
 })
+
+test("external reports must explicitly carry coverage_status", () => {
+  const report = JSON.parse(serializeProcessingBudgetReport(createProcessingBudgetReport(reportInput())))
+  delete report.coverage_status
+  assert.throws(
+    () => validateProcessingBudgetReport(report),
+    (error) => error?.code === "processing_budget_report_invalid"
+  )
+})
+
+test("validator rejects limits above the canonical absolute maximum", () => {
+  const report = JSON.parse(serializeProcessingBudgetReport(createProcessingBudgetReport(reportInput())))
+  const rawDiff = report.ledger.categories.find((entry) => entry.category === "raw_diff_bytes")
+  rawDiff.limit = 10_485_761
+  rawDiff.remaining = rawDiff.limit - rawDiff.used
+  assert.throws(
+    () => validateProcessingBudgetReport(report),
+    (error) => error?.code === "processing_budget_report_invalid"
+  )
+})
+
+test("validator rejects target limits that disagree with their category summary", () => {
+  const ledger = new ProcessingBudgetLedger()
+  ledger.reserveForTarget("single_document_bytes", "doc:1", 10).commit()
+  const report = JSON.parse(serializeProcessingBudgetReport(createProcessingBudgetReport(reportInput({ ledger }))))
+  report.ledger.targets[0].limit += 1
+  report.ledger.targets[0].remaining += 1
+  assert.throws(
+    () => validateProcessingBudgetReport(report),
+    (error) => error?.code === "processing_budget_report_invalid"
+  )
+})
+
+test("validator rejects aggregate categories that under-report child consumption", () => {
+  const ledger = new ProcessingBudgetLedger()
+  ledger.reserve("raw_diff_bytes", 10).commit()
+  const report = JSON.parse(serializeProcessingBudgetReport(createProcessingBudgetReport(reportInput({ ledger }))))
+  const aggregate = report.ledger.categories.find((entry) => entry.category === "total_operation_input_bytes")
+  aggregate.committed = 0
+  aggregate.used = aggregate.reserved
+  aggregate.remaining = aggregate.limit - aggregate.used
+  assert.throws(
+    () => validateProcessingBudgetReport(report),
+    (error) => error?.code === "processing_budget_report_invalid"
+  )
+})
