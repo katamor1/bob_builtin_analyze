@@ -44,6 +44,10 @@ function temporaryRunStore(t, options = {}) {
   })
 }
 
+function runJsonPath(runStore, runId) {
+  return path.join(runStore.workspaceRoot, ".bob", "workflows", "runs", runId, "run.json")
+}
+
 test("run creation persists exact detached provenance from the leased compiled plan", async (t) => {
   const { lease } = await runtimeLease()
   t.after(() => lease.release())
@@ -149,6 +153,55 @@ test("run coordinator retains one live lease across invalidation and releases it
 
   assert.equal(lease.released, true)
   lease.release()
+  assert.equal(lease.released, true)
+})
+
+test("failure after first durable save releases the newly adopted lease", async (t) => {
+  const { lease } = await runtimeLease()
+  const runStore = temporaryRunStore(t)
+  const subject = require("../out/core/contractV2/runPlanProvenance.js")
+  const { coordinateWorkflowRunExecution } = require("../out/core/engine/runExecutionCoordinator.js")
+  const run = await runStore.createRunFromPlanLease(lease, {})
+
+  await assert.rejects(
+    subject.runWithWorkflowContractV2PlanLease(lease, () => (
+      coordinateWorkflowRunExecution(runStore, run.runId, "first-save-failure", async () => {
+        assert.equal(await runStore.loadRun(run.runId), undefined)
+        await runStore.saveRun(run)
+        throw new Error("injected post-save failure")
+      })
+    )),
+    /injected post-save failure/
+  )
+
+  assert.equal(lease.released, true)
+  lease.release()
+  assert.equal(lease.released, true)
+})
+
+test("initial persisted provenance mismatch releases the retained lease", async (t) => {
+  const { lease } = await runtimeLease()
+  const runStore = temporaryRunStore(t)
+  const subject = require("../out/core/contractV2/runPlanProvenance.js")
+  const { coordinateWorkflowRunExecution } = require("../out/core/engine/runExecutionCoordinator.js")
+  let run
+  await subject.runWithWorkflowContractV2PlanLease(lease, async () => {
+    run = await runStore.createRunFromPlanLease(lease, {})
+    await runStore.saveRun(run)
+  })
+  assert.equal(lease.released, false)
+
+  const persistedPath = runJsonPath(runStore, run.runId)
+  const persisted = JSON.parse(fs.readFileSync(persistedPath, "utf8"))
+  const driftedDigest = `sha256:${"9".repeat(64)}`
+  persisted.workflowDefinitionHash = driftedDigest
+  persisted.planProvenance.planDigest = driftedDigest
+  fs.writeFileSync(persistedPath, `${JSON.stringify(persisted, null, 2)}\n`, "utf8")
+
+  await assert.rejects(
+    () => coordinateWorkflowRunExecution(runStore, run.runId, "mismatched", async () => run),
+    /provenance|match|lease/i
+  )
   assert.equal(lease.released, true)
 })
 
