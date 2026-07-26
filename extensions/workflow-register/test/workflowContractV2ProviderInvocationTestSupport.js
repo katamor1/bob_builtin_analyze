@@ -7,12 +7,13 @@ const DIALECT = "https://json-schema.org/draft/2020-12/schema"
 function canonicalSchema(id, body) {
   const canonical = require("../out/core/contractV2/canonicalJson.js")
   const value = { $schema: DIALECT, $id: id, ...body }
+  const bytes = canonical.canonicalJsonBytes(value)
   return {
     value,
-    bytes: canonical.canonicalJsonBytes(value),
+    bytes,
     evidence: {
       id,
-      bytes: canonical.canonicalJsonBytes(value).byteLength,
+      bytes: bytes.byteLength,
       digest: canonical.canonicalJsonDigest(value)
     }
   }
@@ -83,8 +84,7 @@ function workflowYaml(options) {
     "    errorSchema: schemas/error.json",
     `    sideEffect: ${options.sideEffect ?? "none"}`,
     `    idempotency: ${options.idempotency ?? "idempotent"}`,
-    "    requiredCapabilities:",
-    ...requiredCapabilities(options.sideEffect ?? "none"),
+    ...requiredCapabilityYaml(options.sideEffect ?? "none"),
     "bob:",
     "  profile: bob/2.0.1",
     "  requiredCapabilities: []",
@@ -93,10 +93,20 @@ function workflowYaml(options) {
   ].join("\n"), "utf8")
 }
 
-function requiredCapabilities(sideEffect) {
-  if (sideEffect === "workspace-write") return ["      - workflow.effect.workspace-write"]
-  if (sideEffect === "external") return ["      - workflow.effect.external"]
-  return ["      []"]
+function requiredCapabilityYaml(sideEffect) {
+  if (sideEffect === "workspace-write") {
+    return [
+      "    requiredCapabilities:",
+      "      - workflow.effect.workspace-write"
+    ]
+  }
+  if (sideEffect === "external") {
+    return [
+      "    requiredCapabilities:",
+      "      - workflow.effect.external"
+    ]
+  }
+  return ["    requiredCapabilities: []"]
 }
 
 function lockedProviderEvidence(contractEvidence) {
@@ -141,8 +151,8 @@ async function providerRuntime(options = {}) {
     "workflow.yaml": workflowYaml(options),
     "workflow.lock.json": Buffer.from("{}", "utf8"),
     "schemas/input.json": schemas.input.bytes,
-    "schemas/output.json": schemas.output.bytes,
-    "schemas/error.json": schemas.error.bytes
+    "schemas/error.json": schemas.error.bytes,
+    ...(options.outputKind === "unit" ? {} : { "schemas/output.json": schemas.output.bytes })
   }
   const lockModule = require("../out/core/contractV2/workflowLock.js")
   const initial = rawPackageFromFiles(files)
