@@ -38,7 +38,7 @@ test("schema requires coverage, ledger, and issue evidence for every report", ()
   assert.equal(schema.$defs.ledger.properties.categories.maxItems, PROCESSING_BUDGET_CATEGORY_IDS.length)
 })
 
-test("schema fixes every ledger category to canonical order, scope, and unit", () => {
+test("schema fixes every ledger category to canonical order, scope, unit, and absolute maximum", () => {
   const categories = schema.$defs.ledger.properties.categories
   assert.equal(categories.items, false)
   assert.equal(categories.prefixItems.length, PROCESSING_BUDGET_CATEGORY_IDS.length)
@@ -51,13 +51,38 @@ test("schema fixes every ledger category to canonical order, scope, and unit", (
     return {
       category: constants.category.const,
       scope: baseRef.endsWith("/targetCategory") ? "target" : "operation",
-      unit: constants.unit.const
+      unit: constants.unit.const,
+      absoluteMaximum: constants.limit.maximum
     }
   })
 
   assert.deepEqual(observed, PROCESSING_BUDGET_CATEGORY_IDS.map((category) => ({
     category,
     scope: PROCESSING_BUDGET_DEFINITION_BY_ID[category].scope,
-    unit: PROCESSING_BUDGET_DEFINITION_BY_ID[category].unit
+    unit: PROCESSING_BUDGET_DEFINITION_BY_ID[category].unit,
+    absoluteMaximum: PROCESSING_BUDGET_DEFINITION_BY_ID[category].absoluteMaximum
   })))
+})
+
+test("schema fixes target records to target-scoped category, unit, and maximum", () => {
+  const targets = schema.$defs.ledger.properties.targets
+  assert.equal(targets.uniqueItems, true)
+  const observed = targets.items.oneOf.map((entry) => {
+    const definitionName = entry.$ref.split("/").at(-1)
+    const constants = schema.$defs[definitionName].allOf[1].properties
+    return {
+      category: constants.category.const,
+      unit: constants.unit.const,
+      absoluteMaximum: constants.limit.maximum
+    }
+  })
+  const expected = PROCESSING_BUDGET_CATEGORY_IDS
+    .map((category) => PROCESSING_BUDGET_DEFINITION_BY_ID[category])
+    .filter((definition) => definition.scope === "target")
+    .map((definition) => ({
+      category: definition.id,
+      unit: definition.unit,
+      absoluteMaximum: definition.absoluteMaximum
+    }))
+  assert.deepEqual(observed, expected)
 })
