@@ -62,7 +62,7 @@ async function run(t, evidence) {
   })
 }
 
-test("document excerpt ledger accounts for the full rendered section", async (t) => {
+test("document excerpt ledger accounts for retained source content rather than Markdown framing", async (t) => {
   const result = await run(t, {
     observedContentBytes: 12,
     processedContentBytes: 12,
@@ -72,7 +72,8 @@ test("document excerpt ledger accounts for the full rendered section", async (t)
     readFailures: []
   })
   const category = result.report.ledger.categories.find((entry) => entry.category === "document_excerpt_bytes")
-  assert.equal(category.committed, Buffer.byteLength(ADDED_SECTION, "utf8"))
+  assert.equal(category.committed, 12)
+  assert.notEqual(category.committed, Buffer.byteLength(ADDED_SECTION, "utf8"))
 })
 
 test("exact original added-file bytes are preserved in truncation diagnostics", async (t) => {
@@ -80,7 +81,7 @@ test("exact original added-file bytes are preserved in truncation diagnostics", 
     () => run(t, {
       observedContentBytes: 1024,
       processedContentBytes: 200,
-      renderedContentBytes: 256,
+      renderedContentBytes: 200,
       truncated: true,
       skippedFileCount: 0,
       readFailures: []
