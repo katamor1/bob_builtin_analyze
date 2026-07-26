@@ -2,87 +2,130 @@
 
 const fs = require("node:fs/promises")
 const path = require("node:path")
+const { types: utilTypes } = require("node:util")
 
-const { canonicalJsonBytes } = require("../../out/core/contractV2/canonicalJson.js")
-const { snapshotBobContractProfile } = require("../../out/core/contractV2/bobProfile.js")
-const { createAuditedWorkflowCompilerEnvironment } = require("../../out/core/contractV2/index.js")
-const { parseStrictJson } = require("../../out/core/contractV2/packageLoaderInput.js")
-const { WorkflowProviderRegistry } = require("../../out/core/contractV2/providerRegistry.js")
+const { canonicalJsonBytes: canonicalJsonBytesCaptured } = require("../../out/core/contractV2/canonicalJson.js")
+const { snapshotBobContractProfile: snapshotBobContractProfileCaptured } = require("../../out/core/contractV2/bobProfile.js")
+const { createAuditedWorkflowCompilerEnvironment: createAuditedWorkflowCompilerEnvironmentCaptured } = require("../../out/core/contractV2/index.js")
+const { parseStrictJson: parseStrictJsonCaptured } = require("../../out/core/contractV2/packageLoaderInput.js")
+const { WorkflowProviderRegistry: WorkflowProviderRegistryConstructor } = require("../../out/core/contractV2/providerRegistry.js")
 
 const CATALOG_SCHEMA_VERSION = "workflow-provider-catalog-source/v1"
 const COLLECTIONS_SCHEMA_VERSION = "workflow-contract-v2-collections/v1"
 const MAX_CONTROL_BYTES = 8 * 1024 * 1024
+const MAX_REPOSITORY_PATH_BYTES = 1024
 const NEWLINE = Buffer.from("\n", "utf8")
-const arrayIncludes = Array.prototype.includes
+const CONTROL_PATTERN = /[\u0000-\u001f\u007f-\u009f]/u
+const WINDOWS_FORBIDDEN_PATTERN = /[<>:"|?*]/u
+const WINDOWS_RESERVED_DEVICE_PATTERN = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/iu
+
+const isProxy = utilTypes.isProxy
 const arrayIsArray = Array.isArray
+const arrayPrototype = Array.prototype
 const arrayPush = Array.prototype.push
-const arraySome = Array.prototype.some
+const bufferByteLength = Buffer.byteLength.bind(Buffer)
 const bufferConcat = Buffer.concat
 const bufferEquals = Buffer.prototype.equals
+const BigIntConstructor = BigInt
+const BufferConstructor = Buffer
+const numberIsSafeInteger = Number.isSafeInteger
+const numberToString = Number.prototype.toString
+const objectCreate = Object.create
+const objectDefineProperty = Object.defineProperty
 const objectFreeze = Object.freeze
+const objectGetOwnPropertyDescriptor = Object.getOwnPropertyDescriptor
+const objectGetOwnPropertyDescriptors = Object.getOwnPropertyDescriptors
+const objectGetPrototypeOf = Object.getPrototypeOf
 const objectHasOwn = Object.hasOwn
 const objectKeys = Object.keys
-const pathResolve = path.resolve
-const pathRelative = path.relative
+const objectPrototype = Object.prototype
 const pathIsAbsolute = path.isAbsolute
+const pathRelative = path.relative
+const pathResolve = path.resolve
 const reflectApply = Reflect.apply
+const reflectOwnKeys = Reflect.ownKeys
 const regexpExec = RegExp.prototype.exec
 const stringEndsWith = String.prototype.endsWith
 const stringIncludes = String.prototype.includes
 const stringNormalize = String.prototype.normalize
 const stringSplit = String.prototype.split
 const stringStartsWith = String.prototype.startsWith
+const stringToLowerCase = String.prototype.toLowerCase
+const fsLstat = fs.lstat
+const fsOpen = fs.open
+const fsRealpath = fs.realpath
+
+const ENVIRONMENT_INPUT_FIELDS = objectFreeze(["repositoryRoot", "providerCatalogPath"])
+const COLLECTION_INPUT_FIELDS = objectFreeze(["repositoryRoot", "collectionsPath"])
+const CATALOG_FIELDS = objectFreeze(["schemaVersion", "providers"])
+const COLLECTION_LIST_FIELDS = objectFreeze(["schemaVersion", "collections"])
+const PROVIDER_FIELDS = objectFreeze([
+  "id", "version", "inputSchema", "output", "errorSchema",
+  "sideEffect", "idempotency", "requiredCapabilities"
+])
 
 async function createWorkflowContractV2EvidenceEnvironment(input) {
-  const repositoryRoot = await canonicalRepositoryRoot(input.repositoryRoot)
+  const request = snapshotExactRecord(input, ENVIRONMENT_INPUT_FIELDS, "Workflow evidence environment input")
+  const repositoryRoot = await canonicalRepositoryRoot(request.repositoryRoot)
   const document = await readCanonicalJsonFile(
     repositoryRoot,
-    input.providerCatalogPath,
+    request.providerCatalogPath,
     "Workflow provider catalog"
   )
-  const root = exactRecord(document, ["schemaVersion", "providers"], "Workflow provider catalog")
+  const root = snapshotExactRecord(document, CATALOG_FIELDS, "Workflow provider catalog")
   if (root.schemaVersion !== CATALOG_SCHEMA_VERSION) {
     throw new TypeError("Workflow provider catalog schema version is invalid.")
   }
-  const providers = denseArray(root.providers, 256, "Workflow provider catalog providers")
-  const registry = new WorkflowProviderRegistry()
+  const providers = snapshotDenseArray(root.providers, 256, "Workflow provider catalog providers")
+  const registry = new WorkflowProviderRegistryConstructor()
   for (let index = 0; index < providers.length; index += 1) {
-    const provider = exactRecord(providers[index], [
-      "id", "version", "inputSchema", "output", "errorSchema",
-      "sideEffect", "idempotency", "requiredCapabilities"
-    ], "Workflow provider catalog provider")
+    const provider = snapshotExactRecord(
+      providers[index],
+      PROVIDER_FIELDS,
+      "Workflow provider catalog provider"
+    )
     registry.register({
       sourceId: "workflow-contract-v2-manifest",
       contract: {
-        ...provider,
+        id: provider.id,
+        version: provider.version,
+        inputSchema: provider.inputSchema,
+        output: provider.output,
+        errorSchema: provider.errorSchema,
+        sideEffect: provider.sideEffect,
+        idempotency: provider.idempotency,
+        requiredCapabilities: provider.requiredCapabilities,
         dispatch() {
           throw new Error("Compile-only workflow provider dispatch is unavailable.")
         }
       }
     })
   }
-  return createAuditedWorkflowCompilerEnvironment({
+  return createAuditedWorkflowCompilerEnvironmentCaptured({
     purpose: "evidence",
     providerCatalog: registry.snapshot(),
-    bobProfile: snapshotBobContractProfile({ registerSource() {} })
+    bobProfile: snapshotBobContractProfileCaptured({ registerSource() {} })
   })
 }
 
 async function readWorkflowContractV2Collections(input) {
-  const repositoryRoot = await canonicalRepositoryRoot(input.repositoryRoot)
+  const request = snapshotExactRecord(input, COLLECTION_INPUT_FIELDS, "Workflow collections input")
+  const repositoryRoot = await canonicalRepositoryRoot(request.repositoryRoot)
   const document = await readCanonicalJsonFile(
     repositoryRoot,
-    input.collectionsPath,
+    request.collectionsPath,
     "Workflow collection list"
   )
-  const root = exactRecord(document, ["schemaVersion", "collections"], "Workflow collection list")
+  const root = snapshotExactRecord(document, COLLECTION_LIST_FIELDS, "Workflow collection list")
   if (root.schemaVersion !== COLLECTIONS_SCHEMA_VERSION) {
     throw new TypeError("Workflow collection list schema version is invalid.")
   }
-  const values = denseArray(root.collections, 256, "Workflow collection list collections")
+  const values = snapshotDenseArray(root.collections, 256, "Workflow collection list collections")
   const collections = []
   for (let index = 0; index < values.length; index += 1) {
-    reflectApply(arrayPush, collections, [repositoryRelativePath(values[index], "Workflow collection path")])
+    reflectApply(arrayPush, collections, [
+      repositoryRelativePath(values[index], "Workflow collection path")
+    ])
   }
   return objectFreeze(collections)
 }
@@ -90,14 +133,43 @@ async function readWorkflowContractV2Collections(input) {
 async function readCanonicalJsonFile(repositoryRoot, repositoryRelativeFile, label) {
   const relative = repositoryRelativePath(repositoryRelativeFile, `${label} path`)
   const lexical = resolveWithinRepository(repositoryRoot, relative)
-  const stat = await fs.lstat(lexical)
-  if (!stat.isFile() || stat.isSymbolicLink()) throw new TypeError(`${label} must be a direct regular file.`)
-  const absolute = await fs.realpath(lexical)
-  assertPhysicalContainment(repositoryRoot, absolute, `${label} path`)
-  const bytes = await fs.readFile(absolute)
-  if (bytes.byteLength > MAX_CONTROL_BYTES) throw new TypeError(`${label} is too large.`)
-  const parsed = parseStrictJson(bytes, label)
-  const canonical = reflectApply(bufferConcat, Buffer, [[canonicalJsonBytes(parsed), NEWLINE]])
+  const before = await fsLstat(lexical, { bigint: true })
+  if (!before.isFile() || before.isSymbolicLink()) {
+    throw new TypeError(`${label} must be a direct regular file.`)
+  }
+  if (before.size > BigIntConstructor(MAX_CONTROL_BYTES)) throw new TypeError(`${label} is too large.`)
+  const physicalBefore = await fsRealpath(lexical)
+  assertPhysicalContainment(repositoryRoot, physicalBefore, `${label} path`)
+
+  const handle = await fsOpen(physicalBefore, "r")
+  let bytes
+  try {
+    const openedBefore = await handle.stat({ bigint: true })
+    if (!openedBefore.isFile() || openedBefore.size > BigIntConstructor(MAX_CONTROL_BYTES)) {
+      throw new TypeError(`${label} must be a bounded regular file.`)
+    }
+    bytes = await handle.readFile()
+    const openedAfter = await handle.stat({ bigint: true })
+    if (!sameFileSnapshot(openedBefore, openedAfter) || BigIntConstructor(bytes.byteLength) !== openedBefore.size) {
+      throw new TypeError(`${label} changed while it was being read.`)
+    }
+  } finally {
+    await handle.close()
+  }
+
+  const [after, physicalAfter] = await Promise.all([
+    fsLstat(lexical, { bigint: true }),
+    fsRealpath(lexical)
+  ])
+  if (!sameFileSnapshot(before, after) || physicalAfter !== physicalBefore) {
+    throw new TypeError(`${label} changed while it was being read.`)
+  }
+
+  const parsed = parseStrictJsonCaptured(bytes, label)
+  const canonical = reflectApply(bufferConcat, BufferConstructor, [[
+    canonicalJsonBytesCaptured(parsed),
+    NEWLINE
+  ]])
   if (!reflectApply(bufferEquals, bytes, [canonical])) {
     throw new TypeError(`${label} must contain canonical JSON followed by one LF.`)
   }
@@ -108,7 +180,12 @@ async function canonicalRepositoryRoot(value) {
   if (typeof value !== "string" || value.length === 0) {
     throw new TypeError("Repository root is required.")
   }
-  return fs.realpath(pathResolve(value))
+  const lexical = pathResolve(value)
+  const stat = await fsLstat(lexical)
+  if (!stat.isDirectory() || stat.isSymbolicLink()) {
+    throw new TypeError("Repository root must be a direct directory, not a symbolic link.")
+  }
+  return fsRealpath(lexical)
 }
 
 function resolveWithinRepository(repositoryRoot, relative) {
@@ -137,9 +214,11 @@ function assertPhysicalContainment(repositoryRoot, candidate, label) {
 }
 
 function repositoryRelativePath(value, label) {
-  if (typeof value !== "string" || value.length === 0 || value.length > 1024) {
-    throw new TypeError(`${label} is invalid.`)
-  }
+  if (
+    typeof value !== "string"
+    || value.length === 0
+    || bufferByteLength(value, "utf8") > MAX_REPOSITORY_PATH_BYTES
+  ) throw new TypeError(`${label} is invalid.`)
   if (
     reflectApply(stringStartsWith, value, ["/"])
     || reflectApply(stringEndsWith, value, ["/"])
@@ -151,47 +230,137 @@ function repositoryRelativePath(value, label) {
   const segments = reflectApply(stringSplit, value, ["/"])
   for (let index = 0; index < segments.length; index += 1) {
     const segment = segments[index]
-    if (
-      !segment
-      || segment === "."
-      || segment === ".."
-      || reflectApply(regexpExec, /[\u0000-\u001f\u007f-\u009f]/u, [segment]) !== null
-    ) {
+    if (!segment || segment === "." || segment === "..") {
       throw new TypeError(`${label} contains an invalid segment.`)
     }
+    assertPortableSegment(segment, label)
   }
   return value
 }
 
-function exactRecord(value, fields, label) {
-  if (value === null || typeof value !== "object" || arrayIsArray(value)) {
-    throw new TypeError(`${label} must be a record.`)
-  }
-  const keys = objectKeys(value)
+function portablePathKey(value) {
+  const normalized = reflectApply(stringNormalize, value, ["NFC"])
+  return reflectApply(stringToLowerCase, normalized, [])
+}
+
+function assertPortableSegment(segment, label) {
   if (
-    keys.length !== fields.length
-    || reflectApply(arraySome, keys, [(key) => !(reflectApply(arrayIncludes, fields, [key]))])
-  ) {
-    throw new TypeError(`${label} contains an unknown field.`)
-  }
+    reflectApply(regexpExec, CONTROL_PATTERN, [segment]) !== null
+    || reflectApply(regexpExec, WINDOWS_FORBIDDEN_PATTERN, [segment]) !== null
+    || reflectApply(regexpExec, WINDOWS_RESERVED_DEVICE_PATTERN, [segment]) !== null
+    || reflectApply(stringEndsWith, segment, ["."])
+    || reflectApply(stringEndsWith, segment, [" "])
+  ) throw new TypeError(`${label} contains a non-portable segment.`)
+}
+
+function snapshotExactRecord(value, fields, label) {
+  const snapshot = snapshotRecord(value, label)
+  const keys = objectKeys(snapshot)
+  if (keys.length !== fields.length) throw new TypeError(`${label} contains an unknown field.`)
   for (let index = 0; index < fields.length; index += 1) {
     const field = fields[index]
-    if (!objectHasOwn(value, field)) throw new TypeError(`${label}.${field} is required.`)
+    if (!objectHasOwn(snapshot, field)) throw new TypeError(`${label}.${field} is required.`)
   }
-  return value
+  for (let index = 0; index < keys.length; index += 1) {
+    if (!contains(fields, keys[index])) throw new TypeError(`${label} contains an unknown field.`)
+  }
+  return snapshot
 }
 
-function denseArray(value, maximum, label) {
-  if (!arrayIsArray(value) || value.length > maximum || objectKeys(value).length !== value.length) {
-    throw new TypeError(`${label} must be a bounded dense array.`)
+function snapshotRecord(value, label) {
+  if (value === null || typeof value !== "object" || isProxy(value)) {
+    throw new TypeError(`${label} must be an ordinary non-proxy record.`)
   }
-  return value
+  const prototype = objectGetPrototypeOf(value)
+  if (prototype !== objectPrototype && prototype !== null) {
+    throw new TypeError(`${label} must be an ordinary record.`)
+  }
+  const descriptors = objectGetOwnPropertyDescriptors(value)
+  const keys = reflectOwnKeys(descriptors)
+  const snapshot = objectCreate(null)
+  for (let index = 0; index < keys.length; index += 1) {
+    const key = keys[index]
+    if (typeof key !== "string") throw new TypeError(`${label} contains an unsupported key.`)
+    const descriptor = descriptorEntry(descriptors, key)
+    if (
+      descriptor === undefined
+      || !objectHasOwn(descriptor, "value")
+      || objectHasOwn(descriptor, "get")
+      || objectHasOwn(descriptor, "set")
+      || descriptor.enumerable !== true
+    ) throw new TypeError(`${label}.${key} must be an enumerable own data property.`)
+    objectDefineProperty(snapshot, key, {
+      configurable: false,
+      enumerable: true,
+      value: descriptor.value,
+      writable: false
+    })
+  }
+  return objectFreeze(snapshot)
+}
+
+function snapshotDenseArray(value, maximum, label) {
+  if (isProxy(value) || !arrayIsArray(value) || objectGetPrototypeOf(value) !== arrayPrototype) {
+    throw new TypeError(`${label} must be a bounded dense ordinary array.`)
+  }
+  const descriptors = objectGetOwnPropertyDescriptors(value)
+  const length = descriptorEntry(descriptors, "length")?.value
+  if (
+    typeof length !== "number"
+    || !numberIsSafeInteger(length)
+    || length < 0
+    || length > maximum
+    || reflectOwnKeys(descriptors).length !== length + 1
+  ) throw new TypeError(`${label} must be a bounded dense ordinary array.`)
+  const values = []
+  for (let index = 0; index < length; index += 1) {
+    const descriptor = descriptorEntry(descriptors, numberAsString(index))
+    if (
+      descriptor === undefined
+      || !objectHasOwn(descriptor, "value")
+      || objectHasOwn(descriptor, "get")
+      || objectHasOwn(descriptor, "set")
+      || descriptor.enumerable !== true
+    ) throw new TypeError(`${label} must contain own data items.`)
+    objectDefineProperty(values, numberAsString(index), {
+      configurable: true,
+      enumerable: true,
+      value: descriptor.value,
+      writable: true
+    })
+  }
+  return objectFreeze(values)
+}
+
+function descriptorEntry(descriptors, key) {
+  const holder = objectGetOwnPropertyDescriptor(descriptors, key)
+  return holder !== undefined && objectHasOwn(holder, "value") ? holder.value : undefined
+}
+
+function sameFileSnapshot(left, right) {
+  return left.dev === right.dev
+    && left.ino === right.ino
+    && left.mode === right.mode
+    && left.size === right.size
+    && left.mtimeNs === right.mtimeNs
+    && left.ctimeNs === right.ctimeNs
+}
+
+function contains(values, value) {
+  for (let index = 0; index < values.length; index += 1) if (values[index] === value) return true
+  return false
+}
+
+function numberAsString(value) {
+  return reflectApply(numberToString, value, [])
 }
 
 module.exports = {
   CATALOG_SCHEMA_VERSION,
   COLLECTIONS_SCHEMA_VERSION,
+  canonicalRepositoryRoot,
   createWorkflowContractV2EvidenceEnvironment,
+  portablePathKey,
   readCanonicalJsonFile,
   readWorkflowContractV2Collections,
   repositoryRelativePath,
