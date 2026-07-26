@@ -1,10 +1,7 @@
 import * as fs from "node:fs/promises"
 import * as path from "node:path"
 import { ProcessingCoveragePartialError } from "./processingCoverageError"
-import {
-  buildReviewPackage,
-  type BuildReviewPackageInput
-} from "./reviewPackageBuilder"
+import { buildReviewPackage } from "./reviewPackageBuilder"
 import { coverageIssuesFromWarnings } from "./processingBudgetCoverage"
 
 const MANAGED_PACKAGE_OUTPUTS = Object.freeze([
@@ -26,6 +23,8 @@ const MANAGED_PACKAGE_OUTPUTS = Object.freeze([
   "deterministic-checks.md",
   "bob-input.md"
 ])
+
+type BuildReviewPackageInput = Parameters<typeof buildReviewPackage>[0]
 
 export async function buildCompleteReviewPackage(input: BuildReviewPackageInput): Promise<string[]> {
   const warnings = await buildReviewPackage(input)
