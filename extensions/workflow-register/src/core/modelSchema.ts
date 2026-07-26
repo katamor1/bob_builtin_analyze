@@ -6,7 +6,7 @@ import type { ResultSinkDefinition } from "./modelSinks"
  * legacy は既存定義の継続読み込み用であり、新しい runtime metadata を追加しても
  * 既存 workflow の識別と移行判定に使う値はここで固定する。
  */
-export type WorkflowSchemaVersion = "legacy" | "workflow-register/v1"
+export type WorkflowSchemaVersion = "legacy" | "workflow-register/v1" | "workflow-register/v2"
 export type WorkflowStepType = "command" | "agent" | "manual" | "result"
 export type WorkflowStepCompletionMode = "auto" | "manual"
 export type WorkflowStepMessageMode = "full" | "current" | "silent" | "step"
