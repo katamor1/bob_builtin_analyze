@@ -82,6 +82,13 @@ export function createWorkflowPlanLease(input: CreateWorkflowPlanLeaseInput): Wo
   return objectFreeze(lease)
 }
 
+/** Internal runtime boundary; intentionally not re-exported from contractV2/index.ts. */
+export function requireActiveWorkflowPlanLeaseHandle(
+  lease: unknown
+): CompiledWorkflowPlanHandle {
+  return requireActiveLeaseState(lease).handle
+}
+
 function requireLeaseState(lease: unknown): WorkflowPlanLeaseState {
   if (typeof lease !== "object" || lease === null || isProxy(lease)) {
     throw new TypeError("Workflow plan lease is invalid.")
@@ -91,7 +98,7 @@ function requireLeaseState(lease: unknown): WorkflowPlanLeaseState {
   return state
 }
 
-function requireActiveLeaseState(lease: WorkflowPlanLease): WorkflowPlanLeaseState {
+function requireActiveLeaseState(lease: unknown): WorkflowPlanLeaseState {
   const state = requireLeaseState(lease)
   if (state.released) throw new TypeError("Workflow plan lease has been released.")
   return state
