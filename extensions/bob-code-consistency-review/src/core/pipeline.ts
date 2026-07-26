@@ -1,6 +1,8 @@
+import { createHash } from "node:crypto"
 import { analyzeCodeChanges } from "../analyzers/codeChangeAnalyzer"
 import { extractDocuments } from "../analyzers/documentExtractor"
 import { buildTraceability } from "../analyzers/traceabilityBuilder"
+import type { ContextBudgetArtifact } from "../evidenceScope/contextBudgetArtifact"
 import { buildReviewContextBudget } from "../evidenceScope/reviewContextBudget"
 import {
   updateArtifactLedger,
@@ -12,6 +14,7 @@ import {
   produceRepositorySymbolIndex,
   type ProduceRepositorySymbolIndexResult
 } from "../evidenceScope/repositorySymbolIndexProducer"
+import type { SharedProcessingBudgetReportIssue } from "../sharedProcessingBudgetReport"
 import {
   createAbsoluteDeadline,
   createCancellationScope,
@@ -19,14 +22,27 @@ import {
   type SharedProcessingBudgetLimits
 } from "../sharedProcessingBudgetRuntime"
 import { collectGitDiff } from "./gitDiffCollector"
+import type { DiffSummary } from "./diffTypes"
 import { relativePosix, resolveWorkspacePathForKind, resolveWorkspacePathStrict } from "./fileSystem"
 import { normalizeReviewProcessingLimits, type ReviewProcessingLimits } from "./limits"
 import { createPipelineProcessingBudgetLedger } from "./processingBudgetPipeline"
 import {
-  buildReviewPackage,
+  assertCompleteProcessingCoverage,
+  coverageIssuesFromWarnings,
+  failureFromProcessingError,
+  outcomeFromProcessingError,
+  persistProcessingBudgetReport
+} from "./processingBudgetCoverage"
+import { ProcessingCoveragePartialError } from "./processingCoverageError"
+import { removeStaleProcessingBudgetReport } from "./processingBudgetReportGuard"
+import {
   computeManagedReviewPackageContentHash,
   computeReviewPackageInputHash
 } from "./reviewPackageBuilder"
+import {
+  buildCompleteReviewPackage,
+  cleanManagedReviewPackageOutputs
+} from "./reviewPackageCoverageGuard"
 import { validateReviewInput } from "./reviewInputValidator"
 import type { PreprocessResult } from "./preprocessTypes"
 import type { ReviewInput } from "./reviewTypes"
@@ -34,6 +50,7 @@ import type { ReviewInput } from "./reviewTypes"
 const DEFAULT_PREPROCESS_TIMEOUT_MS = 120_000
 const MIN_PREPROCESS_TIMEOUT_MS = 1_000
 const MAX_PREPROCESS_TIMEOUT_MS = 600_000
+const PROCESSING_REPORT_OPERATION_PREFIX = "code-consistency-preprocess"
 
 export interface PreprocessReviewInput {
   workspaceRoot: string
@@ -59,15 +76,24 @@ export async function preprocessReview(input: PreprocessReviewInput): Promise<Pr
     deadline,
     signal: input.abortSignal
   })
+  let outDir: string | undefined
+  let reviewInputForReport: ReviewInput | undefined
+  let diffForReport: DiffSummary | undefined
+  let contextBudgetArtifactForReport: ContextBudgetArtifact | undefined
+  let inputSha256: string | undefined
+  let packageBuilt = false
 
   try {
     cancellation.throwIfCancelled()
     const inputPath = resolveWorkspacePathStrict(input.workspaceRoot, input.inputPath, "reviewInputPath")
-    const outDir = resolveWorkspacePathForKind(input.workspaceRoot, input.outDir, "review-package-output")
+    outDir = resolveWorkspacePathForKind(input.workspaceRoot, input.outDir, "review-package-output")
+    await removeStaleProcessingBudgetReport(outDir)
     const diffFixturePath = input.diffFixturePath
       ? resolveWorkspacePathStrict(input.workspaceRoot, input.diffFixturePath, "diffFixturePath")
       : undefined
     const reviewInput = await validateReviewInput(inputPath, input.workspaceRoot, textEncoding, limits.maxDocumentBytes)
+    reviewInputForReport = reviewInput
+    inputSha256 = computeProcessingOperationInputSha(reviewInput, input, limits)
     cancellation.throwIfCancelled()
     const diff = await collectGitDiff(reviewInput, {
       workspaceRoot: input.workspaceRoot,
@@ -79,6 +105,8 @@ export async function preprocessReview(input: PreprocessReviewInput): Promise<Pr
       deadline,
       signal: cancellation.signal as AbortSignal
     })
+    diffForReport = diff
+    inputSha256 = computeProcessingOperationInputSha(reviewInput, input, limits, diff)
     const repositoryIndexBuild = reviewInput.analysis_options?.repository_symbol_index_mode === "build"
       ? await produceConfiguredRepositoryIndex({
           workspaceRoot: input.workspaceRoot,
@@ -119,6 +147,7 @@ export async function preprocessReview(input: PreprocessReviewInput): Promise<Pr
         })
       }
     })
+    contextBudgetArtifactForReport = contextBudget.artifact
     const upstreamObservations = buildUpstreamArtifactObservations(
       contextBudget.artifact,
       repositoryIndexBuild,
@@ -135,20 +164,61 @@ export async function preprocessReview(input: PreprocessReviewInput): Promise<Pr
     const traceability = await buildTraceability({ reviewInput, documents, codeAnalysis, diff })
     cancellation.throwIfCancelled()
 
-    const packageWarnings = await buildReviewPackage({
-      workspaceRoot: input.workspaceRoot,
-      outDir,
-      reviewInput,
-      diff,
-      documents,
-      codeAnalysis,
-      traceability,
-      contextBudgetArtifact: contextBudget.artifact,
-      limits,
-      budgetLedger: processingBudgetLedger,
-      workflowRunId: input.workflowRunId
+    const prePackageIssues = coverageIssuesFromWarnings({
+      ledger: processingBudgetLedger,
+      diffWarnings: diff.warnings,
+      documentWarnings: documents.warnings
     })
+    if (prePackageIssues.length > 0) {
+      const persisted = await persistProcessingBudgetReport({
+        outDir,
+        operationId: processingOperationId(reviewInput.review.id),
+        inputSha256,
+        outcome: "success",
+        ledger: processingBudgetLedger,
+        issues: prePackageIssues
+      })
+      throw new ProcessingCoveragePartialError(prePackageIssues, persisted.reportPath)
+    }
+
+    let packageWarnings: string[]
+    try {
+      packageWarnings = await buildCompleteReviewPackage({
+        workspaceRoot: input.workspaceRoot,
+        outDir,
+        reviewInput,
+        diff,
+        documents,
+        codeAnalysis,
+        traceability,
+        contextBudgetArtifact: contextBudget.artifact,
+        limits,
+        budgetLedger: processingBudgetLedger,
+        workflowRunId: input.workflowRunId
+      })
+      packageBuilt = true
+    } catch (error) {
+      if (!(error instanceof ProcessingCoveragePartialError)) throw error
+      const persisted = await persistProcessingBudgetReport({
+        outDir,
+        operationId: processingOperationId(reviewInput.review.id),
+        inputSha256,
+        outcome: "success",
+        ledger: processingBudgetLedger,
+        issues: error.issues
+      })
+      throw new ProcessingCoveragePartialError(error.issues, persisted.reportPath)
+    }
     cancellation.throwIfCancelled()
+
+    const processingBudgetReport = await persistProcessingBudgetReport({
+      outDir,
+      operationId: processingOperationId(reviewInput.review.id),
+      inputSha256,
+      outcome: "success",
+      ledger: processingBudgetLedger
+    })
+    assertCompleteProcessingCoverage(processingBudgetReport, inputSha256)
 
     const packageObservation: ArtifactObservation = {
       id: `review-package:${reviewInput.review.id}`,
@@ -188,9 +258,38 @@ export async function preprocessReview(input: PreprocessReviewInput): Promise<Pr
       codeEvidence: codeAnalysis.evidence.length,
       ...(repositoryIndexBuild ? { repositoryIndexBuild } : {}),
       artifactLedger: ledgerSummary(finalLedger),
+      processingBudgetReport: {
+        path: processingBudgetReport.reportPath,
+        inputSha256,
+        coverageStatus: "complete"
+      },
       warnings,
-      summary: `Generated review package for ${reviewInput.review.id}: ${diff.files.length} file(s), ${documents.evidence.length} document evidence item(s), ${codeAnalysis.evidence.length} code evidence item(s).${repositoryIndexBuild ? ` Repository index: ${repositoryIndexBuild.rebuiltFiles} rebuilt, ${repositoryIndexBuild.reusedFiles} reused, ${repositoryIndexBuild.removedFiles} removed.` : ""} Artifact ledger: ${finalLedger.fresh} fresh, ${finalLedger.stale} stale, ${finalLedger.missing} missing. Generated artifacts may contain sensitive design, customer, source, or raw diff context; ensure .bob-review/ and .bob-trace/ai-traceability-draft/ are ignored unless intentionally versioned.`
+      summary: `Generated review package for ${reviewInput.review.id}: ${diff.files.length} file(s), ${documents.evidence.length} document evidence item(s), ${codeAnalysis.evidence.length} code evidence item(s).${repositoryIndexBuild ? ` Repository index: ${repositoryIndexBuild.rebuiltFiles} rebuilt, ${repositoryIndexBuild.reusedFiles} reused, ${repositoryIndexBuild.removedFiles} removed.` : ""} Artifact ledger: ${finalLedger.fresh} fresh, ${finalLedger.stale} stale, ${finalLedger.missing} missing. Processing coverage: complete. Generated artifacts may contain sensitive design, customer, source, or raw diff context; ensure .bob-review/ and .bob-trace/ai-traceability-draft/ are ignored unless intentionally versioned.`
     }
+  } catch (error) {
+    if (error instanceof ProcessingCoveragePartialError) throw error
+    if (packageBuilt && outDir) {
+      try { await cleanManagedReviewPackageOutputs(outDir) } catch {}
+    }
+    if (outDir && reviewInputForReport && inputSha256) {
+      try {
+        await persistProcessingBudgetReport({
+          outDir,
+          operationId: processingOperationId(reviewInputForReport.review.id),
+          inputSha256,
+          outcome: outcomeFromProcessingError(error),
+          ledger: processingBudgetLedger,
+          issues: [operationIncompleteIssue(diffForReport, contextBudgetArtifactForReport)],
+          failure: failureFromProcessingError(error)
+        })
+      } catch (reportError) {
+        throw new AggregateError(
+          [error, reportError],
+          "Processing failed and its processing-budget report could not be persisted."
+        )
+      }
+    }
+    throw error
   } finally {
     cancellation.dispose()
   }
@@ -289,4 +388,50 @@ function ledgerSummary(result: ArtifactLedgerUpdateResult): PreprocessResult["ar
 function normalizePreprocessTimeout(value: number | undefined): number {
   if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return DEFAULT_PREPROCESS_TIMEOUT_MS
   return Math.max(MIN_PREPROCESS_TIMEOUT_MS, Math.min(MAX_PREPROCESS_TIMEOUT_MS, Math.floor(value)))
+}
+
+function computeProcessingOperationInputSha(
+  reviewInput: ReviewInput,
+  input: PreprocessReviewInput,
+  limits: ReviewProcessingLimits,
+  diff?: DiffSummary
+): string {
+  const processingBudgetLimits = Object.fromEntries(
+    Object.entries(input.processingBudgetLimits ?? {}).sort(([left], [right]) => left.localeCompare(right))
+  )
+  const payload = JSON.stringify({
+    schema_version: "code-consistency-processing-input/v1",
+    review_input: reviewInput,
+    diff: diff ? {
+      vcs: diff.vcs ?? "git",
+      base: diff.base,
+      head: diff.head,
+      files: diff.files.map((file) => ({ path: file.path, status: file.status }))
+    } : null,
+    limits,
+    processing_budget_limits: processingBudgetLimits,
+    workflow_run_id: input.workflowRunId ?? ""
+  })
+  return `sha256:${createHash("sha256").update(payload, "utf8").digest("hex")}`
+}
+
+function processingOperationId(reviewId: string): string {
+  const value = `${PROCESSING_REPORT_OPERATION_PREFIX}:${reviewId}`
+  return [...value].slice(0, 128).join("")
+}
+
+function operationIncompleteIssue(
+  diff: DiffSummary | undefined,
+  contextBudgetArtifact: ContextBudgetArtifact | undefined
+): SharedProcessingBudgetReportIssue {
+  const stage = contextBudgetArtifact
+    ? "after_context_budget"
+    : diff
+      ? "after_diff_collection"
+      : "before_diff_collection"
+  return Object.freeze({
+    kind: "unprocessed" as const,
+    code: "operation_incomplete",
+    target: stage
+  })
 }
