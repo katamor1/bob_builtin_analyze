@@ -40,6 +40,7 @@ const objectHasOwn = Object.hasOwn
 const objectKeys = Object.keys
 const objectPrototype = Object.prototype
 const pathIsAbsolute = path.isAbsolute
+const pathJoin = path.join
 const pathRelative = path.relative
 const pathResolve = path.resolve
 const reflectApply = Reflect.apply
@@ -132,11 +133,9 @@ async function readWorkflowContractV2Collections(input) {
 
 async function readCanonicalJsonFile(repositoryRoot, repositoryRelativeFile, label) {
   const relative = repositoryRelativePath(repositoryRelativeFile, `${label} path`)
-  const lexical = resolveWithinRepository(repositoryRoot, relative)
-  const before = await fsLstat(lexical, { bigint: true })
-  if (!before.isFile() || before.isSymbolicLink()) {
-    throw new TypeError(`${label} must be a direct regular file.`)
-  }
+  const beforePath = await inspectDirectRepositoryPath(repositoryRoot, relative, "file", label)
+  const lexical = beforePath.path
+  const before = beforePath.stat
   if (before.size > BigIntConstructor(MAX_CONTROL_BYTES)) throw new TypeError(`${label} is too large.`)
   const physicalBefore = await fsRealpath(lexical)
   assertPhysicalContainment(repositoryRoot, physicalBefore, `${label} path`)
@@ -157,11 +156,11 @@ async function readCanonicalJsonFile(repositoryRoot, repositoryRelativeFile, lab
     await handle.close()
   }
 
-  const [after, physicalAfter] = await Promise.all([
-    fsLstat(lexical, { bigint: true }),
+  const [afterPath, physicalAfter] = await Promise.all([
+    inspectDirectRepositoryPath(repositoryRoot, relative, "file", label),
     fsRealpath(lexical)
   ])
-  if (!sameFileSnapshot(before, after) || physicalAfter !== physicalBefore) {
+  if (!sameFileSnapshot(before, afterPath.stat) || physicalAfter !== physicalBefore) {
     throw new TypeError(`${label} changed while it was being read.`)
   }
 
@@ -181,11 +180,41 @@ async function canonicalRepositoryRoot(value) {
     throw new TypeError("Repository root is required.")
   }
   const lexical = pathResolve(value)
-  const stat = await fsLstat(lexical)
-  if (!stat.isDirectory() || stat.isSymbolicLink()) {
+  const before = await fsLstat(lexical, { bigint: true })
+  if (!before.isDirectory() || before.isSymbolicLink()) {
     throw new TypeError("Repository root must be a direct directory, not a symbolic link.")
   }
-  return fsRealpath(lexical)
+  const physical = await fsRealpath(lexical)
+  const after = await fsLstat(lexical, { bigint: true })
+  if (!after.isDirectory() || after.isSymbolicLink() || !sameNodeIdentity(before, after)) {
+    throw new TypeError("Repository root changed while it was being resolved.")
+  }
+  return physical
+}
+
+async function inspectDirectRepositoryPath(repositoryRoot, relative, expectedKind, label) {
+  const canonical = repositoryRelativePath(relative, `${label} path`)
+  const segments = reflectApply(stringSplit, canonical, ["/"])
+  let current = repositoryRoot
+  let stat
+  for (let index = 0; index < segments.length; index += 1) {
+    current = pathJoin(current, segments[index])
+    stat = await fsLstat(current, { bigint: true })
+    if (stat.isSymbolicLink()) {
+      throw new TypeError(`${label} path must not contain symbolic-link components.`)
+    }
+    const final = index === segments.length - 1
+    if (!final && !stat.isDirectory()) {
+      throw new TypeError(`${label} parent path must contain directories only.`)
+    }
+    if (final && expectedKind === "file" && !stat.isFile()) {
+      throw new TypeError(`${label} must be a direct regular file.`)
+    }
+    if (final && expectedKind === "directory" && !stat.isDirectory()) {
+      throw new TypeError(`${label} must be a direct directory.`)
+    }
+  }
+  return objectFreeze({ path: current, stat })
 }
 
 function resolveWithinRepository(repositoryRoot, relative) {
@@ -338,12 +367,16 @@ function descriptorEntry(descriptors, key) {
 }
 
 function sameFileSnapshot(left, right) {
-  return left.dev === right.dev
-    && left.ino === right.ino
-    && left.mode === right.mode
+  return sameNodeIdentity(left, right)
     && left.size === right.size
     && left.mtimeNs === right.mtimeNs
     && left.ctimeNs === right.ctimeNs
+}
+
+function sameNodeIdentity(left, right) {
+  return left.dev === right.dev
+    && left.ino === right.ino
+    && left.mode === right.mode
 }
 
 function contains(values, value) {
@@ -360,6 +393,7 @@ module.exports = {
   COLLECTIONS_SCHEMA_VERSION,
   canonicalRepositoryRoot,
   createWorkflowContractV2EvidenceEnvironment,
+  inspectDirectRepositoryPath,
   portablePathKey,
   readCanonicalJsonFile,
   readWorkflowContractV2Collections,
