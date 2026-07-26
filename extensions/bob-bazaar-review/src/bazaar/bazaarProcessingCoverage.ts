@@ -19,7 +19,7 @@ import {
 import type { PreparedTarget } from "./reviewTarget"
 import { truncateUtf8 } from "./reviewLimits"
 
-export const BAZAAR_REVIEW_LOG_MAX_BYTES = 128 * 1024 as const
+export const BAZAAR_REVIEW_LOG_MAX_BYTES = 128 * 1024
 export const BAZAAR_REVIEW_BOB_INPUT_DEFAULT_BYTES = DEFAULT_PROCESSING_BUDGET_PROFILE.limits.bob_input_bytes
 export const BAZAAR_REVIEW_BOB_INPUT_MAX_BYTES = PROCESSING_BUDGET_ABSOLUTE_MAXIMA.bob_input_bytes
 const BAZAAR_REVIEW_TOTAL_OPERATION_MAX_BYTES = 64 * 1024 * 1024
