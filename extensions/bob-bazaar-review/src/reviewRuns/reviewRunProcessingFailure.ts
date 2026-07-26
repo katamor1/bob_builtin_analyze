@@ -43,6 +43,7 @@ function packetFailureMessage(error: unknown): string {
   const raw = error instanceof Error ? error.message : String(error)
   const normalized = raw
     .replace(/[\u0000-\u001f\u007f-\u009f]+/gu, " ")
+    .replace(/\s+/gu, " ")
     .normalize("NFC")
     .trim()
   if (!normalized) return "Bazaar review packet processing failed."
