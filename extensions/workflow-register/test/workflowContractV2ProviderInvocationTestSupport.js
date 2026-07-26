@@ -19,7 +19,7 @@ function canonicalSchema(id, body) {
   }
 }
 
-function providerSchemas() {
+function providerSchemas(options = {}) {
   return {
     input: canonicalSchema("schemas/input.json", {
       type: "object",
@@ -39,9 +39,10 @@ function providerSchemas() {
       required: ["code"],
       additionalProperties: false
     }),
-    artifact: canonicalSchema("schemas/artifact.json", {
-      type: "object"
-    })
+    artifact: canonicalSchema(
+      "schemas/artifact.json",
+      options.artifactSchemaBody ?? { type: "object" }
+    )
   }
 }
 
@@ -63,12 +64,12 @@ function workflowYaml(options) {
         "requiredArtifacts:",
         "  - id: report",
         "    producedBy: invoke",
-        "    path: artifacts/report.json",
-        "    mediaType: application/json",
+        `    path: ${options.artifactPath ?? "artifacts/report.json"}`,
+        `    mediaType: ${options.artifactMediaType ?? "application/json"}`,
         "    schema: schemas/artifact.json",
         `    maxBytes: ${options.artifactMaxBytes ?? 64}`,
         "    owner: provider",
-        "    required: false"
+        `    required: ${options.artifactRequired === true ? "true" : "false"}`
       ]
     : ["requiredArtifacts: []"]
   return Buffer.from([
@@ -145,7 +146,7 @@ function lockedProviderEvidence(contractEvidence) {
 }
 
 async function providerRuntime(options = {}) {
-  const schemas = providerSchemas()
+  const schemas = providerSchemas(options)
   const providerRegistry = require("../out/core/contractV2/providerRegistry.js")
   const registry = new providerRegistry.WorkflowProviderRegistry()
   const dispatch = options.dispatch ?? (() => options.outputKind === "unit" ? undefined : { ok: true })
