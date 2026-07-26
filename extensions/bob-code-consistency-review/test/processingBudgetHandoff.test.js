@@ -14,8 +14,14 @@ const {
   persistCompleteProcessingBudgetBinding
 } = require("../out/core/processingBudgetReportGuard")
 const {
+  preprocessReview
+} = require("../out/core/pipeline")
+const {
   computeManagedReviewPackageContentHash
 } = require("../out/core/reviewPackageBuilder")
+const {
+  validateProcessingBudgetReport
+} = require("../out/sharedProcessingBudgetReport")
 const {
   ProcessingBudgetLedger
 } = require("../out/sharedProcessingBudgetRuntime")
@@ -99,6 +105,41 @@ test("partial report remains ineligible even when a matching binding is present"
   )
 })
 
+test("review-input validation failure removes stale package output and writes an empty-ledger failed report", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "processing-budget-prevalidation-"))
+  t.after(() => fs.rm(root, { recursive: true, force: true }))
+  const inputPath = path.join(root, "review-input.yaml")
+  const packageDir = path.join(root, ".bob-review", "review-package")
+  await fs.mkdir(packageDir, { recursive: true })
+  await fs.writeFile(inputPath, "review: [unterminated", "utf8")
+  await fs.writeFile(path.join(packageDir, "bob-input.md"), "stale package\n", "utf8")
+
+  await assert.rejects(() => preprocessReview({
+    workspaceRoot: root,
+    inputPath,
+    outDir: ".bob-review/review-package"
+  }))
+
+  await assert.rejects(() => fs.access(path.join(packageDir, "bob-input.md")))
+  const reportPath = `${packageDir}.processing-budget-report.json`
+  const report = validateProcessingBudgetReport(JSON.parse(await fs.readFile(reportPath, "utf8")))
+  assert.equal(report.outcome, "failed")
+  assert.equal(report.coverage_status, "failed")
+  assert.match(report.input_sha256, /^sha256:[a-f0-9]{64}$/)
+  assert.equal(report.issues[0].target, "review_input_validation")
+  assert.ok(report.ledger.categories.every((entry) => entry.committed === 0 && entry.reserved === 0))
+})
+
+test("processing report and binding reads use no-follow opened-file identity checks", async () => {
+  const source = await fs.readFile(path.join(__dirname, "..", "src", "core", "processingBudgetReportGuard.ts"), "utf8")
+  assert.match(source, /fsConstants\.O_NOFOLLOW/)
+  assert.match(source, /await fs\.open\(/)
+  assert.match(source, /await handle\.stat\(\{ bigint: true \}\)/)
+  assert.match(source, /assertStableOpenedFile/)
+  assert.match(source, /new TextDecoder\("utf-8", \{ fatal: true \}\)/)
+  assert.doesNotMatch(source, /await fs\.readFile\(filePath\)/)
+})
+
 test("review execution commands guard capture, validation, and triage", async () => {
   const source = await fs.readFile(path.join(__dirname, "..", "src", "reviewExecutionCommands.ts"), "utf8")
   const guards = source.match(/await loadAndAssertCompleteProcessingBudgetReport\(packageDir\)/g) ?? []
@@ -111,6 +152,7 @@ test("review execution commands guard capture, validation, and triage", async ()
 test("pipeline writes partial, failed, complete, and package-binding evidence", async () => {
   const source = await fs.readFile(path.join(__dirname, "..", "src", "core", "pipeline.ts"), "utf8")
   assert.match(source, /await removeStaleProcessingBudgetReport\(outDir\)/)
+  assert.match(source, /await cleanManagedReviewPackageOutputs\(outDir\)/)
   assert.match(source, /prePackageIssues\.length > 0[\s\S]*persistProcessingBudgetReport\(/[\s\S]*new ProcessingCoveragePartialError/)
   assert.match(source, /buildCompleteReviewPackage\(/)
   assert.match(source, /outcome: outcomeFromProcessingError\(error\)/)
