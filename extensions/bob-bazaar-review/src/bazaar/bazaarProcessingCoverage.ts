@@ -40,7 +40,7 @@ export interface BazaarReviewProcessingProduct {
 
 export interface RunBazaarReviewProcessingOperationInput {
   readonly reportDirectory: string
-  readonly repositoryScope: string
+  readonly repositoryScope?: string
   readonly operation: BazaarReviewProcessingIdentity
   readonly maxDiffBytes: number
   readonly maxAddedFileContentBytes: number
@@ -72,18 +72,18 @@ export class BazaarProcessingCoveragePartialError extends Error {
 export async function runBazaarReviewProcessingOperation(
   input: RunBazaarReviewProcessingOperationInput
 ): Promise<BazaarReviewProcessingResult> {
-  const repositoryScope = normalizeRepositoryScope(input.repositoryScope)
+  const requestedRepositoryScope = input.repositoryScope === undefined
+    ? undefined
+    : normalizeRepositoryScope(input.repositoryScope)
+  const provisionalRepositoryScope = requestedRepositoryScope ?? `unresolved:${randomUUID()}`
   const maxBobInputBytes = normalizeBobInputBytes(input.maxBobInputBytes)
-  const initialInputSha256 = operationInputSha(repositoryScope, input.operation, {
+  let initialInputSha256 = operationInputSha(provisionalRepositoryScope, input.operation, {
     maxDiffBytes: input.maxDiffBytes,
     maxAddedFileContentBytes: input.maxAddedFileContentBytes,
     maxBobInputBytes
   })
-  const operationId = `bazaar-review:${initialInputSha256.slice(7, 39)}`
-  const reportPath = path.join(
-    input.reportDirectory,
-    `bazaar-review-${initialInputSha256.slice(7, 39)}${REPORT_FILE_SUFFIX}`
-  )
+  let operationId = `bazaar-review:${initialInputSha256.slice(7, 39)}`
+  let reportPath = processingReportPath(input.reportDirectory, initialInputSha256)
   const ledger = reviewLedger(input.maxDiffBytes, input.maxAddedFileContentBytes, maxBobInputBytes)
   const reservations: SharedProcessingBudgetReservation[] = []
   let product: BazaarReviewProcessingProduct | undefined
@@ -94,6 +94,16 @@ export async function runBazaarReviewProcessingOperation(
     stage = "target_preparation"
     product = await input.produce()
     throwIfCancelled(input.signal)
+    if (requestedRepositoryScope === undefined) {
+      const preparedRepositoryScope = normalizeRepositoryScope(product.prepared.root)
+      initialInputSha256 = operationInputSha(preparedRepositoryScope, input.operation, {
+        maxDiffBytes: input.maxDiffBytes,
+        maxAddedFileContentBytes: input.maxAddedFileContentBytes,
+        maxBobInputBytes
+      })
+      operationId = `bazaar-review:${initialInputSha256.slice(7, 39)}`
+      reportPath = processingReportPath(input.reportDirectory, initialInputSha256)
+    }
     stage = "packet_budgeting"
 
     const originalDiffBytes = Buffer.byteLength(product.prepared.diff.stdout, "utf8")
@@ -150,6 +160,10 @@ export async function runBazaarReviewProcessingOperation(
     }
     throw error
   }
+}
+
+function processingReportPath(reportDirectory: string, inputSha256: string): string {
+  return path.join(reportDirectory, `bazaar-review-${inputSha256.slice(7, 39)}${REPORT_FILE_SUFFIX}`)
 }
 
 function reviewLedger(
