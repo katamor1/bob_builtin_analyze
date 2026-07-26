@@ -36,6 +36,9 @@ declare module "../modelRuntime" {
   interface WorkflowRunState {
     planProvenance?: WorkflowContractV2RunPlanProvenance
   }
+  interface WorkflowRunStateV2 {
+    planProvenance?: WorkflowContractV2RunPlanProvenance
+  }
 }
 
 interface WorkflowContractV2RunStateLike {
@@ -63,6 +66,9 @@ const PROVENANCE_FIELDS = freezeEvidence([
 ] as const)
 const canonicalJsonTextCaptured = canonicalJsonText
 const jsonStringify = JSON.stringify
+const mapClear = Function.prototype.call.bind(Map.prototype.clear) as (
+  map: Map<string, WorkflowPlanLease>
+) => void
 const mapDelete = Function.prototype.call.bind(Map.prototype.delete) as (
   map: Map<string, WorkflowPlanLease>, key: string
 ) => boolean
@@ -72,6 +78,9 @@ const mapGet = Function.prototype.call.bind(Map.prototype.get) as (
 const mapSet = Function.prototype.call.bind(Map.prototype.set) as (
   map: Map<string, WorkflowPlanLease>, key: string, value: WorkflowPlanLease
 ) => Map<string, WorkflowPlanLease>
+const mapValues = Function.prototype.call.bind(Map.prototype.values) as (
+  map: ReadonlyMap<string, WorkflowPlanLease>
+) => IterableIterator<WorkflowPlanLease>
 const weakMapGet = Function.prototype.call.bind(WeakMap.prototype.get) as (
   map: WeakMap<object, WorkflowPlanLease>, key: object
 ) => WorkflowPlanLease | undefined
@@ -292,6 +301,12 @@ export function releaseWorkflowContractV2RunPlanLease(
   if (lease === undefined) return
   mapDelete(runLeases, key)
   lease.release()
+}
+
+export function releaseAllWorkflowContractV2RunPlanLeases(): void {
+  const leases = mapValues(runLeases)
+  mapClear(runLeases)
+  for (const lease of leases) lease.release()
 }
 
 export function workflowContractV2RunIsTerminal(
