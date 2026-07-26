@@ -1,4 +1,7 @@
 const assert = require("node:assert/strict")
+const fs = require("node:fs")
+const os = require("node:os")
+const path = require("node:path")
 const { test } = require("node:test")
 
 const {
@@ -23,7 +26,7 @@ function compileFixture() {
   return { fixture, handle: result.handle }
 }
 
-test("manifest rejects cross-platform collection aliases and non-portable path segments", () => {
+test("manifest rejects cross-platform aliases, non-portable paths, and generation drift", () => {
   const subject = require("../out/core/contractV2/compiledPlanManifest.js")
   const { fixture, handle } = compileFixture()
   const upper = subject.createCompiledWorkflowPlanManifestPackage({
@@ -41,6 +44,12 @@ test("manifest rejects cross-platform collection aliases and non-portable path s
   assert.throws(
     () => subject.createCompiledWorkflowPlanManifest({ packages: [upper, lower] }),
     /alias/i
+  )
+  assert.throws(
+    () => subject.createCompiledWorkflowPlanManifest({
+      packages: [{ ...lower, packageDigest: `sha256:${"f".repeat(64)}` }]
+    }),
+    /generation.*package digest/i
   )
   assert.throws(
     () => subject.createCompiledWorkflowPlanManifestPackage({
@@ -106,5 +115,36 @@ test("manifest CLI rejects case-folded collection and slot aliases", () => {
   assert.throws(
     () => environment.repositoryRelativePath("collections/CON", "collection"),
     /portable/i
+  )
+})
+
+test("manifest control files reject symbolic-link path components", async (t) => {
+  const environment = require("../scripts/lib/workflow-contract-v2-environment.js")
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "workflow-contract-v2-manifest-symlink-"))
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const real = path.join(root, "real")
+  const linked = path.join(root, "linked")
+  fs.mkdirSync(real)
+  fs.writeFileSync(
+    path.join(real, "providers.json"),
+    '{"providers":[],"schemaVersion":"workflow-provider-catalog-source/v1"}\n'
+  )
+  try {
+    fs.symlinkSync(real, linked, process.platform === "win32" ? "junction" : "dir")
+  } catch (error) {
+    if (error && (error.code === "EPERM" || error.code === "EACCES")) {
+      t.skip("symbolic-link creation is unavailable on this host")
+      return
+    }
+    throw error
+  }
+  const repositoryRoot = await environment.canonicalRepositoryRoot(root)
+  await assert.rejects(
+    () => environment.readCanonicalJsonFile(
+      repositoryRoot,
+      "linked/providers.json",
+      "Workflow provider catalog"
+    ),
+    /symbolic-link/i
   )
 })
