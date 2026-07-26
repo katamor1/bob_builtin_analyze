@@ -58,8 +58,8 @@ test('Bob legacy input collection does not acquire a Contract v2 lease before th
   const factory = source('bobWorkflowFactory.ts')
   assert.match(runtime, ordered(
     'createBobWorkflowRunner(workflow: WorkflowDefinition)',
-    'inputsProvider: async (task, provided) => {',
-    'return this.options.inputsProvider(workflow,'
+    'inputsProvider: async (task, provided) =>',
+    'this.options.inputsProvider(workflow,'
   ))
   assert.doesNotMatch(runtime, /inputsProvider:[\s\S]*await beforeRun\?\./)
   assert.match(factory, /runCompiledWorkflowStep === undefined/)
