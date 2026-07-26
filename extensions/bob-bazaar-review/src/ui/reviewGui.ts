@@ -343,6 +343,7 @@ class BazaarReviewGuiController {
     try {
       result = await runBazaarReviewProcessingOperation({
         reportDirectory: vscode.Uri.joinPath(this.context.globalStorageUri, "processing-budget-reports").fsPath,
+        repositoryScope: bazaarFolder.uri.fsPath,
         operation: {
           mode: request.mode,
           revision: request.revision,
@@ -352,11 +353,12 @@ class BazaarReviewGuiController {
         },
         maxDiffBytes,
         maxAddedFileContentBytes,
-        produce: async () => {
+        produce: async ({ recordPreparedTarget }) => {
           const prepared = await prepareTarget(makeBazaarClient(maxDiffBytes), bazaarFolder.uri.fsPath, request, {
             includeAddedFiles: true,
             maxAddedFileContentBytes
           })
+          recordPreparedTarget(prepared)
           const runWorkspaceFolder = this.bobWorkspaceFolder ?? bobFolder ?? bazaarFolder
           const reviewId = selection.reviewId ?? buildReviewId({
             mode: prepared.info.mode,
