@@ -23,7 +23,8 @@ function canonicalSchema(id, body) {
 function workflowYaml(options) {
   const sideEffect = options.sideEffect ?? "none"
   const workspaceWrite = sideEffect === "workspace-write"
-  const inputs = options.withInput
+  const hasInputs = options.withInput || options.skipCommand
+  const inputs = hasInputs
     ? [
         "inputs:",
         "  - id: providerInput",
@@ -32,7 +33,15 @@ function workflowYaml(options) {
         "    required: true"
       ]
     : ["inputs: []"]
-  const commandInput = options.withInput
+  if (options.skipCommand) {
+    inputs.push(
+      "  - id: shouldRun",
+      "    title: Should run",
+      "    schema: schemas/boolean.json",
+      "    required: true"
+    )
+  }
+  const commandInput = hasInputs
     ? [
         "    input:",
         "      source: input",
@@ -56,15 +65,6 @@ function workflowYaml(options) {
         "      right: true"
       ]
     : []
-  const optionalPredicateInput = options.skipCommand
-    ? [
-        "  - id: shouldRun",
-        "    title: Should run",
-        "    schema: schemas/boolean.json",
-        "    required: true"
-      ]
-    : []
-  if (optionalPredicateInput.length > 0) inputs.push(...optionalPredicateInput)
   const artifacts = workspaceWrite
     ? ["    artifacts:", "      - report"]
     : ["    artifacts: []"]
@@ -200,14 +200,15 @@ async function compiledRuntime(t, options = {}) {
     ...(options.skipCommand ? { "schemas/boolean.json": schemas.boolean.bytes } : {})
   }
   const lock = require("../out/core/contractV2/workflowLock.js")
-  const initial = rawPackageFromFiles(files, "compiled-runtime")
+  const slot = { workflowId: "compiled-runtime" }
+  const initial = rawPackageFromFiles(files, slot)
   const generated = lock.generateWorkflowPackageLock({
     rawPackage: initial,
     providers: [providerEvidence],
     bob: { profile: "bob/2.0.1", requiredCapabilities: [], taskCapabilities: [] }
   })
   files["workflow.lock.json"] = lock.encodeWorkflowPackageLock(generated)
-  const rawPackage = rawPackageFromFiles(files, "compiled-runtime")
+  const rawPackage = rawPackageFromFiles(files, slot)
   const compiler = require("../out/core/contractV2/index.js")
   const { snapshotBobContractProfile } = require("../out/core/contractV2/bobProfile.js")
   const environment = compiler.createAuditedWorkflowCompilerEnvironment({
