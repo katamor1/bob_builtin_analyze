@@ -24,7 +24,7 @@ function commandResult(stdout) {
 function prepared(overrides = {}) {
   const files = overrides.files ?? [{ path: "src/a.cpp", status: "modified" }]
   return {
-    root: "/repo",
+    root: overrides.root ?? "/repo",
     info: {
       mode: "revisionRange",
       targetLabel: "1..2",
@@ -93,21 +93,37 @@ test("repository scope keeps identical revision reports from different workspace
   assert.equal((await fs.readdir(input.reportDirectory)).length, 2)
 })
 
+test("omitted repository scope is derived from the prepared Bazaar root", async (t) => {
+  const input = await makeInput(t)
+  const { repositoryScope: _repositoryScope, ...withoutScope } = input
+  const first = await runBazaarReviewProcessingOperation({
+    ...withoutScope,
+    produce: async () => ({
+      prepared: prepared({ root: path.join(input.reportDirectory, "repo-a") }),
+      packet: "# packet\ncomplete\n"
+    })
+  })
+  const second = await runBazaarReviewProcessingOperation({
+    ...withoutScope,
+    produce: async () => ({
+      prepared: prepared({ root: path.join(input.reportDirectory, "repo-b") }),
+      packet: "# packet\ncomplete\n"
+    })
+  })
+  assert.notEqual(first.reportPath, second.reportPath)
+})
+
 test("Bob input defaults to 2 MiB and can be raised only to the shared 8 MiB maximum", async (t) => {
   const input = await makeInput(t)
   assert.equal(BAZAAR_REVIEW_BOB_INPUT_DEFAULT_BYTES, 2 * 1024 * 1024)
   assert.equal(BAZAAR_REVIEW_BOB_INPUT_MAX_BYTES, 8 * 1024 * 1024)
 
-  let defaultReportPath
   await assert.rejects(
     () => runBazaarReviewProcessingOperation({
       ...input,
       produce: async () => ({ prepared: prepared(), packet: "x".repeat(BAZAAR_REVIEW_BOB_INPUT_DEFAULT_BYTES + 1) })
     }),
-    (error) => {
-      defaultReportPath = path.join(input.reportDirectory, (error?.details ? "" : ""))
-      return error?.code === "processing_budget_exceeded"
-    }
+    (error) => error?.code === "processing_budget_exceeded"
   )
   const defaultReportName = (await fs.readdir(input.reportDirectory))[0]
   const defaultReport = validateProcessingBudgetReport(JSON.parse(
@@ -115,7 +131,6 @@ test("Bob input defaults to 2 MiB and can be raised only to the shared 8 MiB max
   ))
   assert.equal(defaultReport.failure.category, "bob_input_bytes")
   assert.equal(defaultReport.failure.limit, BAZAAR_REVIEW_BOB_INPUT_DEFAULT_BYTES)
-  void defaultReportPath
 
   const raised = await runBazaarReviewProcessingOperation({
     ...input,
