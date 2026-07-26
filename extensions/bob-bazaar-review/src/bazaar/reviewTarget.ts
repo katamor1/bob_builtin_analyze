@@ -1,10 +1,11 @@
 import { BazaarClient, BazaarCommandResult } from "./bazaar"
 import {
-  buildAddedFilesContentSection,
+  buildAddedFilesContent,
   loadBazaarRevisionPacketInput,
   parseChangedFileEntries,
   BazaarRevisionInfo,
-  BazaarChangedFile
+  BazaarChangedFile,
+  type AddedFilesContentEvidence
 } from "./revisionInfo"
 import type { TargetMode } from "../ui/reviewGuiTypes"
 
@@ -40,6 +41,7 @@ export interface PreparedTarget {
   log?: BazaarCommandResult
   diff: BazaarCommandResult
   addedFilesSection?: string
+  addedFilesEvidence?: AddedFilesContentEvidence
 }
 
 export function parseTargetRequest(message: any): TargetRequest {
@@ -74,14 +76,18 @@ export async function prepareTarget(
   if (request.mode === "singleRevision") {
     const revision = request.revision ?? ""
     const input = await loadBazaarRevisionPacketInput(client, root, revision)
+    const addedFiles = options.includeAddedFiles
+      ? await buildAddedFilesContent(client, root, revision, input.info, options.maxAddedFileContentBytes)
+      : undefined
     return {
       root,
       log: input.log,
       diff: input.diff,
       info: revisionInfoToTargetInfo(input.info),
-      addedFilesSection: options.includeAddedFiles
-        ? await buildAddedFilesContentSection(client, root, revision, input.info, options.maxAddedFileContentBytes)
-        : undefined
+      ...(addedFiles === undefined ? {} : {
+        addedFilesSection: addedFiles.section,
+        addedFilesEvidence: addedFiles.evidence
+      })
     }
   }
 
@@ -95,20 +101,24 @@ export async function prepareTarget(
     const entries = parseChangedFileEntries(diff.stdout)
     const info = makeRangeTargetInfo(baseRevision, targetRevision, log?.stdout, entries)
     const syntheticInfo = targetInfoToSyntheticRevisionInfo(info, targetRevision)
-    return {
-      root,
-      log,
-      diff,
-      info,
-      addedFilesSection: options.includeAddedFiles
-        ? await buildAddedFilesContentSection(
+    const addedFiles = options.includeAddedFiles
+      ? await buildAddedFilesContent(
           client,
           root,
           targetRevision,
           syntheticInfo,
           options.maxAddedFileContentBytes
         )
-        : undefined
+      : undefined
+    return {
+      root,
+      log,
+      diff,
+      info,
+      ...(addedFiles === undefined ? {} : {
+        addedFilesSection: addedFiles.section,
+        addedFilesEvidence: addedFiles.evidence
+      })
     }
   }
 
