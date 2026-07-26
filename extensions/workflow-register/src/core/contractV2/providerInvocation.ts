@@ -76,19 +76,37 @@ interface InvocationBinding {
   readonly errorSchema: CompiledLocalJsonSchemaView
 }
 
+interface ProviderEffectSession {
+  readonly effect: WorkflowProviderEffectInput
+  close(): void
+}
+
 const isProxy = utilTypes.isProxy
+const AbortSignalConstructor = AbortSignal
+const Uint8ArrayConstructor = Uint8Array
 const arrayPush = Array.prototype.push
+const canonicalJsonBytesCaptured = canonicalJsonBytes
+const createDiagnosticCaptured = createWorkflowContractV2Diagnostic
+const functionHasInstance = Function.prototype[Symbol.hasInstance]
+const invokeDispatchCaptured = invokeBoundWorkflowProviderDispatch
 const objectCreate = Object.create
 const objectFreeze = Object.freeze
 const objectGetOwnPropertyDescriptors = Object.getOwnPropertyDescriptors
 const objectGetPrototypeOf = Object.getPrototypeOf
 const objectHasOwn = Object.hasOwn
 const objectPrototype = Object.prototype
+const promiseAll = Function.prototype.call.bind(Promise.all, Promise) as <T>(
+  values: Iterable<T | PromiseLike<T>>
+) => Promise<Awaited<T>[]>
 const reflectApply = Reflect.apply
 const reflectOwnKeys = Reflect.ownKeys
 const regexpExec = RegExp.prototype.exec
+const requireLeaseHandleCaptured = requireActiveWorkflowPlanLeaseHandle
+const requirePlanStateCaptured = requireCompiledWorkflowPlanState
+const stageArtifactCaptured = stageWorkflowAttemptArtifact
+const stagingKeyCaptured = workflowAttemptStagingIdempotencyKey
 const typedArraySet = Uint8Array.prototype.set
-const Uint8ArrayConstructor = Uint8Array
+const validateSchemaCaptured = validateLocalJsonSchemaViewValue
 const EMPTY_DIAGNOSTICS = objectFreeze([]) as readonly []
 const INPUT_FIELDS = objectFreeze(["lease", "stepId", "value", "signal", "attempt"] as const)
 const ARTIFACT_FIELDS = objectFreeze(["id", "bytes"] as const)
@@ -104,18 +122,18 @@ export async function invokeCompiledWorkflowProvider(
     INPUT_FIELDS,
     "Compiled workflow provider invocation"
   )
-  const handle = requireActiveWorkflowPlanLeaseHandle(snapshot.lease)
-  const state = requireCompiledWorkflowPlanState(handle)
+  const handle = requireLeaseHandleCaptured(snapshot.lease)
+  const state = requirePlanStateCaptured(handle)
   if (state.purpose !== "runtime" || !state.leaseable || state.publication !== "published") {
     throw new TypeError("Compiled workflow provider invocation requires a live runtime plan lease.")
   }
   const stepId = requireStepId(snapshot.stepId)
   requireSignal(snapshot.signal)
   const attempt = snapshot.attempt as WorkflowAttemptStaging
-  const idempotencyKey = workflowAttemptStagingIdempotencyKey(attempt)
+  const idempotencyKey = stagingKeyCaptured(attempt)
   const binding = invocationBinding(handle.plan.workflow.steps, handle.plan.providerBindings, state, stepId)
   const inputLocation = location(binding.stepIndex, "input")
-  const validatedInput = validateLocalJsonSchemaViewValue({
+  const validatedInput = validateSchemaCaptured({
     compiled: binding.inputSchema,
     value: snapshot.value,
     diagnosticCode: "WF2_PROVIDER_INPUT_INVALID",
@@ -132,21 +150,22 @@ export async function invokeCompiledWorkflowProvider(
 
   const pendingWrites: Promise<void>[] = []
   const idempotency = providerIdempotency(binding.provider, idempotencyKey)
-  const effect = providerEffect(binding.provider, attempt, pendingWrites)
+  const effectSession = providerEffect(binding.provider, attempt, pendingWrites)
   const dispatchInput = objectFreeze({
     value: validatedInput.value,
     signal: snapshot.signal as AbortSignal,
     idempotency,
-    effect
+    effect: effectSession.effect
   }) as WorkflowProviderDispatchInput
 
   let returned: unknown
   try {
-    returned = await invokeBoundWorkflowProviderDispatch(binding.dispatchHandle, dispatchInput)
+    returned = await invokeDispatchCaptured(binding.dispatchHandle, dispatchInput)
   } catch (error) {
-    if (error instanceof WorkflowAttemptStagingError) throw error
+    effectSession.close()
+    if (isInstance(WorkflowAttemptStagingError, error)) throw error
     const errorLocation = location(binding.stepIndex, "provider")
-    const validatedError = validateLocalJsonSchemaViewValue({
+    const validatedError = validateSchemaCaptured({
       compiled: binding.errorSchema,
       value: error,
       diagnosticCode: "WF2_PROVIDER_ERROR_INVALID",
@@ -168,7 +187,8 @@ export async function invokeCompiledWorkflowProvider(
     })
   }
 
-  await Promise.all(pendingWrites)
+  effectSession.close()
+  await promiseAll(pendingWrites)
   if (binding.provider.output.kind === "unit") {
     if (returned !== undefined) {
       return validationFailure(singleDiagnostic(
@@ -188,7 +208,7 @@ export async function invokeCompiledWorkflowProvider(
     throw new TypeError("Compiled workflow provider output schema is unavailable.")
   }
   const outputLocation = location(binding.stepIndex, "output")
-  const validatedOutput = validateLocalJsonSchemaViewValue({
+  const validatedOutput = validateSchemaCaptured({
     compiled: binding.outputSchema,
     value: returned,
     diagnosticCode: "WF2_PROVIDER_OUTPUT_INVALID",
@@ -268,18 +288,23 @@ function providerEffect(
   provider: WorkflowProviderLockEvidence,
   attempt: WorkflowAttemptStaging,
   pendingWrites: Promise<void>[]
-): WorkflowProviderEffectInput {
-  if (provider.sideEffect === "none") return objectFreeze({ kind: "none" as const })
-  if (provider.sideEffect === "external") return objectFreeze({ kind: "external" as const })
-  const writer = createArtifactWriter(attempt, pendingWrites)
-  return objectFreeze({ kind: "workspace-write" as const, artifacts: writer })
+): ProviderEffectSession {
+  if (provider.sideEffect === "none") {
+    return objectFreeze({ effect: objectFreeze({ kind: "none" as const }), close: objectFreeze(() => {}) })
+  }
+  if (provider.sideEffect === "external") {
+    return objectFreeze({ effect: objectFreeze({ kind: "external" as const }), close: objectFreeze(() => {}) })
+  }
+  return createArtifactWriterSession(attempt, pendingWrites)
 }
 
-function createArtifactWriter(
+function createArtifactWriterSession(
   attempt: WorkflowAttemptStaging,
   pendingWrites: Promise<void>[]
-): WorkflowProviderArtifactWriter {
+): ProviderEffectSession {
+  let open = true
   const writeArtifact = objectFreeze((input: { readonly id: string; readonly bytes: Uint8Array }): Promise<void> => {
+    if (!open) throw new TypeError("Workflow provider artifact writer is closed.")
     const snapshot = snapshotExactRecord(input, ARTIFACT_FIELDS, "Workflow provider artifact write")
     const id = snapshot.id
     const bytes = snapshot.bytes
@@ -287,16 +312,25 @@ function createArtifactWriter(
       typeof id !== "string"
       || reflectApply(regexpExec, ARTIFACT_ID_PATTERN, [id]) === null
     ) throw new TypeError("Workflow provider artifact id is invalid.")
-    if (!(bytes instanceof Uint8ArrayConstructor) || isProxy(bytes)) {
-      throw new TypeError("Workflow provider artifact bytes must be a Uint8Array.")
-    }
-    const copy = new Uint8ArrayConstructor(bytes.byteLength)
-    reflectApply(typedArraySet, copy, [bytes])
-    const pending = stageWorkflowAttemptArtifact(attempt, objectFreeze({ id, bytes: copy }))
+    if (
+      typeof bytes !== "object"
+      || bytes === null
+      || isProxy(bytes)
+      || !isInstance(Uint8ArrayConstructor, bytes)
+    ) throw new TypeError("Workflow provider artifact bytes must be a Uint8Array.")
+    const source = bytes as Uint8Array
+    const copy = new Uint8ArrayConstructor(source.byteLength)
+    reflectApply(typedArraySet, copy, [source])
+    const pending = stageArtifactCaptured(attempt, objectFreeze({ id, bytes: copy }))
     push(pendingWrites, pending)
     return pending
   })
-  return objectFreeze({ writeArtifact })
+  const writer = objectFreeze({ writeArtifact }) as WorkflowProviderArtifactWriter
+  const close = objectFreeze((): void => { open = false })
+  return objectFreeze({
+    effect: objectFreeze({ kind: "workspace-write" as const, artifacts: writer }),
+    close
+  })
 }
 
 function findProviderEvidence(
@@ -344,7 +378,7 @@ function singleDiagnostic(
   locationValue: WorkflowContractV2DiagnosticLocation,
   message: string
 ): readonly WorkflowContractV2Diagnostic[] {
-  return objectFreeze([createWorkflowContractV2Diagnostic({
+  return objectFreeze([createDiagnosticCaptured({
     code,
     severity: "error",
     message,
@@ -360,7 +394,7 @@ function location(
 }
 
 function withinValueLimit(value: JsonValue, maximum: number): boolean {
-  return canonicalJsonBytes(value).byteLength <= maximum
+  return canonicalJsonBytesCaptured(value).byteLength <= maximum
 }
 
 function requireStepId(value: unknown): string {
@@ -374,9 +408,12 @@ function requireStepId(value: unknown): string {
 }
 
 function requireSignal(value: unknown): asserts value is AbortSignal {
-  if (typeof value !== "object" || value === null || isProxy(value)) {
-    throw new TypeError("Compiled workflow provider abort signal is invalid.")
-  }
+  if (
+    typeof value !== "object"
+    || value === null
+    || isProxy(value)
+    || !isInstance(AbortSignalConstructor, value)
+  ) throw new TypeError("Compiled workflow provider abort signal is invalid.")
 }
 
 function snapshotExactRecord<const Fields extends readonly string[]>(
@@ -420,6 +457,10 @@ function contains(values: readonly string[], value: string): boolean {
     if (values[index] === value) return true
   }
   return false
+}
+
+function isInstance(constructor: Function, value: unknown): boolean {
+  return reflectApply(functionHasInstance, constructor, [value]) as boolean
 }
 
 function push<T>(values: T[], value: T): void {
