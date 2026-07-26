@@ -9,6 +9,9 @@ const {
   serializeProcessingBudgetReport,
   validateProcessingBudgetReport
 } = require("../out")
+const {
+  createProcessingBudgetReport: createBaseProcessingBudgetReport
+} = require("../out/processingBudgetReport")
 
 const INPUT_SHA = `sha256:${"a".repeat(64)}`
 
@@ -35,20 +38,28 @@ test("programmatic report creation rejects a sparse issues array", () => {
   )
 })
 
+test("base report normalization independently rejects sparse issues", () => {
+  assert.throws(
+    () => createBaseProcessingBudgetReport(input({ issues: new Array(1) })),
+    invalid
+  )
+})
+
 test("huge sparse issues are rejected without probing every missing slot", () => {
   const issues = new Array(0xffff_ffff)
   const originalHas = Set.prototype.has
-  let hasCalls = 0
-  Set.prototype.has = function unexpectedPerSlotProbe(index) {
-    hasCalls += 1
-    throw new Error(`linear missing-slot scan at ${index}`)
+  let numericHasCalls = 0
+  Set.prototype.has = function unexpectedPerSlotProbe(value) {
+    if (typeof value !== "number") return originalHas.call(this, value)
+    numericHasCalls += 1
+    throw new Error(`linear missing-slot scan at ${value}`)
   }
   try {
     assert.throws(
       () => createProcessingBudgetReport(input({ issues })),
       invalid
     )
-    assert.equal(hasCalls, 0)
+    assert.equal(numericHasCalls, 0)
   } finally {
     Set.prototype.has = originalHas
   }
