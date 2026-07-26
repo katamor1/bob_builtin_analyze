@@ -9,6 +9,10 @@ import {
   PROJECT_RULE_BUNDLE_LIMITS
 } from "../ruleAuthoring/ruleBundle"
 import { buildReviewPacket } from "./reviewPacket"
+import {
+  BazaarProcessingCoveragePartialError,
+  runBazaarReviewProcessingOperation
+} from "./bazaarProcessingCoverage"
 import { clampMaxAddedFileContentBytes, clampMaxDiffBytes, maxBufferForDiffBytes } from "./reviewLimits"
 import { buildTargetMetadataSection, prepareTarget } from "./reviewTarget"
 import { isWorkflowRegisterExtensionAvailable } from "../workflow/workflowRegisterBridge"
@@ -27,33 +31,58 @@ export async function reviewRevision(context: vscode.ExtensionContext, withProje
   })
   if (!revision) return
 
-  await withProgress("Bazaar 1リビジョンレビュー packet を作成しています", async (signal) => {
-    const client = makeBazaarClient(signal)
-    const [prepared, projectRulesSection] = await Promise.all([
-      prepareTarget(client, bazaarFolder.uri.fsPath, { mode: "singleRevision", revision }, {
-        includeAddedFiles: true,
-        maxAddedFileContentBytes: getMaxAddedFileContentBytes()
-      }),
-      withProjectRules && bobFolder ? buildProjectRulesSectionForWorkspace(bobFolder.uri.fsPath) : Promise.resolve(undefined)
-    ])
+  const maxDiffBytes = getMaxDiffBytes()
+  const maxAddedFileContentBytes = getMaxAddedFileContentBytes()
+  try {
+    await withProgress("Bazaar 1リビジョンレビュー packet を作成しています", async (signal) => {
+      const result = await runBazaarReviewProcessingOperation({
+        reportDirectory: processingReportDirectory(context),
+        operation: {
+          mode: "singleRevision",
+          revision,
+          withProjectRules
+        },
+        maxDiffBytes,
+        maxAddedFileContentBytes,
+        signal,
+        produce: async () => {
+          const client = makeBazaarClient(signal, maxDiffBytes)
+          const [prepared, projectRulesSection] = await Promise.all([
+            prepareTarget(client, bazaarFolder.uri.fsPath, { mode: "singleRevision", revision }, {
+              includeAddedFiles: true,
+              maxAddedFileContentBytes
+            }),
+            withProjectRules && bobFolder ? buildProjectRulesSectionForWorkspace(bobFolder.uri.fsPath) : Promise.resolve(undefined)
+          ])
 
-    const extraSections = [
-      buildTargetMetadataSection(prepared.info),
-      prepared.addedFilesSection,
-      projectRulesSection
-    ].filter((section): section is string => Boolean(section))
-    const packet = buildReviewPacket({
-      repositoryRoot: prepared.root,
-      mode: "singleRevision",
-      revision,
-      log: prepared.log,
-      diff: prepared.diff,
-      maxDiffBytes: getMaxDiffBytes(),
-      extraSections: extraSections.length > 0 ? extraSections : undefined
+          const extraSections = [
+            buildTargetMetadataSection(prepared.info),
+            prepared.addedFilesSection,
+            projectRulesSection
+          ].filter((section): section is string => Boolean(section))
+          const packet = buildReviewPacket({
+            repositoryRoot: prepared.root,
+            mode: "singleRevision",
+            revision,
+            log: prepared.log,
+            diff: prepared.diff,
+            maxDiffBytes,
+            extraSections: extraSections.length > 0 ? extraSections : undefined
+          })
+          return { prepared, packet }
+        }
+      })
+
+      await showAndOfferBobContext(
+        context,
+        result.packet,
+        withProjectRules ? `bazaar-project-review-${revision}.md` : `bazaar-review-${revision}.md`
+      )
     })
-
-    await showAndOfferBobContext(context, packet, withProjectRules ? `bazaar-project-review-${revision}.md` : `bazaar-review-${revision}.md`)
-  })
+  } catch (error) {
+    if (await showProcessingCoverageFailure(error)) return
+    throw error
+  }
 }
 
 export async function reviewRange(context: vscode.ExtensionContext, withProjectRules: boolean): Promise<void> {
@@ -76,37 +105,59 @@ export async function reviewRange(context: vscode.ExtensionContext, withProjectR
   })
   if (!targetRevision) return
 
-  await withProgress("Bazaar リビジョン範囲レビュー packet を作成しています", async (signal) => {
-    const client = makeBazaarClient(signal)
-    const [prepared, projectRulesSection] = await Promise.all([
-      prepareTarget(client, bazaarFolder.uri.fsPath, { mode: "revisionRange", baseRevision, targetRevision }, {
-        includeAddedFiles: true,
-        maxAddedFileContentBytes: getMaxAddedFileContentBytes()
-      }),
-      withProjectRules && bobFolder ? buildProjectRulesSectionForWorkspace(bobFolder.uri.fsPath) : Promise.resolve(undefined)
-    ])
-    const extraSections = [
-      buildTargetMetadataSection(prepared.info),
-      prepared.addedFilesSection,
-      projectRulesSection
-    ].filter((section): section is string => Boolean(section))
+  const maxDiffBytes = getMaxDiffBytes()
+  const maxAddedFileContentBytes = getMaxAddedFileContentBytes()
+  try {
+    await withProgress("Bazaar リビジョン範囲レビュー packet を作成しています", async (signal) => {
+      const result = await runBazaarReviewProcessingOperation({
+        reportDirectory: processingReportDirectory(context),
+        operation: {
+          mode: "revisionRange",
+          baseRevision,
+          targetRevision,
+          withProjectRules
+        },
+        maxDiffBytes,
+        maxAddedFileContentBytes,
+        signal,
+        produce: async () => {
+          const client = makeBazaarClient(signal, maxDiffBytes)
+          const [prepared, projectRulesSection] = await Promise.all([
+            prepareTarget(client, bazaarFolder.uri.fsPath, { mode: "revisionRange", baseRevision, targetRevision }, {
+              includeAddedFiles: true,
+              maxAddedFileContentBytes
+            }),
+            withProjectRules && bobFolder ? buildProjectRulesSectionForWorkspace(bobFolder.uri.fsPath) : Promise.resolve(undefined)
+          ])
+          const extraSections = [
+            buildTargetMetadataSection(prepared.info),
+            prepared.addedFilesSection,
+            projectRulesSection
+          ].filter((section): section is string => Boolean(section))
 
-    const packet = buildReviewPacket({
-      repositoryRoot: prepared.root,
-      mode: "revisionRange",
-      baseRevision,
-      targetRevision: prepared.info.targetRevision,
-      log: prepared.log,
-      diff: prepared.diff,
-      maxDiffBytes: getMaxDiffBytes(),
-      extraSections: extraSections.length > 0 ? extraSections : undefined
+          const packet = buildReviewPacket({
+            repositoryRoot: prepared.root,
+            mode: "revisionRange",
+            baseRevision,
+            targetRevision: prepared.info.targetRevision,
+            log: prepared.log,
+            diff: prepared.diff,
+            maxDiffBytes,
+            extraSections: extraSections.length > 0 ? extraSections : undefined
+          })
+          return { prepared, packet }
+        }
+      })
+
+      const outputFileName = withProjectRules
+        ? `bazaar-project-review-${baseRevision}-${targetRevision}.md`
+        : `bazaar-review-${baseRevision}-${targetRevision}.md`
+      await showAndOfferBobContext(context, result.packet, outputFileName)
     })
-
-    const outputFileName = withProjectRules
-      ? `bazaar-project-review-${baseRevision}-${targetRevision}.md`
-      : `bazaar-review-${baseRevision}-${targetRevision}.md`
-    await showAndOfferBobContext(context, packet, outputFileName)
-  })
+  } catch (error) {
+    if (await showProcessingCoverageFailure(error)) return
+    throw error
+  }
 }
 
 async function buildProjectRulesSectionForWorkspace(workspaceRoot: string): Promise<string> {
@@ -117,11 +168,11 @@ async function buildProjectRulesSectionForWorkspace(workspaceRoot: string): Prom
   return buildProjectRulesSectionFromBundle(bundle, PROJECT_RULE_BUNDLE_LIMITS)
 }
 
-function makeBazaarClient(signal?: AbortSignal): BazaarClient {
+function makeBazaarClient(signal: AbortSignal | undefined, maxDiffBytes = getMaxDiffBytes()): BazaarClient {
   const config = vscode.workspace.getConfiguration("bobBazaar")
   return new BazaarClient({
     bzrPath: resolveBzrPath(config, vscode.workspace.isTrusted),
-    maxBuffer: maxBufferForDiffBytes(getMaxDiffBytes()),
+    maxBuffer: maxBufferForDiffBytes(maxDiffBytes),
     textEncoding: config.get<string>("textEncoding", "auto"),
     timeoutMs: config.get<number>("commandTimeoutMs", 120_000),
     signal
@@ -136,6 +187,19 @@ function getMaxDiffBytes(): number {
 function getMaxAddedFileContentBytes(): number {
   const config = vscode.workspace.getConfiguration("bobBazaar")
   return clampMaxAddedFileContentBytes(config.get<number>("maxAddedFileContentBytes", 256 * 1024))
+}
+
+function processingReportDirectory(context: vscode.ExtensionContext): string {
+  return vscode.Uri.joinPath(context.globalStorageUri, "processing-budget-reports").fsPath
+}
+
+async function showProcessingCoverageFailure(error: unknown): Promise<boolean> {
+  if (!(error instanceof BazaarProcessingCoveragePartialError)) return false
+  await vscode.window.showErrorMessage(
+    `Bazaar レビュー資料は処理範囲が不完全なため Bob へ渡しません。診断レポート: ${error.reportPath}`,
+    { modal: true }
+  )
+  return true
 }
 
 async function pickBazaarWorkspaceFolder(): Promise<vscode.WorkspaceFolder | undefined> {
