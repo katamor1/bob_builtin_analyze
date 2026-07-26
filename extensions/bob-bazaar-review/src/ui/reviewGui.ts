@@ -36,6 +36,7 @@ import {
   recoverLegacyReviewRun
 } from "../reviewRuns/reviewRunRecovery"
 import { buildReviewRunResumeCandidate, nextReviewRunAction } from "../reviewRuns/reviewRunResume"
+import { recordReviewPacketProcessingFailure } from "../reviewRuns/reviewRunProcessingFailure"
 import { buildReviewId } from "../reviewRuns/reviewRunState"
 import { listReviewRuns } from "../reviewRuns/reviewRunStore"
 import type { ReviewRunCommandInput, ReviewRunContext } from "../reviewRuns/reviewRunTypes"
@@ -338,68 +339,86 @@ class BazaarReviewGuiController {
     const maxDiffBytes = getMaxDiffBytes()
     const maxAddedFileContentBytes = getMaxAddedFileContentBytes()
     let reviewRun: ReviewRunContext | undefined
-    const result = await runBazaarReviewProcessingOperation({
-      reportDirectory: vscode.Uri.joinPath(this.context.globalStorageUri, "processing-budget-reports").fsPath,
-      operation: {
-        mode: request.mode,
-        revision: request.revision,
-        baseRevision: request.baseRevision,
-        targetRevision: request.targetRevision,
-        withProjectRules: Boolean(request.withProjectRules)
-      },
-      maxDiffBytes,
-      maxAddedFileContentBytes,
-      produce: async () => {
-        const prepared = await prepareTarget(makeBazaarClient(maxDiffBytes), bazaarFolder.uri.fsPath, request, {
-          includeAddedFiles: true,
-          maxAddedFileContentBytes
-        })
-        const runWorkspaceFolder = this.bobWorkspaceFolder ?? bobFolder ?? bazaarFolder
-        const reviewId = selection.reviewId ?? buildReviewId({
-          mode: prepared.info.mode,
-          revision: prepared.info.revision,
-          baseRevision: prepared.info.baseRevision,
-          targetRevision: prepared.info.targetRevision
-        })
-        reviewRun = this.reusableTargetRun(selection.campaignId, reviewId, prepared.root, prepared.info)
-          ?? await startReviewRun({
-            workspaceRoot: runWorkspaceFolder.uri.fsPath,
-            campaignId: selection.campaignId,
-            reviewId,
-            target: {
-              mode: prepared.info.mode,
-              repositoryRoot: prepared.root,
-              revision: prepared.info.revision,
-              baseRevision: prepared.info.baseRevision,
-              targetRevision: prepared.info.targetRevision
-            }
-          })
-        const projectRulesSection = request.withProjectRules && bobFolder
-          ? await buildProjectRulesSectionForWorkspace(bobFolder.uri.fsPath)
-          : undefined
-        const extraSections = [
-          buildReviewRunMetadataSection(reviewRun),
-          buildTargetMetadataSection(prepared.info),
-          prepared.addedFilesSection,
-          projectRulesSection
-        ].filter((section): section is string => Boolean(section))
-        const packet = buildReviewPacket({
-          repositoryRoot: prepared.root,
+    let result: Awaited<ReturnType<typeof runBazaarReviewProcessingOperation>>
+    try {
+      result = await runBazaarReviewProcessingOperation({
+        reportDirectory: vscode.Uri.joinPath(this.context.globalStorageUri, "processing-budget-reports").fsPath,
+        operation: {
           mode: request.mode,
           revision: request.revision,
-          baseRevision: prepared.info.baseRevision,
-          targetRevision: prepared.info.targetRevision,
-          log: prepared.log,
-          diff: prepared.diff,
-          maxDiffBytes,
-          extraSections
-        })
-        return { prepared, packet }
+          baseRevision: request.baseRevision,
+          targetRevision: request.targetRevision,
+          withProjectRules: Boolean(request.withProjectRules)
+        },
+        maxDiffBytes,
+        maxAddedFileContentBytes,
+        produce: async () => {
+          const prepared = await prepareTarget(makeBazaarClient(maxDiffBytes), bazaarFolder.uri.fsPath, request, {
+            includeAddedFiles: true,
+            maxAddedFileContentBytes
+          })
+          const runWorkspaceFolder = this.bobWorkspaceFolder ?? bobFolder ?? bazaarFolder
+          const reviewId = selection.reviewId ?? buildReviewId({
+            mode: prepared.info.mode,
+            revision: prepared.info.revision,
+            baseRevision: prepared.info.baseRevision,
+            targetRevision: prepared.info.targetRevision
+          })
+          reviewRun = this.reusableTargetRun(selection.campaignId, reviewId, prepared.root, prepared.info)
+            ?? await startReviewRun({
+              workspaceRoot: runWorkspaceFolder.uri.fsPath,
+              campaignId: selection.campaignId,
+              reviewId,
+              target: {
+                mode: prepared.info.mode,
+                repositoryRoot: prepared.root,
+                revision: prepared.info.revision,
+                baseRevision: prepared.info.baseRevision,
+                targetRevision: prepared.info.targetRevision
+              }
+            })
+          const projectRulesSection = request.withProjectRules && bobFolder
+            ? await buildProjectRulesSectionForWorkspace(bobFolder.uri.fsPath)
+            : undefined
+          const extraSections = [
+            buildReviewRunMetadataSection(reviewRun),
+            buildTargetMetadataSection(prepared.info),
+            prepared.addedFilesSection,
+            projectRulesSection
+          ].filter((section): section is string => Boolean(section))
+          const packet = buildReviewPacket({
+            repositoryRoot: prepared.root,
+            mode: request.mode,
+            revision: request.revision,
+            baseRevision: prepared.info.baseRevision,
+            targetRevision: prepared.info.targetRevision,
+            log: prepared.log,
+            diff: prepared.diff,
+            maxDiffBytes,
+            extraSections
+          })
+          return { prepared, packet }
+        }
+      })
+    } catch (error) {
+      if (reviewRun) {
+        try {
+          reviewRun = await recordReviewPacketProcessingFailure(reviewRun, error)
+          this.activeReviewRun = reviewRun
+          await this.postReviewRuns()
+        } catch (recordError) {
+          throw new AggregateError(
+            [error, recordError],
+            "Bazaar review packet processing failed and the Review Run failure state could not be persisted."
+          )
+        }
       }
-    })
+      throw error
+    }
     if (!reviewRun) throw new Error("レビュー実行の作成結果がありません。")
-    reviewRun = await recordReviewPacket(reviewRun, result.packet)
-    this.activeReviewRun = reviewRun
+    const completedReviewRun = await recordReviewPacket(reviewRun, result.packet)
+    reviewRun = completedReviewRun
+    this.activeReviewRun = completedReviewRun
 
     const doc = await vscode.workspace.openTextDocument({ language: "markdown", content: result.packet })
     await vscode.window.showTextDocument(doc, { preview: false })
@@ -435,7 +454,7 @@ class BazaarReviewGuiController {
       bobContextAvailable: addResult !== "skipped",
       bobContextAdded: addResult === "added",
       workflowStepCompleted,
-      reviewRun: serializeReviewRun(reviewRun)
+      reviewRun: serializeReviewRun(completedReviewRun)
     })
     await this.postReviewRuns()
   }
