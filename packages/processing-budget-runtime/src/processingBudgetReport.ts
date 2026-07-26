@@ -184,7 +184,7 @@ function knownOrValidated(value: unknown, options: ValidateProcessingBudgetRepor
 function normalizeIssues(value: unknown): readonly ProcessingBudgetReportIssue[] {
   if (!Array.isArray(value)) invalid("issues must be an array")
   if (value.length > PROCESSING_BUDGET_REPORT_MAX_ISSUES) invalid(`issues exceed ${PROCESSING_BUDGET_REPORT_MAX_ISSUES}`)
-  const issues = value.map((item, index) => normalizeIssue(item, index))
+  const issues = denseArrayMap(value, "issues", normalizeIssue)
   issues.sort(compareIssues)
   return Object.freeze(issues)
 }
@@ -250,8 +250,8 @@ function normalizeLedgerReport(value: unknown): ProcessingBudgetLedgerReport {
   }
   if (!Array.isArray(record.targets)) invalid("ledger.targets must be an array")
 
-  const categories = record.categories.map((entry, index) => normalizeCategoryReport(entry, index))
-  const targets = record.targets.map((entry, index) => normalizeTargetReport(entry, index))
+  const categories = denseArrayMap(record.categories, "ledger.categories", normalizeCategoryReport)
+  const targets = denseArrayMap(record.targets, "ledger.targets", normalizeTargetReport)
   const orderedTargets = [...targets].sort(compareTargets)
   for (let index = 0; index < targets.length; index += 1) {
     if (targets[index].category !== orderedTargets[index].category || targets[index].target !== orderedTargets[index].target) {
@@ -423,6 +423,48 @@ function optionalInteger(value: unknown, label: string): number | undefined {
 function checkedInteger(value: unknown, label: string): number {
   if (!Number.isSafeInteger(value) || (value as number) < 0) invalid(`${label} must be a non-negative safe integer`)
   return value as number
+}
+
+function denseArrayMap<T>(
+  value: readonly unknown[],
+  label: string,
+  normalize: (entry: unknown, index: number) => T
+): T[] {
+  let keys: readonly PropertyKey[]
+  try { keys = Reflect.ownKeys(value) } catch { invalid(`${label} keys are unavailable`) }
+
+  let lengthDescriptor: PropertyDescriptor | undefined
+  try { lengthDescriptor = Object.getOwnPropertyDescriptor(value, "length") } catch { invalid(`${label}.length descriptor is unavailable`) }
+  if (!lengthDescriptor || !("value" in lengthDescriptor)
+    || lengthDescriptor.enumerable !== false || lengthDescriptor.configurable !== false
+    || !Number.isSafeInteger(lengthDescriptor.value) || lengthDescriptor.value < 0
+    || lengthDescriptor.value > 0xffff_ffff) {
+    invalid(`${label}.length is invalid`)
+  }
+  const length = lengthDescriptor.value as number
+  const descriptors = new Map<number, PropertyDescriptor>()
+  for (const key of keys) {
+    if (typeof key !== "string") invalid(`${label} contains a symbol property`)
+    if (key === "length") continue
+    if (!/^(?:0|[1-9][0-9]*)$/u.test(key)) invalid(`${label} contains a non-index property ${key}`)
+    const index = Number(key)
+    if (!Number.isSafeInteger(index) || index < 0 || index >= length || index >= 0xffff_ffff) {
+      invalid(`${label} contains an invalid index ${key}`)
+    }
+    let descriptor: PropertyDescriptor | undefined
+    try { descriptor = Object.getOwnPropertyDescriptor(value, key) } catch { invalid(`${label}[${key}] descriptor is unavailable`) }
+    if (!descriptor || !("value" in descriptor) || descriptor.enumerable !== true) {
+      invalid(`${label}[${key}] must be an enumerable own data property`)
+    }
+    descriptors.set(index, descriptor)
+  }
+  if (descriptors.size !== length) invalid(`${label} contains one or more sparse slots`)
+
+  const output: T[] = []
+  for (const [index, descriptor] of [...descriptors.entries()].sort((left, right) => left[0] - right[0])) {
+    output.push(normalize(descriptor.value, index))
+  }
+  return output
 }
 
 function closedRecord(
