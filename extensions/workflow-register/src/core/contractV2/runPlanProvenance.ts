@@ -64,6 +64,7 @@ const PROVENANCE_FIELDS = freezeEvidence([
   "providerExactBindings",
   "bobProfileBinding"
 ] as const)
+const arrayFrom = Array.from
 const canonicalJsonTextCaptured = canonicalJsonText
 const jsonStringify = JSON.stringify
 const mapClear = Function.prototype.call.bind(Map.prototype.clear) as (
@@ -304,7 +305,7 @@ export function releaseWorkflowContractV2RunPlanLease(
 }
 
 export function releaseAllWorkflowContractV2RunPlanLeases(): void {
-  const leases = mapValues(runLeases)
+  const leases = arrayFrom(mapValues(runLeases))
   mapClear(runLeases)
   for (const lease of leases) lease.release()
 }
