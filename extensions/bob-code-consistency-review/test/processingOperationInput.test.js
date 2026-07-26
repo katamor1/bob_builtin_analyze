@@ -113,3 +113,27 @@ test("canonical hashing rejects accessors, hidden state, symbols, cycles, and un
   assert.throws(() => canonicalSha(cycle), /cycle/u)
   assert.throws(() => canonicalSha({ unsafe: Number.MAX_SAFE_INTEGER + 1 }), /unsafe number/u)
 })
+
+test("canonical hashing rejects hidden, symbolic, named, and accessor state on arrays", () => {
+  const hidden = [1]
+  Object.defineProperty(hidden, "hidden", { enumerable: false, value: 2 })
+  assert.throws(() => canonicalSha(hidden), /hidden or non-index array property/u)
+
+  const symbolic = [1]
+  Object.defineProperty(symbolic, Symbol("hidden"), { enumerable: false, value: 2 })
+  assert.throws(() => canonicalSha(symbolic), /symbol property on an array/u)
+
+  const named = [1]
+  named.extra = 2
+  assert.throws(() => canonicalSha(named), /hidden or non-index array property/u)
+
+  const accessor = []
+  Object.defineProperty(accessor, "0", { enumerable: true, configurable: true, get: () => 1 })
+  assert.throws(() => canonicalSha(accessor), /accessor on an array index/u)
+
+  const hiddenIndex = [1]
+  Object.defineProperty(hiddenIndex, "0", { enumerable: false, value: 1 })
+  assert.throws(() => canonicalSha(hiddenIndex), /hidden array index/u)
+
+  assert.doesNotThrow(() => canonicalSha(Object.freeze([1, , { nested: [2] }])))
+})
