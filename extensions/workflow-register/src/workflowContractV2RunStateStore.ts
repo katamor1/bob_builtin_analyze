@@ -3,9 +3,7 @@ import {
   adoptWorkflowContractV2RunPlanLease,
   bindAvailableWorkflowContractV2RunPlanLease,
   currentWorkflowContractV2PlanLease,
-  prepareWorkflowContractV2RunPlanLeaseForWrite,
-  releaseWorkflowContractV2RunPlanLease,
-  workflowContractV2RunIsTerminal
+  prepareWorkflowContractV2RunPlanLeaseForWrite
 } from "./core/contractV2/runPlanProvenance"
 import { createWorkflowContractV2RunState } from "./core/engine/runState"
 import type { CoreWorkflowDefinition, WorkflowRunState } from "./core/model"
@@ -55,9 +53,6 @@ export class ContractV2GuardedRunStateStore extends FileRunStateStore {
     const preparedLease = prepareWorkflowContractV2RunPlanLeaseForWrite(this.workspaceRoot, run)
     await super.saveRun(run)
     adoptWorkflowContractV2RunPlanLease(this.workspaceRoot, run, preparedLease)
-    if (workflowContractV2RunIsTerminal(run)) {
-      releaseWorkflowContractV2RunPlanLease(this.workspaceRoot, run.runId)
-    }
   }
 
   override async loadRun(runId: string): Promise<WorkflowRunState | undefined> {
