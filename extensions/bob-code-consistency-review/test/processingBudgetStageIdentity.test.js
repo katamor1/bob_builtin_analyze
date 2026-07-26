@@ -14,7 +14,9 @@ test("pipeline refreshes failed-report identity after every completed materializ
     /refreshInputSha\(\{ documents \}\)/,
     /refreshInputSha\(\{ codeAnalysis \}\)/,
     /refreshInputSha\(\{\s*contextBudgetArtifact: contextBudget\.artifact,\s*contextWarnings: contextBudget\.warnings\s*\}\)/,
-    /refreshInputSha\(\{ traceability \}\)/
+    /refreshInputSha\(\{ upstreamArtifactLedger: upstreamLedger \}\)/,
+    /refreshInputSha\(\{ traceability \}\)/,
+    /refreshInputSha\(\{ finalArtifactLedger: finalLedger \}\)/
   ]) assert.match(source, expected)
 
   const ordered = [
@@ -29,8 +31,12 @@ test("pipeline refreshes failed-report identity after every completed materializ
     "const contextBudget = await buildReviewContextBudget",
     "contextBudgetArtifact: contextBudget.artifact",
     "const upstreamLedger = await updateArtifactLedger",
+    "refreshInputSha({ upstreamArtifactLedger: upstreamLedger })",
     "const traceability = await buildTraceability",
-    "refreshInputSha({ traceability })"
+    "refreshInputSha({ traceability })",
+    "const finalLedger = await updateArtifactLedger",
+    "refreshInputSha({ finalArtifactLedger: finalLedger })",
+    "const postPackageIssues = coverageIssuesFromWarnings"
   ].map((token) => source.indexOf(token))
 
   assert.ok(ordered.every((position) => position >= 0))
