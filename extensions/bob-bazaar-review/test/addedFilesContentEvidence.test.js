@@ -49,6 +49,21 @@ test("added-file cat failures are returned as structured evidence", async () => 
   assert.match(result.section, /読み込めませんでした/u)
 })
 
+test("added-file cancellation and deadline errors are not downgraded to missing evidence", async () => {
+  for (const error of [
+    Object.assign(new Error("cancelled"), { kind: "cancelled", terminationCause: "user" }),
+    Object.assign(new Error("deadline"), { kind: "timeout", terminationCause: "deadline" }),
+    Object.assign(new Error("processing cancellation"), { code: "processing_cancelled" })
+  ]) {
+    await assert.rejects(
+      () => buildAddedFilesContent({
+        cat: async () => { throw error }
+      }, "/repo", "1", info, 128),
+      (observed) => observed === error
+    )
+  }
+})
+
 test("zero added-file budget records skipped text files without reading them", async () => {
   assert.equal(typeof buildAddedFilesContent, "function")
   const result = await buildAddedFilesContent({
