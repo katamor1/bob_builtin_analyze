@@ -18,15 +18,17 @@ test("both command-palette review operations use the processing coverage gate an
   assert.match(commands, /BazaarProcessingCoveragePartialError/)
 })
 
-test("GUI does not record or hand off a packet before complete coverage", () => {
+test("GUI persists failure and does not record or hand off a packet before complete coverage", () => {
   const gui = source("src/ui/reviewGui.ts")
-  const gate = gui.indexOf("const result = await runBazaarReviewProcessingOperation(")
-  const record = gui.indexOf("reviewRun = await recordReviewPacket(reviewRun, result.packet)")
+  const gate = gui.indexOf("result = await runBazaarReviewProcessingOperation(")
+  const persistFailure = gui.indexOf("recordReviewPacketProcessingFailure(reviewRun, error)")
+  const record = gui.indexOf("const completedReviewRun = await recordReviewPacket(reviewRun, result.packet)")
   const handoff = gui.indexOf("addResult = await addPacketToBobContext(doc.uri, result.packet)")
   assert.ok(gate >= 0)
-  assert.ok(record > gate)
+  assert.ok(persistFailure > gate)
+  assert.ok(record > persistFailure)
   assert.ok(handoff > record)
-  assert.doesNotMatch(gui.slice(gate, record), /recordReviewPacket\(/)
+  assert.doesNotMatch(gui.slice(gate, record), /recordReviewPacket\(reviewRun, result\.packet\)/)
 })
 
 test("coverage boundary derives a physical report scope from prepared root when a caller omits it", () => {
