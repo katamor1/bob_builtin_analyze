@@ -45,10 +45,6 @@ export {
   PROCESSING_BUDGET_REPORT_MAX_TEXT_UTF8_BYTES,
   PROCESSING_BUDGET_REPORT_SCHEMA_VERSION,
   ProcessingBudgetReportError,
-  assertProcessingBudgetReportAllowsHandoff,
-  createProcessingBudgetReport,
-  serializeProcessingBudgetReport,
-  validateProcessingBudgetReport,
   type CreateProcessingBudgetReportInput,
   type ProcessingBudgetCoverageStatus,
   type ProcessingBudgetOperationOutcome,
@@ -60,6 +56,12 @@ export {
   type ProcessingBudgetReportProducer,
   type ValidateProcessingBudgetReportOptions
 } from "./processingBudgetReport"
+export {
+  assertProcessingBudgetReportAllowsHandoff,
+  createProcessingBudgetReport,
+  serializeProcessingBudgetReport,
+  validateProcessingBudgetReport
+} from "./processingBudgetReportPublic"
 export {
   ABSOLUTE_MAX_OOXML_ARCHIVE_ENTRIES,
   DEFAULT_MAX_OOXML_ARCHIVE_ENTRIES,
