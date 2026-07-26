@@ -6,6 +6,7 @@ import type { ReviewProcessingLimits } from "./limits"
 import type { ReviewInput } from "./reviewTypes"
 import type { TraceabilityResult } from "./traceabilityResultTypes"
 import type { ContextBudgetArtifact } from "../evidenceScope/contextBudgetArtifact"
+import type { ArtifactLedgerUpdateResult } from "../evidenceScope/artifactLedger"
 import type { ProduceRepositorySymbolIndexResult } from "../evidenceScope/repositorySymbolIndexProducer"
 import type { SharedProcessingBudgetLimits } from "../sharedProcessingBudgetRuntime"
 
@@ -25,6 +26,8 @@ export interface MaterializedProcessingInputs {
   readonly contextBudgetArtifact?: ContextBudgetArtifact
   readonly contextWarnings?: readonly string[]
   readonly traceability?: TraceabilityResult
+  readonly upstreamArtifactLedger?: ArtifactLedgerUpdateResult
+  readonly finalArtifactLedger?: ArtifactLedgerUpdateResult
 }
 
 export function computeProcessingOperationInputSha(input: {
@@ -35,7 +38,7 @@ export function computeProcessingOperationInputSha(input: {
 }): string {
   const materialized = input.materialized ?? {}
   const payload = {
-    schema_version: "code-consistency-processing-input/v3",
+    schema_version: "code-consistency-processing-input/v4",
     review_input_sha256: canonicalSha(input.reviewInput),
     configuration_sha256: canonicalSha({
       text_encoding: input.configuration.textEncoding ?? "auto",
@@ -54,7 +57,9 @@ export function computeProcessingOperationInputSha(input: {
         artifact: materialized.contextBudgetArtifact,
         warnings: materialized.contextWarnings ?? []
       }),
-      traceability_sha256: optionalCanonicalSha(materialized.traceability)
+      traceability_sha256: optionalCanonicalSha(materialized.traceability),
+      upstream_artifact_ledger_sha256: optionalCanonicalSha(materialized.upstreamArtifactLedger),
+      final_artifact_ledger_sha256: optionalCanonicalSha(materialized.finalArtifactLedger)
     }
   }
   return canonicalSha(payload)
