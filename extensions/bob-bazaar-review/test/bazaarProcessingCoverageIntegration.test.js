@@ -63,9 +63,11 @@ test("coverage boundary derives a physical report scope from the prepared checkp
   assert.match(coverage, /BAZAAR_REVIEW_BOB_INPUT_MAX_BYTES = PROCESSING_BUDGET_ABSOLUTE_MAXIMA\.bob_input_bytes/)
 })
 
-test("partial coverage reports target, processed bytes, and original observation", () => {
+test("partial coverage reports prepared-budget observations and structured added-file loss", () => {
   const coverage = source("src/bazaar/bazaarProcessingCoverage.ts")
-  assert.match(coverage, /category: "raw_diff_bytes"[\s\S]*target: "bazaar-diff"[\s\S]*processed: boundedDiffBytes[\s\S]*observed: originalDiffBytes/)
-  assert.match(coverage, /category: "document_excerpt_bytes"[\s\S]*target: "bazaar-added-files"/)
+  assert.match(coverage, /category: "raw_diff_bytes"[\s\S]*target: "bazaar-diff"[\s\S]*processed: budget\.boundedDiffBytes[\s\S]*observed: budget\.originalDiffBytes/)
+  assert.match(coverage, /processed: budget\.processedAddedFileBytes[\s\S]*observed: budget\.observedAddedFileBytes/)
+  assert.match(coverage, /code: "added_file_read_failed"/)
+  assert.match(coverage, /code: "added_file_content_unprocessed"/)
   assert.match(coverage, /assertProcessingBudgetReportAllowsHandoff\(/)
 })
