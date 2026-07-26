@@ -24,10 +24,10 @@ const {
 const {
   canonicalRepositoryRoot,
   createWorkflowContractV2EvidenceEnvironment,
+  inspectDirectRepositoryPath,
   portablePathKey,
   readWorkflowContractV2Collections,
-  repositoryRelativePath,
-  resolveWithinRepository
+  repositoryRelativePath
 } = require("./lib/workflow-contract-v2-environment.js")
 
 const SLOT_PATTERN = /^[A-Za-z][A-Za-z0-9]*(?:[._-][A-Za-z0-9]+)*$/u
@@ -72,8 +72,7 @@ async function main(argv = process.argv.slice(2)) {
 
   for (let collectionIndex = 0; collectionIndex < collections.length; collectionIndex += 1) {
     const collection = collections[collectionIndex]
-    const lexicalRoot = resolveWithinRepository(repositoryRoot, collection)
-    const physicalRoot = await assertPhysicalCollection(repositoryRoot, lexicalRoot)
+    const physicalRoot = await assertPhysicalCollection(repositoryRoot, collection)
     const physicalKey = portablePathKey(physicalRoot)
     if (physicalCollections[physicalKey] !== undefined) {
       throw new TypeError("Workflow collection roots resolve to the same physical location.")
@@ -201,20 +200,29 @@ function normalizeCollections(values) {
   return objectFreeze(result)
 }
 
-async function assertPhysicalCollection(repositoryRoot, lexicalRoot) {
-  const before = await fsLstat(lexicalRoot, { bigint: true })
-  if (!before.isDirectory() || before.isSymbolicLink()) {
-    throw new TypeError("Workflow collection root must be a direct directory, not a symbolic link.")
-  }
-  const physicalRoot = await fsRealpath(lexicalRoot)
-  const after = await fsLstat(lexicalRoot, { bigint: true })
+async function assertPhysicalCollection(repositoryRoot, collection) {
+  const beforePath = await inspectDirectRepositoryPath(
+    repositoryRoot,
+    collection,
+    "directory",
+    "Workflow collection root"
+  )
+  const physicalRoot = await fsRealpath(beforePath.path)
+  const afterPath = await inspectDirectRepositoryPath(
+    repositoryRoot,
+    collection,
+    "directory",
+    "Workflow collection root"
+  )
   if (
-    !after.isDirectory()
-    || after.isSymbolicLink()
-    || before.dev !== after.dev
-    || before.ino !== after.ino
-    || before.mode !== after.mode
+    beforePath.stat.dev !== afterPath.stat.dev
+    || beforePath.stat.ino !== afterPath.stat.ino
+    || beforePath.stat.mode !== afterPath.stat.mode
   ) throw new TypeError("Workflow collection root changed while it was being resolved.")
+  const physicalAfter = await fsRealpath(afterPath.path)
+  if (physicalAfter !== physicalRoot) {
+    throw new TypeError("Workflow collection root changed while it was being resolved.")
+  }
   const relative = pathRelative(repositoryRoot, physicalRoot)
   if (
     relative === ""
