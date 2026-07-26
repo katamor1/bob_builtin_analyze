@@ -3,6 +3,7 @@ import { types as utilTypes } from "node:util"
 import { canonicalJsonBytes } from "./canonicalJson"
 import {
   requireCompiledWorkflowPlanState,
+  type CompiledWorkflowPlan,
   type CompiledWorkflowPlanPrivateState,
   type CompiledWorkflowStep
 } from "./compiledPlan"
@@ -30,6 +31,7 @@ import type {
   WorkflowProviderEffectInput,
   WorkflowProviderIdempotencyInput
 } from "./providerContract"
+import { snapshotBoundedWorkflowProviderEnvelope } from "./providerEnvelopeSnapshot"
 import {
   invokeBoundWorkflowProviderDispatch,
   type BoundWorkflowProviderDispatchHandle,
@@ -66,6 +68,11 @@ export type CompiledProviderInvocationResult =
       readonly diagnostics: readonly WorkflowContractV2Diagnostic[]
     }
 
+interface ProviderArtifactPolicy {
+  readonly id: string
+  readonly maxBytes: number
+}
+
 interface InvocationBinding {
   readonly step: Extract<CompiledWorkflowStep, { readonly type: "command" }>
   readonly stepIndex: number
@@ -74,6 +81,7 @@ interface InvocationBinding {
   readonly inputSchema: CompiledLocalJsonSchemaView
   readonly outputSchema?: CompiledLocalJsonSchemaView
   readonly errorSchema: CompiledLocalJsonSchemaView
+  readonly artifacts: readonly ProviderArtifactPolicy[]
 }
 
 interface ProviderEffectSession {
@@ -84,13 +92,16 @@ interface ProviderEffectSession {
 const isProxy = utilTypes.isProxy
 const AbortSignalConstructor = AbortSignal
 const Uint8ArrayConstructor = Uint8Array
+const WorkflowAttemptStagingErrorConstructor = WorkflowAttemptStagingError
 const arrayPush = Array.prototype.push
 const canonicalJsonBytesCaptured = canonicalJsonBytes
 const createDiagnosticCaptured = createWorkflowContractV2Diagnostic
 const functionHasInstance = Function.prototype[Symbol.hasInstance]
 const invokeDispatchCaptured = invokeBoundWorkflowProviderDispatch
+const numberIsSafeInteger = Number.isSafeInteger
 const objectCreate = Object.create
 const objectFreeze = Object.freeze
+const objectGetOwnPropertyDescriptor = Object.getOwnPropertyDescriptor
 const objectGetOwnPropertyDescriptors = Object.getOwnPropertyDescriptors
 const objectGetPrototypeOf = Object.getPrototypeOf
 const objectHasOwn = Object.hasOwn
@@ -98,14 +109,24 @@ const objectPrototype = Object.prototype
 const promiseAll = Function.prototype.call.bind(Promise.all, Promise) as <T>(
   values: Iterable<T | PromiseLike<T>>
 ) => Promise<Awaited<T>[]>
+const promiseCatch = Function.prototype.call.bind(Promise.prototype.catch) as (
+  promise: Promise<unknown>,
+  onRejected: (reason: unknown) => unknown
+) => Promise<unknown>
+const promiseReject = Promise.reject.bind(Promise) as <T = never>(reason?: unknown) => Promise<T>
 const reflectApply = Reflect.apply
 const reflectOwnKeys = Reflect.ownKeys
 const regexpExec = RegExp.prototype.exec
 const requireLeaseHandleCaptured = requireActiveWorkflowPlanLeaseHandle
 const requirePlanStateCaptured = requireCompiledWorkflowPlanState
+const snapshotEnvelopeCaptured = snapshotBoundedWorkflowProviderEnvelope
 const stageArtifactCaptured = stageWorkflowAttemptArtifact
 const stagingKeyCaptured = workflowAttemptStagingIdempotencyKey
 const typedArraySet = Uint8Array.prototype.set
+const typedArrayPrototype = objectGetPrototypeOf(Uint8ArrayConstructor.prototype)
+const typedArrayByteLengthGetter = typedArrayPrototype === null
+  ? undefined
+  : objectGetOwnPropertyDescriptor(typedArrayPrototype, "byteLength")?.get
 const validateSchemaCaptured = validateLocalJsonSchemaViewValue
 const EMPTY_DIAGNOSTICS = objectFreeze([]) as readonly []
 const INPUT_FIELDS = objectFreeze(["lease", "stepId", "value", "signal", "attempt"] as const)
@@ -113,6 +134,8 @@ const ARTIFACT_FIELDS = objectFreeze(["id", "bytes"] as const)
 const STEP_ID_PATTERN = /^[A-Za-z][A-Za-z0-9]*(?:[._-][A-Za-z0-9]+)*$/u
 const ARTIFACT_ID_PATTERN = STEP_ID_PATTERN
 const MAX_VALUE_BYTES = 16_777_216
+const MAX_ARTIFACT_WRITES = 128
+const MAX_ARTIFACT_TOTAL_BYTES = 67_108_864
 
 export async function invokeCompiledWorkflowProvider(
   input: InvokeCompiledWorkflowProviderInput
@@ -131,26 +154,33 @@ export async function invokeCompiledWorkflowProvider(
   requireSignal(snapshot.signal)
   const attempt = snapshot.attempt as WorkflowAttemptStaging
   const idempotencyKey = stagingKeyCaptured(attempt)
-  const binding = invocationBinding(handle.plan.workflow.steps, handle.plan.providerBindings, state, stepId)
+  const binding = invocationBinding(
+    handle.plan.workflow.steps,
+    handle.plan.providerBindings,
+    handle.plan.requiredArtifacts,
+    state,
+    stepId
+  )
   const inputLocation = location(binding.stepIndex, "input")
+  const boundedInput = snapshotBoundedWorkflowProviderEnvelope(snapshot.value, MAX_VALUE_BYTES)
+  if (boundedInput === undefined || !withinValueLimit(boundedInput, MAX_VALUE_BYTES)) {
+    return validationFailure(singleDiagnostic(
+      "WF2_PROVIDER_INPUT_INVALID",
+      inputLocation,
+      "Workflow provider input exceeds its structural or byte limit."
+    ))
+  }
   const validatedInput = validateSchemaCaptured({
     compiled: binding.inputSchema,
-    value: snapshot.value,
+    value: boundedInput,
     diagnosticCode: "WF2_PROVIDER_INPUT_INVALID",
     location: inputLocation
   })
   if (!validatedInput.ok) return validationFailure(validatedInput.diagnostics)
-  if (!withinValueLimit(validatedInput.value, MAX_VALUE_BYTES)) {
-    return validationFailure(singleDiagnostic(
-      "WF2_PROVIDER_INPUT_INVALID",
-      inputLocation,
-      "Workflow provider input exceeds the allowed byte limit."
-    ))
-  }
 
   const pendingWrites: Promise<void>[] = []
   const idempotency = providerIdempotency(binding.provider, idempotencyKey)
-  const effectSession = providerEffect(binding.provider, attempt, pendingWrites)
+  const effectSession = providerEffect(binding, attempt, pendingWrites)
   const dispatchInput = objectFreeze({
     value: validatedInput.value,
     signal: snapshot.signal as AbortSignal,
@@ -164,22 +194,22 @@ export async function invokeCompiledWorkflowProvider(
   } catch (error) {
     effectSession.close()
     await promiseAll(pendingWrites)
-    if (isInstance(WorkflowAttemptStagingError, error)) throw error
     const errorLocation = location(binding.stepIndex, "provider")
+    const boundedError = snapshotBoundedWorkflowProviderEnvelope(error, MAX_VALUE_BYTES)
+    if (boundedError === undefined || !withinValueLimit(boundedError, MAX_VALUE_BYTES)) {
+      return validationFailure(singleDiagnostic(
+        "WF2_PROVIDER_ERROR_INVALID",
+        errorLocation,
+        "Workflow provider error exceeds its structural or byte limit."
+      ))
+    }
     const validatedError = validateSchemaCaptured({
       compiled: binding.errorSchema,
-      value: error,
+      value: boundedError,
       diagnosticCode: "WF2_PROVIDER_ERROR_INVALID",
       location: errorLocation
     })
     if (!validatedError.ok) return validationFailure(validatedError.diagnostics)
-    if (!withinValueLimit(validatedError.value, MAX_VALUE_BYTES)) {
-      return validationFailure(singleDiagnostic(
-        "WF2_PROVIDER_ERROR_INVALID",
-        errorLocation,
-        "Workflow provider error exceeds the allowed byte limit."
-      ))
-    }
     return objectFreeze({
       ok: false as const,
       failure: "provider-error" as const,
@@ -209,23 +239,24 @@ export async function invokeCompiledWorkflowProvider(
     throw new TypeError("Compiled workflow provider output schema is unavailable.")
   }
   const outputLocation = location(binding.stepIndex, "output")
+  const maximum = binding.step.output.maxBytes < MAX_VALUE_BYTES
+    ? binding.step.output.maxBytes
+    : MAX_VALUE_BYTES
+  const boundedOutput = snapshotBoundedWorkflowProviderEnvelope(returned, maximum)
+  if (boundedOutput === undefined || !withinValueLimit(boundedOutput, maximum)) {
+    return validationFailure(singleDiagnostic(
+      "WF2_PROVIDER_OUTPUT_INVALID",
+      outputLocation,
+      "Workflow provider output exceeds its structural or byte limit."
+    ))
+  }
   const validatedOutput = validateSchemaCaptured({
     compiled: binding.outputSchema,
-    value: returned,
+    value: boundedOutput,
     diagnosticCode: "WF2_PROVIDER_OUTPUT_INVALID",
     location: outputLocation
   })
   if (!validatedOutput.ok) return validationFailure(validatedOutput.diagnostics)
-  const maximum = binding.step.output.maxBytes < MAX_VALUE_BYTES
-    ? binding.step.output.maxBytes
-    : MAX_VALUE_BYTES
-  if (!withinValueLimit(validatedOutput.value, maximum)) {
-    return validationFailure(singleDiagnostic(
-      "WF2_PROVIDER_OUTPUT_INVALID",
-      outputLocation,
-      "Workflow provider output exceeds the allowed byte limit."
-    ))
-  }
   return objectFreeze({
     ok: true as const,
     output: objectFreeze({ kind: "value" as const, value: validatedOutput.value }),
@@ -236,6 +267,7 @@ export async function invokeCompiledWorkflowProvider(
 function invocationBinding(
   steps: readonly CompiledWorkflowStep[],
   providers: readonly WorkflowProviderLockEvidence[],
+  requiredArtifacts: CompiledWorkflowPlan["requiredArtifacts"],
   state: CompiledWorkflowPlanPrivateState,
   stepId: string
 ): InvocationBinding {
@@ -265,7 +297,8 @@ function invocationBinding(
     dispatchHandle: privateProvider.dispatchHandle,
     inputSchema,
     ...(outputSchema === undefined ? {} : { outputSchema }),
-    errorSchema
+    errorSchema,
+    artifacts: providerArtifactPolicies(step, requiredArtifacts)
   })
 }
 
@@ -286,24 +319,28 @@ function providerIdempotency(
 }
 
 function providerEffect(
-  provider: WorkflowProviderLockEvidence,
+  binding: InvocationBinding,
   attempt: WorkflowAttemptStaging,
   pendingWrites: Promise<void>[]
 ): ProviderEffectSession {
-  if (provider.sideEffect === "none") {
+  if (binding.provider.sideEffect === "none") {
     return objectFreeze({ effect: objectFreeze({ kind: "none" as const }), close: objectFreeze(() => {}) })
   }
-  if (provider.sideEffect === "external") {
+  if (binding.provider.sideEffect === "external") {
     return objectFreeze({ effect: objectFreeze({ kind: "external" as const }), close: objectFreeze(() => {}) })
   }
-  return createArtifactWriterSession(attempt, pendingWrites)
+  return createArtifactWriterSession(attempt, pendingWrites, binding.artifacts)
 }
 
 function createArtifactWriterSession(
   attempt: WorkflowAttemptStaging,
-  pendingWrites: Promise<void>[]
+  pendingWrites: Promise<void>[],
+  policies: readonly ProviderArtifactPolicy[]
 ): ProviderEffectSession {
   let open = true
+  let writeCount = 0
+  let totalBytes = 0
+  const writtenIds: string[] = []
   const writeArtifact = objectFreeze((input: { readonly id: string; readonly bytes: Uint8Array }): Promise<void> => {
     if (!open) throw new TypeError("Workflow provider artifact writer is closed.")
     const snapshot = snapshotExactRecord(input, ARTIFACT_FIELDS, "Workflow provider artifact write")
@@ -320,7 +357,20 @@ function createArtifactWriterSession(
       || !isInstance(Uint8ArrayConstructor, bytes)
     ) throw new TypeError("Workflow provider artifact bytes must be a Uint8Array.")
     const source = bytes as Uint8Array
-    const copy = new Uint8ArrayConstructor(source.byteLength)
+    const byteLength = typedArrayByteLength(source)
+    const policy = findArtifactPolicy(policies, id)
+    if (
+      policy === undefined
+      || contains(writtenIds, id)
+      || writeCount >= MAX_ARTIFACT_WRITES
+      || byteLength > policy.maxBytes
+      || totalBytes + byteLength > MAX_ARTIFACT_TOTAL_BYTES
+    ) return rejectArtifactWrite(pendingWrites)
+
+    writeCount += 1
+    totalBytes += byteLength
+    push(writtenIds, id)
+    const copy = new Uint8ArrayConstructor(byteLength)
     reflectApply(typedArraySet, copy, [source])
     const pending = stageArtifactCaptured(attempt, objectFreeze({ id, bytes: copy }))
     push(pendingWrites, pending)
@@ -332,6 +382,59 @@ function createArtifactWriterSession(
     effect: objectFreeze({ kind: "workspace-write" as const, artifacts: writer }),
     close
   })
+}
+
+function providerArtifactPolicies(
+  step: Extract<CompiledWorkflowStep, { readonly type: "command" }>,
+  requiredArtifacts: CompiledWorkflowPlan["requiredArtifacts"]
+): readonly ProviderArtifactPolicy[] {
+  if (step.artifacts.length > MAX_ARTIFACT_WRITES) {
+    throw new TypeError("Compiled workflow provider artifact collection exceeds its limit.")
+  }
+  const policies: ProviderArtifactPolicy[] = []
+  for (let index = 0; index < step.artifacts.length; index += 1) {
+    const id = step.artifacts[index]
+    for (let artifactIndex = 0; artifactIndex < requiredArtifacts.length; artifactIndex += 1) {
+      const artifact = requiredArtifacts[artifactIndex]
+      if (
+        artifact.id === id
+        && artifact.producedBy === step.id
+        && artifact.owner === "provider"
+      ) {
+        push(policies, objectFreeze({ id, maxBytes: artifact.maxBytes }))
+        break
+      }
+    }
+  }
+  return objectFreeze(policies)
+}
+
+function rejectArtifactWrite(pendingWrites: Promise<void>[]): Promise<void> {
+  const pending = promiseReject<void>(new WorkflowAttemptStagingErrorConstructor())
+  void promiseCatch(pending, () => undefined)
+  push(pendingWrites, pending)
+  return pending
+}
+
+function typedArrayByteLength(value: Uint8Array): number {
+  if (typedArrayByteLengthGetter === undefined) {
+    throw new TypeError("Workflow provider artifact byte length intrinsic is unavailable.")
+  }
+  const result = reflectApply(typedArrayByteLengthGetter, value, []) as unknown
+  if (typeof result !== "number" || !numberIsSafeInteger(result) || result < 0) {
+    throw new TypeError("Workflow provider artifact byte length is invalid.")
+  }
+  return result
+}
+
+function findArtifactPolicy(
+  policies: readonly ProviderArtifactPolicy[],
+  id: string
+): ProviderArtifactPolicy | undefined {
+  for (let index = 0; index < policies.length; index += 1) {
+    if (policies[index].id === id) return policies[index]
+  }
+  return undefined
 }
 
 function findProviderEvidence(
