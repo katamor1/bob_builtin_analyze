@@ -36,6 +36,7 @@ import { FileRunControlStore, RunControlStore } from "./core/runControlStore"
 import type { RunStateStore } from "./core/runStateStore"
 import { FileTaskSnapshotStore, TaskSnapshotStore } from "./core/taskSnapshots"
 import { findMarkerRoots, rootHasMarker } from "./core/workspaceRoots"
+import { executeWorkflowContractV2RuntimeBoundary } from "./workflowContractV2RuntimeBoundary"
 import { ContractV2GuardedRunStateStore } from "./workflowContractV2RunStateStore"
 import { requireTrustedCommandExecution } from "./workspaceTrust"
 
@@ -47,7 +48,26 @@ export interface TaskSnapshotSettings {
   pruneOnSave: boolean
 }
 
-type ContractV2BeforeRun = (workflow: CoreWorkflowDefinition) => Promise<void> | void
+type ContractV2AcquireRunLease = (
+  workflow: CoreWorkflowDefinition
+) => Promise<WorkflowPlanLease | undefined> | WorkflowPlanLease | undefined
+
+type ContractV2BeforeContinuation = (
+  workflow: CoreWorkflowDefinition
+) => Promise<void> | void
+
+export interface ContractV2RunExecutorInput {
+  readonly lease: WorkflowPlanLease
+  readonly workflow: CoreWorkflowDefinition
+  readonly inputs: Record<string, unknown>
+  readonly options: RunWorkflowOptions
+  readonly workspaceRoot: string
+  readonly agentProvider?: AgentProvider
+}
+
+type ContractV2RunExecutor = (
+  input: ContractV2RunExecutorInput
+) => Promise<WorkflowRunState> | WorkflowRunState
 
 export interface WorkflowRuntimeFactoryOptions {
   engineVersion: string
@@ -57,16 +77,24 @@ export interface WorkflowRuntimeFactoryOptions {
   agentProvider: () => AgentProvider | undefined
   inputsProvider: (workflow: WorkflowDefinition, provided: Record<string, unknown>) => ReturnType<BobWorkflowRunnerInputCollector>
   gateRegistry: BobWorkflowGateRegistry
-  contractV2BeforeRun?: ContractV2BeforeRun
-  /** Transitional alias retained while P6 consumers move to the execution-level name. */
-  beforeCreateRun?: ContractV2BeforeRun
+  contractV2AcquireRunLease?: ContractV2AcquireRunLease
+  contractV2RunExecutor?: ContractV2RunExecutor
+  contractV2BeforeContinuation?: ContractV2BeforeContinuation
+  /** Transitional continuation alias retained while later runtime phases replace legacy continuation. */
+  contractV2BeforeRun?: ContractV2BeforeContinuation
+  /** Transitional continuation alias retained for pre-R1 callers. */
+  beforeCreateRun?: ContractV2BeforeContinuation
   onManualStepHeld?: (input: { workflow: import("./core/model").CoreWorkflowDefinition; run: import("./core/model").WorkflowRunState; step: import("./core/model").EngineStep; active: ActiveStep }) => Promise<void> | void
 }
 
 class ContractV2BoundaryWorkflowEngine extends WorkflowEngine {
   constructor(
     options: WorkflowEngineOptions,
-    private readonly beforeRun?: ContractV2BeforeRun
+    private readonly workspaceRoot: string,
+    private readonly acquireRunLease?: ContractV2AcquireRunLease,
+    private readonly runExecutor?: ContractV2RunExecutor,
+    private readonly beforeContinuation?: ContractV2BeforeContinuation,
+    private readonly runtimeAgentProvider?: AgentProvider
   ) {
     super(options)
   }
@@ -76,15 +104,27 @@ class ContractV2BoundaryWorkflowEngine extends WorkflowEngine {
     inputs: Record<string, unknown>,
     options: RunWorkflowOptions = {}
   ): Promise<WorkflowRunState> {
-    await this.beforeRun?.(workflow)
-    return super.runWorkflow(workflow, inputs, options)
+    return executeWorkflowContractV2RuntimeBoundary({
+      acquireLease: () => this.acquireRunLease?.(workflow),
+      legacyOperation: () => super.runWorkflow(workflow, inputs, options),
+      compiledOperation: this.runExecutor === undefined
+        ? undefined
+        : (lease) => this.runExecutor!({
+          lease,
+          workflow,
+          inputs,
+          options,
+          workspaceRoot: this.workspaceRoot,
+          agentProvider: this.runtimeAgentProvider
+        })
+    })
   }
 
   override async resumeRun(
     runId: string,
     options: ResumeRunOptions
   ): Promise<WorkflowRunState> {
-    await this.beforeRun?.(options.workflow)
+    await this.beforeContinuation?.(options.workflow)
     return super.resumeRun(runId, options)
   }
 
@@ -96,7 +136,7 @@ class ContractV2BoundaryWorkflowEngine extends WorkflowEngine {
       afterResume?: (run: WorkflowRunState) => Promise<void> | void
     }
   ): Promise<WorkflowRunState> {
-    await this.beforeRun?.(options.workflow)
+    await this.beforeContinuation?.(options.workflow)
     return super.resumeRunGuarded(runId, options, hooks)
   }
 
@@ -105,7 +145,7 @@ class ContractV2BoundaryWorkflowEngine extends WorkflowEngine {
     workflow: CoreWorkflowDefinition,
     options: RetryRunOptions = {}
   ): Promise<WorkflowRunState> {
-    await this.beforeRun?.(workflow)
+    await this.beforeContinuation?.(workflow)
     return super.retryCurrentStep(runId, workflow, options)
   }
 
@@ -113,7 +153,7 @@ class ContractV2BoundaryWorkflowEngine extends WorkflowEngine {
     runId: string,
     workflow: CoreWorkflowDefinition
   ): Promise<WorkflowRunState> {
-    await this.beforeRun?.(workflow)
+    await this.beforeContinuation?.(workflow)
     return super.approveBranchCheckpoint(runId, workflow)
   }
 }
@@ -139,24 +179,33 @@ export class WorkflowRuntimeFactory {
 
   createEngine(workspaceRoot: string, agentProvider?: AgentProvider): WorkflowEngine {
     const snapshotStore = this.createTaskSnapshotStore(workspaceRoot)
+    const runtimeAgentProvider = agentProvider ?? this.options.agentProvider() ?? this.createCommandAgentProvider()
     const engineOptions: WorkflowEngineOptions = {
       actions: this.options.actionRegistry,
       resultSinks: this.createResultSinks(workspaceRoot),
       runStore: this.createRunStore(workspaceRoot),
       runControlStore: this.createRunControlStore(workspaceRoot),
-      agentProvider: agentProvider ?? this.options.agentProvider() ?? this.createCommandAgentProvider(),
+      agentProvider: runtimeAgentProvider,
       preflightChecks: this.createPreflightChecks(workspaceRoot),
       manualCompletion: (input) => this.holdStandaloneManualStep(input),
       recoverResultText: snapshotStore
         ? (input) => recoverResultTextFromSnapshots(snapshotStore, input.workflow, input.run, input.step)
         : undefined
     }
-    const beforeRun = this.options.contractV2BeforeRun ?? this.options.beforeCreateRun
-    return new ContractV2BoundaryWorkflowEngine(engineOptions, beforeRun)
+    const beforeContinuation = this.options.contractV2BeforeContinuation
+      ?? this.options.contractV2BeforeRun
+      ?? this.options.beforeCreateRun
+    return new ContractV2BoundaryWorkflowEngine(
+      engineOptions,
+      workspaceRoot,
+      this.options.contractV2AcquireRunLease,
+      this.options.contractV2RunExecutor,
+      beforeContinuation,
+      runtimeAgentProvider
+    )
   }
 
   createBobWorkflowRunner(workflow: WorkflowDefinition): BobWorkflowEngineRunner {
-    const beforeRun = this.options.contractV2BeforeRun ?? this.options.beforeCreateRun
     return new BobWorkflowEngineRunner({
       definition: workflow,
       coreWorkflow: workflow.core,
@@ -170,22 +219,17 @@ export class WorkflowRuntimeFactory {
       stepRuntime: this.options.stepRuntime,
       gateRegistry: this.options.gateRegistry,
       onManualStepHeld: this.options.onManualStepHeld,
-      inputsProvider: async (task, provided) => {
-        await beforeRun?.(workflow.core)
-        return this.options.inputsProvider(workflow, {
-          ...extractTaskWorkflowInputs(workflow, task),
-          ...provided
-        })
-      }
+      inputsProvider: async (task, provided) => this.options.inputsProvider(workflow, {
+        ...extractTaskWorkflowInputs(workflow, task),
+        ...provided
+      })
     })
   }
 
   createRunStore(workspaceRoot: string): RunStateStore {
-    const beforeRun = this.options.contractV2BeforeRun ?? this.options.beforeCreateRun
     return new ContractV2GuardedRunStateStore({
       workspaceRoot,
-      engineVersion: this.options.engineVersion,
-      beforeCreateRun: beforeRun
+      engineVersion: this.options.engineVersion
     })
   }
 
