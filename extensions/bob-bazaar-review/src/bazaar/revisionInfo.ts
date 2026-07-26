@@ -153,6 +153,7 @@ export async function buildAddedFilesContent(
       lines.push(fencedCodeBlock("text", retained.text))
       lines.push("")
     } catch (error) {
+      if (isCancellationOrDeadlineError(error)) throw error
       const message = safeFailureMessage(error)
       failures.push(Object.freeze({ path: entry.path, message }))
       lines.push(`### ${entry.path}`)
@@ -229,6 +230,16 @@ function freezeAddedFilesResult(
       readFailures: Object.freeze([...evidence.readFailures])
     })
   })
+}
+
+function isCancellationOrDeadlineError(error: unknown): boolean {
+  if (error === null || typeof error !== "object") return false
+  const record = error as Record<string, unknown>
+  return record.code === "processing_cancelled"
+    || record.kind === "cancelled"
+    || record.kind === "timeout"
+    || record.terminationCause === "user"
+    || record.terminationCause === "deadline"
 }
 
 function safeFailureMessage(error: unknown): string {
