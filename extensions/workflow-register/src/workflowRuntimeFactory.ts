@@ -53,8 +53,7 @@ type ContractV2AcquireRunLease = (
 ) => Promise<WorkflowPlanLease | undefined> | WorkflowPlanLease | undefined
 
 type ContractV2BeforeContinuation = (
-  workflow: CoreWorkflowDefinition | undefined,
-  run?: WorkflowRunState
+  workflow: CoreWorkflowDefinition
 ) => Promise<void> | void
 
 export interface ContractV2RunExecutorInput {
@@ -82,9 +81,9 @@ export interface WorkflowRuntimeFactoryOptions {
   contractV2RunExecutor?: ContractV2RunExecutor
   contractV2BeforeContinuation?: ContractV2BeforeContinuation
   /** Transitional continuation alias retained while later runtime phases replace legacy continuation. */
-  contractV2BeforeRun?: (workflow: CoreWorkflowDefinition) => Promise<void> | void
+  contractV2BeforeRun?: ContractV2BeforeContinuation
   /** Transitional continuation alias retained for pre-R1 callers. */
-  beforeCreateRun?: (workflow: CoreWorkflowDefinition) => Promise<void> | void
+  beforeCreateRun?: ContractV2BeforeContinuation
   onManualStepHeld?: (input: { workflow: import("./core/model").CoreWorkflowDefinition; run: import("./core/model").WorkflowRunState; step: import("./core/model").EngineStep; active: ActiveStep }) => Promise<void> | void
 }
 
@@ -164,7 +163,14 @@ class ContractV2BoundaryWorkflowEngine extends WorkflowEngine {
     reason?: string
   ): Promise<WorkflowRunState> {
     const run = await this.continuationRunStore.loadRun(runId)
-    await this.beforeContinuation?.(undefined, run)
+    if (
+      run?.workflowSchemaVersion === "workflow-register/v2"
+      || run?.planProvenance !== undefined
+    ) {
+      throw new Error(
+        "Contract v2 resume and continuation require R6 recorded-generation recovery."
+      )
+    }
     return super.abortBranchCheckpoint(runId, reason)
   }
 }
@@ -204,11 +210,9 @@ export class WorkflowRuntimeFactory {
         ? (input) => recoverResultTextFromSnapshots(snapshotStore, input.workflow, input.run, input.step)
         : undefined
     }
-    const transitionalContinuation = this.options.contractV2BeforeRun ?? this.options.beforeCreateRun
     const beforeContinuation = this.options.contractV2BeforeContinuation
-      ?? (transitionalContinuation === undefined
-        ? undefined
-        : (workflow) => workflow === undefined ? undefined : transitionalContinuation(workflow))
+      ?? this.options.contractV2BeforeRun
+      ?? this.options.beforeCreateRun
     return new ContractV2BoundaryWorkflowEngine(
       engineOptions,
       workspaceRoot,
