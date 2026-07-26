@@ -7,6 +7,8 @@ const path = require("node:path")
 const test = require("node:test")
 
 const {
+  BAZAAR_REVIEW_BOB_INPUT_DEFAULT_BYTES,
+  BAZAAR_REVIEW_BOB_INPUT_MAX_BYTES,
   BazaarProcessingCoveragePartialError,
   runBazaarReviewProcessingOperation
 } = require("../out/bazaar/bazaarProcessingCoverage")
@@ -47,6 +49,7 @@ async function makeInput(t, overrides = {}) {
   t.after(() => fs.rm(reportDirectory, { recursive: true, force: true }))
   return {
     reportDirectory,
+    repositoryScope: path.join(reportDirectory, "workspace"),
     operation: {
       mode: "revisionRange",
       baseRevision: "1",
@@ -71,6 +74,69 @@ test("complete Bazaar packet writes a complete report and permits handoff", asyn
   assert.equal(assertProcessingBudgetReportAllowsHandoff(result.report), result.report)
   const parsed = validateProcessingBudgetReport(JSON.parse(await fs.readFile(result.reportPath, "utf8")))
   assert.deepEqual(parsed, result.report)
+})
+
+test("repository scope keeps identical revision reports from different workspaces distinct", async (t) => {
+  const input = await makeInput(t)
+  const first = await runBazaarReviewProcessingOperation({
+    ...input,
+    repositoryScope: path.join(input.reportDirectory, "workspace-a"),
+    produce: async () => ({ prepared: prepared(), packet: "# packet\ncomplete\n" })
+  })
+  const second = await runBazaarReviewProcessingOperation({
+    ...input,
+    repositoryScope: path.join(input.reportDirectory, "workspace-b"),
+    produce: async () => ({ prepared: prepared(), packet: "# packet\ncomplete\n" })
+  })
+
+  assert.notEqual(first.reportPath, second.reportPath)
+  assert.equal((await fs.readdir(input.reportDirectory)).length, 2)
+})
+
+test("Bob input defaults to 2 MiB and can be raised only to the shared 8 MiB maximum", async (t) => {
+  const input = await makeInput(t)
+  assert.equal(BAZAAR_REVIEW_BOB_INPUT_DEFAULT_BYTES, 2 * 1024 * 1024)
+  assert.equal(BAZAAR_REVIEW_BOB_INPUT_MAX_BYTES, 8 * 1024 * 1024)
+
+  let defaultReportPath
+  await assert.rejects(
+    () => runBazaarReviewProcessingOperation({
+      ...input,
+      produce: async () => ({ prepared: prepared(), packet: "x".repeat(BAZAAR_REVIEW_BOB_INPUT_DEFAULT_BYTES + 1) })
+    }),
+    (error) => {
+      defaultReportPath = path.join(input.reportDirectory, (error?.details ? "" : ""))
+      return error?.code === "processing_budget_exceeded"
+    }
+  )
+  const defaultReportName = (await fs.readdir(input.reportDirectory))[0]
+  const defaultReport = validateProcessingBudgetReport(JSON.parse(
+    await fs.readFile(path.join(input.reportDirectory, defaultReportName), "utf8")
+  ))
+  assert.equal(defaultReport.failure.category, "bob_input_bytes")
+  assert.equal(defaultReport.failure.limit, BAZAAR_REVIEW_BOB_INPUT_DEFAULT_BYTES)
+  void defaultReportPath
+
+  const raised = await runBazaarReviewProcessingOperation({
+    ...input,
+    maxBobInputBytes: BAZAAR_REVIEW_BOB_INPUT_MAX_BYTES,
+    produce: async () => ({ prepared: prepared(), packet: "x".repeat(BAZAAR_REVIEW_BOB_INPUT_DEFAULT_BYTES + 1) })
+  })
+  assert.equal(raised.report.coverage_status, "complete")
+  assert.equal(
+    raised.report.ledger.categories.find((entry) => entry.category === "bob_input_bytes").limit,
+    BAZAAR_REVIEW_BOB_INPUT_MAX_BYTES
+  )
+
+  await assert.rejects(
+    () => runBazaarReviewProcessingOperation({
+      ...input,
+      repositoryScope: path.join(input.reportDirectory, "absolute-cap"),
+      maxBobInputBytes: BAZAAR_REVIEW_BOB_INPUT_MAX_BYTES * 2,
+      produce: async () => ({ prepared: prepared(), packet: "x".repeat(BAZAAR_REVIEW_BOB_INPUT_MAX_BYTES + 1) })
+    }),
+    (error) => error?.code === "processing_budget_exceeded"
+  )
 })
 
 test("truncated Bazaar diff writes partial coverage and blocks packet handoff", async (t) => {
