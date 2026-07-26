@@ -14,16 +14,24 @@ import {
   type ValidateProcessingBudgetReportOptions
 } from "./processingBudgetReport"
 
+const SHA256 = /^sha256:[a-f0-9]{64}$/u
+const strictReports = new WeakSet<object>()
+
 export function createProcessingBudgetReport(input: CreateProcessingBudgetReportInput): ProcessingBudgetReport {
-  return assertStrictInvariants(createBaseReport(input))
+  return rememberStrict(assertStrictInvariants(createBaseReport(input)))
 }
 
 export function validateProcessingBudgetReport(
   value: unknown,
   options: ValidateProcessingBudgetReportOptions = {}
 ): ProcessingBudgetReport {
+  if (typeof value === "object" && value !== null && strictReports.has(value)) {
+    const report = value as ProcessingBudgetReport
+    assertExpectedInputSha(report, options)
+    return report
+  }
   if (!hasOwnCoverageStatus(value)) invalid("processing budget report.coverage_status is required")
-  return assertStrictInvariants(validateBaseReport(value, options))
+  return rememberStrict(assertStrictInvariants(validateBaseReport(value, options)))
 }
 
 export function serializeProcessingBudgetReport(value: unknown): string {
@@ -37,6 +45,26 @@ export function assertProcessingBudgetReportAllowsHandoff(
   const report = validateProcessingBudgetReport(value, options)
   assertBaseHandoff(report, options)
   return report
+}
+
+function rememberStrict(report: ProcessingBudgetReport): ProcessingBudgetReport {
+  strictReports.add(report)
+  return report
+}
+
+function assertExpectedInputSha(
+  report: ProcessingBudgetReport,
+  options: ValidateProcessingBudgetReportOptions
+): void {
+  if (options.expected_input_sha256 === undefined) return
+  const expected = options.expected_input_sha256
+  if (!SHA256.test(expected)) invalid("expected_input_sha256 must be lowercase sha256:<64 hex>")
+  if (report.input_sha256 !== expected) {
+    throw new ProcessingBudgetReportError(
+      "processing_budget_report_stale",
+      `processing budget report input SHA ${report.input_sha256} does not match ${expected}`
+    )
+  }
 }
 
 function assertStrictInvariants(report: ProcessingBudgetReport): ProcessingBudgetReport {
