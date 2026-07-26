@@ -778,3 +778,18 @@ function valid<T>(value: T): ValidationResult<T> {
 function invalid<T = never>(pointer: string): ValidationResult<T> {
   return { ok: false, pointer }
 }
+
+/** Internal F6 bridge; intentionally not re-exported from contractV2/index.ts. */
+export function invokeBoundWorkflowProviderDispatch(
+  handle: BoundWorkflowProviderDispatchHandle,
+  input: import("./providerContract").WorkflowProviderDispatchInput
+): Promise<unknown> | unknown {
+  if (typeof handle !== "object" || handle === null || isProxy(handle)) {
+    throw new TypeError("Bound workflow provider dispatch handle is invalid.")
+  }
+  const dispatch = weakMapGet(handleDispatches, handle) as WorkflowProviderDispatch | undefined
+  if (dispatch === undefined) {
+    throw new TypeError("Bound workflow provider dispatch handle is invalid.")
+  }
+  return reflectApply(dispatch, undefined, [input]) as Promise<unknown> | unknown
+}
