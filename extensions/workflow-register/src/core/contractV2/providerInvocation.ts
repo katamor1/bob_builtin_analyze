@@ -162,7 +162,7 @@ export async function invokeCompiledWorkflowProvider(
     stepId
   )
   const inputLocation = location(binding.stepIndex, "input")
-  const boundedInput = snapshotBoundedWorkflowProviderEnvelope(snapshot.value, MAX_VALUE_BYTES)
+  const boundedInput = snapshotEnvelopeCaptured(snapshot.value, MAX_VALUE_BYTES)
   if (boundedInput === undefined || !withinValueLimit(boundedInput, MAX_VALUE_BYTES)) {
     return validationFailure(singleDiagnostic(
       "WF2_PROVIDER_INPUT_INVALID",
@@ -195,7 +195,7 @@ export async function invokeCompiledWorkflowProvider(
     effectSession.close()
     await promiseAll(pendingWrites)
     const errorLocation = location(binding.stepIndex, "provider")
-    const boundedError = snapshotBoundedWorkflowProviderEnvelope(error, MAX_VALUE_BYTES)
+    const boundedError = snapshotEnvelopeCaptured(error, MAX_VALUE_BYTES)
     if (boundedError === undefined || !withinValueLimit(boundedError, MAX_VALUE_BYTES)) {
       return validationFailure(singleDiagnostic(
         "WF2_PROVIDER_ERROR_INVALID",
@@ -242,7 +242,7 @@ export async function invokeCompiledWorkflowProvider(
   const maximum = binding.step.output.maxBytes < MAX_VALUE_BYTES
     ? binding.step.output.maxBytes
     : MAX_VALUE_BYTES
-  const boundedOutput = snapshotBoundedWorkflowProviderEnvelope(returned, maximum)
+  const boundedOutput = snapshotEnvelopeCaptured(returned, maximum)
   if (boundedOutput === undefined || !withinValueLimit(boundedOutput, maximum)) {
     return validationFailure(singleDiagnostic(
       "WF2_PROVIDER_OUTPUT_INVALID",
@@ -340,9 +340,25 @@ function createArtifactWriterSession(
   let open = true
   let writeCount = 0
   let totalBytes = 0
+  let writeFailure: Promise<void> | undefined
   const writtenIds: string[] = []
+
+  const rejectWrite = (): Promise<void> => {
+    if (writeFailure !== undefined) return writeFailure
+    open = false
+    const pending = promiseReject<void>(new WorkflowAttemptStagingErrorConstructor())
+    void promiseCatch(pending, () => undefined)
+    push(pendingWrites, pending)
+    writeFailure = pending
+    return pending
+  }
+
   const writeArtifact = objectFreeze((input: { readonly id: string; readonly bytes: Uint8Array }): Promise<void> => {
+    if (writeFailure !== undefined) return writeFailure
     if (!open) throw new TypeError("Workflow provider artifact writer is closed.")
+    writeCount += 1
+    if (writeCount > MAX_ARTIFACT_WRITES) return rejectWrite()
+
     const snapshot = snapshotExactRecord(input, ARTIFACT_FIELDS, "Workflow provider artifact write")
     const id = snapshot.id
     const bytes = snapshot.bytes
@@ -362,17 +378,16 @@ function createArtifactWriterSession(
     if (
       policy === undefined
       || contains(writtenIds, id)
-      || writeCount >= MAX_ARTIFACT_WRITES
       || byteLength > policy.maxBytes
       || totalBytes + byteLength > MAX_ARTIFACT_TOTAL_BYTES
-    ) return rejectArtifactWrite(pendingWrites)
+    ) return rejectWrite()
 
-    writeCount += 1
     totalBytes += byteLength
     push(writtenIds, id)
     const copy = new Uint8ArrayConstructor(byteLength)
     reflectApply(typedArraySet, copy, [source])
     const pending = stageArtifactCaptured(attempt, objectFreeze({ id, bytes: copy }))
+    void promiseCatch(pending, () => undefined)
     push(pendingWrites, pending)
     return pending
   })
@@ -407,13 +422,6 @@ function providerArtifactPolicies(
     }
   }
   return objectFreeze(policies)
-}
-
-function rejectArtifactWrite(pendingWrites: Promise<void>[]): Promise<void> {
-  const pending = promiseReject<void>(new WorkflowAttemptStagingErrorConstructor())
-  void promiseCatch(pending, () => undefined)
-  push(pendingWrites, pending)
-  return pending
 }
 
 function typedArrayByteLength(value: Uint8Array): number {
