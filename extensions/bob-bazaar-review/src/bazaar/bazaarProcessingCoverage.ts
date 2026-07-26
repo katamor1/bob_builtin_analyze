@@ -10,6 +10,8 @@ import {
   type SharedProcessingBudgetReportIssue
 } from "../sharedProcessingBudgetReport"
 import {
+  DEFAULT_PROCESSING_BUDGET_PROFILE,
+  PROCESSING_BUDGET_ABSOLUTE_MAXIMA,
   ProcessingBudgetLedger,
   type SharedProcessingBudgetLedger,
   type SharedProcessingBudgetReservation
@@ -18,7 +20,8 @@ import type { PreparedTarget } from "./reviewTarget"
 import { truncateUtf8 } from "./reviewLimits"
 
 export const BAZAAR_REVIEW_LOG_MAX_BYTES = 128 * 1024 as const
-export const BAZAAR_REVIEW_BOB_INPUT_MAX_BYTES = 8 * 1024 * 1024 as const
+export const BAZAAR_REVIEW_BOB_INPUT_DEFAULT_BYTES = DEFAULT_PROCESSING_BUDGET_PROFILE.limits.bob_input_bytes
+export const BAZAAR_REVIEW_BOB_INPUT_MAX_BYTES = PROCESSING_BUDGET_ABSOLUTE_MAXIMA.bob_input_bytes
 const BAZAAR_REVIEW_TOTAL_OPERATION_MAX_BYTES = 64 * 1024 * 1024
 const REPORT_FILE_SUFFIX = ".processing-budget-report.json"
 
@@ -37,9 +40,11 @@ export interface BazaarReviewProcessingProduct {
 
 export interface RunBazaarReviewProcessingOperationInput {
   readonly reportDirectory: string
+  readonly repositoryScope: string
   readonly operation: BazaarReviewProcessingIdentity
   readonly maxDiffBytes: number
   readonly maxAddedFileContentBytes: number
+  readonly maxBobInputBytes?: number
   readonly signal?: AbortSignal
   readonly produce: () => Promise<BazaarReviewProcessingProduct>
 }
@@ -67,16 +72,19 @@ export class BazaarProcessingCoveragePartialError extends Error {
 export async function runBazaarReviewProcessingOperation(
   input: RunBazaarReviewProcessingOperationInput
 ): Promise<BazaarReviewProcessingResult> {
-  const initialInputSha256 = operationInputSha(input.operation, {
+  const repositoryScope = normalizeRepositoryScope(input.repositoryScope)
+  const maxBobInputBytes = normalizeBobInputBytes(input.maxBobInputBytes)
+  const initialInputSha256 = operationInputSha(repositoryScope, input.operation, {
     maxDiffBytes: input.maxDiffBytes,
-    maxAddedFileContentBytes: input.maxAddedFileContentBytes
+    maxAddedFileContentBytes: input.maxAddedFileContentBytes,
+    maxBobInputBytes
   })
   const operationId = `bazaar-review:${initialInputSha256.slice(7, 39)}`
   const reportPath = path.join(
     input.reportDirectory,
     `bazaar-review-${initialInputSha256.slice(7, 39)}${REPORT_FILE_SUFFIX}`
   )
-  const ledger = reviewLedger(input.maxDiffBytes, input.maxAddedFileContentBytes)
+  const ledger = reviewLedger(input.maxDiffBytes, input.maxAddedFileContentBytes, maxBobInputBytes)
   const reservations: SharedProcessingBudgetReservation[] = []
   let product: BazaarReviewProcessingProduct | undefined
   let stage = "before_target_preparation"
@@ -144,12 +152,16 @@ export async function runBazaarReviewProcessingOperation(
   }
 }
 
-function reviewLedger(maxDiffBytes: number, maxAddedFileContentBytes: number): SharedProcessingBudgetLedger {
+function reviewLedger(
+  maxDiffBytes: number,
+  maxAddedFileContentBytes: number,
+  maxBobInputBytes: number
+): SharedProcessingBudgetLedger {
   return new ProcessingBudgetLedger({
     limits: {
       raw_diff_bytes: maxDiffBytes,
       document_excerpt_bytes: maxAddedFileContentBytes,
-      bob_input_bytes: BAZAAR_REVIEW_BOB_INPUT_MAX_BYTES,
+      bob_input_bytes: maxBobInputBytes,
       total_operation_input_bytes: BAZAAR_REVIEW_TOTAL_OPERATION_MAX_BYTES
     }
   })
@@ -205,11 +217,17 @@ function processingIssues(
 }
 
 function operationInputSha(
+  repositoryScope: string,
   operation: BazaarReviewProcessingIdentity,
-  limits: Readonly<{ maxDiffBytes: number; maxAddedFileContentBytes: number }>
+  limits: Readonly<{
+    maxDiffBytes: number
+    maxAddedFileContentBytes: number
+    maxBobInputBytes: number
+  }>
 ): string {
   return sha256({
     schema_version: "bazaar-review-processing-input/v1",
+    repository_scope: repositoryScope,
     operation,
     limits
   })
@@ -232,6 +250,25 @@ function productInputSha(initialInputSha256: string, product: BazaarReviewProces
     added_files_sha256: sha256Text(product.prepared.addedFilesSection ?? ""),
     packet_sha256: sha256Text(product.packet)
   })
+}
+
+function normalizeRepositoryScope(value: string): string {
+  if (typeof value !== "string" || value.length === 0 || /[\u0000-\u001f\u007f-\u009f]/u.test(value)) {
+    throw new Error("Bazaar processing repository scope is invalid")
+  }
+  const normalized = path.resolve(value).normalize("NFC")
+  if (Buffer.byteLength(normalized, "utf8") > 4_096) {
+    throw new Error("Bazaar processing repository scope is too long")
+  }
+  return normalized
+}
+
+function normalizeBobInputBytes(value: number | undefined): number {
+  if (value === undefined) return BAZAAR_REVIEW_BOB_INPUT_DEFAULT_BYTES
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new Error("Bazaar Bob input byte limit must be a positive safe integer")
+  }
+  return Math.min(value, BAZAAR_REVIEW_BOB_INPUT_MAX_BYTES)
 }
 
 function failureFromError(error: unknown, signal: AbortSignal | undefined): SharedProcessingBudgetReportFailure {
