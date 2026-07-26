@@ -1,45 +1,19 @@
 declare const require: (id: string) => unknown
 
-import type { SharedProcessingBudgetLimits } from "./sharedProcessingBudgetRuntime"
+import type {
+  SharedProcessingBudgetCategory,
+  SharedProcessingBudgetLedgerReport
+} from "./sharedProcessingBudgetRuntime"
 
-export type SharedProcessingBudgetCategory = keyof SharedProcessingBudgetLimits
+export type {
+  SharedProcessingBudgetCategory,
+  SharedProcessingBudgetLedgerCategoryReport,
+  SharedProcessingBudgetLedgerReport,
+  SharedProcessingBudgetLedgerTargetReport
+} from "./sharedProcessingBudgetRuntime"
+
 export type SharedProcessingBudgetCoverageStatus = "complete" | "partial" | "failed"
 export type SharedProcessingBudgetOperationOutcome = "success" | "failed" | "cancelled"
-
-export interface SharedProcessingBudgetLedgerCategoryReport {
-  readonly category: SharedProcessingBudgetCategory
-  readonly scope: "operation" | "target"
-  readonly unit: "bytes" | "count"
-  readonly limit: number
-  readonly committed: number
-  readonly reserved: number
-  readonly used: number
-  readonly remaining?: number
-  readonly target_count?: number
-}
-
-export interface SharedProcessingBudgetLedgerTargetReport {
-  readonly category: "single_document_bytes" | "sheets_per_workbook" | "rows_per_sheet"
-  readonly target: string
-  readonly unit: "bytes" | "count"
-  readonly limit: number
-  readonly committed: number
-  readonly reserved: number
-  readonly used: number
-  readonly remaining: number
-}
-
-export interface SharedProcessingBudgetLedgerReport {
-  readonly schema_version: "processing-budget-ledger-report/v1"
-  readonly categories: readonly SharedProcessingBudgetLedgerCategoryReport[]
-  readonly targets: readonly SharedProcessingBudgetLedgerTargetReport[]
-}
-
-declare module "./sharedProcessingBudgetRuntime" {
-  interface SharedProcessingBudgetLedger {
-    snapshot(): SharedProcessingBudgetLedgerReport
-  }
-}
 
 export interface SharedProcessingBudgetReportIssue {
   readonly kind: "truncation" | "unprocessed"
