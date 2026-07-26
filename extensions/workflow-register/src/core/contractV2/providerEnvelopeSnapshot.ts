@@ -36,7 +36,8 @@ const WeakSetConstructor = WeakSet
 
 const MAX_ENVELOPE_NODES = 65_536
 const MAX_ENVELOPE_DEPTH = 64
-const MAX_ENVELOPE_COLLECTION_ENTRIES = 65_536
+const MAX_ENVELOPE_ARRAY_ITEMS = 65_536
+const MAX_ENVELOPE_OBJECT_PROPERTIES = 1_024
 
 export function snapshotBoundedWorkflowProviderEnvelope(
   value: unknown,
@@ -104,7 +105,7 @@ function preflightEnvelopeBounds(root: unknown, maximumTextBytes: number): void 
         typeof length !== "number"
         || !numberIsSafeInteger(length)
         || length < 0
-        || length > MAX_ENVELOPE_COLLECTION_ENTRIES
+        || length > MAX_ENVELOPE_ARRAY_ITEMS
         || nodes + length > MAX_ENVELOPE_NODES
       ) fail()
       expectedEntries = length + 1
@@ -115,7 +116,7 @@ function preflightEnvelopeBounds(root: unknown, maximumTextBytes: number): void 
     const sourceKeys = reflectOwnKeys(value)
     if (
       (array && sourceKeys.length !== expectedEntries)
-      || (!array && sourceKeys.length > MAX_ENVELOPE_COLLECTION_ENTRIES)
+      || (!array && sourceKeys.length > MAX_ENVELOPE_OBJECT_PROPERTIES)
       || (!array && nodes + sourceKeys.length > MAX_ENVELOPE_NODES)
     ) fail()
     if (!array) {
