@@ -208,7 +208,10 @@ interface PreparedTargetBudget {
   readonly originalDiffBytes: number
   readonly boundedDiffBytes: number
   readonly observedAddedFileBytes: number
-  readonly addedSectionBytes: number
+  readonly processedAddedFileBytes: number
+  readonly renderedAddedFileBytes: number
+  readonly skippedAddedFileCount: number
+  readonly failedAddedFileCount: number
 }
 
 function commitPreparedTargetBudget(
@@ -222,12 +225,27 @@ function commitPreparedTargetBudget(
     truncateUtf8(prepared.diff.stdout, input.maxDiffBytes, "diff"),
     "utf8"
   )
-  const observedAddedFileBytes = Buffer.byteLength(prepared.addedFilesSection ?? "", "utf8")
-  const addedSectionBytes = Math.min(input.maxAddedFileContentBytes, observedAddedFileBytes)
+  const evidence = prepared.addedFilesEvidence
+  const observedAddedFileBytes = evidence?.observedContentBytes
+    ?? Buffer.byteLength(prepared.addedFilesSection ?? "", "utf8")
+  const processedAddedFileBytes = evidence?.processedContentBytes
+    ?? Math.min(input.maxAddedFileContentBytes, observedAddedFileBytes)
+  const renderedAddedFileBytes = evidence?.renderedContentBytes
+    ?? Math.min(input.maxAddedFileContentBytes, observedAddedFileBytes)
+  const skippedAddedFileCount = evidence?.skippedFileCount ?? 0
+  const failedAddedFileCount = evidence?.readFailures.length ?? 0
   commitPreparedReservation(ledger, reservations, "changed_files", prepared.info.changedFileCount)
   commitPreparedReservation(ledger, reservations, "raw_diff_bytes", boundedDiffBytes)
-  commitPreparedReservation(ledger, reservations, "document_excerpt_bytes", addedSectionBytes)
-  return Object.freeze({ originalDiffBytes, boundedDiffBytes, observedAddedFileBytes, addedSectionBytes })
+  commitPreparedReservation(ledger, reservations, "document_excerpt_bytes", renderedAddedFileBytes)
+  return Object.freeze({
+    originalDiffBytes,
+    boundedDiffBytes,
+    observedAddedFileBytes,
+    processedAddedFileBytes,
+    renderedAddedFileBytes,
+    skippedAddedFileCount,
+    failedAddedFileCount
+  })
 }
 
 function commitPreparedReservation(
@@ -276,18 +294,35 @@ function processingIssues(
     }
   }
 
-  if (budget.observedAddedFileBytes > input.maxAddedFileContentBytes
+  if (prepared.addedFilesEvidence?.truncated === true
+    || budget.observedAddedFileBytes > budget.processedAddedFileBytes
     || prepared.addedFilesSection?.includes("[TRUNCATED:")) {
     issues.push(Object.freeze({
       kind: "truncation" as const,
       code: "added_file_content_truncated",
       category: "document_excerpt_bytes" as const,
       target: "bazaar-added-files",
-      processed: budget.addedSectionBytes,
-      ...(budget.observedAddedFileBytes > budget.addedSectionBytes ? {
+      processed: budget.processedAddedFileBytes,
+      ...(budget.observedAddedFileBytes > budget.processedAddedFileBytes ? {
         observed: budget.observedAddedFileBytes,
-        unprocessed: budget.observedAddedFileBytes - budget.addedSectionBytes
+        unprocessed: budget.observedAddedFileBytes - budget.processedAddedFileBytes
       } : {})
+    }))
+  }
+  if (budget.skippedAddedFileCount > 0) {
+    issues.push(Object.freeze({
+      kind: "unprocessed" as const,
+      code: "added_file_content_unprocessed",
+      target: "bazaar-added-files",
+      unprocessed: budget.skippedAddedFileCount
+    }))
+  }
+  if (budget.failedAddedFileCount > 0) {
+    issues.push(Object.freeze({
+      kind: "unprocessed" as const,
+      code: "added_file_read_failed",
+      target: "bazaar-added-files",
+      unprocessed: budget.failedAddedFileCount
     }))
   }
   return Object.freeze(issues)
@@ -336,7 +371,18 @@ function preparedTargetInputSha(initialInputSha256: string, prepared: PreparedTa
     },
     diff_command: commandInput(prepared.diff),
     log_command: prepared.log === undefined ? null : commandInput(prepared.log),
-    added_files_sha256: sha256Text(prepared.addedFilesSection ?? "")
+    added_files_sha256: sha256Text(prepared.addedFilesSection ?? ""),
+    added_files_evidence: prepared.addedFilesEvidence === undefined ? null : {
+      observed_content_bytes: prepared.addedFilesEvidence.observedContentBytes,
+      processed_content_bytes: prepared.addedFilesEvidence.processedContentBytes,
+      rendered_content_bytes: prepared.addedFilesEvidence.renderedContentBytes,
+      truncated: prepared.addedFilesEvidence.truncated,
+      skipped_file_count: prepared.addedFilesEvidence.skippedFileCount,
+      read_failures: prepared.addedFilesEvidence.readFailures.map((failure) => ({
+        path: failure.path,
+        message: failure.message
+      }))
+    }
   })
 }
 
