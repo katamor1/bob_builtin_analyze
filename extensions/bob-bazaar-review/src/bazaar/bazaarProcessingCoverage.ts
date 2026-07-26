@@ -1,5 +1,4 @@
 import { createHash, randomUUID } from "node:crypto"
-import * as fs from "node:fs/promises"
 import * as path from "node:path"
 import {
   assertProcessingBudgetReportAllowsHandoff,
@@ -16,6 +15,7 @@ import {
   type SharedProcessingBudgetLedger,
   type SharedProcessingBudgetReservation
 } from "../sharedProcessingBudgetRuntime"
+import { replaceTextFileAtomically } from "./atomicReplaceFile"
 import type { PreparedTarget } from "./reviewTarget"
 import { truncateUtf8 } from "./reviewLimits"
 
@@ -377,38 +377,5 @@ function sha256Text(value: string): string {
 }
 
 async function persistReport(reportPath: string, report: SharedProcessingBudgetReport): Promise<void> {
-  await fs.mkdir(path.dirname(reportPath), { recursive: true })
-  const temporaryPath = `${reportPath}.${process.pid}.${randomUUID()}.tmp`
-  const backupPath = `${reportPath}.${process.pid}.${randomUUID()}.bak`
-  let backedUp = false
-  try {
-    let existing = false
-    try {
-      const stat = await fs.lstat(reportPath)
-      if (stat.isSymbolicLink() || !stat.isFile()) throw new Error("processing budget report path must be a regular file")
-      existing = true
-    } catch (error) {
-      if (!(error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === "ENOENT")) throw error
-    }
-    await fs.writeFile(temporaryPath, serializeProcessingBudgetReport(report), {
-      encoding: "utf8",
-      flag: "wx",
-      mode: 0o600
-    })
-    if (existing) {
-      await fs.rename(reportPath, backupPath)
-      backedUp = true
-    }
-    await fs.rename(temporaryPath, reportPath)
-    if (backedUp) await fs.rm(backupPath, { force: true })
-  } catch (error) {
-    try { await fs.rm(temporaryPath, { force: true }) } catch {}
-    if (backedUp) {
-      try {
-        await fs.rm(reportPath, { force: true })
-        await fs.rename(backupPath, reportPath)
-      } catch {}
-    }
-    throw error
-  }
+  await replaceTextFileAtomically(reportPath, serializeProcessingBudgetReport(report))
 }
