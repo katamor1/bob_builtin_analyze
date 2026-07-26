@@ -179,11 +179,16 @@ function snapshotPackages(value: unknown): CompiledWorkflowPlanManifestPackage[]
     )
     const slot = identifier(item.slot, "Manifest slot")
     assertPortablePathSegment(slot, "Manifest slot")
+    const generation = digest(item.generation, "Manifest generation")
+    const packageDigest = digest(item.packageDigest, "Manifest package digest")
+    if (generation !== packageDigest) {
+      throw new TypeError("Manifest generation and package digest must be identical.")
+    }
     defineArrayValue(result, index, objectFreeze({
       collection: repositoryRelativePath(item.collection, "Manifest collection"),
       slot,
-      generation: digest(item.generation, "Manifest generation"),
-      packageDigest: digest(item.packageDigest, "Manifest package digest"),
+      generation,
+      packageDigest,
       lockfileDigest: digest(item.lockfileDigest, "Manifest lockfile digest"),
       environmentDigest: digest(item.environmentDigest, "Manifest environment digest"),
       planDigest: digest(item.planDigest, "Manifest plan digest")
