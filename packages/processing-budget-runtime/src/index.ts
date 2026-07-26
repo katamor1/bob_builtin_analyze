@@ -41,6 +41,26 @@ export {
   type ProcessingBudgetReservation
 } from "./processingBudgetLedger"
 export {
+  PROCESSING_BUDGET_REPORT_MAX_ISSUES,
+  PROCESSING_BUDGET_REPORT_MAX_TEXT_UTF8_BYTES,
+  PROCESSING_BUDGET_REPORT_SCHEMA_VERSION,
+  ProcessingBudgetReportError,
+  assertProcessingBudgetReportAllowsHandoff,
+  createProcessingBudgetReport,
+  serializeProcessingBudgetReport,
+  validateProcessingBudgetReport,
+  type CreateProcessingBudgetReportInput,
+  type ProcessingBudgetCoverageStatus,
+  type ProcessingBudgetOperationOutcome,
+  type ProcessingBudgetReport,
+  type ProcessingBudgetReportErrorCode,
+  type ProcessingBudgetReportFailure,
+  type ProcessingBudgetReportIssue,
+  type ProcessingBudgetReportIssueKind,
+  type ProcessingBudgetReportProducer,
+  type ValidateProcessingBudgetReportOptions
+} from "./processingBudgetReport"
+export {
   ABSOLUTE_MAX_OOXML_ARCHIVE_ENTRIES,
   DEFAULT_MAX_OOXML_ARCHIVE_ENTRIES,
   preflightOoxmlArchive,
