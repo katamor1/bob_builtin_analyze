@@ -3,6 +3,7 @@ import * as vscode from "vscode"
 import { captureBobOutput } from "./core/bobOutputCapture"
 import { validateBobOutput } from "./core/bobOutputValidator"
 import { preprocessReview } from "./core/pipeline"
+import { loadAndAssertCompleteProcessingBudgetReport } from "./core/processingBudgetReportGuard"
 import {
   absolute,
   firstString,
@@ -81,6 +82,7 @@ export async function runCaptureBobOutput(textOrOptions?: unknown): Promise<unkn
       stringOption(record, "packageDir") ??
       config.get<string>("reviewPackagePath", ".bob-review/review-package")
   )
+  await loadAndAssertCompleteProcessingBudgetReport(packageDir)
   const result = await captureBobOutput({ workspaceRoot, text, bobOutputPath, packageDir })
   if (result.status === "ok") notifyInfo(result.message)
   else notifyError(result.message)
@@ -102,6 +104,7 @@ export async function runValidateOutput(options?: unknown): Promise<unknown> {
     stringOption(record, "bobOutputPath") ??
       config.get<string>("bobOutputPath", ".bob-review/bob-output/bob-output.yaml")
   )
+  await loadAndAssertCompleteProcessingBudgetReport(packageDir)
   const result = await validateBobOutput({ packageDir, bobOutputPath })
   if (result.errors.length === 0) notifyInfo(`Bob 出力 YAML は有効です（warning: ${result.warnings.length} 件）。`)
   else notifyError(`Bob 出力 YAML が無効です: error ${result.errors.length} 件。`)
@@ -126,6 +129,7 @@ export async function runTriage(options?: unknown): Promise<unknown> {
   const outDir = stringOption(record, "triagePath") ??
     stringOption(record, "outDir") ??
     config.get<string>("triagePath", ".bob-review/human-triage")
+  await loadAndAssertCompleteProcessingBudgetReport(packageDir)
   const result = await generateHumanTriage({ workspaceRoot, packageDir, bobOutputPath, outDir })
   if (result.status === "ok") notifyInfo(`人間確認用 triage ファイルを生成しました: ${result.outDir}`)
   else notifyError(result.message)
