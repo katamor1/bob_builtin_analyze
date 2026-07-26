@@ -17,7 +17,7 @@ function commandResult(stdout) {
   return { stdout, stderr: "", command: "bzr", args: ["diff"], cwd: "/repo" }
 }
 
-function prepared(root, diff) {
+function prepared(root, diff, infoOverrides = {}) {
   return {
     root,
     info: {
@@ -25,13 +25,15 @@ function prepared(root, diff) {
       targetLabel: "1..2",
       baseRevision: "1",
       targetRevision: "2",
+      revno: "2",
       author: "author",
       committer: "committer",
       timestamp: "2026-07-26T00:00:00Z",
       message: "change",
       changedFileCount: 1,
       changedFiles: ["src/a.cpp"],
-      changedFileEntries: [{ path: "src/a.cpp", status: "modified" }]
+      changedFileEntries: [{ path: "src/a.cpp", status: "modified" }],
+      ...infoOverrides
     },
     diff: commandResult(diff),
     log: commandResult("revno: 2\nmessage:\n  change\n"),
@@ -56,7 +58,7 @@ async function fixture(t) {
   }
 }
 
-async function executePostPrepareFailure(input, diff) {
+async function executePostPrepareFailure(input, diff, infoOverrides = {}) {
   const failure = new Error("project rules failed")
   await assert.rejects(
     () => runBazaarReviewProcessingOperation({
@@ -65,7 +67,7 @@ async function executePostPrepareFailure(input, diff) {
       maxDiffBytes: input.maxDiffBytes,
       maxAddedFileContentBytes: input.maxAddedFileContentBytes,
       produce: async ({ recordPreparedTarget }) => {
-        recordPreparedTarget(prepared(input.repositoryRoot, diff))
+        recordPreparedTarget(prepared(input.repositoryRoot, diff, infoOverrides))
         throw failure
       }
     }),
@@ -95,6 +97,21 @@ test("post-prepare failure keeps a deterministic content-bound report identity",
   const changed = await executePostPrepareFailure(input, "+two\n")
   assert.equal(changed.reportPath, first.reportPath)
   assert.notEqual(changed.report.input_sha256, first.report.input_sha256)
+})
+
+test("post-prepare failure identity changes with packet-visible target metadata", async (t) => {
+  const input = await fixture(t)
+  const baseline = await executePostPrepareFailure(input, "+same\n")
+  const changedMessage = await executePostPrepareFailure(input, "+same\n", {
+    message: "working tree status changed"
+  })
+  assert.notEqual(changedMessage.report.input_sha256, baseline.report.input_sha256)
+
+  const changedFiles = await executePostPrepareFailure(input, "+same\n", {
+    changedFiles: ["src/b.cpp"],
+    changedFileEntries: [{ path: "src/b.cpp", status: "renamed" }]
+  })
+  assert.notEqual(changedFiles.report.input_sha256, baseline.report.input_sha256)
 })
 
 test("a completed product must match the prepared target checkpoint", async (t) => {
