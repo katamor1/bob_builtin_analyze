@@ -35,12 +35,23 @@ test("programmatic report creation rejects a sparse issues array", () => {
   )
 })
 
-test("huge sparse issues fail without iterating every missing slot", () => {
+test("huge sparse issues are rejected without probing every missing slot", () => {
   const issues = new Array(0xffff_ffff)
-  const started = process.hrtime.bigint()
-  assert.throws(() => createProcessingBudgetReport(input({ issues })), invalid)
-  const elapsedMilliseconds = Number(process.hrtime.bigint() - started) / 1_000_000
-  assert.ok(elapsedMilliseconds < 1_000, `sparse-array rejection took ${elapsedMilliseconds} ms`)
+  const originalHas = Set.prototype.has
+  let hasCalls = 0
+  Set.prototype.has = function unexpectedPerSlotProbe(index) {
+    hasCalls += 1
+    throw new Error(`linear missing-slot scan at ${index}`)
+  }
+  try {
+    assert.throws(
+      () => createProcessingBudgetReport(input({ issues })),
+      invalid
+    )
+    assert.equal(hasCalls, 0)
+  } finally {
+    Set.prototype.has = originalHas
+  }
 })
 
 test("external validation rejects sparse ledger category and target arrays", () => {
