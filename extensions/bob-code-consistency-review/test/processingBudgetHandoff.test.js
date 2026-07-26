@@ -7,6 +7,7 @@ const path = require("node:path")
 const test = require("node:test")
 
 const {
+  coverageIssuesFromWarnings,
   persistProcessingBudgetReport,
   processingBudgetReportPath
 } = require("../out/core/processingBudgetCoverage")
@@ -64,6 +65,42 @@ test("complete bound report permits later review stages", async (t) => {
   assert.equal(loaded.reportPath, persisted.reportPath)
   assert.equal(loaded.report.input_sha256, INPUT_SHA)
   assert.equal(loaded.report.coverage_status, "complete")
+})
+
+test("every evidence-loss warning family produces partial coverage", () => {
+  const ledger = new ProcessingBudgetLedger()
+  ledger.reserve("raw_diff_bytes", 10).commit()
+  ledger.reserve("document_excerpt_bytes", 20).commit()
+  ledger.reserve("bob_input_bytes", 30).commit()
+  const issues = coverageIssuesFromWarnings({
+    ledger,
+    diffWarnings: ["unified diff exceeded maxRawDiffBytes (11 > 10); raw diff truncated."],
+    documentWarnings: [
+      "document excerpts exhausted aggregate maxBobInputBytes / document_excerpt_bytes (20); remaining excerpts skipped.",
+      "failed to extract docs/requirements.md: source changed"
+    ],
+    codeWarnings: [
+      "src/large.cpp exceeded maxDocumentBytes (100 > 50); detailed C/C++ source analysis skipped.",
+      "code evidence exceeded maximum item count (500); remaining code evidence skipped."
+    ],
+    repositoryWarnings: ["repository index producer unsupported review languages omitted: cobol"],
+    contextWarnings: ["project rule pack unavailable"],
+    traceabilityWarnings: ["traceability row omitted"],
+    ledgerWarnings: ["artifact observation missing"],
+    packageWarnings: ["bob-input.md exceeded bob_input_bytes (31 > 30); optional sections truncated."]
+  })
+  assert.deepEqual(new Set(issues.map((issue) => issue.code)), new Set([
+    "raw_diff_truncated",
+    "document_excerpt_truncated",
+    "document_evidence_incomplete",
+    "code_evidence_incomplete",
+    "repository_evidence_incomplete",
+    "context_evidence_incomplete",
+    "traceability_evidence_incomplete",
+    "artifact_ledger_incomplete",
+    "bob_input_truncated"
+  ]))
+  assert.ok(issues.every((issue) => issue.kind === "truncation" || issue.kind === "unprocessed"))
 })
 
 test("package mutation makes an otherwise complete report stale", async (t) => {
@@ -190,6 +227,18 @@ test("processing report and binding reads use no-follow opened-file identity che
   assert.doesNotMatch(source, /await fs\.readFile\(filePath\)/)
 })
 
+test("report and binding writers replace the live path without a backup gap", async () => {
+  for (const relativePath of [
+    "src/core/processingBudgetCoverage.ts",
+    "src/core/processingBudgetReportGuard.ts"
+  ]) {
+    const source = await fs.readFile(path.join(__dirname, "..", relativePath), "utf8")
+    assert.match(source, /replaceTextFileAtomically/)
+    assert.doesNotMatch(source, /backupPath|\.bak/)
+    assert.doesNotMatch(source, /rename\(filePath,/)
+  }
+})
+
 test("review execution commands guard capture, validation, and triage", async () => {
   const source = await fs.readFile(path.join(__dirname, "..", "src", "reviewExecutionCommands.ts"), "utf8")
   const guards = source.match(/await loadAndAssertCompleteProcessingBudgetReport\(packageDir\)/g) ?? []
@@ -208,13 +257,14 @@ test("coverage boundary clears stale package state and delegates to the core pip
   assert.match(source, /target: "review_input_validation"/)
 })
 
-test("pipeline writes partial, failed, complete, and package-binding evidence", async () => {
+test("pipeline checks every evidence warning before complete report binding", async () => {
   const source = await fs.readFile(path.join(__dirname, "..", "src", "core", "pipeline.ts"), "utf8")
-  assert.match(source, /await removeStaleProcessingBudgetReport\(outDir\)/)
-  assert.match(source, /prePackageIssues\.length > 0[\s\S]*persistProcessingBudgetReport\(/[\s\S]*new ProcessingCoveragePartialError/)
-  assert.match(source, /buildCompleteReviewPackage\(/)
-  assert.match(source, /outcome: outcomeFromProcessingError\(error\)/)
-  assert.match(source, /persistCompleteProcessingBudgetBinding\(/)
-  assert.match(source, /packageContentHash = await computeManagedReviewPackageContentHash\(outDir\)/)
-  assert.match(source, /await removeProcessingBudgetReportBinding\(outDir\)/)
+  assert.match(source, /codeWarnings: codeAnalysis\.warnings/)
+  assert.match(source, /repositoryWarnings: repositoryIndexBuild\?\.warnings/)
+  assert.match(source, /contextWarnings: contextBudget\.warnings/)
+  assert.match(source, /traceabilityWarnings: traceability\.warnings/)
+  assert.match(source, /ledgerWarnings: \[\.\.\.upstreamLedger\.warnings, \.\.\.finalLedger\.warnings\]/)
+  const finalLedger = source.indexOf("const finalLedger = await updateArtifactLedger")
+  const completeReport = source.indexOf("const processingBudgetReport = await persistProcessingBudgetReport")
+  assert.ok(finalLedger >= 0 && completeReport > finalLedger)
 })
