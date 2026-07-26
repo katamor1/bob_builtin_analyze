@@ -14,8 +14,8 @@ const {
   persistCompleteProcessingBudgetBinding
 } = require("../out/core/processingBudgetReportGuard")
 const {
-  preprocessReview
-} = require("../out/core/pipeline")
+  preprocessReviewWithCoverage
+} = require("../out/core/preprocessCoverageBoundary")
 const {
   computeManagedReviewPackageContentHash
 } = require("../out/core/reviewPackageBuilder")
@@ -114,7 +114,7 @@ test("review-input validation failure removes stale package output and writes an
   await fs.writeFile(inputPath, "review: [unterminated", "utf8")
   await fs.writeFile(path.join(packageDir, "bob-input.md"), "stale package\n", "utf8")
 
-  await assert.rejects(() => preprocessReview({
+  await assert.rejects(() => preprocessReviewWithCoverage({
     workspaceRoot: root,
     inputPath,
     outDir: ".bob-review/review-package"
@@ -147,12 +147,20 @@ test("review execution commands guard capture, validation, and triage", async ()
   assert.ok(source.indexOf(guards[0]) < source.indexOf("captureBobOutput({ workspaceRoot"))
   assert.ok(source.indexOf(guards[1], source.indexOf(guards[0]) + 1) < source.indexOf("validateBobOutput({ packageDir"))
   assert.ok(source.lastIndexOf(guards[2]) < source.indexOf("generateHumanTriage({ workspaceRoot"))
+  assert.match(source, /preprocessReviewWithCoverage\(/)
+})
+
+test("coverage boundary clears stale package state and delegates to the core pipeline", async () => {
+  const source = await fs.readFile(path.join(__dirname, "..", "src", "core", "preprocessCoverageBoundary.ts"), "utf8")
+  assert.match(source, /await removeStaleProcessingBudgetReport\(outDir\)/)
+  assert.match(source, /await cleanManagedReviewPackageOutputs\(outDir\)/)
+  assert.match(source, /return await preprocessReview\(input\)/)
+  assert.match(source, /target: "review_input_validation"/)
 })
 
 test("pipeline writes partial, failed, complete, and package-binding evidence", async () => {
   const source = await fs.readFile(path.join(__dirname, "..", "src", "core", "pipeline.ts"), "utf8")
   assert.match(source, /await removeStaleProcessingBudgetReport\(outDir\)/)
-  assert.match(source, /await cleanManagedReviewPackageOutputs\(outDir\)/)
   assert.match(source, /prePackageIssues\.length > 0[\s\S]*persistProcessingBudgetReport\(/[\s\S]*new ProcessingCoveragePartialError/)
   assert.match(source, /buildCompleteReviewPackage\(/)
   assert.match(source, /outcome: outcomeFromProcessingError\(error\)/)
