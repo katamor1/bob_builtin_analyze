@@ -28,7 +28,20 @@ type BuildReviewPackageInput = Parameters<typeof buildReviewPackage>[0]
 
 export async function buildCompleteReviewPackage(input: BuildReviewPackageInput): Promise<string[]> {
   if (!input.budgetLedger) throw new Error("complete review package generation requires the operation processing ledger")
-  const warnings = await buildReviewPackage(input)
+  let warnings: string[]
+  try {
+    warnings = await buildReviewPackage(input)
+  } catch (error) {
+    try {
+      await cleanManagedReviewPackageOutputs(input.outDir)
+    } catch (cleanupError) {
+      throw new AggregateError(
+        [error, cleanupError],
+        "Review package construction failed and partial managed outputs could not be removed."
+      )
+    }
+    throw error
+  }
   const issues = coverageIssuesFromWarnings({
     ledger: input.budgetLedger,
     packageWarnings: warnings
