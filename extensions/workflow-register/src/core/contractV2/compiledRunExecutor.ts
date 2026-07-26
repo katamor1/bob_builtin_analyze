@@ -144,8 +144,10 @@ export async function executeCompiledWorkflowRun(
       return failRun(runStore, run, transition.message ?? "Compiled workflow transition selected failure.")
     }
     if (transition.kind === "checkpoint") {
-      run.status = "checkpoint"
+      run.status = "held"
       run.error = transition.message
+      run.state["workflow.contractV2.checkpoint"] = transition.message
+        ?? "Compiled workflow checkpoint requires review."
       await runStore.saveRun(run)
       return run
     }
