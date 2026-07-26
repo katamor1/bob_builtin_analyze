@@ -149,18 +149,19 @@ test('Operation Hub verifies the exact current plan before dispatching a workflo
   )
 })
 
-test('run-state creation and Operation Hub guard Contract v2 before durable or command dispatch', () => {
+test('run-state creation and Operation Hub use the lease scope before durable or command dispatch', () => {
   const root = path.join(__dirname, '..', 'src')
   const runtimeFactorySource = fs.readFileSync(path.join(root, 'workflowRuntimeFactory.ts'), 'utf8')
   const guardedStoreSource = fs.readFileSync(path.join(root, 'workflowContractV2RunStateStore.ts'), 'utf8')
   const serviceSource = fs.readFileSync(path.join(root, 'workflowRegisterService.ts'), 'utf8')
 
-  assert.match(runtimeFactorySource, /ContractV2GuardedRunStateStore/)
-  assert.match(runtimeFactorySource, /beforeCreateRun/)
-  assert.match(guardedStoreSource, /await this\.beforeCreateRun\?\.\(workflow, inputs\)/)
-  assert.match(guardedStoreSource, /return super\.createRun\(workflow, inputs\)/)
+  assert.match(runtimeFactorySource, /executeWorkflowContractV2RuntimeBoundary/)
+  assert.match(runtimeFactorySource, /contractV2AcquireRunLease/)
+  assert.doesNotMatch(runtimeFactorySource, /beforeCreateRun: beforeRun/)
+  assert.match(guardedStoreSource, /currentWorkflowContractV2PlanLease\(\)/)
+  assert.match(guardedStoreSource, /Contract v2 run creation requires an active compiled plan lease/)
   assert.match(serviceSource, /verifyWorkflowContractV2CurrentPlan/)
   assert.match(serviceSource, /isOperationHubWorkflowMutationTarget/)
-  assert.match(serviceSource, /acquireCurrentWorkflowPackage:\s*\(input\)\s*=>\s*this\.acquireCurrentWorkflowPackage\(input\)/)
-  assert.match(serviceSource, /Contract v2 runtime execution is not enabled before R5/)
+  assert.match(serviceSource, /contractV2AcquireRunLease:\s*\(workflow\)\s*=>\s*this\.acquireContractV2RunLease\(workflow\)/)
+  assert.match(serviceSource, /Contract v2 runtime execution is not enabled before R4/)
 })
