@@ -81,6 +81,7 @@ const DIGEST_PATTERN = /^sha256:[0-9a-f]{64}$/u
 const SLOT_PATTERN = /^[A-Za-z][A-Za-z0-9]*(?:[._-][A-Za-z0-9]+)*$/u
 const CONTROL_PATTERN = /[\u0000-\u001f\u007f-\u009f]/u
 const WINDOWS_FORBIDDEN_PATTERN = /[<>:"|?*]/u
+const PORTABLE_SEGMENT_PATTERN = /^[A-Za-z0-9._-]+$/u
 const WINDOWS_RESERVED_DEVICE_PATTERN = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/iu
 const NEWLINE = reflectApply(bufferFrom, BufferConstructor, ["\n", "utf8"]) as Buffer
 const MAX_PACKAGES = 4096
@@ -322,7 +323,8 @@ function repositoryRelativePath(value: unknown, label: string): string {
 
 function assertPortablePathSegment(value: string, label: string): void {
   if (
-    testPattern(WINDOWS_FORBIDDEN_PATTERN, value)
+    !testPattern(PORTABLE_SEGMENT_PATTERN, value)
+    || testPattern(WINDOWS_FORBIDDEN_PATTERN, value)
     || testPattern(WINDOWS_RESERVED_DEVICE_PATTERN, value)
     || value[value.length - 1] === "."
     || value[value.length - 1] === " "
