@@ -36,3 +36,12 @@ export type {
   GetOrCompileWorkflowPlanInput
 } from "./planStore"
 export type { WorkflowPlanLease } from "./planLease"
+export {
+  WORKFLOW_RUN_PLAN_PROVENANCE_SCHEMA_VERSION,
+  assertWorkflowContractV2RunPlanProvenanceMatchesLease,
+  createWorkflowContractV2RunPlanProvenance,
+  decodeWorkflowContractV2RunPlanProvenance,
+  requireWorkflowContractV2RunPlanLease,
+  runWithWorkflowContractV2PlanLease
+} from "./runPlanProvenance"
+export type { WorkflowContractV2RunPlanProvenance } from "./runPlanProvenance"
