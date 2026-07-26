@@ -1,0 +1,186 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bob.local/schemas/processing-budget-report.v1.schema.json",
+  "title": "Processing budget report v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "producer",
+    "operation_id",
+    "input_sha256",
+    "outcome",
+    "coverage_status",
+    "ledger",
+    "issues"
+  ],
+  "properties": {
+    "schema_version": { "const": "processing-budget-report/v1" },
+    "producer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,126}[A-Za-z0-9])?$" },
+        "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$" }
+      }
+    },
+    "operation_id": { "$ref": "#/$defs/boundedText" },
+    "input_sha256": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "outcome": { "enum": ["success", "failed", "cancelled"] },
+    "coverage_status": { "enum": ["complete", "partial", "failed"] },
+    "ledger": { "$ref": "#/$defs/ledger" },
+    "issues": {
+      "type": "array",
+      "maxItems": 1024,
+      "items": { "$ref": "#/$defs/issue" }
+    },
+    "failure": { "$ref": "#/$defs/failure" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "outcome": { "const": "success" } }, "required": ["outcome"] },
+      "then": { "not": { "required": ["failure"] } },
+      "else": { "required": ["failure"], "properties": { "coverage_status": { "const": "failed" } } }
+    },
+    {
+      "if": { "properties": { "coverage_status": { "const": "complete" } }, "required": ["coverage_status"] },
+      "then": { "properties": { "outcome": { "const": "success" }, "issues": { "maxItems": 0 } } }
+    },
+    {
+      "if": { "properties": { "coverage_status": { "const": "partial" } }, "required": ["coverage_status"] },
+      "then": { "properties": { "outcome": { "const": "success" }, "issues": { "minItems": 1 } } }
+    }
+  ],
+  "$defs": {
+    "safeInteger": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "boundedText": { "type": "string", "minLength": 1, "maxLength": 256, "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]+$" },
+    "code": { "type": "string", "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$" },
+    "category": {
+      "enum": [
+        "single_document_bytes",
+        "total_document_bytes",
+        "document_count",
+        "sheets_per_workbook",
+        "total_sheets",
+        "rows_per_sheet",
+        "total_rows",
+        "changed_files",
+        "raw_diff_bytes",
+        "document_excerpt_bytes",
+        "bob_input_bytes",
+        "managed_artifact_bytes",
+        "total_operation_input_bytes"
+      ]
+    },
+    "categoryBase": {
+      "type": "object",
+      "required": ["category", "scope", "unit", "limit", "committed", "reserved", "used"],
+      "properties": {
+        "category": { "$ref": "#/$defs/category" },
+        "scope": { "enum": ["operation", "target"] },
+        "unit": { "enum": ["bytes", "count"] },
+        "limit": { "$ref": "#/$defs/safeInteger" },
+        "committed": { "$ref": "#/$defs/safeInteger" },
+        "reserved": { "$ref": "#/$defs/safeInteger" },
+        "used": { "$ref": "#/$defs/safeInteger" }
+      }
+    },
+    "operationCategory": {
+      "allOf": [
+        { "$ref": "#/$defs/categoryBase" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["category", "scope", "unit", "limit", "committed", "reserved", "used", "remaining"],
+          "properties": {
+            "category": { "$ref": "#/$defs/category" },
+            "scope": { "const": "operation" },
+            "unit": { "enum": ["bytes", "count"] },
+            "limit": { "$ref": "#/$defs/safeInteger" },
+            "committed": { "$ref": "#/$defs/safeInteger" },
+            "reserved": { "$ref": "#/$defs/safeInteger" },
+            "used": { "$ref": "#/$defs/safeInteger" },
+            "remaining": { "$ref": "#/$defs/safeInteger" }
+          }
+        }
+      ]
+    },
+    "targetCategory": {
+      "allOf": [
+        { "$ref": "#/$defs/categoryBase" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["category", "scope", "unit", "limit", "committed", "reserved", "used", "target_count"],
+          "properties": {
+            "category": { "$ref": "#/$defs/category" },
+            "scope": { "const": "target" },
+            "unit": { "enum": ["bytes", "count"] },
+            "limit": { "$ref": "#/$defs/safeInteger" },
+            "committed": { "$ref": "#/$defs/safeInteger" },
+            "reserved": { "$ref": "#/$defs/safeInteger" },
+            "used": { "$ref": "#/$defs/safeInteger" },
+            "target_count": { "$ref": "#/$defs/safeInteger" }
+          }
+        }
+      ]
+    },
+    "targetRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["category", "target", "unit", "limit", "committed", "reserved", "used", "remaining"],
+      "properties": {
+        "category": { "enum": ["single_document_bytes", "sheets_per_workbook", "rows_per_sheet"] },
+        "target": { "$ref": "#/$defs/boundedText" },
+        "unit": { "enum": ["bytes", "count"] },
+        "limit": { "$ref": "#/$defs/safeInteger" },
+        "committed": { "$ref": "#/$defs/safeInteger" },
+        "reserved": { "$ref": "#/$defs/safeInteger" },
+        "used": { "$ref": "#/$defs/safeInteger" },
+        "remaining": { "$ref": "#/$defs/safeInteger" }
+      }
+    },
+    "ledger": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "categories", "targets"],
+      "properties": {
+        "schema_version": { "const": "processing-budget-ledger-report/v1" },
+        "categories": {
+          "type": "array",
+          "minItems": 13,
+          "maxItems": 13,
+          "items": { "oneOf": [{ "$ref": "#/$defs/operationCategory" }, { "$ref": "#/$defs/targetCategory" }] }
+        },
+        "targets": { "type": "array", "items": { "$ref": "#/$defs/targetRecord" } }
+      }
+    },
+    "issue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "code"],
+      "properties": {
+        "kind": { "enum": ["truncation", "unprocessed"] },
+        "code": { "$ref": "#/$defs/code" },
+        "category": { "$ref": "#/$defs/category" },
+        "target": { "$ref": "#/$defs/boundedText" },
+        "processed": { "$ref": "#/$defs/safeInteger" },
+        "observed": { "$ref": "#/$defs/safeInteger" },
+        "unprocessed": { "$ref": "#/$defs/safeInteger" }
+      }
+    },
+    "failure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code"],
+      "properties": {
+        "code": { "$ref": "#/$defs/code" },
+        "category": { "$ref": "#/$defs/category" },
+        "target": { "$ref": "#/$defs/boundedText" },
+        "limit": { "$ref": "#/$defs/safeInteger" },
+        "observed": { "$ref": "#/$defs/safeInteger" }
+      }
+    }
+  }
+}
