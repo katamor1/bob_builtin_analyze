@@ -37,6 +37,7 @@ export async function reviewRevision(context: vscode.ExtensionContext, withProje
     await withProgress("Bazaar 1リビジョンレビュー packet を作成しています", async (signal) => {
       const result = await runBazaarReviewProcessingOperation({
         reportDirectory: processingReportDirectory(context),
+        repositoryScope: bazaarFolder.uri.fsPath,
         operation: {
           mode: "singleRevision",
           revision,
@@ -111,6 +112,7 @@ export async function reviewRange(context: vscode.ExtensionContext, withProjectR
     await withProgress("Bazaar リビジョン範囲レビュー packet を作成しています", async (signal) => {
       const result = await runBazaarReviewProcessingOperation({
         reportDirectory: processingReportDirectory(context),
+        repositoryScope: bazaarFolder.uri.fsPath,
         operation: {
           mode: "revisionRange",
           baseRevision,
