@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto"
+import { constants as fsConstants, type BigIntStats } from "node:fs"
 import * as fs from "node:fs/promises"
 import * as path from "node:path"
+import { TextDecoder } from "node:util"
 import {
   assertProcessingBudgetReportAllowsHandoff,
   validateProcessingBudgetReport,
@@ -98,17 +100,64 @@ function checkedSha(value: unknown, label: string): string {
 }
 
 async function readBoundedJson(filePath: string, maximumBytes: number, label: string): Promise<unknown> {
-  const stat = await fs.lstat(filePath)
-  if (stat.isSymbolicLink() || !stat.isFile() || !Number.isSafeInteger(stat.size)
-    || stat.size < 1 || stat.size > maximumBytes) {
-    throw new Error(`${label} is unavailable, unsafe, or oversized`)
-  }
-  const bytes = await fs.readFile(filePath)
-  if (bytes.length !== stat.size) throw new Error(`${label} changed while reading`)
+  const pathBefore = await fs.lstat(filePath, { bigint: true })
+  assertSafePathFile(pathBefore, maximumBytes, label)
+  const noFollow = typeof fsConstants.O_NOFOLLOW === "number" ? fsConstants.O_NOFOLLOW : 0
+  const handle = await fs.open(filePath, fsConstants.O_RDONLY | noFollow)
   try {
-    return JSON.parse(bytes.toString("utf8"))
-  } catch {
-    throw new Error(`${label} is not valid JSON`)
+    const openedBefore = await handle.stat({ bigint: true })
+    assertStableOpenedFile(pathBefore, openedBefore, maximumBytes, label)
+    const size = Number(openedBefore.size)
+    const bytes = Buffer.alloc(size)
+    let offset = 0
+    while (offset < size) {
+      const { bytesRead } = await handle.read(bytes, offset, size - offset, offset)
+      if (bytesRead === 0) throw new Error(`${label} ended before its opened size`)
+      offset += bytesRead
+    }
+    const openedAfter = await handle.stat({ bigint: true })
+    assertStableOpenedFile(openedBefore, openedAfter, maximumBytes, label)
+    const pathAfter = await fs.lstat(filePath, { bigint: true })
+    assertStableOpenedFile(pathAfter, openedAfter, maximumBytes, label)
+
+    let text: string
+    try {
+      text = new TextDecoder("utf-8", { fatal: true }).decode(bytes)
+    } catch {
+      throw new Error(`${label} is not valid UTF-8`)
+    }
+    try {
+      return JSON.parse(text)
+    } catch {
+      throw new Error(`${label} is not valid JSON`)
+    }
+  } finally {
+    await handle.close()
+  }
+}
+
+function assertSafePathFile(stat: BigIntStats, maximumBytes: number, label: string): void {
+  if (stat.isSymbolicLink() || !stat.isFile() || stat.nlink !== 1n
+    || stat.size < 1n || stat.size > BigInt(maximumBytes)) {
+    throw new Error(`${label} is unavailable, unsafe, hard-linked, or oversized`)
+  }
+}
+
+function assertStableOpenedFile(
+  expected: BigIntStats,
+  observed: BigIntStats,
+  maximumBytes: number,
+  label: string
+): void {
+  assertSafePathFile(expected, maximumBytes, label)
+  assertSafePathFile(observed, maximumBytes, label)
+  if (expected.dev !== observed.dev
+    || expected.ino !== observed.ino
+    || expected.size !== observed.size
+    || expected.mtimeNs !== observed.mtimeNs
+    || expected.ctimeNs !== observed.ctimeNs
+    || expected.mode !== observed.mode) {
+    throw new Error(`${label} changed identity or content metadata while reading`)
   }
 }
 
