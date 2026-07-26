@@ -84,17 +84,43 @@ function canonicalValue(value: unknown, seen: Set<object>): unknown {
   seen.add(value)
   try {
     if (Array.isArray(value)) return value.map((entry) => canonicalValue(entry, seen))
-    const prototype = Object.getPrototypeOf(value)
+    let prototype: object | null
+    try {
+      prototype = Object.getPrototypeOf(value)
+    } catch {
+      throw new Error("processing operation input object prototype is unavailable")
+    }
     if (prototype !== Object.prototype && prototype !== null) {
       throw new Error("processing operation input must contain plain data objects")
     }
-    const record = value as Record<string, unknown>
-    const output: Record<string, unknown> = Object.create(null) as Record<string, unknown>
-    for (const key of Object.keys(record).sort(compareCodePoints)) {
-      const descriptor = Object.getOwnPropertyDescriptor(record, key)
+
+    let ownKeys: readonly PropertyKey[]
+    try {
+      ownKeys = Reflect.ownKeys(value)
+    } catch {
+      throw new Error("processing operation input object keys are unavailable")
+    }
+    const descriptors = new Map<string, PropertyDescriptor>()
+    for (const key of ownKeys) {
+      if (typeof key !== "string") {
+        throw new Error("processing operation input contains a symbol property")
+      }
+      let descriptor: PropertyDescriptor | undefined
+      try {
+        descriptor = Object.getOwnPropertyDescriptor(value, key)
+      } catch {
+        throw new Error("processing operation input property descriptor is unavailable")
+      }
       if (!descriptor || !("value" in descriptor) || descriptor.enumerable !== true) {
         throw new Error("processing operation input contains an accessor or hidden property")
       }
+      descriptors.set(key, descriptor)
+    }
+
+    const output: Record<string, unknown> = Object.create(null) as Record<string, unknown>
+    for (const key of [...descriptors.keys()].sort(compareCodePoints)) {
+      const descriptor = descriptors.get(key)
+      if (!descriptor) throw new Error("processing operation input property descriptor was lost")
       if (descriptor.value !== undefined) output[key] = canonicalValue(descriptor.value, seen)
     }
     return output
