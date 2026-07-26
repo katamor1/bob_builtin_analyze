@@ -17,7 +17,8 @@ test("the bound provider dispatch bridge is owned only by provider invocation an
 
   assert.match(registry, new RegExp(`export function ${bridge}\\(`))
   assert.match(invocation, new RegExp(`import \\{[\\s\\S]*${bridge}[\\s\\S]*\\} from \\"\\./providerRegistry\\"`))
-  assert.match(invocation, new RegExp(`${bridge}\\(`))
+  assert.match(invocation, new RegExp(`const invokeDispatchCaptured = ${bridge}`))
+  assert.match(invocation, /await invokeDispatchCaptured\(binding\.dispatchHandle, dispatchInput\)/)
   assert.doesNotMatch(barrel, new RegExp(bridge))
 
   const importers = fs.readdirSync(sourceRoot)
