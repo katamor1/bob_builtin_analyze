@@ -11,10 +11,17 @@ const WINDOWS_RESERVED = new Set([
   "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"
 ])
 const ARTIFACT_SET_FILE = "artifact-set.json"
-const MAX_FILES = 129
+const MAX_ENTRIES = 256
 
 export interface AttemptArtifactWorkspace {
   readonly __attemptArtifactWorkspaceBrand?: never
+}
+
+interface DirectoryIdentity {
+  readonly path: string
+  readonly real: string
+  readonly dev: number | bigint
+  readonly ino: number | bigint
 }
 
 interface WorkspaceState {
@@ -28,16 +35,33 @@ interface WorkspaceState {
   status: "open" | "promoted" | "aborted"
 }
 
+interface AnchoredArtifactFile {
+  readonly file: Awaited<ReturnType<typeof fs.open>>
+  readonly parent: Awaited<ReturnType<typeof fs.open>>
+  readonly parentIdentity: DirectoryIdentity
+  readonly targetPath: string
+}
+
 export interface VerifiedAttemptArtifactFile {
   readonly relativePath: string
   readonly bytes: Uint8Array
 }
 
+export interface AttemptArtifactWorkspaceTree {
+  readonly files: readonly string[]
+  readonly directories: readonly string[]
+}
+
 const isProxy = utilTypes.isProxy
+const functionHasInstance = Function.prototype[Symbol.hasInstance]
 const objectFreeze = Object.freeze
 const reflectApply = Reflect.apply
 const typedArraySet = Uint8Array.prototype.set
 const Uint8ArrayConstructor = Uint8Array
+const typedArrayPrototype = Object.getPrototypeOf(Uint8ArrayConstructor.prototype)
+const typedArrayByteLengthGetter = typedArrayPrototype === null
+  ? undefined
+  : Object.getOwnPropertyDescriptor(typedArrayPrototype, "byteLength")?.get
 const states = new WeakMap<object, WorkspaceState>()
 const weakMapGet = Function.prototype.call.bind(WeakMap.prototype.get) as (
   map: WeakMap<object, WorkspaceState>, key: object
@@ -46,6 +70,7 @@ const weakMapSet = Function.prototype.call.bind(WeakMap.prototype.set) as (
   map: WeakMap<object, WorkspaceState>, key: object, value: WorkspaceState
 ) => WeakMap<object, WorkspaceState>
 const noFollow = typeof constants.O_NOFOLLOW === "number" ? constants.O_NOFOLLOW : 0
+const directoryFlag = typeof constants.O_DIRECTORY === "number" ? constants.O_DIRECTORY : 0
 
 export async function allocateAttemptArtifactWorkspace(
   runRoot: string,
@@ -62,13 +87,11 @@ export async function allocateAttemptArtifactWorkspace(
   try {
     await fs.mkdir(stagingPath, { recursive: false, mode: 0o700 })
   } catch (error) {
-    if (isExistsError(error)) {
-      throw new Error("Workflow artifact attempt workspace is already allocated.")
-    }
+    if (isExistsError(error)) throw new Error("Workflow artifact attempt workspace is already allocated.")
     throw error
   }
-  await requireDirectDirectory(stagingPath, root.real)
   await syncDirectory(stagingParent.path)
+  await requireDirectDirectory(stagingPath, root.real)
 
   const workspace = objectFreeze({}) as AttemptArtifactWorkspace
   weakMapSet(states, workspace, {
@@ -91,9 +114,7 @@ export async function writeAttemptArtifactWorkspaceFile(
 ): Promise<void> {
   const state = requireOpenState(workspace)
   const safePath = requireArtifactPath(relativePath)
-  if (safePath === ARTIFACT_SET_FILE) {
-    throw new TypeError("Workflow artifact path is reserved.")
-  }
+  if (safePath === ARTIFACT_SET_FILE) throw new TypeError("Workflow artifact path is reserved.")
   const copy = copyBytes(bytes)
   const segments = safePath.split("/")
   let parent = state.stagingPath
@@ -108,9 +129,31 @@ export async function writeAttemptArtifactWorkspaceFile(
 export async function listAttemptArtifactWorkspaceFiles(
   workspace: AttemptArtifactWorkspace
 ): Promise<readonly string[]> {
+  return (await inspectAttemptArtifactWorkspaceTree(workspace)).files
+}
+
+export async function inspectAttemptArtifactWorkspaceTree(
+  workspace: AttemptArtifactWorkspace
+): Promise<AttemptArtifactWorkspaceTree> {
   const state = requireOpenOrPromotedState(workspace)
   const root = state.status === "open" ? state.stagingPath : state.committedPath
-  return listDirectFiles(root, state.runRootReal)
+  return inspectDirectTree(root, state.runRootReal)
+}
+
+export async function inspectCommittedAttemptArtifactWorkspaceTree(input: {
+  readonly runRoot: string
+  readonly attemptId: string
+}): Promise<AttemptArtifactWorkspaceTree | undefined> {
+  const root = await requireDirectRoot(input.runRoot)
+  const attemptId = requireAttemptId(input.attemptId)
+  const committed = nodePath.join(root.path, "attempts", "committed", attemptId)
+  try {
+    await requireDirectDirectory(committed, root.real)
+  } catch (error) {
+    if (isMissingError(error)) return undefined
+    throw error
+  }
+  return inspectDirectTree(committed, root.real)
 }
 
 export async function readVerifiedAttemptArtifactWorkspaceFile(
@@ -119,9 +162,7 @@ export async function readVerifiedAttemptArtifactWorkspaceFile(
   maximumBytes: number
 ): Promise<VerifiedAttemptArtifactFile> {
   const state = requireOpenOrPromotedState(workspace)
-  if (!Number.isSafeInteger(maximumBytes) || maximumBytes < 0 || maximumBytes > 67_108_864) {
-    throw new TypeError("Workflow artifact maximum byte size is invalid.")
-  }
+  assertMaximumBytes(maximumBytes)
   const safePath = requireArtifactPath(relativePath)
   const root = state.status === "open" ? state.stagingPath : state.committedPath
   const target = nodePath.join(root, ...safePath.split("/"))
@@ -135,9 +176,8 @@ export async function writeAttemptArtifactSetFile(
   bytes: Uint8Array
 ): Promise<void> {
   const state = requireOpenState(workspace)
-  const copy = copyBytes(bytes)
   const target = nodePath.join(state.stagingPath, ARTIFACT_SET_FILE)
-  await writeExclusiveFile(target, copy, state.runRootReal)
+  await writeExclusiveFile(target, copyBytes(bytes), state.runRootReal)
   await syncDirectory(state.stagingPath)
 }
 
@@ -149,12 +189,8 @@ export async function promoteAttemptArtifactWorkspace(
   try {
     await fs.rename(state.stagingPath, state.committedPath)
   } catch (error) {
-    if (isCrossDeviceError(error)) {
-      throw new Error("Workflow artifact promotion must remain on one filesystem.")
-    }
-    if (isExistsError(error)) {
-      throw new Error("Workflow artifact committed attempt already exists.")
-    }
+    if (isCrossDeviceError(error)) throw new Error("Workflow artifact promotion must remain on one filesystem.")
+    if (isExistsError(error)) throw new Error("Workflow artifact committed attempt already exists.")
     throw error
   }
   state.status = "promoted"
@@ -186,12 +222,7 @@ export async function readCommittedAttemptArtifactSetBytes(input: {
     if (isMissingError(error)) return undefined
     throw error
   }
-  return readStableRegularFile(
-    nodePath.join(committed, ARTIFACT_SET_FILE),
-    committed,
-    root.real,
-    4_194_304
-  )
+  return readStableRegularFile(nodePath.join(committed, ARTIFACT_SET_FILE), committed, root.real, 4_194_304)
 }
 
 export async function readCommittedAttemptArtifactFile(input: {
@@ -203,10 +234,15 @@ export async function readCommittedAttemptArtifactFile(input: {
   const root = await requireDirectRoot(input.runRoot)
   const attemptId = requireAttemptId(input.attemptId)
   const safePath = requireArtifactPath(input.relativePath)
+  assertMaximumBytes(input.maximumBytes)
   const committed = nodePath.join(root.path, "attempts", "committed", attemptId)
   await requireDirectDirectory(committed, root.real)
-  const target = nodePath.join(committed, ...safePath.split("/"))
-  return readStableRegularFile(target, committed, root.real, input.maximumBytes)
+  return readStableRegularFile(
+    nodePath.join(committed, ...safePath.split("/")),
+    committed,
+    root.real,
+    input.maximumBytes
+  )
 }
 
 function requireState(value: unknown): WorkspaceState {
@@ -247,51 +283,44 @@ function requireArtifactPath(value: unknown): string {
   const segments = value.split("/")
   for (let index = 0; index < segments.length; index += 1) {
     const segment = segments[index]
-    if (
-      /[. ]$/u.test(segment)
-      || WINDOWS_RESERVED.has(segment.split(".")[0].toUpperCase())
-    ) throw new TypeError("Workflow artifact relative path is invalid.")
+    if (/[. ]$/u.test(segment) || WINDOWS_RESERVED.has(segment.split(".")[0].toUpperCase())) {
+      throw new TypeError("Workflow artifact relative path is invalid.")
+    }
   }
   return value
 }
 
-async function requireDirectRoot(runRoot: unknown): Promise<{ path: string; real: string }> {
+async function requireDirectRoot(runRoot: unknown): Promise<DirectoryIdentity> {
   if (typeof runRoot !== "string" || runRoot.length === 0 || !nodePath.isAbsolute(runRoot)) {
     throw new TypeError("Workflow artifact run root must be an absolute path.")
   }
   const resolved = nodePath.resolve(runRoot)
-  const stat = await fs.lstat(resolved)
-  if (!stat.isDirectory() || stat.isSymbolicLink()) {
-    throw new Error("Workflow artifact run root must be a direct directory.")
-  }
-  const real = await fs.realpath(resolved)
-  if (nodePath.resolve(real) !== resolved) {
-    throw new Error("Workflow artifact run root must not traverse a link.")
-  }
-  return { path: resolved, real }
+  const identity = await requireDirectDirectory(resolved, resolved)
+  if (identity.real !== resolved) throw new Error("Workflow artifact run root must not traverse a link.")
+  return identity
 }
 
 async function ensureDirectDirectory(
   parent: string,
   segment: string,
   containmentRoot: string
-): Promise<{ path: string; real: string }> {
+): Promise<DirectoryIdentity> {
   if (!segment || segment === "." || segment === ".." || /[\\/]/u.test(segment)) {
     throw new TypeError("Workflow artifact directory segment is invalid.")
   }
   const target = nodePath.join(parent, segment)
+  let created = false
   try {
     await fs.mkdir(target, { recursive: false, mode: 0o700 })
+    created = true
   } catch (error) {
     if (!isExistsError(error)) throw error
   }
+  if (created) await syncDirectory(parent)
   return requireDirectDirectory(target, containmentRoot)
 }
 
-async function requireDirectDirectory(
-  target: string,
-  containmentRoot: string
-): Promise<{ path: string; real: string }> {
+async function requireDirectDirectory(target: string, containmentRoot: string): Promise<DirectoryIdentity> {
   const stat = await fs.lstat(target)
   if (!stat.isDirectory() || stat.isSymbolicLink()) {
     throw new Error("Workflow artifact path contains a symlink or non-directory component.")
@@ -301,40 +330,83 @@ async function requireDirectDirectory(
   if (nodePath.resolve(real) !== nodePath.resolve(target)) {
     throw new Error("Workflow artifact directory changed or traverses a link.")
   }
-  return { path: target, real }
+  return { path: target, real, dev: stat.dev, ino: stat.ino }
 }
 
-async function writeExclusiveFile(
-  target: string,
-  bytes: Uint8Array,
-  containmentRoot: string
-): Promise<void> {
-  let handle: Awaited<ReturnType<typeof fs.open>> | undefined
+async function writeExclusiveFile(target: string, bytes: Uint8Array, containmentRoot: string): Promise<void> {
+  const opened = await openArtifactFileAnchored(target, containmentRoot)
   try {
-    handle = await fs.open(
-      target,
+    await verifyOpenedArtifactFileContainment(opened, containmentRoot)
+    await opened.file.writeFile(bytes)
+    await opened.file.sync()
+    await verifyOpenedArtifactFileContainment(opened, containmentRoot, bytes.byteLength)
+  } finally {
+    await opened.file.close().catch(() => undefined)
+    await opened.parent.close().catch(() => undefined)
+  }
+  await syncDirectory(nodePath.dirname(target))
+}
+
+async function openArtifactFileAnchored(target: string, containmentRoot: string): Promise<AnchoredArtifactFile> {
+  const parentPath = nodePath.dirname(target)
+  const parentIdentity = await requireDirectDirectory(parentPath, containmentRoot)
+  const parent = await fs.open(parentPath, constants.O_RDONLY | directoryFlag)
+  try {
+    const parentStat = await parent.stat()
+    if (!sameDirectoryIdentity(parentIdentity, parentStat)) {
+      throw new Error("Workflow artifact parent changed before file creation.")
+    }
+    const anchoredTarget = process.platform === "linux"
+      ? `/proc/self/fd/${parent.fd}/${nodePath.basename(target)}`
+      : target
+    const file = await fs.open(
+      anchoredTarget,
       constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | noFollow,
       0o600
     )
-    await handle.writeFile(bytes)
-    await handle.sync()
-    const handleStat = await handle.stat()
-    if (!handleStat.isFile() || handleStat.nlink !== 1) {
-      throw new Error("Workflow artifact staged path is not a single-linked regular file.")
+    return { file, parent, parentIdentity, targetPath: target }
+  } catch (error) {
+    await parent.close().catch(() => undefined)
+    throw error
+  }
+}
+
+async function verifyOpenedArtifactFileContainment(
+  opened: AnchoredArtifactFile,
+  containmentRoot: string,
+  expectedBytes?: number
+): Promise<void> {
+  const parentStat = await opened.parent.stat()
+  if (!sameDirectoryIdentity(opened.parentIdentity, parentStat)) {
+    throw new Error("Workflow artifact parent changed during file creation.")
+  }
+  const parentPathIdentity = await requireDirectDirectory(opened.parentIdentity.path, containmentRoot)
+  if (!sameDirectoryIdentity(opened.parentIdentity, parentPathIdentity)) {
+    throw new Error("Workflow artifact parent path was replaced during file creation.")
+  }
+  const fileStat = await opened.file.stat()
+  if (!fileStat.isFile() || fileStat.nlink !== 1 || (expectedBytes !== undefined && fileStat.size !== expectedBytes)) {
+    throw new Error("Workflow artifact staged path is not a stable single-linked regular file.")
+  }
+
+  if (process.platform === "linux") {
+    const actual = await fs.realpath(`/proc/self/fd/${opened.file.fd}`)
+    assertContained(containmentRoot, actual)
+    if (nodePath.resolve(actual) !== nodePath.resolve(opened.targetPath)) {
+      throw new Error("Workflow artifact opened file is outside its pinned parent.")
     }
-  } finally {
-    await handle?.close().catch(() => undefined)
+    return
   }
-  const stat = await fs.lstat(target)
-  if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1) {
-    throw new Error("Workflow artifact staged path is not a direct regular file.")
+
+  const targetStat = await fs.lstat(opened.targetPath)
+  if (!sameFileIdentity(fileStat, targetStat) || targetStat.isSymbolicLink()) {
+    throw new Error("Workflow artifact target changed during file creation.")
   }
-  const real = await fs.realpath(target)
+  const real = await fs.realpath(opened.targetPath)
   assertContained(containmentRoot, real)
-  if (nodePath.resolve(real) !== nodePath.resolve(target)) {
-    throw new Error("Workflow artifact staged path changed after write.")
+  if (nodePath.resolve(real) !== nodePath.resolve(opened.targetPath)) {
+    throw new Error("Workflow artifact target traverses a link.")
   }
-  await syncDirectory(nodePath.dirname(target))
 }
 
 async function readStableRegularFile(
@@ -352,20 +424,20 @@ async function readStableRegularFile(
   try {
     handle = await fs.open(target, constants.O_RDONLY | noFollow)
     const opened = await handle.stat()
-    if (!opened.isFile() || opened.nlink !== 1 || opened.size > maximumBytes || !sameIdentity(pre, opened)) {
+    if (!opened.isFile() || opened.nlink !== 1 || opened.size > maximumBytes || !sameFileIdentity(pre, opened)) {
       throw new Error("Workflow artifact changed during verification.")
     }
     const bytes = await handle.readFile()
     const afterRead = await handle.stat()
     const post = await fs.lstat(target)
-    if (
-      !sameIdentity(opened, afterRead)
-      || !sameIdentity(afterRead, post)
-      || afterRead.size !== bytes.byteLength
-    ) throw new Error("Workflow artifact changed during verification.")
-    const real = await fs.realpath(target)
-    assertContained(containmentRoot, real)
-    if (nodePath.resolve(real) !== nodePath.resolve(target)) {
+    if (!sameFileIdentity(opened, afterRead) || !sameFileIdentity(afterRead, post) || afterRead.size !== bytes.byteLength) {
+      throw new Error("Workflow artifact changed during verification.")
+    }
+    const actual = process.platform === "linux"
+      ? await fs.realpath(`/proc/self/fd/${handle.fd}`)
+      : await fs.realpath(target)
+    assertContained(containmentRoot, actual)
+    if (nodePath.resolve(actual) !== nodePath.resolve(target)) {
       throw new Error("Workflow artifact verification encountered a symlink or changed path.")
     }
     return new Uint8Array(bytes)
@@ -374,29 +446,29 @@ async function readStableRegularFile(
   }
 }
 
-async function listDirectFiles(root: string, containmentRoot: string): Promise<readonly string[]> {
-  const result: string[] = []
+async function inspectDirectTree(root: string, containmentRoot: string): Promise<AttemptArtifactWorkspaceTree> {
+  const files: string[] = []
+  const directories: string[] = []
   const pending: { path: string; relative: string }[] = [{ path: root, relative: "" }]
+  let entries = 0
   while (pending.length > 0) {
     const current = pending.pop()!
     const directory = await fs.opendir(current.path)
     try {
       for await (const entry of directory) {
-        if (result.length + pending.length >= MAX_FILES) {
-          throw new Error("Workflow artifact workspace exceeds its file budget.")
-        }
+        entries += 1
+        if (entries > MAX_ENTRIES) throw new Error("Workflow artifact workspace exceeds its entry budget.")
         const absolute = nodePath.join(current.path, entry.name)
         const relative = current.relative ? `${current.relative}/${entry.name}` : entry.name
         const stat = await fs.lstat(absolute)
-        if (stat.isSymbolicLink()) {
-          throw new Error("Workflow artifact workspace contains a symlink.")
-        }
+        if (stat.isSymbolicLink()) throw new Error("Workflow artifact workspace contains a symlink.")
         if (stat.isDirectory()) {
           const real = await fs.realpath(absolute)
           assertContained(containmentRoot, real)
+          directories.push(`${relative.replace(/\\/gu, "/")}/`)
           pending.push({ path: absolute, relative })
         } else if (stat.isFile() && stat.nlink === 1) {
-          result.push(relative.replace(/\\/gu, "/"))
+          files.push(relative.replace(/\\/gu, "/"))
         } else {
           throw new Error("Workflow artifact workspace contains a non-regular entry.")
         }
@@ -405,24 +477,43 @@ async function listDirectFiles(root: string, containmentRoot: string): Promise<r
       await directory.close().catch(() => undefined)
     }
   }
-  result.sort()
-  return objectFreeze(result)
+  files.sort()
+  directories.sort()
+  return objectFreeze({ files: objectFreeze(files), directories: objectFreeze(directories) })
 }
 
 function copyBytes(value: unknown): Uint8Array {
-  if (!(value instanceof Uint8ArrayConstructor) || isProxy(value)) {
-    throw new TypeError("Workflow artifact bytes must be a Uint8Array.")
-  }
-  const copy = new Uint8ArrayConstructor(value.byteLength)
+  if (
+    typeof value !== "object"
+    || value === null
+    || isProxy(value)
+    || !(reflectApply(functionHasInstance, Uint8ArrayConstructor, [value]) as boolean)
+  ) throw new TypeError("Workflow artifact bytes must be a Uint8Array.")
+  if (typedArrayByteLengthGetter === undefined) throw new TypeError("Workflow artifact byte length intrinsic is unavailable.")
+  const length = reflectApply(typedArrayByteLengthGetter, value, []) as number
+  const copy = new Uint8ArrayConstructor(length)
   reflectApply(typedArraySet, copy, [value])
   return copy
 }
 
-function sameIdentity(
+function sameDirectoryIdentity(
+  left: { dev: number | bigint; ino: number | bigint },
+  right: { dev: number | bigint; ino: number | bigint }
+): boolean {
+  return left.dev === right.dev && left.ino === right.ino
+}
+
+function sameFileIdentity(
   left: { dev: number | bigint; ino: number | bigint; size: number | bigint },
   right: { dev: number | bigint; ino: number | bigint; size: number | bigint }
 ): boolean {
   return left.dev === right.dev && left.ino === right.ino && left.size === right.size
+}
+
+function assertMaximumBytes(value: unknown): asserts value is number {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0 || value > 67_108_864) {
+    throw new TypeError("Workflow artifact maximum byte size is invalid.")
+  }
 }
 
 function assertContained(root: string, candidate: string): void {
@@ -444,7 +535,7 @@ async function assertMissingDirectPath(target: string): Promise<void> {
 async function syncDirectory(directoryPath: string): Promise<void> {
   let handle: Awaited<ReturnType<typeof fs.open>> | undefined
   try {
-    handle = await fs.open(directoryPath, constants.O_RDONLY)
+    handle = await fs.open(directoryPath, constants.O_RDONLY | directoryFlag)
     await handle.sync()
   } catch (error) {
     if (!isUnsupportedDirectorySyncError(error)) throw error
