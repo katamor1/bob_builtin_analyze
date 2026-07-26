@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto"
+import { createHash } from "node:crypto"
 import * as path from "node:path"
 import {
   assertProcessingBudgetReportAllowsHandoff,
@@ -38,6 +38,10 @@ export interface BazaarReviewProcessingProduct {
   readonly packet: string
 }
 
+export interface BazaarReviewProcessingObserver {
+  recordPreparedTarget(prepared: PreparedTarget): void
+}
+
 export interface RunBazaarReviewProcessingOperationInput {
   readonly reportDirectory: string
   readonly repositoryScope?: string
@@ -46,7 +50,7 @@ export interface RunBazaarReviewProcessingOperationInput {
   readonly maxAddedFileContentBytes: number
   readonly maxBobInputBytes?: number
   readonly signal?: AbortSignal
-  readonly produce: () => Promise<BazaarReviewProcessingProduct>
+  readonly produce: (observer: BazaarReviewProcessingObserver) => Promise<BazaarReviewProcessingProduct>
 }
 
 export interface BazaarReviewProcessingResult extends BazaarReviewProcessingProduct {
@@ -75,7 +79,7 @@ export async function runBazaarReviewProcessingOperation(
   const requestedRepositoryScope = input.repositoryScope === undefined
     ? undefined
     : normalizeRepositoryScope(input.repositoryScope)
-  const provisionalRepositoryScope = requestedRepositoryScope ?? `unresolved:${randomUUID()}`
+  const provisionalRepositoryScope = requestedRepositoryScope ?? "unresolved"
   const maxBobInputBytes = normalizeBobInputBytes(input.maxBobInputBytes)
   let initialInputSha256 = operationInputSha(provisionalRepositoryScope, input.operation, {
     maxDiffBytes: input.maxDiffBytes,
@@ -87,22 +91,40 @@ export async function runBazaarReviewProcessingOperation(
   const ledger = reviewLedger(input.maxDiffBytes, input.maxAddedFileContentBytes, maxBobInputBytes)
   const reservations: SharedProcessingBudgetReservation[] = []
   let product: BazaarReviewProcessingProduct | undefined
+  let preparedInputSha256: string | undefined
+  let preparedObserved = false
   let stage = "before_target_preparation"
+
+  const observer: BazaarReviewProcessingObserver = Object.freeze({
+    recordPreparedTarget(prepared: PreparedTarget): void {
+      if (preparedObserved) throw new Error("Bazaar prepared target was reported more than once")
+      preparedObserved = true
+      if (requestedRepositoryScope === undefined) {
+        const preparedRepositoryScope = normalizeRepositoryScope(prepared.root)
+        initialInputSha256 = operationInputSha(preparedRepositoryScope, input.operation, {
+          maxDiffBytes: input.maxDiffBytes,
+          maxAddedFileContentBytes: input.maxAddedFileContentBytes,
+          maxBobInputBytes
+        })
+        operationId = `bazaar-review:${initialInputSha256.slice(7, 39)}`
+        reportPath = processingReportPath(input.reportDirectory, initialInputSha256)
+      }
+      preparedInputSha256 = preparedTargetInputSha(initialInputSha256, prepared)
+      stage = "packet_construction"
+    }
+  })
 
   try {
     throwIfCancelled(input.signal)
     stage = "target_preparation"
-    product = await input.produce()
+    product = await input.produce(observer)
     throwIfCancelled(input.signal)
-    if (requestedRepositoryScope === undefined) {
-      const preparedRepositoryScope = normalizeRepositoryScope(product.prepared.root)
-      initialInputSha256 = operationInputSha(preparedRepositoryScope, input.operation, {
-        maxDiffBytes: input.maxDiffBytes,
-        maxAddedFileContentBytes: input.maxAddedFileContentBytes,
-        maxBobInputBytes
+    if (!preparedObserved) {
+      observer.recordPreparedTarget(product.prepared)
+    } else if (preparedTargetInputSha(initialInputSha256, product.prepared) !== preparedInputSha256) {
+      throw Object.assign(new Error("Bazaar prepared target changed after it was reported"), {
+        code: "processing_input_changed"
       })
-      operationId = `bazaar-review:${initialInputSha256.slice(7, 39)}`
-      reportPath = processingReportPath(input.reportDirectory, initialInputSha256)
     }
     stage = "packet_budgeting"
 
@@ -140,7 +162,9 @@ export async function runBazaarReviewProcessingOperation(
     for (let index = reservations.length - 1; index >= 0; index -= 1) {
       try { reservations[index].release() } catch {}
     }
-    const inputSha256 = product === undefined ? initialInputSha256 : productInputSha(initialInputSha256, product)
+    const inputSha256 = product === undefined
+      ? preparedInputSha256 ?? initialInputSha256
+      : productInputSha(initialInputSha256, product)
     try {
       const report = createProcessingBudgetReport({
         producer: { id: "bob-bazaar-review", version: "0.3.0" },
@@ -247,21 +271,29 @@ function operationInputSha(
   })
 }
 
+function preparedTargetInputSha(initialInputSha256: string, prepared: PreparedTarget): string {
+  return sha256({
+    schema_version: "bazaar-review-processing-prepared/v1",
+    initial_input_sha256: initialInputSha256,
+    repository_root: normalizeRepositoryScope(prepared.root),
+    target: {
+      mode: prepared.info.mode,
+      target_label: prepared.info.targetLabel,
+      revision: prepared.info.revision ?? "",
+      base_revision: prepared.info.baseRevision ?? "",
+      target_revision: prepared.info.targetRevision ?? "",
+      changed_file_count: prepared.info.changedFileCount
+    },
+    diff_sha256: sha256Text(prepared.diff.stdout),
+    log_sha256: sha256Text(prepared.log?.stdout ?? ""),
+    added_files_sha256: sha256Text(prepared.addedFilesSection ?? "")
+  })
+}
+
 function productInputSha(initialInputSha256: string, product: BazaarReviewProcessingProduct): string {
   return sha256({
-    schema_version: "bazaar-review-processing-product/v1",
-    initial_input_sha256: initialInputSha256,
-    target: {
-      mode: product.prepared.info.mode,
-      target_label: product.prepared.info.targetLabel,
-      revision: product.prepared.info.revision ?? "",
-      base_revision: product.prepared.info.baseRevision ?? "",
-      target_revision: product.prepared.info.targetRevision ?? "",
-      changed_file_count: product.prepared.info.changedFileCount
-    },
-    diff_sha256: sha256Text(product.prepared.diff.stdout),
-    log_sha256: sha256Text(product.prepared.log?.stdout ?? ""),
-    added_files_sha256: sha256Text(product.prepared.addedFilesSection ?? ""),
+    schema_version: "bazaar-review-processing-product/v2",
+    prepared_input_sha256: preparedTargetInputSha(initialInputSha256, product.prepared),
     packet_sha256: sha256Text(product.packet)
   })
 }
