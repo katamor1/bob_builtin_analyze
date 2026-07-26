@@ -21,6 +21,7 @@ const textDecoderDecode = NodeTextDecoder.prototype.decode
 const bufferFrom = Buffer.from
 const bufferToString = Buffer.prototype.toString
 const BufferConstructor = Buffer
+const mathCeil = Math.ceil
 const objectFreeze = Object.freeze
 const reflectApply = Reflect.apply
 const stringEndsWith = String.prototype.endsWith
@@ -30,6 +31,7 @@ export function validateWorkflowArtifactContent(
   input: ValidateWorkflowArtifactContentInput
 ): JsonValue {
   let value: unknown
+  let valueBudget = input.maximumBytes
   if (isJsonMediaType(input.mediaType)) {
     try {
       value = parseStrictJson(input.bytes, "Workflow artifact JSON")
@@ -40,12 +42,11 @@ export function validateWorkflowArtifactContent(
     value = decodeStrictUtf8(input.bytes)
   } else {
     value = encodeCanonicalBase64(input.bytes)
+    valueBudget = canonicalBase64Length(input.maximumBytes)
   }
 
-  const bounded = snapshotBoundedWorkflowProviderEnvelope(value, input.maximumBytes)
-  if (bounded === undefined) {
-    throw new Error("Workflow artifact value exceeds its structural budget.")
-  }
+  const bounded = snapshotBoundedWorkflowProviderEnvelope(value, valueBudget)
+  if (bounded === undefined) throw new Error("Workflow artifact value exceeds its structural budget.")
   const validated = validateLocalJsonSchemaViewValue({
     compiled: input.schema,
     value: bounded,
@@ -73,8 +74,12 @@ function encodeCanonicalBase64(bytes: Uint8Array): string {
   return reflectApply(bufferToString, buffer, ["base64"]) as string
 }
 
+function canonicalBase64Length(bytes: number): number {
+  return 4 * mathCeil(bytes / 3)
+}
+
 function isJsonMediaType(value: string): boolean {
-  return value === "application/json" || reflectApply(stringEndsWith, value, ["+json"]) as boolean
+  return value === "application/json" || (reflectApply(stringEndsWith, value, ["+json"]) as boolean)
 }
 
 function isTextMediaType(value: string): boolean {
