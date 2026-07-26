@@ -34,7 +34,10 @@ import {
   persistProcessingBudgetReport
 } from "./processingBudgetCoverage"
 import { ProcessingCoveragePartialError } from "./processingCoverageError"
-import { computeProcessingOperationInputSha } from "./processingOperationInput"
+import {
+  computeProcessingOperationInputSha,
+  type MaterializedProcessingInputs
+} from "./processingOperationInput"
 import {
   persistCompleteProcessingBudgetBinding,
   removeProcessingBudgetReportBinding,
@@ -97,11 +100,18 @@ export async function preprocessReview(input: PreprocessReviewInput): Promise<Pr
       : undefined
     const reviewInput = await validateReviewInput(inputPath, input.workspaceRoot, textEncoding, limits.maxDocumentBytes)
     reviewInputForReport = reviewInput
-    inputSha256 = computeProcessingOperationInputSha({
-      reviewInput,
-      configuration: input,
-      limits
-    })
+    let materializedInputs: MaterializedProcessingInputs = Object.freeze({})
+    const refreshInputSha = (completed: MaterializedProcessingInputs): string => {
+      materializedInputs = Object.freeze({ ...materializedInputs, ...completed })
+      inputSha256 = computeProcessingOperationInputSha({
+        reviewInput,
+        configuration: input,
+        limits,
+        materialized: materializedInputs
+      })
+      return inputSha256
+    }
+    refreshInputSha({})
     cancellation.throwIfCancelled()
 
     const diff = await collectGitDiff(reviewInput, {
@@ -115,12 +125,7 @@ export async function preprocessReview(input: PreprocessReviewInput): Promise<Pr
       signal: cancellation.signal as AbortSignal
     })
     diffForReport = diff
-    inputSha256 = computeProcessingOperationInputSha({
-      reviewInput,
-      configuration: input,
-      limits,
-      materialized: { diff }
-    })
+    refreshInputSha({ diff })
 
     const repositoryIndexBuild = reviewInput.analysis_options?.repository_symbol_index_mode === "build"
       ? await produceConfiguredRepositoryIndex({
@@ -134,6 +139,8 @@ export async function preprocessReview(input: PreprocessReviewInput): Promise<Pr
           abortSignal: cancellation.signal as AbortSignal
         })
       : undefined
+    if (repositoryIndexBuild) refreshInputSha({ repositoryIndexBuild })
+
     const documents = await extractDocuments(reviewInput, {
       workspaceRoot: input.workspaceRoot,
       textEncoding,
@@ -141,12 +148,16 @@ export async function preprocessReview(input: PreprocessReviewInput): Promise<Pr
       budgetLedger: processingBudgetLedger,
       signal: cancellation.signal
     })
+    refreshInputSha({ documents })
     cancellation.throwIfCancelled()
+
     const codeAnalysis = await analyzeCodeChanges(diff, reviewInput, {
       workspaceRoot: input.workspaceRoot,
       textEncoding,
       limits
     })
+    refreshInputSha({ codeAnalysis })
+
     const contextBudget = await buildReviewContextBudget({
       workspaceRoot: input.workspaceRoot,
       reviewInput,
@@ -166,6 +177,10 @@ export async function preprocessReview(input: PreprocessReviewInput): Promise<Pr
         })
       }
     })
+    refreshInputSha({
+      contextBudgetArtifact: contextBudget.artifact,
+      contextWarnings: contextBudget.warnings
+    })
     contextBudgetArtifactForReport = contextBudget.artifact
     const upstreamObservations = buildUpstreamArtifactObservations(
       contextBudget.artifact,
@@ -181,22 +196,8 @@ export async function preprocessReview(input: PreprocessReviewInput): Promise<Pr
       maxBytes: limits.maxDocumentBytes
     })
     const traceability = await buildTraceability({ reviewInput, documents, codeAnalysis, diff })
+    refreshInputSha({ traceability })
     cancellation.throwIfCancelled()
-
-    inputSha256 = computeProcessingOperationInputSha({
-      reviewInput,
-      configuration: input,
-      limits,
-      materialized: {
-        diff,
-        documents,
-        codeAnalysis,
-        repositoryIndexBuild,
-        contextBudgetArtifact: contextBudget.artifact,
-        contextWarnings: contextBudget.warnings,
-        traceability
-      }
-    })
 
     const prePackageIssues = coverageIssuesFromWarnings({
       ledger: processingBudgetLedger,
