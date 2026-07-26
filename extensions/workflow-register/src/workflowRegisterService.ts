@@ -46,6 +46,7 @@ import {
 } from "./workflowContractV2ExecutionGuard"
 import { createWorkflowContractV2ProductEntrypoint } from "./workflowContractV2Product"
 import { WorkflowContractV2ProviderLifecycle } from "./workflowContractV2ProviderLifecycle"
+import { workflowContractV2CoreMetadata } from "./workflowContractV2View"
 import { WorkflowRuntimeFactory } from "./workflowRuntimeFactory"
 import { collectBobWorkflowInputs } from "./workflowInputPrompt"
 import { WorkflowRunCommandService } from "./workflowRunCommands"
@@ -108,7 +109,9 @@ export class WorkflowRegisterService implements vscode.Disposable {
       gateRegistry: this.bobWorkflowGates,
       agentProvider: () => this.agentProvider,
       inputsProvider: (workflow, provided) => collectBobWorkflowInputs(workflow, provided),
-      beforeCreateRun: (workflow) => this.assertContractV2RunCreationReady(workflow),
+      contractV2AcquireRunLease: (workflow) => this.acquireContractV2RunLease(workflow),
+      contractV2RunExecutor: () => this.failContractV2CompiledRuntime(),
+      contractV2BeforeContinuation: (workflow) => this.assertContractV2ContinuationReady(workflow),
       onManualStepHeld: (input) => this.manualStepPanel.show(input)
     })
     this.contractV2Providers = new WorkflowContractV2ProviderLifecycle({
@@ -324,19 +327,24 @@ export class WorkflowRegisterService implements vscode.Disposable {
     return this.runCommands.inspectBranching(runId)
   }
 
-  private async assertContractV2RunCreationReady(workflow: CoreWorkflowDefinition): Promise<void> {
-    const lease = await acquireWorkflowContractV2RunLease({
+  private acquireContractV2RunLease(workflow: CoreWorkflowDefinition) {
+    return acquireWorkflowContractV2RunLease({
       workflow,
       acquireCurrent: (input) => this.acquireCurrentWorkflowPackage(input)
     })
-    if (lease === undefined) return
-    try {
-      throw new WorkflowContractV2BoundaryError(
-        "Contract v2 runtime execution is not enabled before R5; no run was created."
-      )
-    } finally {
-      lease.release()
-    }
+  }
+
+  private failContractV2CompiledRuntime(): never {
+    throw new WorkflowContractV2BoundaryError(
+      "Contract v2 runtime execution is not enabled before R4; no run was created."
+    )
+  }
+
+  private assertContractV2ContinuationReady(workflow: CoreWorkflowDefinition): void {
+    if (workflowContractV2CoreMetadata(workflow) === undefined) return
+    throw new WorkflowContractV2BoundaryError(
+      "Contract v2 resume and continuation require R6 recorded-generation recovery."
+    )
   }
 
   private onContractV2PointerChanged(uri: vscode.Uri): void {
