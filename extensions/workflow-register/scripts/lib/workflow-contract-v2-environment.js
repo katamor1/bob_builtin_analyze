@@ -17,6 +17,7 @@ const MAX_REPOSITORY_PATH_BYTES = 1024
 const NEWLINE = Buffer.from("\n", "utf8")
 const CONTROL_PATTERN = /[\u0000-\u001f\u007f-\u009f]/u
 const WINDOWS_FORBIDDEN_PATTERN = /[<>:"|?*]/u
+const PORTABLE_SEGMENT_PATTERN = /^[A-Za-z0-9._-]+$/u
 const WINDOWS_RESERVED_DEVICE_PATTERN = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/iu
 
 const isProxy = utilTypes.isProxy
@@ -55,6 +56,8 @@ const stringToLowerCase = String.prototype.toLowerCase
 const fsLstat = fs.lstat
 const fsOpen = fs.open
 const fsRealpath = fs.realpath
+const workflowProviderRegistryRegister = WorkflowProviderRegistryConstructor.prototype.register
+const workflowProviderRegistrySnapshot = WorkflowProviderRegistryConstructor.prototype.snapshot
 
 const ENVIRONMENT_INPUT_FIELDS = objectFreeze(["repositoryRoot", "providerCatalogPath"])
 const COLLECTION_INPUT_FIELDS = objectFreeze(["repositoryRoot", "collectionsPath"])
@@ -85,7 +88,7 @@ async function createWorkflowContractV2EvidenceEnvironment(input) {
       PROVIDER_FIELDS,
       "Workflow provider catalog provider"
     )
-    registry.register({
+    reflectApply(workflowProviderRegistryRegister, registry, [{
       sourceId: "workflow-contract-v2-manifest",
       contract: {
         id: provider.id,
@@ -100,11 +103,11 @@ async function createWorkflowContractV2EvidenceEnvironment(input) {
           throw new Error("Compile-only workflow provider dispatch is unavailable.")
         }
       }
-    })
+    }])
   }
   return createAuditedWorkflowCompilerEnvironmentCaptured({
     purpose: "evidence",
-    providerCatalog: registry.snapshot(),
+    providerCatalog: reflectApply(workflowProviderRegistrySnapshot, registry, []),
     bobProfile: snapshotBobContractProfileCaptured({ registerSource() {} })
   })
 }
@@ -274,7 +277,8 @@ function portablePathKey(value) {
 
 function assertPortableSegment(segment, label) {
   if (
-    reflectApply(regexpExec, CONTROL_PATTERN, [segment]) !== null
+    reflectApply(regexpExec, PORTABLE_SEGMENT_PATTERN, [segment]) === null
+    || reflectApply(regexpExec, CONTROL_PATTERN, [segment]) !== null
     || reflectApply(regexpExec, WINDOWS_FORBIDDEN_PATTERN, [segment]) !== null
     || reflectApply(regexpExec, WINDOWS_RESERVED_DEVICE_PATTERN, [segment]) !== null
     || reflectApply(stringEndsWith, segment, ["."])
@@ -368,6 +372,8 @@ function descriptorEntry(descriptors, key) {
 
 function sameFileSnapshot(left, right) {
   return sameNodeIdentity(left, right)
+    && left.ino === right.ino
+    && left.mode === right.mode
     && left.size === right.size
     && left.mtimeNs === right.mtimeNs
     && left.ctimeNs === right.ctimeNs
