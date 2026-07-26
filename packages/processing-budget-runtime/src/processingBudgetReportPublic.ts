@@ -15,9 +15,11 @@ import {
 } from "./processingBudgetReport"
 
 const SHA256 = /^sha256:[a-f0-9]{64}$/u
+const ARRAY_INDEX = /^(?:0|[1-9][0-9]*)$/u
 const strictReports = new WeakSet<object>()
 
 export function createProcessingBudgetReport(input: CreateProcessingBudgetReportInput): ProcessingBudgetReport {
+  assertReportArrayShapes(input)
   return rememberStrict(assertStrictInvariants(createBaseReport(input)))
 }
 
@@ -31,6 +33,7 @@ export function validateProcessingBudgetReport(
     return report
   }
   if (!hasOwnCoverageStatus(value)) invalid("processing budget report.coverage_status is required")
+  assertReportArrayShapes(value)
   return rememberStrict(assertStrictInvariants(validateBaseReport(value, options)))
 }
 
@@ -117,6 +120,79 @@ function assertStrictInvariants(report: ProcessingBudgetReport): ProcessingBudge
     }
   }
   return report
+}
+
+function assertReportArrayShapes(value: unknown): void {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return
+  const issues = optionalOwnDataProperty(value, "issues", "processing budget report")
+  if (issues !== undefined) assertDenseDataArray(issues, "processing budget report.issues")
+
+  const ledger = optionalOwnDataProperty(value, "ledger", "processing budget report")
+  if (ledger === null || typeof ledger !== "object" || Array.isArray(ledger)) return
+  const categories = optionalOwnDataProperty(ledger, "categories", "processing budget report.ledger")
+  if (categories !== undefined) assertDenseDataArray(categories, "processing budget report.ledger.categories")
+  const targets = optionalOwnDataProperty(ledger, "targets", "processing budget report.ledger")
+  if (targets !== undefined) assertDenseDataArray(targets, "processing budget report.ledger.targets")
+}
+
+function optionalOwnDataProperty(value: object, key: string, label: string): unknown {
+  let descriptor: PropertyDescriptor | undefined
+  try {
+    descriptor = Object.getOwnPropertyDescriptor(value, key)
+  } catch {
+    invalid(`${label}.${key} descriptor is unavailable`)
+  }
+  if (descriptor === undefined) return undefined
+  if (!("value" in descriptor) || descriptor.enumerable !== true) {
+    invalid(`${label}.${key} must be an enumerable own data property`)
+  }
+  return descriptor.value
+}
+
+function assertDenseDataArray(value: unknown, label: string): void {
+  if (!Array.isArray(value)) return
+  let keys: readonly PropertyKey[]
+  try {
+    keys = Reflect.ownKeys(value)
+  } catch {
+    invalid(`${label} keys are unavailable`)
+  }
+
+  let lengthDescriptor: PropertyDescriptor | undefined
+  try {
+    lengthDescriptor = Object.getOwnPropertyDescriptor(value, "length")
+  } catch {
+    invalid(`${label}.length descriptor is unavailable`)
+  }
+  if (!lengthDescriptor || !("value" in lengthDescriptor)
+    || lengthDescriptor.enumerable !== false || lengthDescriptor.configurable !== false
+    || !Number.isSafeInteger(lengthDescriptor.value) || lengthDescriptor.value < 0) {
+    invalid(`${label}.length is invalid`)
+  }
+  const length = lengthDescriptor.value as number
+  const present = new Set<number>()
+  for (const key of keys) {
+    if (typeof key !== "string") invalid(`${label} contains a symbol property`)
+    if (key === "length") continue
+    if (!ARRAY_INDEX.test(key)) invalid(`${label} contains a non-index property ${key}`)
+    const index = Number(key)
+    if (!Number.isSafeInteger(index) || index < 0 || index >= length || index >= 0xffff_ffff) {
+      invalid(`${label} contains an invalid index ${key}`)
+    }
+    let descriptor: PropertyDescriptor | undefined
+    try {
+      descriptor = Object.getOwnPropertyDescriptor(value, key)
+    } catch {
+      invalid(`${label}[${key}] descriptor is unavailable`)
+    }
+    if (!descriptor || !("value" in descriptor) || descriptor.enumerable !== true) {
+      invalid(`${label}[${key}] must be an enumerable own data property`)
+    }
+    present.add(index)
+  }
+  for (let index = 0; index < length; index += 1) {
+    if (!present.has(index)) invalid(`${label} contains a sparse slot at index ${index}`)
+  }
 }
 
 function requiredCategory(
