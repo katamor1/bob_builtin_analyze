@@ -8,6 +8,7 @@ const { readReviewRun } = require("../out/reviewRuns/reviewRunStore")
 const {
   buildReviewRunMetadataSection,
   recordReviewPacket,
+  recordReviewPacketProcessingFailure,
   recordReviewResult,
   recordTriageDraft,
   startReviewRun,
@@ -38,6 +39,26 @@ test("records the packet and persists a workspace-relative artifact path", async
   assert.equal(packetRun.phase, "packet")
   assert.equal(packetRun.artifacts.reviewPacketPath, ".bob-review-records/campaigns/campaign-1/records/review-1/review-packet.md")
   assert.equal(await fs.readFile(path.join(workspaceRoot, packetRun.artifacts.reviewPacketPath), "utf8"), "# packet\n")
+})
+
+test("records processing coverage failure without fabricating a packet artifact", async () => {
+  const { workspaceRoot, run } = await start()
+  const failed = await recordReviewPacketProcessingFailure(
+    run,
+    "processing_coverage_partial",
+    "2026-07-12T00:00:01.000Z"
+  )
+  assert.equal(failed.phase, "target")
+  assert.equal(failed.phases.packet.status, "failed")
+  assert.equal(failed.phases.packet.issue, "processing_coverage_partial")
+  assert.equal(failed.artifacts.reviewPacketPath, undefined)
+  assert.deepEqual(failed.issues, [{
+    phase: "packet",
+    message: "processing_coverage_partial",
+    retryable: true,
+    recordedAt: "2026-07-12T00:00:01.000Z"
+  }])
+  assert.deepEqual(await readReviewRun(workspaceRoot, "campaign-1", "review-1"), failed)
 })
 
 test("rejects a captured result whose review id does not match", async () => {
