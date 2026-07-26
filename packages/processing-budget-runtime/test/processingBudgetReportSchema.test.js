@@ -56,6 +56,11 @@ test("schema requires category and processed evidence for truncation issues", ()
   assert.deepEqual(conditional.then.required, ["category", "processed"])
 })
 
+test("schema bounds ASCII producer versions and codes to the runtime text maximum", () => {
+  assert.equal(schema.properties.producer.properties.version.maxLength, 256)
+  assert.equal(schema.$defs.code.maxLength, 256)
+})
+
 test("schema fixes every ledger category to canonical order, scope, unit, and absolute maximum", () => {
   const categories = schema.$defs.ledger.properties.categories
   assert.equal(categories.items, false)
