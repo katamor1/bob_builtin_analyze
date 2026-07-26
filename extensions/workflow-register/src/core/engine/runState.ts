@@ -1,3 +1,8 @@
+import type { WorkflowPlanLease } from "../contractV2/planLease"
+import {
+  bindWorkflowContractV2RunPlanLease,
+  createWorkflowContractV2RunPlanProvenance
+} from "../contractV2/runPlanProvenance"
 import {
   CoreWorkflowDefinition,
   EngineStep,
@@ -6,6 +11,14 @@ import {
   WorkflowStepExecutionDefinition,
   WorkflowStepReviewDefinition
 } from "../model"
+
+export interface CreateWorkflowContractV2RunStateInput {
+  readonly lease: WorkflowPlanLease
+  readonly runId: string
+  readonly inputs: Record<string, unknown>
+  readonly createdAt: string
+  readonly engineVersion?: string
+}
 
 type WorkflowExecutionMode = "full" | "singleStep"
 
@@ -23,6 +36,7 @@ const DEFAULT_STEP_EXECUTION: WorkflowStepExecutionDefinition = {
   allowOutOfOrder: false,
   showInBob: true
 }
+const structuredCloneCaptured = structuredClone
 
 export const REVIEW_PENDING_TRANSITION_STEP_KEY = "workflow.review.pendingTransitionStepId"
 
@@ -30,6 +44,43 @@ interface RunWorkflowOptionsLike {
   executionMode?: WorkflowExecutionMode
   stepId?: string
   allowOutOfOrder?: boolean
+}
+
+export function createWorkflowContractV2RunState(
+  input: CreateWorkflowContractV2RunStateInput
+): WorkflowRunState {
+  const handle = input.lease.handle
+  const workflow = handle.plan.workflow
+  if (typeof input.runId !== "string" || input.runId.length === 0) {
+    throw new TypeError("Workflow Contract v2 run id is invalid.")
+  }
+  if (typeof input.createdAt !== "string" || input.createdAt.length === 0) {
+    throw new TypeError("Workflow Contract v2 run creation time is invalid.")
+  }
+  const run = {
+    schemaVersion: "workflow-register/run-state/v1",
+    runId: input.runId,
+    workflowId: handle.plan.workflowId,
+    workflowName: workflow.name,
+    workflowSchemaVersion: "workflow-register/v2",
+    workflowDefinitionHash: handle.planDigest,
+    engineVersion: input.engineVersion,
+    status: "running",
+    currentStep: workflow.steps[0]?.id,
+    inputs: structuredCloneCaptured(input.inputs),
+    state: {},
+    steps: workflow.steps.map((step) => ({
+      id: step.id,
+      title: step.title,
+      type: step.type,
+      status: "pending" as const
+    })),
+    createdAt: input.createdAt,
+    updatedAt: input.createdAt,
+    planProvenance: createWorkflowContractV2RunPlanProvenance(input.lease)
+  } as unknown as WorkflowRunState
+  bindWorkflowContractV2RunPlanLease(run, input.lease)
+  return run
 }
 
 export function nextPendingIndex(run: WorkflowRunState): number {
