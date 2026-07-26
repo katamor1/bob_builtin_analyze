@@ -69,6 +69,7 @@ test('Bob legacy input collection does not acquire a Contract v2 lease before th
 test('direct run-state creation uses only the exact active lease context and never reacquires current evidence', () => {
   const runtime = source('workflowRuntimeFactory.ts')
   const guardedStore = source('workflowContractV2RunStateStore.ts')
+  const productExecutor = source('workflowContractV2RunExecutor.ts')
   assert.match(runtime, /ContractV2GuardedRunStateStore/)
   assert.match(runtime, ordered(
     'createRunStore(workspaceRoot: string)',
@@ -76,6 +77,8 @@ test('direct run-state creation uses only the exact active lease context and nev
     'workspaceRoot',
     'engineVersion: this.options.engineVersion'
   ))
+  assert.match(productExecutor, /new ContractV2GuardedRunStateStore/)
+  assert.match(productExecutor, /metadata\.planDigest !== handle\.planDigest/)
   assert.doesNotMatch(runtime, /beforeCreateRun: beforeRun/)
   assert.match(guardedStore, ordered(
     'override async createRun(',
@@ -91,18 +94,20 @@ test('direct run-state creation uses only the exact active lease context and nev
   assert.match(guardedStore, /Contract v2 run creation requires an active compiled plan lease/)
 })
 
-test('the service supplies new-run acquisition and fail-closed continuation boundaries separately', () => {
+test('the service supplies R4 new-run execution and fail-closed R6 continuation separately', () => {
   const service = source('workflowRegisterService.ts')
   assert.match(service, /acquireWorkflowContractV2RunLease/)
+  assert.match(service, /executeWorkflowContractV2Run/)
   assert.match(service, /workflowContractV2CoreMetadata/)
   assert.match(service, /contractV2AcquireRunLease: \(workflow\) => this\.acquireContractV2RunLease\(workflow\)/)
+  assert.match(service, /contractV2RunExecutor: \(input\) => executeWorkflowContractV2Run\(input\)/)
   assert.match(service, /contractV2BeforeContinuation: \(workflow\) => this\.assertContractV2ContinuationReady\(workflow\)/)
   assert.match(service, ordered(
     'private acquireContractV2RunLease(',
     'return acquireWorkflowContractV2RunLease({',
     'acquireCurrent: (input) => this.acquireCurrentWorkflowPackage(input)'
   ))
-  assert.match(service, /Contract v2 runtime execution is not enabled before R4/)
+  assert.doesNotMatch(service, /runtime execution is not enabled before R4/)
   assert.match(service, /Contract v2 resume and continuation require R6/)
 })
 
