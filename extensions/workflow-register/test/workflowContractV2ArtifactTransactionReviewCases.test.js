@@ -91,13 +91,7 @@ test("inspection rejects noncanonical artifact-set bytes even when JSON meaning 
     artifactPath: "artifacts/report.json",
     bytes: Buffer.from('{"ok":true}', "utf8")
   })
-  const manifestPath = path.join(
-    result.runRoot,
-    "attempts",
-    "committed",
-    "attempt-manifest-drift",
-    "artifact-set.json"
-  )
+  const manifestPath = path.join(result.runRoot, "attempts", "committed", "attempt-manifest-drift", "artifact-set.json")
   const parsed = JSON.parse(await fsp.readFile(manifestPath, "utf8"))
   await fsp.writeFile(manifestPath, `${JSON.stringify(parsed, null, 2)}\n`, "utf8")
   await assert.rejects(
@@ -118,13 +112,7 @@ test("inspection rejects an extra file or directory in a committed attempt", asy
     artifactPath: "artifacts/report.json",
     bytes: Buffer.from('{"ok":true}', "utf8")
   })
-  await fsp.writeFile(path.join(
-    result.runRoot,
-    "attempts",
-    "committed",
-    "attempt-extra",
-    "unexpected.bin"
-  ), "unexpected", "utf8")
+  await fsp.writeFile(path.join(result.runRoot, "attempts", "committed", "attempt-extra", "unexpected.bin"), "unexpected", "utf8")
   await assert.rejects(
     () => result.transactionModule.inspectCommittedWorkflowArtifactTransaction({
       runRoot: result.runRoot,
@@ -143,10 +131,7 @@ test("artifact bytes are reverified after the manifest write and immediately bef
     artifactSchemaBody: { type: "object" },
     artifactPath: "artifacts/report.json",
     dispatch: async (input) => {
-      await input.effect.artifacts.writeArtifact({
-        id: "report",
-        bytes: Buffer.from('{"ok":true}', "utf8")
-      })
+      await input.effect.artifacts.writeArtifact({ id: "report", bytes: Buffer.from('{"ok":true}', "utf8") })
       return { ok: true }
     }
   })
@@ -161,14 +146,7 @@ test("artifact bytes are reverified after the manifest write and immediately bef
   const originalWriteSet = workspace.writeAttemptArtifactSetFile
   workspace.writeAttemptArtifactSetFile = async (...args) => {
     await originalWriteSet(...args)
-    await fsp.writeFile(path.join(
-      runRoot,
-      "attempts",
-      "staging",
-      "attempt-reverify",
-      "artifacts",
-      "report.json"
-    ), '{"ok":false}', "utf8")
+    await fsp.writeFile(path.join(runRoot, "attempts", "staging", "attempt-reverify", "artifacts", "report.json"), '{"ok":false}', "utf8")
   }
   delete require.cache[transactionPath]
   try {
@@ -191,12 +169,7 @@ test("artifact bytes are reverified after the manifest write and immediately bef
       () => transactionModule.commitWorkflowArtifactTransaction(transaction, async () => {}),
       /changed|hash|verification/i
     )
-    assert.equal(fs.existsSync(path.join(
-      runRoot,
-      "attempts",
-      "committed",
-      "attempt-reverify"
-    )), false)
+    assert.equal(fs.existsSync(path.join(runRoot, "attempts", "committed", "attempt-reverify")), false)
   } finally {
     workspace.writeAttemptArtifactSetFile = originalWriteSet
     delete require.cache[transactionPath]
@@ -204,17 +177,11 @@ test("artifact bytes are reverified after the manifest write and immediately bef
 })
 
 test("source pins the actual opened file before bytes are written and syncs each created parent", () => {
-  const source = fs.readFileSync(path.join(
-    __dirname,
-    "..",
-    "src",
-    "core",
-    "contractV2",
-    "attemptArtifactWorkspace.ts"
-  ), "utf8")
-  const open = source.indexOf("handle = await openArtifactFileAnchored")
+  const source = fs.readFileSync(path.join(__dirname, "..", "src", "core", "contractV2", "attemptArtifactWorkspace.ts"), "utf8")
+  const open = source.indexOf("const opened = await openArtifactFileAnchored")
   const verify = source.indexOf("await verifyOpenedArtifactFileContainment")
-  const write = source.indexOf("await handle.writeFile(bytes)")
+  const write = source.indexOf("await opened.file.writeFile(bytes)")
   assert.ok(open >= 0 && open < verify && verify < write)
   assert.match(source, /if \(created\) await syncDirectory\(parent\)/)
+  assert.match(source, /\/proc\/self\/fd\/\$\{parent\.fd\}/)
 })
