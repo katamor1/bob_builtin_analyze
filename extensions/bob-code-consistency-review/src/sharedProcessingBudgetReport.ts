@@ -35,6 +35,12 @@ export interface SharedProcessingBudgetLedgerReport {
   readonly targets: readonly SharedProcessingBudgetLedgerTargetReport[]
 }
 
+declare module "./sharedProcessingBudgetRuntime" {
+  interface SharedProcessingBudgetLedger {
+    snapshot(): SharedProcessingBudgetLedgerReport
+  }
+}
+
 export interface SharedProcessingBudgetReportIssue {
   readonly kind: "truncation" | "unprocessed"
   readonly code: string
