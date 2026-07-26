@@ -126,6 +126,84 @@
         }
       ]
     },
+    "singleDocumentCategory": {
+      "allOf": [
+        { "$ref": "#/$defs/targetCategory" },
+        { "properties": { "category": { "const": "single_document_bytes" }, "unit": { "const": "bytes" } } }
+      ]
+    },
+    "totalDocumentCategory": {
+      "allOf": [
+        { "$ref": "#/$defs/operationCategory" },
+        { "properties": { "category": { "const": "total_document_bytes" }, "unit": { "const": "bytes" } } }
+      ]
+    },
+    "documentCountCategory": {
+      "allOf": [
+        { "$ref": "#/$defs/operationCategory" },
+        { "properties": { "category": { "const": "document_count" }, "unit": { "const": "count" } } }
+      ]
+    },
+    "sheetsPerWorkbookCategory": {
+      "allOf": [
+        { "$ref": "#/$defs/targetCategory" },
+        { "properties": { "category": { "const": "sheets_per_workbook" }, "unit": { "const": "count" } } }
+      ]
+    },
+    "totalSheetsCategory": {
+      "allOf": [
+        { "$ref": "#/$defs/operationCategory" },
+        { "properties": { "category": { "const": "total_sheets" }, "unit": { "const": "count" } } }
+      ]
+    },
+    "rowsPerSheetCategory": {
+      "allOf": [
+        { "$ref": "#/$defs/targetCategory" },
+        { "properties": { "category": { "const": "rows_per_sheet" }, "unit": { "const": "count" } } }
+      ]
+    },
+    "totalRowsCategory": {
+      "allOf": [
+        { "$ref": "#/$defs/operationCategory" },
+        { "properties": { "category": { "const": "total_rows" }, "unit": { "const": "count" } } }
+      ]
+    },
+    "changedFilesCategory": {
+      "allOf": [
+        { "$ref": "#/$defs/operationCategory" },
+        { "properties": { "category": { "const": "changed_files" }, "unit": { "const": "count" } } }
+      ]
+    },
+    "rawDiffCategory": {
+      "allOf": [
+        { "$ref": "#/$defs/operationCategory" },
+        { "properties": { "category": { "const": "raw_diff_bytes" }, "unit": { "const": "bytes" } } }
+      ]
+    },
+    "documentExcerptCategory": {
+      "allOf": [
+        { "$ref": "#/$defs/operationCategory" },
+        { "properties": { "category": { "const": "document_excerpt_bytes" }, "unit": { "const": "bytes" } } }
+      ]
+    },
+    "bobInputCategory": {
+      "allOf": [
+        { "$ref": "#/$defs/operationCategory" },
+        { "properties": { "category": { "const": "bob_input_bytes" }, "unit": { "const": "bytes" } } }
+      ]
+    },
+    "managedArtifactCategory": {
+      "allOf": [
+        { "$ref": "#/$defs/operationCategory" },
+        { "properties": { "category": { "const": "managed_artifact_bytes" }, "unit": { "const": "bytes" } } }
+      ]
+    },
+    "totalOperationInputCategory": {
+      "allOf": [
+        { "$ref": "#/$defs/operationCategory" },
+        { "properties": { "category": { "const": "total_operation_input_bytes" }, "unit": { "const": "bytes" } } }
+      ]
+    },
     "targetRecord": {
       "type": "object",
       "additionalProperties": false,
@@ -151,7 +229,22 @@
           "type": "array",
           "minItems": 13,
           "maxItems": 13,
-          "items": { "oneOf": [{ "$ref": "#/$defs/operationCategory" }, { "$ref": "#/$defs/targetCategory" }] }
+          "prefixItems": [
+            { "$ref": "#/$defs/singleDocumentCategory" },
+            { "$ref": "#/$defs/totalDocumentCategory" },
+            { "$ref": "#/$defs/documentCountCategory" },
+            { "$ref": "#/$defs/sheetsPerWorkbookCategory" },
+            { "$ref": "#/$defs/totalSheetsCategory" },
+            { "$ref": "#/$defs/rowsPerSheetCategory" },
+            { "$ref": "#/$defs/totalRowsCategory" },
+            { "$ref": "#/$defs/changedFilesCategory" },
+            { "$ref": "#/$defs/rawDiffCategory" },
+            { "$ref": "#/$defs/documentExcerptCategory" },
+            { "$ref": "#/$defs/bobInputCategory" },
+            { "$ref": "#/$defs/managedArtifactCategory" },
+            { "$ref": "#/$defs/totalOperationInputCategory" }
+          ],
+          "items": false
         },
         "targets": { "type": "array", "items": { "$ref": "#/$defs/targetRecord" } }
       }
