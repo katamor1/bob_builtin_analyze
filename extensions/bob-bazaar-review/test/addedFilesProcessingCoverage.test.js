@@ -11,6 +11,8 @@ const {
   runBazaarReviewProcessingOperation
 } = require("../out/bazaar/bazaarProcessingCoverage")
 
+const ADDED_SECTION = "## Added files\n\n```text\nbounded body\n```"
+
 function commandResult(stdout = "") {
   return { stdout, stderr: "", command: "bzr", args: ["diff"], cwd: "/repo" }
 }
@@ -33,7 +35,7 @@ function prepared(evidence) {
     },
     diff: commandResult("+new\n"),
     log: commandResult(""),
-    addedFilesSection: "bounded added-file section",
+    addedFilesSection: ADDED_SECTION,
     addedFilesEvidence: evidence
   }
 }
@@ -59,6 +61,19 @@ async function run(t, evidence) {
     }
   })
 }
+
+test("document excerpt ledger accounts for the full rendered section", async (t) => {
+  const result = await run(t, {
+    observedContentBytes: 12,
+    processedContentBytes: 12,
+    renderedContentBytes: 12,
+    truncated: false,
+    skippedFileCount: 0,
+    readFailures: []
+  })
+  const category = result.report.ledger.categories.find((entry) => entry.category === "document_excerpt_bytes")
+  assert.equal(category.committed, Buffer.byteLength(ADDED_SECTION, "utf8"))
+})
 
 test("exact original added-file bytes are preserved in truncation diagnostics", async (t) => {
   await assert.rejects(
