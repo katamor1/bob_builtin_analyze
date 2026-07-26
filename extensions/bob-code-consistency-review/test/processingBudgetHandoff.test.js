@@ -7,11 +7,13 @@ const path = require("node:path")
 const test = require("node:test")
 
 const {
-  persistProcessingBudgetReport
+  persistProcessingBudgetReport,
+  processingBudgetReportPath
 } = require("../out/core/processingBudgetCoverage")
 const {
   loadAndAssertCompleteProcessingBudgetReport,
-  persistCompleteProcessingBudgetBinding
+  persistCompleteProcessingBudgetBinding,
+  processingBudgetReportBindingPath
 } = require("../out/core/processingBudgetReportGuard")
 const {
   preprocessReviewWithCoverage
@@ -71,6 +73,54 @@ test("package mutation makes an otherwise complete report stale", async (t) => {
   await assert.rejects(
     () => loadAndAssertCompleteProcessingBudgetReport(packageDir),
     (error) => error?.code === "processing_budget_report_stale"
+  )
+})
+
+test("symlinked processing report is rejected before JSON parsing", {
+  skip: process.platform === "win32" ? "file symlink creation is not a portable unprivileged Windows fixture" : false
+}, async (t) => {
+  const packageDir = await packageFixture(t)
+  await persistComplete(packageDir)
+  const reportPath = processingBudgetReportPath(packageDir)
+  const physicalPath = `${reportPath}.physical`
+  await fs.rename(reportPath, physicalPath)
+  await fs.symlink(physicalPath, reportPath)
+  await assert.rejects(
+    () => loadAndAssertCompleteProcessingBudgetReport(packageDir),
+    /unsafe|hard-linked|ELOOP/u
+  )
+})
+
+test("hard-linked processing report is rejected", async (t) => {
+  const packageDir = await packageFixture(t)
+  await persistComplete(packageDir)
+  const reportPath = processingBudgetReportPath(packageDir)
+  await fs.link(reportPath, `${reportPath}.second-link`)
+  await assert.rejects(
+    () => loadAndAssertCompleteProcessingBudgetReport(packageDir),
+    /unsafe|hard-linked/u
+  )
+})
+
+test("invalid UTF-8 in processing evidence is rejected", async (t) => {
+  const packageDir = await packageFixture(t)
+  await persistComplete(packageDir)
+  await fs.writeFile(processingBudgetReportPath(packageDir), Buffer.from([0xff, 0xfe, 0xfd]))
+  await assert.rejects(
+    () => loadAndAssertCompleteProcessingBudgetReport(packageDir),
+    /not valid UTF-8/u
+  )
+})
+
+test("unsafe binding file type is rejected independently of the report", async (t) => {
+  const packageDir = await packageFixture(t)
+  await persistComplete(packageDir)
+  const bindingPath = processingBudgetReportBindingPath(packageDir)
+  await fs.rm(bindingPath)
+  await fs.mkdir(bindingPath)
+  await assert.rejects(
+    () => loadAndAssertCompleteProcessingBudgetReport(packageDir),
+    /unsafe|regular file/u
   )
 })
 
