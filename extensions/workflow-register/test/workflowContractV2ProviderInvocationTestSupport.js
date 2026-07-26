@@ -38,6 +38,9 @@ function providerSchemas() {
       properties: { code: { type: "string" } },
       required: ["code"],
       additionalProperties: false
+    }),
+    artifact: canonicalSchema("schemas/artifact.json", {
+      type: "object"
     })
   }
 }
@@ -51,6 +54,23 @@ function workflowYaml(options) {
         "      schema: schemas/output.json",
         `      maxBytes: ${options.maxOutputBytes ?? 16777216}`
       ]
+  const workspaceWrite = options.sideEffect === "workspace-write"
+  const stepArtifacts = workspaceWrite
+    ? ["    artifacts:", "      - report"]
+    : ["    artifacts: []"]
+  const requiredArtifacts = workspaceWrite
+    ? [
+        "requiredArtifacts:",
+        "  - id: report",
+        "    producedBy: invoke",
+        "    path: artifacts/report.json",
+        "    mediaType: application/json",
+        "    schema: schemas/artifact.json",
+        `    maxBytes: ${options.artifactMaxBytes ?? 64}`,
+        "    owner: provider",
+        "    required: false"
+      ]
+    : ["requiredArtifacts: []"]
   return Buffer.from([
     "schemaVersion: workflow-register/v2",
     "id: provider-workflow",
@@ -69,8 +89,8 @@ function workflowYaml(options) {
     "        message: hello",
     "    output:",
     ...output,
-    "    artifacts: []",
-    "requiredArtifacts: []",
+    ...stepArtifacts,
+    ...requiredArtifacts,
     "resumePolicy:",
     "  mode: fail-closed",
     "  maxAttempts: 1",
@@ -152,7 +172,8 @@ async function providerRuntime(options = {}) {
     "workflow.lock.json": Buffer.from("{}", "utf8"),
     "schemas/input.json": schemas.input.bytes,
     "schemas/error.json": schemas.error.bytes,
-    ...(options.outputKind === "unit" ? {} : { "schemas/output.json": schemas.output.bytes })
+    ...(options.outputKind === "unit" ? {} : { "schemas/output.json": schemas.output.bytes }),
+    ...(options.sideEffect === "workspace-write" ? { "schemas/artifact.json": schemas.artifact.bytes } : {})
   }
   const lockModule = require("../out/core/contractV2/workflowLock.js")
   const initial = rawPackageFromFiles(files)
