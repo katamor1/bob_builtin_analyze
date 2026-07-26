@@ -149,17 +149,17 @@ test("artifact maximums are enforced before bytes are copied or staged", async (
     runtime.lease.release()
   })
 
-  const result = await invocationSubject().invokeCompiledWorkflowProvider({
-    lease: runtime.lease,
-    stepId: "invoke",
-    value: { message: "hello" },
-    signal: signal(),
-    attempt: staged.attempt
-  })
-
-  assert.equal(result.ok, false)
-  assert.equal(result.failure, "validation")
-  assert.deepEqual(codes(result), ["WF2_PROVIDER_ERROR_INVALID"])
+  await assert.rejects(
+    () => invocationSubject().invokeCompiledWorkflowProvider({
+      lease: runtime.lease,
+      stepId: "invoke",
+      value: { message: "hello" },
+      signal: signal(),
+      attempt: staged.attempt
+    }),
+    (error) => error?.name === "WorkflowAttemptStagingError"
+      && /artifact staging failed/i.test(error.message)
+  )
   assert.deepEqual(staged.staged, [])
 })
 
