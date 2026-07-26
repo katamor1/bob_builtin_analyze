@@ -41,6 +41,7 @@ export {
   assertWorkflowContractV2RunPlanProvenanceMatchesLease,
   createWorkflowContractV2RunPlanProvenance,
   decodeWorkflowContractV2RunPlanProvenance,
+  releaseAllWorkflowContractV2RunPlanLeases,
   requireWorkflowContractV2RunPlanLease,
   runWithWorkflowContractV2PlanLease
 } from "./runPlanProvenance"
