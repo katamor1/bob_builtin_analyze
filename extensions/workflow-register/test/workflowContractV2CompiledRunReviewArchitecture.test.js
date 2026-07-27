@@ -31,7 +31,10 @@ test("entry predicates are evaluated before attempt evidence", () => {
 
 test("single-step mode evaluates the selected transition before pausing or completing", () => {
   const executor = source("compiledRunExecutor.ts")
-  before(executor, "const transition = selectCompiledTransition", "if (options.executionMode === \"singleStep\")")
+  const transition = executor.indexOf("const transition = selectCompiledTransition")
+  const singleStep = executor.indexOf("if (options.executionMode === \"singleStep\")", transition)
+  assert.ok(transition >= 0, "missing compiled transition selection")
+  assert.ok(singleStep > transition, "single-step routing must follow compiled transition selection")
   assert.match(executor, /transition\.kind === "fail"/)
   assert.match(executor, /transition\.kind === "checkpoint"/)
 })
@@ -57,7 +60,10 @@ test("workspace-write output and artifact evidence share the visibility save bou
 test("agent output supports strict JSON before the string fallback", () => {
   const steps = source("compiledRunSteps.ts")
   before(steps, "parseStrictJson(bytes, \"Compiled workflow agent output\")", "push(candidates, text)")
-  before(steps, "snapshotBoundedWorkflowProviderEnvelope", "validateLocalJsonSchemaViewValue")
+  const decoder = steps.indexOf("function decodeCompiledAgentOutput")
+  const snapshot = steps.indexOf("snapshotBoundedWorkflowProviderEnvelope", decoder)
+  const validate = steps.indexOf("validateLocalJsonSchemaViewValue", snapshot)
+  assert.ok(decoder >= 0 && snapshot > decoder && validate > snapshot)
 })
 
 test("idempotency evidence includes the stable logical effect ordinal", () => {
