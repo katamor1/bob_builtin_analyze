@@ -8,6 +8,7 @@ import type { CompiledLocalJsonSchemaView } from "./jsonSchemaCatalog"
 import type { JsonObject, JsonValue } from "./jsonValue"
 import { parseStrictJson } from "./packageLoaderInput"
 import type { WorkflowReferenceV2, WorkflowValueTemplateV2 } from "./packageShape"
+import { snapshotBoundedWorkflowProviderEnvelope } from "./providerEnvelopeSnapshot"
 import type { WorkflowProviderLockEvidence } from "./providerRegistry"
 import type { WorkflowRunState } from "../model"
 import { COMMITTED_OUTPUTS_KEY, type CompiledRuntimeContext } from "./compiledRunTypes"
@@ -140,21 +141,23 @@ export function restoreCompiledOutputs(
   } catch {
     throw new TypeError("Compiled workflow committed output evidence is invalid.")
   }
+  const bounded = snapshotBoundedWorkflowProviderEnvelope(parsed, MAX_COMMITTED_OUTPUT_BYTES)
   if (
-    parsed === null
-    || typeof parsed !== "object"
-    || arrayIsArray(parsed)
-    || canonicalJsonText(parsed) !== text
+    bounded === undefined
+    || bounded === null
+    || typeof bounded !== "object"
+    || arrayIsArray(bounded)
+    || canonicalJsonText(bounded) !== text
   ) throw new TypeError("Compiled workflow committed output evidence is invalid.")
 
   const result = objectCreate(null) as Record<string, JsonValue>
-  const keys = objectKeys(parsed)
+  const keys = objectKeys(bounded)
   for (let index = 0; index < keys.length; index += 1) {
     const key = keys[index]
     if (!isCompiledOutputId(plan, key)) {
       throw new TypeError("Compiled workflow committed output evidence contains an unknown output.")
     }
-    result[key] = (parsed as JsonObject)[key]
+    result[key] = (bounded as JsonObject)[key]
   }
   return result
 }
