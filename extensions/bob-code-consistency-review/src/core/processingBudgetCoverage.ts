@@ -2,9 +2,9 @@ import { createHash } from "node:crypto"
 import * as path from "node:path"
 import type { SharedProcessingBudgetReportIssue } from "../sharedProcessingBudgetReport"
 import {
+  assertProcessingBudgetReportAllowsHandoff,
   createProcessingBudgetReport,
   serializeProcessingBudgetReport,
-  validateProcessingBudgetReport,
   type SharedProcessingBudgetReport,
   type SharedProcessingBudgetReportFailure
 } from "../sharedProcessingBudgetReport"
@@ -177,14 +177,9 @@ export function assertCompleteProcessingCoverage(
   persisted: PersistedProcessingBudgetReport,
   expectedInputSha256: string
 ): SharedProcessingBudgetReport {
-  const normalized = validateProcessingBudgetReport(persisted.report, { expected_input_sha256: expectedInputSha256 })
-  if (normalized.outcome !== "success" || normalized.coverage_status !== "complete" || normalized.issues.length !== 0) {
-    throw Object.assign(new Error("Processing coverage is incomplete; Bob handoff is blocked."), {
-      code: "processing_coverage_incomplete",
-      report: normalized
-    })
-  }
-  return normalized
+  return assertProcessingBudgetReportAllowsHandoff(persisted.report, {
+    expected_input_sha256: expectedInputSha256
+  })
 }
 
 function appendWarningFamily(
