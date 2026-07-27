@@ -16,19 +16,28 @@ const metaSchema = JSON.parse(fs.readFileSync(
 
 const META_SCHEMA_ID = "https://bob.local/schemas/meta/processing-budget-report-2020-12.schema.json"
 const TEXT_VOCABULARY = "https://bob.local/vocab/utf8-nfc/v1"
+const REPORT_CONSTRAINT_VOCABULARY = "https://bob.local/vocab/report-constraints/v1"
 
-test("published report schema requires the UTF-8 NFC vocabulary", () => {
+test("published report schema requires the UTF-8 NFC and report-constraint vocabularies", () => {
   assert.equal(schema.$schema, META_SCHEMA_ID)
   assert.equal(metaSchema.$id, META_SCHEMA_ID)
   assert.equal(metaSchema.$vocabulary[TEXT_VOCABULARY], true)
+  assert.equal(metaSchema.$vocabulary[REPORT_CONSTRAINT_VOCABULARY], true)
   assert.equal(metaSchema.properties["x-bob-maxUtf8Bytes"].type, "integer")
   assert.equal(metaSchema.properties["x-bob-unicodeNormalization"].const, "NFC")
+  assert.equal(metaSchema.properties["x-bob-uniqueCompositeKeys"].type, "array")
+  assert.equal(metaSchema.properties["x-bob-uniqueCompositeKeys"].uniqueItems, true)
 })
 
 test("bounded text declares runtime-equivalent UTF-8 and NFC semantics", () => {
   const bounded = schema.$defs.boundedText
   assert.equal(bounded["x-bob-maxUtf8Bytes"], 256)
   assert.equal(bounded["x-bob-unicodeNormalization"], "NFC")
+})
+
+test("target records declare runtime-equivalent composite uniqueness semantics", () => {
+  const targets = schema.$defs.ledger.properties.targets
+  assert.deepEqual(targets["x-bob-uniqueCompositeKeys"], ["category", "target"])
 })
 
 test("the vocabulary distinguishes character count from UTF-8 bytes and NFC", () => {
