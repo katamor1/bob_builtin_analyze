@@ -47,6 +47,8 @@ test("an optional key-required provider failure consumes its logical pass before
       return { unexpected: true }
     }
   })
+  const provider = runtime.lease.handle.plan.providerBindings[0]
+  const planDigest = runtime.lease.planDigest
   const run = await runtime.runWithLease(runtime.lease, () => subject().executeCompiledWorkflowRun(runInput(runtime, {})))
   assert.equal(run.status, "completed")
   assert.equal(run.steps[0].status, "failed")
@@ -54,14 +56,13 @@ test("an optional key-required provider failure consumes its logical pass before
   assert.equal(run.state["workflow.contractV2.executionOrdinal.invoke"], "1")
 
   const values = require("../out/core/contractV2/compiledRunValues.js")
-  const provider = runtime.lease.handle.plan.providerBindings[0]
   const nextOrdinal = values.compiledLogicalEffectOrdinal(run, "invoke")
   const nextKey = values.compiledProviderIdempotencyKey({
     runId: run.runId,
     stepId: "invoke",
     logicalEffectOrdinal: nextOrdinal,
     inputDigest: runtime.canonical.canonicalJsonDigest({ message: "hello" }),
-    planDigest: runtime.lease.planDigest,
+    planDigest,
     provider
   })
   assert.equal(nextOrdinal, 2)
