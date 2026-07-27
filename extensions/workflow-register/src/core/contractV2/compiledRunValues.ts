@@ -6,6 +6,7 @@ import type {
 } from "./compiledPlan"
 import type { CompiledLocalJsonSchemaView } from "./jsonSchemaCatalog"
 import type { JsonObject, JsonValue } from "./jsonValue"
+import { parseStrictJson } from "./packageLoaderInput"
 import type { WorkflowReferenceV2, WorkflowValueTemplateV2 } from "./packageShape"
 import type { WorkflowProviderLockEvidence } from "./providerRegistry"
 import type { WorkflowRunState } from "../model"
@@ -13,6 +14,12 @@ import { COMMITTED_OUTPUTS_KEY, type CompiledRuntimeContext } from "./compiledRu
 
 const arrayIsArray = Array.isArray
 const arrayPush = Array.prototype.push
+const bufferByteLength = Buffer.byteLength.bind(Buffer) as (
+  value: string,
+  encoding?: BufferEncoding
+) => number
+const bufferFrom = Buffer.from
+const BufferConstructor = Buffer
 const NumberConstructor = Number
 const numberIsSafeInteger = Number.isSafeInteger
 const numberParseInt = Number.parseInt
@@ -31,6 +38,7 @@ const stringStartsWith = String.prototype.startsWith
 const INDEX_PATTERN = /^(?:0|[1-9][0-9]*)$/u
 const POSITIVE_INTEGER_PATTERN = /^[1-9][0-9]*$/u
 const EXECUTION_ORDINAL_PREFIX = "workflow.contractV2.executionOrdinal."
+const MAX_COMMITTED_OUTPUT_BYTES = 16_777_216
 
 export function resolveCompiledTemplate(
   template: WorkflowValueTemplateV2,
@@ -114,6 +122,43 @@ export function persistCompiledOutputs(
   run.state[COMMITTED_OUTPUTS_KEY] = canonicalJsonText(outputs)
 }
 
+export function restoreCompiledOutputs(
+  plan: CompiledWorkflowPlan,
+  run: WorkflowRunState
+): Record<string, JsonValue> {
+  const text = run.state[COMMITTED_OUTPUTS_KEY]
+  if (text === undefined) return objectCreate(null) as Record<string, JsonValue>
+  if (bufferByteLength(text, "utf8") > MAX_COMMITTED_OUTPUT_BYTES) {
+    throw new TypeError("Compiled workflow committed output evidence exceeds its byte limit.")
+  }
+  let parsed: unknown
+  try {
+    parsed = parseStrictJson(
+      reflectApply(bufferFrom, BufferConstructor, [text, "utf8"]) as Buffer,
+      "Compiled workflow committed outputs"
+    )
+  } catch {
+    throw new TypeError("Compiled workflow committed output evidence is invalid.")
+  }
+  if (
+    parsed === null
+    || typeof parsed !== "object"
+    || arrayIsArray(parsed)
+    || canonicalJsonText(parsed) !== text
+  ) throw new TypeError("Compiled workflow committed output evidence is invalid.")
+
+  const result = objectCreate(null) as Record<string, JsonValue>
+  const keys = objectKeys(parsed)
+  for (let index = 0; index < keys.length; index += 1) {
+    const key = keys[index]
+    if (!isCompiledOutputId(plan, key)) {
+      throw new TypeError("Compiled workflow committed output evidence contains an unknown output.")
+    }
+    result[key] = (parsed as JsonObject)[key]
+  }
+  return result
+}
+
 export function compiledAttemptId(stepIndex: number, attempt: number): string {
   if (!numberIsSafeInteger(stepIndex) || stepIndex < 0 || !numberIsSafeInteger(attempt) || attempt < 1) {
     throw new TypeError("Compiled workflow attempt identity is invalid.")
@@ -160,6 +205,16 @@ export function compiledProviderIdempotencyKey(input: {
     providerVersion: input.provider.exactVersion
   })
   return `wf2:${slice(digest, "sha256:".length)}`
+}
+
+function isCompiledOutputId(plan: CompiledWorkflowPlan, id: string): boolean {
+  for (let index = 0; index < plan.workflow.steps.length; index += 1) {
+    const step = plan.workflow.steps[index]
+    if ((step.type === "command" || step.type === "agent") && step.output.kind === "value" && step.output.id === id) {
+      return true
+    }
+  }
+  return false
 }
 
 function resolvePointer(root: JsonValue, pointer: string): JsonValue {
