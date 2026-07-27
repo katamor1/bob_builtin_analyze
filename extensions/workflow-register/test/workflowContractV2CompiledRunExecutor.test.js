@@ -30,6 +30,7 @@ test("compiled command execution validates inputs, dispatches once, and persists
       return { ok: true }
     }
   })
+  const planDigest = runtime.lease.planDigest
 
   const run = await runtime.runWithLease(runtime.lease, () => (
     subject().executeCompiledWorkflowRun(runInput(runtime, {
@@ -39,9 +40,10 @@ test("compiled command execution validates inputs, dispatches once, and persists
 
   assert.equal(dispatches, 1)
   assert.equal(run.workflowSchemaVersion, "workflow-register/v2")
-  assert.equal(run.workflowDefinitionHash, runtime.lease.planDigest)
+  assert.equal(run.workflowDefinitionHash, planDigest)
   assert.equal(run.status, "completed")
   assert.equal(run.steps[0].status, "completed")
+  assert.equal(runtime.lease.released, true)
   assert.deepEqual(JSON.parse(run.state["workflow.contractV2.committedOutputs"]), {
     providerResult: { ok: true }
   })
@@ -73,7 +75,7 @@ test("invalid compiled workflow inputs perform zero dispatches and create no run
   assert.deepEqual(await runtime.runStore.listRuns(), [])
 })
 
-test("a false compiled entry predicate skips the provider without reinterpreting raw workflow fields", async (t) => {
+test("a false compiled entry predicate skips the provider without creating attempt evidence", async (t) => {
   let dispatches = 0
   const runtime = await compiledRuntime(t, {
     withInput: true,
@@ -94,6 +96,8 @@ test("a false compiled entry predicate skips the provider without reinterpreting
   assert.equal(dispatches, 0)
   assert.equal(run.status, "completed")
   assert.equal(run.steps[0].status, "completed")
+  assert.equal(run.steps[0].attempt, undefined)
+  assert.equal(run.steps[0].startedAt, undefined)
   assert.equal(run.state["workflow.contractV2.skipped.invoke"], "true")
 })
 
