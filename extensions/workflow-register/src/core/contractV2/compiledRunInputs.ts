@@ -80,6 +80,29 @@ export function validateCompiledWorkflowInputs(
   return frozen
 }
 
+export function assertCompiledRequiredArtifactSupport(plan: CompiledWorkflowPlan): void {
+  for (let index = 0; index < plan.requiredArtifacts.length; index += 1) {
+    const artifact = plan.requiredArtifacts[index]
+    if (!artifact.required) continue
+    const stepIndex = findCompiledStepIndex(plan.workflow.steps, artifact.producedBy)
+    if (stepIndex < 0) throw new TypeError("Compiled workflow required artifact producer is unavailable.")
+    const step = plan.workflow.steps[stepIndex]
+    if (!contains(step.type === "manual" ? [] : step.artifacts, artifact.id)) {
+      throw new TypeError("Compiled workflow required artifact is not declared by its producer step.")
+    }
+    if (artifact.owner === "runtime") {
+      throw new TypeError("Compiled workflow required runtime artifact publication is unsupported in R4.")
+    }
+    if (step.type !== "command") {
+      throw new TypeError("Compiled workflow provider-owned artifact requires a command step.")
+    }
+    const provider = providerById(plan, step.provider)
+    if (provider.sideEffect !== "workspace-write") {
+      throw new TypeError("Compiled workflow provider-owned artifact requires workspace-write authority.")
+    }
+  }
+}
+
 export function compiledEntryPredicateAllows(
   plan: CompiledWorkflowPlan,
   step: CompiledWorkflowStep,
@@ -163,10 +186,22 @@ export function compiledStartIndex(
   return index
 }
 
+function providerById(plan: CompiledWorkflowPlan, id: string): CompiledWorkflowPlan["providerBindings"][number] {
+  for (let index = 0; index < plan.providerBindings.length; index += 1) {
+    if (plan.providerBindings[index].id === id) return plan.providerBindings[index]
+  }
+  throw new TypeError("Compiled workflow artifact provider is unavailable.")
+}
+
 function hasInput(plan: CompiledWorkflowPlan, id: string): boolean {
   for (let index = 0; index < plan.workflow.inputs.length; index += 1) {
     if (plan.workflow.inputs[index].id === id) return true
   }
+  return false
+}
+
+function contains(values: readonly string[], value: string): boolean {
+  for (let index = 0; index < values.length; index += 1) if (values[index] === value) return true
   return false
 }
 
