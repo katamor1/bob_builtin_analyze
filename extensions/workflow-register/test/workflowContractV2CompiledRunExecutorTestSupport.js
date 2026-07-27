@@ -22,7 +22,11 @@ function canonicalSchema(id, body) {
 
 function workflowYaml(options) {
   const sideEffect = options.sideEffect ?? "none"
+  const stepType = options.stepType ?? "command"
+  const required = options.required !== false
   const workspaceWrite = sideEffect === "workspace-write"
+  const runtimeRequiredArtifact = options.runtimeRequiredArtifact === true
+  const hasArtifact = workspaceWrite || runtimeRequiredArtifact
   const hasInputs = options.withInput || options.skipCommand
   const inputs = hasInputs
     ? [
@@ -41,6 +45,43 @@ function workflowYaml(options) {
       "    required: true"
     )
   }
+
+  const entryPredicate = options.skipCommand
+    ? [
+        "    when:",
+        "      kind: equals",
+        "      left:",
+        "        source: input",
+        "        id: shouldRun",
+        "        pointer: ''",
+        "      right: true"
+      ]
+    : []
+  const artifacts = hasArtifact
+    ? ["    artifacts:", "      - report"]
+    : ["    artifacts: []"]
+  const transition = options.transitionGoto === undefined
+    ? []
+    : [
+        "    transition:",
+        "      decisions: []",
+        "      default:",
+        `        goto: ${options.transitionGoto}`
+      ]
+  const requiredArtifacts = hasArtifact
+    ? [
+        "requiredArtifacts:",
+        "  - id: report",
+        "    producedBy: invoke",
+        "    path: artifacts/report.json",
+        "    mediaType: application/json",
+        "    schema: schemas/artifact.json",
+        "    maxBytes: 4096",
+        `    owner: ${runtimeRequiredArtifact ? "runtime" : "provider"}`,
+        "    required: true"
+      ]
+    : ["requiredArtifacts: []"]
+
   const commandInput = hasInputs
     ? [
         "    input:",
@@ -54,38 +95,57 @@ function workflowYaml(options) {
         "      value:",
         "        message: hello"
       ]
-  const entryPredicate = options.skipCommand
+  const output = [
+    "    output:",
+    "      kind: value",
+    "      id: providerResult",
+    "      schema: schemas/output.json",
+    "      maxBytes: 4096"
+  ]
+  const step = stepType === "agent"
     ? [
-        "    when:",
-        "      kind: equals",
-        "      left:",
-        "        source: input",
-        "        id: shouldRun",
-        "        pointer: ''",
-        "      right: true"
+        "  - id: invoke",
+        "    title: Invoke agent",
+        "    type: agent",
+        `    required: ${required}`,
+        ...entryPredicate,
+        "    prompt: prompts/agent.md",
+        "    context: []",
+        ...output,
+        ...artifacts,
+        ...transition
       ]
-    : []
-  const artifacts = workspaceWrite
-    ? ["    artifacts:", "      - report"]
-    : ["    artifacts: []"]
-  const requiredArtifacts = workspaceWrite
-    ? [
-        "requiredArtifacts:",
-        "  - id: report",
-        "    producedBy: invoke",
-        "    path: artifacts/report.json",
-        "    mediaType: application/json",
-        "    schema: schemas/artifact.json",
-        "    maxBytes: 4096",
-        "    owner: provider",
-        "    required: true"
+    : [
+        "  - id: invoke",
+        "    title: Invoke provider",
+        "    type: command",
+        `    required: ${required}`,
+        ...entryPredicate,
+        "    provider: sample.provider",
+        ...commandInput,
+        ...output,
+        ...artifacts,
+        ...transition
       ]
-    : ["requiredArtifacts: []"]
+
   const requiredCapabilities = sideEffect === "workspace-write"
     ? ["    requiredCapabilities:", "      - workflow.effect.workspace-write"]
     : sideEffect === "external"
       ? ["    requiredCapabilities:", "      - workflow.effect.external"]
       : ["    requiredCapabilities: []"]
+  const providers = stepType === "agent"
+    ? ["providers: []"]
+    : [
+        "providers:",
+        "  - id: sample.provider",
+        "    version: 1.0.0",
+        "    inputSchema: schemas/input.json",
+        "    output: { kind: value, schema: schemas/output.json }",
+        "    errorSchema: schemas/error.json",
+        `    sideEffect: ${sideEffect}`,
+        "    idempotency: idempotent",
+        ...requiredCapabilities
+      ]
 
   return Buffer.from([
     "schemaVersion: workflow-register/v2",
@@ -94,34 +154,14 @@ function workflowYaml(options) {
     "description: Compiled runtime fixture.",
     ...inputs,
     "steps:",
-    "  - id: invoke",
-    "    title: Invoke provider",
-    "    type: command",
-    "    required: true",
-    ...entryPredicate,
-    "    provider: sample.provider",
-    ...commandInput,
-    "    output:",
-    "      kind: value",
-    "      id: providerResult",
-    "      schema: schemas/output.json",
-    "      maxBytes: 4096",
-    ...artifacts,
+    ...step,
     ...requiredArtifacts,
     "resumePolicy:",
     "  mode: fail-closed",
     "  maxAttempts: 1",
     "  retainCommittedOutputs: false",
     "  allowArtifactReuse: false",
-    "providers:",
-    "  - id: sample.provider",
-    "    version: 1.0.0",
-    "    inputSchema: schemas/input.json",
-    "    output: { kind: value, schema: schemas/output.json }",
-    "    errorSchema: schemas/error.json",
-    `    sideEffect: ${sideEffect}`,
-    "    idempotency: idempotent",
-    ...requiredCapabilities,
+    ...providers,
     "bob:",
     "  profile: bob/2.0.1",
     "  requiredCapabilities: []",
@@ -132,6 +172,9 @@ function workflowYaml(options) {
 
 async function compiledRuntime(t, options = {}) {
   const canonical = require("../out/core/contractV2/canonicalJson.js")
+  const stepType = options.stepType ?? "command"
+  const hasInputs = options.withInput || options.skipCommand
+  const hasArtifact = options.sideEffect === "workspace-write" || options.runtimeRequiredArtifact === true
   const schemas = {
     input: canonicalSchema("schemas/input.json", {
       type: "object",
@@ -139,7 +182,7 @@ async function compiledRuntime(t, options = {}) {
       required: ["message"],
       additionalProperties: false
     }),
-    output: canonicalSchema("schemas/output.json", {
+    output: canonicalSchema("schemas/output.json", options.outputSchemaBody ?? {
       type: "object",
       properties: { ok: { type: "boolean" } },
       required: ["ok"],
@@ -151,7 +194,7 @@ async function compiledRuntime(t, options = {}) {
       required: ["code"],
       additionalProperties: false
     }),
-    artifact: canonicalSchema("schemas/artifact.json", { type: "object" }),
+    artifact: canonicalSchema("schemas/artifact.json", options.artifactSchemaBody ?? { type: "object" }),
     boolean: canonicalSchema("schemas/boolean.json", { type: "boolean" })
   }
   const registryModule = require("../out/core/contractV2/providerRegistry.js")
@@ -190,21 +233,24 @@ async function compiledRuntime(t, options = {}) {
     idempotency: provider.idempotency,
     requiredCapabilities: provider.requiredCapabilities
   })
+
   const files = {
     "workflow.yaml": workflowYaml(options),
     "workflow.lock.json": Buffer.from("{}", "utf8"),
-    "schemas/input.json": schemas.input.bytes,
     "schemas/output.json": schemas.output.bytes,
-    "schemas/error.json": schemas.error.bytes,
-    ...(options.sideEffect === "workspace-write" ? { "schemas/artifact.json": schemas.artifact.bytes } : {}),
-    ...(options.skipCommand ? { "schemas/boolean.json": schemas.boolean.bytes } : {})
+    ...(stepType === "command" || hasInputs ? { "schemas/input.json": schemas.input.bytes } : {}),
+    ...(stepType === "command" ? { "schemas/error.json": schemas.error.bytes } : {}),
+    ...(hasArtifact ? { "schemas/artifact.json": schemas.artifact.bytes } : {}),
+    ...(options.skipCommand ? { "schemas/boolean.json": schemas.boolean.bytes } : {}),
+    ...(stepType === "agent" ? { "prompts/agent.md": Buffer.from("Return a JSON value.\n", "utf8") } : {})
   }
+  const providers = stepType === "command" ? [providerEvidence] : []
   const lock = require("../out/core/contractV2/workflowLock.js")
   const slot = { workflowId: "compiled-runtime" }
   const initial = rawPackageFromFiles(files, slot)
   const generated = lock.generateWorkflowPackageLock({
     rawPackage: initial,
-    providers: [providerEvidence],
+    providers,
     bob: { profile: "bob/2.0.1", requiredCapabilities: [], taskCapabilities: [] }
   })
   files["workflow.lock.json"] = lock.encodeWorkflowPackageLock(generated)
