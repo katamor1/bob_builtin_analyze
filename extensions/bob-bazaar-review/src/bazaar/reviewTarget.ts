@@ -96,10 +96,10 @@ export async function prepareTarget(
     const targetRevision = request.targetRevision ?? ""
     const [diff, log] = await Promise.all([
       client.diffRange(root, baseRevision, targetRevision),
-      client.log(root, targetRevision).catch(ignoreNonCancellationCommandFailure)
+      client.log(root, targetRevision)
     ])
     const entries = parseChangedFileEntries(diff.stdout)
-    const info = makeRangeTargetInfo(baseRevision, targetRevision, log?.stdout, entries)
+    const info = makeRangeTargetInfo(baseRevision, targetRevision, log.stdout, entries)
     const syntheticInfo = targetInfoToSyntheticRevisionInfo(info, targetRevision)
     const addedFiles = options.includeAddedFiles
       ? await buildAddedFilesContent(
@@ -126,7 +126,7 @@ export async function prepareTarget(
     const topRevision = request.baseRevision ?? await client.revno(root)
     const [diff, status] = await Promise.all([
       client.diffWorkingTree(root, topRevision),
-      client.status(root).catch(ignoreNonCancellationCommandFailure)
+      client.status(root)
     ])
     const entries = parseChangedFileEntries(diff.stdout)
     const addedFilesEvidence = options.includeAddedFiles
@@ -143,7 +143,7 @@ export async function prepareTarget(
         author: "作業ツリー",
         committer: "作業ツリー",
         timestamp: "未コミット",
-        message: status?.stdout?.trim() || `リビジョン ${topRevision} 以降の未コミット変更`,
+        message: status.stdout.trim() || `リビジョン ${topRevision} 以降の未コミット変更`,
         changedFileCount: entries.length,
         changedFiles: entries.map((entry) => entry.path),
         changedFileEntries: entries
@@ -211,10 +211,10 @@ function revisionInfoToTargetInfo(info: BazaarRevisionInfo): TargetInfo {
 function makeRangeTargetInfo(
   baseRevision: string,
   targetRevision: string,
-  logText: string | undefined,
+  logText: string,
   entries: BazaarChangedFile[]
 ): TargetInfo {
-  const parsed = logText ? parseLogMetadataLike(logText) : {}
+  const parsed = parseLogMetadataLike(logText)
   return {
     mode: "revisionRange",
     targetLabel: `${baseRevision}..${targetRevision}`,
@@ -256,21 +256,6 @@ function workingTreeAddedFilesEvidence(entries: readonly BazaarChangedFile[]): A
     skippedFileCount,
     readFailures: Object.freeze([])
   })
-}
-
-function ignoreNonCancellationCommandFailure(error: unknown): undefined {
-  if (isCancellationOrDeadlineError(error)) throw error
-  return undefined
-}
-
-function isCancellationOrDeadlineError(error: unknown): boolean {
-  if (error === null || typeof error !== "object") return false
-  const record = error as Record<string, unknown>
-  return record.code === "processing_cancelled"
-    || record.kind === "cancelled"
-    || record.kind === "timeout"
-    || record.terminationCause === "user"
-    || record.terminationCause === "deadline"
 }
 
 function parseLogMetadataLike(logText: string): {
