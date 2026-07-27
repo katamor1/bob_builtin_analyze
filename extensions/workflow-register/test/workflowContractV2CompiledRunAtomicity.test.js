@@ -28,6 +28,26 @@ function committedOutputs(run) {
   return JSON.parse(run.state["workflow.contractV2.committedOutputs"] ?? "{}")
 }
 
+function faultingRunStore(runtime, targetStage) {
+  const { ContractV2GuardedRunStateStore } = require("../out/workflowContractV2RunStateStore.js")
+  let transaction = 0
+  let injected = false
+  return {
+    store: new ContractV2GuardedRunStateStore({
+      workspaceRoot: runtime.workspaceRoot,
+      engineVersion: "test",
+      durabilityFault: (stage) => {
+        if (stage === "afterJournal") transaction += 1
+        if (!injected && transaction === 3 && stage === targetStage) {
+          injected = true
+          throw new Error(`injected ${targetStage} visibility-save fault`)
+        }
+      }
+    }),
+    wasInjected: () => injected
+  }
+}
+
 test("a pre-promotion artifact failure commits neither provider output nor a visible artifact set", async (t) => {
   const runtime = await compiledRuntime(t, {
     sideEffect: "workspace-write",
@@ -52,7 +72,7 @@ test("a pre-promotion artifact failure commits neither provider output nor a vis
   assert.deepEqual(fs.existsSync(committed) ? fs.readdirSync(committed) : [], [])
 })
 
-test("a visibility-save failure rolls back output and artifact evidence while retaining an orphan", async (t) => {
+test("a pre-write visibility-save failure rolls back output and artifact evidence while retaining an orphan", async (t) => {
   const runtime = await compiledRuntime(t, {
     sideEffect: "workspace-write",
     dispatch: async (input) => {
@@ -71,7 +91,8 @@ test("a visibility-save failure rolls back output and artifact evidence while re
       saves += 1
       if (saves === 3) throw new Error("injected visibility save failure")
       return runtime.runStore.saveRun(run)
-    }
+    },
+    loadRun: (...args) => runtime.runStore.loadRun(...args)
   }
 
   const run = await runtime.runWithLease(runtime.lease, () => (
@@ -86,3 +107,31 @@ test("a visibility-save failure rolls back output and artifact evidence while re
   assert.equal(fs.existsSync(committed), true)
   assert.equal(fs.readdirSync(committed).length, 1)
 })
+
+for (const stage of ["afterJournal", "afterRun", "afterEvent"]) {
+  test(`an ambiguous ${stage} visibility-save fault reconciles the durable completed step`, async (t) => {
+    const runtime = await compiledRuntime(t, {
+      sideEffect: "workspace-write",
+      dispatch: async (input) => {
+        await input.effect.artifacts.writeArtifact({
+          id: "report",
+          bytes: Buffer.from('{"ok":true}', "utf8")
+        })
+        return { ok: true }
+      }
+    })
+    const fault = faultingRunStore(runtime, stage)
+
+    const run = await runtime.runWithLease(runtime.lease, () => (
+      subject().executeCompiledWorkflowRun(runInput(runtime, {}, { runStore: fault.store }))
+    ))
+
+    assert.equal(fault.wasInjected(), true)
+    assert.equal(run.status, "completed")
+    assert.deepEqual(committedOutputs(run), { providerResult: { ok: true } })
+    assert.match(run.state["workflow.contractV2.artifactSet.invoke"], /artifactSetDigest/)
+    const persisted = await fault.store.loadRun(run.runId)
+    assert.equal(persisted.status, "completed")
+    assert.deepEqual(committedOutputs(persisted), { providerResult: { ok: true } })
+  })
+}
