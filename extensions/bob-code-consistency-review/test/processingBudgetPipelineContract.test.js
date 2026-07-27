@@ -11,6 +11,6 @@ test("preprocessReview shares one processing budget ledger across diff, document
   assert.match(source, /const processingBudgetLedger = createPipelineProcessingBudgetLedger\(limits, input\.processingBudgetLimits\)/)
   assert.match(source, /collectGitDiff\([\s\S]*budgetLedger: processingBudgetLedger/)
   assert.match(source, /extractDocuments\([\s\S]*budgetLedger: processingBudgetLedger/)
-  assert.match(source, /buildReviewPackage\([\s\S]*budgetLedger: processingBudgetLedger/)
+  assert.match(source, /buildCompleteReviewPackage\([\s\S]*budgetLedger: processingBudgetLedger/)
   assert.match(source, /processingBudgetLimits\?: Readonly<Partial<SharedProcessingBudgetLimits>>/)
 })
