@@ -54,6 +54,15 @@ interface CacheEntry {
   leases: number
 }
 
+interface HandleEntry {
+  readonly environment: WorkflowCompilerEnvironment
+  readonly entry: CacheEntry
+}
+
+interface ExactHandleAcquirer {
+  acquire(): WorkflowPlanLease
+}
+
 interface NamespaceCache {
   readonly entries: Map<string, CacheEntry>
   readonly requestEntries: Map<string, string>
@@ -73,20 +82,51 @@ const mapGet = Function.prototype.call.bind(Map.prototype.get) as (
 const mapSet = Function.prototype.call.bind(Map.prototype.set) as (
   map: Map<unknown, unknown>, key: unknown, value: unknown
 ) => Map<unknown, unknown>
-const weakMapGet = Function.prototype.call.bind(WeakMap.prototype.get) as (
+const namespaceMapGet = Function.prototype.call.bind(WeakMap.prototype.get) as (
   map: WeakMap<object, NamespaceCache>, key: object
 ) => NamespaceCache | undefined
-const weakMapSet = Function.prototype.call.bind(WeakMap.prototype.set) as (
+const namespaceMapSet = Function.prototype.call.bind(WeakMap.prototype.set) as (
   map: WeakMap<object, NamespaceCache>, key: object, value: NamespaceCache
 ) => WeakMap<object, NamespaceCache>
+const handleMapGet = Function.prototype.call.bind(WeakMap.prototype.get) as (
+  map: WeakMap<CompiledWorkflowPlanHandle, HandleEntry>, key: CompiledWorkflowPlanHandle
+) => HandleEntry | undefined
+const handleMapSet = Function.prototype.call.bind(WeakMap.prototype.set) as (
+  map: WeakMap<CompiledWorkflowPlanHandle, HandleEntry>,
+  key: CompiledWorkflowPlanHandle,
+  value: HandleEntry
+) => WeakMap<CompiledWorkflowPlanHandle, HandleEntry>
+const exactHandleMapGet = Function.prototype.call.bind(WeakMap.prototype.get) as (
+  map: WeakMap<CompiledWorkflowPlanHandle, ExactHandleAcquirer>,
+  key: CompiledWorkflowPlanHandle
+) => ExactHandleAcquirer | undefined
+const exactHandleMapSet = Function.prototype.call.bind(WeakMap.prototype.set) as (
+  map: WeakMap<CompiledWorkflowPlanHandle, ExactHandleAcquirer>,
+  key: CompiledWorkflowPlanHandle,
+  value: ExactHandleAcquirer
+) => WeakMap<CompiledWorkflowPlanHandle, ExactHandleAcquirer>
 const MapConstructor = Map
 const WeakMapConstructor = WeakMap
 const promiseResolve = Function.prototype.call.bind(Promise.resolve, Promise) as <T>(
   value: T | PromiseLike<T>
 ) => Promise<Awaited<T>>
+const exactHandleAcquirers = new WeakMapConstructor<CompiledWorkflowPlanHandle, ExactHandleAcquirer>()
+
+/** Internal product boundary; intentionally not barrel-exported. */
+export function acquireWorkflowPlanHandle(
+  handle: CompiledWorkflowPlanHandle
+): WorkflowPlanLease {
+  requireCompiledWorkflowPlanState(handle)
+  const acquirer = exactHandleMapGet(exactHandleAcquirers, handle)
+  if (acquirer === undefined) {
+    throw new TypeError("Exact workflow plan handle is not owned by the process plan store.")
+  }
+  return acquirer.acquire()
+}
 
 export class WorkflowPlanStore {
   private readonly namespaces = new WeakMapConstructor<object, NamespaceCache>()
+  private readonly handles = new WeakMapConstructor<CompiledWorkflowPlanHandle, HandleEntry>()
 
   async getOrCompile(input: GetOrCompileWorkflowPlanInput): Promise<CompiledWorkflowPlanHandle> {
     const request = snapshotWorkflowPlanRequest(input)
@@ -101,6 +141,35 @@ export class WorkflowPlanStore {
     }
 
     const entry = await this.resolveCurrentEntry(request)
+    return this.leaseEntry(request.environment, entry)
+  }
+
+  acquireHandle(handle: CompiledWorkflowPlanHandle): WorkflowPlanLease {
+    const state = requireCompiledWorkflowPlanState(handle)
+    if (state.purpose !== "runtime" || state.publication !== "published" || !state.leaseable) {
+      throw new TypeError("Exact workflow plan handle is not a published runtime-leasable plan.")
+    }
+    const owned = handleMapGet(this.handles, handle)
+    if (owned === undefined || owned.entry.handle !== handle) {
+      throw new TypeError("Exact workflow plan handle is not owned by this plan store.")
+    }
+    const namespace = namespaceMapGet(this.namespaces, owned.environment)
+    if (
+      namespace === undefined
+      || currentWorkflowPlanSlotEpoch(owned.entry.slotKey) !== owned.entry.epoch
+      || mapGet(namespace.entries, owned.entry.entryKey) !== owned.entry
+    ) throw new WorkflowPlanInvalidatedError()
+    return this.leaseEntry(owned.environment, owned.entry)
+  }
+
+  invalidateSlot(collectionId: string, workflowId: string): void {
+    invalidateWorkflowPlanSlot(collectionId, workflowId)
+  }
+
+  private leaseEntry(
+    environment: WorkflowCompilerEnvironment,
+    entry: CacheEntry
+  ): WorkflowPlanLease {
     if (!isCompiledWorkflowPlanLeasable(entry.handle)) {
       throw new TypeError("Workflow plan is not a published runtime-leasable handle.")
     }
@@ -108,16 +177,12 @@ export class WorkflowPlanStore {
     try {
       return createWorkflowPlanLease({
         handle: entry.handle,
-        onRelease: () => this.releaseEntry(request.environment, entry)
+        onRelease: () => this.releaseEntry(environment, entry)
       })
     } catch (error) {
       entry.leases -= 1
       throw error
     }
-  }
-
-  invalidateSlot(collectionId: string, workflowId: string): void {
-    invalidateWorkflowPlanSlot(collectionId, workflowId)
   }
 
   private async resolveCurrentEntry(request: SnapshotWorkflowPlanRequest): Promise<CacheEntry> {
@@ -189,18 +254,25 @@ export class WorkflowPlanStore {
     }
     mapSet(namespace.entries, entryKey, entry)
     mapSet(namespace.requestEntries, requestKey, entryKey)
+    handleMapSet(this.handles, result.handle, objectFreeze({
+      environment: request.environment,
+      entry
+    }))
+    exactHandleMapSet(exactHandleAcquirers, result.handle, objectFreeze({
+      acquire: () => this.acquireHandle(result.handle)
+    }))
     return entry
   }
 
   private namespace(environment: WorkflowCompilerEnvironment): NamespaceCache {
-    const existing = weakMapGet(this.namespaces, environment)
+    const existing = namespaceMapGet(this.namespaces, environment)
     if (existing !== undefined) return existing
     const created: NamespaceCache = {
       entries: new MapConstructor<string, CacheEntry>(),
       requestEntries: new MapConstructor<string, string>(),
       pending: new MapConstructor<string, Promise<CacheEntry>>()
     }
-    weakMapSet(this.namespaces, environment, created)
+    namespaceMapSet(this.namespaces, environment, created)
     return created
   }
 
@@ -208,7 +280,7 @@ export class WorkflowPlanStore {
     if (entry.leases <= 0) throw new Error("Workflow plan lease count underflow.")
     entry.leases -= 1
     if (entry.leases !== 0 || currentWorkflowPlanSlotEpoch(entry.slotKey) === entry.epoch) return
-    const namespace = weakMapGet(this.namespaces, environment)
+    const namespace = namespaceMapGet(this.namespaces, environment)
     if (namespace !== undefined && mapGet(namespace.entries, entry.entryKey) === entry) {
       mapDelete(namespace.entries, entry.entryKey)
       if (mapGet(namespace.requestEntries, entry.requestKey) === entry.entryKey) {
