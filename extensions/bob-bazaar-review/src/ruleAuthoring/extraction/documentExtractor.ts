@@ -191,6 +191,7 @@ export async function extractRuleDocuments(
 ): Promise<RuleDocumentBatchResult> {
   if (existingManifest) assertCanonicalExistingManifest(existingManifest)
   const effectiveLimits = boundedRuleAuthoringLimits(limits)
+  for (const request of requests) throwIfCancelled(request.signal)
   const ledger = documentLedger(effectiveLimits)
   ledger.reserve("document_count", requests.length).commit()
 
