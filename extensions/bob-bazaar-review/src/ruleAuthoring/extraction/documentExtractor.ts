@@ -98,6 +98,7 @@ const LEGACY_EXTRACTOR = Object.freeze({ id: "legacy-office", version: "1" })
 export async function extractRuleDocument(
   request: RuleDocumentExtractionRequest
 ): Promise<DocumentExtractionResult> {
+  throwIfCancelled(request.signal)
   const ledger = documentLedger(DEFAULT_RULE_AUTHORING_LIMITS)
   ledger.reserve("document_count", 1).commit()
   return extractRuleDocumentWithContext(request, { limits: DEFAULT_RULE_AUTHORING_LIMITS, ledger })
@@ -107,6 +108,7 @@ async function extractRuleDocumentWithContext(
   request: RuleDocumentExtractionRequest,
   context: ExtractionContext
 ): Promise<DocumentExtractionResult> {
+  throwIfCancelled(request.signal)
   const limits = context.limits
   const absolutePath = path.resolve(request.filePath)
   const logicalName = request.logicalName ?? path.basename(absolutePath)
@@ -116,6 +118,7 @@ async function extractRuleDocumentWithContext(
     maximumBytes: limits.maxSourceBytes,
     ledger: context.ledger
   })
+  throwIfCancelled(request.signal)
   const byteSize = fingerprintByteSize(before)
   if (byteSize > limits.maxSourceBytes) {
     throw new Error(`Rule source exceeds the ${limits.maxSourceBytes}-byte per-source limit`)
@@ -159,9 +162,11 @@ async function extractRuleDocumentWithContext(
     })
   }
 
+  throwIfCancelled(request.signal)
   const after = await fingerprintSource(absolutePath, {
     maximumBytes: limits.maxSourceBytes
   })
+  throwIfCancelled(request.signal)
   assertStableSourceFingerprint(before, after)
   const shareable = (mediaType === "docx" || mediaType === "xlsx" || mediaType === "pdf") &&
     (extracted.status === "success" || extracted.status === "partial")
@@ -190,6 +195,7 @@ export async function extractRuleDocuments(
   ledger.reserve("document_count", requests.length).commit()
 
   const fingerprinted = await Promise.all(requests.map(async (request, selectionIndex): Promise<FingerprintedRequest> => {
+    throwIfCancelled(request.signal)
     const absolutePath = path.resolve(request.filePath)
     const logicalName = request.logicalName ?? path.basename(absolutePath)
     assertLogicalName(logicalName)
@@ -198,6 +204,7 @@ export async function extractRuleDocuments(
       ledger,
       target: `rule-source-selection:${selectionIndex}`
     })
+    throwIfCancelled(request.signal)
     const byteSize = fingerprintByteSize(fingerprint)
     if (byteSize > effectiveLimits.maxSourceBytes) {
       throw new Error(`Rule source exceeds the ${effectiveLimits.maxSourceBytes}-byte per-source limit`)
@@ -256,6 +263,7 @@ export async function extractRuleDocuments(
   ])
   const documents: DocumentExtractionResult[] = []
   for (const item of canonical) {
+    throwIfCancelled(item.request.signal)
     const sourceId = sourceIds.get(item.fingerprint.sha256)
     if (!sourceId) throw new Error("Source ID assignment failed")
     documents.push(await extractRuleDocumentWithContext({
@@ -362,6 +370,12 @@ function fingerprintByteSize(fingerprint: SourceFingerprint): number {
   const value = Number(fingerprint.byteSize)
   if (!Number.isSafeInteger(value)) throw new Error("Rule source byte size exceeds safe integer range")
   return value
+}
+
+function throwIfCancelled(signal: SharedWorkbookBudgetCancellation | undefined): void {
+  if (!signal?.aborted) return
+  if (signal.reason instanceof Error) throw signal.reason
+  throw new Error("Rule document extraction was cancelled")
 }
 
 function comparePrepared(left: PreparedRequest, right: PreparedRequest): number {

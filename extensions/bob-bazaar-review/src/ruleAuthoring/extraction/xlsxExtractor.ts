@@ -39,6 +39,7 @@ export async function extractXlsx(
   filePath: string,
   context: XlsxExtractionContext
 ): Promise<XlsxExtractionResult> {
+  throwIfCancelled(context.signal)
   const maxChunkBytes = boundedPositiveLimit(
     context.maxChunkBytes,
     DEFAULT_RULE_AUTHORING_LIMITS.maxChunkBytes,
@@ -74,6 +75,7 @@ export async function extractXlsx(
     ledger: readLedger,
     maximumFileBytes: maxFileBytes
   })
+  throwIfCancelled(context.signal)
   const archive = preflightOoxmlArchive({
     archiveBytes: snapshot.copyBytes(),
     target: archiveTarget(context.sourceId),
