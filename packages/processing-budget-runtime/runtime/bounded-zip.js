@@ -88,7 +88,7 @@ function preflightOoxmlArchive(input) {
     }
 
     for (const item of reservations) contents.push({ entry: item.entry, content: inflateEntry(options.archive, item.entry) })
-    const byName = new Map(contents.map(({ entry, content }) => [entry.name, Buffer.from(content)]))
+    const byName = new Map(contents.map(({ entry, content }) => [entry.name, content]))
     const documentKind = detectOoxmlKind(byName)
     if (options.expectedKind !== undefined && documentKind !== options.expectedKind) {
       throw processingError("ooxml_kind_mismatch", `OOXML archive is ${documentKind}, not ${options.expectedKind}`)
