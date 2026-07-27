@@ -10,10 +10,11 @@
     "https://json-schema.org/draft/2020-12/vocab/meta-data": true,
     "https://json-schema.org/draft/2020-12/vocab/format-annotation": true,
     "https://json-schema.org/draft/2020-12/vocab/content": true,
-    "https://bob.local/vocab/utf8-nfc/v1": true
+    "https://bob.local/vocab/utf8-nfc/v1": true,
+    "https://bob.local/vocab/report-constraints/v1": true
   },
   "title": "Bob processing-report JSON Schema meta-schema",
-  "$comment": "Validators must implement the required https://bob.local/vocab/utf8-nfc/v1 vocabulary or refuse this schema. The canonical implementation is validateProcessingBudgetReport().",
+  "$comment": "Validators must implement the required UTF-8/NFC and report-constraint vocabularies or refuse this schema. The canonical implementation is validateProcessingBudgetReport().",
   "allOf": [
     { "$ref": "https://json-schema.org/draft/2020-12/schema" }
   ],
@@ -24,6 +25,15 @@
     },
     "x-bob-unicodeNormalization": {
       "const": "NFC"
+    },
+    "x-bob-uniqueCompositeKeys": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
     }
   }
 }
