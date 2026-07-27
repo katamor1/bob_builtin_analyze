@@ -158,7 +158,7 @@ function parseZipDirectory(archive, options) {
     const nameLength = readUInt16(archive, offset + 28)
     const extraLength = readUInt16(archive, offset + 30)
     const commentLength = readUInt16(archive, offset + 32)
-    const startingDisk = readUInt32(archive, offset + 34)
+    const startingDisk = readUInt16(archive, offset + 34)
     const localOffset = readUInt32(archive, offset + 42)
     if (startingDisk !== 0) throw processingError("archive_multidisk_unsupported", "multi-disk ZIP entries are unsupported")
     if (compressedSize === ZIP64_UINT32 || uncompressedSize === ZIP64_UINT32 || localOffset === ZIP64_UINT32) throw processingError("archive_zip64_unsupported", "ZIP64 entries are unsupported")
