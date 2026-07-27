@@ -25,6 +25,7 @@ export interface ExecuteCompiledWorkflowRunInput {
   readonly runStore: CompiledWorkflowRunStore
   readonly signal: AbortSignal
   readonly agentProvider?: AgentProvider
+  readonly onRunCreated?: (run: WorkflowRunState) => void
 }
 
 export interface ContinueCompiledWorkflowRunInput {
