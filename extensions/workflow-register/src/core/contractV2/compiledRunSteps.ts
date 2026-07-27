@@ -69,6 +69,7 @@ const dateToISOString = Date.prototype.toISOString
 const objectFreeze = Object.freeze
 const objectHasOwn = Object.hasOwn
 const reflectApply = Reflect.apply
+const MAX_AGENT_RAW_TEXT_BYTES = 16_777_216
 
 export async function executeCompiledStep(input: {
   readonly lease: WorkflowPlanLease
@@ -158,7 +159,14 @@ async function executeCommandStep(input: {
     const message = invoked.failure === "provider-error"
       ? "Compiled workflow provider reported a validated error."
       : `Compiled workflow provider validation failed: ${joinDiagnosticCodes(invoked.diagnostics)}`
-    await failCompiledStep(input.runStore, input.run, input.stepIndex, message, input.step.required)
+    await failCompiledStep(
+      input.runStore,
+      input.run,
+      input.stepIndex,
+      message,
+      input.step.required,
+      logicalEffectOrdinal
+    )
     return objectFreeze({ kind: "failed" as const })
   }
 
@@ -169,9 +177,10 @@ async function executeCommandStep(input: {
       })
     : undefined
 
+  let reconciledRun: WorkflowRunState | undefined
   if (transaction !== undefined) {
     await commitWorkflowArtifactTransaction(transaction, async (evidence) => {
-      await commitCompiledStepState({
+      reconciledRun = await commitCompiledStepState({
         run: input.run,
         runStore: input.runStore,
         context: input.context,
@@ -185,7 +194,7 @@ async function executeCommandStep(input: {
       })
     })
   } else {
-    await commitCompiledStepState({
+    reconciledRun = await commitCompiledStepState({
       run: input.run,
       runStore: input.runStore,
       context: input.context,
@@ -194,7 +203,10 @@ async function executeCommandStep(input: {
       output
     })
   }
-  return objectFreeze({ kind: "completed" as const })
+  return objectFreeze({
+    kind: "completed" as const,
+    ...(reconciledRun === undefined ? {} : { run: reconciledRun })
+  })
 }
 
 async function executeAgentStep(input: {
@@ -241,11 +253,12 @@ async function executeAgentStep(input: {
       input.run,
       input.stepIndex,
       "Compiled workflow agent output is invalid.",
-      input.step.required
+      input.step.required,
+      executionOrdinal
     )
     return objectFreeze({ kind: "failed" as const })
   }
-  await commitCompiledStepState({
+  const reconciledRun = await commitCompiledStepState({
     run: input.run,
     runStore: input.runStore,
     context: input.context,
@@ -253,7 +266,10 @@ async function executeAgentStep(input: {
     executionOrdinal,
     output: objectFreeze({ id: input.step.output.id, value })
   })
-  return objectFreeze({ kind: "completed" as const })
+  return objectFreeze({
+    kind: "completed" as const,
+    ...(reconciledRun === undefined ? {} : { run: reconciledRun })
+  })
 }
 
 function decodeCompiledAgentOutput(
@@ -264,7 +280,7 @@ function decodeCompiledAgentOutput(
 ): JsonValue | undefined {
   if (typeof text !== "string") return undefined
   const bytes = reflectApply(bufferFrom, BufferConstructor, [text, "utf8"]) as Buffer
-  if (bytes.byteLength > maximumBytes) return undefined
+  if (bytes.byteLength > MAX_AGENT_RAW_TEXT_BYTES) return undefined
 
   const candidates: unknown[] = []
   try {
@@ -311,7 +327,7 @@ async function executeResultStep(input: {
   const value = input.step.source.source === "literal"
     ? input.step.source.value
     : resolveCompiledReference(input.step.source, input.context)
-  await commitCompiledStepState({
+  const reconciledRun = await commitCompiledStepState({
     run: input.run,
     runStore: input.runStore,
     context: input.context,
@@ -319,7 +335,10 @@ async function executeResultStep(input: {
     executionOrdinal: compiledLogicalEffectOrdinal(input.run, input.step.id),
     stateUpdates: objectFreeze([objectFreeze({ key: RESULT_KEY, value: canonicalJsonText(value) })])
   })
-  return objectFreeze({ kind: "completed" as const })
+  return objectFreeze({
+    kind: "completed" as const,
+    ...(reconciledRun === undefined ? {} : { run: reconciledRun })
+  })
 }
 
 async function commitCompiledStepState(input: {
@@ -330,7 +349,7 @@ async function commitCompiledStepState(input: {
   readonly executionOrdinal: number
   readonly output?: PendingStepOutput
   readonly stateUpdates?: readonly StateUpdate[]
-}): Promise<void> {
+}): Promise<WorkflowRunState | undefined> {
   const step = input.run.steps[input.stepIndex]
   if (compiledLogicalEffectOrdinal(input.run, step.id) !== input.executionOrdinal) {
     throw new Error("Compiled workflow execution ordinal changed before commit.")
@@ -364,15 +383,37 @@ async function commitCompiledStepState(input: {
     }))
   }
 
+  let expectedCommittedOutputs: string | undefined
   try {
     if (input.output !== undefined) input.context.outputs[input.output.id] = input.output.value
     persistCompiledOutputs(input.run, input.context.outputs)
+    expectedCommittedOutputs = input.run.state[COMMITTED_OUTPUTS_KEY]
     for (let index = 0; index < updates.length; index += 1) {
       input.run.state[updates[index].key] = updates[index].value
     }
     markCompiledStepCompleted(input.run, input.stepIndex)
     await input.runStore.saveRun(input.run)
+    return undefined
   } catch (error) {
+    if (expectedCommittedOutputs !== undefined) {
+      let persisted: WorkflowRunState | undefined
+      try {
+        persisted = await input.runStore.loadRun(input.run.runId)
+      } catch {
+        persisted = undefined
+      }
+      if (
+        persisted !== undefined
+        && runMatchesCommittedStepState(
+          persisted,
+          input.run,
+          input.stepIndex,
+          expectedCommittedOutputs,
+          updates
+        )
+      ) return persisted
+    }
+
     if (outputId !== undefined) {
       if (hadOutput) input.context.outputs[outputId] = previousOutput as JsonValue
       else delete input.context.outputs[outputId]
@@ -394,12 +435,42 @@ async function commitCompiledStepState(input: {
   }
 }
 
+function runMatchesCommittedStepState(
+  persisted: WorkflowRunState,
+  expectedRun: WorkflowRunState,
+  stepIndex: number,
+  expectedCommittedOutputs: string,
+  updates: readonly StateUpdate[]
+): boolean {
+  if (
+    persisted.runId !== expectedRun.runId
+    || persisted.workflowId !== expectedRun.workflowId
+    || persisted.workflowDefinitionHash !== expectedRun.workflowDefinitionHash
+    || persisted.status !== expectedRun.status
+    || persisted.currentStep !== expectedRun.currentStep
+    || persisted.state[COMMITTED_OUTPUTS_KEY] !== expectedCommittedOutputs
+  ) return false
+  const persistedStep = persisted.steps[stepIndex]
+  const expectedStep = expectedRun.steps[stepIndex]
+  if (
+    persistedStep === undefined
+    || expectedStep === undefined
+    || persistedStep.id !== expectedStep.id
+    || persistedStep.status !== "completed"
+  ) return false
+  for (let index = 0; index < updates.length; index += 1) {
+    if (persisted.state[updates[index].key] !== updates[index].value) return false
+  }
+  return true
+}
+
 async function failCompiledStep(
   store: CompiledWorkflowRunStore,
   run: WorkflowRunState,
   stepIndex: number,
   message: string,
-  required: boolean
+  required: boolean,
+  executionOrdinal: number
 ): Promise<void> {
   const step = run.steps[stepIndex]
   step.status = "failed"
@@ -411,6 +482,7 @@ async function failCompiledStep(
   } else {
     run.status = "running"
     delete run.error
+    run.state[compiledExecutionOrdinalStateKey(step.id)] = String(executionOrdinal)
   }
   await store.saveRun(run)
 }
