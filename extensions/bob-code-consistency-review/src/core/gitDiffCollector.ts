@@ -1,6 +1,6 @@
+import * as fs from "node:fs/promises"
 import {
   normalizeChangedFilePathStrict,
-  readTextFile,
   resolveWorkspacePathStrict
 } from "./fileSystem"
 import { parseDiffFixtureText } from "./diffFixture"
@@ -58,7 +58,13 @@ export async function collectGitDiff(reviewInput: ReviewInput, options: CollectG
   const ledger = options.budgetLedger ?? createDiffProcessingLedger(limits, options.processingBudgetLimits)
   if (options.diffFixturePath) {
     const fixturePath = resolveWorkspacePathStrict(options.workspaceRoot, options.diffFixturePath, "diffFixturePath")
-    const fixture = parseDiffFixtureText(await readTextFile(fixturePath, options.textEncoding))
+    const fixtureText = await readBoundedDiffFixture(
+      fixturePath,
+      maximumDiffFixtureBytes(ledger),
+      options.textEncoding,
+      options.signal
+    )
+    const fixture = parseDiffFixtureText(fixtureText)
     return finalizeDiffProcessingBudget(fixture, ledger)
   }
 
@@ -78,6 +84,67 @@ export async function collectGitDiff(reviewInput: ReviewInput, options: CollectG
         rawDiffLimit: ledger.profile.limits.raw_diff_bytes
       })
   return finalizeDiffProcessingBudget(collected.diff, ledger, collected.rawDiffOverflow)
+}
+
+function maximumDiffFixtureBytes(ledger: SharedProcessingBudgetLedger): number {
+  return Math.min(
+    ledger.profile.limits.total_operation_input_bytes,
+    maxVcsProcessBufferBytes(ledger.profile.limits.raw_diff_bytes)
+  )
+}
+
+async function readBoundedDiffFixture(
+  filePath: string,
+  maxBytes: number,
+  textEncoding = "auto",
+  signal?: AbortSignal
+): Promise<string> {
+  throwIfFixtureCancelled(signal)
+  const handle = await fs.open(filePath, "r")
+  try {
+    throwIfFixtureCancelled(signal)
+    const before = await handle.stat({ bigint: true })
+    if (!before.isFile()) throw new Error(`diff fixture path is not a file: ${filePath}`)
+    if (before.size < 0n || before.size > BigInt(maxBytes)) {
+      throw new Error(`diff fixture exceeded maxBytes (${before.size} > ${maxBytes})`)
+    }
+    if (before.size > BigInt(Number.MAX_SAFE_INTEGER)) {
+      throw new Error("diff fixture size exceeds safe integer range")
+    }
+
+    const expectedBytes = Number(before.size)
+    const bytes = Buffer.alloc(expectedBytes)
+    let offset = 0
+    while (offset < expectedBytes) {
+      throwIfFixtureCancelled(signal)
+      const result = await handle.read(bytes, offset, expectedBytes - offset, offset)
+      if (result.bytesRead === 0) throw new Error("diff fixture ended before its declared size")
+      offset += result.bytesRead
+    }
+
+    throwIfFixtureCancelled(signal)
+    const after = await handle.stat({ bigint: true })
+    if (offset !== expectedBytes
+      || after.dev !== before.dev
+      || after.ino !== before.ino
+      || after.size !== before.size
+      || after.mtimeNs !== before.mtimeNs
+      || after.ctimeNs !== before.ctimeNs
+      || after.mode !== before.mode) {
+      throw new Error("diff fixture changed while reading")
+    }
+    return decodeTextBuffer(bytes, textEncoding)
+  } finally {
+    await handle.close()
+  }
+}
+
+function throwIfFixtureCancelled(signal: AbortSignal | undefined): void {
+  if (!signal?.aborted) return
+  if (signal.reason instanceof Error) throw signal.reason
+  throw Object.assign(new Error("Diff fixture collection was cancelled."), {
+    code: "processing_cancelled"
+  })
 }
 
 async function collectStandardGitDiff(reviewInput: ReviewInput, options: {
