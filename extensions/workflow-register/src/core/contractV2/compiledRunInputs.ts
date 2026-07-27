@@ -137,7 +137,7 @@ export function evaluateCompiledPredicateRecord(
   if (placement.kind !== placementKind || actualIndex !== placementIndex) {
     throw new TypeError("Compiled workflow predicate placement is invalid.")
   }
-  return evaluateWorkflowPredicate(record.predicate as CompiledWorkflowPredicate, {
+  return evaluateWorkflowPredicate(record.predicate as unknown as CompiledWorkflowPredicate, {
     inputs: context.input,
     committedOutputs: context.outputs
   })
