@@ -27,6 +27,16 @@ export interface ExecuteCompiledWorkflowRunInput {
   readonly agentProvider?: AgentProvider
 }
 
+export interface ContinueCompiledWorkflowRunInput {
+  readonly lease: WorkflowPlanLease
+  readonly runId: string
+  readonly options: CompiledWorkflowExecutionOptions
+  readonly workspaceRoot: string
+  readonly runStore: CompiledWorkflowRunStore
+  readonly signal: AbortSignal
+  readonly agentProvider?: AgentProvider
+}
+
 export interface CompiledRuntimeContext {
   readonly input: Readonly<Record<string, JsonValue>>
   readonly outputs: Record<string, JsonValue>
