@@ -167,6 +167,7 @@ export async function preprocessReview(input: PreprocessReviewInput): Promise<Pr
       completeKinds: ["project-rule-pack", "repository-symbol-index", "review-package"],
       maxBytes: limits.maxDocumentBytes
     })
+    cancellation.throwIfCancelled()
 
     const warnings = [...new Set([
       ...diff.warnings,
