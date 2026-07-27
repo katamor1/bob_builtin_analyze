@@ -13,6 +13,7 @@ import type {
   CompiledWorkflowStep
 } from "./compiledPlan"
 import { validateLocalJsonSchemaViewValue } from "./jsonSchemaCatalog"
+import type { JsonValue } from "./jsonValue"
 import type { AgentProvider, WorkflowRunState } from "../model"
 import type { WorkflowPlanLease } from "./planLease"
 import {
@@ -32,17 +33,29 @@ import {
   resolveCompiledTemplate
 } from "./compiledRunValues"
 import {
+  COMMITTED_OUTPUTS_KEY,
   RESULT_KEY,
   type CompiledRuntimeContext,
   type CompiledStepExecutionResult,
   type CompiledWorkflowRunStore
 } from "./compiledRunTypes"
 
+interface PendingCommandOutput {
+  readonly id: string
+  readonly value: JsonValue
+}
+
+interface ArtifactVisibilityEvidence {
+  readonly attemptId: string
+  readonly artifactSetDigest: string
+}
+
 const arrayJoin = Array.prototype.join
 const arrayPush = Array.prototype.push
 const DateConstructor = Date
 const dateToISOString = Date.prototype.toISOString
 const objectFreeze = Object.freeze
+const objectHasOwn = Object.hasOwn
 const reflectApply = Reflect.apply
 
 export async function executeCompiledStep(input: {
@@ -135,26 +148,92 @@ async function executeCommandStep(input: {
     return objectFreeze({ kind: "failed" as const })
   }
 
-  if (invoked.output.kind === "value") {
-    const outputId = input.step.output.kind === "value" ? input.step.output.id : input.step.id
-    input.context.outputs[outputId] = invoked.output.value
-    persistCompiledOutputs(input.run, input.context.outputs)
-  }
+  const output: PendingCommandOutput | undefined = invoked.output.kind === "value"
+    ? objectFreeze({
+        id: input.step.output.kind === "value" ? input.step.output.id : input.step.id,
+        value: invoked.output.value
+      })
+    : undefined
 
   if (transaction !== undefined) {
     await commitWorkflowArtifactTransaction(transaction, async (evidence) => {
-      input.run.state[`workflow.contractV2.artifactSet.${input.step.id}`] = canonicalJsonText({
-        attemptId,
-        artifactSetDigest: evidence.artifactSetDigest
+      await commitCommandStepState({
+        run: input.run,
+        runStore: input.runStore,
+        context: input.context,
+        stepIndex: input.stepIndex,
+        output,
+        artifact: objectFreeze({
+          attemptId,
+          artifactSetDigest: evidence.artifactSetDigest
+        })
       })
-      markCompiledStepCompleted(input.run, input.stepIndex)
-      await input.runStore.saveRun(input.run)
     })
   } else {
-    markCompiledStepCompleted(input.run, input.stepIndex)
-    await input.runStore.saveRun(input.run)
+    await commitCommandStepState({
+      run: input.run,
+      runStore: input.runStore,
+      context: input.context,
+      stepIndex: input.stepIndex,
+      output
+    })
   }
   return objectFreeze({ kind: "completed" as const })
+}
+
+async function commitCommandStepState(input: {
+  readonly run: WorkflowRunState
+  readonly runStore: CompiledWorkflowRunStore
+  readonly context: CompiledRuntimeContext
+  readonly stepIndex: number
+  readonly output?: PendingCommandOutput
+  readonly artifact?: ArtifactVisibilityEvidence
+}): Promise<void> {
+  const step = input.run.steps[input.stepIndex]
+  const previousStepStatus = step.status
+  const previousCompletedAt = step.completedAt
+  const previousError = step.error
+  const previousUpdatedAt = input.run.updatedAt
+
+  const outputId = input.output?.id
+  const hadOutput = outputId !== undefined && objectHasOwn(input.context.outputs, outputId)
+  const previousOutput = outputId === undefined ? undefined : input.context.outputs[outputId]
+  const hadCommittedOutputs = objectHasOwn(input.run.state, COMMITTED_OUTPUTS_KEY)
+  const previousCommittedOutputs = input.run.state[COMMITTED_OUTPUTS_KEY]
+
+  const artifactKey = input.artifact === undefined
+    ? undefined
+    : `workflow.contractV2.artifactSet.${step.id}`
+  const hadArtifact = artifactKey !== undefined && objectHasOwn(input.run.state, artifactKey)
+  const previousArtifact = artifactKey === undefined ? undefined : input.run.state[artifactKey]
+
+  try {
+    if (input.output !== undefined) input.context.outputs[input.output.id] = input.output.value
+    persistCompiledOutputs(input.run, input.context.outputs)
+    if (artifactKey !== undefined && input.artifact !== undefined) {
+      input.run.state[artifactKey] = canonicalJsonText(input.artifact)
+    }
+    markCompiledStepCompleted(input.run, input.stepIndex)
+    await input.runStore.saveRun(input.run)
+  } catch (error) {
+    if (outputId !== undefined) {
+      if (hadOutput) input.context.outputs[outputId] = previousOutput as JsonValue
+      else delete input.context.outputs[outputId]
+    }
+    if (hadCommittedOutputs) input.run.state[COMMITTED_OUTPUTS_KEY] = previousCommittedOutputs
+    else delete input.run.state[COMMITTED_OUTPUTS_KEY]
+    if (artifactKey !== undefined) {
+      if (hadArtifact) input.run.state[artifactKey] = previousArtifact as string
+      else delete input.run.state[artifactKey]
+    }
+    step.status = previousStepStatus
+    if (previousCompletedAt === undefined) delete step.completedAt
+    else step.completedAt = previousCompletedAt
+    if (previousError === undefined) delete step.error
+    else step.error = previousError
+    input.run.updatedAt = previousUpdatedAt
+    throw error
+  }
 }
 
 async function executeAgentStep(input: {
@@ -172,7 +251,7 @@ async function executeAgentStep(input: {
     throw new Error("Compiled workflow agent provider is unavailable.")
   }
   const prompt = findCompiledPrompt(input.plan, input.step.prompt)
-  const contextValues: import("./jsonValue").JsonValue[] = []
+  const contextValues: JsonValue[] = []
   for (let index = 0; index < input.step.context.length; index += 1) {
     push(contextValues, resolveCompiledReference(input.step.context[index], input.context))
   }
