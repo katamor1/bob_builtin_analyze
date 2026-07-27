@@ -15,6 +15,7 @@ const arrayIsArray = Array.isArray
 const arrayPush = Array.prototype.push
 const NumberConstructor = Number
 const numberIsSafeInteger = Number.isSafeInteger
+const numberParseInt = Number.parseInt
 const numberToString = Number.prototype.toString
 const objectCreate = Object.create
 const objectFreeze = Object.freeze
@@ -28,6 +29,8 @@ const stringSlice = String.prototype.slice
 const stringSplit = String.prototype.split
 const stringStartsWith = String.prototype.startsWith
 const INDEX_PATTERN = /^(?:0|[1-9][0-9]*)$/u
+const POSITIVE_INTEGER_PATTERN = /^[1-9][0-9]*$/u
+const EXECUTION_ORDINAL_PREFIX = "workflow.contractV2.executionOrdinal."
 
 export function resolveCompiledTemplate(
   template: WorkflowValueTemplateV2,
@@ -118,18 +121,40 @@ export function compiledAttemptId(stepIndex: number, attempt: number): string {
   return `attempt-${padFour(stepIndex + 1)}-${padFour(attempt)}`
 }
 
+export function compiledExecutionOrdinalStateKey(stepId: string): string {
+  return `${EXECUTION_ORDINAL_PREFIX}${stepId}`
+}
+
+export function compiledLogicalEffectOrdinal(run: WorkflowRunState, stepId: string): number {
+  const value = run.state[compiledExecutionOrdinalStateKey(stepId)]
+  if (value === undefined) return 1
+  if (reflectApply(regexpExec, POSITIVE_INTEGER_PATTERN, [value]) === null) {
+    throw new TypeError("Compiled workflow logical effect ordinal evidence is invalid.")
+  }
+  const completed = reflectApply(numberParseInt, Number, [value, 10]) as number
+  if (!numberIsSafeInteger(completed) || completed < 1 || completed >= Number.MAX_SAFE_INTEGER) {
+    throw new TypeError("Compiled workflow logical effect ordinal evidence is invalid.")
+  }
+  return completed + 1
+}
+
 export function compiledProviderIdempotencyKey(input: {
   readonly runId: string
   readonly stepId: string
+  readonly logicalEffectOrdinal: number
   readonly inputDigest: string
   readonly planDigest: string
   readonly provider: WorkflowProviderLockEvidence
 }): string {
+  if (!numberIsSafeInteger(input.logicalEffectOrdinal) || input.logicalEffectOrdinal < 1) {
+    throw new TypeError("Compiled workflow logical effect ordinal is invalid.")
+  }
   const digest = canonicalJsonDigest({
     schemaVersion: "workflow-provider-idempotency/v1",
     runId: input.runId,
     stepId: input.stepId,
     logicalEffectIdentity: `provider:${input.provider.id}`,
+    logicalEffectOrdinal: input.logicalEffectOrdinal,
     inputDigest: input.inputDigest,
     planDigest: input.planDigest,
     providerVersion: input.provider.exactVersion
