@@ -16,6 +16,7 @@ import { replaceTextFileAtomically } from "./atomicReplaceFile"
 
 const PROCESSING_REPORT_FILE_SUFFIX = ".processing-budget-report.json"
 const MAX_REPORT_TEXT_UTF8_BYTES = 256
+const BENIGN_REPOSITORY_CACHE_INVALIDATION = /^repository index cache invalidated: producer identity or options changed$/u
 
 export interface PersistProcessingBudgetReportInput {
   readonly outDir: string
@@ -84,8 +85,8 @@ export function coverageIssuesFromWarnings(
         limits?.observed,
         limits?.unprocessed
       ))
-    } else if (evidenceLossWarning(warning)) {
-      issues.push(unprocessedIssue("diff_evidence_incomplete", "raw_diff_bytes", "git-diff"))
+    } else {
+      issues.push(unprocessedIssue("diff_evidence_incomplete", "raw_diff_bytes", targetFromWarning(warning, "git-diff")))
     }
   }
   for (const warning of input.documentWarnings ?? []) {
@@ -99,7 +100,7 @@ export function coverageIssuesFromWarnings(
         limits?.observed,
         limits?.unprocessed
       ))
-    } else if (evidenceLossWarning(warning)) {
+    } else {
       issues.push(unprocessedIssue("document_evidence_incomplete", undefined, targetFromWarning(warning, "document-evidence")))
     }
   }
@@ -114,11 +115,17 @@ export function coverageIssuesFromWarnings(
         limits?.observed,
         limits?.unprocessed
       ))
-    } else if (evidenceLossWarning(warning)) {
+    } else {
       issues.push(unprocessedIssue("code_evidence_incomplete", undefined, targetFromWarning(warning, "code-evidence")))
     }
   }
-  appendWarningFamily(issues, input.repositoryWarnings, "repository_evidence_incomplete", "repository-index")
+  appendWarningFamily(
+    issues,
+    input.repositoryWarnings,
+    "repository_evidence_incomplete",
+    "repository-index",
+    (warning) => BENIGN_REPOSITORY_CACHE_INVALIDATION.test(warning)
+  )
   appendWarningFamily(issues, input.contextWarnings, "context_evidence_incomplete", "context-budget")
   appendWarningFamily(issues, input.traceabilityWarnings, "traceability_evidence_incomplete", "traceability")
   appendWarningFamily(issues, input.ledgerWarnings, "artifact_ledger_incomplete", "artifact-ledger")
@@ -133,7 +140,7 @@ export function coverageIssuesFromWarnings(
         limits?.observed,
         limits?.unprocessed
       ))
-    } else if (evidenceLossWarning(warning)) {
+    } else {
       issues.push(unprocessedIssue("review_package_incomplete", undefined, targetFromWarning(warning, "review-package")))
     }
   }
@@ -184,17 +191,13 @@ function appendWarningFamily(
   issues: SharedProcessingBudgetReportIssue[],
   warnings: readonly string[] | undefined,
   code: string,
-  fallbackTarget: string
+  fallbackTarget: string,
+  ignore: (warning: string) => boolean = () => false
 ): void {
   for (const warning of warnings ?? []) {
-    if (evidenceLossWarning(warning)) {
-      issues.push(unprocessedIssue(code, undefined, targetFromWarning(warning, fallbackTarget)))
-    }
+    if (ignore(warning)) continue
+    issues.push(unprocessedIssue(code, undefined, targetFromWarning(warning, fallbackTarget)))
   }
-}
-
-function evidenceLossWarning(warning: string): boolean {
-  return /fail|missing|unavailable|unsupported|skip|omit|invalid|stale|truncat|exhaust|over.?budget|not found|changed while/iu.test(warning)
 }
 
 function truncationIssue(
