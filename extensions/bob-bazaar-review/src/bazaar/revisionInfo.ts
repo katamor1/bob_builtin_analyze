@@ -105,7 +105,7 @@ export async function buildAddedFilesContent(
     })
   }
   if (maxContentBytes <= 0) {
-    skippedFileCount = addedFiles.filter((entry) => !entry.binary).length
+    skippedFileCount = addedFiles.length
     return freezeAddedFilesResult(undefined, {
       observedContentBytes,
       processedContentBytes,
@@ -127,6 +127,7 @@ export async function buildAddedFilesContent(
   for (let index = 0; index < addedFiles.length; index += 1) {
     const entry = addedFiles[index]
     if (entry.binary) {
+      skippedFileCount += 1
       lines.push(`### ${entry.path}`)
       lines.push("")
       lines.push("[BINARY: 追加ファイル本文は text として埋め込みません]")
@@ -134,7 +135,7 @@ export async function buildAddedFilesContent(
       continue
     }
     if (remainingBytes <= 0) {
-      skippedFileCount += addedFiles.slice(index).filter((remaining) => !remaining.binary).length
+      skippedFileCount += addedFiles.length - index
       break
     }
 
