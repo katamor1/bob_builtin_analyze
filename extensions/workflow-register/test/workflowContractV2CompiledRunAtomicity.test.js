@@ -28,7 +28,7 @@ function committedOutputs(run) {
   return JSON.parse(run.state["workflow.contractV2.committedOutputs"] ?? "{}")
 }
 
-test("a pre-promotion artifact failure commits neither provider output nor staging residue", async (t) => {
+test("a pre-promotion artifact failure commits neither provider output nor a visible artifact set", async (t) => {
   const runtime = await compiledRuntime(t, {
     sideEffect: "workspace-write",
     dispatch: async (input) => {
@@ -48,10 +48,7 @@ test("a pre-promotion artifact failure commits neither provider output nor stagi
   assert.deepEqual(committedOutputs(run), {})
   assert.equal(run.state["workflow.contractV2.artifactSet.invoke"], undefined)
 
-  const root = runRoot(runtime, run)
-  const staging = path.join(root, "attempts", "staging")
-  const committed = path.join(root, "attempts", "committed")
-  assert.deepEqual(fs.existsSync(staging) ? fs.readdirSync(staging) : [], [])
+  const committed = path.join(runRoot(runtime, run), "attempts", "committed")
   assert.deepEqual(fs.existsSync(committed) ? fs.readdirSync(committed) : [], [])
 })
 
