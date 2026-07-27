@@ -18,6 +18,8 @@ import {
 } from "./compiledRunInputs"
 import { executeCompiledStep } from "./compiledRunSteps"
 import {
+  compiledExecutionOrdinalStateKey,
+  compiledLogicalEffectOrdinal,
   findCompiledStepIndex,
   persistCompiledOutputs
 } from "./compiledRunValues"
@@ -83,7 +85,7 @@ export async function executeCompiledWorkflowRun(
   const outputs = objectCreate(null) as Record<string, JsonValue>
   const context: CompiledRuntimeContext = objectFreeze({ input: runtimeInputs, outputs })
 
-  const run = await runStore.createRunFromPlanLease(lease, runtimeInputs)
+  let run = await runStore.createRunFromPlanLease(lease, runtimeInputs)
   persistCompiledOutputs(run, outputs)
   await runStore.saveRun(run)
 
@@ -124,6 +126,7 @@ export async function executeCompiledWorkflowRun(
       continue
     }
 
+    const executionOrdinal = compiledLogicalEffectOrdinal(run, step.id)
     run.currentStep = step.id
     run.status = "running"
     stepState.status = "running"
@@ -155,7 +158,8 @@ export async function executeCompiledWorkflowRun(
         snapshot.workspaceRoot as string,
         index,
         "Compiled workflow step execution failed.",
-        step.required
+        step.required,
+        executionOrdinal
       )
       if (step.required) return failed
       if (options.executionMode === "singleStep") {
@@ -177,6 +181,7 @@ export async function executeCompiledWorkflowRun(
       index += 1
       continue
     }
+    if (result.run !== undefined) run = result.run
 
     const transition = selectCompiledTransition(handle.plan, step, index, context, run)
     if (transition.kind === "end") {
@@ -255,7 +260,8 @@ async function failStep(
   workspaceRoot: string,
   stepIndex: number,
   message: string,
-  required: boolean
+  required: boolean,
+  executionOrdinal: number
 ): Promise<WorkflowRunState> {
   const step = run.steps[stepIndex]
   step.status = "failed"
@@ -267,6 +273,7 @@ async function failStep(
   } else {
     run.status = "running"
     delete run.error
+    run.state[compiledExecutionOrdinalStateKey(step.id)] = String(executionOrdinal)
   }
   await store.saveRun(run)
   if (required) releaseWorkflowContractV2RunPlanLease(workspaceRoot, run.runId)
@@ -352,9 +359,11 @@ function requireRunStore(value: unknown): CompiledWorkflowRunStore {
     throw new TypeError("Compiled workflow run store is invalid.")
   }
   const store = value as Partial<CompiledWorkflowRunStore>
-  if (typeof store.createRunFromPlanLease !== "function" || typeof store.saveRun !== "function") {
-    throw new TypeError("Compiled workflow run store is invalid.")
-  }
+  if (
+    typeof store.createRunFromPlanLease !== "function"
+    || typeof store.saveRun !== "function"
+    || typeof store.loadRun !== "function"
+  ) throw new TypeError("Compiled workflow run store is invalid.")
   return store as CompiledWorkflowRunStore
 }
 
