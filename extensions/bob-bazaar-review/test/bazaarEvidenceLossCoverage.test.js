@@ -1,5 +1,6 @@
 "use strict"
 
+const assert = require("node:assert/strict")
 const fs = require("node:fs/promises")
 const os = require("node:os")
 const path = require("node:path")
@@ -59,7 +60,7 @@ test("working-tree added files with skipped-content evidence block complete cove
     }
   }
 
-  await test.assert.rejects(
+  await assert.rejects(
     () => runBazaarReviewProcessingOperation({
       ...input,
       produce: async () => ({ prepared, packet: "# packet\n" })
