@@ -16,7 +16,7 @@ import { replaceTextFileAtomically } from "./atomicReplaceFile"
 
 const PROCESSING_REPORT_FILE_SUFFIX = ".processing-budget-report.json"
 const MAX_REPORT_TEXT_UTF8_BYTES = 256
-const BENIGN_REPOSITORY_CACHE_INVALIDATION = /^repository index cache invalidated: producer identity or options changed$/u
+const RECOVERABLE_REPOSITORY_CACHE_WARNING = /^repository index cache (?:ignored: .+|invalidated: producer identity or options changed)$/u
 
 export interface PersistProcessingBudgetReportInput {
   readonly outDir: string
@@ -124,7 +124,7 @@ export function coverageIssuesFromWarnings(
     input.repositoryWarnings,
     "repository_evidence_incomplete",
     "repository-index",
-    (warning) => BENIGN_REPOSITORY_CACHE_INVALIDATION.test(warning)
+    (warning) => RECOVERABLE_REPOSITORY_CACHE_WARNING.test(warning)
   )
   appendWarningFamily(issues, input.contextWarnings, "context_evidence_incomplete", "context-budget")
   appendWarningFamily(issues, input.traceabilityWarnings, "traceability_evidence_incomplete", "traceability")
