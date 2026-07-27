@@ -91,4 +91,4 @@ test("OOXML preflight observes a trusted deadline synchronously before further r
   assert.equal(reservationCount, 1)
   assert.deepEqual(ledger.events.map((event) => event[0]), ["reserve", "release"])
   assert.equal(ledger.committed, 0)
-}
+})
