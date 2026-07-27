@@ -1,11 +1,11 @@
 import { types as utilTypes } from "node:util"
 import * as vscode from "vscode"
 
-import { extractSubagentResult } from "./agentStep"
 import { bindAuditedBobTaskMethod } from "./core/contractV2/bobTaskMethodBinding"
 import { acquireWorkflowPlanHandle } from "./core/contractV2/planStore"
 import type { CompiledWorkflowPlanHandle } from "./core/contractV2/compiledPlan"
 import type { BobTaskCapabilityName } from "./core/contractV2/bobProfile"
+import { snapshotBoundedWorkflowProviderEnvelope } from "./core/contractV2/providerEnvelopeSnapshot"
 import type { AgentExecutionInput, AgentProvider } from "./core/model"
 import { ContractV2GuardedRunStateStore } from "./workflowContractV2RunStateStore"
 import { WorkflowContractV2BobExecutor } from "./workflowContractV2BobExecutor"
@@ -22,11 +22,6 @@ export interface ExecuteWorkflowContractV2BobStepInput {
   readonly task: BobWorkflowTask
 }
 
-interface ExecutorRecord {
-  readonly definition: WorkflowDefinition
-  readonly executor: WorkflowContractV2BobExecutor
-}
-
 const isProxy = utilTypes.isProxy
 const arrayIsArray = Array.isArray
 const arrayPrototype = Array.prototype
@@ -40,18 +35,19 @@ const objectPrototype = Object.prototype
 const reflectOwnKeys = Reflect.ownKeys
 const reflectApply = Reflect.apply
 const weakMapGet = Function.prototype.call.bind(WeakMap.prototype.get) as (
-  map: WeakMap<CompiledWorkflowPlanHandle, ExecutorRecord>,
+  map: WeakMap<CompiledWorkflowPlanHandle, WorkflowContractV2BobExecutor>,
   key: CompiledWorkflowPlanHandle
-) => ExecutorRecord | undefined
+) => WorkflowContractV2BobExecutor | undefined
 const weakMapSet = Function.prototype.call.bind(WeakMap.prototype.set) as (
-  map: WeakMap<CompiledWorkflowPlanHandle, ExecutorRecord>,
+  map: WeakMap<CompiledWorkflowPlanHandle, WorkflowContractV2BobExecutor>,
   key: CompiledWorkflowPlanHandle,
-  value: ExecutorRecord
-) => WeakMap<CompiledWorkflowPlanHandle, ExecutorRecord>
+  value: WorkflowContractV2BobExecutor
+) => WeakMap<CompiledWorkflowPlanHandle, WorkflowContractV2BobExecutor>
 const WeakMapConstructor = WeakMap
 const MAX_METADATA_FIELDS = 512
 const MAX_TASK_MESSAGES = 1_024
-const executors = new WeakMapConstructor<CompiledWorkflowPlanHandle, ExecutorRecord>()
+const MAX_BOB_INPUT_VALUE_BYTES = 16_777_216
+const executors = new WeakMapConstructor<CompiledWorkflowPlanHandle, WorkflowContractV2BobExecutor>()
 
 export async function executeWorkflowContractV2BobStep(
   input: ExecuteWorkflowContractV2BobStepInput
@@ -66,10 +62,10 @@ export async function executeWorkflowContractV2BobStep(
     if (workspaceRoot === undefined) {
       throw new TypeError("Compiled Bob workflow requires a workspace root.")
     }
-    let record = weakMapGet(executors, input.handle)
-    if (record === undefined) {
+    let executor = weakMapGet(executors, input.handle)
+    if (executor === undefined) {
       const definition = input.definition
-      const executor = new WorkflowContractV2BobExecutor({
+      executor = new WorkflowContractV2BobExecutor({
         acquireLease: acquireWorkflowPlanHandle,
         resolveInputs: (task) => resolveCompiledBobInputs(definition, input.handle, task),
         createRunStore: (root) => new ContractV2GuardedRunStateStore({
@@ -78,12 +74,9 @@ export async function executeWorkflowContractV2BobStep(
         }),
         createAgentProvider: (task) => createCompiledBobAgentProvider(input.handle, task)
       })
-      record = objectFreeze({ definition, executor })
-      weakMapSet(executors, input.handle, record)
-    } else if (record.definition !== input.definition) {
-      throw new TypeError("Compiled Bob executor handle is registered to a different workflow definition.")
+      weakMapSet(executors, input.handle, executor)
     }
-    return record.executor.runStep({
+    return executor.runStep({
       handle: input.handle,
       stepId: input.stepId,
       stepIndex: input.stepIndex,
@@ -143,7 +136,12 @@ function mergeKnownInputs(
 ): void {
   for (let index = 0; index < handle.plan.workflow.inputs.length; index += 1) {
     const id = handle.plan.workflow.inputs[index].id
-    if (objectHasOwn(source, id) && source[id] !== undefined) target[id] = source[id]
+    if (!objectHasOwn(source, id) || source[id] === undefined) continue
+    const bounded = snapshotBoundedWorkflowProviderEnvelope(source[id], MAX_BOB_INPUT_VALUE_BYTES)
+    if (bounded === undefined) {
+      throw new TypeError("Bob task input metadata exceeds its structural or byte limit.")
+    }
+    target[id] = bounded
   }
 }
 
@@ -157,11 +155,28 @@ function createCompiledBobAgentProvider(
   const startSubagent = bindAuditedBobTaskMethod(task, "task.startSubagent")
   return objectFreeze({
     run: async (input: AgentExecutionInput): Promise<string> => {
-      const result = extractSubagentResult(await startSubagent(input.prompt))
-      if (result === undefined) throw new Error("Bob subagent returned no usable result text.")
+      const result = exactSubagentResult(await startSubagent(input.prompt))
+      if (result === undefined) throw new Error("Bob subagent returned no exact result text.")
       return result
     }
   })
+}
+
+function exactSubagentResult(value: unknown): string | undefined {
+  if (typeof value === "string") return value
+  if (value === null || typeof value !== "object" || isProxy(value)) return undefined
+  const prototype = objectGetPrototypeOf(value)
+  if (prototype !== objectPrototype && prototype !== null) return undefined
+  const descriptors = objectGetOwnPropertyDescriptors(value)
+  const descriptor = descriptors.result
+  if (
+    descriptor === undefined
+    || !objectHasOwn(descriptor, "value")
+    || objectHasOwn(descriptor, "get")
+    || objectHasOwn(descriptor, "set")
+    || typeof descriptor.value !== "string"
+  ) return undefined
+  return descriptor.value
 }
 
 function hasCapability(
@@ -173,12 +188,13 @@ function hasCapability(
 }
 
 function safeRecord(value: unknown): Readonly<Record<string, unknown>> {
-  if (
-    value === null
-    || typeof value !== "object"
-    || isProxy(value)
-    || (objectGetPrototypeOf(value) !== objectPrototype && objectGetPrototypeOf(value) !== null)
-  ) return objectFreeze(objectCreate(null) as Record<string, unknown>)
+  if (value === null || typeof value !== "object" || isProxy(value)) {
+    return objectFreeze(objectCreate(null) as Record<string, unknown>)
+  }
+  const prototype = objectGetPrototypeOf(value)
+  if (prototype !== objectPrototype && prototype !== null) {
+    return objectFreeze(objectCreate(null) as Record<string, unknown>)
+  }
   const descriptors = objectGetOwnPropertyDescriptors(value)
   const keys = reflectOwnKeys(descriptors)
   if (keys.length > MAX_METADATA_FIELDS) throw new TypeError("Bob task metadata exceeds its field limit.")
