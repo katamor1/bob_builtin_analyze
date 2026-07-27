@@ -37,6 +37,9 @@ test("single and batch extraction check each request before fingerprinting", asy
   assert.ok(singleGuard > singleStart && singleGuard < singleFingerprint)
 
   const batchStart = text.indexOf("const fingerprinted = await Promise.all(requests.map(")
+  const allSignalsGuard = text.indexOf("for (const request of requests) throwIfCancelled(request.signal)")
+  assert.ok(allSignalsGuard >= 0 && allSignalsGuard < batchStart)
+
   const batchFingerprint = text.indexOf("const fingerprint = await fingerprintSource(", batchStart)
   const batchGuard = text.indexOf("throwIfCancelled(request.signal)", batchStart)
   assert.ok(batchGuard > batchStart && batchGuard < batchFingerprint)
