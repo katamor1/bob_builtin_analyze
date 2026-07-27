@@ -3,7 +3,6 @@ import {
   BOB_2_0_1_TASK_CAPABILITIES,
   probeBobTaskCapabilities
 } from "./core/contractV2/bobProfile"
-import type { CompiledWorkflowPlanHandle } from "./core/contractV2"
 import type {
   BobWorkflow,
   BobWorkflowStep,
@@ -12,6 +11,7 @@ import type {
   WorkflowDefinition,
   WorkflowTodoItem
 } from "./bobWorkflowTypes"
+import { executeWorkflowContractV2BobStep } from "./workflowContractV2BobProductExecutor"
 import { workflowContractV2Binding } from "./workflowContractV2View"
 
 const DEFAULT_BOB_TASK_BINDING: BobWorkflowTaskBinding = Object.freeze({
@@ -23,12 +23,6 @@ export interface BobWorkflowStepRunner {
   runSingleWorkflowStep: (task: BobWorkflowTask) => Promise<boolean>
   runTodoStep: (todo: WorkflowTodoItem, index: number, task: BobWorkflowTask) => Promise<boolean>
   runEngineStep: (stepId: string, index: number, task: BobWorkflowTask) => Promise<boolean>
-  runCompiledWorkflowStep?: (
-    handle: CompiledWorkflowPlanHandle,
-    stepId: string,
-    index: number,
-    task: BobWorkflowTask
-  ) => Promise<boolean>
 }
 
 export function createBobWorkflow(
@@ -39,7 +33,7 @@ export function createBobWorkflow(
   const compiled = workflowContractV2Binding(definition)
   const steps = compiled === undefined
     ? buildLegacyWorkflowSteps(definition, runner, bobTaskBinding)
-    : buildCompiledWorkflowSteps(compiled.handle, runner, bobTaskBinding)
+    : buildCompiledWorkflowSteps(definition, compiled.handle, bobTaskBinding)
   return {
     hidden: definition.hidden,
     getId: () => definition.id,
@@ -57,8 +51,8 @@ export function createBobWorkflow(
 }
 
 function buildCompiledWorkflowSteps(
-  handle: CompiledWorkflowPlanHandle,
-  runner: BobWorkflowStepRunner,
+  definition: WorkflowDefinition,
+  handle: NonNullable<ReturnType<typeof workflowContractV2Binding>>["handle"],
   bobTaskBinding: BobWorkflowTaskBinding
 ): BobWorkflowStep[] {
   return handle.plan.workflow.steps.map((step, index) => ({
@@ -66,12 +60,13 @@ function buildCompiledWorkflowSteps(
     title: step.title,
     execution: async (task) => {
       const auditedTask = probeTask(task, bobTaskBinding)
-      if (runner.runCompiledWorkflowStep === undefined) {
-        throw new Error(
-          `Contract v2 plan ${handle.planDigest} is compiled and registered, but compiled runtime execution is not enabled before R5.`
-        )
-      }
-      return runner.runCompiledWorkflowStep(handle, step.id, index, auditedTask)
+      return executeWorkflowContractV2BobStep({
+        definition,
+        handle,
+        stepId: step.id,
+        stepIndex: index,
+        task: auditedTask
+      })
     }
   }))
 }
