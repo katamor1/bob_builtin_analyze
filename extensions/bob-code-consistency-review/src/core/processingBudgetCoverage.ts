@@ -167,10 +167,10 @@ export function outcomeFromProcessingError(error: unknown): "failed" | "cancelle
 }
 
 export function assertCompleteProcessingCoverage(
-  report: unknown,
+  persisted: PersistedProcessingBudgetReport,
   expectedInputSha256: string
 ): SharedProcessingBudgetReport {
-  const normalized = validateProcessingBudgetReport(report, { expected_input_sha256: expectedInputSha256 })
+  const normalized = validateProcessingBudgetReport(persisted.report, { expected_input_sha256: expectedInputSha256 })
   if (normalized.outcome !== "success" || normalized.coverage_status !== "complete" || normalized.issues.length !== 0) {
     throw Object.assign(new Error("Processing coverage is incomplete; Bob handoff is blocked."), {
       code: "processing_coverage_incomplete",
