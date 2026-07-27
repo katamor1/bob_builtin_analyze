@@ -87,9 +87,10 @@ test("schema fixes every ledger category to canonical order, scope, unit, and ab
   })))
 })
 
-test("schema fixes target records to target-scoped category, unit, and maximum", () => {
+test("schema fixes target records and requires composite category/target uniqueness", () => {
   const targets = schema.$defs.ledger.properties.targets
   assert.equal(targets.uniqueItems, true)
+  assert.deepEqual(targets["x-bob-uniqueCompositeKeys"], ["category", "target"])
   const observed = targets.items.oneOf.map((entry) => {
     const definitionName = entry.$ref.split("/").at(-1)
     const constants = schema.$defs[definitionName].allOf[1].properties
