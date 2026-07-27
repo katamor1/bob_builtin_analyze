@@ -8,6 +8,7 @@ export interface CompiledWorkflowRunStore {
     inputs: Record<string, unknown>
   ): Promise<WorkflowRunState>
   saveRun(run: WorkflowRunState): Promise<void>
+  loadRun(runId: string): Promise<WorkflowRunState | undefined>
 }
 
 export interface CompiledWorkflowExecutionOptions {
@@ -32,7 +33,7 @@ export interface CompiledRuntimeContext {
 }
 
 export type CompiledStepExecutionResult =
-  | { readonly kind: "completed" }
+  | { readonly kind: "completed"; readonly run?: WorkflowRunState }
   | { readonly kind: "held" }
   | { readonly kind: "failed" }
 
