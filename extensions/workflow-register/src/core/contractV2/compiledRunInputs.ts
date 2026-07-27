@@ -10,6 +10,7 @@ import type { CompiledRuntimeContext, CompiledWorkflowExecutionOptions } from ".
 
 const isProxy = utilTypes.isProxy
 const arrayIsArray = Array.isArray
+const arrayPush = Array.prototype.push
 const objectCreate = Object.create
 const objectFreeze = Object.freeze
 const objectGetOwnPropertyDescriptors = Object.getOwnPropertyDescriptors
@@ -23,6 +24,18 @@ const STEP_ID_PATTERN = /^[A-Za-z][A-Za-z0-9]*(?:[._-][A-Za-z0-9]+)*$/u
 const MAX_INPUT_BYTES = 16_777_216
 
 export function validateCompiledWorkflowInputs(
+  plan: CompiledWorkflowPlan,
+  privateState: CompiledWorkflowPlanPrivateState,
+  value: unknown
+): Readonly<Record<string, JsonValue>> {
+  const accepted = prepareCompiledWorkflowInputs(plan, privateState, value)
+  if (missingRequiredCompiledWorkflowInputIds(plan, accepted).length > 0) {
+    throw new TypeError("Compiled workflow input is required.")
+  }
+  return accepted
+}
+
+export function prepareCompiledWorkflowInputs(
   plan: CompiledWorkflowPlan,
   privateState: CompiledWorkflowPlanPrivateState,
   value: unknown
@@ -57,8 +70,14 @@ export function validateCompiledWorkflowInputs(
     if (!validated.ok) throw new TypeError("Compiled workflow input failed its schema validation.")
     accepted[definition.id] = validated.value
   }
+  return objectFreeze(accepted)
+}
 
-  const frozen = objectFreeze(accepted)
+export function missingRequiredCompiledWorkflowInputIds(
+  plan: CompiledWorkflowPlan,
+  accepted: Readonly<Record<string, JsonValue>>
+): readonly string[] {
+  const missing: string[] = []
   const emptyOutputs = objectFreeze(objectCreate(null) as JsonObject)
   for (let index = 0; index < plan.workflow.inputs.length; index += 1) {
     const definition = plan.workflow.inputs[index]
@@ -70,14 +89,14 @@ export function validateCompiledWorkflowInputs(
         "entry",
         "inputRequiredWhen",
         index,
-        { input: frozen, outputs: emptyOutputs as Record<string, JsonValue> }
+        { input: accepted, outputs: emptyOutputs as Record<string, JsonValue> }
       )
     )
-    if (required && !objectHasOwn(frozen, definition.id)) {
-      throw new TypeError("Compiled workflow input is required.")
+    if (required && !objectHasOwn(accepted, definition.id)) {
+      reflectApply(arrayPush, missing, [definition.id])
     }
   }
-  return frozen
+  return objectFreeze(missing)
 }
 
 export function assertCompiledRequiredArtifactSupport(plan: CompiledWorkflowPlan): void {
