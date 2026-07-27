@@ -88,7 +88,7 @@ function preflightOoxmlArchive(input) {
     }
 
     for (const item of reservations) contents.push({ entry: item.entry, content: inflateEntry(options.archive, item.entry) })
-    const byName = new Map(contents.map(({ entry, content }) => [entry.name, Buffer.from(content)]))
+    const byName = new Map(contents.map(({ entry, content }) => [entry.name, content]))
     const documentKind = detectOoxmlKind(byName)
     if (options.expectedKind !== undefined && documentKind !== options.expectedKind) {
       throw processingError("ooxml_kind_mismatch", `OOXML archive is ${documentKind}, not ${options.expectedKind}`)
@@ -158,7 +158,7 @@ function parseZipDirectory(archive, options) {
     const nameLength = readUInt16(archive, offset + 28)
     const extraLength = readUInt16(archive, offset + 30)
     const commentLength = readUInt16(archive, offset + 32)
-    const startingDisk = readUInt16(archive, offset + 34)
+    const startingDisk = readUInt32(archive, offset + 34)
     const localOffset = readUInt32(archive, offset + 42)
     if (startingDisk !== 0) throw processingError("archive_multidisk_unsupported", "multi-disk ZIP entries are unsupported")
     if (compressedSize === ZIP64_UINT32 || uncompressedSize === ZIP64_UINT32 || localOffset === ZIP64_UINT32) throw processingError("archive_zip64_unsupported", "ZIP64 entries are unsupported")
