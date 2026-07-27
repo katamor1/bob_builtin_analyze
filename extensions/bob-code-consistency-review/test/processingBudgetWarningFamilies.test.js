@@ -26,13 +26,26 @@ test("code and ledger warning families block complete coverage regardless of wor
   assert.equal(issues.filter((issue) => issue.code === "artifact_ledger_incomplete").length, 1)
 })
 
-test("repository cache invalidation alone is not treated as evidence loss after a complete rebuild", () => {
+test("repository cache recovery warnings are not evidence loss after a complete rebuild", () => {
   const issues = coverageIssuesFromWarnings({
     ledger: new ProcessingBudgetLedger(),
     repositoryWarnings: [
+      "repository index cache ignored: Unexpected token } in JSON at position 4",
       "repository index cache invalidated: producer identity or options changed"
     ]
   })
 
   assert.deepEqual(issues, [])
+})
+
+test("unknown repository warnings still block complete coverage", () => {
+  const issues = coverageIssuesFromWarnings({
+    ledger: new ProcessingBudgetLedger(),
+    repositoryWarnings: [
+      "repository index omitted an unsupported source"
+    ]
+  })
+
+  assert.equal(issues.length, 1)
+  assert.equal(issues[0].code, "repository_evidence_incomplete")
 })
