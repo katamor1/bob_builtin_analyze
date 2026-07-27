@@ -109,7 +109,7 @@ function preflightOoxmlArchive(input) {
     const byName = new Map()
     for (const { entry, content } of contents) {
       throwIfCancelled(options.signal)
-      byName.set(entry.name, Buffer.from(content))
+      byName.set(entry.name, content)
     }
     const documentKind = detectOoxmlKind(byName)
     if (options.expectedKind !== undefined && documentKind !== options.expectedKind) {
