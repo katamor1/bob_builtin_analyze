@@ -10,7 +10,7 @@ function source(relative) {
 }
 
 function ordered(...parts) {
-  return new RegExp(parts.map(escapeRegex).join('[\\s\\S]*'))
+  return new RegExp(parts.map(escapeRegex).join('[\s\S]*'))
 }
 
 function escapeRegex(value) {
@@ -53,7 +53,7 @@ test('resume retry approval and abort paths reject Contract v2 continuation with
   assert.doesNotMatch(runtime, /acquireRunLease\?\.\(options\.workflow\)/)
 })
 
-test('Bob legacy input collection does not acquire a Contract v2 lease before the compiled Bob boundary', () => {
+test('Bob legacy input collection stays separate while compiled Bob execution starts after the F7 probe', () => {
   const runtime = source('workflowRuntimeFactory.ts')
   const factory = source('bobWorkflowFactory.ts')
   assert.match(runtime, ordered(
@@ -62,8 +62,11 @@ test('Bob legacy input collection does not acquire a Contract v2 lease before th
     'this.options.inputsProvider(workflow,'
   ))
   assert.doesNotMatch(runtime, /inputsProvider:[\s\S]*await beforeRun\?\./)
-  assert.match(factory, /runCompiledWorkflowStep === undefined/)
-  assert.match(factory, /compiled runtime execution is not enabled before R5/)
+  assert.match(factory, ordered(
+    'const auditedTask = probeTask',
+    'executeWorkflowContractV2BobStep({'
+  ))
+  assert.doesNotMatch(factory, /runCompiledWorkflowStep|not enabled before R5/)
 })
 
 test('direct run-state creation uses only the exact active lease context and never reacquires current evidence', () => {
