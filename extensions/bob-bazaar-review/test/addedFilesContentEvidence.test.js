@@ -74,3 +74,32 @@ test("zero added-file budget records skipped text files without reading them", a
   assert.equal(result.evidence.skippedFileCount, 1)
   assert.deepEqual(result.evidence.readFailures, [])
 })
+
+test("binary added files are counted as unprocessed with a positive budget", async () => {
+  const binaryInfo = {
+    ...info,
+    changedFiles: ["assets/new.bin"],
+    changedFileEntries: [{ path: "assets/new.bin", status: "added", binary: true }]
+  }
+  const result = await buildAddedFilesContent({
+    cat: async () => { throw new Error("binary cat must not be called") }
+  }, "/repo", "1", binaryInfo, 128)
+
+  assert.equal(result.evidence.skippedFileCount, 1)
+  assert.deepEqual(result.evidence.readFailures, [])
+  assert.match(result.section, /\[BINARY:/u)
+})
+
+test("zero added-file budget counts binary files as skipped evidence", async () => {
+  const binaryInfo = {
+    ...info,
+    changedFiles: ["assets/new.bin"],
+    changedFileEntries: [{ path: "assets/new.bin", status: "added", binary: true }]
+  }
+  const result = await buildAddedFilesContent({
+    cat: async () => { throw new Error("binary cat must not be called") }
+  }, "/repo", "1", binaryInfo, 0)
+
+  assert.equal(result.section, undefined)
+  assert.equal(result.evidence.skippedFileCount, 1)
+})
