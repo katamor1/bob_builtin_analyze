@@ -96,7 +96,7 @@ export async function prepareTarget(
     const targetRevision = request.targetRevision ?? ""
     const [diff, log] = await Promise.all([
       client.diffRange(root, baseRevision, targetRevision),
-      client.log(root, targetRevision).catch(() => undefined)
+      client.log(root, targetRevision).catch(ignoreNonCancellationCommandFailure)
     ])
     const entries = parseChangedFileEntries(diff.stdout)
     const info = makeRangeTargetInfo(baseRevision, targetRevision, log?.stdout, entries)
@@ -126,9 +126,12 @@ export async function prepareTarget(
     const topRevision = request.baseRevision ?? await client.revno(root)
     const [diff, status] = await Promise.all([
       client.diffWorkingTree(root, topRevision),
-      client.status(root).catch(() => undefined)
+      client.status(root).catch(ignoreNonCancellationCommandFailure)
     ])
     const entries = parseChangedFileEntries(diff.stdout)
+    const addedFilesEvidence = options.includeAddedFiles
+      ? workingTreeAddedFilesEvidence(entries)
+      : undefined
     return {
       root,
       diff,
@@ -144,7 +147,8 @@ export async function prepareTarget(
         changedFileCount: entries.length,
         changedFiles: entries.map((entry) => entry.path),
         changedFileEntries: entries
-      }
+      },
+      ...(addedFilesEvidence === undefined ? {} : { addedFilesEvidence })
     }
   }
 
@@ -240,6 +244,33 @@ function targetInfoToSyntheticRevisionInfo(info: TargetInfo, revision: string): 
     changedFileEntries: info.changedFileEntries,
     logText: ""
   }
+}
+
+function workingTreeAddedFilesEvidence(entries: readonly BazaarChangedFile[]): AddedFilesContentEvidence {
+  const skippedFileCount = entries.filter((entry) => entry.status === "added").length
+  return Object.freeze({
+    observedContentBytes: 0,
+    processedContentBytes: 0,
+    renderedContentBytes: 0,
+    truncated: false,
+    skippedFileCount,
+    readFailures: Object.freeze([])
+  })
+}
+
+function ignoreNonCancellationCommandFailure(error: unknown): undefined {
+  if (isCancellationOrDeadlineError(error)) throw error
+  return undefined
+}
+
+function isCancellationOrDeadlineError(error: unknown): boolean {
+  if (error === null || typeof error !== "object") return false
+  const record = error as Record<string, unknown>
+  return record.code === "processing_cancelled"
+    || record.kind === "cancelled"
+    || record.kind === "timeout"
+    || record.terminationCause === "user"
+    || record.terminationCause === "deadline"
 }
 
 function parseLogMetadataLike(logText: string): {
