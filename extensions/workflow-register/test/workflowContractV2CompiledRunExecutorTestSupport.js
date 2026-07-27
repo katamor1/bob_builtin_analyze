@@ -100,7 +100,7 @@ function workflowYaml(options) {
     "      kind: value",
     "      id: providerResult",
     "      schema: schemas/output.json",
-    "      maxBytes: 4096"
+    `      maxBytes: ${options.maxOutputBytes ?? 4096}`
   ]
   const step = stepType === "agent"
     ? [
@@ -143,7 +143,7 @@ function workflowYaml(options) {
         "    output: { kind: value, schema: schemas/output.json }",
         "    errorSchema: schemas/error.json",
         `    sideEffect: ${sideEffect}`,
-        "    idempotency: idempotent",
+        `    idempotency: ${options.idempotency ?? "idempotent"}`,
         ...requiredCapabilities
       ]
 
@@ -209,7 +209,7 @@ async function compiledRuntime(t, options = {}) {
       output: { kind: "value", schema: schemas.output.evidence },
       errorSchema: schemas.error.evidence,
       sideEffect: options.sideEffect ?? "none",
-      idempotency: "idempotent",
+      idempotency: options.idempotency ?? "idempotent",
       requiredCapabilities: options.sideEffect === "workspace-write"
         ? ["workflow.effect.workspace-write"]
         : options.sideEffect === "external"
@@ -274,7 +274,11 @@ async function compiledRuntime(t, options = {}) {
   const workspaceRoot = await fsp.mkdtemp(path.join(os.tmpdir(), "workflow-contract-v2-r4-"))
   t.after(() => fsp.rm(workspaceRoot, { recursive: true, force: true }))
   const { ContractV2GuardedRunStateStore } = require("../out/workflowContractV2RunStateStore.js")
-  const runStore = new ContractV2GuardedRunStateStore({ workspaceRoot, engineVersion: "test" })
+  const runStore = new ContractV2GuardedRunStateStore({
+    workspaceRoot,
+    engineVersion: "test",
+    ...(options.runStoreOptions ?? {})
+  })
   const runWithLease = require("../out/core/contractV2/runPlanProvenance.js").runWithWorkflowContractV2PlanLease
 
   return {
