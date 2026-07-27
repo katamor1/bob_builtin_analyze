@@ -49,7 +49,7 @@ const functionHasInstance = Function.prototype[Symbol.hasInstance]
 const RUN_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,255}$/u
 const regexpTest = RegExp.prototype.test
 const FRESH_INPUT_FIELDS = objectFreeze([
-  "lease", "inputs", "options", "workspaceRoot", "runStore", "signal", "agentProvider"
+  "lease", "inputs", "options", "workspaceRoot", "runStore", "signal", "agentProvider", "onRunCreated"
 ] as const)
 const FRESH_REQUIRED_FIELDS = objectFreeze([
   "lease", "inputs", "options", "workspaceRoot", "runStore", "signal"
@@ -79,6 +79,7 @@ export async function executeCompiledWorkflowRun(
   const run = await runStore.createRunFromPlanLease(lease, runtimeInputs)
   persistCompiledOutputs(run, outputs)
   await runStore.saveRun(run)
+  notifyRunCreated(snapshot.onRunCreated, run)
   return runCompiledWorkflowState({
     lease,
     plan: handle.plan,
@@ -168,8 +169,10 @@ function requireContinuationRun(
   if (run.workflowId !== lease.handle.plan.workflowId || run.workflowDefinitionHash !== lease.planDigest) {
     throw new TypeError("Compiled workflow continuation run does not match its plan lease.")
   }
-  if (run.status !== "paused" && run.status !== "running") {
-    throw new TypeError("Compiled workflow continuation requires a paused or running run.")
+  if (run.status !== "paused") {
+    throw new TypeError(
+      "In-process compiled continuation requires a paused run; running or recovered runs require R6 reconciliation."
+    )
   }
   return run
 }
@@ -262,6 +265,14 @@ function requireRunId(value: unknown): string {
     || !(reflectApply(regexpTest, RUN_ID_PATTERN, [value]) as boolean)
   ) throw new TypeError("Compiled workflow continuation run id is invalid.")
   return value
+}
+
+function notifyRunCreated(value: unknown, run: WorkflowRunState): void {
+  if (value === undefined) return
+  if (typeof value !== "function" || isProxy(value)) {
+    throw new TypeError("Compiled workflow run-created callback is invalid.")
+  }
+  reflectApply(value, undefined, [run])
 }
 
 function dataValue(descriptor: PropertyDescriptor | undefined): unknown {
