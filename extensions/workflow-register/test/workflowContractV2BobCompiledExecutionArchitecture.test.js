@@ -42,10 +42,10 @@ test("the process plan store leases the exact registered handle", () => {
   assert.match(product, /acquireLease: acquireWorkflowPlanHandle/)
 })
 
-test("F7 owns task method binding after the immediate task probe", () => {
-  const profile = source("core/contractV2/bobProfile.ts")
+test("the Contract v2 core owns task method binding after the immediate F7 probe", () => {
+  const binding = source("core/contractV2/bobTaskMethodBinding.ts")
   const product = source("workflowContractV2BobProductExecutor.ts")
-  assert.match(profile, /export function bindAuditedBobTaskMethod/)
+  assert.match(binding, /export function bindAuditedBobTaskMethod/)
   assert.match(product, /bindAuditedBobTaskMethod/)
   assert.doesNotMatch(product, /Object\.getOwnPropertyDescriptors|prototype chain/)
   assert.equal(fs.existsSync(path.join(root, "workflowContractV2BobTaskMethods.ts")), false)
