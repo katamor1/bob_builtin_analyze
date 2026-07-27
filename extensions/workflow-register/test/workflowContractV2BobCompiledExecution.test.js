@@ -71,6 +71,7 @@ test("compiled Bob steps share one exact lease and one durable run across the li
       assert.equal(input.options.stepId, "first")
       const value = run("paused", "second", [["first", "completed"], ["second", "pending"]])
       durable.set(value.runId, value)
+      input.onRunCreated?.(value)
       return value
     },
     runContinuation: async (input) => {
@@ -146,9 +147,10 @@ test("a stale or different compiled handle cannot join an existing Bob task sess
     resolveInputs: async () => ({}),
     createRunStore: () => ({ loadRun: async (runId) => durable.get(runId) }),
     createAgentProvider: () => undefined,
-    runFresh: async () => {
+    runFresh: async (input) => {
       const value = run("paused", "second", [["first", "completed"], ["second", "pending"]])
       durable.set(value.runId, value)
+      input.onRunCreated?.(value)
       return value
     },
     runContinuation: async () => { throw new Error("must not continue") },
@@ -186,9 +188,10 @@ test("a duplicate completed Bob step is idempotent and does not continue or acqu
     resolveInputs: async () => ({}),
     createRunStore: () => ({ loadRun: async (runId) => durable.get(runId) }),
     createAgentProvider: () => undefined,
-    runFresh: async () => {
+    runFresh: async (input) => {
       const value = run("paused", "second", [["first", "completed"], ["second", "pending"]])
       durable.set(value.runId, value)
+      input.onRunCreated?.(value)
       return value
     },
     runContinuation: async () => {
@@ -238,4 +241,52 @@ test("setup failure releases a pre-run Bob lease", async () => {
     allowOutOfOrder: false
   }), /metadata failed/)
   assert.equal(lease.released, true)
+})
+
+test("a durable running run remains bound after first-step failure and cannot be recreated", async () => {
+  const selectedHandle = handle()
+  const selectedTask = task()
+  const durable = new Map()
+  const lease = { handle: selectedHandle, released: false, release() { this.released = true } }
+  let acquisitions = 0
+  let fresh = 0
+  const executor = new (subject().WorkflowContractV2BobExecutor)({
+    acquireLease: async () => {
+      acquisitions += 1
+      return lease
+    },
+    resolveInputs: async () => ({}),
+    createRunStore: () => ({ loadRun: async (runId) => durable.get(runId) }),
+    createAgentProvider: () => undefined,
+    runFresh: async (input) => {
+      fresh += 1
+      const value = run("running", "first", [["first", "running"], ["second", "pending"]])
+      durable.set(value.runId, value)
+      input.onRunCreated(value)
+      throw new Error("post-create execution failed")
+    },
+    runContinuation: async () => { throw new Error("must not continue a running run") },
+    runWithLease: async (_lease, operation) => operation()
+  })
+
+  await assert.rejects(() => executor.runStep({
+    handle: selectedHandle,
+    stepId: "first",
+    stepIndex: 0,
+    task: selectedTask,
+    workspaceRoot: "/workspace",
+    allowOutOfOrder: false
+  }), /post-create execution failed/)
+  assert.equal(lease.released, false)
+
+  await assert.rejects(() => executor.runStep({
+    handle: selectedHandle,
+    stepId: "first",
+    stepIndex: 0,
+    task: selectedTask,
+    workspaceRoot: "/workspace",
+    allowOutOfOrder: false
+  }), /paused run|R6 reconciliation/i)
+  assert.equal(acquisitions, 1)
+  assert.equal(fresh, 1)
 })
