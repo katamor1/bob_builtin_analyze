@@ -105,6 +105,11 @@ export class WorkflowContractV2BobExecutor {
         return true
       }
       if (durable.status === "completed" || durable.status === "failed") return false
+      if (durable.status !== "paused" || existing.lease.released) {
+        throw new TypeError(
+          "Live Bob task continuation requires a paused run and its retained lease; R6 reconciliation is required."
+        )
+      }
       if (durable.currentStep !== input.stepId) {
         throw new TypeError("Bob task session is not positioned at the requested compiled step.")
       }
@@ -133,7 +138,7 @@ export class WorkflowContractV2BobExecutor {
       lease.release()
       throw new TypeError("Compiled Bob lease does not contain the registered plan handle.")
     }
-    let enteredLeaseScope = false
+    let session: BobCompiledSession | undefined
     try {
       const inputs = await promiseResolve(this.options.resolveInputs(input.task))
       if (inputs === undefined) {
@@ -142,7 +147,22 @@ export class WorkflowContractV2BobExecutor {
       }
       const runStore = this.options.createRunStore(input.workspaceRoot)
       const agentProvider = this.options.createAgentProvider(input.task)
-      enteredLeaseScope = true
+      const bindSession = (run: WorkflowRunState): void => {
+        if (session !== undefined) {
+          if (session.runId !== run.runId) {
+            throw new TypeError("Compiled Bob execution attempted to replace its live durable run.")
+          }
+          return
+        }
+        session = objectFreeze({
+          handle: input.handle,
+          lease,
+          runStore,
+          workspaceRoot: input.workspaceRoot,
+          runId: run.runId
+        })
+        weakMapSet(this.sessions, task, session)
+      }
       const run = await this.runWithLease(lease, () => this.runFresh({
         lease,
         inputs,
@@ -154,19 +174,13 @@ export class WorkflowContractV2BobExecutor {
         workspaceRoot: input.workspaceRoot,
         runStore,
         signal: new AbortController().signal,
-        agentProvider
+        agentProvider,
+        onRunCreated: bindSession
       }))
-      const session: BobCompiledSession = objectFreeze({
-        handle: input.handle,
-        lease,
-        runStore,
-        workspaceRoot: input.workspaceRoot,
-        runId: run.runId
-      })
-      weakMapSet(this.sessions, task, session)
+      bindSession(run)
       return stepSucceeded(run, stepIndex, step.required)
     } catch (error) {
-      if (!enteredLeaseScope && !lease.released) lease.release()
+      if (session === undefined && !lease.released) lease.release()
       throw error
     }
   }
