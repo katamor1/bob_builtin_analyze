@@ -2,15 +2,18 @@ import { types as utilTypes } from "node:util"
 import * as vscode from "vscode"
 
 import { bindAuditedBobTaskMethod } from "./core/contractV2/bobTaskMethodBinding"
+import { requireCompiledWorkflowPlanState, type CompiledWorkflowPlanHandle } from "./core/contractV2/compiledPlan"
+import {
+  missingRequiredCompiledWorkflowInputIds,
+  prepareCompiledWorkflowInputs
+} from "./core/contractV2/compiledRunInputs"
 import { acquireWorkflowPlanHandle } from "./core/contractV2/planStore"
-import type { CompiledWorkflowPlanHandle } from "./core/contractV2/compiledPlan"
 import type { BobTaskCapabilityName } from "./core/contractV2/bobProfile"
 import { snapshotBoundedWorkflowProviderEnvelope } from "./core/contractV2/providerEnvelopeSnapshot"
 import type { AgentExecutionInput, AgentProvider } from "./core/model"
 import { ContractV2GuardedRunStateStore } from "./workflowContractV2RunStateStore"
 import { WorkflowContractV2BobExecutor } from "./workflowContractV2BobExecutor"
 import type { BobWorkflowTask, WorkflowDefinition } from "./bobWorkflowTypes"
-import { collectBobWorkflowInputs } from "./workflowInputPrompt"
 import { workflowContractV2Binding } from "./workflowContractV2View"
 import { workspaceRootFromFile } from "./core/workspaceRoots"
 
@@ -26,6 +29,7 @@ const isProxy = utilTypes.isProxy
 const arrayIsArray = Array.isArray
 const arrayPrototype = Array.prototype
 const arrayPush = Array.prototype.push
+const jsonParse = JSON.parse
 const objectCreate = Object.create
 const objectFreeze = Object.freeze
 const objectGetOwnPropertyDescriptors = Object.getOwnPropertyDescriptors
@@ -64,10 +68,9 @@ export async function executeWorkflowContractV2BobStep(
     }
     let executor = weakMapGet(executors, input.handle)
     if (executor === undefined) {
-      const definition = input.definition
       executor = new WorkflowContractV2BobExecutor({
         acquireLease: acquireWorkflowPlanHandle,
-        resolveInputs: (task) => resolveCompiledBobInputs(definition, input.handle, task),
+        resolveInputs: (task) => resolveCompiledBobInputs(input.handle, task),
         createRunStore: (root) => new ContractV2GuardedRunStateStore({
           workspaceRoot: root,
           engineVersion: "workflow-register-contract-v2-bob"
@@ -92,10 +95,9 @@ export async function executeWorkflowContractV2BobStep(
 }
 
 async function resolveCompiledBobInputs(
-  definition: WorkflowDefinition,
   handle: CompiledWorkflowPlanHandle,
   task: BobWorkflowTask
-): Promise<Record<string, unknown> | undefined> {
+): Promise<Readonly<Record<string, unknown>> | undefined> {
   const provided = objectCreate(null) as Record<string, unknown>
   const capabilities = handle.plan.bobProfileBinding.taskCapabilities
   if (hasCapability(capabilities, "task.getAllMetadata")) {
@@ -113,7 +115,18 @@ async function resolveCompiledBobInputs(
       mergeKnownInputs(handle, provided, safeRecord(workflow.inputs))
     }
   }
-  return collectBobWorkflowInputs(definition, provided)
+
+  const privateState = requireCompiledWorkflowPlanState(handle)
+  for (;;) {
+    const accepted = prepareCompiledWorkflowInputs(handle.plan, privateState, provided)
+    const missing = missingRequiredCompiledWorkflowInputIds(handle.plan, accepted)
+    if (missing.length === 0) return accepted
+    const id = missing[0]
+    const definition = findCompiledInput(handle, id)
+    const value = await promptCompiledBobInput(definition)
+    if (value === undefined) return undefined
+    provided[id] = value
+  }
 }
 
 function mergeInputSources(
@@ -143,6 +156,32 @@ function mergeKnownInputs(
     }
     target[id] = bounded
   }
+}
+
+async function promptCompiledBobInput(
+  definition: CompiledWorkflowPlanHandle["plan"]["workflow"]["inputs"][number]
+): Promise<unknown> {
+  const raw = await vscode.window.showInputBox({
+    title: definition.title,
+    prompt: definition.description ?? `${definition.id} をJSON値または文字列として入力してください。`,
+    ignoreFocusOut: true
+  })
+  if (raw === undefined) return undefined
+  try {
+    return reflectApply(jsonParse, JSON, [raw]) as unknown
+  } catch {
+    return raw
+  }
+}
+
+function findCompiledInput(
+  handle: CompiledWorkflowPlanHandle,
+  id: string
+): CompiledWorkflowPlanHandle["plan"]["workflow"]["inputs"][number] {
+  for (let index = 0; index < handle.plan.workflow.inputs.length; index += 1) {
+    if (handle.plan.workflow.inputs[index].id === id) return handle.plan.workflow.inputs[index]
+  }
+  throw new TypeError("Compiled Bob input definition is unavailable.")
 }
 
 function createCompiledBobAgentProvider(
