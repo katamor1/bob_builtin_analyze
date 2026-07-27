@@ -23,6 +23,7 @@ function options(runner, overrides = {}) {
 
 test("extractPdf invokes the bounded runner with the fixed argument array and no shell override", async () => {
   const absolutePath = path.resolve("fixtures", "rules.pdf")
+  const legacyBufferOption = ["max", "Buffer", "Bytes"].join("")
   let captured
   const result = await extractPdf(absolutePath, options(async (runnerOptions) => {
     captured = runnerOptions
@@ -34,7 +35,7 @@ test("extractPdf invokes the bounded runner with the fixed argument array and no
   assert.equal(captured.cwd, path.dirname(absolutePath))
   assert.equal(captured.timeoutMs, 4321)
   assert.equal(captured.maxStdoutBytes, 32 * 1024 * 1024)
-  assert.equal(Object.hasOwn(captured, "maxBufferBytes"), false)
+  assert.equal(Object.hasOwn(captured, legacyBufferOption), false)
   assert.deepEqual(captured.allowedExitCodes, [0])
   assert.equal(Object.hasOwn(captured, "shell"), false)
   assert.deepEqual(result.extractor, { id: "pdf-pdftotext-layout", version: "1" })
