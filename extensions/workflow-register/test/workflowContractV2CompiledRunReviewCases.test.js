@@ -37,15 +37,35 @@ test("single-step execution honors an explicit failing transition", async (t) =>
   assert.equal(run.status, "failed")
 })
 
-test("an optional provider failure records the step failure and completes lexically", async (t) => {
+test("an optional key-required provider failure consumes its logical pass before lexical completion", async (t) => {
+  let firstKey
   const runtime = await compiledRuntime(t, {
     required: false,
-    dispatch: () => ({ unexpected: true })
+    idempotency: "key-required",
+    dispatch: (input) => {
+      firstKey = input.idempotency.key
+      return { unexpected: true }
+    }
   })
   const run = await runtime.runWithLease(runtime.lease, () => subject().executeCompiledWorkflowRun(runInput(runtime, {})))
   assert.equal(run.status, "completed")
   assert.equal(run.steps[0].status, "failed")
   assert.deepEqual(JSON.parse(run.state["workflow.contractV2.committedOutputs"]), {})
+  assert.equal(run.state["workflow.contractV2.executionOrdinal.invoke"], "1")
+
+  const values = require("../out/core/contractV2/compiledRunValues.js")
+  const provider = runtime.lease.handle.plan.providerBindings[0]
+  const nextOrdinal = values.compiledLogicalEffectOrdinal(run, "invoke")
+  const nextKey = values.compiledProviderIdempotencyKey({
+    runId: run.runId,
+    stepId: "invoke",
+    logicalEffectOrdinal: nextOrdinal,
+    inputDigest: runtime.canonical.canonicalJsonDigest({ message: "hello" }),
+    planDigest: runtime.lease.planDigest,
+    provider
+  })
+  assert.equal(nextOrdinal, 2)
+  assert.notEqual(firstKey, nextKey)
 })
 
 test("terminal fresh runs release their adopted plan lease", async (t) => {
@@ -76,6 +96,20 @@ test("agent JSON text is decoded into the compiled structured value", async (t) 
   const runtime = await compiledRuntime(t, { stepType: "agent" })
   const run = await runtime.runWithLease(runtime.lease, () => subject().executeCompiledWorkflowRun(runInput(runtime, {}, {
     agentProvider: { run: () => '{"ok":true}' }
+  })))
+  assert.equal(run.status, "completed")
+  assert.deepEqual(JSON.parse(run.state["workflow.contractV2.committedOutputs"]), {
+    providerResult: { ok: true }
+  })
+})
+
+test("pretty agent JSON is accepted when its canonical value fits maxBytes", async (t) => {
+  const runtime = await compiledRuntime(t, {
+    stepType: "agent",
+    maxOutputBytes: 11
+  })
+  const run = await runtime.runWithLease(runtime.lease, () => subject().executeCompiledWorkflowRun(runInput(runtime, {}, {
+    agentProvider: { run: () => '{\n  "ok": true\n}' }
   })))
   assert.equal(run.status, "completed")
   assert.deepEqual(JSON.parse(run.state["workflow.contractV2.committedOutputs"]), {
