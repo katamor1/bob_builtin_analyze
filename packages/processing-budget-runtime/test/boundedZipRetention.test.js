@@ -12,6 +12,6 @@ test("OOXML preflight retains each inflated entry once and copies only at the pu
   )
 
   assert.doesNotMatch(source, /Buffer\.from\(content\)/u)
-  assert.match(source, /\[entry\.name,\s*content\]/u)
+  assert.match(source, /(?:\[entry\.name,\s*content\]|byName\.set\(entry\.name,\s*content\))/u)
   assert.match(source, /copyEntry\(name\)[\s\S]*Uint8Array\.from\(content\)/u)
 })
