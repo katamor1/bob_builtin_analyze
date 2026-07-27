@@ -9,6 +9,7 @@ import {
 import type { JsonValue } from "./jsonValue"
 import { requireActiveWorkflowPlanLeaseHandle, type WorkflowPlanLease } from "./planLease"
 import {
+  assertCompiledRequiredArtifactSupport,
   compiledEntryPredicateAllows,
   compiledStartIndex,
   evaluateCompiledPredicateRecord,
@@ -25,6 +26,7 @@ import type {
   CompiledWorkflowRunStore,
   ExecuteCompiledWorkflowRunInput
 } from "./compiledRunTypes"
+import { releaseWorkflowContractV2RunPlanLease } from "./runPlanProvenance"
 import type { WorkflowRunState } from "../model"
 
 export type {
@@ -76,6 +78,8 @@ export async function executeCompiledWorkflowRun(
   const runStore = requireRunStore(snapshot.runStore)
   const options = snapshotCompiledExecutionOptions(snapshot.options)
   const runtimeInputs = validateCompiledWorkflowInputs(handle.plan, privateState, snapshot.inputs)
+  assertCompiledRequiredArtifactSupport(handle.plan)
+  let index = compiledStartIndex(handle.plan, options)
   const outputs = objectCreate(null) as Record<string, JsonValue>
   const context: CompiledRuntimeContext = objectFreeze({ input: runtimeInputs, outputs })
 
@@ -83,20 +87,43 @@ export async function executeCompiledWorkflowRun(
   persistCompiledOutputs(run, outputs)
   await runStore.saveRun(run)
 
-  let index = compiledStartIndex(handle.plan, options)
   let dispatches = 0
   while (index >= 0 && index < handle.plan.workflow.steps.length) {
     dispatches += 1
     if (dispatches > MAX_STEP_DISPATCHES) {
-      return failRun(runStore, run, "Compiled workflow exceeded its step-dispatch limit.")
+      return failRun(runStore, run, snapshot.workspaceRoot as string, "Compiled workflow exceeded its step-dispatch limit.")
     }
-    if (signal.aborted) return failRun(runStore, run, "Compiled workflow execution was cancelled.")
+    if (signal.aborted) {
+      return failRun(runStore, run, snapshot.workspaceRoot as string, "Compiled workflow execution was cancelled.")
+    }
 
     const step = handle.plan.workflow.steps[index]
     const stepState = run.steps[index]
     if (stepState === undefined || stepState.id !== step.id) {
-      return failRun(runStore, run, "Compiled workflow run step evidence does not match the plan.")
+      return failRun(
+        runStore,
+        run,
+        snapshot.workspaceRoot as string,
+        "Compiled workflow run step evidence does not match the plan."
+      )
     }
+
+    if (!compiledEntryPredicateAllows(handle.plan, step, index, context)) {
+      run.currentStep = step.id
+      run.status = "running"
+      stepState.status = "completed"
+      stepState.completedAt = now()
+      delete stepState.startedAt
+      delete stepState.error
+      run.state[`workflow.contractV2.skipped.${step.id}`] = "true"
+      await runStore.saveRun(run)
+      if (options.executionMode === "singleStep") {
+        return pauseSingleStepAt(runStore, run, snapshot.workspaceRoot as string, handle.plan, index + 1)
+      }
+      index += 1
+      continue
+    }
+
     run.currentStep = step.id
     run.status = "running"
     stepState.status = "running"
@@ -105,16 +132,6 @@ export async function executeCompiledWorkflowRun(
     delete stepState.completedAt
     delete stepState.error
     await runStore.saveRun(run)
-
-    if (!compiledEntryPredicateAllows(handle.plan, step, index, context)) {
-      stepState.status = "completed"
-      stepState.completedAt = now()
-      run.state[`workflow.contractV2.skipped.${step.id}`] = "true"
-      await runStore.saveRun(run)
-      if (options.executionMode === "singleStep") return completeRun(runStore, run)
-      index += 1
-      continue
-    }
 
     let result
     try {
@@ -132,16 +149,46 @@ export async function executeCompiledWorkflowRun(
         stepIndex: index
       })
     } catch {
-      return failStep(runStore, run, index, "Compiled workflow step execution failed.")
+      const failed = await failStep(
+        runStore,
+        run,
+        snapshot.workspaceRoot as string,
+        index,
+        "Compiled workflow step execution failed.",
+        step.required
+      )
+      if (step.required) return failed
+      if (options.executionMode === "singleStep") {
+        return pauseSingleStepAt(runStore, run, snapshot.workspaceRoot as string, handle.plan, index + 1)
+      }
+      index += 1
+      continue
     }
 
-    if (result.kind === "held" || result.kind === "failed") return run
-    if (options.executionMode === "singleStep") return completeRun(runStore, run)
+    if (result.kind === "held") return run
+    if (result.kind === "failed") {
+      if (step.required) {
+        releaseWorkflowContractV2RunPlanLease(snapshot.workspaceRoot as string, run.runId)
+        return run
+      }
+      if (options.executionMode === "singleStep") {
+        return pauseSingleStepAt(runStore, run, snapshot.workspaceRoot as string, handle.plan, index + 1)
+      }
+      index += 1
+      continue
+    }
 
     const transition = selectCompiledTransition(handle.plan, step, index, context, run)
-    if (transition.kind === "end") return completeRun(runStore, run)
+    if (transition.kind === "end") {
+      return completeRun(runStore, run, snapshot.workspaceRoot as string)
+    }
     if (transition.kind === "fail") {
-      return failRun(runStore, run, transition.message ?? "Compiled workflow transition selected failure.")
+      return failRun(
+        runStore,
+        run,
+        snapshot.workspaceRoot as string,
+        transition.message ?? "Compiled workflow transition selected failure."
+      )
     }
     if (transition.kind === "checkpoint") {
       run.status = "held"
@@ -151,10 +198,14 @@ export async function executeCompiledWorkflowRun(
       await runStore.saveRun(run)
       return run
     }
-    index = transition.index ?? index + 1
+    const nextIndex = transition.index ?? index + 1
+    if (options.executionMode === "singleStep") {
+      return pauseSingleStepAt(runStore, run, snapshot.workspaceRoot as string, handle.plan, nextIndex)
+    }
+    index = nextIndex
   }
 
-  return completeRun(runStore, run)
+  return completeRun(runStore, run, snapshot.workspaceRoot as string)
 }
 
 function selectCompiledTransition(
@@ -201,37 +252,67 @@ function selectCompiledTransition(
 async function failStep(
   store: CompiledWorkflowRunStore,
   run: WorkflowRunState,
+  workspaceRoot: string,
   stepIndex: number,
-  message: string
+  message: string,
+  required: boolean
 ): Promise<WorkflowRunState> {
   const step = run.steps[stepIndex]
   step.status = "failed"
   step.error = message
   step.completedAt = now()
-  run.status = "failed"
-  run.error = message
+  if (required) {
+    run.status = "failed"
+    run.error = message
+  } else {
+    run.status = "running"
+    delete run.error
+  }
   await store.saveRun(run)
+  if (required) releaseWorkflowContractV2RunPlanLease(workspaceRoot, run.runId)
   return run
 }
 
 async function failRun(
   store: CompiledWorkflowRunStore,
   run: WorkflowRunState,
+  workspaceRoot: string,
   message: string
 ): Promise<WorkflowRunState> {
   run.status = "failed"
   run.error = message
   await store.saveRun(run)
+  releaseWorkflowContractV2RunPlanLease(workspaceRoot, run.runId)
   return run
 }
 
 async function completeRun(
   store: CompiledWorkflowRunStore,
-  run: WorkflowRunState
+  run: WorkflowRunState,
+  workspaceRoot: string
 ): Promise<WorkflowRunState> {
   run.status = "completed"
   delete run.currentStep
   delete run.error
+  await store.saveRun(run)
+  releaseWorkflowContractV2RunPlanLease(workspaceRoot, run.runId)
+  return run
+}
+
+async function pauseSingleStepAt(
+  store: CompiledWorkflowRunStore,
+  run: WorkflowRunState,
+  workspaceRoot: string,
+  plan: CompiledWorkflowPlan,
+  nextIndex: number
+): Promise<WorkflowRunState> {
+  if (nextIndex < 0 || nextIndex >= plan.workflow.steps.length) {
+    return completeRun(store, run, workspaceRoot)
+  }
+  run.status = "paused"
+  run.currentStep = plan.workflow.steps[nextIndex].id
+  delete run.error
+  run.state["workflow.contractV2.singleStep.nextStepId"] = run.currentStep
   await store.saveRun(run)
   return run
 }
