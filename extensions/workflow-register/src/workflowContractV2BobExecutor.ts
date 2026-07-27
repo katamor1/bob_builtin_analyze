@@ -26,7 +26,9 @@ export interface WorkflowContractV2BobExecutorOptions {
   ) => Promise<WorkflowPlanLease> | WorkflowPlanLease
   readonly resolveInputs: (
     task: BobWorkflowTask
-  ) => Promise<Record<string, unknown> | undefined> | Record<string, unknown> | undefined
+  ) => Promise<Readonly<Record<string, unknown>> | undefined>
+    | Readonly<Record<string, unknown>>
+    | undefined
   readonly createRunStore: (workspaceRoot: string) => CompiledWorkflowRunStore
   readonly createAgentProvider: (task: BobWorkflowTask) => AgentProvider | undefined
   readonly runFresh?: typeof executeCompiledWorkflowRun
