@@ -25,8 +25,11 @@ export async function preprocessReviewWithCoverage(
   const inputSha256 = preValidationInputSha(input, limits)
   const operationId = `${PREPROCESS_OPERATION_PREFIX}:${inputSha256.slice(7, 39)}`
 
+  throwIfBoundaryCancelled(input.abortSignal)
   await removeStaleProcessingBudgetReport(outDir)
+  throwIfBoundaryCancelled(input.abortSignal)
   await cleanManagedReviewPackageOutputs(outDir)
+  throwIfBoundaryCancelled(input.abortSignal)
 
   try {
     return await preprocessReview(input)
@@ -56,6 +59,15 @@ export async function preprocessReviewWithCoverage(
     }
     throw error
   }
+}
+
+function throwIfBoundaryCancelled(signal: AbortSignal | undefined): void {
+  if (!signal?.aborted) return
+  if (signal.reason instanceof Error) throw signal.reason
+  throw Object.assign(new Error("Preprocessing was cancelled before destructive cleanup completed."), {
+    code: "processing_cancelled",
+    kind: "user"
+  })
 }
 
 function preValidationInputSha(
