@@ -16,16 +16,19 @@ test("an ambiguous step save reloads durable state before any rollback", () => {
   const save = steps.indexOf("await input.runStore.saveRun(input.run)")
   const reload = steps.indexOf("await input.runStore.loadRun(input.run.runId)", save)
   const reconcile = steps.indexOf("runMatchesCommittedStepState", reload)
-  const rollback = steps.indexOf("if (outputId !== undefined)", reconcile)
-  assert.ok(save >= 0 && save < reload && reload < reconcile && reconcile < rollback)
-  assert.match(steps, /return persisted/)
+  const accepted = steps.indexOf("return persisted", reconcile)
+  const rollback = steps.indexOf("if (outputId !== undefined)", accepted)
+  assert.ok(save >= 0 && save < reload && reload < reconcile && reconcile < accepted && accepted < rollback)
 })
 
 test("an optional failed execution advances its logical-effect ordinal before persistence", () => {
   const steps = source("compiledRunSteps.ts")
   const executor = source("compiledRunExecutor.ts")
-  assert.match(steps, /if \(!required\) run\.state\[compiledExecutionOrdinalStateKey\(step\.id\)\] = String\(executionOrdinal\)/)
-  assert.match(executor, /if \(!required\) run\.state\[compiledExecutionOrdinalStateKey\(step\.id\)\] = String\(executionOrdinal\)/)
+  for (const text of [steps, executor]) {
+    const assignment = text.indexOf("run.state[compiledExecutionOrdinalStateKey(step.id)] = String(executionOrdinal)")
+    const save = text.indexOf("await store.saveRun(run)", assignment)
+    assert.ok(assignment >= 0 && save > assignment)
+  }
 })
 
 test("agent parser safety is separate from the canonical compiled output-byte limit", () => {
