@@ -36,7 +36,7 @@ export async function cleanPreprocessOutputsWithRollback(
 ): Promise<void> {
   const outDir = path.resolve(outDirInput)
   throwIfCancelled(signal)
-  const snapshot = await capturePreprocessOutputs(outDir)
+  const snapshot = await capturePreprocessOutputs(outDir, signal)
   throwIfCancelled(signal)
 
   try {
@@ -57,14 +57,28 @@ export async function cleanPreprocessOutputsWithRollback(
   }
 }
 
-async function capturePreprocessOutputs(outDir: string): Promise<PreprocessOutputsSnapshot> {
+async function capturePreprocessOutputs(
+  outDir: string,
+  signal: AbortSignal | undefined
+): Promise<PreprocessOutputsSnapshot> {
   const reportPath = processingBudgetReportPath(outDir)
   const bindingPath = processingBudgetReportBindingPath(outDir)
-  const [packageSnapshot, reportBytes, bindingBytes] = await Promise.all([
-    readOptionalPackageSnapshot(outDir),
-    readOptionalStableFile(reportPath, MAX_PROCESSING_BUDGET_REPORT_BYTES, "processing budget report"),
-    readOptionalStableFile(bindingPath, MAX_PROCESSING_BUDGET_BINDING_BYTES, "processing budget report binding")
-  ])
+  const packageSnapshot = await readOptionalPackageSnapshot(outDir, signal)
+  throwIfCancelled(signal)
+  const reportBytes = await readOptionalStableFile(
+    reportPath,
+    MAX_PROCESSING_BUDGET_REPORT_BYTES,
+    "processing budget report",
+    signal
+  )
+  throwIfCancelled(signal)
+  const bindingBytes = await readOptionalStableFile(
+    bindingPath,
+    MAX_PROCESSING_BUDGET_BINDING_BYTES,
+    "processing budget report binding",
+    signal
+  )
+  throwIfCancelled(signal)
   return Object.freeze({
     ...(packageSnapshot === undefined ? {} : { packageSnapshot }),
     ...(reportBytes === undefined ? {} : { reportBytes }),
@@ -103,10 +117,14 @@ async function restorePreprocessOutputs(
 }
 
 async function readOptionalPackageSnapshot(
-  outDir: string
+  outDir: string,
+  signal: AbortSignal | undefined
 ): Promise<VerifiedReviewPackageSnapshot | undefined> {
+  throwIfCancelled(signal)
   try {
-    return await readVerifiedReviewPackage(outDir)
+    const snapshot = await readVerifiedReviewPackage(outDir, signal)
+    throwIfCancelled(signal)
+    return snapshot
   } catch (error) {
     if (isMissing(error)) return undefined
     throw error
@@ -116,8 +134,10 @@ async function readOptionalPackageSnapshot(
 async function readOptionalStableFile(
   filePath: string,
   maximumBytes: number,
-  label: string
+  label: string,
+  signal: AbortSignal | undefined
 ): Promise<Uint8Array | undefined> {
+  throwIfCancelled(signal)
   let pathBefore: BigIntStats
   try {
     pathBefore = await fs.lstat(filePath, { bigint: true })
@@ -125,23 +145,30 @@ async function readOptionalStableFile(
     if (isMissing(error)) return undefined
     throw error
   }
+  throwIfCancelled(signal)
   assertSafeSnapshotFile(pathBefore, maximumBytes, label)
   const noFollow = typeof fsConstants.O_NOFOLLOW === "number" ? fsConstants.O_NOFOLLOW : 0
   const handle = await fs.open(filePath, fsConstants.O_RDONLY | noFollow)
   try {
+    throwIfCancelled(signal)
     const openedBefore = await handle.stat({ bigint: true })
+    throwIfCancelled(signal)
     assertSameSnapshotFile(pathBefore, openedBefore, maximumBytes, label)
     const size = Number(openedBefore.size)
     const bytes = Buffer.alloc(size)
     let offset = 0
     while (offset < size) {
+      throwIfCancelled(signal)
       const { bytesRead } = await handle.read(bytes, offset, size - offset, offset)
+      throwIfCancelled(signal)
       if (bytesRead === 0) throw new Error(`${label} ended before its opened size`)
       offset += bytesRead
     }
     const openedAfter = await handle.stat({ bigint: true })
+    throwIfCancelled(signal)
     assertSameSnapshotFile(openedBefore, openedAfter, maximumBytes, label)
     const pathAfter = await fs.lstat(filePath, { bigint: true })
+    throwIfCancelled(signal)
     assertSameSnapshotFile(pathAfter, openedAfter, maximumBytes, label)
     return Uint8Array.from(bytes)
   } finally {
