@@ -16,6 +16,7 @@ const isProxy = utilTypes.isProxy
 const arrayIsArray = Array.isArray
 const arrayPrototype = Array.prototype
 const arrayPush = Array.prototype.push
+const numberIsSafeInteger = Number.isSafeInteger
 const objectCreate = Object.create
 const objectFreeze = Object.freeze
 const objectGetOwnPropertyDescriptor = Object.getOwnPropertyDescriptor
@@ -121,7 +122,7 @@ function snapshotCapabilities(value: unknown): readonly BobTaskCapabilityName[] 
     lengthDescriptor === undefined
     || !objectHasOwn(lengthDescriptor, "value")
     || typeof lengthDescriptor.value !== "number"
-    || !Number.isSafeInteger(lengthDescriptor.value)
+    || !numberIsSafeInteger(lengthDescriptor.value)
     || lengthDescriptor.value < 0
     || lengthDescriptor.value > MAX_TASK_CAPABILITIES
   ) throw new TypeError("Audited Bob task capabilities have an invalid length.")
@@ -138,14 +139,15 @@ function snapshotCapabilities(value: unknown): readonly BobTaskCapabilityName[] 
       descriptor === undefined
       || !objectHasOwn(descriptor, "value")
       || descriptor.enumerable !== true
+      || typeof descriptor.value !== "string"
     ) throw new TypeError("Audited Bob task capabilities contain an invalid item.")
-    const capability = descriptor.value
-    methodName(capability as BobTaskCapabilityName)
+    const capability = descriptor.value as BobTaskCapabilityName
+    methodName(capability)
     if (objectHasOwn(seen, capability)) {
       throw new TypeError("Audited Bob task capabilities contain a duplicate.")
     }
     seen[capability] = true
-    result[index] = capability as BobTaskCapabilityName
+    result[index] = capability
   }
   return objectFreeze(result)
 }
