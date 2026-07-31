@@ -25,6 +25,7 @@ import { collectGitDiff } from "./gitDiffCollector"
 import type { DiffSummary } from "./diffTypes"
 import { relativePosix, resolveWorkspacePathForKind, resolveWorkspacePathStrict } from "./fileSystem"
 import { normalizeReviewProcessingLimits, type ReviewProcessingLimits } from "./limits"
+import { cleanPreprocessOutputsWithRollback } from "./preprocessCleanupTransaction"
 import { createPipelineProcessingBudgetLedger } from "./processingBudgetPipeline"
 import {
   assertCompleteProcessingCoverage,
@@ -40,8 +41,7 @@ import {
 } from "./processingOperationInput"
 import {
   persistCompleteProcessingBudgetBinding,
-  removeProcessingBudgetReportBinding,
-  removeStaleProcessingBudgetReport
+  removeProcessingBudgetReportBinding
 } from "./processingBudgetReportGuard"
 import { computeReviewPackageInputHash } from "./reviewPackageBuilder"
 import {
@@ -93,10 +93,7 @@ export async function preprocessReview(input: PreprocessReviewInput): Promise<Pr
     cancellation.throwIfCancelled()
     const inputPath = resolveWorkspacePathStrict(input.workspaceRoot, input.inputPath, "reviewInputPath")
     outDir = resolveWorkspacePathForKind(input.workspaceRoot, input.outDir, "review-package-output")
-    await removeStaleProcessingBudgetReport(outDir)
-    cancellation.throwIfCancelled()
-    await cleanManagedReviewPackageOutputs(outDir)
-    cancellation.throwIfCancelled()
+    await cleanPreprocessOutputsWithRollback(outDir, cancellation.signal as AbortSignal)
     const diffFixturePath = input.diffFixturePath
       ? resolveWorkspacePathStrict(input.workspaceRoot, input.diffFixturePath, "diffFixturePath")
       : undefined
