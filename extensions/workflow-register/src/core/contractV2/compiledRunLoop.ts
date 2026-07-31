@@ -20,6 +20,7 @@ import type {
   CompiledWorkflowRunStore
 } from "./compiledRunTypes"
 import { releaseWorkflowContractV2RunPlanLease } from "./runPlanProvenance"
+import { clearWorkflowContractV2RestartPreparation } from "./runRestartRecovery"
 import type { AgentProvider, WorkflowRunState } from "../model"
 
 interface TransitionResult {
@@ -95,6 +96,7 @@ export async function runCompiledWorkflowState(
     const executionOrdinal = compiledLogicalEffectOrdinal(run, step.id)
     run.currentStep = step.id
     run.status = "running"
+    clearWorkflowContractV2RestartPreparation(run, step.id)
     stepState.status = "running"
     stepState.attempt = (stepState.attempt ?? 0) + 1
     stepState.startedAt = now()
