@@ -4,6 +4,7 @@ import { classifyWorkflowContractV2AttemptRecovery } from "./core/contractV2/run
 import { recoverWorkflowContractV2RunPlanLease } from "./core/contractV2/runPlanRecovery"
 import type { WorkflowPlanLease } from "./core/contractV2/planLease"
 import { releaseWorkflowContractV2RunPlanLease } from "./core/contractV2/runPlanProvenance"
+import { classifyWorkflowContractV2RunRecovery } from "./core/engine/recoveryState"
 import type { WorkflowRunState } from "./core/model"
 import { relativePathFromRoot } from "./core/workspaceRoots"
 import type {
@@ -25,6 +26,13 @@ const objectFreeze = Object.freeze
 export async function recoverWorkflowContractV2ProductRunPlan(
   input: RecoverWorkflowContractV2ProductRunInput
 ): Promise<WorkflowPlanLease> {
+  const classification = classifyWorkflowContractV2RunRecovery(input.run)
+  if (classification.kind !== "resume") {
+    throw new WorkflowContractV2BoundaryError(
+      "Contract v2 run cannot resume automatically from its recorded durable state."
+    )
+  }
+
   const collectionRoot = nodePath.join(input.workspaceRoot, ".bob", "workflows")
   let lease: WorkflowPlanLease | undefined
   try {
