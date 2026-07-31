@@ -16,18 +16,17 @@ function before(text, left, right) {
   assert.ok(leftIndex < rightIndex, `${left} must precede ${right}`)
 }
 
-test("R3 owns staging filesystem inspection while R6 compares stable snapshots", () => {
-  const inspection = source("core/contractV2/artifactTransactionRecovery.ts")
-  const workspace = source("core/contractV2/attemptArtifactWorkspace.ts")
-  const linux = source("core/contractV2/attemptArtifactWorkspaceLinux.ts")
-  assert.match(inspection, /inspectStagedAttemptArtifactWorkspaceTree/)
-  assert.doesNotMatch(inspection, /node:fs|lstat\(|realpath\(|requireDirectDirectory/)
-  assert.match(workspace, /export async function inspectStagedAttemptArtifactWorkspaceTree/)
-  assert.match(linux, /export async function inspectStagedAttemptArtifactWorkspaceTree/)
-  before(inspection, "const before = await inspectStagedCaptured", "inspectCommittedCaptured")
-  before(inspection, "inspectCommittedCaptured", "const after = await inspectStagedCaptured")
-  assert.match(inspection, /sameTreeSnapshots\(before, after\)/)
-  assert.match(inspection, /both staging and committed locations/)
+test("the R3 filesystem layer owns staging inspection while R6 compares snapshots", () => {
+  const recovery = source("core/contractV2/artifactTransactionRecovery.ts")
+  const inspection = source("core/contractV2/attemptArtifactWorkspaceInspection.ts")
+  assert.match(recovery, /inspectStagedAttemptArtifactWorkspace/)
+  assert.doesNotMatch(recovery, /node:fs|lstat\(|realpath\(|requireDirectDirectory/)
+  assert.match(inspection, /node:fs\/promises/)
+  assert.match(inspection, /export async function inspectStagedAttemptArtifactWorkspace/)
+  before(recovery, "const before = await inspectStagedCaptured", "inspectCommittedCaptured")
+  before(recovery, "inspectCommittedCaptured", "const after = await inspectStagedCaptured")
+  assert.match(recovery, /sameTreeSnapshots\(before, after\)/)
+  assert.match(recovery, /both staging and committed locations/)
 })
 
 test("attempt recovery verifies committed visibility and classifies unreferenced attempts", () => {
