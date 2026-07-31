@@ -56,13 +56,33 @@ test("wrapper delegates one rollback-capable cleanup transaction to the core pip
   )
   const firstCoreCheck = pipelineSource.indexOf("cancellation.throwIfCancelled()")
   const transaction = pipelineSource.indexOf("await cleanPreprocessOutputsWithRollback(")
+  const cleanupComplete = pipelineSource.indexOf("initialCleanupCompleted = true", transaction)
   const reviewInputValidation = pipelineSource.indexOf("const reviewInput = await validateReviewInput(")
   assert.ok(firstCoreCheck >= 0 && firstCoreCheck < transaction)
-  assert.ok(transaction > firstCoreCheck && transaction < reviewInputValidation)
+  assert.ok(transaction > firstCoreCheck && transaction < cleanupComplete)
+  assert.ok(cleanupComplete > transaction && cleanupComplete < reviewInputValidation)
   assert.doesNotMatch(
     pipelineSource.slice(0, reviewInputValidation),
     /await removeStaleProcessingBudgetReport|await cleanManagedReviewPackageOutputs/
   )
+})
+
+test("outer failure cleanup cannot invalidate outputs restored by the initial transaction", async () => {
+  const source = await fs.readFile(
+    path.join(__dirname, "..", "src", "core", "pipeline.ts"),
+    "utf8"
+  )
+  const declaration = source.indexOf("let initialCleanupCompleted = false")
+  const transaction = source.indexOf("await cleanPreprocessOutputsWithRollback(")
+  const completion = source.indexOf("initialCleanupCompleted = true", transaction)
+  const catchStart = source.indexOf("} catch (error) {", completion)
+  const bindingCleanup = source.indexOf("if (initialCleanupCompleted && outDir)", catchStart)
+  const failedReport = source.indexOf("if (initialCleanupCompleted && outDir && reviewInputForReport && inputSha256)", catchStart)
+
+  assert.ok(declaration >= 0 && declaration < transaction)
+  assert.ok(completion > transaction && completion < catchStart)
+  assert.ok(bindingCleanup > catchStart)
+  assert.ok(failedReport > bindingCleanup)
 })
 
 test("cleanup transaction captures first, restores on failure, and installs the binding last", async () => {
