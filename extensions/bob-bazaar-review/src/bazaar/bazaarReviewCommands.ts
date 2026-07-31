@@ -79,7 +79,8 @@ export async function reviewRevision(context: vscode.ExtensionContext, withProje
       await showAndOfferBobContext(
         context,
         result.packet,
-        withProjectRules ? `bazaar-project-review-${revision}.md` : `bazaar-review-${revision}.md`
+        withProjectRules ? `bazaar-project-review-${revision}.md` : `bazaar-review-${revision}.md`,
+        signal
       )
     })
   } catch (error) {
@@ -158,7 +159,7 @@ export async function reviewRange(context: vscode.ExtensionContext, withProjectR
       const outputFileName = withProjectRules
         ? `bazaar-project-review-${baseRevision}-${targetRevision}.md`
         : `bazaar-review-${baseRevision}-${targetRevision}.md`
-      await showAndOfferBobContext(context, result.packet, outputFileName)
+      await showAndOfferBobContext(context, result.packet, outputFileName, signal)
     })
   } catch (error) {
     if (await showProcessingCoverageFailure(error)) return
@@ -216,12 +217,20 @@ async function pickBobWorkspaceFolder(workflowRoot?: string, allowPick = true): 
   return resolveBobWorkspaceFolder({ workflowRoot, allowPick, title: "Bob ワークスペースを選択" })
 }
 
-async function showAndOfferBobContext(context: vscode.ExtensionContext, packet: string, filename: string): Promise<void> {
+async function showAndOfferBobContext(
+  context: vscode.ExtensionContext,
+  packet: string,
+  filename: string,
+  signal: AbortSignal
+): Promise<void> {
+  throwIfReviewCancelled(signal)
   const document = await vscode.workspace.openTextDocument({
     language: "markdown",
     content: packet
   })
+  throwIfReviewCancelled(signal)
   const editor = await vscode.window.showTextDocument(document, { preview: false })
+  throwIfReviewCancelled(signal)
 
   if (!isBobCodeExtensionAvailable()) {
     await vscode.window.showInformationMessage("IBM Bob 拡張機能が見つからないため、Bazaar Revision Review Request の Markdown を作成しました。Bob チャットへの挿入は行いません。")
@@ -242,6 +251,7 @@ async function showAndOfferBobContext(context: vscode.ExtensionContext, packet: 
     "クリップボードへコピー",
     "ファイルに保存"
   )
+  throwIfReviewCancelled(signal)
 
   if (action === "Bob コンテキストへ追加") {
     await addPacketToBobContext(editor.document.uri, packet)
@@ -252,8 +262,10 @@ async function showAndOfferBobContext(context: vscode.ExtensionContext, packet: 
       defaultUri: vscode.Uri.joinPath(context.globalStorageUri, filename),
       filters: { Markdown: ["md"] }
     })
+    throwIfReviewCancelled(signal)
     if (target) {
       await vscode.workspace.fs.createDirectory(vscode.Uri.joinPath(target, ".."))
+      throwIfReviewCancelled(signal)
       await vscode.workspace.fs.writeFile(target, Buffer.from(packet, "utf8"))
     }
   }
