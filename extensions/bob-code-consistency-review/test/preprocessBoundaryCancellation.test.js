@@ -61,7 +61,7 @@ test("wrapper delegates one rollback-capable cleanup transaction to the core pip
   assert.ok(transaction > firstCoreCheck && transaction < reviewInputValidation)
   assert.doesNotMatch(
     pipelineSource.slice(0, reviewInputValidation),
-    /removeStaleProcessingBudgetReport|cleanManagedReviewPackageOutputs/
+    /await removeStaleProcessingBudgetReport|await cleanManagedReviewPackageOutputs/
   )
 })
 
