@@ -73,13 +73,17 @@ test("captured intrinsic behavior survives later prototype replacement", async (
     throw new Error("replacement startsWith must not run")
   }
   try {
-    await assert.rejects(
-      () => module.inspectWorkflowArtifactTransactionRecovery({
+    let message = ""
+    try {
+      await module.inspectWorkflowArtifactTransactionRecovery({
         runRoot: path.join(os.tmpdir(), "does-not-exist-workflow-run"),
         attemptId: "CON"
-      }),
-      /attempt id is invalid/i
-    )
+      })
+      assert.fail("reserved attempt name must fail")
+    } catch (error) {
+      message = String(error?.message ?? error)
+    }
+    assert.equal(message, "Workflow artifact recovery attempt id is invalid.")
     assert.equal(replacementCalls, 0)
   } finally {
     RegExp.prototype.exec = originalExec
