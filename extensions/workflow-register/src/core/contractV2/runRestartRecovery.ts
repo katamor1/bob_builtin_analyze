@@ -48,6 +48,7 @@ export type WorkflowContractV2RestartDecision =
       readonly nextAttempt: number
       readonly idempotency: "idempotent" | "key-required"
       readonly artifactStatus: WorkflowContractV2RestartArtifactStatus
+      readonly artifactSetDigest?: Sha256Digest
       readonly effectIntentDigest: Sha256Digest
     }
   | { readonly kind: "blocked"; readonly reason: string }
@@ -70,9 +71,22 @@ const objectHasOwn = Object.hasOwn
 const objectPrototype = Object.prototype
 const reflectApply = Reflect.apply
 const reflectOwnKeys = Reflect.ownKeys
+const regexpExec = RegExp.prototype.exec
 const MAX_RESTART_EVIDENCE_BYTES = 2_048
 const RESTART_PREFIX = "workflow.contractV2.restart."
 const RESTART_SCHEMA_VERSION = "workflow-restart-preparation/v1" as const
+const DIGEST_PATTERN = /^sha256:[0-9a-f]{64}$/u
+const PREPARATION_REQUIRED_FIELDS = objectFreeze([
+  "schemaVersion",
+  "stepId",
+  "providerId",
+  "previousAttempt",
+  "nextAttempt",
+  "idempotency",
+  "artifactStatus",
+  "effectIntentDigest"
+] as const)
+const PREPARATION_OPTIONAL_FIELDS = objectFreeze(["artifactSetDigest"] as const)
 
 export function workflowContractV2RestartStateKey(stepId: string): string {
   if (typeof stepId !== "string" || stepId.length === 0) {
@@ -174,7 +188,9 @@ export function classifyWorkflowContractV2Restart(
     stepIndex,
     provider.id,
     provider.idempotency,
-    effectIntentDigest
+    effectIntentDigest,
+    input.effectIntent,
+    input.attemptRecovery
   )
   if (prepared !== undefined) return prepared
 
@@ -194,6 +210,7 @@ export function classifyWorkflowContractV2Restart(
     return blocked("Workflow restart effect intent attempt does not match the running step.")
   }
   let artifactStatus: WorkflowContractV2RestartArtifactStatus = "none"
+  let artifactSetDigest: Sha256Digest | undefined
   if (provider.sideEffect === "workspace-write") {
     if (
       input.attemptRecovery.kind !== "in-doubt"
@@ -201,6 +218,10 @@ export function classifyWorkflowContractV2Restart(
       || input.attemptRecovery.attemptId !== expectedAttemptId
     ) return blocked("Workflow restart artifact attempt evidence does not match the running step.")
     artifactStatus = input.attemptRecovery.artifactStatus
+    artifactSetDigest = input.attemptRecovery.artifactSetDigest
+    if ((artifactStatus === "orphaned") !== (artifactSetDigest !== undefined)) {
+      return blocked("Workflow restart orphaned artifact evidence is incomplete or inconsistent.")
+    }
   } else if (input.attemptRecovery.kind !== "clean") {
     return blocked("Workflow restart contains unrelated in-doubt artifact evidence.")
   }
@@ -215,6 +236,7 @@ export function classifyWorkflowContractV2Restart(
     nextAttempt: previousAttempt + 1,
     idempotency: provider.idempotency,
     artifactStatus,
+    ...(artifactSetDigest === undefined ? {} : { artifactSetDigest }),
     effectIntentDigest
   })
 }
@@ -248,6 +270,9 @@ export function prepareWorkflowContractV2Restart(
     nextAttempt: decision.nextAttempt,
     idempotency: decision.idempotency,
     artifactStatus: decision.artifactStatus,
+    ...(decision.artifactSetDigest === undefined
+      ? {}
+      : { artifactSetDigest: decision.artifactSetDigest }),
     effectIntentDigest: decision.effectIntentDigest
   })
   run.state[workflowContractV2RestartStateKey(decision.stepId)] = canonicalJsonText(evidence)
@@ -288,8 +313,10 @@ function preparedDecision(
   stepIndex: number,
   providerId: string,
   idempotency: "idempotent" | "key-required",
-  effectIntentDigest: Sha256Digest
-): Extract<WorkflowContractV2RestartDecision, { readonly kind: "restart" }> | undefined {
+  effectIntentDigest: Sha256Digest,
+  effectIntent: WorkflowProviderEffectIntentV1,
+  attemptRecovery: WorkflowContractV2AttemptRecoveryClassification
+): WorkflowContractV2RestartDecision | undefined {
   if (run.status !== "paused") return undefined
   const step = run.steps[stepIndex]
   const previousAttempt = step?.attempt
@@ -316,7 +343,19 @@ function preparedDecision(
   ) throw new TypeError("Workflow restart preparation evidence is invalid.")
   const descriptors = objectGetOwnPropertyDescriptors(parsed)
   const keys = reflectOwnKeys(descriptors)
-  if (keys.length !== 8) throw new TypeError("Workflow restart preparation evidence has an invalid shape.")
+  for (let index = 0; index < keys.length; index += 1) {
+    const key = keys[index]
+    if (
+      typeof key !== "string"
+      || (!contains(PREPARATION_REQUIRED_FIELDS, key)
+        && !contains(PREPARATION_OPTIONAL_FIELDS, key))
+    ) throw new TypeError("Workflow restart preparation evidence has an invalid shape.")
+  }
+  for (let index = 0; index < PREPARATION_REQUIRED_FIELDS.length; index += 1) {
+    if (!objectHasOwn(descriptors, PREPARATION_REQUIRED_FIELDS[index])) {
+      throw new TypeError("Workflow restart preparation evidence is missing a required field.")
+    }
+  }
   const schemaVersion = dataValue(descriptors.schemaVersion)
   const recordedStepId = dataValue(descriptors.stepId)
   const recordedProviderId = dataValue(descriptors.providerId)
@@ -324,6 +363,9 @@ function preparedDecision(
   const recordedNextAttempt = dataValue(descriptors.nextAttempt)
   const recordedIdempotency = dataValue(descriptors.idempotency)
   const artifactStatus = dataValue(descriptors.artifactStatus)
+  const artifactSetDigest = descriptors.artifactSetDigest === undefined
+    ? undefined
+    : dataValue(descriptors.artifactSetDigest)
   const recordedEffectIntentDigest = dataValue(descriptors.effectIntentDigest)
   if (
     schemaVersion !== RESTART_SCHEMA_VERSION
@@ -333,8 +375,21 @@ function preparedDecision(
     || recordedNextAttempt !== previousAttempt + 1
     || recordedIdempotency !== idempotency
     || !isArtifactStatus(artifactStatus)
+    || !isOptionalDigest(artifactSetDigest)
+    || (artifactStatus === "orphaned") !== (artifactSetDigest !== undefined)
     || recordedEffectIntentDigest !== effectIntentDigest
   ) throw new TypeError("Workflow restart preparation evidence does not match the run.")
+  const expectedAttemptId = compiledAttemptId(stepIndex, previousAttempt)
+  if (
+    effectIntent.attemptId !== expectedAttemptId
+    || !attemptRecoveryMatchesPreparation(
+      attemptRecovery,
+      step.id,
+      expectedAttemptId,
+      artifactStatus,
+      artifactSetDigest as Sha256Digest | undefined
+    )
+  ) return blocked("Workflow restart artifact evidence changed after preparation.")
   return objectFreeze({
     kind: "restart" as const,
     prepared: true,
@@ -345,8 +400,28 @@ function preparedDecision(
     nextAttempt: previousAttempt + 1,
     idempotency,
     artifactStatus,
+    ...(artifactSetDigest === undefined
+      ? {}
+      : { artifactSetDigest: artifactSetDigest as Sha256Digest }),
     effectIntentDigest
   })
+}
+
+function attemptRecoveryMatchesPreparation(
+  recovery: WorkflowContractV2AttemptRecoveryClassification,
+  stepId: string,
+  attemptId: string,
+  artifactStatus: WorkflowContractV2RestartArtifactStatus,
+  artifactSetDigest: Sha256Digest | undefined
+): boolean {
+  if (artifactStatus === "none") return recovery.kind === "clean"
+  if (
+    recovery.kind !== "in-doubt"
+    || recovery.stepId !== stepId
+    || recovery.attemptId !== attemptId
+    || recovery.artifactStatus !== artifactStatus
+  ) return false
+  return recovery.artifactSetDigest === artifactSetDigest
 }
 
 function dataValue(descriptor: PropertyDescriptor | undefined): unknown {
@@ -362,6 +437,20 @@ function dataValue(descriptor: PropertyDescriptor | undefined): unknown {
 
 function isArtifactStatus(value: unknown): value is WorkflowContractV2RestartArtifactStatus {
   return value === "none" || value === "missing" || value === "staging" || value === "orphaned"
+}
+
+function isOptionalDigest(value: unknown): value is Sha256Digest | undefined {
+  return value === undefined || (
+    typeof value === "string"
+    && reflectApply(regexpExec, DIGEST_PATTERN, [value]) !== null
+  )
+}
+
+function contains(values: readonly string[], value: string): boolean {
+  for (let index = 0; index < values.length; index += 1) {
+    if (values[index] === value) return true
+  }
+  return false
 }
 
 function blocked(reason: string): WorkflowContractV2RestartDecision {
