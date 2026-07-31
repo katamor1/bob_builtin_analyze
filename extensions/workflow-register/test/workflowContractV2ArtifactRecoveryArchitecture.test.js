@@ -16,11 +16,17 @@ function before(text, left, right) {
   assert.ok(leftIndex < rightIndex, `${left} must precede ${right}`)
 }
 
-test("R6 compares staging identity around the R3 committed inspection", () => {
+test("R3 owns staging filesystem inspection while R6 compares stable snapshots", () => {
   const inspection = source("core/contractV2/artifactTransactionRecovery.ts")
-  before(inspection, "const before = await snapshotStagingDirectories", "inspectCommittedCaptured")
-  before(inspection, "inspectCommittedCaptured", "const after = await snapshotStagingDirectories")
-  assert.match(inspection, /sameDirectorySnapshots\(before, after\)/)
+  const workspace = source("core/contractV2/attemptArtifactWorkspace.ts")
+  const linux = source("core/contractV2/attemptArtifactWorkspaceLinux.ts")
+  assert.match(inspection, /inspectStagedAttemptArtifactWorkspaceTree/)
+  assert.doesNotMatch(inspection, /node:fs|lstat\(|realpath\(|requireDirectDirectory/)
+  assert.match(workspace, /export async function inspectStagedAttemptArtifactWorkspaceTree/)
+  assert.match(linux, /export async function inspectStagedAttemptArtifactWorkspaceTree/)
+  before(inspection, "const before = await inspectStagedCaptured", "inspectCommittedCaptured")
+  before(inspection, "inspectCommittedCaptured", "const after = await inspectStagedCaptured")
+  assert.match(inspection, /sameTreeSnapshots\(before, after\)/)
   assert.match(inspection, /both staging and committed locations/)
 })
 
