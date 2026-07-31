@@ -85,6 +85,7 @@ export interface WorkflowContractV2Entrypoint {
   compileCurrent(input: CompileCurrentWorkflowContractV2Input): Promise<WorkflowContractV2CompileResult>
   compileGeneration(input: CompileWorkflowContractV2GenerationInput): Promise<WorkflowContractV2CompileResult>
   acquireCurrent(input: CompileCurrentWorkflowContractV2Input): Promise<WorkflowContractV2AcquireResult>
+  acquireGeneration(input: CompileWorkflowContractV2GenerationInput): Promise<WorkflowContractV2AcquireResult>
   invalidateSlot(slot: WorkflowContractV2Slot): void
 }
 
@@ -102,7 +103,6 @@ const CREATE_FIELDS = objectFreeze([
   "environment", "loadCurrent", "loadGeneration", "getOrCompile", "acquire", "invalidate"
 ] as const)
 const CURRENT_FIELDS = objectFreeze(["slot", "consumer"] as const)
-const GENERATION_FIELDS = objectFreeze(["slot", "consumer", "generation", "expectedPackageDigest"] as const)
 const SLOT_FIELDS = objectFreeze(["collectionId", "collectionRoot", "workflowId"] as const)
 const EMPTY_DIAGNOSTICS = objectFreeze([]) as readonly []
 const CONSUMERS = objectFreeze([
@@ -143,13 +143,7 @@ export function createWorkflowContractV2Entrypoint(
     async compileGeneration(value: CompileWorkflowContractV2GenerationInput): Promise<WorkflowContractV2CompileResult> {
       const request = snapshotGeneration(value)
       try {
-        const rawPackage = await loadGeneration(objectFreeze({
-          ...request.slot,
-          generation: request.generation,
-          ...(request.expectedPackageDigest === undefined
-            ? {}
-            : { expectedPackageDigest: request.expectedPackageDigest })
-        }))
+        const rawPackage = await loadExplicitGeneration(loadGeneration, request)
         const handle = await getOrCompile(storeInput(request.slot, rawPackage, environment))
         return objectFreeze({ ok: true as const, handle, rawPackage, diagnostics: EMPTY_DIAGNOSTICS })
       } catch (error) {
@@ -168,11 +162,35 @@ export function createWorkflowContractV2Entrypoint(
       }
     },
 
+    async acquireGeneration(value: CompileWorkflowContractV2GenerationInput): Promise<WorkflowContractV2AcquireResult> {
+      const request = snapshotGeneration(value)
+      try {
+        const rawPackage = await loadExplicitGeneration(loadGeneration, request)
+        const lease = await acquire(storeInput(request.slot, rawPackage, environment))
+        return objectFreeze({ ok: true as const, lease, rawPackage, diagnostics: EMPTY_DIAGNOSTICS })
+      } catch (error) {
+        return failure(error)
+      }
+    },
+
     invalidateSlot(value: WorkflowContractV2Slot): void {
       const slot = snapshotSlot(value)
       invalidate(slot.collectionId, slot.workflowId)
     }
   })
+}
+
+function loadExplicitGeneration(
+  loadGeneration: CreateWorkflowContractV2EntrypointInput["loadGeneration"],
+  request: ReturnType<typeof snapshotGeneration>
+): Promise<RawWorkflowPackage> {
+  return loadGeneration(objectFreeze({
+    ...request.slot,
+    generation: request.generation,
+    ...(request.expectedPackageDigest === undefined
+      ? {}
+      : { expectedPackageDigest: request.expectedPackageDigest })
+  }))
 }
 
 function snapshotCurrent(value: unknown): {
