@@ -75,6 +75,7 @@ export async function reviewRevision(context: vscode.ExtensionContext, withProje
         }
       })
 
+      throwIfReviewCancelled(signal)
       await showAndOfferBobContext(
         context,
         result.packet,
@@ -153,6 +154,7 @@ export async function reviewRange(context: vscode.ExtensionContext, withProjectR
         }
       })
 
+      throwIfReviewCancelled(signal)
       const outputFileName = withProjectRules
         ? `bazaar-project-review-${baseRevision}-${targetRevision}.md`
         : `bazaar-review-${baseRevision}-${targetRevision}.md`
@@ -263,6 +265,15 @@ async function addPacketToBobContext(uri: vscode.Uri, packet: string) {
     writeClipboard: (text) => vscode.env.clipboard.writeText(text),
     showWarningMessage: (message) => vscode.window.showWarningMessage(message)
   }, uri, packet)
+}
+
+function throwIfReviewCancelled(signal: AbortSignal): void {
+  if (!signal.aborted) return
+  if (signal.reason instanceof Error) throw signal.reason
+  throw Object.assign(new Error("Bazaar review handoff was cancelled."), {
+    code: "processing_cancelled",
+    kind: "user"
+  })
 }
 
 async function withProgress<T>(title: string, task: (signal: AbortSignal) => Promise<T>): Promise<T> {

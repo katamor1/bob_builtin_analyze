@@ -151,6 +151,8 @@ export async function runBazaarReviewProcessingOperation(
       issues
     })
     await persistReport(reportPath, report)
+    stage = "handoff_validation"
+    throwIfCancelled(input.signal)
     if (issues.length > 0) throw new BazaarProcessingCoveragePartialError(issues, reportPath)
     assertProcessingBudgetReportAllowsHandoff(report, { expected_input_sha256: inputSha256 })
     return Object.freeze({ ...product, reportPath, report })
