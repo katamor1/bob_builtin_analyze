@@ -1,3 +1,5 @@
+Replaced: `workflowRegister.openOperationHub` and `workflowRegister.openWorkflowBuilder` are the current workflow operator routes; the legacy run tree, refresh command, and Command Palette fallback below are retained only as historical Phase 2/3/5 evidence.
+
 # Phase 2 / Phase 3 / Phase 5 実施状況
 
 ## 方針

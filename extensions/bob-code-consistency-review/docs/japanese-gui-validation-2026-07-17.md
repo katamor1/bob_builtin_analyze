@@ -1,3 +1,5 @@
+Replaced: `workflowRegister.openOperationHub`, `workflowRegister.openWorkflowBuilder`, `bobBazaar.openReviewGui`, and `bobCodeConsistency.openReviewWizard` are the current operator routes; legacy Human Triage and wizard terminology below is retained only as historical integration evidence.
+
 # 日本語 GUI 統合の最終検証
 
 **日付:** 2026-07-17  

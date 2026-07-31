@@ -1,3 +1,5 @@
+Replaced: `workflowRegister.openOperationHub`, `workflowRegister.openWorkflowBuilder`, `bobBazaar.openReviewGui`, and `bobCodeConsistency.openReviewWizard` are the current operator routes; the legacy Runs view, Run Control view, Manual Step Panel, and related command-routing references below are retained only as historical design evidence.
+
 # workflow-register 手動操作 Step GUI 完了導線 設計計画
 
 ## 1. 背景

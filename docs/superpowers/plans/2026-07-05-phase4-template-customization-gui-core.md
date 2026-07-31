@@ -1,5 +1,7 @@
 # Phase 4 Template Customization GUI Core 実行計画
 
+Replaced: workflowRegister.openWorkflowBuilder. This historical plan retains the former standalone template command and screen names as implementation evidence.
+
 ## 前提
 
 - 作業基点は `codex/phase4-template-customization-core`。

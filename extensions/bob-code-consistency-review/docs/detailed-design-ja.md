@@ -1,10 +1,35 @@
 # bob-code-consistency-review 詳細設計書
 
-## 1. 文書の位置づけ
+## 1. 文書の位置付け
 
-本書は `extensions/bob-code-consistency-review` 拡張機能の詳細設計を定義する。基本設計で示した目的とスコープを、実装モジュール、command、workflow provider、review-input 生成、traceability sidecar、前処理 pipeline、Bob 出力検証、triage、テスト観点へ展開する。
+本書は`extensions/bob-code-consistency-review`の現在実装に対応する詳細設計を定義する。対象は公開command、レビュー主GUI、workspace初期化、review-input、traceability sidecar、VCS差分、文書・コード根拠、review-package、Bob output、指摘確認・振り分け、workflow-register provider、安全境界である。
 
-## 2. 実装構成
+通常operatorがCommand Paletteから開始する入口は次の1件だけである。
+
+```text
+Bob Code Consistency Review: 整合プレレビューを開始
+```
+
+| Command ID | title | category |
+|---|---|---|
+| `bobCodeConsistency.openReviewWizard` | `整合プレレビューを開始` | `Bob Code Consistency Review` |
+
+その他のCommand IDは主GUI action、workflow provider、互換API、テストのため登録を維持するが、通常のCommand Paletteでは`when: "false"`とする。
+
+## 2. entry pointとactivation
+
+manifestの`main`は`./out/extension.js`であり、composition rootは`src/extension.ts`である。activation時は次を行う。
+
+1. `bobCodeConsistency.openReviewWizard`と内部commandを登録する。
+2. workspace、review-input、traceability、preprocess、Bob output、triage handlerを接続する。
+3. `registerWorkflowProvidersWithRetry`を開始する。
+4. retry timer、provider registration、extension change listenerを`ExtensionContext.subscriptions`へ所有させる。
+
+`IBM.bob-code`と`local.workflow-register`はsoft dependencyである。未導入または未activationでもlocal GUI、workspace初期化、review-input作成、preprocessを利用できる。
+
+## 3. 実装構成
+
+現在の主要moduleは次のとおりである。将来想定のfile名を現在実装の正本として列挙しない。
 
 ```text
 extensions/bob-code-consistency-review/
@@ -13,573 +38,335 @@ extensions/bob-code-consistency-review/
     extension.ts
     extensionCommandOptions.ts
     reviewExecutionCommands.ts
-    reviewInputWizard.ts
     traceabilityCommands.ts
     workflowProviderRegistration.ts
     workspaceInitializer.ts
     workspaceResolver.ts
-    analyzers/
-      codeChangeAnalyzer.ts
-      cCppChangeAnalyzer.ts
-      documentExtractor.ts
-      genericCodeEvidenceAnalyzer.ts
-      traceabilityBuilder.ts
+    commands/
+      reviewInputCommands.ts
+      workspaceCommands.ts
     core/
-      bobOutputCapture.ts
-      bobOutputValidator.ts
-      fileSystem.ts
-      gitDiffCollector.ts
-      languageClassifier.ts
-      pipeline.ts
-      reviewInputAiDraftProvider.ts
       reviewInputBuilder.ts
-      reviewInputDiagnostics.ts
       reviewInputDiscovery.ts
+      reviewInputAiDraftProvider.ts
+      reviewInputDiagnostics.ts
       reviewInputValidator.ts
-      reviewPackageBuilder.ts
-      schemaLoader.ts
-      textEncoding.ts
-      traceabilityAiDraftProvider.ts
+      reviewTypes.ts
       traceabilityCatalog.ts
       traceabilityCatalogStore.ts
-      traceabilityIds.ts
+      traceabilityAiDraftProvider.ts
       traceabilityPrepController.ts
-      traceabilityTypes.ts
-      traceabilityValidation.ts
-      types.ts
-    schemas/
-      bob-output.schema.json
-      review-input.schema.json
-    templates/
-      bob-input.md
-      output-format.md
-      system.md
-      task.md
-      templateLoader.ts
-    triage/
-      humanTriageHelper.ts
+      gitDiffCollector.ts
+      languageClassifier.ts
+      textEncoding.ts
+      pipeline.ts
+      reviewPackageBuilder.ts
+      bobOutputCapture.ts
+      bobOutputValidator.ts
+      bobOutputSource.ts
+      fileSystem.ts
+      schemaLoader.ts
+    analyzers/
+      documentExtractor.ts
+      codeChangeAnalyzer.ts
+      cCppChangeAnalyzer.ts
+      genericCodeEvidenceAnalyzer.ts
+      traceabilityBuilder.ts
     webview/
+      consistencyReviewWizard.ts
+      consistencyReviewWizardHtml.ts
+      consistencyReviewWizardStages.ts
       traceabilityPrepWebview.ts
       traceabilityPrepWebviewAssets.ts
-  templates/
-    .bob/
-      workflows/
-        code-consistency-review/
-          WORKFLOW.md
-  test/
-    *.test.js
+      consistencyResultCapture.ts
+      consistencyResultCaptureHtml.ts
+      consistencyHumanTriage.ts
+      consistencyHumanTriageHtml.ts
+      displayLabels.ts
+    triage/
+      triageTypes.ts
+      triageSource.ts
+      triageDecisions.ts
+      triageProjection.ts
+      triageFileTransaction.ts
+      humanTriageWorkspace.ts
+      humanTriageHelper.ts
 ```
 
-## 3. 起動設計
+## 4. 整合プレレビュー主GUI
 
-`package.json` の `main` は `./out/extension.js` である。activation event は `onStartupFinished` と各 `bobCodeConsistency.*` command である。
+### 4.1 panel生成
 
-`activate(context)` は VS Code command を登録し、続けて `workflowProviderRegistration.registerWorkflowProviders()` を呼ぶ。`workflow-register` 取得や provider 登録に失敗した場合は warning log に留め、通常 command 利用は継続する。
+`src/webview/consistencyReviewWizard.ts`だけがview type `bobCodeConsistencyReviewWizard`を生成する。
 
-## 4. Command entry
+- title: `整合プレレビュー`
+- `enableScripts: true`
+- `retainContextWhenHidden: true`
+- 現在実装はcommand呼び出しごとに新しいWebview panelを生成する
+- panel dispose時にstage generationとoperation generationを進め、遅延完了を無効化する
 
-| Command ID | 実装関数 | 概要 |
-| --- | --- | --- |
-| `bobCodeConsistency.initializeWorkspace` | `runInitializeWorkspace` | workflow template、review-input 雛形、placeholder document を初期化する。 |
-| `bobCodeConsistency.createReviewInput` | `runCreateReviewInput` | 対話式に `review-input.yaml` を作成する。 |
-| `bobCodeConsistency.prepareAiReviewInputDraft` | `runPrepareAiReviewInputDraft` | AI draft 用 prompt を作成する。 |
-| `bobCodeConsistency.applyAiReviewInputDraft` | `runApplyAiReviewInputDraft` | AI draft JSON から `review-input.yaml` を生成する。 |
-| `bobCodeConsistency.prepareAiTraceabilityDraft` | `runPrepareAiTraceabilityDraft` | traceability AI draft 用 prompt を作成する。 |
-| `bobCodeConsistency.captureAiTraceabilityDraft` | `runCaptureAiTraceabilityDraft` | traceability AI draft JSON を workflow state に取り込む。 |
-| `bobCodeConsistency.applyAiTraceabilityDraft` | `runApplyAiTraceabilityDraft` | traceability AI draft JSON を catalog に反映する。 |
-| `bobCodeConsistency.openTraceabilityPrep` | `runOpenTraceabilityPrep` | 主GUIの`トレーサビリティ整理`embedded stageを開く。 |
-| `bobCodeConsistency.validateTraceabilityCatalog` | `runValidateTraceabilityCatalog` | catalog を検証し gate report を生成する。 |
-| `bobCodeConsistency.createReviewInputFromTraceability` | `runCreateReviewInputFromTraceability` | accepted traceability item から `review-input.yaml` を生成する。 |
-| `bobCodeConsistency.repairReviewInput` | `runRepairReviewInput` | legacy / 不完全な `review-input.yaml` の修復を試みる。 |
-| `bobCodeConsistency.explainReviewInputDiagnostics` | `runExplainReviewInputDiagnostics` | `review-input.yaml` 診断を説明する。 |
-| `bobCodeConsistency.preprocess` | `runPreprocess` | `review-input.yaml` から review-package を生成する。 |
-| `bobCodeConsistency.captureBobOutput` | `runCaptureBobOutput` | Bob 出力 YAML を抽出・正規化して保存する。 |
-| `bobCodeConsistency.validateOutput` | `runValidateOutput` | Bob 出力 YAML を schema と evidence index で検証する。 |
-| `bobCodeConsistency.triage` | `runTriage` | 人間確認用 triage 成果物を生成する。 |
+公開panel typeが1種類であることと、同一panel instanceを再利用することは別契約である。現在実装はcached singleton panelを保持しない。
 
-## 5. 設定設計
+### 4.2 runtime stage
 
-| 設定キー | 既定値 | 用途 |
-| --- | --- | --- |
-| `bobCodeConsistency.reviewInputPath` | `review-input.yaml` | 入力 YAML の workspace 相対パス。 |
-| `bobCodeConsistency.reviewPackagePath` | `.bob-review/review-package` | review-package 出力先。 |
-| `bobCodeConsistency.traceabilityCatalogPath` | `.bob-trace/traceability-catalog.json` | sidecar traceability catalog の保存先。 |
-| `bobCodeConsistency.traceabilityGateReportPath` | `.bob-trace/gate-report.md` | traceability gate report の保存先。 |
-| `bobCodeConsistency.bobOutputPath` | `.bob-review/bob-output/bob-output.yaml` | Bob 出力 YAML 保存先。 |
-| `bobCodeConsistency.triagePath` | `.bob-review/human-triage` | 人間 triage 出力先。 |
-| `bobCodeConsistency.bzrPath` | `bzr` | review input が Bazaar / bzr の場合に使う Bazaar 実行ファイル。 |
-| `bobCodeConsistency.textEncoding` | `auto` | 入力文書、C/C++ ソース、Git/Bazaar 差分 stdout、fixture の読み取り文字コード。 |
-| `bobCodeConsistency.maxDocumentBytes` | `5242880` | 1 文書あたりの読み取り上限。Markdown は上限まで読み、docx / xlsx は上限超過時に抽出を中止する。 |
-| `bobCodeConsistency.maxWorkbookSheets` | `20` | xlsx 抽出で処理する最大 sheet 数。 |
-| `bobCodeConsistency.maxRowsPerSheet` | `500` | xlsx 抽出で 1 sheet あたり処理する最大 data row 数。 |
-| `bobCodeConsistency.maxExcerptBytesPerDocument` | `65536` | 1 evidence excerpt あたりの最大 UTF-8 bytes。超過時は warning とともに切り詰める。 |
-| `bobCodeConsistency.maxRawDiffBytes` | `1048576` | review-package と Bob input に含める raw unified diff の最大 UTF-8 bytes。 |
-| `bobCodeConsistency.maxBobInputBytes` | `2097152` | 生成する `bob-input.md` の最大 UTF-8 bytes。 |
-
-workflow や他拡張から呼ぶ場合は、同名 option を `args` / `inputs` / workflow context で渡せる。明示 option は設定値より優先する。
-
-## 6. Workspace 解決設計
-
-`requireBobWorkspaceRoot()` は `resolveBobWorkspaceRoot()` を使って root を解決する。優先順位は `bobRoot`、`workspaceRoot`、`workflowRoot`、VS Code workspace folder、QuickPick である。
-
-`absolute(root, value)` は absolute path ならそのまま、relative path なら workspace root に結合する。review-input builder や traceability draft path では workspace containment check を行い、artifact path escape や draft JSON path escape を拒否する。
-
-## 7. Workspace 初期化詳細
-
-`workspaceInitializer.ts` は同梱 workflow template を Bob workspace へ配置し、必要に応じて `review-input.yaml` 雛形と placeholder document も作成する。
-
-入力:
+`src/webview/consistencyReviewWizardStages.ts`のstage unionは次である。
 
 ```ts
-interface InitializeCodeConsistencyWorkspaceOptions {
-  context: vscode.ExtensionContext
-  workspaceRoot: string
-  reviewInputPath?: string
-}
+type ConsistencyReviewStage =
+  | "review"
+  | "traceability"
+  | "review-result-capture"
+  | "triage"
 ```
 
-出力:
+| runtime stage | 利用者向け役割 |
+|---|---|
+| `review` | workspace状態、レビュー入力、前処理、レビュー資料の確認 |
+| `traceability` | `トレーサビリティ整理` |
+| `review-result-capture` | `レビュー結果取り込み` |
+| `triage` | `指摘確認・振り分け` |
 
-```ts
-interface CodeConsistencyFileInitializationResult {
-  status: "created" | "updated" | "unchanged"
-  path: string
-  backupPath?: string
-  message: string
-}
+`initializeWorkspace`、`createReviewInput`、`createReviewInputFromTraceability`、`validateTraceability`、`preprocess`は`review` stage内のactionであり、独立stageではない。
 
-interface InitializeCodeConsistencyWorkspaceResult {
-  status: "created" | "updated" | "unchanged"
-  workspaceRoot: string
-  workflowPath: string
-  reviewInputPath: string
-  gitignorePath: string
-  placeholderDocumentPath?: string
-  backupPath?: string
-  reviewInputBackupPath?: string
-  workflowResult: CodeConsistencyFileInitializationResult
-  reviewInputResult: CodeConsistencyFileInitializationResult
-  message: string
-}
-```
+`traceabilityPrepWebview.ts`、`consistencyResultCapture.ts`、`consistencyHumanTriage.ts`は同じ公開panel内のstage serviceである。独立した公開Command Palette panelを作成しない。
 
-配置先:
+### 4.3 message ownershipとfailure recovery
+
+- messageの`renderToken`がcurrent generationと一致することを確認する。
+- navigationの`fromStage`がcurrent stageと一致する場合だけ遷移する。
+- stage generationとoperation generationでstale async completionを拒否する。
+- non-review stageは`initialize()`成功後にだけmessage受付を有効にする。
+- stage初期化が失敗した場合はreview stageへ戻し、errorをmodelへ表示する。
+- unknown actionと不正messageをhost側で拒否する。
+- stage service例外を未処理Promise rejectionとして放置しない。
+
+## 5. workspace解決と初期化
+
+### 5.1 workspace root
+
+workspace rootはopen workspace folderまたはworkflow contextから解決する。pathはlogical containmentだけでなくphysical identityを確認する。
+
+- symlink / junction traversalの拒否
+- Windows device pathとdrive-relative pathの拒否
+- nearest existing ancestorのworkspace containment
+- parent directoryのdevice / inode再確認
+- write対象がregular fileまたはmissingであることの確認
+
+### 5.2 initializer
+
+`bobCodeConsistency.initializeWorkspace`は次を扱う。
 
 ```text
-<workspaceRoot>/.bob/workflows/code-consistency-review/WORKFLOW.md
-<workspaceRoot>/review-input.yaml
-<workspaceRoot>/docs/review-input-placeholder.md
+.bob/workflows/code-consistency-review/WORKFLOW.md
+review-input.yaml
+docs/review-input-placeholder.md
+.gitignore
 ```
 
-workflow template が既存 file と異なる場合は `.bak-<timestamp>` を作成して上書きする。`review-input.yaml` が存在しない場合は雛形を作成する。既存 `review-input.yaml` が雛形と異なる場合は上書きせず、backup のみ作成する。既存 workflow と review-input の backup は、比較時に一度だけ読み取った raw bytes を文字コード変換せず保存する。aggregate の `status` と flat な backup path は互換性のため維持し、`workflowResult` と `reviewInputResult` で各 file の結果を個別に返す。
+workflow template更新は`src/workspaceInitializer.ts`でtransaction lockを取得し、current bytesとbundled bytesを比較する。
 
-## 8. Workflow-register 連携設計
+- same bytesなら`unchanged`
+- existing workflowはsnapshot identityとbytesを再確認する
+- same-directory temporary fileを排他的に作成する
+- current workflowのhard-link backupを作成する
+- temporary fileをtargetへpublishする
+- publication後にtargetとbackupのidentity / bytesを検証する
+-途中失敗時は所有権を確認してrollbackする
 
-`workflowProviderRegistration.ts` は `local.workflow-register` を取得し、次の action provider を登録する。
+`review-input.yaml`がmissingなら雛形を排他的に作成する。既存`review-input.yaml`を上書きせずbackupだけ作成し、result statusは`unchanged`とする。operator固有のreview scopeをinitializerが暗黙変更してはならない。
 
-| Provider ID | 実行内容 |
-| --- | --- |
-| `bobCodeConsistency.initializeWorkspace` | `initializeWorkspace(mergeWorkflowOptions(input))` |
-| `bobCodeConsistency.createReviewInput` | `createReviewInput(mergeWorkflowOptions(input))` |
-| `bobCodeConsistency.prepareAiReviewInputDraft` | `prepareAiReviewInputDraft(mergeWorkflowOptions(input))` |
-| `bobCodeConsistency.applyAiReviewInputDraft` | `applyAiReviewInputDraft(mergeWorkflowOptions(input))` |
-| `bobCodeConsistency.prepareAiTraceabilityDraft` | `prepareAiTraceabilityDraft(mergeWorkflowOptions(input))` |
-| `bobCodeConsistency.captureAiTraceabilityDraft` | `captureAiTraceabilityDraft(buildCaptureTraceabilityDraftOptions(input))` |
-| `bobCodeConsistency.applyAiTraceabilityDraft` | `applyAiTraceabilityDraft(buildApplyTraceabilityDraftOptions(input))` |
-| `bobCodeConsistency.openTraceabilityPrep` | `openTraceabilityPrep(mergeWorkflowOptions(input))` |
-| `bobCodeConsistency.validateTraceabilityCatalog` | `validateTraceabilityCatalog(mergeWorkflowOptions(input))` |
-| `bobCodeConsistency.createReviewInputFromTraceability` | `createReviewInputFromTraceability(mergeWorkflowOptions(input))` |
-| `bobCodeConsistency.repairReviewInput` | `repairReviewInput(mergeWorkflowOptions(input))` |
-| `bobCodeConsistency.explainReviewInputDiagnostics` | `explainReviewInputDiagnostics(mergeWorkflowOptions(input))` |
-| `bobCodeConsistency.preprocess` | `preprocess(mergeWorkflowOptions(input))` |
-| `bobCodeConsistency.captureBobOutput` | `captureBobOutput(buildCaptureBobOutputOptions(input))` |
-| `bobCodeConsistency.validateOutput` | `validateOutput(mergeWorkflowOptions(input))` |
-| `bobCodeConsistency.triage` | `triage(mergeWorkflowOptions(input))` |
+## 6. review-input
 
-workflow 実行時は、`input.inputs`、`input.args`、`workflowRoot`、`workflowFile`、`workflowFolderName`、`bobRoot`、`workspaceRoot` を統合する。`captureBobOutput` は `buildCaptureWorkflowOptions()` を使い、workflow state / inputs / args から text 候補を組み立てる。`applyAiTraceabilityDraft` は option text が無い場合に `state.traceabilityDraftJson` を利用する。
+### 6.1 draftとnormalized YAML
 
-## 9. Review Input Discovery / Wizard / Builder
+`src/core/reviewInputBuilder.ts`の`ReviewInputDraft`は次を持つ。
 
-`reviewInputDiscovery.ts` は既定で `<workspaceRoot>/docs` を走査し、`.md`、`.markdown`、`.docx`、`.xlsx` を候補とする。Markdown と Excel では `REQ`、`BD`、`DD`、`TC`、`QA`、`RV`、`ERR`、`ISSUE`、`TICKET`、`LEDGER` などの ID 候補を抽出する。path 名から artifact kind を推定する。
+- `review`: id、title、change_type、purpose、base、head、vcs、vcs_root等
+- `artifact_candidates`: kind、path、section / sheet / row / case locator
+- `focus_preset`または`review_focus`
+- `analysis_options`
+- `bob_options`
 
-`reviewInputWizard.ts` は discovery result を人間に選択させ、`ReviewInputDraft` を作る。
+hostはenum、required field、workspace containment、artifact existenceを検証して`schema_version: 1`のnormalized YAMLを生成する。AI draftやbrowser draftを直接fileへ書かない。
 
-`reviewInputBuilder.ts` は draft を最終 `ReviewInput` に変換する。
+### 6.2作成経路
 
-- `review.change_type`、`review.vcs`、`artifact.kind`、`review_focus` を enum 検証する。
-- `focus_preset` から review focus を補完する。
-- artifact path が workspace 外へ逃げる場合は error にする。
-- `strictPaths` が true の場合、存在しない artifact path を error にする。
-- `analysis_options` と `bob_options` の既定値を補完する。
-- schema validation 後に YAML を出力する。
-- 既存 file は backup して上書きする。
+- review stageの対話入力
+- accepted traceability catalog
+- AI draft JSON
+- existing fileの診断・repair
 
-## 10. Review Input AI Draft / Diagnostics
+すべて`src/commands/reviewInputCommands.ts`からdomain builder / validatorへ接続する。既存fileを更新するguided authoringでは、設定に従い時刻付きbackupを作成してから書き込む。
 
-`reviewInputAiDraftProvider.ts` は `prepareAiReviewInputDraftPrompt()` と `applyAiReviewInputDraft()` を提供する。
+### 6.3 discoveryとdiagnostics
 
-`prepareAiReviewInputDraftPrompt()` は次を収集し、`.bob-review/review-input-draft/ai-draft-prompt.md` を生成する。
+`reviewInputDiscovery.ts`は候補文書のlogical metadataを列挙し、本文全量をUI modelへ含めない。`reviewInputDiagnostics.ts`はschema、path、VCS range、artifact、language、focus、legacy valueを検査する。repairはknown migrationだけをpreviewし、明示確認後に適用する。
 
-- document candidates
-- 既存 `review-input.yaml` diagnostics
-- Git / Bazaar diff summary
-- allowed enum
-- required JSON shape
-- discovery warnings
+## 7. traceability sidecar
 
-AI への出力制約は、Markdown や YAML ではなく `ReviewInputDraft` JSON object のみとする。
+### 7.1 storage
 
-`applyAiReviewInputDraft()` は raw JSON、fenced JSON、clipboard text から JSON を抽出し、builder を通して `review-input.yaml` を生成する。
-
-`reviewInputDiagnostics.ts` は既存 input の schema / path diagnostics、自然言語説明、legacy repair を提供する。
-
-## 11. Traceability Catalog 詳細
-
-Traceability catalog は `.bob-trace/traceability-catalog.json` に保存する。
-
-```ts
-interface TraceabilityCatalog {
-  schema_version: 1
-  documents: TraceabilityDocument[]
-  domains: TraceabilityDomain[]
-  items: TraceabilityItem[]
-  links?: TraceabilityLink[]
-  decisions?: TraceabilityDecision[]
-}
-```
-
-主な enum:
-
-| 種類 | 値 |
-| --- | --- |
-| status | `proposed`, `accepted`, `rejected`, `deprecated` |
-| item type | `requirement`, `basic_design`, `detailed_design`, `test_spec`, `qa_item`, `review_finding` |
-| link type | `satisfies`, `elaborates`, `verified_by`, `clarifies`, `reviewed_by`, `references` |
-| gate | `basic_design`, `detailed_design`, `test` |
-
-`traceabilityCatalogStore.ts` は catalog 読み込み、空 catalog 作成、backup 付き書き込み、gate report 書き込みを行う。`validateAndWriteTraceabilityGateReport()` は validation 結果を Markdown 化して `.bob-trace/gate-report.md` に保存する。
-
-`buildReviewInputDraftFromTraceability()` は accepted item だけを対象に、item type を artifact kind へ変換して `ReviewInputDraft` を作る。
-
-## 12. Traceability Commands / Webview
-
-`traceabilityCommands.ts` は次を提供する。
-
-| 関数 | 処理 |
-| --- | --- |
-| `runPrepareAiTraceabilityDraft` | diff summary と catalog を使い、AI draft prompt を `.bob-trace/ai-traceability-draft` に生成する。 |
-| `runCaptureAiTraceabilityDraft` | inline JSON、clipboard、path、既定 `ai-draft*.json` から draft を読み、proposed-only 制約を検証して workflow state 用 JSON 文字列を返す。 |
-| `runApplyAiTraceabilityDraft` | inline JSON、clipboard、path、既定 `ai-draft*.json` から draft を読み、catalog に反映する。 |
-| `runValidateTraceabilityCatalog` | catalog を検証し gate report を生成する。 |
-| `runCreateReviewInputFromTraceability` | accepted item から `review-input.yaml` を生成する。 |
-| `runOpenTraceabilityPrep` | `openConsistencyReviewWizard`を`initialStage: "traceability"`で呼び、主GUIの`トレーサビリティ整理`stageを開く。 |
-
-`resolveTraceabilityDraftText()` は inline JSON を優先し、次に Markdown link / quoted path / bare `.json` path / `traceabilityDraftJsonPath` / 既定 `ai-draft*.json` を探す。path は workspace 内に限定する。
-
-panel ownershipは`openConsistencyReviewWizard`だけが持ち、view typeは`bobCodeConsistencyReviewWizard`である。`traceabilityPrepWebview.ts`、`consistencyResultCapture.ts`、`consistencyHumanTriage.ts`はそれぞれ`トレーサビリティ整理`、`レビュー結果取り込み`、`指摘確認・振り分け`のembedded stage serviceであり、独自panelを作成しない。トレーサビリティ整理stageのタブはDomains、Items、Links、Decisions、Gate Report、Review Input Previewである。Save時はcatalogをbackup付きで保存し、gate reportを再生成する。
-
-## 13. Preprocess pipeline 詳細
-
-`preprocessReview()` は次の順で処理する。
-
-1. `validateReviewInput(inputPath, workspaceRoot)` で YAML と artifact path を検証する。
-2. `collectGitDiff()` または Bazaar diff 収集を実行する。
-3. `extractDocuments()` で文書 evidence を抽出する。
-4. `analyzeCodeChanges()` で C / C++ 専用解析と汎用コード evidence 生成を統合実行する。
-5. `buildTraceability()` で対応候補を作る。
-6. `buildReviewPackage()` で成果物を出力する。
-
-`PreprocessResult` は status、reviewId、packageDir、changedFiles、documentEvidence、codeEvidence、warnings、summary を返す。
-
-## 14. Review Input Validation 詳細
-
-`validateReviewInput(inputPath, workspaceRoot)` は次を行う。
-
-1. `readTextFile()` で YAML text を読む。
-2. `YAML.parse()` で object 化する。
-3. `review-input` schema を `loadSchemaValidator()` で読み込む。
-4. schema validation を行う。
-5. `artifacts` に指定された文書 path の存在確認を行う。
-6. `ReviewInput` を返す。
-
-## 15. VCS Diff Collector 詳細
-
-Git では次を実行する。
+既定pathは次である。
 
 ```text
-git diff --find-renames --name-status <base> <head>
-git diff --find-renames --numstat <base> <head>
-git diff --find-renames --unified=80 <base> <head>
+.bob-trace/traceability-catalog.json
+.bob-trace/gate-report.md
 ```
 
-`diffFixturePath` が指定された場合は Git を実行せず fixture JSON を読み込む。
+`src/core/traceabilityCatalogStore.ts`がcatalogのread、validation、revision、backup、atomic write、gate reportを扱う。`traceabilityStore.ts`というmoduleは現在実装に存在しない。
 
-review input または option で Bazaar / bzr が指定された場合、`bzrPath` を使い、必ず `--no-aliases` を付けて差分を取得する。Bazaar 出力も `textEncoding` の decode 対象である。
+catalogはdomain、item、link、decision、source locator、source hash、revisionを保持する。browserはintentだけを送り、save ownershipはExtension Hostが持つ。
 
-`DiffSummary` は base、head、files、unifiedDiff、warnings を持つ。`files` は path、status、additions、deletions、language、test file flag、interface candidate flag を持つ。Git rename は `renamed` status として扱い、binary numstat は追加削除行数を未確定として警告に残す。
+### 7.2 トレーサビリティ整理
 
-`languageClassifier.ts` は拡張子から `c`、`cpp`、`h`、`hpp`、`typescript`、`javascript`、`python`、`csharp`、`java`、`go`、`rust`、`shell`、`sql`、`json`、`yaml`、`markdown`、`text`、`unknown` に分類する。`analysis_options.language` が未指定の場合は全対応言語を対象にし、指定された場合だけ変更ファイルをその言語集合に絞る。
+`traceability` stageは分類、項目、関連、判断、検証レポート、レビュー入力previewを提供する。stage requestはworkspace root、catalog path、report path、text encodingを持つ。
 
-## 16. Document Extractor 詳細
+open時revisionとsave時revisionを比較し、stale revisionでは更新せず再読込を要求する。AI draftはproposed-only candidateとして検証し、accepted / rejected / deprecated statusをAI出力から直接昇格させない。
 
-`extractDocuments(reviewInput, { workspaceRoot })` は `reviewInput.artifacts` を走査する。
+## 8. VCS差分とevidence
 
-| artifact key | evidence type | prefix |
-| --- | --- | --- |
-| `requirements` | `requirement` | `REQ` |
-| `basic_design` | `basic_design` | `BD` |
-| `detailed_design` | `detailed_design` | `DD` |
-| `test_spec` | `test_spec` | `TC` |
-| `ledgers` | `ledger` | `LEDGER` |
-| `tickets` | `ticket` | `TICKET` |
+### 8.1 Git / Bazaar
 
-Markdown は見出しごとに block 化する。`.docx` は `mammoth.convertToHtml()` と `cheerio` で heading、paragraph、table を抽出する。`.xlsx` は `read-excel-file` で workbook を読み、指定 sheets または全 sheets を走査する。既知脆弱性のある `xlsx` package には依存しない。
+`gitDiffCollector.ts`はargument arrayでGitを実行し、rename-aware status、numstat、unified diff、binary marker、changed file listを生成する。
 
-## 17. Code Change Analyzer 詳細
+`review.vcs`が`bazaar`または`bzr`の場合は`bzr --no-aliases`を用いる。Git / Bazaarともにshellを使わず、timeout、output limit、revision / path validationを適用する。
 
-`analyzeCodeChanges()` は pipeline から呼ばれる唯一のコード解析入口である。C / C++ 系ファイルは `cCppChangeAnalyzer` へ渡し、その他の対応言語は `genericCodeEvidenceAnalyzer` へ渡す。C / C++ の header / define-only 変更で関数 evidence が生成されない場合も、変更 hunk が残っていれば汎用 fallback evidence を生成し、Bob が参照できる `SRC-*` を失わない。
+### 8.2 document evidence
 
-### 17.1 C / C++ Change Analyzer
+`documentExtractor.ts`はMarkdown、DOCX、XLSX等からsource locator付きexcerptを生成する。XLSXではsheet / cell range / rowを保持し、formula評価やmacro実行を行わない。document、sheet、row、excerpt、aggregate bytesの上限を適用する。
 
-`c` / `cpp` / `h` / `hpp` の変更ファイルを対象とする。`analyzeCppChanges()` は unified diff から変更行と token を抽出し、source file を読み込み、正規表現ベースで関数範囲を検出する。変更行を含む関数を changed function とし、callee / direct caller、`#define`、global、RT 禁止処理候補、code slice、code evidence を生成する。
+### 8.3 code evidence
 
-関数検出は軽量な正規表現ベースであり、完全な C / C++ 意味解析ではない。
+`cCppChangeAnalyzer.ts`はdiff contextからchanged function、caller / callee candidate、global / static candidate、macro candidate、source rangeを抽出する。完全AST解析ではないためconfidenceとhuman checkを付ける。
 
-### 17.2 Generic Code Evidence Analyzer
+`genericCodeEvidenceAnalyzer.ts`はその他の言語でdiff hunk単位のevidenceを生成する。unsupported languageを黙って除外せず、generic evidenceまたはdiagnosticを出す。
 
-`genericCodeEvidenceAnalyzer` は TypeScript、JavaScript、Python、C#、Java、Go、Rust、Shell、SQL、JSON、YAML、Markdown、text、unknown を対象に、unified diff の file / hunk 単位で `SRC-xxxx` evidence を生成する。詳細な AST 解析は行わず、path、language、status、hunk header、追加削除行、前後コンテキストを `code-slices/*.md` と `evidence-index.json` に残す。`changed-symbols.json` には file scope の汎用 symbol を出力し、traceability map と Bob 出力検証から参照できるようにする。
+`traceabilityBuilder.ts`はdocument evidenceとcode evidenceからcandidate relationを構築する。Bobの推測をsource of truthにしない。
 
-## 18. Traceability Builder 詳細
+## 9. review-packageとBob input
 
-`buildTraceability()` は、review input、document evidence、code evidence、diff summary をもとに、要求・設計・コード・テスト仕様の対応候補を作る。現状は evidence ID、文書種別、変更シンボル、review focus を用いた候補生成であり、AI 判断の代替ではない。
-
-## 19. Review Package Builder 詳細
-
-`buildReviewPackage()` は output directory を作成し、prompt template、code slices、table evidence、JSON index 群、Markdown summary 群、`bob-input.md` を書き出す。
-
-| ファイル | 内容 |
-| --- | --- |
-| `input-normalized.json` | `ReviewInput`。 |
-| `changed-files.json` | `DiffSummary.files` と warning。 |
-| `changed-symbols.json` | symbols、functions、defines、globals、call graph、RT 候補。 |
-| `document-index.json` | documents と warning。 |
-| `evidence-index.json` | evidence metadata。本文は除外。 |
-| `traceability-map.json` | traceability rows と warning。 |
-| `change-summary.md` | review summary と変更ファイル一覧。 |
-| `diff-context.md` | code slices と raw unified diff。 |
-| `document-excerpts.md` | 文書根拠抜粋。 |
-| `traceability-map.md` | 対応候補。 |
-| `deterministic-checks.md` | warning と evidence duplicate check。 |
-| `bob-input.md` | Bob 投入用の最終 Markdown。 |
-
-`evidence-index.json` には本文を含めず metadata だけを保存する。Bob 出力検証ではこの file を参照し、存在しない `evidence_id` を検出する。
-
-## 20. Bob Output Capture / Validator 詳細
-
-`runCaptureBobOutput()` は次の順で text を決める。
-
-1. command argument が string の場合。
-2. options の `text`。
-3. workflow state / inputs / args から組み立てた text。
-4. clipboard text。
-
-`extractYamlFromText()` は fenced YAML code block、text 全体が `schema_version:` を含む YAML、text 中の `schema_version:` 以降を試す。YAML parse に成功した場合、`YAML.stringify(parsed)` で正規化し、`bobOutputPath` に保存する。
-
-`validateBobOutput()` は `bobOutputPath` を読み、schema を検証し、`packageDir/evidence-index.json` と照合する。`findings[].evidence[]` と `questions[].evidence[]` の `evidence_id` が存在しない場合は error とする。findings / questions が 30 件超の場合は warning を出す。
-
-## 21. Human Triage 詳細
-
-`Human Triage`は成果物／domain helperの歴史的名称である。現行UIでは`consistencyHumanTriage.ts`が主GUIの`指摘確認・振り分け`embedded stageとして動作し、standalone panelを作成しない。
-
-`humanTriageHelper.ts` は次のファイルを生成する。
-
-| ファイル | 詳細 |
-| --- | --- |
-| `triage-result.yaml` | finding / question ごとに decision、owner、reason、follow_up を記入する雛形。 |
-| `accepted-findings.md` | finding の要約と evidence を列挙する。 |
-| `questions-to-author.md` | question の要約、理由、owner、action を列挙する。 |
-| `rejected-findings.md` | 棄却指摘を人間が追記する雛形。 |
-| `follow-up-actions.md` | recommended action / suggested action を一覧化する。 |
-
-triage は最終判断を自動化しない。`triage-result.yaml` の `decision`、`reason`、`owner`、`due` は人間が記入する。
-
-## 22. File I/O と文字コード
-
-`readTextFile()` は `decodeTextBuffer()` を使って file を読み込む。既定は `auto` である。UTF-8 と Shift-JIS / CP932 系日本語テキストを想定する。生成ファイルは UTF-8 で書き込む。`writeTextFile()` は親 directory を recursive に作成してから書き込む。
-
-## 23. Error Handling 詳細
-
-| 発生箇所 | エラー処理 |
-| --- | --- |
-| review input parse | YAML parse error または schema error を throw。 |
-| missing artifact | missing file 一覧を含む error を throw。 |
-| AI draft parse | result `status: "error"` と errors を返す。 |
-| traceability catalog parse | read result `status: "error"` と errors を返す。 |
-| traceability gate error | review-input 生成を止め、gate report を更新する。 |
-| Git / Bazaar command failure | preprocess 失敗。 |
-| document extraction failure | warning に追加して続行。 |
-| changed function 未検出 | warning に追加して続行。 |
-| Bob output YAML 不在 | capture result `status: "error"`。 |
-| Bob output parse error | capture result `status: "error"` または validation errors。 |
-| evidence-index 不在 | validation error。 |
-| unknown evidence_id | validation error。 |
-| triage output write error | command failure。 |
-| initialize workspace | workflow は backup 後更新、既存 review-input は上書きしない。 |
-
-## 24. セキュリティ詳細
-
-- Bob に渡す情報は、前処理で生成した `review-package` に固定する。
-- Bob が外部ファイルを追加探索する前提にはしない。
-- Bob 出力は `evidence-index.json` に存在する evidence のみを根拠として認める。
-- 通常フローでは commit、push、PR コメント投稿、ソースコード変更、文書更新、正式承認を行わない。
-- `ReviewInputBuilder` は artifact path escape を拒否する。
-- traceability draft path は workspace 内だけ許可する。
-- catalog path / report path は運用互換のため absolute path も扱うが、既定は workspace 内である。
-
-## 25. 状態と保存先
-
-| 種類 | 既定保存先 |
-| --- | --- |
-| workflow template | `.bob/workflows/code-consistency-review/WORKFLOW.md` |
-| 入力 | `review-input.yaml` |
-| 初期 placeholder | `docs/review-input-placeholder.md` |
-| review-package | `.bob-review/review-package` |
-| review-input AI draft prompt | `.bob-review/review-input-draft/ai-draft-prompt.md` |
-| traceability catalog | `.bob-trace/traceability-catalog.json` |
-| traceability gate report | `.bob-trace/gate-report.md` |
-| traceability AI draft prompt | `.bob-trace/ai-traceability-draft/ai-draft-prompt.md` |
-| Bob output | `.bob-review/bob-output/bob-output.yaml` |
-| human triage | `.bob-review/human-triage` |
-| prompt template copy | `.bob-review/review-package/prompts` |
-| code slices | `.bob-review/review-package/code-slices` |
-| table excerpts | `.bob-review/review-package/tables` |
-
-## 26. 同梱 workflow 詳細
-
-同梱 workflow:
+既定出力先は`.bob-review/review-package`である。
 
 ```text
-templates/.bob/workflows/code-consistency-review/WORKFLOW.md
+manifest.yaml
+review-input.normalized.yaml
+evidence-index.json
+traceability-map.yaml
+bob-input.md
+documents/
+code-slices/
 ```
 
-現行 template は `schemaVersion: workflow-register/v1` を使い、`requires.bob.minVersion`、`guardrails.allowedCommands`、`guardrails.requireApproval`、`inputs`、`tools`、`artifacts`、`completion`、typed `steps` を持つ。
+manifestはreview ID、package ID、VCS range、input hash、tool version、artifact inventory、bytes、SHA-256、truncation、warningを保持する。
 
-主な step:
+`bob-input.md`はvalidated evidenceだけで構成し、absolute local path、未選択文書、secret、workspace全体のfile listを含めない。findingとquestionを分離し、evidence ID、uncertainty、output schema、正式承認禁止をBobへ明示する。
 
-| Step | Type | 処理 |
-| --- | --- | --- |
-| `preprocess-review-package` | command | review-package と `bob-input.md` を生成する。 |
-| `run-bob-pre-review` | agent | `bob-input.md` を使って不整合候補を抽出する。 |
-| `capture-bob-output` | command | Bob YAML 出力を保存する。 |
-| `validate-bob-output` | command | schema と evidence-index で検証する。 |
-| `human-triage` | command | triage 成果物を生成する。 |
-| `handoff-formal-review` | agent | 正式レビューへの引き継ぎ Markdown を作る。 |
+## 10. レビュー結果取り込み
 
-## 27. テスト設計
+`src/core/bobOutputCapture.ts`はworkflow handoff、clipboard、editor、manual textからBob output候補を抽出する。`src/core/bobOutputValidator.ts`はschema version、review / package ID、finding / question、severity / confidence、evidence membership、duplicate ID、byte上限を検証する。
 
-| 対象 | 観点 |
-| --- | --- |
-| `workspaceInitializer` | workflow 作成、更新、byte-exact backup、review-input 雛形、placeholder document、既存 input 非上書き、file 別 outcome。 |
-| `reviewInputDiscovery` | docs 探索、ID 抽出、artifact kind 推定、warning。 |
-| `reviewInputBuilder` | enum、focus preset、path containment、strictPaths、schema validation、backup。 |
-| `reviewInputAiDraftProvider` | prompt 内容、diff summary、JSON parse、draft 適用。 |
-| `reviewInputDiagnostics` | diagnostics、repair、説明。 |
-| `traceabilityCatalogStore` | read、empty catalog、backup write、gate report。 |
-| `traceabilityValidation` | required field、link 整合、decision、status。 |
-| `traceabilityPrepController` | action apply、model build、preview。 |
-| `traceabilityCommands` | AI draft prompt、draft text resolution、catalog 反映、review-input 生成。 |
-| `reviewInputValidator` | schema error、missing artifact。 |
-| `languageClassifier` | 拡張子分類、supported language enum、`analysis_options.language` filter。 |
-| `gitDiffCollector` | name-status / numstat parse、rename、binary numstat、language 判定、fixture 利用、Bazaar mode。 |
-| `documentExtractor` | Markdown / docx / xlsx 抽出、selector、evidence ID。 |
-| `codeChangeAnalyzer` | C / C++ 解析と汎用 evidence fallback の統合。 |
-| `cCppChangeAnalyzer` | function range、changed function、callee / caller、RT 禁止候補。 |
-| `genericCodeEvidenceAnalyzer` | 非 C/C++ diff hunk、file scope symbol、code slice 生成。 |
-| `traceabilityBuilder` | evidence と code symbol の対応候補。 |
-| `reviewPackageBuilder` | 生成ファイル、evidence-index、bob-input。 |
-| `bobOutputCapture` | fenced YAML、schema_version 開始、parse error。 |
-| `bobOutputValidator` | schema error、unknown evidence_id、warning 上限。 |
-| `humanTriageHelper` | triage-result と Markdown 出力。 |
-| `workflowProviderRegistration` | 15 provider 登録、option merge、state handoff。 |
-| workflow template | requires、guardrails、artifacts、steps、prompt 制約。 |
-| 実機 | VS Code / IBM Bob / workflow-register / Bob Workflow UI / Webview / 実ファイルでの結合動作。 |
+validation errorがある場合はcurrent outputを置換しない。stage serviceはvalidated outputを保存した後、必要なtriage sourceを準備して`triage` stageへ遷移する。
 
-詳細な単体テスト仕様は `unit-test-spec-ja.md`、実機テスト仕様は `real-machine-test-spec-ja.md` に定義する。
+## 11. 指摘確認・振り分けdomain
 
-## 27. 変更時の注意点
+### 11.1 source snapshot
 
-- `review-input.schema.json` を変えた場合は README、設計書、テスト fixture、builder を同期する。
-- `bob-output.schema.json` を変えた場合は prompt `output-format.md` と validator test を同期する。
-- traceability model を変えた場合は catalog store、validation、Webview、review-input 生成を同期する。
-- evidence ID 形式を変えた場合は document extractor、code analyzer、validator、triage を確認する。
-- C / C++ 解析を強化する場合は、正規表現ベースの限界と false positive / false negative を docs に明記する。
-- workspace path 制約を強化する場合は、absolute path を使う既存利用との互換性を確認する。
-- `workspaceInitializer` を変更する場合は、既存 workflow backup、review-input 非上書き、placeholder 作成を確認する。
+`src/triage/triageSource.ts`はBob outputから`triage-source/v1`を生成する。正本fileは`triage-source.yaml`である。
 
-<!-- REMEDIATION-2026-07-11 -->
-## 2026-07-11 横断修正契約
+- `review_id`
+- optional `package_id`
+- `bob_output_sha256`
+- `items[]`の`source_id`と`source_type`
 
-3拡張の横断レビューに基づき、次をリリース契約とする。
+source snapshotはimmutableであり、Webview messageから更新しない。
 
-- IBM Bob と companion extension は、機能上必須でない場合は soft dependency とし、未導入でも通常 command を起動できること。
-- workflow action provider は所有元 source ID を持ち、同一 ID の無警告上書きを禁止する。登録解除用 disposable を返し、extension 停止時に解除する。
-- Git / Bazaar 外部プロセスは shell を使わず、hard timeout、出力上限、AbortSignal、子プロセス終了を必須とする。
-- Bazaar repository path は POSIX / Windows の絶対 path、drive-relative path、UNC、device path、dot / traversal / control-character segment を拒否する。
-- review processing limit は manifest と runtime で同じ最小・既定・最大値を持つ。UTF-8 切り詰め後の suffix を含めても byte 上限を超えないこと。
-- repository 内の全 WORKFLOW.md を strict validation し、provider、preflight、nested command ID、template mirror の契約ずれを CI で拒否する。
-- Ubuntu と Windows の両方で compile、unit test、VSIX package、package policy を確認する。IBM Bob 実環境の UI / task / MCP は release candidate 実機ゲートで確認する。
+### 11.2 decision store
 
-<!-- TRIAGE-INTEGRITY-2026-07-12 -->
-## 2026-07-12 Human Triage Integrity 詳細設計
+`src/triage/triageDecisions.ts`は`triage-decisions/v1`を扱う。正本fileは`triage-decisions.yaml`である。
 
-### データ境界
+- source SHA
+- monotonic `decision_revision`
+- `source_id` keyed decision map
+- decision、severity、owner、reason、comment、follow-up
+
+posted array orderをidentityにしない。known editable fieldだけをmergeし、同じschema versionのdisk上unknown fieldを保持する。browser由来unknown fieldは採用しない。
+
+### 11.3 conflict
+
+- source SHA mismatch: `TRIAGE_SOURCE_CHANGED`
+- stale decision revision: `TRIAGE_REVISION_CONFLICT`
+- invalid field: `TRIAGE_DECISION_INVALID <source_id>`
+
+conflictはwrite開始前に検出する。
+
+### 11.4 projectionとtransaction
+
+`src/triage/triageProjection.ts`はdecisionからprojectionを決定的に生成する。未判断findingをaccepted projectionへ含めない。
+
+`src/triage/triageFileTransaction.ts`はstaging、YAML validation、backup、replace、rollbackを行う。途中失敗時に一部projectionだけをcurrentへ残さない。
+
+`src/triage/humanTriageWorkspace.ts`はBob output、source、decision、projectionをworkspace pathへ接続し、legacy `triage-result.yaml`のmatching IDだけを移行する。
+
+## 12. workflow-register provider
+
+source ownerは`local.bob-code-consistency-review`である。`src/workflowProviderRegistration.ts`はproviderごとのallowed option keyだけを採用し、workflow contextを明示fieldとして渡す。
+
+登録provider:
 
 ```text
-Bob output
-  -> TriageSourceBuilder
-  -> triage-source.yaml        immutable / triage-source/v1
-  -> TriageDecisionStore
-  -> triage-decisions.yaml     human-editable / triage-decisions/v1
-  -> TriageProjectionBuilder
-  -> triage-result.yaml + Markdown projections
+bobCodeConsistency.initializeWorkspace
+bobCodeConsistency.createReviewInput
+bobCodeConsistency.prepareAiReviewInputDraft
+bobCodeConsistency.applyAiReviewInputDraft
+bobCodeConsistency.prepareAiTraceabilityDraft
+bobCodeConsistency.captureAiTraceabilityDraft
+bobCodeConsistency.applyAiTraceabilityDraft
+bobCodeConsistency.openTraceabilityPrep
+bobCodeConsistency.validateTraceabilityCatalog
+bobCodeConsistency.createReviewInputFromTraceability
+bobCodeConsistency.repairReviewInput
+bobCodeConsistency.explainReviewInputDiagnostics
+bobCodeConsistency.preprocess
+bobCodeConsistency.captureBobOutput
+bobCodeConsistency.validateOutput
+bobCodeConsistency.triage
 ```
 
-`triage-source.yaml` は Bob output の exact text hash、review ID、package ID、finding / question の全source contextを保持する。Webview messageからsource payloadを受け取らない。`triage-decisions.yaml` は `source_id` keyのmapで、人間が編集できるfieldと同schema内の未知fieldだけを保持する。
+`bobCodeConsistency.openTraceabilityPrep`は独立panelを作らず、`bobCodeConsistencyReviewWizard`を`traceability` stageで開く。provider registration failureをhard dependencyへ変えない。
 
-### 競合制御
+## 13. security / privacy
 
-- GUI load時にsource fileのSHA-256と`decision_revision`を取得する。
-- save時にdisk上の値と一致しなければ、source変更は`TRIAGE_SOURCE_CHANGED`、decision競合は`TRIAGE_REVISION_CONFLICT`で拒否する。
-- array positionをidentityとして使用しない。posted `source_id` の重複と未知IDを拒否する。
-- successful saveごとに`decision_revision`を1だけ増加する。
+- WebviewはCSP nonceとHTML escapeを維持する。
+- inline event handlerとuntrusted `innerHTML`を使用しない。
+- path containmentをphysical identityで検証する。
+- symlink、junction、hard-link replacement、workspace escapeを拒否する。
+- subprocessはshellを使わず、timeoutとoutput limitを適用する。
+- YAML / JSON parse errorをoperator action付きdiagnosticへ変換する。
+- secret、document本文、Bob output本文、decision本文をrelease evidenceへ保存しない。
+- source hash、revision、file expectationをwrite前に再検証する。
+- Bob outputやAI draftを人間decisionなしで正式承認へ使わない。
 
-### Decision validation
+## 14. test / acceptance gate
 
-| decision | 必須field |
-| --- | --- |
-| `accepted` | reason、owner、final severity |
-| `rejected` | reason |
-| `needs_investigation` | reason、およびownerまたはfollow-up action |
-| `deferred` | reason、follow-up due |
-| `question` | reason、およびownerまたはsuggested recipient |
+unit / source contract:
 
-### File transaction
+- exact public command inventoryが1件
+- view type `bobCodeConsistencyReviewWizard`とtitle `整合プレレビュー`
+- runtime stage union `review / traceability / review-result-capture / triage`
+- render token、from-stage、generation、stale async completion
+- workflow template backup / publication / rollback
+- 既存`review-input.yaml`を上書きせずbackupだけ
+- review-input builder / schema / path validation
+- traceability catalog revision、backup、gate report、AI proposed-only merge
+- Git / Bazaar argument safety、encoding、document / code evidence
+- review-package manifest、hash、size、truncation
+- `triage-source.yaml`と`triage-decisions.yaml`
+- `TRIAGE_SOURCE_CHANGED`と`TRIAGE_REVISION_CONFLICT`
+- keyed identity、unknown field preservation、projection、rollback、legacy migration
 
-全成果物を同一directory内のstaging directoryへ書き、YAML parseを完了してから既存fileをunique backupへrenameする。すべてのstaged fileをinstallできた場合だけ成功とする。途中失敗時は新規targetを削除し、backup setを元のfile名へ戻す。Markdownは常にsourceとdecisionsから再生成し、手編集内容を再入力として扱わない。
+release gate:
 
-### Legacy migration
-
-`triage-decisions.yaml`がなくlegacy `triage-result.yaml`がある場合だけ一回migrationする。現在のsourceに存在するIDのdecision fieldだけを移し、`triaged_by`と`triaged_at`を保持する。不一致IDは`migration-report.md`へ記録し、source本文や判断を補完しない。
-
-### GUI trust boundary
-
-Webviewから受理するのはaction whitelist、lock token、`source_id`、decision fieldだけである。summary、category、original severity、confidence、evidence、Bob reason等はdisk上の`triage-source.yaml`を正とする。CSP nonce、HTML escape、inline `onclick`禁止を維持する。
-
-<!-- RELEASE-BLOCKERS-2026-07-16 -->
-## 2026-07-16 release blocker closure 詳細
-
-- `workflow-register`とIBM Bobはsoft dependencyであり、extension activationをhard dependencyで阻害しない。lockfile、production dependency、VSIX runtime contentsはdependency/package policyで検証する。
-- provider retry controllerはAPI identityとgenerationを保持し、stale / late / partial registrationをrollbackする。全Disposableを逆順に試行し、cleanup errorまたは診断callbackの例外で後続cleanupを中断しない。
-- Git / Bazaar process timeoutは1,000〜600,000 msへ正規化し、timeout、cancel、buffer超過を分類する。Windowsのcancel/timeoutは親process exitだけでは完了せず、`taskkill /T /F`完了または2秒の有限fallback後にsettleする。
-- VCS path/revisionはWindows separatorを安全なrepository-relative表現へ限定し、absolute、drive-relative、UNC、device、traversal、制御文字を実行前に拒否する。
-- review processing limitはmanifest/runtimeのmin/default/maxを一致させ、VCS buffer、document/diff/excerpt/workbook/Bob入力を有限budgetへ収める。
+- Ubuntu / Windowsの同一source headでcompile、dependency / architecture / source policy、unit test、package、VSIX policy、Extension Host smokeを実行する。
+- 実IBM Bob UATでresult handoff、workflow-register連携、layout、keyboard-only、200% zoom、High Contrastを確認する。
+- Developer Tools Consoleのuncaught exception / unhandled rejectionを0件にする。
+- tested commit、VSIX build commit、artifact hashを一致させる。

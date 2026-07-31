@@ -1,3 +1,5 @@
+Replaced: `workflowRegister.openOperationHub` and `workflowRegister.openWorkflowBuilder` are the current workflow operator routes; the legacy Operation Hub label below is retained only as historical Phase 4 Windows evidence.
+
 # Reproducible Runtime Phase 4 Windows 補遺
 
 ## 1. 目的

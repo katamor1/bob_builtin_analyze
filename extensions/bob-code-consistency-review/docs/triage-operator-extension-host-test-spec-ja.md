@@ -1,10 +1,10 @@
-# Human Triage Operator Extension Host テスト仕様
+# 指摘確認・振り分け Operator Extension Host テスト仕様
 
-> **現行UIへの読み替え:** `Human Triage`は成果物／domain moduleの歴史的名称である。現行UIではstandalone panelを使わず、`整合プレレビュー`主GUI内の`指摘確認・振り分け`stageを開く。
+> **現行UI:** triage成果物／domain moduleの歴史的名称は内部互換のため維持する。operatorはstandalone panelを使わず、`整合プレレビュー`主GUI内の`指摘確認・振り分け`stageを開く。
 
 ## 1. 目的
 
-本書は、`bob-code-consistency-review`のHuman Triage Integrity Phase 1について、Node.js単体テストでは確認できないVS Code Extension Host上のoperator flowを定義する。
+本書は、`bob-code-consistency-review`のTriage Integrity Phase 1について、Node.js単体テストでは確認できないVS Code Extension Host上のoperator flowを定義する。
 
 対象はcommand登録だけのsmokeではなく、実Extension Hostでcommandを呼び、filesystem artifact、optimistic lock、legacy migration、Webview lifecycleを確認する統合テストである。
 
@@ -117,7 +117,7 @@
 | Package | success |
 | VSIX policy | success |
 | Extension Host activation | success |
-| Human Triage operator suite | success |
+| 指摘確認・振り分け operator suite | success |
 
 ## 7. 実行証跡
 
@@ -138,4 +138,4 @@
 - Webviewのvisual layout、focus、keyboard操作
 - Developer Tools Console全体の警告確認
 
-Human Triage成果物の保存・再読込、source/revision conflict、legacy migration、artifact生成、主GUI stage reopenのコア動作は自動gateで確認する。
+triage成果物の保存・再読込、source/revision conflict、legacy migration、artifact生成、主GUI stage reopenのコア動作は自動gateで確認する。

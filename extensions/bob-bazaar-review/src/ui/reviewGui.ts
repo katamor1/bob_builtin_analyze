@@ -81,7 +81,7 @@ interface ReviewOperationLease {
 }
 
 export function openBazaarReviewGui(context: vscode.ExtensionContext, initialTarget?: BazaarReviewInitialTarget): void {
-  const panel = vscode.window.createWebviewPanel("bobBazaarReviewGui", "Bazaar レビューを開始", vscode.ViewColumn.One, {
+  const panel = vscode.window.createWebviewPanel("bobBazaarReviewGui", "Bazaar レビュー", vscode.ViewColumn.One, {
     enableScripts: true,
     retainContextWhenHidden: true
   })

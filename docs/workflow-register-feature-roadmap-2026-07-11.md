@@ -1,3 +1,5 @@
+Replaced: `workflowRegister.openOperationHub`, `workflowRegister.openWorkflowBuilder`, `bobBazaar.openReviewGui`, and `bobCodeConsistency.openReviewWizard` are the current operator routes; the legacy Operation Hub, Runs View, Run Monitor, and Template Studio terminology below is retained only as historical roadmap context.
+
 # workflow-register 機能追加・改善ロードマップ
 
 - 作成日: 2026-07-11

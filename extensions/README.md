@@ -1,57 +1,54 @@
 # extensions ディレクトリ
 
-このディレクトリには、IBM Bob / Bob IDE と連携するローカル VS Code 拡張機能を配置します。
+このディレクトリには、IBM Bob / Bob IDEと連携する3つのローカルVS Code拡張機能を配置します。
 
-現在の主要モジュールは次の 3 つです。
+| 拡張機能 | 役割 | main | README |
+| --- | --- | --- | --- |
+| `workflow-register` | workflow作成・登録・実行・再開・診断・成果物管理 | `./out/extensionWithAuthoring.js` | `extensions/workflow-register/README.md` |
+| `bob-bazaar-review` | Bazaar review、project rules、Review Run、MCP | `./out/extension.js` | `extensions/bob-bazaar-review/README.md` |
+| `bob-code-consistency-review` | コードと要求・設計・テストの整合プレレビュー | `./out/extension.js` | `extensions/bob-code-consistency-review/README.md` |
 
-| 拡張機能 | 役割 | README |
-| --- | --- | --- |
-| `workflow-register` | `.bob/workflows/*/WORKFLOW.md` を読み込み、IBM Bob のワークフローソースとして登録する基盤拡張。作成、検証、実行、再開、診断、AI 補助、GUI Builder も提供する。 | `extensions/workflow-register/README.md` |
-| `bob-bazaar-review` | Bazaar 差分レビュー、プロジェクト規約読み込み、review-result JSON 検証、読み取り専用 Bazaar MCP サーバーを提供する連携拡張。 | `extensions/bob-bazaar-review/README.md` |
-| `bob-code-consistency-review` | コード変更と要求書・設計書・テスト仕様書の整合プレレビュー用パッケージ、traceability sidecar、Bob 出力検証、人間 triage を提供する連携拡張。 | `extensions/bob-code-consistency-review/README.md` |
+## 公開Command Palette契約
+
+常時表示するCommand Palette entryは次の5件だけです。
+
+| 表示名 | Command ID |
+| --- | --- |
+| `Bob: 操作ハブを開く` | `workflowRegister.openOperationHub` |
+| `Bob Workflow: ワークフローを作成・編集` | `workflowRegister.openWorkflowBuilder` |
+| `Bob Bazaar Review: レビューを開始` | `bobBazaar.openReviewGui` |
+| `Bob Bazaar Review: 資料からプロジェクト規約を作成` | `bobBazaar.authorProjectRulesFromDocuments` |
+| `Bob Code Consistency Review: 整合プレレビューを開始` | `bobCodeConsistency.openReviewWizard` |
+
+workflow、provider、record、validation、run operation用commandは登録・activationを維持しますが、`menus.commandPalette`では`when: "false"`です。
+
+## operator surface
+
+- `Bob 操作ハブ`はworkflow setup、catalog、実行状況、resume、approval、abort、diagnostics、artifact inspectionの単一panelです。
+- `ワークフロー作成・編集`は、空のworkflow、`標準テンプレートから作成`、既存workflow編集の3モードを持つ単一panelです。
+- Bazaar Reviewは1つの主GUIでレビュー、`レビュー結果取り込み`、`指摘確認・振り分け`、`レビュー実績`を扱います。
+- Code Consistency Reviewは1つの`整合プレレビュー`主GUIで入力・根拠選択、`トレーサビリティ整理`、前処理、`レビュー結果取り込み`、`指摘確認・振り分け`を扱います。
+
+旧Explorer view、別run monitor、独立template panel、独立capture / triage / dashboard panelは現行operator surfaceではありません。
+
+## soft dependency
+
+3拡張は必須`extensionDependencies`を持ちません。
+
+- `workflow-register`はIBM Bobがなくてもauthoring、validation、standalone実行、run inspectionを利用できます。
+- `bob-bazaar-review`はIBM Bob / workflow-registerがなくても通常のBazaar review serviceを利用できます。
+- `bob-code-consistency-review`はIBM Bob / workflow-registerがなくても初期化、前処理、validationなどのlocal serviceを利用できます。
+- optional extensionがない場合はactivationを失敗させず、利用できない統合操作を理由付きで無効化します。
 
 ## 推奨する読み順
 
-1. `docs/workflow-authoring-guide-ja.md`
-2. `extensions/workflow-register/README.md`
-3. `extensions/bob-bazaar-review/README.md`
-4. `docs/workflows/code-consistency-review/README.md`
-5. `extensions/bob-code-consistency-review/README.md`
+1. `extensions/workflow-register/README.md`
+2. `extensions/bob-bazaar-review/README.md`
+3. `docs/workflows/code-consistency-review/README.md`
+4. `extensions/bob-code-consistency-review/README.md`
+5. `docs/workflow-action-contracts-ja.md`
 
-まず `workflow-register` でワークフロー定義と実行モデルを確認し、その後に個別連携拡張を読むと全体像を追いやすくなります。
-
-## 拡張機能の関係
-
-```text
-IBM.bob-code
-  └─ workflow-register
-       ├─ bob-bazaar-review
-       └─ bob-code-consistency-review
-```
-
-`workflow-register` は、Bob にワークフローを登録し、`command` / `agent` / `manual` / `result` step を実行する基盤拡張です。
-
-`bob-bazaar-review` は、Bazaar 差分レビュー用の GUI、コマンド、MCP、project rules、review-result 保存を提供します。`workflow-register` が導入されている場合は action provider として同梱ワークフローから呼び出せます。
-
-`bob-code-consistency-review` は、コード差分と要求・設計・テスト仕様の整合プレレビューを支援する実行可能な VS Code 拡張です。`review-input.yaml` を直接フル手書きする運用だけでなく、対話式 wizard、AI draft JSON、traceability sidecar catalog から生成する運用を提供します。
-
-3拡張機能をさらに分割するか、単一拡張へ統合するかの判断は `docs/bob-three-extension-architecture-decision-ja.md` を参照してください。現時点の方針は、ユーザー可視の拡張は3つのまま維持し、統合は workflow action contract、成果物 schema、security / privacy policy、CI / package policy で行うことです。
-
-## 現在のリファクタリング状態
-
-3 拡張機能では、AI と人間が安全に保守しやすい単位へ責務分割を進めています。
-
-| 拡張機能 | 現在の分割状態 | まだ残っている主な責務 |
-| --- | --- | --- |
-| `workflow-register` | `bobWorkflowFactory.ts`、`bobWorkflowMessages.ts`、`bobTaskInputs.ts`、`taskSnapshotRecovery.ts`、`bobApi.ts`、`reports.ts` に低リスク helper を分離済み。 | `bobWorkflowRunner.ts` には `BobWorkflowEngineRunner` と `StepRuntime` が残る。次の候補は `StepRuntime` の単独分離。 |
-| `bob-bazaar-review` | `workflowRegisterBridge.ts` に workflow-register API 接続と workflow action input helper、`bazaarReviewCommands.ts` に revision / range review packet command、`reviewResultValidationCommand.ts` に active editor の review-result JSON 検証を分離済み。 | `extension.ts` には command 登録、workflow provider 登録、project rules 読み込み、review packet 検索、MCP 設定、GUI 起動が残る。 |
-| `bob-code-consistency-review` | `extensionCommandOptions.ts`、`reviewInputWizard.ts`、`workflowProviderRegistration.ts`、`workspaceInitializer.ts`、`traceabilityCommands.ts`、`reviewExecutionCommands.ts` に command helper / UI / workflow provider / 初期化 / traceability / 実行系 command を分離済み。 | `extension.ts` には command 登録、handler mapping、review-input 作成・AI draft・診断系 command handler が残る。次の候補は `reviewInputCommands.ts`。 |
-
-詳細な分割方針は `docs/extension-refactor-review-54e1fe58.md` を参照してください。
-
-## `.bob` / `.bob-review` / `.bob-trace` ワークスペース構成
-
-ワークフローとレビュー規約は、利用側ワークスペースの `.bob` に配置します。
+## workspace構成
 
 ```text
 .bob/
@@ -66,88 +63,90 @@ IBM.bob-code
       SKILL.md
   custom_modes.yaml
   mcp.json
-```
 
-`workflow-register` が直接読み込むのは次のファイルです。
-
-```text
-.bob/workflows/*/WORKFLOW.md
-```
-
-`bob-bazaar-review` は Bazaar レビュー向けに `.bob/review`、`.bob/mcp.json`、同梱ワークフロー、Skill、Mode の初期化を支援します。
-
-`bob-code-consistency-review` は、整合プレレビューの実行時に次のような成果物を生成します。
-
-```text
-review-input.yaml
 .bob-review/
   review-package/
   bob-output/
   human-triage/
+
 .bob-trace/
   traceability-catalog.json
   gate-report.md
 ```
 
-## 新しい拡張機能を追加するときの README 方針
+`workflow-register`は各resolved Bob rootから見た`.bob/workflows/*/WORKFLOW.md`を読み込みます。multi-rootではrootを明示的に解決し、同名workflowを混同しません。
 
-各拡張機能の README には、最低限次の項目を日本語で書いてください。
+## 安全な書込み契約
+
+- workflow authoringはPreview / Diagnostics / Diff / 明示確認 / backup / transactional saveを通します。
+- Bazaar bundled template更新はdiff preview、明示確認、backup、updateの順です。cancel時は変更しません。
+- Code Consistency bundled workflowは差分があればbackup後に更新します。
+- 既存`review-input.yaml`は上書きせず、内容を変更しないままbackupだけ作成します。
+- workspace外path、symlink / junction escape、stale revision、identity mismatchを拒否します。
+
+## MCP境界
+
+Bazaar MCPのBazaar operationsはread-onlyです。書込み可能なMCP toolは、明示opt-inされた`project_rules_init`だけです。
+
+```text
+BOB_BAZAAR_ENABLE_WRITE_TOOLS=1
+BOB_BAZAAR_ALLOWED_ROOTS=<approved roots>
+```
+
+`.bob/mcp.json`の更新はVS Code設定操作であり、MCP tool writeとは別です。通常の設定処理はwrite toolを自動有効化しません。
+
+## README方針
+
+各拡張READMEには次を記載します。
 
 - 拡張機能の目的
-- 依存拡張
-- 利用手順
-- Command Palette のコマンド一覧
-- 設定項目
-- 生成・更新するファイル
-- `workflow-register` との連携方法
-- ビルド方法
-- セキュリティ上の注意点
-- 関連ドキュメント
+- exact public Command Palette entry
+- hidden workflow / internal commandの境界
+- soft dependency
+- operator flow
+- 設定
+- 生成・更新するfile
+- backup / confirmation / transaction契約
+- workflow / MCP連携
+- build / test / package gate
+- security / privacy
 
-コマンド名、設定キー、JSON / YAML のフィールド名、ファイル名、識別子は実装上の名称として原文を維持します。
+Command Palette表示名は`category: title`の完成形を記載します。公開5件以外のcommandは、operator向け一覧ではなく「workflow / internal integration」として説明します。
 
-## Command Palette 表示名ポリシー
+## buildと検証
 
-VS Code の Command Palette では、コマンド表示名を `category: title` として扱います。IBM Bob 連携コマンドであることを入力途中でも見つけやすくしつつ、日本語ユーザーが操作内容を読めるよう、表示名は `Bob <English area>: <日本語の操作名>` に統一してください。
-
-- `category`（`contributes.commands[].category`）は ASCII 英語で `Bob` から始めます。例: `Bob Workflow`、`Bob Bazaar Review`、`Bob Code Consistency Review`。
-- `title`（`contributes.commands[].title`）にはコロンを含めず、日本語の操作名を書きます。`review-input.yaml`、`AI draft`、`MCP` などの実装上の名称は必要に応じて原文のまま残します。
-- README や実機手順で Command Palette 上の表示名を書くときは `category: title` の完成形を記載します。コロンの手前には日本語を入れません。
-
-## ビルド方針
-
-各拡張機能は、原則として拡張機能ディレクトリごとにビルドします。
-
-```powershell
-cd extensions\workflow-register
-npm install
-npm run compile
-npm run test
-npm run package
+```bash
+for extension in workflow-register bob-bazaar-review bob-code-consistency-review; do
+  (
+    cd "extensions/$extension"
+    npm ci
+    npm run compile
+    npm run dependency:policy
+    npm run architecture:policy
+    npm run source:policy
+    npm test
+    npm run package
+    npm run package:policy
+  )
+done
 ```
 
-```powershell
-cd extensions\bob-bazaar-review
-npm install
-npm run compile
-npm run test
-npm run package
+repository contract:
+
+```bash
+node --test \
+  scripts/three-extension-command-surface.test.js \
+  scripts/three-extension-documentation-contract.test.js \
+  scripts/extension-host-smoke-contract.test.js
 ```
 
-```powershell
-cd extensions\bob-code-consistency-review
-npm install
-npm run compile
-npm run test
-npm run package
-```
+Linux / WindowsのExtension Host gateは、3拡張のactivation、5公開command、代表hidden command、4 primary panel、unhandled rejection不在を同一SHAで確認します。
 
-## 関連ドキュメント
+## 関連文書
 
-- `docs/bob-three-extension-architecture-decision-ja.md`
-- `docs/workflow-authoring-guide-ja.md`
-- `docs/extension-refactor-review-54e1fe58.md`
-- `docs/workflows/code-consistency-review/README.md`
+- `docs/superpowers/specs/2026-07-17-three-extension-quality-contract-and-ui-consolidation-design.md`
+- `docs/superpowers/plans/2026-07-17-three-extension-ui-and-documentation-contracts.md`
+- `docs/workflow-action-contracts-ja.md`
 - `extensions/workflow-register/README.md`
 - `extensions/bob-bazaar-review/README.md`
 - `extensions/bob-code-consistency-review/README.md`

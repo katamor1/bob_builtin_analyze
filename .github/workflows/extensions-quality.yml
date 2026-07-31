@@ -97,10 +97,15 @@ jobs:
       - name: Install pinned local VS Code test runtime
         run: npm install --no-save --package-lock=false --ignore-scripts --audit=false --fund=false @vscode/test-cli@0.0.12 @vscode/test-electron@2.5.2
 
-      - name: Extension Host smoke
+      - name: Extension Host surface smoke
         env:
           SMOKE_EXTENSION_ID: local.workflow-register
-          SMOKE_COMMANDS: workflowRegister.reload,workflowRegister.runWorkflow,workflowRegister.inspectRunStorage,workflowRegister.previewRunCleanup,workflowRegister.cleanupCompletedRuns,workflowRegister.deleteSelectedRuns,workflowRegister.pinRun,workflowRegister.unpinRun
+          SMOKE_COMMANDS: workflowRegister.openOperationHub,workflowRegister.openWorkflowBuilder,workflowRegister.runWorkflow
+          SMOKE_EXTRA_FILES: ../../scripts/three-extension-surface-extension-host.test.js
+          SMOKE_WORKSPACE_FOLDER: test/fixtures/gui-surface-workspace
+          SURFACE_PUBLIC_COMMANDS: workflowRegister.openOperationHub,workflowRegister.openWorkflowBuilder
+          SURFACE_HIDDEN_COMMANDS: workflowRegister.runWorkflow
+          SURFACE_PRIMARY_PANELS: workflowRegister.openOperationHub|workflowRegisterOperationHub|Bob 操作ハブ;workflowRegister.openWorkflowBuilder|workflowRegisterBuilder|ワークフロー作成・編集
         run: |
           node ../../scripts/extension-host-smoke.test.js --write-config
           xvfb-run -a ./node_modules/.bin/vscode-test
@@ -166,10 +171,15 @@ jobs:
       - name: Install pinned local VS Code test runtime
         run: npm install --no-save --package-lock=false --ignore-scripts --audit=false --fund=false @vscode/test-cli@0.0.12 @vscode/test-electron@2.5.2
 
-      - name: Extension Host smoke
+      - name: Extension Host surface smoke
         env:
           SMOKE_EXTENSION_ID: local.bob-bazaar-review
-          SMOKE_COMMANDS: bobBazaar.openReviewGui,bobBazaar.reviewRevision
+          SMOKE_COMMANDS: bobBazaar.openReviewGui,bobBazaar.authorProjectRulesFromDocuments,bobBazaar.captureReviewResult
+          SMOKE_EXTRA_FILES: ../../scripts/three-extension-surface-extension-host.test.js
+          SMOKE_WORKSPACE_FOLDER: test/fixtures/gui-surface-workspace
+          SURFACE_PUBLIC_COMMANDS: bobBazaar.openReviewGui,bobBazaar.authorProjectRulesFromDocuments
+          SURFACE_HIDDEN_COMMANDS: bobBazaar.captureReviewResult
+          SURFACE_PRIMARY_PANELS: bobBazaar.openReviewGui|bobBazaarReviewGui|Bazaar レビュー
         run: |
           node ../../scripts/extension-host-smoke.test.js --write-config
           xvfb-run -a ./node_modules/.bin/vscode-test
@@ -226,7 +236,20 @@ jobs:
       - name: Install pinned local VS Code test runtime
         run: npm install --no-save --package-lock=false --ignore-scripts --audit=false --fund=false @vscode/test-cli@0.0.12 @vscode/test-electron@2.5.2
 
-      - name: Extension Host smoke
+      - name: Extension Host surface smoke
+        env:
+          SMOKE_EXTENSION_ID: local.bob-code-consistency-review
+          SMOKE_COMMANDS: bobCodeConsistency.openReviewWizard,bobCodeConsistency.preprocess
+          SMOKE_EXTRA_FILES: ../../scripts/three-extension-surface-extension-host.test.js
+          SMOKE_WORKSPACE_FOLDER: test/fixtures/gui-surface-workspace
+          SURFACE_PUBLIC_COMMANDS: bobCodeConsistency.openReviewWizard
+          SURFACE_HIDDEN_COMMANDS: bobCodeConsistency.preprocess
+          SURFACE_PRIMARY_PANELS: bobCodeConsistency.openReviewWizard|bobCodeConsistencyReviewWizard|整合プレレビュー
+        run: |
+          node ../../scripts/extension-host-smoke.test.js --write-config
+          xvfb-run -a ./node_modules/.bin/vscode-test
+
+      - name: Code Consistency triage operator smoke
         env:
           SMOKE_EXTENSION_ID: local.bob-code-consistency-review
           SMOKE_COMMANDS: bobCodeConsistency.openReviewWizard,bobCodeConsistency.preprocess
@@ -246,19 +269,34 @@ jobs:
         include:
           - extension: workflow-register
             extension_id: local.workflow-register
-            smoke_commands: workflowRegister.reload,workflowRegister.runWorkflow,workflowRegister.inspectRunStorage,workflowRegister.previewRunCleanup,workflowRegister.cleanupCompletedRuns,workflowRegister.deleteSelectedRuns,workflowRegister.pinRun,workflowRegister.unpinRun
-            extra_test_files: ""
-            workspace_folder: ""
+            smoke_commands: workflowRegister.openOperationHub,workflowRegister.openWorkflowBuilder,workflowRegister.runWorkflow
+            extra_test_files: "../../scripts/three-extension-surface-extension-host.test.js"
+            workspace_folder: "test/fixtures/gui-surface-workspace"
+            surface_public_commands: workflowRegister.openOperationHub,workflowRegister.openWorkflowBuilder
+            surface_hidden_commands: workflowRegister.runWorkflow
+            surface_primary_panels: workflowRegister.openOperationHub|workflowRegisterOperationHub|Bob 操作ハブ;workflowRegister.openWorkflowBuilder|workflowRegisterBuilder|ワークフロー作成・編集
+            triage_extra_test_files: ""
+            triage_workspace_folder: ""
           - extension: bob-bazaar-review
             extension_id: local.bob-bazaar-review
-            smoke_commands: bobBazaar.openReviewGui,bobBazaar.reviewRevision
-            extra_test_files: ""
-            workspace_folder: ""
+            smoke_commands: bobBazaar.openReviewGui,bobBazaar.authorProjectRulesFromDocuments,bobBazaar.captureReviewResult
+            extra_test_files: "../../scripts/three-extension-surface-extension-host.test.js"
+            workspace_folder: "test/fixtures/gui-surface-workspace"
+            surface_public_commands: bobBazaar.openReviewGui,bobBazaar.authorProjectRulesFromDocuments
+            surface_hidden_commands: bobBazaar.captureReviewResult
+            surface_primary_panels: bobBazaar.openReviewGui|bobBazaarReviewGui|Bazaar レビュー
+            triage_extra_test_files: ""
+            triage_workspace_folder: ""
           - extension: bob-code-consistency-review
             extension_id: local.bob-code-consistency-review
             smoke_commands: bobCodeConsistency.openReviewWizard,bobCodeConsistency.preprocess
-            extra_test_files: "../../scripts/triage-integrity-extension-host.test.js"
-            workspace_folder: "test/fixtures/triage-operator-workspace"
+            extra_test_files: "../../scripts/three-extension-surface-extension-host.test.js"
+            workspace_folder: "test/fixtures/gui-surface-workspace"
+            surface_public_commands: bobCodeConsistency.openReviewWizard
+            surface_hidden_commands: bobCodeConsistency.preprocess
+            surface_primary_panels: bobCodeConsistency.openReviewWizard|bobCodeConsistencyReviewWizard|整合プレレビュー
+            triage_extra_test_files: "../../scripts/triage-integrity-extension-host.test.js"
+            triage_workspace_folder: "test/fixtures/triage-operator-workspace"
 
     defaults:
       run:
@@ -302,13 +340,28 @@ jobs:
       - name: Install pinned local VS Code test runtime
         run: npm install --no-save --package-lock=false --ignore-scripts --audit=false --fund=false @vscode/test-cli@0.0.12 @vscode/test-electron@2.5.2
 
-      - name: Extension Host smoke
+      - name: Extension Host surface smoke
         shell: pwsh
         env:
           SMOKE_EXTENSION_ID: ${{ matrix.extension_id }}
           SMOKE_COMMANDS: ${{ matrix.smoke_commands }}
           SMOKE_EXTRA_FILES: ${{ matrix.extra_test_files }}
           SMOKE_WORKSPACE_FOLDER: ${{ matrix.workspace_folder }}
+          SURFACE_PUBLIC_COMMANDS: ${{ matrix.surface_public_commands }}
+          SURFACE_HIDDEN_COMMANDS: ${{ matrix.surface_hidden_commands }}
+          SURFACE_PRIMARY_PANELS: ${{ matrix.surface_primary_panels }}
+        run: |
+          node ../../scripts/extension-host-smoke.test.js --write-config
+          & .\node_modules\.bin\vscode-test.cmd
+
+      - name: Code Consistency triage operator smoke
+        if: ${{ matrix.triage_extra_test_files != '' }}
+        shell: pwsh
+        env:
+          SMOKE_EXTENSION_ID: ${{ matrix.extension_id }}
+          SMOKE_COMMANDS: ${{ matrix.smoke_commands }}
+          SMOKE_EXTRA_FILES: ${{ matrix.triage_extra_test_files }}
+          SMOKE_WORKSPACE_FOLDER: ${{ matrix.triage_workspace_folder }}
         run: |
           node ../../scripts/extension-host-smoke.test.js --write-config
           & .\node_modules\.bin\vscode-test.cmd

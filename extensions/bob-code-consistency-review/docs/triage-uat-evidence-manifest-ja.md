@@ -1,8 +1,8 @@
-# Human Triage UAT Evidence Manifest
+# 指摘確認・振り分け UAT Evidence Manifest
 
 ## 1. 目的
 
-`triage-uat-evidence.js`は、実IBM Bob UAT後のHuman Triage成果物をmachine-readableなJSON manifestへ記録する。
+`triage-uat-evidence.js`は、実IBM Bob UAT後の指摘確認・振り分け成果物をmachine-readableなJSON manifestへ記録する。
 
 記録対象は次の通り。
 
@@ -14,11 +14,11 @@
 - artifactごとのSHA-256
 - triage directoryに残る`*.bak-*` backup
 
-本manifestは、成果物の完全性とcommit provenanceを記録する補助証跡である。`status: complete`だけでUAT合格とは判定しない。Bob Workflow UI、Bob agent、result handoff、MCP、Webview視覚表示、keyboard操作、Developer Tools Console、sign-offは、日付入りUAT evidence Markdownで別途確認する。
+本manifestは、成果物の完全性とcommit provenanceを記録する補助証跡である。`status: complete`だけでUAT合格とは判定しない。Bob Workflow UI、Bob agent、result handoff、MCP、`整合プレレビュー`主GUI内の`指摘確認・振り分け`stage、視覚表示、keyboard操作、Developer Tools Console、sign-offは、日付入りUAT evidence Markdownで別途確認する。
 
 ## 2. 実行場所
 
-対象branchから作成したVSIXを導入し、UAT対象sandboxにHuman Triage成果物を生成した後で実行する。
+対象branchから作成したVSIXを導入し、UAT対象sandboxに指摘確認・振り分け成果物を生成した後で実行する。
 
 ```powershell
 cd <repository>\extensions\bob-code-consistency-review
@@ -68,6 +68,8 @@ node scripts\triage-uat-evidence.js --help
 exit code `2`でもmanifestは出力される。`missing_required`と`commit_match`を確認し、VSIXまたはUAT操作を修正して最初から再実施する。
 
 ## 5. 必須artifact
+
+`.bob-review/human-triage` は永続artifactの互換パス名であり、現在のoperator操作は `整合プレレビュー` 主GUI内の `指摘確認・振り分け` stageから行う。
 
 ```text
 .bob-review/bob-output/bob-output.yaml
@@ -134,7 +136,7 @@ Get-FileHash `
 - manifestのcommit SHAとUAT metadataが一致
 - manifest fileのSHA-256をevidenceへ記録済み
 
-ただし、artifact manifest項目のpassはPhase 1 release判定ではない。UAT runbookの全必須testcase、Console確認、defect disposition、三者sign-offが別途必要である。
+ただし、artifact manifest項目のpassはPhase 1 release判定ではない。UAT runbookの全必須testcase、`レビュー結果取り込み` / `指摘確認・振り分け` stage、Console確認、defect disposition、三者sign-offが別途必要である。
 
 ## 9. 安全性とprivacy
 

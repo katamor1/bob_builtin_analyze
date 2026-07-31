@@ -1,3 +1,5 @@
+Replaced: `workflowRegister.openOperationHub` and `workflowRegister.openWorkflowBuilder` are the current workflow operator routes; the legacy workflow control surface reference below is retained only as historical automatic-pause review evidence.
+
 # Workflow Automatic Pause Independent Review
 
 - Date: 2026-07-12

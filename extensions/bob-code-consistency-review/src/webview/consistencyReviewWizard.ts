@@ -83,7 +83,7 @@ export async function openConsistencyReviewWizard(
   context: vscode.ExtensionContext,
   options: OpenConsistencyReviewWizardOptions = {}
 ): Promise<ConsistencyStageOutcome> {
-  const panel = vscode.window.createWebviewPanel("bobCodeConsistencyReviewWizard", "整合プレレビューを開始", vscode.ViewColumn.One, {
+  const panel = vscode.window.createWebviewPanel("bobCodeConsistencyReviewWizard", "整合プレレビュー", vscode.ViewColumn.One, {
     enableScripts: true,
     retainContextWhenHidden: true
   })

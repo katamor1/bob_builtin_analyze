@@ -1,3 +1,5 @@
+Replaced: `workflowRegister.openOperationHub`, `workflowRegister.openWorkflowBuilder`, `bobBazaar.openReviewGui`, and `bobCodeConsistency.openReviewWizard` are the current operator routes; the legacy review-surface terminology below is retained only as historical Windows CI evidence.
+
 # Bazaar Project Rule Authoring — Windows CI Fixes
 
 ## Scope

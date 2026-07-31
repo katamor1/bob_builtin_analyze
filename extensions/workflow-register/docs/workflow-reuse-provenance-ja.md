@@ -35,7 +35,7 @@ Artifact本文、hydrated state値、snapshot本文、diff、checksum値は表�
 
 ## 表示
 
-### Operation Hub
+### Bob 操作ハブ
 
 Run cardではstepごとに次を表示します。
 
@@ -47,7 +47,7 @@ artifacts context-artifact · hydrated context
 
 通常completedは`Completed`、artifact reuse完了は`Reused`として表示します。
 
-Operation Hubは画面の肥大化を避けるため8 stepまでを表示します。残りがある場合は、
+Bob 操作ハブは画面の肥大化を避けるため8 stepまでを表示します。残りがある場合は、
 
 ```text
 7 more step(s); see Run Diagnostics
@@ -55,9 +55,9 @@ Operation Hubは画面の肥大化を避けるため8 stepまでを表示しま�
 
 のように省略件数を示します。
 
-### Bob Workflow Runs
+### Bob 操作ハブの実行状況
 
-Tree itemのdescriptionはcompactな`reused N`を維持し、tooltipに次を表示します。
+run cardのcompact summaryは`reused N`を維持し、詳細表示に次を含めます。
 
 - reused step IDs
 - source run
@@ -94,7 +94,7 @@ Bobのcontrol messageには、source run、reused step IDs、verified artifact I
 
 Bob Todoへ`reused`や`skipped`という新しいstatusは書き込みません。既存のcompleted projectionを維持し、reuseの意味は`run.json`由来のprovenanceとして表示します。
 
-`bobTaskSync.drift.status`が`synced`でも、`liveTaskAvailable`がfalseの場合は、Operation Hubで次のwarningを表示します。
+`bobTaskSync.drift.status`が`synced`でも、`liveTaskAvailable`がfalseの場合は、Bob 操作ハブで次のwarningを表示します。
 
 ```text
 Bob Todo: saved projection only; live task unavailable
@@ -119,7 +119,7 @@ Unknown step IDはrun-level summaryには残せますが、存在しないstep�
 - `WorkflowRunState` schemaは変更しません。
 - `RunStepState.status`へ`reused`／`skipped`を追加しません。
 - `workflow.artifactReuse/v1`、`workflow.artifactHydration/v1`、`workflow.taskSnapshotImport/v1`を維持します。
-- Standalone実行でもOperation Hub、Runs View、Run Diagnosticsから同じprovenanceを確認できます。
+- Standalone実行でもBob 操作ハブとRun Diagnosticsから同じprovenanceを確認できます。
 
 ## トラブルシューティング
 
@@ -135,4 +135,4 @@ Unknown step IDはrun-level summaryには残せますが、存在しないstep�
 
 ### Bob Todoがwarningになる
 
-保存済みTodo projectionは一致していますが、現在のExtension Hostにlive Bob task handleがありません。`run.json`の状態は失われていません。Operation HubまたはRun Diagnosticsを正本として確認してください。
+保存済みTodo projectionは一致していますが、現在のExtension Hostにlive Bob task handleがありません。`run.json`の状態は失われていません。Bob 操作ハブまたはRun Diagnosticsを正本として確認してください。

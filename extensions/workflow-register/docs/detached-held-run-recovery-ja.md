@@ -4,7 +4,7 @@
 
 VS CodeやIBM Bobの再起動後、`run.json`は`held`のままでも、元のBob taskまたはmanual-step handleが失われることがあります。
 
-この機能は、永続化されたrunを自動的に完了扱いせず、現在の証拠を分類して、Operation Hubに安全なprimary actionを1つだけ表示します。`run.json`が実行状態の正本です。
+この機能は、永続化されたrunを自動的に完了扱いせず、現在の証拠を分類して、Bob 操作ハブに安全なprimary actionを1つだけ表示します。`run.json`が実行状態の正本です。
 
 ## 分類
 
@@ -17,7 +17,7 @@ VS CodeやIBM Bobの再起動後、`run.json`は`held`のままでも、元のBo
 
 通常の`resumeRun`は、live gateが存在する従来のBob-visible owner stepではsingle-step resumeを維持します。live gateもmanual handleもない真のdetached held runだけは、通常resumeで黙って完了せず、専用復旧コマンドへ誘導します。
 
-## Operation Hub
+## Bob 操作ハブ
 
 held runのカードには分類、説明、最大5件のblockerを表示します。primary actionは分類ごとに1つだけです。
 
@@ -26,7 +26,7 @@ held runのカードには分類、説明、最大5件のblockerを表示しま�
 - Artifact recoverable: `成果物から開始`または`Task Snapshotから成果物を取り込む`
 - Blocked: `詳細`／診断
 
-専用復旧はOperation Hubのrun mutation queueへ入り、workspace root、run ID、表示時revisionを再検証します。同じrunへの異なるmutationは直列化されます。
+専用復旧はBob 操作ハブのrun mutation queueへ入り、workspace root、run ID、表示時revisionを再検証します。同じrunへの異なるmutationは直列化されます。
 
 ## 保存済み状態から再開
 
@@ -86,11 +86,11 @@ Run Diagnosticsと共通provenance projectorはこのmetadataを表示します�
 - definition、step順序、必要state、manual resultが不適合になった。
 - execution leaseまたはdurable saveに失敗した。
 
-復旧経路がartifactまたはsnapshotへ変わった場合は、Operation Hubをrefreshして新しいprimary actionを使用します。
+復旧経路がartifactまたはsnapshotへ変わった場合は、Bob 操作ハブをrefreshして新しいprimary actionを使用します。
 
 ## 検証基準
 
-- classifier、Operation Hub、dedicated command、diagnostics、engine guardのfocused suite。
+- classifier、Bob 操作ハブ、dedicated command、diagnostics、engine guardのfocused suite。
 - complete `workflow-register` test suite。
 - dependency、architecture、source、schema policy。
 - package、VSIX policy、Extension Host smoke。

@@ -22,13 +22,7 @@ Current runtime behavior includes:
 
 ## Inspecting run failures
 
-Use the Command Palette command:
-
-```text
-Bob Workflow: 診断を確認
-```
-
-The report shows:
+Open `Bob: 操作ハブを開く` and use the selected run card's Diagnostics action. The report shows:
 
 - Run id
 - Workflow id and name
@@ -39,6 +33,8 @@ The report shows:
 - State keys captured so far
 - Per-step status
 - Suggested fix for common failure patterns
+
+The internal diagnostics command remains registered for host routing, but it is hidden from the normal Command Palette.
 
 ## Common failures
 
@@ -76,7 +72,7 @@ Fix: run and accept previous steps first, or explicitly set `stepExecution.allow
 
 ### Review gate is waiting
 
-If `run.json` has `status: "reviewing"`, `workflowRegister.runNextStep` will not advance. Use `workflowRegister.acceptCurrentStep` to mark the current step completed, or `workflowRegister.retryCurrentStep` to archive and rerun the current attempt.
+If `run.json` has `status: "reviewing"`, the run does not advance automatically. Use the `Bob 操作ハブ` run card to accept the current step or archive and retry the current attempt. The underlying `workflowRegister.acceptCurrentStep`, `workflowRegister.retryCurrentStep`, and `workflowRegister.runNextStep` IDs remain internal routing contracts.
 
 ### Agent provider missing
 
@@ -117,9 +113,9 @@ Unknown placeholders are left unchanged so the report can reveal the unresolved 
 
 ## Debugging checklist
 
-1. Validate the workflow first.
-2. Run the workflow.
-3. If it fails, inspect run diagnostics.
+1. Validate and preview the workflow in `ワークフロー作成・編集`.
+2. Start it from IBM Bob or `Bob 操作ハブ`.
+3. If it fails, open the run card's Diagnostics action.
 4. Fix the first failed step.
-5. If the run is `reviewing`, accept or retry the current step. If it is `failed`, retry the current step or rerun the workflow.
+5. If the run is `reviewing`, accept or retry from the run card. If it is `failed`, retry the step or start a new run.
 6. Confirm that expected state keys and artifacts are created.

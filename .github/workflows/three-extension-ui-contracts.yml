@@ -1,0 +1,83 @@
+name: three-extension-ui-contracts
+
+on:
+  pull_request:
+    paths:
+      - "docs/**"
+      - "extensions/workflow-register/**"
+      - "extensions/bob-bazaar-review/**"
+      - "extensions/bob-code-consistency-review/**"
+      - "scripts/three-extension-*.js"
+      - "scripts/*-documentation-parity.test.js"
+      - "scripts/extension-host-smoke-contract.test.js"
+      - ".github/workflows/three-extension-ui-contracts.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "docs/**"
+      - "extensions/workflow-register/**"
+      - "extensions/bob-bazaar-review/**"
+      - "extensions/bob-code-consistency-review/**"
+      - "scripts/three-extension-*.js"
+      - "scripts/*-documentation-parity.test.js"
+      - "scripts/extension-host-smoke-contract.test.js"
+      - ".github/workflows/three-extension-ui-contracts.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: three-extension-ui-contracts-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contracts:
+    name: UI and documentation contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Verify checked-out commit
+        shell: bash
+        env:
+          EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          actual_head="$(git rev-parse HEAD)"
+          test "$actual_head" = "$EXPECTED_HEAD_SHA"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+
+      - name: Verify UI and documentation contracts
+        run: |
+          node --test \
+            scripts/three-extension-command-surface.test.js \
+            scripts/three-extension-documentation-contract.test.js \
+            scripts/bazaar-review-documentation-parity.test.js \
+            scripts/code-consistency-documentation-parity.test.js \
+            scripts/workflow-register-documentation-parity.test.js \
+            scripts/extension-host-smoke-contract.test.js \
+            scripts/three-extension-ui-contract-workflow.test.js
+
+      - name: Verify changed-file whitespace
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            git diff --check "$BASE_SHA...$HEAD_SHA"
+          else
+            git diff --check "$HEAD_SHA^" "$HEAD_SHA"
+          fi

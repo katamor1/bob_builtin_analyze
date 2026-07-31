@@ -1,3 +1,5 @@
+Replaced: `workflowRegister.openOperationHub`, `workflowRegister.openWorkflowBuilder`, `bobBazaar.openReviewGui`, and `bobCodeConsistency.openReviewWizard` are the current operator routes; the obsolete identifiers and screen names below are retained only as historical approved-design evidence.
+
 # Three Extension Quality Contract and UI Consolidation Design
 
 - Status: approved for implementation

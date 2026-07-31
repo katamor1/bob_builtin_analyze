@@ -51,6 +51,7 @@ npm.cmd run package:policy
 repository root で実行する。
 
 ```powershell
+node --test scripts/three-extension-command-surface.test.js scripts/three-extension-documentation-contract.test.js
 git diff --check
 git status --short
 ```
@@ -78,16 +79,27 @@ git status --short
 
 ## 5. Smoke Install
 
-UAT 用 VS Code / Bob IDE で確認する。
+UAT用VS Code / Bob IDEへ、同じsource head SHAから作成した3つのVSIXを導入する。
 
-| 拡張 | 確認 | 判定 |
-|---|---|---|
-| workflow-register | Command Palette に `Bob ワークフロー:` commands が出る。 | |
-| bob-bazaar-review | Command Palette に `Bazaar レビュー:` commands が出る。 | |
-| bob-code-consistency-review | Command Palette に `コード整合レビュー:` commands が出る。 | |
-| workflow-register | `.bob/workflows/*/WORKFLOW.md` を reload できる。 | |
-| bob-bazaar-review | GUI を開ける。 | |
-| bob-code-consistency-review | preprocess command が validation error なしで起動する。 | |
+| 観点 | ok条件 | 判定 |
+| --- | --- | --- |
+| 公開inventory | Command Paletteに公開5件だけが表示され、categoryとtitleの完成形がmanifestと一致する。 | |
+| workflow-register | `Bob: 操作ハブを開く`で`Bob 操作ハブ`、`Bob Workflow: ワークフローを作成・編集`で`ワークフロー作成・編集`が開く。 | |
+| Bazaar Review | `Bob Bazaar Review: レビューを開始`と`Bob Bazaar Review: 資料からプロジェクト規約を作成`が開き、capture / decision / dashboardの独立公開entryがない。 | |
+| Code Consistency | `Bob Code Consistency Review: 整合プレレビューを開始`が開き、traceability / capture / decisionが同じprimary panel内stageとして動く。 | |
+| hidden command | reload / validation / run / retentionなどの代表内部commandは登録されるがCommand Paletteには表示されない。 | |
+| soft dependency | IBM Bobまたはcompanion extension不在でもactivationが失敗せず、利用不可actionに理由が表示される。 | |
+| Console | uncaught exception、unhandled rejection、CSP violationが0件。 | |
+
+公開5件のCommand ID:
+
+```text
+workflowRegister.openOperationHub
+workflowRegister.openWorkflowBuilder
+bobBazaar.openReviewGui
+bobBazaar.authorProjectRulesFromDocuments
+bobCodeConsistency.openReviewWizard
+```
 
 ## 6. Compatibility Gate
 

@@ -4,20 +4,20 @@
 
 P1-6 は、workspace に保存された workflow run の件数と物理使用量を可視化し、operator が明示確認した terminal run だけを整理する機能です。`run.json` を正本とし、run-state schema は変更しません。Pin は独立した `retention.json` sidecar に保存します。
 
-P1-6 の6コマンドはすべて手動実行専用です。拡張機能の起動時、timer、background task から cleanup を自動実行しません。`workflowRegister.runs.retention.enabled=false` は将来の自動化に備えた予約値であり、`false` のままでも6コマンドを利用できます。
+P1-6の6操作は`Bob 操作ハブ`から明示的に開始します。内部Command IDはhost routing用に登録を維持しますが、通常のCommand Paletteには表示しません。拡張機能の起動時、timer、background taskからcleanupを自動実行しません。`workflowRegister.runs.retention.enabled=false`は将来の自動化に備えた予約値であり、`false`のままでも操作ハブの手動retention操作を利用できます。
 
-## 2. 公開コマンド
+## 2. 操作ハブのretention actionsと内部Command ID
 
-| Command ID | Command Palette | Workspace trust | 処理 |
+| 操作ハブのaction | 内部Command ID | Workspace trust | 処理 |
 | --- | --- | --- | --- |
-| `workflowRegister.inspectRunStorage` | `Bob Workflow: 実行ストレージを確認` | 不要 | 件数、byte数、status、blockerなどのmetadataをread-only表示する。 |
-| `workflowRegister.previewRunCleanup` | `Bob Workflow: 実行クリーンアップをプレビュー` | 不要 | 現在のpolicyでcleanup planを作り、対象、除外理由、digestをread-only表示する。 |
-| `workflowRegister.cleanupCompletedRuns` | `Bob Workflow: 完了済み実行をクリーンアップ` | 必須 | default policyをpreviewし、modal確認後に同じplanを再検証して適用する。 |
-| `workflowRegister.deleteSelectedRuns` | `Bob Workflow: 選択した実行を削除` | 必須 | rootを選んだ後にrunを複数選択し、plannerが許可したrunだけを確認後に削除する。 |
-| `workflowRegister.pinRun` | `Bob Workflow: 実行を保持` | 必須 | 選択した既存runへ任意note付きのpin metadataを設定する。 |
-| `workflowRegister.unpinRun` | `Bob Workflow: 実行の保持を解除` | 必須 | 選択した既存runのpinを解除する。 |
+| 実行ストレージを確認 | `workflowRegister.inspectRunStorage` | 不要 | 件数、byte数、status、blockerなどのmetadataをread-only表示する。 |
+| クリーンアップをプレビュー | `workflowRegister.previewRunCleanup` | 不要 | 現在のpolicyでcleanup planを作り、対象、除外理由、digestをread-only表示する。 |
+| 完了済み実行をクリーンアップ | `workflowRegister.cleanupCompletedRuns` | 必須 | default policyをpreviewし、modal確認後に同じplanを再検証して適用する。 |
+| 選択した実行を削除 | `workflowRegister.deleteSelectedRuns` | 必須 | rootを選んだ後にrunを複数選択し、plannerが許可したrunだけを確認後に削除する。 |
+| 実行を保持 | `workflowRegister.pinRun` | 必須 | 選択した既存runへ任意note付きのpin metadataを設定する。 |
+| 実行の保持を解除 | `workflowRegister.unpinRun` | 必須 | 選択した既存runのpinを解除する。 |
 
-`inspectRunStorage` と `previewRunCleanup` は untrusted workspace でもread-onlyで利用できます。`cleanupCompletedRuns`、`deleteSelectedRuns`、`pinRun`、`unpinRun` は、workspace rootの探索、run選択、service生成、filesystem accessより前にtrustを要求します。
+実行ストレージ確認とcleanup previewはuntrusted workspaceでもread-onlyで利用できます。cleanup、明示削除、pin、unpinは、workspace rootの探索、run選択、service生成、filesystem accessより前にtrustを要求します。
 
 ## 3. 設定
 
@@ -84,7 +84,7 @@ Orphan guardは自動reclaimしません。次の全条件を証明できない�
 4. Run directory、execution lock、journal、quarantineの有無を確認し、cleanupが進行中でないことを確認する。Owner不一致、recent heartbeat、想定外entry、identity変化が1つでもあれば何も削除しない。
 5. 証拠が一致した場合だけ、実装のowner-checked releaseと同じ順で、まず`.bob/workflows/run-cleanup-leases/<runId>.json`を削除する。削除後も`owner.json`のtokenとguard directory identityが変わっていないことを確認する。
 6. 次に`<runId>.guard/owner.json`を削除し、guard directoryが空であることを確認してから`<runId>.guard`を削除する。親`run-cleanup-leases`は空の場合だけ削除する。
-7. `inspectRunStorage`を再実行し、対象run、lock、journal、quarantineを再確認する。Mutation commandを再実行する場合は新しいpreviewから始める。
+7. `Bob 操作ハブ`で実行ストレージを再確認し、対象run、lock、journal、quarantineを確認する。Mutationを再実行する場合は新しいpreviewから始める。
 
 Guard directoryを先に消す、token不一致のleaseを消す、想定外entryを含むguardをrecursive deleteする操作は禁止です。
 

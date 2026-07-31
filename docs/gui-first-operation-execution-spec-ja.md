@@ -1,3 +1,5 @@
+Replaced: `workflowRegister.openOperationHub`, `workflowRegister.openWorkflowBuilder`, `bobBazaar.openReviewGui`, and `bobCodeConsistency.openReviewWizard` are the current public routes; the older IDs and screen names below are retained only as historical design context.
+
 # GUIファースト操作設計 実装仕様
 
 - 対象: GUI-00 から GUI-07

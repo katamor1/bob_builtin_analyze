@@ -1,5 +1,7 @@
 # Bob Code Consistency Review Triage Operator Extension Host Plan
 
+Replaced: bobCodeConsistency.openReviewWizard. This historical plan retains the former standalone decision panel command and screen name as implementation evidence.
+
 - Status: implemented and verified / IBM Bob UAT kit ready
 - Date: 2026-07-12
 - Repository: `katamor1/bob_builtin_analyze`

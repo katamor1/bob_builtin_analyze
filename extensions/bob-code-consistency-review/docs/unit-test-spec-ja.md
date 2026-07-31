@@ -2,407 +2,366 @@
 
 ## 1. 目的
 
-本書は `extensions/bob-code-consistency-review` の単体テスト仕様を定義する。対象は workspace 初期化、review-input 作成、AI draft、traceability sidecar、前処理 pipeline、文書抽出、C / C++ 軽量解析、複数言語の汎用コード根拠生成、review-package 生成、Bob 出力 capture / validation、triage、workflow-register provider である。
+本書は`bob-code-consistency-review`の自動テスト契約を定義する。対象は公開surface、workspace初期化、review-input、AI draft、traceability sidecar、前処理、文書抽出、Git / Bazaar差分、コード根拠、review-package、Bob出力、指摘確認・振り分け、workflow provider、主GUI lifecycle、documentation contractである。
 
-## 2. テスト実行方式
+## 2. 実行方式
 
 | 項目 | 内容 |
 | --- | --- |
-| 実行コマンド | `npm run compile && node --test test/*.test.js` |
-| 対象成果物 | `out/` 配下へ compile された JavaScript |
-| テストランナー | Node.js built-in test runner |
-| 外部依存 | VS Code API、workflow-register、Bazaar CLI は mock / stub 化する。Git collector は fixture / stub に加えて一時 Git repository で実コマンド経路も検証する。 |
-| ファイル I/O | `fs.mkdtemp()` で一時 workspace を作成し、`.bob-review` / `.bob-trace` / `.bob` を検証する |
+| compile | `npm run compile` |
+| full suite | `node --test test/*.test.js`または`npm test` |
+| runner | Node.js built-in test runner |
+| VS Code / Bob | mock / stub |
+| VCS | fixture / fake process / temporary Git repository |
+| filesystem | `fs.mkdtemp()`でtestごとに隔離 |
 
-## 3. 共通テストデータ
+## 3. 公開surface
 
-| データ | 内容 |
-| --- | --- |
-| `workspaceFixture` | `docs/`、`src/`、`.bob/` を持つ一時 workspace。 |
-| `reviewInputValid` | requirements / basic_design / detailed_design / test_spec を含む valid YAML。 |
-| `reviewInputInvalid` | required field 不足または artifact path 不正を含む YAML。 |
-| `traceabilityCatalogEmpty` | schema_version 1、空 arrays の catalog。 |
-| `traceabilityCatalogAccepted` | accepted requirement / design / test item と link を含む catalog。 |
-| `traceabilityDraftJson` | catalog に追加する AI draft JSON。 |
-| `gitDiffFixture` | name-status、numstat、unified diff を含む fixture。 |
-| `bazaarDiffFixture` | Bazaar mode 用の unified diff fixture。 |
-| `multiLanguageGitDiffFixture` | TypeScript、Python、Java、rename、空白入り path、binary numstat を含む Git fixture。 |
-| `markdownDoc` | REQ / BD / DD / TC ID を含む Markdown。 |
-| `docxDoc` | heading / paragraph / table を含む docx fixture。 |
-| `xlsxDoc` | sheet / row ID を含む xlsx fixture。 |
-| `cppSource` | 変更関数、callee、global、RT 禁止候補を含む C / C++ source。 |
-| `genericSource` | TypeScript、Python、Java など、hunk 単位 evidence を確認する source。 |
-| `bobOutputValid` | schema と evidence index に合う YAML。 |
-| `bobOutputInvalidEvidence` | 存在しない evidence_id を参照する YAML。 |
+### CCR-UT-SURFACE-001 公開Command Palette entry
 
-## 4. テスト項目
+常時表示は次の1件だけである。
 
-### CCR-UT-001 WorkspaceInitializer: workflow template を新規作成する
+```text
+bobCodeConsistency.openReviewWizard | Bob Code Consistency Review | 整合プレレビューを開始
+```
 
-- 入力: `.bob/workflows/code-consistency-review/WORKFLOW.md` が存在しない workspace。
-- 期待結果: workflow file が作成され、result status は `created`。
+その他のcontributed commandは`menus.commandPalette`で`when: "false"`を持つ。activation、contribution、runtime registrationを照合する。
 
-### CCR-UT-002 WorkspaceInitializer: workflow template を backup して更新する
+実テスト:
 
-- 入力: 既存 workflow が template と異なる workspace。
-- 期待結果: `.bak-<timestamp>` が作成され、workflow file が template に更新される。
+- `test/commandPalettePolicy.test.js`
+- `../../scripts/three-extension-command-surface.test.js`
 
-### CCR-UT-003 WorkspaceInitializer: workflow template が同一なら unchanged
+### CCR-UT-SURFACE-002 単一主GUI
 
-- 入力: 既存 workflow が template と同一。
-- 期待結果: status は `unchanged`、backup は作成されない。
+- `openConsistencyReviewWizard()`だけがoperator review panelを作る。
+- view typeは`bobCodeConsistencyReviewWizard`、titleは`整合プレレビュー`である。
+- input、`トレーサビリティ整理`、前処理、`レビュー結果取り込み`、`指摘確認・振り分け`を同じpanelで扱う。
+- embedded stage serviceは独立した公開panelを作らない。
 
-### CCR-UT-004 WorkspaceInitializer: review-input 雛形と placeholder document を作成する
+実テスト:
 
-- 入力: `review-input.yaml` が存在しない workspace。
-- 期待結果: `review-input.yaml` と `docs/review-input-placeholder.md` が作成される。
+- `test/guiFirstSurfaces.test.js`
+- `test/consistencyReviewWizardInitialization.test.js`
+- `test/consistencyReviewWizardLifecycle.test.js`
+- `test/consistencyReviewWizardModelSnapshot.test.js`
+- `test/task4CurrentRouteDocs.test.js`
 
-### CCR-UT-005 WorkspaceInitializer: 既存 review-input は上書きしない
+## 4. 主GUI lifecycle
 
-- 入力: 独自内容の `review-input.yaml`。
-- 期待結果: 内容は変わらず、backup path が返る。
+### CCR-UT-LIFE-001 generation / render token
 
-### CCR-UT-006 ReviewInputDiscovery: docs 配下の Markdown ID を抽出する
+panel-wide generationと暗号学的render tokenを、render、post、stage initialization、model commit、transitionに要求する。
 
-- 入力: `docs/requirements.md` に `REQ-001` を含む workspace。
-- 期待結果: kind `requirements`、sections `REQ-001` を持つ candidate が返る。
+### CCR-UT-LIFE-002 stage namespace
 
-### CCR-UT-007 ReviewInputDiscovery: path 名から artifact kind を推定する
+active stageのmessage namespace以外を拒否する。stage initialization完了前のmessageを処理しない。
 
-- 入力: `docs/基本設計.md`、`docs/詳細設計.md`、`docs/テスト仕様.md`。
-- 期待結果: それぞれ `basic_design`、`detailed_design`、`test_spec` と推定される。
+### CCR-UT-LIFE-003 out-of-order completion
 
-### CCR-UT-008 ReviewInputDiscovery: docs root 不在時は warning を返す
+古いstage、same-stage ABA、dispose後、superseded initializationの完了が現在のmodelを上書きしない。
 
-- 入力: `docs/` が無い workspace。
-- 期待結果: documents は空、warnings に docs root 不在が含まれる。
+### CCR-UT-LIFE-004 transition recovery
 
-### CCR-UT-009 ReviewInputBuilder: draft から valid review-input を生成する
+embedded stage初期化が失敗した場合、利用可能なreview stageへ戻す。初期stage command errorを重複通知しない。
 
-- 入力: valid `ReviewInputDraft`。
-- 期待結果: schema_version 1、review、artifacts、review_focus、analysis_options、bob_options を持つ YAML が生成される。
+### CCR-UT-LIFE-005 render / post rejection
 
-### CCR-UT-010 ReviewInputBuilder: focus preset を展開する
+hostがrenderまたはWebview postを拒否した場合、structured errorを返し成功扱いしない。
 
-- 入力: `focus_preset: "interface"`、`review_focus` なし。
-- 期待結果: `interface-impact` と `unintended-change` が review_focus に入る。
+主な実テスト:
 
-### CCR-UT-011 ReviewInputBuilder: enum 不正を error にする
+- `test/consistencyReviewWizardLifecycle.test.js`
+- `test/consistencyTraceabilityRecovery.test.js`
+- embedded stage lifecycle / concurrency tests
 
-- 入力: 不正な `review.change_type`、`review.vcs`、`artifact.kind`。
-- 期待結果: `status: "error"` と enum error が返る。
+## 5. Workspace初期化
 
-### CCR-UT-012 ReviewInputBuilder: workspace 外 artifact path を拒否する
+### CCR-UT-INIT-001 bundled workflow create
 
-- 入力: `../outside.md` を含む artifact candidate。
-- 期待結果: `artifact path escapes workspace` error が返る。
+workflow未存在時にbundled bytesを作成する。
 
-### CCR-UT-013 ReviewInputBuilder: strictPaths=true で missing artifact を拒否する
+### CCR-UT-INIT-002 workflow update / backup
 
-- 入力: 存在しない artifact path。
-- 期待結果: missing path error が返る。
+既存workflowとbundled bytesが異なる場合、既存bytesを1回だけ読み、byte-exact backupを作成してからbundled bytesへ更新する。
 
-### CCR-UT-014 ReviewInputAiDraftProvider: prompt を生成する
+### CCR-UT-INIT-003 existing review-input
 
-- 入力: workspace、base/head/vcs、document candidates、diff fixture。
-- 期待結果: `.bob-review/review-input-draft/ai-draft-prompt.md` が作成され、allowed enum、diff summary、candidate JSON を含む。
+既存`review-input.yaml`は上書きしない。同じraw bytesからbackupだけを作成し、original fileを変更しない。
 
-### CCR-UT-015 ReviewInputAiDraftProvider: fenced JSON を適用する
+### CCR-UT-INIT-004 non-UTF-8
 
-- 入力: fenced JSON の `ReviewInputDraft`。
-- 期待結果: `review-input.yaml` が生成され、既存 file がある場合は backup される。
+CP932または任意non-UTF-8 Bufferをdecode / normalizeせずbackupする。
 
-### CCR-UT-016 ReviewInputDiagnostics: invalid input を診断する
+### CCR-UT-INIT-005 typed outcomes
 
-- 入力: schema 不一致または missing artifact を含む `review-input.yaml`。
-- 期待結果: diagnostics に schema / missing artifact が含まれる。
+`workflowResult`と`reviewInputResult`が個別に`status`、`path`、optional `backupPath`、`message`を返す。aggregate resultとの互換性を維持する。
 
-### CCR-UT-017 ReviewInputDiagnostics: legacy repair を実行する
+### CCR-UT-INIT-006 write guard
 
-- 入力: legacy 形式の input。
-- 期待結果: 修復可能な場合は backup 付きで normalized input が保存される。不可の場合は error。
+workspace identity、parent identity、direct file identity、symlink / junction、exclusive create、transaction lockを検証する。
 
-### CCR-UT-018 TraceabilityCatalogStore: catalog が無い場合は empty catalog を返す
+### CCR-UT-INIT-007 `.gitignore`
 
-- 入力: `.bob-trace/traceability-catalog.json` が無い workspace。
-- 期待結果: `created: true`、schema_version 1、空 arrays が返る。
+`.bob-review/`、`.bob-trace/ai-traceability-draft/`、`.bob/workflows/runs/`を重複なく追加する。
 
-### CCR-UT-019 TraceabilityCatalogStore: catalog を backup 付きで保存する
+実テスト:
 
-- 入力: 既存 catalog と更新 catalog。
-- 期待結果: `.bak-<timestamp>` が作成され、新 catalog が保存される。
+- `test/workspaceInitializerExactWrites.test.js`
+- initializer lifecycle / lease / path boundary tests
 
-### CCR-UT-020 TraceabilityValidation: required field 不足を error にする
+## 6. review-input
 
-- 入力: item の `source_document_id` または domain が不正な catalog。
-- 期待結果: validation report status は `error`。
+### CCR-UT-INPUT-001 schema
 
-### CCR-UT-021 TraceabilityValidation: gate report Markdown を生成する
+required field、enum、number、array、artifact group、review focus、VCSを検証する。
 
-- 入力: errors / warnings を含む report。
-- 期待結果: Markdown に status、error、warning、subject が含まれる。
+### CCR-UT-INPUT-002 workspace-relative path
 
-### CCR-UT-022 TraceabilityCatalog: accepted item だけ review-input draft に変換する
+absolute、parent traversal、wrong artifact domain、symlink escapeを拒否する。
 
-- 入力: accepted / proposed / rejected item が混在する catalog。
-- 期待結果: accepted item だけが artifact candidate に含まれる。
+### CCR-UT-INPUT-003 interactive builder
 
-### CCR-UT-023 TraceabilityCatalog: item type を artifact kind に mapping する
+target、base / head、change type、document candidates、sections、focusをvalidated modelへ変換する。
 
-- 入力: requirement、basic_design、detailed_design、test_spec、qa_item、review_finding。
-- 期待結果: requirements、basic_design、detailed_design、test_spec、ledgers、tickets へ mapping される。
+### CCR-UT-INPUT-004 AI draft
 
-### CCR-UT-024 TraceabilityCommands: AI draft prompt を生成する
+AIは短い`ReviewInputDraft` JSONだけを作る。hostがenum、path、document existence、sizeを再検証して最終YAMLを生成する。
 
-- 入力: catalog、docsRoot、base/head/vcs。
-- 期待結果: `.bob-trace/ai-traceability-draft/ai-draft-prompt.md` が生成され、clipboard へコピーされる。
+### CCR-UT-INPUT-005 repair
 
-### CCR-UT-025 TraceabilityCommands: inline JSON draft を catalog に反映する
+known legacy enumだけをpreview / confirmation / backup付きで修復する。unknown contentを黙って変更しない。
 
-- 入力: inline JSON の traceability draft。
-- 期待結果: catalog が更新され、gate report が生成される。
+主な実テスト:
 
-### CCR-UT-026 TraceabilityCommands: draft JSON path は workspace 内のみ許可する
+- review input parser / validator / builder / draft / repair tests
 
-- 入力: workspace 外 path を示す text。
-- 期待結果: その path は無視され、workspace 内候補または raw text が使われる。
+## 7. Traceability sidecar
 
-### CCR-UT-027 TraceabilityCommands: state.traceabilityDraftJson を利用する
+### CCR-UT-TRACE-001 catalog schema
 
-- 入力: workflow action input の `state.traceabilityDraftJson`。
-- 期待結果: `applyAiTraceabilityDraft` に text として渡される。
+schema version、document、domain、item、link、decision、status、ID formatを検証する。
 
-### CCR-UT-028 TraceabilityPrepController: action を catalog に適用する
+### CCR-UT-TRACE-002 AI proposed-only boundary
 
-- 入力: domain / item / link / decision を追加・更新・削除する action。
-- 期待結果: catalog と Webview model が期待通り更新される。
+AI draftは`status: proposed`だけを作成でき、正式ID / accepted stateを確定できない。
 
-### CCR-UT-029 TraceabilityPrepWebview: save で catalog と gate report を書く
+### CCR-UT-TRACE-003 human transition
 
-- 入力: Webview save message。
-- 期待結果: `writeTraceabilityCatalog` と `validateAndWriteTraceabilityGateReport` が呼ばれ、saved message が post される。
+人間操作だけがaccepted / rejected / deprecatedへ遷移できる。
 
-### CCR-UT-029A TraceabilityPrepWebviewAssets: CSP-safe な client script を生成する
+### CCR-UT-TRACE-004 compare-and-set save
 
-- 入力: traceability prep 初期 model。
-- 期待結果: inline event handler を使わず、`data-action` と `addEventListener` で操作を dispatch する。
+catalog revisionとidentityを再検証し、backup後に保存する。stale writerを拒否する。
 
-### CCR-UT-029B TraceabilityPrepWebviewAssets: 初期 JSON を script-safe に埋め込む
+### CCR-UT-TRACE-005 gate
 
-- 入力: `</script>` を含む domain / item text。
-- 期待結果: 初期 JSON 内の `<` が `\u003c` に escape され、script tag を終端しない。
+欠落link、未承認domain、duplicate ID、unknown source、unresolved QA / review finding、stale anchorをerror / warningへ分類する。
 
-### CCR-UT-030 ReviewInputValidator: valid input を読み込む
+### CCR-UT-TRACE-006 route
 
-- 入力: artifact path が存在する valid YAML。
-- 期待結果: `ReviewInput` object が返る。
+`bobCodeConsistency.openTraceabilityPrep`は独立panelを作らず、既存主GUIを`トレーサビリティ整理`stageへrouteする。
 
-### CCR-UT-031 ReviewInputValidator: missing artifact を error にする
+実テスト:
 
-- 入力: 存在しない artifact path。
-- 期待結果: missing artifact error が throw される。
+- traceability catalog / draft / gate / Webview tests
+- `test/traceabilityPrepConcurrency.test.js`
+- `test/traceabilityPrepWebview.test.js`
+- `test/consistencyTraceabilityRecovery.test.js`
 
-### CCR-UT-032 GitDiffCollector: name-status / numstat を parse する
+## 8. VCS差分
 
-- 入力: Git diff stdout fixture。
-- 期待結果: path、status、additions、deletions が `DiffSummary.files` に入る。
+### CCR-UT-VCS-001 Git
 
-### CCR-UT-033 GitDiffCollector: fixture 利用時は Git を実行しない
+temporary repositoryでbase / head、rename、空白入りpath、binary numstat、untracked optionを検証する。
 
-- 入力: `diffFixturePath`。
-- 期待結果: child process stub は呼ばれず、fixture の内容が使われる。
+### CCR-UT-VCS-002 Bazaar
 
-### CCR-UT-034 GitDiffCollector: Bazaar mode では `--no-aliases` を付ける
+`bzr --no-aliases`、revision / range / working tree、timeout、output cap、decodeを検証する。
 
-- 入力: `review.vcs: "bazaar"`。
-- 期待結果: Bazaar 実行 args に `--no-aliases` が含まれる。
+### CCR-UT-VCS-003 execution safety
 
-### CCR-UT-034A LanguageClassifier: 拡張子から対応言語へ分類する
+shellを使わずargument arrayを使う。abort、timeout、buffer超過、non-zero exitを分類する。
 
-- 入力: `.c`、`.hpp`、`.ts`、`.py`、`.cs`、`.java`、`.go`、`.rs`、`.sh`、`.sql`、`.json`、`.yaml`、`.md`、拡張子なし path。
-- 期待結果: `c`、`hpp`、`typescript`、`python`、`csharp`、`java`、`go`、`rust`、`shell`、`sql`、`json`、`yaml`、`markdown`、`text` / `unknown` に分類される。
+### CCR-UT-VCS-004 resource caps
 
-### CCR-UT-034B GitDiffCollector: rename / 空白入り path / binary numstat を扱う
+raw diff、file count、per-file context、aggregate Bob input上限をUTF-8 bytesで検証する。
 
-- 入力: `--find-renames` を含む Git stdout fixture。
-- 期待結果: renamed status、空白入り path、binary numstat の未確定行数が `DiffSummary` と warning に反映される。
+## 9. 文書抽出
 
-### CCR-UT-035 DocumentExtractor: Markdown heading を evidence 化する
+### CCR-UT-DOCX-001 Markdown / text
 
-- 入力: ID 付き Markdown。
-- 期待結果: selector と prefix に応じた `evidence_id` が生成される。
+heading、section ID、table、list、line rangeを抽出する。
 
-### CCR-UT-036 DocumentExtractor: docx heading / table を抽出する
+### CCR-UT-DOCX-002 Word
 
-- 入力: docx fixture。
-- 期待結果: heading、paragraph、table が evidence に変換される。
+`.docx`のparagraph、heading、list、tableをdocument orderで抽出する。
 
-### CCR-UT-037 DocumentExtractor: xlsx sheet / rows を抽出する
+### CCR-UT-DOCX-003 Excel
 
-- 入力: xlsx fixture と sheet / row selector。
-- 期待結果: 対象 sheet / row が table evidence になる。
+`.xlsx`のsheet、saved value、Excel row number、cell rangeを抽出する。formulaを再計算しない。
 
-### CCR-UT-038 CCppChangeAnalyzer: changed function を検出する
+### CCR-UT-DOCX-004 bounded extraction
 
-- 入力: unified diff と source file。
-- 期待結果: 変更行を含む関数が changed function になる。
+document size、sheet count、rows per sheet、excerpt bytesを検証し、超過時はfail / bounded warningにする。
 
-### CCR-UT-039 CCppChangeAnalyzer: callee / caller 候補を抽出する
+### CCR-UT-DOCX-005 privacy
 
-- 入力: 関数呼び出しを含む C source。
-- 期待結果: changed function の callees / direct callers が記録される。
+workspace外document、external link refresh、macro、embedded object、image OCRを実行しない。
 
-### CCR-UT-040 CCppChangeAnalyzer: RT 禁止処理候補を検出する
+## 10. コード根拠
 
-- 入力: `printf`、`malloc`、`sleep` などを含む source。
-- 期待結果: RT 禁止処理候補 warning / evidence が生成される。
+### CCR-UT-CODE-001 C / C++
 
-### CCR-UT-040A GenericCodeEvidenceAnalyzer: 非 C/C++ diff hunk から evidence を生成する
+変更関数、caller / callee候補、global access、struct impact、context line上限を検証する。
 
-- 入力: TypeScript、Python、Java などの unified diff。
-- 期待結果: hunk 単位の `SRC-*` evidence、file scope symbol、`code-slices/*.md` content が生成される。
+### CCR-UT-CODE-002 generic languages
 
-### CCR-UT-040B CodeChangeAnalyzer: C/C++ と汎用 evidence を統合する
+TypeScript、JavaScript、Python、Java、C#などをdiff hunk単位のbounded根拠へ変換する。
 
-- 入力: C/C++ header 変更と TypeScript / Python / Java 変更を含む diff。
-- 期待結果: C/C++ で関数 evidence があれば維持し、関数 evidence が無い header / define-only 変更や非 C/C++ 変更には汎用 fallback evidence が生成される。
+### CCR-UT-CODE-003 unsupported / binary
 
-### CCR-UT-041 TraceabilityBuilder: evidence と code symbol の対応候補を生成する
+binaryとunsupported languageを明示し、意味のない全文をBob inputへ入れない。
 
-- 入力: document evidence、code evidence、review focus。
-- 期待結果: traceability rows と warnings が返る。
+## 11. review-package
 
-### CCR-UT-042 ReviewPackageBuilder: required files を生成する
+### CCR-UT-PACKAGE-001 deterministic build
 
-- 入力: valid preprocess intermediate。
-- 期待結果: JSON index、Markdown summary、prompts、code-slices、tables、`bob-input.md` が作成される。
+同じinput / repository / documentsからstableなmanifest、evidence ID、orderを生成する。
 
-### CCR-UT-043 ReviewPackageBuilder: evidence-index に本文を含めない
+### CCR-UT-PACKAGE-002 artifact inventory
 
-- 入力: document / code evidence。
-- 期待結果: `evidence-index.json` は metadata のみで、本文は含まれない。
+`manifest.yaml`、`input-normalized.json`、changed files / symbols、document index、evidence index、traceability map、Markdown summary、prompt、code slice、tableを整合させる。
 
-### CCR-UT-044 BobOutputCapture: fenced YAML を抽出する
+### CCR-UT-PACKAGE-003 workspace transaction
 
-- 入力: Markdown fenced YAML block。
-- 期待結果: YAML が parse され、`bob-output.yaml` に正規化保存される。
+staging、target identity、rename、rollback、cleanupを検証する。途中失敗でpartial packageを残さない。
 
-### CCR-UT-045 BobOutputCapture: text 中の `schema_version:` 以降を抽出する
+### CCR-UT-PACKAGE-004 Bob input cap
 
-- 入力: 説明文の後に YAML が続く text。
-- 期待結果: `schema_version:` 以降を YAML として保存する。
+prompt、diff、excerpt、code sliceを優先順位どおりbounded化し、hard capを超えない。
 
-### CCR-UT-046 BobOutputCapture: parse error を返す
+## 12. レビュー結果取り込み
 
-- 入力: 壊れた YAML。
-- 期待結果: `status: "error"` と parse error が返る。
+### CCR-UT-OUTPUT-001 candidate sources
 
-### CCR-UT-047 BobOutputValidator: schema valid かつ evidence valid で ok
+workflow handoff、clipboard、active editor、manual textからYAML candidateを取得する。
 
-- 入力: valid Bob output と evidence index。
-- 期待結果: `status: "ok"`、errors 0。
+### CCR-UT-OUTPUT-002 fixed workspace
 
-### CCR-UT-048 BobOutputValidator: unknown evidence_id を error にする
+embedded stage初期化時にworkspace rootを固定し、後のselection変更で保存先を変えない。
 
-- 入力: evidence index に存在しない ID を参照する Bob output。
-- 期待結果: validation error が返る。
+### CCR-UT-OUTPUT-003 schema / evidence
 
-### CCR-UT-049 BobOutputValidator: findings / questions 30 件超で warning
+schema、review ID、package ID、evidence reference、final approval禁止を検証する。
 
-- 入力: 31 件以上の findings または questions。
-- 期待結果: warning が返る。
+### CCR-UT-OUTPUT-004 atomic save
 
-### CCR-UT-050 HumanTriageHelper: triage files を生成する
+raw、canonical、primary outputをtransactionalに保存し、失敗時に部分成果物を残さない。
 
-- 入力: valid Bob output と package dir。
-- 期待結果: `triage-result.yaml`、`accepted-findings.md`、`questions-to-author.md`、`rejected-findings.md`、`follow-up-actions.md` が作成される。
+### CCR-UT-OUTPUT-005 render / disposal
 
-### CCR-UT-051 WorkflowProviderRegistration: 15 provider を登録する
+render拒否、post rejection、stage change、dispose後完了をsuccessにしない。
 
-- 入力: mock workflow-register API。
-- 期待結果: 15 個の provider ID が登録される。
+実テスト:
 
-### CCR-UT-052 WorkflowProviderRegistration: inputs と args を merge する
+- `test/resultCaptureStage.test.js`
+- output capture / validation / transaction tests
 
-- 入力: inputs と args の同名 option。
-- 期待結果: args が inputs より優先され、workflow context options が付加される。
+## 13. 指摘確認・振り分け
 
-### CCR-UT-053 WorkflowProviderRegistration: capture options を workflow state から作る
+### CCR-UT-DECISION-001 source snapshot
 
-- 入力: workflow state / inputs / args に Bob output text 候補。
-- 期待結果: `runCaptureBobOutput` に text / path options が渡る。
+Bob outputからimmutable `triage-source.yaml`を生成し、source hashを保存する。
 
-### CCR-UT-054 Workflow template: 現行 schema 要素を持つ
+### CCR-UT-DECISION-002 decision store
 
-- 入力: 同梱 `WORKFLOW.md`。
-- 期待結果: `schemaVersion`、`requires`、`guardrails.requireApproval`、`inputs`、`tools`、`artifacts`、`completion`、typed `steps` を含む。
+人間decisionを`triage-decisions.yaml`へ保存し、projectionと分離する。
 
-## 4.1 実テスト対応表
+### CCR-UT-DECISION-003 conflict
 
-| 観点 | 主な testcase ID | 実テスト file |
-| --- | --- | --- |
-| workflow provider 登録と option allowlist | CCR-UT-051、CCR-UT-052、CCR-UT-053 | `test/workflowProviderRegistration.test.js`, `test/workflowOptions.test.js`, `test/workflowUserOptions.test.js` |
-| Traceability Prep model / action | CCR-UT-028 | `test/traceabilityPrepController.test.js` |
-| Traceability Prep Webview shell | CCR-UT-029 | `test/traceabilityPrepWebview.test.js` |
-| Traceability Prep client script / escaping | CCR-UT-029A、CCR-UT-029B | `test/traceabilityPrepWebviewAssets.test.js` |
-| Git / Bazaar 差分 collector | CCR-UT-032、CCR-UT-033、CCR-UT-034、CCR-UT-034B | `test/vcsValidation.test.js`, `test/reviewPipeline.test.js` |
-| 文書抽出と xlsx dependency | CCR-UT-035、CCR-UT-036、CCR-UT-037 | `test/documentExtraction.test.js`, `test/dependencyPolicy.test.js`, `test/heavyDependencyLoading.test.js` |
-| processing limit / truncation | CCR-UT-042、CCR-UT-043 | `test/sizeLimits.test.js` |
-| workflow template contract | CCR-UT-054 | `test/architectureContracts.test.js`, `test/workflowProviderRegistration.test.js` |
+source hash変更とdecision revision変更を別errorとして拒否する。古いpanelが最新decisionを上書きしない。
 
-## 5. 非機能観点
+### CCR-UT-DECISION-004 validation
 
-- VS Code API は mock し、実 UI を開かない。
-- Bazaar CLI は stub し、Git CLI は fixture / stub と一時 repository の両方で検証する。
-- docx / xlsx fixture は最小サイズにし、抽出ロジックの分岐を網羅する。
-- path の比較は Windows / POSIX 差異を吸収する。
-- 生成ファイルは UTF-8 として検証する。
-- 時刻付き backup path は正規表現で検証する。
-- Bob 出力と evidence index の ID は deterministic fixture を使う。
+accepted、rejected、needs investigation、question、owner、reason、follow-up、due dateを検証する。
 
-## 6. 完了条件
+### CCR-UT-DECISION-005 projection / backup
 
-- `npm run compile` が成功する。
-- `node --test test/*.test.js` が成功する。
-- review-input 作成、traceability sidecar、preprocess、capture、validate、triage の主要経路が独立した単体テストで検証される。
-- Bob、VS Code UI、workflow-register、Bazaar 実体が無くてもテストが完結する。Git 実体が無い環境では Git 実コマンド経路の testcase を実行対象から外し、fixture / stub testcase で parser と workflow 経路を確認する。
+成功saveごとにrevisionを1だけ増やし、projectionをdecisionから再生成する。failed saveではinstallしない。
 
-<!-- REMEDIATION-2026-07-11 -->
-## 2026-07-11 追加単体テスト契約
+### CCR-UT-DECISION-006 legacy migration
 
-| ID | 観点 | 期待結果 |
-| --- | --- | --- |
-| EXT-UT-REM-001 | soft dependency | companion extension 不在でも通常 command が利用でき、後から有効化すると provider 登録が回復する。 |
-| EXT-UT-REM-002 | provider ownership | 同一 ID の別所有元登録を拒否し、disposable 後は再登録できる。古い disposable は新登録を削除しない。 |
-| EXT-UT-REM-003 | external process | timeout、cancel、buffer exceed、非許可 exit code を分類し、子プロセスを終了する。 |
-| EXT-UT-REM-004 | Windows path | drive、UNC、device、drive-relative、dot、traversal、control-character path を拒否する。 |
-| EXT-UT-REM-005 | processing limits | manifest/runtime の範囲が一致し、極端値を clamp し、UTF-8 byte 上限を守る。 |
-| EXT-UT-REM-006 | workflow contracts | 全 workflow を動的探索し、未知 provider / command、strict warning、mirror drift を検出する。 |
+matching itemを移行し、unknown itemをdecision storeへ入れずmigration reportへ残し、legacy fileをbackupする。
 
-<!-- TRIAGE-INTEGRITY-2026-07-12 -->
-## 2026-07-12 Human Triage Integrity 単体テスト契約
+実テスト:
 
-| ID | 観点 | 期待結果 | 実テスト |
-| --- | --- | --- | --- |
-| CCR-UT-055 | source snapshot | `triage-source/v1`がBob outputのfinding / question contextとexact hashを保持し、重複IDを拒否する。 | `test/humanTriageIntegrity.test.js` |
-| CCR-UT-056 | keyed decisions | posted順序に依存せず`source_id`へdecisionが紐づく。 | `test/humanTriageIntegrity.test.js` |
-| CCR-UT-057 | field preservation | disk上の未知top-level fieldとnested follow-up fieldを保持し、browser由来の未知fieldは採用しない。 | `test/humanTriageIntegrity.test.js`, `test/humanTriageBoundaries.test.js` |
-| CCR-UT-058 | decision validation | decision別必須field、severity enum、unknown decision、unknown source IDを拒否する。 | `test/humanTriageIntegrity.test.js` |
-| CCR-UT-059 | optimistic locking | stale source hashとstale decision revisionを安定したerror codeで拒否する。 | `test/humanTriageIntegrity.test.js` |
-| CCR-UT-060 | projection classification | accepted、rejected、investigation、question、follow-upがdecisionに従って別成果物へ出る。 | `test/humanTriageIntegrity.test.js`, `test/reviewOutputTriage.test.js` |
-| CCR-UT-061 | transaction rollback | staged YAML failure時に既存fileを維持し、staging directoryを残さない。 | `test/humanTriageBoundaries.test.js` |
-| CCR-UT-062 | legacy migration | matching IDだけを移行し、unmatched IDをreportし、legacy resultをbackupする。 | `test/humanTriageIntegrity.test.js` |
-| CCR-UT-063 | Webview boundary | untriaged state、lock token、source context、editable decision field、action/message whitelistを検証する。 | `test/guiFirstSurfaces.test.js`, `test/humanTriageBoundaries.test.js` |
+- triage core / boundaries / lifecycle tests
+- `test/humanTriageWebviewLifecycle.test.js`
 
-Windowsではtemporary directoryが8.3短縮名と長形式名で表現される場合がある。CAS test barrierとbackup directoryのassertionはlexical stringではなくphysical identityまたは対象basenameで比較する。
+## 14. Workflow provider
 
-<!-- RELEASE-BLOCKERS-2026-07-16 -->
-## 2026-07-16 release blocker 回帰契約
+### CCR-UT-PROVIDER-001 exact inventory
 
-| ID | 観点 | 期待結果 | 実テスト |
-| --- | --- | --- | --- |
-| CCR-UT-RB-001 | Windows tree kill | 親processが先にexitしても`taskkill /T /F`完了前にcancel結果をsettleしない。 | `test/windowsProcessTreeTermination.test.js` |
-| CCR-UT-RB-002 | timeout / cancel | 1,000〜600,000 ms clamp、AbortSignal、buffer budget、終了後settlementを維持する。 | `test/externalProcessRunner.test.js` |
-| CCR-UT-RB-003 | provider cleanup | 1 providerのdisposeまたはerror reporterが例外を投げても、全providerとchange listenerを解除する。 | `test/retryRegistrationController.test.js` |
-| CCR-UT-RB-004 | dependency lifecycle | soft dependency、API generation、stale / late registration rollback、source ownershipを固定する。 | `test/dependencyPolicy.test.js`, `test/workflowProviderRegistration.test.js` |
-| CCR-UT-RB-005 | path / resource cap | unsafe Git/Bazaar path/revisionを拒否し、manifest/runtime processing limitとUTF-8 budgetを一致させる。 | `test/vcsValidation.test.js`, `test/sizeLimits.test.js` |
+workspace / review-input 6件、traceability 6件、review execution 4件の計16 providerをsource、文書、workflowと照合する。
+
+### CCR-UT-PROVIDER-002 owner / rollback
+
+owner付き登録、duplicate拒否、部分失敗時の逆順dispose、deactivation cleanupを検証する。
+
+### CCR-UT-PROVIDER-003 soft dependency
+
+workflow-register未導入でもactivationとlocal serviceを維持し、後から有効化するとregistrationが回復する。
+
+主な実テスト:
+
+- workflow provider registration / action input tests
+
+## 15. Cross-extension documentation contract
+
+### CCR-UT-CONTRACT-001 recursive classification
+
+`scripts/three-extension-documentation-contract.json`からextension README、extension docs、repository docsを再帰探索する。
+
+### CCR-UT-CONTRACT-002 current documents
+
+current文書には廃止済みpublic IDと旧user-facing UI名が残らない。technical artifact / module名は誤検出しない。
+
+### CCR-UT-CONTRACT-003 historical notices
+
+historical文書が旧ID / 旧画面名を保持する場合、冒頭12行以内の`Replaced:`または`Superseded:`で正規routeを示す。
+
+### CCR-UT-CONTRACT-004 retained settings
+
+`workflowRegister.runs.retention.*`と`getConfiguration("workflowRegister.runs.retention")`を廃止済みview IDのprefixとして誤検出しない。
+
+### CCR-UT-CONTRACT-005 manifest / runtime / safety
+
+main、soft dependency、composition root、workflow backup/update、existing review-input backup-only、MCP write boundaryをsourceと文書で照合する。
+
+実行:
+
+```bash
+node --test ../../scripts/three-extension-documentation-contract.test.js
+node --test ../../scripts/three-extension-command-surface.test.js
+```
+
+## 16. Policy / full gate
+
+```bash
+npm run compile
+npm run dependency:policy
+npm run architecture:policy
+npm run source:policy
+npm run unused:report
+npm test
+npm run package
+npm run package:policy
+```
+
+完了条件:
+
+- full suite fail 0。
+- current docsの旧公開route 0件。
+- package budget / forbidden entry policyを満たす。
+- initializer、stage lifecycle、output / decision conflictのmutation regressionがfailからpassへ変化する。

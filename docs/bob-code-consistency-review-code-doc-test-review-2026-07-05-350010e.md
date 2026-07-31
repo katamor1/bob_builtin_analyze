@@ -1,3 +1,5 @@
+Replaced: `workflowRegister.openOperationHub`, `workflowRegister.openWorkflowBuilder`, `bobBazaar.openReviewGui`, and `bobCodeConsistency.openReviewWizard` are the current operator routes; the legacy Traceability Prep Webview terminology below is retained only as historical Code Consistency review evidence.
+
 # bob-code-consistency-review コード・ドキュメント・テスト整合レビュー
 
 - 対象リポジトリ: `katamor1/bob_builtin_analyze`

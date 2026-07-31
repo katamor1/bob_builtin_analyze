@@ -20,6 +20,19 @@ const pinnedRuntimeInstall = /npm install --no-save --package-lock=false --ignor
 const transientCliInvocation = /npx\s+--yes\s+--package\s+["']?@vscode\/test-cli/
 const localCliInvocation = /node_modules[\\/]\.bin[\\/]vscode-test(?:\.cmd)?/
 
+const surfaceFixtures = [
+  ["workflow-register", "Workflow Register"],
+  ["bob-bazaar-review", "Bazaar Review"],
+  ["bob-code-consistency-review", "Code Consistency Review"]
+]
+
+const expectedSurfaceEntries = [
+  ["workflowRegister.openOperationHub", "workflowRegisterOperationHub", "Bob 操作ハブ"],
+  ["workflowRegister.openWorkflowBuilder", "workflowRegisterBuilder", "ワークフロー作成・編集"],
+  ["bobBazaar.openReviewGui", "bobBazaarReviewGui", "Bazaar レビュー"],
+  ["bobCodeConsistency.openReviewWizard", "bobCodeConsistencyReviewWizard", "整合プレレビュー"]
+]
+
 test("Extension Host workflow installs and executes the pinned local VS Code test runtime", () => {
   const qualityWorkflow = readRepoFile(".github", "workflows", "extensions-quality.yml")
 
@@ -49,7 +62,79 @@ test("Extension Host smoke preflights packages, the local binary, and soft-depen
   assert.match(smokeSource, /ui:\s*"bdd"/)
 })
 
-test("code consistency Extension Host smoke loads triage operator flows", () => {
+test("consolidated surface smoke is wired identically on Ubuntu and Windows", () => {
+  const qualityWorkflow = readRepoFile(".github", "workflows", "extensions-quality.yml")
+  const surfaceTestPath = path.join(repoRoot, "scripts", "three-extension-surface-extension-host.test.js")
+
+  assert.equal(fs.existsSync(surfaceTestPath), true, "consolidated Extension Host surface test must be committed")
+  const surfaceSource = readRepoFile("scripts", "three-extension-surface-extension-host.test.js")
+  for (const name of [
+    "SURFACE_PUBLIC_COMMANDS",
+    "SURFACE_HIDDEN_COMMANDS",
+    "SURFACE_PRIMARY_PANELS"
+  ]) {
+    assert.match(surfaceSource, new RegExp(name), `${name} must drive the shared surface smoke`)
+  }
+  assert.match(surfaceSource, /vscode\.commands\.getCommands\(true\)/)
+  assert.match(surfaceSource, /vscode\.commands\.executeCommand/)
+  assert.match(surfaceSource, /vscode\.window\.tabGroups/)
+  assert.match(surfaceSource, /unhandledRejection/)
+  assert.doesNotMatch(
+    surfaceSource,
+    /executeCommand\(\s*["']bobBazaar\.authorProjectRulesFromDocuments["']/,
+    "document-backed Bazaar authoring is registration-only in noninteractive Extension Host smoke"
+  )
+
+  for (const [extension, label] of surfaceFixtures) {
+    const fixture = path.join(repoRoot, "extensions", extension, "test", "fixtures", "gui-surface-workspace", "README.md")
+    assert.equal(fs.existsSync(fixture), true, `${label} surface workspace README must be committed`)
+  }
+
+  assert.equal(
+    occurrenceCount(qualityWorkflow, /SMOKE_EXTRA_FILES:\s*\.\.\/\.\.\/scripts\/three-extension-surface-extension-host\.test\.js/g),
+    3,
+    "all three Ubuntu jobs must load the shared surface test"
+  )
+  assert.equal(
+    occurrenceCount(qualityWorkflow, /extra_test_files:\s*"\.\.\/\.\.\/scripts\/three-extension-surface-extension-host\.test\.js"/g),
+    3,
+    "all three Windows matrix entries must load the shared surface test"
+  )
+  assert.equal(
+    occurrenceCount(qualityWorkflow, /SMOKE_WORKSPACE_FOLDER:\s*test\/fixtures\/gui-surface-workspace/g),
+    3,
+    "all three Ubuntu jobs must use the dedicated surface workspace"
+  )
+  assert.equal(
+    occurrenceCount(qualityWorkflow, /workspace_folder:\s*"test\/fixtures\/gui-surface-workspace"/g),
+    3,
+    "all three Windows matrix entries must use the dedicated surface workspace"
+  )
+
+  for (const matrixField of ["surface_public_commands", "surface_hidden_commands", "surface_primary_panels"]) {
+    assert.match(qualityWorkflow, new RegExp(`${matrixField}:`), `Windows matrix must define ${matrixField}`)
+    assert.match(
+      qualityWorkflow,
+      new RegExp(`SURFACE_${matrixField.replace("surface_", "").toUpperCase()}:\\s*\\$\\{\\{\\s*matrix\\.${matrixField}\\s*\\}\\}`),
+      `Windows smoke environment must forward matrix.${matrixField}`
+    )
+  }
+
+  for (const [command, viewType, title] of expectedSurfaceEntries) {
+    assert.match(qualityWorkflow, new RegExp(command.replace(/\./g, "\\.")), `${command} must be part of the host matrix`)
+    assert.match(qualityWorkflow, new RegExp(viewType), `${viewType} must be part of the host matrix`)
+    assert.match(qualityWorkflow, new RegExp(title), `${title} must be part of the host matrix`)
+  }
+
+  assert.match(qualityWorkflow, /bobBazaar\.authorProjectRulesFromDocuments/)
+  assert.match(qualityWorkflow, /workflowRegister\.runWorkflow/)
+  assert.match(qualityWorkflow, /bobBazaar\.captureReviewResult/)
+  assert.match(qualityWorkflow, /bobCodeConsistency\.preprocess/)
+  assert.match(qualityWorkflow, new RegExp(`SMOKE_EXTRA_FILES:\\s*\\$\\{\\{\\s*matrix\\.extra_test_files\\s*\\}\\}`))
+  assert.match(qualityWorkflow, new RegExp(`SMOKE_WORKSPACE_FOLDER:\\s*\\$\\{\\{\\s*matrix\\.workspace_folder\\s*\\}\\}`))
+})
+
+test("code consistency triage operator smoke remains a separate Linux and Windows run", () => {
   const qualityWorkflow = readRepoFile(".github", "workflows", "extensions-quality.yml")
   const smokeSource = readRepoFile("scripts", "extension-host-smoke.test.js")
   const operatorTestPath = path.join(repoRoot, "scripts", "triage-integrity-extension-host.test.js")
@@ -65,12 +150,13 @@ test("code consistency Extension Host smoke loads triage operator flows", () => 
   assert.match(smokeSource, /SMOKE_EXTRA_FILES/)
   assert.match(smokeSource, /SMOKE_WORKSPACE_FOLDER/)
   assert.match(smokeSource, /files:\s*smokeTestFiles\(\)/)
+  assert.match(qualityWorkflow, /name:\s*Code Consistency triage operator smoke/)
   assert.match(qualityWorkflow, /SMOKE_EXTRA_FILES:\s*\.\.\/\.\.\/scripts\/triage-integrity-extension-host\.test\.js/)
   assert.match(qualityWorkflow, /SMOKE_WORKSPACE_FOLDER:\s*test\/fixtures\/triage-operator-workspace/)
-  assert.match(qualityWorkflow, /extra_test_files:\s*"\.\.\/\.\.\/scripts\/triage-integrity-extension-host\.test\.js"/)
-  assert.match(qualityWorkflow, /workspace_folder:\s*"test\/fixtures\/triage-operator-workspace"/)
-  assert.match(qualityWorkflow, /SMOKE_EXTRA_FILES:\s*\$\{\{\s*matrix\.extra_test_files\s*\}\}/)
-  assert.match(qualityWorkflow, /SMOKE_WORKSPACE_FOLDER:\s*\$\{\{\s*matrix\.workspace_folder\s*\}\}/)
+  assert.match(qualityWorkflow, /triage_extra_test_files:\s*"\.\.\/\.\.\/scripts\/triage-integrity-extension-host\.test\.js"/)
+  assert.match(qualityWorkflow, /triage_workspace_folder:\s*"test\/fixtures\/triage-operator-workspace"/)
+  assert.match(qualityWorkflow, /SMOKE_EXTRA_FILES:\s*\$\{\{\s*matrix\.triage_extra_test_files\s*\}\}/)
+  assert.match(qualityWorkflow, /SMOKE_WORKSPACE_FOLDER:\s*\$\{\{\s*matrix\.triage_workspace_folder\s*\}\}/)
   assert.equal(fs.existsSync(operatorTestPath), true, "triage operator Extension Host test file must be committed")
   assert.equal(fs.existsSync(operatorWorkspacePath), true, "triage operator workspace fixture must be committed")
 })

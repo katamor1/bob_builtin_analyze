@@ -1,8 +1,18 @@
 # Phase 1 Bazaar レビュー実績 campaign テンプレート
 
-このテンプレートは、Phase 1 Bazaar レビュー実績作成を CODEX または UAT 担当者が再実行できるようにするための運用手順である。実案件名、担当者名、revision は campaign 開始前に置き換える。
+このテンプレートは、Phase 1 Bazaarレビュー実績作成をCODEXまたはUAT担当者が再実行できるようにするための運用手順である。実案件名、担当者名、revisionはcampaign開始前に置き換える。
 
-## 1. 作成する成果物
+## 1. 公開入口
+
+通常operatorは次の公開Command Palette entryから開始する。
+
+```text
+Bob Bazaar Review: レビューを開始
+```
+
+以降は`Bazaar レビュー`主GUI内で、レビュー対象、レビュー資料、`レビュー結果取り込み`、`指摘確認・振り分け`、`レビュー実績`の順に進む。保存、検証、record生成用の内部Command IDを通常手順としてCommand Paletteから呼ばない。
+
+## 2. 作成する成果物
 
 ```text
 .bob-review-records/
@@ -12,6 +22,7 @@
       targets.yaml
       records/
         <review_id>/
+          review-run.json
           record.yaml
           triage.yaml
           triage.md
@@ -22,55 +33,64 @@
       summary.md
 ```
 
-`.bob/review/results/<review_id>.json` と `.bob/review/results/<review_id>.md` は既存の review-result 保存先として維持する。`.bob-review-records` 側の `record.yaml` は、それらを参照する evidence record として扱う。
+`.bob/review/results/<review_id>.json`と`.bob/review/results/<review_id>.md`はreview-resultの正本として維持する。`record.yaml`はそれらを参照するevidence recordであり、`review-run.json`は主GUIのstageとresume identityを保持する。
 
-## 2. 事前準備
+## 3. 事前準備
 
-1. Bazaar CLI が `bzr --no-aliases status` で動作することを確認する。
-2. `.bob/review/checklist.json` と `.bob/review/review-result.schema.json` が存在することを確認する。
-3. `campaign.yaml` を作り、project、owner、share_level、baseline review minutes の要否を記録する。
-4. `targets.yaml` に singleRevision、revisionRange、workingTreeSinceRevision の対象候補を記録する。
-5. 実績成果物用に `.bob-review-records/` を ignore するか、実案件で共有可能な範囲だけを commit 対象にする。
+1. Bazaar CLIが`bzr --no-aliases status`で動作することを確認する。
+2. `.bob/review/checklist.json`と`.bob/review/review-result.schema.json`が存在することを確認する。
+3. `campaign.yaml`へproject、owner、share level、baseline review minutesの要否を記録する。
+4. `targets.yaml`へsingleRevision、revisionRange、workingTreeSinceRevisionの候補を記録する。
+5. `.bob-review-records/`の共有範囲とignore方針を確認する。
+6. tested commit SHAと使用するVSIX build commit SHAを記録する。
 
-## 3. 実行手順
+## 4. 実行手順
 
-1. `Bob Bazaar Review: GUI を開く` を実行する。
-2. 対象 target を選び、review packet を作成する。
-3. packet を `.bob-review-records/campaigns/<campaign_id>/records/<review_id>/review-packet.md` に保存する。
-4. `bazaar-project-rule-review` workflow または project rules 付き direct command を実行する。
-5. Bob が出力した review-result JSON を `Bob Bazaar Review: レビュー結果を取り込む` で保存する。
-6. `Bob Bazaar Review: レビュー結果 JSON を検証` で schema validation を再実行する。
-7. `triage.yaml` を生成し、人間が `accepted` / `rejected` / `needs_investigation` / `deferred` のいずれかへ分類する。
-8. `record.yaml` を作成し、packet、review-result、triage、metrics を紐付ける。
-9. campaign summary を生成し、`summary.json` と `summary.md` を確認する。
-10. `notes.md` に再実行時の注意点、失敗、改善 backlog を残す。
+1. `Bob Bazaar Review: レビューを開始`を実行する。
+2. 主GUIでtargetを選び、review packetを生成する。
+3. packetをrecord配下の`review-packet.md`へ保存する。
+4. Bobへレビュー資料を渡し、review-result JSONを取得する。
+5. 主GUIの`レビュー結果取り込み`でJSONを抽出、schema検証、保存する。
+6. 同じreview identityのまま`指摘確認・振り分け`へ進む。
+7. findingごとに`accepted`、`rejected`、`needs_investigation`、`deferred`を選び、owner、reason、actionを保存する。
+8. `レビュー実績`で`record.yaml`、`metrics.json`、summaryを生成する。
+9. `summary.json`と`summary.md`の件数をsource artifactと照合する。
+10. `notes.md`へ失敗、再実行条件、改善backlogを記録する。
 
-## 4. Phase 1 UAT ケース
+cancel、stale review revision、schema error、workspace mismatchでは既存成果物を部分更新しない。
+
+## 5. Phase 1 UATケース
 
 | ID | 目的 | 必須証跡 | 判定 |
 |---|---|---|---|
-| BZR-RT-036 | campaign 初期化で `.bob-review-records` が作られる。 | campaign.yaml, targets.yaml | ok / ng / n/a |
-| BZR-RT-037 | GUI で packet artifact を campaign record 配下に保存できる。 | review-packet.md | ok / ng / n/a |
-| BZR-RT-038 | capture 済み review-result から record.yaml を生成できる。 | record.yaml, review-result JSON | ok / ng / n/a |
-| BZR-RT-039 | review-result から triage.yaml を生成し、人間が編集できる。 | triage.yaml | ok / ng / n/a |
-| BZR-RT-040 | triage validation error を検出できる。 | validation log | ok / ng / n/a |
-| BZR-RT-041 | 複数 record から campaign summary を生成できる。 | summary.json, summary.md | ok / ng / n/a |
-| BZR-RT-042 | workflow run metadata と record が紐付く。 | workflow.run_id または unavailable flag | ok / ng / n/a |
-| BZR-RT-043 | campaign summary から実績報告 Markdown を作成できる。 | report markdown | ok / ng / n/a |
+| BZR-RT-036 | campaign初期化で`.bob-review-records`が作られる。 | campaign.yaml, targets.yaml | ok / ng / n/a |
+| BZR-RT-037 | 主GUIでpacket artifactをrecord配下に保存できる。 | review-packet.md, review-run.json | ok / ng / n/a |
+| BZR-RT-038 | `レビュー結果取り込み`から検証済みresultを保存できる。 | review-result JSON / Markdown | ok / ng / n/a |
+| BZR-RT-039 | `指摘確認・振り分け`で全findingを人間が分類できる。 | triage.yaml | ok / ng / n/a |
+| BZR-RT-040 | decision validation errorとstale saveを検出できる。 | validation log | ok / ng / n/a |
+| BZR-RT-041 | 複数recordからcampaign summaryを生成できる。 | summary.json, summary.md | ok / ng / n/a |
+| BZR-RT-042 | workflow run metadataとrecordが紐付く。 | workflow.run_idまたはunavailable flag | ok / ng / n/a |
+| BZR-RT-043 | campaign summaryから実績報告を作成できる。 | report Markdown | ok / ng / n/a |
+| BZR-RT-044 | close / reopen後も同じreview identityで再開できる。 | review-run.json, screenshot-free log | ok / ng / n/a |
+| BZR-RT-045 | keyboard-only、200% zoom、High Contrastで主要操作が可能。 | UAT evidence | ok / ng / n/a |
 
-## 5. Human triage 基準
+## 6. 指摘確認・振り分け基準
 
-| decision | 意味 | action の例 |
+| decision | 意味 | actionの例 |
 |---|---|---|
-| accepted | 人間が妥当な指摘として採用した。 | fix_required, backlog, document |
-| rejected | 対象外、誤検出、既知の許容事項として棄却した。 | no_action |
-| needs_investigation | 追加調査が必要。 | investigate |
-| deferred | Phase 1 では判断せず後続 phase に送る。 | defer |
+| `accepted` | 人間が妥当な指摘として採用した。 | fix_required, backlog, document |
+| `rejected` | 対象外、誤検出、既知の許容事項として棄却した。 | no_action |
+| `needs_investigation` | 追加調査が必要。 | investigate |
+| `deferred` | Phase 1では判断せず後続phaseへ送る。 | defer |
 
-## 6. 完了条件
+Bobの提案だけでdecisionを確定しない。根拠、変更範囲、rule IDを人間が確認する。
 
-- `record.yaml` が target、review packet、review-result JSON/Markdown、triage を追跡している。
-- review-result JSON は schema validation 済みである。
-- human triage が全 finding に存在する。
-- `summary.json` と `summary.md` に records_total、findings、triage decision、estimated_minutes_saved が出ている。
-- workspace 外 path、Bazaar 書き込み、MCP write tool を使っていない。
+## 7. 完了条件
+
+- `record.yaml`がtarget、packet、result、decision、metricsを追跡する。
+- review-result JSONがschemaとchecklist contractを通過している。
+- 全findingが判断済み、または明示的に後続へ回されている。
+- summaryのrecords、findings、decision、estimated minutesがsource artifactと一致する。
+- workspace外path、Bazaar書込み、暗黙MCP write toolを使用していない。
+- tested commitとVSIX build commitが一致する。
+- Developer Tools Consoleに未処理exception / rejectionがない。

@@ -1,3 +1,5 @@
+Replaced: `workflowRegister.openOperationHub` and `workflowRegister.openWorkflowBuilder` are the current workflow operator routes; the legacy Operation Hub and Runs View references below are retained only as historical Phase 1–6 skip-resume design evidence.
+
 # workflow-register skip 再開 Phase 1/2/3/4/5 設計
 
 ## 目的

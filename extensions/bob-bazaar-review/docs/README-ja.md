@@ -1,59 +1,100 @@
 # bob-bazaar-review ドキュメント
 
-このディレクトリには、`bob-bazaar-review` 拡張機能の設計・運用・テストに関するドキュメントを配置します。
+このディレクトリには`bob-bazaar-review`の設計、運用、テスト、履歴証跡を配置する。
 
-## 現在の実装状態
+## 現在の公開入口
 
-`bob-bazaar-review` は、Bazaar 差分レビュー、project rules、review-result 保存、MCP 連携、Phase 1 review record 管理を提供する実行可能な VS Code 拡張です。
+通常operatorがCommand Paletteから使用する入口は次の2件だけである。
 
-リファクタリング後は、`workflow-register` 連携を `src/workflow/`、直接レビュー command と Bazaar packet 生成を `src/bazaar/`、active editor の review-result JSON 検証を `src/projectRules/`、Bob 拡張連携を `src/bob/`、GUI を `src/ui/`、workspace 初期化と root 解決を `src/workspace/`、MCP server を `src/mcp/`、review record / triage / summary を `src/records/` に分離しています。
+```text
+Bob Bazaar Review: レビューを開始
+Bob Bazaar Review: 資料からプロジェクト規約を作成
+```
 
-Review Run Wizard v3では、`src/reviewRuns/`が主GUI内のレビュー、レビュー結果取り込み、指摘確認・振り分け、レビュー実績で共有するrun contextを管理します。Iteration 1でpacketからtriage draftまでを接続し、Iteration 2で中断・再開、phase status、timing、decision validation、record/summary一括finalize、legacy artifact復旧を追加しています。Iteration 3では`src/dashboard/`とレビュー実績stageが、run、pending triage、schema/finding/rule/target mode/timeを集計し、JSON / Markdown / CSVへexportします。stack横断acceptance testは、開始からレビュー実績exportまでのidentity・metrics・evidence不変性を一つのfilesystem round tripで検証します。
+`Bob Bazaar Review: レビューを開始`はview type `bobBazaarReviewGui`の主GUIを開く。主GUI内でレビュー対象、レビュー資料、`レビュー結果取り込み`、`指摘確認・振り分け`、`レビュー実績`を同じ`review-run.json` identityで扱う。
+
+保存、検証、record生成、summary生成などの内部Command IDはworkflow、host action、互換API用に登録を維持するが、通常operatorの入口としてCommand Paletteへ列挙しない。
+
+## 現在の実装構成
+
+| 領域 | 主な責務 | 主なdirectory / file |
+|---|---|---|
+| composition root | command、panel、provider、serviceの組立 | `src/extension.ts` |
+| Bazaar主GUI | single-panel lifecycleとstage route | `src/ui/reviewGui.ts` |
+| review session | review identity、stage、artifact path、resume | `src/reviewRuns/` |
+| Bazaar collection | revision / range / working tree、packet | `src/bazaar/` |
+| result / decision | result検証、指摘確認・振り分け | `src/projectRules/`, `src/ui/` |
+|レビュー実績|record、metrics、campaign summary|`src/records/`|
+| 規約作成 | source抽出、proposal、decision、safe apply | `src/ruleAuthoring/`, `src/ui/` |
+| workflow連携 | provider登録とinput変換 | `src/workflow/` |
+| workspace | `.bob`初期化、template refresh、root解決 | `src/workspace/` |
+| MCP | read tools、write opt-in、allowed roots | `src/mcp/` |
+
+`IBM.bob-code`と`local.workflow-register`はsoft dependencyである。未導入でもlocal UIとserviceを利用できる。
+
+## 正本成果物
+
+```text
+.bob/review/results/<reviewId>.json
+.bob/review/results/<reviewId>.md
+
+.bob-review-records/
+  campaigns/<campaignId>/
+    records/<reviewId>/
+      review-run.json
+      record.yaml
+      triage.yaml
+      metrics.json
+      review-packet.md
+    summary.json
+    summary.md
+```
+
+`review-run.json`は主GUIのstageとresume identityを保持する。review-result、decision、record、metrics本体の正本を置き換えない。
 
 ## 設計書
 
 - `basic-design-ja.md`  
-  拡張機能の目的、スコープ、全体構成、主要コンポーネント、workspace モデル、Bazaar 実行方針、GUI / 直接レビュー command、workflow-register 連携、MCP、review-result 保存、review record、セキュリティ方針をまとめた基本設計書です。
+  公開入口、single-panel UI、review session、Bazaar安全実行、workflow provider、template refresh、MCP、安全境界を定義する。
 
 - `detailed-design-ja.md`  
-  実装モジュール、VS Code command、workspace 解決、BazaarClient、GUI、直接レビュー command、MCP server、workflow-register bridge、project rules、review-result capture、review record、multi-root 動作、テスト観点を整理した詳細設計書です。
+  lifecycle、stage model、message boundary、`review-run.json`、result / decision / metrics、規約作成transaction、provider retry、MCP、test gateを定義する。
 
-- `review-run-v3-iteration1-ja.md`  
-  Review Run Wizard v3 Iteration 1 のrun schema、artifact配置、ID/path安全性、主GUI内stage handoff、互換性、テスト、UATをまとめた実装仕様書です。
-
-- `review-run-v3-iteration2-ja.md`  
-  Review Run Wizard v3 Iteration 2 のprogress/metrics field、stale-write保護、未完了run再開、decision validation、finalize順序、legacy recovery、セキュリティ、UATをまとめた実装仕様書です。
-
-- `review-run-v3-iteration3-dashboard-ja.md`
-  レビュー実績のsource優先順位、rate定義、pending triage、rule / target mode trend、warning、export、セキュリティ、UATをまとめています。
-
-- `review-run-id-allocation-ja.md`  
-  同一campaign内で既存・legacy・並行Review Runを上書きしない、`-02`以降のcollision-safe ID予約契約をまとめています。
-
-- `review-run-command-boundary-ja.md`  
-  主GUIのresume/stage遷移におけるopen workspace境界、ID再検証、workspace外root拒否をまとめています。
+- `workflow-action-contracts-ja.md`  
+  `workflow-register`へ公開するreview provider IDの互換性境界を定義する。
 
 ## テスト仕様書
 
 - `unit-test-spec-ja.md`  
-  BazaarClient、文字コード、workspace resolver、review packet、直接レビュー command、workflow-register bridge、review-result capture、MCP server、review record、Review Run、workflow template の単体テスト仕様書です。
+  public command inventory、主GUI lifecycle、review session、Bazaar subprocess、result、decision、record、provider、template refresh、MCPの単体contractを定義する。
 
 - `real-machine-test-spec-ja.md`  
-  VS Code、IBM Bob、workflow-register、Bob Workflow UI、Bazaar Review GUI、Review Run再開/finalize/recovery、レビュー実績、Bazaar CLI、MCP server、multi-root workspace を含む実機テスト仕様書です。
+  Ubuntu / Windows、VS Code、IBM Bob、Bazaar CLI、主GUI、MCP、multi-root、200% zoom、High Contrast、keyboard、Consoleを含む実機gateを定義する。
 
-- `review-run-v3-acceptance-ja.md`  
-  Iteration 1〜3を横断する自動受入テスト、identity / phase / metrics / 指摘確認・振り分け / evidence不変条件、回帰gate、stack統合順、rollbackを定義します。
+## 履歴文書
 
-- `review-run-v3-integration-result-ja.md`  
-  PR #76 / #79 / #83 / #85の実merge SHA、main同期時の競合解消、検証結果、互換性、rollback順を記録します。
+次は過去のIteration設計・統合証跡であり、現在のoperator routeではない。旧画面名や旧Command IDがある文書は冒頭の`Replaced:` / `Superseded:`通知に従う。
 
-## 既存ドキュメント
+- `review-run-v3-iteration1-ja.md`
+- `review-run-v3-iteration2-ja.md`
+- `review-run-v3-iteration3-dashboard-ja.md`
+- `review-run-v3-acceptance-ja.md`
+- `review-run-v3-integration-result-ja.md`
 
-- `../README.md`  
-  利用者向けの機能説明、コマンド一覧、GUI、MCP、設定、ビルド手順、現在の実装分割をまとめています。
+## 運用メモ
 
-- `workflow-authoring-guide-ja.md`  
-  Bob / workflow-register で利用するワークフロー作成ガイドです。
+- `review-run-id-allocation-ja.md`  
+  campaign内のcollision-safe review ID予約を定義する。
 
-- `../../../docs/extension-refactor-review-54e1fe58.md`  
-  3 拡張機能全体の責務分割方針と、今後の分割候補をまとめています。
+- `review-run-command-boundary-ja.md`  
+  workspace、review ID、resume、stage transitionのhost-side再検証を定義する。
+
+- `project-rule-authoring.md`  
+  source selection、AI consent、proposal decision、diff preview、backup、transaction recoveryを定義する。
+
+## 関連文書
+
+- `../README.md`
+- `../../../docs/workflows/code-consistency-review/README.md`
+- `../../../docs/workflow-action-contracts-ja.md`
+- `../../../docs/ops/bob-workflow-security-privacy-ja.md`

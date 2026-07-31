@@ -1,3 +1,5 @@
+Replaced: `workflowRegister.openOperationHub` and `workflowRegister.openWorkflowBuilder` are the current workflow operator routes; the legacy workflow run projections below are retained only as historical P1-3 design evidence.
+
 # Workflow Reused / Skipped Provenance P1-3 Design
 
 ## Goal

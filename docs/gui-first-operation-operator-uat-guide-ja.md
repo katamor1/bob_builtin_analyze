@@ -1,126 +1,131 @@
 # GUIファースト操作 Operator / UAT ガイド
 
-- 対象: GUI-00 から GUI-07
+- 対象: 3拡張の統合operator surface
 - 対象拡張: `workflow-register`, `bob-bazaar-review`, `bob-code-consistency-review`
-- 前提: 主要操作は Command Palette ではなく Bob 操作センターと各 GUI から開始する。既存 command は互換用に残す。
+- 前提: 常時表示するCommand Palette entryは次の5件だけとする。
 
-## 1. 起動
+| Job | 公開表示名 | Command ID |
+| --- | --- | --- |
+| workflow運用 | `Bob: 操作ハブを開く` | `workflowRegister.openOperationHub` |
+| workflow作成・編集 | `Bob Workflow: ワークフローを作成・編集` | `workflowRegister.openWorkflowBuilder` |
+| Bazaar review | `Bob Bazaar Review: レビューを開始` | `bobBazaar.openReviewGui` |
+| 資料からproject rules作成 | `Bob Bazaar Review: 資料からプロジェクト規約を作成` | `bobBazaar.authorProjectRulesFromDocuments` |
+| コード整合review | `Bob Code Consistency Review: 整合プレレビューを開始` | `bobCodeConsistency.openReviewWizard` |
 
-1. VS Code で対象 workspace を開く。
-2. Explorer の `Bob 操作センター` を開く。
-3. `セットアップ` で `.bob`, workflow, MCP, traceability の状態を確認する。
-4. 目的に応じて次の入口を使う。
+workflow、validation、record、capture、decision、retention用の内部commandは登録を維持するが、通常のCommand Paletteには表示しない。
 
-| 目的 | GUI 入口 |
-|---|---|
-| Bazaar レビュー | `Bob 操作センター` > `Bazaar レビューを開始` |
-| 整合プレレビュー | `Bob 操作センター` > `整合プレレビューを開始` |
-| workflow 実行 | `Bob 操作センター` > `ワークフロー一覧` > `開始` |
-| 中断 run の再開 | `Bob 操作センター` > `実行状況` |
-| Bob 出力取り込み | 各レビュー画面 > `結果の取り込み` |
-| 採否判断 | 各レビュー画面 > `指摘確認・振り分け` |
+## 1. 起動とsoft dependency
 
-## 2. Bazaar レビュー UAT
+1. VS Code / Bob IDEで対象workspaceを開く。
+2. `Bob: 操作ハブを開く`を実行し、wide panelの`Bob 操作ハブ`を開く。
+3. setup、workflow catalog、run一覧、optional integrationの利用可否を確認する。
+4. IBM Bobまたはcompanion extensionを無効化してもactivationが失敗せず、利用できないactionに理由が表示されることを確認する。
+5. Explorerに重複する旧run viewや別のrun status UIがなく、実行操作が操作ハブへ集約されていることを確認する。
 
-対象: `bob-bazaar-review`
+## 2. ワークフロー作成・編集 UAT
 
-1. `Bob 操作センター` から `Bazaar レビューを開始` を押す。
-2. `レビュー手順` を確認する。
-3. Bazaar workspace を選択する。
-4. `1リビジョン`, `リビジョン範囲`, `TOPリビジョンと未コミット差分` のいずれかを選ぶ。
-5. `対象情報を取得` を押し、変更ファイル一覧が出ることを確認する。
-6. `レビューして Bob に追加` を押す。
-7. `レビュー結果の取り込みを開く` から Bob 出力 JSON を貼り付け、保存前 validation が走ることを確認する。
-8. `人による判定を開く` から campaign / review_id を入力し、triage 雛形、decision 保存、summary 生成を確認する。
-
-合格条件:
-
-- Command Palette を使わず review packet 作成まで進める。
-- invalid review-result JSON は保存されない。
-- triage decision が `.bob-review-records` 配下に保存される。
-- 既存 `bobBazaar.*` command も引き続き利用できる。
-
-## 3. 整合プレレビュー UAT
-
-対象: `bob-code-consistency-review`
-
-1. `Bob 操作センター` から `整合プレレビューを開始` を押す。
-2. `整合プレレビューを開始` 画面で VCS、比較元／比較先、変更種別を確認する。
-3. `関連資料の選択` で文書候補を選ぶ。
-4. `確認観点` を選ぶ。
-5. 必要に応じて `トレーサビリティ整理を開く` で proposed item を承認する。
-6. `選択内容から review-input を生成` を押し、`review-input.yaml` が画面操作から生成されることを確認する。
-7. `Bob 用パッケージを作成` を押し、`Package Preview` が更新されることを確認する。
-8. `Bob 出力の取り込み` で Bob 出力（YAML） を貼り付け、schema / evidence ref validation を確認する。
-9. `指摘確認・振り分け` で `triage-result.yaml` を生成し、finding / question の decision を保存する。
+1. `Bob Workflow: ワークフローを作成・編集`を開く。
+2. 次の3モードだけが表示されることを確認する。
+   - 空のworkflowから作成
+   - `標準テンプレートから作成`
+   - 既存workflowを編集
+3. validなworkflowをPreviewし、DiagnosticsとDiffを確認する。
+4. cancelして既存fileとbackupが変化しないことを確認する。
+5. 再度保存し、明示確認後にbackupと更新fileが作成されることを確認する。
+6. 別sessionでfileを変更し、stale sessionからの保存が拒否されることを確認する。
 
 合格条件:
 
-- 標準ケースで `review-input.yaml` を手編集しない。
-- workspace 外 path は選択・保存できない。
-- evidence ref error がある Bob output は validation error になる。
-- `triage-result.yaml` に decision / owner / reason が保存される。
+- template調整用の独立公開panelまたは公開commandがない。
+- template生成も通常のPreview / Diff / confirmation / backup / transactional saveを通る。
+- 保存後にworkflow catalogが更新される。
 
-## 4. 実行状況 UAT
+## 3. Bazaar Review UAT
 
-対象: `workflow-register`
-
-1. `Bob 操作センター` を開く。
-2. `ワークフロー一覧` から任意の workflow を開始する。
-3. 実行中または停止中 run が `実行状況` に表示されることを確認する。
-4. 状態に応じて `承認して次へ`, `再試行`, `再開`, `手順を開く`, `詳細`, `成果物を開く` の表示を確認する。
+1. `Bob Bazaar Review: レビューを開始`を開く。
+2. campaign、target mode、revision / range、review IDを確認する。
+3. 対象情報を取得し、Bazaar操作が`bzr --no-aliases`経路で実行されることを確認する。
+4. Review Runを開始し、`review-run.json`と`review-packet.md`が同じidentityで保存されることを確認する。
+5. 同じpanel内の`レビュー結果取り込み`stageへ進み、expected review IDとschema validationを確認する。
+6. 同じpanel内の`指摘確認・振り分け`stageへ進み、decision、owner、action、reasonを保存する。
+7. `レビュー実績`stageでpending、rate、rule / target mode trend、warningを確認し、JSON / Markdown / CSVをexportする。
+8. refresh / export前後でpacket、result、decision、record、summaryのbytesが変化しないことを確認する。
 
 合格条件:
 
-- run state は `.bob/workflows/runs` の内容と一致する。
-- GUI action は既存 `workflowRegister.*` command だけを呼ぶ。
-- workspace 外 artifact は開けない。
+- capture、decision、metricsの独立公開panel / commandがない。
+- active Review Run identityをstageごとに再入力しない。
+- invalid result、stale revision、unsafe workspace rootを保存前に拒否する。
+- MCPはread-only既定で、write toolは明示opt-inとallowed rootを要求する。
 
-## 5. Sandbox Smoke
+## 4. 資料からproject rules作成 UAT
 
-次の launcher を使い、各 GUI が sandbox workspace で開けることを確認する。
+1. `Bob Bazaar Review: 資料からプロジェクト規約を作成`を開く。
+2. source選択、抽出preview、AI送信対象の名称・件数・byte数を確認する。
+3. AI consent前にworkflowを開始しないことを確認する。
+4. proposalを規約候補の確認・適用で個別判定する。
+5. apply preview、backup、journal、transaction、rollback契約を確認する。
+6. MCPの`project_rules_init`が`BOB_BAZAAR_ENABLE_WRITE_TOOLS=1`と`BOB_BAZAAR_ALLOWED_ROOTS`なしでは公開・実行されないことを確認する。
+
+## 5. Code Consistency Review UAT
+
+1. `Bob Code Consistency Review: 整合プレレビューを開始`を開く。
+2. workflowがない場合だけ初期化cardが表示されることを確認する。
+3. workflow templateが異なる場合はbackup後に更新され、既存`review-input.yaml`は上書きされずbackupだけが作成されることを確認する。
+4. input / evidenceを選択する。
+5. 同じpanel内の`トレーサビリティ整理`stageでproposed itemを承認・棄却・廃止する。
+6. review-inputを生成し、preprocessing / package previewを確認する。
+7. 同じpanel内の`レビュー結果取り込み`stageでBob outputをcapture・validateする。
+8. 同じpanel内の`指摘確認・振り分け`stageでdecisionを保存する。
+9. source change conflict、two-window revision conflict、legacy migration、backup / projectionを確認する。
+
+合格条件:
+
+- traceability、capture、decisionの各serviceが独立した公開panel / commandを持たない。
+- AIはproposed候補までを担当し、accepted / rejected / deprecatedを確定しない。
+- source contextと人間decisionを別成果物として維持する。
+
+## 6. Bob 操作ハブ / run UAT
+
+1. workflow catalogから任意workflowを開始する。
+2. run cardが`.bob/workflows/runs/<runId>/run.json`のstatus、current step、revisionと一致することを確認する。
+3. 状態に応じてresume、retry、accept、accept-and-next、run-next、pause、held recovery、diagnostics、artifact操作が表示されることを確認する。
+4. task snapshot importとartifact reuseでpreview / digest / provenanceを確認する。
+5. retention previewでprotected runを除外し、明示確認後だけcleanupすることを確認する。
+6. 同じrunへのmutationが直列化され、stale revisionが拒否されることを確認する。
+
+## 7. Visual / keyboard / Console gate
+
+各primary panelで次を確認する。
+
+- 200% zoomで横スクロールに依存せず主要操作へ到達できる。
+- High Contrastでfocus、status、warning、disabled reasonを識別できる。
+- Tab / Shift+Tabだけで主要actionへ到達できる。
+- focus indicatorが見える。
+- stale completion後もcurrent stageとstatusを見失わない。
+- Developer Tools Consoleのuncaught exception、unhandled rejection、CSP violationが0件である。
+
+## 8. Regression gate
+
+repository rootで次を実行する。
 
 ```powershell
-docs\workflows\bazaar-project-rule-review\integration\launch-bob-bazaar-review-sandbox.ps1
-docs\workflows\code-consistency-review\integration\launch-bob-code-consistency-sandbox.ps1
-docs\workflows\process-workflows\integration\launch-process-workflows-sandbox.ps1
+node --test scripts/three-extension-command-surface.test.js scripts/three-extension-documentation-contract.test.js
+git diff --check
 ```
 
-UAT 実施時は次を記録する。
+各拡張では、その`package.json`に定義されたcompile、policy、unit、package、package policyを実行する。Linux / WindowsのExtension Host gateは同一source head SHAで、activation、5公開command、4primary panel、代表hidden commandを確認する。
 
-| 項目 | 記録内容 |
-|---|---|
-| workspace | sandbox path |
-| VSIX | 3 拡張の package 結果 |
-| 操作 | Hub から開始した導線 |
-| 成果物 | review-input, review-package, bob-output, triage, summary |
-| 失敗 | validation error, missing setup, recovery action |
+## 9. Evidence
 
-## 6. Regression Gate
+最低限、次を保存する。
 
-UAT 前に次を実行する。
+- tested source head SHA
+- OS、VS Code / Bob IDE、各extension version
+- VSIX SHA-256
+- start state / operation result screenshot
+- relevant `run.json` / `control.json` / manifestのredacted copy
+- Console log
+- testcaseごとのpass / fail / pendingと理由
 
-```powershell
-cd extensions\workflow-register
-npm.cmd test
-npm.cmd run architecture:policy
-npm.cmd run source:policy
-npm.cmd run package
-npm.cmd run package:policy
-
-cd ..\bob-bazaar-review
-npm.cmd test
-npm.cmd run architecture:policy
-npm.cmd run source:policy
-npm.cmd run package
-npm.cmd run package:policy
-
-cd ..\bob-code-consistency-review
-npm.cmd test
-npm.cmd run architecture:policy
-npm.cmd run source:policy
-npm.cmd run package
-npm.cmd run package:policy
-```
-
-すべて成功してから UAT を開始する。
+IBM Bob実環境caseが未実施の場合は`pending`とし、automated gateだけでproduct release passへ繰り上げない。

@@ -1,3 +1,5 @@
+Replaced: `workflowRegister.openOperationHub` and `workflowRegister.openWorkflowBuilder` are the current workflow operator routes; the legacy Runs View and related auxiliary surfaces below are retained only as historical release evidence.
+
 # workflow-register 日本語 GUI 横断仕上げ 検証証跡
 
 - 日付: 2026-07-17

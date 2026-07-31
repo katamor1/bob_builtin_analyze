@@ -8,7 +8,7 @@
   拡張機能の目的、スコープ、全体構成、主要コンポーネント、workflow 定義モデル、実行状態、run control、task snapshot、ワークフロー作成・編集、テンプレート調整、AI 補助、他拡張連携、テスト方針をまとめた基本設計書です。
 
 - `detailed-design-ja.md`  
-  実装モジュール、activation、command、設定、公開 API、parser / validator、Bob 登録、WorkflowEngine、run state、run control、Run Control View、task snapshot、result handoff、ワークフロー作成・編集、テンプレート調整、diagnostics、テスト観点を整理した詳細設計書です。
+  実装モジュール、activation、command、設定、公開 API、parser / validator、Bob 登録、WorkflowEngine、run state、run control、Bob 操作ハブ、task snapshot、result handoff、ワークフロー作成・編集、テンプレート調整、diagnostics、テスト観点を整理した詳細設計書です。
 
 - `run-state-schema-v1-ja.md`  
   `run.json` の schema version、historical v0 migration、exact-byte backup、future-version read-only protection、invalid document isolationを定義します。
@@ -25,10 +25,10 @@
 ## テスト仕様書
 
 - `unit-test-spec-ja.md`  
-  parser、validator、engine、run state、run control、Run Control View、task snapshot、result handoff、Bob adapter helper、authoring helper、テンプレート調整 helper の単体テスト仕様書です。
+  parser、validator、engine、run state、run control、Bob 操作ハブ、task snapshot、result handoff、Bob adapter helper、authoring helper、テンプレート調整 helper の単体テスト仕様書です。
 
 - `real-machine-test-spec-ja.md`  
-  VS Code / IBM Bob / Bob Workflow UI / Webview / テンプレート調整 / Explorer view / Status Bar / multi-root workspace を含めた実機テスト仕様書です。
+  VS Code / IBM Bob / Bob Workflow UI / Bob 操作ハブ / ワークフロー作成・編集 / Webview / multi-root workspace を含めた実機テスト仕様書です。
 
 ## Release evidence
 
