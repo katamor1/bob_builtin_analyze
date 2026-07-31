@@ -6,6 +6,7 @@ import type { WorkflowPlanLease } from "./core/contractV2/planLease"
 import { releaseWorkflowContractV2RunPlanLease } from "./core/contractV2/runPlanProvenance"
 import {
   classifyWorkflowContractV2Restart,
+  expectedWorkflowContractV2RestartEffectIntent,
   type WorkflowContractV2RestartDecision
 } from "./core/contractV2/runRestartRecovery"
 import { classifyWorkflowContractV2RunRecovery } from "./core/engine/recoveryState"
@@ -75,10 +76,12 @@ export async function recoverWorkflowContractV2ProductRunForRetry(
         "Contract v2 run cannot retry because its persisted attempt or artifact evidence is invalid."
       )
     }
+    const effectIntent = expectedWorkflowContractV2RestartEffectIntent(lease, input.run)
     const restart = classifyWorkflowContractV2Restart({
       plan: lease.handle.plan,
       run: input.run,
-      attemptRecovery
+      attemptRecovery,
+      effectIntent
     })
     if (restart.kind === "blocked") {
       throw new WorkflowContractV2BoundaryError(restart.reason)
