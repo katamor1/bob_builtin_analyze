@@ -40,40 +40,56 @@ test("pre-cancelled preprocessing does not delete the prior complete package or 
   assert.equal(await fs.readFile(reportPath, "utf8"), "prior report\n")
 })
 
-test("wrapper and core cleanup sequences recheck cancellation at every destructive boundary", async () => {
+test("wrapper delegates one rollback-capable cleanup transaction to the core pipeline", async () => {
   const boundarySource = await fs.readFile(
     path.join(__dirname, "..", "src", "core", "preprocessCoverageBoundary.ts"),
     "utf8"
   )
-  const firstBoundaryCheck = boundarySource.indexOf("throwIfBoundaryCancelled(input.abortSignal)")
-  const boundaryReportCleanup = boundarySource.indexOf("await removeStaleProcessingBudgetReport(outDir)")
-  const secondBoundaryCheck = boundarySource.indexOf(
-    "throwIfBoundaryCancelled(input.abortSignal)",
-    firstBoundaryCheck + 1
-  )
-  const boundaryPackageCleanup = boundarySource.indexOf("await cleanManagedReviewPackageOutputs(outDir)")
-  const thirdBoundaryCheck = boundarySource.indexOf(
-    "throwIfBoundaryCancelled(input.abortSignal)",
-    secondBoundaryCheck + 1
-  )
+  const boundaryCheck = boundarySource.indexOf("throwIfBoundaryCancelled(input.abortSignal)")
   const preprocess = boundarySource.indexOf("return await preprocessReview(input)")
-
-  assert.ok(firstBoundaryCheck >= 0 && firstBoundaryCheck < boundaryReportCleanup)
-  assert.ok(secondBoundaryCheck > boundaryReportCleanup && secondBoundaryCheck < boundaryPackageCleanup)
-  assert.ok(thirdBoundaryCheck > boundaryPackageCleanup && thirdBoundaryCheck < preprocess)
+  assert.ok(boundaryCheck >= 0 && boundaryCheck < preprocess)
+  assert.doesNotMatch(boundarySource, /removeStaleProcessingBudgetReport|cleanManagedReviewPackageOutputs/)
 
   const pipelineSource = await fs.readFile(
     path.join(__dirname, "..", "src", "core", "pipeline.ts"),
     "utf8"
   )
   const firstCoreCheck = pipelineSource.indexOf("cancellation.throwIfCancelled()")
-  const coreReportCleanup = pipelineSource.indexOf("await removeStaleProcessingBudgetReport(outDir)")
-  const secondCoreCheck = pipelineSource.indexOf("cancellation.throwIfCancelled()", firstCoreCheck + 1)
-  const corePackageCleanup = pipelineSource.indexOf("await cleanManagedReviewPackageOutputs(outDir)")
-  const thirdCoreCheck = pipelineSource.indexOf("cancellation.throwIfCancelled()", secondCoreCheck + 1)
+  const transaction = pipelineSource.indexOf("await cleanPreprocessOutputsWithRollback(")
   const reviewInputValidation = pipelineSource.indexOf("const reviewInput = await validateReviewInput(")
+  assert.ok(firstCoreCheck >= 0 && firstCoreCheck < transaction)
+  assert.ok(transaction > firstCoreCheck && transaction < reviewInputValidation)
+  assert.doesNotMatch(
+    pipelineSource.slice(0, reviewInputValidation),
+    /removeStaleProcessingBudgetReport|cleanManagedReviewPackageOutputs/
+  )
+})
 
-  assert.ok(firstCoreCheck >= 0 && firstCoreCheck < coreReportCleanup)
-  assert.ok(secondCoreCheck > coreReportCleanup && secondCoreCheck < corePackageCleanup)
-  assert.ok(thirdCoreCheck > corePackageCleanup && thirdCoreCheck < reviewInputValidation)
+test("cleanup transaction captures first, restores on failure, and installs the binding last", async () => {
+  const source = await fs.readFile(
+    path.join(__dirname, "..", "src", "core", "preprocessCleanupTransaction.ts"),
+    "utf8"
+  )
+
+  const initialCheck = source.indexOf("throwIfCancelled(signal)")
+  const capture = source.indexOf("const snapshot = await capturePreprocessOutputs(outDir)")
+  const postCaptureCheck = source.indexOf("throwIfCancelled(signal)", initialCheck + 1)
+  const reportCleanup = source.indexOf("await removeStaleProcessingBudgetReport(outDir)", postCaptureCheck)
+  const postReportCheck = source.indexOf("throwIfCancelled(signal)", postCaptureCheck + 1)
+  const packageCleanup = source.indexOf("await cleanManagedReviewPackageOutputs(outDir)", postReportCheck)
+  const postPackageCheck = source.indexOf("throwIfCancelled(signal)", postReportCheck + 1)
+  const restore = source.indexOf("await restorePreprocessOutputs(outDir, snapshot)", postPackageCheck)
+
+  assert.ok(initialCheck >= 0 && initialCheck < capture)
+  assert.ok(postCaptureCheck > capture && postCaptureCheck < reportCleanup)
+  assert.ok(postReportCheck > reportCleanup && postReportCheck < packageCleanup)
+  assert.ok(postPackageCheck > packageCleanup && postPackageCheck < restore)
+
+  const restoreStart = source.indexOf("async function restorePreprocessOutputs(")
+  const packageFiles = source.indexOf("for (const file of snapshot.packageSnapshot.files)", restoreStart)
+  const reportWrite = source.indexOf("replaceBytesAtomically(processingBudgetReportPath(outDir)", packageFiles)
+  const bindingWrite = source.indexOf("replaceBytesAtomically(processingBudgetReportBindingPath(outDir)", reportWrite)
+  assert.ok(packageFiles > restoreStart)
+  assert.ok(reportWrite > packageFiles)
+  assert.ok(bindingWrite > reportWrite)
 })
