@@ -1,8 +1,13 @@
 import * as nodePath from "node:path"
 
-import { classifyWorkflowContractV2AttemptRecovery } from "./core/contractV2/runAttemptRecovery"
+import { inspectWorkflowArtifactTransactionRecovery } from "./core/contractV2/artifactTransactionRecovery"
+import {
+  classifyWorkflowContractV2AttemptRecovery,
+  type WorkflowContractV2AttemptRecoveryClassification
+} from "./core/contractV2/runAttemptRecovery"
 import { recoverWorkflowContractV2RunPlanLease } from "./core/contractV2/runPlanRecovery"
 import type { WorkflowPlanLease } from "./core/contractV2/planLease"
+import type { WorkflowProviderEffectIntentV1 } from "./core/contractV2/providerEffectIntent"
 import { releaseWorkflowContractV2RunPlanLease } from "./core/contractV2/runPlanProvenance"
 import {
   classifyWorkflowContractV2Restart,
@@ -70,13 +75,18 @@ export async function recoverWorkflowContractV2ProductRunForRetry(
   let lease: WorkflowPlanLease | undefined
   try {
     lease = await acquireRecordedGeneration(input)
-    const attemptRecovery = await classifyAttemptRecovery(input, lease)
-    if (attemptRecovery.kind === "invalid") {
+    const initialAttemptRecovery = await classifyAttemptRecovery(input, lease)
+    if (initialAttemptRecovery.kind === "invalid") {
       throw new WorkflowContractV2BoundaryError(
         "Contract v2 run cannot retry because its persisted attempt or artifact evidence is invalid."
       )
     }
     const effectIntent = expectedWorkflowContractV2RestartEffectIntent(lease, input.run)
+    const attemptRecovery = await reinspectWorkflowContractV2RestartAttempt(
+      input,
+      initialAttemptRecovery,
+      effectIntent
+    )
     const restart = classifyWorkflowContractV2Restart({
       plan: lease.handle.plan,
       run: input.run,
@@ -129,14 +139,55 @@ function classifyAttemptRecovery(
   return classifyWorkflowContractV2AttemptRecovery({
     plan: lease.handle.plan,
     run: input.run,
-    runRoot: nodePath.join(
-      input.workspaceRoot,
-      ".bob",
-      "workflows",
-      "runs",
-      input.run.runId
-    )
+    runRoot: runRoot(input)
   })
+}
+
+async function reinspectWorkflowContractV2RestartAttempt(
+  input: RecoverWorkflowContractV2ProductRunInput,
+  initial: WorkflowContractV2AttemptRecoveryClassification,
+  effectIntent: WorkflowProviderEffectIntentV1
+): Promise<WorkflowContractV2AttemptRecoveryClassification> {
+  if (effectIntent.sideEffect !== "workspace-write" || initial.kind !== "clean") {
+    return initial
+  }
+  const inspection = await inspectWorkflowArtifactTransactionRecovery({
+    runRoot: runRoot(input),
+    attemptId: effectIntent.attemptId
+  })
+  if (inspection.status === "committed") {
+    return objectFreeze({
+      kind: "invalid" as const,
+      reason: "Prepared workflow retry unexpectedly observed committed visibility."
+    })
+  }
+  if (inspection.status === "orphaned") {
+    return objectFreeze({
+      kind: "in-doubt" as const,
+      stepId: effectIntent.stepId,
+      attemptId: effectIntent.attemptId,
+      artifactStatus: "orphaned" as const,
+      artifactSetDigest: inspection.artifactSetDigest,
+      committed: initial.committed
+    })
+  }
+  return objectFreeze({
+    kind: "in-doubt" as const,
+    stepId: effectIntent.stepId,
+    attemptId: effectIntent.attemptId,
+    artifactStatus: inspection.status,
+    committed: initial.committed
+  })
+}
+
+function runRoot(input: RecoverWorkflowContractV2ProductRunInput): string {
+  return nodePath.join(
+    input.workspaceRoot,
+    ".bob",
+    "workflows",
+    "runs",
+    input.run.runId
+  )
 }
 
 function releaseRecoveredLease(
