@@ -76,6 +76,45 @@ test("paused recovery revalidates every recorded committed artifact set", async 
   })])
 })
 
+test("a deterministically skipped workspace-write step needs no artifact set", async () => {
+  let calls = 0
+  const classify = subject().createWorkflowContractV2AttemptRecoveryClassifier(async () => {
+    calls += 1
+    return Object.freeze({ status: "missing" })
+  })
+  const selectedRun = run("paused", "writeSecond", "completed", "pending")
+  delete selectedRun.state["workflow.contractV2.artifactSet.writeFirst"]
+  selectedRun.state["workflow.contractV2.skipped.writeFirst"] = "true"
+  delete selectedRun.steps[0].attempt
+
+  const result = await classify({
+    plan: plan(),
+    run: selectedRun,
+    runRoot: "/workspace/.bob/workflows/runs/run-1"
+  })
+
+  assert.deepEqual(result, Object.freeze({ kind: "clean", committed: Object.freeze([]) }))
+  assert.equal(calls, 0)
+})
+
+test("artifact visibility on a non-completed step is inconsistent", async () => {
+  let calls = 0
+  const classify = subject().createWorkflowContractV2AttemptRecoveryClassifier(async () => {
+    calls += 1
+    return Object.freeze({ status: "committed", artifactSet: Object.freeze({}), artifactSetDigest: digestA })
+  })
+  const selectedRun = run("paused", "writeSecond", "failed", "pending")
+
+  const result = await classify({
+    plan: plan(),
+    run: selectedRun,
+    runRoot: "/workspace/.bob/workflows/runs/run-1"
+  })
+
+  assert.equal(result.kind, "invalid")
+  assert.equal(calls, 0)
+})
+
 test("a running staging-only attempt is classified in-doubt without claiming success", async () => {
   const classify = subject().createWorkflowContractV2AttemptRecoveryClassifier(async (input) => {
     if (input.attemptId === "attempt-0001-0001") {
