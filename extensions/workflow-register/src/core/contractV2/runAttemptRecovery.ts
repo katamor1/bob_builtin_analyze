@@ -45,13 +45,29 @@ export type InspectWorkflowArtifactTransactionRecovery = (input: {
   readonly expectedArtifactSetDigest?: Sha256Digest
 }) => Promise<WorkflowArtifactTransactionRecoveryInspection>
 
+interface RunStepRecoveryEvidence {
+  readonly id: string
+  readonly status: string
+  readonly attempt?: number
+}
+
+interface RunRecoveryEvidence {
+  readonly workflowSchemaVersion: string | undefined
+  readonly status: string
+  readonly currentStep: string | undefined
+  readonly state: Readonly<Record<string, unknown>>
+  readonly steps: readonly RunStepRecoveryEvidence[]
+}
+
 const isProxy = utilTypes.isProxy
 const arrayIsArray = Array.isArray
+const arrayPrototype = Array.prototype
 const bufferFrom = Buffer.from
 const BufferConstructor = Buffer
 const numberIsSafeInteger = Number.isSafeInteger
 const nodePathIsAbsolute = nodePath.isAbsolute
 const nodePathResolve = nodePath.resolve
+const objectCreate = Object.create
 const objectFreeze = Object.freeze
 const objectGetOwnPropertyDescriptors = Object.getOwnPropertyDescriptors
 const objectGetPrototypeOf = Object.getPrototypeOf
@@ -64,6 +80,8 @@ const DIGEST_PATTERN = /^sha256:[0-9a-f]{64}$/u
 const ATTEMPT_PATTERN = /^attempt-[0-9]{4,}-[0-9]{4,}$/u
 const VISIBILITY_PREFIX = "workflow.contractV2.artifactSet."
 const MAX_VISIBILITY_BYTES = 1_024
+const MAX_STATE_FIELDS = 4_096
+const MAX_RUN_STEPS = 512
 const INPUT_FIELDS = objectFreeze(["plan", "run", "runRoot"] as const)
 const inspectArtifactTransactionCaptured = inspectWorkflowArtifactTransactionRecovery
 
@@ -84,25 +102,20 @@ async function classifyAttemptRecovery(
   inspectTransaction: InspectWorkflowArtifactTransactionRecovery
 ): Promise<WorkflowContractV2AttemptRecoveryClassification> {
   let snapshot: Readonly<ClassifyWorkflowContractV2AttemptRecoveryInput>
+  let run: RunRecoveryEvidence
   try {
     snapshot = snapshotInput(input)
+    run = snapshotRunEvidence(snapshot.run)
   } catch {
     return invalid("Workflow attempt recovery input is invalid.")
   }
   const plan = snapshot.plan
-  const run = snapshot.run
   if (run.workflowSchemaVersion !== "workflow-register/v2") {
     return invalid("Workflow attempt recovery requires a Contract v2 run.")
   }
-  if (
-    plan.workflow === null
-    || typeof plan.workflow !== "object"
-    || !arrayIsArray(plan.workflow.steps)
-    || !arrayIsArray(plan.providerBindings)
-    || !arrayIsArray(run.steps)
-    || run.state === null
-    || typeof run.state !== "object"
-  ) return invalid("Workflow attempt recovery evidence is structurally invalid.")
+  if (!validCompiledPlanCollections(plan)) {
+    return invalid("Workflow attempt recovery plan evidence is structurally invalid.")
+  }
 
   const committed: WorkflowContractV2CommittedArtifactRecoveryEvidence[] = []
   try {
@@ -176,11 +189,14 @@ async function classifyAttemptRecovery(
   return objectFreeze({ kind: "clean" as const, committed: objectFreeze(committed) })
 }
 
-function visibilityEvidence(value: string | undefined): {
+function visibilityEvidence(value: unknown): {
   readonly attemptId: string
   readonly artifactSetDigest: Sha256Digest
 } | undefined {
   if (value === undefined) return undefined
+  if (typeof value !== "string") {
+    throw new TypeError("Workflow artifact visibility evidence must be a string.")
+  }
   const bytes = reflectApply(bufferFrom, BufferConstructor, [value, "utf8"]) as Buffer
   if (bytes.byteLength > MAX_VISIBILITY_BYTES) {
     throw new TypeError("Workflow artifact visibility evidence is too large.")
@@ -228,7 +244,7 @@ function snapshotInput(
   if (keys.length !== INPUT_FIELDS.length) {
     throw new TypeError("Workflow attempt recovery input has an invalid shape.")
   }
-  const values: Record<string, unknown> = Object.create(null) as Record<string, unknown>
+  const values = objectCreate(null) as Record<string, unknown>
   for (let index = 0; index < keys.length; index += 1) {
     const key = keys[index]
     if (typeof key !== "string" || !contains(INPUT_FIELDS, key)) {
@@ -255,6 +271,119 @@ function snapshotInput(
     run: values.run as WorkflowRunState,
     runRoot: nodePathResolve(values.runRoot)
   })
+}
+
+function snapshotRunEvidence(value: unknown): RunRecoveryEvidence {
+  if (
+    value === null
+    || typeof value !== "object"
+    || isProxy(value)
+    || objectGetPrototypeOf(value) !== objectPrototype
+  ) throw new TypeError("Workflow attempt recovery run is invalid.")
+  const descriptors = objectGetOwnPropertyDescriptors(value)
+  const workflowSchemaVersion = optionalString(descriptors.workflowSchemaVersion)
+  const status = requiredString(descriptors.status)
+  const currentStep = optionalString(descriptors.currentStep)
+  const state = snapshotState(dataValue(descriptors.state))
+  const steps = snapshotSteps(dataValue(descriptors.steps))
+  return objectFreeze({ workflowSchemaVersion, status, currentStep, state, steps })
+}
+
+function snapshotState(value: unknown): Readonly<Record<string, unknown>> {
+  if (value === null || typeof value !== "object" || isProxy(value)) {
+    throw new TypeError("Workflow attempt recovery state is invalid.")
+  }
+  const prototype = objectGetPrototypeOf(value)
+  if (prototype !== objectPrototype && prototype !== null) {
+    throw new TypeError("Workflow attempt recovery state is invalid.")
+  }
+  const descriptors = objectGetOwnPropertyDescriptors(value)
+  const keys = reflectOwnKeys(descriptors)
+  if (keys.length > MAX_STATE_FIELDS) throw new TypeError("Workflow attempt recovery state is too large.")
+  const result = objectCreate(null) as Record<string, unknown>
+  for (let index = 0; index < keys.length; index += 1) {
+    const key = keys[index]
+    if (typeof key !== "string") throw new TypeError("Workflow attempt recovery state key is invalid.")
+    result[key] = dataValue(descriptors[key])
+  }
+  return objectFreeze(result)
+}
+
+function snapshotSteps(value: unknown): readonly RunStepRecoveryEvidence[] {
+  if (
+    !arrayIsArray(value)
+    || isProxy(value)
+    || objectGetPrototypeOf(value) !== arrayPrototype
+  ) throw new TypeError("Workflow attempt recovery steps are invalid.")
+  const descriptors = objectGetOwnPropertyDescriptors(value)
+  const lengthDescriptor = descriptors.length
+  if (
+    lengthDescriptor === undefined
+    || !objectHasOwn(lengthDescriptor, "value")
+    || typeof lengthDescriptor.value !== "number"
+    || !numberIsSafeInteger(lengthDescriptor.value)
+    || lengthDescriptor.value < 0
+    || lengthDescriptor.value > MAX_RUN_STEPS
+  ) throw new TypeError("Workflow attempt recovery steps have an invalid length.")
+  const length = lengthDescriptor.value
+  if (reflectOwnKeys(descriptors).length !== length + 1) {
+    throw new TypeError("Workflow attempt recovery steps must be dense.")
+  }
+  const result: RunStepRecoveryEvidence[] = []
+  for (let index = 0; index < length; index += 1) {
+    result[index] = snapshotStep(dataValue(descriptors[String(index)]))
+  }
+  return objectFreeze(result)
+}
+
+function snapshotStep(value: unknown): RunStepRecoveryEvidence {
+  if (
+    value === null
+    || typeof value !== "object"
+    || isProxy(value)
+    || objectGetPrototypeOf(value) !== objectPrototype
+  ) throw new TypeError("Workflow attempt recovery step is invalid.")
+  const descriptors = objectGetOwnPropertyDescriptors(value)
+  const id = requiredString(descriptors.id)
+  const status = requiredString(descriptors.status)
+  const attemptValue = descriptors.attempt === undefined ? undefined : dataValue(descriptors.attempt)
+  if (attemptValue !== undefined && typeof attemptValue !== "number") {
+    throw new TypeError("Workflow attempt recovery step attempt is invalid.")
+  }
+  return objectFreeze({
+    id,
+    status,
+    ...(attemptValue === undefined ? {} : { attempt: attemptValue })
+  })
+}
+
+function validCompiledPlanCollections(plan: CompiledWorkflowPlan): boolean {
+  if (
+    plan.workflow === null
+    || typeof plan.workflow !== "object"
+    || isProxy(plan.workflow)
+    || !arrayIsArray(plan.workflow.steps)
+    || isProxy(plan.workflow.steps)
+    || objectGetPrototypeOf(plan.workflow.steps) !== arrayPrototype
+    || !arrayIsArray(plan.providerBindings)
+    || isProxy(plan.providerBindings)
+    || objectGetPrototypeOf(plan.providerBindings) !== arrayPrototype
+  ) return false
+  return plan.workflow.steps.length <= MAX_RUN_STEPS
+}
+
+function optionalString(descriptor: PropertyDescriptor | undefined): string | undefined {
+  if (descriptor === undefined) return undefined
+  const value = dataValue(descriptor)
+  if (value === undefined) return undefined
+  if (typeof value !== "string") throw new TypeError("Workflow attempt recovery string evidence is invalid.")
+  return value
+}
+
+function requiredString(descriptor: PropertyDescriptor | undefined): string {
+  const value = dataValue(descriptor)
+  if (typeof value !== "string") throw new TypeError("Workflow attempt recovery string evidence is invalid.")
+  return value
 }
 
 function dataValue(descriptor: PropertyDescriptor | undefined): unknown {
