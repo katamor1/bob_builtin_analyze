@@ -242,7 +242,7 @@ function requireContinuationRun(
   }
   if (run.status !== "paused") {
     throw new TypeError(
-      "In-process compiled continuation requires a paused run; running or recovered runs require R6 reconciliation."
+      "Compiled continuation requires a paused run; other states require deterministic R6 recovery classification."
     )
   }
   return run
@@ -253,8 +253,19 @@ function compiledContinuationIndex(
   run: WorkflowRunState,
   options: Readonly<import("./compiledRunTypes").CompiledWorkflowExecutionOptions>
 ): number {
-  if (options.executionMode !== "singleStep" || options.stepId === undefined) {
-    throw new TypeError("In-process compiled continuation requires one explicit step.")
+  if (options.executionMode !== "singleStep") {
+    if (options.stepId !== undefined || options.allowOutOfOrder !== undefined) {
+      throw new TypeError("Full compiled continuation does not accept a caller-selected step.")
+    }
+    if (run.currentStep === undefined) {
+      throw new TypeError("Full compiled continuation requires a durable current step.")
+    }
+    const index = findCompiledStepIndex(plan.workflow.steps, run.currentStep)
+    if (index < 0) throw new TypeError("Durable compiled continuation step is unavailable in the plan.")
+    return index
+  }
+  if (options.stepId === undefined) {
+    throw new TypeError("In-process compiled single-step continuation requires one explicit step.")
   }
   const index = findCompiledStepIndex(plan.workflow.steps, options.stepId)
   if (index < 0 || run.currentStep !== options.stepId) {
