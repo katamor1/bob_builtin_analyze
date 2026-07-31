@@ -3,6 +3,10 @@ import {
   BOB_2_0_1_TASK_CAPABILITIES,
   probeBobTaskCapabilities
 } from "./core/contractV2/bobProfile"
+import {
+  captureAuditedBobTaskBinding,
+  type AuditedBobTaskBinding
+} from "./core/contractV2/bobTaskMethodBinding"
 import type {
   BobWorkflow,
   BobWorkflowStep,
@@ -59,13 +63,14 @@ function buildCompiledWorkflowSteps(
     id: step.id,
     title: step.title,
     execution: async (task) => {
-      const auditedTask = probeTask(task, bobTaskBinding)
+      const auditedTask = probeCompiledTask(task, bobTaskBinding)
       return executeWorkflowContractV2BobStep({
         definition,
         handle,
         stepId: step.id,
         stepIndex: index,
-        task: auditedTask
+        task,
+        auditedTask
       })
     }
   }))
@@ -95,6 +100,18 @@ function buildLegacyWorkflowSteps(
     title: definition.label,
     execution: async (task) => runner.runSingleWorkflowStep(probeTask(task, bobTaskBinding))
   }]
+}
+
+function probeCompiledTask(
+  task: BobWorkflowTask,
+  bobTaskBinding: BobWorkflowTaskBinding
+): AuditedBobTaskBinding {
+  const probed = probeBobTaskCapabilities({
+    expectedProfileDigest: bobTaskBinding.profileDigest,
+    requiredCapabilities: bobTaskBinding.taskCapabilities,
+    task
+  })
+  return captureAuditedBobTaskBinding(task, probed.taskCapabilities)
 }
 
 function probeTask(
