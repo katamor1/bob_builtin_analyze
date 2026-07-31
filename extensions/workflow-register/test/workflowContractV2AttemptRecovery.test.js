@@ -141,6 +141,58 @@ test("malformed visibility evidence fails closed without invoking artifact inspe
   assert.equal(calls, 0)
 })
 
+test("a non-string visibility value is rejected before Buffer or inspector behavior", async () => {
+  let calls = 0
+  const classify = subject().createWorkflowContractV2AttemptRecoveryClassifier(async () => {
+    calls += 1
+    return Object.freeze({ status: "missing" })
+  })
+  const selectedRun = run("paused", "writeSecond", "completed", "pending")
+  selectedRun.state["workflow.contractV2.artifactSet.writeFirst"] = Object.freeze({
+    attemptId: "attempt-0001-0001",
+    artifactSetDigest: digestA
+  })
+
+  const result = await classify({
+    plan: plan(),
+    run: selectedRun,
+    runRoot: "/workspace/.bob/workflows/runs/run-1"
+  })
+
+  assert.equal(result.kind, "invalid")
+  assert.equal(calls, 0)
+})
+
+test("a proxied durable state is rejected without invoking its traps", async () => {
+  let traps = 0
+  let calls = 0
+  const classify = subject().createWorkflowContractV2AttemptRecoveryClassifier(async () => {
+    calls += 1
+    return Object.freeze({ status: "missing" })
+  })
+  const selectedRun = run("paused", "writeSecond", "completed", "pending")
+  selectedRun.state = new Proxy({}, {
+    get() {
+      traps += 1
+      throw new Error("state trap must not run")
+    },
+    ownKeys() {
+      traps += 1
+      throw new Error("state trap must not run")
+    }
+  })
+
+  const result = await classify({
+    plan: plan(),
+    run: selectedRun,
+    runRoot: "/workspace/.bob/workflows/runs/run-1"
+  })
+
+  assert.equal(result.kind, "invalid")
+  assert.equal(traps, 0)
+  assert.equal(calls, 0)
+})
+
 test("repeated classification is deterministic and does not mutate durable evidence", async () => {
   const classify = subject().createWorkflowContractV2AttemptRecoveryClassifier(async (input) => Object.freeze({
     status: "committed",
