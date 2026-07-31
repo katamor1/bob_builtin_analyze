@@ -58,8 +58,11 @@ test("handoff helper rechecks cancellation after every awaited user boundary", a
   const openDocument = helper.indexOf("const document = await vscode.workspace.openTextDocument")
   assert.ok(firstGate >= 0 && firstGate < openDocument)
 
+  const postOpenGate = helper.indexOf("throwIfReviewCancelled(signal)", firstGate + 1)
   const showDocument = helper.indexOf("const editor = await vscode.window.showTextDocument")
-  const postShowGate = helper.indexOf("throwIfReviewCancelled(signal)", firstGate + 1)
+  assert.ok(postOpenGate > openDocument && postOpenGate < showDocument)
+
+  const postShowGate = helper.indexOf("throwIfReviewCancelled(signal)", postOpenGate + 1)
   const directHandoff = helper.indexOf("await addPacketToBobContext(editor.document.uri, packet)", postShowGate)
   assert.ok(postShowGate > showDocument)
   assert.ok(directHandoff > postShowGate)
@@ -72,7 +75,12 @@ test("handoff helper rechecks cancellation after every awaited user boundary", a
 
   const saveDialog = helper.indexOf("const target = await vscode.window.showSaveDialog")
   const postSaveGate = helper.indexOf("throwIfReviewCancelled(signal)", postActionGate + 1)
-  const fileWrite = helper.indexOf("await vscode.workspace.fs.writeFile", postSaveGate)
+  const directoryCreate = helper.indexOf("await vscode.workspace.fs.createDirectory", postSaveGate)
   assert.ok(postSaveGate > saveDialog)
-  assert.ok(fileWrite > postSaveGate)
+  assert.ok(directoryCreate > postSaveGate)
+
+  const postDirectoryGate = helper.indexOf("throwIfReviewCancelled(signal)", postSaveGate + 1)
+  const fileWrite = helper.indexOf("await vscode.workspace.fs.writeFile", postDirectoryGate)
+  assert.ok(postDirectoryGate > directoryCreate)
+  assert.ok(fileWrite > postDirectoryGate)
 })
