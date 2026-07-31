@@ -40,9 +40,14 @@ export interface VerifiedReviewPackageSnapshot {
   readonly files: readonly VerifiedManagedFile[]
 }
 
-export async function readVerifiedReviewPackage(packageDirInput: string): Promise<VerifiedReviewPackageSnapshot> {
+export async function readVerifiedReviewPackage(
+  packageDirInput: string,
+  signal?: AbortSignal
+): Promise<VerifiedReviewPackageSnapshot> {
+  throwIfCancelled(signal)
   const packageDir = path.resolve(packageDirInput)
   const root = await fs.lstat(packageDir, { bigint: true })
+  throwIfCancelled(signal)
   if (root.isSymbolicLink() || !root.isDirectory()) {
     throw new Error("review package root must be a physical directory")
   }
@@ -50,12 +55,24 @@ export async function readVerifiedReviewPackage(packageDirInput: string): Promis
   const files: Array<{ relativePath: string; bytes: Buffer }> = []
   let totalBytes = 0
   for (const managedPath of MANAGED_PACKAGE_OUTPUTS) {
-    await collectManagedFiles(packageDir, managedPath, files, () => totalBytes, (value) => { totalBytes = value })
+    throwIfCancelled(signal)
+    await collectManagedFiles(
+      packageDir,
+      managedPath,
+      files,
+      () => totalBytes,
+      (value) => { totalBytes = value },
+      signal
+    )
+    throwIfCancelled(signal)
   }
   files.sort((left, right) => compareCodePoints(left.relativePath, right.relativePath))
+  throwIfCancelled(signal)
 
   const hash = createHash("sha256")
-  const snapshots = files.map((file): VerifiedManagedFile => {
+  const snapshots: VerifiedManagedFile[] = []
+  for (const file of files) {
+    throwIfCancelled(signal)
     hash.update(file.relativePath)
     hash.update("\0")
     hash.update(String(file.bytes.length))
@@ -63,12 +80,13 @@ export async function readVerifiedReviewPackage(packageDirInput: string): Promis
     hash.update(file.bytes)
     hash.update("\0")
     const retained = Buffer.from(file.bytes)
-    return Object.freeze({
+    snapshots.push(Object.freeze({
       relativePath: file.relativePath,
       byteLength: retained.length,
       copyBytes: (): Uint8Array => Uint8Array.from(retained)
-    })
-  })
+    }))
+  }
+  throwIfCancelled(signal)
 
   return Object.freeze({
     packageDir,
@@ -145,8 +163,10 @@ async function collectManagedFiles(
   relativePath: string,
   target: Array<{ relativePath: string; bytes: Buffer }>,
   getTotalBytes: () => number,
-  setTotalBytes: (value: number) => void
+  setTotalBytes: (value: number) => void,
+  signal?: AbortSignal
 ): Promise<void> {
+  throwIfCancelled(signal)
   if (target.length > MAX_MANAGED_FILES) throw new Error(`review package exceeds ${MAX_MANAGED_FILES} managed files`)
   const absolutePath = path.join(packageDir, ...relativePath.split("/"))
   let stat: BigIntStats
@@ -156,9 +176,17 @@ async function collectManagedFiles(
     if (error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === "ENOENT") return
     throw error
   }
+  throwIfCancelled(signal)
   if (stat.isSymbolicLink()) throw new Error(`managed review package path must not be a symbolic link: ${relativePath}`)
   if (stat.isFile()) {
-    const bytes = await readStableManagedFile(absolutePath, stat, MAX_MANAGED_BYTES - getTotalBytes(), relativePath)
+    const bytes = await readStableManagedFile(
+      absolutePath,
+      stat,
+      MAX_MANAGED_BYTES - getTotalBytes(),
+      relativePath,
+      signal
+    )
+    throwIfCancelled(signal)
     const nextTotal = safeAdd(getTotalBytes(), bytes.length, "managed review package bytes")
     if (nextTotal > MAX_MANAGED_BYTES) throw new Error(`managed review package exceeds ${MAX_MANAGED_BYTES} bytes`)
     setTotalBytes(nextTotal)
@@ -168,47 +196,68 @@ async function collectManagedFiles(
   }
   if (!stat.isDirectory()) throw new Error(`managed review package path has unsupported type: ${relativePath}`)
   const entries = await fs.readdir(absolutePath, { withFileTypes: true })
+  throwIfCancelled(signal)
   entries.sort((left, right) => compareCodePoints(left.name, right.name))
   for (const entry of entries) {
+    throwIfCancelled(signal)
     validateRelativeSegment(entry.name)
     await collectManagedFiles(
       packageDir,
       `${relativePath}/${entry.name}`,
       target,
       getTotalBytes,
-      setTotalBytes
+      setTotalBytes,
+      signal
     )
   }
+  throwIfCancelled(signal)
 }
 
 async function readStableManagedFile(
   filePath: string,
   pathBefore: BigIntStats,
   remainingBytes: number,
-  relativePath: string
+  relativePath: string,
+  signal?: AbortSignal
 ): Promise<Buffer> {
+  throwIfCancelled(signal)
   assertSafeManagedFile(pathBefore, remainingBytes, relativePath)
   const noFollow = typeof fsConstants.O_NOFOLLOW === "number" ? fsConstants.O_NOFOLLOW : 0
   const handle = await fs.open(filePath, fsConstants.O_RDONLY | noFollow)
   try {
+    throwIfCancelled(signal)
     const openedBefore = await handle.stat({ bigint: true })
+    throwIfCancelled(signal)
     assertSameManagedFile(pathBefore, openedBefore, remainingBytes, relativePath)
     const size = Number(openedBefore.size)
     const bytes = Buffer.alloc(size)
     let offset = 0
     while (offset < size) {
+      throwIfCancelled(signal)
       const { bytesRead } = await handle.read(bytes, offset, size - offset, offset)
+      throwIfCancelled(signal)
       if (bytesRead === 0) throw new Error(`managed review package file ended early: ${relativePath}`)
       offset += bytesRead
     }
     const openedAfter = await handle.stat({ bigint: true })
+    throwIfCancelled(signal)
     assertSameManagedFile(openedBefore, openedAfter, remainingBytes, relativePath)
     const pathAfter = await fs.lstat(filePath, { bigint: true })
+    throwIfCancelled(signal)
     assertSameManagedFile(pathAfter, openedAfter, remainingBytes, relativePath)
     return bytes
   } finally {
     await handle.close()
   }
+}
+
+function throwIfCancelled(signal: AbortSignal | undefined): void {
+  if (!signal?.aborted) return
+  if (signal.reason instanceof Error) throw signal.reason
+  throw Object.assign(new Error("Verified review package capture was cancelled."), {
+    code: "processing_cancelled",
+    kind: "user"
+  })
 }
 
 function assertSafeManagedFile(stat: BigIntStats, maximumBytes: number, relativePath: string): void {
