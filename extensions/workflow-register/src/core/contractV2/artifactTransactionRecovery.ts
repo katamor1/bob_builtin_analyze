@@ -1,7 +1,10 @@
-import * as fs from "node:fs/promises"
 import * as nodePath from "node:path"
 import { types as utilTypes } from "node:util"
 
+import {
+  inspectStagedAttemptArtifactWorkspace,
+  type StagedAttemptArtifactWorkspaceSnapshot
+} from "./attemptArtifactWorkspaceInspection"
 import {
   inspectCommittedWorkflowArtifactTransaction,
   type WorkflowArtifactTransactionInspection
@@ -13,19 +16,8 @@ export type WorkflowArtifactTransactionRecoveryInspection =
   | { readonly status: "staging" }
   | Exclude<WorkflowArtifactTransactionInspection, { readonly status: "missing" }>
 
-interface DirectoryIdentity {
-  readonly path: string
-  readonly real: string
-  readonly dev: number | bigint
-  readonly ino: number | bigint
-}
-
 const isProxy = utilTypes.isProxy
-const lstat = fs.lstat
-const realpath = fs.realpath
 const nodePathIsAbsolute = nodePath.isAbsolute
-const nodePathJoin = nodePath.join
-const nodePathRelative = nodePath.relative
 const nodePathResolve = nodePath.resolve
 const objectCreate = Object.create
 const objectFreeze = Object.freeze
@@ -37,9 +29,9 @@ const reflectApply = Reflect.apply
 const reflectOwnKeys = Reflect.ownKeys
 const regexpExec = RegExp.prototype.exec
 const stringSplit = String.prototype.split
-const stringStartsWith = String.prototype.startsWith
 const stringToUpperCase = String.prototype.toUpperCase
 const inspectCommittedCaptured = inspectCommittedWorkflowArtifactTransaction
+const inspectStagedCaptured = inspectStagedAttemptArtifactWorkspace
 const ATTEMPT_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u
 const DIGEST_PATTERN = /^sha256:[0-9a-f]{64}$/u
 const TRAILING_DOT_OR_SPACE_PATTERN = /[. ]$/u
@@ -52,9 +44,9 @@ const INPUT_REQUIRED = objectFreeze(["runRoot", "attemptId"] as const)
 const INPUT_OPTIONAL = objectFreeze(["expectedArtifactSetDigest"] as const)
 
 /**
- * Read-only R6 inspection over the R3 attempt layout. Committed content remains
- * owned and validated by artifactTransaction.ts. This module adds only a
- * stable, direct-directory snapshot for the uncommitted staging location.
+ * R6 composes two R3-owned read-only inspections. It owns only the recovery
+ * classification and the stable before/after comparison; it performs no
+ * filesystem traversal itself.
  */
 export async function inspectWorkflowArtifactTransactionRecovery(input: {
   readonly runRoot: string
@@ -68,14 +60,15 @@ export async function inspectWorkflowArtifactTransactionRecovery(input: {
     ? undefined
     : requireDigest(snapshot.expectedArtifactSetDigest)
 
-  const before = await snapshotStagingDirectories(runRoot, attemptId)
+  const stagingInput = objectFreeze({ runRoot, attemptId })
+  const before = await inspectStagedCaptured(stagingInput)
   const committed = await inspectCommittedCaptured(objectFreeze({
     runRoot,
     attemptId,
     ...(expected === undefined ? {} : { expectedArtifactSetDigest: expected })
   }))
-  const after = await snapshotStagingDirectories(runRoot, attemptId)
-  if (!sameDirectorySnapshots(before, after)) {
+  const after = await inspectStagedCaptured(stagingInput)
+  if (!sameTreeSnapshots(before, after)) {
     throw new Error("Workflow artifact staging identity changed during recovery inspection.")
   }
   if (before !== undefined && committed.status !== "missing") {
@@ -83,44 +76,6 @@ export async function inspectWorkflowArtifactTransactionRecovery(input: {
   }
   if (before !== undefined) return objectFreeze({ status: "staging" as const })
   return committed
-}
-
-async function snapshotStagingDirectories(
-  runRoot: string,
-  attemptId: string
-): Promise<readonly DirectoryIdentity[] | undefined> {
-  const root = await requireDirectDirectory(runRoot, runRoot)
-  const identities: DirectoryIdentity[] = [root]
-  let current = root.path
-  const segments = objectFreeze(["attempts", "staging", attemptId] as const)
-  for (let index = 0; index < segments.length; index += 1) {
-    current = nodePathJoin(current, segments[index])
-    let identity: DirectoryIdentity
-    try {
-      identity = await requireDirectDirectory(current, root.real)
-    } catch (error) {
-      if (isMissingError(error)) return undefined
-      throw error
-    }
-    identities[identities.length] = identity
-  }
-  return objectFreeze(identities)
-}
-
-async function requireDirectDirectory(
-  target: string,
-  containmentRoot: string
-): Promise<DirectoryIdentity> {
-  const stat = await lstat(target)
-  if (!stat.isDirectory() || stat.isSymbolicLink()) {
-    throw new Error("Workflow artifact recovery path contains a link or non-directory component.")
-  }
-  const real = await realpath(target)
-  assertContained(containmentRoot, real)
-  if (nodePathResolve(real) !== nodePathResolve(target)) {
-    throw new Error("Workflow artifact recovery path is indirect or changed.")
-  }
-  return objectFreeze({ path: target, real, dev: stat.dev, ino: stat.ino })
 }
 
 function snapshotInput(value: unknown): Readonly<Record<string, unknown>> {
@@ -159,7 +114,7 @@ function requireRunRoot(value: unknown): string {
 function requireAttemptId(value: unknown): string {
   if (
     typeof value !== "string"
-    || testPattern(ATTEMPT_PATTERN, value) === false
+    || !testPattern(ATTEMPT_PATTERN, value)
     || testPattern(TRAILING_DOT_OR_SPACE_PATTERN, value)
   ) throw new TypeError("Workflow artifact recovery attempt id is invalid.")
   const first = reflectApply(stringSplit, value, [".", 1]) as string[]
@@ -173,7 +128,7 @@ function requireAttemptId(value: unknown): string {
 }
 
 function requireDigest(value: unknown): Sha256Digest {
-  if (typeof value !== "string" || testPattern(DIGEST_PATTERN, value) === false) {
+  if (typeof value !== "string" || !testPattern(DIGEST_PATTERN, value)) {
     throw new TypeError("Workflow artifact recovery expected digest is invalid.")
   }
   return value as Sha256Digest
@@ -190,40 +145,38 @@ function dataValue(descriptor: PropertyDescriptor | undefined): unknown {
   return descriptor.value
 }
 
-function sameDirectorySnapshots(
-  left: readonly DirectoryIdentity[] | undefined,
-  right: readonly DirectoryIdentity[] | undefined
+function sameTreeSnapshots(
+  left: StagedAttemptArtifactWorkspaceSnapshot | undefined,
+  right: StagedAttemptArtifactWorkspaceSnapshot | undefined
 ): boolean {
   if (left === undefined || right === undefined) return left === right
-  if (left.length !== right.length) return false
-  for (let index = 0; index < left.length; index += 1) {
+  if (!sameStringArrays(left.files, right.files) || !sameStringArrays(left.directories, right.directories)) {
+    return false
+  }
+  if (left.chain.length !== right.chain.length) return false
+  for (let index = 0; index < left.chain.length; index += 1) {
+    const a = left.chain[index]
+    const b = right.chain[index]
     if (
-      left[index].path !== right[index].path
-      || left[index].real !== right[index].real
-      || left[index].dev !== right[index].dev
-      || left[index].ino !== right[index].ino
+      a.path !== b.path
+      || a.real !== b.real
+      || a.dev !== b.dev
+      || a.ino !== b.ino
     ) return false
   }
   return true
 }
 
-function assertContained(root: string, target: string): void {
-  const relative = nodePathRelative(nodePathResolve(root), nodePathResolve(target))
-  if (startsWith(relative, "..") || nodePathIsAbsolute(relative)) {
-    throw new Error("Workflow artifact recovery path escapes its run root.")
+function sameStringArrays(left: readonly string[], right: readonly string[]): boolean {
+  if (left.length !== right.length) return false
+  for (let index = 0; index < left.length; index += 1) {
+    if (left[index] !== right[index]) return false
   }
-}
-
-function isMissingError(error: unknown): boolean {
-  return (error as NodeJS.ErrnoException).code === "ENOENT"
+  return true
 }
 
 function testPattern(pattern: RegExp, value: string): boolean {
   return reflectApply(regexpExec, pattern, [value]) !== null
-}
-
-function startsWith(value: string, prefix: string): boolean {
-  return reflectApply(stringStartsWith, value, [prefix]) as boolean
 }
 
 function contains(values: readonly string[], value: string): boolean {
