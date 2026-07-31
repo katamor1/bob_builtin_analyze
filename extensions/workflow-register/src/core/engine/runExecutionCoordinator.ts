@@ -14,6 +14,10 @@ interface InFlightRunExecution {
   promise: Promise<unknown>
 }
 
+type RecoverWorkflowContractV2PlanLease = (
+  run: WorkflowRunState
+) => Promise<void> | void
+
 export class WorkflowRunExecutionCoordinator {
   private readonly inFlight = new Map<string, InFlightRunExecution>()
   private readonly activeRuns = new AsyncLocalStorage<ReadonlySet<string>>()
@@ -62,6 +66,46 @@ export function coordinateWorkflowRunExecution<T>(
   operationKey: string,
   operation: () => Promise<T>
 ): Promise<T> {
+  return coordinateWorkflowRunExecutionInternal(
+    runStore,
+    runId,
+    operationKey,
+    undefined,
+    operation
+  )
+}
+
+/**
+ * R6 entrypoint. The recorded-generation lease is recovered inside the same
+ * process single-flight and cross-process run lock that protect the ensuing
+ * state transition. Recovery completes before the ordinary live-lease check.
+ */
+export function coordinateWorkflowContractV2RunRecovery<T>(
+  runStore: RunStateStore,
+  runId: string,
+  operationKey: string,
+  recoverPlanLease: RecoverWorkflowContractV2PlanLease,
+  operation: () => Promise<T>
+): Promise<T> {
+  if (typeof recoverPlanLease !== "function") {
+    return Promise.reject(new TypeError("Workflow Contract v2 recovery callback is invalid."))
+  }
+  return coordinateWorkflowRunExecutionInternal(
+    runStore,
+    runId,
+    operationKey,
+    recoverPlanLease,
+    operation
+  )
+}
+
+function coordinateWorkflowRunExecutionInternal<T>(
+  runStore: RunStateStore,
+  runId: string,
+  operationKey: string,
+  recoverPlanLease: RecoverWorkflowContractV2PlanLease | undefined,
+  operation: () => Promise<T>
+): Promise<T> {
   const workspaceScope = runStoreScope(runStore)
   return coordinator.coordinate(workspaceScope, runId, operationKey, () => {
     const execute = async () => {
@@ -70,6 +114,9 @@ export function coordinateWorkflowRunExecution<T>(
         run = await runStore.loadRun(runId)
         if (run) {
           assertWorkflowRunStateWritable(run)
+          if (run.planProvenance !== undefined && recoverPlanLease !== undefined) {
+            await recoverPlanLease(run)
+          }
           requireWorkflowContractV2RunPlanLeaseForExecution(workspaceScope, run)
         }
         const result = await operation()
