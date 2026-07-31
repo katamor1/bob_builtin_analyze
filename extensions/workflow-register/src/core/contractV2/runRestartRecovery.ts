@@ -1,12 +1,34 @@
 import { types as utilTypes } from "node:util"
 
-import { canonicalJsonText } from "./canonicalJson"
-import type { CompiledWorkflowPlan } from "./compiledPlan"
-import { compiledAttemptId, findCompiledProvider, findCompiledStepIndex } from "./compiledRunValues"
+import { canonicalJsonDigest, canonicalJsonText } from "./canonicalJson"
+import {
+  requireCompiledWorkflowPlanState,
+  type CompiledWorkflowPlan
+} from "./compiledPlan"
+import { validateCompiledWorkflowInputs } from "./compiledRunInputs"
+import type { CompiledRuntimeContext } from "./compiledRunTypes"
+import {
+  compiledAttemptId,
+  findCompiledProvider,
+  findCompiledStepIndex,
+  restoreCompiledOutputs
+} from "./compiledRunValues"
 import { parseStrictJson } from "./packageLoaderInput"
+import {
+  requireActiveWorkflowPlanLeaseHandle,
+  type WorkflowPlanLease
+} from "./planLease"
+import {
+  createCompiledProviderEffectIntent,
+  decodeWorkflowProviderEffectIntent,
+  encodeWorkflowProviderEffectIntent,
+  providerEffectIntentStateKey,
+  type WorkflowProviderEffectIntentV1
+} from "./providerEffectIntent"
 import type {
   WorkflowContractV2AttemptRecoveryClassification
 } from "./runAttemptRecovery"
+import type { Sha256Digest } from "./providerContract"
 import type { WorkflowRunState } from "../model"
 
 export type WorkflowContractV2RestartArtifactStatus =
@@ -26,6 +48,7 @@ export type WorkflowContractV2RestartDecision =
       readonly nextAttempt: number
       readonly idempotency: "idempotent" | "key-required"
       readonly artifactStatus: WorkflowContractV2RestartArtifactStatus
+      readonly effectIntentDigest: Sha256Digest
     }
   | { readonly kind: "blocked"; readonly reason: string }
 
@@ -33,6 +56,7 @@ export interface ClassifyWorkflowContractV2RestartInput {
   readonly plan: CompiledWorkflowPlan
   readonly run: WorkflowRunState
   readonly attemptRecovery: WorkflowContractV2AttemptRecoveryClassification
+  readonly effectIntent: WorkflowProviderEffectIntentV1
 }
 
 const isProxy = utilTypes.isProxy
@@ -55,6 +79,45 @@ export function workflowContractV2RestartStateKey(stepId: string): string {
     throw new TypeError("Workflow restart step id is invalid.")
   }
   return `${RESTART_PREFIX}${stepId}`
+}
+
+export function expectedWorkflowContractV2RestartEffectIntent(
+  lease: WorkflowPlanLease,
+  run: WorkflowRunState
+): WorkflowProviderEffectIntentV1 {
+  const handle = requireActiveWorkflowPlanLeaseHandle(lease)
+  const privateState = requireCompiledWorkflowPlanState(handle)
+  if (
+    privateState.purpose !== "runtime"
+    || !privateState.leaseable
+    || privateState.publication !== "published"
+  ) throw new TypeError("Workflow restart requires a live published runtime lease.")
+  if (
+    run === null
+    || typeof run !== "object"
+    || isProxy(run)
+    || run.workflowSchemaVersion !== "workflow-register/v2"
+    || typeof run.currentStep !== "string"
+  ) throw new TypeError("Workflow restart run is invalid.")
+  const stepIndex = findCompiledStepIndex(handle.plan.workflow.steps, run.currentStep)
+  if (stepIndex < 0) throw new TypeError("Workflow restart step is unavailable in the recorded plan.")
+  const step = handle.plan.workflow.steps[stepIndex]
+  if (step.type !== "command") {
+    throw new TypeError("Workflow restart effect intent requires a command step.")
+  }
+  const runtimeInputs = validateCompiledWorkflowInputs(handle.plan, privateState, run.inputs)
+  const context: CompiledRuntimeContext = objectFreeze({
+    input: runtimeInputs,
+    outputs: restoreCompiledOutputs(handle.plan, run)
+  })
+  return createCompiledProviderEffectIntent({
+    plan: handle.plan,
+    planDigest: handle.planDigest,
+    run,
+    context,
+    step,
+    stepIndex
+  })
 }
 
 export function classifyWorkflowContractV2Restart(
@@ -102,7 +165,17 @@ export function classifyWorkflowContractV2Restart(
     return blocked("A non-idempotent provider outcome remains in doubt and cannot be restarted automatically.")
   }
 
-  const prepared = preparedDecision(run, stepIndex, provider.id, provider.idempotency)
+  const effectIntentDigest = verifiedEffectIntentDigest(run, step.id, input.effectIntent)
+  if (effectIntentDigest === undefined) {
+    return blocked("Workflow restart effect intent is missing, changed, or inconsistent with the exact retry input.")
+  }
+  const prepared = preparedDecision(
+    run,
+    stepIndex,
+    provider.id,
+    provider.idempotency,
+    effectIntentDigest
+  )
   if (prepared !== undefined) return prepared
 
   if (run.status !== "running" || runStep.status !== "running") {
@@ -117,6 +190,9 @@ export function classifyWorkflowContractV2Restart(
   }
 
   const expectedAttemptId = compiledAttemptId(stepIndex, previousAttempt)
+  if (input.effectIntent.attemptId !== expectedAttemptId) {
+    return blocked("Workflow restart effect intent attempt does not match the running step.")
+  }
   let artifactStatus: WorkflowContractV2RestartArtifactStatus = "none"
   if (provider.sideEffect === "workspace-write") {
     if (
@@ -138,7 +214,8 @@ export function classifyWorkflowContractV2Restart(
     previousAttempt,
     nextAttempt: previousAttempt + 1,
     idempotency: provider.idempotency,
-    artifactStatus
+    artifactStatus,
+    effectIntentDigest
   })
 }
 
@@ -170,7 +247,8 @@ export function prepareWorkflowContractV2Restart(
     previousAttempt: decision.previousAttempt,
     nextAttempt: decision.nextAttempt,
     idempotency: decision.idempotency,
-    artifactStatus: decision.artifactStatus
+    artifactStatus: decision.artifactStatus,
+    effectIntentDigest: decision.effectIntentDigest
   })
   run.state[workflowContractV2RestartStateKey(decision.stepId)] = canonicalJsonText(evidence)
   run.status = "paused"
@@ -187,11 +265,30 @@ export function clearWorkflowContractV2RestartPreparation(
   delete run.state[workflowContractV2RestartStateKey(stepId)]
 }
 
+function verifiedEffectIntentDigest(
+  run: WorkflowRunState,
+  stepId: string,
+  expected: WorkflowProviderEffectIntentV1
+): Sha256Digest | undefined {
+  try {
+    const recorded = decodeWorkflowProviderEffectIntent(
+      run.state[providerEffectIntentStateKey(stepId)]
+    )
+    if (encodeWorkflowProviderEffectIntent(recorded) !== encodeWorkflowProviderEffectIntent(expected)) {
+      return undefined
+    }
+    return canonicalJsonDigest(recorded) as Sha256Digest
+  } catch {
+    return undefined
+  }
+}
+
 function preparedDecision(
   run: WorkflowRunState,
   stepIndex: number,
   providerId: string,
-  idempotency: "idempotent" | "key-required"
+  idempotency: "idempotent" | "key-required",
+  effectIntentDigest: Sha256Digest
 ): Extract<WorkflowContractV2RestartDecision, { readonly kind: "restart" }> | undefined {
   if (run.status !== "paused") return undefined
   const step = run.steps[stepIndex]
@@ -219,7 +316,7 @@ function preparedDecision(
   ) throw new TypeError("Workflow restart preparation evidence is invalid.")
   const descriptors = objectGetOwnPropertyDescriptors(parsed)
   const keys = reflectOwnKeys(descriptors)
-  if (keys.length !== 7) throw new TypeError("Workflow restart preparation evidence has an invalid shape.")
+  if (keys.length !== 8) throw new TypeError("Workflow restart preparation evidence has an invalid shape.")
   const schemaVersion = dataValue(descriptors.schemaVersion)
   const recordedStepId = dataValue(descriptors.stepId)
   const recordedProviderId = dataValue(descriptors.providerId)
@@ -227,6 +324,7 @@ function preparedDecision(
   const recordedNextAttempt = dataValue(descriptors.nextAttempt)
   const recordedIdempotency = dataValue(descriptors.idempotency)
   const artifactStatus = dataValue(descriptors.artifactStatus)
+  const recordedEffectIntentDigest = dataValue(descriptors.effectIntentDigest)
   if (
     schemaVersion !== RESTART_SCHEMA_VERSION
     || recordedStepId !== step.id
@@ -235,6 +333,7 @@ function preparedDecision(
     || recordedNextAttempt !== previousAttempt + 1
     || recordedIdempotency !== idempotency
     || !isArtifactStatus(artifactStatus)
+    || recordedEffectIntentDigest !== effectIntentDigest
   ) throw new TypeError("Workflow restart preparation evidence does not match the run.")
   return objectFreeze({
     kind: "restart" as const,
@@ -245,7 +344,8 @@ function preparedDecision(
     previousAttempt,
     nextAttempt: previousAttempt + 1,
     idempotency,
-    artifactStatus
+    artifactStatus,
+    effectIntentDigest
   })
 }
 
