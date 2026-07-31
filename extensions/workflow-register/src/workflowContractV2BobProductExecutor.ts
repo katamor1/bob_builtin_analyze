@@ -1,7 +1,11 @@
 import { types as utilTypes } from "node:util"
 import * as vscode from "vscode"
 
-import { bindAuditedBobTaskMethod } from "./core/contractV2/bobTaskMethodBinding"
+import {
+  auditedBobTaskIdentity,
+  auditedBobTaskMethod,
+  type AuditedBobTaskBinding
+} from "./core/contractV2/bobTaskMethodBinding"
 import { requireCompiledWorkflowPlanState, type CompiledWorkflowPlanHandle } from "./core/contractV2/compiledPlan"
 import {
   missingRequiredCompiledWorkflowInputIds,
@@ -23,6 +27,7 @@ export interface ExecuteWorkflowContractV2BobStepInput {
   readonly stepId: string
   readonly stepIndex: number
   readonly task: BobWorkflowTask
+  readonly auditedTask: AuditedBobTaskBinding
 }
 
 const isProxy = utilTypes.isProxy
@@ -57,6 +62,9 @@ export async function executeWorkflowContractV2BobStep(
   input: ExecuteWorkflowContractV2BobStepInput
 ): Promise<boolean> {
   try {
+    if (auditedBobTaskIdentity(input.auditedTask) !== input.task) {
+      throw new TypeError("Audited Bob task binding does not match the executing task identity.")
+    }
     const binding = workflowContractV2Binding(input.definition)
     if (binding === undefined || binding.handle !== input.handle) {
       throw new TypeError("Compiled Bob workflow binding does not match its registered plan handle.")
@@ -70,12 +78,12 @@ export async function executeWorkflowContractV2BobStep(
     if (executor === undefined) {
       executor = new WorkflowContractV2BobExecutor({
         acquireLease: acquireWorkflowPlanHandle,
-        resolveInputs: (task) => resolveCompiledBobInputs(input.handle, task),
+        resolveInputs: (auditedTask) => resolveCompiledBobInputs(input.handle, auditedTask),
         createRunStore: (root) => new ContractV2GuardedRunStateStore({
           workspaceRoot: root,
           engineVersion: "workflow-register-contract-v2-bob"
         }),
-        createAgentProvider: (task) => createCompiledBobAgentProvider(input.handle, task)
+        createAgentProvider: (auditedTask) => createCompiledBobAgentProvider(input.handle, auditedTask)
       })
       weakMapSet(executors, input.handle, executor)
     }
@@ -84,6 +92,7 @@ export async function executeWorkflowContractV2BobStep(
       stepId: input.stepId,
       stepIndex: input.stepIndex,
       task: input.task,
+      auditedTask: input.auditedTask,
       workspaceRoot,
       allowOutOfOrder: input.definition.stepExecution.allowOutOfOrder
     })
@@ -96,16 +105,16 @@ export async function executeWorkflowContractV2BobStep(
 
 async function resolveCompiledBobInputs(
   handle: CompiledWorkflowPlanHandle,
-  task: BobWorkflowTask
+  task: AuditedBobTaskBinding
 ): Promise<Readonly<Record<string, unknown>> | undefined> {
   const provided = objectCreate(null) as Record<string, unknown>
   const capabilities = handle.plan.bobProfileBinding.taskCapabilities
   if (hasCapability(capabilities, "task.getAllMetadata")) {
-    const method = bindAuditedBobTaskMethod(task, "task.getAllMetadata")
+    const method = auditedBobTaskMethod(task, "task.getAllMetadata")
     mergeInputSources(handle, provided, method())
   }
   if (hasCapability(capabilities, "task.getMessages")) {
-    const method = bindAuditedBobTaskMethod(task, "task.getMessages")
+    const method = auditedBobTaskMethod(task, "task.getMessages")
     const messages = safeArray(method(), MAX_TASK_MESSAGES)
     for (let index = 0; index < messages.length; index += 1) {
       const message = safeRecord(messages[index])
@@ -186,12 +195,12 @@ function findCompiledInput(
 
 function createCompiledBobAgentProvider(
   handle: CompiledWorkflowPlanHandle,
-  task: BobWorkflowTask
+  task: AuditedBobTaskBinding
 ): AgentProvider | undefined {
   if (!hasCapability(handle.plan.bobProfileBinding.taskCapabilities, "task.startSubagent")) {
     return undefined
   }
-  const startSubagent = bindAuditedBobTaskMethod(task, "task.startSubagent")
+  const startSubagent = auditedBobTaskMethod(task, "task.startSubagent")
   return objectFreeze({
     run: async (input: AgentExecutionInput): Promise<string> => {
       const result = exactSubagentResult(await startSubagent(input.prompt))
