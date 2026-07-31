@@ -176,7 +176,11 @@ export class WorkflowContractV2BobExecutor {
         onRunCreated: bindSession
       }))
       bindSession(run)
-      return this.driveRecordedBobRoute(session, input, stepIndex)
+      const activeSession = session
+      if (activeSession === undefined) {
+        throw new TypeError("Compiled Bob execution did not bind its durable run session.")
+      }
+      return this.driveRecordedBobRoute(activeSession, input, stepIndex)
     } catch (error) {
       if (session === undefined && !lease.released) lease.release()
       throw error
@@ -199,6 +203,9 @@ export class WorkflowContractV2BobExecutor {
         throw new TypeError("Live Bob task session lost its durable run; R6 recovery is required.")
       }
       if (durable.status === "completed" || durable.status === "failed") {
+        return stepSucceeded(durable, requestedIndex, requested.required)
+      }
+      if (durable.status === "held" || durable.status === "reviewing" || durable.status === "checkpoint") {
         return stepSucceeded(durable, requestedIndex, requested.required)
       }
       if (durable.status !== "paused" || session.lease.released) {
