@@ -26,6 +26,7 @@ import {
   type CompiledWorkflowExecutionOptions
 } from "./core/contractV2/compiledRunExecutor"
 import { requireWorkflowContractV2RunPlanLeaseForExecution } from "./core/contractV2/runPlanProvenance"
+import { prepareWorkflowContractV2Restart } from "./core/contractV2/runRestartRecovery"
 import {
   WorkflowEngine,
   type ManualCompletionInput,
@@ -44,7 +45,10 @@ import { FileTaskSnapshotStore, TaskSnapshotStore } from "./core/taskSnapshots"
 import { findMarkerRoots, rootHasMarker } from "./core/workspaceRoots"
 import { executeWorkflowContractV2RuntimeBoundary } from "./workflowContractV2RuntimeBoundary"
 import { createWorkflowContractV2ProductEntrypoint } from "./workflowContractV2Product"
-import { recoverWorkflowContractV2ProductRunPlan } from "./workflowContractV2RunRecovery"
+import {
+  recoverWorkflowContractV2ProductRunForRetry,
+  recoverWorkflowContractV2ProductRunPlan
+} from "./workflowContractV2RunRecovery"
 import { ContractV2GuardedRunStateStore } from "./workflowContractV2RunStateStore"
 import { requireTrustedCommandExecution } from "./workspaceTrust"
 
@@ -212,14 +216,7 @@ export class WorkflowRuntimeFactory {
       workspaceRoot,
       engineVersion: this.options.engineVersion
     })
-    const entrypoint = createWorkflowContractV2ProductEntrypoint({
-      actionRegistry: this.options.actionRegistry,
-      planStore: {
-        getOrCompile: (input) => this.workflowPlanStore.getOrCompile(input),
-        acquire: (input) => this.workflowPlanStore.acquire(input),
-        invalidate: (collectionId, workflowId) => this.workflowPlanStore.invalidateSlot(collectionId, workflowId)
-      }
-    })
+    const entrypoint = this.createContractV2RuntimeEntrypoint()
     const executionOptions = Object.freeze({ ...options })
     const operationKey = JSON.stringify([
       "contract-v2-recorded-generation-resume",
@@ -249,6 +246,61 @@ export class WorkflowRuntimeFactory {
           lease,
           runId,
           options: executionOptions,
+          workspaceRoot,
+          runStore,
+          signal: new AbortController().signal,
+          agentProvider: agentProvider ?? this.options.agentProvider() ?? this.createCommandAgentProvider()
+        })
+      }
+    )
+  }
+
+  async retryWorkflowContractV2Run(
+    workspaceRoot: string,
+    runId: string,
+    agentProvider?: AgentProvider
+  ): Promise<WorkflowRunState> {
+    const runStore = new ContractV2GuardedRunStateStore({
+      workspaceRoot,
+      engineVersion: this.options.engineVersion
+    })
+    const entrypoint = this.createContractV2RuntimeEntrypoint()
+    let restartStepId: string | undefined
+    return coordinateWorkflowContractV2RunRecovery(
+      runStore,
+      runId,
+      "contract-v2-recorded-generation-retry",
+      async (run) => {
+        const recovered = await recoverWorkflowContractV2ProductRunForRetry({
+          workspaceRoot,
+          run,
+          acquireGeneration: (input) => entrypoint.acquireGeneration(input)
+        })
+        restartStepId = recovered.restart.stepId
+        if (!recovered.restart.prepared) {
+          prepareWorkflowContractV2Restart(run, recovered.restart)
+          await runStore.saveRun(run)
+        }
+      },
+      async () => {
+        const run = await runStore.loadRun(runId)
+        if (run === undefined) throw new Error(`Workflow run is unavailable: ${runId}`)
+        const lease = requireWorkflowContractV2RunPlanLeaseForExecution(workspaceRoot, run)
+        if (lease === undefined) {
+          throw new Error("Workflow Contract v2 recorded-generation lease was not recovered.")
+        }
+        const stepId = restartStepId ?? run.currentStep
+        if (stepId === undefined) {
+          throw new Error("Workflow Contract v2 retry has no durable current step.")
+        }
+        return continueCompiledWorkflowRun({
+          lease,
+          runId,
+          options: {
+            executionMode: "singleStep",
+            stepId,
+            allowOutOfOrder: true
+          },
           workspaceRoot,
           runStore,
           signal: new AbortController().signal,
@@ -322,6 +374,17 @@ export class WorkflowRuntimeFactory {
     return new FileRunControlStore({
       workspaceRoot,
       workspaceAutomaticPauseLimits: settings.limits
+    })
+  }
+
+  private createContractV2RuntimeEntrypoint() {
+    return createWorkflowContractV2ProductEntrypoint({
+      actionRegistry: this.options.actionRegistry,
+      planStore: {
+        getOrCompile: (input) => this.workflowPlanStore.getOrCompile(input),
+        acquire: (input) => this.workflowPlanStore.acquire(input),
+        invalidate: (collectionId, workflowId) => this.workflowPlanStore.invalidateSlot(collectionId, workflowId)
+      }
     })
   }
 
