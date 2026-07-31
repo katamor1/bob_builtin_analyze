@@ -94,7 +94,9 @@ export async function preprocessReview(input: PreprocessReviewInput): Promise<Pr
     const inputPath = resolveWorkspacePathStrict(input.workspaceRoot, input.inputPath, "reviewInputPath")
     outDir = resolveWorkspacePathForKind(input.workspaceRoot, input.outDir, "review-package-output")
     await removeStaleProcessingBudgetReport(outDir)
+    cancellation.throwIfCancelled()
     await cleanManagedReviewPackageOutputs(outDir)
+    cancellation.throwIfCancelled()
     const diffFixturePath = input.diffFixturePath
       ? resolveWorkspacePathStrict(input.workspaceRoot, input.diffFixturePath, "diffFixturePath")
       : undefined
