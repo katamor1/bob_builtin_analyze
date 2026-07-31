@@ -39,6 +39,7 @@ function stepInput(selectedHandle, selectedTask, stepId, stepIndex) {
     stepId,
     stepIndex,
     task: selectedTask,
+    auditedTask: selectedTask,
     workspaceRoot: "/workspace",
     allowOutOfOrder: false
   }
