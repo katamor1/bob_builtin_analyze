@@ -175,27 +175,37 @@ function initialRunEvidence(run: WorkflowRunState): JsonValue {
     const step = run.steps[index]
     push(steps, objectFreeze({
       id: step.id,
+      title: step.title,
+      type: step.type,
       status: step.status,
       attempt: step.attempt ?? null,
+      attempts: (step.attempts ?? null) as JsonValue,
       startedAt: step.startedAt ?? null,
       completedAt: step.completedAt ?? null,
+      reviewStartedAt: step.reviewStartedAt ?? null,
+      acceptedAt: step.acceptedAt ?? null,
       error: step.error ?? null
     }))
   }
   return objectFreeze({
+    schemaVersion: run.schemaVersion ?? null,
     runId: run.runId,
     workflowId: run.workflowId,
+    workflowName: run.workflowName,
     workflowSchemaVersion: run.workflowSchemaVersion ?? null,
     workflowDefinitionHash: run.workflowDefinitionHash ?? null,
+    workflowFile: run.workflowFile ?? null,
+    engineVersion: run.engineVersion ?? null,
     status: run.status,
     currentStep: run.currentStep ?? null,
-    error: run.error ?? null,
     inputs: run.inputs as JsonValue,
     state: run.state,
+    branching: (run.branching ?? null) as JsonValue,
+    bobTaskSync: (run.bobTaskSync ?? null) as JsonValue,
     steps: objectFreeze(steps),
-    planProvenance: (run.planProvenance ?? null) as JsonValue,
     createdAt: run.createdAt,
-    engineVersion: run.engineVersion ?? null
+    error: run.error ?? null,
+    planProvenance: (run.planProvenance ?? null) as JsonValue
   })
 }
 
