@@ -1,13 +1,18 @@
 import { types as utilTypes } from "node:util"
 
+import type { AuditedBobTaskBinding } from "./core/contractV2/bobTaskMethodBinding"
 import {
   continueCompiledWorkflowRun,
   executeCompiledWorkflowRun,
   type CompiledWorkflowRunStore
 } from "./core/contractV2/compiledRunExecutor"
 import type { CompiledWorkflowPlanHandle } from "./core/contractV2/compiledPlan"
+import { findCompiledStepIndex } from "./core/contractV2/compiledRunValues"
 import type { WorkflowPlanLease } from "./core/contractV2/planLease"
-import { runWithWorkflowContractV2PlanLease } from "./core/contractV2/runPlanProvenance"
+import {
+  adoptWorkflowContractV2RunPlanLease,
+  runWithWorkflowContractV2PlanLease
+} from "./core/contractV2/runPlanProvenance"
 import type { AgentProvider, WorkflowRunState } from "./core/model"
 import type { BobWorkflowTask } from "./bobWorkflowTypes"
 
@@ -16,6 +21,7 @@ export interface WorkflowContractV2BobStepInput {
   readonly stepId: string
   readonly stepIndex: number
   readonly task: BobWorkflowTask
+  readonly auditedTask: AuditedBobTaskBinding
   readonly workspaceRoot: string
   readonly allowOutOfOrder: boolean
 }
@@ -25,12 +31,12 @@ export interface WorkflowContractV2BobExecutorOptions {
     handle: CompiledWorkflowPlanHandle
   ) => Promise<WorkflowPlanLease> | WorkflowPlanLease
   readonly resolveInputs: (
-    task: BobWorkflowTask
+    task: AuditedBobTaskBinding
   ) => Promise<Readonly<Record<string, unknown>> | undefined>
     | Readonly<Record<string, unknown>>
     | undefined
   readonly createRunStore: (workspaceRoot: string) => CompiledWorkflowRunStore
-  readonly createAgentProvider: (task: BobWorkflowTask) => AgentProvider | undefined
+  readonly createAgentProvider: (task: AuditedBobTaskBinding) => AgentProvider | undefined
   readonly runFresh?: typeof executeCompiledWorkflowRun
   readonly runContinuation?: typeof continueCompiledWorkflowRun
   readonly runWithLease?: typeof runWithWorkflowContractV2PlanLease
@@ -47,19 +53,32 @@ interface BobCompiledSession {
 const isProxy = utilTypes.isProxy
 const numberIsSafeInteger = Number.isSafeInteger
 const objectFreeze = Object.freeze
+const PromiseConstructor = Promise
 const promiseResolve = Function.prototype.call.bind(Promise.resolve, Promise) as <T>(
   value: T | PromiseLike<T>
 ) => Promise<Awaited<T>>
-const weakMapGet = Function.prototype.call.bind(WeakMap.prototype.get) as (
+const sessionGet = Function.prototype.call.bind(WeakMap.prototype.get) as (
   map: WeakMap<object, BobCompiledSession>, key: object
 ) => BobCompiledSession | undefined
-const weakMapSet = Function.prototype.call.bind(WeakMap.prototype.set) as (
+const sessionSet = Function.prototype.call.bind(WeakMap.prototype.set) as (
   map: WeakMap<object, BobCompiledSession>, key: object, value: BobCompiledSession
 ) => WeakMap<object, BobCompiledSession>
+const operationGet = Function.prototype.call.bind(WeakMap.prototype.get) as (
+  map: WeakMap<object, Promise<void>>, key: object
+) => Promise<void> | undefined
+const operationSet = Function.prototype.call.bind(WeakMap.prototype.set) as (
+  map: WeakMap<object, Promise<void>>, key: object, value: Promise<void>
+) => WeakMap<object, Promise<void>>
+const operationDelete = Function.prototype.call.bind(WeakMap.prototype.delete) as (
+  map: WeakMap<object, Promise<void>>, key: object
+) => boolean
 const WeakMapConstructor = WeakMap
+const RESOLVED_OPERATION = promiseResolve(undefined)
+const MAX_BOB_ROUTE_DISPATCHES = 4_096
 
 export class WorkflowContractV2BobExecutor {
   private readonly sessions = new WeakMapConstructor<object, BobCompiledSession>()
+  private readonly taskOperations = new WeakMapConstructor<object, Promise<void>>()
   private readonly runFresh: typeof executeCompiledWorkflowRun
   private readonly runContinuation: typeof continueCompiledWorkflowRun
   private readonly runWithLease: typeof runWithWorkflowContractV2PlanLease
@@ -79,8 +98,15 @@ export class WorkflowContractV2BobExecutor {
     this.runWithLease = options.runWithLease ?? runWithWorkflowContractV2PlanLease
   }
 
-  async runStep(input: WorkflowContractV2BobStepInput): Promise<boolean> {
+  runStep(input: WorkflowContractV2BobStepInput): Promise<boolean> {
     const task = requireTask(input.task)
+    return coordinateBobTaskOperation(this.taskOperations, task, () => this.runStepOwned(input, task))
+  }
+
+  private async runStepOwned(
+    input: WorkflowContractV2BobStepInput,
+    task: object
+  ): Promise<boolean> {
     const stepIndex = requireStepIndex(input.stepIndex)
     const step = input.handle.plan.workflow.steps[stepIndex]
     if (step === undefined || step.id !== input.stepId) {
@@ -90,45 +116,12 @@ export class WorkflowContractV2BobExecutor {
       throw new TypeError("Compiled Bob workflow workspace root is invalid.")
     }
 
-    const existing = weakMapGet(this.sessions, task)
+    const existing = sessionGet(this.sessions, task)
     if (existing !== undefined) {
       if (existing.handle !== input.handle || existing.workspaceRoot !== input.workspaceRoot) {
         throw new TypeError("Bob task session belongs to a different compiled plan.")
       }
-      const durable = await existing.runStore.loadRun(existing.runId)
-      if (durable === undefined) {
-        throw new TypeError("Live Bob task session lost its durable run; R6 recovery is required.")
-      }
-      const recorded = durable.steps[stepIndex]
-      if (recorded === undefined || recorded.id !== input.stepId) {
-        throw new TypeError("Bob task session step evidence does not match the compiled plan.")
-      }
-      if (recorded.status === "completed" || (recorded.status === "failed" && step.required === false)) {
-        return true
-      }
-      if (durable.status === "completed" || durable.status === "failed") return false
-      if (durable.status !== "paused" || existing.lease.released) {
-        throw new TypeError(
-          "Live Bob task continuation requires a paused run and its retained lease; R6 reconciliation is required."
-        )
-      }
-      if (durable.currentStep !== input.stepId) {
-        throw new TypeError("Bob task session is not positioned at the requested compiled step.")
-      }
-      const run = await this.runContinuation({
-        lease: existing.lease,
-        runId: existing.runId,
-        options: {
-          executionMode: "singleStep",
-          stepId: input.stepId,
-          allowOutOfOrder: input.allowOutOfOrder
-        },
-        workspaceRoot: existing.workspaceRoot,
-        runStore: existing.runStore,
-        signal: new AbortController().signal,
-        agentProvider: this.options.createAgentProvider(input.task)
-      })
-      return stepSucceeded(run, stepIndex, step.required)
+      return this.driveRecordedBobRoute(existing, input, stepIndex)
     }
 
     if (stepIndex !== 0) {
@@ -142,14 +135,17 @@ export class WorkflowContractV2BobExecutor {
     }
     let session: BobCompiledSession | undefined
     try {
-      const inputs = await promiseResolve(this.options.resolveInputs(input.task))
+      const inputs = await promiseResolve(this.options.resolveInputs(input.auditedTask))
       if (inputs === undefined) {
         lease.release()
         return false
       }
       const runStore = this.options.createRunStore(input.workspaceRoot)
-      const agentProvider = this.options.createAgentProvider(input.task)
+      const agentProvider = this.options.createAgentProvider(input.auditedTask)
       const bindSession = (run: WorkflowRunState): void => {
+        if (run.planProvenance !== undefined) {
+          adoptWorkflowContractV2RunPlanLease(input.workspaceRoot, run, lease)
+        }
         if (session !== undefined) {
           if (session.runId !== run.runId) {
             throw new TypeError("Compiled Bob execution attempted to replace its live durable run.")
@@ -163,7 +159,7 @@ export class WorkflowContractV2BobExecutor {
           workspaceRoot: input.workspaceRoot,
           runId: run.runId
         })
-        weakMapSet(this.sessions, task, session)
+        sessionSet(this.sessions, task, session)
       }
       const run = await this.runWithLease(lease, () => this.runFresh({
         lease,
@@ -180,11 +176,86 @@ export class WorkflowContractV2BobExecutor {
         onRunCreated: bindSession
       }))
       bindSession(run)
-      return stepSucceeded(run, stepIndex, step.required)
+      return this.driveRecordedBobRoute(session, input, stepIndex)
     } catch (error) {
       if (session === undefined && !lease.released) lease.release()
       throw error
     }
+  }
+
+  private async driveRecordedBobRoute(
+    session: BobCompiledSession,
+    input: WorkflowContractV2BobStepInput,
+    requestedIndex: number
+  ): Promise<boolean> {
+    const requested = session.handle.plan.workflow.steps[requestedIndex]
+    if (requested === undefined || requested.id !== input.stepId) {
+      throw new TypeError("Bob task requested step does not match its compiled plan.")
+    }
+
+    for (let dispatches = 0; dispatches < MAX_BOB_ROUTE_DISPATCHES; dispatches += 1) {
+      const durable = await session.runStore.loadRun(session.runId)
+      if (durable === undefined) {
+        throw new TypeError("Live Bob task session lost its durable run; R6 recovery is required.")
+      }
+      if (durable.status === "completed" || durable.status === "failed") {
+        return stepSucceeded(durable, requestedIndex, requested.required)
+      }
+      if (durable.status !== "paused" || session.lease.released) {
+        throw new TypeError(
+          "Live Bob task continuation requires a paused run and its retained lease; R6 reconciliation is required."
+        )
+      }
+      if (durable.currentStep === undefined) {
+        throw new TypeError("Paused Bob task session has no recorded compiled route target.")
+      }
+      const targetIndex = findCompiledStepIndex(session.handle.plan.workflow.steps, durable.currentStep)
+      if (targetIndex < 0) {
+        throw new TypeError("Recorded Bob task route target is unavailable in the compiled plan.")
+      }
+      if (targetIndex > requestedIndex) {
+        return true
+      }
+      const targetStep = session.handle.plan.workflow.steps[targetIndex]
+      const run = await this.runContinuation({
+        lease: session.lease,
+        runId: session.runId,
+        options: {
+          executionMode: "singleStep",
+          stepId: targetStep.id,
+          allowOutOfOrder: true
+        },
+        workspaceRoot: session.workspaceRoot,
+        runStore: session.runStore,
+        signal: new AbortController().signal,
+        agentProvider: this.options.createAgentProvider(input.auditedTask)
+      })
+      if (run.status === "completed" || run.status === "failed") {
+        return stepSucceeded(run, requestedIndex, requested.required)
+      }
+      if (run.status !== "paused") {
+        return stepSucceeded(run, requestedIndex, requested.required)
+      }
+    }
+    throw new TypeError("Compiled Bob route exceeded its in-process dispatch limit.")
+  }
+}
+
+async function coordinateBobTaskOperation<T>(
+  operations: WeakMap<object, Promise<void>>,
+  task: object,
+  operation: () => Promise<T>
+): Promise<T> {
+  const previous = operationGet(operations, task) ?? RESOLVED_OPERATION
+  let release!: () => void
+  const current = new PromiseConstructor<void>((resolve) => { release = resolve })
+  operationSet(operations, task, current)
+  await previous
+  try {
+    return await operation()
+  } finally {
+    release()
+    if (operationGet(operations, task) === current) operationDelete(operations, task)
   }
 }
 
