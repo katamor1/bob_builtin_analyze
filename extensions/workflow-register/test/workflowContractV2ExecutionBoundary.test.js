@@ -53,7 +53,7 @@ test('resume retry approval and abort paths reject Contract v2 continuation with
   assert.doesNotMatch(runtime, /acquireRunLease\?\.\(options\.workflow\)/)
 })
 
-test('Bob legacy input collection stays separate while compiled Bob execution starts after the F7 probe', () => {
+test('Bob legacy input collection stays separate while compiled Bob execution starts after the F7 probe and capture', () => {
   const runtime = source('workflowRuntimeFactory.ts')
   const factory = source('bobWorkflowFactory.ts')
   assert.match(runtime, ordered(
@@ -63,9 +63,10 @@ test('Bob legacy input collection stays separate while compiled Bob execution st
   ))
   assert.doesNotMatch(runtime, /inputsProvider:[\s\S]*await beforeRun\?\./)
   assert.match(factory, ordered(
-    'const auditedTask = probeTask',
+    'const auditedTask = probeCompiledTask',
     'executeWorkflowContractV2BobStep({'
   ))
+  assert.match(factory, /captureAuditedBobTaskBinding/)
   assert.doesNotMatch(factory, /runCompiledWorkflowStep|not enabled before R5/)
 })
 
