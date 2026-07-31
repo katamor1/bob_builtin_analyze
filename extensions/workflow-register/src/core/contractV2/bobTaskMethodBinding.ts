@@ -2,36 +2,152 @@ import { types as utilTypes } from "node:util"
 
 import type { BobTaskCapabilityName } from "./bobProfile"
 
+declare const auditedBobTaskBindingBrand: unique symbol
+export interface AuditedBobTaskBinding {
+  readonly [auditedBobTaskBindingBrand]: true
+}
+
+interface AuditedBobTaskBindingState {
+  readonly identity: object
+  readonly methods: Readonly<Partial<Record<BobTaskCapabilityName, (...args: unknown[]) => unknown>>>
+}
+
 const isProxy = utilTypes.isProxy
+const arrayIsArray = Array.isArray
+const arrayPrototype = Array.prototype
 const arrayPush = Array.prototype.push
+const objectCreate = Object.create
 const objectFreeze = Object.freeze
 const objectGetOwnPropertyDescriptor = Object.getOwnPropertyDescriptor
 const objectGetOwnPropertyDescriptors = Object.getOwnPropertyDescriptors
 const objectGetPrototypeOf = Object.getPrototypeOf
 const objectHasOwn = Object.hasOwn
 const reflectApply = Reflect.apply
+const reflectOwnKeys = Reflect.ownKeys
+const weakMapGet = Function.prototype.call.bind(WeakMap.prototype.get) as (
+  map: WeakMap<object, AuditedBobTaskBindingState>, key: object
+) => AuditedBobTaskBindingState | undefined
+const weakMapSet = Function.prototype.call.bind(WeakMap.prototype.set) as (
+  map: WeakMap<object, AuditedBobTaskBindingState>, key: object, value: AuditedBobTaskBindingState
+) => WeakMap<object, AuditedBobTaskBindingState>
+const WeakMapConstructor = WeakMap
 const MAX_PROTOTYPE_DEPTH = 64
+const MAX_TASK_CAPABILITIES = 6
+const states = new WeakMapConstructor<object, AuditedBobTaskBindingState>()
 
 /**
- * Captures one Bob task method by descriptor after the caller's immediate F7
- * capability probe. No later property lookup is performed by the returned
- * receiver-safe function.
+ * Captures every task method selected by the successful F7 probe before the
+ * caller can cross an asynchronous boundary. The returned object is opaque;
+ * later product code can use only the captured receiver-bound functions.
+ */
+export function captureAuditedBobTaskBinding(
+  task: unknown,
+  capabilities: readonly BobTaskCapabilityName[]
+): AuditedBobTaskBinding {
+  const identity = requireTaskIdentity(task)
+  const selected = snapshotCapabilities(capabilities)
+  const methods = objectCreate(null) as Partial<Record<BobTaskCapabilityName, (...args: unknown[]) => unknown>>
+  for (let index = 0; index < selected.length; index += 1) {
+    const capability = selected[index]
+    methods[capability] = bindAuditedBobTaskMethod(identity, capability)
+  }
+  const binding = objectFreeze({}) as AuditedBobTaskBinding
+  weakMapSet(states, binding, objectFreeze({
+    identity,
+    methods: objectFreeze(methods)
+  }))
+  return binding
+}
+
+export function auditedBobTaskIdentity(binding: AuditedBobTaskBinding): object {
+  return requireBindingState(binding).identity
+}
+
+export function auditedBobTaskMethod(
+  binding: AuditedBobTaskBinding,
+  capability: BobTaskCapabilityName
+): (...args: unknown[]) => unknown {
+  const method = requireBindingState(binding).methods[capability]
+  if (method === undefined) {
+    throw new TypeError(`Audited Bob task capability was not captured: ${capability}`)
+  }
+  return method
+}
+
+/**
+ * Captures one Bob task method by descriptor. No later property lookup is
+ * performed by the returned receiver-safe function.
  */
 export function bindAuditedBobTaskMethod(
   task: unknown,
   capability: BobTaskCapabilityName
 ): (...args: unknown[]) => unknown {
-  if (task === null || typeof task !== "object" || isProxy(task)) {
-    throw new TypeError("Audited Bob task must be a non-proxy object.")
-  }
-  const method = findDataMethod(task, methodName(capability))
+  const identity = requireTaskIdentity(task)
+  const method = findDataMethod(identity, methodName(capability))
   return objectFreeze((...args: unknown[]) => {
     const snapshot: unknown[] = []
     for (let index = 0; index < args.length; index += 1) {
       reflectApply(arrayPush, snapshot, [args[index]])
     }
-    return reflectApply(method, task, snapshot)
+    return reflectApply(method, identity, snapshot)
   })
+}
+
+function requireBindingState(value: unknown): AuditedBobTaskBindingState {
+  if (value === null || typeof value !== "object" || isProxy(value)) {
+    throw new TypeError("Audited Bob task binding is invalid.")
+  }
+  const state = weakMapGet(states, value)
+  if (state === undefined) throw new TypeError("Audited Bob task binding is invalid.")
+  return state
+}
+
+function requireTaskIdentity(value: unknown): object {
+  if (value === null || typeof value !== "object" || isProxy(value)) {
+    throw new TypeError("Audited Bob task must be a non-proxy object.")
+  }
+  return value
+}
+
+function snapshotCapabilities(value: unknown): readonly BobTaskCapabilityName[] {
+  if (
+    !arrayIsArray(value)
+    || isProxy(value)
+    || objectGetPrototypeOf(value) !== arrayPrototype
+  ) throw new TypeError("Audited Bob task capabilities must be a dense ordinary array.")
+  const descriptors = objectGetOwnPropertyDescriptors(value) as unknown as PropertyDescriptorMap
+  const lengthDescriptor = descriptors.length
+  if (
+    lengthDescriptor === undefined
+    || !objectHasOwn(lengthDescriptor, "value")
+    || typeof lengthDescriptor.value !== "number"
+    || !Number.isSafeInteger(lengthDescriptor.value)
+    || lengthDescriptor.value < 0
+    || lengthDescriptor.value > MAX_TASK_CAPABILITIES
+  ) throw new TypeError("Audited Bob task capabilities have an invalid length.")
+  const length = lengthDescriptor.value
+  const keys = reflectOwnKeys(descriptors)
+  if (keys.length !== length + 1) {
+    throw new TypeError("Audited Bob task capabilities must not be sparse or have extra fields.")
+  }
+  const result: BobTaskCapabilityName[] = []
+  const seen = objectCreate(null) as Record<string, true>
+  for (let index = 0; index < length; index += 1) {
+    const descriptor = descriptors[String(index)]
+    if (
+      descriptor === undefined
+      || !objectHasOwn(descriptor, "value")
+      || descriptor.enumerable !== true
+    ) throw new TypeError("Audited Bob task capabilities contain an invalid item.")
+    const capability = descriptor.value
+    methodName(capability as BobTaskCapabilityName)
+    if (objectHasOwn(seen, capability)) {
+      throw new TypeError("Audited Bob task capabilities contain a duplicate.")
+    }
+    seen[capability] = true
+    result[index] = capability as BobTaskCapabilityName
+  }
+  return objectFreeze(result)
 }
 
 function findDataMethod(owner: object, name: string): Function {
@@ -76,5 +192,6 @@ function methodName(capability: BobTaskCapabilityName): string {
     case "task.setStepComplete": return "setStepComplete"
     case "task.startSubagent": return "startSubagent"
     case "task.toSerializable": return "toSerializable"
+    default: throw new TypeError("Audited Bob task capability is invalid.")
   }
 }
