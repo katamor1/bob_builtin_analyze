@@ -407,7 +407,7 @@ export class WorkflowRunCommandService {
     const runId = resolveRunId(runArg)
     const selection = await this.selectRunArgument(runArg, roots)
     if (!selection) {
-      const message = runId ? `実行 ${runId} が見つかりません。実行一覧を更新してから再度選択してください。` : "実行が選択されていません。一覧から対象を選択してください。"
+      const message = runId ? `実行 ${runId} が見つかりません。実行一覧を更新してから再度選択してください。` : "実行が選択されていません。実行一覧から対象を選択してください。"
       if (runId) await vscode.window.showWarningMessage(message)
       return message
     }
@@ -687,7 +687,7 @@ export class WorkflowRunCommandService {
   async inspectBranching(runId?: string): Promise<unknown> {
     const selection = await this.selectRun(runId)
     if (!selection) {
-      const message = runId ? `実行 ${runId} が見つかりません。実行一覧を更新してから再度選択してください。` : "実行が選択されていません。一覧から対象を選択してください。"
+      const message = runId ? `実行 ${runId} が見つかりません。実行一覧を更新してから再度選択してください。` : "実行が選択されていません。実行一覧から対象を選択してください。"
       await vscode.window.showWarningMessage(message)
       return message
     }
@@ -743,8 +743,12 @@ export class WorkflowRunCommandService {
     const run = await runStore.loadRun(runId)
     if (!run) throw new Error(`実行 ${runId} が見つかりません。実行一覧を更新してから再度選択してください。`)
     if (run.planProvenance !== undefined) {
-      if (mode !== "resume") {
-        return this.warnStepGate("Contract v2 の再試行は、R6の副作用・attempt復旧判定が完了するまで実行できません。")
+      const liveGate = this.options.gateRegistry.pendingForRun(root, runId)
+      if (mode === "retry") {
+        const result = await this.options.runtimeFactory.retryWorkflowContractV2Run(root, runId)
+        if (liveGate) this.updateLiveGateAfterCommand(root, result, liveGate)
+        await vscode.window.showInformationMessage(`ワークフロー実行 ${result.runId}: ${workflowRunStatusLabel(result.status)}`)
+        return result
       }
       if (run.status === "checkpoint") {
         return this.warnStepGate("現在のContract v2実行は分岐確認待ちです。承認または中止を先に実行してください。")
@@ -758,7 +762,6 @@ export class WorkflowRunCommandService {
       if (run.status !== "paused") {
         return this.warnStepGate(`Contract v2 runは現在の状態から再開できません: ${run.status}`)
       }
-      const liveGate = this.options.gateRegistry.pendingForRun(root, runId)
       if (liveGate && run.currentStep === undefined) {
         throw new Error("Contract v2 single-step resume requires a durable current step.")
       }
