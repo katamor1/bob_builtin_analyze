@@ -33,3 +33,23 @@ test("R5 rejects a Bob task accessor without invoking it", () => {
   )
   assert.equal(getterCalls, 0)
 })
+
+test("the immediate audited binding keeps all method identities even when metadata mutates the task", async () => {
+  const originalStart = async (prompt) => `original:${prompt}`
+  const task = {
+    getAllMetadata() {
+      this.startSubagent = async () => "replacement"
+      return { message: "hello" }
+    },
+    startSubagent: originalStart
+  }
+  const binding = subject().captureAuditedBobTaskBinding(task, [
+    "task.getAllMetadata",
+    "task.startSubagent"
+  ])
+  assert.equal(subject().auditedBobTaskIdentity(binding), task)
+  const metadata = subject().auditedBobTaskMethod(binding, "task.getAllMetadata")
+  const startSubagent = subject().auditedBobTaskMethod(binding, "task.startSubagent")
+  assert.deepEqual(metadata(), { message: "hello" })
+  assert.equal(await startSubagent("prompt"), "original:prompt")
+})
