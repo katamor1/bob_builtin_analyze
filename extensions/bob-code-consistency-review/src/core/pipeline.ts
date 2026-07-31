@@ -87,6 +87,7 @@ export async function preprocessReview(input: PreprocessReviewInput): Promise<Pr
   let diffForReport: DiffSummary | undefined
   let contextBudgetArtifactForReport: ContextBudgetArtifact | undefined
   let inputSha256: string | undefined
+  let initialCleanupCompleted = false
   let packageBuilt = false
 
   try {
@@ -94,6 +95,7 @@ export async function preprocessReview(input: PreprocessReviewInput): Promise<Pr
     const inputPath = resolveWorkspacePathStrict(input.workspaceRoot, input.inputPath, "reviewInputPath")
     outDir = resolveWorkspacePathForKind(input.workspaceRoot, input.outDir, "review-package-output")
     await cleanPreprocessOutputsWithRollback(outDir, cancellation.signal as AbortSignal)
+    initialCleanupCompleted = true
     const diffFixturePath = input.diffFixturePath
       ? resolveWorkspacePathStrict(input.workspaceRoot, input.diffFixturePath, "diffFixturePath")
       : undefined
@@ -337,13 +339,13 @@ export async function preprocessReview(input: PreprocessReviewInput): Promise<Pr
     }
   } catch (error) {
     if (error instanceof ProcessingCoveragePartialError) throw error
-    if (outDir) {
+    if (initialCleanupCompleted && outDir) {
       try { await removeProcessingBudgetReportBinding(outDir) } catch {}
     }
     if (packageBuilt && outDir) {
       try { await cleanManagedReviewPackageOutputs(outDir) } catch {}
     }
-    if (outDir && reviewInputForReport && inputSha256) {
+    if (initialCleanupCompleted && outDir && reviewInputForReport && inputSha256) {
       try {
         await persistProcessingBudgetReport({
           outDir,
