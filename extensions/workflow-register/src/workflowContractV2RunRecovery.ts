@@ -28,7 +28,7 @@ export async function recoverWorkflowContractV2ProductRunPlan(
   const collectionRoot = nodePath.join(input.workspaceRoot, ".bob", "workflows")
   let lease: WorkflowPlanLease | undefined
   try {
-    lease = await recoverWorkflowContractV2RunPlanLease({
+    const recoveredLease = await recoverWorkflowContractV2RunPlanLease({
       workspaceScope: input.workspaceRoot,
       run: input.run,
       acquireGeneration: async (recorded) => {
@@ -51,9 +51,10 @@ export async function recoverWorkflowContractV2ProductRunPlan(
         return result.lease
       }
     })
+    lease = recoveredLease
 
     const attemptRecovery = await classifyWorkflowContractV2AttemptRecovery({
-      plan: lease.handle.plan,
+      plan: recoveredLease.handle.plan,
       run: input.run,
       runRoot: nodePath.join(
         input.workspaceRoot,
@@ -73,7 +74,7 @@ export async function recoverWorkflowContractV2ProductRunPlan(
         "Contract v2 run cannot resume automatically because its latest attempt outcome is in doubt."
       )
     }
-    return lease
+    return recoveredLease
   } catch (error) {
     releaseWorkflowContractV2RunPlanLease(input.workspaceRoot, input.run.runId)
     if (lease !== undefined && !lease.released) lease.release()
