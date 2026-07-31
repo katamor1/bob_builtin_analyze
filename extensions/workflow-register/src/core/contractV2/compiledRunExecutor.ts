@@ -1,6 +1,7 @@
 import * as nodePath from "node:path"
 import { types as utilTypes } from "node:util"
 
+import { canonicalJsonText } from "./canonicalJson"
 import { requireCompiledWorkflowPlanState } from "./compiledPlan"
 import type { JsonValue } from "./jsonValue"
 import { requireActiveWorkflowPlanLeaseHandle, type WorkflowPlanLease } from "./planLease"
@@ -37,6 +38,7 @@ export type {
 
 const isProxy = utilTypes.isProxy
 const AbortSignalConstructor = AbortSignal
+const arrayPush = Array.prototype.push
 const objectCreate = Object.create
 const objectFreeze = Object.freeze
 const objectGetOwnPropertyDescriptors = Object.getOwnPropertyDescriptors
@@ -78,7 +80,13 @@ export async function executeCompiledWorkflowRun(
 
   const run = await runStore.createRunFromPlanLease(lease, runtimeInputs)
   persistCompiledOutputs(run, outputs)
-  await runStore.saveRun(run)
+  try {
+    await runStore.saveRun(run)
+  } catch (error) {
+    const reconciled = await reconcileInitialRunSave(runStore, run, lease)
+    if (reconciled !== undefined) notifyRunCreated(snapshot.onRunCreated, reconciled)
+    throw error
+  }
   notifyRunCreated(snapshot.onRunCreated, run)
   return runCompiledWorkflowState({
     lease,
@@ -135,6 +143,59 @@ export async function continueCompiledWorkflowRun(
     context,
     options,
     startIndex
+  })
+}
+
+async function reconcileInitialRunSave(
+  runStore: CompiledWorkflowRunStore,
+  intended: WorkflowRunState,
+  lease: WorkflowPlanLease
+): Promise<WorkflowRunState | undefined> {
+  let persisted: WorkflowRunState | undefined
+  try {
+    persisted = await runStore.loadRun(intended.runId)
+  } catch {
+    return undefined
+  }
+  if (persisted === undefined) return undefined
+  try {
+    if (persisted.planProvenance === undefined) return undefined
+    assertWorkflowContractV2RunPlanProvenanceMatchesLease(persisted.planProvenance, lease)
+  } catch {
+    return undefined
+  }
+  return canonicalJsonText(initialRunEvidence(persisted)) === canonicalJsonText(initialRunEvidence(intended))
+    ? persisted
+    : undefined
+}
+
+function initialRunEvidence(run: WorkflowRunState): JsonValue {
+  const steps: JsonValue[] = []
+  for (let index = 0; index < run.steps.length; index += 1) {
+    const step = run.steps[index]
+    push(steps, objectFreeze({
+      id: step.id,
+      status: step.status,
+      attempt: step.attempt ?? null,
+      startedAt: step.startedAt ?? null,
+      completedAt: step.completedAt ?? null,
+      error: step.error ?? null
+    }))
+  }
+  return objectFreeze({
+    runId: run.runId,
+    workflowId: run.workflowId,
+    workflowSchemaVersion: run.workflowSchemaVersion ?? null,
+    workflowDefinitionHash: run.workflowDefinitionHash ?? null,
+    status: run.status,
+    currentStep: run.currentStep ?? null,
+    error: run.error ?? null,
+    inputs: run.inputs as JsonValue,
+    state: run.state,
+    steps: objectFreeze(steps),
+    planProvenance: (run.planProvenance ?? null) as JsonValue,
+    createdAt: run.createdAt,
+    engineVersion: run.engineVersion ?? null
   })
 }
 
@@ -289,4 +350,8 @@ function dataValue(descriptor: PropertyDescriptor | undefined): unknown {
 function contains(values: readonly string[], value: string): boolean {
   for (let index = 0; index < values.length; index += 1) if (values[index] === value) return true
   return false
+}
+
+function push<T>(values: T[], value: T): void {
+  reflectApply(arrayPush, values, [value])
 }
