@@ -290,12 +290,19 @@ test("review execution commands consume verified snapshots for capture, validati
   assert.match(source, /preprocessReviewWithCoverage\(/)
 })
 
-test("coverage boundary clears stale package state and delegates to the core pipeline", async () => {
-  const source = await fs.readFile(path.join(__dirname, "..", "src", "core", "preprocessCoverageBoundary.ts"), "utf8")
-  assert.match(source, /await removeStaleProcessingBudgetReport\(outDir\)/)
-  assert.match(source, /await cleanManagedReviewPackageOutputs\(outDir\)/)
-  assert.match(source, /return await preprocessReview\(input\)/)
-  assert.match(source, /target: "review_input_validation"/)
+test("coverage wrapper delegates stale-output cleanup to the rollback-capable core boundary", async () => {
+  const boundary = await fs.readFile(
+    path.join(__dirname, "..", "src", "core", "preprocessCoverageBoundary.ts"),
+    "utf8"
+  )
+  const pipeline = await fs.readFile(
+    path.join(__dirname, "..", "src", "core", "pipeline.ts"),
+    "utf8"
+  )
+  assert.match(boundary, /return await preprocessReview\(input\)/)
+  assert.match(boundary, /target: "review_input_validation"/)
+  assert.doesNotMatch(boundary, /removeStaleProcessingBudgetReport|cleanManagedReviewPackageOutputs/)
+  assert.match(pipeline, /await cleanPreprocessOutputsWithRollback\(outDir, cancellation\.signal as AbortSignal\)/)
 })
 
 test("pipeline checks every evidence warning before complete report binding", async () => {
