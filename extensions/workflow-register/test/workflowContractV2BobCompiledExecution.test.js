@@ -40,6 +40,18 @@ function task() {
   return Object.freeze({})
 }
 
+function stepInput(selectedHandle, selectedTask, stepId, stepIndex, allowOutOfOrder = false) {
+  return {
+    handle: selectedHandle,
+    stepId,
+    stepIndex,
+    task: selectedTask,
+    auditedTask: selectedTask,
+    workspaceRoot: "/workspace",
+    allowOutOfOrder
+  }
+}
+
 test("compiled Bob steps share one exact lease and one durable run across the live task", async () => {
   const selectedHandle = handle()
   const selectedTask = task()
@@ -86,22 +98,8 @@ test("compiled Bob steps share one exact lease and one durable run across the li
     runWithLease: async (_lease, operation) => operation()
   })
 
-  assert.equal(await executor.runStep({
-    handle: selectedHandle,
-    stepId: "first",
-    stepIndex: 0,
-    task: selectedTask,
-    workspaceRoot: "/workspace",
-    allowOutOfOrder: false
-  }), true)
-  assert.equal(await executor.runStep({
-    handle: selectedHandle,
-    stepId: "second",
-    stepIndex: 1,
-    task: selectedTask,
-    workspaceRoot: "/workspace",
-    allowOutOfOrder: false
-  }), true)
+  assert.equal(await executor.runStep(stepInput(selectedHandle, selectedTask, "first", 0)), true)
+  assert.equal(await executor.runStep(stepInput(selectedHandle, selectedTask, "second", 1)), true)
 
   assert.equal(acquisitions, 1)
   assert.equal(fresh, 1)
@@ -110,6 +108,7 @@ test("compiled Bob steps share one exact lease and one durable run across the li
 
 test("a later Bob step without the live task session fails before lease acquisition or run creation", async () => {
   const selectedHandle = handle()
+  const selectedTask = task()
   let acquisitions = 0
   let fresh = 0
   const executor = new (subject().WorkflowContractV2BobExecutor)({
@@ -124,14 +123,10 @@ test("a later Bob step without the live task session fails before lease acquisit
     runContinuation: async () => { throw new Error("must not continue") },
     runWithLease: async (_lease, operation) => operation()
   })
-  await assert.rejects(() => executor.runStep({
-    handle: selectedHandle,
-    stepId: "second",
-    stepIndex: 1,
-    task: task(),
-    workspaceRoot: "/workspace",
-    allowOutOfOrder: true
-  }), /live Bob task session|R6/i)
+  await assert.rejects(
+    () => executor.runStep(stepInput(selectedHandle, selectedTask, "second", 1, true)),
+    /live Bob task session|R6/i
+  )
   assert.equal(acquisitions, 0)
   assert.equal(fresh, 0)
 })
@@ -156,22 +151,11 @@ test("a stale or different compiled handle cannot join an existing Bob task sess
     runContinuation: async () => { throw new Error("must not continue") },
     runWithLease: async (_lease, operation) => operation()
   })
-  assert.equal(await executor.runStep({
-    handle: firstHandle,
-    stepId: "first",
-    stepIndex: 0,
-    task: selectedTask,
-    workspaceRoot: "/workspace",
-    allowOutOfOrder: false
-  }), true)
-  await assert.rejects(() => executor.runStep({
-    handle: secondHandle,
-    stepId: "second",
-    stepIndex: 1,
-    task: selectedTask,
-    workspaceRoot: "/workspace",
-    allowOutOfOrder: false
-  }), /different compiled plan|session/i)
+  assert.equal(await executor.runStep(stepInput(firstHandle, selectedTask, "first", 0)), true)
+  await assert.rejects(
+    () => executor.runStep(stepInput(secondHandle, selectedTask, "second", 1)),
+    /different compiled plan|session/i
+  )
 })
 
 test("a duplicate completed Bob step is idempotent and does not continue or acquire again", async () => {
@@ -200,28 +184,15 @@ test("a duplicate completed Bob step is idempotent and does not continue or acqu
     },
     runWithLease: async (_lease, operation) => operation()
   })
-  assert.equal(await executor.runStep({
-    handle: selectedHandle,
-    stepId: "first",
-    stepIndex: 0,
-    task: selectedTask,
-    workspaceRoot: "/workspace",
-    allowOutOfOrder: false
-  }), true)
-  assert.equal(await executor.runStep({
-    handle: selectedHandle,
-    stepId: "first",
-    stepIndex: 0,
-    task: selectedTask,
-    workspaceRoot: "/workspace",
-    allowOutOfOrder: false
-  }), true)
+  assert.equal(await executor.runStep(stepInput(selectedHandle, selectedTask, "first", 0)), true)
+  assert.equal(await executor.runStep(stepInput(selectedHandle, selectedTask, "first", 0)), true)
   assert.equal(acquisitions, 1)
   assert.equal(continuations, 0)
 })
 
 test("setup failure releases a pre-run Bob lease", async () => {
   const selectedHandle = handle()
+  const selectedTask = task()
   const lease = { handle: selectedHandle, released: false, release() { this.released = true } }
   const executor = new (subject().WorkflowContractV2BobExecutor)({
     acquireLease: async () => lease,
@@ -232,14 +203,10 @@ test("setup failure releases a pre-run Bob lease", async () => {
     runContinuation: async () => { throw new Error("must not continue") },
     runWithLease: async (_lease, operation) => operation()
   })
-  await assert.rejects(() => executor.runStep({
-    handle: selectedHandle,
-    stepId: "first",
-    stepIndex: 0,
-    task: task(),
-    workspaceRoot: "/workspace",
-    allowOutOfOrder: false
-  }), /metadata failed/)
+  await assert.rejects(
+    () => executor.runStep(stepInput(selectedHandle, selectedTask, "first", 0)),
+    /metadata failed/
+  )
   assert.equal(lease.released, true)
 })
 
@@ -269,24 +236,16 @@ test("a durable running run remains bound after first-step failure and cannot be
     runWithLease: async (_lease, operation) => operation()
   })
 
-  await assert.rejects(() => executor.runStep({
-    handle: selectedHandle,
-    stepId: "first",
-    stepIndex: 0,
-    task: selectedTask,
-    workspaceRoot: "/workspace",
-    allowOutOfOrder: false
-  }), /post-create execution failed/)
+  await assert.rejects(
+    () => executor.runStep(stepInput(selectedHandle, selectedTask, "first", 0)),
+    /post-create execution failed/
+  )
   assert.equal(lease.released, false)
 
-  await assert.rejects(() => executor.runStep({
-    handle: selectedHandle,
-    stepId: "first",
-    stepIndex: 0,
-    task: selectedTask,
-    workspaceRoot: "/workspace",
-    allowOutOfOrder: false
-  }), /paused run|R6 reconciliation/i)
+  await assert.rejects(
+    () => executor.runStep(stepInput(selectedHandle, selectedTask, "first", 0)),
+    /paused run|R6 reconciliation/i
+  )
   assert.equal(acquisitions, 1)
   assert.equal(fresh, 1)
 })
