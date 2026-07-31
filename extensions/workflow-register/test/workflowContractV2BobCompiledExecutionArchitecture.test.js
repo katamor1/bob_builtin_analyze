@@ -16,10 +16,11 @@ function before(text, left, right) {
   assert.ok(a < b, `${left} must precede ${right}`)
 }
 
-test("the audited Bob task probe executes immediately before compiled product execution", () => {
+test("the audited Bob task probe and method capture execute immediately before compiled product execution", () => {
   const factory = source("bobWorkflowFactory.ts")
-  before(factory, "const auditedTask = probeTask", "executeWorkflowContractV2BobStep({")
+  before(factory, "const auditedTask = probeCompiledTask", "executeWorkflowContractV2BobStep({")
   assert.match(factory, /probeBobTaskCapabilities/)
+  assert.match(factory, /captureAuditedBobTaskBinding/)
   assert.doesNotMatch(factory, /runCompiledWorkflowStep/)
   assert.doesNotMatch(factory, /not enabled before R5/)
 })
@@ -42,11 +43,13 @@ test("the process plan store leases the exact registered handle", () => {
   assert.match(product, /acquireLease: acquireWorkflowPlanHandle/)
 })
 
-test("the Contract v2 core owns task method binding after the immediate F7 probe", () => {
+test("the Contract v2 core owns task method identity after the immediate F7 probe", () => {
   const binding = source("core/contractV2/bobTaskMethodBinding.ts")
   const product = source("workflowContractV2BobProductExecutor.ts")
-  assert.match(binding, /export function bindAuditedBobTaskMethod/)
-  assert.match(product, /bindAuditedBobTaskMethod/)
+  assert.match(binding, /export function captureAuditedBobTaskBinding/)
+  assert.match(binding, /export function auditedBobTaskMethod/)
+  assert.match(product, /auditedBobTaskMethod/)
+  assert.doesNotMatch(product, /bindAuditedBobTaskMethod/)
   assert.doesNotMatch(product, /Object\.getOwnPropertyDescriptors|prototype chain/)
   assert.equal(fs.existsSync(path.join(root, "workflowContractV2BobTaskMethods.ts")), false)
 })
@@ -61,11 +64,12 @@ test("compiled Bob execution is independent of the legacy Bob workflow runner", 
   assert.doesNotMatch(compiled, /runEngine/)
 })
 
-test("R5 continuation reloads one durable run and leaves recorded-generation recovery to R6", () => {
+test("R5 continuation reloads one durable run, drives its route, and leaves recorded-generation recovery to R6", () => {
   const executor = source("core/contractV2/compiledRunExecutor.ts")
   const bob = source("workflowContractV2BobExecutor.ts")
   assert.match(executor, /export async function continueCompiledWorkflowRun/)
   assert.match(executor, /await runStore\.loadRun\(runId\)/)
-  assert.match(bob, /runId: existing\.runId/)
+  assert.match(bob, /runId: session\.runId/)
+  assert.match(bob, /driveRecordedBobRoute/)
   assert.doesNotMatch(bob, /generation|current\.json|compileCurrent|acquireCurrent/)
 })
