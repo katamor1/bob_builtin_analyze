@@ -1,7 +1,9 @@
 import * as nodePath from "node:path"
 
+import { classifyWorkflowContractV2AttemptRecovery } from "./core/contractV2/runAttemptRecovery"
 import { recoverWorkflowContractV2RunPlanLease } from "./core/contractV2/runPlanRecovery"
 import type { WorkflowPlanLease } from "./core/contractV2/planLease"
+import { releaseWorkflowContractV2RunPlanLease } from "./core/contractV2/runPlanProvenance"
 import type { WorkflowRunState } from "./core/model"
 import { relativePathFromRoot } from "./core/workspaceRoots"
 import type {
@@ -24,27 +26,57 @@ export async function recoverWorkflowContractV2ProductRunPlan(
   input: RecoverWorkflowContractV2ProductRunInput
 ): Promise<WorkflowPlanLease> {
   const collectionRoot = nodePath.join(input.workspaceRoot, ".bob", "workflows")
-  return recoverWorkflowContractV2RunPlanLease({
-    workspaceScope: input.workspaceRoot,
-    run: input.run,
-    acquireGeneration: async (recorded) => {
-      const result = await input.acquireGeneration(objectFreeze({
-        slot: objectFreeze({
-          collectionId: relativePathFromRoot(input.workspaceRoot, collectionRoot),
-          collectionRoot,
-          workflowId: recorded.workflowId
-        }),
-        consumer: "resume" as const,
-        generation: recorded.generation,
-        expectedPackageDigest: recorded.expectedPackageDigest
-      }))
-      if (!result.ok) {
-        throw new WorkflowContractV2BoundaryError(
-          "Contract v2 run cannot resume because its recorded immutable generation or exact bindings are unavailable.",
-          result.diagnostics
-        )
+  let lease: WorkflowPlanLease | undefined
+  try {
+    lease = await recoverWorkflowContractV2RunPlanLease({
+      workspaceScope: input.workspaceRoot,
+      run: input.run,
+      acquireGeneration: async (recorded) => {
+        const result = await input.acquireGeneration(objectFreeze({
+          slot: objectFreeze({
+            collectionId: relativePathFromRoot(input.workspaceRoot, collectionRoot),
+            collectionRoot,
+            workflowId: recorded.workflowId
+          }),
+          consumer: "resume" as const,
+          generation: recorded.generation,
+          expectedPackageDigest: recorded.expectedPackageDigest
+        }))
+        if (!result.ok) {
+          throw new WorkflowContractV2BoundaryError(
+            "Contract v2 run cannot resume because its recorded immutable generation or exact bindings are unavailable.",
+            result.diagnostics
+          )
+        }
+        return result.lease
       }
-      return result.lease
+    })
+
+    const attemptRecovery = await classifyWorkflowContractV2AttemptRecovery({
+      plan: lease.handle.plan,
+      run: input.run,
+      runRoot: nodePath.join(
+        input.workspaceRoot,
+        ".bob",
+        "workflows",
+        "runs",
+        input.run.runId
+      )
+    })
+    if (attemptRecovery.kind === "invalid") {
+      throw new WorkflowContractV2BoundaryError(
+        "Contract v2 run cannot resume because its persisted attempt or artifact evidence is invalid."
+      )
     }
-  })
+    if (attemptRecovery.kind === "in-doubt") {
+      throw new WorkflowContractV2BoundaryError(
+        "Contract v2 run cannot resume automatically because its latest attempt outcome is in doubt."
+      )
+    }
+    return lease
+  } catch (error) {
+    releaseWorkflowContractV2RunPlanLease(input.workspaceRoot, input.run.runId)
+    if (lease !== undefined && !lease.released) lease.release()
+    throw error
+  }
 }
