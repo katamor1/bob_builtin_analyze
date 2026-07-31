@@ -40,19 +40,40 @@ test("pre-cancelled preprocessing does not delete the prior complete package or 
   assert.equal(await fs.readFile(reportPath, "utf8"), "prior report\n")
 })
 
-test("cleanup sequence checks cancellation before every destructive boundary", async () => {
-  const source = await fs.readFile(
+test("wrapper and core cleanup sequences recheck cancellation at every destructive boundary", async () => {
+  const boundarySource = await fs.readFile(
     path.join(__dirname, "..", "src", "core", "preprocessCoverageBoundary.ts"),
     "utf8"
   )
-  const firstCheck = source.indexOf("throwIfBoundaryCancelled(input.abortSignal)")
-  const reportCleanup = source.indexOf("await removeStaleProcessingBudgetReport(outDir)")
-  const secondCheck = source.indexOf("throwIfBoundaryCancelled(input.abortSignal)", firstCheck + 1)
-  const packageCleanup = source.indexOf("await cleanManagedReviewPackageOutputs(outDir)")
-  const thirdCheck = source.indexOf("throwIfBoundaryCancelled(input.abortSignal)", secondCheck + 1)
-  const preprocess = source.indexOf("return await preprocessReview(input)")
+  const firstBoundaryCheck = boundarySource.indexOf("throwIfBoundaryCancelled(input.abortSignal)")
+  const boundaryReportCleanup = boundarySource.indexOf("await removeStaleProcessingBudgetReport(outDir)")
+  const secondBoundaryCheck = boundarySource.indexOf(
+    "throwIfBoundaryCancelled(input.abortSignal)",
+    firstBoundaryCheck + 1
+  )
+  const boundaryPackageCleanup = boundarySource.indexOf("await cleanManagedReviewPackageOutputs(outDir)")
+  const thirdBoundaryCheck = boundarySource.indexOf(
+    "throwIfBoundaryCancelled(input.abortSignal)",
+    secondBoundaryCheck + 1
+  )
+  const preprocess = boundarySource.indexOf("return await preprocessReview(input)")
 
-  assert.ok(firstCheck >= 0 && firstCheck < reportCleanup)
-  assert.ok(secondCheck > reportCleanup && secondCheck < packageCleanup)
-  assert.ok(thirdCheck > packageCleanup && thirdCheck < preprocess)
+  assert.ok(firstBoundaryCheck >= 0 && firstBoundaryCheck < boundaryReportCleanup)
+  assert.ok(secondBoundaryCheck > boundaryReportCleanup && secondBoundaryCheck < boundaryPackageCleanup)
+  assert.ok(thirdBoundaryCheck > boundaryPackageCleanup && thirdBoundaryCheck < preprocess)
+
+  const pipelineSource = await fs.readFile(
+    path.join(__dirname, "..", "src", "core", "pipeline.ts"),
+    "utf8"
+  )
+  const firstCoreCheck = pipelineSource.indexOf("cancellation.throwIfCancelled()")
+  const coreReportCleanup = pipelineSource.indexOf("await removeStaleProcessingBudgetReport(outDir)")
+  const secondCoreCheck = pipelineSource.indexOf("cancellation.throwIfCancelled()", firstCoreCheck + 1)
+  const corePackageCleanup = pipelineSource.indexOf("await cleanManagedReviewPackageOutputs(outDir)")
+  const thirdCoreCheck = pipelineSource.indexOf("cancellation.throwIfCancelled()", secondCoreCheck + 1)
+  const reviewInputValidation = pipelineSource.indexOf("const reviewInput = await validateReviewInput(")
+
+  assert.ok(firstCoreCheck >= 0 && firstCoreCheck < coreReportCleanup)
+  assert.ok(secondCoreCheck > coreReportCleanup && secondCoreCheck < corePackageCleanup)
+  assert.ok(thirdCoreCheck > corePackageCleanup && thirdCoreCheck < reviewInputValidation)
 })
