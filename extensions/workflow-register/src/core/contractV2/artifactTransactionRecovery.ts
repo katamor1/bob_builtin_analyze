@@ -33,11 +33,21 @@ const objectGetOwnPropertyDescriptors = Object.getOwnPropertyDescriptors
 const objectGetPrototypeOf = Object.getPrototypeOf
 const objectHasOwn = Object.hasOwn
 const objectPrototype = Object.prototype
+const reflectApply = Reflect.apply
 const reflectOwnKeys = Reflect.ownKeys
 const regexpExec = RegExp.prototype.exec
+const stringSplit = String.prototype.split
+const stringStartsWith = String.prototype.startsWith
+const stringToUpperCase = String.prototype.toUpperCase
 const inspectCommittedCaptured = inspectCommittedWorkflowArtifactTransaction
 const ATTEMPT_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u
 const DIGEST_PATTERN = /^sha256:[0-9a-f]{64}$/u
+const TRAILING_DOT_OR_SPACE_PATTERN = /[. ]$/u
+const WINDOWS_RESERVED = objectFreeze([
+  "AUX", "CON", "NUL", "PRN",
+  "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+  "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"
+] as const)
 const INPUT_REQUIRED = objectFreeze(["runRoot", "attemptId"] as const)
 const INPUT_OPTIONAL = objectFreeze(["expectedArtifactSetDigest"] as const)
 
@@ -149,14 +159,21 @@ function requireRunRoot(value: unknown): string {
 function requireAttemptId(value: unknown): string {
   if (
     typeof value !== "string"
-    || reflectApplyRegExp(ATTEMPT_PATTERN, value) === null
-    || /[. ]$/u.test(value)
+    || testPattern(ATTEMPT_PATTERN, value) === false
+    || testPattern(TRAILING_DOT_OR_SPACE_PATTERN, value)
   ) throw new TypeError("Workflow artifact recovery attempt id is invalid.")
+  const first = reflectApply(stringSplit, value, [".", 1]) as string[]
+  const device = first[0] === undefined
+    ? ""
+    : reflectApply(stringToUpperCase, first[0], []) as string
+  if (contains(WINDOWS_RESERVED, device)) {
+    throw new TypeError("Workflow artifact recovery attempt id is invalid.")
+  }
   return value
 }
 
 function requireDigest(value: unknown): Sha256Digest {
-  if (typeof value !== "string" || reflectApplyRegExp(DIGEST_PATTERN, value) === null) {
+  if (typeof value !== "string" || testPattern(DIGEST_PATTERN, value) === false) {
     throw new TypeError("Workflow artifact recovery expected digest is invalid.")
   }
   return value as Sha256Digest
@@ -192,7 +209,7 @@ function sameDirectorySnapshots(
 
 function assertContained(root: string, target: string): void {
   const relative = nodePathRelative(nodePathResolve(root), nodePathResolve(target))
-  if (relative.startsWith("..") || nodePathIsAbsolute(relative)) {
+  if (startsWith(relative, "..") || nodePathIsAbsolute(relative)) {
     throw new Error("Workflow artifact recovery path escapes its run root.")
   }
 }
@@ -201,8 +218,12 @@ function isMissingError(error: unknown): boolean {
   return (error as NodeJS.ErrnoException).code === "ENOENT"
 }
 
-function reflectApplyRegExp(pattern: RegExp, value: string): RegExpExecArray | null {
-  return Reflect.apply(regexpExec, pattern, [value]) as RegExpExecArray | null
+function testPattern(pattern: RegExp, value: string): boolean {
+  return reflectApply(regexpExec, pattern, [value]) !== null
+}
+
+function startsWith(value: string, prefix: string): boolean {
+  return reflectApply(stringStartsWith, value, [prefix]) as boolean
 }
 
 function contains(values: readonly string[], value: string): boolean {
