@@ -407,7 +407,7 @@ export class WorkflowRunCommandService {
     const runId = resolveRunId(runArg)
     const selection = await this.selectRunArgument(runArg, roots)
     if (!selection) {
-      const message = runId ? `実行 ${runId} が見つかりません。実行一覧を更新してから再度選択してください。` : "実行が選択されていません。実行一覧から対象を選択してください。"
+      const message = runId ? `実行 ${runId} が見つかりません。実行一覧を更新してから再度選択してください。` : "実行が選択されていません。一覧から対象を選択してください。"
       if (runId) await vscode.window.showWarningMessage(message)
       return message
     }
@@ -500,7 +500,7 @@ export class WorkflowRunCommandService {
       ? await findRunSelection(runId, roots, (root) => this.options.runtimeFactory.createRunStore(root))
       : await pickRunSelection(roots, (root) => this.options.runtimeFactory.createRunStore(root))
     if (!selection) {
-      const message = runId ? `実行 ${runId} が見つかりません。実行一覧を更新してから再度選択してください。` : "実行が選択されていません。実行一覧から対象を選択してください。"
+      const message = runId ? `実行 ${runId} が見つかりません。実行一覧を更新してから再度選択してください。` : "実行が選択されていません。一覧から対象を選択してください。"
       await vscode.window.showWarningMessage(message)
       return message
     }
@@ -565,7 +565,7 @@ export class WorkflowRunCommandService {
     const runId = resolveRunId(runArg)
     const selection = await this.selectRunArgument(runArg, roots)
     if (!selection) {
-      const message = runId ? `実行 ${runId} が見つかりません。実行一覧を更新してから再度選択してください。` : "実行が選択されていません。実行一覧から対象を選択してください。"
+      const message = runId ? `実行 ${runId} が見つかりません。実行一覧を更新してから再度選択してください。` : "実行が選択されていません。一覧から対象を選択してください。"
       await vscode.window.showWarningMessage(message)
       return message
     }
@@ -687,7 +687,7 @@ export class WorkflowRunCommandService {
   async inspectBranching(runId?: string): Promise<unknown> {
     const selection = await this.selectRun(runId)
     if (!selection) {
-      const message = runId ? `実行 ${runId} が見つかりません。実行一覧を更新してから再度選択してください。` : "実行が選択されていません。実行一覧から対象を選択してください。"
+      const message = runId ? `実行 ${runId} が見つかりません。実行一覧を更新してから再度選択してください。` : "実行が選択されていません。一覧から対象を選択してください。"
       await vscode.window.showWarningMessage(message)
       return message
     }
@@ -708,7 +708,6 @@ export class WorkflowRunCommandService {
   private async resumeOrRetryRun(mode: "resume" | "retry", runArg?: RunCommandArg): Promise<unknown> {
     const trustError = await requireTrustedWorkspace(`${mode} workflow run`)
     if (trustError) return trustError
-    await this.ensureWorkflowsLoaded()
     const roots = await this.options.workflowRootCandidates()
     const runId = resolveRunId(runArg)
     const selection = await this.selectRunArgument(runArg, roots)
@@ -743,9 +742,45 @@ export class WorkflowRunCommandService {
     const runStore = this.options.runtimeFactory.createRunStore(root)
     const run = await runStore.loadRun(runId)
     if (!run) throw new Error(`実行 ${runId} が見つかりません。実行一覧を更新してから再度選択してください。`)
+    if (run.planProvenance !== undefined) {
+      if (mode !== "resume") {
+        return this.warnStepGate("Contract v2 の再試行は、R6の副作用・attempt復旧判定が完了するまで実行できません。")
+      }
+      if (run.status === "checkpoint") {
+        return this.warnStepGate("現在のContract v2実行は分岐確認待ちです。承認または中止を先に実行してください。")
+      }
+      if (run.status === "held" || run.status === "reviewing") {
+        return this.warnStepGate("現在のContract v2実行は人の操作待ちです。対応する操作を完了してから再開してください。")
+      }
+      if (run.status === "running") {
+        return this.warnStepGate("実行中として記録されたContract v2 runは結果不明の可能性があります。R6のattempt復旧診断を確認してください。")
+      }
+      if (run.status !== "paused") {
+        return this.warnStepGate(`Contract v2 runは現在の状態から再開できません: ${run.status}`)
+      }
+      const liveGate = this.options.gateRegistry.pendingForRun(root, runId)
+      if (liveGate && run.currentStep === undefined) {
+        throw new Error("Contract v2 single-step resume requires a durable current step.")
+      }
+      const result = await this.options.runtimeFactory.resumeWorkflowContractV2Run(
+        root,
+        runId,
+        liveGate
+          ? {
+            executionMode: "singleStep",
+            stepId: run.currentStep,
+            allowOutOfOrder: true
+          }
+          : { executionMode: "full" }
+      )
+      if (liveGate) this.updateLiveGateAfterCommand(root, result, liveGate)
+      await vscode.window.showInformationMessage(`ワークフロー実行 ${result.runId}: ${workflowRunStatusLabel(result.status)}`)
+      return result
+    }
     if (mode === "resume" && run.status === "checkpoint") {
       return this.warnStepGate("Current run is waiting at a branch checkpoint. Approve or abort the checkpoint before resuming.")
     }
+    await this.ensureWorkflowsLoaded()
     const workflow = this.options.coreWorkflows.get(run.workflowId)
     if (!workflow) throw new Error(`ワークフロー定義 ${run.workflowId} が読み込まれていません。定義を再読み込みしてください。`)
     const liveGate = this.options.gateRegistry.pendingForRun(root, runId)
