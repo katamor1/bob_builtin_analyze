@@ -14,6 +14,11 @@ import {
   compiledLogicalEffectOrdinal,
   findCompiledStepIndex
 } from "./compiledRunValues"
+import {
+  createCompiledProviderEffectIntent,
+  encodeWorkflowProviderEffectIntent,
+  providerEffectIntentStateKey
+} from "./providerEffectIntent"
 import type {
   CompiledRuntimeContext,
   CompiledWorkflowExecutionOptions,
@@ -84,6 +89,7 @@ export async function runCompiledWorkflowState(
       stepState.completedAt = now()
       delete stepState.startedAt
       delete stepState.error
+      delete run.state[providerEffectIntentStateKey(step.id)]
       run.state[`workflow.contractV2.skipped.${step.id}`] = "true"
       await input.runStore.saveRun(run)
       if (input.options.executionMode === "singleStep") {
@@ -102,6 +108,21 @@ export async function runCompiledWorkflowState(
     stepState.startedAt = now()
     delete stepState.completedAt
     delete stepState.error
+    delete run.state[`workflow.contractV2.skipped.${step.id}`]
+    if (step.type === "command") {
+      run.state[providerEffectIntentStateKey(step.id)] = encodeWorkflowProviderEffectIntent(
+        createCompiledProviderEffectIntent({
+          plan: input.plan,
+          planDigest: input.lease.planDigest,
+          run,
+          context: input.context,
+          step,
+          stepIndex: index
+        })
+      )
+    } else {
+      delete run.state[providerEffectIntentStateKey(step.id)]
+    }
     await input.runStore.saveRun(run)
 
     let result
