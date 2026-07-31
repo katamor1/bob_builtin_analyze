@@ -22,6 +22,11 @@ import {
   type WorkflowPlanLease
 } from "./core/contractV2"
 import {
+  continueCompiledWorkflowRun,
+  type CompiledWorkflowExecutionOptions
+} from "./core/contractV2/compiledRunExecutor"
+import { requireWorkflowContractV2RunPlanLeaseForExecution } from "./core/contractV2/runPlanProvenance"
+import {
   WorkflowEngine,
   type ManualCompletionInput,
   type ManualCompletionResult,
@@ -30,6 +35,7 @@ import {
   type RunWorkflowOptions,
   type WorkflowEngineOptions
 } from "./core/engine"
+import { coordinateWorkflowContractV2RunRecovery } from "./core/engine/runExecutionCoordinator"
 import type { AgentProvider, CoreWorkflowDefinition, WorkflowRunState } from "./core/model"
 import { createDefaultResultSinkRegistry, ResultSinkRegistry } from "./core/resultSinkRegistry"
 import { FileRunControlStore, RunControlStore } from "./core/runControlStore"
@@ -37,6 +43,8 @@ import type { RunStateStore } from "./core/runStateStore"
 import { FileTaskSnapshotStore, TaskSnapshotStore } from "./core/taskSnapshots"
 import { findMarkerRoots, rootHasMarker } from "./core/workspaceRoots"
 import { executeWorkflowContractV2RuntimeBoundary } from "./workflowContractV2RuntimeBoundary"
+import { createWorkflowContractV2ProductEntrypoint } from "./workflowContractV2Product"
+import { recoverWorkflowContractV2ProductRunPlan } from "./workflowContractV2RunRecovery"
 import { ContractV2GuardedRunStateStore } from "./workflowContractV2RunStateStore"
 import { requireTrustedCommandExecution } from "./workspaceTrust"
 
@@ -192,6 +200,62 @@ export class WorkflowRuntimeFactory {
 
   invalidateWorkflowPlanSlot(collectionId: string, workflowId: string): void {
     this.workflowPlanStore.invalidateSlot(collectionId, workflowId)
+  }
+
+  async resumeWorkflowContractV2Run(
+    workspaceRoot: string,
+    runId: string,
+    options: CompiledWorkflowExecutionOptions = {},
+    agentProvider?: AgentProvider
+  ): Promise<WorkflowRunState> {
+    const runStore = new ContractV2GuardedRunStateStore({
+      workspaceRoot,
+      engineVersion: this.options.engineVersion
+    })
+    const entrypoint = createWorkflowContractV2ProductEntrypoint({
+      actionRegistry: this.options.actionRegistry,
+      planStore: {
+        getOrCompile: (input) => this.workflowPlanStore.getOrCompile(input),
+        acquire: (input) => this.workflowPlanStore.acquire(input),
+        invalidate: (collectionId, workflowId) => this.workflowPlanStore.invalidateSlot(collectionId, workflowId)
+      }
+    })
+    const executionOptions = Object.freeze({ ...options })
+    const operationKey = JSON.stringify([
+      "contract-v2-recorded-generation-resume",
+      executionOptions.executionMode ?? "full",
+      executionOptions.stepId ?? null,
+      executionOptions.allowOutOfOrder ?? null
+    ])
+    return coordinateWorkflowContractV2RunRecovery(
+      runStore,
+      runId,
+      operationKey,
+      async (run) => {
+        await recoverWorkflowContractV2ProductRunPlan({
+          workspaceRoot,
+          run,
+          acquireGeneration: (input) => entrypoint.acquireGeneration(input)
+        })
+      },
+      async () => {
+        const run = await runStore.loadRun(runId)
+        if (run === undefined) throw new Error(`Workflow run is unavailable: ${runId}`)
+        const lease = requireWorkflowContractV2RunPlanLeaseForExecution(workspaceRoot, run)
+        if (lease === undefined) {
+          throw new Error("Workflow Contract v2 recorded-generation lease was not recovered.")
+        }
+        return continueCompiledWorkflowRun({
+          lease,
+          runId,
+          options: executionOptions,
+          workspaceRoot,
+          runStore,
+          signal: new AbortController().signal,
+          agentProvider: agentProvider ?? this.options.agentProvider() ?? this.createCommandAgentProvider()
+        })
+      }
+    )
   }
 
   createEngine(workspaceRoot: string, agentProvider?: AgentProvider): WorkflowEngine {
