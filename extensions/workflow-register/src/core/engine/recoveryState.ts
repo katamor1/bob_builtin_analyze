@@ -11,6 +11,49 @@ const COMMAND_PROVIDER_COMPLETION_PREFIX = "workflow.commandProviderCompleted."
 
 type RetryRecoveryReason = Extract<RecoverResultTextInput["reason"], "handoff-failed">
 
+export type WorkflowContractV2RunRecoveryClassification =
+  | { readonly kind: "resume"; readonly stepId: string }
+  | { readonly kind: "operator-gate"; readonly status: "held" | "reviewing" | "checkpoint"; readonly stepId?: string }
+  | { readonly kind: "in-doubt"; readonly stepId?: string; readonly reason: string }
+  | { readonly kind: "terminal"; readonly status: "completed" | "failed" }
+  | { readonly kind: "invalid"; readonly reason: string }
+
+/**
+ * Classifies only durable run-state evidence. Filesystem attempt recovery is a
+ * separate R6 boundary and may further restrict an otherwise resumable run.
+ */
+export function classifyWorkflowContractV2RunRecovery(
+  run: WorkflowRunState
+): WorkflowContractV2RunRecoveryClassification {
+  if (
+    run.workflowSchemaVersion !== "workflow-register/v2"
+    || run.planProvenance === undefined
+  ) return { kind: "invalid", reason: "Contract v2 plan provenance is unavailable." }
+  if (run.status === "completed" || run.status === "failed") {
+    return { kind: "terminal", status: run.status }
+  }
+  if (run.status === "paused") {
+    return run.currentStep === undefined
+      ? { kind: "invalid", reason: "Paused Contract v2 run has no durable current step." }
+      : { kind: "resume", stepId: run.currentStep }
+  }
+  if (run.status === "held" || run.status === "reviewing" || run.status === "checkpoint") {
+    return {
+      kind: "operator-gate",
+      status: run.status,
+      ...(run.currentStep === undefined ? {} : { stepId: run.currentStep })
+    }
+  }
+  if (run.status === "running") {
+    return {
+      kind: "in-doubt",
+      ...(run.currentStep === undefined ? {} : { stepId: run.currentStep }),
+      reason: "Running Contract v2 run requires attempt and side-effect reconciliation before execution."
+    }
+  }
+  return { kind: "invalid", reason: `Unsupported Contract v2 recovery status: ${run.status}` }
+}
+
 export function markResultHandoffFailed(run: WorkflowRunState, step: EngineStep, error: string): void {
   run.state[handoffFailureKey(step.id)] = JSON.stringify({
     error,
