@@ -49,14 +49,14 @@ test("recovered lease acquisition happens under run single-flight and the cross-
   assert.ok(recovery >= 0 && lock > recovery && prepare > recovery && requireLease > prepare)
 })
 
-test("runtime recovery classifies durable status before recorded-generation acquisition", () => {
-  const runtime = source("workflowRuntimeFactory.ts")
-  assert.match(runtime, /classifyWorkflowContractV2RunRecovery/)
-  const recoveryMethod = runtime.indexOf("async resumeWorkflowContractV2Run")
-  const classification = runtime.indexOf("classifyWorkflowContractV2RunRecovery(run)", recoveryMethod)
-  const acquire = runtime.indexOf("recoverWorkflowContractV2ProductRunPlan", recoveryMethod)
-  assert.ok(recoveryMethod >= 0 && classification > recoveryMethod && acquire > classification)
-  assert.match(runtime, /classification\.kind !== "resume"/)
+test("product recovery classifies durable status before recorded-generation acquisition", () => {
+  const recovery = source("workflowContractV2RunRecovery.ts")
+  assert.match(recovery, /classifyWorkflowContractV2RunRecovery/)
+  const method = recovery.indexOf("export async function recoverWorkflowContractV2ProductRunPlan")
+  const classification = recovery.indexOf("classifyWorkflowContractV2RunRecovery(input.run)", method)
+  const acquire = recovery.indexOf("recoverWorkflowContractV2RunPlanLease", method)
+  assert.ok(method >= 0 && classification > method && acquire > classification)
+  assert.match(recovery, /classification\.kind !== "resume"/)
 })
 
 test("resume commands branch on persisted Contract v2 provenance before current workflow lookup", () => {
