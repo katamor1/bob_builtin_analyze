@@ -26,6 +26,7 @@ export interface RecoverWorkflowContractV2RunPlanInput {
 }
 
 const isProxy = utilTypes.isProxy
+const objectCreate = Object.create
 const objectFreeze = Object.freeze
 const objectGetOwnPropertyDescriptors = Object.getOwnPropertyDescriptors
 const objectGetPrototypeOf = Object.getPrototypeOf
@@ -46,7 +47,7 @@ export async function recoverWorkflowContractV2RunPlanLease(
   const snapshot = snapshotInput(input)
   const workspaceScope = requireWorkspaceScope(snapshot.workspaceScope)
   const run = requireRun(snapshot.run)
-  const acquireGeneration = snapshot.acquireGeneration as RecoverWorkflowContractV2RunPlanInput["acquireGeneration"]
+  const acquireGeneration = requireAcquirer(snapshot.acquireGeneration)
   const provenance = requireRecordedProvenance(run)
 
   let lease: WorkflowPlanLease | undefined
@@ -106,7 +107,7 @@ function snapshotInput(
   if (keys.length !== INPUT_FIELDS.length) {
     throw new TypeError("Recorded-generation recovery input has an invalid shape.")
   }
-  const result = Object.create(null) as Record<string, unknown>
+  const result = objectCreate(null) as Record<string, unknown>
   for (let index = 0; index < keys.length; index += 1) {
     const key = keys[index]
     if (typeof key !== "string" || !contains(INPUT_FIELDS, key)) {
@@ -133,6 +134,15 @@ function requireRun(value: unknown): WorkflowRunState {
     || objectGetPrototypeOf(value) !== objectPrototype
   ) throw new TypeError("Recorded-generation recovery run is invalid.")
   return value as WorkflowRunState
+}
+
+function requireAcquirer(
+  value: unknown
+): RecoverWorkflowContractV2RunPlanInput["acquireGeneration"] {
+  if (typeof value !== "function" || isProxy(value)) {
+    throw new TypeError("Recorded-generation recovery acquirer is invalid.")
+  }
+  return value as RecoverWorkflowContractV2RunPlanInput["acquireGeneration"]
 }
 
 function requireWorkspaceScope(value: unknown): string {
