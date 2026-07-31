@@ -10,8 +10,6 @@ import {
   persistProcessingBudgetReport,
   processingBudgetReportPath
 } from "./processingBudgetCoverage"
-import { removeStaleProcessingBudgetReport } from "./processingBudgetReportGuard"
-import { cleanManagedReviewPackageOutputs } from "./reviewPackageCoverageGuard"
 import type { PreprocessResult } from "./preprocessTypes"
 
 const PREPROCESS_OPERATION_PREFIX = "code-consistency-preprocess"
@@ -25,10 +23,6 @@ export async function preprocessReviewWithCoverage(
   const inputSha256 = preValidationInputSha(input, limits)
   const operationId = `${PREPROCESS_OPERATION_PREFIX}:${inputSha256.slice(7, 39)}`
 
-  throwIfBoundaryCancelled(input.abortSignal)
-  await removeStaleProcessingBudgetReport(outDir)
-  throwIfBoundaryCancelled(input.abortSignal)
-  await cleanManagedReviewPackageOutputs(outDir)
   throwIfBoundaryCancelled(input.abortSignal)
 
   try {
