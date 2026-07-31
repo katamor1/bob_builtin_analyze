@@ -79,6 +79,7 @@ const regexpExec = RegExp.prototype.exec
 const DIGEST_PATTERN = /^sha256:[0-9a-f]{64}$/u
 const ATTEMPT_PATTERN = /^attempt-[0-9]{4,}-[0-9]{4,}$/u
 const VISIBILITY_PREFIX = "workflow.contractV2.artifactSet."
+const SKIPPED_PREFIX = "workflow.contractV2.skipped."
 const MAX_VISIBILITY_BYTES = 1_024
 const MAX_STATE_FIELDS = 4_096
 const MAX_RUN_STEPS = 512
@@ -130,7 +131,14 @@ async function classifyAttemptRecovery(
       }
 
       const visibility = visibilityEvidence(run.state[`${VISIBILITY_PREFIX}${step.id}`])
+      const skipped = skippedEvidence(run.state[`${SKIPPED_PREFIX}${step.id}`])
       if (visibility !== undefined) {
+        if (runStep.status !== "completed") {
+          return invalid("Workflow artifact visibility requires a completed producer step.")
+        }
+        if (skipped) {
+          return invalid("Workflow artifact visibility conflicts with deterministic skip evidence.")
+        }
         const inspection = await inspectTransaction(objectFreeze({
           runRoot: snapshot.runRoot,
           attemptId: visibility.attemptId,
@@ -145,6 +153,11 @@ async function classifyAttemptRecovery(
           attemptId: visibility.attemptId,
           artifactSetDigest: visibility.artifactSetDigest
         })
+      } else if (skipped) {
+        if (runStep.status !== "completed") {
+          return invalid("Deterministic skip evidence requires a completed step.")
+        }
+        continue
       } else if (runStep.status === "completed") {
         return invalid("Completed workspace-write step lacks committed artifact visibility evidence.")
       }
@@ -154,9 +167,6 @@ async function classifyAttemptRecovery(
         return invalid("Running workspace-write attempt identity is invalid.")
       }
       const attemptId = compiledAttemptId(index, runStep.attempt!)
-      if (visibility?.attemptId === attemptId) {
-        return invalid("Running workspace-write attempt already claims committed visibility.")
-      }
       const inspection = await inspectTransaction(objectFreeze({
         runRoot: snapshot.runRoot,
         attemptId
@@ -228,6 +238,14 @@ function visibilityEvidence(value: unknown): {
     attemptId,
     artifactSetDigest: artifactSetDigest as Sha256Digest
   })
+}
+
+function skippedEvidence(value: unknown): boolean {
+  if (value === undefined) return false
+  if (value !== "true") {
+    throw new TypeError("Workflow deterministic skip evidence is invalid.")
+  }
+  return true
 }
 
 function snapshotInput(
@@ -315,7 +333,7 @@ function snapshotSteps(value: unknown): readonly RunStepRecoveryEvidence[] {
     || isProxy(value)
     || objectGetPrototypeOf(value) !== arrayPrototype
   ) throw new TypeError("Workflow attempt recovery steps are invalid.")
-  const descriptors = objectGetOwnPropertyDescriptors(value)
+  const descriptors = objectGetOwnPropertyDescriptors(value) as unknown as PropertyDescriptorMap
   const lengthDescriptor = descriptors.length
   if (
     lengthDescriptor === undefined
