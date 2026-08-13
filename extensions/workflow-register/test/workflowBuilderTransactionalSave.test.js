@@ -1000,18 +1000,28 @@ test("an older no-change save cannot replace the latest preview model", async (t
 })
 
 test("a committed older save writes its payload but cannot replace the latest preview model", async (t) => {
+  const transactionModule = require("../out/core/authoring/workflowAuthoringFileTransaction")
+  const originalCommit = transactionModule.commitAuthoringFileAtomically
+  const commitFinished = deferred()
+  const releaseCommit = deferred()
+  transactionModule.commitAuthoringFileAtomically = async (...args) => {
+    const result = await originalCommit(...args)
+    if (result === "committed") {
+      commitFinished.resolve()
+      await releaseCommit.promise
+    }
+    return result
+  }
+  t.after(() => { transactionModule.commitAuthoringFileAtomically = originalCommit })
   const harness = createPanelHarness(t)
-  const writeStarted = deferred()
-  const releaseWrite = deferred()
-  harness.state.beforeTargetWrite = async () => { writeStarted.resolve(); await releaseWrite.promise }
   harness.state.warningResponses.push("変更を反映")
   const older = editedModel(harness.model, "Older committed payload.")
   const latest = editedModel(harness.model, "Latest preview remains hosted.")
 
   const save = harness.send({ type: "save", model: older })
-  await writeStarted.promise
+  await commitFinished.promise
   await harness.send({ type: "preview", model: latest })
-  releaseWrite.resolve()
+  releaseCommit.resolve()
   await save
 
   assert.match(fs.readFileSync(harness.target, "utf8"), /Older committed payload/)
